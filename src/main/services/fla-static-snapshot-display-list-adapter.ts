@@ -4,7 +4,7 @@
  * C01 resolver input. XFL layer arrays are authored front/top to back/bottom;
  * this adapter converts them once to Panda's back-to-front painter order.
  * Within-layer elements retain their authored order. Graphic frame selection
- * adds one fail-closed, two-frame transform-only motion subset; unrelated XFL
+ * adds one fail-closed, two- and three-frame transform-only motion subset; unrelated XFL
  * semantics (shape tweens, masks, text, filters, or ActionScript) remain unsupported.
  */
 
@@ -32,6 +32,7 @@ const BOUNDED_MOTION_FRAME_ATTRIBUTES = new Set([
   'motionTweenSnap',
   'keyMode',
 ]);
+const BOUNDED_MOTION_SPAN_DURATIONS = new Set([2, 3]);
 const BOUNDED_MOTION_INSTANCE_ATTRIBUTES = new Set([
   'libraryItemName',
   'selected',
@@ -717,7 +718,7 @@ function isBoundedMotionFramePair(
   const allowedFrameAttributes = (frame: FlaXflElementBlock): boolean =>
     Object.keys(frame.attributes).every((name) => BOUNDED_MOTION_FRAME_ATTRIBUTES.has(name));
   if (!allowedFrameAttributes(startFrame) || !allowedFrameAttributes(endFrame) ||
-      duration !== 2 || Number(startFrame.attributes.index) !== startIndex ||
+      !BOUNDED_MOTION_SPAN_DURATIONS.has(duration) || Number(startFrame.attributes.index) !== startIndex ||
       Number(endFrame.attributes.index) !== startIndex + duration ||
       startFrame.attributes.tweenType !== 'motion' || endFrame.attributes.tweenType !== 'motion' ||
       startFrame.attributes.motionTweenSnap !== 'true' || endFrame.attributes.motionTweenSnap !== 'true' ||

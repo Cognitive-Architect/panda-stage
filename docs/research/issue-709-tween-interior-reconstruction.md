@@ -2,7 +2,7 @@
 
 Date: 2026-10-05
 
-Status: Gate 0 GO; Gate A bounded production implementation complete; Gate B pending approved reference review
+Status: Gate 0 GO; Gate A bounded production implementation complete; Gate B HUMAN VISUAL PASS recorded; Issue #709 accepted/closed
 
 Mother PR: #677 (existing draft; no new PR)
 
@@ -76,9 +76,11 @@ The #707 PNG control was `d754bd0046c2f19c05a4f9a826b4a1b374c5b727c2e70516ae9801
 
 External production evidence is under `D:\PandaStage-Acceptance\issue709-tween-20261005\production-run-1` through `production-run-4`; the #707 control is under `D:\PandaStage-Acceptance\issue709-b5a-control-20261005\run-2`.
 
-## Gate B — pending
+## Gate B — HUMAN VISUAL PASS
 
-No Adobe Animate command is available on `PATH` in this environment. The local `预览.png` is a 300×300 collage of unrelated face assets, not an approved reference for `人物倒地.fla`. Maintainer comparison against an Animate-visible or otherwise approved frame-21 reference is still required before the tween semantic can be called proven.
+The final maintainer disposition recorded on [Issue #710](https://github.com/Cognitive-Architect/panda-stage/issues/710) states that frame 21 was independently compared with the source/material-site animation reference and found source-faithful. [Issue #711](https://github.com/Cognitive-Architect/panda-stage/issues/711) carries #709 as accepted/closed and records the frame-21 HUMAN VISUAL PASS.
+
+The approved reference and comparison capture are not present in this checkout or the Issue #709 production-run folders. The visual result is recorded from the maintainer decision; this report does not claim that the comparison can be independently repeated from local files.
 
 ## Required completion receipt
 
@@ -98,7 +100,7 @@ Gate 0: GO — bounded transform-only motion span
 
 Gate A:
 frame 20 control: PASS; `61547c34bf3e5ccb234bf3b315a8c80bf7524f605ee60fb6e580699870b366d6`
-frame 21 output: production adapter PNG `fcbbf077a1097144a0a0f757c84f0a5ffcbc7664c4ed949b1c9ff8066605f827`; Gate B pending
+frame 21 output: production adapter PNG `fcbbf077a1097144a0a0f757c84f0a5ffcbc7664c4ed949b1c9ff8066605f827`; maintainer HUMAN VISUAL PASS recorded in #710/#711
 frame 22 control: PASS; `95ef1f30a4ce5c2c545a9863449e5452b14203cf5469d78ec5d51054ea65afb2`
 interpolated properties: X/Y translation, 2D rotation, positive orthogonal X/Y scale
 source derivation: endpoint `<Matrix>` values; progress `(21 - 20) / 2 = 0.5`
@@ -108,8 +110,8 @@ determinism: four independent runs and repeated renders match
 CI: PASS for the production-adapter commit; [GitHub Actions run 37290465283](https://github.com/Cognitive-Architect/panda-stage/actions/runs/37290465283) completed focused core quality, including typecheck, lint, unit, integration, build, and manifest-selected subsystem regression
 
 Gate B:
-reference source: not available in this environment
-maintainer visual result: PENDING
+reference source: source/material-site animation reference; not retained in this checkout
+maintainer visual result: HUMAN VISUAL PASS, recorded in Issues #710 and #711
 
 source mutation: NO
 manual interpolation constants: NO
@@ -118,5 +120,5 @@ MovieClip runtime added: NO
 script execution added: NO
 playback UI added: NO
 
-result: bounded production frame-21 path implemented; Gate B human visual acceptance remains pending
+result: bounded production frame-21 path accepted; HUMAN VISUAL PASS; Issue #709 CLOSED
 ```

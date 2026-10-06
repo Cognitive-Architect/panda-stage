@@ -78,7 +78,12 @@ function buildAdapterFixture() {
   return { adapted: adapted.source, documentXml, libraryXmlEntries, originalLibraryEntries };
 }
 
-function buildMotionAdapterFixture(startMetadata = '', endMetadata = '', endLibraryItemName = 'moving-target') {
+function buildMotionAdapterFixture(
+  startMetadata = '',
+  endMetadata = '',
+  endLibraryItemName = 'moving-target',
+  duration = 2,
+) {
   const motionFrame = (index: number, duration: number, target: string, transform: string, metadata: string) =>
     `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true" keyMode="22017">${metadata}` +
     `<elements><DOMSymbolInstance libraryItemName="${target}" symbolType="graphic" loop="single frame">` +
@@ -89,8 +94,8 @@ function buildMotionAdapterFixture(startMetadata = '', endMetadata = '', endLibr
   const libraryXmlEntries = [{
     name: 'LIBRARY/motion-root.xml',
     xml: graphic('motion-root', [layer('moving', [
-      motionFrame(0, 2, 'moving-target', transformedMatrix(1, 0, 0, 1, 0, 0), startMetadata),
-      motionFrame(2, 1, endLibraryItemName, transformedMatrix(0, 1, -1, 0, 20, 30), endMetadata),
+      motionFrame(0, duration, 'moving-target', transformedMatrix(1, 0, 0, 1, 0, 0), startMetadata),
+      motionFrame(duration, 1, endLibraryItemName, transformedMatrix(0, 1, -1, 0, 20, 30), endMetadata),
     ].join(''))]),
   }];
   const adapted = adaptFlaXflDisplaySource(documentXml, libraryXmlEntries);
@@ -235,6 +240,41 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
     expect(interpolated.localTransform.b).toBeCloseTo(Math.SQRT1_2, 12);
     expect(interpolated.localTransform.c).toBeCloseTo(-Math.SQRT1_2, 12);
     expect(interpolated.localTransform.d).toBeCloseTo(Math.SQRT1_2, 12);
+  });
+
+  it('resolves source-proven three-frame spans at their exact 1/3 and 2/3 progress', () => {
+    const source = buildMotionAdapterFixture('', '', 'moving-target', 3);
+    const target = descriptor(source, 'motion-root');
+
+    for (const [frameIndex, progress] of [[1, 1 / 3], [2, 2 / 3]] as const) {
+      const selected = source.buildGraphicFrameContext(
+        target.timelineXml,
+        target.frameSpanIndex,
+        frameIndex,
+        `bounded-three-frame-motion-${frameIndex}`,
+      );
+
+      expect(selected.ok).toBe(true);
+      if (!selected.ok) continue;
+      const interpolated = selected.value.layers[0]?.elements[0];
+      expect(interpolated?.kind).toBe('symbol');
+      if (interpolated?.kind !== 'symbol' || !interpolated.localTransform) continue;
+      expect(interpolated.localTransform.tx).toBeCloseTo(20 * progress, 12);
+      expect(interpolated.localTransform.ty).toBeCloseTo(30 * progress, 12);
+      expect(interpolated.localTransform.a).toBeCloseTo(Math.cos(Math.PI / 2 * progress), 12);
+      expect(interpolated.localTransform.b).toBeCloseTo(Math.sin(Math.PI / 2 * progress), 12);
+    }
+
+    const unsupportedLongerSpan = buildMotionAdapterFixture('', '', 'moving-target', 4);
+    const unsupportedTarget = descriptor(unsupportedLongerSpan, 'motion-root');
+    const unsupported = unsupportedLongerSpan.buildGraphicFrameContext(
+      unsupportedTarget.timelineXml,
+      unsupportedTarget.frameSpanIndex,
+      2,
+      'unsupported-four-frame-motion',
+    );
+    expect(unsupported.ok).toBe(false);
+    if (!unsupported.ok) expect(unsupported.message).toContain('bounded transform-only subset');
   });
 
   it('keeps motion tween interiors fail-closed when source easing or target identity changes', () => {
