@@ -27,6 +27,17 @@
  *   4. evaluates bounded in-memory counterfactual rules and answers, for each:
  *      what source fact authorizes it / invented geometry YES-NO / accepted real
  *      controls regress YES-NO.
+ *
+ * Issue #719 corrective — classification semantics only (census data unchanged):
+ *   C1. the gradient failure must use a frozen J0 enum value, never a workflow
+ *       destination. It is now UNKNOWN, with deferredTo: "J3" as metadata only.
+ *   C2. mixed topology is decided by conservative semantic precedence, never by a
+ *       numerical majority vote:
+ *         any unresolved open-chain ambiguity -> AMBIGUOUS_WITHOUT_EXTERNAL_TRUTH
+ *         else any non-manifold branch junction -> MODEL_INCOMPLETE_SOURCE_SEMANTIC_IDENTIFIED
+ *         else -> UNKNOWN
+ *       Sub-reason counts (openChains / branchJunctions) are retained separately.
+ *   C4. the J0 gate is recomputed from the rule sweep, never hard-coded.
  */
 
 const assert = require('node:assert/strict');
@@ -1229,10 +1240,25 @@ function counterfactualRuleSweep(blocksByHash) {
   return { shapesEvaluated: checked, results };
 }
 
-/** J0 classification for one failing shape (exactly one enum value + reasons). */
+/** The exact frozen J0 classification enum (#718). No sixth value may be added (#719 STOP gate 3). */
+const J0_ENUMS = [
+  'MODEL_INCOMPLETE_SOURCE_SEMANTIC_IDENTIFIED',
+  'CURRENT_IMPLEMENTATION_BUG',
+  'MALFORMED_SOURCE',
+  'AMBIGUOUS_WITHOUT_EXTERNAL_TRUTH',
+  'UNKNOWN',
+];
+
+/**
+ * J0 classification for one failing shape (exactly one frozen enum value + reasons).
+ *
+ * #719 C2: conservative semantic precedence — an unresolved open-chain ambiguity
+ * forces AMBIGUOUS_WITHOUT_EXTERNAL_TRUTH even when non-manifold branch junctions
+ * are numerically larger. A bigger count of one class never erases the other.
+ */
 function classifyShapeFailure(forensic) {
   if (forensic.failure !== 'FILL_BOUNDARY_UNCLOSED') {
-    return { classification: 'UNKNOWN', reasons: [`unexpected failure kind: ${forensic.failure}`] };
+    return { classification: 'UNKNOWN', reasons: [`unexpected failure kind: ${forensic.failure}`], subReasons: { openChains: 0, branchJunctions: 0 } };
   }
   let openChains = 0;
   let branchComponents = 0;
@@ -1250,16 +1276,29 @@ function classifyShapeFailure(forensic) {
     }
   }
   const reasons = [];
+  if (openChains > 0) reasons.push(`${openChains} open chain(s): the boundary is an open polyline with no source-declared fill-side ownership for the closing edge`);
   if (branchComponents > 0) reasons.push(`${branchComponents} non-manifold branch junction(s): an authored vertex is shared by 3+ edges`);
   if (categories.NO_FILL_OWNERSHIP) reasons.push(`${categories.NO_FILL_OWNERSHIP} open tip pair(s) joined only by an edge with no fill/stroke ownership`);
   if (categories.NO_AUTHORED_CONNECTOR) reasons.push(`${categories.NO_AUTHORED_CONNECTOR} open tip pair(s) with no authored connecting segment at all`);
   if (categories.OWNED_BY_THIS_STYLE_BUT_NOT_CLOSING) reasons.push(`${categories.OWNED_BY_THIS_STYLE_BUT_NOT_CLOSING} tip pair(s) with a same-style edge that still does not close the directed walk`);
-  // Branch junctions need a resolution rule the model does not implement.
-  // Open chains lack any source-declared fill-side ownership for the closing edge.
-  const classification = branchComponents > openChains
-    ? 'MODEL_INCOMPLETE_SOURCE_SEMANTIC_IDENTIFIED'
-    : 'AMBIGUOUS_WITHOUT_EXTERNAL_TRUTH';
-  return { classification, reasons, openChains, branchComponents, categories };
+  // Conservative semantic precedence (#719 C2): source ambiguity dominates.
+  //   - an open chain cannot be closed without inventing a fill-side -> AMBIGUOUS;
+  //   - only when no such ambiguity exists and a non-manifold junction remains does
+  //     the failure reduce to a rule the model lacks -> MODEL_INCOMPLETE;
+  //   - otherwise there is no source/mode evidence -> UNKNOWN.
+  const classification = openChains > 0
+    ? 'AMBIGUOUS_WITHOUT_EXTERNAL_TRUTH'
+    : branchComponents > 0
+      ? 'MODEL_INCOMPLETE_SOURCE_SEMANTIC_IDENTIFIED'
+      : 'UNKNOWN';
+  return {
+    classification,
+    reasons,
+    subReasons: { openChains, branchJunctions: branchComponents, connectorCategories: categories },
+    openChains,
+    branchComponents,
+    categories,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1349,7 +1388,14 @@ async function main() {
       productionVerdict: record.production,
       forensic: analyzed,
       classification: /gradient matrix/u.test(record.production.message ?? '')
-        ? { classification: 'PENDING_J3_GRADIENT', reasons: ['gradient-matrix boundary is deferred to J3'] }
+        ? {
+          // #719 C1: the gradient failure must use a frozen J0 enum value. "J3" is a
+          // workflow destination, not a source classification -> metadata only.
+          classification: 'UNKNOWN',
+          deferredTo: 'J3',
+          reasons: ['source FillStyle is a gradient with no authored <matrix> child; a legal default vs a malformed source cannot be decided without external truth'],
+          subReasons: { missingGradientMatrix: true, deferredTo: 'J3' },
+        }
         : classifyShapeFailure(analyzed),
       gradient: gradientStyle
         ? analyzeGradientStyle(record.shapeId, uniqueShapeDefs.get(record.contentHash).block, Number(gradientStyle))
@@ -1414,11 +1460,58 @@ async function main() {
     return 'OTHER';
   };
 
+  const classificationTally = forensics.reduce((acc, entry) => {
+    acc[entry.classification.classification] = (acc[entry.classification.classification] ?? 0) + 1;
+    return acc;
+  }, {});
+  // Full frozen-enum tally, including zeros (the receipt lists all five values).
+  const enumTally = Object.fromEntries(J0_ENUMS.map((name) => [name, classificationTally[name] ?? 0]));
+  const subReasonTally = forensics.reduce((acc, entry) => {
+    const sub = entry.classification.subReasons ?? {};
+    acc.openChains += sub.openChains ?? 0;
+    acc.branchJunctions += sub.branchJunctions ?? 0;
+    if (sub.missingGradientMatrix) acc.missingGradientMatrix += 1;
+    if (sub.deferredTo) acc.gradientDeferredToJ3 += 1;
+    return acc;
+  }, { openChains: 0, branchJunctions: 0, missingGradientMatrix: 0, gradientDeferredToJ3: 0 });
+
+  // #719 C4: recompute the J0 gate from evidence, never hard-code it. A candidate
+  // rule may graduate to J1 only if it strictly reduces Blue's failing count AND
+  // does not increase any accepted real control's failing count.
+  const baselineOf = (results) => results?.find((entry) => entry.rule === 'baseline')?.walkFailingShapes ?? null;
+  const blueBaseline = baselineOf(primarySweep.results);
+  const graduatingRules = primarySweep.results
+    .filter((entry) => entry.rule !== 'baseline' && blueBaseline !== null && entry.walkFailingShapes < blueBaseline)
+    .filter((entry) => controlSweeps.every((control) => {
+      const base = baselineOf(control.sweep?.results) ?? 0;
+      const cand = control.sweep?.results?.find((x) => x.rule === entry.rule)?.walkFailingShapes ?? 0;
+      return cand <= base;
+    }))
+    .map((entry) => entry.rule);
+  const gate = {
+    sourceProvenCandidateRule: graduatingRules.length ? graduatingRules : 'NONE',
+    j0Result: graduatingRules.length ? 'GO' : 'NO-GO',
+    j1: graduatingRules.length ? 'AUTHORIZED' : 'NOT_STARTED',
+    basis: 'a rule graduates only if it strictly reduces Blue failing shapes and never increases an accepted control',
+  };
+
   const report = {
-    schemaVersion: 'issue718-j0-shape-forensic/1',
+    schemaVersion: 'issue718-j0-shape-forensic/2',
     issue: 718,
+    correctiveIssue: 719,
     phase: 'J0',
     generatedNote: 'research-only; no production behavior changed; no source mutation; no invented connector geometry',
+    classificationModel: {
+      corrective: 'Issue #719 — classification semantics cleanup (C1/C2)',
+      enums: J0_ENUMS,
+      gradientRule: 'gradient failure -> UNKNOWN; J3 is deferredTo metadata, not a classification',
+      topologyPrecedence: [
+        'AMBIGUOUS_WITHOUT_EXTERNAL_TRUTH if any unresolved open chain exists',
+        'else MODEL_INCOMPLETE_SOURCE_SEMANTIC_IDENTIFIED if any non-manifold branch junction exists',
+        'else UNKNOWN',
+      ],
+      subReasons: 'openChains / branchJunctions counts retained separately per failing shape',
+    },
     source: {
       path: args.source,
       originalSha256,
@@ -1446,10 +1539,9 @@ async function main() {
         acc[family] = (acc[family] ?? 0) + 1;
         return acc;
       }, {}),
-      classificationTally: forensics.reduce((acc, entry) => {
-        acc[entry.classification.classification] = (acc[entry.classification.classification] ?? 0) + 1;
-        return acc;
-      }, {}),
+      classificationTally,
+      enumTally,
+      subReasonTally,
     },
     failingShapes: forensics,
     counterfactuals,
@@ -1458,6 +1550,7 @@ async function main() {
       primary: primarySweep,
       controls: controlSweeps,
     },
+    gate,
     productionChanges: 'NONE',
     sourceMutation: 'NO',
     inventedConnectorGeometry: 'NO',
@@ -1467,7 +1560,9 @@ async function main() {
   artifacts.push(await writeExclusive(path.join(args.out, 'j0-shape-forensic.json'), `${JSON.stringify(report, null, 2)}\n`));
 
   const receiptLines = [
-    'Issue #718 Stage B5-J Shape Fill / Tessellation Prerequisite — J0 forensic census receipt',
+    'Issue #719 J0 classification corrective — regenerated forensic census receipt',
+    'parent issue: #718 · mother PR: #677 · baseline: 56392e2ce43ff34ce2d31aa8148bf5e03e96efe1',
+    'corrective: C1 gradient -> frozen enum (UNKNOWN, J3 as deferredTo metadata); C2 topology -> conservative semantic precedence (no majority vote)',
     `source: ${args.source}`,
     `sha256 before: ${originalSha256}`,
     `sha256 after:  ${sourceSha256After}`,
@@ -1476,7 +1571,8 @@ async function main() {
     `shape blocks audited: ${shapeBlockCount} (distinct definitions: ${shapeRecords.length}, id-collision groups: ${idCollisionGroupCount})`,
     `production-failing shape definitions: ${failingProduction.length}`,
     `failure families: ${JSON.stringify(report.shapeAudit.failureFamilies)}`,
-    `classifications: ${JSON.stringify(report.shapeAudit.classificationTally)}`,
+    `classification tally (frozen enum, zeros shown): ${J0_ENUMS.map((name) => `${name}=${enumTally[name]}`).join(' ')}`,
+    `sub-reasons (sum over failing shapes): openChains=${subReasonTally.openChains} branchJunctions=${subReasonTally.branchJunctions} missingGradientMatrix=${subReasonTally.missingGradientMatrix} gradientDeferredToJ3=${subReasonTally.gradientDeferredToJ3}`,
     `mirror/production parity: PASS`,
     '',
     'rule sweep (failing shapes / total evaluated):',
@@ -1487,16 +1583,22 @@ async function main() {
     '',
     ...failingProduction.map((record) => `shape ${record.shapeId}: ${record.production.code} :: ${record.production.message}`),
     '',
+    `source-proven candidate rule: ${gate.sourceProvenCandidateRule}`,
+    `J0 gate (recomputed from evidence): ${gate.j0Result}`,
     'production changes: NONE',
     'invented connector geometry: NO',
     'J1..J5: NOT_STARTED',
   ];
   artifacts.push(await writeExclusive(path.join(args.out, 'completion-receipt.txt'), receiptLines.join('\n') + '\n'));
   artifacts.push(await writeExclusive(path.join(args.out, 'completion-receipt.json'), `${JSON.stringify({
-    schemaVersion: 'issue718-j0-receipt/1',
+    schemaVersion: 'issue719-j0-receipt/1',
+    parentIssue: 718,
+    corrective: 'classification semantics cleanup (C1/C2/C4)',
+    baseline: '56392e2ce43ff34ce2d31aa8148bf5e03e96efe1',
     source: { path: args.source, sha256Before: originalSha256, sha256After: sourceSha256After, sourceMutation: 'NO' },
     shapeAudit: report.shapeAudit,
-    gate: 'J0 complete; J1 NOT_STARTED',
+    classificationModel: report.classificationModel,
+    gate,
     artifacts,
   }, null, 2)}\n`));
 
@@ -1506,6 +1608,10 @@ async function main() {
     idCollisionGroupCount,
     productionFailingCount: failingProduction.length,
     failureFamilies: report.shapeAudit.failureFamilies,
+    classificationTally: report.shapeAudit.classificationTally,
+    enumTally: report.shapeAudit.enumTally,
+    subReasonTally: report.shapeAudit.subReasonTally,
+    gate,
     ruleSweepPrimary: primarySweep.results.map((entry) => ({ rule: entry.rule, walkFailing: entry.walkFailingShapes, eulerianFailing: entry.eulerianFailingShapes })),
     ruleSweepControls: controlSweeps.map((control) => ({
       label: control.label,

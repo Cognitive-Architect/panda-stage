@@ -6,6 +6,10 @@
 - Mother PR: [#677](https://github.com/Cognitive-Architect/panda-stage/pull/677) (OPEN / DRAFT)
 - Baseline head: `f24b8976cb785f738e94434dfe09d19228e0a93c`
 - Scope executed: **J0 only (research-only forensic census). No production behavior changed. J1+ not started.**
+- Corrective: **Issue [#719](https://github.com/Cognitive-Architect/panda-stage/issues/719)** —
+  classification-semantics cleanup only (C1/C2/C4), baseline `56392e2ce43ff34ce2d31aa8148bf5e03e96efe1`.
+  The census numbers are unchanged; only the **classification model** and the **gradient enum** were
+  corrected, and all evidence was regenerated in a fresh `issue719-…` directory.
 
 > Serial contract: J1 may start only if J0 identifies at least one reusable, source-proven fill rule.
 > This document is the J0 evidence and gate decision for that boundary.
@@ -69,11 +73,11 @@ All five shape ids reported by #717 are covered by the census (and are among the
 
 | #717 shape id | root that reported it | failing definition | classification |
 | --- | --- | --- | --- |
-| `fla-shape-fe5042fde5e3ee95ae29cc47` | Scene `场景 1`, `…com6` | `7d28f3a9eb45…` | `MODEL_INCOMPLETE_SOURCE_SEMANTIC_IDENTIFIED` |
-| `fla-shape-6feb4f839ea05ee66927676e` | `…com8` | `7d28f3a9eb45…` (**same shape content**) | `MODEL_INCOMPLETE_SOURCE_SEMANTIC_IDENTIFIED` |
+| `fla-shape-fe5042fde5e3ee95ae29cc47` | Scene `场景 1`, `…com6` | `7d28f3a9eb45…` | `AMBIGUOUS_WITHOUT_EXTERNAL_TRUTH` |
+| `fla-shape-6feb4f839ea05ee66927676e` | `…com8` | `7d28f3a9eb45…` (**same shape content**) | `AMBIGUOUS_WITHOUT_EXTERNAL_TRUTH` |
 | `fla-shape-2ecb2c1c3a63233bdfec877c` | `…com7` | `d5acaf6fc333…` | `AMBIGUOUS_WITHOUT_EXTERNAL_TRUTH` |
-| `fla-shape-e004b0295db44aac6b530d61` | `元件 1` | `5ee65d34b51f…` | `MODEL_INCOMPLETE_SOURCE_SEMANTIC_IDENTIFIED` |
-| `fla-shape-99ff012c139a78f9a1b5dd0f` | `元件 2` | `0b34e71905f0…` | `PENDING_J3_GRADIENT` |
+| `fla-shape-e004b0295db44aac6b530d61` | `元件 1` | `5ee65d34b51f…` | `AMBIGUOUS_WITHOUT_EXTERNAL_TRUTH` |
+| `fla-shape-99ff012c139a78f9a1b5dd0f` | `元件 2` | `0b34e71905f0…` | `UNKNOWN` (deferredTo `J3`) |
 
 ## Failure mechanism (J0)
 
@@ -113,20 +117,44 @@ Findings that **exclude** the obvious hypotheses:
   dropped by the adapter. Whether any source-proven default exists is the J3 question; it is **not**
   assumed identity here.
 
-### Classification (exactly one per failing shape)
+### Classification (corrected by #719 — exactly one per failing shape)
 
-| classification | shapes |
-| --- | ---: |
-| `AMBIGUOUS_WITHOUT_EXTERNAL_TRUTH` | 8 |
-| `MODEL_INCOMPLETE_SOURCE_SEMANTIC_IDENTIFIED` | 7 |
-| `PENDING_J3_GRADIENT` (gradient deferred to J3) | 1 |
+The classification model was corrected by issue #719. Two changes; **no census data changed**:
 
-- `MODEL_INCOMPLETE_SOURCE_SEMANTIC_IDENTIFIED` — the failure is a non-manifold branch junction: the
-  model has no rule for a vertex shared by 3+ authored edges, so a boundary walk dead-ends there.
-- `AMBIGUOUS_WITHOUT_EXTERNAL_TRUTH` — the failure is an open chain whose closure is **not declared by
-  the source**: the only authored geometry joining the tips carries no fill-side ownership, so choosing
+1. **C1 — gradient uses a frozen enum.** `PENDING_J3_GRADIENT` was a workflow destination, not a J0
+   classification, and is not in the frozen enum. The gradient shape is now `UNKNOWN`, with
+   `deferredTo: J3` recorded as **metadata only**. No sixth enum value was added.
+2. **C2 — no majority vote.** The previous rule picked the larger of {branch junctions, open chains}.
+   A larger count never erases a source ambiguity. The corrected rule is conservative semantic
+   precedence: any unresolved open-chain ambiguity → `AMBIGUOUS_WITHOUT_EXTERNAL_TRUTH`; else any
+   non-manifold branch junction → `MODEL_INCOMPLETE_SOURCE_SEMANTIC_IDENTIFIED`; else `UNKNOWN`.
+   Sub-reason counts are retained separately per shape.
+
+| classification (frozen #718 enum) | #718 J0 | corrected (#719) |
+| --- | ---: | ---: |
+| `AMBIGUOUS_WITHOUT_EXTERNAL_TRUTH` | 8 | **11** |
+| `MODEL_INCOMPLETE_SOURCE_SEMANTIC_IDENTIFIED` | 7 | **4** |
+| `CURRENT_IMPLEMENTATION_BUG` | 0 | 0 |
+| `MALFORMED_SOURCE` | 0 | 0 |
+| `UNKNOWN` | 0 | **1** |
+| *(retired)* `PENDING_J3_GRADIENT` | 1 | — |
+
+Sub-reason tally over the 16 failing shapes: `openChains = 29`, `branchJunctions = 20`,
+`missingGradientMatrix = 1` (`deferredTo: J3`).
+
+Three shapes moved `MODEL_INCOMPLETE → AMBIGUOUS` under the corrected precedence, because each contains
+both non-manifold branch junctions **and** unresolved open chains: the larger branch count previously hid
+the open-chain ambiguity. Two of them are #717 shapes (`7d28f3a9eb45`, `5ee65d34b51f`).
+
+- `MODEL_INCOMPLETE_SOURCE_SEMANTIC_IDENTIFIED` — every unresolved component is a non-manifold branch
+  junction: the model has no rule for a vertex shared by 3+ authored edges, so a boundary walk dead-ends
+  there, and there is **no** open-chain ambiguity.
+- `AMBIGUOUS_WITHOUT_EXTERNAL_TRUTH` — the failure includes an open chain whose closure is **not declared
+  by the source**: the only authored geometry joining the tips carries no fill-side ownership, so choosing
   a side would invent semantics rather than parse them. Per the Issue's core safety rule this stays
   fail-closed.
+- `UNKNOWN` — the source is a gradient whose `<matrix>` child is genuinely absent; whether that is a legal
+  default or a malformed source cannot be decided without external truth (deferred to J3).
 
 ## J0 counterfactuals (every candidate rule answered)
 
@@ -155,7 +183,7 @@ added to production; the two rules that would have added geometry were measured 
 
 ## Evidence
 
-`D:\PandaStage-Acceptance\issue718-j0-shape-forensic-20261006\run-12\`
+`D:\PandaStage-Acceptance\issue718-j0-shape-forensic-20261006\run-12\` (original #718 J0 run)
 
 - `j0-shape-forensic.json` — source identity, per-root production verdicts, per-shape content-addressed
   audit (styles, edges with `fillStyle0`/`fillStyle1`/`strokeStyle`, decoded endpoints, per-style
@@ -164,11 +192,20 @@ added to production; the two rules that would have added geometry were measured 
 - `completion-receipt.txt`, `completion-receipt.json`.
 - `run-13\` — byte-identical repeat run (determinism).
 
+`D:\PandaStage-Acceptance\issue719-j0-classification-corrective-20261007\run-1\` (corrected #719 re-run)
+
+- Same artifacts, regenerated with the corrected classification model (`schemaVersion
+  issue718-j0-shape-forensic/2`). `run-2\` is a byte-identical repeat run (determinism).
+- The prior #718 evidence is **not overwritten**.
+
 Runner: [`scripts/research/issue718-j0-fill-topology-forensic.cjs`](../../scripts/research/issue718-j0-fill-topology-forensic.cjs)
 (reuses only the production `dist-electron` modules; writes outside the repository; refuses to
 overwrite; never widens a check; never invents connector geometry).
 
-## Required completion receipt
+## Issue #718 receipt (as originally filed)
+
+> The classification fields in this receipt were superseded by issue #719 (see below); the census
+> numbers are unchanged.
 
 ```text
 Issue: Stage B5-J Shape Fill / Tessellation Prerequisite for #717
@@ -205,6 +242,69 @@ final result:
   resolution + fill-side ownership for unstyled closing edges) that the source does not declare, so any
   closure rule would invent geometry or regress `黑衣修仙男` / `飞行中旋转` / `性感修仙女`.
 - The gradient blocker is separate: the source FillStyle 24 genuinely omits the gradient `<matrix>`.
+
+next single action:
+Maintainer decision — either (a) accept J0 NO-GO and keep Blue unsupported under the current bounded
+model, or (b) authorize a NEW bounded research slice that first establishes external truth for Animate's
+fill-tessellation semantics (e.g. a reference raster of the exact Blue shape) before any J1 contract is
+frozen. Do not resume #717 at I1.
+```
+
+## Issue #719 corrective receipt
+
+```text
+Issue: #719 J0 Classification Corrective
+parent: #718
+mother PR: #677
+baseline: 56392e2ce43ff34ce2d31aa8148bf5e03e96efe1
+
+C1 gradient:
+old classification: PENDING_J3_GRADIENT (not in the frozen #718 enum — a workflow destination)
+new classification: UNKNOWN
+deferredTo: J3 (metadata only; not a classification value)
+evidence: FillStyle 24 is <LinearGradient> with two GradientEntry children and NO <matrix> child in
+  source (matrixWrapperCount = matrixBlockCount = matrixTagCount = 0; adapter did not drop it). A legal
+  default vs a malformed source cannot be proven without external truth.
+
+C2 mixed topology:
+old rule: classification = branchComponents > openChains ? MODEL_INCOMPLETE : AMBIGUOUS (majority vote)
+new rule: any unresolved open chain -> AMBIGUOUS_WITHOUT_EXTERNAL_TRUTH;
+  else any non-manifold branch junction -> MODEL_INCOMPLETE_SOURCE_SEMANTIC_IDENTIFIED; else UNKNOWN
+ambiguity precedence: source ambiguity (open-chain, no declared fill-side ownership) dominates a
+  numerically larger count of model-incomplete branch junctions
+sub-reasons preserved: YES — openChains / branchJunctions retained per shape (tally: openChains=29,
+  branchJunctions=20)
+
+new classification tally:
+AMBIGUOUS_WITHOUT_EXTERNAL_TRUTH: 11
+MODEL_INCOMPLETE_SOURCE_SEMANTIC_IDENTIFIED: 4
+CURRENT_IMPLEMENTATION_BUG: 0
+MALFORMED_SOURCE: 0
+UNKNOWN: 1
+(total 16 = unchanged; 3 shapes moved MODEL_INCOMPLETE -> AMBIGUOUS; gradient moved into UNKNOWN)
+
+source-proven candidate rule: NONE
+J0 result: NO-GO (recomputed from the rule sweep, not hard-coded)
+J1 started: NO
+#717 decision: NO_ADVANCE
+
+files changed: scripts/research/issue718-j0-fill-topology-forensic.cjs,
+  docs/research/issue-718-j0-shape-fill-topology.md
+production files changed: NO
+source mutation: NO (sha256 identical before/after)
+targeted eslint: PASS (scripts/research/issue718-j0-fill-topology-forensic.cjs)
+git diff --check: clean
+deterministic repeat: PASS (run-1 vs run-2 byte-identical for all three artifacts)
+
+PR #677 remains Draft: YES
+Full CI manually triggered: NO
+
+final result:
+- J0 remains NO-GO. The corrective changed only the classification model and the gradient enum; no census
+  number changed (103 distinct shapes, 16 failing, 29 open chains, 20 branch junctions, same rule sweep).
+- Preserved: tolerance does not help; same-style emission regresses controls; unstyled-edge reuse
+  regresses controls; orientation/reversal is not the missing rule; shared-boundary duplication is
+  already handled; no production change; no source mutation; J1..J5 not started.
 
 next single action:
 Maintainer decision — either (a) accept J0 NO-GO and keep Blue unsupported under the current bounded
