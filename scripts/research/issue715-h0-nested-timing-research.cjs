@@ -3,6 +3,12 @@
 
 /**
  * Issue #715 — Stage B5-H, phase H0 (research only).
+ * Issue #716 — H0 evidence-strength corrective: C1 (H0-A) / C2 (H0-C) / C3 (H0-E).
+ *
+ * This corrective makes every conclusion no stronger than the evidence supports.
+ * It removes candidate-formula self-reference as "proof", downgrades the two
+ * over-claimed results to PARTIAL, and judges duration 4 and duration 29
+ * separately. No production code is touched.
  *
  * H0 is research-only: it changes no production behavior. It inspects two real
  * read-only fixtures plus the #713 control through the shared production FLA
@@ -91,7 +97,8 @@ async function loadFixture(fixture) {
     require(path.join(ROOT, 'dist-electron/main/services/fla-static-snapshot-display-list-adapter.js'));
   const adapted = adaptFlaXflDisplaySource(documentXml, libraries);
   assert.equal(adapted.ok, true, adapted.message || 'production XFL adapter rejected normalized archive');
-  return { fixture, sourceBytes: bytes, sha256Before, documentXml, libraries, getChildren: getFlaXflDirectChildren, source: adapted.source };
+  const archiveEntries = Object.keys(zip.files).filter((name) => !zip.files[name].dir);
+  return { fixture, sourceBytes: bytes, sha256Before, documentXml, libraries, archiveEntries, getChildren: getFlaXflDirectChildren, source: adapted.source };
 }
 
 function findSceneRoot(source) {
@@ -165,7 +172,7 @@ async function build(args) {
   const [walk, run, control] = args.fixtures;
   const fixtures = { walk: await loadFixture(walk), run: await loadFixture(run), control: await loadFixture(control) };
 
-  const report = { issue: '#715', phase: 'H0', generatedNote: 'research-only; no production behavior changed' };
+  const report = { issue: '#715', phase: 'H0', corrective: '#716 (evidence-strength calibration)', generatedNote: 'research-only; no production behavior changed' };
 
   // ---- H0-A: Loop + explicit firstFrame (向右走 …18) ----
   const walkSource = fixtures.walk.source;
@@ -184,12 +191,16 @@ async function build(args) {
   const rootSpanAt0 = walkRootDesc.frameSpanIndex.layers.map((layer) => spanOf(layer, 0)).find((s) => s !== null);
   const h0aMaxParent = walkRootDesc.frameCount - 1;
   const firstFrame18 = Number(comp18.firstFrame);
-  const childCheckpoints = [];
+  // Per-parent checkpoints are produced BY the candidate formula; they are recorded only as a
+  // candidate illustration and are explicitly NOT independent proof of the formula (corrective C1).
+  const candidateDerivedCheckpoints = [];
   for (let parent = 0; parent <= h0aMaxParent; parent += 1) {
     const elapsed = parent - (rootSpanAt0?.index ?? 0);
-    childCheckpoints.push({ parentRootFrame: parent, requestedChildFrame: firstFrame18 + elapsed });
+    candidateDerivedCheckpoints.push({ parentRootFrame: parent, requestedChildFrame: firstFrame18 + elapsed });
   }
-  const maxChild = childCheckpoints.reduce((a, c) => Math.max(a, c.requestedChildFrame), 0);
+  const maxChild = candidateDerivedCheckpoints.reduce((a, c) => Math.max(a, c.requestedChildFrame), 0);
+  const walkNonXmlEntries = fixtures.walk.archiveEntries.filter((name) => !/\.xml$/iu.test(name));
+  const renderedFrameArtifacts = walkNonXmlEntries.filter((name) => /\.(?:png|jpe?g|gif|bmp|svg|webp|mp4|mov|swf)$/iu.test(name));
   report.h0a = {
     chain: [
       { libraryItemName: walkRoot.instance.libraryItemName, frames: walkRootDesc.frameCount, loop: walkRoot.instance.playbackMode, firstFrame: walkRoot.instance.firstFrame ?? null },
@@ -197,12 +208,41 @@ async function build(args) {
       { libraryItemName: comp18.libraryItemName, frames: desc18.frameCount, loop: comp18.playbackMode, firstFrame: comp18.firstFrame ?? null },
     ],
     child18AuthoredSpanBoundaries: desc18.frameSpanIndex.layers[0].spans.map((s) => ({ index: s.index, duration: s.duration, tweenType: s.tweenType })),
-    parentFrameSchedule: { rootFrames: walkRootDesc.frameCount, firstFrame: firstFrame18, requestedChildRange: [firstFrame18, maxChild], maxChildFrame: maxChild },
-    childFrameCount18: desc18.frameCount,
-    wrapOccurs: maxChild >= desc18.frameCount,
+    authoredFacts: {
+      containingSpan: span18in22 ? { index: span18in22.index, duration: span18in22.duration } : null,
+      firstFrame: firstFrame18,
+      childFrameCount: desc18.frameCount,
+      parentRootFrameCount: walkRootDesc.frameCount,
+      maxParentFrameIndex: h0aMaxParent,
+      maxCandidateChildFrame: maxChild,
+      wrapOccursForCandidateRange: maxChild >= desc18.frameCount,
+      note: 'every value here is read from authored source or is arithmetic on authored counts; none is produced by the candidate formula',
+    },
     candidateRule: 'loop + explicit firstFrame -> child = firstFrame + (parentFrameIndex - containingSpanStart)',
+    candidateDerivedCheckpoints,
+    independentTruth: {
+      found: false,
+      searched: [
+        'fixture archive non-XML entries (no rendered/preview frame artifact)',
+        'existing trusted production selector (fla-nested-graphic-frame-selector): implements the SAME structural formula for Play Once, so it is not independent of the candidate rule',
+        '#703 nested-graphic-frame-sync: observed Loop child = elapsed for firstFrame-ABSENT instances only; it explicitly declined to infer the firstFrame index base',
+      ],
+      fixtureNonXmlEntries: walkNonXmlEntries,
+      renderedFrameArtifacts,
+      note: 'no source artifact or mechanism was found that observes the selected child frame for Loop + explicit firstFrame without using the candidate formula',
+    },
+    circularProofRemoved: true,
     wrapTargetProven: false,
-    checkpoints: childCheckpoints,
+    proven: [
+      'firstFrame=206 is authored source data',
+      'the child symbol has 407 frames',
+      'the candidate bounded range [206, 235] does not wrap (235 < 407)',
+    ],
+    notProven: [
+      'the exact Animate Loop child-selection rule for an explicit firstFrame',
+      'the Loop wrap target',
+    ],
+    result: 'PARTIAL',
   };
 
   // ---- H0-B: missing playback mode (跑步 …2 / …3) ----
@@ -261,8 +301,19 @@ async function build(args) {
   }
   report.h0c = {
     keyframeFirstFrames: firstFrameBySpan,
-    observation: 'authored firstFrame equals the containing span start for 一键跑步750_左手动/右手动 (F3->3, F7->7, F11->11, F15->15); child = firstFrame(span) + elapsed reproduces a 1:1 parent->child progression, identical to a constant offset of the loop rule',
-    interpolationVsStep: 'indistinguishable in this fixture (per-span delta(firstFrame) == delta(parent) == span duration); the bounded rule uses the span-authored firstFrame without interpolating frame indices',
+    observation: 'authored firstFrame equals the containing span start for 一键跑步750_左手动/右手动 (0,3,7,11,15), so using the authored per-span value yields a candidate mapping child == parent 1:1',
+    discriminatesSemantics: false,
+    proven: [
+      'authored keyframes carry firstFrame values 0/3/7/11/15',
+      'using the authored per-span value produces a source-consistent 1:1 candidate mapping (child == parent)',
+      'no fractional frame index is required by the observed fixture',
+    ],
+    unproven: [
+      'whether Animate treats firstFrame as stepped, held, or otherwise updated between authored boundaries',
+      'the general animated-firstFrame timing semantic',
+    ],
+    interpolationVsStep: 'indistinguishable in this fixture: child == parent holds whether firstFrame is stepped, held, or interpolated, so this corpus cannot distinguish competing semantics',
+    result: 'PARTIAL',
   };
 
   // ---- H0-D: keyMode profile ----
@@ -306,10 +357,25 @@ async function build(args) {
       };
     });
   };
+  const walkEndpoints = motionEndpoints(fixtures.walk, walkRootDesc, '图层转元件_278.xml');
+  const runEndpoints = motionEndpoints(fixtures.run, runRootDesc, '便衣道士-cilisucai.com22.xml');
   report.h0e = {
-    walkRootMotion: motionEndpoints(fixtures.walk, walkRootDesc, '图层转元件_278.xml'),
-    runRootMotion: motionEndpoints(fixtures.run, runRootDesc, '便衣道士-cilisucai.com22.xml'),
-    note: 'endpoint instance/attribute sets are compared against the accepted transform-only family; duration 29/4 sit outside the accepted set',
+    walkRootMotion: walkEndpoints,
+    runRootMotion: runEndpoints,
+    durationFour: {
+      fixture: '跑步',
+      endpoints: runEndpoints.filter((e) => e.duration === 4),
+      result: 'GO',
+      note: 'endpoint/frame attributes remain inside the accepted transform-only family; the residual blocker is only the duration value',
+    },
+    durationTwentyNine: {
+      fixture: '向右走',
+      endpoints: walkEndpoints.filter((e) => e.duration === 29),
+      keyModeDependency: 'terminal keyMode 9728 has undecoded meaning (H0-D PARTIAL)',
+      result: 'CONDITIONAL',
+      note: 'duration 29 must not graduate independently of the unresolved terminal keyMode 9728 family; if/when 9728 is resolved it may be re-evaluated as a bounded candidate',
+    },
+    note: 'duration 4 and duration 29 are evidence-strength-different and are reported separately (corrective C3)',
   };
 
   // ---- H0-F: BlurFilter guard ----
@@ -347,17 +413,20 @@ async function build(args) {
   }
 
   const receipt = [
-    'H0 Nested Graphic timing research',
+    'H0 Nested Graphic timing research (evidence-strength corrected, issue #716)',
     '',
     `baseline fixtures: ${args.fixtures.map((f) => f.label).join(' / ')}`,
     `source hashes unchanged: ${Object.entries(hashesAfter).map(([k, v]) => `${k}=${v.slice(0, 16)}`).join(' ')}`,
     '',
     'Loop + explicit firstFrame:',
     `source case: ${comp18.libraryItemName} (loop=${comp18.playbackMode}, firstFrame=${comp18.firstFrame}, childFrameCount=${desc18.frameCount}) inside ${comp22.libraryItemName}`,
-    `mapping rule (candidate): child = firstFrame + (parentFrameIndex - containingSpanStart)`,
-    `wrap rule: NOT exercised in source (max requested child ${maxChild} < ${desc18.frameCount})`,
-    `checkpoints: parentRootFrame 0..${h0aMaxParent} -> child ${firstFrame18}..${maxChild}`,
-    'result: GO (no-wrap offset only; wrap target UNPROVEN, must stay fail-closed)',
+    `candidate formula: child = firstFrame + (parentFrameIndex - containingSpanStart)`,
+    `authored-derived bound: parentRootFrame 0..${h0aMaxParent} -> candidate child ${firstFrame18}..${maxChild} (max ${maxChild} < ${desc18.frameCount} -> no wrap)`,
+    'circular proof removed: YES (per-frame checkpoints are candidate-derived, not independent proof)',
+    'independent truth found: NO (no rendered/preview artifact in the fixture archive; the production selector reuses the same structural formula for Play Once; #703 covers firstFrame-ABSENT Loop only)',
+    'proven: firstFrame=206 authored; child has 407 frames; candidate range [206,235] does not wrap',
+    'not proven: the exact Animate Loop child-selection rule; the Loop wrap target',
+    'result: PARTIAL (source-consistent bounded candidate; wrap target UNPROVEN, must stay fail-closed)',
     '',
     'Missing playback mode:',
     'source case: ' + missingMode.map((m) => `${m.libraryItemName}(childFrames=${m.childFrameCount})`).join(', '),
@@ -367,10 +436,11 @@ async function build(args) {
     '',
     'Animated firstFrame:',
     'source spans: ' + Object.keys(firstFrameBySpan).join(', '),
-    'exact requested progression: firstFrame == containing span start (F3->3, F7->7, F11->11, F15->15)',
-    'interpolation/step semantics: per-keyframe authored integer; step vs interpolation indistinguishable here',
-    'composition with Loop: child = firstFrame(span) + elapsed',
-    'result: GO (bounded; no frame-index interpolation)',
+    'exact requested progression: firstFrame == containing span start (0,3,7,11,15) -> candidate child == parent 1:1',
+    'step vs interpolation: NOT distinguishable in this fixture (child == parent holds under stepped/held/interpolated)',
+    'proven: authored firstFrame values 0/3/7/11/15; authored per-span value yields a source-consistent 1:1 candidate; no fractional frame index required',
+    'unproven: whether Animate treats firstFrame as stepped/held/updated between authored boundaries; the general animated-firstFrame semantic',
+    'result: PARTIAL',
     '',
     'keyMode 9728:',
     'source locations: static DOMFrame keyframes (no tweenType, no motionTweenSnap) in all three files',
@@ -379,15 +449,18 @@ async function build(args) {
     'result: PARTIAL (structurally equivalent to accepted 15872 and co-occurs in the accepted control, but exact meaning not decodable from source; allowlist decision deferred to H1)',
     '',
     'duration 29 / 4:',
-    'same transform-only family: endpoints use accepted instance attributes; only duration (and the 9728 terminal marker) differ',
-    'result: GO (bounded extension candidate; evidence-bounded duration set)',
+    'duration 4 (跑步): GO bounded candidate (endpoints inside the accepted transform-only family)',
+    'duration 29 (向右走): CONDITIONAL (terminates on keyMode 9728, whose meaning is undecoded per H0-D; must not graduate independently)',
+    'separately judged: YES (corrective C3; not reported as one uniformly proven extension)',
     '',
     'BlurFilter guard:',
     `silent-drop confirmed: ${report.h0f.silentDropConfirmed} (authored-frame <filters> ignored by the adapter)`,
     'minimum safe handling: fail-closed or explicit PARTIAL fidelity marker before any HUMAN PASS',
     'implementation authorized here: NO',
     '',
-    'overall H0: GO (Loop+firstFrame offset, per-keyframe firstFrame, bounded durations) with named residuals (wrap UNPROVEN, missing-mode default UNPROVEN, keyMode 9728 meaning undecoded, BlurFilter silent)',
+    'overall H0: PARTIAL (loop+firstFrame source-consistent candidate; animated-firstFrame source-consistent candidate; duration 4 bounded GO; duration 29 conditional)',
+    'residuals: wrap UNPROVEN; missing-mode default UNPROVEN; keyMode 9728 meaning undecoded; BlurFilter silent; Loop explicit-firstFrame selection rule not independently proven; animated-firstFrame step/held/interpolated not distinguishable',
+    'corrective: #716 C1/C2 downgraded GO -> PARTIAL; C3 split duration 4 (GO) from duration 29 (CONDITIONAL)',
     '',
   ].join('\n');
   await fs.promises.writeFile(path.join(args.out, 'completion-receipt.txt'), receipt, { flag: 'wx' });
