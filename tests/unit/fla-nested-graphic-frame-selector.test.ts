@@ -163,14 +163,19 @@ describe('nested Graphic authored-frame selection', () => {
     }
   });
 
-  it('fails closed when Play Once advances beyond the child timeline', () => {
+  it('holds Play Once at the last child frame after its timeline ends', () => {
     const parent = frame(5,
       `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="play once">${matrix()}</DOMSymbolInstance>`,
       5);
     const source = adapt(parent, frame(0, shape()) + frame(1, shape()) + frame(2, shape()));
     const result = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 8));
-    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
-    if (!result.ok) expect(result.message).toContain('Play Once selection is outside child frameCount 3');
+    expect(result).toMatchObject({ ok: true });
+    if (result.ok) {
+      expect(result.selections).toMatchObject([{
+        selectedChildFrameIndex: 2,
+        selectionRule: 'play-once-hold-last-frame',
+      }]);
+    }
   });
 
   it('fails closed instead of inferring a Loop wrap', () => {

@@ -40,7 +40,8 @@ export interface FlaNestedGraphicFrameSelection {
     | 'single-frame-default-first-frame-zero'
     | 'loop-single-frame-constant'
     | 'loop-zero-origin-no-wrap'
-    | 'play-once-relative-containing-span';
+    | 'play-once-relative-containing-span'
+    | 'play-once-hold-last-frame';
   readonly sourceTransform: FlaDisplayListMatrix;
 }
 
@@ -183,19 +184,30 @@ function selectAuthoredChildFrame(
     if (firstFrame === null) {
       return failure('UNSUPPORTED_TIMING', 'Play Once Graphic has an invalid firstFrame', sourceAddress);
     }
-    const elapsed = parentFrameIndex - parentSpanStart;
-    const selectedFrame = firstFrame + elapsed;
-    if (!Number.isSafeInteger(selectedFrame) || selectedFrame >= childFrameCount) {
+    if (firstFrame >= childFrameCount) {
       return failure(
         'UNSUPPORTED_TIMING',
-        `Play Once selection is outside child frameCount ${childFrameCount} (firstFrame=${firstFrame}, elapsed=${elapsed})`,
+        `Play Once firstFrame ${firstFrame} is outside child frameCount ${childFrameCount}`,
         sourceAddress,
       );
     }
+    const elapsed = parentFrameIndex - parentSpanStart;
+    const requestedFrame = firstFrame + elapsed;
+    if (!Number.isSafeInteger(requestedFrame) || requestedFrame < firstFrame) {
+      return failure(
+        'UNSUPPORTED_TIMING',
+        `Play Once selection is invalid (firstFrame=${firstFrame}, elapsed=${elapsed})`,
+        sourceAddress,
+      );
+    }
+    const lastFrame = childFrameCount - 1;
+    const selectedFrame = Math.min(requestedFrame, lastFrame);
     return {
       ok: true,
       frameIndex: selectedFrame,
-      selectionRule: 'play-once-relative-containing-span',
+      selectionRule: requestedFrame > lastFrame
+        ? 'play-once-hold-last-frame'
+        : 'play-once-relative-containing-span',
     };
   }
 

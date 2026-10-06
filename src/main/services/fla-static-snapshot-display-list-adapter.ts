@@ -4,7 +4,7 @@
  * C01 resolver input. XFL layer arrays are authored front/top to back/bottom;
  * this adapter converts them once to Panda's back-to-front painter order.
  * Within-layer elements retain their authored order. Graphic frame selection
- * adds one fail-closed, two- and three-frame transform-only motion subset; unrelated XFL
+ * adds one fail-closed, source-bounded transform-only motion subset; unrelated XFL
  * semantics (shape tweens, masks, text, filters, or ActionScript) remain unsupported.
  */
 
@@ -32,7 +32,10 @@ const BOUNDED_MOTION_FRAME_ATTRIBUTES = new Set([
   'motionTweenSnap',
   'keyMode',
 ]);
-const BOUNDED_MOTION_SPAN_DURATIONS = new Set([2, 3]);
+// The locked Issue #713 source adds these authored span lengths to the
+// previously accepted two- and three-frame subset. Keep the set explicit so
+// this source study does not silently authorize arbitrary motion durations.
+const BOUNDED_MOTION_SPAN_DURATIONS = new Set([2, 3, 5, 6, 14]);
 const BOUNDED_MOTION_INSTANCE_ATTRIBUTES = new Set([
   'libraryItemName',
   'selected',
@@ -717,12 +720,20 @@ function isBoundedMotionFramePair(
 ): boolean {
   const allowedFrameAttributes = (frame: FlaXflElementBlock): boolean =>
     Object.keys(frame.attributes).every((name) => BOUNDED_MOTION_FRAME_ATTRIBUTES.has(name));
+  const endpointDefinesSupportedOutgoingState = (frame: FlaXflElementBlock): boolean => {
+    const tweenType = frame.attributes.tweenType;
+    if (tweenType === 'motion') {
+      return frame.attributes.motionTweenSnap === 'true' && frame.attributes.keyMode === '22017';
+    }
+    return (tweenType === undefined || tweenType === 'none') &&
+      frame.attributes.motionTweenSnap === undefined && frame.attributes.keyMode === '15872';
+  };
   if (!allowedFrameAttributes(startFrame) || !allowedFrameAttributes(endFrame) ||
       !BOUNDED_MOTION_SPAN_DURATIONS.has(duration) || Number(startFrame.attributes.index) !== startIndex ||
       Number(endFrame.attributes.index) !== startIndex + duration ||
-      startFrame.attributes.tweenType !== 'motion' || endFrame.attributes.tweenType !== 'motion' ||
-      startFrame.attributes.motionTweenSnap !== 'true' || endFrame.attributes.motionTweenSnap !== 'true' ||
-      startFrame.attributes.keyMode !== '22017' || endFrame.attributes.keyMode !== '22017' ||
+      startFrame.attributes.tweenType !== 'motion' ||
+      startFrame.attributes.motionTweenSnap !== 'true' || startFrame.attributes.keyMode !== '22017' ||
+      !endpointDefinesSupportedOutgoingState(endFrame) ||
       containsUnsupportedMotionMetadata(startFrame.xml) || containsUnsupportedMotionMetadata(endFrame.xml)) {
     return false;
   }
@@ -754,7 +765,9 @@ function isBoundedMotionFramePair(
     ...Object.keys(startTarget.attributes),
     ...Object.keys(endTarget.attributes),
   ])) {
-    if (name === 'centerPoint3DX' || name === 'centerPoint3DY') continue;
+    // selected and centerPoint3D* are authoring metadata; the renderer consumes
+    // the authored matrices and never serializes those attributes.
+    if (name === 'selected' || name === 'centerPoint3DX' || name === 'centerPoint3DY') continue;
     if (startTarget.attributes[name] !== endTarget.attributes[name]) return false;
   }
 

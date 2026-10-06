@@ -83,11 +83,18 @@ function buildMotionAdapterFixture(
   endMetadata = '',
   endLibraryItemName = 'moving-target',
   duration = 2,
+  holdEndpoint = false,
 ) {
   const motionFrame = (index: number, duration: number, target: string, transform: string, metadata: string) =>
     `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true" keyMode="22017">${metadata}` +
-    `<elements><DOMSymbolInstance libraryItemName="${target}" symbolType="graphic" loop="single frame">` +
+    `<elements><DOMSymbolInstance libraryItemName="${target}" symbolType="graphic" loop="single frame"${index === 0 ? '' : ' selected="true"'}>` +
     `${transform}<transformationPoint><Point x="5" y="7"/></transformationPoint></DOMSymbolInstance></elements></DOMFrame>`;
+  const endpointFrame = holdEndpoint
+    ? `<DOMFrame index="${duration}" duration="1" keyMode="15872"><elements>` +
+      `<DOMSymbolInstance libraryItemName="${endLibraryItemName}" symbolType="graphic" loop="single frame">` +
+      `${transformedMatrix(0, 1, -1, 0, 20, 30)}<transformationPoint><Point x="5" y="7"/></transformationPoint>` +
+      `</DOMSymbolInstance></elements></DOMFrame>`
+    : motionFrame(duration, 1, endLibraryItemName, transformedMatrix(0, 1, -1, 0, 20, 30), endMetadata);
   const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', [
     layer('scene', [frame(0, symbol('motion-root'))].join('')),
   ])}</timelines></DOMDocument>`;
@@ -95,7 +102,7 @@ function buildMotionAdapterFixture(
     name: 'LIBRARY/motion-root.xml',
     xml: graphic('motion-root', [layer('moving', [
       motionFrame(0, duration, 'moving-target', transformedMatrix(1, 0, 0, 1, 0, 0), startMetadata),
-      motionFrame(duration, 1, endLibraryItemName, transformedMatrix(0, 1, -1, 0, 20, 30), endMetadata),
+      endpointFrame,
     ].join(''))]),
   }];
   const adapted = adaptFlaXflDisplaySource(documentXml, libraryXmlEntries);
@@ -242,7 +249,7 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
     expect(interpolated.localTransform.d).toBeCloseTo(Math.SQRT1_2, 12);
   });
 
-  it('resolves source-proven three-frame spans at their exact 1/3 and 2/3 progress', () => {
+  it('resolves bounded three-frame and Issue #713 span lengths while rejecting other durations', () => {
     const source = buildMotionAdapterFixture('', '', 'moving-target', 3);
     const target = descriptor(source, 'motion-root');
 
@@ -264,6 +271,28 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       expect(interpolated.localTransform.a).toBeCloseTo(Math.cos(Math.PI / 2 * progress), 12);
       expect(interpolated.localTransform.b).toBeCloseTo(Math.sin(Math.PI / 2 * progress), 12);
     }
+
+    for (const duration of [5, 6, 14]) {
+      const longerSpan = buildMotionAdapterFixture('', '', 'moving-target', duration);
+      const longerTarget = descriptor(longerSpan, 'motion-root');
+      const selectedLonger = longerSpan.buildGraphicFrameContext(
+        longerTarget.timelineXml,
+        longerTarget.frameSpanIndex,
+        Math.floor(duration / 2),
+        `bounded-source-motion-${duration}`,
+      );
+      expect(selectedLonger.ok).toBe(true);
+    }
+
+    const holdEndpoint = buildMotionAdapterFixture('', '', 'moving-target', 5, true);
+    const holdTarget = descriptor(holdEndpoint, 'motion-root');
+    const lastInterior = holdEndpoint.buildGraphicFrameContext(
+      holdTarget.timelineXml,
+      holdTarget.frameSpanIndex,
+      4,
+      'motion-ending-at-held-keyframe',
+    );
+    expect(lastInterior.ok).toBe(true);
 
     const unsupportedLongerSpan = buildMotionAdapterFixture('', '', 'moving-target', 4);
     const unsupportedTarget = descriptor(unsupportedLongerSpan, 'motion-root');
