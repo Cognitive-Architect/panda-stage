@@ -675,6 +675,10 @@ function buildFrameContext(
           path: `layer-${layerIndex}-frame-${frameIndex}`,
           sourceParentFrameIndex: frameIndex,
           sourceParentFrameSpanStart,
+          // #722 — Scene-owned spans carry the same owning-span tween metadata as
+          // the Graphic path so the #721 bounded Loop contract is reachable from a
+          // static Scene span ('none') while a tweened Scene span stays fail-closed.
+          sourceParentSpanTweenType: frame.attributes.tweenType ?? 'none',
           state,
         });
         if (!parsed.ok) return parsed;

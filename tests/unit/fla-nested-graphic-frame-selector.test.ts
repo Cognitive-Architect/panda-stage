@@ -66,6 +66,24 @@ function graphicRoot(source: ReturnType<typeof adapt>, name: string, frameIndex:
   return { kind: 'graphic' as const, name: descriptor.sourceLibraryItemName, frameContext: selected.value };
 }
 
+/** A Scene whose owning layer frame carries the nested instance, plus its child Graphic. */
+function adaptScene(sceneFrames: string, childFrames: string) {
+  const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', sceneFrames)}</timelines></DOMDocument>`;
+  const result = adaptFlaXflDisplaySource(documentXml, [
+    { name: 'LIBRARY/child.xml', xml: graphic('child', childFrames) },
+  ]);
+  if (!result.ok) throw new Error(result.message);
+  return result.source;
+}
+
+function sceneRoot(source: ReturnType<typeof adaptScene>, frameIndex: number) {
+  const scene = source.sceneTimelines[0];
+  if (!scene) throw new Error('Missing Scene timeline');
+  const selected = source.buildSceneFrameContext(scene.xml, frameIndex, `test-scene@${frameIndex}`);
+  if (!selected.ok) throw new Error(selected.message);
+  return { kind: 'scene' as const, name: scene.name, frameContext: selected.value };
+}
+
 describe('nested Graphic authored-frame selection', () => {
   it('selects distinct Single Frame child states per instance and preserves source transforms', () => {
     const parent = frame(0,
@@ -329,5 +347,37 @@ describe('nested Graphic authored-frame selection', () => {
       expect(prepared.selections[0]?.selectedChildFrameIndex).toBe(childFrame);
       expect(prepared.selections[0]?.selectionRule).toBe(rule);
     }
+  });
+
+  // --- Issue #722: Scene-owned span metadata reaches the #721 bounded Loop rule ---
+
+  it('applies the bounded explicit-Loop rule to a static Scene-owned span (#722)', () => {
+    // A Scene-owned static authored span (no tweenType) whose child Graphic is a
+    // bounded explicit Loop. The Scene path now carries the owning-span tween type,
+    // so the #721 modulo rule is reachable from a Scene root instead of fail-closed.
+    const sceneFrames = frame(0,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop" firstFrame="3">${matrix()}</DOMSymbolInstance>`,
+      8);
+    const source = adaptScene(sceneFrames, emptyFrames(8));
+    const prepared = prepareFlaNestedGraphicFrameSelections(source, sceneRoot(source, 0));
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.selections).toMatchObject([{
+      playbackMode: 'loop',
+      firstFrame: '3',
+      childFrameCount: 8,
+      selectedChildFrameIndex: 3,
+      selectionRule: 'loop-static-first-frame-modulo',
+    }]);
+  });
+
+  it('keeps an explicit-Loop firstFrame fail-closed on a tweened Scene-owned span (#722)', () => {
+    const sceneFrames = frame(0,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop" firstFrame="1">${matrix()}</DOMSymbolInstance>`,
+      8, 'motion');
+    const source = adaptScene(sceneFrames, emptyFrames(8));
+    const result = prepareFlaNestedGraphicFrameSelections(source, sceneRoot(source, 0));
+    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
+    if (!result.ok) expect(result.message).toContain('animated firstFrame');
   });
 });

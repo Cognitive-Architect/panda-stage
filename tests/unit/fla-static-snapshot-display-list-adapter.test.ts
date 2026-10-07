@@ -330,3 +330,44 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
     if (!mismatchedResult.ok) expect(mismatchedResult.message).toContain('bounded transform-only subset');
   });
 });
+
+describe('Scene parent span tween metadata (#722)', () => {
+  function sceneElement(tweenType: string) {
+    const sceneFrame =
+      `<DOMFrame index="0" duration="4" tweenType="${tweenType}"><elements>${symbol('child', 1, 2)}</elements></DOMFrame>`;
+    const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', [
+      layer('scene', sceneFrame),
+    ])}</timelines></DOMDocument>`;
+    const adapted = adaptFlaXflDisplaySource(documentXml, [
+      { name: 'LIBRARY/child.xml', xml: graphic('child', [layer('child-layer', frame(0, shape()))]) },
+    ]);
+    if (!adapted.ok) throw new Error(`Scene fixture failed: ${adapted.message}`);
+    const element = adapted.source.sceneTimelines[0]?.frameContext.layers[0]?.elements[0];
+    if (!element || element.kind !== 'symbol') throw new Error('Missing Scene symbol element');
+    return element;
+  }
+
+  it('marks a static Scene-owned span as none and a tweened Scene-owned span as motion', () => {
+    expect(sceneElement('none')).toMatchObject({
+      kind: 'symbol',
+      libraryItemName: 'child',
+      sourceParentSpanTweenType: 'none',
+    });
+    const tweened = sceneElement('motion');
+    expect(tweened.sourceParentSpanTweenType).toBe('motion');
+    expect(tweened.sourceParentSpanTweenType).not.toBe('none');
+  });
+
+  it('defaults a Scene-owned span with no tween type attribute to none', () => {
+    const sceneFrame = `<DOMFrame index="0" duration="4"><elements>${symbol('child', 1, 2)}</elements></DOMFrame>`;
+    const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', [
+      layer('scene', sceneFrame),
+    ])}</timelines></DOMDocument>`;
+    const adapted = adaptFlaXflDisplaySource(documentXml, [
+      { name: 'LIBRARY/child.xml', xml: graphic('child', [layer('child-layer', frame(0, shape()))]) },
+    ]);
+    if (!adapted.ok) throw new Error(`Scene fixture failed: ${adapted.message}`);
+    const element = adapted.source.sceneTimelines[0]?.frameContext.layers[0]?.elements[0];
+    expect(element).toMatchObject({ kind: 'symbol', libraryItemName: 'child', sourceParentSpanTweenType: 'none' });
+  });
+});
