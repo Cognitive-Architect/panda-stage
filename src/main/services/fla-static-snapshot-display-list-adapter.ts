@@ -32,10 +32,11 @@ const BOUNDED_MOTION_FRAME_ATTRIBUTES = new Set([
   'motionTweenSnap',
   'keyMode',
 ]);
-// The locked Issue #713 source adds these authored span lengths to the
-// previously accepted two- and three-frame subset. Keep the set explicit so
-// this source study does not silently authorize arbitrary motion durations.
-const BOUNDED_MOTION_SPAN_DURATIONS = new Set([2, 3, 5, 6, 14]);
+// #713 graduated the existing short transform-only duration family. #728 adds
+// only duration 29 under the same strict guards; keep every supported length explicit.
+const BOUNDED_MOTION_SPAN_DURATIONS = new Set([2, 3, 5, 6, 14, 29]);
+// #720 authorizes 9728 only as a non-motion terminal marker for this family.
+const BOUNDED_MOTION_TERMINAL_KEY_MODES = new Set(['15872', '9728']);
 const BOUNDED_MOTION_INSTANCE_ATTRIBUTES = new Set([
   'libraryItemName',
   'selected',
@@ -737,7 +738,8 @@ function isBoundedMotionFramePair(
       return frame.attributes.motionTweenSnap === 'true' && frame.attributes.keyMode === '22017';
     }
     return (tweenType === undefined || tweenType === 'none') &&
-      frame.attributes.motionTweenSnap === undefined && frame.attributes.keyMode === '15872';
+      frame.attributes.motionTweenSnap === undefined &&
+      BOUNDED_MOTION_TERMINAL_KEY_MODES.has(frame.attributes.keyMode ?? '');
   };
   if (!allowedFrameAttributes(startFrame) || !allowedFrameAttributes(endFrame) ||
       !BOUNDED_MOTION_SPAN_DURATIONS.has(duration) || Number(startFrame.attributes.index) !== startIndex ||

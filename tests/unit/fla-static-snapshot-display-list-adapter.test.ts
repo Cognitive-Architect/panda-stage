@@ -84,16 +84,38 @@ function buildMotionAdapterFixture(
   endLibraryItemName = 'moving-target',
   duration = 2,
   holdEndpoint = false,
+  terminalFrameAttributes: Readonly<Partial<Record<'tweenType' | 'motionTweenSnap' | 'keyMode', string>>> = {},
+  startKeyMode = '22017',
 ) {
-  const motionFrame = (index: number, duration: number, target: string, transform: string, metadata: string) =>
-    `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true" keyMode="22017">${metadata}` +
+  const motionFrame = (
+    index: number,
+    duration: number,
+    target: string,
+    transform: string,
+    metadata: string,
+    keyMode = startKeyMode,
+  ) =>
+    `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true" keyMode="${keyMode}">${metadata}` +
     `<elements><DOMSymbolInstance libraryItemName="${target}" symbolType="graphic" loop="single frame"${index === 0 ? '' : ' selected="true"'}>` +
     `${transform}<transformationPoint><Point x="5" y="7"/></transformationPoint></DOMSymbolInstance></elements></DOMFrame>`;
-  const endpointFrame = holdEndpoint
-    ? `<DOMFrame index="${duration}" duration="1" keyMode="15872"><elements>` +
+  const terminalFrame = () => {
+    const attributes = {
+      index: String(duration),
+      duration: '1',
+      keyMode: '15872',
+      ...terminalFrameAttributes,
+    };
+    const attributeXml = Object.entries(attributes)
+      .filter(([, value]) => value !== undefined)
+      .map(([name, value]) => `${name}="${value}"`)
+      .join(' ');
+    return `<DOMFrame ${attributeXml}><elements>` +
       `<DOMSymbolInstance libraryItemName="${endLibraryItemName}" symbolType="graphic" loop="single frame">` +
       `${transformedMatrix(0, 1, -1, 0, 20, 30)}<transformationPoint><Point x="5" y="7"/></transformationPoint>` +
-      `</DOMSymbolInstance></elements></DOMFrame>`
+      `</DOMSymbolInstance></elements></DOMFrame>`;
+  };
+  const endpointFrame = holdEndpoint
+    ? terminalFrame()
     : motionFrame(duration, 1, endLibraryItemName, transformedMatrix(0, 1, -1, 0, 20, 30), endMetadata);
   const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', [
     layer('scene', [frame(0, symbol('motion-root'))].join('')),
@@ -304,6 +326,95 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
     );
     expect(unsupported.ok).toBe(false);
     if (!unsupported.ok) expect(unsupported.message).toContain('bounded transform-only subset');
+  });
+
+  it('admits only the authorized duration29 transform pair with terminal keyMode 9728', () => {
+    const duration29 = buildMotionAdapterFixture(
+      '',
+      '',
+      'moving-target',
+      29,
+      true,
+      { keyMode: '9728' },
+    );
+    const target = descriptor(duration29, 'motion-root');
+
+    for (const [frameIndex, progress] of [[1, 1 / 29], [14, 14 / 29], [28, 28 / 29]] as const) {
+      const selected = duration29.buildGraphicFrameContext(
+        target.timelineXml,
+        target.frameSpanIndex,
+        frameIndex,
+        `duration29-terminal9728-frame-${frameIndex}`,
+      );
+
+      expect(selected.ok).toBe(true);
+      if (!selected.ok) continue;
+      const interpolated = selected.value.layers[0]?.elements[0];
+      expect(interpolated?.kind).toBe('symbol');
+      if (interpolated?.kind !== 'symbol' || !interpolated.localTransform) continue;
+      expect(interpolated.localTransform.tx).toBeCloseTo(20 * progress, 12);
+      expect(interpolated.localTransform.ty).toBeCloseTo(30 * progress, 12);
+      expect(interpolated.localTransform.a).toBeCloseTo(Math.cos(Math.PI / 2 * progress), 12);
+      expect(interpolated.localTransform.b).toBeCloseTo(Math.sin(Math.PI / 2 * progress), 12);
+    }
+
+    const explicitNoneTerminal = buildMotionAdapterFixture(
+      '',
+      '',
+      'moving-target',
+      29,
+      true,
+      { keyMode: '9728', tweenType: 'none' },
+    );
+    const explicitNoneTarget = descriptor(explicitNoneTerminal, 'motion-root');
+    expect(explicitNoneTerminal.buildGraphicFrameContext(
+      explicitNoneTarget.timelineXml,
+      explicitNoneTarget.frameSpanIndex,
+      1,
+      'duration29-terminal9728-explicit-none',
+    ).ok).toBe(true);
+
+    const expectBlocked = (
+      label: string,
+      duration = 29,
+      terminalAttributes: Readonly<Partial<Record<'tweenType' | 'motionTweenSnap' | 'keyMode', string>>> = {
+        keyMode: '9728',
+      },
+      endLibraryItemName = 'moving-target',
+      startKeyMode = '22017',
+      startMetadata = '',
+    ) => {
+      const source = buildMotionAdapterFixture(
+        startMetadata,
+        '',
+        endLibraryItemName,
+        duration,
+        true,
+        terminalAttributes,
+        startKeyMode,
+      );
+      const fixtureTarget = descriptor(source, 'motion-root');
+      const result = source.buildGraphicFrameContext(
+        fixtureTarget.timelineXml,
+        fixtureTarget.frameSpanIndex,
+        1,
+        `duration29-terminal9728-negative-${label}`,
+      );
+      expect(result.ok, label).toBe(false);
+      if (!result.ok) expect(result.message).toContain('bounded transform-only subset');
+    };
+
+    expectBlocked('duration30', 30);
+    expectBlocked('duration72', 72);
+    expectBlocked('terminal9728-with-snap', 29, { keyMode: '9728', motionTweenSnap: 'true' });
+    expectBlocked('terminal9728-with-motion-role', 29, { keyMode: '9728', tweenType: 'motion' });
+    expectBlocked('unknown-terminal-keyMode', 29, { keyMode: '12345' });
+    expectBlocked('start-keyMode-9728', 29, { keyMode: '9728' }, 'moving-target', '9728');
+    expectBlocked('easing-metadata', 29, { keyMode: '9728' }, 'moving-target', '22017',
+      '<Ease><Property name="x" value="1"/></Ease>');
+    expectBlocked('motion-path-metadata', 29, { keyMode: '9728' }, 'moving-target', '22017',
+      '<MotionPath><Point x="1" y="2"/></MotionPath>');
+    expectBlocked('different-endpoint-identity', 29, { keyMode: '9728' }, 'different-target');
   });
 
   it('keeps motion tween interiors fail-closed when source easing or target identity changes', () => {
