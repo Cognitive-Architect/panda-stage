@@ -43,17 +43,25 @@ function animatedParentFrames(): string {
 }
 
 /**
- * Same bounded motion tween pair as {@link animatedParentFrames} but with no
- * authored firstFrame, used to prove the #723 missing-firstFrame default still
- * applies when the owning span is tweened: an absent attribute has no value a
- * tween could animate (#720 A4), unlike the explicit case above.
+ * A parent whose owning span for the nested instance is a bounded MOTION tween
+ * with no authored firstFrame and a configurable span origin/duration (plus an
+ * optional authored lastFrame). Used by the #724 tween-span controls: a missing
+ * firstFrame on a tween-owned instance keeps only the legacy origin=0/no-wrap
+ * bounded path.
  */
-function animatedParentFramesMissingFirstFrame(): string {
+function motionOwnedMissingFirstFrame(options: {
+  readonly origin?: number;
+  readonly spanDuration?: number;
+  readonly lastFrame?: string;
+} = {}): string {
+  const origin = options.origin ?? 0;
+  const spanDuration = options.spanDuration ?? 2;
+  const last = options.lastFrame === undefined ? '' : ` lastFrame="${options.lastFrame}"`;
   const instance = (tx: number, ty: number, selected: string) =>
-    `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop"${selected}>` +
+    `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop"${last}${selected}>` +
     `${matrix(tx, ty)}<transformationPoint><Point x="5" y="7"/></transformationPoint></DOMSymbolInstance>`;
-  const start = `<DOMFrame index="0" duration="2" tweenType="motion" motionTweenSnap="true" keyMode="22017"><elements>${instance(0, 0, '')}</elements></DOMFrame>`;
-  const end = `<DOMFrame index="2" duration="1" tweenType="none" keyMode="15872"><elements>${instance(4, 6, ' selected="true"')}</elements></DOMFrame>`;
+  const start = `<DOMFrame index="${origin}" duration="${spanDuration}" tweenType="motion" motionTweenSnap="true" keyMode="22017"><elements>${instance(0, 0, '')}</elements></DOMFrame>`;
+  const end = `<DOMFrame index="${origin + spanDuration}" duration="1" tweenType="none" keyMode="15872"><elements>${instance(4, 6, ' selected="true"')}</elements></DOMFrame>`;
   return start + end;
 }
 
@@ -474,12 +482,14 @@ describe('nested Graphic authored-frame selection', () => {
     }
   });
 
-  it('defaults a missing Loop firstFrame to 0 even inside a tweened owning span (#723)', () => {
-    // #720 A4 gates on "firstFrame has no unresolved animated/tweened override in
-    // the owning span". An absent attribute carries no value a tween could
-    // animate, so the #721 static-span gate does not apply to the defaulted path
-    // and the owning span still contributes only `elapsed`.
-    const source = adapt(animatedParentFramesMissingFirstFrame(), emptyFrames(4));
+  // --- Issue #724: tween-span scope re-tightening (missing-firstFrame Loop) ---
+
+  it('preserves the legacy origin=0 no-wrap Loop path inside a tweened owning span (#724)', () => {
+    // #724 positive legacy control: a missing-firstFrame Loop whose owning span is
+    // a motion tween keeps only the pre-existing bounded path (origin 0, no
+    // authored lastFrame, no wrap). This is the com22 compatibility case that must
+    // survive the re-tightening.
+    const source = adapt(motionOwnedMissingFirstFrame(), emptyFrames(4));
     const checkpoints: Array<[number, number]> = [[0, 0], [1, 1]];
     for (const [parentFrame, childFrame] of checkpoints) {
       const prepared = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', parentFrame));
@@ -490,9 +500,31 @@ describe('nested Graphic authored-frame selection', () => {
         effectiveFirstFrame: 0,
         childFrameCount: 4,
         selectedChildFrameIndex: childFrame,
-        selectionRule: 'loop-missing-first-frame-modulo',
+        selectionRule: 'loop-zero-origin-no-wrap',
       }]);
+      expect(prepared.selections[0]?.firstFrame).toBeUndefined();
     }
+  });
+
+  it('fails closed when a tween-owned missing-firstFrame Loop would need to wrap (#724 negative A)', () => {
+    const source = adapt(motionOwnedMissingFirstFrame({ spanDuration: 5 }), emptyFrames(4));
+    const result = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 4));
+    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
+    if (!result.ok) expect(result.message).toContain('wrap is outside the proven boundary');
+  });
+
+  it('fails closed for a tween-owned missing-firstFrame Loop with a non-zero origin (#724 negative B)', () => {
+    const source = adapt(motionOwnedMissingFirstFrame({ origin: 206 }), emptyFrames(4));
+    const result = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 206));
+    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
+    if (!result.ok) expect(result.message).toContain('span starts at 206');
+  });
+
+  it('fails closed for a tween-owned missing-firstFrame Loop with an authored lastFrame (#724 negative C)', () => {
+    const source = adapt(motionOwnedMissingFirstFrame({ lastFrame: '2' }), emptyFrames(4));
+    const result = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 0));
+    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
+    if (!result.ok) expect(result.message).toContain('not proven inside a tween-owned span');
   });
 
   it.each([
