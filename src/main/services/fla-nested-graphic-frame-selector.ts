@@ -6,6 +6,12 @@
  * library identity while allowing two instances of one symbol to display
  * different authored frames. Unknown playback modes and tween interiors fail
  * closed.
+ *
+ * Issue #721 adds one bounded subset (#720 A1, SOURCE/EXTERNAL-PROVEN): an
+ * explicit Loop with an explicit static/span-local firstFrame over a known child
+ * range selects `firstFrame + (elapsed % N)`; the wrap target is firstFrame, not
+ * child frame 0. Everything else (animated/tweened firstFrame, missing-loop
+ * multi-frame default, generic lastFrame animation) remains fail-closed.
  */
 
 import crypto from 'node:crypto';
@@ -40,6 +46,7 @@ export interface FlaNestedGraphicFrameSelection {
     | 'single-frame-default-first-frame-zero'
     | 'loop-single-frame-constant'
     | 'loop-zero-origin-no-wrap'
+    | 'loop-static-first-frame-modulo'
     | 'play-once-relative-containing-span'
     | 'play-once-hold-last-frame';
   readonly sourceTransform: FlaDisplayListMatrix;
@@ -120,6 +127,61 @@ function selectAuthoredChildFrame(
       sourceAddress,
     );
   }
+  const mode = element.playbackMode?.trim().toLocaleLowerCase('en-US');
+
+  // #721 — bounded explicit Loop (#720 A1). Explicit firstFrame + an explicit or
+  // implied lastFrame define a closed child range:
+  //   F = firstFrame, L = lastFrame ?? childFrameCount - 1, N = L - F + 1
+  //   childFrame = F + (elapsed % N)   (wrap target is firstFrame, never frame 0)
+  // This is the ONLY branch authorized to consume an authored lastFrame, and it
+  // requires a static/span-local firstFrame: the owning parent span must be a
+  // static authored/held span ('none'). An animated (tweened) owning span keeps
+  // the firstFrame fail-closed (#720 A3: tweened firstFrame is not proven).
+  if (mode === 'loop' && element.firstFrame !== undefined) {
+    const firstFrame = parseFrameIndex(element.firstFrame);
+    if (firstFrame === null) {
+      return failure(
+        'UNSUPPORTED_TIMING',
+        'Loop Graphic requires a valid source-authored firstFrame',
+        sourceAddress,
+      );
+    }
+    if (element.sourceParentSpanTweenType !== 'none') {
+      return failure(
+        'UNSUPPORTED_TIMING',
+        'Loop Graphic with an explicit firstFrame is only proven inside a static authored span; a tweened owning span (animated firstFrame) stays fail-closed',
+        sourceAddress,
+      );
+    }
+    const lastFrame = element.lastFrame === undefined
+      ? childFrameCount - 1
+      : parseFrameIndex(element.lastFrame);
+    if (lastFrame === null) {
+      return failure(
+        'UNSUPPORTED_TIMING',
+        `Loop Graphic lastFrame is not a valid non-negative index: ${element.lastFrame}`,
+        sourceAddress,
+      );
+    }
+    if (firstFrame > lastFrame || lastFrame >= childFrameCount) {
+      return failure(
+        'UNSUPPORTED_TIMING',
+        `Loop Graphic bounds fall outside child frameCount ${childFrameCount} (firstFrame=${firstFrame}, lastFrame=${lastFrame})`,
+        sourceAddress,
+      );
+    }
+    const rangeLength = lastFrame - firstFrame + 1;
+    const elapsed = parentFrameIndex - parentSpanStart;
+    if (!Number.isSafeInteger(elapsed) || elapsed < 0) {
+      return failure('UNSUPPORTED_TIMING', 'Loop Graphic has an invalid child timeline range', sourceAddress);
+    }
+    return {
+      ok: true,
+      frameIndex: firstFrame + (elapsed % rangeLength),
+      selectionRule: 'loop-static-first-frame-modulo',
+    };
+  }
+
   if (element.lastFrame !== undefined) {
     return failure(
       'UNSUPPORTED_TIMING',
@@ -128,7 +190,6 @@ function selectAuthoredChildFrame(
     );
   }
 
-  const mode = element.playbackMode?.trim().toLocaleLowerCase('en-US');
   if (mode === 'single frame') {
     const selectedFrame = element.firstFrame === undefined ? 0 : parseFrameIndex(element.firstFrame);
     if (selectedFrame === null) {

@@ -23,6 +23,25 @@ function graphic(name: string, frames: string): string {
   return `<DOMSymbolItem name="${name}" symbolType="graphic"><timeline>${timeline(`${name}-timeline`, frames)}</timeline></DOMSymbolItem>`;
 }
 
+/** Compact authored child timeline of `count` one-frame spans with no display elements. */
+function emptyFrames(count: number): string {
+  return Array.from({ length: count }, (_, i) => `<DOMFrame index="${i}" duration="1"/>`).join('');
+}
+
+/**
+ * A parent whose owning span for the nested instance is a bounded MOTION tween
+ * (a reconstructable transform-only pair), used to prove an animated/tweened
+ * firstFrame stays fail-closed.
+ */
+function animatedParentFrames(): string {
+  const instance = (tx: number, ty: number, selected: string) =>
+    `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop" firstFrame="1"${selected}>` +
+    `${matrix(tx, ty)}<transformationPoint><Point x="5" y="7"/></transformationPoint></DOMSymbolInstance>`;
+  const start = `<DOMFrame index="0" duration="2" tweenType="motion" motionTweenSnap="true" keyMode="22017"><elements>${instance(0, 0, '')}</elements></DOMFrame>`;
+  const end = `<DOMFrame index="2" duration="1" tweenType="none" keyMode="15872"><elements>${instance(4, 6, ' selected="true"')}</elements></DOMFrame>`;
+  return start + end;
+}
+
 function adapt(parentFrames: string, childFrames: string) {
   const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', '')}</timelines></DOMDocument>`;
   const result = adaptFlaXflDisplaySource(documentXml, [
@@ -191,7 +210,7 @@ describe('nested Graphic authored-frame selection', () => {
 
   it.each([
     { mode: 'play once', firstFrame: 'not-an-index' },
-    { mode: 'loop', firstFrame: '1' },
+    { mode: 'loop', firstFrame: 'not-an-index' },
     { mode: 'single frame', firstFrame: 'not-an-index' },
   ])('fails closed for unsupported timing attributes ($mode, firstFrame=$firstFrame)', ({ mode, firstFrame }) => {
     const first = firstFrame ? ` firstFrame="${firstFrame}"` : '';
@@ -210,5 +229,95 @@ describe('nested Graphic authored-frame selection', () => {
     const source = adapt(parent, child);
     const result = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 1));
     expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TWEEN' });
+  });
+
+  // --- Issue #721: bounded explicit Loop + static firstFrame (#720 A1) ---
+
+  it('wraps an explicit-Loop static firstFrame range modulo N, targeting firstFrame', () => {
+    const parent = frame(0,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop" firstFrame="206">${matrix()}</DOMSymbolInstance>`,
+      403);
+    const source = adapt(parent, emptyFrames(407));
+    const checkpoints: Array<[number, number]> = [
+      [0, 206], [1, 207], [29, 235], [200, 406], [201, 206], [202, 207], [402, 206],
+    ];
+    for (const [elapsed, expected] of checkpoints) {
+      const prepared = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', elapsed));
+      expect(prepared.ok).toBe(true);
+      if (!prepared.ok) return;
+      expect(prepared.selections).toMatchObject([{
+        playbackMode: 'loop',
+        firstFrame: '206',
+        childFrameCount: 407,
+        selectedChildFrameIndex: expected,
+        selectionRule: 'loop-static-first-frame-modulo',
+      }]);
+    }
+  });
+
+  it('honours an explicit lastFrame as the bounded Loop upper bound', () => {
+    const parent = frame(0,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop" firstFrame="3" lastFrame="5">${matrix()}</DOMSymbolInstance>`,
+      6);
+    const source = adapt(parent, emptyFrames(8));
+    const checkpoints: Array<[number, number]> = [[0, 3], [1, 4], [2, 5], [3, 3]];
+    for (const [elapsed, expected] of checkpoints) {
+      const prepared = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', elapsed));
+      expect(prepared.ok).toBe(true);
+      if (!prepared.ok) return;
+      expect(prepared.selections[0]?.selectedChildFrameIndex).toBe(expected);
+      expect(prepared.selections[0]?.selectionRule).toBe('loop-static-first-frame-modulo');
+    }
+  });
+
+  it.each([
+    { name: 'invalid lastFrame', attrs: 'loop="loop" firstFrame="1" lastFrame="xyz"', child: 4 },
+    { name: 'bounds outside the child range', attrs: 'loop="loop" firstFrame="3" lastFrame="9"', child: 4 },
+    { name: 'inverted bounds', attrs: 'loop="loop" firstFrame="3" lastFrame="2"', child: 4 },
+  ])('fails closed for a malformed explicit-Loop range ($name)', ({ attrs, child }) => {
+    const parent = frame(0,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" ${attrs}>${matrix()}</DOMSymbolInstance>`,
+      4);
+    const source = adapt(parent, emptyFrames(child));
+    const result = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 0));
+    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
+  });
+
+  it('keeps an animated firstFrame fail-closed when the owning span is a tween', () => {
+    const source = adapt(animatedParentFrames(), emptyFrames(4));
+    const result = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 1));
+    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
+    if (!result.ok) expect(result.message).toContain('animated firstFrame');
+  });
+
+  it('fails closed for a missing loop attribute on a multi-frame Graphic', () => {
+    const parent = frame(0,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic">${matrix()}</DOMSymbolInstance>`,
+      4);
+    const source = adapt(parent, emptyFrames(4));
+    const result = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 0));
+    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
+  });
+
+  it('keeps Play Once advancing min(F + elapsed, L) across the containing span (#713 regression)', () => {
+    const parent = frame(4,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="play once" firstFrame="1">${matrix()}</DOMSymbolInstance>`,
+      6);
+    const source = adapt(parent, emptyFrames(4));
+    const expected: Array<[number, number, string]> = [
+      [4, 1, 'play-once-relative-containing-span'],
+      [5, 2, 'play-once-relative-containing-span'],
+      [6, 3, 'play-once-relative-containing-span'],
+      [7, 3, 'play-once-hold-last-frame'],
+      [8, 3, 'play-once-hold-last-frame'],
+      [9, 3, 'play-once-hold-last-frame'],
+    ];
+    for (const [frameIndex, childFrame, rule] of expected) {
+      const prepared = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', frameIndex));
+      expect(prepared.ok).toBe(true);
+      if (!prepared.ok) return;
+      expect(prepared.selections[0]?.selectedChildFrameIndex).toBe(childFrame);
+      expect(prepared.selections[0]?.selectionRule).toBe(rule);
+    }
   });
 });

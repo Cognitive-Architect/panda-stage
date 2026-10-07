@@ -72,6 +72,12 @@ export type FlaDisplayListElement =
       /** Parent timeline coordinate and containing DOMFrame span start. */
       readonly sourceParentFrameIndex?: number;
       readonly sourceParentFrameSpanStart?: number;
+      /**
+       * Tween type of the containing parent DOMFrame span ('none' for a static
+       * authored/held span). Used to keep firstFrame bounded to a static/span-local
+       * owning span; an animated (tweened) firstFrame stays fail-closed (#721/#720).
+       */
+      readonly sourceParentSpanTweenType?: string;
       /** Stable source address of this DOMSymbolInstance within the XFL. */
       readonly sourceAddress?: string;
       /** Per-instance definition lookup; libraryItemName remains source identity. */

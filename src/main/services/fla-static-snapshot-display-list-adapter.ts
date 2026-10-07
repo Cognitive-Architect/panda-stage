@@ -537,6 +537,7 @@ interface ElementParseContext {
   readonly path: string;
   readonly sourceParentFrameIndex: number;
   readonly sourceParentFrameSpanStart: number;
+  readonly sourceParentSpanTweenType?: string;
   readonly state: SourceBuildState;
 }
 
@@ -578,6 +579,9 @@ function parseDisplayElements(
             path,
             sourceParentFrameIndex: context.sourceParentFrameIndex,
             sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,
+            ...(context.sourceParentSpanTweenType !== undefined
+              ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
+              : {}),
             state: context.state,
           })
         : { ok: true as const, value: [] as readonly FlaDisplayListElement[] };
@@ -630,6 +634,9 @@ function parseDisplayElements(
       ...(child.attributes.lastFrame !== undefined ? { lastFrame: child.attributes.lastFrame } : {}),
       sourceParentFrameIndex: context.sourceParentFrameIndex,
       sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,
+      ...(context.sourceParentSpanTweenType !== undefined
+        ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
+        : {}),
       sourceAddress: `${context.scope}/${path}`,
       ...(localTransform ? { localTransform } : {}),
     });
@@ -830,6 +837,7 @@ function buildGraphicFrameContext(
         path: `layer-${selection.layerIndex}-frame-${selection.span.index}`,
         sourceParentFrameIndex: frameIndex,
         sourceParentFrameSpanStart: selection.span.index,
+        sourceParentSpanTweenType: selection.span.tweenType ?? 'none',
         state,
       });
       if (!parsed.ok) return parsed;
@@ -860,6 +868,7 @@ function buildGraphicFrameContext(
           path: `layer-${selection.layerIndex}-frame-${sourceFrameIndex}`,
           sourceParentFrameIndex: frameIndex,
           sourceParentFrameSpanStart: startSpan.index,
+          sourceParentSpanTweenType: selection.span.tweenType ?? 'motion',
           state,
         });
       };
