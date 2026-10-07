@@ -66,19 +66,30 @@ The pair was evaluated against each predicate in
 Only the two frame-attribute checks fail; each endpoint has one additional
 attribute, `parentLayerIndex`.
 
-| Predicate | Observed result |
-| --- | --- |
-| Allowed start/end `DOMFrame` attributes | **Fail:** both have `index`, `duration`, `tweenType`, `motionTweenSnap`, `keyMode`, plus `parentLayerIndex`. |
-| Duration | Pass: 5, in the accepted set `{2, 3, 5, 6, 14, 29}`. |
-| Start/end frame indexes | Pass: F0→F5, `end = start + duration`. |
-| Tween role, snap, key mode | Pass local motion shape: both `tweenType=motion`, `motionTweenSnap=true`, `keyMode=22017`. |
-| Unsupported motion metadata | None observed: no easing, path, rotation, filter, color, shape, or other motion metadata. |
-| Endpoint element count/type/visibility | Pass: one visible `DOMSymbolInstance` at each endpoint; each is a Graphic. |
-| Identity | Pass: both reference the same `便衣道士-cilisucai.com1/便衣道士-cilisucai.com24` Graphic. |
-| Matrix and supported transform children | Pass: finite affine matrices and supported transform-only children. |
-| Transformation point | Pass: one finite point at each endpoint, `(57.45, 8.8)`. |
-| Instance attributes | Pass: known attributes; semantic identity is stable. |
-| Downstream interpolator | Pass under the exact one-attribute shadow; production code uses `interpolateFlaLinearMotionTransform`. |
+| Predicate | Current expectation | Real value | Status | Decisive? |
+| --- | --- | --- | --- | --- |
+| Allowed start `DOMFrame` attributes | `index`, `duration`, `tweenType`, `motionTweenSnap`, `keyMode` | Those five plus `parentLayerIndex` | **FAIL** | **Yes** |
+| Allowed end `DOMFrame` attributes | Same explicit allowlist | Those five plus `parentLayerIndex` | **FAIL** | **Yes** |
+| Duration membership | `{2, 3, 5, 6, 14, 29}` | `5` | PASS | No |
+| Start/end index relationship | `end = start + duration` | `0→5` | PASS | No |
+| `tweenType` | Start is `motion`; end is a valid motion endpoint | Both `motion` | PASS | No |
+| `motionTweenSnap` | Motion endpoints use `true` | Both `true` | PASS | No |
+| `keyMode` | Motion endpoints use `22017` | Both `22017` | PASS | No |
+| Unsupported motion metadata | No easing, path, rotation, filter, color, shape, or unknown motion metadata | None observed | PASS | No |
+| Endpoint element count/type | One `DOMSymbolInstance` per endpoint | One Graphic instance at each endpoint | PASS | No |
+| Visibility | Endpoint instance is visible | Both `visible=true` | PASS | No |
+| Same Graphic/library identity | Stable identity and `symbolType=graphic` | Both `便衣道士-cilisucai.com1/便衣道士-cilisucai.com24` | PASS | No |
+| Matrix parseability | One finite affine Matrix per endpoint | Both finite; see F0/F5 matrices below | PASS | No |
+| `transformationPoint` | Zero or one finite Point | One at each endpoint: `(57.45, 8.8)` | PASS | No |
+| Instance attribute allowlist | Known attributes and stable semantic identity | Known attributes; identity stable | PASS | No |
+| Downstream transform-only guard/interpolator | Transform-only context builds through production interpolation | Exact one-attribute shadow builds F1; production interpolator builds F1–F4 | PASS under shadow | No |
+
+```text
+DECISIVE_FAIL_PREDICATES = [
+  "Allowed start DOMFrame attributes",
+  "Allowed end DOMFrame attributes"
+]
+```
 
 ## S2 — Local corpus census
 
@@ -109,6 +120,10 @@ In `向右走.fla`, all ten occurrences are in
 ordinal 1 (`元件_10`), frames 0, 5, 10, 15, and 20 carry value `1`. On layer
 ordinal 3 (`元件_11`), the same frame indexes carry value `0`. The F20 records
 have no `duration`; the other four keys on each layer have duration 5.
+Each child layer repeats the same value on all five listed keyframes; in
+particular, the blocked F0/F5 pair has `1` on both endpoints. No endpoint
+reparenting occurs within that span. The matched candidate parent layers are
+separate animated Graphic layers, not guide/folder/mask layers.
 
 ## S3 — Structure and transform relevance
 
@@ -124,10 +139,22 @@ have no `duration`; the other four keys on each layer have duration 5.
 
 Thus, the repeated frame-level values match the `layerRiggingIndex` of the
 corresponding animated Graphic layers: `元件_10` → `补间_21`, and `元件_11` →
-`补间_22`. Direct ordinal lookup would point elsewhere. The matched layers are
-normal rigging layers, not guide, folder, or mask layers. This is strong
+`补间_22`. Direct ordinal lookup would point elsewhere. This is strong
 serialization evidence, but the exact mapping from this XFL field to Animate's
 runtime parenting model remains an inference rather than a schema guarantee.
+
+| Hypothesis | Evidence for | Evidence against / limit | Finding |
+| --- | --- | --- | --- |
+| H1: editor/layer-hierarchy metadata only | It is serialized on frames and no Panda frame-level consumer was found. | Adobe documents per-keyframe parenting with inherited transforms; values match animated rig-layer indexes. | Not supported as metadata-only. |
+| H2: identifies a parent whose transform affects the child | `parentLayerIndex` values match `layerRiggingIndex` on animated Graphic parent candidates; both local matrices change during F0–F5; Adobe describes inherited parent transforms. | Exact raw-field mapping and composition/pivot formula are not independently proven for this XFL version. | Strongest hypothesis; requires parenting semantics. |
+| H3: guide/motion-guide parenting | No guide layer or path metadata was observed on the matched layers or child tween. | The census does not establish every possible guide encoding in other files. | No supporting evidence in this fixture. |
+| H4: participates directly in tween interpolation or target resolution | It is present on both tween endpoints and may affect evaluated display transforms through parenting. | No source says it changes the tween interpolation function; production interpolation can build the child's local matrices without composing a parent. | Direct interpolation effect unproven; parent transform semantics remain relevant. |
+| H5: serialization residue safe to ignore for this bounded span | The child span otherwise passes the bounded local transform predicates. | Repeated values align with animated parent layers, and Adobe documents per-keyframe parent transform inheritance. | Not safe to ignore on current evidence. |
+
+Panda currently composes ancestor symbol transforms, but does not compose
+same-timeline sibling rig-parent transforms. Removing a real parenting
+relationship would therefore be expected to change inherited composition if
+the field mapping is correct; the exact visual result remains unverified.
 
 For the blocked `元件_10` child and `补间_21` parent, both local transforms
 change across F0→F5:
@@ -188,6 +215,14 @@ keyMode=22017, duration 5). The control's F30 endpoint instead begins a held
 span. The one-attribute difference is exactly what the shadow isolates, but
 the semantic layer relationship is an additional behavior question.
 
+```text
+COM26_VS_ACCEPTED_DURATION5_DIFF = parentLayerIndex + other semantic differences
+```
+
+The local tween predicates otherwise match the accepted transform-only family;
+the additional semantic differences are the candidate parent relationship and
+the com26 F5 next-motion role versus the control's F30 held-span role.
+
 ## S6 — Exact one-attribute in-memory shadow
 
 The harness loaded the compiled production adapter into a separate in-memory
@@ -223,6 +258,12 @@ Final classification: **`PARENT_LAYER_INDEX_REQUIRES_PARENTING_SEMANTICS`**.
 Recommended next action: if this FLA family must render, authorize a separate
 research and implementation path for Animate layer-parenting semantics. Keep
 the current adapter fail-closed in the meantime.
+
+The negative checks are explicit: an innocuous-sounding name does not prove
+inertness; equal values on both endpoints do not cancel runtime semantics; a
+passing shadow proves only local gate compatibility; accepted duration 5 does
+not authorize new metadata; and an open-source writer for `DOMLayer` does not
+prove that frame-level `DOMFrame.parentLayerIndex` is ignored.
 
 ## Validation and completion receipt
 
