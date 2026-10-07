@@ -77,7 +77,7 @@ selector; no MovieClip/ActionScript/reverse/generic runtime.
 
 ## L2 — Focused tests (all green)
 
-`tests/unit/fla-nested-graphic-frame-selector.test.ts` — **19/19 PASS** (6 new + 1 corrected control):
+`tests/unit/fla-nested-graphic-frame-selector.test.ts` — **20/20 PASS** (7 new + 1 corrected control):
 
 - `wraps an explicit-Loop static firstFrame range modulo N, targeting firstFrame` — `firstFrame=206`,
   child 407 frames; checkpoints `0→206, 1→207, 29→235, 200→406, 201→206, 202→207, 402→206`.
@@ -88,6 +88,7 @@ selector; no MovieClip/ActionScript/reverse/generic runtime.
 - `keeps an animated firstFrame fail-closed when the owning span is a tween` (asserts the message
   contains `animated firstFrame`).
 - `fails closed for a missing loop attribute on a multi-frame Graphic`.
+- `fails closed for an unknown playback mode` (hits the selector's generic fallback).
 - `keeps Play Once advancing min(F + elapsed, L) across the containing span (#713 regression)`.
 - Control: `{ mode: 'loop', firstFrame: '1' }` moved out of the negative matrix to
   `firstFrame: 'not-an-index'` (#721 legalizes loop + a **valid** firstFrame).
@@ -171,7 +172,7 @@ L1 production files changed: 3 (selector, display-list-resolver, display-list-ad
    formula: child = F + (elapsed mod N), N = L - F + 1, L = lastFrame ?? childFrameCount - 1
    wrap target: firstFrame (NOT child frame 0)
    gated on static/span-local owning span (sourceParentSpanTweenType == 'none')
-L2 focused unit: fla-nested-graphic-frame-selector.test.ts 19/19 PASS
+L2 focused unit: fla-nested-graphic-frame-selector.test.ts 20/20 PASS
    4-file regression surface: 47/47 PASS
    typecheck: PASS   targeted eslint: PASS
    full unit: 2411 PASS / 1 timeout flake (fla-import-recovery, passes isolated) - unrelated domain

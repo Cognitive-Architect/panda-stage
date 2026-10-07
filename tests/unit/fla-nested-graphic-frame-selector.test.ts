@@ -299,6 +299,16 @@ describe('nested Graphic authored-frame selection', () => {
     expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
   });
 
+  it('fails closed for an unknown playback mode', () => {
+    const parent = frame(0,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="bogus mode" firstFrame="1">${matrix()}</DOMSymbolInstance>`,
+      4);
+    const source = adapt(parent, emptyFrames(4));
+    const result = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 0));
+    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
+    if (!result.ok) expect(result.message).toContain('outside the proven boundary');
+  });
+
   it('keeps Play Once advancing min(F + elapsed, L) across the containing span (#713 regression)', () => {
     const parent = frame(4,
       `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="play once" firstFrame="1">${matrix()}</DOMSymbolInstance>`,
