@@ -354,13 +354,79 @@ describe('nested Graphic authored-frame selection', () => {
     if (!result.ok) expect(result.message).toContain('animated firstFrame');
   });
 
-  it('fails closed for a missing loop attribute on a multi-frame Graphic', () => {
+  it('selects the mode-invariant only frame for a missing playback mode and preserves its absence', () => {
+    const parent = frame(0,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic">${matrix()}</DOMSymbolInstance>`,
+      4);
+    const source = adapt(parent, emptyFrames(1));
+    const prepared = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 0));
+
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.selections).toMatchObject([{
+      firstFrameWasExplicit: false,
+      effectiveFirstFrame: 0,
+      childFrameCount: 1,
+      selectedChildFrameIndex: 0,
+      selectionRule: 'mode-invariant-single-frame',
+      selectionBasis: 'mode-invariant-single-frame',
+    }]);
+    expect(prepared.selections[0]).not.toHaveProperty('playbackMode');
+    expect(prepared.selections[0]?.firstFrame).toBeUndefined();
+
+    const selectedInstance = prepared.resolverInput.root.frameContext.layers
+      .flatMap((layer) => layer.elements)
+      .find((element) => element.kind === 'symbol');
+    expect(selectedInstance?.playbackMode).toBeUndefined();
+  });
+
+  it('fails closed for missing playback mode with a multi-frame Graphic', () => {
     const parent = frame(0,
       `<DOMSymbolInstance libraryItemName="child" symbolType="graphic">${matrix()}</DOMSymbolInstance>`,
       4);
     const source = adapt(parent, emptyFrames(4));
     const result = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 0));
+    expect(result).toMatchObject({ ok: false, code: 'UNKNOWN_PLAYBACK_DEFAULT' });
+    if (!result.ok) expect(result.message).toContain('childFrameCount=4');
+  });
+
+  it('fails closed when the child Graphic has no valid frame range', () => {
+    const parent = frame(0,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic">${matrix()}</DOMSymbolInstance>`,
+      4);
+    const source = adapt(parent, emptyFrames(1));
+    const zeroFrameSource = {
+      ...source,
+      graphicSymbols: source.graphicSymbols.map((descriptor) =>
+        descriptor.sourceLibraryItemName.endsWith('child')
+          ? { ...descriptor, frameCount: 0 }
+          : descriptor),
+    };
+    const result = prepareFlaNestedGraphicFrameSelections(zeroFrameSource, graphicRoot(source, 'parent', 0));
     expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
+    if (!result.ok) expect(result.message).toContain('no valid frame range');
+  });
+
+  it.each([
+    { mode: 'loop', rule: 'loop-single-frame-constant' },
+    { mode: 'play once', rule: 'play-once-relative-containing-span' },
+    { mode: 'single frame', rule: 'single-frame-default-first-frame-zero' },
+  ])('preserves explicit $mode behavior for a one-frame Graphic', ({ mode, rule }) => {
+    const parent = frame(0,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="${mode}">${matrix()}</DOMSymbolInstance>`,
+      4);
+    const source = adapt(parent, emptyFrames(1));
+    const prepared = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 0));
+
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.selections).toMatchObject([{
+      playbackMode: mode,
+      childFrameCount: 1,
+      selectedChildFrameIndex: 0,
+      selectionRule: rule,
+    }]);
+    expect(prepared.selections[0]).not.toHaveProperty('selectionBasis');
   });
 
   it('fails closed for an unknown playback mode', () => {

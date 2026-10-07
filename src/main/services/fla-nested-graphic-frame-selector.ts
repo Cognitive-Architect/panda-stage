@@ -28,9 +28,13 @@
  * `com22` compatibility case still advances without granting unproven generic
  * modulo semantics to tween-owned instances.
  *
- * Everything else (animated/tweened firstFrame, missing-loop multi-frame default,
- * reverse loop, tween-span wrap/non-zero-origin/authored-lastFrame, generic
- * lastFrame animation) remains fail-closed.
+ * Issue #726 adds a separate mode-invariant case: when playback mode is absent
+ * and the child has exactly one frame, select frame 0 without assigning a mode.
+ * Missing playback on multi-frame children remains UNKNOWN_PLAYBACK_DEFAULT.
+ *
+ * Everything else (animated/tweened firstFrame, reverse loop, tween-span
+ * wrap/non-zero-origin/authored-lastFrame, generic lastFrame animation) remains
+ * fail-closed.
  */
 
 import crypto from 'node:crypto';
@@ -53,7 +57,8 @@ export const FLA_NESTED_GRAPHIC_FRAME_SELECTOR_LIMITS = Object.freeze({
 export interface FlaNestedGraphicFrameSelection {
   readonly sourceAddress: string;
   readonly libraryItemName: string;
-  readonly playbackMode: string;
+  /** Absent when the source omitted the playback-mode attribute. */
+  readonly playbackMode?: string;
   /**
    * Source-authored firstFrame attribute, preserved verbatim. Absent when the
    * source omitted the attribute (raw provenance: missing is never rewritten to
@@ -78,6 +83,7 @@ export interface FlaNestedGraphicFrameSelection {
   readonly childFrameCount: number;
   readonly selectedChildFrameIndex: number;
   readonly selectionRule:
+    | 'mode-invariant-single-frame'
     | 'single-frame-explicit-first-frame'
     | 'single-frame-default-first-frame-zero'
     | 'loop-single-frame-constant'
@@ -86,10 +92,12 @@ export interface FlaNestedGraphicFrameSelection {
     | 'loop-missing-first-frame-modulo'
     | 'play-once-relative-containing-span'
     | 'play-once-hold-last-frame';
+  readonly selectionBasis?: 'mode-invariant-single-frame';
   readonly sourceTransform: FlaDisplayListMatrix;
 }
 
 export type FlaNestedGraphicFrameSelectorFailureCode =
+  | 'UNKNOWN_PLAYBACK_DEFAULT'
   | 'UNSUPPORTED_TIMING'
   | 'UNSUPPORTED_SYMBOL_TYPE'
   | 'MISSING_SYMBOL'
@@ -149,6 +157,7 @@ function selectAuthoredChildFrame(
   readonly ok: true;
   readonly frameIndex: number;
   readonly selectionRule: FlaNestedGraphicFrameSelection['selectionRule'];
+  readonly selectionBasis?: FlaNestedGraphicFrameSelection['selectionBasis'];
   readonly effectiveFirstFrame: number;
 } | SelectorFailure {
   const sourceAddress = element.sourceAddress;
@@ -156,6 +165,25 @@ function selectAuthoredChildFrame(
   const parentSpanStart = element.sourceParentFrameSpanStart;
   if (!Number.isSafeInteger(childFrameCount) || childFrameCount <= 0) {
     return failure('UNSUPPORTED_TIMING', 'Nested Graphic child timeline has no valid frame range', sourceAddress);
+  }
+  const mode = element.playbackMode?.trim().toLocaleLowerCase('en-US');
+  // #726: the one-frame case is invariant across playback modes. Keep the source
+  // mode absent; a multiframe child still needs an explicit playback contract.
+  if (mode === undefined) {
+    if (childFrameCount === 1) {
+      return {
+        ok: true,
+        frameIndex: 0,
+        selectionRule: 'mode-invariant-single-frame',
+        selectionBasis: 'mode-invariant-single-frame',
+        effectiveFirstFrame: 0,
+      };
+    }
+    return failure(
+      'UNKNOWN_PLAYBACK_DEFAULT',
+      `UNKNOWN_PLAYBACK_DEFAULT: missing Graphic playback mode with childFrameCount=${childFrameCount}`,
+      sourceAddress,
+    );
   }
   if (!Number.isSafeInteger(parentFrameIndex) || !Number.isSafeInteger(parentSpanStart) ||
       parentFrameIndex === undefined || parentSpanStart === undefined || parentFrameIndex < parentSpanStart) {
@@ -165,7 +193,6 @@ function selectAuthoredChildFrame(
       sourceAddress,
     );
   }
-  const mode = element.playbackMode?.trim().toLocaleLowerCase('en-US');
 
   // #721/#722/#723/#724 — bounded forward Loop. The owning-span tween type splits
   // the proven sub-cases; every other combination fails closed.
@@ -509,7 +536,9 @@ export function prepareFlaNestedGraphicFrameSelections(
       selections.push({
         sourceAddress,
         libraryItemName: element.libraryItemName,
-        playbackMode: element.playbackMode?.trim().toLocaleLowerCase('en-US') ?? '',
+        ...(element.playbackMode !== undefined
+          ? { playbackMode: element.playbackMode.trim().toLocaleLowerCase('en-US') }
+          : {}),
         ...(element.firstFrame !== undefined ? { firstFrame: element.firstFrame } : {}),
         ...(element.lastFrame !== undefined ? { lastFrame: element.lastFrame } : {}),
         firstFrameWasExplicit: element.firstFrame !== undefined,
@@ -519,6 +548,7 @@ export function prepareFlaNestedGraphicFrameSelections(
         childFrameCount: descriptor.frameCount,
         selectedChildFrameIndex: selected.frameIndex,
         selectionRule: selected.selectionRule,
+        ...(selected.selectionBasis ? { selectionBasis: selected.selectionBasis } : {}),
         sourceTransform: element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX,
       });
       const variant = prepareSymbol(
