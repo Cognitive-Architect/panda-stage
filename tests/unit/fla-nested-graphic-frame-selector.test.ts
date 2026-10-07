@@ -42,6 +42,21 @@ function animatedParentFrames(): string {
   return start + end;
 }
 
+/**
+ * Same bounded motion tween pair as {@link animatedParentFrames} but with no
+ * authored firstFrame, used to prove the #723 missing-firstFrame default still
+ * applies when the owning span is tweened: an absent attribute has no value a
+ * tween could animate (#720 A4), unlike the explicit case above.
+ */
+function animatedParentFramesMissingFirstFrame(): string {
+  const instance = (tx: number, ty: number, selected: string) =>
+    `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop"${selected}>` +
+    `${matrix(tx, ty)}<transformationPoint><Point x="5" y="7"/></transformationPoint></DOMSymbolInstance>`;
+  const start = `<DOMFrame index="0" duration="2" tweenType="motion" motionTweenSnap="true" keyMode="22017"><elements>${instance(0, 0, '')}</elements></DOMFrame>`;
+  const end = `<DOMFrame index="2" duration="1" tweenType="none" keyMode="15872"><elements>${instance(4, 6, ' selected="true"')}</elements></DOMFrame>`;
+  return start + end;
+}
+
 function adapt(parentFrames: string, childFrames: string) {
   const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', '')}</timelines></DOMDocument>`;
   const result = adaptFlaXflDisplaySource(documentXml, [
@@ -137,15 +152,30 @@ describe('nested Graphic authored-frame selection', () => {
     }]);
   });
 
-  it('fails closed when Loop would need an unproven nonzero span origin', () => {
-    const parent = frame(4,
+  it('advances a default Loop from a nonzero containing-span origin (#723)', () => {
+    // Pre-#723 this combination was fail-closed ("span starts at 206"). #720 A4
+    // proves a missing firstFrame defaults to 0, so the parent span origin only
+    // shifts `elapsed` and must never be reused as the child first frame.
+    const parent = frame(206,
       `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop">${matrix()}</DOMSymbolInstance>`,
       3);
-    const child = frame(0, shape()) + frame(1, shape()) + frame(2, shape());
-    const source = adapt(parent, child);
-    const result = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 6));
-    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
-    if (!result.ok) expect(result.message).toContain('span starts at 4');
+    const source = adapt(parent, emptyFrames(3));
+    const checkpoints: Array<[number, number]> = [[206, 0], [207, 1], [208, 2]];
+    for (const [parentFrame, childFrame] of checkpoints) {
+      const prepared = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', parentFrame));
+      expect(prepared.ok).toBe(true);
+      if (!prepared.ok) return;
+      expect(prepared.selections).toMatchObject([{
+        sourceParentFrameSpanStart: 206,
+        firstFrameWasExplicit: false,
+        effectiveFirstFrame: 0,
+        childFrameCount: 3,
+        selectedChildFrameIndex: childFrame,
+        selectionRule: 'loop-missing-first-frame-modulo',
+      }]);
+      expect(prepared.selections[0]?.firstFrame).toBeUndefined();
+      expect(prepared.selections[0]?.selectedChildFrameIndex).not.toBe(206);
+    }
   });
 
   it('selects Play Once relative to its containing authored span', () => {
@@ -215,15 +245,23 @@ describe('nested Graphic authored-frame selection', () => {
     }
   });
 
-  it('fails closed instead of inferring a Loop wrap', () => {
+  it('wraps a default Loop modulo the child frame count (#723)', () => {
+    // M2 case A: missing firstFrame, childFrameCount 5, owning span static.
     const parent = frame(0,
       `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop">${matrix()}</DOMSymbolInstance>`,
-      4);
-    const child = frame(0, shape()) + frame(1, shape()) + frame(2, shape());
-    const source = adapt(parent, child);
-    const result = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 3));
-    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
-    if (!result.ok) expect(result.message).toContain('wrap is outside the proven boundary');
+      6);
+    const source = adapt(parent, emptyFrames(5));
+    const checkpoints: Array<[number, number]> = [[0, 0], [1, 1], [4, 4], [5, 0]];
+    for (const [elapsed, childFrame] of checkpoints) {
+      const prepared = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', elapsed));
+      expect(prepared.ok).toBe(true);
+      if (!prepared.ok) return;
+      expect(prepared.selections).toMatchObject([{
+        childFrameCount: 5,
+        selectedChildFrameIndex: childFrame,
+        selectionRule: 'loop-missing-first-frame-modulo',
+      }]);
+    }
   });
 
   it.each([
@@ -379,5 +417,93 @@ describe('nested Graphic authored-frame selection', () => {
     const result = prepareFlaNestedGraphicFrameSelections(source, sceneRoot(source, 0));
     expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
     if (!result.ok) expect(result.message).toContain('animated firstFrame');
+  });
+
+  // --- Issue #723: bounded missing-firstFrame -> effective 0 (#720 A4) ---
+
+  it('treats an absent Loop firstFrame as effective 0 while preserving authored absence (#723 M1-A)', () => {
+    const missing = adapt(
+      frame(0,
+        `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop">${matrix()}</DOMSymbolInstance>`,
+        3),
+      emptyFrames(3),
+    );
+    const missingPrepared = prepareFlaNestedGraphicFrameSelections(missing, graphicRoot(missing, 'parent', 0));
+    expect(missingPrepared.ok).toBe(true);
+    if (!missingPrepared.ok) return;
+    expect(missingPrepared.selections).toMatchObject([{
+      firstFrameWasExplicit: false,
+      effectiveFirstFrame: 0,
+      selectedChildFrameIndex: 0,
+      selectionRule: 'loop-missing-first-frame-modulo',
+    }]);
+    // Raw provenance: absence is never rewritten into an authored firstFrame.
+    expect(missingPrepared.selections[0]?.firstFrame).toBeUndefined();
+
+    const explicitZero = adapt(
+      frame(0,
+        `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop" firstFrame="0">${matrix()}</DOMSymbolInstance>`,
+        3),
+      emptyFrames(3),
+    );
+    const explicitPrepared = prepareFlaNestedGraphicFrameSelections(explicitZero, graphicRoot(explicitZero, 'parent', 0));
+    expect(explicitPrepared.ok).toBe(true);
+    if (!explicitPrepared.ok) return;
+    // Bounded semantics are equivalent, but the authored provenance stays distinct.
+    expect(explicitPrepared.selections).toMatchObject([{
+      firstFrame: '0',
+      firstFrameWasExplicit: true,
+      effectiveFirstFrame: 0,
+      selectedChildFrameIndex: 0,
+      selectionRule: 'loop-static-first-frame-modulo',
+    }]);
+  });
+
+  it('accepts an authored lastFrame as the missing-firstFrame Loop upper bound (#723)', () => {
+    const parent = frame(0,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop" lastFrame="2">${matrix()}</DOMSymbolInstance>`,
+      6);
+    const source = adapt(parent, emptyFrames(8));
+    const checkpoints: Array<[number, number]> = [[0, 0], [2, 2], [3, 0]];
+    for (const [elapsed, childFrame] of checkpoints) {
+      const prepared = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', elapsed));
+      expect(prepared.ok).toBe(true);
+      if (!prepared.ok) return;
+      expect(prepared.selections[0]?.selectedChildFrameIndex).toBe(childFrame);
+      expect(prepared.selections[0]?.selectionRule).toBe('loop-missing-first-frame-modulo');
+    }
+  });
+
+  it('defaults a missing Loop firstFrame to 0 even inside a tweened owning span (#723)', () => {
+    // #720 A4 gates on "firstFrame has no unresolved animated/tweened override in
+    // the owning span". An absent attribute carries no value a tween could
+    // animate, so the #721 static-span gate does not apply to the defaulted path
+    // and the owning span still contributes only `elapsed`.
+    const source = adapt(animatedParentFramesMissingFirstFrame(), emptyFrames(4));
+    const checkpoints: Array<[number, number]> = [[0, 0], [1, 1]];
+    for (const [parentFrame, childFrame] of checkpoints) {
+      const prepared = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', parentFrame));
+      expect(prepared.ok).toBe(true);
+      if (!prepared.ok) return;
+      expect(prepared.selections).toMatchObject([{
+        firstFrameWasExplicit: false,
+        effectiveFirstFrame: 0,
+        childFrameCount: 4,
+        selectedChildFrameIndex: childFrame,
+        selectionRule: 'loop-missing-first-frame-modulo',
+      }]);
+    }
+  });
+
+  it.each([
+    { name: 'invalid lastFrame', attrs: 'loop="loop" lastFrame="xyz"', child: 4 },
+    { name: 'lastFrame outside the child range', attrs: 'loop="loop" lastFrame="9"', child: 4 },
+  ])('fails closed for a malformed missing-firstFrame Loop range ($name)', ({ attrs, child }) => {
+    const parent = frame(0,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" ${attrs}>${matrix()}</DOMSymbolInstance>`,
+      4);
+    const source = adapt(parent, emptyFrames(child));
+    const result = prepareFlaNestedGraphicFrameSelections(source, graphicRoot(source, 'parent', 0));
+    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
   });
 });

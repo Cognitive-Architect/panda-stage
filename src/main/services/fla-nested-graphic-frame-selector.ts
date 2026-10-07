@@ -10,8 +10,21 @@
  * Issue #721 adds one bounded subset (#720 A1, SOURCE/EXTERNAL-PROVEN): an
  * explicit Loop with an explicit static/span-local firstFrame over a known child
  * range selects `firstFrame + (elapsed % N)`; the wrap target is firstFrame, not
- * child frame 0. Everything else (animated/tweened firstFrame, missing-loop
- * multi-frame default, generic lastFrame animation) remains fail-closed.
+ * child frame 0.
+ *
+ * Issue #723 extends the same bounded family (#720 A4, SOURCE/EXTERNAL-PROVEN):
+ * when a forward Loop omits the firstFrame attribute, its effective first frame
+ * is the proven default 0 (`effectiveFirstFrame = authoredFirstFrame ?? 0`) and
+ * the identical modulo selector applies over `N = childFrameCount`. The raw
+ * authored absence is preserved — `firstFrame` stays undefined and
+ * `firstFrameWasExplicit` records the distinction — so a missing attribute is
+ * never rewritten into an authored `firstFrame="0"`. The owning span origin
+ * participates only in the `elapsed` calculation, never as an implicit first
+ * frame; the #721 static-span gate keeps guarding an AUTHORED firstFrame (which a
+ * tween could animate) but does not apply to an absent attribute.
+ *
+ * Everything else (animated/tweened firstFrame, missing-loop multi-frame default,
+ * reverse loop, generic lastFrame animation) remains fail-closed.
  */
 
 import crypto from 'node:crypto';
@@ -35,8 +48,25 @@ export interface FlaNestedGraphicFrameSelection {
   readonly sourceAddress: string;
   readonly libraryItemName: string;
   readonly playbackMode: string;
+  /**
+   * Source-authored firstFrame attribute, preserved verbatim. Absent when the
+   * source omitted the attribute (raw provenance: missing is never rewritten to
+   * an authored '0').
+   */
   readonly firstFrame?: string;
   readonly lastFrame?: string;
+  /**
+   * Whether the selected first frame came from an authored attribute.
+   * `missing firstFrame` (false) is kept distinguishable from an authored
+   * `firstFrame="0"` (true) even though both are bounded-equivalent (#723 M1-A).
+   */
+  readonly firstFrameWasExplicit: boolean;
+  /**
+   * The first frame actually used by the selection rule
+   * (`authoredFirstFrame ?? 0`). Recorded so the bounded fallback is observable
+   * without re-deriving it from the source attributes (#723).
+   */
+  readonly effectiveFirstFrame: number;
   readonly sourceParentFrameIndex: number;
   readonly sourceParentFrameSpanStart: number;
   readonly childFrameCount: number;
@@ -45,8 +75,8 @@ export interface FlaNestedGraphicFrameSelection {
     | 'single-frame-explicit-first-frame'
     | 'single-frame-default-first-frame-zero'
     | 'loop-single-frame-constant'
-    | 'loop-zero-origin-no-wrap'
     | 'loop-static-first-frame-modulo'
+    | 'loop-missing-first-frame-modulo'
     | 'play-once-relative-containing-span'
     | 'play-once-hold-last-frame';
   readonly sourceTransform: FlaDisplayListMatrix;
@@ -112,6 +142,7 @@ function selectAuthoredChildFrame(
   readonly ok: true;
   readonly frameIndex: number;
   readonly selectionRule: FlaNestedGraphicFrameSelection['selectionRule'];
+  readonly effectiveFirstFrame: number;
 } | SelectorFailure {
   const sourceAddress = element.sourceAddress;
   const parentFrameIndex = element.sourceParentFrameIndex;
@@ -129,16 +160,23 @@ function selectAuthoredChildFrame(
   }
   const mode = element.playbackMode?.trim().toLocaleLowerCase('en-US');
 
-  // #721 — bounded explicit Loop (#720 A1). Explicit firstFrame + an explicit or
-  // implied lastFrame define a closed child range:
-  //   F = firstFrame, L = lastFrame ?? childFrameCount - 1, N = L - F + 1
-  //   childFrame = F + (elapsed % N)   (wrap target is firstFrame, never frame 0)
-  // This is the ONLY branch authorized to consume an authored lastFrame, and it
-  // requires a static/span-local firstFrame: the owning parent span must be a
-  // static authored/held span ('none'). An animated (tweened) owning span keeps
-  // the firstFrame fail-closed (#720 A3: tweened firstFrame is not proven).
-  if (mode === 'loop' && element.firstFrame !== undefined) {
-    const firstFrame = parseFrameIndex(element.firstFrame);
+  // #721/#723 — bounded forward Loop (#720 A1/A4). The child range is closed by
+  // an authored or defaulted first frame:
+  //   authoredFirstFrame  = element.firstFrame (undefined when the attribute is absent)
+  //   effectiveFirstFrame = authoredFirstFrame ?? 0
+  //   L = lastFrame ?? childFrameCount - 1,  N = L - F + 1
+  //   childFrame = F + (elapsed % N)   (wrap target is F, never child frame 0)
+  // The static/span-local owning-span gate (#721 / #720 A3) guards an AUTHORED
+  // firstFrame, because a tween can animate that attribute across the span
+  // (UNPROVEN_ANIMATED_FIRST_FRAME_SEMANTIC). An absent firstFrame carries no
+  // value a tween could override (#720 A4), so the defaulted path only consumes
+  // the owning span origin as `elapsed`. Raw authored absence is preserved:
+  // `firstFrame` stays undefined and `firstFrameWasExplicit` records the
+  // missing-vs-authored-'0' distinction. This is the ONLY branch authorized to
+  // consume an authored lastFrame.
+  if (mode === 'loop') {
+    const firstFrameWasExplicit = element.firstFrame !== undefined;
+    const firstFrame = firstFrameWasExplicit ? parseFrameIndex(element.firstFrame) : 0;
     if (firstFrame === null) {
       return failure(
         'UNSUPPORTED_TIMING',
@@ -146,12 +184,16 @@ function selectAuthoredChildFrame(
         sourceAddress,
       );
     }
-    if (element.sourceParentSpanTweenType !== 'none') {
+    if (firstFrameWasExplicit && element.sourceParentSpanTweenType !== 'none') {
       return failure(
         'UNSUPPORTED_TIMING',
         'Loop Graphic with an explicit firstFrame is only proven inside a static authored span; a tweened owning span (animated firstFrame) stays fail-closed',
         sourceAddress,
       );
+    }
+    // A constant one-frame Loop has no range to advance; keep its dedicated rule.
+    if (!firstFrameWasExplicit && element.lastFrame === undefined && childFrameCount === 1) {
+      return { ok: true, frameIndex: 0, selectionRule: 'loop-single-frame-constant', effectiveFirstFrame: 0 };
     }
     const lastFrame = element.lastFrame === undefined
       ? childFrameCount - 1
@@ -178,7 +220,10 @@ function selectAuthoredChildFrame(
     return {
       ok: true,
       frameIndex: firstFrame + (elapsed % rangeLength),
-      selectionRule: 'loop-static-first-frame-modulo',
+      selectionRule: firstFrameWasExplicit
+        ? 'loop-static-first-frame-modulo'
+        : 'loop-missing-first-frame-modulo',
+      effectiveFirstFrame: firstFrame,
     };
   }
 
@@ -212,32 +257,8 @@ function selectAuthoredChildFrame(
       selectionRule: element.firstFrame === undefined
         ? 'single-frame-default-first-frame-zero'
         : 'single-frame-explicit-first-frame',
+      effectiveFirstFrame: selectedFrame,
     };
-  }
-
-  if (mode === 'loop' && element.firstFrame === undefined) {
-    if (childFrameCount === 1) {
-      return { ok: true, frameIndex: 0, selectionRule: 'loop-single-frame-constant' };
-    }
-    if (parentSpanStart !== 0) {
-      return failure(
-        'UNSUPPORTED_TIMING',
-        `Loop Graphic whose containing span starts at ${parentSpanStart} is outside the proven origin boundary`,
-        sourceAddress,
-      );
-    }
-    const elapsed = parentFrameIndex - parentSpanStart;
-    if (!Number.isSafeInteger(elapsed) || elapsed < 0) {
-      return failure('UNSUPPORTED_TIMING', 'Loop Graphic has an invalid child timeline range', sourceAddress);
-    }
-    if (elapsed >= childFrameCount) {
-      return failure(
-        'UNSUPPORTED_TIMING',
-        `Loop Graphic wrap is outside the proven boundary (elapsed=${elapsed}, childFrameCount=${childFrameCount})`,
-        sourceAddress,
-      );
-    }
-    return { ok: true, frameIndex: elapsed, selectionRule: 'loop-zero-origin-no-wrap' };
   }
 
   if (mode === 'play once') {
@@ -269,6 +290,7 @@ function selectAuthoredChildFrame(
       selectionRule: requestedFrame > lastFrame
         ? 'play-once-hold-last-frame'
         : 'play-once-relative-containing-span',
+      effectiveFirstFrame: firstFrame,
     };
   }
 
@@ -417,6 +439,8 @@ export function prepareFlaNestedGraphicFrameSelections(
         playbackMode: element.playbackMode?.trim().toLocaleLowerCase('en-US') ?? '',
         ...(element.firstFrame !== undefined ? { firstFrame: element.firstFrame } : {}),
         ...(element.lastFrame !== undefined ? { lastFrame: element.lastFrame } : {}),
+        firstFrameWasExplicit: element.firstFrame !== undefined,
+        effectiveFirstFrame: selected.effectiveFirstFrame,
         sourceParentFrameIndex: parentFrameIndex,
         sourceParentFrameSpanStart: parentFrameSpanStart,
         childFrameCount: descriptor.frameCount,
