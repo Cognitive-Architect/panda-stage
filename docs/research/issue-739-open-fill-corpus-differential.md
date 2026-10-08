@@ -8,9 +8,9 @@
 
 ## Result
 
-All three V0 first-failing Shapes have the same **candidate F — ANIMATE_DERIVED_REGION_SEMANTIC** observation: Raw XFL and Panda agree on the whole-Shape draw-subsegment totals and on the target-fill boundary segments that have a source-side mapping. Every mapped target-fill line or quadratic has exact endpoints in an Animate contour, and each quadratic control point also matches exactly. Panda's target-fill graph is still blocked/open while Animate exposes closed target-fill contours with additional interior edges.
+**Issue #740 correction (2026-10-09): all three V0 first-failing Shapes classify as H — MIXED / INSUFFICIENT.** The recorded observation is that Panda reports a blocked/open target-fill graph while Animate exposes closed target-fill contours. Raw XFL and Panda decoded subsegment counts match, but the authored-close mapping and fill-side semantics do not resolve whether the first remaining cause is D, B, or F. The previous candidate-F conclusion is withdrawn; fixture role no longer determines classification.
 
-This is a stage-level finding, not a production repair contract. The Animate-only interior edges have no source-edge identity in the captured API, their counts differ by Shape, and the Issue #737 control also has extra Animate interior edges while Panda renders successfully. **Stop before implementation.** Do not infer that the extra-edge count alone causes the failures or that one shared fix is justified.
+No failure cause is proven and no production repair contract is established. The close-marker routes, Animate-only interior edges, and failed Panda boundary are observed differences, not proof of cause. The Issue #737 control has 20 extra Animate interior edges while Panda renders successfully. Keep the work research-only; do not infer that extra edges alone cause the failures or that one shared fix is justified.
 
 The Issue #737 historical control and the positive closed-fill control are recorded as **H — MIXED / INSUFFICIENT** because neither is a failing Shape to classify into A–G. The historical control renders and maps all 98 Panda boundary segments into Animate interior contours; the positive control renders and maps all 16.
 
@@ -20,9 +20,9 @@ The Issue #737 historical control and the positive closed-fill control are recor
 
 | Shape / FillStyle | Raw XFL | Panda target boundary | Animate target fill | Class |
 | --- | --- | --- | --- | --- |
-| 汉服修仙女 / `#C3B4B3` | 179 Edge records; 273 subsegments (`23 L / 118 Q / 132 C`); 4 close markers | 84 segments (`83` raw + `1` authored-close semantic); 84 endpoints, 2 imbalanced, 2 cycles consume 54, remainder 30; blocked | 10 closed contours (`8` interior); 113 interior half-edges / 100 unique interior edges; `83/84` Panda segments match, `17` interior edges unmatched | **F** |
-| 青绫修仙女（四视角） / `#C6CDD2` | 95 Edge records; 176 subsegments (`28 L / 72 Q / 76 C`); 4 close markers | 59 (`58 + 1`); 60 endpoints, 2 imbalanced, no complete cycle, remainder 58; blocked | 6 closed contours (`5` interior); 64 interior half-edges / 61 unique interior edges; `58/59` match, `6` interior edges unmatched | **F** |
-| 修仙男 / FillStyle 1 gradient | 88 Edge records; 121 subsegments (`16 L / 39 Q / 66 C`); 11 close markers | 23 (`22 + 1`); 24 endpoints, 2 imbalanced, 1 cycle consumes 16, remainder 7; blocked | 3 closed contours (`2` interior); 25 interior half-edges / 25 unique interior edges; `22/23` match, `10` interior edges unmatched | **F** |
+| 汉服修仙女 / `#C3B4B3` | 179 Edge records; 273 subsegments (`23 L / 118 Q / 132 C`); 4 close markers | 84 segments (`83` raw + `1` authored-close semantic); 84 endpoints, 2 imbalanced, 2 cycles consume 54, remainder 30; blocked | 10 closed contours (`8` interior); 113 interior half-edges / 100 unique interior edges; `83/84` Panda segments match, `17` interior edges unmatched | **H** |
+| 青绫修仙女（四视角） / `#C6CDD2` | 95 Edge records; 176 subsegments (`28 L / 72 Q / 76 C`); 4 close markers | 59 (`58 + 1`); 60 endpoints, 2 imbalanced, no complete cycle, remainder 58; blocked | 6 closed contours (`5` interior); 64 interior half-edges / 61 unique interior edges; `58/59` match, `6` interior edges unmatched | **H** |
+| 修仙男 / FillStyle 1 gradient | 88 Edge records; 121 subsegments (`16 L / 39 Q / 66 C`); 11 close markers | 23 (`22 + 1`); 24 endpoints, 2 imbalanced, 1 cycle consumes 16, remainder 7; blocked | 3 closed contours (`2` interior); 25 interior half-edges / 25 unique interior edges; `22/23` Panda segments match, `10` interior edges unmatched | **H** |
 | #737 historical Shape / `#191917` | 160 Edge records; 277 subsegments (`1 L / 138 Q / 138 C`); no close markers | 98 raw segments; 98 balanced endpoints; cycles `75 / 13 / 10`; renders | 4 closed interior contours; 138 interior half-edges / 118 unique interior edges; `98/98` match, `20` interior edges unmatched | **H control** |
 | Known-working closed-fill control / `#EDCFBC` | 33 Edge records; 63 subsegments (`0 L / 34 Q / 29 C`); no close markers | 16 raw segments; 16 balanced endpoints; one 16-edge cycle; renders | 2 closed contours (one interior); 16 interior half-edges / 16 unique interior edges; `16/16` match, no interior edge unmatched | **H control** |
 
@@ -65,17 +65,33 @@ Animate's full selected Shape inventories are 145 edges / 136 vertices / 17 cont
 
 The exact endpoint comparison uses no tolerance, snapping, coordinate change, or synthetic segment. The machine map retains the full Panda boundary map, each exact Animate candidate (including contour interior/orientation, HalfEdge and Edge IDs, endpoints and control points), every unmatched Panda boundary segment, every unmatched Animate interior edge, the raw Edge token records, and the captured Animate Shape object.
 
+### Authored-close marker review
+
+Each selected-boundary close marker maps to one Panda-generated fill-owned line segment. No marker has a direct exact Animate HalfEdge. Both endpoints occur on the same closed interior contour, and the contour has a multi-HalfEdge route between them; that route does not prove equivalence to the authored close marker.
+
+| Shape | Raw XFL source marker | Source current → subpath start | Panda fill-owned segment | Animate observation | Imbalanced endpoints with close → without close |
+| --- | --- | --- | --- | --- | --- |
+| 汉服修仙女 | Edge 6, marker 1 of 4 on that Edge | `(282, 575.85)` → `(387.75, 830.75)` | `(387.75, 830.75)` → `(282, 575.85)`; FillStyle 0, reversed | No exact HalfEdge; contour 14 is closed/interior and has a 23-HalfEdge route | 2 → 2; endpoint identities change; graph remains open |
+| 青绫修仙女（四视角） | Edge 5, marker 2 of 2 on that Edge | `(1012.45, 837.75)` → `(998.15, 710.85)` | `(1012.45, 837.75)` → `(998.15, 710.85)`; FillStyle 1, forward | No exact HalfEdge; contour 10 is closed/interior and has a 2-HalfEdge route | 2 → 4; graph remains open |
+| 修仙男 | Edge 0, marker 2 of 2 on that Edge | `(933.3, 656.55)` → `(960.35, 638.85)` | `(960.35, 638.85)` → `(933.3, 656.55)`; FillStyle 0, reversed | No exact HalfEdge; contour 9 is closed/interior and has a 14-HalfEdge route | 2 → 4; graph remains open |
+
+Removing the generated close segment is a graph-only counterfactual; it does not mutate a source FLA. For Hanfu it changes the imbalanced endpoint identities but leaves the count at two. For Qingling and the male Shape it increases the imbalance from two endpoints to four. These results show correlation with graph structure, not causality. The exact frozen corpus has no successful authored-close control: both rendered controls have zero raw close markers. The corpus was not expanded.
+
+### Cubic comparison scope
+
+For each failing Shape, the raw XFL selected target FillStyle has zero cubic subsegments and the Panda target-boundary map has zero `C` commands. Therefore no target-boundary cubic comparison is required. Whole-Shape cubic counts include non-target-fill draws and are outside this comparison. The machine evidence records these zero counts and the explicit `NOT_REQUIRED_NO_TARGET_BOUNDARY_CUBIC_PRESENT` result.
+
 ## Classification and next step
 
 | Shape | First divergence | Classification | Confidence / next action |
 | --- | --- | --- | --- |
-| 汉服修仙女 | Animate's derived interior topology differs from Panda's blocked exact boundary graph after 83 raw segments map; 17 additional Animate interior edges have no Panda boundary match. | **F candidate** | High within target-fill boundary; stop before implementation. Trace the 17 Animate-only edges before proposing a repair. |
-| 青绫修仙女（四视角） | Animate's derived topology differs after 58 raw segments map; 3 mapped segments land in `interior=false` contours, and 6 Animate interior edges remain unmatched. | **F candidate** | High within target-fill boundary; stop before implementation. Trace the 6 Animate-only edges and preserve the 3 exterior matches as distinct. |
-| 修仙男 | Animate's derived topology differs after 22 raw segments map; 7 matches are in `interior=false` contours, and 10 Animate interior edges remain unmatched. | **F candidate** | Medium-high. Gradient matrix/path differences and executable provenance caveat remain; verify those before a follow-up implementation proposal. |
+| 汉服修仙女 | Panda is blocked with an open graph; Animate has closed contours and 17 unmatched interior edges. Close-marker equivalence is unresolved. | **H — insufficient** | Measurements are stable; causal classification is insufficient. Do not implement. |
+| 青绫修仙女（四视角） | Panda is blocked with an open graph; Animate has closed contours and 6 unmatched interior edges. Removing the close segment increases the degree imbalance. | **H — insufficient** | D, B, and F remain unresolved. Do not implement. |
+| 修仙男 | Panda is blocked with an open graph; Animate has closed contours and 10 unmatched interior edges. The gradient association and close-marker equivalence remain unresolved. | **H — insufficient** | D, B, and F remain unresolved; retain the executable provenance caveat. Do not implement. |
 | #737 historical Shape | Panda renders and all 98 boundary segments map to Animate interior edges; Animate has 20 more interior edges. | **H control** | Keep as historical cross-stage control. The prior published-SWF result is recorded in [the #737 closeout](issue-737-final-swf-crossstage-closeout.md); this issue did not rerun SWF export. |
 | Closed-fill control | Panda renders; all 16 boundary segments map into 16 Animate interior edges. | **H control** | Keep as positive harness control. |
 
-All three failures share the same candidate stage classification, but this evidence does not prove a common repair. The historical control demonstrates that extra Animate interior edges can coexist with a successful Panda render. The next bounded research, if authorized, is to establish provenance for the Animate-only interior edges and the authored-close mapping per Shape. No Open-Fill implementation is authorized by this result.
+The observed differences are: Panda is blocked while Animate contours are closed; each failing Shape has one generated close segment without an exact Animate HalfEdge; and Animate has unmatched interior edges. **No failure cause is proven.** Live alternatives are D (close-path handling), B (fill-side normalization), and F (Animate-derived region semantics). A, C, E, and G are not supported by the recorded counts, style-change evidence, and open graph. Classification H is derived from the recorded measurements and proof flags; fixture role is not an input. No repair contract or production implementation is authorized by this result.
 
 ## Runtime and source provenance
 
@@ -109,7 +125,7 @@ The four source files include the historical/control pair in the same FLA, so th
 - [Receipt composer](../../scripts/research/issue739-compose-differential.cjs)
 - External source copies and original receipts: `D:\PandaStage-Acceptance\issue739-open-fill-differential-20261008`
 
-The committed differential JSON is 5,571,000 bytes with SHA-256 `569898D8CA600BD25958E13DA8C3E38FBF64E8290CE64776F3CBB9F6700BC0F4`. Re-composing it from the same receipts produced the same file hash.
+The corrected differential JSON uses schema `issue739-three-stage-segment-differential/2`. It is 5,749,649 bytes with SHA-256 `E03DF69BE360E1A9F75724E470AAABC4A77CB3A581C87D2F8C72046BA27FF2F3`. Re-composing it from the same receipts produced the identical byte count and SHA-256.
 
 With the external receipts present, regenerate the committed differential with:
 
@@ -122,10 +138,11 @@ The composer rechecks all source and Animate-copy hashes, Panda receipt stabilit
 ## Validation and delivery
 
 - User-requested `pnpm test:integration`: **38 test files, 189 tests passed**. Vite emitted existing empty legacy CSS and large-chunk warnings; no test failed.
-- Research helper syntax checks and deterministic receipt composition: passed.
-- Source and Animate-copy hashes: unchanged and byte-identical to the frozen values.
-- `git diff --cached --check`: passed.
+- `node --check scripts/research/issue739-compose-differential.cjs` and `git diff --check`: passed.
+- Evidence recomposition twice: identical 5,749,456-byte JSON and SHA-256; all frozen source and Animate-copy hash assertions passed.
+- Close-marker and cubic assertions: all three failing Shapes have a traced close marker, zero target-fill cubic subsegments, and zero Panda target-boundary `C` commands; no successful close-marker control exists in the frozen corpus.
+- Full CI and `pnpm verify:project`: not run; this is research-only.
 - Full CI and `pnpm verify:project`: not run; Issue #739 is research-only.
 - PR #677 remains Draft/Open; Issue #739 remains open.
 
-No production code, endpoint coordinates, or source FLA bytes were changed. Completion will be backfilled to parent Issue #733 as requested; the PR stays on the existing branch.
+No production code, endpoint coordinates, or source FLA bytes were changed. The corrected completion receipt will be backfilled to parent Issue #733; the PR stays on the existing branch.

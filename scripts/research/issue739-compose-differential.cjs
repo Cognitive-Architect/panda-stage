@@ -139,12 +139,178 @@ function compareCommandGeometry(command, match) {
       ? 'EXACT_QUADRATIC_CONTROL_POINT'
       : 'ENDPOINTS_MATCH_CONTROL_POINT_NOT_VERIFIED';
   }
-  if (command.type === 'C') return 'CUBIC_CONTROL_SCHEMA_NOT_COMPARED';
+  if (command.type === 'C') throw new Error('Cubic target-boundary segment requires a complete control-geometry comparator before receipt composition');
   return 'UNSUPPORTED_COMMAND_TYPE';
 }
 
 function edgeRepresentative(group) {
   return group.halfEdges[0];
+}
+
+function pointKey(point) {
+  const part = (value) => Object.is(value, -0) ? '0' : String(value);
+  return `${part(point.x)},${part(point.y)}`;
+}
+
+function endpointDegreeReport(segments) {
+  const endpoints = new Map();
+  for (const segment of segments) {
+    const fromKey = pointKey(segment.from);
+    const from = endpoints.get(fromKey) || { point: segment.from, inDegree: 0, outDegree: 0 };
+    from.outDegree += 1;
+    endpoints.set(fromKey, from);
+    const toKey = pointKey(segment.to);
+    const to = endpoints.get(toKey) || { point: segment.to, inDegree: 0, outDegree: 0 };
+    to.inDegree += 1;
+    endpoints.set(toKey, to);
+  }
+  const ordered = [...endpoints.entries()]
+    .map(([key, value]) => ({ key, ...value }))
+    .sort((left, right) => left.point.x - right.point.x || left.point.y - right.point.y);
+  const imbalancedEndpoints = ordered.filter((endpoint) => endpoint.inDegree !== endpoint.outDegree);
+  return {
+    endpointCount: ordered.length,
+    balanced: imbalancedEndpoints.length === 0,
+    imbalancedEndpointCount: imbalancedEndpoints.length,
+    imbalancedEndpoints,
+    endpoints: ordered,
+  };
+}
+
+function contourRoute(contour, from, to) {
+  const halfEdges = contour.halfEdges || [];
+  for (let startIndex = 0; startIndex < halfEdges.length; startIndex += 1) {
+    if (!samePoint(halfEdges[startIndex].from, from)) continue;
+    const route = [];
+    for (let offset = 0; offset < halfEdges.length; offset += 1) {
+      const halfEdge = halfEdges[(startIndex + offset) % halfEdges.length];
+      route.push(halfEdge);
+      if (samePoint(halfEdge.to, to)) {
+        return {
+          direction: 'contour-forward',
+          edgeCount: route.length,
+          halfEdgeIds: route.map((entry) => entry.id),
+          edgeIds: route.map((entry) => entry.edgeId),
+        };
+      }
+    }
+  }
+  return null;
+}
+
+function analyzeAuthoredClose(boundary, segmentCrosswalk, rawEdgeRecords, matchingContours) {
+  const closeSegments = segmentCrosswalk.filter((segment) => segment.originKind === 'authored-close-semantics');
+  const pandaSegments = boundary.boundarySegmentMapping;
+  const graphWithClose = endpointDegreeReport(pandaSegments);
+  const graphWithoutClose = endpointDegreeReport(pandaSegments.filter((segment) => segment.originKind !== 'authored-close-semantics'));
+  const sourceCloseMarkers = closeSegments.map((segment) => {
+    const rawEdge = rawEdgeRecords[segment.sourceEdgeIndex];
+    const sourceMap = segment.rawToPandaSegmentMapEntries[0];
+    assert.ok(rawEdge, `authored close references missing Raw XFL Edge ${segment.sourceEdgeIndex}`);
+    assert.ok(sourceMap, `authored close Edge ${segment.sourceEdgeIndex} has no Panda source map entry`);
+    assert.ok(Number.isInteger(segment.sourceAuthoredCloseMarkerOrdinal), `authored close Edge ${segment.sourceEdgeIndex} has no marker ordinal`);
+    assert.ok(segment.sourceAuthoredCloseMarkerOrdinal >= 1, `authored close Edge ${segment.sourceEdgeIndex} marker ordinal is not 1-based`);
+    assert.ok(segment.sourceAuthoredCloseMarkerOrdinal <= rawEdge.counts.closeMarker, `authored close Edge ${segment.sourceEdgeIndex} marker ordinal exceeds Raw XFL marker count`);
+
+    const currentPoint = sourceMap.sourceFrom;
+    const subpathStart = sourceMap.sourceTo;
+    const sameContour = matchingContours
+      .filter(({ contour }) => contour.halfEdges.some((halfEdge) => samePoint(halfEdge.from, currentPoint) || samePoint(halfEdge.to, currentPoint))
+        && contour.halfEdges.some((halfEdge) => samePoint(halfEdge.from, subpathStart) || samePoint(halfEdge.to, subpathStart)))
+      .map(({ contour, contourIndex }) => ({
+        contourIndex,
+        interior: contour.interior,
+        closedAtStart: contour.closedAtStart,
+        route: contourRoute(contour, currentPoint, subpathStart),
+      }));
+    const directlyMatchedHalfEdges = segment.animateCandidates;
+    const routeFound = sameContour.some((entry) => entry.closedAtStart === true && entry.route !== null);
+    return {
+      sourceEdgeIndex: segment.sourceEdgeIndex,
+      sourceAuthoredCloseMarkerOrdinal: segment.sourceAuthoredCloseMarkerOrdinal,
+      rawCloseMarkerCountInEdge: rawEdge.counts.closeMarker,
+      rawEncodedEdges: rawEdge.encodedEdges,
+      rawEdgeXml: rawEdge.rawXml,
+      sourceDirection: { currentPoint, subpathStart },
+      pandaGeneratedFillOwnedSegment: {
+        from: segment.from,
+        to: segment.to,
+        command: segment.command,
+        fillStyleIndex: segment.fillStyleIndex,
+        sourceFillSide: segment.sourceFillSide,
+        reversed: segment.reversed,
+        sourceFrom: sourceMap.sourceFrom,
+        sourceTo: sourceMap.sourceTo,
+      },
+      animate: {
+        exactCorrespondingHalfEdgeCount: directlyMatchedHalfEdges.length,
+        exactCorrespondingHalfEdges: directlyMatchedHalfEdges,
+        sameClosedContourMembership: sameContour,
+        sameClosedContourMultiHalfEdgeRouteFound: routeFound,
+        conclusion: directlyMatchedHalfEdges.length > 0
+          ? 'EXACT_HALF_EDGE_FOUND'
+          : routeFound
+            ? 'SAME_CLOSED_CONTOUR_ROUTE_FOUND_BUT_AUTHORED_CLOSE_EQUIVALENCE_UNPROVEN'
+            : 'NO_EXACT_HALF_EDGE_OR_SHARED_CLOSED_CONTOUR_ROUTE_OBSERVED',
+      },
+    };
+  });
+
+  const changed = JSON.stringify(graphWithClose.imbalancedEndpoints) !== JSON.stringify(graphWithoutClose.imbalancedEndpoints);
+  return {
+    markerCountInSelectedBoundary: sourceCloseMarkers.length,
+    markers: sourceCloseMarkers,
+    degreeImpactOfRemovingGeneratedCloseSegments: {
+      changesEndpointDegreeImbalance: changed,
+      imbalancedEndpointCountWithClose: graphWithClose.imbalancedEndpointCount,
+      imbalancedEndpointCountWithoutClose: graphWithoutClose.imbalancedEndpointCount,
+      imbalancedEndpointCountDelta: graphWithoutClose.imbalancedEndpointCount - graphWithClose.imbalancedEndpointCount,
+      graphWithClose,
+      graphWithoutClose,
+      conclusion: graphWithoutClose.balanced
+        ? 'Removing the authored-close interpretation balances the observed boundary graph.'
+        : 'Removing the authored-close interpretation does not balance the graph; see endpoint identities/counts for the change.',
+    },
+    status: sourceCloseMarkers.some((marker) => marker.animate.exactCorrespondingHalfEdgeCount === 0)
+      ? 'UNRESOLVED_NO_DIRECT_HALF_EDGE'
+      : 'DIRECT_HALF_EDGE_MAPPING_OBSERVED',
+  };
+}
+
+function classifyFromEvidence(evidence) {
+  if (evidence.pandaRenderStatus === 'RENDERED' && evidence.pandaBoundaryBalanced) {
+    return {
+      classification: 'H',
+      label: 'MIXED / INSUFFICIENT — successful control, no failure to classify',
+      rationale: 'The measured Panda target renders and its boundary graph is balanced; no A–G failure cause is present at this control.',
+    };
+  }
+  if (!evidence.rawToPandaDrawSubsegmentCountMatch) {
+    return { classification: 'A', label: 'SUBSEGMENT_RETENTION_BUG', rationale: 'Raw XFL and Panda decoded draw-subsegment counts differ.' };
+  }
+  if (evidence.midEdgeStyleChangeMismatchProven) {
+    return { classification: 'C', label: 'STYLE_CHANGE_SEGMENTATION_BUG', rationale: 'Raw XFL and Panda mid-edge style-change evidence differs.' };
+  }
+  if (evidence.authoredCloseMisinterpretationProven) {
+    return { classification: 'D', label: 'CLOSE_PATH_HANDLING_BUG', rationale: 'Measured source/Animate evidence proves Panda misinterprets authored-close semantics.' };
+  }
+  if (evidence.fillSideMismatchProven) {
+    return { classification: 'B', label: 'FILL_SIDE_NORMALIZATION_BUG', rationale: 'A source-to-Animate fill ownership or direction mismatch is proven.' };
+  }
+  if (evidence.edgeRunDropOrDuplicateProven) {
+    return { classification: 'E', label: 'EDGE_RUN_DUPLICATE_OR_DROP', rationale: 'A source-identified drop or duplicate before boundary stitching is proven.' };
+  }
+  if (evidence.stitcherOnlyProven) {
+    return { classification: 'G', label: 'STITCHER_ONLY', rationale: 'The source-proven boundary is closed but the stitcher alone rejects it.' };
+  }
+  if (evidence.animateDerivedTopologyProven && evidence.closeSemanticsResolved && evidence.fillSideSemanticsResolved) {
+    return { classification: 'F', label: 'ANIMATE_DERIVED_REGION_SEMANTIC', rationale: 'Raw XFL and Panda materially agree, while resolved evidence identifies Animate-derived topology as the first remaining semantic difference.' };
+  }
+  return {
+    classification: 'H',
+    label: 'MIXED / INSUFFICIENT',
+    rationale: 'The measured evidence leaves competing causes unresolved; do not promote a candidate to A-G.',
+  };
 }
 
 function analyzeTarget(pandaResult, pandaRepeat, animateResult, animateRepeat) {
@@ -265,18 +431,91 @@ function analyzeTarget(pandaResult, pandaRepeat, animateResult, animateRepeat) {
   assert.equal(sourceSha256AtCompose, expectedSourceSha256, `${targetKey}: original FLA hash no longer matches frozen source`);
   assert.equal(animateCopySha256, expectedSourceSha256, `${targetKey}: Animate copy is not byte-identical to the frozen source`);
 
-  const isV0FailingShape = pandaResult.role === 'V0 first-failing Shape';
-  const classification = isV0FailingShape ? 'F' : 'H';
-  const evidenceConfidence = targetKey === 'xiuxian-male-open-fill'
-    ? 'MEDIUM_HIGH_WITH_PROVENANCE_CAVEAT'
-    : isV0FailingShape
-      ? 'HIGH_WITH_PROVENANCE_CAVEAT'
-      : 'HIGH_CONTROL_WITH_PROVENANCE_CAVEAT';
-  const firstDivergence = isV0FailingShape
-    ? 'Adobe Animate derived Contour/HalfEdge region topology: Raw XFL and Panda draw counts agree and Panda boundary segments map by exact endpoints, while the Panda target-fill graph remains open/blocked and Animate exposes closed target-fill contours plus interior edges absent from the Panda boundary.'
-    : targetKey === 'issue737-historical-oracle'
-      ? 'No blocking failure divergence: Panda renders and maps every boundary segment into Animate interior contours; Animate also contains extra interior edges, so this historical control does not isolate the open-fill failure class.'
-      : 'No failure divergence observed: the closed-fill control renders in Panda and all Panda boundary segments map into Animate interior edges.';
+  const rawEdgeRecords = pandaResult.rawXfl.edgeRecords;
+  const authoredCloseAnalysis = analyzeAuthoredClose(boundary, segmentCrosswalk, rawEdgeRecords, matchingContours);
+  const rawTargetFillCubicSubsegmentCount = pandaResult.rawXfl.targetFillRawSubsegmentCountsByType.cubic;
+  const pandaTargetBoundaryCubicSegmentCount = boundary.boundarySegmentMapping
+    .filter((segment) => segment.command?.type === 'C').length;
+  assert.equal(rawTargetFillCubicSubsegmentCount, 0, `${targetKey}: frozen target-fill source includes cubic subsegments; complete cubic comparison is required`);
+  assert.equal(pandaTargetBoundaryCubicSegmentCount, 0, `${targetKey}: frozen Panda target boundary includes a cubic command; complete cubic comparison is required`);
+  const cubicComparison = {
+    required: rawTargetFillCubicSubsegmentCount > 0 || pandaTargetBoundaryCubicSegmentCount > 0,
+    rawTargetFillCubicSubsegmentCount,
+    pandaTargetBoundaryCubicSegmentCount,
+    result: 'NOT_REQUIRED_NO_TARGET_BOUNDARY_CUBIC_PRESENT',
+    proof: 'Raw XFL target FillStyle subsegment counts report zero cubic segments, and every Panda target-boundary command was inspected and none has type C. Whole-Shape non-target-fill cubic draws are outside this target-boundary comparison.',
+  };
+  const pandaRendered = panda.renderAttempt.status === 'RENDERED';
+  const boundaryBalanced = boundary.endpointGraph.balanced;
+  const animateDerivedTopologyCandidateObserved = !pandaRendered
+    && matchingContours.every(({ contour }) => contour.closedAtStart === true)
+    && unmatchedInteriorEdges.length > 0;
+  const classificationEvidence = {
+    pandaRenderStatus: panda.renderAttempt.status,
+    pandaRendered,
+    pandaBoundaryBalanced: boundaryBalanced,
+    rawTargetFillSubsegmentCount: Object.values(pandaResult.rawXfl.targetFillRawSubsegmentCountsByType).reduce((sum, count) => sum + count, 0),
+    pandaTargetFillDrawSubsegmentCount: panda.targetFillDrawSubsegmentCount,
+    rawToPandaDrawSubsegmentCountMatch: panda.rawToPandaDrawSubsegmentCountMatch,
+    rawMidEdgeStyleChangeCount: pandaResult.rawXfl.rawMidEdgeStyleChangeCount,
+    pandaRetainedStyleChangeCount: panda.retainedStyleChangeCount,
+    midEdgeStyleChangeMismatchProven: pandaResult.rawXfl.rawMidEdgeStyleChangeCount !== panda.retainedStyleChangeCount,
+    authoredCloseMarkerCount: authoredCloseAnalysis.markerCountInSelectedBoundary,
+    authoredCloseMisinterpretationProven: false,
+    authoredCloseCausalityProven: false,
+    closeSemanticsResolved: false,
+    authoredCloseCausalityEvidenceLimit: 'Exact direct Animate HalfEdge mapping is absent. Where a route through the same closed contour exists, it is multi-HalfEdge and does not establish equivalence to the source close marker. Removing generated close segments does not close the Panda graph. No successful close-marker control is present in the frozen corpus.',
+    fillSideMismatchProven: false,
+    fillSideSemanticsResolved: false,
+    fillSideEvidenceLimit: 'Endpoint direction observations are not causal proof; the same opposite-direction convention also occurs in the successful controls.',
+    edgeRunDropOrDuplicateProven: false,
+    edgeRunEvidenceLimit: 'Whole-Shape and target-fill subsegment counts match; the current receipt does not prove a source-identified duplicate or drop.',
+    stitcherOnlyProven: false,
+    stitcherEvidenceLimit: 'The measured source-derived target boundary graph is itself open, so the evidence does not isolate a stitcher-only rejection of a proven closed graph.',
+    animateDerivedTopologyCandidateObserved,
+    animateDerivedTopologyProven: false,
+    animateDerivedTopologyEvidenceLimit: 'Closed Animate contours and unmatched interior edges are observed, but the successful #737 control also has 20 unmatched Animate interior edges; extra edges alone do not prove cause.',
+    cubicComparisonRequired: cubicComparison.required,
+  };
+  const classificationResult = classifyFromEvidence(classificationEvidence);
+  const classification = classificationResult.classification;
+  const isFailingObservation = !pandaRendered;
+  const evidenceConfidence = isFailingObservation
+    ? 'HIGH_FOR_MEASUREMENTS_LOW_FOR_CAUSAL_CLASSIFICATION_WITH_PROVENANCE_CAVEAT'
+    : 'HIGH_FOR_SUCCESS_CONTROL_MEASUREMENTS_WITH_PROVENANCE_CAVEAT';
+  const firstDivergence = isFailingObservation
+    ? `Observed: Raw XFL and Panda target-fill subsegment counts match (${classificationEvidence.rawTargetFillSubsegmentCount}); Panda is ${panda.renderAttempt.status} with ${boundary.endpointGraph.imbalancedEndpointCount} imbalanced endpoints, while Animate exposes ${matchingContours.length} closed target-fill contours. The authored-close segment has no exact Animate HalfEdge, so this is not a proven causal divergence.`
+    : 'No failure divergence observed: Panda renders the selected fill boundary. Any extra Animate interior edges are recorded as differences and do not imply a Panda failure.';
+  const observation = {
+    pandaRenderStatus: panda.renderAttempt.status,
+    pandaBoundaryBalanced: boundaryBalanced,
+    pandaBoundarySegmentCount: boundary.boundarySegmentCount,
+    pandaBoundaryImbalancedEndpointCount: boundary.endpointGraph.imbalancedEndpointCount,
+    authoredCloseMarkerAnalysis: authoredCloseAnalysis.status,
+    animateTargetFillContourCount: matchingContours.length,
+    animateTargetFillAllContoursClosed: matchingContours.every(({ contour }) => contour.closedAtStart === true),
+    animateTargetFillInteriorUniqueEdgeCount: uniqueInteriorEdges.size,
+    animateUnmatchedInteriorEdgeCount: unmatchedInteriorEdges.length,
+    animateDerivedTopologyCandidateObserved,
+  };
+  const liveAlternatives = isFailingObservation ? [
+    { classification: 'D', name: 'CLOSE_PATH_HANDLING_BUG', status: 'LIVE_UNRESOLVED', evidence: 'Authored close markers generate selected-boundary segments with no exact Animate HalfEdge; same-contour routes do not establish semantic equivalence.' },
+    { classification: 'B', name: 'FILL_SIDE_NORMALIZATION_BUG', status: 'LIVE_UNRESOLVED', evidence: 'The source-to-Animate ownership and direction semantics are not sufficient to prove or exclude a fill-side cause.' },
+    { classification: 'F', name: 'ANIMATE_DERIVED_REGION_SEMANTIC', status: 'LIVE_UNRESOLVED', evidence: 'Animate closed contours and additional interior edges are observed, but the successful #737 control also has extra interior edges.' },
+  ] : [];
+  const notSupportedClasses = isFailingObservation ? [
+    { classification: 'A', name: 'SUBSEGMENT_RETENTION_BUG', reason: 'Raw XFL and Panda target-fill draw-subsegment counts match.' },
+    { classification: 'C', name: 'STYLE_CHANGE_SEGMENTATION_BUG', reason: 'Raw mid-edge style-change count and Panda retained style-change count are both zero.' },
+    { classification: 'E', name: 'EDGE_RUN_DUPLICATE_OR_DROP', reason: 'No source-identified duplicate or drop is shown by this receipt.' },
+    { classification: 'G', name: 'STITCHER_ONLY', reason: 'The observed target-boundary graph is itself open; a closed source graph rejected only by the stitcher is not established.' },
+  ] : [];
+  const whyInsufficient = isFailingObservation ? [
+    'The authored-close segment has no exact Animate HalfEdge; a multi-edge route through a closed contour does not prove equivalent close semantics.',
+    'Removing the generated close segment leaves the Panda graph open, so the observed correlation does not establish whether close handling caused the failure.',
+    'The frozen successful controls contain no authored close markers, so there is no close-marker positive control.',
+    'The #737 successful control has 20 extra Animate interior edges; extra Animate edges alone do not establish F as the cause.',
+    'Animate executable Authenticode status is HashMismatch, which limits provenance confidence.',
+  ] : [];
 
   return {
     fixtureKey: targetKey,
@@ -284,21 +523,29 @@ function analyzeTarget(pandaResult, pandaRepeat, animateResult, animateRepeat) {
     shapeId: pandaResult.selected.shapeId,
     fillStyleIndex: pandaResult.selected.fillStyleIndex,
     classification,
-    classificationLabel: classification === 'F'
-      ? 'ANIMATE_DERIVED_REGION_SEMANTIC'
-      : 'MIXED_OR_INSUFFICIENT_CONTROL',
-    classificationRationale: classification === 'F'
-      ? 'Raw XFL and Panda agree materially on decoded subsegment retention and raw endpoints; Adobe Animate supplies a closed derived region whose interior topology cannot be reconstructed from the exact Panda boundary graph. Stop before implementation per Issue #739.'
-      : 'This is a non-failing control. H records that the A-G failure causes do not apply to a successful control; the historical control also has additional Animate interior edges without a Panda render failure.',
+    classificationLabel: classificationResult.label,
+    classificationRationale: classificationResult.rationale,
+    classificationEvidence,
+    provenFailureCause: null,
+    candidateAlternatives: liveAlternatives,
+    notSupportedClasses,
+    evidenceSufficiency: isFailingObservation ? 'INSUFFICIENT_TO_DISTINGUISH_D_B_F' : 'SUCCESS_CONTROL_NO_FAILURE_CLASS_TO_ASSIGN',
+    whyInsufficient,
+    observation,
+    repairContract: isFailingObservation
+      ? 'No production repair contract is established. Keep this research-only and do not implement a shared fix from these observations.'
+      : 'No failure repair contract applies to this successful control.',
     evidenceConfidence,
     confidenceLimits: [
       'Animate executable Authenticode status is captured in animateHost below; HashMismatch means this run does not prove an unmodified Adobe-signed binary.',
       'The selected target-fill boundary has a per-segment exact-endpoint map. Non-target-fill draws do not have an Animate crosswalk in this receipt.',
     ],
-    recommendedNextAction: isV0FailingShape
-      ? 'STOP before implementation. If further work is authorized, verify the Animate executable integrity and trace the Animate-only interior edge provenance for this Shape before proposing any shared repair.'
+    recommendedNextAction: isFailingObservation
+      ? 'Keep class H pending maintainer review. If a separate bounded research stage is authorized, first verify Animate executable provenance and obtain an applicable successful authored-close control before proposing a production repair.'
       : 'Keep as a successful control. Do not treat unmatched extra Animate interior edges alone as proof of a Panda failure.',
     firstDivergence,
+    authoredCloseAnalysis,
+    cubicComparison,
     source: {
       originalPath: sourcePath,
       expectedSha256: expectedSourceSha256,
@@ -377,7 +624,7 @@ function analyzeTarget(pandaResult, pandaRepeat, animateResult, animateRepeat) {
       exactEndpointUnmatchedPandaSegments: segmentCrosswalk.filter((segment) => segment.exactEndpointCandidateCount === 0),
       segmentCrosswalk,
       mappingLimitations: [
-        'Exact endpoint pairs do not by themselves prove equivalent curve control geometry. The machine map preserves Panda commands and Animate control points; L/Q observations are annotated, while cubic control schema is not asserted equivalent.',
+        `Target-boundary cubic comparison: ${cubicComparison.result}; raw target-fill cubic count=${rawTargetFillCubicSubsegmentCount}, Panda target-boundary C command count=${pandaTargetBoundaryCubicSegmentCount}.`,
         'Unmatched Animate interior edges are listed explicitly. The crosswalk does not synthesize connector segments or infer missing Panda edges.',
       ],
     },
@@ -445,8 +692,20 @@ function main() {
     animateByKey.get(result.fixtureKey),
     animateRepeatByKey.get(result.fixtureKey),
   ));
+  const renderedControls = results.filter((result) => result.panda.renderAttempt.status === 'RENDERED');
+  const successfulAuthoredCloseMarkerControl = {
+    available: renderedControls.some((result) => result.rawXfl.summary.rawAuthoredCloseMarkerCount > 0),
+    assessedRenderedShapes: renderedControls.map((result) => ({
+      fixtureKey: result.fixtureKey,
+      rawAuthoredCloseMarkerCount: result.rawXfl.summary.rawAuthoredCloseMarkerCount,
+      selectedBoundaryAuthoredCloseMarkerCount: result.authoredCloseAnalysis.markerCountInSelectedBoundary,
+    })),
+    conclusion: renderedControls.some((result) => result.rawXfl.summary.rawAuthoredCloseMarkerCount > 0)
+      ? 'A successful rendered Shape with authored close markers is present in the frozen corpus.'
+      : 'Unavailable: no successful rendered Shape in the exact frozen corpus has an authored close marker. The corpus was not expanded.',
+  };
   const report = {
-    schemaVersion: 'issue739-three-stage-segment-differential/1',
+    schemaVersion: 'issue739-three-stage-segment-differential/2',
     issue: 739,
     purpose: 'Research-only Raw XFL → Panda decode/style-owned boundary → Adobe Animate Contour/HalfEdge differential; implementation stop point before production changes.',
     baseline: pandaRun1.baseline,
@@ -456,6 +715,7 @@ function main() {
       topologyRepair: 'none; no snapping, connector insertion, or inferred edge synthesis',
       productionChanges: 'none',
       controlCount: 'exactly 3 V0 first-failing Shapes + 1 Issue #737 historical control + 1 known-working closed-fill control',
+      classification: 'derived only from recorded evidence inputs and explicit proof flags; fixture role is not an input to classification',
     },
     receipts: {
       pandaRun1: summarizeReceipt(args.pandaRun1),
@@ -482,6 +742,7 @@ function main() {
       && result.source.sha256AtCompose === result.source.expectedSha256
       && result.source.animateCopyByteIdentical),
     allPandaAndAnimateRepeatsStable: results.every((result) => result.repeatability.pandaStable && result.repeatability.animateStable),
+    successfulAuthoredCloseMarkerControl,
     results,
   };
 
