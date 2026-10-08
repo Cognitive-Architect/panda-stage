@@ -141,6 +141,17 @@ All hashes below are the frozen #732 controls. The per-file receipts record iden
 
 **V1 readiness: GO for a focused, bounded linear-stroke research Issue.** Two independent character files hit the same precise production semantic boundary at their strongest compositions. This justifies a research contract to inspect the authored linear stroke semantics and define a bounded support/no-support decision. It does not authorize renderer implementation inside #734. Open-fill implementation remains NO-GO under #693.
 
+## Required output summary
+
+- **Complete character candidates:** 黑袍大师兄 `C734-85AF59526B7E24D43637D3A0`; 红伞蝶衣 `C734-E5AAE552C028340C8C18F0BE`; 蓝白古装男 `C734-60D88285064C3789BE7CBF20`; 修仙大长老 `C734-C593CFAD4DB6C1FA7130EDF4`; 修仙宗门圣女 `C734-95840C6ABA241C1D5805F2F3`. 蓝发修仙女 `C734-5964612EA45272BB4EAF6F8F` is a separate S6 review candidate.
+- **Fragment-only outputs:** 魔修 (hair fragment), 浅蓝修仙女 (21 lower-state fragments), and 修仙男 (frame-5 head/hair accessory fragment). None is promoted to a complete character.
+- **First-blocker families:** A open-fill — 汉服修仙女, 青绫修仙女, 修仙男, plus 红伞蝶衣's blocked Scene alternative; B linear stroke — 魔修 and 浅蓝修仙女; C catalog/root exposure — 蓝发修仙女; D candidate/composition identity — none independently proven; E new family — none.
+- **Multi-view files with coherent authored grouping:** 黑袍大师兄 (3 complete views), 修仙大长老 (2 complete figures), 修仙宗门圣女 (3 complete views).
+- **Current biggest renderer gap:** unsupported open-fill boundaries remain fail-closed under #693; the shared linear-stroke blocker is the next bounded research target.
+- **Current biggest candidate/product gap:** 蓝发修仙女's referenced root is absent from the 64-target catalog while its exposed Scene has unresolved red source shapes.
+- **V1 readiness:** GO — bounded linear-stroke research justified; tracked in #735.
+- **Production changes:** 0.
+
 ## Evidence and delivery receipt
 
 - Production evidence directory: `D:\PandaStage-Acceptance\issue734-character-static-20261008-v1\`
