@@ -139,10 +139,9 @@ The composer rechecks all source and Animate-copy hashes, Panda receipt stabilit
 
 - User-requested `pnpm test:integration`: **38 test files, 189 tests passed**. Vite emitted existing empty legacy CSS and large-chunk warnings; no test failed.
 - `node --check scripts/research/issue739-compose-differential.cjs` and `git diff --check`: passed.
-- Evidence recomposition twice: identical 5,749,456-byte JSON and SHA-256; all frozen source and Animate-copy hash assertions passed.
+- Evidence recomposition twice: identical 5,749,649-byte JSON with SHA-256 `E03DF69BE360E1A9F75724E470AAABC4A77CB3A581C87D2F8C72046BA27FF2F3`; all frozen source and Animate-copy hash assertions passed.
 - Close-marker and cubic assertions: all three failing Shapes have a traced close marker, zero target-fill cubic subsegments, and zero Panda target-boundary `C` commands; no successful close-marker control exists in the frozen corpus.
-- Full CI and `pnpm verify:project`: not run; this is research-only.
 - Full CI and `pnpm verify:project`: not run; Issue #739 is research-only.
-- PR #677 remains Draft/Open; Issue #739 remains open.
+- PR #677 remains Draft/Open; Issues #739 and #740 are ready for maintainer closeout after this documentation cleanup.
 
-No production code, endpoint coordinates, or source FLA bytes were changed. The corrected completion receipt will be backfilled to parent Issue #733; the PR stays on the existing branch.
+No production code, endpoint coordinates, or source FLA bytes were changed. The corrected completion receipt was backfilled to parent Issue #733; the PR stays on the existing branch.
