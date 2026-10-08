@@ -37,6 +37,23 @@ function pathData(path: string | undefined): string {
 }
 
 describe('FLA authored Edge command semantics', () => {
+  it.each([
+    ['#000001.F0', 1.9375 / 20],
+    ['#FFF086.FB', -3961.01953125 / 20],
+    ['#000000.F0', 0.9375 / 20],
+    ['#000001', 1 / 20],
+    ['#FFF086', -3962 / 20],
+  ])('decodes XFL fixed-point coordinate %s in the Main static renderer', async (coordinate, expectedX) => {
+    const rendered = await renderScene(solidFillEdge(
+      `!${coordinate} 0|${coordinate} 40|40 40|40 0/`,
+    ));
+
+    expect(rendered.ok).toBe(true);
+    if (!rendered.ok) return;
+    const path = fillPathTags(rendered.svg)[0];
+    expect(pathData(path)).toContain(`M ${expectedX.toFixed(4)} 0.0000`);
+  });
+
   it('preserves distinct Move commands even when their decoded points differ by less than 0.5 px', async () => {
     const rendered = await renderScene(solidFillEdge(
       '!0 0|80 0|80 80|0 80|0 0/!1 1|81 1|81 81|1 81|1 1/',

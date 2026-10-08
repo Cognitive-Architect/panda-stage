@@ -295,7 +295,8 @@ function decodeCoord(value: string): number {
         fracPart = fracValue / (1 << fracBits);
       }
     }
-    return (signed >= 0 ? signed + fracPart : signed - fracPart) / COORD_SCALE;
+    // The integer part carries the sign; the fractional magnitude is unsigned.
+    return (signed + fracPart) / COORD_SCALE;
   }
   const parsed = parseFloat(value);
   if (Number.isNaN(parsed)) return NaN;
