@@ -19,6 +19,13 @@ const TARGET = Object.freeze({
   shapeId: 'fla-shape-f715af380bb888b2571345e2',
   fillStyleIndex: 1,
 });
+const CONTROL = Object.freeze({
+  shapeId: 'fla-shape-289bd154caee9595b4c5ddef',
+  sourceAddress: 'graphic:补间 1/layer-0-frame-0/0/4/0',
+  shapeBlockSha256: 'ACBC9D4A2B1AA9477F4D631BA052BB195020975679D24333BED8177849B5CFAA',
+  fillStyleIndex: 1,
+  edgeRecordCount: 33,
+});
 
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex').toUpperCase();
@@ -52,6 +59,7 @@ function instrumentAdapter() {
   const source = fs.readFileSync(modulePath, 'utf8');
   const needle = 'context.state.shapeBlocks.set(shapeId, child.xml);';
   const replacement = [
+    'global.__issue736ShapeAddresses.push({ shapeId, scope: context.scope, path, sourceAddress: `${context.scope}/${path}` });',
     `if (shapeId === '${TARGET.shapeId}') global.__issue736ShapeAddress = {`,
     '  shapeId, scope: context.scope, path, sourceAddress: `${context.scope}/${path}`,',
     '};',
@@ -72,11 +80,24 @@ function instrumentBuilder() {
     '            commands: run.commands,',
     '        }));',
     '    }',
+    `    if (shapeId === '${CONTROL.shapeId}') {`,
+    '        global.__issue736ControlStyleRuns = representation.styleRuns.map(run => ({',
+    '            edgeIndex: run.edgeIndex, commandStart: run.commandStart, commandEnd: run.commandEnd,',
+    '            fillStyle0: run.fillStyle0, fillStyle1: run.fillStyle1, strokeStyle: run.strokeStyle,',
+    '            commands: run.commands,',
+    '        }));',
+    '    }',
   ].join('\n');
   const captureBoundary = [
     'function stitchFillBoundary(segments, shapeId, fillStyleIndex) {',
     `    if (shapeId === '${TARGET.shapeId}' && fillStyleIndex === ${TARGET.fillStyleIndex}) {`,
     '        global.__issue736BoundarySegments = segments.map(segment => ({',
+    '            from: segment.from, to: segment.to, command: segment.command, order: segment.order,',
+    '        }));',
+    '    }',
+    `    if (shapeId === '${CONTROL.shapeId}') {`,
+    '        global.__issue736ControlBoundariesByStyle = global.__issue736ControlBoundariesByStyle || {};',
+    '        global.__issue736ControlBoundariesByStyle[fillStyleIndex] = segments.map(segment => ({',
     '            from: segment.from, to: segment.to, command: segment.command, order: segment.order,',
     '        }));',
     '    }',
@@ -212,6 +233,7 @@ async function main() {
   const libraryXmlEntries = await Promise.all(libraryNames.map(async name => ({ name, xml: await zip.file(name).async('string') })));
 
   delete global.__issue736ShapeAddress;
+  global.__issue736ShapeAddresses = [];
   const adapter = instrumentAdapter();
   const adapted = adapter.adaptFlaXflDisplaySource(docXml, libraryXmlEntries);
   if (!adapted.ok) throw new Error(`XFL adapter failed: ${adapted.message}`);
@@ -234,6 +256,32 @@ async function main() {
     : [];
   if (edgeRecords.length !== 160) throw new Error(`Shape Edge count changed: ${edgeRecords.length}`);
 
+  const controlAddressMatches = global.__issue736ShapeAddresses.filter(address =>
+    address.shapeId === CONTROL.shapeId && address.sourceAddress === CONTROL.sourceAddress);
+  if (controlAddressMatches.length !== 1) {
+    throw new Error(`Frozen naturally closed control address count changed: ${controlAddressMatches.length}`);
+  }
+  const controlShapeXml = adapted.source.shapeBlocks.get(CONTROL.shapeId);
+  if (!controlShapeXml || sha256(Buffer.from(controlShapeXml, 'utf8')) !== CONTROL.shapeBlockSha256) {
+    throw new Error('Frozen naturally closed control shape identity/hash changed');
+  }
+  const controlShapeChildren = adapter.getFlaXflDirectChildren(controlShapeXml, 'DOMShape');
+  const controlFillsBlock = controlShapeChildren.find(child => child.name === 'fills');
+  const controlFillStyles = controlFillsBlock
+    ? adapter.getFlaXflDirectChildren(controlFillsBlock.xml, 'fills').filter(child => child.name === 'FillStyle')
+    : [];
+  const controlFill = controlFillStyles.find(style => Number(style.attributes.index || 1) === CONTROL.fillStyleIndex);
+  if (!controlFill) throw new Error('Frozen naturally closed control FillStyle 1 is missing');
+  const controlEdgesBlock = controlShapeChildren.find(child => child.name === 'edges');
+  const controlEdgeRecords = controlEdgesBlock
+    ? adapter.getFlaXflDirectChildren(controlEdgesBlock.xml, 'edges')
+      .filter(child => child.name === 'Edge')
+      .map((edge, edgeIndex) => ({ ...edge, edgeIndex }))
+    : [];
+  if (controlEdgeRecords.length !== CONTROL.edgeRecordCount) {
+    throw new Error(`Frozen naturally closed control Edge count changed: ${controlEdgeRecords.length}`);
+  }
+
   delete global.__issue736StyleRuns;
   delete global.__issue736BoundarySegments;
   delete global.__issue736AllFillBoundaries;
@@ -247,6 +295,35 @@ async function main() {
   const styleRuns = global.__issue736StyleRuns;
   const boundarySegments = global.__issue736BoundarySegments;
   if (!styleRuns || !boundarySegments) throw new Error('Current Panda interpretation capture is incomplete');
+
+  delete global.__issue736ControlStyleRuns;
+  delete global.__issue736ControlBoundariesByStyle;
+  const controlDisplayList = {
+    kind: 'graphic',
+    sourceName: `issue736-control:${CONTROL.shapeId}`,
+    frameIndex: 0,
+    layers: [{
+      name: 'issue736-control',
+      children: [{
+        kind: 'shape',
+        shapeId: CONTROL.shapeId,
+        worldTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+      }],
+    }],
+    resolvedNodeCount: 1,
+  };
+  const controlRendered = await builder.buildSvgForResolvedDisplayList({
+    displayList: controlDisplayList,
+    renderTargetId: `issue736-control:${CONTROL.shapeId}`,
+    stageWidth: adapted.source.stageWidth,
+    stageHeight: adapted.source.stageHeight,
+    shapeBlocks: adapted.source.shapeBlocks,
+    resolveBitmapMedia: () => ({ ok: false, reason: 'not used by a direct Shape control' }),
+  });
+  if (!controlRendered.ok) throw new Error(`Naturally closed control Shape failed the Panda render: ${controlRendered.message}`);
+  const controlStyleRuns = global.__issue736ControlStyleRuns;
+  const controlBoundarySegments = global.__issue736ControlBoundariesByStyle?.[CONTROL.fillStyleIndex];
+  if (!controlStyleRuns || !controlBoundarySegments) throw new Error('Naturally closed control interpretation capture is incomplete');
 
   const fillEdges = edgeRecords.filter(edge =>
     Number(edge.attributes.fillStyle0 || 0) === TARGET.fillStyleIndex ||
@@ -308,6 +385,46 @@ async function main() {
   const targetBoundaryOrderPreserved = targetRunOrderPreserved &&
     [...new Set(targetStyleRuns.map(run => run.edgeIndex))].every((edgeIndex, index, edgeIndices) =>
       index === 0 || edgeIndices[index - 1] <= edgeIndex);
+
+  const controlFillEdges = controlEdgeRecords.filter(edge =>
+    Number(edge.attributes.fillStyle0 || 0) === CONTROL.fillStyleIndex ||
+    Number(edge.attributes.fillStyle1 || 0) === CONTROL.fillStyleIndex);
+  const controlSubsegmentAudit = controlFillEdges.map(edge => {
+    const currentRuns = controlStyleRuns.filter(run => run.edgeIndex === edge.edgeIndex);
+    const decoded = currentRuns.reduce((counts, run) => {
+      for (const command of run.commands) counts[command.type] = (counts[command.type] || 0) + 1;
+      return counts;
+    }, {});
+    const markers = countMarkers(edge.attributes.edges || '');
+    const cubicMarkers = countMarkers(edge.attributes.cubics || '');
+    const rawGeometry = {
+      line: markers.line + cubicMarkers.line,
+      quadratic: markers.quadratic + cubicMarkers.quadratic,
+      cubic: markers.cubicOpen + cubicMarkers.cubicOpen,
+    };
+    const decodedGeometry = {
+      line: decoded.L || 0,
+      quadratic: decoded.Q || 0,
+      cubic: decoded.C || 0,
+    };
+    return {
+      edgeIndex: edge.edgeIndex,
+      rawGeometrySubsegmentCounts: rawGeometry,
+      currentPandaDecodedGeometryCounts: decodedGeometry,
+      exactDrawSubsegmentCountsMatch: Object.keys(rawGeometry).every(key => rawGeometry[key] === decodedGeometry[key]),
+    };
+  });
+  const controlFillGraph = graphReport(controlBoundarySegments);
+  const controlSourceOrderCycles = sourceOrderCycleDecomposition(controlBoundarySegments);
+  if (!controlFillGraph.balanced || controlFillGraph.imbalancedEndpoints.length !== 0 ||
+      !controlFillGraph.endpoints.every(endpoint => endpoint.inDegree === 1 && endpoint.outDegree === 1)) {
+    throw new Error('Naturally closed control fill boundary is no longer exactly balanced');
+  }
+  if (!controlSourceOrderCycles.ok || controlFillGraph.endpointCount === 0) {
+    throw new Error('Naturally closed control no longer decomposes into exact source-order cycles');
+  }
+  const controlSubsegmentsPreserved = controlSubsegmentAudit.every(edge => edge.exactDrawSubsegmentCountsMatch);
+  if (!controlSubsegmentsPreserved) throw new Error('Naturally closed control decoded draw subsegments do not match raw XFL markers');
   const sourceShaAfter = sha256(fs.readFileSync(sourcePath));
   if (sourceShaAfter !== sourceShaBefore) throw new Error('Frozen source bytes changed during read-only inspection');
 
@@ -413,9 +530,61 @@ async function main() {
     },
     adobeAnimateJsfl: { status: 'NOT_RUN', reason: 'Adobe Animate is not installed or discoverable in the current Windows environment' },
     adobePublishedSwf: { status: 'NOT_RUN', reason: 'Publishing the frozen FLA through Adobe Animate is unavailable in the current Windows environment' },
-    noOpControl: { status: 'NOT_RUN', reason: 'The same Animate JSFL/SWF Oracle path is unavailable' },
+    noOpControl: {
+      status: 'XFL_AND_PANDA_CLOSED_CONTROL_CAPTURED_AWAITING_ADOBE_ORACLE',
+      purpose: 'Known naturally closed same-source control for the selected #693 failure',
+      selected: {
+        sourceAddress: CONTROL.sourceAddress,
+        shapeId: CONTROL.shapeId,
+        shapeBlockSha256: CONTROL.shapeBlockSha256,
+        fillStyleIndex: CONTROL.fillStyleIndex,
+        fillStyleXml: controlFill.xml,
+        fullShapeEdgeCount: controlEdgeRecords.length,
+        targetFillEdgeRecordCount: controlFillEdges.length,
+      },
+      rawXfl: {
+        shapeXml: controlShapeXml,
+        edgeRecords: controlEdgeRecords.map(edge => ({
+          edgeIndex: edge.edgeIndex,
+          fillStyle0: edge.attributes.fillStyle0 === undefined ? null : Number(edge.attributes.fillStyle0),
+          fillStyle1: edge.attributes.fillStyle1 === undefined ? null : Number(edge.attributes.fillStyle1),
+          strokeStyle: edge.attributes.strokeStyle === undefined ? null : Number(edge.attributes.strokeStyle),
+          edges: edge.attributes.edges || null,
+          cubics: edge.attributes.cubics || null,
+          rawXml: edge.xml,
+        })),
+      },
+      pandaCurrentInterpretation: {
+        renderOk: controlRendered.ok,
+        svgSha256: sha256(Buffer.from(controlRendered.svg, 'utf8')),
+        decodedStyleRuns: controlEdgeRecords.map(edge => plainEdge(edge, controlStyleRuns)),
+        fillEdgeReferences: {
+          fillStyle0: controlFillEdges.filter(edge => Number(edge.attributes.fillStyle0 || 0) === CONTROL.fillStyleIndex).length,
+          fillStyle1: controlFillEdges.filter(edge => Number(edge.attributes.fillStyle1 || 0) === CONTROL.fillStyleIndex).length,
+          bothSidesSameFill: controlFillEdges.filter(edge =>
+            Number(edge.attributes.fillStyle0 || 0) === CONTROL.fillStyleIndex &&
+            Number(edge.attributes.fillStyle1 || 0) === CONTROL.fillStyleIndex).length,
+        },
+        interpretationAudit: {
+          allFillDrawSubsegmentCountsMatch: controlSubsegmentsPreserved,
+          rawFillDrawSubsegmentCount: controlSubsegmentAudit.reduce((sum, edge) =>
+            sum + edge.rawGeometrySubsegmentCounts.line + edge.rawGeometrySubsegmentCounts.quadratic + edge.rawGeometrySubsegmentCounts.cubic, 0),
+          decodedFillDrawSubsegmentCount: controlSubsegmentAudit.reduce((sum, edge) =>
+            sum + edge.currentPandaDecodedGeometryCounts.line + edge.currentPandaDecodedGeometryCounts.quadratic + edge.currentPandaDecodedGeometryCounts.cubic, 0),
+          fillSubsegments: controlSubsegmentAudit,
+          exactEndpointGraphIsOneInOneOut: controlFillGraph.endpoints.every(endpoint =>
+            endpoint.inDegree === 1 && endpoint.outDegree === 1),
+          noSyntheticClosureOrEndpointToleranceUsed: true,
+        },
+        fillBoundarySegments: controlBoundarySegments,
+        endpointGraph: controlFillGraph,
+        exactSourceOrderCycleDecomposition: controlSourceOrderCycles,
+      },
+      adobeAnimateJsfl: { status: 'NOT_RUN', reason: 'Adobe Animate is not installed or discoverable in the current Windows environment' },
+      adobePublishedSwf: { status: 'NOT_RUN', reason: 'Publishing the frozen FLA through Adobe Animate is unavailable in the current Windows environment' },
+    },
     conclusion: {
-      status: 'PARTIAL_XFL_AND_PANDA_EVIDENCE_ONLY',
+      status: 'XFL_AND_PANDA_WITH_CLOSED_CONTROL_CAPTURED_ADOBE_ORACLE_PENDING',
       finalAtoDClassification: null,
       productionImplementationGate: 'REMAIN_NO_GO_PENDING_ADOBE_ORACLE',
     },
@@ -446,6 +615,17 @@ async function main() {
     balanced: fillGraph.balanced,
     cycles: sourceOrderCycles.cycles.length,
     cycleDecompositionOk: sourceOrderCycles.ok,
+    control: {
+      sourceAddress: CONTROL.sourceAddress,
+      shapeId: CONTROL.shapeId,
+      edgeRecordCount: controlEdgeRecords.length,
+      fillBoundarySegmentCount: controlBoundarySegments.length,
+      endpointCount: controlFillGraph.endpointCount,
+      allEndpointsOneInOneOut: controlFillGraph.endpoints.every(endpoint => endpoint.inDegree === 1 && endpoint.outDegree === 1),
+      cycles: controlSourceOrderCycles.cycles.length,
+      subsegmentsPreserved: controlSubsegmentsPreserved,
+      renderOk: controlRendered.ok,
+    },
     svgSha256: receipt.pandaCurrentInterpretation.currentRender.svgSha256,
     outputPath: args.out ? path.resolve(args.out) : null,
   }, null, 2) + '\n');

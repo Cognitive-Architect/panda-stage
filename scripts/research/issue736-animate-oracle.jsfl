@@ -352,6 +352,24 @@
             frameIndex: TARGET_FRAME_INDEX,
             locatorStatus: "NOT_RUN"
         },
+        xflMappingHints: {
+            status: "HINTS_ONLY_REQUIRES_GEOMETRY_AND_TOPOLOGY_MAPPING",
+            failureTarget: {
+                sourceAddress: "graphic:补间 1/layer-0-frame-0/0/0/0",
+                shapeId: "fla-shape-f715af380bb888b2571345e2",
+                fillStyleIndex: 1,
+                fullShapeEdgeRecordCount: 160,
+                targetFillEdgeRecordCount: 14
+            },
+            naturallyClosedControl: {
+                sourceAddress: "graphic:补间 1/layer-0-frame-0/0/4/0",
+                shapeId: "fla-shape-289bd154caee9595b4c5ddef",
+                shapeBlockSha256: "ACBC9D4A2B1AA9477F4D631BA052BB195020975679D24333BED8177849B5CFAA",
+                fillStyleIndex: 1,
+                fullShapeEdgeRecordCount: 33,
+                targetFillEdgeRecordCount: 3
+            }
+        },
         animateShapes: { status: "NOT_RUN", targetScopeShapes: [], targetCandidates: [], controlCandidates: [] },
         publishedSwf: { status: "NOT_RUN", outputUri: null, exportedShapeRecordsParsed: false }
     };
