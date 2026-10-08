@@ -371,7 +371,14 @@
             }
         },
         animateShapes: { status: "NOT_RUN", targetScopeShapes: [], targetCandidates: [], controlCandidates: [] },
-        publishedSwf: { status: "NOT_RUN", outputUri: null, exportedShapeRecordsParsed: false }
+        publishedSwf: {
+            status: "NOT_RUN",
+            outputUri: null,
+            exportedShapeRecordsParsed: false,
+            shapeRecordParserScript: "scripts/research/issue736-swf-oracle.cjs",
+            shapeRecordDumpStatus: "NOT_RUN",
+            shapeRecordDumpCommandTemplate: "node scripts/research/issue736-swf-oracle.cjs --swf <published-swf-path> --receipt <xfl-panda-receipt.json> --out <swf-receipt.json>"
+        }
     };
 
     try {
