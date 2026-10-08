@@ -32,6 +32,7 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     if (value === '--root') args.root = argv[++index];
+    else if (value === '--preflight') args.mode = 'preflight';
     else if (value === '--freeze') args.mode = 'freeze';
     else if (value === '--analyze') args.mode = 'analyze';
     else if (value === '--lock') args.lock = argv[++index];
@@ -1083,11 +1084,23 @@ async function analyze(args, root, manifestPath, lockPath) {
   process.stdout.write(`Decision: D=${experimentAssessment.closePath.decision}; B=${experimentAssessment.fillSide.decision}; F=${experimentAssessment.fCandidate.evaluated ? 'EVALUATED' : 'DEFERRED'}\n`);
 }
 
+function preflight() {
+  const adapter = instrumentAdapter();
+  const builder = instrumentBuilder();
+  assert.equal(typeof adapter.adaptFlaXflDisplaySource, 'function', 'Production XFL adapter export is missing');
+  assert.equal(typeof adapter.getFlaXflDirectChildren, 'function', 'Production XFL XML reader export is missing');
+  assert.equal(typeof builder.buildSvgForResolvedDisplayList, 'function', 'Production fill reconstruction entry point is missing');
+  const gitHead = require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
+  process.stdout.write(`Issue #741 production-seam preflight passed at ${gitHead}\n`);
+  process.stdout.write('Instrumented: adaptFlaXflDisplaySource, getFlaXflDirectChildren, reconstructFills, stitchFillBoundary\n');
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
     process.stdout.write([
       'Usage:',
+      '  node scripts/research/issue741-xfl-panda-differential.cjs --preflight',
       '  node scripts/research/issue741-xfl-panda-differential.cjs --freeze [--root <external-dir>] [--manifest <path>] [--lock <path>]',
       '  node scripts/research/issue741-xfl-panda-differential.cjs --analyze --lock <path> --out <external-json> [--root <external-dir>] [--manifest <path>] [--animate-run <receipt-json>]',
       '',
@@ -1095,7 +1108,11 @@ async function main() {
     ].join('\n') + '\n');
     return;
   }
-  assert.ok(args.mode === 'freeze' || args.mode === 'analyze', 'choose exactly one of --freeze or --analyze');
+  if (args.mode === 'preflight') {
+    preflight();
+    return;
+  }
+  assert.ok(args.mode === 'freeze' || args.mode === 'analyze', 'choose exactly one of --preflight, --freeze or --analyze');
   const root = path.resolve(args.root);
   assertOutsideRepo(root, 'Fixture root');
   const manifestPath = path.resolve(args.manifest || path.join(root, 'authoring-manifest.json'));
