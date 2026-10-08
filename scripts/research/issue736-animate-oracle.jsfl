@@ -214,9 +214,20 @@
         var edges = [];
         var vertices = [];
         var contours = [];
+        var cubicSegments = [];
+        var seenCubicSegmentIndexes = {};
 
         for (var edgeIndex = 0; edgeIndex < edgeObjects.length; edgeIndex += 1) {
-            edges.push(edgeGeometry(edgeObjects[edgeIndex]));
+            var edgeObject = edgeObjects[edgeIndex];
+            edges.push(edgeGeometry(edgeObject));
+            var cubicSegmentIndex = read(edgeObject, "cubicSegmentIndex");
+            if (cubicSegmentIndex !== null && !seenCubicSegmentIndexes["index-" + cubicSegmentIndex]) {
+                seenCubicSegmentIndexes["index-" + cubicSegmentIndex] = true;
+                cubicSegments.push({
+                    index: cubicSegmentIndex,
+                    points: asPlainArray(call(shape, "getCubicSegmentPoints", [cubicSegmentIndex]))
+                });
+            }
         }
         for (var vertexIndex = 0; vertexIndex < vertexObjects.length; vertexIndex += 1) {
             var vertex = vertexObjects[vertexIndex];
@@ -260,6 +271,11 @@
                 elementType: read(shape, "elementType"),
                 description: read(shape, "description"),
                 isGroup: isGroup,
+                matrix: matrix(read(shape, "matrix")),
+                x: read(shape, "x"),
+                y: read(shape, "y"),
+                left: read(shape, "left"),
+                top: read(shape, "top"),
                 isDrawingObject: read(shape, "isDrawingObject"),
                 isFloating: read(shape, "isFloating"),
                 numCubicSegments: read(shape, "numCubicSegments"),
@@ -268,12 +284,85 @@
                 contourCount: contourObjects.length,
                 edges: edges,
                 vertices: vertices,
-                contours: contours
+                contours: contours,
+                cubicSegments: cubicSegments
             },
             targetCandidate: libraryName === TARGET_LIBRARY_ITEM &&
                 layerIndex === TARGET_LAYER_INDEX &&
                 startFrame === TARGET_FRAME_INDEX &&
                 isGroup === false
+        };
+    }
+
+    function inventoryElement(element, timeline, layer, frame, parent, memberPath, depth, inventory, capturedShapes) {
+        if (!element || depth > 24 || inventory.length >= 1000) return;
+        var elementType = read(element, "elementType");
+        var members = read(element, "members") || [];
+        var record = {
+            memberPath: memberPath,
+            elementType: elementType,
+            name: read(element, "name"),
+            isGroup: read(element, "isGroup"),
+            memberCount: members.length,
+            matrix: matrix(read(element, "matrix")),
+            edgeCount: (read(element, "edges") || []).length,
+            vertexCount: (read(element, "vertices") || []).length,
+            contourCount: (read(element, "contours") || []).length
+        };
+        inventory.push(record);
+        if (elementType === "shape" && (memberPath === "0/0" || memberPath === "0/4")) {
+            try {
+                var captured = captureShape(element, {
+                    timeline: timeline,
+                    layer: layer,
+                    keyframe: frame,
+                    parent: parent
+                }, capturedShapes.length);
+                captured.memberPath = memberPath;
+                capturedShapes.push(captured);
+            } catch (shapeCaptureError) {
+                record.shapeCaptureError = asString(shapeCaptureError);
+            }
+        }
+        for (var memberIndex = 0; memberIndex < members.length; memberIndex += 1) {
+            inventoryElement(
+                members[memberIndex], timeline, layer, frame, element,
+                memberPath + "/" + memberIndex, depth + 1, inventory, capturedShapes
+            );
+        }
+    }
+
+    function captureLibraryTimeline(item) {
+        var timeline = read(item, "timeline");
+        var layers = read(timeline, "layers") || [];
+        var inventory = [];
+        var shapes = [];
+        var frames = [];
+        for (var layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
+            var layer = layers[layerIndex];
+            var layerFrames = read(layer, "frames") || [];
+            for (var frameIndex = 0; frameIndex < layerFrames.length; frameIndex += 1) {
+                var frame = layerFrames[frameIndex];
+                var elements = read(frame, "elements") || [];
+                frames.push({
+                    layerIndex: layerIndex,
+                    frameArrayIndex: frameIndex,
+                    startFrame: read(frame, "startFrame"),
+                    duration: read(frame, "duration"),
+                    elementCount: elements.length
+                });
+                for (var elementIndex = 0; elementIndex < elements.length; elementIndex += 1) {
+                    inventoryElement(elements[elementIndex], timeline, layer, frame, null, String(elementIndex), 0, inventory, shapes);
+                }
+            }
+        }
+        return {
+            timelineName: read(timeline, "name"),
+            frameCount: read(timeline, "frameCount"),
+            layerCount: layers.length,
+            frames: frames,
+            elementInventory: inventory,
+            shapes: shapes
         };
     }
 
@@ -327,6 +416,27 @@
     }
 
     var doc = fl.getDocumentDOM();
+    var targetLibraryItemInventory = [];
+    if (doc) {
+        var library = read(doc, "library");
+        var libraryItems = read(library, "items") || [];
+        for (var libraryIndex = 0; libraryIndex < libraryItems.length; libraryIndex += 1) {
+            var libraryItem = libraryItems[libraryIndex];
+            var libraryItemName = asString(read(libraryItem, "name"));
+            if (libraryItemName === null || libraryItemName.indexOf(TARGET_LIBRARY_ITEM) === -1) continue;
+            var itemTimeline = read(libraryItem, "timeline");
+            var itemLayers = read(itemTimeline, "layers") || [];
+            targetLibraryItemInventory.push({
+                libraryIndex: libraryIndex,
+                name: libraryItemName,
+                itemType: read(libraryItem, "itemType"),
+                symbolType: read(libraryItem, "symbolType"),
+                timelineName: read(itemTimeline, "name"),
+                frameCount: read(itemTimeline, "frameCount"),
+                layerCount: itemLayers.length
+            });
+        }
+    }
     var jsonUri = null;
     var swfUri = null;
     var output = {
@@ -352,6 +462,9 @@
             frameIndex: TARGET_FRAME_INDEX,
             locatorStatus: "NOT_RUN"
         },
+        targetLibraryItemInventory: targetLibraryItemInventory,
+        targetLibraryTimelineCapture: null,
+        targetSymbolSwf: { status: "NOT_RUN", outputUri: null },
         xflMappingHints: {
             status: "HINTS_ONLY_REQUIRES_GEOMETRY_AND_TOPOLOGY_MAPPING",
             failureTarget: {
@@ -386,15 +499,52 @@
         if (!output.source.expectedPathMatches) throw new Error("Active document path does not match the frozen Issue #736 FLA");
         if (!FLfile.exists(OUTPUT_DIR_URI)) FLfile.createFolder(OUTPUT_DIR_URI);
 
+        for (var targetItemIndex = 0; targetItemIndex < libraryItems.length; targetItemIndex += 1) {
+            if (asString(read(libraryItems[targetItemIndex], "name")) === TARGET_LIBRARY_ITEM) {
+                try {
+                    output.targetLibraryTimelineCapture = captureLibraryTimeline(libraryItems[targetItemIndex]);
+                } catch (targetCaptureError) {
+                    output.targetLibraryTimelineCapture = {
+                        status: "CAPTURE_FAILED",
+                        error: asString(targetCaptureError)
+                    };
+                }
+                var targetSymbolSwfUri = uniqueOutputUri("issue736-target-symbol", ".swf");
+                output.targetSymbolSwf.outputUri = targetSymbolSwfUri;
+                try {
+                    libraryItems[targetItemIndex].exportSWF(targetSymbolSwfUri);
+                    output.targetSymbolSwf.status = FLfile.exists(targetSymbolSwfUri) ? "EXPORTED" : "EXPORT_REQUESTED_FILE_NOT_FOUND";
+                    output.targetSymbolSwf.sizeBytes = FLfile.exists(targetSymbolSwfUri) ? FLfile.getSize(targetSymbolSwfUri) : null;
+                } catch (symbolExportError) {
+                    output.targetSymbolSwf.status = "EXPORT_FAILED";
+                    output.targetSymbolSwf.error = asString(symbolExportError);
+                }
+                break;
+            }
+        }
+
         var searchResults = fl.findObjectInDocByType("shape", doc);
         var scopedShapes = [];
         var targetCandidates = [];
         var controlCandidates = [];
+        var scopeInventory = [];
         for (var resultIndex = 0; resultIndex < searchResults.length; resultIndex += 1) {
             var searchResult = searchResults[resultIndex];
             var shape = read(searchResult, "obj");
             if (!shape) continue;
             var captured = captureShape(shape, searchResult, resultIndex);
+            scopeInventory.push({
+                searchResultIndex: resultIndex,
+                scope: captured.scope,
+                targetCandidate: captured.targetCandidate,
+                shape: {
+                    elementType: captured.shape.elementType,
+                    isGroup: captured.shape.isGroup,
+                    edgeCount: captured.shape.edgeCount,
+                    vertexCount: captured.shape.vertexCount,
+                    contourCount: captured.shape.contourCount
+                }
+            });
             if (captured.scope.libraryItemName !== TARGET_LIBRARY_ITEM) continue;
             scopedShapes.push(captured);
             if (captured.targetCandidate) targetCandidates.push(captured);
@@ -404,6 +554,7 @@
         output.animateShapes = {
             status: "CAPTURED",
             searchResultCount: searchResults.length,
+            scopeInventory: scopeInventory,
             targetScopeShapeCount: scopedShapes.length,
             targetScopeShapes: scopedShapes,
             targetCandidates: targetCandidates,

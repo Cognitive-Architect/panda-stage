@@ -499,7 +499,10 @@ function decodeRawXflCoordinate(token) {
     }
     let fraction = 0;
     if (rawFraction) fraction = Number(BigInt(`0x${rawFraction}`)) / (2 ** (rawFraction.length * 4));
-    const decoded = Number(integer) + (integer < 0n ? -fraction : fraction);
+    // The hexadecimal fractional field remains a positive fixed-point fraction
+    // when the signed integer field is negative; subtracting it decodes one
+    // small real-corpus control point incorrectly.
+    const decoded = Number(integer) + fraction;
     if (!Number.isFinite(decoded)) throw new Error(`Non-finite hexadecimal XFL coordinate ${token}`);
     return decoded;
   }
