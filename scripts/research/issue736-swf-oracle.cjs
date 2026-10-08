@@ -455,6 +455,254 @@ function geometryPoint(point) {
   return { x: point.x * 20, y: point.y * 20 };
 }
 
+function tokenizeRawXfl(text) {
+  const tokens = [];
+  let current = '';
+  const flush = () => {
+    if (current.trim()) tokens.push(current.trim());
+    current = '';
+  };
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    const next = text[index + 1];
+    if ((character === '(' || character === ')') && next === ';') {
+      flush();
+      tokens.push(`${character};`);
+      index += 1;
+    } else if (character === '(' || character === ')' || character === ';') {
+      flush();
+      tokens.push(character);
+    } else if ('!|[/SqQ'.includes(character)) {
+      flush();
+      tokens.push(character);
+    } else if (character === ',' || /\s/u.test(character)) {
+      flush();
+    } else {
+      current += character;
+    }
+  }
+  flush();
+  return tokens;
+}
+
+function decodeRawXflCoordinate(token) {
+  if (token.startsWith('#')) {
+    const [rawInteger, rawFraction = ''] = token.slice(1).split('.');
+    const integerHex = rawInteger || '0';
+    if (!/^[0-9a-f]+$/iu.test(integerHex) || (rawFraction && !/^[0-9a-f]+$/iu.test(rawFraction))) {
+      throw new Error(`Malformed hexadecimal XFL coordinate ${token}`);
+    }
+    const bitWidth = integerHex.length * 4;
+    let integer = BigInt(`0x${integerHex}`);
+    if (integerHex.length >= 6 && integer >= (1n << BigInt(bitWidth - 1))) {
+      integer -= 1n << BigInt(bitWidth);
+    }
+    let fraction = 0;
+    if (rawFraction) fraction = Number(BigInt(`0x${rawFraction}`)) / (2 ** (rawFraction.length * 4));
+    const decoded = Number(integer) + (integer < 0n ? -fraction : fraction);
+    if (!Number.isFinite(decoded)) throw new Error(`Non-finite hexadecimal XFL coordinate ${token}`);
+    return decoded;
+  }
+  const decoded = Number.parseFloat(token);
+  if (!Number.isFinite(decoded)) throw new Error(`Malformed XFL coordinate ${token}`);
+  return decoded;
+}
+
+function decodeRawXflEdgeText(text, sourceEdgeIndex, style0, style1, sourceAttribute) {
+  const tokens = tokenizeRawXfl(text);
+  const segments = [];
+  let current = null;
+  let subpathStart = null;
+  let explicitCloseCount = 0;
+  for (let index = 0; index < tokens.length;) {
+    const token = tokens[index];
+    if (token === '!') {
+      if (index + 2 >= tokens.length) throw new Error(`Edge ${sourceEdgeIndex} has a truncated XFL move command`);
+      current = { x: decodeRawXflCoordinate(tokens[index + 1]), y: decodeRawXflCoordinate(tokens[index + 2]) };
+      subpathStart = current;
+      index += 3;
+      continue;
+    }
+    if (token === '|') {
+      if (index + 2 >= tokens.length || !current) throw new Error(`Edge ${sourceEdgeIndex} has a line without a complete current point`);
+      const to = { x: decodeRawXflCoordinate(tokens[index + 1]), y: decodeRawXflCoordinate(tokens[index + 2]) };
+      segments.push({
+        sourceEdgeIndex,
+        sourceSegmentIndex: segments.length,
+        sourceAttribute,
+        type: 'line',
+        from: current,
+        control: null,
+        to,
+        fillStyle0: style0,
+        fillStyle1: style1,
+        targetOnFillStyle0: null,
+        targetOnFillStyle1: null,
+      });
+      current = to;
+      index += 3;
+      continue;
+    }
+    if (token === '[') {
+      if (index + 4 >= tokens.length || !current) throw new Error(`Edge ${sourceEdgeIndex} has a quadratic without a complete current point`);
+      const control = { x: decodeRawXflCoordinate(tokens[index + 1]), y: decodeRawXflCoordinate(tokens[index + 2]) };
+      const to = { x: decodeRawXflCoordinate(tokens[index + 3]), y: decodeRawXflCoordinate(tokens[index + 4]) };
+      segments.push({
+        sourceEdgeIndex,
+        sourceSegmentIndex: segments.length,
+        sourceAttribute,
+        type: 'quadratic',
+        from: current,
+        control,
+        to,
+        fillStyle0: style0,
+        fillStyle1: style1,
+        targetOnFillStyle0: null,
+        targetOnFillStyle1: null,
+      });
+      current = to;
+      index += 5;
+      continue;
+    }
+    if (token === 'S') {
+      const selection = tokens[index + 1];
+      if (!/^\d+$/u.test(selection || '') || Number(selection) < 1 || Number(selection) > 7) {
+        throw new Error(`Edge ${sourceEdgeIndex} has an unsupported XFL selection marker`);
+      }
+      index += 2;
+      continue;
+    }
+    if (token === '/') {
+      explicitCloseCount += 1;
+      current = subpathStart;
+      subpathStart = null;
+      index += 1;
+      continue;
+    }
+    if (token === 'q' || token === 'Q') {
+      throw new Error(`Edge ${sourceEdgeIndex} contains an XFL mid-edge style change; exact raw fill ownership is unresolved`);
+    }
+    if (token === '(' || token === '(;' || token === ')' || token === ');' || token === ';') {
+      if (token === '(' || token === '(;') throw new Error(`Edge ${sourceEdgeIndex} contains cubic syntax outside this focused target parser`);
+      index += 1;
+      continue;
+    }
+    throw new Error(`Edge ${sourceEdgeIndex} contains unrecognized XFL token ${JSON.stringify(token)}`);
+  }
+  return { segments, explicitCloseCount, tokenCount: tokens.length };
+}
+
+function extractRawXflSegments(rawXfl, fillStyleIndex, fillColor) {
+  if (!Array.isArray(rawXfl?.edgeRecords)) throw new Error('XFL receipt has no raw Edge record array');
+  const result = [];
+  let explicitCloseCount = 0;
+  let contributingEdgeRecordCount = 0;
+  for (const edge of rawXfl.edgeRecords) {
+    const style0 = edge.fillStyle0;
+    const style1 = edge.fillStyle1;
+    if (style0 !== fillStyleIndex && style1 !== fillStyleIndex) continue;
+    const hasEdges = typeof edge.edges === 'string' && edge.edges.length > 0;
+    const hasCubics = typeof edge.cubics === 'string' && edge.cubics.length > 0;
+    if (hasEdges && hasCubics) throw new Error(`Raw XFL Edge ${edge.edgeIndex} has both edges and cubics attributes; stream order cannot be inferred`);
+    const sourceAttribute = hasCubics ? 'cubics' : 'edges';
+    const sourceText = hasCubics ? edge.cubics : (edge.edges || '');
+    const decoded = decodeRawXflEdgeText(sourceText, edge.edgeIndex, style0, style1, sourceAttribute);
+    explicitCloseCount += decoded.explicitCloseCount;
+    if (decoded.segments.length > 0) contributingEdgeRecordCount += 1;
+    for (const segment of decoded.segments) {
+      segment.targetOnFillStyle0 = style0 === fillStyleIndex;
+      segment.targetOnFillStyle1 = style1 === fillStyleIndex;
+      segment.targetColor = fillColor;
+      segment.geometry = canonicalGeometry(segment);
+      result.push(segment);
+    }
+  }
+  if (result.length === 0) throw new Error(`Raw XFL contains no decoded geometry for FillStyle ${fillStyleIndex}`);
+  return { segments: result, explicitCloseCount, contributingEdgeRecordCount };
+}
+
+function extractPandaSegments(pandaInterpretation, fillStyleIndex) {
+  const result = [];
+  for (const decodedEdge of pandaInterpretation?.decodedStyleRuns || []) {
+    for (const run of decodedEdge.currentPandaRuns || []) {
+      let current = null;
+      let subpathStart = null;
+      for (const command of run.commands || []) {
+        if (command.type === 'M') {
+          current = geometryPoint({ x: command.x, y: command.y });
+          subpathStart = current;
+          continue;
+        }
+        if (command.type === 'Z') {
+          current = subpathStart;
+          continue;
+        }
+        if (command.type !== 'L' && command.type !== 'Q' && command.type !== 'C') continue;
+        if (!current) throw new Error(`Panda Edge ${decodedEdge.edgeIndex} has a draw command without a current point`);
+        const style0 = run.fillStyle0;
+        const style1 = run.fillStyle1;
+        if (style0 === fillStyleIndex || style1 === fillStyleIndex) {
+          let control = null;
+          if (command.type === 'Q') control = geometryPoint({ x: command.cx, y: command.cy });
+          if (command.type === 'C') control = [
+            geometryPoint({ x: command.c1x, y: command.c1y }),
+            geometryPoint({ x: command.c2x, y: command.c2y }),
+          ];
+          const segment = {
+            sourceEdgeIndex: decodedEdge.edgeIndex,
+            sourceSegmentIndex: result.length,
+            type: command.type === 'L' ? 'line' : (command.type === 'Q' ? 'quadratic' : 'cubic'),
+            from: current,
+            control,
+            to: geometryPoint({ x: command.x, y: command.y }),
+            fillStyle0: style0,
+            fillStyle1: style1,
+          };
+          result.push(segment);
+        }
+        current = geometryPoint({ x: command.x, y: command.y });
+      }
+    }
+  }
+  return result;
+}
+
+function auditRawXflAgainstPanda(rawSegments, pandaSegments) {
+  const byEdge = segments => {
+    const map = new Map();
+    for (const segment of segments) {
+      const list = map.get(segment.sourceEdgeIndex) || [];
+      list.push(segment);
+      map.set(segment.sourceEdgeIndex, list);
+    }
+    return map;
+  };
+  const rawByEdge = byEdge(rawSegments);
+  const pandaByEdge = byEdge(pandaSegments);
+  const edgeIndexes = [...new Set([...rawByEdge.keys(), ...pandaByEdge.keys()])].sort((left, right) => left - right);
+  const perEdge = edgeIndexes.map(edgeIndex => {
+    const raw = rawByEdge.get(edgeIndex) || [];
+    const panda = pandaByEdge.get(edgeIndex) || [];
+    const segmentMismatches = [];
+    for (let index = 0; index < Math.max(raw.length, panda.length); index += 1) {
+      const rawSegment = raw[index];
+      const pandaSegment = panda[index];
+      const same = rawSegment && pandaSegment &&
+        JSON.stringify([rawSegment.type, rawSegment.from, rawSegment.control, rawSegment.to, rawSegment.fillStyle0, rawSegment.fillStyle1]) ===
+        JSON.stringify([pandaSegment.type, pandaSegment.from, pandaSegment.control, pandaSegment.to, pandaSegment.fillStyle0, pandaSegment.fillStyle1]);
+      if (!same) segmentMismatches.push({ index, raw: rawSegment || null, panda: pandaSegment || null });
+    }
+    return { sourceEdgeIndex: edgeIndex, rawSegmentCount: raw.length, pandaSegmentCount: panda.length, exactGeometryAndSideMatch: segmentMismatches.length === 0, mismatches: segmentMismatches.slice(0, 20) };
+  });
+  return {
+    status: perEdge.every(edge => edge.exactGeometryAndSideMatch) ? 'RAW_XFL_AND_PANDA_DECODE_MATCH' : 'RAW_XFL_AND_PANDA_DECODE_DIFFER',
+    rawSubsegmentCount: rawSegments.length,
+    pandaSubsegmentCount: pandaSegments.length,
+    exactSubsegmentAndFillSideMatch: perEdge.every(edge => edge.exactGeometryAndSideMatch),
+    perEdge,
+  };
+}
+
 function geometryKey(segment, reverse = false) {
   const from = reverse ? segment.to : segment.from;
   const to = reverse ? segment.from : segment.to;
@@ -525,63 +773,6 @@ function exactCyclesForOneInOneOutGraph(segments, graph) {
     cycles,
     unconsumedEdgeIndexes: segments.filter(segment => !used.has(segment.edgeIndex)).map(segment => segment.edgeIndex),
   };
-}
-
-function extractExpectedSegments(evidence, fillStyleIndex, fillColor) {
-  const decodedEdges = evidence?.decodedStyleRuns;
-  if (!Array.isArray(decodedEdges)) throw new Error('XFL/Panda receipt has no decodedStyleRuns array');
-  const result = [];
-  for (const decodedEdge of decodedEdges) {
-    for (const run of decodedEdge.currentPandaRuns || []) {
-      let current = null;
-      let subpathStart = null;
-      for (const command of run.commands || []) {
-        if (command.type === 'M') {
-          current = geometryPoint({ x: command.x, y: command.y });
-          subpathStart = current;
-          continue;
-        }
-        if (command.type === 'Z') {
-          current = subpathStart;
-          continue;
-        }
-        if (command.type !== 'L' && command.type !== 'Q' && command.type !== 'C') continue;
-        if (!current) throw new Error(`XFL Edge ${decodedEdge.edgeIndex} has a draw command without a current point`);
-        const to = geometryPoint({ x: command.x, y: command.y });
-        const style0 = run.fillStyle0;
-        const style1 = run.fillStyle1;
-        const referencesTarget = style0 === fillStyleIndex || style1 === fillStyleIndex;
-        if (referencesTarget) {
-          let control = null;
-          if (command.type === 'Q') control = geometryPoint({ x: command.cx, y: command.cy });
-          if (command.type === 'C') {
-            control = [
-              geometryPoint({ x: command.c1x, y: command.c1y }),
-              geometryPoint({ x: command.c2x, y: command.c2y }),
-            ];
-          }
-          const segment = {
-            sourceEdgeIndex: decodedEdge.edgeIndex,
-            sourceCommandIndex: result.length,
-            type: command.type === 'L' ? 'line' : (command.type === 'Q' ? 'quadratic' : 'cubic'),
-            from: current,
-            control,
-            to,
-            fillStyle0: style0,
-            fillStyle1: style1,
-            targetOnFillStyle0: style0 === fillStyleIndex,
-            targetOnFillStyle1: style1 === fillStyleIndex,
-            targetColor: fillColor,
-          };
-          segment.geometry = canonicalGeometry(segment);
-          result.push(segment);
-        }
-        current = to;
-      }
-    }
-  }
-  if (result.length === 0) throw new Error(`No decoded geometry references FillStyle ${fillStyleIndex}`);
-  return result;
 }
 
 function getFillColor(xml) {
@@ -751,11 +942,12 @@ function compareShape(shape, expected, targetColor) {
   };
 }
 
-function analyzeOne(label, receipt, shapes, xflData, fillStyleIndex, fillXml) {
+function analyzeOne(label, shapes, rawXfl, pandaInterpretation, fillStyleIndex, fillXml) {
   const fillColor = getFillColor(fillXml);
   if (!fillColor) throw new Error(`${label}: could not determine target SolidColor from the XFL receipt`);
-  const evidence = xflData;
-  const expected = extractExpectedSegments(evidence, fillStyleIndex, fillColor);
+  const rawAudit = extractRawXflSegments(rawXfl, fillStyleIndex, fillColor);
+  const expected = rawAudit.segments;
+  const pandaAudit = auditRawXflAgainstPanda(expected, extractPandaSegments(pandaInterpretation, fillStyleIndex));
   const candidates = shapes
     .filter(shape => !shape.parseError)
     .map(shape => compareShape(shape, expected, fillColor))
@@ -778,9 +970,12 @@ function analyzeOne(label, receipt, shapes, xflData, fillStyleIndex, fillXml) {
     target: {
       xflFillStyleIndex: fillStyleIndex,
       color: fillColor,
-      decodedSegmentCount: expected.length,
-      coordinateComparison: 'XFL decoded coordinates multiplied by 20 and compared directly to SWF twips; fractional XFL values are retained',
+      sourceEdgeRecordCount: rawAudit.contributingEdgeRecordCount,
+      rawDecodedSegmentCount: expected.length,
+      rawExplicitCloseMarkerCount: rawAudit.explicitCloseCount,
+      coordinateComparison: 'Raw XFL Edge attributes decoded to source units and compared directly to SWF twips; fractional coordinates are retained',
       noEndpointToleranceOrSyntheticClosure: true,
+      pandaDecoderAudit: pandaAudit,
     },
     status: exact.length === 1 ? 'ONE_EXACT_GEOMETRY_CANDIDATE' :
       (exact.length > 1 ? 'AMBIGUOUS_EXACT_GEOMETRY_CANDIDATES' :
@@ -794,16 +989,16 @@ function analyzeOne(label, receipt, shapes, xflData, fillStyleIndex, fillXml) {
 function buildReceipt(options, fileBytes, decodedSwf, shapes, errors, counters, xflReceipt) {
   const target = analyzeOne(
     'failure target',
-    xflReceipt,
     shapes,
+    xflReceipt.rawXfl,
     xflReceipt.pandaCurrentInterpretation,
     xflReceipt.selected.fillStyleIndex,
     xflReceipt.selected.fillStyleXml,
   );
   const control = analyzeOne(
     'closed control',
-    xflReceipt,
     shapes,
+    xflReceipt.noOpControl.rawXfl,
     xflReceipt.noOpControl.pandaCurrentInterpretation,
     xflReceipt.noOpControl.selected.fillStyleIndex,
     xflReceipt.noOpControl.selected.fillStyleXml,
