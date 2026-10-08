@@ -19,10 +19,11 @@ function sha256(buffer) {
 }
 
 function parseArgs(argv) {
-  const options = { swf: null, receipt: null, out: null };
+  const options = { swf: null, receipt: null, jsfl: null, out: null };
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === '--swf') options.swf = argv[++index] ?? null;
     else if (argv[index] === '--receipt') options.receipt = argv[++index] ?? null;
+    else if (argv[index] === '--jsfl') options.jsfl = argv[++index] ?? null;
     else if (argv[index] === '--out') options.out = argv[++index] ?? null;
     else if (argv[index] === '--help' || argv[index] === '-h') options.help = true;
     else throw new Error(`Unknown argument: ${argv[index]}`);
@@ -33,10 +34,11 @@ function parseArgs(argv) {
 function usage() {
   return [
     'Usage:',
-    '  node scripts/research/issue736-swf-oracle.cjs --swf <published.swf> --receipt <issue736-xfl-panda-oracle.json> [--out <receipt.json>]',
+    '  node scripts/research/issue736-swf-oracle.cjs --swf <published.swf> --receipt <issue736-xfl-panda-oracle.json> [--jsfl <issue736-animate-oracle.json>] [--out <receipt.json>]',
     '',
     'Reads FWS/CWS DefineShape records and matches exact, color-owned geometry from the XFL/Panda receipt.',
-    'ZWS/LZMA is rejected explicitly. No coordinates are snapped or approximated.',
+    'When --jsfl is supplied, the matching library Shape matrix maps XFL-local pixels into SWF twips.',
+    'ZWS/LZMA is rejected explicitly. Only the SWF integer-twip encoding is rounded.',
   ].join('\n');
 }
 
@@ -306,7 +308,10 @@ function readDefineShape(body, tagCode, bodyOffset) {
       if (hasFillStyle1) fillStyle1 = reader.readUB(fillBits);
       if (hasLineStyle) lineStyle = reader.readUB(lineBits);
       if (hasNewStyles) {
-        if (tagCode !== 22 && tagCode !== 32) {
+        // StateNewStyles is valid for DefineShape2/3/4. DefineShape4 adds
+        // edge bounds and line-style flags, while retaining the ShapeWithStyle
+        // record form used by those earlier shape versions.
+        if (tagCode !== 22 && tagCode !== 32 && tagCode !== 83) {
           throw new Error(`StateNewStyles is invalid for DefineShape tag ${tagCode}`);
         }
         reader.alignByte();
@@ -783,6 +788,80 @@ function getFillColor(xml) {
   return match ? match[1].toUpperCase() : null;
 }
 
+function matrixForLibraryMember(jsflReceipt, memberPath) {
+  if (!jsflReceipt) return null;
+  const shapes = jsflReceipt.targetLibraryTimelineCapture?.shapes;
+  const captured = Array.isArray(shapes) ? shapes.find(shape => shape.memberPath === memberPath) : null;
+  const matrix = captured?.shape?.matrix;
+  if (!matrix) throw new Error(`JSFL receipt has no matrix for library member ${memberPath}`);
+  for (const key of ['a', 'b', 'c', 'd', 'tx', 'ty']) {
+    if (!Number.isFinite(matrix[key])) throw new Error(`JSFL matrix ${memberPath}.${key} is not finite`);
+  }
+  const determinant = matrix.a * matrix.d - matrix.b * matrix.c;
+  if (determinant === 0) throw new Error(`JSFL matrix for library member ${memberPath} is not invertible`);
+  return { memberPath, matrix: { ...matrix }, determinant };
+}
+
+function xflTwipsToSwfTwips(point, matrix) {
+  const x = point.x / 20;
+  const y = point.y / 20;
+  return {
+    x: Math.round((matrix.a * x + matrix.c * y + matrix.tx) * 20),
+    y: Math.round((matrix.b * x + matrix.d * y + matrix.ty) * 20),
+  };
+}
+
+function swfTwipsToXflTwips(point, matrix) {
+  const x = point.x / 20 - matrix.tx;
+  const y = point.y / 20 - matrix.ty;
+  const determinant = matrix.a * matrix.d - matrix.b * matrix.c;
+  return {
+    x: ((matrix.d * x - matrix.c * y) / determinant) * 20,
+    y: ((-matrix.b * x + matrix.a * y) / determinant) * 20,
+  };
+}
+
+function transformExpectedToSwfTwips(segments, binding) {
+  if (!binding) return segments;
+  return segments.map(segment => {
+    const original = {
+      type: segment.type,
+      from: segment.from,
+      control: segment.control,
+      to: segment.to,
+    };
+    const projected = {
+      type: segment.type,
+      from: xflTwipsToSwfTwips(segment.from, binding.matrix),
+      control: segment.control ? xflTwipsToSwfTwips(segment.control, binding.matrix) : null,
+      to: xflTwipsToSwfTwips(segment.to, binding.matrix),
+    };
+    return {
+      ...segment,
+      sourceXflGeometryTwips: original,
+      swfShapeRecordGeometryTwips: projected,
+      normalizationMemberPath: binding.memberPath,
+      normalizationMatrix: binding.matrix,
+      ...projected,
+      geometry: canonicalGeometry(projected),
+    };
+  });
+}
+
+function geometryEndpointBounds(segments) {
+  if (segments.length === 0) return null;
+  const bounds = { xMin: Infinity, xMax: -Infinity, yMin: Infinity, yMax: -Infinity };
+  for (const segment of segments) {
+    for (const point of [segment.from, segment.to]) {
+      bounds.xMin = Math.min(bounds.xMin, point.x);
+      bounds.xMax = Math.max(bounds.xMax, point.x);
+      bounds.yMin = Math.min(bounds.yMin, point.y);
+      bounds.yMax = Math.max(bounds.yMax, point.y);
+    }
+  }
+  return bounds;
+}
+
 function compareShape(shape, expected, targetColor) {
   const actual = shape.edges.filter(edge =>
     edge.fillStyle0Color?.rgb === targetColor || edge.fillStyle1Color?.rgb === targetColor);
@@ -863,6 +942,22 @@ function compareShape(shape, expected, targetColor) {
         swfShapeEdgeIndex: actualSegment.edge.edgeIndex,
         swfShapeRecordIndex: actualSegment.edge.recordIndex,
         geometryReversed: reversed,
+        xflSourceGeometryTwips: expectedSegment.sourceXflGeometryTwips ?? {
+          type: expectedSegment.type,
+          from: expectedSegment.from,
+          control: expectedSegment.control,
+          to: expectedSegment.to,
+        },
+        swfExpectedGeometryTwips: expectedSegment.swfShapeRecordGeometryTwips ?? null,
+        swfActualGeometryTwips: actualSegment.segment,
+        swfActualGeometryInverseNormalizedToXflTwips: expectedSegment.normalizationMatrix ? {
+          type: actualSegment.segment.type,
+          from: swfTwipsToXflTwips(actualSegment.segment.from, expectedSegment.normalizationMatrix),
+          control: actualSegment.segment.control
+            ? swfTwipsToXflTwips(actualSegment.segment.control, expectedSegment.normalizationMatrix)
+            : null,
+          to: swfTwipsToXflTwips(actualSegment.segment.to, expectedSegment.normalizationMatrix),
+        } : null,
         xflFillStyle0: expectedSegment.fillStyle0,
         xflFillStyle1: expectedSegment.fillStyle1,
         swfFillStyle0: actualSegment.edge.fillStyle0,
@@ -945,12 +1040,13 @@ function compareShape(shape, expected, targetColor) {
   };
 }
 
-function analyzeOne(label, shapes, rawXfl, pandaInterpretation, fillStyleIndex, fillXml) {
+function analyzeOne(label, shapes, rawXfl, pandaInterpretation, fillStyleIndex, fillXml, matrixBinding = null) {
   const fillColor = getFillColor(fillXml);
   if (!fillColor) throw new Error(`${label}: could not determine target SolidColor from the XFL receipt`);
   const rawAudit = extractRawXflSegments(rawXfl, fillStyleIndex, fillColor);
-  const expected = rawAudit.segments;
-  const pandaAudit = auditRawXflAgainstPanda(expected, extractPandaSegments(pandaInterpretation, fillStyleIndex));
+  const sourceExpected = rawAudit.segments;
+  const expected = transformExpectedToSwfTwips(sourceExpected, matrixBinding);
+  const pandaAudit = auditRawXflAgainstPanda(sourceExpected, extractPandaSegments(pandaInterpretation, fillStyleIndex));
   const candidates = shapes
     .filter(shape => !shape.parseError)
     .map(shape => compareShape(shape, expected, fillColor))
@@ -974,9 +1070,23 @@ function analyzeOne(label, shapes, rawXfl, pandaInterpretation, fillStyleIndex, 
       xflFillStyleIndex: fillStyleIndex,
       color: fillColor,
       sourceEdgeRecordCount: rawAudit.contributingEdgeRecordCount,
-      rawDecodedSegmentCount: expected.length,
+      rawDecodedSegmentCount: sourceExpected.length,
       rawExplicitCloseMarkerCount: rawAudit.explicitCloseCount,
-      coordinateComparison: 'Raw XFL Edge attributes decoded to source units and compared directly to SWF twips; fractional coordinates are retained',
+      coordinateComparison: matrixBinding
+        ? 'Raw XFL fixed-point twips are converted to local pixels, transformed by the matching JSFL Shape matrix, then quantized to SWF integer twips before exact ShapeRecord comparison'
+        : 'Raw XFL Edge attributes decoded to source units and compared directly to SWF twips; fractional coordinates are retained',
+      transformNormalization: matrixBinding ? {
+        source: 'Adobe Animate JSFL library Shape.matrix',
+        libraryMemberPath: matrixBinding.memberPath,
+        matrix: matrixBinding.matrix,
+        determinant: matrixBinding.determinant,
+        xflUnit: 'twips (1/20 px)',
+        matrixUnit: 'pixels',
+        swfUnit: 'integer twips',
+        rounding: 'Math.round only at the final SWF integer-twip encoding boundary; no endpoint tolerance, snapping, or synthetic geometry',
+      } : null,
+      sourceXflEndpointBoundsTwips: geometryEndpointBounds(sourceExpected),
+      expectedSwfShapeRecordEndpointBoundsTwips: geometryEndpointBounds(expected),
       noEndpointToleranceOrSyntheticClosure: true,
       pandaDecoderAudit: pandaAudit,
     },
@@ -989,7 +1099,9 @@ function analyzeOne(label, shapes, rawXfl, pandaInterpretation, fillStyleIndex, 
   };
 }
 
-function buildReceipt(options, fileBytes, decodedSwf, shapes, errors, counters, xflReceipt) {
+function buildReceipt(options, fileBytes, decodedSwf, shapes, errors, counters, xflReceipt, jsflReceipt, jsflBytes) {
+  const targetMatrix = matrixForLibraryMember(jsflReceipt, '0/0');
+  const controlMatrix = matrixForLibraryMember(jsflReceipt, '0/4');
   const target = analyzeOne(
     'failure target',
     shapes,
@@ -997,6 +1109,7 @@ function buildReceipt(options, fileBytes, decodedSwf, shapes, errors, counters, 
     xflReceipt.pandaCurrentInterpretation,
     xflReceipt.selected.fillStyleIndex,
     xflReceipt.selected.fillStyleXml,
+    targetMatrix,
   );
   const control = analyzeOne(
     'closed control',
@@ -1005,6 +1118,7 @@ function buildReceipt(options, fileBytes, decodedSwf, shapes, errors, counters, 
     xflReceipt.noOpControl.pandaCurrentInterpretation,
     xflReceipt.noOpControl.selected.fillStyleIndex,
     xflReceipt.noOpControl.selected.fillStyleXml,
+    controlMatrix,
   );
   return {
     schemaVersion: 'issue736-swf-oracle/1',
@@ -1016,6 +1130,8 @@ function buildReceipt(options, fileBytes, decodedSwf, shapes, errors, counters, 
       version: decodedSwf.version,
       declaredLength: decodedSwf.declaredLength,
       decodedLength: decodedSwf.bytes.length,
+      jsflOraclePath: options.jsfl ? path.resolve(options.jsfl) : null,
+      jsflOracleSha256: jsflBytes ? sha256(jsflBytes) : null,
     },
     xflReceipt: {
       path: path.resolve(options.receipt),
@@ -1050,8 +1166,13 @@ function main() {
   if (!options.swf || !options.receipt) throw new Error(`${usage()}\nBoth --swf and --receipt are required.`);
   const fileBytes = fs.readFileSync(options.swf);
   const xflReceipt = JSON.parse(fs.readFileSync(options.receipt, 'utf8'));
+  const jsflBytes = options.jsfl ? fs.readFileSync(options.jsfl) : null;
+  const jsflReceipt = jsflBytes ? JSON.parse(jsflBytes.toString('utf8')) : null;
   if (xflReceipt.issue !== 736 || !xflReceipt.noOpControl?.pandaCurrentInterpretation) {
     throw new Error('The supplied XFL/Panda receipt does not contain the Issue #736 target and closed control');
+  }
+  if (jsflReceipt && !Array.isArray(jsflReceipt.targetLibraryTimelineCapture?.shapes)) {
+    throw new Error('The supplied JSFL receipt has no target library timeline shape capture');
   }
 
   const decodedSwf = decompressSwf(fileBytes);
@@ -1063,7 +1184,7 @@ function main() {
   const errors = [];
   const counters = { tagCount: 0, defineShapeCount: 0 };
   parseTagStream(decodedSwf.bytes, timeline.offset, decodedSwf.bytes.length, shapes, errors, counters);
-  const receipt = buildReceipt(options, fileBytes, decodedSwf, shapes, errors, counters, xflReceipt);
+  const receipt = buildReceipt(options, fileBytes, decodedSwf, shapes, errors, counters, xflReceipt, jsflReceipt, jsflBytes);
   receipt.swfHeader = {
     frameSizeTwips: frameSize,
     frameRate: ((frameRateRaw & 0xff) + ((frameRateRaw >> 8) & 0xff) * 256) / 256,
