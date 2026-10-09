@@ -27,6 +27,7 @@
       {
         "key": "hanfu-open-fill",
         "sourceSha256": "6AF14990029D4CED2C4E305721321835180C1BF041178A8799E1D14A1F62E535",
+        "xflShapeBlockSha256": "170F34BEA40FA2F41A2F98DEE42CD5127E4C6CB1A6633CDD2723A1CAA543FE49",
         "shapeId": "fla-shape-9420f0fcb052d77956ea920f",
         "layerIndex": 0,
         "frameIndex": 0,
@@ -55,12 +56,14 @@
         "panda": {
           "status": "BLOCKED",
           "code": "TARGET_UNSUPPORTED",
+          "message": "FillStyle 1 has an open fill boundary",
           "stable": true
         }
       },
       {
         "key": "qingling-open-fill",
         "sourceSha256": "D0958D4432DECBF6C54566BA15A2F5E97BD88C82D75DCB2F84603E9B2273F0E4",
+        "xflShapeBlockSha256": "1AF9F0EEFEDB0335D67D4E7BDA0057D87061358113746C7EFDFD7A8DE49A6A4F",
         "shapeId": "fla-shape-944dedeb2bb14b160532f675",
         "layerIndex": 0,
         "frameIndex": 0,
@@ -89,12 +92,14 @@
         "panda": {
           "status": "BLOCKED",
           "code": "TARGET_UNSUPPORTED",
+          "message": "FillStyle 1 has an open fill boundary",
           "stable": true
         }
       },
       {
         "key": "xiuxian-male-open-fill",
         "sourceSha256": "565C5609A7610EF64ED9F98B09D98DD82D5A45255ADB4D3D410A5A365E0EF4A5",
+        "xflShapeBlockSha256": "9FD166C90F187B0DD159D987EA04A20AE3CFD97378AC384587949EFEDA42EE59",
         "shapeId": "fla-shape-196ba2d2358441409a8b4dce",
         "layerIndex": 0,
         "frameIndex": 0,
@@ -123,6 +128,7 @@
         "panda": {
           "status": "BLOCKED",
           "code": "TARGET_UNSUPPORTED",
+          "message": "FillStyle 1 has an open fill boundary",
           "targetFillDrawSubsegments": 22,
           "stable": true
         },
@@ -140,23 +146,52 @@
       {
         "name": "M0-authentic",
         "sha256": "565C5609A7610EF64ED9F98B09D98DD82D5A45255ADB4D3D410A5A365E0EF4A5",
+        "parent": "xiuxian-male-open-fill",
         "archiveState": "RECOVERY_CANDIDATE",
-        "animateTargetContourHalfEdges": 17,
-        "animateStagePngSha256": "F37C33D2129622855F09C635E642F82D2FBB123CA832301637ACD3DE48465483"
+        "xflShapeBlockSha256": "9FD166C90F187B0DD159D987EA04A20AE3CFD97378AC384587949EFEDA42EE59",
+        "targetFillOwnership": {
+          "fillStyleIndex": 1,
+          "edgeRecords": 9,
+          "edgeXmlSha256": "28153F44B5E7F29C08A33CE2A87572E283E130FEAB7E1B23E3A5A1848EF9F019",
+          "authoredCloseMarkers": 2
+        },
+        "animate": {
+          "targetFilled": true,
+          "targetContourHalfEdges": 17,
+          "stagePngSha256": "F37C33D2129622855F09C635E642F82D2FBB123CA832301637ACD3DE48465483"
+        },
+        "panda": {
+          "status": "BLOCKED",
+          "code": "TARGET_UNSUPPORTED",
+          "message": "FillStyle 1 has an open fill boundary",
+          "targetFillDrawSubsegments": 22,
+          "stable": true
+        }
       },
       {
         "name": "M1-remove-nontarget-edges",
         "sha256": "8A48C51B9D42A42B910C765C7667FA5D3B1AADF367E4EDE14E00EA0EEC3F6780",
         "parent": "M0-authentic",
         "archiveState": "STRICT_VALID",
+        "xflShapeBlockSha256": "E79BDBE08A65B7C6A57542257A2BD0BA7758E6A40AD967AFAF37C44D13897EDF",
         "removedNonTargetEdgeRecords": 79,
         "targetEdgeRecordsByteIdentical": true,
         "fillStyleCount": 4,
-        "animateTargetContourHalfEdges": 17,
-        "animateStagePngSha256": "F37C33D2129622855F09C635E642F82D2FBB123CA832301637ACD3DE48465483",
+        "targetFillOwnership": {
+          "fillStyleIndex": 1,
+          "edgeRecords": 9,
+          "edgeXmlSha256": "28153F44B5E7F29C08A33CE2A87572E283E130FEAB7E1B23E3A5A1848EF9F019",
+          "authoredCloseMarkers": 2
+        },
+        "animate": {
+          "targetFilled": true,
+          "targetContourHalfEdges": 17,
+          "stagePngSha256": "F37C33D2129622855F09C635E642F82D2FBB123CA832301637ACD3DE48465483"
+        },
         "panda": {
           "status": "BLOCKED",
           "code": "TARGET_UNSUPPORTED",
+          "message": "FillStyle 1 has an open fill boundary",
           "targetFillDrawSubsegments": 22,
           "stable": true
         }
@@ -166,15 +201,26 @@
         "sha256": "5A501D1F787707A3965BECC31E2E5B8F5DDC519B25369E16EF68E72AF674EB5D",
         "parent": "M1-remove-nontarget-edges",
         "archiveState": "STRICT_VALID",
+        "xflShapeBlockSha256": "2FB70F1737011A13A9590B2C2EDF17FE7FDE241C32467984FD21F89B2A7A3C04",
         "removedFillStyleIndex": 4,
         "fillStyleCountBeforeAndAfter": [4, 3],
         "removedStyleReferencedByRetainedTargetEdge": false,
         "targetEdgeRecordsByteIdentical": true,
-        "animateTargetContourHalfEdges": 17,
-        "animateStagePngSha256": "F37C33D2129622855F09C635E642F82D2FBB123CA832301637ACD3DE48465483",
+        "targetFillOwnership": {
+          "fillStyleIndex": 1,
+          "edgeRecords": 9,
+          "edgeXmlSha256": "28153F44B5E7F29C08A33CE2A87572E283E130FEAB7E1B23E3A5A1848EF9F019",
+          "authoredCloseMarkers": 2
+        },
+        "animate": {
+          "targetFilled": true,
+          "targetContourHalfEdges": 17,
+          "stagePngSha256": "F37C33D2129622855F09C635E642F82D2FBB123CA832301637ACD3DE48465483"
+        },
         "panda": {
           "status": "BLOCKED",
           "code": "TARGET_UNSUPPORTED",
+          "message": "FillStyle 1 has an open fill boundary",
           "targetFillDrawSubsegments": 22,
           "stable": true
         }
@@ -224,6 +270,7 @@
       "dA": {
         "status": "BLOCKED",
         "code": "TARGET_UNSUPPORTED",
+        "message": "FillStyle 1 has an open fill boundary",
         "targetRawSubsegments": 22,
         "boundarySegments": 23,
         "authoredCloseBoundaryMappings": 1,
@@ -232,6 +279,7 @@
       "dB": {
         "status": "BLOCKED",
         "code": "TARGET_UNSUPPORTED",
+        "message": "FillStyle 1 has an open fill boundary",
         "targetRawSubsegments": 23,
         "boundarySegments": 23,
         "authoredCloseBoundaryMappings": 0,

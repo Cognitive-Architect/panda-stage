@@ -15,7 +15,7 @@ The Animate target contour decomposition changed from 17 HalfEdges in D-A to 7 i
 
 ## C01 — Source census
 
-The full source hashes, Shape IDs, frame/member addresses, exact counts, and capture hashes are in [receipt.json](receipt.json). The table separates whole-XFL-Shape counts from FillStyle1-connected target counts.
+The frozen source FLA and selected XFL Shape-block hashes, Shape IDs, frame/member addresses, exact counts, and capture hashes are in [receipt.json](receipt.json). The table separates whole-XFL-Shape counts from FillStyle1-connected target counts.
 
 | Candidate | FillStyle1 target: Edge / subsegment / close | Whole XFL Shape: Edge / subsegment / close | Animate Shape: Edge / vertex / contour | Panda |
 | --- | ---: | ---: | ---: | --- |
