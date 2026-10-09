@@ -69,7 +69,7 @@ async function buildMinimalFla(): Promise<Uint8Array> {
                   <members>
                     <DOMShape>
                       <fills><FillStyle index="1"><SolidColor color="#00ff00" alpha="1"/></FillStyle></fills>
-                      <edges><Edge fillStyle1="1" cubics="!0 0|200 0[100 100 200 200 200 200]/"/></edges>
+                      <edges><Edge fillStyle1="1" cubics="!0 0|200 0[100 100 200 200 200 200|0 0"/></edges>
                     </DOMShape>
                   </members>
                 </DOMGroup>
@@ -95,7 +95,7 @@ async function buildMinimalFla(): Promise<Uint8Array> {
                     <DOMShape>
                       <matrix><Matrix a="1" b="0" c="0" d="1" tx="0" ty="0"/></matrix>
                       <fills><FillStyle index="1"><SolidColor color="#ff0000" alpha="1"/></FillStyle></fills>
-                      <edges><Edge fillStyle1="1" cubics="!0 0|100 0[50 50 100 100 100 0]/"/></edges>
+                      <edges><Edge fillStyle1="1" cubics="!0 0|100 0[50 50 100 100 100 0|0 0"/></edges>
                     </DOMShape>
                   </members>
                 </DOMGroup>

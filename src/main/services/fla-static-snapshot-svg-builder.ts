@@ -303,6 +303,15 @@ function decodeCoord(value: string): number {
   return parsed / COORD_SCALE;
 }
 
+const EDGE_COMMAND_TOKENS = new Set(['!', '|', '[', '/', 'S', 'q', 'Q', '(;', ');', '(', ')', ';']);
+
+function isCoordinateToken(value: string): boolean {
+  if (value.startsWith('#')) {
+    return /^#(?:[0-9a-f]+(?:\.[0-9a-f]*)?|\.[0-9a-f]+)$/iu.test(value);
+  }
+  return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/iu.test(value);
+}
+
 function tokenize(edgeStr: string): string[] {
   const tokens: string[] = [];
   let current = '';
@@ -539,13 +548,40 @@ function decodeEdgesWithStyleChanges(edgeStr: string): DecodedEdges {
         break;
       }
       case '/': {
-        pushCommand({ type: 'Z' });
-        // A close returns the current point to this subpath's start.
-        if (!Number.isNaN(startX) && !Number.isNaN(startY)) {
-          currentX = startX; currentY = startY;
+        const xToken = tokens[i + 1];
+        const yToken = tokens[i + 2];
+        const nextToken = tokens[i + 3];
+        if (!xToken || EDGE_COMMAND_TOKENS.has(xToken)) {
+          error ??= 'Unsupported bare slash command';
+          i++;
+          break;
         }
-        startX = NaN; startY = NaN;
-        i++;
+        if (!yToken || EDGE_COMMAND_TOKENS.has(yToken) ||
+            !isCoordinateToken(xToken) || !isCoordinateToken(yToken) ||
+            (nextToken !== undefined && !EDGE_COMMAND_TOKENS.has(nextToken))) {
+          error ??= 'Malformed coordinate-bearing slash command';
+          i++;
+          break;
+        }
+        const x = decodeCoord(xToken);
+        const y = decodeCoord(yToken);
+        if (!Number.isFinite(x) || !Number.isFinite(y) ||
+            Math.abs(x) > MAX_COORD || Math.abs(y) > MAX_COORD ||
+            Number.isNaN(currentX) || Number.isNaN(currentY) ||
+            Number.isNaN(startX) || Number.isNaN(startY)) {
+          error ??= 'Malformed coordinate-bearing slash command';
+          i++;
+          break;
+        }
+        // Coordinate-bearing slash records are authored straight Lines. Keep
+        // the active subpath and pass non-zero geometry through the same path
+        // command budget as the ordinary line operator.
+        if (x !== currentX || y !== currentY) {
+          pushCommand({ type: 'L', x, y });
+          currentX = x;
+          currentY = y;
+        }
+        i += 3;
         break;
       }
       default: i++;
