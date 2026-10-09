@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "issue742-source-lock/1",
+  "issue": 742,
+  "authoringManifestPath": "D:\\PandaStage-Acceptance\\issue742-repair-contract-20261009-attempt03\\authoring-manifest.json",
+  "authoringManifestSha256": "F8D303EADB795408A6257FE9DDBDEC05D2DA0ECC4D7BE3ED4FBA2BFB510CE670",
+  "baselineGitHead": "0cdcf825571b415be03e49f3349499b6181a6b92",
+  "fixtures": [
+    {
+      "key": "D-A-authored-close",
+      "family": "D",
+      "variant": "authored-close",
+      "closeMode": "path-close",
+      "fileName": "D-A-authored-close.fla",
+      "sizeBytes": 3991,
+      "sha256": "63A807AF95ABC2ADD2C1F6EAABBE61B8527C21C00B5C5A92824C9064ED1FAA1E"
+    },
+    {
+      "key": "D-B-explicit-close",
+      "family": "D",
+      "variant": "explicit-closing-edge",
+      "closeMode": "explicit-return-point",
+      "fileName": "D-B-explicit-close.fla",
+      "sizeBytes": 3999,
+      "sha256": "1A028B1A465CD689756EB58E1631D2A5183A266B332A7CADCB48D64D505DBE93"
+    },
+    {
+      "key": "B-A-clockwise-explicit",
+      "family": "B",
+      "variant": "clockwise-explicit-boundary",
+      "closeMode": "explicit-return-point",
+      "fileName": "B-A-clockwise-explicit.fla",
+      "sizeBytes": 4007,
+      "sha256": "2A08AADB2BD19EDBDC948BAA8653ABBE7B4AE9C4C491CF116E9B8B91F5049784"
+    },
+    {
+      "key": "B-B-counterclockwise-explicit",
+      "family": "B",
+      "variant": "counterclockwise-explicit-boundary",
+      "closeMode": "explicit-return-point",
+      "fileName": "B-B-counterclockwise-explicit.fla",
+      "sizeBytes": 4023,
+      "sha256": "557170CE81C203A3EF6D5EC43981B4C5325CE3E082A4404FA5990DBAA533AB40"
+    },
+    {
+      "key": "control-explicit-closed",
+      "family": "control",
+      "variant": "known-good-explicit-closed-triangle",
+      "closeMode": "explicit-return-point",
+      "fileName": "control-explicit-closed.fla",
+      "sizeBytes": 4009,
+      "sha256": "39D5201E1197DBEDCCC98BDDFE0D6DB0DF26B1AEEED4FF43D59234EE5B90C067"
+    }
+  ]
+}

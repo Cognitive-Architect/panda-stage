@@ -1,0 +1,391 @@
+{
+    "schemaVersion":  "issue742-evidence-receipt/1",
+    "issue":  742,
+    "finalVerdict":  "H — INSUFFICIENT / STOP",
+    "baselineGitHead":  "0cdcf825571b415be03e49f3349499b6181a6b92",
+    "sourceLock":  {
+                       "path":  "source-lock.json",
+                       "sha256":  "CA8BA43EEB15887364F478C7489738A0F6DB48FCE90678C899B7A128563AF73B",
+                       "allFixtureHashesUnchanged":  true
+                   },
+    "animateHost":  {
+                        "executablePath":  "D:\\AN2023\\Adobe Animate 2023\\Animate.exe",
+                        "fileVersion":  "23.0.0.407",
+                        "sha256":  "0F869BD383E679611C6F85D887F72FE636B16403A5B98F79DF87F6F563ED3838",
+                        "authenticodeStatus":  "HashMismatch",
+                        "provenance":  "UNTRUSTED / MODIFIED",
+                        "stableDuringExperiment":  true,
+                        "processStateStable":  true
+                    },
+    "dACloseMarkerPatch":  {
+                               "animateCreatedBackupPath":  "fixtures/D-A-authored-close-animate-created.fla",
+                               "sourceFlaSha256Before":  "79C5BB0297F92C0D87A75ED160473FD807370B3B18E694014B1D2AB9CCF3C1A7",
+                               "patchedFixturePath":  "fixtures/D-A-authored-close.fla",
+                               "sourceFlaSha256After":  "63A807AF95ABC2ADD2C1F6EAABBE61B8527C21C00B5C5A92824C9064ED1FAA1E",
+                               "xflMember":  "DOMDocument.xml",
+                               "edgeAttributeBefore":  "!1900 1800|5300 1800!5300 1800|3600 4400!3600 4400|1900 1800",
+                               "edgeAttributeAfter":  "!1900 1800|5300 1800|3600 4400/",
+                               "replacementOccurrences":  1,
+                               "changedOnlyDomDocumentXml":  true,
+                               "archiveMemberCount":  7
+                           },
+    "animateRepeatability":  {
+                                 "status":  "STABLE",
+                                 "comparedRunNumbers":  [
+                                                            2,
+                                                            3
+                                                        ],
+                                 "fixturesStable":  true
+                             },
+    "pandaDeterminism":  {
+                             "allFiveStable":  true,
+                             "everyFixtureRendered":  true
+                         },
+    "controls":  {
+                     "verificationStatus":  "COMPENSATING_CONTROLS_PASS",
+                     "issue737SourceSha256":  "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+                     "animateIssue737RepeatedTopologyStable":  true,
+                     "animateIssue737AgreesWithAcceptedBaseline":  true,
+                     "animateIssue737ClosedFillControlAgreesWithAcceptedBaseline":  true,
+                     "pandaIssue737Rendered":  "RENDERED",
+                     "pandaIssue737FillStyle1BoundarySegments":  98,
+                     "pandaIssue737BalancedEndpointGraph":  true,
+                     "pandaIssue737ClosedCyclesConsumeAllSegments":  true
+                 },
+    "decisions":  {
+                      "closePath":  "REDESIGN_REQUIRED_VISUALS_NOT_EQUIVALENT",
+                      "closePathRawContrastSurvived":  true,
+                      "closePathVisualEquivalence":  {
+                                                         "status":  "INVALID_SCREENSHOT_EVIDENCE",
+                                                         "leftStatus":  "EMPTY_SCREENSHOT",
+                                                         "rightStatus":  "VALID",
+                                                         "pixelIdentical":  false
+                                                     },
+                      "fillSide":  "B_WEAKENED_FOR_THIS_MINIMAL_MECHANISM",
+                      "fillSideRawOwnershipContrastSurvived":  true,
+                      "fillSideSameUndirectedBoundary":  true,
+                      "fillSideVisualEquivalence":  {
+                                                        "status":  "PIXEL_IDENTICAL"
+                                                    },
+                      "fCandidate":  "DEFERRED_D_OR_B_FAMILY_NOT_VALID_OR_REPEATS_UNSTABLE",
+                      "fCandidateReason":  "Evaluate F only after both valid D and B A/B families behave correctly and both capture stages repeat stably."
+                  },
+    "fixtures":  [
+                     {
+                         "key":  "D-A-authored-close",
+                         "fixturePath":  "fixtures/D-A-authored-close.fla",
+                         "sourceSha256":  "63A807AF95ABC2ADD2C1F6EAABBE61B8527C21C00B5C5A92824C9064ED1FAA1E",
+                         "rawXfl":  {
+                                        "shapeBlockSha256":  "798FF94975E9169D936726237ABB33F827555C0927D0BC95033B96363A97EAD8",
+                                        "edgeRecordCount":  1,
+                                        "rawSubsegmentCount":  2,
+                                        "targetFillDrawSubsegmentCount":  2,
+                                        "authoredCloseMarkerCount":  1,
+                                        "explicitClosingGeometryCommandCount":  0,
+                                        "targetFillStyleIndex":  1,
+                                        "targetFillFillStyle0EdgeCount":  0,
+                                        "targetFillFillStyle1EdgeCount":  1
+                                    },
+                         "panda":  {
+                                       "renderStatus":  "RENDERED",
+                                       "deterministic":  true,
+                                       "fillBoundarySegmentCount":  3,
+                                       "endpointGraphBalanced":  true,
+                                       "exactCycleDecompositionOk":  true,
+                                       "reversedFillStyle0MappingCount":  0
+                                   },
+                         "animate":  {
+                                         "topologyStableAcrossRuns":  true,
+                                         "topologySha256":  "65C4A545EC695AD38F84E920160D4B7F7669D201983016B11D3F39D826E5EE29",
+                                         "edgeCount":  2,
+                                         "vertexCount":  3,
+                                         "contourCount":  1,
+                                         "contours":  [
+                                                          {
+                                                              "interior":  false,
+                                                              "orientation":  0,
+                                                              "fillStyle":  "noFill",
+                                                              "closedAtStart":  true,
+                                                              "stopReason":  "RETURNED_TO_START",
+                                                              "halfEdgeCount":  4
+                                                          }
+                                                      ],
+                                         "screenshot":  {
+                                                            "path":  "animate/run03/D-A-authored-close.png",
+                                                            "fileSha256":  "1EA83B7B42CA405BFBA3E90C44A9E3F404CA6BBF6383F21C084C6AB22AA4F02E",
+                                                            "pixelSha256":  "A531884FE8A819BDB9455D377DA5213424C3640380E262C15FAE35355DC13171",
+                                                            "status":  "EMPTY_SCREENSHOT",
+                                                            "valid":  false,
+                                                            "exactFixtureColorPixelCount":  0,
+                                                            "nonTransparentPixelCount":  0
+                                                        },
+                                         "screenshotPixelsStableAcrossRuns":  true,
+                                         "run02PixelSha256":  "A531884FE8A819BDB9455D377DA5213424C3640380E262C15FAE35355DC13171",
+                                         "run03PixelSha256":  "A531884FE8A819BDB9455D377DA5213424C3640380E262C15FAE35355DC13171"
+                                     }
+                     },
+                     {
+                         "key":  "D-B-explicit-close",
+                         "fixturePath":  "fixtures/D-B-explicit-close.fla",
+                         "sourceSha256":  "1A028B1A465CD689756EB58E1631D2A5183A266B332A7CADCB48D64D505DBE93",
+                         "rawXfl":  {
+                                        "shapeBlockSha256":  "FAFFAE7C58C7FB46F47D16F537B224910B92BCB3183104FE5231A33985340329",
+                                        "edgeRecordCount":  1,
+                                        "rawSubsegmentCount":  3,
+                                        "targetFillDrawSubsegmentCount":  3,
+                                        "authoredCloseMarkerCount":  0,
+                                        "explicitClosingGeometryCommandCount":  1,
+                                        "targetFillStyleIndex":  1,
+                                        "targetFillFillStyle0EdgeCount":  0,
+                                        "targetFillFillStyle1EdgeCount":  1
+                                    },
+                         "panda":  {
+                                       "renderStatus":  "RENDERED",
+                                       "deterministic":  true,
+                                       "fillBoundarySegmentCount":  3,
+                                       "endpointGraphBalanced":  true,
+                                       "exactCycleDecompositionOk":  true,
+                                       "reversedFillStyle0MappingCount":  0
+                                   },
+                         "animate":  {
+                                         "topologyStableAcrossRuns":  true,
+                                         "topologySha256":  "00A03A70433A9E941FFBD7E712E17024823F230FD5CC89F8AD4A5156332A679F",
+                                         "edgeCount":  3,
+                                         "vertexCount":  3,
+                                         "contourCount":  2,
+                                         "contours":  [
+                                                          {
+                                                              "interior":  false,
+                                                              "orientation":  1,
+                                                              "fillStyle":  "noFill",
+                                                              "closedAtStart":  true,
+                                                              "stopReason":  "RETURNED_TO_START",
+                                                              "halfEdgeCount":  3
+                                                          },
+                                                          {
+                                                              "interior":  true,
+                                                              "orientation":  -1,
+                                                              "fillStyle":  "solid",
+                                                              "closedAtStart":  true,
+                                                              "stopReason":  "RETURNED_TO_START",
+                                                              "halfEdgeCount":  3
+                                                          }
+                                                      ],
+                                         "screenshot":  {
+                                                            "path":  "animate/run03/D-B-explicit-close.png",
+                                                            "fileSha256":  "697AC5A04577E5C1B462DDE0E89CC5829F7F2C8D82C75B0A9219ACD855150496",
+                                                            "pixelSha256":  "D1A68BDACAC82AC3F236825D12A656EE77322F6915A8BC174EC79826EA05A2B7",
+                                                            "status":  "VALID",
+                                                            "valid":  true,
+                                                            "exactFixtureColorPixelCount":  10970,
+                                                            "nonTransparentPixelCount":  11230
+                                                        },
+                                         "screenshotPixelsStableAcrossRuns":  true,
+                                         "run02PixelSha256":  "D1A68BDACAC82AC3F236825D12A656EE77322F6915A8BC174EC79826EA05A2B7",
+                                         "run03PixelSha256":  "D1A68BDACAC82AC3F236825D12A656EE77322F6915A8BC174EC79826EA05A2B7"
+                                     }
+                     },
+                     {
+                         "key":  "B-A-clockwise-explicit",
+                         "fixturePath":  "fixtures/B-A-clockwise-explicit.fla",
+                         "sourceSha256":  "2A08AADB2BD19EDBDC948BAA8653ABBE7B4AE9C4C491CF116E9B8B91F5049784",
+                         "rawXfl":  {
+                                        "shapeBlockSha256":  "217822AA8DA3E36A2EF8EDAF20574E821F309438379AD64D2810D095030C77AF",
+                                        "edgeRecordCount":  1,
+                                        "rawSubsegmentCount":  3,
+                                        "targetFillDrawSubsegmentCount":  3,
+                                        "authoredCloseMarkerCount":  0,
+                                        "explicitClosingGeometryCommandCount":  1,
+                                        "targetFillStyleIndex":  1,
+                                        "targetFillFillStyle0EdgeCount":  1,
+                                        "targetFillFillStyle1EdgeCount":  0
+                                    },
+                         "panda":  {
+                                       "renderStatus":  "RENDERED",
+                                       "deterministic":  true,
+                                       "fillBoundarySegmentCount":  3,
+                                       "endpointGraphBalanced":  true,
+                                       "exactCycleDecompositionOk":  true,
+                                       "reversedFillStyle0MappingCount":  3
+                                   },
+                         "animate":  {
+                                         "topologyStableAcrossRuns":  true,
+                                         "topologySha256":  "B371C7BAEC6567E587BD3D6295E1ED4513A683DAB1E45ACA1416EEB3D714F086",
+                                         "edgeCount":  3,
+                                         "vertexCount":  3,
+                                         "contourCount":  2,
+                                         "contours":  [
+                                                          {
+                                                              "interior":  false,
+                                                              "orientation":  1,
+                                                              "fillStyle":  "noFill",
+                                                              "closedAtStart":  true,
+                                                              "stopReason":  "RETURNED_TO_START",
+                                                              "halfEdgeCount":  3
+                                                          },
+                                                          {
+                                                              "interior":  true,
+                                                              "orientation":  -1,
+                                                              "fillStyle":  "solid",
+                                                              "closedAtStart":  true,
+                                                              "stopReason":  "RETURNED_TO_START",
+                                                              "halfEdgeCount":  3
+                                                          }
+                                                      ],
+                                         "screenshot":  {
+                                                            "path":  "animate/run03/B-A-clockwise-explicit.png",
+                                                            "fileSha256":  "697AC5A04577E5C1B462DDE0E89CC5829F7F2C8D82C75B0A9219ACD855150496",
+                                                            "pixelSha256":  "D1A68BDACAC82AC3F236825D12A656EE77322F6915A8BC174EC79826EA05A2B7",
+                                                            "status":  "VALID",
+                                                            "valid":  true,
+                                                            "exactFixtureColorPixelCount":  10970,
+                                                            "nonTransparentPixelCount":  11230
+                                                        },
+                                         "screenshotPixelsStableAcrossRuns":  true,
+                                         "run02PixelSha256":  "D1A68BDACAC82AC3F236825D12A656EE77322F6915A8BC174EC79826EA05A2B7",
+                                         "run03PixelSha256":  "D1A68BDACAC82AC3F236825D12A656EE77322F6915A8BC174EC79826EA05A2B7"
+                                     }
+                     },
+                     {
+                         "key":  "B-B-counterclockwise-explicit",
+                         "fixturePath":  "fixtures/B-B-counterclockwise-explicit.fla",
+                         "sourceSha256":  "557170CE81C203A3EF6D5EC43981B4C5325CE3E082A4404FA5990DBAA533AB40",
+                         "rawXfl":  {
+                                        "shapeBlockSha256":  "FAFFAE7C58C7FB46F47D16F537B224910B92BCB3183104FE5231A33985340329",
+                                        "edgeRecordCount":  1,
+                                        "rawSubsegmentCount":  3,
+                                        "targetFillDrawSubsegmentCount":  3,
+                                        "authoredCloseMarkerCount":  0,
+                                        "explicitClosingGeometryCommandCount":  1,
+                                        "targetFillStyleIndex":  1,
+                                        "targetFillFillStyle0EdgeCount":  0,
+                                        "targetFillFillStyle1EdgeCount":  1
+                                    },
+                         "panda":  {
+                                       "renderStatus":  "RENDERED",
+                                       "deterministic":  true,
+                                       "fillBoundarySegmentCount":  3,
+                                       "endpointGraphBalanced":  true,
+                                       "exactCycleDecompositionOk":  true,
+                                       "reversedFillStyle0MappingCount":  0
+                                   },
+                         "animate":  {
+                                         "topologyStableAcrossRuns":  true,
+                                         "topologySha256":  "00A03A70433A9E941FFBD7E712E17024823F230FD5CC89F8AD4A5156332A679F",
+                                         "edgeCount":  3,
+                                         "vertexCount":  3,
+                                         "contourCount":  2,
+                                         "contours":  [
+                                                          {
+                                                              "interior":  false,
+                                                              "orientation":  1,
+                                                              "fillStyle":  "noFill",
+                                                              "closedAtStart":  true,
+                                                              "stopReason":  "RETURNED_TO_START",
+                                                              "halfEdgeCount":  3
+                                                          },
+                                                          {
+                                                              "interior":  true,
+                                                              "orientation":  -1,
+                                                              "fillStyle":  "solid",
+                                                              "closedAtStart":  true,
+                                                              "stopReason":  "RETURNED_TO_START",
+                                                              "halfEdgeCount":  3
+                                                          }
+                                                      ],
+                                         "screenshot":  {
+                                                            "path":  "animate/run03/B-B-counterclockwise-explicit.png",
+                                                            "fileSha256":  "697AC5A04577E5C1B462DDE0E89CC5829F7F2C8D82C75B0A9219ACD855150496",
+                                                            "pixelSha256":  "D1A68BDACAC82AC3F236825D12A656EE77322F6915A8BC174EC79826EA05A2B7",
+                                                            "status":  "VALID",
+                                                            "valid":  true,
+                                                            "exactFixtureColorPixelCount":  10970,
+                                                            "nonTransparentPixelCount":  11230
+                                                        },
+                                         "screenshotPixelsStableAcrossRuns":  true,
+                                         "run02PixelSha256":  "D1A68BDACAC82AC3F236825D12A656EE77322F6915A8BC174EC79826EA05A2B7",
+                                         "run03PixelSha256":  "D1A68BDACAC82AC3F236825D12A656EE77322F6915A8BC174EC79826EA05A2B7"
+                                     }
+                     },
+                     {
+                         "key":  "control-explicit-closed",
+                         "fixturePath":  "fixtures/control-explicit-closed.fla",
+                         "sourceSha256":  "39D5201E1197DBEDCCC98BDDFE0D6DB0DF26B1AEEED4FF43D59234EE5B90C067",
+                         "rawXfl":  {
+                                        "shapeBlockSha256":  "FAFFAE7C58C7FB46F47D16F537B224910B92BCB3183104FE5231A33985340329",
+                                        "edgeRecordCount":  1,
+                                        "rawSubsegmentCount":  3,
+                                        "targetFillDrawSubsegmentCount":  3,
+                                        "authoredCloseMarkerCount":  0,
+                                        "explicitClosingGeometryCommandCount":  1,
+                                        "targetFillStyleIndex":  1,
+                                        "targetFillFillStyle0EdgeCount":  0,
+                                        "targetFillFillStyle1EdgeCount":  1
+                                    },
+                         "panda":  {
+                                       "renderStatus":  "RENDERED",
+                                       "deterministic":  true,
+                                       "fillBoundarySegmentCount":  3,
+                                       "endpointGraphBalanced":  true,
+                                       "exactCycleDecompositionOk":  true,
+                                       "reversedFillStyle0MappingCount":  0
+                                   },
+                         "animate":  {
+                                         "topologyStableAcrossRuns":  true,
+                                         "topologySha256":  "00A03A70433A9E941FFBD7E712E17024823F230FD5CC89F8AD4A5156332A679F",
+                                         "edgeCount":  3,
+                                         "vertexCount":  3,
+                                         "contourCount":  2,
+                                         "contours":  [
+                                                          {
+                                                              "interior":  false,
+                                                              "orientation":  1,
+                                                              "fillStyle":  "noFill",
+                                                              "closedAtStart":  true,
+                                                              "stopReason":  "RETURNED_TO_START",
+                                                              "halfEdgeCount":  3
+                                                          },
+                                                          {
+                                                              "interior":  true,
+                                                              "orientation":  -1,
+                                                              "fillStyle":  "solid",
+                                                              "closedAtStart":  true,
+                                                              "stopReason":  "RETURNED_TO_START",
+                                                              "halfEdgeCount":  3
+                                                          }
+                                                      ],
+                                         "screenshot":  {
+                                                            "path":  "animate/run03/control-explicit-closed.png",
+                                                            "fileSha256":  "697AC5A04577E5C1B462DDE0E89CC5829F7F2C8D82C75B0A9219ACD855150496",
+                                                            "pixelSha256":  "D1A68BDACAC82AC3F236825D12A656EE77322F6915A8BC174EC79826EA05A2B7",
+                                                            "status":  "VALID",
+                                                            "valid":  true,
+                                                            "exactFixtureColorPixelCount":  10970,
+                                                            "nonTransparentPixelCount":  11230
+                                                        },
+                                         "screenshotPixelsStableAcrossRuns":  true,
+                                         "run02PixelSha256":  "D1A68BDACAC82AC3F236825D12A656EE77322F6915A8BC174EC79826EA05A2B7",
+                                         "run03PixelSha256":  "D1A68BDACAC82AC3F236825D12A656EE77322F6915A8BC174EC79826EA05A2B7"
+                                     }
+                     }
+                 ],
+    "validation":  {
+                       "integrationTests":  {
+                                                "command":  "pnpm test:integration",
+                                                "status":  "PASS",
+                                                "testFiles":  38,
+                                                "tests":  189
+                                            },
+                       "researchHelperSyntax":  "PASS",
+                       "researchHelperLint":  "PASS",
+                       "animateJsflSyntax":  "PASS",
+                       "hostPowerShellSyntax":  "PASS",
+                       "productionSeamPreflight":  "PASS",
+                       "modifiedAnimateCompensatingControls":  "PASS"
+                   },
+    "limitations":  [
+                        "D-A was created by Animate, then one exact DOMDocument.xml Edge@edges replacement introduced the raw close marker; the patched FLA exports no visible filled pixels in Animate.",
+                        "B is weakened only for this minimal triangle mechanism; this does not classify the three remaining real V0 character failures.",
+                        "F remains deferred because the D family did not satisfy the required visual-equivalence gate."
+                    ]
+}
