@@ -1,0 +1,261 @@
+{
+  "schemaVersion": "issue743-research-evidence/1",
+  "issue": 743,
+  "capturedOn": "2026-10-09",
+  "verdict": "D_WEAKENED_AUTHENTIC_PAIR_EQUIVALENT",
+  "answer": "A real working authored-close Shape was minimized and paired with an explicit-closure twin. Animate stage pixels matched, and Panda returned the same stable open-boundary result for both encodings.",
+  "scope": {
+    "productionFilesChanged": false,
+    "originalSourceFlaFilesWritten": false,
+    "sourceOrDerivedFlaArchivesCommitted": false
+  },
+  "animateHost": {
+    "version": "23.0.0.407",
+    "executableSha256": "0F869BD383E679611C6F85D887F72FE636B16403A5B98F79DF87F6F563ED3838",
+    "authenticodeStatus": "HashMismatch",
+    "processAndExecutableStableDuringExperiment": true,
+    "capturesReadOnly": true,
+    "saveApiCalled": false,
+    "originalDocumentRestored": true,
+    "documentCountBeforeAndAfter": 9
+  },
+  "census": {
+    "sourceCopiesUnchanged": true,
+    "animateCaptureRun": "run02",
+    "candidateCapturesClosedWithoutSave": true,
+    "candidates": [
+      {
+        "key": "hanfu-open-fill",
+        "sourceSha256": "6AF14990029D4CED2C4E305721321835180C1BF041178A8799E1D14A1F62E535",
+        "shapeId": "fla-shape-9420f0fcb052d77956ea920f",
+        "layerIndex": 0,
+        "frameIndex": 0,
+        "xflMemberPath": "8/0",
+        "animateDomMemberPath": "8",
+        "fillStyleIndex": 1,
+        "xflShape": {
+          "edgeRecords": 179,
+          "rawSubsegments": 273,
+          "authoredCloseMarkers": 4
+        },
+        "targetFillStyle": {
+          "edgeRecords": 28,
+          "rawSubsegments": 99,
+          "authoredCloseMarkers": 4
+        },
+        "animateShape": {
+          "edgeRecords": 145,
+          "vertices": 136,
+          "contours": 17
+        },
+        "animateStagePng": {
+          "path": "animate/hanfu-open-fill.png",
+          "sha256": "8DCDB71E5DFA24C67E7AA32AC283B1E2F961B13673BEBD2A84807C4F85EE227A"
+        },
+        "panda": {
+          "status": "BLOCKED",
+          "code": "TARGET_UNSUPPORTED",
+          "stable": true
+        }
+      },
+      {
+        "key": "qingling-open-fill",
+        "sourceSha256": "D0958D4432DECBF6C54566BA15A2F5E97BD88C82D75DCB2F84603E9B2273F0E4",
+        "shapeId": "fla-shape-944dedeb2bb14b160532f675",
+        "layerIndex": 0,
+        "frameIndex": 0,
+        "xflMemberPath": "0/0/2/0",
+        "animateDomMemberPath": "0/0/2",
+        "fillStyleIndex": 1,
+        "xflShape": {
+          "edgeRecords": 95,
+          "rawSubsegments": 176,
+          "authoredCloseMarkers": 4
+        },
+        "targetFillStyle": {
+          "edgeRecords": 14,
+          "rawSubsegments": 61,
+          "authoredCloseMarkers": 3
+        },
+        "animateShape": {
+          "edgeRecords": 104,
+          "vertices": 99,
+          "contours": 13
+        },
+        "animateStagePng": {
+          "path": "animate/qingling-open-fill.png",
+          "sha256": "9CECA148FCA8F5398F6D12611D29FD905CDBF7F8367E9EB3B64E5A39980D7D59"
+        },
+        "panda": {
+          "status": "BLOCKED",
+          "code": "TARGET_UNSUPPORTED",
+          "stable": true
+        }
+      },
+      {
+        "key": "xiuxian-male-open-fill",
+        "sourceSha256": "565C5609A7610EF64ED9F98B09D98DD82D5A45255ADB4D3D410A5A365E0EF4A5",
+        "shapeId": "fla-shape-196ba2d2358441409a8b4dce",
+        "layerIndex": 0,
+        "frameIndex": 0,
+        "xflMemberPath": "0/2/1/1/0",
+        "animateDomMemberPath": "0/2/1/1",
+        "fillStyleIndex": 1,
+        "xflShape": {
+          "edgeRecords": 88,
+          "rawSubsegments": 121,
+          "authoredCloseMarkers": 11
+        },
+        "targetFillStyle": {
+          "edgeRecords": 9,
+          "rawSubsegments": 22,
+          "authoredCloseMarkers": 2
+        },
+        "animateShape": {
+          "edgeRecords": 66,
+          "vertices": 57,
+          "contours": 13
+        },
+        "animateStagePng": {
+          "path": "animate/male-open-fill.png",
+          "sha256": "F37C33D2129622855F09C635E642F82D2FBB123CA832301637ACD3DE48465483"
+        },
+        "panda": {
+          "status": "BLOCKED",
+          "code": "TARGET_UNSUPPORTED",
+          "targetFillDrawSubsegments": 22,
+          "stable": true
+        },
+        "selected": true,
+        "selectionReason": "The selected target has 9 FillStyle1-connected Edge records; Qingling has 14 and Hanfu has 28."
+      }
+    ]
+  },
+  "minimization": {
+    "targetFillStyleIndex": 1,
+    "targetEdgeRecords": 9,
+    "targetAuthoredCloseMarkers": 2,
+    "targetEdgeXmlSha256": "28153F44B5E7F29C08A33CE2A87572E283E130FEAB7E1B23E3A5A1848EF9F019",
+    "steps": [
+      {
+        "name": "M0-authentic",
+        "sha256": "565C5609A7610EF64ED9F98B09D98DD82D5A45255ADB4D3D410A5A365E0EF4A5",
+        "archiveState": "RECOVERY_CANDIDATE",
+        "animateTargetContourHalfEdges": 17,
+        "animateStagePngSha256": "F37C33D2129622855F09C635E642F82D2FBB123CA832301637ACD3DE48465483"
+      },
+      {
+        "name": "M1-remove-nontarget-edges",
+        "sha256": "8A48C51B9D42A42B910C765C7667FA5D3B1AADF367E4EDE14E00EA0EEC3F6780",
+        "parent": "M0-authentic",
+        "archiveState": "STRICT_VALID",
+        "removedNonTargetEdgeRecords": 79,
+        "targetEdgeRecordsByteIdentical": true,
+        "fillStyleCount": 4,
+        "animateTargetContourHalfEdges": 17,
+        "animateStagePngSha256": "F37C33D2129622855F09C635E642F82D2FBB123CA832301637ACD3DE48465483",
+        "panda": {
+          "status": "BLOCKED",
+          "code": "TARGET_UNSUPPORTED",
+          "targetFillDrawSubsegments": 22,
+          "stable": true
+        }
+      },
+      {
+        "name": "M2-remove-unused-fillstyle4",
+        "sha256": "5A501D1F787707A3965BECC31E2E5B8F5DDC519B25369E16EF68E72AF674EB5D",
+        "parent": "M1-remove-nontarget-edges",
+        "archiveState": "STRICT_VALID",
+        "removedFillStyleIndex": 4,
+        "fillStyleCountBeforeAndAfter": [4, 3],
+        "removedStyleReferencedByRetainedTargetEdge": false,
+        "targetEdgeRecordsByteIdentical": true,
+        "animateTargetContourHalfEdges": 17,
+        "animateStagePngSha256": "F37C33D2129622855F09C635E642F82D2FBB123CA832301637ACD3DE48465483",
+        "panda": {
+          "status": "BLOCKED",
+          "code": "TARGET_UNSUPPORTED",
+          "targetFillDrawSubsegments": 22,
+          "stable": true
+        }
+      }
+    ],
+    "targetContourUnchangedM0ToM2": true,
+    "stagePixelsUnchangedM0ToM2": true
+  },
+  "authenticPair": {
+    "dA": {
+      "name": "D-A-authentic-close-M2",
+      "sha256": "5A501D1F787707A3965BECC31E2E5B8F5DDC519B25369E16EF68E72AF674EB5D",
+      "byteIdenticalToM2": true,
+      "targetAuthoredCloseMarkers": 2
+    },
+    "dB": {
+      "name": "D-B-explicit-close-M2",
+      "sha256": "2ADC8598EE0B4747E95E48F83BA8FE57617E2B189F922B90943EB72C5BAC50A0",
+      "archiveState": "STRICT_VALID",
+      "targetAuthoredCloseMarkers": 1
+    },
+    "targetFillStyleIndex": 1,
+    "targetEdgeRecordsBeforeAndAfter": 9,
+    "changedArchiveMembers": 1,
+    "allOtherArchiveMemberContentsByteIdentical": true,
+    "closureReplacement": {
+      "sourceAuthoredCloseMarkerOrdinal": 2,
+      "fromTwips": [18666, 13131],
+      "toTwips": [19207, 12777],
+      "derivedFromPandaAuthoredCloseMapping": true
+    },
+    "animate": {
+      "stagePngSha256ForM2DAAndDBRuns": "F37C33D2129622855F09C635E642F82D2FBB123CA832301637ACD3DE48465483",
+      "dAToDBStagePixelsEqual": true,
+      "dBRepeatedCapturesStable": true,
+      "dACapturesStableAgainstM2": true,
+      "targetFillContourClosedForBoth": true,
+      "fillStyleAndPlacementSame": true,
+      "dAContourHalfEdges": 17,
+      "dBContourHalfEdges": 7,
+      "contourTopologySame": false,
+      "capturesReadOnly": true,
+      "originalDocumentRestored": true,
+      "documentCountBeforeAndAfter": 9
+    },
+    "panda": {
+      "dA": {
+        "status": "BLOCKED",
+        "code": "TARGET_UNSUPPORTED",
+        "targetRawSubsegments": 22,
+        "boundarySegments": 23,
+        "authoredCloseBoundaryMappings": 1,
+        "stable": true
+      },
+      "dB": {
+        "status": "BLOCKED",
+        "code": "TARGET_UNSUPPORTED",
+        "targetRawSubsegments": 23,
+        "boundarySegments": 23,
+        "authoredCloseBoundaryMappings": 0,
+        "stable": true
+      },
+      "graphImbalancesEqual": true,
+      "openEndpoints": [
+        "935.25,659.15 in=1/out=0",
+        "960.85,643.6 in=0/out=1"
+      ],
+      "sameStableBlockedOutcome": true,
+      "closeSegmentGeometryEqual": true
+    }
+  },
+  "compensatingControls": {
+    "issue737SourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+    "animateControlScreenshotSha256": "85E847CA35C83A49191E0C1F9CDA73769E6E4C53740A89F9821A29AC1589E454",
+    "historicalControlAnimateAndPandaStable": true,
+    "knownGoodClosedFillControlAnimateAndPandaRendered": true,
+    "historicalPandaControl": {
+      "rawEdgeRecords": 160,
+      "rawSubsegments": 277,
+      "closedFillStyle1BoundarySegments": 98,
+      "stable": true
+    }
+  }
+}

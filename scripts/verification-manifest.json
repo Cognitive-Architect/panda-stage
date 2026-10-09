@@ -92,6 +92,18 @@
         "notes": "Only the isolated Issue #742 minimal Animate/Panda experiment assets and receipts are registered here. They are research evidence, not production behavior; keep other Issue evidence paths fail-closed. Draft changes use the existing CI policy self-tests."
       },
       {
+        "id": "issue743-research-evidence",
+        "sourcePatterns": ["docs/evidence/issue-743/**"],
+        "testPatterns": [],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "draftPolicy": "ci-selftest",
+        "incrementalEligible": false,
+        "owner": "fla-rendering-research",
+        "notes": "Issue #743 real authored-close minimization receipts and Animate captures are isolated research evidence. Draft changes use the existing CI policy self-tests; neighboring Issue evidence remains fail-closed."
+      },
+      {
         "id": "cross-process-core",
         "sourcePatterns": [
           "src/main/**",

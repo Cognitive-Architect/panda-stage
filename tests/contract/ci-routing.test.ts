@@ -181,13 +181,25 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual([]);
   });
 
-  it('does not let the Issue #742 evidence route absorb neighboring evidence paths', () => {
+  it('routes Issue #743 research evidence through CI policy self-tests only', () => {
     const result = draft([
       change('docs/evidence/issue-743/receipt.json', 'A'),
+      change('docs/evidence/issue-743/animate/male-open-fill.png', 'A'),
+    ]);
+
+    expect(result.tier).toBe('ci-selftest');
+    expect(result.matchedRouteIds).toEqual(['issue743-research-evidence']);
+    expect(result.suites).toEqual([]);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('keeps other Issue evidence receipts on the fail-closed unknown route', () => {
+    const result = draft([
+      change('docs/evidence/issue-744/receipt.json', 'A'),
     ]);
 
     expect(result.tier).toBe('unknown');
-    expect(result.unknownPaths).toEqual(['docs/evidence/issue-743/receipt.json']);
+    expect(result.unknownPaths).toEqual(['docs/evidence/issue-744/receipt.json']);
   });
 
   it.each([
