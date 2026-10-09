@@ -128,6 +128,18 @@
         "notes": "Issue #745 Open-Fill decoder fix receipts and character contact-sheet evidence only. Draft evidence changes use CI policy self-tests; production decoder changes independently retain focused/full checks. Neighboring Issue evidence paths remain fail-closed."
       },
       {
+        "id": "issue746-full-character-visual-evidence",
+        "sourcePatterns": ["docs/evidence/issue-746/**"],
+        "testPatterns": [],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "draftPolicy": "ci-selftest",
+        "incrementalEligible": false,
+        "owner": "fla-rendering-research",
+        "notes": "Issue #746 full-character visual evidence and source-root receipts only. Draft evidence changes use CI policy self-tests; production renderer changes independently retain focused/full checks. Unregistered Issue evidence paths remain fail-closed."
+      },
+      {
         "id": "cross-process-core",
         "sourcePatterns": [
           "src/main/**",
