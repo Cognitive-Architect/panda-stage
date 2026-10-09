@@ -170,8 +170,93 @@ describe('P2-C03 solid stroke reconstruction', () => {
     expect(rendered.hasRenderablePath).toBe(true);
   });
 
+  it('reconstructs source-default horizontal strokes with horizontal scaling and source-default style values', async () => {
+    const rendered = await renderGraphic(`<DOMShape>
+      <matrix><Matrix a="2" b="0" c="0" d="1" tx="3" ty="4"/></matrix>
+      ${strokeStyle('scaleMode="horizontal"', '#abcdef', '1', '<SolidColor/>')}
+      <edges><Edge strokeStyle="1" cubics="!100 80|200 80"/></edges>
+    </DOMShape>`);
+
+    expect(rendered.ok).toBe(true);
+    if (!rendered.ok) return;
+    const path = strokePathTags(rendered.svg)[0] ?? '';
+    expect(path).toContain('d="M 13.0000 8.0000 L 23.0000 8.0000"');
+    expect(path).not.toContain('transform=');
+    expect(path).toContain('stroke="#000000"');
+    expect(path).toContain('stroke-width="2"');
+    expect(path).toContain('stroke-linecap="round"');
+    expect(path).toContain('stroke-linejoin="round"');
+
+    const bounds = rendered.composition.framing.contentBounds;
+    expect(bounds).not.toBeNull();
+    if (!bounds) return;
+    expect(bounds.x).toBeCloseTo(12, 5);
+    expect(bounds.y).toBeCloseTo(7, 5);
+    expect(bounds.width).toBeCloseTo(12, 5);
+    expect(bounds.height).toBeCloseTo(2, 5);
+  });
+
+  it('keeps horizontal stroke weight unchanged under vertical-only scaling', async () => {
+    const rendered = await renderGraphic(`<DOMShape>
+      <matrix><Matrix a="1" b="0" c="0" d="2" tx="0" ty="0"/></matrix>
+      ${strokeStyle('scaleMode="horizontal"', '#abcdef', '1', '<SolidColor/>')}
+      <edges><Edge strokeStyle="1" cubics="!100 80|200 80"/></edges>
+    </DOMShape>`);
+
+    expect(rendered.ok).toBe(true);
+    if (!rendered.ok) return;
+    const path = strokePathTags(rendered.svg)[0] ?? '';
+    expect(path).toContain('d="M 5.0000 8.0000 L 10.0000 8.0000"');
+    expect(path).not.toContain('transform=');
+    expect(path).toContain('stroke-width="1"');
+  });
+
   it.each([
-    ['non-normal scale mode', strokeStyle('weight="2" scaleMode="horizontal"')],
+    [
+      'X2 parent transform',
+      'a="1.56097412109375" b="-0.20831298828125" c="0.4166259765625" d="0.780487060546875"',
+      Math.hypot(1.56097412109375, -0.20831298828125),
+    ],
+    [
+      'Y2 parent transform',
+      'a="0.780487060546875" b="-0.4166259765625" c="0.20831298828125" d="1.56097412109375"',
+      Math.hypot(0.780487060546875, -0.4166259765625),
+    ],
+  ])('preserves the source-rotated horizontal stroke under a %s', async (_name, matrixAttributes, expectedWidth) => {
+    const rendered = await renderGraphic(`<DOMShape>
+      <matrix><Matrix ${matrixAttributes} tx="3" ty="4"/></matrix>
+      ${strokeStyle('scaleMode="horizontal"', '#abcdef', '1', '<SolidColor/>')}
+      <edges><Edge strokeStyle="1" cubics="!100 80|200 80"/></edges>
+    </DOMShape>`);
+
+    expect(rendered.ok).toBe(true);
+    if (!rendered.ok) return;
+    const path = strokePathTags(rendered.svg)[0] ?? '';
+    expect(path).not.toContain('transform=');
+    const strokeWidth = Number(path.match(/\bstroke-width="([^"]+)"/u)?.[1]);
+    expect(strokeWidth).toBeCloseTo(expectedWidth, 12);
+  });
+
+  it('preserves the normal-mode SVG transform as the normal-stroke control', async () => {
+    const rendered = await renderGraphic(`<DOMShape>
+      <matrix><Matrix a="2" b="0" c="0" d="1" tx="3" ty="4"/></matrix>
+      ${strokeStyle('scaleMode="normal"', '#abcdef', '1', '<SolidColor/>')}
+      <edges><Edge strokeStyle="1" cubics="!100 80|200 80"/></edges>
+    </DOMShape>`);
+
+    expect(rendered.ok).toBe(true);
+    if (!rendered.ok) return;
+    const path = strokePathTags(rendered.svg)[0] ?? '';
+    expect(path).toContain('d="M 5.0000 4.0000 L 10.0000 4.0000"');
+    expect(path).toContain('transform="matrix(2 0 0 1 3 4)"');
+    expect(path).toContain('stroke-width="1"');
+  });
+
+  it.each([
+    ['vertical scale mode', strokeStyle('weight="2" scaleMode="vertical"')],
+    ['none scale mode', strokeStyle('weight="2" scaleMode="none"')],
+    ['unknown scale mode', strokeStyle('weight="2" scaleMode="diagonal"')],
+    ['pixel hinting', strokeStyle('weight="2" pixelHinting="true"')],
     ['gradient stroke', strokeStyle('weight="2"', '#000000', '1', '<LinearGradient><GradientEntry color="#000000" ratio="0"/></LinearGradient>')],
     ['bitmap stroke', strokeStyle('weight="2"', '#000000', '1', '<BitmapFill bitmapPath="LIBRARY/pattern.png"/>')],
   ])('fails explicitly for unsupported %s semantics', async (_name, styles) => {
@@ -183,8 +268,21 @@ describe('P2-C03 solid stroke reconstruction', () => {
     expect(rendered.ok).toBe(false);
     if (!rendered.ok) {
       expect(rendered.code).toBe('TARGET_UNSUPPORTED');
-      expect(rendered.message).toContain('P2-C03 supports normal SolidStroke semantics only');
+      expect(rendered.message).toContain('P2-C03 supports normal and horizontal SolidStroke semantics only');
     }
+  });
+
+  it.each([
+    ['invalid weight', strokeStyle('weight="invalid"')],
+    ['invalid color', strokeStyle('weight="2"', '#000000', '1', '<SolidColor color="invalid"/>')],
+  ])('fails closed for %s', async (_name, styles) => {
+    const rendered = await renderScene(`<DOMShape>
+      ${styles}
+      <edges><Edge strokeStyle="1" cubics="!100 80|200 80"/></edges>
+    </DOMShape>`);
+
+    expect(rendered.ok).toBe(false);
+    if (!rendered.ok) expect(rendered.code).toBe('RENDER_FAILED');
   });
 
   it('preserves authored T-junction subpaths without adding connector geometry', async () => {

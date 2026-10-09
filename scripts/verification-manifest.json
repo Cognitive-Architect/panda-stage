@@ -140,6 +140,18 @@
         "notes": "Issue #746 full-character visual evidence and source-root receipts only. Draft evidence changes use CI policy self-tests; production renderer changes independently retain focused/full checks. Unregistered Issue evidence paths remain fail-closed."
       },
       {
+        "id": "issue747-horizontal-stroke-evidence",
+        "sourcePatterns": ["docs/evidence/issue-747/**"],
+        "testPatterns": [],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "draftPolicy": "ci-selftest",
+        "incrementalEligible": false,
+        "owner": "fla-rendering-research",
+        "notes": "Issue #747 horizontal SolidStroke evidence only. Draft evidence changes use CI policy self-tests; production renderer changes independently retain focused/full checks. Unregistered Issue evidence paths remain fail-closed."
+      },
+      {
         "id": "cross-process-core",
         "sourcePatterns": [
           "src/main/**",

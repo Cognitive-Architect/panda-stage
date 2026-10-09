@@ -236,6 +236,19 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual([]);
   });
 
+  it('routes Issue #747 horizontal-stroke evidence through CI policy self-tests only', () => {
+    const result = draft([
+      change('docs/evidence/issue-747/README.md', 'A'),
+      change('docs/evidence/issue-747/receipt.json', 'A'),
+      change('docs/evidence/issue-747/hanfu-full-character.png', 'A'),
+    ]);
+
+    expect(result.tier).toBe('ci-selftest');
+    expect(result.matchedRouteIds).toEqual(['issue747-horizontal-stroke-evidence']);
+    expect(result.suites).toEqual([]);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
   it('retains focused checks for Issue #745 source code changes alongside evidence', () => {
     const result = draft([
       change('src/main/services/fla-static-snapshot-svg-builder.ts'),
@@ -247,13 +260,24 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual([]);
   });
 
-  it('keeps future unregistered Issue evidence on the fail-closed unknown route', () => {
+  it('keeps focused checks for Issue #747 production changes alongside its evidence', () => {
     const result = draft([
+      change('src/main/services/fla-static-snapshot-svg-builder.ts'),
       change('docs/evidence/issue-747/receipt.json', 'A'),
     ]);
 
+    expect(result.tier).toBe('focused');
+    expect(result.matchedRouteIds).toContain('issue747-horizontal-stroke-evidence');
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('keeps future unregistered Issue evidence on the fail-closed unknown route', () => {
+    const result = draft([
+      change('docs/evidence/issue-748/receipt.json', 'A'),
+    ]);
+
     expect(result.tier).toBe('unknown');
-    expect(result.unknownPaths).toEqual(['docs/evidence/issue-747/receipt.json']);
+    expect(result.unknownPaths).toEqual(['docs/evidence/issue-748/receipt.json']);
   });
 
   it.each([

@@ -1520,6 +1520,7 @@ function reconstructFills(
 
 type StrokeCap = 'butt' | 'round' | 'square';
 type StrokeJoin = 'miter' | 'round' | 'bevel';
+type StrokeScaleMode = 'normal' | 'horizontal';
 type StrokeDrawCommand = Extract<DecodedEdges['commands'][number], { type: 'L' | 'Q' | 'C' }>;
 
 interface ParsedSolidStrokeStyle {
@@ -1529,6 +1530,7 @@ interface ParsedSolidStrokeStyle {
   readonly cap: StrokeCap;
   readonly join: StrokeJoin;
   readonly miterLimit: number;
+  readonly scaleMode: StrokeScaleMode;
 }
 
 interface StrokeBoundarySegment {
@@ -1560,7 +1562,7 @@ function parseSolidStrokeStyle(
   const unsupported = (detail: string): BuildSvgFailure => ({
     ok: false,
     code: 'TARGET_UNSUPPORTED',
-    message: `Shape ${shapeId} StrokeStyle ${style.index} has unsupported ${detail}; P2-C03 supports normal SolidStroke semantics only`,
+    message: `Shape ${shapeId} StrokeStyle ${style.index} has unsupported ${detail}; P2-C03 supports normal and horizontal SolidStroke semantics only`,
   });
   if (style.type !== 'solid') return unsupported(`${style.type} stroke fill`);
   const solidStrokeTag = style.sourceXml.match(/<SolidStroke\b[^>]*>/u)?.[0];
@@ -1619,7 +1621,7 @@ function parseSolidStrokeStyle(
   }
 
   const scaleMode = attributeFromElement(style.sourceXml, 'SolidStroke', 'scaleMode') ?? 'normal';
-  if (scaleMode !== 'normal') return unsupported(`scaleMode "${scaleMode}"`);
+  if (scaleMode !== 'normal' && scaleMode !== 'horizontal') return unsupported(`scaleMode "${scaleMode}"`);
   const pixelHinting = attributeFromElement(style.sourceXml, 'SolidStroke', 'pixelHinting');
   if (pixelHinting !== null && pixelHinting !== 'true' && pixelHinting !== 'false') {
     return {
@@ -1630,7 +1632,7 @@ function parseSolidStrokeStyle(
   }
   if (pixelHinting === 'true') return unsupported('pixelHinting');
 
-  return { ok: true, result: { color, opacity, width, cap, join, miterLimit } };
+  return { ok: true, result: { color, opacity, width, cap, join, miterLimit, scaleMode } };
 }
 
 function stitchSolidStrokeSegments(
@@ -2323,6 +2325,45 @@ function transformPoint(matrix: Matrix2D, point: Point2D): Point2D {
   };
 }
 
+function transformCommandsForHorizontalStroke(
+  commands: DecodedEdges['commands'],
+  matrix: Matrix2D,
+): string | null {
+  const transformed: DecodedEdges['commands'][number][] = [];
+  const finite = (point: Point2D): boolean => Number.isFinite(point.x) && Number.isFinite(point.y);
+  for (const command of commands) {
+    if (command.type === 'Z') {
+      transformed.push(command);
+      continue;
+    }
+    const endpoint = transformPoint(matrix, command);
+    if (!finite(endpoint)) return null;
+    if (command.type === 'M' || command.type === 'L') {
+      transformed.push({ type: command.type, x: endpoint.x, y: endpoint.y });
+      continue;
+    }
+    if (command.type === 'Q') {
+      const control = transformPoint(matrix, { x: command.cx, y: command.cy });
+      if (!finite(control)) return null;
+      transformed.push({ type: 'Q', cx: control.x, cy: control.y, x: endpoint.x, y: endpoint.y });
+      continue;
+    }
+    const first = transformPoint(matrix, { x: command.c1x, y: command.c1y });
+    const second = transformPoint(matrix, { x: command.c2x, y: command.c2y });
+    if (!finite(first) || !finite(second)) return null;
+    transformed.push({
+      type: 'C',
+      c1x: first.x,
+      c1y: first.y,
+      c2x: second.x,
+      c2y: second.y,
+      x: endpoint.x,
+      y: endpoint.y,
+    });
+  }
+  return commandsToSvgPath(transformed);
+}
+
 function quadraticValue(start: number, control: number, end: number, t: number): number {
   const inverse = 1 - t;
   return inverse * inverse * start + 2 * inverse * t * control + t * t * end;
@@ -2457,13 +2498,23 @@ function includeTransformedPathBounds(
 function strokeBoundsExpansion(
   style: ParsedSolidStrokeStyle,
   matrix: Matrix2D,
-): { readonly x: number; readonly y: number } | null {
+): { readonly x: number; readonly y: number; readonly width: number } | null {
+  let width = style.width;
+  if (style.scaleMode === 'horizontal') {
+    const horizontalScale = Math.hypot(matrix.a, matrix.b);
+    width = style.width * horizontalScale;
+    if (!Number.isFinite(horizontalScale) || horizontalScale <= 0 ||
+        !Number.isFinite(width) || width <= 0 || width > MAX_OUTPUT_WIDTH) return null;
+  }
   const capFactor = style.cap === 'square' ? Math.SQRT2 : 1;
   const joinFactor = style.join === 'miter' ? style.miterLimit : 1;
-  const radius = (style.width / 2) * Math.max(capFactor, joinFactor);
+  const radius = (width / 2) * Math.max(capFactor, joinFactor);
+  if (style.scaleMode === 'horizontal') {
+    return Number.isFinite(radius) ? { x: radius, y: radius, width } : null;
+  }
   const x = radius * Math.hypot(matrix.a, matrix.c);
   const y = radius * Math.hypot(matrix.b, matrix.d);
-  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y, width } : null;
 }
 
 function includeExpandedStrokeBounds(
@@ -2776,7 +2827,8 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       }
       strokeSegmentCount += shapeStrokeSegmentCount;
       for (const stroke of reconstructedStrokes.result) {
-        const expansion = strokeBoundsExpansion(stroke.rendererStyle, node.worldTransform);
+        const style = stroke.rendererStyle;
+        const expansion = strokeBoundsExpansion(style, node.worldTransform);
         if (!expansion) {
           return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic stroke bounds are not finite: ${node.shapeId}` };
         }
@@ -2788,13 +2840,21 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
               return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic stroke bounds are not finite: ${node.shapeId}` };
             }
           }
-          const pathBytes = Buffer.byteLength(path.pathD, 'utf8');
+          const pathD = style.scaleMode === 'horizontal'
+            ? transformCommandsForHorizontalStroke(path.commands, node.worldTransform)
+            : path.pathD;
+          if (pathD === null) {
+            return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic horizontal stroke coordinates are not finite: ${node.shapeId}` };
+          }
+          const pathBytes = Buffer.byteLength(pathD, 'utf8');
           if (pathBytes > MAX_EDGE_CHARS ||
               pathBytes + gradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
             return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
           }
-          const style = stroke.rendererStyle;
-          const pathNode = `<path d="${path.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="none" stroke="${style.color}" stroke-opacity="${formatSvgNumber(style.opacity)}" stroke-width="${formatSvgNumber(style.width)}" stroke-linecap="${style.cap}" stroke-linejoin="${style.join}" stroke-miterlimit="${formatSvgNumber(style.miterLimit)}"/>`;
+          const transformAttribute = style.scaleMode === 'normal'
+            ? ` transform="${matrixToSvgTransform(node.worldTransform)}"`
+            : '';
+          const pathNode = `<path d="${pathD}"${transformAttribute} fill="none" stroke="${style.color}" stroke-opacity="${formatSvgNumber(style.opacity)}" stroke-width="${formatSvgNumber(expansion.width)}" stroke-linecap="${style.cap}" stroke-linejoin="${style.join}" stroke-miterlimit="${formatSvgNumber(style.miterLimit)}"/>`;
           emittedContentBytes += Buffer.byteLength(pathNode, 'utf8');
           if (gradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
             return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
