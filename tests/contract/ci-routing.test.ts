@@ -168,6 +168,28 @@ describe('RH-07 FAST Draft policy', () => {
     ]);
   });
 
+  it('routes Issue #742 experiment evidence through CI policy self-tests only', () => {
+    const result = draft([
+      change('docs/evidence/issue-742/receipt.json', 'A'),
+      change('docs/evidence/issue-742/fixtures/control-explicit-closed.fla', 'A'),
+      change('docs/evidence/issue-742/animate/run03/control-explicit-closed.png', 'A'),
+    ]);
+
+    expect(result.tier).toBe('ci-selftest');
+    expect(result.matchedRouteIds).toEqual(['issue742-research-evidence']);
+    expect(result.suites).toEqual([]);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('does not let the Issue #742 evidence route absorb neighboring evidence paths', () => {
+    const result = draft([
+      change('docs/evidence/issue-743/receipt.json', 'A'),
+    ]);
+
+    expect(result.tier).toBe('unknown');
+    expect(result.unknownPaths).toEqual(['docs/evidence/issue-743/receipt.json']);
+  });
+
   it.each([
     'src/domain/services/DialogueService.ts',
     'src/shared/project-contract.ts',

@@ -63,4 +63,4 @@ Run02 screenshots are retained under [`animate/run02/`](animate/run02/); the ful
 - `node scripts/research/issue742-xfl-panda-differential.cjs --preflight` — PASS at the recorded baseline.
 - Fixture hash checks, Panda determinism, repeated Animate captures, and the #737 compensating controls — PASS.
 
-No production files were changed. The research helpers are [here](../../../scripts/research/issue742-xfl-panda-differential.cjs); the full authored fixture, patch, capture, and control helpers are alongside it in `scripts/research/`.
+The verification manifest registers only `docs/evidence/issue-742/**` to the existing Draft CI policy self-tests; a contract check keeps neighboring Issue evidence paths fail-closed. No production behavior files were changed. The research helpers are [here](../../../scripts/research/issue742-xfl-panda-differential.cjs); the full authored fixture, patch, capture, and control helpers are alongside it in `scripts/research/`.
