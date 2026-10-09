@@ -104,6 +104,18 @@
         "notes": "Issue #743 real authored-close minimization receipts and Animate captures are isolated research evidence. Draft changes use the existing CI policy self-tests; neighboring Issue evidence remains fail-closed."
       },
       {
+        "id": "issue744-research-evidence",
+        "sourcePatterns": ["docs/evidence/issue-744/**"],
+        "testPatterns": [],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "draftPolicy": "ci-selftest",
+        "incrementalEligible": false,
+        "owner": "fla-rendering-research",
+        "notes": "Issue #744 endpoint provenance and topology evidence are isolated research results. Draft changes use the existing CI policy self-tests; neighboring Issue evidence remains fail-closed."
+      },
+      {
         "id": "cross-process-core",
         "sourcePatterns": [
           "src/main/**",

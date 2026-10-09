@@ -1,0 +1,5915 @@
+{
+  "schemaVersion": "issue744-endpoint-ledger/1",
+  "fixture": "D-B",
+  "frozenInput": {
+    "path": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\minimization-run01\\fixtures\\D-B-explicit-close-M2.fla",
+    "bytes": 1200700,
+    "sha256": "2ADC8598EE0B4747E95E48F83BA8FE57617E2B189F922B90943EB72C5BAC50A0",
+    "xflMember": "LIBRARY/白发修仙男-cilisucai.com/白发修仙男-cilisucai.com4.xml",
+    "xflMemberByteLength": 837651,
+    "xflMemberSha256": "351954B7F4678535D388939BBD6C9EF9CA460FB5E1C49DF5A9BC36D0EA30C309",
+    "shapeId": "fla-shape-196ba2d2358441409a8b4dce",
+    "targetFillStyle": 1,
+    "xflShapeBlockSha256": "E38D450769AF85E76C47C88A21E3D2CBE5B97C7305F6D7239CD5C8CEC3DC428D",
+    "fillStyleXmlSha256": "A5B26612A5396CFEDF01DCBABBDB8967346AF9430183F24F61150513F0A09BB4"
+  },
+  "pandaCurrentInterpretation": {
+    "baselineGitHead": "b28d410296173a53e77c99940b6e01675055b8ad",
+    "status": "BLOCKED",
+    "code": "TARGET_UNSUPPORTED",
+    "message": "Shape fla-shape-196ba2d2358441409a8b4dce FillStyle 1 has an open fill boundary",
+    "targetBoundarySegmentCount": 23,
+    "rawSourceTargetSubsegmentCount": 23,
+    "authoredCloseBoundaryMappingCount": 0,
+    "deterministic": {
+      "repeatCount": 2,
+      "runHashes": [
+        "330C63D8F37F3F59AB59FEF9558EF52D49444E59477FFE0042974CE90705367A",
+        "330C63D8F37F3F59AB59FEF9558EF52D49444E59477FFE0042974CE90705367A"
+      ],
+      "stable": true
+    },
+    "boundaryGraph": {
+      "endpointCount": 24,
+      "balanced": false,
+      "imbalancedEndpoints": [
+        {
+          "key": "935.25,659.15",
+          "point": {
+            "x": 935.25,
+            "y": 659.15
+          },
+          "inDegree": 1,
+          "outDegree": 0
+        },
+        {
+          "key": "960.85,643.6",
+          "point": {
+            "x": 960.85,
+            "y": 643.6
+          },
+          "inDegree": 0,
+          "outDegree": 1
+        }
+      ],
+      "endpoints": [
+        {
+          "key": "928.3,651.95",
+          "point": {
+            "x": 928.3,
+            "y": 651.95
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "933.3,656.55",
+          "point": {
+            "x": 933.3,
+            "y": 656.55
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "935,654.4",
+          "point": {
+            "x": 935,
+            "y": 654.4
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "935.25,659.15",
+          "point": {
+            "x": 935.25,
+            "y": 659.15
+          },
+          "inDegree": 1,
+          "outDegree": 0
+        },
+        {
+          "key": "936.75,655.25",
+          "point": {
+            "x": 936.75,
+            "y": 655.25
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "940.65,657.25",
+          "point": {
+            "x": 940.65,
+            "y": 657.25
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "941.75,661.9",
+          "point": {
+            "x": 941.75,
+            "y": 661.9
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "943.3,650.55",
+          "point": {
+            "x": 943.3,
+            "y": 650.55
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "944.55,651.65",
+          "point": {
+            "x": 944.55,
+            "y": 651.65
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "946.25,643.2",
+          "point": {
+            "x": 946.25,
+            "y": 643.2
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "946.75,662.9",
+          "point": {
+            "x": 946.75,
+            "y": 662.9
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "948.05,647.85",
+          "point": {
+            "x": 948.05,
+            "y": 647.85
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "949.85,647.15",
+          "point": {
+            "x": 949.85,
+            "y": 647.15
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "949.9,656.75",
+          "point": {
+            "x": 949.9,
+            "y": 656.75
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "953.5,653.1",
+          "point": {
+            "x": 953.5,
+            "y": 653.1
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "953.65,645.8",
+          "point": {
+            "x": 953.65,
+            "y": 645.8
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "955.15,659.75",
+          "point": {
+            "x": 955.15,
+            "y": 659.75
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "958.8,661.9",
+          "point": {
+            "x": 958.8,
+            "y": 661.9
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "959.25,662.15",
+          "point": {
+            "x": 959.25,
+            "y": 662.15
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "960.35,638.85",
+          "point": {
+            "x": 960.35,
+            "y": 638.85
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "960.35,657.75",
+          "point": {
+            "x": 960.35,
+            "y": 657.75
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "960.85,643.6",
+          "point": {
+            "x": 960.85,
+            "y": 643.6
+          },
+          "inDegree": 0,
+          "outDegree": 1
+        },
+        {
+          "key": "960.9,658.35",
+          "point": {
+            "x": 960.9,
+            "y": 658.35
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        {
+          "key": "963.6,661.6",
+          "point": {
+            "x": 963.6,
+            "y": 661.6
+          },
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      ]
+    },
+    "sourceOrderCycleDecomposition": {
+      "ok": false,
+      "cycles": [
+        [
+          0,
+          3,
+          2,
+          1
+        ]
+      ],
+      "consumedSegmentCount": 16,
+      "totalSegmentCount": 23,
+      "deadEnd": "935.25,659.15",
+      "partialTrail": [
+        4,
+        6,
+        8,
+        10,
+        12,
+        14,
+        16,
+        18,
+        27,
+        25,
+        23,
+        21
+      ],
+      "openRemainderSegmentCount": 7,
+      "openRemainder": [
+        28,
+        30,
+        32,
+        34,
+        36,
+        38,
+        40
+      ]
+    },
+    "sideMappingMatchesBoundaryCount": true,
+    "boundaryInputHash": "619302F55C3108EB0D85564F6B8AACB1AFE10F0D65A60ABF6923B0155473F116",
+    "mappedBoundaryHash": "EC3AF06E1D5A5C89C4F1FF34649BC1344EE68BF815855039B7DA17878ECC5AE4",
+    "normalizedInputEqualsMappedSourceSides": true
+  },
+  "sourceStyleAndCommandInventory": {
+    "targetFillStyle": 1,
+    "targetEdgeRecordCount": 9,
+    "fillStyle0OwnershipEdgeCount": 3,
+    "fillStyle1OwnershipEdgeCount": 6,
+    "fillStyle0OwnershipSubsegmentCount": 8,
+    "fillStyle1OwnershipSubsegmentCount": 15,
+    "noMidEdgeStyleChangeCount": 0,
+    "styleRunChangeCount": 0,
+    "edgeRecords": [
+      {
+        "sourceEdgeOrdinal": 0,
+        "sourceEdgeXmlSha256": "D676586F248CBA5807E6EF62CB853E2BC0BF05A9865E2E475252480A5DA36476",
+        "encodedEdges": "\r\n!19217 12872/19207 12777!19207 12777[19069 12813 18925 12864!18925 12864[18625 12968 18566 13039!18566 13039|18666 13131!18666 13131|19207 12777",
+        "encodedCubics": null,
+        "fillStyle0": 1,
+        "fillStyle1": null,
+        "strokeStyle": 1,
+        "rawSegmentCount": 4,
+        "rawCommandTokens": [
+          {
+            "sourceCommandIndex": 0,
+            "sourceTokenIndex": 0,
+            "token": "!",
+            "text": "! 19217 12872",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "19217",
+              "12872"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 960.85,
+              "y": 643.6
+            },
+            "currentPointBeforeCommandPx": null,
+            "subpathStartBeforeCommandPx": null
+          },
+          {
+            "sourceCommandIndex": 1,
+            "sourceTokenIndex": 3,
+            "token": "/",
+            "text": "/ 19207 12777",
+            "type": "slash-marker",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "19207",
+              "12777"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": 1,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": null,
+            "currentPointBeforeCommandPx": {
+              "x": 960.85,
+              "y": 643.6
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 960.85,
+              "y": 643.6
+            },
+            "slashPayloadPx": {
+              "x": 960.35,
+              "y": 638.85
+            },
+            "rawPayloadIsGeometry": "UNRESOLVED_FROM_XFL_TOKEN_ALONE"
+          },
+          {
+            "sourceCommandIndex": 2,
+            "sourceTokenIndex": 6,
+            "token": "!",
+            "text": "! 19207 12777",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "19207",
+              "12777"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 960.35,
+              "y": 638.85
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 960.85,
+              "y": 643.6
+            },
+            "subpathStartBeforeCommandPx": null
+          },
+          {
+            "sourceCommandIndex": 3,
+            "sourceTokenIndex": 9,
+            "token": "[",
+            "text": "[ 19069 12813 18925 12864",
+            "type": "quadratic",
+            "coordinateArity": 4,
+            "coordinatesTwips": [
+              "19069",
+              "12813",
+              "18925",
+              "12864"
+            ],
+            "sourceSubsegmentOrdinal": 1,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 960.35,
+              "y": 638.85
+            },
+            "controlPx": {
+              "x": 953.45,
+              "y": 640.65
+            },
+            "toPx": {
+              "x": 946.25,
+              "y": 643.2
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 960.35,
+              "y": 638.85
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 960.35,
+              "y": 638.85
+            }
+          },
+          {
+            "sourceCommandIndex": 4,
+            "sourceTokenIndex": 14,
+            "token": "!",
+            "text": "! 18925 12864",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18925",
+              "12864"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 946.25,
+              "y": 643.2
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 946.25,
+              "y": 643.2
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 960.35,
+              "y": 638.85
+            }
+          },
+          {
+            "sourceCommandIndex": 5,
+            "sourceTokenIndex": 17,
+            "token": "[",
+            "text": "[ 18625 12968 18566 13039",
+            "type": "quadratic",
+            "coordinateArity": 4,
+            "coordinatesTwips": [
+              "18625",
+              "12968",
+              "18566",
+              "13039"
+            ],
+            "sourceSubsegmentOrdinal": 2,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 946.25,
+              "y": 643.2
+            },
+            "controlPx": {
+              "x": 931.25,
+              "y": 648.4
+            },
+            "toPx": {
+              "x": 928.3,
+              "y": 651.95
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 946.25,
+              "y": 643.2
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 946.25,
+              "y": 643.2
+            }
+          },
+          {
+            "sourceCommandIndex": 6,
+            "sourceTokenIndex": 22,
+            "token": "!",
+            "text": "! 18566 13039",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18566",
+              "13039"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 928.3,
+              "y": 651.95
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 928.3,
+              "y": 651.95
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 946.25,
+              "y": 643.2
+            }
+          },
+          {
+            "sourceCommandIndex": 7,
+            "sourceTokenIndex": 25,
+            "token": "|",
+            "text": "| 18666 13131",
+            "type": "line",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18666",
+              "13131"
+            ],
+            "sourceSubsegmentOrdinal": 3,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 928.3,
+              "y": 651.95
+            },
+            "controlPx": null,
+            "toPx": {
+              "x": 933.3,
+              "y": 656.55
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 928.3,
+              "y": 651.95
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 928.3,
+              "y": 651.95
+            }
+          },
+          {
+            "sourceCommandIndex": 8,
+            "sourceTokenIndex": 28,
+            "token": "!",
+            "text": "! 18666 13131",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18666",
+              "13131"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 933.3,
+              "y": 656.55
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 933.3,
+              "y": 656.55
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 928.3,
+              "y": 651.95
+            }
+          },
+          {
+            "sourceCommandIndex": 9,
+            "sourceTokenIndex": 31,
+            "token": "|",
+            "text": "| 19207 12777",
+            "type": "line",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "19207",
+              "12777"
+            ],
+            "sourceSubsegmentOrdinal": 4,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 933.3,
+              "y": 656.55
+            },
+            "controlPx": null,
+            "toPx": {
+              "x": 960.35,
+              "y": 638.85
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 933.3,
+              "y": 656.55
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 933.3,
+              "y": 656.55
+            }
+          }
+        ],
+        "targetFillStyle1ContributionIds": [
+          "D-B:FillStyle1:boundary-0",
+          "D-B:FillStyle1:boundary-1",
+          "D-B:FillStyle1:boundary-2",
+          "D-B:FillStyle1:boundary-3"
+        ]
+      },
+      {
+        "sourceEdgeOrdinal": 1,
+        "sourceEdgeXmlSha256": "9200FC6DE3E0B04FB1D3AED48549AAADA2B4937D479D7B25CA21AB04A4405F75",
+        "encodedEdges": "\r\n!19217 12872[19147 12891 19073 12916",
+        "encodedCubics": null,
+        "fillStyle0": 2,
+        "fillStyle1": 1,
+        "strokeStyle": 1,
+        "rawSegmentCount": 1,
+        "rawCommandTokens": [
+          {
+            "sourceCommandIndex": 0,
+            "sourceTokenIndex": 0,
+            "token": "!",
+            "text": "! 19217 12872",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "19217",
+              "12872"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 960.85,
+              "y": 643.6
+            },
+            "currentPointBeforeCommandPx": null,
+            "subpathStartBeforeCommandPx": null
+          },
+          {
+            "sourceCommandIndex": 1,
+            "sourceTokenIndex": 3,
+            "token": "[",
+            "text": "[ 19147 12891 19073 12916",
+            "type": "quadratic",
+            "coordinateArity": 4,
+            "coordinatesTwips": [
+              "19147",
+              "12891",
+              "19073",
+              "12916"
+            ],
+            "sourceSubsegmentOrdinal": 1,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 960.85,
+              "y": 643.6
+            },
+            "controlPx": {
+              "x": 957.35,
+              "y": 644.55
+            },
+            "toPx": {
+              "x": 953.65,
+              "y": 645.8
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 960.85,
+              "y": 643.6
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 960.85,
+              "y": 643.6
+            }
+          }
+        ],
+        "targetFillStyle1ContributionIds": [
+          "D-B:FillStyle1:boundary-4"
+        ]
+      },
+      {
+        "sourceEdgeOrdinal": 2,
+        "sourceEdgeXmlSha256": "6215EC7358CEC1BBF9AD0A769E3150A3A596C96D01F8CA85F193AD696A3DA066",
+        "encodedEdges": "\r\n!19073 12916[19035 12929 18997 12943!18997 12943|18961 12957!18961 12957|19070 13062!19070 13062[19141 13120 19207 13155",
+        "encodedCubics": null,
+        "fillStyle0": 3,
+        "fillStyle1": 1,
+        "strokeStyle": 1,
+        "rawSegmentCount": 4,
+        "rawCommandTokens": [
+          {
+            "sourceCommandIndex": 0,
+            "sourceTokenIndex": 0,
+            "token": "!",
+            "text": "! 19073 12916",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "19073",
+              "12916"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 953.65,
+              "y": 645.8
+            },
+            "currentPointBeforeCommandPx": null,
+            "subpathStartBeforeCommandPx": null
+          },
+          {
+            "sourceCommandIndex": 1,
+            "sourceTokenIndex": 3,
+            "token": "[",
+            "text": "[ 19035 12929 18997 12943",
+            "type": "quadratic",
+            "coordinateArity": 4,
+            "coordinatesTwips": [
+              "19035",
+              "12929",
+              "18997",
+              "12943"
+            ],
+            "sourceSubsegmentOrdinal": 1,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 953.65,
+              "y": 645.8
+            },
+            "controlPx": {
+              "x": 951.75,
+              "y": 646.45
+            },
+            "toPx": {
+              "x": 949.85,
+              "y": 647.15
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 953.65,
+              "y": 645.8
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 953.65,
+              "y": 645.8
+            }
+          },
+          {
+            "sourceCommandIndex": 2,
+            "sourceTokenIndex": 8,
+            "token": "!",
+            "text": "! 18997 12943",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18997",
+              "12943"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 949.85,
+              "y": 647.15
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 949.85,
+              "y": 647.15
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 953.65,
+              "y": 645.8
+            }
+          },
+          {
+            "sourceCommandIndex": 3,
+            "sourceTokenIndex": 11,
+            "token": "|",
+            "text": "| 18961 12957",
+            "type": "line",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18961",
+              "12957"
+            ],
+            "sourceSubsegmentOrdinal": 2,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 949.85,
+              "y": 647.15
+            },
+            "controlPx": null,
+            "toPx": {
+              "x": 948.05,
+              "y": 647.85
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 949.85,
+              "y": 647.15
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 949.85,
+              "y": 647.15
+            }
+          },
+          {
+            "sourceCommandIndex": 4,
+            "sourceTokenIndex": 14,
+            "token": "!",
+            "text": "! 18961 12957",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18961",
+              "12957"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 948.05,
+              "y": 647.85
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 948.05,
+              "y": 647.85
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 949.85,
+              "y": 647.15
+            }
+          },
+          {
+            "sourceCommandIndex": 5,
+            "sourceTokenIndex": 17,
+            "token": "|",
+            "text": "| 19070 13062",
+            "type": "line",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "19070",
+              "13062"
+            ],
+            "sourceSubsegmentOrdinal": 3,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 948.05,
+              "y": 647.85
+            },
+            "controlPx": null,
+            "toPx": {
+              "x": 953.5,
+              "y": 653.1
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 948.05,
+              "y": 647.85
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 948.05,
+              "y": 647.85
+            }
+          },
+          {
+            "sourceCommandIndex": 6,
+            "sourceTokenIndex": 20,
+            "token": "!",
+            "text": "! 19070 13062",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "19070",
+              "13062"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 953.5,
+              "y": 653.1
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 953.5,
+              "y": 653.1
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 948.05,
+              "y": 647.85
+            }
+          },
+          {
+            "sourceCommandIndex": 7,
+            "sourceTokenIndex": 23,
+            "token": "[",
+            "text": "[ 19141 13120 19207 13155",
+            "type": "quadratic",
+            "coordinateArity": 4,
+            "coordinatesTwips": [
+              "19141",
+              "13120",
+              "19207",
+              "13155"
+            ],
+            "sourceSubsegmentOrdinal": 4,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 953.5,
+              "y": 653.1
+            },
+            "controlPx": {
+              "x": 957.05,
+              "y": 656
+            },
+            "toPx": {
+              "x": 960.35,
+              "y": 657.75
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 953.5,
+              "y": 653.1
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 953.5,
+              "y": 653.1
+            }
+          }
+        ],
+        "targetFillStyle1ContributionIds": [
+          "D-B:FillStyle1:boundary-5",
+          "D-B:FillStyle1:boundary-6",
+          "D-B:FillStyle1:boundary-7",
+          "D-B:FillStyle1:boundary-8"
+        ]
+      },
+      {
+        "sourceEdgeOrdinal": 3,
+        "sourceEdgeXmlSha256": "103259836142C0D1DB60000A64F8B1D4921AC4AAC9938EBC795AA8DA95B0EF18",
+        "encodedEdges": "\r\n!19207 13155[19212 13159 19218 13167!19218 13167[19246 13199 19272 13232!19272 13232|19185 13243",
+        "encodedCubics": null,
+        "fillStyle0": 2,
+        "fillStyle1": 1,
+        "strokeStyle": null,
+        "rawSegmentCount": 3,
+        "rawCommandTokens": [
+          {
+            "sourceCommandIndex": 0,
+            "sourceTokenIndex": 0,
+            "token": "!",
+            "text": "! 19207 13155",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "19207",
+              "13155"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 960.35,
+              "y": 657.75
+            },
+            "currentPointBeforeCommandPx": null,
+            "subpathStartBeforeCommandPx": null
+          },
+          {
+            "sourceCommandIndex": 1,
+            "sourceTokenIndex": 3,
+            "token": "[",
+            "text": "[ 19212 13159 19218 13167",
+            "type": "quadratic",
+            "coordinateArity": 4,
+            "coordinatesTwips": [
+              "19212",
+              "13159",
+              "19218",
+              "13167"
+            ],
+            "sourceSubsegmentOrdinal": 1,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 960.35,
+              "y": 657.75
+            },
+            "controlPx": {
+              "x": 960.6,
+              "y": 657.95
+            },
+            "toPx": {
+              "x": 960.9,
+              "y": 658.35
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 960.35,
+              "y": 657.75
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 960.35,
+              "y": 657.75
+            }
+          },
+          {
+            "sourceCommandIndex": 2,
+            "sourceTokenIndex": 8,
+            "token": "!",
+            "text": "! 19218 13167",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "19218",
+              "13167"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 960.9,
+              "y": 658.35
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 960.9,
+              "y": 658.35
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 960.35,
+              "y": 657.75
+            }
+          },
+          {
+            "sourceCommandIndex": 3,
+            "sourceTokenIndex": 11,
+            "token": "[",
+            "text": "[ 19246 13199 19272 13232",
+            "type": "quadratic",
+            "coordinateArity": 4,
+            "coordinatesTwips": [
+              "19246",
+              "13199",
+              "19272",
+              "13232"
+            ],
+            "sourceSubsegmentOrdinal": 2,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 960.9,
+              "y": 658.35
+            },
+            "controlPx": {
+              "x": 962.3,
+              "y": 659.95
+            },
+            "toPx": {
+              "x": 963.6,
+              "y": 661.6
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 960.9,
+              "y": 658.35
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 960.9,
+              "y": 658.35
+            }
+          },
+          {
+            "sourceCommandIndex": 4,
+            "sourceTokenIndex": 16,
+            "token": "!",
+            "text": "! 19272 13232",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "19272",
+              "13232"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 963.6,
+              "y": 661.6
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 963.6,
+              "y": 661.6
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 960.9,
+              "y": 658.35
+            }
+          },
+          {
+            "sourceCommandIndex": 5,
+            "sourceTokenIndex": 19,
+            "token": "|",
+            "text": "| 19185 13243",
+            "type": "line",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "19185",
+              "13243"
+            ],
+            "sourceSubsegmentOrdinal": 3,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 963.6,
+              "y": 661.6
+            },
+            "controlPx": null,
+            "toPx": {
+              "x": 959.25,
+              "y": 662.15
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 963.6,
+              "y": 661.6
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 963.6,
+              "y": 661.6
+            }
+          }
+        ],
+        "targetFillStyle1ContributionIds": [
+          "D-B:FillStyle1:boundary-9",
+          "D-B:FillStyle1:boundary-10",
+          "D-B:FillStyle1:boundary-11"
+        ]
+      },
+      {
+        "sourceEdgeOrdinal": 4,
+        "sourceEdgeXmlSha256": "7820815C235EFD44C1B7775E8E8659FBF25397F681EF3DE4A239BCC654E85FE1",
+        "encodedEdges": "\r\n!18705 13183|18835 13238!18835 13238[18884 13251 18935 13258",
+        "encodedCubics": null,
+        "fillStyle0": 1,
+        "fillStyle1": 2,
+        "strokeStyle": 1,
+        "rawSegmentCount": 2,
+        "rawCommandTokens": [
+          {
+            "sourceCommandIndex": 0,
+            "sourceTokenIndex": 0,
+            "token": "!",
+            "text": "! 18705 13183",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18705",
+              "13183"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 935.25,
+              "y": 659.15
+            },
+            "currentPointBeforeCommandPx": null,
+            "subpathStartBeforeCommandPx": null
+          },
+          {
+            "sourceCommandIndex": 1,
+            "sourceTokenIndex": 3,
+            "token": "|",
+            "text": "| 18835 13238",
+            "type": "line",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18835",
+              "13238"
+            ],
+            "sourceSubsegmentOrdinal": 1,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 935.25,
+              "y": 659.15
+            },
+            "controlPx": null,
+            "toPx": {
+              "x": 941.75,
+              "y": 661.9
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 935.25,
+              "y": 659.15
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 935.25,
+              "y": 659.15
+            }
+          },
+          {
+            "sourceCommandIndex": 2,
+            "sourceTokenIndex": 6,
+            "token": "!",
+            "text": "! 18835 13238",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18835",
+              "13238"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 941.75,
+              "y": 661.9
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 941.75,
+              "y": 661.9
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 935.25,
+              "y": 659.15
+            }
+          },
+          {
+            "sourceCommandIndex": 3,
+            "sourceTokenIndex": 9,
+            "token": "[",
+            "text": "[ 18884 13251 18935 13258",
+            "type": "quadratic",
+            "coordinateArity": 4,
+            "coordinatesTwips": [
+              "18884",
+              "13251",
+              "18935",
+              "13258"
+            ],
+            "sourceSubsegmentOrdinal": 2,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 941.75,
+              "y": 661.9
+            },
+            "controlPx": {
+              "x": 944.2,
+              "y": 662.55
+            },
+            "toPx": {
+              "x": 946.75,
+              "y": 662.9
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 941.75,
+              "y": 661.9
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 941.75,
+              "y": 661.9
+            }
+          }
+        ],
+        "targetFillStyle1ContributionIds": [
+          "D-B:FillStyle1:boundary-12",
+          "D-B:FillStyle1:boundary-13"
+        ]
+      },
+      {
+        "sourceEdgeOrdinal": 5,
+        "sourceEdgeXmlSha256": "FA32CE9F8080D179A53945C2B2062BA9419ED24C2623D8B9800DA122A783D8C9",
+        "encodedEdges": "\r\n!18935 13258[19053 13270 19176 13238!19176 13238[19180 13240 19185 13243",
+        "encodedCubics": null,
+        "fillStyle0": 1,
+        "fillStyle1": 3,
+        "strokeStyle": 1,
+        "rawSegmentCount": 2,
+        "rawCommandTokens": [
+          {
+            "sourceCommandIndex": 0,
+            "sourceTokenIndex": 0,
+            "token": "!",
+            "text": "! 18935 13258",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18935",
+              "13258"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 946.75,
+              "y": 662.9
+            },
+            "currentPointBeforeCommandPx": null,
+            "subpathStartBeforeCommandPx": null
+          },
+          {
+            "sourceCommandIndex": 1,
+            "sourceTokenIndex": 3,
+            "token": "[",
+            "text": "[ 19053 13270 19176 13238",
+            "type": "quadratic",
+            "coordinateArity": 4,
+            "coordinatesTwips": [
+              "19053",
+              "13270",
+              "19176",
+              "13238"
+            ],
+            "sourceSubsegmentOrdinal": 1,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 946.75,
+              "y": 662.9
+            },
+            "controlPx": {
+              "x": 952.65,
+              "y": 663.5
+            },
+            "toPx": {
+              "x": 958.8,
+              "y": 661.9
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 946.75,
+              "y": 662.9
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 946.75,
+              "y": 662.9
+            }
+          },
+          {
+            "sourceCommandIndex": 2,
+            "sourceTokenIndex": 8,
+            "token": "!",
+            "text": "! 19176 13238",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "19176",
+              "13238"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 958.8,
+              "y": 661.9
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 958.8,
+              "y": 661.9
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 946.75,
+              "y": 662.9
+            }
+          },
+          {
+            "sourceCommandIndex": 3,
+            "sourceTokenIndex": 11,
+            "token": "[",
+            "text": "[ 19180 13240 19185 13243",
+            "type": "quadratic",
+            "coordinateArity": 4,
+            "coordinatesTwips": [
+              "19180",
+              "13240",
+              "19185",
+              "13243"
+            ],
+            "sourceSubsegmentOrdinal": 2,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 958.8,
+              "y": 661.9
+            },
+            "controlPx": {
+              "x": 959,
+              "y": 662
+            },
+            "toPx": {
+              "x": 959.25,
+              "y": 662.15
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 958.8,
+              "y": 661.9
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 958.8,
+              "y": 661.9
+            }
+          }
+        ],
+        "targetFillStyle1ContributionIds": [
+          "D-B:FillStyle1:boundary-14",
+          "D-B:FillStyle1:boundary-15"
+        ]
+      },
+      {
+        "sourceEdgeOrdinal": 6,
+        "sourceEdgeXmlSha256": "57C151559274A448ADF8E99882F42F33CD8E1C9818B9C196D230F663142BAA24",
+        "encodedEdges": "\r\n!18866 13011[18749 13031 18700 13088!18700 13088|18735 13105",
+        "encodedCubics": null,
+        "fillStyle0": 2,
+        "fillStyle1": 1,
+        "strokeStyle": 1,
+        "rawSegmentCount": 2,
+        "rawCommandTokens": [
+          {
+            "sourceCommandIndex": 0,
+            "sourceTokenIndex": 0,
+            "token": "!",
+            "text": "! 18866 13011",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18866",
+              "13011"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 943.3,
+              "y": 650.55
+            },
+            "currentPointBeforeCommandPx": null,
+            "subpathStartBeforeCommandPx": null
+          },
+          {
+            "sourceCommandIndex": 1,
+            "sourceTokenIndex": 3,
+            "token": "[",
+            "text": "[ 18749 13031 18700 13088",
+            "type": "quadratic",
+            "coordinateArity": 4,
+            "coordinatesTwips": [
+              "18749",
+              "13031",
+              "18700",
+              "13088"
+            ],
+            "sourceSubsegmentOrdinal": 1,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 943.3,
+              "y": 650.55
+            },
+            "controlPx": {
+              "x": 937.45,
+              "y": 651.55
+            },
+            "toPx": {
+              "x": 935,
+              "y": 654.4
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 943.3,
+              "y": 650.55
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 943.3,
+              "y": 650.55
+            }
+          },
+          {
+            "sourceCommandIndex": 2,
+            "sourceTokenIndex": 8,
+            "token": "!",
+            "text": "! 18700 13088",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18700",
+              "13088"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 935,
+              "y": 654.4
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 935,
+              "y": 654.4
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 943.3,
+              "y": 650.55
+            }
+          },
+          {
+            "sourceCommandIndex": 3,
+            "sourceTokenIndex": 11,
+            "token": "|",
+            "text": "| 18735 13105",
+            "type": "line",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18735",
+              "13105"
+            ],
+            "sourceSubsegmentOrdinal": 2,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 935,
+              "y": 654.4
+            },
+            "controlPx": null,
+            "toPx": {
+              "x": 936.75,
+              "y": 655.25
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 935,
+              "y": 654.4
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 935,
+              "y": 654.4
+            }
+          }
+        ],
+        "targetFillStyle1ContributionIds": [
+          "D-B:FillStyle1:boundary-16",
+          "D-B:FillStyle1:boundary-17"
+        ]
+      },
+      {
+        "sourceEdgeOrdinal": 7,
+        "sourceEdgeXmlSha256": "13DDC5189CFF28629F227E321CD72C85FB574ADA588CE3309999ACAB837F21F0",
+        "encodedEdges": "\r\n!18735 13105|18813 13145!18813 13145[18988 13212 19103 13195!19103 13195[19049 13172 18998 13135!18998 13135|18891 13033",
+        "encodedCubics": null,
+        "fillStyle0": 3,
+        "fillStyle1": 1,
+        "strokeStyle": 1,
+        "rawSegmentCount": 4,
+        "rawCommandTokens": [
+          {
+            "sourceCommandIndex": 0,
+            "sourceTokenIndex": 0,
+            "token": "!",
+            "text": "! 18735 13105",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18735",
+              "13105"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 936.75,
+              "y": 655.25
+            },
+            "currentPointBeforeCommandPx": null,
+            "subpathStartBeforeCommandPx": null
+          },
+          {
+            "sourceCommandIndex": 1,
+            "sourceTokenIndex": 3,
+            "token": "|",
+            "text": "| 18813 13145",
+            "type": "line",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18813",
+              "13145"
+            ],
+            "sourceSubsegmentOrdinal": 1,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 936.75,
+              "y": 655.25
+            },
+            "controlPx": null,
+            "toPx": {
+              "x": 940.65,
+              "y": 657.25
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 936.75,
+              "y": 655.25
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 936.75,
+              "y": 655.25
+            }
+          },
+          {
+            "sourceCommandIndex": 2,
+            "sourceTokenIndex": 6,
+            "token": "!",
+            "text": "! 18813 13145",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18813",
+              "13145"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 940.65,
+              "y": 657.25
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 940.65,
+              "y": 657.25
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 936.75,
+              "y": 655.25
+            }
+          },
+          {
+            "sourceCommandIndex": 3,
+            "sourceTokenIndex": 9,
+            "token": "[",
+            "text": "[ 18988 13212 19103 13195",
+            "type": "quadratic",
+            "coordinateArity": 4,
+            "coordinatesTwips": [
+              "18988",
+              "13212",
+              "19103",
+              "13195"
+            ],
+            "sourceSubsegmentOrdinal": 2,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 940.65,
+              "y": 657.25
+            },
+            "controlPx": {
+              "x": 949.4,
+              "y": 660.6
+            },
+            "toPx": {
+              "x": 955.15,
+              "y": 659.75
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 940.65,
+              "y": 657.25
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 940.65,
+              "y": 657.25
+            }
+          },
+          {
+            "sourceCommandIndex": 4,
+            "sourceTokenIndex": 14,
+            "token": "!",
+            "text": "! 19103 13195",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "19103",
+              "13195"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 955.15,
+              "y": 659.75
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 955.15,
+              "y": 659.75
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 940.65,
+              "y": 657.25
+            }
+          },
+          {
+            "sourceCommandIndex": 5,
+            "sourceTokenIndex": 17,
+            "token": "[",
+            "text": "[ 19049 13172 18998 13135",
+            "type": "quadratic",
+            "coordinateArity": 4,
+            "coordinatesTwips": [
+              "19049",
+              "13172",
+              "18998",
+              "13135"
+            ],
+            "sourceSubsegmentOrdinal": 3,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 955.15,
+              "y": 659.75
+            },
+            "controlPx": {
+              "x": 952.45,
+              "y": 658.6
+            },
+            "toPx": {
+              "x": 949.9,
+              "y": 656.75
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 955.15,
+              "y": 659.75
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 955.15,
+              "y": 659.75
+            }
+          },
+          {
+            "sourceCommandIndex": 6,
+            "sourceTokenIndex": 22,
+            "token": "!",
+            "text": "! 18998 13135",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18998",
+              "13135"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 949.9,
+              "y": 656.75
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 949.9,
+              "y": 656.75
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 955.15,
+              "y": 659.75
+            }
+          },
+          {
+            "sourceCommandIndex": 7,
+            "sourceTokenIndex": 25,
+            "token": "|",
+            "text": "| 18891 13033",
+            "type": "line",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18891",
+              "13033"
+            ],
+            "sourceSubsegmentOrdinal": 4,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 949.9,
+              "y": 656.75
+            },
+            "controlPx": null,
+            "toPx": {
+              "x": 944.55,
+              "y": 651.65
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 949.9,
+              "y": 656.75
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 949.9,
+              "y": 656.75
+            }
+          }
+        ],
+        "targetFillStyle1ContributionIds": [
+          "D-B:FillStyle1:boundary-18",
+          "D-B:FillStyle1:boundary-19",
+          "D-B:FillStyle1:boundary-20",
+          "D-B:FillStyle1:boundary-21"
+        ]
+      },
+      {
+        "sourceEdgeOrdinal": 8,
+        "sourceEdgeXmlSha256": "B285B09A43779B72FFC98896F9BE478F907C19F76E37B3EAB7EAFCE5718817E6",
+        "encodedEdges": "\r\n!18891 13033|18866 13011",
+        "encodedCubics": null,
+        "fillStyle0": 2,
+        "fillStyle1": 1,
+        "strokeStyle": 1,
+        "rawSegmentCount": 1,
+        "rawCommandTokens": [
+          {
+            "sourceCommandIndex": 0,
+            "sourceTokenIndex": 0,
+            "token": "!",
+            "text": "! 18891 13033",
+            "type": "move",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18891",
+              "13033"
+            ],
+            "sourceSubsegmentOrdinal": null,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": null,
+            "controlPx": null,
+            "toPx": {
+              "x": 944.55,
+              "y": 651.65
+            },
+            "currentPointBeforeCommandPx": null,
+            "subpathStartBeforeCommandPx": null
+          },
+          {
+            "sourceCommandIndex": 1,
+            "sourceTokenIndex": 3,
+            "token": "|",
+            "text": "| 18866 13011",
+            "type": "line",
+            "coordinateArity": 2,
+            "coordinatesTwips": [
+              "18866",
+              "13011"
+            ],
+            "sourceSubsegmentOrdinal": 1,
+            "sourceAuthoredCloseMarkerOrdinal": null,
+            "fromPx": {
+              "x": 944.55,
+              "y": 651.65
+            },
+            "controlPx": null,
+            "toPx": {
+              "x": 943.3,
+              "y": 650.55
+            },
+            "currentPointBeforeCommandPx": {
+              "x": 944.55,
+              "y": 651.65
+            },
+            "subpathStartBeforeCommandPx": {
+              "x": 944.55,
+              "y": 651.65
+            }
+          }
+        ],
+        "targetFillStyle1ContributionIds": [
+          "D-B:FillStyle1:boundary-22"
+        ]
+      }
+    ]
+  },
+  "fillStyle1Contributions": [
+    {
+      "contributionId": "D-B:FillStyle1:boundary-0",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 0,
+      "sourceEdgeXmlSha256": "D676586F248CBA5807E6EF62CB853E2BC0BF05A9865E2E475252480A5DA36476",
+      "sourceCommandIndex": 3,
+      "rawCommand": {
+        "token": "[",
+        "tokens": [
+          "[",
+          "19069",
+          "12813",
+          "18925",
+          "12864"
+        ],
+        "text": "[ 19069 12813 18925 12864",
+        "coordinateArity": 4,
+        "coordinatesTwips": [
+          {
+            "raw": "19069",
+            "numerator": "19069",
+            "denominator": "1",
+            "canonicalTwips": 19069
+          },
+          {
+            "raw": "12813",
+            "numerator": "12813",
+            "denominator": "1",
+            "canonicalTwips": 12813
+          },
+          {
+            "raw": "18925",
+            "numerator": "18925",
+            "denominator": "1",
+            "canonicalTwips": 18925
+          },
+          {
+            "raw": "12864",
+            "numerator": "12864",
+            "denominator": "1",
+            "canonicalTwips": 12864
+          }
+        ],
+        "sourceSubsegmentOrdinal": 1,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "quadratic",
+        "fromTwips": {
+          "x": "19207",
+          "y": "12777"
+        },
+        "controlTwips": {
+          "x": "19069",
+          "y": "12813"
+        },
+        "toTwips": {
+          "x": "18925",
+          "y": "12864"
+        },
+        "fromPx": {
+          "x": 960.35,
+          "y": 638.85
+        },
+        "controlPx": {
+          "x": 953.45,
+          "y": 640.65
+        },
+        "toPx": {
+          "x": 946.25,
+          "y": 643.2
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 1,
+        "fillStyle1": null,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle0",
+      "sideNormalization": {
+        "reversed": true,
+        "rule": "current Panda observation maps FillStyle0 contribution in reverse source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 3,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 960.35,
+          "y": 638.85
+        },
+        "to": {
+          "x": 946.25,
+          "y": 643.2
+        },
+        "command": {
+          "type": "Q",
+          "cx": 953.45,
+          "cy": 640.65,
+          "x": 960.35,
+          "y": 638.85
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 946.25,
+          "y": 643.2
+        },
+        "to": {
+          "x": 960.35,
+          "y": 638.85
+        },
+        "geometryType": "Q",
+        "command": {
+          "type": "Q",
+          "cx": 953.45,
+          "cy": 640.65,
+          "x": 960.35,
+          "y": 638.85
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-0",
+      "pandaBoundaryIndex": 0,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-1",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 0,
+      "sourceEdgeXmlSha256": "D676586F248CBA5807E6EF62CB853E2BC0BF05A9865E2E475252480A5DA36476",
+      "sourceCommandIndex": 5,
+      "rawCommand": {
+        "token": "[",
+        "tokens": [
+          "[",
+          "18625",
+          "12968",
+          "18566",
+          "13039"
+        ],
+        "text": "[ 18625 12968 18566 13039",
+        "coordinateArity": 4,
+        "coordinatesTwips": [
+          {
+            "raw": "18625",
+            "numerator": "18625",
+            "denominator": "1",
+            "canonicalTwips": 18625
+          },
+          {
+            "raw": "12968",
+            "numerator": "12968",
+            "denominator": "1",
+            "canonicalTwips": 12968
+          },
+          {
+            "raw": "18566",
+            "numerator": "18566",
+            "denominator": "1",
+            "canonicalTwips": 18566
+          },
+          {
+            "raw": "13039",
+            "numerator": "13039",
+            "denominator": "1",
+            "canonicalTwips": 13039
+          }
+        ],
+        "sourceSubsegmentOrdinal": 2,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "quadratic",
+        "fromTwips": {
+          "x": "18925",
+          "y": "12864"
+        },
+        "controlTwips": {
+          "x": "18625",
+          "y": "12968"
+        },
+        "toTwips": {
+          "x": "18566",
+          "y": "13039"
+        },
+        "fromPx": {
+          "x": 946.25,
+          "y": 643.2
+        },
+        "controlPx": {
+          "x": 931.25,
+          "y": 648.4
+        },
+        "toPx": {
+          "x": 928.3,
+          "y": 651.95
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 1,
+        "fillStyle1": null,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle0",
+      "sideNormalization": {
+        "reversed": true,
+        "rule": "current Panda observation maps FillStyle0 contribution in reverse source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 4,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 946.25,
+          "y": 643.2
+        },
+        "to": {
+          "x": 928.3,
+          "y": 651.95
+        },
+        "command": {
+          "type": "Q",
+          "cx": 931.25,
+          "cy": 648.4,
+          "x": 946.25,
+          "y": 643.2
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 928.3,
+          "y": 651.95
+        },
+        "to": {
+          "x": 946.25,
+          "y": 643.2
+        },
+        "geometryType": "Q",
+        "command": {
+          "type": "Q",
+          "cx": 931.25,
+          "cy": 648.4,
+          "x": 946.25,
+          "y": 643.2
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-1",
+      "pandaBoundaryIndex": 1,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-2",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 0,
+      "sourceEdgeXmlSha256": "D676586F248CBA5807E6EF62CB853E2BC0BF05A9865E2E475252480A5DA36476",
+      "sourceCommandIndex": 7,
+      "rawCommand": {
+        "token": "|",
+        "tokens": [
+          "|",
+          "18666",
+          "13131"
+        ],
+        "text": "| 18666 13131",
+        "coordinateArity": 2,
+        "coordinatesTwips": [
+          {
+            "raw": "18666",
+            "numerator": "18666",
+            "denominator": "1",
+            "canonicalTwips": 18666
+          },
+          {
+            "raw": "13131",
+            "numerator": "13131",
+            "denominator": "1",
+            "canonicalTwips": 13131
+          }
+        ],
+        "sourceSubsegmentOrdinal": 3,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "line",
+        "fromTwips": {
+          "x": "18566",
+          "y": "13039"
+        },
+        "controlTwips": null,
+        "toTwips": {
+          "x": "18666",
+          "y": "13131"
+        },
+        "fromPx": {
+          "x": 928.3,
+          "y": 651.95
+        },
+        "controlPx": null,
+        "toPx": {
+          "x": 933.3,
+          "y": 656.55
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 1,
+        "fillStyle1": null,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle0",
+      "sideNormalization": {
+        "reversed": true,
+        "rule": "current Panda observation maps FillStyle0 contribution in reverse source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 5,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 928.3,
+          "y": 651.95
+        },
+        "to": {
+          "x": 933.3,
+          "y": 656.55
+        },
+        "command": {
+          "type": "L",
+          "x": 928.3,
+          "y": 651.95
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 933.3,
+          "y": 656.55
+        },
+        "to": {
+          "x": 928.3,
+          "y": 651.95
+        },
+        "geometryType": "L",
+        "command": {
+          "type": "L",
+          "x": 928.3,
+          "y": 651.95
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-2",
+      "pandaBoundaryIndex": 2,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-3",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 0,
+      "sourceEdgeXmlSha256": "D676586F248CBA5807E6EF62CB853E2BC0BF05A9865E2E475252480A5DA36476",
+      "sourceCommandIndex": 9,
+      "rawCommand": {
+        "token": "|",
+        "tokens": [
+          "|",
+          "19207",
+          "12777"
+        ],
+        "text": "| 19207 12777",
+        "coordinateArity": 2,
+        "coordinatesTwips": [
+          {
+            "raw": "19207",
+            "numerator": "19207",
+            "denominator": "1",
+            "canonicalTwips": 19207
+          },
+          {
+            "raw": "12777",
+            "numerator": "12777",
+            "denominator": "1",
+            "canonicalTwips": 12777
+          }
+        ],
+        "sourceSubsegmentOrdinal": 4,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "line",
+        "fromTwips": {
+          "x": "18666",
+          "y": "13131"
+        },
+        "controlTwips": null,
+        "toTwips": {
+          "x": "19207",
+          "y": "12777"
+        },
+        "fromPx": {
+          "x": 933.3,
+          "y": 656.55
+        },
+        "controlPx": null,
+        "toPx": {
+          "x": 960.35,
+          "y": 638.85
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 1,
+        "fillStyle1": null,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle0",
+      "sideNormalization": {
+        "reversed": true,
+        "rule": "current Panda observation maps FillStyle0 contribution in reverse source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 6,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 933.3,
+          "y": 656.55
+        },
+        "to": {
+          "x": 960.35,
+          "y": 638.85
+        },
+        "command": {
+          "type": "L",
+          "x": 933.3,
+          "y": 656.55
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 960.35,
+          "y": 638.85
+        },
+        "to": {
+          "x": 933.3,
+          "y": 656.55
+        },
+        "geometryType": "L",
+        "command": {
+          "type": "L",
+          "x": 933.3,
+          "y": 656.55
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-3",
+      "pandaBoundaryIndex": 3,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-4",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 1,
+      "sourceEdgeXmlSha256": "9200FC6DE3E0B04FB1D3AED48549AAADA2B4937D479D7B25CA21AB04A4405F75",
+      "sourceCommandIndex": 1,
+      "rawCommand": {
+        "token": "[",
+        "tokens": [
+          "[",
+          "19147",
+          "12891",
+          "19073",
+          "12916"
+        ],
+        "text": "[ 19147 12891 19073 12916",
+        "coordinateArity": 4,
+        "coordinatesTwips": [
+          {
+            "raw": "19147",
+            "numerator": "19147",
+            "denominator": "1",
+            "canonicalTwips": 19147
+          },
+          {
+            "raw": "12891",
+            "numerator": "12891",
+            "denominator": "1",
+            "canonicalTwips": 12891
+          },
+          {
+            "raw": "19073",
+            "numerator": "19073",
+            "denominator": "1",
+            "canonicalTwips": 19073
+          },
+          {
+            "raw": "12916",
+            "numerator": "12916",
+            "denominator": "1",
+            "canonicalTwips": 12916
+          }
+        ],
+        "sourceSubsegmentOrdinal": 1,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "quadratic",
+        "fromTwips": {
+          "x": "19217",
+          "y": "12872"
+        },
+        "controlTwips": {
+          "x": "19147",
+          "y": "12891"
+        },
+        "toTwips": {
+          "x": "19073",
+          "y": "12916"
+        },
+        "fromPx": {
+          "x": 960.85,
+          "y": 643.6
+        },
+        "controlPx": {
+          "x": 957.35,
+          "y": 644.55
+        },
+        "toPx": {
+          "x": 953.65,
+          "y": 645.8
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 2,
+        "fillStyle1": 1,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle1",
+      "sideNormalization": {
+        "reversed": false,
+        "rule": "current Panda observation preserves FillStyle1 source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 9,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 960.85,
+          "y": 643.6
+        },
+        "to": {
+          "x": 953.65,
+          "y": 645.8
+        },
+        "command": {
+          "type": "Q",
+          "cx": 957.35,
+          "cy": 644.55,
+          "x": 953.65,
+          "y": 645.8
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 960.85,
+          "y": 643.6
+        },
+        "to": {
+          "x": 953.65,
+          "y": 645.8
+        },
+        "geometryType": "Q",
+        "command": {
+          "type": "Q",
+          "cx": 957.35,
+          "cy": 644.55,
+          "x": 953.65,
+          "y": 645.8
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-4",
+      "pandaBoundaryIndex": 4,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 0,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-5",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 2,
+      "sourceEdgeXmlSha256": "6215EC7358CEC1BBF9AD0A769E3150A3A596C96D01F8CA85F193AD696A3DA066",
+      "sourceCommandIndex": 1,
+      "rawCommand": {
+        "token": "[",
+        "tokens": [
+          "[",
+          "19035",
+          "12929",
+          "18997",
+          "12943"
+        ],
+        "text": "[ 19035 12929 18997 12943",
+        "coordinateArity": 4,
+        "coordinatesTwips": [
+          {
+            "raw": "19035",
+            "numerator": "19035",
+            "denominator": "1",
+            "canonicalTwips": 19035
+          },
+          {
+            "raw": "12929",
+            "numerator": "12929",
+            "denominator": "1",
+            "canonicalTwips": 12929
+          },
+          {
+            "raw": "18997",
+            "numerator": "18997",
+            "denominator": "1",
+            "canonicalTwips": 18997
+          },
+          {
+            "raw": "12943",
+            "numerator": "12943",
+            "denominator": "1",
+            "canonicalTwips": 12943
+          }
+        ],
+        "sourceSubsegmentOrdinal": 1,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "quadratic",
+        "fromTwips": {
+          "x": "19073",
+          "y": "12916"
+        },
+        "controlTwips": {
+          "x": "19035",
+          "y": "12929"
+        },
+        "toTwips": {
+          "x": "18997",
+          "y": "12943"
+        },
+        "fromPx": {
+          "x": 953.65,
+          "y": 645.8
+        },
+        "controlPx": {
+          "x": 951.75,
+          "y": 646.45
+        },
+        "toPx": {
+          "x": 949.85,
+          "y": 647.15
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 3,
+        "fillStyle1": 1,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle1",
+      "sideNormalization": {
+        "reversed": false,
+        "rule": "current Panda observation preserves FillStyle1 source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 11,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 953.65,
+          "y": 645.8
+        },
+        "to": {
+          "x": 949.85,
+          "y": 647.15
+        },
+        "command": {
+          "type": "Q",
+          "cx": 951.75,
+          "cy": 646.45,
+          "x": 949.85,
+          "y": 647.15
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 953.65,
+          "y": 645.8
+        },
+        "to": {
+          "x": 949.85,
+          "y": 647.15
+        },
+        "geometryType": "Q",
+        "command": {
+          "type": "Q",
+          "cx": 951.75,
+          "cy": 646.45,
+          "x": 949.85,
+          "y": 647.15
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-5",
+      "pandaBoundaryIndex": 5,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-6",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 2,
+      "sourceEdgeXmlSha256": "6215EC7358CEC1BBF9AD0A769E3150A3A596C96D01F8CA85F193AD696A3DA066",
+      "sourceCommandIndex": 3,
+      "rawCommand": {
+        "token": "|",
+        "tokens": [
+          "|",
+          "18961",
+          "12957"
+        ],
+        "text": "| 18961 12957",
+        "coordinateArity": 2,
+        "coordinatesTwips": [
+          {
+            "raw": "18961",
+            "numerator": "18961",
+            "denominator": "1",
+            "canonicalTwips": 18961
+          },
+          {
+            "raw": "12957",
+            "numerator": "12957",
+            "denominator": "1",
+            "canonicalTwips": 12957
+          }
+        ],
+        "sourceSubsegmentOrdinal": 2,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "line",
+        "fromTwips": {
+          "x": "18997",
+          "y": "12943"
+        },
+        "controlTwips": null,
+        "toTwips": {
+          "x": "18961",
+          "y": "12957"
+        },
+        "fromPx": {
+          "x": 949.85,
+          "y": 647.15
+        },
+        "controlPx": null,
+        "toPx": {
+          "x": 948.05,
+          "y": 647.85
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 3,
+        "fillStyle1": 1,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle1",
+      "sideNormalization": {
+        "reversed": false,
+        "rule": "current Panda observation preserves FillStyle1 source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 12,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 949.85,
+          "y": 647.15
+        },
+        "to": {
+          "x": 948.05,
+          "y": 647.85
+        },
+        "command": {
+          "type": "L",
+          "x": 948.05,
+          "y": 647.85
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 949.85,
+          "y": 647.15
+        },
+        "to": {
+          "x": 948.05,
+          "y": 647.85
+        },
+        "geometryType": "L",
+        "command": {
+          "type": "L",
+          "x": 948.05,
+          "y": 647.85
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-6",
+      "pandaBoundaryIndex": 6,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-7",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 2,
+      "sourceEdgeXmlSha256": "6215EC7358CEC1BBF9AD0A769E3150A3A596C96D01F8CA85F193AD696A3DA066",
+      "sourceCommandIndex": 5,
+      "rawCommand": {
+        "token": "|",
+        "tokens": [
+          "|",
+          "19070",
+          "13062"
+        ],
+        "text": "| 19070 13062",
+        "coordinateArity": 2,
+        "coordinatesTwips": [
+          {
+            "raw": "19070",
+            "numerator": "19070",
+            "denominator": "1",
+            "canonicalTwips": 19070
+          },
+          {
+            "raw": "13062",
+            "numerator": "13062",
+            "denominator": "1",
+            "canonicalTwips": 13062
+          }
+        ],
+        "sourceSubsegmentOrdinal": 3,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "line",
+        "fromTwips": {
+          "x": "18961",
+          "y": "12957"
+        },
+        "controlTwips": null,
+        "toTwips": {
+          "x": "19070",
+          "y": "13062"
+        },
+        "fromPx": {
+          "x": 948.05,
+          "y": 647.85
+        },
+        "controlPx": null,
+        "toPx": {
+          "x": 953.5,
+          "y": 653.1
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 3,
+        "fillStyle1": 1,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle1",
+      "sideNormalization": {
+        "reversed": false,
+        "rule": "current Panda observation preserves FillStyle1 source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 13,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 948.05,
+          "y": 647.85
+        },
+        "to": {
+          "x": 953.5,
+          "y": 653.1
+        },
+        "command": {
+          "type": "L",
+          "x": 953.5,
+          "y": 653.1
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 948.05,
+          "y": 647.85
+        },
+        "to": {
+          "x": 953.5,
+          "y": 653.1
+        },
+        "geometryType": "L",
+        "command": {
+          "type": "L",
+          "x": 953.5,
+          "y": 653.1
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-7",
+      "pandaBoundaryIndex": 7,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-8",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 2,
+      "sourceEdgeXmlSha256": "6215EC7358CEC1BBF9AD0A769E3150A3A596C96D01F8CA85F193AD696A3DA066",
+      "sourceCommandIndex": 7,
+      "rawCommand": {
+        "token": "[",
+        "tokens": [
+          "[",
+          "19141",
+          "13120",
+          "19207",
+          "13155"
+        ],
+        "text": "[ 19141 13120 19207 13155",
+        "coordinateArity": 4,
+        "coordinatesTwips": [
+          {
+            "raw": "19141",
+            "numerator": "19141",
+            "denominator": "1",
+            "canonicalTwips": 19141
+          },
+          {
+            "raw": "13120",
+            "numerator": "13120",
+            "denominator": "1",
+            "canonicalTwips": 13120
+          },
+          {
+            "raw": "19207",
+            "numerator": "19207",
+            "denominator": "1",
+            "canonicalTwips": 19207
+          },
+          {
+            "raw": "13155",
+            "numerator": "13155",
+            "denominator": "1",
+            "canonicalTwips": 13155
+          }
+        ],
+        "sourceSubsegmentOrdinal": 4,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "quadratic",
+        "fromTwips": {
+          "x": "19070",
+          "y": "13062"
+        },
+        "controlTwips": {
+          "x": "19141",
+          "y": "13120"
+        },
+        "toTwips": {
+          "x": "19207",
+          "y": "13155"
+        },
+        "fromPx": {
+          "x": 953.5,
+          "y": 653.1
+        },
+        "controlPx": {
+          "x": 957.05,
+          "y": 656
+        },
+        "toPx": {
+          "x": 960.35,
+          "y": 657.75
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 3,
+        "fillStyle1": 1,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle1",
+      "sideNormalization": {
+        "reversed": false,
+        "rule": "current Panda observation preserves FillStyle1 source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 14,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 953.5,
+          "y": 653.1
+        },
+        "to": {
+          "x": 960.35,
+          "y": 657.75
+        },
+        "command": {
+          "type": "Q",
+          "cx": 957.05,
+          "cy": 656,
+          "x": 960.35,
+          "y": 657.75
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 953.5,
+          "y": 653.1
+        },
+        "to": {
+          "x": 960.35,
+          "y": 657.75
+        },
+        "geometryType": "Q",
+        "command": {
+          "type": "Q",
+          "cx": 957.05,
+          "cy": 656,
+          "x": 960.35,
+          "y": 657.75
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-8",
+      "pandaBoundaryIndex": 8,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-9",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 3,
+      "sourceEdgeXmlSha256": "103259836142C0D1DB60000A64F8B1D4921AC4AAC9938EBC795AA8DA95B0EF18",
+      "sourceCommandIndex": 1,
+      "rawCommand": {
+        "token": "[",
+        "tokens": [
+          "[",
+          "19212",
+          "13159",
+          "19218",
+          "13167"
+        ],
+        "text": "[ 19212 13159 19218 13167",
+        "coordinateArity": 4,
+        "coordinatesTwips": [
+          {
+            "raw": "19212",
+            "numerator": "19212",
+            "denominator": "1",
+            "canonicalTwips": 19212
+          },
+          {
+            "raw": "13159",
+            "numerator": "13159",
+            "denominator": "1",
+            "canonicalTwips": 13159
+          },
+          {
+            "raw": "19218",
+            "numerator": "19218",
+            "denominator": "1",
+            "canonicalTwips": 19218
+          },
+          {
+            "raw": "13167",
+            "numerator": "13167",
+            "denominator": "1",
+            "canonicalTwips": 13167
+          }
+        ],
+        "sourceSubsegmentOrdinal": 1,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "quadratic",
+        "fromTwips": {
+          "x": "19207",
+          "y": "13155"
+        },
+        "controlTwips": {
+          "x": "19212",
+          "y": "13159"
+        },
+        "toTwips": {
+          "x": "19218",
+          "y": "13167"
+        },
+        "fromPx": {
+          "x": 960.35,
+          "y": 657.75
+        },
+        "controlPx": {
+          "x": 960.6,
+          "y": 657.95
+        },
+        "toPx": {
+          "x": 960.9,
+          "y": 658.35
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 2,
+        "fillStyle1": 1,
+        "strokeStyle": null,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle1",
+      "sideNormalization": {
+        "reversed": false,
+        "rule": "current Panda observation preserves FillStyle1 source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 16,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 960.35,
+          "y": 657.75
+        },
+        "to": {
+          "x": 960.9,
+          "y": 658.35
+        },
+        "command": {
+          "type": "Q",
+          "cx": 960.6,
+          "cy": 657.95,
+          "x": 960.9,
+          "y": 658.35
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 960.35,
+          "y": 657.75
+        },
+        "to": {
+          "x": 960.9,
+          "y": 658.35
+        },
+        "geometryType": "Q",
+        "command": {
+          "type": "Q",
+          "cx": 960.6,
+          "cy": 657.95,
+          "x": 960.9,
+          "y": 658.35
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-9",
+      "pandaBoundaryIndex": 9,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-10",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 3,
+      "sourceEdgeXmlSha256": "103259836142C0D1DB60000A64F8B1D4921AC4AAC9938EBC795AA8DA95B0EF18",
+      "sourceCommandIndex": 3,
+      "rawCommand": {
+        "token": "[",
+        "tokens": [
+          "[",
+          "19246",
+          "13199",
+          "19272",
+          "13232"
+        ],
+        "text": "[ 19246 13199 19272 13232",
+        "coordinateArity": 4,
+        "coordinatesTwips": [
+          {
+            "raw": "19246",
+            "numerator": "19246",
+            "denominator": "1",
+            "canonicalTwips": 19246
+          },
+          {
+            "raw": "13199",
+            "numerator": "13199",
+            "denominator": "1",
+            "canonicalTwips": 13199
+          },
+          {
+            "raw": "19272",
+            "numerator": "19272",
+            "denominator": "1",
+            "canonicalTwips": 19272
+          },
+          {
+            "raw": "13232",
+            "numerator": "13232",
+            "denominator": "1",
+            "canonicalTwips": 13232
+          }
+        ],
+        "sourceSubsegmentOrdinal": 2,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "quadratic",
+        "fromTwips": {
+          "x": "19218",
+          "y": "13167"
+        },
+        "controlTwips": {
+          "x": "19246",
+          "y": "13199"
+        },
+        "toTwips": {
+          "x": "19272",
+          "y": "13232"
+        },
+        "fromPx": {
+          "x": 960.9,
+          "y": 658.35
+        },
+        "controlPx": {
+          "x": 962.3,
+          "y": 659.95
+        },
+        "toPx": {
+          "x": 963.6,
+          "y": 661.6
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 2,
+        "fillStyle1": 1,
+        "strokeStyle": null,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle1",
+      "sideNormalization": {
+        "reversed": false,
+        "rule": "current Panda observation preserves FillStyle1 source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 17,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 960.9,
+          "y": 658.35
+        },
+        "to": {
+          "x": 963.6,
+          "y": 661.6
+        },
+        "command": {
+          "type": "Q",
+          "cx": 962.3,
+          "cy": 659.95,
+          "x": 963.6,
+          "y": 661.6
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 960.9,
+          "y": 658.35
+        },
+        "to": {
+          "x": 963.6,
+          "y": 661.6
+        },
+        "geometryType": "Q",
+        "command": {
+          "type": "Q",
+          "cx": 962.3,
+          "cy": 659.95,
+          "x": 963.6,
+          "y": 661.6
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-10",
+      "pandaBoundaryIndex": 10,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-11",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 3,
+      "sourceEdgeXmlSha256": "103259836142C0D1DB60000A64F8B1D4921AC4AAC9938EBC795AA8DA95B0EF18",
+      "sourceCommandIndex": 5,
+      "rawCommand": {
+        "token": "|",
+        "tokens": [
+          "|",
+          "19185",
+          "13243"
+        ],
+        "text": "| 19185 13243",
+        "coordinateArity": 2,
+        "coordinatesTwips": [
+          {
+            "raw": "19185",
+            "numerator": "19185",
+            "denominator": "1",
+            "canonicalTwips": 19185
+          },
+          {
+            "raw": "13243",
+            "numerator": "13243",
+            "denominator": "1",
+            "canonicalTwips": 13243
+          }
+        ],
+        "sourceSubsegmentOrdinal": 3,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "line",
+        "fromTwips": {
+          "x": "19272",
+          "y": "13232"
+        },
+        "controlTwips": null,
+        "toTwips": {
+          "x": "19185",
+          "y": "13243"
+        },
+        "fromPx": {
+          "x": 963.6,
+          "y": 661.6
+        },
+        "controlPx": null,
+        "toPx": {
+          "x": 959.25,
+          "y": 662.15
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 2,
+        "fillStyle1": 1,
+        "strokeStyle": null,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle1",
+      "sideNormalization": {
+        "reversed": false,
+        "rule": "current Panda observation preserves FillStyle1 source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 18,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 963.6,
+          "y": 661.6
+        },
+        "to": {
+          "x": 959.25,
+          "y": 662.15
+        },
+        "command": {
+          "type": "L",
+          "x": 959.25,
+          "y": 662.15
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 963.6,
+          "y": 661.6
+        },
+        "to": {
+          "x": 959.25,
+          "y": 662.15
+        },
+        "geometryType": "L",
+        "command": {
+          "type": "L",
+          "x": 959.25,
+          "y": 662.15
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-11",
+      "pandaBoundaryIndex": 11,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-12",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 4,
+      "sourceEdgeXmlSha256": "7820815C235EFD44C1B7775E8E8659FBF25397F681EF3DE4A239BCC654E85FE1",
+      "sourceCommandIndex": 1,
+      "rawCommand": {
+        "token": "|",
+        "tokens": [
+          "|",
+          "18835",
+          "13238"
+        ],
+        "text": "| 18835 13238",
+        "coordinateArity": 2,
+        "coordinatesTwips": [
+          {
+            "raw": "18835",
+            "numerator": "18835",
+            "denominator": "1",
+            "canonicalTwips": 18835
+          },
+          {
+            "raw": "13238",
+            "numerator": "13238",
+            "denominator": "1",
+            "canonicalTwips": 13238
+          }
+        ],
+        "sourceSubsegmentOrdinal": 1,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "line",
+        "fromTwips": {
+          "x": "18705",
+          "y": "13183"
+        },
+        "controlTwips": null,
+        "toTwips": {
+          "x": "18835",
+          "y": "13238"
+        },
+        "fromPx": {
+          "x": 935.25,
+          "y": 659.15
+        },
+        "controlPx": null,
+        "toPx": {
+          "x": 941.75,
+          "y": 661.9
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 1,
+        "fillStyle1": 2,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle0",
+      "sideNormalization": {
+        "reversed": true,
+        "rule": "current Panda observation maps FillStyle0 contribution in reverse source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 20,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 935.25,
+          "y": 659.15
+        },
+        "to": {
+          "x": 941.75,
+          "y": 661.9
+        },
+        "command": {
+          "type": "L",
+          "x": 935.25,
+          "y": 659.15
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 941.75,
+          "y": 661.9
+        },
+        "to": {
+          "x": 935.25,
+          "y": 659.15
+        },
+        "geometryType": "L",
+        "command": {
+          "type": "L",
+          "x": 935.25,
+          "y": 659.15
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-12",
+      "pandaBoundaryIndex": 12,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 0
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-13",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 4,
+      "sourceEdgeXmlSha256": "7820815C235EFD44C1B7775E8E8659FBF25397F681EF3DE4A239BCC654E85FE1",
+      "sourceCommandIndex": 3,
+      "rawCommand": {
+        "token": "[",
+        "tokens": [
+          "[",
+          "18884",
+          "13251",
+          "18935",
+          "13258"
+        ],
+        "text": "[ 18884 13251 18935 13258",
+        "coordinateArity": 4,
+        "coordinatesTwips": [
+          {
+            "raw": "18884",
+            "numerator": "18884",
+            "denominator": "1",
+            "canonicalTwips": 18884
+          },
+          {
+            "raw": "13251",
+            "numerator": "13251",
+            "denominator": "1",
+            "canonicalTwips": 13251
+          },
+          {
+            "raw": "18935",
+            "numerator": "18935",
+            "denominator": "1",
+            "canonicalTwips": 18935
+          },
+          {
+            "raw": "13258",
+            "numerator": "13258",
+            "denominator": "1",
+            "canonicalTwips": 13258
+          }
+        ],
+        "sourceSubsegmentOrdinal": 2,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "quadratic",
+        "fromTwips": {
+          "x": "18835",
+          "y": "13238"
+        },
+        "controlTwips": {
+          "x": "18884",
+          "y": "13251"
+        },
+        "toTwips": {
+          "x": "18935",
+          "y": "13258"
+        },
+        "fromPx": {
+          "x": 941.75,
+          "y": 661.9
+        },
+        "controlPx": {
+          "x": 944.2,
+          "y": 662.55
+        },
+        "toPx": {
+          "x": 946.75,
+          "y": 662.9
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 1,
+        "fillStyle1": 2,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle0",
+      "sideNormalization": {
+        "reversed": true,
+        "rule": "current Panda observation maps FillStyle0 contribution in reverse source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 21,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 941.75,
+          "y": 661.9
+        },
+        "to": {
+          "x": 946.75,
+          "y": 662.9
+        },
+        "command": {
+          "type": "Q",
+          "cx": 944.2,
+          "cy": 662.55,
+          "x": 941.75,
+          "y": 661.9
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 946.75,
+          "y": 662.9
+        },
+        "to": {
+          "x": 941.75,
+          "y": 661.9
+        },
+        "geometryType": "Q",
+        "command": {
+          "type": "Q",
+          "cx": 944.2,
+          "cy": 662.55,
+          "x": 941.75,
+          "y": 661.9
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-13",
+      "pandaBoundaryIndex": 13,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-14",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 5,
+      "sourceEdgeXmlSha256": "FA32CE9F8080D179A53945C2B2062BA9419ED24C2623D8B9800DA122A783D8C9",
+      "sourceCommandIndex": 1,
+      "rawCommand": {
+        "token": "[",
+        "tokens": [
+          "[",
+          "19053",
+          "13270",
+          "19176",
+          "13238"
+        ],
+        "text": "[ 19053 13270 19176 13238",
+        "coordinateArity": 4,
+        "coordinatesTwips": [
+          {
+            "raw": "19053",
+            "numerator": "19053",
+            "denominator": "1",
+            "canonicalTwips": 19053
+          },
+          {
+            "raw": "13270",
+            "numerator": "13270",
+            "denominator": "1",
+            "canonicalTwips": 13270
+          },
+          {
+            "raw": "19176",
+            "numerator": "19176",
+            "denominator": "1",
+            "canonicalTwips": 19176
+          },
+          {
+            "raw": "13238",
+            "numerator": "13238",
+            "denominator": "1",
+            "canonicalTwips": 13238
+          }
+        ],
+        "sourceSubsegmentOrdinal": 1,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "quadratic",
+        "fromTwips": {
+          "x": "18935",
+          "y": "13258"
+        },
+        "controlTwips": {
+          "x": "19053",
+          "y": "13270"
+        },
+        "toTwips": {
+          "x": "19176",
+          "y": "13238"
+        },
+        "fromPx": {
+          "x": 946.75,
+          "y": 662.9
+        },
+        "controlPx": {
+          "x": 952.65,
+          "y": 663.5
+        },
+        "toPx": {
+          "x": 958.8,
+          "y": 661.9
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 1,
+        "fillStyle1": 3,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle0",
+      "sideNormalization": {
+        "reversed": true,
+        "rule": "current Panda observation maps FillStyle0 contribution in reverse source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 23,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 946.75,
+          "y": 662.9
+        },
+        "to": {
+          "x": 958.8,
+          "y": 661.9
+        },
+        "command": {
+          "type": "Q",
+          "cx": 952.65,
+          "cy": 663.5,
+          "x": 946.75,
+          "y": 662.9
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 958.8,
+          "y": 661.9
+        },
+        "to": {
+          "x": 946.75,
+          "y": 662.9
+        },
+        "geometryType": "Q",
+        "command": {
+          "type": "Q",
+          "cx": 952.65,
+          "cy": 663.5,
+          "x": 946.75,
+          "y": 662.9
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-14",
+      "pandaBoundaryIndex": 14,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-15",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 5,
+      "sourceEdgeXmlSha256": "FA32CE9F8080D179A53945C2B2062BA9419ED24C2623D8B9800DA122A783D8C9",
+      "sourceCommandIndex": 3,
+      "rawCommand": {
+        "token": "[",
+        "tokens": [
+          "[",
+          "19180",
+          "13240",
+          "19185",
+          "13243"
+        ],
+        "text": "[ 19180 13240 19185 13243",
+        "coordinateArity": 4,
+        "coordinatesTwips": [
+          {
+            "raw": "19180",
+            "numerator": "19180",
+            "denominator": "1",
+            "canonicalTwips": 19180
+          },
+          {
+            "raw": "13240",
+            "numerator": "13240",
+            "denominator": "1",
+            "canonicalTwips": 13240
+          },
+          {
+            "raw": "19185",
+            "numerator": "19185",
+            "denominator": "1",
+            "canonicalTwips": 19185
+          },
+          {
+            "raw": "13243",
+            "numerator": "13243",
+            "denominator": "1",
+            "canonicalTwips": 13243
+          }
+        ],
+        "sourceSubsegmentOrdinal": 2,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "quadratic",
+        "fromTwips": {
+          "x": "19176",
+          "y": "13238"
+        },
+        "controlTwips": {
+          "x": "19180",
+          "y": "13240"
+        },
+        "toTwips": {
+          "x": "19185",
+          "y": "13243"
+        },
+        "fromPx": {
+          "x": 958.8,
+          "y": 661.9
+        },
+        "controlPx": {
+          "x": 959,
+          "y": 662
+        },
+        "toPx": {
+          "x": 959.25,
+          "y": 662.15
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 1,
+        "fillStyle1": 3,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle0",
+      "sideNormalization": {
+        "reversed": true,
+        "rule": "current Panda observation maps FillStyle0 contribution in reverse source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 24,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 958.8,
+          "y": 661.9
+        },
+        "to": {
+          "x": 959.25,
+          "y": 662.15
+        },
+        "command": {
+          "type": "Q",
+          "cx": 959,
+          "cy": 662,
+          "x": 958.8,
+          "y": 661.9
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 959.25,
+          "y": 662.15
+        },
+        "to": {
+          "x": 958.8,
+          "y": 661.9
+        },
+        "geometryType": "Q",
+        "command": {
+          "type": "Q",
+          "cx": 959,
+          "cy": 662,
+          "x": 958.8,
+          "y": 661.9
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-15",
+      "pandaBoundaryIndex": 15,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-16",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 6,
+      "sourceEdgeXmlSha256": "57C151559274A448ADF8E99882F42F33CD8E1C9818B9C196D230F663142BAA24",
+      "sourceCommandIndex": 1,
+      "rawCommand": {
+        "token": "[",
+        "tokens": [
+          "[",
+          "18749",
+          "13031",
+          "18700",
+          "13088"
+        ],
+        "text": "[ 18749 13031 18700 13088",
+        "coordinateArity": 4,
+        "coordinatesTwips": [
+          {
+            "raw": "18749",
+            "numerator": "18749",
+            "denominator": "1",
+            "canonicalTwips": 18749
+          },
+          {
+            "raw": "13031",
+            "numerator": "13031",
+            "denominator": "1",
+            "canonicalTwips": 13031
+          },
+          {
+            "raw": "18700",
+            "numerator": "18700",
+            "denominator": "1",
+            "canonicalTwips": 18700
+          },
+          {
+            "raw": "13088",
+            "numerator": "13088",
+            "denominator": "1",
+            "canonicalTwips": 13088
+          }
+        ],
+        "sourceSubsegmentOrdinal": 1,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "quadratic",
+        "fromTwips": {
+          "x": "18866",
+          "y": "13011"
+        },
+        "controlTwips": {
+          "x": "18749",
+          "y": "13031"
+        },
+        "toTwips": {
+          "x": "18700",
+          "y": "13088"
+        },
+        "fromPx": {
+          "x": 943.3,
+          "y": 650.55
+        },
+        "controlPx": {
+          "x": 937.45,
+          "y": 651.55
+        },
+        "toPx": {
+          "x": 935,
+          "y": 654.4
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 2,
+        "fillStyle1": 1,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle1",
+      "sideNormalization": {
+        "reversed": false,
+        "rule": "current Panda observation preserves FillStyle1 source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 26,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 943.3,
+          "y": 650.55
+        },
+        "to": {
+          "x": 935,
+          "y": 654.4
+        },
+        "command": {
+          "type": "Q",
+          "cx": 937.45,
+          "cy": 651.55,
+          "x": 935,
+          "y": 654.4
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 943.3,
+          "y": 650.55
+        },
+        "to": {
+          "x": 935,
+          "y": 654.4
+        },
+        "geometryType": "Q",
+        "command": {
+          "type": "Q",
+          "cx": 937.45,
+          "cy": 651.55,
+          "x": 935,
+          "y": 654.4
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-16",
+      "pandaBoundaryIndex": 16,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-17",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 6,
+      "sourceEdgeXmlSha256": "57C151559274A448ADF8E99882F42F33CD8E1C9818B9C196D230F663142BAA24",
+      "sourceCommandIndex": 3,
+      "rawCommand": {
+        "token": "|",
+        "tokens": [
+          "|",
+          "18735",
+          "13105"
+        ],
+        "text": "| 18735 13105",
+        "coordinateArity": 2,
+        "coordinatesTwips": [
+          {
+            "raw": "18735",
+            "numerator": "18735",
+            "denominator": "1",
+            "canonicalTwips": 18735
+          },
+          {
+            "raw": "13105",
+            "numerator": "13105",
+            "denominator": "1",
+            "canonicalTwips": 13105
+          }
+        ],
+        "sourceSubsegmentOrdinal": 2,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "line",
+        "fromTwips": {
+          "x": "18700",
+          "y": "13088"
+        },
+        "controlTwips": null,
+        "toTwips": {
+          "x": "18735",
+          "y": "13105"
+        },
+        "fromPx": {
+          "x": 935,
+          "y": 654.4
+        },
+        "controlPx": null,
+        "toPx": {
+          "x": 936.75,
+          "y": 655.25
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 2,
+        "fillStyle1": 1,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle1",
+      "sideNormalization": {
+        "reversed": false,
+        "rule": "current Panda observation preserves FillStyle1 source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 27,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 935,
+          "y": 654.4
+        },
+        "to": {
+          "x": 936.75,
+          "y": 655.25
+        },
+        "command": {
+          "type": "L",
+          "x": 936.75,
+          "y": 655.25
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 935,
+          "y": 654.4
+        },
+        "to": {
+          "x": 936.75,
+          "y": 655.25
+        },
+        "geometryType": "L",
+        "command": {
+          "type": "L",
+          "x": 936.75,
+          "y": 655.25
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-17",
+      "pandaBoundaryIndex": 17,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-18",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 7,
+      "sourceEdgeXmlSha256": "13DDC5189CFF28629F227E321CD72C85FB574ADA588CE3309999ACAB837F21F0",
+      "sourceCommandIndex": 1,
+      "rawCommand": {
+        "token": "|",
+        "tokens": [
+          "|",
+          "18813",
+          "13145"
+        ],
+        "text": "| 18813 13145",
+        "coordinateArity": 2,
+        "coordinatesTwips": [
+          {
+            "raw": "18813",
+            "numerator": "18813",
+            "denominator": "1",
+            "canonicalTwips": 18813
+          },
+          {
+            "raw": "13145",
+            "numerator": "13145",
+            "denominator": "1",
+            "canonicalTwips": 13145
+          }
+        ],
+        "sourceSubsegmentOrdinal": 1,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "line",
+        "fromTwips": {
+          "x": "18735",
+          "y": "13105"
+        },
+        "controlTwips": null,
+        "toTwips": {
+          "x": "18813",
+          "y": "13145"
+        },
+        "fromPx": {
+          "x": 936.75,
+          "y": 655.25
+        },
+        "controlPx": null,
+        "toPx": {
+          "x": 940.65,
+          "y": 657.25
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 3,
+        "fillStyle1": 1,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle1",
+      "sideNormalization": {
+        "reversed": false,
+        "rule": "current Panda observation preserves FillStyle1 source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 29,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 936.75,
+          "y": 655.25
+        },
+        "to": {
+          "x": 940.65,
+          "y": 657.25
+        },
+        "command": {
+          "type": "L",
+          "x": 940.65,
+          "y": 657.25
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 936.75,
+          "y": 655.25
+        },
+        "to": {
+          "x": 940.65,
+          "y": 657.25
+        },
+        "geometryType": "L",
+        "command": {
+          "type": "L",
+          "x": 940.65,
+          "y": 657.25
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-18",
+      "pandaBoundaryIndex": 18,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-19",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 7,
+      "sourceEdgeXmlSha256": "13DDC5189CFF28629F227E321CD72C85FB574ADA588CE3309999ACAB837F21F0",
+      "sourceCommandIndex": 3,
+      "rawCommand": {
+        "token": "[",
+        "tokens": [
+          "[",
+          "18988",
+          "13212",
+          "19103",
+          "13195"
+        ],
+        "text": "[ 18988 13212 19103 13195",
+        "coordinateArity": 4,
+        "coordinatesTwips": [
+          {
+            "raw": "18988",
+            "numerator": "18988",
+            "denominator": "1",
+            "canonicalTwips": 18988
+          },
+          {
+            "raw": "13212",
+            "numerator": "13212",
+            "denominator": "1",
+            "canonicalTwips": 13212
+          },
+          {
+            "raw": "19103",
+            "numerator": "19103",
+            "denominator": "1",
+            "canonicalTwips": 19103
+          },
+          {
+            "raw": "13195",
+            "numerator": "13195",
+            "denominator": "1",
+            "canonicalTwips": 13195
+          }
+        ],
+        "sourceSubsegmentOrdinal": 2,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "quadratic",
+        "fromTwips": {
+          "x": "18813",
+          "y": "13145"
+        },
+        "controlTwips": {
+          "x": "18988",
+          "y": "13212"
+        },
+        "toTwips": {
+          "x": "19103",
+          "y": "13195"
+        },
+        "fromPx": {
+          "x": 940.65,
+          "y": 657.25
+        },
+        "controlPx": {
+          "x": 949.4,
+          "y": 660.6
+        },
+        "toPx": {
+          "x": 955.15,
+          "y": 659.75
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 3,
+        "fillStyle1": 1,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle1",
+      "sideNormalization": {
+        "reversed": false,
+        "rule": "current Panda observation preserves FillStyle1 source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 30,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 940.65,
+          "y": 657.25
+        },
+        "to": {
+          "x": 955.15,
+          "y": 659.75
+        },
+        "command": {
+          "type": "Q",
+          "cx": 949.4,
+          "cy": 660.6,
+          "x": 955.15,
+          "y": 659.75
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 940.65,
+          "y": 657.25
+        },
+        "to": {
+          "x": 955.15,
+          "y": 659.75
+        },
+        "geometryType": "Q",
+        "command": {
+          "type": "Q",
+          "cx": 949.4,
+          "cy": 660.6,
+          "x": 955.15,
+          "y": 659.75
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-19",
+      "pandaBoundaryIndex": 19,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-20",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 7,
+      "sourceEdgeXmlSha256": "13DDC5189CFF28629F227E321CD72C85FB574ADA588CE3309999ACAB837F21F0",
+      "sourceCommandIndex": 5,
+      "rawCommand": {
+        "token": "[",
+        "tokens": [
+          "[",
+          "19049",
+          "13172",
+          "18998",
+          "13135"
+        ],
+        "text": "[ 19049 13172 18998 13135",
+        "coordinateArity": 4,
+        "coordinatesTwips": [
+          {
+            "raw": "19049",
+            "numerator": "19049",
+            "denominator": "1",
+            "canonicalTwips": 19049
+          },
+          {
+            "raw": "13172",
+            "numerator": "13172",
+            "denominator": "1",
+            "canonicalTwips": 13172
+          },
+          {
+            "raw": "18998",
+            "numerator": "18998",
+            "denominator": "1",
+            "canonicalTwips": 18998
+          },
+          {
+            "raw": "13135",
+            "numerator": "13135",
+            "denominator": "1",
+            "canonicalTwips": 13135
+          }
+        ],
+        "sourceSubsegmentOrdinal": 3,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "quadratic",
+        "fromTwips": {
+          "x": "19103",
+          "y": "13195"
+        },
+        "controlTwips": {
+          "x": "19049",
+          "y": "13172"
+        },
+        "toTwips": {
+          "x": "18998",
+          "y": "13135"
+        },
+        "fromPx": {
+          "x": 955.15,
+          "y": 659.75
+        },
+        "controlPx": {
+          "x": 952.45,
+          "y": 658.6
+        },
+        "toPx": {
+          "x": 949.9,
+          "y": 656.75
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 3,
+        "fillStyle1": 1,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle1",
+      "sideNormalization": {
+        "reversed": false,
+        "rule": "current Panda observation preserves FillStyle1 source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 31,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 955.15,
+          "y": 659.75
+        },
+        "to": {
+          "x": 949.9,
+          "y": 656.75
+        },
+        "command": {
+          "type": "Q",
+          "cx": 952.45,
+          "cy": 658.6,
+          "x": 949.9,
+          "y": 656.75
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 955.15,
+          "y": 659.75
+        },
+        "to": {
+          "x": 949.9,
+          "y": 656.75
+        },
+        "geometryType": "Q",
+        "command": {
+          "type": "Q",
+          "cx": 952.45,
+          "cy": 658.6,
+          "x": 949.9,
+          "y": 656.75
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-20",
+      "pandaBoundaryIndex": 20,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-21",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 7,
+      "sourceEdgeXmlSha256": "13DDC5189CFF28629F227E321CD72C85FB574ADA588CE3309999ACAB837F21F0",
+      "sourceCommandIndex": 7,
+      "rawCommand": {
+        "token": "|",
+        "tokens": [
+          "|",
+          "18891",
+          "13033"
+        ],
+        "text": "| 18891 13033",
+        "coordinateArity": 2,
+        "coordinatesTwips": [
+          {
+            "raw": "18891",
+            "numerator": "18891",
+            "denominator": "1",
+            "canonicalTwips": 18891
+          },
+          {
+            "raw": "13033",
+            "numerator": "13033",
+            "denominator": "1",
+            "canonicalTwips": 13033
+          }
+        ],
+        "sourceSubsegmentOrdinal": 4,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "line",
+        "fromTwips": {
+          "x": "18998",
+          "y": "13135"
+        },
+        "controlTwips": null,
+        "toTwips": {
+          "x": "18891",
+          "y": "13033"
+        },
+        "fromPx": {
+          "x": 949.9,
+          "y": 656.75
+        },
+        "controlPx": null,
+        "toPx": {
+          "x": 944.55,
+          "y": 651.65
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 3,
+        "fillStyle1": 1,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle1",
+      "sideNormalization": {
+        "reversed": false,
+        "rule": "current Panda observation preserves FillStyle1 source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 32,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 949.9,
+          "y": 656.75
+        },
+        "to": {
+          "x": 944.55,
+          "y": 651.65
+        },
+        "command": {
+          "type": "L",
+          "x": 944.55,
+          "y": 651.65
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 949.9,
+          "y": 656.75
+        },
+        "to": {
+          "x": 944.55,
+          "y": 651.65
+        },
+        "geometryType": "L",
+        "command": {
+          "type": "L",
+          "x": 944.55,
+          "y": 651.65
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-21",
+      "pandaBoundaryIndex": 21,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    },
+    {
+      "contributionId": "D-B:FillStyle1:boundary-22",
+      "fixture": "D-B",
+      "sourceEdgeOrdinal": 8,
+      "sourceEdgeXmlSha256": "B285B09A43779B72FFC98896F9BE478F907C19F76E37B3EAB7EAFCE5718817E6",
+      "sourceCommandIndex": 1,
+      "rawCommand": {
+        "token": "|",
+        "tokens": [
+          "|",
+          "18866",
+          "13011"
+        ],
+        "text": "| 18866 13011",
+        "coordinateArity": 2,
+        "coordinatesTwips": [
+          {
+            "raw": "18866",
+            "numerator": "18866",
+            "denominator": "1",
+            "canonicalTwips": 18866
+          },
+          {
+            "raw": "13011",
+            "numerator": "13011",
+            "denominator": "1",
+            "canonicalTwips": 13011
+          }
+        ],
+        "sourceSubsegmentOrdinal": 1,
+        "sourceAuthoredCloseMarkerOrdinal": null
+      },
+      "rawGeometry": {
+        "type": "line",
+        "fromTwips": {
+          "x": "18891",
+          "y": "13033"
+        },
+        "controlTwips": null,
+        "toTwips": {
+          "x": "18866",
+          "y": "13011"
+        },
+        "fromPx": {
+          "x": 944.55,
+          "y": 651.65
+        },
+        "controlPx": null,
+        "toPx": {
+          "x": 943.3,
+          "y": 650.55
+        }
+      },
+      "sourceStyles": {
+        "fillStyle0": 2,
+        "fillStyle1": 1,
+        "strokeStyle": 1,
+        "scope": "XFL Edge-record attributes; no mid-edge style change was identified in this 9-record target subset"
+      },
+      "sourceFillSide": "fillStyle1",
+      "sideNormalization": {
+        "reversed": false,
+        "rule": "current Panda observation preserves FillStyle1 source direction"
+      },
+      "pandaDecodedSegment": {
+        "pandaCommandIndex": 34,
+        "originKind": "raw-edge-subsegment",
+        "from": {
+          "x": 944.55,
+          "y": 651.65
+        },
+        "to": {
+          "x": 943.3,
+          "y": 650.55
+        },
+        "command": {
+          "type": "L",
+          "x": 943.3,
+          "y": 650.55
+        },
+        "rawSubsegmentCountMatch": true,
+        "authoredCloseMarkerOrdinal": null
+      },
+      "pandaOrientedFillContribution": {
+        "from": {
+          "x": 944.55,
+          "y": 651.65
+        },
+        "to": {
+          "x": 943.3,
+          "y": 650.55
+        },
+        "geometryType": "L",
+        "command": {
+          "type": "L",
+          "x": 943.3,
+          "y": 650.55
+        }
+      },
+      "pandaBoundarySegmentId": "FillStyle1:boundary-22",
+      "pandaBoundaryIndex": 22,
+      "endpointDegrees": {
+        "from": {
+          "inDegree": 1,
+          "outDegree": 1
+        },
+        "to": {
+          "inDegree": 1,
+          "outDegree": 1
+        }
+      },
+      "provenanceConfidence": "EXACT_RAW_SUBSEGMENT_TO_PRODUCTION_MAP"
+    }
+  ],
+  "rawCommandsWithoutPandaFillContribution": [
+    {
+      "sourceEdgeOrdinal": 0,
+      "sourceCommandIndex": 1,
+      "sourceAuthoredCloseMarkerOrdinal": 1,
+      "rawCommandText": "/ 19207 12777",
+      "rawTokenArity": 2,
+      "payloadCoordinatesTwips": [
+        "19207",
+        "12777"
+      ],
+      "currentPandaDecodeObservation": "The production decoder emits Z for / and advances past only that token; the following numeric payload is not consumed as line geometry."
+    }
+  ],
+  "endpointTrace": [
+    {
+      "endpoint": {
+        "x": 935.25,
+        "y": 659.15
+      },
+      "graphDegree": {
+        "inDegree": 1,
+        "outDegree": 0
+      },
+      "adjacentPandaBoundarySegments": [
+        {
+          "contributionId": "D-B:FillStyle1:boundary-12",
+          "sourceEdgeOrdinal": 4,
+          "sourceCommandIndex": 1,
+          "sourceFillSide": "fillStyle0",
+          "from": {
+            "x": 941.75,
+            "y": 661.9
+          },
+          "to": {
+            "x": 935.25,
+            "y": 659.15
+          }
+        }
+      ],
+      "rawXflOccurrences": [
+        {
+          "sourceEdgeOrdinal": 4,
+          "sourceCommandIndex": 0,
+          "sourceCommandToken": "!",
+          "sourceSubsegmentOrdinal": null,
+          "sourceAuthoredCloseMarkerOrdinal": null,
+          "rawCommandText": "! 18705 13183",
+          "occurrenceKinds": [
+            "move-to"
+          ]
+        },
+        {
+          "sourceEdgeOrdinal": 4,
+          "sourceCommandIndex": 1,
+          "sourceCommandToken": "|",
+          "sourceSubsegmentOrdinal": 1,
+          "sourceAuthoredCloseMarkerOrdinal": null,
+          "rawCommandText": "| 18835 13238",
+          "occurrenceKinds": [
+            "segment-start"
+          ]
+        }
+      ]
+    },
+    {
+      "endpoint": {
+        "x": 960.85,
+        "y": 643.6
+      },
+      "graphDegree": {
+        "inDegree": 0,
+        "outDegree": 1
+      },
+      "adjacentPandaBoundarySegments": [
+        {
+          "contributionId": "D-B:FillStyle1:boundary-4",
+          "sourceEdgeOrdinal": 1,
+          "sourceCommandIndex": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 960.85,
+            "y": 643.6
+          },
+          "to": {
+            "x": 953.65,
+            "y": 645.8
+          }
+        }
+      ],
+      "rawXflOccurrences": [
+        {
+          "sourceEdgeOrdinal": 0,
+          "sourceCommandIndex": 0,
+          "sourceCommandToken": "!",
+          "sourceSubsegmentOrdinal": null,
+          "sourceAuthoredCloseMarkerOrdinal": null,
+          "rawCommandText": "! 19217 12872",
+          "occurrenceKinds": [
+            "move-to"
+          ]
+        },
+        {
+          "sourceEdgeOrdinal": 0,
+          "sourceCommandIndex": 1,
+          "sourceCommandToken": "/",
+          "sourceSubsegmentOrdinal": null,
+          "sourceAuthoredCloseMarkerOrdinal": 1,
+          "rawCommandText": "/ 19207 12777",
+          "occurrenceKinds": [
+            "slash-current-point",
+            "slash-subpath-start"
+          ]
+        },
+        {
+          "sourceEdgeOrdinal": 1,
+          "sourceCommandIndex": 0,
+          "sourceCommandToken": "!",
+          "sourceSubsegmentOrdinal": null,
+          "sourceAuthoredCloseMarkerOrdinal": null,
+          "rawCommandText": "! 19217 12872",
+          "occurrenceKinds": [
+            "move-to"
+          ]
+        },
+        {
+          "sourceEdgeOrdinal": 1,
+          "sourceCommandIndex": 1,
+          "sourceCommandToken": "[",
+          "sourceSubsegmentOrdinal": 1,
+          "sourceAuthoredCloseMarkerOrdinal": null,
+          "rawCommandText": "[ 19147 12891 19073 12916",
+          "occurrenceKinds": [
+            "segment-start"
+          ]
+        }
+      ]
+    }
+  ],
+  "incidenceFingerprints": {
+    "rawXflExplicitSegments": {
+      "algorithm": "exact directed endpoints + geometry + fill side; sorted JSON; no tolerance",
+      "segmentCount": 23,
+      "sha256": "E9588F72A1880CE7BB5A6AA2FC92FE716BAB7769ED2FCEF2C87A590D1F560434",
+      "normalized": [
+        {
+          "geometryType": "line",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle0",
+          "from": {
+            "x": 928.3,
+            "y": 651.95
+          },
+          "control": null,
+          "to": {
+            "x": 933.3,
+            "y": 656.55
+          }
+        },
+        {
+          "geometryType": "line",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle0",
+          "from": {
+            "x": 933.3,
+            "y": 656.55
+          },
+          "control": null,
+          "to": {
+            "x": 960.35,
+            "y": 638.85
+          }
+        },
+        {
+          "geometryType": "line",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle0",
+          "from": {
+            "x": 935.25,
+            "y": 659.15
+          },
+          "control": null,
+          "to": {
+            "x": 941.75,
+            "y": 661.9
+          }
+        },
+        {
+          "geometryType": "line",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 935,
+            "y": 654.4
+          },
+          "control": null,
+          "to": {
+            "x": 936.75,
+            "y": 655.25
+          }
+        },
+        {
+          "geometryType": "line",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 936.75,
+            "y": 655.25
+          },
+          "control": null,
+          "to": {
+            "x": 940.65,
+            "y": 657.25
+          }
+        },
+        {
+          "geometryType": "line",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 944.55,
+            "y": 651.65
+          },
+          "control": null,
+          "to": {
+            "x": 943.3,
+            "y": 650.55
+          }
+        },
+        {
+          "geometryType": "line",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 948.05,
+            "y": 647.85
+          },
+          "control": null,
+          "to": {
+            "x": 953.5,
+            "y": 653.1
+          }
+        },
+        {
+          "geometryType": "line",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 949.85,
+            "y": 647.15
+          },
+          "control": null,
+          "to": {
+            "x": 948.05,
+            "y": 647.85
+          }
+        },
+        {
+          "geometryType": "line",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 949.9,
+            "y": 656.75
+          },
+          "control": null,
+          "to": {
+            "x": 944.55,
+            "y": 651.65
+          }
+        },
+        {
+          "geometryType": "line",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 963.6,
+            "y": 661.6
+          },
+          "control": null,
+          "to": {
+            "x": 959.25,
+            "y": 662.15
+          }
+        },
+        {
+          "geometryType": "quadratic",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle0",
+          "from": {
+            "x": 941.75,
+            "y": 661.9
+          },
+          "control": {
+            "x": 944.2,
+            "y": 662.55
+          },
+          "to": {
+            "x": 946.75,
+            "y": 662.9
+          }
+        },
+        {
+          "geometryType": "quadratic",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle0",
+          "from": {
+            "x": 946.25,
+            "y": 643.2
+          },
+          "control": {
+            "x": 931.25,
+            "y": 648.4
+          },
+          "to": {
+            "x": 928.3,
+            "y": 651.95
+          }
+        },
+        {
+          "geometryType": "quadratic",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle0",
+          "from": {
+            "x": 946.75,
+            "y": 662.9
+          },
+          "control": {
+            "x": 952.65,
+            "y": 663.5
+          },
+          "to": {
+            "x": 958.8,
+            "y": 661.9
+          }
+        },
+        {
+          "geometryType": "quadratic",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle0",
+          "from": {
+            "x": 958.8,
+            "y": 661.9
+          },
+          "control": {
+            "x": 959,
+            "y": 662
+          },
+          "to": {
+            "x": 959.25,
+            "y": 662.15
+          }
+        },
+        {
+          "geometryType": "quadratic",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle0",
+          "from": {
+            "x": 960.35,
+            "y": 638.85
+          },
+          "control": {
+            "x": 953.45,
+            "y": 640.65
+          },
+          "to": {
+            "x": 946.25,
+            "y": 643.2
+          }
+        },
+        {
+          "geometryType": "quadratic",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 940.65,
+            "y": 657.25
+          },
+          "control": {
+            "x": 949.4,
+            "y": 660.6
+          },
+          "to": {
+            "x": 955.15,
+            "y": 659.75
+          }
+        },
+        {
+          "geometryType": "quadratic",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 943.3,
+            "y": 650.55
+          },
+          "control": {
+            "x": 937.45,
+            "y": 651.55
+          },
+          "to": {
+            "x": 935,
+            "y": 654.4
+          }
+        },
+        {
+          "geometryType": "quadratic",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 953.5,
+            "y": 653.1
+          },
+          "control": {
+            "x": 957.05,
+            "y": 656
+          },
+          "to": {
+            "x": 960.35,
+            "y": 657.75
+          }
+        },
+        {
+          "geometryType": "quadratic",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 953.65,
+            "y": 645.8
+          },
+          "control": {
+            "x": 951.75,
+            "y": 646.45
+          },
+          "to": {
+            "x": 949.85,
+            "y": 647.15
+          }
+        },
+        {
+          "geometryType": "quadratic",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 955.15,
+            "y": 659.75
+          },
+          "control": {
+            "x": 952.45,
+            "y": 658.6
+          },
+          "to": {
+            "x": 949.9,
+            "y": 656.75
+          }
+        },
+        {
+          "geometryType": "quadratic",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 960.35,
+            "y": 657.75
+          },
+          "control": {
+            "x": 960.6,
+            "y": 657.95
+          },
+          "to": {
+            "x": 960.9,
+            "y": 658.35
+          }
+        },
+        {
+          "geometryType": "quadratic",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 960.85,
+            "y": 643.6
+          },
+          "control": {
+            "x": 957.35,
+            "y": 644.55
+          },
+          "to": {
+            "x": 953.65,
+            "y": 645.8
+          }
+        },
+        {
+          "geometryType": "quadratic",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 960.9,
+            "y": 658.35
+          },
+          "control": {
+            "x": 962.3,
+            "y": 659.95
+          },
+          "to": {
+            "x": 963.6,
+            "y": 661.6
+          }
+        }
+      ]
+    },
+    "pandaFillOwnedSegments": {
+      "algorithm": "exact directed endpoints + geometry + fill side; sorted JSON; no tolerance",
+      "segmentCount": 23,
+      "sha256": "97EB55E2013C01A03FE0EA2376C286DFC7E4E8236464D3A514A793C29D11D4D1",
+      "normalized": [
+        {
+          "geometryType": "L",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle0",
+          "from": {
+            "x": 933.3,
+            "y": 656.55
+          },
+          "control": null,
+          "to": {
+            "x": 928.3,
+            "y": 651.95
+          }
+        },
+        {
+          "geometryType": "L",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle0",
+          "from": {
+            "x": 941.75,
+            "y": 661.9
+          },
+          "control": null,
+          "to": {
+            "x": 935.25,
+            "y": 659.15
+          }
+        },
+        {
+          "geometryType": "L",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle0",
+          "from": {
+            "x": 960.35,
+            "y": 638.85
+          },
+          "control": null,
+          "to": {
+            "x": 933.3,
+            "y": 656.55
+          }
+        },
+        {
+          "geometryType": "L",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 935,
+            "y": 654.4
+          },
+          "control": null,
+          "to": {
+            "x": 936.75,
+            "y": 655.25
+          }
+        },
+        {
+          "geometryType": "L",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 936.75,
+            "y": 655.25
+          },
+          "control": null,
+          "to": {
+            "x": 940.65,
+            "y": 657.25
+          }
+        },
+        {
+          "geometryType": "L",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 944.55,
+            "y": 651.65
+          },
+          "control": null,
+          "to": {
+            "x": 943.3,
+            "y": 650.55
+          }
+        },
+        {
+          "geometryType": "L",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 948.05,
+            "y": 647.85
+          },
+          "control": null,
+          "to": {
+            "x": 953.5,
+            "y": 653.1
+          }
+        },
+        {
+          "geometryType": "L",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 949.85,
+            "y": 647.15
+          },
+          "control": null,
+          "to": {
+            "x": 948.05,
+            "y": 647.85
+          }
+        },
+        {
+          "geometryType": "L",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 949.9,
+            "y": 656.75
+          },
+          "control": null,
+          "to": {
+            "x": 944.55,
+            "y": 651.65
+          }
+        },
+        {
+          "geometryType": "L",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 963.6,
+            "y": 661.6
+          },
+          "control": null,
+          "to": {
+            "x": 959.25,
+            "y": 662.15
+          }
+        },
+        {
+          "geometryType": "Q",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle0",
+          "from": {
+            "x": 928.3,
+            "y": 651.95
+          },
+          "control": {
+            "x": 931.25,
+            "y": 648.4
+          },
+          "to": {
+            "x": 946.25,
+            "y": 643.2
+          }
+        },
+        {
+          "geometryType": "Q",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle0",
+          "from": {
+            "x": 946.25,
+            "y": 643.2
+          },
+          "control": {
+            "x": 953.45,
+            "y": 640.65
+          },
+          "to": {
+            "x": 960.35,
+            "y": 638.85
+          }
+        },
+        {
+          "geometryType": "Q",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle0",
+          "from": {
+            "x": 946.75,
+            "y": 662.9
+          },
+          "control": {
+            "x": 944.2,
+            "y": 662.55
+          },
+          "to": {
+            "x": 941.75,
+            "y": 661.9
+          }
+        },
+        {
+          "geometryType": "Q",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle0",
+          "from": {
+            "x": 958.8,
+            "y": 661.9
+          },
+          "control": {
+            "x": 952.65,
+            "y": 663.5
+          },
+          "to": {
+            "x": 946.75,
+            "y": 662.9
+          }
+        },
+        {
+          "geometryType": "Q",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle0",
+          "from": {
+            "x": 959.25,
+            "y": 662.15
+          },
+          "control": {
+            "x": 959,
+            "y": 662
+          },
+          "to": {
+            "x": 958.8,
+            "y": 661.9
+          }
+        },
+        {
+          "geometryType": "Q",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 940.65,
+            "y": 657.25
+          },
+          "control": {
+            "x": 949.4,
+            "y": 660.6
+          },
+          "to": {
+            "x": 955.15,
+            "y": 659.75
+          }
+        },
+        {
+          "geometryType": "Q",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 943.3,
+            "y": 650.55
+          },
+          "control": {
+            "x": 937.45,
+            "y": 651.55
+          },
+          "to": {
+            "x": 935,
+            "y": 654.4
+          }
+        },
+        {
+          "geometryType": "Q",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 953.5,
+            "y": 653.1
+          },
+          "control": {
+            "x": 957.05,
+            "y": 656
+          },
+          "to": {
+            "x": 960.35,
+            "y": 657.75
+          }
+        },
+        {
+          "geometryType": "Q",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 953.65,
+            "y": 645.8
+          },
+          "control": {
+            "x": 951.75,
+            "y": 646.45
+          },
+          "to": {
+            "x": 949.85,
+            "y": 647.15
+          }
+        },
+        {
+          "geometryType": "Q",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 955.15,
+            "y": 659.75
+          },
+          "control": {
+            "x": 952.45,
+            "y": 658.6
+          },
+          "to": {
+            "x": 949.9,
+            "y": 656.75
+          }
+        },
+        {
+          "geometryType": "Q",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 960.35,
+            "y": 657.75
+          },
+          "control": {
+            "x": 960.6,
+            "y": 657.95
+          },
+          "to": {
+            "x": 960.9,
+            "y": 658.35
+          }
+        },
+        {
+          "geometryType": "Q",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 960.85,
+            "y": 643.6
+          },
+          "control": {
+            "x": 957.35,
+            "y": 644.55
+          },
+          "to": {
+            "x": 953.65,
+            "y": 645.8
+          }
+        },
+        {
+          "geometryType": "Q",
+          "fillStyle": 1,
+          "sourceFillSide": "fillStyle1",
+          "from": {
+            "x": 960.9,
+            "y": 658.35
+          },
+          "control": {
+            "x": 962.3,
+            "y": 659.95
+          },
+          "to": {
+            "x": 963.6,
+            "y": 661.6
+          }
+        }
+      ]
+    }
+  },
+  "coordinateAndTransformProvenance": {
+    "rawXflCoordinateSpace": "selected XFL DOMShape local twips; exact conversion to CSS px is twips / 20",
+    "pandaCoordinateSpace": "direct selected Shape probe with identity worldTransform; current Main decoder outputs local px from XFL twips / 20",
+    "animateCoordinateSpace": "selected Animate DOM Shape HalfEdge local coordinates returned by JSFL in px",
+    "endpointMatching": "exact numeric equality only; no epsilon, snapping, or transform was applied to endpoint coordinates",
+    "rawShapeMatrix": {
+      "a": -1.51597595214844,
+      "b": 0,
+      "c": 0,
+      "d": 1.51597595214844,
+      "tx": 1414.9,
+      "ty": -968.75
+    },
+    "animateShapeMatrix": {
+      "a": -1.515838623046875,
+      "b": 0,
+      "c": 0,
+      "d": 1.515838623046875,
+      "tx": 1414.9,
+      "ty": -968.75
+    },
+    "shapeMatrixExactMatch": false,
+    "shapeMatrixTranslationExactMatch": true,
+    "jsflElementInventory": [
+      {
+        "memberPath": "0",
+        "elementType": "shape",
+        "matrix": {
+          "a": -1.5167236328125,
+          "b": 0,
+          "c": 0,
+          "d": 1.5167236328125,
+          "tx": 1414.9,
+          "ty": -968.75
+        },
+        "edgeCount": 0
+      },
+      {
+        "memberPath": "0/2",
+        "elementType": "shape",
+        "matrix": {
+          "a": -1.5163726806640625,
+          "b": 0,
+          "c": 0,
+          "d": 1.5163726806640625,
+          "tx": 1414.9,
+          "ty": -968.75
+        },
+        "edgeCount": 0
+      },
+      {
+        "memberPath": "0/2/1",
+        "elementType": "shape",
+        "matrix": {
+          "a": -1.5160675048828125,
+          "b": 0,
+          "c": 0,
+          "d": 1.5160675048828125,
+          "tx": 1414.9,
+          "ty": -968.75
+        },
+        "edgeCount": 0
+      },
+      {
+        "memberPath": "0/2/1/1",
+        "elementType": "shape",
+        "matrix": {
+          "a": -1.515838623046875,
+          "b": 0,
+          "c": 0,
+          "d": 1.515838623046875,
+          "tx": 1414.9,
+          "ty": -968.75
+        },
+        "edgeCount": 23
+      }
+    ],
+    "transformComposition": "UNOBSERVABLE: JSFL receipt records nested element matrices but does not prove whether each is relative or already composed; matrices are preserved as observations and were not multiplied.",
+    "targetFillMatrixRawXfl": {
+      "a": 0.0125274658203125,
+      "b": -0.002349853515625,
+      "c": 0.002960205078125,
+      "d": 0.0156402587890625,
+      "tx": 949.75,
+      "ty": 650.05
+    },
+    "targetFillMatrixAnimateJsfl": {
+      "a": 0.01251220703125,
+      "b": -0.0023345947265625,
+      "c": 0.0029449462890625,
+      "d": 0.015625,
+      "tx": 949.7,
+      "ty": 650
+    },
+    "targetFillMatrixExactMatch": false,
+    "sourceMemberStyleIdentity": "exact ordered GradientEntry colors plus unique interior contour within the selected Shape; Animate JSFL does not expose source FillStyle index directly"
+  },
+  "evidenceLevel": {
+    "endpointA": "(935.25,659.15): Panda source is Edge 4 command 1; D-A Animate contains an exact slash-payload HalfEdge at this vertex; D-B target gradient contour no longer contains the vertex. The D-B cross-stage ancestry of its replacement contour segments is UNOBSERVABLE.",
+    "endpointB": "(960.85,643.6): Panda source is Edge 1 command 1; D-A Animate closes this local junction with an exact Edge 0 slash-payload HalfEdge; D-B target gradient contour moves this edge out of the selected interior contour. The D-B region-membership relation is not an exact source-edge match.",
+    "firstDivergence": "MIXED: current Panda decodes the first / as Z and skips its two-coordinate payload; however, Animate assigns several raw/Panda segments to different contours and the four target-gradient HalfEdges do not have exact source geometry matches. The first causal seam for the full target region is not proven.",
+    "confidence": "INSUFFICIENT_FOR_CAUSAL_CLASSIFICATION"
+  },
+  "pandaRunReceipt": {
+    "path": "D:\\PandaStage-Acceptance\\issue744-endpoint-provenance-run01\\panda-DB-current.json",
+    "sha256": "3441505017338D5E06B4CCE775302691330ADBA0EB31418ABDE9FE9929139AA6",
+    "exactFixtureAlias": "Fresh Panda receipt uses the exact frozen D-B archive."
+  },
+  "animateCapture": {
+    "captureCount": 2,
+    "stableNormalizedTopologySha256": "657CB032987545F50E2CAAFBDB09AC0223D1437F1C8986CED14724A728FE2EF3",
+    "stableStagePngSha256": "F37C33D2129622855F09C635E642F82D2FBB123CA832301637ACD3DE48465483",
+    "captures": [
+      {
+        "receiptPath": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\minimization-run01\\receipts\\issue743-animate-D-B-M2-run01.json",
+        "receiptSha256": "A511C37520C0FB45579064E075D4AB748888355219CFF510761906AF6EFC1757",
+        "activeDocumentPathBefore": "D:\\表情合集\\黑衣修仙男.fla",
+        "status": "CAPTURE_FINISHED_READ_ONLY",
+        "hostVersion": "WIN 23,0,0,407",
+        "hostPath": "D:\\AN2023\\Adobe Animate 2023\\Animate.exe",
+        "expectedSourceSha256": "2ADC8598EE0B4747E95E48F83BA8FE57617E2B189F922B90943EB72C5BAC50A0",
+        "shapeId": "fla-shape-196ba2d2358441409a8b4dce",
+        "fillStyleIndex": 1,
+        "sourceAddress": "graphic:白发修仙男-cilisucai.com/白发修仙男-cilisucai.com4/layer-0-frame-0/0/2/1/1/0",
+        "xflMemberPath": "0/2/1/1/0",
+        "animateDomMemberPath": "0/2/1/1",
+        "pathMappingRule": "XFL path resolves to Animate DOM Shape after the terminal XFL child index 0; tx and ty match while a and d differ by about 0.000137329.",
+        "targetStatus": "CAPTURED",
+        "saveApiCalled": false,
+        "fileModificationDateBefore": "6ac8897c",
+        "fileModificationDateAfter": "6ac8897c",
+        "fileModificationDateUnchanged": true,
+        "expectedCopyPathMatches": true,
+        "candidateShapeCount": 1,
+        "candidatePath": {
+          "memberPath": "0/2/1/1",
+          "edgeCount": 23,
+          "vertexCount": 22,
+          "contourCount": 5
+        },
+        "screenshotPath": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\minimization-run01\\receipts\\animate-stage-D-B-M2-run01.png",
+        "screenshotSha256": "F37C33D2129622855F09C635E642F82D2FBB123CA832301637ACD3DE48465483",
+        "normalizedTopologySha256": "657CB032987545F50E2CAAFBDB09AC0223D1437F1C8986CED14724A728FE2EF3"
+      },
+      {
+        "receiptPath": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\minimization-run01\\receipts\\issue743-animate-D-B-M2-run02.json",
+        "receiptSha256": "57AC8D88E4A5A20D80E82C9047ACB324DCBC75E1C5DF816426CA519F14E7F106",
+        "activeDocumentPathBefore": "D:\\表情合集\\黑衣修仙男.fla",
+        "status": "CAPTURE_FINISHED_READ_ONLY",
+        "hostVersion": "WIN 23,0,0,407",
+        "hostPath": "D:\\AN2023\\Adobe Animate 2023\\Animate.exe",
+        "expectedSourceSha256": "2ADC8598EE0B4747E95E48F83BA8FE57617E2B189F922B90943EB72C5BAC50A0",
+        "shapeId": "fla-shape-196ba2d2358441409a8b4dce",
+        "fillStyleIndex": 1,
+        "sourceAddress": "graphic:白发修仙男-cilisucai.com/白发修仙男-cilisucai.com4/layer-0-frame-0/0/2/1/1/0",
+        "xflMemberPath": "0/2/1/1/0",
+        "animateDomMemberPath": "0/2/1/1",
+        "pathMappingRule": "XFL path resolves to Animate DOM Shape after the terminal XFL child index 0; tx and ty match while a and d differ by about 0.000137329.",
+        "targetStatus": "CAPTURED",
+        "saveApiCalled": false,
+        "fileModificationDateBefore": "6ac8897c",
+        "fileModificationDateAfter": "6ac8897c",
+        "fileModificationDateUnchanged": true,
+        "expectedCopyPathMatches": true,
+        "candidateShapeCount": 1,
+        "candidatePath": {
+          "memberPath": "0/2/1/1",
+          "edgeCount": 23,
+          "vertexCount": 22,
+          "contourCount": 5
+        },
+        "screenshotPath": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\minimization-run01\\receipts\\animate-stage-D-B-M2-run02.png",
+        "screenshotSha256": "F37C33D2129622855F09C635E642F82D2FBB123CA832301637ACD3DE48465483",
+        "normalizedTopologySha256": "657CB032987545F50E2CAAFBDB09AC0223D1437F1C8986CED14724A728FE2EF3"
+      }
+    ],
+    "targetContourHalfEdgeCounts": [
+      {
+        "contourIndex": 0,
+        "fillStyle": "noFill",
+        "colors": [],
+        "interior": false,
+        "orientation": 1,
+        "halfEdgeCount": 22
+      },
+      {
+        "contourIndex": 1,
+        "fillStyle": "noFill",
+        "colors": [],
+        "interior": false,
+        "orientation": 0,
+        "halfEdgeCount": 8
+      },
+      {
+        "contourIndex": 2,
+        "fillStyle": "solid",
+        "colors": [],
+        "interior": true,
+        "orientation": -1,
+        "halfEdgeCount": 3
+      },
+      {
+        "contourIndex": 3,
+        "fillStyle": "solid",
+        "colors": [],
+        "interior": true,
+        "orientation": -1,
+        "halfEdgeCount": 6
+      },
+      {
+        "contourIndex": 4,
+        "fillStyle": "linearGradient",
+        "colors": [
+          "#594F45",
+          "#D7DFD5",
+          "#A4A79E",
+          "#FCFDFA"
+        ],
+        "interior": true,
+        "orientation": -1,
+        "halfEdgeCount": 7
+      }
+    ]
+  }
+}
