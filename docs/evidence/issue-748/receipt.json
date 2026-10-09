@@ -87,6 +87,33 @@
     "shapeId": "fla-shape-ce9f3623690b031bcc05dea3",
     "styleIndex": 4,
     "paintKind": "LinearGradient",
+    "source": {
+      "frameIndex": 0,
+      "edgeRecordCount": 139,
+      "edgeReferences": 1,
+      "solidStrokeScaleMode": "normal",
+      "spreadMethod": "reflect",
+      "matrix": {
+        "a": 0.009490966796875,
+        "b": 0,
+        "c": 0,
+        "d": 0.01239013671875,
+        "tx": 814.65,
+        "ty": 625.65
+      },
+      "stops": [
+        { "ratio": 0.152941176470588, "color": "#594F45", "alpha": 1 },
+        { "ratio": 0.447058823529412, "color": "#D7DFD5", "alpha": 1 },
+        { "ratio": 0.72156862745098, "color": "#A4A79E", "alpha": 1 },
+        { "ratio": 1, "color": "#FCFDFA", "alpha": 1 }
+      ],
+      "referencingEdge": {
+        "fillStyle0": 1,
+        "fillStyle1": 1,
+        "strokeStyle": 4,
+        "edges": "!16452 12313[16410 12376 16376 12429"
+      }
+    },
     "message": "Shape fla-shape-ce9f3623690b031bcc05dea3 StrokeStyle 4 has unsupported linear stroke fill; P2-C03 supports normal and horizontal SolidStroke semantics only, and P2-C06 adds validated normal radial-gradient SolidStroke paint",
     "completeMaleRootPng": null
   },

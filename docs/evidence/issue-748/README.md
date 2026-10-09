@@ -27,6 +27,8 @@ The target is a normal `SolidStroke` whose fill contains one `RadialGradient`, u
 
 The Shape contains 139 Edge records. Exactly one Edge references StrokeStyle 3; its reconstructed stroke has two line and three quadratic segments. Stroke width/cap/join/miter/pixel-hinting attributes are omitted in the source, so the existing renderer defaults apply. The SVG keeps this as a stroke path and uses the authored gradient matrix, stop ratios/colors/alpha, and reflect spread. The official Animate DOM API allows an `IGradientFillStyle` as a solid stroke's fill style and defines radial gradients and their placement matrix: [ISolidStrokeStyle](https://helpx.adobe.com/flash/CPSDevKit/APIDocs/class_d_o_m_1_1_stroke_style_1_1_i_solid_stroke_style.html), [IGradientFillStyle](https://helpx.adobe.com/flash/CPSDevKit/APIDocs/class_d_o_m_1_1_fill_style_1_1_i_gradient_fill_style.html).
 
+The same frame-0 Shape also references StrokeStyle 4 once. Its source is a normal `SolidStroke` over a `LinearGradient` with `spreadMethod="reflect"`, the same four stops, and matrix `{a:0.009490966796875,d:0.01239013671875,tx:814.65,ty:625.65}`. The referenced Edge has `fillStyle0="1"`, `fillStyle1="1"`, and `strokeStyle="4"`. This is the recorded next blocker; linear-gradient stroke support remains outside this Issue's authorized scope. Exact source fields are in [`receipt.json`](./receipt.json).
+
 ## Captures
 
 Both reference roots below render through the current production builder and sandbox Electron renderer. Qingling's PNG matches the previously accepted #746 output hash. These are renderer controls, not Adobe visual references.
