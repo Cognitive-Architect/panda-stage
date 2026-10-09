@@ -249,6 +249,28 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual([]);
   });
 
+  it('routes Issue #748 radial-stroke evidence through CI policy self-tests only', () => {
+    const result = draft([
+      change('docs/evidence/issue-748/README.md', 'A'),
+      change('docs/evidence/issue-748/receipt.json', 'A'),
+      change('docs/evidence/issue-748/raster-run.json', 'A'),
+      change('docs/evidence/issue-748/control-hanfu-full-character.png', 'A'),
+      change('docs/evidence/issue-748/control-qingling-full-character.png', 'A'),
+      change('docs/evidence/issue-748/control-open-fill-hanfu-shape.png', 'A'),
+      change('docs/evidence/issue-748/control-open-fill-qingling-shape.png', 'A'),
+      change('docs/evidence/issue-748/control-open-fill-male-shape.png', 'A'),
+      change('docs/evidence/issue-748/male-radial-stroke-isolated.svg', 'A'),
+      change('docs/evidence/issue-748/male-radial-stroke-isolated.png', 'A'),
+      change('docs/evidence/issue-748/male-root-blocked-style4.svg', 'A'),
+      change('docs/evidence/issue-748/male-root-blocked-style4.png', 'A'),
+    ]);
+
+    expect(result.tier).toBe('ci-selftest');
+    expect(result.matchedRouteIds).toEqual(['issue748-radial-stroke-evidence']);
+    expect(result.suites).toEqual([]);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
   it('retains focused checks for Issue #745 source code changes alongside evidence', () => {
     const result = draft([
       change('src/main/services/fla-static-snapshot-svg-builder.ts'),
@@ -271,13 +293,24 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual([]);
   });
 
-  it('keeps future unregistered Issue evidence on the fail-closed unknown route', () => {
+  it('keeps focused checks for Issue #748 production changes alongside its evidence', () => {
     const result = draft([
+      change('src/main/services/fla-static-snapshot-svg-builder.ts'),
       change('docs/evidence/issue-748/receipt.json', 'A'),
     ]);
 
+    expect(result.tier).toBe('focused');
+    expect(result.matchedRouteIds).toContain('issue748-radial-stroke-evidence');
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('keeps future unregistered Issue evidence on the fail-closed unknown route', () => {
+    const result = draft([
+      change('docs/evidence/issue-749/receipt.json', 'A'),
+    ]);
+
     expect(result.tier).toBe('unknown');
-    expect(result.unknownPaths).toEqual(['docs/evidence/issue-748/receipt.json']);
+    expect(result.unknownPaths).toEqual(['docs/evidence/issue-749/receipt.json']);
   });
 
   it.each([

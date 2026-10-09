@@ -152,6 +152,18 @@
         "notes": "Issue #747 horizontal SolidStroke evidence only. Draft evidence changes use CI policy self-tests; production renderer changes independently retain focused/full checks. Unregistered Issue evidence paths remain fail-closed."
       },
       {
+        "id": "issue748-radial-stroke-evidence",
+        "sourcePatterns": ["docs/evidence/issue-748/**"],
+        "testPatterns": [],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "draftPolicy": "ci-selftest",
+        "incrementalEligible": false,
+        "owner": "fla-rendering-research",
+        "notes": "Issue #748 frozen Male radial-gradient stroke receipts and isolated/blocked visual evidence only. Draft evidence changes use CI policy self-tests; production renderer changes independently retain focused/full checks. Unregistered Issue evidence paths remain fail-closed."
+      },
+      {
         "id": "cross-process-core",
         "sourcePatterns": [
           "src/main/**",

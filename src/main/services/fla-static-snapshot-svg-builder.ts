@@ -1075,11 +1075,12 @@ function parseRadialGradientPaint(
   shapeId: string,
   renderTargetId: string,
   frameIndex: number,
+  styleKind: 'FillStyle' | 'StrokeStyle' = 'FillStyle',
 ): { readonly ok: true; readonly paint: ReconstructedFillPaint } | BuildSvgFailure {
   const fail = (code: BuildSvgFailure['code'], message: string): BuildSvgFailure => ({
     ok: false,
     code,
-    message: 'Shape ' + shapeId + ' FillStyle ' + style.index + ' ' + message,
+    message: 'Shape ' + shapeId + ' ' + styleKind + ' ' + style.index + ' ' + message,
   });
   const gradientBlocks = extractBalancedBlocks(style.sourceXml, 'RadialGradient');
   if (gradientBlocks.length !== 1) {
@@ -1526,6 +1527,7 @@ type StrokeDrawCommand = Extract<DecodedEdges['commands'][number], { type: 'L' |
 interface ParsedSolidStrokeStyle {
   readonly color: string;
   readonly opacity: number;
+  readonly gradientPaint: ReconstructedFillPaint | null;
   readonly width: number;
   readonly cap: StrokeCap;
   readonly join: StrokeJoin;
@@ -1558,38 +1560,67 @@ interface ReconstructedSolidStroke {
 function parseSolidStrokeStyle(
   style: ParsedShapeStyle,
   shapeId: string,
+  renderTargetId: string,
+  frameIndex: number,
 ): { readonly ok: true; readonly result: ParsedSolidStrokeStyle } | BuildSvgFailure {
   const unsupported = (detail: string): BuildSvgFailure => ({
     ok: false,
     code: 'TARGET_UNSUPPORTED',
-    message: `Shape ${shapeId} StrokeStyle ${style.index} has unsupported ${detail}; P2-C03 supports normal and horizontal SolidStroke semantics only`,
+    message: `Shape ${shapeId} StrokeStyle ${style.index} has unsupported ${detail}; P2-C03 supports normal and horizontal SolidStroke semantics only, and P2-C06 adds validated normal radial-gradient SolidStroke paint`,
   });
-  if (style.type !== 'solid') return unsupported(`${style.type} stroke fill`);
-  const solidStrokeTag = style.sourceXml.match(/<SolidStroke\b[^>]*>/u)?.[0];
-  if (!solidStrokeTag) return unsupported('non-SolidStroke construct');
-  const solidColorTag = style.sourceXml.match(/<SolidColor\b[^>]*>/u)?.[0];
-  if (!solidColorTag) return unsupported('non-solid stroke fill');
-
-  const rawColor = solidColorTag.match(/\bcolor="([^"]*)"/u)?.[1] ?? null;
-  const color = rawColor === null ? '#000000' : rawColor;
-  if (!color || !/^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/iu.test(color)) {
-    return {
-      ok: false,
-      code: 'RENDER_FAILED',
-      message: `Shape ${shapeId} StrokeStyle ${style.index} has an invalid solid color`,
-    };
+  const malformed = (detail: string): BuildSvgFailure => ({
+    ok: false,
+    code: 'RENDER_FAILED',
+    message: `Shape ${shapeId} StrokeStyle ${style.index} has a malformed ${detail}`,
+  });
+  const solidStrokeBlocks = extractBalancedBlocks(style.sourceXml, 'SolidStroke');
+  if (solidStrokeBlocks.length !== 1) return unsupported('non-SolidStroke construct');
+  const solidStrokeXml = solidStrokeBlocks[0] as string;
+  const fillBlocks = extractBalancedBlocks(solidStrokeXml, 'fill');
+  if (fillBlocks.length !== 1) return malformed('SolidStroke fill');
+  const fillBlock = fillBlocks[0] as string;
+  const paintTags = fillBlock.match(/<(?:SolidColor|LinearGradient|RadialGradient|BitmapFill|ClippedBitmapFill)\b/gu) ?? [];
+  let color: string;
+  let opacity: number;
+  let gradientPaint: ReconstructedFillPaint | null = null;
+  if (style.type === 'radial') {
+    if (paintTags.length !== 1 || !/^<RadialGradient\b/u.test(paintTags[0] ?? '')) {
+      return malformed('single radial-gradient stroke fill');
+    }
+    const parsedPaint = parseRadialGradientPaint(style, shapeId, renderTargetId, frameIndex, 'StrokeStyle');
+    if (!parsedPaint.ok) return parsedPaint;
+    gradientPaint = parsedPaint.paint;
+    color = parsedPaint.paint.firstColor;
+    opacity = parsedPaint.paint.opacity;
+  } else if (style.type === 'solid') {
+    if (paintTags.length !== 1 || !/^<SolidColor\b/u.test(paintTags[0] ?? '')) {
+      return malformed('single solid-color stroke fill');
+    }
+    const solidColorTag = fillBlock.match(/<SolidColor\b[^>]*>/u)?.[0];
+    if (!solidColorTag) return malformed('SolidColor stroke paint');
+    const rawColor = solidColorTag.match(/\bcolor="([^"]*)"/u)?.[1] ?? null;
+    color = rawColor === null ? '#000000' : rawColor;
+    if (!color || !/^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/iu.test(color)) {
+      return {
+        ok: false,
+        code: 'RENDER_FAILED',
+        message: `Shape ${shapeId} StrokeStyle ${style.index} has an invalid solid color`,
+      };
+    }
+    const rawAlpha = solidColorTag.match(/\balpha="([^"]*)"/u)?.[1] ?? null;
+    opacity = rawAlpha === null ? 1 : Number(rawAlpha);
+    if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) {
+      return {
+        ok: false,
+        code: 'RENDER_FAILED',
+        message: `Shape ${shapeId} StrokeStyle ${style.index} has an invalid alpha`,
+      };
+    }
+  } else {
+    return unsupported(`${style.type} stroke fill`);
   }
-  const rawAlpha = solidColorTag.match(/\balpha="([^"]*)"/u)?.[1] ?? null;
-  const opacity = rawAlpha === null ? 1 : Number(rawAlpha);
-  if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) {
-    return {
-      ok: false,
-      code: 'RENDER_FAILED',
-      message: `Shape ${shapeId} StrokeStyle ${style.index} has an invalid alpha`,
-    };
-  }
 
-  const rawWidth = attributeFromElement(style.sourceXml, 'SolidStroke', 'weight');
+  const rawWidth = attributeFromElement(solidStrokeXml, 'SolidStroke', 'weight');
   const width = rawWidth === null ? 1 : Number(rawWidth);
   if (!Number.isFinite(width) || width < 0) {
     return {
@@ -1600,17 +1631,17 @@ function parseSolidStrokeStyle(
   }
   if (width === 0) return unsupported('zero-weight hairline stroke');
 
-  const rawCap = attributeFromElement(style.sourceXml, 'SolidStroke', 'caps') ?? 'round';
+  const rawCap = attributeFromElement(solidStrokeXml, 'SolidStroke', 'caps') ?? 'round';
   const cap: StrokeCap | null = rawCap === 'none' || rawCap === 'butt' ? 'butt' :
     rawCap === 'round' ? 'round' : rawCap === 'square' ? 'square' : null;
   if (!cap) return unsupported(`cap value "${rawCap}"`);
 
-  const rawJoin = attributeFromElement(style.sourceXml, 'SolidStroke', 'joints') ?? 'round';
+  const rawJoin = attributeFromElement(solidStrokeXml, 'SolidStroke', 'joints') ?? 'round';
   const join: StrokeJoin | null = rawJoin === 'miter' ? 'miter' :
     rawJoin === 'round' ? 'round' : rawJoin === 'bevel' ? 'bevel' : null;
   if (!join) return unsupported(`join value "${rawJoin}"`);
 
-  const rawMiterLimit = attributeFromElement(style.sourceXml, 'SolidStroke', 'miterLimit');
+  const rawMiterLimit = attributeFromElement(solidStrokeXml, 'SolidStroke', 'miterLimit');
   const miterLimit = rawMiterLimit === null ? 3 : Number(rawMiterLimit);
   if (!Number.isFinite(miterLimit) || miterLimit < 1) {
     return {
@@ -1620,9 +1651,10 @@ function parseSolidStrokeStyle(
     };
   }
 
-  const scaleMode = attributeFromElement(style.sourceXml, 'SolidStroke', 'scaleMode') ?? 'normal';
+  const scaleMode = attributeFromElement(solidStrokeXml, 'SolidStroke', 'scaleMode') ?? 'normal';
   if (scaleMode !== 'normal' && scaleMode !== 'horizontal') return unsupported(`scaleMode "${scaleMode}"`);
-  const pixelHinting = attributeFromElement(style.sourceXml, 'SolidStroke', 'pixelHinting');
+  if (gradientPaint && scaleMode !== 'normal') return unsupported(`radial-gradient scaleMode "${scaleMode}"`);
+  const pixelHinting = attributeFromElement(solidStrokeXml, 'SolidStroke', 'pixelHinting');
   if (pixelHinting !== null && pixelHinting !== 'true' && pixelHinting !== 'false') {
     return {
       ok: false,
@@ -1632,7 +1664,7 @@ function parseSolidStrokeStyle(
   }
   if (pixelHinting === 'true') return unsupported('pixelHinting');
 
-  return { ok: true, result: { color, opacity, width, cap, join, miterLimit, scaleMode } };
+  return { ok: true, result: { color, opacity, gradientPaint, width, cap, join, miterLimit, scaleMode } };
 }
 
 function stitchSolidStrokeSegments(
@@ -1805,6 +1837,8 @@ function stitchSolidStrokeSegments(
 function reconstructSolidStrokes(
   representation: StyleAwareShapeRepresentation,
   shapeId: string,
+  renderTargetId: string,
+  frameIndex: number,
 ): { readonly ok: true; readonly result: readonly ReconstructedSolidStroke[] } | BuildSvgFailure {
   const boundaryByStyle = new Map<number, StrokeBoundarySegment[]>();
   let currentEdgeIndex = -1;
@@ -1918,7 +1952,7 @@ function reconstructSolidStrokes(
   for (const style of representation.strokeStyles) {
     const segments = boundaryByStyle.get(style.index);
     if (!segments || segments.length === 0) continue;
-    const parsed = parseSolidStrokeStyle(style, shapeId);
+    const parsed = parseSolidStrokeStyle(style, shapeId, renderTargetId, frameIndex);
     if (!parsed.ok) return parsed;
     const stitched = stitchSolidStrokeSegments(segments, closedSourceSubpaths, shapeId, style.index);
     if (!stitched.ok) return stitched;
@@ -2718,6 +2752,39 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   let styleSourceChars = 0;
   let firstFillColor: string | null = null;
 
+  const registerGradientPaint = (paint: ReconstructedFillPaint): BuildSvgFailure | null => {
+    if (paint.gradientId === null && paint.gradientDefinition === null) return null;
+    if (paint.gradientId === null || paint.gradientDefinition === null) {
+      return { ok: false, code: 'RENDER_FAILED', message: 'Gradient definition is incomplete' };
+    }
+    const existingDefinition = definitions.get(paint.gradientId);
+    if (existingDefinition && existingDefinition !== paint.gradientDefinition) {
+      return { ok: false, code: 'RENDER_FAILED', message: 'Gradient id collision detected' };
+    }
+    if (existingDefinition) return null;
+    const definitionBytes = Buffer.byteLength(paint.gradientDefinition, 'utf8');
+    if (gradientStopCount + paint.gradientStopCount > MAX_GRADIENT_STOPS_PER_COMPOSITION) {
+      return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition gradient-stop budget exceeded' };
+    }
+    if (gradientDefinitionBytes + definitionBytes > MAX_GRADIENT_DEFINITION_BYTES) {
+      return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition gradient-definition byte budget exceeded' };
+    }
+    if (gradientDefinitionBytes + definitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+      return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
+    }
+    definitions.set(paint.gradientId, paint.gradientDefinition);
+    gradientDefinitionBytes += definitionBytes;
+    gradientStopCount += paint.gradientStopCount;
+    if (paint.gradientType === 'linear') {
+      linearGradientCount += 1;
+      linearGradientStopCount += paint.gradientStopCount;
+    } else if (paint.gradientType === 'radial') {
+      radialGradientCount += 1;
+      radialGradientStopCount += paint.gradientStopCount;
+    }
+    return null;
+  };
+
   for (const { node } of flattened.leaves) {
     if (node.kind === 'shape') {
       const shapeBlock = shapeBlocks.get(node.shapeId);
@@ -2776,34 +2843,8 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       fillContourCount += reconstructed.result.contourCount;
       for (const fill of reconstructed.result.fills) {
         const { paint } = fill;
-        if (paint.gradientId && paint.gradientDefinition) {
-          const existingDefinition = definitions.get(paint.gradientId);
-          if (existingDefinition && existingDefinition !== paint.gradientDefinition) {
-            return { ok: false, code: 'RENDER_FAILED', message: 'Gradient id collision detected' };
-          }
-          if (!existingDefinition) {
-            const definitionBytes = Buffer.byteLength(paint.gradientDefinition, 'utf8');
-            if (gradientStopCount + paint.gradientStopCount > MAX_GRADIENT_STOPS_PER_COMPOSITION) {
-              return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition gradient-stop budget exceeded' };
-            }
-            if (gradientDefinitionBytes + definitionBytes > MAX_GRADIENT_DEFINITION_BYTES) {
-              return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition gradient-definition byte budget exceeded' };
-            }
-            if (gradientDefinitionBytes + definitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
-              return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
-            }
-            definitions.set(paint.gradientId, paint.gradientDefinition);
-            gradientDefinitionBytes += definitionBytes;
-            gradientStopCount += paint.gradientStopCount;
-            if (paint.gradientType === 'linear') {
-              linearGradientCount += 1;
-              linearGradientStopCount += paint.gradientStopCount;
-            } else if (paint.gradientType === 'radial') {
-              radialGradientCount += 1;
-              radialGradientStopCount += paint.gradientStopCount;
-            }
-          }
-        }
+        const gradientFailure = registerGradientPaint(paint);
+        if (gradientFailure) return gradientFailure;
         const pathBytes = Buffer.byteLength(fill.pathD, 'utf8');
         if (pathBytes > MAX_EDGE_CHARS ||
             pathBytes + gradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
@@ -2818,7 +2859,12 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
         fillRegionCount += 1;
         if (firstFillColor === null) firstFillColor = paint.firstColor;
       }
-      const reconstructedStrokes = reconstructSolidStrokes(representation, node.shapeId);
+      const reconstructedStrokes = reconstructSolidStrokes(
+        representation,
+        node.shapeId,
+        renderTargetId,
+        displayList.frameIndex,
+      );
       if (!reconstructedStrokes.ok) return reconstructedStrokes;
       const shapeStrokeSegmentCount = reconstructedStrokes.result
         .reduce((total, stroke) => total + stroke.segmentCount, 0);
@@ -2828,6 +2874,10 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       strokeSegmentCount += shapeStrokeSegmentCount;
       for (const stroke of reconstructedStrokes.result) {
         const style = stroke.rendererStyle;
+        if (style.gradientPaint) {
+          const gradientFailure = registerGradientPaint(style.gradientPaint);
+          if (gradientFailure) return gradientFailure;
+        }
         const expansion = strokeBoundsExpansion(style, node.worldTransform);
         if (!expansion) {
           return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic stroke bounds are not finite: ${node.shapeId}` };
@@ -2854,7 +2904,8 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
           const transformAttribute = style.scaleMode === 'normal'
             ? ` transform="${matrixToSvgTransform(node.worldTransform)}"`
             : '';
-          const pathNode = `<path d="${pathD}"${transformAttribute} fill="none" stroke="${style.color}" stroke-opacity="${formatSvgNumber(style.opacity)}" stroke-width="${formatSvgNumber(expansion.width)}" stroke-linecap="${style.cap}" stroke-linejoin="${style.join}" stroke-miterlimit="${formatSvgNumber(style.miterLimit)}"/>`;
+          const strokePaint = style.gradientPaint?.svgPaint ?? style.color;
+          const pathNode = `<path d="${pathD}"${transformAttribute} fill="none" stroke="${strokePaint}" stroke-opacity="${formatSvgNumber(style.opacity)}" stroke-width="${formatSvgNumber(expansion.width)}" stroke-linecap="${style.cap}" stroke-linejoin="${style.join}" stroke-miterlimit="${formatSvgNumber(style.miterLimit)}"/>`;
           emittedContentBytes += Buffer.byteLength(pathNode, 'utf8');
           if (gradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
             return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
