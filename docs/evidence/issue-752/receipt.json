@@ -85,16 +85,33 @@
   ],
   "verticalRun": {
     "status": "INCOMPLETE",
-    "reason": "Earlier native-picker automation did not select the exact requested source. Follow-up attempts found the Electron-owned native FLA dialog behind Adobe Animate 2023; foreground-guarded helpers stopped when it was not foreground, and the latest isolated harness timed out in its PowerShell chooser helper. Fresh acceptance projects remained at 0 assets and 1 shot, the Hanfu source still matched its frozen SHA-256, and no Workbench route or import/commit receipt was produced.",
+    "reason": "After the owner closed Adobe Animate, the exact Hanfu path was entered and read back in the foreground Electron-owned native FLA dialog. Automated activation of its visible 检查 FLA button did not close the dialog; a manual-click staging run later timed out before the Workbench route. Fresh acceptance projects remained at 0 assets and 1 shot, the Hanfu source still matched its frozen SHA-256, and no Workbench route or import/commit receipt was produced.",
     "latestFollowUp": {
       "date": "2026-10-10",
       "dialogClass": "#32770",
       "dialogOwnerProcess": "electron",
-      "foregroundWindowObserved": "Adobe Animate 2023",
-      "safeForegroundGuard": "ABORTED_WITHOUT_KEYBOARD_INPUT_WHEN_DIALOG_NOT_FOREGROUND",
-      "exactPathAttempt": {
-        "filenameFieldEchoedExactPath": false,
-        "enterSent": false
+      "animateClosedByOwner": true,
+      "foregroundWindowObserved": "Electron-owned native FLA dialog",
+      "filenameField": {
+        "controlId": 1148,
+        "controlClass": "Edit",
+        "inputMethod": "WM_CHAR sent to the focused native Edit control",
+        "expectedSourcePath": "D:/表情合集/新人物/汉服修仙女.fla",
+        "readbackMatchesExpectedSource": true,
+        "visibleScreenshot": "D:/PandaStage-Acceptance/issue752-character-vertical-20261010-run26-manual-click/filename-confirmed-before-submit.png"
+      },
+      "actionButton": {
+        "controlId": 1,
+        "label": "检查 FLA",
+        "hitTestedMouseClick": "DID_NOT_CLOSE_DIALOG",
+        "sendMessageBmClick": "TIMED_OUT_AFTER_90_SECONDS",
+        "postMessageBmClick": "DID_NOT_CLOSE_DIALOG",
+        "sendInputMouseClick": "DID_NOT_CLOSE_DIALOG"
+      },
+      "manualClickStage": {
+        "acceptanceRoot": "D:/PandaStage-Acceptance/issue752-character-vertical-20261010-run26-manual-click",
+        "status": "TIMED_OUT_WAITING_FOR_WORKBENCH_ROUTE",
+        "dialogClosedAtStaging": false
       },
       "freshAcceptanceProjectState": {
         "assets": 0,
