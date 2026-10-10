@@ -1,0 +1,124 @@
+{
+  "schemaVersion": "issue751-v1-t01-real-prop-vertical-slice/1",
+  "status": "PARTIAL",
+  "acceptance": {
+    "app": "Windows Electron production build",
+    "sourceChooser": "test-only PANDA_STAGE_FLA_ACCEPTANCE_SOURCE injection; FLA Workbench button, preview, import transaction, Asset Library and existing project save/reopen were exercised",
+    "humanVisualAcceptance": "PENDING_OWNER"
+  },
+  "source": {
+    "basename": "炼丹炉.fla",
+    "sha256Before": "498537baa9cf900f613987eb9dab99727ee09ddaad4fb06e2d2c4351cb283a68",
+    "sha256After": "498537baa9cf900f613987eb9dab99727ee09ddaad4fb06e2d2c4351cb283a68",
+    "hashInvariant": true,
+    "acceptedByIssue732": true
+  },
+  "cancellation": {
+    "initialAssetCount": 0,
+    "afterCancelAssetCount": 0,
+    "projectJsonHashUnchanged": true
+  },
+  "catalog": {
+    "count": 2,
+    "acceptedTarget": {
+      "renderTargetId": "fla-render-target-c87de5d3df0547bc93afeaf7dabd4f1a6689eb936188555e0e5eedc51589b6fb",
+      "kind": "graphic-symbol",
+      "userLabel": "炼丹炉-cilisucai.com",
+      "sourceLibraryItemName": "炼丹炉-cilisucai.com",
+      "frameCount": 1,
+      "previewSupported": true,
+      "unsupportedReason": null
+    },
+    "firstOpenCatalogCount": 2
+  },
+  "import": {
+    "assetId": "821cdd96-95b4-4d89-98a2-acd88cfcd2ce",
+    "receiptText": "✓导入已完成当前帧已导入炼丹炉-cilisucai.png返回素材库"
+  },
+  "placement": {
+    "layerId": "61163e6e-9a8d-48a0-b9aa-b7c74e9d00e6",
+    "assetId": "821cdd96-95b4-4d89-98a2-acd88cfcd2ce",
+    "x": 961.0246679316888,
+    "y": 541.0246679316888,
+    "source": {
+      "kind": "asset",
+      "assetId": "821cdd96-95b4-4d89-98a2-acd88cfcd2ce"
+    },
+    "syntheticDropEventDispatchedToProductionCanvas": true,
+    "nativeMouseDragAttempt": {
+      "input": "BrowserWindow.webContents.sendInputEvent mouse drag",
+      "observedEvents": [
+        "dragstart"
+      ],
+      "dropDelivered": false,
+      "layerCreated": false,
+      "conclusion": "Actual card-to-canvas drag remains unverified; HUMAN VISUAL PASS is pending owner."
+    }
+  },
+  "persistence": {
+    "saved": {
+      "assetCount": 1,
+      "layerCount": 1,
+      "layer": {
+        "id": "61163e6e-9a8d-48a0-b9aa-b7c74e9d00e6",
+        "name": "炼丹炉-cilisucai",
+        "source": {
+          "kind": "asset",
+          "assetId": "821cdd96-95b4-4d89-98a2-acd88cfcd2ce"
+        },
+        "anchor": "center",
+        "x": 961.0246679316888,
+        "y": 541.0246679316888,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotationDeg": 0,
+        "opacity": 1,
+        "visible": true,
+        "zIndex": 0,
+        "locked": false,
+        "flipX": false
+      }
+    },
+    "reopened": {
+      "projectId": "5a911f2d-324f-4fc5-b776-c70e5ab54f4f",
+      "layer": {
+        "id": "61163e6e-9a8d-48a0-b9aa-b7c74e9d00e6",
+        "name": "炼丹炉-cilisucai",
+        "source": {
+          "kind": "asset",
+          "assetId": "821cdd96-95b4-4d89-98a2-acd88cfcd2ce"
+        },
+        "anchor": "center",
+        "x": 961.0246679316888,
+        "y": 541.0246679316888,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotationDeg": 0,
+        "opacity": 1,
+        "visible": true,
+        "zIndex": 0,
+        "locked": false,
+        "flipX": false
+      }
+    },
+    "projectRoot": "D:\\PandaStage-Acceptance\\issue751-v1-t04\\projects\\Issue751 Alchemical Furnace 1791596488987.pandastage",
+    "screenshots": {
+      "catalog": "01-static-snapshot-catalog.png",
+      "preview": "02-selected-prop-preview.png",
+      "importReceipt": "03-import-receipt.png",
+      "assetLibrary": "03b-asset-library.png",
+      "placedInShot": "04-placed-in-shot.png",
+      "reopened": "05-reopened-project.png"
+    }
+  },
+  "validation": {
+    "integration": {
+      "command": "pnpm test:integration",
+      "status": "PASS",
+      "testFilesPassed": 38,
+      "testsPassed": 189
+    },
+    "productionCodeChanged": false
+  },
+  "humanVisualAcceptance": "PENDING_OWNER"
+}
