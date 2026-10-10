@@ -1,0 +1,92 @@
+{
+  "schemaVersion": "issue752-acceptance/1",
+  "issue": 752,
+  "recordedAt": "2026-10-10",
+  "result": "PARTIAL",
+  "humanVisualPassClaimed": false,
+  "serialGate": {
+    "issue": 751,
+    "ownerVerdict": "HUMAN VISUAL PASS",
+    "verifiedFrom": [
+      "https://github.com/Cognitive-Architect/panda-stage/issues/751",
+      "https://github.com/Cognitive-Architect/panda-stage/issues/750"
+    ],
+    "cleared": true
+  },
+  "catalogProbe": {
+    "receipt": "catalog-probe.json",
+    "receiptSha256": "13a01305337e4cf42f7ce113bad4ec163f8a25e05cc91386e82cdd939bb82c24",
+    "parserPath": "production Main chooseAndInspect -> recovery/preflight -> Static Snapshot catalog",
+    "projectOpened": false,
+    "commitApiCalled": false,
+    "sourceHashesUnchanged": true,
+    "note": "previewSupported is a catalog classification, not a successful preview/import receipt."
+  },
+  "sources": [
+    {
+      "file": "汉服修仙女.fla",
+      "sourceSha256": "6af14990029d4ced2c4e305721321835180c1bf041178a8799e1d14a1f62e535",
+      "sourceSha256AfterProbe": "6af14990029d4ced2c4e305721321835180c1bf041178a8799e1d14a1f62e535",
+      "catalogRoot": {
+        "id": "fla-render-target-106bdafd4a330d6c43443914a48082b52170913f4f187de0eab8387410adbb04",
+        "kind": "graphic-symbol",
+        "sourceLibraryItemName": "修仙女-cilisucai.com/修仙女-cilisucai.com1",
+        "frameCount": 30,
+        "previewSupported": true
+      },
+      "reviewImage": {
+        "path": "../issue-747/hanfu-full-character.png",
+        "sha256": "D48AE620AA0C6B1669AC51F3180E9D83E43A9F89C5F4063C4EC3AA001E25BE6B",
+        "dimensions": [332, 673],
+        "priorOwnerVerdict": "HUMAN VISUAL PASS under Issue #747"
+      }
+    },
+    {
+      "file": "蓝白古装男.fla",
+      "sourceSha256": "0d4aecbc159990ce54b9d0d8c31ea0f3354cd7ed86df77bac19a562dfc761fa2",
+      "sourceSha256AfterProbe": "0d4aecbc159990ce54b9d0d8c31ea0f3354cd7ed86df77bac19a562dfc761fa2",
+      "catalogRoot": {
+        "id": "fla-render-target-61150b04b44bc3e78c7f403b391bb95047031e97b7c1b0843c599e143a808636",
+        "kind": "graphic-symbol",
+        "sourceLibraryItemName": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com1",
+        "frameCount": 25,
+        "previewSupported": true
+      },
+      "reviewImage": {
+        "path": "bluewhite-full-character.png",
+        "sha256": "0baf01e46b240a44b131a8e91e919eca0c29c32e1ea8a31efb51634e8dca14f4",
+        "dimensions": [349, 994],
+        "priorClassification": "S1 COMPLETE_STATIC_CHARACTER under Issue #734; no #752 owner verdict claimed"
+      }
+    }
+  ],
+  "acceptance": {
+    "reviewableFullCharacterImages": "EVIDENCED",
+    "workbenchPreviewImportPlaceSaveReopen": "NOT_VERIFIED",
+    "hanfuControlUnchanged": "EVIDENCED_BY_HASH",
+    "rollback": "UNIT_TESTED_WITH_INJECTED_POST_SAVE_FAULT",
+    "realUnsupportedRuntimeTarget": "NOT_FOUND_IN_SCANNED_CORPUS; UNVERIFIED",
+    "ownerVisualPassForIssue752": "PENDING"
+  },
+  "validation": [
+    {
+      "command": "pnpm test:integration",
+      "status": "PASS",
+      "testFiles": 38,
+      "tests": 189,
+      "typecheckAndBuild": "PASS"
+    },
+    {
+      "command": "pnpm exec vitest run tests/unit/fla-static-snapshot-c02-multi-fill.test.ts tests/unit/fla-static-snapshot-commit.test.ts",
+      "status": "PASS",
+      "testFiles": 2,
+      "tests": 12
+    }
+  ],
+  "verticalRun": {
+    "status": "INCOMPLETE",
+    "reason": "The native picker automation did not select the exact requested source and a follow-up run timed out before the Workbench route. No import or project commit receipt was produced."
+  },
+  "productionCodeChanged": false,
+  "sourceFlaMutation": false
+}

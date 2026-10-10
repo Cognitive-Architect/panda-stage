@@ -283,7 +283,7 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual([]);
   });
 
-  it('routes only Issue #751 acceptance evidence through CI policy self-tests', () => {
+  it('routes Issue #751 and #752 acceptance evidence through CI policy self-tests', () => {
     const result = draft([
       change('docs/evidence/issue-751/README.md', 'A'),
       change('docs/evidence/issue-751/receipt.json', 'A'),
@@ -296,9 +296,20 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.suites).toEqual([]);
     expect(result.unknownPaths).toEqual([]);
 
-    const unrelated = draft([change('docs/evidence/issue-752/receipt.json', 'A')]);
+    const characterEvidence = draft([
+      change('docs/evidence/issue-752/README.md', 'A'),
+      change('docs/evidence/issue-752/receipt.json', 'A'),
+      change('docs/evidence/issue-752/catalog-probe.json', 'A'),
+      change('docs/evidence/issue-752/bluewhite-full-character.png', 'A'),
+    ]);
+    expect(characterEvidence.tier).toBe('ci-selftest');
+    expect(characterEvidence.matchedRouteIds).toEqual(['issue752-acceptance-evidence']);
+    expect(characterEvidence.suites).toEqual([]);
+    expect(characterEvidence.unknownPaths).toEqual([]);
+
+    const unrelated = draft([change('docs/evidence/issue-753/receipt.json', 'A')]);
     expect(unrelated.tier).toBe('unknown');
-    expect(unrelated.unknownPaths).toEqual(['docs/evidence/issue-752/receipt.json']);
+    expect(unrelated.unknownPaths).toEqual(['docs/evidence/issue-753/receipt.json']);
   });
 
   it('retains focused checks for Issue #745 source code changes alongside evidence', () => {
