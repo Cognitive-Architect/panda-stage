@@ -6,8 +6,8 @@
     "sourceChooser": "test-only PANDA_STAGE_FLA_ACCEPTANCE_SOURCE injection; native file chooser bypassed; FLA Workbench, preview, import transaction, Asset Library and project UI were exercised",
     "nativeFileChooser": {
       "status": "UNPROVEN",
-      "lastAttempt": "issue751-v1-native-picker-20261010-run4",
-      "result": "Windows chooser opened, but automation could not foreground it or enter the source path; the harness timed out before the Workbench route appeared"
+      "lastAttempt": "issue751-v1-native-picker-20261010-run5",
+      "result": "UI Automation found the chooser under the Panda Stage window and Windows reported it as foreground; the filename field reported keyboard focus, but SetFocus failed with 'The target element cannot receive focus', Unicode SendInput returned 0, and the filename remained blank. The harness timed out before the Workbench route appeared. Native chooser acceptance remains unproven."
     },
     "humanVisualAcceptance": "PENDING_OWNER"
   },
@@ -153,7 +153,15 @@
       "status": "PASS",
       "testFilesPassed": 38,
       "testsPassed": 189,
-      "runBeforePreviewCssFix": true
+      "runBeforePreviewCssFix": true,
+      "latestRun": {
+        "date": "2026-10-10",
+        "commit": "3049df763ff8c702132e1c2ee84e8427e42dd309",
+        "runAfterPreviewCssFix": true,
+        "status": "PASS",
+        "testFilesPassed": 38,
+        "testsPassed": 189
+      }
     },
     "focusedPreviewTests": {
       "command": "pnpm exec vitest run tests/unit/fla-stage-d-render-workbench.test.ts tests/unit/fla-stage-d-v11-layout.test.ts",

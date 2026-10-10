@@ -10,7 +10,7 @@
 - Cancellation: the new project remained at zero assets and its saved `project.json` hash did not change.
 - Import: the existing Static Snapshot transaction reported completion and added the PNG as an ordinary image asset. The imported asset appeared in the Asset Library.
 - Source selection used the test-only `PANDA_STAGE_FLA_ACCEPTANCE_SOURCE` injection, so the native file chooser itself was bypassed. The in-app Workbench, preview, explicit import, Asset Library, and project UI were exercised; no CLI or manual PNG copy was used to import the prop.
-- A separate no-injection run opened the Windows native chooser but did not deliver the source path to the Workbench. The automation process could not bring the chooser to the foreground or type into its filename field, and the harness timed out before the Workbench route appeared. Native chooser acceptance remains unproven.
+- No-injection runs opened the Windows native chooser but did not deliver the source path to the Workbench. In the latest run5, UI Automation found the chooser under the Panda Stage window; Windows reported the chooser as foreground and the filename field as focused, but `SetFocus()` failed with “The target element cannot receive focus.” Unicode `SendInput` returned 0 and the filename remained blank, so the harness timed out before the Workbench route appeared. This records an automation input limitation; native chooser acceptance remains unproven.
 - Native placement used Win32 `SetCursorPos` and `mouse_event` from the Asset Library card to the canvas. The t06 project had zero layers before the drop and one layer afterward. It was saved, closed, reopened, and the furnace decoded and appeared on the canvas.
 - The earlier preview showed the lower edge clipped. The Workbench image's default grid minimum size let it exceed the preview stage. The feature-local CSS now constrains that image to the stage; a production Electron run measured the image element at 512 × 385.6 CSS px inside a 513.3 × 386.9 CSS px stage, and the full 318 × 435 source image is visible in the updated screenshot.
 - The older t04 receipt also records a synthetic `DragEvent` placement and a failed Electron `sendInputEvent` attempt. Those are historical attempts; the successful OS-level drag is recorded separately in t06 below.
@@ -47,8 +47,8 @@ The earlier `04-placed-in-shot.png` and `05-reopened-project.png` are retained a
 
 ## Validation
 
-- `pnpm test:integration` — **PASS**, 38 test files and 189 tests passed on 2026-10-10 before the preview CSS fix.
-- After the preview CSS fix, focused layout contracts passed (2 files / 8 tests), `pnpm exec eslint tests/unit/fla-stage-d-render-workbench.test.ts` passed, and `pnpm build` passed. Build output retained the repository's existing empty-CSS and large-chunk warnings.
+- `pnpm test:integration` — **PASS**, 38 test files and 189 tests passed on 2026-10-10 after the preview CSS fix, at commit `3049df7`. The command also completed typecheck and build; Vite reported the existing empty-CSS and large-chunk warnings.
+- After the preview CSS fix, focused layout contracts passed (2 files / 8 tests), `pnpm exec eslint tests/unit/fla-stage-d-render-workbench.test.ts` passed, and `pnpm build` passed.
 - The production change is limited to sizing the existing Workbench preview image; FLA parsing, import, asset transaction, and project persistence code did not change.
 - Existing raster/sequence behavior and rollback/history acceptance were not separately re-run as part of this focused vertical slice.
 - `HUMAN VISUAL PASS` remains pending from the repository owner.
