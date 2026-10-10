@@ -1,0 +1,427 @@
+{
+  "schemaVersion": "issue745-target-visual-and-fill-receipts/1",
+  "issue": 745,
+  "testedHead": "d3b668c1e10fb9aeca528e2a73c3e6d6aaac226c",
+  "sourceFixturesRemainExternal": true,
+  "DABaselines": [
+    {
+      "id": "D-A/M2",
+      "sha256": "5A501D1F787707A3965BECC31E2E5B8F5DDC519B25369E16EF68E72AF674EB5D",
+      "before": {
+        "filename": "M2-remove-unused-fillstyle4.fla",
+        "sourceSha256": "5A501D1F787707A3965BECC31E2E5B8F5DDC519B25369E16EF68E72AF674EB5D",
+        "sourceUnchanged": true,
+        "rawEdgeRecords": 9,
+        "rawSubsegments": 22,
+        "fillStyles": {
+          "1": {
+            "boundarySegmentCount": 23,
+            "endpointGraphBalanced": false,
+            "stitcherStatus": "BLOCKED",
+            "stitcherFailureCode": "TARGET_UNSUPPORTED"
+          }
+        },
+        "wholeShapeRender": {
+          "status": "BLOCKED",
+          "code": "TARGET_UNSUPPORTED",
+          "message": "Shape fla-shape-196ba2d2358441409a8b4dce FillStyle 1 has an open fill boundary",
+          "deterministic": true
+        }
+      },
+      "after": {
+        "filename": "M2-remove-unused-fillstyle4.fla",
+        "sourceSha256": "5A501D1F787707A3965BECC31E2E5B8F5DDC519B25369E16EF68E72AF674EB5D",
+        "sourceUnchanged": true,
+        "rawEdgeRecords": 9,
+        "rawSubsegments": 22,
+        "fillStyles": {
+          "1": {
+            "boundarySegmentCount": 24,
+            "endpointGraphBalanced": true,
+            "stitcherStatus": "BLOCKED",
+            "stitcherFailureCode": "TARGET_UNSUPPORTED"
+          },
+          "2": {
+            "boundarySegmentCount": 9,
+            "endpointGraphBalanced": false,
+            "stitcherStatus": "BLOCKED",
+            "stitcherFailureCode": "TARGET_UNSUPPORTED"
+          }
+        },
+        "wholeShapeRender": {
+          "status": "BLOCKED",
+          "code": "TARGET_UNSUPPORTED",
+          "message": "Shape fla-shape-196ba2d2358441409a8b4dce FillStyle 2 has an open fill boundary",
+          "deterministic": true
+        }
+      }
+    },
+    {
+      "id": "D-B explicit-line twin",
+      "sha256": "2ADC8598EE0B4747E95E48F83BA8FE57617E2B189F922B90943EB72C5BAC50A0",
+      "before": {
+        "filename": "D-B-explicit-close-M2.fla",
+        "sourceSha256": "2ADC8598EE0B4747E95E48F83BA8FE57617E2B189F922B90943EB72C5BAC50A0",
+        "sourceUnchanged": true,
+        "rawEdgeRecords": 9,
+        "rawSubsegments": 23,
+        "fillStyles": {
+          "1": {
+            "boundarySegmentCount": 23,
+            "endpointGraphBalanced": false,
+            "stitcherStatus": "BLOCKED",
+            "stitcherFailureCode": "TARGET_UNSUPPORTED"
+          }
+        },
+        "wholeShapeRender": {
+          "status": "BLOCKED",
+          "code": "TARGET_UNSUPPORTED",
+          "message": "Shape fla-shape-196ba2d2358441409a8b4dce FillStyle 1 has an open fill boundary",
+          "deterministic": true
+        }
+      },
+      "after": {
+        "filename": "D-B-explicit-close-M2.fla",
+        "sourceSha256": "2ADC8598EE0B4747E95E48F83BA8FE57617E2B189F922B90943EB72C5BAC50A0",
+        "sourceUnchanged": true,
+        "rawEdgeRecords": 9,
+        "rawSubsegments": 23,
+        "fillStyles": {
+          "1": {
+            "boundarySegmentCount": 24,
+            "endpointGraphBalanced": false,
+            "stitcherStatus": "BLOCKED",
+            "stitcherFailureCode": "TARGET_UNSUPPORTED"
+          }
+        },
+        "wholeShapeRender": {
+          "status": "BLOCKED",
+          "code": "TARGET_UNSUPPORTED",
+          "message": "Shape fla-shape-196ba2d2358441409a8b4dce FillStyle 1 has an open fill boundary",
+          "deterministic": true
+        }
+      }
+    }
+  ],
+  "realFullFlaTargets": [
+    {
+      "key": "hanfu-open-fill",
+      "filename": "汉服修仙女.fla",
+      "sourceSha256": "6AF14990029D4CED2C4E305721321835180C1BF041178A8799E1D14A1F62E535",
+      "selectedShapeId": "fla-shape-9420f0fcb052d77956ea920f",
+      "fillStyleIndex": 1,
+      "before": {
+        "renderStatus": "BLOCKED",
+        "renderCode": "TARGET_UNSUPPORTED",
+        "renderMessage": "Shape fla-shape-9420f0fcb052d77956ea920f FillStyle 1 has an open fill boundary",
+        "targetFillDrawSubsegmentCount": 99,
+        "boundarySegmentCount": 84,
+        "endpointGraphBalanced": false,
+        "stitcherStatus": "BLOCKED",
+        "stitcherFailureCode": "TARGET_UNSUPPORTED",
+        "deterministic": true,
+        "svgSha256": null
+      },
+      "after": {
+        "renderStatus": "RENDERED",
+        "renderCode": null,
+        "renderMessage": null,
+        "targetFillDrawSubsegmentCount": 103,
+        "boundarySegmentCount": 87,
+        "endpointGraphBalanced": true,
+        "stitcherStatus": "RENDERED",
+        "stitcherFailureCode": null,
+        "deterministic": true,
+        "svgSha256": "52220B7A0497DBC5769B3C79D01DB39CF44E8D6165E54F388A3EBB767A282966"
+      },
+      "animateOracle": {
+        "status": "CAPTURE_FAILED",
+        "reason": "Error: Target library item was not found by exact name: 修仙女-cilisucai.com2",
+        "exactLibraryItemName": "修仙女-cilisucai.com2"
+      }
+    },
+    {
+      "key": "qingling-open-fill",
+      "filename": "青绫修仙女（四视角）.fla",
+      "sourceSha256": "D0958D4432DECBF6C54566BA15A2F5E97BD88C82D75DCB2F84603E9B2273F0E4",
+      "selectedShapeId": "fla-shape-944dedeb2bb14b160532f675",
+      "fillStyleIndex": 1,
+      "before": {
+        "renderStatus": "BLOCKED",
+        "renderCode": "TARGET_UNSUPPORTED",
+        "renderMessage": "Shape fla-shape-944dedeb2bb14b160532f675 FillStyle 1 has an open fill boundary",
+        "targetFillDrawSubsegmentCount": 61,
+        "boundarySegmentCount": 59,
+        "endpointGraphBalanced": false,
+        "stitcherStatus": "BLOCKED",
+        "stitcherFailureCode": "TARGET_UNSUPPORTED",
+        "deterministic": true,
+        "svgSha256": null
+      },
+      "after": {
+        "renderStatus": "RENDERED",
+        "renderCode": null,
+        "renderMessage": null,
+        "targetFillDrawSubsegmentCount": 64,
+        "boundarySegmentCount": 61,
+        "endpointGraphBalanced": true,
+        "stitcherStatus": "RENDERED",
+        "stitcherFailureCode": null,
+        "deterministic": true,
+        "svgSha256": "7AAF2A774BEC583C024ADD4EEF91A665748F718B7E4D75872842CADB05AF43A3"
+      },
+      "animateOracle": {
+        "status": "CAPTURE_FAILED",
+        "reason": "Error: Target library item was not found by exact name: 元件 2",
+        "exactLibraryItemName": "元件 2"
+      }
+    },
+    {
+      "key": "xiuxian-male-open-fill",
+      "filename": "修仙男.fla",
+      "sourceSha256": "565C5609A7610EF64ED9F98B09D98DD82D5A45255ADB4D3D410A5A365E0EF4A5",
+      "selectedShapeId": "fla-shape-196ba2d2358441409a8b4dce",
+      "fillStyleIndex": 1,
+      "before": {
+        "renderStatus": "BLOCKED",
+        "renderCode": "TARGET_UNSUPPORTED",
+        "renderMessage": "Shape fla-shape-196ba2d2358441409a8b4dce FillStyle 1 has an open fill boundary",
+        "targetFillDrawSubsegmentCount": 22,
+        "boundarySegmentCount": 23,
+        "endpointGraphBalanced": false,
+        "stitcherStatus": "BLOCKED",
+        "stitcherFailureCode": "TARGET_UNSUPPORTED",
+        "deterministic": true,
+        "svgSha256": null
+      },
+      "after": {
+        "renderStatus": "RENDERED",
+        "renderCode": null,
+        "renderMessage": null,
+        "targetFillDrawSubsegmentCount": 24,
+        "boundarySegmentCount": 24,
+        "endpointGraphBalanced": true,
+        "stitcherStatus": "RENDERED",
+        "stitcherFailureCode": null,
+        "deterministic": true,
+        "svgSha256": "F82229FA910485CBF1CD38AEC9CBE92CC55BF7E1AA0E4C9460166CF355659815"
+      },
+      "animateOracle": {
+        "status": "CAPTURE_FAILED",
+        "reason": "Error: Target library item was not found by exact name: 白发修仙男-cilisucai.com4",
+        "exactLibraryItemName": "白发修仙男-cilisucai.com4"
+      }
+    }
+  ],
+  "fullFlaPandaRenders": [
+    {
+      "filename": "汉服修仙女.fla",
+      "sourceSha256": "6AF14990029D4CED2C4E305721321835180C1BF041178A8799E1D14A1F62E535",
+      "sourceHashInvariant": true,
+      "parserResult": "success",
+      "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+      "candidateCount": 35,
+      "blockedDiscoveryCount": 8,
+      "renderedCount": 23,
+      "blankCount": 0,
+      "unsupportedCount": 12,
+      "renderFailureCount": 0,
+      "contactSheet": {
+        "path": "panda-hanfu-contact-sheet.png",
+        "status": "PRODUCED",
+        "tileCount": 23,
+        "width": 1740,
+        "height": 1918,
+        "sha256": "7035EBF4A6C15BF6FD8158A88CC38EF0D78A6991E32ED239B4B130E171FA469B",
+        "byteLength": 739579
+      }
+    },
+    {
+      "filename": "青绫修仙女（四视角）.fla",
+      "sourceSha256": "D0958D4432DECBF6C54566BA15A2F5E97BD88C82D75DCB2F84603E9B2273F0E4",
+      "sourceHashInvariant": true,
+      "parserResult": "success",
+      "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+      "candidateCount": 68,
+      "blockedDiscoveryCount": 22,
+      "renderedCount": 46,
+      "blankCount": 0,
+      "unsupportedCount": 22,
+      "renderFailureCount": 0,
+      "contactSheet": {
+        "path": "panda-qingling-contact-sheet.png",
+        "status": "PRODUCED",
+        "tileCount": 36,
+        "width": 1740,
+        "height": 2818,
+        "sha256": "18E306EED24837FA072DF26AC2BDC718BB0F2404E330A47C2AEC482D6D2733C6",
+        "byteLength": 1177224
+      }
+    },
+    {
+      "filename": "修仙男.fla",
+      "sourceSha256": "565C5609A7610EF64ED9F98B09D98DD82D5A45255ADB4D3D410A5A365E0EF4A5",
+      "sourceHashInvariant": true,
+      "parserResult": "success",
+      "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+      "candidateCount": 46,
+      "blockedDiscoveryCount": 12,
+      "renderedCount": 28,
+      "blankCount": 0,
+      "unsupportedCount": 18,
+      "renderFailureCount": 0,
+      "contactSheet": {
+        "path": "panda-male-contact-sheet.png",
+        "status": "PRODUCED",
+        "tileCount": 27,
+        "width": 1740,
+        "height": 2218,
+        "sha256": "6A5C6203BEA31E5FD46E6D5F4D22AD3F1E73C69C25544765B2EB6D4C6F2C43A7",
+        "byteLength": 845806
+      }
+    }
+  ],
+  "controls": [
+    {
+      "name": "Issue #737 historical oracle",
+      "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+      "sourceUnchanged": true,
+      "before": {
+        "renderStatus": "RENDERED",
+        "renderCode": null,
+        "renderMessage": null,
+        "targetFillDrawSubsegmentCount": 118,
+        "boundarySegmentCount": 98,
+        "endpointGraphBalanced": true,
+        "stitcherStatus": "RENDERED",
+        "stitcherFailureCode": null,
+        "deterministic": true,
+        "svgSha256": "06127505FBEA58CA901C313A49E475760F683D132E1E95E6830B65098322EA4B"
+      },
+      "after": {
+        "renderStatus": "RENDERED",
+        "renderCode": null,
+        "renderMessage": null,
+        "targetFillDrawSubsegmentCount": 118,
+        "boundarySegmentCount": 98,
+        "endpointGraphBalanced": true,
+        "stitcherStatus": "RENDERED",
+        "stitcherFailureCode": null,
+        "deterministic": true,
+        "svgSha256": "06127505FBEA58CA901C313A49E475760F683D132E1E95E6830B65098322EA4B"
+      }
+    },
+    {
+      "name": "Issue #737 closed-fill control",
+      "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+      "sourceUnchanged": true,
+      "before": {
+        "renderStatus": "RENDERED",
+        "renderCode": null,
+        "renderMessage": null,
+        "targetFillDrawSubsegmentCount": 33,
+        "boundarySegmentCount": 16,
+        "endpointGraphBalanced": true,
+        "stitcherStatus": "RENDERED",
+        "stitcherFailureCode": null,
+        "deterministic": true,
+        "svgSha256": "B6191F7650219296EA350228EC642066648068BC4AEE7EDE4A7A48C32BCA0721"
+      },
+      "after": {
+        "renderStatus": "RENDERED",
+        "renderCode": null,
+        "renderMessage": null,
+        "targetFillDrawSubsegmentCount": 33,
+        "boundarySegmentCount": 16,
+        "endpointGraphBalanced": true,
+        "stitcherStatus": "RENDERED",
+        "stitcherFailureCode": null,
+        "deterministic": true,
+        "svgSha256": "B6191F7650219296EA350228EC642066648068BC4AEE7EDE4A7A48C32BCA0721"
+      }
+    }
+  ],
+  "corpus": {
+    "baselineHead": "d3b668c1e10fb9aeca528e2a73c3e6d6aaac226c",
+    "baselineInitialCleanupExitErrors": 3,
+    "baselineRetries": 3,
+    "fileCount": 28,
+    "sourceHashesUnchanged": true,
+    "baselineRenderedCandidates": 567,
+    "afterRenderedCandidates": 624,
+    "baselineUnsupportedCandidates": 868,
+    "afterUnsupportedCandidates": 811,
+    "baselineRenderFailures": 0,
+    "afterRenderFailures": 0,
+    "candidatesAdded": 0,
+    "candidatesRemoved": 0,
+    "transitions": 57,
+    "transitionsFromUnsupportedToRendered": 57,
+    "transitionsFromRenderedToUnsupported": 0,
+    "filesWithImprovement": [
+      "汉服修仙女.fla",
+      "魔修.fla",
+      "青绫修仙女（四视角）.fla",
+      "修仙男.fla"
+    ]
+  },
+  "adobeAnimateComparison": {
+    "sourceReceiptIssue": 739,
+    "sourceCaptureStatus": "CAPTURE_FINISHED_READ_ONLY",
+    "targetReferenceCaptureFilesPresent": false,
+    "targetCaptureOutcomes": [
+      {
+        "key": "hanfu-open-fill",
+        "status": "CAPTURE_FAILED",
+        "error": "Error: Target library item was not found by exact name: 修仙女-cilisucai.com2"
+      },
+      {
+        "key": "qingling-open-fill",
+        "status": "CAPTURE_FAILED",
+        "error": "Error: Target library item was not found by exact name: 元件 2"
+      },
+      {
+        "key": "xiuxian-male-open-fill",
+        "status": "CAPTURE_FAILED",
+        "error": "Error: Target library item was not found by exact name: 白发修仙男-cilisucai.com4"
+      }
+    ],
+    "note": "The available Issue #739 Animate oracle did not capture the three target Shapes: exact library-item lookup failed. Existing Animate screenshots show the historical control, not these three targets. No target-to-Animate visual equivalence is claimed."
+  },
+  "validation": {
+    "testFirstBaseline": {
+      "status": "RED_BEFORE_IMPLEMENTATION",
+      "focusedTests": 22,
+      "expectedSlashFailures": 11
+    },
+    "focusedDecoderAndSignedFixedPointTests": {
+      "status": "PASS",
+      "files": 2,
+      "tests": 33
+    },
+    "testIntegration": {
+      "status": "PASS",
+      "files": 38,
+      "tests": 189,
+      "note": "The integration command also reran typecheck and Electron/renderer builds."
+    },
+    "lint": {
+      "status": "PASS"
+    },
+    "build": {
+      "status": "PASS",
+      "warnings": [
+        "Existing empty legacy CSS imports",
+        "Existing large renderer chunks"
+      ]
+    },
+    "testUnit": {
+      "status": "PASS",
+      "filesPassed": 343,
+      "filesFailed": 0,
+      "testsPassed": 2462,
+      "testsFailed": 0,
+      "fixtureCorrection": "Two render-session FLA fixtures now use explicit return-to-origin lines instead of unverified bare slash close markers."
+    }
+  }
+}

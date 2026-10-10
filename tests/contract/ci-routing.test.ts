@@ -168,6 +168,192 @@ describe('RH-07 FAST Draft policy', () => {
     ]);
   });
 
+  it('routes Issue #742 experiment evidence through CI policy self-tests only', () => {
+    const result = draft([
+      change('docs/evidence/issue-742/receipt.json', 'A'),
+      change('docs/evidence/issue-742/fixtures/control-explicit-closed.fla', 'A'),
+      change('docs/evidence/issue-742/animate/run03/control-explicit-closed.png', 'A'),
+    ]);
+
+    expect(result.tier).toBe('ci-selftest');
+    expect(result.matchedRouteIds).toEqual(['issue742-research-evidence']);
+    expect(result.suites).toEqual([]);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('routes Issue #743 research evidence through CI policy self-tests only', () => {
+    const result = draft([
+      change('docs/evidence/issue-743/receipt.json', 'A'),
+      change('docs/evidence/issue-743/animate/male-open-fill.png', 'A'),
+    ]);
+
+    expect(result.tier).toBe('ci-selftest');
+    expect(result.matchedRouteIds).toEqual(['issue743-research-evidence']);
+    expect(result.suites).toEqual([]);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('routes Issue #744 endpoint evidence through CI policy self-tests only', () => {
+    const result = draft([
+      change('docs/evidence/issue-744/receipt.json', 'A'),
+      change('docs/evidence/issue-744/endpoint-ledger-D-A.json', 'A'),
+    ]);
+
+    expect(result.tier).toBe('ci-selftest');
+    expect(result.matchedRouteIds).toEqual(['issue744-research-evidence']);
+    expect(result.suites).toEqual([]);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('routes only registered Issue #745 Open-Fill evidence through CI policy self-tests', () => {
+    const result = draft([
+      change('docs/evidence/issue-745/28-fla-differential.json', 'A'),
+      change('docs/evidence/issue-745/target-renders.json', 'A'),
+      change('docs/evidence/issue-745/panda-hanfu-contact-sheet.png', 'A'),
+      change('docs/evidence/issue-745/panda-male-contact-sheet.png', 'A'),
+      change('docs/evidence/issue-745/panda-qingling-contact-sheet.png', 'A'),
+    ]);
+
+    expect(result.tier).toBe('ci-selftest');
+    expect(result.matchedRouteIds).toEqual(['issue745-open-fill-fix-evidence']);
+    expect(result.suites).toEqual([]);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('routes Issue #746 full-character visual evidence through CI policy self-tests only', () => {
+    const result = draft([
+      change('docs/evidence/issue-746/README.md', 'A'),
+      change('docs/evidence/issue-746/receipt.json', 'A'),
+      change('docs/evidence/issue-746/hanfu-full-character.png', 'A'),
+      change('docs/evidence/issue-746/qingling-full-character.png', 'A'),
+      change('docs/evidence/issue-746/male-full-character.png', 'A'),
+      change('docs/evidence/issue-746/full-character-comparison-sheet.png', 'A'),
+    ]);
+
+    expect(result.tier).toBe('ci-selftest');
+    expect(result.matchedRouteIds).toEqual(['issue746-full-character-visual-evidence']);
+    expect(result.suites).toEqual([]);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('routes Issue #747 horizontal-stroke evidence through CI policy self-tests only', () => {
+    const result = draft([
+      change('docs/evidence/issue-747/README.md', 'A'),
+      change('docs/evidence/issue-747/receipt.json', 'A'),
+      change('docs/evidence/issue-747/hanfu-full-character.png', 'A'),
+    ]);
+
+    expect(result.tier).toBe('ci-selftest');
+    expect(result.matchedRouteIds).toEqual(['issue747-horizontal-stroke-evidence']);
+    expect(result.suites).toEqual([]);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('routes Issue #748 radial-stroke evidence through CI policy self-tests only', () => {
+    const result = draft([
+      change('docs/evidence/issue-748/README.md', 'A'),
+      change('docs/evidence/issue-748/receipt.json', 'A'),
+      change('docs/evidence/issue-748/raster-run.json', 'A'),
+      change('docs/evidence/issue-748/control-hanfu-full-character.png', 'A'),
+      change('docs/evidence/issue-748/control-qingling-full-character.png', 'A'),
+      change('docs/evidence/issue-748/control-open-fill-hanfu-shape.png', 'A'),
+      change('docs/evidence/issue-748/control-open-fill-qingling-shape.png', 'A'),
+      change('docs/evidence/issue-748/control-open-fill-male-shape.png', 'A'),
+      change('docs/evidence/issue-748/male-radial-stroke-isolated.svg', 'A'),
+      change('docs/evidence/issue-748/male-radial-stroke-isolated.png', 'A'),
+      change('docs/evidence/issue-748/male-root-blocked-style4.svg', 'A'),
+      change('docs/evidence/issue-748/male-root-blocked-style4.png', 'A'),
+    ]);
+
+    expect(result.tier).toBe('ci-selftest');
+    expect(result.matchedRouteIds).toEqual(['issue748-radial-stroke-evidence']);
+    expect(result.suites).toEqual([]);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('routes Issue #749 linear-stroke contract evidence through CI policy self-tests only', () => {
+    const result = draft([
+      change('docs/evidence/issue-749/README.md', 'A'),
+      change('docs/evidence/issue-749/receipt.json', 'A'),
+    ]);
+
+    expect(result.tier).toBe('ci-selftest');
+    expect(result.matchedRouteIds).toEqual(['issue749-linear-stroke-contract-evidence']);
+    expect(result.suites).toEqual([]);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('routes Issue #751 and #752 acceptance evidence through CI policy self-tests', () => {
+    const result = draft([
+      change('docs/evidence/issue-751/README.md', 'A'),
+      change('docs/evidence/issue-751/receipt.json', 'A'),
+      change('docs/evidence/issue-751/06-native-mouse-drag-placed.png', 'A'),
+      change('docs/evidence/issue-751/07-native-mouse-drag-reopened.png', 'A'),
+    ]);
+
+    expect(result.tier).toBe('ci-selftest');
+    expect(result.matchedRouteIds).toEqual(['issue751-acceptance-evidence']);
+    expect(result.suites).toEqual([]);
+    expect(result.unknownPaths).toEqual([]);
+
+    const characterEvidence = draft([
+      change('docs/evidence/issue-752/README.md', 'A'),
+      change('docs/evidence/issue-752/receipt.json', 'A'),
+      change('docs/evidence/issue-752/catalog-probe.json', 'A'),
+      change('docs/evidence/issue-752/bluewhite-full-character.png', 'A'),
+    ]);
+    expect(characterEvidence.tier).toBe('ci-selftest');
+    expect(characterEvidence.matchedRouteIds).toEqual(['issue752-acceptance-evidence']);
+    expect(characterEvidence.suites).toEqual([]);
+    expect(characterEvidence.unknownPaths).toEqual([]);
+
+    const unrelated = draft([change('docs/evidence/issue-753/receipt.json', 'A')]);
+    expect(unrelated.tier).toBe('unknown');
+    expect(unrelated.unknownPaths).toEqual(['docs/evidence/issue-753/receipt.json']);
+  });
+
+  it('retains focused checks for Issue #745 source code changes alongside evidence', () => {
+    const result = draft([
+      change('src/main/services/fla-static-snapshot-svg-builder.ts'),
+      change('docs/evidence/issue-745/target-renders.json', 'A'),
+    ]);
+
+    expect(result.tier).toBe('focused');
+    expect(result.matchedRouteIds).toContain('issue745-open-fill-fix-evidence');
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('keeps focused checks for Issue #747 production changes alongside its evidence', () => {
+    const result = draft([
+      change('src/main/services/fla-static-snapshot-svg-builder.ts'),
+      change('docs/evidence/issue-747/receipt.json', 'A'),
+    ]);
+
+    expect(result.tier).toBe('focused');
+    expect(result.matchedRouteIds).toContain('issue747-horizontal-stroke-evidence');
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('keeps focused checks for Issue #748 production changes alongside its evidence', () => {
+    const result = draft([
+      change('src/main/services/fla-static-snapshot-svg-builder.ts'),
+      change('docs/evidence/issue-748/receipt.json', 'A'),
+    ]);
+
+    expect(result.tier).toBe('focused');
+    expect(result.matchedRouteIds).toContain('issue748-radial-stroke-evidence');
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('keeps the next unregistered Issue evidence on the fail-closed unknown route', () => {
+    const result = draft([
+      change('docs/evidence/issue-750/receipt.json', 'A'),
+    ]);
+
+    expect(result.tier).toBe('unknown');
+    expect(result.unknownPaths).toEqual(['docs/evidence/issue-750/receipt.json']);
+  });
+
   it.each([
     'src/domain/services/DialogueService.ts',
     'src/shared/project-contract.ts',

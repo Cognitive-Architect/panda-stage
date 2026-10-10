@@ -1,0 +1,344 @@
+{
+  "issue": 746,
+  "title": "Stage B5-V2G Visual Acceptance: Full Composed Character PNGs for Three Open-Fill FLAs",
+  "verdict": "PARTIAL",
+  "acceptance": {
+    "humanVisualStatus": "REVIEW_PENDING",
+    "humanPassClaimed": false,
+    "reason": "One complete source root renders; two are blocked by unsupported source stroke semantics, and no matching Adobe Animate reference is available."
+  },
+  "generatedAt": "2026-10-09",
+  "scope": "Read-only visual evidence. No production renderer behavior or source FLA was changed.",
+  "renderer": {
+    "name": "Panda Stage production FLA static snapshot pipeline",
+    "builder": "buildRenderableTargetCatalog + buildSvgForRenderTarget",
+    "rasterizer": "FlaStaticSnapshotWindowManager with its sandboxed Electron renderer",
+    "repositoryHead": "0c01cf1b28975a3259624d8f23e1636cfd13fd8a",
+    "renderedRootMethod": "Existing production catalog, source display-list resolver, SVG builder, and hidden Electron rasterizer. Recovery-candidate archives were normalized in memory, then passed through strict production preflight.",
+    "placeholderMethod": "Watermarked text-only BLOCKED SVGs were rasterized by the same sandboxed Electron snapshot renderer. They contain no source character artwork.",
+    "comparisonMethod": "The comparison sheet places the actual Qingling PNG and the two text-only blocked placeholders over a checkerboard transparency background, then rasterizes the sheet with the same Electron snapshot renderer."
+  },
+  "inputs": [
+    {
+      "file": "汉服修仙女.fla",
+      "sourcePath": "D:\\表情合集\\新人物\\汉服修仙女.fla",
+      "sourceSha256": "6AF14990029D4CED2C4E305721321835180C1BF041178A8799E1D14A1F62E535",
+      "sourceBytes": 3264205,
+      "recovery": {
+        "state": "RECOVERY_CANDIDATE",
+        "centralDirectoryDeltaBytes": 54,
+        "normalization": "In memory only; source file was not written.",
+        "normalizedSha256": "10EDD07E226DB3296A5CAC01B4CDF9654385CE477894A8F7B4D0C90DB9E327F7",
+        "strictPreflightPassed": true,
+        "sourceHashVerifiedUnchangedAfterRun": true
+      },
+      "root": {
+        "scene": "场景 1",
+        "sceneFrame": 0,
+        "sceneAddress": "scene:0/layer-0-frame-0/0",
+        "instance": "修仙女-cilisucai.com/修仙女-cilisucai.com1",
+        "kind": "Graphic",
+        "sceneTransform": { "a": 1.49400329589844, "b": 0, "c": 0, "d": 1.49400329589844, "tx": 686.5, "ty": 31.35 },
+        "playback": "loop",
+        "explicitFirstFrame": null,
+        "parentFrame": 0,
+        "parentFrameSpan": 0,
+        "frameCount": 30,
+        "selectedRootFrame": 0,
+        "frameSelectionReason": "The first scene-root instance selects frame 0. All 30 root frames were checked; each encounters the same unsupported stroke semantic."
+      },
+      "nestedInstances": [
+        {
+          "name": "修仙女-cilisucai.com/修仙女-cilisucai.com2",
+          "sourceAddress": "graphic:修仙女-cilisucai.com/修仙女-cilisucai.com1/layer-1-frame-0/0",
+          "parentFrame": 0,
+          "transform": { "a": 1, "b": 0, "c": 0, "d": 1, "tx": 161.35, "ty": 398.1 }
+        },
+        {
+          "name": "修仙女-cilisucai.com/修仙女-cilisucai.com3",
+          "sourceAddress": "graphic:修仙女-cilisucai.com/修仙女-cilisucai.com1/layer-0-frame-0/0",
+          "parentFrame": 0,
+          "transform": { "a": 1, "b": 0, "c": 0, "d": 1, "tx": 174.45, "ty": 123.85 },
+          "blockingDescendant": "graphic:修仙女-cilisucai.com/修仙女-cilisucai.com3/layer-0-frame-0/0/5/1/0"
+        }
+      ],
+      "status": "BLOCKED",
+      "firstBlocker": {
+        "shapeId": "fla-shape-6d069cd5ef8fbeda2efd1607",
+        "sourceAddress": "graphic:修仙女-cilisucai.com/修仙女-cilisucai.com3/layer-0-frame-0/0/5/1/0",
+        "reason": "StrokeStyle 1 has unsupported scaleMode \"horizontal\"; P2-C03 supports normal SolidStroke semantics only."
+      },
+      "output": {
+        "file": "hanfu-full-character.png",
+        "sha256": "189C26A587718D0C841483BF9F9B7F7D6C99424B3652D297AB31F377132EDF07",
+        "bytes": 40713,
+        "dimensions": [396, 654],
+        "content": "Transparent text-only BLOCKED placeholder; no character pixels and no composed parts."
+      }
+    },
+    {
+      "file": "青绫修仙女（四视角）.fla",
+      "sourcePath": "D:\\表情合集\\新人物\\青绫修仙女（四视角）.fla",
+      "sourceSha256": "D0958D4432DECBF6C54566BA15A2F5E97BD88C82D75DCB2F84603E9B2273F0E4",
+      "sourceBytes": 3758039,
+      "recovery": {
+        "state": "RECOVERY_CANDIDATE",
+        "centralDirectoryDeltaBytes": 54,
+        "normalization": "In memory only; source file was not written.",
+        "normalizedSha256": "D0F940D6F7398C099D15DA1104BB8615FEB361D6E38D211F944AB072808ACAF4",
+        "strictPreflightPassed": true,
+        "sourceHashVerifiedUnchangedAfterRun": true
+      },
+      "root": {
+        "scene": "场景 1",
+        "stageDimensions": [1920, 1080],
+        "sceneFrame": 0,
+        "sceneAddress": "scene:0/layer-0-frame-0/0",
+        "instance": "重复项目文件夹/元件 1",
+        "kind": "Graphic",
+        "sceneTransform": { "a": 1.1864013671875, "b": 0, "c": 0, "d": 1.1864013671875, "tx": 559.1, "ty": 141.8 },
+        "playback": "loop",
+        "explicitFirstFrame": null,
+        "parentFrame": 0,
+        "parentFrameSpan": 0,
+        "frameCount": 30,
+        "selectedRootFrame": 0,
+        "viewLabel": "First scene-root Graphic instance. Source does not identify its orientation; no front/back/side view is inferred.",
+        "renderCoordinates": "The complete library Graphic is rendered in its native local content frame. The scene transform above is preserved as provenance but is not applied to the library-symbol preview."
+      },
+      "nestedInstancesBackToFront": [
+        {
+          "index": 0,
+          "layer": "元件_2",
+          "name": "重复项目文件夹/元件 2",
+          "sourceAddress": "graphic:重复项目文件夹/元件 1/layer-4-frame-0/0",
+          "frameCount": 1,
+          "selectedNestedFrame": 0,
+          "parentFrame": 0,
+          "parentFrameSpan": 0,
+          "firstFrame": null,
+          "lastFrame": null,
+          "playback": "loop",
+          "tween": "none",
+          "transform": { "a": 1, "b": 0, "c": 0, "d": 1, "tx": 12.6, "ty": 30.8 },
+          "shapeCount": 8,
+          "groupCount": 13
+        },
+        {
+          "index": 1,
+          "layer": "图层_7",
+          "name": "重复项目文件夹/补间 3",
+          "sourceAddress": "graphic:重复项目文件夹/元件 1/layer-3-frame-0/0",
+          "frameCount": 7,
+          "selectedNestedFrame": 0,
+          "parentFrame": 0,
+          "parentFrameSpan": 0,
+          "firstFrame": null,
+          "lastFrame": null,
+          "playback": "loop",
+          "tween": "none",
+          "transform": { "a": 1, "b": 0, "c": 0, "d": 1, "tx": 70.5, "ty": 279.2 },
+          "shapeCount": 4,
+          "groupCount": 6
+        },
+        {
+          "index": 2,
+          "layer": "图层_1",
+          "name": "重复项目文件夹/补间 5",
+          "sourceAddress": "graphic:重复项目文件夹/元件 1/layer-2-frame-0/0",
+          "frameCount": 762,
+          "selectedNestedFrame": 0,
+          "parentFrame": 0,
+          "parentFrameSpan": 0,
+          "firstFrame": null,
+          "lastFrame": null,
+          "playback": "loop",
+          "tween": "none",
+          "transform": { "a": 1, "b": 0, "c": 0, "d": 1, "tx": 191.55, "ty": 391.2 },
+          "shapeCount": 91,
+          "groupCount": 116
+        },
+        {
+          "index": 3,
+          "layer": "图层_8",
+          "name": "重复项目文件夹/补间 4",
+          "sourceAddress": "graphic:重复项目文件夹/元件 1/layer-1-frame-0/0",
+          "frameCount": 7,
+          "selectedNestedFrame": 0,
+          "parentFrame": 0,
+          "parentFrameSpan": 0,
+          "firstFrame": null,
+          "lastFrame": null,
+          "playback": "loop",
+          "tween": "none",
+          "transform": { "a": 1, "b": 0, "c": 0, "d": 1, "tx": 256.1, "ty": 275.45 },
+          "shapeCount": 4,
+          "groupCount": 6
+        },
+        {
+          "index": 4,
+          "layer": "图层_2",
+          "name": "重复项目文件夹/补间 1",
+          "sourceAddress": "graphic:重复项目文件夹/元件 1/layer-0-frame-0/0",
+          "frameCount": 2,
+          "selectedNestedFrame": 0,
+          "parentFrame": 0,
+          "parentFrameSpan": 0,
+          "firstFrame": null,
+          "lastFrame": null,
+          "playback": "loop",
+          "tween": "none",
+          "transform": { "a": 1, "b": 0, "c": 0, "d": 1, "tx": 166.65, "ty": 114.15 },
+          "shapeCount": 25,
+          "groupCount": 29
+        }
+      ],
+      "builderSummary": {
+        "resolvedNodeCount": 307,
+        "bitmapInstanceCount": 0,
+        "shapeCount": 132,
+        "groupCount": 175,
+        "expandedSymbolCount": 5
+      },
+      "framing": {
+        "mode": "content",
+        "contentBounds": { "x": -0.4150390625, "y": -0.4982758620689214, "width": 387.96503906249984, "height": 645.9176928696946 },
+        "viewBox": { "x": -4.4150390625, "y": -4.498275862068922, "width": 395.96503906249984, "height": 653.9176928696946 },
+        "padding": 4,
+        "observedCrop": false,
+        "outputDimensions": [396, 654]
+      },
+      "status": "RENDERED",
+      "output": {
+        "file": "qingling-full-character.png",
+        "sha256": "2C24A46F1067E7A7EBF612004EB917F88252256EBF4D69C65331F48A721C1088",
+        "bytes": 209540,
+        "dimensions": [396, 654],
+        "alpha": true,
+        "deterministicRerender": {
+          "secondOutputSha256": "2C24A46F1067E7A7EBF612004EB917F88252256EBF4D69C65331F48A721C1088",
+          "matched": true
+        },
+        "svgSha256": "85030284E94ED17EC0D67DF3569626A0573E7D2DF7E8DD56ECB24807EE904100",
+        "svgBytes": 1144375
+      }
+    },
+    {
+      "file": "修仙男.fla",
+      "sourcePath": "D:\\表情合集\\新人物\\修仙男.fla",
+      "sourceSha256": "565C5609A7610EF64ED9F98B09D98DD82D5A45255ADB4D3D410A5A365E0EF4A5",
+      "sourceBytes": 1201685,
+      "recovery": {
+        "state": "RECOVERY_CANDIDATE",
+        "centralDirectoryDeltaBytes": 54,
+        "normalization": "In memory only; source file was not written.",
+        "normalizedSha256": "CB891E78AC2882C1DE6F765A4A54634AC1E134A80EAFD1AEB230BA216289A8AB",
+        "strictPreflightPassed": true,
+        "sourceHashVerifiedUnchangedAfterRun": true
+      },
+      "root": {
+        "scene": "场景 1",
+        "sceneFrame": 0,
+        "sceneAddress": "scene:0/layer-0-frame-0/0",
+        "instance": "白发修仙男-cilisucai.com/白发修仙男-cilisucai.com1",
+        "kind": "Graphic",
+        "sceneTransform": { "a": 1.042236328125, "b": 0, "c": 0, "d": 1.042236328125, "tx": 728.2, "ty": 36.75 },
+        "playback": "loop",
+        "explicitFirstFrame": null,
+        "parentFrame": 0,
+        "parentFrameSpan": 0,
+        "frameCount": 30,
+        "selectedRootFrame": 0,
+        "frameSelectionReason": "The first scene-root instance selects frame 0. All 30 root frames were checked; each encounters the same unsupported stroke semantic."
+      },
+      "nestedBlockerChain": [
+        {
+          "name": "白发修仙男-cilisucai.com/白发修仙男-cilisucai.com1",
+          "frame": 0
+        },
+        {
+          "name": "白发修仙男-cilisucai.com/白发修仙男-cilisucai.com3",
+          "sourceAddress": "graphic:白发修仙男-cilisucai.com/白发修仙男-cilisucai.com1/layer-2-frame-0/0",
+          "parentFrame": 0,
+          "transform": { "a": 1, "b": 0, "c": 0, "d": 1, "tx": 205.35, "ty": 602.45 }
+        },
+        {
+          "shapeId": "fla-shape-ce9f3623690b031bcc05dea3",
+          "sourceAddress": "graphic:白发修仙男-cilisucai.com/白发修仙男-cilisucai.com3/layer-0-frame-0/10/2/0"
+        }
+      ],
+      "status": "BLOCKED",
+      "firstBlocker": {
+        "shapeId": "fla-shape-ce9f3623690b031bcc05dea3",
+        "sourceAddress": "graphic:白发修仙男-cilisucai.com/白发修仙男-cilisucai.com3/layer-0-frame-0/10/2/0",
+        "reason": "StrokeStyle 3 has unsupported radial stroke fill; P2-C03 supports normal SolidStroke semantics only."
+      },
+      "output": {
+        "file": "male-full-character.png",
+        "sha256": "F123555AA6A53D84105FBDE1ED805CCF5E38EB09B6CE3B58D7E10AF345CB0CC2",
+        "bytes": 37280,
+        "dimensions": [396, 654],
+        "content": "Transparent text-only BLOCKED placeholder; no character pixels and no composed parts."
+      }
+    }
+  ],
+  "comparisonSheet": {
+    "file": "full-character-comparison-sheet.png",
+    "sha256": "BC8550F16D5E8CF2AFACC63335E1CE5E432835D4C10073FAAAC30A21E104FD1B",
+    "bytes": 331049,
+    "dimensions": [1308, 850],
+    "checkerboardBehindTransparency": true,
+    "status": "One rendered whole root with two clearly marked text-only blocked placeholders."
+  },
+  "visualObservations": [
+    {
+      "source": "青绫修仙女（四视角）.fla",
+      "classification": "PRELIMINARY INSPECTION ONLY",
+      "coverage": "Hair, head, clothing, arms, hands, legs, and accessories are visible in the selected root output.",
+      "face": "The visible face region appears blank or mostly hidden by bangs; authored intent versus rendering behavior is unresolved and needs human review.",
+      "historicalDefect": "Visible lower-limb asymmetry/misalignment; marked HISTORICAL per the existing issue brief. No correction or retouching was performed.",
+      "painterOrder": "Five frame-0 nested Graphic instances render in the recorded back-to-front order.",
+      "clipping": "No crop observed; content framing adds 4 px padding around computed content bounds.",
+      "openFill": "Output was produced with the existing supported fill and stroke rules; this is not a completeness or Adobe-fidelity claim."
+    },
+    {
+      "source": "汉服修仙女.fla",
+      "classification": "NOT VISUALLY ASSESSABLE AS A COMPLETE CHARACTER",
+      "reason": "Root render blocked before output by unsupported horizontal stroke scaling."
+    },
+    {
+      "source": "修仙男.fla",
+      "classification": "NOT VISUALLY ASSESSABLE AS A COMPLETE CHARACTER",
+      "reason": "Root render blocked before output by unsupported radial stroke fill."
+    }
+  ],
+  "adobeAnimateReference": {
+    "status": "NO_MATCHING_ADOBE_REFERENCE / REVIEW_PENDING",
+    "installedExecutable": "D:\\AN2023\\Adobe Animate 2023\\Animate.exe",
+    "observedWindow": "黑衣修仙男.fla*",
+    "observedProcessId": 3848,
+    "openUnsavedDocumentTouched": false,
+    "reason": "The current responsive Animate window shows a different unsaved FLA. Existing #739 exact-item capture attempts failed to locate Hanfu 修仙女-cilisucai.com2, Qingling 元件 2, and Male 白发修仙男-cilisucai.com4. No unrelated screenshot was relabeled as a match."
+  },
+  "validation": {
+    "integrationCommand": "pnpm test:integration",
+    "integrationResult": "PASS",
+    "testFilesPassed": 38,
+    "testsPassed": 189,
+    "configuredBuild": "Typecheck, renderer build, and Electron/preload builds completed as part of the integration command.",
+    "sourceHashesRecheckedAfterRendering": true,
+    "deterministicQinglingRerender": true,
+    "contractTest": {
+      "command": "pnpm exec vitest run tests/contract/ci-routing.test.ts",
+      "result": "PASS",
+      "testFilesPassed": 1,
+      "testsPassed": 82
+    }
+  },
+  "missing": [
+    "Accurate complete-root renders for Hanfu and Male until the current production renderer supports their source stroke semantics.",
+    "A matching Adobe Animate reference for each selected root.",
+    "User human visual acceptance; no HUMAN PASS is claimed."
+  ],
+  "smallestFollowUp": "User reviews the Qingling root and decides whether its visible historical lower-limb misalignment warrants a separate repair ticket."
+}

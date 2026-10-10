@@ -1,0 +1,386 @@
+{
+  "verifier": "Issue #748 production builder + sandbox Electron raster capture",
+  "sandbox": {
+    "sandbox": true,
+    "contextIsolation": true,
+    "nodeIntegration": false
+  },
+  "outputs": {
+    "fullRootControls": {
+      "hanfu": {
+        "sourceSha256": "6AF14990029D4CED2C4E305721321835180C1BF041178A8799E1D14A1F62E535",
+        "normalizedSha256": "10EDD07E226DB3296A5CAC01B4CDF9654385CE477894A8F7B4D0C90DB9E327F7",
+        "recoveryState": "RECOVERY_CANDIDATE",
+        "centralDirectoryDeltaBytes": 54,
+        "strictPreflight": "PASS",
+        "targetLabel": "修仙女-cilisucai.com/修仙女-cilisucai.com1",
+        "renderTargetId": "fla-render-target-106bdafd4a330d6c43443914a48082b52170913f4f187de0eab8387410adbb04",
+        "svgSha256": "9C4BA2533EB84A8493BBC4641E0D5C8407CF4DDDAFEFD886287081C0BCD512E7",
+        "svgBytes": 1243945,
+        "composition": {
+          "resolvedNodeCount": 359,
+          "bitmapInstanceCount": 0,
+          "shapeCount": 162,
+          "fillStyleCount": 434,
+          "strokeStyleCount": 179,
+          "styleRunCount": 13027,
+          "midEdgeStyleChangeCount": 0,
+          "pathCommandCount": 35310,
+          "edgeFillStyle0ReferenceCount": 1947,
+          "edgeFillStyle1ReferenceCount": 1742,
+          "edgeStrokeStyleReferenceCount": 1620,
+          "noFillStyle1RunCount": 11285,
+          "fillRegionCount": 434,
+          "fillContourCount": 1016,
+          "fillBoundarySegmentCount": 16201,
+          "linearGradientCount": 7,
+          "linearGradientStopCount": 14,
+          "radialGradientCount": 83,
+          "radialGradientStopCount": 172,
+          "strokePathCount": 1306,
+          "strokeSegmentCount": 5032,
+          "groupCount": 197,
+          "expandedSymbolCount": 2,
+          "framing": {
+            "mode": "content",
+            "contentBounds": {
+              "x": -0.5241418291179489,
+              "y": -0.5879263704035267,
+              "width": 323.7290640212123,
+              "height": 664.7440483101765
+            },
+            "viewBox": {
+              "x": -4.524141829117949,
+              "y": -4.587926370403527,
+              "width": 331.7290640212123,
+              "height": 672.7440483101765
+            },
+            "padding": 4,
+            "outputWidth": 332,
+            "outputHeight": 673
+          }
+        },
+        "png": {
+          "file": "control-hanfu-full-character.png",
+          "sha256": "D48AE620AA0C6B1669AC51F3180E9D83E43A9F89C5F4063C4EC3AA001E25BE6B",
+          "bytes": 256012
+        }
+      },
+      "qingling": {
+        "sourceSha256": "D0958D4432DECBF6C54566BA15A2F5E97BD88C82D75DCB2F84603E9B2273F0E4",
+        "normalizedSha256": "D0F940D6F7398C099D15DA1104BB8615FEB361D6E38D211F944AB072808ACAF4",
+        "recoveryState": "RECOVERY_CANDIDATE",
+        "centralDirectoryDeltaBytes": 54,
+        "strictPreflight": "PASS",
+        "targetLabel": "重复项目文件夹/元件 1",
+        "renderTargetId": "fla-render-target-b13a0be5089c89a01785e324f5e25a6919cc6e9f4404f46624adb53ab207fd41",
+        "svgSha256": "85030284E94ED17EC0D67DF3569626A0573E7D2DF7E8DD56ECB24807EE904100",
+        "svgBytes": 1144375,
+        "composition": {
+          "resolvedNodeCount": 307,
+          "bitmapInstanceCount": 0,
+          "shapeCount": 132,
+          "fillStyleCount": 425,
+          "strokeStyleCount": 151,
+          "styleRunCount": 13076,
+          "midEdgeStyleChangeCount": 0,
+          "pathCommandCount": 35956,
+          "edgeFillStyle0ReferenceCount": 1743,
+          "edgeFillStyle1ReferenceCount": 1621,
+          "edgeStrokeStyleReferenceCount": 1267,
+          "noFillStyle1RunCount": 11455,
+          "fillRegionCount": 425,
+          "fillContourCount": 1110,
+          "fillBoundarySegmentCount": 17882,
+          "linearGradientCount": 8,
+          "linearGradientStopCount": 16,
+          "radialGradientCount": 1,
+          "radialGradientStopCount": 2,
+          "strokePathCount": 1001,
+          "strokeSegmentCount": 3878,
+          "groupCount": 175,
+          "expandedSymbolCount": 5,
+          "framing": {
+            "mode": "content",
+            "contentBounds": {
+              "x": -0.4150390625,
+              "y": -0.4982758620689214,
+              "width": 387.96503906249984,
+              "height": 645.9176928696946
+            },
+            "viewBox": {
+              "x": -4.4150390625,
+              "y": -4.498275862068922,
+              "width": 395.96503906249984,
+              "height": 653.9176928696946
+            },
+            "padding": 4,
+            "outputWidth": 396,
+            "outputHeight": 654
+          }
+        },
+        "png": {
+          "file": "control-qingling-full-character.png",
+          "sha256": "2C24A46F1067E7A7EBF612004EB917F88252256EBF4D69C65331F48A721C1088",
+          "bytes": 209540,
+          "matchesIssue746Png": true
+        }
+      }
+    },
+    "maleRootBlock": {
+      "sourceSha256": "565C5609A7610EF64ED9F98B09D98DD82D5A45255ADB4D3D410A5A365E0EF4A5",
+      "normalizedSha256": "CB891E78AC2882C1DE6F765A4A54634AC1E134A80EAFD1AEB230BA216289A8AB",
+      "recoveryState": "RECOVERY_CANDIDATE",
+      "centralDirectoryDeltaBytes": 54,
+      "strictPreflight": "PASS",
+      "sceneRenderTargetId": "fla-render-target-a3e0f70bf6adb2bfa73772ae1f3163d502cc056e9be9be17fc5114624425c54f",
+      "status": "PARTIAL — GATE_CLEARED_NEXT_BLOCKER",
+      "blockerCode": "TARGET_UNSUPPORTED",
+      "firstBlockerMessage": "Shape fla-shape-ce9f3623690b031bcc05dea3 StrokeStyle 4 has unsupported linear stroke fill; P2-C03 supports normal and horizontal SolidStroke semantics only, and P2-C06 adds validated normal radial-gradient SolidStroke paint",
+      "result": "No complete male SVG or PNG was emitted because production composition fails closed at StrokeStyle 4.",
+      "blockedStatusCard": {
+        "file": "male-root-blocked-style4.png",
+        "sha256": "19E9C9A11232FF39E13BA5816E5F0C43D15F6C03EA2ADBDF623F454614512022",
+        "bytes": 37500
+      }
+    },
+    "openFillControls": {
+      "hanfu": {
+        "sourceSha256": "6AF14990029D4CED2C4E305721321835180C1BF041178A8799E1D14A1F62E535",
+        "normalizedSha256": "10EDD07E226DB3296A5CAC01B4CDF9654385CE477894A8F7B4D0C90DB9E327F7",
+        "strictPreflight": "PASS",
+        "shapeId": "fla-shape-9420f0fcb052d77956ea920f",
+        "sourceShapeSha256": "170F34BEA40FA2F41A2F98DEE42CD5127E4C6CB1A6633CDD2723A1CAA543FE49",
+        "shapeMatrix": {
+          "a": 1,
+          "b": 0,
+          "c": 0,
+          "d": 1.11436462402344,
+          "tx": -266,
+          "ty": -705.15
+        },
+        "fillStyleIndex": 1,
+        "svgSha256": "514AC04D1AA50C9C98651DA89A072C70F6392462619A07A3FF116227CA29121E",
+        "svgBytes": 17594,
+        "composition": {
+          "resolvedNodeCount": 1,
+          "bitmapInstanceCount": 0,
+          "shapeCount": 1,
+          "fillStyleCount": 3,
+          "strokeStyleCount": 3,
+          "styleRunCount": 179,
+          "midEdgeStyleChangeCount": 0,
+          "pathCommandCount": 459,
+          "edgeFillStyle0ReferenceCount": 46,
+          "edgeFillStyle1ReferenceCount": 32,
+          "edgeStrokeStyleReferenceCount": 39,
+          "noFillStyle1RunCount": 147,
+          "fillRegionCount": 3,
+          "fillContourCount": 8,
+          "fillBoundarySegmentCount": 173,
+          "linearGradientCount": 1,
+          "linearGradientStopCount": 2,
+          "radialGradientCount": 0,
+          "radialGradientStopCount": 0,
+          "strokePathCount": 28,
+          "strokeSegmentCount": 97,
+          "groupCount": 0,
+          "expandedSymbolCount": 0,
+          "framing": {
+            "mode": "content",
+            "contentBounds": {
+              "x": -91.75,
+              "y": -64.00031356811382,
+              "width": 218.64999999999998,
+              "height": 313.4707687377936
+            },
+            "viewBox": {
+              "x": -95.75,
+              "y": -68.00031356811382,
+              "width": 226.64999999999998,
+              "height": 321.4707687377936
+            },
+            "padding": 4,
+            "outputWidth": 227,
+            "outputHeight": 322
+          }
+        },
+        "png": {
+          "file": "control-open-fill-hanfu-shape.png",
+          "sha256": "1F0E16470790361946DE7FBCF61717686266C59B76BCCC653DDB02DC1A5DCF69",
+          "bytes": 50853
+        }
+      },
+      "qingling": {
+        "sourceSha256": "D0958D4432DECBF6C54566BA15A2F5E97BD88C82D75DCB2F84603E9B2273F0E4",
+        "normalizedSha256": "D0F940D6F7398C099D15DA1104BB8615FEB361D6E38D211F944AB072808ACAF4",
+        "strictPreflight": "PASS",
+        "shapeId": "fla-shape-944dedeb2bb14b160532f675",
+        "sourceShapeSha256": "1AF9F0EEFEDB0335D67D4E7BDA0057D87061358113746C7EFDFD7A8DE49A6A4F",
+        "shapeMatrix": {
+          "a": 1,
+          "b": 0,
+          "c": 0.0684967041015625,
+          "d": 1,
+          "tx": -838.35,
+          "ty": -676.05
+        },
+        "fillStyleIndex": 1,
+        "svgSha256": "BAE904D91C91DFD94538941D249A6F90B898C5F2928026279C2369BF4595B87C",
+        "svgBytes": 9398,
+        "composition": {
+          "resolvedNodeCount": 1,
+          "bitmapInstanceCount": 0,
+          "shapeCount": 1,
+          "fillStyleCount": 3,
+          "strokeStyleCount": 2,
+          "styleRunCount": 95,
+          "midEdgeStyleChangeCount": 0,
+          "pathCommandCount": 279,
+          "edgeFillStyle0ReferenceCount": 14,
+          "edgeFillStyle1ReferenceCount": 14,
+          "edgeStrokeStyleReferenceCount": 13,
+          "noFillStyle1RunCount": 81,
+          "fillRegionCount": 3,
+          "fillContourCount": 10,
+          "fillBoundarySegmentCount": 159,
+          "linearGradientCount": 0,
+          "linearGradientStopCount": 0,
+          "radialGradientCount": 0,
+          "radialGradientStopCount": 0,
+          "strokePathCount": 5,
+          "strokeSegmentCount": 40,
+          "groupCount": 0,
+          "expandedSymbolCount": 0,
+          "framing": {
+            "mode": "content",
+            "contentBounds": {
+              "x": 164.88531417846673,
+              "y": 0,
+              "width": 112.70107082780237,
+              "height": 337.45000000000005
+            },
+            "viewBox": {
+              "x": 160.88531417846673,
+              "y": -4,
+              "width": 120.70107082780237,
+              "height": 345.45000000000005
+            },
+            "padding": 4,
+            "outputWidth": 121,
+            "outputHeight": 346
+          }
+        },
+        "png": {
+          "file": "control-open-fill-qingling-shape.png",
+          "sha256": "2E899E00281526741B1D6A71386558576AF344D58E6FEF83FFAD3C2277ACD959",
+          "bytes": 21462
+        }
+      },
+      "male": {
+        "sourceSha256": "565C5609A7610EF64ED9F98B09D98DD82D5A45255ADB4D3D410A5A365E0EF4A5",
+        "normalizedSha256": "CB891E78AC2882C1DE6F765A4A54634AC1E134A80EAFD1AEB230BA216289A8AB",
+        "strictPreflight": "PASS",
+        "shapeId": "fla-shape-196ba2d2358441409a8b4dce",
+        "sourceShapeSha256": "9FD166C90F187B0DD159D987EA04A20AE3CFD97378AC384587949EFEDA42EE59",
+        "shapeMatrix": {
+          "a": -1.51597595214844,
+          "b": 0,
+          "c": 0,
+          "d": 1.51597595214844,
+          "tx": 1414.9,
+          "ty": -968.75
+        },
+        "fillStyleIndex": 1,
+        "svgSha256": "253552A8A0A49F7918B6DB6795EBBD8B3C2A55EA811CD72143ED01DA6100AA3A",
+        "svgBytes": 11973,
+        "composition": {
+          "resolvedNodeCount": 1,
+          "bitmapInstanceCount": 0,
+          "shapeCount": 1,
+          "fillStyleCount": 4,
+          "strokeStyleCount": 1,
+          "styleRunCount": 88,
+          "midEdgeStyleChangeCount": 0,
+          "pathCommandCount": 223,
+          "edgeFillStyle0ReferenceCount": 21,
+          "edgeFillStyle1ReferenceCount": 16,
+          "edgeStrokeStyleReferenceCount": 18,
+          "noFillStyle1RunCount": 72,
+          "fillRegionCount": 4,
+          "fillContourCount": 9,
+          "fillBoundarySegmentCount": 108,
+          "linearGradientCount": 2,
+          "linearGradientStopCount": 8,
+          "radialGradientCount": 0,
+          "radialGradientStopCount": 0,
+          "strokePathCount": 18,
+          "strokeSegmentCount": 40,
+          "groupCount": 0,
+          "expandedSymbolCount": 0,
+          "framing": {
+            "mode": "content",
+            "contentBounds": {
+              "x": -66.51170043945558,
+              "y": -1.0267509460433089,
+              "width": 74.88921203613313,
+              "height": 81.60234902423369
+            },
+            "viewBox": {
+              "x": -70.51170043945558,
+              "y": -5.026750946043309,
+              "width": 82.88921203613313,
+              "height": 89.60234902423369
+            },
+            "padding": 4,
+            "outputWidth": 83,
+            "outputHeight": 90
+          }
+        },
+        "png": {
+          "file": "control-open-fill-male-shape.png",
+          "sha256": "A490A2A6EDCAEC964E82CEECF530DFCF5051D43830F2415EA22D8B25F3E4D606",
+          "bytes": 7729
+        }
+      }
+    },
+    "radialStrokeControl": {
+      "fixture": "Synthetic isolated control copied from the frozen #748 Shape XML, exact Edge string, Shape matrix, root and nested transforms.",
+      "originalMaleSourceSha256": "565C5609A7610EF64ED9F98B09D98DD82D5A45255ADB4D3D410A5A365E0EF4A5",
+      "shapeId": "fla-shape-ce9f3623690b031bcc05dea3",
+      "sourceAddress": "graphic:白发修仙男-cilisucai.com/白发修仙男-cilisucai.com3/layer-0-frame-0/10/2/0",
+      "strokeStyleIndex": 3,
+      "radialGradientCount": 1,
+      "radialGradientStopCount": 4,
+      "strokeSegmentCount": 5,
+      "svgSha256": "DF2E6F551EC9E28D9CAE025D1F92DBB00CEE1511B8517E40786DD87CDFC4C8E7",
+      "svgBytes": 2026,
+      "svgFile": "male-radial-stroke-isolated.svg",
+      "png": {
+        "file": "male-radial-stroke-isolated.png",
+        "sha256": "97C8B012A8854B31C3A8C8E413E7231E61B0848F5DC05A6C933ED06DEE26A2D5",
+        "bytes": 19808
+      },
+      "framing": {
+        "mode": "content",
+        "contentBounds": {
+          "x": 117.57385515199358,
+          "y": 462.60794067382824,
+          "width": 41.50088436153992,
+          "height": 22.974664306640648
+        },
+        "viewBox": {
+          "x": 113.57385515199358,
+          "y": 458.60794067382824,
+          "width": 49.50088436153992,
+          "height": 30.974664306640648
+        },
+        "padding": 4,
+        "outputWidth": 50,
+        "outputHeight": 31
+      }
+    }
+  },
+  "sourceHashesUnchanged": true,
+  "currentAnimateDocumentTouched": false
+}

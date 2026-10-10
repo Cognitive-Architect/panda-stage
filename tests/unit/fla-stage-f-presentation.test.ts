@@ -145,8 +145,9 @@ describe('Issue #402 integration/source contracts', () => {
     expect(snapshot).toContain('fla-snapshot-f2-focus-');
     expect(sequence).toContain('focusedTargetId');
     expect(sequence).toContain('fla-frame-sequence-f2-focus-');
-    expect(builder).toContain('if (!found) continue;');
-    expect(builder).toContain('entries.push({ target, previewSupported: true });');
+    expect(builder).toContain('export async function buildRenderableTargetCatalog');
+    expect(builder).toContain('const scene = source.sceneTimelines[0];');
+    expect(builder).toContain('entries.push({ target, previewSupported: unsupportedReason === null');
   });
 
   it('keeps Stage F styling bounded without adding a dominant F1 Workbench row', () => {

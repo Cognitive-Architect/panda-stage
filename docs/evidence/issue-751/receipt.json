@@ -1,0 +1,295 @@
+{
+    "schemaVersion":  "issue751-v1-t01-real-prop-vertical-slice/1",
+    "status":  "PARTIAL",
+    "acceptance":  {
+                       "app":  "Windows Electron production build",
+                       "sourceChooser":  "native Windows file chooser selected the original FLA; no PANDA_STAGE_FLA_ACCEPTANCE_SOURCE injection was used",
+                       "nativeFileChooser":  {
+                                                 "status":  "PASS",
+                                                 "lastAttempt":  "issue751-v1-native-picker-20261010-run7",
+                                                 "result":  "Corrected Win32 SendInput INPUT structure delivered the source path through the Windows native chooser; the Static Snapshot Workbench opened with the selected FLA. The earlier run5 automation failure was caused by the harness INPUT structure size, not a Windows chooser limitation."
+                                             },
+                       "humanVisualAcceptance":  "PENDING_OWNER"
+                   },
+    "source":  {
+                   "basename":  "炼丹炉.fla",
+                   "sha256Before":  "498537baa9cf900f613987eb9dab99727ee09ddaad4fb06e2d2c4351cb283a68",
+                   "sha256After":  "498537baa9cf900f613987eb9dab99727ee09ddaad4fb06e2d2c4351cb283a68",
+                   "hashInvariant":  true,
+                   "acceptedByIssue732":  true
+               },
+    "cancellation":  {
+                         "initialAssetCount":  0,
+                         "afterCancelAssetCount":  0,
+                         "projectJsonHashUnchanged":  true
+                     },
+    "catalog":  {
+                    "count":  2,
+                    "acceptedTarget":  {
+                                           "renderTargetId":  "fla-render-target-c87de5d3df0547bc93afeaf7dabd4f1a6689eb936188555e0e5eedc51589b6fb",
+                                           "kind":  "graphic-symbol",
+                                           "userLabel":  "炼丹炉-cilisucai.com",
+                                           "sourceLibraryItemName":  "炼丹炉-cilisucai.com",
+                                           "frameCount":  1,
+                                           "previewSupported":  true,
+                                           "unsupportedReason":  null
+                                       },
+                    "firstOpenCatalogCount":  2
+                },
+    "import":  {
+                   "assetId":  "821cdd96-95b4-4d89-98a2-acd88cfcd2ce",
+                   "receiptText":  "✓导入已完成当前帧已导入炼丹炉-cilisucai.png返回素材库"
+               },
+    "placement":  {
+                      "layerId":  "61163e6e-9a8d-48a0-b9aa-b7c74e9d00e6",
+                      "assetId":  "821cdd96-95b4-4d89-98a2-acd88cfcd2ce",
+                      "x":  961.0246679316888,
+                      "y":  541.0246679316888,
+                      "source":  {
+                                     "kind":  "asset",
+                                     "assetId":  "821cdd96-95b4-4d89-98a2-acd88cfcd2ce"
+                                 },
+                      "syntheticDropEventDispatchedToProductionCanvas":  true,
+                      "nativeMouseDragAttempt":  {
+                                                     "input":  "BrowserWindow.webContents.sendInputEvent mouse drag",
+                                                     "observedEvents":  [
+                                                                            "dragstart"
+                                                                        ],
+                                                     "dropDelivered":  false,
+                                                     "layerCreated":  false,
+                                                     "conclusion":  "This earlier BrowserWindow.sendInputEvent attempt failed; a later Windows OS-level mouse drag succeeded and is recorded separately under nativeMouseDrag."
+                                                 }
+                  },
+    "persistence":  {
+                        "saved":  {
+                                      "assetCount":  1,
+                                      "layerCount":  1,
+                                      "layer":  {
+                                                    "id":  "61163e6e-9a8d-48a0-b9aa-b7c74e9d00e6",
+                                                    "name":  "炼丹炉-cilisucai",
+                                                    "source":  {
+                                                                   "kind":  "asset",
+                                                                   "assetId":  "821cdd96-95b4-4d89-98a2-acd88cfcd2ce"
+                                                               },
+                                                    "anchor":  "center",
+                                                    "x":  961.0246679316888,
+                                                    "y":  541.0246679316888,
+                                                    "scaleX":  1,
+                                                    "scaleY":  1,
+                                                    "rotationDeg":  0,
+                                                    "opacity":  1,
+                                                    "visible":  true,
+                                                    "zIndex":  0,
+                                                    "locked":  false,
+                                                    "flipX":  false
+                                                }
+                                  },
+                        "reopened":  {
+                                         "projectId":  "5a911f2d-324f-4fc5-b776-c70e5ab54f4f",
+                                         "layer":  {
+                                                       "id":  "61163e6e-9a8d-48a0-b9aa-b7c74e9d00e6",
+                                                       "name":  "炼丹炉-cilisucai",
+                                                       "source":  {
+                                                                      "kind":  "asset",
+                                                                      "assetId":  "821cdd96-95b4-4d89-98a2-acd88cfcd2ce"
+                                                                  },
+                                                       "anchor":  "center",
+                                                       "x":  961.0246679316888,
+                                                       "y":  541.0246679316888,
+                                                       "scaleX":  1,
+                                                       "scaleY":  1,
+                                                       "rotationDeg":  0,
+                                                       "opacity":  1,
+                                                       "visible":  true,
+                                                       "zIndex":  0,
+                                                       "locked":  false,
+                                                       "flipX":  false
+                                                   }
+                                     },
+                        "projectRoot":  "D:\\PandaStage-Acceptance\\issue751-v1-t04\\projects\\Issue751 Alchemical Furnace 1791596488987.pandastage",
+                        "screenshots":  {
+                                            "catalog":  "01-static-snapshot-catalog.png",
+                                            "preview":  "02-selected-prop-preview.png",
+                                            "importReceipt":  "03-import-receipt.png",
+                                            "assetLibrary":  "03b-asset-library.png",
+                                            "placedInShot":  "04-placed-in-shot.png",
+                                            "reopened":  "05-reopened-project.png"
+                                        }
+                    },
+    "nativeMouseDrag":  {
+                            "run":  "issue751-v1-t06",
+                            "status":  "NATIVE_MOUSE_DRAG_SAVE_REOPEN_PASS",
+                            "input":  "Win32 SetCursorPos + mouse_event",
+                            "projectRoot":  "D:\\PandaStage-Acceptance\\issue751-v1-t06\\projects\\Issue751 Alchemical Furnace 1791596746625.pandastage",
+                            "assetId":  "a718da9c-bb3d-4d8b-8470-d8979b6a8ebf",
+                            "layerId":  "3e930756-2078-497b-ac02-fc015e74cd84",
+                            "preDropLayerCount":  0,
+                            "savedLayerCount":  1,
+                            "position":  {
+                                             "x":  961.0246679316888,
+                                             "y":  541.0246679316888
+                                         },
+                            "screenPoints":  {
+                                                 "start":  {
+                                                               "x":  620,
+                                                               "y":  650
+                                                           },
+                                                 "end":  {
+                                                             "x":  1254,
+                                                             "y":  467
+                                                         }
+                                             },
+                            "deviceScale":  1.5,
+                            "sourceHashInvariant":  true,
+                            "reopenedProjectImageVisible":  true,
+                            "screenshots":  {
+                                                "placedInShot":  "06-native-mouse-drag-placed.png",
+                                                "reopened":  "07-native-mouse-drag-reopened.png"
+                                            }
+                        },
+    "validation":  {
+                       "integration":  {
+                                           "command":  "pnpm test:integration",
+                                           "status":  "PASS",
+                                           "testFilesPassed":  38,
+                                           "testsPassed":  189,
+                                           "runBeforePreviewCssFix":  true,
+                                           "latestRun":  {
+                                                             "date":  "2026-10-10",
+                                                             "commit":  "260289cae3508edb894922691369901cd22dd83b",
+                                                             "runAfterPreviewCssFix":  true,
+                                                             "status":  "PASS",
+                                                             "testFilesPassed":  38,
+                                                             "testsPassed":  189
+                                                         }
+                                       },
+                       "focusedPreviewTests":  {
+                                                   "command":  "pnpm exec vitest run tests/unit/fla-stage-d-render-workbench.test.ts tests/unit/fla-stage-d-v11-layout.test.ts",
+                                                   "status":  "PASS",
+                                                   "testFilesPassed":  2,
+                                                   "testsPassed":  8
+                                               },
+                       "focusedLint":  {
+                                           "command":  "pnpm exec eslint tests/unit/fla-stage-d-render-workbench.test.ts",
+                                           "status":  "PASS"
+                                       },
+                       "productionBuild":  {
+                                               "command":  "pnpm build",
+                                               "status":  "PASS"
+                                           },
+                       "previewPresentation":  {
+                                                   "status":  "PASS",
+                                                   "naturalImageSizePx":  [
+                                                                              318,
+                                                                              435
+                                                                          ],
+                                                   "imageElementCssSize":  [
+                                                                               512,
+                                                                               385.604
+                                                                           ],
+                                                   "stageCssSize":  [
+                                                                        513.333,
+                                                                        386.938
+                                                                    ],
+                                                   "fullArtworkVisible":  true,
+                                                   "screenshot":  "02-selected-prop-preview.png"
+                                               },
+                       "productionCodeChanged":  true,
+                       "focusedFlaRegression":  {
+                                                    "command":  "pnpm exec vitest run tests/unit/fla-stage-d-render-workbench.test.ts tests/unit/fla-stage-f-presentation.test.ts tests/unit/fla-static-snapshot-commit.test.ts tests/unit/fla-asset-commit.test.ts tests/unit/fla-frame-sequence-commit.test.ts tests/unit/fla-frame-sequence-review.test.ts tests/unit/fla-raster-review-pagination.test.ts tests/unit/fla-stage-e-frame-sequence.test.ts tests/unit/apply-fla-asset-commit-response.test.ts tests/unit/apply-fla-frame-sequence-commit-response.test.ts",
+                                                    "status":  "PASS",
+                                                    "testFilesPassed":  10,
+                                                    "testsPassed":  57,
+                                                    "covers":  [
+                                                                   "static snapshot presentation, cancellation, and commit rollback",
+                                                                   "raster commit rollback",
+                                                                   "frame-sequence review and commit rollback",
+                                                                   "asset and frame-sequence history response paths"
+                                                               ]
+                                                },
+                       "unsupportedTargetRuntime":  {
+                                                        "status":  "UNVERIFIED",
+                                                        "unitPresentationCoverage":  "PASS",
+                                                        "unitTest":  "tests/unit/fla-stage-f-presentation.test.ts",
+                                                        "realRuntimeSample":  "No unsupported Static Snapshot target was found in the 43 original FLAs under D:\\表情合集 (577 catalog targets). An earlier user-facing import attempt for 飞行中旋转.fla routed to Raster; that route choice is separate from this direct catalog probe.",
+                                                        "productionCatalogProbe":  {
+                                                                                       "run":  "issue751-corpus-catalog-scan-run2",
+                                                                                       "status":  "PASS_NO_UNSUPPORTED_TARGET_FOUND_IN_SCANNED_CORPUS",
+                                                                                       "receipt":  "./catalog-scan-run2/receipt.json",
+                                                                                       "sourceRoot":  "D:\\表情合集",
+                                                                                       "sourceCount":  43,
+                                                                                       "parserSuccessCount":  43,
+                                                                                       "sourceHashInvariantCount":  43,
+                                                                                       "catalogTargetCount":  577,
+                                                                                       "unsupportedTargetCount":  0,
+                                                                                       "recoveryNormalizedSourceCount":  38,
+                                                                                       "strictValidSourceCount":  5,
+                                                                                       "sourceSelection":  "PANDA_STAGE_FLA_ACCEPTANCE_SOURCE used only to select each source in the unpackaged acceptance harness",
+                                                                                       "parserPath":  "production Main chooseAndInspect -\u003e production recovery/preflight -\u003e Static Snapshot catalog",
+                                                                                       "projectOpened":  false,
+                                                                                       "commitApiCalled":  false,
+                                                                                       "previousSubsetReceipt":  "./catalog-scan-run1/receipt.json"
+                                                                                   }
+                                                    }
+                   },
+    "humanVisualAcceptance":  "PENDING_OWNER",
+    "nativePickerRun":  {
+                            "run":  "issue751-v1-native-picker-20261010-run7",
+                            "status":  "AUTOMATED_FLOW_PASS_HUMAN_VISUAL_PENDING",
+                            "noSourcePathInjection":  true,
+                            "source":  {
+                                           "path":  "D:\\表情合集\\道具\\炼丹炉.fla",
+                                           "sha256Before":  "498537baa9cf900f613987eb9dab99727ee09ddaad4fb06e2d2c4351cb283a68",
+                                           "sha256After":  "498537baa9cf900f613987eb9dab99727ee09ddaad4fb06e2d2c4351cb283a68",
+                                           "hashInvariant":  true
+                                       },
+                            "cancellation":  {
+                                                 "initialAssetCount":  0,
+                                                 "afterCancelAssetCount":  0,
+                                                 "projectJsonHashUnchanged":  true
+                                             },
+                            "catalog":  {
+                                            "targetCount":  2,
+                                            "selectedTargetKind":  "graphic-symbol",
+                                            "selectedTargetFrameCount":  1,
+                                            "previewSupported":  true
+                                        },
+                            "import":  {
+                                           "assetId":  "6c12b618-483b-492a-8cc1-e2b4a993a06f",
+                                           "assetKind":  "ordinary image",
+                                           "visibleInAssetLibrary":  true
+                                       },
+                            "placement":  {
+                                              "layerId":  "05e86543-9c61-4687-9c71-64a82aec78a0",
+                                              "input":  "Win32 SetCursorPos + mouse_event",
+                                              "firstDrag":  "The center start hit the thumbnail rebuild button and did not create a layer.",
+                                              "successfulDrag":  {
+                                                                     "screenStart":  [
+                                                                                         620,
+                                                                                         650
+                                                                                     ],
+                                                                     "screenEnd":  [
+                                                                                       1254,
+                                                                                       467
+                                                                                   ],
+                                                                     "preDropLayerCount":  0,
+                                                                     "savedLayerCount":  1,
+                                                                     "reopenedLayerId":  "05e86543-9c61-4687-9c71-64a82aec78a0"
+                                                                 }
+                                          },
+                            "persistence":  {
+                                                "savedAssetCount":  1,
+                                                "savedLayerCount":  1,
+                                                "reopenedSameLayer":  true
+                                            },
+                            "screenshots":  {
+                                                "catalog":  "./native-picker-run7/01-static-snapshot-catalog.png",
+                                                "preview":  "./native-picker-run7/02-selected-prop-preview.png",
+                                                "importReceipt":  "./native-picker-run7/03-import-receipt.png",
+                                                "assetLibrary":  "./native-picker-run7/03b-asset-library.png",
+                                                "placedInShot":  "./native-picker-run7/04-placed-in-shot.png",
+                                                "reopened":  "./native-picker-run7/05-reopened-project.png",
+                                                "runReceipt":  "./native-picker-run7/receipt.json"
+                                            }
+                        }
+}

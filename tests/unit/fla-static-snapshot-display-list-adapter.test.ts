@@ -1,0 +1,484 @@
+import { describe, expect, it } from 'vitest';
+import { resolveFlaDisplayList } from '../../src/main/services/fla-display-list-resolver';
+import {
+  adaptFlaXflDisplaySource,
+  type FlaXflGraphicSymbolDescriptor,
+} from '../../src/main/services/fla-static-snapshot-display-list-adapter';
+
+function matrix(tx = 0, ty = 0): string {
+  return `<matrix><Matrix a="1" b="0" c="0" d="1" tx="${tx}" ty="${ty}"/></matrix>`;
+}
+
+function transformedMatrix(a: number, b: number, c: number, d: number, tx: number, ty: number): string {
+  return `<matrix><Matrix a="${a}" b="${b}" c="${c}" d="${d}" tx="${tx}" ty="${ty}"/></matrix>`;
+}
+
+function bitmap(name: string, tx = 0, ty = 0): string {
+  return `<DOMBitmapInstance libraryItemName="${name}">${matrix(tx, ty)}</DOMBitmapInstance>`;
+}
+
+function symbol(name: string, tx = 0, ty = 0): string {
+  return `<DOMSymbolInstance libraryItemName="${name}" symbolType="graphic">${matrix(tx, ty)}</DOMSymbolInstance>`;
+}
+
+function shape(): string {
+  return `<DOMShape><edges><Edge cubics="!0 0|20 0|20 20|0 20|0 0"/></edges></DOMShape>`;
+}
+
+function frame(index: number, elements: string): string {
+  return `<DOMFrame index="${index}" duration="1" tweenType="none"><elements>${elements}</elements></DOMFrame>`;
+}
+
+function layer(name: string, frames: string): string {
+  return `<DOMLayer name="${name}"><frames>${frames}</frames></DOMLayer>`;
+}
+
+function timeline(name: string, layers: string[]): string {
+  return `<DOMTimeline name="${name}"><layers>${layers.join('')}</layers></DOMTimeline>`;
+}
+
+function graphic(name: string, layers: string[]): string {
+  return `<DOMSymbolItem name="${name}" symbolType="graphic"><timeline>${timeline(`${name}-timeline`, layers)}</timeline></DOMSymbolItem>`;
+}
+
+function buildAdapterFixture() {
+  const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', [
+    layer('scene-front', [
+      frame(0, `${symbol('outer', 9, 11)}${bitmap('scene-front-after', 21, 22)}`),
+      frame(1, `${bitmap('scene-front-frame1-a', 31, 32)}${bitmap('scene-front-frame1-b', 41, 42)}`),
+    ].join('')),
+    layer('scene-back', [
+      frame(0, `${bitmap('scene-back-a', 1, 2)}${bitmap('scene-back-b', 3, 4)}`),
+      frame(1, `${bitmap('scene-back-frame1-a', 5, 6)}${bitmap('scene-back-frame1-b', 7, 8)}`),
+    ].join('')),
+  ])}</timelines></DOMDocument>`;
+  const libraryXmlEntries = Object.freeze([
+    Object.freeze({
+      name: 'LIBRARY/outer.xml',
+      xml: graphic('outer', [
+        layer('outer-front', [
+          frame(0, `${symbol('inner', 13, 17)}${bitmap('outer-front-after', 23, 29)}`),
+          frame(1, `${bitmap('outer-front-frame1-a', 31, 37)}${bitmap('outer-front-frame1-b', 41, 47)}`),
+        ].join('')),
+        layer('outer-back', [frame(0, shape()), frame(1, shape())].join('')),
+      ]),
+    }),
+    Object.freeze({
+      name: 'LIBRARY/inner.xml',
+      xml: graphic('inner', [
+        layer('inner-front', [frame(0, `${bitmap('inner-front-a', 3, 5)}${bitmap('inner-front-b', 7, 11)}`)].join('')),
+        layer('inner-back', [frame(0, shape())].join('')),
+      ]),
+    }),
+  ]);
+  const originalLibraryEntries = libraryXmlEntries.map((entry) => ({ ...entry }));
+  const adapted = adaptFlaXflDisplaySource(documentXml, libraryXmlEntries);
+  if (!adapted.ok) throw new Error(`Adapter fixture failed: ${adapted.message}`);
+
+  return { adapted: adapted.source, documentXml, libraryXmlEntries, originalLibraryEntries };
+}
+
+function buildMotionAdapterFixture(
+  startMetadata = '',
+  endMetadata = '',
+  endLibraryItemName = 'moving-target',
+  duration = 2,
+  holdEndpoint = false,
+  terminalFrameAttributes: Readonly<Partial<Record<'tweenType' | 'motionTweenSnap' | 'keyMode', string>>> = {},
+  startKeyMode = '22017',
+) {
+  const motionFrame = (
+    index: number,
+    duration: number,
+    target: string,
+    transform: string,
+    metadata: string,
+    keyMode = startKeyMode,
+  ) =>
+    `<DOMFrame index="${index}" duration="${duration}" tweenType="motion" motionTweenSnap="true" keyMode="${keyMode}">${metadata}` +
+    `<elements><DOMSymbolInstance libraryItemName="${target}" symbolType="graphic" loop="single frame"${index === 0 ? '' : ' selected="true"'}>` +
+    `${transform}<transformationPoint><Point x="5" y="7"/></transformationPoint></DOMSymbolInstance></elements></DOMFrame>`;
+  const terminalFrame = () => {
+    const attributes = {
+      index: String(duration),
+      duration: '1',
+      keyMode: '15872',
+      ...terminalFrameAttributes,
+    };
+    const attributeXml = Object.entries(attributes)
+      .filter(([, value]) => value !== undefined)
+      .map(([name, value]) => `${name}="${value}"`)
+      .join(' ');
+    return `<DOMFrame ${attributeXml}><elements>` +
+      `<DOMSymbolInstance libraryItemName="${endLibraryItemName}" symbolType="graphic" loop="single frame">` +
+      `${transformedMatrix(0, 1, -1, 0, 20, 30)}<transformationPoint><Point x="5" y="7"/></transformationPoint>` +
+      `</DOMSymbolInstance></elements></DOMFrame>`;
+  };
+  const endpointFrame = holdEndpoint
+    ? terminalFrame()
+    : motionFrame(duration, 1, endLibraryItemName, transformedMatrix(0, 1, -1, 0, 20, 30), endMetadata);
+  const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', [
+    layer('scene', [frame(0, symbol('motion-root'))].join('')),
+  ])}</timelines></DOMDocument>`;
+  const libraryXmlEntries = [{
+    name: 'LIBRARY/motion-root.xml',
+    xml: graphic('motion-root', [layer('moving', [
+      motionFrame(0, duration, 'moving-target', transformedMatrix(1, 0, 0, 1, 0, 0), startMetadata),
+      endpointFrame,
+    ].join(''))]),
+  }];
+  const adapted = adaptFlaXflDisplaySource(documentXml, libraryXmlEntries);
+  if (!adapted.ok) throw new Error(`Motion adapter fixture failed: ${adapted.message}`);
+  return adapted.source;
+}
+
+function descriptor(source: ReturnType<typeof buildAdapterFixture>['adapted'], name: string): FlaXflGraphicSymbolDescriptor {
+  const result = source.graphicSymbols.find((candidate) => candidate.sourceLibraryItemName === name);
+  if (!result) throw new Error(`Missing Graphic fixture: ${name}`);
+  return result;
+}
+
+function elementNames(elements: readonly { readonly kind: string; readonly libraryItemName?: string }[]): string[] {
+  return elements.map((element) => element.libraryItemName ?? element.kind);
+}
+
+describe('XFL display-list adapter painter-order normalization (#700)', () => {
+  it('normalizes Scene, Graphic, and nested Graphic layers once while preserving within-layer order and transforms', () => {
+    const { adapted: source, documentXml, libraryXmlEntries, originalLibraryEntries } = buildAdapterFixture();
+    const scene = source.sceneTimelines[0];
+    expect(scene).toBeDefined();
+    if (!scene) return;
+
+    const sceneContext = scene.frameContext;
+    expect(sceneContext.layers.map((candidate) => candidate.name)).toEqual(['scene-back', 'scene-front']);
+    expect(elementNames(sceneContext.layers[0]!.elements)).toEqual(['scene-back-a', 'scene-back-b']);
+    expect(elementNames(sceneContext.layers[1]!.elements)).toEqual(['outer', 'scene-front-after']);
+    expect(sceneContext.layers[1]!.elements[0]).toMatchObject({
+      kind: 'symbol',
+      localTransform: { tx: 9, ty: 11 },
+    });
+
+    const outer = descriptor(source, 'outer');
+    const inner = descriptor(source, 'inner');
+    expect(outer.frameContext.layers.map((candidate) => candidate.name)).toEqual(['outer-back', 'outer-front']);
+    expect(outer.frameContext.layers[1]!.elements.map((element) => element.kind === 'symbol'
+      ? element.libraryItemName
+      : element.kind === 'bitmap' ? element.libraryItemName : element.kind)).toEqual([
+      'inner',
+      'outer-front-after',
+    ]);
+    expect(inner.frameContext.layers.map((candidate) => candidate.name)).toEqual(['inner-back', 'inner-front']);
+    expect(elementNames(inner.frameContext.layers[1]!.elements)).toEqual(['inner-front-a', 'inner-front-b']);
+
+    const resolved = resolveFlaDisplayList({
+      root: { kind: 'scene', name: scene.name, frameContext: sceneContext },
+      symbols: source.symbols,
+    });
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) return;
+    expect(resolved.displayList.layers.map((candidate) => candidate.name)).toEqual(['scene-back', 'scene-front']);
+    const outerNode = resolved.displayList.layers[1]!.children[0];
+    expect(outerNode).toMatchObject({ kind: 'group', symbolLibraryItemName: 'outer', worldTransform: { tx: 9, ty: 11 } });
+    if (outerNode?.kind !== 'group') return;
+    expect(outerNode.children[0]?.kind).toBe('shape');
+    const innerNode = outerNode.children[1];
+    expect(innerNode).toMatchObject({ kind: 'group', symbolLibraryItemName: 'inner', worldTransform: { tx: 22, ty: 28 } });
+    if (innerNode?.kind !== 'group') return;
+    expect(innerNode.children.map((candidate) => candidate.kind === 'bitmap'
+      ? candidate.libraryItemName
+      : candidate.kind)).toEqual(['shape', 'inner-front-a', 'inner-front-b']);
+    expect(outerNode.children[2]).toMatchObject({ kind: 'bitmap', libraryItemName: 'outer-front-after' });
+    expect(resolved.displayList.layers[1]!.children[1]).toMatchObject({
+      kind: 'bitmap',
+      libraryItemName: 'scene-front-after',
+      worldTransform: { tx: 21, ty: 22 },
+    });
+
+    // Resolving nested symbols must not reorder the original archive entry
+    // list or mutate the selected Scene frame context.
+    expect(source.sceneTimelines[0]!.frameContext).toEqual(sceneContext);
+    expect(libraryXmlEntries).toEqual(originalLibraryEntries);
+    expect(documentXml).toContain('<DOMLayer name="scene-front">');
+  });
+
+  it('normalizes explicitly selected Scene and Graphic frames without changing element order', () => {
+    const { adapted: source } = buildAdapterFixture();
+    const scene = source.sceneTimelines[0];
+    expect(scene).toBeDefined();
+    if (!scene) return;
+
+    const selectedScene = source.buildSceneFrameContext(scene.xml, 1, 'selected-scene-frame');
+    expect(selectedScene.ok).toBe(true);
+    if (!selectedScene.ok) return;
+    expect(selectedScene.value.frameIndex).toBe(1);
+    expect(selectedScene.value.layers.map((candidate) => candidate.name)).toEqual(['scene-back', 'scene-front']);
+    expect(elementNames(selectedScene.value.layers[0]!.elements)).toEqual([
+      'scene-back-frame1-a',
+      'scene-back-frame1-b',
+    ]);
+    expect(elementNames(selectedScene.value.layers[1]!.elements)).toEqual([
+      'scene-front-frame1-a',
+      'scene-front-frame1-b',
+    ]);
+
+    const outer = descriptor(source, 'outer');
+    const selectedGraphic = source.buildGraphicFrameContext(
+      outer.timelineXml,
+      outer.frameSpanIndex,
+      1,
+      'selected-outer-frame',
+    );
+    expect(selectedGraphic.ok).toBe(true);
+    if (!selectedGraphic.ok) return;
+    expect(selectedGraphic.value.frameIndex).toBe(1);
+    expect(selectedGraphic.value.layers.map((candidate) => candidate.name)).toEqual(['outer-back', 'outer-front']);
+    expect(elementNames(selectedGraphic.value.layers[1]!.elements)).toEqual([
+      'outer-front-frame1-a',
+      'outer-front-frame1-b',
+    ]);
+  });
+
+  it('resolves the bounded two-frame motion span through the production Graphic frame adapter', () => {
+    const source = buildMotionAdapterFixture();
+    const target = descriptor(source, 'motion-root');
+
+    const selected = source.buildGraphicFrameContext(
+      target.timelineXml,
+      target.frameSpanIndex,
+      1,
+      'bounded-motion-interior',
+    );
+
+    expect(selected.ok).toBe(true);
+    if (!selected.ok) return;
+    expect(selected.value.frameIndex).toBe(1);
+    expect(selected.value.layers).toHaveLength(1);
+    expect(selected.value.layers[0]?.elements).toHaveLength(1);
+    const interpolated = selected.value.layers[0]?.elements[0];
+    expect(interpolated).toMatchObject({
+      kind: 'symbol',
+      libraryItemName: 'moving-target',
+      symbolType: 'graphic',
+      localTransform: {
+        tx: 10,
+        ty: 15,
+      },
+    });
+    if (interpolated?.kind !== 'symbol' || !interpolated.localTransform) return;
+    expect(interpolated.localTransform.a).toBeCloseTo(Math.SQRT1_2, 12);
+    expect(interpolated.localTransform.b).toBeCloseTo(Math.SQRT1_2, 12);
+    expect(interpolated.localTransform.c).toBeCloseTo(-Math.SQRT1_2, 12);
+    expect(interpolated.localTransform.d).toBeCloseTo(Math.SQRT1_2, 12);
+  });
+
+  it('resolves bounded three-frame and Issue #713 span lengths while rejecting other durations', () => {
+    const source = buildMotionAdapterFixture('', '', 'moving-target', 3);
+    const target = descriptor(source, 'motion-root');
+
+    for (const [frameIndex, progress] of [[1, 1 / 3], [2, 2 / 3]] as const) {
+      const selected = source.buildGraphicFrameContext(
+        target.timelineXml,
+        target.frameSpanIndex,
+        frameIndex,
+        `bounded-three-frame-motion-${frameIndex}`,
+      );
+
+      expect(selected.ok).toBe(true);
+      if (!selected.ok) continue;
+      const interpolated = selected.value.layers[0]?.elements[0];
+      expect(interpolated?.kind).toBe('symbol');
+      if (interpolated?.kind !== 'symbol' || !interpolated.localTransform) continue;
+      expect(interpolated.localTransform.tx).toBeCloseTo(20 * progress, 12);
+      expect(interpolated.localTransform.ty).toBeCloseTo(30 * progress, 12);
+      expect(interpolated.localTransform.a).toBeCloseTo(Math.cos(Math.PI / 2 * progress), 12);
+      expect(interpolated.localTransform.b).toBeCloseTo(Math.sin(Math.PI / 2 * progress), 12);
+    }
+
+    for (const duration of [5, 6, 14]) {
+      const longerSpan = buildMotionAdapterFixture('', '', 'moving-target', duration);
+      const longerTarget = descriptor(longerSpan, 'motion-root');
+      const selectedLonger = longerSpan.buildGraphicFrameContext(
+        longerTarget.timelineXml,
+        longerTarget.frameSpanIndex,
+        Math.floor(duration / 2),
+        `bounded-source-motion-${duration}`,
+      );
+      expect(selectedLonger.ok).toBe(true);
+    }
+
+    const holdEndpoint = buildMotionAdapterFixture('', '', 'moving-target', 5, true);
+    const holdTarget = descriptor(holdEndpoint, 'motion-root');
+    const lastInterior = holdEndpoint.buildGraphicFrameContext(
+      holdTarget.timelineXml,
+      holdTarget.frameSpanIndex,
+      4,
+      'motion-ending-at-held-keyframe',
+    );
+    expect(lastInterior.ok).toBe(true);
+
+    const unsupportedLongerSpan = buildMotionAdapterFixture('', '', 'moving-target', 4);
+    const unsupportedTarget = descriptor(unsupportedLongerSpan, 'motion-root');
+    const unsupported = unsupportedLongerSpan.buildGraphicFrameContext(
+      unsupportedTarget.timelineXml,
+      unsupportedTarget.frameSpanIndex,
+      2,
+      'unsupported-four-frame-motion',
+    );
+    expect(unsupported.ok).toBe(false);
+    if (!unsupported.ok) expect(unsupported.message).toContain('bounded transform-only subset');
+  });
+
+  it('admits only the authorized duration29 transform pair with terminal keyMode 9728', () => {
+    const duration29 = buildMotionAdapterFixture(
+      '',
+      '',
+      'moving-target',
+      29,
+      true,
+      { keyMode: '9728' },
+    );
+    const target = descriptor(duration29, 'motion-root');
+
+    for (const [frameIndex, progress] of [[1, 1 / 29], [14, 14 / 29], [28, 28 / 29]] as const) {
+      const selected = duration29.buildGraphicFrameContext(
+        target.timelineXml,
+        target.frameSpanIndex,
+        frameIndex,
+        `duration29-terminal9728-frame-${frameIndex}`,
+      );
+
+      expect(selected.ok).toBe(true);
+      if (!selected.ok) continue;
+      const interpolated = selected.value.layers[0]?.elements[0];
+      expect(interpolated?.kind).toBe('symbol');
+      if (interpolated?.kind !== 'symbol' || !interpolated.localTransform) continue;
+      expect(interpolated.localTransform.tx).toBeCloseTo(20 * progress, 12);
+      expect(interpolated.localTransform.ty).toBeCloseTo(30 * progress, 12);
+      expect(interpolated.localTransform.a).toBeCloseTo(Math.cos(Math.PI / 2 * progress), 12);
+      expect(interpolated.localTransform.b).toBeCloseTo(Math.sin(Math.PI / 2 * progress), 12);
+    }
+
+    const explicitNoneTerminal = buildMotionAdapterFixture(
+      '',
+      '',
+      'moving-target',
+      29,
+      true,
+      { keyMode: '9728', tweenType: 'none' },
+    );
+    const explicitNoneTarget = descriptor(explicitNoneTerminal, 'motion-root');
+    expect(explicitNoneTerminal.buildGraphicFrameContext(
+      explicitNoneTarget.timelineXml,
+      explicitNoneTarget.frameSpanIndex,
+      1,
+      'duration29-terminal9728-explicit-none',
+    ).ok).toBe(true);
+
+    const expectBlocked = (
+      label: string,
+      duration = 29,
+      terminalAttributes: Readonly<Partial<Record<'tweenType' | 'motionTweenSnap' | 'keyMode', string>>> = {
+        keyMode: '9728',
+      },
+      endLibraryItemName = 'moving-target',
+      startKeyMode = '22017',
+      startMetadata = '',
+    ) => {
+      const source = buildMotionAdapterFixture(
+        startMetadata,
+        '',
+        endLibraryItemName,
+        duration,
+        true,
+        terminalAttributes,
+        startKeyMode,
+      );
+      const fixtureTarget = descriptor(source, 'motion-root');
+      const result = source.buildGraphicFrameContext(
+        fixtureTarget.timelineXml,
+        fixtureTarget.frameSpanIndex,
+        1,
+        `duration29-terminal9728-negative-${label}`,
+      );
+      expect(result.ok, label).toBe(false);
+      if (!result.ok) expect(result.message).toContain('bounded transform-only subset');
+    };
+
+    expectBlocked('duration30', 30);
+    expectBlocked('duration72', 72);
+    expectBlocked('terminal9728-with-snap', 29, { keyMode: '9728', motionTweenSnap: 'true' });
+    expectBlocked('terminal9728-with-motion-role', 29, { keyMode: '9728', tweenType: 'motion' });
+    expectBlocked('unknown-terminal-keyMode', 29, { keyMode: '12345' });
+    expectBlocked('start-keyMode-9728', 29, { keyMode: '9728' }, 'moving-target', '9728');
+    expectBlocked('easing-metadata', 29, { keyMode: '9728' }, 'moving-target', '22017',
+      '<Ease><Property name="x" value="1"/></Ease>');
+    expectBlocked('motion-path-metadata', 29, { keyMode: '9728' }, 'moving-target', '22017',
+      '<MotionPath><Point x="1" y="2"/></MotionPath>');
+    expectBlocked('different-endpoint-identity', 29, { keyMode: '9728' }, 'different-target');
+  });
+
+  it('keeps motion tween interiors fail-closed when source easing or target identity changes', () => {
+    const eased = buildMotionAdapterFixture('<Ease><Property name="x" value="1"/></Ease>');
+    const easedTarget = descriptor(eased, 'motion-root');
+    const easedResult = eased.buildGraphicFrameContext(
+      easedTarget.timelineXml,
+      easedTarget.frameSpanIndex,
+      1,
+      'eased-motion-interior',
+    );
+    expect(easedResult.ok).toBe(false);
+    if (!easedResult.ok) expect(easedResult.message).toContain('bounded transform-only subset');
+
+    const mismatched = buildMotionAdapterFixture('', '', 'different-target');
+    const mismatchedTarget = descriptor(mismatched, 'motion-root');
+    const mismatchedResult = mismatched.buildGraphicFrameContext(
+      mismatchedTarget.timelineXml,
+      mismatchedTarget.frameSpanIndex,
+      1,
+      'mismatched-motion-interior',
+    );
+    expect(mismatchedResult.ok).toBe(false);
+    if (!mismatchedResult.ok) expect(mismatchedResult.message).toContain('bounded transform-only subset');
+  });
+});
+
+describe('Scene parent span tween metadata (#722)', () => {
+  function sceneElement(tweenType: string) {
+    const sceneFrame =
+      `<DOMFrame index="0" duration="4" tweenType="${tweenType}"><elements>${symbol('child', 1, 2)}</elements></DOMFrame>`;
+    const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', [
+      layer('scene', sceneFrame),
+    ])}</timelines></DOMDocument>`;
+    const adapted = adaptFlaXflDisplaySource(documentXml, [
+      { name: 'LIBRARY/child.xml', xml: graphic('child', [layer('child-layer', frame(0, shape()))]) },
+    ]);
+    if (!adapted.ok) throw new Error(`Scene fixture failed: ${adapted.message}`);
+    const element = adapted.source.sceneTimelines[0]?.frameContext.layers[0]?.elements[0];
+    if (!element || element.kind !== 'symbol') throw new Error('Missing Scene symbol element');
+    return element;
+  }
+
+  it('marks a static Scene-owned span as none and a tweened Scene-owned span as motion', () => {
+    expect(sceneElement('none')).toMatchObject({
+      kind: 'symbol',
+      libraryItemName: 'child',
+      sourceParentSpanTweenType: 'none',
+    });
+    const tweened = sceneElement('motion');
+    expect(tweened.sourceParentSpanTweenType).toBe('motion');
+    expect(tweened.sourceParentSpanTweenType).not.toBe('none');
+  });
+
+  it('defaults a Scene-owned span with no tween type attribute to none', () => {
+    const sceneFrame = `<DOMFrame index="0" duration="4"><elements>${symbol('child', 1, 2)}</elements></DOMFrame>`;
+    const documentXml = `<DOMDocument width="200" height="100"><timelines>${timeline('Scene 1', [
+      layer('scene', sceneFrame),
+    ])}</timelines></DOMDocument>`;
+    const adapted = adaptFlaXflDisplaySource(documentXml, [
+      { name: 'LIBRARY/child.xml', xml: graphic('child', [layer('child-layer', frame(0, shape()))]) },
+    ]);
+    if (!adapted.ok) throw new Error(`Scene fixture failed: ${adapted.message}`);
+    const element = adapted.source.sceneTimelines[0]?.frameContext.layers[0]?.elements[0];
+    expect(element).toMatchObject({ kind: 'symbol', libraryItemName: 'child', sourceParentSpanTweenType: 'none' });
+  });
+});

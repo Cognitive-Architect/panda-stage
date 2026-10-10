@@ -81,7 +81,8 @@ function decodeCoord(value: string): number {
       }
     }
 
-    // Parse fractional part (always positive, added/subtracted based on int sign)
+    // Parse the unsigned fractional magnitude. The signed integer part already
+    // carries the coordinate's sign, so XFL combines them by addition.
     let fracPart = 0;
     if (fracHex && fracHex.length > 0) {
       const fracValue = parseInt(fracHex, 16);
@@ -91,8 +92,7 @@ function decodeCoord(value: string): number {
       }
     }
 
-    // Combine, preserving sign for the fractional part
-    const result = intPart >= 0 ? intPart + fracPart : intPart - fracPart;
+    const result = intPart + fracPart;
 
     // Hex coordinates are in twips (1/20 of a pixel), same as decimal
     return result / COORD_SCALE;

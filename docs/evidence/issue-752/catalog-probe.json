@@ -1,0 +1,324 @@
+{
+  "schemaVersion": "issue752-character-catalog-probe/1",
+  "parserPath": "production Main chooseAndInspect -> production recovery/preflight -> Static Snapshot catalog",
+  "sourceSelection": "PANDA_STAGE_FLA_ACCEPTANCE_SOURCE used only to select each source in the unpackaged read-only probe",
+  "projectOpened": false,
+  "commitApiCalled": false,
+  "results": [
+    {
+      "source": {
+        "format": "fla",
+        "basename": "汉服修仙女.fla",
+        "byteLength": 3264205,
+        "sha256": "10edd07e226db3296a5cac01b4cdf9654385ce477894a8f7b4d0c90db9e327f7",
+        "parser": {
+          "package": "lifeart/fla-viewer",
+          "entrypoint": "FLAParser.parse",
+          "commit": "048000ccab67469980b8dedd1fc2b65a02d2b164"
+        }
+      },
+      "sha256Before": "6af14990029d4ced2c4e305721321835180c1bf041178a8799e1d14a1f62e535",
+      "sha256After": "6af14990029d4ced2c4e305721321835180c1bf041178a8799e1d14a1f62e535",
+      "hashInvariant": true,
+      "ok": true,
+      "sessionId": "856150a1-9fe8-423a-8fde-5132e57bc92c",
+      "document": {
+        "frameRate": 30
+      },
+      "structure": {
+        "sceneCount": 1,
+        "totalTimelineCount": 10,
+        "layerCount": 14,
+        "frameCount": 51,
+        "tweenCount": 16,
+        "symbolCount": 9,
+        "movieClipCount": 0,
+        "graphicCount": 9,
+        "buttonCount": 0
+      },
+      "summary": {
+        "placedInstanceCount": 0,
+        "libraryOnlyMediaCount": 0
+      },
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "6af14990029d4ced2c4e305721321835180c1bf041178a8799e1d14a1f62e535",
+        "originalSourceByteLength": 3264205,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "entries": [
+        {
+          "renderTargetId": "fla-render-target-f4762bb11dab31ee63daedea0efc13962ce52752e1c9abd790671b3ad32f3cb1",
+          "kind": "scene",
+          "userLabel": "主场景 · 第 1 帧",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-106bdafd4a330d6c43443914a48082b52170913f4f187de0eab8387410adbb04",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙女-cilisucai.com/修仙女-cilisucai.com1",
+          "sourceLibraryItemName": "修仙女-cilisucai.com/修仙女-cilisucai.com1",
+          "frameCount": 30,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-5613678915cbac146f271efe64349109fe7f1d464116be82808c3cdbd8df5cd7",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙女-cilisucai.com/修仙女-cilisucai.com5",
+          "sourceLibraryItemName": "修仙女-cilisucai.com/修仙女-cilisucai.com5",
+          "frameCount": 21,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-f525db78bf59c7e1b736c9f4e152dcd7d4aae804058aaa676496535c1575bf18",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙女-cilisucai.com/修仙女-cilisucai.com2",
+          "sourceLibraryItemName": "修仙女-cilisucai.com/修仙女-cilisucai.com2",
+          "frameCount": 1631,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-125a2a615f5429015ac6a407081ea5f48d19fa35b87300137a95bf54e6a7019a",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙女-cilisucai.com/修仙女-cilisucai.com3",
+          "sourceLibraryItemName": "修仙女-cilisucai.com/修仙女-cilisucai.com3",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-1dee3ec08a40a86f37cd35c4d1002bc127a1bab9ebaea08dcc7e16da12b9c983",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙女-cilisucai.com/修仙女-cilisucai.com4",
+          "sourceLibraryItemName": "修仙女-cilisucai.com/修仙女-cilisucai.com4",
+          "frameCount": 11,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-a9048b0b04c8620b09d067e52ca91b649f10960a2b4c1ce5d532d0ee3c423d4d",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙女-cilisucai.com/修仙女-cilisucai.com6",
+          "sourceLibraryItemName": "修仙女-cilisucai.com/修仙女-cilisucai.com6",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-68d9fa29518115cc02217742fe289f7095e2eef8e930231ea0c7ebb36401c810",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙女-cilisucai.com/修仙女-cilisucai.com7",
+          "sourceLibraryItemName": "修仙女-cilisucai.com/修仙女-cilisucai.com7",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-39589fb4cfbdb2eaf36f00f9deb9196b82222370ead840b6a8daee4ba6203aaa",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙女-cilisucai.com/修仙女-cilisucai.com8",
+          "sourceLibraryItemName": "修仙女-cilisucai.com/修仙女-cilisucai.com8",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-38da3665c159feec90adc8b846b8edebd1bf812f8eef0d75cf76946149931025",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙女-cilisucai.com/修仙女-cilisucai.com9",
+          "sourceLibraryItemName": "修仙女-cilisucai.com/修仙女-cilisucai.com9",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        }
+      ]
+    },
+    {
+      "source": {
+        "format": "fla",
+        "basename": "蓝白古装男.fla",
+        "byteLength": 636578,
+        "sha256": "7cd707851674a90f0b7bc6ef6a10e17f1ffc8f071df970e3e95f94457c5fdbe2",
+        "parser": {
+          "package": "lifeart/fla-viewer",
+          "entrypoint": "FLAParser.parse",
+          "commit": "048000ccab67469980b8dedd1fc2b65a02d2b164"
+        }
+      },
+      "sha256Before": "0d4aecbc159990ce54b9d0d8c31ea0f3354cd7ed86df77bac19a562dfc761fa2",
+      "sha256After": "0d4aecbc159990ce54b9d0d8c31ea0f3354cd7ed86df77bac19a562dfc761fa2",
+      "hashInvariant": true,
+      "ok": true,
+      "sessionId": "7526fd5a-084c-481f-ab8d-6b819304a2f8",
+      "document": {
+        "frameRate": 25
+      },
+      "structure": {
+        "sceneCount": 1,
+        "totalTimelineCount": 13,
+        "layerCount": 18,
+        "frameCount": 49,
+        "tweenCount": 8,
+        "symbolCount": 12,
+        "movieClipCount": 0,
+        "graphicCount": 12,
+        "buttonCount": 0
+      },
+      "summary": {
+        "placedInstanceCount": 0,
+        "libraryOnlyMediaCount": 0
+      },
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "0d4aecbc159990ce54b9d0d8c31ea0f3354cd7ed86df77bac19a562dfc761fa2",
+        "originalSourceByteLength": 636578,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "entries": [
+        {
+          "renderTargetId": "fla-render-target-a6a36aea5f02587da8add2d807e32b372cf60a3f2012e971e31ab719a578e023",
+          "kind": "scene",
+          "userLabel": "主场景 · 第 1 帧",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-61150b04b44bc3e78c7f403b391bb95047031e97b7c1b0843c599e143a808636",
+          "kind": "graphic-symbol",
+          "userLabel": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com1",
+          "sourceLibraryItemName": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com1",
+          "frameCount": 25,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-40a02fd20ddd78113535e89ff097a9bcf546db3cc97c850ba7704d9c71a5410a",
+          "kind": "graphic-symbol",
+          "userLabel": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com8",
+          "sourceLibraryItemName": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com8",
+          "frameCount": 21,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-ad0286ed21084a87b1aa38fb5e3a7aacf19bd2a249ce97c4c77f9eb1aa6b627b",
+          "kind": "graphic-symbol",
+          "userLabel": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com2",
+          "sourceLibraryItemName": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com2",
+          "frameCount": 7,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-67ea326c11d7b5fe54506580c7d53a03d7271e6c044389f4869d946175492646",
+          "kind": "graphic-symbol",
+          "userLabel": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com3",
+          "sourceLibraryItemName": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com3",
+          "frameCount": 7,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-1a903cdd0e7e690107292a4891f3ce0c6a93e382725ce5c5e785d02efb1f2b7b",
+          "kind": "graphic-symbol",
+          "userLabel": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com4",
+          "sourceLibraryItemName": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com4",
+          "frameCount": 2,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-5cac1a387267d75ddd519a0a058216fdd7c2294334c07d5e2b7dca5f12dcfbf0",
+          "kind": "graphic-symbol",
+          "userLabel": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com5",
+          "sourceLibraryItemName": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com5",
+          "frameCount": 1102,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-7ceba6f36d7c8197581a4efe2e22d4c23922f2858914787b55a4a38ae30111e3",
+          "kind": "graphic-symbol",
+          "userLabel": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com6",
+          "sourceLibraryItemName": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com6",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-ae2a08d41e329870cda89c710b5241cbf86acba56ac82ac0ee1ebf567df87504",
+          "kind": "graphic-symbol",
+          "userLabel": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com7",
+          "sourceLibraryItemName": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com7",
+          "frameCount": 6,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-19654f1796805f75ab5d8412491a5502c92d54ba629afb97d8bc2ac10359f1f5",
+          "kind": "graphic-symbol",
+          "userLabel": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com9",
+          "sourceLibraryItemName": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com9",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-1ba5d80f688dfe593d1937099741fe0bf4a5dd3e48d9c64c9adecb973f090596",
+          "kind": "graphic-symbol",
+          "userLabel": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com10",
+          "sourceLibraryItemName": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com10",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-3dd4ec06ba4c34133ceebb1548961e672c336ed38b08e8e6c79abc767959cafb",
+          "kind": "graphic-symbol",
+          "userLabel": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com11",
+          "sourceLibraryItemName": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com11",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-b97d45829e8c25eef56bc84ab53eea911325500f7499f5a62960da4ea38b7e9d",
+          "kind": "graphic-symbol",
+          "userLabel": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com12",
+          "sourceLibraryItemName": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com12",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        }
+      ]
+    }
+  ]
+}

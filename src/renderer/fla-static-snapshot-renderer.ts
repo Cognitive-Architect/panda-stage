@@ -4,9 +4,10 @@
  * Issue #287 R1-B. Runs inside the isolated BrowserWindow created by
  * FlaStaticSnapshotWindowManager. It receives a Panda-built, bounded SVG
  * string (never the FLA source), draws it onto a transparent canvas, and
- * returns the encoded PNG bytes. The SVG is self-contained vector content
- * (no <image>/<script>/external refs), so the canvas is never tainted and
- * toBlob/toDataURL is safe.
+ * returns the encoded PNG bytes. The SVG may contain vector paths and PNGs
+ * embedded as data URIs; it contains no script or external references, so
+ * rasterization makes no filesystem/network request and does not taint the
+ * canvas.
  *
  * Isolation guarantees (per R1-B / R0 invariants):
  *  - no Node, no fs, no network (sandbox + CSP);
