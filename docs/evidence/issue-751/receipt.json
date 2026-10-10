@@ -4,6 +4,11 @@
   "acceptance": {
     "app": "Windows Electron production build",
     "sourceChooser": "test-only PANDA_STAGE_FLA_ACCEPTANCE_SOURCE injection; native file chooser bypassed; FLA Workbench, preview, import transaction, Asset Library and project UI were exercised",
+    "nativeFileChooser": {
+      "status": "UNPROVEN",
+      "lastAttempt": "issue751-v1-native-picker-20261010-run4",
+      "result": "Windows chooser opened, but automation could not foreground it or enter the source path; the harness timed out before the Workbench route appeared"
+    },
     "humanVisualAcceptance": "PENDING_OWNER"
   },
   "source": {
@@ -147,9 +152,32 @@
       "command": "pnpm test:integration",
       "status": "PASS",
       "testFilesPassed": 38,
-      "testsPassed": 189
+      "testsPassed": 189,
+      "runBeforePreviewCssFix": true
     },
-    "productionCodeChanged": false
+    "focusedPreviewTests": {
+      "command": "pnpm exec vitest run tests/unit/fla-stage-d-render-workbench.test.ts tests/unit/fla-stage-d-v11-layout.test.ts",
+      "status": "PASS",
+      "testFilesPassed": 2,
+      "testsPassed": 8
+    },
+    "focusedLint": {
+      "command": "pnpm exec eslint tests/unit/fla-stage-d-render-workbench.test.ts",
+      "status": "PASS"
+    },
+    "productionBuild": {
+      "command": "pnpm build",
+      "status": "PASS"
+    },
+    "previewPresentation": {
+      "status": "PASS",
+      "naturalImageSizePx": [318, 435],
+      "imageElementCssSize": [512, 385.604],
+      "stageCssSize": [513.333, 386.938],
+      "fullArtworkVisible": true,
+      "screenshot": "02-selected-prop-preview.png"
+    },
+    "productionCodeChanged": true
   },
   "humanVisualAcceptance": "PENDING_OWNER"
 }
