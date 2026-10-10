@@ -283,6 +283,24 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual([]);
   });
 
+  it('routes only Issue #751 acceptance evidence through CI policy self-tests', () => {
+    const result = draft([
+      change('docs/evidence/issue-751/README.md', 'A'),
+      change('docs/evidence/issue-751/receipt.json', 'A'),
+      change('docs/evidence/issue-751/06-native-mouse-drag-placed.png', 'A'),
+      change('docs/evidence/issue-751/07-native-mouse-drag-reopened.png', 'A'),
+    ]);
+
+    expect(result.tier).toBe('ci-selftest');
+    expect(result.matchedRouteIds).toEqual(['issue751-acceptance-evidence']);
+    expect(result.suites).toEqual([]);
+    expect(result.unknownPaths).toEqual([]);
+
+    const unrelated = draft([change('docs/evidence/issue-752/receipt.json', 'A')]);
+    expect(unrelated.tier).toBe('unknown');
+    expect(unrelated.unknownPaths).toEqual(['docs/evidence/issue-752/receipt.json']);
+  });
+
   it('retains focused checks for Issue #745 source code changes alongside evidence', () => {
     const result = draft([
       change('src/main/services/fla-static-snapshot-svg-builder.ts'),

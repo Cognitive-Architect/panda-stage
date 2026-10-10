@@ -3,7 +3,7 @@
   "status": "PARTIAL",
   "acceptance": {
     "app": "Windows Electron production build",
-    "sourceChooser": "test-only PANDA_STAGE_FLA_ACCEPTANCE_SOURCE injection; FLA Workbench button, preview, import transaction, Asset Library and existing project save/reopen were exercised",
+    "sourceChooser": "test-only PANDA_STAGE_FLA_ACCEPTANCE_SOURCE injection; native file chooser bypassed; FLA Workbench, preview, import transaction, Asset Library and project UI were exercised",
     "humanVisualAcceptance": "PENDING_OWNER"
   },
   "source": {
@@ -52,7 +52,7 @@
       ],
       "dropDelivered": false,
       "layerCreated": false,
-      "conclusion": "Actual card-to-canvas drag remains unverified; HUMAN VISUAL PASS is pending owner."
+      "conclusion": "This earlier BrowserWindow.sendInputEvent attempt failed; a later Windows OS-level mouse drag succeeded and is recorded separately under nativeMouseDrag."
     }
   },
   "persistence": {
@@ -109,6 +109,37 @@
       "assetLibrary": "03b-asset-library.png",
       "placedInShot": "04-placed-in-shot.png",
       "reopened": "05-reopened-project.png"
+    }
+  },
+  "nativeMouseDrag": {
+    "run": "issue751-v1-t06",
+    "status": "NATIVE_MOUSE_DRAG_SAVE_REOPEN_PASS",
+    "input": "Win32 SetCursorPos + mouse_event",
+    "projectRoot": "D:\\PandaStage-Acceptance\\issue751-v1-t06\\projects\\Issue751 Alchemical Furnace 1791596746625.pandastage",
+    "assetId": "a718da9c-bb3d-4d8b-8470-d8979b6a8ebf",
+    "layerId": "3e930756-2078-497b-ac02-fc015e74cd84",
+    "preDropLayerCount": 0,
+    "savedLayerCount": 1,
+    "position": {
+      "x": 961.0246679316888,
+      "y": 541.0246679316888
+    },
+    "screenPoints": {
+      "start": {
+        "x": 620,
+        "y": 650
+      },
+      "end": {
+        "x": 1254,
+        "y": 467
+      }
+    },
+    "deviceScale": 1.5,
+    "sourceHashInvariant": true,
+    "reopenedProjectImageVisible": true,
+    "screenshots": {
+      "placedInShot": "06-native-mouse-drag-placed.png",
+      "reopened": "07-native-mouse-drag-reopened.png"
     }
   },
   "validation": {

@@ -176,6 +176,18 @@
         "notes": "Issue #749 bounded Male linear-gradient stroke contract evidence only. Draft evidence changes use CI policy self-tests; production renderer changes independently retain focused/full checks. Other unregistered Issue evidence paths remain fail-closed."
       },
       {
+        "id": "issue751-acceptance-evidence",
+        "sourcePatterns": ["docs/evidence/issue-751/**"],
+        "testPatterns": [],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "draftPolicy": "ci-selftest",
+        "incrementalEligible": false,
+        "owner": "fla-rendering-research",
+        "notes": "Issue #751 V1 acceptance evidence only; production behavior continues to match existing subsystem routes. Draft changes use existing CI policy self-tests; unregistered evidence paths remain fail-closed."
+      },
+      {
         "id": "cross-process-core",
         "sourcePatterns": [
           "src/main/**",
