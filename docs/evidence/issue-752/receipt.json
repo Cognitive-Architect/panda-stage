@@ -62,10 +62,10 @@
   ],
   "acceptance": {
     "reviewableFullCharacterImages": "EVIDENCED",
-    "workbenchPreviewImportPlaceSaveReopen": "NOT_VERIFIED",
+    "workbenchPreviewImportPlaceSaveReopen": "RENDERER_HARNESS_DATA_OBSERVED_BEHIND_OPEN_NATIVE_DIALOG; USER_VISIBLE_FLOW_NOT_VERIFIED",
     "hanfuControlUnchanged": "EVIDENCED_BY_HASH",
     "rollback": "UNIT_TESTED_WITH_INJECTED_POST_SAVE_FAULT",
-    "realUnsupportedRuntimeTarget": "NOT_FOUND_IN_SCANNED_CORPUS; UNVERIFIED",
+    "realUnsupportedRuntimeTarget": "RUNTIME_FAIL_CLOSED_OBSERVED_ON_CATALOG_SUPPORTED_TARGET; PREFLIGHT_UNSUPPORTED_CLASSIFICATION_UNVERIFIED",
     "ownerVisualPassForIssue752": "PENDING"
   },
   "validation": [
@@ -84,8 +84,8 @@
     }
   ],
   "verticalRun": {
-    "status": "INCOMPLETE",
-    "reason": "After the owner closed Adobe Animate, the exact Hanfu path was entered and read back in the foreground Electron-owned native FLA dialog. Automated activation of its visible 检查 FLA button did not close the dialog; a manual-click staging run later timed out before the Workbench route. Fresh acceptance projects remained at 0 assets and 1 shot, the Hanfu source still matched its frozen SHA-256, and no Workbench route or import/commit receipt was produced.",
+    "status": "RENDERER_HARNESS_DATA_OBSERVED_BEHIND_OPEN_NATIVE_DIALOG; USER_VISIBLE_FLOW_UNVERIFIED",
+    "reason": "After the owner closed Adobe Animate, renderer harnesses observed Workbench catalog/preview/import/placement/save/reopen state behind an Electron-owned native FLA dialog that remained open. The underlying WebContents was driven with executeJavaScript and captured with BrowserWindow.capturePage, which omits the native dialog. These receipts document renderer and persisted project data, not a user-visible end-to-end flow. A separate runtime negative probe failed closed on a target the catalog marked previewSupported; owner visual acceptance remains pending.",
     "latestFollowUp": {
       "date": "2026-10-10",
       "dialogClass": "#32770",
@@ -121,6 +121,31 @@
       "hanfuSourceHashStillMatchesFrozenControl": true,
       "workbenchRouteObserved": false,
       "importReceiptProduced": false
+    },
+    "rendererHarnessObservations": {
+      "receipt": "renderer-harness-observations.json",
+      "rawHanfuReceiptSha256": "83abe48a1dce132338d866ee10b1c05cda9f0dbd313ca2e2f19fa5db069c2e66",
+      "rawBlueWhiteReceiptSha256": "230e4b8e280244ee57f51ccdf2870862fa9aa9091c833e716097359420c26056",
+      "nativeDialogClosed": false,
+      "workbenchRouteObservedBehindDialog": true,
+      "previewImportAndPersistenceDataObserved": true,
+      "dropEventObserved": false,
+      "userVisibleFlowVerified": false
+    },
+    "unsupportedRuntime": {
+      "receipt": "unsupported-runtime.json",
+      "status": "RUNTIME_FAIL_CLOSED_OBSERVED",
+      "catalogMarkedTargetSupported": true,
+      "previewFailedWithExplicitUnsupportedStroke": true,
+      "importButtonPresent": false,
+      "projectAssetsAfterFailure": 0,
+      "projectJsonUnchanged": true,
+      "sourceHashUnchanged": true,
+      "nativeDialogIncludedInRendererCapture": false
+    },
+    "laterChooserAttempts": {
+      "run37HitTestedPhysicalButtonClick": "DIALOG_REMAINED_OPEN_AFTER_60_SECONDS",
+      "run38PhysicalUnicodeKeyboard": "FILENAME_FIELD_READBACK_EMPTY; NO_SUBMISSION_ATTEMPTED"
     }
   },
   "productionCodeChanged": false,
