@@ -1,54 +1,40 @@
 # Issue #751 — V1/T01 acceptance evidence
 
-**Result: PARTIAL.** Using the accepted real FLA, the existing Static Snapshot Workbench previewed it, explicit import created an ordinary image asset, the Asset Library showed it, and a Windows mouse drag placed it into the current shot; save/reopen retained the image. This acceptance flow used the test-only source-path injection. The native chooser-to-Workbench path remains unproven, and `HUMAN VISUAL PASS` remains pending from the repository owner.
+**Result: PARTIAL.** The complete automated Windows Electron flow now uses the native file chooser with no source-path injection: original FLA → Static Snapshot catalog and preview → explicit import → Asset Library → native mouse drag into a shot → save and reopen. Cancellation left the project and asset count unchanged, and the source FLA hash was unchanged. The repository owner's visual PASS is still pending. A real FLA containing a target that is unsupported by the production preview path has not yet been confirmed, so runtime unsupported-target reporting remains unverified; the bounded disclosure and supported-target isolation are covered by focused tests.
 
-## Run details
+## Latest acceptance run
 
-- Windows Electron production build; the existing FLA Workbench, Static Snapshot transaction, Asset Library, canvas, and project save/reopen paths were used.
-- Source: `炼丹炉.fla`, SHA-256 `498537baa9cf900f613987eb9dab99727ee09ddaad4fb06e2d2c4351cb283a68`, matching the accepted Issue #732 census entry. The acceptance runner checked the hash before and after the import flow; the t06 native-drag receipt also records the source hash invariant.
-- Catalog: two targets. The selected `graphic-symbol` target `炼丹炉-cilisucai.com` was supported and had one frame. Its preview image decoded before the explicit import action.
-- Cancellation: the new project remained at zero assets and its saved `project.json` hash did not change.
-- Import: the existing Static Snapshot transaction reported completion and added the PNG as an ordinary image asset. The imported asset appeared in the Asset Library.
-- Source selection used the test-only `PANDA_STAGE_FLA_ACCEPTANCE_SOURCE` injection, so the native file chooser itself was bypassed. The in-app Workbench, preview, explicit import, Asset Library, and project UI were exercised; no CLI or manual PNG copy was used to import the prop.
-- No-injection runs opened the Windows native chooser but did not deliver the source path to the Workbench. In the latest run5, UI Automation found the chooser under the Panda Stage window; Windows reported the chooser as foreground and the filename field as focused, but `SetFocus()` failed with “The target element cannot receive focus.” Unicode `SendInput` returned 0 and the filename remained blank, so the harness timed out before the Workbench route appeared. This records an automation input limitation; native chooser acceptance remains unproven.
-- Native placement used Win32 `SetCursorPos` and `mouse_event` from the Asset Library card to the canvas. The t06 project had zero layers before the drop and one layer afterward. It was saved, closed, reopened, and the furnace decoded and appeared on the canvas.
-- The earlier preview showed the lower edge clipped. The Workbench image's default grid minimum size let it exceed the preview stage. The feature-local CSS now constrains that image to the stage; a production Electron run measured the image element at 512 × 385.6 CSS px inside a 513.3 × 386.9 CSS px stage, and the full 318 × 435 source image is visible in the updated screenshot.
-- The older t04 receipt also records a synthetic `DragEvent` placement and a failed Electron `sendInputEvent` attempt. Those are historical attempts; the successful OS-level drag is recorded separately in t06 below.
+- Run: `issue751-v1-native-picker-20261010-run7`, Windows Electron production build.
+- Source: `D:\表情合集\道具\炼丹炉.fla`, SHA-256 `498537baa9cf900f613987eb9dab99727ee09ddaad4fb06e2d2c4351cb283a68` before and after the run. This is the accepted source from Issue #732.
+- The original FLA was selected through the Windows native file chooser. `PANDA_STAGE_FLA_ACCEPTANCE_SOURCE` was not set. The chooser delivered the source to the existing Static Snapshot Workbench.
+- Catalog: two targets. The selected `graphic-symbol` target was supported, had one frame, and previewed before the explicit import action.
+- Cancellation: the new project still had zero assets and the saved `project.json` hash was unchanged.
+- Import: the Static Snapshot transaction created an ordinary PNG image asset and displayed it in the Asset Library.
+- Placement: the first OS-level drag began over the card's thumbnail rebuild button and did not create a layer. A second Win32 drag from the card name area to the canvas created one layer. The project was saved and reopened with that same layer ID and image visible.
+- Screenshots and the machine-readable run receipt are in [`native-picker-run7/`](./native-picker-run7/).
+- The earlier run5 report blamed a Windows automation limitation. That diagnosis was incorrect: its C# `SendInput` `INPUT` structure had the wrong size. With the corrected structure, the native picker accepted Unicode input and the full no-injection flow completed in run7.
 
-The machine-readable receipt is [receipt.json](./receipt.json). Temporary acceptance projects and runners remain outside the repository under `D:\PandaStage-Acceptance\issue751-v1-t04` and `D:\PandaStage-Acceptance\issue751-v1-t06`.
+### Run7 screenshots
 
-## Screenshots
+![Static Snapshot catalog opened from the native file chooser](./native-picker-run7/01-static-snapshot-catalog.png)
 
-### Catalog
+![Full furnace preview before explicit import](./native-picker-run7/02-selected-prop-preview.png)
 
-![Static Snapshot catalog with two render targets](./01-static-snapshot-catalog.png)
+![Static Snapshot import completion](./native-picker-run7/03-import-receipt.png)
 
-### Full preview before explicit import
+![Imported furnace in the Asset Library](./native-picker-run7/03b-asset-library.png)
 
-![Complete furnace visible in the Static Snapshot preview before explicit import](./02-selected-prop-preview.png)
+![Furnace placed in the shot after the successful OS-level drag](./native-picker-run7/04-placed-in-shot.png)
 
-### Import transaction completion
+![Saved project reopened with the placed furnace](./native-picker-run7/05-reopened-project.png)
 
-![Static Snapshot import completion receipt](./03-import-receipt.png)
+## Focused regression and integration validation
 
-### Asset Library
+- `pnpm test:integration` — **PASS**, 38 test files and 189 tests, rerun at commit `260289cae3508edb894922691369901cd22dd83b` on 2026-10-10. The command also completed typecheck and production builds. Vite reported existing empty-CSS import and large-chunk warnings.
+- Focused FLA regression — **PASS**, 10 test files and 57 tests. This covers Static Snapshot cancellation and commit rollback, raster transaction rollback, sequence review/commit rollback, and asset/sequence history-response paths.
+- Focused preview layout tests — **PASS**, 2 files and 8 tests; focused ESLint and `pnpm build` also passed after the preview sizing correction.
+- The preview image now fits inside the existing stage. The 318 × 435 px source artwork is fully visible in the production screenshot.
+- `HUMAN VISUAL PASS` remains **PENDING_OWNER**. Automated screenshots do not substitute for the repository owner's visual acceptance.
+- Real runtime unsupported-target behavior remains **UNVERIFIED**. Unit coverage asserts bounded unsupported copy and that other supported targets remain available, but the real FLA samples inspected so far exposed supported targets or were routed to Raster instead of the Static Snapshot path.
 
-![Imported furnace image in the Asset Library](./03b-asset-library.png)
-
-### Successful Windows mouse drag into the shot
-
-![Furnace placed on the canvas after an OS-level mouse drag from the Asset Library](./06-native-mouse-drag-placed.png)
-
-### Saved and reopened project
-
-![Furnace visible in the reopened project](./07-native-mouse-drag-reopened.png)
-
-The earlier `04-placed-in-shot.png` and `05-reopened-project.png` are retained as supplemental t04 synthetic-event screenshots; the t06 screenshots above show the successful native mouse drag and its reopened result.
-
-## Validation
-
-- `pnpm test:integration` — **PASS**, 38 test files and 189 tests passed on 2026-10-10 after the preview CSS fix, at commit `3049df7`. The command also completed typecheck and build; Vite reported the existing empty-CSS and large-chunk warnings.
-- After the preview CSS fix, focused layout contracts passed (2 files / 8 tests), `pnpm exec eslint tests/unit/fla-stage-d-render-workbench.test.ts` passed, and `pnpm build` passed.
-- The production change is limited to sizing the existing Workbench preview image; FLA parsing, import, asset transaction, and project persistence code did not change.
-- Existing raster/sequence behavior and rollback/history acceptance were not separately re-run as part of this focused vertical slice.
-- `HUMAN VISUAL PASS` remains pending from the repository owner.
+The structured acceptance receipt is [`receipt.json`](./receipt.json). The native picker run receipt snapshot is [`native-picker-run7/receipt.json`](./native-picker-run7/receipt.json).
