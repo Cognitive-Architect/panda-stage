@@ -89,7 +89,8 @@ describe('Issue #396 Stage D render workbench contract', () => {
       /\.fla-snapshot-preview-stage\s*\{[\s\S]*?overflow:\s*hidden;/u,
     );
     expect(styles).toMatch(
-      /\.fla-snapshot-preview-stage img\s*\{[\s\S]*?min-width:\s*0;[\s\S]*?min-height:\s*0;[\s\S]*?max-width:\s*100%;[\s\S]*?max-height:\s*100%;[\s\S]*?object-fit:\s*contain;/u,
+      /\.fla-snapshot-preview-stage img\s*\{[^}]*min-width:\s*0;[^}]*min-height:\s*0;[^}]*max-width:\s*100%;[^}]*max-height:\s*100%;/u,
     );
+    expect(styles).toContain('object-fit: contain;');
   });
 });
