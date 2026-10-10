@@ -30,10 +30,10 @@
 
 ## Runtime unsupported-target probe
 
-- A separate read-only probe sent six more original FLA files from `D:\表情合集\道具` through production Main `chooseAndInspect`, recovery/preflight, and the Static Snapshot catalog API. The test-only path variable selected each source; no project was opened and no commit API was called.
-- All six parsed successfully and their source hashes stayed unchanged. The catalogs contained 56 targets total; all 56 were marked preview-supported. Production recovery normalized five source archives in memory; the sixth was strictly valid.
-- Together with the Furnace in run7, these seven prop files did not provide a real unsupported Static Snapshot target. Another sampled flight animation routed to Raster. The runtime unsupported-target case therefore remains **UNVERIFIED**.
-- The scan receipt is [`catalog-scan-run1/receipt.json`](./catalog-scan-run1/receipt.json). It records each source hash, production ingest trace, catalog target, and support result.
+- A read-only probe sent all 43 original FLA files under `D:\表情合集` through production Main `chooseAndInspect`, recovery/preflight, and the Static Snapshot catalog API. The test-only path variable selected each source; no project was opened and no commit API was called.
+- All 43 parsed successfully and all source hashes stayed unchanged. Their catalogs contained 577 targets total; all 577 were marked preview-supported. Production recovery normalized 38 archives in memory; the remaining five were strictly valid.
+- No real unsupported Static Snapshot target was present in this scanned corpus, so runtime unsupported-target reporting remains **UNVERIFIED**. An earlier user-facing import attempt for `飞行中旋转.fla` routed to Raster; that route choice is separate from this direct catalog probe.
+- The complete scan receipt is [`catalog-scan-run2/receipt.json`](./catalog-scan-run2/receipt.json). It records each source hash, production ingest trace, target count, and unsupported result. The earlier six-file prop scan remains in [`catalog-scan-run1/receipt.json`](./catalog-scan-run1/receipt.json).
 
 ## Focused regression and integration validation
 

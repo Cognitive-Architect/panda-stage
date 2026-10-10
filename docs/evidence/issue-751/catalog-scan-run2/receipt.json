@@ -1,0 +1,1191 @@
+{
+  "schemaVersion": "issue751-corpus-catalog-scan/1",
+  "sourceRoot": "D:\\表情合集",
+  "parserPath": "Windows Electron production Main chooseAndInspect -> production recovery/preflight -> Static Snapshot catalog",
+  "sourcePathSelection": "PANDA_STAGE_FLA_ACCEPTANCE_SOURCE used only by the unpackaged acceptance harness to select each file; parse and support classification used production Main/renderer APIs",
+  "projectOpened": false,
+  "commitApiCalled": false,
+  "sourceCount": 43,
+  "parserSuccessCount": 43,
+  "hashInvariantCount": 43,
+  "catalogTargetCount": 577,
+  "unsupportedTargetCount": 0,
+  "recoveryNormalizedSourceCount": 38,
+  "strictValidSourceCount": 5,
+  "results": [
+    {
+      "source": "D:\\表情合集\\道具\\草药 仙草 灵植 (1).fla",
+      "sha256Before": "a15c340ee3c3b2c6458624aa198971772f2e12490841e87e5de2f257364bfc50",
+      "sha256After": "a15c340ee3c3b2c6458624aa198971772f2e12490841e87e5de2f257364bfc50",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "a15c340ee3c3b2c6458624aa198971772f2e12490841e87e5de2f257364bfc50",
+        "originalSourceByteLength": 1093274,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 21,
+      "previewSupportedCount": 21,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\道具\\草药 仙草 灵植.fla",
+      "sha256Before": "610b362a056b19790db6f7b44ad093f32955760aeb7e060284b7b95d8f572535",
+      "sha256After": "610b362a056b19790db6f7b44ad093f32955760aeb7e060284b7b95d8f572535",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "610b362a056b19790db6f7b44ad093f32955760aeb7e060284b7b95d8f572535",
+        "originalSourceByteLength": 2512581,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 27,
+      "previewSupportedCount": 27,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\道具\\储物袋.fla",
+      "sha256Before": "5d94df2d256208a4338ff10e8355402e572d2f86ffb906a5a5cf4902c1d054d7",
+      "sha256After": "5d94df2d256208a4338ff10e8355402e572d2f86ffb906a5a5cf4902c1d054d7",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "5d94df2d256208a4338ff10e8355402e572d2f86ffb906a5a5cf4902c1d054d7",
+        "originalSourceByteLength": 1270986,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 2,
+      "previewSupportedCount": 2,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\道具\\飞舟、飞船.fla",
+      "sha256Before": "54b5f16fca73e0af93911e6d71595d9c98bce7a60eba3ae60d4974cce5451dc2",
+      "sha256After": "54b5f16fca73e0af93911e6d71595d9c98bce7a60eba3ae60d4974cce5451dc2",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "strict",
+        "recoveryApplied": false,
+        "originalStrictResult": "pass",
+        "classifierState": "STRICT_VALID",
+        "recoveryAttempted": false,
+        "postNormalizationStrictResult": "not-run",
+        "parserResult": "success",
+        "originalSourceSha256": "54b5f16fca73e0af93911e6d71595d9c98bce7a60eba3ae60d4974cce5451dc2",
+        "originalSourceByteLength": 302045
+      },
+      "targetCount": 2,
+      "previewSupportedCount": 2,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\道具\\莲台.fla",
+      "sha256Before": "7fcb4d6e8fc300f514a62b0af9b8dc8de5402c48c5503edc197d5a530b7ee714",
+      "sha256After": "7fcb4d6e8fc300f514a62b0af9b8dc8de5402c48c5503edc197d5a530b7ee714",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "7fcb4d6e8fc300f514a62b0af9b8dc8de5402c48c5503edc197d5a530b7ee714",
+        "originalSourceByteLength": 1787920,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 2,
+      "previewSupportedCount": 2,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\道具\\炼丹炉.fla",
+      "sha256Before": "498537baa9cf900f613987eb9dab99727ee09ddaad4fb06e2d2c4351cb283a68",
+      "sha256After": "498537baa9cf900f613987eb9dab99727ee09ddaad4fb06e2d2c4351cb283a68",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "498537baa9cf900f613987eb9dab99727ee09ddaad4fb06e2d2c4351cb283a68",
+        "originalSourceByteLength": 1278667,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 2,
+      "previewSupportedCount": 2,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\道具\\石碑.fla",
+      "sha256Before": "12f05ac8faa0141fe0d0c19de41161b9766d4a4dcf2022bbacce9a8054f198c9",
+      "sha256After": "12f05ac8faa0141fe0d0c19de41161b9766d4a4dcf2022bbacce9a8054f198c9",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "12f05ac8faa0141fe0d0c19de41161b9766d4a4dcf2022bbacce9a8054f198c9",
+        "originalSourceByteLength": 1054492,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 2,
+      "previewSupportedCount": 2,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\飞行中旋转.fla",
+      "sha256Before": "9e675d92a5db1f1551782b23aa46be40ecd90311e7f0861a6e4255a002c31862",
+      "sha256After": "9e675d92a5db1f1551782b23aa46be40ecd90311e7f0861a6e4255a002c31862",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "9e675d92a5db1f1551782b23aa46be40ecd90311e7f0861a6e4255a002c31862",
+        "originalSourceByteLength": 800888,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 8,
+      "previewSupportedCount": 8,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\黑衣修仙男.fla",
+      "sha256Before": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+      "sha256After": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "originalSourceByteLength": 3503255,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 10,
+      "previewSupportedCount": 10,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\恢复_黑衣修仙男.fla",
+      "sha256Before": "a81d4a127485a6b8c5f68ef27f0ee4a0ab6aa7d99aad1a5534b04d3a6f3d76d0",
+      "sha256After": "a81d4a127485a6b8c5f68ef27f0ee4a0ab6aa7d99aad1a5534b04d3a6f3d76d0",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "a81d4a127485a6b8c5f68ef27f0ee4a0ab6aa7d99aad1a5534b04d3a6f3d76d0",
+        "originalSourceByteLength": 3505115,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 10,
+      "previewSupportedCount": 10,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\剑.fla",
+      "sha256Before": "e773508c4079c4fa8235043b69a0f5415bcc1596a3ed345a4c6652b48ce54377",
+      "sha256After": "e773508c4079c4fa8235043b69a0f5415bcc1596a3ed345a4c6652b48ce54377",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "strict",
+        "recoveryApplied": false,
+        "originalStrictResult": "pass",
+        "classifierState": "STRICT_VALID",
+        "recoveryAttempted": false,
+        "postNormalizationStrictResult": "not-run",
+        "parserResult": "success",
+        "originalSourceSha256": "e773508c4079c4fa8235043b69a0f5415bcc1596a3ed345a4c6652b48ce54377",
+        "originalSourceByteLength": 32997
+      },
+      "targetCount": 2,
+      "previewSupportedCount": 2,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\蓝衣修仙男（补面需求）.fla",
+      "sha256Before": "3fdb31478c6e5fe3ffca30f27fe69d9b3ba8f29f4bcf28eb39b9ce1b0fa3fdf2",
+      "sha256After": "3fdb31478c6e5fe3ffca30f27fe69d9b3ba8f29f4bcf28eb39b9ce1b0fa3fdf2",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "3fdb31478c6e5fe3ffca30f27fe69d9b3ba8f29f4bcf28eb39b9ce1b0fa3fdf2",
+        "originalSourceByteLength": 1777905,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 12,
+      "previewSupportedCount": 12,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\炼丹房.fla",
+      "sha256Before": "3ed47c25685ece18afe50e646996de9c39ab22b29dcde96a81fab291368209d2",
+      "sha256After": "3ed47c25685ece18afe50e646996de9c39ab22b29dcde96a81fab291368209d2",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "3ed47c25685ece18afe50e646996de9c39ab22b29dcde96a81fab291368209d2",
+        "originalSourceByteLength": 1575078,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 2,
+      "previewSupportedCount": 2,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\跑步.fla",
+      "sha256Before": "bbcbb4796c1a3704dff77ed9b387fe0414fa6849ddef5b2805f4ff05c455aa70",
+      "sha256After": "bbcbb4796c1a3704dff77ed9b387fe0414fa6849ddef5b2805f4ff05c455aa70",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "bbcbb4796c1a3704dff77ed9b387fe0414fa6849ddef5b2805f4ff05c455aa70",
+        "originalSourceByteLength": 170867,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 31,
+      "previewSupportedCount": 31,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\人物倒地.fla",
+      "sha256Before": "bad5f00cc1e4937fa8190e570ce7c5a8951a32d611d2b87dfc6910172b01fd9d",
+      "sha256After": "bad5f00cc1e4937fa8190e570ce7c5a8951a32d611d2b87dfc6910172b01fd9d",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "bad5f00cc1e4937fa8190e570ce7c5a8951a32d611d2b87dfc6910172b01fd9d",
+        "originalSourceByteLength": 210955,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 16,
+      "previewSupportedCount": 16,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\沙雕表情大全（免费分享，短剧慎用）.fla",
+      "sha256Before": "d7d92d3f38eaf3fbac812f991b1a9e7239480afaafb4bddf7e62a374355ebc59",
+      "sha256After": "d7d92d3f38eaf3fbac812f991b1a9e7239480afaafb4bddf7e62a374355ebc59",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "d7d92d3f38eaf3fbac812f991b1a9e7239480afaafb4bddf7e62a374355ebc59",
+        "originalSourceByteLength": 12350154,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 64,
+      "previewSupportedCount": 64,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\特效\\飞奔.跑.fla",
+      "sha256Before": "15d3d727f5f5a86bc877dbc42642d43d0b91e671f828451e8a311028f0d88abc",
+      "sha256After": "15d3d727f5f5a86bc877dbc42642d43d0b91e671f828451e8a311028f0d88abc",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "15d3d727f5f5a86bc877dbc42642d43d0b91e671f828451e8a311028f0d88abc",
+        "originalSourceByteLength": 68253,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 2,
+      "previewSupportedCount": 2,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\特效\\尴尬.fla",
+      "sha256Before": "030c9eb792fd43920cead22c7e7f3f2f5fe9922f121637e44d9e299b8c576e5b",
+      "sha256After": "030c9eb792fd43920cead22c7e7f3f2f5fe9922f121637e44d9e299b8c576e5b",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "030c9eb792fd43920cead22c7e7f3f2f5fe9922f121637e44d9e299b8c576e5b",
+        "originalSourceByteLength": 66217,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 2,
+      "previewSupportedCount": 2,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\特效\\内心独白.fla",
+      "sha256Before": "a931b0820a88d4c99363325c23864b792dbc4591738db4effeec3251fba1bcbe",
+      "sha256After": "a931b0820a88d4c99363325c23864b792dbc4591738db4effeec3251fba1bcbe",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "a931b0820a88d4c99363325c23864b792dbc4591738db4effeec3251fba1bcbe",
+        "originalSourceByteLength": 6440,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 3,
+      "previewSupportedCount": 3,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\特效\\人物死亡消失.fla",
+      "sha256Before": "6c3ad29c284c967d84699009e9d6933fd21e8523b617b1128420bd6943a828ec",
+      "sha256After": "6c3ad29c284c967d84699009e9d6933fd21e8523b617b1128420bd6943a828ec",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "6c3ad29c284c967d84699009e9d6933fd21e8523b617b1128420bd6943a828ec",
+        "originalSourceByteLength": 4013212,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 2,
+      "previewSupportedCount": 2,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\特效\\生气.fla",
+      "sha256Before": "04fbbe68117844e9152f52e4a68310371ae40ad73564b856a0ce6cd8cb161000",
+      "sha256After": "04fbbe68117844e9152f52e4a68310371ae40ad73564b856a0ce6cd8cb161000",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "04fbbe68117844e9152f52e4a68310371ae40ad73564b856a0ce6cd8cb161000",
+        "originalSourceByteLength": 7351,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 2,
+      "previewSupportedCount": 2,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\特效\\手忙脚乱.fla",
+      "sha256Before": "10d69bf1ce1222bdb59725bbf8306b2e030d65b03f7a111b91e68c7866c07d9b",
+      "sha256After": "10d69bf1ce1222bdb59725bbf8306b2e030d65b03f7a111b91e68c7866c07d9b",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "10d69bf1ce1222bdb59725bbf8306b2e030d65b03f7a111b91e68c7866c07d9b",
+        "originalSourceByteLength": 167537,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 2,
+      "previewSupportedCount": 2,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\特效\\水花.fla",
+      "sha256Before": "89f043644edd20626c33573cbf8001362195a8bd9e271b01aa83ddf9306fbc9a",
+      "sha256After": "89f043644edd20626c33573cbf8001362195a8bd9e271b01aa83ddf9306fbc9a",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "strict",
+        "recoveryApplied": false,
+        "originalStrictResult": "pass",
+        "classifierState": "STRICT_VALID",
+        "recoveryAttempted": false,
+        "postNormalizationStrictResult": "not-run",
+        "parserResult": "success",
+        "originalSourceSha256": "89f043644edd20626c33573cbf8001362195a8bd9e271b01aa83ddf9306fbc9a",
+        "originalSourceByteLength": 87496
+      },
+      "targetCount": 2,
+      "previewSupportedCount": 2,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\特效\\叹气.fla",
+      "sha256Before": "e695f4d652bcb2eca0a4bde2a7ca720e1526eaa6edf1d134feca35e90a4fd2ce",
+      "sha256After": "e695f4d652bcb2eca0a4bde2a7ca720e1526eaa6edf1d134feca35e90a4fd2ce",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "e695f4d652bcb2eca0a4bde2a7ca720e1526eaa6edf1d134feca35e90a4fd2ce",
+        "originalSourceByteLength": 76743,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 2,
+      "previewSupportedCount": 2,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\特效\\吐血.fla",
+      "sha256Before": "56028cb3f6be853ea132f3e7b43eaa807e88bbdd53a2b1c4dea7e6cfe6c8dced",
+      "sha256After": "56028cb3f6be853ea132f3e7b43eaa807e88bbdd53a2b1c4dea7e6cfe6c8dced",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "strict",
+        "recoveryApplied": false,
+        "originalStrictResult": "pass",
+        "classifierState": "STRICT_VALID",
+        "recoveryAttempted": false,
+        "postNormalizationStrictResult": "not-run",
+        "parserResult": "success",
+        "originalSourceSha256": "56028cb3f6be853ea132f3e7b43eaa807e88bbdd53a2b1c4dea7e6cfe6c8dced",
+        "originalSourceByteLength": 89165
+      },
+      "targetCount": 2,
+      "previewSupportedCount": 2,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\特效\\直播间.fla",
+      "sha256Before": "098394b02589cf71249270a63f78d4d4d0a17c21ba11f87af95fc1c401915960",
+      "sha256After": "098394b02589cf71249270a63f78d4d4d0a17c21ba11f87af95fc1c401915960",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "098394b02589cf71249270a63f78d4d4d0a17c21ba11f87af95fc1c401915960",
+        "originalSourceByteLength": 33702,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 6,
+      "previewSupportedCount": 6,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\文件.fla",
+      "sha256Before": "84682edcd49b8fcc072ae740188677bae9d7d0fd603b8bed51a7ac4ddeb3119f",
+      "sha256After": "84682edcd49b8fcc072ae740188677bae9d7d0fd603b8bed51a7ac4ddeb3119f",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "strict",
+        "recoveryApplied": false,
+        "originalStrictResult": "pass",
+        "classifierState": "STRICT_VALID",
+        "recoveryAttempted": false,
+        "postNormalizationStrictResult": "not-run",
+        "parserResult": "success",
+        "originalSourceSha256": "84682edcd49b8fcc072ae740188677bae9d7d0fd603b8bed51a7ac4ddeb3119f",
+        "originalSourceByteLength": 10527274
+      },
+      "targetCount": 1,
+      "previewSupportedCount": 1,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\向右走.fla",
+      "sha256Before": "79f2cf9895997226512e3f2d59c288f183bcd7497a9c4d96112b03fdd7e98098",
+      "sha256After": "79f2cf9895997226512e3f2d59c288f183bcd7497a9c4d96112b03fdd7e98098",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "79f2cf9895997226512e3f2d59c288f183bcd7497a9c4d96112b03fdd7e98098",
+        "originalSourceByteLength": 638607,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 28,
+      "previewSupportedCount": 28,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\向左冲.fla",
+      "sha256Before": "d72a6f56b5099c9b1b61851b20383052036dc528374d0063855978e13e9f2a82",
+      "sha256After": "d72a6f56b5099c9b1b61851b20383052036dc528374d0063855978e13e9f2a82",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "d72a6f56b5099c9b1b61851b20383052036dc528374d0063855978e13e9f2a82",
+        "originalSourceByteLength": 585340,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 27,
+      "previewSupportedCount": 27,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\向左点头.fla",
+      "sha256Before": "49df432ece662291ae51faf3442d61470b4cac83b6520735d1069b07b5e87a36",
+      "sha256After": "49df432ece662291ae51faf3442d61470b4cac83b6520735d1069b07b5e87a36",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "49df432ece662291ae51faf3442d61470b4cac83b6520735d1069b07b5e87a36",
+        "originalSourceByteLength": 833175,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 30,
+      "previewSupportedCount": 30,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\新人物\\汉服修仙女.fla",
+      "sha256Before": "6af14990029d4ced2c4e305721321835180c1bf041178a8799e1d14a1f62e535",
+      "sha256After": "6af14990029d4ced2c4e305721321835180c1bf041178a8799e1d14a1f62e535",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "6af14990029d4ced2c4e305721321835180c1bf041178a8799e1d14a1f62e535",
+        "originalSourceByteLength": 3264205,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 10,
+      "previewSupportedCount": 10,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\新人物\\黑袍大师兄（四视角）.fla",
+      "sha256Before": "3ae497bf13e1af8fdfb755cf70cf16d3e94176ea463d5621ae011c83dec53456",
+      "sha256After": "3ae497bf13e1af8fdfb755cf70cf16d3e94176ea463d5621ae011c83dec53456",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "3ae497bf13e1af8fdfb755cf70cf16d3e94176ea463d5621ae011c83dec53456",
+        "originalSourceByteLength": 1285307,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 13,
+      "previewSupportedCount": 13,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\新人物\\红伞蝶衣（四视角）.fla",
+      "sha256Before": "76c8b1ceb22e427a43d2b6b39502316208dd34fec3b1786b3063640386852781",
+      "sha256After": "76c8b1ceb22e427a43d2b6b39502316208dd34fec3b1786b3063640386852781",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "76c8b1ceb22e427a43d2b6b39502316208dd34fec3b1786b3063640386852781",
+        "originalSourceByteLength": 1795169,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 10,
+      "previewSupportedCount": 10,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\新人物\\蓝白古装男.fla",
+      "sha256Before": "0d4aecbc159990ce54b9d0d8c31ea0f3354cd7ed86df77bac19a562dfc761fa2",
+      "sha256After": "0d4aecbc159990ce54b9d0d8c31ea0f3354cd7ed86df77bac19a562dfc761fa2",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "0d4aecbc159990ce54b9d0d8c31ea0f3354cd7ed86df77bac19a562dfc761fa2",
+        "originalSourceByteLength": 636578,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 13,
+      "previewSupportedCount": 13,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\新人物\\蓝发修仙女.fla",
+      "sha256Before": "86eb123fdd42f1dac80754c9260b793404072be70523b41d012598138c35c6d2",
+      "sha256After": "86eb123fdd42f1dac80754c9260b793404072be70523b41d012598138c35c6d2",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "86eb123fdd42f1dac80754c9260b793404072be70523b41d012598138c35c6d2",
+        "originalSourceByteLength": 3179910,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 64,
+      "previewSupportedCount": 64,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\新人物\\魔修.fla",
+      "sha256Before": "c16792991c9704b6b29b8798c8e1030bf868963b51c6f0e9018113a4b641aa79",
+      "sha256After": "c16792991c9704b6b29b8798c8e1030bf868963b51c6f0e9018113a4b641aa79",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "c16792991c9704b6b29b8798c8e1030bf868963b51c6f0e9018113a4b641aa79",
+        "originalSourceByteLength": 5646097,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 39,
+      "previewSupportedCount": 39,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\新人物\\浅蓝修仙女.fla",
+      "sha256Before": "050e222cd536b28ed07466c77a87f0dbabf66eaa993be25d803ef12bee3a55b1",
+      "sha256After": "050e222cd536b28ed07466c77a87f0dbabf66eaa993be25d803ef12bee3a55b1",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "050e222cd536b28ed07466c77a87f0dbabf66eaa993be25d803ef12bee3a55b1",
+        "originalSourceByteLength": 447388,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 9,
+      "previewSupportedCount": 9,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\新人物\\青绫修仙女（四视角）.fla",
+      "sha256Before": "d0958d4432decbf6c54566ba15a2f5e97bd88c82d75dcb2f84603e9b2273f0e4",
+      "sha256After": "d0958d4432decbf6c54566ba15a2f5e97bd88c82d75dcb2f84603e9b2273f0e4",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "d0958d4432decbf6c54566ba15a2f5e97bd88c82d75dcb2f84603e9b2273f0e4",
+        "originalSourceByteLength": 3758039,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 24,
+      "previewSupportedCount": 24,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\新人物\\修仙大长老（三视角）.fla",
+      "sha256Before": "78e4c1106114eb8f153ddefe64418a0023b018a414f6a9ad603e15b0cae49472",
+      "sha256After": "78e4c1106114eb8f153ddefe64418a0023b018a414f6a9ad603e15b0cae49472",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "78e4c1106114eb8f153ddefe64418a0023b018a414f6a9ad603e15b0cae49472",
+        "originalSourceByteLength": 1354264,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 14,
+      "previewSupportedCount": 14,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\新人物\\修仙男.fla",
+      "sha256Before": "565c5609a7610ef64ed9f98b09d98dd82d5a45255adb4d3d410a5a365e0ef4a5",
+      "sha256After": "565c5609a7610ef64ed9f98b09d98dd82d5a45255adb4d3d410a5a365e0ef4a5",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "565c5609a7610ef64ed9f98b09d98dd82d5a45255adb4d3d410a5a365e0ef4a5",
+        "originalSourceByteLength": 1201685,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 13,
+      "previewSupportedCount": 13,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\新人物\\修仙宗门圣女（四视角）.fla",
+      "sha256Before": "c2c1a41dfb58eb7b4998cb7e4f35d56a34e39a11777442121ca5c7340605e18d",
+      "sha256After": "c2c1a41dfb58eb7b4998cb7e4f35d56a34e39a11777442121ca5c7340605e18d",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "c2c1a41dfb58eb7b4998cb7e4f35d56a34e39a11777442121ca5c7340605e18d",
+        "originalSourceByteLength": 3626763,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 15,
+      "previewSupportedCount": 15,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\性感修仙女.fla",
+      "sha256Before": "91c9331b68b49fb43cf720a7acacf45ebb26142c28b9d586b7fcf69d5d8cb64f",
+      "sha256After": "91c9331b68b49fb43cf720a7acacf45ebb26142c28b9d586b7fcf69d5d8cb64f",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "91c9331b68b49fb43cf720a7acacf45ebb26142c28b9d586b7fcf69d5d8cb64f",
+        "originalSourceByteLength": 2115287,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 13,
+      "previewSupportedCount": 13,
+      "unsupportedTargets": []
+    },
+    {
+      "source": "D:\\表情合集\\性感泳装女（补面需求）.fla",
+      "sha256Before": "76e70d5c18a3cf7ed17388db21dd2091b31871a9871664e572545a1ef2c70c4e",
+      "sha256After": "76e70d5c18a3cf7ed17388db21dd2091b31871a9871664e572545a1ef2c70c4e",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "76e70d5c18a3cf7ed17388db21dd2091b31871a9871664e572545a1ef2c70c4e",
+        "originalSourceByteLength": 558176,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "targetCount": 16,
+      "previewSupportedCount": 16,
+      "unsupportedTargets": []
+    }
+  ]
+}
