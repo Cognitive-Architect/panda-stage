@@ -1,0 +1,669 @@
+{
+  "schemaVersion": "issue751-unsupported-runtime-probe/1",
+  "parserPath": "Windows Electron production Main chooseAndInspect -> production recovery/preflight -> Static Snapshot catalog",
+  "sourcePathSelection": "PANDA_STAGE_FLA_ACCEPTANCE_SOURCE used only to bypass the native chooser; catalog parsing and target support classification ran in production Main/renderer APIs",
+  "projectOpened": false,
+  "commitApiCalled": false,
+  "results": [
+    {
+      "source": "D:\\表情合集\\道具\\储物袋.fla",
+      "sha256Before": "5d94df2d256208a4338ff10e8355402e572d2f86ffb906a5a5cf4902c1d054d7",
+      "sha256After": "5d94df2d256208a4338ff10e8355402e572d2f86ffb906a5a5cf4902c1d054d7",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "5d94df2d256208a4338ff10e8355402e572d2f86ffb906a5a5cf4902c1d054d7",
+        "originalSourceByteLength": 1270986,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "entries": [
+        {
+          "renderTargetId": "fla-render-target-34637c52d3d94706b9a6f1f678dc43e1736f3d8c964fa2941d6b662a1ed3bbe1",
+          "kind": "scene",
+          "userLabel": "主场景 · 第 1 帧",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-6e0d6e3917a657b3da03d8dd735e64c804cf075e15131df730bcbc126d47e63b",
+          "kind": "graphic-symbol",
+          "userLabel": "储物袋-cilisucai.com",
+          "sourceLibraryItemName": "储物袋-cilisucai.com",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        }
+      ],
+      "unsupportedCount": 0
+    },
+    {
+      "source": "D:\\表情合集\\道具\\石碑.fla",
+      "sha256Before": "12f05ac8faa0141fe0d0c19de41161b9766d4a4dcf2022bbacce9a8054f198c9",
+      "sha256After": "12f05ac8faa0141fe0d0c19de41161b9766d4a4dcf2022bbacce9a8054f198c9",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "12f05ac8faa0141fe0d0c19de41161b9766d4a4dcf2022bbacce9a8054f198c9",
+        "originalSourceByteLength": 1054492,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "entries": [
+        {
+          "renderTargetId": "fla-render-target-658e21cd38a786bcae99e764e4013c183a0cf356d8149d43e4c082ece93722b6",
+          "kind": "scene",
+          "userLabel": "主场景 · 第 1 帧",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-2bc8ff39b003fd2244e428a674aeff77dddd90c8abaa4e9a58cd7642172abc09",
+          "kind": "graphic-symbol",
+          "userLabel": "石碑-cilisucai.com",
+          "sourceLibraryItemName": "石碑-cilisucai.com",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        }
+      ],
+      "unsupportedCount": 0
+    },
+    {
+      "source": "D:\\表情合集\\道具\\草药 仙草 灵植 (1).fla",
+      "sha256Before": "a15c340ee3c3b2c6458624aa198971772f2e12490841e87e5de2f257364bfc50",
+      "sha256After": "a15c340ee3c3b2c6458624aa198971772f2e12490841e87e5de2f257364bfc50",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "a15c340ee3c3b2c6458624aa198971772f2e12490841e87e5de2f257364bfc50",
+        "originalSourceByteLength": 1093274,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "entries": [
+        {
+          "renderTargetId": "fla-render-target-28e0ecd4d92ebfee5f00f814e4e75167ecbee862f7d24bb0adc0b2d0f9b43b06",
+          "kind": "scene",
+          "userLabel": "主场景 · 第 1 帧",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-64d092eaf94b130786ea0f8779cecf76f72fd42df2e6c5b71e7dd8a07c22862d",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com1",
+          "sourceLibraryItemName": "灵药-cilisucai.com1",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-4a32de5f3fc3f098e5835b3518300261c989ce37be98ba4202ba1f0e9ab6199e",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com2",
+          "sourceLibraryItemName": "灵药-cilisucai.com2",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-809b6df07859f418215e5c32e2e1ab978f880225e0a8e698955258619b9c729e",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com3",
+          "sourceLibraryItemName": "灵药-cilisucai.com3",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-c86aa23bbf0b34e6ac73dd498f40f254803e4b395539b6fb408e1afafff531ae",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com4",
+          "sourceLibraryItemName": "灵药-cilisucai.com4",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-5986e9ed34d142341c8185a3a9a1587ab3d2764fdfe3e33f6d06ceb4341fe40a",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com5",
+          "sourceLibraryItemName": "灵药-cilisucai.com5",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-e501a90ad3c5312e7facca2b94d710ba033b74547be020c541ad7454f0c63ec6",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com6",
+          "sourceLibraryItemName": "灵药-cilisucai.com6",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-73e947d9659caa8447ad1497cac114cd306fb13cc0aa292ff4e2862a91f0544b",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com7",
+          "sourceLibraryItemName": "灵药-cilisucai.com7",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-7b2ec38344aabd83f29d15d396026a3541b158ed6d136b74db080b2cd213dcc0",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com8",
+          "sourceLibraryItemName": "灵药-cilisucai.com8",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-a0a6f950f01328067dab0a6a2d42c4f09bc56e4e1380e5f1c57ca0ebac10a23c",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com9",
+          "sourceLibraryItemName": "灵药-cilisucai.com9",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-3fb33728a050ce881cff8b9803c314d28e14173ae56ec9058a491249fa5b6ce4",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com10",
+          "sourceLibraryItemName": "灵药-cilisucai.com10",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-37dcf6c7df51c226520c154735f295599209e11f427f45e7bc6aca5bcd09c1b5",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com11",
+          "sourceLibraryItemName": "灵药-cilisucai.com11",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-fc4f589b3275dd6f84daadb7b9d2c8e7ff489a3f02b1dc6b3a21fe214efc8d1f",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com12",
+          "sourceLibraryItemName": "灵药-cilisucai.com12",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-95b1518cc0a7a3c0bac451b3bf246140b621915c55d6b6b2b1388888a2097542",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com13",
+          "sourceLibraryItemName": "灵药-cilisucai.com13",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-df84fba845150dc25498c3f5c7b82a8ae25e398be60fa54d6be8665b52be06fd",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com14",
+          "sourceLibraryItemName": "灵药-cilisucai.com14",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-dd8663d8bfa106cbdb27c6274ef9b23cad8069859bf5400073027220e6178066",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com15",
+          "sourceLibraryItemName": "灵药-cilisucai.com15",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-f04da9709ece6151f6bcea7f89cf6e7d22fdc941012662de90a9fd9152525247",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com16",
+          "sourceLibraryItemName": "灵药-cilisucai.com16",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-d677c5f629cd309fb2ff55fba53a3b223e4fb44df25fd2b92446b87c7aed2669",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com17",
+          "sourceLibraryItemName": "灵药-cilisucai.com17",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-26d3f800537e3735a53c880fd784db483e135b2287cc3ee76ca7d185a79b3c6a",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com18",
+          "sourceLibraryItemName": "灵药-cilisucai.com18",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-023c72de3d719d122fcef1f5118bdda9763718fb71460fd99e434a817399d88b",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com19",
+          "sourceLibraryItemName": "灵药-cilisucai.com19",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-cd30d11f8c34882f0d2ddc597610597a61b2f5fe7a7a5b84ee33d98b9dd96dfe",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com20",
+          "sourceLibraryItemName": "灵药-cilisucai.com20",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        }
+      ],
+      "unsupportedCount": 0
+    },
+    {
+      "source": "D:\\表情合集\\道具\\草药 仙草 灵植.fla",
+      "sha256Before": "610b362a056b19790db6f7b44ad093f32955760aeb7e060284b7b95d8f572535",
+      "sha256After": "610b362a056b19790db6f7b44ad093f32955760aeb7e060284b7b95d8f572535",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "610b362a056b19790db6f7b44ad093f32955760aeb7e060284b7b95d8f572535",
+        "originalSourceByteLength": 2512581,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "entries": [
+        {
+          "renderTargetId": "fla-render-target-b1a9f2d2ad8fa3a7ecd957c78a86dcd048fdb6a930f1de5c1ec09bc39777e429",
+          "kind": "scene",
+          "userLabel": "主场景 · 第 1 帧",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-483b515856a701f7d0f60914f4a71ec2a16358615cfdcd407616a45f1636011c",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com1",
+          "sourceLibraryItemName": "灵药-cilisucai.com1",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-7ca9c713326c7e94c71b08757bdc49d00328485cba04dd56fdb2f70becd1616c",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com2",
+          "sourceLibraryItemName": "灵药-cilisucai.com2",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-af788b750bd47e0ff2f7ec560a0540825fb0a5f4af6be18bea15da06009c1bf6",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com3",
+          "sourceLibraryItemName": "灵药-cilisucai.com3",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-62f1fdcaf649c9a0e6aaaba12361dc6dd95921d61e5591eaca86d99214e6a3c5",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com4",
+          "sourceLibraryItemName": "灵药-cilisucai.com4",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-d5cb6d87df64b368b53cac489c1ae86d67f8c924d27ca8b36fb8edb854605c24",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com5",
+          "sourceLibraryItemName": "灵药-cilisucai.com5",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-8259a8a3dc6e0d46e857de44dde8f9696aadfeb4242929a71d24a9924690af1f",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com6",
+          "sourceLibraryItemName": "灵药-cilisucai.com6",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-e256d79081892cc3541d9eb7d134dedc64f1cdd07693f84e44ce049486eb9c99",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com7",
+          "sourceLibraryItemName": "灵药-cilisucai.com7",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-94ce61548f376f41ccb7b3694367df0961bca190802e20c4d5070c920faeb7ac",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com8",
+          "sourceLibraryItemName": "灵药-cilisucai.com8",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-ee27ab482295d0948ee239cddb90f51fc0d89472e7b5e0537dd892b753ac47c7",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com9",
+          "sourceLibraryItemName": "灵药-cilisucai.com9",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-451edbb52c8baa899fea2822b5b5809c335432b5f91d8dd70ebf3217149f60b7",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com10",
+          "sourceLibraryItemName": "灵药-cilisucai.com10",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-ac62bedc8ac5e0584bb79ed2779b35c2265d97b2d2cf967ee0625de63631b22a",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com11",
+          "sourceLibraryItemName": "灵药-cilisucai.com11",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-a3f8b7fce43f596beb8e22ad7edb06b62cbb24f043d0c5d5b7be2a94ebf8c470",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com12",
+          "sourceLibraryItemName": "灵药-cilisucai.com12",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-ec968c4616eae3659b6c816accf5c0557a8d6b25c632008a21b96473977fe5ae",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com13",
+          "sourceLibraryItemName": "灵药-cilisucai.com13",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-dee970cf714e9b3f249ed594b80dfc5b490b994256ac8a1b19bb26e81a29cb5b",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com14",
+          "sourceLibraryItemName": "灵药-cilisucai.com14",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-21749f213359971ad1d8001c744463bef5ff576a8db6d63a6e002f414c3e7d6b",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com15",
+          "sourceLibraryItemName": "灵药-cilisucai.com15",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-c33c78aa233c5739fe43c32d5530ac2665aafee5bbf136d69150d4e432fcb62b",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com16",
+          "sourceLibraryItemName": "灵药-cilisucai.com16",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-f232c7195b2fe52fd0dc3bc6a0111fb1b2f735345a643096ace4cbbb4e8b4afb",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com17",
+          "sourceLibraryItemName": "灵药-cilisucai.com17",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-11294de2ff0ccd1f5472e0bd160df77366c5cb355a7f27837ca01b2bca69aeee",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com18",
+          "sourceLibraryItemName": "灵药-cilisucai.com18",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-e05ae64f8db0de7123f9199024d4f0e02a9c5402e2c086b42847e3811197dc6f",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com19",
+          "sourceLibraryItemName": "灵药-cilisucai.com19",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-4fc8ad35bb89461faf9618043e5d58841dafaba84345bf6a57e7e92dafb13109",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com20",
+          "sourceLibraryItemName": "灵药-cilisucai.com20",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-3d1af7d60761a3394cfececde6d7fa15636e5b2f51678a42851d830de1bbd916",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com21",
+          "sourceLibraryItemName": "灵药-cilisucai.com21",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-340da44087f44f6b28b5c87f830756f07b5a687d22f0a422fea488e6f60eeb89",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com22",
+          "sourceLibraryItemName": "灵药-cilisucai.com22",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-e1fa9a505720e52afdcc9499d6cb420f847b4bef28af1cb7d871c63439a9bf03",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com23",
+          "sourceLibraryItemName": "灵药-cilisucai.com23",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-664223e2231d1c3aec806cd3e8c2cebf1386f86cd05a4f28df0520fc79131309",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com24",
+          "sourceLibraryItemName": "灵药-cilisucai.com24",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-fb8a79c3efd7b0d87ef36051af51211054f1da5372141ac13bbd0b36d74dcd78",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com25",
+          "sourceLibraryItemName": "灵药-cilisucai.com25",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-3d4b49490d8a0029fbef4d3b8b2c5391fcb167ce4653ec09f13d01ea82faebc0",
+          "kind": "graphic-symbol",
+          "userLabel": "灵药-cilisucai.com26",
+          "sourceLibraryItemName": "灵药-cilisucai.com26",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        }
+      ],
+      "unsupportedCount": 0
+    },
+    {
+      "source": "D:\\表情合集\\道具\\莲台.fla",
+      "sha256Before": "7fcb4d6e8fc300f514a62b0af9b8dc8de5402c48c5503edc197d5a530b7ee714",
+      "sha256After": "7fcb4d6e8fc300f514a62b0af9b8dc8de5402c48c5503edc197d5a530b7ee714",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "compatibility-recovered",
+        "recoveryApplied": true,
+        "originalStrictResult": "reject",
+        "classifierState": "RECOVERY_CANDIDATE",
+        "recoveryAttempted": true,
+        "postNormalizationStrictResult": "pass",
+        "parserResult": "success",
+        "originalSourceSha256": "7fcb4d6e8fc300f514a62b0af9b8dc8de5402c48c5503edc197d5a530b7ee714",
+        "originalSourceByteLength": 1787920,
+        "classifierReasonCodes": [
+          "RECOVERY_EOCD_SIZE_DECLARATION_ONLY",
+          "RECOVERY_BOUNDARY_RECONSTRUCTED",
+          "EXACT_DUPLICATE_LOCAL_RECORD_PROVEN"
+        ],
+        "recoveryReasonCode": "RECOVERY_EOCD_SIZE_DECLARATION_ONLY"
+      },
+      "entries": [
+        {
+          "renderTargetId": "fla-render-target-5c8147eb3ac44157c47103c6f40f29e26fb85d729fbdeb727c42f3cf3a8beeb7",
+          "kind": "scene",
+          "userLabel": "主场景 · 第 1 帧",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-7a02597eeadaa44afba7a9df68223621522e1fbeb999e6585b45186d091f5036",
+          "kind": "graphic-symbol",
+          "userLabel": "莲华台-cilisucai.com1",
+          "sourceLibraryItemName": "莲华台-cilisucai.com1",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        }
+      ],
+      "unsupportedCount": 0
+    },
+    {
+      "source": "D:\\表情合集\\道具\\飞舟、飞船.fla",
+      "sha256Before": "54b5f16fca73e0af93911e6d71595d9c98bce7a60eba3ae60d4974cce5451dc2",
+      "sha256After": "54b5f16fca73e0af93911e6d71595d9c98bce7a60eba3ae60d4974cce5451dc2",
+      "hashInvariant": true,
+      "ok": true,
+      "error": null,
+      "trace": {
+        "ingestMode": "strict",
+        "recoveryApplied": false,
+        "originalStrictResult": "pass",
+        "classifierState": "STRICT_VALID",
+        "recoveryAttempted": false,
+        "postNormalizationStrictResult": "not-run",
+        "parserResult": "success",
+        "originalSourceSha256": "54b5f16fca73e0af93911e6d71595d9c98bce7a60eba3ae60d4974cce5451dc2",
+        "originalSourceByteLength": 302045
+      },
+      "entries": [
+        {
+          "renderTargetId": "fla-render-target-2db566a160b100db58f0d2b7aad522d7e967b813cf8111fb921b90bbf0da6a78",
+          "kind": "scene",
+          "userLabel": "主场景 · 第 1 帧",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        {
+          "renderTargetId": "fla-render-target-9bf13b6919fe94d2ea6ab16122f88a53da3e4b4dcb5cff3d45f22cea679a61a6",
+          "kind": "graphic-symbol",
+          "userLabel": "飞舟_cilisucai.com",
+          "sourceLibraryItemName": "飞舟_cilisucai.com",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        }
+      ],
+      "unsupportedCount": 0
+    }
+  ]
+}

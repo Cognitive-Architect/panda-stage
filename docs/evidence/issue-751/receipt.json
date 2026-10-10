@@ -211,7 +211,23 @@
                                                         "status":  "UNVERIFIED",
                                                         "unitPresentationCoverage":  "PASS",
                                                         "unitTest":  "tests/unit/fla-stage-f-presentation.test.ts",
-                                                        "realRuntimeSample":  "No inspected original FLA yet produced an unsupported Static Snapshot target through the production path. Two FLA samples exposed only supported targets; one other sample routed to Raster."
+                                                        "realRuntimeSample":  "No unsupported Static Snapshot target was found among the six additional original FLA catalogs (56 targets) or the Furnace accepted through the native picker in run7. A separate sampled flight animation routed to Raster.",
+                                                        "productionCatalogProbe":  {
+                                                                                       "run":  "issue751-unsupported-probe-run1",
+                                                                                       "status":  "PASS_NO_UNSUPPORTED_TARGET_FOUND",
+                                                                                       "receipt":  "./catalog-scan-run1/receipt.json",
+                                                                                       "sourceCount":  6,
+                                                                                       "parserSuccessCount":  6,
+                                                                                       "sourceHashInvariantCount":  6,
+                                                                                       "catalogTargetCount":  56,
+                                                                                       "unsupportedTargetCount":  0,
+                                                                                       "recoveryNormalizedSourceCount":  5,
+                                                                                       "strictValidSourceCount":  1,
+                                                                                       "sourceSelection":  "PANDA_STAGE_FLA_ACCEPTANCE_SOURCE used only to select source files in the unpackaged acceptance harness",
+                                                                                       "parserPath":  "production Main chooseAndInspect -\u003e production recovery/preflight -\u003e Static Snapshot catalog",
+                                                                                       "projectOpened":  false,
+                                                                                       "commitApiCalled":  false
+                                                                                   }
                                                     }
                    },
     "humanVisualAcceptance":  "PENDING_OWNER",

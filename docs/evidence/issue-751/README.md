@@ -28,6 +28,13 @@
 
 ![Saved project reopened with the placed furnace](./native-picker-run7/05-reopened-project.png)
 
+## Runtime unsupported-target probe
+
+- A separate read-only probe sent six more original FLA files from `D:\表情合集\道具` through production Main `chooseAndInspect`, recovery/preflight, and the Static Snapshot catalog API. The test-only path variable selected each source; no project was opened and no commit API was called.
+- All six parsed successfully and their source hashes stayed unchanged. The catalogs contained 56 targets total; all 56 were marked preview-supported. Production recovery normalized five source archives in memory; the sixth was strictly valid.
+- Together with the Furnace in run7, these seven prop files did not provide a real unsupported Static Snapshot target. Another sampled flight animation routed to Raster. The runtime unsupported-target case therefore remains **UNVERIFIED**.
+- The scan receipt is [`catalog-scan-run1/receipt.json`](./catalog-scan-run1/receipt.json). It records each source hash, production ingest trace, catalog target, and support result.
+
 ## Focused regression and integration validation
 
 - `pnpm test:integration` — **PASS**, 38 test files and 189 tests, rerun at commit `260289cae3508edb894922691369901cd22dd83b` on 2026-10-10. The command also completed typecheck and production builds. Vite reported existing empty-CSS import and large-chunk warnings.
@@ -35,6 +42,6 @@
 - Focused preview layout tests — **PASS**, 2 files and 8 tests; focused ESLint and `pnpm build` also passed after the preview sizing correction.
 - The preview image now fits inside the existing stage. The 318 × 435 px source artwork is fully visible in the production screenshot.
 - `HUMAN VISUAL PASS` remains **PENDING_OWNER**. Automated screenshots do not substitute for the repository owner's visual acceptance.
-- Real runtime unsupported-target behavior remains **UNVERIFIED**. Unit coverage asserts bounded unsupported copy and that other supported targets remain available, but the real FLA samples inspected so far exposed supported targets or were routed to Raster instead of the Static Snapshot path.
+- Real runtime unsupported-target behavior remains **UNVERIFIED**. Unit coverage asserts bounded unsupported copy and that supported targets remain available, but the inspected real FLA catalogs contained only supported targets or routed to Raster.
 
 The structured acceptance receipt is [`receipt.json`](./receipt.json). The native picker run receipt snapshot is [`native-picker-run7/receipt.json`](./native-picker-run7/receipt.json).
