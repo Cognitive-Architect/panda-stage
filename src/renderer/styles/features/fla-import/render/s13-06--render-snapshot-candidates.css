@@ -142,6 +142,16 @@
   gap: 5px;
 }
 
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-receipt-warning {
+  padding: 7px 9px;
+  margin: 0;
+  border-left: 2px solid #d5a85c;
+  background: rgb(213 168 92 / 8%);
+  color: #dfbd7c;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
 .fla-review-session[data-workbench-route='render'] .fla-snapshot-receipt-items li {
   display: grid;
   padding: 7px 9px;

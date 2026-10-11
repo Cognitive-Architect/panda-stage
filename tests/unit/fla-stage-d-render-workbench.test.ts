@@ -23,6 +23,10 @@ const route = readFileSync(
   'utf8',
 );
 const styles = readOrderedStylesheetSource();
+const previewTransaction = readFileSync(
+  'src/renderer/fla-import/fla-static-snapshot-preview-transaction.ts',
+  'utf8',
+);
 
 describe('Issue #396 Stage D render workbench contract', () => {
   it('provides one shared shell with mutually exclusive R1/R2 modes', () => {
@@ -76,6 +80,19 @@ describe('Issue #396 Stage D render workbench contract', () => {
     expect(sequence).toContain('embedded?: boolean');
     expect(sequence).toContain("'fla-frame-sequence-review fla-render-workbench-panel'");
     expect(sequence).toContain('flaFrameSequenceClient');
+  });
+
+  it('keeps list thumbnails bounded while the focused preview uses full PNG bytes', () => {
+    expect(snapshot).toContain('maxSide = 160');
+    expect(snapshot).toContain('createCandidateThumbnailUrl(outcome.response.bytes)');
+    expect(snapshot).toContain('createCandidateFullSizeUrl(response.bytes)');
+    expect(snapshot).toContain('data-preview-resolution="full"');
+    expect(snapshot).toContain('focusedCandidateKeyRef.current !== key');
+    expect(snapshot).toContain('URL.revokeObjectURL(fullSizePreview.url)');
+    expect(snapshot).not.toContain('预览去重');
+    expect(snapshot).not.toContain('sha256.slice(0, 12)');
+    expect(snapshot).toContain('runFlaStaticSnapshotPreviewTransaction');
+    expect(previewTransaction).toContain('class FlaStaticSnapshotPreviewQueue');
   });
 
   it('uses a three-zone layout without adding a second scroll owner', () => {

@@ -19,7 +19,7 @@ const JSZip = require('jszip');
 
 const DEFAULT_ACCEPTANCE_ROOT = 'D:\\PandaStage-Acceptance\\issue398-stage-d';
 const SYNTHETIC_TARGET_COUNT = 25;
-const SIMPLE_RECT_CUBICS = '!0 0|100 0|100 100|0 100|0 0';
+const SIMPLE_RECT_CUBICS = '!0 0|1660 0|1660 3365|0 3365|0 0';
 
 function parseArgs(argv) {
   const args = {};
@@ -29,6 +29,7 @@ function parseArgs(argv) {
     else if (argv[index] === '--acceptance-root') args.acceptanceRoot = argv[++index];
     else if (argv[index] === '--user-data') args.userData = argv[++index];
     else if (argv[index] === '--evidence-dir') args.evidenceDir = argv[++index];
+    else if (argv[index] === '--measure-scan-only') args.measureScanOnly = true;
   }
   return args;
 }
@@ -150,11 +151,30 @@ async function captureScreenshotAtMarker(mainWindow, marker, outputPath, pathSta
   throw new Error(`Timed out waiting for Stage D screenshot marker ${marker}`);
 }
 
-async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
+async function runStageDPath(mainWindow, acceptanceRoot, projectName, { measureScanOnly = false } = {}) {
   return mainWindow.webContents.executeJavaScript(`
     (async () => {
       const acceptanceRoot = ${JSON.stringify(acceptanceRoot)};
       const projectName = ${JSON.stringify(projectName)};
+      const measureScanOnly = ${JSON.stringify(measureScanOnly)};
+      const observedFlaPreviewUrls = new Set();
+      const revokedObjectUrls = new Set();
+      const nativeRevokeObjectUrl = URL.revokeObjectURL.bind(URL);
+      const previewUrlObserver = new MutationObserver(() => {
+        document.querySelectorAll('[data-testid="fla-snapshot-review"] img[src^="blob:"]').forEach((image) => {
+          observedFlaPreviewUrls.add(image.src);
+        });
+      });
+      previewUrlObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['src'],
+        childList: true,
+        subtree: true,
+      });
+      URL.revokeObjectURL = (url) => {
+        revokedObjectUrls.add(url);
+        nativeRevokeObjectUrl(url);
+      };
 
       const waitFor = async (selector, predicate = () => true, timeoutMs = 60_000) => {
         const deadline = Date.now() + timeoutMs;
@@ -209,13 +229,15 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
         };
       };
 
-      const waitForSnapshotTargets = async () => {
-        await waitFor('[data-testid="fla-render-workbench"]');
+      const waitForSnapshotTargets = async (timeoutMs = 60_000) => {
+        await waitFor('[data-testid="fla-render-workbench"]', () => true, timeoutMs);
         await waitFor('[data-testid="fla-snapshot-review"]', (element) =>
           element.getAttribute('data-preview-state') === 'ready',
+          timeoutMs,
         );
         await waitFor('[data-testid="fla-snapshot-targets"]', (element) =>
           element.querySelectorAll('input[type="checkbox"]').length > 0,
+          timeoutMs,
         );
       };
 
@@ -234,7 +256,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
         await waitFor('[data-testid="asset-browser-view"]');
       };
 
-      const openStageDReview = async () => {
+      const clickStageDAction = async (timeoutMs = 60_000) => {
         await waitFor(
           '[data-testid="asset-import-fla"], [data-testid="resource-asset-import-fla"]',
           (element) => {
@@ -245,6 +267,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
               (resourceAction instanceof HTMLButtonElement && !resourceAction.disabled),
             );
           },
+          timeoutMs,
         );
         const directAction = document.querySelector('[data-testid="asset-import-fla"]');
         const resourceAction = document.querySelector('[data-testid="resource-asset-import-fla"]');
@@ -255,9 +278,89 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
           throw new Error('No enabled FLA import action is available');
         }
         action.click();
-        await waitFor('[data-testid="fla-review-zero-raster"]');
-        await waitForSnapshotTargets();
+        await waitFor('[data-testid="fla-review-zero-raster"]', () => true, timeoutMs);
+        return performance.now();
       };
+
+      const openStageDReview = async (timeoutMs = 60_000) => {
+        const scanStartedAt = await clickStageDAction(timeoutMs);
+        await waitForSnapshotTargets(timeoutMs);
+        const scanDurationMs = Math.round(performance.now() - scanStartedAt);
+        const candidates = document.querySelectorAll('[data-testid="fla-snapshot-targets"] input[type="checkbox"]');
+        return {
+          scanDurationMs,
+          candidateCount: candidates.length,
+          scannedAt: new Date().toISOString(),
+        };
+      };
+
+      const cancelDuringScan = async () => {
+        const before = readProjectState();
+        await clickStageDAction();
+        await waitFor('[data-testid="fla-snapshot-review"]', (element) =>
+          element.getAttribute('data-preview-state') === 'rendering',
+        );
+        const scanProgress = Number(
+          document.querySelector('[data-testid="fla-snapshot-scan-progress"]')?.textContent?.match(/[0-9]+/u)?.[0] ?? 0,
+        );
+        const candidateCount = document.querySelectorAll('[data-testid="fla-snapshot-targets"] input[type="checkbox"]').length;
+        click('[data-testid="fla-snapshot-close"]');
+        await waitFor('[data-testid="asset-browser-view"]');
+        const after = readProjectState();
+        return {
+          exitedBeforeScanCompleted: candidateCount > 0 && scanProgress < candidateCount,
+          candidateCount,
+          scanProgress,
+          noProjectMutation: after.assetCount === before.assetCount && after.maxRevision === before.maxRevision,
+          before,
+          after,
+        };
+      };
+
+      const readFullPreview = (image) => ({
+        alt: image.alt,
+        naturalWidth: image.naturalWidth,
+        naturalHeight: image.naturalHeight,
+        generatedWidth: Number(image.getAttribute('data-preview-width')),
+        generatedHeight: Number(image.getAttribute('data-preview-height')),
+        resolution: image.getAttribute('data-preview-resolution'),
+      });
+
+      const waitForFullPreview = async (expectedAlt) => await waitFor(
+        '[data-testid="fla-snapshot-preview-image"]',
+        (element) => element instanceof HTMLImageElement && element.complete && element.naturalWidth > 0 &&
+          (!expectedAlt || element.alt === expectedAlt) && element.getAttribute('data-preview-resolution') === 'full',
+      );
+
+      const rapidFocusAndCheck = async () => {
+        const buttons = [...document.querySelectorAll(
+          '[data-testid="fla-snapshot-targets"] .fla-snapshot-candidate-row[data-preview-supported="true"] .fla-snapshot-candidate-focus',
+        )].slice(0, 3);
+        if (buttons.length < 3) return { ok: false, focusedCount: buttons.length, preview: null };
+        const expectedAlt = buttons[2].querySelector('strong')?.textContent?.trim() ?? '';
+        for (const button of buttons) {
+          button.click();
+          await new Promise((resolvePromise) => setTimeout(resolvePromise, 8));
+        }
+        const image = await waitForFullPreview(expectedAlt);
+        const focusedRow = document.querySelector(
+          '[data-testid="fla-snapshot-targets"] .fla-snapshot-candidate-row[data-focused="true"]',
+        );
+        const focusedLabel = focusedRow?.querySelector('strong')?.textContent?.trim() ?? '';
+        const metrics = readFullPreview(image);
+        return {
+          ok: image.alt === expectedAlt && focusedLabel === expectedAlt &&
+            metrics.naturalWidth === metrics.generatedWidth && metrics.naturalHeight === metrics.generatedHeight,
+          focusedCount: buttons.length,
+          preview: metrics,
+        };
+      };
+
+      const previewUrlState = () => ({
+        observed: observedFlaPreviewUrls.size,
+        revoked: [...observedFlaPreviewUrls].filter((url) => revokedObjectUrls.has(url)).length,
+        remaining: [...observedFlaPreviewUrls].filter((url) => !revokedObjectUrls.has(url)).length,
+      });
 
       const switchModeAndBack = async () => {
         const sequenceTab = await waitFor('[data-testid="fla-render-mode-sequence"]', (element) => !element.disabled);
@@ -301,7 +404,48 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
 
       await createProjectThroughUi();
       const initial = readProjectState();
-      await openStageDReview();
+      if (measureScanOnly) {
+        const scanMeasurement = await openStageDReview(300_000);
+        const previewButtons = [...document.querySelectorAll(
+          '[data-testid="fla-snapshot-targets"] .fla-snapshot-candidate-row[data-preview-supported="true"] .fla-snapshot-candidate-focus',
+        )].slice(0, 16);
+        const previewMeasurements = [];
+        for (const button of previewButtons) {
+          const expectedAlt = button.querySelector('strong')?.textContent?.trim() ?? '';
+          button.click();
+          const image = await waitForFullPreview(expectedAlt);
+          previewMeasurements.push(readFullPreview(image));
+        }
+        const beforeClose = readProjectState();
+        click('[data-testid="fla-snapshot-close"]');
+        await waitFor('[data-testid="asset-browser-view"]');
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+        const afterClose = readProjectState();
+        const noProjectMutation = afterClose.assetCount === initial.assetCount &&
+          afterClose.maxRevision === initial.maxRevision;
+        const previewResourcesReleased = previewUrlState().remaining === 0;
+        const highResolutionVerified = previewMeasurements.some((preview) =>
+          preview.resolution === 'full' && preview.naturalWidth === preview.generatedWidth &&
+          preview.naturalHeight === preview.generatedHeight &&
+          Math.max(preview.naturalWidth, preview.naturalHeight) > 160,
+        );
+        return {
+          ok: scanMeasurement.candidateCount > 0 && noProjectMutation && previewResourcesReleased && highResolutionVerified,
+          projectRoot: acceptanceRoot + '\\\\' + projectName + '.pandastage',
+          scanMeasurement,
+          previewMeasurements,
+          highResolutionVerified,
+          noProjectMutation,
+          previewResourcesReleased,
+          previewUrlState: previewUrlState(),
+          initial,
+          beforeClose,
+          afterClose,
+        };
+      }
+
+      const scanExit = await cancelDuringScan();
+      const scanMeasurement = await openStageDReview();
 
       const rectData = (element) => {
         if (!(element instanceof Element)) return null;
@@ -377,6 +521,12 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
       const duplicateGroupPreservesSourceIdentity = duplicateGroupSourceCount > 0 &&
         duplicateGroupSourceCount === candidateSourceRowCount && candidateSourceRowCount === targetCount;
       const reviewBodyText = document.querySelector('[data-testid="fla-review-body"]')?.textContent ?? '';
+      const defaultDetailsText = [
+        document.querySelector('[data-testid="fla-snapshot-details"]')?.textContent ?? '',
+        document.querySelector('[data-testid="fla-snapshot-candidate-summary"]')?.textContent ?? '',
+      ].join(' ');
+      const defaultHashHidden = !defaultDetailsText.includes('预览去重') &&
+        !/SHA[- ]?256/iu.test(defaultDetailsText) && !/[0-9a-f]{12}/iu.test(defaultDetailsText);
       const sourceBasename = document.querySelector('[data-testid="fla-render-workbench-source"] strong')?.textContent?.trim() ?? '';
       const countOccurrences = (value, needle) => needle ? value.split(needle).length - 1 : 0;
       const noRasterChrome = document.querySelectorAll(
@@ -477,6 +627,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
         targetSearchWorks: searchMatches,
       };
 
+      const focusedPreviewRace = await rapidFocusAndCheck();
       const modeSwitchPassed = await switchModeAndBack();
       const beforeCancel = readProjectState();
       click('[data-testid="fla-snapshot-close"]');
@@ -522,6 +673,8 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
       click('[data-testid="fla-snapshot-close"]');
       await waitFor('[data-testid="asset-browser-view"]');
       const libraryAfterClose = readProjectState();
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+      const releasedPreviewResources = previewUrlState();
 
       const checks = {
         zeroRasterRoute,
@@ -533,7 +686,15 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
         duplicateGroupPreservesSourceIdentity,
         noRasterChrome: shellFacts.noRasterChrome,
         modeSwitchPassed,
+        scanCancellationExitsWithoutMutation: scanExit.exitedBeforeScanCompleted && scanExit.noProjectMutation,
         cancellationNoMutation,
+        focusedPreviewRaceHasFullResolution: focusedPreviewRace.ok,
+        focusedPreviewExceedsThumbnailResolution: Boolean(
+          focusedPreviewRace.preview &&
+          Math.max(focusedPreviewRace.preview.naturalWidth, focusedPreviewRace.preview.naturalHeight) > 160,
+        ),
+        defaultHashHidden,
+        previewResourcesReleased: releasedPreviewResources.remaining === 0,
         importUnavailableBeforeSelection,
         previewReady,
         multiSelectionWorks: selectedCandidates.selectedCount === 2,
@@ -559,6 +720,11 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
         candidateSourceRowCount,
         duplicateGroupSourceCount,
         stageFacts: shellFacts.stageFactsText,
+        scanMeasurement,
+        scanExit,
+        focusedPreviewRace,
+        defaultHashHidden,
+        releasedPreviewResources,
         checks,
         deletionChecks,
         initial,
@@ -581,18 +747,29 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName) {
         committedText,
         projectMutation: 'CANDIDATE_PREVIEWS_AND_SELECTION_NO_PROJECT_MUTATION; CANCEL_NO_MUTATION; ONE_CONFIRM; COMMIT_SELECTED_STATIC_SNAPSHOT_IMAGE_ASSETS',
       };
-    })()
-  `);
+    })().catch((error) => ({
+      verifierError: error instanceof Error ? error.message : String(error),
+      verifierStack: error instanceof Error ? error.stack : String(error),
+    }))
+  `).then((result) => {
+    if (result?.verifierError) {
+      throw new Error(`${result.verifierError}\n${result.verifierStack ?? ''}`);
+    }
+    return result;
+  });
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(1));
   const acceptanceRoot = resolve(args.acceptanceRoot || DEFAULT_ACCEPTANCE_ROOT);
-   const outPath = resolve(args.out || join(acceptanceRoot, 'issue398-stage-d-receipt.json'));
+  const outPath = resolve(args.out || join(
+    acceptanceRoot,
+    args.measureScanOnly ? 'issue761-fla-scan-measurement.json' : 'issue398-stage-d-receipt.json',
+  ));
   const evidenceDir = resolve(args.evidenceDir || join(acceptanceRoot, 'layout-evidence'));
   const userData = resolve(args.userData || join(acceptanceRoot, 'electron-user-data'));
-   const sourcePath = resolve(args.source || join(acceptanceRoot, 'issue398-stage-d-zero-raster.fla'));
-   const projectName = `Issue398 Stage D UI ${Date.now()}`;
+  const sourcePath = resolve(args.source || join(acceptanceRoot, 'issue398-stage-d-zero-raster.fla'));
+  const projectName = `${args.measureScanOnly ? 'Issue761 FLA scan measurement' : 'Issue398 Stage D UI'} ${Date.now()}`;
   mkdirSync(acceptanceRoot, { recursive: true });
   mkdirSync(resolve(outPath, '..'), { recursive: true });
   mkdirSync(evidenceDir, { recursive: true });
@@ -601,6 +778,9 @@ async function main() {
   let sourceWasGenerated = false;
   let response = null;
   try {
+    if (args.measureScanOnly && !args.source) {
+      throw new Error('Real FLA scan measurement requires --source with an existing FLA file.');
+    }
     if (!args.source) {
       await writeSyntheticZeroRasterFla(sourcePath);
       sourceWasGenerated = true;
@@ -613,33 +793,40 @@ async function main() {
     const sourceSha256Before = sha256(sourcePath);
     const mainWindow = await waitForMainWindow();
     const pathState = { error: null };
-    const pathPromise = runStageDPath(mainWindow, acceptanceRoot, projectName).catch((error) => {
+    const pathPromise = runStageDPath(mainWindow, acceptanceRoot, projectName, {
+      measureScanOnly: Boolean(args.measureScanOnly),
+    }).catch((error) => {
       pathState.error = error;
       throw error;
     });
-    const layoutEvidence = {
-      top: await captureScreenshotAtMarker(
-        mainWindow,
-        'top',
-        join(evidenceDir, 'stage-d-top-target.png'),
-        pathState,
-      ),
-      bottom: await captureScreenshotAtMarker(
-        mainWindow,
-        'bottom',
-        join(evidenceDir, 'stage-d-bottom-target.png'),
-        pathState,
-      ),
-    };
+    let layoutEvidence = null;
+    if (!args.measureScanOnly) {
+      layoutEvidence = {
+        top: await captureScreenshotAtMarker(
+          mainWindow,
+          'top',
+          join(evidenceDir, 'stage-d-top-target.png'),
+          pathState,
+        ),
+        bottom: await captureScreenshotAtMarker(
+          mainWindow,
+          'bottom',
+          join(evidenceDir, 'stage-d-bottom-target.png'),
+          pathState,
+        ),
+      };
+    }
     response = await pathPromise;
-    response.layoutEvidence = layoutEvidence;
+    if (layoutEvidence) response.layoutEvidence = layoutEvidence;
     const sourceSha256After = sha256(sourcePath);
     const projectFile = join(acceptanceRoot, `${projectName}.pandastage`, 'project.json');
     const persistedProject = existsSync(projectFile)
       ? JSON.parse(readFileSync(projectFile, 'utf8'))
       : null;
     const receipt = {
-      schemaVersion: 'issue398-stage-d-electron-acceptance/1',
+      schemaVersion: args.measureScanOnly
+        ? 'issue761-fla-scan-measurement/1'
+        : 'issue398-stage-d-electron-acceptance/1',
       source: {
         basename: sourcePath.split(/[\\/]/u).pop(),
         generatedByVerifier: sourceWasGenerated,
@@ -654,18 +841,31 @@ async function main() {
           : null,
         privateVisualBytesRecorded: false,
       },
+      scanMeasurement: args.measureScanOnly ? {
+        status: response?.scanMeasurement?.candidateCount > 0 ? 'VERIFIED' : 'NOT VERIFIED',
+        candidateCount: response?.scanMeasurement?.candidateCount ?? null,
+        scanDurationMs: response?.scanMeasurement?.scanDurationMs ?? null,
+        scannedAt: response?.scanMeasurement?.scannedAt ?? null,
+      } : null,
       parserPath: 'real Windows Electron Main + production Renderer UI -> V2-R catalog -> bounded v1.2 deletion-first R1/R2 workbench -> static preview/explicit ImageAsset commit',
       response,
     };
     writeFileSync(outPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
     process.stdout.write(`${JSON.stringify(receipt)}\n`);
-    if (!receipt.source.hashInvariant || !response?.ok || receipt.project.persistedAssetCount !== 1) {
+    const expectedPersistedAssetCount = args.measureScanOnly ? 0 : 1;
+    if (
+      !receipt.source.hashInvariant || !response?.ok ||
+      receipt.project.persistedAssetCount !== expectedPersistedAssetCount ||
+      args.measureScanOnly && receipt.scanMeasurement?.status !== 'VERIFIED'
+    ) {
       process.exitCode = 1;
     }
   } catch (caught) {
     const error = caught instanceof Error ? caught : new Error(String(caught));
     const receipt = {
-      schemaVersion: 'issue398-stage-d-electron-acceptance/1',
+      schemaVersion: args.measureScanOnly
+        ? 'issue761-fla-scan-measurement/1'
+        : 'issue398-stage-d-electron-acceptance/1',
       source: {
         basename: sourcePath.split(/[\\/]/u).pop(),
         generatedByVerifier: sourceWasGenerated,

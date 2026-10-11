@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   FlaStaticSnapshotCommitError,
   FlaRenderableTargetCatalogEntry,
@@ -7,7 +7,11 @@ import type {
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { boundedUnsupportedReason, FlaStageF2UnavailableDetails } from './FlaStageF';
 import { FlaStageGRecovery, type FlaStageGTerminalState } from './FlaStageGTerminal';
-import { flaStaticSnapshotClient } from './fla-static-snapshot-render';
+import { flaStaticSnapshotClient, type FlaStaticSnapshotCatalogClient } from './fla-static-snapshot-render';
+import {
+  flaStaticSnapshotPreviewQueue,
+  runFlaStaticSnapshotPreviewTransaction,
+} from './fla-static-snapshot-preview-transaction';
 import {
   flaStaticSnapshotCandidateKey,
   flaStaticSnapshotCandidateKindLabel,
@@ -37,7 +41,7 @@ interface FlaStaticSnapshotReviewProps {
 type SnapshotPhase = 'loading' | 'scanning' | 'ready' | 'committing' | 'completed' | 'partial' | 'error';
 type ImportItemStatus = 'imported' | 'duplicate' | 'failed' | 'not-attempted';
 
-interface SnapshotImportItem {
+export interface SnapshotImportItem {
   key: string;
   label: string;
   status: ImportItemStatus;
@@ -46,12 +50,18 @@ interface SnapshotImportItem {
   message?: string;
 }
 
-interface SnapshotImportReceipt {
+export interface SnapshotImportReceipt {
   selectedCount: number;
   items: SnapshotImportItem[];
   partial: boolean;
+  warnings: string[];
   recovery?: Pick<FlaStaticSnapshotCommitError, 'code' | 'message' | 'residualPaths'>;
 }
+
+type FocusedSnapshotPreview =
+  | { key: string; status: 'loading' }
+  | { key: string; status: 'ready'; url: string; width: number; height: number }
+  | { key: string; status: 'error'; message: string };
 
 export function FlaStaticSnapshotReview({
   sessionId,
@@ -70,12 +80,17 @@ export function FlaStaticSnapshotReview({
   const [previews, setPreviews] = useState<FlaStaticSnapshotCandidatePreviews>({});
   const [selectedCandidateKeys, setSelectedCandidateKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [focusedCandidateKey, setFocusedCandidateKey] = useState<string | null>(null);
+  const [focusedPreview, setFocusedPreview] = useState<FocusedSnapshotPreview | null>(null);
   const [candidateSearch, setCandidateSearch] = useState('');
   const [scanProgress, setScanProgress] = useState(0);
   const [importProgress, setImportProgress] = useState(0);
   const [receipt, setReceipt] = useState<SnapshotImportReceipt | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const previewUrlsRef = useRef(new Set<string>());
+  const focusedPreviewUrlRef = useRef<{ key: string; url: string } | null>(null);
+  const focusedCandidateKeyRef = useRef(focusedCandidateKey);
+  const activePreviewRequestIdRef = useRef<string | null>(null);
+  focusedCandidateKeyRef.current = focusedCandidateKey;
 
   const entryByKey = useMemo(
     () => new Map(entries.map((entry) => [flaStaticSnapshotCandidateKey(entry), entry])),
@@ -86,6 +101,17 @@ export function FlaStaticSnapshotReview({
     [candidateSearch, entries, previews],
   );
   const focusedEntry = focusedCandidateKey ? entryByKey.get(focusedCandidateKey) ?? null : null;
+  const focusedStatus = focusedEntry
+    ? previews[flaStaticSnapshotCandidateKey(focusedEntry)]
+    : undefined;
+  const focusedPreviewForEntry = focusedCandidateKey && focusedPreview?.key === focusedCandidateKey
+    ? focusedPreview
+    : null;
+  const previewAreaState = focusedPreviewForEntry?.status ?? (
+    focusedStatus?.status === 'supported'
+      ? 'loading'
+      : focusedStatus?.status ?? 'needs-preview'
+  );
   const supportedEntries = useMemo(
     () => entries.filter((entry) => previews[flaStaticSnapshotCandidateKey(entry)]?.status === 'supported'),
     [entries, previews],
@@ -105,11 +131,35 @@ export function FlaStaticSnapshotReview({
       ? `正在检查候选预览 ${scanProgress} / ${entries.length}；目前 ${supportedEntries.length} 项可导入、${unsupportedCount} 项暂不可导入、${blankCount} 项为空白。`
       : `检查完成：${supportedEntries.length} 项可导入、${unsupportedCount} 项暂不可导入、${blankCount} 项为空白。`;
 
+  const updateFocusedPreview = useCallback((next: FocusedSnapshotPreview | null): void => {
+    const nextUrl = next?.status === 'ready' ? next.url : null;
+    const currentUrl = focusedPreviewUrlRef.current;
+    if (currentUrl && currentUrl.url !== nextUrl) URL.revokeObjectURL(currentUrl.url);
+    focusedPreviewUrlRef.current = nextUrl && next
+      ? { key: next.key, url: nextUrl }
+      : null;
+    setFocusedPreview(next);
+  }, []);
+
+  const markFocusedPreviewUnavailable = useCallback((key: string, message: string): void => {
+    updateFocusedPreview({ key, status: 'error', message });
+    setPreviews((current) => ({
+      ...current,
+      [key]: { ...current[key], status: 'unsupported', reason: message },
+    }));
+    setSelectedCandidateKeys((current) => {
+      if (!current.has(key)) return current;
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
+  }, [updateFocusedPreview]);
+
   useEffect(() => {
     onCommitStateChange?.(false);
     onTerminalStateChange?.('active');
     let disposed = false;
-    let activeRequestId: string | null = null;
+    let scanRequestId: string | null = null;
 
     const setCandidatePreview = (key: string, preview: FlaStaticSnapshotCandidatePreview): void => {
       setPreviews((current) => ({ ...current, [key]: preview }));
@@ -153,9 +203,10 @@ export function FlaStaticSnapshotReview({
           }
 
           const requestId = crypto.randomUUID();
-          activeRequestId = requestId;
-          try {
-            const preview = await flaStaticSnapshotClient.preview({
+          scanRequestId = requestId;
+          const outcome = await runFlaStaticSnapshotPreviewTransaction(
+            flaStaticSnapshotClient,
+            {
               format: 'fla-static-snapshot-preview',
               version: 1,
               requestId,
@@ -164,47 +215,68 @@ export function FlaStaticSnapshotReview({
                 ...entry.target,
                 selectedFrameIndex: entry.target.selectedFrameIndex ?? 0,
               },
-            });
-            if (disposed) return;
-            if (!preview.ok || !preview.bytes) {
-              setCandidatePreview(key, {
-                status: 'unsupported',
-                reason: preview.ok ? '预览没有返回图像。' : preview.error.message,
-              });
-            } else {
-              try {
-                const previewUrl = await createCandidateThumbnailUrl(preview.bytes);
-                if (disposed) {
-                  URL.revokeObjectURL(previewUrl);
-                  return;
+            },
+            flaStaticSnapshotPreviewQueue,
+            undefined,
+            {
+              shouldRun: () => !disposed,
+              onRequestStart: () => {
+                activePreviewRequestIdRef.current = requestId;
+              },
+              onRequestSettled: () => {
+                if (activePreviewRequestIdRef.current === requestId) {
+                  activePreviewRequestIdRef.current = null;
                 }
-                previewUrlsRef.current.add(previewUrl);
-                setCandidatePreview(key, {
-                  status: 'supported',
-                  previewUrl,
-                  sha256: preview.sha256,
-                });
-              } catch (error) {
-                setCandidatePreview(key, {
-                  status: 'unsupported',
-                  reason: error instanceof Error ? error.message : '无法显示预览图像。',
+                if (scanRequestId === requestId) scanRequestId = null;
+              },
+            },
+          );
+          if (disposed || outcome.skipped) return;
+          if (outcome.cleanupError) {
+            const previewFailure = outcome.operationError?.message;
+            throw new Error(
+              `预览资源清理失败，检查已停止。${previewFailure ? `${previewFailure}；` : ''}${outcome.cleanupError.message}`,
+            );
+          }
+          if (outcome.operationError) {
+            setCandidatePreview(key, {
+              status: 'unsupported',
+              reason: outcome.operationError.message,
+            });
+          } else if (!outcome.response?.ok || !outcome.response.bytes) {
+            setCandidatePreview(key, {
+              status: 'unsupported',
+              reason: outcome.response?.ok ? '预览没有返回图像。' : outcome.response?.error.message ?? '预览失败。',
+            });
+          } else {
+            try {
+              const previewUrl = await createCandidateThumbnailUrl(outcome.response.bytes);
+              if (disposed) {
+                URL.revokeObjectURL(previewUrl);
+                return;
+              }
+              previewUrlsRef.current.add(previewUrl);
+              if (focusedCandidateKeyRef.current === key) {
+                const fullSizeUrl = createCandidateFullSizeUrl(outcome.response.bytes);
+                updateFocusedPreview({
+                  key,
+                  status: 'ready',
+                  url: fullSizeUrl,
+                  width: outcome.response.width,
+                  height: outcome.response.height,
                 });
               }
-            }
-          } catch (error) {
-            if (!disposed) {
+              setCandidatePreview(key, {
+                status: 'supported',
+                previewUrl,
+                sha256: outcome.response.sha256,
+              });
+            } catch (error) {
               setCandidatePreview(key, {
                 status: 'unsupported',
-                reason: error instanceof Error ? error.message : '预览失败。',
+                reason: error instanceof Error ? error.message : '无法显示预览图像。',
               });
             }
-          } finally {
-            await flaStaticSnapshotClient.cancel({
-              format: 'fla-static-snapshot-cancel',
-              version: 1,
-              requestId,
-            });
-            if (activeRequestId === requestId) activeRequestId = null;
           }
           if (!disposed) setScanProgress(index + 1);
         }
@@ -220,22 +292,127 @@ export function FlaStaticSnapshotReview({
       disposed = true;
       onCommitStateChange?.(false);
       onTerminalStateChange?.('active');
-      if (activeRequestId) {
+      const requestId = activePreviewRequestIdRef.current ?? scanRequestId;
+      if (requestId) {
         void flaStaticSnapshotClient.cancel({
           format: 'fla-static-snapshot-cancel',
           version: 1,
-          requestId: activeRequestId,
-        });
+          requestId,
+        }).catch(() => undefined);
       }
       void flaStaticSnapshotClient.cancel({
         format: 'fla-static-snapshot-cancel',
         version: 1,
         sessionId,
-      });
+      }).catch(() => undefined);
       for (const previewUrl of previewUrlsRef.current) URL.revokeObjectURL(previewUrl);
       previewUrlsRef.current.clear();
+      const fullSizePreview = focusedPreviewUrlRef.current;
+      if (fullSizePreview) URL.revokeObjectURL(fullSizePreview.url);
+      focusedPreviewUrlRef.current = null;
     };
-  }, [onCommitStateChange, onTerminalStateChange, sessionId]);
+  }, [onCommitStateChange, onTerminalStateChange, sessionId, updateFocusedPreview]);
+
+  useEffect(() => {
+    const key = focusedCandidateKey;
+    const entry = focusedEntry;
+    const status = focusedStatus;
+    const canRequest = Boolean(
+      key && entry && status?.status === 'supported' && status.sha256 &&
+      (phase === 'scanning' || phase === 'ready'),
+    );
+
+    if (!canRequest || !key || !entry || !status?.sha256) {
+      if (
+        phase !== 'scanning' && phase !== 'ready' ||
+        focusedPreviewUrlRef.current && focusedPreviewUrlRef.current.key !== key
+      ) {
+        updateFocusedPreview(null);
+      }
+      return;
+    }
+    if (focusedPreviewUrlRef.current?.key === key) return;
+
+    let disposed = false;
+    const requestId = crypto.randomUUID();
+    updateFocusedPreview({ key, status: 'loading' });
+
+    void (async () => {
+      const outcome = await runFlaStaticSnapshotPreviewTransaction(
+        flaStaticSnapshotClient,
+        {
+          format: 'fla-static-snapshot-preview',
+          version: 1,
+          requestId,
+          sessionId,
+          target: {
+            ...entry.target,
+            selectedFrameIndex: entry.target.selectedFrameIndex ?? 0,
+          },
+        },
+        flaStaticSnapshotPreviewQueue,
+        undefined,
+        {
+          shouldRun: () => !disposed && focusedCandidateKeyRef.current === key,
+          onRequestStart: () => {
+            activePreviewRequestIdRef.current = requestId;
+          },
+          onRequestSettled: () => {
+            if (activePreviewRequestIdRef.current === requestId) {
+              activePreviewRequestIdRef.current = null;
+            }
+          },
+        },
+      );
+      if (disposed || outcome.skipped || focusedCandidateKeyRef.current !== key) return;
+
+      const failureMessage = outcome.cleanupError
+        ? '清晰预览的资源清理失败。为避免错误导入，此项暂不可导入。'
+        : outcome.operationError
+          ? '清晰预览暂时无法显示。此项暂不可导入，请重新检查或返回。'
+          : !outcome.response?.ok || !outcome.response.bytes
+            ? '清晰预览暂时无法显示。此项暂不可导入，请重新检查或返回。'
+            : outcome.response.sha256 !== status.sha256
+              ? '候选图像已变化。请重新检查后再导入。'
+              : null;
+      if (failureMessage) {
+        markFocusedPreviewUnavailable(key, failureMessage);
+        return;
+      }
+
+      const response = outcome.response;
+      if (!response?.ok) return;
+      const url = createCandidateFullSizeUrl(response.bytes);
+      if (disposed || focusedCandidateKeyRef.current !== key) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      updateFocusedPreview({
+        key,
+        status: 'ready',
+        url,
+        width: response.width,
+        height: response.height,
+      });
+    })().catch(() => {
+      if (disposed || focusedCandidateKeyRef.current !== key) return;
+      markFocusedPreviewUnavailable(
+        key,
+        '清晰预览暂时无法显示。此项暂不可导入，请重新检查或返回。',
+      );
+    });
+
+    return () => {
+      disposed = true;
+      if (activePreviewRequestIdRef.current === requestId) {
+        void flaStaticSnapshotClient.cancel({
+          format: 'fla-static-snapshot-cancel',
+          version: 1,
+          requestId,
+        }).catch(() => undefined);
+      }
+    };
+  }, [focusedCandidateKey, focusedEntry, focusedStatus?.sha256, focusedStatus?.status, markFocusedPreviewUnavailable, phase, sessionId, updateFocusedPreview]);
 
   const close = (): void => {
     if (phase === 'committing') return;
@@ -243,7 +420,7 @@ export function FlaStaticSnapshotReview({
       format: 'fla-static-snapshot-cancel',
       version: 1,
       sessionId,
-    });
+    }).catch(() => undefined);
     onClose();
   };
 
@@ -276,126 +453,71 @@ export function FlaStaticSnapshotReview({
 
   const clearSelection = (): void => setSelectedCandidateKeys(new Set());
 
+  const focusedSelectionNeedsPreview = Boolean(
+    focusedCandidateKey && selectedCandidateKeys.has(focusedCandidateKey) &&
+    focusedPreviewForEntry?.status !== 'ready',
+  );
+
   const importSelected = async (): Promise<void> => {
-    if (phase !== 'ready' || selectedEntries.length === 0 || !snapshot) return;
+    if (phase !== 'ready' || selectedEntries.length === 0 || !snapshot || focusedSelectionNeedsPreview) return;
     setPhase('committing');
     setImportProgress(0);
     setReceipt(null);
     setErrorMessage('');
-    onCommitStateChange?.(true);
-    onTerminalStateChange?.('importing');
-
-    let currentProject = snapshot.project;
-    let currentRevision = snapshot.revision;
-    let stopAfterCommitError = false;
-    let recovery: SnapshotImportReceipt['recovery'];
-    const items: SnapshotImportItem[] = [];
-
-    for (let index = 0; index < selectedEntries.length; index += 1) {
-      const entry = selectedEntries[index];
-      if (!entry) continue;
-      const key = flaStaticSnapshotCandidateKey(entry);
-      const label = flaStaticSnapshotCandidateLabel(entry);
-      const expectedPreview = previews[key];
-      if (stopAfterCommitError) {
-        items.push({ key, label, status: 'not-attempted', message: '前一项导入失败，未继续提交。' });
-        setImportProgress(index + 1);
-        continue;
-      }
-      if (!expectedPreview?.sha256) {
-        items.push({ key, label, status: 'failed', message: '缺少已检查的预览，未导入。' });
-        setImportProgress(index + 1);
-        continue;
-      }
-
-      const requestId = crypto.randomUUID();
-      try {
-        const preview = await flaStaticSnapshotClient.preview({
-          format: 'fla-static-snapshot-preview',
-          version: 1,
-          requestId,
-          sessionId,
-          target: {
-            ...entry.target,
-            selectedFrameIndex: entry.target.selectedFrameIndex ?? 0,
-          },
-        });
-        if (!preview.ok || !preview.bytes) {
-          items.push({
-            key,
-            label,
-            status: 'failed',
-            message: preview.ok ? '重新检查时没有得到预览图像。' : preview.error.message,
-          });
-        } else if (preview.sha256 !== expectedPreview.sha256) {
-          items.push({ key, label, status: 'failed', message: '候选图像已变化；为避免导入未确认内容，此项未导入。' });
-        } else {
-          const response = await flaStaticSnapshotClient.commit({
-            format: 'fla-static-snapshot-commit',
-            version: 1,
-            projectRoot: snapshot.projectRoot,
-            project: currentProject,
-            baseRevision: currentRevision,
-            sessionId,
-            confirmedPreviewRequestId: preview.requestId,
-            source,
-            target: {
-              ...entry.target,
-              selectedFrameIndex: entry.target.selectedFrameIndex ?? 0,
-            },
-            preview: {
-              sha256: preview.sha256,
-              width: preview.width,
-              height: preview.height,
-              byteLength: preview.bytes.byteLength,
-            },
-            confirmed: true,
-          });
-          if (response.ok) {
-            currentProject = response.project;
-            currentRevision = response.savedRevision;
-            onImported(response);
-            items.push({
-              key,
-              label,
-              status: response.result.status === 'imported' ? 'imported' : 'duplicate',
-              assetId: response.result.assetId,
-              assetFileName: response.result.targetFileName,
-              message: response.result.message,
-            });
-          } else {
-            items.push({ key, label, status: 'failed', message: response.error.message });
-            recovery = {
-              code: response.error.code,
-              message: response.error.message,
-              residualPaths: response.error.residualPaths,
-            };
-            stopAfterCommitError = true;
-          }
-        }
-      } catch (error) {
-        items.push({
-          key,
-          label,
+    let finalReceipt: SnapshotImportReceipt = {
+      selectedCount: selectedEntries.length,
+      items: [],
+      partial: true,
+      warnings: [],
+    };
+    try {
+      onCommitStateChange?.(true);
+      onTerminalStateChange?.('importing');
+      finalReceipt = await runFlaStaticSnapshotBatchImport({
+        client: flaStaticSnapshotClient,
+        queue: flaStaticSnapshotPreviewQueue,
+        selectedEntries,
+        previews,
+        sessionId,
+        source,
+        snapshot,
+        onImported,
+        onProgress: setImportProgress,
+      });
+    } catch {
+      finalReceipt = {
+        selectedCount: selectedEntries.length,
+        items: selectedEntries.map((entry) => ({
+          key: flaStaticSnapshotCandidateKey(entry),
+          label: flaStaticSnapshotCandidateLabel(entry),
           status: 'failed',
-          message: error instanceof Error ? error.message : '导入失败。',
-        });
-        stopAfterCommitError = true;
-      } finally {
-        await flaStaticSnapshotClient.cancel({
-          format: 'fla-static-snapshot-cancel',
-          version: 1,
-          requestId,
-        });
-        setImportProgress(index + 1);
+          message: '批量导入未能确认最终结果；请检查素材库，不要重复提交。',
+        })),
+        partial: true,
+        warnings: ['批量导入流程异常结束，已停止后续操作。'],
+      };
+    } finally {
+      const callbackWarnings: string[] = [];
+      try {
+        onTerminalStateChange?.(finalReceipt.partial ? 'recovery' : 'success');
+      } catch {
+        callbackWarnings.push('页面状态未能同步；请以本页导入回执为准。');
       }
+      try {
+        onCommitStateChange?.(false);
+      } catch {
+        callbackWarnings.push('页面忙碌状态通知未能更新；请返回素材库重新进入。');
+      }
+      if (callbackWarnings.length > 0) {
+        finalReceipt = {
+          ...finalReceipt,
+          partial: true,
+          warnings: [...finalReceipt.warnings, ...callbackWarnings],
+        };
+      }
+      setReceipt(finalReceipt);
+      setPhase(finalReceipt.partial ? 'partial' : 'completed');
     }
-
-    const partial = items.some((item) => item.status === 'failed' || item.status === 'not-attempted');
-    setReceipt({ selectedCount: selectedEntries.length, items, partial, recovery });
-    setPhase(partial ? 'partial' : 'completed');
-    onCommitStateChange?.(false);
-    onTerminalStateChange?.(partial ? 'recovery' : 'success');
   };
 
   if (phase === 'loading' || phase === 'error') {
@@ -434,6 +556,11 @@ export function FlaStaticSnapshotReview({
             共处理 {receipt.selectedCount} 项 · 新导入 {importedCount} 项 · 复用已有素材 {duplicateCount} 项 · 失败 {failedCount} 项 · 未尝试 {notAttemptedCount} 项
           </output>
         </header>
+        {receipt.warnings.map((warning, index) => (
+          <p className="fla-snapshot-receipt-warning" data-testid="fla-snapshot-import-warning" key={`${index}-${warning}`} role="alert">
+            {warning}
+          </p>
+        ))}
         <ul className="fla-snapshot-receipt-items" data-testid="fla-snapshot-import-receipt">
           {receipt.items.map((item) => (
             <li data-status={item.status} key={item.key}>
@@ -476,9 +603,6 @@ export function FlaStaticSnapshotReview({
     );
   }
 
-  const focusedStatus = focusedEntry
-    ? previews[flaStaticSnapshotCandidateKey(focusedEntry)]
-    : undefined;
   const focusedUnavailableEntry = focusedEntry && focusedStatus?.status === 'unsupported'
     ? {
         ...focusedEntry,
@@ -486,7 +610,7 @@ export function FlaStaticSnapshotReview({
         unsupportedReason: focusedStatus.reason ?? focusedEntry.unsupportedReason ?? '当前无法安全生成预览。',
       }
     : null;
-  const canImport = phase === 'ready' && selectedEntries.length > 0 && Boolean(snapshot);
+  const canImport = phase === 'ready' && selectedEntries.length > 0 && Boolean(snapshot) && !focusedSelectionNeedsPreview;
 
   return (
     <div
@@ -614,21 +738,35 @@ export function FlaStaticSnapshotReview({
         <section className="fla-snapshot-preview-region" data-testid="fla-snapshot-preview-region">
           <header className="fla-snapshot-region-heading">
             <h3>{focusedEntry ? '候选预览' : '预览'}</h3>
-            <output aria-live="polite" data-preview-state={focusedStatus?.status ?? 'checking'} data-testid="fla-snapshot-preview-status">
-              {focusedStatus?.status === 'supported' ? '可导入' : focusedStatus?.status === 'blank' ? '空白状态' : focusedStatus?.status === 'unsupported' ? '暂不可导入' : phase === 'scanning' ? '正在检查' : '等待检查'}
+            <output aria-live="polite" data-preview-state={previewAreaState} data-testid="fla-snapshot-preview-status">
+              {focusedStatus?.status === 'blank' ? '空白状态' : focusedStatus?.status === 'unsupported' ? '暂不可导入' : focusedPreviewForEntry?.status === 'ready' ? '可导入' : focusedStatus?.status === 'supported' ? '正在加载清晰预览' : phase === 'scanning' ? '正在检查' : '等待检查'}
             </output>
           </header>
-          <div className="fla-snapshot-preview-stage" data-testid="fla-snapshot-preview-area">
-            {focusedStatus?.previewUrl ? (
+          <div className="fla-snapshot-preview-stage" data-preview-state={previewAreaState} data-testid="fla-snapshot-preview-area">
+            {focusedPreviewForEntry?.status === 'ready' ? (
               <img
                 alt={focusedEntry ? flaStaticSnapshotCandidateLabel(focusedEntry) : 'FLA 候选预览'}
+                data-preview-height={focusedPreviewForEntry.height}
+                data-preview-resolution="full"
+                data-preview-width={focusedPreviewForEntry.width}
                 data-testid="fla-snapshot-preview-image"
-                src={focusedStatus.previewUrl}
+                onError={() => {
+                  const key = focusedCandidateKey;
+                  if (
+                    !key || focusedCandidateKeyRef.current !== key ||
+                    focusedPreviewUrlRef.current?.url !== focusedPreviewForEntry.url
+                  ) return;
+                  markFocusedPreviewUnavailable(
+                    key,
+                    '清晰预览暂时无法显示。此项暂不可导入，请重新检查或返回。',
+                  );
+                }}
+                src={focusedPreviewForEntry.url}
               />
             ) : (
-              <div className="fla-snapshot-preview-placeholder" data-testid="fla-snapshot-preview-placeholder">
-                <strong>{focusedStatus?.status === 'blank' ? '这是空白状态' : focusedStatus?.status === 'unsupported' ? '此项暂不可导入' : phase === 'scanning' ? '正在生成候选预览…' : '选择一个候选查看'}</strong>
-                <span>{focusedStatus?.status === 'unsupported' ? boundedUnsupportedReason(focusedStatus.reason) : '只有成功生成并显示的预览才能加入导入选择。'}</span>
+              <div className="fla-snapshot-preview-placeholder" data-testid="fla-snapshot-preview-placeholder" role={focusedPreviewForEntry?.status === 'error' ? 'alert' : undefined}>
+                <strong>{focusedPreviewForEntry?.status === 'error' ? '清晰预览暂不可用' : focusedStatus?.status === 'blank' ? '这是空白状态' : focusedStatus?.status === 'unsupported' ? '此项暂不可导入' : focusedStatus?.status === 'supported' ? '正在加载清晰预览…' : phase === 'scanning' ? '正在生成候选预览…' : '选择一个候选查看'}</strong>
+                <span>{focusedPreviewForEntry?.status === 'error' ? focusedPreviewForEntry.message : focusedStatus?.status === 'unsupported' ? boundedUnsupportedReason(focusedStatus.reason) : '只有成功生成并显示的预览才能加入导入选择。'}</span>
               </div>
             )}
           </div>
@@ -649,7 +787,6 @@ export function FlaStaticSnapshotReview({
                 <div><dt>来源类型</dt><dd>{flaStaticSnapshotCandidateKindLabel(focusedEntry)}</dd></div>
                 <div><dt>时间线范围</dt><dd>{focusedEntry.target.frameCount} 帧</dd></div>
                 <div><dt>当前状态</dt><dd>{focusedStatus?.status === 'supported' ? '可导入' : focusedStatus?.status === 'blank' ? '空白状态' : focusedStatus?.status === 'unsupported' ? '暂不可导入' : '正在检查'}</dd></div>
-                {focusedStatus?.sha256 ? <div><dt>预览去重</dt><dd title={focusedStatus.sha256}>{focusedStatus.sha256.slice(0, 12)}</dd></div> : null}
               </dl>
               <details className="fla-snapshot-compatibility" data-testid="fla-snapshot-compatibility-details">
                 <summary>来源详情</summary>
@@ -705,6 +842,12 @@ export function FlaStaticSnapshotReview({
   );
 }
 
+function createCandidateFullSizeUrl(bytes: Uint8Array): string {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return URL.createObjectURL(new Blob([copy.buffer], { type: 'image/png' }));
+}
+
 async function createCandidateThumbnailUrl(bytes: Uint8Array): Promise<string> {
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
@@ -730,4 +873,192 @@ async function createCandidateThumbnailUrl(bytes: Uint8Array): Promise<string> {
   } finally {
     bitmap.close();
   }
+}
+
+export async function runFlaStaticSnapshotBatchImport(options: {
+  client: FlaStaticSnapshotCatalogClient;
+  queue: typeof flaStaticSnapshotPreviewQueue;
+  selectedEntries: readonly FlaRenderableTargetCatalogEntry[];
+  previews: FlaStaticSnapshotCandidatePreviews;
+  sessionId: string;
+  source: { basename: string; sha256: string };
+  snapshot: EditorProjectSnapshot;
+  onImported: (response: FlaStaticSnapshotCommitResponse) => void;
+  onProgress: (progress: number) => void;
+}): Promise<SnapshotImportReceipt> {
+  const {
+    client,
+    queue,
+    selectedEntries,
+    previews,
+    sessionId,
+    source,
+    snapshot,
+    onImported,
+    onProgress,
+  } = options;
+  let currentProject = snapshot.project;
+  let currentRevision = snapshot.revision;
+  let stopAfterFailure = false;
+  let stopReason = '前一项导入未能确认，后续项目未尝试。';
+  let recovery: SnapshotImportReceipt['recovery'];
+  const items: SnapshotImportItem[] = [];
+  const warnings: string[] = [];
+
+  const reportProgress = (index: number): void => {
+    try {
+      onProgress(index + 1);
+    } catch {
+      warnings.push('导入进度显示未能更新；请以本页结果回执为准。');
+    }
+  };
+
+  for (let index = 0; index < selectedEntries.length; index += 1) {
+    const entry = selectedEntries[index];
+    if (!entry) {
+      items.push({
+        key: `missing-${index}`,
+        label: `第 ${index + 1} 项`,
+        status: 'failed',
+        message: '候选数据缺失，未尝试导入。',
+      });
+      reportProgress(index);
+      continue;
+    }
+
+    const key = flaStaticSnapshotCandidateKey(entry);
+    const label = flaStaticSnapshotCandidateLabel(entry);
+    if (stopAfterFailure) {
+      items.push({ key, label, status: 'not-attempted', message: stopReason });
+      reportProgress(index);
+      continue;
+    }
+
+    const expectedPreview = previews[key];
+    if (!expectedPreview?.sha256 || expectedPreview.status !== 'supported') {
+      items.push({ key, label, status: 'failed', message: '缺少可用且已检查的预览，未导入。' });
+      reportProgress(index);
+      continue;
+    }
+
+    const requestId = crypto.randomUUID();
+    let commitAttempted = false;
+    const outcome = await runFlaStaticSnapshotPreviewTransaction(
+      client,
+      {
+        format: 'fla-static-snapshot-preview',
+        version: 1,
+        requestId,
+        sessionId,
+        target: {
+          ...entry.target,
+          selectedFrameIndex: entry.target.selectedFrameIndex ?? 0,
+        },
+      },
+      queue,
+      async (preview) => {
+        if (!preview.ok || !preview.bytes) {
+          return {
+            kind: 'preview-failed' as const,
+            message: preview.ok ? '重新检查时没有得到预览图像。' : preview.error.message,
+          };
+        }
+        if (preview.sha256 !== expectedPreview.sha256) {
+          return {
+            kind: 'preview-changed' as const,
+            message: '候选图像已变化；为避免导入未确认内容，此项未导入。',
+          };
+        }
+
+        commitAttempted = true;
+        const response = await client.commit({
+          format: 'fla-static-snapshot-commit',
+          version: 1,
+          projectRoot: snapshot.projectRoot,
+          project: currentProject,
+          baseRevision: currentRevision,
+          sessionId,
+          confirmedPreviewRequestId: preview.requestId,
+          source,
+          target: {
+            ...entry.target,
+            selectedFrameIndex: entry.target.selectedFrameIndex ?? 0,
+          },
+          preview: {
+            sha256: preview.sha256,
+            width: preview.width,
+            height: preview.height,
+            byteLength: preview.bytes.byteLength,
+          },
+          confirmed: true,
+        });
+        return { kind: 'commit-response' as const, response };
+      },
+    );
+
+    if (outcome.operationError) {
+      const message = commitAttempted
+        ? '提交结果无法确认；为避免重复写入，已停止后续导入。请检查素材库后再处理。'
+        : outcome.operationError.message || '预览失败，未导入。';
+      items.push({ key, label, status: 'failed', message });
+      if (commitAttempted) {
+        stopAfterFailure = true;
+        stopReason = '上一项提交结果无法确认，未继续尝试后续项目。';
+      }
+    } else if (outcome.value?.kind === 'preview-failed' || outcome.value?.kind === 'preview-changed') {
+      items.push({ key, label, status: 'failed', message: outcome.value.message });
+    } else if (outcome.value?.kind === 'commit-response' && outcome.value.response.ok) {
+      const response = outcome.value.response;
+      currentProject = response.project;
+      currentRevision = response.savedRevision;
+      const item: SnapshotImportItem = {
+        key,
+        label,
+        status: response.result.status === 'imported' ? 'imported' : 'duplicate',
+        assetId: response.result.assetId,
+        assetFileName: response.result.targetFileName,
+        message: response.result.message,
+      };
+      items.push(item);
+      try {
+        onImported(response);
+      } catch {
+        item.message = `${item.message ?? ''} 项目已提交，但界面状态同步失败；请勿重复导入，返回素材库核对。`.trim();
+        warnings.push('素材已经写入项目，但界面状态同步失败；请勿重复导入，返回素材库核对。');
+        stopAfterFailure = true;
+        stopReason = '上一项已写入项目，但界面状态未能同步，未继续尝试后续项目。';
+      }
+    } else if (outcome.value?.kind === 'commit-response' && 'error' in outcome.value.response) {
+      const response = outcome.value.response;
+      items.push({ key, label, status: 'failed', message: response.error.message });
+      recovery = {
+        code: response.error.code,
+        message: response.error.message,
+        residualPaths: response.error.residualPaths,
+      };
+      stopAfterFailure = true;
+      stopReason = '上一项导入失败，未继续提交。';
+    } else {
+      items.push({ key, label, status: 'failed', message: '未能确认预览结果，此项没有提交。' });
+    }
+
+    if (outcome.cleanupError) {
+      warnings.push('预览资源清理未完成，已停止后续导入；已经显示为“已新建”或“已复用”的素材不会回滚。请返回素材库核对。');
+      const item = items[items.length - 1];
+      if (item) item.message = `${item.message ?? ''} 预览资源清理未完成。`.trim();
+      stopAfterFailure = true;
+      stopReason = '上一项的预览资源未能清理，未继续尝试后续项目。';
+    }
+
+    reportProgress(index);
+  }
+
+  const partial = items.some((item) => item.status === 'failed' || item.status === 'not-attempted') || warnings.length > 0;
+  return {
+    selectedCount: selectedEntries.length,
+    items,
+    partial,
+    warnings,
+    ...(recovery ? { recovery } : {}),
+  };
 }
