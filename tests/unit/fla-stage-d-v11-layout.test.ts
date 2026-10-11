@@ -71,6 +71,14 @@ describe('Issue #398 Stage D deletion-first presentation contract', () => {
     expect(verifier).toContain('stageDv11Layout');
     expect(verifier).toContain('stageDv12Deletion');
     expect(verifier).toContain('deletionChecks');
-    expect(verifier).toContain('PREVIEW_NONE; COMMIT_ONE_STATIC_SNAPSHOT_IMAGE_ASSET');
+    expect(verifier).toContain('input[type="checkbox"]');
+    expect(verifier).toContain('const selectTwoCandidates');
+    expect(verifier).toContain('li[data-duplicate="true"]');
+    expect(verifier).toContain('fla-snapshot-import-counts');
+    expect(verifier).toContain('cancellationNoMutation');
+    expect(verifier).toContain('duplicateGroupPreservesSourceIdentity');
+    expect(verifier).toContain('exactDuplicateReused');
+    expect(verifier).not.toContain('fla-snapshot-frame-next');
+    expect(verifier).toContain('ONE_CONFIRM; COMMIT_SELECTED_STATIC_SNAPSHOT_IMAGE_ASSETS');
   });
 });
