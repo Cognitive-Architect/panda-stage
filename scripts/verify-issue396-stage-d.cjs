@@ -649,6 +649,9 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, { measureS
       const afterSelection = readProjectState();
       const selectionNoMutation = afterSelection.assetCount === initial.assetCount &&
         afterSelection.maxRevision === initial.maxRevision;
+      await waitFor('[data-testid="fla-snapshot-import"]', (element) =>
+        element instanceof HTMLButtonElement && !element.disabled,
+      );
       const importEnabledAfterSelection = importEnabled();
       const detailsVisible = document.querySelector('[data-testid="fla-snapshot-details-region"]') !== null &&
         document.querySelector('[data-testid="fla-snapshot-action-bar"]') !== null;
