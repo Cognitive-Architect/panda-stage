@@ -17,7 +17,7 @@ This is a read-only recensus of the frozen 28-file corpus at the run head. It co
 
 ## #764 bounded attribution — 2026-10-12
 
-**Disposition: `PARTIAL`; primary classification: `CATALOG_OR_CLASSIFICATION_DRIFT`. No `HUMAN VISUAL PASS` is recorded.** This read-only follow-up aligns the old and current root by source path, original and normalized source hashes, authored symbol/frame, and render-target identity. Candidate ID prefixes are run-specific and are not used as the identity proof.
+**Disposition: `PARTIAL`; primary classification: `CATALOG_OR_CLASSIFICATION_DRIFT`. No `HUMAN VISUAL PASS` is recorded.** Confidence is high that the new fail-closed gate is the immediate cause of the same-target preview block. Whether the two text nodes belong in the intended character image, and whether the old raster is source-complete, remain unproven. This read-only follow-up aligns the old and current root by source path, original and normalized source hashes, authored symbol/frame, and render-target identity. Candidate ID prefixes are run-specific and are not used as the identity proof.
 
 | Same-target state | #734 evidence | #754 evidence |
 | --- | --- | --- |
