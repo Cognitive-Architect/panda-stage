@@ -97,6 +97,9 @@ export const FlaRenderableTargetCatalogEntrySchema = z
     // Whether the user can actually preview this target right now. If
     // false, unsupportedReason is required.
     previewSupported: z.boolean(),
+    // Authored state has no visible drawable nodes. Kept in the catalog so
+    // blank states remain inspectable but can be demoted from import choices.
+    isBlank: z.boolean().default(false),
     unsupportedReason: z.string().trim().min(1).max(1_000).optional(),
   })
   .strict()
@@ -112,6 +115,9 @@ export const FlaRenderableTargetCatalogSchema = z
     entries: z
       .array(FlaRenderableTargetCatalogEntrySchema)
       .max(FLA_STATIC_SNAPSHOT_LIMITS.maxRenderableTargetsPerFile),
+    // A bounded catalog may omit authored states after its limit. Report the
+    // exact remainder so the UI never presents the bounded prefix as complete.
+    omittedCandidateCount: z.number().int().nonnegative().max(100_000).default(0),
     // Beginner-facing summary line shown next to the catalog (Chinese in
     // V1/V1.5 review). The Main-side adapter may localize.
     summary: z.string().trim().min(1).max(1_000),
@@ -125,6 +131,9 @@ export const FlaRenderableTargetCatalogRequestSchema = z
     format: z.literal('fla-static-snapshot-catalog'),
     version: z.literal(1),
     sessionId: z.uuid(),
+    // Static asset review asks for authored candidate states. Sequence review
+    // keeps the root-target catalog so its range controls remain unchanged.
+    includeAuthoredStates: z.boolean().default(false),
   })
   .strict();
 

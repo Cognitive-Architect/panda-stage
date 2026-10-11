@@ -51,8 +51,10 @@ const successCatalog = {
         compatibility: ['degraded'],
       },
       previewSupported: true,
+      isBlank: false,
     },
   ],
+  omittedCandidateCount: 0,
   summary: '这个 FLA 有 1 个可渲染图形。',
 } satisfies BuildCatalogSuccess;
 
@@ -106,11 +108,12 @@ describe('R1-A snapshot catalog IPC handler', () => {
       ok: true,
       sessionId,
       entries: successCatalog.entries,
+      omittedCandidateCount: 0,
       summary: successCatalog.summary,
     });
     // The assembled envelope satisfies the strict shared schema.
     expect(FlaRenderableTargetCatalogResponseSchema.safeParse(response).success).toBe(true);
-    expect(renderSession.catalog).toHaveBeenCalledWith(sessionId);
+    expect(renderSession.catalog).toHaveBeenCalledWith(sessionId, { includeAuthoredStates: false });
   });
 
   it('returns ok:false INVALID_REQUEST for a malformed request', async () => {
@@ -128,6 +131,15 @@ describe('R1-A snapshot catalog IPC handler', () => {
     expect(renderSession.catalog).not.toHaveBeenCalled();
   });
 
+  it('forwards authored-state enumeration only when snapshot review requests it', async () => {
+    const renderSession = makeRenderSession(async () => successCatalog);
+    register(renderSession);
+
+    await catalogHandler()(event(), { ...validRequest, includeAuthoredStates: true });
+
+    expect(renderSession.catalog).toHaveBeenCalledWith(sessionId, { includeAuthoredStates: true });
+  });
+
   it('returns ok:false SESSION_NOT_FOUND when the session is missing', async () => {
     const renderSession = makeRenderSession(async () => ({
       ok: false,
@@ -143,7 +155,7 @@ describe('R1-A snapshot catalog IPC handler', () => {
       error: { code: 'SESSION_NOT_FOUND', message: 'The FLA inspection session has expired. Inspect the source again.' },
     });
     expect(FlaRenderableTargetCatalogResponseSchema.safeParse(response).success).toBe(true);
-    expect(renderSession.catalog).toHaveBeenCalledWith(sessionId);
+    expect(renderSession.catalog).toHaveBeenCalledWith(sessionId, { includeAuthoredStates: false });
   });
 
   it('rejects an untrusted sender without consulting the catalog service', async () => {

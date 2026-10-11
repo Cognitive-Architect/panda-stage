@@ -30,6 +30,7 @@ const unavailableEntry: FlaRenderableTargetCatalogEntry = {
     compatibility: ['unsupported'],
   },
   previewSupported: false,
+  isBlank: false,
   unsupportedReason: 'shape tween not implemented',
 };
 
@@ -141,13 +142,15 @@ describe('Issue #402 integration/source contracts', () => {
   });
 
   it('keeps F2 focus separate from R1/R2 target selection and uses the existing discovery boundary', () => {
-    expect(snapshot).toContain('focusedTargetId');
-    expect(snapshot).toContain('fla-snapshot-f2-focus-');
+    expect(snapshot).toContain('focusedCandidateKey');
+    expect(snapshot).toContain('selectedCandidateKeys');
+    expect(snapshot).toContain('<FlaStageF2UnavailableDetails');
     expect(sequence).toContain('focusedTargetId');
     expect(sequence).toContain('fla-frame-sequence-f2-focus-');
     expect(builder).toContain('export async function buildRenderableTargetCatalog');
     expect(builder).toContain('const scene = source.sceneTimelines[0];');
-    expect(builder).toContain('entries.push({ target, previewSupported: unsupportedReason === null');
+    expect(builder).toContain('entries.push({');
+    expect(builder).toContain('isBlank: check.isBlank');
   });
 
   it('keeps Stage F styling bounded without adding a dominant F1 Workbench row', () => {

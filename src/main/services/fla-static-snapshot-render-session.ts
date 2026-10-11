@@ -145,7 +145,10 @@ export class FlaStaticSnapshotRenderSession {
   }
 
   /** R1-A catalog: discover renderable targets for an inspection session. */
-  async catalog(sessionId: string): Promise<BuildCatalogResult> {
+  async catalog(
+    sessionId: string,
+    options: { readonly includeAuthoredStates?: boolean } = {},
+  ): Promise<BuildCatalogResult> {
     const source = this.sourceLookup?.getSource(sessionId) ?? null;
     if (!source) {
       return {
@@ -157,6 +160,7 @@ export class FlaStaticSnapshotRenderSession {
     return buildRenderableTargetCatalog(
       source.bytes,
       createFlaStaticSnapshotBitmapMediaLookup(source.media ?? []),
+      options,
     );
   }
 
@@ -334,6 +338,7 @@ export class FlaStaticSnapshotRenderSession {
       return FlaStaticSnapshotCancelResponseSchema.parse({ accepted: false });
     }
     let cancelledRequestId: string | undefined;
+    let releasedPreview = false;
     for (const other of [...this.active.values()]) {
       if (
         (request.requestId && other.requestId === request.requestId) ||
@@ -355,10 +360,21 @@ export class FlaStaticSnapshotRenderSession {
     // a settled preview would remain commit-eligible until a newer one
     // replaced it.
     if (request.sessionId) {
+      releasedPreview = [...this.confirmed.values()].some((preview) => preview.sessionId === request.sessionId);
       this.invalidateSession(request.sessionId);
+    } else if (request.requestId) {
+      const confirmed = this.confirmed.get(request.requestId);
+      releasedPreview = Boolean(confirmed);
+      this.confirmed.delete(request.requestId);
+      if (confirmed) {
+        const latest = this.latestAccepted.get(confirmed.sessionId);
+        if (latest?.requestId === request.requestId) {
+          this.latestAccepted.delete(confirmed.sessionId);
+        }
+      }
     }
     return FlaStaticSnapshotCancelResponseSchema.parse({
-      accepted: cancelledRequestId !== undefined || Boolean(request.sessionId),
+      accepted: cancelledRequestId !== undefined || releasedPreview || Boolean(request.sessionId),
       ...(cancelledRequestId ? { cancelledRequestId } : {}),
     });
   }

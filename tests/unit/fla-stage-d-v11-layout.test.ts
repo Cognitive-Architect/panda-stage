@@ -31,10 +31,10 @@ describe('Issue #398 Stage D deletion-first presentation contract', () => {
     expect(snapshot).not.toContain('data-testid="fla-snapshot-fidelity"');
     expect(snapshot).not.toContain('<dt>来源</dt>');
     expect(snapshot).toContain('data-testid="fla-snapshot-compatibility-details"');
-    expect(snapshot).toContain('visibleEntries');
+    expect(snapshot).toContain('visibleGroups');
     expect(snapshot).toContain('target.frameCount} 帧');
-    expect(snapshot).toContain('更多详情');
-    expect(snapshot).toContain('snapshotFooterState');
+    expect(snapshot).toContain('来源详情');
+    expect(snapshot).toContain('fla-snapshot-action-state');
     expect(snapshot).not.toContain('data-testid="fla-snapshot-action-guidance"');
   });
 

@@ -55,11 +55,11 @@ describe('Issue #396 Stage D render workbench contract', () => {
       'fla-snapshot-preview-area',
       'fla-snapshot-details-region',
       'fla-snapshot-action-bar',
-      'fla-snapshot-preview',
+      'fla-snapshot-preview-image',
     ]) {
       expect(snapshot).toContain(`data-testid="${testId}"`);
     }
-    expect(snapshot).toContain('ImageAsset');
+    expect(snapshot).toContain('fla-snapshot-candidates');
     expect(snapshot).toContain('data-testid="fla-snapshot-source-facts"');
     expect(snapshot).toContain('data-testid="fla-snapshot-target-count"');
     expect(snapshot).not.toContain('data-testid="fla-snapshot-zero-raster"');
@@ -68,11 +68,11 @@ describe('Issue #396 Stage D render workbench contract', () => {
     expect(snapshot).not.toContain('fla-review-clear-all');
   });
 
-  it('invalidates preview candidates on target/frame changes and keeps R2 as the owner', () => {
-    expect(snapshot).toContain('previewIsCurrent');
-    expect(snapshot).toContain('setPreview(null)');
+  it('scans authored candidates, revalidates selected previews, and keeps sequence rendering in R2', () => {
+    expect(snapshot).toContain('includeAuthoredStates: true');
+    expect(snapshot).toContain('setCandidatePreview');
+    expect(snapshot).toContain('expectedPreview.sha256');
     expect(snapshot).toContain('flaStaticSnapshotClient.cancel');
-    expect(snapshot).toContain('targetSelectedFrameIndex === selectedFrameIndex');
     expect(sequence).toContain('embedded?: boolean');
     expect(sequence).toContain("'fla-frame-sequence-review fla-render-workbench-panel'");
     expect(sequence).toContain('flaFrameSequenceClient');

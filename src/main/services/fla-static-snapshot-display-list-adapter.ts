@@ -539,6 +539,7 @@ interface ElementParseContext {
   readonly sourceParentFrameIndex: number;
   readonly sourceParentFrameSpanStart: number;
   readonly sourceParentSpanTweenType?: string;
+  readonly unsupportedDisplayReasons: string[];
   readonly state: SourceBuildState;
 }
 
@@ -561,6 +562,11 @@ function parseDisplayElements(
     const path = `${context.path}/${index}`;
     if (child.name !== 'DOMGroup' && child.name !== 'DOMShape' &&
         child.name !== 'DOMBitmapInstance' && child.name !== 'DOMSymbolInstance') {
+      if (context.unsupportedDisplayReasons.length === 0) {
+        context.unsupportedDisplayReasons.push(
+          'Visible display content is outside the supported static preview subset',
+        );
+      }
       continue;
     }
     const matrixResult = readDirectMatrix(child);
@@ -583,6 +589,7 @@ function parseDisplayElements(
             ...(context.sourceParentSpanTweenType !== undefined
               ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
               : {}),
+            unsupportedDisplayReasons: context.unsupportedDisplayReasons,
             state: context.state,
           })
         : { ok: true as const, value: [] as readonly FlaDisplayListElement[] };
@@ -656,6 +663,7 @@ function buildFrameContext(
   }
   const layers = layersForTimeline(timelineXml);
   const resolvedLayers: FlaDisplayListFrameContext['layers'][number][] = [];
+  const unsupportedDisplayReasons: string[] = [];
   for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
     const layer = layers[layerIndex];
     if (!layer) continue;
@@ -680,6 +688,7 @@ function buildFrameContext(
           // the Graphic path so the #721 bounded Loop contract is reachable from a
           // static Scene span ('none') while a tweened Scene span stays fail-closed.
           sourceParentSpanTweenType: frame.attributes.tweenType ?? 'none',
+          unsupportedDisplayReasons,
           state,
         });
         if (!parsed.ok) return parsed;
@@ -698,7 +707,13 @@ function buildFrameContext(
   }
   return {
     ok: true,
-    value: { frameIndex, layers: normalizeXflTimelineLayersForPainterOrder(resolvedLayers) },
+    value: {
+      frameIndex,
+      layers: normalizeXflTimelineLayersForPainterOrder(resolvedLayers),
+      ...(unsupportedDisplayReasons[0]
+        ? { unsupportedDisplayReason: unsupportedDisplayReasons[0] }
+        : {}),
+    },
   };
 }
 
@@ -828,6 +843,7 @@ function buildGraphicFrameContext(
 
   const layers = layersForTimeline(timelineXml);
   const resolvedLayers: FlaDisplayListFrameContext['layers'][number][] = [];
+  const unsupportedDisplayReasons: string[] = [];
   for (const selection of resolution.layers) {
     const layer = layers[selection.layerIndex];
     if (!layer) return fail('RENDER_FAILED', `XFL timeline layer ${selection.layerIndex} is missing`);
@@ -844,6 +860,7 @@ function buildGraphicFrameContext(
         sourceParentFrameIndex: frameIndex,
         sourceParentFrameSpanStart: selection.span.index,
         sourceParentSpanTweenType: selection.span.tweenType ?? 'none',
+        unsupportedDisplayReasons,
         state,
       });
       if (!parsed.ok) return parsed;
@@ -875,6 +892,7 @@ function buildGraphicFrameContext(
           sourceParentFrameIndex: frameIndex,
           sourceParentFrameSpanStart: startSpan.index,
           sourceParentSpanTweenType: selection.span.tweenType ?? 'motion',
+          unsupportedDisplayReasons,
           state,
         });
       };
@@ -909,7 +927,13 @@ function buildGraphicFrameContext(
   }
   return {
     ok: true,
-    value: { frameIndex, layers: normalizeXflTimelineLayersForPainterOrder(resolvedLayers) },
+    value: {
+      frameIndex,
+      layers: normalizeXflTimelineLayersForPainterOrder(resolvedLayers),
+      ...(unsupportedDisplayReasons[0]
+        ? { unsupportedDisplayReason: unsupportedDisplayReasons[0] }
+        : {}),
+    },
   };
 }
 
@@ -922,14 +946,13 @@ function countNestedSymbols(elements: readonly FlaDisplayListElement[]): boolean
 function frameHasPotentialDisplayElements(frame: FlaXflElementBlock): boolean {
   const elementContainer = directChild(frame.xml, 'DOMFrame', 'elements') ?? frame;
   return getFlaXflDirectChildren(elementContainer.xml, elementContainer.name)
-    .some((element) => element.name === 'DOMGroup' || element.name === 'DOMShape' ||
-      element.name === 'DOMBitmapInstance' || element.name === 'DOMSymbolInstance');
+    .some((element) => element.name.startsWith('DOM') && elementIsVisible(element.attributes));
 }
 
 /**
  * Catalog eligibility is a bounded structural check across authored spans.
- * It never builds/rasterizes each timeline frame; it only checks whether any
- * visible layer span contains a display element understood by this adapter.
+ * It never builds/rasterizes each timeline frame; visible DOM display nodes,
+ * including unknown ones, keep the candidate inspectable and fail closed.
  */
 function timelineHasPotentialDisplayElements(
   frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>,

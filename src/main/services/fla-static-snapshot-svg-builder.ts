@@ -105,13 +105,15 @@ export type BuildSvgResult = BuildSvgSuccess | BuildSvgFailure;
 
 export interface BuildCatalogSuccess {
   ok: true;
-  // Discoverable renderable targets. The renderer previews one of
-  // these; the commit pins one of these as the source of truth.
+  // Discoverable authored states. The renderer previews one of these; the
+  // commit pins the exact target and selected frame as its source of truth.
   entries: Array<{
     target: FlaRenderTarget;
     previewSupported: boolean;
+    isBlank: boolean;
     unsupportedReason?: string;
   }>;
+  omittedCandidateCount: number;
   // Brief beginner-facing summary, e.g.
   // "这个 FLA 有 1 个可渲染图形。"
   summary: string;
@@ -2005,7 +2007,8 @@ function mapResolverFailure(result: FlaDisplayListResolverResult): BuildSvgFailu
       result.code === 'MAX_RESOLVED_NODES_EXCEEDED'
     ? 'BUDGET_EXCEEDED'
     : result.code === 'MISSING_SYMBOL' || result.code === 'SYMBOL_CYCLE' ||
-        result.code === 'UNSUPPORTED_SYMBOL_TYPE'
+        result.code === 'UNSUPPORTED_SYMBOL_TYPE' ||
+        result.code === 'UNSUPPORTED_DISPLAY_CONTENT'
       ? 'TARGET_UNSUPPORTED'
       : 'RENDER_FAILED';
   return { ok: false, code, message: (result.message + ' (' + result.sourcePath + ')').slice(0, 1_000) };
@@ -2092,7 +2095,7 @@ function catalogSupportReason(
   displayList: FlaResolvedDisplayList,
   resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup,
   allowBlankFrame = false,
-): string | null {
+): { unsupportedReason: string | null; isBlank: boolean } {
   let drawableCount = 0;
   let reason: string | null = null;
   const visit = (node: FlaResolvedDisplayNode): void => {
@@ -2124,16 +2127,21 @@ function catalogSupportReason(
   for (const layer of displayList.layers) {
     for (const node of layer.children) visit(node);
   }
-  if (reason) return reason;
-  return drawableCount > 0 || allowBlankFrame
-    ? null
-    : 'No visible bitmap or vector content is available in this frame';
+  if (reason) return { unsupportedReason: reason, isBlank: false };
+  const isBlank = drawableCount === 0;
+  return {
+    unsupportedReason: isBlank && !allowBlankFrame
+      ? 'No visible bitmap or vector content is available in this frame'
+      : null,
+    isBlank,
+  };
 }
 
 // ---- Public catalog builder ----
 export async function buildRenderableTargetCatalog(
   bytes: Uint8Array,
   resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup = () => ({ ok: false, reason: 'missing' }),
+  options: { readonly includeAuthoredStates?: boolean } = {},
 ): Promise<BuildCatalogResult> {
   const archive = await parseArchive(bytes);
   if (!archive.ok) return archive;
@@ -2141,6 +2149,40 @@ export async function buildRenderableTargetCatalog(
   if (!adapted.ok) return adapted;
   const source = adapted.source;
   const entries: BuildCatalogSuccess['entries'] = [];
+  let omittedCandidateCount = 0;
+
+  const appendCandidate = (target: FlaRenderTarget): void => {
+    if (entries.length >= MAX_TARGETS) {
+      omittedCandidateCount += 1;
+      return;
+    }
+    const resolved = resolveTargetDisplayList(source, target);
+    const check = resolved.ok
+      ? catalogSupportReason(source, resolved.displayList, resolveBitmapMedia, true)
+      : { unsupportedReason: resolved.message, isBlank: false };
+    let unsupportedReason = check.unsupportedReason;
+    if (resolved.ok && !unsupportedReason && !check.isBlank) {
+      // Use the exact production SVG composition path as the capability
+      // check. The previous structural-only check incorrectly marked some
+      // gradient-stroke targets as previewable even though this builder
+      // rejected them later at Preview time.
+      const composed = buildSvgForResolvedDisplayList({
+        displayList: resolved.displayList,
+        renderTargetId: target.renderTargetId,
+        stageWidth: source.stageWidth,
+        stageHeight: source.stageHeight,
+        shapeBlocks: source.shapeBlocks,
+        resolveBitmapMedia,
+      });
+      if (!composed.ok) unsupportedReason = composed.message;
+    }
+    entries.push({
+      target,
+      previewSupported: unsupportedReason === null,
+      isBlank: check.isBlank,
+      ...(unsupportedReason ? { unsupportedReason } : {}),
+    });
+  };
 
   // Keep the scene selectable even when it is made from bitmap placements
   // or nested Graphic symbols, and reserve its slot within the target cap.
@@ -2152,13 +2194,10 @@ export async function buildRenderableTargetCatalog(
       userLabel: '\u4e3b\u573a\u666f \u00b7 \u7b2c 1 \u5e27',
       sourceTimelineIndex: scene.index,
       frameCount: Math.min(100_000, scene.frameCount),
+      selectedFrameIndex: 0,
       compatibility: ['degraded'],
     };
-    const resolved = resolveTargetDisplayList(source, target);
-    const unsupportedReason = resolved.ok
-      ? catalogSupportReason(source, resolved.displayList, resolveBitmapMedia)
-      : resolved.message;
-    entries.push({ target, previewSupported: unsupportedReason === null, ...(unsupportedReason ? { unsupportedReason } : {}) });
+    appendCandidate(target);
   }
 
   // Nested Graphic targets go first so the fixed catalog limit cannot hide
@@ -2168,33 +2207,48 @@ export async function buildRenderableTargetCatalog(
     ...source.graphicSymbols.filter((symbol) => !symbol.hasNestedSymbol),
   ];
   for (const symbol of orderedSymbols) {
-    if (entries.length >= MAX_TARGETS) break;
     if (!symbol.hasPotentialDisplayElements) continue;
-    const target: FlaRenderTarget = {
-      renderTargetId: stableRenderTargetId(
-        bytes,
-        'graphic-symbol\u0000' + symbol.sourceLibraryItemName + '\u0000' + symbol.userLabel,
-      ),
-      kind: 'graphic-symbol',
-      userLabel: symbol.userLabel,
-      sourceLibraryItemName: symbol.sourceLibraryItemName,
-      frameCount: Math.min(100_000, Math.max(1, symbol.frameCount)),
-      compatibility: ['degraded'],
-    };
-    const resolved = resolveTargetDisplayList(source, target);
-    const initialFrameIsBlank = symbol.frameContext.layers.every(
-      (layer) => !layer.visible || layer.elements.length === 0,
+    const renderTargetId = stableRenderTargetId(
+      bytes,
+      'graphic-symbol\u0000' + symbol.sourceLibraryItemName + '\u0000' + symbol.userLabel,
     );
-    const unsupportedReason = resolved.ok
-      ? catalogSupportReason(source, resolved.displayList, resolveBitmapMedia, initialFrameIsBlank)
-      : resolved.message;
-    entries.push({ target, previewSupported: unsupportedReason === null, ...(unsupportedReason ? { unsupportedReason } : {}) });
+    const authoredFrameIndices = options.includeAuthoredStates
+      ? [...new Set(
+          symbol.frameSpanIndex.layers
+            .filter((layer) => layer.visible)
+            .flatMap((layer) => layer.spans.map((span) => span.index)),
+        )].sort((left, right) => left - right)
+      : [0];
+    for (let frameOffset = 0; frameOffset < authoredFrameIndices.length; frameOffset += 1) {
+      const frameIndex = authoredFrameIndices[frameOffset];
+      if (frameIndex === undefined) continue;
+      if (entries.length >= MAX_TARGETS) {
+        omittedCandidateCount += authoredFrameIndices.length - frameOffset;
+        break;
+      }
+      appendCandidate({
+        renderTargetId,
+        kind: 'graphic-symbol',
+        userLabel: symbol.userLabel,
+        sourceLibraryItemName: symbol.sourceLibraryItemName,
+        frameCount: Math.min(100_000, Math.max(1, symbol.frameCount)),
+        selectedFrameIndex: frameIndex,
+        compatibility: ['degraded'],
+      });
+    }
   }
 
+  const supportedCount = entries.filter((entry) => entry.previewSupported && !entry.isBlank).length;
+  const unsupportedCount = entries.filter((entry) => !entry.previewSupported).length;
+  const blankCount = entries.filter((entry) => entry.isBlank).length;
+  const omittedNote = omittedCandidateCount > 0
+    ? '；另有 ' + omittedCandidateCount + ' 个候选因数量上限未列出'
+    : '';
   const summary = entries.length === 0
-    ? '\u8fd9\u4e2a FLA \u6ca1\u6709\u53ef\u6e32\u67d3\u5185\u5bb9\u3002'
-    : '\u8fd9\u4e2a FLA \u6709 ' + entries.length + ' \u4e2a\u53ef\u9884\u89c8\u76ee\u6807\u3002';
-  return { ok: true, entries, summary };
+    ? '这个 FLA 没有发现可检查的图形状态。'
+    : '发现 ' + entries.length + ' 个已列出的状态：' + supportedCount + ' 个可预览、' +
+      unsupportedCount + ' 个暂不可预览、' + blankCount + ' 个空白状态' + omittedNote + '。';
+  return { ok: true, entries, omittedCandidateCount, summary };
 }
 
 // ---- Public SVG builder for a given render target ----

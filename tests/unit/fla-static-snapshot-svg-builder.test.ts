@@ -28,6 +28,7 @@ interface SyntheticGraphicFrame {
   readonly tx?: number;
   readonly color?: string;
   readonly blank?: boolean;
+  readonly unsupportedElement?: string;
 }
 
 async function buildSyntheticFla(
@@ -90,7 +91,9 @@ async function buildSyntheticFla(
     for (const currentSymbolName of symbolNames) {
       const frames = graphicFrames.map((frame) => {
         const attributes = `index="${frame.index}"${frame.duration === undefined ? '' : ` duration="${frame.duration}"`}${frame.tweenType === undefined ? '' : ` tweenType="${frame.tweenType}"`}`;
-        if (frame.blank) return `<DOMFrame ${attributes}><elements/></DOMFrame>`;
+        if (frame.blank) {
+          return `<DOMFrame ${attributes}>${frame.unsupportedElement ?? '<elements/>'}</DOMFrame>`;
+        }
         return `<DOMFrame ${attributes}>
               <DOMGroup>
                 <matrix><Matrix a="2" d="2" tx="${frame.tx ?? 10}" ty="20"/></matrix>
@@ -107,6 +110,7 @@ async function buildSyntheticFla(
                   </DOMShape>
                 </members>
               </DOMGroup>
+              ${frame.unsupportedElement ?? ''}
             </DOMFrame>`;
       }).join('\n            ');
       const libXml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -203,6 +207,82 @@ describe('R1-B SVG builder: catalog discovery', () => {
     expect(graphic?.target.frameCount).toBe(2);
   });
 
+  it('lists each visible authored state for snapshot review while keeping blank states explicit', async () => {
+    const bytes = await buildSyntheticFla({
+      includeLibrary: true,
+      symbolName: 'authored-state-catalog',
+      graphicFrames: [
+        { index: 0, duration: 2, color: '#336699' },
+        { index: 2, duration: 1, blank: true },
+        { index: 3, duration: 1, color: '#cc3355' },
+      ],
+      includeSceneShape: false,
+    });
+
+    const rootCatalog = await buildRenderableTargetCatalog(bytes);
+    const authoredCatalog = await buildRenderableTargetCatalog(bytes, undefined, {
+      includeAuthoredStates: true,
+    });
+    expect(rootCatalog.ok).toBe(true);
+    expect(authoredCatalog.ok).toBe(true);
+    if (!rootCatalog.ok || !authoredCatalog.ok) return;
+
+    const rootStates = rootCatalog.entries.filter((entry) => entry.target.kind === 'graphic-symbol');
+    const authoredStates = authoredCatalog.entries.filter((entry) => entry.target.kind === 'graphic-symbol');
+    expect(rootStates.map((entry) => entry.target.selectedFrameIndex)).toEqual([0]);
+    expect(authoredStates.map((entry) => entry.target.selectedFrameIndex)).toEqual([0, 2, 3]);
+    expect(authoredStates.map((entry) => entry.isBlank)).toEqual([false, true, false]);
+    expect(authoredStates.every((entry) => entry.previewSupported)).toBe(true);
+    expect(authoredCatalog.omittedCandidateCount).toBe(0);
+  });
+
+  it('reports the exact number of authored states omitted by the bounded catalog', async () => {
+    const symbolNames = Array.from({ length: 70 }, (_, index) => `bounded-symbol-${index}`);
+    const bytes = await buildSyntheticFla({
+      includeLibrary: true,
+      symbolNames,
+      graphicFrameCount: 1,
+      includeSceneShape: false,
+    });
+
+    const catalog = await buildRenderableTargetCatalog(bytes, undefined, {
+      includeAuthoredStates: true,
+    });
+
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+    expect(catalog.entries).toHaveLength(64);
+    expect(catalog.omittedCandidateCount).toBe(7);
+    expect(catalog.summary).toContain('7 个候选因数量上限未列出');
+  });
+
+  it('keeps visible unknown content in the catalog as unsupported instead of importing a partial render', async () => {
+    const bytes = await buildSyntheticFla({
+      includeLibrary: true,
+      symbolName: 'unknown-visible-content',
+      graphicFrames: [{
+        index: 0,
+        duration: 1,
+        unsupportedElement: '<DOMText isVisible="true"/>',
+      }],
+      includeSceneShape: false,
+    });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+
+    const candidate = catalog.entries.find((entry) => entry.target.kind === 'graphic-symbol');
+    expect(candidate).toBeDefined();
+    expect(candidate?.isBlank).toBe(false);
+    expect(candidate?.previewSupported).toBe(false);
+    expect(candidate?.unsupportedReason).toContain('outside the supported static preview subset');
+    if (!candidate) return;
+
+    const preview = await buildSvgForRenderTarget(bytes, candidate.target);
+    expect(preview.ok).toBe(false);
+    if (!preview.ok) expect(preview.code).toBe('TARGET_UNSUPPORTED');
+  });
+
   it('discovers the main scene target with kind=scene and frameCount=1', async () => {
     const bytes = await buildSyntheticFla({ includeLibrary: false, includeSceneShape: true });
     const result = await buildRenderableTargetCatalog(bytes);
@@ -221,7 +301,7 @@ describe('R1-B SVG builder: catalog discovery', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.entries).toEqual([]);
-    expect(result.summary).toContain('没有可渲染');
+    expect(result.summary).toContain('没有发现可检查的图形状态');
   });
 });
 

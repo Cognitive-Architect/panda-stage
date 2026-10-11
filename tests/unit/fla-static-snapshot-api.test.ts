@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   FlaRenderableTargetCatalogSchema,
+  FlaRenderableTargetCatalogRequestSchema,
   FlaRenderTargetKindSchema,
   FlaRenderTargetSchema,
   FlaStaticSnapshotCancelRequestSchema,
@@ -102,6 +103,21 @@ describe('R1-A renderable target catalog', () => {
     };
     const parsed = FlaRenderableTargetCatalogSchema.parse(catalog);
     expect(parsed.entries).toHaveLength(1);
+    expect(parsed.entries[0]?.isBlank).toBe(false);
+    expect(parsed.omittedCandidateCount).toBe(0);
+  });
+
+  it('keeps authored-state enumeration opt-in for existing sequence review callers', () => {
+    const request = FlaRenderableTargetCatalogRequestSchema.parse({
+      format: 'fla-static-snapshot-catalog',
+      version: 1,
+      sessionId: validUuid,
+    });
+    expect(request.includeAuthoredStates).toBe(false);
+    expect(FlaRenderableTargetCatalogRequestSchema.parse({
+      ...request,
+      includeAuthoredStates: true,
+    }).includeAuthoredStates).toBe(true);
   });
 
   it('rejects an unsupported entry without an unsupportedReason', () => {

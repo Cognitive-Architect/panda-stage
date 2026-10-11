@@ -29,6 +29,8 @@ export interface FlaDisplayListFrameContext {
   readonly frameIndex: number;
   /** Layers are supplied back-to-front in painter order; the resolver preserves it. */
   readonly layers: readonly FlaDisplayListLayer[];
+  /** Set when visible authored content was found outside the safe display subset. */
+  readonly unsupportedDisplayReason?: string;
 }
 
 export interface FlaDisplayListLayer {
@@ -169,6 +171,7 @@ export interface FlaResolvedDisplayList {
 export type FlaDisplayListResolverErrorCode =
   | 'INVALID_INPUT'
   | 'INVALID_MATRIX'
+  | 'UNSUPPORTED_DISPLAY_CONTENT'
   | 'UNSUPPORTED_SYMBOL_TYPE'
   | 'MISSING_SYMBOL'
   | 'SYMBOL_CYCLE'
@@ -274,6 +277,13 @@ function resolveLayers(
 ): ResolveLayersResult {
   if (!isValidFrameContext(frameContext)) {
     return failure('INVALID_INPUT', 'Invalid selected frame context', sourcePath);
+  }
+  if (frameContext.unsupportedDisplayReason) {
+    return failure(
+      'UNSUPPORTED_DISPLAY_CONTENT',
+      frameContext.unsupportedDisplayReason,
+      sourcePath,
+    );
   }
 
   const layers: FlaResolvedDisplayLayer[] = [];

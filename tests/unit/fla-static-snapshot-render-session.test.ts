@@ -216,6 +216,39 @@ describe('FlaStaticSnapshotRenderSession', () => {
     session.close();
   });
 
+  it('releases a completed preview when snapshot review finishes scanning that candidate', async () => {
+    const fla = await buildMinimalFla();
+    const session = new FlaStaticSnapshotRenderSession({
+      rasterizer: resolvingRasterizer(),
+      sourceLookup: sourceLookup(fla),
+    });
+    const catalog = await session.catalog(SESSION_ID);
+    if (!catalog.ok) throw new Error('catalog should succeed');
+    const target = firstTarget(catalog.entries);
+    const response = await session.preview(
+      FlaStaticSnapshotPreviewRequestSchema.parse({
+        format: 'fla-static-snapshot-preview',
+        version: 1,
+        requestId: PREVIEW_A,
+        sessionId: SESSION_ID,
+        target,
+      }),
+    );
+    expect(response.ok).toBe(true);
+    expect(session.getConfirmedPreview(PREVIEW_A)).not.toBeNull();
+
+    const cancel = session.cancel({
+      format: 'fla-static-snapshot-cancel',
+      version: 1,
+      requestId: PREVIEW_A,
+    });
+
+    expect(cancel.accepted).toBe(true);
+    expect(session.getConfirmedPreview(PREVIEW_A)).toBeNull();
+    expect(session.isLatestAcceptedPreview(SESSION_ID, PREVIEW_A)).toBe(false);
+    session.close();
+  });
+
   it('treats the most recent preview as the latest accepted (latest-request-wins)', async () => {
     const fla = await buildMinimalFla();
     const session = new FlaStaticSnapshotRenderSession({

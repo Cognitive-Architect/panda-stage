@@ -90,10 +90,9 @@ export function FlaStageF1Notice({
 }
 
 /**
- * F2 contract presentation. Production target discovery currently does not
- * emit unavailable entries, but the shared catalog contract already carries
- * one. This component keeps that truth local and never exposes the raw
- * developer reason as beginner-facing copy.
+ * F2 contract presentation for a catalog candidate that cannot be safely
+ * previewed. It keeps that truth local and never exposes the raw developer
+ * reason as beginner-facing copy.
  */
 export function FlaStageF2UnavailableDetails({
   entry,
