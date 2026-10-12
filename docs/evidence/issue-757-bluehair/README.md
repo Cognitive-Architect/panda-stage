@@ -32,11 +32,13 @@ The source reference is an agent-captured Animate view. The two product images w
 
 - `pnpm typecheck`
 - `pnpm lint`
-- `pnpm test:unit` — 347 files, 2,515 tests passed
+- `pnpm test:unit` — 347 files, 2,518 tests passed
 - `pnpm test:integration` — 38 files, 189 tests passed
 - `pnpm build`
-- Focused Vitest: `fla-static-snapshot-svg-builder.test.ts` and `fla-static-snapshot-display-list-adapter.test.ts` — 33 tests passed
+- Focused Vitest: `fla-static-snapshot-svg-builder.test.ts` and `fla-static-snapshot-display-list-adapter.test.ts` — 35 tests passed, including visible-mask clipping and hidden-layer handling
 - Targeted ESLint for the four changed source/test files
 - Electron: `pnpm exec electron scripts/verify-issue396-stage-d.cjs --issue762-profile --acceptance-root 'D:\PandaStage-Acceptance\issue757-stage-d-smoke-20261012'` — exit code 0
+- [GitHub Actions targeted quality and regression](https://github.com/Cognitive-Architect/panda-stage/actions/runs/38261905639) passed, including typecheck, lint, unit, integration, build, and the assets suite
+- [GitHub Actions CI policy self-test](https://github.com/Cognitive-Architect/panda-stage/actions/runs/38261414662) passed for the evidence-route registration
 
 Static vector masks are supported by this bounded path. Animated masks, shape tweens, non-vector masks, text, filters, and ActionScript remain unsupported/fail-closed. Human Windows Electron acceptance and owner visual review remain pending.
