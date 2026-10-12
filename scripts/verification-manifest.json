@@ -200,6 +200,18 @@
         "notes": "Issue #752 V1 static-character acceptance evidence only; production behavior continues to match existing subsystem routes. Draft evidence changes use existing CI policy self-tests; unregistered evidence paths remain fail-closed."
       },
       {
+        "id": "issue757-bluehair-acceptance-evidence",
+        "sourcePatterns": ["docs/evidence/issue-757-bluehair/**"],
+        "testPatterns": [],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "draftPolicy": "ci-selftest",
+        "incrementalEligible": false,
+        "owner": "fla-rendering-research",
+        "notes": "Issue #757 blue-haired source comparison and product preview evidence only; production renderer changes continue through their existing focused routes. Unregistered evidence paths remain fail-closed."
+      },
+      {
         "id": "cross-process-core",
         "sourcePatterns": [
           "src/main/**",

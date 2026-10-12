@@ -312,6 +312,31 @@ describe('RH-07 FAST Draft policy', () => {
     expect(unrelated.unknownPaths).toEqual(['docs/evidence/issue-753/receipt.json']);
   });
 
+  it('routes Issue #757 blue-haired acceptance evidence without masking production checks', () => {
+    const evidence = draft([
+      change('docs/evidence/issue-757-bluehair/README.md', 'A'),
+      change('docs/evidence/issue-757-bluehair/animate-source-reference.png', 'A'),
+      change('docs/evidence/issue-757-bluehair/product-com809-root-preview.png', 'A'),
+      change('docs/evidence/issue-757-bluehair/product-scene-preview.png', 'A'),
+    ]);
+
+    expect(evidence.tier).toBe('ci-selftest');
+    expect(evidence.matchedRouteIds).toEqual(['issue757-bluehair-acceptance-evidence']);
+    expect(evidence.suites).toEqual([]);
+    expect(evidence.unknownPaths).toEqual([]);
+
+    const codeAndEvidence = draft([
+      change('src/main/services/fla-static-snapshot-svg-builder.ts'),
+      change('docs/evidence/issue-757-bluehair/product-scene-preview.png', 'A'),
+    ]);
+    expect(codeAndEvidence.tier).toBe('focused');
+    expect(codeAndEvidence.matchedRouteIds).toEqual([
+      'cross-process-core',
+      'issue757-bluehair-acceptance-evidence',
+    ]);
+    expect(codeAndEvidence.unknownPaths).toEqual([]);
+  });
+
   it('retains focused checks for Issue #745 source code changes alongside evidence', () => {
     const result = draft([
       change('src/main/services/fla-static-snapshot-svg-builder.ts'),
