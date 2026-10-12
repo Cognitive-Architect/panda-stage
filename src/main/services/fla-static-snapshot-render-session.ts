@@ -36,7 +36,10 @@ import {
   type BuildCatalogResult,
   type FlaStaticSnapshotPreparedDisplaySourceResult,
 } from './fla-static-snapshot-svg-builder';
-import type { FlaStaticSnapshotDisplaySource } from './fla-static-snapshot-display-list-adapter';
+import type {
+  FlaStaticSnapshotDisplaySource,
+  FlaStaticSnapshotDisplaySourceExecution,
+} from './fla-static-snapshot-display-list-adapter';
 import { createFlaStaticSnapshotBitmapMediaLookup } from './fla-static-snapshot-media-resolver';
 import {
   FLA_STATIC_SNAPSHOT_LIMITS,
@@ -139,6 +142,13 @@ interface CachedPreparedDisplaySource {
   readonly xmlByteLength: number;
 }
 
+interface ActiveCatalogOperation {
+  readonly sessionId: string;
+  readonly sourceBytes: Uint8Array;
+  readonly sourceSha256: string;
+  cancelled: boolean;
+}
+
 const MAX_CACHED_DISPLAY_SOURCE_BYTES = 8 * 1024 * 1024;
 const MAX_CACHED_DISPLAY_SOURCE_XML_BYTES = 24 * 1024 * 1024;
 
@@ -149,6 +159,7 @@ export class FlaStaticSnapshotRenderSession {
   private readonly wallTimeMs: number;
 
   private readonly active = new Map<string, ActivePreview>();
+  private readonly activeCatalogs = new Map<string, Set<ActiveCatalogOperation>>();
   private readonly sessionsWithPreview = new Set<string>();
   // sessionId -> latest accepted preview identity (STALE_PREVIEW guard).
   private readonly latestAccepted = new Map<string, AcceptedPreview>();
@@ -158,6 +169,7 @@ export class FlaStaticSnapshotRenderSession {
   // SVG composition and rasterization remain fresh for every request.
   private preparedDisplaySource: CachedPreparedDisplaySource | null = null;
   private preparedDisplaySourceEpoch = 0;
+  private closed = false;
 
   constructor(options: FlaStaticSnapshotRenderSessionOptions = {}) {
     this.rasterizer = options.rasterizer ?? null;
@@ -176,11 +188,47 @@ export class FlaStaticSnapshotRenderSession {
     this.preparedDisplaySourceEpoch += 1;
   }
 
+  private isCatalogOperationCurrent(operation: ActiveCatalogOperation): boolean {
+    if (this.closed || operation.cancelled) return false;
+    const currentSource = this.sourceLookup?.getSource(operation.sessionId) ?? null;
+    return currentSource?.bytes === operation.sourceBytes &&
+      currentSource.sha256 === operation.sourceSha256;
+  }
+
+  private registerCatalogOperation(source: FlaStaticSnapshotSource, sessionId: string): ActiveCatalogOperation {
+    const operation: ActiveCatalogOperation = {
+      sessionId,
+      sourceBytes: source.bytes,
+      sourceSha256: source.sha256,
+      cancelled: false,
+    };
+    const operations = this.activeCatalogs.get(sessionId) ?? new Set<ActiveCatalogOperation>();
+    operations.add(operation);
+    this.activeCatalogs.set(sessionId, operations);
+    return operation;
+  }
+
+  private releaseCatalogOperation(operation: ActiveCatalogOperation): void {
+    const operations = this.activeCatalogs.get(operation.sessionId);
+    operations?.delete(operation);
+    if (operations?.size === 0) this.activeCatalogs.delete(operation.sessionId);
+  }
+
+  private cancelCatalogOperations(sessionId?: string): void {
+    const operations = sessionId
+      ? [this.activeCatalogs.get(sessionId)]
+      : [...this.activeCatalogs.values()];
+    for (const sessionOperations of operations) {
+      for (const operation of sessionOperations ?? []) operation.cancelled = true;
+    }
+  }
+
   private async getPreparedDisplaySource(
     sessionId: string,
     source: FlaStaticSnapshotSource,
     operation: 'catalog' | 'preview',
     allowCache: boolean,
+    execution?: FlaStaticSnapshotDisplaySourceExecution,
   ): Promise<FlaStaticSnapshotPreparedDisplaySourceResult> {
     const cacheStartedAt = startIssue762Profile();
     const cached = this.preparedDisplaySource;
@@ -195,7 +243,7 @@ export class FlaStaticSnapshotRenderSession {
     }
     if (cached) this.clearPreparedDisplaySource();
     const epochAtStart = this.preparedDisplaySourceEpoch;
-    const prepared = await prepareFlaStaticSnapshotDisplaySource(source.bytes, operation);
+    const prepared = await prepareFlaStaticSnapshotDisplaySource(source.bytes, operation, execution);
     if (!prepared.ok) {
       finishIssue762Profile('fla.snapshot.prepared-source.cache-miss', cacheStartedAt, {
         sourceSha256: source.sha256,
@@ -245,26 +293,59 @@ export class FlaStaticSnapshotRenderSession {
         message: 'The FLA inspection session has expired. Inspect the source again.',
       };
     }
+    const catalogOperation = this.registerCatalogOperation(source, sessionId);
+    const execution: FlaStaticSnapshotDisplaySourceExecution = {
+      shouldContinue: () => this.isCatalogOperationCurrent(catalogOperation),
+      yieldToEventLoop: () => new Promise<void>((resolve) => setImmediate(resolve)),
+    };
     const catalogStartedAt = startIssue762Profile();
-    const prepared = await this.getPreparedDisplaySource(
-      sessionId,
-      source,
-      'catalog',
-      true,
-    );
-    if (!prepared.ok) return prepared;
-    const result = await buildRenderableTargetCatalog(
-      source.bytes,
-      createFlaStaticSnapshotBitmapMediaLookup(source.media ?? []),
-      options,
-      prepared.source,
-    );
-    finishIssue762Profile('fla.catalog.main-service', catalogStartedAt, {
-      sessionId,
-      outcome: result.ok ? 'success' : result.code,
-      candidateCount: result.ok ? result.entries.length : 0,
-    });
-    return result;
+    try {
+      if (!execution.shouldContinue()) {
+        return {
+          ok: false,
+          code: 'SESSION_NOT_FOUND',
+          message: 'The FLA inspection session has expired. Inspect the source again.',
+        };
+      }
+      const prepared = await this.getPreparedDisplaySource(
+        sessionId,
+        source,
+        'catalog',
+        true,
+        execution,
+      );
+      if (!this.isCatalogOperationCurrent(catalogOperation)) {
+        return {
+          ok: false,
+          code: 'SESSION_NOT_FOUND',
+          message: 'The FLA inspection session has expired. Inspect the source again.',
+        };
+      }
+      if (!prepared.ok) return prepared;
+      const result = await buildRenderableTargetCatalog(
+        source.bytes,
+        createFlaStaticSnapshotBitmapMediaLookup(source.media ?? []),
+        options,
+        prepared.source,
+        execution,
+      );
+      const current = this.isCatalogOperationCurrent(catalogOperation);
+      const finalResult = current
+        ? result
+        : {
+            ok: false as const,
+            code: 'SESSION_NOT_FOUND' as const,
+            message: 'The FLA inspection session has expired. Inspect the source again.',
+          };
+      finishIssue762Profile('fla.catalog.main-service', catalogStartedAt, {
+        sessionId,
+        outcome: finalResult.ok ? 'success' : finalResult.code,
+        candidateCount: finalResult.ok ? finalResult.entries.length : 0,
+      });
+      return finalResult;
+    } finally {
+      this.releaseCatalogOperation(catalogOperation);
+    }
   }
 
   async preview(
@@ -511,6 +592,7 @@ export class FlaStaticSnapshotRenderSession {
    * on selection change, explicit cancel, or review close.
    */
   invalidateSession(sessionId: string): void {
+    this.cancelCatalogOperations(sessionId);
     this.clearPreparedDisplaySource(sessionId);
     this.latestAccepted.delete(sessionId);
     for (const [requestId, preview] of [...this.confirmed.entries()]) {
@@ -563,6 +645,8 @@ export class FlaStaticSnapshotRenderSession {
   }
 
   close(): void {
+    this.closed = true;
+    this.cancelCatalogOperations();
     this.clearPreparedDisplaySource();
     for (const other of [...this.active.values()]) {
       this.settleActive(

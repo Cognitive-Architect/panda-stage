@@ -52,6 +52,8 @@ import {
 } from './fla-display-list-resolver';
 import {
   adaptFlaXflDisplaySource,
+  adaptFlaXflDisplaySourceCooperatively,
+  type FlaStaticSnapshotDisplaySourceExecution,
   type FlaStaticSnapshotDisplaySource,
 } from './fla-static-snapshot-display-list-adapter';
 
@@ -193,6 +195,7 @@ interface ParsedArchive {
 async function parseArchive(
   bytes: Uint8Array,
   operation: 'catalog' | 'preview',
+  execution?: FlaStaticSnapshotDisplaySourceExecution,
 ): Promise<{ ok: true; archive: ParsedArchive } | { ok: false; code: FlaStaticSnapshotPreviewErrorCode; message: string }> {
   if (bytes.byteLength > MAX_SOURCE_BYTES) {
     return { ok: false, code: 'BUDGET_EXCEEDED', message: 'FLA source exceeds the byte limit' };
@@ -222,6 +225,9 @@ async function parseArchive(
   }
   const xmlExtractionStartedAt = startIssue762Profile();
   const docXml = await docDocEntry.async('string');
+  if (execution && !execution.shouldContinue()) {
+    return { ok: false, code: 'RENDER_FAILED', message: 'Catalog operation was cancelled' };
+  }
   if (docXml.length > MAX_XML_BYTES) {
     return { ok: false, code: 'BUDGET_EXCEEDED', message: 'DOMDocument.xml too large' };
   }
@@ -232,12 +238,21 @@ async function parseArchive(
     const entry = zip.files[name];
     if (!entry) continue;
     const xml = await entry.async('string');
+    if (execution && !execution.shouldContinue()) {
+      return { ok: false, code: 'RENDER_FAILED', message: 'Catalog operation was cancelled' };
+    }
     if (xml.length > MAX_XML_BYTES) {
       return { ok: false, code: 'BUDGET_EXCEEDED', message: `LIBRARY entry too large: ${name}` };
     }
     libraryXmlEntries.push({ name, xml });
     if (/<Script\b/.test(xml) || /<DOMScript\b/.test(xml) || /actionscript|doabc/iu.test(xml)) {
       hasActionScript = true;
+    }
+    if (execution) {
+      await execution.yieldToEventLoop();
+      if (!execution.shouldContinue()) {
+        return { ok: false, code: 'RENDER_FAILED', message: 'Catalog operation was cancelled' };
+      }
     }
   }
   if (/<Script\b/.test(docXml) || /<DOMScript\b/.test(docXml)) {
@@ -2021,12 +2036,15 @@ function stableRenderTargetId(bytes: Uint8Array, logicalTargetKey: string): stri
   return 'fla-render-target-' + digest;
 }
 
-function displaySourceFromArchive(
+async function displaySourceFromArchive(
   archive: ParsedArchive,
-): { readonly ok: true; readonly source: FlaStaticSnapshotDisplaySource } | BuildSvgFailure {
+  execution?: FlaStaticSnapshotDisplaySourceExecution,
+): Promise<{ readonly ok: true; readonly source: FlaStaticSnapshotDisplaySource } | BuildSvgFailure> {
   // ActionScript is never interpreted; static display-list extraction does
   // not need to reject otherwise renderable frames that happen to contain it.
-  const adapted = adaptFlaXflDisplaySource(archive.docXml, archive.libraryXmlEntries);
+  const adapted = execution
+    ? await adaptFlaXflDisplaySourceCooperatively(archive.docXml, archive.libraryXmlEntries, execution)
+    : adaptFlaXflDisplaySource(archive.docXml, archive.libraryXmlEntries);
   if (!adapted.ok) return adapted;
   return { ok: true, source: adapted.source };
 }
@@ -2178,11 +2196,12 @@ function catalogSupportReason(
 export async function prepareFlaStaticSnapshotDisplaySource(
   bytes: Uint8Array,
   operation: 'catalog' | 'preview',
+  execution?: FlaStaticSnapshotDisplaySourceExecution,
 ): Promise<FlaStaticSnapshotPreparedDisplaySourceResult> {
-  const archive = await parseArchive(bytes, operation);
+  const archive = await parseArchive(bytes, operation, execution);
   if (!archive.ok) return archive;
   const adaptStartedAt = startIssue762Profile();
-  const adapted = displaySourceFromArchive(archive.archive);
+  const adapted = await displaySourceFromArchive(archive.archive, execution);
   if (!adapted.ok) return adapted;
   finishIssue762Profile(`fla.${operation}.display-source-adapt`, adaptStartedAt, {
     libraryXmlEntryCount: archive.archive.libraryXmlEntries.length,
@@ -2201,12 +2220,19 @@ export async function buildRenderableTargetCatalog(
   resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup = () => ({ ok: false, reason: 'missing' }),
   options: { readonly includeAuthoredStates?: boolean } = {},
   preparedDisplaySource?: FlaStaticSnapshotDisplaySource,
+  execution?: FlaStaticSnapshotDisplaySourceExecution,
 ): Promise<BuildCatalogResult> {
   const catalogStartedAt = startIssue762Profile();
+  if (execution && !execution.shouldContinue()) {
+    return { ok: false, code: 'RENDER_FAILED', message: 'Catalog operation was cancelled' };
+  }
   const sourceResult = preparedDisplaySource
     ? { ok: true as const, source: preparedDisplaySource }
-    : await prepareFlaStaticSnapshotDisplaySource(bytes, 'catalog');
+    : await prepareFlaStaticSnapshotDisplaySource(bytes, 'catalog', execution);
   if (!sourceResult.ok) return sourceResult;
+  if (execution && !execution.shouldContinue()) {
+    return { ok: false, code: 'RENDER_FAILED', message: 'Catalog operation was cancelled' };
+  }
   const source = sourceResult.source;
   const entries: BuildCatalogSuccess['entries'] = [];
   let omittedCandidateCount = 0;
@@ -2285,6 +2311,12 @@ export async function buildRenderableTargetCatalog(
       compatibility: ['degraded'],
     };
     appendCandidate(target);
+    if (execution) {
+      await execution.yieldToEventLoop();
+      if (!execution.shouldContinue()) {
+        return { ok: false, code: 'RENDER_FAILED', message: 'Catalog operation was cancelled' };
+      }
+    }
   }
 
   // Nested Graphic targets go first so the fixed catalog limit cannot hide
@@ -2322,6 +2354,12 @@ export async function buildRenderableTargetCatalog(
         selectedFrameIndex: frameIndex,
         compatibility: ['degraded'],
       });
+      if (execution) {
+        await execution.yieldToEventLoop();
+        if (!execution.shouldContinue()) {
+          return { ok: false, code: 'RENDER_FAILED', message: 'Catalog operation was cancelled' };
+        }
+      }
     }
   }
 

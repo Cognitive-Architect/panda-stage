@@ -55,7 +55,7 @@ const FIXED_PNG = pngBytes(8, 8);
 const FIXED_PNG_SHA256 = createHash('sha256').update(Buffer.from(FIXED_PNG)).digest('hex');
 
 /** Build a minimal but real FLA (ZIP) with one graphic symbol + a scene shape. */
-async function buildMinimalFla(): Promise<Uint8Array> {
+async function buildMinimalFla(libraryEntryCount = 1): Promise<Uint8Array> {
   const docXml = `<?xml version="1.0" encoding="UTF-8"?>
 <DOMDocument width="550" height="400" xmlns="http://ns.adobe.com/xfl/2008/">
   <timelines>
@@ -122,7 +122,10 @@ async function buildMinimalFla(): Promise<Uint8Array> {
 </DOMSymbolItem>`;
   const zip = new JSZip();
   zip.file('DOMDocument.xml', docXml);
-  zip.file('LIBRARY/MyGraphic.xml', libXml);
+  for (let index = 0; index < libraryEntryCount; index += 1) {
+    const name = libraryEntryCount === 1 ? 'MyGraphic' : `MyGraphic${index}`;
+    zip.file(`LIBRARY/${name}.xml`, libXml.replaceAll('MyGraphic', name));
+  }
   return zip.generateAsync({ type: 'uint8array' });
 }
 
@@ -199,6 +202,29 @@ describe('FlaStaticSnapshotRenderSession', () => {
     if (!catalog.ok) throw new Error('catalog should succeed');
     expect(catalog.entries.length).toBeGreaterThan(0);
     expect(catalog.summary.length).toBeGreaterThan(0);
+    session.close();
+  });
+
+  it('stops an in-flight catalog when its inspection session is cancelled', async () => {
+    const session = new FlaStaticSnapshotRenderSession({
+      rasterizer: resolvingRasterizer(),
+      sourceLookup: sourceLookup(await buildMinimalFla(32)),
+    });
+    const catalogPromise = session.catalog(SESSION_ID);
+    await new Promise<void>((resolve) => {
+      setImmediate(() => {
+        session.cancel({
+          format: 'fla-static-snapshot-cancel',
+          version: 1,
+          sessionId: SESSION_ID,
+        });
+        resolve();
+      });
+    });
+
+    const catalog = await catalogPromise;
+    expect(catalog.ok).toBe(false);
+    if (!catalog.ok) expect(catalog.code).toBe('SESSION_NOT_FOUND');
     session.close();
   });
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { resolveFlaDisplayList } from '../../src/main/services/fla-display-list-resolver';
 import {
   adaptFlaXflDisplaySource,
+  adaptFlaXflDisplaySourceCooperatively,
   type FlaXflGraphicSymbolDescriptor,
 } from '../../src/main/services/fla-static-snapshot-display-list-adapter';
 
@@ -77,6 +78,29 @@ function buildAdapterFixture() {
 
   return { adapted: adapted.source, documentXml, libraryXmlEntries, originalLibraryEntries };
 }
+
+describe('cooperative XFL display-source adaptation', () => {
+  it('stops at a yield boundary when the inspection session is cancelled', async () => {
+    const fixture = buildAdapterFixture();
+    let cancelled = false;
+    let yieldCount = 0;
+    const adapted = await adaptFlaXflDisplaySourceCooperatively(
+      fixture.documentXml,
+      fixture.libraryXmlEntries,
+      {
+        shouldContinue: () => !cancelled,
+        async yieldToEventLoop() {
+          yieldCount += 1;
+          cancelled = true;
+        },
+      },
+    );
+
+    expect(adapted.ok).toBe(false);
+    expect(yieldCount).toBe(1);
+    if (!adapted.ok) expect(adapted.message).toContain('cancelled');
+  });
+});
 
 function buildMotionAdapterFixture(
   startMetadata = '',

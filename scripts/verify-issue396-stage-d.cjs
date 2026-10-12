@@ -11,7 +11,7 @@
 
 'use strict';
 
-const { app, BrowserWindow, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const { createHash } = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs');
@@ -22,6 +22,225 @@ const JSZip = require('jszip');
 const DEFAULT_ACCEPTANCE_ROOT = 'D:\\PandaStage-Acceptance\\issue398-stage-d';
 const SYNTHETIC_TARGET_COUNT = 25;
 const SIMPLE_RECT_CUBICS = '!0 0|1660 0|1660 3365|0 3365|0 0';
+const ISSUE766_CATALOG_CHANNEL = 'fla:snapshot-catalog';
+const issue766Runtime = {
+  enabled: false,
+  mainSamples: [],
+  timer: null,
+  lastTickAtMs: null,
+};
+
+function startIssue766MainHeartbeat() {
+  if (!issue766Runtime.enabled || issue766Runtime.timer !== null) return;
+  issue766Runtime.lastTickAtMs = performance.now();
+  issue766Runtime.timer = setInterval(() => {
+    const atMs = performance.now();
+    const gapMs = issue766Runtime.lastTickAtMs === null ? null : atMs - issue766Runtime.lastTickAtMs;
+    issue766Runtime.lastTickAtMs = atMs;
+    const cpu = process.cpuUsage();
+    issue766Runtime.mainSamples.push({
+      atMs,
+      wallTimeMs: Date.now(),
+      gapMs,
+      userCpuMicros: cpu.user,
+      systemCpuMicros: cpu.system,
+      rssBytes: process.memoryUsage().rss,
+    });
+  }, 100);
+}
+
+function stopIssue766MainHeartbeat() {
+  if (issue766Runtime.timer !== null) clearInterval(issue766Runtime.timer);
+  issue766Runtime.timer = null;
+  issue766Runtime.lastTickAtMs = null;
+}
+
+function summarizeIssue766MainHeartbeat(rendererMarks) {
+  const start = rendererMarks.find((mark) => mark.name === 'workbench-open-action-click');
+  const firstPreview = rendererMarks.find((mark) => mark.name === 'first-focused-preview-visible') ??
+    rendererMarks.find((mark) => mark.name === 'first-candidate-thumbnail-visible');
+  if (!start || !firstPreview) {
+    return {
+      status: 'INCOMPLETE',
+      reason: !start ? 'workbench-open-action-click was not observed' : 'first preview was not observed',
+      sampleCount: 0,
+      maxGapMs: null,
+      gapsAbove1500ms: null,
+      peakRssBytes: null,
+      mainCpuMs: null,
+    };
+  }
+
+  const windowSamples = issue766Runtime.mainSamples.filter((sample) =>
+    sample.wallTimeMs >= start.wallTimeMs && sample.wallTimeMs <= firstPreview.wallTimeMs,
+  );
+  const priorSample = [...issue766Runtime.mainSamples]
+    .reverse()
+    .find((sample) => sample.wallTimeMs < start.wallTimeMs);
+  const afterSample = issue766Runtime.mainSamples.find((sample) =>
+    sample.wallTimeMs >= firstPreview.wallTimeMs,
+  );
+  const gaps = windowSamples.map((sample) => sample.gapMs).filter(Number.isFinite);
+  const cpuBefore = priorSample ?? windowSamples[0];
+  const cpuAfter = afterSample ?? windowSamples.at(-1);
+  const mainCpuMs = cpuBefore && cpuAfter
+    ? ((cpuAfter.userCpuMicros + cpuAfter.systemCpuMicros) -
+      (cpuBefore.userCpuMicros + cpuBefore.systemCpuMicros)) / 1_000
+    : null;
+  return {
+    status: windowSamples.length > 0 ? 'MEASURED' : 'INCOMPLETE',
+    startedAtWallTimeMs: start.wallTimeMs,
+    endedAtWallTimeMs: firstPreview.wallTimeMs,
+    sampleCount: windowSamples.length,
+    maxGapMs: gaps.length > 0 ? Math.max(...gaps) : null,
+    gapsAbove1500ms: gaps.filter((gap) => gap > 1_500).length,
+    peakRssBytes: windowSamples.length > 0
+      ? Math.max(...windowSamples.map((sample) => sample.rssBytes))
+      : null,
+    mainCpuMs,
+  };
+}
+
+function summarizeIssue766RendererHeartbeat(firstLoad) {
+  const marks = firstLoad?.marks ?? [];
+  const start = marks.find((mark) => mark.name === 'workbench-open-action-click');
+  const firstPreview = marks.find((mark) => mark.name === 'first-focused-preview-visible') ??
+    marks.find((mark) => mark.name === 'first-candidate-thumbnail-visible');
+  if (!start || !firstPreview) {
+    return {
+      status: 'INCOMPLETE',
+      reason: !start ? 'workbench-open-action-click was not observed' : 'first preview was not observed',
+      sampleCount: 0,
+      maxGapMs: null,
+      gapsAbove1500ms: null,
+    };
+  }
+  const samples = (firstLoad.rendererHeartbeat ?? []).filter((sample) =>
+    sample.wallTimeMs >= start.wallTimeMs && sample.wallTimeMs <= firstPreview.wallTimeMs,
+  );
+  const gaps = samples.map((sample) => sample.gapMs).filter(Number.isFinite);
+  return {
+    status: samples.length > 0 ? 'MEASURED' : 'INCOMPLETE',
+    startedAtWallTimeMs: start.wallTimeMs,
+    endedAtWallTimeMs: firstPreview.wallTimeMs,
+    sampleCount: samples.length,
+    maxGapMs: gaps.length > 0 ? Math.max(...gaps) : null,
+    gapsAbove1500ms: gaps.filter((gap) => gap > 1_500).length,
+  };
+}
+
+function installIssue766CatalogIpcProbe(events) {
+  if (!issue766Runtime.enabled) return;
+  const originalHandle = ipcMain.handle.bind(ipcMain);
+  ipcMain.handle = (channel, handler) => {
+    if (channel !== ISSUE766_CATALOG_CHANNEL) return originalHandle(channel, handler);
+    return originalHandle(channel, async (event, request, ...rest) => {
+      const startedAtMs = performance.now();
+      const startedAtWallTimeMs = Date.now();
+      const invocation = events.filter((entry) =>
+        entry.stage === 'issue766.catalog-ipc' && entry.phase === 'complete',
+      ).length + 1;
+      const common = {
+        stage: 'issue766.catalog-ipc',
+        invocation,
+        sessionId: typeof request?.sessionId === 'string' ? request.sessionId : null,
+        includeAuthoredStates: request?.includeAuthoredStates === true,
+      };
+      events.push({
+        ...common,
+        phase: 'start',
+        startedAtWallTimeMs,
+        realm: 'electron-main',
+      });
+      try {
+        const response = await handler(event, request, ...rest);
+        events.push({
+          ...common,
+          phase: 'complete',
+          startedAtWallTimeMs,
+          completedAtWallTimeMs: Date.now(),
+          durationMs: performance.now() - startedAtMs,
+          outcome: response?.ok === true ? 'success' : response?.code ?? response?.error?.code ?? 'unknown',
+          candidateCount: response?.ok === true ? response.entries?.length ?? 0 : 0,
+          realm: 'electron-main',
+        });
+        return response;
+      } catch (error) {
+        events.push({
+          ...common,
+          phase: 'error',
+          startedAtWallTimeMs,
+          completedAtWallTimeMs: Date.now(),
+          durationMs: performance.now() - startedAtMs,
+          error: error instanceof Error ? error.message : String(error),
+          realm: 'electron-main',
+        });
+        throw error;
+      }
+    });
+  };
+}
+
+function summarizeIssue766FirstLoad(firstLoad) {
+  const marks = firstLoad?.marks ?? [];
+  const markTime = (name) => marks.find((mark) => mark.name === name)?.wallTimeMs ?? null;
+  const openAt = markTime('workbench-open-action-click');
+  const firstCatalogStart = firstLoad?.catalogIpcEvents?.find((event) => event.phase === 'start') ?? null;
+  const firstCatalogComplete = firstCatalogStart
+    ? firstLoad.catalogIpcEvents.find((event) =>
+      event.phase === 'complete' && event.invocation === firstCatalogStart.invocation,
+    ) ?? null
+    : null;
+  const delta = (end, start) => Number.isFinite(end) && Number.isFinite(start) ? end - start : null;
+  const sessionGroups = new Map();
+  for (const event of firstLoad?.catalogIpcEvents ?? []) {
+    if (event.phase !== 'complete' && event.phase !== 'error') continue;
+    const sessionId = event.sessionId ?? '(missing session id)';
+    const existing = sessionGroups.get(sessionId) ?? [];
+    existing.push({
+      invocation: event.invocation,
+      phase: event.phase,
+      durationMs: event.durationMs,
+      candidateCount: event.candidateCount ?? null,
+      outcome: event.outcome ?? null,
+      includeAuthoredStates: event.includeAuthoredStates,
+    });
+    sessionGroups.set(sessionId, existing);
+  }
+  return {
+    workbenchOpenAtWallTimeMs: openAt,
+    firstCatalogRequest: firstCatalogStart ? {
+      invocation: firstCatalogStart.invocation,
+      sessionId: firstCatalogStart.sessionId,
+      startedAtWallTimeMs: firstCatalogStart.startedAtWallTimeMs,
+      completedAtWallTimeMs: firstCatalogComplete?.completedAtWallTimeMs ?? null,
+      durationMs: firstCatalogComplete?.durationMs ?? null,
+      candidateCount: firstCatalogComplete?.candidateCount ?? null,
+      outcome: firstCatalogComplete?.outcome ?? (firstCatalogComplete ? 'unknown' : 'incomplete'),
+    } : null,
+    phaseTimingsMs: {
+      openToLoadingDom: delta(markTime('first-loading-dom'), openAt),
+      openToLoadingTwoAnimationFrames: delta(markTime('first-loading-two-animation-frames'), openAt),
+      openToFirstCatalogRequest: delta(firstCatalogStart?.startedAtWallTimeMs, openAt),
+      openToFirstCatalogCompletion: delta(firstCatalogComplete?.completedAtWallTimeMs, openAt),
+      catalogCompletionToFirstScanProgress: delta(
+        markTime('first-scan-progress-visible'),
+        firstCatalogComplete?.completedAtWallTimeMs,
+      ),
+      openToFirstCandidateList: delta(markTime('first-candidate-list-visible'), openAt),
+      openToFirstCandidateThumbnail: delta(markTime('first-candidate-thumbnail-visible'), openAt),
+      openToFirstFocusedPreview: delta(markTime('first-focused-preview-visible'), openAt),
+    },
+    catalogInvocationCount: firstLoad?.catalogRequestCount ?? 0,
+    catalogSessions: [...sessionGroups.entries()].map(([sessionId, invocations]) => ({
+      sessionId,
+      invocationCount: invocations.length,
+      invocations,
+    })),
+    rendererHeartbeat: summarizeIssue766RendererHeartbeat(firstLoad),
+    mainHeartbeat: firstLoad?.mainHeartbeat ?? { status: 'NOT MEASURED' },
+  };
+}
 
 function parseArgs(argv) {
   const args = {};
@@ -33,6 +252,7 @@ function parseArgs(argv) {
     else if (argv[index] === '--evidence-dir') args.evidenceDir = argv[++index];
     else if (argv[index] === '--measure-scan-only') args.measureScanOnly = true;
     else if (argv[index] === '--issue762-profile') args.issue762Profile = true;
+    else if (argv[index] === '--issue766-first-load') args.issue766FirstLoad = true;
     else if (argv[index] === '--profile-commit') args.profileCommit = true;
     else if (argv[index] === '--scan-timeout-ms') args.scanTimeoutMs = Number(argv[++index]);
   }
@@ -252,6 +472,7 @@ async function captureScreenshotAtMarker(mainWindow, marker, outputPath, pathSta
 async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
   measureScanOnly = false,
   issue762Profile = false,
+  issue766FirstLoad = false,
   profileCommit = false,
   profileScanTimeoutMs = 300_000,
 } = {}) {
@@ -261,10 +482,30 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       const projectName = ${JSON.stringify(projectName)};
       const measureScanOnly = ${JSON.stringify(measureScanOnly)};
       const issue762Profile = ${JSON.stringify(issue762Profile)};
+      const issue766FirstLoad = ${JSON.stringify(issue766FirstLoad)};
       const profileCommit = ${JSON.stringify(profileCommit)};
       const profileScanTimeoutMs = ${JSON.stringify(profileScanTimeoutMs)};
       const issue762ProfileEvents = [];
       const issue762RunState = {};
+      const issue766Probe = { marks: [], rendererHeartbeat: [], catalogRoundTrips: [] };
+      let issue766HeartbeatHandle = null;
+      let issue766MutationObserver = null;
+      let issue766HeartbeatLastAt = null;
+      const issue766SeenMarks = new Set();
+      const issue766ObservedImages = new WeakSet();
+      const recordIssue766Mark = (name, details = {}) => {
+        if (!issue766FirstLoad || issue766SeenMarks.has(name)) return;
+        issue766SeenMarks.add(name);
+        issue766Probe.marks.push({ name, atMs: performance.now(), wallTimeMs: Date.now(), details });
+      };
+      const stopIssue766Probe = () => {
+        if (issue766HeartbeatHandle !== null) window.clearInterval(issue766HeartbeatHandle);
+        if (issue766MutationObserver) issue766MutationObserver.disconnect();
+        issue766HeartbeatHandle = null;
+        issue766MutationObserver = null;
+        if (issue762Profile) issue762RunState.issue766FirstLoad = issue766Probe;
+      };
+      if (issue766FirstLoad) issue762RunState.issue766FirstLoad = issue766Probe;
       if (issue762Profile) window.__pandaStageIssue762RunState = issue762RunState;
       const recordIssue762Profile = (stage, durationMs, details = {}) => {
         if (!issue762Profile) return;
@@ -274,6 +515,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           details,
           realm: 'renderer-main',
           atMs: performance.now(),
+          wallTimeMs: Date.now(),
         });
       };
       if (issue762Profile) {
@@ -283,7 +525,19 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
             ...event,
             realm: 'renderer-main',
             atMs: performance.now(),
+            wallTimeMs: Date.now(),
           });
+          if (issue766FirstLoad && event.stage === 'ui.catalog.main-roundtrip') {
+            const completedAtWallTimeMs = Date.now();
+            issue766Probe.catalogRoundTrips.push({
+              invocation: issue766Probe.catalogRoundTrips.length + 1,
+              startedAtWallTimeMs: completedAtWallTimeMs - event.durationMs,
+              completedAtWallTimeMs,
+              durationMs: event.durationMs,
+              outcome: event.details?.outcome ?? null,
+              candidateCount: event.details?.candidateCount ?? null,
+            });
+          }
         };
       }
       const uiTimerGaps = [];
@@ -292,6 +546,93 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       const startUiResponsivenessTimer = () => {
         if (!issue762Profile) return;
         uiTimerLastAt = performance.now();
+        if (issue766FirstLoad) {
+          issue766HeartbeatLastAt = uiTimerLastAt;
+          issue766HeartbeatHandle = window.setInterval(() => {
+            const now = performance.now();
+            issue766Probe.rendererHeartbeat.push({
+              atMs: now,
+              wallTimeMs: Date.now(),
+              gapMs: now - issue766HeartbeatLastAt,
+            });
+            issue766HeartbeatLastAt = now;
+          }, 100);
+          const inspectFirstLoadDom = () => {
+            const loading = document.querySelector('[data-testid="fla-snapshot-loading"]');
+            if (loading) {
+              recordIssue766Mark('first-loading-dom', { text: loading.textContent?.trim() ?? '' });
+          if (!issue766SeenMarks.has('first-loading-two-animation-frames') &&
+            !issue766SeenMarks.has('first-loading-two-frames-scheduled')) {
+            issue766SeenMarks.add('first-loading-two-frames-scheduled');
+            window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+                  recordIssue766Mark('first-loading-two-animation-frames', {
+                    text: loading.isConnected ? loading.textContent?.trim() ?? '' : null,
+                  });
+                }));
+              }
+            }
+            const review = document.querySelector('[data-testid="fla-snapshot-review"]');
+            const actionState = document.querySelector('[data-testid="fla-snapshot-action-state"]');
+            const progressText = actionState?.textContent?.trim() ?? '';
+            const scanMatch = progressText.match(/检查候选\\s+([0-9]+)\\s*\\/\\s*([0-9]+)/u);
+            if (scanMatch) {
+              recordIssue766Mark('first-scan-progress-visible', {
+                progress: Number(scanMatch[1]),
+                candidateCount: Number(scanMatch[2]),
+                text: progressText,
+              });
+            }
+            if (review?.getAttribute('data-preview-state') === 'scanning') {
+              recordIssue766Mark('first-scanning-state', {
+                candidateCount: document.querySelectorAll('[data-testid="fla-snapshot-targets"] input[type="checkbox"]').length,
+              });
+            }
+            const candidates = document.querySelectorAll('[data-testid="fla-snapshot-targets"] input[type="checkbox"]');
+            if (candidates.length > 0) {
+              recordIssue766Mark('first-candidate-list-visible', { candidateCount: candidates.length });
+            }
+            const candidateImages = document.querySelectorAll('[data-testid="fla-snapshot-targets"] img');
+            candidateImages.forEach((image) => {
+              if (issue766ObservedImages.has(image)) return;
+              issue766ObservedImages.add(image);
+              const markLoaded = () => {
+                if (image.naturalWidth > 0) {
+                  recordIssue766Mark('first-candidate-thumbnail-visible', {
+                    naturalWidth: image.naturalWidth,
+                    naturalHeight: image.naturalHeight,
+                  });
+                }
+              };
+              image.addEventListener('load', markLoaded, { once: true });
+              if (image.complete) markLoaded();
+            });
+            const focusedPreview = document.querySelector('[data-testid="fla-snapshot-preview-image"]');
+            if (focusedPreview instanceof HTMLImageElement) {
+              const markFocusedPreview = () => {
+                if (focusedPreview.naturalWidth > 0) {
+                  recordIssue766Mark('first-focused-preview-visible', {
+                    naturalWidth: focusedPreview.naturalWidth,
+                    naturalHeight: focusedPreview.naturalHeight,
+                  });
+                }
+              };
+              if (!issue766ObservedImages.has(focusedPreview)) {
+                issue766ObservedImages.add(focusedPreview);
+                focusedPreview.addEventListener('load', markFocusedPreview, { once: true });
+              }
+              if (focusedPreview.complete) markFocusedPreview();
+            }
+          };
+          issue766MutationObserver = new MutationObserver(inspectFirstLoadDom);
+          issue766MutationObserver.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ['data-preview-state', 'src'],
+            childList: true,
+            characterData: true,
+            subtree: true,
+          });
+          inspectFirstLoadDom();
+        }
         uiTimerHandle = window.setInterval(() => {
           const now = performance.now();
           uiTimerGaps.push(now - uiTimerLastAt);
@@ -472,6 +813,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           throw new Error('No enabled FLA import action is available');
         }
         const sourceOpenStartedAt = performance.now();
+        recordIssue766Mark('workbench-open-action-click');
         action.click();
         await waitFor('[data-testid="fla-review-zero-raster"]', () => true, timeoutMs);
         recordIssue762Profile('ui.source.open-action-to-review', performance.now() - sourceOpenStartedAt, {
@@ -778,6 +1120,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           preview.naturalHeight === preview.generatedHeight &&
           Math.max(preview.naturalWidth, preview.naturalHeight) > 160,
         );
+        stopIssue766Probe();
         return {
           ok: scanMeasurement.candidateCount > 0 && noProjectMutation && previewResourcesReleased &&
             highResolutionVerified && (!profileCommit || Boolean(
@@ -790,6 +1133,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           noProjectMutationDuringScan,
           commitMeasurement,
           ...(issue762Profile ? { issue762ProfileEvents } : {}),
+          ...(issue766FirstLoad ? { issue766FirstLoad: issue766Probe } : {}),
           highResolutionVerified,
           noProjectMutation,
           previewResourcesReleased,
@@ -1034,6 +1378,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       const libraryAfterClose = readProjectState();
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
       const releasedPreviewResources = previewUrlState();
+      stopIssue766Probe();
 
       const checks = {
         zeroRasterRoute,
@@ -1105,15 +1450,20 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         revisionAdvanced,
         committedText,
         ...(issue762Profile ? { issue762ProfileEvents } : {}),
+        ...(issue766FirstLoad ? { issue766FirstLoad: issue766Probe } : {}),
         projectMutation: 'CANDIDATE_PREVIEWS_AND_SELECTION_NO_PROJECT_MUTATION; CANCEL_NO_MUTATION; ONE_CONFIRM; COMMIT_SELECTED_STATIC_SNAPSHOT_IMAGE_ASSETS',
       };
-    })().catch((error) => ({
+    })().catch((error) => {
+      if (issue766FirstLoad) console.error('[issue766-first-load] renderer probe failed', error);
+      stopIssue766Probe();
+      return {
       verifierError: error instanceof Error ? error.message : String(error),
       verifierStack: error instanceof Error ? error.stack : String(error),
       issue762ProfileEvents,
       issue762ScanMeasurement: error?.issue762ScanMeasurement ?? null,
       issue762RunState: issue762Profile ? window.__pandaStageIssue762RunState ?? null : null,
-    }))
+      };
+    })
   `).then((result) => {
     if (result?.verifierError) {
       const error = new Error(`${result.verifierError}\n${result.verifierStack ?? ''}`);
@@ -1128,6 +1478,13 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
 
 async function main() {
   const args = parseArgs(process.argv.slice(1));
+  if (args.issue766FirstLoad) {
+    if (!args.measureScanOnly) {
+      throw new Error('--issue766-first-load requires --measure-scan-only');
+    }
+    args.issue762Profile = true;
+    issue766Runtime.enabled = true;
+  }
   if (args.profileCommit && (!args.measureScanOnly || !args.issue762Profile)) {
     throw new Error('--profile-commit requires --measure-scan-only and --issue762-profile');
   }
@@ -1140,13 +1497,16 @@ async function main() {
         ...event,
         realm: 'electron-main',
         atMs: performance.now(),
+        wallTimeMs: Date.now(),
       });
     };
   }
   const acceptanceRoot = resolve(args.acceptanceRoot || DEFAULT_ACCEPTANCE_ROOT);
   const outPath = resolve(args.out || join(
     acceptanceRoot,
-    args.measureScanOnly ? 'issue761-fla-scan-measurement.json' : 'issue398-stage-d-receipt.json',
+    args.issue766FirstLoad
+      ? 'issue766-first-load.json'
+      : args.measureScanOnly ? 'issue761-fla-scan-measurement.json' : 'issue398-stage-d-receipt.json',
   ));
   const evidenceDir = resolve(args.evidenceDir || join(acceptanceRoot, 'layout-evidence'));
   const userData = resolve(args.userData || join(acceptanceRoot, 'electron-user-data'));
@@ -1173,14 +1533,27 @@ async function main() {
     app.setPath('userData', userData);
     process.env.VITE_DEV_SERVER_URL = '';
     process.env.PANDA_STAGE_FLA_ACCEPTANCE_SOURCE = sourcePath;
+    if (args.issue766FirstLoad) {
+      startIssue766MainHeartbeat();
+      installIssue766CatalogIpcProbe(mainProfileEvents);
+    }
     require('../dist-electron/main/index.js');
     sourceSha256Before = sha256(sourcePath);
     const mainWindow = await waitForMainWindow();
+    if (args.issue766FirstLoad) {
+      mainWindow.webContents.on('console-message', (_event, ...details) => {
+        process.stderr.write(`[issue766 renderer console] ${details.map(String).join(' ')}\n`);
+      });
+      mainWindow.webContents.on('render-process-gone', (_event, details) => {
+        process.stderr.write(`[issue766 renderer gone] ${JSON.stringify(details)}\n`);
+      });
+    }
     if (args.issue762Profile) mainWindow.showInactive();
     const pathState = { error: null };
     const pathPromise = runStageDPath(mainWindow, acceptanceRoot, projectName, {
       measureScanOnly: Boolean(args.measureScanOnly),
       issue762Profile: Boolean(args.issue762Profile),
+      issue766FirstLoad: Boolean(args.issue766FirstLoad),
       profileCommit: Boolean(args.profileCommit),
       profileScanTimeoutMs: Number.isFinite(args.scanTimeoutMs) && args.scanTimeoutMs > 0
         ? args.scanTimeoutMs
@@ -1207,6 +1580,16 @@ async function main() {
       };
     }
     response = await pathPromise;
+    if (args.issue766FirstLoad) {
+      stopIssue766MainHeartbeat();
+      const firstLoad = response.issue766FirstLoad ?? { marks: [], rendererHeartbeat: [], catalogRoundTrips: [] };
+      firstLoad.mainHeartbeat = summarizeIssue766MainHeartbeat(firstLoad.marks ?? []);
+      firstLoad.catalogIpcEvents = mainProfileEvents.filter((event) => event.stage === 'issue766.catalog-ipc');
+      firstLoad.catalogRequestCount = firstLoad.catalogIpcEvents
+        .filter((event) => event.phase === 'complete' || event.phase === 'error').length;
+      firstLoad.summary = summarizeIssue766FirstLoad(firstLoad);
+      response.issue766FirstLoad = firstLoad;
+    }
     if (layoutEvidence) response.layoutEvidence = layoutEvidence;
     sourceSha256After = sha256(sourcePath);
     const projectFile = join(acceptanceRoot, `${projectName}.pandastage`, 'project.json');
@@ -1239,11 +1622,13 @@ async function main() {
     const responseForReceipt = response ? { ...response } : response;
     if (responseForReceipt) delete responseForReceipt.issue762ProfileEvents;
     const receipt = {
-      schemaVersion: args.issue762Profile
-        ? 'issue762-fla-performance-profile/1'
-        : args.measureScanOnly
-          ? 'issue761-fla-scan-measurement/1'
-          : 'issue398-stage-d-electron-acceptance/1',
+      schemaVersion: args.issue766FirstLoad
+        ? 'issue766-first-load/1'
+        : args.issue762Profile
+          ? 'issue762-fla-performance-profile/1'
+          : args.measureScanOnly
+            ? 'issue761-fla-scan-measurement/1'
+            : 'issue398-stage-d-electron-acceptance/1',
       ...(args.issue762Profile ? {
         environment: getRuntimeEnvironment(),
         reproductionCommand: process.argv.join(' '),
@@ -1275,12 +1660,13 @@ async function main() {
         progressSamples: response?.scanMeasurement?.progressSamples ?? [],
         uiResponsiveness: response?.uiResponsiveness ?? null,
       } : null,
+      ...(args.issue766FirstLoad ? { issue766FirstLoad: response?.issue766FirstLoad ?? null } : {}),
       parserPath: 'real Windows Electron Main + production Renderer UI -> V2-R catalog -> bounded v1.2 deletion-first R1/R2 workbench -> static preview/explicit ImageAsset commit',
       response: responseForReceipt,
     };
     writeFileSync(outPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
     process.stdout.write(args.issue762Profile
-      ? `${JSON.stringify({ outPath, source: receipt.source, scanMeasurement: receipt.scanMeasurement, project: receipt.project, profileSummary: receipt.profile.stageSummary })}\n`
+      ? `${JSON.stringify({ outPath, source: receipt.source, scanMeasurement: receipt.scanMeasurement, project: receipt.project, issue766FirstLoad: receipt.issue766FirstLoad ?? null, profileSummary: receipt.profile.stageSummary })}\n`
       : `${JSON.stringify(receipt)}\n`);
     const expectedPersistedAssetCount = args.measureScanOnly && !args.profileCommit ? 0 : 1;
     if (
@@ -1292,6 +1678,7 @@ async function main() {
       process.exitCode = 1;
     }
   } catch (caught) {
+    stopIssue766MainHeartbeat();
     const error = caught instanceof Error ? caught : new Error(String(caught));
     if (sourceSha256After === null && existsSync(sourcePath)) {
       try {
@@ -1315,11 +1702,13 @@ async function main() {
       ...(Array.isArray(error.issue762ProfileEvents) ? error.issue762ProfileEvents : []),
     ];
     const receipt = {
-      schemaVersion: args.issue762Profile
-        ? 'issue762-fla-performance-profile/1'
-        : args.measureScanOnly
-          ? 'issue761-fla-scan-measurement/1'
-          : 'issue398-stage-d-electron-acceptance/1',
+      schemaVersion: args.issue766FirstLoad
+        ? 'issue766-first-load/1'
+        : args.issue762Profile
+          ? 'issue762-fla-performance-profile/1'
+          : args.measureScanOnly
+            ? 'issue761-fla-scan-measurement/1'
+            : 'issue398-stage-d-electron-acceptance/1',
       ...(args.issue762Profile ? {
         environment: getRuntimeEnvironment(),
         reproductionCommand: process.argv.join(' '),
@@ -1360,6 +1749,21 @@ async function main() {
         failureMessage: error.issue762ScanMeasurement?.failureMessage ??
           (error.issue762ScanMeasurement ? error.message : null),
       } : null,
+      ...(args.issue766FirstLoad ? {
+        issue766FirstLoad: (() => {
+          const firstLoad = error.issue762RunState?.issue766FirstLoad ?? {
+            marks: [],
+            rendererHeartbeat: [],
+            catalogRoundTrips: [],
+          };
+          firstLoad.mainHeartbeat = summarizeIssue766MainHeartbeat(firstLoad.marks ?? []);
+          firstLoad.catalogIpcEvents = mainProfileEvents.filter((event) => event.stage === 'issue766.catalog-ipc');
+          firstLoad.catalogRequestCount = firstLoad.catalogIpcEvents
+            .filter((event) => event.phase === 'complete' || event.phase === 'error').length;
+          firstLoad.summary = summarizeIssue766FirstLoad(firstLoad);
+          return firstLoad;
+        })(),
+      } : {}),
       partialRun: error.issue762RunState ?? null,
       response,
       error: error.message,

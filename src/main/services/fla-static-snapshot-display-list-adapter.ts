@@ -1006,10 +1006,15 @@ interface GraphicSymbolShell {
   readonly frameSpanIndex: FlaTimelineFrameSpanIndex<FlaXflElementBlock>;
 }
 
-export function adaptFlaXflDisplaySource(
+export interface FlaStaticSnapshotDisplaySourceExecution {
+  readonly shouldContinue: () => boolean;
+  readonly yieldToEventLoop: () => Promise<void>;
+}
+
+function* adaptFlaXflDisplaySourceSteps(
   docXml: string,
   libraryXmlEntries: readonly { readonly name: string; readonly xml: string }[],
-): FlaStaticSnapshotDisplaySourceBuildResult {
+): Generator<void, FlaStaticSnapshotDisplaySourceBuildResult, void> {
   const shapeBlocks = new Map<string, string>();
   const state: SourceBuildState = {
     shapeBlocks,
@@ -1018,9 +1023,11 @@ export function adaptFlaXflDisplaySource(
   };
   const sceneSources = timelineDescriptors(docXml, 'DOMDocument');
   if (!sceneSources.ok) return sceneSources;
+  yield;
 
   const shells: GraphicSymbolShell[] = [];
   for (const library of libraryXmlEntries) {
+    yield;
     const root = firstElementToken(library.xml, 'DOMSymbolItem');
     if (!root) continue;
     const symbolType = (root.attributes.symbolType ?? 'graphic').trim().toLocaleLowerCase('en-US');
@@ -1044,9 +1051,11 @@ export function adaptFlaXflDisplaySource(
 
   const aliases = makeSymbolAliasIndex(shells);
   state.symbolAliases = aliases;
+  yield;
   const symbols = new Map<string, FlaGraphicSymbolDefinition>();
   const graphicSymbols: FlaXflGraphicSymbolDescriptor[] = [];
   for (const shell of shells) {
+    yield;
     const parsed = buildGraphicFrameContext(
       shell.timelineXml,
       shell.frameSpanIndex,
@@ -1072,13 +1081,16 @@ export function adaptFlaXflDisplaySource(
       timelineXml: shell.timelineXml,
     });
   }
+  yield;
 
   const sceneTimelines: FlaXflTimelineDescriptor[] = [];
   for (const scene of sceneSources.value) {
+    yield;
     const parsed = buildFrameContext(scene.xml, 0, `scene:${scene.index}`, state);
     if (!parsed.ok) return parsed;
     sceneTimelines.push({ ...scene, frameContext: parsed.value });
   }
+  yield;
 
   // The prepared source can serve several authored-frame resolutions. Keep
   // each resolution's node budget and shape table scoped to that frame so a
@@ -1116,4 +1128,30 @@ export function adaptFlaXflDisplaySource(
       },
     },
   };
+}
+
+export function adaptFlaXflDisplaySource(
+  docXml: string,
+  libraryXmlEntries: readonly { readonly name: string; readonly xml: string }[],
+): FlaStaticSnapshotDisplaySourceBuildResult {
+  const steps = adaptFlaXflDisplaySourceSteps(docXml, libraryXmlEntries);
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
+}
+
+export async function adaptFlaXflDisplaySourceCooperatively(
+  docXml: string,
+  libraryXmlEntries: readonly { readonly name: string; readonly xml: string }[],
+  execution: FlaStaticSnapshotDisplaySourceExecution,
+): Promise<FlaStaticSnapshotDisplaySourceBuildResult> {
+  const steps = adaptFlaXflDisplaySourceSteps(docXml, libraryXmlEntries);
+  while (true) {
+    if (!execution.shouldContinue()) {
+      return fail('RENDER_FAILED', 'Catalog operation was cancelled');
+    }
+    const step = steps.next();
+    if (step.done) return step.value;
+    await execution.yieldToEventLoop();
+  }
 }
