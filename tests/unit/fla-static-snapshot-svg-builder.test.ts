@@ -42,6 +42,8 @@ async function buildSyntheticFla(
     includeSceneShape?: boolean;
     includeVectorMask?: boolean;
     includeBitmapMask?: boolean;
+    hideMask?: boolean;
+    hideMaskedContent?: boolean;
   } = {},
 ): Promise<Uint8Array> {
   const includeLibrary = options.includeLibrary ?? true;
@@ -118,7 +120,7 @@ async function buildSyntheticFla(
             </DOMFrame>`;
       }).join('\n            ');
       const timelineLayers = options.includeVectorMask || options.includeBitmapMask
-        ? `<DOMLayer name="mask" layerType="mask">
+        ? `<DOMLayer name="mask" layerType="mask"${options.hideMask ? ' visible="false"' : ''}>
             <frames><DOMFrame index="0" duration="1"><elements>
               ${options.includeBitmapMask
                 ? `<DOMBitmapInstance libraryItemName="missing-mask-bitmap"><matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix></DOMBitmapInstance>`
@@ -129,7 +131,7 @@ async function buildSyntheticFla(
                   </DOMShape>`}
             </elements></DOMFrame></frames>
           </DOMLayer>
-          <DOMLayer name="masked-content" parentLayerIndex="0">
+          <DOMLayer name="masked-content" parentLayerIndex="0"${options.hideMaskedContent ? ' isVisible="false"' : ''}>
             <frames><DOMFrame index="0" duration="1"><elements>
               <DOMShape>
                 <matrix><Matrix a="1" d="0" tx="0" ty="0"/></matrix>
@@ -240,7 +242,7 @@ describe('R1-B SVG builder: catalog discovery', () => {
     expect(catalog.entries.some((entry) => entry.target.sourceLibraryItemName === 'filler-62')).toBe(false);
   });
 
-  it('renders static XFL mask layers as vector clips instead of visible mask artwork', async () => {
+  it('renders visible static XFL mask layers as vector clips instead of mask artwork', async () => {
     const bytes = await buildSyntheticFla({
       symbolName: 'masked-root',
       includeSceneShape: false,
@@ -262,6 +264,49 @@ describe('R1-B SVG builder: catalog discovery', () => {
     expect(preview.svg).toContain('<clipPath');
     expect(preview.svg).toContain('clip-path="url(#fla-mask-clip-');
     expect(preview.svg).toContain('fill="#336699"');
+    expect(preview.svg).not.toContain('#FF0000');
+  });
+
+  it('fails closed for a hidden static vector mask instead of exposing masked artwork', async () => {
+    const bytes = await buildSyntheticFla({
+      symbolName: 'hidden-mask-root',
+      includeSceneShape: false,
+      includeVectorMask: true,
+      hideMask: true,
+    });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+
+    const candidate = catalog.entries.find((entry) =>
+      entry.target.kind === 'graphic-symbol' && entry.target.sourceLibraryItemName === 'hidden-mask-root',
+    );
+    expect(candidate?.previewSupported).toBe(false);
+    expect(candidate?.unsupportedReason).toContain('Hidden XFL masks cannot be previewed safely');
+  });
+
+  it('respects a hidden masked-content layer while omitting the visible mask fill', async () => {
+    const bytes = await buildSyntheticFla({
+      symbolName: 'hidden-masked-content-root',
+      includeSceneShape: false,
+      includeVectorMask: true,
+      hideMaskedContent: true,
+    });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+
+    const candidate = catalog.entries.find((entry) =>
+      entry.target.kind === 'graphic-symbol' &&
+      entry.target.sourceLibraryItemName === 'hidden-masked-content-root',
+    );
+    expect(candidate?.previewSupported).toBe(true);
+    if (!candidate) return;
+
+    const preview = await buildSvgForRenderTarget(bytes, candidate.target);
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) return;
+    expect(preview.svg).not.toContain('#336699');
     expect(preview.svg).not.toContain('#FF0000');
   });
 
