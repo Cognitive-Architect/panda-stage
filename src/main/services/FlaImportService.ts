@@ -15,6 +15,10 @@ import {
   flaRecoveryFailureDiagnostics,
   flaZeroRasterDiagnostic,
 } from '../../shared/fla-import-diagnostics';
+import {
+  finishIssue762Profile,
+  startIssue762Profile,
+} from '../../shared/issue762-performance-profile';
 import type { FlaAssetCommitSession } from './FlaAssetCommitService';
 import {
   FlaPreflightError,
@@ -112,10 +116,17 @@ export class FlaImportService {
     const sessionId = randomUUID();
     const abortController = new AbortController();
     const active: ActiveInspection = { sessionId, requestId, abortController, stage: 'preflight' };
+    const inspectionStartedAt = startIssue762Profile();
     let trace: FlaInspectionTrace | undefined;
     this.active = active;
     try {
+      const sourceReadStartedAt = startIssue762Profile();
       const source = await readFlaSourceBytes(sourcePath, abortController.signal);
+      finishIssue762Profile('fla.source.file-read', sourceReadStartedAt, {
+        requestId,
+        byteLength: source.bytes.byteLength,
+      });
+      const preflightStartedAt = startIssue762Profile();
       let preflight: FlaPreflightResult;
       try {
         preflight = preflightFlaBytes(source.bytes, source.basename, source.sourcePath);
@@ -133,6 +144,10 @@ export class FlaImportService {
           classifierReasonCodes: classification.reasonCodes,
         };
         if (classification.state !== 'RECOVERY_CANDIDATE') {
+          finishIssue762Profile('fla.source.preflight', preflightStartedAt, {
+            requestId,
+            outcome: 'rejected',
+          });
           return errorResponse(error.code, error.message, {
             trace,
             diagnostics: flaRecoveryFailureDiagnostics(classification.reasonCodes),
@@ -146,6 +161,10 @@ export class FlaImportService {
           recoveryReasonCode: candidateReason(classification),
         };
         if (!normalized.applied) {
+          finishIssue762Profile('fla.source.preflight', preflightStartedAt, {
+            requestId,
+            outcome: 'recovery-not-applied',
+          });
           return errorResponse('MALFORMED_ARCHIVE', 'FLA compatibility recovery could not be prepared', {
             trace,
             diagnostics: flaRecoveryFailureDiagnostics([
@@ -170,6 +189,10 @@ export class FlaImportService {
             postNormalizationStrictResult: 'fail',
           };
           if (postError instanceof FlaPreflightError) {
+            finishIssue762Profile('fla.source.preflight', preflightStartedAt, {
+              requestId,
+              outcome: 'recovery-strict-validation-failed',
+            });
             return errorResponse(postError.code, postError.message, {
               trace,
               diagnostics: flaRecoveryFailureDiagnostics([
@@ -187,6 +210,11 @@ export class FlaImportService {
           postNormalizationStrictResult: 'pass',
         };
       }
+      finishIssue762Profile('fla.source.preflight', preflightStartedAt, {
+        requestId,
+        outcome: 'accepted',
+        byteLength: preflight.byteLength,
+      });
       if (abortController.signal.aborted) {
         return errorResponse('USER_CANCELLED', 'FLA inspection was cancelled', { trace });
       }
@@ -201,7 +229,12 @@ export class FlaImportService {
           containsActionScript: preflight.containsActionScript,
         },
       };
+      const parserStartedAt = startIssue762Profile();
       const ir = await this.parserWindowManager.inspect(request);
+      finishIssue762Profile('fla.source.parser-inspect', parserStartedAt, {
+        requestId,
+        byteLength: preflight.byteLength,
+      });
       const validated = AnimationImportIRSchema.parse(ir);
       if (
         validated.source.sha256 !== preflight.sha256 ||
@@ -235,6 +268,10 @@ export class FlaImportService {
         trace ? { ...trace, parserResult: 'failure' } : undefined,
       );
     } finally {
+      finishIssue762Profile('fla.source.inspect-total', inspectionStartedAt, {
+        requestId,
+        outcome: this.sessions.has(sessionId) ? 'accepted' : 'failed-or-cancelled',
+      });
       if (this.active?.sessionId === sessionId) this.active = null;
     }
   }

@@ -115,7 +115,9 @@ if (process.env.PANDA_STAGE_GATE_A === '1') {
 }
 
 async function createApplicationWindows(): Promise<void> {
-  const window = await createMainWindow();
+  const window = await createMainWindow({
+    show: process.env.PANDA_STAGE_ISSUE762_PROFILE !== '1',
+  });
   mainWindow = window;
   if (unsavedCloseController) {
     const guard = new UnsavedCloseGuard({

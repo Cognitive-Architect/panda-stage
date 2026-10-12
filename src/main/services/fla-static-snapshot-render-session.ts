@@ -32,8 +32,11 @@ import type { AnimationImportIR } from '../../shared/fla-import-api';
 import {
   buildRenderableTargetCatalog,
   buildSvgForRenderTarget,
+  prepareFlaStaticSnapshotDisplaySource,
   type BuildCatalogResult,
+  type FlaStaticSnapshotPreparedDisplaySourceResult,
 } from './fla-static-snapshot-svg-builder';
+import type { FlaStaticSnapshotDisplaySource } from './fla-static-snapshot-display-list-adapter';
 import { createFlaStaticSnapshotBitmapMediaLookup } from './fla-static-snapshot-media-resolver';
 import {
   FLA_STATIC_SNAPSHOT_LIMITS,
@@ -48,6 +51,10 @@ import {
   type FlaStaticSnapshotPreviewRequest,
   type FlaStaticSnapshotPreviewResponse,
 } from '../../shared/fla-static-snapshot-api';
+import {
+  finishIssue762Profile,
+  startIssue762Profile,
+} from '../../shared/issue762-performance-profile';
 
 export interface FlaStaticSnapshotRasterizeInput {
   /** End-to-end request identity: RenderSession preview requestId. */
@@ -124,6 +131,17 @@ interface AcceptedPreview {
   byteLength: number;
 }
 
+interface CachedPreparedDisplaySource {
+  readonly sessionId: string;
+  readonly sourceSha256: string;
+  readonly sourceBytes: Uint8Array;
+  readonly source: FlaStaticSnapshotDisplaySource;
+  readonly xmlByteLength: number;
+}
+
+const MAX_CACHED_DISPLAY_SOURCE_BYTES = 8 * 1024 * 1024;
+const MAX_CACHED_DISPLAY_SOURCE_XML_BYTES = 24 * 1024 * 1024;
+
 export class FlaStaticSnapshotRenderSession {
   private readonly rasterizer: FlaStaticSnapshotRasterizer | null;
   private readonly sourceLookup: FlaStaticSnapshotSourceLookup | null;
@@ -136,12 +154,81 @@ export class FlaStaticSnapshotRenderSession {
   private readonly latestAccepted = new Map<string, AcceptedPreview>();
   // requestId -> confirmed preview bytes (R1-E consumption).
   private readonly confirmed = new Map<string, FlaConfirmedSnapshotPreview>();
+  // One prepared source per inspection session. Frame-local resolution state,
+  // SVG composition and rasterization remain fresh for every request.
+  private preparedDisplaySource: CachedPreparedDisplaySource | null = null;
+  private preparedDisplaySourceEpoch = 0;
 
   constructor(options: FlaStaticSnapshotRenderSessionOptions = {}) {
     this.rasterizer = options.rasterizer ?? null;
     this.sourceLookup = options.sourceLookup ?? null;
     this.now = options.now ?? (() => new Date());
     this.wallTimeMs = options.wallTimeMs ?? FLA_STATIC_SNAPSHOT_LIMITS.previewWallTimeMs;
+  }
+
+  private clearPreparedDisplaySource(sessionId?: string): void {
+    if (sessionId && this.preparedDisplaySource &&
+        this.preparedDisplaySource.sessionId !== sessionId) {
+      this.preparedDisplaySourceEpoch += 1;
+      return;
+    }
+    this.preparedDisplaySource = null;
+    this.preparedDisplaySourceEpoch += 1;
+  }
+
+  private async getPreparedDisplaySource(
+    sessionId: string,
+    source: FlaStaticSnapshotSource,
+    operation: 'catalog' | 'preview',
+    allowCache: boolean,
+  ): Promise<FlaStaticSnapshotPreparedDisplaySourceResult> {
+    const cacheStartedAt = startIssue762Profile();
+    const cached = this.preparedDisplaySource;
+    if (allowCache && cached && cached.sessionId === sessionId &&
+        cached.sourceSha256 === source.sha256 && cached.sourceBytes === source.bytes) {
+      finishIssue762Profile('fla.snapshot.prepared-source.cache-hit', cacheStartedAt, {
+        sourceSha256: source.sha256,
+        sourceByteLength: source.bytes.byteLength,
+        xmlByteLength: cached.xmlByteLength,
+      });
+      return { ok: true, source: cached.source, xmlByteLength: cached.xmlByteLength };
+    }
+    if (cached) this.clearPreparedDisplaySource();
+    const epochAtStart = this.preparedDisplaySourceEpoch;
+    const prepared = await prepareFlaStaticSnapshotDisplaySource(source.bytes, operation);
+    if (!prepared.ok) {
+      finishIssue762Profile('fla.snapshot.prepared-source.cache-miss', cacheStartedAt, {
+        sourceSha256: source.sha256,
+        outcome: prepared.code,
+        cached: false,
+      });
+      return prepared;
+    }
+    const currentSource = this.sourceLookup?.getSource(sessionId) ?? null;
+    const withinCacheBudget = source.bytes.byteLength <= MAX_CACHED_DISPLAY_SOURCE_BYTES &&
+      prepared.xmlByteLength <= MAX_CACHED_DISPLAY_SOURCE_XML_BYTES;
+    const cacheStillCurrent = this.preparedDisplaySourceEpoch === epochAtStart &&
+      currentSource?.bytes === source.bytes && currentSource.sha256 === source.sha256;
+    const cachedResult = allowCache && withinCacheBudget && cacheStillCurrent;
+    if (cachedResult) {
+      this.preparedDisplaySource = {
+        sessionId,
+        sourceSha256: source.sha256,
+        sourceBytes: source.bytes,
+        source: prepared.source,
+        xmlByteLength: prepared.xmlByteLength,
+      };
+    }
+    finishIssue762Profile('fla.snapshot.prepared-source.cache-miss', cacheStartedAt, {
+      sourceSha256: source.sha256,
+      sourceByteLength: source.bytes.byteLength,
+      xmlByteLength: prepared.xmlByteLength,
+      cached: cachedResult,
+      ...(allowCache && !withinCacheBudget ? { outcome: 'cache-budget-exceeded' } : {}),
+      ...(allowCache && !cacheStillCurrent ? { outcome: 'session-changed-during-prepare' } : {}),
+      ...(!allowCache ? { outcome: 'cache-bypassed-for-authored-frame-scan' } : {}),
+    });
+    return prepared;
   }
 
   /** R1-A catalog: discover renderable targets for an inspection session. */
@@ -151,17 +238,33 @@ export class FlaStaticSnapshotRenderSession {
   ): Promise<BuildCatalogResult> {
     const source = this.sourceLookup?.getSource(sessionId) ?? null;
     if (!source) {
+      this.clearPreparedDisplaySource(sessionId);
       return {
         ok: false,
         code: 'SESSION_NOT_FOUND',
         message: 'The FLA inspection session has expired. Inspect the source again.',
       };
     }
-    return buildRenderableTargetCatalog(
+    const catalogStartedAt = startIssue762Profile();
+    const prepared = await this.getPreparedDisplaySource(
+      sessionId,
+      source,
+      'catalog',
+      true,
+    );
+    if (!prepared.ok) return prepared;
+    const result = await buildRenderableTargetCatalog(
       source.bytes,
       createFlaStaticSnapshotBitmapMediaLookup(source.media ?? []),
       options,
+      prepared.source,
     );
+    finishIssue762Profile('fla.catalog.main-service', catalogStartedAt, {
+      sessionId,
+      outcome: result.ok ? 'success' : result.code,
+      candidateCount: result.ok ? result.entries.length : 0,
+    });
+    return result;
   }
 
   async preview(
@@ -179,6 +282,7 @@ export class FlaStaticSnapshotRenderSession {
     const { sessionId, requestId, target } = request;
     const source = this.sourceLookup?.getSource(sessionId) ?? null;
     if (!source) {
+      this.clearPreparedDisplaySource(sessionId);
       return this.previewError('SESSION_NOT_FOUND', 'Inspection session not found', requestId);
     }
     const bytes = source.bytes;
@@ -223,10 +327,17 @@ export class FlaStaticSnapshotRenderSession {
     // supersede can interrupt the SVG build or rasterization below.
     this.active.set(requestId, active);
 
+    const prepared = await this.getPreparedDisplaySource(sessionId, source, 'preview', true);
+    if (active.settled) return active.settledPromise;
+    if (!prepared.ok) {
+      this.settleActive(active, this.previewError(prepared.code, prepared.message, requestId));
+      return active.settledPromise;
+    }
     const svgResult = await buildSvgForRenderTarget(
       bytes,
       target,
       createFlaStaticSnapshotBitmapMediaLookup(source.media ?? []),
+      prepared.source,
     );
     if (active.settled) return active.settledPromise;
     if (!svgResult.ok) {
@@ -249,6 +360,7 @@ export class FlaStaticSnapshotRenderSession {
     // `settledPromise` (NOT a direct await). This way a wall-clock timeout or
     // an explicit cancel can settle the caller even while the rasterizer is
     // still pending (a stalling rasterizer must not hang the session).
+    const rasterizeStartedAt = startIssue762Profile();
     void this.rasterizer
       .rasterize({
         requestId,
@@ -259,6 +371,14 @@ export class FlaStaticSnapshotRenderSession {
       })
       .then(
         (raster) => {
+          finishIssue762Profile('fla.preview.rasterizer-roundtrip', rasterizeStartedAt, {
+            requestId,
+            targetId: target.renderTargetId,
+            width: raster.width,
+            height: raster.height,
+            pngByteLength: raster.pngBytes.byteLength,
+            outcome: 'success',
+          });
           if (active.settled) return;
           const sha256 = crypto
             .createHash('sha256')
@@ -315,6 +435,11 @@ export class FlaStaticSnapshotRenderSession {
           this.settleActive(active, response);
         },
         (error) => {
+          finishIssue762Profile('fla.preview.rasterizer-roundtrip', rasterizeStartedAt, {
+            requestId,
+            targetId: target.renderTargetId,
+            outcome: 'error',
+          });
           if (active.settled) return;
           this.settleActive(
             active,
@@ -386,6 +511,7 @@ export class FlaStaticSnapshotRenderSession {
    * on selection change, explicit cancel, or review close.
    */
   invalidateSession(sessionId: string): void {
+    this.clearPreparedDisplaySource(sessionId);
     this.latestAccepted.delete(sessionId);
     for (const [requestId, preview] of [...this.confirmed.entries()]) {
       if (preview.sessionId === sessionId) {
@@ -437,6 +563,7 @@ export class FlaStaticSnapshotRenderSession {
   }
 
   close(): void {
+    this.clearPreparedDisplaySource();
     for (const other of [...this.active.values()]) {
       this.settleActive(
         other,

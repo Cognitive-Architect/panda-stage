@@ -113,6 +113,8 @@ export interface FlaStaticSnapshotDisplaySource {
   readonly graphicSymbols: readonly FlaXflGraphicSymbolDescriptor[];
   readonly symbols: ReadonlyMap<string, FlaGraphicSymbolDefinition>;
   readonly shapeBlocks: ReadonlyMap<string, string>;
+  /** Restore base-source parsing state before resolving a cached frame-zero context. */
+  resetFrameBuildState(): void;
   /** Build an already-selected Scene frame without changing symbol frame semantics. */
   buildSceneFrameContext(
     timelineXml: string,
@@ -1078,6 +1080,20 @@ export function adaptFlaXflDisplaySource(
     sceneTimelines.push({ ...scene, frameContext: parsed.value });
   }
 
+  // The prepared source can serve several authored-frame resolutions. Keep
+  // each resolution's node budget and shape table scoped to that frame so a
+  // reused source behaves like a fresh adapter invocation.
+  const baseShapeBlocks = new Map(shapeBlocks);
+  const baseVisitedNodeCount = state.visitedNodeCount;
+  let frameBuildStateIsBase = true;
+  const resetFrameBuildState = (): void => {
+    if (frameBuildStateIsBase) return;
+    state.visitedNodeCount = baseVisitedNodeCount;
+    shapeBlocks.clear();
+    for (const [shapeId, xml] of baseShapeBlocks) shapeBlocks.set(shapeId, xml);
+    frameBuildStateIsBase = true;
+  };
+
   return {
     ok: true,
     source: {
@@ -1087,10 +1103,17 @@ export function adaptFlaXflDisplaySource(
       graphicSymbols,
       symbols,
       shapeBlocks,
-      buildSceneFrameContext: (timelineXml, frameIndex, scope) =>
-        buildFrameContext(timelineXml, frameIndex, scope, state),
-      buildGraphicFrameContext: (timelineXml, frameSpanIndex, frameIndex, scope) =>
-        buildGraphicFrameContext(timelineXml, frameSpanIndex, frameIndex, scope, state),
+      resetFrameBuildState,
+      buildSceneFrameContext: (timelineXml, frameIndex, scope) => {
+        resetFrameBuildState();
+        frameBuildStateIsBase = false;
+        return buildFrameContext(timelineXml, frameIndex, scope, state);
+      },
+      buildGraphicFrameContext: (timelineXml, frameSpanIndex, frameIndex, scope) => {
+        resetFrameBuildState();
+        frameBuildStateIsBase = false;
+        return buildGraphicFrameContext(timelineXml, frameSpanIndex, frameIndex, scope, state);
+      },
     },
   };
 }

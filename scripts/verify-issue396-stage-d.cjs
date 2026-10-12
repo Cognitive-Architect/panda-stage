@@ -11,9 +11,11 @@
 
 'use strict';
 
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, screen } = require('electron');
 const { createHash } = require('node:crypto');
+const { execFileSync } = require('node:child_process');
 const { existsSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs');
+const os = require('node:os');
 const { join, resolve } = require('node:path');
 const JSZip = require('jszip');
 
@@ -30,8 +32,104 @@ function parseArgs(argv) {
     else if (argv[index] === '--user-data') args.userData = argv[++index];
     else if (argv[index] === '--evidence-dir') args.evidenceDir = argv[++index];
     else if (argv[index] === '--measure-scan-only') args.measureScanOnly = true;
+    else if (argv[index] === '--issue762-profile') args.issue762Profile = true;
+    else if (argv[index] === '--profile-commit') args.profileCommit = true;
+    else if (argv[index] === '--scan-timeout-ms') args.scanTimeoutMs = Number(argv[++index]);
   }
   return args;
+}
+
+function summarizeDurations(values) {
+  if (values.length === 0) {
+    return { count: 0, totalMs: 0, minMs: null, medianMs: null, p90Ms: null, maxMs: null };
+  }
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  const medianMs = sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
+  return {
+    count: sorted.length,
+    totalMs: values.reduce((total, value) => total + value, 0),
+    minMs: sorted[0],
+    medianMs,
+    p90Ms: sorted[Math.max(0, Math.ceil(sorted.length * 0.9) - 1)],
+    maxMs: sorted[sorted.length - 1],
+  };
+}
+
+function summarizeProfileEvents(events) {
+  const byStage = new Map();
+  const byCandidateStage = new Map();
+  for (const event of events) {
+    if (!event || typeof event.stage !== 'string' || !Number.isFinite(event.durationMs)) continue;
+    const stageDurations = byStage.get(event.stage) || [];
+    stageDurations.push(event.durationMs);
+    byStage.set(event.stage, stageDurations);
+    const candidateIndex = event.details?.candidateIndex;
+    if (!Number.isInteger(candidateIndex)) continue;
+    const candidateKey = `${candidateIndex}:${event.stage}`;
+    const candidateDurations = byCandidateStage.get(candidateKey) || [];
+    candidateDurations.push(event.durationMs);
+    byCandidateStage.set(candidateKey, candidateDurations);
+  }
+  return {
+    stages: Object.fromEntries([...byStage.entries()].map(([stage, durations]) => [
+      stage,
+      summarizeDurations(durations),
+    ])),
+    perCandidateStages: Object.fromEntries([...byCandidateStage.entries()].map(([key, durations]) => [
+      key,
+      summarizeDurations(durations),
+    ])),
+  };
+}
+
+function getGitWorkingTreeDetails() {
+  const gitStatus = execFileSync('git', ['status', '--porcelain=v1'], { encoding: 'utf8' });
+  const dirtyPaths = gitStatus.split(/\r?\n/u).filter(Boolean).map((line) => line.slice(3));
+  const trackedDiff = execFileSync('git', ['diff', '--binary', 'HEAD'], { encoding: null });
+  const untrackedPaths = execFileSync(
+    'git',
+    ['ls-files', '--others', '--exclude-standard', '-z'],
+    { encoding: 'utf8' },
+  ).split('\0').filter(Boolean).sort();
+  const fingerprint = createHash('sha256').update(trackedDiff);
+  for (const relativePath of untrackedPaths) {
+    fingerprint.update(Buffer.from(`\0${relativePath}\0`, 'utf8'));
+    fingerprint.update(readFileSync(relativePath));
+  }
+  const refsContainingHead = execFileSync(
+    'git',
+    ['branch', '--all', '--contains', 'HEAD', '--format=%(refname:short)'],
+    { encoding: 'utf8' },
+  ).split(/\r?\n/u).filter((ref) => ref && !ref.startsWith('('));
+  return {
+    gitBranch: execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim() || '(detached worktree)',
+    gitRefsContainingHead: refsContainingHead,
+    gitDirty: dirtyPaths.length > 0,
+    gitDirtyPaths: dirtyPaths,
+    gitWorkingTreeSha256: fingerprint.digest('hex'),
+  };
+}
+
+function getRuntimeEnvironment() {
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const cpus = os.cpus();
+  return {
+    platform: process.platform,
+    osRelease: os.release(),
+    arch: process.arch,
+    electron: process.versions.electron,
+    node: process.versions.node,
+    gitHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    ...getGitWorkingTreeDetails(),
+    cpuModel: cpus[0]?.model ?? null,
+    logicalCpuCount: cpus.length,
+    totalMemoryBytes: os.totalmem(),
+    displayScaleFactor: primaryDisplay.scaleFactor,
+    displayWorkArea: primaryDisplay.workAreaSize,
+  };
 }
 
 function sha256(filePath) {
@@ -151,12 +249,66 @@ async function captureScreenshotAtMarker(mainWindow, marker, outputPath, pathSta
   throw new Error(`Timed out waiting for Stage D screenshot marker ${marker}`);
 }
 
-async function runStageDPath(mainWindow, acceptanceRoot, projectName, { measureScanOnly = false } = {}) {
+async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
+  measureScanOnly = false,
+  issue762Profile = false,
+  profileCommit = false,
+  profileScanTimeoutMs = 300_000,
+} = {}) {
   return mainWindow.webContents.executeJavaScript(`
     (async () => {
       const acceptanceRoot = ${JSON.stringify(acceptanceRoot)};
       const projectName = ${JSON.stringify(projectName)};
       const measureScanOnly = ${JSON.stringify(measureScanOnly)};
+      const issue762Profile = ${JSON.stringify(issue762Profile)};
+      const profileCommit = ${JSON.stringify(profileCommit)};
+      const profileScanTimeoutMs = ${JSON.stringify(profileScanTimeoutMs)};
+      const issue762ProfileEvents = [];
+      const issue762RunState = {};
+      if (issue762Profile) window.__pandaStageIssue762RunState = issue762RunState;
+      const recordIssue762Profile = (stage, durationMs, details = {}) => {
+        if (!issue762Profile) return;
+        issue762ProfileEvents.push({
+          stage,
+          durationMs: Math.max(0, durationMs),
+          details,
+          realm: 'renderer-main',
+          atMs: performance.now(),
+        });
+      };
+      if (issue762Profile) {
+        window.__pandaStageIssue762ProfileSink = (event) => {
+          if (!event || typeof event.stage !== 'string' || !Number.isFinite(event.durationMs)) return;
+          issue762ProfileEvents.push({
+            ...event,
+            realm: 'renderer-main',
+            atMs: performance.now(),
+          });
+        };
+      }
+      const uiTimerGaps = [];
+      let uiTimerHandle = null;
+      let uiTimerLastAt = null;
+      const startUiResponsivenessTimer = () => {
+        if (!issue762Profile) return;
+        uiTimerLastAt = performance.now();
+        uiTimerHandle = window.setInterval(() => {
+          const now = performance.now();
+          uiTimerGaps.push(now - uiTimerLastAt);
+          uiTimerLastAt = now;
+        }, 1_000);
+      };
+      const stopUiResponsivenessTimer = () => {
+        if (uiTimerHandle !== null) window.clearInterval(uiTimerHandle);
+        uiTimerHandle = null;
+        const maxGapMs = uiTimerGaps.length > 0 ? Math.max(...uiTimerGaps) : null;
+        recordIssue762Profile('ui.scan.event-loop-timer-gap-summary', 0, {
+          sampleCount: uiTimerGaps.length,
+          maxGapMs,
+          gapsAbove1500ms: uiTimerGaps.filter((gap) => gap > 1_500).length,
+        });
+        return { sampleCount: uiTimerGaps.length, maxGapMs, gapsAbove1500ms: uiTimerGaps.filter((gap) => gap > 1_500).length };
+      };
       const observedFlaPreviewUrls = new Set();
       const revokedObjectUrls = new Set();
       const nativeRevokeObjectUrl = URL.revokeObjectURL.bind(URL);
@@ -231,14 +383,56 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, { measureS
 
       const waitForSnapshotTargets = async (timeoutMs = 60_000) => {
         await waitFor('[data-testid="fla-render-workbench"]', () => true, timeoutMs);
-        await waitFor('[data-testid="fla-snapshot-review"]', (element) =>
-          element.getAttribute('data-preview-state') === 'ready',
-          timeoutMs,
-        );
-        await waitFor('[data-testid="fla-snapshot-targets"]', (element) =>
-          element.querySelectorAll('input[type="checkbox"]').length > 0,
-          timeoutMs,
-        );
+        const startedAt = performance.now();
+        const deadline = startedAt + timeoutMs;
+        let lastProgressText = null;
+        const progressSamples = [];
+        while (performance.now() < deadline) {
+          const review = document.querySelector('[data-testid="fla-snapshot-review"]');
+          const reviewState = review?.getAttribute('data-preview-state') ?? '';
+          const progressText = document.querySelector('[data-testid="fla-snapshot-action-state"]')?.textContent?.trim() ?? '';
+          if (progressText && progressText !== lastProgressText) {
+            const match = progressText.match(/[0-9]+/gu);
+            const sample = {
+              elapsedMs: performance.now() - startedAt,
+              progress: match ? Number(match[0]) : null,
+              candidateCount: match && match.length > 1 ? Number(match[1]) : null,
+              text: progressText,
+            };
+            progressSamples.push(sample);
+            recordIssue762Profile('ui.scan.progress', 0, sample);
+            lastProgressText = progressText;
+          }
+          if (reviewState === 'error') {
+            const message = document.querySelector('[data-testid="fla-snapshot-error"]')?.textContent?.trim() ?? 'unknown scan error';
+            const targetList = document.querySelector('[data-testid="fla-snapshot-targets"]');
+            const error = new Error('Snapshot review entered error state: ' + message);
+            error.issue762ScanMeasurement = {
+              failureKind: 'review-error',
+              scanDurationMs: Math.round(performance.now() - startedAt),
+              candidateCount: targetList?.querySelectorAll('input[type="checkbox"]').length ?? 0,
+              progressSamples,
+            };
+            throw error;
+          }
+          const targetList = document.querySelector('[data-testid="fla-snapshot-targets"]');
+          const candidateCount = targetList?.querySelectorAll('input[type="checkbox"]').length ?? 0;
+          if (reviewState === 'ready' && candidateCount > 0) {
+            const durationMs = performance.now() - startedAt;
+            recordIssue762Profile('ui.scan.ready-state', durationMs, { candidateCount });
+            return { candidateCount, durationMs, progressSamples };
+          }
+          await new Promise((resolvePromise) => setTimeout(resolvePromise, 250));
+        }
+        const targetList = document.querySelector('[data-testid="fla-snapshot-targets"]');
+        const error = new Error('Timed out waiting for snapshot review ready state after ' + timeoutMs + ' ms');
+        error.issue762ScanMeasurement = {
+          failureKind: 'ready-timeout',
+          scanDurationMs: Math.round(performance.now() - startedAt),
+          candidateCount: targetList?.querySelectorAll('input[type="checkbox"]').length ?? 0,
+          progressSamples,
+        };
+        throw error;
       };
 
       const createProjectThroughUi = async () => {
@@ -277,21 +471,59 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, { measureS
         if (!(action instanceof HTMLButtonElement) || action.disabled) {
           throw new Error('No enabled FLA import action is available');
         }
+        const sourceOpenStartedAt = performance.now();
         action.click();
         await waitFor('[data-testid="fla-review-zero-raster"]', () => true, timeoutMs);
+        recordIssue762Profile('ui.source.open-action-to-review', performance.now() - sourceOpenStartedAt, {
+          sourceSelection: 'PANDA_STAGE_FLA_ACCEPTANCE_SOURCE',
+        });
         return performance.now();
       };
 
       const openStageDReview = async (timeoutMs = 60_000) => {
-        const scanStartedAt = await clickStageDAction(timeoutMs);
-        await waitForSnapshotTargets(timeoutMs);
-        const scanDurationMs = Math.round(performance.now() - scanStartedAt);
-        const candidates = document.querySelectorAll('[data-testid="fla-snapshot-targets"] input[type="checkbox"]');
-        return {
-          scanDurationMs,
-          candidateCount: candidates.length,
-          scannedAt: new Date().toISOString(),
-        };
+        const actionStartedAt = performance.now();
+        let scanStartedAt = null;
+        try {
+          scanStartedAt = await clickStageDAction(timeoutMs);
+          const scanReadiness = await waitForSnapshotTargets(timeoutMs);
+          const scanDurationMs = Math.round(performance.now() - scanStartedAt);
+          const candidates = document.querySelectorAll('[data-testid="fla-snapshot-targets"] input[type="checkbox"]');
+          recordIssue762Profile('ui.scan.total', scanDurationMs, {
+            candidateCount: candidates.length,
+            progressSampleCount: scanReadiness.progressSamples.length,
+          });
+          return {
+            status: 'VERIFIED',
+            scanDurationMs,
+            candidateCount: candidates.length,
+            progressSamples: scanReadiness.progressSamples,
+            scannedAt: new Date().toISOString(),
+          };
+        } catch (caught) {
+          const error = caught instanceof Error ? caught : new Error(String(caught));
+          const partial = error.issue762ScanMeasurement ?? {};
+          const candidates = document.querySelectorAll('[data-testid="fla-snapshot-targets"] input[type="checkbox"]');
+          const candidateCount = Number.isInteger(partial.candidateCount) ? partial.candidateCount : candidates.length;
+          const elapsedFromActionMs = Math.round(performance.now() - actionStartedAt);
+          const issue762ScanMeasurement = {
+            status: 'FAILED',
+            failureKind: partial.failureKind ?? (error.message.includes('Timed out') ? 'open-or-ready-timeout' : 'scan-error'),
+            failureMessage: error.message,
+            elapsedFromActionMs,
+            scanDurationMs: Number.isFinite(partial.scanDurationMs)
+              ? partial.scanDurationMs
+              : scanStartedAt === null ? null : Math.round(performance.now() - scanStartedAt),
+            candidateCount,
+            progressSamples: Array.isArray(partial.progressSamples) ? partial.progressSamples : [],
+          };
+          recordIssue762Profile('ui.scan.failure-total', elapsedFromActionMs, {
+            failureKind: issue762ScanMeasurement.failureKind,
+            candidateCount,
+            phase: scanStartedAt === null ? 'open-review' : 'candidate-scan',
+          });
+          error.issue762ScanMeasurement = issue762ScanMeasurement;
+          throw error;
+        }
       };
 
       const cancelDuringScan = async () => {
@@ -326,10 +558,12 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, { measureS
         resolution: image.getAttribute('data-preview-resolution'),
       });
 
-      const waitForFullPreview = async (expectedAlt) => await waitFor(
+      const waitForFullPreview = async (expectedAlt, previousSrc = null) => await waitFor(
         '[data-testid="fla-snapshot-preview-image"]',
         (element) => element instanceof HTMLImageElement && element.complete && element.naturalWidth > 0 &&
-          (!expectedAlt || element.alt === expectedAlt) && element.getAttribute('data-preview-resolution') === 'full',
+          (!expectedAlt || element.alt === expectedAlt) &&
+          (!previousSrc || element.getAttribute('src') !== previousSrc) &&
+          element.getAttribute('data-preview-resolution') === 'full',
       );
 
       const rapidFocusAndCheck = async () => {
@@ -404,25 +638,140 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, { measureS
 
       await createProjectThroughUi();
       const initial = readProjectState();
+      if (issue762Profile) issue762RunState.projectStateBeforeScan = initial;
       if (measureScanOnly) {
-        const scanMeasurement = await openStageDReview(300_000);
-        const previewButtons = [...document.querySelectorAll(
+        let scanMeasurement;
+        let uiResponsiveness;
+        startUiResponsivenessTimer();
+        let scanFailure = null;
+        try {
+          scanMeasurement = await openStageDReview(
+            issue762Profile ? profileScanTimeoutMs : 300_000,
+          );
+        } catch (caught) {
+          scanFailure = caught instanceof Error ? caught : new Error(String(caught));
+        } finally {
+          uiResponsiveness = stopUiResponsivenessTimer();
+        }
+        if (scanFailure) {
+          scanFailure.issue762ScanMeasurement = {
+            ...(scanFailure.issue762ScanMeasurement ?? {}),
+            projectStateBeforeScan: initial,
+            uiResponsiveness,
+          };
+          if (issue762Profile) {
+            issue762RunState.scanMeasurement = scanFailure.issue762ScanMeasurement;
+            issue762RunState.uiResponsiveness = uiResponsiveness;
+          }
+          throw scanFailure;
+        }
+        if (issue762Profile) {
+          issue762RunState.scanMeasurement = scanMeasurement;
+          issue762RunState.uiResponsiveness = uiResponsiveness;
+        }
+        const supportedFocusButtons = [...document.querySelectorAll(
           '[data-testid="fla-snapshot-targets"] .fla-snapshot-candidate-row[data-preview-supported="true"] .fla-snapshot-candidate-focus',
-        )].slice(0, 16);
+        )];
+        const unfocusedFocusButton = supportedFocusButtons.find((button) =>
+          button.closest('.fla-snapshot-candidate-row')?.getAttribute('data-focused') !== 'true',
+        );
+        const previewButtons = issue762Profile
+          ? [unfocusedFocusButton ?? supportedFocusButtons[0]].filter(Boolean)
+          : supportedFocusButtons.slice(0, 16);
         const previewMeasurements = [];
-        for (const button of previewButtons) {
+        if (issue762Profile) issue762RunState.previewMeasurements = previewMeasurements;
+        for (let candidateIndex = 0; candidateIndex < previewButtons.length; candidateIndex += 1) {
+          const button = previewButtons[candidateIndex];
+          if (!(button instanceof HTMLElement)) continue;
           const expectedAlt = button.querySelector('strong')?.textContent?.trim() ?? '';
+          const previousPreviewSrc = previewImage()?.getAttribute('src') ?? null;
+          const focusedPreviewStartedAt = performance.now();
           button.click();
-          const image = await waitForFullPreview(expectedAlt);
-          previewMeasurements.push(readFullPreview(image));
+          const image = await waitForFullPreview(
+            expectedAlt,
+            issue762Profile ? previousPreviewSrc : null,
+          );
+          const preview = readFullPreview(image);
+          previewMeasurements.push(preview);
+          recordIssue762Profile('ui.focused.full-resolution-preview', performance.now() - focusedPreviewStartedAt, {
+            candidateRowTestId: button.closest('.fla-snapshot-candidate-row')?.getAttribute('data-testid') ?? null,
+            previousPreviewSrcPresent: previousPreviewSrc !== null,
+            previewSourceChanged: previousPreviewSrc === null || image.getAttribute('src') !== previousPreviewSrc,
+            width: preview.naturalWidth,
+            height: preview.naturalHeight,
+            resolution: preview.resolution,
+          });
+        }
+        const beforeCommit = readProjectState();
+        const noProjectMutationDuringScan = beforeCommit.assetCount === initial.assetCount &&
+          beforeCommit.maxRevision === initial.maxRevision;
+        let commitMeasurement = null;
+        if (profileCommit) {
+          const firstSupportedRow = document.querySelector(
+            '[data-testid="fla-snapshot-targets"] .fla-snapshot-candidate-row[data-preview-supported="true"]',
+          );
+          const firstSupportedCheckbox = firstSupportedRow?.querySelector('input[type="checkbox"]');
+          if (!(firstSupportedCheckbox instanceof HTMLInputElement) || firstSupportedCheckbox.disabled) {
+            throw new Error('No supported candidate is selectable for the profile commit sample');
+          }
+          const selectionStartedAt = performance.now();
+          firstSupportedCheckbox.click();
+          await waitFor('[data-testid="fla-snapshot-import"]', (element) =>
+            element instanceof HTMLButtonElement && !element.disabled,
+          );
+          const beforeImport = readProjectState();
+          const selectionNoMutation = beforeImport.assetCount === initial.assetCount &&
+            beforeImport.maxRevision === initial.maxRevision;
+          const importStartedAt = performance.now();
+          click('[data-testid="fla-snapshot-import"]');
+          const receiptCounts = await waitFor('[data-testid="fla-snapshot-import-counts"]', () => true, 120_000);
+          const receiptReadyAt = performance.now();
+          const libraryDeadline = receiptReadyAt + 60_000;
+          let afterImport = readProjectState();
+          while (
+            afterImport.assetCount === null || beforeImport.assetCount === null ||
+            afterImport.assetCount <= beforeImport.assetCount
+          ) {
+            if (performance.now() >= libraryDeadline) break;
+            await new Promise((resolvePromise) => setTimeout(resolvePromise, 100));
+            afterImport = readProjectState();
+          }
+          const librarySynced = afterImport.assetCount !== null && beforeImport.assetCount !== null &&
+            afterImport.assetCount > beforeImport.assetCount;
+          const revisionAdvanced = afterImport.maxRevision !== null &&
+            (beforeImport.maxRevision === null || afterImport.maxRevision > beforeImport.maxRevision);
+          commitMeasurement = {
+            selectionDurationMs: performance.now() - selectionStartedAt,
+            clickToReceiptMs: receiptReadyAt - importStartedAt,
+            clickToAssetLibrarySyncMs: librarySynced ? performance.now() - importStartedAt : null,
+            selectionNoMutation,
+            librarySynced,
+            revisionAdvanced,
+            beforeImport,
+            afterImport,
+            receiptText: receiptCounts.textContent?.trim() ?? '',
+          };
+          if (issue762Profile) issue762RunState.commitMeasurement = commitMeasurement;
+          recordIssue762Profile('ui.commit.click-to-receipt', commitMeasurement.clickToReceiptMs, {
+            selectedCount: 1,
+            librarySynced,
+          });
+          if (commitMeasurement.clickToAssetLibrarySyncMs !== null) {
+            recordIssue762Profile('ui.commit.click-to-asset-library-sync', commitMeasurement.clickToAssetLibrarySyncMs, {
+              selectedCount: 1,
+              assetCount: afterImport.assetCount,
+              revisionAdvanced,
+            });
+          }
         }
         const beforeClose = readProjectState();
         click('[data-testid="fla-snapshot-close"]');
         await waitFor('[data-testid="asset-browser-view"]');
         await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
         const afterClose = readProjectState();
-        const noProjectMutation = afterClose.assetCount === initial.assetCount &&
-          afterClose.maxRevision === initial.maxRevision;
+        const noProjectMutation = profileCommit
+          ? noProjectMutationDuringScan
+          : afterClose.assetCount === initial.assetCount && afterClose.maxRevision === initial.maxRevision;
         const previewResourcesReleased = previewUrlState().remaining === 0;
         const highResolutionVerified = previewMeasurements.some((preview) =>
           preview.resolution === 'full' && preview.naturalWidth === preview.generatedWidth &&
@@ -430,10 +779,17 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, { measureS
           Math.max(preview.naturalWidth, preview.naturalHeight) > 160,
         );
         return {
-          ok: scanMeasurement.candidateCount > 0 && noProjectMutation && previewResourcesReleased && highResolutionVerified,
+          ok: scanMeasurement.candidateCount > 0 && noProjectMutation && previewResourcesReleased &&
+            highResolutionVerified && (!profileCommit || Boolean(
+              commitMeasurement?.librarySynced && commitMeasurement.revisionAdvanced,
+            )),
           projectRoot: acceptanceRoot + '\\\\' + projectName + '.pandastage',
           scanMeasurement,
           previewMeasurements,
+          uiResponsiveness,
+          noProjectMutationDuringScan,
+          commitMeasurement,
+          ...(issue762Profile ? { issue762ProfileEvents } : {}),
           highResolutionVerified,
           noProjectMutation,
           previewResourcesReleased,
@@ -748,15 +1104,23 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, { measureS
         committedAssetCount,
         revisionAdvanced,
         committedText,
+        ...(issue762Profile ? { issue762ProfileEvents } : {}),
         projectMutation: 'CANDIDATE_PREVIEWS_AND_SELECTION_NO_PROJECT_MUTATION; CANCEL_NO_MUTATION; ONE_CONFIRM; COMMIT_SELECTED_STATIC_SNAPSHOT_IMAGE_ASSETS',
       };
     })().catch((error) => ({
       verifierError: error instanceof Error ? error.message : String(error),
       verifierStack: error instanceof Error ? error.stack : String(error),
+      issue762ProfileEvents,
+      issue762ScanMeasurement: error?.issue762ScanMeasurement ?? null,
+      issue762RunState: issue762Profile ? window.__pandaStageIssue762RunState ?? null : null,
     }))
   `).then((result) => {
     if (result?.verifierError) {
-      throw new Error(`${result.verifierError}\n${result.verifierStack ?? ''}`);
+      const error = new Error(`${result.verifierError}\n${result.verifierStack ?? ''}`);
+      error.issue762ProfileEvents = result.issue762ProfileEvents ?? [];
+      error.issue762ScanMeasurement = result.issue762ScanMeasurement ?? null;
+      error.issue762RunState = result.issue762RunState ?? null;
+      throw error;
     }
     return result;
   });
@@ -764,6 +1128,21 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, { measureS
 
 async function main() {
   const args = parseArgs(process.argv.slice(1));
+  if (args.profileCommit && (!args.measureScanOnly || !args.issue762Profile)) {
+    throw new Error('--profile-commit requires --measure-scan-only and --issue762-profile');
+  }
+  const mainProfileEvents = [];
+  if (args.issue762Profile) {
+    process.env.PANDA_STAGE_ISSUE762_PROFILE = '1';
+    globalThis.__pandaStageIssue762ProfileSink = (event) => {
+      if (!event || typeof event.stage !== 'string' || !Number.isFinite(event.durationMs)) return;
+      mainProfileEvents.push({
+        ...event,
+        realm: 'electron-main',
+        atMs: performance.now(),
+      });
+    };
+  }
   const acceptanceRoot = resolve(args.acceptanceRoot || DEFAULT_ACCEPTANCE_ROOT);
   const outPath = resolve(args.out || join(
     acceptanceRoot,
@@ -779,6 +1158,8 @@ async function main() {
   mkdirSync(userData, { recursive: true });
 
   let sourceWasGenerated = false;
+  let sourceSha256Before = null;
+  let sourceSha256After = null;
   let response = null;
   try {
     if (args.measureScanOnly && !args.source) {
@@ -793,11 +1174,17 @@ async function main() {
     process.env.VITE_DEV_SERVER_URL = '';
     process.env.PANDA_STAGE_FLA_ACCEPTANCE_SOURCE = sourcePath;
     require('../dist-electron/main/index.js');
-    const sourceSha256Before = sha256(sourcePath);
+    sourceSha256Before = sha256(sourcePath);
     const mainWindow = await waitForMainWindow();
+    if (args.issue762Profile) mainWindow.showInactive();
     const pathState = { error: null };
     const pathPromise = runStageDPath(mainWindow, acceptanceRoot, projectName, {
       measureScanOnly: Boolean(args.measureScanOnly),
+      issue762Profile: Boolean(args.issue762Profile),
+      profileCommit: Boolean(args.profileCommit),
+      profileScanTimeoutMs: Number.isFinite(args.scanTimeoutMs) && args.scanTimeoutMs > 0
+        ? args.scanTimeoutMs
+        : 900_000,
     }).catch((error) => {
       pathState.error = error;
       throw error;
@@ -821,15 +1208,50 @@ async function main() {
     }
     response = await pathPromise;
     if (layoutEvidence) response.layoutEvidence = layoutEvidence;
-    const sourceSha256After = sha256(sourcePath);
+    sourceSha256After = sha256(sourcePath);
     const projectFile = join(acceptanceRoot, `${projectName}.pandastage`, 'project.json');
     const persistedProject = existsSync(projectFile)
       ? JSON.parse(readFileSync(projectFile, 'utf8'))
       : null;
+    let projectReopenValidation = null;
+    if (args.measureScanOnly && args.profileCommit) {
+      try {
+        const { ProjectService } = require('../dist-electron/main/services/ProjectService.js');
+        const reopened = await new ProjectService().open(join(acceptanceRoot, `${projectName}.pandastage`));
+        projectReopenValidation = {
+          status: reopened.project.assets.length === 1 ? 'PASS' : 'FAIL',
+          assetCount: reopened.project.assets.length,
+          projectId: reopened.project.id,
+          sourceVersion: reopened.sourceVersion,
+          migrated: reopened.migrated,
+        };
+      } catch (caught) {
+        projectReopenValidation = {
+          status: 'FAIL',
+          error: caught instanceof Error ? caught.message : String(caught),
+        };
+      }
+    }
+    const profileEvents = [
+      ...mainProfileEvents,
+      ...(Array.isArray(response?.issue762ProfileEvents) ? response.issue762ProfileEvents : []),
+    ];
+    const responseForReceipt = response ? { ...response } : response;
+    if (responseForReceipt) delete responseForReceipt.issue762ProfileEvents;
     const receipt = {
-      schemaVersion: args.measureScanOnly
-        ? 'issue761-fla-scan-measurement/1'
-        : 'issue398-stage-d-electron-acceptance/1',
+      schemaVersion: args.issue762Profile
+        ? 'issue762-fla-performance-profile/1'
+        : args.measureScanOnly
+          ? 'issue761-fla-scan-measurement/1'
+          : 'issue398-stage-d-electron-acceptance/1',
+      ...(args.issue762Profile ? {
+        environment: getRuntimeEnvironment(),
+        reproductionCommand: process.argv.join(' '),
+        profile: {
+          stageSummary: summarizeProfileEvents(profileEvents),
+          events: profileEvents,
+        },
+      } : {}),
       source: {
         basename: sourcePath.split(/[\\/]/u).pop(),
         generatedByVerifier: sourceWasGenerated,
@@ -842,6 +1264,7 @@ async function main() {
         persistedAssetCount: Array.isArray(persistedProject?.assets)
           ? persistedProject.assets.length
           : null,
+        reopenValidation: projectReopenValidation,
         privateVisualBytesRecorded: false,
       },
       scanMeasurement: args.measureScanOnly ? {
@@ -849,32 +1272,95 @@ async function main() {
         candidateCount: response?.scanMeasurement?.candidateCount ?? null,
         scanDurationMs: response?.scanMeasurement?.scanDurationMs ?? null,
         scannedAt: response?.scanMeasurement?.scannedAt ?? null,
+        progressSamples: response?.scanMeasurement?.progressSamples ?? [],
+        uiResponsiveness: response?.uiResponsiveness ?? null,
       } : null,
       parserPath: 'real Windows Electron Main + production Renderer UI -> V2-R catalog -> bounded v1.2 deletion-first R1/R2 workbench -> static preview/explicit ImageAsset commit',
-      response,
+      response: responseForReceipt,
     };
     writeFileSync(outPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
-    process.stdout.write(`${JSON.stringify(receipt)}\n`);
-    const expectedPersistedAssetCount = args.measureScanOnly ? 0 : 1;
+    process.stdout.write(args.issue762Profile
+      ? `${JSON.stringify({ outPath, source: receipt.source, scanMeasurement: receipt.scanMeasurement, project: receipt.project, profileSummary: receipt.profile.stageSummary })}\n`
+      : `${JSON.stringify(receipt)}\n`);
+    const expectedPersistedAssetCount = args.measureScanOnly && !args.profileCommit ? 0 : 1;
     if (
       !receipt.source.hashInvariant || !response?.ok ||
       receipt.project.persistedAssetCount !== expectedPersistedAssetCount ||
-      args.measureScanOnly && receipt.scanMeasurement?.status !== 'VERIFIED'
+      args.measureScanOnly && receipt.scanMeasurement?.status !== 'VERIFIED' ||
+      args.profileCommit && receipt.project.reopenValidation?.status !== 'PASS'
     ) {
       process.exitCode = 1;
     }
   } catch (caught) {
     const error = caught instanceof Error ? caught : new Error(String(caught));
+    if (sourceSha256After === null && existsSync(sourcePath)) {
+      try {
+        sourceSha256After = sha256(sourcePath);
+      } catch {
+        sourceSha256After = null;
+      }
+    }
+    const failureProjectRoot = join(acceptanceRoot, `${projectName}.pandastage`);
+    let failurePersistedProject = null;
+    try {
+      const failureProjectFile = join(failureProjectRoot, 'project.json');
+      if (existsSync(failureProjectFile)) {
+        failurePersistedProject = JSON.parse(readFileSync(failureProjectFile, 'utf8'));
+      }
+    } catch {
+      failurePersistedProject = null;
+    }
+    const profileEvents = [
+      ...mainProfileEvents,
+      ...(Array.isArray(error.issue762ProfileEvents) ? error.issue762ProfileEvents : []),
+    ];
     const receipt = {
-      schemaVersion: args.measureScanOnly
-        ? 'issue761-fla-scan-measurement/1'
-        : 'issue398-stage-d-electron-acceptance/1',
+      schemaVersion: args.issue762Profile
+        ? 'issue762-fla-performance-profile/1'
+        : args.measureScanOnly
+          ? 'issue761-fla-scan-measurement/1'
+          : 'issue398-stage-d-electron-acceptance/1',
+      ...(args.issue762Profile ? {
+        environment: getRuntimeEnvironment(),
+        reproductionCommand: process.argv.join(' '),
+        profile: {
+          stageSummary: summarizeProfileEvents(profileEvents),
+          events: profileEvents,
+        },
+      } : {}),
       source: {
         basename: sourcePath.split(/[\\/]/u).pop(),
         generatedByVerifier: sourceWasGenerated,
+        sha256Before: sourceSha256Before,
+        sha256After: sourceSha256After,
+        hashInvariant: sourceSha256Before !== null && sourceSha256After !== null
+          ? sourceSha256Before === sourceSha256After
+          : null,
         privateVisualBytesRecorded: false,
       },
-      project: { projectRoot: null, persistedAssetCount: null, privateVisualBytesRecorded: false },
+      project: {
+        projectRoot: failureProjectRoot,
+        persistedAssetCount: Array.isArray(failurePersistedProject?.assets)
+          ? failurePersistedProject.assets.length
+          : null,
+        projectStateBeforeScan: error.issue762ScanMeasurement?.projectStateBeforeScan ??
+          error.issue762RunState?.projectStateBeforeScan ?? null,
+        privateVisualBytesRecorded: false,
+      },
+      scanMeasurement: args.measureScanOnly ? {
+        status: error.issue762ScanMeasurement?.status ?? error.issue762RunState?.scanMeasurement?.status ?? 'FAILED',
+        candidateCount: error.issue762ScanMeasurement?.candidateCount ?? error.issue762RunState?.scanMeasurement?.candidateCount ?? null,
+        scanDurationMs: error.issue762ScanMeasurement?.scanDurationMs ?? error.issue762RunState?.scanMeasurement?.scanDurationMs ?? null,
+        elapsedFromActionMs: error.issue762ScanMeasurement?.elapsedFromActionMs ?? null,
+        scannedAt: error.issue762RunState?.scanMeasurement?.scannedAt ?? null,
+        progressSamples: error.issue762ScanMeasurement?.progressSamples ?? error.issue762RunState?.scanMeasurement?.progressSamples ?? [],
+        uiResponsiveness: error.issue762ScanMeasurement?.uiResponsiveness ?? error.issue762RunState?.uiResponsiveness ?? null,
+        failureKind: error.issue762ScanMeasurement?.failureKind ??
+          (error.issue762RunState?.scanMeasurement ? null : 'pre-scan-error'),
+        failureMessage: error.issue762ScanMeasurement?.failureMessage ??
+          (error.issue762ScanMeasurement ? error.message : null),
+      } : null,
+      partialRun: error.issue762RunState ?? null,
       response,
       error: error.message,
     };

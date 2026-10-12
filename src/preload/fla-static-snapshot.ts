@@ -22,6 +22,14 @@ export interface FlaSnapshotRenderResult {
   width: number;
   height: number;
   pixelCount: number;
+  profile?: {
+    imageLoadMs: number;
+    canvasDrawMs: number;
+    pngEncodeMs: number;
+    pngArrayBufferMs: number;
+    pngArraySerializeMs: number;
+    totalMs: number;
+  };
 }
 
 export interface FlaSnapshotRenderError {
@@ -43,8 +51,22 @@ function isRenderResult(value: unknown): value is FlaSnapshotRenderResult {
     Array.isArray(candidate.png) &&
     candidate.png.every((item) => typeof item === 'number') &&
     typeof candidate.width === 'number' &&
-    typeof candidate.height === 'number'
+    typeof candidate.height === 'number' &&
+    (candidate.profile === undefined || isProfile(candidate.profile))
   );
+}
+
+function isProfile(value: unknown): value is NonNullable<FlaSnapshotRenderResult['profile']> {
+  if (typeof value !== 'object' || value === null) return false;
+  const profile = value as Record<string, unknown>;
+  return [
+    profile.imageLoadMs,
+    profile.canvasDrawMs,
+    profile.pngEncodeMs,
+    profile.pngArrayBufferMs,
+    profile.pngArraySerializeMs,
+    profile.totalMs,
+  ].every((item) => typeof item === 'number' && Number.isFinite(item) && item >= 0);
 }
 
 function isRenderError(value: unknown): value is FlaSnapshotRenderError {
@@ -54,6 +76,7 @@ function isRenderError(value: unknown): value is FlaSnapshotRenderError {
 }
 
 const api = {
+  issue762ProfileEnabled: process.env.PANDA_STAGE_ISSUE762_PROFILE === '1',
   ready(): void {
     ipcRenderer.send(IPC_CHANNELS.FLA_SNAPSHOT_RENDERER_READY);
   },

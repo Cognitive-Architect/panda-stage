@@ -101,6 +101,19 @@ async function buildMinimalFla(): Promise<Uint8Array> {
                 </DOMGroup>
               </elements>
             </DOMFrame>
+            <DOMFrame index="1">
+              <elements>
+                <DOMGroup>
+                  <members>
+                    <DOMShape>
+                      <matrix><Matrix a="1" b="0" c="0" d="1" tx="10" ty="12"/></matrix>
+                      <fills><FillStyle index="1"><SolidColor color="#0000ff" alpha="1"/></FillStyle></fills>
+                      <edges><Edge fillStyle1="1" cubics="!0 0|100 0[50 50 100 100 100 0|0 0"/></edges>
+                    </DOMShape>
+                  </members>
+                </DOMGroup>
+              </elements>
+            </DOMFrame>
           </frames>
         </DOMLayer>
       </layers>
@@ -187,6 +200,65 @@ describe('FlaStaticSnapshotRenderSession', () => {
     expect(catalog.entries.length).toBeGreaterThan(0);
     expect(catalog.summary.length).toBeGreaterThan(0);
     session.close();
+  });
+
+  it('reuses the prepared source across authored frames until the inspection session is cancelled', async () => {
+    const fla = await buildMinimalFla();
+    const session = new FlaStaticSnapshotRenderSession({
+      rasterizer: resolvingRasterizer(),
+      sourceLookup: sourceLookup(fla),
+    });
+    const profileGlobal = globalThis as typeof globalThis & {
+      __pandaStageIssue762ProfileSink?: (event: {
+        readonly stage: string;
+        readonly durationMs: number;
+        readonly details?: Readonly<Record<string, string | number | boolean | null>>;
+      }) => void;
+    };
+    const previousSink = profileGlobal.__pandaStageIssue762ProfileSink;
+    const events: Array<{ readonly stage: string; readonly durationMs: number }> = [];
+    profileGlobal.__pandaStageIssue762ProfileSink = (event) => events.push(event);
+    try {
+      const catalog = await session.catalog(SESSION_ID, { includeAuthoredStates: true });
+      if (!catalog.ok) throw new Error('catalog should succeed');
+      const target = catalog.entries.find(
+        (entry) => entry.target.kind === 'graphic-symbol' && entry.target.selectedFrameIndex === 1,
+      )?.target;
+      if (!target) throw new Error('catalog should include the authored second Graphic frame');
+      const first = await session.preview(
+        FlaStaticSnapshotPreviewRequestSchema.parse({
+          format: 'fla-static-snapshot-preview',
+          version: 1,
+          requestId: PREVIEW_A,
+          sessionId: SESSION_ID,
+          target,
+        }),
+      );
+      expect(first.ok).toBe(true);
+      expect(events.filter((event) => event.stage === 'fla.snapshot.prepared-source.cache-hit')).toHaveLength(1);
+      expect(events.filter((event) => event.stage === 'fla.preview.display-source-adapt')).toHaveLength(0);
+
+      session.cancel({
+        format: 'fla-static-snapshot-cancel',
+        version: 1,
+        sessionId: SESSION_ID,
+      });
+      const second = await session.preview(
+        FlaStaticSnapshotPreviewRequestSchema.parse({
+          format: 'fla-static-snapshot-preview',
+          version: 1,
+          requestId: PREVIEW_B,
+          sessionId: SESSION_ID,
+          target,
+        }),
+      );
+      expect(second.ok).toBe(true);
+      expect(events.filter((event) => event.stage === 'fla.preview.display-source-adapt')).toHaveLength(1);
+    } finally {
+      session.close();
+      if (previousSink) profileGlobal.__pandaStageIssue762ProfileSink = previousSink;
+      else delete profileGlobal.__pandaStageIssue762ProfileSink;
+    }
   });
 
   it('records a confirmed, latest-accepted preview on success', async () => {

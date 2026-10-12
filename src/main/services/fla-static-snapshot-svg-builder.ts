@@ -37,6 +37,10 @@ import type {
   FlaStaticSnapshotPreviewErrorCode,
 } from '../../shared/fla-static-snapshot-api';
 import { FLA_STATIC_SNAPSHOT_LIMITS } from '../../shared/fla-static-snapshot-api';
+import {
+  finishIssue762Profile,
+  startIssue762Profile,
+} from '../../shared/issue762-performance-profile';
 import type {
   FlaResolvedDisplayList,
   FlaResolvedDisplayNode,
@@ -127,6 +131,14 @@ export interface BuildCatalogFailure {
 
 export type BuildCatalogResult = BuildCatalogSuccess | BuildCatalogFailure;
 
+export type FlaStaticSnapshotPreparedDisplaySourceResult =
+  | {
+      readonly ok: true;
+      readonly source: FlaStaticSnapshotDisplaySource;
+      readonly xmlByteLength: number;
+    }
+  | BuildSvgFailure;
+
 // ---- EOCD preflight (re-uses the production EOCD guard; R1 does not
 //      implement V1.5-C, so over-declared central directories still
 //      reject before jszip is invoked). ----
@@ -175,9 +187,13 @@ interface ParsedArchive {
   docXml: string;
   libraryXmlEntries: Array<{ name: string; xml: string }>;
   hasActionScript: boolean;
+  xmlByteLength: number;
 }
 
-async function parseArchive(bytes: Uint8Array): Promise<{ ok: true; archive: ParsedArchive } | { ok: false; code: FlaStaticSnapshotPreviewErrorCode; message: string }> {
+async function parseArchive(
+  bytes: Uint8Array,
+  operation: 'catalog' | 'preview',
+): Promise<{ ok: true; archive: ParsedArchive } | { ok: false; code: FlaStaticSnapshotPreviewErrorCode; message: string }> {
   if (bytes.byteLength > MAX_SOURCE_BYTES) {
     return { ok: false, code: 'BUDGET_EXCEEDED', message: 'FLA source exceeds the byte limit' };
   }
@@ -190,16 +206,21 @@ async function parseArchive(bytes: Uint8Array): Promise<{ ok: true; archive: Par
     return { ok: false, code: 'RENDER_FAILED', message: 'EOCD over-declares central directory size' };
   }
   let zip: JSZip;
+  const zipStartedAt = startIssue762Profile();
   try {
     zip = await JSZip.loadAsync(bytes);
   } catch (error) {
     return { ok: false, code: 'RENDER_FAILED', message: `Failed to open FLA archive: ${String(error)}` };
   }
+  finishIssue762Profile(`fla.${operation}.zip-open`, zipStartedAt, {
+    sourceByteLength: bytes.byteLength,
+  });
   const names = Object.keys(zip.files);
   const docDocEntry = zip.file('DOMDocument.xml');
   if (!docDocEntry) {
     return { ok: false, code: 'RENDER_FAILED', message: 'FLA has no DOMDocument.xml' };
   }
+  const xmlExtractionStartedAt = startIssue762Profile();
   const docXml = await docDocEntry.async('string');
   if (docXml.length > MAX_XML_BYTES) {
     return { ok: false, code: 'BUDGET_EXCEEDED', message: 'DOMDocument.xml too large' };
@@ -222,7 +243,16 @@ async function parseArchive(bytes: Uint8Array): Promise<{ ok: true; archive: Par
   if (/<Script\b/.test(docXml) || /<DOMScript\b/.test(docXml)) {
     hasActionScript = true;
   }
-  return { ok: true, archive: { docXml, libraryXmlEntries, hasActionScript } };
+  const xmlByteLength = Buffer.byteLength(docXml, 'utf8') + libraryXmlEntries.reduce(
+    (total, entry) => total + Buffer.byteLength(entry.xml, 'utf8'),
+    0,
+  );
+  finishIssue762Profile(`fla.${operation}.xml-extract`, xmlExtractionStartedAt, {
+    libraryXmlEntryCount: libraryXmlEntries.length,
+    sourceEntryCount: names.length,
+    xmlByteLength,
+  });
+  return { ok: true, archive: { docXml, libraryXmlEntries, hasActionScript, xmlByteLength } };
 }
 
 // ---- Balanced-block extractor (mirrors tests/helpers/fla-structural-probe.ts) ----
@@ -2036,14 +2066,18 @@ function resolveTargetDisplayList(
     // symbol table and catalog descriptor. Reuse that frame-local context so
     // a normal first-frame preview does not spend the bounded source-node
     // budget parsing the same source elements a second time.
-    const frameContext = selectedFrameIndex === 0
-      ? { ok: true as const, value: descriptor.frameContext }
-      : source.buildGraphicFrameContext(
+    let frameContext: ReturnType<FlaStaticSnapshotDisplaySource['buildGraphicFrameContext']>;
+    if (selectedFrameIndex === 0) {
+      source.resetFrameBuildState();
+      frameContext = { ok: true, value: descriptor.frameContext };
+    } else {
+      frameContext = source.buildGraphicFrameContext(
           descriptor.timelineXml,
           descriptor.frameSpanIndex,
           selectedFrameIndex,
           'graphic:' + descriptor.sourceLibraryItemName,
         );
+    }
     if (!frameContext.ok) {
       return {
         ok: false,
@@ -2066,9 +2100,13 @@ function resolveTargetDisplayList(
     if (selectedFrameIndex >= target.frameCount || selectedFrameIndex >= descriptor.frameCount) {
       return { ok: false, code: 'TARGET_OUT_OF_RANGE', message: 'selectedFrameIndex ' + selectedFrameIndex + ' >= frameCount ' + target.frameCount };
     }
-    const frameContext = selectedFrameIndex === 0
-      ? { ok: true as const, value: descriptor.frameContext }
-      : source.buildSceneFrameContext(descriptor.xml, selectedFrameIndex, 'scene:' + timelineIndex);
+    let frameContext: ReturnType<FlaStaticSnapshotDisplaySource['buildSceneFrameContext']>;
+    if (selectedFrameIndex === 0) {
+      source.resetFrameBuildState();
+      frameContext = { ok: true, value: descriptor.frameContext };
+    } else {
+      frameContext = source.buildSceneFrameContext(descriptor.xml, selectedFrameIndex, 'scene:' + timelineIndex);
+    }
     if (!frameContext.ok) {
       return {
         ok: false,
@@ -2137,35 +2175,75 @@ function catalogSupportReason(
   };
 }
 
+export async function prepareFlaStaticSnapshotDisplaySource(
+  bytes: Uint8Array,
+  operation: 'catalog' | 'preview',
+): Promise<FlaStaticSnapshotPreparedDisplaySourceResult> {
+  const archive = await parseArchive(bytes, operation);
+  if (!archive.ok) return archive;
+  const adaptStartedAt = startIssue762Profile();
+  const adapted = displaySourceFromArchive(archive.archive);
+  if (!adapted.ok) return adapted;
+  finishIssue762Profile(`fla.${operation}.display-source-adapt`, adaptStartedAt, {
+    libraryXmlEntryCount: archive.archive.libraryXmlEntries.length,
+    xmlByteLength: archive.archive.xmlByteLength,
+  });
+  return {
+    ok: true,
+    source: adapted.source,
+    xmlByteLength: archive.archive.xmlByteLength,
+  };
+}
+
 // ---- Public catalog builder ----
 export async function buildRenderableTargetCatalog(
   bytes: Uint8Array,
   resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup = () => ({ ok: false, reason: 'missing' }),
   options: { readonly includeAuthoredStates?: boolean } = {},
+  preparedDisplaySource?: FlaStaticSnapshotDisplaySource,
 ): Promise<BuildCatalogResult> {
-  const archive = await parseArchive(bytes);
-  if (!archive.ok) return archive;
-  const adapted = displaySourceFromArchive(archive.archive);
-  if (!adapted.ok) return adapted;
-  const source = adapted.source;
+  const catalogStartedAt = startIssue762Profile();
+  const sourceResult = preparedDisplaySource
+    ? { ok: true as const, source: preparedDisplaySource }
+    : await prepareFlaStaticSnapshotDisplaySource(bytes, 'catalog');
+  if (!sourceResult.ok) return sourceResult;
+  const source = sourceResult.source;
   const entries: BuildCatalogSuccess['entries'] = [];
   let omittedCandidateCount = 0;
+  let candidateIndex = 0;
+  const enumerationStartedAt = startIssue762Profile();
 
   const appendCandidate = (target: FlaRenderTarget): void => {
     if (entries.length >= MAX_TARGETS) {
       omittedCandidateCount += 1;
       return;
     }
+    const candidateStartedAt = startIssue762Profile();
+    const currentCandidateIndex = candidateIndex++;
+    const candidateDetails = {
+      candidateIndex: currentCandidateIndex,
+      targetId: target.renderTargetId,
+      targetKind: target.kind,
+      selectedFrameIndex: target.selectedFrameIndex ?? 0,
+    };
+    const resolveStartedAt = startIssue762Profile();
     const resolved = resolveTargetDisplayList(source, target);
+    finishIssue762Profile('fla.catalog.candidate.resolve', resolveStartedAt, candidateDetails);
+    const supportStartedAt = startIssue762Profile();
     const check = resolved.ok
       ? catalogSupportReason(source, resolved.displayList, resolveBitmapMedia, true)
       : { unsupportedReason: resolved.message, isBlank: false };
+    finishIssue762Profile('fla.catalog.candidate.support-check', supportStartedAt, {
+      ...candidateDetails,
+      resolved: resolved.ok,
+    });
     let unsupportedReason = check.unsupportedReason;
     if (resolved.ok && !unsupportedReason && !check.isBlank) {
       // Use the exact production SVG composition path as the capability
       // check. The previous structural-only check incorrectly marked some
       // gradient-stroke targets as previewable even though this builder
       // rejected them later at Preview time.
+      const compositionStartedAt = startIssue762Profile();
       const composed = buildSvgForResolvedDisplayList({
         displayList: resolved.displayList,
         renderTargetId: target.renderTargetId,
@@ -2174,6 +2252,10 @@ export async function buildRenderableTargetCatalog(
         shapeBlocks: source.shapeBlocks,
         resolveBitmapMedia,
       });
+      finishIssue762Profile('fla.catalog.candidate.svg-capability', compositionStartedAt, {
+        ...candidateDetails,
+        composed: composed.ok,
+      });
       if (!composed.ok) unsupportedReason = composed.message;
     }
     entries.push({
@@ -2181,6 +2263,11 @@ export async function buildRenderableTargetCatalog(
       previewSupported: unsupportedReason === null,
       isBlank: check.isBlank,
       ...(unsupportedReason ? { unsupportedReason } : {}),
+    });
+    finishIssue762Profile('fla.catalog.candidate.total', candidateStartedAt, {
+      ...candidateDetails,
+      previewSupported: unsupportedReason === null,
+      isBlank: check.isBlank,
     });
   };
 
@@ -2238,6 +2325,11 @@ export async function buildRenderableTargetCatalog(
     }
   }
 
+  finishIssue762Profile('fla.catalog.enumeration', enumerationStartedAt, {
+    candidateCount: entries.length,
+    omittedCandidateCount,
+  });
+
   const supportedCount = entries.filter((entry) => entry.previewSupported && !entry.isBlank).length;
   const unsupportedCount = entries.filter((entry) => !entry.previewSupported).length;
   const blankCount = entries.filter((entry) => entry.isBlank).length;
@@ -2248,6 +2340,14 @@ export async function buildRenderableTargetCatalog(
     ? '这个 FLA 没有发现可检查的图形状态。'
     : '发现 ' + entries.length + ' 个已列出的状态：' + supportedCount + ' 个可预览、' +
       unsupportedCount + ' 个暂不可预览、' + blankCount + ' 个空白状态' + omittedNote + '。';
+  finishIssue762Profile('fla.catalog.total', catalogStartedAt, {
+    candidateCount: entries.length,
+    omittedCandidateCount,
+    supportedCount,
+    unsupportedCount,
+    blankCount,
+    sourceByteLength: bytes.byteLength,
+  });
   return { ok: true, entries, omittedCandidateCount, summary };
 }
 
@@ -2256,21 +2356,38 @@ export async function buildSvgForRenderTarget(
   bytes: Uint8Array,
   target: FlaRenderTarget,
   resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup = () => ({ ok: false, reason: 'missing' }),
+  preparedDisplaySource?: FlaStaticSnapshotDisplaySource,
 ): Promise<BuildComposedSvgResult> {
-  const archive = await parseArchive(bytes);
-  if (!archive.ok) return archive;
-  const adapted = displaySourceFromArchive(archive.archive);
-  if (!adapted.ok) return adapted;
-  const resolved = resolveTargetDisplayList(adapted.source, target);
+  const previewStartedAt = startIssue762Profile();
+  const details = {
+    targetId: target.renderTargetId,
+    targetKind: target.kind,
+    selectedFrameIndex: target.selectedFrameIndex ?? 0,
+  };
+  const sourceResult = preparedDisplaySource
+    ? { ok: true as const, source: preparedDisplaySource }
+    : await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');
+  if (!sourceResult.ok) return sourceResult;
+  const source = sourceResult.source;
+  const resolveStartedAt = startIssue762Profile();
+  const resolved = resolveTargetDisplayList(source, target);
   if (!resolved.ok) return resolved;
-  return buildSvgForResolvedDisplayList({
+  finishIssue762Profile('fla.preview.display-list-resolve', resolveStartedAt, details);
+  const svgStartedAt = startIssue762Profile();
+  const result = buildSvgForResolvedDisplayList({
     displayList: resolved.displayList,
     renderTargetId: target.renderTargetId,
-    stageWidth: adapted.source.stageWidth,
-    stageHeight: adapted.source.stageHeight,
-    shapeBlocks: adapted.source.shapeBlocks,
+    stageWidth: source.stageWidth,
+    stageHeight: source.stageHeight,
+    shapeBlocks: source.shapeBlocks,
     resolveBitmapMedia,
   });
+  finishIssue762Profile('fla.preview.svg-compose', svgStartedAt, {
+    ...details,
+    composed: result.ok,
+  });
+  finishIssue762Profile('fla.preview.svg-build-total', previewStartedAt, details);
+  return result;
 }
 
 export interface FlaStaticSnapshotBitmapMedia {

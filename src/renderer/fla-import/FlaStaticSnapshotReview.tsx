@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type {
   FlaStaticSnapshotCommitError,
   FlaRenderableTargetCatalogEntry,
   FlaStaticSnapshotCommitResponse,
 } from '../../shared/fla-static-snapshot-api';
+import {
+  finishIssue762Profile,
+  startIssue762Profile,
+} from '../../shared/issue762-performance-profile';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { boundedUnsupportedReason, FlaStageF2UnavailableDetails } from './FlaStageF';
 import { FlaStageGRecovery, type FlaStageGTerminalState } from './FlaStageGTerminal';
@@ -90,7 +94,30 @@ export function FlaStaticSnapshotReview({
   const focusedPreviewUrlRef = useRef<{ key: string; url: string } | null>(null);
   const focusedCandidateKeyRef = useRef(focusedCandidateKey);
   const activePreviewRequestIdRef = useRef<string | null>(null);
+  const pendingScanProgressProfileRef = useRef<{
+    progress: number;
+    startedAt: number | null;
+    candidateIndex: number;
+    targetId: string;
+    status: string;
+  } | null>(null);
+  const thumbnailImageLoadStartedAtRef = useRef(new Map<string, {
+    startedAt: number | null;
+    candidateIndex: number;
+    targetId: string;
+  }>());
   focusedCandidateKeyRef.current = focusedCandidateKey;
+
+  useLayoutEffect(() => {
+    const pending = pendingScanProgressProfileRef.current;
+    if (!pending || pending.progress !== scanProgress) return;
+    finishIssue762Profile('ui.scan.react-state-commit', pending.startedAt, {
+      candidateIndex: pending.candidateIndex,
+      targetId: pending.targetId,
+      status: pending.status,
+    });
+    pendingScanProgressProfileRef.current = null;
+  }, [scanProgress]);
 
   const entryByKey = useMemo(
     () => new Map(entries.map((entry) => [flaStaticSnapshotCandidateKey(entry), entry])),
@@ -164,10 +191,32 @@ export function FlaStaticSnapshotReview({
     const setCandidatePreview = (key: string, preview: FlaStaticSnapshotCandidatePreview): void => {
       setPreviews((current) => ({ ...current, [key]: preview }));
     };
+    const setCandidatePreviewAndProgress = (
+      index: number,
+      entry: FlaRenderableTargetCatalogEntry,
+      preview: FlaStaticSnapshotCandidatePreview,
+    ): void => {
+      const key = flaStaticSnapshotCandidateKey(entry);
+      const startedAt = startIssue762Profile();
+      setCandidatePreview(key, preview);
+      pendingScanProgressProfileRef.current = {
+        progress: index + 1,
+        startedAt,
+        candidateIndex: index,
+        targetId: entry.target.renderTargetId,
+        status: preview.status,
+      };
+      setScanProgress(index + 1);
+    };
 
     void (async () => {
       try {
+        const catalogStartedAt = startIssue762Profile();
         const response = await flaStaticSnapshotClient.catalog(sessionId, { includeAuthoredStates: true });
+        finishIssue762Profile('ui.catalog.main-roundtrip', catalogStartedAt, {
+          outcome: response.ok ? 'success' : response.error.code,
+          candidateCount: response.ok ? response.entries.length : 0,
+        });
         if (disposed) return;
         if (!response.ok) {
           setErrorMessage(response.error.message);
@@ -188,17 +237,26 @@ export function FlaStaticSnapshotReview({
           const entry = response.entries[index];
           if (!entry) continue;
           const key = flaStaticSnapshotCandidateKey(entry);
+          const candidateStartedAt = startIssue762Profile();
           if (entry.isBlank) {
-            setCandidatePreview(key, { status: 'blank' });
-            setScanProgress(index + 1);
+            setCandidatePreviewAndProgress(index, entry, { status: 'blank' });
+            finishIssue762Profile('ui.scan.candidate-total', candidateStartedAt, {
+              candidateIndex: index,
+              targetId: entry.target.renderTargetId,
+              outcome: 'blank',
+            });
             continue;
           }
           if (!entry.previewSupported) {
-            setCandidatePreview(key, {
+            setCandidatePreviewAndProgress(index, entry, {
               status: 'unsupported',
               reason: entry.unsupportedReason ?? '当前无法安全生成预览。',
             });
-            setScanProgress(index + 1);
+            finishIssue762Profile('ui.scan.candidate-total', candidateStartedAt, {
+              candidateIndex: index,
+              targetId: entry.target.renderTargetId,
+              outcome: 'catalog-unsupported',
+            });
             continue;
           }
 
@@ -220,6 +278,8 @@ export function FlaStaticSnapshotReview({
             undefined,
             {
               shouldRun: () => !disposed,
+              profileLabel: 'candidate-scan',
+              candidateIndex: index,
               onRequestStart: () => {
                 activePreviewRequestIdRef.current = requestId;
               },
@@ -239,23 +299,34 @@ export function FlaStaticSnapshotReview({
             );
           }
           if (outcome.operationError) {
-            setCandidatePreview(key, {
+            setCandidatePreviewAndProgress(index, entry, {
               status: 'unsupported',
               reason: outcome.operationError.message,
             });
           } else if (!outcome.response?.ok || !outcome.response.bytes) {
-            setCandidatePreview(key, {
+            setCandidatePreviewAndProgress(index, entry, {
               status: 'unsupported',
               reason: outcome.response?.ok ? '预览没有返回图像。' : outcome.response?.error.message ?? '预览失败。',
             });
           } else {
             try {
+              const thumbnailStartedAt = startIssue762Profile();
               const previewUrl = await createCandidateThumbnailUrl(outcome.response.bytes);
+              finishIssue762Profile('ui.thumbnail.candidate-create', thumbnailStartedAt, {
+                candidateIndex: index,
+                targetId: entry.target.renderTargetId,
+                pngByteLength: outcome.response.bytes.byteLength,
+              });
               if (disposed) {
                 URL.revokeObjectURL(previewUrl);
                 return;
               }
               previewUrlsRef.current.add(previewUrl);
+              thumbnailImageLoadStartedAtRef.current.set(previewUrl, {
+                startedAt: startIssue762Profile(),
+                candidateIndex: index,
+                targetId: entry.target.renderTargetId,
+              });
               if (focusedCandidateKeyRef.current === key) {
                 const fullSizeUrl = createCandidateFullSizeUrl(outcome.response.bytes);
                 updateFocusedPreview({
@@ -266,19 +337,27 @@ export function FlaStaticSnapshotReview({
                   height: outcome.response.height,
                 });
               }
-              setCandidatePreview(key, {
+              setCandidatePreviewAndProgress(index, entry, {
                 status: 'supported',
                 previewUrl,
                 sha256: outcome.response.sha256,
               });
             } catch (error) {
-              setCandidatePreview(key, {
+              setCandidatePreviewAndProgress(index, entry, {
                 status: 'unsupported',
                 reason: error instanceof Error ? error.message : '无法显示预览图像。',
               });
             }
           }
-          if (!disposed) setScanProgress(index + 1);
+          finishIssue762Profile('ui.scan.candidate-total', candidateStartedAt, {
+            candidateIndex: index,
+            targetId: entry.target.renderTargetId,
+            outcome: outcome.operationError
+              ? 'preview-error'
+              : outcome.response?.ok
+                ? 'preview-supported'
+                : 'preview-unsupported',
+          });
         }
         if (!disposed) setPhase('ready');
       } catch (error) {
@@ -307,6 +386,7 @@ export function FlaStaticSnapshotReview({
       }).catch(() => undefined);
       for (const previewUrl of previewUrlsRef.current) URL.revokeObjectURL(previewUrl);
       previewUrlsRef.current.clear();
+      thumbnailImageLoadStartedAtRef.current.clear();
       const fullSizePreview = focusedPreviewUrlRef.current;
       if (fullSizePreview) URL.revokeObjectURL(fullSizePreview.url);
       focusedPreviewUrlRef.current = null;
@@ -354,6 +434,7 @@ export function FlaStaticSnapshotReview({
         undefined,
         {
           shouldRun: () => !disposed && focusedCandidateKeyRef.current === key,
+          profileLabel: 'focused-preview',
           onRequestStart: () => {
             activePreviewRequestIdRef.current = requestId;
           },
@@ -700,7 +781,30 @@ export function FlaStaticSnapshotReview({
                             type="button"
                           >
                             {candidatePreview?.previewUrl ? (
-                              <img src={candidatePreview.previewUrl} alt="" />
+                          <img
+                            src={candidatePreview.previewUrl}
+                            alt=""
+                            onLoad={(event) => {
+                              const imageUrl = event.currentTarget.src;
+                              const profile = thumbnailImageLoadStartedAtRef.current.get(imageUrl);
+                              if (!profile) return;
+                              thumbnailImageLoadStartedAtRef.current.delete(imageUrl);
+                              finishIssue762Profile('ui.thumbnail.image-element-load', profile.startedAt, {
+                                candidateIndex: profile.candidateIndex,
+                                targetId: profile.targetId,
+                              });
+                            }}
+                            onError={(event) => {
+                              const imageUrl = event.currentTarget.src;
+                              const profile = thumbnailImageLoadStartedAtRef.current.get(imageUrl);
+                              if (!profile) return;
+                              thumbnailImageLoadStartedAtRef.current.delete(imageUrl);
+                              finishIssue762Profile('ui.thumbnail.image-element-error', profile.startedAt, {
+                                candidateIndex: profile.candidateIndex,
+                                targetId: profile.targetId,
+                              });
+                            }}
+                          />
                             ) : (
                               <span className={`fla-snapshot-candidate-placeholder is-${status}`} aria-hidden="true">
                                 {status === 'blank' ? '空白' : status === 'unsupported' ? '不可预览' : status === 'checking' ? '检查中' : '预览'}
@@ -849,9 +953,16 @@ function createCandidateFullSizeUrl(bytes: Uint8Array): string {
 }
 
 async function createCandidateThumbnailUrl(bytes: Uint8Array): Promise<string> {
+  const thumbnailStartedAt = startIssue762Profile();
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
+  const imageDecodeStartedAt = startIssue762Profile();
   const bitmap = await createImageBitmap(new Blob([copy.buffer], { type: 'image/png' }));
+  finishIssue762Profile('ui.thumbnail.image-bitmap-decode', imageDecodeStartedAt, {
+    pngByteLength: bytes.byteLength,
+    width: bitmap.width,
+    height: bitmap.height,
+  });
   try {
     const maxSide = 160;
     const scale = Math.min(1, maxSide / bitmap.width, maxSide / bitmap.height);
@@ -862,14 +973,29 @@ async function createCandidateThumbnailUrl(bytes: Uint8Array): Promise<string> {
     canvas.height = height;
     const context = canvas.getContext('2d');
     if (!context) throw new Error('无法显示候选预览。');
+    const canvasDrawStartedAt = startIssue762Profile();
     context.drawImage(bitmap, 0, 0, width, height);
+    finishIssue762Profile('ui.thumbnail.canvas-draw', canvasDrawStartedAt, { width, height });
+    const encodeStartedAt = startIssue762Profile();
     const thumbnail = await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob((blob) => {
         if (blob) resolve(blob);
         else reject(new Error('无法生成候选缩略图。'));
       }, 'image/png');
     });
-    return URL.createObjectURL(thumbnail);
+    finishIssue762Profile('ui.thumbnail.canvas-encode', encodeStartedAt, {
+      width,
+      height,
+      outputByteLength: thumbnail.size,
+    });
+    const url = URL.createObjectURL(thumbnail);
+    finishIssue762Profile('ui.thumbnail.create-total', thumbnailStartedAt, {
+      pngByteLength: bytes.byteLength,
+      width,
+      height,
+      outputByteLength: thumbnail.size,
+    });
+    return url;
   } finally {
     bitmap.close();
   }
@@ -971,6 +1097,7 @@ export async function runFlaStaticSnapshotBatchImport(options: {
         }
 
         commitAttempted = true;
+        const commitStartedAt = startIssue762Profile();
         const response = await client.commit({
           format: 'fla-static-snapshot-commit',
           version: 1,
@@ -992,8 +1119,15 @@ export async function runFlaStaticSnapshotBatchImport(options: {
           },
           confirmed: true,
         });
+        finishIssue762Profile('ui.commit.main-transaction', commitStartedAt, {
+          requestId: preview.requestId,
+          candidateIndex: index,
+          targetId: entry.target.renderTargetId,
+          outcome: response.ok ? response.result.status : response.error.code,
+        });
         return { kind: 'commit-response' as const, response };
       },
+      { profileLabel: 'commit-preview', candidateIndex: index },
     );
 
     if (outcome.operationError) {
@@ -1021,7 +1155,13 @@ export async function runFlaStaticSnapshotBatchImport(options: {
       };
       items.push(item);
       try {
+        const librarySyncStartedAt = startIssue762Profile();
         onImported(response);
+        finishIssue762Profile('ui.commit.project-store-update', librarySyncStartedAt, {
+          candidateIndex: index,
+          targetId: entry.target.renderTargetId,
+          savedRevision: response.savedRevision,
+        });
       } catch {
         item.message = `${item.message ?? ''} 项目已提交，但界面状态同步失败；请勿重复导入，返回素材库核对。`.trim();
         warnings.push('素材已经写入项目，但界面状态同步失败；请勿重复导入，返回素材库核对。');

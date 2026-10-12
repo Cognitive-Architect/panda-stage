@@ -60,7 +60,7 @@ function buildAdapterFixture() {
           frame(0, `${symbol('inner', 13, 17)}${bitmap('outer-front-after', 23, 29)}`),
           frame(1, `${bitmap('outer-front-frame1-a', 31, 37)}${bitmap('outer-front-frame1-b', 41, 47)}`),
         ].join('')),
-        layer('outer-back', [frame(0, shape()), frame(1, shape())].join('')),
+        layer('outer-back', [frame(0, shape()), frame(1, shape()), frame(2, shape())].join('')),
       ]),
     }),
     Object.freeze({
@@ -236,6 +236,38 @@ describe('XFL display-list adapter painter-order normalization (#700)', () => {
       'outer-front-frame1-a',
       'outer-front-frame1-b',
     ]);
+  });
+
+  it('keeps shape lookup and node accounting scoped when one prepared source resolves multiple authored frames', () => {
+    const { adapted: source } = buildAdapterFixture();
+    const outer = descriptor(source, 'outer');
+    const baseShapeIds = new Set(source.shapeBlocks.keys());
+
+    const selectedFrame1 = source.buildGraphicFrameContext(
+      outer.timelineXml,
+      outer.frameSpanIndex,
+      1,
+      'selected-outer-frame-1',
+    );
+    expect(selectedFrame1.ok).toBe(true);
+    const frame1ShapeIds = [...source.shapeBlocks.keys()].filter((id) => !baseShapeIds.has(id));
+    expect(frame1ShapeIds).toHaveLength(1);
+
+    const selectedFrame2 = source.buildGraphicFrameContext(
+      outer.timelineXml,
+      outer.frameSpanIndex,
+      2,
+      'selected-outer-frame-2',
+    );
+    expect(selectedFrame2.ok).toBe(true);
+    const frame2ShapeIds = [...source.shapeBlocks.keys()].filter((id) => !baseShapeIds.has(id));
+    expect(frame2ShapeIds).toHaveLength(1);
+    expect(frame2ShapeIds[0]).not.toBe(frame1ShapeIds[0]);
+    expect(source.shapeBlocks.has(frame1ShapeIds[0]!)).toBe(false);
+    expect(source.shapeBlocks.has(frame2ShapeIds[0]!)).toBe(true);
+
+    source.resetFrameBuildState();
+    expect(new Set(source.shapeBlocks.keys())).toEqual(baseShapeIds);
   });
 
   it('resolves the bounded two-frame motion span through the production Graphic frame adapter', () => {
