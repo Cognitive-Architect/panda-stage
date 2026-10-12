@@ -42,8 +42,10 @@ import {
   startIssue762Profile,
 } from '../../shared/issue762-performance-profile';
 import type {
+  FlaResolvedClipPath,
   FlaResolvedDisplayList,
   FlaResolvedDisplayNode,
+  FlaDisplayListElement,
   FlaDisplayListResolverInput,
 } from './fla-display-list-resolver';
 import {
@@ -2036,6 +2038,19 @@ function stableRenderTargetId(bytes: Uint8Array, logicalTargetKey: string): stri
   return 'fla-render-target-' + digest;
 }
 
+function collectVisibleSceneGraphicSymbols(
+  elements: readonly FlaDisplayListElement[],
+  result: Set<string>,
+): void {
+  for (const element of elements) {
+    if (element.kind === 'symbol' && element.symbolType === 'graphic') {
+      result.add(element.libraryItemName);
+    } else if (element.kind === 'group') {
+      collectVisibleSceneGraphicSymbols(element.elements, result);
+    }
+  }
+}
+
 async function displaySourceFromArchive(
   archive: ParsedArchive,
   execution?: FlaStaticSnapshotDisplaySourceExecution,
@@ -2325,39 +2340,82 @@ export async function buildRenderableTargetCatalog(
     ...source.graphicSymbols.filter((symbol) => symbol.hasNestedSymbol),
     ...source.graphicSymbols.filter((symbol) => !symbol.hasNestedSymbol),
   ];
-  for (const symbol of orderedSymbols) {
-    if (!symbol.hasPotentialDisplayElements) continue;
-    const renderTargetId = stableRenderTargetId(
+  const candidateSymbols = orderedSymbols.filter((symbol) => symbol.hasPotentialDisplayElements);
+  const sceneRootSymbols = new Set<string>();
+  if (scene) {
+    for (const layer of scene.frameContext.layers) {
+      if (layer.visible) collectVisibleSceneGraphicSymbols(layer.elements, sceneRootSymbols);
+    }
+  }
+  const createGraphicTarget = (symbol: typeof candidateSymbols[number], frameIndex: number): FlaRenderTarget => ({
+    renderTargetId: stableRenderTargetId(
       bytes,
       'graphic-symbol\u0000' + symbol.sourceLibraryItemName + '\u0000' + symbol.userLabel,
-    );
-    const authoredFrameIndices = options.includeAuthoredStates
-      ? [...new Set(
-          symbol.frameSpanIndex.layers
-            .filter((layer) => layer.visible)
-            .flatMap((layer) => layer.spans.map((span) => span.index)),
-        )].sort((left, right) => left - right)
-      : [0];
-    for (let frameOffset = 0; frameOffset < authoredFrameIndices.length; frameOffset += 1) {
-      const frameIndex = authoredFrameIndices[frameOffset];
-      if (frameIndex === undefined) continue;
-      if (entries.length >= MAX_TARGETS) {
-        omittedCandidateCount += authoredFrameIndices.length - frameOffset;
-        break;
+    ),
+    kind: 'graphic-symbol',
+    userLabel: symbol.userLabel,
+    sourceLibraryItemName: symbol.sourceLibraryItemName,
+    frameCount: Math.min(100_000, Math.max(1, symbol.frameCount)),
+    selectedFrameIndex: frameIndex,
+    compatibility: ['degraded'],
+  });
+
+  if (!options.includeAuthoredStates) {
+    const availableGraphicSlots = Math.max(0, MAX_TARGETS - entries.length);
+    const selectedSymbols = candidateSymbols.slice(0, availableGraphicSlots);
+    const selectedSymbolNames = new Set(selectedSymbols.map((symbol) => symbol.sourceLibraryItemName));
+    // Preserve every already-listed candidate and its order. When a visible
+    // Scene root would otherwise fall beyond the 64-target cap, replace only
+    // the last selected non-root candidate and append that root at the end.
+    for (const symbol of candidateSymbols) {
+      if (!sceneRootSymbols.has(symbol.sourceLibraryItemName) || selectedSymbolNames.has(symbol.sourceLibraryItemName)) {
+        continue;
       }
-      appendCandidate({
-        renderTargetId,
-        kind: 'graphic-symbol',
-        userLabel: symbol.userLabel,
-        sourceLibraryItemName: symbol.sourceLibraryItemName,
-        frameCount: Math.min(100_000, Math.max(1, symbol.frameCount)),
-        selectedFrameIndex: frameIndex,
-        compatibility: ['degraded'],
-      });
+      let replaceIndex = -1;
+      for (let index = selectedSymbols.length - 1; index >= 0; index -= 1) {
+        const candidate = selectedSymbols[index];
+        if (candidate && !sceneRootSymbols.has(candidate.sourceLibraryItemName)) {
+          replaceIndex = index;
+          break;
+        }
+      }
+      if (replaceIndex < 0) continue;
+      const [displaced] = selectedSymbols.splice(replaceIndex, 1);
+      if (displaced) selectedSymbolNames.delete(displaced.sourceLibraryItemName);
+      selectedSymbols.push(symbol);
+      selectedSymbolNames.add(symbol.sourceLibraryItemName);
+    }
+    omittedCandidateCount += candidateSymbols.length - selectedSymbols.length;
+    for (const symbol of selectedSymbols) {
+      appendCandidate(createGraphicTarget(symbol, 0));
       if (execution) {
         await execution.yieldToEventLoop();
         if (!execution.shouldContinue()) {
           return { ok: false, code: 'RENDER_FAILED', message: 'Catalog operation was cancelled' };
+        }
+      }
+    }
+  } else {
+    for (const symbol of orderedSymbols) {
+      if (!symbol.hasPotentialDisplayElements) continue;
+      const authoredFrameIndices = [...new Set(
+          symbol.frameSpanIndex.layers
+            .filter((layer) => layer.visible)
+            .flatMap((layer) => layer.spans.map((span) => span.index)),
+        )].sort((left, right) => left - right);
+      for (let frameOffset = 0; frameOffset < authoredFrameIndices.length; frameOffset += 1) {
+        const frameIndex = authoredFrameIndices[frameOffset];
+        if (frameIndex === undefined) continue;
+        if (entries.length >= MAX_TARGETS) {
+          omittedCandidateCount += authoredFrameIndices.length - frameOffset;
+          break;
+        }
+        appendCandidate(createGraphicTarget(symbol, frameIndex));
+        if (execution) {
+          await execution.yieldToEventLoop();
+          if (!execution.shouldContinue()) {
+            return { ok: false, code: 'RENDER_FAILED', message: 'Catalog operation was cancelled' };
+          }
         }
       }
     }
@@ -2936,6 +2994,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   const emittedNodes: string[] = [];
   let embeddedPngBytes = 0;
   let gradientDefinitionBytes = 0;
+  let clipDefinitionBytes = 0;
   let gradientStopCount = 0;
   let emittedContentBytes = 0;
   let pathCommandCount = 0;
@@ -2978,7 +3037,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     if (gradientDefinitionBytes + definitionBytes > MAX_GRADIENT_DEFINITION_BYTES) {
       return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition gradient-definition byte budget exceeded' };
     }
-    if (gradientDefinitionBytes + definitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+    if (gradientDefinitionBytes + clipDefinitionBytes + definitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
       return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
     }
     definitions.set(paint.gradientId, paint.gradientDefinition);
@@ -2991,6 +3050,97 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       radialGradientCount += 1;
       radialGradientStopCount += paint.gradientStopCount;
     }
+    return null;
+  };
+
+  const registeredClipPathIds = new Map<FlaResolvedClipPath, string>();
+  const registerClipPath = (
+    clipPath: FlaResolvedClipPath,
+  ): { readonly ok: true; readonly id: string } | BuildSvgFailure => {
+    const existingId = registeredClipPathIds.get(clipPath);
+    if (existingId) return { ok: true, id: existingId };
+    if (!clipPath.shapes.length || clipPath.shapes.length > 100_000) {
+      return { ok: false, code: 'TARGET_UNSUPPORTED', message: 'XFL mask has no bounded vector-shape geometry' };
+    }
+    const identity = JSON.stringify(clipPath.shapes.map(({ shapeId, worldTransform }) => [
+      shapeId,
+      worldTransform.a,
+      worldTransform.b,
+      worldTransform.c,
+      worldTransform.d,
+      worldTransform.tx,
+      worldTransform.ty,
+    ]));
+    const id = `fla-mask-clip-${crypto.createHash('sha256').update(identity, 'utf8').digest('hex').slice(0, 24)}`;
+    const clipNodes: string[] = [];
+    let clipPathByteLength = 0;
+    for (const clipShape of clipPath.shapes) {
+      const shapeBlock = shapeBlocks.get(clipShape.shapeId);
+      if (!shapeBlock) {
+        return { ok: false, code: 'TARGET_UNSUPPORTED', message: `XFL mask shape source is missing: ${clipShape.shapeId}` };
+      }
+      const shape = parseShapeAt(shapeBlock);
+      const styleAware = buildStyleAwareShapeRepresentation(shape, clipShape.shapeId);
+      if (!styleAware.ok) return styleAware;
+      if (shape.edgeStrings.length === 0 || styleAware.representation.commands.length === 0) {
+        return { ok: false, code: 'TARGET_UNSUPPORTED', message: `XFL mask shape has no supported filled vector geometry: ${clipShape.shapeId}` };
+      }
+      const reconstructed = reconstructFills(
+        styleAware.representation,
+        clipShape.shapeId,
+        renderTargetId,
+        displayList.frameIndex,
+      );
+      if (!reconstructed.ok) return reconstructed;
+      if (reconstructed.result.fills.length === 0) {
+        return { ok: false, code: 'TARGET_UNSUPPORTED', message: `XFL mask shape contains no filled vector area: ${clipShape.shapeId}` };
+      }
+      for (const fill of reconstructed.result.fills) {
+        const pathBytes = Buffer.byteLength(fill.pathD, 'utf8');
+        if (pathBytes <= 0 || pathBytes > MAX_EDGE_CHARS) {
+          return { ok: false, code: 'BUDGET_EXCEEDED', message: 'XFL mask path exceeds the geometry byte budget' };
+        }
+        const clipNode = `<path d="${fill.pathD}" transform="${matrixToSvgTransform(clipShape.worldTransform)}" fill="white" fill-rule="nonzero"/>`;
+        clipPathByteLength += Buffer.byteLength(clipNode, 'utf8');
+        if (clipPathByteLength > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+          return { ok: false, code: 'BUDGET_EXCEEDED', message: 'XFL mask geometry exceeds the snapshot byte budget' };
+        }
+        clipNodes.push(clipNode);
+      }
+    }
+    const definition = `<clipPath id="${id}" clipPathUnits="userSpaceOnUse">${clipNodes.join('')}</clipPath>`;
+    const definitionBytes = Buffer.byteLength(definition, 'utf8');
+    if (clipDefinitionBytes + definitionBytes + gradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+      return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
+    }
+    const existingDefinition = definitions.get(id);
+    if (existingDefinition && existingDefinition !== definition) {
+      return { ok: false, code: 'RENDER_FAILED', message: 'Mask clip-path id collision detected' };
+    }
+    if (!existingDefinition) {
+      definitions.set(id, definition);
+      clipDefinitionBytes += definitionBytes;
+    }
+    registeredClipPathIds.set(clipPath, id);
+    return { ok: true, id };
+  };
+
+  const appendEmittedNode = (
+    node: string,
+    clipPaths: readonly FlaResolvedClipPath[] = [],
+  ): BuildSvgFailure | null => {
+    let wrappedNode = node;
+    for (const clipPath of clipPaths) {
+      const registered = registerClipPath(clipPath);
+      if (!registered.ok) return registered;
+      wrappedNode = `<g clip-path="url(#${registered.id})">${wrappedNode}</g>`;
+    }
+    const nodeBytes = Buffer.byteLength(wrappedNode, 'utf8');
+    if (gradientDefinitionBytes + clipDefinitionBytes + embeddedPngBytes + emittedContentBytes + nodeBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
+      return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
+    }
+    emittedNodes.push(wrappedNode);
+    emittedContentBytes += nodeBytes;
     return null;
   };
 
@@ -3055,16 +3205,12 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
         const gradientFailure = registerGradientPaint(paint);
         if (gradientFailure) return gradientFailure;
         const pathBytes = Buffer.byteLength(fill.pathD, 'utf8');
-        if (pathBytes > MAX_EDGE_CHARS ||
-            pathBytes + gradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
-          return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
+        if (pathBytes > MAX_EDGE_CHARS) {
+          return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG path exceeds the geometry byte budget' };
         }
         const pathNode = `<path d="${fill.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${paint.svgPaint}" fill-opacity="${formatSvgNumber(paint.opacity)}" stroke="none" fill-rule="nonzero"/>`;
-        emittedContentBytes += Buffer.byteLength(pathNode, 'utf8');
-        if (gradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
-          return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
-        }
-        emittedNodes.push(pathNode);
+        const appendFailure = appendEmittedNode(pathNode, node.clipPaths);
+        if (appendFailure) return appendFailure;
         fillRegionCount += 1;
         if (firstFillColor === null) firstFillColor = paint.firstColor;
       }
@@ -3106,20 +3252,16 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
             return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic horizontal stroke coordinates are not finite: ${node.shapeId}` };
           }
           const pathBytes = Buffer.byteLength(pathD, 'utf8');
-          if (pathBytes > MAX_EDGE_CHARS ||
-              pathBytes + gradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
-            return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
+          if (pathBytes > MAX_EDGE_CHARS) {
+            return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG path exceeds the geometry byte budget' };
           }
           const transformAttribute = style.scaleMode === 'normal'
             ? ` transform="${matrixToSvgTransform(node.worldTransform)}"`
             : '';
           const strokePaint = style.gradientPaint?.svgPaint ?? style.color;
           const pathNode = `<path d="${pathD}"${transformAttribute} fill="none" stroke="${strokePaint}" stroke-opacity="${formatSvgNumber(style.opacity)}" stroke-width="${formatSvgNumber(expansion.width)}" stroke-linecap="${style.cap}" stroke-linejoin="${style.join}" stroke-miterlimit="${formatSvgNumber(style.miterLimit)}"/>`;
-          emittedContentBytes += Buffer.byteLength(pathNode, 'utf8');
-          if (gradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
-            return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
-          }
-          emittedNodes.push(pathNode);
+          const appendFailure = appendEmittedNode(pathNode, node.clipPaths);
+          if (appendFailure) return appendFailure;
           strokePathCount += 1;
         }
       }
@@ -3162,7 +3304,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     const imageId = `fla-bitmap-${mediaKey}`;
     if (!definitions.has(imageId)) {
       const base64Length = Math.ceil(media.pngBytes.byteLength / 3) * 4;
-      const estimatedSvgBytes = gradientDefinitionBytes + embeddedPngBytes + emittedContentBytes + base64Length + 512;
+      const estimatedSvgBytes = gradientDefinitionBytes + clipDefinitionBytes + embeddedPngBytes + emittedContentBytes + base64Length + 512;
       if (estimatedSvgBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Embedded PNG media exceeds the SVG byte budget' };
       }
@@ -3178,11 +3320,8 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       );
     }
     const useNode = `<use href="#${imageId}" transform="${matrixToSvgTransform(node.worldTransform)}"/>`;
-    emittedContentBytes += Buffer.byteLength(useNode, 'utf8');
-    if (gradientDefinitionBytes + embeddedPngBytes + emittedContentBytes > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
-      return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
-    }
-    emittedNodes.push(useNode);
+    const appendFailure = appendEmittedNode(useNode, node.clipPaths);
+    if (appendFailure) return appendFailure;
   }
 
   const graphicViewport = graphicBounds ? createGraphicViewport(graphicBounds) : null;

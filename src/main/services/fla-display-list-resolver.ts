@@ -37,6 +37,10 @@ export interface FlaDisplayListLayer {
   readonly name: string;
   readonly visible: boolean;
   readonly elements: readonly FlaDisplayListElement[];
+  /** Source XFL mask identity. Mask geometry is not painted as ordinary artwork. */
+  readonly maskLayerId?: string;
+  /** Source XFL mask identity linked to this layer through parentLayerIndex. */
+  readonly maskedBy?: string;
 }
 
 export type FlaDisplayListElement =
@@ -134,12 +138,24 @@ export interface FlaResolvedShapeNode {
   readonly kind: 'shape';
   readonly shapeId: string;
   readonly worldTransform: FlaDisplayListMatrix;
+  readonly clipPaths?: readonly FlaResolvedClipPath[];
 }
 
 export interface FlaResolvedBitmapNode {
   readonly kind: 'bitmap';
   readonly libraryItemName: string;
   readonly worldTransform: FlaDisplayListMatrix;
+  readonly clipPaths?: readonly FlaResolvedClipPath[];
+}
+
+export interface FlaResolvedClipShape {
+  readonly shapeId: string;
+  readonly worldTransform: FlaDisplayListMatrix;
+}
+
+/** One XFL mask; its filled vector shapes form a union within this clip path. */
+export interface FlaResolvedClipPath {
+  readonly shapes: readonly FlaResolvedClipShape[];
 }
 
 export interface FlaResolvedGroupNode {
@@ -267,6 +283,49 @@ function addResolvedNode(context: ResolveContext, sourcePath: string): FlaDispla
   return null;
 }
 
+function collectMaskShapes(
+  nodes: readonly FlaResolvedDisplayNode[],
+  sourcePath: string,
+): { readonly ok: true; readonly shapes: readonly FlaResolvedClipShape[] } | FlaDisplayListResolverFailure {
+  const shapes: FlaResolvedClipShape[] = [];
+  const visit = (node: FlaResolvedDisplayNode, nodePath: string): FlaDisplayListResolverFailure | null => {
+    if (node.kind === 'shape') {
+      if (node.clipPaths?.length) {
+        return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Nested or inherited masks on a mask item are unsupported', nodePath);
+      }
+      shapes.push({ shapeId: node.shapeId, worldTransform: node.worldTransform });
+      return null;
+    }
+    if (node.kind === 'bitmap' || (node.kind === 'group' && node.symbolLibraryItemName)) {
+      return failure(
+        'UNSUPPORTED_DISPLAY_CONTENT',
+        'Only static vector shapes and groups are supported as mask items',
+        nodePath,
+      );
+    }
+    if (node.kind === 'group') {
+      for (let index = 0; index < node.children.length; index += 1) {
+        const child = node.children[index];
+        if (!child) return failure('INVALID_INPUT', 'Missing mask child node', `${nodePath}/child[${index}]`);
+        const childFailure = visit(child, `${nodePath}/child[${index}]`);
+        if (childFailure) return childFailure;
+      }
+    }
+    return null;
+  };
+
+  for (let index = 0; index < nodes.length; index += 1) {
+    const node = nodes[index];
+    if (!node) return failure('INVALID_INPUT', 'Missing mask node', `${sourcePath}/node[${index}]`);
+    const nodeFailure = visit(node, `${sourcePath}/node[${index}]`);
+    if (nodeFailure) return nodeFailure;
+  }
+  if (shapes.length === 0) {
+    return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Mask layer has no filled vector-shape items', sourcePath);
+  }
+  return { ok: true, shapes };
+}
+
 function resolveLayers(
   frameContext: FlaDisplayListFrameContext,
   parentTransform: FlaDisplayListMatrix,
@@ -274,6 +333,7 @@ function resolveLayers(
   nestingDepth: number,
   sourcePath: string,
   context: ResolveContext,
+  inheritedClipPaths: readonly FlaResolvedClipPath[] = [],
 ): ResolveLayersResult {
   if (!isValidFrameContext(frameContext)) {
     return failure('INVALID_INPUT', 'Invalid selected frame context', sourcePath);
@@ -286,6 +346,50 @@ function resolveLayers(
     );
   }
 
+  const maskLayers = new Map<string, FlaDisplayListLayer>();
+  for (let index = 0; index < frameContext.layers.length; index += 1) {
+    const layer = frameContext.layers[index];
+    if (!layer?.maskLayerId) continue;
+    if (maskLayers.has(layer.maskLayerId)) {
+      return failure('INVALID_INPUT', 'Duplicate source mask identity', `${sourcePath}/layer[${index}]`);
+    }
+    if (!layer.visible) {
+      return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Hidden XFL masks cannot be previewed safely', `${sourcePath}/layer[${index}]`);
+    }
+    maskLayers.set(layer.maskLayerId, layer);
+  }
+
+  const linkedLayerCountByMask = new Map<string, number>();
+  for (let index = 0; index < frameContext.layers.length; index += 1) {
+    const layer = frameContext.layers[index];
+    if (!layer?.maskedBy) continue;
+    if (!maskLayers.has(layer.maskedBy)) {
+      return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Masked XFL layer references a missing mask layer', `${sourcePath}/layer[${index}]`);
+    }
+    linkedLayerCountByMask.set(layer.maskedBy, (linkedLayerCountByMask.get(layer.maskedBy) ?? 0) + 1);
+  }
+
+  const clipPathByMaskId = new Map<string, FlaResolvedClipPath>();
+  for (const [maskId, layer] of maskLayers) {
+    if ((linkedLayerCountByMask.get(maskId) ?? 0) === 0) {
+      return failure('UNSUPPORTED_DISPLAY_CONTENT', 'XFL mask has no linked masked layer', `${sourcePath}:${maskId}`);
+    }
+    const maskPath = `${sourcePath}/mask(${layer.name})`;
+    const resolvedMask = resolveElements(
+      layer.elements,
+      parentTransform,
+      symbolStack,
+      nestingDepth,
+      maskPath,
+      context,
+      [],
+    );
+    if (!resolvedMask.ok) return resolvedMask;
+    const maskShapes = collectMaskShapes(resolvedMask.nodes, maskPath);
+    if (!maskShapes.ok) return maskShapes;
+    clipPathByMaskId.set(maskId, { shapes: maskShapes.shapes });
+  }
+
   const layers: FlaResolvedDisplayLayer[] = [];
   for (let layerIndex = 0; layerIndex < frameContext.layers.length; layerIndex += 1) {
     const layer = frameContext.layers[layerIndex];
@@ -293,7 +397,16 @@ function resolveLayers(
     const layerBudgetFailure = enterSourceNode(context, layerPath);
     if (layerBudgetFailure) return layerBudgetFailure;
     if (!layer) return failure('INVALID_INPUT', 'Missing layer entry', layerPath);
+    if (layer.maskLayerId) continue;
     if (!layer.visible) continue;
+
+    const ownClipPath = layer.maskedBy ? clipPathByMaskId.get(layer.maskedBy) : undefined;
+    if (layer.maskedBy && !ownClipPath) {
+      return failure('UNSUPPORTED_DISPLAY_CONTENT', 'Masked XFL layer has no usable mask geometry', layerPath);
+    }
+    const activeClipPaths = ownClipPath
+      ? [...inheritedClipPaths, ownClipPath]
+      : inheritedClipPaths;
 
     const resolved = resolveElements(
       layer.elements,
@@ -302,6 +415,7 @@ function resolveLayers(
       nestingDepth,
       `${layerPath}:${layer.name}`,
       context,
+      activeClipPaths,
     );
     if (!resolved.ok) return resolved;
     layers.push({ name: layer.name, children: resolved.nodes });
@@ -316,6 +430,7 @@ function resolveElements(
   nestingDepth: number,
   sourcePath: string,
   context: ResolveContext,
+  clipPaths: readonly FlaResolvedClipPath[],
 ): ResolveNodesResult {
   if (!Array.isArray(elements)) {
     return failure('INVALID_INPUT', 'Frame or group elements must be an array', sourcePath);
@@ -343,7 +458,7 @@ function resolveElements(
       if (!element.shapeId) return failure('INVALID_INPUT', 'Shape reference is empty', elementPath);
       const budgetFailure = addResolvedNode(context, elementPath);
       if (budgetFailure) return budgetFailure;
-      nodes.push({ kind: 'shape', shapeId: element.shapeId, worldTransform });
+      nodes.push({ kind: 'shape', shapeId: element.shapeId, worldTransform, ...(clipPaths.length ? { clipPaths } : {}) });
       continue;
     }
 
@@ -351,7 +466,7 @@ function resolveElements(
       if (!element.libraryItemName) return failure('INVALID_INPUT', 'Bitmap reference is empty', elementPath);
       const budgetFailure = addResolvedNode(context, elementPath);
       if (budgetFailure) return budgetFailure;
-      nodes.push({ kind: 'bitmap', libraryItemName: element.libraryItemName, worldTransform });
+      nodes.push({ kind: 'bitmap', libraryItemName: element.libraryItemName, worldTransform, ...(clipPaths.length ? { clipPaths } : {}) });
       continue;
     }
 
@@ -372,6 +487,7 @@ function resolveElements(
         nextDepth,
         `${elementPath}:${element.groupId}`,
         context,
+        clipPaths,
       );
       if (!children.ok) return children;
       nodes.push({ kind: 'group', groupId: element.groupId, worldTransform, children: children.nodes });
@@ -423,6 +539,7 @@ function resolveElements(
       nextDepth,
       `${elementPath}:symbol(${element.libraryItemName})`,
       context,
+      clipPaths,
     );
     if (!childLayers.ok) return childLayers;
     nodes.push({

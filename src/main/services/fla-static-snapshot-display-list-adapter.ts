@@ -5,7 +5,8 @@
  * this adapter converts them once to Panda's back-to-front painter order.
  * Within-layer elements retain their authored order. Graphic frame selection
  * adds one fail-closed, source-bounded transform-only motion subset; unrelated XFL
- * semantics (shape tweens, masks, text, filters, or ActionScript) remain unsupported.
+ * semantics (shape tweens, non-vector/animated masks, text, filters, or ActionScript)
+ * remain unsupported. Static filled-vector mask layers have a bounded resolver path.
  */
 
 import crypto from 'node:crypto';
@@ -664,6 +665,13 @@ function buildFrameContext(
     return fail('RENDER_FAILED', 'Selected frame index must be a non-negative integer');
   }
   const layers = layersForTimeline(timelineXml);
+  const maskLayerIds = new Map<number, string>();
+  for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
+    const layer = layers[layerIndex];
+    if ((layer?.attributes.layerType ?? '').toLocaleLowerCase('en-US') === 'mask') {
+      maskLayerIds.set(layerIndex, `${scope}/mask-layer-${layerIndex}`);
+    }
+  }
   const resolvedLayers: FlaDisplayListFrameContext['layers'][number][] = [];
   const unsupportedDisplayReasons: string[] = [];
   for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
@@ -701,10 +709,22 @@ function buildFrameContext(
     const visible = layer.attributes.visible !== 'false' &&
       layer.attributes.isVisible !== 'false' &&
       layerType !== 'guide' && layerType !== 'folder' && layerType !== 'camera';
+    const parentLayerIndexRaw = layer.attributes.parentLayerIndex;
+    let maskedBy: string | undefined;
+    if (parentLayerIndexRaw !== undefined) {
+      const parentLayerIndex = Number(parentLayerIndexRaw);
+      if (!Number.isSafeInteger(parentLayerIndex) || parentLayerIndex < 0 || !maskLayerIds.has(parentLayerIndex)) {
+        unsupportedDisplayReasons.push('Masked XFL layer references a missing or unsupported parent mask layer');
+      } else {
+        maskedBy = maskLayerIds.get(parentLayerIndex);
+      }
+    }
     resolvedLayers.push({
       name: layer.attributes.name?.trim() || `Layer ${layerIndex + 1}`,
       visible,
       elements,
+      ...(layerType === 'mask' ? { maskLayerId: maskLayerIds.get(layerIndex) } : {}),
+      ...(maskedBy ? { maskedBy } : {}),
     });
   }
   return {
@@ -844,6 +864,13 @@ function buildGraphicFrameContext(
   if (!resolution.ok) return fail('RENDER_FAILED', resolution.message);
 
   const layers = layersForTimeline(timelineXml);
+  const maskLayerIds = new Map<number, string>();
+  for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
+    const layer = layers[layerIndex];
+    if ((layer?.attributes.layerType ?? '').toLocaleLowerCase('en-US') === 'mask') {
+      maskLayerIds.set(layerIndex, `${scope}/mask-layer-${layerIndex}`);
+    }
+  }
   const resolvedLayers: FlaDisplayListFrameContext['layers'][number][] = [];
   const unsupportedDisplayReasons: string[] = [];
   for (const selection of resolution.layers) {
@@ -921,10 +948,24 @@ function buildGraphicFrameContext(
       elements = [{ ...startTarget, localTransform: interpolated.matrix }];
     }
 
+    let maskedBy: string | undefined;
+    const parentLayerIndexRaw = layer.attributes.parentLayerIndex;
+    if (parentLayerIndexRaw !== undefined) {
+      const parentLayerIndex = Number(parentLayerIndexRaw);
+      if (!Number.isSafeInteger(parentLayerIndex) || parentLayerIndex < 0 || !maskLayerIds.has(parentLayerIndex)) {
+        unsupportedDisplayReasons.push('Masked XFL layer references a missing or unsupported parent mask layer');
+      } else {
+        maskedBy = maskLayerIds.get(parentLayerIndex);
+      }
+    }
     resolvedLayers.push({
       name: layer.attributes.name?.trim() || `Layer ${selection.layerIndex + 1}`,
       visible: selection.visible,
       elements,
+      ...(maskLayerIds.has(selection.layerIndex)
+        ? { maskLayerId: maskLayerIds.get(selection.layerIndex) }
+        : {}),
+      ...(maskedBy ? { maskedBy } : {}),
     });
   }
   return {

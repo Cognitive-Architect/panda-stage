@@ -36,13 +36,17 @@ async function buildSyntheticFla(
     includeLibrary?: boolean;
     symbolName?: string;
     symbolNames?: string[];
+    sceneSymbolNames?: string[];
     graphicFrameCount?: number;
     graphicFrames?: readonly SyntheticGraphicFrame[];
     includeSceneShape?: boolean;
+    includeVectorMask?: boolean;
+    includeBitmapMask?: boolean;
   } = {},
 ): Promise<Uint8Array> {
   const includeLibrary = options.includeLibrary ?? true;
   const symbolNames = options.symbolNames ?? [options.symbolName ?? 'synthetic-symbol'];
+  const sceneSymbolNames = options.sceneSymbolNames ?? symbolNames;
   const graphicFrames: readonly SyntheticGraphicFrame[] = options.graphicFrames ?? Array.from(
     { length: options.graphicFrameCount ?? 1 },
     (_, index): SyntheticGraphicFrame => ({ index, tx: 10 + index, color: '#336699' }),
@@ -53,7 +57,7 @@ async function buildSyntheticFla(
   // Main scene: contains a DOMTimeline that places the graphic symbol.
   const sceneBody = includeLibrary
     ? `<elements>
-        ${symbolNames.map((name) => `<DOMSymbolInstance libraryItemName="${name}">
+        ${sceneSymbolNames.map((name) => `<DOMSymbolInstance libraryItemName="${name}">
           <matrix a="1" d="1" tx="0" ty="0"/>
         </DOMSymbolInstance>`).join('\n        ')}
       </elements>`
@@ -113,16 +117,38 @@ async function buildSyntheticFla(
               ${frame.unsupportedElement ?? ''}
             </DOMFrame>`;
       }).join('\n            ');
+      const timelineLayers = options.includeVectorMask || options.includeBitmapMask
+        ? `<DOMLayer name="mask" layerType="mask">
+            <frames><DOMFrame index="0" duration="1"><elements>
+              ${options.includeBitmapMask
+                ? `<DOMBitmapInstance libraryItemName="missing-mask-bitmap"><matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix></DOMBitmapInstance>`
+                : `<DOMShape>
+                    <matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix>
+                    <fills><FillStyle index="1"><SolidColor color="#FF0000" alpha="1"/></FillStyle></fills>
+                    <strokes/><edges><Edge fillStyle1="1" cubics="!0 0|50 0|50 100|0 100|0 0"/></edges>
+                  </DOMShape>`}
+            </elements></DOMFrame></frames>
+          </DOMLayer>
+          <DOMLayer name="masked-content" parentLayerIndex="0">
+            <frames><DOMFrame index="0" duration="1"><elements>
+              <DOMShape>
+                <matrix><Matrix a="1" d="0" tx="0" ty="0"/></matrix>
+                <fills><FillStyle index="1"><SolidColor color="#336699" alpha="1"/></FillStyle></fills>
+                <strokes/><edges><Edge fillStyle1="1" cubics="${SIMPLE_RECT_CUBICS}"/></edges>
+              </DOMShape>
+            </elements></DOMFrame></frames>
+          </DOMLayer>`
+        : `<DOMLayer name="symbolLayer">
+            <frames>
+              ${frames}
+            </frames>
+          </DOMLayer>`;
       const libXml = `<?xml version="1.0" encoding="UTF-8"?>
 <DOMSymbolItem xmlns="http://ns.adobe.com/xfl/2008/" name="${currentSymbolName}" symbolType="graphic">
   <timeline>
     <DOMTimeline name="symbolTimeline">
       <layers>
-        <DOMLayer name="symbolLayer">
-          <frames>
-            ${frames}
-          </frames>
-        </DOMLayer>
+        ${timelineLayers}
       </layers>
     </DOMTimeline>
   </timeline>
@@ -191,6 +217,67 @@ describe('R1-B SVG builder: catalog discovery', () => {
     expect(graphicTargets[0]?.userLabel).not.toBe(graphicTargets[1]?.userLabel);
     expect(graphicTargets[0]?.renderTargetId).not.toBe(graphicTargets[1]?.renderTargetId);
     expect(new Set(graphicTargets.map((target) => target.renderTargetId)).size).toBe(2);
+  });
+
+  it('keeps a visible Scene root selectable when the bounded catalog would omit it', async () => {
+    const symbolNames = [
+      ...Array.from({ length: 70 }, (_, index) => `filler-${String(index).padStart(2, '0')}`),
+      'scene-root',
+    ];
+    const bytes = await buildSyntheticFla({
+      symbolNames,
+      sceneSymbolNames: ['scene-root'],
+      includeSceneShape: false,
+    });
+
+    const catalog = await buildRenderableTargetCatalog(bytes);
+
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+    expect(catalog.entries).toHaveLength(64);
+    expect(catalog.omittedCandidateCount).toBe(8);
+    expect(catalog.entries.at(-1)?.target.sourceLibraryItemName).toBe('scene-root');
+    expect(catalog.entries.some((entry) => entry.target.sourceLibraryItemName === 'filler-62')).toBe(false);
+  });
+
+  it('renders static XFL mask layers as vector clips instead of visible mask artwork', async () => {
+    const bytes = await buildSyntheticFla({
+      symbolName: 'masked-root',
+      includeSceneShape: false,
+      includeVectorMask: true,
+    });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+
+    const candidate = catalog.entries.find((entry) =>
+      entry.target.kind === 'graphic-symbol' && entry.target.sourceLibraryItemName === 'masked-root',
+    );
+    expect(candidate?.previewSupported).toBe(true);
+    if (!candidate) return;
+
+    const preview = await buildSvgForRenderTarget(bytes, candidate.target);
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) return;
+    expect(preview.svg).toContain('<clipPath');
+    expect(preview.svg).toContain('clip-path="url(#fla-mask-clip-');
+    expect(preview.svg).toContain('fill="#336699"');
+    expect(preview.svg).not.toContain('#FF0000');
+  });
+
+  it('keeps unsupported bitmap mask items fail-closed in the catalog', async () => {
+    const bytes = await buildSyntheticFla({
+      symbolName: 'unsupported-bitmap-mask',
+      includeSceneShape: false,
+      includeBitmapMask: true,
+    });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+
+    const candidate = catalog.entries.find((entry) => entry.target.kind === 'graphic-symbol');
+    expect(candidate?.previewSupported).toBe(false);
+    expect(candidate?.unsupportedReason).toContain('Only static vector shapes and groups are supported as mask items');
   });
 
   it('reports a multi-frame graphic target for the R2 bridge fixture', async () => {
