@@ -879,16 +879,22 @@ async function verifyCharacterImport(window, project) {
   assert(selection.selectedCount === 1 && selection.rowSelected && selection.rowSelectable, 'Explicit selection did not pin exactly one supported candidate.');
   assert((await readUiRevision(window)) === revisionBefore, 'Selecting/previewing the character changed the Project revision before commit.');
   runtime.screenshots.importPreview = await capture(window, join(runtime.repoEvidenceDir, 'bluehair-com809-selected-one-before-import.png'));
-  const previewEvent = runtime.previews.findLast((event) =>
+  const displayedPreviewEvent = runtime.previews.findLast((event) =>
     event.sessionId === inspection.inspection.sessionId &&
     event.target.renderTargetId === BLUEHAIR_TARGET_ID &&
     event.target.selectedFrameIndex === 0 &&
-    event.ok,
+    event.ok &&
+    event.bytesSha256 === previewSha256,
   );
-  assert(previewEvent && previewEvent.bytesSha256 === previewSha256, 'Main preview SHA did not match the displayed candidate bytes.');
+  assert(displayedPreviewEvent, 'The Main preview event did not match the PNG currently displayed to the user.');
+  const previewCountBeforeCommit = runtime.previews.length;
   await click(window, '[data-testid="fla-snapshot-import"]');
   await waitForExpression(window, `Boolean(document.querySelector('[data-testid="fla-snapshot-import-counts"]'))`, 180_000);
   const commit = runtime.snapshotCommits.at(-1);
+  const commitPreviewIndex = runtime.previews.findLastIndex((event) =>
+    event.requestId === commit?.confirmedPreviewRequestId,
+  );
+  const commitPreviewEvent = commitPreviewIndex >= 0 ? runtime.previews[commitPreviewIndex] : null;
   assert(commit?.ok && commit.confirmed, 'Main did not complete the explicit snapshot commit.');
   assert(commit.projectRoot === project.projectRoot, 'Snapshot was committed to a different project root.');
   assert(commit.sessionId === inspection.inspection.sessionId, 'Snapshot commit was not bound to the inspected session.');
@@ -902,8 +908,16 @@ async function verifyCharacterImport(window, project) {
     'Main preflight did not preserve the original FLA SHA alongside the normalized session identity.',
   );
   assert(commit.target?.renderTargetId === BLUEHAIR_TARGET_ID && commit.target?.selectedFrameIndex === 0 && commit.target.sourceLibraryItemName === BLUEHAIR_TARGET, 'Snapshot commit target/frame differs from the selected com809 candidate.');
-  assert(commit.confirmedPreviewRequestId === previewEvent.requestId, 'Snapshot commit did not pin the preview request the user saw.');
-  assert(commit.preview?.sha256 === previewSha256 && commit.preview.sha256 === previewEvent.sha256, 'Snapshot commit preview SHA differs from the rendered PNG.');
+  assert(
+    commitPreviewEvent &&
+      commitPreviewIndex >= previewCountBeforeCommit &&
+      commitPreviewEvent.sessionId === inspection.inspection.sessionId &&
+      commitPreviewEvent.target.renderTargetId === BLUEHAIR_TARGET_ID &&
+      commitPreviewEvent.target.selectedFrameIndex === 0 &&
+      commitPreviewEvent.bytesSha256 === previewSha256,
+    'The Main commit-time confirmed preview did not match the displayed PNG source/session/target/frame.',
+  );
+  assert(commit.preview?.sha256 === previewSha256 && commit.preview.sha256 === commitPreviewEvent.sha256, 'Snapshot commit preview SHA differs from the rendered PNG.');
   assert(commit.result?.status === 'imported' && commit.projectChanged === true, 'The chosen character was not committed as a new asset.');
   const projectAfterImport = readProjectState(project.projectRoot);
   assert(projectAfterImport.assetCount === 1, `Expected exactly one character asset, got ${projectAfterImport.assetCount}.`);
@@ -971,6 +985,8 @@ async function verifyCharacterImport(window, project) {
       selection,
       previewSha256,
       previewBytes: previewBytes.length,
+      displayedPreviewRequestId: displayedPreviewEvent.requestId,
+      commitPreviewRequestId: commitPreviewEvent.requestId,
       alpha,
     },
     commit,
