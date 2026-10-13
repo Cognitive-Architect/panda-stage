@@ -549,7 +549,7 @@
       }
     ]
   },
-  "count": 77,
+  "count": 78,
   "gates": [
     {
       "id": "issue663-dialogue-voice",
@@ -670,6 +670,18 @@
       "owner": "fla-import",
       "supersedes": null,
       "notes": "Real Windows Electron UI verifier for the Stage D zero-raster static snapshot workbench: shared R1/R2 mode shell, three-zone read-only presentation, preview-before-import and target/frame stale invalidation, explicit ImageAsset commit, store/disk synchronization, and source hash invariance."
+    },
+    {
+      "id": "issue767-u1",
+      "script": "verify:issue767-u1",
+      "suite": "assets",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Focused Windows Electron proof that bitmap-only, vector-only, and mixed FLA sources enter one import shell, keep bitmap selection empty, preserve existing content adapters, and cancel without project or source mutation."
     },
     {
       "id": "issue399-stage-e",

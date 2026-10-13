@@ -111,7 +111,14 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(component).toContain('仅素材库');
     expect(component).toContain('兼容性说明');
     expect(component).toContain('导入前检查');
-    expect(component).toContain('FLA 素材工作台');
+    expect(component).toContain('FLA 导入工作台');
+    expect(component).toContain('data-testid="fla-import-workbench-tabs"');
+    expect(component).toContain('data-testid="fla-workbench-tab-compositions"');
+    expect(component).toContain('data-testid="fla-workbench-tab-source-assets"');
+    expect(component).toContain('组合素材');
+    expect(component).toContain('原始位图 / 零件');
+    expect(component).toContain('setSelectedMediaIds(new Set())');
+    expect(component).not.toContain('new Set(nextResponse.ir.media.map((media) => media.id))');
     expect(component).toContain('<dt>目标文件名</dt>');
     expect(component).not.toContain('FLA V1 · Slice 2');
     expect(component).not.toContain('第 3 阶段');
@@ -126,7 +133,7 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(stageA).toContain('data-stage-a-state="inspecting"');
     expect(stageA).toContain('data-workbench-route="inspection"');
     expect(stageA).toContain('data-testid="fla-review-session"');
-    expect(stageA).toContain('FLA WORKBENCH');
+    expect(stageA).toContain('FLA 导入工作台');
     expect(stageA).toContain('检查中');
     expect(stageA).toContain('data-ring-count="3"');
     expect(stageA).toContain('data-placeholder-authoritative="false"');

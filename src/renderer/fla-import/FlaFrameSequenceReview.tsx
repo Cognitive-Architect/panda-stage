@@ -60,6 +60,7 @@ interface FlaFrameSequenceReviewProps {
   onImported: (response: FlaFrameSequenceCommitResponse) => void;
   onClose: () => void;
   onCommitStateChange?: (busy: boolean) => void;
+  onWorkInProgressChange?: (busy: boolean) => void;
   onTerminalStateChange?: (state: FlaStageGTerminalState) => void;
 }
 
@@ -81,6 +82,7 @@ export function FlaFrameSequenceReview({
   onImported,
   onClose,
   onCommitStateChange,
+  onWorkInProgressChange,
   onTerminalStateChange,
 }: FlaFrameSequenceReviewProps): React.JSX.Element {
   const [phase, setPhase] = useState<RenderPhase>('loading');
@@ -151,6 +153,12 @@ export function FlaFrameSequenceReview({
       : hasPreview
         ? phase === 'committed' ? 'committed' : 'valid'
         : 'needs-preview';
+
+  useEffect(() => {
+    onWorkInProgressChange?.(phase === 'loading' || phase === 'rendering');
+  }, [onWorkInProgressChange, phase]);
+
+  useEffect(() => () => onWorkInProgressChange?.(false), [onWorkInProgressChange]);
 
   useEffect(() => {
     onCommitStateChange?.(false);

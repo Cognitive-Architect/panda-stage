@@ -51,8 +51,8 @@ describe('Issue #390 Stage B direct-raster Workbench contract', () => {
     expect(detail).toContain('className="fla-review-detail-warnings"');
   });
 
-  it('preserves default selection and keyboard selection while adding focused detail', () => {
-    expect(component).toContain('new Set(nextResponse.ir.media.map((media) => media.id))');
+  it('keeps selection opt-in and preserves keyboard selection while adding focused detail', () => {
+    expect(component).toContain('setSelectedMediaIds(new Set())');
     expect(component).toContain('setFocusedMediaId(nextResponse.ir.media[0]?.id ?? null)');
     expect(component).toContain('onFocus={() => setFocusedMediaId(item.media.id)}');
     expect(card).toContain('onClickCapture={onFocus}');

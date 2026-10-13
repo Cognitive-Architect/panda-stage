@@ -19,10 +19,15 @@ const verifier = readFileSync('scripts/verify-issue396-stage-d.cjs', 'utf8');
 
 describe('Issue #398 Stage D deletion-first presentation contract', () => {
   it('keeps one workbench identity and removes duplicated explanation', () => {
-    expect(workbench).toContain('FLA 渲染工作台');
+    expect(workbench).toContain('组合素材');
+    expect(session).toContain('FLA 导入工作台');
+    expect(session).toContain('data-testid="fla-workbench-tab-compositions"');
+    expect(session).toContain('data-testid="fla-workbench-tab-source-assets"');
     expect(workbench).toContain('<span> · 只读</span>');
     expect(workbench).not.toContain('源 FLA 保持不变');
-    expect(session).toContain("rasterRoute ? (");
+    expect(session).toContain("contentRoute === 'v1-raster-review'");
+    expect(session).toContain('hidden={!rasterRoute');
+    expect(session).toContain('hidden={!compositionRoute}');
     expect(session).not.toContain('fla-review-zero-raster-summary');
     expect(snapshot).toContain('data-testid="fla-snapshot-target-search"');
     expect(snapshot).toContain('data-testid="fla-snapshot-target-count"');
@@ -41,6 +46,7 @@ describe('Issue #398 Stage D deletion-first presentation contract', () => {
   it('assigns scrolling to the bounded target/detail regions', () => {
     const v11 = styles.slice(styles.indexOf('/* Issue #397:'));
     const v12 = styles.slice(styles.lastIndexOf('/* Issue #398'));
+    const u1 = styles.slice(styles.lastIndexOf('/* Issue #767 U1:'));
     expect(v11).toContain(".fla-review-session[data-workbench-route='render'] .fla-review-body");
     expect(v11).toMatch(
       /\.fla-review-session\[data-workbench-route='render'\] \.fla-review-body\s*\{[\s\S]*?overflow:\s*hidden;/u,
@@ -57,6 +63,9 @@ describe('Issue #398 Stage D deletion-first presentation contract', () => {
     expect(v12).toContain('/* Issue #398');
     expect(v12).toContain('grid-template-rows: minmax(0, 1fr);');
     expect(v12).toContain('.fla-snapshot-stage-fact');
+    expect(u1).toMatch(
+      /\.fla-review-portal \.fla-review-session\[data-workbench-route='render'\]\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0, 1fr\);/u,
+    );
   });
 
   it('proves the long-list layout and keeps the existing business path in the real verifier', () => {
@@ -71,6 +80,7 @@ describe('Issue #398 Stage D deletion-first presentation contract', () => {
     expect(verifier).toContain('stageDv11Layout');
     expect(verifier).toContain('stageDv12Deletion');
     expect(verifier).toContain('deletionChecks');
+    expect(verifier).toContain('unifiedImportShellVisible');
     expect(verifier).toContain('input[type="checkbox"]');
     expect(verifier).toContain('const selectTwoCandidates');
     expect(verifier).toContain('li[data-duplicate="true"]');

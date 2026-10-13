@@ -164,3 +164,4 @@
 @import './styles/features/timeline/standalone-audio.css';
 @import './styles/features/dialogue/properties/audio-picker.css';
 @import './styles/features/fla-import/render/fla-snapshot-preview-fit.css';
+@import './styles/features/fla-import/raster/issue767-u1-workbench-tabs.css';

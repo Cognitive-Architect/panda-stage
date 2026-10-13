@@ -1236,7 +1236,9 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         document.querySelector('[data-testid="fla-render-workbench"]') !== null &&
         document.querySelector('[data-testid="fla-review-zero-raster-summary"]') === null;
       const deletionChecks = {
-        renderHeaderRemoved: document.querySelector('[data-workbench-route="render"] [data-testid="fla-review-header"]') === null,
+        unifiedImportShellVisible: document.querySelector('[data-workbench-route="render"] [data-testid="fla-review-header"]')?.textContent?.includes('FLA 导入工作台') === true &&
+          document.querySelectorAll('[data-testid="fla-import-workbench-tabs"] [role="tab"]').length === 2 &&
+          document.querySelector('[data-testid="fla-workbench-tab-compositions"]')?.getAttribute('aria-selected') === 'true',
         genericRecoveryNoticeRemoved: document.querySelector('[data-testid="fla-review-recovery-notice"]') === null,
         zeroRasterSummaryRemoved: document.querySelector('[data-testid="fla-review-zero-raster-summary"]') === null,
         sourceFilenameSingle: sourceBasename.length > 0 && countOccurrences(reviewBodyText, sourceBasename) === 1,

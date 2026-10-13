@@ -39,6 +39,7 @@ interface FlaStaticSnapshotReviewProps {
   onImported: (response: FlaStaticSnapshotCommitResponse) => void;
   onClose: () => void;
   onCommitStateChange?: (busy: boolean) => void;
+  onWorkInProgressChange?: (busy: boolean) => void;
   onTerminalStateChange?: (state: FlaStageGTerminalState) => void;
 }
 
@@ -75,6 +76,7 @@ export function FlaStaticSnapshotReview({
   onImported,
   onClose,
   onCommitStateChange,
+  onWorkInProgressChange,
   onTerminalStateChange,
 }: FlaStaticSnapshotReviewProps): React.JSX.Element {
   const [phase, setPhase] = useState<SnapshotPhase>('loading');
@@ -157,6 +159,12 @@ export function FlaStaticSnapshotReview({
     : phase === 'scanning'
       ? `正在检查候选预览 ${scanProgress} / ${entries.length}；目前 ${supportedEntries.length} 项可导入、${unsupportedCount} 项暂不可导入、${blankCount} 项为空白。`
       : `检查完成：${supportedEntries.length} 项可导入、${unsupportedCount} 项暂不可导入、${blankCount} 项为空白。`;
+
+  useEffect(() => {
+    onWorkInProgressChange?.(phase === 'loading' || phase === 'scanning');
+  }, [onWorkInProgressChange, phase]);
+
+  useEffect(() => () => onWorkInProgressChange?.(false), [onWorkInProgressChange]);
 
   const updateFocusedPreview = useCallback((next: FocusedSnapshotPreview | null): void => {
     const nextUrl = next?.status === 'ready' ? next.url : null;

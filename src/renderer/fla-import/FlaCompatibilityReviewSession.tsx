@@ -54,7 +54,11 @@ import {
 } from './FlaStageGTerminal';
 import { FlaStageAInspecting } from './FlaStageAInspecting';
 import { FlaStageF3Blocked } from './FlaStageF';
-import { routeFlaInspection } from './fla-content-route';
+import {
+  defaultFlaWorkbenchSection,
+  routeFlaInspection,
+  type FlaWorkbenchSection,
+} from './fla-content-route';
 
 interface FlaCompatibilityReviewSessionProps {
   inspection: FlaInspectionOperation;
@@ -98,6 +102,9 @@ export function FlaCompatibilityReviewSession({
   const [rasterPageSize, setRasterPageSize] = useState<number>(FLA_RASTER_REVIEW_PAGE_SIZES[0]);
   const [rasterFilter, setRasterFilter] = useState<FlaRasterReviewFilter>('all');
   const [rasterSearch, setRasterSearch] = useState('');
+  const [workbenchSection, setWorkbenchSection] = useState<FlaWorkbenchSection>('compositions');
+  const [compositionWorkbenchMounted, setCompositionWorkbenchMounted] = useState(false);
+  const [compositionWorkInProgress, setCompositionWorkInProgress] = useState(false);
   const [renderMode, setRenderMode] = useState<FlaRenderWorkbenchMode>('snapshot');
   const [renderCommitBusy, setRenderCommitBusy] = useState(false);
   const [renderTerminalState, setRenderTerminalState] = useState<FlaStageGTerminalState>('active');
@@ -117,9 +124,11 @@ export function FlaCompatibilityReviewSession({
         setResponse(nextResponse);
         if (nextResponse.ok) {
           setSessionId(nextResponse.sessionId);
-          setSelectedMediaIds(
-            new Set(nextResponse.ir.media.map((media) => media.id)),
-          );
+          setSelectedMediaIds(new Set());
+          const initialSection = defaultFlaWorkbenchSection(nextResponse.ir.media.length);
+          setWorkbenchSection(initialSection);
+          setCompositionWorkbenchMounted(initialSection === 'compositions');
+          setCompositionWorkInProgress(initialSection === 'compositions');
           setFocusedMediaId(nextResponse.ir.media[0]?.id ?? null);
           setRasterPage(1);
           setRasterPageSize(16);
@@ -322,7 +331,20 @@ export function FlaCompatibilityReviewSession({
 
   const counts = compatibilityCounts(ir);
   const warnings = compatibilityWarnings(ir);
-  const rasterRoute = contentRoute === 'v1-raster-review';
+  const hasSourceBitmaps = contentRoute === 'v1-raster-review';
+  const rasterRoute = hasSourceBitmaps && workbenchSection === 'source-assets';
+  const compositionRoute = workbenchSection === 'compositions';
+  const workbenchActionsLocked =
+    phase === 'committing' ||
+    phase === 'success' ||
+    renderCommitBusy ||
+    renderTerminalState !== 'active' ||
+    compositionWorkInProgress;
+  const workbenchCloseLocked =
+    phase === 'committing' ||
+    phase === 'success' ||
+    renderCommitBusy ||
+    renderTerminalState !== 'active';
   const rasterCommitError = rasterRoute && commitResponse && !commitResponse.ok
     ? commitResponse
     : null;
@@ -332,6 +354,15 @@ export function FlaCompatibilityReviewSession({
     : phase === 'confirmed'
       ? 'confirm'
       : 'import';
+  const selectWorkbenchSection = (section: FlaWorkbenchSection): void => {
+    if (workbenchActionsLocked) return;
+    if (section === 'source-assets' && !hasSourceBitmaps) return;
+    if (section === 'compositions') {
+      if (!compositionWorkbenchMounted) setCompositionWorkInProgress(true);
+      setCompositionWorkbenchMounted(true);
+    }
+    setWorkbenchSection(section);
+  };
   const toggle = (mediaId: string): void => {
     if (selectionLocked) return;
     rememberReviewScroll();
@@ -410,7 +441,7 @@ export function FlaCompatibilityReviewSession({
   return (
     <FlaReviewPortal>
       <section
-        aria-label="FLA 兼容性预览"
+        aria-label="FLA 导入工作台"
         aria-modal="true"
         className="fla-review-session"
         data-review-layout="portal"
@@ -418,29 +449,60 @@ export function FlaCompatibilityReviewSession({
         data-workbench-route={rasterRoute ? 'raster' : 'render'}
         role="dialog"
       >
-        {rasterRoute ? (
-          <header className="fla-review-heading fla-raster-review-heading" data-testid="fla-review-header">
-            <div className="fla-review-heading-copy">
-              <h2>FLA 素材工作台</h2>
-            </div>
-            {phase !== 'committing' && phase !== 'success' && !rasterCommitError ? (
-              <ol aria-label="导入进度" className="fla-workbench-progress" data-current-step={progressStep}>
-                <li aria-current={progressStep === 'select' ? 'step' : undefined}>选择素材</li>
-                <li aria-current={progressStep === 'confirm' ? 'step' : undefined}>确认选择</li>
-                <li aria-current={progressStep === 'import' ? 'step' : undefined}>导入素材</li>
-              </ol>
-            ) : null}
-            {phase !== 'committing' && phase !== 'success' && !rasterCommitError ? (
+        <header className="fla-review-heading fla-raster-review-heading" data-testid="fla-review-header">
+          <div className="fla-review-heading-copy">
+            <h2>FLA 导入工作台</h2>
+            <nav
+              aria-label="FLA 素材类型"
+              className="fla-import-workbench-tabs"
+              data-testid="fla-import-workbench-tabs"
+              role="tablist"
+            >
               <button
-                data-testid="fla-review-cancel"
-                onClick={() => void closeSession()}
+                aria-controls="fla-composition-panel"
+                aria-selected={compositionRoute}
+                className="fla-import-workbench-tab"
+                data-testid="fla-workbench-tab-compositions"
+                disabled={workbenchActionsLocked}
+                id="fla-workbench-tab-compositions"
+                onClick={() => selectWorkbenchSection('compositions')}
+                role="tab"
                 type="button"
               >
-                取消
+                组合素材
               </button>
-            ) : null}
-          </header>
-        ) : null}
+              <button
+                aria-controls="fla-source-assets-panel"
+                aria-selected={rasterRoute}
+                className="fla-import-workbench-tab"
+                data-testid="fla-workbench-tab-source-assets"
+                disabled={!hasSourceBitmaps || workbenchActionsLocked}
+                id="fla-workbench-tab-source-assets"
+                onClick={() => selectWorkbenchSection('source-assets')}
+                role="tab"
+                type="button"
+              >
+                原始位图 / 零件
+              </button>
+            </nav>
+          </div>
+          {rasterRoute && phase !== 'committing' && phase !== 'success' && !rasterCommitError ? (
+            <ol aria-label="导入进度" className="fla-workbench-progress" data-current-step={progressStep}>
+              <li aria-current={progressStep === 'select' ? 'step' : undefined}>选择素材</li>
+              <li aria-current={progressStep === 'confirm' ? 'step' : undefined}>确认选择</li>
+              <li aria-current={progressStep === 'import' ? 'step' : undefined}>导入素材</li>
+            </ol>
+          ) : null}
+          {!workbenchCloseLocked && !rasterCommitError ? (
+            <button
+              data-testid="fla-review-cancel"
+              onClick={() => void closeSession()}
+              type="button"
+            >
+              取消
+            </button>
+          ) : null}
+        </header>
 
         <div
           className="fla-review-body"
@@ -466,9 +528,11 @@ export function FlaCompatibilityReviewSession({
               headline={`正在导入 ${intent?.selectedCount ?? selectedCount} 项位图素材…`}
               route="raster"
             />
-          ) : rasterRoute && phase === 'success' && commitResponse?.ok && commitResponse.status === 'completed' ? (
+          ) : null}
+          {rasterRoute && phase === 'success' && commitResponse?.ok && commitResponse.status === 'completed' ? (
             <FlaStageGRasterSuccess onReturn={closeSession} response={commitResponse} />
-          ) : rasterCommitError ? (
+          ) : null}
+          {rasterCommitError ? (
             <FlaStageGRecovery
               candidateStillCurrent={rasterCommitError.error.code === 'ASSET_COMMIT_FAILED' || rasterCommitError.error.code === 'COMMIT_BUSY'}
               code={rasterCommitError.error.code}
@@ -478,8 +542,16 @@ export function FlaCompatibilityReviewSession({
               residualPaths={rasterCommitError.error.residualPaths}
               route="raster"
             />
-          ) : rasterRoute ? (
-            <div className="fla-raster-workbench" data-testid="fla-raster-workbench">
+          ) : null}
+          {hasSourceBitmaps ? (
+            <div
+              aria-labelledby="fla-workbench-tab-source-assets"
+              className="fla-raster-workbench"
+              data-testid="fla-raster-workbench"
+              hidden={!rasterRoute || phase === 'committing' || phase === 'success' || Boolean(rasterCommitError)}
+              id="fla-source-assets-panel"
+              role="tabpanel"
+            >
               <aside className="fla-raster-overview" data-testid="fla-raster-overview">
                 <div>
                   <p className="fla-raster-panel-kicker">FLA 文件 · 只读预览</p>
@@ -687,13 +759,22 @@ export function FlaCompatibilityReviewSession({
                 )}
               </aside>
             </div>
-          ) : (
-            <div className="fla-review-zero-raster" data-testid="fla-review-zero-raster">
+          ) : null}
+          {compositionWorkbenchMounted ? (
+            <div
+              aria-labelledby="fla-workbench-tab-compositions"
+              className="fla-review-zero-raster"
+              data-testid="fla-review-zero-raster"
+              hidden={!compositionRoute}
+              id="fla-composition-panel"
+              role="tabpanel"
+            >
               <FlaRenderWorkbench
                 compatibility={ir.compatibility}
                 mode={renderMode}
                 onModeChange={(mode) => {
                   setRenderMode(mode);
+                  setCompositionWorkInProgress(true);
                   setRenderCommitBusy(false);
                   setRenderTerminalState('active');
                 }}
@@ -703,6 +784,7 @@ export function FlaCompatibilityReviewSession({
                 {renderMode === 'snapshot' ? (
                   <FlaStaticSnapshotReview
                     onCommitStateChange={setRenderCommitBusy}
+                    onWorkInProgressChange={setCompositionWorkInProgress}
                     onTerminalStateChange={setRenderTerminalState}
                     sessionId={sessionId}
                     source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
@@ -714,6 +796,7 @@ export function FlaCompatibilityReviewSession({
                 ) : (
                   <FlaFrameSequenceReview
                     onCommitStateChange={setRenderCommitBusy}
+                    onWorkInProgressChange={setCompositionWorkInProgress}
                     onTerminalStateChange={setRenderTerminalState}
                     sessionId={sessionId}
                     source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
@@ -725,7 +808,7 @@ export function FlaCompatibilityReviewSession({
                 )}
               </FlaRenderWorkbench>
             </div>
-          )}
+          ) : null}
         </div>
 
         {rasterRoute && phase !== 'committing' && phase !== 'success' && !rasterCommitError ? (
