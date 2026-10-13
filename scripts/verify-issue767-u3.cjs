@@ -967,6 +967,8 @@ async function createShot(window) {
   await setInput(window, '[data-testid="shot-create-name"]', shotName);
   await click(window, '[data-testid="shot-create-submit"]');
   await waitForExpression(window, `Boolean(document.querySelector('[data-testid="shot-manager"]') && !document.querySelector('[data-testid="shot-create-view"]'))`);
+  await switchActivity(window, 'assets');
+  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="asset-browser-view"]'))`);
   return shotName;
 }
 
