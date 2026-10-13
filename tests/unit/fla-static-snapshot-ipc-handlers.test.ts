@@ -50,6 +50,7 @@ const successCatalog = {
         selectedFrameIndex: 0,
         compatibility: ['degraded'],
       },
+      catalogRole: 'graphic-state',
       previewSupported: true,
       isBlank: false,
     },

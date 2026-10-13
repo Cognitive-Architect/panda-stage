@@ -31,12 +31,20 @@ interface SyntheticGraphicFrame {
   readonly unsupportedElement?: string;
 }
 
+interface SyntheticSceneSymbolInstance {
+  readonly libraryItemName: string;
+  readonly firstFrame?: string;
+  readonly visible?: boolean;
+}
+
 async function buildSyntheticFla(
   options: {
     includeLibrary?: boolean;
     symbolName?: string;
     symbolNames?: string[];
     sceneSymbolNames?: string[];
+    sceneSymbolInstances?: readonly SyntheticSceneSymbolInstance[];
+    sceneLayerVisible?: boolean;
     graphicFrameCount?: number;
     graphicFrames?: readonly SyntheticGraphicFrame[];
     includeSceneShape?: boolean;
@@ -49,6 +57,9 @@ async function buildSyntheticFla(
   const includeLibrary = options.includeLibrary ?? true;
   const symbolNames = options.symbolNames ?? [options.symbolName ?? 'synthetic-symbol'];
   const sceneSymbolNames = options.sceneSymbolNames ?? symbolNames;
+  const sceneSymbolInstances = options.sceneSymbolInstances ?? sceneSymbolNames.map(
+    (libraryItemName): SyntheticSceneSymbolInstance => ({ libraryItemName }),
+  );
   const graphicFrames: readonly SyntheticGraphicFrame[] = options.graphicFrames ?? Array.from(
     { length: options.graphicFrameCount ?? 1 },
     (_, index): SyntheticGraphicFrame => ({ index, tx: 10 + index, color: '#336699' }),
@@ -59,7 +70,7 @@ async function buildSyntheticFla(
   // Main scene: contains a DOMTimeline that places the graphic symbol.
   const sceneBody = includeLibrary
     ? `<elements>
-        ${sceneSymbolNames.map((name) => `<DOMSymbolInstance libraryItemName="${name}">
+        ${sceneSymbolInstances.map(({ libraryItemName, firstFrame, visible }) => `<DOMSymbolInstance libraryItemName="${libraryItemName}"${firstFrame === undefined ? '' : ` firstFrame="${firstFrame}"`}${visible === false ? ' isVisible="false"' : ''}>
           <matrix a="1" d="1" tx="0" ty="0"/>
         </DOMSymbolInstance>`).join('\n        ')}
       </elements>`
@@ -82,7 +93,7 @@ async function buildSyntheticFla(
   <timelines>
     <DOMTimeline name="scene1">
       <layers>
-        <DOMLayer name="layer1">
+        <DOMLayer name="layer1"${options.sceneLayerVisible === false ? ' visible="false"' : ''}>
           <frames>
             <DOMFrame index="0">${sceneBody}</DOMFrame>
           </frames>
@@ -239,7 +250,111 @@ describe('R1-B SVG builder: catalog discovery', () => {
     expect(catalog.entries).toHaveLength(64);
     expect(catalog.omittedCandidateCount).toBe(8);
     expect(catalog.entries.at(-1)?.target.sourceLibraryItemName).toBe('scene-root');
+    expect(catalog.entries.at(-1)?.catalogRole).toBe('scene-referenced-graphic');
     expect(catalog.entries.some((entry) => entry.target.sourceLibraryItemName === 'filler-62')).toBe(false);
+  });
+
+  it('prioritizes the exact Scene-referenced authored frame before the Scene and generic states', async () => {
+    const symbolNames = [
+      ...Array.from({ length: 70 }, (_, index) => `filler-${String(index).padStart(2, '0')}`),
+      'scene-root',
+    ];
+    const bytes = await buildSyntheticFla({
+      symbolNames,
+      sceneSymbolInstances: [{ libraryItemName: 'scene-root', firstFrame: '2' }],
+      graphicFrames: [
+        { index: 0, duration: 1, color: '#336699' },
+        { index: 2, duration: 1, color: '#cc3355' },
+      ],
+      includeSceneShape: false,
+    });
+
+    const catalog = await buildRenderableTargetCatalog(bytes, undefined, { includeAuthoredStates: true });
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+
+    expect(catalog.entries).toHaveLength(64);
+    expect(catalog.entries[0]).toMatchObject({
+      catalogRole: 'scene-referenced-graphic',
+      previewSupported: true,
+      isBlank: false,
+      target: {
+        kind: 'graphic-symbol',
+        sourceLibraryItemName: 'scene-root',
+        selectedFrameIndex: 2,
+      },
+    });
+    expect(catalog.entries[1]?.catalogRole).toBe('scene');
+    expect(catalog.omittedCandidateCount).toBe(79);
+    expect(new Set(catalog.entries.map((entry) => entry.target.renderTargetId)).size).toBe(64);
+  });
+
+  it('deduplicates repeated exact Scene references and keeps authored-frame target IDs distinct', async () => {
+    const bytes = await buildSyntheticFla({
+      symbolName: 'scene-root',
+      sceneSymbolInstances: [
+        { libraryItemName: 'scene-root', firstFrame: '2' },
+        { libraryItemName: 'scene-root', firstFrame: '2' },
+      ],
+      graphicFrames: [
+        { index: 0, duration: 1, color: '#336699' },
+        { index: 2, duration: 1, color: '#cc3355' },
+      ],
+      includeSceneShape: false,
+    });
+
+    const frameZeroCatalog = await buildRenderableTargetCatalog(bytes);
+    const authoredCatalog = await buildRenderableTargetCatalog(bytes, undefined, { includeAuthoredStates: true });
+    expect(frameZeroCatalog.ok).toBe(true);
+    expect(authoredCatalog.ok).toBe(true);
+    if (!frameZeroCatalog.ok || !authoredCatalog.ok) return;
+
+    const frameZero = frameZeroCatalog.entries.find((entry) =>
+      entry.target.sourceLibraryItemName === 'scene-root' && entry.target.selectedFrameIndex === 0,
+    );
+    const authoredStates = authoredCatalog.entries.filter((entry) => entry.target.sourceLibraryItemName === 'scene-root');
+    const referenced = authoredStates.filter((entry) => entry.catalogRole === 'scene-referenced-graphic');
+    const frameTwo = authoredStates.find((entry) => entry.target.selectedFrameIndex === 2);
+    expect(referenced).toHaveLength(1);
+    expect(frameTwo?.catalogRole).toBe('scene-referenced-graphic');
+    expect(frameZero?.target.renderTargetId).not.toBe(frameTwo?.target.renderTargetId);
+    expect(new Set(authoredCatalog.entries.map((entry) => entry.target.renderTargetId)).size)
+      .toBe(authoredCatalog.entries.length);
+  });
+
+  it('does not promote hidden Scene layers, hidden instances, or non-authored referenced frames', async () => {
+    const hiddenLayerBytes = await buildSyntheticFla({
+      symbolName: 'scene-root',
+      sceneLayerVisible: false,
+      includeSceneShape: false,
+    });
+    const hiddenInstanceBytes = await buildSyntheticFla({
+      symbolName: 'scene-root',
+      sceneSymbolInstances: [{ libraryItemName: 'scene-root', visible: false }],
+      includeSceneShape: false,
+    });
+    const wrongFrameBytes = await buildSyntheticFla({
+      symbolName: 'scene-root',
+      sceneSymbolInstances: [{ libraryItemName: 'scene-root', firstFrame: '1' }],
+      graphicFrames: [
+        { index: 0, duration: 1, color: '#336699' },
+        { index: 2, duration: 1, color: '#cc3355' },
+      ],
+      includeSceneShape: false,
+    });
+    const catalogs = await Promise.all([
+      buildRenderableTargetCatalog(hiddenLayerBytes, undefined, { includeAuthoredStates: true }),
+      buildRenderableTargetCatalog(hiddenInstanceBytes, undefined, { includeAuthoredStates: true }),
+      buildRenderableTargetCatalog(wrongFrameBytes, undefined, { includeAuthoredStates: true }),
+    ]);
+    expect(catalogs.every((catalog) => catalog.ok)).toBe(true);
+    const [hiddenLayerCatalog, hiddenInstanceCatalog, wrongFrameCatalog] = catalogs;
+    if (!hiddenLayerCatalog?.ok || !hiddenInstanceCatalog?.ok || !wrongFrameCatalog?.ok) return;
+
+    expect(hiddenLayerCatalog.entries.some((entry) => entry.catalogRole === 'scene')).toBe(false);
+    expect(hiddenLayerCatalog.entries.some((entry) => entry.catalogRole === 'scene-referenced-graphic')).toBe(false);
+    expect(hiddenInstanceCatalog.entries.some((entry) => entry.catalogRole === 'scene-referenced-graphic')).toBe(false);
+    expect(wrongFrameCatalog.entries.some((entry) => entry.catalogRole === 'scene-referenced-graphic')).toBe(false);
   });
 
   it('renders visible static XFL mask layers as vector clips instead of mask artwork', async () => {

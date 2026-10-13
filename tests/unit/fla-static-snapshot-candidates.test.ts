@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { FlaRenderableTargetCatalogEntry } from '../../src/shared/fla-static-snapshot-api';
+import type {
+  FlaRenderableTargetCatalogEntry,
+  FlaRenderableTargetCatalogRole,
+} from '../../src/shared/fla-static-snapshot-api';
 import {
   flaStaticSnapshotCandidateKey,
   groupFlaStaticSnapshotCandidates,
@@ -8,7 +11,12 @@ import {
 function entry(
   id: string,
   userLabel: string,
-  options: { isBlank?: boolean; previewSupported?: boolean } = {},
+  options: {
+    catalogRole?: FlaRenderableTargetCatalogRole;
+    frameIndex?: number;
+    isBlank?: boolean;
+    previewSupported?: boolean;
+  } = {},
 ): FlaRenderableTargetCatalogEntry {
   const previewSupported = options.previewSupported ?? true;
   return {
@@ -16,10 +24,12 @@ function entry(
       renderTargetId: `fla-render-target-${id}`,
       kind: 'graphic-symbol',
       userLabel,
-      frameCount: 1,
-      selectedFrameIndex: 0,
+      sourceLibraryItemName: userLabel,
+      frameCount: 3,
+      selectedFrameIndex: options.frameIndex ?? 0,
       compatibility: [],
     },
+    ...(options.catalogRole ? { catalogRole: options.catalogRole } : {}),
     previewSupported,
     isBlank: options.isBlank ?? false,
     ...(!previewSupported ? { unsupportedReason: 'unsupported test candidate' } : {}),
@@ -63,5 +73,70 @@ describe('FLA static snapshot candidate grouping', () => {
 
     expect(groups.map((group) => group.entries[0])).toEqual([supported, unsupported, blank]);
     expect(groups.map((group) => group.status)).toEqual(['supported', 'unsupported', 'blank']);
+  });
+
+  it('shows supported Scene-referenced compositions first without changing order as previews settle', () => {
+    const graphicState = entry('aaaaaaaa', '路人件', { catalogRole: 'graphic-state' });
+    const scene = entry('bbbbbbbb', '主场景', { catalogRole: 'scene' });
+    const unsupportedRoot = entry('cccccccc', '不支持的引用', {
+      catalogRole: 'scene-referenced-graphic',
+      previewSupported: false,
+    });
+    const supportedRoot = entry('dddddddd', '可用的引用', { catalogRole: 'scene-referenced-graphic' });
+    const sameSha256 = 'a'.repeat(64);
+
+    const groups = groupFlaStaticSnapshotCandidates(
+      [graphicState, scene, unsupportedRoot, supportedRoot],
+      {
+        [flaStaticSnapshotCandidateKey(scene)]: { status: 'supported', sha256: sameSha256 },
+        [flaStaticSnapshotCandidateKey(supportedRoot)]: { status: 'supported', sha256: sameSha256 },
+      },
+    );
+
+    expect(groups.map((group) => group.catalogRole)).toEqual([
+      'scene-referenced-graphic',
+      'scene-referenced-graphic',
+      'scene',
+      'graphic-state',
+    ]);
+    expect(groups[0]?.entries[0]).toBe(supportedRoot);
+    expect(groups.map((group) => group.entries[0])).toEqual([
+      supportedRoot,
+      unsupportedRoot,
+      scene,
+      graphicState,
+    ]);
+  });
+
+  it('keeps identical previews in separate roles and keeps each authored frame identity filterable', () => {
+    const scene = entry('shared', '主场景', { catalogRole: 'scene' });
+    const frameZero = entry('shared', '袖口', {
+      catalogRole: 'graphic-state',
+      frameIndex: 0,
+    });
+    const frameTwo = entry('shared', '袖口', {
+      catalogRole: 'graphic-state',
+      frameIndex: 2,
+    });
+    const sameSha256 = 'b'.repeat(64);
+    const previews = {
+      [flaStaticSnapshotCandidateKey(scene)]: { status: 'supported' as const, sha256: sameSha256 },
+      [flaStaticSnapshotCandidateKey(frameZero)]: { status: 'supported' as const, sha256: sameSha256 },
+      [flaStaticSnapshotCandidateKey(frameTwo)]: { status: 'supported' as const, sha256: sameSha256 },
+    };
+
+    const all = groupFlaStaticSnapshotCandidates([scene, frameZero, frameTwo], previews);
+    const stateGroups = groupFlaStaticSnapshotCandidates([scene, frameZero, frameTwo], previews, '', 'graphic-states');
+    const compositionGroups = groupFlaStaticSnapshotCandidates([scene, frameZero, frameTwo], previews, '', 'compositions');
+
+    expect(all).toHaveLength(2);
+    expect(all.find((group) => group.catalogRole === 'scene')?.duplicate).toBe(false);
+    const authoredGroup = all.find((group) => group.catalogRole === 'graphic-state');
+    expect(authoredGroup?.entries).toEqual([frameZero, frameTwo]);
+    expect(authoredGroup?.duplicate).toBe(true);
+    expect(new Set(authoredGroup?.entries.map(flaStaticSnapshotCandidateKey)).size).toBe(2);
+    expect(stateGroups).toHaveLength(1);
+    expect(stateGroups[0]?.entries).toEqual([frameZero, frameTwo]);
+    expect(compositionGroups.map((group) => group.entries[0])).toEqual([scene]);
   });
 });

@@ -107,6 +107,27 @@ describe('R1-A renderable target catalog', () => {
     expect(parsed.omittedCandidateCount).toBe(0);
   });
 
+  it('accepts only the bounded source-grounded catalog roles', () => {
+    const entry = {
+      target: validTarget,
+      catalogRole: 'scene-referenced-graphic',
+      previewSupported: true,
+      isBlank: false,
+    };
+    const catalog = {
+      ok: true as const,
+      sessionId: validUuid,
+      entries: [entry],
+      summary: '1 source-grounded target.',
+    };
+    expect(FlaRenderableTargetCatalogSchema.parse(catalog).entries[0]?.catalogRole)
+      .toBe('scene-referenced-graphic');
+    expect(FlaRenderableTargetCatalogSchema.safeParse({
+      ...catalog,
+      entries: [{ ...entry, catalogRole: 'whole-person' }],
+    }).success).toBe(false);
+  });
+
   it('keeps authored-state enumeration opt-in for existing sequence review callers', () => {
     const request = FlaRenderableTargetCatalogRequestSchema.parse({
       format: 'fla-static-snapshot-catalog',

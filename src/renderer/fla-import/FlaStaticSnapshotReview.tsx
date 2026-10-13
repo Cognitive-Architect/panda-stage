@@ -20,7 +20,9 @@ import {
   flaStaticSnapshotCandidateKey,
   flaStaticSnapshotCandidateKindLabel,
   flaStaticSnapshotCandidateLabel,
+  flaStaticSnapshotCandidateRole,
   groupFlaStaticSnapshotCandidates,
+  type FlaStaticSnapshotCandidateFilter,
   type FlaStaticSnapshotCandidatePreview,
   type FlaStaticSnapshotCandidatePreviews,
 } from './fla-static-snapshot-candidates';
@@ -88,6 +90,7 @@ export function FlaStaticSnapshotReview({
   const [focusedCandidateKey, setFocusedCandidateKey] = useState<string | null>(null);
   const [focusedPreview, setFocusedPreview] = useState<FocusedSnapshotPreview | null>(null);
   const [candidateSearch, setCandidateSearch] = useState('');
+  const [candidateFilter, setCandidateFilter] = useState<FlaStaticSnapshotCandidateFilter>('all');
   const [scanProgress, setScanProgress] = useState(0);
   const [importProgress, setImportProgress] = useState(0);
   const [receipt, setReceipt] = useState<SnapshotImportReceipt | null>(null);
@@ -126,8 +129,8 @@ export function FlaStaticSnapshotReview({
     [entries],
   );
   const visibleGroups = useMemo(
-    () => groupFlaStaticSnapshotCandidates(entries, previews, candidateSearch),
-    [candidateSearch, entries, previews],
+    () => groupFlaStaticSnapshotCandidates(entries, previews, candidateSearch, candidateFilter),
+    [candidateFilter, candidateSearch, entries, previews],
   );
   const focusedEntry = focusedCandidateKey ? entryByKey.get(focusedCandidateKey) ?? null : null;
   const focusedStatus = focusedEntry
@@ -144,6 +147,12 @@ export function FlaStaticSnapshotReview({
   const supportedEntries = useMemo(
     () => entries.filter((entry) => previews[flaStaticSnapshotCandidateKey(entry)]?.status === 'supported'),
     [entries, previews],
+  );
+  const visibleSupportedCount = visibleGroups.reduce(
+    (count, group) => count + group.entries.filter(
+      (entry) => previews[flaStaticSnapshotCandidateKey(entry)]?.status === 'supported',
+    ).length,
+    0,
   );
   const selectedEntries = useMemo(
     () => entries.filter((entry) => selectedCandidateKeys.has(flaStaticSnapshotCandidateKey(entry))),
@@ -235,7 +244,16 @@ export function FlaStaticSnapshotReview({
         setEntries(response.entries);
         setCatalogSummary(response.summary);
         setOmittedCandidateCount(response.omittedCandidateCount);
-        const firstReviewable = response.entries.find((entry) => entry.previewSupported && !entry.isBlank);
+        const firstReviewable =
+          response.entries.find((entry) =>
+            flaStaticSnapshotCandidateRole(entry) === 'scene-referenced-graphic' &&
+            entry.previewSupported && !entry.isBlank,
+          ) ??
+          response.entries.find((entry) =>
+            flaStaticSnapshotCandidateRole(entry) === 'scene' &&
+            entry.previewSupported && !entry.isBlank,
+          ) ??
+          response.entries.find((entry) => entry.previewSupported && !entry.isBlank);
         const firstEntry = firstReviewable ?? response.entries[0];
         setFocusedCandidateKey(firstEntry ? flaStaticSnapshotCandidateKey(firstEntry) : null);
         setPhase('scanning');
@@ -742,11 +760,37 @@ export function FlaStaticSnapshotReview({
               />
             </label>
             <div className="fla-snapshot-candidate-tools" aria-label="候选选择工具">
-              <button type="button" data-testid="fla-snapshot-select-supported" disabled={phase !== 'ready' || supportedEntries.length === 0} onClick={selectVisibleSupported}>
+              <button type="button" data-testid="fla-snapshot-select-supported" disabled={phase !== 'ready' || visibleSupportedCount === 0} onClick={selectVisibleSupported}>
                 选中可预览项
               </button>
               <button type="button" data-testid="fla-snapshot-clear-selection" disabled={phase !== 'ready' || selectedCandidateKeys.size === 0} onClick={clearSelection}>
                 清空
+              </button>
+            </div>
+            <div className="fla-snapshot-candidate-tools fla-snapshot-candidate-role-filters" aria-label="候选分类" role="group">
+              <button
+                aria-pressed={candidateFilter === 'all'}
+                data-testid="fla-snapshot-filter-all"
+                onClick={() => setCandidateFilter('all')}
+                type="button"
+              >
+                全部候选
+              </button>
+              <button
+                aria-pressed={candidateFilter === 'compositions'}
+                data-testid="fla-snapshot-filter-compositions"
+                onClick={() => setCandidateFilter('compositions')}
+                type="button"
+              >
+                场景组合
+              </button>
+              <button
+                aria-pressed={candidateFilter === 'graphic-states'}
+                data-testid="fla-snapshot-filter-graphic-states"
+                onClick={() => setCandidateFilter('graphic-states')}
+                type="button"
+              >
+                图形状态
               </button>
             </div>
             {phase === 'scanning' ? (
@@ -778,6 +822,12 @@ export function FlaStaticSnapshotReview({
                           className={`fla-snapshot-candidate-row${focused ? ' is-focused' : ''}`}
                           data-focused={focused ? 'true' : 'false'}
                           data-preview-supported={selectable ? 'true' : 'false'}
+                          data-catalog-preview-supported={entry.previewSupported ? 'true' : 'false'}
+                          data-is-blank={entry.isBlank ? 'true' : 'false'}
+                          data-catalog-role={flaStaticSnapshotCandidateRole(entry)}
+                          data-source-library-item-name={entry.target.sourceLibraryItemName ?? ''}
+                          data-source-frame-index={entry.target.selectedFrameIndex ?? 0}
+                          data-render-target-id={entry.target.renderTargetId}
                           data-testid={`fla-snapshot-candidate-${key}`}
                           key={key}
                         >
@@ -861,6 +911,10 @@ export function FlaStaticSnapshotReview({
                 data-preview-height={focusedPreviewForEntry.height}
                 data-preview-resolution="full"
                 data-preview-width={focusedPreviewForEntry.width}
+                data-catalog-role={focusedEntry ? flaStaticSnapshotCandidateRole(focusedEntry) : undefined}
+                data-render-target-id={focusedEntry?.target.renderTargetId}
+                data-source-frame-index={focusedEntry?.target.selectedFrameIndex ?? 0}
+                data-source-library-item-name={focusedEntry?.target.sourceLibraryItemName ?? ''}
                 data-testid="fla-snapshot-preview-image"
                 onError={() => {
                   const key = focusedCandidateKey;

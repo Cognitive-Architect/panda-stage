@@ -19,6 +19,7 @@
 .fla-review-session[data-workbench-route='render'] .fla-snapshot-candidate-tools {
   display: flex;
   min-width: 0;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
@@ -37,6 +38,12 @@
 .fla-review-session[data-workbench-route='render'] .fla-snapshot-candidate-tools button:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+.fla-review-session[data-workbench-route='render'] .fla-snapshot-candidate-role-filters button[aria-pressed='true'] {
+  border-color: rgb(131 211 154 / 42%);
+  background: rgb(131 211 154 / 10%);
+  color: #dce7df;
 }
 
 .fla-review-session[data-workbench-route='render'] .fla-snapshot-candidates > li {

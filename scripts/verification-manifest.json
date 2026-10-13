@@ -224,6 +224,18 @@
         "notes": "Issue #767 U1 unified-workbench screenshots and bounded Electron receipt only; Draft evidence changes use existing CI policy self-tests, while production changes remain on their subsystem routes. Unregistered evidence paths remain fail-closed."
       },
       {
+        "id": "issue767-u2-acceptance-evidence",
+        "sourcePatterns": ["docs/evidence/issue-767-u2/**"],
+        "testPatterns": [],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "draftPolicy": "ci-selftest",
+        "incrementalEligible": false,
+        "owner": "fla-import",
+        "notes": "Issue #767 U2 candidate-directory screenshots and bounded real-source Electron receipts only. Draft evidence changes use existing CI policy self-tests; production changes remain on their subsystem routes. Unregistered evidence paths remain fail-closed."
+      },
+      {
         "id": "cross-process-core",
         "sourcePatterns": [
           "src/main/**",
@@ -561,7 +573,7 @@
       }
     ]
   },
-  "count": 78,
+  "count": 79,
   "gates": [
     {
       "id": "issue663-dialogue-voice",
@@ -683,18 +695,30 @@
       "supersedes": null,
       "notes": "Real Windows Electron UI verifier for the Stage D zero-raster static snapshot workbench: shared R1/R2 mode shell, three-zone read-only presentation, preview-before-import and target/frame stale invalidation, explicit ImageAsset commit, store/disk synchronization, and source hash invariance."
     },
-    {
-      "id": "issue767-u1",
-      "script": "verify:issue767-u1",
+      {
+        "id": "issue767-u1",
+        "script": "verify:issue767-u1",
       "suite": "assets",
       "subsystem": "fla-import",
       "status": "active",
       "platform": "windows",
       "runIn": "local",
       "owner": "fla-import",
-      "supersedes": null,
-      "notes": "Focused Windows Electron proof that bitmap-only, vector-only, and mixed FLA sources enter one import shell, keep bitmap selection empty, preserve existing content adapters, and cancel without project or source mutation."
-    },
+        "supersedes": null,
+        "notes": "Focused Windows Electron proof that bitmap-only, vector-only, and mixed FLA sources enter one import shell, keep bitmap selection empty, preserve existing content adapters, and cancel without project or source mutation."
+      },
+      {
+        "id": "issue767-u2",
+        "script": "verify:issue767-u2",
+        "suite": "assets",
+        "subsystem": "fla-import",
+        "status": "active",
+        "platform": "windows",
+        "runIn": "local",
+        "owner": "fla-import",
+        "supersedes": null,
+        "notes": "Focused real-source Windows Electron evidence for authored-state candidate ordering, the exact Bluehair com809 frame-0 catalog target, raster preservation, duplicate identity, fail-closed unsupported content, source switching, responsiveness, and no project/source mutation."
+      },
     {
       "id": "issue399-stage-e",
       "script": "verify:issue399-stage-e",

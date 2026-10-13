@@ -1,4 +1,7 @@
-import type { FlaRenderableTargetCatalogEntry } from '../../shared/fla-static-snapshot-api';
+import type {
+  FlaRenderableTargetCatalogEntry,
+  FlaRenderableTargetCatalogRole,
+} from '../../shared/fla-static-snapshot-api';
 
 export type FlaStaticSnapshotCandidateStatus = 'checking' | 'supported' | 'unsupported' | 'blank';
 
@@ -11,6 +14,7 @@ export interface FlaStaticSnapshotCandidatePreview {
 
 export interface FlaStaticSnapshotCandidateGroup {
   key: string;
+  catalogRole: FlaRenderableTargetCatalogRole;
   entries: FlaRenderableTargetCatalogEntry[];
   duplicate: boolean;
   sourceCount: number;
@@ -19,9 +23,16 @@ export interface FlaStaticSnapshotCandidateGroup {
 }
 
 export type FlaStaticSnapshotCandidatePreviews = Readonly<Record<string, FlaStaticSnapshotCandidatePreview>>;
+export type FlaStaticSnapshotCandidateFilter = 'all' | 'compositions' | 'graphic-states';
 
 export function flaStaticSnapshotCandidateKey(entry: FlaRenderableTargetCatalogEntry): string {
   return `${entry.target.renderTargetId}:${entry.target.selectedFrameIndex ?? 0}`;
+}
+
+export function flaStaticSnapshotCandidateRole(
+  entry: FlaRenderableTargetCatalogEntry,
+): FlaRenderableTargetCatalogRole {
+  return entry.catalogRole ?? (entry.target.kind === 'scene' ? 'scene' : 'graphic-state');
 }
 
 export function flaStaticSnapshotCandidateLabel(entry: FlaRenderableTargetCatalogEntry): string {
@@ -30,15 +41,13 @@ export function flaStaticSnapshotCandidateLabel(entry: FlaRenderableTargetCatalo
 }
 
 export function flaStaticSnapshotCandidateKindLabel(entry: FlaRenderableTargetCatalogEntry): string {
-  switch (entry.target.kind) {
+  switch (flaStaticSnapshotCandidateRole(entry)) {
     case 'scene':
       return '主场景';
-    case 'timeline':
-      return '时间线';
-    case 'graphic-symbol':
-      return '图形元件';
-    default:
-      return '未分类目标';
+    case 'scene-referenced-graphic':
+      return '场景引用';
+    case 'graphic-state':
+      return entry.target.kind === 'timeline' ? '时间线' : '图形状态';
   }
 }
 
@@ -46,27 +55,33 @@ export function groupFlaStaticSnapshotCandidates(
   entries: readonly FlaRenderableTargetCatalogEntry[],
   previews: FlaStaticSnapshotCandidatePreviews,
   search = '',
+  filter: FlaStaticSnapshotCandidateFilter = 'all',
 ): FlaStaticSnapshotCandidateGroup[] {
   const query = search.trim().toLocaleLowerCase();
   const allGroups = new Map<string, {
+    catalogRole: FlaRenderableTargetCatalogRole;
     entries: FlaRenderableTargetCatalogEntry[];
     status: FlaStaticSnapshotCandidateStatus;
     sha256?: string;
   }>();
 
   for (const entry of entries) {
+    const catalogRole = flaStaticSnapshotCandidateRole(entry);
+    if (filter === 'compositions' && catalogRole === 'graphic-state') continue;
+    if (filter === 'graphic-states' && catalogRole !== 'graphic-state') continue;
     const key = flaStaticSnapshotCandidateKey(entry);
     const preview = previews[key];
     const status: FlaStaticSnapshotCandidateStatus = entry.isBlank
       ? 'blank'
       : preview?.status ?? (entry.previewSupported ? 'checking' : 'unsupported');
     const sha256 = status === 'supported' ? preview?.sha256 : undefined;
-    const groupKey = sha256 ? `sha256:${sha256}` : `candidate:${key}`;
+    const groupKey = sha256 ? `${catalogRole}:sha256:${sha256}` : `${catalogRole}:candidate:${key}`;
     const existing = allGroups.get(groupKey);
     if (existing) {
       existing.entries.push(entry);
     } else {
       allGroups.set(groupKey, {
+        catalogRole,
         entries: [entry],
         status,
         ...(sha256 ? { sha256 } : {}),
@@ -74,11 +89,16 @@ export function groupFlaStaticSnapshotCandidates(
     }
   }
 
-  const priority: Record<FlaStaticSnapshotCandidateStatus, number> = {
-    supported: 0,
-    checking: 1,
-    unsupported: 2,
-    blank: 3,
+  const rolePriority: Record<FlaRenderableTargetCatalogRole, number> = {
+    'scene-referenced-graphic': 0,
+    scene: 1,
+    'graphic-state': 2,
+  };
+  const availabilityPriority = (group: FlaStaticSnapshotCandidateGroup): number => {
+    const firstEntry = group.entries[0];
+    if (!firstEntry) return 3;
+    if (firstEntry.isBlank) return 2;
+    return firstEntry.previewSupported ? 0 : 1;
   };
   return [...allGroups.entries()]
     .map(([key, group]) => {
@@ -87,6 +107,7 @@ export function groupFlaStaticSnapshotCandidates(
       );
       return {
         key,
+        catalogRole: group.catalogRole,
         entries: visibleEntries,
         duplicate: group.entries.length > 1,
         sourceCount: group.entries.length,
@@ -95,5 +116,8 @@ export function groupFlaStaticSnapshotCandidates(
       } satisfies FlaStaticSnapshotCandidateGroup;
     })
     .filter((group) => group.entries.length > 0)
-    .sort((left, right) => priority[left.status] - priority[right.status] || left.key.localeCompare(right.key));
+    .sort((left, right) =>
+      rolePriority[left.catalogRole] - rolePriority[right.catalogRole] ||
+      availabilityPriority(left) - availabilityPriority(right),
+    );
 }

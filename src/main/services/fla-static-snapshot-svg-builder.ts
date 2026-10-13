@@ -33,6 +33,7 @@ import crypto from 'node:crypto';
 import JSZip from 'jszip';
 import { FLA_IMPORT_LIMITS } from '../../shared/fla-import-api';
 import type {
+  FlaRenderableTargetCatalogRole,
   FlaRenderTarget,
   FlaStaticSnapshotPreviewErrorCode,
 } from '../../shared/fla-static-snapshot-api';
@@ -117,6 +118,7 @@ export interface BuildCatalogSuccess {
   // commit pins the exact target and selected frame as its source of truth.
   entries: Array<{
     target: FlaRenderTarget;
+    catalogRole: FlaRenderableTargetCatalogRole;
     previewSupported: boolean;
     isBlank: boolean;
     unsupportedReason?: string;
@@ -2038,15 +2040,32 @@ function stableRenderTargetId(bytes: Uint8Array, logicalTargetKey: string): stri
   return 'fla-render-target-' + digest;
 }
 
-function collectVisibleSceneGraphicSymbols(
+interface VisibleSceneGraphicReference {
+  readonly libraryItemName: string;
+  readonly selectedFrameIndex: number | null;
+}
+
+function sceneGraphicFrameIndex(firstFrame: string | undefined): number | null {
+  if (firstFrame === undefined) return 0;
+  const normalized = firstFrame.trim();
+  if (!/^(0|[1-9]\d*)$/u.test(normalized)) return null;
+  const frameIndex = Number(normalized);
+  return Number.isSafeInteger(frameIndex) ? frameIndex : null;
+}
+
+function collectVisibleSceneGraphicReferences(
   elements: readonly FlaDisplayListElement[],
-  result: Set<string>,
+  result: VisibleSceneGraphicReference[],
 ): void {
   for (const element of elements) {
+    if (element.visible === false) continue;
     if (element.kind === 'symbol' && element.symbolType === 'graphic') {
-      result.add(element.libraryItemName);
+      result.push({
+        libraryItemName: element.libraryItemName,
+        selectedFrameIndex: sceneGraphicFrameIndex(element.firstFrame),
+      });
     } else if (element.kind === 'group') {
-      collectVisibleSceneGraphicSymbols(element.elements, result);
+      collectVisibleSceneGraphicReferences(element.elements, result);
     }
   }
 }
@@ -2250,15 +2269,15 @@ export async function buildRenderableTargetCatalog(
   }
   const source = sourceResult.source;
   const entries: BuildCatalogSuccess['entries'] = [];
-  let omittedCandidateCount = 0;
+  let omittedCandidateCount: number;
   let candidateIndex = 0;
   const enumerationStartedAt = startIssue762Profile();
 
-  const appendCandidate = (target: FlaRenderTarget): void => {
-    if (entries.length >= MAX_TARGETS) {
-      omittedCandidateCount += 1;
-      return;
-    }
+  const appendCandidate = (
+    target: FlaRenderTarget,
+    catalogRole: FlaRenderableTargetCatalogRole,
+  ): boolean => {
+    if (entries.length >= MAX_TARGETS) return false;
     const candidateStartedAt = startIssue762Profile();
     const currentCandidateIndex = candidateIndex++;
     const candidateDetails = {
@@ -2301,6 +2320,7 @@ export async function buildRenderableTargetCatalog(
     }
     entries.push({
       target,
+      catalogRole,
       previewSupported: unsupportedReason === null,
       isBlank: check.isBlank,
       ...(unsupportedReason ? { unsupportedReason } : {}),
@@ -2310,13 +2330,19 @@ export async function buildRenderableTargetCatalog(
       previewSupported: unsupportedReason === null,
       isBlank: check.isBlank,
     });
+    return true;
   };
 
-  // Keep the scene selectable even when it is made from bitmap placements
-  // or nested Graphic symbols, and reserve its slot within the target cap.
+  // Keep a Scene target only when its frame-zero display list has visible
+  // content. Authored-state catalogs reserve their bounded slots for exact
+  // Scene-referenced Graphic states before adding the Scene itself.
   const scene = source.sceneTimelines[0];
-  if (scene && scene.frameCount > 0 && scene.frameContext.layers.some((layer) => layer.elements.length > 0)) {
-    const target: FlaRenderTarget = {
+  const hasSceneCandidate = Boolean(
+    scene && scene.frameCount > 0 &&
+      scene.frameContext.layers.some((layer) => layer.visible && layer.elements.length > 0),
+  );
+  const sceneTarget: FlaRenderTarget | null = scene && hasSceneCandidate
+    ? {
       renderTargetId: stableRenderTargetId(bytes, 'scene\u0000timeline\u0000' + scene.index),
       kind: 'scene',
       userLabel: '\u4e3b\u573a\u666f \u00b7 \u7b2c 1 \u5e27',
@@ -2324,8 +2350,10 @@ export async function buildRenderableTargetCatalog(
       frameCount: Math.min(100_000, scene.frameCount),
       selectedFrameIndex: 0,
       compatibility: ['degraded'],
-    };
-    appendCandidate(target);
+    }
+    : null;
+  if (sceneTarget && !options.includeAuthoredStates) {
+    appendCandidate(sceneTarget, 'scene');
     if (execution) {
       await execution.yieldToEventLoop();
       if (!execution.shouldContinue()) {
@@ -2340,17 +2368,33 @@ export async function buildRenderableTargetCatalog(
     ...source.graphicSymbols.filter((symbol) => symbol.hasNestedSymbol),
     ...source.graphicSymbols.filter((symbol) => !symbol.hasNestedSymbol),
   ];
-  const candidateSymbols = orderedSymbols.filter((symbol) => symbol.hasPotentialDisplayElements);
-  const sceneRootSymbols = new Set<string>();
+  const sceneRootReferences: VisibleSceneGraphicReference[] = [];
   if (scene) {
     for (const layer of scene.frameContext.layers) {
-      if (layer.visible) collectVisibleSceneGraphicSymbols(layer.elements, sceneRootSymbols);
+      if (layer.visible) collectVisibleSceneGraphicReferences(layer.elements, sceneRootReferences);
     }
   }
+  const sceneRootFrameZeroSymbols = new Set(
+    sceneRootReferences
+      .filter((reference) => reference.selectedFrameIndex === 0)
+      .map((reference) => reference.libraryItemName),
+  );
+  const candidateSymbolsBySourceName = new Map<string, typeof orderedSymbols[number] | null>();
+  for (const symbol of orderedSymbols) {
+    candidateSymbolsBySourceName.set(
+      symbol.sourceLibraryItemName,
+      candidateSymbolsBySourceName.has(symbol.sourceLibraryItemName) ? null : symbol,
+    );
+  }
+  const candidateSymbols = orderedSymbols.filter(
+    (symbol) => symbol.hasPotentialDisplayElements &&
+      candidateSymbolsBySourceName.get(symbol.sourceLibraryItemName) === symbol,
+  );
   const createGraphicTarget = (symbol: typeof candidateSymbols[number], frameIndex: number): FlaRenderTarget => ({
     renderTargetId: stableRenderTargetId(
       bytes,
-      'graphic-symbol\u0000' + symbol.sourceLibraryItemName + '\u0000' + symbol.userLabel,
+      'graphic-symbol\u0000' + symbol.sourceLibraryItemName + '\u0000' + symbol.userLabel +
+        (frameIndex === 0 ? '' : '\u0000frame\u0000' + frameIndex),
     ),
     kind: 'graphic-symbol',
     userLabel: symbol.userLabel,
@@ -2368,13 +2412,13 @@ export async function buildRenderableTargetCatalog(
     // Scene root would otherwise fall beyond the 64-target cap, replace only
     // the last selected non-root candidate and append that root at the end.
     for (const symbol of candidateSymbols) {
-      if (!sceneRootSymbols.has(symbol.sourceLibraryItemName) || selectedSymbolNames.has(symbol.sourceLibraryItemName)) {
+      if (!sceneRootFrameZeroSymbols.has(symbol.sourceLibraryItemName) || selectedSymbolNames.has(symbol.sourceLibraryItemName)) {
         continue;
       }
       let replaceIndex = -1;
       for (let index = selectedSymbols.length - 1; index >= 0; index -= 1) {
         const candidate = selectedSymbols[index];
-        if (candidate && !sceneRootSymbols.has(candidate.sourceLibraryItemName)) {
+        if (candidate && !sceneRootFrameZeroSymbols.has(candidate.sourceLibraryItemName)) {
           replaceIndex = index;
           break;
         }
@@ -2385,9 +2429,13 @@ export async function buildRenderableTargetCatalog(
       selectedSymbols.push(symbol);
       selectedSymbolNames.add(symbol.sourceLibraryItemName);
     }
-    omittedCandidateCount += candidateSymbols.length - selectedSymbols.length;
     for (const symbol of selectedSymbols) {
-      appendCandidate(createGraphicTarget(symbol, 0));
+      appendCandidate(
+        createGraphicTarget(symbol, 0),
+        sceneRootFrameZeroSymbols.has(symbol.sourceLibraryItemName)
+          ? 'scene-referenced-graphic'
+          : 'graphic-state',
+      );
       if (execution) {
         await execution.yieldToEventLoop();
         if (!execution.shouldContinue()) {
@@ -2395,30 +2443,73 @@ export async function buildRenderableTargetCatalog(
         }
       }
     }
+    omittedCandidateCount = candidateSymbols.length - selectedSymbols.length;
   } else {
-    for (const symbol of orderedSymbols) {
-      if (!symbol.hasPotentialDisplayElements) continue;
+    const authoredFramesBySymbol = new Map<string, number[]>();
+    let totalGraphicCandidateCount = 0;
+    for (const symbol of candidateSymbols) {
       const authoredFrameIndices = [...new Set(
           symbol.frameSpanIndex.layers
             .filter((layer) => layer.visible)
             .flatMap((layer) => layer.spans.map((span) => span.index)),
         )].sort((left, right) => left - right);
-      for (let frameOffset = 0; frameOffset < authoredFrameIndices.length; frameOffset += 1) {
-        const frameIndex = authoredFrameIndices[frameOffset];
-        if (frameIndex === undefined) continue;
-        if (entries.length >= MAX_TARGETS) {
-          omittedCandidateCount += authoredFrameIndices.length - frameOffset;
-          break;
-        }
-        appendCandidate(createGraphicTarget(symbol, frameIndex));
+      authoredFramesBySymbol.set(symbol.sourceLibraryItemName, authoredFrameIndices);
+      totalGraphicCandidateCount += authoredFrameIndices.length;
+    }
+
+    const prioritizedRootKeys = new Set<string>();
+    const appendRootReferences = async (): Promise<boolean> => {
+      for (const reference of sceneRootReferences) {
+        const frameIndex = reference.selectedFrameIndex;
+        if (frameIndex === null) continue;
+        const symbol = candidateSymbolsBySourceName.get(reference.libraryItemName);
+        if (!symbol) continue;
+        const authoredFrameIndices = authoredFramesBySymbol.get(symbol.sourceLibraryItemName) ?? [];
+        if (!authoredFrameIndices.includes(frameIndex)) continue;
+        const key = `${symbol.sourceLibraryItemName}\u0000${frameIndex}`;
+        if (prioritizedRootKeys.has(key)) continue;
+        if (!appendCandidate(createGraphicTarget(symbol, frameIndex), 'scene-referenced-graphic')) break;
+        prioritizedRootKeys.add(key);
         if (execution) {
           await execution.yieldToEventLoop();
-          if (!execution.shouldContinue()) {
-            return { ok: false, code: 'RENDER_FAILED', message: 'Catalog operation was cancelled' };
+          if (!execution.shouldContinue()) return false;
+        }
+      }
+      return true;
+    };
+
+    if (!await appendRootReferences()) {
+      return { ok: false, code: 'RENDER_FAILED', message: 'Catalog operation was cancelled' };
+    }
+
+    if (sceneTarget && entries.length < MAX_TARGETS) {
+      appendCandidate(sceneTarget, 'scene');
+      if (execution) {
+        await execution.yieldToEventLoop();
+        if (!execution.shouldContinue()) {
+          return { ok: false, code: 'RENDER_FAILED', message: 'Catalog operation was cancelled' };
+        }
+      }
+    }
+
+    if (entries.length < MAX_TARGETS) {
+      outer: for (const symbol of candidateSymbols) {
+        const authoredFrameIndices = authoredFramesBySymbol.get(symbol.sourceLibraryItemName) ?? [];
+        for (const frameIndex of authoredFrameIndices) {
+          const key = `${symbol.sourceLibraryItemName}\u0000${frameIndex}`;
+          if (prioritizedRootKeys.has(key)) continue;
+          appendCandidate(createGraphicTarget(symbol, frameIndex), 'graphic-state');
+          if (entries.length >= MAX_TARGETS) break outer;
+          if (execution) {
+            await execution.yieldToEventLoop();
+            if (!execution.shouldContinue()) {
+              return { ok: false, code: 'RENDER_FAILED', message: 'Catalog operation was cancelled' };
+            }
           }
         }
       }
     }
+    omittedCandidateCount = Number(hasSceneCandidate) + totalGraphicCandidateCount - entries.length;
   }
 
   finishIssue762Profile('fla.catalog.enumeration', enumerationStartedAt, {

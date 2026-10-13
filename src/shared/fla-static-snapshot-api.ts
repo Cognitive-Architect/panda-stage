@@ -91,9 +91,18 @@ export const FlaRenderTargetSchema = z
   );
 
 // ---- R1-A renderable target catalog (returned by inspection) ----
+export const FlaRenderableTargetCatalogRoleSchema = z.enum([
+  'scene',
+  'scene-referenced-graphic',
+  'graphic-state',
+]);
+
 export const FlaRenderableTargetCatalogEntrySchema = z
   .object({
     target: FlaRenderTargetSchema,
+    // Source-grounded directory placement. This describes how the source
+    // references a target; it does not claim that a Graphic is a whole person.
+    catalogRole: FlaRenderableTargetCatalogRoleSchema.optional(),
     // Whether the user can actually preview this target right now. If
     // false, unsupportedReason is required.
     previewSupported: z.boolean(),
@@ -380,6 +389,7 @@ export const FlaStaticSnapshotCancelResponseSchema = z
 export type FlaRenderTargetKind = z.infer<typeof FlaRenderTargetKindSchema>;
 export type FlaRenderTarget = z.infer<typeof FlaRenderTargetSchema>;
 export type FlaRenderableTargetCatalogEntry = z.infer<typeof FlaRenderableTargetCatalogEntrySchema>;
+export type FlaRenderableTargetCatalogRole = z.infer<typeof FlaRenderableTargetCatalogRoleSchema>;
 export type FlaRenderableTargetCatalog = z.infer<typeof FlaRenderableTargetCatalogSchema>;
 export type FlaStaticSnapshotPreviewRequest = z.infer<typeof FlaStaticSnapshotPreviewRequestSchema>;
 export type FlaStaticSnapshotPreviewSuccess = z.infer<typeof FlaStaticSnapshotPreviewSuccessSchema>;
