@@ -624,6 +624,14 @@ async function readObjectUrlFacts(window) {
   })()`);
 }
 
+function sameActiveObjectUrls(before, after) {
+  return Boolean(
+    before && after &&
+      before.activeCount === after.activeCount &&
+      JSON.stringify([...before.active].sort()) === JSON.stringify([...after.active].sort()),
+  );
+}
+
 async function readAlphaFacts(window) {
   return evaluate(window, `(() => {
     const image = document.querySelector('[data-testid="fla-snapshot-preview-image"]');
@@ -879,6 +887,7 @@ async function verifyBrowseCancelAndPreviewCleanup(window, project) {
 
 async function verifyCharacterImport(window, project) {
   const projectBefore = readProjectState(project.projectRoot);
+  const objectUrlsBefore = await readObjectUrlFacts(window);
   const revisionBefore = await readUiRevision(window);
   const inspection = await openReview(window, runtime.sourcePaths.bluehair, 'bluehair-character-import');
   assert(inspection.inspection.sessionId, 'Bluehair inspection did not return a source session ID.');
@@ -1025,9 +1034,13 @@ async function verifyCharacterImport(window, project) {
   const detailsCloseSelector = await evaluate(window, `document.querySelector('[data-testid="asset-details-back"]') ? '[data-testid="asset-details-back"]' : '[data-testid="asset-details-close"]'`);
   await click(window, detailsCloseSelector);
   await waitForExpression(window, `Boolean(document.querySelector('[data-testid="asset-browser-view"]'))`);
+  const objectUrlsAfter = await readObjectUrlFacts(window);
+  assert(sameActiveObjectUrls(objectUrlsBefore, objectUrlsAfter), 'The initial snapshot import left new renderer object URLs active after closing the FLA workbench.');
   return {
     projectBefore,
     projectAfterImport,
+    objectUrlsBefore,
+    objectUrlsAfter,
     source: {
       basename: basename(runtime.sourcePaths.bluehair),
       sha256: runtime.sourceHashesBefore.bluehair,
@@ -1135,6 +1148,7 @@ async function verifySaveCloseReopenAndDuplicate(window, project, importFacts, s
   await waitForExpression(window, `Boolean(document.querySelector('[data-testid="project-canvas-stage"]')?.getAttribute('data-layer-json')?.includes(${JSON.stringify(importFacts.asset.id)}))`, 60_000);
   runtime.screenshots.reopenedProject = await capture(window, join(runtime.repoEvidenceDir, 'project-reopened-bluehair-character.png'));
 
+  const objectUrlsBeforeDuplicate = await readObjectUrlFacts(window);
   const beforeDuplicate = readProjectState(project.projectRoot);
   const revisionBeforeDuplicate = await readUiRevision(window);
   await openReview(window, runtime.sourcePaths.bluehair, 'bluehair-duplicate');
@@ -1156,6 +1170,8 @@ async function verifySaveCloseReopenAndDuplicate(window, project, importFacts, s
   assert((await readUiRevision(window)) === revisionBeforeDuplicate, 'Duplicate retry changed the in-memory project revision.');
   await click(window, '[data-testid="fla-snapshot-close"]');
   await waitForExpression(window, `Boolean(document.querySelector('[data-testid="asset-browser-view"]'))`);
+  const objectUrlsAfterDuplicate = await readObjectUrlFacts(window);
+  assert(sameActiveObjectUrls(objectUrlsBeforeDuplicate, objectUrlsAfterDuplicate), 'Duplicate retry left new renderer object URLs active after closing the FLA workbench.');
   assert(sha256File(runtime.sourcePaths.bluehair) === runtime.sourceHashesBefore.bluehair, 'Character import or retry changed the original FLA.');
   return {
     shotName,
@@ -1166,6 +1182,8 @@ async function verifySaveCloseReopenAndDuplicate(window, project, importFacts, s
     duplicate: {
       commit: duplicateCommit,
       previewSha256: sha256(duplicatePreview),
+      objectUrlsBefore: objectUrlsBeforeDuplicate,
+      objectUrlsAfter: objectUrlsAfterDuplicate,
       before: beforeDuplicate,
       after: afterDuplicate,
       revisionBefore: revisionBeforeDuplicate,
@@ -1360,7 +1378,7 @@ async function main() {
   const persistence = await verifySaveCloseReopenAndDuplicate(window, project, importFacts, runtime.projects.character.shotName);
   runtime.scenarios.push({ name: 'shot-save-close-reopen-and-duplicate', ...persistence });
   const objectUrlFacts = await readObjectUrlFacts(window);
-  assert(objectUrlFacts?.activeCount === 0, 'Final FLA workbench close left object URLs active in the main renderer.');
+  assert(sameActiveObjectUrls(persistence.duplicate.objectUrlsAfter, objectUrlFacts), 'Renderer object URLs changed after the duplicate FLA workbench closed.');
   runtime.scenarios.push({ name: 'preview-resource-release', objectUrls: objectUrlFacts });
 
   await closeProject(window);
@@ -1396,7 +1414,7 @@ async function main() {
     mixedSourceSingleBitmapCommit: mixedBitmap.commit.selectedCount === 1 && mixedBitmap.projectAfter.assetCount === 1,
     unsupportedVectorFailsClosedWithReason: !unsupported.uiState.selectable && unsupported.uiState.importDisabled && Boolean(unsupported.target.unsupportedReason),
     browseCancelLeavesProjectAndSourceUnchanged: cancelFacts.noProjectMutation && sourceUnchanged,
-    rendererObjectUrlsReleased: cancelFacts.objectUrlsAfter.activeCount === cancelFacts.objectUrlsBefore.activeCount && objectUrlFacts.activeCount === 0,
+    rendererObjectUrlsReleased: sameActiveObjectUrls(cancelFacts.objectUrlsBefore, cancelFacts.objectUrlsAfter) && sameActiveObjectUrls(importFacts.objectUrlsBefore, importFacts.objectUrlsAfter) && sameActiveObjectUrls(persistence.duplicate.objectUrlsBefore, persistence.duplicate.objectUrlsAfter),
     snapshotBackgroundRendererDoesNotAccumulate: snapshotWindowCount(finalWindows) <= 1,
     originalBluehairShaUnchanged: runtime.sourceHashesBefore.bluehair === sha256File(runtime.sourcePaths.bluehair),
   };
