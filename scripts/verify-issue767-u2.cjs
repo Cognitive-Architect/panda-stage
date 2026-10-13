@@ -27,6 +27,7 @@ const JSZip = require('jszip');
 const DEFAULT_ACCEPTANCE_ROOT = 'D:\\PandaStage-Acceptance\\issue767-u2';
 const DEFAULT_SOURCE_ROOT = 'D:\\表情合集\\新人物';
 const CATALOG_CHANNEL = 'fla:snapshot-catalog';
+const PREVIEW_CHANNEL = 'fla:snapshot-preview';
 const BLUEHAIR_TARGET = '神女-cilisucai.com/神女-cilisucai.com809';
 const BLUEHAIR_TARGET_ID = 'fla-render-target-71289be86ab338b9c728b476f628b5708ec035560586326cc48e6af8eacfe8dd';
 const BLUEHAIR_PREVIEW_SHA256 = 'd9e423464791a179de7766c7eb9b5aec0845bf0b64bd898c749f0f0dd8a25ed5';
@@ -55,6 +56,8 @@ const runtime = {
   assertions: {},
   respondingSamples: [],
   respondingProcess: null,
+  delayNextPreviewResponse: false,
+  delayedPreviewResponses: [],
   error: null,
 };
 
@@ -256,6 +259,29 @@ function installMainProbes() {
 
   const originalHandle = ipcMain.handle.bind(ipcMain);
   ipcMain.handle = (channel, handler) => {
+    if (channel === PREVIEW_CHANNEL) {
+      return originalHandle(channel, async (event, request, ...rest) => {
+        const response = await handler(event, request, ...rest);
+        if (runtime.delayNextPreviewResponse && request?.target?.renderTargetId !== BLUEHAIR_TARGET_ID) {
+          runtime.delayNextPreviewResponse = false;
+          const delayed = {
+            phase: 'started',
+            requestId: request?.requestId ?? null,
+            renderTargetId: request?.target?.renderTargetId ?? null,
+            startedAtWallTimeMs: Date.now(),
+          };
+          runtime.delayedPreviewResponses.push(delayed);
+          await delay(900);
+          runtime.delayedPreviewResponses.push({
+            ...delayed,
+            phase: 'settled',
+            completedAtWallTimeMs: Date.now(),
+            delayMs: Date.now() - delayed.startedAtWallTimeMs,
+          });
+        }
+        return response;
+      });
+    }
     if (channel !== CATALOG_CHANNEL) return originalHandle(channel, handler);
     return originalHandle(channel, async (event, request, ...rest) => {
       const invocation = catalogEvents.filter((item) => item.phase === 'start').length + 1;
@@ -744,11 +770,24 @@ async function waitForFocusedPreview(window, expectedTargetId) {
   })()`, 180_000);
 }
 
+async function waitForDelayedPreviewResponseStart(afterCount, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const delayed = runtime.delayedPreviewResponses.slice(afterCount)
+      .find((event) => event.phase === 'started');
+    if (delayed) return delayed;
+    await delay(20);
+  }
+  throw new Error('Timed out waiting for the deliberately delayed focused preview response.');
+}
+
 async function testCandidateFilters(window) {
   await click(window, `[data-render-target-id="${BLUEHAIR_TARGET_ID}"] input[type="checkbox"]`);
   const selectedBeforeFiltering = await readCatalogUi(window);
   assert(selectedBeforeFiltering.selectedTotal === 1, 'Selecting the known composition did not update the full selection count.');
 
+  const delayedPreviewCount = runtime.delayedPreviewResponses.length;
+  runtime.delayNextPreviewResponse = true;
   await click(window, '[data-testid="fla-snapshot-filter-graphic-states"]');
   await waitForExpression(window, `document.querySelector('[data-testid="fla-snapshot-filter-graphic-states"]')?.getAttribute('aria-pressed') === 'true'`);
   const graphicUi = await assertFocusedPreviewMatchesVisibleCandidate(window, 'graphic-state');
@@ -757,8 +796,8 @@ async function testCandidateFilters(window) {
   assert(firstSupportedGraphic && graphicUi.focusedCandidate?.renderTargetId === firstSupportedGraphic.renderTargetId, 'Graphic-state filtering did not focus the first supported visible candidate.');
   assert(graphicUi.selectedTotal === 1 && graphicUi.actionState === '1 项已选', 'Filtering changed the hidden composition selection or its confirmation count.');
   assert(!graphicUi.rows.some((row) => row.renderTargetId === BLUEHAIR_TARGET_ID), 'The selected composition remained visible under the graphic-state filter.');
-  await waitForFocusedPreview(window, graphicUi.focusedCandidate.renderTargetId);
-  const graphicPreview = await assertFocusedPreviewMatchesVisibleCandidate(window, 'graphic-state');
+  const delayedGraphicResponse = await waitForDelayedPreviewResponseStart(delayedPreviewCount);
+  assert(delayedGraphicResponse.renderTargetId === graphicUi.focusedCandidate.renderTargetId, 'The delayed response did not belong to the newly focused graphic state.');
 
   await click(window, '[data-testid="fla-snapshot-filter-compositions"]');
   await waitForExpression(window, `document.querySelector('[data-testid="fla-snapshot-filter-compositions"]')?.getAttribute('aria-pressed') === 'true'`);
@@ -768,6 +807,10 @@ async function testCandidateFilters(window) {
   assert(firstSupportedComposition && compositionUi.focusedCandidate?.renderTargetId === firstSupportedComposition.renderTargetId, 'Composition filtering did not focus the first supported visible candidate.');
   await waitForFocusedPreview(window, compositionUi.focusedCandidate.renderTargetId);
   const compositionPreview = await assertFocusedPreviewMatchesVisibleCandidate(window);
+  const delayedGraphicResponseSettled = runtime.delayedPreviewResponses.slice(delayedPreviewCount)
+    .find((event) => event.phase === 'settled');
+  assert(delayedGraphicResponseSettled, 'The deliberately delayed old preview response did not settle.');
+  assert(compositionPreview.fullPreview?.renderTargetId === compositionPreview.focusedCandidate?.renderTargetId, 'A late old response replaced the newest focused composition preview.');
 
   await click(window, '[data-testid="fla-snapshot-filter-all"]');
   await waitForExpression(window, `document.querySelector('[data-testid="fla-snapshot-filter-all"]')?.getAttribute('aria-pressed') === 'true'`);
@@ -812,12 +855,15 @@ async function testCandidateFilters(window) {
     allRestored: allUi.visibleFilter === 'all',
     graphicStateRowCount: graphicStateRows.length,
     compositionRowCount: compositionRows.length,
-    graphicFocus: graphicPreview.focusedCandidate,
+    graphicFocus: graphicUi.focusedCandidate,
     compositionFocus: compositionPreview.focusedCandidate,
     focusPreservedWhenVisible: allUi.focusedCandidate?.renderTargetId === compositionPreview.focusedCandidate?.renderTargetId,
     hiddenSelectionPreserved: deselected.selectedTotal === 0 && allUi.selectedTotal === 1,
     searchZeroResultsClearedPreview: noMatches.focusedCandidate === null && noMatches.fullPreview === null,
     searchClearRestoredPreview: restoredPreview.fullPreview?.renderTargetId === BLUEHAIR_TARGET_ID,
+    latePreviewResponseIgnored: delayedGraphicResponseSettled.renderTargetId === graphicUi.focusedCandidate.renderTargetId &&
+      compositionPreview.fullPreview?.renderTargetId === compositionPreview.focusedCandidate?.renderTargetId,
+    delayedPreviewResponseMs: delayedGraphicResponseSettled.delayMs,
   };
 }
 
@@ -988,6 +1034,7 @@ async function verifyBluehair(window) {
   assert(filters.graphicStatesOnly && filters.compositionsOnly && filters.allRestored, 'The candidate role filters did not isolate and restore their intended groups.');
   assert(filters.focusPreservedWhenVisible && filters.hiddenSelectionPreserved, 'Filtering changed a still-visible focus or hidden selection.');
   assert(filters.searchZeroResultsClearedPreview && filters.searchClearRestoredPreview, 'Search did not clear and restore the focused preview correctly.');
+  assert(filters.latePreviewResponseIgnored, 'A delayed old focused preview response replaced the current visible focus.');
   run.filterFacts = filters;
   run.ui = await readCatalogUi(window);
   const compositionScreenshot = await capture(window, join(runtime.repoEvidenceDir, 'bluehair-composition-directory.png'));
