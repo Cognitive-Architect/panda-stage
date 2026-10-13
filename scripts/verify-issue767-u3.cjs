@@ -359,7 +359,10 @@ function installMainProbes() {
     const response = await originalInspect.call(this, sourcePath, requestId);
     record.sessionId = response?.ok === true ? response.sessionId : null;
     const source = response?.ok === true ? response.ir?.source ?? response.source ?? null : null;
-    record.sourceSha256 = typeof source?.sha256 === 'string' ? source.sha256 : null;
+    record.sessionSourceSha256 = typeof source?.sha256 === 'string' ? source.sha256 : null;
+    record.originalSourceSha256 = typeof response?.trace?.originalSourceSha256 === 'string'
+      ? response.trace.originalSourceSha256
+      : null;
     record.outcome = response?.ok === true ? 'success' : response?.error?.code ?? 'unknown';
     record.finishedAt = Date.now();
     return response;
@@ -889,7 +892,15 @@ async function verifyCharacterImport(window, project) {
   assert(commit?.ok && commit.confirmed, 'Main did not complete the explicit snapshot commit.');
   assert(commit.projectRoot === project.projectRoot, 'Snapshot was committed to a different project root.');
   assert(commit.sessionId === inspection.inspection.sessionId, 'Snapshot commit was not bound to the inspected session.');
-  assert(commit.source?.basename === basename(runtime.sourcePaths.bluehair) && commit.source?.sha256 === runtime.sourceHashesBefore.bluehair, 'Snapshot commit source name/SHA differs from the original FLA.');
+  assert(
+    commit.source?.basename === basename(runtime.sourcePaths.bluehair) &&
+      commit.source?.sha256 === inspection.inspection.sessionSourceSha256,
+    'Snapshot commit source name/SHA differs from the inspected FLA session.',
+  );
+  assert(
+    inspection.inspection.originalSourceSha256 === runtime.sourceHashesBefore.bluehair,
+    'Main preflight did not preserve the original FLA SHA alongside the normalized session identity.',
+  );
   assert(commit.target?.renderTargetId === BLUEHAIR_TARGET_ID && commit.target?.selectedFrameIndex === 0 && commit.target.sourceLibraryItemName === BLUEHAIR_TARGET, 'Snapshot commit target/frame differs from the selected com809 candidate.');
   assert(commit.confirmedPreviewRequestId === previewEvent.requestId, 'Snapshot commit did not pin the preview request the user saw.');
   assert(commit.preview?.sha256 === previewSha256 && commit.preview.sha256 === previewEvent.sha256, 'Snapshot commit preview SHA differs from the rendered PNG.');
@@ -897,7 +908,11 @@ async function verifyCharacterImport(window, project) {
   const projectAfterImport = readProjectState(project.projectRoot);
   assert(projectAfterImport.assetCount === 1, `Expected exactly one character asset, got ${projectAfterImport.assetCount}.`);
   const asset = projectAfterImport.assets[0];
-  assert(asset.kind === 'image' && asset.flaSnapshot?.sourceSha256 === runtime.sourceHashesBefore.bluehair, 'Committed image asset is missing its original FLA metadata.');
+  assert(
+    asset.kind === 'image' &&
+      asset.flaSnapshot?.sourceSha256 === inspection.inspection.sessionSourceSha256,
+    'Committed image asset is missing the inspected FLA session identity.',
+  );
   assert(asset.flaSnapshot?.renderTargetId === BLUEHAIR_TARGET_ID && asset.flaSnapshot?.selectedFrameIndex === 0 && asset.flaSnapshot?.previewSha256 === previewSha256, 'Committed image asset target/frame/preview metadata is incorrect.');
   assert(asset.name.includes('蓝发修仙女') && asset.name.includes('神女-cilisucai.com809') && asset.name.includes('第 1 帧'), 'Asset Library name does not identify source, composed target, and frame.');
   const imagePath = join(project.projectRoot, asset.relativePath);
@@ -942,7 +957,12 @@ async function verifyCharacterImport(window, project) {
   return {
     projectBefore,
     projectAfterImport,
-    source: { basename: basename(runtime.sourcePaths.bluehair), sha256: runtime.sourceHashesBefore.bluehair },
+    source: {
+      basename: basename(runtime.sourcePaths.bluehair),
+      sha256: runtime.sourceHashesBefore.bluehair,
+      originalSourceSha256: inspection.inspection.originalSourceSha256,
+      sessionSourceSha256: inspection.inspection.sessionSourceSha256,
+    },
     candidate: {
       index,
       candidate,
@@ -1087,7 +1107,11 @@ async function verifyRasterOnlyImport(window, project) {
   const inspection = await openReview(window, sourcePath, 'bitmap-only');
   assert(inspection.workbench.sourcePanelVisible && inspection.workbench.sourceBitmapCount === 2, 'Bitmap-only FLA did not expose its two raw images.');
   const selection = await selectOneRawBitmap(window, 2);
-  const result = await commitOneRawBitmap(window, project.projectRoot, runtime.sourceHashesBefore.rasterOnly);
+  const result = await commitOneRawBitmap(
+    window,
+    project.projectRoot,
+    inspection.inspection.sessionSourceSha256,
+  );
   assert(result.before.assetCount === 0 && result.after.assetCount === 1, 'Bitmap-only path did not import exactly one selected bitmap.');
   const noBrowseMutation = beforeBrowse.jsonSha256 === result.before.jsonSha256 &&
     beforeBrowse.assetCount === 0 && result.before.assetCount === 0;
@@ -1095,6 +1119,7 @@ async function verifyRasterOnlyImport(window, project) {
   return {
     sourceBasename: basename(sourcePath),
     sourceSha256: runtime.sourceHashesBefore.rasterOnly,
+    sessionSourceSha256: inspection.inspection.sessionSourceSha256,
     initialWorkbench: inspection.workbench,
     selection,
     commit: result.commit,
@@ -1112,13 +1137,18 @@ async function verifyMixedBitmapImport(window, project) {
   const inspection = await openReview(window, sourcePath, 'bluehair-raw-bitmap');
   assert(inspection.workbench.sourceBitmapCount === 336 && inspection.workbench.selectedSourceItems === 0, 'Mixed FLA did not retain its 336 initially unselected raw bitmap parts.');
   const selection = await selectOneRawBitmap(window, 336);
-  const result = await commitOneRawBitmap(window, project.projectRoot, runtime.sourceHashesBefore.bluehair);
+  const result = await commitOneRawBitmap(
+    window,
+    project.projectRoot,
+    inspection.inspection.sessionSourceSha256,
+  );
   assert(result.before.assetCount === 0 && result.after.assetCount === 1, 'Mixed-source raw-bitmap path did not import exactly one selected bitmap.');
   assert(beforeBrowse.jsonSha256 === result.before.jsonSha256, 'Mixed-source raw-bitmap browse/selection changed the project before commit.');
   assert(runtime.rasterCommits.at(-1)?.source?.basename === basename(sourcePath), 'Mixed raw-bitmap commit source basename was incorrect.');
   return {
     sourceBasename: basename(sourcePath),
     sourceSha256: runtime.sourceHashesBefore.bluehair,
+    sessionSourceSha256: inspection.inspection.sessionSourceSha256,
     initialWorkbench: inspection.workbench,
     selection,
     commit: result.commit,
@@ -1283,7 +1313,7 @@ async function main() {
     primaryCharacterExactlyOneAsset: importFacts.projectAfterImport.assetCount === 1,
     exactCom809Frame0MatchesApprovedPreview: importFacts.candidate.candidate.renderTargetId === BLUEHAIR_TARGET_ID && importFacts.candidate.previewSha256 === BLUEHAIR_PREVIEW_SHA256,
     initialCompositionSelectionEmptyAndOneExplicitlyImported: importFacts.candidate.initialSelectedCount === 0 && importFacts.candidate.selection.selectedCount === 1 && importFacts.commit.result.status === 'imported',
-    confirmedPreviewSessionSourceAndTargetBound: runtime.previews.some((event) => event.sessionId === importFacts.commit.sessionId && event.requestId === importFacts.commit.confirmedPreviewRequestId && event.target.renderTargetId === BLUEHAIR_TARGET_ID && event.target.selectedFrameIndex === 0) && importFacts.commit.source.sha256 === BLUEHAIR_SOURCE_SHA256,
+    confirmedPreviewSessionSourceAndTargetBound: runtime.previews.some((event) => event.sessionId === importFacts.commit.sessionId && event.requestId === importFacts.commit.confirmedPreviewRequestId && event.target.renderTargetId === BLUEHAIR_TARGET_ID && event.target.selectedFrameIndex === 0) && importFacts.commit.source.sha256 === importFacts.source.sessionSourceSha256 && importFacts.source.sha256 === BLUEHAIR_SOURCE_SHA256 && importFacts.source.originalSourceSha256 === BLUEHAIR_SOURCE_SHA256,
     transparentPngAndRealAssetLibraryThumbnail: importFacts.candidate.alpha.transparentPixels > 0 && importFacts.libraryFacts.thumbnailLoaded,
     sourceMetadataPersistsInProjectAndLibrary: Boolean(importFacts.asset.flaSnapshot?.sourceBasename && importFacts.libraryFacts.originText.includes(BLUEHAIR_TARGET)),
     shotPlacementPersistsAfterSaveCloseReopen: persistence.reopened.shots.some((shot) => shot.name === persistence.shotName && shot.layers.some((layer) => layer.source?.assetId === importFacts.asset.id)),
