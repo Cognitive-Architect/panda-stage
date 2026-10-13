@@ -573,7 +573,7 @@
       }
     ]
   },
-  "count": 79,
+  "count": 80,
   "gates": [
     {
       "id": "issue663-dialogue-voice",
@@ -718,6 +718,18 @@
         "owner": "fla-import",
         "supersedes": null,
         "notes": "Focused real-source Windows Electron evidence for authored-state candidate ordering, the exact Bluehair com809 frame-0 catalog target, raster preservation, duplicate identity, fail-closed unsupported content, source switching, responsiveness, and no project/source mutation."
+      },
+      {
+        "id": "issue767-u3",
+        "script": "verify:issue767-u3",
+        "suite": "assets",
+        "subsystem": "fla-import",
+        "status": "active",
+        "platform": "windows",
+        "runIn": "local",
+        "owner": "fla-import",
+        "supersedes": null,
+        "notes": "Focused real Windows Electron proof for exact Bluehair com809 frame-0 preview binding, one-image commit and metadata, Asset Library thumbnail, shot placement, save-close-reopen, duplicate no-op, single raw bitmap imports, cancellation/resource cleanup, and fail-closed unsupported content."
       },
     {
       "id": "issue399-stage-e",

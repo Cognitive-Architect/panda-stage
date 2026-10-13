@@ -218,8 +218,35 @@ describe('FlaStaticSnapshotCommitService', () => {
     expect(response.result.asset.kind).toBe('image');
     expect(response.result.asset.mimeType).toBe('image/png');
     expect(response.result.asset.sha256).toBe(sha256);
+    expect(response.result.asset.name).toBe('scene · Snapshot · 第 1 帧');
+    expect(response.result.asset.flaSnapshot).toEqual({
+      sourceBasename: SOURCE.basename,
+      sourceSha256: SOURCE.sha256,
+      targetName: 'Snapshot',
+      renderTargetId: 'fla-render-target-0000000000000001',
+      selectedFrameIndex: 0,
+      previewSha256: sha256,
+    });
     const files = await assetEntries(h.projectRoot);
     expect(files).toHaveLength(1);
+  });
+
+  it('preserves dotted composed target labels in the visible asset name', async () => {
+    const h = await harness();
+    const { png, sha256 } = makePng(8, 8);
+    const confirmed = confirmedPreview(
+      png,
+      sha256,
+      target('神女-cilisucai.com/神女-cilisucai.com809'),
+    );
+    const response = await h.createService({
+      previewStore: previewStore(confirmed),
+    }).commit(request(h, confirmed));
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error('commit should succeed');
+    expect(response.result.asset.name).toBe(
+      'scene · 神女-cilisucai.com809 · 第 1 帧',
+    );
   });
 
   it('dedupes when the same snapshot PNG is committed twice', async () => {
@@ -235,6 +262,9 @@ describe('FlaStaticSnapshotCommitService', () => {
     if (!second.ok) throw new Error('second commit should succeed');
     expect(second.result.status).toBe('duplicate');
     expect(second.projectChanged).toBe(false);
+    expect(second.baseRevision).toBe(first.ok ? first.savedRevision : -1);
+    expect(second.savedRevision).toBe(first.ok ? first.savedRevision : -1);
+    expect(h.current.revision).toBe(first.ok ? first.savedRevision : -1);
     const files = await assetEntries(h.projectRoot);
     expect(files).toHaveLength(1);
   });

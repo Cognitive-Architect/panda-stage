@@ -12,6 +12,7 @@ import {
   AssetCard,
   type ThumbnailState,
 } from '../../src/renderer/features/assets/AssetCard';
+import { AssetDetails } from '../../src/renderer/features/assets/AssetDetails';
 import { AssetLibrary } from '../../src/renderer/features/assets/AssetLibrary';
 import type { AssetLibraryEntry } from '../../src/renderer/stores/assetLibrarySelectors';
 import exampleProject from '../../demo-project/project-v1.example.json';
@@ -113,6 +114,37 @@ describe('asset library components', () => {
     expect(sourceMissingMarkup).toContain(
       'data-thumbnail-source-status="missing"',
     );
+  });
+
+  it('shows the source FLA, library item, and selected frame for a committed snapshot asset', () => {
+    const image = migrateProject(exampleProject).assets.find(
+      (asset) => asset.kind === 'image',
+    );
+    if (!image || image.kind !== 'image') throw new Error('Expected an image fixture.');
+    const markup = renderToStaticMarkup(
+      createElement(AssetDetails, {
+        asset: {
+          ...image,
+          flaSnapshot: {
+            sourceBasename: '蓝发修仙女.fla',
+            sourceSha256: 'a'.repeat(64),
+            targetName: '神女-cilisucai.com/神女-cilisucai.com809',
+            sourceLibraryItemName: '神女-cilisucai.com/神女-cilisucai.com809',
+            renderTargetId: 'fla-render-target-71289be86ab338b9c728b476f628b5708ec035560586326cc48e6af8eacfe8dd',
+            selectedFrameIndex: 0,
+            previewSha256: 'b'.repeat(64),
+          },
+        },
+        references: [],
+        busy: false,
+        onDelete: noop,
+        thumbnail: { status: 'ready', dataUrl: 'data:image/png;base64,AA==' },
+      }),
+    );
+    expect(markup).toContain('data-testid="asset-fla-snapshot-origin"');
+    expect(markup).toContain('蓝发修仙女.fla');
+    expect(markup).toContain('神女-cilisucai.com/神女-cilisucai.com809');
+    expect(markup).toContain('<dd>1</dd>');
   });
 
   it('renders a clear empty state for a category with no assets', () => {

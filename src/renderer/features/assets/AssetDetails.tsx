@@ -120,6 +120,22 @@ export function AssetDetails({
           <dt>尺寸 / 时长</dt>
           <dd>{dimensions(asset)}</dd>
         </div>
+        {asset.kind === 'image' && asset.flaSnapshot ? (
+          <div data-testid="asset-fla-snapshot-origin">
+            <div>
+              <dt>来源 FLA</dt>
+              <dd>{asset.flaSnapshot.sourceBasename}</dd>
+            </div>
+            <div>
+              <dt>源元件</dt>
+              <dd>{asset.flaSnapshot.sourceLibraryItemName ?? asset.flaSnapshot.targetName}</dd>
+            </div>
+            <div>
+              <dt>源帧</dt>
+              <dd>{asset.flaSnapshot.selectedFrameIndex + 1}</dd>
+            </div>
+          </div>
+        ) : null}
         {metadataState ? (
           <div>
             <dt>音频分析</dt>
