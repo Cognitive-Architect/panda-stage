@@ -706,9 +706,9 @@ async function openSnapshotCatalog(window, sessionId) {
   if (!selected) await click(window, '[data-testid="fla-workbench-tab-compositions"]');
   await waitForExpression(window, `Boolean(document.querySelector('#fla-composition-panel') && !document.querySelector('#fla-composition-panel').hidden && document.querySelector('[data-testid="fla-render-workbench"]'))`, 90_000);
   const catalogDeadline = Date.now() + 180_000;
-  while (!runtime.catalogs.some((catalog) => catalog.sessionId === sessionId) && Date.now() < catalogDeadline) await delay(100);
-  const catalog = runtime.catalogs.findLast((entry) => entry.sessionId === sessionId);
-  assert(catalog, `Timed out waiting for the Main-owned render-target catalog for session ${sessionId}.`);
+  while (!runtime.catalogs.some((catalog) => catalog.sessionId === sessionId && catalog.outcome === 'success') && Date.now() < catalogDeadline) await delay(100);
+  const catalog = runtime.catalogs.findLast((entry) => entry.sessionId === sessionId && entry.outcome === 'success');
+  assert(catalog, `Timed out waiting for a successful Main-owned render-target catalog for session ${sessionId}.`);
   await waitForExpression(window, `(() => {
     const root = document.querySelector('[data-testid="fla-snapshot-review"]');
     const state = root?.getAttribute('data-preview-state');
