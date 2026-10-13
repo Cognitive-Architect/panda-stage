@@ -111,7 +111,13 @@ export function AssetDetails({
         <p className="eyebrow">已选素材</p>
         <h3>{asset.name}</h3>
       </div>
-      <dl>
+      <dl
+        data-testid={
+          asset.kind === 'image' && asset.flaSnapshot
+            ? 'asset-fla-snapshot-origin'
+            : undefined
+        }
+      >
         <div>
           <dt>类型</dt>
           <dd>{asset.kind === 'image' ? '图片' : '音频'}</dd>
@@ -121,7 +127,7 @@ export function AssetDetails({
           <dd>{dimensions(asset)}</dd>
         </div>
         {asset.kind === 'image' && asset.flaSnapshot ? (
-          <div data-testid="asset-fla-snapshot-origin">
+          <>
             <div>
               <dt>来源 FLA</dt>
               <dd>{asset.flaSnapshot.sourceBasename}</dd>
@@ -134,7 +140,7 @@ export function AssetDetails({
               <dt>源帧</dt>
               <dd>{asset.flaSnapshot.selectedFrameIndex + 1}</dd>
             </div>
-          </div>
+          </>
         ) : null}
         {metadataState ? (
           <div>

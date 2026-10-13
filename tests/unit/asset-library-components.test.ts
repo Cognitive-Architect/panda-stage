@@ -145,6 +145,18 @@ describe('asset library components', () => {
     expect(markup).toContain('蓝发修仙女.fla');
     expect(markup).toContain('神女-cilisucai.com/神女-cilisucai.com809');
     expect(markup).toContain('<dd>1</dd>');
+    const originDescriptionList = markup.match(
+      /<dl data-testid="asset-fla-snapshot-origin">([\s\S]*?)<\/dl>/u,
+    )?.[1];
+    expect(originDescriptionList).toBeDefined();
+    expect(originDescriptionList).toMatch(
+      /<div><dt>来源 FLA<\/dt><dd>蓝发修仙女\.fla<\/dd><\/div>/u,
+    );
+    expect(originDescriptionList).toMatch(
+      /<div><dt>源元件<\/dt><dd>神女-cilisucai\.com\/神女-cilisucai\.com809<\/dd><\/div>/u,
+    );
+    expect(originDescriptionList).toMatch(/<div><dt>源帧<\/dt><dd>1<\/dd><\/div>/u);
+    expect(originDescriptionList).not.toMatch(/<div(?:\s[^>]*)?>\s*<div/u);
   });
 
   it('renders a clear empty state for a category with no assets', () => {
