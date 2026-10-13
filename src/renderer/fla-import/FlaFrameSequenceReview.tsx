@@ -51,6 +51,11 @@ import {
   rerenderReset,
   validateRange,
 } from './fla-frame-sequence-review-state';
+import {
+  createFlaWorkbenchCandidateSelection,
+  createFlaWorkbenchCandidates,
+  reconcileFlaWorkbenchFocus,
+} from './fla-workbench-candidates';
 
 interface FlaFrameSequenceReviewProps {
   sessionId: string;
@@ -116,20 +121,10 @@ export function FlaFrameSequenceReview({
     () => entries.find((entry) => entry.target.renderTargetId === selectedTargetId) ?? null,
     [entries, selectedTargetId],
   );
-  const focusedEntry = useMemo(
-    () => entries.find((entry) => entry.target.renderTargetId === focusedTargetId) ?? selectedEntry,
-    [entries, focusedTargetId, selectedEntry],
-  );
   const reviewClassName = embedded
     ? 'fla-frame-sequence-review fla-render-workbench-panel'
     : 'fla-frame-sequence-review';
   const targetFrameCount = selectedEntry?.target.frameCount ?? 0;
-  const visibleEntries = useMemo(() => {
-    const query = targetSearch.trim().toLocaleLowerCase();
-    if (!query) return entries;
-    return entries.filter((entry) => entry.target.userLabel.toLocaleLowerCase().includes(query));
-  }, [entries, targetSearch]);
-
   const validation = useMemo(
     () => validateRange(startFrameIndex, endFrameIndex, targetFrameCount),
     [startFrameIndex, endFrameIndex, targetFrameCount],
@@ -153,6 +148,63 @@ export function FlaFrameSequenceReview({
       : hasPreview
         ? phase === 'committed' ? 'committed' : 'valid'
         : 'needs-preview';
+
+  const sequencePreviewInputs = useMemo(() => {
+    const previewItem = orderedSequenceItems[selectedPreviewIndex];
+    const previewUrl = previewUrls[selectedPreviewIndex];
+    if (!sequenceIsCurrent || !success || !previewItem || !previewUrl || orderedSequenceItems.length === 0) {
+      return undefined;
+    }
+    const firstFrame = orderedSequenceItems[0];
+    const lastFrame = orderedSequenceItems[orderedSequenceItems.length - 1];
+    if (!firstFrame || !lastFrame) return undefined;
+    return {
+      [success.renderTargetId]: {
+        status: 'verified' as const,
+        previewUrl,
+        sha256: previewItem.preview.sha256,
+        requestId: success.requestId,
+        startFrameIndex: firstFrame.frameIndex,
+        endFrameIndex: lastFrame.frameIndex,
+      },
+    };
+  }, [orderedSequenceItems, previewUrls, selectedPreviewIndex, sequenceIsCurrent, success]);
+  const sequenceCandidates = useMemo(
+    () => createFlaWorkbenchCandidates({
+      context: { sessionId, source },
+      sequenceEntries: entries,
+      sequencePreviews: sequencePreviewInputs,
+      selection: createFlaWorkbenchCandidateSelection(focusedTargetId),
+    }).filter((candidate) => candidate.kind === 'sequence'),
+    [entries, focusedTargetId, sequencePreviewInputs, sessionId, source.basename, source.sha256],
+  );
+  const sequenceCandidateById = useMemo(
+    () => new Map(sequenceCandidates.map((candidate) => [candidate.id, candidate])),
+    [sequenceCandidates],
+  );
+  const visibleEntries = useMemo(() => {
+    const query = targetSearch.trim().toLocaleLowerCase();
+    if (!query) return entries;
+    return entries.filter((entry) => {
+      const candidate = sequenceCandidateById.get(entry.target.renderTargetId);
+      return candidate?.searchText.includes(query) ?? false;
+    });
+  }, [entries, sequenceCandidateById, targetSearch]);
+  const visibleSequenceCandidates = useMemo(
+    () => visibleEntries.map((entry) => sequenceCandidateById.get(entry.target.renderTargetId))
+      .filter((candidate) => candidate !== undefined),
+    [sequenceCandidateById, visibleEntries],
+  );
+  const effectiveFocusedTargetId = useMemo(
+    () => reconcileFlaWorkbenchFocus(visibleSequenceCandidates, focusedTargetId, true)
+      ?? visibleSequenceCandidates[0]?.id
+      ?? null,
+    [focusedTargetId, visibleSequenceCandidates],
+  );
+  const focusedEntry = useMemo(
+    () => entries.find((entry) => entry.target.renderTargetId === effectiveFocusedTargetId) ?? null,
+    [entries, effectiveFocusedTargetId],
+  );
 
   useEffect(() => {
     onWorkInProgressChange?.(phase === 'loading' || phase === 'rendering');
@@ -573,15 +625,19 @@ export function FlaFrameSequenceReview({
             <ul className="fla-frame-sequence-targets" data-testid="fla-frame-sequence-targets">
               {visibleEntries.map((entry) => {
                 const entryTarget = entry.target;
+                const candidate = sequenceCandidateById.get(entryTarget.renderTargetId);
                 const showException = !entry.previewSupported;
                 return (
                   <li
                     className={entryTarget.renderTargetId === selectedTargetId ? 'is-selected' : undefined}
-                    data-focused={entryTarget.renderTargetId === focusedTargetId ? 'true' : 'false'}
+                    data-focused={entryTarget.renderTargetId === effectiveFocusedTargetId ? 'true' : 'false'}
+                    data-fla-candidate-id={candidate?.identityKey ?? entryTarget.renderTargetId}
+                    data-preview-binding-key={candidate?.preview.bindingKey}
                     data-preview-supported={entry.previewSupported ? 'true' : 'false'}
-                    key={entryTarget.renderTargetId}
+                    data-checked={candidate?.checked ? 'true' : 'false'}
+                    key={candidate?.identityKey ?? entryTarget.renderTargetId}
                   >
-                    <label aria-label={`${entryTarget.userLabel}，${entryTarget.frameCount} 帧`} title={entryTarget.userLabel}>
+                    <label aria-label={`${candidate?.displayLabel ?? entryTarget.userLabel}，${entryTarget.frameCount} 帧`} title={entryTarget.userLabel}>
                       <input
                         type="radio"
                         name="fla-frame-sequence-target"
@@ -597,7 +653,7 @@ export function FlaFrameSequenceReview({
                         data-testid={`fla-frame-sequence-target-${entryTarget.renderTargetId}`}
                       />
                       <span className="fla-frame-sequence-target-copy">
-                        <strong title={entryTarget.userLabel}>{entryTarget.userLabel}</strong>
+                        <strong title={entryTarget.userLabel}>{candidate?.displayLabel ?? entryTarget.userLabel}</strong>
                         <small>{entryTarget.frameCount} 帧</small>
                         {showException ? (
                           <small
@@ -611,7 +667,7 @@ export function FlaFrameSequenceReview({
                     </label>
                     {!entry.previewSupported ? (
                       <button
-                        aria-pressed={entryTarget.renderTargetId === focusedTargetId}
+                      aria-pressed={entryTarget.renderTargetId === effectiveFocusedTargetId}
                         className="fla-stage-f2-focus"
                         data-testid={`fla-frame-sequence-f2-focus-${entryTarget.renderTargetId}`}
                         disabled={intentLocked}

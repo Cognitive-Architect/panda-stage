@@ -149,8 +149,8 @@ describe('FLA static snapshot candidate grouping', () => {
       previewSupported: false,
     });
     const previews = {
-      [flaStaticSnapshotCandidateKey(composition)]: { status: 'supported' as const, sha256: 'a'.repeat(64) },
-      [flaStaticSnapshotCandidateKey(graphicState)]: { status: 'supported' as const, sha256: 'b'.repeat(64) },
+      [flaStaticSnapshotCandidateKey(composition)]: { status: 'supported' as const, sha256: 'a'.repeat(64), previewUrl: 'blob:composition' },
+      [flaStaticSnapshotCandidateKey(graphicState)]: { status: 'supported' as const, sha256: 'b'.repeat(64), previewUrl: 'blob:graphic-state' },
       [flaStaticSnapshotCandidateKey(unsupported)]: { status: 'unsupported' as const },
     };
     const graphics = groupFlaStaticSnapshotCandidates(
@@ -191,7 +191,7 @@ describe('FLA static snapshot candidate grouping', () => {
     const composition = entry('composition', '神女', { catalogRole: 'scene-referenced-graphic' });
     const graphicState = entry('graphic-state', '头发', { catalogRole: 'graphic-state' });
     const previews = {
-      [flaStaticSnapshotCandidateKey(composition)]: { status: 'supported' as const, sha256: 'a'.repeat(64) },
+      [flaStaticSnapshotCandidateKey(composition)]: { status: 'supported' as const, sha256: 'a'.repeat(64), previewUrl: 'blob:composition' },
     };
     const graphics = groupFlaStaticSnapshotCandidates(
       [composition, graphicState],

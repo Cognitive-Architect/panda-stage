@@ -87,7 +87,7 @@ describe('Issue #396 Stage D render workbench contract', () => {
     expect(snapshot).toContain('createCandidateThumbnailUrl(outcome.response.bytes)');
     expect(snapshot).toContain('createCandidateFullSizeUrl(response.bytes)');
     expect(snapshot).toContain('data-preview-resolution="full"');
-    expect(snapshot).toContain('focusedCandidateKeyRef.current !== key');
+    expect(snapshot).toContain('focusedCandidateIdentityKeyRef.current !== identityKey');
     expect(snapshot).toContain('URL.revokeObjectURL(fullSizePreview.url)');
     expect(snapshot).not.toContain('预览去重');
     expect(snapshot).not.toContain('sha256.slice(0, 12)');
@@ -96,12 +96,13 @@ describe('Issue #396 Stage D render workbench contract', () => {
   });
 
   it('keeps preview focus inside the visible candidate filter and clears unmatched search state', () => {
-    expect(snapshot).toContain('reconcileFlaStaticSnapshotCandidateFocus');
-    expect(snapshot).toContain('focusedCandidateKeyRef.current = effectiveFocusedCandidateKey');
-    expect(snapshot).toContain('focusedPreview?.key === effectiveFocusedCandidateKey');
+    expect(snapshot).toContain('reconcileFlaWorkbenchFocus');
+    expect(snapshot).toContain('focusedCandidateIdentityKeyRef.current = effectiveFocusedCandidateIdentityKey');
+    expect(snapshot).toContain('focusedPreview?.key === effectiveFocusedCandidateIdentityKey');
     expect(snapshot).toContain('data-focused={focused ?');
     expect(snapshot).toContain('当前筛选无可预览素材');
-    expect(snapshot).toContain('setSelectedCandidateKeys');
+    expect(snapshot).toContain('candidateSelection.checkedCandidateIds');
+    expect(snapshot).toContain('candidate?.checked ?? false');
   });
 
   it('uses a three-zone layout without adding a second scroll owner', () => {

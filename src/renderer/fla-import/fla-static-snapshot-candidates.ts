@@ -2,6 +2,12 @@ import type {
   FlaRenderableTargetCatalogEntry,
   FlaRenderableTargetCatalogRole,
 } from '../../shared/fla-static-snapshot-api';
+import {
+  createFlaWorkbenchCandidates,
+  reconcileFlaWorkbenchFocus,
+  readableRenderTargetLabel,
+  snapshotCandidateId,
+} from './fla-workbench-candidates';
 
 export type FlaStaticSnapshotCandidateStatus = 'checking' | 'supported' | 'unsupported' | 'blank';
 
@@ -31,27 +37,19 @@ export function reconcileFlaStaticSnapshotCandidateFocus(
   currentFocusKey: string | null,
   allowCheckingCandidates: boolean,
 ): string | null {
-  const visibleEntries = visibleGroups.flatMap((group) => group.entries);
-  if (currentFocusKey && visibleEntries.some((entry) => flaStaticSnapshotCandidateKey(entry) === currentFocusKey)) {
-    return currentFocusKey;
-  }
-
-  const firstSupported = visibleEntries.find((entry) =>
-    previews[flaStaticSnapshotCandidateKey(entry)]?.status === 'supported',
-  );
-  if (firstSupported) return flaStaticSnapshotCandidateKey(firstSupported);
-  if (!allowCheckingCandidates) return null;
-
-  const firstChecking = visibleEntries.find((entry) => {
-    const key = flaStaticSnapshotCandidateKey(entry);
-    const status = previews[key]?.status ?? (entry.previewSupported ? 'checking' : 'unsupported');
-    return status === 'checking' && entry.previewSupported && !entry.isBlank;
-  });
-  return firstChecking ? flaStaticSnapshotCandidateKey(firstChecking) : null;
+  const candidates = createFlaWorkbenchCandidates({
+    context: {
+      sessionId: 'static-focus-reconciliation',
+      source: { basename: 'focus.fla', sha256: '0'.repeat(64) },
+    },
+    snapshotEntries: visibleGroups.flatMap((group) => group.entries),
+    snapshotPreviews: previews,
+  }).filter((candidate) => candidate.kind === 'snapshot');
+  return reconcileFlaWorkbenchFocus(candidates, currentFocusKey, allowCheckingCandidates);
 }
 
 export function flaStaticSnapshotCandidateKey(entry: FlaRenderableTargetCatalogEntry): string {
-  return `${entry.target.renderTargetId}:${entry.target.selectedFrameIndex ?? 0}`;
+  return snapshotCandidateId(entry);
 }
 
 export function flaStaticSnapshotCandidateRole(
@@ -61,8 +59,7 @@ export function flaStaticSnapshotCandidateRole(
 }
 
 export function flaStaticSnapshotCandidateLabel(entry: FlaRenderableTargetCatalogEntry): string {
-  if (entry.target.kind === 'scene') return entry.target.userLabel;
-  return `${entry.target.userLabel} · 第 ${(entry.target.selectedFrameIndex ?? 0) + 1} 帧`;
+  return readableRenderTargetLabel(entry.target, true);
 }
 
 export function flaStaticSnapshotCandidateKindLabel(entry: FlaRenderableTargetCatalogEntry): string {

@@ -5,7 +5,6 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -23,7 +22,6 @@ import {
   compatibilityCounts,
   compatibilityWarnings,
   createFlaRasterSelectionIntent,
-  allFlaReviewMediaIds,
   filterFlaReviewMedia,
   flaReviewPageCount,
   FLA_RASTER_REVIEW_PAGE_SIZES,
@@ -31,10 +29,18 @@ import {
   FLA_COMPATIBILITY_STATUSES,
   paginateFlaReviewMedia,
   reviewMedia,
-  toggleFlaMediaSelection,
   type FlaRasterReviewFilter,
   type FlaReviewMedia,
 } from './fla-review';
+import {
+  checkFlaWorkbenchCandidates,
+  clearFlaWorkbenchChecks,
+  createFlaWorkbenchCandidateSelection,
+  createFlaWorkbenchCandidates,
+  focusFlaWorkbenchCandidate,
+  reconcileFlaWorkbenchFocus,
+  toggleFlaWorkbenchCandidateChecked,
+} from './fla-workbench-candidates';
 import {
   isFlaInspectionUserCancelled,
   subscribeToFlaInspection,
@@ -90,13 +96,10 @@ export function FlaCompatibilityReviewSession({
   const [phase, setPhase] = useState<SessionPhase>('inspecting');
   const [response, setResponse] = useState<FlaInspectionResponse | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [selectedMediaIds, setSelectedMediaIds] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
+  const [rasterSelection, setRasterSelection] = useState(createFlaWorkbenchCandidateSelection);
   const [intent, setIntent] = useState<FlaRasterSelectionIntent | null>(null);
   const [commitResponse, setCommitResponse] = useState<FlaAssetCommitResponse | null>(null);
   const [thumbnailUrls, setThumbnailUrls] = useState<Readonly<Record<string, string>>>({});
-  const [focusedMediaId, setFocusedMediaId] = useState<string | null>(null);
   const [compatibilityNotesOpen, setCompatibilityNotesOpen] = useState(false);
   const [rasterPage, setRasterPage] = useState(1);
   const [rasterPageSize, setRasterPageSize] = useState<number>(FLA_RASTER_REVIEW_PAGE_SIZES[0]);
@@ -123,13 +126,13 @@ export function FlaCompatibilityReviewSession({
         }
         setResponse(nextResponse);
         if (nextResponse.ok) {
+          setThumbnailUrls({});
           setSessionId(nextResponse.sessionId);
-          setSelectedMediaIds(new Set());
+          setRasterSelection(createFlaWorkbenchCandidateSelection(nextResponse.ir.media[0]?.id ?? null));
           const initialSection = defaultFlaWorkbenchSection(nextResponse.ir.media.length);
           setWorkbenchSection(initialSection);
           setCompositionWorkbenchMounted(initialSection === 'compositions');
           setCompositionWorkInProgress(initialSection === 'compositions');
-          setFocusedMediaId(nextResponse.ir.media[0]?.id ?? null);
           setRasterPage(1);
           setRasterPageSize(16);
           setRasterFilter('all');
@@ -163,9 +166,28 @@ export function FlaCompatibilityReviewSession({
     () => (ir ? reviewMedia(ir, snapshot?.project.assets ?? []) : []),
     [ir, snapshot],
   );
-  const selectedCount = reviewItems.filter(({ media }) =>
-    selectedMediaIds.has(media.id),
-  ).length;
+  const rasterCandidates = useMemo(
+    () => ir && sessionId
+      ? createFlaWorkbenchCandidates({
+          context: { sessionId, source: ir.source },
+          rasterMedia: reviewItems.map(({ media }) => media),
+          rasterThumbnailUrls: thumbnailUrls,
+          selection: rasterSelection,
+        }).filter((candidate) => candidate.kind === 'raster')
+      : [],
+    [ir, rasterSelection, reviewItems, sessionId, thumbnailUrls],
+  );
+  const candidateByMediaId = useMemo(
+    () => new Map(rasterCandidates.map((candidate) => [candidate.id, candidate])),
+    [rasterCandidates],
+  );
+  const selectedMediaIds = useMemo(
+    () => new Set(rasterCandidates.flatMap((candidate) =>
+      candidate.kind === 'raster' && candidate.checked ? [candidate.operation.mediaId] : [],
+    )),
+    [rasterCandidates],
+  );
+  const selectedCount = selectedMediaIds.size;
   const filteredReviewItems = useMemo(() => {
     return filterFlaReviewMedia(reviewItems, rasterFilter, rasterSearch, selectedMediaIds);
   }, [rasterFilter, rasterSearch, reviewItems, selectedMediaIds]);
@@ -173,22 +195,29 @@ export function FlaCompatibilityReviewSession({
   const pagedReviewItems = useMemo(() => {
     return paginateFlaReviewMedia(filteredReviewItems, rasterPage, rasterPageSize);
   }, [filteredReviewItems, rasterPage, rasterPageSize]);
+  const visibleRasterCandidates = useMemo(
+    () => pagedReviewItems.map(({ media }) => candidateByMediaId.get(media.id))
+      .filter((candidate) => candidate !== undefined),
+    [candidateByMediaId, pagedReviewItems],
+  );
+  const effectiveFocusedMediaId = useMemo(
+    () => reconcileFlaWorkbenchFocus(
+      visibleRasterCandidates,
+      rasterSelection.focusedCandidateId,
+      false,
+    ),
+    [rasterSelection.focusedCandidateId, visibleRasterCandidates],
+  );
   const usedMediaCount = reviewItems.filter((item) => !item.libraryOnly).length;
   const libraryOnlyMediaCount = reviewItems.length - usedMediaCount;
-  const focusedItem = pagedReviewItems.find(({ media }) => media.id === focusedMediaId)
-    ?? pagedReviewItems[0]
+  const focusedItem = pagedReviewItems.find(({ media }) => media.id === effectiveFocusedMediaId)
     ?? null;
   const selectionLocked = phase === 'committing' || phase === 'success';
 
   useEffect(() => {
-    if (pagedReviewItems.length === 0) {
-      setFocusedMediaId(null);
-      return;
-    }
-    if (!pagedReviewItems.some(({ media }) => media.id === focusedMediaId)) {
-      setFocusedMediaId(pagedReviewItems[0]!.media.id);
-    }
-  }, [focusedMediaId, pagedReviewItems]);
+    if (effectiveFocusedMediaId === rasterSelection.focusedCandidateId) return;
+    setRasterSelection((current) => focusFlaWorkbenchCandidate(current, effectiveFocusedMediaId));
+  }, [effectiveFocusedMediaId, rasterSelection.focusedCandidateId]);
 
   useEffect(() => {
     if (rasterPage <= rasterPageCount) return;
@@ -366,21 +395,24 @@ export function FlaCompatibilityReviewSession({
   const toggle = (mediaId: string): void => {
     if (selectionLocked) return;
     rememberReviewScroll();
-    setSelectedMediaIds((current) => toggleFlaMediaSelection(current, mediaId));
+    setRasterSelection((current) => toggleFlaWorkbenchCandidateChecked(
+      current,
+      candidateByMediaId.get(mediaId),
+    ));
     setIntent(null);
     if (phase === 'confirmed') setPhase('ready');
   };
   const selectAll = (): void => {
     if (selectionLocked) return;
     rememberReviewScroll();
-    setSelectedMediaIds(allFlaReviewMediaIds(reviewItems));
+    setRasterSelection((current) => checkFlaWorkbenchCandidates(current, rasterCandidates));
     setIntent(null);
     if (phase === 'confirmed') setPhase('ready');
   };
   const clearAll = (): void => {
     if (selectionLocked) return;
     rememberReviewScroll();
-    setSelectedMediaIds(new Set());
+    setRasterSelection((current) => clearFlaWorkbenchChecks(current));
     setIntent(null);
     if (phase === 'confirmed') setPhase('ready');
   };
@@ -729,13 +761,16 @@ export function FlaCompatibilityReviewSession({
                 >
                   {pagedReviewItems.length > 0 ? pagedReviewItems.map((item) => (
                     <FlaReviewMediaCard
-                      focused={focusedItem?.media.id === item.media.id}
+                      candidateIdentity={candidateByMediaId.get(item.media.id)?.identityKey ?? item.media.id}
+                      displayLabel={candidateByMediaId.get(item.media.id)?.displayLabel ?? item.media.name}
+                      focused={effectiveFocusedMediaId === item.media.id}
                       item={item}
                       key={item.media.id}
-                      selected={selectedMediaIds.has(item.media.id)}
+                      previewBindingKey={candidateByMediaId.get(item.media.id)?.preview.bindingKey ?? item.media.id}
+                      selected={candidateByMediaId.get(item.media.id)?.checked ?? false}
                       selectionLocked={selectionLocked}
                       thumbnailUrl={thumbnailUrls[item.media.id]}
-                      onFocus={() => setFocusedMediaId(item.media.id)}
+                      onFocus={() => setRasterSelection((current) => focusFlaWorkbenchCandidate(current, item.media.id))}
                       onToggle={() => toggle(item.media.id)}
                     />
                   )) : (
@@ -750,8 +785,9 @@ export function FlaCompatibilityReviewSession({
                 <p className="fla-raster-panel-kicker">素材详情</p>
                 {focusedItem ? (
                   <FlaReviewMediaDetail
+                    displayLabel={candidateByMediaId.get(focusedItem.media.id)?.displayLabel ?? focusedItem.media.name}
                     item={focusedItem}
-                    selected={selectedMediaIds.has(focusedItem.media.id)}
+                    selected={candidateByMediaId.get(focusedItem.media.id)?.checked ?? false}
                     thumbnailUrl={thumbnailUrls[focusedItem.media.id]}
                   />
                 ) : (
@@ -783,6 +819,7 @@ export function FlaCompatibilityReviewSession({
               >
                 {renderMode === 'snapshot' ? (
                   <FlaStaticSnapshotReview
+                    key={`${sessionId}:${ir.source.sha256}`}
                     onCommitStateChange={setRenderCommitBusy}
                     onWorkInProgressChange={setCompositionWorkInProgress}
                     onTerminalStateChange={setRenderTerminalState}
@@ -795,6 +832,7 @@ export function FlaCompatibilityReviewSession({
                   />
                 ) : (
                   <FlaFrameSequenceReview
+                    key={`${sessionId}:${ir.source.sha256}`}
                     onCommitStateChange={setRenderCommitBusy}
                     onWorkInProgressChange={setCompositionWorkInProgress}
                     onTerminalStateChange={setRenderTerminalState}
@@ -882,16 +920,22 @@ export function FlaCompatibilityReviewSession({
 }
 
 function FlaReviewMediaCard({
+  candidateIdentity,
+  displayLabel,
   focused,
   item,
+  previewBindingKey,
   selected,
   selectionLocked,
   thumbnailUrl,
   onFocus,
   onToggle,
 }: {
+  candidateIdentity: string;
+  displayLabel: string;
   focused: boolean;
   item: FlaReviewMedia;
+  previewBindingKey: string;
   selected: boolean;
   selectionLocked: boolean;
   thumbnailUrl?: string;
@@ -901,34 +945,21 @@ function FlaReviewMediaCard({
   const { media } = item;
   return (
     <article
-      aria-label={`${selected ? '取消选择' : '选择'} ${media.name}`}
-      aria-pressed={selected}
+      aria-label={displayLabel}
       className={`fla-review-media-card${selected ? ' fla-review-media-card-selected' : ''}${focused ? ' fla-review-media-card-focused' : ''}`}
       data-alpha-kind={media.payload.alpha.kind}
+      data-fla-candidate-id={candidateIdentity}
       data-fla-media-id={media.id}
       data-library-only={item.libraryOnly ? 'true' : 'false'}
       data-source-format={media.sourceFormat}
       data-target-file-name={item.name.targetFileName}
       data-testid={`fla-review-media-card-${media.id}`}
       data-zero-alpha-pixels={media.payload.alpha.zeroAlphaPixels}
-      onClickCapture={onFocus}
-      onClick={(event: ReactMouseEvent<HTMLElement>) => {
-        if (isNestedInteractiveTarget(event.target)) return;
-        onToggle();
-      }}
-      onFocus={onFocus}
-      onKeyDown={(event: ReactKeyboardEvent<HTMLElement>) => {
-        if (isNestedInteractiveTarget(event.target)) return;
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-        event.preventDefault();
-        onToggle();
-      }}
-      role="button"
-      tabIndex={0}
+      data-preview-binding-key={previewBindingKey}
     >
       <label>
         <input
-          aria-label={`选择 ${media.name}`}
+          aria-label={`选择 ${displayLabel}`}
           checked={selected}
           data-selection-target="checkbox"
           disabled={selectionLocked}
@@ -938,16 +969,26 @@ function FlaReviewMediaCard({
         <span>{selected ? '已选' : '选择'}</span>
       </label>
       <div
+        aria-label={`预览 ${displayLabel}`}
         className="fla-review-thumbnail"
         data-selection-target="thumbnail"
+        onClick={onFocus}
+        onFocus={onFocus}
+        onKeyDown={(event: ReactKeyboardEvent<HTMLDivElement>) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          onFocus();
+        }}
+        role="button"
+        tabIndex={0}
       >
         {thumbnailUrl ? (
-          <img alt={media.name} loading="lazy" src={thumbnailUrl} />
+          <img alt={displayLabel} loading="lazy" src={thumbnailUrl} />
         ) : (
           <span>缩略图不可用</span>
         )}
       </div>
-      <strong title={media.name}>{media.name}</strong>
+      <strong title={media.name}>{displayLabel}</strong>
       <span className="fla-review-media-usage" data-usage-state={item.libraryOnly ? 'library-only' : 'used'}>
         {item.libraryOnly ? '仅素材库' : '已使用'}
       </span>
@@ -957,10 +998,12 @@ function FlaReviewMediaCard({
 }
 
 function FlaReviewMediaDetail({
+  displayLabel,
   item,
   selected,
   thumbnailUrl,
 }: {
+  displayLabel: string;
   item: FlaReviewMedia;
   selected: boolean;
   thumbnailUrl?: string;
@@ -976,13 +1019,13 @@ function FlaReviewMediaDetail({
     <div className="fla-review-media-detail-content" data-focused-media-id={media.id}>
       <div className="fla-review-detail-preview">
         {thumbnailUrl ? (
-          <img alt={media.name} src={thumbnailUrl} />
+          <img alt={displayLabel} src={thumbnailUrl} />
         ) : (
           <span>预览不可用</span>
         )}
       </div>
       <div className="fla-review-detail-heading">
-        <h3 title={media.name}>{media.name}</h3>
+        <h3 title={media.name}>{displayLabel}</h3>
         <span data-selected={selected ? 'true' : 'false'}>{selected ? '已选择' : '未选择'}</span>
       </div>
       <dl>
@@ -1006,12 +1049,6 @@ function FlaReviewMediaDetail({
         </div>
       ) : null}
     </div>
-  );
-}
-
-function isNestedInteractiveTarget(target: EventTarget | null): boolean {
-  return target instanceof HTMLElement && Boolean(
-    target.closest('input, label, button, a'),
   );
 }
 

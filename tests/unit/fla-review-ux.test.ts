@@ -15,15 +15,20 @@ const issue255Styles = styles.slice(styles.indexOf('/* Issue #255:'));
 const reviewModel = readFileSync('src/renderer/fla-import/fla-review.ts', 'utf8');
 
 describe('FLA Slice 2 review UX contract', () => {
-  it('exposes full-card, thumbnail, and one checkbox selection paths without double toggling', () => {
-    expect(component).toContain('data-selection-target="thumbnail"');
-    expect(component).toContain('data-selection-target="checkbox"');
-    expect(component).toContain('role="button"');
-    expect(component).toContain('aria-pressed={selected}');
-    expect(component).toContain('onClick={(event: ReactMouseEvent<HTMLElement>) =>');
-    expect(component).toContain('onKeyDown={(event: ReactKeyboardEvent<HTMLElement>) =>');
-    expect(component).toContain("target.closest('input, label, button, a')");
-    expect(component.match(/onChange=\{onToggle\}/gu)).toHaveLength(1);
+  it('keeps thumbnail focus and checkbox selection as separate candidate actions', () => {
+    const card = component.slice(
+      component.indexOf('function FlaReviewMediaCard'),
+      component.indexOf('function FlaReviewMediaDetail'),
+    );
+    expect(card).toContain('data-selection-target="thumbnail"');
+    expect(card).toContain('data-selection-target="checkbox"');
+    expect(card).toContain('onClick={onFocus}');
+    expect(card).toContain('onChange={onToggle}');
+    expect(card).toContain('role="button"');
+    expect(card).toContain('candidateIdentity');
+    expect(card).not.toContain('onClickCapture');
+    expect(card).not.toContain('ReactMouseEvent');
+    expect(card).not.toContain('aria-pressed={selected}');
   });
 
   it('owns one top-level foreground layer and suppresses background interaction', () => {
@@ -117,7 +122,7 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(component).toContain('data-testid="fla-workbench-tab-source-assets"');
     expect(component).toContain('组合素材');
     expect(component).toContain('原始位图 / 零件');
-    expect(component).toContain('setSelectedMediaIds(new Set())');
+    expect(component).toContain('createFlaWorkbenchCandidateSelection(nextResponse.ir.media[0]?.id ?? null)');
     expect(component).not.toContain('new Set(nextResponse.ir.media.map((media) => media.id))');
     expect(component).toContain('<dt>目标文件名</dt>');
     expect(component).not.toContain('FLA V1 · Slice 2');

@@ -34,11 +34,12 @@ describe('Issue #392 Stage B v1.1 raster review workbench contract', () => {
     expect(component).toContain('data-testid={`fla-review-filter-${filter}`}');
     expect(component).toContain('data-testid="fla-review-search"');
     expect(component).toContain("filterFlaReviewMedia(reviewItems, rasterFilter, rasterSearch, selectedMediaIds)");
-    expect(component).toContain('setSelectedMediaIds(allFlaReviewMediaIds(reviewItems));');
-    expect(component).toContain('setSelectedMediaIds(new Set());');
+    expect(component).toContain('checkFlaWorkbenchCandidates(current, rasterCandidates)');
+    expect(component).toContain('clearFlaWorkbenchChecks(current)');
+    expect(component).toContain('selection: rasterSelection');
     expect(component).toContain('pagedReviewItems.map((item) =>');
-    expect(component).toContain('if (!pagedReviewItems.some(({ media }) => media.id === focusedMediaId))');
-    expect(component).toContain('setFocusedMediaId(pagedReviewItems[0]!.media.id);');
+    expect(component).toContain('reconcileFlaWorkbenchFocus(');
+    expect(component).toContain('visibleRasterCandidates');
   });
 
   it('keeps cards thumbnail-first and keeps truthful detail facts out of the card scan path', () => {

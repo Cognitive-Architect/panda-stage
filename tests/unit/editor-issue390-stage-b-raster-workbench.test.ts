@@ -51,14 +51,16 @@ describe('Issue #390 Stage B direct-raster Workbench contract', () => {
     expect(detail).toContain('className="fla-review-detail-warnings"');
   });
 
-  it('keeps selection opt-in and preserves keyboard selection while adding focused detail', () => {
-    expect(component).toContain('setSelectedMediaIds(new Set())');
-    expect(component).toContain('setFocusedMediaId(nextResponse.ir.media[0]?.id ?? null)');
-    expect(component).toContain('onFocus={() => setFocusedMediaId(item.media.id)}');
-    expect(card).toContain('onClickCapture={onFocus}');
-    expect(card).toContain('onKeyDown={(event: ReactKeyboardEvent<HTMLElement>) =>');
-    expect(card).toContain("event.key !== 'Enter' && event.key !== ' '");
-    expect(card).toContain('aria-pressed={selected}');
+  it('keeps thumbnail focus separate from explicit, keyboard-accessible checkbox selection', () => {
+    expect(component).toContain('createFlaWorkbenchCandidateSelection(nextResponse.ir.media[0]?.id ?? null)');
+    expect(card).toContain('data-selection-target="thumbnail"');
+    expect(card).toContain('data-selection-target="checkbox"');
+    expect(card).toContain('onFocus={onFocus}');
+    expect(card).toContain('onChange={onToggle}');
+    expect(card).toContain('role="button"');
+    expect(card).toContain('tabIndex={0}');
+    expect(card).not.toContain('onClickCapture={onFocus}');
+    expect(card).not.toContain('aria-pressed={selected}');
   });
 
   it('shows stable progress and exactly one state-bound dominant CTA', () => {

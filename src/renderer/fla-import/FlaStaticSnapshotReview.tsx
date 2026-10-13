@@ -22,11 +22,21 @@ import {
   flaStaticSnapshotCandidateLabel,
   flaStaticSnapshotCandidateRole,
   groupFlaStaticSnapshotCandidates,
-  reconcileFlaStaticSnapshotCandidateFocus,
   type FlaStaticSnapshotCandidateFilter,
   type FlaStaticSnapshotCandidatePreview,
   type FlaStaticSnapshotCandidatePreviews,
 } from './fla-static-snapshot-candidates';
+import {
+  checkFlaWorkbenchCandidates,
+  clearFlaWorkbenchChecks,
+  createFlaWorkbenchCandidateSelection,
+  createFlaWorkbenchCandidates,
+  flaWorkbenchSnapshotIdentityKey,
+  focusFlaWorkbenchCandidate,
+  reconcileFlaWorkbenchChecks,
+  reconcileFlaWorkbenchFocus,
+  toggleFlaWorkbenchCandidateChecked,
+} from './fla-workbench-candidates';
 
 interface FlaStaticSnapshotStageFacts {
   width: number;
@@ -87,8 +97,7 @@ export function FlaStaticSnapshotReview({
   const [catalogSummary, setCatalogSummary] = useState('');
   const [omittedCandidateCount, setOmittedCandidateCount] = useState(0);
   const [previews, setPreviews] = useState<FlaStaticSnapshotCandidatePreviews>({});
-  const [selectedCandidateKeys, setSelectedCandidateKeys] = useState<ReadonlySet<string>>(() => new Set());
-  const [focusedCandidateKey, setFocusedCandidateKey] = useState<string | null>(null);
+  const [candidateSelection, setCandidateSelection] = useState(createFlaWorkbenchCandidateSelection);
   const [focusedPreview, setFocusedPreview] = useState<FocusedSnapshotPreview | null>(null);
   const [candidateSearch, setCandidateSearch] = useState('');
   const [candidateFilter, setCandidateFilter] = useState<FlaStaticSnapshotCandidateFilter>('all');
@@ -98,7 +107,7 @@ export function FlaStaticSnapshotReview({
   const [errorMessage, setErrorMessage] = useState('');
   const previewUrlsRef = useRef(new Set<string>());
   const focusedPreviewUrlRef = useRef<{ key: string; url: string } | null>(null);
-  const focusedCandidateKeyRef = useRef(focusedCandidateKey);
+  const focusedCandidateIdentityKeyRef = useRef<string | null>(null);
   const activePreviewRequestIdRef = useRef<string | null>(null);
   const pendingScanProgressProfileRef = useRef<{
     progress: number;
@@ -112,6 +121,10 @@ export function FlaStaticSnapshotReview({
     candidateIndex: number;
     targetId: string;
   }>());
+  const candidateContext = useMemo(
+    () => ({ sessionId, source: { basename: source.basename, sha256: source.sha256 } }),
+    [sessionId, source.basename, source.sha256],
+  );
   useLayoutEffect(() => {
     const pending = pendingScanProgressProfileRef.current;
     if (!pending || pending.progress !== scanProgress) return;
@@ -127,27 +140,50 @@ export function FlaStaticSnapshotReview({
     () => new Map(entries.map((entry) => [flaStaticSnapshotCandidateKey(entry), entry])),
     [entries],
   );
+  const candidates = useMemo(
+    () => createFlaWorkbenchCandidates({
+      context: candidateContext,
+      snapshotEntries: entries,
+      snapshotPreviews: previews,
+      selection: candidateSelection,
+    }).filter((candidate) => candidate.kind === 'snapshot'),
+    [candidateContext, candidateSelection, entries, previews],
+  );
+  const candidateById = useMemo(
+    () => new Map(candidates.map((candidate) => [candidate.id, candidate])),
+    [candidates],
+  );
+  const selectedCandidateKeys = candidateSelection.checkedCandidateIds;
   const visibleGroups = useMemo(
     () => groupFlaStaticSnapshotCandidates(entries, previews, candidateSearch, candidateFilter),
     [candidateFilter, candidateSearch, entries, previews],
   );
+  const visibleCandidates = useMemo(
+    () => visibleGroups.flatMap((group) => group.entries)
+      .map((entry) => candidateById.get(flaStaticSnapshotCandidateKey(entry)))
+      .filter((candidate) => candidate !== undefined),
+    [candidateById, visibleGroups],
+  );
   const effectiveFocusedCandidateKey = useMemo(
-    () => reconcileFlaStaticSnapshotCandidateFocus(
-      visibleGroups,
-      previews,
-      focusedCandidateKey,
+    () => reconcileFlaWorkbenchFocus(
+      visibleCandidates,
+      candidateSelection.focusedCandidateId,
       phase === 'scanning',
     ),
-    [focusedCandidateKey, phase, previews, visibleGroups],
+    [candidateSelection.focusedCandidateId, phase, visibleCandidates],
   );
-  focusedCandidateKeyRef.current = effectiveFocusedCandidateKey;
+  const effectiveFocusedCandidateIdentityKey = effectiveFocusedCandidateKey
+    ? candidateById.get(effectiveFocusedCandidateKey)?.identityKey ?? null
+    : null;
+  focusedCandidateIdentityKeyRef.current = effectiveFocusedCandidateIdentityKey;
   const focusedEntry = effectiveFocusedCandidateKey
     ? entryByKey.get(effectiveFocusedCandidateKey) ?? null
     : null;
   const focusedStatus = focusedEntry
     ? previews[flaStaticSnapshotCandidateKey(focusedEntry)]
     : undefined;
-  const focusedPreviewForEntry = effectiveFocusedCandidateKey && focusedPreview?.key === effectiveFocusedCandidateKey
+  const focusedPreviewForEntry = effectiveFocusedCandidateIdentityKey &&
+    focusedPreview?.key === effectiveFocusedCandidateIdentityKey
     ? focusedPreview
     : null;
   const previewAreaState = !effectiveFocusedCandidateKey ? 'empty' : focusedPreviewForEntry?.status ?? (
@@ -156,24 +192,32 @@ export function FlaStaticSnapshotReview({
       : focusedStatus?.status ?? 'needs-preview'
   );
   const supportedEntries = useMemo(
-    () => entries.filter((entry) => previews[flaStaticSnapshotCandidateKey(entry)]?.status === 'supported'),
-    [entries, previews],
+    () => entries.filter((entry) => candidateById.get(flaStaticSnapshotCandidateKey(entry))?.selectable),
+    [candidateById, entries],
   );
   const visibleSupportedCount = visibleGroups.reduce(
     (count, group) => count + group.entries.filter(
-      (entry) => previews[flaStaticSnapshotCandidateKey(entry)]?.status === 'supported',
+      (entry) => candidateById.get(flaStaticSnapshotCandidateKey(entry))?.selectable,
     ).length,
     0,
   );
   const selectedEntries = useMemo(
-    () => entries.filter((entry) => selectedCandidateKeys.has(flaStaticSnapshotCandidateKey(entry))),
-    [entries, selectedCandidateKeys],
+    () => entries.filter((entry) => candidateById.get(flaStaticSnapshotCandidateKey(entry))?.checked),
+    [candidateById, entries],
   );
   const blankCount = entries.filter((entry) => entry.isBlank).length;
   const unsupportedCount = entries.filter((entry) => {
-    const result = previews[flaStaticSnapshotCandidateKey(entry)];
-    return !entry.isBlank && (result?.status === 'unsupported' || (!result && !entry.previewSupported));
+    const candidate = candidateById.get(flaStaticSnapshotCandidateKey(entry));
+    return !entry.isBlank && candidate?.supported === false;
   }).length;
+
+  useEffect(() => {
+    setCandidateSelection((current) => reconcileFlaWorkbenchChecks(current, candidates));
+  }, [candidates]);
+
+  useEffect(() => {
+    setCandidateSelection(createFlaWorkbenchCandidateSelection());
+  }, [sessionId, source.sha256]);
   const checkedCatalogSummary = entries.length === 0
     ? catalogSummary
     : phase === 'scanning'
@@ -196,18 +240,12 @@ export function FlaStaticSnapshotReview({
     setFocusedPreview(next);
   }, []);
 
-  const markFocusedPreviewUnavailable = useCallback((key: string, message: string): void => {
-    updateFocusedPreview({ key, status: 'error', message });
+  const markFocusedPreviewUnavailable = useCallback((candidateId: string, identityKey: string, message: string): void => {
+    updateFocusedPreview({ key: identityKey, status: 'error', message });
     setPreviews((current) => ({
       ...current,
-      [key]: { ...current[key], status: 'unsupported', reason: message },
+      [candidateId]: { ...current[candidateId], status: 'unsupported', reason: message },
     }));
-    setSelectedCandidateKeys((current) => {
-      if (!current.has(key)) return current;
-      const next = new Set(current);
-      next.delete(key);
-      return next;
-    });
   }, [updateFocusedPreview]);
 
   useEffect(() => {
@@ -266,14 +304,16 @@ export function FlaStaticSnapshotReview({
           ) ??
           response.entries.find((entry) => entry.previewSupported && !entry.isBlank);
         const firstEntry = firstReviewable ?? response.entries[0];
-        setFocusedCandidateKey(firstEntry ? flaStaticSnapshotCandidateKey(firstEntry) : null);
+        setCandidateSelection((current) => focusFlaWorkbenchCandidate(
+          current,
+          firstEntry ? flaStaticSnapshotCandidateKey(firstEntry) : null,
+        ));
         setPhase('scanning');
 
         for (let index = 0; index < response.entries.length; index += 1) {
           if (disposed) return;
           const entry = response.entries[index];
           if (!entry) continue;
-          const key = flaStaticSnapshotCandidateKey(entry);
           const candidateStartedAt = startIssue762Profile();
           if (entry.isBlank) {
             setCandidatePreviewAndProgress(index, entry, { status: 'blank' });
@@ -364,10 +404,11 @@ export function FlaStaticSnapshotReview({
                 candidateIndex: index,
                 targetId: entry.target.renderTargetId,
               });
-              if (focusedCandidateKeyRef.current === key) {
+              const identityKey = flaWorkbenchSnapshotIdentityKey(candidateContext, entry);
+              if (focusedCandidateIdentityKeyRef.current === identityKey) {
                 const fullSizeUrl = createCandidateFullSizeUrl(outcome.response.bytes);
                 updateFocusedPreview({
-                  key,
+                  key: identityKey,
                   status: 'ready',
                   url: fullSizeUrl,
                   width: outcome.response.width,
@@ -428,31 +469,32 @@ export function FlaStaticSnapshotReview({
       if (fullSizePreview) URL.revokeObjectURL(fullSizePreview.url);
       focusedPreviewUrlRef.current = null;
     };
-  }, [onCommitStateChange, onTerminalStateChange, sessionId, updateFocusedPreview]);
+  }, [candidateContext, onCommitStateChange, onTerminalStateChange, sessionId, updateFocusedPreview]);
 
   useEffect(() => {
-    const key = effectiveFocusedCandidateKey;
+    const candidateId = effectiveFocusedCandidateKey;
+    const identityKey = effectiveFocusedCandidateIdentityKey;
     const entry = focusedEntry;
     const status = focusedStatus;
     const canRequest = Boolean(
-      key && entry && status?.status === 'supported' && status.sha256 &&
+      candidateId && identityKey && entry && status?.status === 'supported' && status.sha256 &&
       (phase === 'scanning' || phase === 'ready'),
     );
 
-    if (!canRequest || !key || !entry || !status?.sha256) {
+    if (!canRequest || !candidateId || !identityKey || !entry || !status?.sha256) {
       if (
         phase !== 'scanning' && phase !== 'ready' ||
-        focusedPreviewUrlRef.current && focusedPreviewUrlRef.current.key !== key
+        focusedPreviewUrlRef.current && focusedPreviewUrlRef.current.key !== identityKey
       ) {
         updateFocusedPreview(null);
       }
       return;
     }
-    if (focusedPreviewUrlRef.current?.key === key) return;
+    if (focusedPreviewUrlRef.current?.key === identityKey) return;
 
     let disposed = false;
     const requestId = crypto.randomUUID();
-    updateFocusedPreview({ key, status: 'loading' });
+    updateFocusedPreview({ key: identityKey, status: 'loading' });
 
     void (async () => {
       const outcome = await runFlaStaticSnapshotPreviewTransaction(
@@ -470,7 +512,7 @@ export function FlaStaticSnapshotReview({
         flaStaticSnapshotPreviewQueue,
         undefined,
         {
-          shouldRun: () => !disposed && focusedCandidateKeyRef.current === key,
+          shouldRun: () => !disposed && focusedCandidateIdentityKeyRef.current === identityKey,
           profileLabel: 'focused-preview',
           onRequestStart: () => {
             activePreviewRequestIdRef.current = requestId;
@@ -482,7 +524,7 @@ export function FlaStaticSnapshotReview({
           },
         },
       );
-      if (disposed || outcome.skipped || focusedCandidateKeyRef.current !== key) return;
+      if (disposed || outcome.skipped || focusedCandidateIdentityKeyRef.current !== identityKey) return;
 
       const failureMessage = outcome.cleanupError
         ? '清晰预览的资源清理失败。为避免错误导入，此项暂不可导入。'
@@ -494,28 +536,29 @@ export function FlaStaticSnapshotReview({
               ? '候选图像已变化。请重新检查后再导入。'
               : null;
       if (failureMessage) {
-        markFocusedPreviewUnavailable(key, failureMessage);
+        markFocusedPreviewUnavailable(candidateId, identityKey, failureMessage);
         return;
       }
 
       const response = outcome.response;
       if (!response?.ok) return;
       const url = createCandidateFullSizeUrl(response.bytes);
-      if (disposed || focusedCandidateKeyRef.current !== key) {
+      if (disposed || focusedCandidateIdentityKeyRef.current !== identityKey) {
         URL.revokeObjectURL(url);
         return;
       }
       updateFocusedPreview({
-        key,
+        key: identityKey,
         status: 'ready',
         url,
         width: response.width,
         height: response.height,
       });
     })().catch(() => {
-      if (disposed || focusedCandidateKeyRef.current !== key) return;
+      if (disposed || focusedCandidateIdentityKeyRef.current !== identityKey) return;
       markFocusedPreviewUnavailable(
-        key,
+        candidateId,
+        identityKey,
         '清晰预览暂时无法显示。此项暂不可导入，请重新检查或返回。',
       );
     });
@@ -530,7 +573,7 @@ export function FlaStaticSnapshotReview({
         }).catch(() => undefined);
       }
     };
-  }, [effectiveFocusedCandidateKey, focusedEntry, focusedStatus?.sha256, focusedStatus?.status, markFocusedPreviewUnavailable, phase, sessionId, updateFocusedPreview]);
+  }, [effectiveFocusedCandidateIdentityKey, effectiveFocusedCandidateKey, focusedEntry, focusedStatus?.sha256, focusedStatus?.status, markFocusedPreviewUnavailable, phase, sessionId, updateFocusedPreview]);
 
   const close = (): void => {
     if (phase === 'committing') return;
@@ -545,54 +588,50 @@ export function FlaStaticSnapshotReview({
   const toggleCandidate = (entry: FlaRenderableTargetCatalogEntry): void => {
     if (phase !== 'ready') return;
     const key = flaStaticSnapshotCandidateKey(entry);
-    if (previews[key]?.status !== 'supported') return;
-    setSelectedCandidateKeys((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-    setFocusedCandidateKey(key);
+    setCandidateSelection((current) => toggleFlaWorkbenchCandidateChecked(
+      current,
+      candidateById.get(key),
+    ));
   };
 
   const selectVisibleSupported = (): void => {
     if (phase !== 'ready') return;
-    setSelectedCandidateKeys((current) => {
-      const next = new Set(current);
-      for (const group of visibleGroups) {
-        for (const entry of group.entries) {
-          const key = flaStaticSnapshotCandidateKey(entry);
-          if (previews[key]?.status === 'supported') next.add(key);
-        }
-      }
-      return next;
-    });
+    const visible = visibleGroups.flatMap((group) => group.entries)
+      .map((entry) => candidateById.get(flaStaticSnapshotCandidateKey(entry)))
+      .filter((candidate) => candidate !== undefined);
+    setCandidateSelection((current) => checkFlaWorkbenchCandidates(current, visible));
   };
 
-  const clearSelection = (): void => setSelectedCandidateKeys(new Set());
+  const clearSelection = (): void => {
+    setCandidateSelection((current) => clearFlaWorkbenchChecks(current));
+  };
 
   const updateCandidateFilter = (filter: FlaStaticSnapshotCandidateFilter): void => {
     const nextGroups = groupFlaStaticSnapshotCandidates(entries, previews, candidateSearch, filter);
-    const nextFocusKey = reconcileFlaStaticSnapshotCandidateFocus(
-      nextGroups,
-      previews,
-      effectiveFocusedCandidateKey,
+    const nextVisibleCandidates = nextGroups.flatMap((group) => group.entries)
+      .map((entry) => candidateById.get(flaStaticSnapshotCandidateKey(entry)))
+      .filter((candidate) => candidate !== undefined);
+    const nextFocusKey = reconcileFlaWorkbenchFocus(
+      nextVisibleCandidates,
+      candidateSelection.focusedCandidateId,
       phase === 'scanning',
     );
     setCandidateFilter(filter);
-    setFocusedCandidateKey(nextFocusKey);
+    setCandidateSelection((current) => focusFlaWorkbenchCandidate(current, nextFocusKey));
   };
 
   const updateCandidateSearch = (search: string): void => {
     const nextGroups = groupFlaStaticSnapshotCandidates(entries, previews, search, candidateFilter);
-    const nextFocusKey = reconcileFlaStaticSnapshotCandidateFocus(
-      nextGroups,
-      previews,
-      effectiveFocusedCandidateKey,
+    const nextVisibleCandidates = nextGroups.flatMap((group) => group.entries)
+      .map((entry) => candidateById.get(flaStaticSnapshotCandidateKey(entry)))
+      .filter((candidate) => candidate !== undefined);
+    const nextFocusKey = reconcileFlaWorkbenchFocus(
+      nextVisibleCandidates,
+      candidateSelection.focusedCandidateId,
       phase === 'scanning',
     );
     setCandidateSearch(search);
-    setFocusedCandidateKey(nextFocusKey);
+    setCandidateSelection((current) => focusFlaWorkbenchCandidate(current, nextFocusKey));
   };
 
   const focusedSelectionNeedsPreview = Boolean(
@@ -848,15 +887,25 @@ export function FlaStaticSnapshotReview({
                     {group.duplicate ? <small className="fla-snapshot-duplicate-label">画面完全相同 · {group.sourceCount} 个来源</small> : null}
                     {group.entries.map((entry) => {
                       const key = flaStaticSnapshotCandidateKey(entry);
-                      const candidatePreview = previews[key];
-                      const status = candidatePreview?.status ?? (entry.previewSupported ? 'checking' : 'unsupported');
-                      const selectable = status === 'supported' && phase === 'ready';
+                      const candidate = candidateById.get(key);
+                      const candidatePreview = candidate?.preview;
+                      const status = candidatePreview?.status === 'verified'
+                        ? 'supported'
+                        : candidatePreview?.status === 'blank'
+                          ? 'blank'
+                          : candidatePreview?.status === 'checking' || candidatePreview?.status === 'unscanned'
+                            ? 'checking'
+                            : 'unsupported';
+                      const selectable = Boolean(candidate?.selectable) && phase === 'ready';
+                      const label = candidate?.displayLabel ?? flaStaticSnapshotCandidateLabel(entry);
                       const focused = key === effectiveFocusedCandidateKey;
                       return (
                         <div
                           className={`fla-snapshot-candidate-row${focused ? ' is-focused' : ''}`}
                           data-focused={focused ? 'true' : 'false'}
+                          data-fla-candidate-id={candidate?.identityKey ?? key}
                           data-preview-supported={selectable ? 'true' : 'false'}
+                          data-preview-binding-key={candidatePreview?.bindingKey}
                           data-catalog-preview-supported={entry.previewSupported ? 'true' : 'false'}
                           data-is-blank={entry.isBlank ? 'true' : 'false'}
                           data-catalog-role={flaStaticSnapshotCandidateRole(entry)}
@@ -870,7 +919,7 @@ export function FlaStaticSnapshotReview({
                             aria-pressed={focused}
                             className="fla-snapshot-candidate-focus"
                             disabled={phase === 'committing'}
-                            onClick={() => setFocusedCandidateKey(key)}
+                            onClick={() => setCandidateSelection((current) => focusFlaWorkbenchCandidate(current, key))}
                             type="button"
                           >
                             {candidatePreview?.previewUrl ? (
@@ -904,14 +953,14 @@ export function FlaStaticSnapshotReview({
                               </span>
                             )}
                             <span className="fla-snapshot-candidate-copy">
-                              <strong title={flaStaticSnapshotCandidateLabel(entry)}>{flaStaticSnapshotCandidateLabel(entry)}</strong>
+                              <strong title={entry.target.userLabel}>{label}</strong>
                               <small>{flaStaticSnapshotCandidateKindLabel(entry)}</small>
                             </span>
                           </button>
                           <label className="fla-snapshot-candidate-select">
                             <input
-                              aria-label={`选择 ${flaStaticSnapshotCandidateLabel(entry)}`}
-                              checked={selectedCandidateKeys.has(key)}
+                              aria-label={`选择 ${label}`}
+                              checked={candidate?.checked ?? false}
                               disabled={!selectable}
                               onChange={() => toggleCandidate(entry)}
                               type="checkbox"
@@ -952,13 +1001,17 @@ export function FlaStaticSnapshotReview({
                 data-source-library-item-name={focusedEntry?.target.sourceLibraryItemName ?? ''}
                 data-testid="fla-snapshot-preview-image"
                 onError={() => {
-                  const key = effectiveFocusedCandidateKey;
+                  const candidateId = effectiveFocusedCandidateKey;
+                  const identityKey = effectiveFocusedCandidateIdentityKey;
+                  const currentPreviewUrl = focusedPreviewUrlRef.current;
                   if (
-                    !key || focusedCandidateKeyRef.current !== key ||
-                    focusedPreviewUrlRef.current?.url !== focusedPreviewForEntry.url
+                    !candidateId || !identityKey || focusedCandidateIdentityKeyRef.current !== identityKey ||
+                    !currentPreviewUrl || currentPreviewUrl.key !== identityKey ||
+                    currentPreviewUrl.url !== focusedPreviewForEntry.url
                   ) return;
                   markFocusedPreviewUnavailable(
-                    key,
+                    candidateId,
+                    identityKey,
                     '清晰预览暂时无法显示。此项暂不可导入，请重新检查或返回。',
                   );
                 }}

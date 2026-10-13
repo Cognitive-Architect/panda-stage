@@ -142,8 +142,8 @@ describe('Issue #402 integration/source contracts', () => {
   });
 
   it('keeps F2 focus separate from R1/R2 target selection and uses the existing discovery boundary', () => {
-    expect(snapshot).toContain('focusedCandidateKey');
-    expect(snapshot).toContain('selectedCandidateKeys');
+    expect(snapshot).toContain('candidateSelection.focusedCandidateId');
+    expect(snapshot).toContain('candidateSelection.checkedCandidateIds');
     expect(snapshot).toContain('<FlaStageF2UnavailableDetails');
     expect(sequence).toContain('focusedTargetId');
     expect(sequence).toContain('fla-frame-sequence-f2-focus-');
