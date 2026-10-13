@@ -808,7 +808,9 @@ async function verifyBrowseCancelAndPreviewCleanup(window, project) {
   const windowsAfter = captureWindowFacts();
   const projectAfter = readProjectState(project.projectRoot);
   const revisionAfter = await readUiRevision(window);
-  const cancellation = runtime.snapshotCancels.findLast((entry) => entry.request.sessionId === inspection.sessionId);
+  const cancellation = runtime.snapshotCancels.findLast((entry) =>
+    entry.request.sessionId === inspection.inspection.sessionId,
+  );
   assert(cancellation?.accepted, 'Closing the browsed snapshot session did not cancel/invalidate it in Main.');
   assert(projectBefore.jsonSha256 === projectAfter.jsonSha256 && projectBefore.assetCount === projectAfter.assetCount, 'Browsing/cancelling the snapshot changed project.json.');
   assert(revisionBefore === revisionAfter, 'Browsing/cancelling the snapshot changed the in-memory Project revision.');
