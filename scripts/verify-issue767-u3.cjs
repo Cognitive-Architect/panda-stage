@@ -700,19 +700,21 @@ async function readWorkbenchFacts(window) {
   })()`);
 }
 
-async function openSnapshotCatalog(window) {
-  const before = runtime.catalogs.length;
+async function openSnapshotCatalog(window, sessionId) {
+  assert(sessionId, 'Cannot correlate the render-target catalog without the active FLA session ID.');
   const selected = await evaluate(window, `document.querySelector('[data-testid="fla-workbench-tab-compositions"]')?.getAttribute('aria-selected') === 'true'`);
   if (!selected) await click(window, '[data-testid="fla-workbench-tab-compositions"]');
   await waitForExpression(window, `Boolean(document.querySelector('#fla-composition-panel') && !document.querySelector('#fla-composition-panel').hidden && document.querySelector('[data-testid="fla-render-workbench"]'))`, 90_000);
-  const catalogDeadline = Date.now() + 900_000;
-  while (runtime.catalogs.length < before + 1 && Date.now() < catalogDeadline) await delay(100);
-  assert(runtime.catalogs.length >= before + 1, 'Timed out waiting for the Main-owned render-target catalog.');
+  const catalogDeadline = Date.now() + 180_000;
+  while (!runtime.catalogs.some((catalog) => catalog.sessionId === sessionId) && Date.now() < catalogDeadline) await delay(100);
+  const catalog = runtime.catalogs.findLast((entry) => entry.sessionId === sessionId);
+  assert(catalog, `Timed out waiting for the Main-owned render-target catalog for session ${sessionId}.`);
   await waitForExpression(window, `(() => {
     const root = document.querySelector('[data-testid="fla-snapshot-review"]');
-    return Boolean(root && root.getAttribute('data-preview-state') === 'ready');
-  })()`, 900_000);
-  return runtime.catalogs.at(-1);
+    const state = root?.getAttribute('data-preview-state');
+    return state === 'ready' || state === 'error' || Boolean(document.querySelector('[data-testid="fla-snapshot-empty"]'));
+  })()`, 180_000);
+  return catalog;
 }
 
 async function focusBluehairTarget(window) {
@@ -835,7 +837,7 @@ async function verifyBrowseCancelAndPreviewCleanup(window, project) {
   const windowsBefore = captureWindowFacts();
   const objectUrlsBefore = await readObjectUrlFacts(window);
   const inspection = await openReview(window, runtime.sourcePaths.bluehair, 'bluehair-cancel');
-  const catalog = await openSnapshotCatalog(window);
+  const catalog = await openSnapshotCatalog(window, inspection.inspection.sessionId);
   const target = catalog.entries.find((entry) =>
     entry.renderTargetId === BLUEHAIR_TARGET_ID &&
     entry.sourceLibraryItemName === BLUEHAIR_TARGET &&
@@ -892,7 +894,7 @@ async function verifyCharacterImport(window, project) {
   const inspection = await openReview(window, runtime.sourcePaths.bluehair, 'bluehair-character-import');
   assert(inspection.inspection.sessionId, 'Bluehair inspection did not return a source session ID.');
   assert(inspection.workbench.sourceBitmapCount === 336, `Bluehair must retain 336 raw bitmap parts; got ${inspection.workbench.sourceBitmapCount}.`);
-  const catalog = await openSnapshotCatalog(window);
+  const catalog = await openSnapshotCatalog(window, inspection.inspection.sessionId);
   assert(catalog.includeAuthoredStates, 'Normal U3 catalog did not request authored-state targets.');
   const entries = catalog.entries;
   const index = entries.findIndex((entry) =>
@@ -1151,8 +1153,8 @@ async function verifySaveCloseReopenAndDuplicate(window, project, importFacts, s
   const objectUrlsBeforeDuplicate = await readObjectUrlFacts(window);
   const beforeDuplicate = readProjectState(project.projectRoot);
   const revisionBeforeDuplicate = await readUiRevision(window);
-  await openReview(window, runtime.sourcePaths.bluehair, 'bluehair-duplicate');
-  const duplicateCatalog = await openSnapshotCatalog(window);
+  const duplicateInspection = await openReview(window, runtime.sourcePaths.bluehair, 'bluehair-duplicate');
+  const duplicateCatalog = await openSnapshotCatalog(window, duplicateInspection.inspection.sessionId);
   assert(duplicateCatalog.entries.some((entry) => entry.renderTargetId === BLUEHAIR_TARGET_ID && entry.sourceLibraryItemName === BLUEHAIR_TARGET && entry.selectedFrameIndex === 0), 'Duplicate retry could not locate the exact com809 frame-0 candidate.');
   await focusBluehairTarget(window);
   const duplicatePreview = await readPreviewBytes(window);
@@ -1256,21 +1258,21 @@ async function verifyUnsupportedTarget(window, project) {
   const before = readProjectState(project.projectRoot);
   const revisionBefore = await readUiRevision(window);
   const inspection = await openReview(window, sourcePath, 'unsupported-vector');
-  const catalog = await openSnapshotCatalog(window);
+  const catalog = await openSnapshotCatalog(window, inspection.inspection.sessionId);
   const unsupported = catalog.entries.find((entry) => entry.previewSupported === false);
   assert(unsupported?.unsupportedReason, 'Unsupported vector target did not fail closed with a reason.');
-  await click(window, '[data-testid="fla-stage-f2-more-details"] summary');
   const uiState = await evaluate(window, `(() => {
     const row = document.querySelector('[data-testid="fla-snapshot-targets"] [data-render-target-id="${unsupported.renderTargetId}"]');
-    const details = document.querySelector('[data-testid="fla-stage-f2-more-details"]');
+    const placeholder = document.querySelector('[data-testid="fla-snapshot-preview-placeholder"]');
     return {
       selectable: row?.getAttribute('data-preview-supported') === 'true',
       checked: row?.querySelector('input[type="checkbox"]')?.checked ?? false,
-      reason: details?.textContent?.replace(/\\s+/gu, ' ').trim() ?? document.querySelector('[data-testid="fla-snapshot-preview-placeholder"]')?.textContent?.replace(/\\s+/gu, ' ').trim() ?? '',
+      reason: placeholder?.textContent?.replace(/\\s+/gu, ' ').trim() ?? '',
+      previewState: document.querySelector('[data-testid="fla-snapshot-preview-status"]')?.getAttribute('data-preview-state') ?? null,
       importDisabled: document.querySelector('[data-testid="fla-snapshot-import"]')?.disabled ?? true,
     };
   })()`);
-  assert(!uiState.selectable && !uiState.checked && uiState.importDisabled, 'Unsupported target was selectable or importable.');
+  assert(!uiState.selectable && !uiState.checked && uiState.importDisabled && uiState.previewState === 'unsupported', 'Unsupported target was selectable, importable, or not visibly rejected.');
   assert(uiState.reason.length > 0, 'Unsupported target did not show a clear visible reason.');
   await cancelSnapshotReview(window);
   const after = readProjectState(project.projectRoot);
