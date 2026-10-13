@@ -31,6 +31,7 @@ import {
   type FlaStaticSnapshotCommitRequest,
   type FlaStaticSnapshotCommitErrorCode,
   type FlaStaticSnapshotCommitResponse,
+  type FlaRenderTarget,
 } from '../../shared/fla-static-snapshot-api';
 import {
   ImageAssetSchema,
@@ -99,6 +100,22 @@ function snapshotTargetDisplayName(userLabel: string): string {
     .replace(/\p{Cc}/gu, '_')
     .trim();
   return safeUtf16Slice(normalized || 'Imported asset', 200);
+}
+
+function isSameConfirmedTarget(
+  confirmed: FlaRenderTarget,
+  requested: FlaRenderTarget,
+): boolean {
+  return confirmed.renderTargetId === requested.renderTargetId &&
+    confirmed.kind === requested.kind &&
+    confirmed.userLabel === requested.userLabel &&
+    confirmed.sourceLibraryItemName === requested.sourceLibraryItemName &&
+    confirmed.sourceTimelineIndex === requested.sourceTimelineIndex &&
+    confirmed.sourceSymbolName === requested.sourceSymbolName &&
+    confirmed.frameCount === requested.frameCount &&
+    (confirmed.selectedFrameIndex ?? 0) === (requested.selectedFrameIndex ?? 0) &&
+    confirmed.compatibility.length === requested.compatibility.length &&
+    confirmed.compatibility.every((status, index) => status === requested.compatibility[index]);
 }
 
 export class FlaStaticSnapshotCommitServiceError extends Error {
@@ -211,6 +228,13 @@ export class FlaStaticSnapshotCommitService {
       confirmed.source.sha256 !== request.source.sha256
     ) {
       return this.failure('SOURCE_MISMATCH', transaction.projectRoot, 'The snapshot source no longer matches the inspection session.');
+    }
+    if (!isSameConfirmedTarget(confirmed.target, request.target)) {
+      return this.failure(
+        'STALE_PREVIEW',
+        transaction.projectRoot,
+        'The requested target or frame does not match the confirmed preview; re-preview the selected target before importing.',
+      );
     }
 
     const current = this.assertCurrentRevision(

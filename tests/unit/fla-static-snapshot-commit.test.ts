@@ -10,7 +10,7 @@
 
 import { createHash } from 'node:crypto';
 import { deflateSync } from 'node:zlib';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -82,7 +82,10 @@ function makePng(width: number, height: number): { png: Uint8Array; sha256: stri
   };
 }
 
-function target(userLabel = 'Snapshot'): FlaRenderTarget {
+function target(
+  userLabel = 'Snapshot',
+  overrides: Partial<FlaRenderTarget> = {},
+): FlaRenderTarget {
   return FlaRenderTargetSchema.parse({
     renderTargetId: 'fla-render-target-0000000000000001',
     kind: 'graphic-symbol',
@@ -90,6 +93,7 @@ function target(userLabel = 'Snapshot'): FlaRenderTarget {
     frameCount: 1,
     selectedFrameIndex: 0,
     compatibility: ['degraded'],
+    ...overrides,
   });
 }
 
@@ -199,6 +203,48 @@ async function assetEntries(projectRoot: string): Promise<string[]> {
   return (await readdir(path.join(projectRoot, 'assets'))).sort();
 }
 
+async function projectFileSnapshot(root: string, relativePath = ''): Promise<string[]> {
+  const absolutePath = path.join(root, relativePath);
+  const entries = await readdir(absolutePath, { withFileTypes: true });
+  const snapshots = await Promise.all(entries.map(async (entry) => {
+    const entryPath = path.join(relativePath, entry.name);
+    if (entry.isDirectory()) {
+      return [
+        `directory:${entryPath}`,
+        ...(await projectFileSnapshot(root, entryPath)),
+      ];
+    }
+    if (entry.isFile()) {
+      const bytes = await readFile(path.join(root, entryPath));
+      return [`file:${entryPath}:${createHash('sha256').update(bytes).digest('hex')}`];
+    }
+    return [`other:${entryPath}`];
+  }));
+  return snapshots.flat().sort();
+}
+
+async function expectTargetMismatchRejectedWithoutMutation(
+  h: Harness,
+  confirmed: FlaConfirmedSnapshotPreview,
+  mismatchedTarget: FlaRenderTarget,
+): Promise<void> {
+  const commitRequest = request(h, confirmed);
+  commitRequest.target = mismatchedTarget;
+  const beforeFiles = await projectFileSnapshot(h.projectRoot);
+  const beforeProject = h.current.project;
+  const beforeRevision = h.current.revision;
+  const service = h.createService({ previewStore: previewStore(confirmed) });
+
+  const response = await service.commit(commitRequest);
+
+  expect(response.ok).toBe(false);
+  if (response.ok) throw new Error('mismatched target must be rejected');
+  expect(response.error.code).toBe('STALE_PREVIEW');
+  expect(h.current.project).toBe(beforeProject);
+  expect(h.current.revision).toBe(beforeRevision);
+  expect(await projectFileSnapshot(h.projectRoot)).toEqual(beforeFiles);
+}
+
 afterEach(async () => {
   await Promise.all(TEMP_DIRS.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
@@ -207,7 +253,15 @@ describe('FlaStaticSnapshotCommitService', () => {
   it('commits exactly one ordinary ImageAsset from a confirmed snapshot', async () => {
     const h = await harness();
     const { png, sha256 } = makePng(8, 8);
-    const confirmed = confirmedPreview(png, sha256);
+    const confirmed = confirmedPreview(
+      png,
+      sha256,
+      target('Snapshot', {
+        sourceLibraryItemName: 'library-symbol',
+        sourceTimelineIndex: 0,
+        sourceSymbolName: 'source-symbol',
+      }),
+    );
     const service = h.createService({ previewStore: previewStore(confirmed) });
     const response = await service.commit(request(h, confirmed));
     expect(response.ok).toBe(true);
@@ -226,6 +280,7 @@ describe('FlaStaticSnapshotCommitService', () => {
       sourceBasename: SOURCE.basename,
       sourceSha256: SOURCE.sha256,
       targetName: 'Snapshot',
+      sourceLibraryItemName: 'library-symbol',
       renderTargetId: 'fla-render-target-0000000000000001',
       selectedFrameIndex: 0,
       previewSha256: sha256,
@@ -297,6 +352,68 @@ describe('FlaStaticSnapshotCommitService', () => {
     expect(response.ok).toBe(false);
     if (response.ok) throw new Error('source mismatch must fail');
     expect(response.error.code).toBe('SOURCE_MISMATCH');
+  });
+
+  it.each([
+    {
+      field: 'render target id',
+      change: (value: FlaRenderTarget) => ({
+        ...value,
+        renderTargetId: 'fla-render-target-0000000000000002',
+      }),
+    },
+    {
+      field: 'target kind',
+      change: (value: FlaRenderTarget) => ({ ...value, kind: 'scene' as const }),
+    },
+    {
+      field: 'display label',
+      change: (value: FlaRenderTarget) => ({ ...value, userLabel: 'Other symbol' }),
+    },
+    {
+      field: 'source library item',
+      change: (value: FlaRenderTarget) => ({ ...value, sourceLibraryItemName: 'other-item' }),
+    },
+    {
+      field: 'source timeline index',
+      change: (value: FlaRenderTarget) => ({ ...value, sourceTimelineIndex: 2 }),
+    },
+    {
+      field: 'source symbol name',
+      change: (value: FlaRenderTarget) => ({ ...value, sourceSymbolName: 'other-symbol' }),
+    },
+    {
+      field: 'frame count',
+      change: (value: FlaRenderTarget) => ({ ...value, frameCount: 3 }),
+    },
+    {
+      field: 'compatibility state',
+      change: (value: FlaRenderTarget) => ({ ...value, compatibility: ['exact'] }),
+    },
+    {
+      field: 'selected frame',
+      change: (value: FlaRenderTarget) => ({ ...value, selectedFrameIndex: 1 }),
+    },
+  ])('rejects a changed $field before any project or file mutation', async ({ change }) => {
+    const h = await harness();
+    const { png, sha256 } = makePng(8, 8);
+    const confirmed = confirmedPreview(
+      png,
+      sha256,
+      target('Snapshot', {
+        frameCount: 2,
+        selectedFrameIndex: 0,
+        sourceLibraryItemName: 'library-symbol',
+        sourceTimelineIndex: 1,
+        sourceSymbolName: 'symbol-one',
+      }),
+    );
+
+    await expectTargetMismatchRejectedWithoutMutation(
+      h,
+      confirmed,
+      FlaRenderTargetSchema.parse(change(confirmed.target)),
+    );
   });
 
   it('rolls back when a post-save fault is injected', async () => {
