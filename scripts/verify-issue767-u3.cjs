@@ -995,11 +995,11 @@ async function verifyCharacterImport(window, project) {
     throw new Error(`Asset Library thumbnail did not settle: ${JSON.stringify({ uiState, reads })}`);
   }
   await click(window, cardSelector);
-  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="asset-details-view"] [data-testid="asset-fla-snapshot-origin"]'))`);
+  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="asset-fla-snapshot-origin"]'))`);
   const libraryFacts = await evaluate(window, `(() => {
     const card = document.querySelector(${JSON.stringify(cardSelector)});
     const image = card?.querySelector('.asset-card-preview img');
-    const origin = document.querySelector('[data-testid="asset-details-view"] [data-testid="asset-fla-snapshot-origin"]');
+    const origin = document.querySelector('[data-testid="asset-fla-snapshot-origin"]');
     return {
       name: card?.querySelector('.asset-card-name')?.textContent?.trim() ?? '',
       thumbnailLoaded: image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
@@ -1007,7 +1007,7 @@ async function verifyCharacterImport(window, project) {
       thumbnailHeight: image instanceof HTMLImageElement ? image.naturalHeight : 0,
       thumbnailStatus: card?.querySelector('.asset-thumbnail-placeholder')?.getAttribute('data-thumbnail-status') ?? null,
       originText: origin?.textContent?.replace(/\\s+/gu, ' ').trim() ?? '',
-      detailsText: document.querySelector('[data-testid="asset-details-view"]')?.textContent?.replace(/\\s+/gu, ' ').trim() ?? '',
+      detailsText: document.querySelector('[id^="asset-details-dialog-body-"], [data-testid="asset-details-view"]')?.textContent?.replace(/\\s+/gu, ' ').trim() ?? '',
     };
   })()`);
   const sourceAspectRatio = asset.width / asset.height;
@@ -1021,7 +1021,8 @@ async function verifyCharacterImport(window, project) {
   );
   assert(libraryFacts.originText.includes('蓝发修仙女.fla') && libraryFacts.originText.includes(BLUEHAIR_TARGET) && libraryFacts.originText.includes('1'), 'Asset Library details do not show source FLA, source item, and frame.');
   runtime.screenshots.assetLibrary = await capture(window, join(runtime.repoEvidenceDir, 'asset-library-bluehair-character.png'));
-  await click(window, '[data-testid="asset-details-back"]');
+  const detailsCloseSelector = await evaluate(window, `document.querySelector('[data-testid="asset-details-back"]') ? '[data-testid="asset-details-back"]' : '[data-testid="asset-details-close"]'`);
+  await click(window, detailsCloseSelector);
   await waitForExpression(window, `Boolean(document.querySelector('[data-testid="asset-browser-view"]'))`);
   return {
     projectBefore,
