@@ -369,6 +369,7 @@ function installMainProbes() {
               ? sha256(Buffer.from(response.dataUrl.slice('data:image/png;base64,'.length), 'base64'))
               : null,
             errorCode: response?.ok === false ? response.error?.code ?? null : null,
+            errorMessage: response?.ok === false ? response.error?.message ?? null : null,
           });
           return response;
         } catch (error) {
@@ -493,7 +494,7 @@ async function createProject(window, label) {
   await ensureProjectCenter(window);
   await click(window, '[data-testid="new-project-button"]');
   await waitForExpression(window, `Boolean(document.querySelector('[data-testid="new-project-dialog"]'))`);
-  const projectName = `Issue767 U3 ${label} ${runtime.runId}`;
+  const projectName = `U3 ${label} ${runtime.runId}`;
   await setInput(window, '[data-testid="new-project-parent-directory"]', runtime.projectParent);
   await setInput(window, '[data-testid="new-project-name"]', projectName);
   await waitForExpression(window, `Boolean(document.querySelector('[data-testid="new-project-confirm"]') && !document.querySelector('[data-testid="new-project-confirm"]').disabled)`);
@@ -1322,7 +1323,7 @@ async function main() {
   const sourceRoot = resolve(args.sourcesRoot ?? DEFAULT_SOURCE_ROOT);
   runtime.runRoot = join(runtime.acceptanceRoot, `run-${runtime.runId}`);
   runtime.userData = join(runtime.runRoot, 'electron-user-data');
-  runtime.projectParent = join(runtime.runRoot, 'projects');
+  runtime.projectParent = join(runtime.acceptanceRoot, 'projects');
   runtime.repoEvidenceDir = join(runtime.repositoryRoot, 'docs', 'evidence', 'issue-767-u3', `run-${runtime.runId}`);
   for (const directory of [runtime.runRoot, runtime.userData, runtime.projectParent, runtime.repoEvidenceDir]) mkdirSync(directory, { recursive: true });
   runtime.sourcePaths = {
