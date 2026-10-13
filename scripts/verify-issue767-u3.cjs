@@ -35,6 +35,7 @@ const PREVIEW_CHANNEL = 'fla:snapshot-preview';
 const SNAPSHOT_COMMIT_CHANNEL = 'fla:snapshot-commit';
 const SNAPSHOT_CANCEL_CHANNEL = 'fla:snapshot-cancel';
 const RASTER_COMMIT_CHANNEL = 'fla:commit-selected';
+const ASSET_THUMBNAIL_CHANNEL = 'asset-thumbnail:read';
 const ASSET_DRAG_MIME = 'application/x-panda-stage-asset';
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -56,6 +57,7 @@ const runtime = {
   snapshotCommits: [],
   rasterCommits: [],
   snapshotCancels: [],
+  thumbnailReads: [],
   scenarios: [],
   assertions: {},
   screenshots: {},
@@ -345,6 +347,38 @@ function installMainProbes() {
           errorCode: response?.ok === false ? response.error?.code ?? null : null,
         });
         return response;
+      });
+    }
+    if (channel === ASSET_THUMBNAIL_CHANNEL) {
+      return originalHandle(channel, async (event, request, ...rest) => {
+        const read = {
+          projectRoot: request?.projectRoot ?? null,
+          assetId: request?.assetId ?? null,
+          sha256: request?.sha256 ?? null,
+          startedAt: Date.now(),
+          outcome: 'pending',
+        };
+        runtime.thumbnailReads.push(read);
+        try {
+          const response = await handler(event, request, ...rest);
+          Object.assign(read, {
+            finishedAt: Date.now(),
+            ok: response?.ok === true,
+            status: response?.ok === true ? response.status : null,
+            dataUrlSha256: response?.ok === true && response.status === 'ready'
+              ? sha256(Buffer.from(response.dataUrl.slice('data:image/png;base64,'.length), 'base64'))
+              : null,
+            errorCode: response?.ok === false ? response.error?.code ?? null : null,
+          });
+          return response;
+        } catch (error) {
+          Object.assign(read, {
+            finishedAt: Date.now(),
+            outcome: 'threw',
+            message: error instanceof Error ? error.message : String(error),
+          });
+          throw error;
+        }
       });
     }
     return originalHandle(channel, handler);
@@ -936,10 +970,30 @@ async function verifyCharacterImport(window, project) {
   await waitForExpression(window, `Boolean(document.querySelector('[data-testid="asset-browser-view"]'))`);
   const cardSelector = `.asset-card[data-asset-id="${asset.id}"]`;
   await waitForExpression(window, `Boolean(document.querySelector(${JSON.stringify(cardSelector)}))`);
-  await waitForExpression(window, `(() => {
+  await evaluate(window, `document.querySelector(${JSON.stringify(cardSelector)})?.scrollIntoView({ block: 'center' })`);
+  runtime.screenshots.assetLibraryInitial = await capture(window, join(runtime.repoEvidenceDir, 'asset-library-bluehair-thumbnail-state.png'));
+  try {
+    await waitForExpression(window, `(() => {
     const image = document.querySelector(${JSON.stringify(`${cardSelector} .asset-card-preview img`)});
-    return image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0 && image.naturalHeight > 0;
-  })()`);
+    const placeholder = document.querySelector(${JSON.stringify(`${cardSelector} .asset-thumbnail-placeholder`)});
+    return (image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) || placeholder?.getAttribute('data-thumbnail-status') === 'missing';
+  })()`, 30_000);
+  } catch {
+    const uiState = await evaluate(window, `(() => {
+      const card = document.querySelector(${JSON.stringify(cardSelector)});
+      const image = card?.querySelector('.asset-card-preview img');
+      const placeholder = card?.querySelector('.asset-thumbnail-placeholder');
+      return {
+        cardPresent: Boolean(card),
+        imagePresent: image instanceof HTMLImageElement,
+        imageComplete: image instanceof HTMLImageElement && image.complete,
+        naturalWidth: image instanceof HTMLImageElement ? image.naturalWidth : 0,
+        thumbnailStatus: placeholder?.getAttribute('data-thumbnail-status') ?? null,
+      };
+    })()`);
+    const reads = runtime.thumbnailReads.filter((read) => read.assetId === asset.id);
+    throw new Error(`Asset Library thumbnail did not settle: ${JSON.stringify({ uiState, reads })}`);
+  }
   await click(window, cardSelector);
   await waitForExpression(window, `Boolean(document.querySelector('[data-testid="asset-details-view"] [data-testid="asset-fla-snapshot-origin"]'))`);
   const libraryFacts = await evaluate(window, `(() => {
@@ -951,6 +1005,7 @@ async function verifyCharacterImport(window, project) {
       thumbnailLoaded: image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
       thumbnailWidth: image instanceof HTMLImageElement ? image.naturalWidth : 0,
       thumbnailHeight: image instanceof HTMLImageElement ? image.naturalHeight : 0,
+      thumbnailStatus: card?.querySelector('.asset-thumbnail-placeholder')?.getAttribute('data-thumbnail-status') ?? null,
       originText: origin?.textContent?.replace(/\\s+/gu, ' ').trim() ?? '',
       detailsText: document.querySelector('[data-testid="asset-details-view"]')?.textContent?.replace(/\\s+/gu, ' ').trim() ?? '',
     };
@@ -1248,6 +1303,7 @@ function writeReceipt(status, extra = {}) {
     snapshotCommits: runtime.snapshotCommits,
     rasterCommits: runtime.rasterCommits,
     snapshotCancels: runtime.snapshotCancels,
+    thumbnailReads: runtime.thumbnailReads,
     scenarios: runtime.scenarios,
     assertions: runtime.assertions,
     finalWindows: captureWindowFacts(),
