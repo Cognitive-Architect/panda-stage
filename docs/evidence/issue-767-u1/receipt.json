@@ -1,17 +1,21 @@
 {
   "schemaVersion": "issue767-u1-evidence/1",
-  "runId": "2026-10-13T02-37-22-551Z",
+  "runId": "2026-10-13T02-43-14-708Z",
   "status": "PASS",
   "ownerReview": "PENDING",
   "nextStage": "STOP; U2 and U3 have not started",
   "u1": {
     "threeSourceClassesUseSameNamedShell": true,
-    "sourceInspectionCalls": 4,
+    "mixedCompositionSectionReachable": true,
+    "mixedReopenResetsSelection": true,
+    "malformedErrorReturnsSafely": true,
+    "firstBitmapSelectionEmpty": true,
+    "sourceInspectionCalls": 5,
     "mainAcceptanceProject": {
       "initialAssetCount": 0,
       "finalAssetCount": 0,
-      "initialProjectJsonSha256": "160894e8ce6c32c7092add3220ea8aaced740c92e6304250d3d34a87bc25380f",
-      "finalProjectJsonSha256": "160894e8ce6c32c7092add3220ea8aaced740c92e6304250d3d34a87bc25380f",
+      "initialProjectJsonSha256": "48e5cefaa077a605302196df896998576e10a5756eca6fff3a192b1e0ff6ba1b",
+      "finalProjectJsonSha256": "48e5cefaa077a605302196df896998576e10a5756eca6fff3a192b1e0ff6ba1b",
       "revisionUnchanged": true
     },
     "sourceHashesUnchanged": true,
@@ -45,6 +49,19 @@
         "bitmapCount": 0,
         "initialSection": "compositions",
         "projectUnchanged": true
+      },
+      {
+        "class": "malformed",
+        "basename": "malformed.fla",
+        "syntheticFixture": true,
+        "blockedRouteVisible": true,
+        "diagnosticVisible": true,
+        "returnToAssetLibraryAvailable": true,
+        "returnedToAssetLibrary": true,
+        "importControlsAbsent": true,
+        "inspectionCalls": 1,
+        "sourceUnchanged": true,
+        "projectUnchanged": true
       }
     ],
     "screenshots": [
@@ -52,7 +69,8 @@
       "bluehair-mixed-compositions.png",
       "bluehair-mixed-reopened.png",
       "bitmap-only-workbench.png",
-      "vector-only-workbench.png"
+      "vector-only-workbench.png",
+      "malformed-error-return.png"
     ]
   },
   "stageD": {

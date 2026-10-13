@@ -144,6 +144,10 @@ async function writeVectorOnlyFla(path) {
   writeFileSync(path, await zip.generateAsync({ type: 'nodebuffer' }));
 }
 
+function writeMalformedFla(path) {
+  writeFileSync(path, Buffer.from('Issue #767 malformed FLA acceptance fixture; not a ZIP archive.', 'utf8'));
+}
+
 const args = parseArgs(process.argv.slice(2));
 const acceptanceRoot = resolve(args.acceptanceRoot || DEFAULT_ACCEPTANCE_ROOT);
 const bluehairSource = resolve(args.bluehairSource || DEFAULT_BLUEHAIR_SOURCE);
@@ -289,7 +293,7 @@ function readProjectState(projectRoot) {
   };
 }
 
-async function openFlaReview(window, sourcePath) {
+async function triggerFlaReview(window, sourcePath) {
   process.env.PANDA_STAGE_FLA_ACCEPTANCE_SOURCE = sourcePath;
   await waitForExpression(window, `(() => {
     const direct = document.querySelector('[data-testid="asset-import-fla"]');
@@ -303,6 +307,10 @@ async function openFlaReview(window, sourcePath) {
       : '[data-testid="resource-asset-import-fla"]';
   })()`);
   await click(window, actionSelector);
+}
+
+async function openFlaReview(window, sourcePath) {
+  await triggerFlaReview(window, sourcePath);
   await waitForWorkbench(window);
 }
 
@@ -383,9 +391,11 @@ async function main() {
     bluehairMixed: bluehairSource,
     bitmapOnly: join(runRoot, 'bitmap-only.fla'),
     vectorOnly: join(runRoot, 'vector-only.fla'),
+    malformed: join(runRoot, 'malformed.fla'),
   };
   await writeBitmapOnlyFla(sourcePaths.bitmapOnly);
   await writeVectorOnlyFla(sourcePaths.vectorOnly);
+  writeMalformedFla(sourcePaths.malformed);
   const sourceHashesBefore = Object.fromEntries(
     Object.entries(sourcePaths).map(([key, path]) => [key, sha256File(path)]),
   );
@@ -500,6 +510,55 @@ async function main() {
     scenarios.push(result);
   }
 
+  const malformedProjectBefore = readProjectState(project.projectRoot);
+  const malformedSourceSha256Before = sourceHashesBefore.malformed;
+  const malformedInspectCountBefore = inspectEvents.length;
+  await triggerFlaReview(window, sourcePaths.malformed);
+  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="fla-stage-f3-blocked"]'))`);
+  const malformedErrorFacts = await evaluate(window, `(() => {
+    const blocked = document.querySelector('[data-testid="fla-stage-f3-blocked"]');
+    const returnButton = blocked?.querySelector('[data-testid="fla-stage-f3-return"]');
+    const diagnostic = blocked?.querySelector('[data-testid="fla-review-diagnostic"]');
+    const importControls = document.querySelector('[data-testid="fla-review-confirm"], [data-testid="fla-snapshot-import"], [data-testid="fla-frame-sequence-import"]');
+    return {
+      blockedVisible: Boolean(blocked && blocked.getBoundingClientRect().width > 0 && blocked.getBoundingClientRect().height > 0),
+      returnAvailable: returnButton instanceof HTMLButtonElement && !returnButton.disabled,
+      diagnosticVisible: Boolean(diagnostic && diagnostic.textContent?.trim()),
+      importControlsAbsent: !importControls,
+    };
+  })()`);
+  const malformedInspectCountAfter = inspectEvents.length;
+  assert(malformedErrorFacts.blockedVisible, 'malformed FLA: the safe blocked route did not appear.');
+  assert(malformedErrorFacts.returnAvailable, 'malformed FLA: the Asset Library return action is unavailable.');
+  assert(malformedErrorFacts.diagnosticVisible, 'malformed FLA: the safe diagnostic is missing.');
+  assert(malformedErrorFacts.importControlsAbsent, 'malformed FLA: an import control appeared on the blocked route.');
+  assert(malformedInspectCountAfter === malformedInspectCountBefore + 1, 'malformed FLA: expected one inspection call.');
+  const malformedScreenshot = await capture(
+    window,
+    join(evidenceDir, 'malformed-error-return.png'),
+  );
+  await click(window, '[data-testid="fla-stage-f3-return"]');
+  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="asset-browser-view"]') && !document.querySelector('[data-testid="fla-stage-f3-blocked"]'))`);
+  const malformedProjectAfter = readProjectState(project.projectRoot);
+  const malformedSourceSha256After = sha256File(sourcePaths.malformed);
+  const malformedErrorScenario = {
+    sourceBasename: basename(sourcePaths.malformed),
+    sourceSha256Before: malformedSourceSha256Before,
+    sourceSha256After: malformedSourceSha256After,
+    inspectionCalls: malformedInspectCountAfter - malformedInspectCountBefore,
+    facts: malformedErrorFacts,
+    returnedToAssetLibrary: true,
+    projectUnchanged:
+      malformedProjectBefore.assetCount === malformedProjectAfter.assetCount &&
+      malformedProjectBefore.revision === malformedProjectAfter.revision &&
+      malformedProjectBefore.jsonSha256 === malformedProjectAfter.jsonSha256,
+    screenshot: malformedScreenshot,
+  };
+  malformedErrorScenario.sourceUnchanged =
+    malformedSourceSha256Before === malformedSourceSha256After;
+  assert(malformedErrorScenario.projectUnchanged, 'malformed FLA: error handling changed the project.');
+  assert(malformedErrorScenario.sourceUnchanged, 'malformed FLA: error handling changed the source file.');
+
   const receipt = {
     schemaVersion: 'issue767-u1-electron-shell/1',
     status: 'PASS',
@@ -511,13 +570,15 @@ async function main() {
     finalProject: readProjectState(project.projectRoot),
     inspectEvents,
     scenarios,
+    malformedErrorScenario,
     assertions: {
       threeSourceClassesUseSameNamedShell: scenarios.length === 3 && scenarios.every((item) => item.initial.title === 'FLA 导入工作台'),
       mixedCompositionSectionReachable: Boolean(scenarios.find((item) => item.sourceClass === 'bluehairMixed')?.compositionSection?.expectedSectionSelected),
       mixedReopenResetsSelection: Boolean(scenarios.find((item) => item.sourceClass === 'bluehairMixed')?.reopenedSession?.initial.initiallySelectedSourceItems === 0),
+      malformedErrorReturnsSafely: malformedErrorScenario.facts.blockedVisible && malformedErrorScenario.returnedToAssetLibrary && malformedErrorScenario.projectUnchanged && malformedErrorScenario.sourceUnchanged && malformedErrorScenario.facts.importControlsAbsent,
       firstBitmapSelectionEmpty: scenarios.filter((item) => item.initial.sourcePanelVisible).every((item) => item.initial.initiallySelectedSourceItems === 0),
-      noInspectionProjectMutation: scenarios.every((item) => item.noProjectMutation),
-      sourceHashesUnchanged: scenarios.every((item) => item.sourceUnchanged),
+      noInspectionProjectMutation: scenarios.every((item) => item.noProjectMutation) && malformedErrorScenario.projectUnchanged,
+      sourceHashesUnchanged: scenarios.every((item) => item.sourceUnchanged) && malformedErrorScenario.sourceUnchanged,
       noImportCommitted: readProjectState(project.projectRoot).assetCount === 0,
     },
     note: 'Engineering evidence only. Owner U1 review remains required; U2/U3 were not started.',
