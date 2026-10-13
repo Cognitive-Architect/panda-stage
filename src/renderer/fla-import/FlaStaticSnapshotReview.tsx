@@ -22,6 +22,7 @@ import {
   flaStaticSnapshotCandidateLabel,
   flaStaticSnapshotCandidateRole,
   groupFlaStaticSnapshotCandidates,
+  reconcileFlaStaticSnapshotCandidateFocus,
   type FlaStaticSnapshotCandidateFilter,
   type FlaStaticSnapshotCandidatePreview,
   type FlaStaticSnapshotCandidatePreviews,
@@ -111,8 +112,6 @@ export function FlaStaticSnapshotReview({
     candidateIndex: number;
     targetId: string;
   }>());
-  focusedCandidateKeyRef.current = focusedCandidateKey;
-
   useLayoutEffect(() => {
     const pending = pendingScanProgressProfileRef.current;
     if (!pending || pending.progress !== scanProgress) return;
@@ -132,14 +131,26 @@ export function FlaStaticSnapshotReview({
     () => groupFlaStaticSnapshotCandidates(entries, previews, candidateSearch, candidateFilter),
     [candidateFilter, candidateSearch, entries, previews],
   );
-  const focusedEntry = focusedCandidateKey ? entryByKey.get(focusedCandidateKey) ?? null : null;
+  const effectiveFocusedCandidateKey = useMemo(
+    () => reconcileFlaStaticSnapshotCandidateFocus(
+      visibleGroups,
+      previews,
+      focusedCandidateKey,
+      phase === 'scanning',
+    ),
+    [focusedCandidateKey, phase, previews, visibleGroups],
+  );
+  focusedCandidateKeyRef.current = effectiveFocusedCandidateKey;
+  const focusedEntry = effectiveFocusedCandidateKey
+    ? entryByKey.get(effectiveFocusedCandidateKey) ?? null
+    : null;
   const focusedStatus = focusedEntry
     ? previews[flaStaticSnapshotCandidateKey(focusedEntry)]
     : undefined;
-  const focusedPreviewForEntry = focusedCandidateKey && focusedPreview?.key === focusedCandidateKey
+  const focusedPreviewForEntry = effectiveFocusedCandidateKey && focusedPreview?.key === effectiveFocusedCandidateKey
     ? focusedPreview
     : null;
-  const previewAreaState = focusedPreviewForEntry?.status ?? (
+  const previewAreaState = !effectiveFocusedCandidateKey ? 'empty' : focusedPreviewForEntry?.status ?? (
     focusedStatus?.status === 'supported'
       ? 'loading'
       : focusedStatus?.status ?? 'needs-preview'
@@ -420,7 +431,7 @@ export function FlaStaticSnapshotReview({
   }, [onCommitStateChange, onTerminalStateChange, sessionId, updateFocusedPreview]);
 
   useEffect(() => {
-    const key = focusedCandidateKey;
+    const key = effectiveFocusedCandidateKey;
     const entry = focusedEntry;
     const status = focusedStatus;
     const canRequest = Boolean(
@@ -519,7 +530,7 @@ export function FlaStaticSnapshotReview({
         }).catch(() => undefined);
       }
     };
-  }, [focusedCandidateKey, focusedEntry, focusedStatus?.sha256, focusedStatus?.status, markFocusedPreviewUnavailable, phase, sessionId, updateFocusedPreview]);
+  }, [effectiveFocusedCandidateKey, focusedEntry, focusedStatus?.sha256, focusedStatus?.status, markFocusedPreviewUnavailable, phase, sessionId, updateFocusedPreview]);
 
   const close = (): void => {
     if (phase === 'committing') return;
@@ -560,8 +571,32 @@ export function FlaStaticSnapshotReview({
 
   const clearSelection = (): void => setSelectedCandidateKeys(new Set());
 
+  const updateCandidateFilter = (filter: FlaStaticSnapshotCandidateFilter): void => {
+    const nextGroups = groupFlaStaticSnapshotCandidates(entries, previews, candidateSearch, filter);
+    const nextFocusKey = reconcileFlaStaticSnapshotCandidateFocus(
+      nextGroups,
+      previews,
+      effectiveFocusedCandidateKey,
+      phase === 'scanning',
+    );
+    setCandidateFilter(filter);
+    setFocusedCandidateKey(nextFocusKey);
+  };
+
+  const updateCandidateSearch = (search: string): void => {
+    const nextGroups = groupFlaStaticSnapshotCandidates(entries, previews, search, candidateFilter);
+    const nextFocusKey = reconcileFlaStaticSnapshotCandidateFocus(
+      nextGroups,
+      previews,
+      effectiveFocusedCandidateKey,
+      phase === 'scanning',
+    );
+    setCandidateSearch(search);
+    setFocusedCandidateKey(nextFocusKey);
+  };
+
   const focusedSelectionNeedsPreview = Boolean(
-    focusedCandidateKey && selectedCandidateKeys.has(focusedCandidateKey) &&
+    effectiveFocusedCandidateKey && selectedCandidateKeys.has(effectiveFocusedCandidateKey) &&
     focusedPreviewForEntry?.status !== 'ready',
   );
 
@@ -753,7 +788,7 @@ export function FlaStaticSnapshotReview({
               <input
                 aria-label="搜索候选名称"
                 data-testid="fla-snapshot-target-search"
-                onChange={(event) => setCandidateSearch(event.currentTarget.value)}
+                onChange={(event) => updateCandidateSearch(event.currentTarget.value)}
                 placeholder="按名称搜索"
                 type="search"
                 value={candidateSearch}
@@ -771,7 +806,7 @@ export function FlaStaticSnapshotReview({
               <button
                 aria-pressed={candidateFilter === 'all'}
                 data-testid="fla-snapshot-filter-all"
-                onClick={() => setCandidateFilter('all')}
+                onClick={() => updateCandidateFilter('all')}
                 type="button"
               >
                 全部候选
@@ -779,7 +814,7 @@ export function FlaStaticSnapshotReview({
               <button
                 aria-pressed={candidateFilter === 'compositions'}
                 data-testid="fla-snapshot-filter-compositions"
-                onClick={() => setCandidateFilter('compositions')}
+                onClick={() => updateCandidateFilter('compositions')}
                 type="button"
               >
                 场景组合
@@ -787,7 +822,7 @@ export function FlaStaticSnapshotReview({
               <button
                 aria-pressed={candidateFilter === 'graphic-states'}
                 data-testid="fla-snapshot-filter-graphic-states"
-                onClick={() => setCandidateFilter('graphic-states')}
+                onClick={() => updateCandidateFilter('graphic-states')}
                 type="button"
               >
                 图形状态
@@ -816,7 +851,7 @@ export function FlaStaticSnapshotReview({
                       const candidatePreview = previews[key];
                       const status = candidatePreview?.status ?? (entry.previewSupported ? 'checking' : 'unsupported');
                       const selectable = status === 'supported' && phase === 'ready';
-                      const focused = key === focusedCandidateKey;
+                      const focused = key === effectiveFocusedCandidateKey;
                       return (
                         <div
                           className={`fla-snapshot-candidate-row${focused ? ' is-focused' : ''}`}
@@ -901,7 +936,7 @@ export function FlaStaticSnapshotReview({
           <header className="fla-snapshot-region-heading">
             <h3>{focusedEntry ? '候选预览' : '预览'}</h3>
             <output aria-live="polite" data-preview-state={previewAreaState} data-testid="fla-snapshot-preview-status">
-              {focusedStatus?.status === 'blank' ? '空白状态' : focusedStatus?.status === 'unsupported' ? '暂不可导入' : focusedPreviewForEntry?.status === 'ready' ? '可导入' : focusedStatus?.status === 'supported' ? '正在加载清晰预览' : phase === 'scanning' ? '正在检查' : '等待检查'}
+              {!effectiveFocusedCandidateKey ? '无可预览素材' : focusedStatus?.status === 'blank' ? '空白状态' : focusedStatus?.status === 'unsupported' ? '暂不可导入' : focusedPreviewForEntry?.status === 'ready' ? '可导入' : focusedStatus?.status === 'supported' ? '正在加载清晰预览' : phase === 'scanning' ? '正在检查' : '等待检查'}
             </output>
           </header>
           <div className="fla-snapshot-preview-stage" data-preview-state={previewAreaState} data-testid="fla-snapshot-preview-area">
@@ -917,7 +952,7 @@ export function FlaStaticSnapshotReview({
                 data-source-library-item-name={focusedEntry?.target.sourceLibraryItemName ?? ''}
                 data-testid="fla-snapshot-preview-image"
                 onError={() => {
-                  const key = focusedCandidateKey;
+                  const key = effectiveFocusedCandidateKey;
                   if (
                     !key || focusedCandidateKeyRef.current !== key ||
                     focusedPreviewUrlRef.current?.url !== focusedPreviewForEntry.url
@@ -931,8 +966,8 @@ export function FlaStaticSnapshotReview({
               />
             ) : (
               <div className="fla-snapshot-preview-placeholder" data-testid="fla-snapshot-preview-placeholder" role={focusedPreviewForEntry?.status === 'error' ? 'alert' : undefined}>
-                <strong>{focusedPreviewForEntry?.status === 'error' ? '清晰预览暂不可用' : focusedStatus?.status === 'blank' ? '这是空白状态' : focusedStatus?.status === 'unsupported' ? '此项暂不可导入' : focusedStatus?.status === 'supported' ? '正在加载清晰预览…' : phase === 'scanning' ? '正在生成候选预览…' : '选择一个候选查看'}</strong>
-                <span>{focusedPreviewForEntry?.status === 'error' ? focusedPreviewForEntry.message : focusedStatus?.status === 'unsupported' ? boundedUnsupportedReason(focusedStatus.reason) : '只有成功生成并显示的预览才能加入导入选择。'}</span>
+                <strong>{focusedPreviewForEntry?.status === 'error' ? '清晰预览暂不可用' : !effectiveFocusedCandidateKey ? '当前筛选无可预览素材' : focusedStatus?.status === 'blank' ? '这是空白状态' : focusedStatus?.status === 'unsupported' ? '此项暂不可导入' : focusedStatus?.status === 'supported' ? '正在加载清晰预览…' : phase === 'scanning' ? '正在生成候选预览…' : '选择一个候选查看'}</strong>
+                <span>{focusedPreviewForEntry?.status === 'error' ? focusedPreviewForEntry.message : focusedStatus?.status === 'unsupported' ? boundedUnsupportedReason(focusedStatus.reason) : !effectiveFocusedCandidateKey ? '请选择可预览素材，或调整筛选条件和搜索内容。' : '只有成功生成并显示的预览才能加入导入选择。'}</span>
               </div>
             )}
           </div>

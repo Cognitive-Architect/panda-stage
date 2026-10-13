@@ -642,8 +642,15 @@ async function waitForCatalogUiReady(window, timeoutMs = 900_000) {
 async function readCatalogUi(window) {
   return evaluate(window, `(() => {
     const rows = [...document.querySelectorAll('[data-testid="fla-snapshot-targets"] .fla-snapshot-candidate-row')];
+    const focused = rows.find((row) => row.getAttribute('data-focused') === 'true') ?? null;
     const full = document.querySelector('[data-testid="fla-snapshot-preview-image"]');
     const root = document.querySelector('[data-testid="fla-snapshot-review"]');
+    const details = document.querySelector('[data-testid="fla-snapshot-details-region"]');
+    const targetFact = [...(details?.querySelectorAll('dl.fla-snapshot-detail-more > div') ?? [])]
+      .find((fact) => fact.querySelector('dt')?.textContent?.trim() === '目标标识');
+    const summary = document.querySelector('[data-testid="fla-snapshot-candidate-summary"]');
+    const selectedFact = [...(summary?.querySelectorAll(':scope > div') ?? [])]
+      .find((fact) => fact.querySelector('dt')?.textContent?.trim() === '已选择');
     const reason = document.querySelector('[data-testid="fla-stage-f2-more-details"] p')?.textContent?.trim()
       ?? document.querySelector('[data-testid="fla-snapshot-preview-placeholder"] span')?.textContent?.trim()
       ?? document.querySelector('[data-testid="fla-snapshot-details"]')?.textContent?.trim()
@@ -658,6 +665,7 @@ async function readCatalogUi(window) {
         catalogPreviewSupported: row.getAttribute('data-catalog-preview-supported') === 'true',
         isBlank: row.getAttribute('data-is-blank') === 'true',
         selectable: row.getAttribute('data-preview-supported') === 'true',
+        focused: row.getAttribute('data-focused') === 'true',
         selected: row.querySelector('input[type="checkbox"]')?.checked ?? false,
         label: row.querySelector('.fla-snapshot-candidate-copy strong')?.textContent?.trim() ?? '',
         kindLabel: row.querySelector('.fla-snapshot-candidate-copy small')?.textContent?.trim() ?? '',
@@ -678,6 +686,16 @@ async function readCatalogUi(window) {
         naturalHeight: full.naturalHeight,
         src: full.getAttribute('src'),
       } : null,
+      focusedCandidate: focused ? {
+        renderTargetId: focused.getAttribute('data-render-target-id'),
+        sourceLibraryItemName: focused.getAttribute('data-source-library-item-name'),
+        selectedFrameIndex: Number(focused.getAttribute('data-source-frame-index') ?? 0),
+        catalogRole: focused.getAttribute('data-catalog-role'),
+      } : null,
+      detailsTargetId: targetFact?.querySelector('dd')?.textContent?.trim() ?? null,
+      previewPlaceholder: document.querySelector('[data-testid="fla-snapshot-preview-placeholder"]')?.textContent?.trim() ?? null,
+      selectedTotal: Number(selectedFact?.querySelector('dd')?.textContent?.trim() ?? 0),
+      actionState: document.querySelector('[data-testid="fla-snapshot-action-state"]')?.textContent?.trim() ?? '',
       selectedCandidateCount: rows.filter((row) => row.querySelector('input[type="checkbox"]')?.checked).length,
       targetCountText: document.querySelector('[data-testid="fla-snapshot-target-count"]')?.textContent?.trim() ?? '',
       omittedWarning: document.querySelector('[data-testid="fla-snapshot-catalog-limit"]')?.textContent?.trim() ?? '',
@@ -694,18 +712,112 @@ async function readCatalogUi(window) {
   })()`);
 }
 
+async function assertFocusedPreviewMatchesVisibleCandidate(window, expectedRole = null) {
+  const ui = await readCatalogUi(window);
+  const focused = ui.focusedCandidate;
+  assert(
+    !focused || ui.rows.some((row) => row.renderTargetId === focused.renderTargetId),
+    'The focused candidate is not present in the filtered visible list.',
+  );
+  assert(
+    ui.detailsTargetId === (focused?.renderTargetId ?? null),
+    'Focused candidate details do not match the visible focus, or stale details remain without a focus.',
+  );
+  assert(
+    !ui.fullPreview || ui.fullPreview.renderTargetId === focused?.renderTargetId,
+    'The full preview does not match the visible focused candidate.',
+  );
+  if (expectedRole && focused) {
+    assert(focused.catalogRole === expectedRole, `Expected ${expectedRole} focus, got ${focused.catalogRole}.`);
+  }
+  return ui;
+}
+
+async function waitForFocusedPreview(window, expectedTargetId) {
+  await waitForExpression(window, `(() => {
+    const row = [...document.querySelectorAll('[data-testid="fla-snapshot-targets"] .fla-snapshot-candidate-row')]
+      .find((candidate) => candidate.getAttribute('data-focused') === 'true');
+    const image = document.querySelector('[data-testid="fla-snapshot-preview-image"]');
+    return row?.getAttribute('data-render-target-id') === ${JSON.stringify(expectedTargetId)} &&
+      image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0 &&
+      image.getAttribute('data-render-target-id') === ${JSON.stringify(expectedTargetId)};
+  })()`, 180_000);
+}
+
 async function testCandidateFilters(window) {
+  await click(window, `[data-render-target-id="${BLUEHAIR_TARGET_ID}"] input[type="checkbox"]`);
+  const selectedBeforeFiltering = await readCatalogUi(window);
+  assert(selectedBeforeFiltering.selectedTotal === 1, 'Selecting the known composition did not update the full selection count.');
+
   await click(window, '[data-testid="fla-snapshot-filter-graphic-states"]');
-  const graphicStateRows = await evaluate(window, `[...document.querySelectorAll('[data-testid="fla-snapshot-targets"] .fla-snapshot-candidate-row')].map((row) => row.getAttribute('data-catalog-role'))`);
+  await waitForExpression(window, `document.querySelector('[data-testid="fla-snapshot-filter-graphic-states"]')?.getAttribute('aria-pressed') === 'true'`);
+  const graphicUi = await assertFocusedPreviewMatchesVisibleCandidate(window, 'graphic-state');
+  const graphicStateRows = graphicUi.rows.map((row) => row.catalogRole);
+  const firstSupportedGraphic = graphicUi.rows.find((row) => row.selectable);
+  assert(firstSupportedGraphic && graphicUi.focusedCandidate?.renderTargetId === firstSupportedGraphic.renderTargetId, 'Graphic-state filtering did not focus the first supported visible candidate.');
+  assert(graphicUi.selectedTotal === 1 && graphicUi.actionState === '1 项已选', 'Filtering changed the hidden composition selection or its confirmation count.');
+  assert(!graphicUi.rows.some((row) => row.renderTargetId === BLUEHAIR_TARGET_ID), 'The selected composition remained visible under the graphic-state filter.');
+  await waitForFocusedPreview(window, graphicUi.focusedCandidate.renderTargetId);
+  const graphicPreview = await assertFocusedPreviewMatchesVisibleCandidate(window, 'graphic-state');
+
   await click(window, '[data-testid="fla-snapshot-filter-compositions"]');
-  const compositionRows = await evaluate(window, `[...document.querySelectorAll('[data-testid="fla-snapshot-targets"] .fla-snapshot-candidate-row')].map((row) => row.getAttribute('data-catalog-role'))`);
+  await waitForExpression(window, `document.querySelector('[data-testid="fla-snapshot-filter-compositions"]')?.getAttribute('aria-pressed') === 'true'`);
+  const compositionUi = await assertFocusedPreviewMatchesVisibleCandidate(window);
+  const compositionRows = compositionUi.rows.map((row) => row.catalogRole);
+  const firstSupportedComposition = compositionUi.rows.find((row) => row.selectable);
+  assert(firstSupportedComposition && compositionUi.focusedCandidate?.renderTargetId === firstSupportedComposition.renderTargetId, 'Composition filtering did not focus the first supported visible candidate.');
+  await waitForFocusedPreview(window, compositionUi.focusedCandidate.renderTargetId);
+  const compositionPreview = await assertFocusedPreviewMatchesVisibleCandidate(window);
+
   await click(window, '[data-testid="fla-snapshot-filter-all"]');
+  await waitForExpression(window, `document.querySelector('[data-testid="fla-snapshot-filter-all"]')?.getAttribute('aria-pressed') === 'true'`);
+  const allUi = await assertFocusedPreviewMatchesVisibleCandidate(window);
+  assert(allUi.focusedCandidate?.renderTargetId === compositionPreview.focusedCandidate?.renderTargetId, 'Returning to all candidates changed a still-visible focus.');
+  assert(allUi.fullPreview?.src === compositionPreview.fullPreview?.src, 'Returning to all candidates unnecessarily reloaded a still-visible preview.');
+  assert(allUi.selectedTotal === 1 && allUi.rows.find((row) => row.renderTargetId === BLUEHAIR_TARGET_ID)?.selected, 'Filtering changed the selected composition or its checked state.');
+
+  await click(window, `[data-render-target-id="${BLUEHAIR_TARGET_ID}"] input[type="checkbox"]`);
+  const deselected = await readCatalogUi(window);
+  assert(deselected.selectedTotal === 0, 'The filter regression scenario did not restore the initial empty selection.');
+
+  const searchSelector = '[data-testid="fla-snapshot-target-search"]';
+  await evaluate(window, `(() => {
+    const input = document.querySelector(${JSON.stringify(searchSelector)});
+    if (!(input instanceof HTMLInputElement)) throw new Error('Missing candidate search input.');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    setter?.call(input, 'issue-772-no-match');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await waitForExpression(window, `document.querySelector('[data-testid="fla-snapshot-target-search"]')?.value === 'issue-772-no-match'`);
+  const noMatches = await assertFocusedPreviewMatchesVisibleCandidate(window);
+  assert(noMatches.rows.length === 0 && noMatches.focusedCandidate === null && noMatches.fullPreview === null, 'A zero-result search retained a stale focus, preview, or candidate row.');
+  assert(noMatches.previewPlaceholder?.includes('当前筛选无可预览素材'), 'A zero-result search did not show the explicit empty preview state.');
+
+  await evaluate(window, `(() => {
+    const input = document.querySelector(${JSON.stringify(searchSelector)});
+    if (!(input instanceof HTMLInputElement)) throw new Error('Missing candidate search input.');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    setter?.call(input, '');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await waitForExpression(window, `document.querySelector('[data-testid="fla-snapshot-target-search"]')?.value === ''`);
+  const searchRestored = await assertFocusedPreviewMatchesVisibleCandidate(window);
+  assert(searchRestored.focusedCandidate?.renderTargetId === BLUEHAIR_TARGET_ID, 'Clearing search did not restore the deterministic first supported candidate.');
+  await waitForFocusedPreview(window, BLUEHAIR_TARGET_ID);
+  const restoredPreview = await assertFocusedPreviewMatchesVisibleCandidate(window);
+
   return {
     graphicStatesOnly: graphicStateRows.length === 0 || graphicStateRows.every((role) => role === 'graphic-state'),
     compositionsOnly: compositionRows.every((role) => role === 'scene' || role === 'scene-referenced-graphic'),
-    allRestored: await evaluate(window, `document.querySelector('[data-testid="fla-snapshot-filter-all"]')?.getAttribute('aria-pressed') === 'true'`),
+    allRestored: allUi.visibleFilter === 'all',
     graphicStateRowCount: graphicStateRows.length,
     compositionRowCount: compositionRows.length,
+    graphicFocus: graphicPreview.focusedCandidate,
+    compositionFocus: compositionPreview.focusedCandidate,
+    focusPreservedWhenVisible: allUi.focusedCandidate?.renderTargetId === compositionPreview.focusedCandidate?.renderTargetId,
+    hiddenSelectionPreserved: deselected.selectedTotal === 0 && allUi.selectedTotal === 1,
+    searchZeroResultsClearedPreview: noMatches.focusedCandidate === null && noMatches.fullPreview === null,
+    searchClearRestoredPreview: restoredPreview.fullPreview?.renderTargetId === BLUEHAIR_TARGET_ID,
   };
 }
 
@@ -874,6 +986,8 @@ async function verifyBluehair(window) {
 
   const filters = await testCandidateFilters(window);
   assert(filters.graphicStatesOnly && filters.compositionsOnly && filters.allRestored, 'The candidate role filters did not isolate and restore their intended groups.');
+  assert(filters.focusPreservedWhenVisible && filters.hiddenSelectionPreserved, 'Filtering changed a still-visible focus or hidden selection.');
+  assert(filters.searchZeroResultsClearedPreview && filters.searchClearRestoredPreview, 'Search did not clear and restore the focused preview correctly.');
   run.filterFacts = filters;
   run.ui = await readCatalogUi(window);
   const compositionScreenshot = await capture(window, join(runtime.repoEvidenceDir, 'bluehair-composition-directory.png'));

@@ -95,6 +95,15 @@ describe('Issue #396 Stage D render workbench contract', () => {
     expect(previewTransaction).toContain('class FlaStaticSnapshotPreviewQueue');
   });
 
+  it('keeps preview focus inside the visible candidate filter and clears unmatched search state', () => {
+    expect(snapshot).toContain('reconcileFlaStaticSnapshotCandidateFocus');
+    expect(snapshot).toContain('focusedCandidateKeyRef.current = effectiveFocusedCandidateKey');
+    expect(snapshot).toContain('focusedPreview?.key === effectiveFocusedCandidateKey');
+    expect(snapshot).toContain('data-focused={focused ?');
+    expect(snapshot).toContain('当前筛选无可预览素材');
+    expect(snapshot).toContain('setSelectedCandidateKeys');
+  });
+
   it('uses a three-zone layout without adding a second scroll owner', () => {
     expect(styles).toContain('/* Issue #396: Stage D zero-raster render workbench.');
     expect(styles).toMatch(

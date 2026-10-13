@@ -25,6 +25,31 @@ export interface FlaStaticSnapshotCandidateGroup {
 export type FlaStaticSnapshotCandidatePreviews = Readonly<Record<string, FlaStaticSnapshotCandidatePreview>>;
 export type FlaStaticSnapshotCandidateFilter = 'all' | 'compositions' | 'graphic-states';
 
+export function reconcileFlaStaticSnapshotCandidateFocus(
+  visibleGroups: readonly FlaStaticSnapshotCandidateGroup[],
+  previews: FlaStaticSnapshotCandidatePreviews,
+  currentFocusKey: string | null,
+  allowCheckingCandidates: boolean,
+): string | null {
+  const visibleEntries = visibleGroups.flatMap((group) => group.entries);
+  if (currentFocusKey && visibleEntries.some((entry) => flaStaticSnapshotCandidateKey(entry) === currentFocusKey)) {
+    return currentFocusKey;
+  }
+
+  const firstSupported = visibleEntries.find((entry) =>
+    previews[flaStaticSnapshotCandidateKey(entry)]?.status === 'supported',
+  );
+  if (firstSupported) return flaStaticSnapshotCandidateKey(firstSupported);
+  if (!allowCheckingCandidates) return null;
+
+  const firstChecking = visibleEntries.find((entry) => {
+    const key = flaStaticSnapshotCandidateKey(entry);
+    const status = previews[key]?.status ?? (entry.previewSupported ? 'checking' : 'unsupported');
+    return status === 'checking' && entry.previewSupported && !entry.isBlank;
+  });
+  return firstChecking ? flaStaticSnapshotCandidateKey(firstChecking) : null;
+}
+
 export function flaStaticSnapshotCandidateKey(entry: FlaRenderableTargetCatalogEntry): string {
   return `${entry.target.renderTargetId}:${entry.target.selectedFrameIndex ?? 0}`;
 }

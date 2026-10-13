@@ -6,6 +6,7 @@ import type {
 import {
   flaStaticSnapshotCandidateKey,
   groupFlaStaticSnapshotCandidates,
+  reconcileFlaStaticSnapshotCandidateFocus,
 } from '../../src/renderer/fla-import/fla-static-snapshot-candidates';
 
 function entry(
@@ -138,5 +139,75 @@ describe('FLA static snapshot candidate grouping', () => {
     expect(stateGroups).toHaveLength(1);
     expect(stateGroups[0]?.entries).toEqual([frameZero, frameTwo]);
     expect(compositionGroups.map((group) => group.entries[0])).toEqual([scene]);
+  });
+
+  it('reconciles a filtered focus to a visible supported candidate and clears a non-previewable result', () => {
+    const composition = entry('composition', '神女', { catalogRole: 'scene-referenced-graphic' });
+    const graphicState = entry('graphic-state', '头发', { catalogRole: 'graphic-state' });
+    const unsupported = entry('unsupported', '渐变装饰', {
+      catalogRole: 'graphic-state',
+      previewSupported: false,
+    });
+    const previews = {
+      [flaStaticSnapshotCandidateKey(composition)]: { status: 'supported' as const, sha256: 'a'.repeat(64) },
+      [flaStaticSnapshotCandidateKey(graphicState)]: { status: 'supported' as const, sha256: 'b'.repeat(64) },
+      [flaStaticSnapshotCandidateKey(unsupported)]: { status: 'unsupported' as const },
+    };
+    const graphics = groupFlaStaticSnapshotCandidates(
+      [composition, graphicState, unsupported],
+      previews,
+      '',
+      'graphic-states',
+    );
+
+    expect(reconcileFlaStaticSnapshotCandidateFocus(
+      graphics,
+      previews,
+      flaStaticSnapshotCandidateKey(composition),
+      false,
+    )).toBe(flaStaticSnapshotCandidateKey(graphicState));
+    expect(reconcileFlaStaticSnapshotCandidateFocus(
+      graphics,
+      previews,
+      flaStaticSnapshotCandidateKey(graphicState),
+      false,
+    )).toBe(flaStaticSnapshotCandidateKey(graphicState));
+
+    const unsupportedOnly = groupFlaStaticSnapshotCandidates(
+      [unsupported],
+      previews,
+      '',
+      'graphic-states',
+    );
+    expect(reconcileFlaStaticSnapshotCandidateFocus(
+      unsupportedOnly,
+      previews,
+      flaStaticSnapshotCandidateKey(composition),
+      false,
+    )).toBeNull();
+  });
+
+  it('focuses a visible pending candidate while scanning, then resolves search clearing deterministically', () => {
+    const composition = entry('composition', '神女', { catalogRole: 'scene-referenced-graphic' });
+    const graphicState = entry('graphic-state', '头发', { catalogRole: 'graphic-state' });
+    const previews = {
+      [flaStaticSnapshotCandidateKey(composition)]: { status: 'supported' as const, sha256: 'a'.repeat(64) },
+    };
+    const graphics = groupFlaStaticSnapshotCandidates(
+      [composition, graphicState],
+      previews,
+      '',
+      'graphic-states',
+    );
+
+    expect(reconcileFlaStaticSnapshotCandidateFocus(graphics, previews, null, true))
+      .toBe(flaStaticSnapshotCandidateKey(graphicState));
+
+    const noMatches = groupFlaStaticSnapshotCandidates([composition, graphicState], previews, '不存在', 'all');
+    expect(reconcileFlaStaticSnapshotCandidateFocus(noMatches, previews, null, false)).toBeNull();
+
+    const all = groupFlaStaticSnapshotCandidates([composition, graphicState], previews, '', 'all');
+    expect(reconcileFlaStaticSnapshotCandidateFocus(all, previews, null, false))
+      .toBe(flaStaticSnapshotCandidateKey(composition));
   });
 });
