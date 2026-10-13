@@ -243,7 +243,9 @@ export class FlaStaticSnapshotCommitService {
     ) as ImageAsset | undefined;
     const isFirst = !existing;
 
-    const baseName = `${request.target.userLabel}-${request.target.renderTargetId}`.slice(0, 120);
+    // The Windows FFmpeg thumbnail path cannot reopen non-ASCII input names;
+    // keep the stored PNG path ASCII while preserving its display name below.
+    const baseName = `fla-snapshot-${request.target.renderTargetId}-${sha256.slice(0, 12)}`.slice(0, 120);
     const preferredFileName = sanitizeAssetFileName(baseName, '.png');
     let targetFileName: string;
     let asset: ImageAsset;

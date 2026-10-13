@@ -218,6 +218,9 @@ describe('FlaStaticSnapshotCommitService', () => {
     expect(response.result.asset.kind).toBe('image');
     expect(response.result.asset.mimeType).toBe('image/png');
     expect(response.result.asset.sha256).toBe(sha256);
+    expect(response.result.asset.relativePath).toBe(
+      `assets/fla-snapshot-fla-render-target-0000000000000001-${sha256.slice(0, 12)}.png`,
+    );
     expect(response.result.asset.name).toBe('scene · Snapshot · 第 1 帧');
     expect(response.result.asset.flaSnapshot).toEqual({
       sourceBasename: SOURCE.basename,
