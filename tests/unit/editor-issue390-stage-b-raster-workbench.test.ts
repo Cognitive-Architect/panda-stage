@@ -63,17 +63,12 @@ describe('Issue #390 Stage B direct-raster Workbench contract', () => {
     expect(card).not.toContain('aria-pressed={selected}');
   });
 
-  it('shows stable progress and exactly one state-bound dominant CTA', () => {
-    expect(component).toContain('className="fla-workbench-progress"');
-    expect(component).toContain('选择素材</li>');
-    expect(component).toContain('确认选择</li>');
-    expect(component).toContain('导入素材</li>');
-    expect(component).toContain("phase === 'ready' ? (");
+  it('shows one common explicit import action for checked candidates', () => {
     expect(component).toContain('className="fla-review-primary-action"');
-    expect(component).toContain('确认 {selectedCount} 项');
-    expect(component).toContain("intent && phase === 'confirmed' ? (");
-    expect(component).toContain('className="fla-review-commit-primary fla-review-primary-action"');
-    expect(component).toContain('导入这 {intent.selectedCount} 项');
+    expect(component).toContain('data-testid="fla-unified-import"');
+    expect(component).toContain('导入 {selectedUnifiedItems.length} 项');
+    expect(component).toContain('runFlaUnifiedImport({');
+    expect(component).not.toContain('data-testid="fla-review-confirm"');
   });
 
   it('retains one review scroll owner and all FLA business boundaries', () => {
@@ -85,7 +80,8 @@ describe('Issue #390 Stage B direct-raster Workbench contract', () => {
     expect(issue390Styles).not.toMatch(/\.fla-raster-selection\s*\{[^}]*overflow-y:\s*auto;/u);
     expect(route).toContain('response.ir.media.length > 0');
     expect(route).toContain("? 'v1-raster-review'");
-    expect(component).toContain('createFlaRasterSelectionIntent');
+    expect(component).toContain('describeFlaUnifiedCandidate(candidate)');
+    expect(component).toContain('runFlaUnifiedImport({');
     expect(component).toContain('window.pandaStage.fla.commitSelected');
     expect(component).toContain('confirmed: true');
     expect(component).not.toContain('updateProject');

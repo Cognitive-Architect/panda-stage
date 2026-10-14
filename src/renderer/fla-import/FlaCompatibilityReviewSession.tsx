@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useLayoutEffect,
   useEffect,
   useMemo,
@@ -11,7 +12,6 @@ import { createPortal } from 'react-dom';
 import type {
   FlaCompatibilityStatus,
   FlaInspectionResponse,
-  FlaRasterSelectionIntent,
   FlaStructuralSummary,
 } from '../../shared/fla-import-api';
 import type { FlaAssetCommitResponse } from '../../shared/fla-asset-commit-api';
@@ -21,7 +21,6 @@ import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import {
   compatibilityCounts,
   compatibilityWarnings,
-  createFlaRasterSelectionIntent,
   filterFlaReviewMedia,
   flaReviewPageCount,
   FLA_RASTER_REVIEW_PAGE_SIZES,
@@ -33,13 +32,10 @@ import {
   type FlaReviewMedia,
 } from './fla-review';
 import {
-  checkFlaWorkbenchCandidates,
-  clearFlaWorkbenchChecks,
   createFlaWorkbenchCandidateSelection,
   createFlaWorkbenchCandidates,
   focusFlaWorkbenchCandidate,
   reconcileFlaWorkbenchFocus,
-  toggleFlaWorkbenchCandidateChecked,
 } from './fla-workbench-candidates';
 import {
   isFlaInspectionUserCancelled,
@@ -52,12 +48,7 @@ import {
   FlaRenderWorkbench,
   type FlaRenderWorkbenchMode,
 } from './FlaRenderWorkbench';
-import {
-  FlaStageGImporting,
-  FlaStageGRecovery,
-  FlaStageGRasterSuccess,
-  type FlaStageGTerminalState,
-} from './FlaStageGTerminal';
+import type { FlaStageGTerminalState } from './FlaStageGTerminal';
 import { FlaStageAInspecting } from './FlaStageAInspecting';
 import { FlaStageF3Blocked } from './FlaStageF';
 import {
@@ -65,12 +56,19 @@ import {
   routeFlaInspection,
   type FlaWorkbenchSection,
 } from './fla-content-route';
+import {
+  describeFlaUnifiedCandidate,
+  flaUnifiedCandidateSelectionKey,
+  runFlaUnifiedImport,
+  type FlaUnifiedImportItem,
+  type FlaUnifiedImportReceipt,
+  type FlaUnifiedImportRunner,
+} from './fla-unified-import';
 
 interface FlaCompatibilityReviewSessionProps {
   inspection: FlaInspectionOperation;
   snapshot: EditorProjectSnapshot | null;
   onClose: () => void;
-  onIntent?: (intent: FlaRasterSelectionIntent) => void;
   onCommit?: (response: FlaAssetCommitResponse) => void;
   onSnapshotImported?: (response: FlaStaticSnapshotCommitResponse) => void;
   onSequenceImported?: (response: FlaFrameSequenceCommitResponse) => void;
@@ -79,16 +77,13 @@ interface FlaCompatibilityReviewSessionProps {
 type SessionPhase =
   | 'inspecting'
   | 'ready'
-  | 'confirmed'
   | 'committing'
-  | 'success'
   | 'error';
 
 export function FlaCompatibilityReviewSession({
   inspection,
   snapshot,
   onClose,
-  onIntent,
   onCommit,
   onSnapshotImported,
   onSequenceImported,
@@ -97,8 +92,11 @@ export function FlaCompatibilityReviewSession({
   const [response, setResponse] = useState<FlaInspectionResponse | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [rasterSelection, setRasterSelection] = useState(createFlaWorkbenchCandidateSelection);
-  const [intent, setIntent] = useState<FlaRasterSelectionIntent | null>(null);
-  const [commitResponse, setCommitResponse] = useState<FlaAssetCommitResponse | null>(null);
+  const [checkedCandidates, setCheckedCandidates] = useState<Map<string, FlaUnifiedImportItem>>(() => new Map());
+  const [importReceipt, setImportReceipt] = useState<FlaUnifiedImportReceipt | null>(null);
+  const [unifiedImportRunning, setUnifiedImportRunning] = useState(false);
+  const [stopAfterCurrentRequested, setStopAfterCurrentRequested] = useState(false);
+  const [importRunnerRevision, setImportRunnerRevision] = useState(0);
   const [thumbnailUrls, setThumbnailUrls] = useState<Readonly<Record<string, string>>>({});
   const [compatibilityNotesOpen, setCompatibilityNotesOpen] = useState(false);
   const [rasterPage, setRasterPage] = useState(1);
@@ -107,12 +105,18 @@ export function FlaCompatibilityReviewSession({
   const [rasterSearch, setRasterSearch] = useState('');
   const [workbenchSection, setWorkbenchSection] = useState<FlaWorkbenchSection>('compositions');
   const [compositionWorkbenchMounted, setCompositionWorkbenchMounted] = useState(false);
-  const [compositionWorkInProgress, setCompositionWorkInProgress] = useState(false);
+  const [snapshotWorkbenchMounted, setSnapshotWorkbenchMounted] = useState(false);
+  const [sequenceWorkbenchMounted, setSequenceWorkbenchMounted] = useState(false);
+  const [snapshotWorkInProgress, setSnapshotWorkInProgress] = useState(false);
+  const [sequenceWorkInProgress, setSequenceWorkInProgress] = useState(false);
   const [renderMode, setRenderMode] = useState<FlaRenderWorkbenchMode>('snapshot');
-  const [renderCommitBusy, setRenderCommitBusy] = useState(false);
   const [renderTerminalState, setRenderTerminalState] = useState<FlaStageGTerminalState>('active');
   const reviewBodyRef = useRef<HTMLDivElement | null>(null);
   const reviewScrollTop = useRef(0);
+  const snapshotImportRunnerRef = useRef<FlaUnifiedImportRunner | null>(null);
+  const sequenceImportRunnerRef = useRef<FlaUnifiedImportRunner | null>(null);
+  const cancelAfterCurrentRef = useRef(false);
+  const unifiedImportRunningRef = useRef(false);
 
   useEffect(() => {
     return subscribeToFlaInspection(
@@ -129,17 +133,21 @@ export function FlaCompatibilityReviewSession({
           setThumbnailUrls({});
           setSessionId(nextResponse.sessionId);
           setRasterSelection(createFlaWorkbenchCandidateSelection(nextResponse.ir.media[0]?.id ?? null));
+          setCheckedCandidates(new Map());
+          setImportReceipt(null);
           const initialSection = defaultFlaWorkbenchSection(nextResponse.ir.media.length);
           setWorkbenchSection(initialSection);
           setCompositionWorkbenchMounted(initialSection === 'compositions');
-          setCompositionWorkInProgress(initialSection === 'compositions');
+          setSnapshotWorkbenchMounted(initialSection === 'compositions');
+          setSequenceWorkbenchMounted(false);
+          setSnapshotWorkInProgress(initialSection === 'compositions');
+          setSequenceWorkInProgress(false);
           setRasterPage(1);
           setRasterPageSize(16);
           setRasterFilter('all');
           setRasterSearch('');
           setCompatibilityNotesOpen(false);
           setRenderMode('snapshot');
-          setRenderCommitBusy(false);
           setRenderTerminalState('active');
           reviewScrollTop.current = 0;
           setPhase('ready');
@@ -162,6 +170,14 @@ export function FlaCompatibilityReviewSession({
 
   const ir = response?.ok ? response.ir : null;
   const contentRoute = response ? routeFlaInspection(response) : 'blocked';
+  const checkedCandidateKeys = useMemo(
+    () => new Set(checkedCandidates.keys()),
+    [checkedCandidates],
+  );
+  const selectedUnifiedItems = useMemo(
+    () => [...checkedCandidates.values()],
+    [checkedCandidates],
+  );
   const reviewItems = useMemo(
     () => (ir ? reviewMedia(ir, snapshot?.project.assets ?? []) : []),
     [ir, snapshot],
@@ -173,9 +189,14 @@ export function FlaCompatibilityReviewSession({
           rasterMedia: reviewItems.map(({ media }) => media),
           rasterThumbnailUrls: thumbnailUrls,
           selection: rasterSelection,
-        }).filter((candidate) => candidate.kind === 'raster')
+        })
+          .filter((candidate) => candidate.kind === 'raster')
+          .map((candidate) => ({
+            ...candidate,
+            checked: candidate.selectable && checkedCandidateKeys.has(flaUnifiedCandidateSelectionKey(candidate)),
+          }))
       : [],
-    [ir, rasterSelection, reviewItems, sessionId, thumbnailUrls],
+    [checkedCandidateKeys, ir, rasterSelection, reviewItems, sessionId, thumbnailUrls],
   );
   const candidateByMediaId = useMemo(
     () => new Map(rasterCandidates.map((candidate) => [candidate.id, candidate])),
@@ -212,7 +233,7 @@ export function FlaCompatibilityReviewSession({
   const libraryOnlyMediaCount = reviewItems.length - usedMediaCount;
   const focusedItem = pagedReviewItems.find(({ media }) => media.id === effectiveFocusedMediaId)
     ?? null;
-  const selectionLocked = phase === 'committing' || phase === 'success';
+  const selectionLocked = unifiedImportRunning;
 
   useEffect(() => {
     if (effectiveFocusedMediaId === rasterSelection.focusedCandidateId) return;
@@ -254,7 +275,6 @@ export function FlaCompatibilityReviewSession({
     }
   }, [
     compatibilityNotesOpen,
-    intent,
     pagedReviewItems,
     phase,
     rasterPage,
@@ -302,8 +322,269 @@ export function FlaCompatibilityReviewSession({
     setRasterPage(nextPage);
   };
 
+  const registerImportRunner = useCallback((
+    kind: 'snapshot' | 'sequence',
+    runner: FlaUnifiedImportRunner | null,
+  ): void => {
+    const target = kind === 'snapshot' ? snapshotImportRunnerRef : sequenceImportRunnerRef;
+    const wasAvailable = target.current !== null;
+    target.current = runner;
+    if (wasAvailable !== (runner !== null)) {
+      setImportRunnerRevision((current) => current + 1);
+    }
+  }, []);
+  const registerSnapshotImportRunner = useCallback(
+    (runner: FlaUnifiedImportRunner | null): void => registerImportRunner('snapshot', runner),
+    [registerImportRunner],
+  );
+  const registerSequenceImportRunner = useCallback(
+    (runner: FlaUnifiedImportRunner | null): void => registerImportRunner('sequence', runner),
+    [registerImportRunner],
+  );
+  const toggleUnifiedCandidate = useCallback((item: FlaUnifiedImportItem, checked: boolean): void => {
+    if (unifiedImportRunningRef.current) return;
+    setCheckedCandidates((current) => {
+      const next = new Map(current);
+      if (checked) next.set(item.key, item);
+      else next.delete(item.key);
+      return next;
+    });
+  }, []);
+  const checkUnifiedCandidates = useCallback((items: readonly FlaUnifiedImportItem[]): void => {
+    if (unifiedImportRunningRef.current) return;
+    setCheckedCandidates((current) => {
+      const next = new Map(current);
+      for (const item of items) next.set(item.key, item);
+      return next;
+    });
+  }, []);
+  const clearUnifiedCandidates = useCallback((keys: readonly string[]): void => {
+    if (unifiedImportRunningRef.current) return;
+    const keysToClear = new Set(keys);
+    setCheckedCandidates((current) => new Map([...current].filter(([key]) => !keysToClear.has(key))));
+  }, []);
+  const reconcileUnifiedCandidates = useCallback((
+    kind: 'raster' | 'snapshot' | 'sequence',
+    currentSelectableKeys: ReadonlySet<string>,
+  ): void => {
+    setCheckedCandidates((current) => {
+      let changed = false;
+      const next = new Map<string, FlaUnifiedImportItem>();
+      for (const [key, item] of current) {
+        if (item.kind === kind && !currentSelectableKeys.has(key)) {
+          changed = true;
+          continue;
+        }
+        next.set(key, item);
+      }
+      return changed ? next : current;
+    });
+  }, []);
+  const currentRasterSelectableKeys = useMemo(
+    () => new Set(rasterCandidates.filter((candidate) => candidate.selectable).map(flaUnifiedCandidateSelectionKey)),
+    [rasterCandidates],
+  );
+  useEffect(() => {
+    reconcileUnifiedCandidates('raster', currentRasterSelectableKeys);
+  }, [currentRasterSelectableKeys, reconcileUnifiedCandidates]);
+  useEffect(() => {
+    setCheckedCandidates(new Map());
+    setImportReceipt(null);
+  }, [sessionId, ir?.source.sha256]);
+
+  const rasterImportRunner = useCallback<FlaUnifiedImportRunner>(async (
+    items,
+    currentSnapshot,
+    shouldCancel,
+  ) => {
+    const candidatesByKey = new Map(rasterCandidates.map((candidate) => [
+      flaUnifiedCandidateSelectionKey(candidate),
+      candidate,
+    ]));
+    const selected = items.map((item) => ({ item, candidate: candidatesByKey.get(item.key) }));
+    const staleSelection = selected.some(({ item, candidate }) => item.kind !== 'raster' || candidate?.kind !== 'raster');
+    if (staleSelection) {
+      return {
+        items: items.map((item) => ({
+          ...item,
+          status: 'failed' as const,
+          message: '位图候选身份已变化；请重新检查并明确选择后再导入。',
+        })),
+        snapshot: currentSnapshot,
+        stopFollowingRoutes: true,
+      };
+    }
+    if (shouldCancel()) {
+      return {
+        items: items.map((item) => ({ ...item, status: 'not-attempted' as const, message: '已取消后续导入，此项未尝试。' })),
+        snapshot: currentSnapshot,
+        cancelled: true,
+      };
+    }
+    const selectedCandidates = selected.flatMap(({ candidate }) => candidate?.kind === 'raster' ? [candidate] : []);
+    const selectedMediaIds = selectedCandidates.map((candidate) => candidate.operation.mediaId);
+    if (selectedMediaIds.length === 0 || new Set(selectedMediaIds).size !== selectedMediaIds.length) {
+      return {
+        items: items.map((item) => ({ ...item, status: 'failed' as const, message: '位图选择为空或包含重复身份，未提交。' })),
+        snapshot: currentSnapshot,
+        stopFollowingRoutes: true,
+      };
+    }
+
+    try {
+      const response = await window.pandaStage.fla.commitSelected({
+        format: 'fla-raster-commit',
+        version: 1,
+        projectRoot: currentSnapshot.projectRoot,
+        project: currentSnapshot.project,
+        baseRevision: currentSnapshot.revision,
+        sessionId: selectedCandidates[0]!.operation.sessionId,
+        source: {
+          basename: selectedCandidates[0]!.source.basename,
+          sha256: selectedCandidates[0]!.operation.sourceSha256,
+        },
+        selectedMediaIds,
+        selectedCount: selectedMediaIds.length,
+        confirmed: true,
+      });
+      if (response.ok && response.status === 'cancelled') {
+        return {
+          items: items.map((item) => ({ ...item, status: 'not-attempted' as const, message: '导入操作已取消，此项未提交。' })),
+          snapshot: currentSnapshot,
+          cancelled: true,
+        };
+      }
+      if (!response.ok) {
+        const errorSnapshot = response.error.currentProject && response.error.currentRevision !== undefined
+          ? { ...currentSnapshot, project: response.error.currentProject, revision: response.error.currentRevision }
+          : currentSnapshot;
+        return {
+          items: items.map((item) => ({ ...item, status: 'failed' as const, message: response.error.message })),
+          snapshot: errorSnapshot,
+          stopFollowingRoutes: true,
+        };
+      }
+
+      const resultsByMediaId = new Map(response.results.map((result) => [result.mediaId, result]));
+      let storeSyncFailed = false;
+      try {
+        onCommit?.(response);
+      } catch {
+        storeSyncFailed = true;
+      }
+      const resultItems = selected.map(({ item, candidate }) => {
+        const mediaId = candidate?.kind === 'raster' ? candidate.operation.mediaId : '';
+        const result = resultsByMediaId.get(mediaId);
+        if (!result) {
+          return { ...item, status: 'failed' as const, message: '主进程没有返回此位图的结果；请检查素材库后再处理。' };
+        }
+        return {
+          ...item,
+          status: result.status,
+          baseRevision: response.baseRevision,
+          savedRevision: response.savedRevision,
+          importedAssetCount: result.status === 'imported' ? 1 : 0,
+          duplicateAssetCount: result.status === 'duplicate' ? 1 : 0,
+          ...(storeSyncFailed ? { message: '项目已提交，但界面状态同步失败；请返回素材库核对，勿重复导入。' } : {}),
+        };
+      });
+      return {
+        items: resultItems,
+        snapshot: { ...currentSnapshot, project: response.project, revision: response.savedRevision },
+        ...(storeSyncFailed ? {
+          warnings: ['位图已保存到项目，但素材库界面状态未能同步；已停止后续路由。'],
+          stopFollowingRoutes: true,
+        } : {}),
+        ...(resultItems.some((item) => item.status === 'failed') ? { stopFollowingRoutes: true } : {}),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '位图导入结果无法确认。';
+      return {
+        items: items.map((item) => ({ ...item, status: 'failed' as const, message })),
+        snapshot: currentSnapshot,
+        warnings: ['位图提交结果无法确认；为避免重复写入，已停止后续路由。请检查素材库。'],
+        stopFollowingRoutes: true,
+      };
+    }
+  }, [onCommit, rasterCandidates]);
+
+  const canImportSelected = useMemo(() => {
+    if (
+      !snapshot ||
+      selectedUnifiedItems.length === 0 ||
+      unifiedImportRunning ||
+      snapshotWorkInProgress ||
+      sequenceWorkInProgress ||
+      renderTerminalState !== 'active'
+    ) return false;
+    return selectedUnifiedItems.every((item) => item.kind === 'raster' ||
+      (item.kind === 'snapshot' && snapshotImportRunnerRef.current !== null) ||
+      (item.kind === 'sequence' && sequenceImportRunnerRef.current !== null));
+  }, [importRunnerRevision, renderTerminalState, selectedUnifiedItems, snapshot, snapshotWorkInProgress, sequenceWorkInProgress, unifiedImportRunning]);
+
+  const runImportAction = async (): Promise<void> => {
+    if (!snapshot || !canImportSelected || unifiedImportRunningRef.current) return;
+    const items = [...selectedUnifiedItems];
+    const keys = new Set(items.map((item) => item.key));
+    cancelAfterCurrentRef.current = false;
+    unifiedImportRunningRef.current = true;
+    setStopAfterCurrentRequested(false);
+    setImportReceipt(null);
+    setUnifiedImportRunning(true);
+    setPhase('committing');
+    try {
+      const receipt = await runFlaUnifiedImport({
+        items,
+        snapshot,
+        runners: {
+          raster: rasterImportRunner,
+          ...(snapshotImportRunnerRef.current ? { snapshot: snapshotImportRunnerRef.current } : {}),
+          ...(sequenceImportRunnerRef.current ? { sequence: sequenceImportRunnerRef.current } : {}),
+        },
+        shouldCancel: () => cancelAfterCurrentRef.current,
+      });
+      setImportReceipt(receipt);
+      setCheckedCandidates((current) => new Map([...current].filter(([key]) => !keys.has(key))));
+    } catch (error) {
+      const message = error instanceof Error
+        ? `导入结果无法确认：${error.message}`
+        : '导入结果无法确认；请检查素材库后再处理。';
+      const itemsWithFailure = items.map((item) => ({ ...item, status: 'failed' as const, message }));
+      setImportReceipt({
+        selectedCount: items.length,
+        items: itemsWithFailure,
+        counts: {
+          imported: 0,
+          duplicate: 0,
+          failed: items.length,
+          notAttempted: 0,
+          importedAssets: 0,
+          duplicateAssets: 0,
+        },
+        partial: true,
+        cancelled: false,
+        warnings: ['导入结果无法确认；为避免重复写入，已清除本次勾选，请先检查素材库。'],
+        snapshot,
+      });
+      setCheckedCandidates((current) => new Map([...current].filter(([key]) => !keys.has(key))));
+    } finally {
+      unifiedImportRunningRef.current = false;
+      setUnifiedImportRunning(false);
+      setPhase('ready');
+      setStopAfterCurrentRequested(false);
+      cancelAfterCurrentRef.current = false;
+      setRenderTerminalState('active');
+    }
+  };
+
+  const requestStopAfterCurrent = (): void => {
+    if (!unifiedImportRunningRef.current) return;
+    cancelAfterCurrentRef.current = true;
+    setStopAfterCurrentRequested(true);
+  };
+
   const closeSession = (): void => {
-    if (phase === 'committing' || renderCommitBusy) return;
+    if (unifiedImportRunningRef.current || renderTerminalState !== 'active') return;
     onClose();
   };
 
@@ -363,110 +644,52 @@ export function FlaCompatibilityReviewSession({
   const hasSourceBitmaps = contentRoute === 'v1-raster-review';
   const rasterRoute = hasSourceBitmaps && workbenchSection === 'source-assets';
   const compositionRoute = workbenchSection === 'compositions';
+  const compositionWorkInProgress = snapshotWorkInProgress || sequenceWorkInProgress;
   const workbenchActionsLocked =
     phase === 'committing' ||
-    phase === 'success' ||
-    renderCommitBusy ||
+    unifiedImportRunning ||
     renderTerminalState !== 'active' ||
     compositionWorkInProgress;
   const workbenchCloseLocked =
     phase === 'committing' ||
-    phase === 'success' ||
-    renderCommitBusy ||
+    unifiedImportRunning ||
     renderTerminalState !== 'active';
-  const rasterCommitError = rasterRoute && commitResponse && !commitResponse.ok
-    ? commitResponse
-    : null;
-  const renderPhase: SessionPhase = phase;
-  const progressStep = phase === 'ready'
-    ? 'select'
-    : phase === 'confirmed'
-      ? 'confirm'
-      : 'import';
   const selectWorkbenchSection = (section: FlaWorkbenchSection): void => {
     if (workbenchActionsLocked) return;
     if (section === 'source-assets' && !hasSourceBitmaps) return;
     if (section === 'compositions') {
-      if (!compositionWorkbenchMounted) setCompositionWorkInProgress(true);
+      if (!compositionWorkbenchMounted) {
+        if (renderMode === 'snapshot') setSnapshotWorkInProgress(true);
+        else setSequenceWorkInProgress(true);
+      }
       setCompositionWorkbenchMounted(true);
+      if (renderMode === 'snapshot') setSnapshotWorkbenchMounted(true);
+      else setSequenceWorkbenchMounted(true);
     }
     setWorkbenchSection(section);
-  };
-  const toggle = (mediaId: string): void => {
-    if (selectionLocked) return;
-    rememberReviewScroll();
-    setRasterSelection((current) => toggleFlaWorkbenchCandidateChecked(
-      current,
-      candidateByMediaId.get(mediaId),
-    ));
-    setIntent(null);
-    if (phase === 'confirmed') setPhase('ready');
   };
   const selectAll = (): void => {
     if (selectionLocked) return;
     rememberReviewScroll();
-    setRasterSelection((current) => checkFlaWorkbenchCandidates(current, rasterCandidates));
-    setIntent(null);
-    if (phase === 'confirmed') setPhase('ready');
+    checkUnifiedCandidates(rasterCandidates.map(describeFlaUnifiedCandidate));
   };
   const clearAll = (): void => {
     if (selectionLocked) return;
     rememberReviewScroll();
-    setRasterSelection((current) => clearFlaWorkbenchChecks(current));
-    setIntent(null);
-    if (phase === 'confirmed') setPhase('ready');
+    clearUnifiedCandidates(rasterCandidates
+      .filter((candidate) => candidate.checked)
+      .map(flaUnifiedCandidateSelectionKey));
   };
-  const confirm = (): void => {
-    if (selectedCount === 0) return;
-    rememberReviewScroll();
-    const nextIntent = createFlaRasterSelectionIntent(
-      ir,
-      sessionId,
-      selectedMediaIds,
-    );
-    setIntent(nextIntent);
-    setPhase('confirmed');
-    onIntent?.(nextIntent);
-  };
-
-  const commit = async (): Promise<void> => {
-    if (!intent || !snapshot || phase !== 'confirmed') return;
-    rememberReviewScroll();
-    setCommitResponse(null);
-    setPhase('committing');
-    try {
-      const nextResponse = await window.pandaStage.fla.commitSelected({
-        format: 'fla-raster-commit',
-        version: 1,
-        projectRoot: snapshot.projectRoot,
-        project: snapshot.project,
-        baseRevision: snapshot.revision,
-        sessionId: intent.sessionId,
-        source: intent.source,
-        selectedMediaIds: intent.selectedMediaIds,
-        selectedCount: intent.selectedCount,
-        confirmed: true,
-      });
-      setCommitResponse(nextResponse);
-      if (nextResponse.ok && nextResponse.status === 'completed') {
-        setPhase('success');
-        onCommit?.(nextResponse);
-      } else {
-        setPhase('confirmed');
-      }
-    } catch (error) {
-      setCommitResponse({
-        ok: false,
-        error: {
-          code: 'ASSET_COMMIT_FAILED',
-          message:
-            error instanceof Error
-              ? error.message
-              : 'FLA 素材导入失败，请重试。',
-          projectRoot: snapshot.projectRoot,
-        },
-      });
-      setPhase('confirmed');
+  const selectRenderMode = (mode: FlaRenderWorkbenchMode): void => {
+    if (phase === 'committing' || unifiedImportRunning || renderTerminalState !== 'active') return;
+    setRenderMode(mode);
+    setRenderTerminalState('active');
+    if (mode === 'snapshot') {
+      if (!snapshotWorkbenchMounted) setSnapshotWorkInProgress(true);
+      setSnapshotWorkbenchMounted(true);
+    } else {
+      if (!sequenceWorkbenchMounted) setSequenceWorkInProgress(true);
+      setSequenceWorkbenchMounted(true);
     }
   };
 
@@ -518,14 +741,7 @@ export function FlaCompatibilityReviewSession({
               </button>
             </nav>
           </div>
-          {rasterRoute && phase !== 'committing' && phase !== 'success' && !rasterCommitError ? (
-            <ol aria-label="导入进度" className="fla-workbench-progress" data-current-step={progressStep}>
-              <li aria-current={progressStep === 'select' ? 'step' : undefined}>选择素材</li>
-              <li aria-current={progressStep === 'confirm' ? 'step' : undefined}>确认选择</li>
-              <li aria-current={progressStep === 'import' ? 'step' : undefined}>导入素材</li>
-            </ol>
-          ) : null}
-          {!workbenchCloseLocked && !rasterCommitError ? (
+          {!workbenchCloseLocked ? (
             <button
               data-testid="fla-review-cancel"
               onClick={() => void closeSession()}
@@ -554,33 +770,12 @@ export function FlaCompatibilityReviewSession({
               Panda 已处理一个兼容性问题；原 FLA 文件没有被修改。
             </output>
           ) : null}
-          {rasterRoute && phase === 'committing' ? (
-            <FlaStageGImporting
-              context={`${intent?.selectedCount ?? selectedCount} 项位图素材`}
-              headline={`正在导入 ${intent?.selectedCount ?? selectedCount} 项位图素材…`}
-              route="raster"
-            />
-          ) : null}
-          {rasterRoute && phase === 'success' && commitResponse?.ok && commitResponse.status === 'completed' ? (
-            <FlaStageGRasterSuccess onReturn={closeSession} response={commitResponse} />
-          ) : null}
-          {rasterCommitError ? (
-            <FlaStageGRecovery
-              candidateStillCurrent={rasterCommitError.error.code === 'ASSET_COMMIT_FAILED' || rasterCommitError.error.code === 'COMMIT_BUSY'}
-              code={rasterCommitError.error.code}
-              message={rasterCommitError.error.message}
-              onClose={closeSession}
-              onPrimary={() => void commit()}
-              residualPaths={rasterCommitError.error.residualPaths}
-              route="raster"
-            />
-          ) : null}
           {hasSourceBitmaps ? (
             <div
               aria-labelledby="fla-workbench-tab-source-assets"
               className="fla-raster-workbench"
               data-testid="fla-raster-workbench"
-              hidden={!rasterRoute || phase === 'committing' || phase === 'success' || Boolean(rasterCommitError)}
+              hidden={!rasterRoute}
               id="fla-source-assets-panel"
               role="tabpanel"
             >
@@ -771,7 +966,10 @@ export function FlaCompatibilityReviewSession({
                       selectionLocked={selectionLocked}
                       thumbnailUrl={thumbnailUrls[item.media.id]}
                       onFocus={() => setRasterSelection((current) => focusFlaWorkbenchCandidate(current, item.media.id))}
-                      onToggle={() => toggle(item.media.id)}
+                      onToggle={() => {
+                        const candidate = candidateByMediaId.get(item.media.id);
+                        if (candidate) toggleUnifiedCandidate(describeFlaUnifiedCandidate(candidate), !candidate.checked);
+                      }}
                     />
                   )) : (
                     <p className="fla-raster-empty" data-testid="fla-review-empty-state">
@@ -808,112 +1006,132 @@ export function FlaCompatibilityReviewSession({
               <FlaRenderWorkbench
                 compatibility={ir.compatibility}
                 mode={renderMode}
-                onModeChange={(mode) => {
-                  setRenderMode(mode);
-                  setCompositionWorkInProgress(true);
-                  setRenderCommitBusy(false);
-                  setRenderTerminalState('active');
-                }}
+                onModeChange={selectRenderMode}
                 sourceBasename={ir.source.basename}
                 terminalState={renderTerminalState}
               >
-                {renderMode === 'snapshot' ? (
-                  <FlaStaticSnapshotReview
-                    key={`${sessionId}:${ir.source.sha256}`}
-                    onCommitStateChange={setRenderCommitBusy}
-                    onWorkInProgressChange={setCompositionWorkInProgress}
-                    onTerminalStateChange={setRenderTerminalState}
-                    sessionId={sessionId}
-                    source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
-                    stage={ir.document}
-                    snapshot={snapshot}
-                    onImported={(response) => onSnapshotImported?.(response)}
-                    onClose={() => onClose()}
-                  />
-                ) : (
-                  <FlaFrameSequenceReview
-                    key={`${sessionId}:${ir.source.sha256}`}
-                    onCommitStateChange={setRenderCommitBusy}
-                    onWorkInProgressChange={setCompositionWorkInProgress}
-                    onTerminalStateChange={setRenderTerminalState}
-                    sessionId={sessionId}
-                    source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
-                    embedded
-                    snapshot={snapshot}
-                    onImported={(response) => onSequenceImported?.(response)}
-                    onClose={() => onClose()}
-                  />
-                )}
+                {snapshotWorkbenchMounted ? (
+                  <div data-testid="fla-unified-snapshot-panel" hidden={renderMode !== 'snapshot'}>
+                    <FlaStaticSnapshotReview
+                      key={`${sessionId}:${ir.source.sha256}:snapshot`}
+                      checkedCandidateKeys={checkedCandidateKeys}
+                      importLocked={unifiedImportRunning}
+                      onToggleCandidate={toggleUnifiedCandidate}
+                      onCheckCandidates={checkUnifiedCandidates}
+                      onClearCandidates={clearUnifiedCandidates}
+                      onReconcileCandidates={reconcileUnifiedCandidates}
+                      onRegisterImportRunner={registerSnapshotImportRunner}
+                      onWorkInProgressChange={setSnapshotWorkInProgress}
+                      onTerminalStateChange={setRenderTerminalState}
+                      sessionId={sessionId}
+                      source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
+                      stage={ir.document}
+                      onImported={(response) => onSnapshotImported?.(response)}
+                    />
+                  </div>
+                ) : null}
+                {sequenceWorkbenchMounted ? (
+                  <div data-testid="fla-unified-sequence-panel" hidden={renderMode !== 'sequence'}>
+                    <FlaFrameSequenceReview
+                      key={`${sessionId}:${ir.source.sha256}:sequence`}
+                      checkedCandidateKeys={checkedCandidateKeys}
+                      importLocked={unifiedImportRunning}
+                      onToggleCandidate={toggleUnifiedCandidate}
+                      onReconcileCandidates={reconcileUnifiedCandidates}
+                      onRegisterImportRunner={registerSequenceImportRunner}
+                      onWorkInProgressChange={setSequenceWorkInProgress}
+                      onTerminalStateChange={setRenderTerminalState}
+                      sessionId={sessionId}
+                      source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
+                      embedded
+                      snapshot={snapshot}
+                      onImported={(response) => onSequenceImported?.(response)}
+                    />
+                  </div>
+                ) : null}
               </FlaRenderWorkbench>
             </div>
           ) : null}
         </div>
 
-        {rasterRoute && phase !== 'committing' && phase !== 'success' && !rasterCommitError ? (
-          <div className="fla-review-action-stack">
-            <div className="fla-review-action-bar fla-review-selection-toolbar" data-testid="fla-review-selection-toolbar">
-              <div>
-                <strong data-testid="fla-review-selected-count">{selectedCount} 项将进入确认步骤</strong>
-                {intent ? <output data-testid="fla-review-intent-status">已确认选择；尚未创建素材。</output> : null}
-              </div>
-              <div className="fla-review-action-buttons">
+        <div className="fla-review-action-stack fla-unified-import-action-stack" data-testid="fla-unified-import-action-stack">
+          <div className="fla-review-action-bar fla-review-selection-toolbar" data-testid="fla-unified-import-action-bar">
+            <div>
+              <strong data-testid="fla-unified-import-selected-count">
+                {unifiedImportRunning
+                  ? stopAfterCurrentRequested ? '当前操作完成后将停止后续导入' : `正在导入已选 ${selectedUnifiedItems.length} 项…`
+                  : `${selectedUnifiedItems.length} 项已选`}
+              </strong>
+              {unifiedImportRunning ? (
+                <output data-testid="fla-unified-import-progress" role="status">
+                  已提交操作不会中断；停止后将保留已完成结果。
+                </output>
+              ) : null}
+            </div>
+            <div className="fla-review-action-buttons">
+              {unifiedImportRunning ? (
                 <button
                   className="fla-review-action-cancel"
-                  data-testid="fla-review-action-cancel"
-                  disabled={renderPhase === 'committing'}
-                  onClick={() => void closeSession()}
+                  data-testid="fla-unified-import-stop"
+                  disabled={stopAfterCurrentRequested}
+                  onClick={requestStopAfterCurrent}
                   type="button"
                 >
-                  取消
+                  {stopAfterCurrentRequested ? '已请求停止' : '停止后续导入'}
                 </button>
-                {phase === 'ready' ? (
-                  <button
-                    className="fla-review-primary-action"
-                    data-testid="fla-review-confirm"
-                    disabled={selectedCount === 0}
-                    onClick={confirm}
-                    type="button"
-                  >
-                    确认 {selectedCount} 项
-                  </button>
-                ) : null}
-              </div>
-            </div>
-            {intent && phase === 'confirmed' ? (
-              <div className="fla-review-commit-action" data-testid="fla-review-commit-action">
-                <div className="fla-review-commit-copy">
-                  <strong data-testid="fla-review-commit-copy">已确认 {intent.selectedCount} 项</strong>
-                  <span>选择已确认，但尚未创建项目素材；修改选择会返回上一步。</span>
-                </div>
+              ) : (
                 <button
-                  className="fla-review-commit-primary fla-review-primary-action"
-                  data-testid="fla-review-commit"
-                  disabled={phase !== 'confirmed'}
-                  onClick={() => void commit()}
+                  className="fla-review-primary-action"
+                  data-testid="fla-unified-import"
+                  disabled={!canImportSelected}
+                  onClick={() => void runImportAction()}
                   type="button"
                 >
-                  导入这 {intent.selectedCount} 项
+                  导入 {selectedUnifiedItems.length} 项
                 </button>
-              </div>
-            ) : null}
-            {renderPhase === 'committing' ? (
-              <output data-testid="fla-review-commit-status">正在导入已选择的素材…</output>
-            ) : null}
-            {commitResponse && !commitResponse.ok ? (
-              <output data-testid="fla-review-commit-error" role="alert">{commitResponse.error.message}</output>
-            ) : null}
-            {renderPhase === 'success' && commitResponse?.ok && commitResponse.status === 'completed' ? (
-              <output
-                data-testid="fla-review-commit-success"
-                data-imported-count={commitResponse.summary.importedCount}
-                data-duplicate-count={commitResponse.summary.duplicateCount}
-                data-renamed-count={commitResponse.summary.renamedCount}
-              >
-                导入完成：{commitResponse.summary.importedCount} 项；已复用重复素材：{commitResponse.summary.duplicateCount} 项。
-              </output>
-            ) : null}
+              )}
+            </div>
           </div>
-        ) : null}
+          {importReceipt ? (
+            <section
+              aria-label="统一导入回执"
+              className="fla-unified-import-receipt"
+              data-testid="fla-unified-import-receipt"
+              data-partial={importReceipt.partial ? 'true' : 'false'}
+              role={importReceipt.partial ? 'alert' : 'status'}
+            >
+              <strong>导入回执</strong>
+              <output data-testid="fla-unified-import-counts">
+                共 {importReceipt.selectedCount} 项：新导入 {importReceipt.counts.imported} 项、复用 {importReceipt.counts.duplicate} 项、失败 {importReceipt.counts.failed} 项、未尝试 {importReceipt.counts.notAttempted} 项。
+              </output>
+              <output data-testid="fla-unified-import-asset-counts">
+                新建素材 {importReceipt.counts.importedAssets} 项、复用素材 {importReceipt.counts.duplicateAssets} 项。
+              </output>
+              {importReceipt.cancelled ? <span data-testid="fla-unified-import-cancelled">已停止后续导入。</span> : null}
+              {importReceipt.warnings.map((warning, index) => (
+                <p key={`${index}-${warning}`} role="alert">{warning}</p>
+              ))}
+              <ul data-testid="fla-unified-import-items">
+                {importReceipt.items.map((item) => (
+                  <li
+                    data-base-revision={item.baseRevision}
+                    data-kind={item.kind}
+                    data-saved-revision={item.savedRevision}
+                    data-status={item.status}
+                    key={item.key}
+                  >
+                    <strong>{item.label}</strong>
+                    <span>{item.status === 'imported' ? '已导入' : item.status === 'duplicate' ? '已复用' : item.status === 'failed' ? '失败' : '未尝试'}</span>
+                    {item.baseRevision !== undefined && item.savedRevision !== undefined ? (
+                      <small>项目版本 {item.baseRevision} → {item.savedRevision}</small>
+                    ) : null}
+                    {item.message ? <small>{item.message}</small> : null}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+        </div>
       </section>
     </FlaReviewPortal>
   );

@@ -10,7 +10,7 @@ import {
 } from '../../shared/issue762-performance-profile';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { boundedUnsupportedReason, FlaStageF2UnavailableDetails } from './FlaStageF';
-import { FlaStageGRecovery, type FlaStageGTerminalState } from './FlaStageGTerminal';
+import type { FlaStageGTerminalState } from './FlaStageGTerminal';
 import { flaStaticSnapshotClient, type FlaStaticSnapshotCatalogClient } from './fla-static-snapshot-render';
 import {
   flaStaticSnapshotPreviewQueue,
@@ -27,16 +27,19 @@ import {
   type FlaStaticSnapshotCandidatePreviews,
 } from './fla-static-snapshot-candidates';
 import {
-  checkFlaWorkbenchCandidates,
-  clearFlaWorkbenchChecks,
   createFlaWorkbenchCandidateSelection,
   createFlaWorkbenchCandidates,
   flaWorkbenchSnapshotIdentityKey,
   focusFlaWorkbenchCandidate,
-  reconcileFlaWorkbenchChecks,
   reconcileFlaWorkbenchFocus,
-  toggleFlaWorkbenchCandidateChecked,
 } from './fla-workbench-candidates';
+import {
+  describeFlaUnifiedCandidate,
+  flaUnifiedCandidateSelectionKey,
+  type FlaUnifiedImportItem,
+  type FlaUnifiedImportRunner,
+  type FlaUnifiedRouteResult,
+} from './fla-unified-import';
 
 interface FlaStaticSnapshotStageFacts {
   width: number;
@@ -48,21 +51,27 @@ interface FlaStaticSnapshotReviewProps {
   sessionId: string;
   source: { basename: string; sha256: string };
   stage?: FlaStaticSnapshotStageFacts;
-  snapshot: EditorProjectSnapshot | null;
+  checkedCandidateKeys: ReadonlySet<string>;
+  importLocked: boolean;
+  onToggleCandidate: (item: FlaUnifiedImportItem, checked: boolean) => void;
+  onCheckCandidates: (items: readonly FlaUnifiedImportItem[]) => void;
+  onClearCandidates: (keys: readonly string[]) => void;
+  onReconcileCandidates: (kind: 'snapshot', keys: ReadonlySet<string>) => void;
+  onRegisterImportRunner: (runner: FlaUnifiedImportRunner | null) => void;
   onImported: (response: FlaStaticSnapshotCommitResponse) => void;
-  onClose: () => void;
-  onCommitStateChange?: (busy: boolean) => void;
   onWorkInProgressChange?: (busy: boolean) => void;
   onTerminalStateChange?: (state: FlaStageGTerminalState) => void;
 }
 
-type SnapshotPhase = 'loading' | 'scanning' | 'ready' | 'committing' | 'completed' | 'partial' | 'error';
+type SnapshotPhase = 'loading' | 'scanning' | 'ready' | 'error';
 type ImportItemStatus = 'imported' | 'duplicate' | 'failed' | 'not-attempted';
 
 export interface SnapshotImportItem {
   key: string;
   label: string;
   status: ImportItemStatus;
+  baseRevision?: number;
+  savedRevision?: number;
   assetId?: string;
   assetFileName?: string;
   message?: string;
@@ -73,6 +82,9 @@ export interface SnapshotImportReceipt {
   items: SnapshotImportItem[];
   partial: boolean;
   warnings: string[];
+  finalProject: EditorProjectSnapshot['project'];
+  finalRevision: number;
+  cancelled: boolean;
   recovery?: Pick<FlaStaticSnapshotCommitError, 'code' | 'message' | 'residualPaths'>;
 }
 
@@ -85,10 +97,14 @@ export function FlaStaticSnapshotReview({
   sessionId,
   source,
   stage,
-  snapshot,
+  checkedCandidateKeys,
+  importLocked,
+  onToggleCandidate,
+  onCheckCandidates,
+  onClearCandidates,
+  onReconcileCandidates,
+  onRegisterImportRunner,
   onImported,
-  onClose,
-  onCommitStateChange,
   onWorkInProgressChange,
   onTerminalStateChange,
 }: FlaStaticSnapshotReviewProps): React.JSX.Element {
@@ -102,8 +118,6 @@ export function FlaStaticSnapshotReview({
   const [candidateSearch, setCandidateSearch] = useState('');
   const [candidateFilter, setCandidateFilter] = useState<FlaStaticSnapshotCandidateFilter>('all');
   const [scanProgress, setScanProgress] = useState(0);
-  const [importProgress, setImportProgress] = useState(0);
-  const [receipt, setReceipt] = useState<SnapshotImportReceipt | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const previewUrlsRef = useRef(new Set<string>());
   const focusedPreviewUrlRef = useRef<{ key: string; url: string } | null>(null);
@@ -145,15 +159,23 @@ export function FlaStaticSnapshotReview({
       context: candidateContext,
       snapshotEntries: entries,
       snapshotPreviews: previews,
-      selection: candidateSelection,
-    }).filter((candidate) => candidate.kind === 'snapshot'),
-    [candidateContext, candidateSelection, entries, previews],
+      selection: createFlaWorkbenchCandidateSelection(candidateSelection.focusedCandidateId),
+    })
+      .filter((candidate) => candidate.kind === 'snapshot')
+      .map((candidate) => ({
+        ...candidate,
+        checked: candidate.selectable && checkedCandidateKeys.has(flaUnifiedCandidateSelectionKey(candidate)),
+      })),
+    [candidateContext, candidateSelection.focusedCandidateId, checkedCandidateKeys, entries, previews],
   );
   const candidateById = useMemo(
     () => new Map(candidates.map((candidate) => [candidate.id, candidate])),
     [candidates],
   );
-  const selectedCandidateKeys = candidateSelection.checkedCandidateIds;
+  const selectedCandidateKeys = useMemo(
+    () => new Set(candidates.filter((candidate) => candidate.checked).map((candidate) => candidate.id)),
+    [candidates],
+  );
   const visibleGroups = useMemo(
     () => groupFlaStaticSnapshotCandidates(entries, previews, candidateSearch, candidateFilter),
     [candidateFilter, candidateSearch, entries, previews],
@@ -211,9 +233,14 @@ export function FlaStaticSnapshotReview({
     return !entry.isBlank && candidate?.supported === false;
   }).length;
 
+  const currentSelectableKeys = useMemo(
+    () => new Set(candidates.filter((candidate) => candidate.selectable).map(flaUnifiedCandidateSelectionKey)),
+    [candidates],
+  );
+
   useEffect(() => {
-    setCandidateSelection((current) => reconcileFlaWorkbenchChecks(current, candidates));
-  }, [candidates]);
+    onReconcileCandidates('snapshot', currentSelectableKeys);
+  }, [currentSelectableKeys, onReconcileCandidates]);
 
   useEffect(() => {
     setCandidateSelection(createFlaWorkbenchCandidateSelection());
@@ -249,7 +276,6 @@ export function FlaStaticSnapshotReview({
   }, [updateFocusedPreview]);
 
   useEffect(() => {
-    onCommitStateChange?.(false);
     onTerminalStateChange?.('active');
     let disposed = false;
     let scanRequestId: string | null = null;
@@ -447,7 +473,6 @@ export function FlaStaticSnapshotReview({
 
     return () => {
       disposed = true;
-      onCommitStateChange?.(false);
       onTerminalStateChange?.('active');
       const requestId = activePreviewRequestIdRef.current ?? scanRequestId;
       if (requestId) {
@@ -469,7 +494,7 @@ export function FlaStaticSnapshotReview({
       if (fullSizePreview) URL.revokeObjectURL(fullSizePreview.url);
       focusedPreviewUrlRef.current = null;
     };
-  }, [candidateContext, onCommitStateChange, onTerminalStateChange, sessionId, updateFocusedPreview]);
+  }, [candidateContext, onTerminalStateChange, sessionId, updateFocusedPreview]);
 
   useEffect(() => {
     const candidateId = effectiveFocusedCandidateKey;
@@ -575,36 +600,112 @@ export function FlaStaticSnapshotReview({
     };
   }, [effectiveFocusedCandidateIdentityKey, effectiveFocusedCandidateKey, focusedEntry, focusedStatus?.sha256, focusedStatus?.status, markFocusedPreviewUnavailable, phase, sessionId, updateFocusedPreview]);
 
-  const close = (): void => {
-    if (phase === 'committing') return;
-    void flaStaticSnapshotClient.cancel({
-      format: 'fla-static-snapshot-cancel',
-      version: 1,
-      sessionId,
-    }).catch(() => undefined);
-    onClose();
-  };
-
   const toggleCandidate = (entry: FlaRenderableTargetCatalogEntry): void => {
-    if (phase !== 'ready') return;
+    if (phase !== 'ready' || importLocked) return;
     const key = flaStaticSnapshotCandidateKey(entry);
-    setCandidateSelection((current) => toggleFlaWorkbenchCandidateChecked(
-      current,
-      candidateById.get(key),
-    ));
+    const candidate = candidateById.get(key);
+    if (!candidate?.selectable) return;
+    onToggleCandidate(describeFlaUnifiedCandidate(candidate), !candidate.checked);
   };
 
   const selectVisibleSupported = (): void => {
-    if (phase !== 'ready') return;
+    if (phase !== 'ready' || importLocked) return;
     const visible = visibleGroups.flatMap((group) => group.entries)
       .map((entry) => candidateById.get(flaStaticSnapshotCandidateKey(entry)))
-      .filter((candidate) => candidate !== undefined);
-    setCandidateSelection((current) => checkFlaWorkbenchCandidates(current, visible));
+      .flatMap((candidate) => candidate?.selectable ? [candidate] : []);
+    onCheckCandidates(visible.map(describeFlaUnifiedCandidate));
   };
 
   const clearSelection = (): void => {
-    setCandidateSelection((current) => clearFlaWorkbenchChecks(current));
+    onClearCandidates(candidates
+      .filter((candidate) => candidate.checked)
+      .map(flaUnifiedCandidateSelectionKey));
   };
+
+  const runUnifiedImport = useCallback<FlaUnifiedImportRunner>(async (
+    selectedItems,
+    currentSnapshot,
+    shouldCancel,
+  ): Promise<FlaUnifiedRouteResult> => {
+    const selectedKeys = new Set(selectedItems.map((item) => item.key));
+    const selectedCandidates = candidates.filter((candidate) =>
+      candidate.selectable && selectedKeys.has(flaUnifiedCandidateSelectionKey(candidate)),
+    );
+    const selectedEntryKeys = new Set(selectedCandidates.map((candidate) => candidate.id));
+    const selectedForImport = entries.filter((entry) => selectedEntryKeys.has(flaStaticSnapshotCandidateKey(entry)));
+    const missingItems = selectedItems.filter((item) => !selectedCandidates.some((candidate) =>
+      flaUnifiedCandidateSelectionKey(candidate) === item.key,
+    )).map((item) => ({
+      ...item,
+      status: 'failed' as const,
+      message: '候选预览或帧身份已变化；请重新检查并明确选择后再导入。',
+    }));
+
+    if (selectedForImport.length === 0) {
+      return {
+        items: missingItems,
+        snapshot: currentSnapshot,
+        stopFollowingRoutes: missingItems.length > 0,
+      };
+    }
+
+    onTerminalStateChange?.('importing');
+    let receipt: SnapshotImportReceipt;
+    try {
+      receipt = await runFlaStaticSnapshotBatchImport({
+        client: flaStaticSnapshotClient,
+        queue: flaStaticSnapshotPreviewQueue,
+        selectedEntries: selectedForImport,
+        previews,
+        sessionId,
+        source,
+        snapshot: currentSnapshot,
+        onImported,
+        onProgress: () => undefined,
+        shouldCancel,
+      });
+    } finally {
+      onTerminalStateChange?.('active');
+    }
+    const selectedByCandidateId = new Map(
+      selectedCandidates.map((candidate) => [candidate.id, describeFlaUnifiedCandidate(candidate)]),
+    );
+    const resultItems = receipt.items.flatMap((item) => {
+      const selected = selectedByCandidateId.get(item.key);
+      return selected ? [{
+        ...selected,
+        status: item.status,
+        ...(item.baseRevision !== undefined ? { baseRevision: item.baseRevision } : {}),
+        ...(item.savedRevision !== undefined ? { savedRevision: item.savedRevision } : {}),
+        ...(item.message ? { message: item.message } : {}),
+        importedAssetCount: item.status === 'imported' ? 1 : 0,
+        duplicateAssetCount: item.status === 'duplicate' ? 1 : 0,
+      }] : [];
+    });
+    return {
+      items: [...resultItems, ...missingItems],
+      snapshot: {
+        ...currentSnapshot,
+        project: receipt.finalProject,
+        revision: receipt.finalRevision,
+      },
+      warnings: receipt.warnings,
+      stopFollowingRoutes: receipt.partial || missingItems.length > 0,
+      cancelled: receipt.cancelled,
+    };
+  }, [candidates, entries, onImported, onTerminalStateChange, previews, sessionId, source]);
+
+  const runUnifiedImportRef = useRef(runUnifiedImport);
+  runUnifiedImportRef.current = runUnifiedImport;
+  const registeredImportRunner = useCallback<FlaUnifiedImportRunner>(
+    (selectedItems, currentSnapshot, shouldCancel) =>
+      runUnifiedImportRef.current(selectedItems, currentSnapshot, shouldCancel),
+    [],
+  );
+  useEffect(() => {
+    onRegisterImportRunner(registeredImportRunner);
+    return () => onRegisterImportRunner(null);
+  }, [onRegisterImportRunner, registeredImportRunner]);
 
   const updateCandidateFilter = (filter: FlaStaticSnapshotCandidateFilter): void => {
     const nextGroups = groupFlaStaticSnapshotCandidates(entries, previews, candidateSearch, filter);
@@ -634,73 +735,6 @@ export function FlaStaticSnapshotReview({
     setCandidateSelection((current) => focusFlaWorkbenchCandidate(current, nextFocusKey));
   };
 
-  const focusedSelectionNeedsPreview = Boolean(
-    effectiveFocusedCandidateKey && selectedCandidateKeys.has(effectiveFocusedCandidateKey) &&
-    focusedPreviewForEntry?.status !== 'ready',
-  );
-
-  const importSelected = async (): Promise<void> => {
-    if (phase !== 'ready' || selectedEntries.length === 0 || !snapshot || focusedSelectionNeedsPreview) return;
-    setPhase('committing');
-    setImportProgress(0);
-    setReceipt(null);
-    setErrorMessage('');
-    let finalReceipt: SnapshotImportReceipt = {
-      selectedCount: selectedEntries.length,
-      items: [],
-      partial: true,
-      warnings: [],
-    };
-    try {
-      onCommitStateChange?.(true);
-      onTerminalStateChange?.('importing');
-      finalReceipt = await runFlaStaticSnapshotBatchImport({
-        client: flaStaticSnapshotClient,
-        queue: flaStaticSnapshotPreviewQueue,
-        selectedEntries,
-        previews,
-        sessionId,
-        source,
-        snapshot,
-        onImported,
-        onProgress: setImportProgress,
-      });
-    } catch {
-      finalReceipt = {
-        selectedCount: selectedEntries.length,
-        items: selectedEntries.map((entry) => ({
-          key: flaStaticSnapshotCandidateKey(entry),
-          label: flaStaticSnapshotCandidateLabel(entry),
-          status: 'failed',
-          message: '批量导入未能确认最终结果；请检查素材库，不要重复提交。',
-        })),
-        partial: true,
-        warnings: ['批量导入流程异常结束，已停止后续操作。'],
-      };
-    } finally {
-      const callbackWarnings: string[] = [];
-      try {
-        onTerminalStateChange?.(finalReceipt.partial ? 'recovery' : 'success');
-      } catch {
-        callbackWarnings.push('页面状态未能同步；请以本页导入回执为准。');
-      }
-      try {
-        onCommitStateChange?.(false);
-      } catch {
-        callbackWarnings.push('页面忙碌状态通知未能更新；请返回素材库重新进入。');
-      }
-      if (callbackWarnings.length > 0) {
-        finalReceipt = {
-          ...finalReceipt,
-          partial: true,
-          warnings: [...finalReceipt.warnings, ...callbackWarnings],
-        };
-      }
-      setReceipt(finalReceipt);
-      setPhase(finalReceipt.partial ? 'partial' : 'completed');
-    }
-  };
-
   if (phase === 'loading' || phase === 'error') {
     return (
       <div
@@ -713,65 +747,7 @@ export function FlaStaticSnapshotReview({
         {phase === 'loading'
           ? <p data-testid="fla-snapshot-loading">正在读取候选状态…</p>
           : <p role="alert" data-testid="fla-snapshot-error">{errorMessage || '无法读取 FLA 候选。'}</p>}
-        <button type="button" data-testid="fla-snapshot-close" onClick={close}>返回</button>
       </div>
-    );
-  }
-
-  if (receipt && (phase === 'completed' || phase === 'partial')) {
-    const importedCount = receipt.items.filter((item) => item.status === 'imported').length;
-    const duplicateCount = receipt.items.filter((item) => item.status === 'duplicate').length;
-    const failedCount = receipt.items.filter((item) => item.status === 'failed').length;
-    const notAttemptedCount = receipt.items.filter((item) => item.status === 'not-attempted').length;
-    return (
-      <section
-        className="fla-snapshot-review fla-render-workbench-panel fla-snapshot-batch-receipt"
-        data-testid="fla-snapshot-review"
-        data-stage-g-state={phase === 'completed' ? 'success' : 'recovery'}
-        data-workbench-panel="snapshot"
-        aria-labelledby="fla-snapshot-receipt-heading"
-      >
-        <header>
-          <h3 id="fla-snapshot-receipt-heading">{phase === 'completed' ? '导入完成' : '已完成部分导入'}</h3>
-          <output data-testid="fla-snapshot-import-counts">
-            共处理 {receipt.selectedCount} 项 · 新导入 {importedCount} 项 · 复用已有素材 {duplicateCount} 项 · 失败 {failedCount} 项 · 未尝试 {notAttemptedCount} 项
-          </output>
-        </header>
-        {receipt.warnings.map((warning, index) => (
-          <p className="fla-snapshot-receipt-warning" data-testid="fla-snapshot-import-warning" key={`${index}-${warning}`} role="alert">
-            {warning}
-          </p>
-        ))}
-        <ul className="fla-snapshot-receipt-items" data-testid="fla-snapshot-import-receipt">
-          {receipt.items.map((item) => (
-            <li data-status={item.status} key={item.key}>
-              <strong>{item.label}</strong>
-              <span>{item.status === 'imported' ? '已新建' : item.status === 'duplicate' ? '已复用' : item.status === 'not-attempted' ? '未尝试' : '失败'}</span>
-              {item.assetFileName ? <small>{item.assetFileName}</small> : null}
-              {item.message ? <small>{item.message}</small> : null}
-            </li>
-          ))}
-        </ul>
-        {receipt.recovery ? (
-          <FlaStageGRecovery
-            candidateStillCurrent={false}
-            code={receipt.recovery.code}
-            message={receipt.recovery.message}
-            onClose={close}
-            onPrimary={() => {
-              onTerminalStateChange?.('active');
-              setReceipt(null);
-              setPhase('ready');
-            }}
-            residualPaths={receipt.recovery.residualPaths}
-            route="snapshot"
-          />
-        ) : (
-          <div className="fla-snapshot-action-buttons">
-            <button type="button" data-testid="fla-snapshot-close" onClick={close}>返回素材库</button>
-          </div>
-        )}
-      </section>
     );
   }
 
@@ -779,7 +755,6 @@ export function FlaStaticSnapshotReview({
     return (
       <div className="fla-snapshot-review fla-render-workbench-panel" data-testid="fla-snapshot-review" role="note">
         <p data-testid="fla-snapshot-empty">这个 FLA 没有发现可检查的图形状态。</p>
-        <button type="button" data-testid="fla-snapshot-close" onClick={close}>返回</button>
       </div>
     );
   }
@@ -791,12 +766,10 @@ export function FlaStaticSnapshotReview({
         unsupportedReason: focusedStatus.reason ?? focusedEntry.unsupportedReason ?? '当前无法安全生成预览。',
       }
     : null;
-  const canImport = phase === 'ready' && selectedEntries.length > 0 && Boolean(snapshot) && !focusedSelectionNeedsPreview;
-
   return (
     <div
       className="fla-snapshot-review fla-render-workbench-panel"
-      data-preview-state={phase === 'scanning' ? 'rendering' : phase === 'committing' ? 'committing' : 'ready'}
+      data-preview-state={phase === 'scanning' ? 'rendering' : 'ready'}
       data-fla-session-id={sessionId}
       data-testid="fla-snapshot-review"
       data-workbench-panel="snapshot"
@@ -827,6 +800,7 @@ export function FlaStaticSnapshotReview({
               <input
                 aria-label="搜索候选名称"
                 data-testid="fla-snapshot-target-search"
+                disabled={importLocked}
                 onChange={(event) => updateCandidateSearch(event.currentTarget.value)}
                 placeholder="按名称搜索"
                 type="search"
@@ -834,10 +808,10 @@ export function FlaStaticSnapshotReview({
               />
             </label>
             <div className="fla-snapshot-candidate-tools" aria-label="候选选择工具">
-              <button type="button" data-testid="fla-snapshot-select-supported" disabled={phase !== 'ready' || visibleSupportedCount === 0} onClick={selectVisibleSupported}>
+              <button type="button" data-testid="fla-snapshot-select-supported" disabled={phase !== 'ready' || importLocked || visibleSupportedCount === 0} onClick={selectVisibleSupported}>
                 选中可预览项
               </button>
-              <button type="button" data-testid="fla-snapshot-clear-selection" disabled={phase !== 'ready' || selectedCandidateKeys.size === 0} onClick={clearSelection}>
+              <button type="button" data-testid="fla-snapshot-clear-selection" disabled={phase !== 'ready' || importLocked || selectedCandidateKeys.size === 0} onClick={clearSelection}>
                 清空
               </button>
             </div>
@@ -845,6 +819,7 @@ export function FlaStaticSnapshotReview({
               <button
                 aria-pressed={candidateFilter === 'all'}
                 data-testid="fla-snapshot-filter-all"
+                disabled={importLocked}
                 onClick={() => updateCandidateFilter('all')}
                 type="button"
               >
@@ -853,6 +828,7 @@ export function FlaStaticSnapshotReview({
               <button
                 aria-pressed={candidateFilter === 'compositions'}
                 data-testid="fla-snapshot-filter-compositions"
+                disabled={importLocked}
                 onClick={() => updateCandidateFilter('compositions')}
                 type="button"
               >
@@ -861,6 +837,7 @@ export function FlaStaticSnapshotReview({
               <button
                 aria-pressed={candidateFilter === 'graphic-states'}
                 data-testid="fla-snapshot-filter-graphic-states"
+                disabled={importLocked}
                 onClick={() => updateCandidateFilter('graphic-states')}
                 type="button"
               >
@@ -918,7 +895,7 @@ export function FlaStaticSnapshotReview({
                           <button
                             aria-pressed={focused}
                             className="fla-snapshot-candidate-focus"
-                            disabled={phase === 'committing'}
+                            disabled={importLocked}
                             onClick={() => setCandidateSelection((current) => focusFlaWorkbenchCandidate(current, key))}
                             type="button"
                           >
@@ -961,7 +938,7 @@ export function FlaStaticSnapshotReview({
                             <input
                               aria-label={`选择 ${label}`}
                               checked={candidate?.checked ?? false}
-                              disabled={!selectable}
+                              disabled={!selectable || importLocked}
                               onChange={() => toggleCandidate(entry)}
                               type="checkbox"
                             />
@@ -1024,11 +1001,6 @@ export function FlaStaticSnapshotReview({
               </div>
             )}
           </div>
-          {phase === 'committing' ? (
-            <output className="fla-snapshot-import-progress" data-testid="fla-snapshot-import-progress" role="status">
-              正在导入 {importProgress} / {selectedEntries.length}
-            </output>
-          ) : null}
         </section>
 
         <aside className="fla-snapshot-details-region" data-testid="fla-snapshot-details-region">
@@ -1067,29 +1039,9 @@ export function FlaStaticSnapshotReview({
       <div className="fla-snapshot-action-bar" data-testid="fla-snapshot-action-bar">
         <div className="fla-snapshot-action-status">
           <strong data-testid="fla-snapshot-action-state">
-            {phase === 'scanning' ? `检查候选 ${scanProgress} / ${entries.length}` : phase === 'committing' ? `导入 ${importProgress} / ${selectedEntries.length}` : `${selectedEntries.length} 项已选`}
+            {phase === 'scanning' ? `检查候选 ${scanProgress} / ${entries.length}` : `${selectedEntries.length} 项已选`}
           </strong>
           {errorMessage ? <span role="alert" data-testid="fla-snapshot-error">{errorMessage}</span> : null}
-        </div>
-        <div className="fla-snapshot-action-buttons">
-          <button
-            className="fla-snapshot-close-action"
-            disabled={phase === 'committing'}
-            onClick={close}
-            type="button"
-            data-testid="fla-snapshot-close"
-          >
-            取消
-          </button>
-          <button
-            className="fla-render-primary-action"
-            disabled={!canImport}
-            onClick={() => void importSelected()}
-            type="button"
-            data-testid="fla-snapshot-import"
-          >
-            {phase === 'scanning' ? '正在检查…' : `确认并导入 ${selectedEntries.length} 项`}
-          </button>
         </div>
       </div>
     </div>
@@ -1161,6 +1113,7 @@ export async function runFlaStaticSnapshotBatchImport(options: {
   snapshot: EditorProjectSnapshot;
   onImported: (response: FlaStaticSnapshotCommitResponse) => void;
   onProgress: (progress: number) => void;
+  shouldCancel?: () => boolean;
 }): Promise<SnapshotImportReceipt> {
   const {
     client,
@@ -1172,11 +1125,13 @@ export async function runFlaStaticSnapshotBatchImport(options: {
     snapshot,
     onImported,
     onProgress,
+    shouldCancel = () => false,
   } = options;
   let currentProject = snapshot.project;
   let currentRevision = snapshot.revision;
   let stopAfterFailure = false;
   let stopReason = '前一项导入未能确认，后续项目未尝试。';
+  let cancelled = false;
   let recovery: SnapshotImportReceipt['recovery'];
   const items: SnapshotImportItem[] = [];
   const warnings: string[] = [];
@@ -1190,6 +1145,22 @@ export async function runFlaStaticSnapshotBatchImport(options: {
   };
 
   for (let index = 0; index < selectedEntries.length; index += 1) {
+    if (shouldCancel()) {
+      cancelled = true;
+      for (let remaining = index; remaining < selectedEntries.length; remaining += 1) {
+        const pendingEntry = selectedEntries[remaining];
+        if (pendingEntry) {
+          items.push({
+            key: flaStaticSnapshotCandidateKey(pendingEntry),
+            label: flaStaticSnapshotCandidateLabel(pendingEntry),
+            status: 'not-attempted',
+            message: '已取消后续导入，此项未尝试。',
+          });
+        }
+        reportProgress(remaining);
+      }
+      break;
+    }
     const entry = selectedEntries[index];
     if (!entry) {
       items.push({
@@ -1246,6 +1217,10 @@ export async function runFlaStaticSnapshotBatchImport(options: {
           };
         }
 
+        if (shouldCancel()) {
+          return { kind: 'cancelled' as const };
+        }
+
         commitAttempted = true;
         const commitStartedAt = startIssue762Profile();
         const response = await client.commit({
@@ -1291,6 +1266,11 @@ export async function runFlaStaticSnapshotBatchImport(options: {
       }
     } else if (outcome.value?.kind === 'preview-failed' || outcome.value?.kind === 'preview-changed') {
       items.push({ key, label, status: 'failed', message: outcome.value.message });
+    } else if (outcome.value?.kind === 'cancelled') {
+      items.push({ key, label, status: 'not-attempted', message: '已取消后续导入，此项未尝试。' });
+      cancelled = true;
+      stopAfterFailure = true;
+      stopReason = '已取消后续导入；剩余项目未尝试。';
     } else if (outcome.value?.kind === 'commit-response' && outcome.value.response.ok) {
       const response = outcome.value.response;
       currentProject = response.project;
@@ -1299,6 +1279,8 @@ export async function runFlaStaticSnapshotBatchImport(options: {
         key,
         label,
         status: response.result.status === 'imported' ? 'imported' : 'duplicate',
+        baseRevision: response.baseRevision,
+        savedRevision: response.savedRevision,
         assetId: response.result.assetId,
         assetFileName: response.result.targetFileName,
         message: response.result.message,
@@ -1349,6 +1331,9 @@ export async function runFlaStaticSnapshotBatchImport(options: {
     items,
     partial,
     warnings,
+    finalProject: currentProject,
+    finalRevision: currentRevision,
+    cancelled,
     ...(recovery ? { recovery } : {}),
   };
 }

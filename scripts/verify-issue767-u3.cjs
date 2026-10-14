@@ -62,6 +62,8 @@ const runtime = {
   assertions: {},
   screenshots: {},
   failure: null,
+  snapshotPreviewGate: null,
+  failNextRasterCommit: false,
 };
 
 function parseArgs(argv) {
@@ -75,6 +77,37 @@ function parseArgs(argv) {
 
 function delay(ms) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
+}
+
+async function waitForPromise(promise, timeoutMs, message) {
+  let timeout;
+  try {
+    await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function createDeferredGate() {
+  let releasePromise;
+  let signalStarted;
+  const promise = new Promise((resolvePromise) => {
+    releasePromise = resolvePromise;
+  });
+  const started = new Promise((resolvePromise) => {
+    signalStarted = resolvePromise;
+  });
+  return {
+    promise,
+    started,
+    markStarted: () => signalStarted(),
+    release: () => releasePromise(),
+  };
 }
 
 function assert(condition, message) {
@@ -233,6 +266,7 @@ function installMainProbes() {
             ? (response.entries ?? []).map((entry) => ({
                 renderTargetId: entry.target?.renderTargetId ?? null,
                 kind: entry.target?.kind ?? null,
+                catalogRole: entry.catalogRole ?? null,
                 userLabel: entry.target?.userLabel ?? null,
                 sourceLibraryItemName: entry.target?.sourceLibraryItemName ?? null,
                 selectedFrameIndex: entry.target?.selectedFrameIndex ?? 0,
@@ -268,6 +302,12 @@ function installMainProbes() {
             : null,
           errorCode: response?.ok === false ? response.error?.code ?? null : null,
         });
+        const gate = runtime.snapshotPreviewGate;
+        if (gate) {
+          runtime.snapshotPreviewGate = null;
+          gate.markStarted();
+          await gate.promise;
+        }
         return response;
       });
     }
@@ -320,6 +360,32 @@ function installMainProbes() {
     }
     if (channel === RASTER_COMMIT_CHANNEL) {
       return originalHandle(channel, async (event, request, ...rest) => {
+        if (runtime.failNextRasterCommit) {
+          runtime.failNextRasterCommit = false;
+          const response = {
+            ok: false,
+            error: {
+              code: 'STALE_PROJECT_REVISION',
+              message: 'Verifier-injected bounded raster failure after the composed item committed.',
+              projectRoot: request.projectRoot,
+              currentProject: request.project,
+              currentRevision: request.baseRevision,
+            },
+          };
+          runtime.rasterCommits.push({
+            projectRoot: request?.projectRoot ?? null,
+            baseRevision: request?.baseRevision ?? null,
+            sessionId: request?.sessionId ?? null,
+            source: request?.source ?? null,
+            selectedMediaIds: request?.selectedMediaIds ?? [],
+            selectedCount: request?.selectedCount ?? null,
+            confirmed: request?.confirmed === true,
+            ok: false,
+            injectedFailure: true,
+            errorCode: response.error.code,
+          });
+          return response;
+        }
         const response = await handler(event, request, ...rest);
         runtime.rasterCommits.push({
           projectRoot: request?.projectRoot ?? null,
@@ -450,6 +516,18 @@ async function click(window, selector) {
     const element = document.querySelector(${JSON.stringify(selector)});
     if (!(element instanceof HTMLElement)) throw new Error('Missing clickable element ' + ${JSON.stringify(selector)});
     if (element instanceof HTMLButtonElement && element.disabled) throw new Error('Clickable element is disabled ' + ${JSON.stringify(selector)});
+    element.click();
+    return true;
+  })()`);
+  await delay(60);
+}
+
+async function clickTwice(window, selector) {
+  await evaluate(window, `(() => {
+    const element = document.querySelector(${JSON.stringify(selector)});
+    if (!(element instanceof HTMLElement)) throw new Error('Missing clickable element ' + ${JSON.stringify(selector)});
+    if (element instanceof HTMLButtonElement && element.disabled) throw new Error('Clickable element is disabled ' + ${JSON.stringify(selector)});
+    element.click();
     element.click();
     return true;
   })()`);
@@ -686,7 +764,7 @@ async function readWorkbenchFacts(window) {
     const sourceCards = [...(sourcePanel?.querySelectorAll('[data-fla-media-id]') ?? [])];
     const sourceChecks = [...(sourcePanel?.querySelectorAll('input[type="checkbox"]') ?? [])];
     const countText = document.querySelector('[data-testid="fla-review-media-count"]')?.textContent?.trim() ?? '';
-    const selectedText = document.querySelector('[data-testid="fla-review-selected-count"]')?.textContent?.trim() ?? '';
+    const selectedText = document.querySelector('[data-testid="fla-unified-import-selected-count"]')?.textContent?.trim() ?? '';
     return {
       title: root?.querySelector('[data-testid="fla-review-header"] h2')?.textContent?.trim() ?? '',
       tabCount: tabs.length,
@@ -757,6 +835,33 @@ async function readPreviewBytes(window) {
   return base64 ? Buffer.from(base64, 'base64') : null;
 }
 
+async function readUnifiedImportReceipt(window) {
+  return evaluate(window, `(() => {
+    const root = document.querySelector('[data-testid="fla-unified-import-receipt"]');
+    const countsText = document.querySelector('[data-testid="fla-unified-import-counts"]')?.textContent?.replace(/\\s+/gu, ' ').trim() ?? '';
+    const receiptNumbers = countsText.match(/[0-9]+/gu)?.map(Number) ?? [];
+    let receiptNumberIndex = 0;
+    const count = () => receiptNumbers[receiptNumberIndex++] ?? -1;
+    const items = [...(document.querySelector('[data-testid="fla-unified-import-items"]')?.querySelectorAll('li') ?? [])].map((item) => ({
+      kind: item.dataset.kind,
+      status: item.dataset.status,
+      baseRevision: item.dataset.baseRevision === undefined ? null : Number(item.dataset.baseRevision),
+      savedRevision: item.dataset.savedRevision === undefined ? null : Number(item.dataset.savedRevision),
+    }));
+    return {
+      countsText,
+      selectedCount: count(/共\\s*(\\d+)\\s*项/u),
+      imported: count(/新导入\\s*(\\d+)\\s*项/u),
+      duplicate: count(/复用\\s*(\\d+)\\s*项/u),
+      failed: count(/失败\\s*(\\d+)\\s*项/u),
+      notAttempted: count(/未尝试\\s*(\\d+)\\s*项/u),
+      partial: root?.getAttribute('data-partial') === 'true',
+      cancelled: Boolean(document.querySelector('[data-testid="fla-unified-import-cancelled"]')),
+      items,
+    };
+  })()`);
+}
+
 async function readSnapshotSelection(window) {
   return evaluate(window, `(() => {
     const row = document.querySelector('[data-testid="fla-snapshot-targets"] [data-render-target-id="${BLUEHAIR_TARGET_ID}"]');
@@ -779,12 +884,12 @@ async function readSnapshotSelection(window) {
 }
 
 async function cancelSnapshotReview(window) {
-  await click(window, '[data-testid="fla-snapshot-close"]');
+  await click(window, '[data-testid="fla-review-cancel"]');
   await waitForExpression(window, `Boolean(document.querySelector('[data-testid="asset-browser-view"]') && !document.querySelector('[data-testid="fla-review-session"]'))`, 90_000);
   await delay(250);
 }
 
-async function selectOneRawBitmap(window, expectedCount = null) {
+async function selectOneRawBitmap(window, expectedCount = null, expectedUnifiedCount = 1) {
   const facts = await readWorkbenchFacts(window);
   assert(facts.sourcePanelVisible, 'The raw bitmap panel is not active.');
   assert(facts.selectedSourceItems === 0, 'Raw bitmap selection was not empty before explicit user selection.');
@@ -792,24 +897,22 @@ async function selectOneRawBitmap(window, expectedCount = null) {
   const mediaId = facts.sourceMediaIds[0];
   assert(mediaId, 'The raw bitmap list has no selectable item.');
   await click(window, `[data-fla-media-id="${mediaId}"] input[type="checkbox"]`);
-  await waitForExpression(window, `Number(document.querySelector('[data-testid="fla-review-selected-count"]')?.textContent?.match(/[0-9]+/)?.[0] ?? 0) === 1`);
-  const beforeConfirmRevision = await readUiRevision(window);
-  await click(window, '[data-testid="fla-review-confirm"]');
-  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="fla-review-commit"]'))`);
+  await waitForExpression(window, `Number(document.querySelector('[data-testid="fla-unified-import-selected-count"]')?.textContent?.match(/[0-9]+/)?.[0] ?? 0) === ${expectedUnifiedCount}`);
+  const beforeImportRevision = await readUiRevision(window);
   const selected = await evaluate(window, `(() => ({
     mediaId: ${JSON.stringify(mediaId)},
-    selectedCount: Number(document.querySelector('[data-testid="fla-review-commit-copy"]')?.textContent?.match(/[0-9]+/)?.[0] ?? 0),
+    selectedCount: Number(document.querySelector('[data-testid="fla-unified-import-selected-count"]')?.textContent?.match(/[0-9]+/)?.[0] ?? 0),
   }))()`);
-  assert(selected.selectedCount === 1, 'Raster confirmation did not pin exactly one chosen bitmap.');
-  assert((await readUiRevision(window)) === beforeConfirmRevision, 'Confirming a raw bitmap changed the Project before commit.');
-  return { ...facts, selectedMediaId: mediaId, confirmedCount: selected.selectedCount };
+  assert(selected.selectedCount === expectedUnifiedCount, 'Unified selection count did not retain the explicitly checked candidates.');
+  assert((await readUiRevision(window)) === beforeImportRevision, 'Selecting a raw bitmap changed the Project before import.');
+  return { ...facts, selectedMediaId: mediaId, selectedCount: selected.selectedCount };
 }
 
 async function commitOneRawBitmap(window, projectRoot, expectedSourceSha256) {
   const before = readProjectState(projectRoot);
   const beforeRevision = await readUiRevision(window);
-  await click(window, '[data-testid="fla-review-commit"]');
-  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="fla-stage-g-raster-success"]'))`, 180_000);
+  await click(window, '[data-testid="fla-unified-import"]');
+  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="fla-unified-import-counts"]'))`, 180_000);
   const after = readProjectState(projectRoot);
   const commit = runtime.rasterCommits.at(-1);
   assert(commit?.ok && commit.selectedCount === 1 && commit.selectedMediaIds.length === 1, 'Main raster commit did not receive exactly one selected media ID.');
@@ -817,7 +920,7 @@ async function commitOneRawBitmap(window, projectRoot, expectedSourceSha256) {
   assert(commit.summary?.selectedCount === 1 && commit.summary.importedCount === 1, 'Raster-only or mixed-source bitmap did not create exactly one ImageAsset.');
   assert(after.assetCount === before.assetCount + 1, 'Raster commit did not add exactly one project asset.');
   assert((await readUiRevision(window)) > beforeRevision, 'Raster commit did not advance the Project revision.');
-  await click(window, '[data-testid="fla-stage-g-return-library"]');
+  await click(window, '[data-testid="fla-review-cancel"]');
   await waitForExpression(window, `Boolean(document.querySelector('[data-testid="asset-browser-view"]'))`);
   return { before, after, commit };
 }
@@ -934,8 +1037,8 @@ async function verifyCharacterImport(window, project) {
   );
   assert(displayedPreviewEvent, 'The Main preview event did not match the PNG currently displayed to the user.');
   const previewCountBeforeCommit = runtime.previews.length;
-  await click(window, '[data-testid="fla-snapshot-import"]');
-  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="fla-snapshot-import-counts"]'))`, 180_000);
+  await click(window, '[data-testid="fla-unified-import"]');
+  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="fla-unified-import-counts"]'))`, 180_000);
   const commit = runtime.snapshotCommits.at(-1);
   const commitPreviewIndex = runtime.previews.findLastIndex((event) =>
     event.requestId === commit?.confirmedPreviewRequestId,
@@ -978,7 +1081,7 @@ async function verifyCharacterImport(window, project) {
   const imagePath = join(project.projectRoot, asset.relativePath);
   assert(sha256File(imagePath) === previewSha256, 'Committed image file bytes differ from the confirmed preview.');
 
-  await click(window, '[data-testid="fla-snapshot-close"]');
+  await click(window, '[data-testid="fla-review-cancel"]');
   await waitForExpression(window, `Boolean(document.querySelector('[data-testid="asset-browser-view"]'))`);
   const cardSelector = `.asset-card[data-asset-id="${asset.id}"]`;
   await waitForExpression(window, `Boolean(document.querySelector(${JSON.stringify(cardSelector)}))`);
@@ -1161,8 +1264,8 @@ async function verifySaveCloseReopenAndDuplicate(window, project, importFacts, s
   assert(duplicatePreview && sha256(duplicatePreview) === BLUEHAIR_PREVIEW_SHA256, 'Duplicate retry preview differed from the original confirmed PNG.');
   await click(window, `[data-testid="fla-snapshot-targets"] [data-render-target-id="${BLUEHAIR_TARGET_ID}"] input[type="checkbox"]`);
   await waitForExpression(window, `Number(document.querySelector('[data-testid="fla-snapshot-candidate-summary"] > div:last-child dd')?.textContent?.trim() ?? 0) === 1`);
-  await click(window, '[data-testid="fla-snapshot-import"]');
-  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="fla-snapshot-import-counts"]'))`, 180_000);
+  await click(window, '[data-testid="fla-unified-import"]');
+  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="fla-unified-import-counts"]'))`, 180_000);
   const duplicateCommit = runtime.snapshotCommits.at(-1);
   assert(duplicateCommit?.ok && duplicateCommit.result?.status === 'duplicate' && duplicateCommit.projectChanged === false, 'Repeated Bluehair snapshot did not reuse the existing image as a no-op.');
   assert(duplicateCommit.baseRevisionResponse === revisionBeforeDuplicate && duplicateCommit.savedRevision === revisionBeforeDuplicate, 'Duplicate snapshot response drifted the project revision.');
@@ -1170,7 +1273,7 @@ async function verifySaveCloseReopenAndDuplicate(window, project, importFacts, s
   const afterDuplicate = readProjectState(project.projectRoot);
   assert(afterDuplicate.jsonSha256 === beforeDuplicate.jsonSha256 && afterDuplicate.assetCount === 1, 'Duplicate retry wrote a phantom asset or changed project.json.');
   assert((await readUiRevision(window)) === revisionBeforeDuplicate, 'Duplicate retry changed the in-memory project revision.');
-  await click(window, '[data-testid="fla-snapshot-close"]');
+  await click(window, '[data-testid="fla-review-cancel"]');
   await waitForExpression(window, `Boolean(document.querySelector('[data-testid="asset-browser-view"]'))`);
   const objectUrlsAfterDuplicate = await readObjectUrlFacts(window);
   assert(sameActiveObjectUrls(objectUrlsBeforeDuplicate, objectUrlsAfterDuplicate), 'Duplicate retry left new renderer object URLs active after closing the FLA workbench.');
@@ -1253,6 +1356,277 @@ async function verifyMixedBitmapImport(window, project) {
   };
 }
 
+async function verifySnapshotSearchFocusSwitch(window, catalog) {
+  const targetA = await evaluate(window, `(() => {
+    const row = [...document.querySelectorAll('[data-testid="fla-snapshot-targets"] [data-render-target-id]')]
+      .find((candidate) => candidate.getAttribute('data-render-target-id') === ${JSON.stringify(BLUEHAIR_TARGET_ID)} && candidate.getAttribute('data-source-frame-index') === '0');
+    return row ? {
+      renderTargetId: row.getAttribute('data-render-target-id'),
+      selectedFrameIndex: Number(row.getAttribute('data-source-frame-index')),
+      label: row.querySelector('.fla-snapshot-candidate-focus strong')?.textContent?.trim() ?? '',
+    } : null;
+  })()`);
+  assert(targetA?.label, 'The initial frame-0 candidate A had no visible searchable label.');
+
+  const displayedRows = await evaluate(window, `(() => [...document.querySelectorAll('[data-testid="fla-snapshot-targets"] [data-render-target-id]')].map((row) => ({
+    renderTargetId: row.getAttribute('data-render-target-id'),
+    selectedFrameIndex: Number(row.getAttribute('data-source-frame-index')),
+    catalogRole: row.getAttribute('data-catalog-role'),
+    selectable: row.getAttribute('data-preview-supported') === 'true',
+    blank: row.getAttribute('data-is-blank') === 'true',
+    label: row.querySelector('.fla-snapshot-candidate-focus strong')?.textContent?.trim() ?? '',
+  })))()`);
+  const labelCounts = new Map();
+  for (const row of displayedRows) labelCounts.set(row.label, (labelCounts.get(row.label) ?? 0) + 1);
+  const targetB = catalog.entries
+    .filter((entry) => entry.catalogRole === 'graphic-state' && entry.previewSupported && !entry.isBlank && entry.renderTargetId !== BLUEHAIR_TARGET_ID)
+    .map((entry) => ({
+      entry,
+      row: displayedRows.find((candidate) =>
+        candidate.renderTargetId === entry.renderTargetId &&
+        candidate.selectedFrameIndex === entry.selectedFrameIndex,
+      ),
+    }))
+    .find(({ row }) => row?.selectable && !row.blank && row.label && labelCounts.get(row.label) === 1);
+  assert(targetB?.row, 'No unique, supported nonblank graphic-state candidate B was available in the rendered catalog.');
+
+  await setInput(window, '[data-testid="fla-snapshot-target-search"]', targetB.row.label);
+  await waitForExpression(window, `(() => {
+    const rows = [...document.querySelectorAll('[data-testid="fla-snapshot-targets"] [data-render-target-id]')];
+    const row = rows[0];
+    const preview = document.querySelector('[data-testid="fla-snapshot-preview-image"]');
+    const selectedCount = Number(document.querySelector('[data-testid="fla-unified-import-selected-count"]')?.textContent?.match(/[0-9]+/)?.[0] ?? 0);
+    return rows.length === 1 &&
+      row?.getAttribute('data-render-target-id') === ${JSON.stringify(targetB.row.renderTargetId)} &&
+      row?.getAttribute('data-source-frame-index') === ${JSON.stringify(String(targetB.row.selectedFrameIndex))} &&
+      row?.getAttribute('data-catalog-role') === 'graphic-state' &&
+      row?.getAttribute('data-focused') === 'true' &&
+      preview instanceof HTMLImageElement && preview.complete && preview.naturalWidth > 0 &&
+      preview.getAttribute('data-render-target-id') === ${JSON.stringify(targetB.row.renderTargetId)} &&
+      selectedCount === 0;
+  })()`, 180_000);
+  const searchB = await evaluate(window, `(() => {
+    const row = document.querySelector('[data-testid="fla-snapshot-targets"] [data-render-target-id]');
+    const preview = document.querySelector('[data-testid="fla-snapshot-preview-image"]');
+    return {
+      visibleCount: document.querySelectorAll('[data-testid="fla-snapshot-targets"] [data-render-target-id]').length,
+      focusedTargetId: row?.getAttribute('data-render-target-id') ?? null,
+      focusedFrameIndex: Number(row?.getAttribute('data-source-frame-index') ?? -1),
+      focusedRole: row?.getAttribute('data-catalog-role') ?? null,
+      previewTargetId: preview?.getAttribute('data-render-target-id') ?? null,
+      selectedCount: Number(document.querySelector('[data-testid="fla-unified-import-selected-count"]')?.textContent?.match(/[0-9]+/)?.[0] ?? 0),
+    };
+  })()`);
+  runtime.screenshots.snapshotSearchFocusSwitch = await capture(window, join(runtime.repoEvidenceDir, 'snapshot-filter-focus-switch-a-to-b.png'));
+
+  await setInput(window, '[data-testid="fla-snapshot-target-search"]', targetA.label);
+  await waitForExpression(window, `(() => {
+    const rows = [...document.querySelectorAll('[data-testid="fla-snapshot-targets"] [data-render-target-id]')];
+    const row = rows.find((candidate) => candidate.getAttribute('data-render-target-id') === ${JSON.stringify(BLUEHAIR_TARGET_ID)} && candidate.getAttribute('data-source-frame-index') === '0');
+    const preview = document.querySelector('[data-testid="fla-snapshot-preview-image"]');
+    return rows.length === 1 && row?.getAttribute('data-focused') === 'true' &&
+      preview instanceof HTMLImageElement && preview.complete && preview.naturalWidth > 0 &&
+      preview.getAttribute('data-render-target-id') === ${JSON.stringify(BLUEHAIR_TARGET_ID)} &&
+      preview.getAttribute('data-source-frame-index') === '0';
+  })()`, 180_000);
+  const restoredPreviewBytes = await readPreviewBytes(window);
+  assert(restoredPreviewBytes && sha256(restoredPreviewBytes) === BLUEHAIR_PREVIEW_SHA256, 'Returning from filtered candidate B did not restore the exact approved frame-0 preview A.');
+  return {
+    initialCandidateA: targetA,
+    searchedCandidateB: {
+      renderTargetId: targetB.row.renderTargetId,
+      selectedFrameIndex: targetB.row.selectedFrameIndex,
+      catalogRole: targetB.row.catalogRole,
+      label: targetB.row.label,
+    },
+    searchB,
+    restoredCandidateA: { renderTargetId: BLUEHAIR_TARGET_ID, selectedFrameIndex: 0, previewSha256: sha256(restoredPreviewBytes) },
+    noSelectionDuringFilter: searchB.selectedCount === 0,
+  };
+}
+
+async function verifyMixedComposedAndBitmapImport(window, project) {
+  const sourcePath = runtime.sourcePaths.bluehair;
+  const before = readProjectState(project.projectRoot);
+  const revisionBefore = await readUiRevision(window);
+  const inspection = await openReview(window, sourcePath, 'bluehair-mixed-unified-import');
+  const catalog = await openSnapshotCatalog(window, inspection.inspection.sessionId);
+  assert(catalog.entries.some((entry) =>
+    entry.renderTargetId === BLUEHAIR_TARGET_ID &&
+    entry.sourceLibraryItemName === BLUEHAIR_TARGET &&
+    entry.selectedFrameIndex === 0 &&
+    entry.previewSupported &&
+    !entry.isBlank,
+  ), 'Mixed FLA did not expose the approved composed PNG candidate.');
+  await focusBluehairTarget(window);
+  const focusSwitchFacts = await verifySnapshotSearchFocusSwitch(window, catalog);
+  const previewBytes = await readPreviewBytes(window);
+  assert(previewBytes && sha256(previewBytes) === BLUEHAIR_PREVIEW_SHA256, 'Mixed import composed preview differed from the approved PNG.');
+  await click(window, `[data-testid="fla-snapshot-targets"] [data-render-target-id="${BLUEHAIR_TARGET_ID}"] input[type="checkbox"]`);
+  await waitForExpression(window, `Number(document.querySelector('[data-testid="fla-unified-import-selected-count"]')?.textContent?.match(/[0-9]+/)?.[0] ?? 0) === 1`);
+  const compositionSelectedRevision = await readUiRevision(window);
+  assert(compositionSelectedRevision === revisionBefore, 'Selecting the composed PNG mutated the Project before import.');
+
+  await click(window, '[data-testid="fla-workbench-tab-source-assets"]');
+  await waitForExpression(window, `document.querySelector('[data-testid="fla-workbench-tab-source-assets"]')?.getAttribute('aria-selected') === 'true'`);
+  const bitmapSelection = await selectOneRawBitmap(window, 336, 2);
+  assert(bitmapSelection.selectedCount === 2, 'Switching routes dropped the checked composed PNG or failed to retain the bitmap selection.');
+  assert((await readUiRevision(window)) === revisionBefore, 'Cross-route selection changed the Project before the shared import action.');
+
+  const snapshotCommitCountBefore = runtime.snapshotCommits.length;
+  const rasterCommitCountBefore = runtime.rasterCommits.length;
+  await clickTwice(window, '[data-testid="fla-unified-import"]');
+  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="fla-unified-import-counts"]'))`, 180_000);
+  const snapshotCommit = runtime.snapshotCommits.at(-1);
+  const rasterCommit = runtime.rasterCommits.at(-1);
+  assert(runtime.snapshotCommits.length === snapshotCommitCountBefore + 1, 'Shared import did not commit the composed PNG exactly once.');
+  assert(runtime.rasterCommits.length === rasterCommitCountBefore + 1, 'Shared import did not commit the bitmap exactly once.');
+  assert(snapshotCommit?.ok && snapshotCommit.result?.status === 'imported', 'Composed PNG did not import through the static snapshot route.');
+  assert(rasterCommit?.ok && rasterCommit.summary?.importedCount === 1, 'Bitmap did not import through the validated raster route.');
+  assert(snapshotCommit.sessionId === rasterCommit.sessionId && rasterCommit.sessionId === inspection.inspection.sessionId, 'Mixed route operations were not bound to the same inspected FLA session.');
+  assert(rasterCommit.baseRevision === snapshotCommit.savedRevision, 'Second route did not receive the first route saved revision.');
+  assert(snapshotCommit.baseRevision === revisionBefore && rasterCommit.savedRevision === revisionBefore + 2, 'Mixed route revisions did not advance sequentially exactly twice.');
+
+  const receipt = await readUnifiedImportReceipt(window);
+  const countsText = receipt.countsText;
+  const receiptItems = receipt.items;
+  assert(countsText.includes('共 2 项') && countsText.includes('新导入 2 项') && countsText.includes('失败 0 项') && countsText.includes('未尝试 0 项'), `Shared receipt did not report exact mixed outcomes: ${countsText}`);
+  assert(receiptItems.length === 2 && receiptItems.every((item) => item.status === 'imported') && new Set(receiptItems.map((item) => item.kind)).size === 2, 'Shared receipt did not preserve both route-specific item results.');
+  assert(receipt.selectedCount === 2 && receipt.imported === 2 && receipt.duplicate === 0 && receipt.failed === 0 && receipt.notAttempted === 0, `Shared receipt did not report exact mixed counts: ${countsText}`);
+  assert(!receipt.partial && !receipt.cancelled, 'Successful mixed import was marked partial or cancelled.');
+  const snapshotReceiptItem = receiptItems.find((item) => item.kind === 'snapshot');
+  const rasterReceiptItem = receiptItems.find((item) => item.kind === 'raster');
+  assert(snapshotReceiptItem?.baseRevision === revisionBefore && snapshotReceiptItem.savedRevision === snapshotCommit.savedRevision, 'Composed item receipt omitted or misstated its committed project revision.');
+  assert(rasterReceiptItem?.baseRevision === snapshotCommit.savedRevision && rasterReceiptItem.savedRevision === rasterCommit.savedRevision, 'Bitmap item receipt omitted or misstated its committed project revision.');
+
+  const after = readProjectState(project.projectRoot);
+  assert(after.assetCount === before.assetCount + 2, 'Mixed composed and bitmap import did not create exactly two assets.');
+  assert((await readUiRevision(window)) === revisionBefore + 2, 'Mixed composed and bitmap import did not apply both saved revisions to the renderer.');
+  await click(window, '[data-testid="fla-review-cancel"]');
+  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="asset-browser-view"]'))`);
+  const libraryAssets = await evaluate(window, `(() => [...document.querySelectorAll('[data-testid="asset-library"] [data-asset-id]')].map((card) => card.getAttribute('data-asset-id')))()`);
+  assert(libraryAssets.length === 2, 'Asset Library did not show both items created by the one mixed import action.');
+  assert(sha256File(sourcePath) === runtime.sourceHashesBefore.bluehair, 'Unified mixed import changed the original FLA source.');
+  return {
+    sourceBasename: basename(sourcePath),
+    sourceSha256: runtime.sourceHashesBefore.bluehair,
+    sessionId: inspection.inspection.sessionId,
+    selected: { composition: BLUEHAIR_TARGET_ID, bitmapMediaId: bitmapSelection.selectedMediaId },
+    snapshotCommit,
+    rasterCommit,
+    receipt: { ...receipt, items: receiptItems },
+    filterFocusSwitch: focusSwitchFacts,
+    doubleSubmitGuard: runtime.snapshotCommits.length - snapshotCommitCountBefore === 1 && runtime.rasterCommits.length - rasterCommitCountBefore === 1,
+    projectBefore: before,
+    projectAfter: after,
+    libraryAssetIds: libraryAssets,
+    oneActionTwoRoutes: true,
+    sourceUnchanged: true,
+  };
+}
+
+async function verifyUnifiedImportCancellation(window, project) {
+  const sourcePath = runtime.sourcePaths.bluehair;
+  const before = readProjectState(project.projectRoot);
+  const revisionBefore = await readUiRevision(window);
+  const inspection = await openReview(window, sourcePath, 'unified-import-cancellation');
+  const catalog = await openSnapshotCatalog(window, inspection.inspection.sessionId);
+  assert(catalog.entries.some((entry) => entry.renderTargetId === BLUEHAIR_TARGET_ID && entry.selectedFrameIndex === 0 && entry.previewSupported && !entry.isBlank), 'Cancellation scenario did not expose the approved supported candidate A.');
+  await focusBluehairTarget(window);
+  await click(window, `[data-testid="fla-snapshot-targets"] [data-render-target-id="${BLUEHAIR_TARGET_ID}"][data-source-frame-index="0"] input[type="checkbox"]`);
+  await waitForExpression(window, `Number(document.querySelector('[data-testid="fla-unified-import-selected-count"]')?.textContent?.match(/[0-9]+/)?.[0] ?? 0) === 1`);
+  await click(window, '[data-testid="fla-workbench-tab-source-assets"]');
+  await waitForExpression(window, `document.querySelector('[data-testid="fla-workbench-tab-source-assets"]')?.getAttribute('aria-selected') === 'true'`);
+  const bitmapSelection = await selectOneRawBitmap(window, 336, 2);
+
+  const snapshotCommitCountBefore = runtime.snapshotCommits.length;
+  const rasterCommitCountBefore = runtime.rasterCommits.length;
+  const gate = createDeferredGate();
+  runtime.snapshotPreviewGate = gate;
+  await click(window, '[data-testid="fla-unified-import"]');
+  await waitForPromise(gate.started, 180_000, 'The commit-time preview did not reach the cancellation gate.');
+  const gatedPreview = runtime.previews.at(-1);
+  assert(gatedPreview?.sessionId === inspection.inspection.sessionId && gatedPreview.target.renderTargetId === BLUEHAIR_TARGET_ID && gatedPreview.target.selectedFrameIndex === 0, 'Cancellation gate intercepted a different preview operation.');
+  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="fla-unified-import-stop"]'))`);
+  await click(window, '[data-testid="fla-unified-import-stop"]');
+  await waitForExpression(window, `document.querySelector('[data-testid="fla-unified-import-stop"]')?.disabled === true`);
+  gate.release();
+  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="fla-unified-import-counts"]'))`, 180_000);
+
+  const receipt = await readUnifiedImportReceipt(window);
+  const after = readProjectState(project.projectRoot);
+  const revisionAfter = await readUiRevision(window);
+  assert([receipt.selectedCount, receipt.imported, receipt.duplicate, receipt.failed, receipt.notAttempted].join(',') === '2,0,0,0,2', `Cancellation receipt reported unexpected counts: ${receipt.countsText}`);
+  assert(receipt.cancelled && receipt.partial && receipt.items.length === 2 && receipt.items.every((item) => item.status === 'not-attempted'), 'Cancellation receipt did not identify both unattempted route items.');
+  assert(runtime.snapshotCommits.length === snapshotCommitCountBefore && runtime.rasterCommits.length === rasterCommitCountBefore, 'Cancellation committed an item or started the later raster route.');
+  assert(before.jsonSha256 === after.jsonSha256 && before.assetCount === after.assetCount && revisionAfter === revisionBefore, 'Cancellation changed the project file or renderer revision.');
+  runtime.screenshots.unifiedImportCancelled = await capture(window, join(runtime.repoEvidenceDir, 'unified-import-cancelled-before-commit.png'));
+  await click(window, '[data-testid="fla-review-cancel"]');
+  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="asset-browser-view"]'))`);
+  return {
+    sourceBasename: basename(sourcePath),
+    sessionId: inspection.inspection.sessionId,
+    selected: { composition: BLUEHAIR_TARGET_ID, bitmapMediaId: bitmapSelection.selectedMediaId },
+    gatedPreview,
+    receipt,
+    projectBefore: before,
+    projectAfter: after,
+    revisionBefore,
+    revisionAfter,
+    noCommitAfterCancellation: true,
+    sourceUnchanged: sha256File(sourcePath) === runtime.sourceHashesBefore.bluehair,
+  };
+}
+
+async function verifyUnifiedImportPartialRouteFailure(window, project) {
+  const sourcePath = runtime.sourcePaths.bluehair;
+  const before = readProjectState(project.projectRoot);
+  const revisionBefore = await readUiRevision(window);
+  const inspection = await openReview(window, sourcePath, 'unified-import-partial-route-failure');
+  const catalog = await openSnapshotCatalog(window, inspection.inspection.sessionId);
+  assert(catalog.entries.some((entry) => entry.renderTargetId === BLUEHAIR_TARGET_ID && entry.selectedFrameIndex === 0 && entry.previewSupported && !entry.isBlank), 'Partial-failure scenario did not expose the approved supported candidate A.');
+  await focusBluehairTarget(window);
+  await click(window, `[data-testid="fla-snapshot-targets"] [data-render-target-id="${BLUEHAIR_TARGET_ID}"][data-source-frame-index="0"] input[type="checkbox"]`);
+  await waitForExpression(window, `Number(document.querySelector('[data-testid="fla-unified-import-selected-count"]')?.textContent?.match(/[0-9]+/)?.[0] ?? 0) === 1`);
+  await click(window, '[data-testid="fla-workbench-tab-source-assets"]');
+  await waitForExpression(window, `document.querySelector('[data-testid="fla-workbench-tab-source-assets"]')?.getAttribute('aria-selected') === 'true'`);
+  const bitmapSelection = await selectOneRawBitmap(window, 336, 2);
+
+  runtime.failNextRasterCommit = true;
+  await click(window, '[data-testid="fla-unified-import"]');
+  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="fla-unified-import-counts"]'))`, 180_000);
+  const receipt = await readUnifiedImportReceipt(window);
+  const snapshotCommit = runtime.snapshotCommits.findLast((entry) => entry.sessionId === inspection.inspection.sessionId);
+  const rasterCommit = runtime.rasterCommits.findLast((entry) => entry.sessionId === inspection.inspection.sessionId);
+  const after = readProjectState(project.projectRoot);
+  const revisionAfter = await readUiRevision(window);
+  assert([receipt.selectedCount, receipt.imported, receipt.duplicate, receipt.failed, receipt.notAttempted].join(',') === '2,1,0,1,0', `Partial-failure receipt reported unexpected counts: ${receipt.countsText}`);
+  assert(receipt.partial && !receipt.cancelled && receipt.items.map((item) => item.status).join(',') === 'imported,failed', 'Partial-failure receipt did not preserve the successful first item and failed second item.');
+  assert(snapshotCommit?.ok && snapshotCommit.result?.status === 'imported' && snapshotCommit.baseRevision === revisionBefore && snapshotCommit.savedRevision === revisionBefore + 1, 'The first route did not persist with its exact per-item revision.');
+  assert(rasterCommit?.injectedFailure && !rasterCommit.ok && rasterCommit.baseRevision === snapshotCommit.savedRevision && rasterCommit.errorCode === 'STALE_PROJECT_REVISION', 'The bounded second-route failure was not injected after the first saved revision.');
+  assert(after.assetCount === before.assetCount + 1 && revisionAfter === snapshotCommit.savedRevision, 'The successful first route was rolled back or the failed later route changed the Project.');
+  assert(receipt.items[0]?.baseRevision === snapshotCommit.baseRevision && receipt.items[0]?.savedRevision === snapshotCommit.savedRevision, 'The partial receipt omitted the successful item revision.');
+  runtime.screenshots.unifiedImportPartialFailure = await capture(window, join(runtime.repoEvidenceDir, 'unified-import-partial-route-failure.png'));
+  await click(window, '[data-testid="fla-review-cancel"]');
+  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="asset-browser-view"]'))`);
+  const libraryAssetCount = await evaluate(window, `document.querySelectorAll('[data-testid="asset-library"] [data-asset-id]').length`);
+  assert(libraryAssetCount === 1, 'Asset Library did not preserve the successful first route after the later route failed.');
+  return {
+    sourceBasename: basename(sourcePath),
+    sessionId: inspection.inspection.sessionId,
+    selected: { composition: BLUEHAIR_TARGET_ID, bitmapMediaId: bitmapSelection.selectedMediaId },
+    snapshotCommit,
+    rasterCommit,
+    receipt,
+    projectBefore: before,
+    projectAfter: after,
+    revisionBefore,
+    revisionAfter,
+    successfulFirstRoutePreserved: true,
+    sourceUnchanged: sha256File(sourcePath) === runtime.sourceHashesBefore.bluehair,
+  };
+}
+
 async function verifyUnsupportedTarget(window, project) {
   const sourcePath = runtime.sourcePaths.unsupported;
   const before = readProjectState(project.projectRoot);
@@ -1269,7 +1643,7 @@ async function verifyUnsupportedTarget(window, project) {
       checked: row?.querySelector('input[type="checkbox"]')?.checked ?? false,
       reason: placeholder?.textContent?.replace(/\\s+/gu, ' ').trim() ?? '',
       previewState: document.querySelector('[data-testid="fla-snapshot-preview-status"]')?.getAttribute('data-preview-state') ?? null,
-      importDisabled: document.querySelector('[data-testid="fla-snapshot-import"]')?.disabled ?? true,
+      importDisabled: document.querySelector('[data-testid="fla-unified-import"]')?.disabled ?? true,
     };
   })()`);
   assert(!uiState.selectable && !uiState.checked && uiState.importDisabled && uiState.previewState === 'unsupported', 'Unsupported target was selectable, importable, or not visibly rejected.');
@@ -1397,6 +1771,21 @@ async function main() {
   const unsupported = await verifyUnsupportedTarget(window, mixedProject);
   runtime.scenarios.push({ name: 'unsupported-vector-fail-closed', ...unsupported });
 
+  await closeProject(window);
+  const unifiedMixedProject = await createProject(window, 'unified-mixed-import');
+  runtime.projects.unifiedMixed = { ...unifiedMixedProject, initial: readProjectState(unifiedMixedProject.projectRoot) };
+  const unifiedMixed = await verifyMixedComposedAndBitmapImport(window, unifiedMixedProject);
+  runtime.scenarios.push({ name: 'same-fla-composed-and-bitmap-one-action', ...unifiedMixed });
+
+  await closeProject(window);
+  const unifiedCancelPartialProject = await createProject(window, 'unified-cancel-and-partial-failure');
+  runtime.projects.unifiedCancelPartial = { ...unifiedCancelPartialProject, initial: readProjectState(unifiedCancelPartialProject.projectRoot) };
+  const unifiedCancellation = await verifyUnifiedImportCancellation(window, unifiedCancelPartialProject);
+  runtime.scenarios.push({ name: 'unified-import-cancel-before-commit', ...unifiedCancellation });
+  const unifiedPartialFailure = await verifyUnifiedImportPartialRouteFailure(window, unifiedCancelPartialProject);
+  runtime.scenarios.push({ name: 'unified-import-preserves-success-after-later-route-failure', ...unifiedPartialFailure });
+  await closeProject(window);
+
   const sourceUnchanged = Object.entries(runtime.sourcePaths).every(([key, sourcePath]) =>
     runtime.sourceHashesBefore[key] === sha256File(sourcePath),
   );
@@ -1414,7 +1803,15 @@ async function main() {
     duplicateIsNoOpWithoutRevisionDrift: persistence.duplicate.commit.result.status === 'duplicate' && persistence.duplicate.commit.projectChanged === false && persistence.duplicate.before.jsonSha256 === persistence.duplicate.after.jsonSha256,
     bitmapOnlySingleSelectionCommit: rasterOnly.commit.selectedCount === 1 && rasterOnly.projectAfter.assetCount === 1,
     mixedSourceSingleBitmapCommit: mixedBitmap.commit.selectedCount === 1 && mixedBitmap.projectAfter.assetCount === 1,
+    sameFlaCompositionAndBitmapOneAction: unifiedMixed.oneActionTwoRoutes && unifiedMixed.projectAfter.assetCount === 2 && unifiedMixed.receipt.items.length === 2,
+    sameFlaRouteRevisionsThreaded: unifiedMixed.rasterCommit.baseRevision === unifiedMixed.snapshotCommit.savedRevision,
+    sameFlaExactPerItemReceipt: unifiedMixed.receipt.items.every((item) => item.status === 'imported') && unifiedMixed.receipt.countsText.includes('未尝试 0 项'),
     unsupportedVectorFailsClosedWithReason: !unsupported.uiState.selectable && unsupported.uiState.importDisabled && Boolean(unsupported.target.unsupportedReason),
+    filterSearchAtoBUpdatesFocusedFullPreviewWithoutSelection: unifiedMixed.filterFocusSwitch.searchB.visibleCount === 1 && unifiedMixed.filterFocusSwitch.searchB.focusedTargetId === unifiedMixed.filterFocusSwitch.searchedCandidateB.renderTargetId && unifiedMixed.filterFocusSwitch.searchB.previewTargetId === unifiedMixed.filterFocusSwitch.searchedCandidateB.renderTargetId && unifiedMixed.filterFocusSwitch.noSelectionDuringFilter,
+    returningToCandidateARestoresApprovedPreview: unifiedMixed.filterFocusSwitch.restoredCandidateA.previewSha256 === BLUEHAIR_PREVIEW_SHA256,
+    rapidSharedActionSubmitsEachRouteOnce: unifiedMixed.doubleSubmitGuard,
+    cancellationReportsBothRoutesUnattemptedWithoutCommit: unifiedCancellation.receipt.cancelled && unifiedCancellation.receipt.partial && unifiedCancellation.receipt.items.every((item) => item.status === 'not-attempted') && unifiedCancellation.noCommitAfterCancellation,
+    laterRouteFailurePreservesFirstCommitAndRevision: unifiedPartialFailure.receipt.partial && unifiedPartialFailure.successfulFirstRoutePreserved && unifiedPartialFailure.snapshotCommit.savedRevision === unifiedPartialFailure.rasterCommit.baseRevision,
     browseCancelLeavesProjectAndSourceUnchanged: cancelFacts.noProjectMutation && sourceUnchanged,
     rendererObjectUrlsReleased: sameActiveObjectUrls(cancelFacts.objectUrlsBefore, cancelFacts.objectUrlsAfter) && sameActiveObjectUrls(importFacts.objectUrlsBefore, importFacts.objectUrlsAfter) && sameActiveObjectUrls(persistence.duplicate.objectUrlsBefore, persistence.duplicate.objectUrlsAfter),
     snapshotBackgroundRendererDoesNotAccumulate: snapshotWindowCount(finalWindows) <= 1,

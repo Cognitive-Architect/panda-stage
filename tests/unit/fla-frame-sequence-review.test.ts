@@ -5,17 +5,22 @@ import { describe, expect, it } from 'vitest';
 import { FlaFrameSequenceReview } from '../../src/renderer/fla-import/FlaFrameSequenceReview';
 
 const noop = () => {};
+const sequenceReviewProps = () => ({
+  sessionId: '00000000-0000-4000-8000-000000000001',
+  source: { basename: 'x.fla', sha256: 'a'.repeat(64) },
+  snapshot: null,
+  checkedCandidateKeys: new Set<string>(),
+  importLocked: false,
+  onToggleCandidate: noop,
+  onReconcileCandidates: noop,
+  onRegisterImportRunner: noop,
+  onImported: noop,
+});
 
 describe('R2-H.2 component mounts (static render)', () => {
   it('renders the review root without throwing in the loading phase', () => {
     const html = renderToStaticMarkup(
-      createElement(FlaFrameSequenceReview, {
-        sessionId: '00000000-0000-4000-8000-000000000001',
-        source: { basename: 'x.fla', sha256: 'a'.repeat(64) },
-        snapshot: null,
-        onImported: noop,
-        onClose: noop,
-      }),
+      createElement(FlaFrameSequenceReview, sequenceReviewProps()),
     );
     expect(html).toContain('data-testid="fla-frame-sequence-review"');
     expect(html).toContain('fla-frame-sequence-loading');
@@ -36,7 +41,8 @@ describe('R2-H.2 shares the compatibility review render workbench (zero-raster p
     expect(session).toContain('FlaFrameSequenceReview');
     expect(session).toContain('FlaStaticSnapshotReview');
     expect(session).toContain('FlaRenderWorkbench');
-    expect(session).toContain("renderMode === 'snapshot'");
+    expect(session).toContain('<div data-testid="fla-unified-snapshot-panel" hidden={renderMode !== \'snapshot\'}>');
+    expect(session).toContain('<div data-testid="fla-unified-sequence-panel" hidden={renderMode !== \'sequence\'}>');
     expect(session).toContain('FlaFrameSequenceCommitResponse');
     // Both are rendered inside the zero-raster branch.
     expect(session).toContain('onImported={(response) => onSequenceImported?.(response)}');
@@ -56,7 +62,9 @@ describe('R2-H.2 shares the compatibility review render workbench (zero-raster p
     expect(review).toContain('title={previewTarget?.userLabel}');
     expect(review).toContain('data-operation-target-id={target.renderTargetId}');
     expect(review).toContain('data-render-target-selected={entryTarget.renderTargetId === selectedTargetId ?');
-    expect(review).toContain('createFlaWorkbenchCandidateSelection(focusedTargetId, EMPTY_SEQUENCE_IMPORT_CHECKS)');
+    expect(review).toContain('checkedCandidateKeys.has(flaUnifiedCandidateSelectionKey(candidate))');
+    expect(review).toContain('data-testid={`fla-frame-sequence-candidate-check-${entryTarget.renderTargetId}`}');
+    expect(review).not.toContain('EMPTY_SEQUENCE_IMPORT_CHECKS');
   });
 });
 
@@ -64,11 +72,7 @@ describe('R2-H.2 Problem A/B: gateway UI gating (#296)', () => {
   it('does not expose a commit/import action or progress region until a sequence is rendered', () => {
     const html = renderToStaticMarkup(
       createElement(FlaFrameSequenceReview, {
-        sessionId: '00000000-0000-4000-8000-000000000001',
-        source: { basename: 'x.fla', sha256: 'a'.repeat(64) },
-        snapshot: null,
-        onImported: noop,
-        onClose: noop,
+        ...sequenceReviewProps(),
       }),
     );
     // In the loading phase there is no commit candidate and no live
@@ -83,11 +87,7 @@ describe('R2-H.2 Problem A/B: gateway UI gating (#296)', () => {
     // a request is in flight (Problem B).
     const html = renderToStaticMarkup(
       createElement(FlaFrameSequenceReview, {
-        sessionId: '00000000-0000-4000-8000-000000000001',
-        source: { basename: 'x.fla', sha256: 'a'.repeat(64) },
-        snapshot: null,
-        onImported: noop,
-        onClose: noop,
+        ...sequenceReviewProps(),
       }),
     );
     expect(html).not.toContain('正在渲染序列');

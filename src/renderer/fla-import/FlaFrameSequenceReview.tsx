@@ -19,7 +19,7 @@
  *  - focusing a filmstrip frame changes review focus only, never R2 authority.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   FlaRenderableTargetCatalogEntry,
   FlaRenderTarget,
@@ -32,12 +32,9 @@ import type {
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { flaStaticSnapshotClient } from './fla-static-snapshot-render';
 import { flaFrameSequenceClient } from './fla-frame-sequence-render';
-import { formatFlaFrameSequenceCommitResult } from './formatFlaFrameSequenceCommitResult';
 import { boundedUnsupportedReason, FlaStageF2UnavailableDetails } from './FlaStageF';
 import {
   FlaStageGImporting,
-  FlaStageGRecovery,
-  FlaStageGSequenceSuccess,
   type FlaStageGTerminalState,
 } from './FlaStageGTerminal';
 import {
@@ -48,8 +45,8 @@ import {
   isCurrentResponse,
   isStaleAgainstIntent,
   MAX_SEQUENCE_FRAMES,
-  postCommitSequenceState,
   resolveVisibleSequenceFocus,
+  postCommitSequenceState,
   rerenderReset,
   validateRange,
 } from './fla-frame-sequence-review-state';
@@ -57,15 +54,25 @@ import {
   createFlaWorkbenchCandidateSelection,
   createFlaWorkbenchCandidates,
 } from './fla-workbench-candidates';
+import {
+  describeFlaUnifiedCandidate,
+  flaUnifiedCandidateSelectionKey,
+  type FlaUnifiedImportItem,
+  type FlaUnifiedImportRunner,
+  type FlaUnifiedRouteResult,
+} from './fla-unified-import';
 
 interface FlaFrameSequenceReviewProps {
   sessionId: string;
   source: { basename: string; sha256: string };
   snapshot: EditorProjectSnapshot | null;
+  checkedCandidateKeys: ReadonlySet<string>;
+  importLocked: boolean;
+  onToggleCandidate: (item: FlaUnifiedImportItem, checked: boolean) => void;
+  onReconcileCandidates: (kind: 'sequence', keys: ReadonlySet<string>) => void;
+  onRegisterImportRunner: (runner: FlaUnifiedImportRunner | null) => void;
   embedded?: boolean;
   onImported: (response: FlaFrameSequenceCommitResponse) => void;
-  onClose: () => void;
-  onCommitStateChange?: (busy: boolean) => void;
   onWorkInProgressChange?: (busy: boolean) => void;
   onTerminalStateChange?: (state: FlaStageGTerminalState) => void;
 }
@@ -80,18 +87,17 @@ type RenderPhase =
   | 'cancelled'
   | 'error';
 
-// This route has a generation-target radio, not a unified checked import
-// list. Selecting a render target must never imply checked/import intent.
-const EMPTY_SEQUENCE_IMPORT_CHECKS: ReadonlySet<string> = new Set();
-
 export function FlaFrameSequenceReview({
   sessionId,
   source,
   snapshot,
+  checkedCandidateKeys,
+  importLocked,
+  onToggleCandidate,
+  onReconcileCandidates,
+  onRegisterImportRunner,
   embedded = false,
   onImported,
-  onClose,
-  onCommitStateChange,
   onWorkInProgressChange,
   onTerminalStateChange,
 }: FlaFrameSequenceReviewProps): React.JSX.Element {
@@ -108,7 +114,6 @@ export function FlaFrameSequenceReview({
   const [success, setSuccess] = useState<FlaFrameSequenceSuccess | null>(null);
   const [previewUrls, setPreviewUrls] = useState<ReadonlyArray<string>>([]);
   const [selectedPreviewIndex, setSelectedPreviewIndex] = useState(0);
-  const [commitResponse, setCommitResponse] = useState<FlaFrameSequenceCommitResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
   // R2-D: the latest completed sequence the UI has accepted. Only this one
@@ -199,12 +204,21 @@ export function FlaFrameSequenceReview({
       context: { sessionId, source },
       sequenceEntries: entries,
       sequencePreviews: sequencePreviewInputs,
-      selection: createFlaWorkbenchCandidateSelection(focusedTargetId, EMPTY_SEQUENCE_IMPORT_CHECKS),
-    }).filter((candidate) => candidate.kind === 'sequence'),
-    [entries, focusedTargetId, sequencePreviewInputs, sessionId, source.basename, source.sha256],
+      selection: createFlaWorkbenchCandidateSelection(focusedTargetId),
+    })
+      .filter((candidate) => candidate.kind === 'sequence')
+      .map((candidate) => ({
+        ...candidate,
+        checked: candidate.selectable && checkedCandidateKeys.has(flaUnifiedCandidateSelectionKey(candidate)),
+      })),
+    [checkedCandidateKeys, entries, focusedTargetId, sequencePreviewInputs, sessionId, source.basename, source.sha256],
   );
   const sequenceCandidateById = useMemo(
     () => new Map(sequenceCandidates.map((candidate) => [candidate.id, candidate])),
+    [sequenceCandidates],
+  );
+  const currentSelectableKeys = useMemo(
+    () => new Set(sequenceCandidates.filter((candidate) => candidate.selectable).map(flaUnifiedCandidateSelectionKey)),
     [sequenceCandidates],
   );
   const visibleEntries = useMemo(() => {
@@ -239,13 +253,15 @@ export function FlaFrameSequenceReview({
   useEffect(() => () => onWorkInProgressChange?.(false), [onWorkInProgressChange]);
 
   useEffect(() => {
-    onCommitStateChange?.(false);
     onTerminalStateChange?.('active');
     return () => {
-      onCommitStateChange?.(false);
       onTerminalStateChange?.('active');
     };
-  }, [onCommitStateChange, onTerminalStateChange]);
+  }, [onTerminalStateChange]);
+
+  useEffect(() => {
+    onReconcileCandidates('sequence', currentSelectableKeys);
+  }, [currentSelectableKeys, onReconcileCandidates]);
 
   // Revoke object URLs on unmount / sequence change.
   useEffect(() => {
@@ -319,7 +335,6 @@ export function FlaFrameSequenceReview({
     setSuccess(reset.success);
     setCompletedFrameCount(reset.completedFrameCount);
     clearPreviewResources();
-    setCommitResponse(reset.commitResponse);
     setPhase((current) => (current === 'loading' ? current : reset.phase));
     void flaFrameSequenceClient.cancel({ format: 'fla-frame-sequence-cancel', version: 1, sessionId });
   }, [selectedTargetId, sessionId]);
@@ -340,7 +355,6 @@ export function FlaFrameSequenceReview({
     setSuccess(reset.success);
     setCompletedFrameCount(reset.completedFrameCount);
     clearPreviewResources();
-    setCommitResponse(reset.commitResponse);
     setPhase((current) => (current === 'loading' ? current : reset.phase));
     void flaFrameSequenceClient.cancel({ format: 'fla-frame-sequence-cancel', version: 1, sessionId });
   }, [startFrameIndex, endFrameIndex]);
@@ -379,11 +393,9 @@ export function FlaFrameSequenceReview({
     activeRequestIdRef.current = requestId;
     acceptedRequestIdRef.current = null;
     latestSequenceRef.current = null;
-    onCommitStateChange?.(false);
     onTerminalStateChange?.('active');
     setPhase('rendering');
     setErrorMessage('');
-    setCommitResponse(null);
     setCompletedFrameCount(0);
     clearPreviewResources();
     // Problem B: subscribe to live progress for THIS request only.
@@ -460,24 +472,62 @@ export function FlaFrameSequenceReview({
     latestSequenceRef.current = null;
     setSuccess(null);
     clearPreviewResources();
-    setCommitResponse(null);
     await renderSequence();
   };
 
-  const commitSequence = async (): Promise<void> => {
-    if (!success || !snapshot || phase !== 'preview-ready') return;
-    if (!currentIntent || isStaleAgainstIntent(renderedRange, currentIntent)) return;
-    if (!isCommitEligible(success, acceptedRequestIdRef.current === success.requestId)) return;
+  const runUnifiedImport = useCallback<FlaUnifiedImportRunner>(async (
+    selectedItems,
+    currentSnapshot,
+    shouldCancel,
+  ): Promise<FlaUnifiedRouteResult> => {
+    const candidateByKey = new Map(sequenceCandidates.map((candidate) => [
+      flaUnifiedCandidateSelectionKey(candidate),
+      candidate,
+    ]));
+    const candidate = selectedItems
+      .map((item) => candidateByKey.get(item.key))
+      .find((item) => item !== undefined);
+    if (selectedItems.length !== 1 || !candidate?.selectable || !success || !sequenceIsCurrent || !currentIntent ||
+      isStaleAgainstIntent(renderedRange, currentIntent) ||
+      !isCommitEligible(success, acceptedRequestIdRef.current === success.requestId)) {
+      return {
+        items: selectedItems.map((item) => ({
+          ...item,
+          status: 'failed' as const,
+          message: '帧序列预览或范围已变化；请重新生成并明确选择后再导入。',
+        })),
+        snapshot: currentSnapshot,
+        stopFollowingRoutes: true,
+      };
+    }
+    if (shouldCancel()) {
+      return {
+        items: selectedItems.map((item) => ({
+          ...item,
+          status: 'not-attempted' as const,
+          message: '已取消后续导入，此项未尝试。',
+        })),
+        snapshot: currentSnapshot,
+        cancelled: true,
+      };
+    }
     const firstItem = orderedSequenceItems[0];
     const lastItem = orderedSequenceItems[orderedSequenceItems.length - 1];
-    if (!firstItem || !lastItem) return;
+    if (!firstItem || !lastItem) {
+      return {
+        items: selectedItems.map((item) => ({ ...item, status: 'failed' as const, message: '序列帧数据不完整，未提交。' })),
+        snapshot: currentSnapshot,
+        stopFollowingRoutes: true,
+      };
+    }
     const range = buildRange(success.renderTargetId, firstItem.frameIndex, lastItem.frameIndex);
     if (!range) {
-      setErrorMessage('序列范围无效，无法导入。');
-      setPhase('error');
-      return;
+      return {
+        items: selectedItems.map((item) => ({ ...item, status: 'failed' as const, message: '序列范围无效，无法导入。' })),
+        snapshot: currentSnapshot,
+        stopFollowingRoutes: true,
+      };
     }
-    onCommitStateChange?.(true);
     onTerminalStateChange?.('importing');
     setPhase('committing');
     setErrorMessage('');
@@ -485,9 +535,9 @@ export function FlaFrameSequenceReview({
       const response = await flaFrameSequenceClient.commit({
         format: 'fla-frame-sequence-commit',
         version: 1,
-        projectRoot: snapshot.projectRoot,
-        project: snapshot.project,
-        baseRevision: snapshot.revision,
+        projectRoot: currentSnapshot.projectRoot,
+        project: currentSnapshot.project,
+        baseRevision: currentSnapshot.revision,
         sessionId,
         confirmedSequenceRequestId: success.requestId,
         source,
@@ -502,51 +552,100 @@ export function FlaFrameSequenceReview({
         },
         confirmed: true,
       });
-      setCommitResponse(response);
       if (response.ok) {
-        // Corrective C: commit success clears/disables stale commit state.
         const next = postCommitSequenceState();
-        onCommitStateChange?.(false);
-        onTerminalStateChange?.('success');
         setPhase(next.phase);
-        onImported(response);
-      } else {
-        const candidateStillCurrent = isSequenceCommitRetryable(response.error.code);
-        if (!candidateStillCurrent) {
+        acceptedRequestIdRef.current = null;
+        try {
+          onImported(response);
+          return {
+            items: selectedItems.map((item) => ({
+              ...item,
+              status: response.result.summary.importedCount > 0 ? 'imported' as const : 'duplicate' as const,
+              baseRevision: response.baseRevision,
+              savedRevision: response.savedRevision,
+              importedAssetCount: response.result.summary.importedCount,
+              duplicateAssetCount: response.result.summary.duplicateCount,
+            })),
+            snapshot: {
+              ...currentSnapshot,
+              project: response.project,
+              revision: response.savedRevision,
+            },
+          };
+        } catch {
+          return {
+            items: selectedItems.map((item) => ({
+              ...item,
+              status: response.result.summary.importedCount > 0 ? 'imported' as const : 'duplicate' as const,
+              baseRevision: response.baseRevision,
+              savedRevision: response.savedRevision,
+              importedAssetCount: response.result.summary.importedCount,
+              duplicateAssetCount: response.result.summary.duplicateCount,
+              message: '项目已提交，但界面状态同步失败；请返回素材库核对，勿重复导入。',
+            })),
+            snapshot: {
+              ...currentSnapshot,
+              project: response.project,
+              revision: response.savedRevision,
+            },
+            warnings: ['序列已保存到项目，但素材库界面状态未能同步；已停止后续路由。'],
+            stopFollowingRoutes: true,
+          };
+        }
+      }
+      const candidateStillCurrent = isSequenceCommitRetryable(response.error.code);
+      if (!candidateStillCurrent) {
           activeRequestIdRef.current = null;
           acceptedRequestIdRef.current = null;
           latestSequenceRef.current = null;
           setSuccess(null);
           clearPreviewResources();
-        }
-        onCommitStateChange?.(false);
-        onTerminalStateChange?.('recovery');
-        setErrorMessage(response.ok ? '序列导入失败。' : response.error.message);
-        setPhase('preview-ready');
       }
+      setErrorMessage(response.error.message);
+      setPhase(candidateStillCurrent ? 'preview-ready' : 'selecting');
+      return {
+        items: selectedItems.map((item) => ({ ...item, status: 'failed' as const, message: response.error.message })),
+        snapshot: currentSnapshot,
+        stopFollowingRoutes: true,
+      };
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '序列导入失败。');
+      const message = error instanceof Error ? error.message : '序列导入失败，结果无法确认。';
+      setErrorMessage(message);
       setPhase('preview-ready');
-      setCommitResponse({
-        ok: false,
-        error: {
-          code: 'ASSET_COMMIT_FAILED',
-          message: error instanceof Error ? error.message : 'Frame sequence import failed.',
-          projectRoot: snapshot.projectRoot,
-        },
-      });
-      onCommitStateChange?.(false);
-      onTerminalStateChange?.('recovery');
+      return {
+        items: selectedItems.map((item) => ({ ...item, status: 'failed' as const, message })),
+        snapshot: currentSnapshot,
+        warnings: ['序列提交结果无法确认；为避免重复写入，已停止后续路由。请检查素材库。'],
+        stopFollowingRoutes: true,
+      };
+    } finally {
+      onTerminalStateChange?.('active');
     }
-  };
+  }, [
+    currentIntent,
+    onImported,
+    onTerminalStateChange,
+    orderedSequenceItems,
+    renderedRange,
+    sequenceCandidates,
+    sequenceIsCurrent,
+    sessionId,
+    source,
+    success,
+  ]);
 
-  const close = (): void => {
-    if (phase === 'rendering' || phase === 'committing') return;
-    onCommitStateChange?.(false);
-    onTerminalStateChange?.('active');
-    void flaFrameSequenceClient.cancel({ format: 'fla-frame-sequence-cancel', version: 1, sessionId });
-    onClose();
-  };
+  const runUnifiedImportRef = useRef(runUnifiedImport);
+  runUnifiedImportRef.current = runUnifiedImport;
+  const registeredImportRunner = useCallback<FlaUnifiedImportRunner>(
+    (selectedItems, currentSnapshot, shouldCancel) =>
+      runUnifiedImportRef.current(selectedItems, currentSnapshot, shouldCancel),
+    [],
+  );
+  useEffect(() => {
+    onRegisterImportRunner(registeredImportRunner);
+    return () => onRegisterImportRunner(null);
+  }, [onRegisterImportRunner, registeredImportRunner]);
 
   if (!selectedEntry) {
     return (
@@ -564,11 +663,11 @@ export function FlaFrameSequenceReview({
 
   const target = selectedEntry.target;
   const supported = selectedEntry.previewSupported;
-  const intentLocked = phase === 'rendering' || phase === 'committing';
+  const intentLocked = phase === 'rendering' || phase === 'committing' || importLocked;
   const canGeneratePhase = phase === 'selecting' || phase === 'cancelled' || phase === 'error';
   const canGenerate = supported && validation.valid && Boolean(snapshot) &&
     canGeneratePhase;
-  const canImport = sequenceIsCurrent;
+  const canSelectSequence = sequenceIsCurrent && !importLocked;
 
   if (phase === 'committing') {
     return (
@@ -577,42 +676,6 @@ export function FlaFrameSequenceReview({
           context={`${source.basename} · 范围 ${startFrameIndex}–${endFrameIndex}`}
           headline={`正在导入 ${orderedSequenceItems.length} 帧序列…`}
           route="sequence"
-        />
-      </div>
-    );
-  }
-
-  if (commitResponse && !commitResponse.ok) {
-    const candidateStillCurrent = isSequenceCommitRetryable(commitResponse.error.code);
-    return (
-      <div className={`${reviewClassName} fla-stage-g-panel`} data-fla-session-id={sessionId} data-stage-g-state="recovery" data-testid="fla-frame-sequence-review">
-        <FlaStageGRecovery
-          candidateStillCurrent={candidateStillCurrent}
-          code={commitResponse.error.code}
-          message={commitResponse.error.message}
-          onClose={close}
-          onPrimary={() => {
-            if (commitResponse.error.code === 'STALE_SEQUENCE') {
-              void rerenderSequence();
-            } else if (candidateStillCurrent) {
-              void commitSequence();
-            }
-          }}
-          residualPaths={commitResponse.error.residualPaths}
-          route="sequence"
-        />
-      </div>
-    );
-  }
-
-  if (phase === 'committed' && commitResponse?.ok && commitResponse.status === 'completed') {
-    return (
-      <div className={`${reviewClassName} fla-stage-g-panel`} data-fla-session-id={sessionId} data-stage-g-state="success" data-testid="fla-frame-sequence-review">
-        <FlaStageGSequenceSuccess
-          onReturn={close}
-          rangeEnd={endFrameIndex}
-          rangeStart={startFrameIndex}
-          response={commitResponse}
         />
       </div>
     );
@@ -656,7 +719,10 @@ export function FlaFrameSequenceReview({
                 const showException = !entry.previewSupported;
                 return (
                   <li
-                    className={entryTarget.renderTargetId === selectedTargetId ? 'is-selected' : undefined}
+                    className={[
+                      entryTarget.renderTargetId === selectedTargetId ? 'is-selected' : '',
+                      candidate?.selectable ? 'has-import-candidate' : '',
+                    ].filter(Boolean).join(' ')}
                     data-focused={entryTarget.renderTargetId === effectiveFocusedTargetId ? 'true' : 'false'}
                     data-fla-candidate-id={candidate?.identityKey ?? entryTarget.renderTargetId}
                     data-preview-binding-key={candidate?.preview.bindingKey}
@@ -696,6 +762,19 @@ export function FlaFrameSequenceReview({
                         ) : null}
                       </span>
                     </label>
+                    {candidate?.selectable ? (
+                      <label className="fla-frame-sequence-candidate-select">
+                        <input
+                          aria-label={`选择 ${candidate.displayLabel} 帧序列`}
+                          checked={candidate.checked}
+                          data-testid={`fla-frame-sequence-candidate-check-${entryTarget.renderTargetId}`}
+                          disabled={!canSelectSequence}
+                          onChange={() => onToggleCandidate(describeFlaUnifiedCandidate(candidate), !candidate.checked)}
+                          type="checkbox"
+                        />
+                        <span>选择序列</span>
+                      </label>
+                    ) : null}
                     {!entry.previewSupported ? (
                       <button
                       aria-pressed={entryTarget.renderTargetId === effectiveFocusedTargetId}
@@ -911,22 +990,8 @@ export function FlaFrameSequenceReview({
             </output>
           ) : null}
           {errorMessage ? <span role="alert" data-testid="fla-frame-sequence-error">{errorMessage}</span> : null}
-          {phase === 'committed' && commitResponse?.ok && commitResponse.status === 'completed' ? (
-            <span data-testid="fla-frame-sequence-committed">
-              {formatFlaFrameSequenceCommitResult(commitResponse)}
-            </span>
-          ) : null}
         </div>
         <div className="fla-frame-sequence-action-buttons">
-          <button
-            className="fla-frame-sequence-secondary-action"
-            type="button"
-            disabled={intentLocked}
-            onClick={() => void close()}
-            data-testid="fla-frame-sequence-close"
-          >
-            返回
-          </button>
           {canGeneratePhase ? (
             <button
               className="fla-render-primary-action"
@@ -956,17 +1021,6 @@ export function FlaFrameSequenceReview({
               data-testid="fla-frame-sequence-rerender"
             >
               重新生成
-            </button>
-          ) : null}
-          {canImport ? (
-            <button
-              type="button"
-              className="fla-render-primary-action fla-frame-sequence-import"
-              disabled={!canImport}
-              onClick={() => void commitSequence()}
-              data-testid="fla-frame-sequence-import"
-            >
-              导入帧序列
             </button>
           ) : null}
         </div>

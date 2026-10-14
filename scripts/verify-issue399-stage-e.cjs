@@ -146,7 +146,7 @@ async function waitForMainWindow() {
 }
 
 async function captureScreenshotAtMarker(mainWindow, marker, outputPath, pathState) {
-  const deadline = Date.now() + 60_000;
+  const deadline = Date.now() + 180_000;
   while (Date.now() < deadline) {
     if (pathState?.error) throw pathState.error;
     const currentMarker = await mainWindow.webContents.executeJavaScript(
@@ -448,7 +448,7 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName, { manualAc
       };
 
       const reviewState = () => document.querySelector('[data-testid="fla-frame-sequence-review"]')?.getAttribute('data-preview-state') ?? '';
-      const importButtonCount = () => document.querySelectorAll('[data-testid="fla-frame-sequence-import"]').length;
+      const importButtonCount = () => document.querySelectorAll('[data-testid^="fla-frame-sequence-candidate-check-"]:checked').length;
       const readRangeState = () => {
         const startInput = document.querySelector('[data-testid="fla-frame-sequence-start"]');
         const endInput = document.querySelector('[data-testid="fla-frame-sequence-end"]');
@@ -480,8 +480,12 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName, { manualAc
         };
       };
       const importButtonEnabled = () => {
-        const button = document.querySelector('[data-testid="fla-frame-sequence-import"]');
+        const button = document.querySelector('[data-testid="fla-unified-import"]');
         return button instanceof HTMLButtonElement && !button.disabled;
+      };
+      const sequenceCandidateSelectable = () => {
+        const checkbox = document.querySelector('[data-testid^="fla-frame-sequence-candidate-check-"]');
+        return checkbox instanceof HTMLInputElement && !checkbox.disabled && !checkbox.checked;
       };
       const isViewportVisible = (rect) => Boolean(
         rect && rect.top >= -1 && rect.bottom <= window.innerHeight + 1 &&
@@ -595,8 +599,8 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName, { manualAc
       await waitFor('[data-testid="fla-frame-sequence-range"]');
       await delay(1_000);
       const modeSwitchPassed = modeBefore === 'sequence' &&
-        document.querySelector('[data-testid="fla-snapshot-review"]') === null &&
-        document.querySelector('[data-testid="fla-frame-sequence-review"]') !== null &&
+        document.querySelector('[data-testid="fla-unified-snapshot-panel"]')?.hidden === true &&
+        document.querySelector('[data-testid="fla-unified-sequence-panel"]')?.hidden === false &&
         document.querySelector('[data-testid="fla-render-mode-sequence"]')?.getAttribute('aria-selected') === 'true';
 
       const firstRadio = supportedRadios()[0];
@@ -701,7 +705,8 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName, { manualAc
         filmstripCount: orderedIndices.length,
         ordered: orderedIndices.every((value, index) => value === index),
         importEnabled: importButtonEnabled(),
-        onePrimaryAction: readLayout().primaryActionCount === 1,
+        candidateSelectable: sequenceCandidateSelectable(),
+        onePrimaryAction: document.querySelectorAll('[data-testid="fla-unified-import"]').length === 1,
       };
 
       const filmstrip = document.querySelector('[data-testid="fla-frame-sequence-filmstrip"]');
@@ -729,7 +734,7 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName, { manualAc
       );
       const focusOnly = readProjectState().assetCount === beforeFocus.assetCount &&
         readProjectState().maxRevision === beforeFocus.maxRevision &&
-        importButtonEnabled() &&
+        sequenceCandidateSelectable() && !importButtonEnabled() &&
         (document.querySelector('[data-testid="fla-frame-sequence-preview-image"]')?.getAttribute('alt') ?? '').includes('24');
 
       await setControlledInput('[data-testid="fla-frame-sequence-end"]', '22');
@@ -808,10 +813,18 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName, { manualAc
       await waitFor('[data-testid="fla-frame-sequence-filmstrip-item-23"]');
 
       const beforeImport = readProjectState();
+      const sequenceCheck = await waitFor('[data-testid^="fla-frame-sequence-candidate-check-"]', (element) =>
+        element instanceof HTMLInputElement && !element.disabled && !element.checked,
+      );
+      sequenceCheck.click();
+      await waitFor('[data-testid="fla-unified-import"]', (element) =>
+        element instanceof HTMLButtonElement && !element.disabled,
+      );
       const finalSequenceReady = reviewState() === 'valid' && importButtonEnabled() &&
+        importButtonCount() === 1 &&
         document.querySelectorAll('[data-testid^="fla-frame-sequence-filmstrip-item-"]').length === 24;
-      click('[data-testid="fla-frame-sequence-import"]');
-      await waitFor('[data-testid="fla-frame-sequence-committed"], [data-testid="fla-stage-g-sequence-success"]');
+      click('[data-testid="fla-unified-import"]');
+      await waitFor('[data-testid="fla-unified-import-counts"]');
       await delay(500);
       const afterImport = readProjectState();
       const zeroRasterSequenceRoute = document.querySelector('[data-testid="fla-review-zero-raster"]') !== null;
@@ -820,12 +833,8 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName, { manualAc
         : null;
       const revisionAdvanced = afterImport.maxRevision !== null &&
         (beforeImport.maxRevision === null || afterImport.maxRevision > beforeImport.maxRevision);
-      const committedText = document.querySelector('[data-testid="fla-frame-sequence-committed"], [data-testid="fla-stage-g-sequence-success"]')?.textContent?.trim() ?? '';
-      if (document.querySelector('[data-testid="fla-stage-g-return-library"]')) {
-        click('[data-testid="fla-stage-g-return-library"]');
-      } else {
-        click('[data-testid="fla-frame-sequence-close"]');
-      }
+      const committedText = document.querySelector('[data-testid="fla-unified-import-counts"]')?.textContent?.trim() ?? '';
+      click('[data-testid="fla-review-cancel"]');
       await waitFor('[data-testid="asset-browser-view"]');
       const libraryAfterClose = readProjectState();
 
@@ -849,7 +858,7 @@ async function runStageEPath(mainWindow, acceptanceRoot, projectName, { manualAc
         renderingPrimaryAction,
         cancelWorks,
         validRender: validRender.state === 'valid' && validRender.previewVisible && validRender.filmstripCount === 24 &&
-          validRender.ordered && validRender.importEnabled && validRender.onePrimaryAction,
+          validRender.ordered && !validRender.importEnabled && validRender.candidateSelectable && validRender.onePrimaryAction,
         filmstripBounded,
         firstFilmstripFrameReachable: firstFrameVisible,
         lastFilmstripFrameReachable: lastFrameVisible,

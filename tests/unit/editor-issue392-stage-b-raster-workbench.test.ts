@@ -34,8 +34,9 @@ describe('Issue #392 Stage B v1.1 raster review workbench contract', () => {
     expect(component).toContain('data-testid={`fla-review-filter-${filter}`}');
     expect(component).toContain('data-testid="fla-review-search"');
     expect(component).toContain("filterFlaReviewMedia(reviewItems, rasterFilter, rasterSearch, selectedMediaIds)");
-    expect(component).toContain('checkFlaWorkbenchCandidates(current, rasterCandidates)');
-    expect(component).toContain('clearFlaWorkbenchChecks(current)');
+    expect(component).toContain('checkUnifiedCandidates(rasterCandidates.map(describeFlaUnifiedCandidate))');
+    expect(component).toContain('clearUnifiedCandidates(rasterCandidates');
+    expect(component).toContain('.map(flaUnifiedCandidateSelectionKey)');
     expect(component).toContain('selection: rasterSelection');
     expect(component).toContain('pagedReviewItems.map((item) =>');
     expect(component).toContain('reconcileFlaWorkbenchFocus(');
@@ -57,14 +58,15 @@ describe('Issue #392 Stage B v1.1 raster review workbench contract', () => {
     expect(component).toContain('data-testid="fla-review-detail-warnings"');
   });
 
-  it('keeps the bottom bar task-focused with one confirmation action and a separate commit boundary', () => {
-    expect(component).toContain('data-testid="fla-review-action-cancel"');
-    expect(component).toContain('{selectedCount} 项将进入确认步骤');
+  it('keeps one common import action and preserves the existing Main commit boundary', () => {
+    expect(component).toContain('data-testid="fla-unified-import-action-bar"');
+    expect(component).toContain('data-testid="fla-unified-import"');
+    expect(component).toContain('${selectedUnifiedItems.length} 项已选');
     expect(component).toContain('className="fla-review-primary-action"');
-    expect(component).toContain('确认 {selectedCount} 项');
-    expect(component).toContain('createFlaRasterSelectionIntent');
+    expect(component).toContain('runFlaUnifiedImport({');
     expect(component).toContain('window.pandaStage.fla.commitSelected');
     expect(component).toContain('confirmed: true');
+    expect(component).not.toContain('data-testid="fla-review-confirm"');
     expect(component).not.toContain('updateProject');
     expect(component).not.toContain('window.pandaStage.assets');
   });

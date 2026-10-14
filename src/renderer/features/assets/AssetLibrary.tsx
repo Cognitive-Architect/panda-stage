@@ -692,7 +692,6 @@ export function AssetLibrary({
             );
             setStatus(outcome.status);
           }}
-          onIntent={() => setStatus('已确认 FLA 素材选择；尚未创建项目素材。')}
           snapshot={snapshot}
         />
       ) : (

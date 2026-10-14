@@ -49,11 +49,12 @@ describe('FLA Slice 2 review UX contract', () => {
 
   it('uses one primary review-body scroll and keeps the action row out of that scroll', () => {
     expect(component).toContain('data-testid="fla-review-header"');
-    expect(component).toContain('data-testid="fla-review-selection-toolbar"');
+    expect(component).toContain('data-testid="fla-unified-import-action-bar"');
     expect(component).toContain('data-testid="fla-review-body"');
     expect(component.indexOf('data-testid="fla-review-body"')).toBeLessThan(
-      component.indexOf('data-testid="fla-review-selection-toolbar"'),
+      component.indexOf('data-testid="fla-unified-import-action-bar"'),
     );
+    expect(component).not.toContain('data-testid="fla-review-selection-toolbar"');
     expect(issue255Styles).toMatch(
       /\.fla-review-portal \.fla-review-session\s*\{[\s\S]*?grid-template-rows:\s*auto auto auto minmax\(0, 1fr\);/u,
     );
@@ -71,27 +72,30 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(component).toContain('查看兼容性说明');
     expect(component).toContain('data-testid="fla-compatibility-warnings"');
     expect(component).toContain('FLA_COMPATIBILITY_LABELS[status]');
-    expect(component).toContain('data-testid="fla-review-selected-count"');
+    expect(component).toContain('data-testid="fla-unified-import-selected-count"');
+    expect(component).not.toContain('data-testid="fla-review-selected-count"');
     expect(component).toContain('data-testid="fla-review-select-all"');
     expect(component).toContain('data-testid="fla-review-clear-all"');
-    expect(component).toContain('data-testid="fla-review-confirm"');
+    expect(component).toContain('data-testid="fla-unified-import"');
     expect(component).toContain('data-testid="fla-review-cancel"');
     expect(issue255Styles).toContain('.fla-review-compatibility-notes summary');
     expect(component).not.toContain('window.pandaStage.assets');
     expect(component).not.toContain('updateProject');
   });
 
-  it('keeps Slice 3 commit as a separate explicit state-bound action', () => {
+  it('uses one explicit cross-route action and records per-candidate outcomes', () => {
+    expect(component).toContain('runFlaUnifiedImport({');
     expect(component).toContain('commitSelected');
     expect(component).toContain('confirmed: true');
-    expect(component).toContain('data-testid="fla-review-commit-action"');
-    expect(component).toContain('className="fla-review-commit-primary fla-review-primary-action"');
-    expect(component).toContain('data-testid="fla-review-commit"');
-    expect(component).toContain('data-testid="fla-review-commit-status"');
-    expect(component).toContain('data-testid="fla-review-commit-success"');
-    expect(component).toContain('data-imported-count={commitResponse.summary.importedCount}');
-    expect(component).toContain('data-duplicate-count={commitResponse.summary.duplicateCount}');
-    expect(component).toContain('data-renamed-count={commitResponse.summary.renamedCount}');
+    expect(component).toContain('data-testid="fla-unified-import"');
+    expect(component).toContain('data-testid="fla-unified-import-counts"');
+    expect(component).toContain('data-testid="fla-unified-import-items"');
+    expect(component).toContain('data-base-revision={item.baseRevision}');
+    expect(component).toContain('data-saved-revision={item.savedRevision}');
+    expect(component).toContain('项目版本 {item.baseRevision} → {item.savedRevision}');
+    expect(component).not.toContain('data-testid="fla-review-confirm"');
+    expect(component).not.toContain('data-testid="fla-snapshot-import"');
+    expect(component).not.toContain('data-testid="fla-frame-sequence-import"');
     expect(component).toContain("phase === 'committing'");
     expect(component).not.toContain('window.pandaStage.assets');
     expect(issue255Styles).toContain('.fla-review-commit-action');
@@ -101,10 +105,9 @@ describe('FLA Slice 2 review UX contract', () => {
   it('uses Chinese-first copy for the normal review surface', () => {
     expect(component).toContain('FLA 兼容性预览');
     expect(component).toContain('取消');
-    expect(component).toContain('项将进入确认步骤');
+    expect(component).toContain('项已选');
     expect(component).toContain('全选');
     expect(component).toContain('清空');
-    expect(component).toContain('确认选择');
     expect(component).toContain('FLA 文件 · 只读预览');
     expect(component).not.toContain('在确认导入前，不会修改项目或原文件。');
     expect(stageA).toContain('正在检查 FLA');
@@ -156,7 +159,7 @@ describe('FLA Slice 2 review UX contract', () => {
     expect(component).not.toContain('<dt>SHA-256</dt>');
     expect(component).not.toContain('<code>{media.id}</code>');
     expect(component).not.toContain('requestId ?');
-    expect(component).toContain('createFlaRasterSelectionIntent');
+    expect(component).toContain('describeFlaUnifiedCandidate(candidate)');
     expect(component).toContain('sessionId');
     expect(reviewModel).toContain('sha256: ir.source.sha256');
     expect(reviewModel).toContain('sessionId,');

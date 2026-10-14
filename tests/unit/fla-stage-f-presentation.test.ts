@@ -143,7 +143,7 @@ describe('Issue #402 integration/source contracts', () => {
 
   it('keeps F2 focus separate from R1/R2 target selection and uses the existing discovery boundary', () => {
     expect(snapshot).toContain('candidateSelection.focusedCandidateId');
-    expect(snapshot).toContain('candidateSelection.checkedCandidateIds');
+    expect(snapshot).toContain('checkedCandidateKeys.has(flaUnifiedCandidateSelectionKey(candidate))');
     expect(snapshot).toContain('<FlaStageF2UnavailableDetails');
     expect(sequence).toContain('focusedTargetId');
     expect(sequence).toContain('fla-frame-sequence-f2-focus-');
@@ -169,20 +169,23 @@ describe('Issue #402 integration/source contracts', () => {
     expect(styles).toContain('.fla-raster-overview .fla-review-compatibility > *');
   });
 
-  it('keeps the Stage B hierarchy deletion-first with centered progress and one compatibility row', () => {
+  it('keeps the Stage B hierarchy deletion-first with shared import progress and one compatibility row', () => {
     const headerStart = session.indexOf(
       '<header className="fla-review-heading fla-raster-review-heading"',
     );
     const headerEnd = session.indexOf('</header>', headerStart);
     const rasterHeader = session.slice(headerStart, headerEnd);
-    const headingCopyEnd = rasterHeader.indexOf('</div>');
     const progressStart = rasterHeader.indexOf(
       '<ol aria-label="导入进度" className="fla-workbench-progress"',
     );
 
     expect(headerStart).toBeGreaterThanOrEqual(0);
     expect(headerEnd).toBeGreaterThan(headerStart);
-    expect(progressStart).toBeGreaterThan(headingCopyEnd);
+    expect(progressStart).toBe(-1);
+    expect(session.indexOf('data-testid="fla-review-body"')).toBeLessThan(
+      session.indexOf('data-testid="fla-unified-import-action-bar"'),
+    );
+    expect(session).toContain('data-testid="fla-unified-import-progress"');
     expect(rasterHeader).not.toContain('只读导入预览');
     expect(rasterHeader).not.toContain('eyebrow');
     expect(session).not.toContain('className="fla-raster-readonly-badge"');

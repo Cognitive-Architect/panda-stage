@@ -36,7 +36,9 @@ describe('Issue #396 Stage D render workbench contract', () => {
     expect(shell).toContain('data-testid="fla-render-mode-sequence"');
     expect(shell).toContain('role="tablist"');
     expect(shell).toContain('role="tabpanel"');
-    expect(session).toContain("renderMode === 'snapshot'");
+    expect(session).toContain('snapshotWorkbenchMounted ? (');
+    expect(session).toContain('hidden={renderMode !== \'snapshot\'}');
+    expect(session).toContain('hidden={renderMode !== \'sequence\'}');
     expect(session).toContain('<FlaStaticSnapshotReview');
     expect(session).toContain('<FlaFrameSequenceReview');
     expect(session).toContain('embedded');
@@ -101,7 +103,7 @@ describe('Issue #396 Stage D render workbench contract', () => {
     expect(snapshot).toContain('focusedPreview?.key === effectiveFocusedCandidateIdentityKey');
     expect(snapshot).toContain('data-focused={focused ?');
     expect(snapshot).toContain('当前筛选无可预览素材');
-    expect(snapshot).toContain('candidateSelection.checkedCandidateIds');
+    expect(snapshot).toContain('checkedCandidateKeys.has(flaUnifiedCandidateSelectionKey(candidate))');
     expect(snapshot).toContain('candidate?.checked ?? false');
   });
 
