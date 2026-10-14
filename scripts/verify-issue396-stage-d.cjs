@@ -3,8 +3,8 @@
  * Issue #398 real Windows/Electron Stage D deletion-first acceptance.
  *
  * The verifier creates an external zero-raster FLA/XFL sample with a long
- * render-target list and drives the production renderer through the shared
- * R1/R2 workbench. The receipt records bounded UI/project metadata only;
+ * render-target list and drives the production renderer through the C03
+ * unified workbench. The receipt records bounded UI/project metadata only;
  * source and rendered visual bytes remain outside the repository. Layout
  * screenshots are written to the caller-provided acceptance directory.
  */
@@ -360,8 +360,8 @@ function delay(ms) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 }
 
-function buildSymbolXml(symbolName, color, offset) {
-  const frames = [0].map((frameIndex) => `
+function buildSymbolXml(symbolName, color, offset, frameCount = 1) {
+  const frames = Array.from({ length: frameCount }, (_, frameIndex) => `
             <DOMFrame index="${frameIndex}">
               <DOMGroup>
                 <matrix><Matrix a="2" d="2" tx="${offset + frameIndex * 8}" ty="20"/></matrix>
@@ -419,7 +419,12 @@ async function writeSyntheticZeroRasterFla(sourcePath) {
   targetNames.forEach((targetName, index) => {
     zip.file(
       `LIBRARY/${targetName}.xml`,
-      buildSymbolXml(targetName, index % 2 === 0 ? '#3d9b62' : '#4d82c4', index * 3),
+      buildSymbolXml(
+        targetName,
+        index % 2 === 0 ? '#3d9b62' : '#4d82c4',
+        index * 3,
+        index === SYNTHETIC_TARGET_COUNT - 1 ? 3 : 1,
+      ),
     );
   });
   const bytes = await zip.generateAsync({ type: 'nodebuffer' });
@@ -723,7 +728,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       };
 
       const waitForSnapshotTargets = async (timeoutMs = 60_000) => {
-        await waitFor('[data-testid="fla-render-workbench"]', () => true, timeoutMs);
+        await waitFor('[data-testid="fla-c03-workbench"]', () => true, timeoutMs);
         const startedAt = performance.now();
         const deadline = startedAt + timeoutMs;
         let lastProgressText = null;
@@ -731,13 +736,18 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         while (performance.now() < deadline) {
           const review = document.querySelector('[data-testid="fla-snapshot-review"]');
           const reviewState = review?.getAttribute('data-preview-state') ?? '';
-          const progressText = document.querySelector('[data-testid="fla-snapshot-action-state"]')?.textContent?.trim() ?? '';
+          const progressText = document.querySelector('[data-testid="fla-c03-catalog-progress"]')?.textContent?.trim() ?? '';
+          const candidates = [...document.querySelectorAll(
+            '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="snapshot"]',
+          )];
+          const candidateCount = candidates.length;
+          const selectableCount = candidates.filter((candidate) => candidate.getAttribute('data-selectable') === 'true').length;
           if (progressText && progressText !== lastProgressText) {
             const match = progressText.match(/[0-9]+/gu);
             const sample = {
               elapsedMs: performance.now() - startedAt,
               progress: match ? Number(match[0]) : null,
-              candidateCount: match && match.length > 1 ? Number(match[1]) : null,
+              candidateCount,
               text: progressText,
             };
             progressSamples.push(sample);
@@ -746,31 +756,29 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           }
           if (reviewState === 'error') {
             const message = document.querySelector('[data-testid="fla-snapshot-error"]')?.textContent?.trim() ?? 'unknown scan error';
-            const targetList = document.querySelector('[data-testid="fla-snapshot-targets"]');
             const error = new Error('Snapshot review entered error state: ' + message);
             error.issue762ScanMeasurement = {
               failureKind: 'review-error',
               scanDurationMs: Math.round(performance.now() - startedAt),
-              candidateCount: targetList?.querySelectorAll('input[type="checkbox"]').length ?? 0,
+              candidateCount,
               progressSamples,
             };
             throw error;
           }
-          const targetList = document.querySelector('[data-testid="fla-snapshot-targets"]');
-          const candidateCount = targetList?.querySelectorAll('input[type="checkbox"]').length ?? 0;
-          if (reviewState === 'ready' && candidateCount > 0) {
+          if (reviewState === 'ready' && candidateCount >= 25 && selectableCount >= 25) {
             const durationMs = performance.now() - startedAt;
-            recordIssue762Profile('ui.scan.ready-state', durationMs, { candidateCount });
+            recordIssue762Profile('ui.scan.ready-state', durationMs, { candidateCount, selectableCount });
             return { candidateCount, durationMs, progressSamples };
           }
           await new Promise((resolvePromise) => setTimeout(resolvePromise, 250));
         }
-        const targetList = document.querySelector('[data-testid="fla-snapshot-targets"]');
         const error = new Error('Timed out waiting for snapshot review ready state after ' + timeoutMs + ' ms');
         error.issue762ScanMeasurement = {
           failureKind: 'ready-timeout',
           scanDurationMs: Math.round(performance.now() - startedAt),
-          candidateCount: targetList?.querySelectorAll('input[type="checkbox"]').length ?? 0,
+          candidateCount: document.querySelectorAll(
+            '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="snapshot"]',
+          ).length,
           progressSamples,
         };
         throw error;
@@ -815,7 +823,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         const sourceOpenStartedAt = performance.now();
         recordIssue766Mark('workbench-open-action-click');
         action.click();
-        await waitFor('[data-testid="fla-review-zero-raster"]', () => true, timeoutMs);
+        await waitFor('[data-testid="fla-c03-workbench"]', () => true, timeoutMs);
         recordIssue762Profile('ui.source.open-action-to-review', performance.now() - sourceOpenStartedAt, {
           sourceSelection: 'PANDA_STAGE_FLA_ACCEPTANCE_SOURCE',
         });
@@ -829,7 +837,9 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           scanStartedAt = await clickStageDAction(timeoutMs);
           const scanReadiness = await waitForSnapshotTargets(timeoutMs);
           const scanDurationMs = Math.round(performance.now() - scanStartedAt);
-          const candidates = document.querySelectorAll('[data-testid="fla-snapshot-targets"] input[type="checkbox"]');
+          const candidates = document.querySelectorAll(
+            '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="snapshot"]',
+          );
           recordIssue762Profile('ui.scan.total', scanDurationMs, {
             candidateCount: candidates.length,
             progressSampleCount: scanReadiness.progressSamples.length,
@@ -844,7 +854,9 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         } catch (caught) {
           const error = caught instanceof Error ? caught : new Error(String(caught));
           const partial = error.issue762ScanMeasurement ?? {};
-          const candidates = document.querySelectorAll('[data-testid="fla-snapshot-targets"] input[type="checkbox"]');
+          const candidates = document.querySelectorAll(
+            '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="snapshot"]',
+          );
           const candidateCount = Number.isInteger(partial.candidateCount) ? partial.candidateCount : candidates.length;
           const elapsedFromActionMs = Math.round(performance.now() - actionStartedAt);
           const issue762ScanMeasurement = {
@@ -877,7 +889,9 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         const scanProgress = Number(
           document.querySelector('[data-testid="fla-snapshot-scan-progress"]')?.textContent?.match(/[0-9]+/u)?.[0] ?? 0,
         );
-        const candidateCount = document.querySelectorAll('[data-testid="fla-snapshot-targets"] input[type="checkbox"]').length;
+        const candidateCount = document.querySelectorAll(
+          '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="snapshot"]',
+        ).length;
         click('[data-testid="fla-review-cancel"]');
         await waitFor('[data-testid="asset-browser-view"]');
         const after = readProjectState();
@@ -893,6 +907,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
 
       const readFullPreview = (image) => ({
         alt: image.alt,
+        renderTargetId: image.getAttribute('data-render-target-id'),
         naturalWidth: image.naturalWidth,
         naturalHeight: image.naturalHeight,
         generatedWidth: Number(image.getAttribute('data-preview-width')),
@@ -910,9 +925,13 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
 
       const rapidFocusAndCheck = async () => {
         const buttons = [...document.querySelectorAll(
-          '[data-testid="fla-snapshot-targets"] .fla-snapshot-candidate-row[data-preview-supported="true"] .fla-snapshot-candidate-focus',
+          '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="snapshot"][data-selectable="true"] .fla-c03-candidate-focus',
         )].slice(0, 3);
         if (buttons.length < 3) return { ok: false, focusedCount: buttons.length, preview: null };
+        const expectedIdentity = buttons[2].closest('li')?.getAttribute('data-candidate-identity') ?? '';
+        const sourceRow = [...document.querySelectorAll('[data-fla-candidate-id]')]
+          .find((row) => row.getAttribute('data-fla-candidate-id') === expectedIdentity);
+        const expectedRenderTargetId = sourceRow?.getAttribute('data-render-target-id') ?? '';
         const expectedAlt = buttons[2].querySelector('strong')?.textContent?.trim() ?? '';
         for (const button of buttons) {
           button.click();
@@ -920,12 +939,14 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         }
         const image = await waitForFullPreview(expectedAlt);
         const focusedRow = document.querySelector(
-          '[data-testid="fla-snapshot-targets"] .fla-snapshot-candidate-row[data-focused="true"]',
+          '[data-testid="fla-c03-candidate-grid"] li.is-focused[data-candidate-kind="snapshot"]',
         );
-        const focusedLabel = focusedRow?.querySelector('strong')?.textContent?.trim() ?? '';
+        const focusedLabel = document.querySelector('[data-testid="fla-c03-focused-label"]')?.textContent?.trim() ?? '';
         const metrics = readFullPreview(image);
         return {
-          ok: image.alt === expectedAlt && focusedLabel === expectedAlt &&
+          ok: Boolean(focusedRow) && focusedRow.getAttribute('data-candidate-identity') === expectedIdentity &&
+            image.alt === expectedAlt && image.getAttribute('data-render-target-id') === expectedRenderTargetId &&
+            focusedLabel === expectedAlt &&
             metrics.naturalWidth === metrics.generatedWidth && metrics.naturalHeight === metrics.generatedHeight,
           focusedCount: buttons.length,
           preview: metrics,
@@ -938,38 +959,53 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         remaining: [...observedFlaPreviewUrls].filter((url) => !revokedObjectUrls.has(url)).length,
       });
 
-      const switchModeAndBack = async () => {
-        const sequenceTab = await waitFor('[data-testid="fla-render-mode-sequence"]', (element) => !element.disabled);
-        sequenceTab.click();
-        const sequencePanel = await waitFor('[data-testid="fla-unified-sequence-panel"]', (element) => !element.hidden);
-        await waitFor('[data-testid="fla-frame-sequence-review"]');
-        await waitFor('[data-testid="fla-frame-sequence-range"]');
-        const snapshotPanel = document.querySelector('[data-testid="fla-unified-snapshot-panel"]');
-        const sequenceOnly = !sequencePanel.hidden && snapshotPanel?.hidden === true &&
-          document.querySelector('[data-testid="fla-render-workbench"]')?.getAttribute('data-render-mode') === 'sequence' &&
-          sequenceTab.getAttribute('aria-selected') === 'true';
-        click('[data-testid="fla-render-mode-snapshot"]');
-        await waitFor('[data-testid="fla-unified-snapshot-panel"]', (element) => !element.hidden);
-        await waitForSnapshotTargets();
-        const snapshotTab = document.querySelector('[data-testid="fla-render-mode-snapshot"]');
-        return sequenceOnly && snapshotPanel?.hidden === false && sequencePanel.hidden === true &&
-          document.querySelector('[data-testid="fla-render-workbench"]')?.getAttribute('data-render-mode') === 'snapshot' &&
-          snapshotTab?.getAttribute('aria-selected') === 'true';
+      const focusSequenceAndReturn = async () => {
+        const sequenceButton = await waitFor(
+          '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="sequence"] .fla-c03-candidate-focus',
+        );
+        sequenceButton.click();
+        const sequenceRange = await waitFor(
+          '[data-testid="fla-frame-sequence-range"]',
+          (element) => element.getClientRects().length > 0,
+        );
+        const sequenceSlot = sequenceRange.closest('.fla-c03-preview-controller-slot');
+        const snapshotButton = await waitFor(
+          '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="snapshot"][data-selectable="true"] .fla-c03-candidate-focus',
+        );
+        const expectedAlt = snapshotButton.querySelector('strong')?.textContent?.trim() ?? '';
+        const sequenceControlsVisible = Boolean(sequenceSlot && !sequenceSlot.hidden) &&
+          document.querySelector('[data-testid="fla-frame-sequence-start"]') !== null &&
+          document.querySelector('[data-testid="fla-frame-sequence-render"]') !== null;
+        snapshotButton.click();
+        const snapshotImage = await waitForFullPreview(expectedAlt);
+        const snapshotSlot = snapshotImage.closest('.fla-c03-preview-controller-slot');
+        return sequenceControlsVisible && Boolean(snapshotSlot && !snapshotSlot.hidden) &&
+          sequenceSlot?.hidden === true &&
+          document.querySelector('[data-testid="fla-c03-focused-label"]')?.textContent?.trim() === expectedAlt;
       };
 
       const selectTwoCandidates = async () => {
-        const candidates = [...document.querySelectorAll(
-          '[data-testid="fla-snapshot-targets"] li[data-duplicate="true"] input[type="checkbox"]:not(:disabled)',
+        const duplicateRows = [...document.querySelectorAll(
+          '[data-testid="fla-snapshot-targets"] li[data-duplicate="true"] .fla-snapshot-candidate-row',
         )];
+        const duplicateIdentities = duplicateRows
+          .map((row) => row.getAttribute('data-fla-candidate-id'))
+          .filter(Boolean);
+        const candidates = duplicateIdentities.map((identity) => {
+          const row = [...document.querySelectorAll(
+            '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="snapshot"]',
+          )].find((candidate) => candidate.getAttribute('data-candidate-identity') === identity);
+          return row?.querySelector('input[type="checkbox"]');
+        }).filter((input) => input instanceof HTMLInputElement && !input.disabled);
         if (candidates.length < 2) {
-          throw new Error('Expected at least two source identities in an exact-duplicate group, got ' + candidates.length);
+          throw new Error('Expected two selectable C03 candidates from an exact-duplicate source group, got ' + candidates.length);
         }
         candidates[0].click();
         await new Promise((resolvePromise) => setTimeout(resolvePromise, 80));
         candidates[1].click();
         await new Promise((resolvePromise) => setTimeout(resolvePromise, 80));
         const selectedCount = document.querySelectorAll(
-          '[data-testid="fla-snapshot-targets"] input[type="checkbox"]:checked',
+          '[data-testid="fla-c03-candidate-grid"] input[type="checkbox"]:checked',
         ).length;
         return {
           selectedCount,
@@ -1019,10 +1055,10 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           issue762RunState.uiResponsiveness = uiResponsiveness;
         }
         const supportedFocusButtons = [...document.querySelectorAll(
-          '[data-testid="fla-snapshot-targets"] .fla-snapshot-candidate-row[data-preview-supported="true"] .fla-snapshot-candidate-focus',
+          '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="snapshot"][data-selectable="true"] .fla-c03-candidate-focus',
         )];
         const unfocusedFocusButton = supportedFocusButtons.find((button) =>
-          button.closest('.fla-snapshot-candidate-row')?.getAttribute('data-focused') !== 'true',
+          !button.closest('li')?.classList.contains('is-focused'),
         );
         const previewButtons = issue762Profile
           ? [unfocusedFocusButton ?? supportedFocusButtons[0]].filter(Boolean)
@@ -1043,7 +1079,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           const preview = readFullPreview(image);
           previewMeasurements.push(preview);
           recordIssue762Profile('ui.focused.full-resolution-preview', performance.now() - focusedPreviewStartedAt, {
-            candidateRowTestId: button.closest('.fla-snapshot-candidate-row')?.getAttribute('data-testid') ?? null,
+            candidateRowTestId: button.getAttribute('data-testid'),
             previousPreviewSrcPresent: previousPreviewSrc !== null,
             previewSourceChanged: previousPreviewSrc === null || image.getAttribute('src') !== previousPreviewSrc,
             width: preview.naturalWidth,
@@ -1057,7 +1093,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         let commitMeasurement = null;
         if (profileCommit) {
           const firstSupportedRow = document.querySelector(
-            '[data-testid="fla-snapshot-targets"] .fla-snapshot-candidate-row[data-preview-supported="true"]',
+            '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="snapshot"][data-selectable="true"]',
           );
           const firstSupportedCheckbox = firstSupportedRow?.querySelector('input[type="checkbox"]');
           if (!(firstSupportedCheckbox instanceof HTMLInputElement) || firstSupportedCheckbox.disabled) {
@@ -1174,24 +1210,20 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         child && parent && child.top >= parent.top - 1 && child.bottom <= parent.bottom + 1,
       );
       const readLayout = () => {
-        const targetList = document.querySelector('[data-testid="fla-snapshot-targets"]');
+        const targetList = document.querySelector('[data-testid="fla-c03-candidate-grid"]');
         const targetRows = targetList
-          ? [...targetList.querySelectorAll('input[type="checkbox"]')]
-            .map((input) => input.closest('.fla-snapshot-candidate-row'))
-            .filter(Boolean)
+          ? [...targetList.querySelectorAll('li[data-candidate-kind]')]
           : [];
         const firstTarget = targetRows[0] ?? null;
         const lastTarget = targetRows[targetRows.length - 1] ?? null;
-        const reviewBody = document.querySelector('[data-testid="fla-review-body"]');
         const listStyle = targetList ? getComputedStyle(targetList) : null;
-        const bodyStyle = reviewBody ? getComputedStyle(reviewBody) : null;
         return {
           viewport: { width: window.innerWidth, height: window.innerHeight },
           session: rectData(document.querySelector('[data-testid="fla-review-session"]')),
-          workbench: rectData(document.querySelector('[data-testid="fla-render-workbench"]')),
-          header: rectData(document.querySelector('[data-testid="fla-render-workbench-header"]')),
-          preview: rectData(document.querySelector('[data-testid="fla-snapshot-preview-area"]')),
-          actionBar: rectData(document.querySelector('[data-testid="fla-unified-import-action-bar"]')),
+          workbench: rectData(document.querySelector('[data-testid="fla-c03-workbench"]')),
+          header: rectData(document.querySelector('[data-testid="fla-review-header"]')),
+          preview: rectData(document.querySelector('[data-testid="fla-c03-preview"]')),
+          actionBar: rectData(document.querySelector('[data-testid="fla-c03-import-footer"]')),
           targetList: {
             rect: rectData(targetList),
             scrollHeight: targetList?.scrollHeight ?? 0,
@@ -1202,23 +1234,21 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
             lastTarget: rectData(lastTarget),
             rowCount: targetRows.length,
           },
-          reviewBody: {
-            rect: rectData(reviewBody),
-            scrollHeight: reviewBody?.scrollHeight ?? 0,
-            clientHeight: reviewBody?.clientHeight ?? 0,
-            overflowY: bodyStyle?.overflowY ?? '',
-          },
           documentScrollHeight: document.documentElement.scrollHeight,
           documentClientHeight: document.documentElement.clientHeight,
           primaryActionCount: document.querySelectorAll(
-            '[data-testid="fla-unified-import-action-bar"] [data-testid="fla-unified-import"]',
+            '[data-testid="fla-c03-import-footer"] [data-testid="fla-unified-import"]',
           ).length,
         };
       };
 
-      const workbenchText = document.querySelector('[data-testid="fla-render-workbench"]')?.textContent ?? '';
       const stageFactsText = document.querySelector('[data-testid="fla-snapshot-source-facts"]')?.textContent ?? '';
-      const targetCount = Number((document.querySelector('[data-testid="fla-snapshot-target-count"]')?.textContent ?? '').match(/\\d+/u)?.[0] ?? 0);
+      const targetCount = document.querySelectorAll(
+        '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="snapshot"]',
+      ).length;
+      const candidateGridCount = document.querySelectorAll(
+        '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind]',
+      ).length;
       const candidateSourceRowCount = document.querySelectorAll(
         '[data-testid="fla-snapshot-targets"] .fla-snapshot-candidate-row',
       ).length;
@@ -1227,77 +1257,84 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       )].reduce((total, label) => total + Number(label.textContent?.match(/[0-9]+/u)?.[0] ?? 0), 0);
       const duplicateGroupPreservesSourceIdentity = duplicateGroupSourceCount > 0 &&
         duplicateGroupSourceCount === candidateSourceRowCount && candidateSourceRowCount === targetCount;
-      const reviewBodyText = document.querySelector('[data-testid="fla-review-body"]')?.textContent ?? '';
+      const reviewBodyText = document.querySelector('[data-testid="fla-review-session"]')?.textContent ?? '';
       const defaultDetailsText = [
         document.querySelector('[data-testid="fla-snapshot-details"]')?.textContent ?? '',
         document.querySelector('[data-testid="fla-snapshot-candidate-summary"]')?.textContent ?? '',
       ].join(' ');
       const defaultHashHidden = !defaultDetailsText.includes('预览去重') &&
         !/SHA[- ]?256/iu.test(defaultDetailsText) && !/[0-9a-f]{12}/iu.test(defaultDetailsText);
-      const sourceBasename = document.querySelector('[data-testid="fla-render-workbench-source"] strong')?.textContent?.trim() ?? '';
+      const sourceBasename = document.querySelector('[data-testid="fla-review-header"] h1')?.textContent?.trim() ?? '';
       const countOccurrences = (value, needle) => needle ? value.split(needle).length - 1 : 0;
       const noRasterChrome = document.querySelectorAll(
         '[data-testid="fla-review-select-all"], [data-testid="fla-review-clear-all"], [data-testid="fla-review-selection-toolbar"]',
       ).length === 0;
-      const zeroRasterRoute = document.querySelector('[data-workbench-route="render"]') !== null &&
-        document.querySelector('[data-testid="fla-render-workbench"]') !== null &&
+      const zeroRasterRoute = document.querySelector('[data-workbench-route="unified"]') !== null &&
+        document.querySelector('[data-testid="fla-c03-workbench"]') !== null &&
         document.querySelector('[data-testid="fla-review-zero-raster-summary"]') === null;
       const deletionChecks = {
-        unifiedImportShellVisible: document.querySelector('[data-workbench-route="render"] [data-testid="fla-review-header"]')?.textContent?.includes('FLA 导入工作台') === true &&
-          document.querySelectorAll('[data-testid="fla-import-workbench-tabs"] [role="tab"]').length === 2 &&
-          document.querySelector('[data-testid="fla-workbench-tab-compositions"]')?.getAttribute('aria-selected') === 'true',
+        unifiedImportShellVisible: document.querySelector('[data-workbench-route="unified"] [data-testid="fla-review-header"]') !== null &&
+          document.querySelector('[data-testid="fla-c03-workbench"]') !== null &&
+          document.querySelector('[data-testid="fla-c03-candidate-grid"]') !== null &&
+          document.querySelector('[data-testid="fla-c03-import-footer"]') !== null,
+        retiredRenderTabsRemoved: document.querySelectorAll(
+          '[data-testid^="fla-render-mode-"], [data-testid="fla-import-workbench-tabs"] [role="tab"]',
+        ).length === 0,
         genericRecoveryNoticeRemoved: document.querySelector('[data-testid="fla-review-recovery-notice"]') === null,
         zeroRasterSummaryRemoved: document.querySelector('[data-testid="fla-review-zero-raster-summary"]') === null,
         sourceFilenameSingle: sourceBasename.length > 0 && countOccurrences(reviewBodyText, sourceBasename) === 1,
-        readOnlySafetySingle: countOccurrences(reviewBodyText, '只读') === 1 && !reviewBodyText.includes('源 FLA 保持不变'),
         targetCountSingle: document.querySelectorAll('[data-testid="fla-snapshot-target-count"]').length === 1 &&
           document.querySelectorAll('[data-testid="fla-snapshot-visible-target-count"]').length === 0,
-        candidateSummaryVisible: document.querySelectorAll('[data-testid="fla-snapshot-candidate-summary"] dd').length === 4 &&
-          document.querySelector('[data-testid="fla-snapshot-details"]') !== null,
+        candidateSummaryVisible: document.querySelector('[data-testid="fla-unified-import-selected-count"]') !== null &&
+          document.querySelector('[data-testid="fla-c03-focused-label"]') !== null,
         moreDetailsCollapsed: document.querySelector('[data-testid="fla-snapshot-compatibility-details"]')?.hasAttribute('open') === false,
         defaultExplanatoryBlocksRemoved: document.querySelectorAll(
           '[data-testid="fla-review-zero-raster-summary"], [data-testid="fla-snapshot-zero-raster"], [data-testid="fla-snapshot-readonly-note"], [data-testid="fla-snapshot-fidelity"]',
         ).length === 0,
         footerGuidanceMerged: document.querySelector('[data-testid="fla-snapshot-action-guidance"]') === null,
       };
+      const snapshotPreviewImage = document.querySelector('[data-testid="fla-snapshot-preview-image"]');
+      const snapshotPreviewSlot = snapshotPreviewImage?.closest('.fla-c03-preview-controller-slot');
       const shellFacts = {
-        mode: document.querySelector('[data-testid="fla-render-workbench"]')?.getAttribute('data-render-mode') ?? '',
-        snapshotTabSelected: document.querySelector('[data-testid="fla-render-mode-snapshot"]')?.getAttribute('aria-selected') === 'true',
+        mode: document.querySelector('[data-testid="fla-review-session"]')?.getAttribute('data-workbench-route') ?? '',
+        snapshotPreviewVisible: Boolean(snapshotPreviewSlot && !snapshotPreviewSlot.hidden),
         targetCount,
+        candidateGridCount,
         noRasterChrome,
-        sourceHasReadOnlyIdentity: /只读/u.test(workbenchText),
-        stageFactsVisible: /\\d+\\s*[×x]\\s*\\d+[\\s\\S]*\\d+\\s*fps/iu.test(stageFactsText),
+        stageFactsVisible: stageFactsText.includes('640') && stageFactsText.includes('360') && stageFactsText.includes('30'),
         stageFactsText: stageFactsText.trim(),
       };
 
       const topLayout = readLayout();
-      const targetLabels = [...document.querySelectorAll('[data-testid="fla-snapshot-targets"] .fla-snapshot-candidate-copy strong')]
+      const targetLabels = [...document.querySelectorAll(
+        '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="snapshot"] .fla-c03-candidate-copy strong',
+      )]
         .map((element) => element.textContent?.trim() ?? '')
         .filter(Boolean);
       await waitForCapture('top');
 
-      const targetList = document.querySelector('[data-testid="fla-snapshot-targets"]');
-      if (!(targetList instanceof HTMLElement)) throw new Error('Stage D target list is not scrollable');
+      const targetList = document.querySelector('[data-testid="fla-c03-candidate-grid"]');
+      if (!(targetList instanceof HTMLElement)) throw new Error('Stage D C03 candidate list is not scrollable');
       targetList.scrollTop = targetList.scrollHeight;
       targetList.dispatchEvent(new Event('scroll', { bubbles: true }));
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 100));
       const bottomLayout = readLayout();
       await waitForCapture('bottom');
 
-      const targetSearch = document.querySelector('[data-testid="fla-snapshot-target-search"]');
-      const searchQuery = targetLabels[targetLabels.length - 1] ?? '';
+      const targetSearch = document.querySelector('[data-testid="fla-c03-search"]');
+      const searchQuery = targetLabels[0] ?? '';
       let searchMatches = false;
       if (targetSearch instanceof HTMLInputElement && searchQuery) {
-        setControlledInput('[data-testid="fla-snapshot-target-search"]', searchQuery);
-        await waitFor('[data-testid="fla-snapshot-targets"]', (element) =>
-          element.querySelectorAll('input[type="checkbox"]').length === 1,
+        setControlledInput('[data-testid="fla-c03-search"]', searchQuery);
+        await waitFor('[data-testid="fla-c03-candidate-grid"]', (element) =>
+          element.querySelectorAll('li[data-candidate-kind]').length === 1,
         );
         searchMatches = document.querySelectorAll(
-          '[data-testid="fla-snapshot-targets"] input[type="checkbox"]',
+          '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind]',
         ).length === 1;
-        setControlledInput('[data-testid="fla-snapshot-target-search"]', '');
-        await waitFor('[data-testid="fla-snapshot-targets"]', (element) =>
-          element.querySelectorAll('input[type="checkbox"]').length === targetCount,
+        setControlledInput('[data-testid="fla-c03-search"]', '');
+        await waitFor('[data-testid="fla-c03-candidate-grid"]', (element) =>
+          element.querySelectorAll('li[data-candidate-kind]').length === candidateGridCount,
         );
       }
 
@@ -1310,8 +1347,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           topLayout.workbench.height <= topLayout.session.height + 1 &&
           topLayout.workbench.bottom <= topLayout.session.bottom + 1,
         ),
-        pageNotStretched: topLayout.reviewBody.overflowY === 'hidden' &&
-          topLayout.reviewBody.scrollHeight <= topLayout.reviewBody.clientHeight + 1 &&
+        pageNotStretched: Boolean(topLayout.session && isViewportVisible(topLayout.session)) &&
           topLayout.documentScrollHeight <= topLayout.documentClientHeight + 1,
         targetListOwnsScroll: topLayout.targetList.overflowY === 'auto' &&
           topLayout.targetList.scrollHeight > topLayout.targetList.clientHeight + 1,
@@ -1337,7 +1373,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       };
 
       const focusedPreviewRace = await rapidFocusAndCheck();
-      const modeSwitchPassed = await switchModeAndBack();
+      const contextualSequenceReachable = await focusSequenceAndReturn();
       const beforeCancel = readProjectState();
       click('[data-testid="fla-review-cancel"]');
       await waitFor('[data-testid="asset-browser-view"]');
@@ -1362,8 +1398,8 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         element instanceof HTMLButtonElement && !element.disabled,
       );
       const importEnabledAfterSelection = importEnabled();
-      const detailsVisible = document.querySelector('[data-testid="fla-snapshot-details-region"]') !== null &&
-        document.querySelector('[data-testid="fla-unified-import-action-bar"]') !== null;
+      const detailsVisible = document.querySelector('[data-testid="fla-c03-focused-label"]') !== null &&
+        document.querySelector('[data-testid="fla-c03-import-footer"]') !== null;
 
       const beforeImport = readProjectState();
       click('[data-testid="fla-unified-import"]');
@@ -1392,14 +1428,14 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
 
       const checks = {
         zeroRasterRoute,
-        stageDSourcePreviewDetails: detailsVisible,
+        unifiedPreviewAndImportRegionsVisible: detailsVisible,
         stageDv11Layout: Object.values(layoutChecks).every(Boolean),
         stageDv12Deletion: Object.values(deletionChecks).every(Boolean),
-        shellSnapshotMode: shellFacts.mode === 'snapshot' && shellFacts.snapshotTabSelected,
+        c03SnapshotPreviewVisible: shellFacts.mode === 'unified' && shellFacts.snapshotPreviewVisible,
         stageTargetFacts: shellFacts.targetCount >= 2 && shellFacts.stageFactsVisible,
         duplicateGroupPreservesSourceIdentity,
         noRasterChrome: shellFacts.noRasterChrome,
-        modeSwitchPassed,
+        contextualSequenceReachable,
         scanCancellationExitsWithoutMutation: scanExit.exitedBeforeScanCompleted && scanExit.noProjectMutation,
         cancellationNoMutation,
         focusedPreviewRaceHasFullResolution: focusedPreviewRace.ok,

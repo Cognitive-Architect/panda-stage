@@ -72,6 +72,15 @@ describe('Issue #775 C03 preserves the Stage D render runners in one workbench',
 
   it('proves the long-list layout and keeps the existing business path in the real verifier', () => {
     expect(verifier).toContain('SYNTHETIC_TARGET_COUNT = 25');
+    expect(verifier).toContain('index === SYNTHETIC_TARGET_COUNT - 1 ? 3 : 1');
+    expect(verifier).toContain('[data-testid="fla-c03-workbench"]');
+    expect(verifier).toContain('[data-testid="fla-c03-candidate-grid"]');
+    expect(verifier).toContain('[data-testid="fla-c03-import-footer"]');
+    expect(verifier).toContain('const focusSequenceAndReturn');
+    expect(verifier).toContain('[data-testid="fla-frame-sequence-range"]');
+    expect(verifier).toContain('retiredRenderTabsRemoved');
+    expect(verifier).not.toContain('fla-render-mode-snapshot');
+    expect(verifier).not.toContain('fla-render-mode-sequence');
     expect(verifier).toContain("await waitForCapture('top')");
     expect(verifier).toContain("await waitForCapture('bottom')");
     expect(verifier).toContain('targetListOwnsScroll');
