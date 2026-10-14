@@ -84,7 +84,7 @@ describe('Issue #398 Stage D deletion-first presentation contract', () => {
     expect(verifier).toContain('input[type="checkbox"]');
     expect(verifier).toContain('const selectTwoCandidates');
     expect(verifier).toContain('li[data-duplicate="true"]');
-    expect(verifier).toContain('fla-snapshot-import-counts');
+    expect(verifier).toContain('fla-unified-import-counts');
     expect(verifier).toContain('cancellationNoMutation');
     expect(verifier).toContain('duplicateGroupPreservesSourceIdentity');
     expect(verifier).toContain('exactDuplicateReused');
