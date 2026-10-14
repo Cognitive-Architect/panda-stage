@@ -477,19 +477,26 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
   profileScanTimeoutMs = 300_000,
 } = {}) {
   return mainWindow.webContents.executeJavaScript(`
+    const issue762Profile = ${JSON.stringify(issue762Profile)};
+    const issue766FirstLoad = ${JSON.stringify(issue766FirstLoad)};
+    const issue762ProfileEvents = [];
+    const issue762RunState = {};
+    const issue766Probe = { marks: [], rendererHeartbeat: [], catalogRoundTrips: [] };
+    let issue766HeartbeatHandle = null;
+    let issue766MutationObserver = null;
+    const stopIssue766Probe = () => {
+      if (issue766HeartbeatHandle !== null) window.clearInterval(issue766HeartbeatHandle);
+      if (issue766MutationObserver) issue766MutationObserver.disconnect();
+      issue766HeartbeatHandle = null;
+      issue766MutationObserver = null;
+      if (issue762Profile) issue762RunState.issue766FirstLoad = issue766Probe;
+    };
     (async () => {
       const acceptanceRoot = ${JSON.stringify(acceptanceRoot)};
       const projectName = ${JSON.stringify(projectName)};
       const measureScanOnly = ${JSON.stringify(measureScanOnly)};
-      const issue762Profile = ${JSON.stringify(issue762Profile)};
-      const issue766FirstLoad = ${JSON.stringify(issue766FirstLoad)};
       const profileCommit = ${JSON.stringify(profileCommit)};
       const profileScanTimeoutMs = ${JSON.stringify(profileScanTimeoutMs)};
-      const issue762ProfileEvents = [];
-      const issue762RunState = {};
-      const issue766Probe = { marks: [], rendererHeartbeat: [], catalogRoundTrips: [] };
-      let issue766HeartbeatHandle = null;
-      let issue766MutationObserver = null;
       let issue766HeartbeatLastAt = null;
       const issue766SeenMarks = new Set();
       const issue766ObservedImages = new WeakSet();
@@ -497,13 +504,6 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         if (!issue766FirstLoad || issue766SeenMarks.has(name)) return;
         issue766SeenMarks.add(name);
         issue766Probe.marks.push({ name, atMs: performance.now(), wallTimeMs: Date.now(), details });
-      };
-      const stopIssue766Probe = () => {
-        if (issue766HeartbeatHandle !== null) window.clearInterval(issue766HeartbeatHandle);
-        if (issue766MutationObserver) issue766MutationObserver.disconnect();
-        issue766HeartbeatHandle = null;
-        issue766MutationObserver = null;
-        if (issue762Profile) issue762RunState.issue766FirstLoad = issue766Probe;
       };
       if (issue766FirstLoad) issue762RunState.issue766FirstLoad = issue766Probe;
       if (issue762Profile) window.__pandaStageIssue762RunState = issue762RunState;
@@ -878,7 +878,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           document.querySelector('[data-testid="fla-snapshot-scan-progress"]')?.textContent?.match(/[0-9]+/u)?.[0] ?? 0,
         );
         const candidateCount = document.querySelectorAll('[data-testid="fla-snapshot-targets"] input[type="checkbox"]').length;
-        click('[data-testid="fla-snapshot-close"]');
+        click('[data-testid="fla-review-cancel"]');
         await waitFor('[data-testid="asset-browser-view"]');
         const after = readProjectState();
         return {
@@ -941,13 +941,20 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       const switchModeAndBack = async () => {
         const sequenceTab = await waitFor('[data-testid="fla-render-mode-sequence"]', (element) => !element.disabled);
         sequenceTab.click();
+        const sequencePanel = await waitFor('[data-testid="fla-unified-sequence-panel"]', (element) => !element.hidden);
         await waitFor('[data-testid="fla-frame-sequence-review"]');
         await waitFor('[data-testid="fla-frame-sequence-range"]');
-        const sequenceOnly = document.querySelectorAll('[data-testid="fla-frame-sequence-review"]').length === 1 &&
-          document.querySelectorAll('[data-testid="fla-snapshot-review"]').length === 0;
+        const snapshotPanel = document.querySelector('[data-testid="fla-unified-snapshot-panel"]');
+        const sequenceOnly = !sequencePanel.hidden && snapshotPanel?.hidden === true &&
+          document.querySelector('[data-testid="fla-render-workbench"]')?.getAttribute('data-render-mode') === 'sequence' &&
+          sequenceTab.getAttribute('aria-selected') === 'true';
         click('[data-testid="fla-render-mode-snapshot"]');
+        await waitFor('[data-testid="fla-unified-snapshot-panel"]', (element) => !element.hidden);
         await waitForSnapshotTargets();
-        return sequenceOnly;
+        const snapshotTab = document.querySelector('[data-testid="fla-render-mode-snapshot"]');
+        return sequenceOnly && snapshotPanel?.hidden === false && sequencePanel.hidden === true &&
+          document.querySelector('[data-testid="fla-render-workbench"]')?.getAttribute('data-render-mode') === 'snapshot' &&
+          snapshotTab?.getAttribute('aria-selected') === 'true';
       };
 
       const selectTwoCandidates = async () => {
@@ -971,7 +978,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       };
 
       const reviewState = () => document.querySelector('[data-testid="fla-snapshot-review"]')?.getAttribute('data-preview-state') ?? '';
-      const importButton = () => document.querySelector('[data-testid="fla-snapshot-import"]');
+      const importButton = () => document.querySelector('[data-testid="fla-unified-import"]');
       const importEnabled = () => {
         const button = importButton();
         return button instanceof HTMLButtonElement && !button.disabled;
@@ -1058,15 +1065,15 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           }
           const selectionStartedAt = performance.now();
           firstSupportedCheckbox.click();
-          await waitFor('[data-testid="fla-snapshot-import"]', (element) =>
+          await waitFor('[data-testid="fla-unified-import"]', (element) =>
             element instanceof HTMLButtonElement && !element.disabled,
           );
           const beforeImport = readProjectState();
           const selectionNoMutation = beforeImport.assetCount === initial.assetCount &&
             beforeImport.maxRevision === initial.maxRevision;
           const importStartedAt = performance.now();
-          click('[data-testid="fla-snapshot-import"]');
-          const receiptCounts = await waitFor('[data-testid="fla-snapshot-import-counts"]', () => true, 120_000);
+          click('[data-testid="fla-unified-import"]');
+          const receiptCounts = await waitFor('[data-testid="fla-unified-import-counts"]', () => true, 120_000);
           const receiptReadyAt = performance.now();
           const libraryDeadline = receiptReadyAt + 60_000;
           let afterImport = readProjectState();
@@ -1107,7 +1114,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           }
         }
         const beforeClose = readProjectState();
-        click('[data-testid="fla-snapshot-close"]');
+        click('[data-testid="fla-review-cancel"]');
         await waitFor('[data-testid="asset-browser-view"]');
         await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
         const afterClose = readProjectState();
@@ -1184,7 +1191,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           workbench: rectData(document.querySelector('[data-testid="fla-render-workbench"]')),
           header: rectData(document.querySelector('[data-testid="fla-render-workbench-header"]')),
           preview: rectData(document.querySelector('[data-testid="fla-snapshot-preview-area"]')),
-          actionBar: rectData(document.querySelector('[data-testid="fla-snapshot-action-bar"]')),
+          actionBar: rectData(document.querySelector('[data-testid="fla-unified-import-action-bar"]')),
           targetList: {
             rect: rectData(targetList),
             scrollHeight: targetList?.scrollHeight ?? 0,
@@ -1204,7 +1211,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           documentScrollHeight: document.documentElement.scrollHeight,
           documentClientHeight: document.documentElement.clientHeight,
           primaryActionCount: document.querySelectorAll(
-            '.fla-snapshot-action-bar .fla-render-primary-action',
+            '[data-testid="fla-unified-import-action-bar"] [data-testid="fla-unified-import"]',
           ).length,
         };
       };
@@ -1332,7 +1339,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       const focusedPreviewRace = await rapidFocusAndCheck();
       const modeSwitchPassed = await switchModeAndBack();
       const beforeCancel = readProjectState();
-      click('[data-testid="fla-snapshot-close"]');
+      click('[data-testid="fla-review-cancel"]');
       await waitFor('[data-testid="asset-browser-view"]');
       const afterCancel = readProjectState();
       const cancellationNoMutation = afterCancel.assetCount === beforeCancel.assetCount &&
@@ -1351,16 +1358,16 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       const afterSelection = readProjectState();
       const selectionNoMutation = afterSelection.assetCount === initial.assetCount &&
         afterSelection.maxRevision === initial.maxRevision;
-      await waitFor('[data-testid="fla-snapshot-import"]', (element) =>
+      await waitFor('[data-testid="fla-unified-import"]', (element) =>
         element instanceof HTMLButtonElement && !element.disabled,
       );
       const importEnabledAfterSelection = importEnabled();
       const detailsVisible = document.querySelector('[data-testid="fla-snapshot-details-region"]') !== null &&
-        document.querySelector('[data-testid="fla-snapshot-action-bar"]') !== null;
+        document.querySelector('[data-testid="fla-unified-import-action-bar"]') !== null;
 
       const beforeImport = readProjectState();
-      click('[data-testid="fla-snapshot-import"]');
-      const receiptCounts = await waitFor('[data-testid="fla-snapshot-import-counts"]');
+      click('[data-testid="fla-unified-import"]');
+      const receiptCounts = await waitFor('[data-testid="fla-unified-import-counts"]');
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
       const afterImport = readProjectState();
       const committedAssetCount = beforeImport.assetCount !== null && afterImport.assetCount !== null
@@ -1369,13 +1376,14 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       const revisionAdvanced = afterImport.maxRevision !== null &&
         (beforeImport.maxRevision === null || afterImport.maxRevision > beforeImport.maxRevision);
       const committedText = receiptCounts.textContent?.trim() ?? '';
-      const receiptCount = (pattern) => Number(committedText.match(pattern)?.[1] ?? -1);
-      const processedCount = receiptCount(/共处理\\s*(\\d+)/u);
-      const importedCount = receiptCount(/新导入\\s*(\\d+)/u);
-      const duplicateCount = receiptCount(/复用已有素材\\s*(\\d+)/u);
-      const failedCount = receiptCount(/失败\\s*(\\d+)/u);
-      const notAttemptedCount = receiptCount(/未尝试\\s*(\\d+)/u);
-      click('[data-testid="fla-snapshot-close"]');
+      const receiptItems = [...document.querySelectorAll('[data-testid="fla-unified-import-items"] li')]
+        .map((item) => item.getAttribute('data-status'));
+      const processedCount = receiptItems.length;
+      const importedCount = receiptItems.filter((status) => status === 'imported').length;
+      const duplicateCount = receiptItems.filter((status) => status === 'duplicate').length;
+      const failedCount = receiptItems.filter((status) => status === 'failed').length;
+      const notAttemptedCount = receiptItems.filter((status) => status === 'not-attempted').length;
+      click('[data-testid="fla-review-cancel"]');
       await waitFor('[data-testid="asset-browser-view"]');
       const libraryAfterClose = readProjectState();
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
@@ -1457,10 +1465,16 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       };
     })().catch((error) => {
       if (issue766FirstLoad) console.error('[issue766-first-load] renderer probe failed', error);
-      stopIssue766Probe();
+      let verifierCleanupError = null;
+      try {
+        stopIssue766Probe();
+      } catch (cleanupError) {
+        verifierCleanupError = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+      }
       return {
       verifierError: error instanceof Error ? error.message : String(error),
       verifierStack: error instanceof Error ? error.stack : String(error),
+      verifierCleanupError,
       issue762ProfileEvents,
       issue762ScanMeasurement: error?.issue762ScanMeasurement ?? null,
       issue762RunState: issue762Profile ? window.__pandaStageIssue762RunState ?? null : null,
@@ -1472,6 +1486,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       error.issue762ProfileEvents = result.issue762ProfileEvents ?? [];
       error.issue762ScanMeasurement = result.issue762ScanMeasurement ?? null;
       error.issue762RunState = result.issue762RunState ?? null;
+      error.verifierCleanupError = result.verifierCleanupError ?? null;
       throw error;
     }
     return result;
@@ -1767,6 +1782,7 @@ async function main() {
         })(),
       } : {}),
       partialRun: error.issue762RunState ?? null,
+      verifierCleanupError: error.verifierCleanupError ?? null,
       response,
       error: error.message,
     };
