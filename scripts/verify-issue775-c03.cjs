@@ -1489,9 +1489,7 @@ async function writeReceipt(status, extra = {}) {
       windowsScalingRecordedInOriginalReceipt: false,
       inferredContentBounds: runtime.layout.baselineContentBoundsInferred ?? null,
       sameContentBoundsAsC03: runtime.assertions.sameContentBoundsAsBaseline === true,
-      sameCaptureSizeAsC03: Boolean(runtime.screenshots.normal &&
-        runtime.screenshots.normal.width === runtime.layout.baselineWidth &&
-        runtime.screenshots.normal.height === runtime.layout.baselineHeight),
+      sameCaptureSizeAsC03: runtime.assertions.sameSizeBeforeAfter === true,
     },
     layout: runtime.layout,
     screenshots: runtime.screenshots,
@@ -1502,7 +1500,8 @@ async function writeReceipt(status, extra = {}) {
     rasterCommits: runtime.rasterCommits,
     injectedPreviewFailure: runtime.injectedPreviewFailure,
     executionDiagnostics: {
-      failureStage: runtime.failureStage,
+      lastStage: runtime.failureStage,
+      failureStage: status === 'FAIL' ? runtime.failureStage : null,
       renderer: runtime.rendererDiagnostics,
     },
     assertions: runtime.assertions,
@@ -1512,6 +1511,9 @@ async function writeReceipt(status, extra = {}) {
       'The historical before screenshot has matching pixel dimensions; its receipt did not record the Windows display scale factor.',
       'The historical before receipt records the main-window bounds but not its display scale factor; the C03 comparison matches logical content bounds and capture pixels, while current Windows scaling is recorded directly.',
       '125% Windows scaling is reported only when the host exposes a display at that scale; a Chromium forced scale factor is not described as Windows DPI.',
+      ...((runtime.layout.displays ?? []).some((display) => Math.abs(display.scaleFactor - 1.25) < 0.01)
+        ? []
+        : ['This host exposed no 125% Windows display; 125% Windows DPI was not validated in this run.']),
     ],
     ...extra,
   };
