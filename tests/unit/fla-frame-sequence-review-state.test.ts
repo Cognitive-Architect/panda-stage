@@ -8,6 +8,7 @@ import {
   isStaleAgainstIntent,
   MAX_SEQUENCE_FRAMES,
   postCommitSequenceState,
+  resolveVisibleSequenceFocus,
   rerenderReset,
   validateRange,
 } from '../../src/renderer/fla-import/fla-frame-sequence-review-state';
@@ -143,6 +144,31 @@ describe('R2-H.2 re-render / post-commit lifecycle (Corrective C)', () => {
 });
 
 const target = 'fla-render-target-aa';
+
+describe('Issue #776 sequence focus and operation identity', () => {
+  it('does not move a filtered A focus to the only visible B result', () => {
+    expect(resolveVisibleSequenceFocus('target-a', ['target-b'])).toBeNull();
+  });
+
+  it('restores A when the filter is cleared and clears focus when there are no results', () => {
+    expect(resolveVisibleSequenceFocus('target-a', ['target-a', 'target-b'])).toBe('target-a');
+    expect(resolveVisibleSequenceFocus('target-a', [])).toBeNull();
+  });
+
+  it('does not display or import the accepted A range under B intent', () => {
+    const renderedA = { renderTargetId: 'target-a', startFrameIndex: 0, endFrameIndex: 23 };
+    expect(isStaleAgainstIntent(renderedA, {
+      renderTargetId: 'target-b',
+      startFrameIndex: 0,
+      endFrameIndex: 23,
+    })).toBe(true);
+    expect(isStaleAgainstIntent(renderedA, {
+      renderTargetId: 'target-a',
+      startFrameIndex: 0,
+      endFrameIndex: 23,
+    })).toBe(false);
+  });
+});
 
 describe('R2-H.2 Problem A: range/target change invalidates prior sequence (#296)', () => {
   const renderedRange = { renderTargetId: target, startFrameIndex: 0, endFrameIndex: 1 };

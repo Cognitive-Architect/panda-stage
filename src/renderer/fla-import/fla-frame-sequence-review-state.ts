@@ -47,6 +47,19 @@ export interface DefaultSequenceRange {
 }
 
 /**
+ * A sequence search can hide the current target. In that case keep focus
+ * empty instead of moving it to the first result while the operation still
+ * targets the hidden candidate.
+ */
+export function resolveVisibleSequenceFocus(
+  currentFocusedTargetId: string | null,
+  visibleTargetIds: readonly string[],
+): string | null {
+  if (!currentFocusedTargetId) return null;
+  return visibleTargetIds.includes(currentFocusedTargetId) ? currentFocusedTargetId : null;
+}
+
+/**
  * Select the initial inclusive range for a target. This is used only when a
  * target is first selected or changed; it never rewrites an explicit user
  * edit. Keeping the default bounded makes targets larger than the sequence

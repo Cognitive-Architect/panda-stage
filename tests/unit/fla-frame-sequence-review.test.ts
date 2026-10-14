@@ -27,6 +27,7 @@ describe('R2-H.2 shares the compatibility review render workbench (zero-raster p
     'src/renderer/fla-import/FlaCompatibilityReviewSession.tsx',
     'utf8',
   );
+  const review = readFileSync('src/renderer/fla-import/FlaFrameSequenceReview.tsx', 'utf8');
   const assetLibrary = readFileSync(
     'src/renderer/features/assets/AssetLibrary.tsx',
     'utf8',
@@ -45,6 +46,17 @@ describe('R2-H.2 shares the compatibility review render workbench (zero-raster p
     expect(assetLibrary).toContain('applyFlaFrameSequenceCommitResponse');
     expect(assetLibrary).toContain('onSequenceImported={(response) => {');
     expect(assetLibrary).toContain('setStatus(outcome.status);');
+  });
+
+  it('keeps sequence focus, preview target, operation target, and checked intent explicit', () => {
+    expect(review).toContain('resolveVisibleSequenceFocus(');
+    expect(review).toContain('isStaleAgainstIntent(renderedRange, currentIntent)');
+    expect(review).toContain('displayedSequenceItems = sequenceIsCurrent ? orderedSequenceItems : []');
+    expect(review).toContain('data-preview-target-id={previewTargetId ?? undefined}');
+    expect(review).toContain('title={previewTarget?.userLabel}');
+    expect(review).toContain('data-operation-target-id={target.renderTargetId}');
+    expect(review).toContain('data-render-target-selected={entryTarget.renderTargetId === selectedTargetId ?');
+    expect(review).toContain('createFlaWorkbenchCandidateSelection(focusedTargetId, EMPTY_SEQUENCE_IMPORT_CHECKS)');
   });
 });
 

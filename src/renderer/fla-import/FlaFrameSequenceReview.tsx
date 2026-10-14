@@ -46,15 +46,16 @@ import {
   intentChangeReset,
   isCommitEligible,
   isCurrentResponse,
+  isStaleAgainstIntent,
   MAX_SEQUENCE_FRAMES,
   postCommitSequenceState,
+  resolveVisibleSequenceFocus,
   rerenderReset,
   validateRange,
 } from './fla-frame-sequence-review-state';
 import {
   createFlaWorkbenchCandidateSelection,
   createFlaWorkbenchCandidates,
-  reconcileFlaWorkbenchFocus,
 } from './fla-workbench-candidates';
 
 interface FlaFrameSequenceReviewProps {
@@ -78,6 +79,10 @@ type RenderPhase =
   | 'committed'
   | 'cancelled'
   | 'error';
+
+// This route has a generation-target radio, not a unified checked import
+// list. Selecting a render target must never imply checked/import intent.
+const EMPTY_SEQUENCE_IMPORT_CHECKS: ReadonlySet<string> = new Set();
 
 export function FlaFrameSequenceReview({
   sessionId,
@@ -133,14 +138,34 @@ export function FlaFrameSequenceReview({
     () => success?.items.slice().sort((a, b) => a.frameIndex - b.frameIndex) ?? [],
     [success],
   );
-  const selectedPreviewItem = orderedSequenceItems[selectedPreviewIndex] ?? null;
-  const selectedPreviewUrl = previewUrls[selectedPreviewIndex] ?? null;
-  const hasPreview = Boolean(selectedPreviewItem && selectedPreviewUrl);
+  const renderedRange = success && orderedSequenceItems.length > 0
+    ? {
+        renderTargetId: success.renderTargetId,
+        startFrameIndex: orderedSequenceItems[0]!.frameIndex,
+        endFrameIndex: orderedSequenceItems[orderedSequenceItems.length - 1]!.frameIndex,
+      }
+    : null;
+  const currentIntent = selectedEntry
+    ? { renderTargetId: selectedEntry.target.renderTargetId, startFrameIndex, endFrameIndex }
+    : null;
+  const sequenceMatchesIntent = Boolean(
+    currentIntent && !isStaleAgainstIntent(renderedRange, currentIntent),
+  );
   const sequenceIsCurrent = Boolean(
     phase === 'preview-ready' &&
       success &&
+      sequenceMatchesIntent &&
       isCommitEligible(success, acceptedRequestIdRef.current === success.requestId),
   );
+  const displayedSequenceItems = sequenceIsCurrent ? orderedSequenceItems : [];
+  const displayedPreviewUrls = sequenceIsCurrent ? previewUrls : [];
+  const selectedPreviewItem = displayedSequenceItems[selectedPreviewIndex] ?? null;
+  const selectedPreviewUrl = displayedPreviewUrls[selectedPreviewIndex] ?? null;
+  const hasPreview = Boolean(selectedPreviewItem && selectedPreviewUrl);
+  const previewTargetId = sequenceIsCurrent && success
+    ? success.renderTargetId
+    : selectedEntry?.target.renderTargetId ?? null;
+  const previewTarget = entries.find((entry) => entry.target.renderTargetId === previewTargetId)?.target ?? null;
   const previewState = phase === 'rendering'
     ? 'rendering'
     : phase === 'error'
@@ -150,13 +175,13 @@ export function FlaFrameSequenceReview({
         : 'needs-preview';
 
   const sequencePreviewInputs = useMemo(() => {
-    const previewItem = orderedSequenceItems[selectedPreviewIndex];
-    const previewUrl = previewUrls[selectedPreviewIndex];
-    if (!sequenceIsCurrent || !success || !previewItem || !previewUrl || orderedSequenceItems.length === 0) {
+    const previewItem = displayedSequenceItems[selectedPreviewIndex];
+    const previewUrl = displayedPreviewUrls[selectedPreviewIndex];
+    if (!sequenceIsCurrent || !success || !previewItem || !previewUrl || displayedSequenceItems.length === 0) {
       return undefined;
     }
-    const firstFrame = orderedSequenceItems[0];
-    const lastFrame = orderedSequenceItems[orderedSequenceItems.length - 1];
+    const firstFrame = displayedSequenceItems[0];
+    const lastFrame = displayedSequenceItems[displayedSequenceItems.length - 1];
     if (!firstFrame || !lastFrame) return undefined;
     return {
       [success.renderTargetId]: {
@@ -168,13 +193,13 @@ export function FlaFrameSequenceReview({
         endFrameIndex: lastFrame.frameIndex,
       },
     };
-  }, [orderedSequenceItems, previewUrls, selectedPreviewIndex, sequenceIsCurrent, success]);
+  }, [displayedPreviewUrls, displayedSequenceItems, selectedPreviewIndex, sequenceIsCurrent, success]);
   const sequenceCandidates = useMemo(
     () => createFlaWorkbenchCandidates({
       context: { sessionId, source },
       sequenceEntries: entries,
       sequencePreviews: sequencePreviewInputs,
-      selection: createFlaWorkbenchCandidateSelection(focusedTargetId),
+      selection: createFlaWorkbenchCandidateSelection(focusedTargetId, EMPTY_SEQUENCE_IMPORT_CHECKS),
     }).filter((candidate) => candidate.kind === 'sequence'),
     [entries, focusedTargetId, sequencePreviewInputs, sessionId, source.basename, source.sha256],
   );
@@ -196,9 +221,10 @@ export function FlaFrameSequenceReview({
     [sequenceCandidateById, visibleEntries],
   );
   const effectiveFocusedTargetId = useMemo(
-    () => reconcileFlaWorkbenchFocus(visibleSequenceCandidates, focusedTargetId, true)
-      ?? visibleSequenceCandidates[0]?.id
-      ?? null,
+    () => resolveVisibleSequenceFocus(
+      focusedTargetId,
+      visibleSequenceCandidates.map((candidate) => candidate.id),
+    ),
     [focusedTargetId, visibleSequenceCandidates],
   );
   const focusedEntry = useMemo(
@@ -440,6 +466,7 @@ export function FlaFrameSequenceReview({
 
   const commitSequence = async (): Promise<void> => {
     if (!success || !snapshot || phase !== 'preview-ready') return;
+    if (!currentIntent || isStaleAgainstIntent(renderedRange, currentIntent)) return;
     if (!isCommitEligible(success, acceptedRequestIdRef.current === success.requestId)) return;
     const firstItem = orderedSequenceItems[0];
     const lastItem = orderedSequenceItems[orderedSequenceItems.length - 1];
@@ -635,6 +662,7 @@ export function FlaFrameSequenceReview({
                     data-preview-binding-key={candidate?.preview.bindingKey}
                     data-preview-supported={entry.previewSupported ? 'true' : 'false'}
                     data-checked={candidate?.checked ? 'true' : 'false'}
+                    data-render-target-selected={entryTarget.renderTargetId === selectedTargetId ? 'true' : 'false'}
                     key={candidate?.identityKey ?? entryTarget.renderTargetId}
                   >
                     <label aria-label={`${candidate?.displayLabel ?? entryTarget.userLabel}，${entryTarget.frameCount} 帧`} title={entryTarget.userLabel}>
@@ -645,10 +673,13 @@ export function FlaFrameSequenceReview({
                         disabled={!entry.previewSupported || intentLocked}
                         onChange={() => {
                           const defaultRange = getDefaultSequenceRange(entryTarget.frameCount);
+                          activeRequestIdRef.current = null;
+                          acceptedRequestIdRef.current = null;
                           setSelectedTargetId(entryTarget.renderTargetId);
                           setFocusedTargetId(entryTarget.renderTargetId);
                           setStartFrameIndex(defaultRange.startFrameIndex);
                           setEndFrameIndex(defaultRange.endFrameIndex);
+                          setPhase('selecting');
                         }}
                         data-testid={`fla-frame-sequence-target-${entryTarget.renderTargetId}`}
                       />
@@ -691,7 +722,9 @@ export function FlaFrameSequenceReview({
           <header className="fla-frame-sequence-region-heading">
             <div>
               <p className="fla-render-panel-kicker">帧序列</p>
-              <h3>当前帧预览</h3>
+              <h3 title={previewTarget?.userLabel}>
+                {previewTarget ? `${previewTarget.userLabel} · 当前帧预览` : '当前帧预览'}
+              </h3>
             </div>
             <output
               aria-live="polite"
@@ -705,6 +738,7 @@ export function FlaFrameSequenceReview({
           <div
             className="fla-frame-sequence-preview-stage"
             data-preview-state={previewState}
+            data-preview-target-id={previewTargetId ?? undefined}
             data-testid="fla-frame-sequence-preview-area"
           >
             {selectedPreviewUrl && selectedPreviewItem ? (
@@ -790,11 +824,11 @@ export function FlaFrameSequenceReview({
           <div className="fla-frame-sequence-filmstrip-region" data-testid="fla-frame-sequence-filmstrip-region">
             <header className="fla-frame-sequence-filmstrip-heading">
               <span>序列预览</span>
-              <small>{orderedSequenceItems.length > 0 ? `${orderedSequenceItems.length} 帧` : '尚未生成'}</small>
+              <small>{displayedSequenceItems.length > 0 ? `${displayedSequenceItems.length} 帧` : '尚未生成'}</small>
             </header>
             <div className="fla-frame-sequence-filmstrip" data-testid="fla-frame-sequence-filmstrip" role="list" aria-label="已生成帧序列">
-              {orderedSequenceItems.length > 0 ? orderedSequenceItems.map((item, index) => {
-                const url = previewUrls[index];
+              {displayedSequenceItems.length > 0 ? displayedSequenceItems.map((item, index) => {
+                const url = displayedPreviewUrls[index];
                 return (
                   <div key={`${item.frameIndex}-${item.preview.requestId}`} role="listitem">
                     <button
@@ -836,7 +870,7 @@ export function FlaFrameSequenceReview({
             <div><dt>素材</dt><dd>{renderTargetKindLabel(target.kind)} · {targetFrameCount} 帧</dd></div>
             <div><dt>输出</dt><dd>PNG 序列</dd></div>
             <div><dt>范围</dt><dd>{startFrameIndex}–{endFrameIndex} · {validation.valid ? `${validation.frameCount} 帧` : '无效'}</dd></div>
-            <div><dt>结果</dt><dd>{orderedSequenceItems.length > 0 ? `${orderedSequenceItems.length} 帧已生成` : '待生成'}</dd></div>
+            <div><dt>结果</dt><dd>{displayedSequenceItems.length > 0 ? `${displayedSequenceItems.length} 帧已生成` : '待生成'}</dd></div>
           </dl>
            <details className="fla-frame-sequence-more" data-testid="fla-frame-sequence-more-details">
             <summary>更多详情</summary>
@@ -861,7 +895,7 @@ export function FlaFrameSequenceReview({
         </aside>
       </div>
 
-      <div className="fla-frame-sequence-action-bar" data-testid="fla-frame-sequence-action-bar">
+      <div className="fla-frame-sequence-action-bar" data-operation-target-id={target.renderTargetId} data-testid="fla-frame-sequence-action-bar">
         <div className="fla-frame-sequence-action-status">
           <strong data-testid="fla-frame-sequence-action-state" title={target.userLabel}>
             {target.userLabel} · {startFrameIndex}–{endFrameIndex} · {validation.valid ? `${validation.frameCount} 帧` : '范围无效'} · {sequenceFooterState(phase, supported, sequenceIsCurrent)}

@@ -316,4 +316,36 @@ describe('Issue #775 C01 unified FLA workbench candidates', () => {
     expect(differentRequest.identityKey).toBe(candidate?.identityKey);
     expect(differentRequest.preview.bindingKey).not.toBe(candidate?.preview.bindingKey);
   });
+
+  it('keeps sequence generation-target radio state separate from explicit checked intent', () => {
+    const sequence = target('sequence-check', 'walk cycle', { kind: 'timeline', frameCount: 12 });
+    const sequencePreviews = {
+      [sequence.target.renderTargetId]: {
+        status: 'verified' as const,
+        sha256: 'e'.repeat(64),
+        previewUrl: 'blob:sequence-check',
+        requestId: '00000000-0000-4000-8000-000000000778',
+        startFrameIndex: 0,
+        endFrameIndex: 11,
+      },
+    };
+    const focusedOnly = createFlaWorkbenchCandidates({
+      context: context(),
+      sequenceEntries: [sequence],
+      sequencePreviews,
+      selection: createFlaWorkbenchCandidateSelection(sequence.target.renderTargetId),
+    })[0]!;
+    const explicitlyChecked = createFlaWorkbenchCandidates({
+      context: context(),
+      sequenceEntries: [sequence],
+      sequencePreviews,
+      selection: createFlaWorkbenchCandidateSelection(
+        sequence.target.renderTargetId,
+        new Set([sequence.target.renderTargetId]),
+      ),
+    })[0]!;
+
+    expect(focusedOnly).toMatchObject({ focused: true, checked: false });
+    expect(explicitlyChecked).toMatchObject({ focused: true, checked: true });
+  });
 });
