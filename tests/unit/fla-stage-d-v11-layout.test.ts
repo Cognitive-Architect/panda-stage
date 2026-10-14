@@ -17,17 +17,19 @@ const session = readFileSync(
 const styles = readOrderedStylesheetSource();
 const verifier = readFileSync('scripts/verify-issue396-stage-d.cjs', 'utf8');
 
-describe('Issue #398 Stage D deletion-first presentation contract', () => {
-  it('keeps one workbench identity and removes duplicated explanation', () => {
+describe('Issue #775 C03 preserves the Stage D render runners in one workbench', () => {
+  it('replaces persistent route tabs while keeping the shared snapshot and sequence previews', () => {
     expect(workbench).toContain('组合素材');
     expect(session).toContain('FLA 导入工作台');
-    expect(session).toContain('data-testid="fla-workbench-tab-compositions"');
-    expect(session).toContain('data-testid="fla-workbench-tab-source-assets"');
+    expect(session).toContain('<FlaUnifiedWorkbench');
+    expect(session).toContain('<FlaStaticSnapshotReview');
+    expect(session).toContain('<FlaFrameSequenceReview');
+    expect(session).toContain('presentation="unified-preview"');
+    expect(session).not.toContain('<FlaRenderWorkbench');
+    expect(session).not.toContain('data-testid="fla-workbench-tab-compositions"');
+    expect(session).not.toContain('data-testid="fla-workbench-tab-source-assets"');
+    expect(session).not.toContain('fla-render-mode-tabs');
     expect(workbench).toContain('<span> · 只读</span>');
-    expect(workbench).not.toContain('源 FLA 保持不变');
-    expect(session).toContain("contentRoute === 'v1-raster-review'");
-    expect(session).toContain('hidden={!rasterRoute');
-    expect(session).toContain('hidden={!compositionRoute}');
     expect(session).not.toContain('fla-review-zero-raster-summary');
     expect(snapshot).toContain('data-testid="fla-snapshot-target-search"');
     expect(snapshot).toContain('data-testid="fla-snapshot-target-count"');

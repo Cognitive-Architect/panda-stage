@@ -2,10 +2,6 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
-const shell = readFileSync(
-  'src/renderer/fla-import/FlaRenderWorkbench.tsx',
-  'utf8',
-);
 const session = readFileSync(
   'src/renderer/fla-import/FlaCompatibilityReviewSession.tsx',
   'utf8',
@@ -28,26 +24,25 @@ const previewTransaction = readFileSync(
   'utf8',
 );
 
-describe('Issue #396 Stage D render workbench contract', () => {
-  it('provides one shared shell with mutually exclusive R1/R2 modes', () => {
-    expect(shell).toContain('data-testid="fla-render-workbench"');
-    expect(shell).toContain('data-testid="fla-render-mode-tabs"');
-    expect(shell).toContain('data-testid="fla-render-mode-snapshot"');
-    expect(shell).toContain('data-testid="fla-render-mode-sequence"');
-    expect(shell).toContain('role="tablist"');
-    expect(shell).toContain('role="tabpanel"');
-    expect(session).toContain('snapshotWorkbenchMounted ? (');
-    expect(session).toContain('hidden={renderMode !== \'snapshot\'}');
-    expect(session).toContain('hidden={renderMode !== \'sequence\'}');
+describe('Issue #775 C03 preserves the Stage D render contracts', () => {
+  it('mounts both existing render runners inside one unified workbench', () => {
+    expect(session).toContain('<FlaUnifiedWorkbench');
     expect(session).toContain('<FlaStaticSnapshotReview');
     expect(session).toContain('<FlaFrameSequenceReview');
+    expect(session).toContain('presentation="unified-preview"');
+    expect(session).toContain('onCandidatesChange={setSnapshotCandidates}');
+    expect(session).toContain('onCandidatesChange={setSequenceCandidates}');
+    expect(session).toContain('showUnifiedSequencePreview={showGeneratedSequencePreview}');
+    expect(session).not.toContain('FlaRenderWorkbench');
+    expect(session).not.toContain('fla-import-workbench-tabs');
+    expect(session).not.toContain('fla-render-mode-tabs');
     expect(session).toContain('embedded');
   });
 
   it('keeps zero-raster routing and the project mutation boundary unchanged', () => {
     expect(route).toContain("'v2r-target-discovery'");
-    expect(session).toContain('routeFlaInspection(response)');
-    expect(session).toContain("contentRoute === 'v1-raster-review'");
+    expect(route).toContain("'v1-raster-review'");
+    expect(session).toContain('createFlaWorkbenchCandidates({');
     expect(snapshot).not.toContain('window.pandaStage.assets');
     expect(snapshot).not.toContain('updateProject');
     expect(snapshot).toContain('confirmedPreviewRequestId');
@@ -74,13 +69,14 @@ describe('Issue #396 Stage D render workbench contract', () => {
     expect(snapshot).not.toContain('fla-review-clear-all');
   });
 
-  it('scans authored candidates, revalidates selected previews, and keeps sequence rendering in R2', () => {
+  it('scans authored candidates, revalidates selected previews, and keeps sequence rendering explicit', () => {
     expect(snapshot).toContain('includeAuthoredStates: true');
     expect(snapshot).toContain('setCandidatePreview');
     expect(snapshot).toContain('expectedPreview.sha256');
     expect(snapshot).toContain('flaStaticSnapshotClient.cancel');
     expect(sequence).toContain('embedded?: boolean');
-    expect(sequence).toContain("'fla-frame-sequence-review fla-render-workbench-panel'");
+    expect(sequence).toContain("presentation === 'unified-preview'");
+    expect(sequence).toContain('生成连续画面');
     expect(sequence).toContain('flaFrameSequenceClient');
   });
 
@@ -107,13 +103,14 @@ describe('Issue #396 Stage D render workbench contract', () => {
     expect(snapshot).toContain('candidate?.checked ?? false');
   });
 
-  it('uses a three-zone layout without adding a second scroll owner', () => {
+  it('uses one scrollable candidate grid and moves preview above it at narrow widths', () => {
     expect(styles).toContain('/* Issue #396: Stage D zero-raster render workbench.');
     expect(styles).toMatch(
-      /\.fla-snapshot-workbench\s*\{[\s\S]*?grid-template-columns:\s*minmax\(230px, 0\.86fr\) minmax\(420px, 1\.7fr\) minmax\(230px, 0\.84fr\);/u,
+      /\.fla-c03-workbench\s*\{[\s\S]*?grid-template-columns:\s*minmax\(300px, 0\.9fr\) minmax\(0, 1\.25fr\);/u,
     );
-    expect(styles).toContain('.fla-snapshot-preview-stage');
-    expect(styles).toContain('.fla-snapshot-action-bar');
+    expect(styles).toContain('.fla-c03-candidate-grid');
+    expect(styles).toContain('.fla-c03-import-footer');
+    expect(styles).toContain('order: -1;');
     expect(styles).toMatch(
       /\.fla-snapshot-preview-stage\s*\{[\s\S]*?overflow:\s*hidden;/u,
     );

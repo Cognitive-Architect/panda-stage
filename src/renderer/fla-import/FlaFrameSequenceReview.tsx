@@ -53,6 +53,7 @@ import {
 import {
   createFlaWorkbenchCandidateSelection,
   createFlaWorkbenchCandidates,
+  type FlaWorkbenchCandidate,
 } from './fla-workbench-candidates';
 import {
   describeFlaUnifiedCandidate,
@@ -75,6 +76,10 @@ interface FlaFrameSequenceReviewProps {
   onImported: (response: FlaFrameSequenceCommitResponse) => void;
   onWorkInProgressChange?: (busy: boolean) => void;
   onTerminalStateChange?: (state: FlaStageGTerminalState) => void;
+  presentation?: 'standard' | 'unified-preview';
+  focusedCandidateIdentityKey?: string | null;
+  onCandidatesChange?: (candidates: readonly FlaWorkbenchCandidate[]) => void;
+  showUnifiedSequencePreview?: boolean;
 }
 
 type RenderPhase =
@@ -100,6 +105,10 @@ export function FlaFrameSequenceReview({
   onImported,
   onWorkInProgressChange,
   onTerminalStateChange,
+  presentation = 'standard',
+  focusedCandidateIdentityKey,
+  onCandidatesChange,
+  showUnifiedSequencePreview = true,
 }: FlaFrameSequenceReviewProps): React.JSX.Element {
   const [phase, setPhase] = useState<RenderPhase>('loading');
   const [entries, setEntries] = useState<FlaRenderableTargetCatalogEntry[]>([]);
@@ -131,9 +140,11 @@ export function FlaFrameSequenceReview({
     () => entries.find((entry) => entry.target.renderTargetId === selectedTargetId) ?? null,
     [entries, selectedTargetId],
   );
-  const reviewClassName = embedded
-    ? 'fla-frame-sequence-review fla-render-workbench-panel'
-    : 'fla-frame-sequence-review';
+  const reviewClassName = [
+    'fla-frame-sequence-review',
+    embedded ? 'fla-render-workbench-panel' : '',
+    presentation === 'unified-preview' ? 'fla-frame-sequence-review-unified-preview' : '',
+  ].filter(Boolean).join(' ');
   const targetFrameCount = selectedEntry?.target.frameCount ?? 0;
   const validation = useMemo(
     () => validateRange(startFrameIndex, endFrameIndex, targetFrameCount),
@@ -213,6 +224,24 @@ export function FlaFrameSequenceReview({
       })),
     [checkedCandidateKeys, entries, focusedTargetId, sequencePreviewInputs, sessionId, source.basename, source.sha256],
   );
+  useEffect(() => {
+    onCandidatesChange?.(sequenceCandidates);
+  }, [onCandidatesChange, sequenceCandidates]);
+
+  useEffect(() => {
+    if (!focusedCandidateIdentityKey) return;
+    const candidate = sequenceCandidates.find((item) => item.identityKey === focusedCandidateIdentityKey);
+    if (!candidate || candidate.kind !== 'sequence') return;
+    const renderTargetId = candidate.operation.target.renderTargetId;
+    setFocusedTargetId(renderTargetId);
+    if (selectedTargetId === renderTargetId) return;
+    const entry = entries.find((item) => item.target.renderTargetId === renderTargetId);
+    if (!entry) return;
+    const defaultRange = getDefaultSequenceRange(entry.target.frameCount);
+    setSelectedTargetId(renderTargetId);
+    setStartFrameIndex(defaultRange.startFrameIndex);
+    setEndFrameIndex(defaultRange.endFrameIndex);
+  }, [entries, focusedCandidateIdentityKey, selectedTargetId, sequenceCandidates]);
   const sequenceCandidateById = useMemo(
     () => new Map(sequenceCandidates.map((candidate) => [candidate.id, candidate])),
     [sequenceCandidates],
@@ -668,12 +697,18 @@ export function FlaFrameSequenceReview({
   const canGenerate = supported && validation.valid && Boolean(snapshot) &&
     canGeneratePhase;
   const canSelectSequence = sequenceIsCurrent && !importLocked;
+  const updateStartFrameOneBased = (value: number): void => {
+    const nextStartFrameIndex = Math.trunc(value) - 1;
+    const lastFrameIndex = Math.max(0, targetFrameCount - 1);
+    setStartFrameIndex(nextStartFrameIndex);
+    setEndFrameIndex(Math.min(lastFrameIndex, nextStartFrameIndex + MAX_SEQUENCE_FRAMES - 1));
+  };
 
   if (phase === 'committing') {
     return (
       <div className={`${reviewClassName} fla-stage-g-panel`} data-fla-session-id={sessionId} data-stage-g-state="importing" data-testid="fla-frame-sequence-review">
         <FlaStageGImporting
-          context={`${source.basename} · 范围 ${startFrameIndex}–${endFrameIndex}`}
+          context={`${source.basename} · 第 ${startFrameIndex + 1}–${endFrameIndex + 1} 帧`}
           headline={`正在导入 ${orderedSequenceItems.length} 帧序列…`}
           route="sequence"
         />
@@ -688,6 +723,7 @@ export function FlaFrameSequenceReview({
       data-fla-session-id={sessionId}
       data-testid="fla-frame-sequence-review"
       data-workbench-panel={embedded ? 'sequence' : undefined}
+      data-unified-sequence-preview={showUnifiedSequencePreview ? 'true' : 'false'}
     >
       <div className="fla-frame-sequence-workbench" data-testid="fla-frame-sequence-workbench">
         <aside className="fla-frame-sequence-target-region" data-testid="fla-frame-sequence-target-region">
@@ -828,8 +864,28 @@ export function FlaFrameSequenceReview({
               />
             ) : (
               <div className="fla-frame-sequence-preview-placeholder" data-testid="fla-frame-sequence-preview-placeholder">
-                <strong>{phase === 'rendering' ? '正在生成帧序列…' : phase === 'error' ? '序列生成失败' : '等待生成帧序列'}</strong>
-                <span>{phase === 'rendering' ? `已完成 ${completedFrameCount} / ${validation.valid ? validation.frameCount : 0} 帧` : '生成后可在这里检查当前帧。'}</span>
+                <strong>
+                  {selectedEntry.isBlank
+                    ? '这是空白画面'
+                    : !supported
+                      ? '此项暂不可预览'
+                      : phase === 'rendering'
+                        ? '正在生成连续画面…'
+                        : phase === 'error'
+                          ? '连续画面生成失败'
+                          : '尚未生成连续画面'}
+                </strong>
+                <span>
+                  {selectedEntry.isBlank
+                    ? '源内容为空，不能导入。'
+                    : !supported
+                      ? boundedUnsupportedReason(selectedEntry.unsupportedReason)
+                      : phase === 'rendering'
+                        ? `已完成 ${completedFrameCount} / ${validation.valid ? validation.frameCount : 0} 帧`
+                        : phase === 'error'
+                          ? errorMessage || '请调整起始帧后重试。'
+                          : '选择起始帧后，按需生成最多 24 张连续图片。'}
+                </span>
               </div>
             )}
           </div>
@@ -852,44 +908,27 @@ export function FlaFrameSequenceReview({
             </header>
             <div className="fla-frame-sequence-range-inputs" aria-disabled={intentLocked}>
               <label>
-                <span>开始</span>
+                <span>从第</span>
                 <input
                   type="number"
-                  min={0}
-                  max={Math.max(0, targetFrameCount - 1)}
-                  value={startFrameIndex}
+                  min={1}
+                  max={Math.max(1, targetFrameCount)}
+                  value={startFrameIndex + 1}
                   disabled={intentLocked}
                   onChange={(event) => {
                     const value = Number(event.target.value);
-                    if (Number.isFinite(value)) setStartFrameIndex(Math.trunc(value));
+                    if (Number.isFinite(value)) updateStartFrameOneBased(value);
                   }}
                   onInput={(event) => {
                     const value = Number(event.currentTarget.value);
-                    if (Number.isFinite(value)) setStartFrameIndex(Math.trunc(value));
+                    if (Number.isFinite(value)) updateStartFrameOneBased(value);
                   }}
                   data-testid="fla-frame-sequence-start"
                 />
+                <span>帧开始</span>
               </label>
               <span className="fla-frame-sequence-range-arrow" aria-hidden="true">→</span>
-              <label>
-                <span>结束</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={Math.max(0, targetFrameCount - 1)}
-                  value={endFrameIndex}
-                  disabled={intentLocked}
-                  onChange={(event) => {
-                    const value = Number(event.target.value);
-                    if (Number.isFinite(value)) setEndFrameIndex(Math.trunc(value));
-                  }}
-                  onInput={(event) => {
-                    const value = Number(event.currentTarget.value);
-                    if (Number.isFinite(value)) setEndFrameIndex(Math.trunc(value));
-                  }}
-                  data-testid="fla-frame-sequence-end"
-                />
-              </label>
+              <output data-testid="fla-frame-sequence-end">至第 {endFrameIndex + 1} 帧</output>
               <output className="fla-frame-sequence-range-result" aria-live="polite">
                 = {validation.valid ? `${validation.frameCount} 帧` : '—'}
               </output>
@@ -897,6 +936,35 @@ export function FlaFrameSequenceReview({
             <p className="fla-frame-sequence-range-cap">最多 {MAX_SEQUENCE_FRAMES} 帧</p>
             {!validation.valid && validation.message ? (
               <p role="alert" data-testid="fla-frame-sequence-range-error">{validation.message}</p>
+            ) : null}
+            {presentation === 'unified-preview' ? (
+              <div className="fla-c03-sequence-actions" aria-live="polite">
+                {phase === 'rendering' ? (
+                  <>
+                    <output data-testid="fla-frame-sequence-progress">
+                      正在生成 {completedFrameCount} / {validation.valid ? validation.frameCount : 0}
+                    </output>
+                    <button type="button" onClick={() => void cancelSequence()} data-testid="fla-frame-sequence-cancel">
+                      取消生成
+                    </button>
+                  </>
+                ) : null}
+                {canGeneratePhase ? (
+                  <button
+                    type="button"
+                    disabled={!canGenerate}
+                    onClick={() => void renderSequence()}
+                    data-testid="fla-frame-sequence-render"
+                  >
+                    生成连续画面
+                  </button>
+                ) : null}
+                {phase === 'preview-ready' ? (
+                  <button type="button" onClick={() => void rerenderSequence()} data-testid="fla-frame-sequence-rerender">
+                    重新生成
+                  </button>
+                ) : null}
+              </div>
             ) : null}
           </div>
 
@@ -948,7 +1016,7 @@ export function FlaFrameSequenceReview({
           <dl className="fla-frame-sequence-details" data-testid="fla-frame-sequence-details">
             <div><dt>素材</dt><dd>{renderTargetKindLabel(target.kind)} · {targetFrameCount} 帧</dd></div>
             <div><dt>输出</dt><dd>PNG 序列</dd></div>
-            <div><dt>范围</dt><dd>{startFrameIndex}–{endFrameIndex} · {validation.valid ? `${validation.frameCount} 帧` : '无效'}</dd></div>
+            <div><dt>范围</dt><dd>第 {startFrameIndex + 1}–{endFrameIndex + 1} 帧 · {validation.valid ? `${validation.frameCount} 帧` : '无效'}</dd></div>
             <div><dt>结果</dt><dd>{displayedSequenceItems.length > 0 ? `${displayedSequenceItems.length} 帧已生成` : '待生成'}</dd></div>
           </dl>
            <details className="fla-frame-sequence-more" data-testid="fla-frame-sequence-more-details">
@@ -974,10 +1042,11 @@ export function FlaFrameSequenceReview({
         </aside>
       </div>
 
+      {presentation === 'standard' ? (
       <div className="fla-frame-sequence-action-bar" data-operation-target-id={target.renderTargetId} data-testid="fla-frame-sequence-action-bar">
         <div className="fla-frame-sequence-action-status">
           <strong data-testid="fla-frame-sequence-action-state" title={target.userLabel}>
-            {target.userLabel} · {startFrameIndex}–{endFrameIndex} · {validation.valid ? `${validation.frameCount} 帧` : '范围无效'} · {sequenceFooterState(phase, supported, sequenceIsCurrent)}
+            {target.userLabel} · 第 {startFrameIndex + 1}–{endFrameIndex + 1} 帧 · {validation.valid ? `${validation.frameCount} 帧` : '范围无效'} · {sequenceFooterState(phase, supported, sequenceIsCurrent)}
           </strong>
           {phase === 'rendering' ? (
             <output aria-live="polite" data-testid="fla-frame-sequence-progress">
@@ -1025,6 +1094,7 @@ export function FlaFrameSequenceReview({
           ) : null}
         </div>
       </div>
+      ) : null}
     </div>
   );
 }

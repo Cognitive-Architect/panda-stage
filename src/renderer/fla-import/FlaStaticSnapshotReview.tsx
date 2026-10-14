@@ -32,6 +32,7 @@ import {
   flaWorkbenchSnapshotIdentityKey,
   focusFlaWorkbenchCandidate,
   reconcileFlaWorkbenchFocus,
+  type FlaWorkbenchCandidate,
 } from './fla-workbench-candidates';
 import {
   describeFlaUnifiedCandidate,
@@ -61,6 +62,15 @@ interface FlaStaticSnapshotReviewProps {
   onImported: (response: FlaStaticSnapshotCommitResponse) => void;
   onWorkInProgressChange?: (busy: boolean) => void;
   onTerminalStateChange?: (state: FlaStageGTerminalState) => void;
+  presentation?: 'standard' | 'unified-preview';
+  focusedCandidateIdentityKey?: string | null;
+  onCandidatesChange?: (candidates: readonly FlaWorkbenchCandidate[]) => void;
+  onCatalogProgressChange?: (progress: {
+    phase: 'loading' | 'scanning' | 'ready' | 'error';
+    completed: number;
+    total: number;
+    omittedCandidateCount: number;
+  }) => void;
 }
 
 type SnapshotPhase = 'loading' | 'scanning' | 'ready' | 'error';
@@ -107,6 +117,10 @@ export function FlaStaticSnapshotReview({
   onImported,
   onWorkInProgressChange,
   onTerminalStateChange,
+  presentation = 'standard',
+  focusedCandidateIdentityKey,
+  onCandidatesChange,
+  onCatalogProgressChange,
 }: FlaStaticSnapshotReviewProps): React.JSX.Element {
   const [phase, setPhase] = useState<SnapshotPhase>('loading');
   const [entries, setEntries] = useState<FlaRenderableTargetCatalogEntry[]>([]);
@@ -168,6 +182,25 @@ export function FlaStaticSnapshotReview({
       })),
     [candidateContext, candidateSelection.focusedCandidateId, checkedCandidateKeys, entries, previews],
   );
+  useEffect(() => {
+    onCandidatesChange?.(candidates);
+  }, [candidates, onCandidatesChange]);
+
+  useEffect(() => {
+    onCatalogProgressChange?.({
+      phase,
+      completed: scanProgress,
+      total: entries.length,
+      omittedCandidateCount,
+    });
+  }, [entries.length, omittedCandidateCount, onCatalogProgressChange, phase, scanProgress]);
+
+  useEffect(() => {
+    if (!focusedCandidateIdentityKey) return;
+    const candidate = candidates.find((item) => item.identityKey === focusedCandidateIdentityKey);
+    if (!candidate) return;
+    setCandidateSelection((current) => focusFlaWorkbenchCandidate(current, candidate.id));
+  }, [candidates, focusedCandidateIdentityKey]);
   const candidateById = useMemo(
     () => new Map(candidates.map((candidate) => [candidate.id, candidate])),
     [candidates],
@@ -271,7 +304,7 @@ export function FlaStaticSnapshotReview({
     updateFocusedPreview({ key: identityKey, status: 'error', message });
     setPreviews((current) => ({
       ...current,
-      [candidateId]: { ...current[candidateId], status: 'unsupported', reason: message },
+      [candidateId]: { ...current[candidateId], status: 'error', reason: message },
     }));
   }, [updateFocusedPreview]);
 
@@ -403,12 +436,12 @@ export function FlaStaticSnapshotReview({
           }
           if (outcome.operationError) {
             setCandidatePreviewAndProgress(index, entry, {
-              status: 'unsupported',
+              status: 'error',
               reason: outcome.operationError.message,
             });
           } else if (!outcome.response?.ok || !outcome.response.bytes) {
             setCandidatePreviewAndProgress(index, entry, {
-              status: 'unsupported',
+              status: 'error',
               reason: outcome.response?.ok ? '预览没有返回图像。' : outcome.response?.error.message ?? '预览失败。',
             });
           } else {
@@ -448,7 +481,7 @@ export function FlaStaticSnapshotReview({
               });
             } catch (error) {
               setCandidatePreviewAndProgress(index, entry, {
-                status: 'unsupported',
+                status: 'error',
                 reason: error instanceof Error ? error.message : '无法显示预览图像。',
               });
             }
@@ -768,7 +801,7 @@ export function FlaStaticSnapshotReview({
     : null;
   return (
     <div
-      className="fla-snapshot-review fla-render-workbench-panel"
+      className={`fla-snapshot-review fla-render-workbench-panel${presentation === 'unified-preview' ? ' fla-snapshot-review-unified-preview' : ''}`}
       data-preview-state={phase === 'scanning' ? 'rendering' : 'ready'}
       data-fla-session-id={sessionId}
       data-testid="fla-snapshot-review"
@@ -870,6 +903,8 @@ export function FlaStaticSnapshotReview({
                         ? 'supported'
                         : candidatePreview?.status === 'blank'
                           ? 'blank'
+                          : candidatePreview?.status === 'error'
+                            ? 'error'
                           : candidatePreview?.status === 'checking' || candidatePreview?.status === 'unscanned'
                             ? 'checking'
                             : 'unsupported';
@@ -926,7 +961,7 @@ export function FlaStaticSnapshotReview({
                           />
                             ) : (
                               <span className={`fla-snapshot-candidate-placeholder is-${status}`} aria-hidden="true">
-                                {status === 'blank' ? '空白' : status === 'unsupported' ? '不可预览' : status === 'checking' ? '检查中' : '预览'}
+                                {status === 'blank' ? '空白' : status === 'error' ? '加载失败' : status === 'unsupported' ? '不可预览' : status === 'checking' ? '检查中' : '预览'}
                               </span>
                             )}
                             <span className="fla-snapshot-candidate-copy">
@@ -945,7 +980,7 @@ export function FlaStaticSnapshotReview({
                             <span className="sr-only">选择素材</span>
                           </label>
                           <span className={`fla-snapshot-candidate-status is-${status}`}>
-                            {status === 'supported' ? '可导入' : status === 'blank' ? '空白状态' : status === 'checking' ? '检查中' : '暂不可导入'}
+                            {status === 'supported' ? '可导入' : status === 'blank' ? '空白状态' : status === 'error' ? '加载失败' : status === 'checking' ? '检查中' : '暂不可导入'}
                           </span>
                         </div>
                       );

@@ -9,7 +9,7 @@ import {
   snapshotCandidateId,
 } from './fla-workbench-candidates';
 
-export type FlaStaticSnapshotCandidateStatus = 'checking' | 'supported' | 'unsupported' | 'blank';
+export type FlaStaticSnapshotCandidateStatus = 'checking' | 'supported' | 'unsupported' | 'blank' | 'error';
 
 export interface FlaStaticSnapshotCandidatePreview {
   status: FlaStaticSnapshotCandidateStatus;

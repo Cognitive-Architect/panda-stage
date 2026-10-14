@@ -79,6 +79,7 @@
     "verify:issue767-u1": "pnpm build && electron scripts/verify-issue767-u1.cjs",
     "verify:issue767-u2": "pnpm build && electron scripts/verify-issue767-u2.cjs",
     "verify:issue767-u3": "pnpm build && electron scripts/verify-issue767-u3.cjs",
+    "verify:issue775-c03": "pnpm build && electron scripts/verify-issue775-c03.cjs",
     "verify:issue399-stage-e": "pnpm build && electron scripts/verify-issue399-stage-e.cjs",
     "verify:issue402-stage-f": "pnpm build && electron scripts/verify-issue402-stage-f.cjs",
     "verify:issue403-raster-containment": "pnpm build && node scripts/verify-issue403-raster-containment.cjs",

@@ -599,7 +599,7 @@ describe('Issue #553 SER-06 B14/B15 compatibility and closure contract', () => {
     expect(mixed).toContain('.timeline-audio-clip-error');
   });
 
-  it('keeps the producers, hosts, and current runtime entry points unchanged', () => {
+  it('keeps the producers and hosts while C03 reuses the existing render runners', () => {
     const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
     const dialogueSheet = read('src/renderer/features/dialogue/DialogueSheet.tsx');
     const dialogueInspector = read('src/renderer/features/dialogue/DialogueInspector.tsx');
@@ -614,8 +614,10 @@ describe('Issue #553 SER-06 B14/B15 compatibility and closure contract', () => {
     expect(dialogueSheet).toContain('dialogue-sheet-timeline');
     expect(dialogueInspector).toContain('dialogue-inspector-audio-section');
     expect(audioClip).toContain('timeline-audio-clip-error');
-    expect(flaSession).toContain('<FlaRenderWorkbench');
+    expect(flaSession).toContain('<FlaUnifiedWorkbench');
     expect(flaSession).toContain('<FlaStaticSnapshotReview');
+    expect(flaSession).toContain('<FlaFrameSequenceReview');
+    expect(flaSession).not.toContain('<FlaRenderWorkbench');
     expect(flaWorkbench).toContain('fla-render-workbench');
     expect(flaSnapshot).toContain('fla-snapshot-review');
     expect(bottomWorkspace).toContain('timelineUiStore.setHeightMax');

@@ -9,6 +9,7 @@ import {
   focusFlaWorkbenchCandidate,
   reconcileFlaWorkbenchChecks,
   reconcileFlaWorkbenchFocus,
+  sortFlaWorkbenchCandidates,
   snapshotCandidateId,
   toggleFlaWorkbenchCandidateChecked,
 } from '../../src/renderer/fla-import/fla-workbench-candidates';
@@ -119,6 +120,36 @@ describe('Issue #775 C01 unified FLA workbench candidates', () => {
     });
   });
 
+  it('keeps catalog order stable when preview support changes during scanning', () => {
+    const referenced = target('referenced', '完整角色', {
+      role: 'scene-referenced-graphic',
+    });
+    const scene = target('scene', '主场景', {
+      kind: 'scene',
+      role: 'scene',
+    });
+    const before = createFlaWorkbenchCandidates({
+      context: context(),
+      snapshotEntries: [referenced, scene],
+      snapshotPreviews: {
+        [snapshotCandidateId(referenced)]: { status: 'unsupported', reason: '暂不可用' },
+        [snapshotCandidateId(scene)]: verifiedPreview(),
+      },
+    });
+    const after = createFlaWorkbenchCandidates({
+      context: context(),
+      snapshotEntries: [referenced, scene],
+      snapshotPreviews: {
+        [snapshotCandidateId(referenced)]: verifiedPreview('d'.repeat(64)),
+        [snapshotCandidateId(scene)]: verifiedPreview(),
+      },
+    });
+
+    expect(sortFlaWorkbenchCandidates(before).map((candidate) => candidate.identityKey))
+      .toEqual(sortFlaWorkbenchCandidates(after).map((candidate) => candidate.identityKey));
+    expect(sortFlaWorkbenchCandidates(after)[0]?.identityKey).toBe(after[0]?.identityKey);
+  });
+
   it('keeps candidate and operation identity distinct from duplicate image hashes and labels', () => {
     const first = target('duplicate-a', '完整角色/上衣', { role: 'graphic-state' });
     const second = target('duplicate-b', '其他部位/上衣', { role: 'graphic-state' });
@@ -215,24 +246,27 @@ describe('Issue #775 C01 unified FLA workbench candidates', () => {
     expect(verified?.preview.bindingKey).not.toBe(checking?.preview.bindingKey);
   });
 
-  it('keeps supported, blank, unsupported, and unscanned candidates separate and fails closed for checks', () => {
+  it('keeps supported, blank, unsupported, failed, and unscanned candidates separate and fails closed for checks', () => {
     const supported = target('supported', '可预览素材');
     const pending = target('pending', '尚未检查素材');
     const blank = target('blank', '空白状态', { isBlank: true });
     const unsupported = target('unsupported', '暂不可预览素材', { previewSupported: false });
+    const failed = target('failed', '预览失败素材');
     const candidates = createFlaWorkbenchCandidates({
       context: context(),
-      snapshotEntries: [supported, pending, blank, unsupported],
+      snapshotEntries: [supported, pending, blank, unsupported, failed],
       snapshotPreviews: {
         [snapshotCandidateId(supported)]: verifiedPreview(),
+        [snapshotCandidateId(failed)]: { status: 'error', reason: '本次预览检查失败。' },
       },
     });
-    const [ready, checking, blankCandidate, unsupportedCandidate] = candidates;
+    const [ready, checking, blankCandidate, unsupportedCandidate, failedCandidate] = candidates;
 
     expect(ready).toMatchObject({ supported: true, blank: false, unscanned: false, selectable: true });
     expect(checking).toMatchObject({ supported: true, blank: false, unscanned: true, selectable: false, preview: { status: 'checking' } });
     expect(blankCandidate).toMatchObject({ supported: false, blank: true, unscanned: false, selectable: false, preview: { status: 'blank' } });
     expect(unsupportedCandidate).toMatchObject({ supported: false, blank: false, unscanned: false, selectable: false, preview: { status: 'unsupported' } });
+    expect(failedCandidate).toMatchObject({ supported: false, blank: false, unscanned: false, selectable: false, preview: { status: 'error', reason: '本次预览检查失败。' } });
 
     const initial = createFlaWorkbenchCandidateSelection();
     const checkedReady = toggleFlaWorkbenchCandidateChecked(initial, ready);
@@ -240,8 +274,9 @@ describe('Issue #775 C01 unified FLA workbench candidates', () => {
     expect(toggleFlaWorkbenchCandidateChecked(checkedReady, checking)).toBe(checkedReady);
     expect(toggleFlaWorkbenchCandidateChecked(checkedReady, blankCandidate)).toBe(checkedReady);
     expect(toggleFlaWorkbenchCandidateChecked(checkedReady, unsupportedCandidate)).toBe(checkedReady);
+    expect(toggleFlaWorkbenchCandidateChecked(checkedReady, failedCandidate)).toBe(checkedReady);
     expect(reconcileFlaWorkbenchChecks(checkedReady, [
-      { ...ready!, selectable: false }, checking!, blankCandidate!, unsupportedCandidate!,
+      { ...ready!, selectable: false }, checking!, blankCandidate!, unsupportedCandidate!, failedCandidate!,
     ]).checkedCandidateIds).toEqual(new Set());
   });
 

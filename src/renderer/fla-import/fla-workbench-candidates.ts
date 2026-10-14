@@ -461,11 +461,14 @@ export function sortFlaWorkbenchCandidates(
   candidates: readonly FlaWorkbenchCandidate[],
 ): FlaWorkbenchCandidate[] {
   const rank = (candidate: FlaWorkbenchCandidate): number => {
-    if (candidate.supported && candidate.catalogRole === 'scene-referenced-graphic') return 0;
-    if (candidate.supported && candidate.catalogRole === 'scene') return 1;
-    if (candidate.kind === 'sequence' && candidate.supported) return 2;
+    // Keep the list position tied only to catalog identity and role. Preview
+    // support changes as scanning progresses and must not move a candidate
+    // underneath a user's pointer or keyboard focus.
+    if (candidate.catalogRole === 'scene-referenced-graphic') return 0;
+    if (candidate.catalogRole === 'scene') return 1;
+    if (candidate.kind === 'sequence') return 2;
     if (candidate.kind === 'raster') return 3;
-    if (candidate.kind === 'snapshot' && candidate.catalogRole === 'graphic-state') return 4;
+    if (candidate.catalogRole === 'graphic-state') return 4;
     return 5;
   };
   return candidates
