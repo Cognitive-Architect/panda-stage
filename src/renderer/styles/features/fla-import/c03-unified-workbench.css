@@ -411,6 +411,8 @@
 }
 
 .fla-c03-preview-stage.has-sequence-preview {
+  min-height: 0;
+  height: 100%;
   grid-template-rows: minmax(210px, 1.7fr) minmax(112px, auto) minmax(92px, 0.75fr);
 }
 
@@ -816,9 +818,9 @@
   }
 
   .fla-c03-preview-stage.has-sequence-preview {
-    height: 480px;
-    min-height: 480px;
-    max-height: 480px;
+    height: clamp(324px, calc(100dvh - 150px), 480px);
+    min-height: clamp(324px, calc(100dvh - 150px), 480px);
+    max-height: clamp(324px, calc(100dvh - 150px), 480px);
   }
 
   .fla-c03-browser {
@@ -829,6 +831,16 @@
 
   .fla-c03-candidate-grid {
     min-height: 180px;
+  }
+}
+
+@media (max-height: 600px) {
+  .fla-c03-preview-stage.has-sequence-preview {
+    grid-template-rows: minmax(120px, 1.7fr) minmax(112px, auto) minmax(92px, 0.75fr);
+  }
+
+  .fla-frame-sequence-review-unified-preview .fla-frame-sequence-preview-stage {
+    min-height: 120px;
   }
 }
 
