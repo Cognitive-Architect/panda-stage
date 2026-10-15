@@ -272,6 +272,18 @@
         "notes": "Issue #778 C03 bounded Windows Electron receipts, normal/narrow screenshots, and read-only S2 trace only; Draft evidence changes use existing CI policy self-tests, production changes remain on their subsystem routes, and evidence is not owner human acceptance or parent #775 Gate C acceptance."
       },
       {
+        "id": "issue780-c03-acceptance-evidence",
+        "sourcePatterns": ["docs/evidence/issue-780-g001-g006/**"],
+        "testPatterns": [],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "draftPolicy": "ci-selftest",
+        "incrementalEligible": false,
+        "owner": "fla-import",
+        "notes": "Issue #780 G001-G006 bounded Windows Electron C03 screenshots and acceptance receipts only; Draft evidence changes use existing CI policy self-tests, production changes remain on their subsystem routes, and automation evidence is not owner human Gate C acceptance. Unregistered evidence paths remain fail-closed."
+      },
+      {
         "id": "cross-process-core",
         "sourcePatterns": [
           "src/main/**",
