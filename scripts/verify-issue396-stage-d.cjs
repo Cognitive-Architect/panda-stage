@@ -350,6 +350,7 @@ function getRuntimeEnvironment() {
     logicalCpuCount: cpus.length,
     totalMemoryBytes: os.totalmem(),
     displayScaleFactor: primaryDisplay.scaleFactor,
+    native150Percent: Math.abs(primaryDisplay.scaleFactor - 1.5) < 0.01 ? 'PASS' : 'NOT RUN',
     displayWorkArea: primaryDisplay.workAreaSize,
   };
 }
@@ -455,6 +456,27 @@ async function waitForMainWindow() {
   throw new Error('Panda Stage main window did not expose the Stage D APIs');
 }
 
+async function resizeWindowToExactViewport(mainWindow, targetViewport) {
+  let viewport = null;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    viewport = await mainWindow.webContents.executeJavaScript(
+      '({ width: window.innerWidth, height: window.innerHeight })',
+    );
+    if (viewport.width === targetViewport.width && viewport.height === targetViewport.height) return viewport;
+
+    const bounds = mainWindow.getBounds();
+    const width = bounds.width + targetViewport.width - viewport.width;
+    const height = bounds.height + targetViewport.height - viewport.height;
+    if (width === bounds.width && height === bounds.height) break;
+    mainWindow.setSize(width, height);
+    mainWindow.center();
+    await delay(100);
+  }
+  throw new Error(
+    `Stage D could not reach the exact logical viewport ${JSON.stringify(targetViewport)}; observed ${JSON.stringify(viewport)}`,
+  );
+}
+
 async function captureScreenshotAtMarker(mainWindow, marker, outputPath, pathState, {
   resizeTo = null,
   restoreBoundsAfterCapture = null,
@@ -470,6 +492,9 @@ async function captureScreenshotAtMarker(mainWindow, marker, outputPath, pathSta
         mainWindow.setSize(resizeTo.width, resizeTo.height);
         mainWindow.center();
         await delay(250);
+        if (resizeTo.targetViewport) {
+          await resizeWindowToExactViewport(mainWindow, resizeTo.targetViewport);
+        }
         const viewport = await mainWindow.webContents.executeJavaScript(
           '({ width: window.innerWidth, height: window.innerHeight })',
         );
@@ -594,6 +619,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
   issue762Profile = false,
   issue766FirstLoad = false,
   profileCommit = false,
+  displayScaleFactor = 1,
   sequenceTargetSubstring = '',
   captureSequencePreviewBeforeRender = false,
   profileScanTimeoutMs = 300_000,
@@ -618,6 +644,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       const projectName = ${JSON.stringify(projectName)};
       const measureScanOnly = ${JSON.stringify(measureScanOnly)};
       const profileCommit = ${JSON.stringify(profileCommit)};
+      const expectedDisplayScaleFactor = ${JSON.stringify(displayScaleFactor)};
       const sequenceTargetSubstring = ${JSON.stringify(sequenceTargetSubstring)};
       const captureSequencePreviewBeforeRender = ${JSON.stringify(captureSequencePreviewBeforeRender)};
       const profileScanTimeoutMs = ${JSON.stringify(profileScanTimeoutMs)};
@@ -1020,22 +1047,36 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       const cancelDuringScan = async () => {
         const before = readProjectState();
         await clickStageDAction();
-        await waitFor('[data-testid="fla-snapshot-review"]', (element) =>
-          element.getAttribute('data-preview-state') === 'rendering',
-        );
-        const scanProgress = Number(
-          document.querySelector('[data-testid="fla-snapshot-scan-progress"]')?.textContent?.match(/[0-9]+/u)?.[0] ?? 0,
-        );
+        await waitFor('[data-testid="fla-snapshot-review"]', (element) => {
+          const progressText = element.querySelector('[data-testid="fla-snapshot-scan-progress"]')?.textContent ?? '';
+          const progressValues = progressText.match(/[0-9]+/gu) ?? [];
+          return element.getAttribute('data-preview-state') === 'rendering' &&
+            progressValues.length >= 2 && Number(progressValues[1]) > 0 && Number(progressValues[0]) < Number(progressValues[1]);
+        });
+        const review = document.querySelector('[data-testid="fla-snapshot-review"]');
+        const scanReviewState = review?.getAttribute('data-preview-state') ?? '';
+        const scanProgressText = review?.querySelector('[data-testid="fla-snapshot-scan-progress"]')?.textContent?.trim() ?? '';
+        const scanProgressValues = scanProgressText.match(/[0-9]+/gu) ?? [];
+        if (scanProgressValues.length < 2) throw new Error('Stage D scan progress did not expose completed/total counts before cancellation.');
+        const scanProgress = Number(scanProgressValues[0]);
+        const scanTotal = Number(scanProgressValues[1]);
+        const scanInProgress = scanReviewState === 'rendering' && scanTotal > 0 && scanProgress < scanTotal;
         const candidateCount = document.querySelectorAll(
           '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="snapshot"]',
         ).length;
         click('[data-testid="fla-review-cancel"]');
-        await waitFor('[data-testid="asset-browser-view"]');
+        const assetBrowser = await waitFor('[data-testid="asset-browser-view"]');
+        const exitedToAssetBrowser = Boolean(assetBrowser);
         const after = readProjectState();
         return {
-          exitedBeforeScanCompleted: candidateCount > 0 && scanProgress < candidateCount,
-          candidateCount,
+          exitedBeforeScanCompleted: scanInProgress && exitedToAssetBrowser,
+          scanReviewState,
+          scanInProgress,
           scanProgress,
+          scanTotal,
+          scanProgressText,
+          candidateCount,
+          exitedToAssetBrowser,
           noProjectMutation: after.assetCount === before.assetCount && after.maxRevision === before.maxRevision,
           before,
           after,
@@ -1865,7 +1906,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         sequenceInteraction.generatedFrameCount === 3 && sequenceInteraction.sequenceEnd.includes('第 3 帧') &&
         sequenceInteraction.sequenceCount.includes('3 帧') && sequenceInteraction.selectionPreservedThroughAtoBtoA &&
         sequenceTouchWorks && sequenceKeyboardWorks && sequenceHitTargetsRespectDesign &&
-        sequenceInteraction.narrowAtTop.viewport.devicePixelRatio === 1.5;
+        sequenceInteraction.narrowAtTop.viewport.devicePixelRatio === expectedDisplayScaleFactor;
       const beforeCancel = readProjectState();
       click('[data-testid="fla-review-cancel"]');
       await waitFor('[data-testid="asset-browser-view"]');
@@ -2049,7 +2090,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         receiptReachableAt846x653: receiptReachability.viewport846x653.top.footerVisible &&
           receiptReachability.viewport846x653.top.viewport.width === 846 &&
           receiptReachability.viewport846x653.top.viewport.height === 653 &&
-          receiptReachability.viewport846x653.top.viewport.devicePixelRatio === 1.5 &&
+          receiptReachability.viewport846x653.top.viewport.devicePixelRatio === expectedDisplayScaleFactor &&
           receiptReachability.viewport846x653.top.importActionVisible &&
           receiptReachability.viewport846x653.top.summaryVisible &&
           receiptReachability.viewport846x653.bottom.importActionVisible &&
@@ -2059,7 +2100,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         receiptReachableAtNarrowNative: receiptReachability.narrowNative.top.footerVisible &&
           receiptReachability.narrowNative.top.viewport.width < 846 &&
           receiptReachability.narrowNative.top.viewport.height < 653 &&
-          receiptReachability.narrowNative.top.viewport.devicePixelRatio === 1.5 &&
+          receiptReachability.narrowNative.top.viewport.devicePixelRatio === expectedDisplayScaleFactor &&
           receiptReachability.narrowNative.top.importActionVisible &&
           receiptReachability.narrowNative.top.summaryVisible &&
           receiptReachability.narrowNative.bottom.importActionVisible &&
@@ -2227,6 +2268,7 @@ async function main() {
       issue762Profile: Boolean(args.issue762Profile),
       issue766FirstLoad: Boolean(args.issue766FirstLoad),
       profileCommit: Boolean(args.profileCommit),
+      displayScaleFactor: screen.getPrimaryDisplay().scaleFactor,
       sequenceTargetSubstring: typeof args.sequenceTarget === 'string' ? args.sequenceTarget : '',
       captureSequencePreviewBeforeRender: Boolean(args.captureSequencePreviewBeforeRender),
       profileScanTimeoutMs: Number.isFinite(args.scanTimeoutMs) && args.scanTimeoutMs > 0
@@ -2323,7 +2365,14 @@ async function main() {
           'receipt-846-top',
           join(evidenceDir, 'stage-d-receipt-846x653-top.png'),
           pathState,
-          { resizeTo: { width: 859, height: 689, maxViewportWidth: 900 } },
+          {
+            resizeTo: {
+              width: 859,
+              height: 689,
+              maxViewportWidth: 900,
+              targetViewport: { width: 846, height: 653 },
+            },
+          },
         );
         layoutEvidence.receipt846x653TouchScroll = await driveTouchScrollAtMarker(
           mainWindow,
@@ -2367,7 +2416,12 @@ async function main() {
       firstLoad.summary = summarizeIssue766FirstLoad(firstLoad);
       response.issue766FirstLoad = firstLoad;
     }
-    if (layoutEvidence) response.layoutEvidence = layoutEvidence;
+    if (layoutEvidence) {
+      const displayScaleFactor = screen.getPrimaryDisplay().scaleFactor;
+      layoutEvidence.displayScaleFactor = displayScaleFactor;
+      layoutEvidence.native150Percent = Math.abs(displayScaleFactor - 1.5) < 0.01 ? 'PASS' : 'NOT RUN';
+      response.layoutEvidence = layoutEvidence;
+    }
     sourceSha256After = sha256(sourcePath);
     const projectFile = join(acceptanceRoot, `${projectName}.pandastage`, 'project.json');
     const persistedProject = existsSync(projectFile)

@@ -108,7 +108,14 @@ describe('Issue #775 C03 preserves the Stage D render runners in one workbench',
     expect(verifier).toContain('receiptReachableAt846x653');
     expect(verifier).toContain('receiptReachableAtNarrowNative');
     expect(verifier).toContain('receiptTouchWorks');
-    expect(verifier).toContain('width: 859, height: 689, maxViewportWidth: 900');
+    expect(verifier).toContain('async function resizeWindowToExactViewport');
+    expect(verifier).toContain('targetViewport: { width: 846, height: 653 }');
+    expect(verifier).toContain('native150Percent:');
+    expect(verifier).toContain('layoutEvidence.displayScaleFactor = displayScaleFactor');
+    expect(verifier).toContain('const expectedDisplayScaleFactor = ${JSON.stringify(displayScaleFactor)};');
+    expect(verifier).toContain('devicePixelRatio === expectedDisplayScaleFactor');
+    expect(verifier).toContain('scanTotal > 0 && scanProgress < scanTotal');
+    expect(verifier).toContain('exitedBeforeScanCompleted: scanInProgress && exitedToAssetBrowser');
     expect(verifier).toContain('receiptReachability.viewport846x653.top.viewport.height === 653');
     expect(verifier).toContain('receiptReachability.narrowNative.bottom.viewport.height === receiptReachability.narrowNative.top.viewport.height');
     expect(verifier).toMatch(/async function driveKeyboardAtMarker\([\s\S]*?const deadline = Date\.now\(\) \+ 75_000;/u);
