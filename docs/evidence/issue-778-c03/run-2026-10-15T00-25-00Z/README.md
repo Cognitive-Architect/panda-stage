@@ -35,7 +35,7 @@ These paired screenshots use the actual supplied FLA for capture-only preview. T
 - `pnpm build` — PASS; existing empty legacy CSS imports and a large-chunk warning remain
 - `pnpm verify:issue396-stage-d` — PASS by the receipt checks above
 
-GitHub policy CI is triggered by pushing this commit; its run ID will be added to Issue #778 after it completes.
+The first automatic CI run (`38660248858`) stopped at the unknown-route guard because the PNG/JSON artifacts in this new evidence subtree were not registered; no product test jobs ran. The follow-up commit registers only `docs/evidence/issue-778-c03/**` in the verification manifest, using the repository's existing Draft evidence policy without changing workflow logic. GitHub will classify and run the follow-up commit automatically; its run ID and outcome will be recorded in Issue #778.
 
 ## Remaining review boundary
 
