@@ -1124,6 +1124,7 @@ async function verifySelectionAndList(window) {
     `Bulk confirmation displayed ${confirmedCount} additions but selected ${appliedFacts.selectedCount}: ${JSON.stringify(runtime.layout.bulkApplied)}.`);
 
   const highCountBounds = window.getBounds();
+  const highCountContentBounds = window.getContentBounds();
   try {
     window.setBounds({ x: highCountBounds.x, y: highCountBounds.y, width: 800, height: 690 });
     await delay(500);
@@ -1227,8 +1228,12 @@ async function verifySelectionAndList(window) {
     await setInput(window, '[data-testid="fla-c03-search"]', '');
     await waitForPage(window, () => document.querySelectorAll('.fla-c03-candidate').length >= 336);
   } finally {
-    window.setBounds(highCountBounds);
-    await delay(300);
+    window.setPosition(highCountBounds.x, highCountBounds.y);
+    window.setContentSize(
+      highCountContentBounds.width,
+      highCountContentBounds.height,
+    );
+    await delay(500);
   }
 
   await inPage(window, () => {
