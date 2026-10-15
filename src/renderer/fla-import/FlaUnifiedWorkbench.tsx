@@ -162,29 +162,32 @@ export function FlaUnifiedWorkbench({
               />
             </label>
             <button
+              aria-label="全选当前结果"
               data-testid="fla-c03-select-current-results"
               disabled={locked || selectedOnly || visibleCandidates.every((candidate) => !candidate.selectable || candidate.checked)}
               onClick={onSelectCurrentResults}
               type="button"
             >
-              全选当前结果
+              全选
             </button>
             <button
+              aria-label="清空全部已选素材"
               data-testid="fla-c03-clear-selection"
               disabled={locked || selectedCount === 0}
               onClick={onClearSelection}
               type="button"
             >
-              清空选择
+              清空
             </button>
             <button
+              aria-label={selectedOnly ? '返回浏览' : `查看已选 ${selectedCount}`}
               aria-pressed={selectedOnly}
               data-testid="fla-c03-selected-view"
               disabled={(!selectedOnly && selectedCount === 0) || locked}
               onClick={toggleSelectedView}
               type="button"
             >
-              {selectedOnly ? '返回浏览' : `查看已选 ${selectedCount}`}
+              {selectedOnly ? '返回浏览' : `已选 ${selectedCount}`}
             </button>
             {selectedOnly && searchText.trim() ? (
               <output className="fla-c03-selected-view-status" data-testid="fla-c03-selected-view-status" role="status">
@@ -310,7 +313,15 @@ export function FlaUnifiedWorkbench({
             </div>
             <div className="fla-c03-zoom-tools" role="group" aria-label="预览缩放">
               <button aria-label="缩小预览" disabled={!canZoom} onClick={() => updateZoom(-0.25)} type="button">−</button>
-              <button aria-label="适合预览" disabled={!canZoom} onClick={() => setPreviewZoom(1)} type="button">适合</button>
+              <button
+                aria-label="恢复默认预览大小"
+                disabled={!canZoom}
+                onClick={() => setPreviewZoom(1)}
+                title="恢复默认预览大小"
+                type="button"
+              >
+                适中
+              </button>
               <button aria-label="放大预览" disabled={!canZoom} onClick={() => updateZoom(0.25)} type="button">+</button>
             </div>
           </header>

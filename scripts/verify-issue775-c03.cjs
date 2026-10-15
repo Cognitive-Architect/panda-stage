@@ -94,6 +94,7 @@ function parseArgs(argv) {
   const args = {};
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === '--acceptance-root') args.acceptanceRoot = argv[++index];
+    else if (argv[index] === '--evidence-root') args.evidenceRoot = argv[++index];
     else if (argv[index] === '--source') args.source = argv[++index];
   }
   return args;
@@ -179,6 +180,64 @@ async function click(window, selector) {
   }, selector);
   assert(clicked, 'Could not click ' + selector);
   await delay(80);
+}
+
+async function mouseClickCandidateCheckbox(window, targetId) {
+  const target = await inPage(window, (wantedTargetId) => {
+    const row = [...document.querySelectorAll('.fla-c03-candidate[data-candidate-kind="snapshot"]')]
+      .find((candidate) => {
+        try { return JSON.parse(candidate.dataset.candidateIdentity ?? '[]').includes(wantedTargetId); }
+        catch { return false; }
+      });
+    const hitbox = row?.querySelector('.fla-c03-checkbox-hitbox');
+    const checkbox = hitbox?.querySelector('input[type="checkbox"]');
+    if (!(hitbox instanceof HTMLElement) || !(checkbox instanceof HTMLInputElement)) return null;
+    hitbox.scrollIntoView({ block: 'nearest' });
+    const rect = hitbox.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, width: rect.width, height: rect.height };
+  }, targetId);
+  assert(target && target.width >= 48 && target.height >= 48,
+    'The checkbox hitbox must remain at least 48 CSS pixels before a mouse click.');
+
+  window.show();
+  window.focus();
+  window.webContents.focus();
+  await delay(50);
+  const x = Math.round(target.x);
+  const y = Math.round(target.y);
+  window.webContents.sendInputEvent({ type: 'mouseMove', x, y });
+  window.webContents.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
+  window.webContents.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
+  await waitForPage(window, (wantedTargetId) => [...document.querySelectorAll(
+    '.fla-c03-candidate[data-candidate-kind="snapshot"]',
+  )].some((row) => {
+    try {
+      return JSON.parse(row.dataset.candidateIdentity ?? '[]').includes(wantedTargetId) &&
+        row.querySelector('input[type="checkbox"]')?.checked === true;
+    } catch {
+      return false;
+    }
+  }), [targetId]);
+
+  return inPage(window, (wantedTargetId) => {
+    const row = [...document.querySelectorAll('.fla-c03-candidate[data-candidate-kind="snapshot"]')]
+      .find((candidate) => {
+        try { return JSON.parse(candidate.dataset.candidateIdentity ?? '[]').includes(wantedTargetId); }
+        catch { return false; }
+      });
+    const checkbox = row?.querySelector('input[type="checkbox"]');
+    const hitbox = checkbox?.closest('.fla-c03-checkbox-hitbox');
+    const rect = hitbox?.getBoundingClientRect();
+    return {
+      checked: checkbox?.checked === true,
+      focused: document.activeElement === checkbox,
+      selectedCount: document.querySelectorAll('.fla-c03-candidate input[type="checkbox"]:checked').length,
+      hitboxWidth: rect?.width ?? 0,
+      hitboxHeight: rect?.height ?? 0,
+      outlineWidth: hitbox ? Number.parseFloat(getComputedStyle(hitbox).outlineWidth) : 0,
+      outlineStyle: hitbox ? getComputedStyle(hitbox).outlineStyle : 'none',
+    };
+  }, targetId);
 }
 
 async function sendInputKey(window, keyCode) {
@@ -1063,6 +1122,121 @@ async function verifySelectionAndList(window) {
   };
   assert(appliedFacts.selectedCount === confirmedCount,
     `Bulk confirmation displayed ${confirmedCount} additions but selected ${appliedFacts.selectedCount}: ${JSON.stringify(runtime.layout.bulkApplied)}.`);
+
+  const highCountBounds = window.getBounds();
+  try {
+    window.setBounds({ x: highCountBounds.x, y: highCountBounds.y, width: 570, height: 690 });
+    await delay(500);
+    const highCountNarrow = await inPage(window, () => {
+      const toolbar = document.querySelector('.fla-c03-browser-tools');
+      const toolbarRect = toolbar?.getBoundingClientRect();
+      const elements = toolbar
+        ? [...toolbar.children].filter((child) => child.matches('.fla-c03-search, button'))
+        : [];
+      const controls = elements.map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          label: element.matches('.fla-c03-search') ? 'search' : element.textContent?.trim() ?? '',
+          left: rect.left,
+          right: rect.right,
+          top: rect.top,
+          bottom: rect.bottom,
+          height: rect.height,
+        };
+      });
+      const buttons = controls.slice(1);
+      const search = controls[0];
+      let overlap = false;
+      for (let first = 0; first < controls.length; first += 1) {
+        for (let second = first + 1; second < controls.length; second += 1) {
+          const a = controls[first];
+          const b = controls[second];
+          if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) {
+            overlap = true;
+          }
+        }
+      }
+      const selectedView = document.querySelector('[data-testid="fla-c03-selected-view"]');
+      const primary = document.querySelector('[data-testid="fla-unified-import"]');
+      const primaryRect = primary?.getBoundingClientRect();
+      const footer = document.querySelector('[data-testid="fla-c03-import-footer"]');
+      const footerRect = footer?.getBoundingClientRect();
+      return {
+        viewportWidth: window.innerWidth,
+        flexWrap: toolbar ? getComputedStyle(toolbar).flexWrap : '',
+        toolbarWidth: toolbarRect?.width ?? 0,
+        inside: Boolean(toolbarRect) && controls.length === 4 && controls.every((rect) =>
+          rect.left >= toolbarRect.left - 1 && rect.right <= toolbarRect.right + 1 && rect.height >= 44,
+        ),
+        searchOwnRow: Boolean(search) && buttons.length === 3 &&
+          buttons.every((button) => Math.abs(button.top - buttons[0].top) <= 1) &&
+          buttons[0].top >= search.bottom - 1,
+        overlap,
+        selectedLabel: selectedView?.textContent?.trim() ?? '',
+        primary: {
+          text: primary?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+          disabled: primary?.disabled ?? true,
+          width: primaryRect?.width ?? 0,
+          height: primaryRect?.height ?? 0,
+          scrollWidth: primary?.scrollWidth ?? 0,
+          clientWidth: primary?.clientWidth ?? 0,
+          scrollHeight: primary?.scrollHeight ?? 0,
+          clientHeight: primary?.clientHeight ?? 0,
+        },
+        footerVisible: Boolean(footerRect && footerRect.height > 0 &&
+          footerRect.top < window.innerHeight && footerRect.bottom <= window.innerHeight + 1),
+      };
+    }, confirmedCount);
+    runtime.layout.highCountNarrow = highCountNarrow;
+    assert(highCountNarrow.viewportWidth <= 560 && highCountNarrow.flexWrap === 'wrap' &&
+      highCountNarrow.inside && highCountNarrow.searchOwnRow && !highCountNarrow.overlap &&
+      highCountNarrow.selectedLabel === `已选 ${confirmedCount}` &&
+      highCountNarrow.primary.text === `导入 ${confirmedCount} 项` && !highCountNarrow.primary.disabled &&
+      highCountNarrow.primary.scrollWidth <= highCountNarrow.primary.clientWidth + 1 &&
+      highCountNarrow.primary.scrollHeight <= highCountNarrow.primary.clientHeight + 1 &&
+      highCountNarrow.footerVisible,
+    `The compact toolbar or large selected-count action clipped at the 560px breakpoint: ${JSON.stringify(highCountNarrow)}.`);
+    runtime.assertions.narrowResponsiveToolbarAndLargeCount = true;
+    runtime.screenshots.highCountNarrow = await capture(window, 'high-count-narrow');
+
+    const narrowPausedQuery = `c03-narrow-no-result-${runtime.runId}`;
+    await setInput(window, '[data-testid="fla-c03-search"]', narrowPausedQuery);
+    await waitForSelector(window, '[data-testid="fla-c03-empty-state"]');
+    await click(window, '[data-testid="fla-c03-selected-view"]');
+    await waitForPage(window, () =>
+      document.querySelector('[data-testid="fla-c03-candidate-grid"]')?.dataset.view === 'selected',
+    );
+    const narrowSelectedView = await inPage(window, () => ({
+      query: document.querySelector('[data-testid="fla-c03-search"]')?.value ?? '',
+      searchDisabled: document.querySelector('[data-testid="fla-c03-search"]')?.disabled ?? false,
+      selectedLabel: document.querySelector('[data-testid="fla-c03-selected-view"]')?.textContent?.trim() ?? '',
+      statusText: document.querySelector('[data-testid="fla-c03-selected-view-status"]')?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+      count: document.querySelectorAll('.fla-c03-candidate input[type="checkbox"]:checked').length,
+    }));
+    runtime.layout.narrowSelectedView = narrowSelectedView;
+    assert(narrowSelectedView.query === narrowPausedQuery && narrowSelectedView.searchDisabled &&
+      narrowSelectedView.selectedLabel === '返回浏览' &&
+      narrowSelectedView.statusText === '正在查看已选 · 搜索已暂停' &&
+      narrowSelectedView.count === confirmedCount,
+    `The narrow selected-only view did not preserve its query, count, and return copy: ${JSON.stringify(narrowSelectedView)}.`);
+    runtime.assertions.narrowSelectedViewReturnAndPausedSearch = true;
+    runtime.screenshots.selectedViewNarrow = await capture(window, 'selected-view-narrow');
+    await click(window, '[data-testid="fla-c03-selected-view"]');
+    await waitForPage(window, () =>
+      document.querySelector('[data-testid="fla-c03-candidate-grid"]')?.dataset.view === 'browse',
+    );
+    const narrowQueryAfterReturn = await inPage(window, () =>
+      document.querySelector('[data-testid="fla-c03-search"]')?.value ?? '',
+    );
+    assert(narrowQueryAfterReturn === narrowPausedQuery,
+      `Returning from narrow selected-only view changed the query to ${narrowQueryAfterReturn}.`);
+    await setInput(window, '[data-testid="fla-c03-search"]', '');
+    await waitForPage(window, () => document.querySelectorAll('.fla-c03-candidate').length >= 336);
+  } finally {
+    window.setBounds(highCountBounds);
+    await delay(300);
+  }
+
   await inPage(window, () => {
     const grid = document.querySelector('[data-testid="fla-c03-candidate-grid"]');
     grid.scrollTop = grid.scrollHeight;
@@ -1606,7 +1780,7 @@ async function verifySequence(window) {
   const secondCount = Math.min(target.frameCount, 48) - 24;
   assert(secondCount > 0 && secondCount <= 24, 'The target cannot produce a legal segment starting at frame 25.');
   const second = await renderSequenceRange(window, target, 25, secondCount, 'sequence-start-25');
-  await click(window, '[aria-label="适合预览"]');
+  await click(window, '[aria-label="恢复默认预览大小"]');
   await waitForPage(window, () => {
     const image = document.querySelector('[data-testid="fla-frame-sequence-preview-image"]');
     const grid = document.querySelector('[data-testid="fla-c03-preview-stage"]');
@@ -1679,7 +1853,7 @@ async function verifySequence(window) {
   runtime.assertions.sequenceScenarioSelectionCleared = true;
 }
 
-async function verifyResponsiveAndTouch(window) {
+async function verifyResponsiveAndTouch(window, bluehairTargetId) {
   const bounds = window.getBounds();
   runtime.layout.windowBounds = bounds;
   const contentBounds = window.getContentBounds();
@@ -1711,6 +1885,144 @@ async function verifyResponsiveAndTouch(window) {
     height: window.innerHeight,
     devicePixelRatio: window.devicePixelRatio,
   }));
+
+  const mouseSelection = await mouseClickCandidateCheckbox(window, bluehairTargetId);
+  runtime.layout.mouseCheckboxFocus = mouseSelection;
+  assert(mouseSelection.checked && mouseSelection.focused && mouseSelection.selectedCount === 1 &&
+    mouseSelection.hitboxWidth >= 48 && mouseSelection.hitboxHeight >= 48 &&
+    (mouseSelection.outlineStyle === 'none' || mouseSelection.outlineWidth === 0),
+  'A real mouse click must select the candidate without a redundant checkbox outline: ' + JSON.stringify(mouseSelection));
+  runtime.assertions.mouseFocusDoesNotShowRedundantOutline = true;
+  runtime.screenshots.mouseSelectedCheckbox = await capture(window, 'mouse-selected-checkbox');
+
+  const toolbarNormal = await inPage(window, () => {
+    const toolbar = document.querySelector('.fla-c03-browser-tools');
+    const toolbarRect = toolbar?.getBoundingClientRect();
+    const elements = toolbar
+      ? [...toolbar.children].filter((child) => child.matches('.fla-c03-search, button'))
+      : [];
+    const rects = elements.map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        label: element.matches('.fla-c03-search')
+          ? 'search'
+          : element.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+      };
+    });
+    const tops = rects.map((rect) => rect.top);
+    const oneRow = tops.length === 4 && Math.max(...tops) - Math.min(...tops) <= 1;
+    const inside = Boolean(toolbarRect) && rects.every((rect) =>
+      rect.left >= toolbarRect.left - 1 && rect.right <= toolbarRect.right + 1 && rect.height >= 44,
+    );
+    let overlap = false;
+    for (let first = 0; first < rects.length; first += 1) {
+      for (let second = first + 1; second < rects.length; second += 1) {
+        const a = rects[first];
+        const b = rects[second];
+        if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) {
+          overlap = true;
+        }
+      }
+    }
+    return {
+      viewportWidth: window.innerWidth,
+      toolbarWidth: toolbarRect?.width ?? 0,
+      oneRow,
+      inside,
+      overlap,
+      controls: rects,
+      selectedLabel: toolbar?.querySelector('[data-testid="fla-c03-selected-view"]')?.textContent?.trim() ?? '',
+    };
+  });
+  runtime.layout.toolbarNormal = toolbarNormal;
+  assert(toolbarNormal.oneRow && toolbarNormal.inside && !toolbarNormal.overlap && toolbarNormal.selectedLabel === '已选 1',
+    'The normal-width toolbar did not keep its compact controls on one visible row: ' + JSON.stringify(toolbarNormal));
+  runtime.assertions.toolbarOneRowNormal = true;
+
+  const controls = await inPage(window, () => {
+    const close = document.querySelector('[data-testid="fla-review-cancel"]');
+    const closeRect = close?.getBoundingClientRect();
+    const zoom = [...document.querySelectorAll('.fla-c03-zoom-tools button')];
+    const zoomRect = zoom.map((button) => {
+      const rect = button.getBoundingClientRect();
+      return {
+        name: button.getAttribute('aria-label'),
+        text: button.textContent?.trim() ?? '',
+        fontSize: Number.parseFloat(getComputedStyle(button).fontSize),
+        width: rect.width,
+        height: rect.height,
+        title: button.getAttribute('title'),
+      };
+    });
+    const primary = document.querySelector('[data-testid="fla-unified-import"]');
+    const primaryRect = primary?.getBoundingClientRect();
+    return {
+      close: {
+        name: close?.getAttribute('aria-label') ?? '',
+        text: close?.textContent?.trim() ?? '',
+        width: closeRect?.width ?? 0,
+        height: closeRect?.height ?? 0,
+      },
+      zoom: zoomRect,
+      primary: {
+        text: primary?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+        disabled: primary?.disabled ?? true,
+        fontSize: primary ? Number.parseFloat(getComputedStyle(primary).fontSize) : 0,
+        fontWeight: primary ? Number.parseInt(getComputedStyle(primary).fontWeight, 10) : 0,
+        textAlign: primary ? getComputedStyle(primary).textAlign : '',
+        width: primaryRect?.width ?? 0,
+        height: primaryRect?.height ?? 0,
+        scrollWidth: primary?.scrollWidth ?? 0,
+        clientWidth: primary?.clientWidth ?? 0,
+        scrollHeight: primary?.scrollHeight ?? 0,
+        clientHeight: primary?.clientHeight ?? 0,
+      },
+    };
+  });
+  runtime.layout.visibleControls = controls;
+  assert(controls.close.name === '关闭' && controls.close.text === '×' &&
+    controls.close.width >= 48 && controls.close.height >= 48,
+  'The internal close icon lost its accessible name or 48 CSS-pixel hitbox: ' + JSON.stringify(controls.close));
+  runtime.assertions.closeIconAccessibleAndReachable = true;
+  const zoomMinus = controls.zoom.find((button) => button.name === '缩小预览');
+  const zoomReset = controls.zoom.find((button) => button.name === '恢复默认预览大小');
+  const zoomPlus = controls.zoom.find((button) => button.name === '放大预览');
+  assert(zoomMinus?.text === '−' && zoomPlus?.text === '+' &&
+    zoomMinus.fontSize >= 20 && zoomPlus.fontSize >= 20 &&
+    zoomReset?.text === '适中' && zoomReset.title === '恢复默认预览大小',
+  'The zoom controls do not expose the requested centered symbols, label, and reset explanation: ' + JSON.stringify(controls.zoom));
+
+  await click(window, '[aria-label="放大预览"]');
+  await waitForPage(window, () => Number.parseFloat(
+    getComputedStyle(document.querySelector('[data-testid="fla-c03-preview-stage"]'))
+      .getPropertyValue('--fla-c03-zoom'),
+  ) === 1.25);
+  await click(window, '[aria-label="缩小预览"]');
+  await waitForPage(window, () => Number.parseFloat(
+    getComputedStyle(document.querySelector('[data-testid="fla-c03-preview-stage"]'))
+      .getPropertyValue('--fla-c03-zoom'),
+  ) === 1);
+  await click(window, '[aria-label="放大预览"]');
+  await click(window, '[aria-label="恢复默认预览大小"]');
+  await waitForPage(window, () => Number.parseFloat(
+    getComputedStyle(document.querySelector('[data-testid="fla-c03-preview-stage"]'))
+      .getPropertyValue('--fla-c03-zoom'),
+  ) === 1);
+  runtime.assertions.zoomControlsKeepDefaultReset = true;
+
+  assert(controls.primary.text === '导入 1 项' && !controls.primary.disabled &&
+    controls.primary.fontSize >= 16 && controls.primary.fontWeight >= 700 &&
+    controls.primary.textAlign === 'center' && controls.primary.scrollWidth <= controls.primary.clientWidth + 1 &&
+    controls.primary.scrollHeight <= controls.primary.clientHeight + 1,
+  'The selected-count import action is not centered, visible, or operable: ' + JSON.stringify(controls.primary));
+  runtime.assertions.importButtonHasVisibleCount = true;
+
   const hitboxes = await inPage(window, () => {
     const selectors = [
       '.fla-c03-header button',
@@ -1751,7 +2063,52 @@ async function verifyResponsiveAndTouch(window) {
   assert(narrow.width <= 900 && narrow.columns === 1 && narrow.footerVisible,
     'Narrow layout did not stack the workbench or keep the footer visible.');
   runtime.assertions.narrowLayoutKeepsFooterVisible = true;
+  const toolbarNarrow = await inPage(window, () => {
+    const toolbar = document.querySelector('.fla-c03-browser-tools');
+    const toolbarRect = toolbar?.getBoundingClientRect();
+    const elements = toolbar
+      ? [...toolbar.children].filter((child) => child.matches('.fla-c03-search, button'))
+      : [];
+    const controls = elements.map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        label: element.matches('.fla-c03-search') ? 'search' : element.textContent?.trim() ?? '',
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+      };
+    });
+    let overlap = false;
+    for (let first = 0; first < controls.length; first += 1) {
+      for (let second = first + 1; second < controls.length; second += 1) {
+        const a = controls[first];
+        const b = controls[second];
+        if (a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) {
+          overlap = true;
+        }
+      }
+    }
+    return {
+      toolbarWidth: toolbarRect?.width ?? 0,
+      inside: Boolean(toolbarRect) && controls.every((rect) =>
+        rect.left >= toolbarRect.left - 1 && rect.right <= toolbarRect.right + 1 && rect.height >= 44,
+      ),
+      overlap,
+      controls,
+    };
+  });
+  runtime.layout.toolbarNarrow = toolbarNarrow;
+  assert(toolbarNarrow.inside && !toolbarNarrow.overlap,
+    'The compact toolbar became clipped or overlapped at the narrow window size: ' + JSON.stringify(toolbarNarrow));
+  runtime.assertions.toolbarReachableNarrow = true;
   runtime.screenshots.narrow = await capture(window, 'c03-narrow');
+  await click(window, '[data-testid="fla-c03-clear-selection"]');
+  await waitForPage(window, () =>
+    document.querySelectorAll('.fla-c03-candidate input[type="checkbox"]:checked').length === 0,
+  );
   window.setBounds(bounds);
   await delay(300);
 }
@@ -2297,7 +2654,10 @@ async function main() {
   runtime.runRoot = join(runtime.acceptanceRoot, 'run-' + runtime.runId);
   runtime.userData = join(runtime.runRoot, 'electron-user-data');
   runtime.projectParent = join(runtime.acceptanceRoot, 'projects');
-  runtime.evidenceDirectory = join(runtime.repositoryRoot, 'docs', 'evidence', 'issue-775-c03', 'run-' + runtime.runId);
+  const evidenceRoot = args.evidenceRoot
+    ? resolve(runtime.repositoryRoot, args.evidenceRoot)
+    : join(runtime.repositoryRoot, 'docs', 'evidence', 'issue-775-c03');
+  runtime.evidenceDirectory = join(evidenceRoot, 'run-' + runtime.runId);
   runtime.sourcePath = args.source ? resolve(args.source) : findSourceFile(DEFAULT_SOURCE_ROOT, SOURCE_FILE_NAME);
   for (const directory of [runtime.runRoot, runtime.userData, runtime.projectParent, runtime.evidenceDirectory]) {
     mkdirSync(directory, { recursive: true });
@@ -2362,7 +2722,7 @@ async function main() {
   await verifySelectionAndList(window);
   await focusCandidate(window, 'snapshot', bluehair.targetId, 0);
   await waitForCandidatePreview(window, bluehair.targetId);
-  await verifyResponsiveAndTouch(window);
+  await verifyResponsiveAndTouch(window, bluehair.targetId);
   await verifySequence(window);
   await verifyImportsAndPersistence(window, bluehair);
 
@@ -2395,6 +2755,12 @@ async function main() {
     'sequenceAtoBtoARetainsCheck',
     'sequenceScenarioSelectionCleared',
     'touchTargetsAtLeast44CssPixels',
+    'mouseFocusDoesNotShowRedundantOutline',
+    'toolbarOneRowNormal',
+    'toolbarReachableNarrow',
+    'closeIconAccessibleAndReachable',
+    'zoomControlsKeepDefaultReset',
+    'importButtonHasVisibleCount',
     'supportedWindowsScale',
     'sameContentBoundsAsBaseline',
     'progressiveLoadCaptured',

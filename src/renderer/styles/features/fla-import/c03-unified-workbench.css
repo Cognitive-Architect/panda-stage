@@ -26,14 +26,6 @@
   min-width: 0;
 }
 
-.fla-c03-header p {
-  margin: 0 0 3px;
-  color: #83d39a;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-}
-
 .fla-c03-header h1 {
   max-width: min(70vw, 900px);
   overflow: hidden;
@@ -65,6 +57,17 @@
   cursor: pointer;
 }
 
+.fla-c03-header button {
+  display: grid;
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0;
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1;
+  place-items: center;
+}
+
 .fla-c03-header button:hover:not(:disabled),
 .fla-c03-browser-tools button:hover:not(:disabled),
 .fla-c03-bulk-confirmation button:hover:not(:disabled),
@@ -82,7 +85,7 @@
 .fla-c03-footer-actions button:focus-visible,
 .fla-c03-sequence-actions button:focus-visible,
 .fla-c03-candidate-focus:focus-visible,
-.fla-c03-checkbox-hitbox:focus-within {
+.fla-c03-checkbox-hitbox:has(input:focus-visible) {
   outline: 2px solid #9be6aa;
   outline-offset: 2px;
 }
@@ -123,13 +126,13 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 7px;
+  flex-wrap: nowrap;
+  gap: 6px;
 }
 
 .fla-c03-search {
-  flex: 1 0 100%;
-  min-width: 0;
+  flex: 1 1 160px;
+  min-width: 112px;
 }
 
 .fla-c03-search input {
@@ -154,8 +157,8 @@
 }
 
 .fla-c03-browser-tools button {
-  flex: 1 1 auto;
-  padding-inline: 10px;
+  flex: 0 0 auto;
+  padding-inline: 8px;
   white-space: nowrap;
 }
 
@@ -389,6 +392,16 @@
   min-width: 44px;
   min-height: 44px;
   padding: 5px 8px;
+}
+
+.fla-c03-zoom-tools button:first-child,
+.fla-c03-zoom-tools button:last-child {
+  display: grid;
+  padding: 4px;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1;
+  place-items: center;
 }
 
 .fla-c03-preview-stage {
@@ -657,12 +670,19 @@
 }
 
 .fla-c03-footer-actions .fla-c03-import-primary {
+  display: grid;
   min-width: 160px;
   min-height: var(--ui-touch-emphasized);
+  place-items: center;
   border-color: #78c98b;
   background: #2b7042;
   color: #f4fff5;
-  font-size: 14px;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-align: center;
+  white-space: normal;
 }
 
 .fla-c03-footer-actions .fla-c03-import-primary:hover:not(:disabled) {
@@ -906,6 +926,19 @@
   .fla-c03-browser,
   .fla-c03-preview {
     padding: 9px;
+  }
+
+  .fla-c03-browser-tools {
+    flex-wrap: wrap;
+  }
+
+  .fla-c03-search {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .fla-c03-browser-tools button {
+    flex: 1 1 auto;
   }
 
   .fla-c03-candidate-grid {

@@ -67,9 +67,10 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
     expect(unified).toContain('browseScrollTopRef.current = candidateGridRef.current?.scrollTop ?? 0');
     expect(unified).toContain('restoreBrowseScrollRef.current = true');
     expect(unified).toContain('data-testid="fla-c03-selected-view"');
-    expect(unified).toContain('查看已选 ${selectedCount}');
-    expect(unified).toContain('全选当前结果');
-    expect(unified).toContain('清空选择');
+    expect(unified).toContain('`已选 ${selectedCount}`');
+    expect(unified).toContain('aria-label="全选当前结果"');
+    expect(unified).toContain('aria-label="清空全部已选素材"');
+    expect(unified).toContain("selectedOnly ? '返回浏览'");
     expect(unified).toContain('正在查看已选 · 搜索已暂停');
   });
 
@@ -138,16 +139,34 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
   });
 
   it('uses concise Chinese copy and keeps technical route names out of the persistent interface', () => {
-    expect(session).toContain('导入 FLA');
+    expect(session).not.toContain('<p>导入 FLA</p>');
+    expect(session).toContain('<h1 title={ir.source.basename}>');
+    expect(session).toContain('aria-label="关闭"');
     expect(session).toContain('FLA 导入工作台');
     expect(unified).toContain('搜索素材');
     expect(unified).toContain('已选择 ${selectedCount} 项');
-    expect(unified).toContain('适合预览');
+    expect(unified).toContain('aria-label="恢复默认预览大小"');
+    expect(unified).toContain('title="恢复默认预览大小"');
+    expect(unified).toContain('适中');
+    expect(unified).toContain('onClick={() => updateZoom(-0.25)}');
+    expect(unified).toContain('onClick={() => setPreviewZoom(1)}');
+    expect(unified).toContain('onClick={() => updateZoom(0.25)}');
     expect(session).not.toContain('组合素材');
     expect(session).not.toContain('原始位图 / 零件');
     expect(session).not.toContain('单帧');
     expect(session).not.toContain('场景组合');
     expect(stageA).toContain('正在检查 FLA');
     expect(stageA).toContain('不会修改原文件或当前项目');
+  });
+
+  it('keeps compact toolbar, keyboard-only checkbox focus, and visible primary controls', () => {
+    expect(styles).toMatch(/\.fla-c03-browser-tools\s*\{[^}]*flex-wrap:\s*nowrap;/u);
+    expect(styles).toMatch(/\.fla-c03-search\s*\{[^}]*flex:\s*1 1 160px;/u);
+    expect(styles).toMatch(/@media \(max-width: 560px\)[\s\S]*?\.fla-c03-browser-tools\s*\{[^}]*flex-wrap:\s*wrap;/u);
+    expect(styles).toContain('.fla-c03-checkbox-hitbox:has(input:focus-visible)');
+    expect(styles).not.toContain('.fla-c03-checkbox-hitbox:focus-within');
+    expect(styles).toMatch(/\.fla-c03-header button\s*\{[^}]*min-width:\s*48px;[^}]*min-height:\s*48px;/u);
+    expect(styles).toMatch(/\.fla-c03-zoom-tools button:first-child,[\s\S]*?font-size:\s*22px;/u);
+    expect(styles).toMatch(/\.fla-c03-import-primary\s*\{[^}]*font-size:\s*16px;[^}]*font-weight:\s*800;[^}]*overflow-wrap:\s*anywhere;/u);
   });
 });

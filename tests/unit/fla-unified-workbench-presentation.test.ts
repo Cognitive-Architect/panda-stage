@@ -80,7 +80,25 @@ describe('Issue #778 unified FLA workbench presentation', () => {
 
     expect(markup).toContain('正在查看已选 · 搜索已暂停');
     expect(markup).toContain('value="blue sleeve"');
+    expect(markup).toContain('>返回浏览</button>');
     expect(markup).toContain('还没有已选择的素材。');
+  });
+
+  it('keeps toolbar labels compact and truthful, and preserves reset and import semantics', () => {
+    const emptyMarkup = renderWorkbench();
+    const selectedMarkup = renderWorkbench({ selectedCount: 3 });
+
+    expect(emptyMarkup).toContain('aria-label="全选当前结果"');
+    expect(emptyMarkup).toContain('>全选</button>');
+    expect(emptyMarkup).toContain('aria-label="清空全部已选素材"');
+    expect(emptyMarkup).toContain('>清空</button>');
+    expect(selectedMarkup).toContain('aria-label="查看已选 3"');
+    expect(selectedMarkup).toContain('>已选 3</button>');
+    expect(emptyMarkup).toContain('aria-label="恢复默认预览大小"');
+    expect(emptyMarkup).toContain('title="恢复默认预览大小"');
+    expect(emptyMarkup).toContain('>适中</button>');
+    expect(emptyMarkup).toContain('>导入 0 项</button>');
+    expect(emptyMarkup).toMatch(/data-testid="fla-unified-import"[^>]*disabled/u);
   });
 
   it('shows safe failure guidance and keeps raw receipt diagnostics in a collapsed disclosure', () => {

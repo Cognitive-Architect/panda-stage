@@ -648,18 +648,17 @@ export function FlaCompatibilityReviewSession({
       >
         <header className="fla-c03-header" data-testid="fla-review-header">
           <div>
-            <p>导入 FLA</p>
             <h1 title={ir.source.basename}>{ir.source.basename}</h1>
           </div>
           <button
-            aria-label="关闭 FLA 导入工作台"
+            aria-label="关闭"
             data-testid="fla-review-cancel"
             disabled={closeLocked}
             onClick={closeSession}
             title={closeLocked ? '项目保存完成前不能关闭；可停止后续导入。' : undefined}
             type="button"
           >
-            关闭
+            ×
           </button>
         </header>
 
