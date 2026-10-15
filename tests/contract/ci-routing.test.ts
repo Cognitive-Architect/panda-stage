@@ -455,6 +455,27 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.matchedRouteIds).toEqual(['fla-import']);
   });
 
+  it('routes the Issue #778 C03 workbench stylesheet through the fla-import assets suite', () => {
+    const result = draft([
+      change('src/renderer/styles/features/fla-import/c03-unified-workbench.css'),
+    ]);
+
+    expect(result.tier).toBe('targeted');
+    expect(result.matchedRouteIds).toContain('fla-import');
+    expect(result.suites).toContain('assets');
+    expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('keeps unregistered FLA stylesheet paths outside the fla-import route', () => {
+    const result = draft([
+      change('src/renderer/styles/features/fla-import/unregistered.css'),
+    ]);
+
+    expect(result.matchedRouteIds).not.toContain('fla-import');
+    expect(result.suites).not.toContain('assets');
+    expect(result.unknownPaths).toEqual([]);
+  });
+
   it('promotes to focused when a B1 change also touches the shared contract (expected cross-process propagation)', () => {
     const result = draft([
       change('src/renderer/fla-import/derive-fla-structure-summary.ts'),
