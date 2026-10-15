@@ -134,4 +134,11 @@ describe('Issue #775 C03 preserves the Stage D render runners in one workbench',
     expect(verifier).not.toContain('fla-snapshot-frame-next');
     expect(verifier).toContain('ONE_CONFIRM; COMMIT_SELECTED_STATIC_SNAPSHOT_IMAGE_ASSETS');
   });
+
+  it('keeps the short-height three-row override limited to the narrow workbench', () => {
+    expect(styles).toContain('@media (max-height: 600px) and (max-width: 900px)');
+    expect(verifier).toContain("await waitForCapture('sequence-short-wide')");
+    expect(verifier).toContain('sequenceShortWideReachable');
+    expect(verifier).toContain("targetViewport: { width: 1008, height: 580 }");
+  });
 });

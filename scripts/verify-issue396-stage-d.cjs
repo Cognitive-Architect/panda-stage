@@ -1325,6 +1325,8 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           const currentAction = currentRange?.querySelector('[data-testid="fla-frame-sequence-render"], [data-testid="fla-frame-sequence-rerender"]');
           const currentStrip = document.querySelector('[data-testid="fla-frame-sequence-filmstrip-region"]');
           const firstFrame = currentStrip?.querySelector('[data-testid="fla-frame-sequence-filmstrip-item-0"]');
+          const previewStage = document.querySelector('.fla-frame-sequence-review-unified-preview .fla-frame-sequence-preview-stage');
+          const previewImage = previewStage?.querySelector('img');
           const footer = document.querySelector('[data-testid="fla-c03-import-footer"]');
           const importAction = footer?.querySelector('[data-testid="fla-unified-import"]');
           const sequenceCandidate = [...document.querySelectorAll(
@@ -1338,6 +1340,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
             start: { rect: rect(currentStart), visible: fullyVisible(currentStart), height: rect(currentStart)?.height ?? 0, value: currentStart instanceof HTMLInputElement ? currentStart.value : null },
             action: { testId: currentAction?.getAttribute('data-testid') ?? null, rect: rect(currentAction), visible: fullyVisible(currentAction), height: rect(currentAction)?.height ?? 0, disabled: currentAction instanceof HTMLButtonElement ? currentAction.disabled : null },
             filmstrip: { rect: rect(currentStrip), visible: fullyVisible(currentStrip), firstFrameVisible: fullyVisible(firstFrame), frameCount: currentStrip?.querySelectorAll('[role="listitem"]')?.length ?? 0 },
+            preview: { stage: rect(previewStage), stageVisible: fullyVisible(previewStage), image: rect(previewImage), imageVisible: fullyVisible(previewImage) },
             footer: { rect: rect(footer), visible: fullyVisible(footer) },
             importAction: { rect: rect(importAction), visible: fullyVisible(importAction), height: rect(importAction)?.height ?? 0 },
             checkboxHitbox: { rect: rect(checkboxHitbox), width: rect(checkboxHitbox)?.width ?? 0, height: rect(checkboxHitbox)?.height ?? 0 },
@@ -1346,6 +1349,8 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         };
         const normalReachability = readSequenceReachability();
         await waitForCapture('sequence-wide');
+        await waitForCapture('sequence-short-wide');
+        const shortWideReachability = readSequenceReachability();
         await waitForCapture('sequence-narrow-top');
         const narrowAtTop = readSequenceReachability();
         const workbench = document.querySelector('[data-testid="fla-c03-workbench"]');
@@ -1403,6 +1408,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           searchRetainedOnBrowse,
           focusBrowsePreserved,
           normalReachability,
+          shortWideReachability,
           narrowAtTop,
           touchScroll,
           narrowAfterTouch,
@@ -1891,6 +1897,19 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         sequenceInteraction.keyboardReachedFrameStrip
       ) && sequenceInteraction.narrowAtTop.footer.visible &&
         sequenceInteraction.narrowAtTop.importAction.visible && sequenceInteraction.narrowFooterPinned;
+      const sequenceShortWideReachable = sequenceInteraction.shortWideReachability.viewport.width === 1008 &&
+        sequenceInteraction.shortWideReachability.viewport.height === 580 &&
+        sequenceInteraction.shortWideReachability.start.visible &&
+        sequenceInteraction.shortWideReachability.start.height >= 44 &&
+        sequenceInteraction.shortWideReachability.action.visible &&
+        sequenceInteraction.shortWideReachability.action.height >= 48 &&
+        sequenceInteraction.shortWideReachability.filmstrip.firstFrameVisible &&
+        sequenceInteraction.shortWideReachability.preview.stageVisible &&
+        sequenceInteraction.shortWideReachability.preview.imageVisible &&
+        sequenceInteraction.shortWideReachability.preview.stage.height >= 120 &&
+        sequenceInteraction.shortWideReachability.footer.visible &&
+        sequenceInteraction.shortWideReachability.importAction.visible &&
+        sequenceInteraction.shortWideReachability.importAction.height >= 56;
       const sequenceTouchWorks = sequenceInteraction.touchScroll.touchStartCount > 0 &&
         sequenceInteraction.touchScroll.touchMoveCount > 0 &&
         (sequenceInteraction.touchScroll.scrollHeight <= sequenceInteraction.touchScroll.clientHeight + 1 ||
@@ -1902,7 +1921,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         sequenceInteraction.normalReachability.importAction.height >= 56 &&
         sequenceInteraction.normalReachability.checkboxHitbox.width >= 48 &&
         sequenceInteraction.normalReachability.checkboxHitbox.height >= 48;
-      const contextualSequenceReachable = sequenceWideReachable && sequenceNarrowReachable &&
+      const contextualSequenceReachable = sequenceWideReachable && sequenceShortWideReachable && sequenceNarrowReachable &&
         sequenceInteraction.generatedFrameCount === 3 && sequenceInteraction.sequenceEnd.includes('第 3 帧') &&
         sequenceInteraction.sequenceCount.includes('3 帧') && sequenceInteraction.selectionPreservedThroughAtoBtoA &&
         sequenceTouchWorks && sequenceKeyboardWorks && sequenceHitTargetsRespectDesign &&
@@ -2066,6 +2085,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         contextualSequenceReachable,
         sequencePreviewSelectionPreserved: sequenceInteraction.selectionPreservedThroughAtoBtoA,
         sequenceWideReachable,
+        sequenceShortWideReachable,
         sequenceNarrowReachable,
         sequenceTouchWorks,
         sequenceKeyboardWorks,
@@ -2328,6 +2348,15 @@ async function main() {
           'sequence-wide',
           join(evidenceDir, 'stage-d-sequence-wide.png'),
           pathState,
+        );
+        layoutEvidence.sequenceShortWide = await captureScreenshotAtMarker(
+          mainWindow,
+          'sequence-short-wide',
+          join(evidenceDir, 'stage-d-sequence-short-wide.png'),
+          pathState,
+          {
+            resizeTo: { width: 1020, height: 620, targetViewport: { width: 1008, height: 580 } },
+          },
         );
         layoutEvidence.sequenceNarrowTop = await captureScreenshotAtMarker(
           mainWindow,

@@ -869,7 +869,7 @@
   }
 }
 
-@media (max-height: 600px) {
+@media (max-height: 600px) and (max-width: 900px) {
   .fla-c03-preview-stage.has-sequence-preview {
     grid-template-rows: minmax(120px, 1.7fr) minmax(112px, auto) minmax(92px, 0.75fr);
   }
