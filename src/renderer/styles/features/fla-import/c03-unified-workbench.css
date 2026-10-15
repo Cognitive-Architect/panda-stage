@@ -835,6 +835,40 @@
   }
 }
 
+@media (min-width: 901px) and (max-height: 720px) {
+  .fla-c03-preview-stage.has-sequence-preview {
+    grid-template-columns: minmax(0, 1.15fr) minmax(220px, 0.85fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .fla-frame-sequence-review-unified-preview .fla-frame-sequence-preview-stage {
+    min-height: 120px;
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  .fla-frame-sequence-review-unified-preview .fla-frame-sequence-range {
+    grid-column: 2;
+    grid-row: 1;
+    align-content: start;
+    grid-template-areas:
+      'inputs'
+      'cap'
+      'actions';
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fla-frame-sequence-review-unified-preview .fla-frame-sequence-range-inputs {
+    flex-wrap: wrap;
+  }
+
+  .fla-frame-sequence-review-unified-preview .fla-frame-sequence-filmstrip-region {
+    min-height: 92px;
+    grid-column: 2;
+    grid-row: 2;
+  }
+}
+
 @media (max-height: 600px) {
   .fla-c03-preview-stage.has-sequence-preview {
     grid-template-rows: minmax(120px, 1.7fr) minmax(112px, auto) minmax(92px, 0.75fr);
