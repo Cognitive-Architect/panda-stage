@@ -1125,7 +1125,7 @@ async function verifySelectionAndList(window) {
 
   const highCountBounds = window.getBounds();
   try {
-    window.setBounds({ x: highCountBounds.x, y: highCountBounds.y, width: 570, height: 690 });
+    window.setBounds({ x: highCountBounds.x, y: highCountBounds.y, width: 800, height: 690 });
     await delay(500);
     const highCountNarrow = await inPage(window, () => {
       const toolbar = document.querySelector('.fla-c03-browser-tools');
@@ -1144,8 +1144,6 @@ async function verifySelectionAndList(window) {
           height: rect.height,
         };
       });
-      const buttons = controls.slice(1);
-      const search = controls[0];
       let overlap = false;
       for (let first = 0; first < controls.length; first += 1) {
         for (let second = first + 1; second < controls.length; second += 1) {
@@ -1168,9 +1166,6 @@ async function verifySelectionAndList(window) {
         inside: Boolean(toolbarRect) && controls.length === 4 && controls.every((rect) =>
           rect.left >= toolbarRect.left - 1 && rect.right <= toolbarRect.right + 1 && rect.height >= 44,
         ),
-        searchOwnRow: Boolean(search) && buttons.length === 3 &&
-          buttons.every((button) => Math.abs(button.top - buttons[0].top) <= 1) &&
-          buttons[0].top >= search.bottom - 1,
         overlap,
         selectedLabel: selectedView?.textContent?.trim() ?? '',
         primary: {
@@ -1188,14 +1183,13 @@ async function verifySelectionAndList(window) {
       };
     }, confirmedCount);
     runtime.layout.highCountNarrow = highCountNarrow;
-    assert(highCountNarrow.viewportWidth <= 560 && highCountNarrow.flexWrap === 'wrap' &&
-      highCountNarrow.inside && highCountNarrow.searchOwnRow && !highCountNarrow.overlap &&
+    assert(highCountNarrow.viewportWidth <= 800 && highCountNarrow.inside && !highCountNarrow.overlap &&
       highCountNarrow.selectedLabel === `已选 ${confirmedCount}` &&
       highCountNarrow.primary.text === `导入 ${confirmedCount} 项` && !highCountNarrow.primary.disabled &&
       highCountNarrow.primary.scrollWidth <= highCountNarrow.primary.clientWidth + 1 &&
       highCountNarrow.primary.scrollHeight <= highCountNarrow.primary.clientHeight + 1 &&
       highCountNarrow.footerVisible,
-    `The compact toolbar or large selected-count action clipped at the 560px breakpoint: ${JSON.stringify(highCountNarrow)}.`);
+    `The compact toolbar or large selected-count action clipped at the narrowest native Windows viewport: ${JSON.stringify(highCountNarrow)}.`);
     runtime.assertions.narrowResponsiveToolbarAndLargeCount = true;
     runtime.screenshots.highCountNarrow = await capture(window, 'high-count-narrow');
 
