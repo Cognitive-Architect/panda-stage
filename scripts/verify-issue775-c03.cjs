@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* global document, HTMLElement, HTMLInputElement, HTMLButtonElement, HTMLImageElement, getComputedStyle */
+/* global document, Element, HTMLElement, HTMLDetailsElement, HTMLInputElement, HTMLButtonElement, HTMLImageElement, getComputedStyle */
 /**
  * Issue #775 C03 bounded Windows Electron workbench evidence.
  *
@@ -611,6 +611,66 @@ async function readCandidateFacts(window) {
   });
 }
 
+async function verifyShortCandidateLabelOnTouch(window) {
+  const target = await inPage(window, () => {
+    for (const row of document.querySelectorAll('.fla-c03-candidate')) {
+      const button = row.querySelector('.fla-c03-candidate-focus');
+      const label = row.querySelector('.fla-c03-candidate-copy strong');
+      if (!(button instanceof HTMLButtonElement) || !(label instanceof HTMLElement)) continue;
+      const accessibleLabel = button.getAttribute('aria-label') ?? '';
+      const fullLabel = accessibleLabel.replace(/^预览\s*/u, '').replace(/\s*·\s*连续画面$/u, '').trim();
+      const cardLabel = label.textContent?.replace(/\s*·\s*连续画面$/u, '').trim() ?? '';
+      if (!fullLabel || !cardLabel || fullLabel === cardLabel) continue;
+      button.scrollIntoView({ block: 'center' });
+      const rect = button.getBoundingClientRect();
+      return {
+        identity: row.dataset.candidateIdentity ?? '',
+        kind: row.dataset.candidateKind ?? '',
+        fullLabel,
+        cardLabel,
+        accessibleLabel,
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+        selectedCount: document.querySelectorAll('.fla-c03-candidate input[type="checkbox"]:checked').length,
+      };
+    }
+    return null;
+  });
+  assert(target, 'No source-backed shortened candidate label was available for the touch focus check.');
+  assert(target.accessibleLabel.includes(target.fullLabel),
+    `The shortened candidate label did not expose its full accessible name: ${JSON.stringify(target)}.`);
+
+  const debuggerApi = window.webContents.debugger;
+  const attachedHere = !debuggerApi.isAttached();
+  if (attachedHere) debuggerApi.attach('1.3');
+  try {
+    await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ id: 1, x: target.x, y: target.y, radiusX: 1, radiusY: 1, force: 1 }],
+    });
+    await delay(50);
+    await debuggerApi.sendCommand('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  } finally {
+    if (attachedHere && debuggerApi.isAttached()) debuggerApi.detach();
+  }
+  await waitForPage(window, (label) =>
+    document.querySelector('[data-testid="fla-c03-focused-label"]')?.textContent?.trim() === label,
+  [target.fullLabel], 10_000);
+  const after = await readCandidateFacts(window);
+  assert(after.selectedCount === target.selectedCount,
+    'Touching a shortened candidate name selected the candidate instead of only opening its full-name preview.');
+  runtime.assertions.shortCandidateFullNameAvailableOnTouch = true;
+  runtime.layout.shortCandidateNameOnTouch = {
+    kind: target.kind,
+    cardLabel: target.cardLabel,
+    fullLabel: target.fullLabel,
+    accessibleLabel: target.accessibleLabel,
+    focusedLabel: target.fullLabel,
+    selectionCountBefore: target.selectedCount,
+    selectionCountAfter: after.selectedCount,
+  };
+}
+
 async function focusCandidate(window, kind, targetId = null, frameIndex = null) {
   const focused = await inPage(window, (wantedKind, wantedTargetId, wantedFrameIndex) => {
     for (const row of document.querySelectorAll('.fla-c03-candidate')) {
@@ -888,17 +948,22 @@ async function verifySelectionAndList(window) {
       label: row.label,
     })),
   };
+  await verifyShortCandidateLabelOnTouch(window);
   await click(window, '[data-testid="fla-c03-select-current-results"]');
   await waitForSelector(window, '[data-testid="fla-c03-bulk-confirmation"]');
-  const confirmationFacts = await inPage(window, () => {
+  const readBulkConfirmation = () => inPage(window, () => {
     const rows = [...document.querySelectorAll('.fla-c03-candidate')];
     const eligibleRows = rows.filter((row) =>
       row.dataset.selectable === 'true' && row.querySelector('input[type="checkbox"]')?.checked !== true,
     );
-    const confirmationText = document.querySelector('[data-testid="fla-c03-bulk-confirm"]')?.textContent?.trim() ?? '';
+    const panel = document.querySelector('[data-testid="fla-c03-bulk-confirmation"]');
+    const confirmationText = panel?.querySelector('span')?.textContent?.replace(/\s+/gu, ' ').trim() ?? '';
+    const buttonText = panel?.querySelector('[data-testid="fla-c03-bulk-confirm"]')?.textContent?.trim() ?? '';
+    const countMatch = confirmationText.match(/即将勾选\s*([0-9]+)\s*项素材，暂不会导入/u);
     return {
       confirmationText,
-      confirmationCount: Number(confirmationText.match(/[0-9]+/)?.[0] ?? 0),
+      buttonText,
+      confirmationCount: Number(countMatch?.[1] ?? 0),
       eligibleCount: eligibleRows.length,
       eligibleByKind: eligibleRows.reduce((counts, row) => {
         const kind = row.dataset.candidateKind ?? 'missing';
@@ -908,6 +973,38 @@ async function verifySelectionAndList(window) {
       candidateRowCount: rows.length,
     };
   });
+  const confirmationBeforeCancel = await readBulkConfirmation();
+  assert(confirmationBeforeCancel.confirmationCount === confirmationBeforeCancel.eligibleCount &&
+    confirmationBeforeCancel.confirmationCount === expectedEligible,
+  `Bulk confirmation did not describe all eligible results: ${JSON.stringify(confirmationBeforeCancel)}.`);
+  assert(confirmationBeforeCancel.buttonText === '确认勾选' &&
+    !/[0-9]/u.test(confirmationBeforeCancel.buttonText) && !/添加/u.test(confirmationBeforeCancel.buttonText),
+  `Bulk confirmation action copy still implies a count or import: ${confirmationBeforeCancel.buttonText}.`);
+  runtime.screenshots.bulkConfirmation = await capture(window, 'bulk-confirmation');
+  const projectBeforeBulkCancel = await readProjectState(runtime.project.root);
+  await click(window, '[data-testid="fla-c03-bulk-cancel"]');
+  await waitForPage(window, () => !document.querySelector('[data-testid="fla-c03-bulk-confirmation"]'));
+  const cancelledBulkFacts = await readCandidateFacts(window);
+  const projectAfterBulkCancel = await readProjectState(runtime.project.root);
+  runtime.layout.bulkCancellation = {
+    selectedCount: cancelledBulkFacts.selectedCount,
+    before: projectBeforeBulkCancel,
+    after: projectAfterBulkCancel,
+  };
+  assert(cancelledBulkFacts.selectedCount === 0 &&
+    projectAfterBulkCancel.sha256 === projectBeforeBulkCancel.sha256 &&
+    projectAfterBulkCancel.revision === projectBeforeBulkCancel.revision,
+  `Cancelling bulk selection changed selection or project state: ${JSON.stringify(runtime.layout.bulkCancellation)}.`);
+  runtime.assertions.bulkCancelNoMutation = true;
+  runtime.screenshots.bulkConfirmationCancelled = await capture(window, 'bulk-confirmation-cancelled');
+
+  await click(window, '[data-testid="fla-c03-select-current-results"]');
+  await waitForSelector(window, '[data-testid="fla-c03-bulk-confirmation"]');
+  const confirmationFacts = await readBulkConfirmation();
+  assert(confirmationFacts.confirmationCount === confirmationFacts.eligibleCount &&
+    confirmationFacts.confirmationCount === expectedEligible &&
+    confirmationFacts.buttonText === '确认勾选',
+  `Bulk confirmation copy or count changed before confirmation: ${JSON.stringify(confirmationFacts)}.`);
   const confirmationCount = confirmationFacts.confirmationCount;
   runtime.layout.bulkConfirmationCount = confirmationCount;
   runtime.layout.bulkEligibilityAtConfirmation = confirmationFacts;
@@ -919,7 +1016,8 @@ async function verifySelectionAndList(window) {
     );
     const button = document.querySelector('[data-testid="fla-c03-bulk-confirm"]');
     const buttonText = button?.textContent?.trim() ?? '';
-    const displayedCount = Number(buttonText.match(/[0-9]+/)?.[0] ?? 0);
+    const confirmationText = document.querySelector('[data-testid="fla-c03-bulk-confirmation"] span')?.textContent?.replace(/\s+/gu, ' ').trim() ?? '';
+    const displayedCount = Number(confirmationText.match(/即将勾选\s*([0-9]+)/u)?.[1] ?? 0);
     const eligibleByKind = eligibleRows.reduce((counts, row) => {
       const kind = row.dataset.candidateKind ?? 'missing';
       counts[kind] = (counts[kind] ?? 0) + 1;
@@ -929,7 +1027,7 @@ async function verifySelectionAndList(window) {
       return { buttonText, displayedCount, eligibleCount: eligibleRows.length, eligibleByKind, clicked: false };
     }
     button.click();
-    return { buttonText, displayedCount, eligibleCount: eligibleRows.length, eligibleByKind, clicked: true };
+    return { confirmationText, buttonText, displayedCount, eligibleCount: eligibleRows.length, eligibleByKind, clicked: true };
   });
   runtime.layout.bulkAction = bulkActionFacts;
   runtime.layout.bulkConfirmationCountAtClick = bulkActionFacts.displayedCount;
@@ -985,7 +1083,9 @@ async function verifySelectionAndList(window) {
   const scrollAfter = await inPage(window, () =>
     document.querySelector('[data-testid="fla-c03-candidate-grid"]')?.scrollTop ?? 0,
   );
-  assert(Math.abs(scrollAfter - scrollBefore) < 2, 'Returning to browse did not restore scroll position.');
+  const queryAfterReturn = await inPage(window, () => document.querySelector('[data-testid="fla-c03-search"]')?.value ?? '');
+  assert(Math.abs(scrollAfter - scrollBefore) < 2 && queryAfterReturn === selectedFacts.search,
+    `Returning to browse did not restore scroll position and preserve the query (scroll ${scrollBefore} -> ${scrollAfter}, query ${queryAfterReturn}).`);
   runtime.assertions.selectedViewKeepsGlobalChecksAndRestoresScroll = true;
   runtime.layout.selectedViewScroll = { before: scrollBefore, after: scrollAfter };
   runtime.screenshots.selectedView = await capture(window, 'selected-view');
@@ -1030,9 +1130,23 @@ async function verifySelectionAndList(window) {
   facts = await readCandidateFacts(window);
   assert(facts.rows.length === 1 && facts.rows[0].kind === 'snapshot' && facts.rows[0].checked,
     'Selected view applied the active search filter.');
+  const selectedViewSearchFacts = await inPage(window, () => ({
+    query: document.querySelector('[data-testid="fla-c03-search"]')?.value ?? '',
+    searchDisabled: document.querySelector('[data-testid="fla-c03-search"]')?.disabled ?? false,
+    statusText: document.querySelector('[data-testid="fla-c03-selected-view-status"]')?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+  }));
+  assert(selectedViewSearchFacts.query === 'c03-no-result-' + runtime.runId &&
+    selectedViewSearchFacts.searchDisabled &&
+    selectedViewSearchFacts.statusText === '正在查看已选 · 搜索已暂停',
+  `Selected-only mode did not explain the paused search while preserving its query: ${JSON.stringify(selectedViewSearchFacts)}.`);
+  runtime.assertions.selectedViewPreservesQueryAndExplainsPause = true;
+  runtime.layout.selectedViewSearch = selectedViewSearchFacts;
   runtime.assertions.selectedViewIgnoresSearch = true;
   runtime.screenshots.selectedViewIgnoresSearch = await capture(window, 'selected-view-ignores-search');
   await click(window, '[data-testid="fla-c03-selected-view"]');
+  const searchAfterSelectedReturn = await inPage(window, () => document.querySelector('[data-testid="fla-c03-search"]')?.value ?? '');
+  assert(searchAfterSelectedReturn === 'c03-no-result-' + runtime.runId,
+    `Returning from the search-paused selected-only view changed the query to ${searchAfterSelectedReturn}.`);
   await click(window, '[data-testid="fla-c03-clear-selection"]');
   await setInput(window, '[data-testid="fla-c03-search"]', '');
   await waitForPage(window, () => document.querySelectorAll('.fla-c03-candidate').length >= 336);
@@ -1147,6 +1261,53 @@ async function verifySequence(window) {
   assert(first.range.endFrameIndex - first.range.startFrameIndex + 1 === 24,
     'A sequence range starting at frame 1 did not reach the 24-frame cap.');
   runtime.assertions.sequenceStartsAtOneAndCapsAt24 = true;
+  const sequenceVisual = await inPage(window, () => {
+    const range = document.querySelector('[data-testid="fla-frame-sequence-range"]');
+    const rangeCap = range?.querySelector('.fla-frame-sequence-range-cap');
+    const actionButton = range?.querySelector(
+      '[data-testid="fla-frame-sequence-render"], [data-testid="fla-frame-sequence-rerender"]',
+    );
+    const preview = document.querySelector('[data-testid="fla-frame-sequence-preview-area"]');
+    const rect = (element) => {
+      if (!(element instanceof Element)) return null;
+      const value = element.getBoundingClientRect();
+      return { top: value.top, bottom: value.bottom, width: value.width, height: value.height };
+    };
+    const luminance = (color) => {
+      const channels = color.match(/[0-9.]+/gu)?.slice(0, 3).map(Number);
+      if (!channels || channels.length !== 3) return null;
+      const linear = channels.map((channel) => {
+        const normalized = channel / 255;
+        return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+      });
+      return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+    };
+    const contrast = (foreground, background) => {
+      const foregroundLuminance = luminance(foreground);
+      const backgroundLuminance = luminance(background);
+      if (foregroundLuminance === null || backgroundLuminance === null) return null;
+      const values = [foregroundLuminance, backgroundLuminance].sort((left, right) => right - left);
+      return Number(((values[0] + 0.05) / (values[1] + 0.05)).toFixed(2));
+    };
+    const rangeStyle = range ? getComputedStyle(range) : null;
+    const capStyle = rangeCap ? getComputedStyle(rangeCap) : null;
+    const buttonStyle = actionButton ? getComputedStyle(actionButton) : null;
+    return {
+      range: rect(range),
+      preview: rect(preview),
+      rangeBackground: rangeStyle?.backgroundColor ?? '',
+      capColor: capStyle?.color ?? '',
+      capContrast: rangeStyle && capStyle ? contrast(capStyle.color, rangeStyle.backgroundColor) : null,
+      renderBackground: buttonStyle?.backgroundColor ?? '',
+      renderColor: buttonStyle?.color ?? '',
+      renderContrast: buttonStyle ? contrast(buttonStyle.color, buttonStyle.backgroundColor) : null,
+    };
+  });
+  runtime.layout.sequenceVisual = sequenceVisual;
+  assert(sequenceVisual.range?.height > 0 && sequenceVisual.range.height <= 180 &&
+    sequenceVisual.preview?.height > 0 && sequenceVisual.capContrast >= 4.5 && sequenceVisual.renderContrast >= 4.5,
+  `The image-first sequence panel was not compact or readable at 150%: ${JSON.stringify(sequenceVisual)}.`);
+  runtime.assertions.sequencePanelCompactAndAccessibleContrast = true;
 
   await toggleCandidate(window, 'sequence', target.targetId);
   await setInput(window, '[data-testid="fla-frame-sequence-start"]', '25');
@@ -1173,15 +1334,41 @@ async function verifySequence(window) {
   };
 
   await toggleCandidate(window, 'sequence', target.targetId);
+  const checkedA = await readCandidateFacts(window);
+  assert(checkedA.selectedCount === 1 && checkedA.rows.some((row) => row.kind === 'sequence' && row.checked &&
+    row.identity?.includes(target.targetId)), 'The rendered sequence could not be checked before the A→B→A preview path.');
   const alternate = findCatalogEntry((entry) =>
-    entry.targetId !== target.targetId && entry.previewSupported && !entry.isBlank && entry.selectedFrameIndex === 0,
+    entry.targetId !== target.targetId && entry.previewSupported && !entry.isBlank &&
+    entry.selectedFrameIndex === 0,
   );
-  assert(alternate, 'Could not find a different previewable candidate for sequence invalidation.');
+  assert(alternate, 'Could not find a second previewable candidate for the A→B→A selection path.');
   await focusCandidate(window, 'snapshot', alternate.targetId, 0);
   await waitForCandidatePreview(window, alternate.targetId);
-  const selected = await readCandidateFacts(window);
-  assert(selected.selectedCount === 0, 'Changing target retained the checked sequence.');
-  runtime.assertions.sequenceTargetChangeInvalidatesCheck = true;
+  const selectedB = await readCandidateFacts(window);
+  assert(selectedB.selectedCount === 1 && selectedB.rows.some((row) => row.kind === 'sequence' && row.checked &&
+    row.identity?.includes(target.targetId)), 'Preview-only focus on sequence B cleared the checked sequence A.');
+  await focusCandidate(window, 'sequence', target.targetId);
+  await waitForPage(window, (targetId) =>
+    document.querySelector('[data-testid="fla-frame-sequence-details-region"]')?.getAttribute('data-focused-target-id') === targetId,
+  [target.targetId]);
+  const selectedAAgain = await readCandidateFacts(window);
+  assert(selectedAAgain.selectedCount === 1 && selectedAAgain.rows.some((row) => row.kind === 'sequence' && row.checked &&
+    row.identity?.includes(target.targetId)), 'Returning A→B→A did not retain the checked sequence A.');
+  runtime.assertions.sequenceAtoBtoARetainsCheck = true;
+  runtime.layout.sequenceAtoBtoA = {
+    targetA: target.targetId,
+    targetB: alternate.targetId,
+    targetBKind: 'snapshot',
+    checkedCountAtA: checkedA.selectedCount,
+    checkedCountAtB: selectedB.selectedCount,
+    checkedCountOnReturnToA: selectedAAgain.selectedCount,
+    checkedSequenceIdentity: selectedAAgain.rows.find((row) => row.kind === 'sequence' && row.checked)?.identity ?? null,
+  };
+  await click(window, '[data-testid="fla-c03-clear-selection"]');
+  await waitForPage(window, () =>
+    document.querySelectorAll('.fla-c03-candidate input[type="checkbox"]:checked').length === 0,
+  );
+  runtime.assertions.sequenceScenarioSelectionCleared = true;
 }
 
 async function verifyResponsiveAndTouch(window) {
@@ -1265,6 +1452,8 @@ async function readImportReceipt(window) {
   return inPage(window, () => {
     const root = document.querySelector('[data-testid="fla-unified-import-receipt"]');
     const list = document.querySelector('[data-testid="fla-unified-import-items"]');
+    const diagnostics = document.querySelector('[data-testid="fla-unified-import-diagnostics"]');
+    const guidance = document.querySelector('[data-testid="fla-unified-import-review-guidance"]');
     const items = [...(list?.querySelectorAll('li') ?? [])].map((item) => ({
       kind: item.dataset.kind,
       status: item.dataset.status,
@@ -1273,10 +1462,262 @@ async function readImportReceipt(window) {
     return {
       partial: root?.dataset.partial === 'true',
       cancelled: Boolean(document.querySelector('[data-testid="fla-unified-import-cancelled"]')),
+      summary: root?.querySelector(':scope > summary')?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+      guidance: guidance?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+      visibleText: root?.innerText?.replace(/\s+/gu, ' ').trim() ?? '',
+      diagnosticsPresent: diagnostics instanceof HTMLDetailsElement,
+      diagnosticsCollapsed: diagnostics instanceof HTMLDetailsElement && !diagnostics.open,
+      diagnosticsText: diagnostics?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
       items,
       text: root?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
     };
   });
+}
+
+async function readReceiptReachability(window) {
+  return inPage(window, () => {
+    const footer = document.querySelector('[data-testid="fla-c03-import-footer"]');
+    const action = document.querySelector('[data-testid="fla-unified-import"]');
+    const receipt = document.querySelector('[data-testid="fla-unified-import-receipt"]');
+    const summary = receipt?.querySelector(':scope > summary');
+    const items = [...(receipt?.querySelectorAll('[data-testid="fla-unified-import-items"] li') ?? [])];
+    const rect = (element) => {
+      if (!(element instanceof Element)) return null;
+      const value = element.getBoundingClientRect();
+      return { left: value.left, top: value.top, right: value.right, bottom: value.bottom, width: value.width, height: value.height };
+    };
+    const visibleInFooter = (element) => {
+      const elementRect = rect(element);
+      const footerRect = rect(footer);
+      return Boolean(elementRect && footerRect && elementRect.width > 0 && elementRect.height > 0 &&
+        elementRect.top >= Math.max(0, footerRect.top) - 1 && elementRect.bottom <= Math.min(window.innerHeight, footerRect.bottom) + 1 &&
+        elementRect.left >= Math.max(0, footerRect.left) - 1 && elementRect.right <= Math.min(window.innerWidth, footerRect.right) + 1);
+    };
+    return {
+      viewport: { width: window.innerWidth, height: window.innerHeight, devicePixelRatio: window.devicePixelRatio },
+      footerVisible: visibleInFooter(footer),
+      actionVisible: visibleInFooter(action),
+      summaryVisible: visibleInFooter(summary),
+      firstItemVisible: visibleInFooter(items[0]),
+      lastItemVisible: visibleInFooter(items.at(-1)),
+      footer: {
+        scrollTop: footer instanceof HTMLElement ? footer.scrollTop : 0,
+        scrollHeight: footer instanceof HTMLElement ? footer.scrollHeight : 0,
+        clientHeight: footer instanceof HTMLElement ? footer.clientHeight : 0,
+      },
+    };
+  });
+}
+
+async function touchScrollReceipt(window, marker) {
+  const point = await inPage(window, (touchMarker) => {
+    const footer = document.querySelector('[data-testid="fla-c03-import-footer"]');
+    const receipt = document.querySelector('[data-testid="fla-unified-import-receipt"]');
+    const target = receipt?.querySelector('[data-testid="fla-unified-import-items"] li') ??
+      receipt?.querySelector(':scope > summary') ?? receipt;
+    if (!(footer instanceof HTMLElement) || !(target instanceof Element)) return null;
+    const footerRect = footer.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const y = Math.max(footerRect.top + 12, Math.min(footerRect.bottom - 12,
+      targetRect.top + Math.min(targetRect.height / 2, 24)));
+    const x = Math.max(1, Math.min(window.innerWidth - 1, footerRect.left + footerRect.width / 2));
+    const state = { touchStartCount: 0, touchMoveCount: 0, scrollTopBefore: footer.scrollTop };
+    const onTouchStart = (event) => { if (footer.contains(event.target)) state.touchStartCount += 1; };
+    const onTouchMove = (event) => { if (footer.contains(event.target)) state.touchMoveCount += 1; };
+    document.addEventListener('touchstart', onTouchStart, { passive: true });
+    document.addEventListener('touchmove', onTouchMove, { passive: true });
+    window.__issue778PartialReceiptTouch = { touchMarker, state, footer, onTouchStart, onTouchMove };
+    return { x, y, deltaY: 110 };
+  }, marker);
+  assert(point, 'Partial-failure receipt did not expose a native touch target.');
+
+  const debuggerApi = window.webContents.debugger;
+  const attachedHere = !debuggerApi.isAttached();
+  if (attachedHere) debuggerApi.attach('1.3');
+  try {
+    await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ id: 1, x: point.x, y: point.y, radiusX: 1, radiusY: 1, force: 1 }],
+    });
+    await delay(40);
+    await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ id: 1, x: point.x, y: point.y - point.deltaY, radiusX: 1, radiusY: 1, force: 1 }],
+    });
+    await delay(80);
+    await debuggerApi.sendCommand('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  } finally {
+    if (attachedHere && debuggerApi.isAttached()) debuggerApi.detach();
+  }
+  await delay(120);
+  return inPage(window, (touchMarker) => {
+    const touch = window.__issue778PartialReceiptTouch;
+    if (!touch || touch.touchMarker !== touchMarker) return null;
+    document.removeEventListener('touchstart', touch.onTouchStart);
+    document.removeEventListener('touchmove', touch.onTouchMove);
+    return {
+      dispatchedBy: 'Electron CDP Input.dispatchTouchEvent',
+      touchStartCount: touch.state.touchStartCount,
+      touchMoveCount: touch.state.touchMoveCount,
+      scrollTopBefore: touch.state.scrollTopBefore,
+      scrollTopAfter: touch.footer.scrollTop,
+      scrollHeight: touch.footer.scrollHeight,
+      clientHeight: touch.footer.clientHeight,
+    };
+  }, marker);
+}
+
+async function verifyPartialReceiptKeyboardPath(window, viewportName) {
+  const start = await inPage(window, () => {
+    const preview = document.querySelector('[data-testid="fla-c03-preview"]');
+    if (!(preview instanceof HTMLElement)) return null;
+    const focusables = [...preview.querySelectorAll('button, input, select, textarea, summary, a[href], [tabindex]')]
+      .filter((element) => element instanceof HTMLElement && element.tabIndex >= 0 &&
+        !('disabled' in element && element.disabled) && element.getClientRects().length > 0 &&
+        getComputedStyle(element).visibility !== 'hidden');
+    const last = focusables.at(-1);
+    if (!(last instanceof HTMLElement)) return null;
+    last.focus();
+    return {
+      tagName: last.tagName,
+      ariaLabel: last.getAttribute('aria-label'),
+      testId: last.getAttribute('data-testid'),
+    };
+  });
+  assert(start, `No visible preview control was available before the ${viewportName} receipt keyboard path.`);
+
+  const actionDisabled = await inPage(window, () =>
+    document.querySelector('[data-testid="fla-unified-import"]')?.disabled ?? true,
+  );
+  await sendInputKey(window, 'Tab');
+  const firstTab = await inPage(window, () => {
+    const action = document.querySelector('[data-testid="fla-unified-import"]');
+    const footer = document.querySelector('[data-testid="fla-c03-import-footer"]');
+    const receipt = document.querySelector('[data-testid="fla-unified-import-receipt"]');
+    const summary = receipt?.querySelector(':scope > summary');
+    const rect = action?.getBoundingClientRect();
+    const footerRect = footer?.getBoundingClientRect();
+    return {
+      importFocused: document.activeElement === action,
+      importVisible: Boolean(rect && footerRect && rect.height > 0 && rect.top >= Math.max(0, footerRect.top) - 1 &&
+        rect.bottom <= Math.min(window.innerHeight, footerRect.bottom) + 1),
+      receiptSummaryFocused: document.activeElement === summary,
+    };
+  });
+  let importFocus = null;
+  let receiptFocus;
+  if (actionDisabled) {
+    const receiptState = await inPage(window, () => {
+      const footer = document.querySelector('[data-testid="fla-c03-import-footer"]');
+      const action = document.querySelector('[data-testid="fla-unified-import"]');
+      const receipt = document.querySelector('[data-testid="fla-unified-import-receipt"]');
+      const summary = receipt?.querySelector(':scope > summary');
+      const summaryRect = summary?.getBoundingClientRect();
+      const actionRect = action?.getBoundingClientRect();
+      const footerRect = footer?.getBoundingClientRect();
+      const visibleInFooter = (rect) => Boolean(rect && footerRect && rect.height > 0 &&
+        rect.top >= Math.max(0, footerRect.top) - 1 && rect.bottom <= Math.min(window.innerHeight, footerRect.bottom) + 1);
+      return {
+        focused: document.activeElement === summary,
+        summaryVisible: visibleInFooter(summaryRect),
+        actionVisible: visibleInFooter(actionRect),
+      };
+    });
+    receiptFocus = receiptState;
+  } else {
+    importFocus = {
+      focused: firstTab.importFocused,
+      visible: firstTab.importVisible,
+    };
+    await sendInputKey(window, 'Tab');
+    receiptFocus = await inPage(window, () => {
+      const footer = document.querySelector('[data-testid="fla-c03-import-footer"]');
+      const action = document.querySelector('[data-testid="fla-unified-import"]');
+      const receipt = document.querySelector('[data-testid="fla-unified-import-receipt"]');
+      const summary = receipt?.querySelector(':scope > summary');
+      const summaryRect = summary?.getBoundingClientRect();
+      const actionRect = action?.getBoundingClientRect();
+      const footerRect = footer?.getBoundingClientRect();
+      const visibleInFooter = (rect) => Boolean(rect && footerRect && rect.height > 0 &&
+        rect.top >= Math.max(0, footerRect.top) - 1 && rect.bottom <= Math.min(window.innerHeight, footerRect.bottom) + 1);
+      return {
+        focused: document.activeElement === summary,
+        summaryVisible: visibleInFooter(summaryRect),
+        actionVisible: visibleInFooter(actionRect),
+      };
+    });
+  }
+  const result = { start, actionDisabled, firstTab, importFocus, receiptFocus };
+  assert(actionDisabled
+    ? firstTab.receiptSummaryFocused && receiptFocus.focused && receiptFocus.summaryVisible && receiptFocus.actionVisible
+    : importFocus?.focused && importFocus.visible && receiptFocus?.focused && receiptFocus.summaryVisible && receiptFocus.actionVisible,
+  `Keyboard focus did not reach the visible import/receipt path at ${viewportName}: ${JSON.stringify(result)}.`);
+  runtime.layout.partialReceiptKeyboard ??= {};
+  runtime.layout.partialReceiptKeyboard[viewportName] = result;
+  return result;
+}
+
+async function verifyPartialReceiptReachability(window) {
+  const originalBounds = window.getBounds();
+  const viewports = [
+    { name: 'viewport846x653', requested: { width: 860, height: 690 }, expectedWidth: 846, expectedHeight: 653 },
+    { name: 'narrowNative', requested: { width: 800, height: 560 }, expectedWidth: null, expectedHeight: null },
+  ];
+  const results = {};
+  try {
+    for (const viewport of viewports) {
+      window.setBounds({ x: originalBounds.x, y: originalBounds.y, ...viewport.requested });
+      await delay(500);
+      await inPage(window, () => {
+        const footer = document.querySelector('[data-testid="fla-c03-import-footer"]');
+        if (footer instanceof HTMLElement) footer.scrollTop = 0;
+      });
+      await delay(100);
+      const top = await readReceiptReachability(window);
+      runtime.screenshots[`partialFailureReceipt-${viewport.name}-top`] = await capture(
+        window,
+        `partial-failure-receipt-${viewport.name}-top`,
+      );
+      const viewportDimensionsMatch = viewport.expectedWidth === null
+        ? top.viewport.width < 846 && top.viewport.height < 653
+        : top.viewport.width === viewport.expectedWidth && top.viewport.height === viewport.expectedHeight;
+      assert(viewportDimensionsMatch && Math.abs(top.viewport.devicePixelRatio - 1.5) < 0.01,
+      `The partial-failure receipt did not reach the expected native ${viewport.name} viewport: ${JSON.stringify(top.viewport)}.`);
+      assert(top.footer.scrollTop <= 1 && top.footerVisible && top.actionVisible && top.summaryVisible,
+        `The partial-failure receipt or import action was not reachable at the top of ${viewport.name}: ${JSON.stringify(top)}.`);
+
+      const touch = await touchScrollReceipt(window, `partial-receipt-${viewport.name}`);
+      assert(touch && touch.touchStartCount > 0 && touch.touchMoveCount > 0 &&
+        (touch.scrollHeight <= touch.clientHeight + 1 || touch.scrollTopAfter > touch.scrollTopBefore + 1),
+      `Native touch did not reach or scroll the partial-failure receipt at ${viewport.name}: ${JSON.stringify(touch)}.`);
+      await inPage(window, () => {
+        const footer = document.querySelector('[data-testid="fla-c03-import-footer"]');
+        if (footer instanceof HTMLElement) footer.scrollTop = footer.scrollHeight;
+      });
+      await delay(100);
+      const bottom = await readReceiptReachability(window);
+      runtime.screenshots[`partialFailureReceipt-${viewport.name}-scrolled`] = await capture(
+        window,
+        `partial-failure-receipt-${viewport.name}-scrolled`,
+      );
+      assert(bottom.footerVisible && bottom.actionVisible && bottom.lastItemVisible,
+        `The last partial-failure receipt item or import action was unreachable at ${viewport.name}: ${JSON.stringify(bottom)}.`);
+
+      const keyboard = await verifyPartialReceiptKeyboardPath(window, viewport.name);
+      runtime.screenshots[`partialFailureReceipt-${viewport.name}-keyboard`] = await capture(
+        window,
+        `partial-failure-receipt-${viewport.name}-keyboard`,
+      );
+      results[viewport.name] = { top, touch, bottom, keyboard };
+    }
+  } finally {
+    window.setBounds(originalBounds);
+    await delay(300);
+  }
+  runtime.layout.partialFailureReceiptReachability = results;
+  runtime.assertions.partialFailureReceiptTouchReachable = true;
+  runtime.assertions.partialFailureReceiptKeyboardReachable = true;
+  runtime.assertions.partialFailureReceiptReachableAtBothViewports = true;
 }
 
 async function findRasterIds(window) {
@@ -1424,8 +1865,23 @@ async function verifyImportsAndPersistence(window, bluehair) {
     partialFailure.items.some((item) => item.kind === 'snapshot' && item.status === 'imported') &&
     partialFailure.items.some((item) => item.kind === 'raster' && item.status === 'failed'),
   'Partial route failure did not preserve the first commit and report the later failure.');
+  assert(partialFailure.diagnosticsPresent && partialFailure.diagnosticsCollapsed &&
+    partialFailure.summary.includes('部分导入完成') &&
+    partialFailure.summary.includes('新导入 1 项') && partialFailure.summary.includes('失败 1 项') &&
+    partialFailure.guidance.includes('检查素材库') &&
+    !partialFailure.visibleText.includes('Bounded verifier injected'),
+  `The partial-failure receipt did not lead with plain-language counts and guidance: ${JSON.stringify({
+    summary: partialFailure.summary,
+    guidance: partialFailure.guidance,
+    diagnosticsPresent: partialFailure.diagnosticsPresent,
+    diagnosticsCollapsed: partialFailure.diagnosticsCollapsed,
+    visibleText: partialFailure.visibleText,
+  })}.`);
+  runtime.assertions.receiptGuidanceInPlainLanguage = true;
+  runtime.assertions.receiptDiagnosticsCollapsed = true;
   runtime.assertions.partialFailureRetainsFirstCommit = true;
   runtime.screenshots.partialFailureReceipt = await capture(window, 'partial-failure-receipt');
+  await verifyPartialReceiptReachability(window);
   const projectAfterFailure = await readProjectState(runtime.project.root);
   assert(projectAfterFailure.assets.length === projectBeforeFailure.assets.length + 1,
     'Later raster failure rolled back the earlier snapshot commit.');
@@ -1611,7 +2067,10 @@ async function main() {
     'all336BitmapsListed',
     'bitmapListScrollable',
     'bulkConfirmationUsesAllOffscreenEligibleItems',
+    'bulkCancelNoMutation',
     'selectedViewKeepsGlobalChecksAndRestoresScroll',
+    'selectedViewPreservesQueryAndExplainsPause',
+    'shortCandidateFullNameAvailableOnTouch',
     'thumbnailFocusDoesNotSelect',
     'keyboardEnterTabSpaceWorks',
     'selectedViewIgnoresSearch',
@@ -1620,9 +2079,11 @@ async function main() {
     'failedPreviewUnavailable',
     'sequenceFocusDoesNotRender',
     'sequenceStartsAtOneAndCapsAt24',
+    'sequencePanelCompactAndAccessibleContrast',
     'sequenceRangeChangeInvalidatesCheck',
     'sequenceNearEndUsesShortRemainder',
-    'sequenceTargetChangeInvalidatesCheck',
+    'sequenceAtoBtoARetainsCheck',
+    'sequenceScenarioSelectionCleared',
     'touchTargetsAtLeast44CssPixels',
     'supportedWindowsScale',
     'sameContentBoundsAsBaseline',
@@ -1636,6 +2097,11 @@ async function main() {
     'stopAfterCurrentReceipt',
     'duplicateImportIsNoOp',
     'partialFailureRetainsFirstCommit',
+    'receiptGuidanceInPlainLanguage',
+    'receiptDiagnosticsCollapsed',
+    'partialFailureReceiptTouchReachable',
+    'partialFailureReceiptKeyboardReachable',
+    'partialFailureReceiptReachableAtBothViewports',
     'mixedAssetsPersistAfterReopen',
     'originalFlaUnchanged',
   ];
