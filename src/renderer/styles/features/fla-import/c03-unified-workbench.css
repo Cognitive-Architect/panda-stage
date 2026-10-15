@@ -411,8 +411,7 @@
 }
 
 .fla-c03-preview-stage.has-sequence-preview {
-  align-content: start;
-  grid-template-rows: minmax(150px, 1fr) auto auto;
+  grid-template-rows: minmax(210px, 1.7fr) minmax(112px, auto) minmax(92px, 0.75fr);
 }
 
 .fla-c03-preview-image {
@@ -495,8 +494,9 @@
 
 .fla-frame-sequence-review-unified-preview .fla-frame-sequence-preview-stage {
   min-width: 0;
-  min-height: 0;
-  height: 100%;
+  min-height: 210px;
+  height: auto;
+  align-self: stretch;
   grid-row: 1;
   border: 0;
   border-radius: 0;
@@ -509,6 +509,12 @@
 }
 
 .fla-frame-sequence-review-unified-preview .fla-frame-sequence-preview-stage img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  object-fit: contain;
   transform: scale(var(--fla-c03-zoom, 1));
   transform-origin: center;
 }
@@ -538,13 +544,17 @@
   grid-area: inputs;
   min-height: 48px;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
 }
 
 .fla-frame-sequence-review-unified-preview .fla-frame-sequence-range-inputs label {
+  display: flex;
+  flex: 0 0 auto;
   min-height: 44px;
+  align-items: center;
   gap: 6px;
+  white-space: nowrap;
 }
 
 .fla-frame-sequence-review-unified-preview .fla-frame-sequence-range-inputs input {
@@ -778,6 +788,10 @@
   line-height: 1.35;
 }
 
+.fla-frame-sequence-review-unified-preview .fla-frame-sequence-range-inputs > output {
+  white-space: nowrap;
+}
+
 @media (max-width: 900px) {
   .fla-review-portal .fla-c03-session {
     width: calc(100vw - 16px);
@@ -791,6 +805,10 @@
     overflow: auto;
   }
 
+  .fla-c03-workbench[data-sequence-preview='true'] {
+    grid-template-rows: max-content minmax(250px, 1fr);
+  }
+
   .fla-c03-preview {
     min-height: 440px;
     grid-template-rows: auto auto;
@@ -798,7 +816,9 @@
   }
 
   .fla-c03-preview-stage.has-sequence-preview {
-    min-height: 330px;
+    height: 480px;
+    min-height: 480px;
+    max-height: 480px;
   }
 
   .fla-c03-browser {

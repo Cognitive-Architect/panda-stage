@@ -142,7 +142,11 @@ export function FlaUnifiedWorkbench({
 
   return (
     <>
-      <main className="fla-c03-workbench" data-testid="fla-c03-workbench">
+      <main
+        className="fla-c03-workbench"
+        data-sequence-preview={showSequencePreview ? 'true' : undefined}
+        data-testid="fla-c03-workbench"
+      >
         <section className="fla-c03-browser" aria-label="素材列表">
           <div className="fla-c03-browser-tools">
             <label className="fla-c03-search">

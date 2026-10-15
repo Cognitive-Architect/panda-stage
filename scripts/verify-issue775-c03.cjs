@@ -1244,6 +1244,291 @@ async function renderSequenceRange(window, target, startOneBased, expectedCount,
   return request;
 }
 
+async function readGeneratedSequencePreview(window) {
+  return inPage(window, () => {
+    const preview = document.querySelector('[data-testid="fla-frame-sequence-preview-area"]');
+    const image = document.querySelector('[data-testid="fla-frame-sequence-preview-image"]');
+    const range = document.querySelector('[data-testid="fla-frame-sequence-range"]');
+    const filmstrip = document.querySelector('[data-testid="fla-frame-sequence-filmstrip-region"]');
+    const grid = document.querySelector('[data-testid="fla-c03-preview-stage"]');
+    const rect = (element) => {
+      if (!(element instanceof Element)) return null;
+      const value = element.getBoundingClientRect();
+      return { left: value.left, top: value.top, right: value.right, bottom: value.bottom,
+        width: value.width, height: value.height };
+    };
+    const previewRect = rect(preview);
+    const imageRect = rect(image);
+    const style = image instanceof HTMLImageElement ? getComputedStyle(image) : null;
+    const gridStyle = grid ? getComputedStyle(grid) : null;
+    const zoom = Number.parseFloat(gridStyle?.getPropertyValue('--fla-c03-zoom') ?? 'NaN');
+    const transformParts = style?.transform.match(/^matrix\(([^)]+)\)$/u)?.[1]
+      ?.split(',').map((part) => Number(part.trim())) ?? [];
+    const transformScale = transformParts.length === 6
+      ? { x: Math.hypot(transformParts[0], transformParts[1]), y: Math.hypot(transformParts[2], transformParts[3]) }
+      : { x: 1, y: 1 };
+    let alphaBounds = null;
+    let pixelReadError = null;
+    if (image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        if (!context) throw new Error('2D canvas context unavailable');
+        context.drawImage(image, 0, 0);
+        const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+        let left = canvas.width;
+        let top = canvas.height;
+        let right = -1;
+        let bottom = -1;
+        for (let y = 0; y < canvas.height; y += 1) {
+          for (let x = 0; x < canvas.width; x += 1) {
+            if (pixels[(y * canvas.width + x) * 4 + 3] <= 8) continue;
+            left = Math.min(left, x);
+            top = Math.min(top, y);
+            right = Math.max(right, x);
+            bottom = Math.max(bottom, y);
+          }
+        }
+        if (right >= left && bottom >= top) {
+          alphaBounds = { left, top, width: right - left + 1, height: bottom - top + 1 };
+        }
+      } catch (error) {
+        pixelReadError = error instanceof Error ? error.message : String(error);
+      }
+    }
+    let displayedContent = null;
+    let visibleContentRatio = null;
+    if (image instanceof HTMLImageElement && imageRect && previewRect && alphaBounds &&
+      image.clientWidth > 0 && image.clientHeight > 0) {
+      const fitScale = Math.min(image.clientWidth / image.naturalWidth, image.clientHeight / image.naturalHeight);
+      const fittedWidth = image.naturalWidth * fitScale;
+      const fittedHeight = image.naturalHeight * fitScale;
+      const left = imageRect.left + (imageRect.width - fittedWidth * transformScale.x) / 2 +
+        alphaBounds.left * fitScale * transformScale.x;
+      const top = imageRect.top + (imageRect.height - fittedHeight * transformScale.y) / 2 +
+        alphaBounds.top * fitScale * transformScale.y;
+      const width = alphaBounds.width * fitScale * transformScale.x;
+      const height = alphaBounds.height * fitScale * transformScale.y;
+      displayedContent = { left, top, right: left + width, bottom: top + height, width, height };
+      const visibleWidth = Math.max(0, Math.min(displayedContent.right, previewRect.right) -
+        Math.max(displayedContent.left, previewRect.left));
+      const visibleHeight = Math.max(0, Math.min(displayedContent.bottom, previewRect.bottom) -
+        Math.max(displayedContent.top, previewRect.top));
+      visibleContentRatio = Number(((visibleWidth * visibleHeight) / (width * height)).toFixed(4));
+    }
+    return {
+      viewport: { width: window.innerWidth, height: window.innerHeight, devicePixelRatio: window.devicePixelRatio },
+      container: rect(grid),
+      containerOverflow: gridStyle?.overflow ?? '',
+      preview: previewRect,
+      image: imageRect,
+      range: rect(range),
+      filmstrip: rect(filmstrip),
+      gridRows: gridStyle?.gridTemplateRows ?? '',
+      imageLoaded: image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+      objectFit: style?.objectFit ?? '',
+      zoom,
+      transformScale,
+      naturalWidth: image instanceof HTMLImageElement ? image.naturalWidth : 0,
+      naturalHeight: image instanceof HTMLImageElement ? image.naturalHeight : 0,
+      alphaBounds,
+      pixelReadError,
+      displayedContent,
+      visibleContentRatio,
+      contentHeightRatio: displayedContent && previewRect
+        ? Number((displayedContent.height / previewRect.height).toFixed(4))
+        : null,
+    };
+  });
+}
+
+async function dispatchTouchScroll(window, selector, deltaY) {
+  const point = await inPage(window, (query) => {
+    const element = document.querySelector(query);
+    if (!(element instanceof HTMLElement)) return null;
+    element.scrollTop = 0;
+    const rect = element.getBoundingClientRect();
+    const state = { startCount: 0, moveCount: 0, scrollTopBefore: element.scrollTop };
+    const onStart = (event) => { if (element.contains(event.target)) state.startCount += 1; };
+    const onMove = (event) => { if (element.contains(event.target)) state.moveCount += 1; };
+    document.addEventListener('touchstart', onStart, { passive: true });
+    document.addEventListener('touchmove', onMove, { passive: true });
+    window.__issue778GeneratedSequenceTouch = { query, element, state, onStart, onMove };
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + Math.min(120, Math.max(24, rect.height / 2)),
+      scrollTopBefore: state.scrollTopBefore,
+    };
+  }, selector);
+  assert(point, 'Narrow generated-sequence workbench did not expose a touch scroll area.');
+
+  const debuggerApi = window.webContents.debugger;
+  const attachedHere = !debuggerApi.isAttached();
+  if (attachedHere) debuggerApi.attach('1.3');
+  try {
+    await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ id: 1, x: point.x, y: point.y, radiusX: 1, radiusY: 1, force: 1 }],
+    });
+    await delay(40);
+    await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ id: 1, x: point.x, y: point.y - deltaY, radiusX: 1, radiusY: 1, force: 1 }],
+    });
+    await delay(80);
+    await debuggerApi.sendCommand('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  } finally {
+    if (attachedHere && debuggerApi.isAttached()) debuggerApi.detach();
+  }
+  await delay(120);
+  return inPage(window, (query) => {
+    const touch = window.__issue778GeneratedSequenceTouch;
+    if (!touch || touch.query !== query) return null;
+    document.removeEventListener('touchstart', touch.onStart);
+    document.removeEventListener('touchmove', touch.onMove);
+    return {
+      dispatchedBy: 'Electron CDP Input.dispatchTouchEvent',
+      touchStartCount: touch.state.startCount,
+      touchMoveCount: touch.state.moveCount,
+      scrollTopBefore: touch.state.scrollTopBefore,
+      scrollTopAfter: touch.element.scrollTop,
+      scrollHeight: touch.element.scrollHeight,
+      clientHeight: touch.element.clientHeight,
+    };
+  }, selector);
+}
+
+async function captureGeneratedSequenceNarrow(window) {
+  const bounds = window.getBounds();
+  try {
+    window.setBounds({ x: bounds.x, y: bounds.y, width: 860, height: 690 });
+    await delay(500);
+    const viewport = await inPage(window, () => ({
+      width: window.innerWidth,
+      height: window.innerHeight,
+      devicePixelRatio: window.devicePixelRatio,
+    }));
+    assert(viewport.width <= 900, 'Generated-sequence narrow evidence did not reach the responsive layout.');
+    runtime.layout.sequenceGeneratedNarrowViewport = viewport;
+    await inPage(window, () => {
+      const workbench = document.querySelector('[data-testid="fla-c03-workbench"]');
+      if (workbench instanceof HTMLElement) workbench.scrollTop = 0;
+    });
+    runtime.layout.sequenceGeneratedNarrowPreview = await readGeneratedSequencePreview(window);
+    const narrowPreview = runtime.layout.sequenceGeneratedNarrowPreview;
+    assert(narrowPreview.preview?.height >= 210 && narrowPreview.imageLoaded &&
+      narrowPreview.objectFit === 'contain' && narrowPreview.zoom === 1 &&
+      narrowPreview.visibleContentRatio >= 0.99 && narrowPreview.contentHeightRatio >= 0.65 &&
+      narrowPreview.container?.bottom >= narrowPreview.filmstrip?.bottom - 1,
+    'The complete generated frame was not visible at fit zoom in the narrow Windows view: ' +
+      JSON.stringify(narrowPreview));
+    runtime.screenshots.sequenceGeneratedNarrowTop = await capture(window, 'sequence-generated-narrow-top');
+
+    runtime.layout.sequenceGeneratedNarrowTouch = await dispatchTouchScroll(
+      window,
+      '[data-testid="fla-c03-workbench"]',
+      260,
+    );
+    runtime.layout.sequenceGeneratedNarrowReachability = await inPage(window, () => {
+      const workbench = document.querySelector('[data-testid="fla-c03-workbench"]');
+      const rangeInput = document.querySelector('[data-testid="fla-frame-sequence-start"]');
+      const action = document.querySelector('[data-testid="fla-frame-sequence-rerender"]') ??
+        document.querySelector('[data-testid="fla-frame-sequence-render"]');
+      const filmstripItem = document.querySelector('[data-testid="fla-frame-sequence-filmstrip"] button');
+      const visible = (element) => {
+        if (!(element instanceof Element)) return { visible: false, rect: null, visibleRect: null, clippedBy: [] };
+        const rect = element.getBoundingClientRect();
+        let visibleRect = { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+        const clippedBy = [];
+        for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+          const style = getComputedStyle(ancestor);
+          if (style.display === 'contents') {
+            if (ancestor === document.documentElement) break;
+            continue;
+          }
+          const ancestorRect = ancestor.getBoundingClientRect();
+          const clipsX = ['auto', 'clip', 'hidden', 'scroll'].includes(style.overflowX);
+          const clipsY = ['auto', 'clip', 'hidden', 'scroll'].includes(style.overflowY);
+          if (clipsX || clipsY) {
+            const previousRect = { ...visibleRect };
+            visibleRect = {
+              left: clipsX ? Math.max(visibleRect.left, ancestorRect.left) : visibleRect.left,
+              right: clipsX ? Math.min(visibleRect.right, ancestorRect.right) : visibleRect.right,
+              top: clipsY ? Math.max(visibleRect.top, ancestorRect.top) : visibleRect.top,
+              bottom: clipsY ? Math.min(visibleRect.bottom, ancestorRect.bottom) : visibleRect.bottom,
+            };
+            if (visibleRect.left !== previousRect.left || visibleRect.right !== previousRect.right ||
+              visibleRect.top !== previousRect.top || visibleRect.bottom !== previousRect.bottom) {
+              clippedBy.push({
+                tag: ancestor.tagName,
+                className: typeof ancestor.className === 'string' ? ancestor.className : '',
+                overflowX: style.overflowX,
+                overflowY: style.overflowY,
+                rect: { left: ancestorRect.left, top: ancestorRect.top, right: ancestorRect.right,
+                  bottom: ancestorRect.bottom },
+              });
+            }
+          }
+          if (ancestor === document.documentElement) break;
+        }
+        visibleRect = {
+          left: Math.max(visibleRect.left, 0),
+          right: Math.min(visibleRect.right, window.innerWidth),
+          top: Math.max(visibleRect.top, 0),
+          bottom: Math.min(visibleRect.bottom, window.innerHeight),
+        };
+        return {
+          visible: Boolean(workbench && rect.width > 0 && rect.height > 0 &&
+            visibleRect.right - visibleRect.left >= rect.width - 1 &&
+            visibleRect.bottom - visibleRect.top >= rect.height - 1),
+          rect: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom,
+            width: rect.width, height: rect.height },
+          visibleRect,
+          clippedBy,
+        };
+      };
+      const size = (element) => {
+        const rect = element?.getBoundingClientRect();
+        return { width: rect?.width ?? 0, height: rect?.height ?? 0 };
+      };
+      return {
+        workbenchScrollTop: workbench instanceof HTMLElement ? workbench.scrollTop : 0,
+        rangeInputVisible: visible(rangeInput).visible,
+        actionVisible: visible(action).visible,
+        filmstripItemVisible: visible(filmstripItem).visible,
+        rangeInputSize: size(rangeInput),
+        actionSize: size(action),
+        filmstripItemSize: size(filmstripItem),
+        visibilityDiagnostics: {
+          rangeInput: visible(rangeInput),
+          action: visible(action),
+          filmstripItem: visible(filmstripItem),
+        },
+      };
+    });
+    runtime.screenshots.sequenceGeneratedNarrowControls = await capture(
+      window,
+      'sequence-generated-narrow-controls',
+    );
+    const touch = runtime.layout.sequenceGeneratedNarrowTouch;
+    const access = runtime.layout.sequenceGeneratedNarrowReachability;
+    assert(touch?.touchStartCount > 0 && touch.touchMoveCount > 0 && touch.scrollTopAfter > touch.scrollTopBefore,
+      'A native touch gesture did not scroll the narrow generated-sequence preview.');
+    assert(access?.rangeInputVisible && access.actionVisible && access.filmstripItemVisible &&
+      access.rangeInputSize.width >= 44 && access.rangeInputSize.height >= 44 &&
+      access.actionSize.width >= 44 && access.actionSize.height >= 44 &&
+      access.filmstripItemSize.width >= 44 && access.filmstripItemSize.height >= 44,
+    'Range, regenerate, and filmstrip controls were not touch reachable in the narrow generated-sequence view: ' +
+      JSON.stringify(access));
+    runtime.assertions.sequenceNarrowTouchAccess = true;
+  } finally {
+    window.setBounds(bounds);
+    await delay(300);
+  }
+}
+
 async function verifySequence(window) {
   const target = findLongSequenceEntry();
   assert(target, 'No supported real target with at least 26 frames was available for range evidence.');
@@ -1321,6 +1606,29 @@ async function verifySequence(window) {
   const secondCount = Math.min(target.frameCount, 48) - 24;
   assert(secondCount > 0 && secondCount <= 24, 'The target cannot produce a legal segment starting at frame 25.');
   const second = await renderSequenceRange(window, target, 25, secondCount, 'sequence-start-25');
+  await click(window, '[aria-label="适合预览"]');
+  await waitForPage(window, () => {
+    const image = document.querySelector('[data-testid="fla-frame-sequence-preview-image"]');
+    const grid = document.querySelector('[data-testid="fla-c03-preview-stage"]');
+    return image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0 &&
+      Number.parseFloat(getComputedStyle(grid).getPropertyValue('--fla-c03-zoom')) === 1;
+  });
+  const generatedPreview = await readGeneratedSequencePreview(window);
+  runtime.layout.sequenceGeneratedPreviewFit = generatedPreview;
+  assert(generatedPreview.preview?.height >= 210 && generatedPreview.range?.height <= 125 &&
+    generatedPreview.preview.height >= generatedPreview.range.height * 1.5,
+  'The generated-sequence main preview did not remain dominant over the frame range at fit zoom: ' +
+    JSON.stringify(generatedPreview));
+  assert(generatedPreview.imageLoaded && generatedPreview.objectFit === 'contain' &&
+    generatedPreview.zoom === 1 && generatedPreview.transformScale.x >= 0.99 && generatedPreview.transformScale.x <= 1.01 &&
+    generatedPreview.transformScale.y >= 0.99 && generatedPreview.transformScale.y <= 1.01 &&
+    generatedPreview.alphaBounds?.width > 0 && generatedPreview.alphaBounds?.height > 0 &&
+    generatedPreview.pixelReadError === null && generatedPreview.visibleContentRatio >= 0.99 &&
+    generatedPreview.contentHeightRatio >= 0.65,
+  'The actual generated frame pixels were not fully visible in the fit preview: ' + JSON.stringify(generatedPreview));
+  runtime.assertions.sequenceGeneratedPreviewShowsFullFrameAtFit = true;
+  runtime.screenshots.sequenceGeneratedFitNormal = await capture(window, 'sequence-generated-fit-normal');
+  await captureGeneratedSequenceNarrow(window);
 
   const nearEndStart = Math.max(1, target.frameCount - 2);
   const nearEndCount = target.frameCount - nearEndStart + 1;
@@ -2080,6 +2388,8 @@ async function main() {
     'sequenceFocusDoesNotRender',
     'sequenceStartsAtOneAndCapsAt24',
     'sequencePanelCompactAndAccessibleContrast',
+    'sequenceGeneratedPreviewShowsFullFrameAtFit',
+    'sequenceNarrowTouchAccess',
     'sequenceRangeChangeInvalidatesCheck',
     'sequenceNearEndUsesShortRemainder',
     'sequenceAtoBtoARetainsCheck',
