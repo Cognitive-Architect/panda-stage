@@ -41,6 +41,7 @@ import {
 } from './fla-unified-import';
 import {
   newSelectableFlaUnifiedCandidates,
+  reconcileFlaUnifiedSelection,
   requiresFlaBulkSelectionConfirmation,
 } from './fla-unified-workbench-selection';
 
@@ -284,16 +285,6 @@ export function FlaCompatibilityReviewSession({
   }, []);
   const focusUnifiedCandidate = (candidate: FlaWorkbenchCandidate): void => {
     if (unifiedImportRunningRef.current) return;
-    const previous = unifiedCandidates.find((item) => item.identityKey === focusedCandidateIdentityKey);
-    const previousTargetId = previous?.kind === 'snapshot' || previous?.kind === 'sequence'
-      ? previous.provenance.renderTargetId
-      : null;
-    const nextTargetId = candidate.kind === 'snapshot' || candidate.kind === 'sequence'
-      ? candidate.provenance.renderTargetId
-      : null;
-    if (previousTargetId && nextTargetId && previousTargetId !== nextTargetId) {
-      setCheckedCandidates((current) => new Map([...current].filter(([, item]) => item.kind !== 'sequence')));
-    }
     setFocusedCandidateIdentityKey(candidate.identityKey);
     if (candidate.kind === 'raster') {
       setRasterSelection((current) => focusFlaWorkbenchCandidate(current, candidate.id));
@@ -324,18 +315,7 @@ export function FlaCompatibilityReviewSession({
     kind: 'raster' | 'snapshot' | 'sequence',
     currentSelectableKeys: ReadonlySet<string>,
   ): void => {
-    setCheckedCandidates((current) => {
-      let changed = false;
-      const next = new Map<string, FlaUnifiedImportItem>();
-      for (const [key, item] of current) {
-        if (item.kind === kind && !currentSelectableKeys.has(key)) {
-          changed = true;
-          continue;
-        }
-        next.set(key, item);
-      }
-      return changed ? next : current;
-    });
+    setCheckedCandidates((current) => reconcileFlaUnifiedSelection(current, kind, currentSelectableKeys));
   }, []);
   const currentRasterSelectableKeys = useMemo(
     () => new Set(rasterCandidates.filter((candidate) => candidate.selectable).map(flaUnifiedCandidateSelectionKey)),

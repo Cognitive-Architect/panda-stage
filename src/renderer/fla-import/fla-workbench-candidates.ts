@@ -44,6 +44,8 @@ interface FlaWorkbenchCandidateBase {
   identityKey: string;
   kind: FlaWorkbenchCandidateKind;
   displayLabel: string;
+  /** Concise card-only label when sibling names share a long prefix. */
+  cardLabel?: string;
   searchText: string;
   source: {
     sessionId: string;
@@ -604,18 +606,71 @@ function disambiguateCandidateLabels(
   candidates: readonly FlaWorkbenchCandidate[],
 ): FlaWorkbenchCandidate[] {
   const counts = new Map<string, number>();
+  const candidatesByKind = new Map<FlaWorkbenchCandidateKind, FlaWorkbenchCandidate[]>();
   for (const candidate of candidates) {
     const key = `${candidate.kind}:${candidate.displayLabel.toLocaleLowerCase('en-US')}`;
     counts.set(key, (counts.get(key) ?? 0) + 1);
+    const sameKind = candidatesByKind.get(candidate.kind) ?? [];
+    sameKind.push(candidate);
+    candidatesByKind.set(candidate.kind, sameKind);
   }
   const positions = new Map<string, number>();
   return candidates.map((candidate) => {
     const key = `${candidate.kind}:${candidate.displayLabel.toLocaleLowerCase('en-US')}`;
-    if ((counts.get(key) ?? 0) < 2) return candidate;
-    const position = (positions.get(key) ?? 0) + 1;
-    positions.set(key, position);
-    return { ...candidate, displayLabel: `${candidate.displayLabel}（${position}）` };
+    if ((counts.get(key) ?? 0) > 1) {
+      const position = (positions.get(key) ?? 0) + 1;
+      positions.set(key, position);
+      const displayLabel = `${candidate.displayLabel}（${position}）`;
+      return { ...candidate, displayLabel, cardLabel: `（${position}） · ${candidate.displayLabel}` };
+    }
+
+    const siblings = candidatesByKind.get(candidate.kind) ?? [];
+    const similar = siblings.filter((sibling) => sibling !== candidate &&
+      commonPrefixLength(candidate.displayLabel, sibling.displayLabel) >= 10);
+    if (similar.length === 0) return candidate;
+
+    const related = [candidate, ...similar];
+    const sharedPrefix = related.reduce(
+      (prefix, sibling) => commonPrefix(prefix, sibling.displayLabel),
+      candidate.displayLabel,
+    );
+    const variants = uniqueLabelVariants(related.map((sibling) =>
+      sibling.displayLabel.slice(sharedPrefix.length),
+    ));
+    if (!variants) return candidate;
+
+    const variant = variants[related.indexOf(candidate)]!;
+    const suffix = candidate.displayLabel.slice(sharedPrefix.length + variant.length);
+    const distinguishingName = `${variant}${suffix}`.replace(/\s+/gu, ' ').trim();
+    const cardLabel = distinguishingName;
+    return cardLabel.length < candidate.displayLabel.length
+      ? { ...candidate, cardLabel }
+      : candidate;
   });
+}
+
+function commonPrefix(left: string, right: string): string {
+  let index = 0;
+  const max = Math.min(left.length, right.length);
+  while (index < max && left[index] === right[index]) index += 1;
+  return left.slice(0, index);
+}
+
+function commonPrefixLength(left: string, right: string): number {
+  return commonPrefix(left, right).length;
+}
+
+function uniqueLabelVariants(values: readonly string[]): string[] | null {
+  const tokenLists = values.map((value) =>
+    value.split(/[\s·/_.-]+/u).filter(Boolean),
+  );
+  if (tokenLists.some((tokens) => tokens.length === 0)) return null;
+  const maxTokens = Math.max(...tokenLists.map((tokens) => tokens.length));
+  for (let count = 1; count <= maxTokens; count += 1) {
+    const variants = tokenLists.map((tokens) => tokens.slice(0, count).join(' '));
+    if (new Set(variants).size === variants.length) return variants;
+  }
+  return null;
 }
 
 function candidatesCatalogRole(entry: FlaRenderableTargetCatalogEntry): FlaRenderableTargetCatalogRole {

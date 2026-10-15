@@ -110,7 +110,7 @@ export function FlaUnifiedWorkbench({
       return (
         <div className="fla-c03-preview-placeholder" data-testid="fla-c03-preview-empty">
           <strong>{progress.phase === 'loading' ? '正在读取素材…' : '选择一个素材查看预览'}</strong>
-          <span>{progress.phase === 'scanning' ? `正在检查预览 ${progress.completed} / ${progress.total}` : '单击缩略图只会打开预览。'}</span>
+          <span>{progress.phase === 'scanning' ? '正在加载素材…' : '单击缩略图只会打开预览。'}</span>
         </div>
       );
     }
@@ -182,13 +182,18 @@ export function FlaUnifiedWorkbench({
             >
               {selectedOnly ? '返回浏览' : `查看已选 ${selectedCount}`}
             </button>
+            {selectedOnly && searchText.trim() ? (
+              <output className="fla-c03-selected-view-status" data-testid="fla-c03-selected-view-status" role="status">
+                正在查看已选 · 搜索已暂停
+              </output>
+            ) : null}
           </div>
 
           {bulkConfirmationOpen ? (
             <div className="fla-c03-bulk-confirmation" data-testid="fla-c03-bulk-confirmation" role="group" aria-label="确认批量选择">
-              <span>将添加 {newEligibleCount} 项可导入素材。</span>
+              <span>即将勾选 {newEligibleCount} 项素材，暂不会导入。</span>
               <button type="button" disabled={newEligibleCount === 0 || locked} onClick={onConfirmBulkSelection} data-testid="fla-c03-bulk-confirm">
-                添加 {newEligibleCount} 项
+                确认勾选
               </button>
               <button type="button" onClick={onCancelBulkSelection} data-testid="fla-c03-bulk-cancel">
                 取消
@@ -198,7 +203,7 @@ export function FlaUnifiedWorkbench({
 
           <output className="fla-c03-progress" data-testid="fla-c03-catalog-progress" aria-live="polite">
             {progress.phase === 'scanning'
-              ? `正在检查预览 ${progress.completed} / ${progress.total}`
+              ? '正在加载素材…'
               : progress.phase === 'loading'
                 ? '正在加载素材…'
                 : progress.phase === 'error'
@@ -221,9 +226,14 @@ export function FlaUnifiedWorkbench({
           >
             {visibleCandidates.length > 0 ? visibleCandidates.map((candidate) => {
               const thumbnail = candidatePreviewUrl(candidate, candidates);
-              const itemLabel = candidate.kind === 'sequence'
+              const fullItemLabel = candidate.kind === 'sequence'
                 ? `${candidate.displayLabel} · 连续画面`
                 : candidate.displayLabel;
+              const cardLabel = candidate.cardLabel ?? candidate.displayLabel;
+              const itemLabel = candidate.kind === 'sequence'
+                ? `${cardLabel} · 连续画面`
+                : cardLabel;
+              const statusLabel = candidateStatus(candidate);
               return (
                 <li
                   className={`fla-c03-candidate${candidate.identityKey === focusedCandidateIdentityKey ? ' is-focused' : ''}${candidate.checked ? ' is-checked' : ''}`}
@@ -235,7 +245,7 @@ export function FlaUnifiedWorkbench({
                   role="listitem"
                 >
                   <button
-                    aria-label={`预览 ${itemLabel}`}
+                    aria-label={`预览 ${fullItemLabel}`}
                     aria-pressed={candidate.identityKey === focusedCandidateIdentityKey}
                     className="fla-c03-candidate-focus"
                     data-testid={`fla-c03-focus-${candidate.kind}-${candidate.id}`}
@@ -251,13 +261,13 @@ export function FlaUnifiedWorkbench({
                       {thumbnail ? <img alt="" loading="lazy" decoding="async" src={thumbnail} /> : <span>{thumbnailPlaceholder(candidate)}</span>}
                     </span>
                     <span className="fla-c03-candidate-copy">
-                      <strong title={itemLabel}>{itemLabel}</strong>
-                      <small data-status={candidate.preview.status}>{candidateStatus(candidate)}</small>
+                      <strong title={fullItemLabel}>{itemLabel}</strong>
+                      {statusLabel ? <small data-status={candidate.preview.status}>{statusLabel}</small> : null}
                     </span>
                   </button>
                   <label className="fla-c03-checkbox-hitbox">
                     <input
-                      aria-label={`选择 ${itemLabel}`}
+                      aria-label={`选择 ${fullItemLabel}`}
                       checked={candidate.checked}
                       disabled={!candidate.selectable || locked}
                       onChange={(event) => onToggleCandidate(candidate, event.currentTarget.checked)}
@@ -301,7 +311,7 @@ export function FlaUnifiedWorkbench({
             </div>
           </header>
           <div
-            className="fla-c03-preview-stage"
+            className={`fla-c03-preview-stage${showSequencePreview ? ' has-sequence-preview' : ''}`}
             data-testid="fla-c03-preview-stage"
             style={{ '--fla-c03-zoom': previewZoom } as CSSProperties}
           >
@@ -354,6 +364,8 @@ export function FlaUnifiedWorkbench({
 }
 
 function ImportReceipt({ receipt }: { receipt: FlaUnifiedImportReceipt }): React.JSX.Element {
+  const hasDiagnostics = receipt.warnings.length > 0 || receipt.items.some((item) => item.message);
+
   return (
     <details
       className="fla-c03-receipt"
@@ -369,7 +381,20 @@ function ImportReceipt({ receipt }: { receipt: FlaUnifiedImportReceipt }): React
           共处理 {receipt.selectedCount} 项；新建素材 {receipt.counts.importedAssets} 项、复用素材 {receipt.counts.duplicateAssets} 项。
         </output>
         {receipt.cancelled ? <span data-testid="fla-unified-import-cancelled">已停止后续导入。</span> : null}
-        {receipt.warnings.map((warning, index) => <p key={`${index}-${warning}`} role="alert">{warning}</p>)}
+        {receipt.counts.failed > 0 ? (
+          <p data-testid="fla-unified-import-review-guidance" role="alert">
+            有 {receipt.counts.failed} 项导入结果需要核对。请先检查素材库，避免重复导入。
+          </p>
+        ) : receipt.warnings.length > 0 ? (
+          <p data-testid="fla-unified-import-review-guidance" role="alert">
+            导入过程中有需要核对的提示，请展开技术详情。
+          </p>
+        ) : null}
+        {receipt.counts.notAttempted > 0 ? (
+          <span data-testid="fla-unified-import-not-attempted">
+            {receipt.counts.notAttempted} 项未尝试导入。
+          </span>
+        ) : null}
         <ul data-testid="fla-unified-import-items">
           {receipt.items.map((item) => (
             <li data-kind={item.kind} data-status={item.status} key={item.key}>
@@ -378,10 +403,36 @@ function ImportReceipt({ receipt }: { receipt: FlaUnifiedImportReceipt }): React
               {item.baseRevision !== undefined && item.savedRevision !== undefined
                 ? <small>项目版本 {item.baseRevision} → {item.savedRevision}</small>
                 : null}
-              {item.message ? <small>{item.message}</small> : null}
+              {item.status === 'failed' ? (
+                <small>请先检查素材库，再决定下一步，避免重复导入。</small>
+              ) : item.status === 'not-attempted' ? (
+                <small>此项未尝试导入。</small>
+              ) : null}
             </li>
           ))}
         </ul>
+        {hasDiagnostics ? (
+          <details className="fla-c03-receipt-diagnostics" data-testid="fla-unified-import-diagnostics">
+            <summary>技术详情</summary>
+            <div>
+              {receipt.warnings.length > 0 ? (
+                <ul aria-label="导入提示">
+                  {receipt.warnings.map((warning, index) => <li key={`${index}-${warning}`}>{warning}</li>)}
+                </ul>
+              ) : null}
+              {receipt.items.some((item) => item.message) ? (
+                <ul aria-label="项目诊断信息">
+                  {receipt.items.filter((item) => item.message).map((item) => (
+                    <li key={item.key}>
+                      <strong>{item.label}</strong>
+                      <code>{item.message}</code>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          </details>
+        ) : null}
       </div>
     </details>
   );
@@ -411,7 +462,7 @@ function candidateStatus(candidate: FlaWorkbenchCandidate): string {
       return candidate.kind === 'sequence' && candidate.preview.startFrameIndex !== undefined &&
         candidate.preview.endFrameIndex !== undefined
         ? `第 ${candidate.preview.startFrameIndex + 1}–${candidate.preview.endFrameIndex + 1} 帧已生成`
-        : '可导入';
+        : '';
     case 'checking':
       return candidate.kind === 'sequence' ? '按需生成' : '加载中…';
     case 'unscanned':

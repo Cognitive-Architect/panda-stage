@@ -167,6 +167,10 @@ describe('Issue #775 C01 unified FLA workbench candidates', () => {
       '上衣 · 第 1 帧（1）',
       '上衣 · 第 1 帧（2）',
     ]);
+    expect(candidates.map((candidate) => candidate.cardLabel)).toEqual([
+      '（1） · 上衣 · 第 1 帧',
+      '（2） · 上衣 · 第 1 帧',
+    ]);
     expect(candidates[0]?.id).not.toBe(candidates[1]?.id);
     expect(candidates[0]?.identityKey).not.toBe(candidates[1]?.identityKey);
     expect(candidates[0]?.dedupeGroupId).toBe(candidates[1]?.dedupeGroupId);
@@ -180,6 +184,36 @@ describe('Issue #775 C01 unified FLA workbench candidates', () => {
     })[0]!;
     expect(nextSession.id).toBe(candidates[0]?.id);
     expect(nextSession.identityKey).not.toBe(candidates[0]?.identityKey);
+  });
+
+  it('keeps long shared-name cards distinct while retaining full candidate labels', () => {
+    const left = target('left-sleeve', 'character-limb-Left sleeve');
+    const right = target('right-sleeve', 'character-limb-Right sleeve');
+    const candidates = createFlaWorkbenchCandidates({
+      context: context(),
+      snapshotEntries: [left, right],
+      snapshotPreviews: {
+        [snapshotCandidateId(left)]: verifiedPreview('c'.repeat(64)),
+        [snapshotCandidateId(right)]: verifiedPreview('d'.repeat(64)),
+      },
+    });
+    const leftCandidate = candidates.find((candidate) =>
+      candidate.kind === 'snapshot' && candidate.operation.target.userLabel === left.target.userLabel,
+    );
+    const rightCandidate = candidates.find((candidate) =>
+      candidate.kind === 'snapshot' && candidate.operation.target.userLabel === right.target.userLabel,
+    );
+
+    expect(leftCandidate).toMatchObject({
+      displayLabel: 'character-limb-Left sleeve · 第 1 帧',
+      cardLabel: 'Left sleeve · 第 1 帧',
+      searchText: expect.stringContaining('character-limb-left sleeve'),
+    });
+    expect(rightCandidate).toMatchObject({
+      displayLabel: 'character-limb-Right sleeve · 第 1 帧',
+      cardLabel: 'Right sleeve · 第 1 帧',
+      searchText: expect.stringContaining('character-limb-right sleeve'),
+    });
   });
 
   it('binds candidate identity to source content and verified previews to their image bytes', () => {

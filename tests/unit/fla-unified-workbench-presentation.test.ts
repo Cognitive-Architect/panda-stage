@@ -1,0 +1,99 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
+import { FlaUnifiedWorkbench } from '../../src/renderer/fla-import/FlaUnifiedWorkbench';
+import type { FlaUnifiedImportReceipt } from '../../src/renderer/fla-import/fla-unified-import';
+
+type WorkbenchProps = Parameters<typeof FlaUnifiedWorkbench>[0];
+
+const baseProps: WorkbenchProps = {
+  candidates: [],
+  focusedCandidateIdentityKey: null,
+  searchText: '',
+  selectedOnly: false,
+  selectedCount: 0,
+  locked: false,
+  canImport: false,
+  importing: false,
+  stopAfterCurrentRequested: false,
+  bulkConfirmationOpen: false,
+  newEligibleCount: 0,
+  progress: { phase: 'ready', completed: 0, total: 0, omittedCandidateCount: 0 },
+  receipt: null,
+  showSnapshotPreview: false,
+  showSequencePreview: false,
+  snapshotPreview: null,
+  sequencePreview: null,
+  onSearchTextChange: () => undefined,
+  onToggleSelectedOnly: () => undefined,
+  onFocusCandidate: () => undefined,
+  onToggleCandidate: () => undefined,
+  onSelectCurrentResults: () => undefined,
+  onConfirmBulkSelection: () => undefined,
+  onCancelBulkSelection: () => undefined,
+  onClearSelection: () => undefined,
+  onImport: () => undefined,
+  onStopAfterCurrent: () => undefined,
+};
+
+function renderWorkbench(overrides: Partial<WorkbenchProps> = {}): string {
+  return renderToStaticMarkup(createElement(FlaUnifiedWorkbench, { ...baseProps, ...overrides }));
+}
+
+function failedReceipt(message: string): FlaUnifiedImportReceipt {
+  return {
+    selectedCount: 1,
+    items: [{
+      key: 'snapshot:1',
+      kind: 'snapshot',
+      identityKey: 'snapshot-1',
+      label: 'sample.png',
+      status: 'failed',
+      message,
+    }],
+    counts: {
+      imported: 0,
+      duplicate: 0,
+      failed: 1,
+      notAttempted: 0,
+      importedAssets: 0,
+      duplicateAssets: 0,
+    },
+    partial: true,
+    cancelled: false,
+    warnings: [message],
+    snapshot: {} as FlaUnifiedImportReceipt['snapshot'],
+  };
+}
+
+describe('Issue #778 unified FLA workbench presentation', () => {
+  it('states that bulk confirmation only checks candidates', () => {
+    const markup = renderWorkbench({ bulkConfirmationOpen: true, newEligibleCount: 398 });
+
+    expect(markup).toContain('即将勾选 398 项素材，暂不会导入。');
+    expect(markup).toContain('确认勾选');
+    expect(markup).not.toContain('将添加 398');
+  });
+
+  it('explains that search is paused in the selected-only view while retaining the query', () => {
+    const markup = renderWorkbench({ searchText: 'blue sleeve', selectedOnly: true, selectedCount: 1 });
+
+    expect(markup).toContain('正在查看已选 · 搜索已暂停');
+    expect(markup).toContain('value="blue sleeve"');
+    expect(markup).toContain('还没有已选择的素材。');
+  });
+
+  it('shows safe failure guidance and keeps raw receipt diagnostics in a collapsed disclosure', () => {
+    const rawMessage = 'Error invoking remote method: asset-id-42';
+    const markup = renderWorkbench({ receipt: failedReceipt(rawMessage) });
+    const diagnosticsStart = markup.indexOf('<details class="fla-c03-receipt-diagnostics"');
+    const diagnosticsOpenTag = markup.match(/<details class="fla-c03-receipt-diagnostics"[^>]*>/u)?.[0];
+
+    expect(markup).toContain('请先检查素材库，避免重复导入。');
+    expect(diagnosticsStart).toBeGreaterThan(0);
+    expect(markup.slice(0, diagnosticsStart)).not.toContain(rawMessage);
+    expect(diagnosticsOpenTag).toBeDefined();
+    expect(diagnosticsOpenTag).not.toContain(' open');
+    expect(markup.slice(diagnosticsStart)).toContain(`<code>${rawMessage}</code>`);
+  });
+});

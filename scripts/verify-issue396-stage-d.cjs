@@ -248,6 +248,8 @@ function parseArgs(argv) {
     if (argv[index] === '--source') args.source = argv[++index];
     else if (argv[index] === '--out') args.out = argv[++index];
     else if (argv[index] === '--acceptance-root') args.acceptanceRoot = argv[++index];
+    else if (argv[index] === '--sequence-target') args.sequenceTarget = argv[++index];
+    else if (argv[index] === '--capture-sequence-preview-before-render') args.captureSequencePreviewBeforeRender = true;
     else if (argv[index] === '--user-data') args.userData = argv[++index];
     else if (argv[index] === '--evidence-dir') args.evidenceDir = argv[++index];
     else if (argv[index] === '--measure-scan-only') args.measureScanOnly = true;
@@ -453,7 +455,10 @@ async function waitForMainWindow() {
   throw new Error('Panda Stage main window did not expose the Stage D APIs');
 }
 
-async function captureScreenshotAtMarker(mainWindow, marker, outputPath, pathState) {
+async function captureScreenshotAtMarker(mainWindow, marker, outputPath, pathState, {
+  resizeTo = null,
+  restoreBoundsAfterCapture = null,
+} = {}) {
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     if (pathState?.error) throw pathState.error;
@@ -461,17 +466,127 @@ async function captureScreenshotAtMarker(mainWindow, marker, outputPath, pathSta
       'document.documentElement.dataset.issue398CaptureMarker || ""',
     );
     if (currentMarker === marker) {
+      if (resizeTo) {
+        mainWindow.setSize(resizeTo.width, resizeTo.height);
+        mainWindow.center();
+        await delay(250);
+        const viewport = await mainWindow.webContents.executeJavaScript(
+          '({ width: window.innerWidth, height: window.innerHeight })',
+        );
+        if (viewport.width > resizeTo.maxViewportWidth) {
+          throw new Error(`Stage D native resize did not reach a narrow viewport: ${JSON.stringify(viewport)}`);
+        }
+      }
       const image = await mainWindow.capturePage();
       writeFileSync(outputPath, image.toPNG());
+      const viewport = await mainWindow.webContents.executeJavaScript(
+        '({ width: window.innerWidth, height: window.innerHeight, devicePixelRatio: window.devicePixelRatio })',
+      );
+      const windowBounds = mainWindow.getBounds();
+      if (restoreBoundsAfterCapture) {
+        mainWindow.setBounds(restoreBoundsAfterCapture);
+        await delay(250);
+      }
       await mainWindow.webContents.executeJavaScript(
         `document.documentElement.dataset.issue398CaptureDone = ${JSON.stringify(marker)}; true;`,
       );
       const size = image.getSize();
-      return { path: outputPath, width: size.width, height: size.height };
+      return { path: outputPath, width: size.width, height: size.height, viewport, windowBounds };
     }
     await delay(100);
   }
   throw new Error(`Timed out waiting for Stage D screenshot marker ${marker}`);
+}
+
+async function driveKeyboardAtMarker(mainWindow, marker, keyCode, pathState) {
+  const deadline = Date.now() + 75_000;
+  while (Date.now() < deadline) {
+    if (pathState?.error) throw pathState.error;
+    const currentMarker = await mainWindow.webContents.executeJavaScript(
+      'document.documentElement.dataset.issue398KeyboardMarker || ""',
+    );
+    if (currentMarker === marker) {
+      mainWindow.focus();
+      const focusDeadline = Date.now() + 3_000;
+      while (!mainWindow.isFocused() && Date.now() < focusDeadline) await delay(25);
+      if (!mainWindow.isFocused()) {
+        throw new Error(`Stage D Electron window did not receive focus for native key ${keyCode}`);
+      }
+      mainWindow.webContents.focus();
+      const rendererFocusDeadline = Date.now() + 3_000;
+      let documentFocused = false;
+      while (!documentFocused && Date.now() < rendererFocusDeadline) {
+        documentFocused = await mainWindow.webContents.executeJavaScript('document.hasFocus()');
+        if (!documentFocused) await delay(25);
+      }
+      if (!documentFocused) {
+        throw new Error(`Stage D renderer did not receive focus for native key ${keyCode}`);
+      }
+      mainWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode });
+      mainWindow.webContents.sendInputEvent({ type: 'keyUp', keyCode });
+      await delay(50);
+      await mainWindow.webContents.executeJavaScript(
+        `document.documentElement.dataset.issue398KeyboardDone = ${JSON.stringify(marker)}; true;`,
+      );
+      return { marker, keyCode, dispatched: true };
+    }
+    await delay(50);
+  }
+  const diagnostics = await mainWindow.webContents.executeJavaScript(`({
+    keyboardMarker: document.documentElement.dataset.issue398KeyboardMarker || '',
+    captureMarker: document.documentElement.dataset.issue398CaptureMarker || '',
+    focusedLabel: document.querySelector('[data-testid="fla-c03-focused-label"]')?.textContent?.trim() ?? '',
+    focusedKind: document.querySelector('[data-testid="fla-c03-preview"]')?.getAttribute('data-candidate-kind') ?? '',
+    sequenceStates: [...document.querySelectorAll('[data-testid="fla-frame-sequence-review"]')]
+      .map((panel) => panel.getAttribute('data-preview-state')),
+    readyState: document.readyState,
+  })`).catch((error) => ({ inspectionError: error instanceof Error ? error.message : String(error) }));
+  throw new Error(`Timed out waiting for Stage D native keyboard marker ${marker}: ${JSON.stringify(diagnostics)}`);
+}
+
+async function driveTouchScrollAtMarker(mainWindow, marker, pathState) {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    if (pathState?.error) throw pathState.error;
+    const request = await mainWindow.webContents.executeJavaScript(
+      'document.documentElement.dataset.issue398TouchMarker || ""',
+    );
+    if (request) {
+      const touch = JSON.parse(request);
+      if (touch.marker !== marker) {
+        await delay(50);
+        continue;
+      }
+      const debuggerApi = mainWindow.webContents.debugger;
+      const attachedHere = !debuggerApi.isAttached();
+      if (attachedHere) debuggerApi.attach('1.3');
+      try {
+        await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
+          type: 'touchStart',
+          touchPoints: [{ id: 1, x: touch.x, y: touch.y, radiusX: 1, radiusY: 1, force: 1 }],
+        });
+        await delay(40);
+        await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ id: 1, x: touch.x, y: touch.y - touch.deltaY, radiusX: 1, radiusY: 1, force: 1 }],
+        });
+        await delay(80);
+        await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
+          type: 'touchEnd',
+          touchPoints: [],
+        });
+      } finally {
+        if (attachedHere && debuggerApi.isAttached()) debuggerApi.detach();
+      }
+      await delay(100);
+      await mainWindow.webContents.executeJavaScript(
+        `document.documentElement.dataset.issue398TouchDone = ${JSON.stringify(marker)}; true;`,
+      );
+      return { marker, dispatched: true, input: 'CDP Input.dispatchTouchEvent' };
+    }
+    await delay(50);
+  }
+  throw new Error(`Timed out waiting for Stage D touch marker ${marker}`);
 }
 
 async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
@@ -479,6 +594,8 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
   issue762Profile = false,
   issue766FirstLoad = false,
   profileCommit = false,
+  sequenceTargetSubstring = '',
+  captureSequencePreviewBeforeRender = false,
   profileScanTimeoutMs = 300_000,
 } = {}) {
   return mainWindow.webContents.executeJavaScript(`
@@ -501,6 +618,8 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       const projectName = ${JSON.stringify(projectName)};
       const measureScanOnly = ${JSON.stringify(measureScanOnly)};
       const profileCommit = ${JSON.stringify(profileCommit)};
+      const sequenceTargetSubstring = ${JSON.stringify(sequenceTargetSubstring)};
+      const captureSequencePreviewBeforeRender = ${JSON.stringify(captureSequencePreviewBeforeRender)};
       const profileScanTimeoutMs = ${JSON.stringify(profileScanTimeoutMs)};
       let issue766HeartbeatLastAt = null;
       const issue766SeenMarks = new Set();
@@ -710,6 +829,24 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         }
         delete document.documentElement.dataset.issue398CaptureMarker;
         delete document.documentElement.dataset.issue398CaptureDone;
+      };
+
+      const waitForNativeKeyboard = async (marker) => {
+        document.documentElement.dataset.issue398KeyboardMarker = marker;
+        while (document.documentElement.dataset.issue398KeyboardDone !== marker) {
+          await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+        }
+        delete document.documentElement.dataset.issue398KeyboardMarker;
+        delete document.documentElement.dataset.issue398KeyboardDone;
+      };
+
+      const waitForNativeTouch = async (marker, point) => {
+        document.documentElement.dataset.issue398TouchMarker = JSON.stringify({ marker, ...point });
+        while (document.documentElement.dataset.issue398TouchDone !== marker) {
+          await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+        }
+        delete document.documentElement.dataset.issue398TouchMarker;
+        delete document.documentElement.dataset.issue398TouchDone;
       };
 
       const readProjectState = () => {
@@ -932,7 +1069,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         const sourceRow = [...document.querySelectorAll('[data-fla-candidate-id]')]
           .find((row) => row.getAttribute('data-fla-candidate-id') === expectedIdentity);
         const expectedRenderTargetId = sourceRow?.getAttribute('data-render-target-id') ?? '';
-        const expectedAlt = buttons[2].querySelector('strong')?.textContent?.trim() ?? '';
+        const expectedAlt = candidateDisplayLabel(buttons[2]);
         for (const button of buttons) {
           button.click();
           await new Promise((resolvePromise) => setTimeout(resolvePromise, 8));
@@ -959,29 +1096,281 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         remaining: [...observedFlaPreviewUrls].filter((url) => !revokedObjectUrls.has(url)).length,
       });
 
-      const focusSequenceAndReturn = async () => {
-        const sequenceButton = await waitFor(
-          '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="sequence"] .fla-c03-candidate-focus',
+      const candidateDisplayLabel = (button) => {
+        const strong = button.querySelector('strong');
+        return strong?.getAttribute('title')?.trim() ||
+          strong?.textContent?.trim() ||
+          button.getAttribute('aria-label') ||
+          '';
+      };
+
+      const exerciseSequenceCandidate = async () => {
+        const sequenceSelector = '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="sequence"] .fla-c03-candidate-focus';
+        await waitFor('[data-testid="fla-c03-candidate-grid"]', (grid) =>
+          [...grid.querySelectorAll(sequenceSelector)].some((button) =>
+            !sequenceTargetSubstring || candidateDisplayLabel(button).includes(sequenceTargetSubstring),
+          ),
         );
+        const sequenceButton = [...document.querySelectorAll(sequenceSelector)].find((button) =>
+          !sequenceTargetSubstring || candidateDisplayLabel(button).includes(sequenceTargetSubstring),
+        );
+        if (!(sequenceButton instanceof HTMLButtonElement)) {
+          throw new Error('No visible sequence candidate matched ' + (sequenceTargetSubstring || '(first candidate)'));
+        }
+        const sequenceRow = sequenceButton.closest('li[data-candidate-kind="sequence"]');
+        const sequenceIdentity = sequenceRow?.getAttribute('data-candidate-identity') ?? '';
+        if (!sequenceRow || !sequenceIdentity) throw new Error('Stage D sequence candidate has no stable identity');
         sequenceButton.click();
         const sequenceRange = await waitFor(
           '[data-testid="fla-frame-sequence-range"]',
           (element) => element.getClientRects().length > 0,
         );
-        const sequenceSlot = sequenceRange.closest('.fla-c03-preview-controller-slot');
+        const startInput = sequenceRange.querySelector('[data-testid="fla-frame-sequence-start"]');
+        if (!(startInput instanceof HTMLInputElement)) throw new Error('Stage D sequence start input is missing');
+        setControlledInput('[data-testid="fla-frame-sequence-start"]', '1');
+        startInput.focus();
+        const keyboardEvents = [];
+        const recordSequenceInteraction = (event) => keyboardEvents.push({
+          type: event.type,
+          key: event.key,
+          code: event.code,
+          isTrusted: event.isTrusted,
+          defaultPrevented: event.defaultPrevented,
+          detail: event instanceof MouseEvent ? event.detail : null,
+          targetTestId: event.target instanceof HTMLElement ? event.target.getAttribute('data-testid') : null,
+        });
+        document.addEventListener('keydown', recordSequenceInteraction);
+        document.addEventListener('keyup', recordSequenceInteraction);
+        document.addEventListener('click', recordSequenceInteraction);
+        await waitForNativeKeyboard('sequence-generate-tab');
+        const generateButton = sequenceRange.querySelector('[data-testid="fla-frame-sequence-render"]');
+        const keyboardFocusedGenerate = generateButton instanceof HTMLButtonElement &&
+          document.activeElement === generateButton && generateButton.getClientRects().length > 0 &&
+          keyboardEvents.some((event) => event.type === 'keydown' && event.key === 'Tab' && event.isTrusted);
+        if (!keyboardFocusedGenerate) {
+          const active = document.activeElement instanceof HTMLElement
+            ? { testId: document.activeElement.getAttribute('data-testid'), tagName: document.activeElement.tagName, ariaLabel: document.activeElement.getAttribute('aria-label') }
+            : null;
+          throw new Error('Native Tab did not focus the visible sequence Generate action: ' + JSON.stringify({ active, buttonVisible: generateButton instanceof HTMLElement && generateButton.getClientRects().length > 0 }));
+        }
+        await waitForNativeKeyboard('sequence-generate-space');
+        let sequencePanel = null;
+        try {
+          sequencePanel = await waitFor('[data-testid="fla-frame-sequence-review"]', (element) =>
+            ['rendering', 'valid'].includes(element.getAttribute('data-preview-state') ?? ''),
+            5_000,
+          );
+        } catch {
+          const active = document.activeElement instanceof HTMLElement
+            ? { testId: document.activeElement.getAttribute('data-testid'), tagName: document.activeElement.tagName, ariaLabel: document.activeElement.getAttribute('aria-label') }
+            : null;
+          const panels = [...document.querySelectorAll('[data-testid="fla-frame-sequence-review"]')]
+            .map((panel) => panel.getAttribute('data-preview-state'));
+          document.removeEventListener('keydown', recordSequenceInteraction);
+          document.removeEventListener('keyup', recordSequenceInteraction);
+          document.removeEventListener('click', recordSequenceInteraction);
+          throw new Error('Native Space did not start sequence generation: ' + JSON.stringify({
+            keyboardEvents,
+            active,
+            sequenceStates: panels,
+            startValue: startInput.value,
+            actionDisabled: generateButton instanceof HTMLButtonElement ? generateButton.disabled : null,
+          }));
+        }
+        const keyboardActivatedGenerate = keyboardEvents.some((event) =>
+          event.type === 'click' && event.isTrusted && event.detail === 0 &&
+          event.targetTestId === 'fla-frame-sequence-render',
+        );
+        document.removeEventListener('keydown', recordSequenceInteraction);
+        document.removeEventListener('keyup', recordSequenceInteraction);
+        document.removeEventListener('click', recordSequenceInteraction);
+        if (!keyboardActivatedGenerate) {
+          throw new Error('Sequence generation started without a trusted keyboard activation: ' + JSON.stringify(keyboardEvents));
+        }
+        await waitFor('[data-testid="fla-frame-sequence-filmstrip-item-2"]', (element) =>
+          element.getClientRects().length > 0,
+          60_000,
+        );
+        const sequenceEnd = sequenceRange.querySelector('[data-testid="fla-frame-sequence-end"]')?.textContent?.trim() ?? '';
+        const sequenceCount = sequenceRange.querySelector('[data-testid="fla-frame-sequence-count"]')?.textContent?.trim() ?? '';
+        const generatedItems = [...document.querySelectorAll('[data-testid^="fla-frame-sequence-filmstrip-item-"]')];
+        const selectedSequenceRow = [...document.querySelectorAll(
+          '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="sequence"][data-selectable="true"]',
+        )].find((row) => row.getAttribute('data-candidate-identity') === sequenceIdentity);
+        const sequenceCheckbox = selectedSequenceRow?.querySelector('input[type="checkbox"]');
+        if (!(sequenceCheckbox instanceof HTMLInputElement)) {
+          throw new Error('Generated sequence did not produce a selectable C03 candidate');
+        }
+        if (!sequenceCheckbox.checked) sequenceCheckbox.click();
+        const selectedCount = await waitFor('[data-testid="fla-unified-import-selected-count"]', (element) =>
+          element.textContent?.includes('已选择 1 项') === true,
+        );
+        const checkedAfterGenerate = sequenceCheckbox.checked && selectedCount.textContent?.includes('1 项') === true;
+
         const snapshotButton = await waitFor(
           '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="snapshot"][data-selectable="true"] .fla-c03-candidate-focus',
         );
-        const expectedAlt = snapshotButton.querySelector('strong')?.textContent?.trim() ?? '';
-        const sequenceControlsVisible = Boolean(sequenceSlot && !sequenceSlot.hidden) &&
-          document.querySelector('[data-testid="fla-frame-sequence-start"]') !== null &&
-          document.querySelector('[data-testid="fla-frame-sequence-render"]') !== null;
+        const snapshotRow = snapshotButton.closest('li[data-candidate-kind="snapshot"]');
+        const expectedAlt = candidateDisplayLabel(snapshotButton);
+        const snapshotIdentity = snapshotRow?.getAttribute('data-candidate-identity') ?? '';
         snapshotButton.click();
         const snapshotImage = await waitForFullPreview(expectedAlt);
         const snapshotSlot = snapshotImage.closest('.fla-c03-preview-controller-slot');
-        return sequenceControlsVisible && Boolean(snapshotSlot && !snapshotSlot.hidden) &&
-          sequenceSlot?.hidden === true &&
-          document.querySelector('[data-testid="fla-c03-focused-label"]')?.textContent?.trim() === expectedAlt;
+        const sequenceRowAfterSnapshot = [...document.querySelectorAll(
+          '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="sequence"]',
+        )].find((row) => row.getAttribute('data-candidate-identity') === sequenceIdentity);
+        const sequenceCheckboxAfterSnapshot = sequenceRowAfterSnapshot?.querySelector('input[type="checkbox"]');
+        const focusBrowsePreserved = Boolean(snapshotSlot && !snapshotSlot.hidden) &&
+          sequenceCheckboxAfterSnapshot instanceof HTMLInputElement && sequenceCheckboxAfterSnapshot.checked &&
+          document.querySelector('[data-testid="fla-unified-import-selected-count"]')?.textContent?.includes('1 项') === true;
+
+        const searchInput = document.querySelector('[data-testid="fla-c03-search"]');
+        if (!(searchInput instanceof HTMLInputElement) || !expectedAlt || !snapshotIdentity) {
+          throw new Error('Stage D snapshot candidate could not be used for the sequence focus regression');
+        }
+        setControlledInput('[data-testid="fla-c03-search"]', expectedAlt);
+        await waitFor('[data-testid="fla-c03-candidate-grid"]', (element) =>
+          element.querySelectorAll('li[data-candidate-kind]').length === 1,
+        );
+        const selectedViewButton = await waitFor('[data-testid="fla-c03-selected-view"]');
+        selectedViewButton.click();
+        const selectedView = await waitFor('[data-testid="fla-c03-candidate-grid"]', (element) =>
+          element.getAttribute('data-view') === 'selected',
+        );
+        const selectedSequenceVisible = [...selectedView.querySelectorAll('li[data-candidate-kind="sequence"]')]
+          .some((row) => row.getAttribute('data-candidate-identity') === sequenceIdentity &&
+            row.querySelector('input[type="checkbox"]')?.checked === true);
+        selectedViewButton.click();
+        const browseView = await waitFor('[data-testid="fla-c03-candidate-grid"]', (element) =>
+          element.getAttribute('data-view') === 'browse',
+        );
+        const searchRetainedOnBrowse = searchInput.value === expectedAlt &&
+          browseView.querySelectorAll('li[data-candidate-kind]').length === 1;
+        setControlledInput('[data-testid="fla-c03-search"]', '');
+        await waitFor('[data-testid="fla-c03-candidate-grid"]', (element) =>
+          element.querySelectorAll('li[data-candidate-kind]').length === candidateGridCount,
+        );
+        const sequenceRowBeforeReturn = [...document.querySelectorAll(
+          '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="sequence"]',
+        )].find((row) => row.getAttribute('data-candidate-identity') === sequenceIdentity);
+        const sequenceReturnButton = sequenceRowBeforeReturn?.querySelector('.fla-c03-candidate-focus');
+        if (!(sequenceReturnButton instanceof HTMLButtonElement)) throw new Error('Sequence candidate disappeared after browse return');
+        sequenceReturnButton.click();
+        await waitFor('[data-testid="fla-frame-sequence-filmstrip-item-2"]', (element) =>
+          element.getClientRects().length > 0,
+        );
+        const sequenceRowAfterReturn = [...document.querySelectorAll(
+          '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="sequence"]',
+        )].find((row) => row.getAttribute('data-candidate-identity') === sequenceIdentity);
+        const returnedCheckbox = sequenceRowAfterReturn?.querySelector('input[type="checkbox"]');
+        const selectionPreservedThroughAtoBtoA = returnedCheckbox instanceof HTMLInputElement &&
+          returnedCheckbox.checked &&
+          document.querySelector('[data-testid="fla-unified-import-selected-count"]')?.textContent?.includes('1 项') === true &&
+          selectedSequenceVisible && searchRetainedOnBrowse && focusBrowsePreserved;
+
+        const rect = (element) => {
+          if (!(element instanceof Element)) return null;
+          const value = element.getBoundingClientRect();
+          return { left: value.left, top: value.top, right: value.right, bottom: value.bottom, width: value.width, height: value.height };
+        };
+        const fullyVisible = (element) => {
+          const value = rect(element);
+          return Boolean(value && value.width > 0 && value.height > 0 && value.top >= -1 &&
+            value.bottom <= window.innerHeight + 1 && value.left >= -1 && value.right <= window.innerWidth + 1);
+        };
+        const readSequenceReachability = () => {
+          const currentRange = document.querySelector('[data-testid="fla-frame-sequence-range"]');
+          const currentStart = currentRange?.querySelector('[data-testid="fla-frame-sequence-start"]');
+          const currentAction = currentRange?.querySelector('[data-testid="fla-frame-sequence-render"], [data-testid="fla-frame-sequence-rerender"]');
+          const currentStrip = document.querySelector('[data-testid="fla-frame-sequence-filmstrip-region"]');
+          const firstFrame = currentStrip?.querySelector('[data-testid="fla-frame-sequence-filmstrip-item-0"]');
+          const footer = document.querySelector('[data-testid="fla-c03-import-footer"]');
+          const importAction = footer?.querySelector('[data-testid="fla-unified-import"]');
+          const sequenceCandidate = [...document.querySelectorAll(
+            '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="sequence"]',
+          )].find((row) => row.getAttribute('data-candidate-identity') === sequenceIdentity);
+          const checkboxHitbox = sequenceCandidate?.querySelector('.fla-c03-checkbox-hitbox');
+          const workbench = document.querySelector('[data-testid="fla-c03-workbench"]');
+          const workbenchStyle = workbench ? getComputedStyle(workbench) : null;
+          return {
+            viewport: { width: window.innerWidth, height: window.innerHeight, devicePixelRatio: window.devicePixelRatio },
+            start: { rect: rect(currentStart), visible: fullyVisible(currentStart), height: rect(currentStart)?.height ?? 0, value: currentStart instanceof HTMLInputElement ? currentStart.value : null },
+            action: { testId: currentAction?.getAttribute('data-testid') ?? null, rect: rect(currentAction), visible: fullyVisible(currentAction), height: rect(currentAction)?.height ?? 0, disabled: currentAction instanceof HTMLButtonElement ? currentAction.disabled : null },
+            filmstrip: { rect: rect(currentStrip), visible: fullyVisible(currentStrip), firstFrameVisible: fullyVisible(firstFrame), frameCount: currentStrip?.querySelectorAll('[role="listitem"]')?.length ?? 0 },
+            footer: { rect: rect(footer), visible: fullyVisible(footer) },
+            importAction: { rect: rect(importAction), visible: fullyVisible(importAction), height: rect(importAction)?.height ?? 0 },
+            checkboxHitbox: { rect: rect(checkboxHitbox), width: rect(checkboxHitbox)?.width ?? 0, height: rect(checkboxHitbox)?.height ?? 0 },
+            workbench: { rect: rect(workbench), scrollTop: workbench instanceof HTMLElement ? workbench.scrollTop : 0, scrollHeight: workbench instanceof HTMLElement ? workbench.scrollHeight : 0, clientHeight: workbench instanceof HTMLElement ? workbench.clientHeight : 0, overflowY: workbenchStyle?.overflowY ?? '' },
+          };
+        };
+        const normalReachability = readSequenceReachability();
+        await waitForCapture('sequence-wide');
+        await waitForCapture('sequence-narrow-top');
+        const narrowAtTop = readSequenceReachability();
+        const workbench = document.querySelector('[data-testid="fla-c03-workbench"]');
+        if (!(workbench instanceof HTMLElement)) throw new Error('Narrow Stage D workbench is missing');
+        const workbenchRect = workbench.getBoundingClientRect();
+        const touchX = Math.max(1, Math.min(window.innerWidth - 1, workbenchRect.left + workbenchRect.width / 2));
+        const touchY = Math.max(1, Math.min(window.innerHeight - 1, workbenchRect.top + Math.min(130, workbenchRect.height / 2)));
+        const scrollTopBeforeTouch = workbench.scrollTop;
+        let touchStartCount = 0;
+        let touchMoveCount = 0;
+        const onTouchStart = () => { touchStartCount += 1; };
+        const onTouchMove = () => { touchMoveCount += 1; };
+        document.addEventListener('touchstart', onTouchStart, { passive: true });
+        document.addEventListener('touchmove', onTouchMove, { passive: true });
+        await waitForNativeTouch('sequence-narrow-touch-scroll', { x: touchX, y: touchY, deltaY: 110 });
+        const touchDeadline = Date.now() + 3_000;
+        while (Date.now() < touchDeadline && workbench.scrollTop <= scrollTopBeforeTouch + 1 && workbench.scrollHeight > workbench.clientHeight + 1) {
+          await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+        }
+        document.removeEventListener('touchstart', onTouchStart);
+        document.removeEventListener('touchmove', onTouchMove);
+        const touchScroll = {
+          dispatchedBy: 'Electron CDP Input.dispatchTouchEvent',
+          touchStartCount,
+          touchMoveCount,
+          scrollTopBefore: scrollTopBeforeTouch,
+          scrollTopAfter: workbench.scrollTop,
+          scrollHeight: workbench.scrollHeight,
+          clientHeight: workbench.clientHeight,
+        };
+        const narrowAfterTouch = readSequenceReachability();
+        const narrowStart = sequenceRange.querySelector('[data-testid="fla-frame-sequence-start"]');
+        if (!(narrowStart instanceof HTMLInputElement)) throw new Error('Narrow Stage D sequence start input disappeared');
+        narrowStart.focus();
+        await waitForNativeKeyboard('sequence-narrow-tab-action');
+        const narrowRange = document.querySelector('[data-testid="fla-frame-sequence-range"]');
+        const narrowAction = narrowRange?.querySelector('[data-testid="fla-frame-sequence-render"], [data-testid="fla-frame-sequence-rerender"]');
+        const keyboardReachedAction = narrowAction instanceof HTMLButtonElement && document.activeElement === narrowAction;
+        await waitForNativeKeyboard('sequence-narrow-tab-frame');
+        const narrowFirstFrame = document.querySelector('[data-testid="fla-frame-sequence-filmstrip-item-0"]');
+        const keyboardReachedFrameStrip = narrowFirstFrame instanceof HTMLButtonElement && document.activeElement === narrowFirstFrame;
+        const narrowAfterKeyboard = readSequenceReachability();
+        const narrowFooterPinned = narrowAtTop.footer.rect && narrowAfterTouch.footer.rect &&
+          Math.abs(narrowAtTop.footer.rect.top - narrowAfterTouch.footer.rect.top) <= 1;
+        await waitForCapture('sequence-narrow-scrolled');
+        return {
+          identity: sequenceIdentity,
+          sequenceEnd,
+          sequenceCount,
+          generatedFrameCount: generatedItems.length,
+          checkedAfterGenerate,
+          selectionPreservedThroughAtoBtoA,
+          keyboardFocusedGenerate,
+          selectedOnlyShowsSequence: selectedSequenceVisible,
+          searchRetainedOnBrowse,
+          focusBrowsePreserved,
+          normalReachability,
+          narrowAtTop,
+          touchScroll,
+          narrowAfterTouch,
+          keyboardReachedAction,
+          keyboardReachedFrameStrip,
+          narrowAfterKeyboard,
+          narrowFooterPinned,
+          nativeSequence: true,
+        };
       };
 
       const selectTwoCandidates = async () => {
@@ -1068,7 +1457,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         for (let candidateIndex = 0; candidateIndex < previewButtons.length; candidateIndex += 1) {
           const button = previewButtons[candidateIndex];
           if (!(button instanceof HTMLElement)) continue;
-          const expectedAlt = button.querySelector('strong')?.textContent?.trim() ?? '';
+          const expectedAlt = candidateDisplayLabel(button);
           const previousPreviewSrc = previewImage()?.getAttribute('src') ?? null;
           const focusedPreviewStartedAt = performance.now();
           button.click();
@@ -1309,9 +1698,66 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       const targetLabels = [...document.querySelectorAll(
         '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="snapshot"] .fla-c03-candidate-copy strong',
       )]
-        .map((element) => element.textContent?.trim() ?? '')
+        .map((element) => element.getAttribute('title')?.trim() || element.textContent?.trim() || '')
         .filter(Boolean);
       await waitForCapture('top');
+
+      if (captureSequencePreviewBeforeRender) {
+        const focusedLabel = document.querySelector('[data-testid="fla-c03-focused-label"]')?.textContent?.trim() ?? '';
+        const previewImage = document.querySelector('[data-testid="fla-snapshot-preview-image"]');
+        const sequenceRange = document.querySelector('[data-testid="fla-frame-sequence-range"]');
+        const startInput = sequenceRange?.querySelector('[data-testid="fla-frame-sequence-start"]');
+        const generateButton = sequenceRange?.querySelector(
+          '[data-testid="fla-frame-sequence-render"], [data-testid="fla-frame-sequence-rerender"]',
+        );
+        const visible = (element) => {
+          if (!(element instanceof HTMLElement) || element.getClientRects().length === 0) return false;
+          const rect = element.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight &&
+            getComputedStyle(element).visibility !== 'hidden';
+        };
+        const previewReady = previewImage instanceof HTMLImageElement && previewImage.complete && previewImage.naturalWidth > 0;
+        const generateActionVisible = generateButton instanceof HTMLButtonElement &&
+          !generateButton.disabled && visible(generateButton);
+        const rangeVisible = visible(sequenceRange) && visible(startInput);
+        if (sequenceTargetSubstring && !focusedLabel.includes(sequenceTargetSubstring)) {
+          throw new Error('Focused preview label did not match the requested capture target: ' + focusedLabel);
+        }
+        if (!previewReady || !rangeVisible || !generateActionVisible) {
+          throw new Error('R4 preview capture state is incomplete: ' + JSON.stringify({
+            focusedLabel,
+            previewReady,
+            rangeVisible,
+            generateActionVisible,
+          }));
+        }
+        const focusedRow = document.querySelector('[data-testid="fla-c03-candidate-grid"] li.is-focused');
+        const focusedIdentity = focusedRow?.getAttribute('data-candidate-identity') ?? '';
+        await waitForCapture('sequence-pre-render-wide');
+        await waitForCapture('sequence-pre-render-narrow');
+        return {
+          ok: true,
+          projectName,
+          projectRoot: acceptanceRoot + '\\\\' + projectName + '.pandastage',
+          route: 'v2r-target-discovery',
+          targetCount: shellFacts.targetCount,
+          candidateGridCount,
+          sourceBasename,
+          sequenceInteraction: {
+            identity: focusedIdentity,
+            focusedLabel,
+            generateActionVisible,
+            rangeVisible,
+            previewOnly: true,
+            preview: {
+              alt: previewImage.alt,
+              naturalWidth: previewImage.naturalWidth,
+              naturalHeight: previewImage.naturalHeight,
+            },
+          },
+          projectMutation: 'CANDIDATE_PREVIEWS_ONLY; NO_SELECTION; NO_IMPORT',
+        };
+      }
 
       const targetList = document.querySelector('[data-testid="fla-c03-candidate-grid"]');
       if (!(targetList instanceof HTMLElement)) throw new Error('Stage D C03 candidate list is not scrollable');
@@ -1373,7 +1819,53 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       };
 
       const focusedPreviewRace = await rapidFocusAndCheck();
-      const contextualSequenceReachable = await focusSequenceAndReturn();
+      const sequenceInteraction = await exerciseSequenceCandidate();
+      if (captureSequencePreviewBeforeRender) {
+        return {
+          ok: true,
+          projectName,
+          projectRoot: acceptanceRoot + '\\\\' + projectName + '.pandastage',
+          route: 'v2r-target-discovery',
+          targetCount: shellFacts.targetCount,
+          candidateGridCount,
+          sourceBasename,
+          sequenceInteraction,
+          projectMutation: 'CANDIDATE_PREVIEWS_ONLY; NO_SELECTION; NO_IMPORT',
+        };
+      }
+      const sequenceWideReachable = sequenceInteraction.normalReachability.start.visible &&
+        sequenceInteraction.normalReachability.action.visible &&
+        sequenceInteraction.normalReachability.filmstrip.visible &&
+        sequenceInteraction.normalReachability.filmstrip.firstFrameVisible &&
+        sequenceInteraction.normalReachability.footer.visible &&
+        sequenceInteraction.normalReachability.importAction.visible;
+      const sequenceNarrowReachable = (
+        sequenceInteraction.narrowAtTop.start.visible || sequenceInteraction.narrowAfterTouch.start.visible
+      ) && (
+        sequenceInteraction.narrowAtTop.action.visible || sequenceInteraction.narrowAfterTouch.action.visible ||
+        sequenceInteraction.keyboardReachedAction
+      ) && (
+        sequenceInteraction.narrowAtTop.filmstrip.firstFrameVisible ||
+        sequenceInteraction.narrowAfterTouch.filmstrip.firstFrameVisible ||
+        sequenceInteraction.keyboardReachedFrameStrip
+      ) && sequenceInteraction.narrowAtTop.footer.visible &&
+        sequenceInteraction.narrowAtTop.importAction.visible && sequenceInteraction.narrowFooterPinned;
+      const sequenceTouchWorks = sequenceInteraction.touchScroll.touchStartCount > 0 &&
+        sequenceInteraction.touchScroll.touchMoveCount > 0 &&
+        (sequenceInteraction.touchScroll.scrollHeight <= sequenceInteraction.touchScroll.clientHeight + 1 ||
+          sequenceInteraction.touchScroll.scrollTopAfter > sequenceInteraction.touchScroll.scrollTopBefore + 1);
+      const sequenceKeyboardWorks = sequenceInteraction.keyboardFocusedGenerate &&
+        sequenceInteraction.keyboardReachedAction && sequenceInteraction.keyboardReachedFrameStrip;
+      const sequenceHitTargetsRespectDesign = sequenceInteraction.normalReachability.start.height >= 44 &&
+        sequenceInteraction.normalReachability.action.height >= 48 &&
+        sequenceInteraction.normalReachability.importAction.height >= 56 &&
+        sequenceInteraction.normalReachability.checkboxHitbox.width >= 48 &&
+        sequenceInteraction.normalReachability.checkboxHitbox.height >= 48;
+      const contextualSequenceReachable = sequenceWideReachable && sequenceNarrowReachable &&
+        sequenceInteraction.generatedFrameCount === 3 && sequenceInteraction.sequenceEnd.includes('第 3 帧') &&
+        sequenceInteraction.sequenceCount.includes('3 帧') && sequenceInteraction.selectionPreservedThroughAtoBtoA &&
+        sequenceTouchWorks && sequenceKeyboardWorks && sequenceHitTargetsRespectDesign &&
+        sequenceInteraction.narrowAtTop.viewport.devicePixelRatio === 1.5;
       const beforeCancel = readProjectState();
       click('[data-testid="fla-review-cancel"]');
       await waitFor('[data-testid="asset-browser-view"]');
@@ -1419,6 +1911,101 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       const duplicateCount = receiptItems.filter((status) => status === 'duplicate').length;
       const failedCount = receiptItems.filter((status) => status === 'failed').length;
       const notAttemptedCount = receiptItems.filter((status) => status === 'not-attempted').length;
+      const receiptElement = document.querySelector('[data-testid="fla-unified-import-receipt"]');
+      const receiptSummary = receiptElement?.querySelector('summary');
+      const importFooter = document.querySelector('[data-testid="fla-c03-import-footer"]');
+      const importAction = importFooter?.querySelector('[data-testid="fla-unified-import"]');
+      if (!(receiptElement instanceof HTMLDetailsElement) || !(receiptSummary instanceof HTMLElement) ||
+        !(importFooter instanceof HTMLElement) || !(importAction instanceof HTMLElement)) {
+        throw new Error('Stage D import receipt/footer is missing after the real import');
+      }
+      if (!receiptElement.open) receiptSummary.click();
+      const receiptRect = (element) => {
+        if (!(element instanceof Element)) return null;
+        const value = element.getBoundingClientRect();
+        return { left: value.left, top: value.top, right: value.right, bottom: value.bottom, width: value.width, height: value.height };
+      };
+      const receiptFullyVisible = (element) => {
+        const value = receiptRect(element);
+        return Boolean(value && value.width > 0 && value.height > 0 && value.top >= -1 &&
+          value.bottom <= window.innerHeight + 1 && value.left >= -1 && value.right <= window.innerWidth + 1);
+      };
+      const receiptVisibleInsideFooter = (element) => {
+        const item = receiptRect(element);
+        const footer = receiptRect(importFooter);
+        return Boolean(item && footer && receiptFullyVisible(element) && item.top >= footer.top - 1 &&
+          item.bottom <= footer.bottom + 1 && item.left >= footer.left - 1 && item.right <= footer.right + 1);
+      };
+      const readReceiptReachability = () => {
+        const receiptItems = [...receiptElement.querySelectorAll('[data-testid="fla-unified-import-items"] li')];
+        return {
+          viewport: { width: window.innerWidth, height: window.innerHeight, devicePixelRatio: window.devicePixelRatio },
+          expanded: receiptElement.open,
+          footerVisible: receiptFullyVisible(importFooter),
+          importActionVisible: receiptVisibleInsideFooter(importAction),
+          summaryVisible: receiptVisibleInsideFooter(receiptSummary),
+          firstItemVisible: receiptVisibleInsideFooter(receiptItems[0]),
+          lastItemVisible: receiptVisibleInsideFooter(receiptItems.at(-1)),
+          footerScrollTop: importFooter.scrollTop,
+          footerScrollHeight: importFooter.scrollHeight,
+          footerClientHeight: importFooter.clientHeight,
+        };
+      };
+      const receiptTouchScroll = async (marker) => {
+        const content = receiptElement.querySelector('[data-testid="fla-unified-import-items"]');
+        const contentRect = receiptRect(content);
+        const footerBounds = receiptRect(importFooter);
+        if (!contentRect || !footerBounds) throw new Error('Stage D receipt content bounds are missing');
+        const point = {
+          x: Math.max(1, Math.min(window.innerWidth - 1, footerBounds.left + footerBounds.width / 2)),
+          y: Math.max(footerBounds.top + 8, Math.min(footerBounds.bottom - 8, contentRect.top + Math.min(24, contentRect.height / 2))),
+          deltaY: 110,
+        };
+        const before = importFooter.scrollTop;
+        let touchStartCount = 0;
+        let touchMoveCount = 0;
+        const onTouchStart = (event) => { if (importFooter.contains(event.target)) touchStartCount += 1; };
+        const onTouchMove = (event) => { if (importFooter.contains(event.target)) touchMoveCount += 1; };
+        document.addEventListener('touchstart', onTouchStart, { passive: true });
+        document.addEventListener('touchmove', onTouchMove, { passive: true });
+        await waitForNativeTouch(marker, point);
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 100));
+        document.removeEventListener('touchstart', onTouchStart);
+        document.removeEventListener('touchmove', onTouchMove);
+        return {
+          dispatchedBy: 'Electron CDP Input.dispatchTouchEvent',
+          touchStartCount,
+          touchMoveCount,
+          scrollTopBefore: before,
+          scrollTopAfter: importFooter.scrollTop,
+          scrollHeight: importFooter.scrollHeight,
+          clientHeight: importFooter.clientHeight,
+        };
+      };
+
+      importFooter.scrollTop = 0;
+      await waitForCapture('receipt-846-top');
+      const receipt846Top = readReceiptReachability();
+      const receipt846Touch = await receiptTouchScroll('receipt-846-touch-scroll');
+      importFooter.scrollTop = importFooter.scrollHeight;
+      importFooter.dispatchEvent(new Event('scroll', { bubbles: true }));
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+      await waitForCapture('receipt-846-scrolled');
+      const receipt846Bottom = readReceiptReachability();
+
+      importFooter.scrollTop = 0;
+      await waitForCapture('receipt-narrow-top');
+      const receiptNarrowTop = readReceiptReachability();
+      const receiptNarrowTouch = await receiptTouchScroll('receipt-narrow-touch-scroll');
+      importFooter.scrollTop = importFooter.scrollHeight;
+      importFooter.dispatchEvent(new Event('scroll', { bubbles: true }));
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+      await waitForCapture('receipt-narrow-scrolled');
+      const receiptNarrowBottom = readReceiptReachability();
+      const receiptReachability = {
+        viewport846x653: { top: receipt846Top, touchScroll: receipt846Touch, bottom: receipt846Bottom },
+        narrowNative: { top: receiptNarrowTop, touchScroll: receiptNarrowTouch, bottom: receiptNarrowBottom },
+      };
       click('[data-testid="fla-review-cancel"]');
       await waitFor('[data-testid="asset-browser-view"]');
       const libraryAfterClose = readProjectState();
@@ -1436,6 +2023,12 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         duplicateGroupPreservesSourceIdentity,
         noRasterChrome: shellFacts.noRasterChrome,
         contextualSequenceReachable,
+        sequencePreviewSelectionPreserved: sequenceInteraction.selectionPreservedThroughAtoBtoA,
+        sequenceWideReachable,
+        sequenceNarrowReachable,
+        sequenceTouchWorks,
+        sequenceKeyboardWorks,
+        sequenceHitTargetsRespectDesign,
         scanCancellationExitsWithoutMutation: scanExit.exitedBeforeScanCompleted && scanExit.noProjectMutation,
         cancellationNoMutation,
         focusedPreviewRaceHasFullResolution: focusedPreviewRace.ok,
@@ -1453,6 +2046,29 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         accurateBatchReceipt: processedCount === selectedCandidates.selectedCount &&
           importedCount + duplicateCount === selectedCandidates.selectedCount &&
           failedCount === 0 && notAttemptedCount === 0,
+        receiptReachableAt846x653: receiptReachability.viewport846x653.top.footerVisible &&
+          receiptReachability.viewport846x653.top.viewport.width === 846 &&
+          receiptReachability.viewport846x653.top.viewport.height === 653 &&
+          receiptReachability.viewport846x653.top.viewport.devicePixelRatio === 1.5 &&
+          receiptReachability.viewport846x653.top.importActionVisible &&
+          receiptReachability.viewport846x653.top.summaryVisible &&
+          receiptReachability.viewport846x653.bottom.importActionVisible &&
+          receiptReachability.viewport846x653.bottom.viewport.width === 846 &&
+          receiptReachability.viewport846x653.bottom.viewport.height === 653 &&
+          receiptReachability.viewport846x653.bottom.lastItemVisible,
+        receiptReachableAtNarrowNative: receiptReachability.narrowNative.top.footerVisible &&
+          receiptReachability.narrowNative.top.viewport.width < 846 &&
+          receiptReachability.narrowNative.top.viewport.height < 653 &&
+          receiptReachability.narrowNative.top.viewport.devicePixelRatio === 1.5 &&
+          receiptReachability.narrowNative.top.importActionVisible &&
+          receiptReachability.narrowNative.top.summaryVisible &&
+          receiptReachability.narrowNative.bottom.importActionVisible &&
+          receiptReachability.narrowNative.bottom.viewport.width === receiptReachability.narrowNative.top.viewport.width &&
+          receiptReachability.narrowNative.bottom.viewport.height === receiptReachability.narrowNative.top.viewport.height &&
+          receiptReachability.narrowNative.bottom.lastItemVisible,
+        receiptTouchWorks: [receiptReachability.viewport846x653.touchScroll, receiptReachability.narrowNative.touchScroll]
+          .every((scroll) => scroll.touchStartCount > 0 && scroll.touchMoveCount > 0 &&
+            (scroll.scrollHeight <= scroll.clientHeight + 1 || scroll.scrollTopAfter > scroll.scrollTopBefore + 1)),
         exactDuplicateReused: duplicateCount > 0,
         committedSelectedAssets: committedAssetCount === importedCount,
         revisionAdvanced,
@@ -1473,6 +2089,8 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         scanMeasurement,
         scanExit,
         focusedPreviewRace,
+        sequenceInteraction,
+        receiptReachability,
         defaultHashHidden,
         releasedPreviewResources,
         checks,
@@ -1593,6 +2211,7 @@ async function main() {
     require('../dist-electron/main/index.js');
     sourceSha256Before = sha256(sourcePath);
     const mainWindow = await waitForMainWindow();
+    const normalWindowBounds = mainWindow.getBounds();
     if (args.issue766FirstLoad) {
       mainWindow.webContents.on('console-message', (_event, ...details) => {
         process.stderr.write(`[issue766 renderer console] ${details.map(String).join(' ')}\n`);
@@ -1608,6 +2227,8 @@ async function main() {
       issue762Profile: Boolean(args.issue762Profile),
       issue766FirstLoad: Boolean(args.issue766FirstLoad),
       profileCommit: Boolean(args.profileCommit),
+      sequenceTargetSubstring: typeof args.sequenceTarget === 'string' ? args.sequenceTarget : '',
+      captureSequencePreviewBeforeRender: Boolean(args.captureSequencePreviewBeforeRender),
       profileScanTimeoutMs: Number.isFinite(args.scanTimeoutMs) && args.scanTimeoutMs > 0
         ? args.scanTimeoutMs
         : 900_000,
@@ -1617,20 +2238,123 @@ async function main() {
     });
     let layoutEvidence = null;
     if (!args.measureScanOnly) {
-      layoutEvidence = {
-        top: await captureScreenshotAtMarker(
+      layoutEvidence = {};
+      layoutEvidence.top = await captureScreenshotAtMarker(
           mainWindow,
           'top',
           join(evidenceDir, 'stage-d-top-target.png'),
           pathState,
-        ),
-        bottom: await captureScreenshotAtMarker(
+        );
+      if (args.captureSequencePreviewBeforeRender) {
+        layoutEvidence.sequencePreGenerateWide = await captureScreenshotAtMarker(
+          mainWindow,
+          'sequence-pre-render-wide',
+          join(evidenceDir, 'stage-d-sequence-pre-generate-wide.png'),
+          pathState,
+        );
+        layoutEvidence.sequencePreGenerateNarrow = await captureScreenshotAtMarker(
+          mainWindow,
+          'sequence-pre-render-narrow',
+          join(evidenceDir, 'stage-d-sequence-pre-generate-narrow.png'),
+          pathState,
+          {
+            resizeTo: { width: 800, height: 560, maxViewportWidth: 900 },
+            restoreBoundsAfterCapture: normalWindowBounds,
+          },
+        );
+      } else {
+        layoutEvidence.bottom = await captureScreenshotAtMarker(
           mainWindow,
           'bottom',
           join(evidenceDir, 'stage-d-bottom-target.png'),
           pathState,
-        ),
-      };
+        );
+        layoutEvidence.nativeKeyboardGenerateFocus = await driveKeyboardAtMarker(
+          mainWindow,
+          'sequence-generate-tab',
+          'Tab',
+          pathState,
+        );
+        layoutEvidence.nativeKeyboardGenerateAction = await driveKeyboardAtMarker(
+          mainWindow,
+          'sequence-generate-space',
+          'Space',
+          pathState,
+        );
+        layoutEvidence.sequenceWide = await captureScreenshotAtMarker(
+          mainWindow,
+          'sequence-wide',
+          join(evidenceDir, 'stage-d-sequence-wide.png'),
+          pathState,
+        );
+        layoutEvidence.sequenceNarrowTop = await captureScreenshotAtMarker(
+          mainWindow,
+          'sequence-narrow-top',
+          join(evidenceDir, 'stage-d-sequence-narrow-top.png'),
+          pathState,
+          { resizeTo: { width: 800, height: 560, maxViewportWidth: 900 } },
+        );
+        layoutEvidence.nativeTouchScroll = await driveTouchScrollAtMarker(
+          mainWindow,
+          'sequence-narrow-touch-scroll',
+          pathState,
+        );
+        layoutEvidence.nativeKeyboardNarrowAction = await driveKeyboardAtMarker(
+          mainWindow,
+          'sequence-narrow-tab-action',
+          'Tab',
+          pathState,
+        );
+        layoutEvidence.nativeKeyboardNarrowFrame = await driveKeyboardAtMarker(
+          mainWindow,
+          'sequence-narrow-tab-frame',
+          'Tab',
+          pathState,
+        );
+        layoutEvidence.sequenceNarrowScrolled = await captureScreenshotAtMarker(
+          mainWindow,
+          'sequence-narrow-scrolled',
+          join(evidenceDir, 'stage-d-sequence-narrow-scrolled.png'),
+          pathState,
+          { restoreBoundsAfterCapture: normalWindowBounds },
+        );
+        layoutEvidence.receipt846x653Top = await captureScreenshotAtMarker(
+          mainWindow,
+          'receipt-846-top',
+          join(evidenceDir, 'stage-d-receipt-846x653-top.png'),
+          pathState,
+          { resizeTo: { width: 859, height: 689, maxViewportWidth: 900 } },
+        );
+        layoutEvidence.receipt846x653TouchScroll = await driveTouchScrollAtMarker(
+          mainWindow,
+          'receipt-846-touch-scroll',
+          pathState,
+        );
+        layoutEvidence.receipt846x653Scrolled = await captureScreenshotAtMarker(
+          mainWindow,
+          'receipt-846-scrolled',
+          join(evidenceDir, 'stage-d-receipt-846x653-scrolled.png'),
+          pathState,
+        );
+        layoutEvidence.receiptNarrowTop = await captureScreenshotAtMarker(
+          mainWindow,
+          'receipt-narrow-top',
+          join(evidenceDir, 'stage-d-receipt-narrow-top.png'),
+          pathState,
+          { resizeTo: { width: 800, height: 560, maxViewportWidth: 850 } },
+        );
+        layoutEvidence.receiptNarrowTouchScroll = await driveTouchScrollAtMarker(
+          mainWindow,
+          'receipt-narrow-touch-scroll',
+          pathState,
+        );
+        layoutEvidence.receiptNarrowScrolled = await captureScreenshotAtMarker(
+          mainWindow,
+          'receipt-narrow-scrolled',
+          join(evidenceDir, 'stage-d-receipt-narrow-scrolled.png'),
+          pathState,
+        );
+      }
     }
     response = await pathPromise;
     if (args.issue766FirstLoad) {
@@ -1721,7 +2445,8 @@ async function main() {
     process.stdout.write(args.issue762Profile
       ? `${JSON.stringify({ outPath, source: receipt.source, scanMeasurement: receipt.scanMeasurement, project: receipt.project, issue766FirstLoad: receipt.issue766FirstLoad ?? null, profileSummary: receipt.profile.stageSummary })}\n`
       : `${JSON.stringify(receipt)}\n`);
-    const expectedPersistedAssetCount = args.measureScanOnly && !args.profileCommit ? 0 : 1;
+    const expectedPersistedAssetCount = args.captureSequencePreviewBeforeRender ||
+      args.measureScanOnly && !args.profileCommit ? 0 : 1;
     if (
       !receipt.source.hashInvariant || !response?.ok ||
       receipt.project.persistedAssetCount !== expectedPersistedAssetCount ||

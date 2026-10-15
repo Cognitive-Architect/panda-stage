@@ -70,6 +70,7 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
     expect(unified).toContain('查看已选 ${selectedCount}');
     expect(unified).toContain('全选当前结果');
     expect(unified).toContain('清空选择');
+    expect(unified).toContain('正在查看已选 · 搜索已暂停');
   });
 
   it('confirms only when one action adds more than 50 unique eligible candidates', () => {
@@ -78,7 +79,24 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
     expect(selection).toContain('!candidate.selectable || candidate.checked');
     expect(unified).toContain('data-testid="fla-c03-bulk-confirmation"');
     expect(unified).toContain('data-testid="fla-c03-bulk-confirm"');
+    expect(unified).toContain('即将勾选 {newEligibleCount} 项素材，暂不会导入。');
+    expect(unified).toContain('确认勾选');
     expect(session).toContain('requiresFlaBulkSelectionConfirmation(items.length)');
+  });
+
+  it('keeps raw import diagnostics collapsed and gives safe default failure guidance', () => {
+    expect(unified).toContain('className="fla-c03-receipt-diagnostics"');
+    expect(unified).toContain('技术详情');
+    expect(unified).toContain('请先检查素材库，避免重复导入。');
+    expect(unified).not.toContain('{item.message}</small>');
+    expect(unified).not.toContain('receipt.warnings.map((warning, index) => <p');
+  });
+
+  it('keeps the import action reachable while the receipt uses one scroll owner', () => {
+    expect(styles).toMatch(/\.fla-c03-footer-summary\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*0;/u);
+    expect(styles).toMatch(/\.fla-c03-footer-actions\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*0;/u);
+    expect(styles).not.toMatch(/\.fla-c03-receipt-details\s*\{[^}]*overflow:\s*auto;/u);
+    expect(styles).not.toMatch(/\.fla-c03-receipt-details\s*\{[^}]*max-height:/u);
   });
 
   it('keeps keyboard preview focus separate from Space checkbox selection', () => {
@@ -100,6 +118,8 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
     expect(unified).not.toContain('fla-c03-preview-reason');
     expect(session).toContain('focusedSnapshotCandidate?.selectable');
     expect(unified).toContain('data-testid="fla-c03-catalog-progress"');
+    expect(unified).toContain('aria-label={`预览 ${fullItemLabel}`}');
+    expect(unified).toContain('aria-label={`选择 ${fullItemLabel}`}');
     expect(session).toContain('onCatalogProgressChange={setCatalogProgress}');
     expect(session).toContain('sortFlaWorkbenchCandidates([');
   });

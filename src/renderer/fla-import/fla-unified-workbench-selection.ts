@@ -1,4 +1,4 @@
-import { flaUnifiedCandidateSelectionKey } from './fla-unified-import';
+import { flaUnifiedCandidateSelectionKey, type FlaUnifiedImportItem } from './fla-unified-import';
 import type { FlaWorkbenchCandidate } from './fla-workbench-candidates';
 
 export const FLA_UNIFIED_BULK_CONFIRM_THRESHOLD = 50;
@@ -23,6 +23,27 @@ export function filterFlaUnifiedCandidates(
     (!selectedOnly || candidate.checked) &&
     (selectedOnly || matchesFlaUnifiedCandidateSearch(candidate, searchText)),
   );
+}
+
+/**
+ * Keep checks across preview focus and filtering. A check is removed only
+ * when that same import kind no longer has a currently selectable operation.
+ */
+export function reconcileFlaUnifiedSelection(
+  current: Map<string, FlaUnifiedImportItem>,
+  kind: FlaUnifiedImportItem['kind'],
+  currentSelectableKeys: ReadonlySet<string>,
+): Map<string, FlaUnifiedImportItem> {
+  let changed = false;
+  const next = new Map<string, FlaUnifiedImportItem>();
+  for (const [key, item] of current) {
+    if (item.kind === kind && !currentSelectableKeys.has(key)) {
+      changed = true;
+      continue;
+    }
+    next.set(key, item);
+  }
+  return changed ? next : current;
 }
 
 /**

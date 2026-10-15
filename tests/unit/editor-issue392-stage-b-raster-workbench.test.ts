@@ -41,8 +41,8 @@ describe('Issue #775 C03 keeps the full raster catalog in the unified workbench'
     expect(workbench).toContain('className="fla-c03-thumbnail"');
     expect(workbench).toContain('candidate.displayLabel');
     expect(workbench).toContain('candidateStatus(candidate)');
-    expect(workbench).toContain('aria-label={`预览 ${itemLabel}`}');
-    expect(workbench).toContain('aria-label={`选择 ${itemLabel}`}');
+    expect(workbench).toContain('aria-label={`预览 ${fullItemLabel}`}');
+    expect(workbench).toContain('aria-label={`选择 ${fullItemLabel}`}');
     expect(workbench).not.toContain('candidate.provenance.renderTargetId}</strong>');
     expect(workbench).not.toContain('candidate.operation.target');
     expect(workbench).not.toContain('media.sourceReference');
