@@ -817,6 +817,7 @@
     order: -1;
   }
 
+  /* The short-height row minima total 324px, so size this stage to the viewport instead of fixing it at 480px. */
   .fla-c03-preview-stage.has-sequence-preview {
     height: clamp(324px, calc(100dvh - 150px), 480px);
     min-height: clamp(324px, calc(100dvh - 150px), 480px);
