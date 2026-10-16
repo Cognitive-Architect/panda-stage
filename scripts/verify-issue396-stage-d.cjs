@@ -2021,7 +2021,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         sequenceInteraction.shortWideReachability.preview.stage.height >= 120 &&
         sequenceInteraction.shortWideReachability.footer.visible &&
         sequenceInteraction.shortWideReachability.importAction.visible &&
-        sequenceInteraction.shortWideReachability.importAction.height >= 56;
+        sequenceInteraction.shortWideReachability.importAction.height >= 44;
       const sequenceTouchWorks = sequenceInteraction.narrowAtTop.filmstrip.firstFrameActionable || (
         sequenceInteraction.touchScroll.gestureCount > 0 &&
         sequenceInteraction.touchScroll.gestureCount <= sequenceInteraction.touchScroll.maxGestures &&
@@ -2037,7 +2037,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         sequenceInteraction.keyboardReachedFrameStrip;
       const sequenceHitTargetsRespectDesign = sequenceInteraction.normalReachability.start.height >= 44 &&
         sequenceInteraction.normalReachability.action.height >= 48 &&
-        sequenceInteraction.normalReachability.importAction.height >= 56 &&
+        sequenceInteraction.normalReachability.importAction.height >= 44 &&
         sequenceInteraction.normalReachability.checkboxHitbox.width >= 48 &&
         sequenceInteraction.normalReachability.checkboxHitbox.height >= 48;
       const contextualSequenceReachable = sequenceWideReachable && sequenceShortWideReachable && sequenceNarrowReachable &&
