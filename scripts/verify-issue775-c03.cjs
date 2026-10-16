@@ -81,7 +81,9 @@ const runtime = {
   snapshotCommitGate: null,
   g007Only: false,
   g007Baseline: false,
+  g008Playback: false,
   g007BaselineReceipt: null,
+  currentFrameIndexProgressErrorCount: 0,
 };
 
 function createGate() {
@@ -102,6 +104,7 @@ function parseArgs(argv) {
     if (argv[index] === '--acceptance-root') args.acceptanceRoot = argv[++index];
     else if (argv[index] === '--evidence-root') args.evidenceRoot = argv[++index];
     else if (argv[index] === '--source') args.source = argv[++index];
+    else if (argv[index] === '--g008-playback') args.g008Playback = true;
     else if (argv[index] === '--g007-only') args.g007Only = true;
     else if (argv[index] === '--g007-baseline') args.g007Baseline = true;
     else if (argv[index] === '--baseline-receipt') args.baselineReceipt = argv[++index];
@@ -189,6 +192,167 @@ async function click(window, selector) {
   }, selector);
   assert(clicked, 'Could not click ' + selector);
   await delay(80);
+}
+
+async function electronMouseClickSelector(window, selector) {
+  const target = await inPage(window, (query) => {
+    const element = document.querySelector(query);
+    if (!(element instanceof HTMLElement) || ('disabled' in element && element.disabled)) return null;
+    const bounds = element.getBoundingClientRect();
+    return {
+      x: bounds.left + bounds.width / 2,
+      y: bounds.top + bounds.height / 2,
+      width: bounds.width,
+      height: bounds.height,
+      accessibleName: element.getAttribute('aria-label') ?? element.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    };
+  }, selector);
+  assert(target && target.width > 0 && target.height > 0 && target.x >= 0 && target.x < target.viewportWidth &&
+    target.y >= 0 && target.y < target.viewportHeight,
+  'Electron mouse target is not visible and enabled: ' + selector + ' ' + JSON.stringify(target));
+
+  window.show();
+  window.focus();
+  window.webContents.focus();
+  await delay(25);
+  const x = Math.round(target.x);
+  const y = Math.round(target.y);
+  window.webContents.sendInputEvent({ type: 'mouseMove', x, y });
+  window.webContents.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
+  window.webContents.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
+  await delay(25);
+  return target;
+}
+
+async function electronTouchTapSelector(window, selector) {
+  const target = await inPage(window, (query) => {
+    const element = document.querySelector(query);
+    if (!(element instanceof HTMLElement) || ('disabled' in element && element.disabled)) return null;
+    const bounds = element.getBoundingClientRect();
+    return {
+      x: bounds.left + bounds.width / 2,
+      y: bounds.top + bounds.height / 2,
+      width: bounds.width,
+      height: bounds.height,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    };
+  }, selector);
+  assert(target && target.width >= 44 && target.height >= 44 && target.x >= 0 && target.x < target.viewportWidth &&
+    target.y >= 0 && target.y < target.viewportHeight,
+  'Electron touch target is not visible at the 44 CSS-pixel minimum: ' + selector + ' ' + JSON.stringify(target));
+
+  window.show();
+  window.focus();
+  window.webContents.focus();
+  const debuggerApi = window.webContents.debugger;
+  const attachedHere = !debuggerApi.isAttached();
+  if (attachedHere) debuggerApi.attach('1.3');
+  try {
+    await debuggerApi.sendCommand('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ id: 1, x: target.x, y: target.y, radiusX: 1, radiusY: 1, force: 1 }],
+    });
+    await delay(45);
+    await debuggerApi.sendCommand('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  } finally {
+    if (attachedHere && debuggerApi.isAttached()) debuggerApi.detach();
+  }
+  await delay(80);
+  return target;
+}
+
+async function readG008SequenceFacts(window) {
+  return inPage(window, () => {
+    const image = document.querySelector('[data-testid="fla-frame-sequence-preview-image"]');
+    const stage = document.querySelector('[data-testid="fla-frame-sequence-preview-area"]');
+    const counter = document.querySelector('[data-testid="fla-frame-sequence-frame-counter"]');
+    const strip = document.querySelector('[data-testid="fla-frame-sequence-filmstrip"]');
+    const playback = document.querySelector('[data-testid="fla-frame-sequence-playback"]');
+    const previous = document.querySelector('[data-testid="fla-frame-sequence-previous"]');
+    const next = document.querySelector('[data-testid="fla-frame-sequence-next"]');
+    const range = document.querySelector('[data-testid="fla-frame-sequence-range"]');
+    const root = document.querySelector('[data-testid="fla-frame-sequence-review"]');
+    const grid = document.querySelector('[data-testid="fla-c03-candidate-grid"]');
+    const size = (element) => {
+      if (!(element instanceof Element)) return { width: 0, height: 0, top: null, bottom: null };
+      const rect = element.getBoundingClientRect();
+      return { width: rect.width, height: rect.height, top: rect.top, bottom: rect.bottom };
+    };
+    const verticalScrolls = [];
+    for (let ancestor = strip; ancestor instanceof HTMLElement; ancestor = ancestor.parentElement) {
+      if (ancestor.scrollHeight > ancestor.clientHeight || ancestor.scrollTop !== 0) {
+        verticalScrolls.push({
+          testId: ancestor.dataset.testid ?? null,
+          className: typeof ancestor.className === 'string' ? ancestor.className : '',
+          scrollTop: ancestor.scrollTop,
+        });
+      }
+    }
+    const selectedButtons = strip instanceof HTMLElement
+      ? [...strip.querySelectorAll('button[data-frame-index]')].filter((button) => button.getAttribute('aria-pressed') === 'true')
+      : [];
+    const frameCount = strip?.querySelectorAll('button[data-frame-index]').length ?? 0;
+    return {
+      sourceFrameIndex: image instanceof HTMLImageElement ? Number(image.dataset.frameIndex) : null,
+      sourceFrameNumber: image instanceof HTMLImageElement && image.dataset.frameIndex !== undefined
+        ? Number(image.dataset.frameIndex) + 1
+        : null,
+      imageUrl: image instanceof HTMLImageElement ? image.src : null,
+      imageLoaded: image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+      previewTargetId: stage?.getAttribute('data-preview-target-id') ?? null,
+      counterText: counter?.textContent?.replace(/\s+/gu, ' ').trim() ?? null,
+      batchOrdinal: counter instanceof HTMLElement ? Number(counter.dataset.batchFrameIndex) : null,
+      counterFrameCount: counter instanceof HTMLElement ? Number(counter.dataset.frameCount) : null,
+      frameCount,
+      selectedSourceFrameIndices: selectedButtons.map((button) => Number(button.getAttribute('data-frame-index'))),
+      selectedSourceFrameLabels: selectedButtons.map((button) => button.textContent?.replace(/\s+/gu, ' ').trim() ?? ''),
+      playback: {
+        playing: playback?.getAttribute('data-playing') === 'true',
+        disabled: playback instanceof HTMLButtonElement && playback.disabled,
+        text: playback?.textContent?.replace(/\s+/gu, ' ').trim() ?? null,
+        accessibleName: playback?.getAttribute('aria-label') ?? null,
+        pressed: playback?.getAttribute('aria-pressed') === 'true',
+        bounds: size(playback),
+      },
+      previous: {
+        disabled: previous instanceof HTMLButtonElement && previous.disabled,
+        accessibleName: previous?.getAttribute('aria-label') ?? null,
+        bounds: size(previous),
+      },
+      next: {
+        disabled: next instanceof HTMLButtonElement && next.disabled,
+        accessibleName: next?.getAttribute('aria-label') ?? null,
+        bounds: size(next),
+      },
+      previewMode: root?.getAttribute('data-unified-sequence-preview') ?? null,
+      rangeStart: range instanceof HTMLElement ? Number(range.dataset.rangeStart) : null,
+      rangeEnd: range instanceof HTMLElement ? Number(range.dataset.rangeEnd) : null,
+      selectedView: grid?.getAttribute('data-view') ?? null,
+      filmstrip: strip instanceof HTMLElement ? {
+        scrollLeft: strip.scrollLeft,
+        scrollTop: strip.scrollTop,
+        scrollWidth: strip.scrollWidth,
+        clientWidth: strip.clientWidth,
+      } : null,
+      verticalScrolls,
+      documentScrollTop: document.scrollingElement?.scrollTop ?? 0,
+      documentVisibility: document.visibilityState,
+    };
+  });
+}
+
+async function waitForG008SequenceFacts(window, predicate, label, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const facts = await readG008SequenceFacts(window);
+    if (predicate(facts)) return facts;
+    await delay(20);
+  }
+  throw new Error('Timed out waiting for G008 sequence behavior: ' + label);
 }
 
 async function mouseClickCandidateCheckbox(window, targetId) {
@@ -2539,6 +2703,504 @@ async function verifySequence(window) {
   runtime.screenshots.sequenceCancelled = await capture(window, 'sequence-cancelled');
 }
 
+function assertG008FrameAlignment(facts, startOneBased, expectedCount, label) {
+  const expectedOrdinal = facts.sourceFrameNumber - startOneBased + 1;
+  assert(facts.imageLoaded && facts.imageUrl?.startsWith('blob:') &&
+    facts.frameCount === expectedCount && facts.counterFrameCount === expectedCount &&
+    facts.batchOrdinal === expectedOrdinal &&
+    facts.counterText === `第 ${expectedOrdinal} / ${expectedCount} 帧` &&
+    facts.selectedSourceFrameIndices.length === 1 &&
+    facts.selectedSourceFrameIndices[0] === facts.sourceFrameIndex,
+  `The G008 preview image, batch counter, and filmstrip selection diverged for ${label}: ` + JSON.stringify(facts));
+}
+
+async function verifyG008Playback(window) {
+  runtime.failureStage = 'g008-playback-first-batch';
+  const target = findLongSequenceEntry();
+  assert(target && target.frameCount >= 26, 'G008 needs the same supported real FLA sequence used by the G007 range checks.');
+  await focusCandidate(window, 'sequence', target.targetId);
+  await waitForPage(window, (targetId) =>
+    document.querySelector('[data-testid="fla-frame-sequence-details-region"]')?.getAttribute('data-focused-target-id') === targetId,
+  [target.targetId]);
+
+  const firstCount = Math.min(target.frameCount, 24);
+  await renderSequenceRange(window, target, 1, firstCount, 'g008-first-batch');
+  assert(firstCount === 24, 'The G008 real-source first batch did not exercise the 24-frame maximum.');
+  let initial = await readG008SequenceFacts(window);
+  assertG008FrameAlignment(initial, 1, 24, 'first batch');
+  assert(initial.sourceFrameNumber === 1 && !initial.playback.playing && !initial.playback.disabled &&
+    initial.previous.disabled && !initial.next.disabled,
+  'A successful generated sequence did not start paused on its first frame with the expected boundary controls: ' +
+    JSON.stringify(initial));
+  runtime.assertions.g008AutoplayOffByDefault = true;
+  runtime.assertions.g008FirstBatchCounterCorrect = true;
+  runtime.layout.g008FirstBatch = initial;
+  runtime.screenshots.g008FirstBatch = await capture(window, 'g008-first-batch-preview');
+
+  let candidateFacts = await readCandidateFacts(window);
+  if (!candidateFacts.rows.some((row) => row.kind === 'sequence' && row.checked && row.identity?.includes(target.targetId))) {
+    await toggleCandidate(window, 'sequence', target.targetId);
+    candidateFacts = await readCandidateFacts(window);
+  }
+  const checkedRowsBefore = candidateFacts.rows
+    .filter((row) => row.checked)
+    .map((row) => ({ kind: row.kind, identity: row.identity }));
+  assert(candidateFacts.selectedCount === 1 && checkedRowsBefore.some((row) =>
+    row.kind === 'sequence' && row.identity?.includes(target.targetId)),
+  'G008 could not establish a checked sequence candidate before preview-only playback.');
+
+  const projectBeforePlayback = await readProjectState(runtime.project.root);
+  const sequenceCountBeforePlayback = runtime.sequenceRenders.length;
+  const previewCountBeforePlayback = runtime.previews.length;
+  const snapshotCommitCountBeforePlayback = runtime.snapshotCommits.length;
+  const rasterCommitCountBeforePlayback = runtime.rasterCommits.length;
+  const requestBeforePlayback = runtime.sequenceRenders.at(-1);
+  assert(requestBeforePlayback?.ok === true && requestBeforePlayback.range.startFrameIndex === 0 &&
+    requestBeforePlayback.range.endFrameIndex === 23,
+  'The G008 playback request did not retain the generated first-batch range.');
+
+  await electronMouseClickSelector(window, '[data-testid="fla-frame-sequence-playback"]');
+  let previousSourceFrameIndex = initial.sourceFrameIndex;
+  const observedFrames = [];
+  for (let index = 0; index < 5; index += 1) {
+    const facts = await waitForG008SequenceFacts(window,
+      (current) => current.playback.playing && current.sourceFrameIndex !== previousSourceFrameIndex,
+      'playback advancing to another generated frame');
+    observedFrames.push({
+      sourceFrameNumber: facts.sourceFrameNumber,
+      imageUrl: facts.imageUrl,
+      counterText: facts.counterText,
+      selectedFilmstripFrame: facts.selectedSourceFrameIndices[0] ?? null,
+    });
+    previousSourceFrameIndex = facts.sourceFrameIndex;
+  }
+  const running = await readG008SequenceFacts(window);
+  assert(observedFrames.length >= 4 && new Set(observedFrames.map((frame) => frame.sourceFrameNumber)).size >= 4 &&
+    observedFrames.every((frame) => frame.imageUrl?.startsWith('blob:')) && running.playback.playing,
+  'Real 12 FPS playback did not advance across multiple already-generated frame URLs: ' + JSON.stringify(observedFrames));
+  assertG008FrameAlignment(running, 1, 24, 'playing first batch');
+  runtime.assertions.g008PlaybackAdvances = true;
+  runtime.layout.g008PlaybackFrames = observedFrames;
+  runtime.screenshots.g008PlaybackRunning = await capture(window, 'g008-playback-running');
+
+  await electronMouseClickSelector(window, '[data-testid="fla-frame-sequence-playback"]');
+  const paused = await waitForG008SequenceFacts(window, (facts) => !facts.playback.playing, 'pause to settle');
+  await delay(250);
+  const pausedStable = await readG008SequenceFacts(window);
+  assert(pausedStable.sourceFrameIndex === paused.sourceFrameIndex && pausedStable.imageUrl === paused.imageUrl &&
+    pausedStable.counterText === paused.counterText && !pausedStable.playback.playing,
+  'Pause did not keep the current generated frame stable.');
+  runtime.assertions.g008PauseKeepsFrame = true;
+  runtime.layout.g008PausedFrame = pausedStable;
+  runtime.screenshots.g008PlaybackPaused = await capture(window, 'g008-playback-paused');
+
+  await electronMouseClickSelector(window, '[data-testid="fla-frame-sequence-playback"]');
+  const resumed = await waitForG008SequenceFacts(window,
+    (facts) => facts.playback.playing && facts.sourceFrameIndex !== pausedStable.sourceFrameIndex,
+    'resume from the paused frame');
+  assert(resumed.sourceFrameIndex !== 0,
+    'Resuming playback reset to frame 1 instead of continuing from the paused frame.');
+  assertG008FrameAlignment(resumed, 1, 24, 'resumed first batch');
+  runtime.assertions.g008ResumeFromCurrentFrame = true;
+  runtime.layout.g008ResumedFrame = {
+    pausedSourceFrameNumber: pausedStable.sourceFrameNumber,
+    firstObservedResumedSourceFrameNumber: resumed.sourceFrameNumber,
+  };
+
+  await click(window, '[data-testid="fla-frame-sequence-filmstrip-item-5"]');
+  const thumbnailPaused = await waitForG008SequenceFacts(window,
+    (facts) => !facts.playback.playing && facts.sourceFrameIndex === 5,
+    'thumbnail click to select frame 6 and pause');
+  await delay(220);
+  const thumbnailStable = await readG008SequenceFacts(window);
+  assert(thumbnailStable.sourceFrameIndex === thumbnailPaused.sourceFrameIndex &&
+    !thumbnailStable.playback.playing && thumbnailStable.selectedSourceFrameIndices[0] === 5,
+  'Clicking a filmstrip item during playback did not pause and hold that generated frame.');
+  runtime.assertions.g008ThumbnailPausesPlayback = true;
+  runtime.layout.g008ThumbnailPause = thumbnailStable;
+  runtime.screenshots.g008ThumbnailPause = await capture(window, 'g008-thumbnail-pauses-playback');
+
+  await electronMouseClickSelector(window, '[data-testid="fla-frame-sequence-playback"]');
+  const lastFrameWhilePlaying = await waitForG008SequenceFacts(window,
+    (facts) => facts.playback.playing && facts.sourceFrameIndex === 23,
+    'playback to advance beyond the visible filmstrip range');
+  assert(lastFrameWhilePlaying.filmstrip.scrollLeft > thumbnailStable.filmstrip.scrollLeft &&
+    lastFrameWhilePlaying.filmstrip.scrollTop === thumbnailStable.filmstrip.scrollTop &&
+    lastFrameWhilePlaying.documentScrollTop === thumbnailStable.documentScrollTop &&
+    JSON.stringify(lastFrameWhilePlaying.verticalScrolls) === JSON.stringify(thumbnailStable.verticalScrolls),
+  'Playback did not follow the current thumbnail horizontally without moving the page or workbench vertically: ' +
+    JSON.stringify({ before: thumbnailStable, after: lastFrameWhilePlaying }));
+  runtime.assertions.g008FilmstripFollowsHorizontally = true;
+  runtime.layout.g008FilmstripFollow = {
+    beforeScrollLeft: thumbnailStable.filmstrip.scrollLeft,
+    afterScrollLeft: lastFrameWhilePlaying.filmstrip.scrollLeft,
+    stripScrollTop: lastFrameWhilePlaying.filmstrip.scrollTop,
+    documentScrollTop: lastFrameWhilePlaying.documentScrollTop,
+    verticalScrolls: lastFrameWhilePlaying.verticalScrolls,
+  };
+  runtime.screenshots.g008FilmstripFollowsPlayback = await capture(window, 'g008-filmstrip-follows-playback');
+  await electronMouseClickSelector(window, '[data-testid="fla-frame-sequence-playback"]');
+  await waitForG008SequenceFacts(window, (facts) => !facts.playback.playing, 'pause after horizontal-follow evidence');
+
+  await click(window, '[data-testid="fla-frame-sequence-filmstrip-item-0"]');
+  const firstBoundary = await readG008SequenceFacts(window);
+  assert(firstBoundary.sourceFrameIndex === 0 && firstBoundary.previous.disabled && !firstBoundary.next.disabled,
+    'The first generated frame did not disable only the previous-frame button.');
+  await electronMouseClickSelector(window, '[data-testid="fla-frame-sequence-next"]');
+  const steppedForward = await waitForG008SequenceFacts(window,
+    (facts) => facts.sourceFrameIndex === 1 && !facts.playback.playing,
+    'manual next-frame step');
+  await electronMouseClickSelector(window, '[data-testid="fla-frame-sequence-previous"]');
+  const steppedBack = await waitForG008SequenceFacts(window,
+    (facts) => facts.sourceFrameIndex === 0 && !facts.playback.playing,
+    'manual previous-frame step');
+  assert(steppedForward.sourceFrameNumber === 2 && steppedBack.sourceFrameNumber === 1,
+    'Manual arrows did not move exactly one source frame in each direction.');
+
+  await click(window, '[data-testid="fla-frame-sequence-filmstrip-item-23"]');
+  const lastBoundary = await readG008SequenceFacts(window);
+  assert(lastBoundary.sourceFrameIndex === 23 && !lastBoundary.previous.disabled && lastBoundary.next.disabled,
+    'The last generated frame did not disable only the next-frame button.');
+  runtime.assertions.g008ManualBoundariesDoNotWrap = true;
+  runtime.layout.g008ManualBoundaryFrames = {
+    firstFrame: firstBoundary,
+    nextFrame: steppedForward,
+    previousFrame: steppedBack,
+    lastFrame: lastBoundary,
+  };
+  runtime.screenshots.g008ManualLastFrameBoundary = await capture(window, 'g008-manual-last-frame-boundary');
+  await electronMouseClickSelector(window, '[data-testid="fla-frame-sequence-previous"]');
+  const lastManualStep = await waitForG008SequenceFacts(window,
+    (facts) => facts.sourceFrameIndex === 22 && !facts.playback.playing,
+    'manual previous step at the last-frame boundary');
+  assert(lastManualStep.sourceFrameNumber === 23,
+    'Manual navigation wrapped from the last generated frame.');
+
+  await click(window, '[data-testid="fla-frame-sequence-filmstrip-item-23"]');
+  await electronMouseClickSelector(window, '[data-testid="fla-frame-sequence-playback"]');
+  const looped = await waitForG008SequenceFacts(window,
+    (facts) => facts.playback.playing && facts.sourceFrameIndex === 0,
+    'automatic playback to loop from the last frame to the first');
+  assert(looped.sourceFrameNumber === 1 && !looped.playback.disabled,
+    'Automatic playback did not wrap last-to-first while remaining active.');
+  runtime.assertions.g008AutoplayLoopsOnly = true;
+  runtime.layout.g008LoopWrap = {
+    lastSourceFrameNumber: 24,
+    firstSourceFrameNumberAfterTick: looped.sourceFrameNumber,
+    stillPlayingAfterWrap: looped.playback.playing,
+  };
+  runtime.screenshots.g008AutoLoopWrap = await capture(window, 'g008-auto-loop-wrap');
+  await electronMouseClickSelector(window, '[data-testid="fla-frame-sequence-playback"]');
+  await waitForG008SequenceFacts(window, (facts) => !facts.playback.playing, 'pause after loop evidence');
+
+  await click(window, '[data-testid="fla-frame-sequence-filmstrip-item-7"]');
+  await inPage(window, () => {
+    const rerender = document.querySelector('[data-testid="fla-frame-sequence-rerender"]');
+    if (rerender instanceof HTMLElement) rerender.focus();
+  });
+  await sendInputKey(window, 'Tab');
+  const keyboardFocus = await inPage(window, () => {
+    const playback = document.querySelector('[data-testid="fla-frame-sequence-playback"]');
+    const style = playback ? getComputedStyle(playback) : null;
+    return {
+      focused: document.activeElement === playback,
+      outlineWidth: style ? Number.parseFloat(style.outlineWidth) : 0,
+      outlineStyle: style?.outlineStyle ?? 'none',
+      accessibleName: playback?.getAttribute('aria-label') ?? '',
+    };
+  });
+  assert(keyboardFocus.focused && keyboardFocus.outlineWidth >= 2 && keyboardFocus.outlineStyle !== 'none' &&
+    keyboardFocus.accessibleName === '播放序列',
+  'Tab did not reach playback with a visible focus indicator and accessible name: ' + JSON.stringify(keyboardFocus));
+  await sendInputKey(window, 'Space');
+  const keyboardStarted = await waitForG008SequenceFacts(window,
+    (facts) => facts.playback.playing && facts.sourceFrameIndex !== 7,
+    'Space to start playback');
+  await sendInputKey(window, 'Space');
+  const keyboardPaused = await waitForG008SequenceFacts(window,
+    (facts) => !facts.playback.playing,
+    'Space to pause playback');
+  await delay(220);
+  const keyboardPausedStable = await readG008SequenceFacts(window);
+  assert(keyboardPausedStable.sourceFrameIndex === keyboardPaused.sourceFrameIndex && !keyboardPausedStable.playback.playing,
+    'Space did not pause playback on a stable frame.');
+  assert(runtime.previews.length === previewCountBeforePlayback,
+    'Playback, pause, frame stepping, loop, or keyboard controls triggered an additional preview IPC.');
+  runtime.assertions.g008KeyboardAccessible = true;
+  runtime.layout.g008KeyboardPlayback = {
+    focus: keyboardFocus,
+    startedSourceFrameNumber: keyboardStarted.sourceFrameNumber,
+    pausedSourceFrameNumber: keyboardPaused.sourceFrameNumber,
+    inputMethod: 'Electron webContents.sendInputEvent Tab and Space',
+  };
+
+  const previewIpcCountAfterFrameControls = runtime.previews.length;
+  await electronMouseClickSelector(window, '[data-testid="fla-frame-sequence-playback"]');
+  await waitForG008SequenceFacts(window, (facts) => facts.playback.playing, 'start before selected-view transition');
+  await click(window, '[data-testid="fla-c03-selected-view"]');
+  const selectedViewPaused = await waitForG008SequenceFacts(window,
+    (facts) => facts.selectedView === 'selected' && !facts.playback.playing,
+    'selected-view transition to stop playback');
+  assert(selectedViewPaused.previewMode === 'true' && !selectedViewPaused.playback.disabled,
+    'Selected-view transition did not stop playback while preserving the still-visible checked preview.');
+  await click(window, '[data-testid="fla-c03-selected-view"]');
+  const browsePaused = await waitForG008SequenceFacts(window,
+    (facts) => facts.selectedView === 'browse' && !facts.playback.playing,
+    'return to browse without automatically resuming playback');
+  assert(!browsePaused.playback.playing,
+    'Returning from selected view automatically resumed playback.');
+  runtime.assertions.g008SelectedViewStopsPlayback = true;
+  runtime.layout.g008SelectedViewPause = {
+    selectedView: selectedViewPaused.selectedView,
+    previewStillVisible: selectedViewPaused.previewMode === 'true',
+    playingAfterEnteringSelectedView: selectedViewPaused.playback.playing,
+    playingAfterReturningToBrowse: browsePaused.playback.playing,
+  };
+  runtime.screenshots.g008SelectedViewStopsPlayback = await capture(window, 'g008-selected-view-stops-playback');
+
+  const alternate = findCatalogEntry((entry) =>
+    entry.targetId !== target.targetId && entry.previewSupported && !entry.isBlank,
+  );
+  assert(alternate, 'A second real supported FLA candidate was not available for the A→B→A playback invalidation check.');
+  await electronMouseClickSelector(window, '[data-testid="fla-frame-sequence-playback"]');
+  const beforeFocusChange = await waitForG008SequenceFacts(window,
+    (facts) => facts.playback.playing && facts.sourceFrameIndex !== browsePaused.sourceFrameIndex,
+    'play before preview-candidate focus changes');
+  await focusCandidate(window, 'snapshot', alternate.targetId, 0);
+  await waitForCandidatePreview(window, alternate.targetId);
+  const focusedB = await waitForG008SequenceFacts(window,
+    (facts) => facts.previewMode === 'false' && !facts.playback.playing && facts.playback.disabled,
+    'ordinary preview focus to stop and hide sequence playback');
+  await delay(220);
+  const focusedBStable = await readG008SequenceFacts(window);
+  assert(focusedBStable.sourceFrameIndex === focusedB.sourceFrameIndex && !focusedBStable.playback.playing,
+    'The previous sequence timer changed a frame while an ordinary preview had focus.');
+  await focusCandidate(window, 'sequence', target.targetId);
+  await waitForG008SequenceFacts(window,
+    (facts) => facts.previewMode === 'true' && !facts.playback.playing && !facts.playback.disabled,
+    'return to sequence candidate A with playback stopped');
+  await delay(220);
+  const focusedAStable = await readG008SequenceFacts(window);
+  candidateFacts = await readCandidateFacts(window);
+  const checkedRowsAfter = candidateFacts.rows
+    .filter((row) => row.checked)
+    .map((row) => ({ kind: row.kind, identity: row.identity }));
+  assert(focusedAStable.sourceFrameIndex === beforeFocusChange.sourceFrameIndex && !focusedAStable.playback.playing &&
+    candidateFacts.selectedCount === 1 && JSON.stringify(checkedRowsAfter) === JSON.stringify(checkedRowsBefore),
+  'The A→B→A focus cycle revived playback or changed the checked candidate.');
+  runtime.assertions.g008CandidateFocusInvalidatesPlayback = true;
+  runtime.assertions.g008CandidateSelectionStable = true;
+  runtime.layout.g008CandidateFocusCycle = {
+    sourceFrameBeforeFocus: beforeFocusChange.sourceFrameNumber,
+    previewModeOnB: focusedB.previewMode,
+    playingOnB: focusedB.playback.playing,
+    sourceFrameAfterReturnToA: focusedAStable.sourceFrameNumber,
+    checkedCandidateBefore: checkedRowsBefore,
+    checkedCandidateAfter: checkedRowsAfter,
+    selectedCountAfter: candidateFacts.selectedCount,
+  };
+
+  await electronMouseClickSelector(window, '[data-testid="fla-frame-sequence-playback"]');
+  const beforeHide = await waitForG008SequenceFacts(window,
+    (facts) => facts.playback.playing && facts.sourceFrameIndex !== focusedAStable.sourceFrameIndex,
+    'play before hiding the Electron window');
+  window.hide();
+  const hidden = await waitForG008SequenceFacts(window,
+    (facts) => facts.documentVisibility === 'hidden' && !facts.playback.playing,
+    'window visibility change to stop playback');
+  await delay(250);
+  const hiddenStable = await readG008SequenceFacts(window);
+  assert(hiddenStable.sourceFrameIndex === hidden.sourceFrameIndex && !hiddenStable.playback.playing,
+    'Playback continued to update frames while the Electron window was hidden.');
+  window.show();
+  window.focus();
+  window.webContents.focus();
+  const shown = await waitForG008SequenceFacts(window,
+    (facts) => facts.documentVisibility === 'visible' && !facts.playback.playing,
+    'window visibility restoration without autoplay');
+  assert(shown.sourceFrameIndex === hiddenStable.sourceFrameIndex && !shown.playback.playing,
+    'Showing the Electron window automatically resumed the previous playback session.');
+  runtime.assertions.g008WindowHideStopsPlayback = true;
+  runtime.assertions.g008WindowShowDoesNotResume = true;
+  runtime.layout.g008WindowVisibility = {
+    sourceFrameBeforeHide: beforeHide.sourceFrameNumber,
+    hiddenVisibility: hidden.documentVisibility,
+    hiddenPlaybackActive: hidden.playback.playing,
+    sourceFrameWhileHidden: hiddenStable.sourceFrameNumber,
+    visibleAfterShow: shown.documentVisibility,
+    resumedAfterShow: shown.playback.playing,
+  };
+  runtime.screenshots.g008WindowShownPaused = await capture(window, 'g008-window-shown-paused');
+
+  const playbackFinalProject = await readProjectState(runtime.project.root);
+  const latestRequest = runtime.sequenceRenders.at(-1);
+  const unchangedSource = sha256File(runtime.sourcePath) === runtime.sourceSha256Before;
+  const checkedRowsFinal = candidateFacts.rows
+    .filter((row) => row.checked)
+    .map((row) => ({ kind: row.kind, identity: row.identity }));
+  assert(runtime.sequenceRenders.length === sequenceCountBeforePlayback &&
+    runtime.snapshotCommits.length === snapshotCommitCountBeforePlayback &&
+    runtime.rasterCommits.length === rasterCommitCountBeforePlayback &&
+    playbackFinalProject.sha256 === projectBeforePlayback.sha256 && unchangedSource &&
+    latestRequest?.requestId === requestBeforePlayback.requestId &&
+    latestRequest.range.startFrameIndex === requestBeforePlayback.range.startFrameIndex &&
+    latestRequest.range.endFrameIndex === requestBeforePlayback.range.endFrameIndex &&
+    focusedAStable.previewTargetId === target.targetId &&
+    focusedAStable.rangeStart === 0 && focusedAStable.rangeEnd === 23 &&
+    candidateFacts.selectedCount === 1 && JSON.stringify(checkedRowsFinal) === JSON.stringify(checkedRowsBefore),
+  'G008 preview actions changed render IPC, commit routes, project/source bytes, request/range, import target, or checked selection: ' +
+    JSON.stringify({
+      renderCountBefore: sequenceCountBeforePlayback,
+      renderCountAfter: runtime.sequenceRenders.length,
+      previewCountAfterFrameControls: previewIpcCountAfterFrameControls,
+      previewCountAfterCandidateFocus: runtime.previews.length,
+      snapshotCommitsBefore: snapshotCommitCountBeforePlayback,
+      snapshotCommitsAfter: runtime.snapshotCommits.length,
+      rasterCommitsBefore: rasterCommitCountBeforePlayback,
+      rasterCommitsAfter: runtime.rasterCommits.length,
+      projectBefore: projectBeforePlayback.sha256,
+      projectAfter: playbackFinalProject.sha256,
+      sourceUnchanged: unchangedSource,
+      requestBefore: requestBeforePlayback,
+      requestAfter: latestRequest,
+      previewTargetId: focusedAStable.previewTargetId,
+      checkedRowsBefore,
+      checkedRowsAfter: checkedRowsFinal,
+    }));
+  runtime.assertions.g008PreviewOnlySafety = true;
+  runtime.layout.g008PreviewOnlySafety = {
+    sequenceRenderCountBefore: sequenceCountBeforePlayback,
+    sequenceRenderCountAfter: runtime.sequenceRenders.length,
+    previewIpcCountBeforePlayback: previewCountBeforePlayback,
+    previewIpcCountAfterFrameControls,
+    previewIpcCountAfterPlayback: runtime.previews.length,
+    snapshotCommitCountBefore: snapshotCommitCountBeforePlayback,
+    snapshotCommitCountAfter: runtime.snapshotCommits.length,
+    rasterCommitCountBefore: rasterCommitCountBeforePlayback,
+    rasterCommitCountAfter: runtime.rasterCommits.length,
+    projectSha256Before: projectBeforePlayback.sha256,
+    projectSha256After: playbackFinalProject.sha256,
+    originalFlaUnchanged: unchangedSource,
+    requestId: latestRequest.requestId,
+    renderRange: latestRequest.range,
+    previewTargetId: focusedAStable.previewTargetId,
+    checkedCandidates: checkedRowsFinal,
+    selectedCount: candidateFacts.selectedCount,
+  };
+
+  const originalBounds = window.getBounds();
+  try {
+    window.setBounds({ x: originalBounds.x, y: originalBounds.y, width: 860, height: 690 });
+    await delay(400);
+    const narrowControls = await inPage(window, () => {
+      const workbench = document.querySelector('[data-testid="fla-c03-workbench"]');
+      const playback = document.querySelector('[data-testid="fla-frame-sequence-playback"]');
+      const previous = document.querySelector('[data-testid="fla-frame-sequence-previous"]');
+      const next = document.querySelector('[data-testid="fla-frame-sequence-next"]');
+      const info = (element) => {
+        if (!(element instanceof HTMLElement)) return { width: 0, height: 0, top: null, bottom: null, ariaLabel: null };
+        element.scrollIntoView({ block: 'center', inline: 'nearest' });
+        const rect = element.getBoundingClientRect();
+        return {
+          width: rect.width,
+          height: rect.height,
+          top: rect.top,
+          bottom: rect.bottom,
+          ariaLabel: element.getAttribute('aria-label'),
+        };
+      };
+      return {
+        viewport: { width: window.innerWidth, height: window.innerHeight, devicePixelRatio: window.devicePixelRatio },
+        workbenchScrollTop: workbench instanceof HTMLElement ? workbench.scrollTop : null,
+        playback: info(playback),
+        previous: info(previous),
+        next: info(next),
+      };
+    });
+    assert(narrowControls.viewport.width <= 900 && narrowControls.playback.width >= 44 &&
+      narrowControls.playback.height >= 44 && narrowControls.previous.width >= 44 &&
+      narrowControls.previous.height >= 44 && narrowControls.next.width >= 44 && narrowControls.next.height >= 44,
+    'The native narrow Electron window did not expose reachable 44 CSS-pixel playback and step controls: ' +
+      JSON.stringify(narrowControls));
+    runtime.layout.g008NativeNarrowControls = narrowControls;
+    runtime.screenshots.g008NativeNarrowControls = await capture(window, 'g008-native-narrow-controls');
+
+    const touchedPlay = await electronTouchTapSelector(window, '[data-testid="fla-frame-sequence-playback"]');
+    const touchStarted = await waitForG008SequenceFacts(window,
+      (facts) => facts.playback.playing,
+      'touch to start playback in the native narrow window');
+    const touchFrame = await waitForG008SequenceFacts(window,
+      (facts) => facts.playback.playing && facts.sourceFrameIndex !== touchStarted.sourceFrameIndex,
+      'touch-started playback to advance in the native narrow window');
+    await electronTouchTapSelector(window, '[data-testid="fla-frame-sequence-playback"]');
+    const touchPaused = await waitForG008SequenceFacts(window,
+      (facts) => !facts.playback.playing,
+      'touch to pause playback in the native narrow window');
+    await inPage(window, () => {
+      document.querySelector('[data-testid="fla-frame-sequence-next"]')?.scrollIntoView({ block: 'center', inline: 'nearest' });
+    });
+    const touchedNext = await electronTouchTapSelector(window, '[data-testid="fla-frame-sequence-next"]');
+    const touchStepped = await waitForG008SequenceFacts(window,
+      (facts) => facts.sourceFrameIndex !== touchPaused.sourceFrameIndex && !facts.playback.playing,
+      'touch to step to the next frame in the native narrow window');
+    assert(touchedPlay.width >= 44 && touchedNext.width >= 44 && touchFrame.playback.playing &&
+      touchStepped.sourceFrameIndex === touchPaused.sourceFrameIndex + 1,
+    'Touch could not reach playback and next-frame controls in the native narrow window.');
+    runtime.assertions.g008TouchControlsReachable = true;
+    runtime.layout.g008TouchControls = {
+      playbackSize: { width: touchedPlay.width, height: touchedPlay.height },
+      nextSize: { width: touchedNext.width, height: touchedNext.height },
+      sourceFrameWhilePlaying: touchFrame.sourceFrameNumber,
+      sourceFrameAfterTouchStep: touchStepped.sourceFrameNumber,
+      inputMethod: 'Chromium DevTools Input.dispatchTouchEvent in the Windows Electron window',
+    };
+  } finally {
+    window.setBounds(originalBounds);
+    await delay(350);
+  }
+
+  runtime.failureStage = 'g008-playback-range-counters';
+  const second = await renderSequenceRange(window, target, 25, Math.min(target.frameCount - 24, 24), 'g008-start-25-counter');
+  const secondFacts = await readG008SequenceFacts(window);
+  const secondCount = Math.min(target.frameCount - 24, 24);
+  assertG008FrameAlignment(secondFacts, 25, secondCount, 'range starting at source frame 25');
+  assert(secondFacts.sourceFrameNumber === 25 && secondFacts.selectedSourceFrameLabels[0] === '25' &&
+    second.range.startFrameIndex === 24,
+  'The later batch starting at source frame 25 displayed its batch ordinal or source label incorrectly.');
+  runtime.assertions.g008SecondBatchCounterCorrect = true;
+  runtime.layout.g008SecondBatch = secondFacts;
+  runtime.screenshots.g008SecondBatchCounter = await capture(window, 'g008-start-25-counter-preview');
+
+  const tailStartOneBased = target.frameCount - 2;
+  const tail = await renderSequenceRange(window, target, tailStartOneBased, 3, 'g008-tail-counter');
+  const tailFacts = await readG008SequenceFacts(window);
+  assertG008FrameAlignment(tailFacts, tailStartOneBased, 3, 'three-frame tail batch');
+  assert(tailFacts.sourceFrameNumber === tailStartOneBased &&
+    tailFacts.selectedSourceFrameLabels[0] === String(tailStartOneBased) &&
+    tail.range.endFrameIndex === target.frameCount - 1,
+  'The three-frame tail batch did not keep its source-frame label separate from the 1/3 batch counter.');
+  runtime.assertions.g008TailCounterCorrect = true;
+  runtime.layout.g008TailBatch = tailFacts;
+  runtime.screenshots.g008TailCounter = await capture(window, 'g008-three-frame-tail-counter-preview');
+
+  const single = await renderSequenceRange(window, target, target.frameCount, 1, 'g008-single-frame');
+  const singleFacts = await readG008SequenceFacts(window);
+  assertG008FrameAlignment(singleFacts, target.frameCount, 1, 'single-frame batch');
+  assert(singleFacts.sourceFrameNumber === target.frameCount && singleFacts.playback.disabled &&
+    singleFacts.previous.disabled && singleFacts.next.disabled &&
+    single.range.startFrameIndex === target.frameCount - 1 && single.range.endFrameIndex === target.frameCount - 1,
+  'A one-frame generated preview did not remain visible with playback and both step controls disabled.');
+  runtime.assertions.g008SingleFrameControlsDisabled = true;
+  runtime.layout.g008SingleFrame = singleFacts;
+  runtime.screenshots.g008SingleFrame = await capture(window, 'g008-single-frame-controls-disabled');
+
+  runtime.layout.g008KnownProgressContractRisk = {
+    currentFrameIndexTooBigMax24Count: runtime.currentFrameIndexProgressErrorCount,
+    observed: runtime.currentFrameIndexProgressErrorCount > 0,
+    disposition: 'Recorded only; the existing Main-to-Preload Zod progress contract was not changed.',
+  };
+}
+
 async function verifyResponsiveAndTouch(window, bluehairTargetId) {
   const bounds = window.getBounds();
   runtime.layout.windowBounds = bounds;
@@ -3332,8 +3994,10 @@ async function writeReceipt(status, extra = {}) {
   const sourceSha256After = runtime.sourcePath ? sha256File(runtime.sourcePath) : null;
   const primaryDisplay = screen.getPrimaryDisplay();
   const receipt = {
-    schemaVersion: runtime.g007Only
-      ? 'issue781-g007-windows-electron/1'
+    schemaVersion: runtime.g008Playback
+      ? 'issue782-g008-windows-electron/1'
+      : runtime.g007Only
+        ? 'issue781-g007-windows-electron/1'
       : 'issue775-c03-windows-electron/1',
     status,
     runId: runtime.runId,
@@ -3395,6 +4059,11 @@ async function writeReceipt(status, extra = {}) {
       failureStage: status === 'FAIL' ? runtime.failureStage : null,
       renderer: runtime.rendererDiagnostics,
     },
+    knownProgressContractRisk: {
+      currentFrameIndexTooBigMax24Count: runtime.currentFrameIndexProgressErrorCount,
+      observed: runtime.currentFrameIndexProgressErrorCount > 0,
+      disposition: 'Recorded as the existing G007 Main-to-Preload progress-contract risk; not changed by G008.',
+    },
     assertions: runtime.assertions,
     originalSourceUnchanged: runtime.sourceSha256Before === sourceSha256After,
     limitations: [
@@ -3411,7 +4080,9 @@ async function writeReceipt(status, extra = {}) {
     ...extra,
   };
   const json = JSON.stringify(receipt, null, 2) + '\n';
-  const receiptName = runtime.g007Only ? 'issue781-g007-receipt.json' : 'issue775-c03-receipt.json';
+  const receiptName = runtime.g008Playback
+    ? 'issue782-g008-receipt.json'
+    : runtime.g007Only ? 'issue781-g007-receipt.json' : 'issue775-c03-receipt.json';
   writeFileSync(join(runtime.runRoot, receiptName), json, 'utf8');
   writeFileSync(join(runtime.evidenceDirectory, 'receipt.json'), json, 'utf8');
   process.stdout.write(JSON.stringify({
@@ -3423,15 +4094,18 @@ async function writeReceipt(status, extra = {}) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  runtime.g007Only = Boolean(args.g007Only || args.g007Baseline);
+  runtime.g008Playback = Boolean(args.g008Playback);
+  runtime.g007Only = Boolean(args.g007Only || args.g007Baseline || args.g008Playback);
   runtime.g007Baseline = Boolean(args.g007Baseline);
-  runtime.acceptanceRoot = resolve(args.acceptanceRoot ?? DEFAULT_ACCEPTANCE_ROOT);
+  runtime.acceptanceRoot = resolve(args.acceptanceRoot ?? (
+    runtime.g008Playback ? 'D:\\PandaStage-Acceptance\\issue782-g008' : DEFAULT_ACCEPTANCE_ROOT
+  ));
   runtime.runRoot = join(runtime.acceptanceRoot, 'run-' + runtime.runId);
   runtime.userData = join(runtime.runRoot, 'electron-user-data');
   runtime.projectParent = join(runtime.acceptanceRoot, 'projects');
   const evidenceRoot = args.evidenceRoot
     ? resolve(runtime.repositoryRoot, args.evidenceRoot)
-    : join(runtime.repositoryRoot, 'docs', 'evidence', 'issue-775-c03');
+    : join(runtime.repositoryRoot, 'docs', 'evidence', runtime.g008Playback ? 'issue-782-g008' : 'issue-775-c03');
   runtime.evidenceDirectory = join(evidenceRoot, 'run-' + runtime.runId);
   runtime.sourcePath = args.source ? resolve(args.source) : findSourceFile(DEFAULT_SOURCE_ROOT, SOURCE_FILE_NAME);
   assert(!runtime.g007Only || args.source,
@@ -3442,7 +4116,7 @@ async function main() {
 
   runtime.sourceSha256Before = sha256File(runtime.sourcePath);
   if (runtime.g007Only && !runtime.g007Baseline) {
-    assert(args.baselineReceipt, 'G007 after-layout verification requires --baseline-receipt from a successful same-source baseline run.');
+    assert(args.baselineReceipt, 'The after-layout G007/G008 verification requires --baseline-receipt from a successful same-source baseline run.');
     const baselineReceiptPath = resolve(args.baselineReceipt);
     assert(existsSync(baselineReceiptPath), 'The G007 same-source baseline receipt does not exist.');
     const baselineReceipt = JSON.parse(readFileSync(baselineReceiptPath, 'utf8'));
@@ -3483,11 +4157,16 @@ async function main() {
     const details = first && typeof first === 'object'
       ? first
       : { level: first, message: second, line: third, sourceId: fourth };
+    const diagnosticMessage = String(details.message ?? '');
+    if (diagnosticMessage.includes('currentFrameIndex') && diagnosticMessage.includes('too_big') &&
+      /"maximum"\s*:\s*24/u.test(diagnosticMessage)) {
+      runtime.currentFrameIndexProgressErrorCount += 1;
+    }
     if (runtime.rendererDiagnostics.length < 80) {
       runtime.rendererDiagnostics.push({
         type: 'console',
         level: details.level ?? null,
-        message: String(details.message ?? '').slice(0, 600),
+        message: diagnosticMessage.slice(0, 600),
         line: details.line ?? null,
         sourceId: details.sourceId ?? null,
       });
@@ -3510,13 +4189,16 @@ async function main() {
   assert(runtime.catalogResponses.length > 0, 'Main did not return a render-target catalog.');
 
   if (runtime.g007Only) {
-    runtime.failureStage = runtime.g007Baseline ? 'capture-g007-before-layout' : 'verify-g007-sequence-layout';
+    runtime.failureStage = runtime.g007Baseline
+      ? 'capture-g007-before-layout'
+      : runtime.g008Playback ? 'verify-g008-playback-layout' : 'verify-g007-sequence-layout';
     await waitForSnapshotCatalogScan(window);
     await verifySequence(window);
     if (!runtime.g007Baseline) verifyG007SameSourceComparison();
+    if (runtime.g008Playback) await verifyG008Playback(window);
     const sourceSha256After = sha256File(runtime.sourcePath);
     assert(sourceSha256After === runtime.sourceSha256Before,
-      'The original FLA changed during G007 sequence preview verification.');
+      'The original FLA changed during G007/G008 sequence preview verification.');
     runtime.assertions.originalFlaUnchanged = true;
     const requiredAssertions = [
       'sequenceFocusDoesNotRender',
@@ -3549,13 +4231,39 @@ async function main() {
         'sequenceErrorReadableAndRetryable',
         'sequenceFilmstripClickPreviewOnly',
       ]),
+      ...(runtime.g008Playback ? [
+        'g008AutoplayOffByDefault',
+        'g008FirstBatchCounterCorrect',
+        'g008PlaybackAdvances',
+        'g008PauseKeepsFrame',
+        'g008ResumeFromCurrentFrame',
+        'g008ThumbnailPausesPlayback',
+        'g008FilmstripFollowsHorizontally',
+        'g008ManualBoundariesDoNotWrap',
+        'g008AutoplayLoopsOnly',
+        'g008KeyboardAccessible',
+        'g008SelectedViewStopsPlayback',
+        'g008CandidateFocusInvalidatesPlayback',
+        'g008CandidateSelectionStable',
+        'g008WindowHideStopsPlayback',
+        'g008WindowShowDoesNotResume',
+        'g008PreviewOnlySafety',
+        'g008TouchControlsReachable',
+        'g008SecondBatchCounterCorrect',
+        'g008TailCounterCorrect',
+        'g008SingleFrameControlsDisabled',
+      ] : []),
     ];
     const missing = requiredAssertions.filter((name) => runtime.assertions[name] !== true);
     assert(missing.length === 0, 'Missing G007 evidence assertions: ' + missing.join(', '));
     await writeReceipt('PASS', {
-      issueNumber: 781,
-      captureRole: runtime.g007Baseline ? 'before-layout-capture' : 'after-layout-verification',
-      productAcceptance: 'OWNER_HUMAN_VISUAL_ACCEPTANCE_REQUIRED',
+      issueNumber: runtime.g008Playback ? 782 : 781,
+      captureRole: runtime.g007Baseline
+        ? 'before-layout-capture'
+        : runtime.g008Playback ? 'g008-playback-verification' : 'after-layout-verification',
+      productAcceptance: runtime.g008Playback
+        ? 'INDEPENDENT_REVIEW_AND_OWNER_WINDOWS_GATE_C_REQUIRED'
+        : 'OWNER_HUMAN_VISUAL_ACCEPTANCE_REQUIRED',
     });
     app.quit();
     return;

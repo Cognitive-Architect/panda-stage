@@ -266,3 +266,51 @@ describe('Issue #775 C03 unified candidate selection', () => {
     expect(afterTargetChange.has(flaUnifiedCandidateSelectionKey(composition))).toBe(true);
   });
 });
+
+describe('Issue #782 sequence preview frame identity', () => {
+  it('keeps selection and import authority stable while the preview frame hash changes', () => {
+    const entry = target('playback-sequence', 'playback-sequence', { kind: 'timeline', frameCount: 24 });
+    const requestId = 'sequence-playback-request-1';
+    const makeSequenceCandidate = (sha256: string, previewUrl: string): FlaWorkbenchCandidate => {
+      const result = createFlaWorkbenchCandidates({
+        context,
+        sequenceEntries: [entry],
+        sequencePreviews: {
+          [entry.target.renderTargetId]: {
+            status: 'verified',
+            sha256,
+            previewUrl,
+            requestId,
+            startFrameIndex: 0,
+            endFrameIndex: 23,
+          },
+        },
+        selection: {
+          focusedCandidateId: entry.target.renderTargetId,
+          checkedCandidateIds: new Set([entry.target.renderTargetId]),
+        },
+      });
+      const candidate = result.find((item) => item.kind === 'sequence');
+      if (!candidate) throw new Error('Expected a sequence candidate.');
+      return candidate;
+    };
+
+    const firstFrame = makeSequenceCandidate('a'.repeat(64), 'blob:frame-1');
+    const nextFrame = makeSequenceCandidate('b'.repeat(64), 'blob:frame-2');
+    const firstKey = flaUnifiedCandidateSelectionKey(firstFrame);
+    const nextKey = flaUnifiedCandidateSelectionKey(nextFrame);
+
+    expect(nextFrame.identityKey).toBe(firstFrame.identityKey);
+    expect(nextKey).toBe(firstKey);
+    expect(nextFrame.checked).toBe(true);
+    expect(nextFrame.preview.requestId).toBe(requestId);
+    expect(nextFrame.operation).toEqual(firstFrame.operation);
+    expect(nextFrame.preview.bindingKey).not.toBe(firstFrame.preview.bindingKey);
+    expect(nextFrame.dedupeGroupId).not.toBe(firstFrame.dedupeGroupId);
+
+    const checks = new Map([[firstKey, describeFlaUnifiedCandidate(firstFrame)]]);
+    const reconciled = reconcileFlaUnifiedSelection(checks, 'sequence', new Set([nextKey]));
+    expect(reconciled).toBe(checks);
+    expect(reconciled.has(firstKey)).toBe(true);
+  });
+});

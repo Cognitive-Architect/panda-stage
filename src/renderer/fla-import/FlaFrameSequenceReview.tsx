@@ -19,7 +19,7 @@
  *  - focusing a filmstrip frame changes review focus only, never R2 authority.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type {
   FlaRenderableTargetCatalogEntry,
@@ -53,6 +53,11 @@ import {
   validateRange,
 } from './fla-frame-sequence-review-state';
 import {
+  flaSequencePlaybackReducer,
+  FLA_SEQUENCE_PREVIEW_INTERVAL_MS,
+  initialFlaSequencePlaybackState,
+} from './fla-frame-sequence-playback-state';
+import {
   createFlaWorkbenchCandidateSelection,
   createFlaWorkbenchCandidates,
   type FlaWorkbenchCandidate,
@@ -64,6 +69,8 @@ import {
   type FlaUnifiedImportRunner,
   type FlaUnifiedRouteResult,
 } from './fla-unified-import';
+
+const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 interface FlaFrameSequenceReviewProps {
   sessionId: string;
@@ -82,6 +89,7 @@ interface FlaFrameSequenceReviewProps {
   focusedCandidateIdentityKey?: string | null;
   onCandidatesChange?: (candidates: readonly FlaWorkbenchCandidate[]) => void;
   showUnifiedSequencePreview?: boolean;
+  selectedOnlyView?: boolean;
 }
 
 function handleSequenceActionKeyDown(
@@ -120,6 +128,7 @@ export function FlaFrameSequenceReview({
   focusedCandidateIdentityKey,
   onCandidatesChange,
   showUnifiedSequencePreview = true,
+  selectedOnlyView = false,
 }: FlaFrameSequenceReviewProps): React.JSX.Element {
   const [phase, setPhase] = useState<RenderPhase>('loading');
   const [entries, setEntries] = useState<FlaRenderableTargetCatalogEntry[]>([]);
@@ -133,7 +142,14 @@ export function FlaFrameSequenceReview({
   const [completedFrameCount, setCompletedFrameCount] = useState(0);
   const [success, setSuccess] = useState<FlaFrameSequenceSuccess | null>(null);
   const [previewUrls, setPreviewUrls] = useState<ReadonlyArray<string>>([]);
-  const [selectedPreviewIndex, setSelectedPreviewIndex] = useState(0);
+  const [playbackState, dispatchPlayback] = useReducer(
+    flaSequencePlaybackReducer,
+    initialFlaSequencePlaybackState,
+  );
+  const selectedPreviewIndex = playbackState.selectedIndex;
+  const [documentVisible, setDocumentVisible] = useState(
+    () => typeof document === 'undefined' || document.visibilityState === 'visible',
+  );
   const [errorMessage, setErrorMessage] = useState('');
 
   // R2-D: the latest completed sequence the UI has accepted. Only this one
@@ -147,6 +163,8 @@ export function FlaFrameSequenceReview({
   const acceptedRequestIdRef = useRef<string | null>(null);
   const latestSequenceRef = useRef<FlaFrameSequenceSuccess | null>(null);
   const catalogInitializedRef = useRef(false);
+  const filmstripRef = useRef<HTMLDivElement | null>(null);
+  const playbackSessionKeyRef = useRef<string | null>(null);
   // Problem B (Corrective #296): active progress subscription handle.
   // Subscribed only while a request is in flight; removed on
   // cancel / re-render / completion / unmount.
@@ -273,6 +291,81 @@ export function FlaFrameSequenceReview({
     () => new Set(sequenceCandidates.filter((candidate) => candidate.selectable).map(flaUnifiedCandidateSelectionKey)),
     [sequenceCandidates],
   );
+  const focusedSequenceCandidate = sequenceCandidates.find((candidate) =>
+    candidate.kind === 'sequence' && candidate.identityKey === focusedCandidateIdentityKey,
+  );
+  const focusedSequenceMatchesPreview = !focusedCandidateIdentityKey ||
+    focusedSequenceCandidate?.operation.target.renderTargetId === success?.renderTargetId;
+  const canNavigatePreview = Boolean(
+    sequenceIsCurrent && hasPreview && showUnifiedSequencePreview && focusedSequenceMatchesPreview &&
+      !importLocked && documentVisible,
+  );
+  const playbackContextKey = canNavigatePreview && displayedSequenceItems.length >= 2 && success && renderedRange
+    ? JSON.stringify([
+        sessionId,
+        source.sha256,
+        success.renderTargetId,
+        success.requestId,
+        renderedRange.startFrameIndex,
+        renderedRange.endFrameIndex,
+        focusedCandidateIdentityKey ?? null,
+        selectedOnlyView,
+      ])
+    : null;
+  playbackSessionKeyRef.current = playbackContextKey;
+
+  const stopPlayback = useCallback(() => {
+    dispatchPlayback({ type: 'invalidate' });
+  }, []);
+
+  useIsomorphicLayoutEffect(() => {
+    if (playbackState.isPlaying && playbackState.activeSessionKey !== playbackContextKey) {
+      dispatchPlayback({ type: 'invalidate' });
+    }
+  }, [playbackContextKey, playbackState.activeSessionKey, playbackState.isPlaying]);
+
+  useEffect(() => {
+    const syncVisibility = (): void => {
+      const visible = document.visibilityState === 'visible';
+      setDocumentVisible(visible);
+      if (!visible) stopPlayback();
+    };
+    document.addEventListener('visibilitychange', syncVisibility);
+    syncVisibility();
+    return () => document.removeEventListener('visibilitychange', syncVisibility);
+  }, [stopPlayback]);
+
+  useEffect(() => {
+    const { activeSessionKey, generation, isPlaying } = playbackState;
+    if (!isPlaying || !activeSessionKey || activeSessionKey !== playbackContextKey) return undefined;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible' || playbackSessionKeyRef.current !== activeSessionKey) {
+        dispatchPlayback({ type: 'invalidate' });
+        return;
+      }
+      dispatchPlayback({ type: 'tick', sessionKey: activeSessionKey, generation });
+    }, FLA_SEQUENCE_PREVIEW_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [playbackContextKey, playbackState.activeSessionKey, playbackState.frameCount, playbackState.generation, playbackState.isPlaying]);
+
+  useIsomorphicLayoutEffect(() => {
+    if (!selectedPreviewItem) return;
+    const strip = filmstripRef.current;
+    const selectedButton = strip?.querySelector<HTMLButtonElement>(
+      `[data-frame-index="${selectedPreviewItem.frameIndex}"]`,
+    );
+    if (!strip || !selectedButton) return;
+    const stripBounds = strip.getBoundingClientRect();
+    const buttonBounds = selectedButton.getBoundingClientRect();
+    const visibleLeft = stripBounds.left + strip.clientLeft + 5;
+    const visibleRight = stripBounds.right - strip.clientLeft - 5;
+    if (buttonBounds.left < visibleLeft) {
+      strip.scrollLeft -= visibleLeft - buttonBounds.left;
+    } else if (buttonBounds.right > visibleRight) {
+      strip.scrollLeft += buttonBounds.right - visibleRight;
+    }
+  }, [selectedPreviewItem?.frameIndex]);
+
   const visibleEntries = useMemo(() => {
     const query = targetSearch.trim().toLocaleLowerCase();
     if (!query) return entries;
@@ -369,11 +462,12 @@ export function FlaFrameSequenceReview({
   }, [sessionId]);
 
   const clearPreviewResources = (): void => {
+    stopPlayback();
     setPreviewUrls((current) => {
       for (const url of current) URL.revokeObjectURL(url);
       return [];
     });
-    setSelectedPreviewIndex(0);
+    dispatchPlayback({ type: 'load', frameCount: 0 });
   };
 
   // Editing the target or range currently bound to a render invalidates that
@@ -449,6 +543,7 @@ export function FlaFrameSequenceReview({
   };
 
   const renderSequence = async (): Promise<void> => {
+    stopPlayback();
     if (!selectedEntry || !validation.valid || !snapshot) return;
     const renderTargetId = selectedEntry.target.renderTargetId;
     const range = buildRange(renderTargetId, startFrameIndex, endFrameIndex);
@@ -500,7 +595,7 @@ export function FlaFrameSequenceReview({
         const urls = buildPreviewUrls(response);
         setSuccess(response);
         setPreviewUrls(urls);
-        setSelectedPreviewIndex(0);
+        dispatchPlayback({ type: 'load', frameCount: urls.length });
         acceptedRequestIdRef.current = response.requestId;
         latestSequenceRef.current = response;
         setPhase('preview-ready');
@@ -522,6 +617,7 @@ export function FlaFrameSequenceReview({
 
   const cancelSequence = async (): Promise<void> => {
     if (phase !== 'rendering') return;
+    stopPlayback();
     const requestId = activeRequestIdRef.current;
     progressUnsubRef.current?.();
     progressUnsubRef.current = null;
@@ -545,6 +641,7 @@ export function FlaFrameSequenceReview({
 
   const rerenderSequence = async (): Promise<void> => {
     // Corrective C: re-render invalidates the prior commit candidate.
+    stopPlayback();
     progressUnsubRef.current?.();
     progressUnsubRef.current = null;
     activeRequestIdRef.current = null;
@@ -758,6 +855,7 @@ export function FlaFrameSequenceReview({
     candidate.kind === 'sequence' && candidate.operation.target.renderTargetId === selectedTargetId && candidate.selectable,
   )) && !importLocked;
   const updateStartFrameOneBased = (value: number): void => {
+    stopPlayback();
     const nextStartFrameIndex = Math.trunc(value) - 1;
     const lastFrameIndex = Math.max(0, targetFrameCount - 1);
     setStartFrameIndex(nextStartFrameIndex);
@@ -834,6 +932,7 @@ export function FlaFrameSequenceReview({
                         checked={entryTarget.renderTargetId === selectedTargetId}
                         disabled={!entry.previewSupported || intentLocked}
                         onChange={() => {
+                          stopPlayback();
                           const defaultRange = getDefaultSequenceRange(entryTarget.frameCount);
                           setSelectedTargetId(entryTarget.renderTargetId);
                           setFocusedTargetId(entryTarget.renderTargetId);
@@ -910,15 +1009,39 @@ export function FlaFrameSequenceReview({
           <div
             className="fla-frame-sequence-preview-stage"
             data-preview-state={previewState}
+            data-preview-frame-index={selectedPreviewItem?.frameIndex}
             data-preview-target-id={previewTargetId ?? undefined}
             data-testid="fla-frame-sequence-preview-area"
           >
             {selectedPreviewUrl && selectedPreviewItem ? (
-              <img
-                alt={`${target.userLabel} 第 ${selectedPreviewItem.frameIndex + 1} 帧预览`}
-                data-testid="fla-frame-sequence-preview-image"
-                src={selectedPreviewUrl}
-              />
+              <>
+                <button
+                  aria-label="上一帧"
+                  className="fla-frame-sequence-step-button is-previous"
+                  data-testid="fla-frame-sequence-previous"
+                  disabled={!canNavigatePreview || displayedSequenceItems.length < 2 || selectedPreviewIndex === 0}
+                  onClick={() => dispatchPlayback({ type: 'step', direction: -1 })}
+                  type="button"
+                >
+                  ‹
+                </button>
+                <img
+                  alt={`${target.userLabel} 第 ${selectedPreviewItem.frameIndex + 1} 帧预览`}
+                  data-frame-index={selectedPreviewItem.frameIndex}
+                  data-testid="fla-frame-sequence-preview-image"
+                  src={selectedPreviewUrl}
+                />
+                <button
+                  aria-label="下一帧"
+                  className="fla-frame-sequence-step-button is-next"
+                  data-testid="fla-frame-sequence-next"
+                  disabled={!canNavigatePreview || displayedSequenceItems.length < 2 || selectedPreviewIndex >= displayedSequenceItems.length - 1}
+                  onClick={() => dispatchPlayback({ type: 'step', direction: 1 })}
+                  type="button"
+                >
+                  ›
+                </button>
+              </>
             ) : (
               <div className="fla-frame-sequence-preview-placeholder" data-testid="fla-frame-sequence-preview-placeholder">
                 <strong>
@@ -1046,9 +1169,41 @@ export function FlaFrameSequenceReview({
           <div className="fla-frame-sequence-filmstrip-region" data-testid="fla-frame-sequence-filmstrip-region">
             <header className="fla-frame-sequence-filmstrip-heading">
               <span>序列预览</span>
+            <div className="fla-frame-sequence-filmstrip-controls">
+              {hasPreview ? (
+                <output
+                  data-batch-frame-index={selectedPreviewIndex + 1}
+                  data-frame-count={displayedSequenceItems.length}
+                  data-testid="fla-frame-sequence-frame-counter"
+                >
+                  第 {selectedPreviewIndex + 1} / {displayedSequenceItems.length} 帧
+                </output>
+              ) : null}
+              <button
+                aria-label={playbackState.isPlaying ? '暂停序列播放' : '播放序列'}
+                aria-pressed={playbackState.isPlaying}
+                className="fla-frame-sequence-playback-button"
+                data-playing={playbackState.isPlaying ? 'true' : 'false'}
+                data-testid="fla-frame-sequence-playback"
+                disabled={!playbackContextKey}
+                onClick={() => {
+                  if (playbackState.isPlaying) dispatchPlayback({ type: 'pause' });
+                  else if (playbackContextKey) dispatchPlayback({ type: 'play', sessionKey: playbackContextKey });
+                }}
+                type="button"
+              >
+                {playbackState.isPlaying ? '⏸ 暂停' : '▶ 播放'}
+              </button>
               <small>{displayedSequenceItems.length > 0 ? `${displayedSequenceItems.length} 帧` : '尚未生成'}</small>
+            </div>
             </header>
-            <div className="fla-frame-sequence-filmstrip" data-testid="fla-frame-sequence-filmstrip" role="list" aria-label="已生成帧序列">
+          <div
+            className="fla-frame-sequence-filmstrip"
+            data-testid="fla-frame-sequence-filmstrip"
+            ref={filmstripRef}
+            role="list"
+            aria-label="已生成帧序列"
+          >
               {displayedSequenceItems.length > 0 ? displayedSequenceItems.map((item, index) => {
                 const url = displayedPreviewUrls[index];
                 return (
@@ -1059,7 +1214,7 @@ export function FlaFrameSequenceReview({
                       className={selectedPreviewIndex === index ? 'is-selected' : undefined}
                       data-frame-index={item.frameIndex}
                       data-testid={`fla-frame-sequence-filmstrip-item-${item.frameIndex}`}
-                      onClick={() => setSelectedPreviewIndex(index)}
+                      onClick={() => dispatchPlayback({ type: 'select', selectedIndex: index })}
                       type="button"
                     >
                       <span className="fla-frame-sequence-filmstrip-thumb">

@@ -72,6 +72,21 @@ describe('R2-H.2 shares the C03 unified candidate workbench', () => {
     expect(review).toContain("if (event.key !== 'Enter' || event.repeat) return;");
     expect(review.match(/onKeyDown=\{\(event\) => handleSequenceActionKeyDown\(event, \(\) => void (?:renderSequence|cancelSequence|rerenderSequence)\(\)\)\}/gu)).toHaveLength(6);
   });
+
+  it('wires G008 playback, manual stepping, frame count, visibility, and horizontal filmstrip follow', () => {
+    expect(review).toContain('flaSequencePlaybackReducer');
+    expect(review).toContain('data-testid="fla-frame-sequence-playback"');
+    expect(review).toContain('data-testid="fla-frame-sequence-previous"');
+    expect(review).toContain('data-testid="fla-frame-sequence-next"');
+    expect(review).toContain('data-testid="fla-frame-sequence-frame-counter"');
+    expect(review).toContain('selectedOnlyView');
+    expect(review).toContain("document.visibilityState !== 'visible'");
+    expect(review).toContain('strip.scrollLeft');
+
+    const counterStart = review.indexOf('data-testid="fla-frame-sequence-frame-counter"');
+    expect(counterStart).toBeGreaterThanOrEqual(0);
+    expect(review.slice(counterStart - 260, counterStart + 170)).not.toContain('aria-live');
+  });
 });
 
 describe('R2-H.2 Problem A/B: gateway UI gating (#296)', () => {

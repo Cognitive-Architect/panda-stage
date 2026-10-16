@@ -29,6 +29,7 @@
 @import './styles/features/fla-import/render/s03-05--render-bounded-v11.css';
 @import './styles/shell/project-entry/s03-06--launcher-412.css';
 @import './styles/features/fla-import/sequence/s04-02--sequence-e-and-scroll.css';
+@import './styles/features/fla-import/sequence/g008-playback-navigation.css';
 @import './styles/features/fla-import/render/s04-03--render-shell-and-snapshot-d.css';
 @import './styles/base/native-foundation/s04-04--sr-only.css';
 @import './styles/features/fla-import/render/s04-05--render-responsive-tail.css';

@@ -1,0 +1,105 @@
+/* Issue #782: controls for the generated sequence preview and filmstrip. */
+.fla-frame-sequence-preview-stage {
+  position: relative;
+}
+
+.fla-frame-sequence-step-button {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid rgb(231 240 233 / 38%);
+  border-radius: 50%;
+  background: rgb(19 29 23 / 88%);
+  color: #e7f0e9;
+  cursor: pointer;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  place-items: center;
+  transform: translateY(-50%);
+  touch-action: manipulation;
+}
+
+.fla-frame-sequence-step-button.is-previous {
+  left: 8px;
+}
+
+.fla-frame-sequence-step-button.is-next {
+  right: 8px;
+}
+
+.fla-frame-sequence-step-button:hover:not(:disabled) {
+  border-color: #83d39a;
+  background: rgb(23 49 31 / 94%);
+}
+
+.fla-frame-sequence-step-button:focus-visible,
+.fla-frame-sequence-playback-button:focus-visible {
+  outline: 2px solid #a8e6b6;
+  outline-offset: 2px;
+}
+
+.fla-frame-sequence-step-button:disabled {
+  color: #87988e;
+  cursor: default;
+  opacity: 0.52;
+}
+
+.fla-frame-sequence-filmstrip-controls {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.fla-frame-sequence-filmstrip-controls > output {
+  color: #b7eac3;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.fla-frame-sequence-playback-button {
+  min-height: 44px;
+  padding: 0 11px;
+  border: 1px solid rgb(131 211 154 / 36%);
+  border-radius: 8px;
+  background: rgb(45 104 62 / 22%);
+  color: #dce8df;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  touch-action: manipulation;
+}
+
+.fla-frame-sequence-playback-button:hover:not(:disabled) {
+  border-color: #83d39a;
+  background: rgb(45 104 62 / 34%);
+}
+
+.fla-frame-sequence-playback-button:disabled {
+  color: #87988e;
+  cursor: default;
+  opacity: 0.55;
+}
+
+@media (max-width: 620px) {
+  .fla-frame-sequence-filmstrip-heading {
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .fla-frame-sequence-filmstrip-controls {
+    max-width: 100%;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+}

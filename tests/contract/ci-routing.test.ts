@@ -168,6 +168,21 @@ describe('RH-07 FAST Draft policy', () => {
     ]);
   });
 
+  it('routes only the bounded Issue #782 evidence directory through policy self-tests', () => {
+    const result = draft([
+      change('docs/evidence/issue-782-g008/run-2026-10-16/receipt.json', 'A'),
+    ]);
+    expect(result).toMatchObject({
+      tier: 'ci-selftest',
+      matchedRouteIds: ['issue782-g008-acceptance-evidence'],
+      unknownPaths: [],
+    });
+
+    const neighbor = draft([change('docs/evidence/issue-783/receipt.json', 'A')]);
+    expect(neighbor.tier).toBe('unknown');
+    expect(neighbor.unknownPaths).toEqual(['docs/evidence/issue-783/receipt.json']);
+  });
+
   it('routes Issue #742 experiment evidence through CI policy self-tests only', () => {
     const result = draft([
       change('docs/evidence/issue-742/receipt.json', 'A'),

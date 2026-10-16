@@ -626,6 +626,7 @@ export function FlaCompatibilityReviewSession({
       onCandidatesChange={setSequenceCandidates}
       focusedCandidateIdentityKey={focusedSequenceCandidate?.identityKey ?? null}
       showUnifiedSequencePreview={showGeneratedSequencePreview}
+      selectedOnlyView={selectedOnly}
       presentation="unified-preview"
       sessionId={sessionId}
       source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}

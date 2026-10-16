@@ -26,7 +26,7 @@ describe('Issue #399 Stage E frame-sequence workbench contract', () => {
       expect(sequence).toContain(`data-testid="${testId}"`);
     }
     expect(sequence).toContain('selectedPreviewIndex');
-    expect(sequence).toContain('setSelectedPreviewIndex(index)');
+    expect(sequence).toContain("dispatchPlayback({ type: 'select', selectedIndex: index })");
     expect(sequence).not.toContain('previewUrls.map((url, index) =>');
     expect(sequence).not.toContain('<fieldset className="fla-frame-sequence-range"');
   });
