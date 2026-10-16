@@ -2164,6 +2164,13 @@ async function verifySequence(window) {
   runtime.screenshots.sequenceBeforeGeneration = await capture(window, 'sequence-before-generation');
   if (runtime.g007Only && !runtime.g007Baseline) await verifySequenceErrorState(window);
   const firstCount = Math.min(target.frameCount, 24);
+  const firstGenerationBefore = runtime.g007Only && !runtime.g007Baseline ? {
+    project: await readProjectState(runtime.project.root),
+    selection: await readCandidateFacts(window),
+    sequenceRenderCount: runtime.sequenceRenders.length,
+    snapshotCommitCount: runtime.snapshotCommits.length,
+    rasterCommitCount: runtime.rasterCommits.length,
+  } : null;
   const first = await renderSequenceRange(
     window,
     target,
@@ -2175,6 +2182,31 @@ async function verifySequence(window) {
   assert(first.range.endFrameIndex - first.range.startFrameIndex + 1 === 24,
     'A sequence range starting at frame 1 did not reach the 24-frame cap.');
   runtime.assertions.sequenceStartsAtOneAndCapsAt24 = true;
+  if (firstGenerationBefore) {
+    const projectAfter = await readProjectState(runtime.project.root);
+    const selectionAfter = await readCandidateFacts(window);
+    assert(firstGenerationBefore.selection.selectedCount === selectionAfter.selectedCount &&
+      selectionAfter.selectedCount === 0 &&
+      runtime.sequenceRenders.length === firstGenerationBefore.sequenceRenderCount + 1 &&
+      runtime.snapshotCommits.length === firstGenerationBefore.snapshotCommitCount &&
+      runtime.rasterCommits.length === firstGenerationBefore.rasterCommitCount &&
+      firstGenerationBefore.project.sha256 === projectAfter.sha256 &&
+      firstGenerationBefore.project.revision === projectAfter.revision,
+    'Successful sequence generation selected a candidate, committed an import route, or modified the project.');
+    runtime.layout.sequenceGenerationDoesNotImport = {
+      projectSha256Before: firstGenerationBefore.project.sha256,
+      projectSha256After: projectAfter.sha256,
+      projectRevisionBefore: firstGenerationBefore.project.revision,
+      projectRevisionAfter: projectAfter.revision,
+      selectedCountBefore: firstGenerationBefore.selection.selectedCount,
+      selectedCountAfter: selectionAfter.selectedCount,
+      sequenceRenderCountBefore: firstGenerationBefore.sequenceRenderCount,
+      sequenceRenderCountAfter: runtime.sequenceRenders.length,
+      snapshotCommits: runtime.snapshotCommits.length,
+      rasterCommits: runtime.rasterCommits.length,
+    };
+    runtime.assertions.sequenceGenerationDoesNotImport = true;
+  }
   if (runtime.g007Only && !runtime.g007Baseline) await verifyFilmstripPreviewOnly(window);
   const sequenceVisual = await inPage(window, () => {
     const range = document.querySelector('[data-testid="fla-frame-sequence-range"]');
@@ -2260,6 +2292,37 @@ async function verifySequence(window) {
   );
   const selectedAfterRangeChange = await readCandidateFacts(window);
   assert(selectedAfterRangeChange.selectedCount === 0, 'Changing range retained a checked stale sequence.');
+  const stalePreview = await waitForPage(window, () => {
+    const status = document.querySelector('[data-testid="fla-frame-sequence-preview-status"]');
+    const render = document.querySelector('[data-testid="fla-frame-sequence-render"]');
+    const previewImage = document.querySelector('[data-testid="fla-frame-sequence-preview-image"]');
+    const filmstripFrameCount = document.querySelectorAll('[data-testid="fla-frame-sequence-filmstrip"] [data-frame-index]').length;
+    const staleRerenderAction = document.querySelector('[data-testid="fla-frame-sequence-rerender"]');
+    if (status?.dataset.previewState !== 'needs-preview' || previewImage || filmstripFrameCount !== 0 ||
+      staleRerenderAction || !(render instanceof HTMLButtonElement) || render.disabled) return null;
+    return {
+      status: status.textContent?.trim() ?? '',
+      previewState: status.dataset.previewState,
+      rangeSummary: document.querySelector('[data-testid="fla-frame-sequence-range-summary"]')?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+      previewImage: Boolean(previewImage),
+      filmstripFrameCount,
+      staleRerenderAction: Boolean(staleRerenderAction),
+      retryActionEnabled: !render.disabled,
+    };
+  }, [], 30_000);
+  assert(stalePreview.previewState === 'needs-preview' && stalePreview.rangeSummary === '第 25–48 帧 · 共 24 帧' &&
+    !stalePreview.previewImage && stalePreview.filmstripFrameCount === 0 &&
+    !stalePreview.staleRerenderAction && stalePreview.retryActionEnabled,
+  'Changing the start frame left an old sequence visible or blocked generation for the new range: ' +
+    JSON.stringify(stalePreview));
+  if (runtime.g007Only && !runtime.g007Baseline) {
+    runtime.layout.sequenceRangeChange = stalePreview;
+    runtime.assertions.sequenceRangeChangeClearsPriorPreview = true;
+    runtime.screenshots.sequenceRangeChangeClearsPriorPreview = await capture(
+      window,
+      'sequence-range-change-clears-stale-preview',
+    );
+  }
   runtime.assertions.sequenceRangeChangeInvalidatesCheck = true;
   const secondCount = Math.min(target.frameCount, 48) - 24;
   assert(secondCount > 0 && secondCount <= 24, 'The target cannot produce a legal segment starting at frame 25.');
@@ -3421,6 +3484,8 @@ async function main() {
         'sequenceControlsSeparatedFromCanvas',
         'sequenceDefaultRangeSummaryCorrect',
         'g007OrdinaryPreviewUnaffected',
+        'sequenceGenerationDoesNotImport',
+        'sequenceRangeChangeClearsPriorPreview',
         'sequenceErrorReadableAndRetryable',
         'sequenceFilmstripClickPreviewOnly',
       ]),
