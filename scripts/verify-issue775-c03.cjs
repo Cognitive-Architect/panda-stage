@@ -4,8 +4,9 @@
  * Issue #775 C03 bounded Windows Electron workbench evidence.
  *
  * The real source FLA is opened read-only. Test projects and the Electron
- * profile live under the external acceptance root. Screenshots and bounded
- * receipts are written to docs/evidence/issue-775-c03.
+ * profile live under the external acceptance root. Evidence defaults to
+ * docs/evidence/issue-775-c03; --g007-only supports the bounded Issue #781
+ * run, and --g007-baseline captures the same source against the old layout.
  */
 
 'use strict';
@@ -76,6 +77,9 @@ const runtime = {
   syntheticUnsupportedOverlay: null,
   sourceCatalogCounts: null,
   snapshotCommitGate: null,
+  g007Only: false,
+  g007Baseline: false,
+  g007BaselineReceipt: null,
 };
 
 function createGate() {
@@ -96,6 +100,9 @@ function parseArgs(argv) {
     if (argv[index] === '--acceptance-root') args.acceptanceRoot = argv[++index];
     else if (argv[index] === '--evidence-root') args.evidenceRoot = argv[++index];
     else if (argv[index] === '--source') args.source = argv[++index];
+    else if (argv[index] === '--g007-only') args.g007Only = true;
+    else if (argv[index] === '--g007-baseline') args.g007Baseline = true;
+    else if (argv[index] === '--baseline-receipt') args.baselineReceipt = argv[++index];
   }
   return args;
 }
@@ -283,6 +290,7 @@ async function sendInputKey(window, keyCode) {
   };
   window.webContents.on('before-input-event', recordMainInput);
   window.webContents.sendInputEvent({ type: 'keyDown', keyCode });
+  await delay(80);
   window.webContents.sendInputEvent({ type: 'keyUp', keyCode });
   await delay(120);
   window.webContents.removeListener('before-input-event', recordMainInput);
@@ -872,9 +880,13 @@ function findLongSequenceEntry() {
   const entries = runtime.catalogResponses
     .filter((response) => response.includeAuthoredStates === false)
     .flatMap((response) => response.entries);
-  return entries.find((entry) =>
+  const eligible = entries.filter((entry) =>
     entry.frameCount >= 26 && entry.previewSupported && !entry.isBlank,
-  ) ?? null;
+  );
+  if (runtime.g007Only) {
+    return eligible.reduce((longest, entry) => !longest || entry.frameCount > longest.frameCount ? entry : longest, null);
+  }
+  return eligible[0] ?? null;
 }
 
 async function readProjectState(projectRoot) {
@@ -961,6 +973,27 @@ async function waitForPreviewGate(window) {
     );
     runtime.assertions.progressiveLoadCaptured = false;
   }
+}
+
+async function waitForSnapshotCatalogScan(window) {
+  const readState = () => inPage(window, () => {
+    const rows = [...document.querySelectorAll('.fla-c03-candidate[data-candidate-kind="snapshot"]')];
+    return {
+      candidateCount: rows.length,
+      unresolvedCount: rows.filter((row) => ['checking', 'unscanned'].includes(row.dataset.previewStatus)).length,
+      progressText: document.querySelector('[data-testid="fla-c03-catalog-progress"]')?.textContent?.trim() ?? '',
+    };
+  });
+  try {
+    await waitForPage(window, () => {
+      const rows = [...document.querySelectorAll('.fla-c03-candidate[data-candidate-kind="snapshot"]')];
+      return rows.length > 0 && rows.every((row) => !['checking', 'unscanned'].includes(row.dataset.previewStatus));
+    }, [], 180_000);
+  } catch (error) {
+    runtime.layout.g007SnapshotScan = await readState();
+    throw error;
+  }
+  runtime.layout.g007SnapshotScan = await readState();
 }
 
 async function verifySelectionAndList(window) {
@@ -1393,22 +1426,96 @@ async function focusPreviewStatus(window, status) {
   return focused;
 }
 
-async function renderSequenceRange(window, target, startOneBased, expectedCount, screenshotName) {
+async function renderSequenceRange(window, target, startOneBased, expectedCount, screenshotName, activation = 'mouse') {
   await setInput(window, '[data-testid="fla-frame-sequence-start"]', String(startOneBased));
   const startIndex = startOneBased - 1;
   const endIndex = Math.min(target.frameCount - 1, startIndex + 23);
-  await waitForPage(window, (expectedStart, expectedEnd, expectedUiStart) => {
+  const expectedSummary = `第 ${startOneBased}–${endIndex + 1} 帧 · 共 ${expectedCount} 帧`;
+  await waitForPage(window, (expectedStart, expectedEnd, expectedUiStart, summaryText, checkSummary) => {
     const range = document.querySelector('[data-testid="fla-frame-sequence-range"]');
     const input = document.querySelector('[data-testid="fla-frame-sequence-start"]');
+    const summary = document.querySelector('[data-testid="fla-frame-sequence-range-summary"]');
     return range?.dataset.rangeStart === expectedStart && range?.dataset.rangeEnd === expectedEnd &&
-      input?.value === expectedUiStart;
-  }, [String(startIndex), String(endIndex), String(startOneBased)]);
+      input?.value === expectedUiStart &&
+      (!checkSummary || summary?.textContent?.replace(/\s+/gu, ' ').trim() === summaryText);
+  }, [String(startIndex), String(endIndex), String(startOneBased), expectedSummary, !runtime.g007Baseline]);
+  await waitForPage(window, () => {
+    const button = document.querySelector('[data-testid="fla-frame-sequence-render"]');
+    return button instanceof HTMLButtonElement && !button.disabled;
+  }, [], 120_000);
+  runtime.layout.sequenceActionReady = await inPage(window, () => {
+    const button = document.querySelector('[data-testid="fla-frame-sequence-render"]');
+    const status = document.querySelector('[data-testid="fla-frame-sequence-preview-status"]');
+    return {
+      enabled: button instanceof HTMLButtonElement && !button.disabled,
+      previewState: status?.dataset.previewState ?? null,
+      focusedTargetId: document.querySelector('[data-testid="fla-frame-sequence-details-region"]')?.getAttribute('data-focused-target-id') ?? null,
+    };
+  });
   const beforeCount = runtime.sequenceRenders.length;
-  await click(window, '[data-testid="fla-frame-sequence-render"]');
-  await waitForPage(window, (expected) =>
-    document.querySelectorAll('[data-testid="fla-frame-sequence-filmstrip"] [data-frame-index]').length === expected &&
-    document.querySelector('[data-testid="fla-frame-sequence-preview-status"]')?.dataset.previewState === 'valid',
-  [expectedCount], 300_000);
+  if (runtime.g007Only) runtime.failureStage = 'g007-sequence-' + screenshotName;
+  if (activation === 'keyboard' || activation === 'keyboard-space') {
+    await inPage(window, () => document.querySelector('[data-testid="fla-frame-sequence-start"]')?.focus());
+    await sendInputKey(window, 'Tab');
+    const focus = await inPage(window, () => {
+      const button = document.querySelector('[data-testid="fla-frame-sequence-render"]');
+      const style = button ? getComputedStyle(button) : null;
+      return {
+        focused: document.activeElement === button,
+        outlineWidth: style ? Number.parseFloat(style.outlineWidth) : 0,
+        outlineStyle: style?.outlineStyle ?? 'none',
+        accessibleName: button?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+      };
+    });
+    assert(focus.focused && focus.outlineWidth >= 2 && focus.outlineStyle !== 'none' && focus.accessibleName,
+      'Tab did not reach the sequence action with a visible keyboard focus ring: ' + JSON.stringify(focus));
+    runtime.layout.sequenceOperationKeyboard = focus;
+    runtime.assertions.sequenceOperationKeyboardAccessible = true;
+    await sendInputKey(window, activation === 'keyboard-space' ? 'Space' : 'Enter');
+  } else {
+    await click(window, '[data-testid="fla-frame-sequence-render"]');
+  }
+  try {
+    runtime.layout.sequenceGenerationStarted = await waitForPage(window, () => {
+      const status = document.querySelector('[data-testid="fla-frame-sequence-preview-status"]');
+      const state = status?.dataset.previewState;
+      if (!['rendering', 'valid', 'error', 'cancelled'].includes(state ?? '')) return null;
+      return {
+        previewState: state,
+        progress: document.querySelector('[data-testid="fla-frame-sequence-progress"]')?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+        error: document.querySelector('[data-testid="fla-frame-sequence-error"]')?.textContent?.trim() ?? '',
+      };
+    }, [], 15_000);
+    assert(['rendering', 'valid'].includes(runtime.layout.sequenceGenerationStarted.previewState),
+      'Activating sequence generation reached a terminal state without a valid preview: ' +
+      JSON.stringify(runtime.layout.sequenceGenerationStarted));
+    if (activation === 'keyboard-space') runtime.assertions.sequenceSpaceActivatesOperation = true;
+    if (activation === 'keyboard') runtime.assertions.sequenceEnterActivatesOperation = true;
+  } catch (error) {
+    runtime.layout.sequenceGenerationFailure = await inPage(window, () => ({
+      previewState: document.querySelector('[data-testid="fla-frame-sequence-preview-status"]')?.dataset.previewState ?? null,
+      progress: document.querySelector('[data-testid="fla-frame-sequence-progress"]')?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+      error: document.querySelector('[data-testid="fla-frame-sequence-error"]')?.textContent?.trim() ?? '',
+      filmstripFrameCount: document.querySelectorAll('[data-testid="fla-frame-sequence-filmstrip"] [data-frame-index]').length,
+      renderButtonDisabled: document.querySelector('[data-testid="fla-frame-sequence-render"]')?.disabled ?? null,
+    }));
+    throw error;
+  }
+  try {
+    await waitForPage(window, (expected) =>
+      document.querySelectorAll('[data-testid="fla-frame-sequence-filmstrip"] [data-frame-index]').length === expected &&
+      document.querySelector('[data-testid="fla-frame-sequence-preview-status"]')?.dataset.previewState === 'valid',
+    [expectedCount], 300_000);
+  } catch (error) {
+    runtime.layout.sequenceGenerationFailure = await inPage(window, () => ({
+      previewState: document.querySelector('[data-testid="fla-frame-sequence-preview-status"]')?.dataset.previewState ?? null,
+      progress: document.querySelector('[data-testid="fla-frame-sequence-progress"]')?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+      error: document.querySelector('[data-testid="fla-frame-sequence-error"]')?.textContent?.trim() ?? '',
+      filmstripFrameCount: document.querySelectorAll('[data-testid="fla-frame-sequence-filmstrip"] [data-frame-index]').length,
+      renderButtonDisabled: document.querySelector('[data-testid="fla-frame-sequence-render"]')?.disabled ?? null,
+    }));
+    throw error;
+  }
   assert(runtime.sequenceRenders.length === beforeCount + 1, 'Sequence generation did not make exactly one Main request.');
   const request = runtime.sequenceRenders.at(-1);
   assert(request.ok && request.range.startFrameIndex === startIndex && request.range.endFrameIndex === endIndex,
@@ -1423,7 +1530,9 @@ async function readGeneratedSequencePreview(window) {
     const image = document.querySelector('[data-testid="fla-frame-sequence-preview-image"]');
     const range = document.querySelector('[data-testid="fla-frame-sequence-range"]');
     const filmstrip = document.querySelector('[data-testid="fla-frame-sequence-filmstrip-region"]');
-    const grid = document.querySelector('[data-testid="fla-c03-preview-stage"]');
+    const panel = document.querySelector('[data-testid="fla-c03-preview"]');
+    const slot = document.querySelector('[data-testid="fla-c03-sequence-preview-slot"]');
+    const legacyCanvas = document.querySelector('[data-testid="fla-c03-preview-stage"]');
     const rect = (element) => {
       if (!(element instanceof Element)) return null;
       const value = element.getBoundingClientRect();
@@ -1432,9 +1541,15 @@ async function readGeneratedSequencePreview(window) {
     };
     const previewRect = rect(preview);
     const imageRect = rect(image);
+    const rangeRect = rect(range);
+    const filmstripRect = rect(filmstrip);
     const style = image instanceof HTMLImageElement ? getComputedStyle(image) : null;
-    const gridStyle = grid ? getComputedStyle(grid) : null;
-    const zoom = Number.parseFloat(gridStyle?.getPropertyValue('--fla-c03-zoom') ?? 'NaN');
+    const panelStyle = panel ? getComputedStyle(panel) : null;
+    const container = slot ?? legacyCanvas;
+    const containerStyle = container ? getComputedStyle(container) : null;
+    const zoomValue = panelStyle?.getPropertyValue('--fla-c03-zoom').trim() ||
+      containerStyle?.getPropertyValue('--fla-c03-zoom').trim() || 'NaN';
+    const zoom = Number.parseFloat(zoomValue);
     const transformParts = style?.transform.match(/^matrix\(([^)]+)\)$/u)?.[1]
       ?.split(',').map((part) => Number(part.trim())) ?? [];
     const transformScale = transformParts.length === 6
@@ -1493,13 +1608,18 @@ async function readGeneratedSequencePreview(window) {
     }
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight, devicePixelRatio: window.devicePixelRatio },
-      container: rect(grid),
-      containerOverflow: gridStyle?.overflow ?? '',
+      container: rect(container),
+      containerOverflow: containerStyle?.overflow ?? '',
       preview: previewRect,
       image: imageRect,
-      range: rect(range),
-      filmstrip: rect(filmstrip),
-      gridRows: gridStyle?.gridTemplateRows ?? '',
+      range: rangeRect,
+      filmstrip: filmstripRect,
+      gridRows: containerStyle?.gridTemplateRows ?? '',
+      rangeOutsideCanvas: Boolean(range && !range.closest('.fla-c03-preview-stage')),
+      rangeBelowCanvas: Boolean(rangeRect && previewRect && rangeRect.top >= previewRect.bottom - 1),
+      filmstripBelowRange: Boolean(filmstripRect && rangeRect && filmstripRect.top >= rangeRect.bottom - 1),
+      rangeSummary: document.querySelector('[data-testid="fla-frame-sequence-range-summary"]')?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+      previewBackgroundImage: preview ? getComputedStyle(preview).backgroundImage : '',
       imageLoaded: image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
       objectFit: style?.objectFit ?? '',
       zoom,
@@ -1573,6 +1693,120 @@ async function dispatchTouchScroll(window, selector, deltaY) {
   }, selector);
 }
 
+async function verifySequence560CssBreakpointSimulation(window) {
+  const debuggerApi = window.webContents.debugger;
+  const attachedHere = !debuggerApi.isAttached();
+  if (attachedHere) debuggerApi.attach('1.3');
+  try {
+    await debuggerApi.sendCommand('Emulation.setDeviceMetricsOverride', {
+      width: 560,
+      // Keep the shell in landscape so its asset-library-owned review portal
+      // remains mounted while exercising the 560 CSS-pixel width breakpoint.
+      height: 500,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await delay(500);
+    await inPage(window, () => {
+      const workbench = document.querySelector('[data-testid="fla-c03-workbench"]');
+      if (workbench instanceof HTMLElement) workbench.scrollTop = 0;
+    });
+    const facts = await inPage(window, () => {
+      const workbench = document.querySelector('[data-testid="fla-c03-workbench"]');
+      const canvas = document.querySelector('[data-testid="fla-frame-sequence-preview-area"]');
+      const input = document.querySelector('[data-testid="fla-frame-sequence-start"]');
+      const action = document.querySelector('[data-testid="fla-frame-sequence-rerender"]');
+      const filmstripItem = document.querySelector('[data-testid="fla-frame-sequence-filmstrip"] button');
+      const size = (element) => {
+        const rect = element?.getBoundingClientRect();
+        return { width: rect?.width ?? 0, height: rect?.height ?? 0 };
+      };
+      const workbenchRect = workbench?.getBoundingClientRect();
+      const canvasRect = canvas?.getBoundingClientRect();
+      return {
+        viewport: {
+          width: window.innerWidth,
+          height: window.innerHeight,
+          devicePixelRatio: window.devicePixelRatio,
+        },
+        breakpointActive: window.matchMedia('(max-width: 560px)').matches,
+        pageDiagnostics: {
+          url: window.location.href,
+          title: document.title,
+          readyState: document.readyState,
+          bodyText: document.body?.innerText?.slice(0, 500) ?? '',
+          bodyChildCount: document.body?.children.length ?? 0,
+          workbenchCount: document.querySelectorAll('[data-testid="fla-c03-workbench"]').length,
+        },
+        canvasFullyVisibleWithoutScrolling: Boolean(workbenchRect && canvasRect &&
+          canvasRect.top >= workbenchRect.top - 1 && canvasRect.bottom <= workbenchRect.bottom + 1),
+        rangeInputSize: size(input),
+        actionSize: size(action),
+        filmstripItemSize: size(filmstripItem),
+      };
+    });
+    runtime.layout.sequence560CssBreakpointSimulation = {
+      inputMethod: 'Chromium CDP Emulation.setDeviceMetricsOverride',
+      windowsNativeMeasurement: false,
+      emulatedDeviceScaleFactor: 1,
+      ...facts,
+    };
+    runtime.screenshots.sequence560CssBreakpointSimulation = await capture(
+      window,
+      'sequence-generated-560-css-simulation',
+    );
+    const touch = await dispatchTouchScroll(
+      window,
+      '[data-testid="fla-c03-workbench"]',
+      260,
+    );
+    const reachability = await inPage(window, () => {
+      const workbench = document.querySelector('[data-testid="fla-c03-workbench"]');
+      const rangeInput = document.querySelector('[data-testid="fla-frame-sequence-start"]');
+      const action = document.querySelector('[data-testid="fla-frame-sequence-rerender"]');
+      const filmstripItem = document.querySelector('[data-testid="fla-frame-sequence-filmstrip"] button');
+      const visible = (element) => {
+        if (!(workbench instanceof HTMLElement) || !(element instanceof Element)) return false;
+        const rect = element.getBoundingClientRect();
+        const parent = workbench.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 &&
+          rect.left >= parent.left - 1 && rect.right <= parent.right + 1 &&
+          rect.top >= parent.top - 1 && rect.bottom <= parent.bottom + 1 &&
+          rect.left >= 0 && rect.right <= window.innerWidth &&
+          rect.top >= 0 && rect.bottom <= window.innerHeight;
+      };
+      return {
+        rangeInputVisible: visible(rangeInput),
+        actionVisible: visible(action),
+        filmstripItemVisible: visible(filmstripItem),
+        workbenchScrollTop: workbench instanceof HTMLElement ? workbench.scrollTop : 0,
+      };
+    });
+    runtime.layout.sequence560CssBreakpointSimulation.touch = touch;
+    runtime.layout.sequence560CssBreakpointSimulation.controlsReachableAfterTouch = reachability;
+    runtime.screenshots.sequence560CssBreakpointSimulationControls = await capture(
+      window,
+      'sequence-generated-560-css-simulation-controls',
+    );
+    assert(facts.viewport.width === 560 && facts.breakpointActive &&
+      facts.canvasFullyVisibleWithoutScrolling &&
+      facts.rangeInputSize.width >= 44 && facts.rangeInputSize.height >= 44 &&
+      facts.actionSize.width >= 44 && facts.actionSize.height >= 44 &&
+      facts.filmstripItemSize.width >= 44 && facts.filmstripItemSize.height >= 44 &&
+      touch?.touchStartCount > 0 && touch.touchMoveCount > 0 && touch.scrollTopAfter > touch.scrollTopBefore &&
+      reachability.rangeInputVisible && reachability.actionVisible && reachability.filmstripItemVisible,
+    'The simulated 560 CSS-pixel breakpoint did not preserve the full canvas and touch-sized controls: ' +
+      JSON.stringify(runtime.layout.sequence560CssBreakpointSimulation));
+    runtime.assertions.sequence560CssBreakpointSimulation = true;
+  } finally {
+    try {
+      if (debuggerApi.isAttached()) await debuggerApi.sendCommand('Emulation.clearDeviceMetricsOverride');
+    } finally {
+      if (attachedHere && debuggerApi.isAttached()) debuggerApi.detach();
+    }
+  }
+}
+
 async function captureGeneratedSequenceNarrow(window) {
   const bounds = window.getBounds();
   try {
@@ -1597,6 +1831,24 @@ async function captureGeneratedSequenceNarrow(window) {
       narrowPreview.container?.bottom >= narrowPreview.filmstrip?.bottom - 1,
     'The complete generated frame was not visible at fit zoom in the narrow Windows view: ' +
       JSON.stringify(narrowPreview));
+    runtime.layout.sequenceGeneratedNarrowCanvasVisibility = await inPage(window, () => {
+      const workbench = document.querySelector('[data-testid="fla-c03-workbench"]');
+      const canvas = document.querySelector('[data-testid="fla-frame-sequence-preview-area"]');
+      if (!(workbench instanceof HTMLElement) || !(canvas instanceof HTMLElement)) return null;
+      const workbenchRect = workbench.getBoundingClientRect();
+      const canvasRect = canvas.getBoundingClientRect();
+      return {
+        workbenchTop: workbenchRect.top,
+        workbenchBottom: workbenchRect.bottom,
+        canvasTop: canvasRect.top,
+        canvasBottom: canvasRect.bottom,
+        fullyVisibleWithoutScrolling: canvasRect.top >= workbenchRect.top - 1 &&
+          canvasRect.bottom <= workbenchRect.bottom + 1,
+      };
+    });
+    assert(runtime.layout.sequenceGeneratedNarrowCanvasVisibility?.fullyVisibleWithoutScrolling,
+      'The full character canvas did not fit in the narrow workbench without scrolling: ' +
+        JSON.stringify(runtime.layout.sequenceGeneratedNarrowCanvasVisibility));
     runtime.screenshots.sequenceGeneratedNarrowTop = await capture(window, 'sequence-generated-narrow-top');
 
     runtime.layout.sequenceGeneratedNarrowTouch = await dispatchTouchScroll(
@@ -1696,6 +1948,7 @@ async function captureGeneratedSequenceNarrow(window) {
     'Range, regenerate, and filmstrip controls were not touch reachable in the narrow generated-sequence view: ' +
       JSON.stringify(access));
     runtime.assertions.sequenceNarrowTouchAccess = true;
+    if (!runtime.g007Baseline) await verifySequence560CssBreakpointSimulation(window);
   } finally {
     window.setBounds(bounds);
     await delay(300);
@@ -1705,17 +1958,65 @@ async function captureGeneratedSequenceNarrow(window) {
 async function verifySequence(window) {
   const target = findLongSequenceEntry();
   assert(target, 'No supported real target with at least 26 frames was available for range evidence.');
+  runtime.layout.sequenceCandidate = {
+    targetId: target.targetId,
+    label: target.userLabel,
+    sourceLibraryItemName: target.sourceLibraryItemName,
+    frameCount: target.frameCount,
+  };
   await focusCandidate(window, 'sequence', target.targetId);
   await waitForSelector(window, '[data-testid="fla-frame-sequence-range"]');
   const initial = await inPage(window, () => ({
     start: document.querySelector('[data-testid="fla-frame-sequence-start"]')?.value ?? null,
     preview: Boolean(document.querySelector('[data-testid="fla-frame-sequence-preview-image"]')),
+    summary: document.querySelector('[data-testid="fla-frame-sequence-range-summary"]')?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+    startName: document.querySelector('[data-testid="fla-frame-sequence-start"]')?.getAttribute('aria-label') ?? '',
+    layout: (() => {
+      const canvas = document.querySelector('[data-testid="fla-frame-sequence-preview-area"]');
+      const range = document.querySelector('[data-testid="fla-frame-sequence-range"]');
+      const input = document.querySelector('[data-testid="fla-frame-sequence-start"]');
+      const summary = document.querySelector('[data-testid="fla-frame-sequence-range-summary"]');
+      const actions = document.querySelector('.fla-c03-sequence-actions');
+      const rect = (element) => {
+        if (!(element instanceof Element)) return null;
+        const value = element.getBoundingClientRect();
+        return { top: value.top, bottom: value.bottom, width: value.width, height: value.height };
+      };
+      const canvasRect = rect(canvas);
+      const rangeRect = rect(range);
+      const rowTops = [input, summary, actions].filter((element) => element instanceof Element)
+        .map((element) => element.getBoundingClientRect().top);
+      return {
+        canvas: canvasRect,
+        range: rangeRect,
+        rangeOutsideCanvas: Boolean(range && !range.closest('.fla-c03-preview-stage')),
+        rangeBelowCanvas: Boolean(rangeRect && canvasRect && rangeRect.top >= canvasRect.bottom - 1),
+        oneRow: rowTops.length === 3 && Math.max(...rowTops) - Math.min(...rowTops) <= 18,
+      };
+    })(),
   }));
   assert(initial.start === '1' && runtime.sequenceRenders.length === 0 && !initial.preview,
     'Focusing a sequence did not start at frame 1 without rendering.');
+  const initialLayoutPass = initial.summary === '第 1–24 帧 · 共 24 帧' && initial.startName === '起始帧' &&
+    initial.layout.rangeOutsideCanvas && initial.layout.rangeBelowCanvas && initial.layout.oneRow;
+  runtime.layout.sequenceBeforeGeneration = initial.layout;
+  runtime.assertions.sequenceControlsSeparatedFromCanvas = initialLayoutPass;
+  runtime.assertions.sequenceDefaultRangeSummaryCorrect = initial.summary === '第 1–24 帧 · 共 24 帧';
+  if (!runtime.g007Baseline) {
+    assert(initialLayoutPass,
+      'The initial range controls were not a compact, accessible row below the canvas: ' + JSON.stringify(initial));
+  }
+  runtime.screenshots.sequenceBeforeGeneration = await capture(window, 'sequence-before-generation');
   runtime.assertions.sequenceFocusDoesNotRender = true;
   const firstCount = Math.min(target.frameCount, 24);
-  const first = await renderSequenceRange(window, target, 1, firstCount, 'sequence-start-1');
+  const first = await renderSequenceRange(
+    window,
+    target,
+    1,
+    firstCount,
+    'sequence-start-1',
+    runtime.g007Only ? 'keyboard-space' : 'keyboard',
+  );
   assert(first.range.endFrameIndex - first.range.startFrameIndex + 1 === 24,
     'A sequence range starting at frame 1 did not reach the 24-frame cap.');
   runtime.assertions.sequenceStartsAtOneAndCapsAt24 = true;
@@ -1726,6 +2027,10 @@ async function verifySequence(window) {
       '[data-testid="fla-frame-sequence-render"], [data-testid="fla-frame-sequence-rerender"]',
     );
     const preview = document.querySelector('[data-testid="fla-frame-sequence-preview-area"]');
+    const filmstrip = document.querySelector('[data-testid="fla-frame-sequence-filmstrip-region"]');
+    const summary = document.querySelector('[data-testid="fla-frame-sequence-range-summary"]');
+    const input = document.querySelector('[data-testid="fla-frame-sequence-start"]');
+    const actions = document.querySelector('.fla-c03-sequence-actions');
     const rect = (element) => {
       if (!(element instanceof Element)) return null;
       const value = element.getBoundingClientRect();
@@ -1750,22 +2055,46 @@ async function verifySequence(window) {
     const rangeStyle = range ? getComputedStyle(range) : null;
     const capStyle = rangeCap ? getComputedStyle(rangeCap) : null;
     const buttonStyle = actionButton ? getComputedStyle(actionButton) : null;
+    const panel = document.querySelector('[data-testid="fla-c03-preview"]');
+    const panelStyle = panel ? getComputedStyle(panel) : null;
+    const rangeRect = rect(range);
+    const previewRect = rect(preview);
+    const filmstripRect = rect(filmstrip);
+    const rowTops = [input, summary, actions].filter((element) => element instanceof Element)
+      .map((element) => element.getBoundingClientRect().top);
     return {
-      range: rect(range),
-      preview: rect(preview),
+      range: rangeRect,
+      preview: previewRect,
+      filmstrip: filmstripRect,
+      rangeOutsideCanvas: Boolean(range && !range.closest('.fla-c03-preview-stage')),
+      rangeBelowCanvas: Boolean(rangeRect && previewRect && rangeRect.top >= previewRect.bottom - 1),
+      filmstripBelowRange: Boolean(filmstripRect && rangeRect && filmstripRect.top >= rangeRect.bottom - 1),
+      controlsOneRow: rowTops.length === 3 && Math.max(...rowTops) - Math.min(...rowTops) <= 18,
+      rangeSummary: summary?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+      canvasBackgroundImage: preview ? getComputedStyle(preview).backgroundImage : '',
       rangeBackground: rangeStyle?.backgroundColor ?? '',
       capColor: capStyle?.color ?? '',
-      capContrast: rangeStyle && capStyle ? contrast(capStyle.color, rangeStyle.backgroundColor) : null,
+      capContrast: panelStyle && capStyle ? contrast(capStyle.color, panelStyle.backgroundColor) : null,
       renderBackground: buttonStyle?.backgroundColor ?? '',
       renderColor: buttonStyle?.color ?? '',
       renderContrast: buttonStyle ? contrast(buttonStyle.color, buttonStyle.backgroundColor) : null,
     };
   });
   runtime.layout.sequenceVisual = sequenceVisual;
-  assert(sequenceVisual.range?.height > 0 && sequenceVisual.range.height <= 180 &&
-    sequenceVisual.preview?.height > 0 && sequenceVisual.capContrast >= 4.5 && sequenceVisual.renderContrast >= 4.5,
-  `The image-first sequence panel was not compact or readable at 150%: ${JSON.stringify(sequenceVisual)}.`);
-  runtime.assertions.sequencePanelCompactAndAccessibleContrast = true;
+  const sequenceVisualPass = sequenceVisual.range?.height > 0 && sequenceVisual.range.height <= 180 &&
+    sequenceVisual.preview?.height > 0 && sequenceVisual.capContrast >= 4.5 && sequenceVisual.renderContrast >= 4.5;
+  const sequenceLayoutPass = sequenceVisual.rangeOutsideCanvas && sequenceVisual.rangeBelowCanvas &&
+    sequenceVisual.filmstripBelowRange && sequenceVisual.controlsOneRow &&
+    sequenceVisual.preview?.height >= 210 && sequenceVisual.rangeSummary === '第 1–24 帧 · 共 24 帧' &&
+    sequenceVisual.canvasBackgroundImage !== 'none';
+  if (!runtime.g007Baseline) {
+    assert(sequenceVisualPass && sequenceLayoutPass,
+      `The sequence canvas and controls were not separated, compact, and readable: ${JSON.stringify(sequenceVisual)}.`);
+  } else {
+    assert(sequenceVisualPass,
+      `The baseline sequence view did not expose readable image and range evidence: ${JSON.stringify(sequenceVisual)}.`);
+  }
+  runtime.assertions.sequencePanelCompactAndAccessibleContrast = sequenceVisualPass;
 
   await toggleCandidate(window, 'sequence', target.targetId);
   await setInput(window, '[data-testid="fla-frame-sequence-start"]', '25');
@@ -1825,6 +2154,35 @@ async function verifySequence(window) {
   assert(alternate, 'Could not find a second previewable candidate for the A→B→A selection path.');
   await focusCandidate(window, 'snapshot', alternate.targetId, 0);
   await waitForCandidatePreview(window, alternate.targetId);
+  const ordinaryPreview = await inPage(window, () => {
+    const preview = document.querySelector('[data-testid="fla-c03-preview"]');
+    const stage = document.querySelector('[data-testid="fla-c03-preview-stage"]');
+    const image = document.querySelector('[data-testid="fla-snapshot-preview-image"]');
+    const sequenceSlot = document.querySelector('[data-testid="fla-c03-sequence-preview-slot"]');
+    const sequenceRange = document.querySelector('[data-testid="fla-frame-sequence-range"]');
+    const stageRect = stage?.getBoundingClientRect();
+    const rangeRect = sequenceRange?.getBoundingClientRect();
+    return {
+      candidateKind: preview?.getAttribute('data-candidate-kind') ?? null,
+      sequenceCanvas: preview?.getAttribute('data-sequence-canvas') ?? null,
+      sequencePreview: preview?.getAttribute('data-sequence-preview') ?? null,
+      snapshotTargetId: image?.getAttribute('data-render-target-id') ?? null,
+      snapshotImageLoaded: image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+      canvasStageDisplay: stage instanceof HTMLElement ? getComputedStyle(stage).display : null,
+      sequenceSlotHidden: sequenceSlot instanceof HTMLElement ? sequenceSlot.hidden : null,
+      sequenceControlsOutsideCanvas: Boolean(sequenceRange && stage && !stage.contains(sequenceRange)),
+      sequenceRangeBelowCanvas: Boolean(stageRect && rangeRect && rangeRect.top >= stageRect.bottom - 1),
+    };
+  });
+  runtime.layout.g007OrdinaryPreview = ordinaryPreview;
+  runtime.screenshots.g007OrdinaryPreview = await capture(window, 'g007-snapshot-focus-with-sequence-controls');
+  assert(ordinaryPreview.candidateKind === 'snapshot' && ordinaryPreview.sequenceCanvas === 'false' &&
+    ordinaryPreview.sequencePreview === 'true' && ordinaryPreview.snapshotTargetId === alternate.targetId &&
+    ordinaryPreview.snapshotImageLoaded && ordinaryPreview.canvasStageDisplay !== 'none' &&
+    ordinaryPreview.sequenceSlotHidden === false && ordinaryPreview.sequenceControlsOutsideCanvas &&
+    ordinaryPreview.sequenceRangeBelowCanvas,
+  'The ordinary snapshot preview was affected by the G007 sequence layout: ' + JSON.stringify(ordinaryPreview));
+  runtime.assertions.g007OrdinaryPreviewUnaffected = true;
   const selectedB = await readCandidateFacts(window);
   assert(selectedB.selectedCount === 1 && selectedB.rows.some((row) => row.kind === 'sequence' && row.checked &&
     row.identity?.includes(target.targetId)), 'Preview-only focus on sequence B cleared the checked sequence A.');
@@ -1850,6 +2208,57 @@ async function verifySequence(window) {
     document.querySelectorAll('.fla-c03-candidate input[type="checkbox"]:checked').length === 0,
   );
   runtime.assertions.sequenceScenarioSelectionCleared = true;
+
+  await setInput(window, '[data-testid="fla-frame-sequence-start"]', '1');
+  const beforeCancellation = runtime.sequenceRenders.length;
+  if (runtime.g007Only && !runtime.g007Baseline) {
+    await waitForPage(window, () => {
+      const button = document.querySelector('[data-testid="fla-frame-sequence-render"]');
+      return button instanceof HTMLButtonElement && !button.disabled;
+    }, [], 120_000);
+    await inPage(window, () => document.querySelector('[data-testid="fla-frame-sequence-start"]')?.focus());
+    await sendInputKey(window, 'Tab');
+    const focus = await inPage(window, () => ({
+      focused: document.activeElement === document.querySelector('[data-testid="fla-frame-sequence-render"]'),
+      enabled: document.querySelector('[data-testid="fla-frame-sequence-render"]')?.disabled === false,
+    }));
+    assert(focus.focused && focus.enabled,
+      'Tab did not reach the enabled sequence action for the Enter/cancel scenario: ' + JSON.stringify(focus));
+    await sendInputKey(window, 'Enter');
+    await waitForPage(window, () =>
+      document.querySelector('[data-testid="fla-frame-sequence-preview-status"]')?.dataset.previewState === 'rendering',
+    [], 15_000);
+    runtime.assertions.sequenceEnterActivatesOperation = true;
+  } else {
+    // The before-layout capture intentionally runs the old UI, which predates
+    // the Enter handler being verified by the after-layout G007 run.
+    await click(window, '[data-testid="fla-frame-sequence-render"]');
+  }
+  await waitForSelector(window, '[data-testid="fla-frame-sequence-progress"]', 120_000);
+  const inProgress = await inPage(window, () => ({
+    progress: document.querySelector('[data-testid="fla-frame-sequence-progress"]')?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+    cancelVisible: Boolean(document.querySelector('[data-testid="fla-frame-sequence-cancel"]')),
+    rangeOutsideCanvas: Boolean(document.querySelector('[data-testid="fla-frame-sequence-range"]') &&
+      !document.querySelector('[data-testid="fla-frame-sequence-range"]')?.closest('.fla-c03-preview-stage')),
+  }));
+  assert(/^正在生成 \d+ \/ 24$/u.test(inProgress.progress) && inProgress.cancelVisible &&
+    (runtime.g007Baseline || inProgress.rangeOutsideCanvas),
+    'Real X/N progress and cancellation were not reachable in the detached operation row: ' + JSON.stringify(inProgress));
+  runtime.layout.sequenceCancellationProgress = inProgress;
+  runtime.screenshots.sequenceCancellationInProgress = await capture(window, 'sequence-cancellation-in-progress');
+  await click(window, '[data-testid="fla-frame-sequence-cancel"]');
+  await waitForPage(window, () =>
+    document.querySelector('[data-testid="fla-frame-sequence-preview-status"]')?.textContent?.includes('已取消') === true &&
+    !document.querySelector('[data-testid="fla-frame-sequence-progress"]'),
+  [], 120_000);
+  const cancellationDeadline = Date.now() + 30_000;
+  while (runtime.sequenceRenders.length === beforeCancellation && Date.now() < cancellationDeadline) await delay(50);
+  const cancelledRequest = runtime.sequenceRenders.at(-1);
+  assert(runtime.sequenceRenders.length === beforeCancellation + 1 && cancelledRequest?.ok === false &&
+    cancelledRequest.errorCode === 'SEQUENCE_CANCELLED' && cancelledRequest.frameCount < 24,
+  'Cancelling the real sequence operation did not stop before all 24 frames completed: ' + JSON.stringify(cancelledRequest));
+  runtime.assertions.sequenceCancellationStopsRender = true;
+  runtime.screenshots.sequenceCancelled = await capture(window, 'sequence-cancelled');
 }
 
 async function verifyResponsiveAndTouch(window, bluehairTargetId) {
@@ -2567,11 +2976,87 @@ async function verifyImportsAndPersistence(window, bluehair) {
   runtime.layout.reopenedProject = reopenedProject;
 }
 
+function verifyG007SameSourceComparison() {
+  const baselineReceipt = runtime.g007BaselineReceipt?.receipt;
+  assert(baselineReceipt, 'A successful same-source baseline receipt is required before G007 comparison.');
+  const before = baselineReceipt.layout?.sequenceGeneratedPreviewFit;
+  const after = runtime.layout.sequenceGeneratedPreviewFit;
+  const beforeCandidate = baselineReceipt.layout?.sequenceCandidate;
+  const afterCandidate = runtime.layout.sequenceCandidate;
+  const beforeSequence = baselineReceipt.sequenceRenders?.[0];
+  const afterSequence = runtime.sequenceRenders[0];
+  const beforeWindow = baselineReceipt.layout?.initialWindowBounds;
+  const afterWindow = runtime.layout.initialWindowBounds;
+  const beforeContent = baselineReceipt.layout?.initialContentBounds;
+  const afterContent = runtime.layout.initialContentBounds;
+  const beforeScale = baselineReceipt.runtime?.primaryDisplayScaleFactor;
+  const afterScale = runtime.layout.displayScaleFactor;
+  assert(before && after && beforeCandidate && afterCandidate && beforeSequence && afterSequence,
+    'The before/after receipts are missing the generated preview, candidate, or first sequence request.');
+
+  const sameCandidateAndFrameRange = beforeCandidate.targetId === afterCandidate.targetId &&
+    beforeSequence.range?.startFrameIndex === afterSequence.range?.startFrameIndex &&
+    beforeSequence.range?.endFrameIndex === afterSequence.range?.endFrameIndex &&
+    beforeSequence.range?.startFrameIndex === 0 && beforeSequence.range?.endFrameIndex === 23;
+  const sameLogicalWindowAndScale = beforeWindow?.width === afterWindow?.width &&
+    beforeWindow?.height === afterWindow?.height && beforeContent?.width === afterContent?.width &&
+    beforeContent?.height === afterContent?.height && beforeScale === afterScale;
+  const displayedHeightRatio = Number((after.displayedContent.height / before.displayedContent.height).toFixed(4));
+  const displayedWidthRatio = Number((after.displayedContent.width / before.displayedContent.width).toFixed(4));
+  const displayedAreaRatio = Number((displayedHeightRatio * displayedWidthRatio).toFixed(4));
+  const previewHeightRatio = Number((after.preview.height / before.preview.height).toFixed(4));
+  const noMeaningfulPersonCompression = before.zoom === 1 && after.zoom === 1 &&
+    before.visibleContentRatio >= 0.99 && after.visibleContentRatio >= 0.99 &&
+    displayedHeightRatio >= 0.9 && displayedWidthRatio >= 0.9 && displayedAreaRatio >= 0.9;
+  runtime.layout.g007BeforeAfterComparison = {
+    baselineReceiptPath: runtime.g007BaselineReceipt.path,
+    baselineRunId: baselineReceipt.runId,
+    sameCandidateAndFrameRange,
+    sameLogicalWindowAndScale,
+    noMeaningfulPersonCompression,
+    displayScaleFactor: afterScale,
+    before: {
+      targetId: beforeCandidate.targetId,
+      frameRange: beforeSequence.range,
+      windowBounds: beforeWindow,
+      contentBounds: beforeContent,
+      preview: before.preview,
+      displayedPerson: before.displayedContent,
+      screenshot: baselineReceipt.screenshots?.['sequence-start-1']?.path ?? null,
+    },
+    after: {
+      targetId: afterCandidate.targetId,
+      frameRange: afterSequence.range,
+      windowBounds: afterWindow,
+      contentBounds: afterContent,
+      preview: after.preview,
+      displayedPerson: after.displayedContent,
+      screenshot: runtime.screenshots['sequence-start-1']?.path ?? null,
+    },
+    displayedHeightRatio,
+    displayedWidthRatio,
+    displayedAreaRatio,
+    previewHeightRatio,
+  };
+  runtime.assertions.g007SameCandidateAndFrameRange = sameCandidateAndFrameRange;
+  runtime.assertions.g007SameLogicalWindowAndScale = sameLogicalWindowAndScale;
+  runtime.assertions.g007PreviewPersonNotCompressed = noMeaningfulPersonCompression;
+  assert(sameCandidateAndFrameRange,
+    'The before/after screenshots do not use the same real sequence candidate and first 24-frame range.');
+  assert(sameLogicalWindowAndScale,
+    'The before/after screenshots do not use the same logical window/content bounds and Windows display scale.');
+  assert(noMeaningfulPersonCompression,
+    'The refactor significantly reduced the displayed person or clipped the character at fit zoom: ' +
+    JSON.stringify(runtime.layout.g007BeforeAfterComparison));
+}
+
 async function writeReceipt(status, extra = {}) {
   const sourceSha256After = runtime.sourcePath ? sha256File(runtime.sourcePath) : null;
   const primaryDisplay = screen.getPrimaryDisplay();
   const receipt = {
-    schemaVersion: 'issue775-c03-windows-electron/1',
+    schemaVersion: runtime.g007Only
+      ? 'issue781-g007-windows-electron/1'
+      : 'issue775-c03-windows-electron/1',
     status,
     runId: runtime.runId,
     gitHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
@@ -2599,7 +3084,14 @@ async function writeReceipt(status, extra = {}) {
     syntheticBlankOverlay: runtime.syntheticBlankOverlay,
     syntheticUnsupportedOverlay: runtime.syntheticUnsupportedOverlay,
     project: runtime.project,
-    baseline: {
+    baseline: runtime.g007Only
+      ? (runtime.g007BaselineReceipt ? {
+          path: runtime.g007BaselineReceipt.path,
+          runId: runtime.g007BaselineReceipt.receipt.runId,
+          sourceSha256: runtime.g007BaselineReceipt.receipt.source?.sha256Before ?? null,
+          screenshot: runtime.g007BaselineReceipt.receipt.screenshots?.['sequence-start-1']?.path ?? null,
+        } : null)
+      : {
       path: join(runtime.repositoryRoot, BASELINE_PATH),
       receiptPath: join(runtime.repositoryRoot, BASELINE_RECEIPT_PATH),
       width: runtime.layout.baselineWidth ?? null,
@@ -2628,8 +3120,10 @@ async function writeReceipt(status, extra = {}) {
     originalSourceUnchanged: runtime.sourceSha256Before === sourceSha256After,
     limitations: [
       'Automated Windows Electron evidence is not owner human visual acceptance.',
-      'The historical before screenshot has matching pixel dimensions; its receipt did not record the Windows display scale factor.',
-      'The historical before receipt records the main-window bounds but not its display scale factor; the C03 comparison matches logical content bounds and capture pixels, while current Windows scaling is recorded directly.',
+      ...(runtime.g007Only ? [] : [
+        'The historical before screenshot has matching pixel dimensions; its receipt did not record the Windows display scale factor.',
+        'The historical before receipt records the main-window bounds but not its display scale factor; the C03 comparison matches logical content bounds and capture pixels, while current Windows scaling is recorded directly.',
+      ]),
       '125% Windows scaling is reported only when the host exposes a display at that scale; a Chromium forced scale factor is not described as Windows DPI.',
       ...((runtime.layout.displays ?? []).some((display) => Math.abs(display.scaleFactor - 1.25) < 0.01)
         ? []
@@ -2638,17 +3132,20 @@ async function writeReceipt(status, extra = {}) {
     ...extra,
   };
   const json = JSON.stringify(receipt, null, 2) + '\n';
-  writeFileSync(join(runtime.runRoot, 'issue775-c03-receipt.json'), json, 'utf8');
+  const receiptName = runtime.g007Only ? 'issue781-g007-receipt.json' : 'issue775-c03-receipt.json';
+  writeFileSync(join(runtime.runRoot, receiptName), json, 'utf8');
   writeFileSync(join(runtime.evidenceDirectory, 'receipt.json'), json, 'utf8');
   process.stdout.write(JSON.stringify({
     status,
-    receiptPath: join(runtime.runRoot, 'issue775-c03-receipt.json'),
+    receiptPath: join(runtime.runRoot, receiptName),
     repoReceiptPath: join(runtime.evidenceDirectory, 'receipt.json'),
   }) + '\n');
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  runtime.g007Only = Boolean(args.g007Only || args.g007Baseline);
+  runtime.g007Baseline = Boolean(args.g007Baseline);
   runtime.acceptanceRoot = resolve(args.acceptanceRoot ?? DEFAULT_ACCEPTANCE_ROOT);
   runtime.runRoot = join(runtime.acceptanceRoot, 'run-' + runtime.runId);
   runtime.userData = join(runtime.runRoot, 'electron-user-data');
@@ -2658,27 +3155,43 @@ async function main() {
     : join(runtime.repositoryRoot, 'docs', 'evidence', 'issue-775-c03');
   runtime.evidenceDirectory = join(evidenceRoot, 'run-' + runtime.runId);
   runtime.sourcePath = args.source ? resolve(args.source) : findSourceFile(DEFAULT_SOURCE_ROOT, SOURCE_FILE_NAME);
+  assert(!runtime.g007Only || args.source,
+    'G007-only mode requires an explicit --source path to the real FLA under review.');
   for (const directory of [runtime.runRoot, runtime.userData, runtime.projectParent, runtime.evidenceDirectory]) {
     mkdirSync(directory, { recursive: true });
   }
 
-  const baselinePath = join(runtime.repositoryRoot, BASELINE_PATH);
-  assert(existsSync(baselinePath), 'The approved C02 baseline screenshot is missing.');
-  const baselineBytes = readFileSync(baselinePath);
-  assert(sha256(baselineBytes) === BASELINE_SHA256, 'The historical C02 baseline screenshot changed unexpectedly.');
-  runtime.layout.baselineWidth = baselineBytes.readUInt32BE(16);
-  runtime.layout.baselineHeight = baselineBytes.readUInt32BE(20);
   runtime.sourceSha256Before = sha256File(runtime.sourcePath);
-  assert(runtime.sourceSha256Before === SOURCE_SHA256, 'The Bluehair source SHA does not match the owner-approved FLA.');
-  const baselineReceipt = JSON.parse(readFileSync(join(runtime.repositoryRoot, BASELINE_RECEIPT_PATH), 'utf8'));
-  const baselineMainWindow = baselineReceipt.finalWindows?.find((entry) => entry.main === true);
-  assert(baselineMainWindow?.width === BASELINE_WINDOW_BOUNDS.width &&
-    baselineMainWindow?.height === BASELINE_WINDOW_BOUNDS.height,
-  'The approved before receipt no longer matches its recorded main-window bounds.');
-  runtime.layout.baselineWindowBounds = {
-    width: baselineMainWindow.width,
-    height: baselineMainWindow.height,
-  };
+  if (runtime.g007Only && !runtime.g007Baseline) {
+    assert(args.baselineReceipt, 'G007 after-layout verification requires --baseline-receipt from a successful same-source baseline run.');
+    const baselineReceiptPath = resolve(args.baselineReceipt);
+    assert(existsSync(baselineReceiptPath), 'The G007 same-source baseline receipt does not exist.');
+    const baselineReceipt = JSON.parse(readFileSync(baselineReceiptPath, 'utf8'));
+    assert(baselineReceipt.schemaVersion === 'issue781-g007-windows-electron/1' &&
+      baselineReceipt.status === 'PASS' && baselineReceipt.captureRole === 'before-layout-capture' &&
+      baselineReceipt.source?.unchanged === true &&
+      baselineReceipt.source?.sha256Before === runtime.sourceSha256Before,
+    'The G007 baseline receipt does not prove a successful unchanged run on this exact FLA source.');
+    runtime.g007BaselineReceipt = { path: baselineReceiptPath, receipt: baselineReceipt };
+  }
+  if (!runtime.g007Only) {
+    const baselinePath = join(runtime.repositoryRoot, BASELINE_PATH);
+    assert(existsSync(baselinePath), 'The approved C02 baseline screenshot is missing.');
+    const baselineBytes = readFileSync(baselinePath);
+    assert(sha256(baselineBytes) === BASELINE_SHA256, 'The historical C02 baseline screenshot changed unexpectedly.');
+    runtime.layout.baselineWidth = baselineBytes.readUInt32BE(16);
+    runtime.layout.baselineHeight = baselineBytes.readUInt32BE(20);
+    assert(runtime.sourceSha256Before === SOURCE_SHA256, 'The Bluehair source SHA does not match the owner-approved FLA.');
+    const baselineReceipt = JSON.parse(readFileSync(join(runtime.repositoryRoot, BASELINE_RECEIPT_PATH), 'utf8'));
+    const baselineMainWindow = baselineReceipt.finalWindows?.find((entry) => entry.main === true);
+    assert(baselineMainWindow?.width === BASELINE_WINDOW_BOUNDS.width &&
+      baselineMainWindow?.height === BASELINE_WINDOW_BOUNDS.height,
+    'The approved before receipt no longer matches its recorded main-window bounds.');
+    runtime.layout.baselineWindowBounds = {
+      width: baselineMainWindow.width,
+      height: baselineMainWindow.height,
+    };
+  }
 
   app.setPath('userData', runtime.userData);
   app.commandLine.appendSwitch('disable-renderer-backgrounding');
@@ -2708,6 +3221,7 @@ async function main() {
   window.setBounds({ x: 30, y: 30, ...C03_WINDOW_REQUESTED_BOUNDS });
   runtime.layout.initialWindowBounds = window.getBounds();
   runtime.layout.initialContentBounds = window.getContentBounds();
+  runtime.layout.displayScaleFactor = screen.getDisplayMatching(window.getBounds()).scaleFactor;
   await waitForSelector(window, '[data-testid="new-project-button"]');
   await createProject(window);
   await openFlaWorkbench(window);
@@ -2715,6 +3229,53 @@ async function main() {
   const catalogDeadline = Date.now() + 180_000;
   while (runtime.catalogResponses.length === 0 && Date.now() < catalogDeadline) await delay(100);
   assert(runtime.catalogResponses.length > 0, 'Main did not return a render-target catalog.');
+
+  if (runtime.g007Only) {
+    runtime.failureStage = runtime.g007Baseline ? 'capture-g007-before-layout' : 'verify-g007-sequence-layout';
+    await waitForSnapshotCatalogScan(window);
+    await verifySequence(window);
+    if (!runtime.g007Baseline) verifyG007SameSourceComparison();
+    const sourceSha256After = sha256File(runtime.sourcePath);
+    assert(sourceSha256After === runtime.sourceSha256Before,
+      'The original FLA changed during G007 sequence preview verification.');
+    runtime.assertions.originalFlaUnchanged = true;
+    const requiredAssertions = [
+      'sequenceFocusDoesNotRender',
+      'sequenceStartsAtOneAndCapsAt24',
+      'sequenceOperationKeyboardAccessible',
+      'sequenceSpaceActivatesOperation',
+      ...(!runtime.g007Baseline ? ['sequenceEnterActivatesOperation'] : []),
+      'sequencePanelCompactAndAccessibleContrast',
+      'sequenceGeneratedPreviewShowsFullFrameAtFit',
+      'sequenceNarrowTouchAccess',
+      ...(!runtime.g007Baseline ? ['sequence560CssBreakpointSimulation'] : []),
+      'sequenceRangeChangeInvalidatesCheck',
+      'sequenceNearEndUsesShortRemainder',
+      'sequenceAtoBtoARetainsCheck',
+      'sequenceScenarioSelectionCleared',
+      'sequenceCancellationStopsRender',
+      'originalFlaUnchanged',
+      ...(runtime.g007Baseline ? [] : [
+        'g007SameCandidateAndFrameRange',
+        'g007SameLogicalWindowAndScale',
+        'g007PreviewPersonNotCompressed',
+      ]),
+      ...(runtime.g007Baseline ? [] : [
+        'sequenceControlsSeparatedFromCanvas',
+        'sequenceDefaultRangeSummaryCorrect',
+        'g007OrdinaryPreviewUnaffected',
+      ]),
+    ];
+    const missing = requiredAssertions.filter((name) => runtime.assertions[name] !== true);
+    assert(missing.length === 0, 'Missing G007 evidence assertions: ' + missing.join(', '));
+    await writeReceipt('PASS', {
+      issueNumber: 781,
+      captureRole: runtime.g007Baseline ? 'before-layout-capture' : 'after-layout-verification',
+      productAcceptance: 'OWNER_HUMAN_VISUAL_ACCEPTANCE_REQUIRED',
+    });
+    app.quit();
+    return;
+  }
 
   const bluehair = findBluehairCatalogEntry();
   assert(bluehair, 'The approved composed Bluehair candidate was absent from Main catalog.');
@@ -2746,8 +3307,12 @@ async function main() {
     'failedPreviewUnavailable',
     'sequenceFocusDoesNotRender',
     'sequenceStartsAtOneAndCapsAt24',
+    'sequenceOperationKeyboardAccessible',
+    'sequenceControlsSeparatedFromCanvas',
+    'sequenceDefaultRangeSummaryCorrect',
     'sequencePanelCompactAndAccessibleContrast',
     'sequenceGeneratedPreviewShowsFullFrameAtFit',
+    'sequenceCancellationStopsRender',
     'sequenceNarrowTouchAccess',
     'sequenceRangeChangeInvalidatesCheck',
     'sequenceNearEndUsesShortRemainder',

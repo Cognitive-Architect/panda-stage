@@ -302,7 +302,10 @@ export function FlaUnifiedWorkbench({
           className="fla-c03-preview"
           data-candidate-kind={focusedCandidate?.kind ?? 'none'}
           data-preview-status={focusedCandidate?.preview.status ?? 'empty'}
+          data-sequence-canvas={focusedCandidate?.kind === 'sequence' && showSequencePreview ? 'true' : 'false'}
+          data-sequence-preview={showSequencePreview ? 'true' : 'false'}
           data-testid="fla-c03-preview"
+          style={{ '--fla-c03-zoom': previewZoom } as CSSProperties}
         >
           <header className="fla-c03-preview-header">
             <div className="fla-c03-preview-title">
@@ -326,7 +329,7 @@ export function FlaUnifiedWorkbench({
             </div>
           </header>
           <div
-            className={`fla-c03-preview-stage${showSequencePreview ? ' has-sequence-preview' : ''}`}
+            className="fla-c03-preview-stage"
             data-testid="fla-c03-preview-stage"
             style={{ '--fla-c03-zoom': previewZoom } as CSSProperties}
           >
@@ -334,9 +337,13 @@ export function FlaUnifiedWorkbench({
             <div className="fla-c03-preview-controller-slot" hidden={!showSnapshotPreview}>
               {snapshotPreview}
             </div>
-            <div className="fla-c03-preview-controller-slot" hidden={!showSequencePreview}>
-              {sequencePreview}
-            </div>
+          </div>
+          <div
+            className="fla-c03-sequence-preview-slot"
+            data-testid="fla-c03-sequence-preview-slot"
+            hidden={!showSequencePreview}
+          >
+            {sequencePreview}
           </div>
         </section>
       </main>

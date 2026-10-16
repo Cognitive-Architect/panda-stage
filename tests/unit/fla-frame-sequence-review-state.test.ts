@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildRange,
+  formatSequenceRangeSummary,
   getDefaultSequenceRange,
   intentChangeReset,
   isCommitEligible,
@@ -79,6 +80,22 @@ describe('R2-H.2 range validation (Corrective D)', () => {
 
   it('rejects negative frame indices', () => {
     expect(validateRange(-1, 3, targetFrameCount).valid).toBe(false);
+  });
+});
+
+describe('Issue #781 sequence range summary', () => {
+  it('shows one-based endpoints and the actual inclusive count', () => {
+    expect(formatSequenceRangeSummary(0, 23, validateRange(0, 23, 50)))
+      .toBe('第 1–24 帧 · 共 24 帧');
+    expect(formatSequenceRangeSummary(24, 29, validateRange(24, 29, 50)))
+      .toBe('第 25–30 帧 · 共 6 帧');
+    expect(formatSequenceRangeSummary(48, 49, validateRange(48, 49, 50)))
+      .toBe('第 49–50 帧 · 共 2 帧');
+  });
+
+  it('keeps an invalid range explicit without claiming a valid frame count', () => {
+    expect(formatSequenceRangeSummary(24, 48, validateRange(24, 48, 50)))
+      .toBe('第 25–49 帧 · 范围无效');
   });
 });
 

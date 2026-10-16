@@ -67,6 +67,11 @@ describe('R2-H.2 shares the C03 unified candidate workbench', () => {
     expect(review).toContain('data-testid={`fla-frame-sequence-candidate-check-${entryTarget.renderTargetId}`}');
     expect(review).not.toContain('EMPTY_SEQUENCE_IMPORT_CHECKS');
   });
+
+  it('supports Enter activation on sequence render, cancel, and rerender controls', () => {
+    expect(review).toContain("if (event.key !== 'Enter' || event.repeat) return;");
+    expect(review.match(/onKeyDown=\{\(event\) => handleSequenceActionKeyDown\(event, \(\) => void (?:renderSequence|cancelSequence|rerenderSequence)\(\)\)\}/gu)).toHaveLength(6);
+  });
 });
 
 describe('R2-H.2 Problem A/B: gateway UI gating (#296)', () => {

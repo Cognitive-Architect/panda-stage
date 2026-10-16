@@ -20,6 +20,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type {
   FlaRenderableTargetCatalogEntry,
   FlaRenderTarget,
@@ -39,6 +40,7 @@ import {
 } from './FlaStageGTerminal';
 import {
   buildRange,
+  formatSequenceRangeSummary,
   getDefaultSequenceRange,
   intentChangeReset,
   isCommitEligible,
@@ -80,6 +82,15 @@ interface FlaFrameSequenceReviewProps {
   focusedCandidateIdentityKey?: string | null;
   onCandidatesChange?: (candidates: readonly FlaWorkbenchCandidate[]) => void;
   showUnifiedSequencePreview?: boolean;
+}
+
+function handleSequenceActionKeyDown(
+  event: ReactKeyboardEvent<HTMLButtonElement>,
+  action: () => void,
+): void {
+  if (event.key !== 'Enter' || event.repeat) return;
+  event.preventDefault();
+  action();
 }
 
 type RenderPhase =
@@ -954,8 +965,9 @@ export function FlaFrameSequenceReview({
             </header>
             <div className="fla-frame-sequence-range-inputs" aria-disabled={intentLocked}>
               <label>
-                <span>从第</span>
+                <span>起始帧</span>
                 <input
+                  aria-label="起始帧"
                   type="number"
                   min={1}
                   max={Math.max(1, targetFrameCount)}
@@ -971,7 +983,6 @@ export function FlaFrameSequenceReview({
                   }}
                   data-testid="fla-frame-sequence-start"
                 />
-                <span>帧开始</span>
               </label>
               <span className="fla-frame-sequence-range-arrow" aria-hidden="true">→</span>
               <output data-testid="fla-frame-sequence-end">至第 {endFrameIndex + 1} 帧</output>
@@ -979,6 +990,13 @@ export function FlaFrameSequenceReview({
                 = {validation.valid ? `${validation.frameCount} 帧` : '—'}
               </output>
             </div>
+            <output
+              className="fla-frame-sequence-range-summary"
+              data-testid="fla-frame-sequence-range-summary"
+              aria-live="polite"
+            >
+              {formatSequenceRangeSummary(startFrameIndex, endFrameIndex, validation)}
+            </output>
             <p className="fla-frame-sequence-range-cap">最多 {MAX_SEQUENCE_FRAMES} 帧</p>
             {!validation.valid && validation.message ? (
               <p role="alert" data-testid="fla-frame-sequence-range-error">{validation.message}</p>
@@ -990,7 +1008,12 @@ export function FlaFrameSequenceReview({
                     <output data-testid="fla-frame-sequence-progress">
                       正在生成 {completedFrameCount} / {validation.valid ? validation.frameCount : 0}
                     </output>
-                    <button type="button" onClick={() => void cancelSequence()} data-testid="fla-frame-sequence-cancel">
+                    <button
+                      type="button"
+                      onClick={() => void cancelSequence()}
+                      onKeyDown={(event) => handleSequenceActionKeyDown(event, () => void cancelSequence())}
+                      data-testid="fla-frame-sequence-cancel"
+                    >
                       取消生成
                     </button>
                   </>
@@ -1000,13 +1023,19 @@ export function FlaFrameSequenceReview({
                     type="button"
                     disabled={!canGenerate}
                     onClick={() => void renderSequence()}
+                    onKeyDown={(event) => handleSequenceActionKeyDown(event, () => void renderSequence())}
                     data-testid="fla-frame-sequence-render"
                   >
                     生成连续画面
                   </button>
                 ) : null}
                 {sequenceIsCurrent ? (
-                  <button type="button" onClick={() => void rerenderSequence()} data-testid="fla-frame-sequence-rerender">
+                  <button
+                    type="button"
+                    onClick={() => void rerenderSequence()}
+                    onKeyDown={(event) => handleSequenceActionKeyDown(event, () => void rerenderSequence())}
+                    data-testid="fla-frame-sequence-rerender"
+                  >
                     重新生成
                   </button>
                 ) : null}
@@ -1113,6 +1142,7 @@ export function FlaFrameSequenceReview({
               type="button"
               disabled={!canGenerate}
               onClick={() => void renderSequence()}
+              onKeyDown={(event) => handleSequenceActionKeyDown(event, () => void renderSequence())}
               data-testid="fla-frame-sequence-render"
             >
               生成帧序列
@@ -1123,6 +1153,7 @@ export function FlaFrameSequenceReview({
               className="fla-render-primary-action"
               type="button"
               onClick={() => void cancelSequence()}
+              onKeyDown={(event) => handleSequenceActionKeyDown(event, () => void cancelSequence())}
               data-testid="fla-frame-sequence-cancel"
             >
               取消
@@ -1133,6 +1164,7 @@ export function FlaFrameSequenceReview({
               className="fla-frame-sequence-secondary-action"
               type="button"
               onClick={() => void rerenderSequence()}
+              onKeyDown={(event) => handleSequenceActionKeyDown(event, () => void rerenderSequence())}
               data-testid="fla-frame-sequence-rerender"
             >
               重新生成

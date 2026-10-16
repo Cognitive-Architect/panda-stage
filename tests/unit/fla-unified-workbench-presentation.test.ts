@@ -101,6 +101,40 @@ describe('Issue #778 unified FLA workbench presentation', () => {
     expect(emptyMarkup).toMatch(/data-testid="fla-unified-import"[^>]*disabled/u);
   });
 
+  it('places sequence controls in a sibling region below the canvas', () => {
+    const marker = createElement('div', { 'data-testid': 'sequence-preview-marker' });
+    const markup = renderWorkbench({
+      showSequencePreview: true,
+      sequencePreview: marker,
+    });
+    const canvasIndex = markup.indexOf('data-testid="fla-c03-preview-stage"');
+    const controlsSlotIndex = markup.indexOf('data-testid="fla-c03-sequence-preview-slot"');
+    const markerIndex = markup.indexOf('data-testid="sequence-preview-marker"');
+
+    expect(canvasIndex).toBeGreaterThanOrEqual(0);
+    expect(controlsSlotIndex).toBeGreaterThan(canvasIndex);
+    expect(markerIndex).toBeGreaterThan(controlsSlotIndex);
+    expect(markup.slice(canvasIndex, controlsSlotIndex)).not.toContain('sequence-preview-marker');
+  });
+
+  it('keeps an ordinary snapshot preview in the canvas when sequence controls are inactive', () => {
+    const marker = createElement('div', { 'data-testid': 'snapshot-preview-marker' });
+    const markup = renderWorkbench({
+      showSnapshotPreview: true,
+      snapshotPreview: marker,
+    });
+    const canvasIndex = markup.indexOf('data-testid="fla-c03-preview-stage"');
+    const snapshotIndex = markup.indexOf('data-testid="snapshot-preview-marker"');
+    const sequenceSlotIndex = markup.indexOf('data-testid="fla-c03-sequence-preview-slot"');
+
+    expect(markup).toContain('data-sequence-canvas="false"');
+    expect(markup).toContain('data-sequence-preview="false"');
+    expect(canvasIndex).toBeGreaterThanOrEqual(0);
+    expect(snapshotIndex).toBeGreaterThan(canvasIndex);
+    expect(snapshotIndex).toBeLessThan(sequenceSlotIndex);
+    expect(markup.slice(sequenceSlotIndex)).toMatch(/fla-c03-sequence-preview-slot" hidden=/u);
+  });
+
   it('shows safe failure guidance and keeps raw receipt diagnostics in a collapsed disclosure', () => {
     const rawMessage = 'Error invoking remote method: asset-id-42';
     const markup = renderWorkbench({ receipt: failedReceipt(rawMessage) });

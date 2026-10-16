@@ -46,6 +46,18 @@ export interface DefaultSequenceRange {
   endFrameIndex: number;
 }
 
+/** Format a concise, creator-facing summary for a zero-based inclusive range. */
+export function formatSequenceRangeSummary(
+  startFrameIndex: number,
+  endFrameIndex: number,
+  validation: RangeValidation,
+): string {
+  const range = `第 ${startFrameIndex + 1}–${endFrameIndex + 1} 帧`;
+  return validation.valid
+    ? `${range} · 共 ${validation.frameCount} 帧`
+    : `${range} · 范围无效`;
+}
+
 /**
  * A sequence search can hide the current target. In that case keep focus
  * empty instead of moving it to the first result while the operation still
