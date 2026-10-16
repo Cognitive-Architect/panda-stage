@@ -1379,7 +1379,8 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           const firstFrameInsideStrip = Boolean(firstFrameRect && stripRect &&
             firstFrameRect.top >= stripRect.top - 1 && firstFrameRect.bottom <= stripRect.bottom + 1 &&
             firstFrameRect.left >= stripRect.left - 1 && firstFrameRect.right <= stripRect.right + 1);
-          const firstFrameFullyVisible = fullyVisible(firstFrame) && firstFrameInsideStrip;
+          const firstFrameVisible = fullyVisible(firstFrame);
+          const firstFrameFullyVisible = firstFrameVisible && firstFrameInsideStrip;
           const firstFrameCenterTarget = firstFrameRect
             ? document.elementFromPoint(
               firstFrameRect.left + firstFrameRect.width / 2,
@@ -1406,7 +1407,8 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
             filmstrip: {
               rect: stripRect,
               visible: fullyVisible(currentStrip),
-              firstFrameVisible: firstFrameFullyVisible,
+              firstFrameVisible,
+              firstFrameFullyVisible,
               firstFrameActionable,
               firstFrameRect,
               frameCount: currentStrip?.querySelectorAll('[role="listitem"]')?.length ?? 0,
@@ -1484,7 +1486,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           scrollTopAfter: workbench.scrollTop,
           scrollHeight: workbench.scrollHeight,
           clientHeight: workbench.clientHeight,
-          firstFrameFullyVisible: narrowAfterTouch.filmstrip.firstFrameVisible,
+          firstFrameFullyVisible: narrowAfterTouch.filmstrip.firstFrameFullyVisible,
           firstFrameActionable: narrowAfterTouch.filmstrip.firstFrameActionable,
           attempts: touchScrollAttempts,
         };
