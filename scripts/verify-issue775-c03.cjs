@@ -64,6 +64,8 @@ const runtime = {
   assertions: {},
   injectedPreviewFailure: null,
   failNextRasterCommit: false,
+  failNextSequenceRender: false,
+  injectedSequenceFailure: null,
   failure: null,
   previewGateTargetId: null,
   previewGateUsed: false,
@@ -518,6 +520,32 @@ function installMainProbes() {
     }
     if (channel === SEQUENCE_RENDER_CHANNEL) {
       return originalHandle(channel, async (event, request, ...rest) => {
+        if (runtime.failNextSequenceRender) {
+          runtime.failNextSequenceRender = false;
+          const response = {
+            ok: false,
+            error: {
+              code: 'RENDER_FAILED',
+              message: '验证器注入：连续画面生成失败，请调整范围后重试。',
+              requestId: request?.requestId,
+              completedFrameCount: 0,
+            },
+          };
+          runtime.sequenceRenders.push({
+            requestId: request?.requestId ?? null,
+            sessionId: request?.sessionId ?? null,
+            range: request?.range ?? null,
+            ok: false,
+            frameCount: 0,
+            errorCode: response.error.code,
+          });
+          runtime.injectedSequenceFailure = {
+            requestId: request?.requestId ?? null,
+            errorCode: response.error.code,
+            completedFrameCount: response.error.completedFrameCount,
+          };
+          return response;
+        }
         const response = await handler(event, request, ...rest);
         runtime.sequenceRenders.push({
           requestId: request?.requestId ?? null,
@@ -1524,6 +1552,132 @@ async function renderSequenceRange(window, target, startOneBased, expectedCount,
   return request;
 }
 
+async function verifySequenceErrorState(window) {
+  const beforeSequenceCount = runtime.sequenceRenders.length;
+  const beforeSnapshotCommitCount = runtime.snapshotCommits.length;
+  const beforeRasterCommitCount = runtime.rasterCommits.length;
+  const beforeProject = await readProjectState(runtime.project.root);
+  const beforeSelection = await readCandidateFacts(window);
+  await waitForPage(window, () => {
+    const button = document.querySelector('[data-testid="fla-frame-sequence-render"]');
+    return button instanceof HTMLButtonElement && !button.disabled;
+  }, [], 120_000);
+  runtime.failNextSequenceRender = true;
+  await click(window, '[data-testid="fla-frame-sequence-render"]');
+  await waitForPage(window, () =>
+    document.querySelector('[data-testid="fla-frame-sequence-preview-status"]')?.dataset.previewState === 'error',
+  [], 30_000);
+  const errorUi = await inPage(window, () => {
+    const placeholder = document.querySelector('[data-testid="fla-frame-sequence-preview-placeholder"]');
+    const action = document.querySelector('[data-testid="fla-frame-sequence-render"]');
+    return {
+      status: document.querySelector('[data-testid="fla-frame-sequence-preview-status"]')?.textContent?.trim() ?? '',
+      previewState: document.querySelector('[data-testid="fla-frame-sequence-preview-status"]')?.dataset.previewState ?? null,
+      heading: placeholder?.querySelector('strong')?.textContent?.trim() ?? '',
+      message: placeholder?.querySelector('span')?.textContent?.trim() ?? '',
+      filmstripFrameCount: document.querySelectorAll('[data-testid="fla-frame-sequence-filmstrip"] [data-frame-index]').length,
+      retryActionLabel: action?.textContent?.replace(/\s+/gu, ' ').trim() ?? '',
+      retryActionEnabled: action instanceof HTMLButtonElement && !action.disabled,
+    };
+  });
+  const afterProject = await readProjectState(runtime.project.root);
+  const afterSelection = await readCandidateFacts(window);
+  const failedRequest = runtime.sequenceRenders.at(-1);
+  assert(runtime.sequenceRenders.length === beforeSequenceCount + 1 &&
+    failedRequest?.ok === false && failedRequest.errorCode === 'RENDER_FAILED' &&
+    runtime.injectedSequenceFailure?.requestId === failedRequest.requestId &&
+    failedRequest.frameCount === 0,
+  'The controlled sequence-render failure did not return one bounded RENDER_FAILED response.');
+  assert(errorUi.previewState === 'error' && errorUi.heading === '连续画面生成失败' &&
+    errorUi.message === '验证器注入：连续画面生成失败，请调整范围后重试。' &&
+    errorUi.status === '需要重试' && errorUi.filmstripFrameCount === 0 &&
+    errorUi.retryActionLabel === '生成连续画面' && errorUi.retryActionEnabled,
+  'The sequence-render error was not readable with an enabled retry action: ' + JSON.stringify(errorUi));
+  assert(beforeSelection.selectedCount === afterSelection.selectedCount && afterSelection.selectedCount === 0 &&
+    runtime.snapshotCommits.length === beforeSnapshotCommitCount &&
+    runtime.rasterCommits.length === beforeRasterCommitCount &&
+    beforeProject.sha256 === afterProject.sha256 && beforeProject.revision === afterProject.revision,
+  'The failed sequence render changed candidate selection, project data, or an import commit route.');
+  runtime.layout.sequenceRenderError = {
+    ...errorUi,
+    projectSha256Before: beforeProject.sha256,
+    projectSha256After: afterProject.sha256,
+    projectRevisionBefore: beforeProject.revision,
+    projectRevisionAfter: afterProject.revision,
+    selectedCountBefore: beforeSelection.selectedCount,
+    selectedCountAfter: afterSelection.selectedCount,
+    snapshotCommits: runtime.snapshotCommits.length,
+    rasterCommits: runtime.rasterCommits.length,
+  };
+  runtime.assertions.sequenceErrorReadableAndRetryable = true;
+  runtime.screenshots.sequenceRenderError = await capture(window, 'sequence-render-error');
+}
+
+async function verifyFilmstripPreviewOnly(window) {
+  const beforeProject = await readProjectState(runtime.project.root);
+  const beforeSelection = await readCandidateFacts(window);
+  const beforeSequenceCount = runtime.sequenceRenders.length;
+  const beforeSnapshotCommitCount = runtime.snapshotCommits.length;
+  const beforeRasterCommitCount = runtime.rasterCommits.length;
+  const firstFrame = await inPage(window, () => {
+    const button = document.querySelector('[data-testid="fla-frame-sequence-filmstrip-item-0"]');
+    const image = document.querySelector('[data-testid="fla-frame-sequence-preview-image"]');
+    return {
+      selected: button?.getAttribute('aria-pressed') ?? null,
+      previewAlt: image?.getAttribute('alt') ?? '',
+    };
+  });
+  assert(firstFrame.selected === 'true' && firstFrame.previewAlt.includes('第 1 帧预览'),
+    'A newly rendered sequence did not initially focus its first frame: ' + JSON.stringify(firstFrame));
+  await click(window, '[data-testid="fla-frame-sequence-filmstrip-item-1"]');
+  await waitForPage(window, () => {
+    const button = document.querySelector('[data-testid="fla-frame-sequence-filmstrip-item-1"]');
+    const image = document.querySelector('[data-testid="fla-frame-sequence-preview-image"]');
+    return button?.getAttribute('aria-pressed') === 'true' &&
+      image instanceof HTMLImageElement && image.alt.includes('第 2 帧预览') &&
+      image.complete && image.naturalWidth > 0;
+  }, [], 30_000);
+  const secondFrame = await inPage(window, () => {
+    const first = document.querySelector('[data-testid="fla-frame-sequence-filmstrip-item-0"]');
+    const second = document.querySelector('[data-testid="fla-frame-sequence-filmstrip-item-1"]');
+    const image = document.querySelector('[data-testid="fla-frame-sequence-preview-image"]');
+    return {
+      firstPressed: first?.getAttribute('aria-pressed') ?? null,
+      secondPressed: second?.getAttribute('aria-pressed') ?? null,
+      secondLabel: second?.getAttribute('aria-label') ?? '',
+      previewAlt: image?.getAttribute('alt') ?? '',
+      previewLoaded: image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+    };
+  });
+  const afterProject = await readProjectState(runtime.project.root);
+  const afterSelection = await readCandidateFacts(window);
+  assert(secondFrame.firstPressed === 'false' && secondFrame.secondPressed === 'true' &&
+    secondFrame.secondLabel === '查看第 2 帧' && secondFrame.previewAlt.includes('第 2 帧预览') &&
+    secondFrame.previewLoaded,
+  'Clicking a generated filmstrip frame did not move preview focus to that frame: ' + JSON.stringify(secondFrame));
+  assert(beforeSelection.selectedCount === afterSelection.selectedCount && afterSelection.selectedCount === 0 &&
+    runtime.sequenceRenders.length === beforeSequenceCount &&
+    runtime.snapshotCommits.length === beforeSnapshotCommitCount &&
+    runtime.rasterCommits.length === beforeRasterCommitCount &&
+    beforeProject.sha256 === afterProject.sha256 && beforeProject.revision === afterProject.revision,
+  'Clicking a generated filmstrip frame changed selection, triggered a render/import, or modified the project.');
+  runtime.layout.sequenceFilmstripPreviewOnly = {
+    ...secondFrame,
+    projectSha256Before: beforeProject.sha256,
+    projectSha256After: afterProject.sha256,
+    projectRevisionBefore: beforeProject.revision,
+    projectRevisionAfter: afterProject.revision,
+    selectedCountBefore: beforeSelection.selectedCount,
+    selectedCountAfter: afterSelection.selectedCount,
+    sequenceRenderCountBefore: beforeSequenceCount,
+    sequenceRenderCountAfter: runtime.sequenceRenders.length,
+    snapshotCommits: runtime.snapshotCommits.length,
+    rasterCommits: runtime.rasterCommits.length,
+  };
+  runtime.assertions.sequenceFilmstripClickPreviewOnly = true;
+  runtime.screenshots.sequenceFilmstripFrame2 = await capture(window, 'sequence-filmstrip-frame-2-preview');
+}
+
 async function readGeneratedSequencePreview(window) {
   return inPage(window, () => {
     const preview = document.querySelector('[data-testid="fla-frame-sequence-preview-area"]');
@@ -1997,6 +2151,7 @@ async function verifySequence(window) {
   }));
   assert(initial.start === '1' && runtime.sequenceRenders.length === 0 && !initial.preview,
     'Focusing a sequence did not start at frame 1 without rendering.');
+  runtime.assertions.sequenceFocusDoesNotRender = true;
   const initialLayoutPass = initial.summary === '第 1–24 帧 · 共 24 帧' && initial.startName === '起始帧' &&
     initial.layout.rangeOutsideCanvas && initial.layout.rangeBelowCanvas && initial.layout.oneRow;
   runtime.layout.sequenceBeforeGeneration = initial.layout;
@@ -2007,7 +2162,7 @@ async function verifySequence(window) {
       'The initial range controls were not a compact, accessible row below the canvas: ' + JSON.stringify(initial));
   }
   runtime.screenshots.sequenceBeforeGeneration = await capture(window, 'sequence-before-generation');
-  runtime.assertions.sequenceFocusDoesNotRender = true;
+  if (runtime.g007Only && !runtime.g007Baseline) await verifySequenceErrorState(window);
   const firstCount = Math.min(target.frameCount, 24);
   const first = await renderSequenceRange(
     window,
@@ -2020,6 +2175,7 @@ async function verifySequence(window) {
   assert(first.range.endFrameIndex - first.range.startFrameIndex + 1 === 24,
     'A sequence range starting at frame 1 did not reach the 24-frame cap.');
   runtime.assertions.sequenceStartsAtOneAndCapsAt24 = true;
+  if (runtime.g007Only && !runtime.g007Baseline) await verifyFilmstripPreviewOnly(window);
   const sequenceVisual = await inPage(window, () => {
     const range = document.querySelector('[data-testid="fla-frame-sequence-range"]');
     const rangeCap = range?.querySelector('.fla-frame-sequence-range-cap');
@@ -3108,6 +3264,7 @@ async function writeReceipt(status, extra = {}) {
     catalogs: runtime.catalogResponses,
     previews: runtime.previews,
     sequenceRenders: runtime.sequenceRenders,
+    injectedSequenceFailure: runtime.injectedSequenceFailure,
     snapshotCommits: runtime.snapshotCommits,
     rasterCommits: runtime.rasterCommits,
     injectedPreviewFailure: runtime.injectedPreviewFailure,
@@ -3264,6 +3421,8 @@ async function main() {
         'sequenceControlsSeparatedFromCanvas',
         'sequenceDefaultRangeSummaryCorrect',
         'g007OrdinaryPreviewUnaffected',
+        'sequenceErrorReadableAndRetryable',
+        'sequenceFilmstripClickPreviewOnly',
       ]),
     ];
     const missing = requiredAssertions.filter((name) => runtime.assertions[name] !== true);
