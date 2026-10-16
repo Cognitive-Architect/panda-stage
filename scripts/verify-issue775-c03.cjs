@@ -1678,6 +1678,64 @@ async function verifyFilmstripPreviewOnly(window) {
   runtime.screenshots.sequenceFilmstripFrame2 = await capture(window, 'sequence-filmstrip-frame-2-preview');
 }
 
+async function verifySequenceSelectedViewRoundTrip(window, targetId) {
+  const beforeProject = await readProjectState(runtime.project.root);
+  const beforeSelection = await readCandidateFacts(window);
+  const beforeSequenceCount = runtime.sequenceRenders.length;
+  const beforeSnapshotCommitCount = runtime.snapshotCommits.length;
+  const beforeRasterCommitCount = runtime.rasterCommits.length;
+  assert(beforeSelection.selectedCount === 1 && beforeSelection.rows.some((row) =>
+    row.kind === 'sequence' && row.checked && row.identity?.includes(targetId)),
+  'The selected-view round trip did not start with the intended checked sequence candidate.');
+  await click(window, '[data-testid="fla-c03-selected-view"]');
+  await waitForPage(window, (wantedTargetId) => {
+    const grid = document.querySelector('[data-testid="fla-c03-candidate-grid"]');
+    const rows = [...document.querySelectorAll('.fla-c03-candidate')];
+    return grid?.dataset.view === 'selected' && rows.length === 1 &&
+      rows[0]?.dataset.candidateKind === 'sequence' && rows[0]?.querySelector('input[type="checkbox"]')?.checked === true &&
+      (rows[0]?.dataset.candidateIdentity ?? '').includes(wantedTargetId);
+  }, [targetId]);
+  const selectedViewFacts = await readCandidateFacts(window);
+  assert(selectedViewFacts.grid?.view === 'selected' && selectedViewFacts.rows.length === 1 &&
+    selectedViewFacts.selectedCount === 1 && selectedViewFacts.rows[0]?.kind === 'sequence' &&
+    selectedViewFacts.rows[0]?.checked && selectedViewFacts.rows[0]?.identity?.includes(targetId),
+  'Entering selected view hid or unchecked the intended sequence candidate: ' + JSON.stringify(selectedViewFacts));
+  runtime.screenshots.sequenceSelectedViewKeepsCheck = await capture(
+    window,
+    'sequence-selected-view-keeps-check',
+  );
+  await click(window, '[data-testid="fla-c03-selected-view"]');
+  await waitForPage(window, () =>
+    document.querySelector('[data-testid="fla-c03-candidate-grid"]')?.dataset.view === 'browse',
+  );
+  const afterSelection = await readCandidateFacts(window);
+  const afterProject = await readProjectState(runtime.project.root);
+  assert(afterSelection.grid?.view === 'browse' && afterSelection.selectedCount === 1 &&
+    afterSelection.rows.some((row) => row.kind === 'sequence' && row.checked && row.identity?.includes(targetId)) &&
+    runtime.sequenceRenders.length === beforeSequenceCount &&
+    runtime.snapshotCommits.length === beforeSnapshotCommitCount &&
+    runtime.rasterCommits.length === beforeRasterCommitCount &&
+    beforeProject.sha256 === afterProject.sha256 && beforeProject.revision === afterProject.revision,
+  'Exiting selected view changed the checked sequence, rendered or committed again, or modified the project.');
+  runtime.layout.sequenceSelectedViewRoundTrip = {
+    candidateId: targetId,
+    selectedView: selectedViewFacts.grid?.view ?? null,
+    browseViewAfterReturn: afterSelection.grid?.view ?? null,
+    selectedCountBefore: beforeSelection.selectedCount,
+    selectedCountInView: selectedViewFacts.selectedCount,
+    selectedCountAfter: afterSelection.selectedCount,
+    projectSha256Before: beforeProject.sha256,
+    projectSha256After: afterProject.sha256,
+    projectRevisionBefore: beforeProject.revision,
+    projectRevisionAfter: afterProject.revision,
+    sequenceRenderCountBefore: beforeSequenceCount,
+    sequenceRenderCountAfter: runtime.sequenceRenders.length,
+    snapshotCommits: runtime.snapshotCommits.length,
+    rasterCommits: runtime.rasterCommits.length,
+  };
+  runtime.assertions.sequenceSelectedViewRetainsCheck = true;
+}
+
 async function readGeneratedSequencePreview(window) {
   return inPage(window, () => {
     const preview = document.querySelector('[data-testid="fla-frame-sequence-preview-area"]');
@@ -2366,6 +2424,9 @@ async function verifySequence(window) {
   const checkedA = await readCandidateFacts(window);
   assert(checkedA.selectedCount === 1 && checkedA.rows.some((row) => row.kind === 'sequence' && row.checked &&
     row.identity?.includes(target.targetId)), 'The rendered sequence could not be checked before the A→B→A preview path.');
+  if (runtime.g007Only && !runtime.g007Baseline) {
+    await verifySequenceSelectedViewRoundTrip(window, target.targetId);
+  }
   const alternate = findCatalogEntry((entry) =>
     entry.targetId !== target.targetId && entry.previewSupported && !entry.isBlank &&
     entry.selectedFrameIndex === 0,
@@ -3486,6 +3547,7 @@ async function main() {
         'g007OrdinaryPreviewUnaffected',
         'sequenceGenerationDoesNotImport',
         'sequenceRangeChangeClearsPriorPreview',
+        'sequenceSelectedViewRetainsCheck',
         'sequenceErrorReadableAndRetryable',
         'sequenceFilmstripClickPreviewOnly',
       ]),
