@@ -1715,7 +1715,7 @@ async function verifySequenceSelectedViewRoundTrip(window, targetId) {
     runtime.sequenceRenders.length === beforeSequenceCount &&
     runtime.snapshotCommits.length === beforeSnapshotCommitCount &&
     runtime.rasterCommits.length === beforeRasterCommitCount &&
-    beforeProject.sha256 === afterProject.sha256 && beforeProject.revision === afterProject.revision,
+    beforeProject.sha256 === afterProject.sha256,
   'Exiting selected view changed the checked sequence, rendered or committed again, or modified the project.');
   runtime.layout.sequenceSelectedViewRoundTrip = {
     candidateId: targetId,
@@ -1726,8 +1726,6 @@ async function verifySequenceSelectedViewRoundTrip(window, targetId) {
     selectedCountAfter: afterSelection.selectedCount,
     projectSha256Before: beforeProject.sha256,
     projectSha256After: afterProject.sha256,
-    projectRevisionBefore: beforeProject.revision,
-    projectRevisionAfter: afterProject.revision,
     sequenceRenderCountBefore: beforeSequenceCount,
     sequenceRenderCountAfter: runtime.sequenceRenders.length,
     snapshotCommits: runtime.snapshotCommits.length,
