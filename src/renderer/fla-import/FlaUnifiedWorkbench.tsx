@@ -81,7 +81,7 @@ export function FlaUnifiedWorkbench({
     ? candidates.find((candidate) => candidate.kind === 'snapshot' &&
       candidate.provenance.renderTargetId === focusedCandidate.provenance.renderTargetId) ?? null
     : null;
-  const status = focusedCandidate ? candidateStatus(focusedCandidate) : null;
+  const status = focusedCandidate ? focusedCandidateStatus(focusedCandidate) : null;
   const canZoom = Boolean(focusedCandidate?.preview.previewUrl || showSnapshotPreview || showSequencePreview);
 
   useLayoutEffect(() => {
@@ -475,20 +475,18 @@ function thumbnailPlaceholder(candidate: FlaWorkbenchCandidate): string {
   if (candidate.preview.status === 'blank') return '空白画面';
   if (candidate.preview.status === 'unsupported') return '暂无法预览';
   if (candidate.preview.status === 'error') return '加载失败';
-  return candidate.kind === 'sequence' ? '按需生成' : '加载中…';
+  if (candidate.kind === 'sequence' && candidate.preview.status === 'checking') return '生成中…';
+  return candidate.kind === 'sequence' ? '可生成' : '加载中…';
 }
 
 function candidateStatus(candidate: FlaWorkbenchCandidate): string {
   switch (candidate.preview.status) {
     case 'verified':
-      return candidate.kind === 'sequence' && candidate.preview.startFrameIndex !== undefined &&
-        candidate.preview.endFrameIndex !== undefined
-        ? `第 ${candidate.preview.startFrameIndex + 1}–${candidate.preview.endFrameIndex + 1} 帧已生成`
-        : '';
+      return candidate.kind === 'sequence' ? '已生成' : '';
     case 'checking':
-      return candidate.kind === 'sequence' ? '按需生成' : '加载中…';
+      return candidate.kind === 'sequence' ? '生成中…' : '加载中…';
     case 'unscanned':
-      return candidate.kind === 'sequence' ? '按需生成' : '加载中…';
+      return candidate.kind === 'sequence' ? '可生成' : '加载中…';
     case 'unsupported':
       return '暂无法预览';
     case 'blank':
@@ -496,6 +494,13 @@ function candidateStatus(candidate: FlaWorkbenchCandidate): string {
     case 'error':
       return '加载失败';
   }
+}
+
+function focusedCandidateStatus(candidate: FlaWorkbenchCandidate): string | null {
+  if (candidate.kind === 'sequence' && candidate.preview.status === 'verified' && candidate.selectable) {
+    return null;
+  }
+  return candidateStatus(candidate) || null;
 }
 
 function PreviewPlaceholder({ candidate }: { candidate: FlaWorkbenchCandidate }): React.JSX.Element {

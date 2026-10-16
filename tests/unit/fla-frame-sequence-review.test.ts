@@ -87,6 +87,27 @@ describe('R2-H.2 shares the C03 unified candidate workbench', () => {
     expect(counterStart).toBeGreaterThanOrEqual(0);
     expect(review.slice(counterStart - 260, counterStart + 170)).not.toContain('aria-live');
   });
+
+  it('keeps the G009 sequence row concise and preserves the keyboard control order', () => {
+    const start = review.indexOf('data-testid="fla-frame-sequence-start"');
+    const rerender = review.indexOf('data-testid="fla-frame-sequence-rerender"');
+    const playback = review.indexOf('{playbackButton}', rerender);
+    const firstThumbnail = review.indexOf('data-testid={`fla-frame-sequence-filmstrip-item-${item.frameIndex}`}');
+
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(rerender).toBeGreaterThan(start);
+    expect(playback).toBeGreaterThan(rerender);
+    expect(firstThumbnail).toBeGreaterThan(playback);
+    expect(review).toContain("presentation === 'unified-preview' ? null : <span>序列预览</span>");
+    expect(review).toContain("presentation === 'unified-preview' ? ' sr-only' : ''");
+    expect(review).toContain('aria-describedby={validation.message');
+    expect(review).toContain('aria-invalid={!validation.valid}');
+    expect(review).toContain('单次最多生成 {MAX_SEQUENCE_FRAMES} 帧。');
+    expect(review).toContain("`${selectedPreviewIndex + 1}/${displayedSequenceItems.length}`");
+    expect(review).toContain("presentation === 'unified-preview'");
+    expect(review).toContain("? playbackState.isPlaying ? '⏸' : '▶'");
+    expect(review).toContain(": playbackState.isPlaying ? '⏸ 暂停' : '▶ 播放'");
+  });
 });
 
 describe('R2-H.2 Problem A/B: gateway UI gating (#296)', () => {

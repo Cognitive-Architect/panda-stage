@@ -82,6 +82,8 @@ const runtime = {
   g007Only: false,
   g007Baseline: false,
   g008Playback: false,
+  g009LayoutSide: null,
+  g009BaselineReceipt: null,
   g007BaselineReceipt: null,
   currentFrameIndexProgressErrorCount: 0,
 };
@@ -105,6 +107,9 @@ function parseArgs(argv) {
     else if (argv[index] === '--evidence-root') args.evidenceRoot = argv[++index];
     else if (argv[index] === '--source') args.source = argv[++index];
     else if (argv[index] === '--g008-playback') args.g008Playback = true;
+    else if (argv[index] === '--g009-layout-before') args.g009LayoutSide = 'before';
+    else if (argv[index] === '--g009-layout-after') args.g009LayoutSide = 'after';
+    else if (argv[index] === '--g009-baseline-receipt') args.g009BaselineReceipt = argv[++index];
     else if (argv[index] === '--g007-only') args.g007Only = true;
     else if (argv[index] === '--g007-baseline') args.g007Baseline = true;
     else if (argv[index] === '--baseline-receipt') args.baselineReceipt = argv[++index];
@@ -2708,7 +2713,7 @@ function assertG008FrameAlignment(facts, startOneBased, expectedCount, label) {
   assert(facts.imageLoaded && facts.imageUrl?.startsWith('blob:') &&
     facts.frameCount === expectedCount && facts.counterFrameCount === expectedCount &&
     facts.batchOrdinal === expectedOrdinal &&
-    facts.counterText === `第 ${expectedOrdinal} / ${expectedCount} 帧` &&
+    facts.counterText === `${expectedOrdinal}/${expectedCount}` &&
     facts.selectedSourceFrameIndices.length === 1 &&
     facts.selectedSourceFrameIndices[0] === facts.sourceFrameIndex,
   `The G008 preview image, batch counter, and filmstrip selection diverged for ${label}: ` + JSON.stringify(facts));
@@ -3199,6 +3204,122 @@ async function verifyG008Playback(window) {
     observed: runtime.currentFrameIndexProgressErrorCount > 0,
     disposition: 'Recorded only; the existing Main-to-Preload Zod progress contract was not changed.',
   };
+}
+
+async function verifyG009LayoutSamples(window) {
+  const target = findLongSequenceEntry();
+  assert(target && target.frameCount >= 26, 'G009 layout evidence needs the same supported real FLA sequence with at least 26 frames.');
+  const baseline = runtime.g009BaselineReceipt?.receipt ?? null;
+  const results = {};
+
+  for (const frameCount of [7, 21, 24]) {
+    const startOneBased = frameCount === 24 ? 1 : target.frameCount - frameCount + 1;
+    const screenshotName = `g009-${runtime.g009LayoutSide}-${frameCount}-frames`;
+    const request = await renderSequenceRange(window, target, startOneBased, frameCount, screenshotName);
+    const expectedEnd = startOneBased + frameCount - 1;
+    const expectedSummary = `第 ${startOneBased}–${expectedEnd} 帧 · 共 ${frameCount} 帧`;
+    const facts = await inPage(window, (targetId) => {
+      const rect = (element) => {
+        if (!(element instanceof Element)) return { x: null, y: null, width: 0, height: 0 };
+        const bounds = element.getBoundingClientRect();
+        return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+      };
+      const visibleHeight = (element) => {
+        if (!(element instanceof Element)) return 0;
+        const bounds = element.getBoundingClientRect();
+        const top = Math.max(0, bounds.top);
+        const bottom = Math.min(window.innerHeight, bounds.bottom);
+        return Math.max(0, Math.min(bottom - top, element instanceof HTMLElement ? element.clientHeight : bounds.height));
+      };
+      const sequenceButton = document.querySelector(`[data-testid="fla-c03-focus-sequence-${targetId}"]`);
+      const candidate = sequenceButton?.closest('.fla-c03-candidate');
+      const preview = document.querySelector('[data-testid="fla-c03-preview"]');
+      const rangeSummary = document.querySelector('[data-testid="fla-frame-sequence-range-summary"]');
+      const frameCounter = document.querySelector('[data-testid="fla-frame-sequence-frame-counter"]');
+      const playback = document.querySelector('[data-testid="fla-frame-sequence-playback"]');
+      const rangeCap = document.querySelector('.fla-frame-sequence-range-cap');
+      const rangeInput = document.querySelector('[data-testid="fla-frame-sequence-start"]');
+      const footer = document.querySelector('[data-testid="fla-c03-import-footer"]');
+      const importButton = document.querySelector('[data-testid="fla-unified-import"]');
+      const filmstripRegion = document.querySelector('[data-testid="fla-frame-sequence-filmstrip-region"]');
+      const filmstrip = document.querySelector('[data-testid="fla-frame-sequence-filmstrip"]');
+      const previewImage = document.querySelector('[data-testid="fla-frame-sequence-preview-image"]');
+      const visibleText = document.body.innerText.replace(/\s+/gu, ' ').trim();
+      const playbackBounds = rect(playback);
+      const summaryBounds = rect(rangeSummary);
+      return {
+        viewport: { width: window.innerWidth, height: window.innerHeight, devicePixelRatio: window.devicePixelRatio },
+        rangeSummary: rangeSummary?.textContent?.replace(/\s+/gu, ' ').trim() ?? null,
+        counterText: frameCounter?.textContent?.replace(/\s+/gu, ' ').trim() ?? null,
+        candidateStatus: candidate?.querySelector('.fla-c03-candidate-copy small')?.textContent?.trim() ?? null,
+        focusedCandidateStatus: preview?.querySelector('[data-testid="fla-c03-focused-status"]')?.textContent?.trim() ?? null,
+        playback: {
+          visibleText: playback?.textContent?.trim() ?? null,
+          accessibleName: playback?.getAttribute('aria-label') ?? null,
+          pressed: playback?.getAttribute('aria-pressed') ?? null,
+          disabled: playback instanceof HTMLButtonElement ? playback.disabled : null,
+          bounds: playbackBounds,
+          distanceFromSummary: summaryBounds.width > 0 ? Math.max(0, playbackBounds.x - (summaryBounds.x + summaryBounds.width)) : null,
+          sameRowAsSummary: Math.abs((playbackBounds.y + playbackBounds.height / 2) - (summaryBounds.y + summaryBounds.height / 2)) <= 4,
+        },
+        rangeCapReferenced: rangeInput?.getAttribute('aria-describedby')?.split(/\s+/u).includes('fla-frame-sequence-range-cap') ?? false,
+        rangeCapText: rangeCap?.textContent?.trim() ?? null,
+        rangeCapVisibleText: rangeCap instanceof HTMLElement &&
+          !rangeCap.classList.contains('sr-only') && visibleText.includes('最多 24 帧'),
+        decorativeFilmstripHeading: document.querySelector('.fla-frame-sequence-filmstrip-heading > span')?.textContent?.trim() ?? null,
+        duplicateFilmstripCount: document.querySelector('.fla-frame-sequence-filmstrip-heading small')?.textContent?.trim() ?? null,
+        filmstripLabel: filmstrip?.getAttribute('aria-label') ?? null,
+        footerHeight: rect(footer).height,
+        importButtonBounds: rect(importButton),
+        filmstripRegionHeight: rect(filmstripRegion).height,
+        filmstripHeight: rect(filmstrip).height,
+        filmstripVisibleHeight: visibleHeight(filmstrip),
+        filmstripClientHeight: filmstrip instanceof HTMLElement ? filmstrip.clientHeight : 0,
+        previewImageHeight: rect(previewImage).height,
+      };
+    }, target.targetId);
+    const screenshot = runtime.screenshots[screenshotName];
+    assert(request.ok && request.range.startFrameIndex === startOneBased - 1 &&
+      request.range.endFrameIndex === expectedEnd - 1,
+    `G009 ${frameCount}-frame sample did not render the intended source range: ` + JSON.stringify(request.range));
+    assert(facts.rangeSummary === expectedSummary &&
+      facts.viewport.width > 0 && facts.viewport.height > 0 &&
+      facts.playback.bounds.width >= 44 && facts.playback.bounds.height >= 44 &&
+      facts.importButtonBounds.width > 0 && facts.importButtonBounds.height >= 44 &&
+      facts.filmstripVisibleHeight > 0 && facts.previewImageHeight > 0,
+    `G009 ${frameCount}-frame sample missed its visible control or layout measurements: ` + JSON.stringify(facts));
+
+    const result = { ...facts, screenshot };
+    results[String(frameCount)] = result;
+
+    if (runtime.g009LayoutSide === 'after') {
+      const before = baseline?.layout?.g009CopySpacing?.[String(frameCount)];
+      assert(before && baseline.status === 'PASS' &&
+        baseline.source?.sha256Before === runtime.sourceSha256Before,
+      `G009 ${frameCount}-frame comparison is missing a successful same-source baseline receipt.`);
+      assert(screenshot.width === before.screenshot.width && screenshot.height === before.screenshot.height &&
+        facts.viewport.width === before.viewport.width && facts.viewport.height === before.viewport.height &&
+        facts.viewport.devicePixelRatio === before.viewport.devicePixelRatio,
+      `G009 ${frameCount}-frame before/after screenshots do not share the same window and display scale.`);
+      assert(facts.candidateStatus === '已生成' && facts.focusedCandidateStatus === null &&
+        facts.counterText === `1/${frameCount}` && facts.playback.visibleText === '▶' &&
+        facts.playback.accessibleName === '播放序列' && facts.playback.pressed === 'false' &&
+        facts.playback.sameRowAsSummary && facts.playback.distanceFromSummary <= 24 &&
+        facts.rangeCapReferenced && !facts.rangeCapVisibleText &&
+        facts.decorativeFilmstripHeading === null && facts.duplicateFilmstripCount === null &&
+        facts.filmstripLabel === '已生成帧序列',
+      `G009 ${frameCount}-frame visible copy or player layout regressed: ` + JSON.stringify(facts));
+      assert(facts.footerHeight < before.footerHeight &&
+        facts.filmstripVisibleHeight > before.filmstripVisibleHeight + 4 &&
+        facts.previewImageHeight >= before.previewImageHeight - 8,
+      `G009 ${frameCount}-frame layout did not reduce the footer and return visible space to the filmstrip without shrinking the character preview: ` +
+        JSON.stringify({ before, after: result }));
+    }
+  }
+
+  runtime.layout.g009CopySpacing = results;
+  runtime.assertions.g009FrameSamplesVisible = Object.keys(results).length === 3;
+  if (runtime.g009LayoutSide === 'after') runtime.assertions.g009CopyAndSpacingVerified = true;
 }
 
 async function verifyResponsiveAndTouch(window, bluehairTargetId) {
@@ -3994,8 +4115,10 @@ async function writeReceipt(status, extra = {}) {
   const sourceSha256After = runtime.sourcePath ? sha256File(runtime.sourcePath) : null;
   const primaryDisplay = screen.getPrimaryDisplay();
   const receipt = {
-    schemaVersion: runtime.g008Playback
-      ? 'issue782-g008-windows-electron/1'
+    schemaVersion: runtime.g009LayoutSide
+      ? 'issue783-g009-windows-electron/1'
+      : runtime.g008Playback
+        ? 'issue782-g008-windows-electron/1'
       : runtime.g007Only
         ? 'issue781-g007-windows-electron/1'
       : 'issue775-c03-windows-electron/1',
@@ -4045,6 +4168,15 @@ async function writeReceipt(status, extra = {}) {
       sameContentBoundsAsC03: runtime.assertions.sameContentBoundsAsBaseline === true,
       sameCaptureSizeAsC03: runtime.assertions.sameSizeBeforeAfter === true,
     },
+    g009Baseline: runtime.g009BaselineReceipt ? {
+      path: runtime.g009BaselineReceipt.path,
+      runId: runtime.g009BaselineReceipt.receipt.runId,
+      sourceSha256: runtime.g009BaselineReceipt.receipt.source?.sha256Before ?? null,
+      screenshots: Object.fromEntries([7, 21, 24].map((count) => [
+        String(count),
+        runtime.g009BaselineReceipt.receipt.screenshots?.[`g009-before-${count}-frames`] ?? null,
+      ])),
+    } : null,
     layout: runtime.layout,
     screenshots: runtime.screenshots,
     catalogs: runtime.catalogResponses,
@@ -4062,7 +4194,9 @@ async function writeReceipt(status, extra = {}) {
     knownProgressContractRisk: {
       currentFrameIndexTooBigMax24Count: runtime.currentFrameIndexProgressErrorCount,
       observed: runtime.currentFrameIndexProgressErrorCount > 0,
-      disposition: 'Recorded as the existing G007 Main-to-Preload progress-contract risk; not changed by G008.',
+      disposition: runtime.g009LayoutSide
+        ? 'Recorded as the existing G007 Main-to-Preload progress-contract risk; not changed by G009.'
+        : 'Recorded as the existing G007 Main-to-Preload progress-contract risk; not changed by G008.',
     },
     assertions: runtime.assertions,
     originalSourceUnchanged: runtime.sourceSha256Before === sourceSha256After,
@@ -4080,8 +4214,10 @@ async function writeReceipt(status, extra = {}) {
     ...extra,
   };
   const json = JSON.stringify(receipt, null, 2) + '\n';
-  const receiptName = runtime.g008Playback
-    ? 'issue782-g008-receipt.json'
+  const receiptName = runtime.g009LayoutSide
+    ? 'issue783-g009-receipt.json'
+    : runtime.g008Playback
+      ? 'issue782-g008-receipt.json'
     : runtime.g007Only ? 'issue781-g007-receipt.json' : 'issue775-c03-receipt.json';
   writeFileSync(join(runtime.runRoot, receiptName), json, 'utf8');
   writeFileSync(join(runtime.evidenceDirectory, 'receipt.json'), json, 'utf8');
@@ -4094,18 +4230,27 @@ async function writeReceipt(status, extra = {}) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  runtime.g009LayoutSide = args.g009LayoutSide ?? null;
+  assert(!runtime.g009LayoutSide || ['before', 'after'].includes(runtime.g009LayoutSide),
+    'G009 layout evidence must be explicitly marked before or after.');
   runtime.g008Playback = Boolean(args.g008Playback);
-  runtime.g007Only = Boolean(args.g007Only || args.g007Baseline || args.g008Playback);
+  runtime.g007Only = Boolean(args.g007Only || args.g007Baseline || runtime.g008Playback || runtime.g009LayoutSide);
   runtime.g007Baseline = Boolean(args.g007Baseline);
+  assert(runtime.g009LayoutSide !== 'after' || runtime.g008Playback,
+    'G009 after-layout evidence must also run the G008 playback regression.');
   runtime.acceptanceRoot = resolve(args.acceptanceRoot ?? (
-    runtime.g008Playback ? 'D:\\PandaStage-Acceptance\\issue782-g008' : DEFAULT_ACCEPTANCE_ROOT
+    runtime.g009LayoutSide
+      ? 'D:\\PandaStage-Acceptance\\issue783-g009'
+      : runtime.g008Playback ? 'D:\\PandaStage-Acceptance\\issue782-g008' : DEFAULT_ACCEPTANCE_ROOT
   ));
   runtime.runRoot = join(runtime.acceptanceRoot, 'run-' + runtime.runId);
   runtime.userData = join(runtime.runRoot, 'electron-user-data');
   runtime.projectParent = join(runtime.acceptanceRoot, 'projects');
   const evidenceRoot = args.evidenceRoot
     ? resolve(runtime.repositoryRoot, args.evidenceRoot)
-    : join(runtime.repositoryRoot, 'docs', 'evidence', runtime.g008Playback ? 'issue-782-g008' : 'issue-775-c03');
+    : runtime.g009LayoutSide
+      ? join(runtime.repositoryRoot, 'docs', 'evidence', 'issue-783-g009', runtime.g009LayoutSide)
+      : join(runtime.repositoryRoot, 'docs', 'evidence', runtime.g008Playback ? 'issue-782-g008' : 'issue-775-c03');
   runtime.evidenceDirectory = join(evidenceRoot, 'run-' + runtime.runId);
   runtime.sourcePath = args.source ? resolve(args.source) : findSourceFile(DEFAULT_SOURCE_ROOT, SOURCE_FILE_NAME);
   assert(!runtime.g007Only || args.source,
@@ -4115,6 +4260,18 @@ async function main() {
   }
 
   runtime.sourceSha256Before = sha256File(runtime.sourcePath);
+  if (runtime.g009LayoutSide === 'after') {
+    assert(args.g009BaselineReceipt, 'The G009 after-layout verification requires --g009-baseline-receipt from the before-layout capture.');
+    const baselineReceiptPath = resolve(args.g009BaselineReceipt);
+    assert(existsSync(baselineReceiptPath), 'The G009 same-source before-layout receipt does not exist.');
+    const baselineReceipt = JSON.parse(readFileSync(baselineReceiptPath, 'utf8'));
+    assert(baselineReceipt.schemaVersion === 'issue783-g009-windows-electron/1' &&
+      baselineReceipt.status === 'PASS' && baselineReceipt.captureRole === 'g009-before-layout-capture' &&
+      baselineReceipt.source?.unchanged === true &&
+      baselineReceipt.source?.sha256Before === runtime.sourceSha256Before,
+    'The G009 before-layout receipt does not prove a successful unchanged run on this exact FLA source.');
+    runtime.g009BaselineReceipt = { path: baselineReceiptPath, receipt: baselineReceipt };
+  }
   if (runtime.g007Only && !runtime.g007Baseline) {
     assert(args.baselineReceipt, 'The after-layout G007/G008 verification requires --baseline-receipt from a successful same-source baseline run.');
     const baselineReceiptPath = resolve(args.baselineReceipt);
@@ -4196,6 +4353,7 @@ async function main() {
     await verifySequence(window);
     if (!runtime.g007Baseline) verifyG007SameSourceComparison();
     if (runtime.g008Playback) await verifyG008Playback(window);
+    if (runtime.g009LayoutSide) await verifyG009LayoutSamples(window);
     const sourceSha256After = sha256File(runtime.sourcePath);
     assert(sourceSha256After === runtime.sourceSha256Before,
       'The original FLA changed during G007/G008 sequence preview verification.');
@@ -4253,15 +4411,23 @@ async function main() {
         'g008TailCounterCorrect',
         'g008SingleFrameControlsDisabled',
       ] : []),
+      ...(runtime.g009LayoutSide ? [
+        'g009FrameSamplesVisible',
+        ...(runtime.g009LayoutSide === 'after' ? ['g009CopyAndSpacingVerified'] : []),
+      ] : []),
     ];
     const missing = requiredAssertions.filter((name) => runtime.assertions[name] !== true);
     assert(missing.length === 0, 'Missing G007 evidence assertions: ' + missing.join(', '));
     await writeReceipt('PASS', {
-      issueNumber: runtime.g008Playback ? 782 : 781,
+      issueNumber: runtime.g009LayoutSide ? 783 : runtime.g008Playback ? 782 : 781,
       captureRole: runtime.g007Baseline
         ? 'before-layout-capture'
-        : runtime.g008Playback ? 'g008-playback-verification' : 'after-layout-verification',
-      productAcceptance: runtime.g008Playback
+        : runtime.g009LayoutSide === 'before'
+          ? 'g009-before-layout-capture'
+          : runtime.g009LayoutSide === 'after'
+            ? 'g009-after-layout-verification'
+            : runtime.g008Playback ? 'g008-playback-verification' : 'after-layout-verification',
+      productAcceptance: runtime.g009LayoutSide || runtime.g008Playback
         ? 'INDEPENDENT_REVIEW_AND_OWNER_WINDOWS_GATE_C_REQUIRED'
         : 'OWNER_HUMAN_VISUAL_ACCEPTANCE_REQUIRED',
     });

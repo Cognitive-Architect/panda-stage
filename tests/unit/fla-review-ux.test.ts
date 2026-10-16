@@ -167,6 +167,6 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
     expect(styles).not.toContain('.fla-c03-checkbox-hitbox:focus-within');
     expect(styles).toMatch(/\.fla-c03-header button\s*\{[^}]*min-width:\s*48px;[^}]*min-height:\s*48px;/u);
     expect(styles).toMatch(/\.fla-c03-zoom-tools button:first-child,[\s\S]*?font-size:\s*22px;/u);
-    expect(styles).toMatch(/\.fla-c03-import-primary\s*\{[^}]*font-size:\s*16px;[^}]*font-weight:\s*800;[^}]*overflow-wrap:\s*anywhere;/u);
+    expect(styles).toMatch(/\.fla-c03-footer-actions \.fla-c03-import-primary\s*\{[^}]*min-height:\s*44px;[^}]*font-size:\s*14px;[^}]*font-weight:\s*800;[^}]*overflow-wrap:\s*anywhere;/u);
   });
 });

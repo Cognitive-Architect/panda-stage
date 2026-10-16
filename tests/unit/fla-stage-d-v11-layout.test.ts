@@ -16,6 +16,7 @@ const session = readFileSync(
 );
 const styles = readOrderedStylesheetSource();
 const verifier = readFileSync('scripts/verify-issue396-stage-d.cjs', 'utf8');
+const c03Verifier = readFileSync('scripts/verify-issue775-c03.cjs', 'utf8');
 
 describe('Issue #775 C03 preserves the Stage D render runners in one workbench', () => {
   it('replaces persistent route tabs while keeping the shared snapshot and sequence previews', () => {
@@ -140,5 +141,20 @@ describe('Issue #775 C03 preserves the Stage D render runners in one workbench',
     expect(verifier).toContain("await waitForCapture('sequence-short-wide')");
     expect(verifier).toContain('sequenceShortWideReachable');
     expect(verifier).toContain("targetViewport: { width: 1008, height: 580 }");
+  });
+
+  it('keeps the G009 icon target, compact footer, and same-window spacing evidence bounded', () => {
+    expect(styles).toMatch(
+      /\.fla-frame-sequence-review-unified-preview \.fla-c03-sequence-actions \.fla-frame-sequence-playback-button\s*\{[^}]*width:\s*44px;[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/u,
+    );
+    expect(styles).toMatch(
+      /\.fla-c03-footer-actions \.fla-c03-import-primary\s*\{[^}]*min-height:\s*44px;/u,
+    );
+    expect(styles).toContain('min-height: 112px;');
+    expect(styles).toContain("'inputs summary'\n      'actions actions'\n      'error error'");
+    expect(c03Verifier).toContain("'--g009-layout-before'");
+    expect(c03Verifier).toContain("'--g009-layout-after'");
+    expect(c03Verifier).toContain("facts.filmstripVisibleHeight > before.filmstripVisibleHeight + 4");
+    expect(c03Verifier).toContain("facts.playback.bounds.width >= 44 && facts.playback.bounds.height >= 44");
   });
 });

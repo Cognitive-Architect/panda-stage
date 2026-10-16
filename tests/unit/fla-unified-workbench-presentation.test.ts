@@ -1,7 +1,9 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import type { FlaRenderableTargetCatalogEntry } from '../../src/shared/fla-static-snapshot-api';
 import { FlaUnifiedWorkbench } from '../../src/renderer/fla-import/FlaUnifiedWorkbench';
+import { createFlaWorkbenchCandidates } from '../../src/renderer/fla-import/fla-workbench-candidates';
 import type { FlaUnifiedImportReceipt } from '../../src/renderer/fla-import/fla-unified-import';
 
 type WorkbenchProps = Parameters<typeof FlaUnifiedWorkbench>[0];
@@ -38,6 +40,50 @@ const baseProps: WorkbenchProps = {
 
 function renderWorkbench(overrides: Partial<WorkbenchProps> = {}): string {
   return renderToStaticMarkup(createElement(FlaUnifiedWorkbench, { ...baseProps, ...overrides }));
+}
+
+function sequenceCandidate(status: 'unscanned' | 'checking' | 'verified' | 'error' | 'blank' | 'unsupported') {
+  const renderTargetId = `fla-render-target-${status.padEnd(16, '0')}`;
+  const entry: FlaRenderableTargetCatalogEntry = {
+    target: {
+      renderTargetId,
+      kind: 'timeline',
+      userLabel: '挥剑动作',
+      sourceLibraryItemName: '挥剑动作',
+      sourceSymbolName: '挥剑动作',
+      sourceTimelineIndex: 0,
+      frameCount: 30,
+      selectedFrameIndex: 0,
+      compatibility: [],
+    },
+    previewSupported: status !== 'unsupported',
+    isBlank: status === 'blank',
+    ...(status === 'unsupported' ? { unsupportedReason: '不支持此素材。' } : {}),
+  };
+  const preview = status === 'unscanned' || status === 'blank' || status === 'unsupported'
+    ? undefined
+    : status === 'verified'
+      ? {
+          status: 'verified' as const,
+          previewUrl: 'blob:sequence-preview',
+          sha256: 'b'.repeat(64),
+          requestId: '00000000-0000-4000-8000-000000000777',
+          startFrameIndex: 0,
+          endFrameIndex: 6,
+        }
+      : status === 'error'
+        ? { status: 'error' as const, reason: '生成失败，请重试。' }
+        : { status: 'checking' as const };
+  const [candidate] = createFlaWorkbenchCandidates({
+    context: {
+      sessionId: '00000000-0000-4000-8000-000000000778',
+      source: { basename: 'sample.fla', sha256: 'a'.repeat(64) },
+    },
+    sequenceEntries: [entry],
+    sequencePreviews: preview ? { [renderTargetId]: preview } : undefined,
+  });
+  if (!candidate) throw new Error(`No sequence candidate for ${status}`);
+  return candidate;
 }
 
 function failedReceipt(message: string): FlaUnifiedImportReceipt {
@@ -99,6 +145,38 @@ describe('Issue #778 unified FLA workbench presentation', () => {
     expect(emptyMarkup).toContain('>适中</button>');
     expect(emptyMarkup).toContain('>导入 0 项</button>');
     expect(emptyMarkup).toMatch(/data-testid="fla-unified-import"[^>]*disabled/u);
+  });
+
+  it('shows concise sequence readiness without changing candidate eligibility', () => {
+    const ready = sequenceCandidate('verified');
+    const unscanned = sequenceCandidate('unscanned');
+    const checking = sequenceCandidate('checking');
+    const failed = sequenceCandidate('error');
+    const blank = sequenceCandidate('blank');
+    const unsupported = sequenceCandidate('unsupported');
+    const readyMarkup = renderWorkbench({
+      candidates: [ready],
+      focusedCandidateIdentityKey: ready.identityKey,
+    });
+    const unscannedMarkup = renderWorkbench({ candidates: [unscanned] });
+    const checkingMarkup = renderWorkbench({ candidates: [checking] });
+    const failedMarkup = renderWorkbench({ candidates: [failed] });
+    const blankMarkup = renderWorkbench({ candidates: [blank] });
+    const unsupportedMarkup = renderWorkbench({ candidates: [unsupported] });
+
+    expect(ready).toMatchObject({ selectable: true, preview: { status: 'verified', requestId: expect.any(String) } });
+    expect(readyMarkup).toContain('<small data-status="verified">已生成</small>');
+    expect(readyMarkup).not.toContain('第 1–7 帧已生成');
+    expect(readyMarkup).not.toContain('data-testid="fla-c03-focused-status"');
+    expect(unscannedMarkup).toContain('<span>可生成</span>');
+    expect(unscannedMarkup).toContain('<small data-status="unscanned">可生成</small>');
+    expect(unscanned).toMatchObject({ selectable: false, checked: false });
+    expect(unscannedMarkup).toMatch(/data-selectable="false"[^>]*>[\s\S]*?disabled/u);
+    expect(checkingMarkup).toContain('<span>生成中…</span>');
+    expect(checkingMarkup).toContain('<small data-status="checking">生成中…</small>');
+    expect(failedMarkup).toContain('<small data-status="error">加载失败</small>');
+    expect(blankMarkup).toContain('<small data-status="blank">空白画面</small>');
+    expect(unsupportedMarkup).toContain('<small data-status="unsupported">暂无法预览</small>');
   });
 
   it('places sequence controls in a sibling region below the canvas', () => {

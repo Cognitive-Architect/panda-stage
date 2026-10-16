@@ -230,6 +230,9 @@ export function FlaFrameSequenceReview({
         : 'needs-preview';
 
   const sequencePreviewInputs = useMemo(() => {
+    if (phase === 'rendering' && currentIntent) {
+      return { [currentIntent.renderTargetId]: { status: 'checking' as const } };
+    }
     const previewItem = orderedSequenceItems[selectedPreviewIndex];
     const previewUrl = previewUrls[selectedPreviewIndex];
     if (!sequenceAuthorityCurrent || !success || !previewItem || !previewUrl || orderedSequenceItems.length === 0) {
@@ -248,7 +251,7 @@ export function FlaFrameSequenceReview({
         endFrameIndex: lastFrame.frameIndex,
       },
     };
-  }, [orderedSequenceItems, previewUrls, selectedPreviewIndex, sequenceAuthorityCurrent, success]);
+  }, [currentIntent, orderedSequenceItems, phase, previewUrls, selectedPreviewIndex, sequenceAuthorityCurrent, success]);
   const sequenceCandidates = useMemo(
     () => createFlaWorkbenchCandidates({
       context: { sessionId, source },
@@ -313,6 +316,25 @@ export function FlaFrameSequenceReview({
       ])
     : null;
   playbackSessionKeyRef.current = playbackContextKey;
+  const playbackButton = (
+    <button
+      aria-label={playbackState.isPlaying ? '暂停序列播放' : '播放序列'}
+      aria-pressed={playbackState.isPlaying}
+      className="fla-frame-sequence-playback-button"
+      data-playing={playbackState.isPlaying ? 'true' : 'false'}
+      data-testid="fla-frame-sequence-playback"
+      disabled={!playbackContextKey}
+      onClick={() => {
+        if (playbackState.isPlaying) dispatchPlayback({ type: 'pause' });
+        else if (playbackContextKey) dispatchPlayback({ type: 'play', sessionKey: playbackContextKey });
+      }}
+      type="button"
+    >
+      {presentation === 'unified-preview'
+        ? playbackState.isPlaying ? '⏸' : '▶'
+        : playbackState.isPlaying ? '⏸ 暂停' : '▶ 播放'}
+    </button>
+  );
 
   const stopPlayback = useCallback(() => {
     dispatchPlayback({ type: 'invalidate' });
@@ -1091,6 +1113,10 @@ export function FlaFrameSequenceReview({
                 <span>起始帧</span>
                 <input
                   aria-label="起始帧"
+                  aria-describedby={validation.message
+                    ? 'fla-frame-sequence-range-cap fla-frame-sequence-range-error'
+                    : 'fla-frame-sequence-range-cap'}
+                  aria-invalid={!validation.valid}
                   type="number"
                   min={1}
                   max={Math.max(1, targetFrameCount)}
@@ -1120,9 +1146,14 @@ export function FlaFrameSequenceReview({
             >
               {formatSequenceRangeSummary(startFrameIndex, endFrameIndex, validation)}
             </output>
-            <p className="fla-frame-sequence-range-cap">最多 {MAX_SEQUENCE_FRAMES} 帧</p>
+            <p
+              className={`fla-frame-sequence-range-cap${presentation === 'unified-preview' ? ' sr-only' : ''}`}
+              id="fla-frame-sequence-range-cap"
+            >
+              单次最多生成 {MAX_SEQUENCE_FRAMES} 帧。
+            </p>
             {!validation.valid && validation.message ? (
-              <p role="alert" data-testid="fla-frame-sequence-range-error">{validation.message}</p>
+              <p id="fla-frame-sequence-range-error" role="alert" data-testid="fla-frame-sequence-range-error">{validation.message}</p>
             ) : null}
             {presentation === 'unified-preview' ? (
               <div className="fla-c03-sequence-actions" aria-live="polite">
@@ -1162,40 +1193,32 @@ export function FlaFrameSequenceReview({
                     重新生成
                   </button>
                 ) : null}
+                {playbackButton}
               </div>
             ) : null}
           </div>
 
           <div className="fla-frame-sequence-filmstrip-region" data-testid="fla-frame-sequence-filmstrip-region">
             <header className="fla-frame-sequence-filmstrip-heading">
-              <span>序列预览</span>
-            <div className="fla-frame-sequence-filmstrip-controls">
-              {hasPreview ? (
-                <output
-                  data-batch-frame-index={selectedPreviewIndex + 1}
-                  data-frame-count={displayedSequenceItems.length}
-                  data-testid="fla-frame-sequence-frame-counter"
-                >
-                  第 {selectedPreviewIndex + 1} / {displayedSequenceItems.length} 帧
-                </output>
-              ) : null}
-              <button
-                aria-label={playbackState.isPlaying ? '暂停序列播放' : '播放序列'}
-                aria-pressed={playbackState.isPlaying}
-                className="fla-frame-sequence-playback-button"
-                data-playing={playbackState.isPlaying ? 'true' : 'false'}
-                data-testid="fla-frame-sequence-playback"
-                disabled={!playbackContextKey}
-                onClick={() => {
-                  if (playbackState.isPlaying) dispatchPlayback({ type: 'pause' });
-                  else if (playbackContextKey) dispatchPlayback({ type: 'play', sessionKey: playbackContextKey });
-                }}
-                type="button"
-              >
-                {playbackState.isPlaying ? '⏸ 暂停' : '▶ 播放'}
-              </button>
-              <small>{displayedSequenceItems.length > 0 ? `${displayedSequenceItems.length} 帧` : '尚未生成'}</small>
-            </div>
+              {presentation === 'unified-preview' ? null : <span>序列预览</span>}
+              <div className="fla-frame-sequence-filmstrip-controls">
+                {hasPreview ? (
+                  <output
+                    aria-label={`第 ${selectedPreviewIndex + 1} / ${displayedSequenceItems.length} 帧`}
+                    data-batch-frame-index={selectedPreviewIndex + 1}
+                    data-frame-count={displayedSequenceItems.length}
+                    data-testid="fla-frame-sequence-frame-counter"
+                  >
+                    {presentation === 'unified-preview'
+                      ? `${selectedPreviewIndex + 1}/${displayedSequenceItems.length}`
+                      : `第 ${selectedPreviewIndex + 1} / ${displayedSequenceItems.length} 帧`}
+                  </output>
+                ) : null}
+                {presentation === 'unified-preview' ? null : playbackButton}
+                {presentation === 'unified-preview'
+                  ? null
+                  : <small>{displayedSequenceItems.length > 0 ? `${displayedSequenceItems.length} 帧` : '尚未生成'}</small>}
+              </div>
             </header>
           <div
             className="fla-frame-sequence-filmstrip"
