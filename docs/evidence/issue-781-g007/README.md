@@ -7,10 +7,10 @@ The same real FLA source was opened read-only for both captures. Its size was
 ## Before and after captures
 
 - Before-layout baseline: [receipt](before/run-2026-10-16T01-07-14-817Z/receipt.json), [first 24-frame screenshot](before/run-2026-10-16T01-07-14-817Z/sequence-start-1.png).
-- Current G007 layout: [receipt](after/run-2026-10-16T01-57-56-752Z/receipt.json), [first 24-frame screenshot](after/run-2026-10-16T01-57-56-752Z/sequence-start-1.png), [fit preview](after/run-2026-10-16T01-57-56-752Z/sequence-generated-fit-normal.png).
-- Ordinary snapshot preview during A→B→A: [snapshot remains on the canvas while the checked sequence's controls remain below it](after/run-2026-10-16T01-57-56-752Z/g007-snapshot-focus-with-sequence-controls.png).
-- Narrow view: [full character at the top of the workbench](after/run-2026-10-16T01-57-56-752Z/sequence-generated-narrow-top.png), [range, regenerate, and filmstrip controls after a native touch scroll](after/run-2026-10-16T01-57-56-752Z/sequence-generated-narrow-controls.png).
-- 560 CSS-pixel breakpoint: [initial simulated view](after/run-2026-10-16T01-57-56-752Z/sequence-generated-560-css-simulation.png), [controls and filmstrip after simulated touch scroll](after/run-2026-10-16T01-57-56-752Z/sequence-generated-560-css-simulation-controls.png).
+- Current G007 layout: [receipt](after/run-2026-10-16T02-15-47-661Z/receipt.json), [first 24-frame screenshot](after/run-2026-10-16T02-15-47-661Z/sequence-start-1.png), [fit preview](after/run-2026-10-16T02-15-47-661Z/sequence-generated-fit-normal.png).
+- Ordinary snapshot preview during A→B→A: [snapshot remains on the canvas while the checked sequence's controls remain below it](after/run-2026-10-16T02-15-47-661Z/g007-snapshot-focus-with-sequence-controls.png).
+- Narrow view: [full character at the top of the workbench](after/run-2026-10-16T02-15-47-661Z/sequence-generated-narrow-top.png), [range, regenerate, and filmstrip controls after a native touch scroll](after/run-2026-10-16T02-15-47-661Z/sequence-generated-narrow-controls.png).
+- 560 CSS-pixel breakpoint: [initial simulated view](after/run-2026-10-16T02-15-47-661Z/sequence-generated-560-css-simulation.png), [controls and filmstrip after simulated touch scroll](after/run-2026-10-16T02-15-47-661Z/sequence-generated-560-css-simulation-controls.png).
 
 The before and after runs used the same 333-frame character target, the first
 24-frame range, 1186 × 724 logical content bounds, and the host's 150% Windows
@@ -22,6 +22,8 @@ The 846 × 653 CSS-pixel narrow run shows the entire canvas without scrolling.
 A native touch gesture then scrolls to the range input, regenerate action, and
 filmstrip; each tested target meets the 44 CSS-pixel minimum. The source FLA
 hash is unchanged after both runs.
+The regenerate action is 48 CSS pixels high, matching the existing C03
+interaction verifier's button-size contract.
 
 During the A→B→A path, the ordinary snapshot image remains visible in the
 canvas while the checked sequence's range controls stay below the canvas. The
