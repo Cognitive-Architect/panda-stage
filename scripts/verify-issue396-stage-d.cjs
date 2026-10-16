@@ -21,6 +21,7 @@ const JSZip = require('jszip');
 
 const DEFAULT_ACCEPTANCE_ROOT = 'D:\\PandaStage-Acceptance\\issue398-stage-d';
 const SYNTHETIC_TARGET_COUNT = 25;
+const MAX_SEQUENCE_NARROW_TOUCH_SCROLLS = 6;
 const SIMPLE_RECT_CUBICS = '!0 0|1660 0|1660 3365|0 3365|0 0';
 const ISSUE766_CATALOG_CHANNEL = 'fla:snapshot-catalog';
 const issue766Runtime = {
@@ -582,27 +583,7 @@ async function driveTouchScrollAtMarker(mainWindow, marker, pathState) {
         await delay(50);
         continue;
       }
-      const debuggerApi = mainWindow.webContents.debugger;
-      const attachedHere = !debuggerApi.isAttached();
-      if (attachedHere) debuggerApi.attach('1.3');
-      try {
-        await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
-          type: 'touchStart',
-          touchPoints: [{ id: 1, x: touch.x, y: touch.y, radiusX: 1, radiusY: 1, force: 1 }],
-        });
-        await delay(40);
-        await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
-          type: 'touchMove',
-          touchPoints: [{ id: 1, x: touch.x, y: touch.y - touch.deltaY, radiusX: 1, radiusY: 1, force: 1 }],
-        });
-        await delay(80);
-        await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
-          type: 'touchEnd',
-          touchPoints: [],
-        });
-      } finally {
-        if (attachedHere && debuggerApi.isAttached()) debuggerApi.detach();
-      }
+      await dispatchNativeTouchScroll(mainWindow, touch);
       await delay(100);
       await mainWindow.webContents.executeJavaScript(
         `document.documentElement.dataset.issue398TouchDone = ${JSON.stringify(marker)}; true;`,
@@ -612,6 +593,74 @@ async function driveTouchScrollAtMarker(mainWindow, marker, pathState) {
     await delay(50);
   }
   throw new Error(`Timed out waiting for Stage D touch marker ${marker}`);
+}
+
+async function driveBoundedNativeTouchScrollsAtMarker(mainWindow, markerPrefix, pathState) {
+  const gestures = [];
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    if (pathState?.error) throw pathState.error;
+    const request = await mainWindow.webContents.executeJavaScript(
+      'document.documentElement.dataset.issue398TouchMarker || ""',
+    );
+    if (request) {
+      const touch = JSON.parse(request);
+      if (touch.marker === `${markerPrefix}-complete`) {
+        await mainWindow.webContents.executeJavaScript(
+          `document.documentElement.dataset.issue398TouchDone = ${JSON.stringify(touch.marker)}; true;`,
+        );
+        return {
+          markerPrefix,
+          maxGestures: MAX_SEQUENCE_NARROW_TOUCH_SCROLLS,
+          gestureCount: gestures.length,
+          gestures,
+          completed: true,
+        };
+      }
+      const expectedMarker = `${markerPrefix}-${gestures.length + 1}`;
+      if (touch.marker !== expectedMarker) {
+        await delay(50);
+        continue;
+      }
+      if (gestures.length >= MAX_SEQUENCE_NARROW_TOUCH_SCROLLS) {
+        throw new Error(`Stage D exceeded the bounded native touch-scroll limit for ${markerPrefix}`);
+      }
+      const dispatched = await dispatchNativeTouchScroll(mainWindow, touch);
+      await delay(100);
+      await mainWindow.webContents.executeJavaScript(
+        `document.documentElement.dataset.issue398TouchDone = ${JSON.stringify(touch.marker)}; true;`,
+      );
+      gestures.push({ marker: touch.marker, ...dispatched });
+      continue;
+    }
+    await delay(50);
+  }
+  throw new Error(`Timed out waiting for bounded Stage D touch-scroll sequence ${markerPrefix}`);
+}
+
+async function dispatchNativeTouchScroll(mainWindow, touch) {
+  const debuggerApi = mainWindow.webContents.debugger;
+  const attachedHere = !debuggerApi.isAttached();
+  if (attachedHere) debuggerApi.attach('1.3');
+  try {
+    await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ id: 1, x: touch.x, y: touch.y, radiusX: 1, radiusY: 1, force: 1 }],
+    });
+    await delay(40);
+    await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ id: 1, x: touch.x, y: touch.y - touch.deltaY, radiusX: 1, radiusY: 1, force: 1 }],
+    });
+    await delay(80);
+    await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
+      type: 'touchEnd',
+      touchPoints: [],
+    });
+  } finally {
+    if (attachedHere && debuggerApi.isAttached()) debuggerApi.detach();
+  }
+  return { input: 'CDP Input.dispatchTouchEvent', x: touch.x, y: touch.y, deltaY: touch.deltaY };
 }
 
 async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
@@ -1325,6 +1374,21 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           const currentAction = currentRange?.querySelector('[data-testid="fla-frame-sequence-render"], [data-testid="fla-frame-sequence-rerender"]');
           const currentStrip = document.querySelector('[data-testid="fla-frame-sequence-filmstrip-region"]');
           const firstFrame = currentStrip?.querySelector('[data-testid="fla-frame-sequence-filmstrip-item-0"]');
+          const firstFrameRect = rect(firstFrame);
+          const stripRect = rect(currentStrip);
+          const firstFrameInsideStrip = Boolean(firstFrameRect && stripRect &&
+            firstFrameRect.top >= stripRect.top - 1 && firstFrameRect.bottom <= stripRect.bottom + 1 &&
+            firstFrameRect.left >= stripRect.left - 1 && firstFrameRect.right <= stripRect.right + 1);
+          const firstFrameFullyVisible = fullyVisible(firstFrame) && firstFrameInsideStrip;
+          const firstFrameCenterTarget = firstFrameRect
+            ? document.elementFromPoint(
+              firstFrameRect.left + firstFrameRect.width / 2,
+              firstFrameRect.top + firstFrameRect.height / 2,
+            )
+            : null;
+          const firstFrameActionable = firstFrame instanceof HTMLButtonElement && !firstFrame.disabled &&
+            getComputedStyle(firstFrame).pointerEvents !== 'none' && firstFrameFullyVisible &&
+            (firstFrameCenterTarget === firstFrame || firstFrame.contains(firstFrameCenterTarget));
           const previewStage = document.querySelector('.fla-frame-sequence-review-unified-preview .fla-frame-sequence-preview-stage');
           const previewImage = previewStage?.querySelector('img');
           const footer = document.querySelector('[data-testid="fla-c03-import-footer"]');
@@ -1339,7 +1403,14 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
             viewport: { width: window.innerWidth, height: window.innerHeight, devicePixelRatio: window.devicePixelRatio },
             start: { rect: rect(currentStart), visible: fullyVisible(currentStart), height: rect(currentStart)?.height ?? 0, value: currentStart instanceof HTMLInputElement ? currentStart.value : null },
             action: { testId: currentAction?.getAttribute('data-testid') ?? null, rect: rect(currentAction), visible: fullyVisible(currentAction), height: rect(currentAction)?.height ?? 0, disabled: currentAction instanceof HTMLButtonElement ? currentAction.disabled : null },
-            filmstrip: { rect: rect(currentStrip), visible: fullyVisible(currentStrip), firstFrameVisible: fullyVisible(firstFrame), frameCount: currentStrip?.querySelectorAll('[role="listitem"]')?.length ?? 0 },
+            filmstrip: {
+              rect: stripRect,
+              visible: fullyVisible(currentStrip),
+              firstFrameVisible: firstFrameFullyVisible,
+              firstFrameActionable,
+              firstFrameRect,
+              frameCount: currentStrip?.querySelectorAll('[role="listitem"]')?.length ?? 0,
+            },
             preview: { stage: rect(previewStage), stageVisible: fullyVisible(previewStage), image: rect(previewImage), imageVisible: fullyVisible(previewImage) },
             footer: { rect: rect(footer), visible: fullyVisible(footer) },
             importAction: { rect: rect(importAction), visible: fullyVisible(importAction), height: rect(importAction)?.height ?? 0 },
@@ -1365,23 +1436,58 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         const onTouchMove = () => { touchMoveCount += 1; };
         document.addEventListener('touchstart', onTouchStart, { passive: true });
         document.addEventListener('touchmove', onTouchMove, { passive: true });
-        await waitForNativeTouch('sequence-narrow-touch-scroll', { x: touchX, y: touchY, deltaY: 110 });
-        const touchDeadline = Date.now() + 3_000;
-        while (Date.now() < touchDeadline && workbench.scrollTop <= scrollTopBeforeTouch + 1 && workbench.scrollHeight > workbench.clientHeight + 1) {
-          await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+        const touchScrollAttempts = [];
+        let narrowAfterTouch = readSequenceReachability();
+        const maxNativeTouchScrolls = ${MAX_SEQUENCE_NARROW_TOUCH_SCROLLS};
+        try {
+          for (let attempt = 1; attempt <= maxNativeTouchScrolls; attempt += 1) {
+            if (narrowAfterTouch.filmstrip.firstFrameActionable) break;
+            const scrollTopBeforeAttempt = workbench.scrollTop;
+            await waitForNativeTouch('sequence-narrow-touch-scroll-' + attempt, {
+              x: touchX,
+              y: touchY,
+              deltaY: 110,
+            });
+            const touchDeadline = Date.now() + 3_000;
+            while (Date.now() < touchDeadline &&
+              workbench.scrollTop <= scrollTopBeforeAttempt + 1 &&
+              workbench.scrollHeight > workbench.clientHeight + 1) {
+              await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+            }
+            narrowAfterTouch = readSequenceReachability();
+            touchScrollAttempts.push({
+              attempt,
+              scrollTopBefore: scrollTopBeforeAttempt,
+              scrollTopAfter: workbench.scrollTop,
+              firstFrameVisible: narrowAfterTouch.filmstrip.firstFrameVisible,
+              firstFrameActionable: narrowAfterTouch.filmstrip.firstFrameActionable,
+            });
+            if (narrowAfterTouch.filmstrip.firstFrameActionable) break;
+          }
+        } finally {
+          document.removeEventListener('touchstart', onTouchStart);
+          document.removeEventListener('touchmove', onTouchMove);
         }
-        document.removeEventListener('touchstart', onTouchStart);
-        document.removeEventListener('touchmove', onTouchMove);
+        await waitForNativeTouch('sequence-narrow-touch-scroll-complete', {
+          x: touchX,
+          y: touchY,
+          deltaY: 110,
+          complete: true,
+        });
         const touchScroll = {
           dispatchedBy: 'Electron CDP Input.dispatchTouchEvent',
+          maxGestures: maxNativeTouchScrolls,
+          gestureCount: touchScrollAttempts.length,
           touchStartCount,
           touchMoveCount,
           scrollTopBefore: scrollTopBeforeTouch,
           scrollTopAfter: workbench.scrollTop,
           scrollHeight: workbench.scrollHeight,
           clientHeight: workbench.clientHeight,
+          firstFrameFullyVisible: narrowAfterTouch.filmstrip.firstFrameVisible,
+          firstFrameActionable: narrowAfterTouch.filmstrip.firstFrameActionable,
+          attempts: touchScrollAttempts,
         };
-        const narrowAfterTouch = readSequenceReachability();
         const narrowStart = sequenceRange.querySelector('[data-testid="fla-frame-sequence-start"]');
         if (!(narrowStart instanceof HTMLInputElement)) throw new Error('Narrow Stage D sequence start input disappeared');
         narrowStart.focus();
@@ -1389,6 +1495,10 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         const narrowRange = document.querySelector('[data-testid="fla-frame-sequence-range"]');
         const narrowAction = narrowRange?.querySelector('[data-testid="fla-frame-sequence-render"], [data-testid="fla-frame-sequence-rerender"]');
         const keyboardReachedAction = narrowAction instanceof HTMLButtonElement && document.activeElement === narrowAction;
+        await waitForNativeKeyboard('sequence-narrow-tab-playback');
+        const playbackButton = document.querySelector('[data-testid="fla-frame-sequence-playback"]');
+        const keyboardReachedPlayback = playbackButton instanceof HTMLButtonElement &&
+          !playbackButton.disabled && document.activeElement === playbackButton;
         await waitForNativeKeyboard('sequence-narrow-tab-frame');
         const narrowFirstFrame = document.querySelector('[data-testid="fla-frame-sequence-filmstrip-item-0"]');
         const keyboardReachedFrameStrip = narrowFirstFrame instanceof HTMLButtonElement && document.activeElement === narrowFirstFrame;
@@ -1413,6 +1523,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           touchScroll,
           narrowAfterTouch,
           keyboardReachedAction,
+          keyboardReachedPlayback,
           keyboardReachedFrameStrip,
           narrowAfterKeyboard,
           narrowFooterPinned,
@@ -1892,9 +2003,8 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         sequenceInteraction.narrowAtTop.action.visible || sequenceInteraction.narrowAfterTouch.action.visible ||
         sequenceInteraction.keyboardReachedAction
       ) && (
-        sequenceInteraction.narrowAtTop.filmstrip.firstFrameVisible ||
-        sequenceInteraction.narrowAfterTouch.filmstrip.firstFrameVisible ||
-        sequenceInteraction.keyboardReachedFrameStrip
+        sequenceInteraction.narrowAtTop.filmstrip.firstFrameActionable ||
+        sequenceInteraction.narrowAfterTouch.filmstrip.firstFrameActionable
       ) && sequenceInteraction.narrowAtTop.footer.visible &&
         sequenceInteraction.narrowAtTop.importAction.visible && sequenceInteraction.narrowFooterPinned;
       const sequenceShortWideReachable = sequenceInteraction.shortWideReachability.viewport.width === 1008 &&
@@ -1910,12 +2020,19 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         sequenceInteraction.shortWideReachability.footer.visible &&
         sequenceInteraction.shortWideReachability.importAction.visible &&
         sequenceInteraction.shortWideReachability.importAction.height >= 56;
-      const sequenceTouchWorks = sequenceInteraction.touchScroll.touchStartCount > 0 &&
-        sequenceInteraction.touchScroll.touchMoveCount > 0 &&
+      const sequenceTouchWorks = sequenceInteraction.narrowAtTop.filmstrip.firstFrameActionable || (
+        sequenceInteraction.touchScroll.gestureCount > 0 &&
+        sequenceInteraction.touchScroll.gestureCount <= sequenceInteraction.touchScroll.maxGestures &&
+        sequenceInteraction.touchScroll.touchStartCount >= sequenceInteraction.touchScroll.gestureCount &&
+        sequenceInteraction.touchScroll.touchMoveCount >= sequenceInteraction.touchScroll.gestureCount &&
+        sequenceInteraction.touchScroll.firstFrameFullyVisible &&
+        sequenceInteraction.touchScroll.firstFrameActionable &&
         (sequenceInteraction.touchScroll.scrollHeight <= sequenceInteraction.touchScroll.clientHeight + 1 ||
-          sequenceInteraction.touchScroll.scrollTopAfter > sequenceInteraction.touchScroll.scrollTopBefore + 1);
+          sequenceInteraction.touchScroll.scrollTopAfter > sequenceInteraction.touchScroll.scrollTopBefore + 1)
+      );
       const sequenceKeyboardWorks = sequenceInteraction.keyboardFocusedGenerate &&
-        sequenceInteraction.keyboardReachedAction && sequenceInteraction.keyboardReachedFrameStrip;
+        sequenceInteraction.keyboardReachedAction && sequenceInteraction.keyboardReachedPlayback &&
+        sequenceInteraction.keyboardReachedFrameStrip;
       const sequenceHitTargetsRespectDesign = sequenceInteraction.normalReachability.start.height >= 44 &&
         sequenceInteraction.normalReachability.action.height >= 48 &&
         sequenceInteraction.normalReachability.importAction.height >= 56 &&
@@ -2365,7 +2482,7 @@ async function main() {
           pathState,
           { resizeTo: { width: 800, height: 560, maxViewportWidth: 900 } },
         );
-        layoutEvidence.nativeTouchScroll = await driveTouchScrollAtMarker(
+        layoutEvidence.nativeTouchScroll = await driveBoundedNativeTouchScrollsAtMarker(
           mainWindow,
           'sequence-narrow-touch-scroll',
           pathState,
@@ -2373,6 +2490,12 @@ async function main() {
         layoutEvidence.nativeKeyboardNarrowAction = await driveKeyboardAtMarker(
           mainWindow,
           'sequence-narrow-tab-action',
+          'Tab',
+          pathState,
+        );
+        layoutEvidence.nativeKeyboardNarrowPlayback = await driveKeyboardAtMarker(
+          mainWindow,
+          'sequence-narrow-tab-playback',
           'Tab',
           pathState,
         );
