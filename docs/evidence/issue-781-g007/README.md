@@ -7,14 +7,14 @@ The same real FLA source was opened read-only for both captures. Its size was
 ## Before and after captures
 
 - Before-layout baseline: [receipt](before/run-2026-10-16T01-07-14-817Z/receipt.json), [first 24-frame screenshot](before/run-2026-10-16T01-07-14-817Z/sequence-start-1.png).
-- Current G007 layout: [receipt](after/run-2026-10-16T02-15-47-661Z/receipt.json), [first 24-frame screenshot](after/run-2026-10-16T02-15-47-661Z/sequence-start-1.png), [fit preview](after/run-2026-10-16T02-15-47-661Z/sequence-generated-fit-normal.png).
-- Ordinary snapshot preview during A→B→A: [snapshot remains on the canvas while the checked sequence's controls remain below it](after/run-2026-10-16T02-15-47-661Z/g007-snapshot-focus-with-sequence-controls.png).
-- Narrow view: [full character at the top of the workbench](after/run-2026-10-16T02-15-47-661Z/sequence-generated-narrow-top.png), [range, regenerate, and filmstrip controls after a native touch scroll](after/run-2026-10-16T02-15-47-661Z/sequence-generated-narrow-controls.png).
-- 560 CSS-pixel breakpoint: [initial simulated view](after/run-2026-10-16T02-15-47-661Z/sequence-generated-560-css-simulation.png), [controls and filmstrip after simulated touch scroll](after/run-2026-10-16T02-15-47-661Z/sequence-generated-560-css-simulation-controls.png).
+- Current G007 layout: [receipt](after/run-2026-10-16T03-04-15-105Z/receipt.json), [first 24-frame screenshot](after/run-2026-10-16T03-04-15-105Z/sequence-start-1.png), [fit preview](after/run-2026-10-16T03-04-15-105Z/sequence-generated-fit-normal.png).
+- Ordinary snapshot preview during A→B→A: [snapshot remains on the canvas while the checked sequence's controls remain below it](after/run-2026-10-16T03-04-15-105Z/g007-snapshot-focus-with-sequence-controls.png).
+- Narrow view: [full character at the top of the workbench](after/run-2026-10-16T03-04-15-105Z/sequence-generated-narrow-top.png), [range, regenerate, and filmstrip controls after a native touch scroll](after/run-2026-10-16T03-04-15-105Z/sequence-generated-narrow-controls.png).
+- 560 CSS-pixel breakpoint: [initial simulated view](after/run-2026-10-16T03-04-15-105Z/sequence-generated-560-css-simulation.png), [controls and filmstrip after simulated touch scroll](after/run-2026-10-16T03-04-15-105Z/sequence-generated-560-css-simulation-controls.png).
 
 The before and after runs used the same 333-frame character target, the first
 24-frame range, 1186 × 724 logical content bounds, and the host's 150% Windows
-display scale. The displayed character is 8.1% larger in both width and height
+display scale. The displayed character is 7.14% larger in both width and height
 after the layout change; all nontransparent character pixels remain visible.
 The controls sit below the checkerboard canvas in the after capture.
 
@@ -40,6 +40,13 @@ The baseline is intentionally a capture of the old layout. Its receipt records
 that canvas separation and the new range summary were not present before the
 change. Current-layout requirements are asserted by the after-layout receipt.
 
+## Interaction verification on the current HEAD
+
+- The native Windows Electron run on `d5c984ddd974a2592124803a299dbfbdd76349a3` used the same real FLA at the host's 150% display scale: [receipt](after/run-2026-10-16T03-04-15-105Z/receipt.json).
+- A one-shot verifier-injected `RENDER_FAILED` response displayed a readable error and an enabled retry action, with zero completed frames and no selection, project-file, snapshot-commit, or raster-commit change: [error state](after/run-2026-10-16T03-04-15-105Z/sequence-render-error.png).
+- Clicking the second filmstrip item moved the preview from frame 1 to frame 2. The selected filmstrip state changed, while candidate selection, project-file SHA-256, sequence-render count, and both commit routes stayed unchanged: [frame 2 preview](after/run-2026-10-16T03-04-15-105Z/sequence-filmstrip-frame-2-preview.png).
+- A successful sequence render left candidate selection, project-file SHA-256, and both commit routes unchanged. Changing the start frame to 25 then removed the old image and filmstrip, disabled the stale regenerate action, and left generation for frames 25–48 available: [new-range state](after/run-2026-10-16T03-04-15-105Z/sequence-range-change-clears-stale-preview.png). The error copy in the screenshot is the verifier's injected response text.
+
 ## Validation
 
 - `pnpm typecheck` — PASS
@@ -48,7 +55,7 @@ change. Current-layout requirements are asserted by the after-layout receipt.
 - `pnpm test:integration` — PASS, 38 files / 189 tests
 - `pnpm build` — PASS; Vite reported existing empty legacy CSS imports and a
   chunk-size warning
-- G007 Windows Electron verifier — PASS; includes a clearly labeled 560 CSS-pixel CDP simulation; see the after-layout receipt above
+- G007 Windows Electron verifier — PASS on `d5c984ddd974a2592124803a299dbfbdd76349a3`; includes the error/retry, generation/import separation, range invalidation, and filmstrip preview-only assertions, plus the clearly labeled 560 CSS-pixel CDP simulation; see the current after-layout receipt above
 - 125% Windows DPI — NOT RUN; the host exposed a 150% display only
 - Owner's real Windows Gate C acceptance — PENDING; automated evidence does
   not represent owner acceptance
