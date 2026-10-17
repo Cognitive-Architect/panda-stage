@@ -1,0 +1,1130 @@
+{
+  "schemaVersion": "issue744-unmatched-segments/1",
+  "matchingRules": {
+    "endpointEquality": "exact numeric equality; no epsilon or snapping",
+    "lines": "unordered endpoint pair, directed relationship recorded separately",
+    "quadratics": "unordered endpoint pair plus exact control point",
+    "partialEndpointOverlap": "recorded as an anchor only; never treated as a match or subdivision proof"
+  },
+  "fixtures": {
+    "D-A": {
+      "pandaBoundarySegmentsWithNoExactHalfEdgeInTargetInteriorContour": [
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-3",
+          "sourceEdgeOrdinal": 0,
+          "sourceCommandIndex": 9,
+          "sourceSubsegmentOrdinal": null,
+          "originKind": "authored-close-semantics",
+          "geometryType": "L",
+          "from": {
+            "x": 960.35,
+            "y": 638.85
+          },
+          "to": {
+            "x": 933.3,
+            "y": 656.55
+          },
+          "command": {
+            "type": "L",
+            "x": 933.3,
+            "y": 656.55
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-16",
+          "sourceEdgeOrdinal": 6,
+          "sourceCommandIndex": 1,
+          "sourceSubsegmentOrdinal": 1,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "Q",
+          "from": {
+            "x": 943.3,
+            "y": 650.55
+          },
+          "to": {
+            "x": 935,
+            "y": 654.4
+          },
+          "command": {
+            "type": "Q",
+            "cx": 937.45,
+            "cy": 651.55,
+            "x": 935,
+            "y": 654.4
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-17",
+          "sourceEdgeOrdinal": 6,
+          "sourceCommandIndex": 3,
+          "sourceSubsegmentOrdinal": 2,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "L",
+          "from": {
+            "x": 935,
+            "y": 654.4
+          },
+          "to": {
+            "x": 936.75,
+            "y": 655.25
+          },
+          "command": {
+            "type": "L",
+            "x": 936.75,
+            "y": 655.25
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-18",
+          "sourceEdgeOrdinal": 7,
+          "sourceCommandIndex": 1,
+          "sourceSubsegmentOrdinal": 1,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "L",
+          "from": {
+            "x": 936.75,
+            "y": 655.25
+          },
+          "to": {
+            "x": 940.65,
+            "y": 657.25
+          },
+          "command": {
+            "type": "L",
+            "x": 940.65,
+            "y": 657.25
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-19",
+          "sourceEdgeOrdinal": 7,
+          "sourceCommandIndex": 3,
+          "sourceSubsegmentOrdinal": 2,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "Q",
+          "from": {
+            "x": 940.65,
+            "y": 657.25
+          },
+          "to": {
+            "x": 955.15,
+            "y": 659.75
+          },
+          "command": {
+            "type": "Q",
+            "cx": 949.4,
+            "cy": 660.6,
+            "x": 955.15,
+            "y": 659.75
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-20",
+          "sourceEdgeOrdinal": 7,
+          "sourceCommandIndex": 5,
+          "sourceSubsegmentOrdinal": 3,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "Q",
+          "from": {
+            "x": 955.15,
+            "y": 659.75
+          },
+          "to": {
+            "x": 949.9,
+            "y": 656.75
+          },
+          "command": {
+            "type": "Q",
+            "cx": 952.45,
+            "cy": 658.6,
+            "x": 949.9,
+            "y": 656.75
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-21",
+          "sourceEdgeOrdinal": 7,
+          "sourceCommandIndex": 7,
+          "sourceSubsegmentOrdinal": 4,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "L",
+          "from": {
+            "x": 949.9,
+            "y": 656.75
+          },
+          "to": {
+            "x": 944.55,
+            "y": 651.65
+          },
+          "command": {
+            "type": "L",
+            "x": 944.55,
+            "y": 651.65
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-22",
+          "sourceEdgeOrdinal": 8,
+          "sourceCommandIndex": 1,
+          "sourceSubsegmentOrdinal": 1,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "L",
+          "from": {
+            "x": 944.55,
+            "y": 651.65
+          },
+          "to": {
+            "x": 943.3,
+            "y": 650.55
+          },
+          "command": {
+            "type": "L",
+            "x": 943.3,
+            "y": 650.55
+          }
+        }
+      ],
+      "animateTargetHalfEdgesWithNoExactPandaOrRawCommandMatch": [],
+      "animateTargetHalfEdgesMatchedOnlyToRawSlashPayload": [
+        {
+          "walkIndex": 3,
+          "from": {
+            "x": 933.3,
+            "y": 656.55
+          },
+          "to": {
+            "x": 935.25,
+            "y": 659.15
+          },
+          "rawSlashPayloadPairMatches": [
+            {
+              "sourceCommandIndex": 9,
+              "sourceAuthoredCloseMarkerOrdinal": 2,
+              "rawCommandText": "/ 18705 13183",
+              "observedAsUnorderedEndpointPair": true,
+              "semanticConclusion": "OBSERVED_FOR_THIS_CAPTURE_ONLY; NOT A UNIVERSAL_SLASH_RULE"
+            }
+          ]
+        },
+        {
+          "walkIndex": 16,
+          "from": {
+            "x": 960.85,
+            "y": 643.6
+          },
+          "to": {
+            "x": 960.35,
+            "y": 638.85
+          },
+          "rawSlashPayloadPairMatches": [
+            {
+              "sourceCommandIndex": 1,
+              "sourceAuthoredCloseMarkerOrdinal": 1,
+              "rawCommandText": "/ 19207 12777",
+              "observedAsUnorderedEndpointPair": true,
+              "semanticConclusion": "OBSERVED_FOR_THIS_CAPTURE_ONLY; NOT A UNIVERSAL_SLASH_RULE"
+            }
+          ]
+        }
+      ],
+      "unmappedRawSlashCommands": [
+        {
+          "sourceEdgeOrdinal": 0,
+          "sourceCommandIndex": 1,
+          "sourceAuthoredCloseMarkerOrdinal": 1,
+          "rawCommandText": "/ 19207 12777",
+          "rawTokenArity": 2,
+          "payloadCoordinatesTwips": [
+            "19207",
+            "12777"
+          ],
+          "currentPandaDecodeObservation": "The production decoder emits Z for / and advances past only that token; the following numeric payload is not consumed as line geometry."
+        }
+      ],
+      "endpointEvidence": [
+        {
+          "endpoint": {
+            "x": 935.25,
+            "y": 659.15
+          },
+          "graphDegree": {
+            "inDegree": 1,
+            "outDegree": 0
+          },
+          "adjacentPandaBoundarySegments": [
+            {
+              "contributionId": "D-A:FillStyle1:boundary-12",
+              "sourceEdgeOrdinal": 4,
+              "sourceCommandIndex": 1,
+              "sourceFillSide": "fillStyle0",
+              "from": {
+                "x": 941.75,
+                "y": 661.9
+              },
+              "to": {
+                "x": 935.25,
+                "y": 659.15
+              }
+            }
+          ],
+          "rawXflOccurrences": [
+            {
+              "sourceEdgeOrdinal": 0,
+              "sourceCommandIndex": 9,
+              "sourceCommandToken": "/",
+              "sourceSubsegmentOrdinal": null,
+              "sourceAuthoredCloseMarkerOrdinal": 2,
+              "rawCommandText": "/ 18705 13183",
+              "occurrenceKinds": [
+                "slash-coordinate-payload"
+              ]
+            },
+            {
+              "sourceEdgeOrdinal": 4,
+              "sourceCommandIndex": 0,
+              "sourceCommandToken": "!",
+              "sourceSubsegmentOrdinal": null,
+              "sourceAuthoredCloseMarkerOrdinal": null,
+              "rawCommandText": "! 18705 13183",
+              "occurrenceKinds": [
+                "move-to"
+              ]
+            },
+            {
+              "sourceEdgeOrdinal": 4,
+              "sourceCommandIndex": 1,
+              "sourceCommandToken": "|",
+              "sourceSubsegmentOrdinal": 1,
+              "sourceAuthoredCloseMarkerOrdinal": null,
+              "rawCommandText": "| 18835 13238",
+              "occurrenceKinds": [
+                "segment-start"
+              ]
+            }
+          ]
+        },
+        {
+          "endpoint": {
+            "x": 960.85,
+            "y": 643.6
+          },
+          "graphDegree": {
+            "inDegree": 0,
+            "outDegree": 1
+          },
+          "adjacentPandaBoundarySegments": [
+            {
+              "contributionId": "D-A:FillStyle1:boundary-4",
+              "sourceEdgeOrdinal": 1,
+              "sourceCommandIndex": 1,
+              "sourceFillSide": "fillStyle1",
+              "from": {
+                "x": 960.85,
+                "y": 643.6
+              },
+              "to": {
+                "x": 953.65,
+                "y": 645.8
+              }
+            }
+          ],
+          "rawXflOccurrences": [
+            {
+              "sourceEdgeOrdinal": 0,
+              "sourceCommandIndex": 0,
+              "sourceCommandToken": "!",
+              "sourceSubsegmentOrdinal": null,
+              "sourceAuthoredCloseMarkerOrdinal": null,
+              "rawCommandText": "! 19217 12872",
+              "occurrenceKinds": [
+                "move-to"
+              ]
+            },
+            {
+              "sourceEdgeOrdinal": 0,
+              "sourceCommandIndex": 1,
+              "sourceCommandToken": "/",
+              "sourceSubsegmentOrdinal": null,
+              "sourceAuthoredCloseMarkerOrdinal": 1,
+              "rawCommandText": "/ 19207 12777",
+              "occurrenceKinds": [
+                "slash-current-point",
+                "slash-subpath-start"
+              ]
+            },
+            {
+              "sourceEdgeOrdinal": 1,
+              "sourceCommandIndex": 0,
+              "sourceCommandToken": "!",
+              "sourceSubsegmentOrdinal": null,
+              "sourceAuthoredCloseMarkerOrdinal": null,
+              "rawCommandText": "! 19217 12872",
+              "occurrenceKinds": [
+                "move-to"
+              ]
+            },
+            {
+              "sourceEdgeOrdinal": 1,
+              "sourceCommandIndex": 1,
+              "sourceCommandToken": "[",
+              "sourceSubsegmentOrdinal": 1,
+              "sourceAuthoredCloseMarkerOrdinal": null,
+              "rawCommandText": "[ 19147 12891 19073 12916",
+              "occurrenceKinds": [
+                "segment-start"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "D-B": {
+      "pandaBoundarySegmentsWithNoExactHalfEdgeInTargetInteriorContour": [
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-3",
+          "sourceEdgeOrdinal": 0,
+          "sourceCommandIndex": 9,
+          "sourceSubsegmentOrdinal": 4,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "L",
+          "from": {
+            "x": 960.35,
+            "y": 638.85
+          },
+          "to": {
+            "x": 933.3,
+            "y": 656.55
+          },
+          "command": {
+            "type": "L",
+            "x": 933.3,
+            "y": 656.55
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-4",
+          "sourceEdgeOrdinal": 1,
+          "sourceCommandIndex": 1,
+          "sourceSubsegmentOrdinal": 1,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "Q",
+          "from": {
+            "x": 960.85,
+            "y": 643.6
+          },
+          "to": {
+            "x": 953.65,
+            "y": 645.8
+          },
+          "command": {
+            "type": "Q",
+            "cx": 957.35,
+            "cy": 644.55,
+            "x": 953.65,
+            "y": 645.8
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-5",
+          "sourceEdgeOrdinal": 2,
+          "sourceCommandIndex": 1,
+          "sourceSubsegmentOrdinal": 1,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "Q",
+          "from": {
+            "x": 953.65,
+            "y": 645.8
+          },
+          "to": {
+            "x": 949.85,
+            "y": 647.15
+          },
+          "command": {
+            "type": "Q",
+            "cx": 951.75,
+            "cy": 646.45,
+            "x": 949.85,
+            "y": 647.15
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-6",
+          "sourceEdgeOrdinal": 2,
+          "sourceCommandIndex": 3,
+          "sourceSubsegmentOrdinal": 2,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "L",
+          "from": {
+            "x": 949.85,
+            "y": 647.15
+          },
+          "to": {
+            "x": 948.05,
+            "y": 647.85
+          },
+          "command": {
+            "type": "L",
+            "x": 948.05,
+            "y": 647.85
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-7",
+          "sourceEdgeOrdinal": 2,
+          "sourceCommandIndex": 5,
+          "sourceSubsegmentOrdinal": 3,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "L",
+          "from": {
+            "x": 948.05,
+            "y": 647.85
+          },
+          "to": {
+            "x": 953.5,
+            "y": 653.1
+          },
+          "command": {
+            "type": "L",
+            "x": 953.5,
+            "y": 653.1
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-8",
+          "sourceEdgeOrdinal": 2,
+          "sourceCommandIndex": 7,
+          "sourceSubsegmentOrdinal": 4,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "Q",
+          "from": {
+            "x": 953.5,
+            "y": 653.1
+          },
+          "to": {
+            "x": 960.35,
+            "y": 657.75
+          },
+          "command": {
+            "type": "Q",
+            "cx": 957.05,
+            "cy": 656,
+            "x": 960.35,
+            "y": 657.75
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-9",
+          "sourceEdgeOrdinal": 3,
+          "sourceCommandIndex": 1,
+          "sourceSubsegmentOrdinal": 1,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "Q",
+          "from": {
+            "x": 960.35,
+            "y": 657.75
+          },
+          "to": {
+            "x": 960.9,
+            "y": 658.35
+          },
+          "command": {
+            "type": "Q",
+            "cx": 960.6,
+            "cy": 657.95,
+            "x": 960.9,
+            "y": 658.35
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-10",
+          "sourceEdgeOrdinal": 3,
+          "sourceCommandIndex": 3,
+          "sourceSubsegmentOrdinal": 2,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "Q",
+          "from": {
+            "x": 960.9,
+            "y": 658.35
+          },
+          "to": {
+            "x": 963.6,
+            "y": 661.6
+          },
+          "command": {
+            "type": "Q",
+            "cx": 962.3,
+            "cy": 659.95,
+            "x": 963.6,
+            "y": 661.6
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-11",
+          "sourceEdgeOrdinal": 3,
+          "sourceCommandIndex": 5,
+          "sourceSubsegmentOrdinal": 3,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "L",
+          "from": {
+            "x": 963.6,
+            "y": 661.6
+          },
+          "to": {
+            "x": 959.25,
+            "y": 662.15
+          },
+          "command": {
+            "type": "L",
+            "x": 959.25,
+            "y": 662.15
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-12",
+          "sourceEdgeOrdinal": 4,
+          "sourceCommandIndex": 1,
+          "sourceSubsegmentOrdinal": 1,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "L",
+          "from": {
+            "x": 941.75,
+            "y": 661.9
+          },
+          "to": {
+            "x": 935.25,
+            "y": 659.15
+          },
+          "command": {
+            "type": "L",
+            "x": 935.25,
+            "y": 659.15
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-13",
+          "sourceEdgeOrdinal": 4,
+          "sourceCommandIndex": 3,
+          "sourceSubsegmentOrdinal": 2,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "Q",
+          "from": {
+            "x": 946.75,
+            "y": 662.9
+          },
+          "to": {
+            "x": 941.75,
+            "y": 661.9
+          },
+          "command": {
+            "type": "Q",
+            "cx": 944.2,
+            "cy": 662.55,
+            "x": 941.75,
+            "y": 661.9
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-14",
+          "sourceEdgeOrdinal": 5,
+          "sourceCommandIndex": 1,
+          "sourceSubsegmentOrdinal": 1,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "Q",
+          "from": {
+            "x": 958.8,
+            "y": 661.9
+          },
+          "to": {
+            "x": 946.75,
+            "y": 662.9
+          },
+          "command": {
+            "type": "Q",
+            "cx": 952.65,
+            "cy": 663.5,
+            "x": 946.75,
+            "y": 662.9
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-15",
+          "sourceEdgeOrdinal": 5,
+          "sourceCommandIndex": 3,
+          "sourceSubsegmentOrdinal": 2,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "Q",
+          "from": {
+            "x": 959.25,
+            "y": 662.15
+          },
+          "to": {
+            "x": 958.8,
+            "y": 661.9
+          },
+          "command": {
+            "type": "Q",
+            "cx": 959,
+            "cy": 662,
+            "x": 958.8,
+            "y": 661.9
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-16",
+          "sourceEdgeOrdinal": 6,
+          "sourceCommandIndex": 1,
+          "sourceSubsegmentOrdinal": 1,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "Q",
+          "from": {
+            "x": 943.3,
+            "y": 650.55
+          },
+          "to": {
+            "x": 935,
+            "y": 654.4
+          },
+          "command": {
+            "type": "Q",
+            "cx": 937.45,
+            "cy": 651.55,
+            "x": 935,
+            "y": 654.4
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-17",
+          "sourceEdgeOrdinal": 6,
+          "sourceCommandIndex": 3,
+          "sourceSubsegmentOrdinal": 2,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "L",
+          "from": {
+            "x": 935,
+            "y": 654.4
+          },
+          "to": {
+            "x": 936.75,
+            "y": 655.25
+          },
+          "command": {
+            "type": "L",
+            "x": 936.75,
+            "y": 655.25
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-18",
+          "sourceEdgeOrdinal": 7,
+          "sourceCommandIndex": 1,
+          "sourceSubsegmentOrdinal": 1,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "L",
+          "from": {
+            "x": 936.75,
+            "y": 655.25
+          },
+          "to": {
+            "x": 940.65,
+            "y": 657.25
+          },
+          "command": {
+            "type": "L",
+            "x": 940.65,
+            "y": 657.25
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-19",
+          "sourceEdgeOrdinal": 7,
+          "sourceCommandIndex": 3,
+          "sourceSubsegmentOrdinal": 2,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "Q",
+          "from": {
+            "x": 940.65,
+            "y": 657.25
+          },
+          "to": {
+            "x": 955.15,
+            "y": 659.75
+          },
+          "command": {
+            "type": "Q",
+            "cx": 949.4,
+            "cy": 660.6,
+            "x": 955.15,
+            "y": 659.75
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-20",
+          "sourceEdgeOrdinal": 7,
+          "sourceCommandIndex": 5,
+          "sourceSubsegmentOrdinal": 3,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "Q",
+          "from": {
+            "x": 955.15,
+            "y": 659.75
+          },
+          "to": {
+            "x": 949.9,
+            "y": 656.75
+          },
+          "command": {
+            "type": "Q",
+            "cx": 952.45,
+            "cy": 658.6,
+            "x": 949.9,
+            "y": 656.75
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-21",
+          "sourceEdgeOrdinal": 7,
+          "sourceCommandIndex": 7,
+          "sourceSubsegmentOrdinal": 4,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "L",
+          "from": {
+            "x": 949.9,
+            "y": 656.75
+          },
+          "to": {
+            "x": 944.55,
+            "y": 651.65
+          },
+          "command": {
+            "type": "L",
+            "x": 944.55,
+            "y": 651.65
+          }
+        },
+        {
+          "pandaBoundarySegmentId": "FillStyle1:boundary-22",
+          "sourceEdgeOrdinal": 8,
+          "sourceCommandIndex": 1,
+          "sourceSubsegmentOrdinal": 1,
+          "originKind": "raw-edge-subsegment",
+          "geometryType": "L",
+          "from": {
+            "x": 944.55,
+            "y": 651.65
+          },
+          "to": {
+            "x": 943.3,
+            "y": 650.55
+          },
+          "command": {
+            "type": "L",
+            "x": 943.3,
+            "y": 650.55
+          }
+        }
+      ],
+      "animateTargetHalfEdgesWithNoExactPandaOrRawCommandMatch": [
+        {
+          "contourIndex": 4,
+          "walkIndex": 3,
+          "geometryType": "line",
+          "from": {
+            "x": 933.3,
+            "y": 656.55
+          },
+          "to": {
+            "x": 935.9,
+            "y": 654.85
+          },
+          "controlPoints0To2": [
+            {
+              "x": 933.3,
+              "y": 656.55
+            },
+            {
+              "x": 934.6,
+              "y": 655.7
+            },
+            {
+              "x": 935.9,
+              "y": 654.85
+            }
+          ],
+          "sourceEdgeRelation": "UNOBSERVABLE_FROM_JSFL_RELATION_FIELDS; NO EXACT SOURCE GEOMETRY MATCH",
+          "endpointOnlyAnchors": [
+            {
+              "sourceCommandIndex": 7,
+              "sourceSubsegmentOrdinal": 3,
+              "exactEndpointOnly": true
+            },
+            {
+              "sourceCommandIndex": 9,
+              "sourceSubsegmentOrdinal": 4,
+              "exactEndpointOnly": true
+            }
+          ]
+        },
+        {
+          "contourIndex": 4,
+          "walkIndex": 4,
+          "geometryType": "line",
+          "from": {
+            "x": 935.9,
+            "y": 654.85
+          },
+          "to": {
+            "x": 935,
+            "y": 654.4
+          },
+          "controlPoints0To2": [
+            {
+              "x": 935,
+              "y": 654.4
+            },
+            {
+              "x": 935.45,
+              "y": 654.625
+            },
+            {
+              "x": 935.9,
+              "y": 654.85
+            }
+          ],
+          "sourceEdgeRelation": "UNOBSERVABLE_FROM_JSFL_RELATION_FIELDS; NO EXACT SOURCE GEOMETRY MATCH",
+          "endpointOnlyAnchors": [
+            {
+              "sourceCommandIndex": 1,
+              "sourceSubsegmentOrdinal": 1,
+              "exactEndpointOnly": true
+            },
+            {
+              "sourceCommandIndex": 3,
+              "sourceSubsegmentOrdinal": 2,
+              "exactEndpointOnly": true
+            }
+          ]
+        },
+        {
+          "contourIndex": 4,
+          "walkIndex": 5,
+          "geometryType": "quadratic-or-curve-unclassified",
+          "from": {
+            "x": 935,
+            "y": 654.4
+          },
+          "to": {
+            "x": 942.1,
+            "y": 650.75
+          },
+          "controlPoints0To2": [
+            {
+              "x": 942.125,
+              "y": 650.775
+            },
+            {
+              "x": 937.1955078125,
+              "y": 651.84609375
+            },
+            {
+              "x": 935,
+              "y": 654.4
+            }
+          ],
+          "sourceEdgeRelation": "UNOBSERVABLE_FROM_JSFL_RELATION_FIELDS; NO EXACT SOURCE GEOMETRY MATCH",
+          "endpointOnlyAnchors": [
+            {
+              "sourceCommandIndex": 1,
+              "sourceSubsegmentOrdinal": 1,
+              "exactEndpointOnly": true
+            },
+            {
+              "sourceCommandIndex": 3,
+              "sourceSubsegmentOrdinal": 2,
+              "exactEndpointOnly": true
+            }
+          ]
+        },
+        {
+          "contourIndex": 4,
+          "walkIndex": 6,
+          "geometryType": "line",
+          "from": {
+            "x": 942.1,
+            "y": 650.75
+          },
+          "to": {
+            "x": 960.35,
+            "y": 638.85
+          },
+          "controlPoints0To2": [
+            {
+              "x": 942.125,
+              "y": 650.775
+            },
+            {
+              "x": 951.2375,
+              "y": 644.8125
+            },
+            {
+              "x": 960.35,
+              "y": 638.85
+            }
+          ],
+          "sourceEdgeRelation": "UNOBSERVABLE_FROM_JSFL_RELATION_FIELDS; NO EXACT SOURCE GEOMETRY MATCH",
+          "endpointOnlyAnchors": [
+            {
+              "sourceCommandIndex": 3,
+              "sourceSubsegmentOrdinal": 1,
+              "exactEndpointOnly": true
+            },
+            {
+              "sourceCommandIndex": 9,
+              "sourceSubsegmentOrdinal": 4,
+              "exactEndpointOnly": true
+            }
+          ]
+        }
+      ],
+      "animateTargetHalfEdgesMatchedOnlyToRawSlashPayload": [],
+      "unmappedRawSlashCommands": [
+        {
+          "sourceEdgeOrdinal": 0,
+          "sourceCommandIndex": 1,
+          "sourceAuthoredCloseMarkerOrdinal": 1,
+          "rawCommandText": "/ 19207 12777",
+          "rawTokenArity": 2,
+          "payloadCoordinatesTwips": [
+            "19207",
+            "12777"
+          ],
+          "currentPandaDecodeObservation": "The production decoder emits Z for / and advances past only that token; the following numeric payload is not consumed as line geometry."
+        }
+      ],
+      "endpointEvidence": [
+        {
+          "endpoint": {
+            "x": 935.25,
+            "y": 659.15
+          },
+          "graphDegree": {
+            "inDegree": 1,
+            "outDegree": 0
+          },
+          "adjacentPandaBoundarySegments": [
+            {
+              "contributionId": "D-B:FillStyle1:boundary-12",
+              "sourceEdgeOrdinal": 4,
+              "sourceCommandIndex": 1,
+              "sourceFillSide": "fillStyle0",
+              "from": {
+                "x": 941.75,
+                "y": 661.9
+              },
+              "to": {
+                "x": 935.25,
+                "y": 659.15
+              }
+            }
+          ],
+          "rawXflOccurrences": [
+            {
+              "sourceEdgeOrdinal": 4,
+              "sourceCommandIndex": 0,
+              "sourceCommandToken": "!",
+              "sourceSubsegmentOrdinal": null,
+              "sourceAuthoredCloseMarkerOrdinal": null,
+              "rawCommandText": "! 18705 13183",
+              "occurrenceKinds": [
+                "move-to"
+              ]
+            },
+            {
+              "sourceEdgeOrdinal": 4,
+              "sourceCommandIndex": 1,
+              "sourceCommandToken": "|",
+              "sourceSubsegmentOrdinal": 1,
+              "sourceAuthoredCloseMarkerOrdinal": null,
+              "rawCommandText": "| 18835 13238",
+              "occurrenceKinds": [
+                "segment-start"
+              ]
+            }
+          ]
+        },
+        {
+          "endpoint": {
+            "x": 960.85,
+            "y": 643.6
+          },
+          "graphDegree": {
+            "inDegree": 0,
+            "outDegree": 1
+          },
+          "adjacentPandaBoundarySegments": [
+            {
+              "contributionId": "D-B:FillStyle1:boundary-4",
+              "sourceEdgeOrdinal": 1,
+              "sourceCommandIndex": 1,
+              "sourceFillSide": "fillStyle1",
+              "from": {
+                "x": 960.85,
+                "y": 643.6
+              },
+              "to": {
+                "x": 953.65,
+                "y": 645.8
+              }
+            }
+          ],
+          "rawXflOccurrences": [
+            {
+              "sourceEdgeOrdinal": 0,
+              "sourceCommandIndex": 0,
+              "sourceCommandToken": "!",
+              "sourceSubsegmentOrdinal": null,
+              "sourceAuthoredCloseMarkerOrdinal": null,
+              "rawCommandText": "! 19217 12872",
+              "occurrenceKinds": [
+                "move-to"
+              ]
+            },
+            {
+              "sourceEdgeOrdinal": 0,
+              "sourceCommandIndex": 1,
+              "sourceCommandToken": "/",
+              "sourceSubsegmentOrdinal": null,
+              "sourceAuthoredCloseMarkerOrdinal": 1,
+              "rawCommandText": "/ 19207 12777",
+              "occurrenceKinds": [
+                "slash-current-point",
+                "slash-subpath-start"
+              ]
+            },
+            {
+              "sourceEdgeOrdinal": 1,
+              "sourceCommandIndex": 0,
+              "sourceCommandToken": "!",
+              "sourceSubsegmentOrdinal": null,
+              "sourceAuthoredCloseMarkerOrdinal": null,
+              "rawCommandText": "! 19217 12872",
+              "occurrenceKinds": [
+                "move-to"
+              ]
+            },
+            {
+              "sourceEdgeOrdinal": 1,
+              "sourceCommandIndex": 1,
+              "sourceCommandToken": "[",
+              "sourceSubsegmentOrdinal": 1,
+              "sourceAuthoredCloseMarkerOrdinal": null,
+              "rawCommandText": "[ 19147 12891 19073 12916",
+              "occurrenceKinds": [
+                "segment-start"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

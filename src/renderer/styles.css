@@ -29,9 +29,11 @@
 @import './styles/features/fla-import/render/s03-05--render-bounded-v11.css';
 @import './styles/shell/project-entry/s03-06--launcher-412.css';
 @import './styles/features/fla-import/sequence/s04-02--sequence-e-and-scroll.css';
+@import './styles/features/fla-import/sequence/g008-playback-navigation.css';
 @import './styles/features/fla-import/render/s04-03--render-shell-and-snapshot-d.css';
 @import './styles/base/native-foundation/s04-04--sr-only.css';
 @import './styles/features/fla-import/render/s04-05--render-responsive-tail.css';
+@import './styles/features/fla-import/s04-06--unified-import.css';
 @import './styles/features/assets/s05-01--asset-library-base.css';
 @import './styles/features/characters/workspace/s05-02--characters-base.css';
 @import './styles/features/shots/s05-03--shots-base.css';
@@ -116,6 +118,8 @@
 @import './styles/compat/retained-task-surfaces/s13-01--landscape-timed-384-385.css';
 @import './styles/features/timeline/s13-03--final-resize-flex-422-432.css';
 @import './styles/features/fla-import/render/s13-04--render-final-398.css';
+@import './styles/features/fla-import/render/s13-06--render-snapshot-candidates.css';
+@import './styles/features/fla-import/c03-unified-workbench.css';
 @import './styles/compat/mixed-conditions/s13-05--render-dialogue-audio-media900.css';
 @import './styles/features/dialogue/workspace/s14-01--pending-hints-443.css';
 @import './styles/features/dialogue/batch/s14-02--batch-447.css';
@@ -162,3 +166,5 @@
 @import './styles/shell/right-workspace/issue653-auto-camera-mode.css';
 @import './styles/features/timeline/standalone-audio.css';
 @import './styles/features/dialogue/properties/audio-picker.css';
+@import './styles/features/fla-import/render/fla-snapshot-preview-fit.css';
+@import './styles/features/fla-import/raster/issue767-u1-workbench-tabs.css';

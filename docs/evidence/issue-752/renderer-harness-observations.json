@@ -1,0 +1,117 @@
+{
+  "schemaVersion": "issue752-renderer-harness-observations/1",
+  "status": "RENDERER_DATA_OBSERVED_BEHIND_OPEN_NATIVE_DIALOG; USER_VISIBLE_FLOW_UNVERIFIED",
+  "acceptanceBoundary": {
+    "app": "Windows Electron production build",
+    "nativeDialogClass": "#32770",
+    "nativeDialogOwnerProcess": "electron",
+    "nativeFilenameControlId": 1148,
+    "sourcePathReadBack": true,
+    "dialogClosed": false,
+    "workbenchRouteObservedInUnderlyingWebContents": true,
+    "routeObservationMethod": "executeJavaScript DOM inspection",
+    "screenshotMethod": "BrowserWindow.capturePage",
+    "nativeDialogIncludedInCapturedImages": false,
+    "humanVisualAcceptance": "PENDING_OWNER"
+  },
+  "rawReceipts": [
+    {
+      "acceptanceRun": "D:/PandaStage-Acceptance/issue752-character-vertical-20261010-run31-canvas-drop",
+      "file": "vertical-receipt.json",
+      "sha256": "83abe48a1dce132338d866ee10b1c05cda9f0dbd313ca2e2f19fa5db069c2e66"
+    },
+    {
+      "acceptanceRun": "D:/PandaStage-Acceptance/issue752-character-vertical-20261010-run32-bluewhite",
+      "file": "vertical-receipt.json",
+      "sha256": "230e4b8e280244ee57f51ccdf2870862fa9aa9091c833e716097359420c26056"
+    }
+  ],
+  "cancellation": {
+    "hanfu": {
+      "initialAssetCount": 0,
+      "afterCancelAssetCount": 0,
+      "projectJsonHashUnchanged": true
+    },
+    "blueWhite": {
+      "initialAssetCount": 0,
+      "afterCancelAssetCount": 0,
+      "projectJsonHashUnchanged": true
+    }
+  },
+  "controls": [
+    {
+      "control": "Hanfu",
+      "sourceFile": "汉服修仙女.fla",
+      "sourceSha256Before": "6af14990029d4ced2c4e305721321835180c1bf041178a8799e1d14a1f62e535",
+      "sourceSha256After": "6af14990029d4ced2c4e305721321835180c1bf041178a8799e1d14a1f62e535",
+      "target": {
+        "renderTargetId": "fla-render-target-106bdafd4a330d6c43443914a48082b52170913f4f187de0eab8387410adbb04",
+        "kind": "graphic-symbol",
+        "sourceLibraryItemName": "修仙女-cilisucai.com/修仙女-cilisucai.com1",
+        "frameCount": 30
+      },
+      "preview": {
+        "sha256": "d48ae620aa0c6b1669ac51f3180e9d83e43a9f89c5f4063c4ec3aa001e25be6b",
+        "dimensions": [
+          332,
+          673
+        ],
+        "byteIdenticalToIssue747Control": true
+      },
+      "importedAsset": {
+        "assetId": "1634cf24-704a-4158-b2d0-7278ecd9e6e0",
+        "assetFileSha256": "d48ae620aa0c6b1669ac51f3180e9d83e43a9f89c5f4063c4ec3aa001e25be6b"
+      },
+      "persistedLayer": {
+        "layerId": "190bf0b4-7764-4939-8883-a06c9d431297",
+        "sourceAssetId": "1634cf24-704a-4158-b2d0-7278ecd9e6e0",
+        "savedAssetCount": 1,
+        "reopenedWithSameLayerAndAsset": true,
+        "reopenedProjectId": "1ea03e00-e02a-45ce-8499-8fe132948df3"
+      }
+    },
+    {
+      "control": "BlueWhite",
+      "sourceFile": "蓝白古装男.fla",
+      "sourceSha256Before": "0d4aecbc159990ce54b9d0d8c31ea0f3354cd7ed86df77bac19a562dfc761fa2",
+      "sourceSha256After": "0d4aecbc159990ce54b9d0d8c31ea0f3354cd7ed86df77bac19a562dfc761fa2",
+      "target": {
+        "renderTargetId": "fla-render-target-61150b04b44bc3e78c7f403b391bb95047031e97b7c1b0843c599e143a808636",
+        "kind": "graphic-symbol",
+        "sourceLibraryItemName": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com1",
+        "frameCount": 25
+      },
+      "preview": {
+        "sha256": "0baf01e46b240a44b131a8e91e919eca0c29c32e1ea8a31efb51634e8dca14f4",
+        "dimensions": [
+          349,
+          994
+        ],
+        "byteIdenticalToIssue734Control": true
+      },
+      "importedAsset": {
+        "assetId": "0e83c0c8-35d6-4785-a91f-17c1effed529",
+        "assetFileSha256": "0baf01e46b240a44b131a8e91e919eca0c29c32e1ea8a31efb51634e8dca14f4"
+      },
+      "persistedLayer": {
+        "layerId": "5580ec63-98ed-46c4-b53d-9daf0e1e3fa8",
+        "sourceAssetId": "0e83c0c8-35d6-4785-a91f-17c1effed529",
+        "savedAssetCount": 1,
+        "reopenedWithSameLayerAndAsset": true,
+        "reopenedProjectId": "15fd6d65-213d-47f2-8a75-d742779bb1a9"
+      }
+    }
+  ],
+  "dragObservation": {
+    "recorderEventsOnFirstAttempt": [
+      "dragstart",
+      "dragenter",
+      "dragend"
+    ],
+    "dropEventObserved": false,
+    "persistedLayerAfterSeparateMouseHelperAttempt": true,
+    "separateAttemptRecordedInRawReceipt": false,
+    "userVisibleDragAcceptance": false
+  },
+  "sourceMutation": false
+}

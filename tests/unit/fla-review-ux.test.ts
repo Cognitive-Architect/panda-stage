@@ -2,8 +2,20 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
-const component = readFileSync(
+const session = readFileSync(
   'src/renderer/fla-import/FlaCompatibilityReviewSession.tsx',
+  'utf8',
+);
+const snapshotReview = readFileSync(
+  'src/renderer/fla-import/FlaStaticSnapshotReview.tsx',
+  'utf8',
+);
+const unified = readFileSync(
+  'src/renderer/fla-import/FlaUnifiedWorkbench.tsx',
+  'utf8',
+);
+const selection = readFileSync(
+  'src/renderer/fla-import/fla-unified-workbench-selection.ts',
   'utf8',
 );
 const stageA = readFileSync(
@@ -12,171 +24,149 @@ const stageA = readFileSync(
 );
 const styles = readOrderedStylesheetSource();
 const issue255Styles = styles.slice(styles.indexOf('/* Issue #255:'));
-const reviewModel = readFileSync('src/renderer/fla-import/fla-review.ts', 'utf8');
 
-describe('FLA Slice 2 review UX contract', () => {
-  it('exposes full-card, thumbnail, and one checkbox selection paths without double toggling', () => {
-    expect(component).toContain('data-selection-target="thumbnail"');
-    expect(component).toContain('data-selection-target="checkbox"');
-    expect(component).toContain('role="button"');
-    expect(component).toContain('aria-pressed={selected}');
-    expect(component).toContain('onClick={(event: ReactMouseEvent<HTMLElement>) =>');
-    expect(component).toContain('onKeyDown={(event: ReactKeyboardEvent<HTMLElement>) =>');
-    expect(component).toContain("target.closest('input, label, button, a')");
-    expect(component.match(/onChange=\{onToggle\}/gu)).toHaveLength(1);
+describe('Issue #775 C03 unified FLA workbench UX contract', () => {
+  it('keeps thumbnail focus and checkbox selection as separate actions', () => {
+    expect(unified).toContain('onClick={() => onFocusCandidate(candidate)}');
+    expect(unified).toContain('onChange={(event) => onToggleCandidate(candidate, event.currentTarget.checked)}');
+    expect(unified).toContain('aria-pressed={candidate.identityKey === focusedCandidateIdentityKey}');
+    expect(unified).toContain('disabled={!candidate.selectable || locked}');
+    expect(unified).not.toContain('onClickCapture');
   });
 
-  it('owns one top-level foreground layer and suppresses background interaction', () => {
-    expect(component).toContain('data-review-layout="portal"');
-    expect(component).toContain('createPortal(surface, document.body)');
-    expect(component).toContain('data-testid="fla-review-portal"');
-    expect(component).toContain('data-testid="fla-review-backdrop"');
-    expect(component).toContain('appRoot.inert = true');
-    expect(component).toContain('appRoot.inert = wasInert');
+  it('owns one foreground layer and suppresses background interaction', () => {
+    expect(session).toContain('data-review-layout="portal"');
+    expect(session).toContain('createPortal(surface, document.body)');
+    expect(session).toContain('data-testid="fla-review-portal"');
+    expect(session).toContain('data-testid="fla-review-backdrop"');
+    expect(session).toContain('appRoot.inert = true');
+    expect(session).toContain('appRoot.inert = wasInert');
     expect(issue255Styles).toMatch(
       /\.fla-review-portal\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?z-index:\s*1000;[\s\S]*?inset:\s*0;/u,
-    );
-    expect(issue255Styles).toMatch(
-      /\.fla-review-portal \.fla-review-session\s*\{[\s\S]*?position:\s*relative;[\s\S]*?z-index:\s*1;/u,
     );
     expect(issue255Styles).toContain('.fla-review-backdrop');
   });
 
-  it('uses one primary review-body scroll and keeps the action row out of that scroll', () => {
-    expect(component).toContain('data-testid="fla-review-header"');
-    expect(component).toContain('data-testid="fla-review-selection-toolbar"');
-    expect(component).toContain('data-testid="fla-review-body"');
-    expect(component.indexOf('data-testid="fla-review-body"')).toBeLessThan(
-      component.indexOf('data-testid="fla-review-selection-toolbar"'),
-    );
-    expect(issue255Styles).toMatch(
-      /\.fla-review-portal \.fla-review-session\s*\{[\s\S]*?grid-template-rows:\s*auto auto auto minmax\(0, 1fr\);/u,
-    );
-    expect(issue255Styles).toMatch(
-      /\.fla-review-body\s*\{[\s\S]*?overflow-x:\s*hidden;[\s\S]*?overflow-y:\s*auto;[\s\S]*?overscroll-behavior:\s*contain;/u,
-    );
-    expect(issue255Styles).toMatch(
-      /\.fla-review-body \.fla-review-media-grid\s*\{[\s\S]*?overflow:\s*visible;/u,
-    );
+  it('uses one two-column candidate grid, one preview, and a pinned footer', () => {
+    expect(session).toContain('<FlaUnifiedWorkbench');
+    expect(session).toContain('data-workbench-route="unified"');
+    expect(unified).toContain('data-testid="fla-c03-candidate-grid"');
+    expect(unified).toContain('data-testid="fla-c03-preview"');
+    expect(unified).toContain('data-testid="fla-c03-import-footer"');
+    expect(session).not.toContain('fla-import-workbench-tabs');
+    expect(session).not.toContain('fla-render-mode-tabs');
+    expect(session).not.toContain('data-testid="fla-review-pagination"');
+    expect(styles).toMatch(/\.fla-c03-candidate-grid\s*\{[\s\S]*?overflow:\s*auto;[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/u);
+    expect(styles).toMatch(/\.fla-c03-session\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0, 1fr\) auto;/u);
+    expect(styles).toContain('.fla-c03-preview');
   });
 
-  it('compacts compatibility notes while preserving all statuses and actions', () => {
-    expect(component).toContain('data-testid="fla-compatibility-notes"');
-    expect(component).toContain('className="fla-raster-compatibility-summary"');
-    expect(component).toContain('查看兼容性说明');
-    expect(component).toContain('data-testid="fla-compatibility-warnings"');
-    expect(component).toContain('FLA_COMPATIBILITY_LABELS[status]');
-    expect(component).toContain('data-testid="fla-review-selected-count"');
-    expect(component).toContain('data-testid="fla-review-select-all"');
-    expect(component).toContain('data-testid="fla-review-clear-all"');
-    expect(component).toContain('data-testid="fla-review-confirm"');
-    expect(component).toContain('data-testid="fla-review-cancel"');
-    expect(issue255Styles).toContain('.fla-review-compatibility-notes summary');
-    expect(component).not.toContain('window.pandaStage.assets');
-    expect(component).not.toContain('updateProject');
+  it('searches the display list while preserving checks and restores selected-view browsing', () => {
+    expect(selection).toContain('matchesFlaUnifiedCandidateSearch');
+    expect(selection).toContain('selectedOnly || matchesFlaUnifiedCandidateSearch(candidate, searchText)');
+    expect(unified).toContain('browseScrollTopRef.current = candidateGridRef.current?.scrollTop ?? 0');
+    expect(unified).toContain('restoreBrowseScrollRef.current = true');
+    expect(unified).toContain('data-testid="fla-c03-selected-view"');
+    expect(unified).toContain('`已选 ${selectedCount}`');
+    expect(unified).toContain('aria-label="全选当前结果"');
+    expect(unified).toContain('aria-label="清空全部已选素材"');
+    expect(unified).toContain("selectedOnly ? '返回浏览'");
+    expect(unified).toContain('正在查看已选 · 搜索已暂停');
   });
 
-  it('keeps Slice 3 commit as a separate explicit state-bound action', () => {
-    expect(component).toContain('commitSelected');
-    expect(component).toContain('confirmed: true');
-    expect(component).toContain('data-testid="fla-review-commit-action"');
-    expect(component).toContain('className="fla-review-commit-primary fla-review-primary-action"');
-    expect(component).toContain('data-testid="fla-review-commit"');
-    expect(component).toContain('data-testid="fla-review-commit-status"');
-    expect(component).toContain('data-testid="fla-review-commit-success"');
-    expect(component).toContain('data-imported-count={commitResponse.summary.importedCount}');
-    expect(component).toContain('data-duplicate-count={commitResponse.summary.duplicateCount}');
-    expect(component).toContain('data-renamed-count={commitResponse.summary.renamedCount}');
-    expect(component).toContain("phase === 'committing'");
-    expect(component).not.toContain('window.pandaStage.assets');
-    expect(issue255Styles).toContain('.fla-review-commit-action');
-    expect(issue255Styles).toContain('.fla-review-commit-primary');
+  it('confirms only when one action adds more than 50 unique eligible candidates', () => {
+    expect(selection).toContain('FLA_UNIFIED_BULK_CONFIRM_THRESHOLD = 50');
+    expect(selection).toContain('new Set<string>()');
+    expect(selection).toContain('!candidate.selectable || candidate.checked');
+    expect(unified).toContain('data-testid="fla-c03-bulk-confirmation"');
+    expect(unified).toContain('data-testid="fla-c03-bulk-confirm"');
+    expect(unified).toContain('即将勾选 {newEligibleCount} 项素材，暂不会导入。');
+    expect(unified).toContain('确认勾选');
+    expect(session).toContain('requiresFlaBulkSelectionConfirmation(items.length)');
   });
 
-  it('uses Chinese-first copy for the normal review surface', () => {
-    expect(component).toContain('FLA 兼容性预览');
-    expect(component).toContain('取消');
-    expect(component).toContain('项将进入确认步骤');
-    expect(component).toContain('全选');
-    expect(component).toContain('清空');
-    expect(component).toContain('确认选择');
-    expect(component).toContain('FLA 文件 · 只读预览');
-    expect(component).not.toContain('在确认导入前，不会修改项目或原文件。');
+  it('keeps raw import diagnostics collapsed and gives safe default failure guidance', () => {
+    expect(unified).toContain('className="fla-c03-receipt-diagnostics"');
+    expect(unified).toContain('技术详情');
+    expect(unified).toContain('请先检查素材库，避免重复导入。');
+    expect(unified).not.toContain('{item.message}</small>');
+    expect(unified).not.toContain('receipt.warnings.map((warning, index) => <p');
+  });
+
+  it('keeps the import action reachable while the receipt uses one scroll owner', () => {
+    expect(styles).toMatch(/\.fla-c03-footer-summary\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*0;/u);
+    expect(styles).toMatch(/\.fla-c03-footer-actions\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*0;/u);
+    expect(styles).not.toMatch(/\.fla-c03-receipt-details\s*\{[^}]*overflow:\s*auto;/u);
+    expect(styles).not.toMatch(/\.fla-c03-receipt-details\s*\{[^}]*max-height:/u);
+  });
+
+  it('keeps keyboard preview focus separate from Space checkbox selection', () => {
+    expect(unified).toContain("event.key !== 'Enter' && event.key !== ' '");
+    expect(unified).toContain('onFocusCandidate(candidate);');
+    expect(unified).toContain("event.code !== 'Space'");
+    expect(unified).toContain('onToggleCandidate(candidate, !candidate.checked)');
+  });
+
+  it('shows truthful preview states and keeps progressive ordering independent of readiness', () => {
+    expect(unified).toContain("case 'unsupported':");
+    expect(unified).toContain("case 'blank':");
+    expect(unified).toContain("case 'error':");
+    expect(unified).toContain(": '加载中…';");
+    expect(unified).toContain("return '暂无法预览';");
+    expect(unified).toContain("return '加载失败';");
+    expect(unified).toContain("return '空白画面';");
+    expect(snapshotReview).toContain("status: 'error', reason: message");
+    expect(unified).not.toContain('fla-c03-preview-reason');
+    expect(session).toContain('focusedSnapshotCandidate?.selectable');
+    expect(unified).toContain('data-testid="fla-c03-catalog-progress"');
+    expect(unified).toContain('aria-label={`预览 ${fullItemLabel}`}');
+    expect(unified).toContain('aria-label={`选择 ${fullItemLabel}`}');
+    expect(session).toContain('onCatalogProgressChange={setCatalogProgress}');
+    expect(session).toContain('sortFlaWorkbenchCandidates([');
+  });
+
+  it('keeps one import action, an accessible receipt, and safe close guards', () => {
+    expect(session).toContain('runFlaUnifiedImport({');
+    expect(session).toContain('confirmed: true');
+    expect(unified).toContain('data-testid="fla-unified-import"');
+    expect(unified).toContain('data-testid="fla-unified-import-counts"');
+    expect(unified).toContain('data-testid="fla-unified-import-items"');
+    expect(session).toContain("event.key !== 'Escape'");
+    expect(session).toContain('unifiedImportRunningRef.current || renderTerminalState !==');
+    expect(unified).toContain('data-testid="fla-unified-import-stop"');
+    expect(session).not.toContain('window.pandaStage.assets');
+    expect(session).not.toContain('updateProject');
+  });
+
+  it('uses concise Chinese copy and keeps technical route names out of the persistent interface', () => {
+    expect(session).not.toContain('<p>导入 FLA</p>');
+    expect(session).toContain('<h1 title={ir.source.basename}>');
+    expect(session).toContain('aria-label="关闭"');
+    expect(session).toContain('FLA 导入工作台');
+    expect(unified).toContain('搜索素材');
+    expect(unified).toContain('已选择 ${selectedCount} 项');
+    expect(unified).toContain('aria-label="恢复默认预览大小"');
+    expect(unified).toContain('title="恢复默认预览大小"');
+    expect(unified).toContain('适中');
+    expect(unified).toContain('onClick={() => updateZoom(-0.25)}');
+    expect(unified).toContain('onClick={() => setPreviewZoom(1)}');
+    expect(unified).toContain('onClick={() => updateZoom(0.25)}');
+    expect(session).not.toContain('组合素材');
+    expect(session).not.toContain('原始位图 / 零件');
+    expect(session).not.toContain('单帧');
+    expect(session).not.toContain('场景组合');
     expect(stageA).toContain('正在检查 FLA');
     expect(stageA).toContain('不会修改原文件或当前项目');
-    expect(stageA).toContain('检查完成后自动进入下一步');
-    expect(component).toContain('舞台');
-    expect(component).toContain('素材');
-    expect(component).toContain('已使用');
-    expect(component).toContain('仅素材库');
-    expect(component).toContain('兼容性说明');
-    expect(component).toContain('导入前检查');
-    expect(component).toContain('FLA 素材工作台');
-    expect(component).toContain('<dt>目标文件名</dt>');
-    expect(component).not.toContain('FLA V1 · Slice 2');
-    expect(component).not.toContain('第 3 阶段');
-    expect(component).not.toContain('Slice 3');
-    expect(reviewModel).toContain("exact: '完全兼容'");
-    expect(reviewModel).toContain("degraded: '部分兼容'");
-    expect(reviewModel).toContain("unsupported: '暂不支持'");
-    expect(reviewModel).toContain("'not-present': '未出现'");
   });
 
-  it('keeps Stage A as a quiet indeterminate Workbench state', () => {
-    expect(stageA).toContain('data-stage-a-state="inspecting"');
-    expect(stageA).toContain('data-workbench-route="inspection"');
-    expect(stageA).toContain('data-testid="fla-review-session"');
-    expect(stageA).toContain('FLA WORKBENCH');
-    expect(stageA).toContain('检查中');
-    expect(stageA).toContain('data-ring-count="3"');
-    expect(stageA).toContain('data-placeholder-authoritative="false"');
-    expect(stageA).not.toContain('%');
-    expect(stageA).not.toContain('第');
-    expect(stageA).not.toContain('文件名');
-    expect(stageA).not.toContain('ZIP');
-    expect(stageA).not.toContain('ActionScript');
-    expect(component).toContain('isFlaInspectionUserCancelled(nextResponse)');
-    expect(component).toContain('onClose();');
-    expect(component).toContain('<FlaStageF3Blocked response={response} onClose={onClose} />');
-  });
-
-  it('hides diagnostic identifiers from the default UI but retains internal contracts', () => {
-    expect(component).not.toContain('<dt>SHA-256</dt>');
-    expect(component).not.toContain('<code>{media.id}</code>');
-    expect(component).not.toContain('requestId ?');
-    expect(component).toContain('createFlaRasterSelectionIntent');
-    expect(component).toContain('sessionId');
-    expect(reviewModel).toContain('sha256: ir.source.sha256');
-    expect(reviewModel).toContain('sessionId,');
-  });
-
-  it('V1.5-A surfaces archive-malformed and zero-raster diagnostics without jargon', () => {
-    // Archive-malformed error state gets its own beginner-facing testid.
-    expect(component).toContain('data-testid="fla-review-diagnostic"');
-    expect(component).toContain('data-testid="fla-review-zero-raster"');
-    // Issue #398 keeps the route marker but removes the duplicated zero-raster paragraph.
-    expect(component).not.toContain('data-testid="fla-review-zero-raster-summary"');
-    // Primary copy must not surface developer-only archive internals.
-    expect(component).not.toContain('centralDirectorySize');
-    expect(component).not.toContain('EOCD');
-    expect(component).not.toContain('lifeart/fla-viewer');
-    expect(component).not.toContain('developerNote');
-    // The helper keys on the response diagnostics, not on raw error messages.
-    expect(component).toContain('flaDiagnosticUserMessage(response)');
-  });
-
-  it('preserves deep scroll across review updates and keeps media identity stable', () => {
-    expect(component).toContain('data-preserves-scroll-position="true"');
-    expect(component).toContain('reviewScrollTop.current = event.currentTarget.scrollTop');
-    expect(component).toContain('body.scrollTop = nextScrollTop');
-    expect(component).toContain('useLayoutEffect');
-    expect(component).toContain('rememberReviewScroll();');
-    expect(component).toContain('open={compatibilityNotesOpen}');
-    expect(component).toContain('event.preventDefault();');
-    expect(component).toContain('key={item.media.id}');
-    expect(component).not.toContain('scrollIntoView');
-    expect(issue255Styles).toContain('overflow-anchor: none;');
-    expect(issue255Styles).toContain('scrollbar-gutter: stable;');
-    expect(issue255Styles).toContain("scroll-behavior: auto;");
+  it('keeps compact toolbar, keyboard-only checkbox focus, and visible primary controls', () => {
+    expect(styles).toMatch(/\.fla-c03-browser-tools\s*\{[^}]*flex-wrap:\s*nowrap;/u);
+    expect(styles).toMatch(/\.fla-c03-search\s*\{[^}]*flex:\s*1 1 160px;/u);
+    expect(styles).toMatch(/@media \(max-width: 560px\)[\s\S]*?\.fla-c03-browser-tools\s*\{[^}]*flex-wrap:\s*wrap;/u);
+    expect(styles).toContain('.fla-c03-checkbox-hitbox:has(input:focus-visible)');
+    expect(styles).not.toContain('.fla-c03-checkbox-hitbox:focus-within');
+    expect(styles).toMatch(/\.fla-c03-header button\s*\{[^}]*min-width:\s*48px;[^}]*min-height:\s*48px;/u);
+    expect(styles).toMatch(/\.fla-c03-zoom-tools button:first-child,[\s\S]*?font-size:\s*22px;/u);
+    expect(styles).toMatch(/\.fla-c03-footer-actions \.fla-c03-import-primary\s*\{[^}]*min-height:\s*44px;[^}]*font-size:\s*14px;[^}]*font-weight:\s*800;[^}]*overflow-wrap:\s*anywhere;/u);
   });
 });

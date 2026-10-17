@@ -55,7 +55,7 @@ const FIXED_PNG = pngBytes(8, 8);
 const FIXED_PNG_SHA256 = createHash('sha256').update(Buffer.from(FIXED_PNG)).digest('hex');
 
 /** Build a minimal but real FLA (ZIP) with one graphic symbol + a scene shape. */
-async function buildMinimalFla(): Promise<Uint8Array> {
+async function buildMinimalFla(libraryEntryCount = 1): Promise<Uint8Array> {
   const docXml = `<?xml version="1.0" encoding="UTF-8"?>
 <DOMDocument width="550" height="400" xmlns="http://ns.adobe.com/xfl/2008/">
   <timelines>
@@ -68,8 +68,8 @@ async function buildMinimalFla(): Promise<Uint8Array> {
                 <DOMGroup>
                   <members>
                     <DOMShape>
-                      <fills><FillStyle index="0"><SolidColor color="#00ff00" alpha="1"/></FillStyle></fills>
-                      <edges><Edge cubics="!0 0|200 0[100 100 200 200 200 200]/"/></edges>
+                      <fills><FillStyle index="1"><SolidColor color="#00ff00" alpha="1"/></FillStyle></fills>
+                      <edges><Edge fillStyle1="1" cubics="!0 0|200 0[100 100 200 200 200 200|0 0"/></edges>
                     </DOMShape>
                   </members>
                 </DOMGroup>
@@ -94,8 +94,21 @@ async function buildMinimalFla(): Promise<Uint8Array> {
                   <members>
                     <DOMShape>
                       <matrix><Matrix a="1" b="0" c="0" d="1" tx="0" ty="0"/></matrix>
-                      <fills><FillStyle index="0"><SolidColor color="#ff0000" alpha="1"/></FillStyle></fills>
-                      <edges><Edge cubics="!0 0|100 0[50 50 100 100 100 0]/"/></edges>
+                      <fills><FillStyle index="1"><SolidColor color="#ff0000" alpha="1"/></FillStyle></fills>
+                      <edges><Edge fillStyle1="1" cubics="!0 0|100 0[50 50 100 100 100 0|0 0"/></edges>
+                    </DOMShape>
+                  </members>
+                </DOMGroup>
+              </elements>
+            </DOMFrame>
+            <DOMFrame index="1">
+              <elements>
+                <DOMGroup>
+                  <members>
+                    <DOMShape>
+                      <matrix><Matrix a="1" b="0" c="0" d="1" tx="10" ty="12"/></matrix>
+                      <fills><FillStyle index="1"><SolidColor color="#0000ff" alpha="1"/></FillStyle></fills>
+                      <edges><Edge fillStyle1="1" cubics="!0 0|100 0[50 50 100 100 100 0|0 0"/></edges>
                     </DOMShape>
                   </members>
                 </DOMGroup>
@@ -109,7 +122,10 @@ async function buildMinimalFla(): Promise<Uint8Array> {
 </DOMSymbolItem>`;
   const zip = new JSZip();
   zip.file('DOMDocument.xml', docXml);
-  zip.file('LIBRARY/MyGraphic.xml', libXml);
+  for (let index = 0; index < libraryEntryCount; index += 1) {
+    const name = libraryEntryCount === 1 ? 'MyGraphic' : `MyGraphic${index}`;
+    zip.file(`LIBRARY/${name}.xml`, libXml.replaceAll('MyGraphic', name));
+  }
   return zip.generateAsync({ type: 'uint8array' });
 }
 
@@ -189,6 +205,88 @@ describe('FlaStaticSnapshotRenderSession', () => {
     session.close();
   });
 
+  it('stops an in-flight catalog when its inspection session is cancelled', async () => {
+    const session = new FlaStaticSnapshotRenderSession({
+      rasterizer: resolvingRasterizer(),
+      sourceLookup: sourceLookup(await buildMinimalFla(32)),
+    });
+    const catalogPromise = session.catalog(SESSION_ID);
+    await new Promise<void>((resolve) => {
+      setImmediate(() => {
+        session.cancel({
+          format: 'fla-static-snapshot-cancel',
+          version: 1,
+          sessionId: SESSION_ID,
+        });
+        resolve();
+      });
+    });
+
+    const catalog = await catalogPromise;
+    expect(catalog.ok).toBe(false);
+    if (!catalog.ok) expect(catalog.code).toBe('SESSION_NOT_FOUND');
+    session.close();
+  });
+
+  it('reuses the prepared source across authored frames until the inspection session is cancelled', async () => {
+    const fla = await buildMinimalFla();
+    const session = new FlaStaticSnapshotRenderSession({
+      rasterizer: resolvingRasterizer(),
+      sourceLookup: sourceLookup(fla),
+    });
+    const profileGlobal = globalThis as typeof globalThis & {
+      __pandaStageIssue762ProfileSink?: (event: {
+        readonly stage: string;
+        readonly durationMs: number;
+        readonly details?: Readonly<Record<string, string | number | boolean | null>>;
+      }) => void;
+    };
+    const previousSink = profileGlobal.__pandaStageIssue762ProfileSink;
+    const events: Array<{ readonly stage: string; readonly durationMs: number }> = [];
+    profileGlobal.__pandaStageIssue762ProfileSink = (event) => events.push(event);
+    try {
+      const catalog = await session.catalog(SESSION_ID, { includeAuthoredStates: true });
+      if (!catalog.ok) throw new Error('catalog should succeed');
+      const target = catalog.entries.find(
+        (entry) => entry.target.kind === 'graphic-symbol' && entry.target.selectedFrameIndex === 1,
+      )?.target;
+      if (!target) throw new Error('catalog should include the authored second Graphic frame');
+      const first = await session.preview(
+        FlaStaticSnapshotPreviewRequestSchema.parse({
+          format: 'fla-static-snapshot-preview',
+          version: 1,
+          requestId: PREVIEW_A,
+          sessionId: SESSION_ID,
+          target,
+        }),
+      );
+      expect(first.ok).toBe(true);
+      expect(events.filter((event) => event.stage === 'fla.snapshot.prepared-source.cache-hit')).toHaveLength(1);
+      expect(events.filter((event) => event.stage === 'fla.preview.display-source-adapt')).toHaveLength(0);
+
+      session.cancel({
+        format: 'fla-static-snapshot-cancel',
+        version: 1,
+        sessionId: SESSION_ID,
+      });
+      const second = await session.preview(
+        FlaStaticSnapshotPreviewRequestSchema.parse({
+          format: 'fla-static-snapshot-preview',
+          version: 1,
+          requestId: PREVIEW_B,
+          sessionId: SESSION_ID,
+          target,
+        }),
+      );
+      expect(second.ok).toBe(true);
+      expect(events.filter((event) => event.stage === 'fla.preview.display-source-adapt')).toHaveLength(1);
+    } finally {
+      session.close();
+      if (previousSink) profileGlobal.__pandaStageIssue762ProfileSink = previousSink;
+      else delete profileGlobal.__pandaStageIssue762ProfileSink;
+    }
+  });
+
   it('records a confirmed, latest-accepted preview on success', async () => {
     const fla = await buildMinimalFla();
     const session = new FlaStaticSnapshotRenderSession({
@@ -213,6 +311,39 @@ describe('FlaStaticSnapshotRenderSession', () => {
     expect(response.sha256).toBe(FIXED_PNG_SHA256);
     expect(session.isLatestAcceptedPreview(SESSION_ID, PREVIEW_A)).toBe(true);
     expect(session.getConfirmedPreview(PREVIEW_A)?.pngBytes.byteLength).toBe(FIXED_PNG.length);
+    session.close();
+  });
+
+  it('releases a completed preview when snapshot review finishes scanning that candidate', async () => {
+    const fla = await buildMinimalFla();
+    const session = new FlaStaticSnapshotRenderSession({
+      rasterizer: resolvingRasterizer(),
+      sourceLookup: sourceLookup(fla),
+    });
+    const catalog = await session.catalog(SESSION_ID);
+    if (!catalog.ok) throw new Error('catalog should succeed');
+    const target = firstTarget(catalog.entries);
+    const response = await session.preview(
+      FlaStaticSnapshotPreviewRequestSchema.parse({
+        format: 'fla-static-snapshot-preview',
+        version: 1,
+        requestId: PREVIEW_A,
+        sessionId: SESSION_ID,
+        target,
+      }),
+    );
+    expect(response.ok).toBe(true);
+    expect(session.getConfirmedPreview(PREVIEW_A)).not.toBeNull();
+
+    const cancel = session.cancel({
+      format: 'fla-static-snapshot-cancel',
+      version: 1,
+      requestId: PREVIEW_A,
+    });
+
+    expect(cancel.accepted).toBe(true);
+    expect(session.getConfirmedPreview(PREVIEW_A)).toBeNull();
+    expect(session.isLatestAcceptedPreview(SESSION_ID, PREVIEW_A)).toBe(false);
     session.close();
   });
 

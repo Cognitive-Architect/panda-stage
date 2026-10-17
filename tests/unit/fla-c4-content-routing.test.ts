@@ -4,7 +4,10 @@ import type {
   FlaInspectionResponse,
   FlaInspectionTrace,
 } from '../../src/shared/fla-import-api';
-import { routeFlaInspection } from '../../src/renderer/fla-import/fla-content-route';
+import {
+  defaultFlaWorkbenchSection,
+  routeFlaInspection,
+} from '../../src/renderer/fla-import/fla-content-route';
 
 function successfulInspection(options: {
   mediaCount: number;
@@ -73,5 +76,15 @@ describe('FLA V1.5-C4 recovered content routing', () => {
       } as FlaInspectionResponse;
       expect(routeFlaInspection(response)).toBe('blocked');
     }
+  });
+});
+
+describe('Issue #767 U1 shared workbench defaults', () => {
+  it.each([
+    ['bitmap-only', 12, 'source-assets'],
+    ['mixed bitmap and Graphic', 336, 'source-assets'],
+    ['vector-only', 0, 'compositions'],
+  ] as const)('%s opens on an available section without excluding the other section', (_label, mediaCount, section) => {
+    expect(defaultFlaWorkbenchSection(mediaCount)).toBe(section);
   });
 });

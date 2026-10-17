@@ -1,0 +1,150 @@
+{
+  "issue": 748,
+  "result": "PARTIAL — GATE_CLEARED_NEXT_BLOCKER",
+  "source": {
+    "file": "修仙男.fla",
+    "sha256": "565C5609A7610EF64ED9F98B09D98DD82D5A45255ADB4D3D410A5A365E0EF4A5",
+    "recoveryState": "RECOVERY_CANDIDATE",
+    "centralDirectoryDeltaBytes": 54,
+    "normalization": "in-memory-only; centralDirectorySize only",
+    "normalizedSha256": "CB891E78AC2882C1DE6F765A4A54634AC1E134A80EAFD1AEB230BA216289A8AB",
+    "strictPreflight": "PASS",
+    "originalBytesChanged": false
+  },
+  "target": {
+    "scene": "场景 1",
+    "frame": 0,
+    "rootGraphic": "白发修仙男-cilisucai.com/白发修仙男-cilisucai.com1",
+    "rootTransform": {
+      "a": 1.042236328125,
+      "d": 1.042236328125,
+      "tx": 728.2,
+      "ty": 36.75
+    },
+    "shapeId": "fla-shape-ce9f3623690b031bcc05dea3",
+    "sourceAddress": "graphic:白发修仙男-cilisucai.com/白发修仙男-cilisucai.com3/layer-0-frame-0/10/2/0",
+    "shapeTransform": {
+      "a": 1.5164794921875,
+      "b": 0,
+      "c": 0.0515289306640625,
+      "d": 1.5164794921875,
+      "tx": -1320.75,
+      "ty": -1081.5
+    },
+    "nestedSymbolTransform": {
+      "tx": 205.35,
+      "ty": 602.45
+    },
+    "edgeRecordCount": 139,
+    "strokeStyle3EdgeReferences": 1,
+    "strokeSegments": {
+      "line": 2,
+      "quadratic": 3
+    }
+  },
+  "paint": {
+    "styleIndex": 3,
+    "kind": "SolidStroke",
+    "scaleMode": "normal",
+    "fillKind": "RadialGradient",
+    "spreadMethod": "reflect",
+    "matrix": {
+      "a": 0.0035400390625,
+      "b": 0.0022125244140625,
+      "c": -0.0178985595703125,
+      "d": 0.0283050537109375,
+      "tx": 808.95,
+      "ty": 622.2
+    },
+    "stops": [
+      { "ratio": 0.152941176470588, "color": "#594F45", "alpha": 1 },
+      { "ratio": 0.447058823529412, "color": "#D7DFD5", "alpha": 1 },
+      { "ratio": 0.72156862745098, "color": "#A4A79E", "alpha": 1 },
+      { "ratio": 1, "color": "#FCFDFA", "alpha": 1 }
+    ],
+    "strokeAttributesExplicitlyPresent": {
+      "weight": false,
+      "caps": false,
+      "joints": false,
+      "miterLimit": false,
+      "pixelHinting": false
+    }
+  },
+  "radialStrokeGate": {
+    "status": "CLEARED",
+    "isolatedControl": "male-radial-stroke-isolated.png",
+    "isolatedSvg": "male-radial-stroke-isolated.svg",
+    "composition": {
+      "radialGradientCount": 1,
+      "radialGradientStopCount": 4,
+      "strokeSegmentCount": 5
+    },
+    "svgSha256": "DF2E6F551EC9E28D9CAE025D1F92DBB00CEE1511B8517E40786DD87CDFC4C8E7",
+    "pngSha256": "97C8B012A8854B31C3A8C8E413E7231E61B0848F5DC05A6C933ED06DEE26A2D5"
+  },
+  "nextBlocker": {
+    "code": "TARGET_UNSUPPORTED",
+    "shapeId": "fla-shape-ce9f3623690b031bcc05dea3",
+    "styleIndex": 4,
+    "paintKind": "LinearGradient",
+    "source": {
+      "frameIndex": 0,
+      "edgeRecordCount": 139,
+      "edgeReferences": 1,
+      "solidStrokeScaleMode": "normal",
+      "spreadMethod": "reflect",
+      "matrix": {
+        "a": 0.009490966796875,
+        "b": 0,
+        "c": 0,
+        "d": 0.01239013671875,
+        "tx": 814.65,
+        "ty": 625.65
+      },
+      "stops": [
+        { "ratio": 0.152941176470588, "color": "#594F45", "alpha": 1 },
+        { "ratio": 0.447058823529412, "color": "#D7DFD5", "alpha": 1 },
+        { "ratio": 0.72156862745098, "color": "#A4A79E", "alpha": 1 },
+        { "ratio": 1, "color": "#FCFDFA", "alpha": 1 }
+      ],
+      "referencingEdge": {
+        "fillStyle0": 1,
+        "fillStyle1": 1,
+        "strokeStyle": 4,
+        "edges": "!16452 12313[16410 12376 16376 12429"
+      }
+    },
+    "message": "Shape fla-shape-ce9f3623690b031bcc05dea3 StrokeStyle 4 has unsupported linear stroke fill; P2-C03 supports normal and horizontal SolidStroke semantics only, and P2-C06 adds validated normal radial-gradient SolidStroke paint",
+    "completeMaleRootPng": null
+  },
+  "rasterizer": {
+    "sandbox": true,
+    "contextIsolation": true,
+    "nodeIntegration": false,
+    "sourceHashesUnchanged": true,
+    "currentAnimateDocumentTouched": false
+  },
+  "validation": {
+    "pnpmLint": "PASS",
+    "pnpmTestUnit": {
+      "status": "PASS",
+      "testFiles": 344,
+      "tests": 2488
+    },
+    "pnpmTestIntegration": {
+      "status": "PASS",
+      "testFiles": 38,
+      "tests": 189,
+      "includes": "typecheck and renderer/Electron build"
+    },
+    "verifyIssue686P2C03": "PASS",
+    "verifyIssue686P2C05": "PASS",
+    "sandboxRegressionChecks": {
+      "sandbox": true,
+      "contextIsolation": true,
+      "nodeIntegration": false
+    }
+  },
+  "visualAcceptance": "REVIEW_PENDING / NO REFERENCE",
+  "fullCaptureReceipt": "raster-run.json"
+}

@@ -1,0 +1,153 @@
+{
+  "schemaVersion": "issue752-acceptance/1",
+  "issue": 752,
+  "recordedAt": "2026-10-10",
+  "result": "PARTIAL",
+  "humanVisualPassClaimed": false,
+  "serialGate": {
+    "issue": 751,
+    "ownerVerdict": "HUMAN VISUAL PASS",
+    "verifiedFrom": [
+      "https://github.com/Cognitive-Architect/panda-stage/issues/751",
+      "https://github.com/Cognitive-Architect/panda-stage/issues/750"
+    ],
+    "cleared": true
+  },
+  "catalogProbe": {
+    "receipt": "catalog-probe.json",
+    "receiptSha256": "13a01305337e4cf42f7ce113bad4ec163f8a25e05cc91386e82cdd939bb82c24",
+    "parserPath": "production Main chooseAndInspect -> recovery/preflight -> Static Snapshot catalog",
+    "projectOpened": false,
+    "commitApiCalled": false,
+    "sourceHashesUnchanged": true,
+    "note": "previewSupported is a catalog classification, not a successful preview/import receipt."
+  },
+  "sources": [
+    {
+      "file": "汉服修仙女.fla",
+      "sourceSha256": "6af14990029d4ced2c4e305721321835180c1bf041178a8799e1d14a1f62e535",
+      "sourceSha256AfterProbe": "6af14990029d4ced2c4e305721321835180c1bf041178a8799e1d14a1f62e535",
+      "catalogRoot": {
+        "id": "fla-render-target-106bdafd4a330d6c43443914a48082b52170913f4f187de0eab8387410adbb04",
+        "kind": "graphic-symbol",
+        "sourceLibraryItemName": "修仙女-cilisucai.com/修仙女-cilisucai.com1",
+        "frameCount": 30,
+        "previewSupported": true
+      },
+      "reviewImage": {
+        "path": "../issue-747/hanfu-full-character.png",
+        "sha256": "D48AE620AA0C6B1669AC51F3180E9D83E43A9F89C5F4063C4EC3AA001E25BE6B",
+        "dimensions": [332, 673],
+        "priorOwnerVerdict": "HUMAN VISUAL PASS under Issue #747"
+      }
+    },
+    {
+      "file": "蓝白古装男.fla",
+      "sourceSha256": "0d4aecbc159990ce54b9d0d8c31ea0f3354cd7ed86df77bac19a562dfc761fa2",
+      "sourceSha256AfterProbe": "0d4aecbc159990ce54b9d0d8c31ea0f3354cd7ed86df77bac19a562dfc761fa2",
+      "catalogRoot": {
+        "id": "fla-render-target-61150b04b44bc3e78c7f403b391bb95047031e97b7c1b0843c599e143a808636",
+        "kind": "graphic-symbol",
+        "sourceLibraryItemName": "蓝衣修士-cilisucai.com/蓝衣修士-cilisucai.com1",
+        "frameCount": 25,
+        "previewSupported": true
+      },
+      "reviewImage": {
+        "path": "bluewhite-full-character.png",
+        "sha256": "0baf01e46b240a44b131a8e91e919eca0c29c32e1ea8a31efb51634e8dca14f4",
+        "dimensions": [349, 994],
+        "priorClassification": "S1 COMPLETE_STATIC_CHARACTER under Issue #734; no #752 owner verdict claimed"
+      }
+    }
+  ],
+  "acceptance": {
+    "reviewableFullCharacterImages": "EVIDENCED",
+    "workbenchPreviewImportPlaceSaveReopen": "RENDERER_HARNESS_DATA_OBSERVED_BEHIND_OPEN_NATIVE_DIALOG; USER_VISIBLE_FLOW_NOT_VERIFIED",
+    "hanfuControlUnchanged": "EVIDENCED_BY_HASH",
+    "rollback": "UNIT_TESTED_WITH_INJECTED_POST_SAVE_FAULT",
+    "realUnsupportedRuntimeTarget": "RUNTIME_FAIL_CLOSED_OBSERVED_ON_CATALOG_SUPPORTED_TARGET; PREFLIGHT_UNSUPPORTED_CLASSIFICATION_UNVERIFIED",
+    "ownerVisualPassForIssue752": "PENDING"
+  },
+  "validation": [
+    {
+      "command": "pnpm test:integration",
+      "status": "PASS",
+      "testFiles": 38,
+      "tests": 189,
+      "typecheckAndBuild": "PASS"
+    },
+    {
+      "command": "pnpm exec vitest run tests/unit/fla-static-snapshot-c02-multi-fill.test.ts tests/unit/fla-static-snapshot-commit.test.ts",
+      "status": "PASS",
+      "testFiles": 2,
+      "tests": 12
+    }
+  ],
+  "verticalRun": {
+    "status": "RENDERER_HARNESS_DATA_OBSERVED_BEHIND_OPEN_NATIVE_DIALOG; USER_VISIBLE_FLOW_UNVERIFIED",
+    "reason": "After the owner closed Adobe Animate, renderer harnesses observed Workbench catalog/preview/import/placement/save/reopen state behind an Electron-owned native FLA dialog that remained open. The underlying WebContents was driven with executeJavaScript and captured with BrowserWindow.capturePage, which omits the native dialog. These receipts document renderer and persisted project data, not a user-visible end-to-end flow. A separate runtime negative probe failed closed on a target the catalog marked previewSupported; owner visual acceptance remains pending.",
+    "latestFollowUp": {
+      "date": "2026-10-10",
+      "dialogClass": "#32770",
+      "dialogOwnerProcess": "electron",
+      "animateClosedByOwner": true,
+      "foregroundWindowObserved": "Electron-owned native FLA dialog",
+      "filenameField": {
+        "controlId": 1148,
+        "controlClass": "Edit",
+        "inputMethod": "WM_CHAR sent to the focused native Edit control",
+        "expectedSourcePath": "D:/表情合集/新人物/汉服修仙女.fla",
+        "readbackMatchesExpectedSource": true,
+        "visibleScreenshot": "D:/PandaStage-Acceptance/issue752-character-vertical-20261010-run26-manual-click/filename-confirmed-before-submit.png"
+      },
+      "actionButton": {
+        "controlId": 1,
+        "label": "检查 FLA",
+        "hitTestedMouseClick": "DID_NOT_CLOSE_DIALOG",
+        "sendMessageBmClick": "TIMED_OUT_AFTER_90_SECONDS",
+        "postMessageBmClick": "DID_NOT_CLOSE_DIALOG",
+        "sendInputMouseClick": "DID_NOT_CLOSE_DIALOG"
+      },
+      "manualClickStage": {
+        "acceptanceRoot": "D:/PandaStage-Acceptance/issue752-character-vertical-20261010-run26-manual-click",
+        "status": "TIMED_OUT_WAITING_FOR_WORKBENCH_ROUTE",
+        "dialogClosedAtStaging": false
+      },
+      "freshAcceptanceProjectState": {
+        "assets": 0,
+        "shots": 1
+      },
+      "hanfuSourceSha256AfterAttempts": "6AF14990029D4CED2C4E305721321835180C1BF041178A8799E1D14A1F62E535",
+      "hanfuSourceHashStillMatchesFrozenControl": true,
+      "workbenchRouteObserved": false,
+      "importReceiptProduced": false
+    },
+    "rendererHarnessObservations": {
+      "receipt": "renderer-harness-observations.json",
+      "rawHanfuReceiptSha256": "83abe48a1dce132338d866ee10b1c05cda9f0dbd313ca2e2f19fa5db069c2e66",
+      "rawBlueWhiteReceiptSha256": "230e4b8e280244ee57f51ccdf2870862fa9aa9091c833e716097359420c26056",
+      "nativeDialogClosed": false,
+      "workbenchRouteObservedBehindDialog": true,
+      "previewImportAndPersistenceDataObserved": true,
+      "dropEventObserved": false,
+      "userVisibleFlowVerified": false
+    },
+    "unsupportedRuntime": {
+      "receipt": "unsupported-runtime.json",
+      "status": "RUNTIME_FAIL_CLOSED_OBSERVED",
+      "catalogMarkedTargetSupported": true,
+      "previewFailedWithExplicitUnsupportedStroke": true,
+      "importButtonPresent": false,
+      "projectAssetsAfterFailure": 0,
+      "projectJsonUnchanged": true,
+      "sourceHashUnchanged": true,
+      "nativeDialogIncludedInRendererCapture": false
+    },
+    "laterChooserAttempts": {
+      "run37HitTestedPhysicalButtonClick": "DIALOG_REMAINED_OPEN_AFTER_60_SECONDS",
+      "run38PhysicalUnicodeKeyboard": "FILENAME_FIELD_READBACK_EMPTY; NO_SUBMISSION_ATTEMPTED"
+    }
+  },
+  "productionCodeChanged": false,
+  "sourceFlaMutation": false
+}

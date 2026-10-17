@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildRange,
+  formatSequenceRangeSummary,
   getDefaultSequenceRange,
   intentChangeReset,
   isCommitEligible,
@@ -8,6 +9,7 @@ import {
   isStaleAgainstIntent,
   MAX_SEQUENCE_FRAMES,
   postCommitSequenceState,
+  resolveVisibleSequenceFocus,
   rerenderReset,
   validateRange,
 } from '../../src/renderer/fla-import/fla-frame-sequence-review-state';
@@ -81,6 +83,22 @@ describe('R2-H.2 range validation (Corrective D)', () => {
   });
 });
 
+describe('Issue #781 sequence range summary', () => {
+  it('shows one-based endpoints and the actual inclusive count', () => {
+    expect(formatSequenceRangeSummary(0, 23, validateRange(0, 23, 50)))
+      .toBe('第 1–24 帧 · 共 24 帧');
+    expect(formatSequenceRangeSummary(24, 29, validateRange(24, 29, 50)))
+      .toBe('第 25–30 帧 · 共 6 帧');
+    expect(formatSequenceRangeSummary(48, 49, validateRange(48, 49, 50)))
+      .toBe('第 49–50 帧 · 共 2 帧');
+  });
+
+  it('keeps an invalid range explicit without claiming a valid frame count', () => {
+    expect(formatSequenceRangeSummary(24, 48, validateRange(24, 48, 50)))
+      .toBe('第 25–49 帧 · 范围无效');
+  });
+});
+
 describe('R2-H.2 buildRange (no invalid range reaches IPC)', () => {
   it('returns a valid range contract for a good selection', () => {
     expect(buildRange('t1', 0, 11)).toEqual({ renderTargetId: 't1', startFrameIndex: 0, endFrameIndex: 11 });
@@ -143,6 +161,31 @@ describe('R2-H.2 re-render / post-commit lifecycle (Corrective C)', () => {
 });
 
 const target = 'fla-render-target-aa';
+
+describe('Issue #776 sequence focus and operation identity', () => {
+  it('does not move a filtered A focus to the only visible B result', () => {
+    expect(resolveVisibleSequenceFocus('target-a', ['target-b'])).toBeNull();
+  });
+
+  it('restores A when the filter is cleared and clears focus when there are no results', () => {
+    expect(resolveVisibleSequenceFocus('target-a', ['target-a', 'target-b'])).toBe('target-a');
+    expect(resolveVisibleSequenceFocus('target-a', [])).toBeNull();
+  });
+
+  it('does not display or import the accepted A range under B intent', () => {
+    const renderedA = { renderTargetId: 'target-a', startFrameIndex: 0, endFrameIndex: 23 };
+    expect(isStaleAgainstIntent(renderedA, {
+      renderTargetId: 'target-b',
+      startFrameIndex: 0,
+      endFrameIndex: 23,
+    })).toBe(true);
+    expect(isStaleAgainstIntent(renderedA, {
+      renderTargetId: 'target-a',
+      startFrameIndex: 0,
+      endFrameIndex: 23,
+    })).toBe(false);
+  });
+});
 
 describe('R2-H.2 Problem A: range/target change invalidates prior sequence (#296)', () => {
   const renderedRange = { renderTargetId: target, startFrameIndex: 0, endFrameIndex: 1 };

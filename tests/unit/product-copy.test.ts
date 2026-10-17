@@ -42,10 +42,14 @@ function productSources(): string {
 }
 
 describe('Stage 1A product copy', () => {
-  it('keeps the normal FLA confirmation status localized and stage-free', () => {
-    expect(ASSET_LIBRARY_SOURCE).toContain(
-      '已确认 FLA 素材选择；尚未创建项目素材。',
+  it('keeps the FLA import action in its shared workbench without stale confirmation copy', () => {
+    const flaWorkbench = readFileSync(
+      'src/renderer/fla-import/FlaUnifiedWorkbench.tsx',
+      'utf8',
     );
+    expect(flaWorkbench).toContain('data-testid="fla-unified-import"');
+    expect(flaWorkbench).toContain('导入 {selectedCount} 项');
+    expect(ASSET_LIBRARY_SOURCE).not.toContain('已确认 FLA 素材选择；尚未创建项目素材。');
     expect(ASSET_LIBRARY_SOURCE).not.toContain('Read-only FLA selection intent');
     expect(ASSET_LIBRARY_SOURCE).not.toContain('Slice 3');
   });

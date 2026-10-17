@@ -4,9 +4,10 @@
  * Issue #287 R1-B. Runs inside the isolated BrowserWindow created by
  * FlaStaticSnapshotWindowManager. It receives a Panda-built, bounded SVG
  * string (never the FLA source), draws it onto a transparent canvas, and
- * returns the encoded PNG bytes. The SVG is self-contained vector content
- * (no <image>/<script>/external refs), so the canvas is never tainted and
- * toBlob/toDataURL is safe.
+ * returns the encoded PNG bytes. The SVG may contain vector paths and PNGs
+ * embedded as data URIs; it contains no script or external references, so
+ * rasterization makes no filesystem/network request and does not taint the
+ * canvas.
  *
  * Isolation guarantees (per R1-B / R0 invariants):
  *  - no Node, no fs, no network (sandbox + CSP);
@@ -25,9 +26,18 @@ interface FlaSnapshotRenderResult {
   width: number;
   height: number;
   pixelCount: number;
+  profile?: {
+    imageLoadMs: number;
+    canvasDrawMs: number;
+    pngEncodeMs: number;
+    pngArrayBufferMs: number;
+    pngArraySerializeMs: number;
+    totalMs: number;
+  };
 }
 
 interface FlaSnapshotRendererApi {
+  readonly issue762ProfileEnabled: boolean;
   ready(): void;
   onRender(callback: (request: FlaSnapshotRenderRequest) => void): () => void;
   renderResult(payload: FlaSnapshotRenderResult): void;
@@ -44,12 +54,21 @@ const MAX_SNAPSHOT_DIMENSION = 4_096;
 
 function rasterizeSvg(
   svg: string,
-): Promise<{ bytes: Uint8Array; width: number; height: number }> {
+  profilingEnabled: boolean,
+): Promise<{
+  bytes: Uint8Array;
+  width: number;
+  height: number;
+  profile?: Omit<NonNullable<FlaSnapshotRenderResult['profile']>, 'pngArraySerializeMs'>;
+}> {
   return new Promise((resolve, reject) => {
+    const totalStartedAt = profilingEnabled ? performance.now() : 0;
+    const imageLoadStartedAt = profilingEnabled ? performance.now() : 0;
     const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
     const img = new Image();
     img.decoding = 'sync';
     img.onload = () => {
+      const imageLoadMs = profilingEnabled ? performance.now() - imageLoadStartedAt : 0;
       const width = img.naturalWidth || 0;
       const height = img.naturalHeight || 0;
       if (
@@ -68,6 +87,7 @@ function rasterizeSvg(
       canvas.width = width;
       canvas.height = height;
       try {
+        const canvasDrawStartedAt = profilingEnabled ? performance.now() : 0;
         const context = canvas.getContext('2d');
         if (!context) {
           URL.revokeObjectURL(url);
@@ -76,16 +96,36 @@ function rasterizeSvg(
         }
         context.clearRect(0, 0, width, height);
         context.drawImage(img, 0, 0, width, height);
+        const canvasDrawMs = profilingEnabled ? performance.now() - canvasDrawStartedAt : 0;
+        const pngEncodeStartedAt = profilingEnabled ? performance.now() : 0;
         canvas.toBlob((blob) => {
+          const pngEncodeMs = profilingEnabled ? performance.now() - pngEncodeStartedAt : 0;
           if (!blob) {
             URL.revokeObjectURL(url);
             reject(new Error('snapshot PNG encoding failed'));
             return;
           }
+          const pngArrayBufferStartedAt = profilingEnabled ? performance.now() : 0;
           void blob
             .arrayBuffer()
             .then((buffer) => {
-              resolve({ bytes: new Uint8Array(buffer), width, height });
+              const pngArrayBufferMs = profilingEnabled
+                ? performance.now() - pngArrayBufferStartedAt
+                : 0;
+              resolve({
+                bytes: new Uint8Array(buffer),
+                width,
+                height,
+                ...(profilingEnabled ? {
+                  profile: {
+                    imageLoadMs,
+                    canvasDrawMs,
+                    pngEncodeMs,
+                    pngArrayBufferMs,
+                    totalMs: performance.now() - totalStartedAt,
+                  },
+                } : {}),
+              });
             })
             .catch((error: unknown) => {
               reject(error instanceof Error ? error : new Error(String(error)));
@@ -108,13 +148,25 @@ function rasterizeSvg(
 async function handleRender(request: FlaSnapshotRenderRequest): Promise<void> {
   const renderer = window.pandaStageFlaSnapshotRenderer;
   try {
-    const rasterized = await rasterizeSvg(request.svg);
+    const rasterized = await rasterizeSvg(request.svg, renderer.issue762ProfileEnabled);
+    const pngArraySerializeStartedAt = renderer.issue762ProfileEnabled ? performance.now() : 0;
+    const png = Array.from(rasterized.bytes);
+    const pngArraySerializeMs = renderer.issue762ProfileEnabled
+      ? performance.now() - pngArraySerializeStartedAt
+      : 0;
     renderer.renderResult({
       requestId: request.requestId,
-      png: Array.from(rasterized.bytes),
+      png,
       width: rasterized.width,
       height: rasterized.height,
       pixelCount: rasterized.width * rasterized.height,
+      ...(rasterized.profile ? {
+        profile: {
+          ...rasterized.profile,
+          pngArraySerializeMs,
+          totalMs: rasterized.profile.totalMs + pngArraySerializeMs,
+        },
+      } : {}),
     });
   } catch (error) {
     renderer.renderError({

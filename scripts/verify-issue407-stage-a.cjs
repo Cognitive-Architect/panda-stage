@@ -144,7 +144,7 @@ function buildFrameBlocks() {
                     <matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix>
                     <fills><FillStyle index="1"><SolidColor color="#4d82c4" alpha="1"/></FillStyle></fills>
                     <strokes/>
-                    <edges><Edge cubics="${SIMPLE_RECT_CUBICS}"/></edges>
+                    <edges><Edge fillStyle1="1" cubics="${SIMPLE_RECT_CUBICS}"/></edges>
                   </DOMShape>
                 </members>
               </DOMGroup>
@@ -185,7 +185,7 @@ function buildComplexFrameBlocks(layerIndex) {
                     <matrix><Matrix a="1" d="1" tx="${shapeIndex * 12}" ty="${layerIndex * 9}"/></matrix>
                     <fills><FillStyle index="1"><SolidColor color="#${color}" alpha="${(0.55 + shapeIndex * 0.2).toFixed(2)}"/></FillStyle></fills>
                     <strokes/>
-                    <edges><Edge cubics="${SIMPLE_RECT_CUBICS}"/></edges>
+                    <edges><Edge fillStyle1="1" cubics="${SIMPLE_RECT_CUBICS}"/></edges>
                   </DOMShape>`).join('');
     return `
             <DOMFrame index="${frameIndex}">

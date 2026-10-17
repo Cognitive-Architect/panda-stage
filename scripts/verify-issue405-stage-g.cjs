@@ -149,7 +149,7 @@ function buildFrameBlocks(color, offset, frameCount) {
                       <FillStyle index="1"><SolidColor color="${frameCount >= MAX_SEQUENCE_FRAMES ? `#${((0x183c2a + frameIndex * 0x1f1f1f) & 0xffffff).toString(16).padStart(6, '0')}` : color}" alpha="1"/></FillStyle>
                     </fills>
                     <strokes/>
-                    <edges><Edge cubics="${SIMPLE_RECT_CUBICS}"/></edges>
+                    <edges><Edge fillStyle1="1" cubics="${SIMPLE_RECT_CUBICS}"/></edges>
                   </DOMShape>
                 </members>
               </DOMGroup>

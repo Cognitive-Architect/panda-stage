@@ -1,0 +1,1068 @@
+{
+  "schemaVersion": "issue398-stage-d-electron-acceptance/1",
+  "source": {
+    "basename": "issue398-stage-d-zero-raster.fla",
+    "generatedByVerifier": true,
+    "sha256Before": "89cd9b88c0801dc96d7129e014c1025c885332cb3b49bf226dc9abecf7dc867e",
+    "sha256After": "89cd9b88c0801dc96d7129e014c1025c885332cb3b49bf226dc9abecf7dc867e",
+    "hashInvariant": true
+  },
+  "project": {
+    "projectRoot": "D:\\PandaStage-Acceptance\\issue778-stage-d-final7-20261015\\Issue398 Stage D UI 1792023615061.pandastage",
+    "persistedAssetCount": 1,
+    "reopenValidation": null,
+    "privateVisualBytesRecorded": false
+  },
+  "scanMeasurement": null,
+  "parserPath": "real Windows Electron Main + production Renderer UI -> V2-R catalog -> bounded v1.2 deletion-first R1/R2 workbench -> static preview/explicit ImageAsset commit",
+  "response": {
+    "ok": true,
+    "projectName": "Issue398 Stage D UI 1792023615061",
+    "projectRoot": "D:\\PandaStage-Acceptance\\issue778-stage-d-final7-20261015\\Issue398 Stage D UI 1792023615061.pandastage",
+    "route": "v2r-target-discovery",
+    "targetCount": 27,
+    "supportedTargetCount": 27,
+    "selectedCandidateCount": 2,
+    "candidateSourceRowCount": 27,
+    "duplicateGroupSourceCount": 27,
+    "stageFacts": "640 × 360 · 30 fps",
+    "scanMeasurement": {
+      "status": "VERIFIED",
+      "scanDurationMs": 1518,
+      "candidateCount": 27,
+      "progressSamples": [
+        {
+          "elapsedMs": 0.09999990463256836,
+          "progress": null,
+          "candidateCount": 0,
+          "text": "正在加载素材…"
+        }
+      ],
+      "scannedAt": "2026-10-15T00:20:18.342Z"
+    },
+    "scanExit": {
+      "exitedBeforeScanCompleted": true,
+      "candidateCount": 27,
+      "scanProgress": 0,
+      "noProjectMutation": true,
+      "before": {
+        "heading": "共 0 项",
+        "assetCount": 0,
+        "gridCount": -1,
+        "maxRevision": 0,
+        "revisions": [
+          0
+        ]
+      },
+      "after": {
+        "heading": "共 0 项",
+        "assetCount": 0,
+        "gridCount": -1,
+        "maxRevision": 0,
+        "revisions": [
+          0
+        ]
+      }
+    },
+    "focusedPreviewRace": {
+      "ok": true,
+      "focusedCount": 3,
+      "preview": {
+        "alt": "issue398-target-03 · 第 1 帧",
+        "renderTargetId": "fla-render-target-2649ae8e632a427e5d1350ce76febcdf0ee41e6091a57c0406582fded2cb1744",
+        "naturalWidth": 91,
+        "naturalHeight": 177,
+        "generatedWidth": 91,
+        "generatedHeight": 177,
+        "resolution": "full"
+      }
+    },
+    "sequenceInteraction": {
+      "identity": "[\"87c4d3f7-0aea-4ca6-a2a2-4d9f4796d8b0\",\"89cd9b88c0801dc96d7129e014c1025c885332cb3b49bf226dc9abecf7dc867e\",\"sequence\",\"fla-render-target-703829cddeba61e0271a2c3c5663512c707f37eca2d8d3de908ddbbd640de5f3\"]",
+      "sequenceEnd": "至第 3 帧",
+      "sequenceCount": "3 帧",
+      "generatedFrameCount": 3,
+      "checkedAfterGenerate": true,
+      "selectionPreservedThroughAtoBtoA": true,
+      "keyboardFocusedGenerate": true,
+      "selectedOnlyShowsSequence": true,
+      "searchRetainedOnBrowse": true,
+      "focusBrowsePreserved": true,
+      "normalReachability": {
+        "viewport": {
+          "width": 1186,
+          "height": 724,
+          "devicePixelRatio": 1.5
+        },
+        "start": {
+          "rect": {
+            "left": 541.8541870117188,
+            "top": 308.16668701171875,
+            "right": 617.8541870117188,
+            "bottom": 352.16668701171875,
+            "width": 76,
+            "height": 44
+          },
+          "visible": true,
+          "height": 44,
+          "value": "1"
+        },
+        "action": {
+          "testId": "fla-frame-sequence-rerender",
+          "rect": {
+            "left": 1062.65625,
+            "top": 379.01043701171875,
+            "right": 1137.9895858764648,
+            "bottom": 427.01043701171875,
+            "width": 75.33333587646484,
+            "height": 48
+          },
+          "visible": true,
+          "height": 48,
+          "disabled": false
+        },
+        "filmstrip": {
+          "rect": {
+            "left": 529.8541870117188,
+            "top": 443.01043701171875,
+            "right": 1149.9896240234375,
+            "bottom": 598.3333587646484,
+            "width": 620.1354370117188,
+            "height": 155.3229217529297
+          },
+          "visible": true,
+          "firstFrameVisible": true,
+          "frameCount": 3
+        },
+        "footer": {
+          "rect": {
+            "left": 16.666667938232422,
+            "top": 634.6666870117188,
+            "right": 1177.3334159851074,
+            "bottom": 715.3333587646484,
+            "width": 1160.666748046875,
+            "height": 80.66667175292969
+          },
+          "visible": true
+        },
+        "importAction": {
+          "rect": {
+            "left": 1001.3333740234375,
+            "top": 647.3333740234375,
+            "right": 1161.3333740234375,
+            "bottom": 703.3333740234375,
+            "width": 160,
+            "height": 56
+          },
+          "visible": true,
+          "height": 56
+        },
+        "checkboxHitbox": {
+          "rect": {
+            "left": 196.92709350585938,
+            "top": 248.6666717529297,
+            "right": 244.92709350585938,
+            "bottom": 296.6666717529297,
+            "width": 48,
+            "height": 48
+          },
+          "width": 48,
+          "height": 48
+        },
+        "workbench": {
+          "rect": {
+            "left": 16.666667938232422,
+            "top": 86.66667175292969,
+            "right": 1177.3334159851074,
+            "bottom": 634.6666717529297,
+            "width": 1160.666748046875,
+            "height": 548
+          },
+          "scrollTop": 0,
+          "scrollHeight": 548,
+          "clientHeight": 548,
+          "overflowY": "visible"
+        }
+      },
+      "narrowAtTop": {
+        "viewport": {
+          "width": 787,
+          "height": 525,
+          "devicePixelRatio": 1.5
+        },
+        "start": {
+          "rect": {
+            "left": 56,
+            "top": 244.5,
+            "right": 132,
+            "bottom": 288.5,
+            "width": 76,
+            "height": 44
+          },
+          "visible": true,
+          "height": 44,
+          "value": "1"
+        },
+        "action": {
+          "testId": "fla-frame-sequence-rerender",
+          "rect": {
+            "left": 656.6666870117188,
+            "top": 315.34375,
+            "right": 732.0000228881836,
+            "bottom": 363.34375,
+            "width": 75.33333587646484,
+            "height": 48
+          },
+          "visible": true,
+          "height": 48,
+          "disabled": false
+        },
+        "filmstrip": {
+          "rect": {
+            "left": 44,
+            "top": 379.34375,
+            "right": 744,
+            "bottom": 499.33333587646484,
+            "width": 700,
+            "height": 119.98958587646484
+          },
+          "visible": true,
+          "firstFrameVisible": true,
+          "frameCount": 3
+        },
+        "footer": {
+          "rect": {
+            "left": 16.666667938232422,
+            "top": 444,
+            "right": 786.6666679382324,
+            "bottom": 524.6666717529297,
+            "width": 770,
+            "height": 80.66667175292969
+          },
+          "visible": true
+        },
+        "importAction": {
+          "rect": {
+            "left": 610.6666870117188,
+            "top": 456.66668701171875,
+            "right": 770.6666870117188,
+            "bottom": 512.6666870117188,
+            "width": 160,
+            "height": 56
+          },
+          "visible": true,
+          "height": 56
+        },
+        "checkboxHitbox": {
+          "rect": {
+            "left": 331.66668701171875,
+            "top": 689.3333740234375,
+            "right": 379.66668701171875,
+            "bottom": 737.3333740234375,
+            "width": 48,
+            "height": 48
+          },
+          "width": 48,
+          "height": 48
+        },
+        "workbench": {
+          "rect": {
+            "left": 16.666667938232422,
+            "top": 86.66667175292969,
+            "right": 786.6666679382324,
+            "bottom": 444.00001525878906,
+            "width": 770,
+            "height": 357.3333435058594
+          },
+          "scrollTop": 0,
+          "scrollHeight": 764,
+          "clientHeight": 357,
+          "overflowY": "auto"
+        }
+      },
+      "touchScroll": {
+        "dispatchedBy": "Electron CDP Input.dispatchTouchEvent",
+        "touchStartCount": 1,
+        "touchMoveCount": 1,
+        "scrollTopBefore": 0,
+        "scrollTopAfter": 95.33333587646484,
+        "scrollHeight": 764,
+        "clientHeight": 357
+      },
+      "narrowAfterTouch": {
+        "viewport": {
+          "width": 787,
+          "height": 525,
+          "devicePixelRatio": 1.5
+        },
+        "start": {
+          "rect": {
+            "left": 56,
+            "top": 149.1666717529297,
+            "right": 132,
+            "bottom": 193.1666717529297,
+            "width": 76,
+            "height": 44
+          },
+          "visible": true,
+          "height": 44,
+          "value": "1"
+        },
+        "action": {
+          "testId": "fla-frame-sequence-rerender",
+          "rect": {
+            "left": 656.6666870117188,
+            "top": 220.0104217529297,
+            "right": 732.0000228881836,
+            "bottom": 268.0104217529297,
+            "width": 75.33333587646484,
+            "height": 48
+          },
+          "visible": true,
+          "height": 48,
+          "disabled": false
+        },
+        "filmstrip": {
+          "rect": {
+            "left": 44,
+            "top": 284.01043701171875,
+            "right": 744,
+            "bottom": 404.0000228881836,
+            "width": 700,
+            "height": 119.98958587646484
+          },
+          "visible": true,
+          "firstFrameVisible": true,
+          "frameCount": 3
+        },
+        "footer": {
+          "rect": {
+            "left": 16.666667938232422,
+            "top": 444,
+            "right": 786.6666679382324,
+            "bottom": 524.6666717529297,
+            "width": 770,
+            "height": 80.66667175292969
+          },
+          "visible": true
+        },
+        "importAction": {
+          "rect": {
+            "left": 610.6666870117188,
+            "top": 456.66668701171875,
+            "right": 770.6666870117188,
+            "bottom": 512.6666870117188,
+            "width": 160,
+            "height": 56
+          },
+          "visible": true,
+          "height": 56
+        },
+        "checkboxHitbox": {
+          "rect": {
+            "left": 331.66668701171875,
+            "top": 594,
+            "right": 379.66668701171875,
+            "bottom": 642,
+            "width": 48,
+            "height": 48
+          },
+          "width": 48,
+          "height": 48
+        },
+        "workbench": {
+          "rect": {
+            "left": 16.666667938232422,
+            "top": 86.66667175292969,
+            "right": 786.6666679382324,
+            "bottom": 444.00001525878906,
+            "width": 770,
+            "height": 357.3333435058594
+          },
+          "scrollTop": 95.33333587646484,
+          "scrollHeight": 764,
+          "clientHeight": 357,
+          "overflowY": "auto"
+        }
+      },
+      "keyboardReachedAction": true,
+      "keyboardReachedFrameStrip": true,
+      "narrowAfterKeyboard": {
+        "viewport": {
+          "width": 787,
+          "height": 525,
+          "devicePixelRatio": 1.5
+        },
+        "start": {
+          "rect": {
+            "left": 56,
+            "top": 149.1666717529297,
+            "right": 132,
+            "bottom": 193.1666717529297,
+            "width": 76,
+            "height": 44
+          },
+          "visible": true,
+          "height": 44,
+          "value": "1"
+        },
+        "action": {
+          "testId": "fla-frame-sequence-rerender",
+          "rect": {
+            "left": 656.6666870117188,
+            "top": 220.0104217529297,
+            "right": 732.0000228881836,
+            "bottom": 268.0104217529297,
+            "width": 75.33333587646484,
+            "height": 48
+          },
+          "visible": true,
+          "height": 48,
+          "disabled": false
+        },
+        "filmstrip": {
+          "rect": {
+            "left": 44,
+            "top": 284.01043701171875,
+            "right": 744,
+            "bottom": 404.0000228881836,
+            "width": 700,
+            "height": 119.98958587646484
+          },
+          "visible": true,
+          "firstFrameVisible": true,
+          "frameCount": 3
+        },
+        "footer": {
+          "rect": {
+            "left": 16.666667938232422,
+            "top": 444,
+            "right": 786.6666679382324,
+            "bottom": 524.6666717529297,
+            "width": 770,
+            "height": 80.66667175292969
+          },
+          "visible": true
+        },
+        "importAction": {
+          "rect": {
+            "left": 610.6666870117188,
+            "top": 456.66668701171875,
+            "right": 770.6666870117188,
+            "bottom": 512.6666870117188,
+            "width": 160,
+            "height": 56
+          },
+          "visible": true,
+          "height": 56
+        },
+        "checkboxHitbox": {
+          "rect": {
+            "left": 331.66668701171875,
+            "top": 594,
+            "right": 379.66668701171875,
+            "bottom": 642,
+            "width": 48,
+            "height": 48
+          },
+          "width": 48,
+          "height": 48
+        },
+        "workbench": {
+          "rect": {
+            "left": 16.666667938232422,
+            "top": 86.66667175292969,
+            "right": 786.6666679382324,
+            "bottom": 444.00001525878906,
+            "width": 770,
+            "height": 357.3333435058594
+          },
+          "scrollTop": 95.33333587646484,
+          "scrollHeight": 764,
+          "clientHeight": 357,
+          "overflowY": "auto"
+        }
+      },
+      "narrowFooterPinned": true,
+      "nativeSequence": true
+    },
+    "receiptReachability": {
+      "viewport846x653": {
+        "top": {
+          "viewport": {
+            "width": 846,
+            "height": 653,
+            "devicePixelRatio": 1.5
+          },
+          "expanded": true,
+          "footerVisible": true,
+          "importActionVisible": true,
+          "summaryVisible": true,
+          "firstItemVisible": true,
+          "lastItemVisible": true,
+          "footerScrollTop": 0,
+          "footerScrollHeight": 287,
+          "footerClientHeight": 235
+        },
+        "touchScroll": {
+          "dispatchedBy": "Electron CDP Input.dispatchTouchEvent",
+          "touchStartCount": 1,
+          "touchMoveCount": 1,
+          "scrollTopBefore": 0,
+          "scrollTopAfter": 52,
+          "scrollHeight": 287,
+          "clientHeight": 235
+        },
+        "bottom": {
+          "viewport": {
+            "width": 846,
+            "height": 653,
+            "devicePixelRatio": 1.5
+          },
+          "expanded": true,
+          "footerVisible": true,
+          "importActionVisible": true,
+          "summaryVisible": true,
+          "firstItemVisible": true,
+          "lastItemVisible": true,
+          "footerScrollTop": 52,
+          "footerScrollHeight": 287,
+          "footerClientHeight": 235
+        }
+      },
+      "narrowNative": {
+        "top": {
+          "viewport": {
+            "width": 787,
+            "height": 525,
+            "devicePixelRatio": 1.5
+          },
+          "expanded": true,
+          "footerVisible": true,
+          "importActionVisible": true,
+          "summaryVisible": true,
+          "firstItemVisible": true,
+          "lastItemVisible": false,
+          "footerScrollTop": 0,
+          "footerScrollHeight": 287,
+          "footerClientHeight": 188
+        },
+        "touchScroll": {
+          "dispatchedBy": "Electron CDP Input.dispatchTouchEvent",
+          "touchStartCount": 1,
+          "touchMoveCount": 1,
+          "scrollTopBefore": 0,
+          "scrollTopAfter": 95.33333587646484,
+          "scrollHeight": 287,
+          "clientHeight": 188
+        },
+        "bottom": {
+          "viewport": {
+            "width": 787,
+            "height": 525,
+            "devicePixelRatio": 1.5
+          },
+          "expanded": true,
+          "footerVisible": true,
+          "importActionVisible": true,
+          "summaryVisible": false,
+          "firstItemVisible": true,
+          "lastItemVisible": true,
+          "footerScrollTop": 98,
+          "footerScrollHeight": 287,
+          "footerClientHeight": 188
+        }
+      }
+    },
+    "defaultHashHidden": true,
+    "releasedPreviewResources": {
+      "observed": 60,
+      "revoked": 60,
+      "remaining": 0
+    },
+    "checks": {
+      "zeroRasterRoute": true,
+      "unifiedPreviewAndImportRegionsVisible": true,
+      "stageDv11Layout": true,
+      "stageDv12Deletion": true,
+      "c03SnapshotPreviewVisible": true,
+      "stageTargetFacts": true,
+      "duplicateGroupPreservesSourceIdentity": true,
+      "noRasterChrome": true,
+      "contextualSequenceReachable": true,
+      "sequencePreviewSelectionPreserved": true,
+      "sequenceWideReachable": true,
+      "sequenceNarrowReachable": true,
+      "sequenceTouchWorks": true,
+      "sequenceKeyboardWorks": true,
+      "sequenceHitTargetsRespectDesign": true,
+      "scanCancellationExitsWithoutMutation": true,
+      "cancellationNoMutation": true,
+      "focusedPreviewRaceHasFullResolution": true,
+      "focusedPreviewExceedsThumbnailResolution": true,
+      "defaultHashHidden": true,
+      "previewResourcesReleased": true,
+      "importUnavailableBeforeSelection": true,
+      "previewReady": true,
+      "multiSelectionWorks": true,
+      "selectionNoMutation": true,
+      "importEnabledAfterSelection": true,
+      "accurateBatchReceipt": true,
+      "receiptReachableAt846x653": true,
+      "receiptReachableAtNarrowNative": true,
+      "receiptTouchWorks": true,
+      "exactDuplicateReused": true,
+      "committedSelectedAssets": true,
+      "revisionAdvanced": true,
+      "libraryUpdated": true
+    },
+    "deletionChecks": {
+      "unifiedImportShellVisible": true,
+      "retiredRenderTabsRemoved": true,
+      "genericRecoveryNoticeRemoved": true,
+      "zeroRasterSummaryRemoved": true,
+      "sourceFilenameSingle": true,
+      "targetCountSingle": true,
+      "candidateSummaryVisible": true,
+      "moreDetailsCollapsed": true,
+      "defaultExplanatoryBlocksRemoved": true,
+      "footerGuidanceMerged": true
+    },
+    "initial": {
+      "heading": "共 0 项",
+      "assetCount": 0,
+      "gridCount": -1,
+      "maxRevision": 0,
+      "revisions": [
+        0
+      ]
+    },
+    "beforeCancel": {
+      "heading": "共 0 项",
+      "assetCount": 0,
+      "gridCount": -1,
+      "maxRevision": 0,
+      "revisions": [
+        0
+      ]
+    },
+    "afterCancel": {
+      "heading": "共 0 项",
+      "assetCount": 0,
+      "gridCount": -1,
+      "maxRevision": 0,
+      "revisions": [
+        0
+      ]
+    },
+    "beforeSelection": {
+      "heading": "共 0 项",
+      "assetCount": 0,
+      "gridCount": -1,
+      "maxRevision": 0,
+      "revisions": [
+        0
+      ]
+    },
+    "afterSelection": {
+      "heading": "共 0 项",
+      "assetCount": 0,
+      "gridCount": -1,
+      "maxRevision": 0,
+      "revisions": [
+        0
+      ]
+    },
+    "beforeImport": {
+      "heading": "共 0 项",
+      "assetCount": 0,
+      "gridCount": -1,
+      "maxRevision": 0,
+      "revisions": [
+        0
+      ]
+    },
+    "afterImport": {
+      "heading": "共 1 项",
+      "assetCount": 1,
+      "gridCount": -1,
+      "maxRevision": 1,
+      "revisions": [
+        1
+      ]
+    },
+    "libraryAfterClose": {
+      "heading": "共 1 项",
+      "assetCount": 1,
+      "gridCount": 1,
+      "maxRevision": 1,
+      "revisions": [
+        1
+      ]
+    },
+    "layout": {
+      "checks": {
+        "targetCountAtLeast25": true,
+        "workbenchBounded": true,
+        "pageNotStretched": true,
+        "targetListOwnsScroll": true,
+        "headerPreviewActionVisibleAtTop": true,
+        "headerPreviewActionVisibleAtBottom": true,
+        "firstTargetReachable": true,
+        "lastTargetReachable": true,
+        "previewStableWhileListScrolls": true,
+        "footerStableWhileListScrolls": true,
+        "onePrimaryActionAtTop": true,
+        "onePrimaryActionAtBottom": true,
+        "targetSearchWorks": true
+      },
+      "top": {
+        "viewport": {
+          "width": 1186,
+          "height": 724
+        },
+        "session": {
+          "left": 16,
+          "top": 16,
+          "right": 1178,
+          "bottom": 716,
+          "width": 1162,
+          "height": 700
+        },
+        "workbench": {
+          "left": 16.666667938232422,
+          "top": 86.66667175292969,
+          "right": 1177.3334159851074,
+          "bottom": 634.6666717529297,
+          "width": 1160.666748046875,
+          "height": 548
+        },
+        "header": {
+          "left": 16.666667938232422,
+          "top": 16.666667938232422,
+          "right": 1177.3334159851074,
+          "bottom": 86.66666793823242,
+          "width": 1160.666748046875,
+          "height": 70
+        },
+        "preview": {
+          "left": 502.5208435058594,
+          "top": 86.66667175292969,
+          "right": 1177.3229675292969,
+          "bottom": 634.6666717529297,
+          "width": 674.8021240234375,
+          "height": 548
+        },
+        "actionBar": {
+          "left": 16.666667938232422,
+          "top": 634.6666870117188,
+          "right": 1177.3334159851074,
+          "bottom": 715.3333587646484,
+          "width": 1160.666748046875,
+          "height": 80.66667175292969
+        },
+        "targetList": {
+          "rect": {
+            "left": 30.666667938232422,
+            "top": 229.6666717529297,
+            "right": 487.8541679382324,
+            "bottom": 620.6666717529297,
+            "width": 457.1875,
+            "height": 391
+          },
+          "scrollHeight": 1256,
+          "clientHeight": 391,
+          "scrollTop": 0,
+          "overflowY": "auto",
+          "firstTarget": {
+            "left": 31.666667938232422,
+            "top": 231.6666717529297,
+            "right": 245.5937614440918,
+            "bottom": 313.6666717529297,
+            "width": 213.92709350585938,
+            "height": 82
+          },
+          "lastTarget": {
+            "left": 253.59375,
+            "top": 1401.666748046875,
+            "right": 467.5208435058594,
+            "bottom": 1483.666748046875,
+            "width": 213.92709350585938,
+            "height": 82
+          },
+          "rowCount": 28
+        },
+        "documentScrollHeight": 724,
+        "documentClientHeight": 724,
+        "primaryActionCount": 1
+      },
+      "bottom": {
+        "viewport": {
+          "width": 1186,
+          "height": 724
+        },
+        "session": {
+          "left": 16,
+          "top": 16,
+          "right": 1178,
+          "bottom": 716,
+          "width": 1162,
+          "height": 700
+        },
+        "workbench": {
+          "left": 16.666667938232422,
+          "top": 86.66667175292969,
+          "right": 1177.3334159851074,
+          "bottom": 634.6666717529297,
+          "width": 1160.666748046875,
+          "height": 548
+        },
+        "header": {
+          "left": 16.666667938232422,
+          "top": 16.666667938232422,
+          "right": 1177.3334159851074,
+          "bottom": 86.66666793823242,
+          "width": 1160.666748046875,
+          "height": 70
+        },
+        "preview": {
+          "left": 502.5208435058594,
+          "top": 86.66667175292969,
+          "right": 1177.3229675292969,
+          "bottom": 634.6666717529297,
+          "width": 674.8021240234375,
+          "height": 548
+        },
+        "actionBar": {
+          "left": 16.666667938232422,
+          "top": 634.6666870117188,
+          "right": 1177.3334159851074,
+          "bottom": 715.3333587646484,
+          "width": 1160.666748046875,
+          "height": 80.66667175292969
+        },
+        "targetList": {
+          "rect": {
+            "left": 30.666667938232422,
+            "top": 229.6666717529297,
+            "right": 487.8541679382324,
+            "bottom": 620.6666717529297,
+            "width": 457.1875,
+            "height": 391
+          },
+          "scrollHeight": 1256,
+          "clientHeight": 391,
+          "scrollTop": 864.6666870117188,
+          "overflowY": "auto",
+          "firstTarget": {
+            "left": 31.666667938232422,
+            "top": -633,
+            "right": 245.5937614440918,
+            "bottom": -551,
+            "width": 213.92709350585938,
+            "height": 82
+          },
+          "lastTarget": {
+            "left": 253.59375,
+            "top": 537,
+            "right": 467.5208435058594,
+            "bottom": 619,
+            "width": 213.92709350585938,
+            "height": 82
+          },
+          "rowCount": 28
+        },
+        "documentScrollHeight": 724,
+        "documentClientHeight": 724,
+        "primaryActionCount": 1
+      },
+      "targetCount": 27,
+      "searchQuery": "issue398-target-01 · 第 1 帧"
+    },
+    "committedAssetCount": 1,
+    "revisionAdvanced": true,
+    "committedText": "共处理 2 项；新建素材 1 项、复用素材 1 项。",
+    "projectMutation": "CANDIDATE_PREVIEWS_AND_SELECTION_NO_PROJECT_MUTATION; CANCEL_NO_MUTATION; ONE_CONFIRM; COMMIT_SELECTED_STATIC_SNAPSHOT_IMAGE_ASSETS",
+    "layoutEvidence": {
+      "top": {
+        "path": "D:\\PandaStage-Acceptance\\issue778-stage-d-final7-20261015\\layout-evidence\\stage-d-top-target.png",
+        "width": 1779,
+        "height": 1086,
+        "viewport": {
+          "width": 1186,
+          "height": 724,
+          "devicePixelRatio": 1.5
+        },
+        "windowBounds": {
+          "x": 235,
+          "y": 5,
+          "width": 1201,
+          "height": 761
+        }
+      },
+      "bottom": {
+        "path": "D:\\PandaStage-Acceptance\\issue778-stage-d-final7-20261015\\layout-evidence\\stage-d-bottom-target.png",
+        "width": 1779,
+        "height": 1086,
+        "viewport": {
+          "width": 1186,
+          "height": 724,
+          "devicePixelRatio": 1.5
+        },
+        "windowBounds": {
+          "x": 235,
+          "y": 5,
+          "width": 1201,
+          "height": 761
+        }
+      },
+      "nativeKeyboardGenerateFocus": {
+        "marker": "sequence-generate-tab",
+        "keyCode": "Tab",
+        "dispatched": true
+      },
+      "nativeKeyboardGenerateAction": {
+        "marker": "sequence-generate-space",
+        "keyCode": "Space",
+        "dispatched": true
+      },
+      "sequenceWide": {
+        "path": "D:\\PandaStage-Acceptance\\issue778-stage-d-final7-20261015\\layout-evidence\\stage-d-sequence-wide.png",
+        "width": 1779,
+        "height": 1086,
+        "viewport": {
+          "width": 1186,
+          "height": 724,
+          "devicePixelRatio": 1.5
+        },
+        "windowBounds": {
+          "x": 235,
+          "y": 5,
+          "width": 1201,
+          "height": 761
+        }
+      },
+      "sequenceNarrowTop": {
+        "path": "D:\\PandaStage-Acceptance\\issue778-stage-d-final7-20261015\\layout-evidence\\stage-d-sequence-narrow-top.png",
+        "width": 1181,
+        "height": 788,
+        "viewport": {
+          "width": 787,
+          "height": 525,
+          "devicePixelRatio": 1.5
+        },
+        "windowBounds": {
+          "x": 434,
+          "y": 104,
+          "width": 802,
+          "height": 562
+        }
+      },
+      "nativeTouchScroll": {
+        "marker": "sequence-narrow-touch-scroll",
+        "dispatched": true,
+        "input": "CDP Input.dispatchTouchEvent"
+      },
+      "nativeKeyboardNarrowAction": {
+        "marker": "sequence-narrow-tab-action",
+        "keyCode": "Tab",
+        "dispatched": true
+      },
+      "nativeKeyboardNarrowFrame": {
+        "marker": "sequence-narrow-tab-frame",
+        "keyCode": "Tab",
+        "dispatched": true
+      },
+      "sequenceNarrowScrolled": {
+        "path": "D:\\PandaStage-Acceptance\\issue778-stage-d-final7-20261015\\layout-evidence\\stage-d-sequence-narrow-scrolled.png",
+        "width": 1181,
+        "height": 788,
+        "viewport": {
+          "width": 787,
+          "height": 525,
+          "devicePixelRatio": 1.5
+        },
+        "windowBounds": {
+          "x": 434,
+          "y": 104,
+          "width": 802,
+          "height": 562
+        }
+      },
+      "receipt846x653Top": {
+        "path": "D:\\PandaStage-Acceptance\\issue778-stage-d-final7-20261015\\layout-evidence\\stage-d-receipt-846x653-top.png",
+        "width": 1269,
+        "height": 980,
+        "viewport": {
+          "width": 846,
+          "height": 653,
+          "devicePixelRatio": 1.5
+        },
+        "windowBounds": {
+          "x": 405,
+          "y": 40,
+          "width": 861,
+          "height": 690
+        }
+      },
+      "receipt846x653TouchScroll": {
+        "marker": "receipt-846-touch-scroll",
+        "dispatched": true,
+        "input": "CDP Input.dispatchTouchEvent"
+      },
+      "receipt846x653Scrolled": {
+        "path": "D:\\PandaStage-Acceptance\\issue778-stage-d-final7-20261015\\layout-evidence\\stage-d-receipt-846x653-scrolled.png",
+        "width": 1269,
+        "height": 980,
+        "viewport": {
+          "width": 846,
+          "height": 653,
+          "devicePixelRatio": 1.5
+        },
+        "windowBounds": {
+          "x": 405,
+          "y": 40,
+          "width": 861,
+          "height": 690
+        }
+      },
+      "receiptNarrowTop": {
+        "path": "D:\\PandaStage-Acceptance\\issue778-stage-d-final7-20261015\\layout-evidence\\stage-d-receipt-narrow-top.png",
+        "width": 1181,
+        "height": 788,
+        "viewport": {
+          "width": 787,
+          "height": 525,
+          "devicePixelRatio": 1.5
+        },
+        "windowBounds": {
+          "x": 434,
+          "y": 104,
+          "width": 802,
+          "height": 562
+        }
+      },
+      "receiptNarrowTouchScroll": {
+        "marker": "receipt-narrow-touch-scroll",
+        "dispatched": true,
+        "input": "CDP Input.dispatchTouchEvent"
+      },
+      "receiptNarrowScrolled": {
+        "path": "D:\\PandaStage-Acceptance\\issue778-stage-d-final7-20261015\\layout-evidence\\stage-d-receipt-narrow-scrolled.png",
+        "width": 1181,
+        "height": 788,
+        "viewport": {
+          "width": 787,
+          "height": 525,
+          "devicePixelRatio": 1.5
+        },
+        "windowBounds": {
+          "x": 434,
+          "y": 104,
+          "width": 802,
+          "height": 562
+        }
+      }
+    }
+  }
+}

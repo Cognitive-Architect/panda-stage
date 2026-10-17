@@ -1,0 +1,196 @@
+{
+  "schemaVersion": "issue742-animate-authoring-manifest/1",
+  "issue": 742,
+  "authoringApi": "Adobe Animate JSAPI Path / Document",
+  "stageWidth": 360,
+  "stageHeight": 280,
+  "fillColor": "#D64242",
+  "authoringManifestPath": "D:\\PandaStage-Acceptance\\issue742-repair-contract-20261009-attempt03\\authoring-manifest.json",
+  "fixtures": [
+    {
+      "key": "D-A-authored-close",
+      "family": "D",
+      "variant": "authored-close",
+      "closeMode": "path-close",
+      "intendedPoints": [
+        [
+          95,
+          90
+        ],
+        [
+          265,
+          90
+        ],
+        [
+          180,
+          220
+        ]
+      ],
+      "stageWidth": 360,
+      "stageHeight": 280,
+      "fillColor": "#D64242",
+      "fileName": "D-A-authored-close.fla",
+      "authoring": {
+        "status": "CREATED_BY_ANIMATE",
+        "filePath": "D:\\PandaStage-Acceptance\\issue742-repair-contract-20261009-attempt03\\fixtures\\D-A-authored-close.fla",
+        "fileUri": "file:///D|/PandaStage-Acceptance/issue742-repair-contract-20261009-attempt03/fixtures/D-A-authored-close.fla",
+        "saveApiCalled": true,
+        "saveApiSucceeded": true,
+        "fileExistsAfterSave": true,
+        "documentModifiedAfterSave": null,
+        "documentModifiedStateObservable": false,
+        "rawXflPatch": {
+          "applied": true,
+          "patcher": "scripts/research/issue742-xfl-close-marker-fixture.cjs",
+          "method": "one exact Edge@edges replacement in DOMDocument.xml",
+          "xflMember": "DOMDocument.xml",
+          "edgeAttributeBefore": "!1900 1800|5300 1800!5300 1800|3600 4400!3600 4400|1900 1800",
+          "edgeAttributeAfter": "!1900 1800|5300 1800|3600 4400/",
+          "replacementOccurrences": 1,
+          "originalArchiveMemberCount": 7,
+          "patchedArchiveMemberCount": 7,
+          "onlyDomDocumentXmlEntryChanged": true,
+          "sourceFlaSha256Before": "79C5BB0297F92C0D87A75ED160473FD807370B3B18E694014B1D2AB9CCF3C1A7",
+          "sourceFlaSha256After": "63A807AF95ABC2ADD2C1F6EAABBE61B8527C21C00B5C5A92824C9064ED1FAA1E",
+          "prePatchBackupPath": "D:\\PandaStage-Acceptance\\issue742-repair-contract-20261009-attempt03\\fixtures\\D-A-authored-close-animate-created.fla"
+        }
+      }
+    },
+    {
+      "key": "D-B-explicit-close",
+      "family": "D",
+      "variant": "explicit-closing-edge",
+      "closeMode": "explicit-return-point",
+      "intendedPoints": [
+        [
+          95,
+          90
+        ],
+        [
+          265,
+          90
+        ],
+        [
+          180,
+          220
+        ]
+      ],
+      "stageWidth": 360,
+      "stageHeight": 280,
+      "fillColor": "#D64242",
+      "fileName": "D-B-explicit-close.fla",
+      "authoring": {
+        "status": "CREATED_BY_ANIMATE",
+        "filePath": "D:\\PandaStage-Acceptance\\issue742-repair-contract-20261009-attempt03\\fixtures\\D-B-explicit-close.fla",
+        "fileUri": "file:///D|/PandaStage-Acceptance/issue742-repair-contract-20261009-attempt03/fixtures/D-B-explicit-close.fla",
+        "saveApiCalled": true,
+        "saveApiSucceeded": true,
+        "fileExistsAfterSave": true,
+        "documentModifiedAfterSave": null,
+        "documentModifiedStateObservable": false
+      }
+    },
+    {
+      "key": "B-A-clockwise-explicit",
+      "family": "B",
+      "variant": "clockwise-explicit-boundary",
+      "closeMode": "explicit-return-point",
+      "intendedPoints": [
+        [
+          95,
+          90
+        ],
+        [
+          180,
+          220
+        ],
+        [
+          265,
+          90
+        ]
+      ],
+      "stageWidth": 360,
+      "stageHeight": 280,
+      "fillColor": "#D64242",
+      "fileName": "B-A-clockwise-explicit.fla",
+      "authoring": {
+        "status": "CREATED_BY_ANIMATE",
+        "filePath": "D:\\PandaStage-Acceptance\\issue742-repair-contract-20261009-attempt03\\fixtures\\B-A-clockwise-explicit.fla",
+        "fileUri": "file:///D|/PandaStage-Acceptance/issue742-repair-contract-20261009-attempt03/fixtures/B-A-clockwise-explicit.fla",
+        "saveApiCalled": true,
+        "saveApiSucceeded": true,
+        "fileExistsAfterSave": true,
+        "documentModifiedAfterSave": null,
+        "documentModifiedStateObservable": false
+      }
+    },
+    {
+      "key": "B-B-counterclockwise-explicit",
+      "family": "B",
+      "variant": "counterclockwise-explicit-boundary",
+      "closeMode": "explicit-return-point",
+      "intendedPoints": [
+        [
+          95,
+          90
+        ],
+        [
+          265,
+          90
+        ],
+        [
+          180,
+          220
+        ]
+      ],
+      "stageWidth": 360,
+      "stageHeight": 280,
+      "fillColor": "#D64242",
+      "fileName": "B-B-counterclockwise-explicit.fla",
+      "authoring": {
+        "status": "CREATED_BY_ANIMATE",
+        "filePath": "D:\\PandaStage-Acceptance\\issue742-repair-contract-20261009-attempt03\\fixtures\\B-B-counterclockwise-explicit.fla",
+        "fileUri": "file:///D|/PandaStage-Acceptance/issue742-repair-contract-20261009-attempt03/fixtures/B-B-counterclockwise-explicit.fla",
+        "saveApiCalled": true,
+        "saveApiSucceeded": true,
+        "fileExistsAfterSave": true,
+        "documentModifiedAfterSave": null,
+        "documentModifiedStateObservable": false
+      }
+    },
+    {
+      "key": "control-explicit-closed",
+      "family": "control",
+      "variant": "known-good-explicit-closed-triangle",
+      "closeMode": "explicit-return-point",
+      "intendedPoints": [
+        [
+          95,
+          90
+        ],
+        [
+          265,
+          90
+        ],
+        [
+          180,
+          220
+        ]
+      ],
+      "stageWidth": 360,
+      "stageHeight": 280,
+      "fillColor": "#D64242",
+      "fileName": "control-explicit-closed.fla",
+      "authoring": {
+        "status": "CREATED_BY_ANIMATE",
+        "filePath": "D:\\PandaStage-Acceptance\\issue742-repair-contract-20261009-attempt03\\fixtures\\control-explicit-closed.fla",
+        "fileUri": "file:///D|/PandaStage-Acceptance/issue742-repair-contract-20261009-attempt03/fixtures/control-explicit-closed.fla",
+        "saveApiCalled": true,
+        "saveApiSucceeded": true,
+        "fileExistsAfterSave": true,
+        "documentModifiedAfterSave": null,
+        "documentModifiedStateObservable": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,1723 @@
+{
+  "schemaVersion": "issue781-g007-windows-electron/1",
+  "status": "PASS",
+  "runId": "2026-10-16T01-07-14-817Z",
+  "gitHead": "07a97124046d8b0cc942ed0490daa69fa3e217d4",
+  "branch": "",
+  "runtime": {
+    "platform": "win32",
+    "release": "10.0.20348",
+    "architecture": "x64",
+    "electron": "43.1.1",
+    "node": "24.18.0",
+    "processId": 14388,
+    "primaryDisplayScaleFactor": 1.5,
+    "forceDeviceScaleFactor": null
+  },
+  "acceptanceRoot": "D:\\PandaStage-Acceptance\\issue781-g007\\baseline-runs\\run-2026-10-16T01-07-14-817Z",
+  "evidenceDirectory": "D:\\panda-stage-main\\docs\\evidence\\issue-781-g007\\before\\run-2026-10-16T01-07-14-817Z",
+  "source": {
+    "path": "D:\\表情合集\\蓝衣修仙男（补面需求）.fla",
+    "sizeBytes": 1777905,
+    "sha256Before": "3fdb31478c6e5fe3ffca30f27fe69d9b3ba8f29f4bcf28eb39b9ce1b0fa3fdf2",
+    "sha256After": "3fdb31478c6e5fe3ffca30f27fe69d9b3ba8f29f4bcf28eb39b9ce1b0fa3fdf2",
+    "unchanged": true
+  },
+  "sourceCatalogCounts": {
+    "blankEntries": 0,
+    "unsupportedEntries": 2
+  },
+  "syntheticBlankOverlay": {
+    "targetId": "fla-render-target-c05bdf4b3420f02eb2abab392c8a9b4755c8a8fbc599fac0845792d9c063f02d",
+    "originalLabel": "元件 1",
+    "syntheticLabel": "C03 空白状态验证（合成）",
+    "replacesRealBlankEntry": false
+  },
+  "syntheticUnsupportedOverlay": {
+    "targetId": "fla-render-target-f72ff3881572f6bcd3c0db72eef266e005dc67d0ce6d818f6b3fa9e6c1222b12",
+    "originalLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom6",
+    "syntheticLabel": "C03 不支持状态验证（合成）",
+    "replacesRealUnsupportedEntry": false
+  },
+  "project": {
+    "name": "C03 2026-10-16T01-07-14-817Z",
+    "root": "D:\\PandaStage-Acceptance\\issue781-g007\\baseline-runs\\projects\\C03 2026-10-16T01-07-14-817Z.pandastage"
+  },
+  "baseline": null,
+  "layout": {
+    "initialWindowBounds": {
+      "x": 30,
+      "y": 30,
+      "width": 1200,
+      "height": 762
+    },
+    "initialContentBounds": {
+      "x": 37,
+      "y": 60,
+      "width": 1186,
+      "height": 724
+    },
+    "displayScaleFactor": 1.5,
+    "snapshotRunnerDebug": {
+      "reviewSessionMounted": true,
+      "controllerSlots": [
+        {
+          "hidden": true,
+          "firstChildTag": "DIV",
+          "firstChildTestId": "fla-snapshot-review"
+        },
+        {
+          "hidden": false,
+          "firstChildTag": "DIV",
+          "firstChildTestId": "fla-frame-sequence-review"
+        }
+      ],
+      "snapshotReviewMounted": true,
+      "snapshotRootState": "rendering",
+      "snapshotError": "",
+      "snapshotEntryCount": "32 项",
+      "snapshotSourceRows": 32,
+      "unifiedKindCounts": {
+        "snapshot": 32,
+        "sequence": 4
+      },
+      "snapshotSlotHidden": true,
+      "scanProgress": "正在逐项检查预览 4 / 32"
+    },
+    "progressiveTargetId": "fla-render-target-4f07f13363ebd49c271ffdab693fe8c42916d334c076919d296225a1c6a2f3bf",
+    "progressText": "正在加载素材…",
+    "g007SnapshotScan": {
+      "candidateCount": 32,
+      "unresolvedCount": 0,
+      "progressText": ""
+    },
+    "sequenceCandidate": {
+      "targetId": "fla-render-target-5a146c39eb136d6bcef1944f4e49e6292bad0bbc2e32523ad47407f1ae44571b",
+      "label": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+      "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+      "frameCount": 333
+    },
+    "sequenceBeforeGeneration": {
+      "canvas": {
+        "top": 0,
+        "bottom": 0,
+        "width": 0,
+        "height": 0
+      },
+      "range": {
+        "top": 390.60418701171875,
+        "bottom": 505.27085876464844,
+        "width": 620.1354370117188,
+        "height": 114.66667175292969
+      },
+      "rangeOutsideCanvas": false,
+      "rangeBelowCanvas": true,
+      "oneRow": false
+    },
+    "sequenceActionReady": {
+      "enabled": true,
+      "previewState": "needs-preview",
+      "focusedTargetId": "fla-render-target-5a146c39eb136d6bcef1944f4e49e6292bad0bbc2e32523ad47407f1ae44571b"
+    },
+    "keyboardDispatches": [
+      {
+        "keyCode": "Tab",
+        "inputMethod": "Electron webContents.sendInputEvent",
+        "windowFocused": true,
+        "before": {
+          "documentFocused": true,
+          "activeElement": {
+            "tagName": "INPUT",
+            "ariaLabel": null,
+            "className": ""
+          }
+        },
+        "after": {
+          "documentFocused": true,
+          "activeElement": {
+            "tagName": "BUTTON",
+            "ariaLabel": null,
+            "className": ""
+          }
+        },
+        "mainInputEvents": [
+          {
+            "type": "keyDown",
+            "key": "Tab",
+            "code": "Tab"
+          },
+          {
+            "type": "keyUp",
+            "key": "Tab",
+            "code": "Tab"
+          }
+        ],
+        "rendererEvents": [
+          {
+            "type": "keydown",
+            "key": "Tab",
+            "code": "Tab",
+            "isTrusted": true,
+            "defaultPrevented": false,
+            "targetTag": "INPUT",
+            "targetAriaLabel": null
+          },
+          {
+            "type": "keyup",
+            "key": "Tab",
+            "code": "Tab",
+            "isTrusted": true,
+            "defaultPrevented": false,
+            "targetTag": "BUTTON",
+            "targetAriaLabel": null
+          }
+        ]
+      },
+      {
+        "keyCode": "Space",
+        "inputMethod": "Electron webContents.sendInputEvent",
+        "windowFocused": true,
+        "before": {
+          "documentFocused": true,
+          "activeElement": {
+            "tagName": "BUTTON",
+            "ariaLabel": null,
+            "className": ""
+          }
+        },
+        "after": {
+          "documentFocused": true,
+          "activeElement": {
+            "tagName": "BODY",
+            "ariaLabel": null,
+            "className": ""
+          }
+        },
+        "mainInputEvents": [
+          {
+            "type": "keyDown",
+            "key": " ",
+            "code": "Space"
+          },
+          {
+            "type": "keyUp",
+            "key": " ",
+            "code": "Space"
+          }
+        ],
+        "rendererEvents": [
+          {
+            "type": "keydown",
+            "key": " ",
+            "code": "Space",
+            "isTrusted": true,
+            "defaultPrevented": false,
+            "targetTag": "BUTTON",
+            "targetAriaLabel": null
+          },
+          {
+            "type": "keyup",
+            "key": " ",
+            "code": "Space",
+            "isTrusted": true,
+            "defaultPrevented": false,
+            "targetTag": "BUTTON",
+            "targetAriaLabel": null
+          }
+        ]
+      }
+    ],
+    "sequenceOperationKeyboard": {
+      "focused": true,
+      "outlineWidth": 2,
+      "outlineStyle": "solid",
+      "accessibleName": "生成连续画面"
+    },
+    "sequenceGenerationStarted": {
+      "previewState": "rendering",
+      "progress": "正在生成 0 / 3",
+      "error": ""
+    },
+    "sequenceVisual": {
+      "range": {
+        "top": 389.66668701171875,
+        "bottom": 504.33335876464844,
+        "width": 620.1354370117188,
+        "height": 114.66667175292969
+      },
+      "preview": {
+        "top": 169.6666717529297,
+        "bottom": 379.6666717529297,
+        "width": 620.1354370117188,
+        "height": 210
+      },
+      "filmstrip": {
+        "top": 514.3333740234375,
+        "bottom": 594.3333740234375,
+        "width": 620.1354370117188,
+        "height": 80
+      },
+      "rangeOutsideCanvas": false,
+      "rangeBelowCanvas": true,
+      "filmstripBelowRange": true,
+      "controlsOneRow": false,
+      "rangeSummary": "",
+      "canvasBackgroundImage": "none",
+      "rangeBackground": "rgb(17, 27, 21)",
+      "capColor": "rgb(193, 208, 198)",
+      "capContrast": 13.11,
+      "renderBackground": "rgb(40, 97, 59)",
+      "renderColor": "rgb(241, 255, 243)",
+      "renderContrast": 7.1
+    },
+    "sequenceGeneratedPreviewFit": {
+      "viewport": {
+        "width": 1186,
+        "height": 724,
+        "devicePixelRatio": 1.5
+      },
+      "container": {
+        "left": 516.5208740234375,
+        "top": 156.33334350585938,
+        "right": 1163.322998046875,
+        "bottom": 611.6666870117188,
+        "width": 646.8021240234375,
+        "height": 455.3333435058594
+      },
+      "containerOverflow": "hidden",
+      "preview": {
+        "left": 529.8541870117188,
+        "top": 169.6666717529297,
+        "right": 1149.9896240234375,
+        "bottom": 379.6666717529297,
+        "width": 620.1354370117188,
+        "height": 210
+      },
+      "image": {
+        "left": 529.8541870117188,
+        "top": 169.6666717529297,
+        "right": 1149.9896240234375,
+        "bottom": 379.6666717529297,
+        "width": 620.1354370117188,
+        "height": 210
+      },
+      "range": {
+        "left": 529.8541870117188,
+        "top": 389.66668701171875,
+        "right": 1149.9896240234375,
+        "bottom": 504.33335876464844,
+        "width": 620.1354370117188,
+        "height": 114.66667175292969
+      },
+      "filmstrip": {
+        "left": 529.8541870117188,
+        "top": 514.3333740234375,
+        "right": 1149.9896240234375,
+        "bottom": 594.3333740234375,
+        "width": 620.1354370117188,
+        "height": 80
+      },
+      "gridRows": "237.302px 112px 104.698px",
+      "rangeOutsideCanvas": false,
+      "rangeBelowCanvas": true,
+      "filmstripBelowRange": true,
+      "rangeSummary": "",
+      "previewBackgroundImage": "none",
+      "imageLoaded": true,
+      "objectFit": "contain",
+      "zoom": 1,
+      "transformScale": {
+        "x": 1,
+        "y": 1
+      },
+      "naturalWidth": 364,
+      "naturalHeight": 545,
+      "alphaBounds": {
+        "left": 4,
+        "top": 4,
+        "width": 356,
+        "height": 537
+      },
+      "pixelReadError": null,
+      "displayedContent": {
+        "left": 771.3347495542754,
+        "top": 171.2079561565994,
+        "right": 908.509061480881,
+        "bottom": 378.12538734926,
+        "width": 137.17431192660553,
+        "height": 206.91743119266056
+      },
+      "visibleContentRatio": 1,
+      "contentHeightRatio": 0.9853
+    },
+    "sequenceGeneratedNarrowViewport": {
+      "width": 846,
+      "height": 653,
+      "devicePixelRatio": 1.5
+    },
+    "sequenceGeneratedNarrowPreview": {
+      "viewport": {
+        "width": 846,
+        "height": 653,
+        "devicePixelRatio": 1.5
+      },
+      "container": {
+        "left": 30.666667938232422,
+        "top": 156.33334350585938,
+        "right": 816.0000419616699,
+        "bottom": 636.3333435058594,
+        "width": 785.3333740234375,
+        "height": 480
+      },
+      "containerOverflow": "hidden",
+      "preview": {
+        "left": 44,
+        "top": 169.6666717529297,
+        "right": 802.6666870117188,
+        "bottom": 379.6666717529297,
+        "width": 758.6666870117188,
+        "height": 210
+      },
+      "image": {
+        "left": 44,
+        "top": 169.6666717529297,
+        "right": 802.6666870117188,
+        "bottom": 379.6666717529297,
+        "width": 758.6666870117188,
+        "height": 210
+      },
+      "range": {
+        "left": 44,
+        "top": 389.66668701171875,
+        "right": 802.6666870117188,
+        "bottom": 504.33335876464844,
+        "width": 758.6666870117188,
+        "height": 114.66667175292969
+      },
+      "filmstrip": {
+        "left": 44,
+        "top": 514.3333740234375,
+        "right": 802.6666870117188,
+        "bottom": 594.3333740234375,
+        "width": 758.6666870117188,
+        "height": 80
+      },
+      "gridRows": "254.417px 112px 112.25px",
+      "rangeOutsideCanvas": false,
+      "rangeBelowCanvas": true,
+      "filmstripBelowRange": true,
+      "rangeSummary": "",
+      "previewBackgroundImage": "none",
+      "imageLoaded": true,
+      "objectFit": "contain",
+      "zoom": 1,
+      "transformScale": {
+        "x": 1,
+        "y": 1
+      },
+      "naturalWidth": 364,
+      "naturalHeight": 545,
+      "alphaBounds": {
+        "left": 4,
+        "top": 4,
+        "width": 356,
+        "height": 537
+      },
+      "pixelReadError": null,
+      "displayedContent": {
+        "left": 354.74618754255664,
+        "top": 171.2079561565994,
+        "right": 491.92049946916217,
+        "bottom": 378.12538734926,
+        "width": 137.17431192660553,
+        "height": 206.91743119266056
+      },
+      "visibleContentRatio": 1,
+      "contentHeightRatio": 0.9853
+    },
+    "sequenceGeneratedNarrowTouch": {
+      "dispatchedBy": "Electron CDP Input.dispatchTouchEvent",
+      "touchStartCount": 1,
+      "touchMoveCount": 1,
+      "scrollTopBefore": 0,
+      "scrollTopAfter": 245.3333282470703,
+      "scrollHeight": 834,
+      "clientHeight": 483
+    },
+    "sequenceGeneratedNarrowReachability": {
+      "workbenchScrollTop": 245.3333282470703,
+      "rangeInputVisible": true,
+      "actionVisible": true,
+      "filmstripItemVisible": true,
+      "rangeInputSize": {
+        "width": 76,
+        "height": 44
+      },
+      "actionSize": {
+        "width": 75.33333587646484,
+        "height": 48
+      },
+      "filmstripItemSize": {
+        "width": 56,
+        "height": 60
+      },
+      "visibilityDiagnostics": {
+        "rangeInput": {
+          "visible": true,
+          "rect": {
+            "left": 84,
+            "top": 153,
+            "right": 160,
+            "bottom": 197,
+            "width": 76,
+            "height": 44
+          },
+          "visibleRect": {
+            "left": 84,
+            "right": 160,
+            "top": 153,
+            "bottom": 197
+          },
+          "clippedBy": []
+        },
+        "action": {
+          "visible": true,
+          "rect": {
+            "left": 715.3333740234375,
+            "top": 205,
+            "right": 790.6667098999023,
+            "bottom": 253,
+            "width": 75.33333587646484,
+            "height": 48
+          },
+          "visibleRect": {
+            "left": 715.3333740234375,
+            "right": 790.6667098999023,
+            "top": 205,
+            "bottom": 253
+          },
+          "clippedBy": []
+        },
+        "filmstripItem": {
+          "visible": true,
+          "rect": {
+            "left": 57.66666793823242,
+            "top": 299.66668701171875,
+            "right": 113.66666793823242,
+            "bottom": 359.66668701171875,
+            "width": 56,
+            "height": 60
+          },
+          "visibleRect": {
+            "left": 57.66666793823242,
+            "right": 113.66666793823242,
+            "top": 299.66668701171875,
+            "bottom": 359.66668701171875
+          },
+          "clippedBy": []
+        }
+      }
+    },
+    "sequenceTarget": {
+      "targetId": "fla-render-target-5a146c39eb136d6bcef1944f4e49e6292bad0bbc2e32523ad47407f1ae44571b",
+      "frameCount": 333,
+      "requests": [
+        {
+          "renderTargetId": "fla-render-target-5a146c39eb136d6bcef1944f4e49e6292bad0bbc2e32523ad47407f1ae44571b",
+          "startFrameIndex": 0,
+          "endFrameIndex": 23
+        },
+        {
+          "renderTargetId": "fla-render-target-5a146c39eb136d6bcef1944f4e49e6292bad0bbc2e32523ad47407f1ae44571b",
+          "startFrameIndex": 24,
+          "endFrameIndex": 47
+        },
+        {
+          "renderTargetId": "fla-render-target-5a146c39eb136d6bcef1944f4e49e6292bad0bbc2e32523ad47407f1ae44571b",
+          "startFrameIndex": 330,
+          "endFrameIndex": 332
+        }
+      ]
+    },
+    "sequenceAtoBtoA": {
+      "targetA": "fla-render-target-5a146c39eb136d6bcef1944f4e49e6292bad0bbc2e32523ad47407f1ae44571b",
+      "targetB": "fla-render-target-4f07f13363ebd49c271ffdab693fe8c42916d334c076919d296225a1c6a2f3bf",
+      "targetBKind": "snapshot",
+      "checkedCountAtA": 1,
+      "checkedCountAtB": 1,
+      "checkedCountOnReturnToA": 1,
+      "checkedSequenceIdentity": "[\"8aece772-a130-42dc-9eef-728db3c0cdcc\",\"1c46f7a15924d9f6a3767991cf06618f2525994ce2a1e6d9ea4a88cedc34f17d\",\"sequence\",\"fla-render-target-5a146c39eb136d6bcef1944f4e49e6292bad0bbc2e32523ad47407f1ae44571b\"]"
+    },
+    "sequenceCancellationProgress": {
+      "progress": "正在生成 0 / 24",
+      "cancelVisible": true,
+      "rangeOutsideCanvas": false
+    }
+  },
+  "screenshots": {
+    "progressive-load": {
+      "path": "D:\\panda-stage-main\\docs\\evidence\\issue-781-g007\\before\\run-2026-10-16T01-07-14-817Z\\progressive-load.png",
+      "width": 1779,
+      "height": 1086,
+      "sha256": "ac9d726e4ceebeedca0dd102b676b3aab4a862a46f672415605bbe31803c5c70"
+    },
+    "progressive": {
+      "path": "D:\\panda-stage-main\\docs\\evidence\\issue-781-g007\\before\\run-2026-10-16T01-07-14-817Z\\progressive-load.png",
+      "width": 1779,
+      "height": 1086,
+      "sha256": "ac9d726e4ceebeedca0dd102b676b3aab4a862a46f672415605bbe31803c5c70"
+    },
+    "sequence-before-generation": {
+      "path": "D:\\panda-stage-main\\docs\\evidence\\issue-781-g007\\before\\run-2026-10-16T01-07-14-817Z\\sequence-before-generation.png",
+      "width": 1779,
+      "height": 1086,
+      "sha256": "e1bc7abf42331b610f37bd5ea9f15e039dc8c51c06dc2dcb41d3a7a3509ee974"
+    },
+    "sequenceBeforeGeneration": {
+      "path": "D:\\panda-stage-main\\docs\\evidence\\issue-781-g007\\before\\run-2026-10-16T01-07-14-817Z\\sequence-before-generation.png",
+      "width": 1779,
+      "height": 1086,
+      "sha256": "e1bc7abf42331b610f37bd5ea9f15e039dc8c51c06dc2dcb41d3a7a3509ee974"
+    },
+    "sequence-start-1": {
+      "path": "D:\\panda-stage-main\\docs\\evidence\\issue-781-g007\\before\\run-2026-10-16T01-07-14-817Z\\sequence-start-1.png",
+      "width": 1779,
+      "height": 1086,
+      "sha256": "260e9a09bc2dcaa2b9e3c64d9036cd9c6f2dced80bcca205f789c4353096592d"
+    },
+    "sequence-start-25": {
+      "path": "D:\\panda-stage-main\\docs\\evidence\\issue-781-g007\\before\\run-2026-10-16T01-07-14-817Z\\sequence-start-25.png",
+      "width": 1779,
+      "height": 1086,
+      "sha256": "c0618e6757a777584950993d68c7f73d324f6a353506dc1dde6de40eec4a4345"
+    },
+    "sequence-generated-fit-normal": {
+      "path": "D:\\panda-stage-main\\docs\\evidence\\issue-781-g007\\before\\run-2026-10-16T01-07-14-817Z\\sequence-generated-fit-normal.png",
+      "width": 1779,
+      "height": 1086,
+      "sha256": "c0618e6757a777584950993d68c7f73d324f6a353506dc1dde6de40eec4a4345"
+    },
+    "sequenceGeneratedFitNormal": {
+      "path": "D:\\panda-stage-main\\docs\\evidence\\issue-781-g007\\before\\run-2026-10-16T01-07-14-817Z\\sequence-generated-fit-normal.png",
+      "width": 1779,
+      "height": 1086,
+      "sha256": "c0618e6757a777584950993d68c7f73d324f6a353506dc1dde6de40eec4a4345"
+    },
+    "sequence-generated-narrow-top": {
+      "path": "D:\\panda-stage-main\\docs\\evidence\\issue-781-g007\\before\\run-2026-10-16T01-07-14-817Z\\sequence-generated-narrow-top.png",
+      "width": 1269,
+      "height": 980,
+      "sha256": "ccf042843b65de59f86878f4a1f0070b87a3269a8ccb80773ee3f363b5bbb575"
+    },
+    "sequenceGeneratedNarrowTop": {
+      "path": "D:\\panda-stage-main\\docs\\evidence\\issue-781-g007\\before\\run-2026-10-16T01-07-14-817Z\\sequence-generated-narrow-top.png",
+      "width": 1269,
+      "height": 980,
+      "sha256": "ccf042843b65de59f86878f4a1f0070b87a3269a8ccb80773ee3f363b5bbb575"
+    },
+    "sequence-generated-narrow-controls": {
+      "path": "D:\\panda-stage-main\\docs\\evidence\\issue-781-g007\\before\\run-2026-10-16T01-07-14-817Z\\sequence-generated-narrow-controls.png",
+      "width": 1269,
+      "height": 980,
+      "sha256": "45257c9aead473e5b18f6cf298827728cca9825acf5dfe34a83cdbd25ed9ceaf"
+    },
+    "sequenceGeneratedNarrowControls": {
+      "path": "D:\\panda-stage-main\\docs\\evidence\\issue-781-g007\\before\\run-2026-10-16T01-07-14-817Z\\sequence-generated-narrow-controls.png",
+      "width": 1269,
+      "height": 980,
+      "sha256": "45257c9aead473e5b18f6cf298827728cca9825acf5dfe34a83cdbd25ed9ceaf"
+    },
+    "sequence-near-end": {
+      "path": "D:\\panda-stage-main\\docs\\evidence\\issue-781-g007\\before\\run-2026-10-16T01-07-14-817Z\\sequence-near-end.png",
+      "width": 1779,
+      "height": 1088,
+      "sha256": "3e20eac4046ac6746b7ec621c50a6c8e240a79e123cea98181d458963cc3f46e"
+    },
+    "sequence-cancellation-in-progress": {
+      "path": "D:\\panda-stage-main\\docs\\evidence\\issue-781-g007\\before\\run-2026-10-16T01-07-14-817Z\\sequence-cancellation-in-progress.png",
+      "width": 1779,
+      "height": 1088,
+      "sha256": "d3a752ec2fe9b6279b78d6e3b882fda9ed258d850c4651032f487f5f5c91d1c9"
+    },
+    "sequenceCancellationInProgress": {
+      "path": "D:\\panda-stage-main\\docs\\evidence\\issue-781-g007\\before\\run-2026-10-16T01-07-14-817Z\\sequence-cancellation-in-progress.png",
+      "width": 1779,
+      "height": 1088,
+      "sha256": "d3a752ec2fe9b6279b78d6e3b882fda9ed258d850c4651032f487f5f5c91d1c9"
+    },
+    "sequence-cancelled": {
+      "path": "D:\\panda-stage-main\\docs\\evidence\\issue-781-g007\\before\\run-2026-10-16T01-07-14-817Z\\sequence-cancelled.png",
+      "width": 1779,
+      "height": 1088,
+      "sha256": "110b2b3d61a3b3f05e02af2cec845fbd611489c8b0eca874fa64cd58f585eb98"
+    },
+    "sequenceCancelled": {
+      "path": "D:\\panda-stage-main\\docs\\evidence\\issue-781-g007\\before\\run-2026-10-16T01-07-14-817Z\\sequence-cancelled.png",
+      "width": 1779,
+      "height": 1088,
+      "sha256": "110b2b3d61a3b3f05e02af2cec845fbd611489c8b0eca874fa64cd58f585eb98"
+    }
+  },
+  "catalogs": [
+    {
+      "sessionId": "8aece772-a130-42dc-9eef-728db3c0cdcc",
+      "includeAuthoredStates": false,
+      "omittedCandidateCount": 0,
+      "entries": [
+        {
+          "targetId": "fla-render-target-d61ebca2bb24d2296566978ccf20c4f58140877a4101c524b3aa678a68b6919b",
+          "kind": "scene",
+          "userLabel": "主场景 · 第 1 帧",
+          "sourceLibraryItemName": null,
+          "selectedFrameIndex": 0,
+          "frameCount": 1,
+          "catalogRole": "scene",
+          "previewSupported": false,
+          "isBlank": false,
+          "unsupportedReason": "Shape fla-shape-8084bb622d5264c96cfd73e5 FillStyle 24 has a malformed or missing gradient matrix"
+        },
+        {
+          "targetId": "fla-render-target-4f07f13363ebd49c271ffdab693fe8c42916d334c076919d296225a1c6a2f3bf",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom3",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom3",
+          "selectedFrameIndex": 0,
+          "frameCount": 21,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-f72ff3881572f6bcd3c0db72eef266e005dc67d0ce6d818f6b3fa9e6c1222b12",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom6",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom6",
+          "selectedFrameIndex": 0,
+          "frameCount": 30,
+          "catalogRole": "scene-referenced-graphic",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-e6555a948245e9eb6403769fa0be349d14a493e293991fe5ca6e6e721ee57f94",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom4",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom4",
+          "selectedFrameIndex": 0,
+          "frameCount": 1,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-fb932838908e7940af51d834a5118d7f46c2bcc5368963c19c9d19e24e4d50ca",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom5",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom5",
+          "selectedFrameIndex": 0,
+          "frameCount": 1,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-993b3d4bef8adf8dd9866075d448de6e26ab0cd2c6c220160835baefa6978e8b",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom7",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom7",
+          "selectedFrameIndex": 0,
+          "frameCount": 1,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-5a146c39eb136d6bcef1944f4e49e6292bad0bbc2e32523ad47407f1ae44571b",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "selectedFrameIndex": 0,
+          "frameCount": 333,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-aaa99a091a6a22993725aafea385332a88e12a924ae01840deffaa4eedf6b448",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom9",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom9",
+          "selectedFrameIndex": 0,
+          "frameCount": 6,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-800745c7571a12e53ac611139f566b6fe6c1e90372da13a413c260ecd6c57ead",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom10",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom10",
+          "selectedFrameIndex": 0,
+          "frameCount": 1,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-3960752e972ab4ff506f6bb47ce7e2e4f30552bccb7e318a7494bfa8e8bc8973",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom11",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom11",
+          "selectedFrameIndex": 0,
+          "frameCount": 1,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-c05bdf4b3420f02eb2abab392c8a9b4755c8a8fbc599fac0845792d9c063f02d",
+          "kind": "graphic-symbol",
+          "userLabel": "元件 1",
+          "sourceLibraryItemName": "元件 1",
+          "selectedFrameIndex": 0,
+          "frameCount": 1,
+          "catalogRole": "scene-referenced-graphic",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-99bdc3e97a42db1d760eccb44b73320873dc7c51bde7caf48f40f7b723618e7d",
+          "kind": "graphic-symbol",
+          "userLabel": "元件 2",
+          "sourceLibraryItemName": "元件 2",
+          "selectedFrameIndex": 0,
+          "frameCount": 1,
+          "catalogRole": "scene-referenced-graphic",
+          "previewSupported": false,
+          "isBlank": false,
+          "unsupportedReason": "Shape fla-shape-8084bb622d5264c96cfd73e5 FillStyle 24 has a malformed or missing gradient matrix"
+        }
+      ]
+    },
+    {
+      "sessionId": "8aece772-a130-42dc-9eef-728db3c0cdcc",
+      "includeAuthoredStates": true,
+      "omittedCandidateCount": 0,
+      "entries": [
+        {
+          "targetId": "fla-render-target-f72ff3881572f6bcd3c0db72eef266e005dc67d0ce6d818f6b3fa9e6c1222b12",
+          "kind": "graphic-symbol",
+          "userLabel": "C03 不支持状态验证（合成）",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom6",
+          "selectedFrameIndex": 0,
+          "frameCount": 30,
+          "catalogRole": "scene-referenced-graphic",
+          "previewSupported": false,
+          "isBlank": false,
+          "unsupportedReason": "仅用于验证不可预览状态的合成候选。"
+        },
+        {
+          "targetId": "fla-render-target-c05bdf4b3420f02eb2abab392c8a9b4755c8a8fbc599fac0845792d9c063f02d",
+          "kind": "graphic-symbol",
+          "userLabel": "C03 空白状态验证（合成）",
+          "sourceLibraryItemName": "元件 1",
+          "selectedFrameIndex": 0,
+          "frameCount": 1,
+          "catalogRole": "scene-referenced-graphic",
+          "previewSupported": false,
+          "isBlank": true,
+          "unsupportedReason": "仅用于验证空白状态提示的合成候选。"
+        },
+        {
+          "targetId": "fla-render-target-99bdc3e97a42db1d760eccb44b73320873dc7c51bde7caf48f40f7b723618e7d",
+          "kind": "graphic-symbol",
+          "userLabel": "元件 2",
+          "sourceLibraryItemName": "元件 2",
+          "selectedFrameIndex": 0,
+          "frameCount": 1,
+          "catalogRole": "scene-referenced-graphic",
+          "previewSupported": false,
+          "isBlank": false,
+          "unsupportedReason": "Shape fla-shape-8084bb622d5264c96cfd73e5 FillStyle 24 has a malformed or missing gradient matrix"
+        },
+        {
+          "targetId": "fla-render-target-d61ebca2bb24d2296566978ccf20c4f58140877a4101c524b3aa678a68b6919b",
+          "kind": "scene",
+          "userLabel": "主场景 · 第 1 帧",
+          "sourceLibraryItemName": null,
+          "selectedFrameIndex": 0,
+          "frameCount": 1,
+          "catalogRole": "scene",
+          "previewSupported": false,
+          "isBlank": false,
+          "unsupportedReason": "Shape fla-shape-8084bb622d5264c96cfd73e5 FillStyle 24 has a malformed or missing gradient matrix"
+        },
+        {
+          "targetId": "fla-render-target-4f07f13363ebd49c271ffdab693fe8c42916d334c076919d296225a1c6a2f3bf",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom3",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom3",
+          "selectedFrameIndex": 0,
+          "frameCount": 21,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-81135dae18db4c244ffa8d2da4fa554dd3840f997878606c5f6d31b2e2740697",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom3",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom3",
+          "selectedFrameIndex": 5,
+          "frameCount": 21,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-50a7fe48dd95c459d7ab335162bdbc8071fc52fb854978524934b80601a6f93d",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom3",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom3",
+          "selectedFrameIndex": 10,
+          "frameCount": 21,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-2759fc6292c5833aa08ca33ae4213c903280527b65fe0e9d4447707db425ba67",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom3",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom3",
+          "selectedFrameIndex": 15,
+          "frameCount": 21,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-55f92d148134a6953701907a9d05dc1caebb2c46aa5ae29eca90890b27cb311e",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom3",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom3",
+          "selectedFrameIndex": 20,
+          "frameCount": 21,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-e6555a948245e9eb6403769fa0be349d14a493e293991fe5ca6e6e721ee57f94",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom4",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom4",
+          "selectedFrameIndex": 0,
+          "frameCount": 1,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-fb932838908e7940af51d834a5118d7f46c2bcc5368963c19c9d19e24e4d50ca",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom5",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom1/修仙男-cilisucaicom5",
+          "selectedFrameIndex": 0,
+          "frameCount": 1,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-993b3d4bef8adf8dd9866075d448de6e26ab0cd2c6c220160835baefa6978e8b",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom7",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom7",
+          "selectedFrameIndex": 0,
+          "frameCount": 1,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-5a146c39eb136d6bcef1944f4e49e6292bad0bbc2e32523ad47407f1ae44571b",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "selectedFrameIndex": 0,
+          "frameCount": 333,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-8aa148b657525f3930e8a839784d638af4cbd68179e8747f44a3ca5b1a93acbf",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "selectedFrameIndex": 1,
+          "frameCount": 333,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-2c98e6719d476d56733de58069bce387e394f2cf5a57dd690f1812c1cbde0281",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "selectedFrameIndex": 2,
+          "frameCount": 333,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-d82a4a4436b5e9d64064a29ef187c61c2c13b471c10a4afb28274314bbba4e50",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "selectedFrameIndex": 3,
+          "frameCount": 333,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-50cda25e5b9cee64329ef31d91fae92a560b51607275dc98dbc3998ac1bb780d",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "selectedFrameIndex": 4,
+          "frameCount": 333,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-f300164f03c3e2117d366146ca633e367d0587325bc3ef38c2f9af89b6cb4faa",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "selectedFrameIndex": 5,
+          "frameCount": 333,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-b2832f5f53991b90b3870cf8ff2ca6133bc689609a0cbca8a89646751d1215f1",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "selectedFrameIndex": 6,
+          "frameCount": 333,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-5f5866fe19e356b120320dba7b25c97a8ff2a73d1dc47e45e0f9fc65dd2bf897",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "selectedFrameIndex": 7,
+          "frameCount": 333,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-1084928864ab6c8bf0934a0069335581afe1146cf77735a6d6ebf399230d3301",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "selectedFrameIndex": 8,
+          "frameCount": 333,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-35440fa7934d3c7208c0651209b0ce3267df3fbdc7461c34d0a62433695a62de",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "selectedFrameIndex": 9,
+          "frameCount": 333,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-e889d6cc0178176efe20d769f47654eb99fc2401e639a5b014f3d9b735678fec",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "selectedFrameIndex": 10,
+          "frameCount": 333,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-fc1f665664b089350268e4ef56b40dfad0fd630657f4869d883b657c56802a94",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom8",
+          "selectedFrameIndex": 11,
+          "frameCount": 333,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-aaa99a091a6a22993725aafea385332a88e12a924ae01840deffaa4eedf6b448",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom9",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom9",
+          "selectedFrameIndex": 0,
+          "frameCount": 6,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-3f63b38537eb3d4729daf69b5199e2e051ad2cb2463147408e909437d30a0995",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom9",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom9",
+          "selectedFrameIndex": 1,
+          "frameCount": 6,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-7aaa743765887926cbd159d1f4fba7e94bad367058f89d908c8ef488753d86b4",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom9",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom9",
+          "selectedFrameIndex": 2,
+          "frameCount": 6,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-a2fe45b5981163b06f5835b4df094b9f372dfcdbd4d76262a5719cf2c8ab1422",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom9",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom9",
+          "selectedFrameIndex": 3,
+          "frameCount": 6,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-d14b12b8320c5ee544f65134af7b4c4362efe60c528d62ba7c9bebedafa230dc",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom9",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom9",
+          "selectedFrameIndex": 4,
+          "frameCount": 6,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-f6c997bb5db08229bf72a94f4e4e4b902cc5b3f4e2e64f764a84c181441b6cb5",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom9",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom9",
+          "selectedFrameIndex": 5,
+          "frameCount": 6,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-800745c7571a12e53ac611139f566b6fe6c1e90372da13a413c260ecd6c57ead",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom10",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom10",
+          "selectedFrameIndex": 0,
+          "frameCount": 1,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        },
+        {
+          "targetId": "fla-render-target-3960752e972ab4ff506f6bb47ce7e2e4f30552bccb7e318a7494bfa8e8bc8973",
+          "kind": "graphic-symbol",
+          "userLabel": "修仙男-cilisucaicom2/修仙男-cilisucaicom11",
+          "sourceLibraryItemName": "修仙男-cilisucaicom2/修仙男-cilisucaicom11",
+          "selectedFrameIndex": 0,
+          "frameCount": 1,
+          "catalogRole": "graphic-state",
+          "previewSupported": true,
+          "isBlank": false,
+          "unsupportedReason": null
+        }
+      ]
+    }
+  ],
+  "previews": [
+    {
+      "targetId": "fla-render-target-4f07f13363ebd49c271ffdab693fe8c42916d334c076919d296225a1c6a2f3bf",
+      "requestId": "a3ca9604-0110-42bd-a424-39e84a7b2471",
+      "selectedFrameIndex": 0,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "87773329f8b322e1395caeedb540ac28492e7239d312c01aa71967a090a99d20"
+    },
+    {
+      "targetId": "fla-render-target-81135dae18db4c244ffa8d2da4fa554dd3840f997878606c5f6d31b2e2740697",
+      "requestId": "0b9ff144-c7f2-425b-9c96-c37a7c5015ba",
+      "selectedFrameIndex": 5,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "5221871b2257c91f7dbca862db1ebf83db76bc08fa04de038ad1f32f054cf79c"
+    },
+    {
+      "targetId": "fla-render-target-50a7fe48dd95c459d7ab335162bdbc8071fc52fb854978524934b80601a6f93d",
+      "requestId": "7074e1a3-e078-4a2d-a785-4fa79111d868",
+      "selectedFrameIndex": 10,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "8c4449fec88d16dbbade221023b4803ab60a26285683a614087bc2c187817bd6"
+    },
+    {
+      "targetId": "fla-render-target-2759fc6292c5833aa08ca33ae4213c903280527b65fe0e9d4447707db425ba67",
+      "requestId": "387172d6-c4aa-4b27-9f4f-034b26bb5aa5",
+      "selectedFrameIndex": 15,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "f7d85646f286107a748f361264b3cf8c2ff078f061c60987f4817848de777e53"
+    },
+    {
+      "targetId": "fla-render-target-55f92d148134a6953701907a9d05dc1caebb2c46aa5ae29eca90890b27cb311e",
+      "requestId": "202d036c-21a9-44d9-9ae8-4a7508796fda",
+      "selectedFrameIndex": 20,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "0069660b86910731dfd1e5f07ffe23499d05b033d2fa1ea84182bc01eceb47ab"
+    },
+    {
+      "targetId": "fla-render-target-e6555a948245e9eb6403769fa0be349d14a493e293991fe5ca6e6e721ee57f94",
+      "requestId": "eed1e5fb-b6e6-4f65-8526-e76e8e297fd9",
+      "selectedFrameIndex": 0,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "4ecc0293d0e299f869495e78e45f972ce7dc5eb6726f04dbdbb3beb3d319cc0f"
+    },
+    {
+      "targetId": "fla-render-target-fb932838908e7940af51d834a5118d7f46c2bcc5368963c19c9d19e24e4d50ca",
+      "requestId": "c3001fb7-6234-4d81-8010-30bd40772cad",
+      "selectedFrameIndex": 0,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "05e011dc32f1bed4495dba83c4f0ce13de71658908bc0810987b65bb8e5fb5aa"
+    },
+    {
+      "targetId": "fla-render-target-993b3d4bef8adf8dd9866075d448de6e26ab0cd2c6c220160835baefa6978e8b",
+      "requestId": "84b842d4-a72c-4db6-a2fb-edcb15ebc632",
+      "selectedFrameIndex": 0,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "e2262efa1091c24af7ff1642a422d211128fa2e29773673e717a9dbc71efbbec"
+    },
+    {
+      "targetId": "fla-render-target-5a146c39eb136d6bcef1944f4e49e6292bad0bbc2e32523ad47407f1ae44571b",
+      "requestId": "88ae8f56-4cf9-4c0e-b09f-c62f45cd1c61",
+      "selectedFrameIndex": 0,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "770389e662e818e3ac41a34b61e5f7bcb00f4561dd41c227ead4a4fc702136f9"
+    },
+    {
+      "targetId": "fla-render-target-8aa148b657525f3930e8a839784d638af4cbd68179e8747f44a3ca5b1a93acbf",
+      "requestId": "6a484983-4202-42d6-a7c4-8d28a0dbb211",
+      "selectedFrameIndex": 1,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "f611ca9ea27ddaa39bc1d43f76216396bc423638250e4931c90add36f426e790"
+    },
+    {
+      "targetId": "fla-render-target-2c98e6719d476d56733de58069bce387e394f2cf5a57dd690f1812c1cbde0281",
+      "requestId": "5518daba-5453-46a2-be24-6f519e4811ad",
+      "selectedFrameIndex": 2,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "b31faed4de049ef7d309f44f9cf42cf130c977a8f66ac76d1734cc8941956d65"
+    },
+    {
+      "targetId": "fla-render-target-d82a4a4436b5e9d64064a29ef187c61c2c13b471c10a4afb28274314bbba4e50",
+      "requestId": "f2844411-da84-4bf4-a0b7-c2e633ad8ccf",
+      "selectedFrameIndex": 3,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "576bd3a1f1625ad01d01e25b06ca359e61349e22b659788c156f69dd74cb6cdd"
+    },
+    {
+      "targetId": "fla-render-target-50cda25e5b9cee64329ef31d91fae92a560b51607275dc98dbc3998ac1bb780d",
+      "requestId": "80e491d1-7103-4f33-a95a-b7d644956055",
+      "selectedFrameIndex": 4,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "1b0f85c9fd8cb6a87c7546023993020c44e4d4796262299d03b7028d69fac827"
+    },
+    {
+      "targetId": "fla-render-target-f300164f03c3e2117d366146ca633e367d0587325bc3ef38c2f9af89b6cb4faa",
+      "requestId": "fdb5f3ad-fb6c-45b3-8ae1-b3d845e712f1",
+      "selectedFrameIndex": 5,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "e10c8e3f984dbc905a04fb802250befc2eaa7a418b8a9297412279bcddb242df"
+    },
+    {
+      "targetId": "fla-render-target-b2832f5f53991b90b3870cf8ff2ca6133bc689609a0cbca8a89646751d1215f1",
+      "requestId": "64f028a8-b361-4abe-b5fd-4faaa8226b80",
+      "selectedFrameIndex": 6,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "bdba2de5c6a610f5c3aeb8f643d13e0af7fdb072d625c45db886e6f4211b76ea"
+    },
+    {
+      "targetId": "fla-render-target-5f5866fe19e356b120320dba7b25c97a8ff2a73d1dc47e45e0f9fc65dd2bf897",
+      "requestId": "97f9ad81-036d-43f3-9c61-b480a374043b",
+      "selectedFrameIndex": 7,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "6369917561e525dc78342e62be15d5faa24f942f48ad490509e498373a10d5b0"
+    },
+    {
+      "targetId": "fla-render-target-1084928864ab6c8bf0934a0069335581afe1146cf77735a6d6ebf399230d3301",
+      "requestId": "2165d48a-7e40-4aef-9951-102ec1bd12fb",
+      "selectedFrameIndex": 8,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "29b488f973b70a82699087e6df8acfa4e07a80a5dc4e0be3930c331786d5d81e"
+    },
+    {
+      "targetId": "fla-render-target-35440fa7934d3c7208c0651209b0ce3267df3fbdc7461c34d0a62433695a62de",
+      "requestId": "3b5d56a5-7337-48be-b6a3-b2f5ccde4fa8",
+      "selectedFrameIndex": 9,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "9b3078897f2bf5065c5f3ae93924f35a4b66c068fc36f5b51fad360db5a9b374"
+    },
+    {
+      "targetId": "fla-render-target-e889d6cc0178176efe20d769f47654eb99fc2401e639a5b014f3d9b735678fec",
+      "requestId": "bac3d942-c30f-436e-819a-e8742d202955",
+      "selectedFrameIndex": 10,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "f35f5792b52a2d2115e5283c884f623741fdd26c757503a019ba48bdc9156062"
+    },
+    {
+      "targetId": "fla-render-target-fc1f665664b089350268e4ef56b40dfad0fd630657f4869d883b657c56802a94",
+      "requestId": "7a98b603-5048-4610-8e47-52b25df500ec",
+      "selectedFrameIndex": 11,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "b87802e53d8ce2013db86f50ea6ddf5fd20c3cdcd9b36d0ade14f9f32f04e3ec"
+    },
+    {
+      "targetId": "fla-render-target-aaa99a091a6a22993725aafea385332a88e12a924ae01840deffaa4eedf6b448",
+      "requestId": "d8e462e6-35c7-47e3-98b3-11523b116057",
+      "selectedFrameIndex": 0,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "532dd557bd98fc331b3cd1ee18af50768993b1fd0e2b013e860db270c7e4edd8"
+    },
+    {
+      "targetId": "fla-render-target-3f63b38537eb3d4729daf69b5199e2e051ad2cb2463147408e909437d30a0995",
+      "requestId": "6c641714-0f2c-4593-80b5-95ab3ba764df",
+      "selectedFrameIndex": 1,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "832050d5f207362d8d155b468d8936f3ac2d518ba6f237bafe6db65378dca09f"
+    },
+    {
+      "targetId": "fla-render-target-7aaa743765887926cbd159d1f4fba7e94bad367058f89d908c8ef488753d86b4",
+      "requestId": "a6684e58-c3b3-4de1-908d-0fef8b773ea7",
+      "selectedFrameIndex": 2,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "b7d566ad0da5125aff879a3af8801f6d60780bac098f556769203478487bec5d"
+    },
+    {
+      "targetId": "fla-render-target-a2fe45b5981163b06f5835b4df094b9f372dfcdbd4d76262a5719cf2c8ab1422",
+      "requestId": "e77d23c1-2cf4-41e2-a905-9ba6fff4c203",
+      "selectedFrameIndex": 3,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "c013a8b2f2f43166d14ab76ea2b6eced803359762e89d06ee97adc959cb2c9e6"
+    },
+    {
+      "targetId": "fla-render-target-d14b12b8320c5ee544f65134af7b4c4362efe60c528d62ba7c9bebedafa230dc",
+      "requestId": "70472a0f-7aae-43e8-a9df-c2881436a54a",
+      "selectedFrameIndex": 4,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "60562bf89bde8e525b558e2480f3c36ffb4cf853a5cab380305109f0ae542f67"
+    },
+    {
+      "targetId": "fla-render-target-f6c997bb5db08229bf72a94f4e4e4b902cc5b3f4e2e64f764a84c181441b6cb5",
+      "requestId": "4e444b37-3123-42df-b8c9-5e699d889b99",
+      "selectedFrameIndex": 5,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "46d7288f2c628d9e8ca66fc16978fc5b6ce78783dcafa5c7759f007a508ec877"
+    },
+    {
+      "targetId": "fla-render-target-800745c7571a12e53ac611139f566b6fe6c1e90372da13a413c260ecd6c57ead",
+      "requestId": "0c0725fc-c05e-41dc-8842-c73892266e63",
+      "selectedFrameIndex": 0,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "4b51f5783b638c97d66956e4894187643368c13f4e1b05701f8cc09de395e110"
+    },
+    {
+      "targetId": "fla-render-target-3960752e972ab4ff506f6bb47ce7e2e4f30552bccb7e318a7494bfa8e8bc8973",
+      "requestId": "da7aeb18-edd2-4af4-bb1c-4db97ac90c27",
+      "selectedFrameIndex": 0,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "202fecb473ebc465185ca0fea82c5e445a7f8656820aa970b24184c97602a3e2"
+    },
+    {
+      "targetId": "fla-render-target-5a146c39eb136d6bcef1944f4e49e6292bad0bbc2e32523ad47407f1ae44571b",
+      "requestId": "6cb01e12-d1cb-40a8-bdd1-cf628744f11d",
+      "selectedFrameIndex": 0,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "770389e662e818e3ac41a34b61e5f7bcb00f4561dd41c227ead4a4fc702136f9"
+    },
+    {
+      "targetId": "fla-render-target-4f07f13363ebd49c271ffdab693fe8c42916d334c076919d296225a1c6a2f3bf",
+      "requestId": "3db6925d-33f7-44a4-9598-f871927bf631",
+      "selectedFrameIndex": 0,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "87773329f8b322e1395caeedb540ac28492e7239d312c01aa71967a090a99d20"
+    },
+    {
+      "targetId": "fla-render-target-5a146c39eb136d6bcef1944f4e49e6292bad0bbc2e32523ad47407f1ae44571b",
+      "requestId": "eb08f932-dcc9-43cb-b856-c154e09a2f12",
+      "selectedFrameIndex": 0,
+      "ok": true,
+      "errorCode": null,
+      "sha256": "770389e662e818e3ac41a34b61e5f7bcb00f4561dd41c227ead4a4fc702136f9"
+    }
+  ],
+  "sequenceRenders": [
+    {
+      "requestId": "81becceb-81f3-450c-a994-70046a382278",
+      "sessionId": "8aece772-a130-42dc-9eef-728db3c0cdcc",
+      "range": {
+        "renderTargetId": "fla-render-target-5a146c39eb136d6bcef1944f4e49e6292bad0bbc2e32523ad47407f1ae44571b",
+        "startFrameIndex": 0,
+        "endFrameIndex": 23
+      },
+      "ok": true,
+      "frameCount": 24,
+      "errorCode": null
+    },
+    {
+      "requestId": "99249343-1cd4-4e8c-a4de-07c5192e7d80",
+      "sessionId": "8aece772-a130-42dc-9eef-728db3c0cdcc",
+      "range": {
+        "renderTargetId": "fla-render-target-5a146c39eb136d6bcef1944f4e49e6292bad0bbc2e32523ad47407f1ae44571b",
+        "startFrameIndex": 24,
+        "endFrameIndex": 47
+      },
+      "ok": true,
+      "frameCount": 24,
+      "errorCode": null
+    },
+    {
+      "requestId": "767c137e-46e6-4225-9a7e-b07e39a0a884",
+      "sessionId": "8aece772-a130-42dc-9eef-728db3c0cdcc",
+      "range": {
+        "renderTargetId": "fla-render-target-5a146c39eb136d6bcef1944f4e49e6292bad0bbc2e32523ad47407f1ae44571b",
+        "startFrameIndex": 330,
+        "endFrameIndex": 332
+      },
+      "ok": true,
+      "frameCount": 3,
+      "errorCode": null
+    },
+    {
+      "requestId": "255f788c-ba10-40c9-bb6f-1a4d425f2f79",
+      "sessionId": "8aece772-a130-42dc-9eef-728db3c0cdcc",
+      "range": {
+        "renderTargetId": "fla-render-target-5a146c39eb136d6bcef1944f4e49e6292bad0bbc2e32523ad47407f1ae44571b",
+        "startFrameIndex": 0,
+        "endFrameIndex": 23
+      },
+      "ok": false,
+      "frameCount": 0,
+      "errorCode": "SEQUENCE_CANCELLED"
+    }
+  ],
+  "snapshotCommits": [],
+  "rasterCommits": [],
+  "injectedPreviewFailure": null,
+  "executionDiagnostics": {
+    "lastStage": "g007-sequence-sequence-near-end",
+    "failureStage": null,
+    "renderer": [
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      },
+      {
+        "type": "console",
+        "level": 3,
+        "message": "Uncaught ZodError: [\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 24,\n    \"inclusive\": true,\n    \"path\": [\n      \"currentFrameIndex\"\n    ],\n    \"message\": \"Invalid input\"\n  }\n]",
+        "line": 516,
+        "sourceId": "D:\\PandaStage-Acceptance\\issue781-g007-baseline\\dist-electron\\preload\\index.js"
+      }
+    ]
+  },
+  "assertions": {
+    "progressiveLoadCaptured": true,
+    "sequenceControlsSeparatedFromCanvas": false,
+    "sequenceDefaultRangeSummaryCorrect": false,
+    "sequenceFocusDoesNotRender": true,
+    "sequenceOperationKeyboardAccessible": true,
+    "sequenceSpaceActivatesOperation": true,
+    "sequenceStartsAtOneAndCapsAt24": true,
+    "sequencePanelCompactAndAccessibleContrast": true,
+    "sequenceRangeChangeInvalidatesCheck": true,
+    "sequenceGeneratedPreviewShowsFullFrameAtFit": true,
+    "sequenceNarrowTouchAccess": true,
+    "sequenceNearEndUsesShortRemainder": true,
+    "sequenceAtoBtoARetainsCheck": true,
+    "sequenceScenarioSelectionCleared": true,
+    "sequenceCancellationStopsRender": true,
+    "originalFlaUnchanged": true
+  },
+  "originalSourceUnchanged": true,
+  "limitations": [
+    "Automated Windows Electron evidence is not owner human visual acceptance.",
+    "125% Windows scaling is reported only when the host exposes a display at that scale; a Chromium forced scale factor is not described as Windows DPI.",
+    "This host exposed no 125% Windows display; 125% Windows DPI was not validated in this run."
+  ],
+  "issueNumber": 781,
+  "captureRole": "before-layout-capture",
+  "productAcceptance": "OWNER_HUMAN_VISUAL_ACCEPTANCE_REQUIRED"
+}

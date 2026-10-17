@@ -52,7 +52,9 @@ export function registerFlaStaticSnapshotIpcHandlers(
         error: { code: 'INVALID_REQUEST', message: 'Invalid snapshot catalog request' },
       });
     }
-    const result = await renderSession.catalog(parsed.sessionId);
+    const result = await renderSession.catalog(parsed.sessionId, {
+      includeAuthoredStates: parsed.includeAuthoredStates,
+    });
     if (!result.ok) {
       return FlaRenderableTargetCatalogResponseSchema.parse({
         ok: false,
@@ -63,6 +65,7 @@ export function registerFlaStaticSnapshotIpcHandlers(
       ok: true,
       sessionId: parsed.sessionId,
       entries: result.entries,
+      omittedCandidateCount: result.omittedCandidateCount,
       summary: result.summary,
     });
   };

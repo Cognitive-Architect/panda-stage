@@ -21,25 +21,56 @@ import type { FlaRenderTarget } from '../../src/shared/fla-static-snapshot-api';
 
 const SIMPLE_RECT_CUBICS = '!0 0|100 0|100 100|0 100|0 0';
 
+interface SyntheticGraphicFrame {
+  readonly index: number;
+  readonly duration?: number;
+  readonly tweenType?: 'none' | 'motion' | 'shape';
+  readonly tx?: number;
+  readonly color?: string;
+  readonly blank?: boolean;
+  readonly unsupportedElement?: string;
+}
+
+interface SyntheticSceneSymbolInstance {
+  readonly libraryItemName: string;
+  readonly firstFrame?: string;
+  readonly visible?: boolean;
+}
+
 async function buildSyntheticFla(
   options: {
     includeLibrary?: boolean;
     symbolName?: string;
     symbolNames?: string[];
+    sceneSymbolNames?: string[];
+    sceneSymbolInstances?: readonly SyntheticSceneSymbolInstance[];
+    sceneLayerVisible?: boolean;
     graphicFrameCount?: number;
+    graphicFrames?: readonly SyntheticGraphicFrame[];
     includeSceneShape?: boolean;
+    includeVectorMask?: boolean;
+    includeBitmapMask?: boolean;
+    hideMask?: boolean;
+    hideMaskedContent?: boolean;
   } = {},
 ): Promise<Uint8Array> {
   const includeLibrary = options.includeLibrary ?? true;
   const symbolNames = options.symbolNames ?? [options.symbolName ?? 'synthetic-symbol'];
-  const graphicFrameCount = options.graphicFrameCount ?? 1;
+  const sceneSymbolNames = options.sceneSymbolNames ?? symbolNames;
+  const sceneSymbolInstances = options.sceneSymbolInstances ?? sceneSymbolNames.map(
+    (libraryItemName): SyntheticSceneSymbolInstance => ({ libraryItemName }),
+  );
+  const graphicFrames: readonly SyntheticGraphicFrame[] = options.graphicFrames ?? Array.from(
+    { length: options.graphicFrameCount ?? 1 },
+    (_, index): SyntheticGraphicFrame => ({ index, tx: 10 + index, color: '#336699' }),
+  );
   const includeSceneShape = options.includeSceneShape ?? true;
   const zip = new JSZip();
 
   // Main scene: contains a DOMTimeline that places the graphic symbol.
   const sceneBody = includeLibrary
     ? `<elements>
-        ${symbolNames.map((name) => `<DOMSymbolInstance libraryItemName="${name}">
+        ${sceneSymbolInstances.map(({ libraryItemName, firstFrame, visible }) => `<DOMSymbolInstance libraryItemName="${libraryItemName}"${firstFrame === undefined ? '' : ` firstFrame="${firstFrame}"`}${visible === false ? ' isVisible="false"' : ''}>
           <matrix a="1" d="1" tx="0" ty="0"/>
         </DOMSymbolInstance>`).join('\n        ')}
       </elements>`
@@ -51,7 +82,7 @@ async function buildSyntheticFla(
                  <FillStyle index="1"><SolidColor color="#abcdef"/></FillStyle>
                </fills>
                <edges>
-                 <Edge cubics="${SIMPLE_RECT_CUBICS}"/>
+                 <Edge fillStyle1="1" cubics="${SIMPLE_RECT_CUBICS}"/>
                </edges>
              </DOMShape>
            </elements>`
@@ -62,7 +93,7 @@ async function buildSyntheticFla(
   <timelines>
     <DOMTimeline name="scene1">
       <layers>
-        <DOMLayer name="layer1">
+        <DOMLayer name="layer1"${options.sceneLayerVisible === false ? ' visible="false"' : ''}>
           <frames>
             <DOMFrame index="0">${sceneBody}</DOMFrame>
           </frames>
@@ -75,33 +106,62 @@ async function buildSyntheticFla(
 
   if (includeLibrary) {
     for (const currentSymbolName of symbolNames) {
-      const frames = Array.from({ length: graphicFrameCount }, (_, frameIndex) => `<DOMFrame index="${frameIndex}">
+      const frames = graphicFrames.map((frame) => {
+        const attributes = `index="${frame.index}"${frame.duration === undefined ? '' : ` duration="${frame.duration}"`}${frame.tweenType === undefined ? '' : ` tweenType="${frame.tweenType}"`}`;
+        if (frame.blank) {
+          return `<DOMFrame ${attributes}>${frame.unsupportedElement ?? '<elements/>'}</DOMFrame>`;
+        }
+        return `<DOMFrame ${attributes}>
               <DOMGroup>
-                <matrix><Matrix a="2" d="2" tx="10" ty="20"/></matrix>
+                <matrix><Matrix a="2" d="2" tx="${frame.tx ?? 10}" ty="20"/></matrix>
                 <members>
                   <DOMShape>
                     <matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix>
                     <fills>
-                      <FillStyle index="1"><SolidColor color="#336699" alpha="1"/></FillStyle>
+                      <FillStyle index="1"><SolidColor color="${frame.color ?? '#336699'}" alpha="1"/></FillStyle>
                     </fills>
                     <strokes/>
                     <edges>
-                      <Edge cubics="${SIMPLE_RECT_CUBICS}"/>
+                      <Edge fillStyle1="1" cubics="${SIMPLE_RECT_CUBICS}"/>
                     </edges>
                   </DOMShape>
                 </members>
               </DOMGroup>
-            </DOMFrame>`).join('\n            ');
+              ${frame.unsupportedElement ?? ''}
+            </DOMFrame>`;
+      }).join('\n            ');
+      const timelineLayers = options.includeVectorMask || options.includeBitmapMask
+        ? `<DOMLayer name="mask" layerType="mask"${options.hideMask ? ' visible="false"' : ''}>
+            <frames><DOMFrame index="0" duration="1"><elements>
+              ${options.includeBitmapMask
+                ? `<DOMBitmapInstance libraryItemName="missing-mask-bitmap"><matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix></DOMBitmapInstance>`
+                : `<DOMShape>
+                    <matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix>
+                    <fills><FillStyle index="1"><SolidColor color="#FF0000" alpha="1"/></FillStyle></fills>
+                    <strokes/><edges><Edge fillStyle1="1" cubics="!0 0|50 0|50 100|0 100|0 0"/></edges>
+                  </DOMShape>`}
+            </elements></DOMFrame></frames>
+          </DOMLayer>
+          <DOMLayer name="masked-content" parentLayerIndex="0"${options.hideMaskedContent ? ' isVisible="false"' : ''}>
+            <frames><DOMFrame index="0" duration="1"><elements>
+              <DOMShape>
+                <matrix><Matrix a="1" d="0" tx="0" ty="0"/></matrix>
+                <fills><FillStyle index="1"><SolidColor color="#336699" alpha="1"/></FillStyle></fills>
+                <strokes/><edges><Edge fillStyle1="1" cubics="${SIMPLE_RECT_CUBICS}"/></edges>
+              </DOMShape>
+            </elements></DOMFrame></frames>
+          </DOMLayer>`
+        : `<DOMLayer name="symbolLayer">
+            <frames>
+              ${frames}
+            </frames>
+          </DOMLayer>`;
       const libXml = `<?xml version="1.0" encoding="UTF-8"?>
 <DOMSymbolItem xmlns="http://ns.adobe.com/xfl/2008/" name="${currentSymbolName}" symbolType="graphic">
   <timeline>
     <DOMTimeline name="symbolTimeline">
       <layers>
-        <DOMLayer name="symbolLayer">
-          <frames>
-            ${frames}
-          </frames>
-        </DOMLayer>
+        ${timelineLayers}
       </layers>
     </DOMTimeline>
   </timeline>
@@ -172,6 +232,214 @@ describe('R1-B SVG builder: catalog discovery', () => {
     expect(new Set(graphicTargets.map((target) => target.renderTargetId)).size).toBe(2);
   });
 
+  it('keeps a visible Scene root selectable when the bounded catalog would omit it', async () => {
+    const symbolNames = [
+      ...Array.from({ length: 70 }, (_, index) => `filler-${String(index).padStart(2, '0')}`),
+      'scene-root',
+    ];
+    const bytes = await buildSyntheticFla({
+      symbolNames,
+      sceneSymbolNames: ['scene-root'],
+      includeSceneShape: false,
+    });
+
+    const catalog = await buildRenderableTargetCatalog(bytes);
+
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+    expect(catalog.entries).toHaveLength(64);
+    expect(catalog.omittedCandidateCount).toBe(8);
+    expect(catalog.entries.at(-1)?.target.sourceLibraryItemName).toBe('scene-root');
+    expect(catalog.entries.at(-1)?.catalogRole).toBe('scene-referenced-graphic');
+    expect(catalog.entries.some((entry) => entry.target.sourceLibraryItemName === 'filler-62')).toBe(false);
+  });
+
+  it('prioritizes the exact Scene-referenced authored frame before the Scene and generic states', async () => {
+    const symbolNames = [
+      ...Array.from({ length: 70 }, (_, index) => `filler-${String(index).padStart(2, '0')}`),
+      'scene-root',
+    ];
+    const bytes = await buildSyntheticFla({
+      symbolNames,
+      sceneSymbolInstances: [{ libraryItemName: 'scene-root', firstFrame: '2' }],
+      graphicFrames: [
+        { index: 0, duration: 1, color: '#336699' },
+        { index: 2, duration: 1, color: '#cc3355' },
+      ],
+      includeSceneShape: false,
+    });
+
+    const catalog = await buildRenderableTargetCatalog(bytes, undefined, { includeAuthoredStates: true });
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+
+    expect(catalog.entries).toHaveLength(64);
+    expect(catalog.entries[0]).toMatchObject({
+      catalogRole: 'scene-referenced-graphic',
+      previewSupported: true,
+      isBlank: false,
+      target: {
+        kind: 'graphic-symbol',
+        sourceLibraryItemName: 'scene-root',
+        selectedFrameIndex: 2,
+      },
+    });
+    expect(catalog.entries[1]?.catalogRole).toBe('scene');
+    expect(catalog.omittedCandidateCount).toBe(79);
+    expect(new Set(catalog.entries.map((entry) => entry.target.renderTargetId)).size).toBe(64);
+  });
+
+  it('deduplicates repeated exact Scene references and keeps authored-frame target IDs distinct', async () => {
+    const bytes = await buildSyntheticFla({
+      symbolName: 'scene-root',
+      sceneSymbolInstances: [
+        { libraryItemName: 'scene-root', firstFrame: '2' },
+        { libraryItemName: 'scene-root', firstFrame: '2' },
+      ],
+      graphicFrames: [
+        { index: 0, duration: 1, color: '#336699' },
+        { index: 2, duration: 1, color: '#cc3355' },
+      ],
+      includeSceneShape: false,
+    });
+
+    const frameZeroCatalog = await buildRenderableTargetCatalog(bytes);
+    const authoredCatalog = await buildRenderableTargetCatalog(bytes, undefined, { includeAuthoredStates: true });
+    expect(frameZeroCatalog.ok).toBe(true);
+    expect(authoredCatalog.ok).toBe(true);
+    if (!frameZeroCatalog.ok || !authoredCatalog.ok) return;
+
+    const frameZero = frameZeroCatalog.entries.find((entry) =>
+      entry.target.sourceLibraryItemName === 'scene-root' && entry.target.selectedFrameIndex === 0,
+    );
+    const authoredStates = authoredCatalog.entries.filter((entry) => entry.target.sourceLibraryItemName === 'scene-root');
+    const referenced = authoredStates.filter((entry) => entry.catalogRole === 'scene-referenced-graphic');
+    const frameTwo = authoredStates.find((entry) => entry.target.selectedFrameIndex === 2);
+    expect(referenced).toHaveLength(1);
+    expect(frameTwo?.catalogRole).toBe('scene-referenced-graphic');
+    expect(frameZero?.target.renderTargetId).not.toBe(frameTwo?.target.renderTargetId);
+    expect(new Set(authoredCatalog.entries.map((entry) => entry.target.renderTargetId)).size)
+      .toBe(authoredCatalog.entries.length);
+  });
+
+  it('does not promote hidden Scene layers, hidden instances, or non-authored referenced frames', async () => {
+    const hiddenLayerBytes = await buildSyntheticFla({
+      symbolName: 'scene-root',
+      sceneLayerVisible: false,
+      includeSceneShape: false,
+    });
+    const hiddenInstanceBytes = await buildSyntheticFla({
+      symbolName: 'scene-root',
+      sceneSymbolInstances: [{ libraryItemName: 'scene-root', visible: false }],
+      includeSceneShape: false,
+    });
+    const wrongFrameBytes = await buildSyntheticFla({
+      symbolName: 'scene-root',
+      sceneSymbolInstances: [{ libraryItemName: 'scene-root', firstFrame: '1' }],
+      graphicFrames: [
+        { index: 0, duration: 1, color: '#336699' },
+        { index: 2, duration: 1, color: '#cc3355' },
+      ],
+      includeSceneShape: false,
+    });
+    const catalogs = await Promise.all([
+      buildRenderableTargetCatalog(hiddenLayerBytes, undefined, { includeAuthoredStates: true }),
+      buildRenderableTargetCatalog(hiddenInstanceBytes, undefined, { includeAuthoredStates: true }),
+      buildRenderableTargetCatalog(wrongFrameBytes, undefined, { includeAuthoredStates: true }),
+    ]);
+    expect(catalogs.every((catalog) => catalog.ok)).toBe(true);
+    const [hiddenLayerCatalog, hiddenInstanceCatalog, wrongFrameCatalog] = catalogs;
+    if (!hiddenLayerCatalog?.ok || !hiddenInstanceCatalog?.ok || !wrongFrameCatalog?.ok) return;
+
+    expect(hiddenLayerCatalog.entries.some((entry) => entry.catalogRole === 'scene')).toBe(false);
+    expect(hiddenLayerCatalog.entries.some((entry) => entry.catalogRole === 'scene-referenced-graphic')).toBe(false);
+    expect(hiddenInstanceCatalog.entries.some((entry) => entry.catalogRole === 'scene-referenced-graphic')).toBe(false);
+    expect(wrongFrameCatalog.entries.some((entry) => entry.catalogRole === 'scene-referenced-graphic')).toBe(false);
+  });
+
+  it('renders visible static XFL mask layers as vector clips instead of mask artwork', async () => {
+    const bytes = await buildSyntheticFla({
+      symbolName: 'masked-root',
+      includeSceneShape: false,
+      includeVectorMask: true,
+    });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+
+    const candidate = catalog.entries.find((entry) =>
+      entry.target.kind === 'graphic-symbol' && entry.target.sourceLibraryItemName === 'masked-root',
+    );
+    expect(candidate?.previewSupported).toBe(true);
+    if (!candidate) return;
+
+    const preview = await buildSvgForRenderTarget(bytes, candidate.target);
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) return;
+    expect(preview.svg).toContain('<clipPath');
+    expect(preview.svg).toContain('clip-path="url(#fla-mask-clip-');
+    expect(preview.svg).toContain('fill="#336699"');
+    expect(preview.svg).not.toContain('#FF0000');
+  });
+
+  it('fails closed for a hidden static vector mask instead of exposing masked artwork', async () => {
+    const bytes = await buildSyntheticFla({
+      symbolName: 'hidden-mask-root',
+      includeSceneShape: false,
+      includeVectorMask: true,
+      hideMask: true,
+    });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+
+    const candidate = catalog.entries.find((entry) =>
+      entry.target.kind === 'graphic-symbol' && entry.target.sourceLibraryItemName === 'hidden-mask-root',
+    );
+    expect(candidate?.previewSupported).toBe(false);
+    expect(candidate?.unsupportedReason).toContain('Hidden XFL masks cannot be previewed safely');
+  });
+
+  it('respects a hidden masked-content layer while omitting the visible mask fill', async () => {
+    const bytes = await buildSyntheticFla({
+      symbolName: 'hidden-masked-content-root',
+      includeSceneShape: false,
+      includeVectorMask: true,
+      hideMaskedContent: true,
+    });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+
+    const candidate = catalog.entries.find((entry) =>
+      entry.target.kind === 'graphic-symbol' &&
+      entry.target.sourceLibraryItemName === 'hidden-masked-content-root',
+    );
+    expect(candidate?.previewSupported).toBe(true);
+    if (!candidate) return;
+
+    const preview = await buildSvgForRenderTarget(bytes, candidate.target);
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) return;
+    expect(preview.svg).not.toContain('#336699');
+    expect(preview.svg).not.toContain('#FF0000');
+  });
+
+  it('keeps unsupported bitmap mask items fail-closed in the catalog', async () => {
+    const bytes = await buildSyntheticFla({
+      symbolName: 'unsupported-bitmap-mask',
+      includeSceneShape: false,
+      includeBitmapMask: true,
+    });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+
+    const candidate = catalog.entries.find((entry) => entry.target.kind === 'graphic-symbol');
+    expect(candidate?.previewSupported).toBe(false);
+    expect(candidate?.unsupportedReason).toContain('Only static vector shapes and groups are supported as mask items');
+  });
+
   it('reports a multi-frame graphic target for the R2 bridge fixture', async () => {
     const bytes = await buildSyntheticFla({
       includeLibrary: true,
@@ -182,7 +450,84 @@ describe('R1-B SVG builder: catalog discovery', () => {
     const result = await buildRenderableTargetCatalog(bytes);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.entries[0]?.target.frameCount).toBe(2);
+    const graphic = result.entries.find((entry) => entry.target.kind === 'graphic-symbol');
+    expect(graphic?.target.frameCount).toBe(2);
+  });
+
+  it('lists each visible authored state for snapshot review while keeping blank states explicit', async () => {
+    const bytes = await buildSyntheticFla({
+      includeLibrary: true,
+      symbolName: 'authored-state-catalog',
+      graphicFrames: [
+        { index: 0, duration: 2, color: '#336699' },
+        { index: 2, duration: 1, blank: true },
+        { index: 3, duration: 1, color: '#cc3355' },
+      ],
+      includeSceneShape: false,
+    });
+
+    const rootCatalog = await buildRenderableTargetCatalog(bytes);
+    const authoredCatalog = await buildRenderableTargetCatalog(bytes, undefined, {
+      includeAuthoredStates: true,
+    });
+    expect(rootCatalog.ok).toBe(true);
+    expect(authoredCatalog.ok).toBe(true);
+    if (!rootCatalog.ok || !authoredCatalog.ok) return;
+
+    const rootStates = rootCatalog.entries.filter((entry) => entry.target.kind === 'graphic-symbol');
+    const authoredStates = authoredCatalog.entries.filter((entry) => entry.target.kind === 'graphic-symbol');
+    expect(rootStates.map((entry) => entry.target.selectedFrameIndex)).toEqual([0]);
+    expect(authoredStates.map((entry) => entry.target.selectedFrameIndex)).toEqual([0, 2, 3]);
+    expect(authoredStates.map((entry) => entry.isBlank)).toEqual([false, true, false]);
+    expect(authoredStates.every((entry) => entry.previewSupported)).toBe(true);
+    expect(authoredCatalog.omittedCandidateCount).toBe(0);
+  });
+
+  it('reports the exact number of authored states omitted by the bounded catalog', async () => {
+    const symbolNames = Array.from({ length: 70 }, (_, index) => `bounded-symbol-${index}`);
+    const bytes = await buildSyntheticFla({
+      includeLibrary: true,
+      symbolNames,
+      graphicFrameCount: 1,
+      includeSceneShape: false,
+    });
+
+    const catalog = await buildRenderableTargetCatalog(bytes, undefined, {
+      includeAuthoredStates: true,
+    });
+
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+    expect(catalog.entries).toHaveLength(64);
+    expect(catalog.omittedCandidateCount).toBe(7);
+    expect(catalog.summary).toContain('7 个候选因数量上限未列出');
+  });
+
+  it('keeps visible unknown content in the catalog as unsupported instead of importing a partial render', async () => {
+    const bytes = await buildSyntheticFla({
+      includeLibrary: true,
+      symbolName: 'unknown-visible-content',
+      graphicFrames: [{
+        index: 0,
+        duration: 1,
+        unsupportedElement: '<DOMText isVisible="true"/>',
+      }],
+      includeSceneShape: false,
+    });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+
+    const candidate = catalog.entries.find((entry) => entry.target.kind === 'graphic-symbol');
+    expect(candidate).toBeDefined();
+    expect(candidate?.isBlank).toBe(false);
+    expect(candidate?.previewSupported).toBe(false);
+    expect(candidate?.unsupportedReason).toContain('outside the supported static preview subset');
+    if (!candidate) return;
+
+    const preview = await buildSvgForRenderTarget(bytes, candidate.target);
+    expect(preview.ok).toBe(false);
+    if (!preview.ok) expect(preview.code).toBe('TARGET_UNSUPPORTED');
   });
 
   it('discovers the main scene target with kind=scene and frameCount=1', async () => {
@@ -203,7 +548,7 @@ describe('R1-B SVG builder: catalog discovery', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.entries).toEqual([]);
-    expect(result.summary).toContain('没有可渲染');
+    expect(result.summary).toContain('没有发现可检查的图形状态');
   });
 });
 
@@ -238,6 +583,138 @@ describe('R1-B SVG builder: SVG for a renderable target', () => {
     if (!result.ok) return;
     expect(result.svg).toContain('<path');
     expect(result.svg).toContain('fill="#abcdef"');
+  });
+
+  it('selects Graphic display states by authored spans and uses their true frame count', async () => {
+    const bytes = await buildSyntheticFla({
+      includeLibrary: true,
+      symbolName: 'authored-span-symbol',
+      graphicFrames: [
+        { index: 0, duration: 3, tx: 10, color: '#336699' },
+        { index: 3, duration: 2, tx: 30, color: '#cc3355' },
+      ],
+      includeSceneShape: false,
+    });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+    const target = catalog.entries.find((entry) => entry.target.kind === 'graphic-symbol')?.target;
+    expect(target?.frameCount).toBe(5);
+    if (!target) return;
+
+    const first = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 0 });
+    const held = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 2 });
+    const second = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 3 });
+    expect(first.ok).toBe(true);
+    expect(held.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    if (!first.ok || !held.ok || !second.ok) return;
+
+    const visiblePath = (svg: string) => svg.match(/<path[^>]*\/>/u)?.[0];
+    expect(visiblePath(held.svg)).toBe(visiblePath(first.svg));
+    expect(held.width).toBe(first.width);
+    expect(held.height).toBe(first.height);
+    expect(visiblePath(second.svg)).not.toBe(visiblePath(first.svg));
+    expect(second.svg).not.toBe(first.svg);
+    expect({ ...target, selectedFrameIndex: 3 }.renderTargetId).toBe(target.renderTargetId);
+    expect(first.svg).toContain('fill="#336699"');
+    expect(second.svg).toContain('fill="#cc3355"');
+
+    const outOfRange = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 5 });
+    expect(outOfRange.ok).toBe(false);
+    if (!outOfRange.ok) expect(outOfRange.code).toBe('TARGET_OUT_OF_RANGE');
+
+    const targetRange = await buildSvgForRenderTarget(bytes, {
+      ...target,
+      frameCount: 3,
+      selectedFrameIndex: 3,
+    });
+    expect(targetRange.ok).toBe(false);
+    if (!targetRange.ok) expect(targetRange.code).toBe('TARGET_OUT_OF_RANGE');
+  });
+
+  it('keeps a blank-first Graphic discoverable and renders its later authored state', async () => {
+    const bytes = await buildSyntheticFla({
+      includeLibrary: true,
+      symbolName: 'blank-first-symbol',
+      graphicFrames: [
+        { index: 0, duration: 2, blank: true },
+        { index: 2, duration: 2, color: '#cc3355' },
+      ],
+      includeSceneShape: false,
+    });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+    const entry = catalog.entries.find((candidate) => candidate.target.kind === 'graphic-symbol');
+    expect(entry).toBeDefined();
+    expect(entry?.previewSupported).toBe(true);
+    expect(entry?.target.frameCount).toBe(4);
+    if (!entry) return;
+    const target = entry.target;
+
+    const blank0 = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 0 });
+    const blank1 = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 1 });
+    const visible2 = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 2 });
+    const visible3 = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 3 });
+    expect(blank0.ok).toBe(true);
+    expect(blank1.ok).toBe(true);
+    expect(visible2.ok).toBe(true);
+    expect(visible3.ok).toBe(true);
+    if (!blank0.ok || !blank1.ok || !visible2.ok || !visible3.ok) return;
+
+    const visiblePath = (svg: string) => svg.match(/<path[^>]*\/>/u)?.[0];
+    expect(blank0.svg).not.toContain('<path');
+    expect(blank0.width).toBe(1);
+    expect(blank0.height).toBe(1);
+    expect(blank0.composition.framing.contentBounds).toBeNull();
+    expect(blank1.svg).not.toContain('<path');
+    expect(blank1.width).toBe(blank0.width);
+    expect(blank1.height).toBe(blank0.height);
+    expect(visiblePath(visible2.svg)).toContain('fill="#cc3355"');
+    expect(visiblePath(visible3.svg)).toBe(visiblePath(visible2.svg));
+    expect(visible2.width).toBe(visible3.width);
+    expect(visible2.height).toBe(visible3.height);
+    expect(visiblePath(blank0.svg)).not.toBe(visiblePath(visible2.svg));
+    expect({ ...target, selectedFrameIndex: 0 }.renderTargetId)
+      .toBe({ ...target, selectedFrameIndex: 2 }.renderTargetId);
+  });
+
+  it('does not add a wholly blank Graphic timeline to the renderable catalog', async () => {
+    const bytes = await buildSyntheticFla({
+      includeLibrary: true,
+      symbolName: 'wholly-blank-symbol',
+      graphicFrames: [{ index: 0, duration: 4, blank: true }],
+      includeSceneShape: false,
+    });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+    expect(catalog.entries.some((entry) => entry.target.kind === 'graphic-symbol')).toBe(false);
+  });
+
+  it('rejects a Graphic tween interior instead of repeating the keyframe state', async () => {
+    const bytes = await buildSyntheticFla({
+      includeLibrary: true,
+      symbolName: 'tween-symbol',
+      graphicFrames: [{ index: 0, duration: 3, tweenType: 'motion' }],
+      includeSceneShape: false,
+    });
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+    const target = catalog.entries.find((entry) => entry.target.kind === 'graphic-symbol')?.target;
+    expect(target?.frameCount).toBe(3);
+    if (!target) return;
+
+    const keyframe = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 0 });
+    const tweenInterior = await buildSvgForRenderTarget(bytes, { ...target, selectedFrameIndex: 1 });
+    expect(keyframe.ok).toBe(true);
+    expect(tweenInterior.ok).toBe(false);
+    if (!tweenInterior.ok) {
+      expect(tweenInterior.code).toBe('RENDER_FAILED');
+      expect(tweenInterior.message).toContain('unsupported motion tween interpolation');
+    }
   });
 
   it('honors a non-zero selectedFrameIndex on a scene target', async () => {
