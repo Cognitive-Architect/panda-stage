@@ -1,0 +1,303 @@
+{
+  "schemaVersion": "issue744-receipt/1",
+  "issue": 744,
+  "baseline": {
+    "repository": "panda-stage",
+    "branch": "issue-676-p0-c01-display-list-resolver",
+    "gitHead": "b28d410296173a53e77c99940b6e01675055b8ad"
+  },
+  "authorization": {
+    "productionBehaviorChanges": false,
+    "newPullRequest": false,
+    "parentPullRequest": 677,
+    "expectedParentState": "OPEN / DRAFT"
+  },
+  "inputs": {
+    "D_A": {
+      "path": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\minimization-run01\\fixtures\\D-A-authentic-close-M2.fla",
+      "bytes": 1200698,
+      "sha256": "5A501D1F787707A3965BECC31E2E5B8F5DDC519B25369E16EF68E72AF674EB5D",
+      "equalsM2ByteForByte": true
+    },
+    "D_B": {
+      "path": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\minimization-run01\\fixtures\\D-B-explicit-close-M2.fla",
+      "bytes": 1200700,
+      "sha256": "2ADC8598EE0B4747E95E48F83BA8FE57617E2B189F922B90943EB72C5BAC50A0",
+      "equalsM2ByteForByte": false
+    },
+    "sameTarget": {
+      "shapeId": "fla-shape-196ba2d2358441409a8b4dce",
+      "xflMember": "LIBRARY/白发修仙男-cilisucai.com/白发修仙男-cilisucai.com4.xml",
+      "targetFillStyle": 1,
+      "exactTargetShapeAddress": "graphic:白发修仙男-cilisucai.com/白发修仙男-cilisucai.com4/layer-0-frame-0/0/2/1/1/0"
+    }
+  },
+  "currentProductionDecoder": {
+    "file": "src/main/services/fla-static-snapshot-svg-builder.ts",
+    "sha256": "3775C95B44E65F3746AC5A85F2273E0A307BD2C4F1155DD18A9E2B60F3F7EEDF",
+    "slashCaseLine": 541,
+    "exactDecoderExcerpt": "      case '/': {\n        pushCommand({ type: 'Z' });\n        // A close returns the current point to this subpath's start.\n        if (!Number.isNaN(startX) && !Number.isNaN(startY)) {\n          currentX = startX; currentY = startY;\n        }\n        startX = NaN; startY = NaN;\n        i++;\n        break;\n      }",
+    "behavior": "The Main decoder maps / to Z, advances over only /, then resumes token processing; following numeric payload tokens are skipped by default handling."
+  },
+  "animateControls": {
+    "animateHost": {
+      "executablePath": "D:\\AN2023\\Adobe Animate 2023\\Animate.exe",
+      "fileVersion": "23.0.0.407",
+      "sha256": "0F869BD383E679611C6F85D887F72FE636B16403A5B98F79DF87F6F563ED3838",
+      "currentFileSha256": "0F869BD383E679611C6F85D887F72FE636B16403A5B98F79DF87F6F563ED3838",
+      "authenticodeStatus": "HashMismatch",
+      "provenance": "UNTRUSTED / MODIFIED",
+      "stableDuringPriorExperiment": true,
+      "beforeReceiptSha256": "CE680F9F64ED2C427E460D484FE2586558DFBF7FC6D5455DA6688D701F228FF5",
+      "afterReceiptSha256": "62FDF7FE0AA270972F8DBC1059044E7B751C53491FD5B655E662AC24570963E4"
+    },
+    "controls": [
+      {
+        "key": "issue737-historical-oracle",
+        "captures": [
+          {
+            "receiptPath": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\receipts\\issue743-animate-census-run01.json",
+            "receiptSha256": "952FFF39076042877FBEEF7CE8014D9374EE6F5839FA62B54D3CBC64A6804D6C",
+            "status": "CAPTURED",
+            "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+            "shapeId": "fla-shape-f715af380bb888b2571345e2",
+            "fillStyleIndex": 1,
+            "sourceAddress": "graphic:补间 1/layer-0-frame-0/0/0/0",
+            "xflMemberPath": "0/0/0",
+            "animateDomMemberPath": "0/0",
+            "candidateShapeCount": 1,
+            "saveApiCalled": false,
+            "sourceCopyPath": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\sources-run01\\historical.fla",
+            "sourceCopySha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+            "normalizedTopologySha256": "85A02A38C4A48FB9C4328363BD4B0814CD3BA7D0989B6011D66A9F124AA6F04C",
+            "contourCount": 8,
+            "closedContourCount": 8,
+            "contourHalfEdgeCounts": [
+              40,
+              87,
+              6,
+              10,
+              4,
+              24,
+              90,
+              17
+            ],
+            "documentCountBefore": 9,
+            "documentCountAfter": 13,
+            "documentCountUnchanged": false,
+            "activeDocumentRestored": true,
+            "activeDocumentModifiedStateUnchanged": true,
+            "screenshotPath": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\receipts\\animate-stage-run01-issue737-historical-oracle.png",
+            "screenshotSha256": "85E847CA35C83A49191E0C1F9CDA73769E6E4C53740A89F9821A29AC1589E454"
+          },
+          {
+            "receiptPath": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\receipts\\issue743-animate-census-run02.json",
+            "receiptSha256": "F00E23B356456876520C43C8A8F01A42DA3FA2381D1DD351CA2F1052BC3F76CD",
+            "status": "CAPTURED",
+            "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+            "shapeId": "fla-shape-f715af380bb888b2571345e2",
+            "fillStyleIndex": 1,
+            "sourceAddress": "graphic:补间 1/layer-0-frame-0/0/0/0",
+            "xflMemberPath": "0/0/0",
+            "animateDomMemberPath": "0/0",
+            "candidateShapeCount": 1,
+            "saveApiCalled": false,
+            "sourceCopyPath": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\sources-run01\\historical.fla",
+            "sourceCopySha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+            "normalizedTopologySha256": "85A02A38C4A48FB9C4328363BD4B0814CD3BA7D0989B6011D66A9F124AA6F04C",
+            "contourCount": 8,
+            "closedContourCount": 8,
+            "contourHalfEdgeCounts": [
+              40,
+              87,
+              6,
+              10,
+              4,
+              24,
+              90,
+              17
+            ],
+            "documentCountBefore": 9,
+            "documentCountAfter": 9,
+            "documentCountUnchanged": true,
+            "activeDocumentRestored": true,
+            "activeDocumentModifiedStateUnchanged": true,
+            "screenshotPath": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\receipts\\animate-stage-run02-issue737-historical-oracle.png",
+            "screenshotSha256": "85E847CA35C83A49191E0C1F9CDA73769E6E4C53740A89F9821A29AC1589E454"
+          }
+        ],
+        "repeatedTopologyStable": true,
+        "stableNormalizedTopologySha256": "85A02A38C4A48FB9C4328363BD4B0814CD3BA7D0989B6011D66A9F124AA6F04C",
+        "stableStagePngSha256": "85E847CA35C83A49191E0C1F9CDA73769E6E4C53740A89F9821A29AC1589E454"
+      },
+      {
+        "key": "issue737-closed-fill-control",
+        "captures": [
+          {
+            "receiptPath": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\receipts\\issue743-animate-census-run01.json",
+            "receiptSha256": "952FFF39076042877FBEEF7CE8014D9374EE6F5839FA62B54D3CBC64A6804D6C",
+            "status": "CAPTURED",
+            "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+            "shapeId": "fla-shape-289bd154caee9595b4c5ddef",
+            "fillStyleIndex": 1,
+            "sourceAddress": "graphic:补间 1/layer-0-frame-0/0/4/0",
+            "xflMemberPath": "0/4/0",
+            "animateDomMemberPath": "0/4",
+            "candidateShapeCount": 1,
+            "saveApiCalled": false,
+            "sourceCopyPath": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\sources-run01\\historical.fla",
+            "sourceCopySha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+            "normalizedTopologySha256": "EFF7BAE562721C19BF75602359A1BD0AE8B9EF5C06DA7D94B7FCA92A07E7AF5C",
+            "contourCount": 3,
+            "closedContourCount": 3,
+            "contourHalfEdgeCounts": [
+              18,
+              16,
+              34
+            ],
+            "documentCountBefore": 9,
+            "documentCountAfter": 13,
+            "documentCountUnchanged": false,
+            "activeDocumentRestored": true,
+            "activeDocumentModifiedStateUnchanged": true,
+            "screenshotPath": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\receipts\\animate-stage-run01-issue737-closed-fill-control.png",
+            "screenshotSha256": "85E847CA35C83A49191E0C1F9CDA73769E6E4C53740A89F9821A29AC1589E454"
+          },
+          {
+            "receiptPath": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\receipts\\issue743-animate-census-run02.json",
+            "receiptSha256": "F00E23B356456876520C43C8A8F01A42DA3FA2381D1DD351CA2F1052BC3F76CD",
+            "status": "CAPTURED",
+            "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+            "shapeId": "fla-shape-289bd154caee9595b4c5ddef",
+            "fillStyleIndex": 1,
+            "sourceAddress": "graphic:补间 1/layer-0-frame-0/0/4/0",
+            "xflMemberPath": "0/4/0",
+            "animateDomMemberPath": "0/4",
+            "candidateShapeCount": 1,
+            "saveApiCalled": false,
+            "sourceCopyPath": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\sources-run01\\historical.fla",
+            "sourceCopySha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+            "normalizedTopologySha256": "EFF7BAE562721C19BF75602359A1BD0AE8B9EF5C06DA7D94B7FCA92A07E7AF5C",
+            "contourCount": 3,
+            "closedContourCount": 3,
+            "contourHalfEdgeCounts": [
+              18,
+              16,
+              34
+            ],
+            "documentCountBefore": 9,
+            "documentCountAfter": 9,
+            "documentCountUnchanged": true,
+            "activeDocumentRestored": true,
+            "activeDocumentModifiedStateUnchanged": true,
+            "screenshotPath": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\receipts\\animate-stage-run02-issue737-closed-fill-control.png",
+            "screenshotSha256": "85E847CA35C83A49191E0C1F9CDA73769E6E4C53740A89F9821A29AC1589E454"
+          }
+        ],
+        "repeatedTopologyStable": true,
+        "stableNormalizedTopologySha256": "EFF7BAE562721C19BF75602359A1BD0AE8B9EF5C06DA7D94B7FCA92A07E7AF5C",
+        "stableStagePngSha256": "85E847CA35C83A49191E0C1F9CDA73769E6E4C53740A89F9821A29AC1589E454"
+      }
+    ],
+    "pandaControlReceipts": [
+      {
+        "key": "issue737-historical-oracle",
+        "receiptPath": "D:\\PandaStage-Acceptance\\issue744-endpoint-provenance-run01\\panda-issue737-historical-control.json",
+        "receiptSha256": "8B081F06F88D385C17A73A357E109A273651869CF5F462CE2E02564BE6C62EF7",
+        "baselineGitHead": "b28d410296173a53e77c99940b6e01675055b8ad",
+        "sourcePath": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\sources-run01\\historical.fla",
+        "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+        "shapeId": "fla-shape-f715af380bb888b2571345e2",
+        "fillStyleIndex": 1,
+        "recovery": {
+          "state": "RECOVERY_CANDIDATE",
+          "applied": true,
+          "field": "EOCD.centralDirectorySize",
+          "deltaBytes": 54,
+          "mode": "in-memory-only",
+          "originalBytesWritten": false
+        },
+        "status": "RENDERED",
+        "svgSha256": "06127505FBEA58CA901C313A49E475760F683D132E1E95E6830B65098322EA4B",
+        "boundarySegmentCount": 98,
+        "repeatCount": 2,
+        "runHashes": [
+          "209DD5CA0F1E8A96F173D567BFA2A41EB9BFA768DD8D276BC852789A7052364C",
+          "209DD5CA0F1E8A96F173D567BFA2A41EB9BFA768DD8D276BC852789A7052364C"
+        ],
+        "stable": true
+      },
+      {
+        "key": "issue737-closed-fill-control",
+        "receiptPath": "D:\\PandaStage-Acceptance\\issue744-endpoint-provenance-run01\\panda-issue737-closed-fill-control.json",
+        "receiptSha256": "3C8E7897221452E3B291C7503756E7727B99EB6073B9DEA117874FCD087646E6",
+        "baselineGitHead": "b28d410296173a53e77c99940b6e01675055b8ad",
+        "sourcePath": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\sources-run01\\historical.fla",
+        "sourceSha256": "A328A163DD212F0369E27B30E5078178FD42744954203FDAD6A9CD06F3B171FA",
+        "shapeId": "fla-shape-289bd154caee9595b4c5ddef",
+        "fillStyleIndex": 1,
+        "recovery": {
+          "state": "RECOVERY_CANDIDATE",
+          "applied": true,
+          "field": "EOCD.centralDirectorySize",
+          "deltaBytes": 54,
+          "mode": "in-memory-only",
+          "originalBytesWritten": false
+        },
+        "status": "RENDERED",
+        "svgSha256": "B6191F7650219296EA350228EC642066648068BC4AEE7EDE4A7A48C32BCA0721",
+        "boundarySegmentCount": 16,
+        "repeatCount": 2,
+        "runHashes": [
+          "D8E23E420AA5AA43CEFF7BCEDE6B74CF6418C60656EC00E9C1CF4F700319FB55",
+          "D8E23E420AA5AA43CEFF7BCEDE6B74CF6418C60656EC00E9C1CF4F700319FB55"
+        ],
+        "stable": true
+      }
+    ],
+    "repeatedControlsStable": true,
+    "lifecycleNote": "Issue #743 Animate census run01 left four additional source-copy documents open (documentCountUnchanged=false); it did not call save and target geometry was captured. Run02 restored the original document count. Both control runs have exact matching normalized Shape topology and unchanged source hashes; the run01 document-count variance is retained here rather than hidden."
+  },
+  "fixtures": {
+    "D-A": {
+      "path": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\minimization-run01\\fixtures\\D-A-authentic-close-M2.fla",
+      "xflMemberPath": "LIBRARY/白发修仙男-cilisucai.com/白发修仙男-cilisucai.com4.xml",
+      "sourceSha256": "5A501D1F787707A3965BECC31E2E5B8F5DDC519B25369E16EF68E72AF674EB5D",
+      "xflMemberSha256": "BB7C837C9AADD88D7FD0FBC55E2C457336BF4A73B1B0F7678492071BAC9994CE",
+      "freshPandaReceiptSha256": "6BBA671A2224F4EA393DE233F52C0AF7CE8C652F4D381AB45415EE525E551272",
+      "pandaRunHashes": [
+        "B6D1E528430415C4445DA1B417B37A0647F7722C5893941CA1FC4FE04F3B62B0",
+        "B6D1E528430415C4445DA1B417B37A0647F7722C5893941CA1FC4FE04F3B62B0"
+      ],
+      "animateCaptureCount": 2,
+      "animateTopologyFingerprint": "784E092E53D0928DA10FC802C1B33468407620A66420FD09EDC3520CA7040A4C",
+      "animateScreenshotHashes": [
+        "F37C33D2129622855F09C635E642F82D2FBB123CA832301637ACD3DE48465483",
+        "F37C33D2129622855F09C635E642F82D2FBB123CA832301637ACD3DE48465483"
+      ]
+    },
+    "D-B": {
+      "path": "D:\\PandaStage-Acceptance\\issue743-authored-close-minimization-20261009\\minimization-run01\\fixtures\\D-B-explicit-close-M2.fla",
+      "xflMemberPath": "LIBRARY/白发修仙男-cilisucai.com/白发修仙男-cilisucai.com4.xml",
+      "sourceSha256": "2ADC8598EE0B4747E95E48F83BA8FE57617E2B189F922B90943EB72C5BAC50A0",
+      "xflMemberSha256": "351954B7F4678535D388939BBD6C9EF9CA460FB5E1C49DF5A9BC36D0EA30C309",
+      "freshPandaReceiptSha256": "3441505017338D5E06B4CCE775302691330ADBA0EB31418ABDE9FE9929139AA6",
+      "pandaRunHashes": [
+        "330C63D8F37F3F59AB59FEF9558EF52D49444E59477FFE0042974CE90705367A",
+        "330C63D8F37F3F59AB59FEF9558EF52D49444E59477FFE0042974CE90705367A"
+      ],
+      "animateCaptureCount": 2,
+      "animateTopologyFingerprint": "586485ACBEB50EF5E44515DFC51AE9EDD8D03F48B1122F66F20F92C7757877D3",
+      "animateScreenshotHashes": [
+        "F37C33D2129622855F09C635E642F82D2FBB123CA832301637ACD3DE48465483",
+        "F37C33D2129622855F09C635E642F82D2FBB123CA832301637ACD3DE48465483"
+      ]
+    }
+  },
+  "classification": {
+    "taxonomy": "H — MIXED / INSUFFICIENT",
+    "reason": "D-A has an exact local command-decode discrepancy with two matching Animate slash-payload HalfEdges, while D-B changes target contour membership and has four target-gradient HalfEdges without exact raw/Panda geometry correspondence. One shared first divergence is not established.",
+    "implementationAuthorization": "NO — research/prototype only",
+    "proposedSingleNextAction": "Open one bounded research follow-up to map D-B target-gradient contour HalfEdges 3–6 to exact source Shape edges and establish whether the new contour is a split/reassembled region or a distinct fill-side ownership result."
+  }
+}

@@ -57,6 +57,18 @@ export const ImageAssetSchema = z
     kind: z.literal('image'),
     width: z.number().int().positive(),
     height: z.number().int().positive(),
+    flaSnapshot: z
+      .object({
+        sourceBasename: z.string().trim().min(1).max(260),
+        sourceSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+        targetName: z.string().trim().min(1).max(500),
+        sourceLibraryItemName: z.string().trim().min(1).max(500).optional(),
+        renderTargetId: z.string().trim().min(1).max(128),
+        selectedFrameIndex: z.number().int().nonnegative(),
+        previewSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

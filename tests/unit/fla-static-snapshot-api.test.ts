@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   FlaRenderableTargetCatalogSchema,
+  FlaRenderableTargetCatalogRequestSchema,
   FlaRenderTargetKindSchema,
   FlaRenderTargetSchema,
   FlaStaticSnapshotCancelRequestSchema,
@@ -102,6 +103,42 @@ describe('R1-A renderable target catalog', () => {
     };
     const parsed = FlaRenderableTargetCatalogSchema.parse(catalog);
     expect(parsed.entries).toHaveLength(1);
+    expect(parsed.entries[0]?.isBlank).toBe(false);
+    expect(parsed.omittedCandidateCount).toBe(0);
+  });
+
+  it('accepts only the bounded source-grounded catalog roles', () => {
+    const entry = {
+      target: validTarget,
+      catalogRole: 'scene-referenced-graphic',
+      previewSupported: true,
+      isBlank: false,
+    };
+    const catalog = {
+      ok: true as const,
+      sessionId: validUuid,
+      entries: [entry],
+      summary: '1 source-grounded target.',
+    };
+    expect(FlaRenderableTargetCatalogSchema.parse(catalog).entries[0]?.catalogRole)
+      .toBe('scene-referenced-graphic');
+    expect(FlaRenderableTargetCatalogSchema.safeParse({
+      ...catalog,
+      entries: [{ ...entry, catalogRole: 'whole-person' }],
+    }).success).toBe(false);
+  });
+
+  it('keeps authored-state enumeration opt-in for existing sequence review callers', () => {
+    const request = FlaRenderableTargetCatalogRequestSchema.parse({
+      format: 'fla-static-snapshot-catalog',
+      version: 1,
+      sessionId: validUuid,
+    });
+    expect(request.includeAuthoredStates).toBe(false);
+    expect(FlaRenderableTargetCatalogRequestSchema.parse({
+      ...request,
+      includeAuthoredStates: true,
+    }).includeAuthoredStates).toBe(true);
   });
 
   it('rejects an unsupported entry without an unsupportedReason', () => {

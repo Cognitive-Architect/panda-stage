@@ -1,0 +1,276 @@
+{
+  "schemaVersion": "issue747-horizontal-stroke-evidence/1",
+  "issue": 747,
+  "title": "Stage B5-V2H Fix: Source-Accurate Horizontal Stroke Scaling — Hanfu Full-Character Root",
+  "verdict": "PASS — HORIZONTAL_STROKE_FIX",
+  "humanVisualAcceptance": "REVIEW_PENDING",
+  "humanPassClaimed": false,
+  "source": {
+    "path": "D:\\表情合集\\新人物\\汉服修仙女.fla",
+    "sha256Before": "6AF14990029D4CED2C4E305721321835180C1BF041178A8799E1D14A1F62E535",
+    "sha256After": "6AF14990029D4CED2C4E305721321835180C1BF041178A8799E1D14A1F62E535",
+    "unchanged": true,
+    "recovery": {
+      "state": "RECOVERY_CANDIDATE",
+      "normalization": "in-memory-only",
+      "field": "EOCD.centralDirectorySize",
+      "deltaBytes": 54,
+      "originalBytesWritten": false,
+      "normalizedSha256": "10EDD07E226DB3296A5CAC01B4CDF9654385CE477894A8F7B4D0C90DB9E327F7",
+      "strictPreflight": "PASS"
+    }
+  },
+  "root": {
+    "scene": "场景 1",
+    "sceneFrameIndex": 0,
+    "sceneRootInstance": "修仙女-cilisucai.com/修仙女-cilisucai.com1",
+    "kind": "Graphic",
+    "frameIndex": 0,
+    "frameCount": 30,
+    "sceneTransform": {
+      "a": 1.49400329589844,
+      "b": 0,
+      "c": 0,
+      "d": 1.49400329589844,
+      "tx": 686.5,
+      "ty": 31.35
+    },
+    "nestedInstances": [
+      {
+        "name": "修仙女-cilisucai.com/修仙女-cilisucai.com2",
+        "sourceAddress": "graphic:修仙女-cilisucai.com/修仙女-cilisucai.com1/layer-1-frame-0/0",
+        "frameIndex": 0,
+        "transform": {
+          "a": 1,
+          "b": 0,
+          "c": 0,
+          "d": 1,
+          "tx": 161.35,
+          "ty": 398.1
+        }
+      },
+      {
+        "name": "修仙女-cilisucai.com/修仙女-cilisucai.com3",
+        "sourceAddress": "graphic:修仙女-cilisucai.com/修仙女-cilisucai.com1/layer-0-frame-0/0",
+        "frameIndex": 0,
+        "transform": {
+          "a": 1,
+          "b": 0,
+          "c": 0,
+          "d": 1,
+          "tx": 174.45,
+          "ty": 123.85
+        }
+      }
+    ],
+    "renderedInNativeGraphicContentFrame": true,
+    "sceneFramePngIncludesScenePlacementTransform": true
+  },
+  "blockingStroke": {
+    "statusBefore": "BLOCKED",
+    "statusAfter": "RENDERED",
+    "shapeId": "fla-shape-6d069cd5ef8fbeda2efd1607",
+    "sourceAddress": "graphic:修仙女-cilisucai.com/修仙女-cilisucai.com3/layer-0-frame-0/0/5/1/0",
+    "strokeStyleIndex": 1,
+    "sourceXml": "<SolidStroke scaleMode=\"horizontal\"><fill><SolidColor/></fill></SolidStroke>",
+    "sourceMatrix": {
+      "a": 0.780487060546875,
+      "b": -0.20831298828125,
+      "c": 0.20831298828125,
+      "d": 0.780487060546875,
+      "tx": -349.8,
+      "ty": -234.2
+    },
+    "omittedSourceProperties": [
+      "weight",
+      "SolidColor.color",
+      "SolidColor.alpha",
+      "caps",
+      "joints",
+      "miterLimit",
+      "pixelHinting"
+    ],
+    "productionDefaults": {
+      "weight": 1,
+      "color": "#000000",
+      "alpha": 1,
+      "cap": "round",
+      "join": "round",
+      "miterLimit": 3,
+      "pixelHinting": false
+    },
+    "supportedScaleModes": ["normal", "horizontal"],
+    "horizontalWidthRule": "source weight × hypot(composedMatrix.a, composedMatrix.b)",
+    "coordinateHandling": "horizontal stroke path control/end points are transformed through the composed source matrix and emitted without an SVG transform; effective width is reused for stroke bounds",
+    "failClosed": {
+      "unsupportedScaleModes": ["vertical", "none", "diagonal", "unknown values"],
+      "pixelHintingTrue": "TARGET_UNSUPPORTED",
+      "gradientStroke": "TARGET_UNSUPPORTED",
+      "bitmapStroke": "TARGET_UNSUPPORTED",
+      "malformedWeight": "RENDER_FAILED",
+      "malformedColor": "RENDER_FAILED"
+    }
+  },
+  "issue745OpenFillTargets": [
+    {
+      "key": "hanfu-open-fill",
+      "shapeId": "fla-shape-9420f0fcb052d77956ea920f",
+      "fillStyleIndex": 1,
+      "sourceAddress": "graphic:修仙女-cilisucai.com/修仙女-cilisucai.com2/layer-0-frame-0/8/0",
+      "sourceSha256": "6AF14990029D4CED2C4E305721321835180C1BF041178A8799E1D14A1F62E535",
+      "sourceUnchanged": true,
+      "renderStatus": "RENDERED",
+      "deterministic": true,
+      "svgSha256": "52220B7A0497DBC5769B3C79D01DB39CF44E8D6165E54F388A3EBB767A282966",
+      "includedThroughNestedGraphic2InFullHanfuRoot": true
+    },
+    {
+      "key": "qingling-open-fill",
+      "shapeId": "fla-shape-944dedeb2bb14b160532f675",
+      "fillStyleIndex": 1,
+      "sourceAddress": "graphic:重复项目文件夹/元件 2/layer-0-frame-0/0/0/2/0",
+      "sourceSha256": "D0958D4432DECBF6C54566BA15A2F5E97BD88C82D75DCB2F84603E9B2273F0E4",
+      "sourceUnchanged": true,
+      "renderStatus": "RENDERED",
+      "deterministic": true,
+      "svgSha256": "7AAF2A774BEC583C024ADD4EEF91A665748F718B7E4D75872842CADB05AF43A3"
+    },
+    {
+      "key": "xiuxian-male-open-fill",
+      "shapeId": "fla-shape-196ba2d2358441409a8b4dce",
+      "fillStyleIndex": 1,
+      "sourceAddress": "graphic:白发修仙男-cilisucai.com/白发修仙男-cilisucai.com4/layer-0-frame-0/0/2/1/1/0",
+      "sourceSha256": "565C5609A7610EF64ED9F98B09D98DD82D5A45255ADB4D3D410A5A365E0EF4A5",
+      "sourceUnchanged": true,
+      "renderStatus": "RENDERED",
+      "deterministic": true,
+      "svgSha256": "F82229FA910485CBF1CD38AEC9CBE92CC55BF7E1AA0E4C9460166CF355659815"
+    }
+  ],
+  "issue737Controls": [
+    {
+      "key": "issue737-historical-oracle",
+      "shapeId": "fla-shape-f715af380bb888b2571345e2",
+      "renderStatus": "RENDERED",
+      "deterministic": true,
+      "svgSha256": "06127505FBEA58CA901C313A49E475760F683D132E1E95E6830B65098322EA4B"
+    },
+    {
+      "key": "issue737-closed-fill-control",
+      "shapeId": "fla-shape-289bd154caee9595b4c5ddef",
+      "renderStatus": "RENDERED",
+      "deterministic": true,
+      "svgSha256": "B6191F7650219296EA350228EC642066648068BC4AEE7EDE4A7A48C32BCA0721"
+    }
+  ],
+  "qinglingControl": {
+    "issue746FullRootSourceSha256": "D0958D4432DECBF6C54566BA15A2F5E97BD88C82D75DCB2F84603E9B2273F0E4",
+    "sourceUnchanged": true,
+    "previousIssue746PngSha256": "2C24A46F1067E7A7EBF612004EB917F88252256EBF4D69C65331F48A721C1088",
+    "currentPngSha256": "2C24A46F1067E7A7EBF612004EB917F88252256EBF4D69C65331F48A721C1088",
+    "byteIdentical": true
+  },
+  "controlledTransforms": {
+    "controlMethod": "Adobe Animate 2023 exported full-stage PNGs from scratch copies; only the target Shape's SolidStroke.scaleMode changed between horizontal and normal. Panda used production staticSnapshotPreview on the same source-derived baseline/X2/Y2 copies; normal controls changed the same single attribute on scratch copies. Original FLA hashes remained unchanged.",
+    "pixelThresholdForDarkCounts": "alpha > 0 and each RGB channel < 80",
+    "animate": {
+      "baseline": {
+        "diffPixels": 0,
+        "bounds": null
+      },
+      "x2": {
+        "diffPixels": 390,
+        "bounds": {"minX": 1246, "minY": 50, "maxX": 1298, "maxY": 101},
+        "darkPixelsHorizontal": 2051,
+        "darkPixelsNormal": 1959
+      },
+      "y2": {
+        "diffPixels": 387,
+        "bounds": {"minX": 966, "minY": 70, "maxX": 992, "maxY": 169},
+        "darkPixelsHorizontal": 1874,
+        "darkPixelsNormal": 1931
+      }
+    },
+    "pandaProduction": {
+      "baseline": {
+        "diffPixels": 0,
+        "bounds": null
+      },
+      "x2": {
+        "diffPixels": 401,
+        "bounds": {"minX": 1245, "minY": 50, "maxX": 1298, "maxY": 101},
+        "darkPixelsHorizontal": 1982,
+        "darkPixelsNormal": 1930
+      },
+      "y2": {
+        "diffPixels": 407,
+        "bounds": {"minX": 966, "minY": 70, "maxX": 992, "maxY": 169},
+        "darkPixelsHorizontal": 1814,
+        "darkPixelsNormal": 1816
+      }
+    },
+    "adobeVisualEquivalenceClaimed": false,
+    "interpretation": "Baseline output is pixel-identical in both renderers; transformed-mode changes occupy the same source-stroke regions. Pixel values/counts differ, so this validates bounded source semantics without asserting cross-renderer visual equivalence."
+  },
+  "artifacts": {
+    "nativeGraphicPng": {
+      "file": "hanfu-full-character.png",
+      "sha256": "D48AE620AA0C6B1669AC51F3180E9D83E43A9F89C5F4063C4EC3AA001E25BE6B",
+      "bytes": 256012,
+      "dimensions": [332, 673],
+      "composition": {
+        "shapeCount": 162,
+        "expandedSymbolCount": 2,
+        "resolvedNodeCount": 359,
+        "bitmapInstanceCount": 0,
+        "contentBounds": {
+          "x": -0.524141829117949,
+          "y": -0.587926370403527,
+          "width": 323.7290640212123,
+          "height": 664.7440483101765
+        },
+        "viewBox": {
+          "x": -4.524141829117949,
+          "y": -4.587926370403527,
+          "width": 331.7290640212123,
+          "height": 672.7440483101765
+        },
+        "padding": 4,
+        "cropObserved": false
+      }
+    },
+    "sceneFramePng": {
+      "file": "hanfu-scene-frame-0.png",
+      "sha256": "1E9D9E43692D775B2FAE5179410AE3DB877655063153211260531FCFFA7D79FB",
+      "bytes": 522087,
+      "dimensions": [1920, 1080],
+      "pipeline": "staticSnapshotPreview through Main/Preload and the sandboxed Electron snapshot renderer"
+    },
+    "svgSha256": "082831D9070DFA313B00C72C4254D8C4C4617EF54D0458D9E19DFDCCAD7C6BE4",
+    "svgBytes": 1243945,
+    "sourceMutation": "NONE",
+    "projectMutation": "NONE"
+  },
+  "validation": {
+    "focusedUnit": {"command": "pnpm exec vitest run tests/unit/fla-static-snapshot-c03-stroke.test.ts", "status": "PASS", "files": 1, "tests": 27},
+    "issue745Targets": {
+      "command": "node scripts/research/issue739-xfl-panda-differential.cjs --target all --out <external-json-path>",
+      "status": "PASS",
+      "targetCount": 5,
+      "allSourceHashesUnchanged": true,
+      "allPandaRunsDeterministic": true,
+      "externalReceipt": "D:\\PandaStage-Acceptance\\issue-747-horizontal-stroke\\issue745-open-fill-regression-20261009.json"
+    },
+    "unit": {"command": "pnpm test:unit", "status": "PASS", "files": 343, "tests": 2477},
+    "integration": {"command": "pnpm test:integration", "status": "PASS", "files": 38, "tests": 189},
+    "typecheck": {"command": "pnpm typecheck", "status": "PASS"},
+    "lint": {"command": "pnpm lint", "status": "PASS"},
+    "build": {"command": "pnpm build", "status": "PASS", "warnings": ["existing empty legacy CSS imports", "existing large renderer chunks"]}
+  },
+  "notes": {
+    "nextBlocker": null,
+    "maleRadialStroke": "out of scope; this issue is limited to the Hanfu horizontal stroke family",
+    "humanVisualAcceptance": "reserved for user; no visual PASS claimed",
+    "artworkRetouched": false
+  }
+}

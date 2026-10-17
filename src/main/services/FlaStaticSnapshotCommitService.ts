@@ -31,6 +31,7 @@ import {
   type FlaStaticSnapshotCommitRequest,
   type FlaStaticSnapshotCommitErrorCode,
   type FlaStaticSnapshotCommitResponse,
+  type FlaRenderTarget,
 } from '../../shared/fla-static-snapshot-api';
 import {
   ImageAssetSchema,
@@ -43,6 +44,7 @@ import {
   allocateAssetTargetName,
   sanitizeAssetFileName,
 } from './AssetImportService';
+import { safeUtf16Slice } from '../../shared/asset-name';
 import {
   AssetImportFileSystemService,
   type AssetCopyCleanupKind,
@@ -89,6 +91,31 @@ interface CommitErrorDetails extends ErrorOptions {
   currentProject?: Project;
   currentRevision?: number;
   residualPaths?: readonly string[];
+}
+
+function snapshotTargetDisplayName(userLabel: string): string {
+  const basename = userLabel.replaceAll('\\', '/').split('/').at(-1) ?? '';
+  const normalized = basename
+    .normalize('NFC')
+    .replace(/\p{Cc}/gu, '_')
+    .trim();
+  return safeUtf16Slice(normalized || 'Imported asset', 200);
+}
+
+function isSameConfirmedTarget(
+  confirmed: FlaRenderTarget,
+  requested: FlaRenderTarget,
+): boolean {
+  return confirmed.renderTargetId === requested.renderTargetId &&
+    confirmed.kind === requested.kind &&
+    confirmed.userLabel === requested.userLabel &&
+    confirmed.sourceLibraryItemName === requested.sourceLibraryItemName &&
+    confirmed.sourceTimelineIndex === requested.sourceTimelineIndex &&
+    confirmed.sourceSymbolName === requested.sourceSymbolName &&
+    confirmed.frameCount === requested.frameCount &&
+    (confirmed.selectedFrameIndex ?? 0) === (requested.selectedFrameIndex ?? 0) &&
+    confirmed.compatibility.length === requested.compatibility.length &&
+    confirmed.compatibility.every((status, index) => status === requested.compatibility[index]);
 }
 
 export class FlaStaticSnapshotCommitServiceError extends Error {
@@ -202,6 +229,13 @@ export class FlaStaticSnapshotCommitService {
     ) {
       return this.failure('SOURCE_MISMATCH', transaction.projectRoot, 'The snapshot source no longer matches the inspection session.');
     }
+    if (!isSameConfirmedTarget(confirmed.target, request.target)) {
+      return this.failure(
+        'STALE_PREVIEW',
+        transaction.projectRoot,
+        'The requested target or frame does not match the confirmed preview; re-preview the selected target before importing.',
+      );
+    }
 
     const current = this.assertCurrentRevision(
       transaction.projectRoot,
@@ -233,7 +267,9 @@ export class FlaStaticSnapshotCommitService {
     ) as ImageAsset | undefined;
     const isFirst = !existing;
 
-    const baseName = `${request.target.userLabel}-${request.target.renderTargetId}`.slice(0, 120);
+    // The Windows FFmpeg thumbnail path cannot reopen non-ASCII input names;
+    // keep the stored PNG path ASCII while preserving its display name below.
+    const baseName = `fla-snapshot-${request.target.renderTargetId}-${sha256.slice(0, 12)}`.slice(0, 120);
     const preferredFileName = sanitizeAssetFileName(baseName, '.png');
     let targetFileName: string;
     let asset: ImageAsset;
@@ -258,58 +294,93 @@ export class FlaStaticSnapshotCommitService {
       renamed = targetFileName !== preferredFileName;
       asset = ImageAssetSchema.parse({
         id: this.createId(),
-        name: assetDisplayName(request.target.userLabel),
+        name: safeUtf16Slice(
+          assetDisplayName(request.source.basename) + ' · ' +
+            snapshotTargetDisplayName(request.target.userLabel) + ' · 第 ' +
+            String((request.target.selectedFrameIndex ?? 0) + 1) + ' 帧',
+          200,
+        ),
         relativePath: `assets/${targetFileName}`,
         mimeType: 'image/png',
         sha256,
         kind: 'image',
         width: validatedPng.width,
         height: validatedPng.height,
+        flaSnapshot: {
+          sourceBasename: request.source.basename,
+          sourceSha256: request.source.sha256,
+          targetName: request.target.userLabel,
+          ...(request.target.sourceLibraryItemName
+            ? { sourceLibraryItemName: request.target.sourceLibraryItemName }
+            : {}),
+          renderTargetId: request.target.renderTargetId,
+          selectedFrameIndex: request.target.selectedFrameIndex ?? 0,
+          previewSha256: sha256,
+        },
       });
+    }
+
+    if (!isFirst) {
+      this.previewStore.releasePreview(request.confirmedPreviewRequestId);
+      return FlaStaticSnapshotCommitResponseSchema.parse({
+        ok: true,
+        status: 'completed',
+        project: current.project,
+        baseRevision: current.revision,
+        savedRevision: current.revision,
+        projectChanged: false,
+        result: {
+          assetId: asset.id,
+          sourceName: request.target.userLabel,
+          width: validatedPng.width,
+          height: validatedPng.height,
+          status: 'duplicate',
+          sha256,
+          asset,
+          duplicateOfAssetId,
+          targetFileName,
+          renamed: false,
+          message: 'Reused existing Asset ' + targetFileName + '.',
+        },
+      } satisfies FlaStaticSnapshotCommitResponse);
     }
 
     const operationId = this.createId();
     const temporaryFileName = `.fla-snapshot-commit.${operationId}.tmp`;
-    const nextProject = isFirst
-      ? ProjectSchema.parse({
-          ...current.project,
-          assets: [...current.project.assets, asset],
-          updatedAt: this.now().toISOString(),
-        })
-      : current.project;
+    const nextProject = ProjectSchema.parse({
+      ...current.project,
+      assets: [...current.project.assets, asset],
+      updatedAt: this.now().toISOString(),
+    });
 
     let projectSaved = false;
     try {
-      if (isFirst) {
-        await this.fileSystem.writeFlaCommitTemporary(transaction.projectRoot, bytes, temporaryFileName);
-        await this.fileSystem.finalizeFlaCommitTemporary(
-          transaction.projectRoot,
-          temporaryFileName,
-          targetFileName,
-        );
-      }
+      await this.fileSystem.writeFlaCommitTemporary(transaction.projectRoot, bytes, temporaryFileName);
+      await this.fileSystem.finalizeFlaCommitTemporary(
+        transaction.projectRoot,
+        temporaryFileName,
+        targetFileName,
+      );
       await this.faults.beforeProjectSave?.(nextProject);
       const savedDocument = await transaction.save(nextProject, current.revision + 1, () => {
         this.assertCurrentRevision(transaction.projectRoot, current.project, current.revision);
       });
       projectSaved = true;
-      if (isFirst) {
-        const savedAsset = savedDocument.project.assets.find((a) => a.id === asset.id);
-        if (
-          !savedAsset ||
-          savedAsset.kind !== 'image' ||
-          savedAsset.relativePath !== asset.relativePath ||
-          savedAsset.sha256 !== sha256 ||
-          !(await this.fileSystem.fileExists(path.resolve(transaction.projectRoot, savedAsset.relativePath)))
-        ) {
-          throw new Error('Saved Project does not reference the snapshot asset file.');
-        }
-        const fileHash = await this.hashService.hashFile(
-          path.resolve(transaction.projectRoot, savedAsset.relativePath),
-        );
-        if (fileHash.hex !== sha256) {
-          throw new Error('The finalized snapshot file failed post-save verification.');
-        }
+      const savedAsset = savedDocument.project.assets.find((a) => a.id === asset.id);
+      if (
+        !savedAsset ||
+        savedAsset.kind !== 'image' ||
+        savedAsset.relativePath !== asset.relativePath ||
+        savedAsset.sha256 !== sha256 ||
+        !(await this.fileSystem.fileExists(path.resolve(transaction.projectRoot, savedAsset.relativePath)))
+      ) {
+        throw new Error('Saved Project does not reference the snapshot asset file.');
+      }
+      const fileHash = await this.hashService.hashFile(
+        path.resolve(transaction.projectRoot, savedAsset.relativePath),
+      );
+      if (fileHash.hex !== sha256) {
+        throw new Error('The finalized snapshot file failed post-save verification.');
       }
       this.previewStore.releasePreview(request.confirmedPreviewRequestId);
       return FlaStaticSnapshotCommitResponseSchema.parse({
@@ -318,21 +389,19 @@ export class FlaStaticSnapshotCommitService {
         project: savedDocument.project,
         baseRevision: current.revision,
         savedRevision: current.revision + 1,
-        projectChanged: isFirst,
+        projectChanged: true,
         result: {
           assetId: asset.id,
           sourceName: request.target.userLabel,
           width: validatedPng.width,
           height: validatedPng.height,
-          status: isFirst ? 'imported' : 'duplicate',
+          status: 'imported',
           sha256,
           asset,
           duplicateOfAssetId,
           targetFileName,
           renamed,
-          message: isFirst
-            ? `Imported ${request.target.userLabel} as ${targetFileName}.`
-            : `Reused existing Asset ${targetFileName}.`,
+          message: `Imported ${request.target.userLabel} as ${targetFileName}.`,
         },
       } satisfies FlaStaticSnapshotCommitResponse);
     } catch (error) {

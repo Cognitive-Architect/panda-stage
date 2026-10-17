@@ -26,7 +26,7 @@ describe('Issue #399 Stage E frame-sequence workbench contract', () => {
       expect(sequence).toContain(`data-testid="${testId}"`);
     }
     expect(sequence).toContain('selectedPreviewIndex');
-    expect(sequence).toContain('setSelectedPreviewIndex(index)');
+    expect(sequence).toContain("dispatchPlayback({ type: 'select', selectedIndex: index })");
     expect(sequence).not.toContain('previewUrls.map((url, index) =>');
     expect(sequence).not.toContain('<fieldset className="fla-frame-sequence-range"');
   });
@@ -34,15 +34,18 @@ describe('Issue #399 Stage E frame-sequence workbench contract', () => {
   it('preserves local range validation and state-driven R2 boundaries', () => {
     expect(sequence).toContain('validateRange(startFrameIndex, endFrameIndex, targetFrameCount)');
     expect(sequence).toContain('buildRange(renderTargetId, startFrameIndex, endFrameIndex)');
-    expect(sequence).toContain('getDefaultSequenceRange(firstSupported.target.frameCount)');
+    expect(sequence).toContain('getDefaultSequenceRange(firstEntry.target.frameCount)');
     expect(sequence).toContain('getDefaultSequenceRange(entryTarget.frameCount)');
     expect(sequence).toContain('intentChangeReset');
     expect(sequence).toContain('rerenderReset');
     expect(sequence).toContain('isCurrentResponse(activeRequestIdRef.current, response)');
     expect(sequence).toContain('flaFrameSequenceClient.progressSubscribe');
     expect(sequence).toContain('confirmedSequenceRequestId: success.requestId');
-    expect(sequence).toContain('setStartFrameIndex(Math.trunc(value))');
-    expect(sequence).toContain('setEndFrameIndex(Math.trunc(value))');
+    expect(sequence).toContain('const updateStartFrameOneBased = (value: number): void =>');
+    expect(sequence).toContain('const nextStartFrameIndex = Math.trunc(value) - 1;');
+    expect(sequence).toContain('setEndFrameIndex(Math.min(lastFrameIndex, nextStartFrameIndex + MAX_SEQUENCE_FRAMES - 1));');
+    expect(sequence).toContain('min={1}');
+    expect(sequence).toContain('data-testid="fla-frame-sequence-end"');
   });
 
   it('bounds target and filmstrip scrolling while keeping the footer visible', () => {

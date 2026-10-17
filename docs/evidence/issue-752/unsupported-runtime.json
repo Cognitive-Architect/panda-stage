@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "issue752-runtime-negative-evidence/1",
+  "status": "RUNTIME_FAIL_CLOSED_OBSERVED; USER_VISIBLE_FLOW_UNVERIFIED",
+  "rawReceipts": {
+    "catalogRun": {
+      "acceptanceRun": "D:/PandaStage-Acceptance/issue752-character-vertical-20261010-run33-unsupported",
+      "file": "unsupported-runtime.json",
+      "sha256": "bb94cf30a9f3456ea329d779df5f4bbbf69ee1f32b9b518711c282a8a3e068ff"
+    },
+    "runtimeRun": {
+      "acceptanceRun": "D:/PandaStage-Acceptance/issue752-character-vertical-20261010-run34-render-negative",
+      "file": "unsupported-runtime.json",
+      "sha256": "0f53f49028076bc386d39c68c7a0784982fdd5d51db7a17c2b60d828dca07f1a"
+    }
+  },
+  "source": {
+    "file": "修仙男.fla",
+    "sha256Before": "565c5609a7610ef64ed9f98b09d98dd82d5a45255adb4d3d410a5a365e0ef4a5",
+    "sha256After": "565c5609a7610ef64ed9f98b09d98dd82d5a45255adb4d3d410a5a365e0ef4a5",
+    "unchanged": true
+  },
+  "catalog": {
+    "catalogRunStatus": "NO_UNSUPPORTED_CANDIDATE",
+    "count": 13,
+    "unsupportedCount": 0,
+    "runtimeTarget": {
+      "renderTargetId": "fla-render-target-a3e0f70bf6adb2bfa73772ae1f3163d502cc056e9be9be17fc5114624425c54f",
+      "kind": "scene",
+      "userLabel": "主场景 · 第 1 帧",
+      "previewSupported": true,
+      "preflightClassification": "SUPPORTED"
+    }
+  },
+  "runtime": {
+    "app": "Windows Electron production build",
+    "route": "FLA Static Snapshot Workbench underlying WebContents",
+    "errorText": "Shape fla-shape-ce9f3623690b031bcc05dea3 StrokeStyle 4 has unsupported linear stroke fill; P2-C03 supports normal and horizontal SolidStroke semantics only, and P2-C06 adds validated normal radial-gradient SolidStroke paint",
+    "previewImageReady": false,
+    "importButtonPresent": false,
+    "assetCount": 0,
+    "projectJsonHashUnchanged": true,
+    "importActionInvoked": false,
+    "commitApiInvoked": false
+  },
+  "screenshot": {
+    "file": "unsupported-runtime-renderer-surface.png",
+    "sha256": "c1622d33d30c0280084724f4692a492cdaca559a37ad879f795c6d5a3ce7cde8",
+    "captureMethod": "BrowserWindow.capturePage",
+    "nativeDialogIncluded": false
+  },
+  "acceptance": {
+    "runtimeFailClosedBehaviorObserved": true,
+    "catalogPreflightCorrectlyLabelsThisTargetUnsupported": false,
+    "userVisibleUnsupportedTargetPresentationVerified": false,
+    "humanVisualPassForIssue752": "PENDING_OWNER"
+  }
+}

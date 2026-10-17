@@ -3150,7 +3150,8 @@ export class FLAParser {
         }
       }
 
-      const result = intPart >= 0 ? intPart + fracPart : intPart - fracPart;
+      // The integer part carries the sign; the fractional magnitude is unsigned.
+      const result = intPart + fracPart;
       return result / COORD_SCALE;
     } else {
       // Decimal value in twips

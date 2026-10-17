@@ -1,0 +1,1624 @@
+{
+  "schemaVersion": "issue745-28-corpus-differential/2",
+  "issue": 745,
+  "baselineHead": "d3b668c1e10fb9aeca528e2a73c3e6d6aaac226c",
+  "baselinePhase": "baseline-before-change",
+  "afterHead": "d3b668c1e10fb9aeca528e2a73c3e6d6aaac226c",
+  "afterPhase": "after-slash-decoder-change",
+  "baselineFirstPassCleanupErrors": 3,
+  "baselineRetries": 3,
+  "aggregate": {
+    "files": 28,
+    "sourceHashesUnchanged": true,
+    "baselineRendered": 567,
+    "afterRendered": 624,
+    "baselineUnsupported": 868,
+    "afterUnsupported": 811,
+    "baselineRenderFailures": 0,
+    "afterRenderFailures": 0,
+    "addedCandidates": 0,
+    "removedCandidates": 0,
+    "statusTransitions": 57,
+    "changedArtifacts": 57,
+    "changedBlockers": 57
+  },
+  "rows": [
+    {
+      "index": 1,
+      "category": "EFFECT",
+      "filename": "飞奔.跑.fla",
+      "sourceSha256": "15d3d727f5f5a86bc877dbc42642d43d0b91e671f828451e8a311028f0d88abc",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 5,
+      "afterCandidateCount": 5,
+      "baselineRenderedCount": 4,
+      "afterRenderedCount": 4,
+      "baselineUnsupportedCount": 1,
+      "afterUnsupportedCount": 1,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 2,
+      "category": "EFFECT",
+      "filename": "尴尬.fla",
+      "sourceSha256": "030c9eb792fd43920cead22c7e7f3f2f5fe9922f121637e44d9e299b8c576e5b",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 43,
+      "afterCandidateCount": 43,
+      "baselineRenderedCount": 42,
+      "afterRenderedCount": 42,
+      "baselineUnsupportedCount": 1,
+      "afterUnsupportedCount": 1,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 3,
+      "category": "EFFECT",
+      "filename": "内心独白.fla",
+      "sourceSha256": "a931b0820a88d4c99363325c23864b792dbc4591738db4effeec3251fba1bcbe",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 5,
+      "afterCandidateCount": 5,
+      "baselineRenderedCount": 3,
+      "afterRenderedCount": 3,
+      "baselineUnsupportedCount": 2,
+      "afterUnsupportedCount": 2,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 4,
+      "category": "EFFECT",
+      "filename": "人物死亡消失.fla",
+      "sourceSha256": "6c3ad29c284c967d84699009e9d6933fd21e8523b617b1128420bd6943a828ec",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 49,
+      "afterCandidateCount": 49,
+      "baselineRenderedCount": 48,
+      "afterRenderedCount": 48,
+      "baselineUnsupportedCount": 1,
+      "afterUnsupportedCount": 1,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 5,
+      "category": "EFFECT",
+      "filename": "生气.fla",
+      "sourceSha256": "04fbbe68117844e9152f52e4a68310371ae40ad73564b856a0ce6cd8cb161000",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": true,
+      "baselineCandidateCount": 7,
+      "afterCandidateCount": 7,
+      "baselineRenderedCount": 6,
+      "afterRenderedCount": 6,
+      "baselineUnsupportedCount": 1,
+      "afterUnsupportedCount": 1,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 6,
+      "category": "EFFECT",
+      "filename": "手忙脚乱.fla",
+      "sourceSha256": "10d69bf1ce1222bdb59725bbf8306b2e030d65b03f7a111b91e68c7866c07d9b",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 13,
+      "afterCandidateCount": 13,
+      "baselineRenderedCount": 12,
+      "afterRenderedCount": 12,
+      "baselineUnsupportedCount": 1,
+      "afterUnsupportedCount": 1,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 7,
+      "category": "EFFECT",
+      "filename": "水花.fla",
+      "sourceSha256": "89f043644edd20626c33573cbf8001362195a8bd9e271b01aa83ddf9306fbc9a",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 22,
+      "afterCandidateCount": 22,
+      "baselineRenderedCount": 21,
+      "afterRenderedCount": 21,
+      "baselineUnsupportedCount": 1,
+      "afterUnsupportedCount": 1,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 8,
+      "category": "EFFECT",
+      "filename": "叹气.fla",
+      "sourceSha256": "e695f4d652bcb2eca0a4bde2a7ca720e1526eaa6edf1d134feca35e90a4fd2ce",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 11,
+      "afterCandidateCount": 11,
+      "baselineRenderedCount": 10,
+      "afterRenderedCount": 10,
+      "baselineUnsupportedCount": 1,
+      "afterUnsupportedCount": 1,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 9,
+      "category": "EFFECT",
+      "filename": "吐血.fla",
+      "sourceSha256": "56028cb3f6be853ea132f3e7b43eaa807e88bbdd53a2b1c4dea7e6cfe6c8dced",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 11,
+      "afterCandidateCount": 11,
+      "baselineRenderedCount": 10,
+      "afterRenderedCount": 10,
+      "baselineUnsupportedCount": 1,
+      "afterUnsupportedCount": 1,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 10,
+      "category": "EFFECT",
+      "filename": "直播间.fla",
+      "sourceSha256": "098394b02589cf71249270a63f78d4d4d0a17c21ba11f87af95fc1c401915960",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": true,
+      "baselineCandidateCount": 7,
+      "afterCandidateCount": 7,
+      "baselineRenderedCount": 6,
+      "afterRenderedCount": 6,
+      "baselineUnsupportedCount": 1,
+      "afterUnsupportedCount": 1,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 11,
+      "category": "PROP",
+      "filename": "草药 仙草 灵植 (1).fla",
+      "sourceSha256": "a15c340ee3c3b2c6458624aa198971772f2e12490841e87e5de2f257364bfc50",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 21,
+      "afterCandidateCount": 21,
+      "baselineRenderedCount": 21,
+      "afterRenderedCount": 21,
+      "baselineUnsupportedCount": 0,
+      "afterUnsupportedCount": 0,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 12,
+      "category": "PROP",
+      "filename": "草药 仙草 灵植.fla",
+      "sourceSha256": "610b362a056b19790db6f7b44ad093f32955760aeb7e060284b7b95d8f572535",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": true,
+      "baselineCandidateCount": 27,
+      "afterCandidateCount": 27,
+      "baselineRenderedCount": 27,
+      "afterRenderedCount": 27,
+      "baselineUnsupportedCount": 0,
+      "afterUnsupportedCount": 0,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 13,
+      "category": "PROP",
+      "filename": "储物袋.fla",
+      "sourceSha256": "5d94df2d256208a4338ff10e8355402e572d2f86ffb906a5a5cf4902c1d054d7",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 2,
+      "afterCandidateCount": 2,
+      "baselineRenderedCount": 2,
+      "afterRenderedCount": 2,
+      "baselineUnsupportedCount": 0,
+      "afterUnsupportedCount": 0,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 14,
+      "category": "PROP",
+      "filename": "飞舟、飞船.fla",
+      "sourceSha256": "54b5f16fca73e0af93911e6d71595d9c98bce7a60eba3ae60d4974cce5451dc2",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 2,
+      "afterCandidateCount": 2,
+      "baselineRenderedCount": 2,
+      "afterRenderedCount": 2,
+      "baselineUnsupportedCount": 0,
+      "afterUnsupportedCount": 0,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 15,
+      "category": "PROP",
+      "filename": "莲台.fla",
+      "sourceSha256": "7fcb4d6e8fc300f514a62b0af9b8dc8de5402c48c5503edc197d5a530b7ee714",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 2,
+      "afterCandidateCount": 2,
+      "baselineRenderedCount": 2,
+      "afterRenderedCount": 2,
+      "baselineUnsupportedCount": 0,
+      "afterUnsupportedCount": 0,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 16,
+      "category": "PROP",
+      "filename": "炼丹炉.fla",
+      "sourceSha256": "498537baa9cf900f613987eb9dab99727ee09ddaad4fb06e2d2c4351cb283a68",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 2,
+      "afterCandidateCount": 2,
+      "baselineRenderedCount": 2,
+      "afterRenderedCount": 2,
+      "baselineUnsupportedCount": 0,
+      "afterUnsupportedCount": 0,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 17,
+      "category": "PROP",
+      "filename": "石碑.fla",
+      "sourceSha256": "12f05ac8faa0141fe0d0c19de41161b9766d4a4dcf2022bbacce9a8054f198c9",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 2,
+      "afterCandidateCount": 2,
+      "baselineRenderedCount": 2,
+      "afterRenderedCount": 2,
+      "baselineUnsupportedCount": 0,
+      "afterUnsupportedCount": 0,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 18,
+      "category": "CHARACTER",
+      "filename": "汉服修仙女.fla",
+      "sourceSha256": "6af14990029d4ced2c4e305721321835180c1bf041178a8799e1d14a1f62e535",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 35,
+      "afterCandidateCount": 35,
+      "baselineRenderedCount": 20,
+      "afterRenderedCount": 23,
+      "baselineUnsupportedCount": 15,
+      "afterUnsupportedCount": 12,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [
+        {
+          "candidateId": "B4-0712F50CEE774E6BD2A71495",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-C0D5B56C30C536C04818970A",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-E56442D3CDC3A329EA168D07",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        }
+      ],
+      "changedArtifacts": [
+        {
+          "candidateId": "B4-0712F50CEE774E6BD2A71495",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-C0D5B56C30C536C04818970A",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-E56442D3CDC3A329EA168D07",
+          "svgChanged": true,
+          "pngChanged": true
+        }
+      ],
+      "changedBlockers": [
+        {
+          "candidateId": "B4-0712F50CEE774E6BD2A71495",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-C0D5B56C30C536C04818970A",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-E56442D3CDC3A329EA168D07",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        }
+      ]
+    },
+    {
+      "index": 19,
+      "category": "CHARACTER",
+      "filename": "黑袍大师兄（四视角）.fla",
+      "sourceSha256": "3ae497bf13e1af8fdfb755cf70cf16d3e94176ea463d5621ae011c83dec53456",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 42,
+      "afterCandidateCount": 42,
+      "baselineRenderedCount": 30,
+      "afterRenderedCount": 30,
+      "baselineUnsupportedCount": 12,
+      "afterUnsupportedCount": 12,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 20,
+      "category": "CHARACTER",
+      "filename": "红伞蝶衣（四视角）.fla",
+      "sourceSha256": "76c8b1ceb22e427a43d2b6b39502316208dd34fec3b1786b3063640386852781",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 28,
+      "afterCandidateCount": 28,
+      "baselineRenderedCount": 21,
+      "afterRenderedCount": 21,
+      "baselineUnsupportedCount": 7,
+      "afterUnsupportedCount": 7,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 21,
+      "category": "CHARACTER",
+      "filename": "蓝白古装男.fla",
+      "sourceSha256": "0d4aecbc159990ce54b9d0d8c31ea0f3354cd7ed86df77bac19a562dfc761fa2",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 40,
+      "afterCandidateCount": 40,
+      "baselineRenderedCount": 28,
+      "afterRenderedCount": 28,
+      "baselineUnsupportedCount": 12,
+      "afterUnsupportedCount": 12,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 22,
+      "category": "CHARACTER",
+      "filename": "蓝发修仙女.fla",
+      "sourceSha256": "86eb123fdd42f1dac80754c9260b793404072be70523b41d012598138c35c6d2",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 709,
+      "afterCandidateCount": 709,
+      "baselineRenderedCount": 63,
+      "afterRenderedCount": 63,
+      "baselineUnsupportedCount": 646,
+      "afterUnsupportedCount": 646,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 23,
+      "category": "CHARACTER",
+      "filename": "魔修.fla",
+      "sourceSha256": "c16792991c9704b6b29b8798c8e1030bf868963b51c6f0e9018113a4b641aa79",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 128,
+      "afterCandidateCount": 128,
+      "baselineRenderedCount": 79,
+      "afterRenderedCount": 88,
+      "baselineUnsupportedCount": 49,
+      "afterUnsupportedCount": 40,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [
+        {
+          "candidateId": "B4-58976CE4D015C37551E2A237",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-5C9C11D5FC41ED2D0DD8CD41",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-93AB1A7D0A5BA74951F1A80A",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-94EA13B6CE999B724559FFFC",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-A06ED3CCAA7766DF6B0FA8D7",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-BE6C5945F8A0318E7398683D",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-CCD16E96A3A061908F0FFAC8",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-DCA24D5117454DAA61C19477",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-F7EDF2162C0CC9EC1893B06A",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        }
+      ],
+      "changedArtifacts": [
+        {
+          "candidateId": "B4-58976CE4D015C37551E2A237",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-5C9C11D5FC41ED2D0DD8CD41",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-93AB1A7D0A5BA74951F1A80A",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-94EA13B6CE999B724559FFFC",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-A06ED3CCAA7766DF6B0FA8D7",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-BE6C5945F8A0318E7398683D",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-CCD16E96A3A061908F0FFAC8",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-DCA24D5117454DAA61C19477",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-F7EDF2162C0CC9EC1893B06A",
+          "svgChanged": true,
+          "pngChanged": true
+        }
+      ],
+      "changedBlockers": [
+        {
+          "candidateId": "B4-58976CE4D015C37551E2A237",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-5C9C11D5FC41ED2D0DD8CD41",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-93AB1A7D0A5BA74951F1A80A",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-94EA13B6CE999B724559FFFC",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-A06ED3CCAA7766DF6B0FA8D7",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-BE6C5945F8A0318E7398683D",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-CCD16E96A3A061908F0FFAC8",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-DCA24D5117454DAA61C19477",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-F7EDF2162C0CC9EC1893B06A",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        }
+      ]
+    },
+    {
+      "index": 24,
+      "category": "CHARACTER",
+      "filename": "浅蓝修仙女.fla",
+      "sourceSha256": "050e222cd536b28ed07466c77a87f0dbabf66eaa993be25d803ef12bee3a55b1",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 32,
+      "afterCandidateCount": 32,
+      "baselineRenderedCount": 20,
+      "afterRenderedCount": 20,
+      "baselineUnsupportedCount": 12,
+      "afterUnsupportedCount": 12,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 25,
+      "category": "CHARACTER",
+      "filename": "青绫修仙女（四视角）.fla",
+      "sourceSha256": "d0958d4432decbf6c54566ba15a2f5e97bd88c82d75dcb2f84603e9b2273f0e4",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 68,
+      "afterCandidateCount": 68,
+      "baselineRenderedCount": 14,
+      "afterRenderedCount": 46,
+      "baselineUnsupportedCount": 54,
+      "afterUnsupportedCount": 22,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [
+        {
+          "candidateId": "B4-039B3702DF4A0E845D0300E9",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_EXACT_DUPLICATE"
+        },
+        {
+          "candidateId": "B4-06FCF2B4939B98EA91A98CA8",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-07AD5F833A6341039C833271",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-0D3735045965542C5E0EC45D",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_EXACT_DUPLICATE"
+        },
+        {
+          "candidateId": "B4-1A616201AB14740C75E6CDD0",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-1BE45022D5A711623DE1C6E9",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_EXACT_DUPLICATE"
+        },
+        {
+          "candidateId": "B4-1D322DC8C438D96F2C20F47A",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_EXACT_DUPLICATE"
+        },
+        {
+          "candidateId": "B4-25BC00D4F0CEB6A810E5302E",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-2897EF3646E50D32481FAC1B",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-36A35AD32B8E60F428AF6DA9",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-3C738640F65BA309DCF93760",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-3C8840D12DFD58F2D06BA9B2",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-3ECDFA8B279712A25A853CDF",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-40CACF84D9EEAC3895CADD04",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-47DA6E329467F13DE43EF3FB",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-597B10B4F50E536C05FA05E9",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-5FAD5D7F5C29BAE48FA14353",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-674B96702D9AAD1B0928DC73",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-6CC86D08E90BE13BB2CEB493",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_EXACT_DUPLICATE"
+        },
+        {
+          "candidateId": "B4-7927480CE7036879BD5D0A39",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-7A1D872D27B577C681B19D19",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-8EDFFFF59857C37A532299BE",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-A9A9742CDF9360B68BDCF433",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-AFB6EEC2C4FB6A93B287DC9A",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-C2B8F5FD1BDC09DB1465ADB3",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-C5D966F3811D008A465B789C",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-C9AE9F38391C2CA62859DD00",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-E5C354529A7E4ADA2B9496FF",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-F00E3C95C713C028689CD55A",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-F82A90C7489C19786BD141B0",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_EXACT_DUPLICATE"
+        },
+        {
+          "candidateId": "B4-F98AFE5021B248D1725115E0",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-FB0EA291FFD25340F7246009",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        }
+      ],
+      "changedArtifacts": [
+        {
+          "candidateId": "B4-039B3702DF4A0E845D0300E9",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-06FCF2B4939B98EA91A98CA8",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-07AD5F833A6341039C833271",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-0D3735045965542C5E0EC45D",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-1A616201AB14740C75E6CDD0",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-1BE45022D5A711623DE1C6E9",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-1D322DC8C438D96F2C20F47A",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-25BC00D4F0CEB6A810E5302E",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-2897EF3646E50D32481FAC1B",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-36A35AD32B8E60F428AF6DA9",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-3C738640F65BA309DCF93760",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-3C8840D12DFD58F2D06BA9B2",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-3ECDFA8B279712A25A853CDF",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-40CACF84D9EEAC3895CADD04",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-47DA6E329467F13DE43EF3FB",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-597B10B4F50E536C05FA05E9",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-5FAD5D7F5C29BAE48FA14353",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-674B96702D9AAD1B0928DC73",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-6CC86D08E90BE13BB2CEB493",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-7927480CE7036879BD5D0A39",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-7A1D872D27B577C681B19D19",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-8EDFFFF59857C37A532299BE",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-A9A9742CDF9360B68BDCF433",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-AFB6EEC2C4FB6A93B287DC9A",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-C2B8F5FD1BDC09DB1465ADB3",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-C5D966F3811D008A465B789C",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-C9AE9F38391C2CA62859DD00",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-E5C354529A7E4ADA2B9496FF",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-F00E3C95C713C028689CD55A",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-F82A90C7489C19786BD141B0",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-F98AFE5021B248D1725115E0",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-FB0EA291FFD25340F7246009",
+          "svgChanged": true,
+          "pngChanged": true
+        }
+      ],
+      "changedBlockers": [
+        {
+          "candidateId": "B4-039B3702DF4A0E845D0300E9",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-06FCF2B4939B98EA91A98CA8",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-07AD5F833A6341039C833271",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-0D3735045965542C5E0EC45D",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-1A616201AB14740C75E6CDD0",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-1BE45022D5A711623DE1C6E9",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-1D322DC8C438D96F2C20F47A",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-25BC00D4F0CEB6A810E5302E",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-2897EF3646E50D32481FAC1B",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-36A35AD32B8E60F428AF6DA9",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-3C738640F65BA309DCF93760",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-3C8840D12DFD58F2D06BA9B2",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-3ECDFA8B279712A25A853CDF",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-40CACF84D9EEAC3895CADD04",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-47DA6E329467F13DE43EF3FB",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-597B10B4F50E536C05FA05E9",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-5FAD5D7F5C29BAE48FA14353",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-674B96702D9AAD1B0928DC73",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-6CC86D08E90BE13BB2CEB493",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-7927480CE7036879BD5D0A39",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-7A1D872D27B577C681B19D19",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-8EDFFFF59857C37A532299BE",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-A9A9742CDF9360B68BDCF433",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-AFB6EEC2C4FB6A93B287DC9A",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-C2B8F5FD1BDC09DB1465ADB3",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-C5D966F3811D008A465B789C",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-C9AE9F38391C2CA62859DD00",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-E5C354529A7E4ADA2B9496FF",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-F00E3C95C713C028689CD55A",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-F82A90C7489C19786BD141B0",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-F98AFE5021B248D1725115E0",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-FB0EA291FFD25340F7246009",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        }
+      ]
+    },
+    {
+      "index": 26,
+      "category": "CHARACTER",
+      "filename": "修仙大长老（三视角）.fla",
+      "sourceSha256": "78e4c1106114eb8f153ddefe64418a0023b018a414f6a9ad603e15b0cae49472",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 33,
+      "afterCandidateCount": 33,
+      "baselineRenderedCount": 26,
+      "afterRenderedCount": 26,
+      "baselineUnsupportedCount": 7,
+      "afterUnsupportedCount": 7,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    },
+    {
+      "index": 27,
+      "category": "CHARACTER",
+      "filename": "修仙男.fla",
+      "sourceSha256": "565c5609a7610ef64ed9f98b09d98dd82d5a45255adb4d3d410a5a365e0ef4a5",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 46,
+      "afterCandidateCount": 46,
+      "baselineRenderedCount": 15,
+      "afterRenderedCount": 28,
+      "baselineUnsupportedCount": 31,
+      "afterUnsupportedCount": 18,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [
+        {
+          "candidateId": "B4-164EB23C5C4A9713B4DAF830",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-1DCD85F3337ADB2006A9607B",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-268D1D775E058BACB966912F",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-3410A8077AF7755EC604114E",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-418BBF238EC1E86172D80528",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-491EB82CF89FE6420C99BB82",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-5352E53AEA2CEA2A9996B273",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-82E9B2A28C3D22AF6F382943",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-8656F44B374DC1BA1647D41D",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-962FAEF52EE75CD65A2D8AEF",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-B58A63CBD59F9F145E15FFB1",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_UNIQUE"
+        },
+        {
+          "candidateId": "B4-B998E62A642882DCA9C8F999",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_EXACT_DUPLICATE"
+        },
+        {
+          "candidateId": "B4-BD639C47861B37263A73A2AD",
+          "from": "UNSUPPORTED",
+          "to": "RENDERED_EXACT_DUPLICATE"
+        }
+      ],
+      "changedArtifacts": [
+        {
+          "candidateId": "B4-164EB23C5C4A9713B4DAF830",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-1DCD85F3337ADB2006A9607B",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-268D1D775E058BACB966912F",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-3410A8077AF7755EC604114E",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-418BBF238EC1E86172D80528",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-491EB82CF89FE6420C99BB82",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-5352E53AEA2CEA2A9996B273",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-82E9B2A28C3D22AF6F382943",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-8656F44B374DC1BA1647D41D",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-962FAEF52EE75CD65A2D8AEF",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-B58A63CBD59F9F145E15FFB1",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-B998E62A642882DCA9C8F999",
+          "svgChanged": true,
+          "pngChanged": true
+        },
+        {
+          "candidateId": "B4-BD639C47861B37263A73A2AD",
+          "svgChanged": true,
+          "pngChanged": true
+        }
+      ],
+      "changedBlockers": [
+        {
+          "candidateId": "B4-164EB23C5C4A9713B4DAF830",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-1DCD85F3337ADB2006A9607B",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-268D1D775E058BACB966912F",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-3410A8077AF7755EC604114E",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-418BBF238EC1E86172D80528",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-491EB82CF89FE6420C99BB82",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-5352E53AEA2CEA2A9996B273",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-82E9B2A28C3D22AF6F382943",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-8656F44B374DC1BA1647D41D",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-962FAEF52EE75CD65A2D8AEF",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-B58A63CBD59F9F145E15FFB1",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-B998E62A642882DCA9C8F999",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        },
+        {
+          "candidateId": "B4-BD639C47861B37263A73A2AD",
+          "from": [
+            "UNKNOWN_SEMANTIC"
+          ],
+          "to": []
+        }
+      ]
+    },
+    {
+      "index": 28,
+      "category": "CHARACTER",
+      "filename": "修仙宗门圣女（四视角）.fla",
+      "sourceSha256": "c2c1a41dfb58eb7b4998cb7e4f35d56a34e39a11777442121ca5c7340605e18d",
+      "sourceUnchanged": true,
+      "baselineCleanupRetryUsed": false,
+      "baselineCandidateCount": 43,
+      "afterCandidateCount": 43,
+      "baselineRenderedCount": 31,
+      "afterRenderedCount": 31,
+      "baselineUnsupportedCount": 12,
+      "afterUnsupportedCount": 12,
+      "baselineRenderFailures": 0,
+      "afterRenderFailures": 0,
+      "baselineCandidatesComparable": true,
+      "addedCandidateIds": [],
+      "removedCandidateIds": [],
+      "statusTransitions": [],
+      "changedArtifacts": [],
+      "changedBlockers": []
+    }
+  ]
+}

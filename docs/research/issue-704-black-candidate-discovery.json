@@ -1,0 +1,141 @@
+{
+  "schemaVersion": "issue704-black-candidate-discovery-receipt/1",
+  "date": "2026-10-04",
+  "issue": 704,
+  "motherPullRequest": 677,
+  "deliverables": {
+    "prototype": {
+      "path": "scripts/research/issue704-black-candidate-discovery.cjs",
+      "sha256": "15ad31b6d6af97c3ae3a90d179fed7b7e82c6b5f6509d2b4f827f454c3c7cdbc",
+      "productionAdapter": "adaptFlaXflDisplaySource from dist-electron/main/services/fla-static-snapshot-display-list-adapter.js"
+    },
+    "candidateManifest": {
+      "path": "docs/research/issue-704-black-candidate-manifest.json",
+      "sha256": "fd76203dcd24dfb145bc968e9faf6b679e3478bdcbdce3ff50dbf9222980895d",
+      "independentRuns": [
+        {
+          "run": 1,
+          "sha256": "fd76203dcd24dfb145bc968e9faf6b679e3478bdcbdce3ff50dbf9222980895d"
+        },
+        {
+          "run": 2,
+          "sha256": "fd76203dcd24dfb145bc968e9faf6b679e3478bdcbdce3ff50dbf9222980895d"
+        }
+      ],
+      "byteIdentical": true,
+      "candidateCoreSha256": "c545ce0708585bfcac0d3bc6cf4aa0c34c093c93738d3b455b3f9620f3868288"
+    },
+    "report": "docs/research/issue-704-black-candidate-discovery.md"
+  },
+  "source": {
+    "path": "D:\\表情合集\\黑衣修仙男.fla",
+    "sha256BeforeAndAfter": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+    "normalizedArchiveSha256": "681237abb7b32e79ce89ff8e283b0573b4bf170c6b85830828c7a10911bc7a33",
+    "referencePath": "D:\\表情合集\\参考截图\\黑衣修仙男（截图）.jpg",
+    "referenceSha256BeforeAndAfter": "7c53292222edcd183bb0d40ee647435ef860f9894cd4203150317364ca679eac"
+  },
+  "evidenceInputs": {
+    "issue702Census": {
+      "path": "docs/research/issue-702-black-multi-pose-census.json",
+      "sha256": "5454d9742f22a346e56ed9e09801656afd37b102e3aee1f109822e50795ad5f9"
+    },
+    "issue703SyncReceipt": {
+      "path": "docs/research/issue-703-nested-graphic-frame-sync.json",
+      "sha256": "5a5b292405723c390ed4d102b999b0146f75f3e47219971c055269917fd3bc53"
+    },
+    "issue703RunReceiptSha256": "98610ac256301eca544c932f5b253a2cf15d03b4d6129fc9b75d8d8b4c82e31c"
+  },
+  "enumeration": {
+    "sceneTimelines": 1,
+    "sceneAuthoredStates": 1,
+    "graphicTimelines": 9,
+    "graphicAuthoredStateStarts": 29,
+    "directSourceStateCandidates": 30,
+    "derivedParentCompositeCandidates": 2,
+    "totalCandidates": 32,
+    "uniqueCandidateIds": 32,
+    "heldStatesExpanded": false,
+    "sourceStateClassMembershipCounts": {
+      "COMPONENT_ASSET": 25,
+      "DUPLICATE_OR_HELD_STATE": 2,
+      "FULL_CHARACTER_STATE": 7,
+      "TEMPORAL_ACTION_CANDIDATE": 12
+    },
+    "renderAddressClassCounts": {
+      "UNSUPPORTED_OR_UNKNOWN": 8,
+      "PARENT_COMPOSITE": 4,
+      "TEMPORAL_ONLY": 4,
+      "DIRECT_COMPONENT_STATE": 13,
+      "DIRECT_FULL_CHARACTER_STATE": 3
+    }
+  },
+  "controls": {
+    "A": "B2-131741E7A086D1EE3ED3C91B",
+    "parentGraphicSourceStateAtFrame0": "B2-8A7035B80257FB67A05D218A",
+    "BParentFrame6": "B2-C23E23F9335AFF7F2626F2AC",
+    "CParentFrame7": "B2-CF4C869D9E2F745AC070137A",
+    "DDirectBodyFrame8": "B2-6B59262065D28C279718C576",
+    "EDirectBodyFrame9": "B2-C4146E01383AF6B709E38BDB",
+    "unmatchedDirectBodyFrame10": "B2-B69A8D02EF0570958C68A6FA",
+    "headComponent": "B2-B651BA3047C03B16971269D0",
+    "bodyComponent": "B2-7511FB6C975B2A4CE13439E9",
+    "incorrectParentRoutesRejected": [
+      8,
+      9,
+      10
+    ]
+  },
+  "parentRouteProbes": {
+    "supported": [
+      0,
+      6,
+      7
+    ],
+    "failClosed": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      11
+    ],
+    "rejectedMixedCompositions": [
+      8,
+      9,
+      10
+    ],
+    "frame5HasTwoSingleFrameDescendantsWithExplicitFirstFrame": true,
+    "frame11NestedInstanceContainingSpanStartsAt": 11
+  },
+  "renderEvidence": {
+    "acceptanceDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004",
+    "candidateArtifactPairs": 32,
+    "rejectedRouteArtifactPairs": 3,
+    "uniqueSvgAndPngFiles": 70,
+    "allRecordedArtifactHashesVerified": true,
+    "rendersAreCheckedIntoRepository": false
+  },
+  "validation": {
+    "twoIndependentProcessManifestsByteIdentical": true,
+    "candidateIdsAndClassificationsIdenticalAcrossTwoInProcessPasses": true,
+    "all32CandidateIdsUnique": true,
+    "all70ArtifactHashesMatch": true,
+    "sourceAndReferenceUnchanged": true,
+    "productionCodeChanged": false,
+    "productUiOrSchemaChanged": false,
+    "tweenOrMovieClipBehaviorImplemented": false
+  },
+  "handoff": {
+    "b3MayAssume": [
+      "Candidate IDs derive from source hash and concrete source/render addresses, not semantic labels.",
+      "A/B/C are parent-composite addresses within the #703 tested default-loop, omitted-bounds, start-zero, no-wrap slice.",
+      "D/E and the unmatched frame 10 state are direct complete-character states and bypass the outer parent.",
+      "Each authored state is emitted once with its held range represented as metadata."
+    ],
+    "b3MustKeepUnsupported": [
+      "Single Frame or explicit firstFrame/lastFrame descendants",
+      "Nonzero instance-span origins and wrap boundaries",
+      "Tween interpolation, MovieClip playback, and ActionScript behavior"
+    ]
+  }
+}

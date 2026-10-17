@@ -22,6 +22,11 @@ import { pathToFileURL } from 'node:url';
 import { IPC_CHANNELS } from '../../shared/ipc/channels';
 import { FLA_STATIC_SNAPSHOT_LIMITS } from '../../shared/fla-static-snapshot-api';
 import {
+  finishIssue762Profile,
+  recordIssue762ProfileDuration,
+  startIssue762Profile,
+} from '../../shared/issue762-performance-profile';
+import {
   type FlaStaticSnapshotRasterizeInput,
   type FlaStaticSnapshotRasterizeOutput,
   type FlaStaticSnapshotRasterizer,
@@ -49,6 +54,7 @@ interface PendingRasterize {
   resolve: (output: FlaStaticSnapshotRasterizeOutput) => void;
   reject: (error: Error) => void;
   wallTimer: NodeJS.Timeout;
+  sentAt: number | null;
 }
 
 export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasterizer {
@@ -84,13 +90,33 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
       throw new Error('Snapshot rasterizer closed');
     }
     const requestId = input.requestId;
-    const window = await this.ensureWindow(requestId);
+    const wasWarm = Boolean(this.getWindow() && this.ready);
+    const windowReadyStartedAt = startIssue762Profile();
+    let window: BrowserWindow;
+    try {
+      window = await this.ensureWindow(requestId);
+    } catch (error) {
+      finishIssue762Profile('fla.preview.sandbox-window-ready', windowReadyStartedAt, {
+        requestId,
+        coldStart: !wasWarm,
+        outcome: 'error',
+      });
+      throw error;
+    }
+    finishIssue762Profile('fla.preview.sandbox-window-ready', windowReadyStartedAt, {
+      requestId,
+      coldStart: !wasWarm,
+      outcome: 'ready',
+    });
     const payload = { requestId, svg: input.svg };
+    const sentAt = startIssue762Profile();
     const promise = new Promise<FlaStaticSnapshotRasterizeOutput>((resolve, reject) => {
       this.pending.set(requestId, {
         resolve,
         reject,
+        sentAt,
         wallTimer: setTimeout(() => {
+          finishIssue762Profile('fla.preview.sandbox-render-timeout', sentAt, { requestId });
           this.pending.delete(requestId);
           reject(new Error('Snapshot rasterization timed out'));
         }, this.timing.rasterizeWallTimeMs),
@@ -123,7 +149,21 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
     const window = this.window;
     if (!window || window.webContents.id !== senderId) return;
     if (typeof rawPayload !== 'object' || rawPayload === null) return;
-    const payload = rawPayload as { requestId?: string; png?: number[]; width?: number; height?: number; pixelCount?: number };
+    const payload = rawPayload as {
+      requestId?: string;
+      png?: number[];
+      width?: number;
+      height?: number;
+      pixelCount?: number;
+      profile?: {
+        imageLoadMs?: number;
+        canvasDrawMs?: number;
+        pngEncodeMs?: number;
+        pngArrayBufferMs?: number;
+        pngArraySerializeMs?: number;
+        totalMs?: number;
+      };
+    };
     const requestId = payload.requestId;
     if (!requestId) return;
     const pending = this.pending.get(requestId);
@@ -140,8 +180,47 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
       pending.reject(new Error('Snapshot rasterizer returned an invalid result'));
       return;
     }
+    const sandboxProfile = payload.profile &&
+      Object.values(payload.profile).every((value) => typeof value === 'number' && Number.isFinite(value))
+      ? payload.profile
+      : undefined;
+    const deliveredAt = performance.now();
+    finishIssue762Profile('fla.preview.png-ipc-return', pending.sentAt, {
+      requestId,
+      pngByteLength: payload.png.length,
+      sandboxRasterizeMs: sandboxProfile?.totalMs ?? null,
+      estimatedIpcAndSerializationMs: pending.sentAt === null
+        ? null
+        : Math.max(0, deliveredAt - pending.sentAt - (sandboxProfile?.totalMs ?? 0)),
+    });
+    const pngCopyStartedAt = startIssue762Profile();
+    const pngBytes = Uint8Array.from(payload.png);
+    finishIssue762Profile('fla.preview.png-main-buffer-copy', pngCopyStartedAt, {
+      requestId,
+      pngByteLength: pngBytes.byteLength,
+    });
+    if (sandboxProfile) {
+      recordIssue762ProfileDuration('fla.preview.sandbox-svg-image-load', sandboxProfile.imageLoadMs ?? 0, {
+        requestId,
+      });
+      recordIssue762ProfileDuration('fla.preview.sandbox-canvas-draw', sandboxProfile.canvasDrawMs ?? 0, {
+        requestId,
+      });
+      recordIssue762ProfileDuration('fla.preview.sandbox-png-encode', sandboxProfile.pngEncodeMs ?? 0, {
+        requestId,
+      });
+      recordIssue762ProfileDuration('fla.preview.sandbox-png-array-buffer', sandboxProfile.pngArrayBufferMs ?? 0, {
+        requestId,
+      });
+      recordIssue762ProfileDuration('fla.preview.sandbox-png-array-serialize', sandboxProfile.pngArraySerializeMs ?? 0, {
+        requestId,
+      });
+      recordIssue762ProfileDuration('fla.preview.sandbox-rasterize-total', sandboxProfile.totalMs ?? 0, {
+        requestId,
+      });
+    }
     pending.resolve({
-      pngBytes: Uint8Array.from(payload.png),
+      pngBytes,
       width: payload.width,
       height: payload.height,
       pixelCount: payload.pixelCount ?? payload.width * payload.height,
@@ -162,6 +241,10 @@ export class FlaStaticSnapshotWindowManager implements FlaStaticSnapshotRasteriz
     if (this.activeRequestId === requestId) this.activeRequestId = null;
     if (this.owner && this.owner.requestId === requestId) this.owner = null;
     clearTimeout(pending.wallTimer);
+    finishIssue762Profile('fla.preview.sandbox-renderer-error', pending.sentAt, {
+      requestId,
+      outcome: 'error',
+    });
     pending.reject(new Error(payload.message ?? 'Snapshot rasterization failed'));
   }
 

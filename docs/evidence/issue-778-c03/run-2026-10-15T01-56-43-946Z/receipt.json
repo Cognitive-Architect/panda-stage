@@ -1,0 +1,453 @@
+{
+    "schemaVersion":  1,
+    "status":  "PASS",
+    "issue":  778,
+    "motherPr":  677,
+    "runId":  "2026-10-15T01-56-43-946Z",
+    "testedBaseHead":  "8bbb4b55fea9e11263cbb9c0abeac8154f0d9ecf",
+    "branch":  "issue-676-p0-c01-display-list-resolver",
+    "environment":  {
+                        "platform":  "Windows Electron",
+                        "displayScaleFactor":  1.5,
+                        "devicePixelRatio":  1.5,
+                        "baselineViewport":  {
+                                                 "width":  1186,
+                                                 "height":  724,
+                                                 "devicePixelRatio":  1.5
+                                             },
+                        "narrowWorkbench":  {
+                                                "width":  846,
+                                                "height":  653,
+                                                "columns":  1,
+                                                "footerVisible":  true
+                                            },
+                        "partialReceiptReachability":  {
+                                                           "viewport846x653":  {
+                                                                                   "top":  {
+                                                                                               "viewport":  {
+                                                                                                                "width":  846,
+                                                                                                                "height":  653,
+                                                                                                                "devicePixelRatio":  1.5
+                                                                                                            },
+                                                                                               "footerVisible":  true,
+                                                                                               "actionVisible":  true,
+                                                                                               "summaryVisible":  true,
+                                                                                               "firstItemVisible":  true,
+                                                                                               "lastItemVisible":  false,
+                                                                                               "footer":  {
+                                                                                                              "scrollTop":  0,
+                                                                                                              "scrollHeight":  309,
+                                                                                                              "clientHeight":  235
+                                                                                                          }
+                                                                                           },
+                                                                                   "touch":  {
+                                                                                                 "dispatchedBy":  "Electron CDP Input.dispatchTouchEvent",
+                                                                                                 "touchStartCount":  1,
+                                                                                                 "touchMoveCount":  1,
+                                                                                                 "scrollTopBefore":  0,
+                                                                                                 "scrollTopAfter":  74,
+                                                                                                 "scrollHeight":  309,
+                                                                                                 "clientHeight":  235
+                                                                                             },
+                                                                                   "bottom":  {
+                                                                                                  "viewport":  {
+                                                                                                                   "width":  846,
+                                                                                                                   "height":  653,
+                                                                                                                   "devicePixelRatio":  1.5
+                                                                                                               },
+                                                                                                  "footerVisible":  true,
+                                                                                                  "actionVisible":  true,
+                                                                                                  "summaryVisible":  true,
+                                                                                                  "firstItemVisible":  true,
+                                                                                                  "lastItemVisible":  true,
+                                                                                                  "footer":  {
+                                                                                                                 "scrollTop":  74,
+                                                                                                                 "scrollHeight":  309,
+                                                                                                                 "clientHeight":  235
+                                                                                                             }
+                                                                                              },
+                                                                                   "keyboard":  {
+                                                                                                    "start":  {
+                                                                                                                  "tagName":  "BUTTON",
+                                                                                                                  "ariaLabel":  "放大预览",
+                                                                                                                  "testId":  null
+                                                                                                              },
+                                                                                                    "actionDisabled":  true,
+                                                                                                    "firstTab":  {
+                                                                                                                     "importFocused":  false,
+                                                                                                                     "importVisible":  true,
+                                                                                                                     "receiptSummaryFocused":  true
+                                                                                                                 },
+                                                                                                    "importFocus":  null,
+                                                                                                    "receiptFocus":  {
+                                                                                                                         "focused":  true,
+                                                                                                                         "summaryVisible":  true,
+                                                                                                                         "actionVisible":  true
+                                                                                                                     }
+                                                                                                }
+                                                                               },
+                                                           "narrowNative":  {
+                                                                                "top":  {
+                                                                                            "viewport":  {
+                                                                                                             "width":  786,
+                                                                                                             "height":  524,
+                                                                                                             "devicePixelRatio":  1.5
+                                                                                                         },
+                                                                                            "footerVisible":  true,
+                                                                                            "actionVisible":  true,
+                                                                                            "summaryVisible":  true,
+                                                                                            "firstItemVisible":  false,
+                                                                                            "lastItemVisible":  false,
+                                                                                            "footer":  {
+                                                                                                           "scrollTop":  0,
+                                                                                                           "scrollHeight":  309,
+                                                                                                           "clientHeight":  188
+                                                                                                       }
+                                                                                        },
+                                                                                "touch":  {
+                                                                                              "dispatchedBy":  "Electron CDP Input.dispatchTouchEvent",
+                                                                                              "touchStartCount":  1,
+                                                                                              "touchMoveCount":  1,
+                                                                                              "scrollTopBefore":  0,
+                                                                                              "scrollTopAfter":  95.33333587646484,
+                                                                                              "scrollHeight":  309,
+                                                                                              "clientHeight":  188
+                                                                                          },
+                                                                                "bottom":  {
+                                                                                               "viewport":  {
+                                                                                                                "width":  786,
+                                                                                                                "height":  524,
+                                                                                                                "devicePixelRatio":  1.5
+                                                                                                            },
+                                                                                               "footerVisible":  true,
+                                                                                               "actionVisible":  true,
+                                                                                               "summaryVisible":  false,
+                                                                                               "firstItemVisible":  true,
+                                                                                               "lastItemVisible":  true,
+                                                                                               "footer":  {
+                                                                                                              "scrollTop":  120.66666412353516,
+                                                                                                              "scrollHeight":  309,
+                                                                                                              "clientHeight":  188
+                                                                                                          }
+                                                                                           },
+                                                                                "keyboard":  {
+                                                                                                 "start":  {
+                                                                                                               "tagName":  "BUTTON",
+                                                                                                               "ariaLabel":  "放大预览",
+                                                                                                               "testId":  null
+                                                                                                           },
+                                                                                                 "actionDisabled":  true,
+                                                                                                 "firstTab":  {
+                                                                                                                  "importFocused":  false,
+                                                                                                                  "importVisible":  true,
+                                                                                                                  "receiptSummaryFocused":  true
+                                                                                                              },
+                                                                                                 "importFocus":  null,
+                                                                                                 "receiptFocus":  {
+                                                                                                                      "focused":  true,
+                                                                                                                      "summaryVisible":  true,
+                                                                                                                      "actionVisible":  true
+                                                                                                                  }
+                                                                                             }
+                                                                            }
+                                                       },
+                        "partialReceiptKeyboard":  {
+                                                       "viewport846x653":  {
+                                                                               "start":  {
+                                                                                             "tagName":  "BUTTON",
+                                                                                             "ariaLabel":  "放大预览",
+                                                                                             "testId":  null
+                                                                                         },
+                                                                               "actionDisabled":  true,
+                                                                               "firstTab":  {
+                                                                                                "importFocused":  false,
+                                                                                                "importVisible":  true,
+                                                                                                "receiptSummaryFocused":  true
+                                                                                            },
+                                                                               "importFocus":  null,
+                                                                               "receiptFocus":  {
+                                                                                                    "focused":  true,
+                                                                                                    "summaryVisible":  true,
+                                                                                                    "actionVisible":  true
+                                                                                                }
+                                                                           },
+                                                       "narrowNative":  {
+                                                                            "start":  {
+                                                                                          "tagName":  "BUTTON",
+                                                                                          "ariaLabel":  "放大预览",
+                                                                                          "testId":  null
+                                                                                      },
+                                                                            "actionDisabled":  true,
+                                                                            "firstTab":  {
+                                                                                             "importFocused":  false,
+                                                                                             "importVisible":  true,
+                                                                                             "receiptSummaryFocused":  true
+                                                                                         },
+                                                                            "importFocus":  null,
+                                                                            "receiptFocus":  {
+                                                                                                 "focused":  true,
+                                                                                                 "summaryVisible":  true,
+                                                                                                 "actionVisible":  true
+                                                                                             }
+                                                                        }
+                                                   }
+                    },
+    "source":  {
+                   "basename":  "蓝发修仙女.fla",
+                   "sizeBytes":  3179910,
+                   "sha256Before":  "86eb123fdd42f1dac80754c9260b793404072be70523b41d012598138c35c6d2",
+                   "sha256After":  "86eb123fdd42f1dac80754c9260b793404072be70523b41d012598138c35c6d2",
+                   "unchanged":  true
+               },
+    "bulkSelection":  {
+                          "confirmation":  {
+                                               "confirmationText":  "即将勾选 398 项素材，暂不会导入。",
+                                               "buttonText":  "确认勾选",
+                                               "confirmationCount":  398,
+                                               "eligibleCount":  398,
+                                               "eligibleByKind":  {
+                                                                      "snapshot":  62,
+                                                                      "raster":  336
+                                                                  },
+                                               "candidateRowCount":  401
+                                           },
+                          "cancellation":  {
+                                               "selectedCountAfterCancel":  0,
+                                               "projectSha256Before":  "bc4bf6da85a7093b549786177921fcb8ae94da399b3b943c5a62b0ae80ab3d52",
+                                               "projectSha256After":  "bc4bf6da85a7093b549786177921fcb8ae94da399b3b943c5a62b0ae80ab3d52",
+                                               "revisionBefore":  null,
+                                               "revisionAfter":  null
+                                           }
+                      },
+    "selectedOnlySearch":  {
+                               "query":  "c03-no-result-2026-10-15T01-56-43-946Z",
+                               "searchDisabled":  true,
+                               "statusText":  "正在查看已选 · 搜索已暂停"
+                           },
+    "shortenedNameOnTouch":  {
+                                 "kind":  "snapshot",
+                                 "cardLabel":  "809 · 第 1 帧",
+                                 "fullLabel":  "神女-cilisucai.com809 · 第 1 帧",
+                                 "accessibleLabel":  "预览 神女-cilisucai.com809 · 第 1 帧",
+                                 "focusedLabel":  "神女-cilisucai.com809 · 第 1 帧",
+                                 "selectionCountBefore":  0,
+                                 "selectionCountAfter":  0
+                             },
+    "sequence":  {
+                     "targetFrameCount":  30,
+                     "generatedRanges":  [
+                                             {
+                                                 "startFrameIndex":  0,
+                                                 "endFrameIndex":  23
+                                             },
+                                             {
+                                                 "startFrameIndex":  24,
+                                                 "endFrameIndex":  29
+                                             },
+                                             {
+                                                 "startFrameIndex":  27,
+                                                 "endFrameIndex":  29
+                                             }
+                                         ],
+                     "visual":  {
+                                    "range":  {
+                                                  "top":  278.5520935058594,
+                                                  "bottom":  430.90626525878906,
+                                                  "width":  620.1354370117188,
+                                                  "height":  152.3541717529297
+                                              },
+                                    "preview":  {
+                                                    "top":  167,
+                                                    "bottom":  268.55208587646484,
+                                                    "width":  620.1354370117188,
+                                                    "height":  101.55208587646484
+                                                },
+                                    "rangeBackground":  "rgb(17, 27, 21)",
+                                    "capColor":  "rgb(193, 208, 198)",
+                                    "capContrast":  11,
+                                    "renderBackground":  "rgb(40, 97, 59)",
+                                    "renderColor":  "rgb(241, 255, 243)",
+                                    "renderContrast":  7.1
+                                },
+                     "aToBToA":  {
+                                     "checkedCountAtA":  1,
+                                     "checkedCountAtB":  1,
+                                     "checkedCountOnReturnToA":  1
+                                 }
+                 },
+    "results":  {
+                    "assertions":  {
+                                       "progressiveLoadCaptured":  true,
+                                       "all336BitmapsListed":  true,
+                                       "bitmapListScrollable":  true,
+                                       "shortCandidateFullNameAvailableOnTouch":  true,
+                                       "bulkCancelNoMutation":  true,
+                                       "bulkConfirmationUsesAllOffscreenEligibleItems":  true,
+                                       "selectedViewKeepsGlobalChecksAndRestoresScroll":  true,
+                                       "thumbnailFocusDoesNotSelect":  true,
+                                       "keyboardEnterTabSpaceWorks":  true,
+                                       "selectedViewPreservesQueryAndExplainsPause":  true,
+                                       "selectedViewIgnoresSearch":  true,
+                                       "syntheticBlankStateCaptured":  true,
+                                       "unsupportedStateCaptured":  true,
+                                       "failedPreviewUnavailable":  true,
+                                       "sameContentBoundsAsBaseline":  true,
+                                       "supportedWindowsScale":  true,
+                                       "touchTargetsAtLeast44CssPixels":  true,
+                                       "sameSizeBeforeAfter":  true,
+                                       "narrowLayoutKeepsFooterVisible":  true,
+                                       "sequenceFocusDoesNotRender":  true,
+                                       "sequenceStartsAtOneAndCapsAt24":  true,
+                                       "sequencePanelCompactAndAccessibleContrast":  true,
+                                       "sequenceRangeChangeInvalidatesCheck":  true,
+                                       "sequenceNearEndUsesShortRemainder":  true,
+                                       "sequenceAtoBtoARetainsCheck":  true,
+                                       "sequenceScenarioSelectionCleared":  true,
+                                       "closeAndEscapeBlockedDuringCommit":  true,
+                                       "mixedImportSuccessReceipt":  true,
+                                       "terminalImportClearsChecksKeepsReceipt":  true,
+                                       "repeatImportUsesFreshSession":  true,
+                                       "stopAfterCurrentReceipt":  true,
+                                       "duplicateImportIsNoOp":  true,
+                                       "receiptGuidanceInPlainLanguage":  true,
+                                       "receiptDiagnosticsCollapsed":  true,
+                                       "partialFailureRetainsFirstCommit":  true,
+                                       "partialFailureReceiptTouchReachable":  true,
+                                       "partialFailureReceiptKeyboardReachable":  true,
+                                       "partialFailureReceiptReachableAtBothViewports":  true,
+                                       "mixedAssetsPersistAfterReopen":  true,
+                                       "originalFlaUnchanged":  true
+                                   },
+                    "sourceSha256Unchanged":  true,
+                    "partialFailureReceipt":  {
+                                                  "plainLanguageGuidance":  "请先检查素材库，避免重复导入。",
+                                                  "technicalDiagnosticsCollapsed":  true,
+                                                  "firstSnapshotCommitPreserved":  true,
+                                                  "touchReachableAtBothViewports":  true,
+                                                  "keyboardReachableAtBothViewports":  true
+                                              }
+                },
+    "limitations":  [
+                        "125% native Windows display scaling was NOT RUN; the captured display was 150% (DPR 1.5).",
+                        "Automated Windows evidence is not owner human visual acceptance.",
+                        "S2 absolute-frame progress ZodError remains unresolved and outside this UI/verifier scope.",
+                        "The omitted 645-item catalog capability remains OUT OF SCOPE for Issue 778."
+                    ],
+    "productAcceptance":  "OWNER_HUMAN_VISUAL_ACCEPTANCE_REQUIRED",
+    "screenshots":  [
+                        {
+                            "file":  "bulk-confirmation.png",
+                            "width":  1779,
+                            "height":  1086,
+                            "sha256":  "ad245dd3758f344cce2985bb03c5c2ff560725c20250a5d0ef1c72d76f8b525a"
+                        },
+                        {
+                            "file":  "bulk-confirmation-cancelled.png",
+                            "width":  1779,
+                            "height":  1086,
+                            "sha256":  "470ba48a07c9a273712efdc4d2720131589c45ebdb3842181fcb992d1023eabe"
+                        },
+                        {
+                            "file":  "selected-view-ignores-search.png",
+                            "width":  1779,
+                            "height":  1086,
+                            "sha256":  "0c0b8b96e79766a70329879b9157505080bca5b74c0b40e60dd2ce7c53bc68f3"
+                        },
+                        {
+                            "file":  "composed-character-preview.png",
+                            "width":  1779,
+                            "height":  1086,
+                            "sha256":  "f90545bfd3c78da50f8b925ecf0a34c5aa63f5e59d3bab54b4ceadb40779a8d3"
+                        },
+                        {
+                            "file":  "c03-normal.png",
+                            "width":  1779,
+                            "height":  1086,
+                            "sha256":  "cbf6bb27961867a5e665bd20ae582921a48726bc31d885b13d80b6e5a883aa8c"
+                        },
+                        {
+                            "file":  "c03-narrow.png",
+                            "width":  1269,
+                            "height":  980,
+                            "sha256":  "df5b72c20bb432a0ff571235f195fbf2a6bed735c145d628bc0685732027a45f"
+                        },
+                        {
+                            "file":  "sequence-start-1.png",
+                            "width":  1779,
+                            "height":  1088,
+                            "sha256":  "03c829dea15798a03fdac4bdbf8bfba7063fa390db8c5c901c46b6dcad64a4db"
+                        },
+                        {
+                            "file":  "sequence-start-25.png",
+                            "width":  1779,
+                            "height":  1088,
+                            "sha256":  "fbc4db1c39ac563e16004fd2263941404854dfbe254921ee1d669d59057ff815"
+                        },
+                        {
+                            "file":  "sequence-near-end.png",
+                            "width":  1779,
+                            "height":  1088,
+                            "sha256":  "d20607b4566682f26b33d3f2e346a1f9c2e84be8dd4608cb824b78ada9ee451e"
+                        },
+                        {
+                            "file":  "mixed-import-success.png",
+                            "width":  1779,
+                            "height":  1088,
+                            "sha256":  "db965334888c75276323557de551e16793f00d7dd2a604fd84b77096369cb77d"
+                        },
+                        {
+                            "file":  "reopened-workbench.png",
+                            "width":  1779,
+                            "height":  1088,
+                            "sha256":  "5d061d78d9d8a59c94298e9e128dff03763b2e846b8e3c0890b6781e3ba45ac1"
+                        },
+                        {
+                            "file":  "stop-after-current-receipt.png",
+                            "width":  1779,
+                            "height":  1088,
+                            "sha256":  "5503f9b35dfe4159471e5d11d5a3df00a3fb2966f9a58a71f3bf8aac77ab4efb"
+                        },
+                        {
+                            "file":  "partial-failure-receipt.png",
+                            "width":  1779,
+                            "height":  1088,
+                            "sha256":  "8f03a9533a11bc35de19718d881fa3eda45d361e164a7eeb469ecbda9fa6c613"
+                        },
+                        {
+                            "file":  "partial-failure-receipt-viewport846x653-top.png",
+                            "width":  1269,
+                            "height":  980,
+                            "sha256":  "87fd72624a4f360c0bfb5e029a60798770a848bf86a9fbfa074b33165820fa68"
+                        },
+                        {
+                            "file":  "partial-failure-receipt-viewport846x653-scrolled.png",
+                            "width":  1269,
+                            "height":  980,
+                            "sha256":  "f37f1ad357082a21fe8b6620ade30388425bbfbaab79094e9a9ffd0886daa029"
+                        },
+                        {
+                            "file":  "partial-failure-receipt-viewport846x653-keyboard.png",
+                            "width":  1269,
+                            "height":  980,
+                            "sha256":  "5037a679f66b056f24fc229c4beb4302bd8f7221f32938591910c5e0f4415fbc"
+                        },
+                        {
+                            "file":  "partial-failure-receipt-narrowNative-top.png",
+                            "width":  1179,
+                            "height":  786,
+                            "sha256":  "f5ef1d3658707dd4932289c1720a7e98a14333ba66957edd20264babebd90560"
+                        },
+                        {
+                            "file":  "partial-failure-receipt-narrowNative-scrolled.png",
+                            "width":  1179,
+                            "height":  786,
+                            "sha256":  "a088329f6c4d79a5bcd5474045e33f63a2ebff0c290ec0700fd322a3de454d76"
+                        },
+                        {
+                            "file":  "partial-failure-receipt-narrowNative-keyboard.png",
+                            "width":  1179,
+                            "height":  786,
+                            "sha256":  "ef603ca5d00ff8d519c25c9fdd7a514852fea02a3d805efe6b5a0bac7f2da8bf"
+                        }
+                    ]
+}

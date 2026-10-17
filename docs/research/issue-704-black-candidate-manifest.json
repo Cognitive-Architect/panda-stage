@@ -1,0 +1,5647 @@
+{
+  "schemaVersion": "issue704-black-candidate-manifest/1",
+  "issue": 704,
+  "evidenceParents": [
+    702,
+    703
+  ],
+  "motherPullRequest": 677,
+  "source": {
+    "fileName": "黑衣修仙男.fla",
+    "localPath": "D:\\表情合集\\黑衣修仙男.fla",
+    "sha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+    "normalizedArchiveSha256": "681237ABB7B32E79CE89FF8E283B0573B4BF170C6B85830828C7A10911BC7A33",
+    "referenceFileName": "黑衣修仙男（截图）.jpg",
+    "referenceLocalPath": "D:\\表情合集\\参考截图\\黑衣修仙男（截图）.jpg",
+    "referenceSha256": "7c53292222edcd183bb0d40ee647435ef860f9894cd4203150317364ca679eac"
+  },
+  "evidenceInputs": {
+    "censusIssue": 702,
+    "censusSha256": "5454d9742f22a346e56ed9e09801656afd37b102e3aee1f109822e50795ad5f9",
+    "syncReceiptSha256": "5a5b292405723c390ed4d102b999b0146f75f3e47219971c055269917fd3bc53",
+    "syncRunReceiptSha256": "98610ac256301eca544c932f5b253a2cf15d03b4d6129fc9b75d8d8b4c82e31c",
+    "productionAdapter": "adaptFlaXflDisplaySource from dist-electron/main/services/fla-static-snapshot-display-list-adapter.js",
+    "priorRenderEvidence": "Exact SVG/PNG files from #702 and #703 were hash-verified and copied to the B2 acceptance directory; no renderer was added."
+  },
+  "enumeration": {
+    "sceneTimelineCount": 1,
+    "sceneAuthoredStateCount": 1,
+    "graphicTimelineCount": 9,
+    "graphicAuthoredStateStartCount": 29,
+    "directSourceStateCandidateCount": 30,
+    "derivedParentCompositeCandidateCount": 2,
+    "totalCandidateCount": 32,
+    "policy": "One state per distinct DOMFrame authored start (unioned across layers); held ranges are metadata on that state, not expanded frame candidates.",
+    "sourceClasses": {
+      "COMPONENT_ASSET": 25,
+      "DUPLICATE_OR_HELD_STATE": 2,
+      "FULL_CHARACTER_STATE": 7,
+      "TEMPORAL_ACTION_CANDIDATE": 12
+    },
+    "renderAddressClasses": {
+      "UNSUPPORTED_OR_UNKNOWN": 8,
+      "PARENT_COMPOSITE": 4,
+      "TEMPORAL_ONLY": 4,
+      "DIRECT_COMPONENT_STATE": 13,
+      "DIRECT_FULL_CHARACTER_STATE": 3
+    },
+    "sourceLibraryItemNameIsPartOfProvenance": true,
+    "displayLabelsUsedForIdentity": false,
+    "referenceLabelsUsedForIdentity": false,
+    "candidateIdMethod": "SHA-256 of versioned source hash + source address + render-address class + concrete render address; no list order, random UUID, filename, or semantic pose label."
+  },
+  "candidates": [
+    {
+      "candidateId": "B2-0E045B0BD8D324390C3B2097",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET",
+        "DUPLICATE_OR_HELD_STATE"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "UNSUPPORTED_OR_UNKNOWN",
+      "disposition": "FAIL_CLOSED",
+      "reasonCode": "NESTED_TIMING_OUTSIDE_ISSUE703_PROVEN_SLICE",
+      "unsupportedInputs": [
+        {
+          "reasonCode": "OUTSIDE_ISSUE703_PROVEN_SYNC_SLICE",
+          "instance": {
+            "libraryItemName": "元件 2",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 11,
+              "duration": 1916,
+              "endExclusive": 1927
+            },
+            "transform": {
+              "a": 1,
+              "b": 0,
+              "c": 0,
+              "d": 1,
+              "tx": -134.35,
+              "ty": -62.45
+            },
+            "visible": true,
+            "layerIndex": 0
+          },
+          "childFrameCount": 21,
+          "evidence": "The #703 contract slice is Graphic/loop, omitted firstFrame and lastFrame, containing span start 0."
+        }
+      ],
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "补间 2",
+          "userLabel": "补间 2",
+          "frameCount": 1927,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "补间 2"
+        },
+        "authoredState": {
+          "frameIndex": 11,
+          "authoredStateStart": 11,
+          "nextStateStart": 1927,
+          "heldFrameRange": [
+            11,
+            1927
+          ],
+          "heldFrameCount": 1916,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 11,
+                "duration": 1916,
+                "endExclusive": 1927,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 1927,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": [
+          {
+            "libraryItemName": "元件 2",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 11,
+              "duration": 1916,
+              "endExclusive": 1927
+            },
+            "transform": {
+              "a": 1,
+              "b": 0,
+              "c": 0,
+              "d": 1,
+              "tx": -134.35,
+              "ty": -62.45
+            },
+            "visible": true,
+            "layerIndex": 0
+          }
+        ]
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "补间 2",
+        "frameIndex": 11,
+        "nestedSelections": [
+          {
+            "libraryItemName": "元件 2",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 11,
+              "duration": 1916,
+              "endExclusive": 1927
+            }
+          }
+        ]
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": false,
+        "note": "Prior static snapshot is diagnostic evidence only; it is not promoted as a source-correct render address."
+      },
+      "evidence": {
+        "issue702CandidateId": "G03-F00011",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "f731ef3330cff44271f7fa630c9bb8b9a03897f9b834716032a36139d8afcee7",
+          "pngSha256": "9f8f0b7527a2211a5db3960fe54059455f19a30f776e7d05d56b7fec51e30743",
+          "svgPath": "artifacts/B2-0E045B0BD8D324390C3B2097.svg",
+          "pngPath": "artifacts/B2-0E045B0BD8D324390C3B2097.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-131741E7A086D1EE3ED3C91B",
+      "sourceStateClasses": [
+        "FULL_CHARACTER_STATE"
+      ],
+      "primarySourceStateClass": "FULL_CHARACTER_STATE",
+      "renderAddressClass": "PARENT_COMPOSITE",
+      "disposition": "SUPPORTED",
+      "reasonCode": "SCENE_ROOT_RESOLVES_SOURCE_PARENT_GRAPHIC",
+      "validationReferencePose": "A",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-680581b05cd778ce0f05f78b9b4e31fdfcc938d10ccb84a40f4d035074cd48f1",
+          "kind": "scene",
+          "sourceLibraryItemName": null,
+          "userLabel": "主场景 · 第 1 帧",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "scene",
+          "name": "场景 1"
+        },
+        "authoredState": {
+          "frameIndex": 0,
+          "frameCount": 1,
+          "heldFrameRange": [
+            0,
+            1
+          ]
+        },
+        "parentChain": [
+          {
+            "kind": "graphic-symbol",
+            "name": "元件 1",
+            "frameIndex": 0
+          }
+        ],
+        "nestedSynchronizationInputs": [
+          {
+            "libraryItemName": "补间 1",
+            "frameIndex": 0,
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 0,
+              "duration": 30,
+              "endExclusive": 30
+            }
+          },
+          {
+            "libraryItemName": "补间 2",
+            "frameIndex": 0,
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 0,
+              "duration": 30,
+              "endExclusive": 30
+            }
+          },
+          {
+            "libraryItemName": "补间 3",
+            "frameIndex": 0,
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 0,
+              "duration": 30,
+              "endExclusive": 30
+            }
+          }
+        ]
+      },
+      "renderAddress": {
+        "rootKind": "scene",
+        "sceneName": "场景 1",
+        "documentFrameIndex": 0,
+        "parentGraphic": {
+          "sourceLibraryItemName": "元件 1",
+          "frameIndex": 0,
+          "nestedSelections": [
+            {
+              "libraryItemName": "补间 1",
+              "frameIndex": 0,
+              "symbolType": "graphic",
+              "playbackMode": "loop",
+              "firstFrame": null,
+              "lastFrame": null,
+              "containingSpan": {
+                "start": 0,
+                "duration": 30,
+                "endExclusive": 30
+              }
+            },
+            {
+              "libraryItemName": "补间 2",
+              "frameIndex": 0,
+              "symbolType": "graphic",
+              "playbackMode": "loop",
+              "firstFrame": null,
+              "lastFrame": null,
+              "containingSpan": {
+                "start": 0,
+                "duration": 30,
+                "endExclusive": 30
+              }
+            },
+            {
+              "libraryItemName": "补间 3",
+              "frameIndex": 0,
+              "symbolType": "graphic",
+              "playbackMode": "loop",
+              "firstFrame": null,
+              "lastFrame": null,
+              "containingSpan": {
+                "start": 0,
+                "duration": 30,
+                "endExclusive": 30
+              }
+            }
+          ]
+        }
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true
+      },
+      "evidence": {
+        "issue702CandidateId": "S0-F00000",
+        "sourceStateClassification": [
+          "FULL_CHARACTER_STATE"
+        ],
+        "referenceValidation": {
+          "pose": "A",
+          "status": "MATCH",
+          "confidence": "HIGH"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 Scene control production render",
+          "svgSha256": "f78ff2af1894f595a5d3ba5844b9e9603d3e515bcba4e89713f7d7eb41a4afff",
+          "pngSha256": "a049f7554b33a645398d981394e6c11fcff183197c512d7ebab3c4f3015b0900",
+          "svgPath": "artifacts/B2-131741E7A086D1EE3ED3C91B.svg",
+          "pngPath": "artifacts/B2-131741E7A086D1EE3ED3C91B.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-18C520037F4BA2D57A6256A2",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET",
+        "TEMPORAL_ACTION_CANDIDATE"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "TEMPORAL_ONLY",
+      "disposition": "ROUTE_TO_ISSUE694",
+      "reasonCode": "AUTHORED_STATE_SPAN_USES_TWEEN",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-15d69f925949f8a2dc3ac07a66838659db93f0d7b944b4969e37c72be4f154f2",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "元件 2",
+          "userLabel": "元件 2",
+          "frameCount": 21,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "元件 2"
+        },
+        "authoredState": {
+          "frameIndex": 5,
+          "authoredStateStart": 5,
+          "nextStateStart": 10,
+          "heldFrameRange": [
+            5,
+            10
+          ],
+          "heldFrameCount": 5,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 5,
+                "duration": 5,
+                "endExclusive": 10,
+                "tweenType": "motion",
+                "keyframeOrHold": "keyframe"
+              }
+            },
+            {
+              "layerIndex": 1,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 5,
+                "duration": 5,
+                "endExclusive": 10,
+                "tweenType": "motion",
+                "keyframeOrHold": "keyframe"
+              }
+            },
+            {
+              "layerIndex": 2,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 5,
+                "duration": 5,
+                "endExclusive": 10,
+                "tweenType": "motion",
+                "keyframeOrHold": "keyframe"
+              }
+            },
+            {
+              "layerIndex": 3,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 5,
+                "duration": 5,
+                "endExclusive": 10,
+                "tweenType": "motion",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 21,
+        "authoredSpanCountAtState": 4,
+        "nestedSynchronizationInputs": [
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 5,
+              "duration": 5,
+              "endExclusive": 10
+            },
+            "transform": {
+              "a": 0.652679443359375,
+              "b": -0.757965087890625,
+              "c": 0.757965087890625,
+              "d": 0.652679443359375,
+              "tx": 58.9,
+              "ty": 114.1
+            },
+            "visible": true,
+            "layerIndex": 0
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 5,
+              "duration": 5,
+              "endExclusive": 10
+            },
+            "transform": {
+              "a": 0.998382568359375,
+              "b": 0.055877685546875,
+              "c": -0.055877685546875,
+              "d": 0.998382568359375,
+              "tx": 95.25,
+              "ty": 91.6
+            },
+            "visible": true,
+            "layerIndex": 1
+          },
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 5,
+              "duration": 5,
+              "endExclusive": 10
+            },
+            "transform": {
+              "a": 0.999725341796875,
+              "b": -0.0312042236328125,
+              "c": 0.0312042236328125,
+              "d": 0.999725341796875,
+              "tx": -3.75,
+              "ty": 138.6
+            },
+            "visible": true,
+            "layerIndex": 2
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 5,
+              "duration": 5,
+              "endExclusive": 10
+            },
+            "transform": {
+              "a": 0.999618530273438,
+              "b": 0.0262908935546875,
+              "c": -0.0262908935546875,
+              "d": 0.999618530273438,
+              "tx": 69.1,
+              "ty": 91.8
+            },
+            "visible": true,
+            "layerIndex": 3
+          }
+        ]
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "元件 2",
+        "frameIndex": 5,
+        "nestedSelections": [
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 5,
+              "duration": 5,
+              "endExclusive": 10
+            }
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 5,
+              "duration": 5,
+              "endExclusive": 10
+            }
+          },
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 5,
+              "duration": 5,
+              "endExclusive": 10
+            }
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 5,
+              "duration": 5,
+              "endExclusive": 10
+            }
+          }
+        ]
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": false,
+        "note": "Only the authored state start was snapshotted; tween playback/interpolation is not claimed."
+      },
+      "evidence": {
+        "issue702CandidateId": "G07-F00005",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "903a6918b477e8350f216e9bc77f99182e2411b344eedd512473bb50858708e3",
+          "pngSha256": "ae2976aee75bd552603d944de14a0fd1092c09c268d61bff7965408a424648bd",
+          "svgPath": "artifacts/B2-18C520037F4BA2D57A6256A2.svg",
+          "pngPath": "artifacts/B2-18C520037F4BA2D57A6256A2.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-19103F8E343829D3069D8BDA",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET",
+        "TEMPORAL_ACTION_CANDIDATE"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "UNSUPPORTED_OR_UNKNOWN",
+      "disposition": "FAIL_CLOSED",
+      "reasonCode": "NESTED_TIMING_OUTSIDE_ISSUE703_PROVEN_SLICE",
+      "unsupportedInputs": [
+        {
+          "reasonCode": "OUTSIDE_ISSUE703_PROVEN_SYNC_SLICE",
+          "instance": {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "symbolType": "graphic",
+            "playbackMode": "single frame",
+            "firstFrame": "1",
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 2,
+              "duration": 1,
+              "endExclusive": 3
+            },
+            "transform": {
+              "a": 0.217941284179688,
+              "b": 0.947845458984375,
+              "c": -0.947845458984375,
+              "d": 0.217941284179688,
+              "tx": -274.8,
+              "ty": -192.95
+            },
+            "visible": true,
+            "layerIndex": 0
+          },
+          "childFrameCount": 6,
+          "evidence": "The #703 contract slice is Graphic/loop, omitted firstFrame and lastFrame, containing span start 0."
+        }
+      ],
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "补间 2",
+          "userLabel": "补间 2",
+          "frameCount": 1927,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "补间 2"
+        },
+        "authoredState": {
+          "frameIndex": 2,
+          "authoredStateStart": 2,
+          "nextStateStart": 3,
+          "heldFrameRange": [
+            2,
+            3
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 2,
+                "duration": 1,
+                "endExclusive": 3,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 1927,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": [
+          {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "symbolType": "graphic",
+            "playbackMode": "single frame",
+            "firstFrame": "1",
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 2,
+              "duration": 1,
+              "endExclusive": 3
+            },
+            "transform": {
+              "a": 0.217941284179688,
+              "b": 0.947845458984375,
+              "c": -0.947845458984375,
+              "d": 0.217941284179688,
+              "tx": -274.8,
+              "ty": -192.95
+            },
+            "visible": true,
+            "layerIndex": 0
+          }
+        ]
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "补间 2",
+        "frameIndex": 2,
+        "nestedSelections": [
+          {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "symbolType": "graphic",
+            "playbackMode": "single frame",
+            "firstFrame": "1",
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 2,
+              "duration": 1,
+              "endExclusive": 3
+            }
+          }
+        ]
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": false,
+        "note": "Prior static snapshot is diagnostic evidence only; it is not promoted as a source-correct render address."
+      },
+      "evidence": {
+        "issue702CandidateId": "G03-F00002",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET",
+          "TEMPORAL_ACTION_CANDIDATE"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "85962fb2ea9479af58dbf48577ed6638e358949bddc4e46385c2f2a7abc70d8c",
+          "pngSha256": "28739201e104667738a8aa5cefcccf43a38360508fc1f6c4e1f2b3628e4649bf",
+          "svgPath": "artifacts/B2-19103F8E343829D3069D8BDA.svg",
+          "pngPath": "artifacts/B2-19103F8E343829D3069D8BDA.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-1B4826C900D57CFBB3FB69C2",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "DIRECT_COMPONENT_STATE",
+      "disposition": "SUPPORTED_COMPONENT",
+      "reasonCode": "SOURCE_CENSUS_IDENTIFIES_COMPONENT_ASSET",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-720c5165a9271215c23d5c8da41dc7208f16f36e8253b670d2d58b5e3563e07e",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com14",
+          "userLabel": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com14",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com14"
+        },
+        "authoredState": {
+          "frameIndex": 0,
+          "authoredStateStart": 0,
+          "nextStateStart": 1,
+          "heldFrameRange": [
+            0,
+            1
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 0,
+                "duration": 1,
+                "endExclusive": 1,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 1,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": []
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com14",
+        "frameIndex": 0,
+        "nestedSelections": []
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true,
+        "note": "The address stays within the source and #703-supported boundary."
+      },
+      "evidence": {
+        "issue702CandidateId": "G06-F00000",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "9a980d07051669f5ca287479e1ec774770e670e2b99d99d00dde0420b5bb511a",
+          "pngSha256": "59f9c9a5602f6e029eb6930f89a23848993480b05269bfce0dfb56db7d072cc7",
+          "svgPath": "artifacts/B2-1B4826C900D57CFBB3FB69C2.svg",
+          "pngPath": "artifacts/B2-1B4826C900D57CFBB3FB69C2.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-3437306DABF6CD2461CBF258",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET",
+        "TEMPORAL_ACTION_CANDIDATE"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "TEMPORAL_ONLY",
+      "disposition": "ROUTE_TO_ISSUE694",
+      "reasonCode": "AUTHORED_STATE_SPAN_USES_TWEEN",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-15d69f925949f8a2dc3ac07a66838659db93f0d7b944b4969e37c72be4f154f2",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "元件 2",
+          "userLabel": "元件 2",
+          "frameCount": 21,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "元件 2"
+        },
+        "authoredState": {
+          "frameIndex": 15,
+          "authoredStateStart": 15,
+          "nextStateStart": 20,
+          "heldFrameRange": [
+            15,
+            20
+          ],
+          "heldFrameCount": 5,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 15,
+                "duration": 5,
+                "endExclusive": 20,
+                "tweenType": "motion",
+                "keyframeOrHold": "keyframe"
+              }
+            },
+            {
+              "layerIndex": 1,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 15,
+                "duration": 5,
+                "endExclusive": 20,
+                "tweenType": "motion",
+                "keyframeOrHold": "keyframe"
+              }
+            },
+            {
+              "layerIndex": 2,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 15,
+                "duration": 5,
+                "endExclusive": 20,
+                "tweenType": "motion",
+                "keyframeOrHold": "keyframe"
+              }
+            },
+            {
+              "layerIndex": 3,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 15,
+                "duration": 5,
+                "endExclusive": 20,
+                "tweenType": "motion",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 21,
+        "authoredSpanCountAtState": 4,
+        "nestedSynchronizationInputs": [
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 15,
+              "duration": 5,
+              "endExclusive": 20
+            },
+            "transform": {
+              "a": 0.999099731445312,
+              "b": -0.0478668212890625,
+              "c": 0.0478668212890625,
+              "d": 0.999099731445312,
+              "tx": -2.25,
+              "ty": 138.8
+            },
+            "visible": true,
+            "layerIndex": 0
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 15,
+              "duration": 5,
+              "endExclusive": 20
+            },
+            "transform": {
+              "a": 0.996917724609375,
+              "b": 0.0777435302734375,
+              "c": -0.0777435302734375,
+              "d": 0.996917724609375,
+              "tx": 93.35,
+              "ty": 91.4
+            },
+            "visible": true,
+            "layerIndex": 1
+          },
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 15,
+              "duration": 5,
+              "endExclusive": 20
+            },
+            "transform": {
+              "a": 0.681289672851562,
+              "b": -0.732040405273438,
+              "c": 0.732040405273438,
+              "d": 0.681289672851562,
+              "tx": 58.85,
+              "ty": 115.95
+            },
+            "visible": true,
+            "layerIndex": 2
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 15,
+              "duration": 5,
+              "endExclusive": 20
+            },
+            "transform": {
+              "a": 0.986358642578125,
+              "b": 0.164215087890625,
+              "c": -0.164215087890625,
+              "d": 0.986358642578125,
+              "tx": 56.15,
+              "ty": 90.55
+            },
+            "visible": true,
+            "layerIndex": 3
+          }
+        ]
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "元件 2",
+        "frameIndex": 15,
+        "nestedSelections": [
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 15,
+              "duration": 5,
+              "endExclusive": 20
+            }
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 15,
+              "duration": 5,
+              "endExclusive": 20
+            }
+          },
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 15,
+              "duration": 5,
+              "endExclusive": 20
+            }
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 15,
+              "duration": 5,
+              "endExclusive": 20
+            }
+          }
+        ]
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": false,
+        "note": "Only the authored state start was snapshotted; tween playback/interpolation is not claimed."
+      },
+      "evidence": {
+        "issue702CandidateId": "G07-F00015",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "273c69eaac67b8296915c2c33fbcf6b61003b8abd14a1954b9132d6a72d139d2",
+          "pngSha256": "6cd26f34b79fd7c28ab8c2abf2979419bddd7e48dad8d3e4f6192380421d9476",
+          "svgPath": "artifacts/B2-3437306DABF6CD2461CBF258.svg",
+          "pngPath": "artifacts/B2-3437306DABF6CD2461CBF258.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-4C0EC7036437CD3045D1F3BA",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET",
+        "TEMPORAL_ACTION_CANDIDATE"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "DIRECT_COMPONENT_STATE",
+      "disposition": "SUPPORTED_COMPONENT",
+      "reasonCode": "SOURCE_CENSUS_IDENTIFIES_COMPONENT_ASSET",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "补间 2",
+          "userLabel": "补间 2",
+          "frameCount": 1927,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "补间 2"
+        },
+        "authoredState": {
+          "frameIndex": 7,
+          "authoredStateStart": 7,
+          "nextStateStart": 8,
+          "heldFrameRange": [
+            7,
+            8
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 7,
+                "duration": 1,
+                "endExclusive": 8,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 1927,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": []
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "补间 2",
+        "frameIndex": 7,
+        "nestedSelections": []
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true,
+        "note": "The address stays within the source and #703-supported boundary."
+      },
+      "evidence": {
+        "issue702CandidateId": "G03-F00007",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET",
+          "TEMPORAL_ACTION_CANDIDATE"
+        ],
+        "referenceValidation": {
+          "pose": "C",
+          "status": "PENDING MAINTAINER REVIEW",
+          "confidence": "MEDIUM_BODY_SILHOUETTE_ONLY",
+          "note": "Body silhouette candidate only; full-character match is unresolved."
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "a91d6daac9bdca7ace278da7057d2305aeaef847a40a88aae65c13e477a64f73",
+          "pngSha256": "143fa5bb1b6e77895a591c779daa918c7a4164bbe7e70fcf0c38f8c21027e5da",
+          "svgPath": "artifacts/B2-4C0EC7036437CD3045D1F3BA.svg",
+          "pngPath": "artifacts/B2-4C0EC7036437CD3045D1F3BA.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-4FE5828F12BE0CC65425A12B",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET",
+        "TEMPORAL_ACTION_CANDIDATE"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "UNSUPPORTED_OR_UNKNOWN",
+      "disposition": "FAIL_CLOSED",
+      "reasonCode": "NESTED_TIMING_OUTSIDE_ISSUE703_PROVEN_SLICE",
+      "unsupportedInputs": [
+        {
+          "reasonCode": "OUTSIDE_ISSUE703_PROVEN_SYNC_SLICE",
+          "instance": {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "symbolType": "graphic",
+            "playbackMode": "single frame",
+            "firstFrame": "3",
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 4,
+              "duration": 1,
+              "endExclusive": 5
+            },
+            "transform": {
+              "a": 0.217941284179688,
+              "b": 0.947845458984375,
+              "c": -0.947845458984375,
+              "d": 0.217941284179688,
+              "tx": -274.8,
+              "ty": -192.95
+            },
+            "visible": true,
+            "layerIndex": 0
+          },
+          "childFrameCount": 6,
+          "evidence": "The #703 contract slice is Graphic/loop, omitted firstFrame and lastFrame, containing span start 0."
+        }
+      ],
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "补间 2",
+          "userLabel": "补间 2",
+          "frameCount": 1927,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "补间 2"
+        },
+        "authoredState": {
+          "frameIndex": 4,
+          "authoredStateStart": 4,
+          "nextStateStart": 5,
+          "heldFrameRange": [
+            4,
+            5
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 4,
+                "duration": 1,
+                "endExclusive": 5,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 1927,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": [
+          {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "symbolType": "graphic",
+            "playbackMode": "single frame",
+            "firstFrame": "3",
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 4,
+              "duration": 1,
+              "endExclusive": 5
+            },
+            "transform": {
+              "a": 0.217941284179688,
+              "b": 0.947845458984375,
+              "c": -0.947845458984375,
+              "d": 0.217941284179688,
+              "tx": -274.8,
+              "ty": -192.95
+            },
+            "visible": true,
+            "layerIndex": 0
+          }
+        ]
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "补间 2",
+        "frameIndex": 4,
+        "nestedSelections": [
+          {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "symbolType": "graphic",
+            "playbackMode": "single frame",
+            "firstFrame": "3",
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 4,
+              "duration": 1,
+              "endExclusive": 5
+            }
+          }
+        ]
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": false,
+        "note": "Prior static snapshot is diagnostic evidence only; it is not promoted as a source-correct render address."
+      },
+      "evidence": {
+        "issue702CandidateId": "G03-F00004",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET",
+          "TEMPORAL_ACTION_CANDIDATE"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "aef4399a06cf41ed07817a124641640241c1ca590de2614553d2ac3aaf710b75",
+          "pngSha256": "6eccd8b5089ef85ab3c9049026b7010bd7396f099a994440397ba697bba43f5a",
+          "svgPath": "artifacts/B2-4FE5828F12BE0CC65425A12B.svg",
+          "pngPath": "artifacts/B2-4FE5828F12BE0CC65425A12B.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-6B59262065D28C279718C576",
+      "sourceStateClasses": [
+        "FULL_CHARACTER_STATE"
+      ],
+      "primarySourceStateClass": "FULL_CHARACTER_STATE",
+      "renderAddressClass": "DIRECT_FULL_CHARACTER_STATE",
+      "disposition": "SUPPORTED",
+      "reasonCode": "SOURCE_STATE_IS_ALREADY_COMPLETE",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "补间 2",
+          "userLabel": "补间 2",
+          "frameCount": 1927,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "补间 2"
+        },
+        "authoredState": {
+          "frameIndex": 8,
+          "authoredStateStart": 8,
+          "nextStateStart": 9,
+          "heldFrameRange": [
+            8,
+            9
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 8,
+                "duration": 1,
+                "endExclusive": 9,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 1927,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": []
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "补间 2",
+        "frameIndex": 8,
+        "nestedSelections": []
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true,
+        "note": "The address stays within the source and #703-supported boundary."
+      },
+      "evidence": {
+        "issue702CandidateId": "G03-F00008",
+        "sourceStateClassification": [
+          "FULL_CHARACTER_STATE"
+        ],
+        "referenceValidation": {
+          "pose": "D",
+          "status": "MATCH",
+          "confidence": "HIGH"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "591fbad31c2f11bd6b9fc430caad50cad3100c2c81d5ef5ad74f95cf90cc89ca",
+          "pngSha256": "4c29159ab70d03d7b9c0b4b428c655024cd8cc2d21fe0b2515da3b3dab7b6683",
+          "svgPath": "artifacts/B2-6B59262065D28C279718C576.svg",
+          "pngPath": "artifacts/B2-6B59262065D28C279718C576.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-6E0C46F6478E03DC5831B937",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "DIRECT_COMPONENT_STATE",
+      "disposition": "SUPPORTED_COMPONENT",
+      "reasonCode": "SOURCE_CENSUS_IDENTIFIES_COMPONENT_ASSET",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-4f53835b7dfffaba1bc5da4767bf7e932aa450514e7fbd4f865e3155b27cc49b",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "userLabel": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "frameCount": 6,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13"
+        },
+        "authoredState": {
+          "frameIndex": 4,
+          "authoredStateStart": 4,
+          "nextStateStart": 5,
+          "heldFrameRange": [
+            4,
+            5
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 4,
+                "duration": 1,
+                "endExclusive": 5,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 6,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": []
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+        "frameIndex": 4,
+        "nestedSelections": []
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true,
+        "note": "The address stays within the source and #703-supported boundary."
+      },
+      "evidence": {
+        "issue702CandidateId": "G05-F00004",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "7c102ed7dd7abcfb99fbd30fbb09586486dc80dd8af3b298fd99d13efa571632",
+          "pngSha256": "f9a94df1325a40aae0940dc83e4af18a9b21ee05ac34ee26f4ff8a4269f3d7b4",
+          "svgPath": "artifacts/B2-6E0C46F6478E03DC5831B937.svg",
+          "pngPath": "artifacts/B2-6E0C46F6478E03DC5831B937.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-6FA7F30857CD5BD19CF79466",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET",
+        "TEMPORAL_ACTION_CANDIDATE"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "UNSUPPORTED_OR_UNKNOWN",
+      "disposition": "FAIL_CLOSED",
+      "reasonCode": "NESTED_TIMING_OUTSIDE_ISSUE703_PROVEN_SLICE",
+      "unsupportedInputs": [
+        {
+          "reasonCode": "OUTSIDE_ISSUE703_PROVEN_SYNC_SLICE",
+          "instance": {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "symbolType": "graphic",
+            "playbackMode": "single frame",
+            "firstFrame": "3",
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 1,
+              "duration": 1,
+              "endExclusive": 2
+            },
+            "transform": {
+              "a": 0.217941284179688,
+              "b": 0.947845458984375,
+              "c": -0.947845458984375,
+              "d": 0.217941284179688,
+              "tx": -274.8,
+              "ty": -192.95
+            },
+            "visible": true,
+            "layerIndex": 0
+          },
+          "childFrameCount": 6,
+          "evidence": "The #703 contract slice is Graphic/loop, omitted firstFrame and lastFrame, containing span start 0."
+        }
+      ],
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "补间 2",
+          "userLabel": "补间 2",
+          "frameCount": 1927,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "补间 2"
+        },
+        "authoredState": {
+          "frameIndex": 1,
+          "authoredStateStart": 1,
+          "nextStateStart": 2,
+          "heldFrameRange": [
+            1,
+            2
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 1,
+                "duration": 1,
+                "endExclusive": 2,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 1927,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": [
+          {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "symbolType": "graphic",
+            "playbackMode": "single frame",
+            "firstFrame": "3",
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 1,
+              "duration": 1,
+              "endExclusive": 2
+            },
+            "transform": {
+              "a": 0.217941284179688,
+              "b": 0.947845458984375,
+              "c": -0.947845458984375,
+              "d": 0.217941284179688,
+              "tx": -274.8,
+              "ty": -192.95
+            },
+            "visible": true,
+            "layerIndex": 0
+          }
+        ]
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "补间 2",
+        "frameIndex": 1,
+        "nestedSelections": [
+          {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "symbolType": "graphic",
+            "playbackMode": "single frame",
+            "firstFrame": "3",
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 1,
+              "duration": 1,
+              "endExclusive": 2
+            }
+          }
+        ]
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": false,
+        "note": "Prior static snapshot is diagnostic evidence only; it is not promoted as a source-correct render address."
+      },
+      "evidence": {
+        "issue702CandidateId": "G03-F00001",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET",
+          "TEMPORAL_ACTION_CANDIDATE"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "1e0dfdcd2cd5b70d56c02a55a3a4f74ee868f0a651b9334f3567e66d8c3f357a",
+          "pngSha256": "1928aeaa2110755e423e5a657519329ee7c05b548ec8ef1dbe5ff76b9479a3d2",
+          "svgPath": "artifacts/B2-6FA7F30857CD5BD19CF79466.svg",
+          "pngPath": "artifacts/B2-6FA7F30857CD5BD19CF79466.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-7511FB6C975B2A4CE13439E9",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET",
+        "TEMPORAL_ACTION_CANDIDATE"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "DIRECT_COMPONENT_STATE",
+      "disposition": "SUPPORTED_COMPONENT",
+      "reasonCode": "SOURCE_CENSUS_IDENTIFIES_COMPONENT_ASSET",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "补间 2",
+          "userLabel": "补间 2",
+          "frameCount": 1927,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "补间 2"
+        },
+        "authoredState": {
+          "frameIndex": 6,
+          "authoredStateStart": 6,
+          "nextStateStart": 7,
+          "heldFrameRange": [
+            6,
+            7
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 6,
+                "duration": 1,
+                "endExclusive": 7,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 1927,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": []
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "补间 2",
+        "frameIndex": 6,
+        "nestedSelections": []
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true,
+        "note": "The address stays within the source and #703-supported boundary."
+      },
+      "evidence": {
+        "issue702CandidateId": "G03-F00006",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET",
+          "TEMPORAL_ACTION_CANDIDATE"
+        ],
+        "referenceValidation": {
+          "pose": "B",
+          "status": "PENDING MAINTAINER REVIEW",
+          "confidence": "MEDIUM_BODY_SILHOUETTE_ONLY",
+          "note": "Body silhouette candidate only; full-character match is unresolved."
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "554aa868870a42ab19414afd46cef4af3c8f9f20c708227d0c13d87d730f87d7",
+          "pngSha256": "825328288f7f4b261310d5dc7149f0bf347a808efbffc11d4ef424c86691f762",
+          "svgPath": "artifacts/B2-7511FB6C975B2A4CE13439E9.svg",
+          "pngPath": "artifacts/B2-7511FB6C975B2A4CE13439E9.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-7F074994915490AED917BF0D",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "UNSUPPORTED_OR_UNKNOWN",
+      "disposition": "FAIL_CLOSED",
+      "reasonCode": "NESTED_TIMING_OUTSIDE_ISSUE703_PROVEN_SLICE",
+      "unsupportedInputs": [
+        {
+          "reasonCode": "OUTSIDE_ISSUE703_PROVEN_SYNC_SLICE",
+          "instance": {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 20,
+              "duration": 1,
+              "endExclusive": 21
+            },
+            "transform": {
+              "a": 1.0003662109375,
+              "b": -0.0003662109375,
+              "c": 0.0003662109375,
+              "d": 1.0003662109375,
+              "tx": -6.25,
+              "ty": 138.55
+            },
+            "visible": true,
+            "layerIndex": 0
+          },
+          "childFrameCount": 1,
+          "evidence": "The #703 contract slice is Graphic/loop, omitted firstFrame and lastFrame, containing span start 0."
+        },
+        {
+          "reasonCode": "OUTSIDE_ISSUE703_PROVEN_SYNC_SLICE",
+          "instance": {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 20,
+              "duration": 1,
+              "endExclusive": 21
+            },
+            "transform": {
+              "a": 0.988235473632812,
+              "b": -0.152725219726562,
+              "c": 0.152725219726562,
+              "d": 0.988235473632812,
+              "tx": 115.25,
+              "ty": 92.05
+            },
+            "visible": true,
+            "layerIndex": 1
+          },
+          "childFrameCount": 1,
+          "evidence": "The #703 contract slice is Graphic/loop, omitted firstFrame and lastFrame, containing span start 0."
+        },
+        {
+          "reasonCode": "OUTSIDE_ISSUE703_PROVEN_SYNC_SLICE",
+          "instance": {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 20,
+              "duration": 1,
+              "endExclusive": 21
+            },
+            "transform": {
+              "a": 1.00022888183594,
+              "b": 0.002716064453125,
+              "c": -0.002716064453125,
+              "d": 1.00022888183594,
+              "tx": -6.7,
+              "ty": 138.4
+            },
+            "visible": true,
+            "layerIndex": 2
+          },
+          "childFrameCount": 1,
+          "evidence": "The #703 contract slice is Graphic/loop, omitted firstFrame and lastFrame, containing span start 0."
+        },
+        {
+          "reasonCode": "OUTSIDE_ISSUE703_PROVEN_SYNC_SLICE",
+          "instance": {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 20,
+              "duration": 1,
+              "endExclusive": 21
+            },
+            "transform": {
+              "a": 0.994110107421875,
+              "b": 0.10821533203125,
+              "c": -0.10821533203125,
+              "d": 0.994110107421875,
+              "tx": 61.45,
+              "ty": 91.3
+            },
+            "visible": true,
+            "layerIndex": 3
+          },
+          "childFrameCount": 1,
+          "evidence": "The #703 contract slice is Graphic/loop, omitted firstFrame and lastFrame, containing span start 0."
+        }
+      ],
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-15d69f925949f8a2dc3ac07a66838659db93f0d7b944b4969e37c72be4f154f2",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "元件 2",
+          "userLabel": "元件 2",
+          "frameCount": 21,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "元件 2"
+        },
+        "authoredState": {
+          "frameIndex": 20,
+          "authoredStateStart": 20,
+          "nextStateStart": 21,
+          "heldFrameRange": [
+            20,
+            21
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 20,
+                "duration": 1,
+                "endExclusive": 21,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            },
+            {
+              "layerIndex": 1,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 20,
+                "duration": 1,
+                "endExclusive": 21,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            },
+            {
+              "layerIndex": 2,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 20,
+                "duration": 1,
+                "endExclusive": 21,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            },
+            {
+              "layerIndex": 3,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 20,
+                "duration": 1,
+                "endExclusive": 21,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 21,
+        "authoredSpanCountAtState": 4,
+        "nestedSynchronizationInputs": [
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 20,
+              "duration": 1,
+              "endExclusive": 21
+            },
+            "transform": {
+              "a": 1.0003662109375,
+              "b": -0.0003662109375,
+              "c": 0.0003662109375,
+              "d": 1.0003662109375,
+              "tx": -6.25,
+              "ty": 138.55
+            },
+            "visible": true,
+            "layerIndex": 0
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 20,
+              "duration": 1,
+              "endExclusive": 21
+            },
+            "transform": {
+              "a": 0.988235473632812,
+              "b": -0.152725219726562,
+              "c": 0.152725219726562,
+              "d": 0.988235473632812,
+              "tx": 115.25,
+              "ty": 92.05
+            },
+            "visible": true,
+            "layerIndex": 1
+          },
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 20,
+              "duration": 1,
+              "endExclusive": 21
+            },
+            "transform": {
+              "a": 1.00022888183594,
+              "b": 0.002716064453125,
+              "c": -0.002716064453125,
+              "d": 1.00022888183594,
+              "tx": -6.7,
+              "ty": 138.4
+            },
+            "visible": true,
+            "layerIndex": 2
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 20,
+              "duration": 1,
+              "endExclusive": 21
+            },
+            "transform": {
+              "a": 0.994110107421875,
+              "b": 0.10821533203125,
+              "c": -0.10821533203125,
+              "d": 0.994110107421875,
+              "tx": 61.45,
+              "ty": 91.3
+            },
+            "visible": true,
+            "layerIndex": 3
+          }
+        ]
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "元件 2",
+        "frameIndex": 20,
+        "nestedSelections": [
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 20,
+              "duration": 1,
+              "endExclusive": 21
+            }
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 20,
+              "duration": 1,
+              "endExclusive": 21
+            }
+          },
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 20,
+              "duration": 1,
+              "endExclusive": 21
+            }
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 20,
+              "duration": 1,
+              "endExclusive": 21
+            }
+          }
+        ]
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": false,
+        "note": "Prior static snapshot is diagnostic evidence only; it is not promoted as a source-correct render address."
+      },
+      "evidence": {
+        "issue702CandidateId": "G07-F00020",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "e54fa8de09afd5253a89a0f2e0a85039e42f5ec2d43a9c62723cfb3c50106d07",
+          "pngSha256": "9c0f1d92149423c6b34a2e8a45a66ddfa0e36febb5cedc6be03faedccdf2cf75",
+          "svgPath": "artifacts/B2-7F074994915490AED917BF0D.svg",
+          "pngPath": "artifacts/B2-7F074994915490AED917BF0D.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-83064582C08094BB6400F2B2",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET",
+        "TEMPORAL_ACTION_CANDIDATE"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "TEMPORAL_ONLY",
+      "disposition": "ROUTE_TO_ISSUE694",
+      "reasonCode": "AUTHORED_STATE_SPAN_USES_TWEEN",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-15d69f925949f8a2dc3ac07a66838659db93f0d7b944b4969e37c72be4f154f2",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "元件 2",
+          "userLabel": "元件 2",
+          "frameCount": 21,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "元件 2"
+        },
+        "authoredState": {
+          "frameIndex": 0,
+          "authoredStateStart": 0,
+          "nextStateStart": 5,
+          "heldFrameRange": [
+            0,
+            5
+          ],
+          "heldFrameCount": 5,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 0,
+                "duration": 5,
+                "endExclusive": 5,
+                "tweenType": "motion",
+                "keyframeOrHold": "keyframe"
+              }
+            },
+            {
+              "layerIndex": 1,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 0,
+                "duration": 5,
+                "endExclusive": 5,
+                "tweenType": "motion",
+                "keyframeOrHold": "keyframe"
+              }
+            },
+            {
+              "layerIndex": 2,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 0,
+                "duration": 5,
+                "endExclusive": 5,
+                "tweenType": "motion",
+                "keyframeOrHold": "keyframe"
+              }
+            },
+            {
+              "layerIndex": 3,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 0,
+                "duration": 5,
+                "endExclusive": 5,
+                "tweenType": "motion",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 21,
+        "authoredSpanCountAtState": 4,
+        "nestedSynchronizationInputs": [
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 0,
+              "duration": 5,
+              "endExclusive": 5
+            },
+            "transform": {
+              "a": 1.0003662109375,
+              "b": -0.0003662109375,
+              "c": 0.0003662109375,
+              "d": 1.0003662109375,
+              "tx": -6.3,
+              "ty": 138.6
+            },
+            "visible": true,
+            "layerIndex": 0
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 0,
+              "duration": 5,
+              "endExclusive": 5
+            },
+            "transform": {
+              "a": 0.988235473632812,
+              "b": -0.152725219726562,
+              "c": 0.152725219726562,
+              "d": 0.988235473632812,
+              "tx": 115.25,
+              "ty": 92.05
+            },
+            "visible": true,
+            "layerIndex": 1
+          },
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 0,
+              "duration": 5,
+              "endExclusive": 5
+            },
+            "transform": {
+              "a": 1.00022888183594,
+              "b": 0.002716064453125,
+              "c": -0.002716064453125,
+              "d": 1.00022888183594,
+              "tx": -6.75,
+              "ty": 138.45
+            },
+            "visible": true,
+            "layerIndex": 2
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 0,
+              "duration": 5,
+              "endExclusive": 5
+            },
+            "transform": {
+              "a": 0.994110107421875,
+              "b": 0.10821533203125,
+              "c": -0.10821533203125,
+              "d": 0.994110107421875,
+              "tx": 61.45,
+              "ty": 91.3
+            },
+            "visible": true,
+            "layerIndex": 3
+          }
+        ]
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "元件 2",
+        "frameIndex": 0,
+        "nestedSelections": [
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 0,
+              "duration": 5,
+              "endExclusive": 5
+            }
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 0,
+              "duration": 5,
+              "endExclusive": 5
+            }
+          },
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 0,
+              "duration": 5,
+              "endExclusive": 5
+            }
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 0,
+              "duration": 5,
+              "endExclusive": 5
+            }
+          }
+        ]
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": false,
+        "note": "Only the authored state start was snapshotted; tween playback/interpolation is not claimed."
+      },
+      "evidence": {
+        "issue702CandidateId": "G07-F00000",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "3dad485c59772186a65a12804c610d9442ad5cc1eb098279120516f01d134425",
+          "pngSha256": "375a35b8ef05f9b1005ef829de6412228363b964aae2ab8812485475b453ae7f",
+          "svgPath": "artifacts/B2-83064582C08094BB6400F2B2.svg",
+          "pngPath": "artifacts/B2-83064582C08094BB6400F2B2.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-88C67A49D286E728706AB9C0",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "DIRECT_COMPONENT_STATE",
+      "disposition": "SUPPORTED_COMPONENT",
+      "reasonCode": "SOURCE_CENSUS_IDENTIFIES_COMPONENT_ASSET",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-4387b3622051d8f8979099c672c05b2e3e93d00cac9f46ab22585e75ee58fcae",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "补间 5",
+          "userLabel": "补间 5",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "补间 5"
+        },
+        "authoredState": {
+          "frameIndex": 0,
+          "authoredStateStart": 0,
+          "nextStateStart": 1,
+          "heldFrameRange": [
+            0,
+            1
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 0,
+                "duration": 1,
+                "endExclusive": 1,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 1,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": []
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "补间 5",
+        "frameIndex": 0,
+        "nestedSelections": []
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true,
+        "note": "The address stays within the source and #703-supported boundary."
+      },
+      "evidence": {
+        "issue702CandidateId": "G09-F00000",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "22b9f143e4d2e2fc01f7c38d25a96be35b315e77701ee958c2ce377637ab3dfb",
+          "pngSha256": "83175ce3b86d3997fe7c0b70bd0fef1ec74021d4861c8e81ccb1b240c09c728f",
+          "svgPath": "artifacts/B2-88C67A49D286E728706AB9C0.svg",
+          "pngPath": "artifacts/B2-88C67A49D286E728706AB9C0.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-8A7035B80257FB67A05D218A",
+      "sourceStateClasses": [
+        "FULL_CHARACTER_STATE",
+        "DUPLICATE_OR_HELD_STATE"
+      ],
+      "primarySourceStateClass": "FULL_CHARACTER_STATE",
+      "renderAddressClass": "PARENT_COMPOSITE",
+      "disposition": "SUPPORTED",
+      "reasonCode": "FULL_STATE_REQUIRES_PARENT_CHILD_COMPOSITION",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-c4af797070beada488cd2f338b2dfdaaf102b0f306bd67b8e2524d3220e794c7",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "元件 1",
+          "userLabel": "元件 1",
+          "frameCount": 30,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "元件 1"
+        },
+        "authoredState": {
+          "frameIndex": 0,
+          "authoredStateStart": 0,
+          "nextStateStart": 30,
+          "heldFrameRange": [
+            0,
+            30
+          ],
+          "heldFrameCount": 30,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 0,
+                "duration": 30,
+                "endExclusive": 30,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            },
+            {
+              "layerIndex": 1,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 0,
+                "duration": 30,
+                "endExclusive": 30,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            },
+            {
+              "layerIndex": 2,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 0,
+                "duration": 30,
+                "endExclusive": 30,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 30,
+        "authoredSpanCountAtState": 3,
+        "nestedSynchronizationInputs": [
+          {
+            "libraryItemName": "补间 1",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 0,
+              "duration": 30,
+              "endExclusive": 30
+            },
+            "transform": {
+              "a": 1,
+              "b": 0,
+              "c": 0,
+              "d": 1,
+              "tx": 186.25,
+              "ty": 133.75
+            },
+            "visible": true,
+            "layerIndex": 0
+          },
+          {
+            "libraryItemName": "补间 2",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 0,
+              "duration": 30,
+              "endExclusive": 30
+            },
+            "transform": {
+              "a": 1,
+              "b": 0,
+              "c": 0,
+              "d": 1,
+              "tx": 234.15,
+              "ty": 549.6
+            },
+            "visible": true,
+            "layerIndex": 1
+          },
+          {
+            "libraryItemName": "补间 3",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 0,
+              "duration": 30,
+              "endExclusive": 30
+            },
+            "transform": {
+              "a": 1,
+              "b": 0,
+              "c": 0,
+              "d": 1,
+              "tx": 262.3,
+              "ty": 291.8
+            },
+            "visible": true,
+            "layerIndex": 2
+          }
+        ]
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "元件 1",
+        "frameIndex": 0,
+        "nestedSelections": [
+          {
+            "libraryItemName": "补间 1",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 0,
+              "duration": 30,
+              "endExclusive": 30
+            }
+          },
+          {
+            "libraryItemName": "补间 2",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 0,
+              "duration": 30,
+              "endExclusive": 30
+            }
+          },
+          {
+            "libraryItemName": "补间 3",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 0,
+              "duration": 30,
+              "endExclusive": 30
+            }
+          }
+        ]
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true,
+        "note": "The address stays within the source and #703-supported boundary."
+      },
+      "evidence": {
+        "issue702CandidateId": "G01-F00000",
+        "sourceStateClassification": [
+          "FULL_CHARACTER_STATE"
+        ],
+        "referenceValidation": {
+          "pose": "A",
+          "status": "MATCH",
+          "confidence": "HIGH",
+          "note": "Same full-character source state as Scene candidate S0-F00000; target framing produces a different exact PNG hash."
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "ea06398ef10274167b8bdb0fa1035f408b756f75fd8203e2148cae70c14b27f0",
+          "pngSha256": "c7474a7349c56bd6812f4ee84e0727b5051c624bf6c354e2a6f7e1ebebe9f800",
+          "svgPath": "artifacts/B2-8A7035B80257FB67A05D218A.svg",
+          "pngPath": "artifacts/B2-8A7035B80257FB67A05D218A.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-A595AB76DCB047C47707A894",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "DIRECT_COMPONENT_STATE",
+      "disposition": "SUPPORTED_COMPONENT",
+      "reasonCode": "SOURCE_CENSUS_IDENTIFIES_COMPONENT_ASSET",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-4f53835b7dfffaba1bc5da4767bf7e932aa450514e7fbd4f865e3155b27cc49b",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "userLabel": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "frameCount": 6,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13"
+        },
+        "authoredState": {
+          "frameIndex": 2,
+          "authoredStateStart": 2,
+          "nextStateStart": 3,
+          "heldFrameRange": [
+            2,
+            3
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 2,
+                "duration": 1,
+                "endExclusive": 3,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 6,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": []
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+        "frameIndex": 2,
+        "nestedSelections": []
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true,
+        "note": "The address stays within the source and #703-supported boundary."
+      },
+      "evidence": {
+        "issue702CandidateId": "G05-F00002",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "154e1f2c4f1d049e3b9fe78a8657055792e4f50d08e338a1fbcd4d42ceb809c0",
+          "pngSha256": "d748a9f50e43e032162a6caf47a392c601af74cc3429b057643cc12f1f871c1a",
+          "svgPath": "artifacts/B2-A595AB76DCB047C47707A894.svg",
+          "pngPath": "artifacts/B2-A595AB76DCB047C47707A894.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-B1CEEC7359AD552272AD802B",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "DIRECT_COMPONENT_STATE",
+      "disposition": "SUPPORTED_COMPONENT",
+      "reasonCode": "SOURCE_CENSUS_IDENTIFIES_COMPONENT_ASSET",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-4f53835b7dfffaba1bc5da4767bf7e932aa450514e7fbd4f865e3155b27cc49b",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "userLabel": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "frameCount": 6,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13"
+        },
+        "authoredState": {
+          "frameIndex": 0,
+          "authoredStateStart": 0,
+          "nextStateStart": 1,
+          "heldFrameRange": [
+            0,
+            1
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 0,
+                "duration": 1,
+                "endExclusive": 1,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 6,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": []
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+        "frameIndex": 0,
+        "nestedSelections": []
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true,
+        "note": "The address stays within the source and #703-supported boundary."
+      },
+      "evidence": {
+        "issue702CandidateId": "G05-F00000",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "c30a6203984c46f2d134acb35ed843ed66f9d4007b42e0d0a3f85da098f9d5ee",
+          "pngSha256": "94a3c8b984ecf03cf6289e98a158bd93f6f6c1bbb422f918bad4f43c1adcf777",
+          "svgPath": "artifacts/B2-B1CEEC7359AD552272AD802B.svg",
+          "pngPath": "artifacts/B2-B1CEEC7359AD552272AD802B.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-B651BA3047C03B16971269D0",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "DIRECT_COMPONENT_STATE",
+      "disposition": "SUPPORTED_COMPONENT",
+      "reasonCode": "SOURCE_CENSUS_IDENTIFIES_COMPONENT_ASSET",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-355dc5e96862422f928f8a8094b68946bee166dc4d847279eabe4b29eb92958c",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "补间 1",
+          "userLabel": "补间 1",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "补间 1"
+        },
+        "authoredState": {
+          "frameIndex": 0,
+          "authoredStateStart": 0,
+          "nextStateStart": 1,
+          "heldFrameRange": [
+            0,
+            1
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 0,
+                "duration": 1,
+                "endExclusive": 1,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 1,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": []
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "补间 1",
+        "frameIndex": 0,
+        "nestedSelections": []
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true,
+        "note": "The address stays within the source and #703-supported boundary."
+      },
+      "evidence": {
+        "issue702CandidateId": "G02-F00000",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "3f0ee8099d2fdc211aca6227544acba38ad6dcf21ac67b81ffce1bf7f34e2695",
+          "pngSha256": "d6365235717996c72244e13a54f697c9613501d75bdf1571f0c820ba727dae70",
+          "svgPath": "artifacts/B2-B651BA3047C03B16971269D0.svg",
+          "pngPath": "artifacts/B2-B651BA3047C03B16971269D0.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-B69A8D02EF0570958C68A6FA",
+      "sourceStateClasses": [
+        "FULL_CHARACTER_STATE"
+      ],
+      "primarySourceStateClass": "FULL_CHARACTER_STATE",
+      "renderAddressClass": "DIRECT_FULL_CHARACTER_STATE",
+      "disposition": "SUPPORTED",
+      "reasonCode": "SOURCE_STATE_IS_ALREADY_COMPLETE",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "补间 2",
+          "userLabel": "补间 2",
+          "frameCount": 1927,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "补间 2"
+        },
+        "authoredState": {
+          "frameIndex": 10,
+          "authoredStateStart": 10,
+          "nextStateStart": 11,
+          "heldFrameRange": [
+            10,
+            11
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 10,
+                "duration": 1,
+                "endExclusive": 11,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 1927,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": []
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "补间 2",
+        "frameIndex": 10,
+        "nestedSelections": []
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true,
+        "note": "The address stays within the source and #703-supported boundary."
+      },
+      "evidence": {
+        "issue702CandidateId": "G03-F00010",
+        "sourceStateClassification": [
+          "FULL_CHARACTER_STATE"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "fe0f6b06d9e7e19adc23123057d1a6db2ae4b94b5f889b1a2edabbcd2bd25338",
+          "pngSha256": "f9a2a24ba9a3a21fe6556404e892ceb8fd2f87ebbbbf546c736abbb04ec4c8ca",
+          "svgPath": "artifacts/B2-B69A8D02EF0570958C68A6FA.svg",
+          "pngPath": "artifacts/B2-B69A8D02EF0570958C68A6FA.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-B72F73EAF7A346E6D9CE2B89",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET",
+        "TEMPORAL_ACTION_CANDIDATE"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "DIRECT_COMPONENT_STATE",
+      "disposition": "SUPPORTED_COMPONENT",
+      "reasonCode": "SOURCE_CENSUS_IDENTIFIES_COMPONENT_ASSET",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "补间 2",
+          "userLabel": "补间 2",
+          "frameCount": 1927,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "补间 2"
+        },
+        "authoredState": {
+          "frameIndex": 0,
+          "authoredStateStart": 0,
+          "nextStateStart": 1,
+          "heldFrameRange": [
+            0,
+            1
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 0,
+                "duration": 1,
+                "endExclusive": 1,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 1927,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": []
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "补间 2",
+        "frameIndex": 0,
+        "nestedSelections": []
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true,
+        "note": "The address stays within the source and #703-supported boundary."
+      },
+      "evidence": {
+        "issue702CandidateId": "G03-F00000",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET",
+          "TEMPORAL_ACTION_CANDIDATE"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "8fab6e65dcbb810904f6737d6f3ae78afad6e5aae58545eb18bfe0e0da4b1e0e",
+          "pngSha256": "3f7a23bf1f9e8a9e59903fc773e6cb81028fea261d2fe01839f5abeab0bd9c96",
+          "svgPath": "artifacts/B2-B72F73EAF7A346E6D9CE2B89.svg",
+          "pngPath": "artifacts/B2-B72F73EAF7A346E6D9CE2B89.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-C23E23F9335AFF7F2626F2AC",
+      "sourceStateClasses": [
+        "FULL_CHARACTER_STATE"
+      ],
+      "primarySourceStateClass": "FULL_CHARACTER_STATE",
+      "renderAddressClass": "PARENT_COMPOSITE",
+      "disposition": "SUPPORTED",
+      "reasonCode": "SOURCE_DERIVED_COMPONENT_STATES_FORM_COMPLETE_PARENT_COMPOSITION",
+      "validationReferencePose": "B",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-680581b05cd778ce0f05f78b9b4e31fdfcc938d10ccb84a40f4d035074cd48f1",
+          "kind": "scene",
+          "sourceLibraryItemName": null,
+          "userLabel": "主场景 · 第 1 帧",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "scene",
+          "name": "场景 1"
+        },
+        "authoredState": {
+          "frameIndex": 0,
+          "frameCount": 1,
+          "heldFrameRange": [
+            0,
+            1
+          ]
+        },
+        "parentChain": [
+          {
+            "kind": "scene",
+            "name": "场景 1",
+            "frameIndex": 0
+          },
+          {
+            "kind": "graphic-symbol",
+            "name": "元件 1",
+            "parentFrame": 6,
+            "authoredStateStart": 0,
+            "heldFrameRange": [
+              0,
+              30
+            ],
+            "tweenTypes": [
+              "none"
+            ]
+          },
+          {
+            "kind": "graphic-symbol",
+            "name": "补间 2",
+            "childFrame": 6,
+            "authoredState": 6,
+            "heldFrameRange": [
+              6,
+              7
+            ],
+            "sourceStateClasses": [
+              "COMPONENT_ASSET",
+              "TEMPORAL_ACTION_CANDIDATE"
+            ]
+          }
+        ],
+        "nestedSynchronizationInputs": [
+          {
+            "libraryItemName": "补间 1",
+            "symbolType": "graphic",
+            "parentSpan": {
+              "start": 0,
+              "duration": 30,
+              "endExclusive": 30
+            },
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "childFrameCount": 1,
+            "parentFrame": 6,
+            "relativeElapsed": 6,
+            "resolvedChildFrame": 0,
+            "selectedChildState": {
+              "frameIndex": 0,
+              "authoredStateStart": 0,
+              "nextStateStart": 1,
+              "heldFrameRange": [
+                0,
+                1
+              ],
+              "heldFrameCount": 1,
+              "layers": [
+                {
+                  "layerIndex": 0,
+                  "visible": true,
+                  "selected": {
+                    "authoredSpanStart": 0,
+                    "duration": 1,
+                    "endExclusive": 1,
+                    "tweenType": "none",
+                    "keyframeOrHold": "keyframe"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "libraryItemName": "补间 2",
+            "symbolType": "graphic",
+            "parentSpan": {
+              "start": 0,
+              "duration": 30,
+              "endExclusive": 30
+            },
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "childFrameCount": 1927,
+            "parentFrame": 6,
+            "relativeElapsed": 6,
+            "resolvedChildFrame": 6,
+            "selectedChildState": {
+              "frameIndex": 6,
+              "authoredStateStart": 6,
+              "nextStateStart": 7,
+              "heldFrameRange": [
+                6,
+                7
+              ],
+              "heldFrameCount": 1,
+              "layers": [
+                {
+                  "layerIndex": 0,
+                  "visible": true,
+                  "selected": {
+                    "authoredSpanStart": 6,
+                    "duration": 1,
+                    "endExclusive": 7,
+                    "tweenType": "none",
+                    "keyframeOrHold": "keyframe"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "libraryItemName": "补间 3",
+            "symbolType": "graphic",
+            "parentSpan": {
+              "start": 0,
+              "duration": 30,
+              "endExclusive": 30
+            },
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "childFrameCount": 1,
+            "parentFrame": 6,
+            "relativeElapsed": 6,
+            "resolvedChildFrame": 0,
+            "selectedChildState": {
+              "frameIndex": 0,
+              "authoredStateStart": 0,
+              "nextStateStart": 1,
+              "heldFrameRange": [
+                0,
+                1
+              ],
+              "heldFrameCount": 1,
+              "layers": [
+                {
+                  "layerIndex": 0,
+                  "visible": true,
+                  "selected": {
+                    "authoredSpanStart": 0,
+                    "duration": 1,
+                    "endExclusive": 1,
+                    "tweenType": "none",
+                    "keyframeOrHold": "keyframe"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "renderAddress": {
+        "rootKind": "scene",
+        "sceneName": "场景 1",
+        "documentFrameIndex": 0,
+        "parentGraphic": {
+          "sourceLibraryItemName": "元件 1",
+          "frameIndex": 6
+        },
+        "nestedSelections": [
+          {
+            "libraryItemName": "补间 1",
+            "frameIndex": 0
+          },
+          {
+            "libraryItemName": "补间 2",
+            "frameIndex": 6
+          },
+          {
+            "libraryItemName": "补间 3",
+            "frameIndex": 0
+          }
+        ]
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true
+      },
+      "evidence": {
+        "issue703SyncRule": {
+          "scope": "Visible Graphic instance; loop mode; default first frame; tested Black parent span",
+          "formulaForObservedRange": "childFrameIndex = firstFrameDefault(0) + (parentFrame - instanceSpanStart)",
+          "loopBehavior": "Animate documentation says Loop continues through the Graphic timeline while the parent instance occupies its span. Black empirically exercises child frames 0..11; its parent span does not reach the 1927-frame child end, so no wrap boundary is crossed.",
+          "confidence": "HIGH for Black default-loop frames 0..11; general bounds and nonzero span origin need dedicated contract controls"
+        },
+        "referenceValidation": {
+          "pose": "B",
+          "status": "VISUAL CANDIDATE CORRESPONDS; MAINTAINER ACCEPTANCE PENDING"
+        },
+        "render": {
+          "origin": "#703 source-derived parent-composite render",
+          "svgSha256": "fa52b27026dbe5b0bb4066fc73d2c31ab6b794e13fc248d05567d974037d1a5f",
+          "pngSha256": "5bc7c406ba126fb6e503978caccee1e28d27032905458cd09989d0d8e87067df",
+          "svgPath": "artifacts/B2-C23E23F9335AFF7F2626F2AC.svg",
+          "pngPath": "artifacts/B2-C23E23F9335AFF7F2626F2AC.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-C4146E01383AF6B709E38BDB",
+      "sourceStateClasses": [
+        "FULL_CHARACTER_STATE"
+      ],
+      "primarySourceStateClass": "FULL_CHARACTER_STATE",
+      "renderAddressClass": "DIRECT_FULL_CHARACTER_STATE",
+      "disposition": "SUPPORTED",
+      "reasonCode": "SOURCE_STATE_IS_ALREADY_COMPLETE",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "补间 2",
+          "userLabel": "补间 2",
+          "frameCount": 1927,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "补间 2"
+        },
+        "authoredState": {
+          "frameIndex": 9,
+          "authoredStateStart": 9,
+          "nextStateStart": 10,
+          "heldFrameRange": [
+            9,
+            10
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 9,
+                "duration": 1,
+                "endExclusive": 10,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 1927,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": []
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "补间 2",
+        "frameIndex": 9,
+        "nestedSelections": []
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true,
+        "note": "The address stays within the source and #703-supported boundary."
+      },
+      "evidence": {
+        "issue702CandidateId": "G03-F00009",
+        "sourceStateClassification": [
+          "FULL_CHARACTER_STATE"
+        ],
+        "referenceValidation": {
+          "pose": "E",
+          "status": "MATCH",
+          "confidence": "HIGH"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "d892fb675c040c9ad3878dbdd160e8516c208319ce90852a73bf0dfa7ef821e8",
+          "pngSha256": "8516a6bacfac6a685a42a8c9a57e4f2daaf208a6d6ace3e41c435c20bd1f4f23",
+          "svgPath": "artifacts/B2-C4146E01383AF6B709E38BDB.svg",
+          "pngPath": "artifacts/B2-C4146E01383AF6B709E38BDB.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-C5C37FEA7D8E34C6A63E53B9",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "DIRECT_COMPONENT_STATE",
+      "disposition": "SUPPORTED_COMPONENT",
+      "reasonCode": "SOURCE_CENSUS_IDENTIFIES_COMPONENT_ASSET",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-4f53835b7dfffaba1bc5da4767bf7e932aa450514e7fbd4f865e3155b27cc49b",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "userLabel": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "frameCount": 6,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13"
+        },
+        "authoredState": {
+          "frameIndex": 3,
+          "authoredStateStart": 3,
+          "nextStateStart": 4,
+          "heldFrameRange": [
+            3,
+            4
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 3,
+                "duration": 1,
+                "endExclusive": 4,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 6,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": []
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+        "frameIndex": 3,
+        "nestedSelections": []
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true,
+        "note": "The address stays within the source and #703-supported boundary."
+      },
+      "evidence": {
+        "issue702CandidateId": "G05-F00003",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "23d7dac50749114927975592998a1a262c1a04f84abac967db3dc1fec0c1fc52",
+          "pngSha256": "7233a09b5b841cf3c4b1f6bd6f42570bada4ad2faffd7bd6030f2d3d7fe8d15e",
+          "svgPath": "artifacts/B2-C5C37FEA7D8E34C6A63E53B9.svg",
+          "pngPath": "artifacts/B2-C5C37FEA7D8E34C6A63E53B9.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-CAE2CCFFDF22DCCBA437E85E",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "DIRECT_COMPONENT_STATE",
+      "disposition": "SUPPORTED_COMPONENT",
+      "reasonCode": "SOURCE_CENSUS_IDENTIFIES_COMPONENT_ASSET",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-4f53835b7dfffaba1bc5da4767bf7e932aa450514e7fbd4f865e3155b27cc49b",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "userLabel": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "frameCount": 6,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13"
+        },
+        "authoredState": {
+          "frameIndex": 1,
+          "authoredStateStart": 1,
+          "nextStateStart": 2,
+          "heldFrameRange": [
+            1,
+            2
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 1,
+                "duration": 1,
+                "endExclusive": 2,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 6,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": []
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+        "frameIndex": 1,
+        "nestedSelections": []
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true,
+        "note": "The address stays within the source and #703-supported boundary."
+      },
+      "evidence": {
+        "issue702CandidateId": "G05-F00001",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "7c7ab27477473d9192549fe1f64ce9e2a9fccb88829b77131b6f233bd0f15407",
+          "pngSha256": "17a30c70fec7696cbc3aa7e716e4728b10736bd842cf69c98397f17af4fb1d47",
+          "svgPath": "artifacts/B2-CAE2CCFFDF22DCCBA437E85E.svg",
+          "pngPath": "artifacts/B2-CAE2CCFFDF22DCCBA437E85E.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-CF4C869D9E2F745AC070137A",
+      "sourceStateClasses": [
+        "FULL_CHARACTER_STATE"
+      ],
+      "primarySourceStateClass": "FULL_CHARACTER_STATE",
+      "renderAddressClass": "PARENT_COMPOSITE",
+      "disposition": "SUPPORTED",
+      "reasonCode": "SOURCE_DERIVED_COMPONENT_STATES_FORM_COMPLETE_PARENT_COMPOSITION",
+      "validationReferencePose": "C",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-680581b05cd778ce0f05f78b9b4e31fdfcc938d10ccb84a40f4d035074cd48f1",
+          "kind": "scene",
+          "sourceLibraryItemName": null,
+          "userLabel": "主场景 · 第 1 帧",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "scene",
+          "name": "场景 1"
+        },
+        "authoredState": {
+          "frameIndex": 0,
+          "frameCount": 1,
+          "heldFrameRange": [
+            0,
+            1
+          ]
+        },
+        "parentChain": [
+          {
+            "kind": "scene",
+            "name": "场景 1",
+            "frameIndex": 0
+          },
+          {
+            "kind": "graphic-symbol",
+            "name": "元件 1",
+            "parentFrame": 7,
+            "authoredStateStart": 0,
+            "heldFrameRange": [
+              0,
+              30
+            ],
+            "tweenTypes": [
+              "none"
+            ]
+          },
+          {
+            "kind": "graphic-symbol",
+            "name": "补间 2",
+            "childFrame": 7,
+            "authoredState": 7,
+            "heldFrameRange": [
+              7,
+              8
+            ],
+            "sourceStateClasses": [
+              "COMPONENT_ASSET",
+              "TEMPORAL_ACTION_CANDIDATE"
+            ]
+          }
+        ],
+        "nestedSynchronizationInputs": [
+          {
+            "libraryItemName": "补间 1",
+            "symbolType": "graphic",
+            "parentSpan": {
+              "start": 0,
+              "duration": 30,
+              "endExclusive": 30
+            },
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "childFrameCount": 1,
+            "parentFrame": 7,
+            "relativeElapsed": 7,
+            "resolvedChildFrame": 0,
+            "selectedChildState": {
+              "frameIndex": 0,
+              "authoredStateStart": 0,
+              "nextStateStart": 1,
+              "heldFrameRange": [
+                0,
+                1
+              ],
+              "heldFrameCount": 1,
+              "layers": [
+                {
+                  "layerIndex": 0,
+                  "visible": true,
+                  "selected": {
+                    "authoredSpanStart": 0,
+                    "duration": 1,
+                    "endExclusive": 1,
+                    "tweenType": "none",
+                    "keyframeOrHold": "keyframe"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "libraryItemName": "补间 2",
+            "symbolType": "graphic",
+            "parentSpan": {
+              "start": 0,
+              "duration": 30,
+              "endExclusive": 30
+            },
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "childFrameCount": 1927,
+            "parentFrame": 7,
+            "relativeElapsed": 7,
+            "resolvedChildFrame": 7,
+            "selectedChildState": {
+              "frameIndex": 7,
+              "authoredStateStart": 7,
+              "nextStateStart": 8,
+              "heldFrameRange": [
+                7,
+                8
+              ],
+              "heldFrameCount": 1,
+              "layers": [
+                {
+                  "layerIndex": 0,
+                  "visible": true,
+                  "selected": {
+                    "authoredSpanStart": 7,
+                    "duration": 1,
+                    "endExclusive": 8,
+                    "tweenType": "none",
+                    "keyframeOrHold": "keyframe"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "libraryItemName": "补间 3",
+            "symbolType": "graphic",
+            "parentSpan": {
+              "start": 0,
+              "duration": 30,
+              "endExclusive": 30
+            },
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "childFrameCount": 1,
+            "parentFrame": 7,
+            "relativeElapsed": 7,
+            "resolvedChildFrame": 0,
+            "selectedChildState": {
+              "frameIndex": 0,
+              "authoredStateStart": 0,
+              "nextStateStart": 1,
+              "heldFrameRange": [
+                0,
+                1
+              ],
+              "heldFrameCount": 1,
+              "layers": [
+                {
+                  "layerIndex": 0,
+                  "visible": true,
+                  "selected": {
+                    "authoredSpanStart": 0,
+                    "duration": 1,
+                    "endExclusive": 1,
+                    "tweenType": "none",
+                    "keyframeOrHold": "keyframe"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "renderAddress": {
+        "rootKind": "scene",
+        "sceneName": "场景 1",
+        "documentFrameIndex": 0,
+        "parentGraphic": {
+          "sourceLibraryItemName": "元件 1",
+          "frameIndex": 7
+        },
+        "nestedSelections": [
+          {
+            "libraryItemName": "补间 1",
+            "frameIndex": 0
+          },
+          {
+            "libraryItemName": "补间 2",
+            "frameIndex": 7
+          },
+          {
+            "libraryItemName": "补间 3",
+            "frameIndex": 0
+          }
+        ]
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true
+      },
+      "evidence": {
+        "issue703SyncRule": {
+          "scope": "Visible Graphic instance; loop mode; default first frame; tested Black parent span",
+          "formulaForObservedRange": "childFrameIndex = firstFrameDefault(0) + (parentFrame - instanceSpanStart)",
+          "loopBehavior": "Animate documentation says Loop continues through the Graphic timeline while the parent instance occupies its span. Black empirically exercises child frames 0..11; its parent span does not reach the 1927-frame child end, so no wrap boundary is crossed.",
+          "confidence": "HIGH for Black default-loop frames 0..11; general bounds and nonzero span origin need dedicated contract controls"
+        },
+        "referenceValidation": {
+          "pose": "C",
+          "status": "VISUAL CANDIDATE CORRESPONDS; MAINTAINER ACCEPTANCE PENDING"
+        },
+        "render": {
+          "origin": "#703 source-derived parent-composite render",
+          "svgSha256": "e2a532e2fd78f5d056777b7f221e54923f6966c16b6780f84f2a48517342605e",
+          "pngSha256": "09ec439047388fe48ba95fe83041f0e48a333e6e1e4f05d81ee1af49c29527be",
+          "svgPath": "artifacts/B2-CF4C869D9E2F745AC070137A.svg",
+          "pngPath": "artifacts/B2-CF4C869D9E2F745AC070137A.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-D755BECB7B381A1F5C731A6B",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET",
+        "TEMPORAL_ACTION_CANDIDATE"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "UNSUPPORTED_OR_UNKNOWN",
+      "disposition": "FAIL_CLOSED",
+      "reasonCode": "NESTED_TIMING_OUTSIDE_ISSUE703_PROVEN_SLICE",
+      "unsupportedInputs": [
+        {
+          "reasonCode": "OUTSIDE_ISSUE703_PROVEN_SYNC_SLICE",
+          "instance": {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "symbolType": "graphic",
+            "playbackMode": "single frame",
+            "firstFrame": "3",
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 5,
+              "duration": 1,
+              "endExclusive": 6
+            },
+            "transform": {
+              "a": 0.217941284179688,
+              "b": 0.947845458984375,
+              "c": -0.947845458984375,
+              "d": 0.217941284179688,
+              "tx": -274.8,
+              "ty": -192.95
+            },
+            "visible": true,
+            "layerIndex": 0
+          },
+          "childFrameCount": 6,
+          "evidence": "The #703 contract slice is Graphic/loop, omitted firstFrame and lastFrame, containing span start 0."
+        },
+        {
+          "reasonCode": "OUTSIDE_ISSUE703_PROVEN_SYNC_SLICE",
+          "instance": {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "symbolType": "graphic",
+            "playbackMode": "single frame",
+            "firstFrame": "3",
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 5,
+              "duration": 1,
+              "endExclusive": 6
+            },
+            "transform": {
+              "a": -0.217941284179688,
+              "b": 0.947845458984375,
+              "c": 0.947845458984375,
+              "d": 0.217941284179688,
+              "tx": 208.45,
+              "ty": -190
+            },
+            "visible": true,
+            "layerIndex": 0
+          },
+          "childFrameCount": 6,
+          "evidence": "The #703 contract slice is Graphic/loop, omitted firstFrame and lastFrame, containing span start 0."
+        }
+      ],
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "补间 2",
+          "userLabel": "补间 2",
+          "frameCount": 1927,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "补间 2"
+        },
+        "authoredState": {
+          "frameIndex": 5,
+          "authoredStateStart": 5,
+          "nextStateStart": 6,
+          "heldFrameRange": [
+            5,
+            6
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 5,
+                "duration": 1,
+                "endExclusive": 6,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 1927,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": [
+          {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "symbolType": "graphic",
+            "playbackMode": "single frame",
+            "firstFrame": "3",
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 5,
+              "duration": 1,
+              "endExclusive": 6
+            },
+            "transform": {
+              "a": 0.217941284179688,
+              "b": 0.947845458984375,
+              "c": -0.947845458984375,
+              "d": 0.217941284179688,
+              "tx": -274.8,
+              "ty": -192.95
+            },
+            "visible": true,
+            "layerIndex": 0
+          },
+          {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "symbolType": "graphic",
+            "playbackMode": "single frame",
+            "firstFrame": "3",
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 5,
+              "duration": 1,
+              "endExclusive": 6
+            },
+            "transform": {
+              "a": -0.217941284179688,
+              "b": 0.947845458984375,
+              "c": 0.947845458984375,
+              "d": 0.217941284179688,
+              "tx": 208.45,
+              "ty": -190
+            },
+            "visible": true,
+            "layerIndex": 0
+          }
+        ]
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "补间 2",
+        "frameIndex": 5,
+        "nestedSelections": [
+          {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "symbolType": "graphic",
+            "playbackMode": "single frame",
+            "firstFrame": "3",
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 5,
+              "duration": 1,
+              "endExclusive": 6
+            }
+          },
+          {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "symbolType": "graphic",
+            "playbackMode": "single frame",
+            "firstFrame": "3",
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 5,
+              "duration": 1,
+              "endExclusive": 6
+            }
+          }
+        ]
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": false,
+        "note": "Prior static snapshot is diagnostic evidence only; it is not promoted as a source-correct render address."
+      },
+      "evidence": {
+        "issue702CandidateId": "G03-F00005",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET",
+          "TEMPORAL_ACTION_CANDIDATE"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "1419f589ca7fecd46fef66ed7f8f6228a69179771f5e1d2670abc0a986821d84",
+          "pngSha256": "378e558082d9bb8947a476e7c2c3106b588190d4941fe1b7c9fd5d22b66b6ba9",
+          "svgPath": "artifacts/B2-D755BECB7B381A1F5C731A6B.svg",
+          "pngPath": "artifacts/B2-D755BECB7B381A1F5C731A6B.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-DABE2918B83FDF3602D02E17",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "DIRECT_COMPONENT_STATE",
+      "disposition": "SUPPORTED_COMPONENT",
+      "reasonCode": "SOURCE_CENSUS_IDENTIFIES_COMPONENT_ASSET",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-f125ba788802e8ca05093d68f9b47332c73640143736994a6fb066d21ea39f56",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "补间 3",
+          "userLabel": "补间 3",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "补间 3"
+        },
+        "authoredState": {
+          "frameIndex": 0,
+          "authoredStateStart": 0,
+          "nextStateStart": 1,
+          "heldFrameRange": [
+            0,
+            1
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 0,
+                "duration": 1,
+                "endExclusive": 1,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 1,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": []
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "补间 3",
+        "frameIndex": 0,
+        "nestedSelections": []
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true,
+        "note": "The address stays within the source and #703-supported boundary."
+      },
+      "evidence": {
+        "issue702CandidateId": "G04-F00000",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "6c16a012121bfdce48fd5fef80346acbbd59cb067326b4c1c88614b29fe16cd6",
+          "pngSha256": "4557d36de3b0b2733e04ff89e7d3a0e0049d4ef9137d1df373eef1d94c1830f2",
+          "svgPath": "artifacts/B2-DABE2918B83FDF3602D02E17.svg",
+          "pngPath": "artifacts/B2-DABE2918B83FDF3602D02E17.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-E60EABC8C6FEA82646B4D674",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET",
+        "TEMPORAL_ACTION_CANDIDATE"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "TEMPORAL_ONLY",
+      "disposition": "ROUTE_TO_ISSUE694",
+      "reasonCode": "AUTHORED_STATE_SPAN_USES_TWEEN",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-15d69f925949f8a2dc3ac07a66838659db93f0d7b944b4969e37c72be4f154f2",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "元件 2",
+          "userLabel": "元件 2",
+          "frameCount": 21,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "元件 2"
+        },
+        "authoredState": {
+          "frameIndex": 10,
+          "authoredStateStart": 10,
+          "nextStateStart": 15,
+          "heldFrameRange": [
+            10,
+            15
+          ],
+          "heldFrameCount": 5,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 10,
+                "duration": 5,
+                "endExclusive": 15,
+                "tweenType": "motion",
+                "keyframeOrHold": "keyframe"
+              }
+            },
+            {
+              "layerIndex": 1,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 10,
+                "duration": 5,
+                "endExclusive": 15,
+                "tweenType": "motion",
+                "keyframeOrHold": "keyframe"
+              }
+            },
+            {
+              "layerIndex": 2,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 10,
+                "duration": 5,
+                "endExclusive": 15,
+                "tweenType": "motion",
+                "keyframeOrHold": "keyframe"
+              }
+            },
+            {
+              "layerIndex": 3,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 10,
+                "duration": 5,
+                "endExclusive": 15,
+                "tweenType": "motion",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 21,
+        "authoredSpanCountAtState": 4,
+        "nestedSynchronizationInputs": [
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 10,
+              "duration": 5,
+              "endExclusive": 15
+            },
+            "transform": {
+              "a": 0.999404907226562,
+              "b": 0.0426788330078125,
+              "c": -0.0426788330078125,
+              "d": 0.999404907226562,
+              "tx": -10.1,
+              "ty": 138.2
+            },
+            "visible": true,
+            "layerIndex": 0
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 10,
+              "duration": 5,
+              "endExclusive": 15
+            },
+            "transform": {
+              "a": 0.987823486328125,
+              "b": 0.1551513671875,
+              "c": -0.1551513671875,
+              "d": 0.987823486328125,
+              "tx": 85.8,
+              "ty": 90.05
+            },
+            "visible": true,
+            "layerIndex": 1
+          },
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 10,
+              "duration": 5,
+              "endExclusive": 15
+            },
+            "transform": {
+              "a": 0.999526977539062,
+              "b": -0.035858154296875,
+              "c": 0.035858154296875,
+              "d": 0.999526977539062,
+              "tx": -3.1,
+              "ty": 138.35
+            },
+            "visible": true,
+            "layerIndex": 2
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 10,
+              "duration": 5,
+              "endExclusive": 15
+            },
+            "transform": {
+              "a": 0.98394775390625,
+              "b": -0.178176879882812,
+              "c": 0.178176879882812,
+              "d": 0.98394775390625,
+              "tx": 88.35,
+              "ty": 90
+            },
+            "visible": true,
+            "layerIndex": 3
+          }
+        ]
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "元件 2",
+        "frameIndex": 10,
+        "nestedSelections": [
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 10,
+              "duration": 5,
+              "endExclusive": 15
+            }
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 10,
+              "duration": 5,
+              "endExclusive": 15
+            }
+          },
+          {
+            "libraryItemName": "补间 5",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 10,
+              "duration": 5,
+              "endExclusive": 15
+            }
+          },
+          {
+            "libraryItemName": "补间 4",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 10,
+              "duration": 5,
+              "endExclusive": 15
+            }
+          }
+        ]
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": false,
+        "note": "Only the authored state start was snapshotted; tween playback/interpolation is not claimed."
+      },
+      "evidence": {
+        "issue702CandidateId": "G07-F00010",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "670fcb91c65e237d11fecf431137b621b1c0d9c0dc04127c8b0f6b5f0ceab163",
+          "pngSha256": "6edeeaaed86c33140216631a971a0d03b5debf8f42db6930702d55d96c664de0",
+          "svgPath": "artifacts/B2-E60EABC8C6FEA82646B4D674.svg",
+          "pngPath": "artifacts/B2-E60EABC8C6FEA82646B4D674.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-F70298E138ABE24C7969ACBA",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "DIRECT_COMPONENT_STATE",
+      "disposition": "SUPPORTED_COMPONENT",
+      "reasonCode": "SOURCE_CENSUS_IDENTIFIES_COMPONENT_ASSET",
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-a954d8dcbb8f01c0a71afa7ef7a688894c106d077e1a8b0ded47a735744d7e89",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "补间 4",
+          "userLabel": "补间 4",
+          "frameCount": 1,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "补间 4"
+        },
+        "authoredState": {
+          "frameIndex": 0,
+          "authoredStateStart": 0,
+          "nextStateStart": 1,
+          "heldFrameRange": [
+            0,
+            1
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 0,
+                "duration": 1,
+                "endExclusive": 1,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 1,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": []
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "补间 4",
+        "frameIndex": 0,
+        "nestedSelections": []
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": true,
+        "note": "The address stays within the source and #703-supported boundary."
+      },
+      "evidence": {
+        "issue702CandidateId": "G08-F00000",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "1f56a37c4f870243032161fa8eceb58551328e29c650460c73648169668c91a3",
+          "pngSha256": "7f9317c6497bcff33bce6aeb983442c235f1891bfe9b350bae9135dcbe2e36ab",
+          "svgPath": "artifacts/B2-F70298E138ABE24C7969ACBA.svg",
+          "pngPath": "artifacts/B2-F70298E138ABE24C7969ACBA.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-F8FF143A5D1919AE5E3A95D2",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "UNSUPPORTED_OR_UNKNOWN",
+      "disposition": "FAIL_CLOSED",
+      "reasonCode": "NESTED_TIMING_OUTSIDE_ISSUE703_PROVEN_SLICE",
+      "unsupportedInputs": [
+        {
+          "reasonCode": "OUTSIDE_ISSUE703_PROVEN_SYNC_SLICE",
+          "instance": {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com14",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 5,
+              "duration": 1,
+              "endExclusive": 6
+            },
+            "transform": {
+              "a": 0.07073974609375,
+              "b": -0.0361480712890625,
+              "c": -0.0361480712890625,
+              "d": -0.07073974609375,
+              "tx": 6.35,
+              "ty": 45.55
+            },
+            "visible": true,
+            "layerIndex": 0
+          },
+          "childFrameCount": 1,
+          "evidence": "The #703 contract slice is Graphic/loop, omitted firstFrame and lastFrame, containing span start 0."
+        }
+      ],
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-4f53835b7dfffaba1bc5da4767bf7e932aa450514e7fbd4f865e3155b27cc49b",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "userLabel": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "frameCount": 6,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13"
+        },
+        "authoredState": {
+          "frameIndex": 5,
+          "authoredStateStart": 5,
+          "nextStateStart": 6,
+          "heldFrameRange": [
+            5,
+            6
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 5,
+                "duration": 1,
+                "endExclusive": 6,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 6,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": [
+          {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com14",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 5,
+              "duration": 1,
+              "endExclusive": 6
+            },
+            "transform": {
+              "a": 0.07073974609375,
+              "b": -0.0361480712890625,
+              "c": -0.0361480712890625,
+              "d": -0.07073974609375,
+              "tx": 6.35,
+              "ty": 45.55
+            },
+            "visible": true,
+            "layerIndex": 0
+          }
+        ]
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+        "frameIndex": 5,
+        "nestedSelections": [
+          {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com14",
+            "symbolType": "graphic",
+            "playbackMode": "loop",
+            "firstFrame": null,
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 5,
+              "duration": 1,
+              "endExclusive": 6
+            }
+          }
+        ]
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": false,
+        "note": "Prior static snapshot is diagnostic evidence only; it is not promoted as a source-correct render address."
+      },
+      "evidence": {
+        "issue702CandidateId": "G05-F00005",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "7d756303b64140b512bca772ae6eb7e65d8ec7e009cee34eb9e9d628ff038a35",
+          "pngSha256": "e4b2d8e7bcd05b2819a5b7c48414e078eac9344ac49fbd0a676b8cb224ec4338",
+          "svgPath": "artifacts/B2-F8FF143A5D1919AE5E3A95D2.svg",
+          "pngPath": "artifacts/B2-F8FF143A5D1919AE5E3A95D2.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    },
+    {
+      "candidateId": "B2-FE5D62532F9720D55DE0AAF9",
+      "sourceStateClasses": [
+        "COMPONENT_ASSET",
+        "TEMPORAL_ACTION_CANDIDATE"
+      ],
+      "primarySourceStateClass": "COMPONENT_ASSET",
+      "renderAddressClass": "UNSUPPORTED_OR_UNKNOWN",
+      "disposition": "FAIL_CLOSED",
+      "reasonCode": "NESTED_TIMING_OUTSIDE_ISSUE703_PROVEN_SLICE",
+      "unsupportedInputs": [
+        {
+          "reasonCode": "OUTSIDE_ISSUE703_PROVEN_SYNC_SLICE",
+          "instance": {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "symbolType": "graphic",
+            "playbackMode": "single frame",
+            "firstFrame": "2",
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 3,
+              "duration": 1,
+              "endExclusive": 4
+            },
+            "transform": {
+              "a": 0.217941284179688,
+              "b": 0.947845458984375,
+              "c": -0.947845458984375,
+              "d": 0.217941284179688,
+              "tx": -274.8,
+              "ty": -192.95
+            },
+            "visible": true,
+            "layerIndex": 0
+          },
+          "childFrameCount": 6,
+          "evidence": "The #703 contract slice is Graphic/loop, omitted firstFrame and lastFrame, containing span start 0."
+        }
+      ],
+      "sourceProvenance": {
+        "sourceSha256": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+        "targetIdentity": {
+          "targetId": "fla-render-target-8b7e2dee8690ad635e8a2616cc620ac2e4e921df00df2eaefae9b95f3721abaa",
+          "kind": "graphic-symbol",
+          "sourceLibraryItemName": "补间 2",
+          "userLabel": "补间 2",
+          "frameCount": 1927,
+          "previewSupported": true,
+          "unsupportedReason": null
+        },
+        "sourceOwner": {
+          "kind": "graphic-symbol",
+          "name": "补间 2"
+        },
+        "authoredState": {
+          "frameIndex": 3,
+          "authoredStateStart": 3,
+          "nextStateStart": 4,
+          "heldFrameRange": [
+            3,
+            4
+          ],
+          "heldFrameCount": 1,
+          "layers": [
+            {
+              "layerIndex": 0,
+              "visible": true,
+              "selected": {
+                "authoredSpanStart": 3,
+                "duration": 1,
+                "endExclusive": 4,
+                "tweenType": "none",
+                "keyframeOrHold": "keyframe"
+              }
+            }
+          ]
+        },
+        "frameCount": 1927,
+        "authoredSpanCountAtState": 1,
+        "nestedSynchronizationInputs": [
+          {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "symbolType": "graphic",
+            "playbackMode": "single frame",
+            "firstFrame": "2",
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 3,
+              "duration": 1,
+              "endExclusive": 4
+            },
+            "transform": {
+              "a": 0.217941284179688,
+              "b": 0.947845458984375,
+              "c": -0.947845458984375,
+              "d": 0.217941284179688,
+              "tx": -274.8,
+              "ty": -192.95
+            },
+            "visible": true,
+            "layerIndex": 0
+          }
+        ]
+      },
+      "renderAddress": {
+        "rootKind": "graphic",
+        "sourceLibraryItemName": "补间 2",
+        "frameIndex": 3,
+        "nestedSelections": [
+          {
+            "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+            "symbolType": "graphic",
+            "playbackMode": "single frame",
+            "firstFrame": "2",
+            "lastFrame": null,
+            "containingSpan": {
+              "start": 3,
+              "duration": 1,
+              "endExclusive": 4
+            }
+          }
+        ]
+      },
+      "renderability": {
+        "priorStaticSnapshotAvailable": true,
+        "semanticRenderSupported": false,
+        "note": "Prior static snapshot is diagnostic evidence only; it is not promoted as a source-correct render address."
+      },
+      "evidence": {
+        "issue702CandidateId": "G03-F00003",
+        "sourceStateClassification": [
+          "COMPONENT_ASSET",
+          "TEMPORAL_ACTION_CANDIDATE"
+        ],
+        "referenceValidation": {
+          "pose": null,
+          "status": "NO_SUPPORTED_REFERENCE_MATCH",
+          "confidence": "N/A"
+        },
+        "exactDuplicateGroup": null,
+        "render": {
+          "origin": "#702 authored-state production render",
+          "svgSha256": "e6086145bbeee66134cf6a1520283376b045a5f764d769da4838e91e6b3ede1d",
+          "pngSha256": "26a9eb8a85f97360dc98ce4032153e14d93c25597cd2ddb378e170a80f888782",
+          "svgPath": "artifacts/B2-FE5D62532F9720D55DE0AAF9.svg",
+          "pngPath": "artifacts/B2-FE5D62532F9720D55DE0AAF9.png",
+          "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+        }
+      }
+    }
+  ],
+  "parentRouteProbes": [
+    {
+      "routeId": "ROUTE-231658C55396458E04F9",
+      "parentFrame": 0,
+      "representedParentFrameRange": [
+        0,
+        1
+      ],
+      "bodyAuthoredFrame": 0,
+      "candidateId": "B2-131741E7A086D1EE3ED3C91B",
+      "attemptedRenderAddressClass": "PARENT_COMPOSITE",
+      "renderAddressClass": "PARENT_COMPOSITE",
+      "status": "SUPPORTED_PARENT_COMPOSITE",
+      "reasonCode": "CHILD_STATES_RESOLVED_FROM_SUPPORTED_DEFAULT_LOOP_INPUTS",
+      "resolvedChildren": [
+        {
+          "libraryItemName": "补间 1",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 2",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 3",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        }
+      ]
+    },
+    {
+      "routeId": "ROUTE-BADF65AB5E0BE44E1BFE",
+      "parentFrame": 1,
+      "representedParentFrameRange": [
+        1,
+        2
+      ],
+      "bodyAuthoredFrame": 1,
+      "candidateId": null,
+      "attemptedRenderAddressClass": "PARENT_COMPOSITE",
+      "renderAddressClass": "UNSUPPORTED_OR_UNKNOWN",
+      "status": "FAIL_CLOSED",
+      "reasonCode": "DESCENDANT_PLAYBACK_OUTSIDE_ISSUE703_PROVEN_SLICE",
+      "unsupportedInputs": [
+        {
+          "childOwner": "补间 2",
+          "selectedChildFrame": 1,
+          "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "symbolType": "graphic",
+          "playbackMode": "single frame",
+          "firstFrame": "3",
+          "lastFrame": null,
+          "containingSpan": {
+            "start": 1,
+            "duration": 1,
+            "endExclusive": 2
+          },
+          "transform": {
+            "a": 0.217941284179688,
+            "b": 0.947845458984375,
+            "c": -0.947845458984375,
+            "d": 0.217941284179688,
+            "tx": -274.8,
+            "ty": -192.95
+          },
+          "visible": true,
+          "layerIndex": 0
+        }
+      ],
+      "resolvedChildren": [
+        {
+          "libraryItemName": "补间 1",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 2",
+          "frameIndex": 1,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 3",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        }
+      ]
+    },
+    {
+      "routeId": "ROUTE-6E2D9AA1CCCF8585729B",
+      "parentFrame": 2,
+      "representedParentFrameRange": [
+        2,
+        3
+      ],
+      "bodyAuthoredFrame": 2,
+      "candidateId": null,
+      "attemptedRenderAddressClass": "PARENT_COMPOSITE",
+      "renderAddressClass": "UNSUPPORTED_OR_UNKNOWN",
+      "status": "FAIL_CLOSED",
+      "reasonCode": "DESCENDANT_PLAYBACK_OUTSIDE_ISSUE703_PROVEN_SLICE",
+      "unsupportedInputs": [
+        {
+          "childOwner": "补间 2",
+          "selectedChildFrame": 2,
+          "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "symbolType": "graphic",
+          "playbackMode": "single frame",
+          "firstFrame": "1",
+          "lastFrame": null,
+          "containingSpan": {
+            "start": 2,
+            "duration": 1,
+            "endExclusive": 3
+          },
+          "transform": {
+            "a": 0.217941284179688,
+            "b": 0.947845458984375,
+            "c": -0.947845458984375,
+            "d": 0.217941284179688,
+            "tx": -274.8,
+            "ty": -192.95
+          },
+          "visible": true,
+          "layerIndex": 0
+        }
+      ],
+      "resolvedChildren": [
+        {
+          "libraryItemName": "补间 1",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 2",
+          "frameIndex": 2,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 3",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        }
+      ]
+    },
+    {
+      "routeId": "ROUTE-7D2ED5B2B82366663197",
+      "parentFrame": 3,
+      "representedParentFrameRange": [
+        3,
+        4
+      ],
+      "bodyAuthoredFrame": 3,
+      "candidateId": null,
+      "attemptedRenderAddressClass": "PARENT_COMPOSITE",
+      "renderAddressClass": "UNSUPPORTED_OR_UNKNOWN",
+      "status": "FAIL_CLOSED",
+      "reasonCode": "DESCENDANT_PLAYBACK_OUTSIDE_ISSUE703_PROVEN_SLICE",
+      "unsupportedInputs": [
+        {
+          "childOwner": "补间 2",
+          "selectedChildFrame": 3,
+          "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "symbolType": "graphic",
+          "playbackMode": "single frame",
+          "firstFrame": "2",
+          "lastFrame": null,
+          "containingSpan": {
+            "start": 3,
+            "duration": 1,
+            "endExclusive": 4
+          },
+          "transform": {
+            "a": 0.217941284179688,
+            "b": 0.947845458984375,
+            "c": -0.947845458984375,
+            "d": 0.217941284179688,
+            "tx": -274.8,
+            "ty": -192.95
+          },
+          "visible": true,
+          "layerIndex": 0
+        }
+      ],
+      "resolvedChildren": [
+        {
+          "libraryItemName": "补间 1",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 2",
+          "frameIndex": 3,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 3",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        }
+      ]
+    },
+    {
+      "routeId": "ROUTE-1697B794AFDD89B042CD",
+      "parentFrame": 4,
+      "representedParentFrameRange": [
+        4,
+        5
+      ],
+      "bodyAuthoredFrame": 4,
+      "candidateId": null,
+      "attemptedRenderAddressClass": "PARENT_COMPOSITE",
+      "renderAddressClass": "UNSUPPORTED_OR_UNKNOWN",
+      "status": "FAIL_CLOSED",
+      "reasonCode": "DESCENDANT_PLAYBACK_OUTSIDE_ISSUE703_PROVEN_SLICE",
+      "unsupportedInputs": [
+        {
+          "childOwner": "补间 2",
+          "selectedChildFrame": 4,
+          "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "symbolType": "graphic",
+          "playbackMode": "single frame",
+          "firstFrame": "3",
+          "lastFrame": null,
+          "containingSpan": {
+            "start": 4,
+            "duration": 1,
+            "endExclusive": 5
+          },
+          "transform": {
+            "a": 0.217941284179688,
+            "b": 0.947845458984375,
+            "c": -0.947845458984375,
+            "d": 0.217941284179688,
+            "tx": -274.8,
+            "ty": -192.95
+          },
+          "visible": true,
+          "layerIndex": 0
+        }
+      ],
+      "resolvedChildren": [
+        {
+          "libraryItemName": "补间 1",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 2",
+          "frameIndex": 4,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 3",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        }
+      ]
+    },
+    {
+      "routeId": "ROUTE-F7D3455B532A96E50FEC",
+      "parentFrame": 5,
+      "representedParentFrameRange": [
+        5,
+        6
+      ],
+      "bodyAuthoredFrame": 5,
+      "candidateId": null,
+      "attemptedRenderAddressClass": "PARENT_COMPOSITE",
+      "renderAddressClass": "UNSUPPORTED_OR_UNKNOWN",
+      "status": "FAIL_CLOSED",
+      "reasonCode": "DESCENDANT_PLAYBACK_OUTSIDE_ISSUE703_PROVEN_SLICE",
+      "unsupportedInputs": [
+        {
+          "childOwner": "补间 2",
+          "selectedChildFrame": 5,
+          "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "symbolType": "graphic",
+          "playbackMode": "single frame",
+          "firstFrame": "3",
+          "lastFrame": null,
+          "containingSpan": {
+            "start": 5,
+            "duration": 1,
+            "endExclusive": 6
+          },
+          "transform": {
+            "a": 0.217941284179688,
+            "b": 0.947845458984375,
+            "c": -0.947845458984375,
+            "d": 0.217941284179688,
+            "tx": -274.8,
+            "ty": -192.95
+          },
+          "visible": true,
+          "layerIndex": 0
+        },
+        {
+          "childOwner": "补间 2",
+          "selectedChildFrame": 5,
+          "libraryItemName": "辣妈风美女-cilisucai.com/辣妈风美女-cilisucai.com1/辣妈风美女-cilisucai.com13",
+          "symbolType": "graphic",
+          "playbackMode": "single frame",
+          "firstFrame": "3",
+          "lastFrame": null,
+          "containingSpan": {
+            "start": 5,
+            "duration": 1,
+            "endExclusive": 6
+          },
+          "transform": {
+            "a": -0.217941284179688,
+            "b": 0.947845458984375,
+            "c": 0.947845458984375,
+            "d": 0.217941284179688,
+            "tx": 208.45,
+            "ty": -190
+          },
+          "visible": true,
+          "layerIndex": 0
+        }
+      ],
+      "resolvedChildren": [
+        {
+          "libraryItemName": "补间 1",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 2",
+          "frameIndex": 5,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 3",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        }
+      ]
+    },
+    {
+      "routeId": "ROUTE-1138C385E1D95E7649E1",
+      "parentFrame": 6,
+      "representedParentFrameRange": [
+        6,
+        7
+      ],
+      "bodyAuthoredFrame": 6,
+      "candidateId": "B2-C23E23F9335AFF7F2626F2AC",
+      "attemptedRenderAddressClass": "PARENT_COMPOSITE",
+      "renderAddressClass": "PARENT_COMPOSITE",
+      "status": "SUPPORTED_PARENT_COMPOSITE",
+      "reasonCode": "CHILD_STATES_RESOLVED_FROM_SUPPORTED_DEFAULT_LOOP_INPUTS",
+      "resolvedChildren": [
+        {
+          "libraryItemName": "补间 1",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 2",
+          "frameIndex": 6,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 3",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        }
+      ],
+      "supportedRenderEvidence": {
+        "origin": "#703 source-derived parent-composite render",
+        "svgSha256": "fa52b27026dbe5b0bb4066fc73d2c31ab6b794e13fc248d05567d974037d1a5f",
+        "pngSha256": "5bc7c406ba126fb6e503978caccee1e28d27032905458cd09989d0d8e87067df",
+        "svgPath": "artifacts/B2-C23E23F9335AFF7F2626F2AC.svg",
+        "pngPath": "artifacts/B2-C23E23F9335AFF7F2626F2AC.png",
+        "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+      }
+    },
+    {
+      "routeId": "ROUTE-2A356E68E07F53B8333D",
+      "parentFrame": 7,
+      "representedParentFrameRange": [
+        7,
+        8
+      ],
+      "bodyAuthoredFrame": 7,
+      "candidateId": "B2-CF4C869D9E2F745AC070137A",
+      "attemptedRenderAddressClass": "PARENT_COMPOSITE",
+      "renderAddressClass": "PARENT_COMPOSITE",
+      "status": "SUPPORTED_PARENT_COMPOSITE",
+      "reasonCode": "CHILD_STATES_RESOLVED_FROM_SUPPORTED_DEFAULT_LOOP_INPUTS",
+      "resolvedChildren": [
+        {
+          "libraryItemName": "补间 1",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 2",
+          "frameIndex": 7,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 3",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        }
+      ],
+      "supportedRenderEvidence": {
+        "origin": "#703 source-derived parent-composite render",
+        "svgSha256": "e2a532e2fd78f5d056777b7f221e54923f6966c16b6780f84f2a48517342605e",
+        "pngSha256": "09ec439047388fe48ba95fe83041f0e48a333e6e1e4f05d81ee1af49c29527be",
+        "svgPath": "artifacts/B2-CF4C869D9E2F745AC070137A.svg",
+        "pngPath": "artifacts/B2-CF4C869D9E2F745AC070137A.png",
+        "outputDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+      }
+    },
+    {
+      "routeId": "ROUTE-F80B838F432F4F93B5C7",
+      "parentFrame": 8,
+      "representedParentFrameRange": [
+        8,
+        9
+      ],
+      "bodyAuthoredFrame": 8,
+      "candidateId": null,
+      "attemptedRenderAddressClass": "PARENT_COMPOSITE",
+      "renderAddressClass": "UNSUPPORTED_OR_UNKNOWN",
+      "status": "REJECTED_NON_PREFERRED",
+      "reasonCode": "COMPLETE_CHILD_STATE_MIXED_WITH_OUTER_SIBLINGS",
+      "explanation": "The selected child is already a complete character; keeping the visible outer head/hair siblings creates the known source-incompatible mixed composition. Use the direct full-character child state.",
+      "resolvedChildren": [
+        {
+          "libraryItemName": "补间 1",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 2",
+          "frameIndex": 8,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 3",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        }
+      ],
+      "rejectionRender": {
+        "origin": "#703 diagnostic parent route render; evidence for rejection only",
+        "svgSha256": "b29e716688e868842f6b6b2809194d1de0e2826c2dc805ba2cbba3d14d0e7f7a",
+        "pngSha256": "3ab397199dd05fde6a8cd58461f9cce70b2491c710f1452d0a09e191e9081e3a",
+        "svgPath": "artifacts/ROUTE-F80B838F432F4F93B5C7.svg",
+        "pngPath": "artifacts/ROUTE-F80B838F432F4F93B5C7.png"
+      }
+    },
+    {
+      "routeId": "ROUTE-F8430A6F9F2FE31A959E",
+      "parentFrame": 9,
+      "representedParentFrameRange": [
+        9,
+        10
+      ],
+      "bodyAuthoredFrame": 9,
+      "candidateId": null,
+      "attemptedRenderAddressClass": "PARENT_COMPOSITE",
+      "renderAddressClass": "UNSUPPORTED_OR_UNKNOWN",
+      "status": "REJECTED_NON_PREFERRED",
+      "reasonCode": "COMPLETE_CHILD_STATE_MIXED_WITH_OUTER_SIBLINGS",
+      "explanation": "The selected child is already a complete character; keeping the visible outer head/hair siblings creates the known source-incompatible mixed composition. Use the direct full-character child state.",
+      "resolvedChildren": [
+        {
+          "libraryItemName": "补间 1",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 2",
+          "frameIndex": 9,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 3",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        }
+      ],
+      "rejectionRender": {
+        "origin": "#703 diagnostic parent route render; evidence for rejection only",
+        "svgSha256": "2097342bb5417ddb45a6bc309daa7211e466840f1af4abeebd39d3171edb0eec",
+        "pngSha256": "db1a0a9e71fa4aa525045d299bab9d87c7eb9dd9f3c081ab7c0c29c8115f1ff1",
+        "svgPath": "artifacts/ROUTE-F8430A6F9F2FE31A959E.svg",
+        "pngPath": "artifacts/ROUTE-F8430A6F9F2FE31A959E.png"
+      }
+    },
+    {
+      "routeId": "ROUTE-F95ABA879D40A363C298",
+      "parentFrame": 10,
+      "representedParentFrameRange": [
+        10,
+        11
+      ],
+      "bodyAuthoredFrame": 10,
+      "candidateId": null,
+      "attemptedRenderAddressClass": "PARENT_COMPOSITE",
+      "renderAddressClass": "UNSUPPORTED_OR_UNKNOWN",
+      "status": "REJECTED_NON_PREFERRED",
+      "reasonCode": "COMPLETE_CHILD_STATE_MIXED_WITH_OUTER_SIBLINGS",
+      "explanation": "The selected child is already a complete character; keeping the visible outer head/hair siblings creates the known source-incompatible mixed composition. Use the direct full-character child state.",
+      "resolvedChildren": [
+        {
+          "libraryItemName": "补间 1",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 2",
+          "frameIndex": 10,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 3",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        }
+      ],
+      "rejectionRender": {
+        "origin": "#703 diagnostic parent route render; evidence for rejection only",
+        "svgSha256": "09e2093c0267ecd5489c49abbc1093c61b1271cb15ff042092ae2bce7ce5694e",
+        "pngSha256": "87fb6c1361df4b37a762c568bd27ebd120a7a77ef588182b3286b812d037d9a3",
+        "svgPath": "artifacts/ROUTE-F95ABA879D40A363C298.svg",
+        "pngPath": "artifacts/ROUTE-F95ABA879D40A363C298.png"
+      }
+    },
+    {
+      "routeId": "ROUTE-6D9BB25DF95F51554C49",
+      "parentFrame": 11,
+      "representedParentFrameRange": [
+        11,
+        30
+      ],
+      "bodyAuthoredFrame": 11,
+      "candidateId": null,
+      "attemptedRenderAddressClass": "PARENT_COMPOSITE",
+      "renderAddressClass": "UNSUPPORTED_OR_UNKNOWN",
+      "status": "FAIL_CLOSED",
+      "reasonCode": "DESCENDANT_HAS_NONZERO_SPAN_ORIGIN",
+      "unsupportedInputs": [
+        {
+          "childOwner": "补间 2",
+          "selectedChildFrame": 11,
+          "libraryItemName": "元件 2",
+          "symbolType": "graphic",
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null,
+          "containingSpan": {
+            "start": 11,
+            "duration": 1916,
+            "endExclusive": 1927
+          },
+          "transform": {
+            "a": 1,
+            "b": 0,
+            "c": 0,
+            "d": 1,
+            "tx": -134.35,
+            "ty": -62.45
+          },
+          "visible": true,
+          "layerIndex": 0
+        }
+      ],
+      "resolvedChildren": [
+        {
+          "libraryItemName": "补间 1",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 2",
+          "frameIndex": 11,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        },
+        {
+          "libraryItemName": "补间 3",
+          "frameIndex": 0,
+          "span": {
+            "start": 0,
+            "duration": 30,
+            "endExclusive": 30
+          },
+          "playbackMode": "loop",
+          "firstFrame": null,
+          "lastFrame": null
+        }
+      ]
+    }
+  ],
+  "controls": {
+    "knownReferenceAddresses": {
+      "A": [
+        "B2-131741E7A086D1EE3ED3C91B"
+      ],
+      "B": [
+        "B2-C23E23F9335AFF7F2626F2AC"
+      ],
+      "C": [
+        "B2-CF4C869D9E2F745AC070137A"
+      ],
+      "D": [
+        "B2-6B59262065D28C279718C576"
+      ],
+      "E": [
+        "B2-C4146E01383AF6B709E38BDB"
+      ],
+      "unmatchedFullCharacter": [
+        "B2-B69A8D02EF0570958C68A6FA"
+      ]
+    },
+    "componentControls": {
+      "head": "B2-B651BA3047C03B16971269D0",
+      "body": "B2-7511FB6C975B2A4CE13439E9"
+    },
+    "rootChildNames": [
+      "补间 1",
+      "补间 2",
+      "补间 3"
+    ],
+    "directFullStatesBypassParentComposition": true,
+    "heldSpansNotExpanded": true,
+    "incorrectParentRoutesRejected": [
+      8,
+      9,
+      10
+    ],
+    "issue703BoundaryFailClosed": [
+      5,
+      11
+    ],
+    "semanticPoseNamesInCandidateIdentity": false
+  },
+  "repeatability": {
+    "inProcessAnalysisPasses": 2,
+    "candidateIdsAndClassificationsIdentical": true,
+    "candidateCoreSha256": "c545ce0708585bfcac0d3bc6cf4aa0c34c093c93738d3b455b3f9620f3868288",
+    "independentlyInvokedProcessRuns": "Verified by comparing two separately invoked output manifests; recorded in the companion receipt."
+  },
+  "safety": {
+    "sourceSha256Before": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+    "referenceSha256Before": "7c53292222edcd183bb0d40ee647435ef860f9894cd4203150317364ca679eac",
+    "productionParserOrResolverChanged": false,
+    "rendererAdded": false,
+    "projectSchemaChanged": false,
+    "productUiChanged": false,
+    "sourceMutation": false,
+    "referenceMutation": false,
+    "tweenInterpolationImplemented": false,
+    "movieClipOrActionScriptRuntimeImplemented": false,
+    "sourceSha256After": "a328a163dd212f0369e27b30e5078178fd42744954203fdad6a9cd06f3b171fa",
+    "referenceSha256After": "7c53292222edcd183bb0d40ee647435ef860f9894cd4203150317364ca679eac",
+    "normalizedArchiveSha256After": "681237abb7b32e79ce89ff8e283b0573b4bf170c6b85830828c7a10911bc7a33"
+  },
+  "handoff": {
+    "b3MayAssume": [
+      "Candidate identity is source-hash and source-address based, with render-address class and nested selections included.",
+      "A/B/C are parent-composite routes within the #703 proven default-loop, omitted-bound, start-zero, non-wrap slice.",
+      "D/E and the unmatched 补间 2@10 state are direct full-character Graphic states and bypass 元件 1.",
+      "Each held authored state is emitted once with its half-open range.",
+      "Component, temporal, and unsupported states remain separate from complete static character candidates."
+    ],
+    "b3MustNotAssume": [
+      "Every frameCount value is a distinct useful pose.",
+      "Every Graphic playback mode, explicit first/last frame, nonzero span origin, wrap, tween, or MovieClip route is supported.",
+      "Direct full-character states should be wrapped in the outer parent composition.",
+      "Reference labels or exact image hashes define source identity or semantic names."
+    ]
+  },
+  "evidenceDirectory": "D:\\PandaStage-Acceptance\\issue704-black-candidates-20261004"
+}

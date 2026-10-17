@@ -18,18 +18,22 @@ import type {
 } from '../../shared/fla-static-snapshot-api';
 
 export interface FlaStaticSnapshotCatalogClient {
-  catalog(sessionId: string): Promise<FlaRenderableTargetCatalogResponse>;
+  catalog(
+    sessionId: string,
+    options?: { readonly includeAuthoredStates?: boolean },
+  ): Promise<FlaRenderableTargetCatalogResponse>;
   preview(request: FlaStaticSnapshotPreviewRequest): Promise<FlaStaticSnapshotPreviewResponse>;
   commit(request: FlaStaticSnapshotCommitRequest): Promise<FlaStaticSnapshotCommitResponse>;
   cancel(request: FlaStaticSnapshotCancelRequest): Promise<FlaStaticSnapshotCancelResponse>;
 }
 
 export const flaStaticSnapshotClient: FlaStaticSnapshotCatalogClient = {
-  catalog: (sessionId) =>
+  catalog: (sessionId, options = {}) =>
     window.pandaStage.fla.staticSnapshotCatalog({
       format: 'fla-static-snapshot-catalog',
       version: 1,
       sessionId,
+      includeAuthoredStates: options.includeAuthoredStates ?? false,
     }),
   preview: (request) => window.pandaStage.fla.staticSnapshotPreview(request),
   commit: (request) => window.pandaStage.fla.staticSnapshotCommit(request),

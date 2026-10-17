@@ -1,0 +1,228 @@
+{
+  "schemaVersion": "issue751-v1-t01-real-prop-vertical-slice/1",
+  "status": "AUTOMATED_FLOW_PASS_HUMAN_VISUAL_PENDING",
+  "acceptance": {
+    "app": "Windows Electron production build",
+    "sourceChooser": "native Windows file chooser; the original FLA was selected without source-path injection",
+    "humanVisualAcceptance": "PENDING_OWNER"
+  },
+  "source": {
+    "basename": "炼丹炉.fla",
+    "sha256Before": "498537baa9cf900f613987eb9dab99727ee09ddaad4fb06e2d2c4351cb283a68",
+    "sha256After": "498537baa9cf900f613987eb9dab99727ee09ddaad4fb06e2d2c4351cb283a68",
+    "hashInvariant": true,
+    "acceptedByIssue732": true
+  },
+  "cancellation": {
+    "initialAssetCount": 0,
+    "afterCancelAssetCount": 0,
+    "projectJsonHashUnchanged": true
+  },
+  "catalog": {
+    "count": 2,
+    "acceptedTarget": {
+      "renderTargetId": "fla-render-target-c87de5d3df0547bc93afeaf7dabd4f1a6689eb936188555e0e5eedc51589b6fb",
+      "kind": "graphic-symbol",
+      "userLabel": "炼丹炉-cilisucai.com",
+      "sourceLibraryItemName": "炼丹炉-cilisucai.com",
+      "frameCount": 1,
+      "previewSupported": true,
+      "unsupportedReason": null
+    },
+    "firstOpenCatalogCount": 2
+  },
+  "import": {
+    "assetId": "6c12b618-483b-492a-8cc1-e2b4a993a06f",
+    "receiptText": "✓导入已完成当前帧已导入炼丹炉-cilisucai.png返回素材库"
+  },
+  "placement": {
+    "layerId": "05e86543-9c61-4687-9c71-64a82aec78a0",
+    "assetId": "6c12b618-483b-492a-8cc1-e2b4a993a06f",
+    "x": 961.0246679316888,
+    "y": 541.0246679316888,
+    "source": {
+      "kind": "asset",
+      "assetId": "6c12b618-483b-492a-8cc1-e2b4a993a06f"
+    },
+    "nativeMouseDragFromAssetCardToCanvas": {
+      "input": "Win32 SetCursorPos + mouse_event",
+      "contentBounds": {
+        "x": 243,
+        "y": 35,
+        "width": 1186,
+        "height": 724
+      },
+      "deviceScale": 1.5,
+      "source": {
+        "x": 170,
+        "y": 352
+      },
+      "target": {
+        "x": 593,
+        "y": 276
+      },
+      "screenPoints": {
+        "start": {
+          "x": 620,
+          "y": 581
+        },
+        "end": {
+          "x": 1254,
+          "y": 467
+        }
+      },
+      "helper": {
+        "foreground": "139057a",
+        "screenWidth": 2504,
+        "screenHeight": 1216,
+        "start": [
+          620,
+          581
+        ],
+        "end": [
+          1254,
+          467
+        ],
+        "released": true
+      },
+      "events": [
+        {
+          "type": "dragstart",
+          "phase": 1,
+          "target": "ARTICLE",
+          "assetId": "6c12b618-483b-492a-8cc1-e2b4a993a06f",
+          "types": []
+        },
+        {
+          "type": "dragstart",
+          "phase": 3,
+          "target": "ARTICLE",
+          "assetId": "6c12b618-483b-492a-8cc1-e2b4a993a06f",
+          "types": [
+            "application/x-panda-stage-asset"
+          ]
+        },
+        {
+          "type": "dragenter",
+          "phase": 1,
+          "target": "STRONG",
+          "assetId": "6c12b618-483b-492a-8cc1-e2b4a993a06f",
+          "types": [
+            "application/x-panda-stage-asset",
+            "chromium/x-drag-id"
+          ]
+        },
+        {
+          "type": "dragenter",
+          "phase": 3,
+          "target": "STRONG",
+          "assetId": "6c12b618-483b-492a-8cc1-e2b4a993a06f",
+          "types": [
+            "application/x-panda-stage-asset",
+            "chromium/x-drag-id"
+          ]
+        },
+        {
+          "type": "dragend",
+          "phase": 1,
+          "target": "ARTICLE",
+          "assetId": "6c12b618-483b-492a-8cc1-e2b4a993a06f",
+          "types": [
+            "application/x-panda-stage-asset"
+          ]
+        },
+        {
+          "type": "dragend",
+          "phase": 3,
+          "target": "ARTICLE",
+          "assetId": "6c12b618-483b-492a-8cc1-e2b4a993a06f",
+          "types": [
+            "application/x-panda-stage-asset"
+          ]
+        }
+      ]
+    },
+    "successfulNativeMouseDragSupplemental": {
+      "input": "Win32 SetCursorPos + mouse_event",
+      "screenPoints": {
+        "start": {
+          "x": 620,
+          "y": 650
+        },
+        "end": {
+          "x": 1254,
+          "y": 467
+        }
+      },
+      "helper": {
+        "foreground": "139057a",
+        "screen": [
+          2504,
+          1216
+        ],
+        "released": true
+      },
+      "beforeLayerCount": 0,
+      "afterSavedLayerCount": 1,
+      "reopenedLayerId": "05e86543-9c61-4687-9c71-64a82aec78a0",
+      "sourceHashInvariant": true,
+      "note": "The in-run center-start attempt stopped on the card thumbnail rebuild button. A second OS-level drag from the card name area to the canvas created the persisted layer."
+    }
+  },
+  "persistence": {
+    "saved": {
+      "assetCount": 1,
+      "layerCount": 1,
+      "layer": {
+        "id": "05e86543-9c61-4687-9c71-64a82aec78a0",
+        "name": "炼丹炉-cilisucai",
+        "source": {
+          "kind": "asset",
+          "assetId": "6c12b618-483b-492a-8cc1-e2b4a993a06f"
+        },
+        "anchor": "center",
+        "x": 961.0246679316888,
+        "y": 541.0246679316888,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotationDeg": 0,
+        "opacity": 1,
+        "visible": true,
+        "zIndex": 0,
+        "locked": false,
+        "flipX": false
+      }
+    },
+    "reopened": {
+      "projectId": "2fca77d9-69fa-4f68-ae0a-f2183f3b2e0a",
+      "layer": {
+        "id": "05e86543-9c61-4687-9c71-64a82aec78a0",
+        "name": "炼丹炉-cilisucai",
+        "source": {
+          "kind": "asset",
+          "assetId": "6c12b618-483b-492a-8cc1-e2b4a993a06f"
+        },
+        "anchor": "center",
+        "x": 961.0246679316888,
+        "y": 541.0246679316888,
+        "scaleX": 1,
+        "scaleY": 1,
+        "rotationDeg": 0,
+        "opacity": 1,
+        "visible": true,
+        "zIndex": 0,
+        "locked": false,
+        "flipX": false
+      }
+    },
+    "projectRoot": "D:\\PandaStage-Acceptance\\issue751-v1-native-picker-20261010-run7\\projects\\Issue751 Alchemical Furnace 1791603174678.pandastage",
+    "screenshots": {
+      "catalog": "D:\\PandaStage-Acceptance\\issue751-v1-native-picker-20261010-run7\\01-static-snapshot-catalog.png",
+      "preview": "D:\\PandaStage-Acceptance\\issue751-v1-native-picker-20261010-run7\\02-selected-prop-preview.png",
+      "importReceipt": "D:\\PandaStage-Acceptance\\issue751-v1-native-picker-20261010-run7\\03-import-receipt.png",
+      "assetLibrary": "D:\\PandaStage-Acceptance\\issue751-v1-native-picker-20261010-run7\\03b-asset-library.png",
+      "placedInShot": "D:\\PandaStage-Acceptance\\issue751-v1-native-picker-20261010-run7\\04-placed-in-shot.png",
+      "reopened": "D:\\PandaStage-Acceptance\\issue751-v1-native-picker-20261010-run7\\05-reopened-project.png"
+    }
+  }
+}

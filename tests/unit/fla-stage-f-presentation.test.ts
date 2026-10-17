@@ -30,6 +30,7 @@ const unavailableEntry: FlaRenderableTargetCatalogEntry = {
     compatibility: ['unsupported'],
   },
   previewSupported: false,
+  isBlank: false,
   unsupportedReason: 'shape tween not implemented',
 };
 
@@ -130,23 +131,29 @@ describe('Issue #402 integration/source contracts', () => {
   const route = readFileSync('src/renderer/fla-import/fla-content-route.ts', 'utf8');
   const snapshot = readFileSync('src/renderer/fla-import/FlaStaticSnapshotReview.tsx', 'utf8');
   const sequence = readFileSync('src/renderer/fla-import/FlaFrameSequenceReview.tsx', 'utf8');
+  const unified = readFileSync('src/renderer/fla-import/FlaUnifiedWorkbench.tsx', 'utf8');
+  const c03Styles = readFileSync('src/renderer/styles/features/fla-import/c03-unified-workbench.css', 'utf8');
   const builder = readFileSync('src/main/services/fla-static-snapshot-svg-builder.ts', 'utf8');
   const styles = readOrderedStylesheetSource();
 
   it('preserves routing and mounts F3 only on the existing failed inspection response', () => {
     expect(session).toContain('if (response && !response.ok)');
     expect(session).toContain('<FlaStageF3Blocked response={response} onClose={onClose} />');
-    expect(session).toContain("contentRoute === 'v1-raster-review'");
+    expect(session).toContain('<FlaUnifiedWorkbench');
+    expect(session).not.toContain('routeFlaInspection(response)');
     expect(route).toContain("'v2r-target-discovery'");
   });
 
   it('keeps F2 focus separate from R1/R2 target selection and uses the existing discovery boundary', () => {
-    expect(snapshot).toContain('focusedTargetId');
-    expect(snapshot).toContain('fla-snapshot-f2-focus-');
+    expect(snapshot).toContain('candidateSelection.focusedCandidateId');
+    expect(snapshot).toContain('checkedCandidateKeys.has(flaUnifiedCandidateSelectionKey(candidate))');
+    expect(snapshot).toContain('<FlaStageF2UnavailableDetails');
     expect(sequence).toContain('focusedTargetId');
     expect(sequence).toContain('fla-frame-sequence-f2-focus-');
-    expect(builder).toContain('if (!found) continue;');
-    expect(builder).toContain('entries.push({ target, previewSupported: true });');
+    expect(builder).toContain('export async function buildRenderableTargetCatalog');
+    expect(builder).toContain('const scene = source.sceneTimelines[0];');
+    expect(builder).toContain('entries.push({');
+    expect(builder).toContain('isBlank: check.isBlank');
   });
 
   it('keeps Stage F styling bounded without adding a dominant F1 Workbench row', () => {
@@ -158,42 +165,22 @@ describe('Issue #402 integration/source contracts', () => {
     expect(styles).not.toContain(".fla-render-workbench[data-stage-f1='true'] {");
   });
 
-  it('keeps the Raster overview shrink-safe for long source basenames', () => {
-    expect(session).toContain('<h3 title={ir.source.basename}>{ir.source.basename}</h3>');
-    expect(styles).toContain('.fla-raster-overview {\n  grid-template-columns: minmax(0, 1fr);');
-    expect(styles).toContain('.fla-raster-overview > div > *');
-    expect(styles).toContain('.fla-raster-overview .fla-review-compatibility > *');
+  it('keeps the unified header shrink-safe for long source basenames', () => {
+    expect(session).toContain('<h1 title={ir.source.basename}>{ir.source.basename}</h1>');
+    expect(c03Styles).toMatch(/\.fla-c03-header h1\s*\{[\s\S]*?overflow:\s*hidden;[\s\S]*?text-overflow:\s*ellipsis;[\s\S]*?white-space:\s*nowrap;/u);
   });
 
-  it('keeps the Stage B hierarchy deletion-first with centered progress and one compatibility row', () => {
-    const headerStart = session.indexOf(
-      '<header className="fla-review-heading fla-raster-review-heading"',
-    );
-    const headerEnd = session.indexOf('</header>', headerStart);
-    const rasterHeader = session.slice(headerStart, headerEnd);
-    const headingCopyEnd = rasterHeader.indexOf('</div>');
-    const progressStart = rasterHeader.indexOf(
-      '<ol aria-label="导入进度" className="fla-workbench-progress"',
-    );
-
-    expect(headerStart).toBeGreaterThanOrEqual(0);
-    expect(headerEnd).toBeGreaterThan(headerStart);
-    expect(progressStart).toBeGreaterThan(headingCopyEnd);
-    expect(rasterHeader).not.toContain('只读导入预览');
-    expect(rasterHeader).not.toContain('eyebrow');
-    expect(session).not.toContain('className="fla-raster-readonly-badge"');
-    expect(session).not.toContain('在确认导入前，不会修改项目或原文件。');
-    expect(session).not.toContain('兼容性概览');
-    expect(session).not.toContain('详细状态按需查看');
-    expect(session).toContain('aria-label="兼容性说明"');
-    expect(session).toContain('className="fla-raster-compatibility-summary"');
-    expect(session.match(/data-testid="fla-raster-compatibility-summary"/gu)).toHaveLength(1);
-    expect(styles).toContain(
-      ".fla-review-session[data-workbench-route='raster'] .fla-review-heading {\n  display: grid;",
-    );
-    expect(styles).toContain(
-      'grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);',
-    );
-    expect(styles).toContain('.fla-raster-overview .fla-review-compatibility-notes > summary.fla-raster-compatibility-summary');
+  it('keeps import progress and result feedback in the single C03 footer', () => {
+    expect(unified).toContain('data-testid="fla-c03-import-footer"');
+    expect(unified).toContain('data-testid="fla-unified-import-selected-count"');
+    expect(unified).toContain('data-testid="fla-unified-import"');
+    expect(unified).toContain('data-testid="fla-unified-import-stop"');
+    expect(unified).toContain('data-testid="fla-unified-import-receipt"');
+    expect(session).toContain('runFlaUnifiedImport({');
+    expect(session).toContain('confirmed: true');
+    expect(session).not.toContain('data-testid="fla-unified-import-action-bar"');
+    expect(session).not.toContain('data-testid="fla-unified-import-progress"');
+    expect(session).not.toContain('className="fla-raster-compatibility-summary"');
+    expect(styles).toContain('.fla-c03-import-footer');
   });
 });

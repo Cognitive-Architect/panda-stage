@@ -1,0 +1,113 @@
+{
+  "schema": "issue749-linear-stroke-contract-evidence/1",
+  "issue": 749,
+  "verdict": "STOP / NO-GO",
+  "gate": "STOP — CONTRACT_UNVERIFIED",
+  "recordedAt": "2026-10-10",
+  "delivery": {
+    "motherPullRequest": 677,
+    "baseHeadBeforeEvidence": "c08669a22629c923219b7ad279a727f82acb41f7",
+    "state": "OPEN",
+    "isDraft": true,
+    "newPullRequestCreated": false
+  },
+  "source": {
+    "file": "D:\\表情合集\\新人物\\修仙男.fla",
+    "expectedSha256": "565C5609A7610EF64ED9F98B09D98DD82D5A45255ADB4D3D410A5A365E0EF4A5",
+    "observedSha256": "565C5609A7610EF64ED9F98B09D98DD82D5A45255ADB4D3D410A5A365E0EF4A5",
+    "sourceBytesChanged": false,
+    "strictPreflight": "PASS in the same-hash Issue #748 receipt; not rerun for this contract review"
+  },
+  "target": {
+    "scene": "Scene 1",
+    "frameIndex": 0,
+    "shapeId": "fla-shape-ce9f3623690b031bcc05dea3",
+    "sourceAddress": "graphic:白发修仙男-cilisucai.com/白发修仙男-cilisucai.com3/layer-0-frame-0/10/2/0",
+    "rootGraphic": "白发修仙男-cilisucai.com/白发修仙男-cilisucai.com1",
+    "rootTransform": { "a": 1.042236328125, "d": 1.042236328125, "tx": 728.2, "ty": 36.75 },
+    "nestedSymbolTransform": { "tx": 205.35, "ty": 602.45 },
+    "shapeTransform": { "a": 1.5164794921875, "b": 0, "c": 0.0515289306640625, "d": 1.5164794921875, "tx": -1320.75, "ty": -1081.5 },
+    "styleIndex": 4,
+    "referencingEdgeCount": 1,
+    "edgeRecordCount": 139,
+    "edge": "!16452 12313[16410 12376 16376 12429",
+    "previousProductionResult": "TARGET_UNSUPPORTED: unsupported linear stroke fill"
+  },
+  "rawSourceXml": {
+    "strokeStyle4": "<StrokeStyle index=\"4\">\r\n                              <SolidStroke scaleMode=\"normal\">\r\n                                <fill>\r\n                                  <LinearGradient spreadMethod=\"reflect\">\r\n                                    <matrix>\r\n                                      <Matrix a=\"0.009490966796875\" d=\"0.01239013671875\" tx=\"814.65\" ty=\"625.65\"/>\r\n                                    </matrix>\r\n                                    <GradientEntry color=\"#594F45\" ratio=\"0.152941176470588\"/>\r\n                                    <GradientEntry color=\"#D7DFD5\" ratio=\"0.447058823529412\"/>\r\n                                    <GradientEntry color=\"#A4A79E\" ratio=\"0.72156862745098\"/>\r\n                                    <GradientEntry color=\"#FCFDFA\" ratio=\"1\"/>\r\n                                  </LinearGradient>\r\n                                </fill>\r\n                              </SolidStroke>\r\n                            </StrokeStyle>",
+    "referencingEdge": "<Edge fillStyle0=\"1\" fillStyle1=\"1\" strokeStyle=\"4\" edges=\"\r\n!16452 12313[16410 12376 16376 12429\"/>"
+  },
+  "paint": {
+    "strokeElement": "SolidStroke",
+    "authoredScaleMode": "normal",
+    "gradientElement": "LinearGradient",
+    "authoredSpreadMethod": "reflect",
+    "authoredMatrix": {
+      "a": 0.009490966796875,
+      "d": 0.01239013671875,
+      "tx": 814.65,
+      "ty": 625.65
+    },
+    "omittedMatrixComponents": ["b", "c"],
+    "stops": [
+      { "color": "#594F45", "ratio": 0.152941176470588, "alphaAuthored": false },
+      { "color": "#D7DFD5", "ratio": 0.447058823529412, "alphaAuthored": false },
+      { "color": "#A4A79E", "ratio": 0.72156862745098, "alphaAuthored": false },
+      { "color": "#FCFDFA", "ratio": 1, "alphaAuthored": false }
+    ],
+    "omittedSolidStrokeAttributes": [
+      "solidStyle",
+      "weight",
+      "caps",
+      "joints",
+      "miterLimit",
+      "pixelHinting"
+    ],
+    "omittedGradientAttribute": "interpolationMethod"
+  },
+  "existingPandaFallbacksNotProvenAsAnimateDefaults": {
+    "weight": 1,
+    "caps": "round",
+    "joints": "round",
+    "miterLimit": 3,
+    "pixelHinting": "false when omitted",
+    "matrixB": 0,
+    "matrixC": 0,
+    "stopAlpha": 1,
+    "interpolationMethod": "rgb",
+    "solidStyleWhenOmitted": "not inspected by current stroke parser"
+  },
+  "baselineEvidence": {
+    "sameProductionCodeAsBaseline": true,
+    "issue748Receipt": "docs/evidence/issue-748/receipt.json",
+    "issue748RasterRun": "docs/evidence/issue-748/raster-run.json",
+    "fullMaleRootPng": "not produced; baseline composition stopped at Style 4"
+  },
+  "animateOracle": {
+    "installedVersion": "23.0.0.407",
+    "activeProcessId": 3848,
+    "activeDocumentTitle": "黑衣修仙男.fla*",
+    "activeDocumentTouched": false,
+    "focusedOracleRun": false,
+    "reason": "The current Animate session contains a different unsaved document. Adobe documents JSFL through the Commands UI and no isolated invocation was verified."
+  },
+  "acceptance": {
+    "matchingAdobeReference": false,
+    "status": "NO_MATCHING_ADOBE_REFERENCE / HUMAN_REVIEW_PENDING",
+    "maleFullCharacterRender": "NOT_RENDERED"
+  },
+  "validation": {
+    "pnpmTestIntegration": {
+      "status": "PASS",
+      "testFiles": 38,
+      "tests": 189,
+      "ranOnCodeHead": "c08669a22629c923219b7ad279a727f82acb41f7",
+      "note": "The requested integration run included typecheck and renderer/Electron build; no Issue #749 production implementation was present."
+    },
+    "pnpmTypecheck": "PASS",
+    "pnpmLint": "PASS",
+    "pnpmTestUnit": { "status": "PASS", "testFiles": 344, "tests": 2489 },
+    "ciRoutingContractTest": { "status": "PASS", "testFiles": 1, "tests": 87 }
+  },
+  "productionCodeChanged": false
+}

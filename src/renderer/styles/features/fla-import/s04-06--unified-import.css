@@ -1,0 +1,82 @@
+.fla-review-session[data-workbench-route='render']
+  [data-testid='fla-unified-snapshot-panel']:not([hidden]),
+.fla-review-session[data-workbench-route='render']
+  [data-testid='fla-unified-sequence-panel']:not([hidden]) {
+  display: contents;
+}
+
+.fla-unified-import-action-stack {
+  max-height: min(34vh, 260px);
+  overflow-y: auto;
+  scrollbar-color: #3f6d4e transparent;
+}
+
+.fla-unified-import-receipt {
+  display: grid;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgb(127 199 148 / 28%);
+  border-radius: 10px;
+  background: rgb(8 14 10 / 58%);
+  gap: 6px;
+  color: #d7e3da;
+  font-size: 11px;
+}
+
+.fla-unified-import-receipt[data-partial='true'] {
+  border-color: rgb(255 190 104 / 46%);
+}
+
+.fla-unified-import-receipt > output,
+.fla-unified-import-receipt > p {
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+
+.fla-unified-import-receipt > output {
+  color: #a9d9b6;
+}
+
+.fla-unified-import-receipt ul {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  gap: 4px;
+}
+
+.fla-unified-import-receipt li {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+}
+
+.fla-unified-import-receipt li strong,
+.fla-unified-import-receipt li small {
+  overflow-wrap: anywhere;
+}
+
+.fla-unified-import-receipt li small {
+  grid-column: 1 / -1;
+  color: #b7c5bb;
+}
+
+.fla-frame-sequence-targets li.has-import-candidate {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.fla-frame-sequence-candidate-select {
+  display: flex !important;
+  min-width: 0;
+  min-height: 42px !important;
+  align-items: center;
+  padding: 5px 8px 5px 4px !important;
+  gap: 4px !important;
+  color: #aabbb0 !important;
+  font-size: 9px;
+  white-space: nowrap;
+}

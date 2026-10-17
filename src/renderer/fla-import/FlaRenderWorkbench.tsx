@@ -35,7 +35,7 @@ export function FlaRenderWorkbench({
 
   return (
     <section
-      aria-label="FLA 渲染工作台"
+      aria-label="组合素材"
       className="fla-render-workbench"
       data-stage-f1={hasStageF1Warning ? 'true' : 'false'}
       data-render-mode={mode}
@@ -44,7 +44,7 @@ export function FlaRenderWorkbench({
     >
       <header className="fla-render-workbench-header" data-testid="fla-render-workbench-header">
         <div className="fla-render-workbench-header-copy">
-          <h3>FLA 渲染工作台</h3>
+          <h3>组合素材</h3>
           <p className="fla-render-workbench-source" data-testid="fla-render-workbench-source">
             <strong title={sourceBasename}>{sourceBasename}</strong>
             <span> · 只读</span>

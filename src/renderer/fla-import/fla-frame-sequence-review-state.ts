@@ -46,6 +46,31 @@ export interface DefaultSequenceRange {
   endFrameIndex: number;
 }
 
+/** Format a concise, creator-facing summary for a zero-based inclusive range. */
+export function formatSequenceRangeSummary(
+  startFrameIndex: number,
+  endFrameIndex: number,
+  validation: RangeValidation,
+): string {
+  const range = `第 ${startFrameIndex + 1}–${endFrameIndex + 1} 帧`;
+  return validation.valid
+    ? `${range} · 共 ${validation.frameCount} 帧`
+    : `${range} · 范围无效`;
+}
+
+/**
+ * A sequence search can hide the current target. In that case keep focus
+ * empty instead of moving it to the first result while the operation still
+ * targets the hidden candidate.
+ */
+export function resolveVisibleSequenceFocus(
+  currentFocusedTargetId: string | null,
+  visibleTargetIds: readonly string[],
+): string | null {
+  if (!currentFocusedTargetId) return null;
+  return visibleTargetIds.includes(currentFocusedTargetId) ? currentFocusedTargetId : null;
+}
+
 /**
  * Select the initial inclusive range for a target. This is used only when a
  * target is first selected or changed; it never rewrites an explicit user
@@ -74,20 +99,20 @@ export function validateRange(
     return { valid: false, frameCount: 0, message: '起始帧和结束帧必须是整数。' };
   }
   if (startFrameIndex < 0 || endFrameIndex < 0) {
-    return { valid: false, frameCount: 0, message: '帧序号不能为负数。' };
+    return { valid: false, frameCount: 0, message: '帧号从 1 开始，不能小于 1。' };
   }
   if (startFrameIndex > endFrameIndex) {
     return {
       valid: false,
       frameCount: 0,
-      message: `起始帧（${startFrameIndex}）不能晚于结束帧（${endFrameIndex}）。`,
+      message: `起始帧（${startFrameIndex + 1}）不能晚于结束帧（${endFrameIndex + 1}）。`,
     };
   }
   if (endFrameIndex >= targetFrameCount) {
     return {
       valid: false,
       frameCount: 0,
-      message: `结束帧（${endFrameIndex}）超出目标可用帧范围（0…${targetFrameCount - 1}）。`,
+      message: `结束帧（${endFrameIndex + 1}）超出目标可用帧范围（1…${targetFrameCount}）。`,
     };
   }
   const frameCount = endFrameIndex - startFrameIndex + 1;

@@ -11,7 +11,7 @@ export function FlaStageAInspecting({
   return (
     <section
       aria-busy="true"
-      aria-label="FLA WORKBENCH"
+      aria-label="FLA 导入工作台"
       aria-modal="true"
       className="fla-review-session fla-stage-a-session"
       data-review-layout="portal"
@@ -24,7 +24,7 @@ export function FlaStageAInspecting({
         className="fla-review-heading fla-stage-a-header"
         data-testid="fla-review-header"
       >
-        <h2>FLA WORKBENCH</h2>
+        <h2>FLA 导入工作台</h2>
         <div className="fla-stage-a-header-actions">
           <span
             className="fla-stage-a-state"
