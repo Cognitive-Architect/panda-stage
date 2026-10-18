@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Search } from 'lucide-react';
 import type { ImageAsset } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
@@ -34,6 +34,8 @@ export interface ImageAssetPickerProps {
   helperText?: string;
   emptyActionLabel?: string;
   selectedAction?: React.ReactNode;
+  /** Put the picker trigger and optional secondary action inside one shared row surface. */
+  selectedSurface?: boolean;
   testId?: string;
 }
 
@@ -170,6 +172,18 @@ export function paginateImageAssetCandidates(
   };
 }
 
+export function ImageAssetPickerSelectedSurface({
+  children,
+}: {
+  children: ReactNode;
+}): React.JSX.Element {
+  return (
+    <div className="image-asset-picker-selected-row image-asset-picker-selected-row--surface">
+      {children}
+    </div>
+  );
+}
+
 export function ImageAssetPicker({
   label,
   assets,
@@ -189,6 +203,7 @@ export function ImageAssetPicker({
   helperText,
   emptyActionLabel = '选择',
   selectedAction,
+  selectedSurface = false,
   testId,
 }: ImageAssetPickerProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
@@ -282,7 +297,12 @@ export function ImageAssetPicker({
         <strong>{label}</strong>
         {emptyOption?.optional ? <small>可选</small> : null}
       </div>
-      {selectedAction && selectedAssetId ? (
+      {selectedSurface ? (
+        <ImageAssetPickerSelectedSurface>
+          {selectedButton}
+          {selectedAction && selectedAssetId ? selectedAction : null}
+        </ImageAssetPickerSelectedSurface>
+      ) : selectedAction && selectedAssetId ? (
         <div className="image-asset-picker-selected-row">
           {selectedButton}
           {selectedAction}

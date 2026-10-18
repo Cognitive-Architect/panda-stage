@@ -126,12 +126,20 @@ describe('Issue #614 Character Detail polish', () => {
     expect(styles).toContain('grid-template-columns: repeat(3, minmax(0, 1fr));');
   });
 
-  it('uses the asset-picker row grammar and keeps Mouth clear in a secondary menu', () => {
+  it('uses one selected-object surface grammar and keeps Mouth clear in a separate target', () => {
     const markup = detailMarkup({ composite: true, withMouth: true });
     const styles = readOrderedStylesheetSource();
 
     expect(markup).toContain('data-image-asset-picker="身体"');
     expect(markup).toContain('data-testid="character-assembly-default-face-summary"');
+    expect(markup).toContain(
+      'class="character-assembly-default-face-summary image-asset-picker"',
+    );
+    expect(
+      markup.match(
+        /class="image-asset-picker-selected-row image-asset-picker-selected-row--surface"/gu,
+      ),
+    ).toHaveLength(4);
     expect(markup).toContain('class="image-asset-picker-selected-copy"');
     expect(markup).toContain('class="image-asset-picker-selected-action">管理</span>');
     expect(markup).toContain('data-image-asset-picker="张嘴脸"');
@@ -140,8 +148,20 @@ describe('Issue #614 Character Detail polish', () => {
     expect(markup).toMatch(
       /<details class="character-assembly-mouth-overflow">[\s\S]*?<button[^>]*class="character-mouth-clear"[^>]*>清除<\/button>[\s\S]*?<\/details>/u,
     );
+    const mouthStart = markup.indexOf('data-image-asset-picker="张嘴脸"');
+    const mouthEnd = markup.indexOf('</section>', mouthStart);
+    const mouthPicker = markup.slice(mouthStart, mouthEnd);
+    expect(mouthPicker).toMatch(
+      /class="image-asset-picker-selected-row image-asset-picker-selected-row--surface"><button[^>]*data-testid="character-assembly-mouth-picker-selected"[\s\S]*?<\/button><details class="character-assembly-mouth-overflow">/u,
+    );
     expect(styles).toContain('.character-assembly-mouth-overflow-menu');
     expect(styles).toContain('min-height: var(--ui-touch-icon);');
+    expect(styles).toContain('image-asset-picker-selected-row--surface');
+    expect(styles).toContain('background: var(--image-asset-picker-selected-surface-background);');
+    expect(styles).toContain('min-height: 82px;');
+    expect(styles).toContain('width: 68px;\n  height: 68px;');
+    expect(styles).toContain('width: 44px;\n  min-width: 44px;\n  height: 44px;\n  min-height: 44px;');
+    expect(styles).toContain('outline: 2px solid var(--ui-color-selected-border);');
     const characterEditor = source(
       'src/renderer/features/characters/CharacterEditor.tsx',
     );
@@ -226,15 +246,21 @@ describe('Issue #616 Character Detail assembly visual hierarchy', () => {
     const mouthPicker = markup.slice(mouthStart, mouthEnd + '</section>'.length);
     const styles = readOrderedStylesheetSource();
     const rowRule = styles.match(
-      /\.character-assembly-drawer-panel \.image-asset-picker-selected-row\s*\{([^}]*)\}/u,
+      /\.character-assembly-drawer-panel \.image-asset-picker-selected-row--surface\s*\{([^}]*)\}/u,
+    )?.[1] ?? '';
+    const triggerRule = styles.match(
+      /\.character-assembly-drawer-panel\s+\.image-asset-picker-selected-row--surface\s+>\s+\.image-asset-picker-selected\s*\{([^}]*)\}/u,
     )?.[1] ?? '';
 
     expect(mouthPicker).toContain('暂不配置');
     expect(mouthPicker).toContain('>选择</span>');
     expect(mouthPicker).not.toContain('可选');
     expect(mouthPicker).not.toContain('可以稍后再配置。');
-    expect(rowRule).toContain('grid-template-columns: minmax(0, 1fr) max-content;');
-    expect(rowRule).not.toMatch(/\b(?:border|background)\s*:/u);
+    expect(rowRule).toContain('display: flex;');
+    expect(rowRule).toContain('border: 1px solid var(--image-asset-picker-selected-surface-border);');
+    expect(rowRule).toContain('background: var(--image-asset-picker-selected-surface-background);');
+    expect(triggerRule).toContain('border: 0;');
+    expect(triggerRule).toContain('background: transparent;');
     expect(styles).toContain('grid-template-columns: 68px minmax(0, 1fr) auto;');
     expect(styles).toContain('gap: 18px;');
   });

@@ -9,7 +9,10 @@ import type { ThumbnailState } from '../assets/AssetCard';
 import { Button } from '../../ui/Button';
 import { CharacterExpressionThumbnail } from './CharacterIdentity';
 import { ExpressionEditor } from './ExpressionEditor';
-import { ImageAssetPicker } from './ImageAssetPicker';
+import {
+  ImageAssetPicker,
+  ImageAssetPickerSelectedSurface,
+} from './ImageAssetPicker';
 import {
   getThumbnailFallbackIconKind,
   ThumbnailStateIcon,
@@ -711,6 +714,7 @@ export function CharacterEditor({
                 testId="character-assembly-body-picker"
                 thumbnails={thumbnails}
                 disabled={disabled}
+                selectedSurface
               />
               <ImageAssetPicker
                 assets={imageAssets}
@@ -728,40 +732,43 @@ export function CharacterEditor({
                 testId="character-assembly-head-asset"
                 thumbnails={thumbnails}
                 disabled={disabled}
+                selectedSurface
               />
               <div
-                className="character-assembly-default-face-summary"
+                className="character-assembly-default-face-summary image-asset-picker"
                 data-testid="character-assembly-default-face-summary"
               >
                 <div className="image-asset-picker-heading">
                   <strong>默认脸</strong>
                 </div>
                 {defaultExpression ? (
-                  <button
-                    aria-label={`管理默认脸：${defaultExpression.name}`}
-                    className="image-asset-picker-selected"
-                    data-testid="character-assembly-go-expressions"
-                    onClick={() => switchDetailWorkspace('expressions')}
-                    type="button"
-                  >
-                    <CharacterExpressionThumbnail
-                      className="image-asset-picker-selected-thumbnail"
-                      expression={defaultExpression}
-                      onThumbnailError={onThumbnailError}
-                      thumbnail={defaultThumbnail}
-                    />
-                    <span className="image-asset-picker-selected-copy">
-                      <strong>{defaultExpression.name}</strong>
-                      <small>
-                        {defaultExpressionAsset
-                          ? `${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`
-                          : '素材不可用'}
-                      </small>
-                    </span>
-                    <span className="image-asset-picker-selected-action">
-                      管理
-                    </span>
-                  </button>
+                  <ImageAssetPickerSelectedSurface>
+                    <button
+                      aria-label={`管理默认脸：${defaultExpression.name}`}
+                      className="image-asset-picker-selected"
+                      data-testid="character-assembly-go-expressions"
+                      onClick={() => switchDetailWorkspace('expressions')}
+                      type="button"
+                    >
+                      <CharacterExpressionThumbnail
+                        className="image-asset-picker-selected-thumbnail"
+                        expression={defaultExpression}
+                        onThumbnailError={onThumbnailError}
+                        thumbnail={defaultThumbnail}
+                      />
+                      <span className="image-asset-picker-selected-copy">
+                        <strong>{defaultExpression.name}</strong>
+                        <small>
+                          {defaultExpressionAsset
+                            ? `${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`
+                            : '素材不可用'}
+                        </small>
+                      </span>
+                      <span className="image-asset-picker-selected-action">
+                        管理
+                      </span>
+                    </button>
+                  </ImageAssetPickerSelectedSurface>
                 ) : null}
               </div>
               <ImageAssetPicker
@@ -780,6 +787,7 @@ export function CharacterEditor({
                 testId="character-assembly-mouth-picker"
                 thumbnails={thumbnails}
                 disabled={disabled}
+                selectedSurface
                 selectedAction={
                   (assemblyDraft?.mouthOpenAssetId ??
                     character.mouthOpenAssetId) ? (

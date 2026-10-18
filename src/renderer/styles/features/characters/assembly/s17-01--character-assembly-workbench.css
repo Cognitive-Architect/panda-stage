@@ -517,12 +517,6 @@
   }
 }
 
-.character-assembly-default-face-summary {
-  display: grid;
-  min-width: 0;
-  gap: 6px;
-}
-
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
@@ -534,21 +528,62 @@
   min-width: 88px;
 }
 
-.character-assembly-drawer-panel .image-asset-picker-selected-row {
-  display: grid;
+.character-assembly-drawer-panel .image-asset-picker-selected-row--surface {
+  display: flex;
   min-width: 0;
   min-height: 82px;
-  grid-template-columns: minmax(0, 1fr) max-content;
-  align-items: center;
-  gap: 8px;
+  align-items: stretch;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--image-asset-picker-selected-surface-border);
+  border-radius: var(--image-asset-picker-selected-surface-radius);
+  background: var(--image-asset-picker-selected-surface-background);
 }
 
 .character-assembly-drawer-panel
-  .image-asset-picker-selected {
-  min-height: 82px;
+  .image-asset-picker-selected-row--surface:has(
+    > .image-asset-picker-selected:hover:not(:disabled),
+    > .character-assembly-mouth-overflow > summary:hover
+  ) {
+  border-color: var(--image-asset-picker-selected-surface-border-hover);
+  background: var(--image-asset-picker-selected-surface-background-hover);
+}
+
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface:has(
+    > .image-asset-picker-selected:focus-visible,
+    > .character-assembly-mouth-overflow > summary:focus-visible
+  ) {
+  outline: 2px solid var(--ui-color-selected-border);
+  outline-offset: 2px;
+}
+
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface
+  > .image-asset-picker-selected {
+  box-sizing: border-box;
+  width: auto;
+  min-height: 80px;
+  flex: 1 1 auto;
   padding: 6px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   grid-template-columns: 68px minmax(0, 1fr) auto;
   gap: 9px;
+}
+
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface
+  > .image-asset-picker-selected:hover:not(:disabled),
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface
+  > .image-asset-picker-selected:focus-visible,
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface
+  > .image-asset-picker-selected-empty {
+  border-color: transparent;
+  background: transparent;
 }
 
 .character-assembly-drawer-panel
@@ -575,19 +610,23 @@
 
 .character-assembly-mouth-overflow {
   position: relative;
-  margin-right: 5px;
+  display: grid;
+  min-width: 44px;
+  flex: 0 0 44px;
+  align-items: center;
+  margin-right: 8px;
 }
 
 .character-assembly-mouth-overflow > summary {
   display: grid;
-  width: var(--ui-touch-icon);
+  width: 44px;
   min-width: 44px;
-  height: var(--ui-touch-icon);
+  height: 44px;
   min-height: 44px;
-  border: 1px solid rgb(154 216 172 / 25%);
+  border: 0;
   border-radius: var(--ui-radius-small);
   color: var(--ui-color-text-secondary);
-  background: var(--ui-color-surface-work);
+  background: transparent;
   cursor: pointer;
   list-style: none;
   place-items: center;
@@ -599,7 +638,6 @@
 
 .character-assembly-mouth-overflow > summary:hover,
 .character-assembly-mouth-overflow > summary:focus-visible {
-  border-color: var(--ui-color-selected-border);
   color: var(--ui-color-text-primary);
 }
 
