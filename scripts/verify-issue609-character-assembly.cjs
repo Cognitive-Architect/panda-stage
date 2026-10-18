@@ -1,6 +1,6 @@
 const { app, ipcMain } = require('electron');
 const { deflateSync } = require('node:zlib');
-const { mkdirSync, writeFileSync } = require('node:fs');
+const { mkdirSync, readFileSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 const { createMainWindow } = require('../dist-electron/main/windows/main-window.js');
 const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
@@ -16,7 +16,8 @@ const exampleProject = require('../demo-project/project-v1.example.json');
 const issue792Only = process.argv.includes('--issue792-mouth-overflow');
 const issue797Only = process.argv.includes('--issue797-head-face-edit');
 const issue798Only = process.argv.includes('--issue798-add-to-shot-navigation');
-const focusedCharacterDrawerRun = issue792Only || issue797Only || issue798Only;
+const issue799Only = process.argv.includes('--issue799-layout-reuse');
+const focusedCharacterDrawerRun = issue792Only || issue797Only || issue798Only || issue799Only;
 const ISSUE683_BASELINE_SHA = 'bed0b353f40238bfd820861c0e5349f0e101e977';
 
 // Bounded S07 proof: use the production Character drawer, Assembly workbench,
@@ -24,13 +25,15 @@ const ISSUE683_BASELINE_SHA = 'bed0b353f40238bfd820861c0e5349f0e101e977';
 // a real Windows Electron renderer. The Issue #612 Create-drawer contract is
 // included; synthetic fixture bytes stay outside the repository, and the
 // receipt does not claim human visual acceptance.
-const acceptanceRoot = issue797Only
-  ? 'D:\\PandaStage-Acceptance\\issue797-head-face-edit'
-  : issue798Only
-    ? 'D:\\PandaStage-Acceptance\\issue798-add-to-shot-navigation'
-    : issue792Only
-      ? 'D:\\PandaStage-Acceptance\\issue792-mouth-overflow'
-      : 'D:\\PandaStage-Acceptance\\issue609-character-assembly';
+const acceptanceRoot = issue799Only
+  ? 'D:\\PandaStage-Acceptance\\issue799-layout-reuse'
+  : issue797Only
+    ? 'D:\\PandaStage-Acceptance\\issue797-head-face-edit'
+    : issue798Only
+      ? 'D:\\PandaStage-Acceptance\\issue798-add-to-shot-navigation'
+      : issue792Only
+        ? 'D:\\PandaStage-Acceptance\\issue792-mouth-overflow'
+        : 'D:\\PandaStage-Acceptance\\issue609-character-assembly';
 const runId = new Date().toISOString().replace(/[:.]/gu, '-');
 const runRoot = path.join(acceptanceRoot, `run-${runId}`);
 const evidenceRoot = path.join(runRoot, 'evidence');
@@ -38,13 +41,15 @@ const userDataRoot = path.join(runRoot, 'electron-user-data');
 const projectRoot = path.join(
   runRoot,
   'projects',
-  issue797Only
-    ? 'issue797-head-face-edit.pandastage'
-    : issue798Only
-      ? 'issue798-add-to-shot-navigation.pandastage'
-      : issue792Only
-        ? 'issue792-mouth-overflow.pandastage'
-        : 'issue609-assembly.pandastage',
+  issue799Only
+    ? 'issue799-layout-reuse.pandastage'
+    : issue797Only
+      ? 'issue797-head-face-edit.pandastage'
+      : issue798Only
+        ? 'issue798-add-to-shot-navigation.pandastage'
+        : issue792Only
+          ? 'issue792-mouth-overflow.pandastage'
+          : 'issue609-assembly.pandastage',
 );
 const resultPath = path.join(runRoot, 'results.json');
 const assetDragMime = 'application/x-panda-stage-asset';
@@ -67,6 +72,28 @@ const IDS = Object.freeze({
   issue797HeadlessCharacter: 'a0609000-0000-4000-8000-00000000000f',
   issue797HeadlessExpression: 'a0609000-0000-4000-8000-000000000010',
   issue797HeadlessVoiceProfile: 'a0609000-0000-4000-8000-000000000011',
+  issue799SourceCharacter: 'a0609000-0000-4000-8000-000000000012',
+  issue799TargetCharacter: 'a0609000-0000-4000-8000-000000000013',
+  issue799HeadlessCharacter: 'a0609000-0000-4000-8000-000000000014',
+  issue799RatioCharacter: 'a0609000-0000-4000-8000-000000000015',
+  issue799MissingCharacter: 'a0609000-0000-4000-8000-000000000016',
+  issue799SourceVoice: 'a0609000-0000-4000-8000-000000000017',
+  issue799TargetVoice: 'a0609000-0000-4000-8000-000000000018',
+  issue799HeadlessVoice: 'a0609000-0000-4000-8000-000000000019',
+  issue799RatioVoice: 'a0609000-0000-4000-8000-00000000001a',
+  issue799MissingVoice: 'a0609000-0000-4000-8000-00000000001b',
+  issue799SourceExpression: 'a0609000-0000-4000-8000-00000000001c',
+  issue799TargetExpression: 'a0609000-0000-4000-8000-00000000001d',
+  issue799TargetAngryExpression: 'a0609000-0000-4000-8000-00000000001e',
+  issue799HeadlessExpression: 'a0609000-0000-4000-8000-00000000001f',
+  issue799RatioExpression: 'a0609000-0000-4000-8000-000000000020',
+  issue799MissingExpression: 'a0609000-0000-4000-8000-000000000021',
+  issue799TargetHead: 'a0609000-0000-4000-8000-000000000022',
+  issue799MissingHead: 'a0609000-0000-4000-8000-000000000023',
+  issue799RatioBody: 'a0609000-0000-4000-8000-000000000024',
+  issue799TargetFace: 'a0609000-0000-4000-8000-000000000025',
+  issue799TargetMouth: 'a0609000-0000-4000-8000-000000000026',
+  issue799TargetAngryFace: 'a0609000-0000-4000-8000-000000000027',
 });
 
 const COLORS = new Map([
@@ -74,6 +101,12 @@ const COLORS = new Map([
   [IDS.bodyAlt, [94, 104, 162]],
   [IDS.face, [231, 194, 112]],
   [IDS.mouth, [184, 90, 78]],
+  [IDS.issue799TargetHead, [143, 108, 180]],
+  [IDS.issue799MissingHead, [143, 108, 180]],
+  [IDS.issue799RatioBody, [112, 96, 130]],
+  [IDS.issue799TargetFace, [232, 200, 132]],
+  [IDS.issue799TargetMouth, [188, 92, 84]],
+  [IDS.issue799TargetAngryFace, [202, 134, 96]],
 ]);
 
 const channels = [];
@@ -316,6 +349,104 @@ function createFixture() {
     bodyAssetId: IDS.body,
     facePlacement: { offsetX: 0, offsetY: 220, scale: 1 },
   };
+  const issue799SourceCharacter = {
+    id: IDS.issue799SourceCharacter,
+    mode: 'composite',
+    name: 'Issue 799 Saved Layout Source',
+    baseAssetId: IDS.face,
+    defaultVoiceProfileId: IDS.issue799SourceVoice,
+    expressions: [
+      { id: IDS.issue799SourceExpression, name: 'Source Neutral', assetId: IDS.face },
+    ],
+    defaultExpressionId: IDS.issue799SourceExpression,
+    defaultScale: 1.25,
+    defaultFlipX: true,
+    bodyAssetId: IDS.body,
+    facePlacement: { offsetX: 46, offsetY: 190, scale: 0.92 },
+    head: {
+      assetId: IDS.issue792Head,
+      placement: { offsetX: 6, offsetY: -132, scale: 0.88 },
+      pivot: { x: 358, y: 452 },
+    },
+    mouthOpenAssetId: IDS.mouth,
+  };
+  const issue799TargetCharacter = {
+    id: IDS.issue799TargetCharacter,
+    mode: 'composite',
+    name: 'Issue 799 Target Panda',
+    baseAssetId: IDS.issue799TargetFace,
+    defaultVoiceProfileId: IDS.issue799TargetVoice,
+    expressions: [
+      { id: IDS.issue799TargetExpression, name: 'Target Neutral', assetId: IDS.issue799TargetFace },
+      { id: IDS.issue799TargetAngryExpression, name: 'Target Angry', assetId: IDS.issue799TargetAngryFace },
+    ],
+    defaultExpressionId: IDS.issue799TargetExpression,
+    defaultScale: 0.78,
+    defaultFlipX: false,
+    bodyAssetId: IDS.bodyAlt,
+    facePlacement: { offsetX: -22, offsetY: 64, scale: 1.2 },
+    head: {
+      assetId: IDS.issue799TargetHead,
+      placement: { offsetX: -18, offsetY: -60, scale: 1.1 },
+      pivot: { x: 280, y: 385 },
+    },
+    mouthOpenAssetId: IDS.issue799TargetMouth,
+  };
+  const issue799HeadlessCharacter = {
+    id: IDS.issue799HeadlessCharacter,
+    mode: 'composite',
+    name: 'Issue 799 Source Without Head',
+    baseAssetId: IDS.face,
+    defaultVoiceProfileId: IDS.issue799HeadlessVoice,
+    expressions: [
+      { id: IDS.issue799HeadlessExpression, name: 'Headless Neutral', assetId: IDS.face },
+    ],
+    defaultExpressionId: IDS.issue799HeadlessExpression,
+    defaultScale: 1,
+    defaultFlipX: false,
+    bodyAssetId: IDS.body,
+    facePlacement: { offsetX: -80, offsetY: 99, scale: 1 },
+  };
+  const issue799RatioCharacter = {
+    id: IDS.issue799RatioCharacter,
+    mode: 'composite',
+    name: 'Issue 799 Different Body Ratio',
+    baseAssetId: IDS.face,
+    defaultVoiceProfileId: IDS.issue799RatioVoice,
+    expressions: [
+      { id: IDS.issue799RatioExpression, name: 'Ratio Neutral', assetId: IDS.face },
+    ],
+    defaultExpressionId: IDS.issue799RatioExpression,
+    defaultScale: 1,
+    defaultFlipX: false,
+    bodyAssetId: IDS.issue799RatioBody,
+    facePlacement: { offsetX: 72, offsetY: 144, scale: 1 },
+    head: {
+      assetId: IDS.issue792Head,
+      placement: { offsetX: 14, offsetY: -148, scale: 0.95 },
+      pivot: { x: 380, y: 440 },
+    },
+  };
+  const issue799MissingCharacter = {
+    id: IDS.issue799MissingCharacter,
+    mode: 'composite',
+    name: 'Issue 799 Unreadable Source Asset',
+    baseAssetId: IDS.face,
+    defaultVoiceProfileId: IDS.issue799MissingVoice,
+    expressions: [
+      { id: IDS.issue799MissingExpression, name: 'Missing Neutral', assetId: IDS.face },
+    ],
+    defaultExpressionId: IDS.issue799MissingExpression,
+    defaultScale: 1,
+    defaultFlipX: false,
+    bodyAssetId: IDS.body,
+    facePlacement: { offsetX: 20, offsetY: 170, scale: 1 },
+    head: {
+      assetId: IDS.issue799MissingHead,
+      placement: { offsetX: 4, offsetY: -120, scale: 0.9 },
+      pivot: { x: 350, y: 450 },
+    },
+  };
   return ProjectSchema.parse({
     ...base,
     schemaVersion: PROJECT_SCHEMA_VERSION,
@@ -329,14 +460,33 @@ function createFixture() {
       ...(focusedCharacterDrawerRun
         ? [imageAsset(IDS.issue792Head, 'Assembly Head', 720, 920)]
         : []),
+      ...(issue799Only
+        ? [
+            imageAsset(IDS.issue799TargetHead, 'Issue 799 Target Head', 640, 800),
+            imageAsset(IDS.issue799MissingHead, 'Issue 799 Missing Head', 720, 920),
+            imageAsset(IDS.issue799RatioBody, 'Issue 799 Different Ratio Body', 800, 920),
+            imageAsset(IDS.issue799TargetFace, 'Issue 799 Target Face', 320, 280),
+            imageAsset(IDS.issue799TargetMouth, 'Issue 799 Target Mouth', 320, 280),
+            imageAsset(IDS.issue799TargetAngryFace, 'Issue 799 Target Angry Face', 320, 280),
+          ]
+        : []),
     ],
-    characters: issue792Only || issue797Only || issue798Only
+    characters: issue799Only
       ? [
           legacyCharacter,
-          issue792Character,
-          ...(issue797Only ? [issue797HeadlessCharacter] : []),
+          issue799SourceCharacter,
+          issue799TargetCharacter,
+          issue799HeadlessCharacter,
+          issue799RatioCharacter,
+          issue799MissingCharacter,
         ]
-      : [legacyCharacter],
+      : issue792Only || issue797Only || issue798Only
+        ? [
+            legacyCharacter,
+            issue792Character,
+            ...(issue797Only ? [issue797HeadlessCharacter] : []),
+          ]
+        : [legacyCharacter],
     voiceProfiles: [
       {
         id: IDS.legacyVoiceProfile,
@@ -365,6 +515,22 @@ function createFixture() {
             rate: 1,
             pitch: 0,
           }]
+        : []),
+      ...(issue799Only
+        ? [
+            [IDS.issue799SourceVoice, IDS.issue799SourceCharacter, 'Issue 799 source voice'],
+            [IDS.issue799TargetVoice, IDS.issue799TargetCharacter, 'Issue 799 target voice'],
+            [IDS.issue799HeadlessVoice, IDS.issue799HeadlessCharacter, 'Issue 799 headless voice'],
+            [IDS.issue799RatioVoice, IDS.issue799RatioCharacter, 'Issue 799 ratio voice'],
+            [IDS.issue799MissingVoice, IDS.issue799MissingCharacter, 'Issue 799 missing-asset voice'],
+          ].map(([id, characterId, name]) => ({
+            id,
+            name,
+            characterId,
+            locale: 'zh-CN',
+            rate: 1,
+            pitch: 0,
+          }))
         : []),
     ],
     shots: [
@@ -430,9 +596,15 @@ function register(channel, handler) {
 }
 
 function projectForRoot(root) {
-  return path.resolve(root).toLowerCase() === path.resolve(projectRoot).toLowerCase()
-    ? activeProject
-    : null;
+  if (path.resolve(root).toLowerCase() !== path.resolve(projectRoot).toLowerCase()) {
+    return null;
+  }
+  if (issue799Only) {
+    return ProjectSchema.parse(
+      JSON.parse(readFileSync(path.join(projectRoot, 'project.json'), 'utf8')),
+    );
+  }
+  return activeProject;
 }
 
 function currentImageAsset(assetId, root) {
@@ -463,6 +635,13 @@ function registerAcceptanceHandlers() {
   register(IPC_CHANNELS.PROJECT_SAVE, (_event, request) => {
     savedProject = request.project;
     activeProject = request.project;
+    if (issue799Only) {
+      writeFileSync(
+        path.join(projectRoot, 'project.json'),
+        `${JSON.stringify(request.project, null, 2)}\n`,
+        'utf8',
+      );
+    }
     return { ok: true, value: documentFor(request.projectRoot, request.project) };
   });
   register(IPC_CHANNELS.PROJECT_CONFIRM_SWITCH, () => ({ outcome: 'saved' }));
@@ -514,6 +693,16 @@ function registerAcceptanceHandlers() {
   });
   register(IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ, (_event, request) => {
     const asset = currentImageAsset(request.assetId, request.projectRoot);
+    if (issue799Only && request.assetId === IDS.issue799MissingHead) {
+      return {
+        ok: false,
+        error: {
+          code: 'ASSET_CANVAS_IMAGE_ASSET_NOT_FOUND',
+          message: 'Issue #799 deliberately unreadable source Head fixture.',
+          assetId: request.assetId,
+        },
+      };
+    }
     if (!asset || asset.sha256 !== request.sha256) {
       return {
         ok: false,
@@ -1088,6 +1277,8 @@ async function dragWithNativeInput(window, sourceSelector, destinationSelector, 
 
 async function sendKeyStroke(window, keyCode) {
   const electronKeyCode = {
+    ARROWDOWN: 'Down',
+    ARROWUP: 'Up',
     ESC: 'Escape',
     ENTER: 'Return',
     TAB: 'Tab',
@@ -1872,6 +2063,571 @@ async function verifyIssue798AddToShotNavigation(window) {
   };
 }
 
+async function selectIssue799LayoutSource(window, characterId) {
+  const selector = '[data-testid="character-assembly-layout-reuse-source"]';
+  await waitForDom(
+    window,
+    `(() => {
+      const select = document.querySelector(${JSON.stringify(selector)});
+      return select && [...select.options].some((option) => option.value === ${JSON.stringify(characterId)});
+    })()`,
+    `Issue #799 source ${characterId} was not available in the Assembly picker.`,
+  );
+  const { currentIndex, targetIndex } = await window.webContents.executeJavaScript(`(() => {
+    const select = document.querySelector(${JSON.stringify(selector)});
+    return {
+      currentIndex: select.selectedIndex,
+      targetIndex: [...select.options].findIndex((option) => option.value === ${JSON.stringify(characterId)}),
+    };
+  })()`);
+  await clickWithNativeInput(window, selector, 'Focus the saved layout source picker');
+  const direction = targetIndex >= currentIndex ? 'ARROWDOWN' : 'ARROWUP';
+  for (let step = 0; step < Math.abs(targetIndex - currentIndex); step += 1) {
+    await sendKeyStroke(window, direction);
+  }
+  await sendKeyStroke(window, 'ENTER');
+  try {
+    await waitForDom(
+      window,
+      `document.querySelector(${JSON.stringify(selector)})?.value === ${JSON.stringify(characterId)}`,
+      `Issue #799 source ${characterId} was not selected in the Assembly picker.`,
+    );
+  } catch (error) {
+    const state = await window.webContents.executeJavaScript(`(() => {
+      const select = document.querySelector(${JSON.stringify(selector)});
+      const active = document.activeElement;
+      const bounds = select?.getBoundingClientRect();
+      const hit = bounds ? document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2) : null;
+      return {
+        value: select?.value ?? null,
+        selectedIndex: select?.selectedIndex ?? null,
+        targetIndex: [...(select?.options ?? [])].findIndex((option) => option.value === ${JSON.stringify(characterId)}),
+        disabled: select?.disabled ?? null,
+        activeTag: active?.tagName ?? '',
+        activeTestId: active?.dataset.testid ?? '',
+        activeIsSelect: active === select,
+        hitTag: hit?.tagName ?? '',
+        hitTestId: hit?.dataset.testid ?? '',
+      };
+    })()`);
+    throw new Error(`${error instanceof Error ? error.message : String(error)}; picker=${JSON.stringify(state)}`, { cause: error });
+  }
+}
+
+async function readIssue799LayoutState(window) {
+  return window.webContents.executeJavaScript(`(() => {
+    const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+    const history = document.querySelector('[data-testid="history-controls"]');
+    const select = document.querySelector('[data-testid="character-assembly-layout-reuse-source"]');
+    const compatibility = document.querySelector('[data-testid="character-assembly-layout-reuse-compatibility"]');
+    const preview = document.querySelector('[data-testid="character-assembly-layout-reuse-preview"]');
+    return {
+      characterId: workbench?.dataset.characterId ?? '',
+      bodyAssetId: workbench?.dataset.bodyAssetId ?? '',
+      previewFaceAssetId: workbench?.dataset.previewFaceAssetId ?? '',
+      facePlacement: {
+        offsetX: Number(workbench?.dataset.faceOffsetX),
+        offsetY: Number(workbench?.dataset.faceOffsetY),
+        scale: Number(workbench?.dataset.faceScale),
+      },
+      head: workbench?.dataset.headAssetId
+        ? {
+            assetId: workbench.dataset.headAssetId,
+            placement: {
+              offsetX: Number(workbench.dataset.headOffsetX),
+              offsetY: Number(workbench.dataset.headOffsetY),
+              scale: Number(workbench.dataset.headScale),
+            },
+            pivot: {
+              x: Number(workbench.dataset.headPivotX),
+              y: Number(workbench.dataset.headPivotY),
+            },
+          }
+        : null,
+      previewSourceId: workbench?.dataset.layoutPreviewSourceId ?? '',
+      selectedSourceId: select?.value ?? '',
+      compatibility: compatibility?.textContent?.trim() ?? '',
+      previewDisabled: preview?.disabled ?? true,
+      pending: Boolean(document.querySelector('[data-testid="character-assembly-pending"]')),
+      revision: stage?.dataset.projectRevision ?? '',
+      undoCount: history?.dataset.undoCount ?? '',
+      redoCount: history?.dataset.redoCount ?? '',
+      selectedFace: workbench?.dataset.selectedFace ?? '',
+      images: [...document.querySelectorAll('.character-assembly-part')].map((image) => ({
+        assetId: image.dataset.assetId ?? '',
+        naturalWidth: image.naturalWidth,
+        naturalHeight: image.naturalHeight,
+        complete: image.complete,
+      })),
+    };
+  })()`);
+}
+
+async function verifyIssue799LayoutReuse(window) {
+  const screenshots = [];
+  const evidence = {};
+  inProgressEvidence.issue799 = evidence;
+  const projectFilePath = path.join(projectRoot, 'project.json');
+  const persistedAtOpen = ProjectSchema.parse(
+    JSON.parse(readFileSync(projectFilePath, 'utf8')),
+  );
+  const sourceBefore = structuredClone(
+    persistedAtOpen.characters.find((character) => character.id === IDS.issue799SourceCharacter),
+  );
+  const targetBefore = structuredClone(
+    persistedAtOpen.characters.find((character) => character.id === IDS.issue799TargetCharacter),
+  );
+  assert(sourceBefore?.mode === 'composite', 'Saved layout source A was not loaded from the project file.');
+  assert(targetBefore?.mode === 'composite', 'Target B was not loaded from the project file.');
+  evidence.savedSourceLoadedFromProjectFile = {
+    projectFilePath,
+    sourceCharacterId: sourceBefore.id,
+    sourceBodyAssetId: sourceBefore.bodyAssetId,
+    sourceBodyDimensions: { width: 720, height: 920 },
+    sourceFacePlacement: sourceBefore.facePlacement,
+    sourceHead: sourceBefore.head,
+  };
+  const targetIdentity = (character) => ({
+    id: character.id,
+    mode: character.mode,
+    name: character.name,
+    baseAssetId: character.baseAssetId,
+    defaultVoiceProfileId: character.defaultVoiceProfileId,
+    expressions: character.expressions,
+    defaultExpressionId: character.defaultExpressionId,
+    mouthOpenAssetId: character.mouthOpenAssetId,
+    defaultScale: character.defaultScale,
+    defaultFlipX: character.defaultFlipX,
+    bodyAssetId: character.bodyAssetId,
+    headAssetId: character.head?.assetId,
+  });
+  const initialTargetIdentity = targetIdentity(targetBefore);
+
+  await clickWithNativeInput(
+    window,
+    `[data-testid="character-list-view"] [data-character-id="${IDS.issue799TargetCharacter}"]`,
+    'Open Issue #799 target Character B',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue799TargetCharacter)}`,
+    'Issue #799 target Character B did not open.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-workspace-assembly-tab"]',
+    'Open target B Assembly workspace',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.characterId === ${JSON.stringify(IDS.issue799TargetCharacter)}`,
+    'Target B Assembly workbench did not open.',
+  );
+  const initial = await readIssue799LayoutState(window);
+  evidence.targetBefore = initial;
+  assert(initial.bodyAssetId === IDS.bodyAlt, 'Target B did not retain its own Body asset.');
+  assert(initial.head?.assetId === IDS.issue799TargetHead, 'Target B did not retain its own Head asset.');
+  assert(initial.facePlacement.offsetX === -22 && initial.facePlacement.offsetY === 64, 'Target B fixture placement changed unexpectedly.');
+  assert(initial.revision === '0' && initial.undoCount === '0' && initial.redoCount === '0', 'Target B did not begin from a clean Project and History state.');
+
+  await clickWithNativeInput(
+    window,
+    '[aria-label="预览表情"] button:nth-of-type(2)',
+    'Preview target B alternate expression',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.previewFaceAssetId === ${JSON.stringify(IDS.issue799TargetAngryFace)}`,
+    'Target B alternate expression preview did not retain its own expression asset.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[aria-label="预览表情"] button:nth-of-type(3)',
+    'Preview target B Mouth',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.previewFaceAssetId === ${JSON.stringify(IDS.issue799TargetMouth)}`,
+    'Target B Mouth preview did not retain its own Mouth asset.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[aria-label="预览表情"] button:nth-of-type(1)',
+    'Restore target B default expression preview',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.previewFaceAssetId === ${JSON.stringify(IDS.issue799TargetFace)}`,
+    'Target B default expression preview did not return.',
+  );
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-default-face-select"]',
+    'Select Face edit target before layout preview',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'face'`,
+    'The Character workspace did not select Face as the edit target.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Open Face fine tune before layout preview',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-fine-tune-panel"]')?.getAttribute('aria-label') === '脸部精调'`,
+    'Target B Face fine-tune panel did not open.',
+  );
+  await clickWithNativeInput(window, '[data-testid="character-assembly-right-step"]', 'Adjust target B Face draft once');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-right-step"]', 'Adjust target B Face draft a second time');
+  const targetDraftBeforePreview = await readIssue799LayoutState(window);
+  assert(targetDraftBeforePreview.facePlacement.offsetX === -20, 'The pre-existing target B local draft was not prepared.');
+  assert(targetDraftBeforePreview.revision === '0' && targetDraftBeforePreview.undoCount === '0', 'Local Face tuning wrote Project or History before Apply.');
+  evidence.targetDraftBeforePreview = targetDraftBeforePreview;
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-layout-reuse-toggle"]',
+    'Open Apply Layout panel',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-layout-reuse-panel"]')`,
+    'Apply Layout panel did not open inside Assembly.',
+  );
+  const sourceSelector = '[data-testid="character-assembly-layout-reuse-source"]';
+  const availableSourceIds = await window.webContents.executeJavaScript(`[
+    ...document.querySelector(${JSON.stringify(sourceSelector)}).options,
+  ].map((option) => option.value).filter(Boolean)`);
+  evidence.availableSources = availableSourceIds;
+  assert(availableSourceIds.includes(IDS.issue799SourceCharacter), 'Saved Character A was missing from the layout source list.');
+  assert(!availableSourceIds.includes(IDS.issue799TargetCharacter), 'Target B was offered as its own saved layout source.');
+  await selectIssue799LayoutSource(window, IDS.issue799SourceCharacter);
+  await waitForDom(
+    window,
+    `(() => {
+      const button = document.querySelector('[data-testid="character-assembly-layout-reuse-preview"]');
+      const status = document.querySelector('[data-testid="character-assembly-layout-reuse-compatibility"]')?.textContent ?? '';
+      return button && !button.disabled && status.includes('720×920');
+    })()`,
+    'Saved source A and target B did not reach the exact-dimension compatible state.',
+  );
+  evidence.compatibleState = await readIssue799LayoutState(window);
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-layout-reuse-preview"]',
+    'Preview saved layout from A on target B',
+  );
+  await waitForDom(
+    window,
+    `(() => {
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      return workbench?.dataset.layoutPreviewSourceId === ${JSON.stringify(IDS.issue799SourceCharacter)}
+        && Number(workbench.dataset.faceOffsetX) === 46
+        && Number(workbench.dataset.faceOffsetY) === 190
+        && Number(workbench.dataset.headOffsetX) === 6
+        && Number(workbench.dataset.headPivotX) === 358;
+    })()`,
+    'Preview did not copy the saved Face and Head layout values into B.',
+  );
+  const previewA = await readIssue799LayoutState(window);
+  evidence.previewA = previewA;
+  assert(previewA.bodyAssetId === IDS.bodyAlt && previewA.head?.assetId === IDS.issue799TargetHead, 'Preview replaced target B Body or Head asset IDs.');
+  assert(previewA.previewFaceAssetId === IDS.issue799TargetFace, 'Preview replaced target B expression selection.');
+  assert(previewA.facePlacement.offsetX === 46 && previewA.facePlacement.offsetY === 190 && previewA.facePlacement.scale === 0.92, 'Preview did not copy the mapped Face placement values.');
+  assert(previewA.head?.placement.offsetX === 6 && previewA.head.placement.offsetY === -132 && previewA.head.placement.scale === 0.88 && previewA.head.pivot.x === 358 && previewA.head.pivot.y === 452, 'Preview did not copy the mapped Head placement and pivot values.');
+  assert(previewA.revision === '0' && previewA.undoCount === '0' && previewA.pending, 'Preview changed Project or History instead of only the Assembly draft.');
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'layout-reuse-preview-from-saved-source.png'));
+
+  const rejectedSources = [
+    [IDS.issue799HeadlessCharacter, '结构不兼容', 'head-structure-mismatch'],
+    [IDS.issue799RatioCharacter, '尺寸不同', 'body-dimensions-mismatch'],
+    [IDS.issue799MissingCharacter, '无法读取', 'resource-missing'],
+  ];
+  const rejectionEvidence = [];
+  for (const [characterId, expectedText, rejectionKind] of rejectedSources) {
+    await selectIssue799LayoutSource(window, characterId);
+    await waitForDom(
+      window,
+      `(() => {
+        const status = document.querySelector('[data-testid="character-assembly-layout-reuse-compatibility"]')?.textContent ?? '';
+        const button = document.querySelector('[data-testid="character-assembly-layout-reuse-preview"]');
+        return status.includes(${JSON.stringify(expectedText)}) && button?.disabled === true;
+      })()`,
+      `Issue #799 rejected source ${characterId} was not blocked with a clear ${rejectionKind} message.`,
+    );
+    const rejected = await readIssue799LayoutState(window);
+    assert(rejected.facePlacement.offsetX === 46 && rejected.head?.placement.offsetX === 6, `Selecting rejected source ${characterId} changed the staged B layout.`);
+    assert(rejected.revision === '0' && rejected.undoCount === '0', `Selecting rejected source ${characterId} wrote Project or History.`);
+    rejectionEvidence.push({ characterId, rejectionKind, state: rejected });
+    if (rejectionKind === 'resource-missing') {
+      await waitForPaint(window);
+      screenshots.push(await capture(window, 'layout-reuse-rejected-unreadable-source.png'));
+    }
+  }
+  evidence.rejectedSources = rejectionEvidence;
+
+  await selectIssue799LayoutSource(window, IDS.issue799SourceCharacter);
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-assembly-layout-reuse-preview"]')?.disabled`,
+    'Saved source A did not become compatible again after switching back from rejected sources.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-layout-reuse-cancel"]',
+    'Cancel template preview and restore target B draft',
+  );
+  await waitForDom(
+    window,
+    `(() => {
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      return workbench?.dataset.layoutPreviewSourceId === ''
+        && Number(workbench.dataset.faceOffsetX) === -20
+        && Number(workbench.dataset.headOffsetX) === -18;
+    })()`,
+    'Cancel Preview did not restore the target B draft that existed before preview.',
+  );
+  const cancelledPreview = await readIssue799LayoutState(window);
+  evidence.cancelledPreview = cancelledPreview;
+  assert(cancelledPreview.revision === '0' && cancelledPreview.undoCount === '0', 'Cancel Preview wrote Project or History.');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-pending"] button:first-child',
+    'Revert target B local Assembly draft',
+  );
+  await waitForDom(
+    window,
+    `(() => {
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      return workbench?.dataset.layoutPreviewSourceId === ''
+        && Number(workbench.dataset.faceOffsetX) === -22
+        && Number(workbench.dataset.headOffsetX) === -18
+        && !document.querySelector('[data-testid="character-assembly-pending"]');
+    })()`,
+    'Assembly Revert did not restore target B persisted values after preview cancellation.',
+  );
+  const revertedPreview = await readIssue799LayoutState(window);
+  evidence.revertedPreview = revertedPreview;
+  assert(revertedPreview.revision === '0' && revertedPreview.undoCount === '0', 'Assembly Revert wrote Project or History.');
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-layout-reuse-toggle"]',
+    'Reopen Apply Layout panel for final Apply',
+  );
+  await selectIssue799LayoutSource(window, IDS.issue799SourceCharacter);
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-assembly-layout-reuse-preview"]')?.disabled`,
+    'Saved source A was not ready for the final preview.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-layout-reuse-preview"]',
+    'Preview saved layout from A for final Apply',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.layoutPreviewSourceId === ${JSON.stringify(IDS.issue799SourceCharacter)}`,
+    'The final layout preview did not activate.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-head-asset-selected"]',
+    'Select Head for fine tune from its Assembly asset card',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'head'`,
+    'The Character workspace did not select Head as the edit target.',
+  );
+  const fineTuneExpanded = await window.webContents.executeJavaScript(
+    `document.querySelector('[data-testid="character-assembly-fine-tune-toggle"]')?.getAttribute('aria-expanded') === 'true'`,
+  );
+  if (!fineTuneExpanded) {
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-assembly-fine-tune-toggle"]',
+      'Open Head fine tune',
+    );
+  }
+  await clickWithNativeInput(window, '[data-testid="character-assembly-head-right-step"]', 'Fine tune target B Head after preview');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-default-face-select"]',
+    'Select Face for fine tune from its Assembly asset card',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'face'`,
+    'The Character workspace did not return to Face as the edit target.',
+  );
+  await clickWithNativeInput(window, '[data-testid="character-assembly-right-step"]', 'Fine tune target B Face after preview');
+  const tunedPreview = await readIssue799LayoutState(window);
+  evidence.tunedPreview = tunedPreview;
+  assert(tunedPreview.facePlacement.offsetX === 47 && tunedPreview.head?.placement.offsetX === 7, 'Target B could not fine tune the copied Face and Head layout values.');
+  assert(tunedPreview.revision === '0' && tunedPreview.undoCount === '0' && tunedPreview.pending, 'Fine tuning the preview wrote Project or History before Apply.');
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'layout-reuse-preview-fine-tuned.png'));
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-pending"] button:last-child',
+    'Apply the fine-tuned layout once',
+  );
+  await waitForDom(
+    window,
+    `(() => {
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+      const history = document.querySelector('[data-testid="history-controls"]');
+      return !document.querySelector('[data-testid="character-assembly-pending"]')
+        && Number(workbench?.dataset.faceOffsetX) === 47
+        && Number(workbench?.dataset.headOffsetX) === 7
+        && stage?.dataset.projectRevision === '1'
+        && history?.dataset.undoCount === '1'
+        && history?.dataset.redoCount === '0';
+    })()`,
+    'Apply did not commit the tuned layout as exactly one Project/History operation.',
+  );
+  const applied = await readIssue799LayoutState(window);
+  evidence.applied = applied;
+  assert(applied.bodyAssetId === IDS.bodyAlt && applied.head?.assetId === IDS.issue799TargetHead, 'Apply changed target B asset references.');
+  assert(JSON.stringify(activeProject.characters.find((character) => character.id === IDS.issue799SourceCharacter)) === JSON.stringify(sourceBefore), 'Source Character A changed before Project Save.');
+  assert(JSON.stringify(activeProject.characters.find((character) => character.id === IDS.issue799TargetCharacter)) === JSON.stringify(targetBefore), 'Apply changed Main-owned Project before its existing save boundary.');
+  evidence.sourceUnchangedBeforeSave = true;
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'layout-reuse-applied-to-target.png'));
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-workspace-expressions-tab"]',
+    'Close clean Assembly session before Undo',
+  );
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-assembly-workbench"]')`,
+    'Clean Assembly session did not close before Undo.',
+  );
+  await expandProjectActions(window);
+  await clickWithNativeInput(
+    window,
+    '[data-testid="history-controls"] .history-actions button:first-of-type',
+    'Undo applied target B layout',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '0' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '1'`,
+    'Undo did not reverse the one layout Apply operation.',
+  );
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after Undo');
+  const afterUndo = await readIssue799LayoutState(window);
+  evidence.afterUndo = afterUndo;
+  assert(afterUndo.facePlacement.offsetX === -22 && afterUndo.head?.placement.offsetX === -18, 'Undo did not restore target B original layout values.');
+  assert(afterUndo.head?.assetId === IDS.issue799TargetHead && afterUndo.bodyAssetId === IDS.bodyAlt, 'Undo changed target B asset references.');
+
+  await clickWithNativeInput(window, '[data-testid="character-workspace-expressions-tab"]', 'Close clean Assembly before Redo');
+  await waitForDom(window, `!document.querySelector('[data-testid="character-assembly-workbench"]')`, 'Assembly did not close before Redo.');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="history-controls"] .history-actions button:last-of-type',
+    'Redo applied target B layout',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '0'`,
+    'Redo did not restore the one layout Apply operation.',
+  );
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after Redo');
+  const afterRedo = await readIssue799LayoutState(window);
+  evidence.afterRedo = afterRedo;
+  assert(afterRedo.facePlacement.offsetX === 47 && afterRedo.head?.placement.offsetX === 7, 'Redo did not restore the fine-tuned target B layout.');
+
+  await expandProjectActions(window);
+  await clickWithNativeInput(window, '[data-testid="quick-action-save"]', 'Save the applied target B layout');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="quick-action-save"]')?.dataset.saveState === 'saved'`,
+    'Project Save did not finish after Apply and Redo.',
+  );
+  const diskProjectAfterSave = ProjectSchema.parse(
+    JSON.parse(readFileSync(projectFilePath, 'utf8')),
+  );
+  const savedSource = diskProjectAfterSave.characters.find((character) => character.id === IDS.issue799SourceCharacter);
+  const savedTarget = diskProjectAfterSave.characters.find((character) => character.id === IDS.issue799TargetCharacter);
+  assert(savedSource?.mode === 'composite' && JSON.stringify(savedSource) === JSON.stringify(sourceBefore), 'Saving B changed saved source A.');
+  assert(savedTarget?.mode === 'composite', 'Saved target B disappeared from project.json.');
+  assert(savedTarget.facePlacement.offsetX === 47 && savedTarget.facePlacement.offsetY === 190 && savedTarget.facePlacement.scale === 0.92, 'Saved target B Face placement differs from the applied layout.');
+  assert(savedTarget.head?.assetId === IDS.issue799TargetHead && savedTarget.head.placement.offsetX === 7 && savedTarget.head.placement.offsetY === -132 && savedTarget.head.placement.scale === 0.88 && savedTarget.head.pivot.x === 358 && savedTarget.head.pivot.y === 452, 'Saved target B Head layout or own Head asset reference differs from Apply.');
+  assert(JSON.stringify(targetIdentity(savedTarget)) === JSON.stringify(initialTargetIdentity), 'Saving the layout changed target B identity, Body, expressions, Mouth, voice, scale, flip, or Head asset reference.');
+  evidence.savedProject = {
+    sourceUnchanged: true,
+    targetFacePlacement: savedTarget.facePlacement,
+    targetHead: savedTarget.head,
+    targetIdentityPreserved: true,
+    projectFilePath,
+  };
+
+  await clickWithNativeInput(window, '[data-testid="quick-action-close"]', 'Close saved project for disk reopen');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="project-center-screen"]') && !document.querySelector('[data-testid="editor-layout"]')`,
+    'Saved project did not close to Project Center for a disk reopen.',
+  );
+  await openProject(window);
+  await clickWithNativeInput(
+    window,
+    `[data-testid="character-list-view"] [data-character-id="${IDS.issue799TargetCharacter}"]`,
+    'Reopen target B after Project Save',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue799TargetCharacter)}`,
+    'Target B did not reopen after loading project.json.',
+  );
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Open persisted target B Assembly after reopen');
+  await waitForDom(
+    window,
+    `(() => {
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      return Number(workbench?.dataset.faceOffsetX) === 47
+        && Number(workbench?.dataset.faceOffsetY) === 190
+        && Number(workbench?.dataset.headOffsetX) === 7
+        && workbench?.dataset.headAssetId === ${JSON.stringify(IDS.issue799TargetHead)};
+    })()`,
+    'Target B layout or own asset references did not persist after a project disk reopen.',
+  );
+  const reopened = await readIssue799LayoutState(window);
+  evidence.reopenedFromProjectFile = reopened;
+  assert(reopened.bodyAssetId === IDS.bodyAlt && reopened.head?.assetId === IDS.issue799TargetHead, 'Reopened target B did not keep its own Body/Head references.');
+  assert(reopened.revision === '0' && reopened.undoCount === '0' && reopened.redoCount === '0', 'Reopened project did not start with a clean session and History.');
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'layout-reuse-save-reopen.png'));
+
+  return {
+    issue: 799,
+    passed: true,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'verify:issue799-layout-reuse',
+    projectRoot,
+    syntheticInput: true,
+    humanAcceptance: false,
+    evidenceKind: 'real-electron-production-assembly-ui-native-pointer-preview-cancel-fine-tune-apply-history-save-disk-reopen',
+    sourceAndTarget: {
+      source: { id: sourceBefore.id, bodyAssetId: sourceBefore.bodyAssetId, bodyDimensions: { width: 720, height: 920 }, facePlacement: sourceBefore.facePlacement, head: sourceBefore.head },
+      target: { id: targetBefore.id, bodyAssetId: targetBefore.bodyAssetId, bodyDimensions: { width: 720, height: 920 }, originalFacePlacement: targetBefore.facePlacement, originalHead: targetBefore.head },
+    },
+    evidence,
+    screenshots,
+  };
+}
+
 async function verifyIssue792MouthOverflow(window) {
   const screenshots = [];
   const baselineRootCause = readIssue683BaselineClipPath();
@@ -2244,6 +3000,14 @@ async function run() {
   mkdirSync(evidenceRoot, { recursive: true });
   mkdirSync(projectRoot, { recursive: true });
   activeProject = createFixture();
+  if (issue799Only) {
+    savedProject = structuredClone(activeProject);
+    writeFileSync(
+      path.join(projectRoot, 'project.json'),
+      `${JSON.stringify(savedProject, null, 2)}\n`,
+      'utf8',
+    );
+  }
   registerAcceptanceHandlers();
   await app.whenReady();
   configureElectronPaths();
@@ -2257,6 +3021,9 @@ async function run() {
     windowRef.focus();
     windowRef.webContents.focus();
     await openProject(windowRef);
+    if (issue799Only) {
+      return await verifyIssue799LayoutReuse(windowRef);
+    }
     if (issue797Only) {
       return await verifyIssue797HeadFaceEditTargets(windowRef);
     }
@@ -2901,16 +3668,18 @@ async function main() {
     output = await run();
   } catch (error) {
     output = {
-      issue: issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 612,
+      issue: issue799Only ? 799 : issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 612,
       passed: false,
       commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
-      verificationGate: issue797Only
-        ? 'verify:issue797-head-face-edit'
-        : issue798Only
-          ? 'verify:issue798-add-to-shot-navigation'
-        : issue792Only
-          ? 'verify:issue792-mouth-overflow'
-          : 'verify:issue609-character-assembly',
+      verificationGate: issue799Only
+        ? 'verify:issue799-layout-reuse'
+        : issue797Only
+          ? 'verify:issue797-head-face-edit'
+          : issue798Only
+            ? 'verify:issue798-add-to-shot-navigation'
+            : issue792Only
+              ? 'verify:issue792-mouth-overflow'
+              : 'verify:issue609-character-assembly',
       projectRoot,
       syntheticInput: true,
       humanAcceptance: false,
@@ -2929,6 +3698,6 @@ async function main() {
 main()
   .then(() => app.exit(0))
   .catch((error) => {
-    console.error(`[issue${issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 609}] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    console.error(`[issue${issue799Only ? 799 : issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 609}] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     app.exit(1);
   });

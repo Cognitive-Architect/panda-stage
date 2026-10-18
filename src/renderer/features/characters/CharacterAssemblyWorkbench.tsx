@@ -10,8 +10,12 @@ import {
   type CharacterHead,
   type FacePlacement,
   type HeadPivot,
+  type Project,
 } from '../../../domain';
-import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
+import type {
+  EditorProjectSnapshot,
+  SavedEditorProjectSnapshot,
+} from '../../stores/EditorProjectStore';
 import {
   characterAssemblySessionStore,
   type CharacterAssemblySessionHandle,
@@ -37,9 +41,18 @@ import {
   type CharacterAssemblySnapshotUnion,
   type NormalizedImageBounds,
 } from './characterAssemblyPreview';
+import {
+  assessCharacterLayoutReuse,
+  buildCharacterLayoutReuseUpdate,
+  type CharacterLayoutReuseCandidate,
+  type CharacterLayoutReuseImageAsset,
+  type CharacterLayoutReuseImageDimensions,
+  type CharacterLayoutReuseTarget,
+} from './characterLayoutReuse';
 
 interface CharacterAssemblyWorkbenchProps {
   projectSnapshot: EditorProjectSnapshot;
+  savedProjectSnapshot?: SavedEditorProjectSnapshot | null;
   session: CharacterAssemblySnapshotUnion;
 }
 
@@ -62,6 +75,11 @@ type ActiveDragDefinition =
 
 type ActiveDrag = ActiveDragStart &
   ActiveDragDefinition & { pointerId: number };
+
+interface CharacterLayoutReuseDraftBaseline {
+  facePlacement: FacePlacement;
+  head?: CharacterHead;
+}
 
 function measureImageVisibleBounds(
   image: HTMLImageElement | null,
@@ -100,6 +118,27 @@ function measureImageVisibleBounds(
   }
 }
 
+function layoutReuseImageAssets(
+  assets: Project['assets'],
+): CharacterLayoutReuseImageAsset[] {
+  return assets.flatMap((asset): CharacterLayoutReuseImageAsset[] =>
+    asset.kind === 'image'
+      ? [
+          {
+            id: asset.id,
+            kind: 'image',
+            width: asset.width,
+            height: asset.height,
+            ...(asset.sha256 ? { sha256: asset.sha256 } : {}),
+            ...(asset.metadata
+              ? { metadata: { status: asset.metadata.status } }
+              : {}),
+          },
+        ]
+      : [],
+  );
+}
+
 function activeCreationHandle(
   session: CharacterAssemblySnapshotUnion,
 ): CharacterCreationSessionHandle | null {
@@ -125,12 +164,57 @@ function activeAssemblyHandle(
 
 export function CharacterAssemblyWorkbench({
   projectSnapshot,
+  savedProjectSnapshot,
   session,
 }: CharacterAssemblyWorkbenchProps): React.JSX.Element {
   const { project, projectRoot } = projectSnapshot;
+  const resolvedSavedProjectSnapshot =
+    savedProjectSnapshot === undefined
+      ? projectSnapshot.dirty
+        ? null
+        : { projectRoot, project }
+      : savedProjectSnapshot;
+  const savedSourceProject =
+    resolvedSavedProjectSnapshot?.projectRoot === projectRoot &&
+    resolvedSavedProjectSnapshot.project.id === project.id
+      ? resolvedSavedProjectSnapshot.project
+      : null;
   const isCreating = isCharacterCreationSnapshot(session);
   const head = session.draft.head;
   const headAssetId = head?.assetId;
+  const targetCharacterId = isCreating ? null : session.characterId;
+  const targetCharacter = targetCharacterId
+    ? project.characters.find(
+        (candidate) =>
+          candidate.id === targetCharacterId && candidate.mode === 'composite',
+      )
+    : undefined;
+  const layoutReuseSources = useMemo(
+    () =>
+      (savedSourceProject?.characters ?? []).flatMap((candidate): CharacterLayoutReuseCandidate[] =>
+        candidate.mode === 'composite' && candidate.id !== targetCharacterId
+          ? [
+              {
+                characterId: candidate.id,
+                name: candidate.name,
+                bodyAssetId: candidate.bodyAssetId,
+                facePlacement: candidate.facePlacement,
+                ...(candidate.head ? { head: candidate.head } : {}),
+              },
+            ]
+          : [],
+      ),
+    [savedSourceProject, targetCharacterId],
+  );
+  const layoutReuseTarget: CharacterLayoutReuseTarget | null =
+    targetCharacter && !isCreating
+      ? {
+          characterId: targetCharacter.id,
+          name: targetCharacter.name,
+          bodyAssetId: session.draft.bodyAssetId,
+          ...(session.draft.head ? { head: session.draft.head } : {}),
+        }
+      : null;
   const expressions = useMemo(
     () => getAssemblyPreviewExpressions(project, session),
     [project, session],
@@ -151,6 +235,13 @@ export function CharacterAssemblyWorkbench({
   }, [expressions, project.characters, session]);
   const [selectedFace, setSelectedFace] = useState('');
   const [message, setMessage] = useState('');
+  const [isLayoutReuseOpen, setIsLayoutReuseOpen] = useState(false);
+  const [layoutReuseSourceId, setLayoutReuseSourceId] = useState('');
+  const [layoutPreviewSourceId, setLayoutPreviewSourceId] =
+    useState<string | null>(null);
+  const layoutReuseBaselineRef = useRef<CharacterLayoutReuseDraftBaseline | null>(
+    null,
+  );
   const [isEditingNeckPivot, setIsEditingNeckPivot] = useState(false);
   const [isFineTuneOpen, setIsFineTuneOpen] = useState(false);
   const [headMotionTestToken, setHeadMotionTestToken] =
@@ -174,6 +265,10 @@ export function CharacterAssemblyWorkbench({
   useEffect(() => {
     setSelectedFace(defaultExpressionId);
     setMessage('');
+    setIsLayoutReuseOpen(false);
+    setLayoutReuseSourceId('');
+    setLayoutPreviewSourceId(null);
+    layoutReuseBaselineRef.current = null;
   }, [defaultExpressionId, session.sessionId]);
 
   const activeExpression = expressions.find(
@@ -210,18 +305,43 @@ export function CharacterAssemblyWorkbench({
   const headPart = visual?.headPart ?? null;
   const faceRect = facePart?.localRect;
   const bodyRect = bodyPart?.localRect;
+  const selectedLayoutReuseSource = layoutReuseSources.find(
+    (candidate) => candidate.characterId === layoutReuseSourceId,
+  ) ?? null;
   const imageAssets = useMemo(() => {
     const assetIds = new Set([
       session.draft.bodyAssetId,
       previewFaceAssetId,
       ...(head ? [head.assetId] : []),
+      ...(savedSourceProject && selectedLayoutReuseSource
+        ? [
+            selectedLayoutReuseSource.bodyAssetId,
+            ...(selectedLayoutReuseSource.head
+              ? [selectedLayoutReuseSource.head.assetId]
+              : []),
+          ]
+        : []),
     ]);
-    return project.assets.flatMap((asset): CanvasImageAssetSource[] =>
-      assetIds.has(asset.id) && asset.kind === 'image' && asset.sha256
-        ? [{ id: asset.id, sha256: asset.sha256 }]
-        : [],
-    );
-  }, [head, previewFaceAssetId, project.assets, session.draft.bodyAssetId]);
+    const assetsById = new Map<string, CanvasImageAssetSource>();
+    for (const asset of [
+      ...project.assets,
+      ...(savedSourceProject?.assets ?? []),
+    ]) {
+      if (!assetIds.has(asset.id) || asset.kind !== 'image') continue;
+      assetsById.set(asset.id, {
+        id: asset.id,
+        ...(asset.sha256 ? { sha256: asset.sha256 } : {}),
+      });
+    }
+    return [...assetsById.values()];
+  }, [
+    head,
+    previewFaceAssetId,
+    project.assets,
+    savedSourceProject,
+    selectedLayoutReuseSource,
+    session.draft.bodyAssetId,
+  ]);
   const imageSourceKey = JSON.stringify([
     project.id,
     projectRoot,
@@ -236,6 +356,65 @@ export function CharacterAssemblyWorkbench({
   const imageState = imageResult.contextKey === contextKey
     ? imageResult.state
     : EMPTY_CANVAS_IMAGE_STATE;
+  const currentLayoutReuseAssets = useMemo(
+    () => layoutReuseImageAssets(project.assets),
+    [project.assets],
+  );
+  const savedLayoutReuseAssets = useMemo(
+    () =>
+      savedSourceProject
+        ? layoutReuseImageAssets(savedSourceProject.assets)
+        : [],
+    [savedSourceProject],
+  );
+  const loadedLayoutImageDimensions = useMemo(() => {
+    const dimensions = new Map<string, CharacterLayoutReuseImageDimensions>();
+    for (const [assetId, image] of imageState.images) {
+      dimensions.set(assetId, {
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      });
+    }
+    return dimensions;
+  }, [imageState.images]);
+  const layoutReuseAssessment = useMemo(
+    () =>
+      layoutReuseTarget
+        ? assessCharacterLayoutReuse({
+            sourceIsSaved: Boolean(savedSourceProject && selectedLayoutReuseSource),
+            source: selectedLayoutReuseSource,
+            target: layoutReuseTarget,
+            assets: [...savedLayoutReuseAssets, ...currentLayoutReuseAssets],
+            sourceAssets: savedLayoutReuseAssets,
+            targetAssets: currentLayoutReuseAssets,
+            loadedImages: loadedLayoutImageDimensions,
+            missingAssetIds: imageState.missing,
+          })
+        : null,
+    [
+      imageState.missing,
+      currentLayoutReuseAssets,
+      layoutReuseTarget,
+      loadedLayoutImageDimensions,
+      selectedLayoutReuseSource,
+      savedLayoutReuseAssets,
+      savedSourceProject,
+    ],
+  );
+  const layoutReuseStatusMessage = !savedSourceProject
+    ? '无法读取当前项目的已保存版本，请先保存项目后重试。'
+    : layoutReuseSources.length === 0
+      ? '此项目没有其他复合角色可作为来源。'
+      : !layoutReuseSourceId
+        ? '请选择同项目中已保存的复合角色。'
+        : !selectedLayoutReuseSource
+          ? '所选来源已不可用，请重新选择角色。'
+          : layoutReuseAssessment?.ok
+            ? `身体参考尺寸一致（${layoutReuseAssessment.bodyDimensions.source.width}×${layoutReuseAssessment.bodyDimensions.source.height}），可以预览布局。`
+            : layoutReuseAssessment?.reason ?? '正在检查来源和目标素材。';
+  const previewedLayoutSource = layoutReuseSources.find(
+    (candidate) => candidate.characterId === layoutPreviewSourceId,
+  );
   const headImage = head ? imageState.images.get(head.assetId) ?? null : null;
   const headImageBounds = useMemo(
     () => measureImageVisibleBounds(headImage),
@@ -573,19 +752,100 @@ export function CharacterAssemblyWorkbench({
       return;
     }
     if (result.status === 'no-op') {
+      layoutReuseBaselineRef.current = null;
+      setLayoutPreviewSourceId(null);
       setMessage('');
       return;
     }
+    layoutReuseBaselineRef.current = null;
+    setLayoutPreviewSourceId(null);
     setMessage('');
   };
 
   const revert = (): void => {
     if (isCreating) return;
+    layoutReuseBaselineRef.current = null;
+    setLayoutPreviewSourceId(null);
+    setIsLayoutReuseOpen(false);
+    setLayoutReuseSourceId('');
     setHeadMotionTestToken(null);
     dragRef.current = null;
     const result = characterAssemblySessionStore.begin(session.characterId);
     if (!result.ok) setMessage(result.error.message);
     else setMessage('');
+  };
+
+  const previewCharacterLayout = (): void => {
+    if (!layoutReuseTarget || !selectedLayoutReuseSource) {
+      setMessage(layoutReuseStatusMessage);
+      return;
+    }
+    if (!layoutReuseAssessment?.ok) {
+      setMessage(layoutReuseAssessment?.reason ?? layoutReuseStatusMessage);
+      return;
+    }
+    const handle = activeAssemblyHandle(session);
+    if (!handle) {
+      setMessage('组装草稿已失效，请重新打开角色组装。');
+      return;
+    }
+    const baseline: CharacterLayoutReuseDraftBaseline = {
+      facePlacement: { ...session.draft.facePlacement },
+      ...(session.draft.head
+        ? {
+            head: {
+              assetId: session.draft.head.assetId,
+              placement: { ...session.draft.head.placement },
+              pivot: { ...session.draft.head.pivot },
+            },
+          }
+        : {}),
+    };
+    const result = handle.updateDraft(
+      buildCharacterLayoutReuseUpdate(
+        selectedLayoutReuseSource,
+        layoutReuseTarget,
+      ),
+    );
+    if (!result.ok) {
+      setMessage(result.error.message);
+      return;
+    }
+    layoutReuseBaselineRef.current ??= baseline;
+    setLayoutPreviewSourceId(selectedLayoutReuseSource.characterId);
+    setMessage('');
+  };
+
+  const cancelCharacterLayoutPreview = (): void => {
+    const baseline = layoutReuseBaselineRef.current;
+    if (!baseline) {
+      setLayoutPreviewSourceId(null);
+      return;
+    }
+    const handle = activeAssemblyHandle(session);
+    if (!handle) {
+      setMessage('组装草稿已失效，请重新打开角色组装。');
+      return;
+    }
+    const result = handle.updateDraft({
+      facePlacement: { ...baseline.facePlacement },
+      ...(baseline.head
+        ? {
+            head: {
+              assetId: baseline.head.assetId,
+              placement: { ...baseline.head.placement },
+              pivot: { ...baseline.head.pivot },
+            },
+          }
+        : {}),
+    });
+    if (!result.ok) {
+      setMessage(result.error.message);
+      return;
+    }
+    layoutReuseBaselineRef.current = null;
+    setLayoutPreviewSourceId(null);
+    setMessage('');
   };
 
   const left = project.width / 2;
@@ -597,6 +857,7 @@ export function CharacterAssemblyWorkbench({
       aria-label="角色组装工作区"
       className="character-assembly-workbench"
       data-body-asset-id={session.draft.bodyAssetId}
+      data-character-id={isCreating ? '' : session.characterId}
       data-face-offset-x={session.draft.facePlacement.offsetX}
       data-face-offset-y={session.draft.facePlacement.offsetY}
       data-face-scale={session.draft.facePlacement.scale}
@@ -609,6 +870,8 @@ export function CharacterAssemblyWorkbench({
       data-head-motion-test-running={isTestingHeadMotion}
       data-edit-target={activeEditTarget}
       data-neck-pivot-editing={isEditingNeckPivot}
+      data-layout-preview-source-id={layoutPreviewSourceId ?? ''}
+      data-layout-reuse-open={isLayoutReuseOpen}
       data-preview-face-asset-id={facePart?.assetId ?? ''}
       data-selected-face={selectedFace}
       data-session-kind={isCreating ? 'create' : 'edit'}
@@ -1001,6 +1264,18 @@ export function CharacterAssemblyWorkbench({
             >
               精调
             </button>
+            {layoutReuseTarget ? (
+              <button
+                aria-expanded={isLayoutReuseOpen}
+                className="character-assembly-layout-reuse-toggle"
+                data-testid="character-assembly-layout-reuse-toggle"
+                disabled={isEditingNeckPivot || isTestingHeadMotion}
+                onClick={() => setIsLayoutReuseOpen((open) => !open)}
+                type="button"
+              >
+                套用布局
+              </button>
+            ) : null}
             {head ? (
               <>
                 <button
@@ -1034,6 +1309,82 @@ export function CharacterAssemblyWorkbench({
               </div>
             ) : null}
           </div>
+          {isLayoutReuseOpen && layoutReuseTarget ? (
+            <div
+              aria-label="套用已有角色布局"
+              className="character-assembly-layout-reuse-panel"
+              data-testid="character-assembly-layout-reuse-panel"
+              role="group"
+            >
+              <label htmlFor="character-assembly-layout-reuse-source">
+                已保存角色
+              </label>
+              <select
+                aria-label="布局来源角色"
+                data-testid="character-assembly-layout-reuse-source"
+                disabled={!savedSourceProject || layoutReuseSources.length === 0}
+                id="character-assembly-layout-reuse-source"
+                onChange={(event) => {
+                  setLayoutReuseSourceId(event.currentTarget.value);
+                  setMessage('');
+                }}
+                value={layoutReuseSourceId}
+              >
+                <option value="">
+                  {layoutReuseSources.length > 0
+                    ? '选择同项目角色'
+                    : '没有其他复合角色'}
+                </option>
+                {layoutReuseSources.map((candidate) => (
+                  <option
+                    data-character-id={candidate.characterId}
+                    key={candidate.characterId}
+                    value={candidate.characterId}
+                  >
+                    {candidate.name}
+                    {candidate.head ? '（含头部）' : '（无头部）'}
+                  </option>
+                ))}
+              </select>
+              <button
+                aria-label="预览所选角色布局"
+                data-testid="character-assembly-layout-reuse-preview"
+                disabled={
+                  !layoutReuseAssessment?.ok ||
+                  isEditingNeckPivot ||
+                  isTestingHeadMotion
+                }
+                onClick={previewCharacterLayout}
+                type="button"
+              >
+                预览布局
+              </button>
+              {layoutPreviewSourceId ? (
+                <button
+                  data-testid="character-assembly-layout-reuse-cancel"
+                  onClick={cancelCharacterLayoutPreview}
+                  type="button"
+                >
+                  取消预览
+                </button>
+              ) : null}
+              <output
+                aria-live="polite"
+                className="character-assembly-layout-reuse-status"
+                data-testid="character-assembly-layout-reuse-status"
+                role="status"
+              >
+                {layoutPreviewSourceId ? (
+                  <span data-testid="character-assembly-layout-reuse-active-preview">
+                    当前草稿正在预览「{previewedLayoutSource?.name ?? '已选来源'}」的布局，可拖动微调后点“应用”；取消预览会恢复套用前的草稿。
+                  </span>
+                ) : null}
+                <span data-testid="character-assembly-layout-reuse-compatibility">
+                  {layoutReuseStatusMessage}
+                </span>
+              </output>
+            </div>
+          ) : null}
           {isFineTuneOpen && !isEditingNeckPivot ? (
             <div
               aria-label={`${activeEditTarget === 'head' ? '头部' : '脸部'}精调`}

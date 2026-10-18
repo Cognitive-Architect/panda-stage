@@ -1152,7 +1152,20 @@
 /* Keep the workbench controls in the visible canvas area beside the landscape
    resource drawer, which overlays the canvas from the left edge. */
 .editor-layout[data-shell-mode='landscape'] .character-assembly-assembly-actions {
+  width: 100%;
   justify-content: flex-end;
+}
+
+.editor-layout[data-shell-mode='landscape'] .character-assembly-fine-tune-panel,
+.editor-layout[data-shell-mode='landscape'] .character-assembly-layout-reuse-panel {
+  justify-content: flex-end;
+}
+
+.editor-layout[data-shell-mode='landscape'] .character-assembly-layout-reuse-panel {
+  box-sizing: border-box;
+  width: max(0px, min(calc(100% - 360px), 1100px));
+  margin-left: auto;
+  justify-content: flex-start;
 }
 
 .editor-layout[data-shell-mode='landscape'] .character-assembly-pending-actions {
@@ -1174,7 +1187,8 @@
 }
 
 .character-assembly-fine-tune-toggle,
-.character-assembly-pivot-mode-toggle {
+.character-assembly-pivot-mode-toggle,
+.character-assembly-layout-reuse-toggle {
   min-height: var(--ui-touch-regular);
   padding: 6px 12px;
   border: 1px solid var(--ui-color-border);
@@ -1186,13 +1200,52 @@
 }
 
 .character-assembly-fine-tune-toggle[aria-expanded='true'],
-.character-assembly-pivot-mode-toggle[aria-pressed='true'] {
+.character-assembly-pivot-mode-toggle[aria-pressed='true'],
+.character-assembly-layout-reuse-toggle[aria-expanded='true'] {
   border-color: var(--ui-color-selected-border);
   background: var(--ui-color-selected-surface);
 }
 
 .character-assembly-motion-test-cue {
   flex: 1 1 260px;
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+  line-height: 1.45;
+}
+
+.character-assembly-layout-reuse-panel {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-work);
+}
+
+.character-assembly-layout-reuse-panel > label {
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+}
+
+.character-assembly-layout-reuse-panel > select {
+  min-width: min(240px, 100%);
+  min-height: var(--ui-touch-regular);
+  padding: 6px 10px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-work);
+  font: var(--ui-font-secondary);
+}
+
+.character-assembly-layout-reuse-status {
+  display: grid;
+  flex: 1 1 260px;
+  min-width: 0;
+  gap: 3px;
   color: var(--ui-color-text-secondary);
   font: var(--ui-font-secondary);
   line-height: 1.45;

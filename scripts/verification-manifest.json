@@ -672,7 +672,7 @@
       }
     ]
   },
-  "count": 85,
+  "count": 86,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1681,6 +1681,18 @@
       "owner": "character",
       "supersedes": null,
       "notes": "Bounded Issue #798 Electron proof for shared Add to Shot navigation across Assembly/Expressions/Settings, wide and narrow geometry, scrolling, keyboard/native pointer placement, disabled transform guard, and the pending Assembly confirmation; synthetic input is not OWNER human acceptance."
+    },
+    {
+      "id": "issue799-layout-reuse",
+      "script": "verify:issue799-layout-reuse",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #799 Electron proof for exact Body reference dimensions and matching Head structure, source/target asset readiness, preview/cancel, fine tune, one existing Draft/Apply commit, Undo/Redo, Project Save and disk reopen; synthetic fixture evidence is not OWNER human acceptance."
     },
     {
       "id": "timeline",

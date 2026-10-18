@@ -4,6 +4,26 @@ import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore
 import exampleProject from '../../demo-project/project-v1.example.json';
 
 describe('EditorProjectStore', () => {
+  it('exposes the last saved Project snapshot while newer edits remain dirty', () => {
+    const store = new EditorProjectStore();
+    const formalProject = migrateProject(exampleProject);
+    store.open('D:\\project.pandastage', formalProject);
+
+    store.updateProject({ ...formalProject, name: 'Unsaved edit' });
+    expect(store.getSnapshot()).toMatchObject({ dirty: true });
+    expect(store.getSavedProjectSnapshot()).toMatchObject({
+      projectRoot: 'D:\\project.pandastage',
+      project: { name: formalProject.name },
+    });
+
+    const savedEdit = { ...formalProject, name: 'Saved edit' };
+    store.markSaved(savedEdit, 1);
+    expect(store.getSavedProjectSnapshot()).toMatchObject({
+      projectRoot: 'D:\\project.pandastage',
+      project: { name: 'Saved edit' },
+    });
+  });
+
   it('is the single dirty source for open, restore, edit, and manual save', () => {
     const store = new EditorProjectStore();
     const listener = vi.fn();
