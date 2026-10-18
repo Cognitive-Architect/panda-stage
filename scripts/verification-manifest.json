@@ -672,7 +672,7 @@
       }
     ]
   },
-  "count": 82,
+  "count": 83,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1645,6 +1645,18 @@
       "owner": "character",
       "supersedes": null,
       "notes": "Bounded Issue #609 real Electron production-UI proof for composite Character creation/edit, Body-only raw placement, and one-layer Shot placement; synthetic fixture input and screenshot evidence are not human acceptance."
+    },
+    {
+      "id": "issue792-mouth-overflow",
+      "script": "verify:issue792-mouth-overflow",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #792 Electron proof for Mouth overflow popover geometry, real pointer hit testing, keyboard activation, narrow viewport and scroll placement; synthetic fixture evidence is not OWNER human acceptance."
     },
     {
       "id": "timeline",

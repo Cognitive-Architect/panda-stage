@@ -588,6 +588,38 @@ describe('BFM-S02 Character commands', () => {
     input.assembly.dispose();
   });
 
+  it('applies, undoes, and redoes clearing the optional Mouth asset', () => {
+    const input = harness();
+    const before = input.editor.getSnapshot()!;
+    const begin = input.assembly.begin(IDS.character);
+    expect(begin.ok).toBe(true);
+    if (!begin.ok) return;
+
+    const update = begin.session.updateDraft({ mouthOpenAssetId: null });
+    expect(update.ok).toBe(true);
+    expect(begin.session.getSnapshot()?.draft.mouthOpenAssetId).toBeNull();
+    expect(input.editor.getSnapshot()).toBe(before);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(0);
+
+    const committed = begin.session.commit();
+    expect(committed.status).toBe('committed');
+    expect(input.editor.getSnapshot()!.revision).toBe(1);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(1);
+    expect(input.editor.getSnapshot()!.project.characters[0]).not.toHaveProperty(
+      'mouthOpenAssetId',
+    );
+
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.characters[0]).toMatchObject({
+      mouthOpenAssetId: IDS.assetChar2,
+    });
+    expect(input.editor.redo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.characters[0]).not.toHaveProperty(
+      'mouthOpenAssetId',
+    );
+    input.assembly.dispose();
+  });
+
   it('keeps Head choose/replace/remove, placement, and pivot in the Assembly draft until Apply', () => {
     const input = harness();
     const before = input.editor.getSnapshot()!;

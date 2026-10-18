@@ -13,18 +13,26 @@ const {
   migrateProject,
 } = require('../dist-electron/domain/migrations/index.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
+const issue792Only = process.argv.includes('--issue792-mouth-overflow');
+const ISSUE683_BASELINE_SHA = 'bed0b353f40238bfd820861c0e5349f0e101e977';
 
 // Bounded S07 proof: use the production Character drawer, Assembly workbench,
 // Asset Library drag source, Canvas drop target, and Project Save boundary in
 // a real Windows Electron renderer. The Issue #612 Create-drawer contract is
 // included; synthetic fixture bytes stay outside the repository, and the
 // receipt does not claim human visual acceptance.
-const acceptanceRoot = 'D:\\PandaStage-Acceptance\\issue609-character-assembly';
+const acceptanceRoot = issue792Only
+  ? 'D:\\PandaStage-Acceptance\\issue792-mouth-overflow'
+  : 'D:\\PandaStage-Acceptance\\issue609-character-assembly';
 const runId = new Date().toISOString().replace(/[:.]/gu, '-');
 const runRoot = path.join(acceptanceRoot, `run-${runId}`);
 const evidenceRoot = path.join(runRoot, 'evidence');
 const userDataRoot = path.join(runRoot, 'electron-user-data');
-const projectRoot = path.join(runRoot, 'projects', 'issue609-assembly.pandastage');
+const projectRoot = path.join(
+  runRoot,
+  'projects',
+  issue792Only ? 'issue792-mouth-overflow.pandastage' : 'issue609-assembly.pandastage',
+);
 const resultPath = path.join(runRoot, 'results.json');
 const assetDragMime = 'application/x-panda-stage-asset';
 
@@ -39,6 +47,10 @@ const IDS = Object.freeze({
   legacyNormalExpression: 'a0609000-0000-4000-8000-000000000008',
   legacyAngryExpression: 'a0609000-0000-4000-8000-000000000009',
   legacyVoiceProfile: 'a0609000-0000-4000-8000-00000000000a',
+  issue792Head: 'a0609000-0000-4000-8000-00000000000b',
+  issue792Character: 'a0609000-0000-4000-8000-00000000000c',
+  issue792Expression: 'a0609000-0000-4000-8000-00000000000d',
+  issue792VoiceProfile: 'a0609000-0000-4000-8000-00000000000e',
 });
 
 const COLORS = new Map([
@@ -233,6 +245,31 @@ function createFixture() {
     defaultScale: 1,
     defaultFlipX: false,
   };
+  const issue792Character = {
+    id: IDS.issue792Character,
+    mode: 'composite',
+    name: 'Issue 792 Composite Panda',
+    baseAssetId: IDS.face,
+    defaultVoiceProfileId: IDS.issue792VoiceProfile,
+    expressions: [
+      {
+        id: IDS.issue792Expression,
+        name: 'Neutral',
+        assetId: IDS.face,
+      },
+    ],
+    defaultExpressionId: IDS.issue792Expression,
+    defaultScale: 1,
+    defaultFlipX: false,
+    bodyAssetId: IDS.body,
+    facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+    head: {
+      assetId: IDS.issue792Head,
+      placement: { offsetX: 0, offsetY: 0, scale: 1 },
+      pivot: { x: 360, y: 460 },
+    },
+    mouthOpenAssetId: IDS.mouth,
+  };
   return ProjectSchema.parse({
     ...base,
     schemaVersion: PROJECT_SCHEMA_VERSION,
@@ -243,8 +280,13 @@ function createFixture() {
       imageAsset(IDS.bodyAlt, 'Assembly Body Alternate', 720, 920),
       imageAsset(IDS.face, 'Assembly Default Face', 320, 280),
       imageAsset(IDS.mouth, 'Assembly Mouth', 320, 280),
+      ...(issue792Only
+        ? [imageAsset(IDS.issue792Head, 'Assembly Head', 720, 920)]
+        : []),
     ],
-    characters: [legacyCharacter],
+    characters: issue792Only
+      ? [legacyCharacter, issue792Character]
+      : [legacyCharacter],
     voiceProfiles: [
       {
         id: IDS.legacyVoiceProfile,
@@ -254,6 +296,16 @@ function createFixture() {
         rate: 1,
         pitch: 0,
       },
+      ...(issue792Only
+        ? [{
+            id: IDS.issue792VoiceProfile,
+            name: 'Issue 792 Panda voice',
+            characterId: IDS.issue792Character,
+            locale: 'zh-CN',
+            rate: 1,
+            pitch: 0,
+          }]
+        : []),
     ],
     shots: [
       {
@@ -268,6 +320,38 @@ function createFixture() {
       },
     ],
   });
+}
+
+function readIssue683BaselineClipPath() {
+  const childProcess = require('node:child_process');
+  const css = childProcess.execFileSync(
+    'git',
+    ['show', `${ISSUE683_BASELINE_SHA}:src/renderer/styles/features/characters/assembly/s17-01--character-assembly-workbench.css`],
+    { encoding: 'utf8' },
+  );
+  const editor = childProcess.execFileSync(
+    'git',
+    ['show', `${ISSUE683_BASELINE_SHA}:src/renderer/features/characters/CharacterEditor.tsx`],
+    { encoding: 'utf8' },
+  );
+  const surfaceRule = css.match(
+    /\.character-assembly-drawer-panel \.image-asset-picker-selected-row--surface\s*\{[^}]*\}/u,
+  )?.[0] ?? '';
+  const menuRule = css.match(
+    /\.character-assembly-mouth-overflow-menu\s*\{[^}]*\}/u,
+  )?.[0] ?? '';
+  const menuMarkup = editor.match(
+    /<details className="character-assembly-mouth-overflow">[\s\S]*?<\/details>/u,
+  )?.[0] ?? '';
+  return {
+    commit: ISSUE683_BASELINE_SHA,
+    rowOverflowHidden: /overflow:\s*hidden/u.test(surfaceRule),
+    menuPositionedAbsolute: /position:\s*absolute/u.test(menuRule),
+    menuOpensBelowRow: /top:\s*calc\(100%\s*\+\s*4px\)/u.test(menuRule),
+    menuIsDescendantOfDetails: /<div className="character-assembly-mouth-overflow-menu">/u.test(menuMarkup),
+    surfaceRule,
+    menuRule,
+  };
 }
 
 function documentFor(root, project) {
@@ -752,6 +836,479 @@ async function expandProjectActions(window) {
   await waitForDom(window, `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.expanded === 'true'`, 'Project actions drawer did not expand.');
 }
 
+async function sendPointerClick(window, x, y) {
+  const point = { x: Math.round(x), y: Math.round(y) };
+  window.webContents.sendInputEvent({ type: 'mouseMove', ...point });
+  window.webContents.sendInputEvent({ type: 'mouseDown', ...point, button: 'left', clickCount: 1 });
+  window.webContents.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 });
+}
+
+async function sendKeyStroke(window, keyCode) {
+  const electronKeyCode = {
+    ESC: 'Escape',
+    TAB: 'Tab',
+    SPACE: 'Space',
+  }[keyCode] ?? keyCode;
+  window.webContents.sendInputEvent({ type: 'keyDown', keyCode: electronKeyCode });
+  window.webContents.sendInputEvent({ type: 'keyUp', keyCode: electronKeyCode });
+}
+
+async function readIssue792MenuGeometry(window) {
+  return window.webContents.executeJavaScript(`(() => {
+    const trigger = document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]');
+    const picker = document.querySelector('[data-testid="character-assembly-mouth-picker-selected"]');
+    const menu = document.querySelector('[data-testid="character-assembly-mouth-overflow-menu"]');
+    const clear = menu?.querySelector('[data-testid="character-assembly-mouth-clear"]');
+    const row = trigger?.closest('.image-asset-picker-selected-row--surface');
+    const rect = (element) => {
+      const bounds = element?.getBoundingClientRect();
+      return bounds && {
+        left: bounds.left,
+        top: bounds.top,
+        right: bounds.right,
+        bottom: bounds.bottom,
+        width: bounds.width,
+        height: bounds.height,
+      };
+    };
+    const viewport = { width: document.documentElement.clientWidth, height: document.documentElement.clientHeight };
+    const menuBounds = menu?.getBoundingClientRect();
+    const clearBounds = clear?.getBoundingClientRect();
+    const centerX = clearBounds ? clearBounds.left + clearBounds.width / 2 : 0;
+    const centerY = clearBounds ? clearBounds.top + clearBounds.height / 2 : 0;
+    const hit = clear ? document.elementFromPoint(centerX, centerY) : null;
+    const hitButton = hit?.closest('button');
+    const clipAncestors = [];
+    for (let ancestor = row; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+      const style = getComputedStyle(ancestor);
+      if (/(hidden|clip|auto|scroll)/u.test(style.overflowX + ' ' + style.overflowY)) {
+        clipAncestors.push({
+          className: typeof ancestor.className === 'string' ? ancestor.className : '',
+          overflowX: style.overflowX,
+          overflowY: style.overflowY,
+        });
+      }
+    }
+    return {
+      viewport,
+      trigger: rect(trigger),
+      picker: rect(picker),
+      row: rect(row),
+      menu: rect(menu),
+      clear: rect(clear),
+      open: Boolean(menu?.matches(':popover-open')),
+      visible: Boolean(menu && getComputedStyle(menu).display !== 'none' && getComputedStyle(menu).visibility === 'visible' && menu.getClientRects().length),
+      position: menu ? getComputedStyle(menu).position : '',
+      placement: menu?.dataset.placement ?? '',
+      menuInsideViewport: Boolean(menuBounds
+        && menuBounds.left >= 0
+        && menuBounds.top >= 0
+        && menuBounds.right <= viewport.width + 1
+        && menuBounds.bottom <= viewport.height + 1),
+      clearIsActualHitTarget: Boolean(clear && hit && (hit === clear || clear.contains(hit)) && hitButton === clear),
+      hitTarget: hit ? {
+        tagName: hit.tagName,
+        className: typeof hit.className === 'string' ? hit.className : '',
+        testId: hit.getAttribute('data-testid') ?? '',
+      } : null,
+      pickerAndOverflowAreSeparate: Boolean(rect(picker) && rect(trigger) && picker.getBoundingClientRect().right <= trigger.getBoundingClientRect().left + 1),
+      clipAncestors,
+      selectedMouthAssetId: document.querySelector('[data-testid="character-assembly-mouth-picker"]')?.dataset.selectedAssetId ?? '',
+      ariaExpanded: trigger?.getAttribute('aria-expanded') ?? '',
+      clearDisabled: clear?.disabled ?? null,
+      pending: Boolean(document.querySelector('[data-testid="character-assembly-pending"]')),
+      revision: document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? '',
+      undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? '',
+      focusVisible: document.activeElement instanceof HTMLElement && document.activeElement.matches(':focus-visible'),
+      activeTestId: document.activeElement?.getAttribute('data-testid') ?? '',
+    };
+  })()`);
+}
+
+async function openIssue792MenuWithPointer(window) {
+  const triggerRect = await window.webContents.executeJavaScript(`(() => {
+    const trigger = document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]');
+    if (!trigger) throw new Error('Configured Mouth overflow trigger is missing.');
+    const bounds = trigger.getBoundingClientRect();
+    return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+  })()`);
+  await sendPointerClick(window, triggerRect.x, triggerRect.y);
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-mouth-overflow-menu"]')?.matches(':popover-open') && document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]')?.getAttribute('aria-expanded') === 'true'`,
+    'Mouth overflow popover did not open and update its trigger state after a real Electron pointer click.',
+  );
+  await wait(120);
+}
+
+async function verifyIssue792MouthOverflow(window) {
+  const screenshots = [];
+  const baselineRootCause = readIssue683BaselineClipPath();
+  const evidence = { baselineRootCause };
+  inProgressEvidence.issue792 = evidence;
+  assert(
+    baselineRootCause.rowOverflowHidden &&
+      baselineRootCause.menuPositionedAbsolute &&
+      baselineRootCause.menuOpensBelowRow &&
+      baselineRootCause.menuIsDescendantOfDetails,
+    'The #683 baseline no longer contains the issue #792 overflow-clipping path at its recorded commit.',
+  );
+  await click(
+    window,
+    `[data-testid="character-list-view"] [data-character-id="${IDS.issue792Character}"]`,
+    'Open the composite Character with configured Mouth',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue792Character)}`,
+    'Issue #792 composite Character did not open in Character detail.',
+  );
+  await click(window, '[data-testid="character-workspace-assembly-tab"]', 'Open Assembly workspace');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="edit"]') && document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]')`,
+    'Configured Mouth did not expose its Assembly overflow action.',
+  );
+
+  const initial = await readIssue792MenuGeometry(window);
+  evidence.initial = initial;
+  assert(initial.selectedMouthAssetId === IDS.mouth, 'Fixture did not start with a configured Mouth asset.');
+  assert(initial.trigger.width >= 44 && initial.trigger.height >= 44, 'Mouth overflow trigger is below the 44px target size.');
+  assert(initial.pickerAndOverflowAreSeparate, 'Mouth overflow overlaps the main picker action.');
+
+  await openIssue792MenuWithPointer(window);
+  const normal = await readIssue792MenuGeometry(window);
+  evidence.normal = normal;
+  assert(normal.open && normal.visible, 'Mouth menu did not become visible in the normal viewport.');
+  assert(normal.ariaExpanded === 'true', 'Opening the Mouth menu did not update the overflow trigger expanded state.');
+  assert(normal.menuInsideViewport && normal.clearIsActualHitTarget, 'Normal viewport menu bounds do not receive the expected clear-button hit test.');
+  screenshots.push(await capture(window, 'mouth-menu-normal-open.png'));
+
+  const pickerBounds = normal.picker;
+  await sendPointerClick(window, pickerBounds.left + pickerBounds.width / 2, pickerBounds.top + pickerBounds.height / 2);
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-mouth-picker-candidates"]')`,
+    'The main Mouth picker did not open independently from the overflow action.',
+  );
+  const pickerIndependence = await window.webContents.executeJavaScript(`({
+    candidatesVisible: Boolean(document.querySelector('[data-testid="character-assembly-mouth-picker-candidates"]')),
+    overflowOpen: Boolean(document.querySelector('[data-testid="character-assembly-mouth-overflow-menu"]')?.matches(':popover-open')),
+    selectedAssetId: document.querySelector('[data-testid="character-assembly-mouth-picker"]')?.dataset.selectedAssetId ?? '',
+  })`);
+  evidence.pickerIndependence = pickerIndependence;
+  assert(pickerIndependence.candidatesVisible && !pickerIndependence.overflowOpen, 'Main picker and overflow action were not independently activated.');
+  await window.webContents.executeJavaScript(`document.querySelector('[data-testid="character-assembly-mouth-picker-selected"]')?.click()`);
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-assembly-mouth-picker-candidates"]')`,
+    'The independently opened Mouth picker did not close after toggling its own action.',
+  );
+  await openIssue792MenuWithPointer(window);
+  const pointerClearBefore = await readIssue792MenuGeometry(window);
+  evidence.pointerClearBefore = pointerClearBefore;
+  assert(pointerClearBefore.clearIsActualHitTarget, 'Pointer clear location is not the browser hit target.');
+  await window.webContents.executeJavaScript(`(() => {
+    window.__issue792PointerEvents = [];
+    for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click']) {
+      document.addEventListener(type, (event) => {
+        const target = event.target;
+        window.__issue792PointerEvents.push({
+          type: event.type,
+          targetTag: target instanceof Element ? target.tagName : '',
+          targetTestId: target instanceof Element ? target.getAttribute('data-testid') ?? '' : '',
+          targetText: target instanceof Element ? target.textContent?.trim() ?? '' : '',
+        });
+      }, true);
+    }
+  })()`);
+  screenshots.push(await capture(window, 'mouth-menu-before-pointer-clear.png'));
+  await sendPointerClick(
+    window,
+    pointerClearBefore.clear.left + pointerClearBefore.clear.width / 2,
+    pointerClearBefore.clear.top + pointerClearBefore.clear.height / 2,
+  );
+  await wait(120);
+  const pointerClearAttempt = await readIssue792MenuGeometry(window);
+  pointerClearAttempt.input = await window.webContents.executeJavaScript(`({
+    devicePixelRatio: window.devicePixelRatio,
+    innerWidth: window.innerWidth,
+    innerHeight: window.innerHeight,
+    events: window.__issue792PointerEvents ?? [],
+  })`);
+  evidence.pointerClearAttempt = pointerClearAttempt;
+  screenshots.push(await capture(window, 'mouth-menu-after-pointer-clear-draft.png'));
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-mouth-picker"]')?.dataset.selectedAssetId === '' && document.querySelector('[data-testid="character-assembly-pending"]')`,
+    'A real pointer click on Mouth Clear did not clear the pending Mouth selection.',
+  );
+  const pointerClear = await readIssue792MenuGeometry(window);
+  evidence.pointerClear = pointerClear;
+  assert(!pointerClear.trigger && !pointerClear.open, 'Clearing Mouth left an overflow trigger or open menu behind.');
+  assert(pointerClear.revision === initial.revision && pointerClear.undoCount === initial.undoCount, 'Clearing Mouth bypassed the existing Draft/Apply boundary.');
+  screenshots.push(await capture(window, 'mouth-menu-pointer-clear-draft.png'));
+  await click(window, '[data-testid="character-assembly-pending"] button:first-of-type', 'Revert pointer-cleared Mouth draft');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-mouth-picker"]')?.dataset.selectedAssetId === ${JSON.stringify(IDS.mouth)} && document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]')`,
+    'Reverting the pointer-cleared Mouth draft did not restore the configured Mouth row.',
+  );
+
+  window.setSize(800, 560);
+  await waitForDom(window, 'window.innerWidth <= 840 && window.innerWidth >= 760', 'The narrow-window viewport did not resize.');
+  await wait(150);
+  const narrowScroll = await window.webContents.executeJavaScript(`(() => {
+    const trigger = document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]');
+    const scrolled = [];
+    for (let ancestor = trigger?.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+      const style = getComputedStyle(ancestor);
+      if (ancestor.scrollHeight > ancestor.clientHeight + 1 && /(auto|scroll)/u.test(style.overflowY)) {
+        ancestor.scrollTop = ancestor.scrollHeight;
+        const viewport = ancestor.getBoundingClientRect();
+        scrolled.push({
+          className: typeof ancestor.className === 'string' ? ancestor.className : '',
+          scrollTop: ancestor.scrollTop,
+          scrollHeight: ancestor.scrollHeight,
+          clientHeight: ancestor.clientHeight,
+          viewport: {
+            top: viewport.top,
+            bottom: viewport.bottom,
+            left: viewport.left,
+            right: viewport.right,
+          },
+        });
+      }
+    }
+    trigger?.scrollIntoView({ block: 'end', inline: 'nearest' });
+    const panel = document.querySelector('.character-assembly-drawer-panel');
+    const anchor = trigger?.getBoundingClientRect();
+    return {
+      scrolled,
+      viewportWidth: document.documentElement.clientWidth,
+      panel: panel ? {
+        scrollTop: panel.scrollTop,
+        scrollHeight: panel.scrollHeight,
+        clientHeight: panel.clientHeight,
+      } : null,
+      viewportHeight: document.documentElement.clientHeight,
+      anchorTop: anchor?.top ?? null,
+      anchorBottom: anchor?.bottom ?? null,
+    };
+  })()`);
+  evidence.narrowScroll = narrowScroll;
+  assert(
+    narrowScroll.scrolled.some(({ scrollTop }) => scrollTop > 0),
+    'The narrow-window setup did not scroll an assembly ancestor before opening the menu.',
+  );
+  assert(
+    narrowScroll.scrolled.some(
+      ({ scrollTop, clientHeight, scrollHeight }) =>
+        scrollTop + clientHeight >= scrollHeight - 1,
+    ),
+    'The narrow-window setup did not reach the bottom of its scrollable assembly viewport.',
+  );
+  const scrollViewport = narrowScroll.scrolled.find(({ viewport }) => viewport)?.viewport;
+  assert(
+    scrollViewport &&
+      narrowScroll.anchorBottom !== null &&
+      narrowScroll.anchorBottom <= scrollViewport.bottom + 2 &&
+      scrollViewport.bottom - narrowScroll.anchorBottom < 90,
+    'The overflow trigger was not positioned near the bottom edge of its scroll viewport.',
+  );
+  await openIssue792MenuWithPointer(window);
+  const narrowBottom = await readIssue792MenuGeometry(window);
+  evidence.narrowBottom = narrowBottom;
+  assert(narrowBottom.open && narrowBottom.visible, 'Mouth menu did not open in the narrow, bottom-scrolled viewport.');
+  assert(narrowBottom.menuInsideViewport && narrowBottom.clearIsActualHitTarget, 'Narrow, bottom-scrolled Mouth menu was clipped or did not hit Clear.');
+  assert(
+    scrollViewport && narrowBottom.menu.bottom > scrollViewport.bottom,
+    'The Mouth popover did not extend past the scroll viewport boundary.',
+  );
+  screenshots.push(await capture(window, 'mouth-menu-narrow-scroll-bottom.png'));
+  await sendKeyStroke(window, 'ESC');
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-assembly-mouth-overflow-menu"]')?.matches(':popover-open') && document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]')?.getAttribute('aria-expanded') === 'false'`,
+    'Escape did not dismiss the Mouth overflow popover and reset its trigger state.',
+  );
+  const escapeDismissed = await readIssue792MenuGeometry(window);
+  evidence.escapeDismissed = escapeDismissed;
+  assert(escapeDismissed.ariaExpanded === 'false', 'Escape dismissal did not update the overflow trigger expanded state.');
+  assert(escapeDismissed.trigger.width >= 44, 'Escape dismissed the containing Character drawer instead of only the Mouth popover.');
+
+  await window.webContents.executeJavaScript(`document.querySelector('[data-testid="character-assembly-mouth-picker-selected"]')?.focus()`);
+  await sendKeyStroke(window, 'TAB');
+  const triggerFocus = await readIssue792MenuGeometry(window);
+  evidence.triggerFocus = triggerFocus;
+  assert(triggerFocus.activeTestId === 'character-assembly-mouth-overflow-trigger' && triggerFocus.focusVisible, 'Tab did not reach a visible keyboard focus state on the overflow trigger.');
+  await sendKeyStroke(window, 'SPACE');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-mouth-overflow-menu"]')?.matches(':popover-open') && document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]')?.getAttribute('aria-expanded') === 'true'`,
+    'Space did not open the Mouth overflow popover and update its trigger state.',
+  );
+  await sendKeyStroke(window, 'TAB');
+  const clearFocus = await readIssue792MenuGeometry(window);
+  evidence.clearFocus = clearFocus;
+  assert(clearFocus.activeTestId === 'character-assembly-mouth-clear' && clearFocus.focusVisible, 'Tab did not reach the keyboard-visible Clear action inside the popover.');
+  await window.webContents.executeJavaScript(`(() => {
+    window.__issue792KeyboardEvents = [];
+    for (const type of ['keydown', 'keyup', 'click']) {
+      document.addEventListener(type, (event) => {
+        const target = event.target;
+        window.__issue792KeyboardEvents.push({
+          type: event.type,
+          key: event instanceof KeyboardEvent ? event.key : '',
+          targetTag: target instanceof Element ? target.tagName : '',
+          targetTestId: target instanceof Element ? target.getAttribute('data-testid') ?? '' : '',
+          targetText: target instanceof Element ? target.textContent?.trim() ?? '' : '',
+        });
+      }, true);
+    }
+  })()`);
+  screenshots.push(await capture(window, 'mouth-menu-before-space-clear.png'));
+  await sendKeyStroke(window, 'SPACE');
+  await wait(120);
+  const keyboardClearAttempt = await readIssue792MenuGeometry(window);
+  keyboardClearAttempt.inputEvents = await window.webContents.executeJavaScript(
+    'window.__issue792KeyboardEvents ?? []',
+  );
+  evidence.keyboardClearAttempt = keyboardClearAttempt;
+  screenshots.push(await capture(window, 'mouth-menu-after-space-clear.png'));
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-mouth-picker"]')?.dataset.selectedAssetId === '' && document.querySelector('[data-testid="character-assembly-pending"]')`,
+    'Space did not activate Clear from the keyboard-opened Mouth popover.',
+  );
+  const keyboardClear = await readIssue792MenuGeometry(window);
+  evidence.keyboardClear = keyboardClear;
+  assert(!keyboardClear.trigger && keyboardClear.revision === initial.revision && keyboardClear.undoCount === initial.undoCount, 'Keyboard Clear changed the Draft/Apply boundary or kept an empty Mouth overflow trigger.');
+  screenshots.push(await capture(window, 'mouth-menu-keyboard-clear-draft.png'));
+
+  const applyTarget = await window.webContents.executeJavaScript(`(() => {
+    const pending = document.querySelector('[data-testid="character-assembly-pending"]');
+    const buttons = [...(pending?.querySelectorAll('button') ?? [])].map((button) => ({
+      text: button.textContent?.trim() ?? '',
+      disabled: button.disabled,
+      lastChild: button === pending?.lastElementChild,
+    }));
+    return { buttons, selectedAssetId: document.querySelector('[data-testid="character-assembly-mouth-picker"]')?.dataset.selectedAssetId ?? null };
+  })()`);
+  evidence.applyTarget = applyTarget;
+  await click(window, '[data-testid="character-assembly-pending"] button:last-child', 'Apply the cleared Mouth draft');
+  await wait(160);
+  const applyAttempt = await readIssue792MenuGeometry(window);
+  applyAttempt.pendingButtons = await window.webContents.executeJavaScript(`({
+    pendingText: document.querySelector('[data-testid="character-assembly-pending"]')?.textContent?.trim() ?? '',
+    buttons: [...(document.querySelector('[data-testid="character-assembly-pending"]')?.querySelectorAll('button') ?? [])].map((button) => ({
+      text: button.textContent?.trim() ?? '',
+      disabled: button.disabled,
+    })),
+    redoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount ?? '',
+  })`);
+  evidence.applyAttempt = applyAttempt;
+  screenshots.push(await capture(window, 'mouth-menu-after-apply-attempt.png'));
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-assembly-pending"]') && document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision === '1' && document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1'`,
+    'Applying the Mouth clear did not create exactly one Project and History operation.',
+  );
+  const appliedClear = await readIssue792MenuGeometry(window);
+  evidence.appliedClear = appliedClear;
+  assert(
+    appliedClear.selectedMouthAssetId === '' &&
+      !appliedClear.trigger &&
+      !appliedClear.pending &&
+      appliedClear.revision === '1' &&
+      appliedClear.undoCount === '1',
+    'Applying Mouth Clear did not persist an empty Mouth selection in one operation.',
+  );
+
+  await click(window, '[data-testid="character-workspace-expressions-tab"]', 'Leave clean Assembly after applying Mouth Clear');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-workspace-expressions-tab"]')?.getAttribute('aria-pressed') === 'true' && !document.querySelector('[data-testid="character-assembly-workbench"]')`,
+    'Leaving the clean, applied Assembly draft did not close its session.',
+  );
+  await click(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly to check the applied Mouth state');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="edit"]') && document.querySelector('[data-testid="character-assembly-mouth-picker"]')?.dataset.selectedAssetId === '' && !document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]')`,
+    'Reopening Assembly did not read the applied empty Mouth state from the Project.',
+  );
+  const persistedClear = await readIssue792MenuGeometry(window);
+  evidence.persistedClear = persistedClear;
+  assert(persistedClear.selectedMouthAssetId === '' && !persistedClear.trigger, 'The applied Mouth clear did not survive reopening Assembly.');
+
+  await click(window, '[data-testid="character-workspace-expressions-tab"]', 'Leave clean Assembly before Undo');
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-assembly-workbench"]')`,
+    'Assembly did not close before the History Undo check.',
+  );
+  await click(window, '[data-testid="history-controls"] .history-actions button:first-of-type', 'Undo the applied Mouth clear');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '0' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '1'`,
+    'Undo did not move the Mouth clear operation to the redo stack.',
+  );
+  await click(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after Undo');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="edit"]') && document.querySelector('[data-testid="character-assembly-mouth-picker"]')?.dataset.selectedAssetId === ${JSON.stringify(IDS.mouth)} && document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]')`,
+    'Undo did not restore the configured Mouth in the Project.',
+  );
+  const undoRestoredMouth = await readIssue792MenuGeometry(window);
+  evidence.undoRestoredMouth = undoRestoredMouth;
+
+  await click(window, '[data-testid="character-workspace-expressions-tab"]', 'Leave clean Assembly before Redo');
+  await waitForDom(window, `!document.querySelector('[data-testid="character-assembly-workbench"]')`, 'Assembly did not close before the History Redo check.');
+  await click(window, '[data-testid="history-controls"] .history-actions button:last-of-type', 'Redo the applied Mouth clear');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '0'`,
+    'Redo did not restore the Mouth clear operation from the redo stack.',
+  );
+  await click(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after Redo');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="edit"]') && document.querySelector('[data-testid="character-assembly-mouth-picker"]')?.dataset.selectedAssetId === '' && !document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]')`,
+    'Redo did not restore the cleared Mouth state in the Project.',
+  );
+  const redoClearedMouth = await readIssue792MenuGeometry(window);
+  evidence.redoClearedMouth = redoClearedMouth;
+
+  return {
+    issue: 792,
+    passed: true,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'verify:issue792-mouth-overflow',
+    projectRoot,
+    syntheticInput: true,
+    humanAcceptance: false,
+    evidenceKind: 'real-electron-production-ui-pointer-input-keyboard-input-viewport-geometry-and-elementFromPoint-hit-test',
+    evidence: {
+      baselineRootCause,
+      normal,
+      pickerIndependence,
+      pointerClearBefore,
+      pointerClear,
+      narrowScroll,
+      narrowBottom,
+      escapeDismissed,
+      triggerFocus,
+      clearFocus,
+      keyboardClear,
+      appliedClear,
+      persistedClear,
+      undoRestoredMouth,
+      redoClearedMouth,
+    },
+    screenshots,
+  };
+}
+
 async function run() {
   mkdirSync(evidenceRoot, { recursive: true });
   mkdirSync(projectRoot, { recursive: true });
@@ -769,6 +1326,9 @@ async function run() {
     windowRef.focus();
     windowRef.webContents.focus();
     await openProject(windowRef);
+    if (issue792Only) {
+      return await verifyIssue792MouthOverflow(windowRef);
+    }
     await windowRef.webContents.executeJavaScript(`(() => {
       window.__issue610ConfirmCalls = [];
       window.__issue610ConfirmResponse = false;
@@ -1404,10 +1964,12 @@ async function main() {
     output = await run();
   } catch (error) {
     output = {
-      issue: 612,
+      issue: issue792Only ? 792 : 612,
       passed: false,
       commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
-      verificationGate: 'verify:issue609-character-assembly',
+      verificationGate: issue792Only
+        ? 'verify:issue792-mouth-overflow'
+        : 'verify:issue609-character-assembly',
       projectRoot,
       syntheticInput: true,
       humanAcceptance: false,
@@ -1426,6 +1988,6 @@ async function main() {
 main()
   .then(() => app.exit(0))
   .catch((error) => {
-    console.error(`[issue609] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    console.error(`[issue${issue792Only ? 792 : 609}] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     app.exit(1);
   });

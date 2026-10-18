@@ -61,11 +61,15 @@ function detailMarkup({
   composite = false,
   withMouth = false,
   withAssemblyDraft = false,
+  clearedMouthDraft = false,
+  disabled = false,
   view = 'detail',
 }: {
   composite?: boolean;
   withMouth?: boolean;
   withAssemblyDraft?: boolean;
+  clearedMouthDraft?: boolean;
+  disabled?: boolean;
   view?: 'detail' | 'expression';
 } = {}): string {
   const { character, imageAssets, thumbnails } = fixture({ composite, withMouth });
@@ -75,6 +79,7 @@ function detailMarkup({
       imageAssets,
       thumbnails,
       warnings: [],
+      disabled,
       onRenameCharacter: noop,
       onDeleteCharacter: noop,
       onAddExpression: noop,
@@ -92,7 +97,9 @@ function detailMarkup({
                 expressionId: expression.id,
                 assetId: expression.assetId,
               })),
-              mouthOpenAssetId: character.mouthOpenAssetId ?? null,
+              mouthOpenAssetId: clearedMouthDraft
+                ? null
+                : character.mouthOpenAssetId ?? null,
             }
           : null,
       onSetAssemblyBodyAsset: noop,
@@ -143,18 +150,22 @@ describe('Issue #614 Character Detail polish', () => {
     expect(markup).toContain('class="image-asset-picker-selected-copy"');
     expect(markup).toContain('class="image-asset-picker-selected-action">管理</span>');
     expect(markup).toContain('data-image-asset-picker="张嘴脸"');
-    expect(markup).toContain('<details class="character-assembly-mouth-overflow">');
+    expect(markup).toContain('<div class="character-assembly-mouth-overflow">');
     expect(markup).toContain('aria-label="张嘴脸更多操作"');
+    expect(markup).toContain('popover="auto"');
+    expect(markup).toContain('data-testid="character-assembly-mouth-overflow-trigger"');
     expect(markup).toMatch(
-      /<details class="character-assembly-mouth-overflow">[\s\S]*?<button[^>]*class="character-mouth-clear"[^>]*>清除<\/button>[\s\S]*?<\/details>/u,
+      /<div class="character-assembly-mouth-overflow">[\s\S]*?<button[^>]*class="character-mouth-clear"[^>]*>清除<\/button>[\s\S]*?<\/div>/u,
     );
     const mouthStart = markup.indexOf('data-image-asset-picker="张嘴脸"');
     const mouthEnd = markup.indexOf('</section>', mouthStart);
     const mouthPicker = markup.slice(mouthStart, mouthEnd);
     expect(mouthPicker).toMatch(
-      /class="image-asset-picker-selected-row image-asset-picker-selected-row--surface"><button[^>]*data-testid="character-assembly-mouth-picker-selected"[\s\S]*?<\/button><details class="character-assembly-mouth-overflow">/u,
+      /class="image-asset-picker-selected-row image-asset-picker-selected-row--surface"><button[^>]*data-testid="character-assembly-mouth-picker-selected"[\s\S]*?<\/button><div class="character-assembly-mouth-overflow">/u,
     );
-    expect(styles).toContain('.character-assembly-mouth-overflow-menu');
+    expect(styles).toContain('.character-assembly-mouth-overflow-menu[popover]');
+    expect(styles).toContain('position: fixed;');
+    expect(styles).toContain('overflow: hidden;');
     expect(styles).toContain('min-height: var(--ui-touch-icon);');
     expect(styles).toContain('image-asset-picker-selected-row--surface');
     expect(styles).toContain('background: var(--image-asset-picker-selected-surface-background);');
@@ -267,12 +278,47 @@ describe('Issue #616 Character Detail assembly visual hierarchy', () => {
 
   it('keeps the configured Mouth overflow clear action and assembly navigation guard', () => {
     const markup = detailMarkup({ composite: true, withMouth: true });
+    const clearedDraftMarkup = detailMarkup({
+      composite: true,
+      withMouth: true,
+      withAssemblyDraft: true,
+      clearedMouthDraft: true,
+    });
+    const disabledMarkup = detailMarkup({
+      composite: true,
+      withMouth: true,
+      disabled: true,
+    });
     const editor = source('src/renderer/features/characters/CharacterEditor.tsx');
+    const styles = readOrderedStylesheetSource();
+    const selectedSurfaceRule = styles.match(
+      /\.character-assembly-drawer-panel \.image-asset-picker-selected-row--surface\s*\{([^}]*)\}/u,
+    )?.[1] ?? '';
 
-    expect(markup).toContain('<details class="character-assembly-mouth-overflow">');
+    expect(markup).toContain('<div class="character-assembly-mouth-overflow">');
     expect(markup).toContain('aria-label="张嘴脸更多操作"');
+    expect(markup).toContain('data-testid="character-assembly-mouth-overflow-trigger"');
+    expect(markup).toContain('popover="auto"');
     expect(markup).toContain('data-testid="character-assembly-mouth-clear"');
     expect(markup).toContain('>清除</button>');
+    expect(selectedSurfaceRule).toContain('overflow: hidden;');
+    expect(styles).toContain('.character-assembly-mouth-overflow-menu[popover]');
+    expect(styles).toContain('position: fixed;');
+    expect(editor).toMatch(/event\.key === 'Escape'[\s\S]*?event\.stopPropagation\(\)/u);
+    const clearedMouthStart = clearedDraftMarkup.indexOf('data-image-asset-picker="张嘴脸"');
+    const clearedMouthEnd = clearedDraftMarkup.indexOf('</section>', clearedMouthStart);
+    const clearedMouthPicker = clearedDraftMarkup.slice(clearedMouthStart, clearedMouthEnd);
+    expect(clearedMouthPicker).toContain('data-selected-asset-id=""');
+    expect(clearedMouthPicker).not.toContain('character-assembly-mouth-overflow-trigger');
+    const disabledMouthStart = disabledMarkup.indexOf('data-image-asset-picker="张嘴脸"');
+    const disabledMouthEnd = disabledMarkup.indexOf('</section>', disabledMouthStart);
+    const disabledMouthPicker = disabledMarkup.slice(disabledMouthStart, disabledMouthEnd);
+    expect(disabledMouthPicker).toMatch(
+      /<button(?=[^>]*data-testid="character-assembly-mouth-overflow-trigger")(?=[^>]*disabled="")[^>]*>/u,
+    );
+    expect(disabledMouthPicker).toMatch(
+      /<button(?=[^>]*data-testid="character-assembly-mouth-clear")(?=[^>]*disabled="")[^>]*>/u,
+    );
     expect(editor).toMatch(
       /nextWorkspace !== 'assembly'[\s\S]*?!onLeaveAssembly\(\)/u,
     );

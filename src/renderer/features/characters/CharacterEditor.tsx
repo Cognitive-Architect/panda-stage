@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type {
   Character,
   CharacterDimensionWarning,
@@ -42,6 +42,197 @@ export function characterRenameValue(
 ): string | null {
   const trimmed = nextName.trim();
   return trimmed.length > 0 && trimmed !== currentName ? trimmed : null;
+}
+
+const MOUTH_OVERFLOW_MENU_WIDTH = 132;
+const MOUTH_OVERFLOW_MENU_MIN_HEIGHT = 54;
+const MOUTH_OVERFLOW_MENU_GAP = 4;
+const MOUTH_OVERFLOW_MENU_VIEWPORT_MARGIN = 8;
+
+// The native top-layer popover escapes row clipping while keeping Tab order beside its trigger.
+function CharacterAssemblyMouthOverflowMenu({
+  disabled,
+  onClear,
+}: {
+  disabled: boolean;
+  onClear: () => void;
+}): React.JSX.Element {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const trigger = triggerRef.current;
+    const popover = popoverRef.current;
+    if (!trigger || !popover) return undefined;
+
+    const positionPopover = (force = false): void => {
+      if (!force && !popover.matches(':popover-open')) return;
+
+      const anchor = trigger.getBoundingClientRect();
+      const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+      const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+      if (
+        viewportWidth <= 0 ||
+        viewportHeight <= 0 ||
+        anchor.bottom <= 0 ||
+        anchor.top >= viewportHeight
+      ) {
+        if (popover.matches(':popover-open')) popover.hidePopover();
+        return;
+      }
+
+      const computedWidth = Number.parseFloat(getComputedStyle(popover).width);
+      const width = Math.min(
+        Number.isFinite(computedWidth) ? computedWidth : MOUTH_OVERFLOW_MENU_WIDTH,
+        Math.max(0, viewportWidth - MOUTH_OVERFLOW_MENU_VIEWPORT_MARGIN * 2),
+      );
+      const measuredHeight = popover.scrollHeight || MOUTH_OVERFLOW_MENU_MIN_HEIGHT;
+      const height = Math.max(MOUTH_OVERFLOW_MENU_MIN_HEIGHT, measuredHeight);
+      const spaceBelow = viewportHeight - anchor.bottom - MOUTH_OVERFLOW_MENU_VIEWPORT_MARGIN;
+      const spaceAbove = anchor.top - MOUTH_OVERFLOW_MENU_VIEWPORT_MARGIN;
+      const opensAbove =
+        spaceBelow < height + MOUTH_OVERFLOW_MENU_GAP && spaceAbove > spaceBelow;
+      const availableSpace = Math.max(
+        0,
+        (opensAbove ? spaceAbove : spaceBelow) - MOUTH_OVERFLOW_MENU_GAP,
+      );
+      const visibleHeight = Math.min(height, availableSpace);
+      const maxLeft = Math.max(
+        0,
+        viewportWidth - width - MOUTH_OVERFLOW_MENU_VIEWPORT_MARGIN,
+      );
+      const left = Math.max(
+        MOUTH_OVERFLOW_MENU_VIEWPORT_MARGIN,
+        Math.min(anchor.right - width, maxLeft),
+      );
+      const top = opensAbove
+        ? Math.max(
+            MOUTH_OVERFLOW_MENU_VIEWPORT_MARGIN,
+            anchor.top - MOUTH_OVERFLOW_MENU_GAP - visibleHeight,
+          )
+        : Math.min(
+            viewportHeight - MOUTH_OVERFLOW_MENU_VIEWPORT_MARGIN - visibleHeight,
+            anchor.bottom + MOUTH_OVERFLOW_MENU_GAP,
+          );
+
+      popover.style.width = `${width}px`;
+      popover.style.maxHeight = `${availableSpace}px`;
+      popover.style.left = `${left}px`;
+      popover.style.top = `${top}px`;
+      popover.dataset.placement = opensAbove ? 'above' : 'below';
+    };
+
+    const onBeforeToggle = (event: Event): void => {
+      if ((event as Event & { newState?: string }).newState === 'open') {
+        positionPopover(true);
+      }
+    };
+    const onToggle = (): void => {
+      const isOpen = popover.matches(':popover-open');
+      setOpen(isOpen);
+      if (isOpen) positionPopover(true);
+    };
+    const onViewportMove = (): void => positionPopover();
+    const onFocusIn = (event: FocusEvent): void => {
+      const target = event.target;
+      if (
+        popover.matches(':popover-open') &&
+        target instanceof Node &&
+        !trigger.contains(target) &&
+        !popover.contains(target)
+      ) {
+        popover.hidePopover();
+      }
+    };
+
+    popover.addEventListener('beforetoggle', onBeforeToggle);
+    popover.addEventListener('toggle', onToggle);
+    document.addEventListener('scroll', onViewportMove, true);
+    document.addEventListener('focusin', onFocusIn, true);
+    window.addEventListener('resize', onViewportMove);
+    window.visualViewport?.addEventListener('resize', onViewportMove);
+    window.visualViewport?.addEventListener('scroll', onViewportMove);
+    return () => {
+      popover.removeEventListener('beforetoggle', onBeforeToggle);
+      popover.removeEventListener('toggle', onToggle);
+      document.removeEventListener('scroll', onViewportMove, true);
+      document.removeEventListener('focusin', onFocusIn, true);
+      window.removeEventListener('resize', onViewportMove);
+      window.visualViewport?.removeEventListener('resize', onViewportMove);
+      window.visualViewport?.removeEventListener('scroll', onViewportMove);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (disabled && popoverRef.current?.matches(':popover-open')) {
+      popoverRef.current.hidePopover();
+    }
+  }, [disabled]);
+
+  const clearMouth = (): void => {
+    const picker = triggerRef.current?.closest<HTMLElement>(
+      '[data-testid="character-assembly-mouth-picker"]',
+    );
+    popoverRef.current?.hidePopover();
+    onClear();
+    window.requestAnimationFrame(() => {
+      picker
+        ?.querySelector<HTMLButtonElement>(
+          '[data-testid="character-assembly-mouth-picker-selected"]',
+        )
+        ?.focus();
+    });
+  };
+
+  return (
+    <div
+      className="character-assembly-mouth-overflow"
+      onKeyDown={(event) => {
+        if (
+          event.key === 'Escape' &&
+          popoverRef.current?.matches(':popover-open')
+        ) {
+          event.stopPropagation();
+        }
+      }}
+    >
+      <button
+        aria-controls={id}
+        aria-expanded={open}
+        aria-label="张嘴脸更多操作"
+        className="character-assembly-mouth-overflow-trigger"
+        data-testid="character-assembly-mouth-overflow-trigger"
+        disabled={disabled}
+        popoverTarget={id}
+        popoverTargetAction="toggle"
+        ref={triggerRef}
+        type="button"
+      >
+        <span aria-hidden="true">⋯</span>
+      </button>
+      <div
+        aria-label="张嘴脸更多操作"
+        className="character-assembly-mouth-overflow-menu"
+        data-testid="character-assembly-mouth-overflow-menu"
+        id={id}
+        popover="auto"
+        ref={popoverRef}
+        role="group"
+      >
+        <button
+          className="character-mouth-clear"
+          data-testid="character-assembly-mouth-clear"
+          disabled={disabled}
+          onClick={clearMouth}
+          type="button"
+        >
+          清除
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function CharacterThumbnailFallback({
@@ -255,6 +446,9 @@ export function CharacterEditor({
           : null;
   const nextRenameValue = characterRenameValue(name, character.name);
   const compositeCharacter = character.mode === 'composite';
+  const assemblyMouthAssetId = assemblyDraft
+    ? assemblyDraft.mouthOpenAssetId ?? null
+    : character.mouthOpenAssetId ?? null;
 
   const switchDetailWorkspace = (
     nextWorkspace: CharacterDetailWorkspace,
@@ -779,32 +973,17 @@ export function CharacterEditor({
                 label="张嘴脸"
                 onChange={onSetAssemblyMouthAsset}
                 onThumbnailError={onThumbnailError}
-                selectedAssetId={
-                  assemblyDraft?.mouthOpenAssetId ??
-                  character.mouthOpenAssetId ??
-                  null
-                }
+                selectedAssetId={assemblyMouthAssetId}
                 testId="character-assembly-mouth-picker"
                 thumbnails={thumbnails}
                 disabled={disabled}
                 selectedSurface
                 selectedAction={
-                  (assemblyDraft?.mouthOpenAssetId ??
-                    character.mouthOpenAssetId) ? (
-                    <details className="character-assembly-mouth-overflow">
-                      <summary aria-label="张嘴脸更多操作">⋯</summary>
-                      <div className="character-assembly-mouth-overflow-menu">
-                        <button
-                          className="character-mouth-clear"
-                          data-testid="character-assembly-mouth-clear"
-                          disabled={disabled}
-                          onClick={() => onSetAssemblyMouthAsset(null)}
-                          type="button"
-                        >
-                          清除
-                        </button>
-                      </div>
-                    </details>
+                  assemblyMouthAssetId ? (
+                    <CharacterAssemblyMouthOverflowMenu
+                      disabled={disabled}
+                      onClear={() => onSetAssemblyMouthAsset(null)}
+                    />
                   ) : undefined
                 }
               />

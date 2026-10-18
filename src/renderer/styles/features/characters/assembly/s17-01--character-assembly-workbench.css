@@ -543,7 +543,8 @@
 .character-assembly-drawer-panel
   .image-asset-picker-selected-row--surface:has(
     > .image-asset-picker-selected:hover:not(:disabled),
-    > .character-assembly-mouth-overflow > summary:hover
+    > .character-assembly-mouth-overflow
+      > .character-assembly-mouth-overflow-trigger:hover:not(:disabled)
   ) {
   border-color: var(--image-asset-picker-selected-surface-border-hover);
   background: var(--image-asset-picker-selected-surface-background-hover);
@@ -552,7 +553,8 @@
 .character-assembly-drawer-panel
   .image-asset-picker-selected-row--surface:has(
     > .image-asset-picker-selected:focus-visible,
-    > .character-assembly-mouth-overflow > summary:focus-visible
+    > .character-assembly-mouth-overflow
+      > .character-assembly-mouth-overflow-trigger:focus-visible
   ) {
   outline: 2px solid var(--ui-color-selected-border);
   outline-offset: 2px;
@@ -617,7 +619,8 @@
   margin-right: 8px;
 }
 
-.character-assembly-mouth-overflow > summary {
+.character-assembly-mouth-overflow-trigger {
+  appearance: none;
   display: grid;
   width: 44px;
   min-width: 44px;
@@ -628,26 +631,27 @@
   color: var(--ui-color-text-secondary);
   background: transparent;
   cursor: pointer;
-  list-style: none;
+  padding: 0;
   place-items: center;
 }
 
-.character-assembly-mouth-overflow > summary::-webkit-details-marker {
-  display: none;
-}
-
-.character-assembly-mouth-overflow > summary:hover,
-.character-assembly-mouth-overflow > summary:focus-visible {
+.character-assembly-mouth-overflow-trigger:hover:not(:disabled),
+.character-assembly-mouth-overflow-trigger:focus-visible {
   color: var(--ui-color-text-primary);
 }
 
-.character-assembly-mouth-overflow-menu {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 4px);
-  right: 0;
+.character-assembly-mouth-overflow-menu[popover] {
+  position: fixed;
+  inset: auto;
+  width: 132px;
   min-width: 112px;
+  min-height: 54px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  margin: 0;
   padding: 4px;
+  box-sizing: border-box;
   border: 1px solid var(--ui-color-border);
   border-radius: var(--ui-radius-small);
   background: var(--ui-color-surface-app);

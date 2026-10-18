@@ -260,8 +260,9 @@ export class CharacterService {
       facePlacement,
       expressions,
       baseAssetId: defaultExpression.assetId,
-      ...(mouthOpenAssetId ? { mouthOpenAssetId } : {}),
     };
+    if (mouthOpenAssetId) next.mouthOpenAssetId = mouthOpenAssetId;
+    else delete next.mouthOpenAssetId;
     if (head) next.head = head;
     else delete next.head;
     if (this.sameCompositeDefinition(character, next)) return project;
