@@ -415,6 +415,10 @@ export const FlaFrameSequenceProgressSchema = z
   .refine(
     (p) => p.completedFrameCount <= p.totalFrameCount,
     'completedFrameCount must not exceed totalFrameCount',
+  )
+  .refine(
+    (p) => p.currentFrameIndex === undefined || p.currentFrameIndex < p.totalFrameCount,
+    'currentFrameIndex must be a zero-based ordinal below totalFrameCount',
   );
 
 // ---- R2-D cancel request (latest-request-wins) ----

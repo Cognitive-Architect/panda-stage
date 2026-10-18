@@ -8,6 +8,7 @@ import {
   FlaFrameSequenceCommitRequestSchema,
   FlaFrameSequenceCommitResponseSchema,
   FlaFrameSequenceErrorCodeSchema,
+  FlaFrameSequenceProgressSchema,
   FlaFrameSequenceRangeSchema,
   FlaFrameSequenceRequestSchema,
   FlaFrameSequenceResponseSchema,
@@ -461,6 +462,41 @@ describe('R2-D cancel contract', () => {
       completedFrameCount: 5,
     });
     expect(r.completedFrameCount).toBe(5);
+  });
+});
+
+
+describe('T06 progress ordinal contract', () => {
+  const progress = {
+    format: 'fla-frame-sequence-progress' as const,
+    version: 1 as const,
+    sessionId: validUuid,
+    requestId: validRequestId,
+    completedFrameCount: 1,
+    totalFrameCount: 3,
+  };
+
+  it('accepts zero-based ordinals within the batch', () => {
+    for (const ordinal of [0, 1, 2]) {
+      expect(FlaFrameSequenceProgressSchema.safeParse({
+        ...progress, completedFrameCount: ordinal + 1, currentFrameIndex: ordinal,
+      }).success).toBe(true);
+    }
+    expect(FlaFrameSequenceProgressSchema.safeParse(progress).success).toBe(true);
+  });
+
+  it('rejects a source frame number presented as a batch ordinal', () => {
+    for (const sourceFrame of [3, 24, 100]) {
+      expect(FlaFrameSequenceProgressSchema.safeParse({
+        ...progress, currentFrameIndex: sourceFrame,
+      }).success).toBe(false);
+    }
+  });
+
+  it('retains the independent completed-count budget', () => {
+    expect(FlaFrameSequenceProgressSchema.safeParse({
+      ...progress, completedFrameCount: 4, currentFrameIndex: 2,
+    }).success).toBe(false);
   });
 });
 

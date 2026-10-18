@@ -32,11 +32,26 @@ import {
   FlaFrameSequenceCancelResponseSchema,
   FlaFrameSequenceCommitRequestSchema,
   FlaFrameSequenceCommitResponseSchema,
+  FlaFrameSequenceRangeSchema,
   FlaFrameSequenceRequestSchema,
   FlaFrameSequenceResponseSchema,
+  type FlaFrameSequenceProgress,
+  type FlaFrameSequenceRange,
 } from '../../src/shared/fla-frame-sequence-api';
+import {
+  FlaFrameSequenceService,
+  type SequenceFrameInput,
+} from '../../src/main/services/fla-frame-sequence-service';
+import type {
+  FlaStaticSnapshotRasterizer,
+} from '../../src/main/services/fla-static-snapshot-render-session';
+import {
+  buildRenderableTargetCatalog,
+  buildSvgForRenderTarget,
+} from '../../src/main/services/fla-static-snapshot-svg-builder';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { migrateProject, ProjectSchema, type Project } from '../../src/domain';
+import { buildMultiFrameGraphicFla } from '../helpers/fla-render-fixture';
 
 const migratedProject = migrateProject(exampleProject as never) as Project;
 if (!ProjectSchema.safeParse(migratedProject).success) {
@@ -51,7 +66,7 @@ const pandaStage = preloadMocks.exposed.pandaStage as {
     frameSequenceRender: (r: unknown) => Promise<unknown>;
     frameSequenceCancel: (r: unknown) => Promise<unknown>;
     frameSequenceCommit: (r: unknown) => Promise<unknown>;
-    frameSequenceProgressSubscribe: (cb: (p: unknown) => void) => () => void;
+    frameSequenceProgressSubscribe: (cb: (p: FlaFrameSequenceProgress) => void) => () => void;
   };
 };
 
@@ -153,6 +168,172 @@ describe('R2-H.1 preload frame sequence surface', () => {
     expect(() => listener?.(null, good)).not.toThrow();
     // An unknown format must be rejected by the strict schema (no silent passthrough).
     expect(() => listener?.(null, { format: 'wrong', version: 1, sessionId: '00000000-0000-4000-8000-000000000001', requestId: '11111111-1111-4111-8111-111111111111', completedFrameCount: 1, totalFrameCount: 1 })).toThrow();
+  });
+
+  it('routes formal service events through the preload parser for zero and non-zero source ranges', async () => {
+    const sessionId = '00000000-0000-4000-8000-000000000001';
+    const ranges = [
+      { start: 0, end: 0, requestId: '11111111-1111-4111-8111-111111111101' },
+      { start: 0, end: 23, requestId: '11111111-1111-4111-8111-111111111102' },
+      { start: 1, end: 24, requestId: '11111111-1111-4111-8111-111111111103' },
+      { start: 24, end: 25, requestId: '11111111-1111-4111-8111-111111111104' },
+      { start: 100, end: 102, requestId: '11111111-1111-4111-8111-111111111105' },
+    ];
+    const sourceBytes = await buildMultiFrameGraphicFla({ frameCount: 103 });
+    const catalog = await buildRenderableTargetCatalog(sourceBytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+    const target = catalog.entries.find((entry) => (
+      entry.target.kind === 'graphic-symbol' && entry.target.frameCount >= 103
+    ))?.target;
+    expect(target).toBeDefined();
+    if (!target) return;
+
+    const sourceFramesByIndex = new Map<number, SequenceFrameInput>();
+    for (const { start, end } of ranges) {
+      for (let frameIndex = start; frameIndex <= end; frameIndex += 1) {
+        if (sourceFramesByIndex.has(frameIndex)) continue;
+        const built = await buildSvgForRenderTarget(sourceBytes, {
+          ...target,
+          selectedFrameIndex: frameIndex,
+        });
+        expect(built.ok).toBe(true);
+        if (built.ok) sourceFramesByIndex.set(frameIndex, { frameIndex, svg: built.svg });
+      }
+    }
+
+    const rasterizer: FlaStaticSnapshotRasterizer = {
+      async rasterize() {
+        return { pngBytes: Uint8Array.of(1), width: 1, height: 1, pixelCount: 1 };
+      },
+      cancel: () => false,
+      close: () => undefined,
+    };
+    const observations: Array<{
+      range: [number, number];
+      rendered: boolean;
+      resultFrameIndices: number[];
+      resultOrdinals: number[];
+      progressCurrentFrameIndices: number[];
+      progressCountsValid: boolean;
+      progressIdentitiesValid: boolean;
+      preloadDeliveredCount: number;
+      preloadRejectedFrameIndices: number[];
+    }> = [];
+
+    for (const { start, end, requestId } of ranges) {
+      const range: FlaFrameSequenceRange = FlaFrameSequenceRangeSchema.parse({
+        renderTargetId: target.renderTargetId,
+        startFrameIndex: start,
+        endFrameIndex: end,
+      });
+      // This generated FLA target contains every requested source index,
+      // including 100..102; frames come from the production SVG builder.
+      const sourceFrames: SequenceFrameInput[] = [];
+      for (let frameIndex = start; frameIndex <= end; frameIndex += 1) {
+        const sourceFrame = sourceFramesByIndex.get(frameIndex);
+        expect(sourceFrame).toBeDefined();
+        if (sourceFrame) sourceFrames.push(sourceFrame);
+      }
+      const service = new FlaFrameSequenceService({ rasterizer });
+      const serviceEvents: FlaFrameSequenceProgress[] = [];
+      const unsubscribeService = service.subscribe((progress) => serviceEvents.push(progress));
+      const response = await service.renderSequence(
+        sessionId,
+        range,
+        sourceFrames,
+        { sequenceRequestId: requestId },
+      );
+      unsubscribeService();
+
+      const listenerCallStart = preloadMocks.on.mock.calls.length;
+      const preloadDelivered: FlaFrameSequenceProgress[] = [];
+      const unsubscribePreload = pandaStage.fla.frameSequenceProgressSubscribe((progress) => {
+        preloadDelivered.push(progress);
+      });
+      const listener = preloadMocks.on.mock.calls.slice(listenerCallStart).find(
+        (call) => call[0] === IPC_CHANNELS.FLA_FRAME_SEQUENCE_PROGRESS,
+      )?.[1] as ((_event: unknown, raw: unknown) => void) | undefined;
+      expect(listener).toBeTypeOf('function');
+
+      const preloadRejectedFrameIndices: number[] = [];
+      for (const progress of serviceEvents) {
+        try {
+          listener?.(null, progress);
+        } catch {
+          preloadRejectedFrameIndices.push(progress.currentFrameIndex ?? -1);
+        }
+      }
+      unsubscribePreload();
+
+      const resultItems = response.ok ? response.items : [];
+      observations.push({
+        range: [start, end],
+        rendered: response.ok,
+        resultFrameIndices: resultItems.map((item) => item.frameIndex),
+        resultOrdinals: resultItems.map((item) => item.sequenceOrdinal),
+        progressCurrentFrameIndices: serviceEvents.map((progress) => progress.currentFrameIndex ?? -1),
+        progressCountsValid: serviceEvents.every((progress, index) => (
+          progress.completedFrameCount === index + 1
+          && progress.totalFrameCount === end - start + 1
+        )),
+        progressIdentitiesValid: serviceEvents.every((progress) => (
+          progress.sessionId === sessionId && progress.requestId === requestId
+        )),
+        preloadDeliveredCount: preloadDelivered.length,
+        preloadRejectedFrameIndices,
+      });
+    }
+
+    expect(observations).toEqual(ranges.map(({ start, end }) => {
+      const count = end - start + 1;
+      return {
+        range: [start, end],
+        rendered: true,
+        resultFrameIndices: Array.from({ length: count }, (_, ordinal) => start + ordinal),
+        resultOrdinals: Array.from({ length: count }, (_, ordinal) => ordinal),
+        progressCurrentFrameIndices: Array.from({ length: count }, (_, ordinal) => ordinal),
+        progressCountsValid: true,
+        progressIdentitiesValid: true,
+        preloadDeliveredCount: count,
+        preloadRejectedFrameIndices: [],
+      };
+    }));
+  });
+
+  it('rejects a 25-frame request before consuming or rasterizing source frames', async () => {
+    const range = {
+      renderTargetId: 'fla-render-target-1a2b3c4d5e6f7a8b',
+      startFrameIndex: 0,
+      endFrameIndex: 24,
+    };
+    expect(FlaFrameSequenceRangeSchema.safeParse(range).success).toBe(false);
+
+    let sourceConsumed = false;
+    let rasterized = 0;
+    const rasterizer: FlaStaticSnapshotRasterizer = {
+      async rasterize() {
+        rasterized += 1;
+        return { pngBytes: Uint8Array.of(1), width: 1, height: 1, pixelCount: 1 };
+      },
+      cancel: () => false,
+      close: () => undefined,
+    };
+    const source = (async function* (): AsyncGenerator<SequenceFrameInput> {
+      sourceConsumed = true;
+      yield { frameIndex: 0, svg: '<svg/>' };
+    })();
+    const service = new FlaFrameSequenceService({ rasterizer });
+    const response = await service.renderSequence(
+      '00000000-0000-4000-8000-000000000001',
+      range as unknown as FlaFrameSequenceRange,
+      source,
+      { sequenceRequestId: '11111111-1111-4111-8111-111111111199' },
+    );
+
+    expect(response).toMatchObject({ ok: false, error: { code: 'RANGE_TOO_LARGE', completedFrameCount: 0 } });
+    expect(sourceConsumed).toBe(false);
+    expect(rasterized).toBe(0);
   });
 
   it('frameSequenceProgressSubscribe does not expose raw Electron primitives', () => {

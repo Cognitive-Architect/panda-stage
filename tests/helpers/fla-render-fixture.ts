@@ -4,11 +4,13 @@ const SIMPLE_RECT_CUBICS = '!0 0|100 0|100 100|0 100|0 0';
 
 /**
  * Repo-safe multi-frame FLA/XFL fixture for the R2 identity bridge tests.
- * It contains one graphic-symbol target with two renderable timeline frames;
- * no private or licensed source bytes are used.
+ * By default it contains one graphic-symbol target with two renderable
+ * timeline frames. Tests may request a larger target to exercise bounded
+ * ranges at higher source frame indexes. No private or licensed source bytes
+ * are used.
  */
 export async function buildMultiFrameGraphicFla(
-  options: { readonly blankFirstFrame?: boolean } = {},
+  options: { readonly blankFirstFrame?: boolean; readonly frameCount?: number } = {},
 ): Promise<Uint8Array> {
   const zip = new JSZip();
   const symbolName = 'r2-multi-frame-fixture';
@@ -39,10 +41,12 @@ export async function buildMultiFrameGraphicFla(
         { index: 0, duration: 2, frameIndex: 0, blank: true },
         { index: 2, duration: 2, frameIndex: 1, blank: false },
       ]
-    : [
-        { index: 0, duration: 1, frameIndex: 0, blank: false },
-        { index: 1, duration: 1, frameIndex: 1, blank: false },
-      ];
+    : Array.from({ length: options.frameCount ?? 2 }, (_, frameIndex) => ({
+        index: frameIndex,
+        duration: 1,
+        frameIndex,
+        blank: false,
+      }));
   const frames = frameSpecs.map(({ index, duration, frameIndex, blank }) => blank
     ? `<DOMFrame index="${index}" duration="${duration}"><elements/></DOMFrame>`
     : `<DOMFrame index="${index}" duration="${duration}">
