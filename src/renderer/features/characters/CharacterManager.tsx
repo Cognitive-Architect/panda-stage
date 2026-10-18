@@ -853,6 +853,15 @@ export function CharacterManager({
             );
           }}
           assemblyDraft={assemblyDraft}
+          assemblyEditTarget={editAssemblySnapshot?.editTarget ?? 'face'}
+          onSelectAssemblyEditTarget={(target) => {
+            if (!editAssemblySnapshot) return;
+            characterAssemblySessionStore.setEditTarget(
+              target,
+              editAssemblySnapshot.sessionId,
+              editAssemblySnapshot.generation,
+            );
+          }}
           onOpenAssembly={openAssembly}
           onLeaveAssembly={leaveAssembly}
           onSetAssemblyHeadAsset={(assetId) => {

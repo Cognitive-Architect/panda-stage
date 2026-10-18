@@ -148,7 +148,10 @@ describe('Issue #614 Character Detail polish', () => {
       ),
     ).toHaveLength(4);
     expect(markup).toContain('class="image-asset-picker-selected-copy"');
-    expect(markup).toContain('class="image-asset-picker-selected-action">管理</span>');
+    expect(markup).toContain('data-testid="character-assembly-default-face-select"');
+    expect(markup).toMatch(
+      /<button[^>]*class="image-asset-picker-selected-action character-assembly-selected-action-button"[^>]*data-testid="character-assembly-go-expressions"[^>]*>管理<\/button>/u,
+    );
     expect(markup).toContain('data-image-asset-picker="张嘴脸"');
     expect(markup).toContain('<div class="character-assembly-mouth-overflow">');
     expect(markup).toContain('aria-label="张嘴脸更多操作"');

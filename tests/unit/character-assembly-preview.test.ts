@@ -63,6 +63,7 @@ function fixture(): {
       projectId: project.id,
       projectRoot: 'D:\\PandaStage-Acceptance\\issue609.pandastage',
       characterId: character.id,
+      editTarget: 'head',
       draft: {
         bodyAssetId: character.bodyAssetId,
         facePlacement: { ...placement },
@@ -384,6 +385,7 @@ describe('S07 composite assembly preview', () => {
       generation: 0,
       projectId: project.id,
       projectRoot: session.projectRoot,
+      editTarget: 'face',
       draft: {
         name: 'New composite character',
         bodyAssetId: session.draft.bodyAssetId,

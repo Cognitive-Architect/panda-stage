@@ -672,7 +672,7 @@
       }
     ]
   },
-  "count": 83,
+  "count": 84,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1657,6 +1657,18 @@
       "owner": "character",
       "supersedes": null,
       "notes": "Bounded Issue #792 Electron proof for Mouth overflow popover geometry, real pointer hit testing, keyboard activation, narrow viewport and scroll placement; synthetic fixture evidence is not OWNER human acceptance."
+    },
+    {
+      "id": "issue797-head-face-edit",
+      "script": "verify:issue797-head-face-edit",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #797 Electron proof for synchronized Head/Face edit target selection, native drag hit testing, keyboard activation, distinct Change/Manage actions, and headless Face editing; synthetic fixture evidence is not OWNER human acceptance."
     },
     {
       "id": "timeline",

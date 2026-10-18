@@ -34,6 +34,9 @@ export interface ImageAssetPickerProps {
   helperText?: string;
   emptyActionLabel?: string;
   selectedAction?: React.ReactNode;
+  /** Use the selected asset card body to choose the current Assembly edit target. */
+  onSelectedAssetActivate?: () => void;
+  selectedAssetActive?: boolean;
   /** Put the picker trigger and optional secondary action inside one shared row surface. */
   selectedSurface?: boolean;
   testId?: string;
@@ -203,6 +206,8 @@ export function ImageAssetPicker({
   helperText,
   emptyActionLabel = '选择',
   selectedAction,
+  onSelectedAssetActivate,
+  selectedAssetActive = false,
   selectedSurface = false,
   testId,
 }: ImageAssetPickerProps): React.JSX.Element {
@@ -244,24 +249,33 @@ export function ImageAssetPicker({
     selectedAssetId,
     selectedEmptyState,
   );
+  const hasActiveSelection = Boolean(onSelectedAssetActivate && selectedAssetId);
+  const togglePicker = (): void => {
+    if (disabled) return;
+    const nextOpen = !open;
+    if (nextOpen) {
+      setSearchQuery('');
+      setPage(1);
+    }
+    setOpen(nextOpen);
+    onOpenChange?.(nextOpen);
+  };
 
   const selectedButton = (
     <button
-      aria-expanded={open}
-      aria-haspopup="listbox"
-      aria-label={`${label}：${selectedLabel}`}
-      className={`image-asset-picker-selected${selectedAssetId ? '' : ' image-asset-picker-selected-empty'}`}
+      aria-expanded={hasActiveSelection ? undefined : open}
+      aria-haspopup={hasActiveSelection ? undefined : 'listbox'}
+      aria-label={
+        hasActiveSelection
+          ? `${label}：${selectedLabel}，选择为编辑对象`
+          : `${label}：${selectedLabel}`
+      }
+      aria-pressed={hasActiveSelection ? selectedAssetActive : undefined}
+      className={`image-asset-picker-selected${selectedAssetId ? '' : ' image-asset-picker-selected-empty'}${selectedAssetActive && hasActiveSelection ? ' is-active-edit-target' : ''}`}
+      data-edit-target-selected={hasActiveSelection ? String(selectedAssetActive) : undefined}
       data-testid={testId ? `${testId}-selected` : undefined}
       disabled={disabled}
-      onClick={() => {
-        const nextOpen = !open;
-        if (nextOpen) {
-          setSearchQuery('');
-          setPage(1);
-        }
-        setOpen(nextOpen);
-        onOpenChange?.(nextOpen);
-      }}
+      onClick={hasActiveSelection ? onSelectedAssetActivate : togglePicker}
       type="button"
     >
       {selectedAssetId ? (
@@ -279,10 +293,35 @@ export function ImageAssetPicker({
         {selectedMetadata ? <small>{selectedMetadata}</small> : null}
       </span>
       <span aria-hidden="true" className="image-asset-picker-selected-action">
-        {open ? '收起' : selectedAssetId ? '更换' : emptyActionLabel}
+        {hasActiveSelection
+          ? selectedAssetActive
+            ? '编辑中'
+            : '编辑'
+          : open
+            ? '收起'
+            : selectedAssetId
+              ? '更换'
+              : emptyActionLabel}
       </span>
     </button>
   );
+  const selectedAssetChangeAction = hasActiveSelection ? (
+    <button
+      aria-expanded={open}
+      aria-haspopup="listbox"
+      aria-label={`${label}：更换素材`}
+      className="image-asset-picker-selected-action character-assembly-selected-action-button"
+      data-testid={testId ? `${testId}-change-action` : undefined}
+      disabled={disabled}
+      onClick={togglePicker}
+      type="button"
+    >
+      {open ? '收起' : '更换'}
+    </button>
+  ) : null;
+  const trailingAction = selectedAction && selectedAssetId
+    ? selectedAction
+    : selectedAssetChangeAction;
 
   return (
     <section
@@ -300,12 +339,17 @@ export function ImageAssetPicker({
       {selectedSurface ? (
         <ImageAssetPickerSelectedSurface>
           {selectedButton}
-          {selectedAction && selectedAssetId ? selectedAction : null}
+          {trailingAction}
         </ImageAssetPickerSelectedSurface>
       ) : selectedAction && selectedAssetId ? (
         <div className="image-asset-picker-selected-row">
           {selectedButton}
           {selectedAction}
+        </div>
+      ) : hasActiveSelection ? (
+        <div className="image-asset-picker-selected-row">
+          {selectedButton}
+          {selectedAssetChangeAction}
         </div>
       ) : (
         selectedButton

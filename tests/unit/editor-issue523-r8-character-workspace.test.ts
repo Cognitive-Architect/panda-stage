@@ -237,7 +237,9 @@ describe('Issue #523 R8 unified Character workspace', () => {
     expect(markup).toContain('<small>可选</small>');
     expect(markup).toContain('data-testid="character-assembly-mouth-picker"');
     expect(markup).toContain('data-testid="character-assembly-go-expressions"');
-    expect(markup).toContain('class="image-asset-picker-selected-action">管理</span>');
+    expect(markup).toMatch(
+      /<button[^>]*class="image-asset-picker-selected-action character-assembly-selected-action-button"[^>]*data-testid="character-assembly-go-expressions"[^>]*>管理<\/button>/u,
+    );
     expect(markup).not.toContain('character-detail-mouth-visual-picker');
     expect(markup.indexOf('data-testid="character-assembly-body-picker"')).toBeLessThan(
       markup.indexOf('data-testid="character-assembly-head-asset"'),

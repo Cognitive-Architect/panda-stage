@@ -20,6 +20,8 @@ import {
 
 type Listener = () => void;
 
+export type CharacterAssemblyEditTarget = 'head' | 'face';
+
 export type CharacterAssemblyErrorCode =
   | 'project-not-open'
   | 'character-not-found'
@@ -48,6 +50,8 @@ export interface CharacterAssemblySnapshot {
   readonly projectId: string;
   readonly projectRoot: string;
   readonly characterId: string;
+  /** Session-only target for the Assembly Workbench's placement handles. */
+  readonly editTarget: CharacterAssemblyEditTarget;
   readonly draft: CompositeCharacterDefinition;
 }
 
@@ -72,6 +76,8 @@ export interface CharacterCreationSnapshot {
   readonly generation: number;
   readonly projectId: string;
   readonly projectRoot: string;
+  /** Session-only target for the Assembly Workbench's placement handles. */
+  readonly editTarget: CharacterAssemblyEditTarget;
   readonly draft: CreateCompositeCharacterInput;
 }
 
@@ -479,6 +485,7 @@ export class CharacterAssemblySessionStore {
     | CharacterAssemblySnapshot
     | CharacterCreationSnapshot
     | null = null;
+  private editTarget: CharacterAssemblyEditTarget = 'face';
   private commitContext: CommitContext | null = null;
   private nextSessionId = 0;
   /**
@@ -502,6 +509,20 @@ export class CharacterAssemblySessionStore {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
+
+  /** Update only the active Assembly UI selection, without touching Project or History. */
+  setEditTarget(
+    target: CharacterAssemblyEditTarget,
+    sessionId: number,
+    generation: number,
+  ): boolean {
+    const active = this.activeForToken(sessionId, generation);
+    if (!active || (target === 'head' && !active.draft.head)) return false;
+    if (this.editTarget === target) return true;
+    this.editTarget = target;
+    this.emit();
+    return true;
+  }
 
   /**
    * Declare which Character the UI is still deliberately editing in assembly.
@@ -551,6 +572,7 @@ export class CharacterAssemblySessionStore {
       draft: cloneDefinition(definition),
     };
     this.active = session;
+    this.editTarget = session.draft.head ? 'head' : 'face';
     this.emit();
     return {
       ok: true,
@@ -594,6 +616,7 @@ export class CharacterAssemblySessionStore {
       draft: cloneCreationDraft(draft),
     };
     this.active = session;
+    this.editTarget = session.draft.head ? 'head' : 'face';
     this.emit();
     return {
       ok: true,
@@ -715,6 +738,7 @@ export class CharacterAssemblySessionStore {
       characterId: previous.characterId,
       draft: cloneDefinition(definition),
     };
+    this.editTarget = definition.head ? 'head' : 'face';
   }
 
   private createAssemblyHandle(
@@ -772,6 +796,7 @@ export class CharacterAssemblySessionStore {
         snapshot: this.snapshot as CharacterAssemblySnapshot,
       };
     }
+    this.reconcileEditTargetForHeadChange(active.draft.head, draft.head);
     active.draft = cloneDefinition(draft);
     this.emit();
     return {
@@ -879,6 +904,7 @@ export class CharacterAssemblySessionStore {
 
     active.baselineSnapshot = current;
     active.baselineDefinition = cloneDefinition(active.draft);
+    this.editTarget = active.draft.head ? 'head' : 'face';
     active.generation += 1;
     this.emit();
     return {
@@ -905,6 +931,7 @@ export class CharacterAssemblySessionStore {
         snapshot: this.snapshot as CharacterCreationSnapshot,
       };
     }
+    this.reconcileEditTargetForHeadChange(active.draft.head, draft.head);
     active.draft = cloneCreationDraft(draft);
     this.emit();
     return {
@@ -1117,6 +1144,7 @@ export class CharacterAssemblySessionStore {
         generation: active.generation,
         projectId: active.projectId,
         projectRoot: active.projectRoot,
+        editTarget: this.currentEditTarget(active),
         draft: cloneCreationDraft(active.draft),
       };
     }
@@ -1127,8 +1155,21 @@ export class CharacterAssemblySessionStore {
       projectId: active.projectId,
       projectRoot: active.projectRoot,
       characterId: active.characterId,
+      editTarget: this.currentEditTarget(active),
       draft: cloneDefinition(active.draft),
     };
+  }
+
+  private currentEditTarget(active: ActiveSession): CharacterAssemblyEditTarget {
+    return active.draft.head && this.editTarget === 'head' ? 'head' : 'face';
+  }
+
+  private reconcileEditTargetForHeadChange(
+    previousHead: CharacterHead | null | undefined,
+    nextHead: CharacterHead | null | undefined,
+  ): void {
+    if (!nextHead) this.editTarget = 'face';
+    else if (!previousHead) this.editTarget = 'head';
   }
 
   private mapBeginError(error: unknown): CharacterAssemblyError {
@@ -1223,6 +1264,7 @@ export class CharacterAssemblySessionStore {
   private clearActive(): void {
     this.active = null;
     this.commitContext = null;
+    this.editTarget = 'face';
   }
 
   private emit(): void {

@@ -6,6 +6,7 @@ import type {
   ImageAsset,
 } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
+import type { CharacterAssemblyEditTarget } from '../../stores/characterAssemblySessionStore';
 import { Button } from '../../ui/Button';
 import { CharacterExpressionThumbnail } from './CharacterIdentity';
 import { ExpressionEditor } from './ExpressionEditor';
@@ -298,6 +299,8 @@ export interface CharacterEditorProps {
   onOpenAssembly?: () => boolean;
   onLeaveAssembly?: () => boolean;
   onSetAssemblyHeadAsset?: (assetId: string | null) => void;
+  assemblyEditTarget?: CharacterAssemblyEditTarget;
+  onSelectAssemblyEditTarget?: (target: CharacterAssemblyEditTarget) => void;
   onSetAssemblyBodyAsset?: (assetId: string) => void;
   onSetAssemblyMouthAsset?: (assetId: string | null) => void;
   onSetDefaultTransform: (scale: number, flipX: boolean) => void;
@@ -330,6 +333,8 @@ export function CharacterEditor({
   onOpenAssembly = () => false,
   onLeaveAssembly = () => true,
   onSetAssemblyHeadAsset = () => undefined,
+  assemblyEditTarget = 'face',
+  onSelectAssemblyEditTarget = () => undefined,
   onSetAssemblyBodyAsset = () => undefined,
   onSetAssemblyMouthAsset = () => undefined,
   onSetDefaultTransform,
@@ -917,6 +922,11 @@ export function CharacterEditor({
                 label="头部"
                 onChange={onSetAssemblyHeadAsset}
                 onThumbnailError={onThumbnailError}
+                onSelectedAssetActivate={
+                  assemblyDraft?.head
+                    ? () => onSelectAssemblyEditTarget('head')
+                    : undefined
+                }
                 searchAndPaginate
                 selectedAssetId={
                   assemblyDraft
@@ -926,6 +936,7 @@ export function CharacterEditor({
                 testId="character-assembly-head-asset"
                 thumbnails={thumbnails}
                 disabled={disabled}
+                selectedAssetActive={assemblyEditTarget === 'head'}
                 selectedSurface
               />
               <div
@@ -938,10 +949,13 @@ export function CharacterEditor({
                 {defaultExpression ? (
                   <ImageAssetPickerSelectedSurface>
                     <button
-                      aria-label={`管理默认脸：${defaultExpression.name}`}
+                      aria-label={`默认脸：${defaultExpression.name}，选择为编辑对象`}
+                      aria-pressed={assemblyEditTarget === 'face'}
                       className="image-asset-picker-selected"
-                      data-testid="character-assembly-go-expressions"
-                      onClick={() => switchDetailWorkspace('expressions')}
+                      data-edit-target-selected={String(assemblyEditTarget === 'face')}
+                      data-testid="character-assembly-default-face-select"
+                      disabled={disabled || !assemblyDraft}
+                      onClick={() => onSelectAssemblyEditTarget('face')}
                       type="button"
                     >
                       <CharacterExpressionThumbnail
@@ -959,8 +973,18 @@ export function CharacterEditor({
                         </small>
                       </span>
                       <span className="image-asset-picker-selected-action">
-                        管理
+                        {assemblyEditTarget === 'face' ? '编辑中' : '编辑'}
                       </span>
+                    </button>
+                    <button
+                      aria-label={`管理默认脸：${defaultExpression.name}`}
+                      className="image-asset-picker-selected-action character-assembly-selected-action-button"
+                      data-testid="character-assembly-go-expressions"
+                      disabled={disabled}
+                      onClick={() => switchDetailWorkspace('expressions')}
+                      type="button"
+                    >
+                      管理
                     </button>
                   </ImageAssetPickerSelectedSurface>
                 ) : null}

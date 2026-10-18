@@ -14,6 +14,8 @@ const {
 } = require('../dist-electron/domain/migrations/index.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
 const issue792Only = process.argv.includes('--issue792-mouth-overflow');
+const issue797Only = process.argv.includes('--issue797-head-face-edit');
+const focusedHeadFaceRun = issue792Only || issue797Only;
 const ISSUE683_BASELINE_SHA = 'bed0b353f40238bfd820861c0e5349f0e101e977';
 
 // Bounded S07 proof: use the production Character drawer, Assembly workbench,
@@ -21,9 +23,11 @@ const ISSUE683_BASELINE_SHA = 'bed0b353f40238bfd820861c0e5349f0e101e977';
 // a real Windows Electron renderer. The Issue #612 Create-drawer contract is
 // included; synthetic fixture bytes stay outside the repository, and the
 // receipt does not claim human visual acceptance.
-const acceptanceRoot = issue792Only
-  ? 'D:\\PandaStage-Acceptance\\issue792-mouth-overflow'
-  : 'D:\\PandaStage-Acceptance\\issue609-character-assembly';
+const acceptanceRoot = issue797Only
+  ? 'D:\\PandaStage-Acceptance\\issue797-head-face-edit'
+  : issue792Only
+    ? 'D:\\PandaStage-Acceptance\\issue792-mouth-overflow'
+    : 'D:\\PandaStage-Acceptance\\issue609-character-assembly';
 const runId = new Date().toISOString().replace(/[:.]/gu, '-');
 const runRoot = path.join(acceptanceRoot, `run-${runId}`);
 const evidenceRoot = path.join(runRoot, 'evidence');
@@ -31,7 +35,11 @@ const userDataRoot = path.join(runRoot, 'electron-user-data');
 const projectRoot = path.join(
   runRoot,
   'projects',
-  issue792Only ? 'issue792-mouth-overflow.pandastage' : 'issue609-assembly.pandastage',
+  issue797Only
+    ? 'issue797-head-face-edit.pandastage'
+    : issue792Only
+      ? 'issue792-mouth-overflow.pandastage'
+      : 'issue609-assembly.pandastage',
 );
 const resultPath = path.join(runRoot, 'results.json');
 const assetDragMime = 'application/x-panda-stage-asset';
@@ -51,6 +59,9 @@ const IDS = Object.freeze({
   issue792Character: 'a0609000-0000-4000-8000-00000000000c',
   issue792Expression: 'a0609000-0000-4000-8000-00000000000d',
   issue792VoiceProfile: 'a0609000-0000-4000-8000-00000000000e',
+  issue797HeadlessCharacter: 'a0609000-0000-4000-8000-00000000000f',
+  issue797HeadlessExpression: 'a0609000-0000-4000-8000-000000000010',
+  issue797HeadlessVoiceProfile: 'a0609000-0000-4000-8000-000000000011',
 });
 
 const COLORS = new Map([
@@ -125,6 +136,13 @@ async function capture(window, fileName) {
   const target = path.join(evidenceRoot, fileName);
   writeFileSync(target, image.toPNG());
   return path.relative(runRoot, target).replaceAll('\\', '/');
+}
+
+async function waitForPaint(window) {
+  await window.webContents.executeJavaScript(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+  );
+  await wait(60);
 }
 
 async function waitForCharacterDetailScreenshot(window, label) {
@@ -248,7 +266,7 @@ function createFixture() {
   const issue792Character = {
     id: IDS.issue792Character,
     mode: 'composite',
-    name: 'Issue 792 Composite Panda',
+    name: issue797Only ? 'Issue 797 Head and Face Panda' : 'Issue 792 Composite Panda',
     baseAssetId: IDS.face,
     defaultVoiceProfileId: IDS.issue792VoiceProfile,
     expressions: [
@@ -262,13 +280,32 @@ function createFixture() {
     defaultScale: 1,
     defaultFlipX: false,
     bodyAssetId: IDS.body,
-    facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+    facePlacement: { offsetX: 0, offsetY: issue797Only ? 220 : 0, scale: 1 },
     head: {
       assetId: IDS.issue792Head,
-      placement: { offsetX: 0, offsetY: 0, scale: 1 },
+      placement: { offsetX: 0, offsetY: issue797Only ? -160 : 0, scale: 1 },
       pivot: { x: 360, y: 460 },
     },
     mouthOpenAssetId: IDS.mouth,
+  };
+  const issue797HeadlessCharacter = {
+    id: IDS.issue797HeadlessCharacter,
+    mode: 'composite',
+    name: 'Issue 797 Headless Composite Panda',
+    baseAssetId: IDS.face,
+    defaultVoiceProfileId: IDS.issue797HeadlessVoiceProfile,
+    expressions: [
+      {
+        id: IDS.issue797HeadlessExpression,
+        name: 'Neutral',
+        assetId: IDS.face,
+      },
+    ],
+    defaultExpressionId: IDS.issue797HeadlessExpression,
+    defaultScale: 1,
+    defaultFlipX: false,
+    bodyAssetId: IDS.body,
+    facePlacement: { offsetX: 0, offsetY: 220, scale: 1 },
   };
   return ProjectSchema.parse({
     ...base,
@@ -280,12 +317,16 @@ function createFixture() {
       imageAsset(IDS.bodyAlt, 'Assembly Body Alternate', 720, 920),
       imageAsset(IDS.face, 'Assembly Default Face', 320, 280),
       imageAsset(IDS.mouth, 'Assembly Mouth', 320, 280),
-      ...(issue792Only
+      ...(focusedHeadFaceRun
         ? [imageAsset(IDS.issue792Head, 'Assembly Head', 720, 920)]
         : []),
     ],
-    characters: issue792Only
-      ? [legacyCharacter, issue792Character]
+    characters: issue792Only || issue797Only
+      ? [
+          legacyCharacter,
+          issue792Character,
+          ...(issue797Only ? [issue797HeadlessCharacter] : []),
+        ]
       : [legacyCharacter],
     voiceProfiles: [
       {
@@ -296,11 +337,21 @@ function createFixture() {
         rate: 1,
         pitch: 0,
       },
-      ...(issue792Only
+      ...(issue792Only || issue797Only
         ? [{
             id: IDS.issue792VoiceProfile,
             name: 'Issue 792 Panda voice',
             characterId: IDS.issue792Character,
+            locale: 'zh-CN',
+            rate: 1,
+            pitch: 0,
+          }]
+        : []),
+      ...(issue797Only
+        ? [{
+            id: IDS.issue797HeadlessVoiceProfile,
+            name: 'Issue 797 Headless Panda voice',
+            characterId: IDS.issue797HeadlessCharacter,
             locale: 'zh-CN',
             rate: 1,
             pitch: 0,
@@ -843,13 +894,201 @@ async function sendPointerClick(window, x, y) {
   window.webContents.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 });
 }
 
+async function clickWithNativeInput(window, selector, label = selector) {
+  await waitForDom(
+    window,
+    `document.querySelector(${JSON.stringify(selector)})`,
+    `${label} did not appear.`,
+  );
+  const point = await window.webContents.executeJavaScript(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector)});
+    element.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const hitSamples = [
+      [0.5, 0.5], [0.25, 0.5], [0.75, 0.5], [0.5, 0.25], [0.5, 0.75],
+      [0.1, 0.5], [0.9, 0.5], [0.5, 0.1], [0.5, 0.9],
+      [0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75],
+    ].map(([xRatio, yRatio]) => {
+      const x = Math.round(rect.left + rect.width * xRatio);
+      const y = Math.round(rect.top + rect.height * yRatio);
+      const hit = document.elementFromPoint(x, y);
+      return {
+        x,
+        y,
+        hitTarget: hit === element || element.contains(hit),
+        hitTestId: hit?.getAttribute('data-testid') ?? '',
+      };
+    });
+    const point = hitSamples.find((sample) => sample.hitTarget) ?? hitSamples[0];
+    return {
+      ...point,
+      width: rect.width,
+      height: rect.height,
+      disabled: element.disabled ?? false,
+      visible: rect.width > 0 && rect.height > 0 && style.visibility === 'visible' && style.display !== 'none',
+      hitSamples: hitSamples.map(({ x: sampleX, y: sampleY, hitTarget, hitTestId }) => ({
+        x: sampleX,
+        y: sampleY,
+        hitTarget,
+        hitTestId,
+      })),
+    };
+  })()`);
+  assert(point.visible, `${label} is not visible in the current viewport.`);
+  assert(!point.disabled, `${label} is disabled.`);
+  assert(
+    point.hitTarget,
+    `${label} has no pointer-accessible point within its visible bounds; sampled hit targets: ${JSON.stringify(point.hitSamples)}.`,
+  );
+  await sendPointerClick(window, point.x, point.y);
+  await wait(80);
+  return point;
+}
+
+async function pressFocusedControl(
+  window,
+  selector,
+  keyCode,
+  label = selector,
+  { tabFromSelector } = {},
+) {
+  await waitForDom(
+    window,
+    `document.querySelector(${JSON.stringify(selector)})`,
+    `${label} did not appear.`,
+  );
+  const focus = await window.webContents.executeJavaScript(`(() => {
+    const element = document.querySelector(${JSON.stringify(tabFromSelector ?? selector)});
+    element.focus();
+    return {
+      active: document.activeElement === element,
+      visibleFocus: element.matches(':focus-visible'),
+      bounds: (() => {
+        const rect = element.getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      })(),
+    };
+  })()`);
+  assert(focus.active, `${label} did not receive keyboard focus.`);
+  let tabFocus = null;
+  if (tabFromSelector) {
+    await sendKeyStroke(window, 'TAB');
+    tabFocus = await window.webContents.executeJavaScript(`(() => {
+      const element = document.querySelector(${JSON.stringify(selector)});
+      window.__issue797KeyboardEvents = [];
+      for (const type of ['keydown', 'keyup', 'click']) {
+        element.addEventListener(type, (event) => {
+          window.__issue797KeyboardEvents.push({
+            type,
+            key: event.key ?? '',
+            code: event.code ?? '',
+            defaultPrevented: event.defaultPrevented,
+            focused: document.activeElement === element,
+          });
+        }, { capture: true });
+      }
+      return {
+        active: document.activeElement === element,
+        visibleFocus: element.matches(':focus-visible'),
+        activeTestId: document.activeElement?.getAttribute('data-testid') ?? '',
+      };
+    })()`);
+    assert(
+      tabFocus.active,
+      `${label} was not reached from ${tabFromSelector} by native Tab input (active: ${tabFocus.activeTestId || 'unknown'}).`,
+    );
+  }
+  await sendKeyStroke(window, keyCode);
+  await wait(80);
+  const afterActivation = await window.webContents.executeJavaScript(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector)});
+    return {
+      active: document.activeElement === element,
+      visibleFocus: element.matches(':focus-visible'),
+      keyboardEvents: window.__issue797KeyboardEvents ?? [],
+      editTarget: document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget ?? '',
+    };
+  })()`);
+  return { ...focus, tabFocus, afterActivation };
+}
+
+async function dragWithNativeInput(window, sourceSelector, destinationSelector, label) {
+  await waitForDom(
+    window,
+    `document.querySelector(${JSON.stringify(sourceSelector)}) && document.querySelector(${JSON.stringify(destinationSelector)})`,
+    `${label} did not expose both pointer locations.`,
+  );
+  const geometry = await window.webContents.executeJavaScript(`(() => {
+    const source = document.querySelector(${JSON.stringify(sourceSelector)});
+    const destination = document.querySelector(${JSON.stringify(destinationSelector)});
+    source.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const sourceRect = source.getBoundingClientRect();
+    const destinationRect = destination.getBoundingClientRect();
+    const start = {
+      x: Math.round(sourceRect.left + sourceRect.width / 2),
+      y: Math.round(sourceRect.top + sourceRect.height / 2),
+    };
+    const end = {
+      x: Math.round(destinationRect.left + destinationRect.width / 2),
+      y: Math.round(destinationRect.top + destinationRect.height / 2),
+    };
+    const hit = document.elementFromPoint(start.x, start.y);
+    const style = getComputedStyle(source);
+    return {
+      start,
+      end,
+      sourceBounds: { x: sourceRect.x, y: sourceRect.y, width: sourceRect.width, height: sourceRect.height },
+      destinationBounds: { x: destinationRect.x, y: destinationRect.y, width: destinationRect.width, height: destinationRect.height },
+      sourceVisible: sourceRect.width > 0 && sourceRect.height > 0 && style.visibility === 'visible',
+      sourceHit: hit === source || source.contains(hit),
+      hitTestId: hit?.getAttribute('data-testid') ?? '',
+    };
+  })()`);
+  assert(geometry.sourceVisible, `${label} source is not visible.`);
+  assert(geometry.sourceHit, `${label} source is covered at its visible center by ${geometry.hitTestId || 'another element'}.`);
+  window.webContents.sendInputEvent({
+    type: 'mouseMove',
+    x: geometry.start.x,
+    y: geometry.start.y,
+  });
+  window.webContents.sendInputEvent({
+    type: 'mouseDown',
+    x: geometry.start.x,
+    y: geometry.start.y,
+    button: 'left',
+    clickCount: 1,
+  });
+  window.webContents.sendInputEvent({
+    type: 'mouseMove',
+    x: geometry.end.x,
+    y: geometry.end.y,
+    button: 'left',
+  });
+  await wait(100);
+  window.webContents.sendInputEvent({
+    type: 'mouseUp',
+    x: geometry.end.x,
+    y: geometry.end.y,
+    button: 'left',
+    clickCount: 1,
+  });
+  await wait(80);
+  return geometry;
+}
+
 async function sendKeyStroke(window, keyCode) {
   const electronKeyCode = {
     ESC: 'Escape',
+    ENTER: 'Return',
     TAB: 'Tab',
     SPACE: 'Space',
   }[keyCode] ?? keyCode;
+  window.focus();
+  window.webContents.focus();
+  await wait(40);
   window.webContents.sendInputEvent({ type: 'keyDown', keyCode: electronKeyCode });
+  await wait(40);
   window.webContents.sendInputEvent({ type: 'keyUp', keyCode: electronKeyCode });
 }
 
@@ -939,6 +1178,302 @@ async function openIssue792MenuWithPointer(window) {
     'Mouth overflow popover did not open and update its trigger state after a real Electron pointer click.',
   );
   await wait(120);
+}
+
+async function verifyIssue797HeadFaceEditTargets(window) {
+  const screenshots = [];
+  const evidence = {};
+  inProgressEvidence = evidence;
+  await window.webContents.executeJavaScript(`(() => {
+    window.__issue610ConfirmCalls = [];
+    window.__issue610ConfirmResponse = false;
+    window.confirm = (message) => {
+      window.__issue610ConfirmCalls.push(String(message));
+      return Boolean(window.__issue610ConfirmResponse);
+    };
+  })()`);
+
+  await clickWithNativeInput(
+    window,
+    `[data-testid="character-list-view"] [data-character-id="${IDS.issue792Character}"]`,
+    'Head + Face Character card',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue792Character)}`,
+    'Head + Face Character detail did not open.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-workspace-assembly-tab"]',
+    'Assembly workspace tab',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="edit"]')`,
+    'Head + Face Character did not enter the Assembly Workbench.',
+  );
+
+  const readSelection = () => window.webContents.executeJavaScript(`(() => {
+    const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    const head = document.querySelector('[data-testid="character-assembly-head-asset-selected"]');
+    const face = document.querySelector('[data-testid="character-assembly-default-face-select"]');
+    const headAction = document.querySelector('[data-testid="character-assembly-head-asset-change-action"]');
+    const faceManage = document.querySelector('[data-testid="character-assembly-go-expressions"]');
+    const rect = (element) => {
+      const bounds = element?.getBoundingClientRect();
+      return bounds && { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+    };
+    return {
+      target: workbench?.dataset.editTarget ?? '',
+      faceOffsetX: Number(workbench?.dataset.faceOffsetX),
+      faceOffsetY: Number(workbench?.dataset.faceOffsetY),
+      faceScale: Number(workbench?.dataset.faceScale),
+      headAssetId: workbench?.dataset.headAssetId ?? '',
+      headOffsetX: Number(workbench?.dataset.headOffsetX),
+      headOffsetY: Number(workbench?.dataset.headOffsetY),
+      headScale: Number(workbench?.dataset.headScale),
+      pivotX: Number(workbench?.dataset.headPivotX),
+      pivotY: Number(workbench?.dataset.headPivotY),
+      headCardPressed: head?.getAttribute('aria-pressed') ?? '',
+      faceCardPressed: face?.getAttribute('aria-pressed') ?? '',
+      headCardBounds: rect(head),
+      faceCardBounds: rect(face),
+      headActionBounds: rect(headAction),
+      faceManageBounds: rect(faceManage),
+      headActionSibling: Boolean(head && document.querySelector('[data-testid="character-assembly-head-asset-change-action"]')?.parentElement === head.parentElement),
+      faceManageSibling: Boolean(face && document.querySelector('[data-testid="character-assembly-go-expressions"]')?.parentElement === face.parentElement),
+      headActionNested: Boolean(head?.querySelector('[data-testid="character-assembly-head-asset-change-action"]')),
+      faceManageNested: Boolean(face?.querySelector('[data-testid="character-assembly-go-expressions"]')),
+      revision: document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? '',
+      undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? '',
+      faceTargetPresent: Boolean(document.querySelector('[data-testid="character-assembly-face-drag-target"]')),
+      headTargetPresent: Boolean(document.querySelector('[data-testid="character-assembly-head-drag-target"]')),
+      pivotEditing: workbench?.dataset.neckPivotEditing ?? '',
+      headMotionRunning: workbench?.dataset.headMotionTestRunning ?? '',
+      editCardSurface: face?.parentElement ? getComputedStyle(face.parentElement).borderColor : '',
+    };
+  })()`);
+
+  const before = await readSelection();
+  assert(before.target === 'head' && before.headCardPressed === 'true' && before.faceCardPressed === 'false', 'Initial Head selection is not synchronized across the left card and Workbench.');
+  assert(before.headActionSibling && before.faceManageSibling && !before.headActionNested && !before.faceManageNested, 'Head Change and Face Manage are not separate sibling actions.');
+  assert(before.headCardBounds?.height >= 44 && before.faceCardBounds?.height >= 44, 'Head/Face selection cards lost usable keyboard and touch target sizes.');
+  assert(before.headActionBounds?.height >= 44 && before.faceManageBounds?.height >= 44, 'Head Change and Face Manage lost usable touch target sizes.');
+  assert(before.headTargetPresent && !before.faceTargetPresent, 'The initial Head target did not expose only its own drag handle.');
+  await waitForPaint(window);
+  const beforeShot = await capture(window, 'head-face-before.png');
+  screenshots.push(beforeShot);
+
+  const faceMouseClick = await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-default-face-select"]',
+    'Default Face card body',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'face'`,
+    'Clicking the Face card body did not select the Face placement target.',
+  );
+  const faceSelected = await readSelection();
+  assert(faceSelected.faceCardPressed === 'true' && faceSelected.headCardPressed === 'false', 'Face selection state did not synchronize back to the left cards.');
+  assert(faceSelected.faceTargetPresent && !faceSelected.headTargetPresent, 'Selecting Face did not expose only the Face drag handle.');
+  assert(faceSelected.revision === before.revision && faceSelected.undoCount === before.undoCount, 'Selecting an edit target wrote the Project or History.');
+
+  const faceDragGeometry = await dragWithNativeInput(
+    window,
+    '[data-testid="character-assembly-face-drag-target"]',
+    '.character-assembly-part-head',
+    'Face placement drag to the Head position',
+  );
+  await waitForDom(
+    window,
+    `(() => {
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      return Math.abs(Number(workbench?.dataset.faceOffsetY) - Number(workbench?.dataset.headOffsetY)) < 12;
+    })()`,
+    'Native Face drag did not move Face into the Head position.',
+  );
+  const faceDragged = await readSelection();
+  assert(faceDragged.target === 'face', 'Face drag lost the Face edit target.');
+  assert(faceDragged.headOffsetX === before.headOffsetX && faceDragged.headOffsetY === before.headOffsetY && faceDragged.headScale === before.headScale && faceDragged.pivotX === before.pivotX && faceDragged.pivotY === before.pivotY, 'Face drag changed Head placement or pivot.');
+  assert(faceDragged.faceOffsetY !== before.faceOffsetY, 'Face drag did not update facePlacement.');
+  assert(faceDragged.faceOffsetX === before.faceOffsetX && faceDragged.faceScale === before.faceScale, 'Face drag changed placement values outside the dragged axis.');
+  assert(faceDragged.revision === before.revision && faceDragged.undoCount === before.undoCount, 'Unapplied Face drag wrote the Project or History.');
+  await waitForPaint(window);
+  const afterFaceShot = await capture(window, 'head-face-face-selected-dragged.png');
+  screenshots.push(afterFaceShot);
+
+  const faceKeyboardFocus = await pressFocusedControl(
+    window,
+    '[data-testid="character-assembly-head-asset-selected"]',
+    'SPACE',
+    'Head card body keyboard activation',
+    { tabFromSelector: '[data-testid="character-assembly-body-picker-selected"]' },
+  );
+  try {
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'head'`,
+      'Keyboard activation did not select Head.',
+    );
+  } catch (error) {
+    const keyboardEvidence = await window.webContents.executeJavaScript(
+      'window.__issue797KeyboardEvents ?? []',
+    );
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `${message} Keyboard input evidence: ${JSON.stringify(keyboardEvidence)}`,
+      { cause: error },
+    );
+  }
+  const headSelectedByKeyboard = await readSelection();
+  assert(headSelectedByKeyboard.headCardPressed === 'true' && headSelectedByKeyboard.faceCardPressed === 'false', 'Keyboard Head selection did not synchronize the cards.');
+  assert(faceKeyboardFocus.afterActivation.visibleFocus, 'Keyboard activation did not preserve a visible focus indication.');
+  assert(headSelectedByKeyboard.faceOffsetY === faceDragged.faceOffsetY, 'Switching to Head changed the Face placement.');
+
+  const headDragGeometry = await dragWithNativeInput(
+    window,
+    '[data-testid="character-assembly-head-drag-target"]',
+    '.character-assembly-part-body',
+    'Head placement drag',
+  );
+  await waitForDom(
+    window,
+    `Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headOffsetY) !== ${JSON.stringify(before.headOffsetY)}`,
+    'Native Head drag did not update Head placement.',
+  );
+  const headDragged = await readSelection();
+  assert(headDragged.target === 'head', 'Head drag lost the Head edit target.');
+  assert(headDragged.faceOffsetX === faceDragged.faceOffsetX && headDragged.faceOffsetY === faceDragged.faceOffsetY && headDragged.faceScale === faceDragged.faceScale, 'Head drag changed Face Placement.');
+  assert(headDragged.revision === before.revision && headDragged.undoCount === before.undoCount, 'Unapplied Head drag wrote the Project or History.');
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-pivot-mode-toggle"]', 'Neck pivot mode');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.neckPivotEditing === 'true'`, 'Neck pivot mode did not activate.');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-default-face-select"]', 'Face card while editing the neck pivot');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'face' && document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.neckPivotEditing === 'false'`, 'Switching to Face did not safely exit neck pivot editing.');
+  const afterPivotSwitch = await readSelection();
+  assert(afterPivotSwitch.pivotX === before.pivotX && afterPivotSwitch.pivotY === before.pivotY, 'Switching edit target during pivot mode changed the pivot draft.');
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-test-head-motion"]', 'Test Head Motion');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headMotionTestRunning === 'true'`, 'Head motion test did not start.');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-head-asset-selected"]', 'Head card during Head motion test');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'head' && document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headMotionTestRunning === 'false'`, 'Switching to Head did not safely stop the Head motion test.');
+  const afterMotionSwitch = await readSelection();
+  assert(afterMotionSwitch.headOffsetX === headDragged.headOffsetX && afterMotionSwitch.headOffsetY === headDragged.headOffsetY && afterMotionSwitch.pivotX === before.pivotX && afterMotionSwitch.pivotY === before.pivotY, 'Switching out of Head motion test changed Head placement or pivot.');
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-default-face-select"]', 'Select Face before changing the Head asset');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'face'`, 'Face target did not activate before Head asset replacement.');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-head-asset-change-action"]', 'Head Change action');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-head-asset-candidates"]')`, 'Head Change did not open the asset picker.');
+  await clickWithNativeInput(
+    window,
+    `[data-testid="character-assembly-head-asset-candidates"] [data-asset-id="${IDS.bodyAlt}"]`,
+    'Choose replacement Head asset',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headAssetId === ${JSON.stringify(IDS.bodyAlt)} && document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'face'`,
+    'Head Change did not replace only the asset while preserving the Face edit target.',
+  );
+  const afterChangeAction = await readSelection();
+  assert(afterChangeAction.faceCardPressed === 'true' && afterChangeAction.headCardPressed === 'false', 'Head Change caused an extra Head card selection side effect.');
+  assert(afterChangeAction.faceOffsetY === faceDragged.faceOffsetY, 'Changing the Head asset changed the Face draft.');
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-pending"] button:first-of-type', 'Revert assembly draft');
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-assembly-pending"]') && document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'head' && document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headAssetId === ${JSON.stringify(IDS.issue792Head)}`,
+    'Revert did not restore the stored Head/Face placements and default Head selection.',
+  );
+  const reverted = await readSelection();
+  assert(reverted.faceOffsetY === before.faceOffsetY && reverted.headOffsetY === before.headOffsetY && reverted.headCardPressed === 'true' && reverted.faceCardPressed === 'false', 'Revert did not restore placements and synchronized selection state.');
+  assert(reverted.revision === before.revision && reverted.undoCount === before.undoCount, 'Revert wrote the Project or History.');
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-go-expressions"]', 'Manage default Face action');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-workspace-expressions-tab"]')?.getAttribute('aria-pressed') === 'true' && !document.querySelector('[data-testid="character-assembly-workbench"]')`,
+    'Manage did not open Expressions independently of the Face card body.',
+  );
+  const afterManage = await window.webContents.executeJavaScript(`({
+    expressionWorkspace: document.querySelector('[data-testid="character-workspace-expressions-tab"]')?.getAttribute('aria-pressed') ?? '',
+    assemblyWorkbench: Boolean(document.querySelector('[data-testid="character-assembly-workbench"]')),
+    revision: document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? '',
+    undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? '',
+  })`);
+  assert(afterManage.expressionWorkspace === 'true' && !afterManage.assemblyWorkbench, 'Manage performed an action other than opening Expressions.');
+  assert(afterManage.revision === before.revision && afterManage.undoCount === before.undoCount, 'Manage wrote the Project or History.');
+
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after Manage');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"][data-edit-target="head"]')`, 'A new Assembly session did not start on Head.');
+  await clickWithNativeInput(window, '[data-testid="character-detail-back"]', 'Return to Character list');
+  await waitForDom(window, `document.querySelector('[data-testid="character-list-view"] [data-character-id="${IDS.issue797HeadlessCharacter}"]')`, 'Headless composite Character did not appear in the list.');
+  await clickWithNativeInput(
+    window,
+    `[data-testid="character-list-view"] [data-character-id="${IDS.issue797HeadlessCharacter}"]`,
+    'Headless composite Character card',
+  );
+  await waitForDom(window, `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue797HeadlessCharacter)}`, 'Headless composite Character detail did not open.');
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Headless Assembly workspace tab');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"][data-edit-target="face"]') && document.querySelector('[data-testid="character-assembly-face-drag-target"]') && !document.querySelector('[data-testid="character-assembly-edit-head"]')`,
+    'A Headless Character did not expose Face editing without a Head target.',
+  );
+  const headlessBefore = await readSelection();
+  assert(headlessBefore.target === 'face' && headlessBefore.faceCardPressed === 'true', 'The Headless Character did not select Face by default.');
+  const headlessDrag = await dragWithNativeInput(
+    window,
+    '[data-testid="character-assembly-face-drag-target"]',
+    '.character-assembly-part-body',
+    'Headless Character Face placement drag',
+  );
+  await waitForDom(
+    window,
+    `Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.faceOffsetY) !== ${JSON.stringify(headlessBefore.faceOffsetY)}`,
+    'The Headless Character Face could not be dragged.',
+  );
+  const headlessAfter = await readSelection();
+  assert(headlessAfter.target === 'face' && headlessAfter.faceTargetPresent && !headlessAfter.headTargetPresent, 'The Headless Character exposed the wrong placement target.');
+  assert(headlessAfter.revision === before.revision && headlessAfter.undoCount === before.undoCount, 'Headless Face drag wrote the Project or History.');
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'head-face-headless-face-dragged.png'));
+
+  evidence.headCharacter = {
+    initial: before,
+    cardMouseInput: faceMouseClick,
+    faceSelection: faceSelected,
+    faceDrag: { geometry: faceDragGeometry, after: faceDragged },
+    keyboard: { focus: faceKeyboardFocus, selection: headSelectedByKeyboard },
+    headDrag: { geometry: headDragGeometry, after: headDragged },
+    pivotSafeSwitch: afterPivotSwitch,
+    motionTestSafeSwitch: afterMotionSwitch,
+    independentChangeAction: afterChangeAction,
+    revert: reverted,
+    independentManageAction: afterManage,
+  };
+  evidence.headlessCharacter = {
+    before: headlessBefore,
+    drag: { geometry: headlessDrag, after: headlessAfter },
+  };
+  return {
+    issue: 797,
+    passed: true,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'verify:issue797-head-face-edit',
+    projectRoot,
+    syntheticInput: true,
+    humanAcceptance: false,
+    evidenceKind: 'real-electron-production-ui-native-mouse-keyboard-input-isolated-placement-targets-and-live-hit-tests',
+    preflightAcknowledgement: {
+      issueBody: true,
+      draftPrAndIssueRoute: true,
+      designMdAndCurrentCharacterUiInspected: true,
+    },
+    evidence,
+    screenshots,
+  };
 }
 
 async function verifyIssue792MouthOverflow(window) {
@@ -1326,6 +1861,9 @@ async function run() {
     windowRef.focus();
     windowRef.webContents.focus();
     await openProject(windowRef);
+    if (issue797Only) {
+      return await verifyIssue797HeadFaceEditTargets(windowRef);
+    }
     if (issue792Only) {
       return await verifyIssue792MouthOverflow(windowRef);
     }
@@ -1964,12 +2502,14 @@ async function main() {
     output = await run();
   } catch (error) {
     output = {
-      issue: issue792Only ? 792 : 612,
+      issue: issue797Only ? 797 : issue792Only ? 792 : 612,
       passed: false,
       commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
-      verificationGate: issue792Only
-        ? 'verify:issue792-mouth-overflow'
-        : 'verify:issue609-character-assembly',
+      verificationGate: issue797Only
+        ? 'verify:issue797-head-face-edit'
+        : issue792Only
+          ? 'verify:issue792-mouth-overflow'
+          : 'verify:issue609-character-assembly',
       projectRoot,
       syntheticInput: true,
       humanAcceptance: false,
@@ -1988,6 +2528,6 @@ async function main() {
 main()
   .then(() => app.exit(0))
   .catch((error) => {
-    console.error(`[issue${issue792Only ? 792 : 609}] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    console.error(`[issue${issue797Only ? 797 : issue792Only ? 792 : 609}] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     app.exit(1);
   });

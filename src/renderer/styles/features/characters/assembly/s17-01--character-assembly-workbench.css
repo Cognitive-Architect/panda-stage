@@ -543,6 +543,7 @@
 .character-assembly-drawer-panel
   .image-asset-picker-selected-row--surface:has(
     > .image-asset-picker-selected:hover:not(:disabled),
+    > .image-asset-picker-selected[aria-pressed='true'],
     > .character-assembly-mouth-overflow
       > .character-assembly-mouth-overflow-trigger:hover:not(:disabled)
   ) {
@@ -608,6 +609,49 @@
   .image-asset-picker-selected-action {
   min-width: 46px;
   font-size: 10px;
+}
+
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface
+  > .character-assembly-selected-action-button {
+  display: grid;
+  min-width: 54px;
+  min-height: 44px;
+  flex: 0 0 auto;
+  place-items: center;
+  margin: 0 8px;
+  padding: 0 6px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: var(--ui-color-surface-work);
+  font: var(--ui-font-secondary);
+  font-size: 10px;
+}
+
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface
+  > .character-assembly-selected-action-button:hover:not(:disabled),
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface
+  > .character-assembly-selected-action-button:focus-visible {
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-surface-app);
+}
+
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface
+  > .character-assembly-selected-action-button:focus-visible {
+  outline: 2px solid var(--ui-color-selected-border);
+  outline-offset: 2px;
+}
+
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface:has(
+    > .image-asset-picker-selected[aria-pressed='true']
+  ) {
+  border-color: var(--ui-color-selected-border);
+  background: var(--image-asset-picker-selected-surface-background-hover);
 }
 
 .character-assembly-mouth-overflow {
@@ -1103,6 +1147,20 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* Keep the workbench controls in the visible canvas area beside the landscape
+   resource drawer, which overlays the canvas from the left edge. */
+.editor-layout[data-shell-mode='landscape'] .character-assembly-assembly-actions {
+  justify-content: flex-end;
+}
+
+.editor-layout[data-shell-mode='landscape'] .character-assembly-pending-actions {
+  margin-left: 0;
+}
+
+.editor-layout[data-shell-mode='landscape'] .character-assembly-motion-test-cue {
+  flex: 0 1 260px;
 }
 
 .character-assembly-fine-tune-panel {

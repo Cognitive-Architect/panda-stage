@@ -151,14 +151,11 @@ export function CharacterAssemblyWorkbench({
   }, [expressions, project.characters, session]);
   const [selectedFace, setSelectedFace] = useState('');
   const [message, setMessage] = useState('');
-  const [editTarget, setEditTarget] = useState<'head' | 'face'>(
-    head ? 'head' : 'face',
-  );
   const [isEditingNeckPivot, setIsEditingNeckPivot] = useState(false);
   const [isFineTuneOpen, setIsFineTuneOpen] = useState(false);
   const [headMotionTestToken, setHeadMotionTestToken] =
     useState<AssemblyHeadMotionTestToken | null>(null);
-  const activeEditTarget = head ? editTarget : 'face';
+  const activeEditTarget = head ? session.editTarget : 'face';
   const isTestingHeadMotion = isAssemblyHeadMotionTestRunning(
     headMotionTestToken,
     session,
@@ -332,7 +329,6 @@ export function CharacterAssemblyWorkbench({
     if (!nextHead) {
       setHeadMotionTestToken(null);
       setIsEditingNeckPivot(false);
-      setEditTarget('face');
       dragRef.current = null;
     }
     return true;
@@ -371,8 +367,13 @@ export function CharacterAssemblyWorkbench({
 
   const selectEditTarget = (target: 'head' | 'face'): void => {
     if (target === 'head' && !head) return;
+    if (isEditingNeckPivot || isTestingHeadMotion) return;
     dragRef.current = null;
-    setEditTarget(target);
+    characterAssemblySessionStore.setEditTarget(
+      target,
+      session.sessionId,
+      session.generation,
+    );
     setIsEditingNeckPivot(false);
   };
 
@@ -548,22 +549,15 @@ export function CharacterAssemblyWorkbench({
   useEffect(() => {
     setHeadMotionTestToken(null);
     dragRef.current = null;
-    setEditTarget(session.draft.head ? 'head' : 'face');
     setIsEditingNeckPivot(false);
     setIsFineTuneOpen(false);
   }, [session.generation, session.sessionId]);
 
-  useEffect(() => {
-    if (headAssetId) {
-      setEditTarget('head');
-      setIsEditingNeckPivot(false);
-      return;
-    }
-    setHeadMotionTestToken(null);
-    setEditTarget('face');
-    setIsEditingNeckPivot(false);
+  useLayoutEffect(() => {
     dragRef.current = null;
-  }, [headAssetId]);
+    setHeadMotionTestToken(null);
+    setIsEditingNeckPivot(false);
+  }, [headAssetId, session.editTarget]);
 
   const pending = !isCreating && isCharacterAssemblyPending(project, session);
   const commit = (): void => {
