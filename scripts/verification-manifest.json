@@ -672,7 +672,7 @@
       }
     ]
   },
-  "count": 84,
+  "count": 85,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1669,6 +1669,18 @@
       "owner": "character",
       "supersedes": null,
       "notes": "Bounded Issue #797 Electron proof for synchronized Head/Face edit target selection, native drag hit testing, keyboard activation, distinct Change/Manage actions, and headless Face editing; synthetic fixture evidence is not OWNER human acceptance."
+    },
+    {
+      "id": "issue798-add-to-shot-navigation",
+      "script": "verify:issue798-add-to-shot-navigation",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #798 Electron proof for shared Add to Shot navigation across Assembly/Expressions/Settings, wide and narrow geometry, scrolling, keyboard/native pointer placement, disabled transform guard, and the pending Assembly confirmation; synthetic input is not OWNER human acceptance."
     },
     {
       "id": "timeline",

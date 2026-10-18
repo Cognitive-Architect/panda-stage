@@ -521,6 +521,21 @@ export function CharacterEditor({
               {`${character.name} · 表情管理`}
             </strong>
           )}
+          {landscapeDetail ? (
+            <Button
+              aria-label="加入当前镜头"
+              className="character-detail-place-navigation-action"
+              data-testid="character-detail-place-current-shot"
+              disabled={placementUnavailableReason !== null}
+              onClick={() =>
+                onPlaceInCurrentShot(placementBlockedByTransform)
+              }
+              title={placementUnavailableReason ?? '加入当前镜头'}
+              variant="secondary"
+            >
+              ＋ 加入镜头
+            </Button>
+          ) : null}
           <button
             aria-label="关闭角色抽屉"
             className="resource-activity-close character-detail-close"
@@ -673,19 +688,6 @@ export function CharacterEditor({
                     ＋ 添加表情
                   </button>
                 ) : null}
-                <Button
-                  aria-label="加入当前镜头"
-                  className="character-detail-place-action"
-                  data-testid="character-detail-place-current-shot"
-                  disabled={placementUnavailableReason !== null}
-                  onClick={() =>
-                    onPlaceInCurrentShot(placementBlockedByTransform)
-                  }
-                  title={placementUnavailableReason ?? '加入当前镜头'}
-                  variant="secondary"
-                >
-                  ＋ 加入镜头
-                </Button>
               </div>
             </div>
           </section>

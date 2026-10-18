@@ -96,6 +96,7 @@
     "verify:issue609-character-assembly": "pnpm build && electron scripts/verify-issue609-character-assembly.cjs",
     "verify:issue792-mouth-overflow": "pnpm build && electron scripts/verify-issue609-character-assembly.cjs --issue792-mouth-overflow",
     "verify:issue797-head-face-edit": "pnpm build && electron scripts/verify-issue609-character-assembly.cjs --issue797-head-face-edit",
+    "verify:issue798-add-to-shot-navigation": "pnpm build && electron scripts/verify-issue609-character-assembly.cjs --issue798-add-to-shot-navigation",
     "verify:issue657-audio-foundation": "pnpm build && electron scripts/verify-issue657-audio-foundation.cjs",
     "verify:issue660-export-audio-mix": "pnpm build && node scripts/verify-issue660-export-audio-mix.cjs",
     "verify:issue125": "pnpm build && pnpm test:integration && electron scripts/verify-issue76.cjs && electron scripts/verify-issue102-task3.cjs",

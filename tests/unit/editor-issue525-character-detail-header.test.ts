@@ -94,22 +94,32 @@ describe('Issue #525 Character Detail header and inline rename', () => {
     );
   });
 
-  it('keeps the compact Add-to-Shot action in the identity header with its full accessible name', () => {
+  it('places the single Add-to-Shot action in the detail navigation before Close', () => {
     const markup = detailMarkup();
+    const navigationStart = markup.indexOf('class="character-detail-navigation');
+    const placementIndex = markup.indexOf(
+      'data-testid="character-detail-place-current-shot"',
+    );
+    const closeIndex = markup.indexOf('data-testid="resource-activity-close"');
     const identityStart = markup.indexOf('character-detail-identity');
     const identityEnd = markup.indexOf('</section>', identityStart);
     const identity = markup.slice(identityStart, identityEnd);
     const styles = readOrderedStylesheetSource();
 
-    expect(identity).toContain('data-testid="character-detail-place-current-shot"');
-    expect(identity).toContain('data-ui-variant="secondary"');
-    expect(identity).toContain('aria-label="加入当前镜头"');
-    expect(identity).toContain('＋ 加入镜头');
-    expect(styles).toContain('min-height: 44px;\n  margin: 0;');
-    expect(styles).toContain('text-overflow: ellipsis;');
-    expect(styles).toContain('max-width: 100%;\n  flex: 0 1 auto;');
-    expect(styles).toContain('margin-bottom: var(--ui-space-2);');
-    expect(styles).toContain('flex: 0 0 44px;');
+    expect(placementIndex).toBeGreaterThan(navigationStart);
+    expect(placementIndex).toBeLessThan(closeIndex);
+    expect(markup.match(/data-testid="character-detail-place-current-shot"/gu)).toHaveLength(1);
+    expect(identity).not.toContain('character-detail-place-current-shot');
+    expect(markup).toContain('data-ui-variant="secondary"');
+    expect(markup).toContain('aria-label="加入当前镜头"');
+    expect(markup).toContain('title="请先选择镜头"');
+    expect(markup).toContain('disabled=""');
+    expect(markup).toContain('＋ 加入镜头');
+    expect(styles).toContain(
+      'grid-template-columns: max-content minmax(0, 1fr) max-content 44px;',
+    );
+    expect(styles).toContain('min-height: 44px;\n  max-width: 100%;');
+    expect(styles).toContain('white-space: nowrap;');
   });
 
   it('preserves trim, empty, unchanged, and valid rename semantics', () => {

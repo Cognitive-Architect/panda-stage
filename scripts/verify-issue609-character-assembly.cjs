@@ -15,7 +15,8 @@ const {
 const exampleProject = require('../demo-project/project-v1.example.json');
 const issue792Only = process.argv.includes('--issue792-mouth-overflow');
 const issue797Only = process.argv.includes('--issue797-head-face-edit');
-const focusedHeadFaceRun = issue792Only || issue797Only;
+const issue798Only = process.argv.includes('--issue798-add-to-shot-navigation');
+const focusedCharacterDrawerRun = issue792Only || issue797Only || issue798Only;
 const ISSUE683_BASELINE_SHA = 'bed0b353f40238bfd820861c0e5349f0e101e977';
 
 // Bounded S07 proof: use the production Character drawer, Assembly workbench,
@@ -25,9 +26,11 @@ const ISSUE683_BASELINE_SHA = 'bed0b353f40238bfd820861c0e5349f0e101e977';
 // receipt does not claim human visual acceptance.
 const acceptanceRoot = issue797Only
   ? 'D:\\PandaStage-Acceptance\\issue797-head-face-edit'
-  : issue792Only
-    ? 'D:\\PandaStage-Acceptance\\issue792-mouth-overflow'
-    : 'D:\\PandaStage-Acceptance\\issue609-character-assembly';
+  : issue798Only
+    ? 'D:\\PandaStage-Acceptance\\issue798-add-to-shot-navigation'
+    : issue792Only
+      ? 'D:\\PandaStage-Acceptance\\issue792-mouth-overflow'
+      : 'D:\\PandaStage-Acceptance\\issue609-character-assembly';
 const runId = new Date().toISOString().replace(/[:.]/gu, '-');
 const runRoot = path.join(acceptanceRoot, `run-${runId}`);
 const evidenceRoot = path.join(runRoot, 'evidence');
@@ -37,9 +40,11 @@ const projectRoot = path.join(
   'projects',
   issue797Only
     ? 'issue797-head-face-edit.pandastage'
-    : issue792Only
-      ? 'issue792-mouth-overflow.pandastage'
-      : 'issue609-assembly.pandastage',
+    : issue798Only
+      ? 'issue798-add-to-shot-navigation.pandastage'
+      : issue792Only
+        ? 'issue792-mouth-overflow.pandastage'
+        : 'issue609-assembly.pandastage',
 );
 const resultPath = path.join(runRoot, 'results.json');
 const assetDragMime = 'application/x-panda-stage-asset';
@@ -266,7 +271,11 @@ function createFixture() {
   const issue792Character = {
     id: IDS.issue792Character,
     mode: 'composite',
-    name: issue797Only ? 'Issue 797 Head and Face Panda' : 'Issue 792 Composite Panda',
+    name: issue798Only
+      ? '角色详情导航长名称验收熊猫'
+      : issue797Only
+        ? 'Issue 797 Head and Face Panda'
+        : 'Issue 792 Composite Panda',
     baseAssetId: IDS.face,
     defaultVoiceProfileId: IDS.issue792VoiceProfile,
     expressions: [
@@ -317,11 +326,11 @@ function createFixture() {
       imageAsset(IDS.bodyAlt, 'Assembly Body Alternate', 720, 920),
       imageAsset(IDS.face, 'Assembly Default Face', 320, 280),
       imageAsset(IDS.mouth, 'Assembly Mouth', 320, 280),
-      ...(focusedHeadFaceRun
+      ...(focusedCharacterDrawerRun
         ? [imageAsset(IDS.issue792Head, 'Assembly Head', 720, 920)]
         : []),
     ],
-    characters: issue792Only || issue797Only
+    characters: issue792Only || issue797Only || issue798Only
       ? [
           legacyCharacter,
           issue792Character,
@@ -337,7 +346,7 @@ function createFixture() {
         rate: 1,
         pitch: 0,
       },
-      ...(issue792Only || issue797Only
+      ...(issue792Only || issue797Only || issue798Only
         ? [{
             id: IDS.issue792VoiceProfile,
             name: 'Issue 792 Panda voice',
@@ -1476,6 +1485,393 @@ async function verifyIssue797HeadFaceEditTargets(window) {
   };
 }
 
+async function readIssue798PlacementNavigation(window) {
+  return window.webContents.executeJavaScript(`(() => {
+    const detail = document.querySelector('[data-testid="character-detail-view"]');
+    const navigation = detail?.querySelector('.character-detail-navigation-detail');
+    const placement = detail?.querySelector('[data-testid="character-detail-place-current-shot"]');
+    const back = detail?.querySelector('[data-testid="character-detail-back"]');
+    const close = detail?.querySelector('[data-testid="resource-activity-close"]');
+    const identity = detail?.querySelector('.character-detail-identity');
+    const name = identity?.querySelector('.character-detail-identity-title-row h3');
+    const quickActionDrawer = document.querySelector('[data-testid="quick-action-drawer"]');
+    const quickActionHandle = quickActionDrawer?.querySelector('.quick-action-drawer-handle');
+    const bounds = (element) => {
+      const rect = element?.getBoundingClientRect();
+      return rect && {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+      };
+    };
+    const placementBounds = placement?.getBoundingClientRect();
+    const quickActionHandleBounds = quickActionHandle?.getBoundingClientRect();
+    const hit = placementBounds
+      ? document.elementFromPoint(
+          placementBounds.left + placementBounds.width / 2,
+          placementBounds.top + placementBounds.height / 2,
+        )
+      : null;
+    const quickActionHandleHit = quickActionHandleBounds
+      ? document.elementFromPoint(
+          quickActionHandleBounds.left + quickActionHandleBounds.width / 2,
+          quickActionHandleBounds.top + quickActionHandleBounds.height / 2,
+        )
+      : null;
+    const workspaceTabs = [...(detail?.querySelectorAll('[data-testid="character-workspace-switcher"] button') ?? [])];
+    return {
+      viewport: {
+        width: document.documentElement.clientWidth,
+        height: document.documentElement.clientHeight,
+      },
+      shellMode: document.querySelector('[data-testid="editor-layout"]')?.dataset.shellMode ?? '',
+      presentation: detail?.dataset.characterEditorPresentation ?? '',
+      navigation: bounds(navigation),
+      navigationPosition: navigation ? getComputedStyle(navigation).position : '',
+      navigationBackgroundColor: navigation ? getComputedStyle(navigation).backgroundColor : '',
+      quickActionDrawer: quickActionDrawer ? {
+        bounds: bounds(quickActionDrawer),
+        expanded: quickActionDrawer.dataset.expanded ?? '',
+        zIndex: getComputedStyle(quickActionDrawer).zIndex,
+        pointerEvents: getComputedStyle(quickActionDrawer).pointerEvents,
+        handle: bounds(quickActionHandle),
+        handleHitTarget: Boolean(quickActionHandle && quickActionHandleHit
+          && (quickActionHandleHit === quickActionHandle || quickActionHandle.contains(quickActionHandleHit))),
+      } : null,
+      back: bounds(back),
+      placement: bounds(placement),
+      close: bounds(close),
+      placementCount: detail?.querySelectorAll('[data-testid="character-detail-place-current-shot"]').length ?? 0,
+      placementInIdentity: Boolean(identity?.contains(placement)),
+      placementBeforeClose: Boolean(navigation && placement && close
+        && [...navigation.children].indexOf(placement) < [...navigation.children].indexOf(close)),
+      placementHitTarget: Boolean(placement && hit && (hit === placement || placement.contains(hit))),
+      placementHitTestId: hit?.getAttribute('data-testid') ?? '',
+      placementDisabled: placement?.disabled ?? null,
+      placementTitle: placement?.getAttribute('title') ?? '',
+      placementLabel: placement?.getAttribute('aria-label') ?? '',
+      placementType: placement?.getAttribute('type') ?? '',
+      placementText: placement?.textContent?.trim() ?? '',
+      name: name?.textContent?.trim() ?? '',
+      nameBounds: bounds(name),
+      nameClientWidth: name?.clientWidth ?? 0,
+      nameScrollWidth: name?.scrollWidth ?? 0,
+      expressionActionInIdentity: Boolean(identity?.querySelector('[data-testid="expression-add-trigger"]')),
+      workspaceTabs: workspaceTabs.map((button) => ({
+        label: button.textContent?.trim() ?? '',
+        pressed: button.getAttribute('aria-pressed') ?? '',
+      })),
+      activeWorkspace: workspaceTabs.find((button) => button.getAttribute('aria-pressed') === 'true')?.getAttribute('data-testid') ?? '',
+      revision: document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? '',
+      undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? '',
+      redoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount ?? '',
+    };
+  })()`);
+}
+
+async function readIssue798PlacementState(window) {
+  return window.webContents.executeJavaScript(`(() => {
+    const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+    return {
+      revision: document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? '',
+      undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? '',
+      redoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount ?? '',
+      layers: JSON.parse(stage?.dataset.layerJson ?? '[]'),
+    };
+  })()`);
+}
+
+async function verifyIssue798AddToShotNavigation(window) {
+  const screenshots = [];
+  const evidence = {};
+  inProgressEvidence.issue798 = evidence;
+  await window.webContents.executeJavaScript(`(() => {
+    window.__issue610ConfirmCalls = [];
+    window.__issue610ConfirmResponse = false;
+    window.confirm = (message) => {
+      window.__issue610ConfirmCalls.push(String(message));
+      return Boolean(window.__issue610ConfirmResponse);
+    };
+  })()`);
+
+  await clickWithNativeInput(
+    window,
+    `[data-testid="character-list-view"] [data-character-id="${IDS.issue792Character}"]`,
+    'Issue #798 long-name composite Character card',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue792Character)}`,
+    'Issue #798 composite Character detail did not open.',
+  );
+
+  const expectedName = '角色详情导航长名称验收熊猫';
+  const wide = await readIssue798PlacementNavigation(window);
+  evidence.wide = wide;
+  assert(wide.shellMode === 'landscape' && wide.presentation === 'landscape', 'Issue #798 did not open the Cloud Touch landscape Character drawer.');
+  assert(wide.workspaceTabs.length === 3, 'The composite Character did not expose Assembly, Expressions, and Settings.');
+  assert(wide.name === expectedName, 'The long Character name was altered in the identity region.');
+  assert(wide.placementCount === 1 && !wide.placementInIdentity, 'Add to Shot is missing, duplicated, or still inside the avatar identity region.');
+  assert(wide.placementBeforeClose, 'Add to Shot is not immediately before Close in the shared detail navigation.');
+  assert(wide.placementType === 'button' && wide.placementLabel === '加入当前镜头' && wide.placementText === '＋ 加入镜头', 'Add to Shot lost its native button semantics or clear accessible name.');
+  assert(wide.placementTitle === '加入当前镜头' && !wide.placementDisabled, 'The enabled Add to Shot action lost its tooltip or became unavailable.');
+  assert(wide.placement?.width >= 44 && wide.placement?.height >= 44, 'Add to Shot is below the 44px touch target size.');
+  assert(wide.back?.width >= 44 && wide.back?.height >= 44 && wide.close?.width >= 44 && wide.close?.height >= 44, 'Back or Close is below the 44px touch target size.');
+  assert(wide.placementHitTarget, `Add to Shot is obscured at its center hit target (${wide.placementHitTestId || 'no test id'}).`);
+  assert(wide.back.right <= wide.placement.left + 1 && wide.placement.right <= wide.close.left + 1, 'Back, Add to Shot, and Close overlap in the navigation.');
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'character-detail-add-to-shot-wide.png'));
+
+  const workspaceEvidence = [];
+  evidence.workspaceNavigation = workspaceEvidence;
+  let sharedBounds = wide.placement;
+  for (const [testId, label, expectedExpressionAction] of [
+    ['character-workspace-assembly-tab', 'Assembly', false],
+    ['character-workspace-expressions-tab', 'Expressions', true],
+    ['character-workspace-settings-tab', 'Settings', false],
+  ]) {
+    await clickWithNativeInput(window, `[data-testid="${testId}"]`, `${label} workspace tab`);
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="${testId}"]')?.getAttribute('aria-pressed') === 'true'`,
+      `${label} workspace did not activate.`,
+    );
+    const current = await readIssue798PlacementNavigation(window);
+    const sameBounds = current.placement && sharedBounds
+      && Math.abs(current.placement.left - sharedBounds.left) < 1
+      && Math.abs(current.placement.top - sharedBounds.top) < 1
+      && Math.abs(current.placement.width - sharedBounds.width) < 1
+      && Math.abs(current.placement.height - sharedBounds.height) < 1;
+    workspaceEvidence.push({
+      workspace: label,
+      activeWorkspace: current.activeWorkspace,
+      bounds: current.placement,
+      expressionActionInIdentity: current.expressionActionInIdentity,
+      nameClientWidth: current.nameClientWidth,
+      nameScrollWidth: current.nameScrollWidth,
+    });
+    if (label === 'Settings') {
+      await waitForPaint(window);
+      screenshots.push(await capture(window, 'character-detail-add-to-shot-settings.png'));
+    }
+    assert(current.placementCount === 1 && !current.placementInIdentity && current.placementBeforeClose, `${label} moved or duplicated Add to Shot.`);
+    assert(current.expressionActionInIdentity === expectedExpressionAction, `${label} showed the Add Expression action in the wrong workspace.`);
+    assert(sameBounds, `${label} changed Add to Shot geometry; the nav action is not in a shared location.`);
+    assert(current.placementHitTarget, `${label} made Add to Shot miss its native pointer hit target.`);
+    if (label === 'Settings') {
+      assert(current.nameScrollWidth <= current.nameClientWidth + 1, 'The long Character name is visually truncated in Settings with Add to Shot moved out of identity.');
+    }
+  }
+
+  await clickWithNativeInput(window, '[data-testid="character-workspace-settings-tab"]', 'Settings before pending-transform guard');
+  await clickWithNativeInput(window, 'button[aria-label="增大初始角色大小"]', 'Increase default Character size');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-default-pending"]') && document.querySelector('[data-testid="character-detail-place-current-shot"]')?.disabled === true`,
+    'A pending default transform did not disable Add to Shot.',
+  );
+  const pendingTransform = await readIssue798PlacementNavigation(window);
+  evidence.pendingTransform = pendingTransform;
+  assert(pendingTransform.placementTitle === '先应用角色大小设置' && pendingTransform.revision === '0' && pendingTransform.undoCount === '0', 'Disabled Add to Shot did not preserve its guard tooltip and no-write behavior.');
+  await clickWithNativeInput(window, '[data-testid="character-default-revert"]', 'Revert pending default Character size');
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-default-pending"]') && document.querySelector('[data-testid="character-detail-place-current-shot"]')?.disabled === false`,
+    'Reverting the default transform did not re-enable Add to Shot.',
+  );
+  evidence.transformReverted = await readIssue798PlacementNavigation(window);
+
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Assembly before dirty-draft placement guard');
+  await chooseImage(window, 'character-assembly-body-picker', IDS.bodyAlt);
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-pending"]') && document.querySelector('[data-testid="character-assembly-body-picker"]')?.dataset.selectedAssetId === ${JSON.stringify(IDS.bodyAlt)}`,
+    'The dirty Assembly fixture was not prepared.',
+  );
+  const beforeDeclinedPlacement = await readIssue798PlacementState(window);
+  const declinedPointer = await clickWithNativeInput(
+    window,
+    '[data-testid="character-detail-place-current-shot"]',
+    'Add to Shot while Assembly changes are pending',
+  );
+  await waitForDom(
+    window,
+    'window.__issue610ConfirmCalls?.length === 1',
+    'Add to Shot did not ask before abandoning the dirty Assembly draft.',
+  );
+  const declinedPlacement = await readIssue798PlacementState(window);
+  assert(declinedPointer.hitTarget && declinedPlacement.layers.length === 0, 'Declining the Assembly confirmation still placed a Character Layer.');
+  assert(declinedPlacement.revision === beforeDeclinedPlacement.revision && declinedPlacement.undoCount === beforeDeclinedPlacement.undoCount, 'Declining dirty Assembly placement wrote Project or History.');
+  assert(await window.webContents.executeJavaScript(`Boolean(document.querySelector('[data-testid="character-assembly-pending"]'))`), 'Declining placement discarded the dirty Assembly draft.');
+  evidence.declinedDirtyAssemblyPlacement = {
+    nativePointer: declinedPointer,
+    confirmCalls: await readConfirmCalls(window),
+    before: beforeDeclinedPlacement,
+    after: declinedPlacement,
+  };
+  await clickWithNativeInput(window, '[data-testid="character-assembly-pending"] button:first-of-type', 'Revert dirty Assembly draft');
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-assembly-pending"]') && document.querySelector('[data-testid="character-workspace-assembly-tab"]')?.getAttribute('aria-pressed') === 'true'`,
+    'Reverting the canceled Assembly draft did not clear its pending changes.',
+  );
+  const revertedAssemblyDraft = await readIssue798PlacementState(window);
+  assert(revertedAssemblyDraft.revision === beforeDeclinedPlacement.revision && revertedAssemblyDraft.undoCount === beforeDeclinedPlacement.undoCount && revertedAssemblyDraft.layers.length === 0, 'Reverting the canceled Assembly draft wrote Project or History.');
+  evidence.revertedAssemblyDraft = revertedAssemblyDraft;
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-workspace-assembly-tab"]')?.getAttribute('aria-pressed') === 'true' && !document.querySelector('[data-testid="character-assembly-pending"]')`,
+    'The reverted Assembly draft was not clean before the narrow-window check.',
+  );
+
+  window.setSize(800, 560);
+  await waitForDom(window, 'window.innerWidth <= 840 && window.innerWidth >= 760', 'The Issue #798 narrow-window viewport did not resize.');
+  await waitForDom(window, `document.querySelector('[data-testid="character-workspace-assembly-tab"]')?.getAttribute('aria-pressed') === 'true'`, 'The Character detail left Assembly after viewport resize.');
+  await wait(120);
+  const narrow = await readIssue798PlacementNavigation(window);
+  evidence.narrow = narrow;
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'character-detail-add-to-shot-narrow.png'));
+  assert(narrow.placement && narrow.placement.left >= 0 && narrow.placement.right <= narrow.viewport.width + 1, 'Add to Shot overflowed the narrow viewport.');
+  assert(narrow.placement.bottom <= narrow.viewport.height && narrow.navigationPosition === 'sticky', 'The shared navigation is clipped or not sticky in the narrow viewport.');
+  assert(narrow.quickActionDrawer?.expanded === 'false' && narrow.quickActionDrawer.pointerEvents === 'none' && narrow.quickActionDrawer.handleHitTarget, 'The collapsed Quick Actions overlay intercepted navigation input or disabled its handle in the narrow viewport.');
+  assert(narrow.placementHitTarget && narrow.placement?.width >= 44 && narrow.placement?.height >= 44, 'The narrow Add to Shot target is obscured or below 44px.');
+  assert(narrow.back?.right <= narrow.placement.left + 1 && narrow.placement.right <= narrow.close.left + 1, 'Back, Add to Shot, and Close collide in the narrow viewport.');
+
+  const scrollEvidence = await window.webContents.executeJavaScript(`(() => {
+    const navigation = document.querySelector('.character-detail-navigation-detail');
+    const placement = document.querySelector('[data-testid="character-detail-place-current-shot"]');
+    const ancestors = [];
+    for (let element = navigation?.parentElement; element && element !== document.body; element = element.parentElement) {
+      const style = getComputedStyle(element);
+      if (element.scrollHeight > element.clientHeight + 1 && /(auto|scroll)/u.test(style.overflowY)) ancestors.push(element);
+    }
+    const scrollable = ancestors[0] ?? document.scrollingElement;
+    const before = scrollable?.scrollTop ?? 0;
+    if (scrollable) scrollable.scrollTop = scrollable.scrollHeight;
+    const navigationRect = navigation?.getBoundingClientRect();
+    const placementRect = placement?.getBoundingClientRect();
+    return {
+      viewportHeight: document.documentElement.clientHeight,
+      scrollableClassName: scrollable && typeof scrollable.className === 'string' ? scrollable.className : '',
+      scrollTopBefore: before,
+      scrollTopAfter: scrollable?.scrollTop ?? 0,
+      scrollHeight: scrollable?.scrollHeight ?? 0,
+      clientHeight: scrollable?.clientHeight ?? 0,
+      navigation: navigationRect && { top: navigationRect.top, bottom: navigationRect.bottom, height: navigationRect.height },
+      navigationBackgroundColor: navigation ? getComputedStyle(navigation).backgroundColor : '',
+      placement: placementRect && { left: placementRect.left, top: placementRect.top, right: placementRect.right, bottom: placementRect.bottom, width: placementRect.width, height: placementRect.height },
+      placementHitTarget: Boolean(placementRect && (() => {
+        const hit = document.elementFromPoint(placementRect.left + placementRect.width / 2, placementRect.top + placementRect.height / 2);
+        return hit === placement || placement.contains(hit);
+      })()),
+      scrolled: Boolean(scrollable && scrollable.scrollHeight > scrollable.clientHeight + 1 && scrollable.scrollTop > before),
+    };
+  })()`);
+  evidence.narrowScroll = scrollEvidence;
+  assert(scrollEvidence.scrolled, 'The narrow viewport did not scroll a containing Character detail area.');
+  assert(scrollEvidence.navigation?.top >= 0 && scrollEvidence.placement?.bottom <= scrollEvidence.viewportHeight, 'The sticky navigation action disappeared while scrolling.');
+  assert(scrollEvidence.navigationBackgroundColor !== 'rgba(0, 0, 0, 0)', 'Scrolled Character content remained visible through the sticky navigation.');
+  assert(scrollEvidence.placementHitTarget, 'Scrolling caused Add to Shot to lose its pointer hit target.');
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'character-detail-add-to-shot-narrow-scrolled.png'));
+
+  const keyboardSpace = await pressFocusedControl(
+    window,
+    '[data-testid="character-detail-place-current-shot"]',
+    'SPACE',
+    'Add to Shot Space activation after Tab from Back',
+    { tabFromSelector: '[data-testid="character-detail-back"]' },
+  );
+  await waitForDom(
+    window,
+    `JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.layerJson ?? '[]').length === 1 && document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision === '1' && document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1'`,
+    'Space on the navigation Add to Shot button did not create exactly one Character Layer and History operation.',
+  );
+  const spacePlacement = await readIssue798PlacementState(window);
+  evidence.keyboardSpacePlacement = { focus: keyboardSpace, state: spacePlacement };
+  assert(keyboardSpace.tabFocus?.active && keyboardSpace.tabFocus?.visibleFocus && keyboardSpace.afterActivation.visibleFocus, 'Tab or Space did not leave a visible focus indication on Add to Shot.');
+  assert(spacePlacement.layers.length === 1 && spacePlacement.layers[0].source?.kind === 'character' && spacePlacement.layers[0].source?.characterId === IDS.issue792Character, 'Space placement did not create exactly one formal Character Layer.');
+
+  await expandProjectActions(window);
+  await clickWithNativeInput(window, '[data-testid="history-controls"] .history-actions button:first-of-type', 'Undo Space placement');
+  await waitForDom(
+    window,
+    `JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.layerJson ?? '[]').length === 0 && document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '0' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '1'`,
+    'Undo did not remove the single Character Layer created from navigation.',
+  );
+  await clickWithNativeInput(window, '[data-testid="history-controls"] .history-actions button:last-of-type', 'Redo Space placement');
+  await waitForDom(
+    window,
+    `JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.layerJson ?? '[]').length === 1 && document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '0'`,
+    'Redo did not restore the single Character Layer created from navigation.',
+  );
+  const redonePlacement = await readIssue798PlacementState(window);
+  evidence.undoRedo = redonePlacement;
+
+  await clickWithNativeInput(window, '[data-testid="history-controls"] .history-actions button:first-of-type', 'Undo before pointer placement');
+  await waitForDom(
+    window,
+    `JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.layerJson ?? '[]').length === 0`,
+    'The existing History Undo path did not return the Shot to its initial state.',
+  );
+  const beforePointerPlacement = await readIssue798PlacementState(window);
+  assert(beforePointerPlacement.layers.length === 0 && beforePointerPlacement.undoCount === '0' && beforePointerPlacement.redoCount === '1', 'The native pointer placement did not start from the single Undo state.');
+  evidence.beforeNativePointerPlacement = beforePointerPlacement;
+  const pointerExpectedRevision = String(Number(beforePointerPlacement.revision) + 1);
+  const pointerExpectedUndoCount = String(Number(beforePointerPlacement.undoCount) + 1);
+  await window.webContents.executeJavaScript(`(() => {
+    const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
+    if (drawer?.dataset.expanded === 'true') drawer.querySelector('[data-testid="quick-action-drawer-handle"]')?.click();
+  })()`);
+  await waitForDom(window, `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.expanded === 'false'`, 'Quick Actions did not collapse before the native pointer placement check.');
+  const pointerPlacement = await clickWithNativeInput(
+    window,
+    '[data-testid="character-detail-place-current-shot"]',
+    'Place Character with native pointer input in the narrow viewport',
+  );
+  await waitForDom(
+    window,
+    `JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.layerJson ?? '[]').length === 1 && document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision === ${JSON.stringify(pointerExpectedRevision)} && document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === ${JSON.stringify(pointerExpectedUndoCount)} && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '0'`,
+    'A native pointer click did not create exactly one Character Layer from the shared navigation.',
+  );
+  const finalPlacement = await readIssue798PlacementState(window);
+  assert(pointerPlacement.hitTarget && finalPlacement.layers.length === 1 && finalPlacement.revision === pointerExpectedRevision && finalPlacement.undoCount === pointerExpectedUndoCount && finalPlacement.redoCount === '0', 'The native pointer placement was missed, duplicated, or bypassed History.');
+  evidence.nativePointerPlacement = { geometry: pointerPlacement, state: finalPlacement };
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'character-detail-add-to-shot-after-placement.png'));
+
+  await clickWithNativeInput(window, '[data-testid="character-detail-back"]', 'Back to Character list');
+  await waitForDom(window, `document.querySelector('[data-testid="character-list-view"] [data-character-id="${IDS.issue792Character}"]')`, 'The Character Detail Back control did not return to the list.');
+  await clickWithNativeInput(window, `[data-testid="character-list-view"] [data-character-id="${IDS.issue792Character}"]`, 'Reopen Character before Close test');
+  await waitForDom(window, `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue792Character)}`, 'The Character Detail did not reopen before testing Close.');
+  await clickWithNativeInput(window, '[data-testid="resource-activity-close"]', 'Close Character detail drawer');
+  await waitForDom(window, `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'false'`, 'The Character Detail Close control did not close the drawer.');
+  evidence.backAndClose = { backReturnedToList: true, closeDrawerClosed: true };
+
+  return {
+    issue: 798,
+    passed: true,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'verify:issue798-add-to-shot-navigation',
+    projectRoot,
+    syntheticInput: true,
+    humanAcceptance: false,
+    evidenceKind: 'real-electron-production-ui-native-pointer-keyboard-input-and-responsive-geometry',
+    preflightAcknowledgement: {
+      issueBody: true,
+      draftPrAndIssueRoute: true,
+      dependency797CommittedAndFocusedCiPassed: true,
+      designMdAndCurrentCharacterUiInspected: true,
+    },
+    evidence,
+    screenshots,
+  };
+}
+
 async function verifyIssue792MouthOverflow(window) {
   const screenshots = [];
   const baselineRootCause = readIssue683BaselineClipPath();
@@ -1863,6 +2259,9 @@ async function run() {
     await openProject(windowRef);
     if (issue797Only) {
       return await verifyIssue797HeadFaceEditTargets(windowRef);
+    }
+    if (issue798Only) {
+      return await verifyIssue798AddToShotNavigation(windowRef);
     }
     if (issue792Only) {
       return await verifyIssue792MouthOverflow(windowRef);
@@ -2502,11 +2901,13 @@ async function main() {
     output = await run();
   } catch (error) {
     output = {
-      issue: issue797Only ? 797 : issue792Only ? 792 : 612,
+      issue: issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 612,
       passed: false,
       commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
       verificationGate: issue797Only
         ? 'verify:issue797-head-face-edit'
+        : issue798Only
+          ? 'verify:issue798-add-to-shot-navigation'
         : issue792Only
           ? 'verify:issue792-mouth-overflow'
           : 'verify:issue609-character-assembly',
@@ -2528,6 +2929,6 @@ async function main() {
 main()
   .then(() => app.exit(0))
   .catch((error) => {
-    console.error(`[issue${issue797Only ? 797 : issue792Only ? 792 : 609}] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    console.error(`[issue${issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 609}] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     app.exit(1);
   });

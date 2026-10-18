@@ -64,7 +64,7 @@ function compositeProject(): Project {
 beforeEach(() => open());
 
 describe('Issue #639 Character detail placement bridge', () => {
-  it('shows a secondary touch action in landscape detail and disables it without a Shot/default Expression', () => {
+  it('shows one secondary touch action in shared detail navigation and disables it without a Shot/default Expression', () => {
     const project = buildProject();
     const imageAssets = project.assets.filter(
       (asset): asset is ImageAsset => asset.kind === 'image',
@@ -91,7 +91,20 @@ describe('Issue #639 Character detail placement bridge', () => {
         presentation: 'landscape',
       }));
 
-    expect(render(true)).toContain('data-testid="character-detail-place-current-shot"');
+    const markup = render(true);
+    const navigationStart = markup.indexOf('class="character-detail-navigation');
+    const placementIndex = markup.indexOf(
+      'data-testid="character-detail-place-current-shot"',
+    );
+    const closeIndex = markup.indexOf('data-testid="resource-activity-close"');
+    const identityStart = markup.indexOf('<section class="character-detail-identity">');
+    const identityEnd = markup.indexOf('</section>', identityStart);
+    const identity = markup.slice(identityStart, identityEnd);
+
+    expect(placementIndex).toBeGreaterThan(navigationStart);
+    expect(placementIndex).toBeLessThan(closeIndex);
+    expect(markup.match(/data-testid="character-detail-place-current-shot"/gu)).toHaveLength(1);
+    expect(identity).not.toContain('character-detail-place-current-shot');
     expect(render(true)).toContain('data-ui-variant="secondary"');
     expect(render(true)).toContain('aria-label="加入当前镜头"');
     expect(render(true)).toContain('title="加入当前镜头"');
