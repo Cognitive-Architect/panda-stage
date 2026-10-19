@@ -89,6 +89,14 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual([]);
   });
 
+  it('routes the CacheService thumbnail regression through the Full-risk core owner', () => {
+    const result = draft([change('tests/unit/cache-thumbnail-service.test.ts')]);
+    expect(result.tier).toBe('focused');
+    expect(result.matchedRouteIds).toEqual(['cross-process-core']);
+    expect(result.areas).toContain('cross-process-core');
+    expect(result.unknownPaths).toEqual([]);
+  });
+
   it('unions dialogue and subtitle suites without duplicates', () => {
     const result = draft([
       change('src/renderer/features/dialogue/DialogueTrack.tsx'),
