@@ -173,6 +173,61 @@ async function buildSyntheticFla(
   return await zip.generateAsync({ type: 'uint8array' });
 }
 
+async function buildNestedGraphicFrameSceneFla(firstFrameOverride?: string): Promise<Uint8Array> {
+  const zip = new JSZip();
+  const symbols = [
+    { name: 'nested-child-0', frameCount: 1, firstFrame: undefined },
+    { name: 'nested-child-1', frameCount: 7, firstFrame: firstFrameOverride ?? '6' },
+    { name: 'nested-child-2', frameCount: 4, firstFrame: '3' },
+    { name: 'nested-child-3', frameCount: 7, firstFrame: '6' },
+    { name: 'nested-child-4', frameCount: 2, firstFrame: '1' },
+  ] as const;
+  const emptyGroups = Array.from({ length: 3 }, () => `
+    <DOMGroup>
+      <matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix>
+      <members/>
+    </DOMGroup>`).join('');
+  const instances = symbols.map((symbol, index) => `<DOMSymbolInstance
+      libraryItemName="${symbol.name}"
+      symbolType="graphic"
+      loop="loop"${symbol.firstFrame === undefined ? '' : ` firstFrame="${symbol.firstFrame}"`}>
+      <matrix><Matrix a="1" d="1" tx="${index * 120}" ty="0"/></matrix>
+    </DOMSymbolInstance>`).join('\n');
+  zip.file('DOMDocument.xml', `<?xml version="1.0" encoding="UTF-8"?>
+<DOMDocument xmlns="http://ns.adobe.com/xfl/2008/" width="800" height="400" frameRate="24">
+  <timelines><DOMTimeline name="scene1"><layers><DOMLayer name="layer1"><frames>
+    <DOMFrame index="0" duration="1"><elements>
+      ${emptyGroups}
+      <DOMGroup>
+        <matrix><Matrix a="1" d="1" tx="10" ty="15"/></matrix>
+        <members>${instances}</members>
+      </DOMGroup>
+    </elements></DOMFrame>
+  </frames></DOMLayer></layers></DOMTimeline></timelines>
+</DOMDocument>`);
+
+  for (const [symbolIndex, symbol] of symbols.entries()) {
+    const frames = Array.from({ length: symbol.frameCount }, (_, frameIndex) => {
+      const color = `#${String(symbolIndex + 1).padStart(2, '0')}${String(frameIndex + 1).padStart(2, '0')}00`;
+      return `<DOMFrame index="${frameIndex}" duration="1"><elements>
+        <DOMShape>
+          <matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix>
+          <fills><FillStyle index="1"><SolidColor color="${color}" alpha="1"/></FillStyle></fills>
+          <strokes/><edges><Edge fillStyle1="1" cubics="${SIMPLE_RECT_CUBICS}"/></edges>
+        </DOMShape>
+      </elements></DOMFrame>`;
+    }).join('\n');
+    zip.file(`LIBRARY/${symbol.name}.xml`, `<?xml version="1.0" encoding="UTF-8"?>
+<DOMSymbolItem xmlns="http://ns.adobe.com/xfl/2008/" name="${symbol.name}" symbolType="graphic">
+  <timeline><DOMTimeline name="timeline"><layers><DOMLayer name="layer1"><frames>
+    ${frames}
+  </frames></DOMLayer></layers></DOMTimeline></timeline>
+</DOMSymbolItem>`);
+  }
+
+  return zip.generateAsync({ type: 'uint8array' });
+}
+
 // ---- Helpers ----
 function pickFirst<T>(arr: ReadonlyArray<T> | undefined): T | null {
   return arr && arr.length > 0 ? arr[0] as T : null;
@@ -776,5 +831,45 @@ describe('R1-B SVG builder: SVG for a renderable target', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.code).toBe('RENDER_FAILED');
+  });
+});
+
+describe('T05 C02: nested Graphic frame selection in the formal builder path', () => {
+  it('renders the selected frames for five Group members in source order', async () => {
+    const bytes = await buildNestedGraphicFrameSceneFla();
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+    const scene = catalog.entries.find((entry) => entry.target.kind === 'scene')?.target;
+    expect(scene).toBeDefined();
+    if (!scene) return;
+
+    const preview = await buildSvgForRenderTarget(bytes, scene);
+    expect(preview.ok).toBe(true);
+    if (!preview.ok) return;
+
+    const selectedColors = ['#010100', '#020700', '#030400', '#040700', '#050200'];
+    const frameZeroColors = ['#020100', '#030100', '#040100', '#050100'];
+    const fillPositions = selectedColors.map((color) => preview.svg.indexOf(`fill="${color}"`));
+    expect(fillPositions.every((position) => position >= 0)).toBe(true);
+    expect(fillPositions).toEqual([...fillPositions].sort((left, right) => left - right));
+    for (const color of frameZeroColors) expect(preview.svg).not.toContain(`fill="${color}"`);
+  });
+
+  it('fails closed with the source address when a nested firstFrame exceeds its child timeline', async () => {
+    const bytes = await buildNestedGraphicFrameSceneFla('7');
+    const catalog = await buildRenderableTargetCatalog(bytes);
+    expect(catalog.ok).toBe(true);
+    if (!catalog.ok) return;
+    const scene = catalog.entries.find((entry) => entry.target.kind === 'scene')?.target;
+    expect(scene).toBeDefined();
+    if (!scene) return;
+
+    const preview = await buildSvgForRenderTarget(bytes, scene);
+    expect(preview.ok).toBe(false);
+    if (preview.ok) return;
+    expect(preview.message).toContain('UNSUPPORTED_TIMING');
+    expect(preview.message).toContain('firstFrame=7');
+    expect(preview.message).toContain('scene:0/layer-0-frame-0/3/1');
   });
 });
