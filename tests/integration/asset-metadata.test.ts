@@ -49,7 +49,9 @@ async function sha256(filePath: string): Promise<string> {
     .digest('hex');
 }
 
-async function harness(): Promise<{
+async function harness(
+  options: { thumbnailDirectoryParentChars?: number } = {},
+): Promise<{
   parent: string;
   projectRoot: string;
   projectService: ProjectService;
@@ -62,7 +64,31 @@ async function harness(): Promise<{
 }> {
   const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-metadata-'));
   temporaryDirectories.push(parent);
-  const projectRoot = path.join(parent, '元数据 项目 🐼.pandastage');
+  let projectRoot = path.join(parent, '元数据 项目 🐼.pandastage');
+  if (options.thumbnailDirectoryParentChars !== undefined) {
+    const projectLeaf = path.basename(projectRoot);
+    const samplePath = path.join(
+      parent,
+      'x',
+      projectLeaf,
+      'cache',
+      'asset-thumbnails',
+    );
+    const paddingLength =
+      options.thumbnailDirectoryParentChars - samplePath.length + 1;
+    if (paddingLength < 1) {
+      throw new Error('RUNNER_TEMP is too long for the deep-path fixture.');
+    }
+    const projectParent = path.join(parent, 'x'.repeat(paddingLength));
+    projectRoot = path.join(projectParent, projectLeaf);
+    await mkdir(projectParent, { recursive: true });
+    if (
+      path.join(projectRoot, 'cache', 'asset-thumbnails').length !==
+      options.thumbnailDirectoryParentChars
+    ) {
+      throw new Error('Deep-path fixture did not reach the requested length.');
+    }
+  }
   let current:
     | {
         project: Awaited<ReturnType<ProjectService['create']>>['project'];
@@ -395,6 +421,158 @@ describe('asset metadata integration', () => {
       thumbnail: { width: 256, height: 150 },
     });
   });
+
+  it.skipIf(process.platform !== 'win32')(
+    'rebuilds a real FFmpeg thumbnail under the F01 deep path and reuses its cache',
+    async () => {
+      const input = await harness({
+        thumbnailDirectoryParentChars: 146,
+      });
+      const outputContexts: Array<{
+        targetPath: string;
+        temporaryPath: string;
+      }> = [];
+      const cache = new CacheService({
+        beforeWrite: ({ targetPath, temporaryPath }) => {
+          outputContexts.push({ targetPath, temporaryPath });
+        },
+      });
+      const externalDirectory = path.join(input.parent, 'f01-real-source');
+      await mkdir(externalDirectory, { recursive: true });
+      const sourcePath = path.join(externalDirectory, '512x300.png');
+      await execFileAsync(ffmpegPath, [
+        '-v',
+        'error',
+        '-f',
+        'lavfi',
+        '-i',
+        'color=c=green:s=512x300',
+        '-frames:v',
+        '1',
+        '-y',
+        sourcePath,
+      ]);
+      const imported = await input.importService.importCandidates({
+        projectRoot: input.projectRoot,
+        project: input.project,
+        baseRevision: 0,
+        candidates: [{ sourcePath, declaredMimeType: 'image/png' }],
+      });
+      const asset = imported.project.assets[0]!;
+      const projectAssetPath = path.join(
+        input.projectRoot,
+        asset.relativePath,
+      );
+      const sourceSha256 = await sha256(projectAssetPath);
+      expect(asset.sha256).toBe(sourceSha256);
+      const cacheKey = cache.thumbnailKey(sourceSha256);
+      const service = metadataService(input, cache);
+
+      const first = await refresh(service, input, asset.id);
+      if (first.result.status !== 'ready' || !first.result.thumbnail) {
+        throw new Error('Deep-path thumbnail generation did not become ready.');
+      }
+      const thumbnailPath = path.join(
+        input.projectRoot,
+        first.result.thumbnail.relativePath,
+      );
+      const probe = await execFileAsync(ffprobePath, [
+        '-v',
+        'error',
+        '-select_streams',
+        'v:0',
+        '-show_entries',
+        'stream=codec_name,width,height',
+        '-of',
+        'json',
+        thumbnailPath,
+      ]);
+      const probeResult = JSON.parse(probe.stdout) as {
+        streams: Array<{
+          codec_name: string;
+          width: number;
+          height: number;
+        }>;
+      };
+      expect(probeResult.streams[0]).toMatchObject({
+        codec_name: 'png',
+        width: 256,
+        height: 150,
+      });
+      const thumbnailSha256 = await sha256(thumbnailPath);
+      expect(thumbnailSha256).toMatch(/^[a-f0-9]{64}$/u);
+      const cacheDirectory = path.join(
+        input.projectRoot,
+        'cache',
+        'asset-thumbnails',
+      );
+      expect(cacheDirectory.length).toBe(146);
+      expect(outputContexts).toHaveLength(1);
+      const firstWrite = outputContexts[0]!;
+      expect(path.dirname(firstWrite.temporaryPath)).toBe(cacheDirectory);
+      expect(path.dirname(firstWrite.targetPath)).toBe(cacheDirectory);
+      expect(firstWrite.targetPath).toBe(
+        path.join(cacheDirectory, cacheKey),
+      );
+      expect(firstWrite.temporaryPath.length).toBe(198);
+      expect(firstWrite.targetPath.length).toBe(225);
+      expect(path.basename(firstWrite.temporaryPath)).toMatch(
+        /^\.thumb-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.tmp\.png$/u,
+      );
+      const legacyTemporaryPath = path.join(
+        cacheDirectory,
+        '.' + cacheKey + '.' + '0'.repeat(36) + '.tmp.png',
+      );
+      expect(legacyTemporaryPath.length).toBe(271);
+
+      const cacheHit = await refresh(service, input, asset.id);
+      if (cacheHit.result.status !== 'ready') {
+        throw new Error('Metadata refresh after cache write did not become ready.');
+      }
+      expect(cacheHit.result.thumbnail?.cacheHit).toBe(true);
+      expect(outputContexts).toHaveLength(1);
+
+      await cache.removeThumbnail(input.projectRoot, cacheKey);
+      const rebuilt = await refresh(service, input, asset.id);
+      if (rebuilt.result.status !== 'ready' || !rebuilt.result.thumbnail) {
+        throw new Error('Deep-path thumbnail rebuild did not become ready.');
+      }
+      expect(rebuilt.result.thumbnail.cacheHit).toBe(false);
+      expect(outputContexts).toHaveLength(2);
+      expect(outputContexts[1]!.temporaryPath).not.toBe(
+        firstWrite.temporaryPath,
+      );
+      expect(await sha256(projectAssetPath)).toBe(sourceSha256);
+      const rebuiltThumbnailPath = path.join(
+        input.projectRoot,
+        rebuilt.result.thumbnail.relativePath,
+      );
+      const rebuiltSha256 = await sha256(rebuiltThumbnailPath);
+      expect(rebuiltSha256).toMatch(/^[a-f0-9]{64}$/u);
+      console.info(
+        'ISSUE808_F01_REAL_FFMPEG ' +
+          JSON.stringify({
+            platform: process.platform,
+            projectRoot: input.projectRoot,
+            cacheDirectory,
+            cacheDirectoryChars: cacheDirectory.length,
+            legacyTemporaryPathChars: legacyTemporaryPath.length,
+            firstTemporaryPath: firstWrite.temporaryPath,
+            firstTemporaryPathChars: firstWrite.temporaryPath.length,
+            finalThumbnailPath: firstWrite.targetPath,
+            finalThumbnailPathChars: firstWrite.targetPath.length,
+            sourceSha256,
+            thumbnailSha256,
+            rebuiltThumbnailSha256: rebuiltSha256,
+            ffprobe: probeResult.streams[0],
+            cacheHit: cacheHit.result.thumbnail?.cacheHit,
+            rebuildCacheHit: rebuilt.result.thumbnail.cacheHit,
+            cacheWrites: outputContexts.length,
+          }),
+      );
+    },
+    30_000,
+  );
 
   it('degrades cache write failure while keeping metadata and project readable', async () => {
     const input = await harness();
