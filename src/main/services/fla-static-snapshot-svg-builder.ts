@@ -2257,7 +2257,7 @@ function resolveTargetDisplayList(
 }
 
 function catalogSupportReason(
-  source: FlaStaticSnapshotDisplaySource,
+  shapeBlocks: ReadonlyMap<string, string>,
   displayList: FlaResolvedDisplayList,
   resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup,
   allowBlankFrame = false,
@@ -2276,7 +2276,7 @@ function catalogSupportReason(
       if (!media.ok) reason = 'Bitmap media ' + (media.reason === 'ambiguous' ? 'is ambiguous: ' : 'was not found: ') + node.libraryItemName;
       return;
     }
-    const shapeBlock = source.shapeBlocks.get(node.shapeId);
+    const shapeBlock = shapeBlocks.get(node.shapeId);
     const shape = shapeBlock ? parseShapeAt(shapeBlock) : null;
     if (!shape) {
       reason = 'Shape has no supported path data: ' + node.shapeId;
@@ -2367,7 +2367,7 @@ export async function buildRenderableTargetCatalog(
     finishIssue762Profile('fla.catalog.candidate.resolve', resolveStartedAt, candidateDetails);
     const supportStartedAt = startIssue762Profile();
     const check = resolved.ok
-      ? catalogSupportReason(source, resolved.displayList, resolveBitmapMedia, true)
+      ? catalogSupportReason(resolved.shapeBlocks, resolved.displayList, resolveBitmapMedia, true)
       : { unsupportedReason: resolved.message, isBlank: false };
     finishIssue762Profile('fla.catalog.candidate.support-check', supportStartedAt, {
       ...candidateDetails,

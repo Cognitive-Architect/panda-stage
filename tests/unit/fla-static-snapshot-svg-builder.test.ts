@@ -840,11 +840,13 @@ describe('T05 C02: nested Graphic frame selection in the formal builder path', (
     const catalog = await buildRenderableTargetCatalog(bytes);
     expect(catalog.ok).toBe(true);
     if (!catalog.ok) return;
-    const scene = catalog.entries.find((entry) => entry.target.kind === 'scene')?.target;
-    expect(scene).toBeDefined();
-    if (!scene) return;
+    const sceneEntry = catalog.entries.find((entry) => entry.target.kind === 'scene');
+    expect(sceneEntry).toBeDefined();
+    if (!sceneEntry) return;
+    expect(sceneEntry.previewSupported).toBe(true);
+    expect(sceneEntry.unsupportedReason).toBeUndefined();
 
-    const preview = await buildSvgForRenderTarget(bytes, scene);
+    const preview = await buildSvgForRenderTarget(bytes, sceneEntry.target);
     expect(preview.ok).toBe(true);
     if (!preview.ok) return;
 
@@ -861,11 +863,15 @@ describe('T05 C02: nested Graphic frame selection in the formal builder path', (
     const catalog = await buildRenderableTargetCatalog(bytes);
     expect(catalog.ok).toBe(true);
     if (!catalog.ok) return;
-    const scene = catalog.entries.find((entry) => entry.target.kind === 'scene')?.target;
-    expect(scene).toBeDefined();
-    if (!scene) return;
+    const sceneEntry = catalog.entries.find((entry) => entry.target.kind === 'scene');
+    expect(sceneEntry).toBeDefined();
+    if (!sceneEntry) return;
+    expect(sceneEntry.previewSupported).toBe(false);
+    expect(sceneEntry.unsupportedReason).toContain('UNSUPPORTED_TIMING');
+    expect(sceneEntry.unsupportedReason).toContain('firstFrame=7');
+    expect(sceneEntry.unsupportedReason).toContain('scene:0/layer-0-frame-0/3/1');
 
-    const preview = await buildSvgForRenderTarget(bytes, scene);
+    const preview = await buildSvgForRenderTarget(bytes, sceneEntry.target);
     expect(preview.ok).toBe(false);
     if (preview.ok) return;
     expect(preview.message).toContain('UNSUPPORTED_TIMING');
