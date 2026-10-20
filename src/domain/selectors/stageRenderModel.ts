@@ -161,6 +161,7 @@ function emptyVisual(
     },
     facePlacement: null,
     parts: [],
+    headGroup: null,
     combinedLocalBounds: { x: 0, y: 0, width: 0, height: 0 },
     activeFace: null,
     resources: { required: [], candidates: [], fallback: [] },

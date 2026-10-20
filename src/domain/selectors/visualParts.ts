@@ -12,7 +12,7 @@ export type LayerVisualKind =
   | 'single-image-character'
   | 'composite-character';
 
-export type VisualPartSlot = 'single' | 'body' | 'face';
+export type VisualPartSlot = 'single' | 'body' | 'head' | 'face';
 
 export interface VisualLocalRect {
   x: number;
@@ -34,9 +34,44 @@ export interface VisualOwnerTransform {
   zIndex: number;
 }
 
+export interface VisualHeadGroupTransform {
+  /** Translation relative to the Character-local pivot. */
+  translateX: number;
+  translateY: number;
+  scaleX: number;
+  scaleY: number;
+  rotationDeg: number;
+}
+
+export interface LayerVisualHeadGroup {
+  /** Stable runtime identity; never persisted as a Project Layer. */
+  id: string;
+  /** Character-local pivot shared by Head and Face/Mouth. */
+  pivot: { x: number; y: number };
+  /** Runtime children in draw order. Body is deliberately excluded. */
+  partIds: string[];
+  transform: VisualHeadGroupTransform;
+}
+
+export interface VisualPoint {
+  x: number;
+  y: number;
+}
+
+export interface VisualHeadGroupRenderTransform {
+  x: number;
+  y: number;
+  offsetX: number;
+  offsetY: number;
+  scaleX: number;
+  scaleY: number;
+  rotation: number;
+}
+
 export type VisualPartSource =
   | { kind: 'asset'; assetId: string }
   | { kind: 'character-body'; assetId: string }
+  | { kind: 'character-head'; assetId: string }
   | { kind: 'character-expression'; expressionId: string; assetId: string }
   | { kind: 'character-mouth'; assetId: string };
 
@@ -65,6 +100,7 @@ export interface ActiveCharacterFace {
 export type VisualResourceReason =
   | 'current-layer'
   | 'body'
+  | 'head'
   | 'active-expression'
   | 'active-mouth'
   | 'alternate-expression'
@@ -91,8 +127,10 @@ export interface LayerVisualParts {
   ownerTransform: VisualOwnerTransform;
   /** Null for ordinary and single-image layers; one shared placement for composite. */
   facePlacement: FacePlacement | null;
-  /** Exactly one part for ordinary/single-image, Body + Face for composite. */
+  /** Exactly one part for ordinary/single-image; Body + optional Head + Face for composite. */
   parts: LayerVisualPart[];
+  /** Internal visual group; null for single-image and headless layers. */
+  headGroup: LayerVisualHeadGroup | null;
   combinedLocalBounds: VisualLocalRect;
   activeFace: ActiveCharacterFace | null;
   resources: LayerVisualResources;
@@ -145,6 +183,110 @@ function unionRects(rects: readonly VisualLocalRect[]): VisualLocalRect {
   };
 }
 
+const IDENTITY_HEAD_GROUP_TRANSFORM: VisualHeadGroupTransform = {
+  translateX: 0,
+  translateY: 0,
+  scaleX: 1,
+  scaleY: 1,
+  rotationDeg: 0,
+};
+
+/**
+ * Maps the Character-local Head Group transform to Konva's position/offset
+ * convention. Both Canvas and the shared Stage consume this same mapping.
+ */
+export function visualHeadGroupRenderTransform(
+  group: LayerVisualHeadGroup,
+): VisualHeadGroupRenderTransform {
+  return {
+    x: group.pivot.x + group.transform.translateX,
+    y: group.pivot.y + group.transform.translateY,
+    offsetX: group.pivot.x,
+    offsetY: group.pivot.y,
+    scaleX: group.transform.scaleX,
+    scaleY: group.transform.scaleY,
+    rotation: group.transform.rotationDeg,
+  };
+}
+
+/** Applies the runtime Head Group transform to a Character-local point. */
+export function transformPointByVisualHeadGroup(
+  point: VisualPoint,
+  group: LayerVisualHeadGroup,
+): VisualPoint {
+  const radians = (group.transform.rotationDeg * Math.PI) / 180;
+  const relativeX = (point.x - group.pivot.x) * group.transform.scaleX;
+  const relativeY = (point.y - group.pivot.y) * group.transform.scaleY;
+  return {
+    x:
+      group.pivot.x +
+      group.transform.translateX +
+      relativeX * Math.cos(radians) -
+      relativeY * Math.sin(radians),
+    y:
+      group.pivot.y +
+      group.transform.translateY +
+      relativeX * Math.sin(radians) +
+      relativeY * Math.cos(radians),
+  };
+}
+
+function transformedRect(
+  rect: VisualLocalRect,
+  group: LayerVisualHeadGroup,
+): VisualLocalRect {
+  const points = [
+    { x: rect.x, y: rect.y },
+    { x: rect.x + rect.width, y: rect.y },
+    { x: rect.x, y: rect.y + rect.height },
+    { x: rect.x + rect.width, y: rect.y + rect.height },
+  ].map((point) => transformPointByVisualHeadGroup(point, group));
+  const minX = Math.min(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const maxY = Math.max(...points.map((point) => point.y));
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
+
+function visualBounds(
+  parts: readonly LayerVisualPart[],
+  headGroup: LayerVisualHeadGroup | null,
+): VisualLocalRect {
+  const headPartIds = new Set(headGroup?.partIds ?? []);
+  return unionRects(
+    parts.map((part) =>
+      headPartIds.has(part.partId) && headGroup
+        ? transformedRect(part.localRect, headGroup)
+        : part.localRect,
+    ),
+  );
+}
+
+/**
+ * Returns a visual with an ephemeral local Head Group transform. Persisted
+ * Head placement and Face placement remain Character-local and unchanged.
+ */
+export function withVisualHeadGroupTransform(
+  visual: LayerVisualParts,
+  transform: VisualHeadGroupTransform,
+): LayerVisualParts {
+  if (!visual.headGroup) return visual;
+  const headGroup = {
+    ...visual.headGroup,
+    transform: { ...transform },
+  };
+  return {
+    ...visual,
+    headGroup,
+    combinedLocalBounds: visualBounds(visual.parts, headGroup),
+  };
+}
+
 function ownerTransform(evaluated: EvaluatedLayer): VisualOwnerTransform {
   return {
     anchor: evaluated.anchor,
@@ -172,6 +314,7 @@ function characterResources(
   project: Project,
   character: Extract<Project['characters'][number], { mode: 'single-image' | 'composite' }>,
   activeFace: ActiveCharacterFace,
+  headAssetId: string | null,
   requiredAssetIds: ReadonlySet<string>,
   fallbackAssetIds: ReadonlySet<string>,
 ): LayerVisualResources {
@@ -183,11 +326,13 @@ function characterResources(
     addResource(
       required,
       assetId,
-      assetId === activeFace.assetId && activeFace.source === 'mouth'
-        ? 'active-mouth'
-        : assetId === activeFace.assetId
-          ? 'active-expression'
-          : 'body',
+      assetId === headAssetId
+        ? 'head'
+        : assetId === activeFace.assetId && activeFace.source === 'mouth'
+          ? 'active-mouth'
+          : assetId === activeFace.assetId
+            ? 'active-expression'
+            : 'body',
     );
   }
   for (const assetId of fallbackAssetIds) {
@@ -267,6 +412,7 @@ function baseResult(
   parts: LayerVisualPart[],
   activeFace: ActiveCharacterFace | null,
   resources: LayerVisualResources,
+  headGroup: LayerVisualHeadGroup | null = null,
 ): LayerVisualParts {
   return {
     ownerLayerId: evaluated.id,
@@ -274,7 +420,8 @@ function baseResult(
     ownerTransform: ownerTransform(evaluated),
     facePlacement,
     parts,
-    combinedLocalBounds: unionRects(parts.map((part) => part.localRect)),
+    headGroup,
+    combinedLocalBounds: visualBounds(parts, headGroup),
     activeFace,
     resources,
   };
@@ -283,10 +430,10 @@ function baseResult(
 /**
  * Resolves one logical Layer into its complete runtime visual parts.
  *
- * The returned Body/Face identities are ephemeral (`<layerId>:body` and
- * `<layerId>:face`) and stay under the one logical owner Layer. Local geometry
- * deliberately excludes the owner transform: Body is centered at the root
- * local origin, while Face uses the one persisted shared Face Placement.
+ * The returned part identities are ephemeral and stay under the one logical
+ * owner Layer. Local geometry deliberately excludes the owner transform: Body
+ * is centered at the root local origin, while Head and Face use their existing
+ * Character-local placements. Head and Face share one internal Head Group.
  */
 export function resolveLayerVisualParts(
   project: Project,
@@ -372,6 +519,7 @@ export function resolveLayerVisualParts(
         project,
         character,
         resolved.face,
+        null,
         requiredAssetIds,
         fallbackAssetIds,
       ),
@@ -380,6 +528,10 @@ export function resolveLayerVisualParts(
 
   const body = imageAsset(project, character.bodyAssetId, layer.id);
   requiredAssetIds.add(body.id);
+  const headAsset = character.head
+    ? imageAsset(project, character.head.assetId, layer.id)
+    : null;
+  if (headAsset) requiredAssetIds.add(headAsset.id);
   requiredAssetIds.add(resolved.face.assetId);
   if (resolved.face.fallbackAssetId) {
     fallbackAssetIds.add(resolved.face.fallbackAssetId);
@@ -413,22 +565,52 @@ export function resolveLayerVisualParts(
       character.facePlacement.offsetY,
       character.facePlacement.scale,
     ),
-    drawOrder: 1,
+    drawOrder: headAsset ? 2 : 1,
     ownerZIndex: evaluated.zIndex,
   };
+  const headPart: LayerVisualPart | null =
+    headAsset && character.head
+      ? {
+          partId: `${layer.id}:head`,
+          ownerLayerId: layer.id,
+          slot: 'head',
+          source: { kind: 'character-head', assetId: headAsset.id },
+          assetId: headAsset.id,
+          localRect: centeredRect(
+            headAsset,
+            character.head.placement.offsetX,
+            character.head.placement.offsetY,
+            character.head.placement.scale,
+          ),
+          drawOrder: 1,
+          ownerZIndex: evaluated.zIndex,
+        }
+      : null;
+  const parts = [bodyPart, ...(headPart ? [headPart] : []), facePart];
+  const headGroup: LayerVisualHeadGroup | null =
+    headPart && character.head
+      ? {
+          id: `${layer.id}:head-group`,
+          pivot: { ...character.head.pivot },
+          partIds: [headPart.partId, facePart.partId],
+          transform: { ...IDENTITY_HEAD_GROUP_TRANSFORM },
+        }
+      : null;
   return baseResult(
     evaluated,
     'composite-character',
     { ...character.facePlacement },
-    [bodyPart, facePart],
+    parts,
     resolved.face,
     characterResources(
       project,
       character,
       resolved.face,
+      headAsset?.id ?? null,
       requiredAssetIds,
       fallbackAssetIds,
     ),
+    headGroup,
   );
 }
 

@@ -101,7 +101,7 @@ export interface ProductPreviewMouthFallback {
 
 /**
  * Separates the exact current visual from bounded warmup candidates. The
- * resolver remains the only owner of Body/Face/Mouth meaning; this plan only
+ * resolver remains the only owner of Body/Head/Face/Mouth meaning; this plan only
  * classifies the resources that the Preview image session already owns.
  */
 export interface ProductPreviewImagePlan {

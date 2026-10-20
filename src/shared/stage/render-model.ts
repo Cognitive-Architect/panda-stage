@@ -44,7 +44,7 @@ export type StageAssetUrlMap = Readonly<Record<string, string | undefined>>;
 export interface StageRenderPart {
   /** Stable runtime render-part identity, never a persisted Project Layer. */
   readonly id: string;
-  readonly slot: 'single' | 'body' | 'face';
+  readonly slot: 'single' | 'body' | 'head' | 'face';
   readonly drawOrder: number;
   readonly asset: RenderModelAsset;
   readonly sourceUrl: string;

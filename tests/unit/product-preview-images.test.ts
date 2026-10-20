@@ -22,6 +22,7 @@ const ALT_FACE_ID = '10000000-0000-4000-8000-000000000005';
 const DIALOGUE_ID = '80000000-0000-4000-8000-000000000004';
 const AUDIO_CLIP_ID = '70000000-0000-4000-8000-000000000004';
 const AUDIO_ID = '10000000-0000-4000-8000-000000000006';
+const HEAD_ID = '10000000-0000-4000-8000-000000000009';
 
 function imageProject(): Project {
   const project = buildProject();
@@ -33,8 +34,9 @@ function imageProject(): Project {
   });
 }
 
-function compositePreviewProject(): Project {
+function compositePreviewProject(options: { head?: boolean } = {}): Project {
   const base = buildProject();
+  const hasHead = options.head ?? false;
   const character = base.characters[0]!;
   return ProjectSchema.parse({
     ...base,
@@ -42,6 +44,20 @@ function compositePreviewProject(): Project {
       ...base.assets.map((asset) =>
         asset.kind === 'image' ? { ...asset, sha256: HASH } : asset,
       ),
+      ...(hasHead
+        ? [
+            {
+              id: HEAD_ID,
+              kind: 'image' as const,
+              name: 'head',
+              relativePath: 'assets/head.png',
+              mimeType: 'image/png',
+              width: 400,
+              height: 600,
+              sha256: 'e'.repeat(64),
+            },
+          ]
+        : []),
       {
         id: MOUTH_ID,
         kind: 'image' as const,
@@ -92,6 +108,15 @@ function compositePreviewProject(): Project {
         defaultExpressionId: IDS.expressionNormal,
         bodyAssetId: IDS.assetChar,
         facePlacement: { offsetX: 120, offsetY: -40, scale: 0.5 },
+        ...(hasHead
+          ? {
+              head: {
+                assetId: HEAD_ID,
+                placement: { offsetX: 10, offsetY: -360, scale: 0.75 },
+                pivot: { x: 10, y: -300 },
+              },
+            }
+          : {}),
         mouthOpenAssetId: MOUTH_ID,
       },
     ],
@@ -182,6 +207,28 @@ function deferred<T>(): {
 }
 
 describe('Product Preview bounded-original image session — Phase 2 gate C', () => {
+  it('requires and preloads Head through the existing Product Preview image plan', async () => {
+    const fixture = compositePlan(compositePreviewProject({ head: true }));
+    const requested: string[] = [];
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: async ({ assetId }) => {
+        requested.push(assetId);
+        return readyImage(assetId);
+      },
+      createObjectUrl: () => `blob:head-enabled`,
+    });
+
+    expect(fixture.plan.requiredAssetIds).toContain(HEAD_ID);
+    await expect(
+      session.load(PROJECT_ROOT, fixture.project, fixture.plan),
+    ).resolves.toMatchObject({ status: 'ready' });
+    expect(requested).toContain(HEAD_ID);
+    expect(
+      session.snapshot(PROJECT_ROOT, fixture.project, fixture.plan)?.urls,
+    ).toHaveProperty(HEAD_ID);
+    session.dispose();
+  });
+
   it('uses the existing canvas-image request and revokes every owned URL', async () => {
     const project = imageProject();
     const requests: unknown[] = [];

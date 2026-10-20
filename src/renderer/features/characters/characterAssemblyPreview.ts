@@ -331,6 +331,13 @@ function centeredHeadRect(
   };
 }
 
+function withoutHeadForAssemblyBaseVisual(character: Character): Character {
+  if (character.mode !== 'composite' || !character.head) return character;
+  const baseVisualCharacter = { ...character };
+  delete baseVisualCharacter.head;
+  return baseVisualCharacter;
+}
+
 /**
  * Build the temporary workbench visual through S03's authoritative part
  * resolver. The synthetic Character/Layer never enter Project or History.
@@ -377,7 +384,10 @@ export function buildCharacterAssemblyPreviewVisual(
       ...project.characters.filter(
         (candidate) => candidate.id !== character.id,
       ),
-      character,
+      // The H02 workbench still renders its draft Head through its existing
+      // assembly-only Head Group; keep the resolver here scoped to Body and
+      // Face so that assembly layer cannot draw Head twice.
+      withoutHeadForAssemblyBaseVisual(character),
     ],
   };
   const layer: Layer = {

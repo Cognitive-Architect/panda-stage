@@ -5,11 +5,15 @@ import {
   projectShotMouth,
   ProjectSchema,
   resolveLayerVisualParts,
+  transformPointByVisualHeadGroup,
+  visualHeadGroupRenderTransform,
+  withVisualHeadGroupTransform,
   type Project,
 } from '../../../src/domain';
 import { buildProject, IDS } from './testProject';
 
 const BODY_ID = '10000000-0000-4000-8000-000000000004';
+const HEAD_ID = '10000000-0000-4000-8000-000000000009';
 const FACE_NORMAL_ID = '10000000-0000-4000-8000-000000000005';
 const FACE_ANGRY_ID = '10000000-0000-4000-8000-000000000006';
 const MOUTH_ID = '10000000-0000-4000-8000-000000000007';
@@ -35,9 +39,12 @@ function imageAsset(
   };
 }
 
-function compositeProject(options: { mouth?: boolean } = {}): Project {
+function compositeProject(
+  options: { mouth?: boolean; head?: boolean } = {},
+): Project {
   const base = buildProject();
   const mouth = options.mouth ?? true;
+  const hasHead = options.head ?? false;
   const character = base.characters[0]!;
   const expressionNormal = {
     id: IDS.expressionNormal,
@@ -54,6 +61,7 @@ function compositeProject(options: { mouth?: boolean } = {}): Project {
     assets: [
       ...base.assets,
       imageAsset(BODY_ID, 'body', 800, 1_000),
+      ...(hasHead ? [imageAsset(HEAD_ID, 'head', 500, 650)] : []),
       imageAsset(FACE_NORMAL_ID, 'face-normal', 200, 100),
       imageAsset(FACE_ANGRY_ID, 'face-angry', 300, 200),
       ...(mouth ? [imageAsset(MOUTH_ID, 'mouth-open', 400, 300)] : []),
@@ -79,6 +87,15 @@ function compositeProject(options: { mouth?: boolean } = {}): Project {
         defaultExpressionId: IDS.expressionNormal,
         bodyAssetId: BODY_ID,
         facePlacement: { offsetX: 420, offsetY: -8, scale: 0.5 },
+        ...(hasHead
+          ? {
+              head: {
+                assetId: HEAD_ID,
+                placement: { offsetX: 20, offsetY: -360, scale: 0.8 },
+                pivot: { x: 15, y: -320 },
+              },
+            }
+          : {}),
         ...(mouth ? { mouthOpenAssetId: MOUTH_ID } : {}),
       },
     ],
@@ -263,6 +280,135 @@ describe('BFM-S03 unified visual-parts resolver', () => {
       MOUTH_ID,
     ]);
     expect(visual.resources.fallback).toEqual([]);
+  });
+
+  it('resolves Head + Face/Mouth inside one Character-local group while Body stays outside', () => {
+    const project = compositeProject({ head: true });
+    const shot = project.shots[0]!;
+    const evaluated = evaluateShotAtTime(shot, 0, project);
+    const layer = evaluated.layers.find(
+      (candidate) => candidate.id === IDS.layerChar,
+    )!;
+    const before = JSON.stringify(project);
+    const visual = resolveLayerVisualParts(project, shot, layer);
+    const moved = withVisualHeadGroupTransform(visual, {
+      translateX: 30,
+      translateY: -12,
+      scaleX: 1.25,
+      scaleY: 0.75,
+      rotationDeg: 20,
+    });
+    const body = visual.parts.find((part) => part.slot === 'body')!;
+    const head = visual.parts.find((part) => part.slot === 'head')!;
+    const face = visual.parts.find((part) => part.slot === 'face')!;
+    const headCenter = {
+      x: head.localRect.x + head.localRect.width / 2,
+      y: head.localRect.y + head.localRect.height / 2,
+    };
+    const faceCenter = {
+      x: face.localRect.x + face.localRect.width / 2,
+      y: face.localRect.y + face.localRect.height / 2,
+    };
+
+    expect(visual.parts.map((part) => part.slot)).toEqual([
+      'body',
+      'head',
+      'face',
+    ]);
+    expect(visual.parts.map((part) => part.partId)).toEqual([
+      `${IDS.layerChar}:body`,
+      `${IDS.layerChar}:head`,
+      `${IDS.layerChar}:face`,
+    ]);
+    expect(head.localRect).toEqual({
+      x: -180,
+      y: -620,
+      width: 400,
+      height: 520,
+    });
+    expect(visual.headGroup).toEqual({
+      id: `${IDS.layerChar}:head-group`,
+      pivot: { x: 15, y: -320 },
+      partIds: [`${IDS.layerChar}:head`, `${IDS.layerChar}:face`],
+      transform: {
+        translateX: 0,
+        translateY: 0,
+        scaleX: 1,
+        scaleY: 1,
+        rotationDeg: 0,
+      },
+    });
+    expect(visual.resources.required).toEqual([
+      { assetId: BODY_ID, reason: 'body' },
+      { assetId: HEAD_ID, reason: 'head' },
+      { assetId: FACE_NORMAL_ID, reason: 'active-expression' },
+    ]);
+    expect(
+      listShotRuntimeImageAssets(project, shot).map((asset) => asset.id),
+    ).toContain(HEAD_ID);
+    expect(moved.parts.find((part) => part.slot === 'body')?.localRect).toEqual(
+      body.localRect,
+    );
+    expect(moved.headGroup?.partIds).toEqual([
+      head.partId,
+      face.partId,
+    ]);
+    expect(
+      transformPointByVisualHeadGroup(headCenter, moved.headGroup!),
+    ).not.toEqual(headCenter);
+    expect(
+      transformPointByVisualHeadGroup(faceCenter, moved.headGroup!),
+    ).not.toEqual(faceCenter);
+    expect(visualHeadGroupRenderTransform(moved.headGroup!)).toEqual({
+      x: 45,
+      y: -332,
+      offsetX: 15,
+      offsetY: -320,
+      scaleX: 1.25,
+      scaleY: 0.75,
+      rotation: 20,
+    });
+    expect(moved.combinedLocalBounds).not.toEqual(visual.combinedLocalBounds);
+    expect(JSON.stringify(project)).toBe(before);
+  });
+
+  it('keeps Expression and Mouth swaps under the same Head Group', () => {
+    const project = compositeProject({ head: true });
+    const shot = project.shots[0]!;
+    const atExpression = resolveLayerVisualParts(
+      project,
+      shot,
+      evaluateShotAtTime(shot, 500, project).layers.find(
+        (layer) => layer.id === IDS.layerChar,
+      )!,
+    );
+    const mouthShot = projectShotMouth(
+      project,
+      shot,
+      evaluateShotAtTime(shot, 750, project),
+      DIALOGUE_ID,
+    );
+    const atMouth = resolveLayerVisualParts(
+      project,
+      shot,
+      mouthShot.layers.find((layer) => layer.id === IDS.layerChar)!,
+    );
+
+    expect(atExpression.headGroup?.partIds).toEqual([
+      `${IDS.layerChar}:head`,
+      `${IDS.layerChar}:face`,
+    ]);
+    expect(atExpression.parts.find((part) => part.slot === 'face')?.assetId).toBe(
+      FACE_ANGRY_ID,
+    );
+    expect(atMouth.headGroup).toEqual(atExpression.headGroup);
+    expect(atMouth.parts.find((part) => part.slot === 'face')?.assetId).toBe(
+      MOUTH_ID,
+    );
+    expect(atMouth.resources.required).toContainEqual({
+      assetId: HEAD_ID,
+      reason: 'head',
+    });
   });
 
   it('projects Mouth onto the single Face slot and retains the current Expression fallback', () => {
