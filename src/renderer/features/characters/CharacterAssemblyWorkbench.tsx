@@ -45,6 +45,7 @@ import {
   assessCharacterLayoutReuse,
   buildCharacterLayoutReuseUpdate,
   type CharacterLayoutReuseCandidate,
+  type CharacterLayoutReuseFailureCode,
   type CharacterLayoutReuseImageAsset,
   type CharacterLayoutReuseImageDimensions,
   type CharacterLayoutReuseTarget,
@@ -79,6 +80,32 @@ type ActiveDrag = ActiveDragStart &
 interface CharacterLayoutReuseDraftBaseline {
   facePlacement: FacePlacement;
   head?: CharacterHead;
+}
+
+function layoutReuseFailureMessage(code: CharacterLayoutReuseFailureCode): string {
+  switch (code) {
+    case 'source-unsaved':
+      return '请先保存项目。';
+    case 'source-not-selected':
+      return '';
+    case 'same-character':
+      return '请选择另一个角色。';
+    case 'asset-missing':
+    case 'resource-missing':
+      return '素材不可用，请更换。';
+    case 'asset-unverified':
+      return '素材缺少校验信息，请重新导入。';
+    case 'asset-error':
+      return '素材状态异常，请修复素材。';
+    case 'resource-loading':
+      return '素材仍在读取，请稍候。';
+    case 'resource-dimensions-mismatch':
+      return '素材尺寸与记录不符，请修复素材。';
+    case 'body-dimensions-mismatch':
+      return '身体尺寸不同，无法套用。';
+    case 'head-structure-mismatch':
+      return '头部结构不同，无法套用。';
+  }
 }
 
 function measureImageVisibleBounds(
@@ -402,19 +429,16 @@ export function CharacterAssemblyWorkbench({
     ],
   );
   const layoutReuseStatusMessage = !savedSourceProject
-    ? '无法读取当前项目的已保存版本，请先保存项目后重试。'
+    ? '请先保存项目。'
     : layoutReuseSources.length === 0
-      ? '此项目没有其他复合角色可作为来源。'
+      ? '暂无可用角色。'
       : !layoutReuseSourceId
-        ? '请选择同项目中已保存的复合角色。'
+        ? ''
         : !selectedLayoutReuseSource
-          ? '所选来源已不可用，请重新选择角色。'
-          : layoutReuseAssessment?.ok
-            ? `身体参考尺寸一致（${layoutReuseAssessment.bodyDimensions.source.width}×${layoutReuseAssessment.bodyDimensions.source.height}），可以预览布局。`
-            : layoutReuseAssessment?.reason ?? '正在检查来源和目标素材。';
-  const previewedLayoutSource = layoutReuseSources.find(
-    (candidate) => candidate.characterId === layoutPreviewSourceId,
-  );
+          ? '所选来源已不可用，请重新选择。'
+          : layoutReuseAssessment && !layoutReuseAssessment.ok
+            ? layoutReuseFailureMessage(layoutReuseAssessment.code)
+            : '';
   const headImage = head ? imageState.images.get(head.assetId) ?? null : null;
   const headImageBounds = useMemo(
     () => measureImageVisibleBounds(headImage),
@@ -1330,11 +1354,7 @@ export function CharacterAssemblyWorkbench({
                 }}
                 value={layoutReuseSourceId}
               >
-                <option value="">
-                  {layoutReuseSources.length > 0
-                    ? '选择同项目角色'
-                    : '没有其他复合角色'}
-                </option>
+                <option value="">选择同项目角色</option>
                 {layoutReuseSources.map((candidate) => (
                   <option
                     data-character-id={candidate.characterId}
@@ -1376,12 +1396,14 @@ export function CharacterAssemblyWorkbench({
               >
                 {layoutPreviewSourceId ? (
                   <span data-testid="character-assembly-layout-reuse-active-preview">
-                    当前草稿正在预览「{previewedLayoutSource?.name ?? '已选来源'}」的布局，可拖动微调后点“应用”；取消预览会恢复套用前的草稿。
+                    预览中
                   </span>
                 ) : null}
-                <span data-testid="character-assembly-layout-reuse-compatibility">
-                  {layoutReuseStatusMessage}
-                </span>
+                {layoutReuseStatusMessage ? (
+                  <span data-testid="character-assembly-layout-reuse-compatibility">
+                    {layoutReuseStatusMessage}
+                  </span>
+                ) : null}
               </output>
             </div>
           ) : null}

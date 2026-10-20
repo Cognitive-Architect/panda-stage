@@ -578,6 +578,12 @@
 
 .character-assembly-drawer-panel
   .image-asset-picker-selected-row--surface
+  > .image-asset-picker-selected--compact-edit-target {
+  grid-template-columns: 68px minmax(0, 1fr);
+}
+
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface
   > .image-asset-picker-selected:hover:not(:disabled),
 .character-assembly-drawer-panel
   .image-asset-picker-selected-row--surface
@@ -614,10 +620,14 @@
 .character-assembly-drawer-panel
   .image-asset-picker-selected-row--surface
   > .character-assembly-selected-action-button {
+  box-sizing: border-box;
   display: grid;
   min-width: 54px;
+  width: max-content;
+  height: 44px;
   min-height: 44px;
   flex: 0 0 auto;
+  align-self: center;
   place-items: center;
   margin: 0 8px;
   padding: 0 6px;
@@ -651,7 +661,7 @@
     > .image-asset-picker-selected[aria-pressed='true']
   ) {
   border-color: var(--ui-color-selected-border);
-  background: var(--image-asset-picker-selected-surface-background-hover);
+  background: var(--ui-color-selected-surface);
 }
 
 .character-assembly-mouth-overflow {
@@ -1832,7 +1842,9 @@
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
   .character-detail-navigation-detail {
-  grid-template-columns: max-content minmax(0, 1fr) max-content 44px;
+  display: flex;
+  width: 100%;
+  align-items: center;
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -1840,9 +1852,13 @@
   .character-manager[data-character-presentation='landscape']
   .character-detail-navigation-detail
   > .character-detail-place-navigation-action {
-  min-width: 0;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 44px;
   min-height: 44px;
   max-width: 100%;
+  flex: 0 0 auto;
+  margin-left: auto;
   padding: 6px 10px;
   border-color: rgb(127 199 148 / 32%);
   border-radius: var(--ui-radius-small, 6px);
@@ -1851,6 +1867,15 @@
   font-size: 11px;
   line-height: 1.1;
   white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail
+  > .character-detail-close {
+  flex: 0 0 44px;
+  margin-left: 0;
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -1888,6 +1913,7 @@
   .editor-body[data-shell-mode='landscape']:has(.character-detail-navigation-detail)
     > .quick-action-drawer[data-expanded='false']
     > .quick-action-drawer-handle {
+    justify-self: end;
     pointer-events: auto;
   }
 }

@@ -935,6 +935,8 @@ export function CharacterEditor({
                     ? assemblyDraft.head?.assetId ?? null
                     : character.head?.assetId ?? null
                 }
+                showEditTargetStatus={false}
+                showOptionalLabel={false}
                 testId="character-assembly-head-asset"
                 thumbnails={thumbnails}
                 disabled={disabled}
@@ -953,7 +955,7 @@ export function CharacterEditor({
                     <button
                       aria-label={`默认脸：${defaultExpression.name}，选择为编辑对象`}
                       aria-pressed={assemblyEditTarget === 'face'}
-                      className="image-asset-picker-selected"
+                      className="image-asset-picker-selected image-asset-picker-selected--compact-edit-target"
                       data-edit-target-selected={String(assemblyEditTarget === 'face')}
                       data-testid="character-assembly-default-face-select"
                       disabled={disabled || !assemblyDraft}
@@ -973,9 +975,6 @@ export function CharacterEditor({
                             ? `${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`
                             : '素材不可用'}
                         </small>
-                      </span>
-                      <span className="image-asset-picker-selected-action">
-                        {assemblyEditTarget === 'face' ? '编辑中' : '编辑'}
                       </span>
                     </button>
                     <button

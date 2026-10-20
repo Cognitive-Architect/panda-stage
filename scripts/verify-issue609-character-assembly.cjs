@@ -1452,6 +1452,13 @@ async function verifyIssue797HeadFaceEditTargets(window) {
       pivotEditing: workbench?.dataset.neckPivotEditing ?? '',
       headMotionRunning: workbench?.dataset.headMotionTestRunning ?? '',
       editCardSurface: face?.parentElement ? getComputedStyle(face.parentElement).borderColor : '',
+      headSurfaceBorder: head?.parentElement ? getComputedStyle(head.parentElement).borderColor : '',
+      headSurfaceBackground: head?.parentElement ? getComputedStyle(head.parentElement).backgroundColor : '',
+      faceSurfaceBorder: face?.parentElement ? getComputedStyle(face.parentElement).borderColor : '',
+      faceSurfaceBackground: face?.parentElement ? getComputedStyle(face.parentElement).backgroundColor : '',
+      headEditTargetStatus: head?.querySelector('.image-asset-picker-selected-action')?.textContent?.trim() ?? '',
+      faceEditTargetStatus: face?.querySelector('.image-asset-picker-selected-action')?.textContent?.trim() ?? '',
+      headOptionalLabel: head?.closest('.image-asset-picker')?.querySelector('.image-asset-picker-heading small')?.textContent?.trim() ?? '',
     };
   })()`);
 
@@ -1459,7 +1466,9 @@ async function verifyIssue797HeadFaceEditTargets(window) {
   assert(before.target === 'head' && before.headCardPressed === 'true' && before.faceCardPressed === 'false', 'Initial Head selection is not synchronized across the left card and Workbench.');
   assert(before.headActionSibling && before.faceManageSibling && !before.headActionNested && !before.faceManageNested, 'Head Change and Face Manage are not separate sibling actions.');
   assert(before.headCardBounds?.height >= 44 && before.faceCardBounds?.height >= 44, 'Head/Face selection cards lost usable keyboard and touch target sizes.');
-  assert(before.headActionBounds?.height >= 44 && before.faceManageBounds?.height >= 44, 'Head Change and Face Manage lost usable touch target sizes.');
+  assert(before.headActionBounds?.height >= 44 && before.headActionBounds?.height <= 52 && before.faceManageBounds?.height >= 44 && before.faceManageBounds?.height <= 52, 'Head Change and Face Manage are not compact 44px actions.');
+  assert(!before.headEditTargetStatus && !before.faceEditTargetStatus && !before.headOptionalLabel, 'Assembly still displays the redundant Head optional or Head/Face edit badge.');
+  assert(before.headSurfaceBorder !== before.faceSurfaceBorder && before.headSurfaceBackground !== before.faceSurfaceBackground, 'The selected Head surface is not visually distinct from the Face surface.');
   assert(before.headTargetPresent && !before.faceTargetPresent, 'The initial Head target did not expose only its own drag handle.');
   await waitForPaint(window);
   const beforeShot = await capture(window, 'head-face-before.png');
@@ -1477,6 +1486,8 @@ async function verifyIssue797HeadFaceEditTargets(window) {
   );
   const faceSelected = await readSelection();
   assert(faceSelected.faceCardPressed === 'true' && faceSelected.headCardPressed === 'false', 'Face selection state did not synchronize back to the left cards.');
+  assert(faceSelected.faceSurfaceBorder === before.headSurfaceBorder && faceSelected.faceSurfaceBackground === before.headSurfaceBackground, 'Selecting Face did not move the full-card highlight to the Face surface.');
+  assert(faceSelected.headSurfaceBorder === before.faceSurfaceBorder && faceSelected.headSurfaceBackground === before.faceSurfaceBackground, 'Selecting Face left the Head surface highlighted.');
   assert(faceSelected.faceTargetPresent && !faceSelected.headTargetPresent, 'Selecting Face did not expose only the Face drag handle.');
   assert(faceSelected.revision === before.revision && faceSelected.undoCount === before.undoCount, 'Selecting an edit target wrote the Project or History.');
 
@@ -1722,6 +1733,23 @@ async function readIssue798PlacementNavigation(window) {
       presentation: detail?.dataset.characterEditorPresentation ?? '',
       navigation: bounds(navigation),
       navigationPosition: navigation ? getComputedStyle(navigation).position : '',
+      navigationDisplay: navigation ? getComputedStyle(navigation).display : '',
+      navigationGridTemplateColumns: navigation ? getComputedStyle(navigation).gridTemplateColumns : '',
+      navigationInFlowChildCount: [...(navigation?.children ?? [])].filter((child) => {
+        const position = getComputedStyle(child).position;
+        return position !== 'absolute' && position !== 'fixed';
+      }).length,
+      navigationChildren: [...(navigation?.children ?? [])].map((child) => {
+        const style = getComputedStyle(child);
+        return {
+          testId: child.getAttribute('data-testid') ?? '',
+          className: child.className?.baseVal ?? child.className ?? '',
+          position: style.position,
+          gridColumn: style.gridColumn,
+          width: child.getBoundingClientRect().width,
+          height: child.getBoundingClientRect().height,
+        };
+      }),
       navigationBackgroundColor: navigation ? getComputedStyle(navigation).backgroundColor : '',
       quickActionDrawer: quickActionDrawer ? {
         bounds: bounds(quickActionDrawer),
@@ -1734,6 +1762,8 @@ async function readIssue798PlacementNavigation(window) {
       } : null,
       back: bounds(back),
       placement: bounds(placement),
+      placementFlex: placement ? getComputedStyle(placement).flex : '',
+      placementMarginLeft: placement ? getComputedStyle(placement).marginLeft : '',
       close: bounds(close),
       placementCount: detail?.querySelectorAll('[data-testid="character-detail-place-current-shot"]').length ?? 0,
       placementInIdentity: Boolean(identity?.contains(placement)),
@@ -1775,6 +1805,27 @@ async function readIssue798PlacementState(window) {
   })()`);
 }
 
+function assertCompactPlacementNavigation(geometry, label) {
+  assert(geometry.navigationDisplay === 'flex', `${label} navigation is not laid out against its visible Flex children.`);
+  assert(geometry.navigationInFlowChildCount === 3, `${label} navigation does not have exactly the in-flow Back/Add/Close controls.`);
+  assert(geometry.placement?.width <= 120, `${label} Add to Shot grew wider than its label (${geometry.placement?.width}px).`);
+  assert(geometry.placementFlex === '0 0 auto', `${label} Add to Shot can still grow to fill the navigation.`);
+  assert(Math.abs(geometry.navigation.right - geometry.close.right) < 1, `${label} Close is not anchored to the far-right edge.`);
+  assert(geometry.back.right <= geometry.placement.left + 1 && geometry.placement.right <= geometry.close.left + 1, `${label} Back, Add to Shot, and Close overlap or are out of order.`);
+  assert(geometry.placement?.width >= 44 && geometry.placement?.height >= 44, `${label} Add to Shot is below the 44px touch target size.`);
+  assert(geometry.back?.width >= 44 && geometry.back?.height >= 44 && geometry.close?.width >= 44 && geometry.close?.height >= 44, `${label} Back or Close is below the 44px touch target size.`);
+  assert(geometry.placementHitTarget, `${label} Add to Shot center is not an actionable hit target.`);
+  const handle = geometry.quickActionDrawer?.handle;
+  if (handle) {
+    const overlapsNavigation = handle.left < geometry.navigation.right
+      && handle.right > geometry.navigation.left
+      && handle.top < geometry.navigation.bottom
+      && handle.bottom > geometry.navigation.top;
+    assert(!overlapsNavigation, `${label} Quick Actions handle overlaps the Character navigation hit targets.`);
+    assert(geometry.quickActionDrawer.handleHitTarget, `${label} Quick Actions handle is no longer reachable.`);
+  }
+}
+
 async function verifyIssue798AddToShotNavigation(window) {
   const screenshots = [];
   const evidence = {};
@@ -1809,12 +1860,20 @@ async function verifyIssue798AddToShotNavigation(window) {
   assert(wide.placementBeforeClose, 'Add to Shot is not immediately before Close in the shared detail navigation.');
   assert(wide.placementType === 'button' && wide.placementLabel === '加入当前镜头' && wide.placementText === '＋ 加入镜头', 'Add to Shot lost its native button semantics or clear accessible name.');
   assert(wide.placementTitle === '加入当前镜头' && !wide.placementDisabled, 'The enabled Add to Shot action lost its tooltip or became unavailable.');
-  assert(wide.placement?.width >= 44 && wide.placement?.height >= 44, 'Add to Shot is below the 44px touch target size.');
-  assert(wide.back?.width >= 44 && wide.back?.height >= 44 && wide.close?.width >= 44 && wide.close?.height >= 44, 'Back or Close is below the 44px touch target size.');
-  assert(wide.placementHitTarget, `Add to Shot is obscured at its center hit target (${wide.placementHitTestId || 'no test id'}).`);
-  assert(wide.back.right <= wide.placement.left + 1 && wide.placement.right <= wide.close.left + 1, 'Back, Add to Shot, and Close overlap in the navigation.');
+  assertCompactPlacementNavigation(wide, 'Wide');
   await waitForPaint(window);
   screenshots.push(await capture(window, 'character-detail-add-to-shot-wide.png'));
+
+  const originalZoomFactor = window.webContents.getZoomFactor();
+  window.webContents.setZoomFactor(1.25);
+  await waitForPaint(window);
+  const zoomed = await readIssue798PlacementNavigation(window);
+  evidence.zoomed = zoomed;
+  assertCompactPlacementNavigation(zoomed, '125% zoom');
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'character-detail-add-to-shot-zoom-125.png'));
+  window.webContents.setZoomFactor(originalZoomFactor);
+  await waitForPaint(window);
 
   const workspaceEvidence = [];
   evidence.workspaceNavigation = workspaceEvidence;
@@ -1844,6 +1903,7 @@ async function verifyIssue798AddToShotNavigation(window) {
       nameClientWidth: current.nameClientWidth,
       nameScrollWidth: current.nameScrollWidth,
     });
+    assertCompactPlacementNavigation(current, `${label} workspace`);
     if (label === 'Settings') {
       await waitForPaint(window);
       screenshots.push(await capture(window, 'character-detail-add-to-shot-settings.png'));
@@ -2148,6 +2208,7 @@ async function readIssue799LayoutState(window) {
       previewSourceId: workbench?.dataset.layoutPreviewSourceId ?? '',
       selectedSourceId: select?.value ?? '',
       compatibility: compatibility?.textContent?.trim() ?? '',
+      activePreview: document.querySelector('[data-testid="character-assembly-layout-reuse-active-preview"]')?.textContent?.trim() ?? '',
       previewDisabled: preview?.disabled ?? true,
       pending: Boolean(document.querySelector('[data-testid="character-assembly-pending"]')),
       revision: stage?.dataset.projectRevision ?? '',
@@ -2312,11 +2373,12 @@ async function verifyIssue799LayoutReuse(window) {
     `(() => {
       const button = document.querySelector('[data-testid="character-assembly-layout-reuse-preview"]');
       const status = document.querySelector('[data-testid="character-assembly-layout-reuse-compatibility"]')?.textContent ?? '';
-      return button && !button.disabled && status.includes('720×920');
+      return button && !button.disabled && status.trim() === '';
     })()`,
-    'Saved source A and target B did not reach the exact-dimension compatible state.',
+    'Compatible saved source A left redundant helper text or did not enable Preview.',
   );
   evidence.compatibleState = await readIssue799LayoutState(window);
+  assert(evidence.compatibleState.compatibility === '', 'Compatible source state retained permanent helper text.');
   await clickWithNativeInput(
     window,
     '[data-testid="character-assembly-layout-reuse-preview"]',
@@ -2336,6 +2398,7 @@ async function verifyIssue799LayoutReuse(window) {
   );
   const previewA = await readIssue799LayoutState(window);
   evidence.previewA = previewA;
+  assert(previewA.activePreview === '预览中' && previewA.compatibility === '', 'Layout preview did not reduce its live status to the concise preview state.');
   assert(previewA.bodyAssetId === IDS.bodyAlt && previewA.head?.assetId === IDS.issue799TargetHead, 'Preview replaced target B Body or Head asset IDs.');
   assert(previewA.previewFaceAssetId === IDS.issue799TargetFace, 'Preview replaced target B expression selection.');
   assert(previewA.facePlacement.offsetX === 46 && previewA.facePlacement.offsetY === 190 && previewA.facePlacement.scale === 0.92, 'Preview did not copy the mapped Face placement values.');
@@ -2345,9 +2408,9 @@ async function verifyIssue799LayoutReuse(window) {
   screenshots.push(await capture(window, 'layout-reuse-preview-from-saved-source.png'));
 
   const rejectedSources = [
-    [IDS.issue799HeadlessCharacter, '结构不兼容', 'head-structure-mismatch'],
-    [IDS.issue799RatioCharacter, '尺寸不同', 'body-dimensions-mismatch'],
-    [IDS.issue799MissingCharacter, '无法读取', 'resource-missing'],
+    [IDS.issue799HeadlessCharacter, '头部结构不同', 'head-structure-mismatch'],
+    [IDS.issue799RatioCharacter, '身体尺寸不同', 'body-dimensions-mismatch'],
+    [IDS.issue799MissingCharacter, '素材不可用', 'resource-missing'],
   ];
   const rejectionEvidence = [];
   for (const [characterId, expectedText, rejectionKind] of rejectedSources) {

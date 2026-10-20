@@ -234,13 +234,23 @@ describe('Issue #523 R8 unified Character workspace', () => {
     );
     expect(markup).toContain('data-testid="character-assembly-body-picker"');
     expect(markup).toContain('data-testid="character-assembly-head-asset"');
-    expect(markup).toContain('<small>可选</small>');
+    const headPickerStart = markup.indexOf('data-testid="character-assembly-head-asset"');
+    const headPickerEnd = markup.indexOf('</section>', headPickerStart);
+    const headPicker = markup.slice(headPickerStart, headPickerEnd);
+    expect(headPicker).not.toContain('<small>可选</small>');
     expect(markup).toContain('data-testid="character-assembly-mouth-picker"');
     expect(markup).toContain('data-testid="character-assembly-go-expressions"');
     expect(markup).toMatch(
       /<button[^>]*class="image-asset-picker-selected-action character-assembly-selected-action-button"[^>]*data-testid="character-assembly-go-expressions"[^>]*>管理<\/button>/u,
     );
     expect(markup).not.toContain('character-detail-mouth-visual-picker');
+    const defaultFaceTestId = markup.indexOf('data-testid="character-assembly-default-face-select"');
+    const defaultFaceStart = markup.lastIndexOf('<button', defaultFaceTestId);
+    const defaultFaceEnd = markup.indexOf('</button>', defaultFaceStart);
+    const defaultFace = markup.slice(defaultFaceStart, defaultFaceEnd);
+    expect(defaultFace).toContain('aria-pressed=');
+    expect(defaultFace).toContain('data-edit-target-selected=');
+    expect(defaultFace).not.toContain('image-asset-picker-selected-action');
     expect(markup.indexOf('data-testid="character-assembly-body-picker"')).toBeLessThan(
       markup.indexOf('data-testid="character-assembly-head-asset"'),
     );

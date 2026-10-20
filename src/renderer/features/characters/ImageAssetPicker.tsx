@@ -39,6 +39,10 @@ export interface ImageAssetPickerProps {
   selectedAssetActive?: boolean;
   /** Put the picker trigger and optional secondary action inside one shared row surface. */
   selectedSurface?: boolean;
+  /** Hide the edit-target state badge when the selected card body is the edit control. */
+  showEditTargetStatus?: boolean;
+  /** Keep optionality available to other picker contexts while omitting the badge locally. */
+  showOptionalLabel?: boolean;
   testId?: string;
 }
 
@@ -209,6 +213,8 @@ export function ImageAssetPicker({
   onSelectedAssetActivate,
   selectedAssetActive = false,
   selectedSurface = false,
+  showEditTargetStatus = true,
+  showOptionalLabel = true,
   testId,
 }: ImageAssetPickerProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
@@ -271,7 +277,7 @@ export function ImageAssetPicker({
           : `${label}：${selectedLabel}`
       }
       aria-pressed={hasActiveSelection ? selectedAssetActive : undefined}
-      className={`image-asset-picker-selected${selectedAssetId ? '' : ' image-asset-picker-selected-empty'}${selectedAssetActive && hasActiveSelection ? ' is-active-edit-target' : ''}`}
+      className={`image-asset-picker-selected${selectedAssetId ? '' : ' image-asset-picker-selected-empty'}${selectedAssetActive && hasActiveSelection ? ' is-active-edit-target' : ''}${hasActiveSelection && !showEditTargetStatus ? ' image-asset-picker-selected--compact-edit-target' : ''}`}
       data-edit-target-selected={hasActiveSelection ? String(selectedAssetActive) : undefined}
       data-testid={testId ? `${testId}-selected` : undefined}
       disabled={disabled}
@@ -292,17 +298,19 @@ export function ImageAssetPicker({
         <strong>{selectedLabel}</strong>
         {selectedMetadata ? <small>{selectedMetadata}</small> : null}
       </span>
-      <span aria-hidden="true" className="image-asset-picker-selected-action">
-        {hasActiveSelection
-          ? selectedAssetActive
-            ? '编辑中'
-            : '编辑'
-          : open
-            ? '收起'
-            : selectedAssetId
-              ? '更换'
-              : emptyActionLabel}
-      </span>
+      {hasActiveSelection && !showEditTargetStatus ? null : (
+        <span aria-hidden="true" className="image-asset-picker-selected-action">
+          {hasActiveSelection
+            ? selectedAssetActive
+              ? '编辑中'
+              : '编辑'
+            : open
+              ? '收起'
+              : selectedAssetId
+                ? '更换'
+                : emptyActionLabel}
+        </span>
+      )}
     </button>
   );
   const selectedAssetChangeAction = hasActiveSelection ? (
@@ -334,7 +342,7 @@ export function ImageAssetPicker({
     >
       <div className="image-asset-picker-heading">
         <strong>{label}</strong>
-        {emptyOption?.optional ? <small>可选</small> : null}
+        {showOptionalLabel && emptyOption?.optional ? <small>可选</small> : null}
       </div>
       {selectedSurface ? (
         <ImageAssetPickerSelectedSurface>

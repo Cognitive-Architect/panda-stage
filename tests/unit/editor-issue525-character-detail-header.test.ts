@@ -105,6 +105,7 @@ describe('Issue #525 Character Detail header and inline rename', () => {
     const identityEnd = markup.indexOf('</section>', identityStart);
     const identity = markup.slice(identityStart, identityEnd);
     const styles = readOrderedStylesheetSource();
+    const placementStyles = styles.slice(styles.indexOf('/* Issue #798:'));
 
     expect(placementIndex).toBeGreaterThan(navigationStart);
     expect(placementIndex).toBeLessThan(closeIndex);
@@ -115,7 +116,11 @@ describe('Issue #525 Character Detail header and inline rename', () => {
     expect(markup).toContain('title="请先选择镜头"');
     expect(markup).toContain('disabled=""');
     expect(markup).toContain('＋ 加入镜头');
-    expect(styles).toContain(
+    expect(placementStyles).toContain('display: flex;');
+    expect(placementStyles).toContain('width: max-content;');
+    expect(placementStyles).toContain('margin-left: auto;');
+    expect(placementStyles).toContain('flex: 0 0 44px;');
+    expect(placementStyles).not.toContain(
       'grid-template-columns: max-content minmax(0, 1fr) max-content 44px;',
     );
     expect(styles).toContain('min-height: 44px;\n  max-width: 100%;');
