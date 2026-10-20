@@ -106,6 +106,15 @@ describe('S07 composite assembly preview', () => {
     expect(markup).toContain('data-testid="character-assembly-pending"');
     expect(markup).not.toContain('拖动脸部可调整位置，底部可微调大小');
     expect(markup).not.toContain('有未应用更改');
+    expect(markup).toContain('data-testid="character-assembly-expression-preview-toggle"');
+    expect(markup).not.toContain('data-testid="character-assembly-expression-preview-options"');
+    expect(markup).not.toContain('character-assembly-face-choices');
+    expect(markup).not.toContain('data-testid="character-assembly-pivot-guidance"');
+    expect(markup).not.toContain('data-testid="character-assembly-pivot-done"');
+    expect(
+      readFileSync('src/renderer/features/characters/CharacterAssemblyWorkbench.tsx', 'utf8')
+        .match(/'完成转轴'/gu),
+    ).toHaveLength(1);
     expect(readFileSync('src/renderer/features/characters/CharacterAssemblyWorkbench.tsx', 'utf8'))
       .toContain('className="character-assembly-message" role="status"');
   });
@@ -280,6 +289,12 @@ describe('S07 composite assembly preview', () => {
     expect(markup).toContain('▶ 测试摇头');
     expect(markup).toContain('data-testid="character-assembly-pivot-mode-toggle"');
     expect(markup).toContain('调整脖子转轴');
+    expect(
+      readFileSync('src/renderer/features/characters/CharacterAssemblyWorkbench.tsx', 'utf8')
+        .match(/'完成转轴'/gu),
+    ).toHaveLength(1);
+    expect(markup).toContain('data-testid="character-assembly-expression-preview-toggle"');
+    expect(markup).not.toContain('data-testid="character-assembly-expression-preview-options"');
 
     const { head, ...headlessDraft } = session.draft;
     expect(head).toBeDefined();
@@ -296,6 +311,8 @@ describe('S07 composite assembly preview', () => {
     expect(headlessMarkup).toContain('data-testid="character-assembly-face-drag-target"');
     expect(headlessMarkup).not.toContain('data-testid="character-assembly-head-pivot"');
     expect(headlessMarkup).not.toContain('data-testid="character-assembly-test-head-motion"');
+    expect(headlessMarkup).not.toContain('character-assembly-workbench-header');
+    expect(headlessMarkup).toContain('data-testid="character-assembly-expression-preview-toggle"');
   });
 
   it('calculates transparent-image bounds and viewport-independent pointer adjustments', () => {

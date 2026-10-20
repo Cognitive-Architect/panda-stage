@@ -266,6 +266,7 @@ export function CharacterAssemblyWorkbench({
   const [layoutReuseSourceId, setLayoutReuseSourceId] = useState('');
   const [layoutPreviewSourceId, setLayoutPreviewSourceId] =
     useState<string | null>(null);
+  const [isExpressionPreviewOpen, setIsExpressionPreviewOpen] = useState(false);
   const layoutReuseBaselineRef = useRef<CharacterLayoutReuseDraftBaseline | null>(
     null,
   );
@@ -286,8 +287,96 @@ export function CharacterAssemblyWorkbench({
     ),
   );
   const viewportRef = useRef<HTMLDivElement>(null);
+  const fineTuneTriggerRef = useRef<HTMLButtonElement>(null);
+  const fineTunePanelRef = useRef<HTMLDivElement>(null);
+  const expressionPreviewTriggerRef = useRef<HTMLButtonElement>(null);
+  const expressionPreviewPanelRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<ActiveDrag | null>(null);
   const mountedRef = useRef(true);
+
+  useLayoutEffect(() => {
+    if (!isFineTuneOpen) return;
+    const viewport = viewportRef.current;
+    const panel = fineTunePanelRef.current;
+    if (!viewport || !panel) return;
+
+    const placePanel = (): void => {
+      const viewportBounds = viewport.getBoundingClientRect();
+      const rightmostContent = [
+        ...viewport.querySelectorAll<HTMLElement>(
+          '.character-assembly-part, [data-testid="character-assembly-face-drag-target"], [data-testid="character-assembly-head-drag-fallback"], [data-testid="character-assembly-head-scale-handle"], [data-testid="character-assembly-head-pivot-marker"]',
+        ),
+      ].reduce((right, element) => {
+        const bounds = element.getBoundingClientRect();
+        return bounds.width > 0 && bounds.height > 0
+          ? Math.max(right, bounds.right)
+          : right;
+      }, viewportBounds.left);
+      const freeRightWidth = Math.floor(
+        viewportBounds.right - rightmostContent - 16,
+      );
+      const width =
+        freeRightWidth >= 72
+          ? Math.min(280, freeRightWidth)
+          : Math.min(48, viewportBounds.width - 16);
+      panel.style.width = `${width}px`;
+      panel.dataset.overlayLayout =
+        freeRightWidth < 72 ? 'constrained' : width < 160 ? 'narrow' : 'regular';
+    };
+
+    placePanel();
+    const observer = new ResizeObserver(placePanel);
+    observer.observe(viewport);
+    observer.observe(panel);
+    window.addEventListener('resize', placePanel);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', placePanel);
+    };
+  }, [activeEditTarget, head, isFineTuneOpen, transform.offsetX, transform.offsetY, transform.scale]);
+
+  useEffect(() => {
+    if (!isFineTuneOpen && !isExpressionPreviewOpen) return;
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      if (!(event.target instanceof Node)) return;
+      if (
+        isFineTuneOpen &&
+        !fineTunePanelRef.current?.contains(event.target) &&
+        !fineTuneTriggerRef.current?.contains(event.target)
+      ) {
+        setIsFineTuneOpen(false);
+      }
+      if (
+        isExpressionPreviewOpen &&
+        !expressionPreviewPanelRef.current?.contains(event.target) &&
+        !expressionPreviewTriggerRef.current?.contains(event.target)
+      ) {
+        setIsExpressionPreviewOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (isFineTuneOpen) {
+        setIsFineTuneOpen(false);
+        window.requestAnimationFrame(() => fineTuneTriggerRef.current?.focus());
+      }
+      if (isExpressionPreviewOpen) {
+        setIsExpressionPreviewOpen(false);
+        window.requestAnimationFrame(() => expressionPreviewTriggerRef.current?.focus());
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [isExpressionPreviewOpen, isFineTuneOpen]);
 
   useEffect(() => {
     setSelectedFace(defaultExpressionId);
@@ -295,6 +384,8 @@ export function CharacterAssemblyWorkbench({
     setIsLayoutReuseOpen(false);
     setLayoutReuseSourceId('');
     setLayoutPreviewSourceId(null);
+    setIsExpressionPreviewOpen(false);
+    setIsFineTuneOpen(false);
     layoutReuseBaselineRef.current = null;
   }, [defaultExpressionId, session.sessionId]);
 
@@ -583,6 +674,7 @@ export function CharacterAssemblyWorkbench({
   const toggleNeckPivotEditing = (): void => {
     if (!head || isTestingHeadMotion) return;
     dragRef.current = null;
+    setIsExpressionPreviewOpen(false);
     setIsEditingNeckPivot((current) => {
       const next = !current;
       if (next) setIsFineTuneOpen(false);
@@ -892,102 +984,42 @@ export function CharacterAssemblyWorkbench({
       data-head-pivot-x={head?.pivot.x ?? ''}
       data-head-pivot-y={head?.pivot.y ?? ''}
       data-head-motion-test-running={isTestingHeadMotion}
+      data-project-revision={projectSnapshot.revision}
+      data-project-dirty={projectSnapshot.dirty}
       data-edit-target={activeEditTarget}
       data-neck-pivot-editing={isEditingNeckPivot}
       data-layout-preview-source-id={layoutPreviewSourceId ?? ''}
       data-layout-reuse-open={isLayoutReuseOpen}
+      data-has-head={Boolean(head)}
       data-preview-face-asset-id={facePart?.assetId ?? ''}
       data-selected-face={selectedFace}
       data-session-kind={isCreating ? 'create' : 'edit'}
       data-testid="character-assembly-workbench"
     >
-      <header className="character-assembly-workbench-header">
-        <div className="character-assembly-header-tools">
-          {!isCreating ? (
-            <nav aria-label="预览表情" className="character-assembly-face-choices">
-              {expressions.map((expression) => (
-                <button
-                  aria-pressed={selectedFace === expression.id}
-                  key={expression.id}
-                  onClick={() => setSelectedFace(expression.id)}
-                  type="button"
-                >
-                  {expression.name}
-                </button>
-              ))}
-              {hasMouth ? (
-                <button
-                  aria-pressed={selectedFace === '$mouth'}
-                  onClick={() => setSelectedFace('$mouth')}
-                  type="button"
-                >
-                  张嘴
-                </button>
-              ) : null}
-            </nav>
-          ) : (
-            <nav aria-label="预览表情" className="character-assembly-face-choices">
-              <button
-                aria-pressed={selectedFace !== '$mouth'}
-                onClick={() => setSelectedFace(defaultExpressionId)}
-                type="button"
-              >
-                默认
-              </button>
-              {hasMouth ? (
-                <button
-                  aria-pressed={selectedFace === '$mouth'}
-                  onClick={() => setSelectedFace('$mouth')}
-                  type="button"
-                >
-                  张嘴
-                </button>
-              ) : null}
-            </nav>
-          )}
-          {head ? (
-            <nav aria-label="编辑目标" className="character-assembly-edit-targets">
-              <button
-                aria-pressed={activeEditTarget === 'head'}
-                data-testid="character-assembly-edit-head"
-                disabled={isEditingNeckPivot || isTestingHeadMotion}
-                onClick={() => selectEditTarget('head')}
-                type="button"
-              >
-                头部
-              </button>
-              <button
-                aria-pressed={activeEditTarget === 'face'}
-                data-testid="character-assembly-edit-face"
-                disabled={isEditingNeckPivot || isTestingHeadMotion}
-                onClick={() => selectEditTarget('face')}
-                type="button"
-              >
-                脸部
-              </button>
-            </nav>
-          ) : null}
-          {head && isEditingNeckPivot ? (
-            <div
-              className="character-assembly-pivot-guidance"
-              data-testid="character-assembly-pivot-guidance"
-              role="status"
+      {head ? (
+        <header className="character-assembly-workbench-header">
+          <nav aria-label="编辑目标" className="character-assembly-edit-targets">
+            <button
+              aria-pressed={activeEditTarget === 'head'}
+              data-testid="character-assembly-edit-head"
+              disabled={isEditingNeckPivot || isTestingHeadMotion}
+              onClick={() => selectEditTarget('head')}
+              type="button"
             >
-              <span>把十字拖到角色脖子附近</span>
-              <button
-                data-testid="character-assembly-pivot-done"
-                onClick={() => {
-                  dragRef.current = null;
-                  setIsEditingNeckPivot(false);
-                }}
-                type="button"
-              >
-                完成转轴
-              </button>
-            </div>
-          ) : null}
-        </div>
-      </header>
+              头部
+            </button>
+            <button
+              aria-pressed={activeEditTarget === 'face'}
+              data-testid="character-assembly-edit-face"
+              disabled={isEditingNeckPivot || isTestingHeadMotion}
+              onClick={() => selectEditTarget('face')}
+              type="button"
+            >
+              脸部
+            </button>
+          </nav>
+        </header>
+      ) : null}
 
       <div
         aria-label="角色组装预览"
@@ -1258,6 +1290,69 @@ export function CharacterAssemblyWorkbench({
             </span>
           ) : null}
         </div>
+          {isFineTuneOpen && !isEditingNeckPivot ? (
+            <div
+              aria-label={`${activeEditTarget === 'head' ? '头部' : '脸部'}精调`}
+              className="character-assembly-fine-tune-panel"
+              id="character-assembly-fine-tune-panel"
+              data-testid="character-assembly-fine-tune-panel"
+              ref={fineTunePanelRef}
+              role="group"
+            >
+              {activeEditTarget === 'head' && head ? (
+                <>
+                  <div aria-label="头部左右位置" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">头部左右</span>
+                    <button aria-label="向左移动头部" data-testid="character-assembly-head-left-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(-1, 0)} type="button">−</button>
+                    <output aria-label="头部水平位置" data-testid="character-assembly-head-offset-x">{head.placement.offsetX.toFixed(1)}</output>
+                    <button aria-label="向右移动头部" data-testid="character-assembly-head-right-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(1, 0)} type="button">+</button>
+                  </div>
+                  <div aria-label="头部上下位置" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">头部上下</span>
+                    <button aria-label="向上移动头部" data-testid="character-assembly-head-up-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(0, -1)} type="button">−</button>
+                    <output aria-label="头部垂直位置" data-testid="character-assembly-head-offset-y">{head.placement.offsetY.toFixed(1)}</output>
+                    <button aria-label="向下移动头部" data-testid="character-assembly-head-down-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(0, 1)} type="button">+</button>
+                  </div>
+                  <div aria-label="头部大小" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">头部大小</span>
+                    <button aria-label="缩小头部" data-testid="character-assembly-head-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustHeadScale(-0.05)} type="button">−</button>
+                    <output aria-label="头部大小" data-testid="character-assembly-head-scale">{head.placement.scale.toFixed(2)}×</output>
+                    <button aria-label="放大头部" data-testid="character-assembly-head-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustHeadScale(0.05)} type="button">+</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div aria-label="左右" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">左右</span>
+                    <button aria-label="向左移动脸部" data-testid="character-assembly-left-step" disabled={isTestingHeadMotion} onClick={() => moveFace(-1, 0)} type="button">−</button>
+                    <output aria-label="左右偏移" data-testid="character-assembly-offset-x">{session.draft.facePlacement.offsetX.toFixed(1)}</output>
+                    <button aria-label="向右移动脸部" data-testid="character-assembly-right-step" disabled={isTestingHeadMotion} onClick={() => moveFace(1, 0)} type="button">+</button>
+                  </div>
+                  <div aria-label="上下" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">上下</span>
+                    <button aria-label="向上移动脸部" data-testid="character-assembly-up-step" disabled={isTestingHeadMotion} onClick={() => moveFace(0, -1)} type="button">−</button>
+                    <output aria-label="上下偏移" data-testid="character-assembly-offset-y">{session.draft.facePlacement.offsetY.toFixed(1)}</output>
+                    <button aria-label="向下移动脸部" data-testid="character-assembly-down-step" disabled={isTestingHeadMotion} onClick={() => moveFace(0, 1)} type="button">+</button>
+                  </div>
+                  <div aria-label="大小" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">大小</span>
+                    <button aria-label="缩小脸部" data-testid="character-assembly-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustScale(-0.05)} type="button">−</button>
+                    <output aria-label="脸部大小" data-testid="character-assembly-scale">{session.draft.facePlacement.scale.toFixed(2)}×</output>
+                    <button aria-label="放大脸部" data-testid="character-assembly-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustScale(0.05)} type="button">+</button>
+                  </div>
+                </>
+              )}
+              <button
+                className="character-assembly-reset"
+                data-testid="character-assembly-reset"
+                disabled={isTestingHeadMotion}
+                onClick={resetPlacement}
+                type="button"
+              >
+                重置
+              </button>
+            </div>
+          ) : null}
       </div>
 
       <footer className="character-assembly-workbench-footer">
@@ -1280,10 +1375,15 @@ export function CharacterAssemblyWorkbench({
             ) : null}
             <button
               aria-expanded={isFineTuneOpen}
+              aria-controls="character-assembly-fine-tune-panel"
               className="character-assembly-fine-tune-toggle"
               data-testid="character-assembly-fine-tune-toggle"
+              ref={fineTuneTriggerRef}
               disabled={isEditingNeckPivot || isTestingHeadMotion}
-              onClick={() => setIsFineTuneOpen((open) => !open)}
+              onClick={() => {
+                setIsExpressionPreviewOpen(false);
+                setIsFineTuneOpen((open) => !open);
+              }}
               type="button"
             >
               精调
@@ -1324,6 +1424,78 @@ export function CharacterAssemblyWorkbench({
                 <button onClick={commit} type="button">应用</button>
               </div>
             ) : null}
+          <div className="character-assembly-expression-preview">
+            <button
+              aria-controls="character-assembly-expression-preview-options"
+              aria-expanded={isExpressionPreviewOpen}
+              className="character-assembly-expression-preview-toggle"
+              data-testid="character-assembly-expression-preview-toggle"
+              ref={expressionPreviewTriggerRef}
+              onClick={() => {
+                setIsFineTuneOpen(false);
+                setIsExpressionPreviewOpen((open) => !open);
+              }}
+              type="button"
+            >
+              预览表情
+            </button>
+            {isExpressionPreviewOpen ? (
+              <div
+                aria-label="预览表情"
+                className="character-assembly-expression-preview-options"
+                data-testid="character-assembly-expression-preview-options"
+                id="character-assembly-expression-preview-options"
+                ref={expressionPreviewPanelRef}
+                role="group"
+              >
+                {isCreating ? (
+                  <button
+                    aria-pressed={selectedFace !== '$mouth'}
+                    data-testid="character-assembly-expression-choice"
+                    onClick={() => {
+                      setSelectedFace(defaultExpressionId);
+                      setIsExpressionPreviewOpen(false);
+                      window.requestAnimationFrame(() => expressionPreviewTriggerRef.current?.focus());
+                    }}
+                    type="button"
+                  >
+                    默认
+                  </button>
+                ) : (
+                  expressions.map((expression) => (
+                    <button
+                      aria-pressed={selectedFace === expression.id}
+                      data-expression-id={expression.id}
+                      data-testid="character-assembly-expression-choice"
+                      key={expression.id}
+                      onClick={() => {
+                        setSelectedFace(expression.id);
+                        setIsExpressionPreviewOpen(false);
+                        window.requestAnimationFrame(() => expressionPreviewTriggerRef.current?.focus());
+                      }}
+                      type="button"
+                    >
+                      {expression.name}
+                    </button>
+                  ))
+                )}
+                {hasMouth ? (
+                  <button
+                    aria-pressed={selectedFace === '$mouth'}
+                    data-testid="character-assembly-expression-mouth"
+                    onClick={() => {
+                      setSelectedFace('$mouth');
+                      setIsExpressionPreviewOpen(false);
+                      window.requestAnimationFrame(() => expressionPreviewTriggerRef.current?.focus());
+                    }}
+                    type="button"
+                  >
+                    张嘴
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
           </div>
           {isLayoutReuseOpen && layoutReuseTarget ? (
             <div
@@ -1397,67 +1569,6 @@ export function CharacterAssemblyWorkbench({
                   </span>
                 ) : null}
               </output>
-            </div>
-          ) : null}
-          {isFineTuneOpen && !isEditingNeckPivot ? (
-            <div
-              aria-label={`${activeEditTarget === 'head' ? '头部' : '脸部'}精调`}
-              className="character-assembly-fine-tune-panel"
-              data-testid="character-assembly-fine-tune-panel"
-              role="group"
-            >
-              {activeEditTarget === 'head' && head ? (
-                <>
-                  <div aria-label="头部左右位置" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">头部左右</span>
-                    <button aria-label="向左移动头部" data-testid="character-assembly-head-left-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(-1, 0)} type="button">−</button>
-                    <output aria-label="头部水平位置" data-testid="character-assembly-head-offset-x">{head.placement.offsetX.toFixed(1)}</output>
-                    <button aria-label="向右移动头部" data-testid="character-assembly-head-right-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(1, 0)} type="button">+</button>
-                  </div>
-                  <div aria-label="头部上下位置" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">头部上下</span>
-                    <button aria-label="向上移动头部" data-testid="character-assembly-head-up-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(0, -1)} type="button">−</button>
-                    <output aria-label="头部垂直位置" data-testid="character-assembly-head-offset-y">{head.placement.offsetY.toFixed(1)}</output>
-                    <button aria-label="向下移动头部" data-testid="character-assembly-head-down-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(0, 1)} type="button">+</button>
-                  </div>
-                  <div aria-label="头部大小" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">头部大小</span>
-                    <button aria-label="缩小头部" data-testid="character-assembly-head-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustHeadScale(-0.05)} type="button">−</button>
-                    <output aria-label="头部大小" data-testid="character-assembly-head-scale">{head.placement.scale.toFixed(2)}×</output>
-                    <button aria-label="放大头部" data-testid="character-assembly-head-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustHeadScale(0.05)} type="button">+</button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div aria-label="左右" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">左右</span>
-                    <button aria-label="向左移动脸部" data-testid="character-assembly-left-step" disabled={isTestingHeadMotion} onClick={() => moveFace(-1, 0)} type="button">−</button>
-                    <output aria-label="左右偏移" data-testid="character-assembly-offset-x">{session.draft.facePlacement.offsetX.toFixed(1)}</output>
-                    <button aria-label="向右移动脸部" data-testid="character-assembly-right-step" disabled={isTestingHeadMotion} onClick={() => moveFace(1, 0)} type="button">+</button>
-                  </div>
-                  <div aria-label="上下" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">上下</span>
-                    <button aria-label="向上移动脸部" data-testid="character-assembly-up-step" disabled={isTestingHeadMotion} onClick={() => moveFace(0, -1)} type="button">−</button>
-                    <output aria-label="上下偏移" data-testid="character-assembly-offset-y">{session.draft.facePlacement.offsetY.toFixed(1)}</output>
-                    <button aria-label="向下移动脸部" data-testid="character-assembly-down-step" disabled={isTestingHeadMotion} onClick={() => moveFace(0, 1)} type="button">+</button>
-                  </div>
-                  <div aria-label="大小" className="character-assembly-control-set" role="group">
-                    <span className="character-assembly-control-label">大小</span>
-                    <button aria-label="缩小脸部" data-testid="character-assembly-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustScale(-0.05)} type="button">−</button>
-                    <output aria-label="脸部大小" data-testid="character-assembly-scale">{session.draft.facePlacement.scale.toFixed(2)}×</output>
-                    <button aria-label="放大脸部" data-testid="character-assembly-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustScale(0.05)} type="button">+</button>
-                  </div>
-                </>
-              )}
-              <button
-                className="character-assembly-reset"
-                data-testid="character-assembly-reset"
-                disabled={isTestingHeadMotion}
-                onClick={resetPlacement}
-                type="button"
-              >
-                重置
-              </button>
             </div>
           ) : null}
         </div>

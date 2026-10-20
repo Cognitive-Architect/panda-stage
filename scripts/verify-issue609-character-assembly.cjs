@@ -1,6 +1,6 @@
-const { app, ipcMain } = require('electron');
+const { app, ipcMain, screen } = require('electron');
 const { deflateSync } = require('node:zlib');
-const { mkdirSync, readFileSync, writeFileSync } = require('node:fs');
+const { mkdirSync, readFileSync, readdirSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 const { createMainWindow } = require('../dist-electron/main/windows/main-window.js');
 const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
@@ -17,7 +17,10 @@ const issue792Only = process.argv.includes('--issue792-mouth-overflow');
 const issue797Only = process.argv.includes('--issue797-head-face-edit');
 const issue798Only = process.argv.includes('--issue798-add-to-shot-navigation');
 const issue799Only = process.argv.includes('--issue799-layout-reuse');
-const focusedCharacterDrawerRun = issue792Only || issue797Only || issue798Only || issue799Only;
+const issue813Only = process.argv.includes('--issue813-assembly-canvas-space');
+const issue813BaselineOnly = process.argv.includes('--issue813-baseline');
+const issue813Run = issue813Only || issue813BaselineOnly;
+const focusedCharacterDrawerRun = issue792Only || issue797Only || issue798Only || issue799Only || issue813Run;
 const ISSUE683_BASELINE_SHA = 'bed0b353f40238bfd820861c0e5349f0e101e977';
 
 // Bounded S07 proof: use the production Character drawer, Assembly workbench,
@@ -25,8 +28,12 @@ const ISSUE683_BASELINE_SHA = 'bed0b353f40238bfd820861c0e5349f0e101e977';
 // a real Windows Electron renderer. The Issue #612 Create-drawer contract is
 // included; synthetic fixture bytes stay outside the repository, and the
 // receipt does not claim human visual acceptance.
-const acceptanceRoot = issue799Only
-  ? 'D:\\PandaStage-Acceptance\\issue799-layout-reuse'
+const acceptanceRoot = issue813BaselineOnly
+  ? 'D:\\PandaStage-Acceptance\\issue813-assembly-canvas-space\\baseline'
+  : issue813Only
+    ? 'D:\\PandaStage-Acceptance\\issue813-assembly-canvas-space'
+    : issue799Only
+      ? 'D:\\PandaStage-Acceptance\\issue799-layout-reuse'
   : issue797Only
     ? 'D:\\PandaStage-Acceptance\\issue797-head-face-edit'
     : issue798Only
@@ -41,8 +48,10 @@ const userDataRoot = path.join(runRoot, 'electron-user-data');
 const projectRoot = path.join(
   runRoot,
   'projects',
-  issue799Only
-    ? 'issue799-layout-reuse.pandastage'
+  issue813Run
+    ? 'issue813-assembly-canvas-space.pandastage'
+    : issue799Only
+      ? 'issue799-layout-reuse.pandastage'
     : issue797Only
       ? 'issue797-head-face-edit.pandastage'
       : issue798Only
@@ -94,6 +103,8 @@ const IDS = Object.freeze({
   issue799TargetFace: 'a0609000-0000-4000-8000-000000000025',
   issue799TargetMouth: 'a0609000-0000-4000-8000-000000000026',
   issue799TargetAngryFace: 'a0609000-0000-4000-8000-000000000027',
+  issue813AlternateExpression: 'a0609000-0000-4000-8000-000000000028',
+  issue813AlternateFace: 'a0609000-0000-4000-8000-000000000029',
 });
 
 const COLORS = new Map([
@@ -107,6 +118,7 @@ const COLORS = new Map([
   [IDS.issue799TargetFace, [232, 200, 132]],
   [IDS.issue799TargetMouth, [188, 92, 84]],
   [IDS.issue799TargetAngryFace, [202, 134, 96]],
+  [IDS.issue813AlternateFace, [112, 166, 126]],
 ]);
 
 const channels = [];
@@ -304,20 +316,35 @@ function createFixture() {
   const issue792Character = {
     id: IDS.issue792Character,
     mode: 'composite',
-    name: issue798Only
-      ? '角色详情导航长名称验收熊猫'
-      : issue797Only
-        ? 'Issue 797 Head and Face Panda'
-        : 'Issue 792 Composite Panda',
+    name: issue813Run
+      ? 'Issue 813 Assembly Space Panda'
+      : issue798Only
+        ? '角色详情导航长名称验收熊猫'
+        : issue797Only
+          ? 'Issue 797 Head and Face Panda'
+          : 'Issue 792 Composite Panda',
     baseAssetId: IDS.face,
     defaultVoiceProfileId: IDS.issue792VoiceProfile,
-    expressions: [
-      {
-        id: IDS.issue792Expression,
-        name: 'Neutral',
-        assetId: IDS.face,
-      },
-    ],
+    expressions: issue813Run
+      ? [
+          {
+            id: IDS.issue792Expression,
+            name: 'Neutral',
+            assetId: IDS.face,
+          },
+          {
+            id: IDS.issue813AlternateExpression,
+            name: 'Happy',
+            assetId: IDS.issue813AlternateFace,
+          },
+        ]
+      : [
+          {
+            id: IDS.issue792Expression,
+            name: 'Neutral',
+            assetId: IDS.face,
+          },
+        ],
     defaultExpressionId: IDS.issue792Expression,
     defaultScale: 1,
     defaultFlipX: false,
@@ -457,6 +484,9 @@ function createFixture() {
       imageAsset(IDS.bodyAlt, 'Assembly Body Alternate', 720, 920),
       imageAsset(IDS.face, 'Assembly Default Face', 320, 280),
       imageAsset(IDS.mouth, 'Assembly Mouth', 320, 280),
+      ...(issue813Run
+        ? [imageAsset(IDS.issue813AlternateFace, 'Assembly Alternate Face', 320, 280)]
+        : []),
       ...(focusedCharacterDrawerRun
         ? [imageAsset(IDS.issue792Head, 'Assembly Head', 720, 920)]
         : []),
@@ -480,11 +510,11 @@ function createFixture() {
           issue799RatioCharacter,
           issue799MissingCharacter,
         ]
-      : issue792Only || issue797Only || issue798Only
+      : issue792Only || issue797Only || issue798Only || issue813Run
         ? [
             legacyCharacter,
             issue792Character,
-            ...(issue797Only ? [issue797HeadlessCharacter] : []),
+            ...(issue797Only || issue813Run ? [issue797HeadlessCharacter] : []),
           ]
         : [legacyCharacter],
     voiceProfiles: [
@@ -496,7 +526,7 @@ function createFixture() {
         rate: 1,
         pitch: 0,
       },
-      ...(issue792Only || issue797Only || issue798Only
+      ...(issue792Only || issue797Only || issue798Only || issue813Run
         ? [{
             id: IDS.issue792VoiceProfile,
             name: 'Issue 792 Panda voice',
@@ -506,7 +536,7 @@ function createFixture() {
             pitch: 0,
           }]
         : []),
-      ...(issue797Only
+      ...(issue797Only || issue813Run
         ? [{
             id: IDS.issue797HeadlessVoiceProfile,
             name: 'Issue 797 Headless Panda voice',
@@ -1121,6 +1151,14 @@ async function clickWithNativeInput(window, selector, label = selector) {
     const point = hitSamples.find((sample) => sample.hitTarget) ?? hitSamples[0];
     return {
       ...point,
+      elementBounds: {
+        x: rect.x,
+        y: rect.y,
+        right: rect.right,
+        bottom: rect.bottom,
+      },
+      elementTestId: element.getAttribute('data-testid') ?? '',
+      viewportBounds: { width: window.innerWidth, height: window.innerHeight },
       width: rect.width,
       height: rect.height,
       disabled: element.disabled ?? false,
@@ -1137,9 +1175,11 @@ async function clickWithNativeInput(window, selector, label = selector) {
   assert(!point.disabled, `${label} is disabled.`);
   assert(
     point.hitTarget,
-    `${label} has no pointer-accessible point within its visible bounds; sampled hit targets: ${JSON.stringify(point.hitSamples)}.`,
+    `${label} has no pointer-accessible point within its visible bounds: ${JSON.stringify(point)}.`,
   );
-  await sendPointerClick(window, point.x, point.y);
+  const displayScale = screen.getDisplayMatching(window.getBounds()).scaleFactor;
+  const inputScale = await window.webContents.executeJavaScript('window.devicePixelRatio') / displayScale;
+  await sendPointerClick(window, point.x * inputScale, point.y * inputScale);
   await wait(80);
   return point;
 }
@@ -3356,6 +3396,650 @@ async function verifyIssue792MouthOverflow(window) {
   };
 }
 
+async function verifyIssue813AssemblyCanvasSpace(window) {
+  const screenshots = [];
+  const evidence = {};
+  inProgressEvidence = evidence;
+  const workbenchSelector = '[data-testid="character-assembly-workbench"]';
+  const workbenchQuery = 'document.querySelector(' + JSON.stringify(workbenchSelector) + ')';
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-list-view"] [data-character-id="' + IDS.issue792Character + '"]',
+    'Issue 813 Head + Face Character card',
+  );
+  await waitForDom(
+    window,
+    'document.querySelector(\'[data-testid="character-detail-view"]\')?.dataset.characterEditorId === ' +
+      JSON.stringify(IDS.issue792Character),
+    'Issue 813 Character detail did not open.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-workspace-assembly-tab"]',
+    'Assembly workspace tab',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.dataset.sessionKind === "edit"',
+    'Issue 813 Character did not enter the Assembly Workbench.',
+  );
+  await waitForPaint(window);
+
+  const readLayoutScript = [
+    '(() => {',
+    '  const rect = (element) => {',
+    '    const bounds = element?.getBoundingClientRect();',
+    '    return bounds && {',
+    '      x: Math.round(bounds.x * 10) / 10,',
+    '      y: Math.round(bounds.y * 10) / 10,',
+    '      width: Math.round(bounds.width * 10) / 10,',
+    '      height: Math.round(bounds.height * 10) / 10,',
+    '      right: Math.round(bounds.right * 10) / 10,',
+    '      bottom: Math.round(bounds.bottom * 10) / 10,',
+    '    };',
+    '  };',
+    '  const intersects = (left, right) => Boolean(left && right',
+    '    && left.x < right.x + right.width',
+    '    && left.x + left.width > right.x',
+    '    && left.y < right.y + right.height',
+    '    && left.y + left.height > right.y);',
+    '  const workbench = document.querySelector(\'[data-testid="character-assembly-workbench"]\');',
+    '  const viewport = workbench?.querySelector(\'[data-testid="character-assembly-preview"]\');',
+    '  const footer = workbench?.querySelector(\'.character-assembly-workbench-footer\');',
+    '  const header = workbench?.querySelector(\'.character-assembly-workbench-header\');',
+    '  const panel = workbench?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\');',
+    '  const history = document.querySelector(\'[data-testid="history-controls"]\');',
+    '  const time = document.querySelector(\'[data-current-time-ms]\');',
+    '  const actionIds = [',
+    '    \'character-assembly-pivot-mode-toggle\',',
+    '    \'character-assembly-fine-tune-toggle\',',
+    '    \'character-assembly-layout-reuse-toggle\',',
+    '    \'character-assembly-test-head-motion\',',
+    '    \'character-assembly-expression-preview-toggle\',',
+    '  ];',
+    '  const actionRects = actionIds.flatMap((id) => {',
+    '    const element = workbench?.querySelector(\'[data-testid="\' + id + \'"]\');',
+    '    return element ? [{ id, rect: rect(element) }] : [];',
+    '  });',
+    '  const panelRect = rect(panel);',
+    '  const imageRects = [...(workbench?.querySelectorAll(\'.character-assembly-part\') ?? [])].map(rect).filter(Boolean);',
+    '  const handleElements = [...(workbench?.querySelectorAll(',
+    '    \'[data-testid="character-assembly-face-drag-target"], [data-testid="character-assembly-head-drag-fallback"], [data-testid="character-assembly-head-scale-handle"], [data-testid="character-assembly-head-pivot-marker"]\',',
+    '  ) ?? [])];',
+    '  const handleRects = handleElements.map(rect).filter(Boolean);',
+    '  const expressionOptions = workbench?.querySelector(\'[data-testid="character-assembly-expression-preview-options"]\');',
+    '  const groups = [...(panel?.querySelectorAll(\'.character-assembly-control-set\') ?? [])];',
+    '  const panelButtons = [...(panel?.querySelectorAll(\'button\') ?? [])];',
+    '  const controlHandleOverlaps = panelButtons.flatMap((button) => handleElements',
+    '    .filter((handle) => intersects(rect(button), rect(handle)))',
+    '    .map((handle) => ({ button: button.dataset.testid ?? \'\', handle: handle.dataset.testid ?? \'\', buttonRect: rect(button), handleRect: rect(handle) })));',
+    '  const pivotToggle = workbench?.querySelector(\'[data-testid="character-assembly-pivot-mode-toggle"]\');',
+    '  const style = workbench ? getComputedStyle(workbench) : null;',
+    '  return {',
+    '    shellMode: document.querySelector(\'[data-testid="editor-layout"]\')?.dataset.shellMode ?? \'\',',
+    '    viewportSize: { width: window.innerWidth, height: window.innerHeight },',
+    '    devicePixelRatio: window.devicePixelRatio,',
+    '    characterId: workbench?.dataset.characterId ?? \'\',',
+    '    sessionKind: workbench?.dataset.sessionKind ?? \'\',',
+    '    hasHead: workbench?.dataset.hasHead ?? \'\',',
+    '    editTarget: workbench?.dataset.editTarget ?? \'\',',
+    '    viewport: rect(viewport),',
+    '    footer: rect(footer),',
+    '    header: rect(header),',
+    '    headerVisible: Boolean(header && getComputedStyle(header).display !== \'none\' && rect(header)?.height > 0),',
+    '    gridTrackCount: style?.gridTemplateRows.trim().split(/\\s+/u).length ?? 0,',
+    '    expressionRows: workbench?.querySelectorAll(\'.character-assembly-face-choices\').length ?? 0,',
+    '    expressionPreviewToggle: rect(workbench?.querySelector(\'[data-testid="character-assembly-expression-preview-toggle"]\')),',
+    '    expressionPreviewOpen: Boolean(expressionOptions),',
+    '    expressionChoices: [...(expressionOptions?.querySelectorAll(\'button\') ?? [])].map((button) => button.textContent.trim()),',
+    '    expressionChoiceIds: [...(expressionOptions?.querySelectorAll(\'button\') ?? [])].map((button) => button.getAttribute(\'data-expression-id\') ?? \'\'),',
+    '    selectedFace: workbench?.dataset.selectedFace ?? \'\',',
+    '    previewFaceAssetId: workbench?.dataset.previewFaceAssetId ?? \'\',',
+    '    projectRevision: workbench?.dataset.projectRevision ?? null,',
+    '    projectDirty: workbench?.dataset.projectDirty ?? null,',
+    '    history: history ? { undo: history.dataset.undoCount, redo: history.dataset.redoCount } : null,',
+    '    timelineTime: time?.dataset.currentTimeMs ?? null,',
+    '    faceOffsetX: Number(workbench?.dataset.faceOffsetX),',
+    '    faceOffsetY: Number(workbench?.dataset.faceOffsetY),',
+    '    faceScale: Number(workbench?.dataset.faceScale),',
+    '    headOffsetX: Number(workbench?.dataset.headOffsetX),',
+    '    headOffsetY: Number(workbench?.dataset.headOffsetY),',
+    '    headScale: Number(workbench?.dataset.headScale),',
+    '    pivotX: Number(workbench?.dataset.headPivotX),',
+    '    pivotY: Number(workbench?.dataset.headPivotY),',
+    '    pivotEditing: workbench?.dataset.neckPivotEditing ?? \'\',',
+    '    pivotButtonLabel: pivotToggle?.textContent.trim() ?? \'\',',
+    '    pivotCompleteCount: [...(workbench?.querySelectorAll(\'button\') ?? [])].filter((button) => button.textContent.trim() === \'完成转轴\').length,',
+    '    pivotGuidancePresent: Boolean(workbench?.querySelector(\'[data-testid="character-assembly-pivot-guidance"]\')),',
+    '    pivotHandle: rect(workbench?.querySelector(\'[data-testid="character-assembly-head-pivot"]\')),',
+    '    actionRects,',
+    '    panel: panelRect,',
+    '    panelLayout: panel?.dataset.overlayLayout ?? \'\',',
+    '    controlGroups: groups.map((group) => ({ label: group.getAttribute(\'aria-label\') ?? \'\', rect: rect(group) })),',
+    '    panelButtons: panelButtons.map((button) => ({ testId: button.dataset.testid ?? \'\', rect: rect(button), disabled: button.disabled })),',
+    '    imageRects,',
+    '    handleRects,',
+    '    imageOverlap: imageRects.some((image) => intersects(panelRect, image)),',
+    '    handleOverlap: handleRects.some((handle) => intersects(panelRect, handle)),',
+    '    controlHandleOverlaps,',
+    '    controlHandleOverlap: controlHandleOverlaps.length > 0,',
+    '    focusTestId: document.activeElement?.getAttribute(\'data-testid\') ?? \'\',',
+    '  };',
+    '})()',
+  ].join('\n');
+  const readLayout = () => window.webContents.executeJavaScript(readLayoutScript);
+  const clickVisibleExpressionOption = async (index, label) => {
+    await waitForDom(
+      window,
+      'document.querySelectorAll(".character-assembly-expression-preview-options button").length > ' + index,
+      label + ' did not appear.',
+    );
+    const availableOptions = await window.webContents.executeJavaScript(
+      'Array.from(document.querySelectorAll(".character-assembly-expression-preview-options button")).map((button) => ({ id: button.getAttribute("data-expression-id") ?? "", text: button.textContent.trim(), rect: (() => { const rect = button.getBoundingClientRect(); return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }; })() }))',
+    );
+    const point = await window.webContents.executeJavaScript(
+      '(() => { const element = document.querySelectorAll(".character-assembly-expression-preview-options button")[' + index + ']; ' +
+        'const bounds = element?.getBoundingClientRect(); const style = element ? getComputedStyle(element) : null; ' +
+        'const x = bounds ? Math.round(bounds.left + bounds.width / 2) : 0; ' +
+        'const y = bounds ? Math.round(bounds.top + bounds.height / 2) : 0; const hit = document.elementFromPoint(x, y); ' +
+        'return { x, y, width: bounds?.width ?? 0, height: bounds?.height ?? 0, ' +
+        'visible: Boolean(bounds?.width > 0 && bounds?.height > 0 && style?.visibility === "visible" && style?.display !== "none"), ' +
+        'hitTarget: Boolean(element && (hit === element || element.contains(hit))), hitTestId: hit?.getAttribute("data-testid") ?? "" }; })()',
+    );
+    assert(point.visible && point.hitTarget, label + ' is not pointer-accessible: ' + JSON.stringify({ point, availableOptions }));
+    const displayScale = screen.getDisplayMatching(window.getBounds()).scaleFactor;
+    const inputScale = await window.webContents.executeJavaScript('window.devicePixelRatio') / displayScale;
+    await sendPointerClick(window, point.x * inputScale, point.y * inputScale);
+    await wait(80);
+    return point;
+  };
+  const assertRectStable = (before, after, label) => {
+    assert(before && after, label + ' rectangle is missing.');
+    for (const key of ['x', 'y', 'width', 'height']) {
+      assert(
+        Math.abs(before[key] - after[key]) <= 2,
+        label + ' moved on ' + key + ': ' + JSON.stringify({ before, after }),
+      );
+    }
+  };
+  const assertActionsStable = (before, after, label) => {
+    const afterById = new Map(after.actionRects.map((action) => [action.id, action.rect]));
+    for (const action of before.actionRects) {
+      assertRectStable(action.rect, afterById.get(action.id), label + ' ' + action.id);
+    }
+  };
+  const assertProjectSessionStable = (before, after, label) => {
+    assert(before.projectRevision === after.projectRevision, label + ' changed Project revision.');
+    assert(before.projectDirty === after.projectDirty, label + ' changed Project dirty state.');
+    assert(JSON.stringify(before.history) === JSON.stringify(after.history), label + ' changed History.');
+    assert(before.timelineTime === after.timelineTime, label + ' changed Timeline time.');
+  };
+  const assertFineTuneOverlay = (layout, label) => {
+    assert(layout.panel, label + ' did not render the precision overlay.');
+    assert(layout.controlGroups.length === 3, label + ' did not render three adjustment groups.');
+    assert(
+      layout.controlGroups[0].rect.y < layout.controlGroups[1].rect.y &&
+        layout.controlGroups[1].rect.y < layout.controlGroups[2].rect.y,
+      label + ' adjustment groups are not vertically stacked.',
+    );
+    assert(layout.panelButtons.some((button) => button.testId === 'character-assembly-reset'), label + ' did not expose Reset.');
+    assert(
+      layout.panelButtons.every((button) => button.rect.width >= 44 && button.rect.height >= 44),
+      label + ' lost 44px touch targets.',
+    );
+    assert(
+      layout.panel.x >= layout.viewport.x - 1 &&
+        layout.panel.right <= layout.viewport.right + 1 &&
+        layout.panel.y >= layout.viewport.y - 1 &&
+        layout.panel.bottom <= layout.viewport.bottom + 1,
+      label + ' escaped the preview canvas bounds.',
+    );
+    assert(
+      !layout.controlHandleOverlap,
+      label + ' controls cover a Head, Face, or pivot handle: ' + JSON.stringify(layout.controlHandleOverlaps),
+    );
+  };
+  const before = await readLayout();
+  evidence.initialLayout = before;
+  await waitForPaint(window);
+  evidence.initialScreenshot = await capture(window, 'issue813-assembly-before.png');
+  screenshots.push(evidence.initialScreenshot);
+
+  if (issue813BaselineOnly) {
+    return {
+      issue: 813,
+      passed: true,
+      baseline: true,
+      commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+      verificationGate: 'issue813-baseline-capture',
+      projectRoot,
+      syntheticInput: true,
+      humanAcceptance: false,
+      evidenceKind: 'same-size-same-character-pre-change-electron-geometry-and-screenshot',
+      evidence,
+      screenshots,
+    };
+  }
+
+  const baselineRoot = 'D:\\PandaStage-Acceptance\\issue813-assembly-canvas-space\\baseline';
+  const baselineRuns = readdirSync(baselineRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith('run-'))
+    .map((entry) => entry.name)
+    .sort();
+  assert(baselineRuns.length > 0, 'Issue 813 baseline geometry is missing.');
+  const baselineResultsPath = path.join(
+    baselineRoot,
+    baselineRuns[baselineRuns.length - 1],
+    'results.json',
+  );
+  const baselineResults = JSON.parse(readFileSync(baselineResultsPath, 'utf8'));
+  const baselineLayout = baselineResults.evidence?.initialLayout;
+  assert(baselineResults.passed && baselineLayout?.viewport, 'Issue 813 baseline capture did not pass.');
+  evidence.baseline = {
+    resultsPath: baselineResultsPath,
+    screenshot: baselineResults.evidence.initialScreenshot,
+    layout: baselineLayout,
+  };
+  evidence.viewportChange = {
+    previewTopRise: baselineLayout.viewport.y - before.viewport.y,
+    previewHeightGain: before.viewport.height - baselineLayout.viewport.height,
+    sameLeft: Math.abs(before.viewport.x - baselineLayout.viewport.x) <= 2,
+    sameWidth: Math.abs(before.viewport.width - baselineLayout.viewport.width) <= 2,
+  };
+  assert(before.shellMode === 'landscape', 'Issue 813 assembly verifier did not use Cloud Touch landscape layout.');
+  assert(before.characterId === IDS.issue792Character, 'Issue 813 before/after fixture Character ID changed.');
+  assert(before.viewportSize.width === baselineLayout.viewportSize.width && before.viewportSize.height === baselineLayout.viewportSize.height, 'Issue 813 before/after window sizes differ.');
+  assert(Math.abs(before.viewport.x - baselineLayout.viewport.x) <= 2, 'Issue 813 changed the preview viewport left edge.');
+  assert(Math.abs(before.viewport.width - baselineLayout.viewport.width) <= 2, 'Issue 813 changed the preview viewport width.');
+  assert(evidence.viewportChange.previewTopRise > 20, 'Removing the landscape header did not raise the preview viewport.');
+  assert(evidence.viewportChange.previewHeightGain > 20, 'Removing the landscape header did not increase usable preview height.');
+  assert(!before.headerVisible && before.gridTrackCount === 2, 'Landscape Assembly still reserves an empty header row.');
+  assert(before.expressionRows === 0, 'Landscape Assembly still renders a permanent expression-choice row.');
+  assert(before.expressionPreviewToggle, 'Expression preview is not available from the contextual footer control.');
+  assert(before.pivotCompleteCount === 0 && !before.pivotGuidancePresent, 'Pivot completion still has a duplicate header action or guidance.');
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-pivot-mode-toggle"]',
+    'Toggle neck pivot editing',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.dataset.neckPivotEditing === "true"',
+    'The footer pivot toggle did not enter pivot editing.',
+  );
+  const pivotMode = await readLayout();
+  assert(pivotMode.pivotCompleteCount === 1, 'Pivot mode does not expose exactly one “完成转轴” exit.');
+  assert(pivotMode.pivotButtonLabel === '完成转轴', 'The original footer pivot toggle did not switch its label.');
+  assert(pivotMode.pivotHandle, 'Pivot mode removed the draggable green crosshair.');
+  assert(!pivotMode.pivotGuidancePresent, 'Pivot mode still displays the nonessential instruction row.');
+  assertRectStable(before.viewport, pivotMode.viewport, 'Pivot mode preview viewport');
+  assertProjectSessionStable(before, pivotMode, 'Opening pivot mode');
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'issue813-pivot-mode.png'));
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-pivot-mode-toggle"]',
+    'Complete neck pivot editing',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.dataset.neckPivotEditing === "false"',
+    'The single footer pivot toggle did not leave pivot editing.',
+  );
+
+  if (before.editTarget !== 'head') {
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-assembly-head-asset-selected"]',
+      'Select Head placement card',
+    );
+    await waitForDom(window, workbenchQuery + '?.dataset.editTarget === "head"', 'Head placement card did not select Head.');
+  }
+  const headBaseline = await readLayout();
+  const panelCycles = [];
+  for (let cycle = 1; cycle <= 3; cycle += 1) {
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-assembly-fine-tune-toggle"]',
+      'Open Head fine tune',
+    );
+    await waitForDom(
+      window,
+      workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+      'Fine tune overlay did not open.',
+    );
+    await waitForPaint(window);
+    const opened = await readLayout();
+    panelCycles.push({ cycle, opened });
+    assertFineTuneOverlay(opened, 'Head fine tune cycle ' + cycle);
+    assertRectStable(headBaseline.viewport, opened.viewport, 'Opening Head fine tune');
+    assertRectStable(headBaseline.footer, opened.footer, 'Opening Head fine tune');
+    assertActionsStable(headBaseline, opened, 'Opening Head fine tune');
+    assertProjectSessionStable(headBaseline, opened, 'Opening Head fine tune');
+    if (cycle === 1) {
+      const headX = opened.headOffsetX;
+      await clickWithNativeInput(
+        window,
+        '[data-testid="character-assembly-head-right-step"]',
+        'Move Head one pixel right',
+      );
+      await waitForDom(
+        window,
+        'Number(' + workbenchQuery + '?.dataset.headOffsetX) === ' + JSON.stringify(headX + 1),
+        'Head fine tune did not preserve its one-pixel step handler.',
+      );
+      const nudged = await readLayout();
+      assertProjectSessionStable(headBaseline, nudged, 'Head fine tune step');
+      await clickWithNativeInput(
+        window,
+        '[data-testid="character-assembly-reset"]',
+        'Reset Head placement',
+      );
+      await waitForDom(
+        window,
+        workbenchQuery + '?.dataset.headOffsetX === "0" && ' +
+          workbenchQuery + '?.dataset.headOffsetY === "0" && ' +
+          workbenchQuery + '?.dataset.headScale === "1"',
+        'Head Reset did not restore the default placement.',
+      );
+      const reset = await readLayout();
+      assertProjectSessionStable(headBaseline, reset, 'Head Reset');
+      await waitForPaint(window);
+      screenshots.push(await capture(window, 'issue813-head-fine-tune.png'));
+      await sendKeyStroke(window, 'ESC');
+      await waitForDom(
+        window,
+        '!' + workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+        'Escape did not close the fine tune overlay.',
+      );
+      const escaped = await readLayout();
+      evidence.keyboardEscape = escaped;
+      assert(
+        escaped.focusTestId === 'character-assembly-fine-tune-toggle',
+        'Escape did not return focus to the fine tune trigger: ' + JSON.stringify(escaped),
+      );
+    } else {
+      await clickWithNativeInput(
+        window,
+        '[data-testid="character-assembly-fine-tune-toggle"]',
+        'Close Head fine tune',
+      );
+      await waitForDom(
+        window,
+        '!' + workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+        'Fine tune overlay did not close.',
+      );
+    }
+    const closed = await readLayout();
+    assertRectStable(headBaseline.viewport, closed.viewport, 'Closing Head fine tune');
+    assertRectStable(headBaseline.footer, closed.footer, 'Closing Head fine tune');
+    assertActionsStable(headBaseline, closed, 'Closing Head fine tune');
+    assertProjectSessionStable(headBaseline, closed, 'Closing Head fine tune');
+  }
+  evidence.panelCycles = panelCycles;
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-expression-preview-toggle"]',
+    'Open contextual expression preview',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-expression-preview-options"]\')',
+    'The contextual expression preview options did not open.',
+  );
+  await waitForPaint(window);
+  const expressionMenu = await readLayout();
+  assert(expressionMenu.expressionChoices.length === 3, 'Expression preview did not retain Default, alternate, and Mouth choices.');
+  assert(!expressionMenu.expressionRows, 'Expression preview options were rendered as a permanent top row.');
+  assertActionsStable(headBaseline, expressionMenu, 'Opening expression preview');
+  assertRectStable(headBaseline.viewport, expressionMenu.viewport, 'Opening expression preview');
+  assertProjectSessionStable(headBaseline, expressionMenu, 'Opening expression preview');
+  screenshots.push(await capture(window, 'issue813-expression-preview-menu.png'));
+  const expressionMenuAfterCapture = await readLayout();
+  evidence.expressionMenuAfterCapture = expressionMenuAfterCapture;
+  if (!expressionMenuAfterCapture.expressionPreviewOpen) {
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-assembly-expression-preview-toggle"]',
+      'Reopen contextual expression preview after screenshot capture',
+    );
+  }
+  evidence.alternateExpressionClick = await clickVisibleExpressionOption(
+    1,
+    'Preview alternate expression',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.dataset.selectedFace === ' + JSON.stringify(IDS.issue813AlternateExpression),
+    'Alternate expression selection did not update the preview.',
+  );
+  let expressionSelected = await readLayout();
+  assert(expressionSelected.previewFaceAssetId === IDS.issue813AlternateFace, 'Alternate expression preview uses the wrong Face asset.');
+  assert(expressionSelected.focusTestId === 'character-assembly-expression-preview-toggle', 'Expression choice did not return focus to its trigger.');
+  assertProjectSessionStable(headBaseline, expressionSelected, 'Previewing alternate expression');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-expression-preview-toggle"]',
+    'Open expression preview for Mouth',
+  );
+  await clickVisibleExpressionOption(
+    2,
+    'Preview Mouth',
+  );
+  await waitForDom(window, workbenchQuery + '?.dataset.selectedFace === "$mouth"', 'Mouth preview did not remain available.');
+  expressionSelected = await readLayout();
+  assert(expressionSelected.previewFaceAssetId === IDS.mouth, 'Mouth preview uses the wrong Face asset.');
+  assertProjectSessionStable(headBaseline, expressionSelected, 'Previewing Mouth');
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-default-face-select"]',
+    'Select Face placement card',
+  );
+  await waitForDom(window, workbenchQuery + '?.dataset.editTarget === "face"', 'Face placement card did not select Face.');
+  const faceBaseline = await readLayout();
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Open Face fine tune',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+    'Face fine tune overlay did not open.',
+  );
+  await waitForPaint(window);
+  const facePanel = await readLayout();
+  assertFineTuneOverlay(facePanel, 'Face fine tune');
+  assertActionsStable(faceBaseline, facePanel, 'Opening Face fine tune');
+  assertRectStable(faceBaseline.viewport, facePanel.viewport, 'Opening Face fine tune');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-right-step"]', 'Move Face one pixel right');
+  await waitForDom(
+    window,
+    'Number(' + workbenchQuery + '?.dataset.faceOffsetX) === ' + JSON.stringify(faceBaseline.faceOffsetX + 1),
+    'Face fine tune did not preserve its one-pixel step handler.',
+  );
+  await clickWithNativeInput(window, '[data-testid="character-assembly-scale-up"]', 'Increase Face scale');
+  await waitForDom(
+    window,
+    'Number(' + workbenchQuery + '?.dataset.faceScale) === ' + JSON.stringify(Number((faceBaseline.faceScale + 0.05).toFixed(2))),
+    'Face fine tune did not preserve its 0.05 scale step.',
+  );
+  const faceAdjusted = await readLayout();
+  assertProjectSessionStable(faceBaseline, faceAdjusted, 'Face fine tune controls');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-reset"]', 'Reset Face placement');
+  await waitForDom(
+    window,
+    workbenchQuery + '?.dataset.faceOffsetX === "0" && ' +
+      workbenchQuery + '?.dataset.faceOffsetY === "0" && ' +
+      workbenchQuery + '?.dataset.faceScale === "1"',
+    'Face Reset did not restore the default placement.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Close Face fine tune',
+  );
+  const faceClosed = await readLayout();
+  assertRectStable(faceBaseline.viewport, faceClosed.viewport, 'Closing Face fine tune');
+  assertRectStable(faceBaseline.footer, faceClosed.footer, 'Closing Face fine tune');
+  assertActionsStable(faceBaseline, faceClosed, 'Closing Face fine tune');
+  assertProjectSessionStable(faceBaseline, faceClosed, 'Face Reset and close');
+
+  const originalSize = window.getSize();
+  const originalZoomFactor = window.webContents.getZoomFactor();
+  const responsiveEvidence = [];
+  try {
+    for (const scenario of [
+      { name: 'compact-landscape-125', width: 1100, height: 760, zoom: 1.25 },
+      { name: 'narrow-cloud-touch-125', width: 960, height: 800, zoom: 1.25 },
+    ]) {
+      const previousWindowWidth = (await readLayout()).viewportSize.width;
+      window.webContents.setZoomFactor(scenario.zoom);
+      const targetDevicePixelRatio = screen.getDisplayMatching(window.getBounds()).scaleFactor * scenario.zoom;
+      await waitForDom(
+        window,
+        `Math.abs(window.devicePixelRatio - ${targetDevicePixelRatio}) < 0.02`,
+        scenario.name + ' browser zoom did not settle.',
+        5_000,
+      );
+      window.setSize(scenario.width, scenario.height);
+      await waitForDom(
+        window,
+        `window.innerWidth < ${previousWindowWidth}`,
+        scenario.name + ' renderer viewport width did not shrink.',
+        5_000,
+      );
+      await wait(120);
+      const beforeOpen = await readLayout();
+      assert(beforeOpen.shellMode === 'landscape', scenario.name + ' did not retain Cloud Touch landscape mode.');
+      const openControlClick = await clickWithNativeInput(
+        window,
+        '[data-testid="character-assembly-fine-tune-toggle"]',
+        'Open fine tune at ' + scenario.name,
+      );
+      await wait(120);
+      const afterOpenClick = await readLayout();
+      if (!afterOpenClick.panel) {
+        throw new Error(scenario.name + ' fine tune overlay did not open after native click: ' + JSON.stringify({ openControlClick, beforeOpen, afterOpenClick }));
+      }
+      await waitForDom(
+        window,
+        workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+        scenario.name + ' fine tune overlay did not open.',
+        2_000,
+      );
+      await wait(60);
+      const opened = await readLayout();
+      screenshots.push(await capture(window, 'issue813-' + scenario.name + '-fine-tune.png'));
+      assertFineTuneOverlay(opened, scenario.name);
+      assertRectStable(beforeOpen.viewport, opened.viewport, scenario.name + ' viewport');
+      assertRectStable(beforeOpen.footer, opened.footer, scenario.name + ' footer');
+      assertActionsStable(beforeOpen, opened, scenario.name);
+      responsiveEvidence.push({ ...scenario, beforeOpen, opened });
+      await sendKeyStroke(window, 'ESC');
+      await waitForDom(
+        window,
+        '!' + workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+        scenario.name + ' Escape did not close the overlay.',
+      );
+    }
+  } finally {
+    window.webContents.setZoomFactor(originalZoomFactor);
+    window.setSize(originalSize[0], originalSize[1]);
+    await wait(200);
+  }
+  evidence.responsive = responsiveEvidence;
+
+  await clickWithNativeInput(window, '[data-testid="character-detail-back"]', 'Return to Character list');
+  await waitForDom(
+    window,
+    'document.querySelector(\'[data-testid="character-list-view"] [data-character-id="' + IDS.issue797HeadlessCharacter + '"]\')',
+    'Headless composite Character did not appear.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-list-view"] [data-character-id="' + IDS.issue797HeadlessCharacter + '"]',
+    'Headless composite Character card',
+  );
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Open headless Assembly');
+  await waitForDom(
+    window,
+    workbenchQuery + '?.dataset.characterId === ' + JSON.stringify(IDS.issue797HeadlessCharacter),
+    'Headless Character Assembly did not open.',
+  );
+  const headlessLayout = await readLayout();
+  assert(!headlessLayout.headerVisible && headlessLayout.gridTrackCount === 2, 'Headless Assembly left an empty header track.');
+  assert(headlessLayout.expressionRows === 0 && headlessLayout.expressionPreviewToggle, 'Headless Assembly lost contextual expression preview.');
+  assertRectStable(before.viewport, headlessLayout.viewport, 'Headless Assembly preview viewport');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Open headless Face fine tune',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+    'Headless Face fine tune overlay did not open.',
+  );
+  const headlessPanel = await readLayout();
+  assertFineTuneOverlay(headlessPanel, 'Headless Face fine tune');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-fine-tune-toggle"]', 'Close headless Face fine tune');
+  evidence.headlessLayout = headlessLayout;
+  evidence.headlessPanel = headlessPanel;
+
+  await clickWithNativeInput(window, '[data-testid="character-detail-back"]', 'Return from headless Character');
+  await openCreate(window);
+  await click(
+    window,
+    '[data-testid="character-create-mode-switch"] input[value="composite"]',
+    'Composite Character choice',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.dataset.sessionKind === "create"',
+    'Composite Character Create did not open the Assembly Workbench.',
+  );
+  const createLayout = await readLayout();
+  assert(!createLayout.headerVisible && createLayout.gridTrackCount === 2, 'Composite Create left an empty header track.');
+  assert(createLayout.expressionRows === 0 && createLayout.expressionPreviewToggle, 'Composite Create lost contextual expression preview.');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-expression-preview-toggle"]',
+    'Open Create expression preview',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-expression-preview-options"]\')',
+    'Create expression preview did not open.',
+  );
+  const createMenu = await readLayout();
+  assert(createMenu.expressionChoices.includes('默认'), 'Create preview lost its Default option.');
+  assertProjectSessionStable(createLayout, createMenu, 'Opening Create expression preview');
+  evidence.createLayout = createLayout;
+  evidence.createExpressionPreview = createMenu;
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'issue813-composite-create-preview.png'));
+
+  const passed = {
+    issue: 813,
+    passed: true,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'verify:issue813-assembly-canvas-space',
+    projectRoot,
+    baselineResultsPath,
+    syntheticInput: true,
+    humanAcceptance: false,
+    evidenceKind: 'real-electron-native-pointer-keyboard-layout-stability-and-session-state',
+    evidence,
+    screenshots,
+  };
+  return passed;
+}
+
 async function run() {
   mkdirSync(evidenceRoot, { recursive: true });
   mkdirSync(projectRoot, { recursive: true });
@@ -3381,6 +4065,9 @@ async function run() {
     windowRef.focus();
     windowRef.webContents.focus();
     await openProject(windowRef);
+    if (issue813Run) {
+      return await verifyIssue813AssemblyCanvasSpace(windowRef);
+    }
     if (issue799Only) {
       return await verifyIssue799LayoutReuse(windowRef);
     }
@@ -4028,12 +4715,14 @@ async function main() {
     output = await run();
   } catch (error) {
     output = {
-      issue: issue799Only ? 799 : issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 612,
+      issue: issue813Run ? 813 : issue799Only ? 799 : issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 612,
       passed: false,
       commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
-      verificationGate: issue799Only
-        ? 'verify:issue799-layout-reuse'
-        : issue797Only
+      verificationGate: issue813Run
+        ? 'verify:issue813-assembly-canvas-space'
+        : issue799Only
+          ? 'verify:issue799-layout-reuse'
+          : issue797Only
           ? 'verify:issue797-head-face-edit'
           : issue798Only
             ? 'verify:issue798-add-to-shot-navigation'
@@ -4058,6 +4747,6 @@ async function main() {
 main()
   .then(() => app.exit(0))
   .catch((error) => {
-    console.error(`[issue${issue799Only ? 799 : issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 609}] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    console.error(`[issue${issue813Run ? 813 : issue799Only ? 799 : issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 609}] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     app.exit(1);
   });

@@ -672,7 +672,7 @@
       }
     ]
   },
-  "count": 86,
+  "count": 87,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1693,6 +1693,18 @@
       "owner": "character",
       "supersedes": null,
       "notes": "Bounded Issue #799 Electron proof for exact Body reference dimensions and matching Head structure, source/target asset readiness, preview/cancel, fine tune, one existing Draft/Apply commit, Undo/Redo, Project Save and disk reopen; synthetic fixture evidence is not OWNER human acceptance."
+    },
+    {
+      "id": "issue813-assembly-canvas-space",
+      "script": "verify:issue813-assembly-canvas-space",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #813 Electron proof for pivot completion deduplication, precision overlay geometry and input, contextual expression/Mouth preview, and landscape Assembly viewport recovery across compact, headless, Create, and 125% zoom states; synthetic input is not OWNER human acceptance."
     },
     {
       "id": "timeline",
