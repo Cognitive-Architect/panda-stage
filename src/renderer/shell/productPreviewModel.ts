@@ -15,6 +15,7 @@
 import {
   listShotRuntimeImageAssets,
   projectShotMouth,
+  projectShotDialogueVisual,
   resolveLayerVisualParts,
   resolveShotVisualParts,
   type EvaluatedShot,
@@ -236,6 +237,21 @@ export function projectProductPreviewMouth(
   activeDialogueId: string | null,
 ): EvaluatedShot {
   return projectShotMouth(
+    project,
+    shot,
+    evaluatedShot,
+    activeDialogueId,
+  );
+}
+
+/** Applies the shared read-only Mouth and Head projection for one requested time. */
+export function projectProductPreviewDialogue(
+  project: Project,
+  shot: Shot,
+  evaluatedShot: EvaluatedShot,
+  activeDialogueId?: string | null,
+): EvaluatedShot {
+  return projectShotDialogueVisual(
     project,
     shot,
     evaluatedShot,

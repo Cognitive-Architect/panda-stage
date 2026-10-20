@@ -51,7 +51,7 @@ import {
   formatProductPreviewTimecode,
   isProductPreviewMouthFallbackFailure,
   listProductPreviewAssetIds,
-  projectProductPreviewMouth,
+  projectProductPreviewDialogue,
   resolveProductPreviewShot,
   resolveProductPreviewSubtitleStyle,
   resolveProductPreviewTransportAction,
@@ -320,7 +320,7 @@ export function ProductPreviewOverlay({
     () => {
       if (!shot || !evaluatedShot) return evaluatedShot;
       const startedAt = previewDiagnosticNow();
-      const projected = projectProductPreviewMouth(
+      const projected = projectProductPreviewDialogue(
         project,
         shot,
         evaluatedShot,

@@ -1,4 +1,8 @@
-import type { EvaluatedLayer, EvaluatedShot } from '../evaluate-shot-at-time';
+import type {
+  EvaluatedHeadGroupTransform,
+  EvaluatedLayer,
+  EvaluatedShot,
+} from '../evaluate-shot-at-time';
 import type {
   FacePlacement,
   ImageAsset,
@@ -34,14 +38,7 @@ export interface VisualOwnerTransform {
   zIndex: number;
 }
 
-export interface VisualHeadGroupTransform {
-  /** Translation relative to the Character-local pivot. */
-  translateX: number;
-  translateY: number;
-  scaleX: number;
-  scaleY: number;
-  rotationDeg: number;
-}
+export type VisualHeadGroupTransform = EvaluatedHeadGroupTransform;
 
 export interface LayerVisualHeadGroup {
   /** Stable runtime identity; never persisted as a Project Layer. */
@@ -593,7 +590,9 @@ export function resolveLayerVisualParts(
           id: `${layer.id}:head-group`,
           pivot: { ...character.head.pivot },
           partIds: [headPart.partId, facePart.partId],
-          transform: { ...IDENTITY_HEAD_GROUP_TRANSFORM },
+          transform: {
+            ...(evaluated.headGroupTransform ?? IDENTITY_HEAD_GROUP_TRANSFORM),
+          },
         }
       : null;
   return baseResult(
