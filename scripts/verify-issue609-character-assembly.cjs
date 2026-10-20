@@ -1292,6 +1292,19 @@ async function sendKeyStroke(window, keyCode) {
   window.webContents.sendInputEvent({ type: 'keyUp', keyCode: electronKeyCode });
 }
 
+function sendWindowsKeyStroke(window, key) {
+  const sendKeysValue = key === 'ENTER' ? '{ENTER}' : key === 'SPACE' ? ' ' : null;
+  assert(sendKeysValue !== null, `Unsupported Windows keyboard key ${key}.`);
+  const command = `$targetPid = ${process.pid}; $shell = New-Object -ComObject WScript.Shell; if (-not $shell.AppActivate($targetPid)) { throw 'Could not activate the Electron verifier window.' }; Start-Sleep -Milliseconds 80; $shell.SendKeys('${sendKeysValue}')`;
+  require('node:child_process').execFileSync(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-Command', command],
+    { encoding: 'utf8', timeout: 5000, windowsHide: true },
+  );
+  window.focus();
+  window.webContents.focus();
+}
+
 async function readIssue792MenuGeometry(window) {
   return window.webContents.executeJavaScript(`(() => {
     const trigger = document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]');
@@ -1378,6 +1391,287 @@ async function openIssue792MenuWithPointer(window) {
     'Mouth overflow popover did not open and update its trigger state after a real Electron pointer click.',
   );
   await wait(120);
+}
+
+async function verifyIssue812HeadMotionToggle(window, screenshots, readSelection, evidence) {
+  const selector = '[data-testid="character-assembly-test-head-motion"]';
+  const receipt = { profiles: [], screenshots: [] };
+  evidence.headMotionToggle = receipt;
+  const saveScreenshot = async (fileName) => {
+    const screenshot = await capture(window, fileName);
+    screenshots.push(screenshot);
+    receipt.screenshots.push(screenshot);
+  };
+
+  const readLayout = () => window.webContents.executeJavaScript(`(() => {
+    const rect = (element) => {
+      const bounds = element?.getBoundingClientRect();
+      return bounds && {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        right: bounds.right,
+        bottom: bounds.bottom,
+      };
+    };
+    const button = document.querySelector(${JSON.stringify(selector)});
+    const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    const actions = document.querySelector('.character-assembly-assembly-actions');
+    const pending = document.querySelector('[data-testid="character-assembly-pending"]');
+    const headGroup = document.querySelector('.character-assembly-head-group');
+    const body = document.querySelector('.character-assembly-part-body');
+    const pivot = document.querySelector('[data-testid="character-assembly-pivot-mode-toggle"]');
+    const fineTune = document.querySelector('[data-testid="character-assembly-fine-tune-toggle"]');
+    const layoutReuse = document.querySelector('[data-testid="character-assembly-layout-reuse-toggle"]');
+    return {
+      viewport: {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        devicePixelRatio: window.devicePixelRatio,
+        shellMode: document.querySelector('[data-testid="editor-layout"]')?.dataset.shellMode ?? '',
+      },
+      running: workbench?.dataset.headMotionTestRunning ?? '',
+      pressed: button?.getAttribute('aria-pressed') ?? '',
+      pivotDisabled: Boolean(pivot?.disabled),
+      fineTuneDisabled: Boolean(fineTune?.disabled),
+      layoutReuseDisabled: Boolean(layoutReuse?.disabled),
+      label: button?.textContent?.trim() ?? '',
+      accessibleName: button?.getAttribute('aria-label') ?? button?.innerText?.trim() ?? '',
+      cueCount: document.querySelectorAll('[data-testid="character-assembly-motion-test-cue"]').length,
+      headAnimationName: headGroup ? getComputedStyle(headGroup).animationName : '',
+      headAnimationDuration: headGroup ? getComputedStyle(headGroup).animationDuration : '',
+      bodyAnimationName: body ? getComputedStyle(body).animationName : '',
+      focused: document.activeElement === button,
+      visibleFocus: Boolean(button?.matches(':focus-visible')),
+      order: [...(actions?.children ?? [])].map((element) =>
+        element.dataset.testid ?? element.classList[0] ?? element.tagName.toLowerCase(),
+      ),
+      controls: {
+        actions: rect(actions),
+        pivot: rect(document.querySelector('[data-testid="character-assembly-pivot-mode-toggle"]')),
+        fineTune: rect(document.querySelector('[data-testid="character-assembly-fine-tune-toggle"]')),
+        layoutReuse: rect(document.querySelector('[data-testid="character-assembly-layout-reuse-toggle"]')),
+        toggle: rect(button),
+        pending: rect(pending),
+        restore: rect(pending?.querySelector('button:first-child')),
+        apply: rect(pending?.querySelector('button:last-child')),
+      },
+    };
+  })()`);
+
+  const assertState = (state, running, label) => {
+    const expected = running ? '■ 停止测试' : '▶ 测试摇头';
+    assert(state.running === String(running), `${label} did not expose the expected head-motion state.`);
+    assert(state.pressed === String(running), `${label} lost the toggle's aria-pressed state.`);
+    assert(state.label === expected && state.accessibleName === expected, `${label} lost its dynamic accessible button name.`);
+    assert(state.cueCount === 0, `${label} inserted the removed motion explanation or an empty cue slot.`);
+    if (running) {
+      assert(state.headAnimationName === 'character-assembly-head-motion-test', `${label} did not run the existing Head motion animation.`);
+      assert(state.headAnimationDuration === '0.9s', `${label} changed the existing 900 ms motion duration.`);
+      assert(state.bodyAnimationName === 'none', `${label} animated the Body along with the Head group.`);
+      assert(state.pivotDisabled && state.fineTuneDisabled && state.layoutReuseDisabled, `${label} did not keep pivot and layout editing mutually exclusive with motion testing.`);
+    } else {
+      assert(state.headAnimationName === 'none', `${label} did not stop and reset the Head motion animation.`);
+      assert(!state.pivotDisabled && !state.fineTuneDisabled && !state.layoutReuseDisabled, `${label} left pivot or layout editing disabled after the motion test stopped.`);
+    }
+  };
+
+  const compareGeometry = (baseline, state, profile, label) => {
+    const keys = ['actions', 'pivot', 'fineTune', 'layoutReuse', 'toggle', 'pending', 'restore', 'apply'];
+    const deltas = [];
+    for (const key of keys) {
+      const before = baseline.controls[key];
+      const after = state.controls[key];
+      assert(before && after, `${profile}/${label} is missing the ${key} control needed for the layout check.`);
+      for (const dimension of ['x', 'y', 'width', 'height']) {
+        const delta = Number((after[dimension] - before[dimension]).toFixed(3));
+        deltas.push({ control: key, dimension, delta });
+      }
+    }
+    const largest = Math.max(...deltas.map((entry) => Math.abs(entry.delta)));
+    const result = { from: label, maximumDeltaCssPx: largest, deltas };
+    receipt.profiles.find((entry) => entry.name === profile)?.geometryComparisons.push(result);
+    assert(
+      largest <= 2,
+      `${profile}/${label} moved or resized an assembly action by ${largest.toFixed(2)} CSS px (limit 2): ${JSON.stringify(deltas.filter((entry) => Math.abs(entry.delta) > 2))}`,
+    );
+    assert(JSON.stringify(state.order) === JSON.stringify(baseline.order), `${profile}/${label} reordered or wrapped assembly actions.`);
+  };
+
+  const verifySamePointHit = async (point, zoomFactor, profile, cycle, running) => {
+    const hit = await window.webContents.executeJavaScript(`(() => {
+      const button = document.querySelector(${JSON.stringify(selector)});
+      const target = document.elementFromPoint(${point.x / zoomFactor}, ${point.y / zoomFactor});
+      return Boolean(button && target && (target === button || button.contains(target)));
+    })()`);
+    assert(hit, `${profile} cycle ${cycle} original pointer coordinate stopped hitting the same toggle (running=${running}).`);
+  };
+
+  const configurations = [
+    { name: 'standard', width: 1660, height: 1100, zoomFactor: 1 },
+    { name: 'narrow', width: 800, height: 560, zoomFactor: 1 },
+    { name: 'zoom125', width: 1660, height: 1100, zoomFactor: 1.25 },
+  ];
+  const originalSize = window.getSize();
+  const originalZoomFactor = window.webContents.getZoomFactor();
+  const beforeProjectState = await readSelection();
+
+  try {
+    for (const configuration of configurations) {
+      window.webContents.setZoomFactor(configuration.zoomFactor);
+      window.setSize(configuration.width, configuration.height);
+      if (configuration.name === 'narrow') {
+        await waitForDom(window, 'window.innerWidth <= 840 && window.innerWidth >= 760', 'The #812 narrow-window viewport did not resize.');
+      } else {
+        await wait(160);
+      }
+      await window.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({ block: 'nearest', inline: 'nearest' })`);
+      await waitForPaint(window);
+
+      const profile = {
+        name: configuration.name,
+        zoomFactor: configuration.zoomFactor,
+        windowSize: configuration.name === 'narrow' ? { width: 800, height: 560 } : { width: 1660, height: 1100 },
+        states: [],
+        geometryComparisons: [],
+        samePointerCycles: [],
+      };
+      receipt.profiles.push(profile);
+      const initial = await readLayout();
+      profile.states.push({ name: 'initial', ...initial });
+      assertState(initial, false, `${configuration.name}/initial`);
+      assert(initial.viewport.width > 0 && initial.viewport.height > 0, `${configuration.name} did not expose a measurable viewport.`);
+      assert(initial.controls.toggle && initial.controls.pivot && initial.controls.fineTune && initial.controls.layoutReuse, `${configuration.name} is missing one of the fixed assembly actions.`);
+      assert(initial.controls.pending && initial.controls.restore && initial.controls.apply, `${configuration.name} lost the dirty-draft Restore/Apply controls.`);
+      assert(initial.controls.toggle.x >= 0 && initial.controls.toggle.y >= 0 && initial.controls.toggle.right <= initial.viewport.width + 1 && initial.controls.toggle.bottom <= initial.viewport.height + 1, `${configuration.name} motion toggle is outside the visible viewport.`);
+      assert(initial.controls.toggle.width > 0 && initial.controls.toggle.height > 0, `${configuration.name} motion toggle has an empty hitbox.`);
+      profile.initial = initial;
+      const cssAnchor = {
+        x: initial.controls.toggle.x + initial.controls.toggle.width / 2,
+        y: initial.controls.toggle.y + initial.controls.toggle.height / 2,
+      };
+      const anchor = {
+        x: Math.round(cssAnchor.x * configuration.zoomFactor),
+        y: Math.round(cssAnchor.y * configuration.zoomFactor),
+      };
+      profile.samePointerCycles.push({ inputX: anchor.x, inputY: anchor.y, cssX: cssAnchor.x, cssY: cssAnchor.y, cycles: 3 });
+      if (configuration.name === 'standard') {
+        await saveScreenshot('head-motion-toggle-standard-initial.png');
+      } else if (configuration.name === 'narrow') {
+        await saveScreenshot('head-motion-toggle-narrow.png');
+      } else {
+        await saveScreenshot('head-motion-toggle-zoom-125.png');
+      }
+
+      let previous = initial;
+      for (let cycle = 1; cycle <= 3; cycle += 1) {
+        await verifySamePointHit(anchor, configuration.zoomFactor, configuration.name, cycle, false);
+        await sendPointerClick(window, anchor.x, anchor.y);
+        await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headMotionTestRunning === 'true'`, `${configuration.name} same-point cycle ${cycle} did not start.`);
+        await waitForPaint(window);
+        const playing = await readLayout();
+        profile.states.push({ name: `play-${cycle}`, ...playing });
+        if (configuration.name === 'standard' && cycle <= 2) {
+          await saveScreenshot(`head-motion-toggle-standard-play-${cycle}.png`);
+        } else if (cycle === 1) {
+          await saveScreenshot(`head-motion-toggle-${configuration.name}-play.png`);
+        }
+        compareGeometry(initial, playing, configuration.name, `play-${cycle}`);
+        assertState(playing, true, `${configuration.name}/play-${cycle}`);
+
+        await verifySamePointHit(anchor, configuration.zoomFactor, configuration.name, cycle, true);
+        await sendPointerClick(window, anchor.x, anchor.y);
+        await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headMotionTestRunning === 'false'`, `${configuration.name} same-point cycle ${cycle} did not stop.`);
+        await waitForPaint(window);
+        const stopped = await readLayout();
+        profile.states.push({ name: `stop-${cycle}`, ...stopped });
+        compareGeometry(initial, stopped, configuration.name, `stop-${cycle}`);
+        assertState(stopped, false, `${configuration.name}/stop-${cycle}`);
+        if (configuration.name === 'standard' && cycle <= 2) {
+          await saveScreenshot(`head-motion-toggle-standard-stop-${cycle}.png`);
+        } else if (cycle === 1) {
+          await saveScreenshot(`head-motion-toggle-${configuration.name}-stop.png`);
+        }
+        previous = stopped;
+      }
+      assert(initial.controls.toggle.width >= 100 && initial.controls.toggle.height >= 44, `${configuration.name} motion toggle hitbox is below the 100×44 CSS px target.`);
+      assert(previous.running === 'false', `${configuration.name} did not finish with the test stopped.`);
+    }
+
+    window.focus();
+    window.webContents.focus();
+    await window.webContents.executeJavaScript(`(() => {
+      const button = document.querySelector(${JSON.stringify(selector)});
+      window.__issue812KeyboardEvents = [];
+      for (const type of ['keydown', 'keyup', 'click']) {
+        button?.addEventListener(type, (event) => {
+          window.__issue812KeyboardEvents.push({
+            type,
+            key: event.key ?? '',
+            code: event.code ?? '',
+            defaultPrevented: event.defaultPrevented,
+            focused: document.activeElement === button,
+            trusted: event.isTrusted,
+          });
+        }, { capture: true });
+      }
+      document.querySelector('[data-testid="character-assembly-layout-reuse-toggle"]')?.focus();
+    })()`);
+    await sendKeyStroke(window, 'TAB');
+    const tabFocus = await window.webContents.executeJavaScript(`(() => {
+      const button = document.querySelector(${JSON.stringify(selector)});
+      return {
+        focused: document.activeElement === button,
+        visibleFocus: Boolean(button?.matches(':focus-visible')),
+        activeTestId: document.activeElement?.getAttribute('data-testid') ?? '',
+      };
+    })()`);
+    assert(tabFocus.focused && tabFocus.visibleFocus, `Native Tab did not move focus to the Head motion toggle with visible focus (active: ${tabFocus.activeTestId || 'unknown'}).`);
+
+    for (const [key, running, expectedName] of [
+      ['ENTER', true, 'enter-start'],
+      ['SPACE', false, 'space-stop'],
+    ]) {
+      const eventStart = await window.webContents.executeJavaScript('window.__issue812KeyboardEvents.length');
+      sendWindowsKeyStroke(window, key);
+      try {
+        await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headMotionTestRunning === ${JSON.stringify(String(running))}`, `Keyboard ${key} did not ${running ? 'start' : 'stop'} the Head motion test.`);
+      } catch (error) {
+        const diagnostics = await window.webContents.executeJavaScript(`({
+          activeTestId: document.activeElement?.getAttribute('data-testid') ?? '',
+          events: (window.__issue812KeyboardEvents ?? []).slice(${eventStart}),
+          state: document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headMotionTestRunning ?? '',
+        })`);
+        throw new Error(`${error instanceof Error ? error.message : String(error)}; keyboard=${JSON.stringify(diagnostics)}`, { cause: error });
+      }
+      await waitForPaint(window);
+      const state = await readLayout();
+      const events = await window.webContents.executeJavaScript(`(window.__issue812KeyboardEvents ?? []).slice(${eventStart})`);
+      const profile = receipt.profiles.find((entry) => entry.name === 'zoom125');
+      profile.states.push({ name: expectedName, ...state });
+      compareGeometry(profile.initial, state, 'zoom125', expectedName);
+      assertState(state, running, `keyboard/${expectedName}`);
+      assert(state.focused && state.visibleFocus, `Keyboard ${key} lost button focus or its visible focus indication.`);
+      assert(events.some((event) => event.type === 'keydown' && event.key === inputKeyName(key) && event.trusted), `Native Windows keyboard ${key} did not reach the focused button.`);
+      assert(events.some((event) => event.type === 'click' && event.trusted), `Native Windows keyboard ${key} did not activate the focused button.`);
+      (profile.keyboard ??= []).push({ key, events });
+    }
+
+    const afterProjectState = await readSelection();
+    assert(afterProjectState.revision === beforeProjectState.revision && afterProjectState.undoCount === beforeProjectState.undoCount, 'Testing Head motion wrote a Project revision or History entry.');
+    assert(afterProjectState.headOffsetX === beforeProjectState.headOffsetX && afterProjectState.headOffsetY === beforeProjectState.headOffsetY && afterProjectState.headScale === beforeProjectState.headScale && afterProjectState.faceOffsetX === beforeProjectState.faceOffsetX && afterProjectState.faceOffsetY === beforeProjectState.faceOffsetY && afterProjectState.faceScale === beforeProjectState.faceScale && afterProjectState.pivotX === beforeProjectState.pivotX && afterProjectState.pivotY === beforeProjectState.pivotY, 'Testing Head motion changed Head, Face, or pivot draft data.');
+    receipt.projectState = { before: beforeProjectState, after: afterProjectState };
+    return receipt;
+  } finally {
+    window.webContents.setZoomFactor(originalZoomFactor);
+    window.setSize(originalSize[0], originalSize[1]);
+    await wait(120);
+  }
+}
+
+function inputKeyName(key) {
+  return key === 'SPACE' ? ' ' : key === 'ENTER' ? 'Enter' : key;
 }
 
 async function verifyIssue797HeadFaceEditTargets(window) {
@@ -1573,6 +1867,8 @@ async function verifyIssue797HeadFaceEditTargets(window) {
   const afterMotionSwitch = await readSelection();
   assert(afterMotionSwitch.headOffsetX === headDragged.headOffsetX && afterMotionSwitch.headOffsetY === headDragged.headOffsetY && afterMotionSwitch.pivotX === before.pivotX && afterMotionSwitch.pivotY === before.pivotY, 'Switching out of Head motion test changed Head placement or pivot.');
 
+  const headMotionToggle = await verifyIssue812HeadMotionToggle(window, screenshots, readSelection, evidence);
+
   await clickWithNativeInput(window, '[data-testid="character-assembly-default-face-select"]', 'Select Face before changing the Head asset');
   await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'face'`, 'Face target did not activate before Head asset replacement.');
   await clickWithNativeInput(window, '[data-testid="character-assembly-head-asset-change-action"]', 'Head Change action');
@@ -1660,6 +1956,7 @@ async function verifyIssue797HeadFaceEditTargets(window) {
     headDrag: { geometry: headDragGeometry, after: headDragged },
     pivotSafeSwitch: afterPivotSwitch,
     motionTestSafeSwitch: afterMotionSwitch,
+    motionToggleStability: headMotionToggle,
     independentChangeAction: afterChangeAction,
     revert: reverted,
     independentManageAction: afterManage,

@@ -1304,21 +1304,13 @@ export function CharacterAssemblyWorkbench({
               <>
                 <button
                   aria-pressed={isTestingHeadMotion}
+                  className="character-assembly-test-head-motion-toggle"
                   data-testid="character-assembly-test-head-motion"
                   onClick={toggleHeadMotionTest}
                   type="button"
                 >
                   {isTestingHeadMotion ? '■ 停止测试' : '▶ 测试摇头'}
                 </button>
-                {isTestingHeadMotion ? (
-                  <span
-                    className="character-assembly-motion-test-cue"
-                    data-testid="character-assembly-motion-test-cue"
-                    role="status"
-                  >
-                    观察头和脸是否贴合，转轴是否像从脖子处转动
-                  </span>
-                ) : null}
               </>
             ) : null}
             {!isCreating && pending ? (

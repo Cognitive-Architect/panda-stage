@@ -332,6 +332,10 @@ describe('S07 composite assembly preview', () => {
       'src/renderer/features/characters/CharacterAssemblyWorkbench.tsx',
       'utf8',
     );
+    const workbenchStyles = readFileSync(
+      'src/renderer/styles/features/characters/assembly/s17-01--character-assembly-workbench.css',
+      'utf8',
+    );
     expect(pickerSource).toContain('const visibleCandidateIds = useMemo(');
     expect(pickerSource).toContain('onVisibleCandidatesChange?.(visibleCandidateIds)');
     expect(editorSource).toContain('testId="character-assembly-head-asset"');
@@ -341,11 +345,16 @@ describe('S07 composite assembly preview', () => {
     expect(workbenchSource).not.toContain('ImageAssetPicker');
     expect(workbenchSource).not.toContain('character-assembly-head-picker');
     const testButton = workbenchSource.match(
-      /data-testid="character-assembly-test-head-motion"([\s\S]*?)<\/button>/u,
-    )?.[1];
+      /<button(?=[^>]*data-testid="character-assembly-test-head-motion")[^>]*>[\s\S]*?<\/button>/u,
+    )?.[0];
     expect(testButton).toBeDefined();
+    expect(testButton).toContain('className="character-assembly-test-head-motion-toggle"');
+    expect(testButton).toContain('aria-pressed={isTestingHeadMotion}');
     expect(testButton).not.toContain('disabled={isEditingNeckPivot}');
-    expect(workbenchSource).toContain('观察头和脸是否贴合，转轴是否像从脖子处转动');
+    expect(workbenchSource).not.toContain('character-assembly-motion-test-cue');
+    expect(workbenchSource).not.toContain('观察头和脸是否贴合，转轴是否像从脖子处转动');
+    expect(workbenchStyles).not.toContain('.character-assembly-motion-test-cue');
+    expect(workbenchStyles).toContain('.character-assembly-test-head-motion-toggle');
   });
 
   it('reports pending only when the edit draft differs from the persisted definition', () => {
