@@ -1,7 +1,9 @@
 import {
   CharacterServiceError,
+  DEFAULT_BODY_PLACEMENT,
   type CharacterExpressionDraft,
   type CharacterHead,
+  type BodyPlacement,
   type CompositeCharacterDefinition,
   type CompositeCharacterUpdate,
   type CreateCompositeCharacterInput,
@@ -20,7 +22,7 @@ import {
 
 type Listener = () => void;
 
-export type CharacterAssemblyEditTarget = 'head' | 'face';
+export type CharacterAssemblyEditTarget = 'body' | 'head' | 'face';
 
 export type CharacterAssemblyErrorCode =
   | 'project-not-open'
@@ -64,6 +66,7 @@ export interface CharacterCreationDraftUpdate {
   defaultScale?: number | null;
   defaultFlipX?: boolean | null;
   bodyAssetId?: string;
+  bodyPlacement?: BodyPlacement;
   facePlacement?: FacePlacement;
   head?: CharacterHead | null;
 }
@@ -275,6 +278,7 @@ function cloneDefinition(
 ): CompositeCharacterDefinition {
   return {
     bodyAssetId: definition.bodyAssetId,
+    bodyPlacement: { ...definition.bodyPlacement },
     facePlacement: { ...definition.facePlacement },
     ...(definition.head ? { head: cloneHead(definition.head) } : {}),
     expressionAssets: definition.expressionAssets.map((expression) => ({
@@ -292,6 +296,9 @@ function cloneCreationDraft(
     name: draft.name,
     expressions: draft.expressions.map((expression) => ({ ...expression })),
     bodyAssetId: draft.bodyAssetId,
+    ...(draft.bodyPlacement
+      ? { bodyPlacement: { ...draft.bodyPlacement } }
+      : {}),
     facePlacement: { ...draft.facePlacement },
     ...(draft.head ? { head: cloneHead(draft.head) } : {}),
     ...(draft.defaultExpressionIndex === undefined
@@ -344,6 +351,12 @@ function creationDraftsEqual(
   return (
     left.name === right.name &&
     left.bodyAssetId === right.bodyAssetId &&
+    (left.bodyPlacement?.offsetX ?? DEFAULT_BODY_PLACEMENT.offsetX) ===
+      (right.bodyPlacement?.offsetX ?? DEFAULT_BODY_PLACEMENT.offsetX) &&
+    (left.bodyPlacement?.offsetY ?? DEFAULT_BODY_PLACEMENT.offsetY) ===
+      (right.bodyPlacement?.offsetY ?? DEFAULT_BODY_PLACEMENT.offsetY) &&
+    (left.bodyPlacement?.scale ?? DEFAULT_BODY_PLACEMENT.scale) ===
+      (right.bodyPlacement?.scale ?? DEFAULT_BODY_PLACEMENT.scale) &&
     left.facePlacement.offsetX === right.facePlacement.offsetX &&
     left.facePlacement.offsetY === right.facePlacement.offsetY &&
     left.facePlacement.scale === right.facePlacement.scale &&
@@ -370,6 +383,9 @@ function definitionsEqual(
 ): boolean {
   if (
     left.bodyAssetId !== right.bodyAssetId ||
+    left.bodyPlacement.offsetX !== right.bodyPlacement.offsetX ||
+    left.bodyPlacement.offsetY !== right.bodyPlacement.offsetY ||
+    left.bodyPlacement.scale !== right.bodyPlacement.scale ||
     left.facePlacement.offsetX !== right.facePlacement.offsetX ||
     left.facePlacement.offsetY !== right.facePlacement.offsetY ||
     left.facePlacement.scale !== right.facePlacement.scale ||
@@ -406,6 +422,9 @@ function mergeDefinition(
 ): CompositeCharacterDefinition {
   const next: CompositeCharacterDefinition = {
     bodyAssetId: update.bodyAssetId ?? current.bodyAssetId,
+    bodyPlacement: update.bodyPlacement
+      ? { ...update.bodyPlacement }
+      : { ...current.bodyPlacement },
     facePlacement: update.facePlacement
       ? { ...update.facePlacement }
       : { ...current.facePlacement },
@@ -437,6 +456,9 @@ function mergeCreationDraft(
     next.expressions = update.expressions.map((expression) => ({ ...expression }));
   }
   if (update.bodyAssetId !== undefined) next.bodyAssetId = update.bodyAssetId;
+  if (update.bodyPlacement !== undefined) {
+    next.bodyPlacement = { ...update.bodyPlacement };
+  }
   if (update.facePlacement !== undefined) {
     next.facePlacement = { ...update.facePlacement };
   }
@@ -1167,6 +1189,7 @@ export class CharacterAssemblySessionStore {
   }
 
   private currentEditTarget(active: ActiveSession): CharacterAssemblyEditTarget {
+    if (this.editTarget === 'body') return 'body';
     return active.draft.head && this.editTarget === 'head' ? 'head' : 'face';
   }
 
@@ -1174,8 +1197,10 @@ export class CharacterAssemblySessionStore {
     previousHead: CharacterHead | null | undefined,
     nextHead: CharacterHead | null | undefined,
   ): void {
-    if (!nextHead) this.editTarget = 'face';
-    else if (!previousHead) this.editTarget = 'head';
+    if (!nextHead && this.editTarget === 'head') this.editTarget = 'face';
+    else if (!previousHead && nextHead && this.editTarget === 'face') {
+      this.editTarget = 'head';
+    }
   }
 
   private mapBeginError(error: unknown): CharacterAssemblyError {

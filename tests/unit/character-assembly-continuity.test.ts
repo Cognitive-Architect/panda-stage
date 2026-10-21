@@ -71,6 +71,7 @@ function definition(project: Project): CompositeCharacterDefinition {
   }
   return {
     bodyAssetId: character.bodyAssetId,
+    bodyPlacement: { ...character.bodyPlacement },
     facePlacement: { ...character.facePlacement },
     expressionAssets: character.expressions.map((expression) => ({
       expressionId: expression.id,
@@ -85,6 +86,7 @@ function changedDefinition(project: Project): CompositeCharacterDefinition {
   return {
     ...current,
     bodyAssetId: IDS.assetChar2,
+    bodyPlacement: { offsetX: 42, offsetY: -18, scale: 0.65 },
     facePlacement: {
       offsetX: 24,
       offsetY: -12,
@@ -173,7 +175,7 @@ describe('S09-R04 assembly exit decision', () => {
 });
 
 describe('S09-R04 assembly workspace continuity', () => {
-  it('keeps Head/Face edit selection in the active session without a Project or History write', () => {
+  it('keeps Body/Head/Face edit selection in the active session without a Project or History write', () => {
     const h = harness(compositeProjectWithHead());
     const begin = beginOwned(h.assembly);
     expect(begin.ok).toBe(true);
@@ -190,6 +192,13 @@ describe('S09-R04 assembly workspace continuity', () => {
     if (!faceSelected || isCharacterCreationSnapshot(faceSelected)) return;
     expect(faceSelected.editTarget).toBe('face');
     expect(faceSelected.draft.head).toEqual(begin.snapshot.draft.head);
+    expect(h.editor.getSnapshot()).toBe(beforeProject);
+    expect(h.editor.history.getSnapshot()).toEqual(beforeHistory);
+
+    expect(
+      h.assembly.setEditTarget('body', begin.session.sessionId, begin.session.generation),
+    ).toBe(true);
+    expect(h.assembly.getSnapshot()?.editTarget).toBe('body');
     expect(h.editor.getSnapshot()).toBe(beforeProject);
     expect(h.editor.history.getSnapshot()).toEqual(beforeHistory);
 

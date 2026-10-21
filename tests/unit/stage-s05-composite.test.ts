@@ -248,8 +248,14 @@ describe('BFM-S05 shared Stage composite Character model', () => {
 
   it('shares the Head Group and requested-time root pose across editor and Stage consumers', () => {
     const base = compositeProject({ head: true });
+    const bodyPlacement = { offsetX: 64, offsetY: -36, scale: 0.62 };
     const project = ProjectSchema.parse({
       ...base,
+      characters: base.characters.map((character) =>
+        character.id === IDS.character
+          ? { ...character, bodyPlacement }
+          : character,
+      ),
       shots: base.shots.map((shot) => ({
         ...shot,
         layers: shot.layers.map((layer) =>
@@ -295,6 +301,13 @@ describe('BFM-S05 shared Stage composite Character model', () => {
     const evaluatedLayer = evaluated.layers.find(
       (layer) => layer.id === IDS.layerChar,
     )!;
+    const body = editorLayer.visual.parts.find((part) => part.slot === 'body')!;
+    const bodyAsset = renderProject.assets.find(
+      (asset) => asset.id === IDS.assetChar,
+    );
+    if (!bodyAsset || bodyAsset.kind !== 'image') {
+      throw new Error('Expected an image asset for the composite Body.');
+    }
 
     expect(stage.timeMs).toBe(1_000);
     expect(stage.layers).toHaveLength(shot.layers.length);
@@ -314,6 +327,18 @@ describe('BFM-S05 shared Stage composite Character model', () => {
     expect(stageLayer.parts.map((part) => part.render.y)).toEqual(
       editorLayer.visual.parts.map((part) => part.localRect.y),
     );
+    expect(body.localRect).toEqual({
+      x: bodyPlacement.offsetX - (bodyAsset.width! * bodyPlacement.scale) / 2,
+      y: bodyPlacement.offsetY - (bodyAsset.height! * bodyPlacement.scale) / 2,
+      width: bodyAsset.width! * bodyPlacement.scale,
+      height: bodyAsset.height! * bodyPlacement.scale,
+    });
+    expect(stageLayer.parts[0]?.render).toMatchObject({
+      x: body.localRect.x,
+      y: body.localRect.y,
+      width: body.localRect.width,
+      height: body.localRect.height,
+    });
     expect(stageLayer.render).toMatchObject({
       x: evaluatedLayer.x,
       y: evaluatedLayer.y,

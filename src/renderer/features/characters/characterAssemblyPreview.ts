@@ -1,5 +1,6 @@
 import {
   calculateViewportTransform,
+  DEFAULT_BODY_PLACEMENT,
   resolveLayerVisualParts,
   transformVisualRectByPart,
   type Character,
@@ -355,6 +356,7 @@ export function isCharacterAssemblyPending(
   if (!character || character.mode !== 'composite') return true;
   const current = {
     bodyAssetId: character.bodyAssetId,
+    bodyPlacement: character.bodyPlacement,
     facePlacement: character.facePlacement,
     ...(character.head ? { head: character.head } : {}),
     expressionAssets: character.expressions.map((expression) => ({
@@ -460,6 +462,7 @@ function previewCharacter(
       defaultScale: session.draft.defaultScale ?? 1,
       defaultFlipX: session.draft.defaultFlipX ?? false,
       bodyAssetId: session.draft.bodyAssetId,
+      bodyPlacement: { ...(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT) },
       facePlacement: { ...session.draft.facePlacement },
       ...(session.draft.head
         ? {
@@ -500,6 +503,7 @@ function previewCharacter(
     baseAssetId: defaultExpression.assetId,
     expressions,
     bodyAssetId: session.draft.bodyAssetId,
+    bodyPlacement: { ...session.draft.bodyPlacement },
     facePlacement: { ...session.draft.facePlacement },
     ...(session.draft.head
       ? {

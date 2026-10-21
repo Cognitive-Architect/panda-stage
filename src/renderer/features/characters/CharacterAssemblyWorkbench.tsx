@@ -7,8 +7,12 @@ import {
   useState,
 } from 'react';
 import {
+  CHARACTER_PART_MAX_SCALE,
+  CHARACTER_PART_MIN_SCALE,
+  DEFAULT_BODY_PLACEMENT,
   calculateViewportTransform,
   transformVisualRectByPart,
+  type BodyPlacement,
   type CharacterHead,
   type FacePlacement,
   type HeadPivot,
@@ -21,6 +25,7 @@ import type {
 } from '../../stores/EditorProjectStore';
 import {
   characterAssemblySessionStore,
+  type CharacterAssemblyEditTarget,
   type CharacterAssemblySessionHandle,
   type CharacterCreationSessionHandle,
 } from '../../stores/characterAssemblySessionStore';
@@ -72,6 +77,7 @@ interface ActiveDragStart {
 }
 
 type ActiveDragDefinition =
+  | { kind: 'body'; placement: BodyPlacement }
   | { kind: 'face'; placement: FacePlacement }
   | { kind: 'head'; head: CharacterHead }
   | {
@@ -302,6 +308,7 @@ export function CharacterAssemblyWorkbench({
                 characterId: candidate.id,
                 name: candidate.name,
                 bodyAssetId: candidate.bodyAssetId,
+                bodyPlacement: { ...candidate.bodyPlacement },
                 facePlacement: candidate.facePlacement,
                 ...(candidate.head ? { head: candidate.head } : {}),
               },
@@ -316,6 +323,9 @@ export function CharacterAssemblyWorkbench({
           characterId: targetCharacter.id,
           name: targetCharacter.name,
           bodyAssetId: session.draft.bodyAssetId,
+          bodyPlacement: {
+            ...(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT),
+          },
           ...(session.draft.head ? { head: session.draft.head } : {}),
         }
       : null;
@@ -351,15 +361,26 @@ export function CharacterAssemblyWorkbench({
   const [isFineTuneOpen, setIsFineTuneOpen] = useState(false);
   const [headMotionTestToken, setHeadMotionTestToken] =
     useState<AssemblyHeadMotionTestToken | null>(null);
-  const activeEditTarget = head ? session.editTarget : 'face';
+  const activeEditTarget =
+    session.editTarget === 'head' && !head ? 'face' : session.editTarget;
+  const activeEditTargetLabel =
+    activeEditTarget === 'body'
+      ? '身体'
+      : activeEditTarget === 'head'
+        ? '头部'
+        : '脸部';
   const activeRotationDeg =
     activeEditTarget === 'head' && head
       ? head.placement.rotationDeg
-      : session.draft.facePlacement.rotationDeg;
+      : activeEditTarget === 'face'
+        ? session.draft.facePlacement.rotationDeg
+        : 0;
   const activeFlipX =
     activeEditTarget === 'head' && head
       ? head.placement.flipX
-      : session.draft.facePlacement.flipX;
+      : activeEditTarget === 'face'
+        ? session.draft.facePlacement.flipX
+        : false;
   const [rotationInput, setRotationInput] = useState('0');
   const isTestingHeadMotion = isAssemblyHeadMotionTestRunning(
     headMotionTestToken,
@@ -862,6 +883,22 @@ export function CharacterAssemblyWorkbench({
     return true;
   };
 
+  const updateBodyPlacement = (placement: BodyPlacement): boolean => {
+    const result = isCreating
+      ? activeCreationHandle(session)?.updateDraft({ bodyPlacement: placement })
+      : activeAssemblyHandle(session)?.updateDraft({ bodyPlacement: placement });
+    if (!result) {
+      setMessage('组装草稿已失效，请重新打开角色组装。');
+      return false;
+    }
+    if (!result.ok) {
+      setMessage(result.error.message);
+      return false;
+    }
+    setMessage('');
+    return true;
+  };
+
   const updateHead = (nextHead: CharacterHead | null): boolean => {
     const result = isCreating
       ? activeCreationHandle(session)?.updateDraft({ head: nextHead })
@@ -896,6 +933,26 @@ export function CharacterAssemblyWorkbench({
     });
   };
 
+  const adjustBodyScale = (delta: number): void => {
+    const placement = session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT;
+    const scale = Number(
+      Math.min(
+        CHARACTER_PART_MAX_SCALE,
+        Math.max(CHARACTER_PART_MIN_SCALE, placement.scale + delta),
+      ).toFixed(2),
+    );
+    updateBodyPlacement({ ...placement, scale });
+  };
+
+  const nudgeBody = (dx: number, dy: number): void => {
+    const placement = session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT;
+    updateBodyPlacement({
+      ...placement,
+      offsetX: placement.offsetX + dx,
+      offsetY: placement.offsetY + dy,
+    });
+  };
+
   const nudgeHead = (dx: number, dy: number): void => {
     if (!head) return;
     updateHead({
@@ -916,7 +973,7 @@ export function CharacterAssemblyWorkbench({
     });
   };
 
-  const selectEditTarget = (target: 'head' | 'face'): void => {
+  const selectEditTarget = (target: CharacterAssemblyEditTarget): void => {
     if (target === 'head' && !head) return;
     if (isEditingNeckPivot || isTestingHeadMotion) return;
     dragRef.current = null;
@@ -945,6 +1002,9 @@ export function CharacterAssemblyWorkbench({
   ): void => {
     if (event.button !== 0 || isTestingHeadMotion) return;
     if (definition.kind === 'face' && (activeEditTarget !== 'face' || isEditingNeckPivot)) {
+      return;
+    }
+    if (definition.kind === 'body' && (activeEditTarget !== 'body' || isEditingNeckPivot)) {
       return;
     }
     if (
@@ -1012,6 +1072,12 @@ export function CharacterAssemblyWorkbench({
     );
     if (drag.kind === 'face') {
       updateFacePlacement({
+        ...drag.placement,
+        offsetX: drag.placement.offsetX + dx,
+        offsetY: drag.placement.offsetY + dy,
+      });
+    } else if (drag.kind === 'body') {
+      updateBodyPlacement({
         ...drag.placement,
         offsetX: drag.placement.offsetX + dx,
         offsetY: drag.placement.offsetY + dy,
@@ -1088,7 +1154,12 @@ export function CharacterAssemblyWorkbench({
   };
 
   const setTargetRotation = (rotationDeg: number): boolean => {
-    if (!Number.isFinite(rotationDeg) || rotationDeg < -180 || rotationDeg > 180) {
+    if (
+      activeEditTarget === 'body' ||
+      !Number.isFinite(rotationDeg) ||
+      rotationDeg < -180 ||
+      rotationDeg > 180
+    ) {
       return false;
     }
     const updated =
@@ -1106,6 +1177,7 @@ export function CharacterAssemblyWorkbench({
   };
 
   const toggleTargetFlipX = (): void => {
+    if (activeEditTarget === 'body') return;
     if (activeEditTarget === 'head' && head) {
       updateHead({
         ...head,
@@ -1120,6 +1192,10 @@ export function CharacterAssemblyWorkbench({
   };
 
   const resetPlacement = (): void => {
+    if (activeEditTarget === 'body') {
+      updateBodyPlacement({ ...DEFAULT_BODY_PLACEMENT });
+      return;
+    }
     if (activeEditTarget === 'head' && head) {
       updateHead({
         ...head,
@@ -1296,6 +1372,9 @@ export function CharacterAssemblyWorkbench({
       data-camera-fit-mode={cameraFitMode}
       data-camera-fit-scale={transform.scale}
       data-body-asset-id={session.draft.bodyAssetId}
+      data-body-offset-x={(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).offsetX}
+      data-body-offset-y={(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).offsetY}
+      data-body-scale={(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).scale}
       data-character-id={isCreating ? '' : session.characterId}
       data-face-offset-x={session.draft.facePlacement.offsetX}
       data-face-offset-y={session.draft.facePlacement.offsetY}
@@ -1327,9 +1406,18 @@ export function CharacterAssemblyWorkbench({
       }}
       onPointerDownCapture={markCameraInteraction}
     >
-      {head ? (
-        <header className="character-assembly-workbench-header">
-          <nav aria-label="编辑目标" className="character-assembly-edit-targets">
+      <header className="character-assembly-workbench-header">
+        <nav aria-label="编辑目标" className="character-assembly-edit-targets">
+          <button
+            aria-pressed={activeEditTarget === 'body'}
+            data-testid="character-assembly-edit-body"
+            disabled={isEditingNeckPivot || isTestingHeadMotion}
+            onClick={() => selectEditTarget('body')}
+            type="button"
+          >
+            身体
+          </button>
+          {head ? (
             <button
               aria-pressed={activeEditTarget === 'head'}
               data-testid="character-assembly-edit-head"
@@ -1339,18 +1427,18 @@ export function CharacterAssemblyWorkbench({
             >
               头部
             </button>
-            <button
-              aria-pressed={activeEditTarget === 'face'}
-              data-testid="character-assembly-edit-face"
-              disabled={isEditingNeckPivot || isTestingHeadMotion}
-              onClick={() => selectEditTarget('face')}
-              type="button"
-            >
-              脸部
-            </button>
-          </nav>
-        </header>
-      ) : null}
+          ) : null}
+          <button
+            aria-pressed={activeEditTarget === 'face'}
+            data-testid="character-assembly-edit-face"
+            disabled={isEditingNeckPivot || isTestingHeadMotion}
+            onClick={() => selectEditTarget('face')}
+            type="button"
+          >
+            脸部
+          </button>
+        </nav>
+      </header>
 
       <div
         aria-label="角色组装预览"
@@ -1383,6 +1471,46 @@ export function CharacterAssemblyWorkbench({
                 top: top + bodyPart.localRect.y,
                 width: bodyPart.localRect.width,
               }}
+            />
+          ) : null}
+          {activeEditTarget === 'body' && !isEditingNeckPivot && bodyPart && bodyRect ? (
+            <div
+              aria-label="拖动身体调整位置，使用方向键微调"
+              aria-roledescription="可拖动身体"
+              aria-disabled={isTestingHeadMotion}
+              className="character-assembly-body-hit-area"
+              data-testid="character-assembly-body-drag-target"
+              onKeyDown={(event) => {
+                if (isTestingHeadMotion) return;
+                const step = event.shiftKey ? 10 : 1;
+                if (event.key === 'ArrowLeft') nudgeBody(-step, 0);
+                else if (event.key === 'ArrowRight') nudgeBody(step, 0);
+                else if (event.key === 'ArrowUp') nudgeBody(0, -step);
+                else if (event.key === 'ArrowDown') nudgeBody(0, step);
+                else return;
+                event.preventDefault();
+              }}
+              onLostPointerCapture={stopPointerDrag}
+              onPointerCancel={stopPointerDrag}
+              onPointerDown={(event) =>
+                beginPointerDrag(event, {
+                  kind: 'body',
+                  placement: {
+                    ...(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT),
+                  },
+                })
+              }
+              onPointerMove={movePointerDrag}
+              onPointerUp={endPointerDrag}
+              role="group"
+              style={{
+                height: bodyRect.height,
+                left: left + bodyRect.x,
+                pointerEvents: isTestingHeadMotion ? 'none' : undefined,
+                top: top + bodyRect.y,
+                width: bodyRect.width,
+              }}
+              tabIndex={isTestingHeadMotion ? -1 : 0}
             />
           ) : null}
           <div
@@ -1632,14 +1760,35 @@ export function CharacterAssemblyWorkbench({
         </div>
           {isFineTuneOpen && !isEditingNeckPivot ? (
             <div
-              aria-label={`${activeEditTarget === 'head' ? '头部' : '脸部'}精调`}
+              aria-label={`${activeEditTargetLabel}精调`}
               className="character-assembly-fine-tune-panel"
               id="character-assembly-fine-tune-panel"
               data-testid="character-assembly-fine-tune-panel"
               ref={fineTunePanelRef}
               role="group"
             >
-              {activeEditTarget === 'head' && head ? (
+              {activeEditTarget === 'body' ? (
+                <>
+                  <div aria-label="身体左右位置" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">身体左右</span>
+                    <button aria-label="向左移动身体" data-testid="character-assembly-body-left-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(-1, 0)} type="button">−</button>
+                    <output aria-label="身体水平位置" data-testid="character-assembly-body-offset-x">{(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).offsetX.toFixed(1)}</output>
+                    <button aria-label="向右移动身体" data-testid="character-assembly-body-right-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(1, 0)} type="button">+</button>
+                  </div>
+                  <div aria-label="身体上下位置" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">身体上下</span>
+                    <button aria-label="向上移动身体" data-testid="character-assembly-body-up-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(0, -1)} type="button">−</button>
+                    <output aria-label="身体垂直位置" data-testid="character-assembly-body-offset-y">{(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).offsetY.toFixed(1)}</output>
+                    <button aria-label="向下移动身体" data-testid="character-assembly-body-down-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(0, 1)} type="button">+</button>
+                  </div>
+                  <div aria-label="身体大小" className="character-assembly-control-set" role="group">
+                    <span className="character-assembly-control-label">身体大小</span>
+                    <button aria-label="缩小身体" data-testid="character-assembly-body-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustBodyScale(-0.05)} type="button">−</button>
+                    <output aria-label="身体大小" data-testid="character-assembly-body-scale">{(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).scale.toFixed(2)}×</output>
+                    <button aria-label="放大身体" data-testid="character-assembly-body-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustBodyScale(0.05)} type="button">+</button>
+                  </div>
+                </>
+              ) : activeEditTarget === 'head' && head ? (
                 <>
                   <div aria-label="头部左右位置" className="character-assembly-control-set" role="group">
                     <span className="character-assembly-control-label">头部左右</span>
@@ -1682,8 +1831,8 @@ export function CharacterAssemblyWorkbench({
                   </div>
                 </>
               )}
-              <div
-                aria-label={`${activeEditTarget === 'head' ? '头部' : '脸部'}角度`}
+              {activeEditTarget !== 'body' ? <div
+                aria-label={`${activeEditTargetLabel}角度`}
                 className="character-assembly-control-set character-assembly-angle-control"
                 data-testid="character-assembly-angle-control"
                 role="group"
@@ -1694,7 +1843,7 @@ export function CharacterAssemblyWorkbench({
                   data-testid={
                     activeEditTarget === 'head'
                       ? 'character-assembly-head-rotation-down'
-                      : 'character-assembly-face-rotation-down'
+                    : 'character-assembly-face-rotation-down'
                   }
                   disabled={isTestingHeadMotion}
                   onClick={(event) =>
@@ -1708,7 +1857,7 @@ export function CharacterAssemblyWorkbench({
                 </button>
                 <input
                   aria-keyshortcuts="ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight"
-                  aria-label={`${activeEditTarget === 'head' ? '头部' : '脸部'}角度，−180度至180度`}
+                  aria-label={`${activeEditTargetLabel}角度，−180度至180度`}
                   data-testid={
                     activeEditTarget === 'head'
                       ? 'character-assembly-head-rotation'
@@ -1760,9 +1909,9 @@ export function CharacterAssemblyWorkbench({
                 >
                   +
                 </button>
-              </div>
-              <button
-                aria-label={`${activeEditTarget === 'head' ? '头部' : '脸部'}水平翻转`}
+              </div> : null}
+              {activeEditTarget !== 'body' ? <button
+                aria-label={`${activeEditTargetLabel}水平翻转`}
                 aria-pressed={activeFlipX}
                 className="character-assembly-flip-toggle"
                 data-testid={
@@ -1775,7 +1924,7 @@ export function CharacterAssemblyWorkbench({
                 type="button"
               >
                 {activeFlipX ? '已翻转' : '水平翻转'}
-              </button>
+              </button> : null}
               <button
                 className="character-assembly-reset"
                 data-testid="character-assembly-reset"

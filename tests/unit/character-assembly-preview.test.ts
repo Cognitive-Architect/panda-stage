@@ -82,6 +82,7 @@ function fixture(): {
       editTarget: 'head',
       draft: {
         bodyAssetId: character.bodyAssetId,
+        bodyPlacement: { ...character.bodyPlacement },
         facePlacement: { ...placement },
         ...(character.head ? { head: structuredClone(character.head) } : {}),
         expressionAssets: character.expressions.map((expression) => ({
@@ -364,7 +365,8 @@ describe('S07 composite assembly preview', () => {
     expect(headlessMarkup).toContain('data-testid="character-assembly-face-drag-target"');
     expect(headlessMarkup).not.toContain('data-testid="character-assembly-head-pivot"');
     expect(headlessMarkup).not.toContain('data-testid="character-assembly-test-head-motion"');
-    expect(headlessMarkup).not.toContain('character-assembly-workbench-header');
+    expect(headlessMarkup).toContain('data-testid="character-assembly-edit-body"');
+    expect(headlessMarkup).toContain('character-assembly-workbench-header');
     expect(headlessMarkup).toContain('data-testid="character-assembly-expression-preview-toggle"');
   });
 

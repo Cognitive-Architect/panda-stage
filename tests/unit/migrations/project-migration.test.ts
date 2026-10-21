@@ -262,7 +262,7 @@ describe('project migration framework', () => {
     });
   });
 
-  it('migrates strict v8 composites to v11 with default part transforms and intensity', () => {
+  it('migrates strict v8 composites to v12 with default part transforms and intensity', () => {
     const current = migrateProject(exampleProject);
     const sourceCharacter = current.characters[0]!;
     const composite = ProjectSchema.parse({
@@ -281,6 +281,7 @@ describe('project migration framework', () => {
       throw new Error('Expected the v8 fixture to be composite.');
     }
     const {
+      bodyPlacement: _bodyPlacement,
       talkingHeadMotionIntensityPercent: _intensityPercent,
       ...currentV8Candidate
     } =
@@ -294,6 +295,7 @@ describe('project migration framework', () => {
       },
     };
     expect(_intensityPercent).toBe(100);
+    expect(_bodyPlacement).toEqual({ offsetX: 0, offsetY: 0, scale: 1 });
     const v8 = {
       ...composite,
       schemaVersion: 8 as const,
@@ -339,7 +341,7 @@ describe('project migration framework', () => {
     expect(() => ProjectV8Schema.parse(withSmuggledHead)).toThrow();
   });
 
-  it('explicitly migrates v9 Head settings to v11 with defaults for new fields', () => {
+  it('explicitly migrates v9 Head settings to v12 with defaults for new fields', () => {
     const current = migrateProject(exampleProject);
     const sourceCharacter = current.characters[0]!;
     const composite = ProjectSchema.parse({
@@ -360,6 +362,7 @@ describe('project migration framework', () => {
       ],
     });
     const {
+      bodyPlacement: _bodyPlacement,
       talkingHeadMotionIntensityPercent: _oldValue,
       ...currentCharacterV9
     } = composite.characters[0]! as Extract<
@@ -385,6 +388,7 @@ describe('project migration framework', () => {
         : undefined,
     };
     expect(_oldValue).toBe(180);
+    expect(_bodyPlacement).toEqual({ offsetX: 0, offsetY: 0, scale: 1 });
     const v9 = {
       ...composite,
       schemaVersion: 9 as const,
@@ -479,8 +483,12 @@ describe('project migration framework', () => {
     if (currentCharacter.mode !== 'composite' || !currentCharacter.head) {
       throw new Error('Expected a v10 composite with Head.');
     }
+    const {
+      bodyPlacement: _bodyPlacement,
+      ...currentV10Candidate
+    } = currentCharacter;
     const v10Character = {
-      ...currentCharacter,
+      ...currentV10Candidate,
       facePlacement: {
         offsetX: currentCharacter.facePlacement.offsetX,
         offsetY: currentCharacter.facePlacement.offsetY,
@@ -495,6 +503,7 @@ describe('project migration framework', () => {
         },
       },
     };
+    expect(_bodyPlacement).toEqual({ offsetX: 0, offsetY: 0, scale: 1 });
     const v10 = {
       ...currentWithTransforms,
       schemaVersion: 10 as const,

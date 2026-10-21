@@ -107,6 +107,7 @@ export function CharacterTalkingHeadMotionPreview({
       editTarget: 'head',
       draft: {
         bodyAssetId: character.bodyAssetId,
+        bodyPlacement: { ...character.bodyPlacement },
         facePlacement: character.facePlacement,
         head: character.head,
         expressionAssets: character.expressions.map((expression) => ({

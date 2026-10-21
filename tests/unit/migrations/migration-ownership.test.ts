@@ -307,12 +307,17 @@ describe('migration ownership: ProjectService.open uses the single pipeline', ()
     if (source.mode !== 'composite' || !source.head) {
       throw new Error('Expected a v10 composite Character fixture.');
     }
+    const {
+      bodyPlacement: _bodyPlacement,
+      ...v10Candidate
+    } = source;
+    expect(_bodyPlacement).toEqual({ offsetX: 0, offsetY: 0, scale: 1 });
     const v10 = {
       ...compositeProject,
       schemaVersion: 10 as const,
       characters: [
         {
-          ...source,
+          ...v10Candidate,
           facePlacement: {
             offsetX: source.facePlacement.offsetX,
             offsetY: source.facePlacement.offsetY,

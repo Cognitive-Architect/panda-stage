@@ -86,6 +86,7 @@ describe('BFM-S02 composite Character lifecycle', () => {
     );
     characters.applyCompositeUpdate(IDS.character, {
       bodyAssetId: IDS.assetChar2,
+      bodyPlacement: { offsetX: 44, offsetY: -26, scale: 0.62 },
       facePlacement: {
         offsetX: 32,
         offsetY: -14,
@@ -152,6 +153,7 @@ describe('BFM-S02 composite Character lifecycle', () => {
       mode: 'composite',
       talkingHeadMotionIntensityPercent: 100,
       bodyAssetId: IDS.assetChar2,
+      bodyPlacement: { offsetX: 44, offsetY: -26, scale: 0.62 },
       facePlacement: {
         offsetX: 32,
         offsetY: -14,
@@ -184,6 +186,35 @@ describe('BFM-S02 composite Character lifecycle', () => {
         assetId: IDS.assetChar,
       },
     ]);
+    const persistedShot = reopened.project.shots.find(
+      (shot) => shot.id === IDS.shot,
+    )!;
+    const persistedLayer = evaluateShotAtTime(
+      persistedShot,
+      0,
+      reopened.project,
+    ).layers.find((layer) => layer.id === IDS.layerChar)!;
+    const inMemoryShot = withTalkingHeadIntensity.shots.find(
+      (shot) => shot.id === IDS.shot,
+    )!;
+    const inMemoryLayer = evaluateShotAtTime(
+      inMemoryShot,
+      0,
+      withTalkingHeadIntensity,
+    ).layers.find((layer) => layer.id === IDS.layerChar)!;
+    expect(
+      resolveLayerVisualParts(
+        reopened.project,
+        persistedShot,
+        persistedLayer,
+      ),
+    ).toEqual(
+      resolveLayerVisualParts(
+        withTalkingHeadIntensity,
+        inMemoryShot,
+        inMemoryLayer,
+      ),
+    );
     expect(
       reopened.project.characters.find(
         (character) => character.id === createdCharacterId,
@@ -257,7 +288,7 @@ describe('BFM-S02 composite Character lifecycle', () => {
     shots.dispose();
   });
 
-  it('opens a persisted v8 composite as v11 without changing Body/Face visuals', async () => {
+  it('opens a persisted v8 composite as v12 without changing Body/Face visuals', async () => {
     const parent = await mkdtemp(
       path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-v8-migration-'),
     );
@@ -288,6 +319,7 @@ describe('BFM-S02 composite Character lifecycle', () => {
       throw new Error('Expected the v8 fixture to be composite.');
     }
     const {
+      bodyPlacement: _bodyPlacement,
       talkingHeadMotionIntensityPercent: _intensityPercent,
       ...v8Character
     } = {
@@ -299,6 +331,7 @@ describe('BFM-S02 composite Character lifecycle', () => {
       },
     };
     expect(_intensityPercent).toBe(100);
+    expect(_bodyPlacement).toEqual({ offsetX: 0, offsetY: 0, scale: 1 });
     const v8 = {
       ...current,
       schemaVersion: 8 as const,

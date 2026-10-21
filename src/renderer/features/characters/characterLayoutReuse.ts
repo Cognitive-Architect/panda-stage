@@ -1,4 +1,5 @@
 import type {
+  BodyPlacement,
   CharacterHead,
   CompositeCharacterUpdate,
   FacePlacement,
@@ -8,6 +9,7 @@ export interface CharacterLayoutReuseCandidate {
   characterId: string;
   name: string;
   bodyAssetId: string;
+  bodyPlacement: BodyPlacement;
   facePlacement: FacePlacement;
   head?: CharacterHead;
 }
@@ -16,6 +18,7 @@ export interface CharacterLayoutReuseTarget {
   characterId: string;
   name: string;
   bodyAssetId: string;
+  bodyPlacement: BodyPlacement;
   head?: CharacterHead;
 }
 

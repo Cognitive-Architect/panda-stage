@@ -512,7 +512,7 @@ function baseResult(
  *
  * The returned part identities are ephemeral and stay under the one logical
  * owner Layer. Local geometry deliberately excludes the owner transform: Body
- * is centered at the root local origin, while Head and Face use their existing
+ * uses its Character-local placement, while Head and Face use their existing
  * Character-local placements. Head and Face share one internal Head Group.
  */
 export function resolveLayerVisualParts(
@@ -626,7 +626,12 @@ export function resolveLayerVisualParts(
     slot: 'body',
     source: { kind: 'character-body', assetId: body.id },
     assetId: body.id,
-    localRect: centeredRect(body),
+    localRect: centeredRect(
+      body,
+      character.bodyPlacement.offsetX,
+      character.bodyPlacement.offsetY,
+      character.bodyPlacement.scale,
+    ),
     rotationDeg: 0,
     flipX: false,
     drawOrder: 0,

@@ -74,6 +74,7 @@ function definition(project: Project): CompositeCharacterDefinition {
   }
   return {
     bodyAssetId: character.bodyAssetId,
+    bodyPlacement: { ...character.bodyPlacement },
     facePlacement: { ...character.facePlacement },
     ...(character.head
       ? {
@@ -122,6 +123,7 @@ function creationDraft(
   return {
     name,
     bodyAssetId: IDS.assetBg,
+    bodyPlacement: { offsetX: 0, offsetY: 0, scale: 1 },
     facePlacement: {
       offsetX: 5,
       offsetY: -3,
@@ -160,6 +162,7 @@ function changedDefinition(project: Project): CompositeCharacterDefinition {
   return {
     ...current,
     bodyAssetId: IDS.assetChar2,
+    bodyPlacement: { offsetX: 42, offsetY: -18, scale: 0.65 },
     facePlacement: {
       offsetX: 24,
       offsetY: -12,
@@ -219,6 +222,7 @@ describe('BFM-S02 Character commands', () => {
     expect(character).toMatchObject({
       mode: 'composite',
       bodyAssetId: IDS.assetBg,
+      bodyPlacement: { offsetX: 0, offsetY: 0, scale: 1 },
       facePlacement: { offsetX: 5, offsetY: -3, scale: 0.9 },
       baseAssetId: IDS.assetChar,
       head: INITIAL_HEAD,
@@ -273,6 +277,7 @@ describe('BFM-S02 Character commands', () => {
     expect(
       begin.session.updateDraft({
         name: 'Created Composite Panda',
+        bodyPlacement: { offsetX: 34, offsetY: -16, scale: 0.7 },
         facePlacement: {
           offsetX: 18,
           offsetY: 7,
@@ -300,6 +305,7 @@ describe('BFM-S02 Character commands', () => {
       name: 'Created Composite Panda',
       mode: 'composite',
       bodyAssetId: IDS.assetBg,
+      bodyPlacement: { offsetX: 34, offsetY: -16, scale: 0.7 },
       facePlacement: {
         offsetX: 18,
         offsetY: 7,
@@ -514,6 +520,7 @@ describe('BFM-S02 Character commands', () => {
       id: IDS.character,
       mode: 'composite',
       bodyAssetId: IDS.assetChar2,
+      bodyPlacement: next.bodyPlacement,
       facePlacement: next.facePlacement,
       baseAssetId: IDS.assetChar2,
       mouthOpenAssetId: IDS.assetChar,
@@ -590,6 +597,11 @@ describe('BFM-S02 Character commands', () => {
     expect(
       input.characters.applyCompositeDefinition(IDS.character, current),
     ).toBe(before.project);
+    expect(
+      input.characters.applyCompositeUpdate(IDS.character, {
+        bodyPlacement: current.bodyPlacement,
+      }),
+    ).toBe(before.project);
     expect(input.characters.replaceBodyAsset(IDS.character, IDS.assetBg)).toBe(
       before.project,
     );
@@ -626,6 +638,16 @@ describe('BFM-S02 Character commands', () => {
     expect(() =>
       input.characters.applyCompositeDefinition(IDS.character, invalid),
     ).toThrow(expect.objectContaining({ code: 'INVALID_FACE_PLACEMENT' }));
+    expect(input.editor.getSnapshot()).toBe(before);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(0);
+
+    const invalidBody = {
+      ...changedDefinition(before.project),
+      bodyPlacement: { offsetX: 0, offsetY: 0, scale: 21 },
+    };
+    expect(() =>
+      input.characters.applyCompositeDefinition(IDS.character, invalidBody),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_BODY_PLACEMENT' }));
     expect(input.editor.getSnapshot()).toBe(before);
     expect(input.editor.history.getSnapshot().undoCount).toBe(0);
     input.assembly.dispose();
@@ -697,8 +719,10 @@ describe('BFM-S02 Character commands', () => {
       rotationDeg: -10,
       flipX: true,
     };
+    const bodyPlacement = { offsetX: 36, offsetY: -14, scale: 0.6 };
     const update = begin.session.updateDraft({
       bodyAssetId: IDS.assetChar2,
+      bodyPlacement,
       facePlacement,
       mouthOpenAssetId: IDS.assetChar,
     });
@@ -711,6 +735,7 @@ describe('BFM-S02 Character commands', () => {
       ),
     ).toBe(true);
     expect(begin.session.getSnapshot()?.draft).toMatchObject({
+      bodyPlacement,
       facePlacement: { rotationDeg: -10, flipX: true },
       head: { placement: { rotationDeg: 90, flipX: true } },
     });
@@ -722,6 +747,7 @@ describe('BFM-S02 Character commands', () => {
     expect(input.editor.getSnapshot()!.revision).toBe(1);
     expect(input.editor.history.getSnapshot().undoCount).toBe(1);
     expect(input.editor.getSnapshot()!.project.characters[0]).toMatchObject({
+      bodyPlacement,
       head: headPlacement,
       bodyAssetId: IDS.assetChar2,
       facePlacement: {
@@ -737,6 +763,7 @@ describe('BFM-S02 Character commands', () => {
     expect(input.editor.getSnapshot()!.project).toEqual(before.project);
     expect(input.editor.redo()).toBe(true);
     expect(input.editor.getSnapshot()!.project.characters[0]).toMatchObject({
+      bodyPlacement,
       head: headPlacement,
       facePlacement: { rotationDeg: -10, flipX: true },
     });

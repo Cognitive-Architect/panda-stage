@@ -62,6 +62,7 @@ function detailMarkup({
     withAssemblyDraft && character.mode === 'composite'
       ? {
           bodyAssetId: character.bodyAssetId,
+          bodyPlacement: { ...character.bodyPlacement },
           facePlacement: character.facePlacement,
           expressionAssets: character.expressions.map((expression) => ({
             expressionId: expression.id,

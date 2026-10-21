@@ -747,12 +747,13 @@
 }
 
 .editor-layout[data-shell-mode='landscape'] .character-assembly-workbench {
-  grid-template-rows: minmax(0, 1fr) max-content;
+  grid-template-rows: max-content minmax(0, 1fr) max-content;
 }
 
 .editor-layout[data-shell-mode='landscape']
   .character-assembly-workbench-header {
-  display: none;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .character-assembly-workbench-header {
@@ -853,6 +854,24 @@
 
 .character-assembly-part-body {
   z-index: 1;
+}
+
+.character-assembly-body-hit-area {
+  position: absolute;
+  z-index: 4;
+  min-width: 1px;
+  min-height: 1px;
+  border: 2px solid var(--ui-color-selected-border);
+  background: rgb(131 211 154 / 5%);
+  cursor: move;
+  outline: none;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.character-assembly-body-hit-area:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring);
+  outline-offset: 3px;
 }
 
 .character-assembly-head-group {

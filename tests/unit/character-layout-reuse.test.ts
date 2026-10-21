@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { CharacterService, ProjectSchema } from '../../src/domain';
+import { buildProject, IDS } from './domain/testProject';
 import {
   assessCharacterLayoutReuse,
   buildCharacterLayoutReuseUpdate,
@@ -11,6 +13,7 @@ const source: CharacterLayoutReuseCandidate = {
   characterId: 'source-character',
   name: 'Saved source',
   bodyAssetId: 'source-body',
+  bodyPlacement: { offsetX: 72, offsetY: -24, scale: 0.68 },
   facePlacement: {
     offsetX: 42,
     offsetY: 186,
@@ -35,6 +38,7 @@ const target: CharacterLayoutReuseTarget = {
   characterId: 'target-character',
   name: 'Target character',
   bodyAssetId: 'target-body',
+  bodyPlacement: { offsetX: -48, offsetY: 36, scale: 1.12 },
   head: {
     assetId: 'target-head',
     placement: {
@@ -197,9 +201,66 @@ describe('saved Character layout reuse', () => {
       },
     });
     expect(update).not.toHaveProperty('bodyAssetId');
+    expect(update).not.toHaveProperty('bodyPlacement');
     expect(update).not.toHaveProperty('expressionAssets');
     expect(source).toEqual(sourceBefore);
     expect(target).toEqual(targetBefore);
+  });
+
+  it('keeps the target Body asset and placement when a saved layout is applied', () => {
+    const base = buildProject();
+    const original = base.characters[0]!;
+    const targetBodyPlacement = { offsetX: 104, offsetY: -52, scale: 0.58 };
+    const project = ProjectSchema.parse({
+      ...base,
+      characters: [
+        {
+          ...original,
+          mode: 'composite',
+          bodyAssetId: IDS.assetBg,
+          bodyPlacement: targetBodyPlacement,
+          facePlacement: {
+            offsetX: -8,
+            offsetY: 14,
+            scale: 0.96,
+            rotationDeg: 0,
+            flipX: false,
+          },
+          head: {
+            assetId: IDS.assetChar,
+            placement: {
+              offsetX: -6,
+              offsetY: -40,
+              scale: 1,
+              rotationDeg: 0,
+              flipX: false,
+            },
+            pivot: { x: 290, y: 410 },
+          },
+        },
+      ],
+    });
+    const targetCharacter = project.characters[0]!;
+    const targetInput: CharacterLayoutReuseTarget = {
+      ...target,
+      characterId: targetCharacter.id,
+      bodyAssetId: IDS.assetBg,
+      bodyPlacement: targetBodyPlacement,
+      head: targetCharacter.mode === 'composite' ? targetCharacter.head : undefined,
+    };
+    const update = buildCharacterLayoutReuseUpdate(source, targetInput);
+    const applied = new CharacterService().applyCompositeUpdate(
+      project,
+      targetCharacter.id,
+      update,
+    );
+
+    expect(update).not.toHaveProperty('bodyAssetId');
+    expect(update).not.toHaveProperty('bodyPlacement');
+    expect(applied.characters[0]).toMatchObject({
+      bodyAssetId: IDS.assetBg,
+      bodyPlacement: targetBodyPlacement,
+    });
   });
 
   it('supports a matching Body-only pair without inventing a Head', () => {

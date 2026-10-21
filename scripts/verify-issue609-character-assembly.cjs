@@ -22,7 +22,8 @@ const issue815Only = process.argv.includes('--issue815-c03-f01');
 const issue815Run = issue815BaselineOnly || issue815Only;
 const issue820BaselineOnly = process.argv.includes('--issue820-c04-s01-baseline');
 const issue820Only = process.argv.includes('--issue820-c04-s01');
-const issue820Run = issue820BaselineOnly || issue820Only;
+const issue820S02Only = process.argv.includes('--issue820-c04-s02');
+const issue820Run = issue820BaselineOnly || issue820Only || issue820S02Only;
 const issue813Only = process.argv.includes('--issue813-assembly-canvas-space');
 const issue813BaselineOnly = process.argv.includes('--issue813-baseline');
 const issue813Run = issue813Only || issue813BaselineOnly;
@@ -36,7 +37,9 @@ const ISSUE683_BASELINE_SHA = 'bed0b353f40238bfd820861c0e5349f0e101e977';
 // receipt does not claim human visual acceptance.
 const acceptanceRoot = issue820BaselineOnly
   ? 'D:\\PandaStage-Acceptance\\issue820-c04-s01\\baseline'
-  : issue820Only
+  : issue820S02Only
+    ? 'D:\\PandaStage-Acceptance\\issue820-c04-s02'
+    : issue820Only
     ? 'D:\\PandaStage-Acceptance\\issue820-c04-s01\\after'
     : issue815BaselineOnly
   ? 'D:\\PandaStage-Acceptance\\issue815-c03-f01\\baseline'
@@ -63,7 +66,9 @@ const projectRoot = path.join(
   runRoot,
   'projects',
   issue820Run
-    ? 'issue820-c04-s01.pandastage'
+    ? issue820S02Only
+      ? 'issue820-c04-s02.pandastage'
+      : 'issue820-c04-s01.pandastage'
     : issue815Run
     ? 'issue815-c03-f01.pandastage'
     : issue813Run
@@ -712,6 +717,15 @@ function createFixture() {
   });
 }
 
+function createIssue820V11Fixture(project) {
+  const legacy = structuredClone(project);
+  legacy.schemaVersion = 11;
+  for (const character of legacy.characters) {
+    if (character.mode === 'composite') delete character.bodyPlacement;
+  }
+  return legacy;
+}
+
 function readIssue683BaselineClipPath() {
   const childProcess = require('node:child_process');
   const css = childProcess.execFileSync(
@@ -754,6 +768,16 @@ function documentFor(root, project) {
   };
 }
 
+function documentForMigratedSource(root, project, sourceVersion) {
+  return {
+    projectRoot: root,
+    projectFilePath: path.join(root, 'project.json'),
+    project,
+    migrated: sourceVersion < PROJECT_SCHEMA_VERSION,
+    sourceVersion,
+  };
+}
+
 function register(channel, handler) {
   ipcMain.handle(channel, handler);
   channels.push(channel);
@@ -763,10 +787,13 @@ function projectForRoot(root) {
   if (path.resolve(root).toLowerCase() !== path.resolve(projectRoot).toLowerCase()) {
     return null;
   }
-  if (issue799Only) {
-    return ProjectSchema.parse(
-      JSON.parse(readFileSync(path.join(projectRoot, 'project.json'), 'utf8')),
+  if (issue799Only || issue820S02Only) {
+    const persisted = JSON.parse(
+      readFileSync(path.join(projectRoot, 'project.json'), 'utf8'),
     );
+    return issue820S02Only
+      ? migrateProject(persisted)
+      : ProjectSchema.parse(persisted);
   }
   return activeProject;
 }
@@ -784,6 +811,34 @@ function registerAcceptanceHandlers() {
     status: 'cancelled',
   }));
   register(IPC_CHANNELS.PROJECT_OPEN, (_event, request) => {
+    if (
+      issue820S02Only &&
+      path.resolve(request.projectRoot).toLowerCase() ===
+        path.resolve(projectRoot).toLowerCase()
+    ) {
+      const persisted = JSON.parse(
+        readFileSync(path.join(projectRoot, 'project.json'), 'utf8'),
+      );
+      const sourceVersion = detectSchemaVersion(persisted);
+      const project = migrateProject(persisted);
+      inProgressEvidence.projectOpenDocuments ??= [];
+      inProgressEvidence.projectOpenDocuments.push({
+        sourceVersion,
+        migrated: sourceVersion < PROJECT_SCHEMA_VERSION,
+        schemaVersion: project.schemaVersion,
+        bodyPlacement: project.characters.find(
+          (character) => character.id === IDS.issue820Character,
+        )?.bodyPlacement ?? null,
+      });
+      return {
+        ok: true,
+        value: documentForMigratedSource(
+          request.projectRoot,
+          project,
+          sourceVersion,
+        ),
+      };
+    }
     const project = projectForRoot(request.projectRoot);
     return project
       ? { ok: true, value: documentFor(request.projectRoot, project) }
@@ -799,7 +854,7 @@ function registerAcceptanceHandlers() {
   register(IPC_CHANNELS.PROJECT_SAVE, (_event, request) => {
     savedProject = request.project;
     activeProject = request.project;
-    if (issue799Only) {
+    if (issue799Only || issue820S02Only) {
       writeFileSync(
         path.join(projectRoot, 'project.json'),
         `${JSON.stringify(request.project, null, 2)}\n`,
@@ -811,6 +866,20 @@ function registerAcceptanceHandlers() {
   register(IPC_CHANNELS.PROJECT_CONFIRM_SWITCH, () => ({ outcome: 'saved' }));
   register(IPC_CHANNELS.RECENT_PROJECTS_LIST, () => ({ ok: true, entries: [] }));
   register(IPC_CHANNELS.RECENT_PROJECTS_OPEN, (_event, request) => {
+    if (issue820S02Only) {
+      const persisted = JSON.parse(
+        readFileSync(path.join(projectRoot, 'project.json'), 'utf8'),
+      );
+      const sourceVersion = detectSchemaVersion(persisted);
+      return {
+        ok: true,
+        document: documentForMigratedSource(
+          request.projectRoot,
+          migrateProject(persisted),
+          sourceVersion,
+        ),
+      };
+    }
     const project = projectForRoot(request.projectRoot);
     return project
       ? { ok: true, document: documentFor(request.projectRoot, project) }
@@ -5229,15 +5298,305 @@ async function verifyIssue820LargeAssetFit(window) {
   };
 }
 
+async function verifyIssue820BodyPlacement(window) {
+  const screenshots = [];
+  const evidence = inProgressEvidence;
+  const readState = async () => window.webContents.executeJavaScript(`(() => {
+    const box = (element) => {
+      const rect = element?.getBoundingClientRect();
+      return rect ? { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height } : null;
+    };
+    const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    const history = document.querySelector('[data-testid="history-controls"]');
+    return {
+      characterId: workbench?.dataset.characterId ?? '',
+      bodyPlacement: {
+        offsetX: Number(workbench?.dataset.bodyOffsetX),
+        offsetY: Number(workbench?.dataset.bodyOffsetY),
+        scale: Number(workbench?.dataset.bodyScale),
+      },
+      facePlacement: [
+        Number(workbench?.dataset.faceOffsetX), Number(workbench?.dataset.faceOffsetY),
+        Number(workbench?.dataset.faceScale), Number(workbench?.dataset.faceRotationDeg),
+        workbench?.dataset.faceFlipX === 'true',
+      ],
+      headPlacement: [
+        Number(workbench?.dataset.headOffsetX), Number(workbench?.dataset.headOffsetY),
+        Number(workbench?.dataset.headScale), Number(workbench?.dataset.headRotationDeg),
+        workbench?.dataset.headFlipX === 'true', Number(workbench?.dataset.headPivotX),
+        Number(workbench?.dataset.headPivotY),
+      ],
+      projectRevision: workbench?.dataset.projectRevision ?? '',
+      projectDirty: workbench?.dataset.projectDirty ?? '',
+      history: { undo: history?.dataset.undoCount ?? '', redo: history?.dataset.redoCount ?? '' },
+      pending: Boolean(document.querySelector('[data-testid="character-assembly-pending"]')),
+      cameraFitScale: Number(workbench?.dataset.cameraFitScale ?? 0),
+      images: [...document.querySelectorAll('[data-testid="character-assembly-workbench"] .character-assembly-part')]
+        .map((image) => ({
+          part: image.classList.contains('character-assembly-part-body') ? 'body'
+            : image.classList.contains('character-assembly-part-head') ? 'head' : 'face',
+          assetId: image.dataset.assetId ?? '',
+          naturalWidth: image.naturalWidth,
+          naturalHeight: image.naturalHeight,
+          rect: box(image),
+        })),
+    };
+  })()`);
+  const openCharacter = async (label) => {
+    await clickWithNativeInput(
+      window,
+      `[data-testid="character-list-view"] [data-character-id="${IDS.issue820Character}"]`,
+      `${label} Character card`,
+    );
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue820Character)}`,
+      `${label} Character detail did not open.`,
+    );
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-workspace-expressions-tab"]',
+      `${label} Expressions workspace`,
+    );
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-workspace-assembly-tab"]',
+      `${label} Assembly workspace`,
+    );
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.sessionKind === 'edit'`,
+      `${label} Assembly session did not open.`,
+    );
+    await waitForDom(
+      window,
+      `(() => { const images = [...document.querySelectorAll('[data-testid="character-assembly-workbench"] .character-assembly-part')]; return images.length === 3 && images.every((image) => image.complete && image.naturalWidth > 0); })()`,
+      `${label} Body, Head, and Face images did not load.`,
+    );
+    await waitForPaint(window);
+  };
+  const dragBody = async (label, deltaX, deltaY) => {
+    const point = await window.webContents.executeJavaScript(`(() => {
+      const target = document.querySelector('[data-testid="character-assembly-body-drag-target"]');
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      if (!target || !workbench) return null;
+      const rect = target.getBoundingClientRect();
+      const zoom = Number(workbench.dataset.cameraFitScale ?? 0);
+      const candidates = [[0.5, 0.78], [0.35, 0.8], [0.65, 0.8], [0.5, 0.68]];
+      const point = candidates.map(([xRatio, yRatio]) => ({
+        x: Math.round(rect.left + rect.width * xRatio),
+        y: Math.round(rect.top + rect.height * yRatio),
+      })).find(({ x, y }) => {
+        const hit = document.elementFromPoint(x, y);
+        return hit === target || target.contains(hit);
+      });
+      return point && zoom > 0 ? { ...point, zoom, bounds: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } } : null;
+    })()`);
+    assert(point, `${label} could not find an unobstructed native pointer point on the Body drag target.`);
+    const endX = point.x + Math.round(deltaX * point.zoom);
+    const endY = point.y + Math.round(deltaY * point.zoom);
+    await sendPointerDrag(window, point.x, point.y, endX, endY);
+    await waitForPaint(window);
+    const state = await readState();
+    assert(
+      Math.abs(state.bodyPlacement.offsetX - deltaX) < 5 &&
+        Math.abs(state.bodyPlacement.offsetY - deltaY) < 5,
+      `${label} native drag did not produce the expected local Body offset: ${JSON.stringify({ point, state: state.bodyPlacement })}`,
+    );
+    return { pointer: point, end: { x: endX, y: endY }, state };
+  };
+  const sameSessionState = (before, after, label) => {
+    assert(after.projectRevision === before.projectRevision, `${label} changed Project revision.`);
+    assert(after.projectDirty === before.projectDirty, `${label} changed Project dirty state.`);
+    assert(JSON.stringify(after.history) === JSON.stringify(before.history), `${label} changed History.`);
+  };
+
+  const legacyProject = JSON.parse(
+    readFileSync(path.join(projectRoot, 'project.json'), 'utf8'),
+  );
+  assert(legacyProject.schemaVersion === 11, 'S02 did not start from a v11 project file.');
+  const legacyCharacter = legacyProject.characters.find(
+    (character) => character.id === IDS.issue820Character,
+  );
+  assert(legacyCharacter?.mode === 'composite', 'The v11 fixture Character is missing.');
+  assert(!Object.hasOwn(legacyCharacter, 'bodyPlacement'), 'The v11 fixture unexpectedly contains Body placement.');
+  const migrated = migrateProject(legacyProject);
+  const migratedCharacter = migrated.characters.find(
+    (character) => character.id === IDS.issue820Character,
+  );
+  assert(migratedCharacter?.mode === 'composite', 'The v11 Character did not migrate.');
+  assert(
+    JSON.stringify(migratedCharacter.bodyPlacement) === JSON.stringify({ offsetX: 0, offsetY: 0, scale: 1 }),
+    'The v11 migration did not add neutral Body placement.',
+  );
+  assert(migratedCharacter.bodyAssetId === legacyCharacter.bodyAssetId, 'The v11 migration changed the Body asset reference.');
+  assert(JSON.stringify(migratedCharacter.facePlacement) === JSON.stringify(legacyCharacter.facePlacement), 'The v11 migration changed Face placement.');
+  assert(JSON.stringify(migratedCharacter.head) === JSON.stringify(legacyCharacter.head), 'The v11 migration changed Head placement or H02 pivot.');
+  assert(migratedCharacter.talkingHeadMotionIntensityPercent === legacyCharacter.talkingHeadMotionIntensityPercent, 'The v11 migration changed C02 intensity.');
+  assert(JSON.stringify(migratedCharacter.expressions) === JSON.stringify(legacyCharacter.expressions), 'The v11 migration changed expression asset references.');
+  evidence.v11Migration = {
+    sourceVersion: legacyProject.schemaVersion,
+    migratedSchemaVersion: migrated.schemaVersion,
+    bodyPlacement: migratedCharacter.bodyPlacement,
+    bodyAssetIdPreserved: true,
+    facePlacementPreserved: true,
+    headAndPivotPreserved: true,
+    talkingHeadMotionIntensityPercent: migratedCharacter.talkingHeadMotionIntensityPercent,
+    expressionsPreserved: true,
+  };
+
+  await openCharacter('S02 v11 migrated');
+  let initial = await readState();
+  assert(initial.characterId === IDS.issue820Character, 'The v11 migrated Character ID changed in Assembly.');
+  assert(JSON.stringify(initial.bodyPlacement) === JSON.stringify({ offsetX: 0, offsetY: 0, scale: 1 }), 'Opening the v11 project introduced Body visual drift.');
+  assert(initial.images.some((image) => image.part === 'body' && image.naturalWidth === 1086 && image.naturalHeight === 1448), 'S02 did not load the 1086 x 1448 Body.');
+  assert(initial.images.some((image) => image.part === 'head' && image.naturalWidth === 1200 && image.naturalHeight === 1080), 'S02 did not load the large Head.');
+  assert(initial.images.some((image) => image.part === 'face' && image.naturalWidth === 300 && image.naturalHeight === 300), 'S02 did not load the 300 x 300 Face.');
+  assert(initial.projectRevision === '0' && initial.projectDirty === 'false' && initial.history.undo === '0' && initial.history.redo === '0', 'Opening the v11 project created a Project change or History entry.');
+  assert(evidence.projectOpenDocuments?.some((document) => document.sourceVersion === 11 && document.migrated && document.schemaVersion === 12), 'The Windows renderer did not receive the migrated v11 document.');
+  evidence.v11OpenedInElectron = initial;
+  screenshots.push(await capture(window, 'issue820-s02-v11-open-neutral-body.png'));
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-edit-body"]', 'Select Body edit target');
+  const cancelBase = await readState();
+  const cancelledDrag = await dragBody('Body draft that will be canceled', 80, 50);
+  assert(cancelledDrag.state.pending, 'Body drag did not expose the pending Apply/Cancel actions.');
+  sameSessionState(cancelBase, cancelledDrag.state, 'Unapplied Body drag');
+  assert(JSON.stringify(cancelledDrag.state.headPlacement) === JSON.stringify(cancelBase.headPlacement), 'Body draft changed Head or H02 pivot.');
+  assert(JSON.stringify(cancelledDrag.state.facePlacement) === JSON.stringify(cancelBase.facePlacement), 'Body draft changed Face placement.');
+  screenshots.push(await capture(window, 'issue820-s02-body-draft-before-cancel.png'));
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-pending"] button:first-of-type',
+    'Cancel the Body draft with Revert',
+  );
+  await waitForDom(window, `!document.querySelector('[data-testid="character-assembly-pending"]')`, 'Cancel did not discard the Body draft.');
+  const afterCancel = await readState();
+  sameSessionState(cancelBase, afterCancel, 'Canceling Body draft');
+  assert(JSON.stringify(afterCancel.bodyPlacement) === JSON.stringify(cancelBase.bodyPlacement), 'Cancel did not restore Body placement.');
+  evidence.cancel = { before: cancelBase, draft: cancelledDrag.state, after: afterCancel };
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-edit-body"]', 'Reselect Body after Cancel');
+  const appliedDrag = await dragBody('Body draft to Apply', -64, 84);
+  await clickWithNativeInput(window, '[data-testid="character-assembly-fine-tune-toggle"]', 'Open Body fine-tune controls');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-body-scale-down"]')`, 'Body fine-tune scale control did not appear.');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-body-scale-down"]', 'Reduce Body scale once');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-body-scale-down"]', 'Reduce Body scale twice');
+  await waitForPaint(window);
+  const beforeApply = await readState();
+  assert(beforeApply.bodyPlacement.offsetX < -50 && beforeApply.bodyPlacement.offsetY > 70 && Math.abs(beforeApply.bodyPlacement.scale - 0.9) < 0.001, 'Body move and bounded scale controls did not update the draft.');
+  sameSessionState(initial, beforeApply, 'Body move and scale before Apply');
+  assert(JSON.stringify(beforeApply.headPlacement) === JSON.stringify(initial.headPlacement), 'Body edits changed Head or H02 pivot.');
+  assert(JSON.stringify(beforeApply.facePlacement) === JSON.stringify(initial.facePlacement), 'Body edits changed Face placement.');
+  const initialBodyRect = initial.images.find((image) => image.part === 'body')?.rect;
+  const appliedBodyRect = beforeApply.images.find((image) => image.part === 'body')?.rect;
+  assert(initialBodyRect && appliedBodyRect && appliedBodyRect.width < initialBodyRect.width * 0.92, 'Body scale did not reduce the rendered Body rectangle.');
+  evidence.applyDraft = { pointerDrag: appliedDrag.pointer, beforeApply, initialBodyRect, appliedBodyRect };
+  screenshots.push(await capture(window, 'issue820-s02-body-moved-scaled-draft.png'));
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-pending"] button:last-of-type', 'Apply Body move and scale');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '0' && document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.projectRevision === '1'`,
+    'Applying Body placement did not create exactly one Project revision and History entry.',
+  );
+  await waitForPaint(window);
+  const afterApply = await readState();
+  assert(!afterApply.pending && afterApply.projectDirty === 'true', 'Apply left a pending draft or did not dirty the Project.');
+  assert(JSON.stringify(afterApply.bodyPlacement) === JSON.stringify(beforeApply.bodyPlacement), 'Apply changed the Body placement values.');
+  assert(JSON.stringify(afterApply.headPlacement) === JSON.stringify(initial.headPlacement), 'Apply changed Head or H02 pivot.');
+  assert(JSON.stringify(afterApply.facePlacement) === JSON.stringify(initial.facePlacement), 'Apply changed Face placement.');
+  screenshots.push(await capture(window, 'issue820-s02-body-applied-once.png'));
+  evidence.apply = { before: beforeApply, after: afterApply, singleHistoryItem: true };
+
+  await clickWithNativeInput(window, '[data-testid="character-workspace-expressions-tab"]', 'Close clean Assembly before Undo');
+  await waitForDom(window, `!document.querySelector('[data-testid="character-assembly-workbench"]')`, 'Assembly did not close before Undo.');
+  await expandProjectActions(window);
+  await clickWithNativeInput(window, '[data-testid="history-controls"] .history-actions button:first-of-type', 'Undo Body placement Apply');
+  await waitForDom(window, `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '0' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '1'`, 'Undo did not move Body Apply to Redo.');
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after Undo');
+  await waitForDom(window, `Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.bodyScale) === 1 && Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.bodyOffsetX) === 0 && Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.bodyOffsetY) === 0`, 'Undo did not restore neutral Body placement.');
+  const afterUndo = await readState();
+  assert(JSON.stringify(afterUndo.headPlacement) === JSON.stringify(initial.headPlacement) && JSON.stringify(afterUndo.facePlacement) === JSON.stringify(initial.facePlacement), 'Undo changed Head/Face placement.');
+  evidence.undo = afterUndo;
+  screenshots.push(await capture(window, 'issue820-s02-body-undo.png'));
+
+  await clickWithNativeInput(window, '[data-testid="character-workspace-expressions-tab"]', 'Close clean Assembly before Redo');
+  await waitForDom(window, `!document.querySelector('[data-testid="character-assembly-workbench"]')`, 'Assembly did not close before Redo.');
+  await clickWithNativeInput(window, '[data-testid="history-controls"] .history-actions button:last-of-type', 'Redo Body placement Apply');
+  await waitForDom(window, `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '0'`, 'Redo did not restore the Body Apply History item.');
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after Redo');
+  await waitForDom(window, `Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.bodyScale) < 1 && Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.bodyOffsetX) < -50 && Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.bodyOffsetY) > 70`, 'Redo did not restore the moved and scaled Body.');
+  const afterRedo = await readState();
+  assert(JSON.stringify(afterRedo.bodyPlacement) === JSON.stringify(afterApply.bodyPlacement), 'Redo restored different Body placement values.');
+  evidence.redo = afterRedo;
+  screenshots.push(await capture(window, 'issue820-s02-body-redo.png'));
+
+  await expandProjectActions(window);
+  await clickWithNativeInput(window, '[data-testid="quick-action-save"]', 'Save migrated v12 Project with Body placement');
+  await waitForDom(window, `document.querySelector('[data-testid="quick-action-save"]')?.dataset.saveState === 'saved'`, 'Project Save did not finish after Body Apply and Redo.');
+  const diskProject = ProjectSchema.parse(JSON.parse(readFileSync(path.join(projectRoot, 'project.json'), 'utf8')));
+  const diskCharacter = diskProject.characters.find((character) => character.id === IDS.issue820Character);
+  assert(diskProject.schemaVersion === 12, 'Saving the migrated v11 project did not write schema v12.');
+  assert(diskCharacter?.mode === 'composite' && JSON.stringify(diskCharacter.bodyPlacement) === JSON.stringify(afterRedo.bodyPlacement), 'Saved Body placement differs from the applied value.');
+  assert(diskCharacter.bodyAssetId === legacyCharacter.bodyAssetId, 'Saving changed the Body asset reference.');
+  assert(JSON.stringify(diskCharacter.facePlacement) === JSON.stringify(legacyCharacter.facePlacement), 'Saving changed Face placement.');
+  assert(JSON.stringify(diskCharacter.head) === JSON.stringify(legacyCharacter.head), 'Saving changed Head placement or H02 pivot.');
+  assert(diskCharacter.talkingHeadMotionIntensityPercent === legacyCharacter.talkingHeadMotionIntensityPercent, 'Saving changed C02 intensity.');
+  assert(JSON.stringify(diskCharacter.expressions) === JSON.stringify(legacyCharacter.expressions), 'Saving changed expression asset references.');
+  evidence.savedV12 = {
+    projectFilePath: path.join(projectRoot, 'project.json'),
+    schemaVersion: diskProject.schemaVersion,
+    bodyPlacement: diskCharacter.bodyPlacement,
+    bodyAssetId: diskCharacter.bodyAssetId,
+    facePlacement: diskCharacter.facePlacement,
+    head: diskCharacter.head,
+    talkingHeadMotionIntensityPercent: diskCharacter.talkingHeadMotionIntensityPercent,
+    expressionAssetIds: diskCharacter.expressions.map((expression) => expression.assetId),
+  };
+
+  await clickWithNativeInput(window, '[data-testid="quick-action-close"]', 'Close saved v12 Project for disk reopen');
+  await waitForDom(window, `document.querySelector('[data-testid="project-center-screen"]') && !document.querySelector('[data-testid="editor-layout"]')`, 'Saved project did not close to Project Center.');
+  await openProject(window);
+  await openCharacter('S02 saved v12 reopen');
+  const reopened = await readState();
+  assert(JSON.stringify(reopened.bodyPlacement) === JSON.stringify(afterRedo.bodyPlacement), 'Body placement did not survive a disk Save/Reopen.');
+  assert(JSON.stringify(reopened.headPlacement) === JSON.stringify(initial.headPlacement), 'Save/Reopen changed Head placement or H02 pivot.');
+  assert(JSON.stringify(reopened.facePlacement) === JSON.stringify(initial.facePlacement), 'Save/Reopen changed Face placement.');
+  assert(reopened.projectRevision === '0' && reopened.projectDirty === 'false' && reopened.history.undo === '0' && reopened.history.redo === '0', 'Reopened v12 project did not start with a clean Project and History.');
+  assert(evidence.projectOpenDocuments?.some((document) => document.sourceVersion === 12 && !document.migrated && document.schemaVersion === 12), 'Save/Reopen did not read the persisted v12 Project.');
+  evidence.reopenedFromDisk = reopened;
+  screenshots.push(await capture(window, 'issue820-s02-body-save-reopen-v12.png'));
+
+  return {
+    issue: 820,
+    code: 'C04-S02',
+    passed: true,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'verify:issue820-c04-s02',
+    projectRoot,
+    projectFilePath: path.join(projectRoot, 'project.json'),
+    syntheticInput: true,
+    humanAcceptance: false,
+    evidenceKind: 'windows-electron-v11-migration-body-draft-cancel-apply-undo-redo-save-reopen',
+    evidence,
+    screenshots,
+  };
+}
+
 async function run() {
   mkdirSync(evidenceRoot, { recursive: true });
   mkdirSync(projectRoot, { recursive: true });
   activeProject = createFixture();
-  if (issue799Only) {
-    savedProject = structuredClone(activeProject);
+  if (issue799Only || issue820S02Only) {
+    const initialProject = issue820S02Only
+      ? createIssue820V11Fixture(activeProject)
+      : structuredClone(activeProject);
+    if (issue799Only) savedProject = initialProject;
+    if (issue820S02Only) activeProject = initialProject;
     writeFileSync(
       path.join(projectRoot, 'project.json'),
-      `${JSON.stringify(savedProject, null, 2)}\n`,
+      `${JSON.stringify(initialProject, null, 2)}\n`,
       'utf8',
     );
   }
@@ -5254,6 +5613,9 @@ async function run() {
     windowRef.focus();
     windowRef.webContents.focus();
     await openProject(windowRef);
+    if (issue820S02Only) {
+      return await verifyIssue820BodyPlacement(windowRef);
+    }
     if (issue820Run) {
       return await verifyIssue820LargeAssetFit(windowRef);
     }
@@ -5911,11 +6273,13 @@ async function main() {
   } catch (error) {
     output = {
       issue: issue820Run ? 820 : issue815Run ? 815 : issue813Run ? 813 : issue799Only ? 799 : issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 612,
-      code: issue820Run ? 'C04-S01' : issue815Run ? 'C03-F01' : undefined,
+      code: issue820Run ? issue820S02Only ? 'C04-S02' : 'C04-S01' : issue815Run ? 'C03-F01' : undefined,
       passed: false,
       commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
       verificationGate: issue820Run
-        ? issue820BaselineOnly ? 'issue820-c04-s01-baseline' : 'verify:issue820-c04-s01'
+        ? issue820S02Only
+          ? 'verify:issue820-c04-s02'
+          : issue820BaselineOnly ? 'issue820-c04-s01-baseline' : 'verify:issue820-c04-s01'
         : issue815Run
         ? issue815BaselineOnly ? 'issue815-c03-f01-baseline' : 'verify:issue815-c03-f01'
         : issue813Run

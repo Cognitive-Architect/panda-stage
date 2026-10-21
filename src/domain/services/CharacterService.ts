@@ -1,11 +1,14 @@
 import {
+  BodyPlacementSchema,
   CharacterHeadSchema,
+  DEFAULT_BODY_PLACEMENT,
   FacePlacementSchema,
   ProjectSchema,
   TalkingHeadMotionIntensityPercentSchema,
   type Character,
   type CharacterExpression,
   type CharacterHead,
+  type BodyPlacement,
   type FacePlacement,
   type ImageAsset,
   type Project,
@@ -29,6 +32,7 @@ export type CharacterServiceErrorCode =
   | 'EXPRESSION_REFERENCED'
   | 'COMPOSITE_CHARACTER_REQUIRED'
   | 'INVALID_FACE_PLACEMENT'
+  | 'INVALID_BODY_PLACEMENT'
   | 'INVALID_HEAD'
   | 'INVALID_TALKING_HEAD_INTENSITY'
   | 'EXPRESSION_SET_MISMATCH';
@@ -63,6 +67,7 @@ export interface CreateCharacterInput {
 export interface CreateCompositeCharacterInput
   extends CreateCharacterInput {
   bodyAssetId: string;
+  bodyPlacement?: BodyPlacement;
   facePlacement: FacePlacement;
   head?: CharacterHead;
 }
@@ -75,6 +80,7 @@ export interface CharacterExpressionAssetUpdate {
 /** The complete persisted definition owned by a composite Character. */
 export interface CompositeCharacterDefinition {
   bodyAssetId: string;
+  bodyPlacement: BodyPlacement;
   facePlacement: FacePlacement;
   head?: CharacterHead;
   expressionAssets: readonly CharacterExpressionAssetUpdate[];
@@ -84,6 +90,7 @@ export interface CompositeCharacterDefinition {
 /** Narrow fields that a single assembly Apply may change. */
 export interface CompositeCharacterUpdate {
   bodyAssetId?: string;
+  bodyPlacement?: BodyPlacement;
   facePlacement?: FacePlacement;
   head?: CharacterHead | null;
   expressionAssets?: readonly CharacterExpressionAssetUpdate[];
@@ -201,6 +208,9 @@ export class CharacterService {
     input: CreateCompositeCharacterInput,
   ): Project {
     const bodyAssetId = this.imageAsset(project, input.bodyAssetId).id;
+    const bodyPlacement = this.validBodyPlacement(
+      input.bodyPlacement ?? DEFAULT_BODY_PLACEMENT,
+    );
     const facePlacement = this.validFacePlacement(input.facePlacement);
     const head = input.head ? this.validHead(project, input.head) : undefined;
     const singleImageProject = this.create(project, input);
@@ -215,6 +225,7 @@ export class CharacterService {
       ...character,
       mode: 'composite',
       bodyAssetId,
+      bodyPlacement,
       facePlacement,
       talkingHeadMotionIntensityPercent: 100,
       ...(head ? { head } : {}),
@@ -235,6 +246,7 @@ export class CharacterService {
   ): Project {
     const character = this.compositeCharacter(project, characterId);
     const bodyAssetId = this.imageAsset(project, definition.bodyAssetId).id;
+    const bodyPlacement = this.validBodyPlacement(definition.bodyPlacement);
     const facePlacement = this.validFacePlacement(definition.facePlacement);
     const head = definition.head
       ? this.validHead(project, definition.head)
@@ -260,6 +272,7 @@ export class CharacterService {
     const next: Extract<Character, { mode: 'composite' }> = {
       ...character,
       bodyAssetId,
+      bodyPlacement,
       facePlacement,
       expressions,
       baseAssetId: defaultExpression.assetId,
@@ -280,6 +293,7 @@ export class CharacterService {
     const current = this.getCompositeDefinition(project, characterId);
     return this.applyCompositeDefinition(project, characterId, {
       bodyAssetId: update.bodyAssetId ?? current.bodyAssetId,
+      bodyPlacement: update.bodyPlacement ?? current.bodyPlacement,
       facePlacement: update.facePlacement ?? current.facePlacement,
       expressionAssets:
         update.expressionAssets ?? current.expressionAssets,
@@ -654,6 +668,7 @@ export class CharacterService {
   ): CompositeCharacterDefinition {
     return {
       bodyAssetId: character.bodyAssetId,
+      bodyPlacement: { ...character.bodyPlacement },
       facePlacement: { ...character.facePlacement },
       ...(character.head ? { head: this.cloneHead(character.head) } : {}),
       expressionAssets: character.expressions.map((expression) => ({
@@ -670,6 +685,17 @@ export class CharacterService {
       throw new CharacterServiceError(
         'INVALID_FACE_PLACEMENT',
         'Face Placement must contain finite offsets and a positive scale.',
+      );
+    }
+    return { ...parsed.data };
+  }
+
+  private validBodyPlacement(raw: BodyPlacement): BodyPlacement {
+    const parsed = BodyPlacementSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new CharacterServiceError(
+        'INVALID_BODY_PLACEMENT',
+        'Body Placement must contain finite offsets and a bounded positive scale.',
       );
     }
     return { ...parsed.data };
@@ -746,6 +772,9 @@ export class CharacterService {
   ): boolean {
     return (
       current.bodyAssetId === next.bodyAssetId &&
+      current.bodyPlacement.offsetX === next.bodyPlacement.offsetX &&
+      current.bodyPlacement.offsetY === next.bodyPlacement.offsetY &&
+      current.bodyPlacement.scale === next.bodyPlacement.scale &&
       current.facePlacement.offsetX === next.facePlacement.offsetX &&
       current.facePlacement.offsetY === next.facePlacement.offsetY &&
       current.facePlacement.scale === next.facePlacement.scale &&

@@ -376,6 +376,63 @@ describe('BFM-S03 unified visual-parts resolver', () => {
     expect(JSON.stringify(project)).toBe(before);
   });
 
+  it('applies Body placement independently in shared local geometry and bounds', () => {
+    const base = compositeProject({ head: true });
+    const original = base.characters[0]!;
+    const project = ProjectSchema.parse({
+      ...base,
+      characters: [
+        {
+          ...original,
+          bodyPlacement: { offsetX: 120, offsetY: -210, scale: 0.5 },
+        },
+      ],
+    });
+    const shot = project.shots[0]!;
+    const visual = resolveLayerVisualParts(
+      project,
+      shot,
+      evaluateShotAtTime(shot, 0, project).layers.find(
+        (candidate) => candidate.id === IDS.layerChar,
+      )!,
+    );
+    const body = visual.parts.find((part) => part.slot === 'body')!;
+    const head = visual.parts.find((part) => part.slot === 'head')!;
+    const face = visual.parts.find((part) => part.slot === 'face')!;
+
+    expect(body.localRect).toEqual({
+      x: -80,
+      y: -460,
+      width: 400,
+      height: 500,
+    });
+    expect(visualPartRenderTransform(body)).toMatchObject({
+      x: -80,
+      y: -460,
+      scaleX: 1,
+      scaleY: 1,
+    });
+    expect(head.localRect).toEqual({
+      x: -180,
+      y: -620,
+      width: 400,
+      height: 520,
+    });
+    expect(face.localRect).toEqual({
+      x: 370,
+      y: -33,
+      width: 100,
+      height: 50,
+    });
+    expect(visual.headGroup?.pivot).toEqual({ x: 15, y: -320 });
+    expect(visual.combinedLocalBounds).toEqual({
+      x: -180,
+      y: -620,
+      width: 650,
+      height: 660,
+    });
+  });
+
   it('applies static Head and shared Face transforms around each part center before H04', () => {
     const base = compositeProject({ head: true });
     const original = base.characters[0]!;

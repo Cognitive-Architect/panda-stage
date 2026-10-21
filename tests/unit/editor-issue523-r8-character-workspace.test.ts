@@ -288,6 +288,7 @@ describe('Issue #523 R8 unified Character workspace', () => {
     }).characters[0]!;
     const assemblyDraft = {
       bodyAssetId: body.id,
+      bodyPlacement: { offsetX: 0, offsetY: 0, scale: 1 },
       facePlacement: {
         offsetX: 8,
         offsetY: -4,

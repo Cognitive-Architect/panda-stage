@@ -14,6 +14,7 @@ import {
   CharacterV8Schema,
   CharacterV9Schema,
   CharacterV10Schema,
+  CharacterV11Schema,
   CharacterV6Schema,
   VoiceProfileSchema,
 } from './character';
@@ -232,6 +233,12 @@ export const ProjectV10Schema = ProjectDataSchema.extend({
   characters: z.array(CharacterV10Schema),
 });
 
+/** Strict persisted v11 envelope, before independent Body placement. */
+export const ProjectV11Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(11),
+  characters: z.array(CharacterV11Schema),
+});
+
 function addAudioRoles<T extends {
   audioClips: z.infer<typeof AudioClipV7Schema>[];
 }>(shot: T) {
@@ -422,7 +429,7 @@ export function migrateFormalProject(input: unknown): unknown {
 }
 
 // Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
-// Persisted migration (v0-v10 -> v11) is owned exclusively by `migrateProject`
+// Persisted migration (v0-v11 -> v12) is owned exclusively by `migrateProject`
 // in `../migrations`; this schema must never perform legacy migration.
 export const ProjectSchema = ProjectDataSchema.superRefine(
   validateProjectReferences,
