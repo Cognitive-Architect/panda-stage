@@ -37,6 +37,15 @@ function hash(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
+async function readDirectoryOrEmpty(directory: string): Promise<string[]> {
+  try {
+    return await readdir(directory);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw error;
+  }
+}
+
 function projectWithMedia(media = new Map<string, Uint8Array>()): Project {
   const base = buildProject();
   const assets = base.assets.map((asset) => {
@@ -103,6 +112,7 @@ async function harness(options: {
   project?: Project;
   media?: Map<string, Uint8Array>;
   reader?: ExportPreparationMediaReader;
+  confirmOverwrite?: (request: { fileName: string }) => Promise<boolean>;
 } = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'panda-export-preparation-'));
   roots.push(root);
@@ -128,6 +138,7 @@ async function harness(options: {
   const service = new ExportPreparationService({
     getCurrentProjectSnapshot: (requestedRoot) =>
       path.resolve(requestedRoot) === path.resolve(projectRoot) ? current : null,
+    confirmOverwrite: options.confirmOverwrite,
     fileStore,
     mediaReader: mediaReaderForTest,
     now: () => new Date('2026-10-21T03:00:00.000Z'),
@@ -190,15 +201,117 @@ afterEach(async () => {
 });
 
 describe('DL-01 export preparation domain rules', () => {
-  it('enumerates every runtime expression and keeps text-only subtitles audio-free', () => {
+  it('enumerates current visual assets and keeps text-only subtitles audio-free', () => {
     const project = projectWithMedia();
     const media = collectExportPreparationMedia(project);
     expect(media.map((entry) => entry.asset.id)).toEqual(
-      expect.arrayContaining([IDS.assetBg, IDS.assetChar, IDS.assetChar2]),
+      expect.arrayContaining([IDS.assetBg, IDS.assetChar]),
     );
+    expect(media.map((entry) => entry.asset.id)).not.toContain(IDS.assetChar2);
     expect(media.every((entry) => entry.asset.kind === 'image')).toBe(true);
     expect(evaluateExportPreparationSupport(project, 'static')).toEqual([]);
     expect(evaluateExportPreparationSupport(project, 'speaker-focus')).toEqual([]);
+  });
+
+  it('prepares only expressions used by the shot timeline, not preload candidates', async () => {
+    const media = new Map<string, Uint8Array>();
+    const base = projectWithMedia(media);
+    const unusedFaceAsset = {
+      id: '10000000-0000-4000-8000-000000000099',
+      kind: 'image' as const,
+      name: 'Unused face C',
+      relativePath: 'assets/unused-face-c.png',
+      mimeType: 'image/png' as const,
+      width: 64,
+      height: 64,
+      sha256: 'd'.repeat(64),
+    };
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: [...base.assets, unusedFaceAsset],
+      characters: base.characters.map((character) =>
+        character.id === IDS.character
+          ? {
+              ...character,
+              expressions: [
+                ...character.expressions,
+                {
+                  id: '20000000-0000-4000-8000-000000000098',
+                  name: 'Unused face C',
+                  assetId: unusedFaceAsset.id,
+                },
+              ],
+            }
+          : character,
+      ),
+    });
+    media.delete(IDS.assetChar2);
+
+    const requiredIds = collectExportPreparationMedia(project).map(
+      (entry) => entry.asset.id,
+    );
+    expect(requiredIds).not.toContain(IDS.assetChar2);
+    expect(requiredIds).not.toContain(unusedFaceAsset.id);
+
+    const fixture = await harness({ project, media });
+    const selection = await selectOutput(fixture);
+    const result = await fixture.service.prepare(
+      requestFor(fixture, selection.selectionId),
+    );
+
+    expect(result.status).toBe('PREPARATION_READY');
+    if (result.status === 'PREPARATION_READY') {
+      const manifestIds = result.candidate.mediaManifest.map(
+        (entry) => entry.assetId,
+      );
+      expect(manifestIds).not.toContain(IDS.assetChar2);
+      expect(manifestIds).not.toContain(unusedFaceAsset.id);
+      expect(manifestIds).toContain(IDS.assetChar);
+      expect(manifestIds).toContain(IDS.assetBg);
+    }
+  });
+
+  it('requires an expression that becomes active later in the shot', async () => {
+    const media = new Map<string, Uint8Array>();
+    const base = projectWithMedia(media);
+    media.delete(IDS.assetChar2);
+    const shot = base.shots[0]!;
+    const project = ProjectSchema.parse({
+      ...base,
+      shots: [
+        {
+          ...shot,
+          timelineEvents: [
+            {
+              id: '70000000-0000-4000-8000-000000000098',
+              type: 'expression',
+              layerId: IDS.layerChar,
+              startMs: 1_500,
+              endMs: 1_500,
+              expressionId: IDS.expressionAngry,
+            },
+          ],
+        },
+      ],
+    });
+    const fixture = await harness({ project, media });
+    const selection = await selectOutput(fixture);
+    const result = await fixture.service.prepare(
+      requestFor(fixture, selection.selectionId),
+    );
+
+    expect(result.status).toBe('BLOCK');
+    if (result.status === 'BLOCK') {
+      const issue = result.issues.find(
+        (item) => item.code === 'REQUIRED_MEDIA_UNAVAILABLE',
+      );
+      expect(issue?.location).toContain(project.characters[0]!.name);
+      expect(issue?.location).toContain(
+        project.characters[0]!.expressions.find(
+          (expression) => expression.id === IDS.expressionAngry,
+        )!.name,
+      );
+    }
   });
 
   it('classifies legal BGM/SFX volume as unsupported audio, without invalidating or mutating it', () => {
@@ -298,6 +411,51 @@ describe('DL-01 export preparation domain rules', () => {
     expect(fixture.getCurrent()).toMatchObject({ revision: 7, dirty: true });
   });
 
+  it('aggregates a missing background and tampered used expression in one preflight', async () => {
+    const media = new Map<string, Uint8Array>();
+    const project = projectWithMedia(media);
+    media.delete(IDS.assetBg);
+    const tamperedBytes = Buffer.from('tampered face bytes');
+    const reads: string[] = [];
+    const fixture = await harness({
+      project,
+      media,
+      reader: mediaReader(media, {
+        onRead: (assetId) => reads.push(assetId),
+        readBytes: new Map([[IDS.assetChar, tamperedBytes]]),
+      }),
+    });
+    const selection = await selectOutput(fixture);
+    const result = await fixture.service.prepare(
+      requestFor(fixture, selection.selectionId),
+    );
+
+    expect(result.status).toBe('BLOCK');
+    expect(reads).toContain(IDS.assetChar);
+    if (result.status === 'BLOCK') {
+      const mediaIssues = result.issues.filter(
+        (item) => item.code === 'REQUIRED_MEDIA_UNAVAILABLE',
+      );
+      expect(mediaIssues).toHaveLength(2);
+      expect(new Set(mediaIssues.map((item) => item.location)).size).toBe(2);
+      expect(
+        mediaIssues.some((item) =>
+          item.location.includes(project.shots[0]!.name),
+        ),
+      ).toBe(true);
+      expect(
+        mediaIssues.some((item) =>
+          item.location.includes(project.characters[0]!.name),
+        ),
+      ).toBe(true);
+      expect(JSON.stringify(mediaIssues)).not.toContain(fixture.projectRoot);
+    }
+    expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toEqual([]);
+    expect(hash(media.get(IDS.assetChar)!)).toBe(
+      project.assets.find((asset) => asset.id === IDS.assetChar)!.sha256,
+    );
+  });
+
   it('omits an unused optional mouth image when no dialogue audio activates it', () => {
     const base = projectWithMedia();
     const mouthAssetId = '10000000-0000-4000-8000-000000000099';
@@ -325,6 +483,162 @@ describe('DL-01 export preparation domain rules', () => {
       ),
     ).toBe(false);
   });
+
+  it('includes composite Body/Face and audio-driven Mouth with its referenced audio', () => {
+    const base = projectWithMedia();
+    const bodyAssetId = '10000000-0000-4000-8000-000000000097';
+    const mouthAssetId = '10000000-0000-4000-8000-000000000096';
+    const audioAssetId = '10000000-0000-4000-8000-000000000095';
+    const audioClipId = '70000000-0000-4000-8000-000000000097';
+    const assets = [
+      {
+        id: bodyAssetId,
+        kind: 'image' as const,
+        name: 'Composite body',
+        relativePath: 'assets/composite-body.png',
+        mimeType: 'image/png' as const,
+        width: 640,
+        height: 640,
+        sha256: 'e'.repeat(64),
+      },
+      {
+        id: mouthAssetId,
+        kind: 'image' as const,
+        name: 'Speaking mouth',
+        relativePath: 'assets/speaking-mouth.png',
+        mimeType: 'image/png' as const,
+        width: 128,
+        height: 128,
+        sha256: 'f'.repeat(64),
+      },
+      {
+        id: audioAssetId,
+        kind: 'audio' as const,
+        name: 'Dialogue audio',
+        relativePath: 'assets/dialogue.wav',
+        mimeType: 'audio/wav' as const,
+        durationMs: 3_000,
+        sha256: 'a'.repeat(64),
+      },
+    ];
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: [...base.assets, ...assets],
+      characters: base.characters.map((character) =>
+        character.id === IDS.character
+          ? {
+              ...character,
+              mode: 'composite',
+              bodyAssetId,
+              facePlacement: { offsetX: 420, offsetY: -8, scale: 0.5 },
+              mouthOpenAssetId: mouthAssetId,
+            }
+          : character,
+      ),
+      shots: base.shots.map((shot) => ({
+        ...shot,
+        audioClips: [
+          {
+            id: audioClipId,
+            role: 'dialogue',
+            name: 'Speaking audio',
+            assetId: audioAssetId,
+            startMs: 200,
+            endMs: 1_600,
+            offsetMs: 0,
+            volume: 1,
+          },
+        ],
+        dialogues: [
+          {
+            id: DIALOGUE_ID,
+            characterId: IDS.character,
+            voiceProfileId: IDS.voiceProfile,
+            audioClipId,
+            subtitleStyleId: IDS.subtitle,
+            startMs: 200,
+            endMs: 1_600,
+            text: 'Speaking',
+          },
+        ],
+      })),
+    });
+
+    const mediaIds = collectExportPreparationMedia(project).map(
+      (entry) => entry.asset.id,
+    );
+    expect(mediaIds).toEqual(
+      expect.arrayContaining([
+        IDS.assetBg,
+        IDS.assetChar,
+        bodyAssetId,
+        mouthAssetId,
+        audioAssetId,
+      ]),
+    );
+    expect(mediaIds).not.toContain(IDS.assetChar2);
+
+    const longAudioProject = ProjectSchema.parse({
+      ...project,
+      assets: project.assets.map((asset) =>
+        asset.id === audioAssetId && asset.kind === 'audio'
+          ? { ...asset, durationMs: 1_000_000_000 }
+          : asset,
+      ),
+      shots: project.shots.map((shot) => ({
+        ...shot,
+        durationMs: 1_000_000_000,
+        audioClips: shot.audioClips.map((clip) => ({
+          ...clip,
+          endMs: 1_000_000_000,
+        })),
+      })),
+    });
+    expect(
+      collectExportPreparationMedia(longAudioProject).map(
+        (entry) => entry.asset.id,
+      ),
+    ).toContain(mouthAssetId);
+
+    const closedOnlyProject = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((shot) => ({
+        ...shot,
+        timelineEvents: [
+          {
+            id: '70000000-0000-4000-8000-000000000094',
+            type: 'visibility',
+            layerId: IDS.layerChar,
+            startMs: 0,
+            endMs: 0,
+            visible: false,
+          },
+          {
+            id: '70000000-0000-4000-8000-000000000093',
+            type: 'visibility',
+            layerId: IDS.layerChar,
+            startMs: 360,
+            endMs: 360,
+            visible: true,
+          },
+          {
+            id: '70000000-0000-4000-8000-000000000092',
+            type: 'visibility',
+            layerId: IDS.layerChar,
+            startMs: 520,
+            endMs: 520,
+            visible: false,
+          },
+        ],
+      })),
+    });
+    const closedOnlyMediaIds = collectExportPreparationMedia(
+      closedOnlyProject,
+    ).map((entry) => entry.asset.id);
+    expect(closedOnlyMediaIds).toContain(audioAssetId);
+    expect(closedOnlyMediaIds).not.toContain(mouthAssetId);
+  });
+
 
   it('classifies legal BGM at volume 0 as unsupported audio without changing it', () => {
     const base = projectWithMedia();
@@ -367,7 +681,7 @@ describe('DL-01 export preparation domain rules', () => {
     expect(project).toEqual(before);
   });
 
-  it('classifies an invisible background as an invalid shot with a location', () => {
+  it('classifies an invisible background as unsupported with a location', () => {
     const base = projectWithMedia();
     const shot = base.shots[0]!;
     const project = ProjectSchema.parse({
@@ -387,8 +701,25 @@ describe('DL-01 export preparation domain rules', () => {
     expect(evaluateExportPreparationSupport(project, 'static')).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          code: 'INVALID_PROJECT',
+          code: 'UNSUPPORTED_IN_CURRENT_EXPORT_SLICE',
           location: expect.stringContaining(shot.name),
+        }),
+      ]),
+    );
+  });
+
+  it('classifies a valid shot with no selected background as unsupported', () => {
+    const base = projectWithMedia();
+    const project = ProjectSchema.parse({
+      ...base,
+      shots: [{ ...base.shots[0]!, backgroundLayerId: null }],
+    });
+
+    expect(evaluateExportPreparationSupport(project, 'static')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'UNSUPPORTED_IN_CURRENT_EXPORT_SLICE',
+          location: expect.stringContaining(project.shots[0]!.name),
         }),
       ]),
     );
@@ -671,7 +1002,7 @@ describe('ExportPreparationService', () => {
   });
 
   it("rejects a changed output target and leaves the user's replacement untouched", async () => {
-    const fixture = await harness();
+    const fixture = await harness({ confirmOverwrite: async () => true });
     const target = path.join(fixture.outputDirectory, 'existing.mp4');
     await writeFile(target, 'user movie');
     const selection = await selectOutput(fixture, 'existing.mp4');
@@ -687,6 +1018,204 @@ describe('ExportPreparationService', () => {
     }
     expect(await readFile(target)).toEqual(expected);
   });
+
+  it.each(['modified', 'replaced', 'deleted'] as const)(
+    'blocks an output target %s during media preflight',
+    async (change) => {
+      const media = new Map<string, Uint8Array>();
+      const project = projectWithMedia(media);
+      let target = '';
+      let changed = false;
+      const reader: ExportPreparationMediaReader = {
+        async getByteLength(_projectRoot, asset) {
+          const bytes = media.get(asset.id);
+          if (!bytes) throw new Error('fixture asset is missing');
+          return bytes.byteLength;
+        },
+        async read(_projectRoot, _project, asset) {
+          if (!changed) {
+            changed = true;
+            if (change === 'deleted') {
+              await rm(target);
+            } else if (change === 'replaced') {
+              await rm(target);
+              await writeFile(target, 'replacement by another process');
+            } else {
+              await writeFile(target, 'modified user movie');
+            }
+          }
+          return { bytes: media.get(asset.id)!, mimeType: asset.mimeType };
+        },
+      };
+      const fixture = await harness({
+        project,
+        media,
+        reader,
+        confirmOverwrite: async () => true,
+      });
+      target = path.join(fixture.outputDirectory, 'preflight-target.mp4');
+      await writeFile(target, 'original user movie');
+      const selection = await selectOutput(fixture, 'preflight-target.mp4');
+      const result = await fixture.service.prepare(
+        requestFor(fixture, selection.selectionId),
+      );
+
+      expect(result.status).toBe('BLOCK');
+      if (result.status === 'BLOCK') {
+        expect(result.issues.map((item) => item.code)).toContain(
+          'OUTPUT_TARGET_CHANGED',
+        );
+      }
+      if (change === 'deleted') {
+        await expect(readFile(target)).rejects.toMatchObject({
+          code: 'ENOENT',
+        });
+      } else if (change === 'replaced') {
+        expect(await readFile(target, 'utf8')).toBe(
+          'replacement by another process',
+        );
+      } else {
+        expect(await readFile(target, 'utf8')).toBe('modified user movie');
+      }
+      expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toEqual([]);
+    },
+  );
+
+  it('does not treat a file that appeared during Save As selection as overwrite consent', async () => {
+    const fixture = await harness();
+    const target = path.join(fixture.outputDirectory, 'appeared-during-selection.mp4');
+    const selectionRequest = {
+      projectRoot: fixture.projectRoot,
+      projectId: fixture.project.id,
+      projectName: fixture.project.name,
+      openInstanceId: OPEN_INSTANCE_ID,
+    };
+    expect(await readdir(fixture.outputDirectory)).toEqual([]);
+    // Simulate another process creating the selected name while the native
+    // Save As dialog is open, before Main inspects the returned path.
+    await writeFile(target, 'external movie');
+    const expected = await readFile(target);
+    const result = await fixture.service.selectOutput(selectionRequest, target);
+
+    expect(result.status).toBe('blocked');
+    if (result.status === 'blocked') {
+      expect(result.issue.code).toBe('OUTPUT_OVERWRITE_NOT_CONFIRMED');
+    }
+    expect(await readFile(target)).toEqual(expected);
+    expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toEqual([]);
+  });
+
+  it('cancels overwrite when the user rejects the explicit confirmation', async () => {
+    const targetFile = 'cancel-overwrite.mp4';
+    const targetContents = 'existing user movie';
+    const confirmOverwrite = vi.fn(async () => false);
+    const fixture = await harness({ confirmOverwrite });
+    const target = path.join(fixture.outputDirectory, targetFile);
+    await writeFile(target, targetContents);
+    const result = await fixture.service.selectOutput(
+      {
+        projectRoot: fixture.projectRoot,
+        projectId: fixture.project.id,
+        projectName: fixture.project.name,
+        openInstanceId: OPEN_INSTANCE_ID,
+      },
+      target,
+    );
+
+    expect(result).toEqual({ status: 'cancelled' });
+    expect(confirmOverwrite).toHaveBeenCalledWith({ fileName: targetFile });
+    expect(await readFile(target, 'utf8')).toBe(targetContents);
+    expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toEqual([]);
+  });
+
+  it('records explicit overwrite approval with the identity of the confirmed target', async () => {
+    const targetFile = 'confirmed-overwrite.mp4';
+    const confirmOverwrite = vi.fn(async () => true);
+    const fixture = await harness({ confirmOverwrite });
+    const target = path.join(fixture.outputDirectory, targetFile);
+    await writeFile(target, 'existing user movie');
+    const selection = await fixture.service.selectOutput(
+      {
+        projectRoot: fixture.projectRoot,
+        projectId: fixture.project.id,
+        projectName: fixture.project.name,
+        openInstanceId: OPEN_INSTANCE_ID,
+      },
+      target,
+    );
+
+    expect(selection.status).toBe('selected');
+    if (selection.status !== 'selected') return;
+    expect(confirmOverwrite).toHaveBeenCalledWith({ fileName: targetFile });
+    expect(selection.overwriteApproved).toBe(true);
+    const result = await fixture.service.prepare(
+      requestFor(fixture, selection.selectionId),
+    );
+    expect(result.status).toBe('PREPARATION_READY');
+    if (result.status === 'PREPARATION_READY') {
+      expect(result.candidate.outputIntent).toMatchObject({
+        overwriteApproved: true,
+        targetIdentity: expect.objectContaining({ canonicalPath: target }),
+      });
+    }
+    expect(await readFile(target, 'utf8')).toBe('existing user movie');
+  });
+
+  it('rejects a target replaced while explicit overwrite confirmation is open', async () => {
+    const targetFile = 'changed-during-confirmation.mp4';
+    const fixture = await harness({
+      confirmOverwrite: async () => {
+        await writeFile(target, 'external replacement');
+        return true;
+      },
+    });
+    const target = path.join(fixture.outputDirectory, targetFile);
+    await writeFile(target, 'original user movie');
+    const expected = Buffer.from('external replacement');
+    const result = await fixture.service.selectOutput(
+      {
+        projectRoot: fixture.projectRoot,
+        projectId: fixture.project.id,
+        projectName: fixture.project.name,
+        openInstanceId: OPEN_INSTANCE_ID,
+      },
+      target,
+    );
+
+    expect(result.status).toBe('blocked');
+    if (result.status === 'blocked') {
+      expect(result.issue.code).toBe('OUTPUT_TARGET_CHANGED');
+    }
+    expect(await readFile(target)).toEqual(expected);
+  });
+
+  it.each([
+    {
+      kind: 'unknown layer',
+      backgroundLayerId: '60000000-0000-4000-8000-000000000099',
+    },
+    { kind: 'character layer', backgroundLayerId: IDS.layerChar },
+  ])(
+    'keeps an illegal background reference to a $kind as INVALID_PROJECT',
+    async ({ backgroundLayerId }) => {
+      const fixture = await harness();
+      const selection = await selectOutput(fixture);
+      const invalidProject = structuredClone(fixture.project);
+      invalidProject.shots[0]!.backgroundLayerId = backgroundLayerId;
+      const result = await fixture.service.prepare({
+        ...requestFor(fixture, selection.selectionId),
+        project: invalidProject,
+      });
+
+      expect(result.status).toBe('BLOCK');
+      if (result.status === 'BLOCK') {
+        expect(result.issues[0]).toMatchObject({
+          code: 'INVALID_PROJECT',
+          location: expect.stringContaining(fixture.project.shots[0]!.name),
+        });
+      }
+    },
+  );
 
   it('cancels an in-flight content read without retaining temporary files', async () => {
     const media = new Map<string, Uint8Array>();

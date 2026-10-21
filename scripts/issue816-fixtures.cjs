@@ -150,7 +150,7 @@ function baseProject(pngBytes) {
   return fixture;
 }
 
-function addExpressionsForUniqueImages(projectInput, count, pngBytes, label) {
+function addExpressionsForUniqueImages(projectInput, count, pngBytes, label, activate = true) {
   const project = structuredClone(projectInput);
   const shot = project.shots[0];
   const characterLayer = shot?.layers.find((layer) => layer.source.kind === 'character');
@@ -178,6 +178,16 @@ function addExpressionsForUniqueImages(projectInput, count, pngBytes, label) {
       name: `${label}表情${index}`,
       assetId,
     });
+    if (activate) {
+      shot.timelineEvents.push({
+        id: `82000000-0000-4000-8000-${suffix}`,
+        type: 'expression',
+        layerId: characterLayer.id,
+        startMs: index * 100,
+        endMs: index * 100,
+        expressionId,
+      });
+    }
   }
   return ProjectSchema.parse(project);
 }
@@ -242,7 +252,11 @@ async function generateIssue816Fixtures(baseDirectory) {
   await fsp.mkdir(root, { recursive: true });
   const base = baseProject(pngBytes);
   const f01Root = path.join(root, 'F01', 'project.pandastage');
-  const f01Project = await writeProjectBundle(base, f01Root, { pngBytes });
+  const f01Project = await writeProjectBundle(
+    addExpressionsForUniqueImages(base, 1, pngBytes, 'F01 未使用候选', false),
+    f01Root,
+    { pngBytes },
+  );
   const requiredMedia = collectExportPreparationMedia(f01Project);
   if (requiredMedia.length === 0) throw new Error('F01 must contain required image media.');
   const firstShot = f01Project.shots[0];

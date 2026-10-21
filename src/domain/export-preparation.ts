@@ -1,6 +1,8 @@
 import type { Project } from './models/project';
-import type { Asset, ImageAsset } from './models/asset';
-import { listShotRuntimeImageAssets } from './selectors/temporalRender';
+import type { Asset } from './models/asset';
+import { evaluateShotAtTime } from './evaluate-shot-at-time';
+import { MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS } from './selectors/temporalRender';
+import { resolveLayerVisualParts } from './selectors/visualParts';
 import {
   scanAssetReferences,
   type AssetReference,
@@ -118,40 +120,136 @@ function referenceLabelsForShot(
     .map((reference) => reference.label);
 }
 
-function mouthImageIsUsed(project: Project, assetId: string): boolean {
-  const characters = new Map(
-    project.characters.map((character) => [character.id, character]),
-  );
-  return project.shots.some((shot) =>
-    shot.dialogues.some((dialogue) => {
-      if (!dialogue.audioClipId) return false;
-      const hasBoundAudio = shot.audioClips.some(
-        (clip) => clip.id === dialogue.audioClipId,
-      );
-      return (
-        hasBoundAudio &&
-        characters.get(dialogue.characterId)?.mouthOpenAssetId === assetId
-      );
-    }),
-  );
+function shotVisualSampleTimes(shot: Project['shots'][number]): number[] {
+  const times = new Set<number>([0]);
+  for (const event of shot.timelineEvents) {
+    if (event.type === 'expression' || event.type === 'visibility') {
+      times.add(event.startMs);
+    }
+  }
+  return [...times].sort((left, right) => left - right);
 }
 
-function isOptionalUnusedMouthImage(
+function characterVisibleDuringMouthOpen(
   project: Project,
-  asset: ImageAsset,
+  shot: Project['shots'][number],
+  audioClip: Project['shots'][number]['audioClips'][number],
+  characterLayerIds: ReadonlySet<string>,
 ): boolean {
-  const references = scanAssetReferences(project, asset.id);
-  return (
-    references.length > 0 &&
-    references.every((reference) => reference.kind === 'character-mouth') &&
-    !mouthImageIsUsed(project, asset.id)
-  );
+  const activeEndMs = Math.min(audioClip.endMs, shot.durationMs);
+  if (audioClip.startMs >= activeEndMs) return false;
+  const stateChangeTimes = [
+    ...new Set([
+      audioClip.startMs,
+      ...shot.timelineEvents
+        .filter(
+          (event) =>
+            event.type === 'visibility' &&
+            event.startMs > audioClip.startMs &&
+            event.startMs < activeEndMs,
+        )
+        .map((event) => event.startMs),
+    ]),
+  ].sort((left, right) => left - right);
+
+  for (let index = 0; index < stateChangeTimes.length; index += 1) {
+    const segmentStartMs = stateChangeTimes[index]!;
+    const segmentEndMs = stateChangeTimes[index + 1] ?? activeEndMs;
+    if (segmentStartMs >= segmentEndMs) continue;
+    const visible = evaluateShotAtTime(shot, segmentStartMs, project).layers.some(
+      (layer) => characterLayerIds.has(layer.id) && layer.visible,
+    );
+    if (!visible) continue;
+
+    const phase =
+      (segmentStartMs - audioClip.startMs) % MOUTH_FLAP_PERIOD_MS;
+    if (phase < MOUTH_OPEN_MS) return true;
+    const nextOpenStartMs =
+      segmentStartMs + (MOUTH_FLAP_PERIOD_MS - phase);
+    if (nextOpenStartMs < segmentEndMs) return true;
+  }
+  return false;
+}
+
+function addShotVisualAssets(
+  entries: Map<string, ExportPreparationMediaSource>,
+  project: Project,
+  shot: Project['shots'][number],
+  shotIndex: number,
+  referencesByAssetId: ReadonlyMap<string, readonly AssetReference[]>,
+): void {
+  const fallbackUsage = ['镜头“' + shot.name + '”的图像素材'];
+  for (const timeMs of shotVisualSampleTimes(shot)) {
+    const evaluatedShot = evaluateShotAtTime(shot, timeMs, project);
+    for (const evaluatedLayer of evaluatedShot.layers) {
+      if (!evaluatedLayer.visible) continue;
+      const visual = resolveLayerVisualParts(project, shot, evaluatedLayer);
+      for (const resource of [
+        ...visual.resources.required,
+        ...visual.resources.fallback,
+      ]) {
+        const asset = project.assets.find(
+          (candidate) => candidate.id === resource.assetId,
+        );
+        if (asset?.kind !== 'image') continue;
+        const labels = referenceLabelsForShot(
+          referencesByAssetId.get(asset.id) ?? [],
+          project,
+          shotIndex,
+        );
+        addUsage(entries, asset, labels.length > 0 ? labels : fallbackUsage);
+      }
+    }
+  }
+
+  for (const dialogue of shot.dialogues) {
+    const audioClip = shot.audioClips.find(
+      (clip) => clip.id === dialogue.audioClipId,
+    );
+    if (!dialogue.audioClipId || !audioClip) continue;
+    const audioAsset = project.assets.find(
+      (asset) => asset.id === audioClip.assetId,
+    );
+    if (audioAsset?.kind !== 'audio') continue;
+    const character = project.characters.find(
+      (candidate) => candidate.id === dialogue.characterId,
+    );
+    if (!character?.mouthOpenAssetId) continue;
+    const characterLayerIds = new Set(
+      shot.layers
+        .filter(
+          (layer) =>
+            layer.source.kind === 'character' &&
+            layer.source.characterId === dialogue.characterId,
+        )
+        .map((layer) => layer.id),
+    );
+    if (characterLayerIds.size === 0) continue;
+    const visibleDuringMouthOpen = characterVisibleDuringMouthOpen(
+      project,
+      shot,
+      audioClip,
+      characterLayerIds,
+    );
+    if (!visibleDuringMouthOpen) continue;
+    const mouthAsset = project.assets.find(
+      (asset) =>
+        asset.id === character.mouthOpenAssetId && asset.kind === 'image',
+    );
+    if (!mouthAsset || mouthAsset.kind !== 'image') continue;
+    const labels = referenceLabelsForShot(
+      referencesByAssetId.get(mouthAsset.id) ?? [],
+      project,
+      shotIndex,
+    );
+    addUsage(entries, mouthAsset, labels.length > 0 ? labels : fallbackUsage);
+  }
 }
 
 /**
- * Enumerates media that the formal shot renderer can use at any time in the
- * Project. It relies on the same temporal visual selector as Product Preview
- * so later expressions and valid mouth overrides are not missed.
+ * Enumerates the image resources selected by the formal evaluator across the
+ * shot's visual state changes. Preview-only alternate-expression preloads are
+ * excluded; audio-bound Mouth assets are included when the shot can use them.
  */
 export function collectExportPreparationMedia(
   project: Project,
@@ -165,22 +263,13 @@ export function collectExportPreparationMedia(
   );
 
   project.shots.forEach((shot, shotIndex) => {
-    const runtimeImages = listShotRuntimeImageAssets(project, shot);
-    for (const asset of runtimeImages) {
-      if (isOptionalUnusedMouthImage(project, asset)) continue;
-      const labels = referenceLabelsForShot(
-        referencesByAssetId.get(asset.id) ?? [],
-        project,
-        shotIndex,
-      );
-      addUsage(
-        entries,
-        asset,
-        labels.length > 0
-          ? labels
-          : ['镜头“' + shot.name + '”的图像素材'],
-      );
-    }
+    addShotVisualAssets(
+      entries,
+      project,
+      shot,
+      shotIndex,
+      referencesByAssetId,
+    );
 
     shot.audioClips.forEach((clip) => {
       const asset = project.assets.find(
@@ -252,23 +341,41 @@ export function evaluateExportPreparationSupport(
   }
 
   project.shots.forEach((shot) => {
-    const background = shot.layers.find(
-      (layer) => layer.id === shot.backgroundLayerId,
-    );
-    const backgroundSource = background?.source;
-    if (
-      !background ||
-      !background.visible ||
-      backgroundSource?.kind !== 'asset' ||
-      project.assets.find((asset) => asset.id === backgroundSource.assetId)
-        ?.kind !== 'image'
-    ) {
-      issues.push({
-        code: 'INVALID_PROJECT',
-        location: '镜头“' + shot.name + '”',
-        problem: '这个镜头没有可见且有效的背景图层。',
-        nextStep: '为镜头设置可见的图像背景后重新检查。',
-      });
+    const location = '镜头“' + shot.name + '”';
+    if (shot.backgroundLayerId === null) {
+      issues.push(
+        issue(
+          location,
+          '当前导出切片需要可见的图像背景。',
+          '为镜头指定并显示图像背景后重新检查。',
+        ),
+      );
+    } else {
+      const background = shot.layers.find(
+        (layer) => layer.id === shot.backgroundLayerId,
+      );
+      const backgroundSource = background?.source;
+      if (
+        !background ||
+        backgroundSource?.kind !== 'asset' ||
+        project.assets.find((asset) => asset.id === backgroundSource.assetId)
+          ?.kind !== 'image'
+      ) {
+        issues.push({
+          code: 'INVALID_PROJECT',
+          location,
+          problem: '镜头引用的背景图层或背景图像素材无效。',
+          nextStep: '修复镜头的背景图层引用后重新检查。',
+        });
+      } else if (!background.visible) {
+        issues.push(
+          issue(
+            location,
+            '当前导出切片需要可见的图像背景。',
+            '显示镜头的图像背景后重新检查。',
+          ),
+        );
+      }
     }
     shot.audioClips.forEach((clip) => {
       issues.push(

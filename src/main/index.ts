@@ -327,6 +327,22 @@ async function initialize(): Promise<void> {
           }
         : null;
     },
+    confirmOverwrite: async ({ fileName }) => {
+      const window = mainWindow;
+      if (!window || window.isDestroyed()) return false;
+      const result = await dialog.showMessageBox(window, {
+        type: 'warning',
+        title: '确认覆盖现有视频',
+        message: `“${fileName}”已存在。允许后续导出替换这个文件吗？`,
+        detail:
+          '本次只准备并校验素材，不会写入 MP4。正式导出提交前会再次核对目标文件身份。',
+        buttons: ['确认允许覆盖', '取消'],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      });
+      return result.response === 0;
+    },
   });
   removeExportPreparationIpcHandlers =
     registerExportPreparationIpcHandlers({
@@ -341,7 +357,7 @@ async function initialize(): Promise<void> {
             defaultExportFileName(request.projectName),
           ),
           filters: [{ name: 'MP4 视频', extensions: ['mp4'] }],
-          properties: ['showOverwriteConfirmation'],
+          properties: [],
         });
         return selection.canceled ? null : (selection.filePath ?? null);
       },

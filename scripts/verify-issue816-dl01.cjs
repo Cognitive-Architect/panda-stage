@@ -13,6 +13,7 @@ const { NodeExportPreparationFileStore } = require('../dist-electron/main/servic
 const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
 const { ProjectSchema } = require('../dist-electron/domain/models/project.js');
 const { collectExportPreparationMedia } = require('../dist-electron/domain/export-preparation.js');
+const { listShotRuntimeImageAssets } = require('../dist-electron/domain/selectors/temporalRender.js');
 const { generateIssue816Fixtures, loadIssue816Fixtures } = require('./issue816-fixtures.cjs');
 
 const baseDirectory =
@@ -33,6 +34,7 @@ let trackedSnapshot = null;
 let exportPreparationService = null;
 let removeExportPreparationHandlers = null;
 let removeProjectIpcHandlers = null;
+let nextMediaReadGate = null;
 let fixtureProject = null;
 let fixtureProjectRoot = null;
 let fixtureImageBytes = null;
@@ -148,6 +150,12 @@ function createRendererService() {
     getByteLength: (...args) => verifiedReader.getByteLength(...args),
     async read(...args) {
       await pause(500);
+      const gate = nextMediaReadGate;
+      if (gate) {
+        nextMediaReadGate = null;
+        gate.markStarted();
+        await gate.promise;
+      }
       return verifiedReader.read(...args);
     },
   };
@@ -162,6 +170,21 @@ function createRendererService() {
         openInstanceId: trackedSnapshot.openInstanceId ?? null,
       };
     },
+    confirmOverwrite: async ({ fileName }) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return false;
+      const result = await dialog.showMessageBox(mainWindow, {
+        type: 'warning',
+        title: '确认覆盖现有视频',
+        message: `“${fileName}”已存在。允许后续导出替换这个文件吗？`,
+        detail:
+          '本次只准备并校验素材，不会写入 MP4。正式导出提交前会再次核对目标文件身份。',
+        buttons: ['确认允许覆盖', '取消'],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      });
+      return result.response === 0;
+    },
     fileStore,
     mediaReader,
   });
@@ -174,7 +197,7 @@ function createRendererService() {
         buttonLabel: '选择输出位置',
         defaultPath: path.join(request.projectRoot, defaultExportFileName(request.projectName)),
         filters: [{ name: 'MP4 视频', extensions: ['mp4'] }],
-        properties: ['showOverwriteConfirmation'],
+        properties: [],
       });
       return selected.canceled ? null : (selected.filePath ?? null);
     },
@@ -203,6 +226,19 @@ async function waitForTrackedOpenInstance(openInstanceId, timeoutMs = 10_000) {
   throw new Error(`Timed out waiting for Main to track open Project instance ${openInstanceId}.`);
 }
 
+async function waitForActivePreparation(timeoutMs = 10_000) {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    const snapshotId = exportPreparationService?.activePreparation?.snapshotId;
+    if (snapshotId) return snapshotId;
+    await pause(20);
+  }
+  const response = await rendererJs('window.__pandaStageIssue816Acceptance.lastMainResponse');
+  throw new Error(
+    `Timed out waiting for Main preparation to become active: ${JSON.stringify(response)}`,
+  );
+}
+
 async function clickSelector(selector) {
   const point = await rendererJs(`(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
@@ -216,7 +252,40 @@ async function clickSelector(selector) {
   await pause(150);
 }
 
-function clickNativeSaveDialog(action, screenshotPath) {
+function clickNativeSaveDialog(
+  action,
+  screenshotPath,
+  createTargetPath = '',
+  createTargetContent = '',
+  overwritePromptScreenshotPath = '',
+) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-File',
+      path.join(__dirname, 'issue816-native-dialog.ps1'),
+      action,
+      screenshotPath,
+      createTargetPath,
+      createTargetContent,
+      overwritePromptScreenshotPath,
+    ], {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8').on('data', (chunk) => { stdout += chunk; });
+    child.stderr.setEncoding('utf8').on('data', (chunk) => { stderr += chunk; });
+    child.once('error', reject);
+    child.once('exit', (code) => code === 0
+      ? resolve(stdout.trim())
+      : reject(new Error(`Native Save As ${action} failed (${code}): ${stderr.trim() || stdout.trim()}`)));
+  });
+}
+
+function clickNativeOverwriteConfirmation(action, screenshotPath) {
   return new Promise((resolve, reject) => {
     const child = spawn('powershell.exe', [
       '-NoProfile',
@@ -236,7 +305,7 @@ function clickNativeSaveDialog(action, screenshotPath) {
     child.once('error', reject);
     child.once('exit', (code) => code === 0
       ? resolve(stdout.trim())
-      : reject(new Error(`Native Save As ${action} failed (${code}): ${stderr.trim() || stdout.trim()}`)));
+      : reject(new Error(`Native overwrite confirmation ${action} failed (${code}): ${stderr.trim() || stdout.trim()}`)));
   });
 }
 
@@ -428,6 +497,7 @@ async function runF05(fixture, evidenceRoot) {
       path.resolve(requestedRoot) === path.resolve(conflict.projectRoot)
         ? { project: conflictProject, revision: 5, dirty: true, openInstanceId: 11 }
         : null,
+    confirmOverwrite: async () => true,
     fileStore: new NodeExportPreparationFileStore(path.join(fixture.root, 'F05', 'temp', 'output-conflict')),
   });
   const conflictSelection = await conflictService.selectOutput({
@@ -564,6 +634,91 @@ async function run() {
         afterCancel.undoCount === beforeCancel.undoCount,
     }, null, 2), 'utf8');
 
+    const overwriteOutputPath = path.join(
+      fixtureProjectRoot,
+      defaultExportFileName(fixtureProject.name),
+    );
+    const overwriteSentinelText = `Issue #818 overwrite target ${randomUUID()}`;
+    const overwriteSentinel = Buffer.from(overwriteSentinelText, 'utf8');
+    assert(!existsSync(overwriteOutputPath), 'The controlled overwrite target already exists before the F01 overwrite check.');
+    let confirmedOverwriteCandidateId = null;
+    try {
+      const beforeOverwriteCancel = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+      const pendingOverwriteCancel = rendererJs('window.__pandaStageIssue816Acceptance.prepare()');
+      await clickNativeSaveDialog(
+        'save',
+        path.join(evidenceRoot, 'F01', 'native-save-as-output-appears.png'),
+        overwriteOutputPath,
+        overwriteSentinelText,
+        path.join(evidenceRoot, 'F01', 'native-system-overwrite-cancel-case.png'),
+      );
+      await clickNativeOverwriteConfirmation(
+        'overwrite-cancel',
+        path.join(evidenceRoot, 'F01', 'native-overwrite-cancel.png'),
+      );
+      const overwriteCanceled = await pendingOverwriteCancel;
+      const afterOverwriteCancel = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+      const targetAfterOverwriteCancel = await fsp.readFile(overwriteOutputPath);
+      assert(overwriteCanceled.status === 'cancelled', 'Native overwrite cancellation did not return cancelled.');
+      assert(targetAfterOverwriteCancel.equals(overwriteSentinel), 'Native overwrite cancellation changed the selected target.');
+      assert(
+        afterOverwriteCancel.revision === beforeOverwriteCancel.revision &&
+        afterOverwriteCancel.dirty === beforeOverwriteCancel.dirty &&
+        afterOverwriteCancel.undoCount === beforeOverwriteCancel.undoCount,
+        'Overwrite cancellation changed revision, dirty, or History.',
+      );
+
+      const pendingOverwriteConfirm = rendererJs('window.__pandaStageIssue816Acceptance.prepare()');
+      await clickNativeSaveDialog(
+        'save',
+        path.join(evidenceRoot, 'F01', 'native-save-as-existing-output.png'),
+        '',
+        '',
+        path.join(evidenceRoot, 'F01', 'native-system-overwrite-confirm-case.png'),
+      );
+      await clickNativeOverwriteConfirmation(
+        'overwrite-confirm',
+        path.join(evidenceRoot, 'F01', 'native-overwrite-confirm.png'),
+      );
+      const overwritePrepared = await pendingOverwriteConfirm;
+      assert(overwritePrepared.status === 'PREPARATION_READY', `Explicit overwrite confirmation did not produce a prepared candidate: ${JSON.stringify(overwritePrepared)}`);
+      const overwriteCandidate = overwritePrepared.candidate;
+      confirmedOverwriteCandidateId = overwriteCandidate.snapshotId;
+      const outputIntent = overwriteCandidate.outputIntent;
+      const targetAfterPreparation = await fsp.readFile(overwriteOutputPath);
+      const afterOverwritePreparation = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+      assert(outputIntent.overwriteApproved === true, 'Confirmed overwrite was not recorded in outputIntent.');
+      assert(outputIntent.targetIdentity !== null, 'Confirmed overwrite candidate omitted target identity.');
+      assert(path.resolve(outputIntent.targetIdentity.canonicalPath) === path.resolve(overwriteOutputPath), 'Confirmed overwrite target identity points to a different file.');
+      assert(path.resolve(outputIntent.targetPath) === path.resolve(overwriteOutputPath), 'Confirmed overwrite candidate points to a different output path.');
+      assert(targetAfterPreparation.equals(overwriteSentinel), 'Preparation wrote to the explicitly confirmed target.');
+      assert(
+        afterOverwritePreparation.revision === beforeOverwriteCancel.revision &&
+        afterOverwritePreparation.dirty === beforeOverwriteCancel.dirty &&
+        afterOverwritePreparation.undoCount === beforeOverwriteCancel.undoCount,
+        'Overwrite confirmation changed revision, dirty, or History.',
+      );
+      await fsp.writeFile(path.join(evidenceRoot, 'F01', 'overwrite-confirmation.json'), JSON.stringify({
+        targetPath: outputIntent.targetPath,
+        targetIdentity: outputIntent.targetIdentity,
+        overwriteApproved: outputIntent.overwriteApproved,
+        targetSha256Before: hash(overwriteSentinel),
+        targetSha256AfterCancel: hash(targetAfterOverwriteCancel),
+        targetSha256AfterPrepare: hash(targetAfterPreparation),
+        cancelStatus: overwriteCanceled.status,
+        confirmStatus: overwritePrepared.status,
+        editorStateUnchanged: true,
+        preparationWroteOutput: false,
+      }, null, 2), 'utf8');
+      await exportPreparationService.discard(undefined, overwriteCandidate.snapshotId);
+      confirmedOverwriteCandidateId = null;
+    } finally {
+      if (confirmedOverwriteCandidateId) {
+        await exportPreparationService.discard(undefined, confirmedOverwriteCandidateId).catch(() => undefined);
+      }
+      await fsp.rm(overwriteOutputPath, { force: true });
+    }
+
     const beforePreparation = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
     const pendingPreparation = rendererJs('window.__pandaStageIssue816Acceptance.prepare()');
     await clickNativeSaveDialog('save', path.join(evidenceRoot, 'F01', 'native-save-as-select.png'));
@@ -582,6 +737,16 @@ async function run() {
     assert(candidate.supportProfileVersion === candidate.supportProfile.version, 'Candidate support profile version is inconsistent.');
     assert(candidate.renderSettings.width === 1920 && candidate.renderSettings.height === 1080 && candidate.renderSettings.fps === 24, 'Candidate render settings differ from DL-01 contract.');
     assert(candidate.mediaManifest.length > 0 && candidate.mediaManifest.every((entry) => entry.sha256), 'Candidate media manifest is incomplete.');
+    const manifestAssetIds = new Set(candidate.mediaManifest.map((entry) => entry.assetId));
+    const previewPreloadAssetIds = listShotRuntimeImageAssets(
+      candidate.project,
+      candidate.project.shots[0],
+    ).map((asset) => asset.id);
+    const unusedPreviewPreloadAssetIds = previewPreloadAssetIds.filter(
+      (assetId) => !manifestAssetIds.has(assetId),
+    );
+    assert(unusedPreviewPreloadAssetIds.length > 0, 'F01 did not contain an unused alternate expression to distinguish Preview preloading from export requirements.');
+    assert(unusedPreviewPreloadAssetIds.every((assetId) => !manifestAssetIds.has(assetId)), 'F01 export candidate unexpectedly included a Preview-only alternate expression.');
 
     const outputPath = candidate.outputIntent.targetPath;
     assert(path.resolve(outputPath) === path.resolve(fixtureProjectRoot, defaultExportFileName(fixtureProject.name)), `Native Save As chose unexpected path: ${outputPath}`);
@@ -683,12 +848,32 @@ async function run() {
     assert(candidateCharacter?.x === editedCharacter?.x && candidateCharacter?.y === editedCharacter?.y, 'Post-capture edits changed the frozen candidate position.');
 
     const previousAttemptId = await rendererJs('window.__pandaStageIssue816Acceptance.lastAttemptId');
+    await rendererJs('window.__pandaStageIssue816Acceptance.lastMainResponse = null');
+    let releaseStaleRead;
+    let markStaleReadStarted;
+    const staleReadGatePromise = new Promise((resolve) => {
+      releaseStaleRead = resolve;
+    });
+    const staleReadStarted = new Promise((resolve) => {
+      markStaleReadStarted = resolve;
+    });
+    nextMediaReadGate = {
+      promise: staleReadGatePromise,
+      markStarted: markStaleReadStarted,
+    };
     const pendingStalePreparation = rendererJs('window.__pandaStageIssue816Acceptance.prepare()');
-    await clickNativeSaveDialog('save', path.join(evidenceRoot, 'F05', 'native-save-as-session-change.png'));
-    await waitForRenderer(`window.__pandaStageIssue816Acceptance.lastAttemptId && window.__pandaStageIssue816Acceptance.lastAttemptId !== ${JSON.stringify(previousAttemptId)}`);
-    const activeSnapshotId = exportPreparationService.activePreparation?.snapshotId ?? null;
-    assert(activeSnapshotId, 'The asynchronous preparation did not enter Main.');
-    const reopened = await rendererJs('window.__pandaStageIssue816Acceptance.reopenSamePath()');
+    let activeSnapshotId;
+    let reopened;
+    try {
+      await clickNativeSaveDialog('save', path.join(evidenceRoot, 'F05', 'native-save-as-session-change.png'));
+      await waitForRenderer(`window.__pandaStageIssue816Acceptance.lastAttemptId && window.__pandaStageIssue816Acceptance.lastAttemptId !== ${JSON.stringify(previousAttemptId)}`);
+      activeSnapshotId = await waitForActivePreparation();
+      await staleReadStarted;
+      reopened = await rendererJs('window.__pandaStageIssue816Acceptance.reopenSamePath()');
+    } finally {
+      releaseStaleRead();
+      nextMediaReadGate = null;
+    }
     assert(reopened.projectRoot === fixtureProjectRoot && reopened.project.id === fixtureProject.id, 'Same-path test did not reopen the same Project identity.');
     assert(reopened.openInstanceId !== candidate.openInstanceId, 'Same-path reopen retained the prior open instance ID.');
     await waitForTrackedOpenInstance(reopened.openInstanceId);

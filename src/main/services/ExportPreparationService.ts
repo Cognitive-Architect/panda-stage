@@ -64,6 +64,7 @@ export interface ExportPreparationServiceOptions {
   getCurrentProjectSnapshot: (
     projectRoot: string,
   ) => TrackedProjectSnapshot | null;
+  confirmOverwrite?: (request: { fileName: string }) => Promise<boolean>;
   fileStore?: ExportPreparationFileStore;
   mediaReader?: ExportPreparationMediaReader;
   now?: () => Date;
@@ -191,6 +192,30 @@ export class ExportPreparationService {
 
     try {
       const target = await captureTargetIdentity(selectedPath);
+      let overwriteApproved = false;
+      if (target.identity !== null) {
+        if (!this.options.confirmOverwrite) {
+          return {
+            status: 'blocked',
+            issue: this.overwriteConfirmationIssue(),
+          };
+        }
+        const confirmed = await this.options.confirmOverwrite({
+          fileName: path.basename(target.canonicalPath),
+        });
+        if (!confirmed) return { status: 'cancelled' };
+        overwriteApproved = true;
+      }
+
+      const targetAfterConfirmation = await captureTargetIdentity(
+        target.canonicalPath,
+      );
+      if (!sameCapturedTarget(target, targetAfterConfirmation)) {
+        return {
+          status: 'blocked',
+          issue: this.outputChangedIssue(),
+        };
+      }
       await this.releaseAllCandidates();
       const selectionId = randomUUID();
       const fileName = path.basename(target.canonicalPath);
@@ -201,14 +226,14 @@ export class ExportPreparationService {
         openInstanceId: request.openInstanceId,
         targetPath: target.canonicalPath,
         fileName,
-        overwriteApproved: target.identity !== null,
+        overwriteApproved,
         targetIdentity: target.identity,
       };
       return {
         status: 'selected',
         selectionId,
         fileName,
-        overwriteApproved: target.identity !== null,
+        overwriteApproved,
       };
     } catch (error) {
       return {
@@ -420,7 +445,7 @@ export class ExportPreparationService {
         (item) => item.code === 'PREPARATION_BUDGET_EXCEEDED',
       );
       const missingSize = media.some((entry) => !mediaSizes.has(entry.asset.id));
-      if (overBudget || missingSize) {
+      if (overBudget || (missingSize && mediaSizes.size === 0)) {
         return this.block(request.attemptId, issues, diagnosticDetails.join('\n'));
       }
 
@@ -429,7 +454,8 @@ export class ExportPreparationService {
       const mediaManifest: ExportPreparationMediaManifestEntry[] = [];
       for (const entry of media) {
         this.throwIfCancelled(active);
-        const expectedSize = mediaSizes.get(entry.asset.id)!;
+        const expectedSize = mediaSizes.get(entry.asset.id);
+        if (expectedSize === undefined) continue;
         let loaded: { bytes: Uint8Array; mimeType: string };
         let digest = '';
         try {
@@ -695,6 +721,15 @@ export class ExportPreparationService {
     };
   }
 
+  private overwriteConfirmationIssue(): ExportPreparationIssue {
+    return {
+      code: 'OUTPUT_OVERWRITE_NOT_CONFIRMED',
+      location: '输出位置',
+      problem: '无法证明你已明确同意覆盖现有视频。',
+      nextStep: '重新选择其他位置，或通过受信任的确认对话框确认覆盖。',
+    };
+  }
+
   private sessionChangedIssue(): ExportPreparationIssue {
     return {
       code: 'PROJECT_SESSION_CHANGED',
@@ -788,20 +823,34 @@ function sameTarget(
   current: CapturedTarget,
 ): boolean {
   if (!samePath(selection.targetPath, current.canonicalPath)) return false;
-  if (selection.targetIdentity === null || current.identity === null) {
-    return selection.targetIdentity === current.identity;
-  }
+  return sameTargetIdentity(selection.targetIdentity, current.identity);
+}
+
+function sameCapturedTarget(
+  expected: CapturedTarget,
+  current: CapturedTarget,
+): boolean {
+  return (
+    samePath(expected.canonicalPath, current.canonicalPath) &&
+    sameTargetIdentity(expected.identity, current.identity)
+  );
+}
+
+function sameTargetIdentity(
+  expected: ExportOutputTargetIdentity | null,
+  current: ExportOutputTargetIdentity | null,
+): boolean {
+  if (expected === null || current === null) return expected === current;
   return (
     samePath(
-      selection.targetIdentity.canonicalPath,
-      current.identity.canonicalPath,
+      expected.canonicalPath,
+      current.canonicalPath,
     ) &&
-    selection.targetIdentity.volumeId === current.identity.volumeId &&
-    selection.targetIdentity.fileId === current.identity.fileId &&
-    selection.targetIdentity.sizeBytes === current.identity.sizeBytes &&
-    selection.targetIdentity.modifiedTimeNs ===
-      current.identity.modifiedTimeNs &&
-    selection.targetIdentity.changedTimeNs === current.identity.changedTimeNs
+    expected.volumeId === current.volumeId &&
+    expected.fileId === current.fileId &&
+    expected.sizeBytes === current.sizeBytes &&
+    expected.modifiedTimeNs === current.modifiedTimeNs &&
+    expected.changedTimeNs === current.changedTimeNs
   );
 }
 
