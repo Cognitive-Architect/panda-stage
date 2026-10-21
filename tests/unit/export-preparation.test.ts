@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   mkdir,
   mkdtemp,
+  realpath,
   readFile,
   readdir,
   rm,
@@ -1155,7 +1156,9 @@ describe('ExportPreparationService', () => {
     if (result.status === 'PREPARATION_READY') {
       expect(result.candidate.outputIntent).toMatchObject({
         overwriteApproved: true,
-        targetIdentity: expect.objectContaining({ canonicalPath: target }),
+        targetIdentity: expect.objectContaining({
+          canonicalPath: await realpath(target),
+        }),
       });
     }
     expect(await readFile(target, 'utf8')).toBe('existing user movie');
