@@ -72,6 +72,15 @@ import type {
   FullProbeExportRequest,
 } from '../shared/export-types';
 import type {
+  ExportPreparationCancelResponse,
+  ExportPreparationDiscardRequest,
+  ExportPreparationDiscardResponse,
+  ExportPreparationRequest,
+  ExportPreparationResponse,
+  ExportPreparationSelectOutputRequest,
+  ExportPreparationSelectOutputResponse,
+} from '../shared/export-preparation-types';
+import type {
   NativeCloseSyncRequest,
   NativeCloseSyncResponse,
 } from '../shared/native-close-sync';
@@ -110,6 +119,13 @@ import type {
 
 declare global {
   interface Window {
+    __pandaStageIssue816Acceptance?: {
+      lastAttemptId: string | null;
+      inspect: () => Promise<unknown> | unknown;
+      editUnsavedFixture: () => Promise<unknown> | unknown;
+      reopenSamePath: () => Promise<unknown>;
+      prepare: () => Promise<unknown>;
+    };
     pandaStage: {
       app: {
         ping: () => Promise<AppPingResponse>;
@@ -209,6 +225,20 @@ declare global {
         ) => Promise<ExportStartResponse>;
         cancel: (jobId: string) => Promise<ExportCancelResponse>;
         onUpdate: (callback: (update: ExportJobUpdate) => void) => () => void;
+      };
+      exportPreparation: {
+        selectOutput: (
+          request: ExportPreparationSelectOutputRequest,
+        ) => Promise<ExportPreparationSelectOutputResponse>;
+        prepare: (
+          request: ExportPreparationRequest,
+        ) => Promise<ExportPreparationResponse>;
+        cancel: (
+          attemptId: string,
+        ) => Promise<ExportPreparationCancelResponse>;
+        discard: (
+          request: ExportPreparationDiscardRequest,
+        ) => Promise<ExportPreparationDiscardResponse>;
       };
       fla: {
         chooseAndInspect: (requestId?: string) => Promise<FlaInspectionResponse>;

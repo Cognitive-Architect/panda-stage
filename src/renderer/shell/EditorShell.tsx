@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -436,6 +437,7 @@ export function EditorShell({
   const [productPreviewOpen, setProductPreviewOpen] = useState(false);
   // Preview Camera is an editor-session mode, not Project or Preview state.
   const [autoCameraEnabled, setAutoCameraEnabled] = useState(false);
+  const issue816FlowActive = useRef(false);
   const [productPreviewSurfaceActive, setProductPreviewSurfaceActive] =
     useState(false);
   const commitProductPreviewSurface = useCallback((): void => {
@@ -489,6 +491,191 @@ export function EditorShell({
   const { debug, gateA } = useDebugFlag();
   const renderProductSurface = shouldRenderProductSurface(gateA);
   const isPortrait = layoutMode === 'portrait';
+
+  useEffect(() => {
+    if (
+      new URLSearchParams(window.location.search).get(
+        'issue816Acceptance',
+      ) !== '1'
+    ) {
+      return;
+    }
+
+    const acceptanceApi = {
+      lastAttemptId: null as string | null,
+      inspect: () => {
+        const snapshot = editorProjectStore.getSnapshot();
+        if (!snapshot) return null;
+        return {
+          projectRoot: snapshot.projectRoot,
+          project: structuredClone(snapshot.project),
+          revision: snapshot.revision,
+          dirty: snapshot.dirty,
+          openInstanceId: editorProjectStore.getProjectInstanceId(),
+          undoCount: editorProjectStore.history.getSnapshot().undoCount,
+          redoCount: editorProjectStore.history.getSnapshot().redoCount,
+        };
+      },
+      editUnsavedFixture: async () => {
+        const snapshot = editorProjectStore.getSnapshot();
+        if (!snapshot) throw new Error('No active Project for issue 816 fixture.');
+        const project = structuredClone(snapshot.project);
+        const shot = project.shots[0];
+        if (!shot) throw new Error('Issue 816 fixture requires one shot.');
+        const layer =
+          shot.layers.find((candidate) => candidate.source.kind === 'character') ??
+          shot.layers.find((candidate) => candidate.id !== shot.backgroundLayerId);
+        if (!layer) throw new Error('Issue 816 fixture requires a character layer.');
+        if (shot.dialogues.length > 0) {
+          shot.dialogues[0] = {
+            ...shot.dialogues[0]!,
+            text: 'DL-01 未保存字幕验收',
+          };
+        } else {
+          const character = project.characters[0];
+          const voiceProfile = project.voiceProfiles.find(
+            (candidate) => candidate.characterId === character?.id,
+          );
+          if (!character || !voiceProfile) {
+            throw new Error('Issue 816 fixture requires a character voice profile.');
+          }
+          shot.dialogues.push({
+            id: crypto.randomUUID(),
+            characterId: character.id,
+            voiceProfileId: voiceProfile.id,
+            subtitleStyleId: shot.defaultSubtitleStyleId,
+            startMs: 250,
+            endMs: Math.min(1_500, shot.durationMs),
+            text: 'DL-01 未保存字幕验收',
+          });
+        }
+        layer.x += 37;
+        layer.y += 19;
+        editorProjectStore.updateProject(project, 'Issue 816 acceptance edit');
+        const updated = editorProjectStore.getSnapshot();
+        if (!updated) throw new Error('Issue 816 Project closed during fixture edit.');
+        const syncResult = await session.syncAutosave(updated);
+        if (syncResult && !syncResult.ok) {
+          throw new Error('Issue 816 fixture edit did not reach Main autosave tracking.');
+        }
+        return {
+          revision: updated.revision,
+          dirty: updated.dirty,
+          undoCount: editorProjectStore.history.getSnapshot().undoCount,
+          project: structuredClone(updated.project),
+        };
+      },
+      reopenSamePath: async () => {
+        const snapshot = editorProjectStore.getSnapshot();
+        if (!snapshot) throw new Error('No active Project to reopen for issue 816.');
+        const projectId = snapshot.project.id;
+        const projectRoot = snapshot.projectRoot;
+        await session.closeProject();
+        await session.switchRecentProject(projectRoot, projectId);
+        return acceptanceApi.inspect();
+      },
+      prepare: async () => {
+        if (issue816FlowActive.current) {
+          return { status: 'PREPARATION_BUSY' };
+        }
+        const initial = editorProjectStore.getSnapshot();
+        const initialInstanceId = editorProjectStore.getProjectInstanceId();
+        if (!initial || initialInstanceId === null) {
+          return { status: 'NO_PROJECT' };
+        }
+
+        issue816FlowActive.current = true;
+        try {
+          const selection =
+            await window.pandaStage.exportPreparation.selectOutput({
+              projectRoot: initial.projectRoot,
+              projectId: initial.project.id,
+              projectName: initial.project.name,
+              openInstanceId: initialInstanceId,
+            });
+          if (selection.status !== 'selected') return selection;
+
+          const attemptId = crypto.randomUUID();
+          const captured = editorProjectStore.getSnapshot();
+          const capturedInstanceId =
+            editorProjectStore.getProjectInstanceId();
+          if (
+            !captured ||
+            capturedInstanceId !== initialInstanceId ||
+            captured.projectRoot !== initial.projectRoot ||
+            captured.project.id !== initial.project.id
+          ) {
+            await window.pandaStage.exportPreparation.discard({
+              selectionId: selection.selectionId,
+            });
+            return {
+              status: 'BLOCK',
+              attemptId,
+              diagnosticId: crypto.randomUUID(),
+              issues: [
+                {
+                  code: 'PROJECT_SESSION_CHANGED',
+                  location: '当前工程',
+                  problem: '输出位置选择后，当前工程已关闭或切换。',
+                  nextStep: '打开目标工程并重新选择输出位置。',
+                },
+              ],
+            };
+          }
+
+          const request = {
+            selectionId: selection.selectionId,
+            attemptId,
+            projectRoot: captured.projectRoot,
+            projectId: captured.project.id,
+            openInstanceId: capturedInstanceId,
+            revision: captured.revision,
+            dirty: captured.dirty,
+            cameraMode: autoCameraEnabled ? 'speaker-focus' : 'static',
+            project: structuredClone(captured.project),
+          } as const;
+          acceptanceApi.lastAttemptId = attemptId;
+          const result = await window.pandaStage.exportPreparation.prepare(
+            request,
+          );
+          const current = editorProjectStore.getSnapshot();
+          if (
+            editorProjectStore.getProjectInstanceId() !== initialInstanceId ||
+            !current ||
+            current.projectRoot !== initial.projectRoot ||
+            current.project.id !== initial.project.id
+          ) {
+            if (result.status === 'PREPARATION_READY') {
+              await window.pandaStage.exportPreparation.discard({
+                snapshotId: result.candidate.snapshotId,
+              });
+            }
+            return {
+              status: 'BLOCK',
+              attemptId,
+              diagnosticId: crypto.randomUUID(),
+              issues: [
+                {
+                  code: 'PROJECT_SESSION_CHANGED',
+                  location: '当前工程',
+                  problem: '工程检查期间，当前工程已关闭或切换。',
+                  nextStep: '打开目标工程并重新选择输出位置。',
+                },
+              ],
+            };
+          }
+          return result;
+        } finally {
+          issue816FlowActive.current = false;
+        }
+      },
+    };
+    window.__pandaStageIssue816Acceptance = acceptanceApi;
+
+    return () => {
+      delete window.__pandaStageIssue816Acceptance;
+    };
+  }, [autoCameraEnabled]);
 
   useEffect(() => {
     setPortraitWorkspace((current) =>

@@ -10,6 +10,7 @@ import {
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { registerIpcHandlers } from './ipc/register-ipc-handlers';
+import { registerExportPreparationIpcHandlers } from './ipc/register-export-preparation-ipc-handlers';
 import { ExportService } from './services/ExportService';
 import { FileSystemService } from './services/FileSystemService';
 import { FFmpegAdapter } from './services/FFmpegAdapter';
@@ -59,11 +60,14 @@ import { registerFlaStaticSnapshotIpcHandlers } from './ipc/register-fla-static-
 import { FlaFrameSequenceService } from './services/fla-frame-sequence-service';
 import { FlaFrameSequenceCommitService } from './services/FlaFrameSequenceCommitService';
 import { registerFlaFrameSequenceIpcHandlers } from './ipc/register-fla-frame-sequence-ipc-handlers';
+import { ExportPreparationService } from './services/ExportPreparationService';
 
 let mainWindow: BrowserWindow | null = null;
 const hiddenWindowManager = new HiddenWindowManager();
 let exportService: ExportService | null = null;
+let exportPreparationService: ExportPreparationService | null = null;
 let removeIpcHandlers: (() => void) | null = null;
+let removeExportPreparationIpcHandlers: (() => void) | null = null;
 let removeProjectIpcHandlers: (() => void) | null = null;
 let removeRecoveryIpcHandlers: (() => void) | null = null;
 let removeRecentProjectsIpcHandlers: (() => void) | null = null;
@@ -110,6 +114,25 @@ async function selectFlaSource(window: BrowserWindow): Promise<string | null> {
   return selection.canceled ? null : selection.filePaths[0] ?? null;
 }
 
+function defaultExportFileName(projectName: string): string {
+  let baseName = Array.from(projectName.trim(), (character) =>
+    /[<>:"/\\|?*]/u.test(character) || character.charCodeAt(0) <= 0x1f
+      ? '_'
+      : character,
+  )
+    .join('')
+    .replace(/[. ]+$/gu, '')
+    .trim();
+  baseName = Array.from(baseName).slice(0, 240).join('').replace(/[. ]+$/gu, '');
+  if (
+    !baseName ||
+    /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/iu.test(baseName)
+  ) {
+    baseName = '未命名工程';
+  }
+  return baseName + '.mp4';
+}
+
 if (process.env.PANDA_STAGE_GATE_A === '1') {
   app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 }
@@ -117,6 +140,8 @@ if (process.env.PANDA_STAGE_GATE_A === '1') {
 async function createApplicationWindows(): Promise<void> {
   const window = await createMainWindow({
     show: process.env.PANDA_STAGE_ISSUE762_PROFILE !== '1',
+    issue816Acceptance:
+      !app.isPackaged && process.env.PANDA_STAGE_ISSUE816_ACCEPTANCE === '1',
   });
   mainWindow = window;
   if (unsavedCloseController) {
@@ -290,6 +315,36 @@ async function initialize(): Promise<void> {
       console.error('Recent project update failed.', error);
     },
   });
+  exportPreparationService = new ExportPreparationService({
+    getCurrentProjectSnapshot: (projectRoot) => {
+      const snapshot = autosaveService?.getProjectSnapshot(projectRoot);
+      return snapshot
+        ? {
+            project: snapshot.project,
+            revision: snapshot.revision,
+            dirty: snapshot.dirty,
+          }
+        : null;
+    },
+  });
+  removeExportPreparationIpcHandlers =
+    registerExportPreparationIpcHandlers({
+      getMainWindow: () => mainWindow,
+      service: exportPreparationService,
+      selectOutputPath: async (window, request) => {
+        const selection = await dialog.showSaveDialog(window, {
+          title: '选择导出视频位置',
+          buttonLabel: '选择输出位置',
+          defaultPath: path.join(
+            request.projectRoot,
+            defaultExportFileName(request.projectName),
+          ),
+          filters: [{ name: 'MP4 视频', extensions: ['mp4'] }],
+          properties: ['showOverwriteConfirmation'],
+        });
+        return selection.canceled ? null : (selection.filePath ?? null);
+      },
+    });
   removeRecoveryIpcHandlers = registerRecoveryIpcHandlers({
     getMainWindow: () => mainWindow,
     projectService,
@@ -585,6 +640,10 @@ app.on('before-quit', (event) => {
 
 app.on('will-quit', () => {
   exportService?.cancelActiveJob();
+  exportPreparationService?.disposeSync();
+  exportPreparationService = null;
+  removeExportPreparationIpcHandlers?.();
+  removeExportPreparationIpcHandlers = null;
   removeIpcHandlers?.();
   removeIpcHandlers = null;
   removeProjectIpcHandlers?.();

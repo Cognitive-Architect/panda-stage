@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFile, realpath, stat } from 'node:fs/promises';
-import path from 'node:path';
+import { readFile, stat } from 'node:fs/promises';
 import { ProjectSchema, type Project } from '../../domain';
 import {
   ASSET_PREVIEW_AUDIO_MAX_BYTES,
@@ -9,6 +8,7 @@ import {
   type AssetPreviewAudioReadResponse,
 } from '../../shared/asset-preview-audio-api';
 import { MediaInspectionService } from './MediaInspectionService';
+import { resolveProjectAssetPath } from './project-asset-path';
 
 export interface AssetPreviewAudioServiceOptions {
   getCurrentProjectSnapshot: (
@@ -189,30 +189,7 @@ export class AssetPreviewAudioService {
     projectRoot: string,
     relativePath: string,
   ): Promise<string | null> {
-    const assetsRoot = path.resolve(projectRoot, 'assets');
-    const assetPath = path.resolve(projectRoot, relativePath);
-    if (!this.isInsideDirectory(assetsRoot, assetPath)) return null;
-    try {
-      const [realAssetsRoot, realAssetPath] = await Promise.all([
-        realpath(assetsRoot),
-        realpath(assetPath),
-      ]);
-      return this.isInsideDirectory(realAssetsRoot, realAssetPath)
-        ? realAssetPath
-        : null;
-    } catch {
-      return null;
-    }
-  }
-
-  private isInsideDirectory(directory: string, candidate: string): boolean {
-    const relative = path.relative(directory, candidate);
-    return (
-      relative.length > 0 &&
-      relative !== '..' &&
-      !relative.startsWith(`..${path.sep}`) &&
-      !path.isAbsolute(relative)
-    );
+    return resolveProjectAssetPath(projectRoot, relativePath);
   }
 
   private requestAssetId(rawRequest: unknown): string {

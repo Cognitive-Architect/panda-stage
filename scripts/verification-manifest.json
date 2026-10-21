@@ -389,7 +389,7 @@
           "tests/unit/export-*.test.ts",
           "tests/unit/ffmpeg-*.test.ts"
         ],
-        "verifierPatterns": [],
+        "verifierPatterns": ["scripts/verify-issue816-dl01.cjs"],
         "suites": [],
         "riskPolicy": "full",
         "draftPolicy": "focused",
@@ -669,7 +669,7 @@
       }
     ]
   },
-  "count": 81,
+  "count": 82,
   "gates": [
     {
       "id": "issue663-dialogue-voice",
@@ -1630,6 +1630,18 @@
       "owner": "character",
       "supersedes": null,
       "notes": "Bounded Issue #609 real Electron production-UI proof for composite Character creation/edit, Body-only raw placement, and one-layer Shot placement; synthetic fixture input and screenshot evidence are not human acceptance."
+    },
+    {
+      "id": "issue816-dl01",
+      "script": "verify:issue816-dl01",
+      "suite": "project",
+      "subsystem": "export-preparation",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Controlled Issue #816 DL-01 Electron proof for native Save As, actual dirty EditorProjectStore capture, stable media copies, target/session guards, and F01/F05/F06 generated fixtures. Synthetic Project Center IPC and native-dialog UI Automation support the gate; OWNER acceptance remains separate."
     },
     {
       "id": "timeline",
