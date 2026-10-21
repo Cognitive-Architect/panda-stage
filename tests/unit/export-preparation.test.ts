@@ -851,6 +851,59 @@ describe('ExportPreparationService', () => {
     );
   });
 
+  it('acquires only verified frozen media and rechecks the overwrite target', async () => {
+    const fixture = await harness();
+    const selection = await selectOutput(fixture, 'Frozen candidate.mp4');
+    const prepared = await fixture.service.prepare(
+      requestFor(fixture, selection.selectionId),
+    );
+    expect(prepared.status).toBe('PREPARATION_READY');
+    if (prepared.status !== 'PREPARATION_READY') return;
+
+    const candidate = prepared.candidate;
+    const manifest = candidate.mediaManifest[0]!;
+    const acquired = await fixture.service.acquireCandidateForExport(
+      candidate.snapshotId,
+    );
+    expect(acquired.candidate).toEqual(candidate);
+    expect(acquired.media).toHaveLength(candidate.mediaManifest.length);
+    expect(
+      Buffer.from(
+        acquired.media.find((entry) => entry.assetId === manifest.assetId)!.bytes,
+      ).equals(fixture.media.get(manifest.assetId)!),
+    ).toBe(true);
+    fixture.service.releaseCandidateExport(candidate.snapshotId);
+
+    const current = fixture.getCurrent();
+    fixture.setCurrent({
+      ...current,
+      revision: current.revision + 1,
+      dirty: true,
+    });
+    await expect(
+      fixture.service.acquireCandidateForExport(candidate.snapshotId),
+    ).rejects.toThrow('PROJECT_SNAPSHOT_CHANGED');
+    const retry = await fixture.service.acquireCandidateForExport(
+      candidate.snapshotId,
+      true,
+    );
+    expect(retry.candidate.revision).toBe(candidate.revision);
+    fixture.service.releaseCandidateExport(candidate.snapshotId);
+
+    const outputPath = path.join(
+      fixture.outputDirectory,
+      candidate.outputIntent.fileName,
+    );
+    await writeFile(outputPath, 'appeared after preparation');
+    await expect(
+      fixture.service.assertOutputTargetUnchanged(candidate.snapshotId),
+    ).rejects.toThrow('OUTPUT_TARGET_CHANGED');
+    await expect(readFile(outputPath, 'utf8')).resolves.toBe(
+      'appeared after preparation',
+    );
+    await fixture.service.discard(undefined, candidate.snapshotId);
+  });
+
   it('blocks a renderer snapshot that no longer matches Main revision before reading media', async () => {
     const onRead = vi.fn();
     const media = new Map<string, Uint8Array>();

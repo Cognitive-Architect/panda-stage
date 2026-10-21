@@ -37,6 +37,7 @@
     "research:issue706-cross-corpus": "pnpm build && node scripts/research/issue706-cross-corpus-batch.cjs",
     "evidence:issue816-fixtures": "pnpm build && node scripts/generate-issue816-fixtures.cjs",
     "verify:issue816-dl01": "pnpm build && electron scripts/verify-issue816-dl01.cjs",
+    "verify:issue819-dl02": "pnpm build && electron scripts/verify-issue819-dl02.cjs",
     "verify:fla-v1-5-c3": "pnpm build && node scripts/fla-c3-electron-acceptance.cjs",
     "verify:fla-v1-5-c4": "pnpm build && node scripts/fla-c4-electron-acceptance.cjs",
     "verify:day03": "pnpm build && electron scripts/verify-day03.cjs",

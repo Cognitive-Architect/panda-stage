@@ -76,6 +76,9 @@ describe('FileSystemService Unicode paths and cleanup', () => {
 
     expect(path.dirname(stagingPath)).toBe(path.dirname(outputPath));
     expect(path.basename(stagingPath)).toContain(jobId);
+    expect(path.basename(stagingPath)).toMatch(
+      /^\.panda-stage-export-[0-9a-f-]+-[0-9a-f-]+\.mp4$/iu,
+    );
     expect(stagingPath.toLowerCase().endsWith('.mp4')).toBe(true);
     await writeFile(stagingPath, 'new video', 'utf8');
     await service.commitFinalOutput(stagingPath, outputPath, true);
@@ -83,5 +86,16 @@ describe('FileSystemService Unicode paths and cleanup', () => {
     await expect(readFile(outputPath, 'utf8')).resolves.toBe('new video');
     await expect(stat(stagingPath)).rejects.toMatchObject({ code: 'ENOENT' });
     await service.cleanupFinalOutputStaging(stagingPath);
+  });
+
+  it('keeps formal output staging names short for long user-selected file names', () => {
+    const parent = path.join(os.tmpdir(), 'panda-stage-long-output-name');
+    const service = new FileSystemService(path.join(parent, 'frames'));
+    const outputPath = path.join(parent, `${'long-export-name-'.repeat(12)}.mp4`);
+    const stagingPath = service.createFinalOutputStagingPath(randomUUID(), outputPath);
+
+    expect(path.dirname(stagingPath)).toBe(parent);
+    expect(path.basename(stagingPath).length).toBeLessThan(100);
+    expect(path.basename(stagingPath)).not.toContain('long-export-name');
   });
 });

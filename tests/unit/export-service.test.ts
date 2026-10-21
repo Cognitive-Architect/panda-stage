@@ -10,10 +10,12 @@ import {
 import type { VideoProbeResult } from '../../src/shared/ffmpeg-types';
 import type {
   ExportFrameReady,
+  ExportLoadFormalRequest,
   ExportLoadProbeRequest,
   ExportProbeLoaded,
   ExportRenderFrameRequest,
 } from '../../src/shared/export-types';
+import type { FrozenExportInput } from '../../src/main/services/ExportPreparationService';
 
 class MemoryFileSystem implements FrameFileSystem {
   readonly directories = new Map<string, Map<string, Uint8Array>>();
@@ -115,6 +117,7 @@ class MemoryFileSystem implements FrameFileSystem {
 
 class MemoryRenderer implements FrameRenderer {
   requests: ExportRenderFrameRequest[] = [];
+  formalLoads: ExportLoadFormalRequest[] = [];
   failAtFrame: number | null = null;
   cancelledJobs: string[] = [];
   prepared = 0;
@@ -135,6 +138,11 @@ class MemoryRenderer implements FrameRenderer {
 
   async loadProbe(request: ExportLoadProbeRequest): Promise<ExportProbeLoaded> {
     return { jobId: request.jobId, acknowledged: true };
+  }
+
+  async loadFormal(request: ExportLoadFormalRequest) {
+    this.formalLoads.push(request);
+    return { jobId: request.jobId, acknowledged: true as const };
   }
 
   async renderFrame(request: ExportRenderFrameRequest): Promise<ExportFrameReady> {
@@ -184,6 +192,7 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
   blockProbe = false;
   probeStarted: (() => void) | null = null;
   probeFailure: Error | null = null;
+  result = probeResult;
 
   constructor(private readonly fileSystem: MemoryFileSystem) {}
 
@@ -209,6 +218,9 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
     signal?: AbortSignal,
   ): Promise<void> {
     this.encodeRequests.push(request);
+    if (request.overwrite === false) {
+      this.fileSystem.stagingFiles.set(String(request.outputPath), 'silent video');
+    }
     if (signal) this.signals.push(signal);
     if (!this.blockEncode) return;
     this.activeProcesses = 1;
@@ -255,7 +267,7 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
       this.probeStarted?.();
       await this.waitForCancellation(signal, 'controlled probe cancellation');
     }
-    return probeResult;
+    return this.result;
   }
 
   getActiveProcessCount(): number {
@@ -347,6 +359,59 @@ describe('ExportService', () => {
       /导出已取消并完成资源清理；可以立即重新导出/,
     );
     expect(fileSystem.directories.size).toBe(0);
+  });
+
+  it('exports a frozen formal Shot beyond five seconds as a silent verified MP4', async () => {
+    const renderer = new MemoryRenderer();
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    const totalFrames = 157;
+    media.result = {
+      ...probeResult,
+      frameCount: totalFrames,
+      durationSeconds: totalFrames / 24,
+      hasAudio: false,
+      audioCodecName: null,
+      audioSampleRate: null,
+      audioChannels: null,
+      audioStartSeconds: null,
+      audioDurationSeconds: null,
+    };
+    const service = new ExportService(renderer, fileSystem, media);
+    const input = {
+      candidate: {
+        project: { shots: [{ durationMs: 6_501 }] },
+        projectRoot: 'C:\\Panda Stage\\Project',
+        cameraMode: 'static',
+        renderSettings: { width: 1_920, height: 1_080, fps: 24 },
+        outputIntent: {
+          targetPath: 'C:\\Panda Stage\\Output\\鏡頭.mp4',
+          overwriteApproved: false,
+        },
+      },
+      media: [],
+    } as unknown as FrozenExportInput;
+    let targetChecks = 0;
+    const handle = service.startFormalExport(input, async () => {
+      targetChecks += 1;
+    });
+    const result = await handle.completion;
+
+    expect(result.totalFrames).toBe(totalFrames);
+    expect(result.completedFrames).toBe(totalFrames);
+    expect(renderer.formalLoads).toHaveLength(1);
+    expect(renderer.formalLoads[0]?.project).toEqual(input.candidate.project);
+    expect(renderer.requests.at(-1)).toMatchObject({
+      frameIndex: 156,
+      timeMs: 6_500,
+    });
+    expect(media.encodeRequests).toHaveLength(1);
+    expect(media.encodeRequests[0]).toMatchObject({ fps: 24, overwrite: false });
+    expect(media.muxRequests).toHaveLength(0);
+    expect(result.probe.hasAudio).toBe(false);
+    expect(targetChecks).toBe(2);
+    expect(fileSystem.commitFinalOutputCalls).toBe(1);
+    expect(service.getCompletedOutputPath(handle.jobId)).toBe(result.outputPath);
   });
 
   it('uses one Job signal through a Unicode full export and removes its frame directory', async () => {

@@ -4,11 +4,15 @@ import {
   ExportFrameFailedSchema,
   ExportFrameReadySchema,
   ExportLoadProbeRequestSchema,
+  ExportLoadFormalRequestSchema,
+  ExportFormalLoadedSchema,
   ExportProbeLoadedSchema,
   ExportRenderFrameRequestSchema,
   type ExportFrameFailed,
   type ExportFrameReady,
   type ExportLoadProbeRequest,
+  type ExportLoadFormalRequest,
+  type ExportFormalLoaded,
   type ExportProbeLoaded,
   type ExportRenderFrameRequest,
 } from '../../shared/export-types';
@@ -34,6 +38,10 @@ export class HiddenWindowManager {
   private pendingLoad: PendingRequest<
     ExportLoadProbeRequest,
     ExportProbeLoaded
+  > | null = null;
+  private pendingFormalLoad: PendingRequest<
+    ExportLoadFormalRequest,
+    ExportFormalLoaded
   > | null = null;
   private pendingFrame: PendingRequest<
     ExportRenderFrameRequest,
@@ -133,7 +141,7 @@ export class HiddenWindowManager {
     const request = ExportLoadProbeRequestSchema.parse(rawRequest);
     this.cancelledJobIds.delete(request.jobId);
     const window = this.requireWindow();
-    if (this.pendingLoad || this.pendingFrame) {
+    if (this.pendingLoad || this.pendingFormalLoad || this.pendingFrame) {
       throw new Error('Hidden window is busy with another export request.');
     }
 
@@ -154,6 +162,33 @@ export class HiddenWindowManager {
     return promise;
   }
 
+  async loadFormal(
+    rawRequest: ExportLoadFormalRequest,
+  ): Promise<ExportFormalLoaded> {
+    const request = ExportLoadFormalRequestSchema.parse(rawRequest) as ExportLoadFormalRequest;
+    this.cancelledJobIds.delete(request.jobId);
+    const window = this.requireWindow();
+    if (this.pendingLoad || this.pendingFormalLoad || this.pendingFrame) {
+      throw new Error('Hidden window is busy with another export request.');
+    }
+
+    const promise = new Promise<ExportFormalLoaded>((resolve, reject) => {
+      this.pendingFormalLoad = {
+        request,
+        resolve,
+        reject,
+        timeout: setTimeout(() => {
+          this.pendingFormalLoad = null;
+          reject(
+            new Error(`Job ${request.jobId} formal-load handshake timed out.`),
+          );
+        }, LOAD_TIMEOUT_MS),
+      };
+    });
+    window.webContents.send(IPC_CHANNELS.EXPORT_LOAD_FORMAL, request);
+    return promise;
+  }
+
   async renderFrame(
     rawRequest: ExportRenderFrameRequest,
   ): Promise<ExportFrameReady> {
@@ -162,7 +197,7 @@ export class HiddenWindowManager {
     if (this.loadedJobId !== request.jobId) {
       throw new Error(`Hidden window has not loaded Job ${request.jobId}.`);
     }
-    if (this.pendingLoad || this.pendingFrame) {
+    if (this.pendingLoad || this.pendingFormalLoad || this.pendingFrame) {
       throw new Error('Hidden window is busy with another export request.');
     }
 
@@ -203,6 +238,20 @@ export class HiddenWindowManager {
 
     clearTimeout(pending.timeout);
     this.pendingLoad = null;
+    this.loadedJobId = payload.jobId;
+    pending.resolve(payload);
+  }
+
+  markFormalLoaded(senderId: number, rawPayload: ExportFormalLoaded): void {
+    this.assertSender(senderId);
+    const payload = ExportFormalLoadedSchema.parse(rawPayload);
+    if (this.cancelledJobIds.has(payload.jobId)) return;
+    const pending = this.pendingFormalLoad;
+    if (!pending || pending.request.jobId !== payload.jobId) {
+      throw new Error(`Unexpected formal-loaded response for Job ${payload.jobId}.`);
+    }
+    clearTimeout(pending.timeout);
+    this.pendingFormalLoad = null;
     this.loadedJobId = payload.jobId;
     pending.resolve(payload);
   }
@@ -257,6 +306,7 @@ export class HiddenWindowManager {
     const ownsJob =
       this.loadedJobId === jobId ||
       this.pendingLoad?.request.jobId === jobId ||
+      this.pendingFormalLoad?.request.jobId === jobId ||
       this.pendingFrame?.request.jobId === jobId;
     this.cancelledJobIds.add(jobId);
 
@@ -272,6 +322,11 @@ export class HiddenWindowManager {
       clearTimeout(this.pendingLoad.timeout);
       this.pendingLoad.reject(cancellation);
       this.pendingLoad = null;
+    }
+    if (this.pendingFormalLoad?.request.jobId === jobId) {
+      clearTimeout(this.pendingFormalLoad.timeout);
+      this.pendingFormalLoad.reject(cancellation);
+      this.pendingFormalLoad = null;
     }
     if (this.pendingFrame?.request.jobId === jobId) {
       clearTimeout(this.pendingFrame.timeout);
@@ -322,6 +377,11 @@ export class HiddenWindowManager {
       clearTimeout(this.pendingFrame.timeout);
       this.pendingFrame.reject(error);
       this.pendingFrame = null;
+    }
+    if (this.pendingFormalLoad) {
+      clearTimeout(this.pendingFormalLoad.timeout);
+      this.pendingFormalLoad.reject(error);
+      this.pendingFormalLoad = null;
     }
   }
 

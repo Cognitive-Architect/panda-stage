@@ -1,0 +1,144 @@
+.quick-action-drawer button.quick-action-drawer-export {
+  border-color: var(--ui-color-selected-border);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-action-primary);
+}
+
+.quick-action-drawer button.quick-action-drawer-export:hover:not(:disabled) {
+  background: var(--ui-color-action-hover);
+}
+
+.export-task-surface {
+  position: absolute;
+  z-index: 46;
+  top: 58px;
+  right: 16px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(70vh, 560px);
+  overflow: auto;
+}
+
+.export-task-panel {
+  display: grid;
+  padding: var(--ui-space-3, 16px);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface-overlay);
+  box-shadow: 0 16px 42px rgb(0 0 0 / 42%);
+  gap: var(--ui-space-2, 8px);
+}
+
+.export-task-header,
+.export-task-progress,
+.export-task-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--ui-space-2, 8px);
+}
+
+.export-task-header {
+  justify-content: space-between;
+}
+
+.export-task-header h2,
+.export-task-header p,
+.export-task-message {
+  margin: 0;
+}
+
+.export-task-header h2 {
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-heading);
+}
+
+.export-task-header p,
+.export-task-message {
+  margin-top: 4px;
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+  overflow-wrap: anywhere;
+}
+
+.export-task-hide {
+  flex: 0 0 var(--ui-touch-icon);
+  width: var(--ui-touch-icon);
+  min-width: var(--ui-touch-icon);
+  height: var(--ui-touch-icon);
+  min-height: var(--ui-touch-icon);
+  padding: 0;
+}
+
+.export-task-status {
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-secondary);
+}
+
+.export-task-progress progress {
+  width: 100%;
+  min-width: 0;
+  accent-color: var(--ui-color-action-primary);
+}
+
+.export-task-progress span {
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.export-task-issues {
+  display: grid;
+  padding: 0;
+  margin: 0;
+  gap: var(--ui-space-2, 8px);
+  list-style: none;
+}
+
+.export-task-issues li {
+  display: grid;
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-secondary);
+  gap: 3px;
+}
+
+.export-task-issues small {
+  color: var(--ui-color-text-secondary);
+  font: inherit;
+}
+
+.export-task-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.export-task-actions > button {
+  display: inline-flex;
+  min-height: var(--ui-touch-icon);
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.export-task-spinner {
+  color: var(--ui-color-selected-border);
+  animation: quick-action-drawer-spin 900ms linear infinite;
+}
+
+.export-task-check {
+  color: var(--ui-color-selected-border);
+}
+
+@media (max-width: 520px) {
+  .export-task-surface {
+    top: 56px;
+    right: 8px;
+    width: calc(100vw - 16px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .export-task-spinner {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}

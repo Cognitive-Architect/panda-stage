@@ -45,6 +45,9 @@ import {
   ExportJobUpdateSchema,
   ExportStartResponseSchema,
   FullProbeExportRequestSchema,
+  ExportStartFormalRequestSchema,
+  ExportRevealOutputRequestSchema,
+  ExportRevealOutputResponseSchema,
   type ExportJobUpdate,
   type FullProbeExportRequest,
 } from '../shared/export-types';
@@ -441,6 +444,17 @@ const pandaStageApi = Object.freeze({
       );
       return ExportStartResponseSchema.parse(response);
     },
+    startFormal: async (snapshotId: string, reuseSnapshot = false) => {
+      const request = ExportStartFormalRequestSchema.parse({
+        snapshotId,
+        reuseSnapshot,
+      });
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.EXPORT_START_FORMAL,
+        request,
+      );
+      return ExportStartResponseSchema.parse(response);
+    },
     cancel: async (jobId: string) => {
       const request = ExportCancelRequestSchema.parse({ jobId });
       const response: unknown = await ipcRenderer.invoke(
@@ -448,6 +462,14 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return ExportCancelResponseSchema.parse(response);
+    },
+    revealOutput: async (jobId: string) => {
+      const request = ExportRevealOutputRequestSchema.parse({ jobId });
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.EXPORT_REVEAL_OUTPUT,
+        request,
+      );
+      return ExportRevealOutputResponseSchema.parse(response);
     },
     onUpdate: (callback: (update: ExportJobUpdate) => void): Unsubscribe => {
       const listener = (

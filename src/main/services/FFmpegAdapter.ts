@@ -239,11 +239,9 @@ function technicalTail(stderr: string): string {
 }
 
 function createTemporaryOutputPath(outputPath: string): string {
-  const outputDirectory = path.dirname(outputPath);
-  const outputBaseName = path.basename(outputPath, path.extname(outputPath));
   return path.join(
-    outputDirectory,
-    `.${outputBaseName}.panda-stage-${randomUUID()}.mp4`,
+    path.dirname(outputPath),
+    `.panda-stage-${randomUUID()}.mp4`,
   );
 }
 

@@ -91,6 +91,17 @@ interface StoredCandidate {
   candidate: ExportPreparationCandidate;
 }
 
+export interface FrozenExportMedia {
+  assetId: string;
+  mimeType: 'image/png' | 'image/jpeg';
+  bytes: Uint8Array<ArrayBuffer>;
+}
+
+export interface FrozenExportInput {
+  candidate: ExportPreparationCandidate;
+  media: FrozenExportMedia[];
+}
+
 class PreparationCancelledError extends Error {}
 
 export class MainProjectAssetReader implements ExportPreparationMediaReader {
@@ -150,6 +161,7 @@ export class ExportPreparationService {
   private selection: OutputSelection | null = null;
   private activePreparation: ActivePreparation | null = null;
   private readonly candidates = new Map<string, StoredCandidate>();
+  private readonly activeExportSnapshots = new Set<string>();
   private readonly usedAttemptIds = new Set<string>();
   private readonly diagnostics = new Map<string, string[]>();
 
@@ -164,6 +176,17 @@ export class ExportPreparationService {
     request: ExportPreparationSelectOutputRequest,
     selectedPath: string | null,
   ): Promise<ExportPreparationSelectOutputResponse> {
+    if (this.activeExportSnapshots.size > 0) {
+      return {
+        status: 'blocked',
+        issue: {
+          code: 'PREPARATION_BUSY',
+          location: 'Export',
+          problem: 'An export task is still active.',
+          nextStep: 'Finish or cancel the current export before choosing another output.',
+        },
+      };
+    }
     if (this.activePreparation) {
       return {
         status: 'blocked',
@@ -256,6 +279,7 @@ export class ExportPreparationService {
     ) as ExportPreparationRequest;
     if (
       this.activePreparation ||
+      this.activeExportSnapshots.size > 0 ||
       this.usedAttemptIds.has(request.attemptId)
     ) {
       return this.block(
@@ -624,6 +648,99 @@ export class ExportPreparationService {
     return true;
   }
 
+  async acquireCandidateForExport(
+    snapshotId: string,
+    allowStaleRevision = false,
+  ): Promise<FrozenExportInput> {
+    if (this.activeExportSnapshots.has(snapshotId)) {
+      throw new Error('PREPARATION_BUSY');
+    }
+    const stored = this.candidates.get(snapshotId);
+    if (!stored) throw new Error('EXPORT_SNAPSHOT_UNAVAILABLE');
+    const candidate = structuredClone(stored.candidate);
+    const current = this.currentProject(candidate.projectRoot);
+    if (
+      !current ||
+      current.project.id !== candidate.projectId ||
+      current.openInstanceId !== candidate.openInstanceId
+    ) {
+      throw new Error('PROJECT_SESSION_CHANGED');
+    }
+    if (
+      !allowStaleRevision &&
+      (current.revision !== candidate.revision ||
+        current.dirty !== candidate.dirtyAtCapture ||
+        !projectsEqual(current.project, candidate.project))
+    ) {
+      throw new Error('PROJECT_SNAPSHOT_CHANGED');
+    }
+
+    this.activeExportSnapshots.add(snapshotId);
+    try {
+      await this.assertOutputTargetUnchanged(snapshotId);
+      if (!this.fileStore.readAsset && candidate.mediaManifest.length > 0) {
+        throw new Error('FROZEN_MEDIA_UNAVAILABLE');
+      }
+      const media: FrozenExportMedia[] = [];
+      for (const entry of candidate.mediaManifest) {
+        if (entry.kind !== 'image') throw new Error('UNSUPPORTED_EXPORT_MEDIA');
+        const bytes = await this.fileStore.readAsset?.(
+          snapshotId,
+          entry.contentHandleId,
+          entry.mimeType,
+        );
+        if (!bytes) throw new Error('FROZEN_MEDIA_UNAVAILABLE');
+        const digest = createHash('sha256').update(bytes).digest('hex');
+        if (
+          bytes.byteLength !== entry.byteLength ||
+          digest !== entry.sha256 ||
+          !['image/png', 'image/jpeg'].includes(entry.mimeType)
+        ) {
+          throw new Error('FROZEN_MEDIA_CHANGED');
+        }
+        media.push({
+          assetId: entry.assetId,
+          mimeType: entry.mimeType as FrozenExportMedia['mimeType'],
+          bytes,
+        });
+      }
+      if (media.length !== candidate.mediaManifest.length) {
+        throw new Error('FROZEN_MEDIA_UNAVAILABLE');
+      }
+      return { candidate, media };
+    } catch (error) {
+      this.activeExportSnapshots.delete(snapshotId);
+      throw error;
+    }
+  }
+
+  async assertOutputTargetUnchanged(snapshotId: string): Promise<void> {
+    const stored = this.candidates.get(snapshotId);
+    if (!stored) throw new Error('EXPORT_SNAPSHOT_UNAVAILABLE');
+    const candidate = stored.candidate;
+    const expected: OutputSelection = {
+      selectionId: candidate.outputIntent.selectionId,
+      projectRoot: candidate.projectRoot,
+      projectId: candidate.projectId,
+      openInstanceId: candidate.openInstanceId,
+      targetPath: candidate.outputIntent.targetPath,
+      fileName: candidate.outputIntent.fileName,
+      overwriteApproved: candidate.outputIntent.overwriteApproved,
+      targetIdentity: candidate.outputIntent.targetIdentity,
+    };
+    let current: CapturedTarget;
+    try {
+      current = await captureTargetIdentity(candidate.outputIntent.targetPath);
+    } catch {
+      throw new Error('OUTPUT_TARGET_CHANGED');
+    }
+    if (!sameTarget(expected, current)) throw new Error('OUTPUT_TARGET_CHANGED');
+  }
+
+  releaseCandidateExport(snapshotId: string): void {
+    this.activeExportSnapshots.delete(snapshotId);
+  }
+
   getDiagnostics(diagnosticId: string): string[] {
     return [...(this.diagnostics.get(diagnosticId) ?? [])];
   }
@@ -634,6 +751,7 @@ export class ExportPreparationService {
       return true;
     }
     if (snapshotId) {
+      if (this.activeExportSnapshots.has(snapshotId)) return false;
       const candidate = this.candidates.get(snapshotId);
       if (!candidate) return false;
       await this.fileStore.delete(snapshotId);
@@ -646,6 +764,7 @@ export class ExportPreparationService {
   async dispose(): Promise<void> {
     this.activePreparation?.controller.abort();
     this.selection = null;
+    this.activeExportSnapshots.clear();
     this.candidates.clear();
     await this.fileStore.dispose();
   }
@@ -653,6 +772,7 @@ export class ExportPreparationService {
   disposeSync(): void {
     this.activePreparation?.controller.abort();
     this.selection = null;
+    this.activeExportSnapshots.clear();
     this.candidates.clear();
     this.fileStore.disposeSync?.();
   }

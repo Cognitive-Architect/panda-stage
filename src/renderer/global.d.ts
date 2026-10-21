@@ -33,6 +33,7 @@ import type {
   ExportFrameFailed,
   ExportFrameReady,
   ExportLoadProbeRequest,
+  ExportLoadFormalRequest,
   ExportRenderFrameRequest,
   ExportCancelRenderRequest,
 } from '../shared/export-types';
@@ -67,6 +68,7 @@ import type {
 } from '../shared/project-api';
 import type {
   ExportCancelResponse,
+  ExportRevealOutputResponse,
   ExportJobUpdate,
   ExportStartResponse,
   FullProbeExportRequest,
@@ -225,7 +227,12 @@ declare global {
         startProbe: (
           request: FullProbeExportRequest,
         ) => Promise<ExportStartResponse>;
+        startFormal: (
+          snapshotId: string,
+          reuseSnapshot?: boolean,
+        ) => Promise<ExportStartResponse>;
         cancel: (jobId: string) => Promise<ExportCancelResponse>;
+        revealOutput: (jobId: string) => Promise<ExportRevealOutputResponse>;
         onUpdate: (callback: (update: ExportJobUpdate) => void) => () => void;
       };
       exportPreparation: {
@@ -290,7 +297,14 @@ declare global {
       onLoadProbe: (
         callback: (request: ExportLoadProbeRequest) => void,
       ) => () => void;
+      onLoadFormal: (
+        callback: (request: ExportLoadFormalRequest) => void,
+      ) => () => void;
       probeLoaded: (payload: {
+        jobId: string;
+        acknowledged: true;
+      }) => void;
+      formalLoaded: (payload: {
         jobId: string;
         acknowledged: true;
       }) => void;

@@ -4,22 +4,26 @@ import {
   ExportProbeConfigSchema,
   FullProbeExportRequestSchema,
   MAX_PENDING_FRAMES,
-  createFrameSchedule,
+  formalFrameCount,
+  iterateFormalFrameSchedule,
   type ExportFrameReady,
   type ExportJobPhase,
   type ExportJobStatus,
   type ExportJobUpdate,
   type ExportLoadProbeRequest,
+  type ExportLoadFormalRequest,
   type ExportProbeConfig,
   type ExportProbeLoaded,
   type ExportRenderFrameRequest,
   type FullProbeExportRequest,
 } from '../../shared/export-types';
 import type { VideoProbeResult } from '../../shared/ffmpeg-types';
+import type { FrozenExportInput } from './ExportPreparationService';
 import type { FrameFileSystem } from './FileSystemService';
 
 export interface FrameRenderer {
   loadProbe(request: ExportLoadProbeRequest): Promise<ExportProbeLoaded>;
+  loadFormal?(request: ExportLoadFormalRequest): Promise<{ jobId: string; acknowledged: true }>;
   renderFrame(request: ExportRenderFrameRequest): Promise<ExportFrameReady>;
   cancelJob(jobId: string): boolean;
   prepareJob?(): Promise<void>;
@@ -130,6 +134,7 @@ type JobListener = (update: ExportJobUpdate) => void;
 
 export class ExportService {
   private readonly jobs = new Map<string, ExportJobRecord>();
+  private readonly completedOutputPaths = new Map<string, string>();
   private readonly listeners = new Set<JobListener>();
   private activeJob: ActiveJob | null = null;
 
@@ -150,6 +155,10 @@ export class ExportService {
   getJob(jobId: string): ExportJobRecord | null {
     const job = this.jobs.get(jobId);
     return job ? { ...job } : null;
+  }
+
+  getCompletedOutputPath(jobId: string): string | null {
+    return this.completedOutputPaths.get(jobId) ?? null;
   }
 
   subscribe(listener: JobListener): () => void {
@@ -216,6 +225,7 @@ export class ExportService {
         record,
         config,
         jobDirectory,
+        () => this.renderer.loadProbe({ jobId: active.jobId, ...config }),
       );
       this.throwIfCancelled(active);
       record.status = 'completed';
@@ -244,6 +254,33 @@ export class ExportService {
     return {
       jobId: active.jobId,
       completion: this.executeFullProbe(active, request, this.mediaAdapter),
+    };
+  }
+
+  startFormalExport(
+    input: FrozenExportInput,
+    assertOutputTargetUnchanged: () => Promise<void>,
+  ): FullProbeExportHandle {
+    if (!this.mediaAdapter) {
+      throw new Error('Formal export requires an FFmpeg adapter.');
+    }
+    if (!this.renderer.loadFormal) {
+      throw new Error('Formal export requires the formal hidden renderer.');
+    }
+    const shot = input.candidate.project.shots[0];
+    if (!shot) throw new Error('Formal export candidate has no Shot.');
+    const active = this.createJob({
+      durationMs: shot.durationMs,
+      fps: input.candidate.renderSettings.fps,
+    });
+    return {
+      jobId: active.jobId,
+      completion: this.executeFormalExport(
+        active,
+        input,
+        assertOutputTargetUnchanged,
+        this.mediaAdapter,
+      ),
     };
   }
 
@@ -287,6 +324,12 @@ export class ExportService {
         record,
         request,
         jobDirectory,
+        () =>
+          this.renderer.loadProbe({
+            jobId: active.jobId,
+            durationMs: request.durationMs,
+            fps: request.fps,
+          }),
       );
       this.throwIfCancelled(active);
 
@@ -335,6 +378,7 @@ export class ExportService {
         request.overwrite,
       );
       finalOutputStagingPath = null;
+      this.completedOutputPaths.set(active.jobId, outputPath);
       record.status = 'completed';
       record.phase = 'finished';
       this.emit(record);
@@ -382,17 +426,180 @@ export class ExportService {
     }
   }
 
+  private async executeFormalExport(
+    active: ActiveJob,
+    input: FrozenExportInput,
+    assertOutputTargetUnchanged: () => Promise<void>,
+    adapter: FullProbeMediaAdapter,
+  ): Promise<FullProbeExportResult> {
+    const record = this.requireJob(active.jobId);
+    const startedAt = performance.now();
+    const shot = input.candidate.project.shots[0]!;
+    const outputPath = input.candidate.outputIntent.targetPath;
+    const overwrite = input.candidate.outputIntent.overwriteApproved;
+    let jobDirectory: string | null = null;
+    let finalOutputStagingPath: string | null = null;
+    let rendererPrepared = false;
+
+    try {
+      await assertOutputTargetUnchanged();
+      const resolvedOutputPath = await this.fileSystem.prepareFinalOutput(
+        outputPath,
+        overwrite,
+      );
+      finalOutputStagingPath = this.fileSystem.createFinalOutputStagingPath(
+        active.jobId,
+        resolvedOutputPath,
+      );
+      this.throwIfCancelled(active);
+      await this.renderer.prepareJob?.();
+      rendererPrepared = true;
+      this.throwIfCancelled(active);
+      jobDirectory = await this.fileSystem.createJobDirectory(active.jobId);
+      record.outputDirectory = jobDirectory;
+
+      const render = await this.renderFrames(
+        active,
+        record,
+        {
+          durationMs: shot.durationMs,
+          fps: input.candidate.renderSettings.fps,
+        },
+        jobDirectory,
+        () =>
+          this.renderer.loadFormal!({
+            jobId: active.jobId,
+            project: input.candidate.project,
+            cameraMode: input.candidate.cameraMode,
+            media: input.media,
+          }),
+      );
+      this.throwIfCancelled(active);
+
+      record.phase = 'encoding';
+      this.emit(record);
+      await adapter.encodePngSequence(
+        {
+          framesDirectory: jobDirectory,
+          outputPath: finalOutputStagingPath,
+          fps: input.candidate.renderSettings.fps,
+          overwrite: false,
+        },
+        active.controller.signal,
+      );
+      this.throwIfCancelled(active);
+
+      record.phase = 'probing';
+      this.emit(record);
+      const probe = await adapter.probeVideo(
+        finalOutputStagingPath,
+        active.controller.signal,
+      );
+      this.assertFormalProbeMatches(
+        probe,
+        input.candidate.renderSettings.fps,
+        record.totalFrames,
+      );
+      this.throwIfCancelled(active);
+
+      await this.cleanupDirectory(record, jobDirectory);
+      jobDirectory = null;
+      this.throwIfCancelled(active);
+      record.phase = 'committing';
+      active.acceptsCancellation = false;
+      this.emit(record);
+      await assertOutputTargetUnchanged();
+      await this.fileSystem.commitFinalOutput(
+        finalOutputStagingPath,
+        resolvedOutputPath,
+        overwrite,
+      );
+      finalOutputStagingPath = null;
+      this.completedOutputPaths.set(active.jobId, resolvedOutputPath);
+      record.status = 'completed';
+      record.phase = 'finished';
+      this.emit(record);
+      return {
+        ...record,
+        status: 'completed',
+        phase: 'finished',
+        outputDirectory: null,
+        projectDirectory: input.candidate.projectRoot,
+        outputPath: resolvedOutputPath,
+        probe,
+        elapsedMs: Math.round(performance.now() - startedAt),
+        render,
+      };
+    } catch (error) {
+      let failure = error;
+      if (finalOutputStagingPath) {
+        try {
+          await this.fileSystem.cleanupFinalOutputStaging(
+            finalOutputStagingPath,
+          );
+        } catch (cleanupError) {
+          failure = new ExportCleanupError(
+            'final-output-staging',
+            `Final output staging cleanup failed: ${this.errorMessage(cleanupError)}`,
+            error,
+            { cause: new AggregateError([error, cleanupError]) },
+          );
+        }
+      }
+      throw await this.finishFailedJob(
+        active,
+        record,
+        jobDirectory,
+        failure,
+      );
+    } finally {
+      try {
+        if (rendererPrepared) this.renderer.releaseJob?.(active.jobId);
+      } finally {
+        this.clearActiveJob(active);
+      }
+    }
+  }
+
+  private assertFormalProbeMatches(
+    probe: VideoProbeResult,
+    fps: 24,
+    frameCount: number,
+  ): void {
+    const failures: string[] = [];
+    if (probe.codecName !== 'h264') failures.push('codec');
+    if (probe.pixelFormat !== 'yuv420p') failures.push('pixel format');
+    if (probe.width !== 1_920 || probe.height !== 1_080) {
+      failures.push('frame size');
+    }
+    if (!Number.isFinite(probe.fps) || Math.abs(probe.fps - fps) > 0.001) {
+      failures.push('frame rate');
+    }
+    if (probe.frameCount !== frameCount) failures.push('frame count');
+    if (probe.hasAudio) failures.push('audio stream');
+    const expectedDurationSeconds = frameCount / fps;
+    if (
+      !Number.isFinite(probe.durationSeconds) ||
+      Math.abs(probe.durationSeconds - expectedDurationSeconds) > 0.08
+    ) {
+      failures.push('duration');
+    }
+    if (failures.length > 0) {
+      throw new Error('Formal MP4 verification failed: ' + failures.join(', '));
+    }
+  }
+
   private async renderFrames(
     active: ActiveJob,
     record: ExportJobRecord,
-    config: ExportProbeConfig,
+    config: { durationMs: number; fps: 24 },
     jobDirectory: string,
+    loadProject: () => Promise<unknown>,
   ): Promise<FrameExportMetrics> {
-    const probeConfig = ExportProbeConfigSchema.parse({
-      durationMs: config.durationMs,
-      fps: config.fps,
-    });
-    const schedule = createFrameSchedule(probeConfig);
+    const totalFrames = formalFrameCount(config.durationMs, config.fps);
+    if (totalFrames !== record.totalFrames) {
+      throw new Error('Export frame schedule did not match the task record.');
+    }
     const startedAt = performance.now();
     const startMemory = process.memoryUsage();
     let heapUsedPeak = startMemory.heapUsed;
@@ -418,10 +625,13 @@ export class ExportService {
     try {
       record.phase = 'preparing';
       this.emit(record);
-      await this.renderer.loadProbe({ jobId: active.jobId, ...probeConfig });
+      await loadProject();
       this.throwIfCancelled(active);
 
-      for (const frame of schedule) {
+      for (const frame of iterateFormalFrameSchedule(
+        config.durationMs,
+        config.fps,
+      )) {
         await waitForWriteSlot();
         record.phase = 'rendering';
         this.emit(record);
@@ -496,7 +706,7 @@ export class ExportService {
     };
   }
 
-  private createJob(config: ExportProbeConfig): ActiveJob {
+  private createJob(config: { durationMs: number; fps: 24 }): ActiveJob {
     if (this.activeJob) {
       throw new ExportJobError(
         this.activeJob.jobId,
@@ -509,10 +719,7 @@ export class ExportService {
       status: 'running',
       phase: 'preparing',
       durationMs: config.durationMs,
-      totalFrames: createFrameSchedule({
-        durationMs: config.durationMs,
-        fps: config.fps,
-      }).length,
+      totalFrames: formalFrameCount(config.durationMs, config.fps),
       completedFrames: 0,
       outputDirectory: null,
       error: null,

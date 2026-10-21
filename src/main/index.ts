@@ -227,6 +227,8 @@ async function initialize(): Promise<void> {
     markHiddenReady: (senderId) => hiddenWindowManager.markReady(senderId),
     markProbeLoaded: (senderId, payload) =>
       hiddenWindowManager.markProbeLoaded(senderId, payload),
+    markFormalLoaded: (senderId, payload) =>
+      hiddenWindowManager.markFormalLoaded(senderId, payload),
     markFrameReady: (senderId, payload) =>
       hiddenWindowManager.markFrameReady(senderId, payload),
     markFrameFailed: (senderId, payload) =>
@@ -238,6 +240,41 @@ async function initialize(): Promise<void> {
       });
       return { jobId: handle.jobId, status: 'running' };
     },
+    startFormalExport: async (request) => {
+      const preparation = exportPreparationService;
+      if (!preparation || !exportService) {
+        throw new Error('Formal export is unavailable.');
+      }
+      const input = await preparation.acquireCandidateForExport(
+        request.snapshotId,
+        request.reuseSnapshot,
+      );
+      let handle;
+      try {
+        handle = exportService.startFormalExport(
+          input,
+          () => preparation.assertOutputTargetUnchanged(request.snapshotId),
+        );
+      } catch (error) {
+        preparation.releaseCandidateExport(request.snapshotId);
+        throw error;
+      }
+      void handle.completion.then(
+        async () => {
+          preparation.releaseCandidateExport(request.snapshotId);
+          try {
+            await preparation.discard(undefined, request.snapshotId);
+          } catch (error) {
+            console.error('Completed export snapshot cleanup failed.', error);
+          }
+        },
+        (error: unknown) => {
+          preparation.releaseCandidateExport(request.snapshotId);
+          console.error(`Export Job ${handle.jobId} stopped.`, error);
+        },
+      );
+      return { jobId: handle.jobId, status: 'running' };
+    },
     cancelExport: (jobId) => {
       const accepted = exportService!.cancelJob(jobId);
       return {
@@ -245,6 +282,12 @@ async function initialize(): Promise<void> {
         accepted,
         status: exportService!.getJob(jobId)?.status ?? 'cancelled',
       };
+    },
+    revealExportOutput: async (jobId) => {
+      const outputPath = exportService?.getCompletedOutputPath(jobId);
+      if (!outputPath) return false;
+      shell.showItemInFolder(outputPath);
+      return true;
     },
   });
   const recoveryService = new RecoveryService();

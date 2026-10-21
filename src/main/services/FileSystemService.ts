@@ -155,13 +155,9 @@ export class FileSystemService implements FrameFileSystem {
     }
     const resolvedOutputPath = path.resolve(outputPath);
     const outputDirectory = path.dirname(resolvedOutputPath);
-    const outputBaseName = path.basename(
-      resolvedOutputPath,
-      path.extname(resolvedOutputPath),
-    );
     return path.join(
       outputDirectory,
-      `.${outputBaseName}.panda-stage-${jobId}-${randomUUID()}.mp4`,
+      `.panda-stage-export-${jobId}-${randomUUID()}.mp4`,
     );
   }
 

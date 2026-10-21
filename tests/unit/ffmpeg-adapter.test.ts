@@ -169,6 +169,38 @@ describe('FFmpegAdapter', () => {
     });
   });
 
+  it('uses a short temporary encode name when the target is itself a staged file', async () => {
+    const framesDirectory = path.join(temporaryRoot, 'frames');
+    const outputDirectory = path.join(temporaryRoot, 'output with spaces');
+    const outputPath = path.join(outputDirectory, '.formal-stage.mp4');
+    await writeFrames(framesDirectory, [0]);
+    await mkdir(outputDirectory);
+    let temporaryOutputPath = '';
+    const runner = new FakeRunner([
+      VERSION_RESULT,
+      ENCODERS_RESULT,
+      async (_executable, args) => {
+        temporaryOutputPath = args.at(-1) ?? '';
+        await writeFile(temporaryOutputPath, new Uint8Array([0, 0, 0, 1]));
+        return { code: 0, signal: null, stdout: '', stderr: '' };
+      },
+    ]);
+    const adapter = new FFmpegAdapter({ runner });
+
+    await adapter.encodePngSequence({
+      framesDirectory,
+      outputPath,
+      fps: 24,
+      overwrite: false,
+    });
+
+    expect(path.dirname(temporaryOutputPath)).toBe(outputDirectory);
+    expect(path.basename(temporaryOutputPath)).toMatch(
+      /^\.panda-stage-[0-9a-f-]+\.mp4$/iu,
+    );
+    expect(path.basename(temporaryOutputPath).length).toBeLessThan(64);
+  });
+
   it('rejects overwrite=false before FFmpeg starts and preserves the existing output', async () => {
     const framesDirectory = path.join(temporaryRoot, 'frames');
     const outputPath = path.join(temporaryRoot, 'existing.mp4');

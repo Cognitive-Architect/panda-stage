@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -22,6 +22,11 @@ export interface ExportPreparationFileStore {
     mimeType: string,
     bytes: Uint8Array,
   ): Promise<string>;
+  readAsset?(
+    snapshotId: string,
+    contentHandleId: string,
+    mimeType: string,
+  ): Promise<Uint8Array<ArrayBuffer>>;
   delete(snapshotId: string): Promise<void>;
   dispose(): Promise<void>;
   disposeSync?(): void;
@@ -76,6 +81,35 @@ export class NodeExportPreparationFileStore
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, bytes, { flag: 'wx' });
     return relativePath.replaceAll(path.sep, '/');
+  }
+
+  async readAsset(
+    snapshotId: string,
+    contentHandleId: string,
+    mimeType: string,
+  ): Promise<Uint8Array<ArrayBuffer>> {
+    const directory = this.requireOwnedSnapshot(snapshotId);
+    if (!UUID_PATTERN.test(contentHandleId)) {
+      throw new Error('Invalid export preparation content handle.');
+    }
+    const extension = EXTENSION_BY_MIME_TYPE[mimeType];
+    if (!extension) throw new Error('Unsupported export preparation media type.');
+    const target = path.resolve(
+      directory,
+      'media',
+      contentHandleId + extension,
+    );
+    if (!target.startsWith(directory + path.sep)) {
+      throw new Error('Export preparation path escapes its owned directory.');
+    }
+    const bytes = await readFile(target);
+    if (
+      bytes.byteLength <= 0 ||
+      bytes.byteLength > EXPORT_PREPARATION_MAX_SINGLE_ASSET_BYTES
+    ) {
+      throw new Error('Export preparation asset exceeds its file budget.');
+    }
+    return Uint8Array.from(bytes);
   }
 
   async delete(snapshotId: string): Promise<void> {

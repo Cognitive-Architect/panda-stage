@@ -390,7 +390,10 @@
           "tests/unit/export-*.test.ts",
           "tests/unit/ffmpeg-*.test.ts"
         ],
-        "verifierPatterns": ["scripts/verify-issue816-dl01.cjs"],
+        "verifierPatterns": [
+          "scripts/verify-issue816-dl01.cjs",
+          "scripts/verify-issue819-dl02.cjs"
+        ],
         "suites": [],
         "riskPolicy": "full",
         "draftPolicy": "focused",
@@ -670,7 +673,7 @@
       }
     ]
   },
-  "count": 82,
+  "count": 83,
   "gates": [
     {
       "id": "issue663-dialogue-voice",
@@ -1643,6 +1646,18 @@
       "owner": "export",
       "supersedes": null,
       "notes": "Controlled Issue #816 DL-01 Electron proof for native Save As, actual dirty EditorProjectStore capture, stable media copies, target/session guards, and F01/F05/F06 generated fixtures. Synthetic Project Center IPC and native-dialog UI Automation support the gate; OWNER acceptance remains separate."
+    },
+    {
+      "id": "issue819-dl02",
+      "script": "verify:issue819-dl02",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Issue #819 DL-02 Electron proof through Creator UI and native Save As for a frozen single-Shot Project, both camera modes, silent FFmpeg/FFprobe MP4 validation, boundary frames, and overwrite cancellation. Generated fixture and UI Automation support the gate; OWNER visual acceptance remains separate."
     },
     {
       "id": "timeline",
