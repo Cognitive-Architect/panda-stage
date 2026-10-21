@@ -169,7 +169,7 @@ function StagePartImages({
       visualHeight: visualBounds.height,
       previouslyCached,
       visualSignature: orderedParts.map((part) =>
-        `${part.id}:${part.sourceUrl}:${part.render.x}:${part.render.y}:${part.render.width}:${part.render.height}`,
+        `${part.id}:${part.sourceUrl}:${part.render.x}:${part.render.y}:${part.render.width}:${part.render.height}:${part.render.offsetX}:${part.render.offsetY}:${part.render.rotationDeg}:${part.render.scaleX}:${part.render.scaleY}`,
       ).join('|'),
     });
   }, [complete, composite, headGroup, images, orderedParts, visualBounds]);
@@ -185,6 +185,8 @@ function StagePartImages({
         key={part.id}
         listening={false}
         opacity={1}
+        offsetX={render.offsetX}
+        offsetY={render.offsetY}
         rotation={render.rotationDeg}
         scaleX={render.scaleX}
         scaleY={render.scaleY}

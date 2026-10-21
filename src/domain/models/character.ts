@@ -26,11 +26,33 @@ export const FacePlacementSchema = z
     offsetX: FiniteNumberSchema,
     offsetY: FiniteNumberSchema,
     scale: FiniteNumberSchema.positive(),
+    rotationDeg: FiniteNumberSchema.min(-180).max(180).default(0),
+    flipX: z.boolean().default(false),
   })
   .strict();
 
-/** Head translation and scale relative to its owning Character origin. */
+/** Historical Face placement before C03 added per-part transforms. */
+export const FacePlacementV10Schema = z
+  .object({
+    offsetX: FiniteNumberSchema,
+    offsetY: FiniteNumberSchema,
+    scale: FiniteNumberSchema.positive(),
+  })
+  .strict();
+
+/** Head translation, scale, and static transform relative to its Character. */
 export const HeadPlacementSchema = z
+  .object({
+    offsetX: FiniteNumberSchema,
+    offsetY: FiniteNumberSchema,
+    scale: FiniteNumberSchema.positive(),
+    rotationDeg: FiniteNumberSchema.min(-180).max(180).default(0),
+    flipX: z.boolean().default(false),
+  })
+  .strict();
+
+/** Historical Head placement before C03 added per-part transforms. */
+export const HeadPlacementV10Schema = z
   .object({
     offsetX: FiniteNumberSchema,
     offsetY: FiniteNumberSchema,
@@ -50,6 +72,14 @@ export const CharacterHeadSchema = z
   .object({
     assetId: IdSchema,
     placement: HeadPlacementSchema,
+    pivot: HeadPivotSchema,
+  })
+  .strict();
+
+const CharacterHeadV10Schema = z
+  .object({
+    assetId: IdSchema,
+    placement: HeadPlacementV10Schema,
     pivot: HeadPivotSchema,
   })
   .strict();
@@ -85,8 +115,8 @@ const CompositeCharacterV9Schema = z
     ...CharacterBaseShape,
     mode: z.literal('composite'),
     bodyAssetId: IdSchema,
-    facePlacement: FacePlacementSchema,
-    head: CharacterHeadSchema.optional(),
+    facePlacement: FacePlacementV10Schema,
+    head: CharacterHeadV10Schema.optional(),
   })
   .strict();
 
@@ -95,7 +125,19 @@ const CompositeCharacterV8Schema = z
     ...CharacterBaseShape,
     mode: z.literal('composite'),
     bodyAssetId: IdSchema,
-    facePlacement: FacePlacementSchema,
+    facePlacement: FacePlacementV10Schema,
+  })
+  .strict();
+
+const CompositeCharacterV10Schema = z
+  .object({
+    ...CharacterBaseShape,
+    mode: z.literal('composite'),
+    bodyAssetId: IdSchema,
+    facePlacement: FacePlacementV10Schema,
+    head: CharacterHeadV10Schema.optional(),
+    talkingHeadMotionIntensityPercent:
+      TalkingHeadMotionIntensityPercentSchema,
   })
   .strict();
 
@@ -109,6 +151,12 @@ export const CharacterV8Schema = z.discriminatedUnion('mode', [
 export const CharacterV9Schema = z.discriminatedUnion('mode', [
   SingleImageCharacterSchema,
   CompositeCharacterV9Schema,
+]);
+
+/** Historical v10 Character data, before static Head/Face transforms. */
+export const CharacterV10Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterSchema,
+  CompositeCharacterV10Schema,
 ]);
 
 /**
@@ -150,5 +198,6 @@ export type CharacterHead = z.infer<typeof CharacterHeadSchema>;
 export type Character = z.infer<typeof CharacterSchema>;
 export type CharacterV8 = z.infer<typeof CharacterV8Schema>;
 export type CharacterV9 = z.infer<typeof CharacterV9Schema>;
+export type CharacterV10 = z.infer<typeof CharacterV10Schema>;
 export type CharacterV6 = z.infer<typeof CharacterV6Schema>;
 export type VoiceProfile = z.infer<typeof VoiceProfileSchema>;

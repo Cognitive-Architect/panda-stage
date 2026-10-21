@@ -161,6 +161,91 @@ describe('BFM-S05 shared Stage composite Character model', () => {
     expect(second.parts[0]?.id).not.toBe(firstStart.parts[0]?.id);
   });
 
+  it('maps Head and Face static transforms to center-based Stage geometry while Body stays unchanged', () => {
+    const base = compositeProject({ head: true });
+    const original = base.characters[0]!;
+    if (original.mode !== 'composite' || !original.head) {
+      throw new Error('Expected a headed composite Character.');
+    }
+    const project = ProjectSchema.parse({
+      ...base,
+      characters: [
+        {
+          ...original,
+          facePlacement: {
+            ...original.facePlacement,
+            rotationDeg: 90,
+            flipX: true,
+          },
+          head: {
+            ...original.head,
+            placement: {
+              ...original.head.placement,
+              rotationDeg: -12,
+              flipX: true,
+            },
+          },
+        },
+      ],
+    });
+    const shot = project.shots[0]!;
+    const evaluated = evaluateShotAtTime(shot, 750, project);
+    const editor = buildEditorStageRenderModel(project, shot, evaluated);
+    const stage = buildStageRenderModel(project, evaluated, assetUrls);
+    const stageLayer = stage.layers.find((layer) => layer.id === IDS.layerChar)!;
+    const editorLayer = editor.layers.find(
+      (layer) => layer.layer.id === IDS.layerChar,
+    )!;
+    const body = stageLayer.parts.find((part) => part.slot === 'body')!;
+    const head = stageLayer.parts.find((part) => part.slot === 'head')!;
+    const face = stageLayer.parts.find((part) => part.slot === 'face')!;
+    const bodyPart = stageLayer.visual?.parts.find(
+      (part) => part.slot === 'body',
+    );
+    const facePart = stageLayer.visual?.parts.find(
+      (part) => part.slot === 'face',
+    );
+    if (!bodyPart) throw new Error('Expected a mapped Body part.');
+    if (!facePart) throw new Error('Expected a mapped Face part.');
+
+    expect(body.render).toMatchObject({
+      x: bodyPart.localRect.x,
+      y: bodyPart.localRect.y,
+      offsetX: 0,
+      offsetY: 0,
+      rotationDeg: 0,
+      scaleX: 1,
+      scaleY: 1,
+    });
+    expect(head.render).toMatchObject({
+      x: head.render.x,
+      y: head.render.y,
+      offsetX: head.render.width / 2,
+      offsetY: head.render.height / 2,
+      rotationDeg: -12,
+      scaleX: -1,
+      scaleY: 1,
+    });
+    expect(face.render).toMatchObject({
+      x: facePart.localRect.x + facePart.localRect.width / 2,
+      y: facePart.localRect.y + facePart.localRect.height / 2,
+      offsetX: facePart.localRect.width / 2,
+      offsetY: facePart.localRect.height / 2,
+      rotationDeg: 90,
+      scaleX: -1,
+      scaleY: 1,
+    });
+    expect(stageLayer.visual?.headGroup?.transform.rotationDeg).toBe(0);
+    expect(stageLayer.visual?.parts.map(({ rotationDeg, flipX }) => ({
+      rotationDeg,
+      flipX,
+    }))).toEqual(editorLayer.visual.parts.map(({ rotationDeg, flipX }) => ({
+      rotationDeg,
+      flipX,
+    })));
+    expect(stageLayer.visual?.headGroup).toEqual(editorLayer.visual.headGroup);
+  });
+
   it('shares the Head Group and requested-time root pose across editor and Stage consumers', () => {
     const base = compositeProject({ head: true });
     const project = ProjectSchema.parse({

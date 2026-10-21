@@ -143,6 +143,8 @@ export function shotThumbnailFingerprint(
           slot: part.slot,
           asset: assetContentFingerprint(project, part.assetId),
           localRect: part.localRect,
+          rotationDeg: part.rotationDeg,
+          flipX: part.flipX,
           drawOrder: part.drawOrder,
         })),
       })),
@@ -310,7 +312,9 @@ export async function createShotThumbnailDataUrl(
   for (const { visual } of model.layers) {
     if (
       visual.parts.length === 0 ||
-      (visual.kind === 'composite-character' && visual.parts.length !== 2)
+      (visual.kind === 'composite-character' &&
+        (!visual.parts.some((part) => part.slot === 'body') ||
+          !visual.parts.some((part) => part.slot === 'face')))
     ) {
       throw new ShotThumbnailSourceError(
         'Shot visual is incomplete; refusing to render a partial Character.',
@@ -386,7 +390,12 @@ export async function createShotThumbnailDataUrl(
           );
         }
         const { x, y, width, height } = part.localRect;
-        target.drawImage(image, x, y, width, height);
+        target.save();
+        target.translate(x + width / 2, y + height / 2);
+        target.rotate((part.rotationDeg * Math.PI) / 180);
+        target.scale(part.flipX ? -1 : 1, 1);
+        target.drawImage(image, -width / 2, -height / 2, width, height);
+        target.restore();
       }
       target.restore();
     };

@@ -881,7 +881,13 @@ export function CharacterManager({
                 ? { ...currentHead, assetId }
                 : {
                     assetId,
-                    placement: { offsetX: 0, offsetY: 0, scale: 1 },
+                    placement: {
+                      offsetX: 0,
+                      offsetY: 0,
+                      scale: 1,
+                      rotationDeg: 0,
+                      flipX: false,
+                    },
                     pivot: { x: 0, y: 0 },
                   }
               : null;

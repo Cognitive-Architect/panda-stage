@@ -11,10 +11,22 @@ const source: CharacterLayoutReuseCandidate = {
   characterId: 'source-character',
   name: 'Saved source',
   bodyAssetId: 'source-body',
-  facePlacement: { offsetX: 42, offsetY: 186, scale: 0.92 },
+  facePlacement: {
+    offsetX: 42,
+    offsetY: 186,
+    scale: 0.92,
+    rotationDeg: 12,
+    flipX: true,
+  },
   head: {
     assetId: 'source-head',
-    placement: { offsetX: 6, offsetY: -132, scale: 0.88 },
+    placement: {
+      offsetX: 6,
+      offsetY: -132,
+      scale: 0.88,
+      rotationDeg: -8,
+      flipX: true,
+    },
     pivot: { x: 358, y: 452 },
   },
 };
@@ -25,7 +37,13 @@ const target: CharacterLayoutReuseTarget = {
   bodyAssetId: 'target-body',
   head: {
     assetId: 'target-head',
-    placement: { offsetX: -8, offsetY: -24, scale: 1.15 },
+    placement: {
+      offsetX: -8,
+      offsetY: -24,
+      scale: 1.15,
+      rotationDeg: 0,
+      flipX: false,
+    },
     pivot: { x: 310, y: 420 },
   },
 };
@@ -159,10 +177,22 @@ describe('saved Character layout reuse', () => {
     const update = buildCharacterLayoutReuseUpdate(source, target);
 
     expect(update).toEqual({
-      facePlacement: { offsetX: 42, offsetY: 186, scale: 0.92 },
+      facePlacement: {
+        offsetX: 42,
+        offsetY: 186,
+        scale: 0.92,
+        rotationDeg: 12,
+        flipX: true,
+      },
       head: {
         assetId: 'target-head',
-        placement: { offsetX: 6, offsetY: -132, scale: 0.88 },
+        placement: {
+          offsetX: 6,
+          offsetY: -132,
+          scale: 0.88,
+          rotationDeg: -8,
+          flipX: true,
+        },
         pivot: { x: 358, y: 452 },
       },
     });
@@ -182,7 +212,13 @@ describe('saved Character layout reuse', () => {
 
     expect(result.ok).toBe(true);
     expect(buildCharacterLayoutReuseUpdate(headlessSource, headlessTarget)).toEqual({
-      facePlacement: { offsetX: 42, offsetY: 186, scale: 0.92 },
+      facePlacement: {
+        offsetX: 42,
+        offsetY: 186,
+        scale: 0.92,
+        rotationDeg: 12,
+        flipX: true,
+      },
     });
   });
 });

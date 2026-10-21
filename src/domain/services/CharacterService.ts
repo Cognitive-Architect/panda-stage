@@ -749,6 +749,9 @@ export class CharacterService {
       current.facePlacement.offsetX === next.facePlacement.offsetX &&
       current.facePlacement.offsetY === next.facePlacement.offsetY &&
       current.facePlacement.scale === next.facePlacement.scale &&
+      current.facePlacement.rotationDeg ===
+        next.facePlacement.rotationDeg &&
+      current.facePlacement.flipX === next.facePlacement.flipX &&
       JSON.stringify(current.head ?? null) ===
         JSON.stringify(next.head ?? null) &&
       current.baseAssetId === next.baseAssetId &&

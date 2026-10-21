@@ -8,6 +8,7 @@ import {
   clampLayerPosition,
   type Layer,
   type LayerTransformInput,
+  visualPartRenderTransform,
   visualHeadGroupRenderTransform,
   type LayerVisualParts,
 } from '../../../domain';
@@ -104,6 +105,8 @@ export function SelectableLayer({
       source: { kind: 'asset' as const, assetId: render.assetId },
       assetId: render.assetId,
       localRect: legacyBounds,
+      rotationDeg: 0,
+      flipX: false,
       drawOrder: 0,
       ownerZIndex: render.zIndex,
     },
@@ -167,9 +170,8 @@ export function SelectableLayer({
       listening={canSelect}
       onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
       onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
+      {...visualPartRenderTransform(part)}
       width={part.localRect.width}
-      x={part.localRect.x}
-      y={part.localRect.y}
     />
   );
   const renderHitArea = ({
@@ -184,9 +186,8 @@ export function SelectableLayer({
       opacity={0}
       onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
       onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
+      {...visualPartRenderTransform(part)}
       width={part.localRect.width}
-      x={part.localRect.x}
-      y={part.localRect.y}
     />
   );
   const orderedPartImages = resolvedPartImages.sort(

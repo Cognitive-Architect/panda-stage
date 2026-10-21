@@ -53,10 +53,22 @@ describe('BFM-S02 composite Character lifecycle', () => {
           ...base.characters[0]!,
           mode: 'composite',
           bodyAssetId: IDS.assetBg,
-          facePlacement: { offsetX: 10, offsetY: -5, scale: 1 },
+          facePlacement: {
+            offsetX: 10,
+            offsetY: -5,
+            scale: 1,
+            rotationDeg: 0,
+            flipX: false,
+          },
           head: {
             assetId: IDS.assetChar2,
-            placement: { offsetX: 6, offsetY: -3, scale: 0.9 },
+            placement: {
+              offsetX: 6,
+              offsetY: -3,
+              scale: 0.9,
+              rotationDeg: 0,
+              flipX: false,
+            },
             pivot: { x: 320, y: 300 },
           },
         },
@@ -74,7 +86,13 @@ describe('BFM-S02 composite Character lifecycle', () => {
     );
     characters.applyCompositeUpdate(IDS.character, {
       bodyAssetId: IDS.assetChar2,
-      facePlacement: { offsetX: 32, offsetY: -14, scale: 1.2 },
+      facePlacement: {
+        offsetX: 32,
+        offsetY: -14,
+        scale: 1.2,
+        rotationDeg: 30,
+        flipX: true,
+      },
       expressionAssets: [
         { expressionId: IDS.expressionNormal, assetId: IDS.assetChar2 },
         { expressionId: IDS.expressionAngry, assetId: IDS.assetChar },
@@ -82,17 +100,35 @@ describe('BFM-S02 composite Character lifecycle', () => {
       mouthOpenAssetId: IDS.assetChar,
       head: {
         assetId: IDS.assetChar,
-        placement: { offsetX: 18, offsetY: 9, scale: 1.1 },
+        placement: {
+          offsetX: 18,
+          offsetY: 9,
+          scale: 1.1,
+          rotationDeg: -15,
+          flipX: true,
+        },
         pivot: { x: 280, y: 260 },
       },
     });
     const createdWithHead = characters.createComposite({
       name: 'Created Head character',
       bodyAssetId: IDS.assetBg,
-      facePlacement: { offsetX: 3, offsetY: -2, scale: 0.95 },
+      facePlacement: {
+        offsetX: 3,
+        offsetY: -2,
+        scale: 0.95,
+        rotationDeg: 0,
+        flipX: false,
+      },
       head: {
         assetId: IDS.assetChar2,
-        placement: { offsetX: -7, offsetY: 12, scale: 1.05 },
+        placement: {
+          offsetX: -7,
+          offsetY: 12,
+          scale: 1.05,
+          rotationDeg: 0,
+          flipX: false,
+        },
         pivot: { x: 300, y: 270 },
       },
       expressions: [{ name: 'Normal', assetId: IDS.assetChar }],
@@ -116,11 +152,23 @@ describe('BFM-S02 composite Character lifecycle', () => {
       mode: 'composite',
       talkingHeadMotionIntensityPercent: 100,
       bodyAssetId: IDS.assetChar2,
-      facePlacement: { offsetX: 32, offsetY: -14, scale: 1.2 },
+      facePlacement: {
+        offsetX: 32,
+        offsetY: -14,
+        scale: 1.2,
+        rotationDeg: 30,
+        flipX: true,
+      },
       mouthOpenAssetId: IDS.assetChar,
       head: {
         assetId: IDS.assetChar,
-        placement: { offsetX: 18, offsetY: 9, scale: 1.1 },
+        placement: {
+          offsetX: 18,
+          offsetY: 9,
+          scale: 1.1,
+          rotationDeg: -15,
+          flipX: true,
+        },
         pivot: { x: 280, y: 260 },
       },
     });
@@ -145,7 +193,13 @@ describe('BFM-S02 composite Character lifecycle', () => {
       talkingHeadMotionIntensityPercent: 160,
       head: {
         assetId: IDS.assetChar2,
-        placement: { offsetX: -7, offsetY: 12, scale: 1.05 },
+        placement: {
+          offsetX: -7,
+          offsetY: 12,
+          scale: 1.05,
+          rotationDeg: 0,
+          flipX: false,
+        },
         pivot: { x: 300, y: 270 },
       },
     });
@@ -203,7 +257,7 @@ describe('BFM-S02 composite Character lifecycle', () => {
     shots.dispose();
   });
 
-  it('opens a persisted v8 composite as v10 without changing Body/Face visuals', async () => {
+  it('opens a persisted v8 composite as v11 without changing Body/Face visuals', async () => {
     const parent = await mkdtemp(
       path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-v8-migration-'),
     );
@@ -236,7 +290,14 @@ describe('BFM-S02 composite Character lifecycle', () => {
     const {
       talkingHeadMotionIntensityPercent: _intensityPercent,
       ...v8Character
-    } = currentCharacter;
+    } = {
+      ...currentCharacter,
+      facePlacement: {
+        offsetX: currentCharacter.facePlacement.offsetX,
+        offsetY: currentCharacter.facePlacement.offsetY,
+        scale: currentCharacter.facePlacement.scale,
+      },
+    };
     expect(_intensityPercent).toBe(100);
     const v8 = {
       ...current,

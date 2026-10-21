@@ -9,6 +9,7 @@ import {
   ProjectSchema,
   ProjectV8Schema,
   ProjectV9Schema,
+  ProjectV10Schema,
   ProjectV1Schema,
   inferLegacyBackgroundLayerId,
   migrateFormalProject,
@@ -36,6 +37,7 @@ export type DetectedSchemaVersion =
   | 7
   | 8
   | 9
+  | 10
   | typeof PROJECT_SCHEMA_VERSION;
 
 export class UnsupportedSchemaVersionError extends Error {
@@ -43,7 +45,7 @@ export class UnsupportedSchemaVersionError extends Error {
     super(
       `Unsupported project schemaVersion: ${String(
         receivedVersion,
-      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, and ${PROJECT_SCHEMA_VERSION}.`,
+      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, and ${PROJECT_SCHEMA_VERSION}.`,
     );
     this.name = 'UnsupportedSchemaVersionError';
   }
@@ -69,6 +71,7 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 7 ||
     version === 8 ||
     version === 9 ||
+    version === 10 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version as DetectedSchemaVersion;
@@ -178,12 +181,12 @@ function normalizeHistoricalSubtitleBackground(project: Project): Project {
 /**
  * The single authoritative persisted-project migration pipeline.
  *
- * Every persisted envelope (v0-v9) is routed here by version and resolved to
- * the current v10 project through exactly one path. The formal v1-v7
+ * Every persisted envelope (v0-v10) is routed here by version and resolved to
+ * the current v11 project through exactly one path. The formal v1-v7
  * transforms live in
  * `migrateFormalProject` (a shared helper, NOT wired into `ProjectSchema`),
  * and the current-project validator (`ProjectSchema`) is used only to
- * validate the resolved v10 shape. A narrow compatibility normalization then
+ * validate the resolved v11 shape. A narrow compatibility normalization then
  * replaces the one historical subtitle default while preserving all other
  * style values. There is no second, implicit migration path:
  * `ProjectSchema.parse` never migrates legacy input.
@@ -231,10 +234,42 @@ export function migrateProject(input: unknown): Project {
       break;
     }
     case PROJECT_SCHEMA_VERSION:
-      // Current v10 envelope: validate it, then apply only the narrow
+      // Current v11 envelope: validate it, then apply only the narrow
       // historical-default compatibility normalization without mutating input.
       project = ProjectSchema.parse(input);
       break;
+    case 10: {
+      const version10 = ProjectV10Schema.parse(input);
+      project = ProjectSchema.parse({
+        ...version10,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        characters: version10.characters.map((character) =>
+          character.mode === 'composite'
+            ? {
+                ...character,
+                facePlacement: {
+                  ...character.facePlacement,
+                  rotationDeg: 0,
+                  flipX: false,
+                },
+                ...(character.head
+                  ? {
+                      head: {
+                        ...character.head,
+                        placement: {
+                          ...character.head.placement,
+                          rotationDeg: 0,
+                          flipX: false,
+                        },
+                      },
+                    }
+                  : {}),
+              }
+            : character,
+        ),
+      });
+      break;
+    }
     default:
       throw new UnsupportedSchemaVersionError(version);
   }

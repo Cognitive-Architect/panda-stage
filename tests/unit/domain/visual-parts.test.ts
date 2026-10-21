@@ -5,8 +5,10 @@ import {
   projectShotMouth,
   ProjectSchema,
   resolveLayerVisualParts,
+  transformPointByVisualPart,
   transformPointByVisualHeadGroup,
   visualHeadGroupRenderTransform,
+  visualPartRenderTransform,
   withVisualHeadGroupTransform,
   type Project,
 } from '../../../src/domain';
@@ -239,6 +241,8 @@ describe('BFM-S03 unified visual-parts resolver', () => {
       offsetX: 420,
       offsetY: -8,
       scale: 0.5,
+      rotationDeg: 0,
+      flipX: false,
     });
     expect(visual.parts.map((part) => part.slot)).toEqual(['body', 'face']);
     expect(visual.parts.map((part) => part.partId)).toEqual([
@@ -370,6 +374,115 @@ describe('BFM-S03 unified visual-parts resolver', () => {
     });
     expect(moved.combinedLocalBounds).not.toEqual(visual.combinedLocalBounds);
     expect(JSON.stringify(project)).toBe(before);
+  });
+
+  it('applies static Head and shared Face transforms around each part center before H04', () => {
+    const base = compositeProject({ head: true });
+    const original = base.characters[0]!;
+    if (original.mode !== 'composite' || !original.head) {
+      throw new Error('Expected a headed composite Character.');
+    }
+    const project = ProjectSchema.parse({
+      ...base,
+      characters: [
+        {
+          ...original,
+          facePlacement: {
+            ...original.facePlacement,
+            rotationDeg: -10,
+            flipX: true,
+          },
+          head: {
+            ...original.head,
+            placement: {
+              ...original.head.placement,
+              rotationDeg: 90,
+              flipX: true,
+            },
+          },
+        },
+      ],
+    });
+    const shot = project.shots[0]!;
+    const evaluated = evaluateShotAtTime(shot, 750, project);
+    const layer = evaluated.layers.find(
+      (candidate) => candidate.id === IDS.layerChar,
+    )!;
+    const visual = resolveLayerVisualParts(project, shot, layer);
+    const body = visual.parts.find((part) => part.slot === 'body')!;
+    const head = visual.parts.find((part) => part.slot === 'head')!;
+    const face = visual.parts.find((part) => part.slot === 'face')!;
+    const faceCenter = {
+      x: face.localRect.x + face.localRect.width / 2,
+      y: face.localRect.y + face.localRect.height / 2,
+    };
+    const transformedFaceEdge = transformPointByVisualPart(
+      { x: faceCenter.x + face.localRect.width / 2, y: faceCenter.y },
+      face,
+    );
+
+    expect(body).toMatchObject({ rotationDeg: 0, flipX: false });
+    expect(head).toMatchObject({ rotationDeg: 90, flipX: true });
+    expect(face).toMatchObject({ rotationDeg: -10, flipX: true });
+    expect(transformPointByVisualPart(faceCenter, face)).toEqual(faceCenter);
+    expect(transformedFaceEdge.x).toBeLessThan(faceCenter.x);
+    expect(transformedFaceEdge.y).toBeGreaterThan(faceCenter.y);
+    expect(visualPartRenderTransform(face)).toMatchObject({
+      x: faceCenter.x,
+      y: faceCenter.y,
+      offsetX: face.localRect.width / 2,
+      offsetY: face.localRect.height / 2,
+      scaleX: -1,
+      rotation: -10,
+    });
+    expect(visual.headGroup?.transform.rotationDeg).toBe(0);
+    expect(visual.combinedLocalBounds.x + visual.combinedLocalBounds.width)
+      .toBeGreaterThan(470);
+
+    const mouthShot = projectShotMouth(project, shot, evaluated, DIALOGUE_ID);
+    const mouthVisual = resolveLayerVisualParts(
+      project,
+      shot,
+      mouthShot.layers.find((candidate) => candidate.id === IDS.layerChar)!,
+    );
+    expect(mouthVisual.parts.find((part) => part.slot === 'face')).toMatchObject({
+      rotationDeg: -10,
+      flipX: true,
+    });
+    expect(mouthVisual.headGroup?.transform.rotationDeg).toBe(0);
+  });
+
+  it('keeps static Face adjustment available without a Head or Head Group', () => {
+    const base = compositeProject({ head: false, mouth: false });
+    const original = base.characters[0]!;
+    if (original.mode !== 'composite') {
+      throw new Error('Expected a composite Character.');
+    }
+    const project = ProjectSchema.parse({
+      ...base,
+      characters: [
+        {
+          ...original,
+          facePlacement: {
+            ...original.facePlacement,
+            rotationDeg: 90,
+            flipX: true,
+          },
+        },
+      ],
+    });
+    const shot = project.shots[0]!;
+    const evaluated = evaluateShotAtTime(shot, 0, project);
+    const visual = resolveLayerVisualParts(
+      project,
+      shot,
+      evaluated.layers.find((candidate) => candidate.id === IDS.layerChar)!,
+    );
+    const face = visual.parts.find((part) => part.slot === 'face')!;
+
+    expect(visual.headGroup).toBeNull();
+    expect(face).toMatchObject({ rotationDeg: 90, flipX: true });
+    expect(visualPartRenderTransform(face).rotation).toBe(90);
   });
 
   it('keeps Expression and Mouth swaps under the same Head Group', () => {

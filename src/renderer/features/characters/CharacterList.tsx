@@ -135,7 +135,13 @@ export function CharacterList({
     const began = onBeginCompositeCreate({
       name,
       bodyAssetId: imageAssets[0]?.id ?? '',
-      facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+      facePlacement: {
+        offsetX: 0,
+        offsetY: 0,
+        scale: 1,
+        rotationDeg: 0,
+        flipX: false,
+      },
       expressions: initialFaceAssetId
         ? [{ name: '表情1', assetId: initialFaceAssetId }]
         : [],
@@ -409,7 +415,13 @@ export function CharacterList({
                       ? { ...compositeDraft.head, assetId }
                       : {
                           assetId,
-                          placement: { offsetX: 0, offsetY: 0, scale: 1 },
+                          placement: {
+                            offsetX: 0,
+                            offsetY: 0,
+                            scale: 1,
+                            rotationDeg: 0,
+                            flipX: false,
+                          },
                           pivot: { x: 0, y: 0 },
                         };
                   } else {

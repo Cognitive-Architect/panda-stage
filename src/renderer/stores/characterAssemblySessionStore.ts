@@ -330,6 +330,8 @@ function sameHead(
     left.placement.offsetX === right.placement.offsetX &&
     left.placement.offsetY === right.placement.offsetY &&
     left.placement.scale === right.placement.scale &&
+    left.placement.rotationDeg === right.placement.rotationDeg &&
+    left.placement.flipX === right.placement.flipX &&
     left.pivot.x === right.pivot.x &&
     left.pivot.y === right.pivot.y
   );
@@ -345,6 +347,8 @@ function creationDraftsEqual(
     left.facePlacement.offsetX === right.facePlacement.offsetX &&
     left.facePlacement.offsetY === right.facePlacement.offsetY &&
     left.facePlacement.scale === right.facePlacement.scale &&
+    left.facePlacement.rotationDeg === right.facePlacement.rotationDeg &&
+    left.facePlacement.flipX === right.facePlacement.flipX &&
     (left.defaultExpressionIndex ?? 0) ===
       (right.defaultExpressionIndex ?? 0) &&
     (left.mouthOpenAssetId ?? null) === (right.mouthOpenAssetId ?? null) &&
@@ -369,6 +373,8 @@ function definitionsEqual(
     left.facePlacement.offsetX !== right.facePlacement.offsetX ||
     left.facePlacement.offsetY !== right.facePlacement.offsetY ||
     left.facePlacement.scale !== right.facePlacement.scale ||
+    left.facePlacement.rotationDeg !== right.facePlacement.rotationDeg ||
+    left.facePlacement.flipX !== right.facePlacement.flipX ||
     !sameHead(left.head, right.head) ||
     left.mouthOpenAssetId !== right.mouthOpenAssetId ||
     left.expressionAssets.length !== right.expressionAssets.length

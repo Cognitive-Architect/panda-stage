@@ -85,7 +85,13 @@ function changedDefinition(project: Project): CompositeCharacterDefinition {
   return {
     ...current,
     bodyAssetId: IDS.assetChar2,
-    facePlacement: { offsetX: 24, offsetY: -12, scale: 1.25 },
+    facePlacement: {
+      offsetX: 24,
+      offsetY: -12,
+      scale: 1.25,
+      rotationDeg: 30,
+      flipX: true,
+    },
     expressionAssets: [
       { expressionId: IDS.expressionNormal, assetId: IDS.assetChar2 },
       { expressionId: IDS.expressionAngry, assetId: IDS.assetChar },

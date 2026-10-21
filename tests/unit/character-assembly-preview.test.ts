@@ -13,6 +13,7 @@ import {
   hasPendingCharacterAssemblyEdit,
   isAssemblyHeadMotionTestRunning,
   isCharacterAssemblyPending,
+  parseAssemblyRotationInput,
 } from '../../src/renderer/features/characters/characterAssemblyPreview';
 import type {
   CharacterAssemblySnapshot,
@@ -32,7 +33,13 @@ function fixture(): {
   const body = imageAssets[0]!;
   const face = original.expressions[0]!;
   const mouth = imageAssets.find((asset) => asset.id !== face.assetId)!;
-  const placement = { offsetX: 48, offsetY: -24, scale: 0.75 };
+  const placement = {
+    offsetX: 48,
+    offsetY: -24,
+    scale: 0.75,
+    rotationDeg: 0,
+    flipX: false,
+  };
   const project = ProjectSchema.parse({
     ...base,
     characters: [
@@ -79,6 +86,17 @@ function fixture(): {
 }
 
 describe('S07 composite assembly preview', () => {
+  it('accepts only finite rotation values in the inclusive −180° to 180° range', () => {
+    expect(parseAssemblyRotationInput('0')).toBe(0);
+    expect(parseAssemblyRotationInput('-1')).toBe(-1);
+    expect(parseAssemblyRotationInput('90')).toBe(90);
+    expect(parseAssemblyRotationInput('180')).toBe(180);
+    expect(parseAssemblyRotationInput('-180')).toBe(-180);
+    for (const invalid of ['', ' ', '-', '181', '-181', 'Infinity', 'NaN']) {
+      expect(parseAssemblyRotationInput(invalid)).toBeNull();
+    }
+  });
+
   it('keeps precision controls collapsed while pending actions stay visible', () => {
     const { project, session } = fixture();
     const pending = {
@@ -206,6 +224,8 @@ describe('S07 composite assembly preview', () => {
         width: headAsset.width * session.draft.head!.placement.scale,
         height: headAsset.height * session.draft.head!.placement.scale,
       },
+      rotationDeg: 0,
+      flipX: false,
     });
     expect(visual?.parts.map(({ slot }) => slot)).toEqual(['body', 'face']);
     expect(visual?.facePlacement).toEqual(session.draft.facePlacement);
@@ -286,6 +306,10 @@ describe('S07 composite assembly preview', () => {
     expect(markup).toContain('aria-expanded="false"');
     expect(markup).not.toContain('data-testid="character-assembly-head-offset-x"');
     expect(markup).toContain('data-testid="character-assembly-test-head-motion"');
+    expect(markup).toContain('data-face-rotation-deg="0"');
+    expect(markup).toContain('data-face-flip-x="false"');
+    expect(markup).toContain('data-head-rotation-deg="0"');
+    expect(markup).toContain('data-head-flip-x="false"');
     expect(markup).toContain('▶ 预览点头');
     expect(markup).toContain('data-testid="character-assembly-pivot-mode-toggle"');
     expect(markup).toContain('调整脖子转轴');
@@ -295,6 +319,26 @@ describe('S07 composite assembly preview', () => {
     ).toHaveLength(1);
     expect(markup).toContain('data-testid="character-assembly-expression-preview-toggle"');
     expect(markup).not.toContain('data-testid="character-assembly-expression-preview-options"');
+    const rotationControls = readFileSync(
+      'src/renderer/features/characters/CharacterAssemblyWorkbench.tsx',
+      'utf8',
+    );
+    for (const control of [
+      'character-assembly-head-rotation-down',
+      'character-assembly-head-rotation',
+      'character-assembly-head-rotation-up',
+      'character-assembly-face-rotation-down',
+      'character-assembly-face-rotation',
+      'character-assembly-face-rotation-up',
+      'character-assembly-head-flip-x',
+      'character-assembly-face-flip-x',
+    ]) {
+      expect(rotationControls).toContain(control);
+    }
+    expect(rotationControls).toContain('aria-pressed={activeFlipX}');
+    expect(rotationControls).toContain('event.shiftKey ? 10 : 1');
+    expect(rotationControls).toContain('min={-180}');
+    expect(rotationControls).toContain('max={180}');
 
     const { head, ...headlessDraft } = session.draft;
     expect(head).toBeDefined();

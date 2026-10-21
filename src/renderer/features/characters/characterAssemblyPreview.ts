@@ -30,6 +30,8 @@ export interface AssemblyHeadMotionTestToken {
 export interface AssemblyHeadPreviewPart {
   assetId: string;
   localRect: VisualLocalRect;
+  rotationDeg: number;
+  flipX: boolean;
 }
 
 export interface NormalizedImageBounds {
@@ -42,6 +44,14 @@ export interface NormalizedImageBounds {
 export interface CharacterLocalPointerDelta {
   x: number;
   y: number;
+}
+
+export function parseAssemblyRotationInput(value: string): number | null {
+  if (value.trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= -180 && parsed <= 180
+    ? parsed
+    : null;
 }
 
 export interface CharacterAssemblyPreviewVisual extends LayerVisualParts {
@@ -445,6 +455,8 @@ export function buildCharacterAssemblyPreviewVisual(
         ? {
             assetId: headAsset.id,
             localRect: centeredHeadRect(headAsset, character.head.placement),
+            rotationDeg: character.head.placement.rotationDeg,
+            flipX: character.head.placement.flipX,
           }
         : null,
   };

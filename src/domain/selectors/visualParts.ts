@@ -65,6 +65,16 @@ export interface VisualHeadGroupRenderTransform {
   rotation: number;
 }
 
+export interface VisualPartRenderTransform {
+  x: number;
+  y: number;
+  offsetX: number;
+  offsetY: number;
+  scaleX: number;
+  scaleY: number;
+  rotation: number;
+}
+
 export type VisualPartSource =
   | { kind: 'asset'; assetId: string }
   | { kind: 'character-body'; assetId: string }
@@ -80,6 +90,10 @@ export interface LayerVisualPart {
   source: VisualPartSource;
   assetId: string;
   localRect: VisualLocalRect;
+  /** Static rotation about this part's center, before the shared Head Group. */
+  rotationDeg: number;
+  /** Static horizontal mirror about this part's center. */
+  flipX: boolean;
   drawOrder: number;
   ownerZIndex: number;
 }
@@ -206,6 +220,32 @@ export function visualHeadGroupRenderTransform(
   };
 }
 
+/** Maps one static visual part to a center-based Konva transform. */
+export function visualPartRenderTransform(
+  part: LayerVisualPart,
+): VisualPartRenderTransform {
+  if (part.rotationDeg === 0 && !part.flipX) {
+    return {
+      x: part.localRect.x,
+      y: part.localRect.y,
+      offsetX: 0,
+      offsetY: 0,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+    };
+  }
+  return {
+    x: part.localRect.x + part.localRect.width / 2,
+    y: part.localRect.y + part.localRect.height / 2,
+    offsetX: part.localRect.width / 2,
+    offsetY: part.localRect.height / 2,
+    scaleX: part.flipX ? -1 : 1,
+    scaleY: 1,
+    rotation: part.rotationDeg,
+  };
+}
+
 /** Applies the runtime Head Group transform to a Character-local point. */
 export function transformPointByVisualHeadGroup(
   point: VisualPoint,
@@ -250,17 +290,60 @@ function transformedRect(
   };
 }
 
+export function transformPointByVisualPart(
+  point: VisualPoint,
+  part: Pick<LayerVisualPart, 'localRect' | 'rotationDeg' | 'flipX'>,
+): VisualPoint {
+  const centerX = part.localRect.x + part.localRect.width / 2;
+  const centerY = part.localRect.y + part.localRect.height / 2;
+  let relativeX = point.x - centerX;
+  const relativeY = point.y - centerY;
+  if (part.flipX) relativeX = -relativeX;
+  const radians = (part.rotationDeg * Math.PI) / 180;
+  return {
+    x: centerX + relativeX * Math.cos(radians) - relativeY * Math.sin(radians),
+    y: centerY + relativeX * Math.sin(radians) + relativeY * Math.cos(radians),
+  };
+}
+
+export function transformVisualRectByPart(
+  rect: VisualLocalRect,
+  part: Pick<LayerVisualPart, 'localRect' | 'rotationDeg' | 'flipX'>,
+): VisualLocalRect {
+  const points = [
+    { x: rect.x, y: rect.y },
+    { x: rect.x + rect.width, y: rect.y },
+    { x: rect.x, y: rect.y + rect.height },
+    { x: rect.x + rect.width, y: rect.y + rect.height },
+  ].map((point) => transformPointByVisualPart(point, part));
+  const minX = Math.min(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const maxY = Math.max(...points.map((point) => point.y));
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
+
+function transformedPartRect(part: LayerVisualPart): VisualLocalRect {
+  return transformVisualRectByPart(part.localRect, part);
+}
+
 function visualBounds(
   parts: readonly LayerVisualPart[],
   headGroup: LayerVisualHeadGroup | null,
 ): VisualLocalRect {
   const headPartIds = new Set(headGroup?.partIds ?? []);
   return unionRects(
-    parts.map((part) =>
-      headPartIds.has(part.partId) && headGroup
-        ? transformedRect(part.localRect, headGroup)
-        : part.localRect,
-    ),
+    parts.map((part) => {
+      const transformedPart = transformedPartRect(part);
+      return headPartIds.has(part.partId) && headGroup
+        ? transformedRect(transformedPart, headGroup)
+        : transformedPart;
+    }),
   );
 }
 
@@ -452,6 +535,8 @@ export function resolveLayerVisualParts(
       source: { kind: 'asset', assetId: asset.id },
       assetId: asset.id,
       localRect: centeredRect(asset),
+      rotationDeg: 0,
+      flipX: false,
       drawOrder: 0,
       ownerZIndex: evaluated.zIndex,
     };
@@ -503,6 +588,8 @@ export function resolveLayerVisualParts(
             },
       assetId: resolved.asset.id,
       localRect: centeredRect(resolved.asset),
+      rotationDeg: 0,
+      flipX: false,
       drawOrder: 0,
       ownerZIndex: evaluated.zIndex,
     };
@@ -540,6 +627,8 @@ export function resolveLayerVisualParts(
     source: { kind: 'character-body', assetId: body.id },
     assetId: body.id,
     localRect: centeredRect(body),
+    rotationDeg: 0,
+    flipX: false,
     drawOrder: 0,
     ownerZIndex: evaluated.zIndex,
   };
@@ -562,6 +651,8 @@ export function resolveLayerVisualParts(
       character.facePlacement.offsetY,
       character.facePlacement.scale,
     ),
+    rotationDeg: character.facePlacement.rotationDeg,
+    flipX: character.facePlacement.flipX,
     drawOrder: headAsset ? 2 : 1,
     ownerZIndex: evaluated.zIndex,
   };
@@ -579,6 +670,8 @@ export function resolveLayerVisualParts(
             character.head.placement.offsetY,
             character.head.placement.scale,
           ),
+          rotationDeg: character.head.placement.rotationDeg,
+          flipX: character.head.placement.flipX,
           drawOrder: 1,
           ownerZIndex: evaluated.zIndex,
         }

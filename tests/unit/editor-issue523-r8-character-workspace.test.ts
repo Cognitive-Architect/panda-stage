@@ -288,7 +288,13 @@ describe('Issue #523 R8 unified Character workspace', () => {
     }).characters[0]!;
     const assemblyDraft = {
       bodyAssetId: body.id,
-      facePlacement: { offsetX: 8, offsetY: -4, scale: 0.9 },
+      facePlacement: {
+        offsetX: 8,
+        offsetY: -4,
+        scale: 0.9,
+        rotationDeg: 0,
+        flipX: false,
+      },
       expressionAssets: character.expressions.map((expression) => ({
         expressionId: expression.id,
         assetId: expression.assetId,

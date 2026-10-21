@@ -213,6 +213,52 @@ describe('BFM-S01 Character schema', () => {
     expect(nonImage.success).toBe(false);
   });
 
+  it('defaults static transforms and bounds Face/Head rotation to −180°..180°', () => {
+    const project = compositeProject();
+    const character = project.characters[0]!;
+    if (character.mode !== 'composite' || !character.head) {
+      throw new Error('Expected a headed composite Character.');
+    }
+    expect(character.facePlacement).toMatchObject({ rotationDeg: 0, flipX: false });
+    expect(character.head.placement).toMatchObject({ rotationDeg: 0, flipX: false });
+
+    expect(
+      ProjectSchema.safeParse({
+        ...project,
+        characters: [
+          {
+            ...character,
+            facePlacement: {
+              ...character.facePlacement,
+              rotationDeg: -180,
+            },
+            head: {
+              ...character.head,
+              placement: {
+                ...character.head.placement,
+                rotationDeg: 180,
+              },
+            },
+          },
+        ],
+      }).success,
+    ).toBe(true);
+
+    for (const rotationDeg of [-180.01, 180.01, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(
+        ProjectSchema.safeParse({
+          ...project,
+          characters: [
+            {
+              ...character,
+              facePlacement: { ...character.facePlacement, rotationDeg },
+            },
+          ],
+        }).success,
+      ).toBe(false);
+    }
+  });
+
   it('keeps the historical v6 Character shape independent from current validation', () => {
     const project = buildProject();
     const { mode, ...historicalCharacter } = project.characters[0]!;

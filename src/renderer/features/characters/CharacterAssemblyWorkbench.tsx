@@ -7,6 +7,7 @@ import {
 } from 'react';
 import {
   calculateViewportTransform,
+  transformVisualRectByPart,
   type CharacterHead,
   type FacePlacement,
   type HeadPivot,
@@ -36,6 +37,7 @@ import {
   isAssemblyHeadMotionTestRunning,
   isCharacterAssemblyPending,
   isCharacterCreationSnapshot,
+  parseAssemblyRotationInput,
   type AssemblyHeadMotionTestToken,
   type AssemblyFaceSelection,
   type CharacterAssemblySnapshotUnion,
@@ -275,6 +277,15 @@ export function CharacterAssemblyWorkbench({
   const [headMotionTestToken, setHeadMotionTestToken] =
     useState<AssemblyHeadMotionTestToken | null>(null);
   const activeEditTarget = head ? session.editTarget : 'face';
+  const activeRotationDeg =
+    activeEditTarget === 'head' && head
+      ? head.placement.rotationDeg
+      : session.draft.facePlacement.rotationDeg;
+  const activeFlipX =
+    activeEditTarget === 'head' && head
+      ? head.placement.flipX
+      : session.draft.facePlacement.flipX;
+  const [rotationInput, setRotationInput] = useState('0');
   const isTestingHeadMotion = isAssemblyHeadMotionTestRunning(
     headMotionTestToken,
     session,
@@ -294,6 +305,10 @@ export function CharacterAssemblyWorkbench({
   const dragRef = useRef<ActiveDrag | null>(null);
   const mountedRef = useRef(true);
 
+  useEffect(() => {
+    setRotationInput(String(activeRotationDeg));
+  }, [activeEditTarget, activeRotationDeg, session.sessionId]);
+
   useLayoutEffect(() => {
     if (!isFineTuneOpen) return;
     const viewport = viewportRef.current;
@@ -302,26 +317,41 @@ export function CharacterAssemblyWorkbench({
 
     const placePanel = (): void => {
       const viewportBounds = viewport.getBoundingClientRect();
-      const rightmostContent = [
+      const contentBounds = [
         ...viewport.querySelectorAll<HTMLElement>(
           '.character-assembly-part, [data-testid="character-assembly-face-drag-target"], [data-testid="character-assembly-head-drag-fallback"], [data-testid="character-assembly-head-scale-handle"], [data-testid="character-assembly-head-pivot-marker"]',
         ),
       ].reduce((right, element) => {
         const bounds = element.getBoundingClientRect();
         return bounds.width > 0 && bounds.height > 0
-          ? Math.max(right, bounds.right)
+          ? {
+              left: Math.min(right.left, bounds.left),
+              right: Math.max(right.right, bounds.right),
+            }
           : right;
-      }, viewportBounds.left);
+      }, { left: viewportBounds.right, right: viewportBounds.left });
       const freeRightWidth = Math.floor(
-        viewportBounds.right - rightmostContent - 16,
+        viewportBounds.right - contentBounds.right - 16,
       );
+      const freeLeftWidth = Math.floor(
+        contentBounds.left - viewportBounds.left - 16,
+      );
+      const side = freeLeftWidth > freeRightWidth ? 'left' : 'right';
+      const freeSideWidth = Math.max(freeLeftWidth, freeRightWidth);
       const width =
-        freeRightWidth >= 72
-          ? Math.min(280, freeRightWidth)
-          : Math.min(48, viewportBounds.width - 16);
+        freeSideWidth >= 72
+          ? Math.min(280, freeSideWidth)
+          : Math.min(280, Math.max(0, viewportBounds.width - 16));
       panel.style.width = `${width}px`;
+      panel.style.left = side === 'left' ? '8px' : 'auto';
+      panel.style.right = side === 'right' ? '8px' : 'auto';
+      panel.dataset.overlaySide = side;
       panel.dataset.overlayLayout =
-        freeRightWidth < 72 ? 'constrained' : width < 160 ? 'narrow' : 'regular';
+        freeSideWidth < 72
+          ? 'constrained'
+          : width < 160
+            ? 'narrow'
+            : 'regular';
     };
 
     placePanel();
@@ -590,19 +620,20 @@ export function CharacterAssemblyWorkbench({
     return () => observer.disconnect();
   }, [project.height, project.width]);
 
-  const updateFacePlacement = (placement: FacePlacement): void => {
+  const updateFacePlacement = (placement: FacePlacement): boolean => {
     const result = isCreating
       ? activeCreationHandle(session)?.updateDraft({ facePlacement: placement })
       : activeAssemblyHandle(session)?.updateDraft({ facePlacement: placement });
     if (!result) {
       setMessage('组装草稿已失效，请重新打开角色组装。');
-      return;
+      return false;
     }
     if (!result.ok) {
       setMessage(result.error.message);
-      return;
+      return false;
     }
     setMessage('');
+    return true;
   };
 
   const updateHead = (nextHead: CharacterHead | null): boolean => {
@@ -830,15 +861,59 @@ export function CharacterAssemblyWorkbench({
     updateFacePlacement({ ...session.draft.facePlacement, scale });
   };
 
+  const setTargetRotation = (rotationDeg: number): boolean => {
+    if (!Number.isFinite(rotationDeg) || rotationDeg < -180 || rotationDeg > 180) {
+      return false;
+    }
+    const updated =
+      activeEditTarget === 'head' && head
+        ? updateHead({
+            ...head,
+            placement: { ...head.placement, rotationDeg },
+          })
+        : updateFacePlacement({
+            ...session.draft.facePlacement,
+            rotationDeg,
+          });
+    if (updated) setRotationInput(String(rotationDeg));
+    return updated;
+  };
+
+  const toggleTargetFlipX = (): void => {
+    if (activeEditTarget === 'head' && head) {
+      updateHead({
+        ...head,
+        placement: { ...head.placement, flipX: !head.placement.flipX },
+      });
+      return;
+    }
+    updateFacePlacement({
+      ...session.draft.facePlacement,
+      flipX: !session.draft.facePlacement.flipX,
+    });
+  };
+
   const resetPlacement = (): void => {
     if (activeEditTarget === 'head' && head) {
       updateHead({
         ...head,
-        placement: { offsetX: 0, offsetY: 0, scale: 1 },
+        placement: {
+          offsetX: 0,
+          offsetY: 0,
+          scale: 1,
+          rotationDeg: 0,
+          flipX: false,
+        },
       });
       return;
     }
-    updateFacePlacement({ offsetX: 0, offsetY: 0, scale: 1 });
+    updateFacePlacement({
+      offsetX: 0,
+      offsetY: 0,
+      scale: 1,
+      rotationDeg: 0,
+      flipX: false,
+    });
   };
 
   useEffect(() => {
@@ -966,7 +1041,19 @@ export function CharacterAssemblyWorkbench({
 
   const left = project.width / 2;
   const top = project.height / 2;
-  const headHandleRect = headContentRect ?? headPart?.localRect ?? null;
+  const headHandleRect = headPart
+    ? transformVisualRectByPart(
+        headContentRect ?? headPart.localRect,
+        headPart,
+      )
+    : null;
+  const headHandlePoint =
+    headHandleRect
+      ? {
+          x: headHandleRect.x + headHandleRect.width,
+          y: headHandleRect.y + headHandleRect.height,
+        }
+      : null;
 
   return (
     <section
@@ -977,10 +1064,14 @@ export function CharacterAssemblyWorkbench({
       data-face-offset-x={session.draft.facePlacement.offsetX}
       data-face-offset-y={session.draft.facePlacement.offsetY}
       data-face-scale={session.draft.facePlacement.scale}
+      data-face-rotation-deg={session.draft.facePlacement.rotationDeg}
+      data-face-flip-x={session.draft.facePlacement.flipX}
       data-head-asset-id={head?.assetId ?? ''}
       data-head-offset-x={head?.placement.offsetX ?? ''}
       data-head-offset-y={head?.placement.offsetY ?? ''}
       data-head-scale={head?.placement.scale ?? ''}
+      data-head-rotation-deg={head?.placement.rotationDeg ?? ''}
+      data-head-flip-x={head?.placement.flipX ?? ''}
       data-head-pivot-x={head?.pivot.x ?? ''}
       data-head-pivot-y={head?.pivot.y ?? ''}
       data-head-motion-test-running={isTestingHeadMotion}
@@ -1074,6 +1165,8 @@ export function CharacterAssemblyWorkbench({
                   height: headPart.localRect.height,
                   left: left + headPart.localRect.x,
                   top: top + headPart.localRect.y,
+                  transform: `rotate(${headPart.rotationDeg}deg) scaleX(${headPart.flipX ? -1 : 1})`,
+                  transformOrigin: 'center',
                   width: headPart.localRect.width,
                 }}
               />
@@ -1089,6 +1182,8 @@ export function CharacterAssemblyWorkbench({
                   height: facePart.localRect.height,
                   left: left + facePart.localRect.x,
                   top: top + facePart.localRect.y,
+                  transform: `rotate(${facePart.rotationDeg}deg) scaleX(${facePart.flipX ? -1 : 1})`,
+                  transformOrigin: 'center',
                   width: facePart.localRect.width,
                 }}
               />
@@ -1126,6 +1221,8 @@ export function CharacterAssemblyWorkbench({
                   left: left + faceRect.x,
                   pointerEvents: isTestingHeadMotion ? 'none' : undefined,
                   top: top + faceRect.y,
+                  transform: `rotate(${facePart.rotationDeg}deg) scaleX(${facePart.flipX ? -1 : 1})`,
+                  transformOrigin: `${facePart.localRect.x + facePart.localRect.width / 2 - faceRect.x}px ${facePart.localRect.y + facePart.localRect.height / 2 - faceRect.y}px`,
                   width: faceRect.width,
                 }}
                 tabIndex={isTestingHeadMotion ? -1 : 0}
@@ -1133,7 +1230,7 @@ export function CharacterAssemblyWorkbench({
             ) : null}
             {head && activeEditTarget === 'head' && !isEditingNeckPivot ? (
               <>
-                {headContentRect ? (
+                {headContentRect && headPart ? (
                   <div
                     aria-label="拖动头部调整位置，使用方向键微调"
                     aria-roledescription="可拖动头部"
@@ -1166,6 +1263,8 @@ export function CharacterAssemblyWorkbench({
                       left: left + headContentRect.x,
                       pointerEvents: isTestingHeadMotion ? 'none' : undefined,
                       top: top + headContentRect.y,
+                      transform: `rotate(${head.placement.rotationDeg}deg) scaleX(${head.placement.flipX ? -1 : 1})`,
+                      transformOrigin: `${headPart.localRect.x + headPart.localRect.width / 2 - headContentRect.x}px ${headPart.localRect.y + headPart.localRect.height / 2 - headContentRect.y}px`,
                       width: headContentRect.width,
                     }}
                     tabIndex={isTestingHeadMotion ? -1 : 0}
@@ -1205,7 +1304,7 @@ export function CharacterAssemblyWorkbench({
                     <span aria-hidden="true" />
                   </button>
                 ) : null}
-                {headHandleRect ? (
+                {headHandleRect && headHandlePoint ? (
                   <button
                     aria-label="调整头部大小，拖动或用方向键微调"
                     className="character-assembly-head-scale-handle"
@@ -1225,8 +1324,8 @@ export function CharacterAssemblyWorkbench({
                     onPointerMove={movePointerDrag}
                     onPointerUp={endPointerDrag}
                     style={{
-                      left: left + headHandleRect.x + headHandleRect.width,
-                      top: top + headHandleRect.y + headHandleRect.height,
+                      left: left + headHandlePoint.x,
+                      top: top + headHandlePoint.y,
                       transform: `translate(-50%, -50%) scale(${1 / Math.max(transform.scale, 0.0001)})`,
                     }}
                     type="button"
@@ -1342,6 +1441,100 @@ export function CharacterAssemblyWorkbench({
                   </div>
                 </>
               )}
+              <div
+                aria-label={`${activeEditTarget === 'head' ? '头部' : '脸部'}角度`}
+                className="character-assembly-control-set character-assembly-angle-control"
+                data-testid="character-assembly-angle-control"
+                role="group"
+              >
+                <span className="character-assembly-control-label">角度</span>
+                <button
+                  aria-label="逆时针旋转1度，按住 Shift 旋转10度"
+                  data-testid={
+                    activeEditTarget === 'head'
+                      ? 'character-assembly-head-rotation-down'
+                      : 'character-assembly-face-rotation-down'
+                  }
+                  disabled={isTestingHeadMotion}
+                  onClick={(event) =>
+                    setTargetRotation(
+                      activeRotationDeg - (event.shiftKey ? 10 : 1),
+                    )
+                  }
+                  type="button"
+                >
+                  −
+                </button>
+                <input
+                  aria-keyshortcuts="ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight"
+                  aria-label={`${activeEditTarget === 'head' ? '头部' : '脸部'}角度，−180度至180度`}
+                  data-testid={
+                    activeEditTarget === 'head'
+                      ? 'character-assembly-head-rotation'
+                      : 'character-assembly-face-rotation'
+                  }
+                  disabled={isTestingHeadMotion}
+                  max={180}
+                  min={-180}
+                  onBlur={() => setRotationInput(String(activeRotationDeg))}
+                  onChange={(event) => {
+                    const raw = event.currentTarget.value;
+                    setRotationInput(raw);
+                    const value = parseAssemblyRotationInput(raw);
+                    if (value !== null) {
+                      setTargetRotation(value);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    const step = event.shiftKey ? 10 : 1;
+                    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+                      event.preventDefault();
+                      setTargetRotation(activeRotationDeg - step);
+                    } else if (
+                      event.key === 'ArrowRight' ||
+                      event.key === 'ArrowUp'
+                    ) {
+                      event.preventDefault();
+                      setTargetRotation(activeRotationDeg + step);
+                    }
+                  }}
+                  step={1}
+                  type="number"
+                  value={rotationInput}
+                />
+                <button
+                  aria-label="顺时针旋转1度，按住 Shift 旋转10度"
+                  data-testid={
+                    activeEditTarget === 'head'
+                      ? 'character-assembly-head-rotation-up'
+                      : 'character-assembly-face-rotation-up'
+                  }
+                  disabled={isTestingHeadMotion}
+                  onClick={(event) =>
+                    setTargetRotation(
+                      activeRotationDeg + (event.shiftKey ? 10 : 1),
+                    )
+                  }
+                  type="button"
+                >
+                  +
+                </button>
+              </div>
+              <button
+                aria-label={`${activeEditTarget === 'head' ? '头部' : '脸部'}水平翻转`}
+                aria-pressed={activeFlipX}
+                className="character-assembly-flip-toggle"
+                data-testid={
+                  activeEditTarget === 'head'
+                    ? 'character-assembly-head-flip-x'
+                    : 'character-assembly-face-flip-x'
+                }
+                disabled={isTestingHeadMotion}
+                onClick={toggleTargetFlipX}
+                type="button"
+              >
+                {activeFlipX ? '已翻转' : '水平翻转'}
+              </button>
               <button
                 className="character-assembly-reset"
                 data-testid="character-assembly-reset"

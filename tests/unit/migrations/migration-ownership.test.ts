@@ -17,8 +17,8 @@ import exampleProject from '../../../demo-project/project-v1.example.json';
 /**
  * Focused lock-in tests for Issue #152 / #217: migration ownership is
  * consolidated into a single `migrateProject` pipeline. `ProjectSchema` is the
- * current (v10) validator only and must never migrate legacy input; every
- * persisted envelope (v0-v9) is resolved through `migrateProject`.
+ * current (v11) validator only and must never migrate legacy input; every
+ * persisted envelope (v0-v10) is resolved through `migrateProject`.
  */
 
 const V0_IDS = {
@@ -169,18 +169,18 @@ describe('migration ownership: current-only validation boundary', () => {
     expect(() => ProjectSchema.parse(exampleProject)).toThrow();
   });
 
-  it('ProjectSchema still validates a current v10 project without migrating', () => {
+  it('ProjectSchema still validates a current v11 project without migrating', () => {
     const current = migrateProject(exampleProject);
     expect(ProjectSchema.parse(current)).toEqual(current);
   });
 });
 
-describe('migration ownership: single pipeline routes every envelope to v10', () => {
+describe('migration ownership: single pipeline routes every envelope to v11', () => {
   it.each([
     ['v0', buildV0()],
     ['formal v1', exampleProject],
     ['legacy probe v1', buildLegacyProbeV1()],
-  ])('migrates %s through migrateProject to v10', (_label, input) => {
+  ])('migrates %s through migrateProject to v11', (_label, input) => {
     const result = migrateProject(input);
     expect(result.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
   });
@@ -195,7 +195,7 @@ describe('migration ownership: single pipeline routes every envelope to v10', ()
     expect(probe.subtitleStyles).toHaveLength(1);
   });
 
-  it('is idempotent on an already-current v10 project', () => {
+  it('is idempotent on an already-current v11 project', () => {
     const current = migrateProject(exampleProject);
     expect(migrateProject(current)).toEqual(current);
   });
@@ -269,5 +269,97 @@ describe('migration ownership: ProjectService.open uses the single pipeline', ()
     expect(detectSchemaVersion(JSON.parse(JSON.stringify(reopened.project)))).toBe(
       PROJECT_SCHEMA_VERSION,
     );
+  });
+
+  it('v10 open -> save -> reopen preserves Head, Face, Pivot, and C02 intensity', async () => {
+    const current = migrateProject(exampleProject);
+    const sourceCharacter = current.characters[0]!;
+    const compositeProject = ProjectSchema.parse({
+      ...current,
+      characters: [
+        {
+          ...sourceCharacter,
+          mode: 'composite',
+          bodyAssetId: sourceCharacter.baseAssetId,
+          facePlacement: {
+            offsetX: 13,
+            offsetY: -7,
+            scale: 0.85,
+            rotationDeg: -30,
+            flipX: true,
+          },
+          head: {
+            assetId: sourceCharacter.baseAssetId,
+            placement: {
+              offsetX: 5,
+              offsetY: -11,
+              scale: 0.9,
+              rotationDeg: 45,
+              flipX: true,
+            },
+            pivot: { x: 30, y: 70 },
+          },
+          talkingHeadMotionIntensityPercent: 160,
+        },
+      ],
+    });
+    const source = compositeProject.characters[0]!;
+    if (source.mode !== 'composite' || !source.head) {
+      throw new Error('Expected a v10 composite Character fixture.');
+    }
+    const v10 = {
+      ...compositeProject,
+      schemaVersion: 10 as const,
+      characters: [
+        {
+          ...source,
+          facePlacement: {
+            offsetX: source.facePlacement.offsetX,
+            offsetY: source.facePlacement.offsetY,
+            scale: source.facePlacement.scale,
+          },
+          head: {
+            ...source.head,
+            placement: {
+              offsetX: source.head.placement.offsetX,
+              offsetY: source.head.placement.offsetY,
+              scale: source.head.placement.scale,
+            },
+          },
+        },
+      ],
+    };
+    const fs = new MemoryProjectFs();
+    fs.seed(ROOT, JSON.stringify(v10));
+    const service = new ProjectService({ fileSystem: fs });
+
+    const opened = await service.open(ROOT);
+    expect(opened.sourceVersion).toBe(10);
+    expect(opened.migrated).toBe(true);
+    expect(opened.project.characters[0]).toMatchObject({
+      mode: 'composite',
+      facePlacement: { rotationDeg: 0, flipX: false },
+      head: {
+        placement: { rotationDeg: 0, flipX: false },
+        pivot: { x: 30, y: 70 },
+      },
+      talkingHeadMotionIntensityPercent: 160,
+    });
+
+    const saved = await service.save(ROOT, opened.project);
+    const reopened = await service.open(ROOT);
+    expect(saved.project.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(saved.migrated).toBe(false);
+    expect(reopened.project).toEqual(saved.project);
+    expect(reopened.migrated).toBe(false);
+    expect(reopened.project.characters[0]).toMatchObject({
+      mode: 'composite',
+      facePlacement: { rotationDeg: 0, flipX: false },
+      head: {
+        placement: { rotationDeg: 0, flipX: false },
+        pivot: { x: 30, y: 70 },
+      },
+      talkingHeadMotionIntensityPercent: 160,
+    });
   });
 });

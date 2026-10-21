@@ -4,6 +4,7 @@ import {
   ProjectSchema,
   ProjectV8Schema,
   ProjectV9Schema,
+  ProjectV10Schema,
   UnsupportedSchemaVersionError,
   detectSchemaVersion,
   inferLegacyBackgroundLayerId,
@@ -261,7 +262,7 @@ describe('project migration framework', () => {
     });
   });
 
-  it('migrates strict v8 composites to v10 with default talking-head intensity', () => {
+  it('migrates strict v8 composites to v11 with default part transforms and intensity', () => {
     const current = migrateProject(exampleProject);
     const sourceCharacter = current.characters[0]!;
     const composite = ProjectSchema.parse({
@@ -281,8 +282,17 @@ describe('project migration framework', () => {
     }
     const {
       talkingHeadMotionIntensityPercent: _intensityPercent,
-      ...v8Character
-    } = currentCharacter;
+      ...currentV8Candidate
+    } =
+      currentCharacter;
+    const v8Character = {
+      ...currentV8Candidate,
+      facePlacement: {
+        offsetX: currentCharacter.facePlacement.offsetX,
+        offsetY: currentCharacter.facePlacement.offsetY,
+        scale: currentCharacter.facePlacement.scale,
+      },
+    };
     expect(_intensityPercent).toBe(100);
     const v8 = {
       ...composite,
@@ -296,20 +306,18 @@ describe('project migration framework', () => {
 
     const migrated = migrateProject(v8);
     expect(v8).toEqual(snapshot);
-    expect(migrated).toEqual({
-      ...v8,
-      schemaVersion: PROJECT_SCHEMA_VERSION,
-      characters: v8.characters.map((character) =>
-        character.mode === 'composite'
-          ? { ...character, talkingHeadMotionIntensityPercent: 100 }
-          : character,
-      ),
-    });
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(migrated.characters[0]).toMatchObject({
       id: sourceCharacter.id,
       mode: 'composite',
       bodyAssetId: sourceCharacter.baseAssetId,
-      facePlacement: { offsetX: 17, offsetY: -8, scale: 0.9 },
+      facePlacement: {
+        offsetX: 17,
+        offsetY: -8,
+        scale: 0.9,
+        rotationDeg: 0,
+        flipX: false,
+      },
       talkingHeadMotionIntensityPercent: 100,
     });
     expect(migrated.characters[0]).not.toHaveProperty('head');
@@ -331,7 +339,7 @@ describe('project migration framework', () => {
     expect(() => ProjectV8Schema.parse(withSmuggledHead)).toThrow();
   });
 
-  it('explicitly migrates v9 Head settings to v10 with a 100 percent default', () => {
+  it('explicitly migrates v9 Head settings to v11 with defaults for new fields', () => {
     const current = migrateProject(exampleProject);
     const sourceCharacter = current.characters[0]!;
     const composite = ProjectSchema.parse({
@@ -351,11 +359,31 @@ describe('project migration framework', () => {
         },
       ],
     });
-    const { talkingHeadMotionIntensityPercent: _oldValue, ...v9Character } =
-      composite.characters[0]! as Extract<
+    const {
+      talkingHeadMotionIntensityPercent: _oldValue,
+      ...currentCharacterV9
+    } = composite.characters[0]! as Extract<
         (typeof composite.characters)[number],
         { mode: 'composite' }
       >;
+    const v9Character = {
+      ...currentCharacterV9,
+      facePlacement: {
+        offsetX: currentCharacterV9.facePlacement.offsetX,
+        offsetY: currentCharacterV9.facePlacement.offsetY,
+        scale: currentCharacterV9.facePlacement.scale,
+      },
+      head: currentCharacterV9.head
+        ? {
+            ...currentCharacterV9.head,
+            placement: {
+              offsetX: currentCharacterV9.head.placement.offsetX,
+              offsetY: currentCharacterV9.head.placement.offsetY,
+              scale: currentCharacterV9.head.placement.scale,
+            },
+          }
+        : undefined,
+    };
     expect(_oldValue).toBe(180);
     const v9 = {
       ...composite,
@@ -370,7 +398,13 @@ describe('project migration framework', () => {
     expect(migrated.characters[0]).toMatchObject({
       mode: 'composite',
       head: {
-        placement: { offsetX: 8, offsetY: -12, scale: 0.9 },
+        placement: {
+          offsetX: 8,
+          offsetY: -12,
+          scale: 0.9,
+          rotationDeg: 0,
+          flipX: false,
+        },
         pivot: { x: 24, y: 62 },
       },
       talkingHeadMotionIntensityPercent: 100,
@@ -407,6 +441,92 @@ describe('project migration framework', () => {
         }).success,
       ).toBe(false);
     }
+  });
+
+  it('explicitly migrates v10 Head/Face transforms while preserving intensity and pivot', () => {
+    const current = migrateProject(exampleProject);
+    const sourceCharacter = current.characters[0]!;
+    const currentWithTransforms = ProjectSchema.parse({
+      ...current,
+      characters: [
+        {
+          ...sourceCharacter,
+          mode: 'composite',
+          bodyAssetId: sourceCharacter.baseAssetId,
+          facePlacement: {
+            offsetX: 17,
+            offsetY: -8,
+            scale: 0.9,
+            rotationDeg: 36,
+            flipX: true,
+          },
+          head: {
+            assetId: sourceCharacter.baseAssetId,
+            placement: {
+              offsetX: 8,
+              offsetY: -12,
+              scale: 0.9,
+              rotationDeg: -21,
+              flipX: true,
+            },
+            pivot: { x: 24, y: 62 },
+          },
+          talkingHeadMotionIntensityPercent: 170,
+        },
+      ],
+    });
+    const currentCharacter = currentWithTransforms.characters[0]!;
+    if (currentCharacter.mode !== 'composite' || !currentCharacter.head) {
+      throw new Error('Expected a v10 composite with Head.');
+    }
+    const v10Character = {
+      ...currentCharacter,
+      facePlacement: {
+        offsetX: currentCharacter.facePlacement.offsetX,
+        offsetY: currentCharacter.facePlacement.offsetY,
+        scale: currentCharacter.facePlacement.scale,
+      },
+      head: {
+        ...currentCharacter.head,
+        placement: {
+          offsetX: currentCharacter.head.placement.offsetX,
+          offsetY: currentCharacter.head.placement.offsetY,
+          scale: currentCharacter.head.placement.scale,
+        },
+      },
+    };
+    const v10 = {
+      ...currentWithTransforms,
+      schemaVersion: 10 as const,
+      characters: [v10Character],
+    };
+    expect(ProjectV10Schema.parse(v10)).toEqual(v10);
+    expect(ProjectSchema.safeParse(v10).success).toBe(false);
+
+    const migrated = migrateProject(v10);
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(migrated.assets).toEqual(v10.assets);
+    expect(migrated.characters[0]).toMatchObject({
+      mode: 'composite',
+      facePlacement: {
+        offsetX: 17,
+        offsetY: -8,
+        scale: 0.9,
+        rotationDeg: 0,
+        flipX: false,
+      },
+      head: {
+        placement: {
+          offsetX: 8,
+          offsetY: -12,
+          scale: 0.9,
+          rotationDeg: 0,
+          flipX: false,
+        },
+        pivot: { x: 24, y: 62 },
+      },
+      talkingHeadMotionIntensityPercent: 170,
+    });
   });
 
   it('explicitly migrates the legacy probe schemaVersion 1 collision', () => {
