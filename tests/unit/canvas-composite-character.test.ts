@@ -516,6 +516,102 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  it('keeps rotated and mirrored Head/Face hit areas aligned with rendered parts', () => {
+    const base = compositeProject({ mouth: false, head: true });
+    const character = base.characters[0]!;
+    if (character.mode !== 'composite' || !character.head) {
+      throw new Error('Expected a headed composite Character.');
+    }
+    const project = ProjectSchema.parse({
+      ...base,
+      characters: [
+        {
+          ...character,
+          facePlacement: {
+            ...character.facePlacement,
+            rotationDeg: 90,
+            flipX: true,
+          },
+          head: {
+            ...character.head,
+            placement: {
+              ...character.head.placement,
+              rotationDeg: -12,
+              flipX: true,
+            },
+          },
+        },
+      ],
+    });
+    const { model } = selectableComposite(
+      project,
+      0,
+      [BODY_ID, HEAD_ID, FACE_NORMAL_ID],
+    );
+    const element = SelectableLayer({
+      images: imageMap([BODY_ID, HEAD_ID, FACE_NORMAL_ID]),
+      layer: model.layer,
+      nodeRef: { current: null },
+      render: model.render,
+      selected: true,
+      visual: model.visual,
+      onSelect: vi.fn(),
+      onCommitPosition: vi.fn(),
+      onCommitTransform: vi.fn(),
+      onError: vi.fn(),
+    });
+    const children = childElements(
+      (element.props as { children: React.ReactNode }).children,
+    );
+    const headGroup = children.find(
+      (child) =>
+        child.type === Group &&
+        (child.props as { name?: string }).name ===
+          'selectable-canvas-head-group',
+    );
+    const headHitGroup = children.find(
+      (child) =>
+        child.type === Group &&
+        (child.props as { name?: string }).name ===
+          'selectable-canvas-head-hit-group',
+    );
+    const renderedParts = headGroup
+      ? childElements(
+          (headGroup.props as { children?: React.ReactNode }).children,
+        ).filter((child) => child.type === KonvaImage)
+      : [];
+    const hitAreas = headHitGroup
+      ? childElements(
+          (headHitGroup.props as { children?: React.ReactNode }).children,
+        ).filter(
+          (child) =>
+            child.type === Rect &&
+            (child.props as { name?: string }).name ===
+              'composite-visual-hit-area',
+        )
+      : [];
+    const transform = (part: React.ReactElement) => {
+      const props = part.props as Record<string, number>;
+      return {
+        offsetX: props.offsetX,
+        offsetY: props.offsetY,
+        rotation: props.rotation,
+        scaleX: props.scaleX,
+        scaleY: props.scaleY,
+        x: props.x,
+        y: props.y,
+      };
+    };
+
+    expect(renderedParts).toHaveLength(2);
+    expect(hitAreas).toHaveLength(2);
+    expect(hitAreas.map(transform)).toEqual(renderedParts.map(transform));
+    expect(renderedParts.map(transform)).toMatchObject([
+      { rotation: -12, scaleX: -1, scaleY: 1 },
+      { rotation: 90, scaleX: -1, scaleY: 1 },
+    ]);
+  });
+
   it('refreshes combined bounds from Face source while keeping the root position stable', () => {
     const project = compositeProject({ mouth: false });
     const shot = project.shots[0]!;
