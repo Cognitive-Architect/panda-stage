@@ -3880,23 +3880,33 @@ async function verifyIssue815FineTuneTimelineOverlay(window) {
   }
   evidence.headControlsReached = headControls;
 
-  evidence.faceTargetSwitch = await window.webContents.executeJavaScript(`(() => {
-    const control = document.querySelector('[data-testid="character-assembly-edit-face"]');
-    if (!control) return { present: false };
-    const style = getComputedStyle(control);
-    const rect = control.getBoundingClientRect();
-    const result = {
-      present: true,
-      display: style.display,
-      visibility: style.visibility,
-      rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-      activation: 'programmatic DOM click; landscape target picker is CSS-hidden',
-    };
-    control.click();
-    return result;
-  })()`);
-  assert(evidence.faceTargetSwitch.present, 'Issue 815 Face target control did not render.');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Close Head panel before selecting Face',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\') === null',
+    'Issue 815 Head panel did not close before selecting Face.',
+  );
+  evidence.faceTargetSwitch = await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-default-face-select"]',
+    'Switch fine tune target to Face from the visible default-face card',
+  );
   await waitForDom(window, workbenchQuery + '?.dataset.editTarget === "face"', 'Issue 815 Face target did not activate.');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Open Face fine tune panel',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+    'Issue 815 Face fine tune panel did not open.',
+  );
+  await waitForPaint(window);
   layout = await readLayout();
   assertRepairedLayout(layout, 'Face panel after target switch');
   const faceControls = [
@@ -3912,6 +3922,37 @@ async function verifyIssue815FineTuneTimelineOverlay(window) {
     await waitForPaint(window);
   }
   evidence.faceControlsReached = faceControls;
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Close Face panel before selecting Head',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\') === null',
+    'Issue 815 Face panel did not close before selecting Head.',
+  );
+  evidence.headTargetSwitchBack = await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-head-asset-selected"]',
+    'Switch fine tune target back to Head from the visible head card',
+  );
+  await waitForDom(window, workbenchQuery + '?.dataset.editTarget === "head"', 'Issue 815 Head target did not reactivate.');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Reopen Head fine tune panel after target switch',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+    'Issue 815 Head fine tune panel did not reopen after target switch.',
+  );
+  await waitForPaint(window);
+  layout = await readLayout();
+  assertRepairedLayout(layout, 'Head panel after target switch back');
+  evidence.reopenHeadAfterFace = layout;
 
   window.setSize(1120, 820);
   await wait(180);
