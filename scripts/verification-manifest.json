@@ -361,6 +361,7 @@
           "tests/integration/project-lifecycle.test.ts",
           "tests/contract/fixtures/ci-routing/core/**",
           "tests/unit/ipc-contracts.test.ts",
+          "tests/unit/project-api-contracts.test.ts",
           "tests/unit/bfm-s01-character-schema.test.ts",
           "tests/unit/bfm-s02-character-commands.test.ts",
           "tests/unit/models/project-v1.test.ts",
@@ -458,7 +459,7 @@
           "public/character-empty-normal.png",
           "public/character-empty-angry.png"
         ],
-        "testPatterns": ["tests/unit/character-*.test.ts", "tests/unit/legacy-character-layer-reminder.test.ts", "tests/integration/character-*.test.ts"],
+        "testPatterns": ["tests/unit/character-*.test.ts", "tests/unit/issue815-talking-head-settings.test.ts", "tests/unit/legacy-character-layer-reminder.test.ts", "tests/integration/character-*.test.ts"],
         "verifierPatterns": [
           "scripts/verify-day19*",
           "scripts/verify-issue609-character-assembly.cjs"
