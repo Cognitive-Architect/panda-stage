@@ -82,12 +82,25 @@ describe('AutosaveService', () => {
     });
 
     expect(service.getProjectSnapshot(PROJECT_ROOT)?.openInstanceId).toBe(11);
+    service.update({
+      projectRoot: PROJECT_ROOT,
+      project: project('Same-instance edit'),
+      dirty: true,
+      revision: 1,
+      openInstanceId: 11,
+    });
+    expect(service.getProjectSnapshot(PROJECT_ROOT)).toMatchObject({
+      project: { name: 'Same-instance edit' },
+      dirty: true,
+      revision: 1,
+      openInstanceId: 11,
+    });
     expect(() =>
       service.update({
         projectRoot: PROJECT_ROOT,
-        project: project('Session identity'),
-        dirty: false,
-        revision: 0,
+        project: project('Same-instance edit'),
+        dirty: true,
+        revision: 2,
         openInstanceId: 12,
       }),
     ).toThrow(/open Project instance mismatch/u);
