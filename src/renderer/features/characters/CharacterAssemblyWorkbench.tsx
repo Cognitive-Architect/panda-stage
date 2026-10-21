@@ -317,6 +317,39 @@ export function CharacterAssemblyWorkbench({
 
     const placePanel = (): void => {
       const viewportBounds = viewport.getBoundingClientRect();
+      const dock = document.querySelector<HTMLElement>(
+        '[data-testid="resource-activity-dock"]',
+      );
+      const drawer = document.querySelector<HTMLElement>(
+        '[data-testid="resource-activity-drawer"]',
+      );
+      const drawerBounds = drawer?.getBoundingClientRect();
+      const drawerStyle = drawer ? window.getComputedStyle(drawer) : null;
+      const drawerOverlapsViewport = Boolean(
+        drawerBounds &&
+          drawerBounds.left < viewportBounds.right &&
+          drawerBounds.right > viewportBounds.left &&
+          drawerBounds.top < viewportBounds.bottom &&
+          drawerBounds.bottom > viewportBounds.top,
+      );
+      const drawerCoversCanvas = Boolean(
+        dock?.dataset.resourceDrawerOpen === 'true' &&
+          drawerBounds &&
+          drawerStyle?.display !== 'none' &&
+          drawerStyle?.visibility === 'visible' &&
+          Number(drawerStyle.opacity) >= 0.99 &&
+          drawerBounds.width > 0 &&
+          drawerBounds.height > 0 &&
+          drawerOverlapsViewport,
+      );
+      const visibleCanvasLeft = drawerCoversCanvas && drawerBounds
+        ? Math.max(viewportBounds.left, drawerBounds.right)
+        : viewportBounds.left;
+      const visibleCanvasRight = viewportBounds.right;
+      const visibleCanvasWidth = Math.max(
+        0,
+        visibleCanvasRight - visibleCanvasLeft,
+      );
       const contentBounds = [
         ...viewport.querySelectorAll<HTMLElement>(
           '.character-assembly-part, [data-testid="character-assembly-face-drag-target"], [data-testid="character-assembly-head-drag-fallback"], [data-testid="character-assembly-head-scale-handle"], [data-testid="character-assembly-head-pivot-marker"]',
@@ -331,23 +364,29 @@ export function CharacterAssemblyWorkbench({
           : right;
       }, { left: viewportBounds.right, right: viewportBounds.left });
       const freeRightWidth = Math.floor(
-        viewportBounds.right - contentBounds.right - 16,
+        visibleCanvasRight - contentBounds.right - 16,
       );
       const freeLeftWidth = Math.floor(
-        contentBounds.left - viewportBounds.left - 16,
+        contentBounds.left - visibleCanvasLeft - 16,
       );
-      const side = freeLeftWidth > freeRightWidth ? 'left' : 'right';
-      const freeSideWidth = Math.max(freeLeftWidth, freeRightWidth);
-      const width =
-        freeSideWidth >= 72
-          ? Math.min(280, freeSideWidth)
-          : Math.min(280, Math.max(0, viewportBounds.width - 16));
+      const side = freeRightWidth >= 72
+        ? 'right'
+        : freeLeftWidth >= 72
+          ? 'left'
+          : 'right';
+      const freeSideWidth = side === 'right' ? freeRightWidth : freeLeftWidth;
+      const constrained = freeSideWidth < 72;
+      const width = constrained
+        ? Math.min(280, Math.max(0, visibleCanvasWidth - 16))
+        : Math.min(280, freeSideWidth);
       panel.style.width = `${width}px`;
-      panel.style.left = side === 'left' ? '8px' : 'auto';
+      panel.style.left = side === 'left'
+        ? `${visibleCanvasLeft - viewportBounds.left + 8}px`
+        : 'auto';
       panel.style.right = side === 'right' ? '8px' : 'auto';
       panel.dataset.overlaySide = side;
       panel.dataset.overlayLayout =
-        freeSideWidth < 72
+        constrained
           ? 'constrained'
           : width < 160
             ? 'narrow'
@@ -357,7 +396,10 @@ export function CharacterAssemblyWorkbench({
     placePanel();
     const observer = new ResizeObserver(placePanel);
     observer.observe(viewport);
-    observer.observe(panel);
+    const drawer = document.querySelector<HTMLElement>(
+      '[data-testid="resource-activity-drawer"]',
+    );
+    if (drawer) observer.observe(drawer);
     window.addEventListener('resize', placePanel);
     return () => {
       observer.disconnect();

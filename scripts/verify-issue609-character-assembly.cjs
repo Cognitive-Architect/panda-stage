@@ -17,10 +17,13 @@ const issue792Only = process.argv.includes('--issue792-mouth-overflow');
 const issue797Only = process.argv.includes('--issue797-head-face-edit');
 const issue798Only = process.argv.includes('--issue798-add-to-shot-navigation');
 const issue799Only = process.argv.includes('--issue799-layout-reuse');
+const issue815BaselineOnly = process.argv.includes('--issue815-c03-f01-baseline');
+const issue815Only = process.argv.includes('--issue815-c03-f01');
+const issue815Run = issue815BaselineOnly || issue815Only;
 const issue813Only = process.argv.includes('--issue813-assembly-canvas-space');
 const issue813BaselineOnly = process.argv.includes('--issue813-baseline');
 const issue813Run = issue813Only || issue813BaselineOnly;
-const focusedCharacterDrawerRun = issue792Only || issue797Only || issue798Only || issue799Only || issue813Run;
+const focusedCharacterDrawerRun = issue792Only || issue797Only || issue798Only || issue799Only || issue813Run || issue815Run;
 const ISSUE683_BASELINE_SHA = 'bed0b353f40238bfd820861c0e5349f0e101e977';
 
 // Bounded S07 proof: use the production Character drawer, Assembly workbench,
@@ -28,7 +31,11 @@ const ISSUE683_BASELINE_SHA = 'bed0b353f40238bfd820861c0e5349f0e101e977';
 // a real Windows Electron renderer. The Issue #612 Create-drawer contract is
 // included; synthetic fixture bytes stay outside the repository, and the
 // receipt does not claim human visual acceptance.
-const acceptanceRoot = issue813BaselineOnly
+const acceptanceRoot = issue815BaselineOnly
+  ? 'D:\\PandaStage-Acceptance\\issue815-c03-f01\\baseline'
+  : issue815Only
+    ? 'D:\\PandaStage-Acceptance\\issue815-c03-f01\\after'
+    : issue813BaselineOnly
   ? 'D:\\PandaStage-Acceptance\\issue813-assembly-canvas-space\\baseline'
   : issue813Only
     ? 'D:\\PandaStage-Acceptance\\issue813-assembly-canvas-space'
@@ -48,7 +55,9 @@ const userDataRoot = path.join(runRoot, 'electron-user-data');
 const projectRoot = path.join(
   runRoot,
   'projects',
-  issue813Run
+  issue815Run
+    ? 'issue815-c03-f01.pandastage'
+    : issue813Run
     ? 'issue813-assembly-canvas-space.pandastage'
     : issue799Only
       ? 'issue799-layout-reuse.pandastage'
@@ -316,8 +325,10 @@ function createFixture() {
   const issue792Character = {
     id: IDS.issue792Character,
     mode: 'composite',
-    name: issue813Run
-      ? 'Issue 813 Assembly Space Panda'
+    name: issue815Run
+      ? 'Issue 815 Fine Tune Panda'
+      : issue813Run
+        ? 'Issue 813 Assembly Space Panda'
       : issue798Only
         ? '角色详情导航长名称验收熊猫'
         : issue797Only
@@ -510,7 +521,7 @@ function createFixture() {
           issue799RatioCharacter,
           issue799MissingCharacter,
         ]
-      : issue792Only || issue797Only || issue798Only || issue813Run
+      : issue792Only || issue797Only || issue798Only || issue813Run || issue815Run
         ? [
             legacyCharacter,
             issue792Character,
@@ -526,7 +537,7 @@ function createFixture() {
         rate: 1,
         pitch: 0,
       },
-      ...(issue792Only || issue797Only || issue798Only || issue813Run
+      ...(issue792Only || issue797Only || issue798Only || issue813Run || issue815Run
         ? [{
             id: IDS.issue792VoiceProfile,
             name: 'Issue 792 Panda voice',
@@ -1120,6 +1131,36 @@ async function sendPointerClick(window, x, y) {
   window.webContents.sendInputEvent({ type: 'mouseMove', ...point });
   window.webContents.sendInputEvent({ type: 'mouseDown', ...point, button: 'left', clickCount: 1 });
   window.webContents.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 });
+}
+
+async function sendPointerDrag(window, startX, startY, endX, endY) {
+  window.focus();
+  window.webContents.focus();
+  const start = { x: Math.round(startX), y: Math.round(startY) };
+  const end = { x: Math.round(endX), y: Math.round(endY) };
+  window.webContents.sendInputEvent({ type: 'mouseMove', ...start });
+  await wait(40);
+  window.webContents.sendInputEvent({ type: 'mouseDown', ...start, button: 'left', clickCount: 1 });
+  await wait(40);
+  const distance = Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y));
+  const steps = Math.max(1, Math.ceil(distance / 8));
+  let previous = start;
+  for (let step = 1; step <= steps; step += 1) {
+    const next = {
+      x: Math.round(start.x + ((end.x - start.x) * step) / steps),
+      y: Math.round(start.y + ((end.y - start.y) * step) / steps),
+    };
+    window.webContents.sendInputEvent({
+      type: 'mouseMove',
+      ...next,
+      movementX: next.x - previous.x,
+      movementY: next.y - previous.y,
+    });
+    previous = next;
+    await wait(20);
+  }
+  window.webContents.sendInputEvent({ type: 'mouseUp', ...end, button: 'left', clickCount: 1 });
+  await wait(40);
 }
 
 async function clickWithNativeInput(window, selector, label = selector) {
@@ -3441,6 +3482,470 @@ async function verifyIssue792MouthOverflow(window) {
   };
 }
 
+async function verifyIssue815FineTuneTimelineOverlay(window) {
+  const screenshots = [];
+  const evidence = {};
+  inProgressEvidence = evidence;
+  const workbenchSelector = '[data-testid="character-assembly-workbench"]';
+  const workbenchQuery = 'document.querySelector(' + JSON.stringify(workbenchSelector) + ')';
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-list-view"] [data-character-id="' + IDS.issue792Character + '"]',
+    'Issue 815 Head + Face Character card',
+  );
+  await waitForDom(
+    window,
+    'document.querySelector(\'[data-testid="character-detail-view"]\')?.dataset.characterEditorId === ' +
+      JSON.stringify(IDS.issue792Character),
+    'Issue 815 Character detail did not open.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-workspace-expressions-tab"]',
+    'Keep timeline active before entering Assembly',
+  );
+  await waitForDom(
+    window,
+    'document.querySelector(\'[data-testid="bottom-workspace"]\')?.dataset.characterAssemblyInactive === "false"',
+    'Issue 815 timeline was not active before entering Assembly.',
+  );
+  await waitForPaint(window);
+
+  const readLayoutScript = `(() => {
+    const rect = (element) => {
+      const bounds = element?.getBoundingClientRect();
+      return bounds && {
+        x: Math.round(bounds.x * 10) / 10,
+        y: Math.round(bounds.y * 10) / 10,
+        width: Math.round(bounds.width * 10) / 10,
+        height: Math.round(bounds.height * 10) / 10,
+        right: Math.round(bounds.right * 10) / 10,
+        bottom: Math.round(bounds.bottom * 10) / 10,
+      };
+    };
+    const style = (element) => {
+      if (!element) return null;
+      const computed = getComputedStyle(element);
+      return {
+        display: computed.display,
+        visibility: computed.visibility,
+        opacity: computed.opacity,
+        zIndex: computed.zIndex,
+        overflow: computed.overflow,
+        overflowX: computed.overflowX,
+        overflowY: computed.overflowY,
+        position: computed.position,
+        pointerEvents: computed.pointerEvents,
+      };
+    };
+    const intersects = (left, right) => Boolean(left && right
+      && left.x < right.right && left.right > right.x
+      && left.y < right.bottom && left.bottom > right.y);
+    const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    const viewport = workbench?.querySelector('[data-testid="character-assembly-preview"]');
+    const trigger = workbench?.querySelector('[data-testid="character-assembly-fine-tune-toggle"]');
+    const panel = workbench?.querySelector('[data-testid="character-assembly-fine-tune-panel"]');
+    const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+    const drawer = document.querySelector('[data-testid="resource-activity-drawer"]');
+    const timeline = document.querySelector('[data-testid="timeline-resize-handle"]');
+    const viewportRect = rect(viewport);
+    const panelRect = rect(panel);
+    const drawerRect = rect(drawer);
+    const triggerRect = rect(trigger);
+    const viewportStyle = style(viewport);
+    const panelStyle = style(panel);
+    const dockStyle = style(dock);
+    const drawerStyle = style(drawer);
+    const drawerVisible = dock?.dataset.resourceDrawerOpen === 'true'
+      && drawerStyle?.display !== 'none'
+      && drawerStyle?.visibility === 'visible'
+      && Number(drawerStyle?.opacity ?? 1) > 0
+      && Boolean(drawerRect?.width > 0 && drawerRect?.height > 0);
+    const visibleCanvas = viewportRect && {
+      x: Math.max(viewportRect.x, drawerVisible ? drawerRect.right : viewportRect.x),
+      y: viewportRect.y,
+      right: viewportRect.right,
+      bottom: viewportRect.bottom,
+      width: Math.max(0, viewportRect.right - Math.max(viewportRect.x, drawerVisible ? drawerRect.right : viewportRect.x)),
+      height: viewportRect.height,
+    };
+    const buttonReachability = [...(panel?.querySelectorAll('button, input') ?? [])].map((element) => {
+      const bounds = rect(element);
+      const computed = style(element);
+      const x = bounds ? Math.round(bounds.x + bounds.width / 2) : -1;
+      const y = bounds ? Math.round(bounds.y + bounds.height / 2) : -1;
+      const hit = x >= 0 && y >= 0 ? document.elementFromPoint(x, y) : null;
+      return {
+        testId: element.dataset.testid ?? '',
+        rect: bounds,
+        style: computed,
+        disabled: Boolean(element.disabled),
+        hitTarget: Boolean(hit && (hit === element || element.contains(hit))),
+        hitTestId: hit?.closest('[data-testid]')?.getAttribute('data-testid') ?? '',
+        hitByDrawer: Boolean(hit && drawer?.contains(hit)),
+      };
+    });
+    const controlsReachable = buttonReachability.some((control) => control.hitTarget && !control.disabled);
+    const panelVisible = Boolean(panelRect?.width > 0 && panelRect?.height > 0
+      && panelStyle?.display !== 'none'
+      && panelStyle?.visibility === 'visible'
+      && Number(panelStyle?.opacity ?? 1) > 0);
+    const panelInsideViewport = Boolean(panelRect && viewportRect
+      && panelRect.x >= viewportRect.x - 1
+      && panelRect.right <= viewportRect.right + 1
+      && panelRect.y >= viewportRect.y - 1
+      && panelRect.bottom <= viewportRect.bottom + 1);
+    const panelOverlapsDrawer = drawerVisible && intersects(panelRect, drawerRect);
+    const panelOverlapsVisibleCanvas = intersects(panelRect, visibleCanvas);
+    const panelOccludedByDrawer = panelOverlapsDrawer
+      && buttonReachability.some((control) => control.hitByDrawer);
+    let classification = 'visible';
+    if (trigger?.getAttribute('aria-expanded') === 'true' && !panel) classification = 'unmounted';
+    else if (panel && !panelVisible) classification = 'hidden';
+    else if (panel && panelOccludedByDrawer) classification = 'covered';
+    else if (panel && (!panelInsideViewport || !panelOverlapsVisibleCanvas)) classification = 'clipped';
+    else if (panel && !controlsReachable) classification = 'covered';
+    const clippingAncestors = [];
+    for (let ancestor = panel?.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      const computed = getComputedStyle(ancestor);
+      if (computed.overflowX !== 'visible' || computed.overflowY !== 'visible') {
+        clippingAncestors.push({
+          testId: ancestor.getAttribute('data-testid') ?? '',
+          className: typeof ancestor.className === 'string' ? ancestor.className : '',
+          rect: rect(ancestor),
+          overflowX: computed.overflowX,
+          overflowY: computed.overflowY,
+        });
+      }
+    }
+    return {
+      shellMode: document.querySelector('[data-testid="editor-layout"]')?.dataset.shellMode ?? '',
+      viewportSize: { width: window.innerWidth, height: window.innerHeight },
+      devicePixelRatio: window.devicePixelRatio,
+      characterId: workbench?.dataset.characterId ?? '',
+      sessionKind: workbench?.dataset.sessionKind ?? '',
+      editTarget: workbench?.dataset.editTarget ?? '',
+      drawerOpen: drawerVisible,
+      viewport: viewportRect,
+      viewportStyle,
+      drawer: drawerRect,
+      drawerStyle,
+      dock: rect(dock),
+      dockStyle,
+      timeline: timeline ? {
+        rect: rect(timeline),
+        valueMin: Number(timeline.getAttribute('aria-valuemin')),
+        valueMax: Number(timeline.getAttribute('aria-valuemax')),
+        valueNow: Number(timeline.getAttribute('aria-valuenow')),
+        focused: document.activeElement === timeline,
+      } : null,
+      trigger: trigger ? {
+        ariaExpanded: trigger.getAttribute('aria-expanded'),
+        rect: triggerRect,
+        style: style(trigger),
+        disabled: trigger.disabled,
+        focused: document.activeElement === trigger,
+      } : null,
+      panelExists: Boolean(panel),
+      panel: panelRect,
+      panelStyle,
+      panelVisible,
+      panelInsideViewport,
+      panelOverlapsDrawer,
+      panelOccludedByDrawer,
+      visibleCanvas,
+      panelOverlapsVisibleCanvas,
+      controlsReachable,
+      buttonReachability,
+      panelLayout: panel?.dataset.overlayLayout ?? '',
+      overlaySide: panel?.dataset.overlaySide ?? '',
+      panelScroll: panel ? { top: panel.scrollTop, height: panel.clientHeight, scrollHeight: panel.scrollHeight } : null,
+      clippingAncestors,
+      classification,
+    };
+  })()`;
+  const readLayout = async () => ({
+    ...(await window.webContents.executeJavaScript(readLayoutScript)),
+    zoomFactor: window.webContents.getZoomFactor(),
+  });
+  const assertRepairedLayout = (layout, label) => {
+    assert(layout.trigger?.ariaExpanded === 'true', label + ' did not keep aria-expanded=true.');
+    assert(layout.panelExists, label + ' unmounted the fine tune panel.');
+    assert(layout.panelVisible, label + ' hid the fine tune panel: ' + JSON.stringify(layout));
+    assert(layout.panel.width > 0 && layout.panel.height > 0, label + ' has no panel bounding area.');
+    assert(layout.panelInsideViewport, label + ' clipped the panel outside the preview viewport.');
+    assert(!layout.panelOccludedByDrawer, label + ' put fine tune controls behind the left resource drawer.');
+    assert(layout.panelOverlapsVisibleCanvas, label + ' did not overlap the visible canvas area.');
+    assert(layout.controlsReachable, label + ' made the controls unreachable.');
+  };
+  const setTimelineToValue = async (requestedTarget, label) => {
+    const before = await readLayout();
+    const timeline = before.timeline;
+    assert(timeline?.rect && Number.isFinite(timeline.valueNow), label + ' has no timeline resize handle.');
+    const target = Math.max(timeline.valueMin, Math.min(timeline.valueMax, Math.round(requestedTarget)));
+    await clickWithNativeInput(window, '[data-testid="timeline-resize-handle"]', 'Timeline resize handle');
+    const displayScale = screen.getDisplayMatching(window.getBounds()).scaleFactor;
+    const inputScale = await window.webContents.executeJavaScript('window.devicePixelRatio') / displayScale;
+    const startX = (timeline.rect.x + timeline.rect.width / 2) * inputScale;
+    const startY = (timeline.rect.y + timeline.rect.height / 2) * inputScale;
+    const endY = (timeline.rect.y + timeline.rect.height / 2 + timeline.valueNow - target) * inputScale;
+    await sendPointerDrag(window, startX, startY, startX, endY);
+    await waitForPaint(window);
+    const after = await readLayout();
+    evidence.timelineTransitions ??= [];
+    evidence.timelineTransitions.push({ label, before: timeline.valueNow, target, after: after.timeline.valueNow });
+    assert(after.timeline.valueNow === target,
+      label + ' did not reach the requested timeline height: ' + JSON.stringify({ before: timeline, target, after: after.timeline }));
+    return { ...after, requestedTarget: target };
+  };
+  const setTimelineToFraction = async (fraction, label) => {
+    const before = await readLayout();
+    const target = before.timeline.valueMin + (before.timeline.valueMax - before.timeline.valueMin) * fraction;
+    return { ...(await setTimelineToValue(target, label)), requestedFraction: fraction };
+  };
+  const enterAssemblyAndOpenPanel = async () => {
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-workspace-assembly-tab"]',
+      'Assembly workspace tab',
+    );
+    await waitForDom(
+      window,
+      workbenchQuery + '?.dataset.sessionKind === "edit"',
+      'Issue 815 Character did not enter the Assembly Workbench.',
+    );
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-assembly-fine-tune-toggle"]',
+      'Open Head fine tune panel',
+    );
+    await waitForDom(
+      window,
+      workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+      'Issue 815 fine tune panel did not open.',
+    );
+    await waitForPaint(window);
+  };
+  const leaveAssemblyForTimeline = async () => {
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-workspace-expressions-tab"]',
+      'Leave Assembly to resize the timeline',
+    );
+    await waitForDom(
+      window,
+      'document.querySelector(\'[data-testid="bottom-workspace"]\')?.dataset.characterAssemblyInactive === "false"',
+      'Issue 815 timeline did not become active after leaving Assembly.',
+    );
+    await waitForPaint(window);
+  };
+  const recordSample = async (name, layout) => {
+    const screenshot = await capture(window, 'issue815-' + (issue815BaselineOnly ? 'before-' : 'after-') + name + '.png');
+    screenshots.push(screenshot);
+    const sample = { name, screenshot, ...layout };
+    evidence.timelineSamples.push(sample);
+    return sample;
+  };
+
+  evidence.timelineSamples = [];
+  evidence.fixture = {
+    kind: 'synthetic-head-plus-face',
+    characterId: IDS.issue792Character,
+    projectRoot,
+    note: 'Owner-supplied black-robed art is not included in this local harness fixture.',
+  };
+  const minimumLayout = await setTimelineToFraction(0, 'Minimum timeline height before Assembly');
+  const minHeight = minimumLayout.timeline.valueMin;
+  const maxHeight = minimumLayout.timeline.valueMax;
+  assert(Number.isFinite(minHeight) && Number.isFinite(maxHeight) && maxHeight > minHeight,
+    'Issue 815 timeline did not expose a resizable height range: ' + JSON.stringify(minimumLayout.timeline));
+  await enterAssemblyAndOpenPanel();
+  evidence.initialLayout = await readLayout();
+  let layout = evidence.initialLayout;
+  const samples = [];
+  samples.push(await recordSample('low', layout));
+  let previousHeight = layout.timeline.valueNow;
+  for (let step = 1; step <= 64 && previousHeight < maxHeight; step += 1) {
+    await leaveAssemblyForTimeline();
+    const resized = await setTimelineToValue(previousHeight + 16, 'Timeline height step ' + step);
+    if (resized.timeline.valueNow === previousHeight) break;
+    previousHeight = resized.timeline.valueNow;
+    await enterAssemblyAndOpenPanel();
+    layout = await readLayout();
+    assert(layout.timeline.valueNow === previousHeight,
+      'Issue 815 timeline height changed while entering Assembly: ' + JSON.stringify({ resized: resized.timeline, reopened: layout.timeline }));
+    samples.push(await recordSample('height-' + String(previousHeight).replace('.', '-'), layout));
+  }
+  const low = samples[0];
+  const high = samples.at(-1);
+  const middleSamples = samples.filter((sample) => sample.timeline.valueNow > minHeight && sample.timeline.valueNow < maxHeight);
+  const failingMiddle = middleSamples.find((sample) => sample.classification !== 'visible');
+  evidence.heightRange = { min: minHeight, max: maxHeight, sampleCount: samples.length };
+  evidence.low = low;
+  evidence.middleFailure = failingMiddle ?? null;
+  evidence.high = high;
+
+  if (issue815BaselineOnly) {
+    return {
+      issue: 815,
+      code: 'C03-F01',
+      passed: true,
+      baseline: true,
+      reproduced: Boolean(failingMiddle),
+      ownerPatternReproduced: low.classification === 'visible'
+        && high.classification === 'visible'
+        && Boolean(failingMiddle),
+      failureClassification: failingMiddle?.classification ?? low.classification,
+      commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+      verificationGate: 'issue815-c03-f01-baseline',
+      projectRoot,
+      syntheticInput: true,
+      humanAcceptance: false,
+      evidenceKind: 'real-windows-electron-middle-timeline-height-overlay-diagnostics',
+      evidence,
+      screenshots,
+    };
+  }
+
+  for (const sample of samples) {
+    assertRepairedLayout(sample, 'Timeline height ' + sample.timeline.valueNow + 'px');
+  }
+
+  await leaveAssemblyForTimeline();
+  evidence.middleSetup = await setTimelineToValue(
+    maxHeight - 16,
+    'Head control middle height before Assembly',
+  );
+  await enterAssemblyAndOpenPanel();
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-fine-tune-toggle"]', 'Close Head fine tune panel');
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\') === null',
+    'Issue 815 fine tune panel did not close.',
+  );
+  const closed = await readLayout();
+  assert(closed.trigger?.ariaExpanded === 'false' && !closed.panelExists, 'Issue 815 close state did not match aria-expanded.');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-fine-tune-toggle"]', 'Reopen Head fine tune panel');
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+    'Issue 815 fine tune panel did not reopen.',
+  );
+  layout = await readLayout();
+  assertRepairedLayout(layout, 'Reopened Head panel');
+  evidence.reopen = layout;
+  screenshots.push(await capture(window, 'issue815-after-reopen.png'));
+
+  await sendKeyStroke(window, 'ESC');
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\') === null',
+    'Issue 815 Escape did not close the fine tune panel.',
+  );
+  await waitForPaint(window);
+  const escaped = await readLayout();
+  assert(escaped.trigger?.ariaExpanded === 'false' && !escaped.panelExists,
+    'Issue 815 Escape did not update the fine tune trigger state.');
+  assert(escaped.trigger?.focused, 'Issue 815 Escape did not return focus to the fine tune trigger.');
+  evidence.keyboardEscape = escaped;
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Reopen Head fine tune panel after Escape',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+    'Issue 815 fine tune panel did not reopen after Escape.',
+  );
+  await waitForPaint(window);
+  layout = await readLayout();
+  assertRepairedLayout(layout, 'Head panel reopened after Escape');
+  evidence.reopenAfterEscape = layout;
+  screenshots.push(await capture(window, 'issue815-after-escape-reopen.png'));
+
+  const headControls = [
+    'character-assembly-head-left-step',
+    'character-assembly-head-right-step',
+    'character-assembly-head-rotation-down',
+    'character-assembly-head-rotation-up',
+    'character-assembly-head-flip-x',
+    'character-assembly-reset',
+  ];
+  for (const control of headControls) {
+    await clickWithNativeInput(window, '[data-testid="' + control + '"]', 'Reach Head control ' + control);
+    await waitForPaint(window);
+  }
+  evidence.headControlsReached = headControls;
+
+  evidence.faceTargetSwitch = await window.webContents.executeJavaScript(`(() => {
+    const control = document.querySelector('[data-testid="character-assembly-edit-face"]');
+    if (!control) return { present: false };
+    const style = getComputedStyle(control);
+    const rect = control.getBoundingClientRect();
+    const result = {
+      present: true,
+      display: style.display,
+      visibility: style.visibility,
+      rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+      activation: 'programmatic DOM click; landscape target picker is CSS-hidden',
+    };
+    control.click();
+    return result;
+  })()`);
+  assert(evidence.faceTargetSwitch.present, 'Issue 815 Face target control did not render.');
+  await waitForDom(window, workbenchQuery + '?.dataset.editTarget === "face"', 'Issue 815 Face target did not activate.');
+  layout = await readLayout();
+  assertRepairedLayout(layout, 'Face panel after target switch');
+  const faceControls = [
+    'character-assembly-left-step',
+    'character-assembly-right-step',
+    'character-assembly-face-rotation-down',
+    'character-assembly-face-rotation-up',
+    'character-assembly-face-flip-x',
+    'character-assembly-reset',
+  ];
+  for (const control of faceControls) {
+    await clickWithNativeInput(window, '[data-testid="' + control + '"]', 'Reach Face control ' + control);
+    await waitForPaint(window);
+  }
+  evidence.faceControlsReached = faceControls;
+
+  window.setSize(1120, 820);
+  await wait(180);
+  await waitForPaint(window);
+  const narrow = await readLayout();
+  assertRepairedLayout(narrow, 'Narrow window');
+  evidence.narrowWindow = narrow;
+  screenshots.push(await capture(window, 'issue815-after-narrow.png'));
+
+  window.setSize(1660, 1100);
+  window.webContents.setZoomFactor(1.25);
+  await wait(180);
+  await waitForPaint(window);
+  const zoomed = await readLayout();
+  assertRepairedLayout(zoomed, '125 percent zoom');
+  evidence.zoomed125 = zoomed;
+  screenshots.push(await capture(window, 'issue815-after-125-percent.png'));
+
+  return {
+    issue: 815,
+    code: 'C03-F01',
+    passed: true,
+    baseline: false,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'verify:issue815-c03-f01',
+    projectRoot,
+    syntheticInput: true,
+    humanAcceptance: false,
+    evidenceKind: 'real-windows-electron-native-input-height-sweep-and-responsive-layout',
+    evidence,
+    screenshots,
+  };
+}
+
 async function verifyIssue813AssemblyCanvasSpace(window) {
   const screenshots = [];
   const evidence = {};
@@ -4110,6 +4615,9 @@ async function run() {
     windowRef.focus();
     windowRef.webContents.focus();
     await openProject(windowRef);
+    if (issue815Run) {
+      return await verifyIssue815FineTuneTimelineOverlay(windowRef);
+    }
     if (issue813Run) {
       return await verifyIssue813AssemblyCanvasSpace(windowRef);
     }
@@ -4760,10 +5268,13 @@ async function main() {
     output = await run();
   } catch (error) {
     output = {
-      issue: issue813Run ? 813 : issue799Only ? 799 : issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 612,
+      issue: issue815Run ? 815 : issue813Run ? 813 : issue799Only ? 799 : issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 612,
+      code: issue815Run ? 'C03-F01' : undefined,
       passed: false,
       commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
-      verificationGate: issue813Run
+      verificationGate: issue815Run
+        ? issue815BaselineOnly ? 'issue815-c03-f01-baseline' : 'verify:issue815-c03-f01'
+        : issue813Run
         ? 'verify:issue813-assembly-canvas-space'
         : issue799Only
           ? 'verify:issue799-layout-reuse'
@@ -4792,6 +5303,6 @@ async function main() {
 main()
   .then(() => app.exit(0))
   .catch((error) => {
-    console.error(`[issue${issue813Run ? 813 : issue799Only ? 799 : issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 609}] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    console.error(`[issue${issue815Run ? 815 : issue813Run ? 813 : issue799Only ? 799 : issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 609}] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     app.exit(1);
   });
