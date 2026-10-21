@@ -23,7 +23,8 @@ const issue815Run = issue815BaselineOnly || issue815Only;
 const issue820BaselineOnly = process.argv.includes('--issue820-c04-s01-baseline');
 const issue820Only = process.argv.includes('--issue820-c04-s01');
 const issue820S02Only = process.argv.includes('--issue820-c04-s02');
-const issue820Run = issue820BaselineOnly || issue820Only || issue820S02Only;
+const issue820S03Only = process.argv.includes('--issue820-c04-s03');
+const issue820Run = issue820BaselineOnly || issue820Only || issue820S02Only || issue820S03Only;
 const issue813Only = process.argv.includes('--issue813-assembly-canvas-space');
 const issue813BaselineOnly = process.argv.includes('--issue813-baseline');
 const issue813Run = issue813Only || issue813BaselineOnly;
@@ -37,7 +38,9 @@ const ISSUE683_BASELINE_SHA = 'bed0b353f40238bfd820861c0e5349f0e101e977';
 // receipt does not claim human visual acceptance.
 const acceptanceRoot = issue820BaselineOnly
   ? 'D:\\PandaStage-Acceptance\\issue820-c04-s01\\baseline'
-  : issue820S02Only
+  : issue820S03Only
+    ? 'D:\\PandaStage-Acceptance\\issue820-c04-s03'
+    : issue820S02Only
     ? 'D:\\PandaStage-Acceptance\\issue820-c04-s02'
     : issue820Only
     ? 'D:\\PandaStage-Acceptance\\issue820-c04-s01\\after'
@@ -66,9 +69,11 @@ const projectRoot = path.join(
   runRoot,
   'projects',
   issue820Run
-    ? issue820S02Only
-      ? 'issue820-c04-s02.pandastage'
-      : 'issue820-c04-s01.pandastage'
+    ? issue820S03Only
+      ? 'issue820-c04-s03.pandastage'
+      : issue820S02Only
+        ? 'issue820-c04-s02.pandastage'
+        : 'issue820-c04-s01.pandastage'
     : issue815Run
     ? 'issue815-c03-f01.pandastage'
     : issue813Run
@@ -787,7 +792,7 @@ function projectForRoot(root) {
   if (path.resolve(root).toLowerCase() !== path.resolve(projectRoot).toLowerCase()) {
     return null;
   }
-  if (issue799Only || issue820S02Only) {
+  if (issue799Only || issue820S02Only || issue820S03Only) {
     const persisted = JSON.parse(
       readFileSync(path.join(projectRoot, 'project.json'), 'utf8'),
     );
@@ -854,7 +859,7 @@ function registerAcceptanceHandlers() {
   register(IPC_CHANNELS.PROJECT_SAVE, (_event, request) => {
     savedProject = request.project;
     activeProject = request.project;
-    if (issue799Only || issue820S02Only) {
+    if (issue799Only || issue820S02Only || issue820S03Only) {
       writeFileSync(
         path.join(projectRoot, 'project.json'),
         `${JSON.stringify(request.project, null, 2)}\n`,
@@ -1347,6 +1352,43 @@ async function sendPointerDrag(window, startX, startY, endX, endY) {
   await wait(40);
 }
 
+async function sendPointerDragWithProtocol(window, startX, startY, endX, endY) {
+  const devtools = window.webContents.debugger;
+  const attachedHere = !devtools.isAttached();
+  if (attachedHere) devtools.attach('1.3');
+  const start = { x: Math.round(startX), y: Math.round(startY) };
+  const end = { x: Math.round(endX), y: Math.round(endY) };
+  try {
+    await devtools.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', ...start });
+    await wait(40);
+    await devtools.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mousePressed', ...start, button: 'left', buttons: 1, clickCount: 1,
+    });
+    await wait(40);
+    const distance = Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y));
+    const steps = Math.max(1, Math.ceil(distance / 8));
+    let previous = start;
+    for (let step = 1; step <= steps; step += 1) {
+      const next = {
+        x: Math.round(start.x + ((end.x - start.x) * step) / steps),
+        y: Math.round(start.y + ((end.y - start.y) * step) / steps),
+      };
+      await devtools.sendCommand('Input.dispatchMouseEvent', {
+        type: 'mouseMoved', ...next, button: 'left', buttons: 1,
+        deltaX: next.x - previous.x, deltaY: next.y - previous.y,
+      });
+      previous = next;
+      await wait(20);
+    }
+    await devtools.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mouseReleased', ...end, button: 'left', buttons: 0, clickCount: 1,
+    });
+    await wait(40);
+  } finally {
+    if (attachedHere && devtools.isAttached()) devtools.detach();
+  }
+}
+
 async function clickWithNativeInput(window, selector, label = selector) {
   await waitForDom(
     window,
@@ -1544,6 +1586,8 @@ async function sendKeyStroke(window, keyCode) {
   const electronKeyCode = {
     ARROWDOWN: 'Down',
     ARROWUP: 'Up',
+    ARROWLEFT: 'Left',
+    ARROWRIGHT: 'Right',
     ESC: 'Escape',
     ENTER: 'Return',
     TAB: 'Tab',
@@ -1555,6 +1599,25 @@ async function sendKeyStroke(window, keyCode) {
   window.webContents.sendInputEvent({ type: 'keyDown', keyCode: electronKeyCode });
   await wait(40);
   window.webContents.sendInputEvent({ type: 'keyUp', keyCode: electronKeyCode });
+}
+
+async function sendShiftedKeyStroke(window, keyCode) {
+  const electronKeyCode = {
+    ARROWDOWN: 'Down',
+    ARROWUP: 'Up',
+    ARROWLEFT: 'Left',
+    ARROWRIGHT: 'Right',
+  }[keyCode];
+  assert(electronKeyCode, `Unsupported Shift-modified keyboard key ${keyCode}.`);
+  window.focus();
+  window.webContents.focus();
+  await wait(40);
+  window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Shift', modifiers: ['shift'] });
+  window.webContents.sendInputEvent({ type: 'keyDown', keyCode: electronKeyCode, modifiers: ['shift'] });
+  await wait(40);
+  window.webContents.sendInputEvent({ type: 'keyUp', keyCode: electronKeyCode, modifiers: ['shift'] });
+  window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Shift' });
+  await wait(80);
 }
 
 function sendWindowsKeyStroke(window, key) {
@@ -5584,16 +5647,612 @@ async function verifyIssue820BodyPlacement(window) {
   };
 }
 
+async function verifyIssue820UnifiedPartEditing(window) {
+  const screenshots = [];
+  const evidence = inProgressEvidence;
+  const handleIds = {
+    body: 'character-assembly-body-scale-handle',
+    head: 'character-assembly-head-scale-handle',
+    face: 'character-assembly-face-scale-handle',
+  };
+  const readState = async () => window.webContents.executeJavaScript(`(() => {
+    const box = (element) => {
+      const rect = element?.getBoundingClientRect();
+      return rect ? { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height } : null;
+    };
+    const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    const history = document.querySelector('[data-testid="history-controls"]');
+    const images = [...document.querySelectorAll('[data-testid="character-assembly-workbench"] .character-assembly-part')];
+    return {
+      characterId: workbench?.dataset.characterId ?? '',
+      editTarget: workbench?.dataset.editTarget ?? '',
+      bodyPlacement: {
+        offsetX: Number(workbench?.dataset.bodyOffsetX),
+        offsetY: Number(workbench?.dataset.bodyOffsetY),
+        scale: Number(workbench?.dataset.bodyScale),
+      },
+      facePlacement: [
+        Number(workbench?.dataset.faceOffsetX), Number(workbench?.dataset.faceOffsetY),
+        Number(workbench?.dataset.faceScale), Number(workbench?.dataset.faceRotationDeg),
+        workbench?.dataset.faceFlipX === 'true',
+      ],
+      headPlacement: [
+        Number(workbench?.dataset.headOffsetX), Number(workbench?.dataset.headOffsetY),
+        Number(workbench?.dataset.headScale), Number(workbench?.dataset.headRotationDeg),
+        workbench?.dataset.headFlipX === 'true', Number(workbench?.dataset.headPivotX),
+        Number(workbench?.dataset.headPivotY),
+      ],
+      projectRevision: workbench?.dataset.projectRevision ?? '',
+      projectDirty: workbench?.dataset.projectDirty ?? '',
+      history: { undo: history?.dataset.undoCount ?? '', redo: history?.dataset.redoCount ?? '' },
+      pending: Boolean(document.querySelector('[data-testid="character-assembly-pending"]')),
+      cameraFitMode: workbench?.dataset.cameraFitMode ?? '',
+      cameraFitScale: Number(workbench?.dataset.cameraFitScale ?? 0),
+      neckPivotEditing: workbench?.dataset.neckPivotEditing === 'true',
+      handleIds: ['body', 'head', 'face'].filter((part) =>
+        document.querySelector('[data-testid="character-assembly-' + part + '-scale-handle"]')),
+      dragTargetIds: [
+        ['body', 'character-assembly-body-drag-target'],
+        ['head', 'character-assembly-head-drag-target'],
+        ['head', 'character-assembly-head-drag-fallback'],
+        ['face', 'character-assembly-face-drag-target'],
+      ].filter(([, id]) => document.querySelector('[data-testid="' + id + '"]')).map(([part]) => part),
+      handles: Object.fromEntries(['body', 'head', 'face'].map((part) => [
+        part,
+        box(document.querySelector('[data-testid="character-assembly-' + part + '-scale-handle"]')),
+      ])),
+      viewport: box(document.querySelector('[data-testid="character-assembly-preview"]')),
+      images: images.map((image) => ({
+        part: image.classList.contains('character-assembly-part-body') ? 'body'
+          : image.classList.contains('character-assembly-part-head') ? 'head' : 'face',
+        assetId: image.dataset.assetId ?? '',
+        naturalWidth: image.naturalWidth,
+        naturalHeight: image.naturalHeight,
+        rect: box(image),
+      })),
+    };
+  })()`);
+  const openCharacter = async (label) => {
+    await clickWithNativeInput(
+      window,
+      `[data-testid="character-list-view"] [data-character-id="${IDS.issue820Character}"]`,
+      `${label} Character card`,
+    );
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue820Character)}`,
+      `${label} Character detail did not open.`,
+    );
+    await clickWithNativeInput(window, '[data-testid="character-workspace-expressions-tab"]', `${label} Expressions workspace`);
+    await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', `${label} Assembly workspace`);
+    await waitForDom(
+      window,
+      `(() => { const workbench = document.querySelector('[data-testid="character-assembly-workbench"]'); return workbench?.dataset.sessionKind === 'edit' && Number(workbench.dataset.cameraFitScale) > 0; })()`,
+      `${label} Assembly session or fitted camera did not become ready.`,
+    );
+    await waitForDom(
+      window,
+      `(() => { const images = [...document.querySelectorAll('[data-testid="character-assembly-workbench"] .character-assembly-part')]; return images.length === 3 && images.every((image) => image.complete && image.naturalWidth > 0); })()`,
+      `${label} Body, Head, and Face images did not load.`,
+    );
+    await waitForPaint(window);
+  };
+  const openAssembly = async (label) => {
+    await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', `${label} Assembly workspace`);
+    await waitForDom(
+      window,
+      `(() => { const workbench = document.querySelector('[data-testid="character-assembly-workbench"]'); return workbench?.dataset.sessionKind === 'edit' && Number(workbench.dataset.cameraFitScale) > 0; })()`,
+      `${label} Assembly session or fitted camera did not become ready.`,
+    );
+    await waitForPaint(window);
+  };
+  const closeAssembly = async (label) => {
+    await clickWithNativeInput(window, '[data-testid="character-workspace-expressions-tab"]', `${label} Expressions workspace`);
+    await waitForDom(window, `!document.querySelector('[data-testid="character-assembly-workbench"]')`, `${label} Assembly workspace did not close.`);
+  };
+  const selectTarget = async (target, label = target) => {
+    await clickWithNativeInput(
+      window,
+      `[data-testid="character-assembly-edit-${target}"]`,
+      `${label} edit target`,
+    );
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === ${JSON.stringify(target)}`,
+      `${label} did not become the active edit target.`,
+    );
+    await waitForPaint(window);
+  };
+  const handleGeometry = async (target) => window.webContents.executeJavaScript(`(() => {
+    const part = ${JSON.stringify(target)};
+    const handle = document.querySelector('[data-testid="${'character-assembly-' + target + '-scale-handle'}"]');
+    const image = document.querySelector('.character-assembly-part-' + part);
+    const stage = document.querySelector('.character-assembly-preview-stage');
+    const viewport = document.querySelector('[data-testid="character-assembly-preview"]');
+    const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    if (!handle || !image || !stage || !viewport || !workbench) return null;
+    const imageStyle = getComputedStyle(image);
+    const width = Number.parseFloat(imageStyle.width);
+    const height = Number.parseFloat(imageStyle.height);
+    const left = Number.parseFloat(imageStyle.left);
+    const top = Number.parseFloat(imageStyle.top);
+    const [originX, originY] = imageStyle.transformOrigin.split(/\\s+/u).map(Number.parseFloat);
+    const matrix = imageStyle.transform === 'none' ? new DOMMatrixReadOnly() : new DOMMatrixReadOnly(imageStyle.transform);
+    const transformPoint = (x, y) => ({
+      x: matrix.a * (x - originX) + matrix.c * (y - originY) + matrix.e + originX,
+      y: matrix.b * (x - originX) + matrix.d * (y - originY) + matrix.f + originY,
+    });
+    const insetX = Math.max(1, Math.round(image.naturalWidth * 0.02));
+    const insetY = Math.max(1, Math.round(image.naturalHeight * 0.025));
+    const corners = [
+      transformPoint(insetX / image.naturalWidth * width, insetY / image.naturalHeight * height),
+      transformPoint((image.naturalWidth - insetX) / image.naturalWidth * width, insetY / image.naturalHeight * height),
+      transformPoint(insetX / image.naturalWidth * width, (image.naturalHeight - insetY) / image.naturalHeight * height),
+      transformPoint((image.naturalWidth - insetX) / image.naturalWidth * width, (image.naturalHeight - insetY) / image.naturalHeight * height),
+    ];
+    const localRight = left + Math.max(...corners.map((point) => point.x));
+    const localBottom = top + Math.max(...corners.map((point) => point.y));
+    const stageRect = stage.getBoundingClientRect();
+    const viewportRect = viewport.getBoundingClientRect();
+    const handleRect = handle.getBoundingClientRect();
+    const scale = Number(workbench.dataset.cameraFitScale);
+    const actual = { x: handleRect.left + handleRect.width / 2, y: handleRect.top + handleRect.height / 2 };
+    const expected = { x: stageRect.left + localRight * scale, y: stageRect.top + localBottom * scale };
+    const partCenter = {
+      x: stageRect.left + (left + width / 2) * scale,
+      y: stageRect.top + (top + height / 2) * scale,
+    };
+    const hit = document.elementFromPoint(actual.x, actual.y);
+    return {
+      actual,
+      expected,
+      error: { x: Math.abs(actual.x - expected.x), y: Math.abs(actual.y - expected.y) },
+      partCenter,
+      handleRect: { x: handleRect.x, y: handleRect.y, right: handleRect.right, bottom: handleRect.bottom, width: handleRect.width, height: handleRect.height },
+      viewportRect: { x: viewportRect.x, y: viewportRect.y, right: viewportRect.right, bottom: viewportRect.bottom },
+      cameraFitScale: scale,
+      hitTarget: hit === handle || handle.contains(hit),
+      assetId: image.dataset.assetId ?? '',
+      naturalSize: { width: image.naturalWidth, height: image.naturalHeight },
+      transform: imageStyle.transform,
+    };
+  })()`);
+  const assertSelectedHandle = async (target, label) => {
+    const state = await readState();
+    assert(state.editTarget === target, `${label} has the wrong selected target: ${state.editTarget}.`);
+    assert(state.handleIds.length === 1 && state.handleIds[0] === target,
+      `${label} did not expose exactly one selected-part Scale Handle: ${JSON.stringify(state.handleIds)}.`);
+    assert(state.dragTargetIds.length === 1 && state.dragTargetIds[0] === target,
+      `${label} did not expose exactly one selected-part outline/drag target: ${JSON.stringify(state.dragTargetIds)}.`);
+    const geometry = await handleGeometry(target);
+    assert(geometry && geometry.cameraFitScale > 0, `${label} has no measurable fitted Handle geometry.`);
+    assert(geometry.error.x < 2 && geometry.error.y < 2,
+      `${label} Handle does not align with the alpha-visible rotated/flipped image bounds: ${JSON.stringify(geometry)}.`);
+    assert(geometry.handleRect.width >= 43.5 && geometry.handleRect.height >= 43.5,
+      `${label} Handle is smaller than the 44px interaction target: ${JSON.stringify(geometry.handleRect)}.`);
+    assert(geometry.handleRect.x >= geometry.viewportRect.x - 1
+      && geometry.handleRect.right <= geometry.viewportRect.right + 1
+      && geometry.handleRect.y >= geometry.viewportRect.y - 1
+      && geometry.handleRect.bottom <= geometry.viewportRect.bottom + 1,
+    `${label} Handle is outside the visible Assembly viewport: ${JSON.stringify(geometry)}.`);
+    assert(geometry.hitTarget, `${label} Handle did not receive its native pointer hit-test.`);
+    return { state, geometry };
+  };
+  const unchangedSessionState = (before, after, label) => {
+    assert(after.projectRevision === before.projectRevision, `${label} changed Project revision.`);
+    assert(after.projectDirty === before.projectDirty, `${label} changed Project dirty state.`);
+    assert(JSON.stringify(after.history) === JSON.stringify(before.history), `${label} changed Project History.`);
+  };
+  const dragPart = async (target, deltaX, deltaY, label) => {
+    await assertSelectedHandle(target, `${label} before drag`);
+    const before = await readState();
+    const point = await window.webContents.executeJavaScript(`(() => {
+      const target = document.querySelector('[data-testid="${'character-assembly-' + target + '-drag-target'}"]')
+        ?? document.querySelector('[data-testid="character-assembly-head-drag-fallback"]');
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      if (!target || !workbench) return null;
+      const rect = target.getBoundingClientRect();
+      const zoom = Number(workbench.dataset.cameraFitScale);
+      const candidates = [[0.5, 0.5], [0.35, 0.35], [0.65, 0.65], [0.5, 0.3]];
+      const point = candidates.map(([xRatio, yRatio]) => ({
+        x: rect.left + rect.width * xRatio,
+        y: rect.top + rect.height * yRatio,
+      })).find(({ x, y }) => {
+        const hit = document.elementFromPoint(x, y);
+        return hit === target || target.contains(hit);
+      });
+      return point && zoom > 0 ? { ...point, zoom } : null;
+    })()`);
+    assert(point, `${label} could not find an unobstructed native drag point.`);
+    await sendPointerDragWithProtocol(
+      window,
+      point.x,
+      point.y,
+      point.x + deltaX * point.zoom,
+      point.y + deltaY * point.zoom,
+    );
+    await waitForPaint(window);
+    const after = await readState();
+    const placement = target === 'body'
+      ? after.bodyPlacement
+      : target === 'head'
+        ? { offsetX: after.headPlacement[0], offsetY: after.headPlacement[1] }
+        : { offsetX: after.facePlacement[0], offsetY: after.facePlacement[1] };
+    const beforePlacement = target === 'body'
+      ? before.bodyPlacement
+      : target === 'head'
+        ? { offsetX: before.headPlacement[0], offsetY: before.headPlacement[1] }
+        : { offsetX: before.facePlacement[0], offsetY: before.facePlacement[1] };
+    const expectedPlacement = {
+      offsetX: beforePlacement.offsetX + deltaX,
+      offsetY: beforePlacement.offsetY + deltaY,
+    };
+    assert(Math.abs(placement.offsetX - expectedPlacement.offsetX) < 5
+      && Math.abs(placement.offsetY - expectedPlacement.offsetY) < 5,
+    `${label} native drag did not move only the selected part in local 2D coordinates: ${JSON.stringify({ point, beforePlacement, expectedPlacement, placement })}.`);
+    return { point, beforePlacement, expectedPlacement, placement, after };
+  };
+  const scalePart = async (target, factor, label) => {
+    const { state: before, geometry } = await assertSelectedHandle(target, `${label} before scale`);
+    const vectorX = geometry.actual.x - geometry.partCenter.x;
+    const vectorY = geometry.actual.y - geometry.partCenter.y;
+    assert(Math.hypot(vectorX, vectorY) > 8, `${label} has no usable radial distance from part center to Handle.`);
+    const end = {
+      x: geometry.partCenter.x + vectorX * factor,
+      y: geometry.partCenter.y + vectorY * factor,
+    };
+    await window.webContents.executeJavaScript(`(() => {
+      window.__issue820S03PointerTrace = [];
+      const handle = document.querySelector('[data-testid="${'character-assembly-' + target + '-scale-handle'}"]');
+      for (const type of ['pointerdown', 'gotpointercapture', 'pointermove', 'pointerup', 'pointercancel', 'lostpointercapture']) {
+        handle?.addEventListener(type, (event) => window.__issue820S03PointerTrace.push({
+          type, clientX: event.clientX, clientY: event.clientY, pointerId: event.pointerId,
+          button: event.button, buttons: event.buttons, pointerType: event.pointerType,
+          target: event.target?.getAttribute('data-testid') ?? '',
+          captured: handle.hasPointerCapture(event.pointerId),
+        }), { capture: true });
+      }
+    })()`);
+    await sendPointerDragWithProtocol(window, geometry.actual.x, geometry.actual.y, end.x, end.y);
+    await waitForPaint(window);
+    const after = await readState();
+    const pointerTrace = await window.webContents.executeJavaScript('window.__issue820S03PointerTrace ?? []');
+    const beforeScale = target === 'body'
+      ? before.bodyPlacement.scale
+      : target === 'head' ? before.headPlacement[2] : before.facePlacement[2];
+    const afterScale = target === 'body'
+      ? after.bodyPlacement.scale
+      : target === 'head' ? after.headPlacement[2] : after.facePlacement[2];
+    const observedFactor = afterScale / beforeScale;
+    evidence.lastScaleGesture = { target, factor, observedFactor, geometry, end, pointerTrace, before, after };
+    assert(Math.abs(observedFactor - factor) < 0.06,
+      `${label} did not apply proportional pointer scaling: ${JSON.stringify({ target, factor, observedFactor, beforeScale, afterScale, geometry, end, pointerTrace })}.`);
+    let viewAllRecovery = null;
+    let postScaleGeometry = await handleGeometry(target);
+    const isInsideViewport = (candidate) => candidate
+      && candidate.handleRect.x >= candidate.viewportRect.x - 1
+      && candidate.handleRect.right <= candidate.viewportRect.right + 1
+      && candidate.handleRect.y >= candidate.viewportRect.y - 1
+      && candidate.handleRect.bottom <= candidate.viewportRect.bottom + 1;
+    if (!isInsideViewport(postScaleGeometry) || !postScaleGeometry.hitTarget) {
+      const beforeViewAll = await readState();
+      await clickWithNativeInput(window, '[data-testid="character-assembly-view-all"]', `${label} View All recovery`);
+      await waitForPaint(window);
+      const afterViewAll = await readState();
+      unchangedSessionState(beforeViewAll, afterViewAll, `${label} View All recovery`);
+      assert(JSON.stringify(beforeViewAll.bodyPlacement) === JSON.stringify(afterViewAll.bodyPlacement)
+        && JSON.stringify(beforeViewAll.facePlacement) === JSON.stringify(afterViewAll.facePlacement)
+        && JSON.stringify(beforeViewAll.headPlacement) === JSON.stringify(afterViewAll.headPlacement),
+      `${label} View All recovery changed a part placement.`);
+      postScaleGeometry = await handleGeometry(target);
+      viewAllRecovery = { before: beforeViewAll.handles[target], after: postScaleGeometry };
+      assert(isInsideViewport(postScaleGeometry) && postScaleGeometry.hitTarget,
+        `${label} View All did not return the Scale Handle to an operable point: ${JSON.stringify(postScaleGeometry)}.`);
+    }
+    const aligned = await assertSelectedHandle(target, `${label} after scale`);
+    return { before: beforeScale, after: afterScale, factor: observedFactor, start: geometry, end, pointerTrace, aligned: aligned.geometry, viewAllRecovery };
+  };
+  const setTimeline = async (profile) => {
+    const selector = '[data-testid="timeline-resize-handle"]';
+    const before = await window.webContents.executeJavaScript(`(() => {
+      const element = document.querySelector(${JSON.stringify(selector)});
+      return element ? { min: Number(element.getAttribute('aria-valuemin')), max: Number(element.getAttribute('aria-valuemax')), value: Number(element.getAttribute('aria-valuenow')) } : null;
+    })()`);
+    assert(before && before.max > before.min, 'S03 did not expose an adjustable timeline height.');
+    if (profile === 'low') {
+      await pressFocusedControl(window, selector, 'HOME', 'Timeline resize handle');
+    } else if (profile === 'high') {
+      await pressFocusedControl(window, selector, 'END', 'Timeline resize handle');
+    } else {
+      await pressFocusedControl(window, selector, 'HOME', 'Timeline resize handle');
+      const stepCount = Math.max(1, Math.round((before.max - before.min) / 32));
+      for (let index = 0; index < stepCount; index += 1) {
+        await pressFocusedControl(window, selector, 'ARROWUP', 'Timeline resize handle');
+      }
+    }
+    await waitForPaint(window);
+    const value = await window.webContents.executeJavaScript(`Number(document.querySelector(${JSON.stringify(selector)})?.getAttribute('aria-valuenow'))`);
+    if (profile === 'low') assert(value === before.min, 'S03 could not set the low timeline profile.');
+    if (profile === 'high') assert(value === before.max, 'S03 could not set the high timeline profile.');
+    return { profile, min: before.min, max: before.max, value };
+  };
+
+  const sourceProject = ProjectSchema.parse(JSON.parse(readFileSync(path.join(projectRoot, 'project.json'), 'utf8')));
+  const sourceCharacter = sourceProject.characters.find((character) => character.id === IDS.issue820Character);
+  assert(sourceCharacter?.mode === 'composite', 'S03 synthetic Character fixture is missing.');
+  assert(sourceCharacter.bodyPlacement, 'S03 started without v12 Body placement data.');
+  const originalReferences = {
+    bodyAssetId: sourceCharacter.bodyAssetId,
+    mouthOpenAssetId: sourceCharacter.mouthOpenAssetId,
+    expressionAssets: sourceCharacter.expressions.map((expression) => expression.assetId),
+    defaultScale: sourceCharacter.defaultScale,
+    defaultFlipX: sourceCharacter.defaultFlipX,
+  };
+
+  await openCharacter('S03 v12 large synthetic');
+  const initial = await readState();
+  assert(initial.characterId === IDS.issue820Character, 'S03 opened a different Character.');
+  assert(initial.cameraFitMode === 'content' && initial.cameraFitScale > 0, 'S03 did not begin with the S01 fitted camera.');
+  assert(initial.images.some((image) => image.part === 'body' && image.naturalWidth === 1086 && image.naturalHeight === 1448), 'S03 Body fixture is not 1086 x 1448.');
+  assert(initial.images.some((image) => image.part === 'head' && image.naturalWidth === 1200 && image.naturalHeight === 1080), 'S03 Head fixture is not 1200 x 1080.');
+  assert(initial.images.some((image) => image.part === 'face' && image.naturalWidth === 300 && image.naturalHeight === 300), 'S03 Face fixture is not 300 x 300.');
+  assert(initial.projectRevision === '0' && initial.projectDirty === 'false' && initial.history.undo === '0' && initial.history.redo === '0', 'S03 opening changed Project or History state.');
+  evidence.initial = initial;
+  screenshots.push(await capture(window, 'issue820-s03-large-initial.png'));
+
+  const originalSize = window.getSize();
+  const originalZoomFactor = window.webContents.getZoomFactor();
+  const layoutEvidence = [];
+  await closeAssembly('Set timeline height');
+  for (const profile of ['low', 'middle', 'high']) {
+    const timeline = await setTimeline(profile);
+    await openAssembly(`${profile} timeline`);
+    const samples = [];
+    for (const target of ['body', 'head', 'face']) {
+      await selectTarget(target, `${profile} timeline ${target}`);
+      const sample = await assertSelectedHandle(target, `${profile} timeline ${target}`);
+      samples.push({ target, geometry: sample.geometry });
+    }
+    layoutEvidence.push({ timeline, samples });
+    screenshots.push(await capture(window, `issue820-s03-handles-timeline-${profile}.png`));
+    await closeAssembly(`${profile} timeline`);
+  }
+  const zoomedTimeline = await setTimeline('middle');
+  await openAssembly('125% narrow');
+  window.webContents.setZoomFactor(1.25);
+  window.setSize(1120, 820);
+  await wait(350);
+  await waitForPaint(window);
+  const zoomedSamples = [];
+  for (const target of ['body', 'head', 'face']) {
+    await selectTarget(target, `125% narrow ${target}`);
+    const sample = await assertSelectedHandle(target, `125% narrow ${target}`);
+    zoomedSamples.push({ target, geometry: sample.geometry });
+  }
+  screenshots.push(await capture(window, 'issue820-s03-handles-narrow-125-percent.png'));
+  window.webContents.setZoomFactor(originalZoomFactor);
+  window.setSize(originalSize[0], originalSize[1]);
+  await wait(350);
+  await waitForPaint(window);
+  evidence.responsiveHandles = { timelineProfiles: layoutEvidence, narrow125Percent: { timeline: zoomedTimeline, samples: zoomedSamples } };
+  unchangedSessionState(initial, await readState(), 'S03 responsive camera/layout checks');
+
+  await selectTarget('body', 'Body');
+  const bodyMove = await dragPart('body', 24, -16, 'Body placement');
+  const bodyScale = await scalePart('body', 1.2, 'Body placement');
+  const afterBody = await readState();
+  assert(JSON.stringify(afterBody.headPlacement) === JSON.stringify(initial.headPlacement), 'Body pointer edits changed Head placement or pivot.');
+  assert(JSON.stringify(afterBody.facePlacement) === JSON.stringify(initial.facePlacement), 'Body pointer edits changed Face placement.');
+  await pressFocusedControl(window, `[data-testid="${handleIds.body}"]`, 'ARROWDOWN', 'Body Scale Handle');
+  const afterBodyArrow = await readState();
+  assert(Math.abs(afterBodyArrow.bodyPlacement.scale - (afterBody.bodyPlacement.scale - 0.05)) < 0.001, 'Body Scale Handle arrow key did not use the small keyboard step.');
+  await window.webContents.executeJavaScript(`document.querySelector('[data-testid="${handleIds.body}"]')?.focus()`);
+  await sendShiftedKeyStroke(window, 'ARROWRIGHT');
+  const afterBodyShift = await readState();
+  assert(Math.abs(afterBodyShift.bodyPlacement.scale - (afterBodyArrow.bodyPlacement.scale + 0.25)) < 0.001, 'Shift+Arrow did not use the fast keyboard scale step.');
+  evidence.bodyDirectEdit = { move: bodyMove, scale: bodyScale, arrow: afterBodyArrow.bodyPlacement, shiftArrow: afterBodyShift.bodyPlacement };
+  screenshots.push(await capture(window, 'issue820-s03-body-drag-scaled-keyboard.png'));
+
+  await selectTarget('head', 'Head');
+  const headMove = await dragPart('head', -18, 12, 'Head placement');
+  const headScale = await scalePart('head', 1.18, 'Head placement with static rotation and flip');
+  let afterHead = await readState();
+  assert(JSON.stringify(afterHead.bodyPlacement) === JSON.stringify(afterBodyShift.bodyPlacement), 'Head pointer edits changed Body placement.');
+  assert(JSON.stringify(afterHead.facePlacement) === JSON.stringify(afterBodyShift.facePlacement), 'Head pointer edits changed Face placement.');
+  assert(afterHead.headPlacement[3] === -11 && afterHead.headPlacement[4] === true, 'S03 Head fixture lost its static rotation or horizontal flip.');
+  assert(afterHead.headPlacement[5] === initial.headPlacement[5] && afterHead.headPlacement[6] === initial.headPlacement[6], 'Head move/scale changed the neck Pivot.');
+  evidence.headDirectEdit = { move: headMove, scale: headScale };
+  screenshots.push(await capture(window, 'issue820-s03-head-rotated-flipped-scaled.png'));
+
+  await selectTarget('face', 'Face');
+  const faceMove = await dragPart('face', 14, -9, 'Face placement');
+  const faceScale = await scalePart('face', 1.16, 'Face placement with static rotation and flip');
+  const afterFace = await readState();
+  assert(JSON.stringify(afterFace.bodyPlacement) === JSON.stringify(afterHead.bodyPlacement), 'Face pointer edits changed Body placement.');
+  assert(JSON.stringify(afterFace.headPlacement) === JSON.stringify(afterHead.headPlacement), 'Face pointer edits changed Head placement or neck Pivot.');
+  assert(afterFace.facePlacement[3] === 17 && afterFace.facePlacement[4] === true, 'S03 Face fixture lost its static rotation or horizontal flip.');
+  evidence.faceDirectEdit = { move: faceMove, scale: faceScale };
+  screenshots.push(await capture(window, 'issue820-s03-face-rotated-flipped-scaled.png'));
+
+  const faceBeforePreviewSwitch = await readState();
+  await clickWithNativeInput(window, '[data-testid="character-assembly-expression-preview-toggle"]', 'Open expression and Mouth preview');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-expression-mouth"]', 'Preview Mouth asset');
+  await waitForDom(window, `document.querySelector('.character-assembly-part-face')?.dataset.assetId === ${JSON.stringify(IDS.issue820Mouth)}`, 'Mouth preview did not use the shared Face placement.');
+  const mouthPreview = await assertSelectedHandle('face', 'Face placement while previewing Mouth');
+  const afterMouthPreview = await readState();
+  assert(JSON.stringify(afterMouthPreview.facePlacement) === JSON.stringify(faceBeforePreviewSwitch.facePlacement), 'Switching to Mouth changed Face placement.');
+  assert(JSON.stringify(afterMouthPreview.headPlacement) === JSON.stringify(faceBeforePreviewSwitch.headPlacement), 'Switching to Mouth changed Head or Pivot.');
+  assert(mouthPreview.geometry.assetId === IDS.issue820Mouth, 'Mouth preview did not move the Face handle onto the Mouth pixels.');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-expression-preview-toggle"]', 'Open expression preview');
+  await clickWithNativeInput(window, `[data-testid="character-assembly-expression-choice"][data-expression-id="${IDS.issue820Expression}"]`, 'Restore default Face expression');
+  await waitForDom(window, `document.querySelector('.character-assembly-part-face')?.dataset.assetId === ${JSON.stringify(IDS.issue820Face)}`, 'Default Face expression did not return.');
+  const afterExpressionSwitch = await readState();
+  assert(JSON.stringify(afterExpressionSwitch.facePlacement) === JSON.stringify(faceBeforePreviewSwitch.facePlacement), 'Switching expressions changed Face placement.');
+  screenshots.push(await capture(window, 'issue820-s03-face-expression-mouth-shared-placement.png'));
+  evidence.faceExpressionMouth = { facePlacement: faceBeforePreviewSwitch.facePlacement, mouthPreview: mouthPreview.geometry, expressionAssetId: IDS.issue820Face, mouthAssetId: IDS.issue820Mouth };
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-pivot-mode-toggle"]', 'Enter neck Pivot fine tune');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.neckPivotEditing === 'true'`, 'S03 Pivot mode did not open.');
+  await window.webContents.executeJavaScript(`(() => {
+    window.__issue820S03PivotKeys = [];
+    document.querySelector('[data-testid="character-assembly-head-pivot"]')?.addEventListener('keydown', (event) => {
+      window.__issue820S03PivotKeys.push({ key: event.key, shiftKey: event.shiftKey, target: event.target?.getAttribute('data-testid') ?? '' });
+    });
+  })()`);
+  await pressFocusedControl(window, '[data-testid="character-assembly-head-pivot"]', 'ARROWRIGHT', 'Neck Pivot handle');
+  const afterPivotNudge = await readState();
+  const pivotKeyTrace = await window.webContents.executeJavaScript('window.__issue820S03PivotKeys ?? []');
+  assert(afterPivotNudge.headPlacement[5] === afterExpressionSwitch.headPlacement[5] + 1,
+    `Keyboard fine tune did not move the neck Pivot by one local unit: ${JSON.stringify({ before: afterExpressionSwitch.headPlacement, after: afterPivotNudge.headPlacement, pivotKeyTrace })}.`);
+  assert(JSON.stringify(afterPivotNudge.bodyPlacement) === JSON.stringify(afterExpressionSwitch.bodyPlacement), 'Pivot fine tune changed Body placement.');
+  assert(JSON.stringify(afterPivotNudge.facePlacement) === JSON.stringify(afterExpressionSwitch.facePlacement), 'Pivot fine tune changed Face placement.');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-pivot-mode-toggle"]', 'Leave neck Pivot fine tune');
+
+  const resetEvidence = [];
+  for (const target of ['body', 'head', 'face']) {
+    await selectTarget(target, `${target} reset`);
+    await clickWithNativeInput(window, '[data-testid="character-assembly-fine-tune-toggle"]', `Open ${target} fine tune`);
+    await waitForDom(window, `document.querySelector('[data-testid="character-assembly-reset"]')`, `${target} fine tune did not expose Reset after opening.`);
+    const resetAvailability = await window.webContents.executeJavaScript(`(() => ({
+      target: document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget ?? '',
+      expanded: document.querySelector('[data-testid="character-assembly-fine-tune-toggle"]')?.getAttribute('aria-expanded') ?? '',
+      panel: Boolean(document.querySelector('[data-testid="character-assembly-fine-tune-panel"]')),
+      reset: Boolean(document.querySelector('[data-testid="character-assembly-reset"]')),
+      pivot: document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.neckPivotEditing ?? '',
+    }))()`);
+    assert(resetAvailability.target === target && resetAvailability.panel && resetAvailability.reset && resetAvailability.pivot === 'false',
+      `${target} fine tune did not keep its target-specific Reset control available: ${JSON.stringify(resetAvailability)}.`);
+    const before = await readState();
+    await clickWithNativeInput(window, '[data-testid="character-assembly-reset"]', `Reset only ${target}`);
+    await waitForPaint(window);
+    const after = await readState();
+    if (target === 'body') {
+      assert(JSON.stringify(after.bodyPlacement) === JSON.stringify({ offsetX: 0, offsetY: 0, scale: 1 }), 'Body reset did not restore only neutral Body placement.');
+      assert(JSON.stringify(after.headPlacement) === JSON.stringify(before.headPlacement) && JSON.stringify(after.facePlacement) === JSON.stringify(before.facePlacement), 'Body reset changed Head, Face, or Pivot.');
+    } else if (target === 'head') {
+      assert(JSON.stringify(after.headPlacement.slice(0, 5)) === JSON.stringify([0, 0, 1, 0, false]), 'Head reset did not restore Head placement.');
+      assert(after.headPlacement[5] === before.headPlacement[5] && after.headPlacement[6] === before.headPlacement[6], 'Head reset changed the neck Pivot.');
+      assert(JSON.stringify(after.bodyPlacement) === JSON.stringify(before.bodyPlacement) && JSON.stringify(after.facePlacement) === JSON.stringify(before.facePlacement), 'Head reset changed Body or Face placement.');
+    } else {
+      assert(JSON.stringify(after.facePlacement) === JSON.stringify([0, 0, 1, 0, false]), 'Face reset did not restore Face placement.');
+      assert(JSON.stringify(after.bodyPlacement) === JSON.stringify(before.bodyPlacement) && JSON.stringify(after.headPlacement) === JSON.stringify(before.headPlacement), 'Face reset changed Body, Head, or Pivot.');
+    }
+    unchangedSessionState(initial, after, `${target} target reset`);
+    resetEvidence.push({ target, before: target === 'body' ? before.bodyPlacement : target === 'head' ? before.headPlacement : before.facePlacement, after: target === 'body' ? after.bodyPlacement : target === 'head' ? after.headPlacement : after.facePlacement });
+  }
+  evidence.pivotAndTargetReset = { afterPivotNudge, pivotKeyTrace, resets: resetEvidence };
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-fine-tune-toggle"]', 'Close target-specific fine tune');
+  await selectTarget('body', 'Final Body');
+  const finalBodyMove = await dragPart('body', 26, 12, 'Final Body placement');
+  const finalBodyScale = await scalePart('body', 1.15, 'Final Body scale');
+  await selectTarget('head', 'Final Head');
+  const finalHeadMove = await dragPart('head', -16, -8, 'Final Head placement');
+  const finalHeadScale = await scalePart('head', 1.12, 'Final Head scale');
+  await selectTarget('face', 'Final Face');
+  const finalFaceMove = await dragPart('face', 12, 8, 'Final Face placement');
+  const finalFaceScale = await scalePart('face', 1.12, 'Final Face scale');
+  const beforeApply = await readState();
+  unchangedSessionState(initial, beforeApply, 'S03 Body/Head/Face multi-part draft');
+  assert(beforeApply.pending, 'S03 direct edits did not remain in the shared Apply draft.');
+  assert(beforeApply.headPlacement[5] === afterPivotNudge.headPlacement[5] && beforeApply.headPlacement[6] === afterPivotNudge.headPlacement[6], 'Target edits changed the finely adjusted Pivot.');
+  assert(beforeApply.images.find((image) => image.part === 'face')?.assetId === IDS.issue820Face, 'Applying the default expression changed the Face asset reference.');
+  evidence.finalDraft = { bodyMove: finalBodyMove, bodyScale: finalBodyScale, headMove: finalHeadMove, headScale: finalHeadScale, faceMove: finalFaceMove, faceScale: finalFaceScale, beforeApply };
+  screenshots.push(await capture(window, 'issue820-s03-three-targets-one-draft-before-apply.png'));
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-pending"] button:last-of-type', 'Apply Body/Head/Face Assembly draft');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '0' && document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.projectRevision === '1'`,
+    'S03 multi-target Apply did not create exactly one Project revision and History item.',
+  );
+  await waitForPaint(window);
+  const afterApply = await readState();
+  assert(!afterApply.pending && afterApply.projectDirty === 'true', 'S03 Apply left a pending draft or clean Project state.');
+  assert(JSON.stringify(afterApply.bodyPlacement) === JSON.stringify(beforeApply.bodyPlacement), 'S03 Apply changed Body placement values.');
+  assert(JSON.stringify(afterApply.facePlacement) === JSON.stringify(beforeApply.facePlacement), 'S03 Apply changed Face placement values.');
+  assert(JSON.stringify(afterApply.headPlacement) === JSON.stringify(beforeApply.headPlacement), 'S03 Apply changed Head or Pivot values.');
+  screenshots.push(await capture(window, 'issue820-s03-one-apply-history-item.png'));
+
+  await clickWithNativeInput(window, '[data-testid="character-workspace-expressions-tab"]', 'Close Assembly before S03 Undo');
+  await waitForDom(window, `!document.querySelector('[data-testid="character-assembly-workbench"]')`, 'S03 Assembly did not close before Undo.');
+  await expandProjectActions(window);
+  await clickWithNativeInput(window, '[data-testid="history-controls"] .history-actions button:first-of-type', 'Undo S03 multi-target Apply');
+  await waitForDom(window, `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '0' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '1'`, 'S03 Undo did not restore the single Apply item.');
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after S03 Undo');
+  await waitForDom(window, `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '0' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '1'`, 'S03 Undo did not restore the original Project snapshot to the single Redo item.');
+  const afterUndo = await readState();
+  assert(JSON.stringify(afterUndo.bodyPlacement) === JSON.stringify(initial.bodyPlacement), 'S03 Undo did not restore Body placement.');
+  assert(JSON.stringify(afterUndo.facePlacement) === JSON.stringify(initial.facePlacement), 'S03 Undo did not restore Face placement.');
+  assert(JSON.stringify(afterUndo.headPlacement) === JSON.stringify(initial.headPlacement), 'S03 Undo did not restore Head and Pivot.');
+  screenshots.push(await capture(window, 'issue820-s03-one-undo-restores-three-targets.png'));
+
+  await clickWithNativeInput(window, '[data-testid="character-workspace-expressions-tab"]', 'Close Assembly before S03 Redo');
+  await clickWithNativeInput(window, '[data-testid="history-controls"] .history-actions button:last-of-type', 'Redo S03 multi-target Apply');
+  await waitForDom(window, `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '0'`, 'S03 Redo did not restore the single Apply item.');
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after S03 Redo');
+  await waitForDom(window, `Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.bodyScale) > 1 && Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headScale) > 1 && Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.faceScale) > 1`, 'S03 Redo did not restore all three scaled placements.');
+  const afterRedo = await readState();
+  assert(JSON.stringify(afterRedo.bodyPlacement) === JSON.stringify(afterApply.bodyPlacement), 'S03 Redo restored different Body placement.');
+  assert(JSON.stringify(afterRedo.facePlacement) === JSON.stringify(afterApply.facePlacement), 'S03 Redo restored different Face placement.');
+  assert(JSON.stringify(afterRedo.headPlacement) === JSON.stringify(afterApply.headPlacement), 'S03 Redo restored different Head or Pivot placement.');
+  screenshots.push(await capture(window, 'issue820-s03-one-redo-restores-three-targets.png'));
+
+  await expandProjectActions(window);
+  await clickWithNativeInput(window, '[data-testid="quick-action-save"]', 'Save S03 v12 project');
+  await waitForDom(window, `document.querySelector('[data-testid="quick-action-save"]')?.dataset.saveState === 'saved'`, 'S03 Project Save did not finish.');
+  const diskProject = ProjectSchema.parse(JSON.parse(readFileSync(path.join(projectRoot, 'project.json'), 'utf8')));
+  const diskCharacter = diskProject.characters.find((character) => character.id === IDS.issue820Character);
+  assert(diskProject.schemaVersion === 12, 'S03 Save changed the formal project schema version.');
+  assert(diskCharacter?.mode === 'composite' && JSON.stringify(diskCharacter.bodyPlacement) === JSON.stringify(afterRedo.bodyPlacement), 'S03 Save did not persist Body placement.');
+  assert(JSON.stringify(diskCharacter.facePlacement) === JSON.stringify({ offsetX: afterRedo.facePlacement[0], offsetY: afterRedo.facePlacement[1], scale: afterRedo.facePlacement[2], rotationDeg: afterRedo.facePlacement[3], flipX: afterRedo.facePlacement[4] }), 'S03 Save did not persist Face placement.');
+  assert(JSON.stringify(diskCharacter.head?.placement) === JSON.stringify({ offsetX: afterRedo.headPlacement[0], offsetY: afterRedo.headPlacement[1], scale: afterRedo.headPlacement[2], rotationDeg: afterRedo.headPlacement[3], flipX: afterRedo.headPlacement[4] }), 'S03 Save did not persist Head placement.');
+  assert(diskCharacter.head?.pivot.x === afterRedo.headPlacement[5] && diskCharacter.head?.pivot.y === afterRedo.headPlacement[6], 'S03 Save changed the Pivot values.');
+  assert(diskCharacter.bodyAssetId === originalReferences.bodyAssetId && diskCharacter.mouthOpenAssetId === originalReferences.mouthOpenAssetId, 'S03 Save changed Body or Mouth asset references.');
+  assert(JSON.stringify(diskCharacter.expressions.map((expression) => expression.assetId)) === JSON.stringify(originalReferences.expressionAssets), 'S03 Save changed expression asset references.');
+  assert(diskCharacter.defaultScale === originalReferences.defaultScale && diskCharacter.defaultFlipX === originalReferences.defaultFlipX, 'S03 placement edit changed whole-character default scale or flip.');
+  evidence.savedProject = { path: path.join(projectRoot, 'project.json'), schemaVersion: diskProject.schemaVersion, bodyPlacement: diskCharacter.bodyPlacement, facePlacement: diskCharacter.facePlacement, head: diskCharacter.head, originalReferences };
+
+  await clickWithNativeInput(window, '[data-testid="quick-action-close"]', 'Close saved S03 project');
+  await waitForDom(window, `document.querySelector('[data-testid="project-center-screen"]') && !document.querySelector('[data-testid="editor-layout"]')`, 'S03 saved project did not close.');
+  await openProject(window);
+  await openCharacter('S03 saved v12 reopen');
+  const reopened = await readState();
+  assert(JSON.stringify(reopened.bodyPlacement) === JSON.stringify(afterRedo.bodyPlacement), 'S03 Save/Reopen changed Body placement.');
+  assert(JSON.stringify(reopened.facePlacement) === JSON.stringify(afterRedo.facePlacement), 'S03 Save/Reopen changed Face placement.');
+  assert(JSON.stringify(reopened.headPlacement) === JSON.stringify(afterRedo.headPlacement), 'S03 Save/Reopen changed Head or Pivot placement.');
+  assert(reopened.projectRevision === '0' && reopened.projectDirty === 'false' && reopened.history.undo === '0' && reopened.history.redo === '0', 'S03 reopened project did not begin clean.');
+  await selectTarget('face', 'S03 reopened Face');
+  const finalHandle = await assertSelectedHandle('face', 'S03 reopened Face');
+  screenshots.push(await capture(window, 'issue820-s03-save-reopen-v12.png'));
+  evidence.reopened = { state: reopened, faceHandle: finalHandle.geometry };
+
+  return {
+    issue: 820,
+    code: 'C04-S03',
+    passed: true,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'verify:issue820-c04-s03',
+    projectRoot,
+    projectFilePath: path.join(projectRoot, 'project.json'),
+    syntheticInput: true,
+    humanAcceptance: false,
+    evidenceKind: 'windows-electron-native-pointer-keyboard-alpha-rotation-flip-viewport-history-save-reopen',
+    evidence,
+    screenshots,
+  };
+}
+
 async function run() {
   mkdirSync(evidenceRoot, { recursive: true });
   mkdirSync(projectRoot, { recursive: true });
   activeProject = createFixture();
-  if (issue799Only || issue820S02Only) {
+  if (issue799Only || issue820S02Only || issue820S03Only) {
     const initialProject = issue820S02Only
       ? createIssue820V11Fixture(activeProject)
       : structuredClone(activeProject);
-    if (issue799Only) savedProject = initialProject;
-    if (issue820S02Only) activeProject = initialProject;
+    if (issue799Only || issue820S03Only) savedProject = initialProject;
+    if (issue820S02Only || issue820S03Only) activeProject = initialProject;
     writeFileSync(
       path.join(projectRoot, 'project.json'),
       `${JSON.stringify(initialProject, null, 2)}\n`,
@@ -5613,6 +6272,9 @@ async function run() {
     windowRef.focus();
     windowRef.webContents.focus();
     await openProject(windowRef);
+    if (issue820S03Only) {
+      return await verifyIssue820UnifiedPartEditing(windowRef);
+    }
     if (issue820S02Only) {
       return await verifyIssue820BodyPlacement(windowRef);
     }
@@ -6273,11 +6935,13 @@ async function main() {
   } catch (error) {
     output = {
       issue: issue820Run ? 820 : issue815Run ? 815 : issue813Run ? 813 : issue799Only ? 799 : issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 612,
-      code: issue820Run ? issue820S02Only ? 'C04-S02' : 'C04-S01' : issue815Run ? 'C03-F01' : undefined,
+      code: issue820Run ? issue820S03Only ? 'C04-S03' : issue820S02Only ? 'C04-S02' : 'C04-S01' : issue815Run ? 'C03-F01' : undefined,
       passed: false,
       commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
       verificationGate: issue820Run
-        ? issue820S02Only
+        ? issue820S03Only
+          ? 'verify:issue820-c04-s03'
+          : issue820S02Only
           ? 'verify:issue820-c04-s02'
           : issue820BaselineOnly ? 'issue820-c04-s01-baseline' : 'verify:issue820-c04-s01'
         : issue815Run

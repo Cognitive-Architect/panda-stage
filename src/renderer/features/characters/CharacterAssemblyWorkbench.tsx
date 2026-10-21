@@ -38,17 +38,18 @@ import {
 import {
   buildCharacterAssemblyPreviewVisual,
   characterLocalPointerDelta,
+  characterPartScaleFromPointerDistance,
   findVisibleImageBounds,
   getAssemblyPreviewExpressions,
   assemblyBoundsExceedFrame,
   calculateAssemblyFitViewportTransform,
   calculateAssemblyVisibleBounds,
-  headScaleFromPointerDistance,
   isAssemblyHeadMotionTestRunning,
   isCharacterAssemblyPending,
   isCharacterCreationSnapshot,
   largestUnoccludedAssemblyViewportRect,
   parseAssemblyRotationInput,
+  visibleImageRect,
   type AssemblyHeadMotionTestToken,
   type AssemblyFaceSelection,
   type AssemblyViewportRect,
@@ -76,17 +77,24 @@ interface ActiveDragStart {
   startY: number;
 }
 
+interface ActiveScaleDragGeometry {
+  centerX: number;
+  centerY: number;
+  startDistance: number;
+}
+
+type ActiveScaleDragDefinition = ActiveScaleDragGeometry &
+  (
+    | { kind: 'scale'; target: 'body'; placement: BodyPlacement }
+    | { kind: 'scale'; target: 'face'; placement: FacePlacement }
+    | { kind: 'scale'; target: 'head'; head: CharacterHead }
+  );
+
 type ActiveDragDefinition =
   | { kind: 'body'; placement: BodyPlacement }
   | { kind: 'face'; placement: FacePlacement }
   | { kind: 'head'; head: CharacterHead }
-  | {
-      kind: 'head-scale';
-      head: CharacterHead;
-      centerX: number;
-      centerY: number;
-      startDistance: number;
-    }
+  | ActiveScaleDragDefinition
   | { kind: 'pivot'; pivot: HeadPivot };
 
 type ActiveDrag = ActiveDragStart &
@@ -455,7 +463,7 @@ export function CharacterAssemblyWorkbench({
       );
       const contentBounds = [
         ...viewport.querySelectorAll<HTMLElement>(
-          '.character-assembly-part, [data-testid="character-assembly-face-drag-target"], [data-testid="character-assembly-head-drag-fallback"], [data-testid="character-assembly-head-scale-handle"], [data-testid="character-assembly-head-pivot-marker"]',
+          '.character-assembly-part, [data-testid="character-assembly-body-drag-target"], [data-testid="character-assembly-face-drag-target"], [data-testid="character-assembly-head-drag-fallback"], [data-testid="character-assembly-body-scale-handle"], [data-testid="character-assembly-face-scale-handle"], [data-testid="character-assembly-head-scale-handle"], [data-testid="character-assembly-head-pivot-marker"]',
         ),
       ].reduce((right, element) => {
         const bounds = element.getBoundingClientRect();
@@ -662,6 +670,18 @@ export function CharacterAssemblyWorkbench({
     }
     return bounds;
   }, [bodyPart?.assetId, facePart?.assetId, headPart?.assetId, imageState.images]);
+  const bodyContentRect = bodyPart
+    ? visibleImageRect(
+        bodyPart.localRect,
+        imageBoundsByAssetId.get(bodyPart.assetId),
+      )
+    : null;
+  const faceContentRect = facePart
+    ? visibleImageRect(
+        facePart.localRect,
+        imageBoundsByAssetId.get(facePart.assetId),
+      )
+    : null;
   const assemblyVisibleBounds = useMemo(
     () => calculateAssemblyVisibleBounds(visual, imageBoundsByAssetId),
     [imageBoundsByAssetId, visual],
@@ -730,15 +750,9 @@ export function CharacterAssemblyWorkbench({
   const headImageBounds = headPart
     ? imageBoundsByAssetId.get(headPart.assetId) ?? null
     : null;
-  const headContentRect = useMemo(() => {
-    if (!headPart || !headImageBounds) return null;
-    return {
-      x: headPart.localRect.x + headPart.localRect.width * headImageBounds.x,
-      y: headPart.localRect.y + headPart.localRect.height * headImageBounds.y,
-      width: headPart.localRect.width * headImageBounds.width,
-      height: headPart.localRect.height * headImageBounds.height,
-    };
-  }, [headImageBounds, headPart]);
+  const headContentRect = headPart && headImageBounds
+    ? visibleImageRect(headPart.localRect, headImageBounds)
+    : null;
 
   const getAssemblyCameraTransform = useCallback(
     (mode: 'frame' | 'content', bounds: VisualLocalRect | null) => {
@@ -925,7 +939,10 @@ export function CharacterAssemblyWorkbench({
   const adjustHeadScale = (delta: number): void => {
     if (!head) return;
     const scale = Number(
-      Math.max(0.05, head.placement.scale + delta).toFixed(2),
+      Math.min(
+        CHARACTER_PART_MAX_SCALE,
+        Math.max(CHARACTER_PART_MIN_SCALE, head.placement.scale + delta),
+      ).toFixed(2),
     );
     updateHead({
       ...head,
@@ -1001,19 +1018,14 @@ export function CharacterAssemblyWorkbench({
     definition: ActiveDragDefinition,
   ): void => {
     if (event.button !== 0 || isTestingHeadMotion) return;
-    if (definition.kind === 'face' && (activeEditTarget !== 'face' || isEditingNeckPivot)) {
+    const target = definition.kind === 'scale'
+      ? definition.target
+      : definition.kind;
+    if (target === 'pivot') {
+      if (!isEditingNeckPivot) return;
+    } else if (activeEditTarget !== target || isEditingNeckPivot) {
       return;
     }
-    if (definition.kind === 'body' && (activeEditTarget !== 'body' || isEditingNeckPivot)) {
-      return;
-    }
-    if (
-      (definition.kind === 'head' || definition.kind === 'head-scale') &&
-      (activeEditTarget !== 'head' || isEditingNeckPivot)
-    ) {
-      return;
-    }
-    if (definition.kind === 'pivot' && !isEditingNeckPivot) return;
     dragRef.current = {
       ...definition,
       pointerId: event.pointerId,
@@ -1023,41 +1035,59 @@ export function CharacterAssemblyWorkbench({
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
-  const beginHeadScaleDrag = (event: React.PointerEvent<HTMLElement>): void => {
+  const beginPartScaleDrag = (
+    event: React.PointerEvent<HTMLElement>,
+    target: CharacterAssemblyEditTarget,
+  ): void => {
     const viewportElement = viewportRef.current;
-    if (
-      !head ||
-      !headPart ||
-      !viewportElement ||
-      event.button !== 0 ||
-      isTestingHeadMotion ||
-      isEditingNeckPivot ||
-      activeEditTarget !== 'head'
-    ) {
-      return;
-    }
+    if (!viewportElement) return;
+    if (target === 'head' && !head) return;
     const viewport = viewportElement.getBoundingClientRect();
     const safeScale = Math.max(transform.scale, 0.0001);
+    const placement = target === 'body'
+      ? session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT
+      : target === 'head' && head
+        ? head.placement
+        : session.draft.facePlacement;
     const centerX =
       viewport.left + viewportElement.clientLeft + transform.offsetX +
-      (project.width / 2 + head.placement.offsetX) * safeScale;
+      (project.width / 2 + placement.offsetX) * safeScale;
     const centerY =
       viewport.top + viewportElement.clientTop + transform.offsetY +
-      (project.height / 2 + head.placement.offsetY) * safeScale;
-    dragRef.current = {
-      kind: 'head-scale',
-      head: { ...head, placement: { ...head.placement }, pivot: { ...head.pivot } },
+      (project.height / 2 + placement.offsetY) * safeScale;
+    const geometry = {
       centerX,
       centerY,
       startDistance: Math.max(
         1,
         Math.hypot(event.clientX - centerX, event.clientY - centerY),
       ),
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
     };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    const definition: ActiveScaleDragDefinition = target === 'body'
+      ? {
+          kind: 'scale',
+          target,
+          placement: { ...(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT) },
+          ...geometry,
+        }
+      : target === 'face'
+        ? {
+            kind: 'scale',
+            target,
+            placement: { ...session.draft.facePlacement },
+            ...geometry,
+          }
+        : {
+            kind: 'scale',
+            target,
+            head: {
+              ...head!,
+              placement: { ...head!.placement },
+              pivot: { ...head!.pivot },
+            },
+            ...geometry,
+          };
+    beginPointerDrag(event, definition);
   };
 
   const movePointerDrag = (event: React.PointerEvent<HTMLElement>): void => {
@@ -1091,22 +1121,42 @@ export function CharacterAssemblyWorkbench({
           offsetY: drag.head.placement.offsetY + dy,
         },
       });
-    } else if (drag.kind === 'head-scale') {
+    } else if (drag.kind === 'scale') {
       const currentDistance = Math.hypot(
         event.clientX - drag.centerX,
         event.clientY - drag.centerY,
       );
-      updateHead({
-        ...drag.head,
-        placement: {
-          ...drag.head.placement,
-          scale: headScaleFromPointerDistance(
-            drag.head.placement.scale,
+      if (drag.target === 'body') {
+        updateBodyPlacement({
+          ...drag.placement,
+          scale: characterPartScaleFromPointerDistance(
+            drag.placement.scale,
             drag.startDistance,
             currentDistance,
           ),
-        },
-      });
+        });
+      } else if (drag.target === 'face') {
+        updateFacePlacement({
+          ...drag.placement,
+          scale: characterPartScaleFromPointerDistance(
+            drag.placement.scale,
+            drag.startDistance,
+            currentDistance,
+          ),
+        });
+      } else {
+        updateHead({
+          ...drag.head,
+          placement: {
+            ...drag.head.placement,
+            scale: characterPartScaleFromPointerDistance(
+              drag.head.placement.scale,
+              drag.startDistance,
+              currentDistance,
+            ),
+          },
+        });
+      }
     } else {
       if (!head) return;
       updateHead({
@@ -1148,9 +1198,28 @@ export function CharacterAssemblyWorkbench({
 
   const adjustScale = (delta: number): void => {
     const scale = Number(
-      Math.max(0.05, session.draft.facePlacement.scale + delta).toFixed(2),
+      Math.min(
+        CHARACTER_PART_MAX_SCALE,
+        Math.max(
+          CHARACTER_PART_MIN_SCALE,
+          session.draft.facePlacement.scale + delta,
+        ),
+      ).toFixed(2),
     );
     updateFacePlacement({ ...session.draft.facePlacement, scale });
+  };
+
+  const adjustPartScale = (
+    target: CharacterAssemblyEditTarget,
+    delta: number,
+  ): void => {
+    if (target === 'body') {
+      adjustBodyScale(delta);
+    } else if (target === 'head') {
+      adjustHeadScale(delta);
+    } else {
+      adjustScale(delta);
+    }
   };
 
   const setTargetRotation = (rotationDeg: number): boolean => {
@@ -1343,6 +1412,24 @@ export function CharacterAssemblyWorkbench({
 
   const left = project.width / 2;
   const top = project.height / 2;
+  const bodyHandlePoint = bodyContentRect
+    ? {
+        x: bodyContentRect.x + bodyContentRect.width,
+        y: bodyContentRect.y + bodyContentRect.height,
+      }
+    : null;
+  const faceHandleRect = facePart
+    ? transformVisualRectByPart(
+        faceContentRect ?? facePart.localRect,
+        facePart,
+      )
+    : null;
+  const faceHandlePoint = faceHandleRect
+    ? {
+        x: faceHandleRect.x + faceHandleRect.width,
+        y: faceHandleRect.y + faceHandleRect.height,
+      }
+    : null;
   const headHandleRect = headPart
     ? transformVisualRectByPart(
         headContentRect ?? headPart.localRect,
@@ -1473,7 +1560,7 @@ export function CharacterAssemblyWorkbench({
               }}
             />
           ) : null}
-          {activeEditTarget === 'body' && !isEditingNeckPivot && bodyPart && bodyRect ? (
+          {activeEditTarget === 'body' && !isEditingNeckPivot && bodyPart && bodyContentRect ? (
             <div
               aria-label="拖动身体调整位置，使用方向键微调"
               aria-roledescription="可拖动身体"
@@ -1504,14 +1591,46 @@ export function CharacterAssemblyWorkbench({
               onPointerUp={endPointerDrag}
               role="group"
               style={{
-                height: bodyRect.height,
-                left: left + bodyRect.x,
+                height: bodyContentRect.height,
+                left: left + bodyContentRect.x,
                 pointerEvents: isTestingHeadMotion ? 'none' : undefined,
-                top: top + bodyRect.y,
-                width: bodyRect.width,
+                top: top + bodyContentRect.y,
+                width: bodyContentRect.width,
               }}
               tabIndex={isTestingHeadMotion ? -1 : 0}
             />
+          ) : null}
+          {activeEditTarget === 'body' && !isEditingNeckPivot && bodyHandlePoint ? (
+            <button
+              aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown"
+              aria-label="调整身体大小；拖动右下角方块等比例缩放，方向键微调"
+              className="character-assembly-scale-handle"
+              data-scale={(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).scale}
+              data-testid="character-assembly-body-scale-handle"
+              disabled={isTestingHeadMotion}
+              onKeyDown={(event) => {
+                const step = event.shiftKey ? 0.25 : 0.05;
+                if (event.key === 'ArrowRight' || event.key === 'ArrowUp' || event.key === '+') {
+                  adjustPartScale('body', step);
+                } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown' || event.key === '-') {
+                  adjustPartScale('body', -step);
+                } else return;
+                event.preventDefault();
+              }}
+              onLostPointerCapture={stopPointerDrag}
+              onPointerCancel={stopPointerDrag}
+              onPointerDown={(event) => beginPartScaleDrag(event, 'body')}
+              onPointerMove={movePointerDrag}
+              onPointerUp={endPointerDrag}
+              style={{
+                left: left + bodyHandlePoint.x,
+                top: top + bodyHandlePoint.y,
+                transform: `translate(-50%, -50%) scale(${1 / Math.max(transform.scale, 0.0001)})`,
+              }}
+              type="button"
+            >
+              <span aria-hidden="true" />
+            </button>
           ) : null}
           <div
             aria-label={head ? '头部、脸部与张嘴图' : '脸部与张嘴图'}
@@ -1557,7 +1676,7 @@ export function CharacterAssemblyWorkbench({
                 }}
               />
             ) : null}
-            {activeEditTarget === 'face' && !isEditingNeckPivot && faceRect ? (
+            {activeEditTarget === 'face' && !isEditingNeckPivot && facePart && faceContentRect ? (
               <div
                 aria-label="拖动脸部调整位置，使用方向键微调"
                 aria-roledescription="可拖动脸部"
@@ -1586,16 +1705,48 @@ export function CharacterAssemblyWorkbench({
                 onPointerUp={endPointerDrag}
                 role="group"
                 style={{
-                  height: faceRect.height,
-                  left: left + faceRect.x,
+                  height: faceContentRect.height,
+                  left: left + faceContentRect.x,
                   pointerEvents: isTestingHeadMotion ? 'none' : undefined,
-                  top: top + faceRect.y,
+                  top: top + faceContentRect.y,
                   transform: `rotate(${facePart.rotationDeg}deg) scaleX(${facePart.flipX ? -1 : 1})`,
-                  transformOrigin: `${facePart.localRect.x + facePart.localRect.width / 2 - faceRect.x}px ${facePart.localRect.y + facePart.localRect.height / 2 - faceRect.y}px`,
-                  width: faceRect.width,
+                  transformOrigin: `${facePart.localRect.x + facePart.localRect.width / 2 - faceContentRect.x}px ${facePart.localRect.y + facePart.localRect.height / 2 - faceContentRect.y}px`,
+                  width: faceContentRect.width,
                 }}
                 tabIndex={isTestingHeadMotion ? -1 : 0}
               />
+            ) : null}
+            {activeEditTarget === 'face' && !isEditingNeckPivot && faceHandlePoint ? (
+              <button
+                aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown"
+                aria-label="调整脸部大小；拖动右下角方块等比例缩放，方向键微调"
+                className="character-assembly-scale-handle"
+                data-scale={session.draft.facePlacement.scale}
+                data-testid="character-assembly-face-scale-handle"
+                disabled={isTestingHeadMotion}
+                onKeyDown={(event) => {
+                  const step = event.shiftKey ? 0.25 : 0.05;
+                  if (event.key === 'ArrowRight' || event.key === 'ArrowUp' || event.key === '+') {
+                    adjustPartScale('face', step);
+                  } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown' || event.key === '-') {
+                    adjustPartScale('face', -step);
+                  } else return;
+                  event.preventDefault();
+                }}
+                onLostPointerCapture={stopPointerDrag}
+                onPointerCancel={stopPointerDrag}
+                onPointerDown={(event) => beginPartScaleDrag(event, 'face')}
+                onPointerMove={movePointerDrag}
+                onPointerUp={endPointerDrag}
+                style={{
+                  left: left + faceHandlePoint.x,
+                  top: top + faceHandlePoint.y,
+                  transform: `translate(-50%, -50%) scale(${1 / Math.max(transform.scale, 0.0001)})`,
+                }}
+                type="button"
+              >
+                <span aria-hidden="true" />
+              </button>
             ) : null}
             {head && activeEditTarget === 'head' && !isEditingNeckPivot ? (
               <>
@@ -1676,20 +1827,22 @@ export function CharacterAssemblyWorkbench({
                 {headHandleRect && headHandlePoint ? (
                   <button
                     aria-label="调整头部大小，拖动或用方向键微调"
-                    className="character-assembly-head-scale-handle"
+                    className="character-assembly-scale-handle character-assembly-head-scale-handle"
+                    data-scale={head.placement.scale}
                     data-testid="character-assembly-head-scale-handle"
                     disabled={isTestingHeadMotion}
                     onKeyDown={(event) => {
+                      const step = event.shiftKey ? 0.25 : 0.05;
                       if (event.key === 'ArrowRight' || event.key === 'ArrowUp' || event.key === '+') {
-                        adjustHeadScale(0.05);
+                        adjustPartScale('head', step);
                       } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown' || event.key === '-') {
-                        adjustHeadScale(-0.05);
+                        adjustPartScale('head', -step);
                       } else return;
                       event.preventDefault();
                     }}
                     onLostPointerCapture={stopPointerDrag}
                     onPointerCancel={stopPointerDrag}
-                    onPointerDown={beginHeadScaleDrag}
+                    onPointerDown={(event) => beginPartScaleDrag(event, 'head')}
                     onPointerMove={movePointerDrag}
                     onPointerUp={endPointerDrag}
                     style={{

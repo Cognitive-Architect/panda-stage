@@ -1,4 +1,6 @@
 import {
+  CHARACTER_PART_MAX_SCALE,
+  CHARACTER_PART_MIN_SCALE,
   calculateViewportTransform,
   DEFAULT_BODY_PLACEMENT,
   resolveLayerVisualParts,
@@ -123,7 +125,7 @@ function isFiniteRect(rect: VisualLocalRect): boolean {
     && rect.height > 0;
 }
 
-function visibleImageRect(
+export function visibleImageRect(
   rect: VisualLocalRect,
   bounds: NormalizedImageBounds | null | undefined,
 ): VisualLocalRect {
@@ -315,22 +317,31 @@ export function characterLocalPointerDelta(
   };
 }
 
-export function headScaleFromPointerDistance(
+export function characterPartScaleFromPointerDistance(
   startScale: number,
   startDistance: number,
   currentDistance: number,
 ): number {
+  const safeStartScale = Number.isFinite(startScale) && startScale > 0
+    ? startScale
+    : 1;
   if (
-    !Number.isFinite(startScale) ||
     !Number.isFinite(startDistance) ||
     !Number.isFinite(currentDistance) ||
-    startScale <= 0 ||
     startDistance <= 0 ||
     currentDistance < 0
   ) {
-    return Math.max(0.05, Number.isFinite(startScale) ? startScale : 1);
+    return Math.min(
+      CHARACTER_PART_MAX_SCALE,
+      Math.max(CHARACTER_PART_MIN_SCALE, safeStartScale),
+    );
   }
-  return Math.max(0.05, startScale * (currentDistance / startDistance));
+  const nextScale = safeStartScale * (currentDistance / startDistance);
+  if (!Number.isFinite(nextScale)) return CHARACTER_PART_MAX_SCALE;
+  return Math.min(
+    CHARACTER_PART_MAX_SCALE,
+    Math.max(CHARACTER_PART_MIN_SCALE, nextScale),
+  );
 }
 
 export function isCharacterCreationSnapshot(

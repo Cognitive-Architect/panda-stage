@@ -15,14 +15,15 @@ import {
   calculateAssemblyFitViewportTransform,
   calculateAssemblyVisibleBounds,
   characterLocalPointerDelta,
+  characterPartScaleFromPointerDistance,
   findVisibleImageBounds,
   getAssemblyPreviewExpressions,
-  headScaleFromPointerDistance,
   hasPendingCharacterAssemblyEdit,
   isAssemblyHeadMotionTestRunning,
   isCharacterAssemblyPending,
   largestUnoccludedAssemblyViewportRect,
   parseAssemblyRotationInput,
+  visibleImageRect,
 } from '../../src/renderer/features/characters/characterAssemblyPreview';
 import type {
   CharacterAssemblySnapshot,
@@ -308,6 +309,8 @@ describe('S07 composite assembly preview', () => {
     expect(markup).toContain('data-testid="character-assembly-edit-face"');
     expect(markup).toContain('data-testid="character-assembly-head-drag-fallback"');
     expect(markup).toContain('data-testid="character-assembly-head-scale-handle"');
+    expect(markup).not.toContain('data-testid="character-assembly-body-scale-handle"');
+    expect(markup).not.toContain('data-testid="character-assembly-face-scale-handle"');
     expect(markup).not.toContain('data-testid="character-assembly-face-drag-target"');
     expect(markup).not.toContain('data-testid="character-assembly-head-pivot"');
     expect(markup).toContain('data-testid="character-assembly-head-pivot-marker"');
@@ -363,11 +366,29 @@ describe('S07 composite assembly preview', () => {
     }));
     expect(headlessMarkup).toContain('data-edit-target="face"');
     expect(headlessMarkup).toContain('data-testid="character-assembly-face-drag-target"');
+    expect(headlessMarkup).toContain('data-testid="character-assembly-face-scale-handle"');
+    expect(headlessMarkup).not.toContain('data-testid="character-assembly-body-scale-handle"');
+    expect(headlessMarkup).not.toContain('data-testid="character-assembly-head-scale-handle"');
     expect(headlessMarkup).not.toContain('data-testid="character-assembly-head-pivot"');
     expect(headlessMarkup).not.toContain('data-testid="character-assembly-test-head-motion"');
     expect(headlessMarkup).toContain('data-testid="character-assembly-edit-body"');
     expect(headlessMarkup).toContain('character-assembly-workbench-header');
     expect(headlessMarkup).toContain('data-testid="character-assembly-expression-preview-toggle"');
+
+    const bodyMarkup = renderToStaticMarkup(createElement(CharacterAssemblyWorkbench, {
+      projectSnapshot: {
+        projectRoot: session.projectRoot,
+        project,
+        dirty: false,
+        revision: 0,
+      },
+      session: { ...session, editTarget: 'body' },
+    }));
+    expect(bodyMarkup).toContain('data-edit-target="body"');
+    expect(bodyMarkup).toContain('data-testid="character-assembly-body-drag-target"');
+    expect(bodyMarkup).toContain('data-testid="character-assembly-body-scale-handle"');
+    expect(bodyMarkup).not.toContain('data-testid="character-assembly-face-scale-handle"');
+    expect(bodyMarkup).not.toContain('data-testid="character-assembly-head-scale-handle"');
   });
 
   it('calculates transparent-image bounds and viewport-independent pointer adjustments', () => {
@@ -383,8 +404,14 @@ describe('S07 composite assembly preview', () => {
     expect(findVisibleImageBounds(new Uint8ClampedArray(16), 2, 2)).toBeNull();
     expect(characterLocalPointerDelta(10, 20, 30, 60, 2)).toEqual({ x: 10, y: 20 });
     expect(characterLocalPointerDelta(10, 20, 30, 60, 0.5)).toEqual({ x: 40, y: 80 });
-    expect(headScaleFromPointerDistance(0.8, 20, 30)).toBeCloseTo(1.2);
-    expect(headScaleFromPointerDistance(0.1, 20, 1)).toBe(0.05);
+    expect(visibleImageRect(
+      { x: -10, y: -20, width: 200, height: 100 },
+      { x: 0.25, y: 0.1, width: 0.5, height: 0.8 },
+    )).toEqual({ x: 40, y: -10, width: 100, height: 80 });
+    expect(characterPartScaleFromPointerDistance(0.8, 20, 30)).toBeCloseTo(1.2);
+    expect(characterPartScaleFromPointerDistance(0.1, 20, 1)).toBe(0.05);
+    expect(characterPartScaleFromPointerDistance(19, 20, 30)).toBe(20);
+    expect(characterPartScaleFromPointerDistance(1, 0, Number.NaN)).toBe(1);
   });
 
   it('fits alpha-visible Body, Head, and selected Face bounds without changing the project frame', () => {

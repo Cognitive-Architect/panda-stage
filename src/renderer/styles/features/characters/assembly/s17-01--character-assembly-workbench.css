@@ -957,7 +957,7 @@
 }
 
 .character-assembly-head-drag-fallback,
-.character-assembly-head-scale-handle {
+.character-assembly-scale-handle {
   position: absolute;
   z-index: 6;
   display: grid;
@@ -983,12 +983,12 @@
   background: var(--ui-color-selected-surface);
 }
 
-.character-assembly-head-scale-handle {
+.character-assembly-scale-handle {
   border-radius: 6px;
   cursor: nwse-resize;
 }
 
-.character-assembly-head-scale-handle > span {
+.character-assembly-scale-handle > span {
   width: 14px;
   height: 14px;
   border: 2px solid var(--ui-color-selected-border);
@@ -998,7 +998,7 @@
 
 .character-assembly-head-hit-area:focus-visible,
 .character-assembly-head-drag-fallback:focus-visible,
-.character-assembly-head-scale-handle:focus-visible {
+.character-assembly-scale-handle:focus-visible {
   outline: 3px solid var(--ui-color-focus-ring);
   outline-offset: 2px;
 }
