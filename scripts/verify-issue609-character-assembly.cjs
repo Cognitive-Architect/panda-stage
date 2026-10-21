@@ -1461,6 +1461,8 @@ async function verifyIssue812HeadMotionToggle(window, screenshots, readSelection
     const pending = document.querySelector('[data-testid="character-assembly-pending"]');
     const headGroup = document.querySelector('.character-assembly-head-group');
     const body = document.querySelector('.character-assembly-part-body');
+    const headPart = document.querySelector('.character-assembly-part-head');
+    const facePart = document.querySelector('.character-assembly-part-face');
     const pivot = document.querySelector('[data-testid="character-assembly-pivot-mode-toggle"]');
     const fineTune = document.querySelector('[data-testid="character-assembly-fine-tune-toggle"]');
     const layoutReuse = document.querySelector('[data-testid="character-assembly-layout-reuse-toggle"]');
@@ -1481,6 +1483,14 @@ async function verifyIssue812HeadMotionToggle(window, screenshots, readSelection
       cueCount: document.querySelectorAll('[data-testid="character-assembly-motion-test-cue"]').length,
       headAnimationName: headGroup ? getComputedStyle(headGroup).animationName : '',
       headAnimationDuration: headGroup ? getComputedStyle(headGroup).animationDuration : '',
+      headTranslateY: headGroup
+        ? (() => {
+            const transform = getComputedStyle(headGroup).transform;
+            return transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m42;
+          })()
+        : 0,
+      headAndFaceShareMotionGroup: Boolean(headGroup?.contains(headPart) && headGroup?.contains(facePart)),
+      bodyOutsideMotionGroup: Boolean(body && !headGroup?.contains(body)),
       bodyAnimationName: body ? getComputedStyle(body).animationName : '',
       focused: document.activeElement === button,
       visibleFocus: Boolean(button?.matches(':focus-visible')),
@@ -1501,18 +1511,22 @@ async function verifyIssue812HeadMotionToggle(window, screenshots, readSelection
   })()`);
 
   const assertState = (state, running, label) => {
-    const expected = running ? '■ 停止测试' : '▶ 测试摇头';
+    const expected = running ? '■ 停止测试' : '▶ 预览点头';
     assert(state.running === String(running), `${label} did not expose the expected head-motion state.`);
     assert(state.pressed === String(running), `${label} lost the toggle's aria-pressed state.`);
     assert(state.label === expected && state.accessibleName === expected, `${label} lost its dynamic accessible button name.`);
     assert(state.cueCount === 0, `${label} inserted the removed motion explanation or an empty cue slot.`);
     if (running) {
       assert(state.headAnimationName === 'character-assembly-head-motion-test', `${label} did not run the existing Head motion animation.`);
-      assert(state.headAnimationDuration === '0.9s', `${label} changed the existing 900 ms motion duration.`);
+      assert(state.headAnimationDuration === '0.5s', `${label} did not use the 2 Hz motion period.`);
+      assert(Math.abs(state.headTranslateY) <= 4.05, `${label} moved the Head outside the expected ±4 px bob envelope.`);
+      assert(state.headAndFaceShareMotionGroup, `${label} separated the Head and Face from their shared motion group.`);
+      assert(state.bodyOutsideMotionGroup, `${label} moved the Body inside the Head motion group.`);
       assert(state.bodyAnimationName === 'none', `${label} animated the Body along with the Head group.`);
       assert(state.pivotDisabled && state.fineTuneDisabled && state.layoutReuseDisabled, `${label} did not keep pivot and layout editing mutually exclusive with motion testing.`);
     } else {
       assert(state.headAnimationName === 'none', `${label} did not stop and reset the Head motion animation.`);
+      assert(Math.abs(state.headTranslateY) <= 0.1, `${label} did not return the Head to its neutral vertical position.`);
       assert(!state.pivotDisabled && !state.fineTuneDisabled && !state.layoutReuseDisabled, `${label} left pivot or layout editing disabled after the motion test stopped.`);
     }
   };
@@ -1538,6 +1552,16 @@ async function verifyIssue812HeadMotionToggle(window, screenshots, readSelection
     );
     assert(JSON.stringify(state.order) === JSON.stringify(baseline.order), `${profile}/${label} reordered or wrapped assembly actions.`);
   };
+
+  const setMotionTime = (timeMs) => window.webContents.executeJavaScript(`(() => {
+    const head = document.querySelector('.character-assembly-head-group');
+    const animation = head?.getAnimations().find((candidate) =>
+      candidate.animationName === 'character-assembly-head-motion-test'
+    );
+    if (!animation) throw new Error('Head motion preview animation is missing.');
+    animation.pause();
+    animation.currentTime = ${timeMs};
+  })()`);
 
   const verifySamePointHit = async (point, zoomFactor, profile, cycle, running) => {
     const hit = await window.webContents.executeJavaScript(`(() => {
@@ -1609,6 +1633,11 @@ async function verifyIssue812HeadMotionToggle(window, screenshots, readSelection
         await verifySamePointHit(anchor, configuration.zoomFactor, configuration.name, cycle, false);
         await sendPointerClick(window, anchor.x, anchor.y);
         await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headMotionTestRunning === 'true'`, `${configuration.name} same-point cycle ${cycle} did not start.`);
+        await setMotionTime(0);
+        await waitForPaint(window);
+        const atStart = await readLayout();
+        assert(Math.abs(atStart.headTranslateY) <= 0.1, `${configuration.name} motion preview did not start at neutral.`);
+        await setMotionTime(125);
         await waitForPaint(window);
         const playing = await readLayout();
         profile.states.push({ name: `play-${cycle}`, ...playing });
@@ -1620,9 +1649,25 @@ async function verifyIssue812HeadMotionToggle(window, screenshots, readSelection
         compareGeometry(initial, playing, configuration.name, `play-${cycle}`);
         assertState(playing, true, `${configuration.name}/play-${cycle}`);
 
+        await setMotionTime(375);
+        await waitForPaint(window);
+        const oppositePeak = await readLayout();
+        profile.states.push({ name: `opposite-peak-${cycle}`, ...oppositePeak });
+        assert(Math.abs(oppositePeak.headTranslateY - 4) <= 0.05, `${configuration.name} motion preview did not reach the +4 px opposite peak.`);
+        assertState(oppositePeak, true, `${configuration.name}/opposite-peak-${cycle}`);
+
         await verifySamePointHit(anchor, configuration.zoomFactor, configuration.name, cycle, true);
         await sendPointerClick(window, anchor.x, anchor.y);
         await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headMotionTestRunning === 'false'`, `${configuration.name} same-point cycle ${cycle} did not stop.`);
+        await waitForDom(
+          window,
+          `(() => {
+            const head = document.querySelector('.character-assembly-head-group');
+            const transform = head ? getComputedStyle(head).transform : 'none';
+            return transform === 'none' || Math.abs(new DOMMatrixReadOnly(transform).m42) <= 0.1;
+          })()`,
+          `${configuration.name} Head motion did not transition back to neutral after stopping.`,
+        );
         await waitForPaint(window);
         const stopped = await readLayout();
         profile.states.push({ name: `stop-${cycle}`, ...stopped });

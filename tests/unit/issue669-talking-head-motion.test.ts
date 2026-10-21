@@ -288,7 +288,12 @@ describe('Issue #669 requested-time Talking Head Motion', () => {
       rotationDeg: 0,
     });
     expect(peak.translateY).toBeCloseTo(-4, 10);
-    expect(peak.rotationDeg).toBeCloseTo(-1.5, 10);
+    expect(peak.rotationDeg).toBe(0);
+    expect(
+      [0, 60, 125, 250, 375, 500, 940, 1_000].map(
+        (timeMs) => resolveTalkingHeadMotionTransform(timeMs, 1_000).rotationDeg,
+      ),
+    ).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
     expect(Math.abs(resolveTalkingHeadMotionTransform(60, 1_000).translateY)).toBeLessThan(2);
     expect(Math.abs(approachEnd.translateY)).toBeLessThanOrEqual(2);
     expect(end.translateY).toBe(0);

@@ -15,7 +15,6 @@ import { evaluateSubtitleAtTime } from '../../shared/preview/subtitle-engine';
 const MOUTH_FLAP_PERIOD_MS = 320;
 const MOUTH_OPEN_MS = 160;
 export const TALKING_HEAD_BOB_AMPLITUDE_PX = 4;
-export const TALKING_HEAD_ROTATION_AMPLITUDE_DEG = 1.5;
 export const TALKING_HEAD_FREQUENCY_HZ = 2;
 export const TALKING_HEAD_EDGE_ENVELOPE_MS = 120;
 
@@ -61,7 +60,7 @@ export function resolveTalkingHeadMotionTransform(
     translateY: TALKING_HEAD_BOB_AMPLITUDE_PX * motion,
     scaleX: 1,
     scaleY: 1,
-    rotationDeg: TALKING_HEAD_ROTATION_AMPLITUDE_DEG * motion,
+    rotationDeg: 0,
   };
 }
 

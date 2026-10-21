@@ -286,7 +286,7 @@ describe('S07 composite assembly preview', () => {
     expect(markup).toContain('aria-expanded="false"');
     expect(markup).not.toContain('data-testid="character-assembly-head-offset-x"');
     expect(markup).toContain('data-testid="character-assembly-test-head-motion"');
-    expect(markup).toContain('▶ 测试摇头');
+    expect(markup).toContain('▶ 预览点头');
     expect(markup).toContain('data-testid="character-assembly-pivot-mode-toggle"');
     expect(markup).toContain('调整脖子转轴');
     expect(
@@ -372,6 +372,11 @@ describe('S07 composite assembly preview', () => {
     expect(workbenchSource).not.toContain('观察头和脸是否贴合，转轴是否像从脖子处转动');
     expect(workbenchStyles).not.toContain('.character-assembly-motion-test-cue');
     expect(workbenchStyles).toContain('.character-assembly-test-head-motion-toggle');
+    expect(workbenchStyles).toContain('character-assembly-head-motion-test 500ms linear infinite');
+    expect(workbenchStyles).toContain('transform: translateY(-4px)');
+    expect(workbenchStyles).toContain('transform: translateY(4px)');
+    expect(workbenchStyles).not.toContain('rotate(-7deg)');
+    expect(workbenchStyles).not.toContain('rotate(7deg)');
   });
 
   it('reports pending only when the edit draft differs from the persisted definition', () => {

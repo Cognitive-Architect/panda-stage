@@ -1409,7 +1409,7 @@ export function CharacterAssemblyWorkbench({
                   onClick={toggleHeadMotionTest}
                   type="button"
                 >
-                  {isTestingHeadMotion ? '■ 停止测试' : '▶ 测试摇头'}
+                  {isTestingHeadMotion ? '■ 停止测试' : '▶ 预览点头'}
                 </button>
               </>
             ) : null}
