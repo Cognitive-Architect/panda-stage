@@ -97,6 +97,14 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual([]);
   });
 
+  it('routes the Issue #819 FileSystem export staging test through release export core', () => {
+    const result = draft([change('tests/unit/file-system-service.test.ts')]);
+    expect(result.tier).toBe('focused');
+    expect(result.matchedRouteIds).toEqual(['release-export-core']);
+    expect(result.suites).toEqual([]);
+    expect(result.unknownPaths).toEqual([]);
+  });
+
   it('unions dialogue and subtitle suites without duplicates', () => {
     const result = draft([
       change('src/renderer/features/dialogue/DialogueTrack.tsx'),
