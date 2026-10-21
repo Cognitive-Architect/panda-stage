@@ -280,7 +280,7 @@ async function runF05(fixture, evidenceRoot) {
   const outputRoot = path.join(fixture.root, 'F05', 'preflight-output');
   await fsp.mkdir(outputRoot, { recursive: true });
 
-  for (const name of ['missing', 'missingExpression', 'corrupt', 'replaced']) {
+  for (const name of ['missing', 'missingExpression', 'missingAudio', 'corrupt', 'replaced']) {
     const projectRoot = cases[name].projectRoot;
     const project = ProjectSchema.parse(JSON.parse(await fsp.readFile(path.join(projectRoot, 'project.json'), 'utf8')));
     const targetPath = path.join(outputRoot, `${name}.mp4`);
@@ -308,6 +308,9 @@ async function runF05(fixture, evidenceRoot) {
     assert(testCase.result.status === 'BLOCK', `${name} fixture unexpectedly prepared.`);
     assert(testCase.result.issues.some((item) => item.code === 'REQUIRED_MEDIA_UNAVAILABLE'), `${name} did not classify unavailable media.`);
     assert(testCase.result.issues.some((item) => item.code === 'REQUIRED_MEDIA_UNAVAILABLE' && item.location === cases[name].expectedLocation), `${name} did not locate the unavailable media.`);
+    if (name === 'missingAudio') {
+      assert(testCase.result.issues.some((item) => item.code === 'UNSUPPORTED_IN_CURRENT_EXPORT_SLICE'), 'Missing audio did not preserve the unsupported-slice classification.');
+    }
     f05Results[name] = {
       status: testCase.result.status,
       issueCodes: testCase.result.issues.map((item) => item.code),

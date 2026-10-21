@@ -242,6 +242,62 @@ describe('DL-01 export preparation domain rules', () => {
     expect(project).toEqual(before);
   });
 
+  it('locates missing audio media while preserving the unsupported-slice issue', async () => {
+    const media = new Map<string, Uint8Array>();
+    const base = projectWithMedia(media);
+    const missingAsset = {
+      id: '10000000-0000-4000-8000-000000000020',
+      kind: 'audio' as const,
+      name: 'F05 missing BGM',
+      relativePath: 'assets/f05-missing-bgm.wav',
+      mimeType: 'audio/wav',
+      sha256: 'c'.repeat(64),
+      durationMs: 3_000,
+    };
+    const missingClip = {
+      id: '70000000-0000-4000-8000-000000000020',
+      role: 'bgm' as const,
+      name: 'F05 missing audio clip',
+      assetId: missingAsset.id,
+      startMs: 0,
+      endMs: 1_200,
+      offsetMs: 0,
+      volume: 1,
+    };
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: [...base.assets, missingAsset],
+      shots: [
+        {
+          ...base.shots[0]!,
+          audioClips: [missingClip],
+        },
+      ],
+    });
+    const before = structuredClone(project);
+    const fixture = await harness({ project, media });
+    const selection = await selectOutput(fixture);
+    const result = await fixture.service.prepare(
+      requestFor(fixture, selection.selectionId),
+    );
+
+    expect(result.status).toBe('BLOCK');
+    if (result.status === 'BLOCK') {
+      expect(result.issues.map((item) => item.code)).toEqual(
+        expect.arrayContaining([
+          'UNSUPPORTED_IN_CURRENT_EXPORT_SLICE',
+          'REQUIRED_MEDIA_UNAVAILABLE',
+        ]),
+      );
+      expect(
+        result.issues.find((item) => item.code === 'REQUIRED_MEDIA_UNAVAILABLE')
+          ?.location,
+      ).toContain(missingClip.name);
+    }
+    expect(project).toEqual(before);
+    expect(fixture.getCurrent()).toMatchObject({ revision: 7, dirty: true });
+  });
+
   it('omits an unused optional mouth image when no dialogue audio activates it', () => {
     const base = projectWithMedia();
     const mouthAssetId = '10000000-0000-4000-8000-000000000099';

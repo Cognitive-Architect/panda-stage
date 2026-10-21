@@ -280,6 +280,45 @@ async function generateIssue816Fixtures(baseDirectory) {
       await fsp.writeFile(path.join(projectRoot, selectedAsset.relativePath), Buffer.from('broken media copy'));
     }
   }
+  const missingAudioRoot = path.join(root, 'F05', 'missingAudio', 'project.pandastage');
+  const missingAudioProjectInput = structuredClone(base);
+  const missingAudioAsset = {
+    id: '10000000-0000-4000-8000-000000000020',
+    kind: 'audio',
+    name: 'F05 missing BGM',
+    relativePath: 'assets/f05-missing-bgm.wav',
+    mimeType: 'audio/wav',
+    sha256: hash(Buffer.from('expected missing audio source')),
+    durationMs: 3_000,
+  };
+  const missingAudioClip = {
+    id: '70000000-0000-4000-8000-000000000020',
+    role: 'bgm',
+    name: 'F05 missing audio clip',
+    assetId: missingAudioAsset.id,
+    startMs: 0,
+    endMs: 1_200,
+    offsetMs: 0,
+    volume: 1,
+  };
+  missingAudioProjectInput.assets.push(missingAudioAsset);
+  missingAudioProjectInput.shots[0].audioClips = [missingAudioClip];
+  const missingAudioProject = await writeProjectBundle(
+    ProjectSchema.parse(missingAudioProjectInput),
+    missingAudioRoot,
+    { pngBytes },
+  );
+  const missingAudioUsage = collectExportPreparationMedia(missingAudioProject)
+    .find((entry) => entry.asset.id === missingAudioAsset.id)?.usages[0];
+  if (!missingAudioUsage) throw new Error('F05 missing-audio fixture is not used by the shot.');
+  f05Cases.missingAudio = {
+    projectRoot: missingAudioRoot,
+    projectId: missingAudioProject.id,
+    assetId: missingAudioAsset.id,
+    expectedLocation: missingAudioUsage,
+    expectedIssueCodes: ['UNSUPPORTED_IN_CURRENT_EXPORT_SLICE', 'REQUIRED_MEDIA_UNAVAILABLE'],
+  };
+
   const invalidReferenceRoot = path.join(root, 'F05', 'invalid-reference', 'project.pandastage');
   const invalidReferenceProject = await writeProjectBundle(base, invalidReferenceRoot, { pngBytes });
   const invalidReferenceLayer = invalidReferenceProject.shots[0]?.layers.find((layer) => layer.source.kind === 'character');
