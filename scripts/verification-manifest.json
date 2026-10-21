@@ -369,6 +369,7 @@
           "tests/integration/project-subtitle-background-migration.test.ts",
           "tests/unit/application-menu-policy.test.ts",
           "tests/unit/standalone-audio.test.ts",
+          "tests/unit/autosave-service.test.ts",
           "tests/integration/standalone-audio-persistence.test.ts"
         ],
         "verifierPatterns": ["scripts/verify-issue257-slice3*", "scripts/verify-issue657-audio-foundation.cjs"],
