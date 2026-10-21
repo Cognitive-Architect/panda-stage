@@ -123,6 +123,7 @@ async function harness(options: {
     project,
     revision: 7,
     dirty: true,
+    openInstanceId: OPEN_INSTANCE_ID,
   };
   const service = new ExportPreparationService({
     getCurrentProjectSnapshot: (requestedRoot) =>
@@ -197,6 +198,7 @@ describe('DL-01 export preparation domain rules', () => {
     );
     expect(media.every((entry) => entry.asset.kind === 'image')).toBe(true);
     expect(evaluateExportPreparationSupport(project, 'static')).toEqual([]);
+    expect(evaluateExportPreparationSupport(project, 'speaker-focus')).toEqual([]);
   });
 
   it('classifies legal BGM/SFX volume as unsupported audio, without invalidating or mutating it', () => {
@@ -237,6 +239,127 @@ describe('DL-01 export preparation domain rules', () => {
       'UNSUPPORTED_IN_CURRENT_EXPORT_SLICE',
     ]);
     expect(project.shots[0]!.audioClips[0]!.volume).toBe(2);
+    expect(project).toEqual(before);
+  });
+
+  it('omits an unused optional mouth image when no dialogue audio activates it', () => {
+    const base = projectWithMedia();
+    const mouthAssetId = '10000000-0000-4000-8000-000000000099';
+    const mouthAsset = {
+      id: mouthAssetId,
+      kind: 'image' as const,
+      name: 'optional mouth image',
+      relativePath: 'assets/optional-mouth.png',
+      mimeType: 'image/png',
+      width: 64,
+      height: 64,
+      sha256: 'b'.repeat(64),
+    };
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: [...base.assets, mouthAsset],
+      characters: [
+        { ...base.characters[0]!, mouthOpenAssetId: mouthAssetId },
+      ],
+    });
+
+    expect(
+      collectExportPreparationMedia(project).some(
+        (entry) => entry.asset.id === mouthAssetId,
+      ),
+    ).toBe(false);
+  });
+
+  it('classifies legal BGM at volume 0 as unsupported audio without changing it', () => {
+    const base = projectWithMedia();
+    const clipAsset = {
+      id: '10000000-0000-4000-8000-000000000020',
+      kind: 'audio' as const,
+      name: 'legal BGM',
+      relativePath: 'assets/legal-bgm.wav',
+      mimeType: 'audio/wav',
+      sha256: 'a'.repeat(64),
+      durationMs: 3_000,
+    };
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: [...base.assets, clipAsset],
+      shots: [
+        {
+          ...base.shots[0]!,
+          audioClips: [
+            {
+              id: '70000000-0000-4000-8000-000000000022',
+              role: 'bgm',
+              name: 'legal BGM',
+              assetId: clipAsset.id,
+              startMs: 0,
+              endMs: 1_200,
+              offsetMs: 0,
+              volume: 0,
+            },
+          ],
+        },
+      ],
+    });
+    const before = structuredClone(project);
+
+    expect(
+      evaluateExportPreparationSupport(project, 'static').map((item) => item.code),
+    ).toEqual(['UNSUPPORTED_IN_CURRENT_EXPORT_SLICE']);
+    expect(project.shots[0]!.audioClips[0]!.volume).toBe(0);
+    expect(project).toEqual(before);
+  });
+
+  it('classifies an invisible background as an invalid shot with a location', () => {
+    const base = projectWithMedia();
+    const shot = base.shots[0]!;
+    const project = ProjectSchema.parse({
+      ...base,
+      shots: [
+        {
+          ...shot,
+          layers: shot.layers.map((layer) =>
+            layer.id === shot.backgroundLayerId
+              ? { ...layer, visible: false }
+              : layer,
+          ),
+        },
+      ],
+    });
+
+    expect(evaluateExportPreparationSupport(project, 'static')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'INVALID_PROJECT',
+          location: expect.stringContaining(shot.name),
+        }),
+      ]),
+    );
+  });
+
+  it('blocks multiple shots as unsupported instead of trimming the Project', () => {
+    const base = projectWithMedia();
+    const project = ProjectSchema.parse({
+      ...base,
+      shots: [
+        ...base.shots,
+        {
+          ...base.shots[0]!,
+          id: '50000000-0000-4000-8000-000000000002',
+          name: 'second shot',
+        },
+      ],
+    });
+    const before = structuredClone(project);
+
+    expect(evaluateExportPreparationSupport(project, 'static')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'UNSUPPORTED_IN_CURRENT_EXPORT_SLICE',
+        }),
+      ]),
+    );
     expect(project).toEqual(before);
   });
 
@@ -315,6 +438,7 @@ describe('ExportPreparationService', () => {
       project: ProjectSchema.parse({ ...request.project, name: '后续编辑' }),
       revision: 8,
       dirty: true,
+      openInstanceId: OPEN_INSTANCE_ID,
     });
     expect(result.candidate.project.name).toBe('导出准备测试工程');
     await expect(
@@ -333,12 +457,120 @@ describe('ExportPreparationService', () => {
     const fixture = await harness({ project, media, reader: mediaReader(media, { onRead }) });
     const selection = await selectOutput(fixture);
     const request = requestFor(fixture, selection.selectionId);
-    fixture.setCurrent({ project, revision: 8, dirty: true });
+    fixture.setCurrent({
+      project,
+      revision: 8,
+      dirty: true,
+      openInstanceId: OPEN_INSTANCE_ID,
+    });
 
     const result = await fixture.service.prepare(request);
     expect(result.status).toBe('BLOCK');
     if (result.status === 'BLOCK') {
       expect(result.issues[0]?.code).toBe('PROJECT_SESSION_CHANGED');
+    }
+    expect(onRead).not.toHaveBeenCalled();
+  });
+
+  it('blocks a same-revision request from a prior open Project instance before reading media', async () => {
+    const onRead = vi.fn();
+    const media = new Map<string, Uint8Array>();
+    const project = projectWithMedia(media);
+    const fixture = await harness({ project, media, reader: mediaReader(media, { onRead }) });
+    const selection = await selectOutput(fixture);
+    const request = requestFor(fixture, selection.selectionId);
+    fixture.setCurrent({
+      project,
+      revision: 7,
+      dirty: true,
+      openInstanceId: OPEN_INSTANCE_ID + 1,
+    });
+
+    const result = await fixture.service.prepare(request);
+    expect(result.status).toBe('BLOCK');
+    if (result.status === 'BLOCK') {
+      expect(result.issues[0]?.code).toBe('PROJECT_SESSION_CHANGED');
+    }
+    expect(onRead).not.toHaveBeenCalled();
+  });
+
+  it('blocks and cleans a same-revision request when Main observes a reopen during media capture', async () => {
+    const media = new Map<string, Uint8Array>();
+    const project = projectWithMedia(media);
+    const firstId = [...media.keys()][0]!;
+    let markReadStarted!: () => void;
+    let releaseRead!: (value: { bytes: Uint8Array; mimeType: string }) => void;
+    const readStarted = new Promise<void>((resolve) => {
+      markReadStarted = resolve;
+    });
+    const reader: ExportPreparationMediaReader = {
+      async getByteLength(_root, asset) {
+        return media.get(asset.id)!.byteLength;
+      },
+      async read(_root, _project, asset) {
+        if (asset.id === firstId) {
+          markReadStarted();
+          return new Promise((resolve) => {
+            releaseRead = resolve;
+          });
+        }
+        return { bytes: media.get(asset.id)!, mimeType: asset.mimeType };
+      },
+    };
+    const fixture = await harness({ project, media, reader });
+    const selection = await selectOutput(fixture);
+    const request = requestFor(fixture, selection.selectionId);
+    const pending = fixture.service.prepare(request);
+    await readStarted;
+    fixture.setCurrent({
+      project,
+      revision: 7,
+      dirty: true,
+      openInstanceId: OPEN_INSTANCE_ID + 1,
+    });
+    releaseRead({ bytes: media.get(firstId)!, mimeType: 'image/png' });
+
+    const result = await pending;
+    expect(result.status).toBe('BLOCK');
+    if (result.status === 'BLOCK') {
+      expect(result.issues[0]?.code).toBe('PROJECT_SESSION_CHANGED');
+    }
+    await expect(readdir(fixture.fileStore.rootDirectory)).resolves.toEqual([]);
+  });
+
+  it('maps invalid Project references to located INVALID_PROJECT issues before reading media', async () => {
+    const onRead = vi.fn();
+    const media = new Map<string, Uint8Array>();
+    const project = projectWithMedia(media);
+    const fixture = await harness({ project, media, reader: mediaReader(media, { onRead }) });
+    const selection = await selectOutput(fixture);
+    const request = requestFor(fixture, selection.selectionId);
+    const invalidProject = structuredClone(project);
+    const characterLayer = invalidProject.shots[0]!.layers.find(
+      (layer) => layer.id === IDS.layerChar,
+    );
+    if (!characterLayer || characterLayer.source.kind !== 'character') {
+      throw new Error('The test fixture character layer is missing.');
+    }
+    characterLayer.name = 'Audit Character';
+    characterLayer.source.characterId = '20000000-0000-4000-8000-000000000099';
+
+    const result = await fixture.service.prepare({
+      ...request,
+      project: invalidProject,
+    });
+    expect(result.status).toBe('BLOCK');
+    if (result.status === 'BLOCK') {
+      expect(result.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: 'INVALID_PROJECT',
+            location: expect.stringContaining('Audit Character'),
+            problem: expect.any(String),
+            nextStep: expect.any(String),
+          }),
+        ]),
+      );
     }
     expect(onRead).not.toHaveBeenCalled();
   });

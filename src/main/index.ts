@@ -323,6 +323,7 @@ async function initialize(): Promise<void> {
             project: snapshot.project,
             revision: snapshot.revision,
             dirty: snapshot.dirty,
+            openInstanceId: snapshot.openInstanceId ?? null,
           }
         : null;
     },

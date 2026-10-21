@@ -48,6 +48,7 @@ export interface TrackedProjectSnapshot {
   project: Project;
   revision: number;
   dirty: boolean;
+  openInstanceId: number | null;
 }
 
 export interface ExportPreparationMediaReader {
@@ -177,7 +178,11 @@ export class ExportPreparationService {
     if (selectedPath === null) return { status: 'cancelled' };
 
     const current = this.currentProject(request.projectRoot);
-    if (!current || current.project.id !== request.projectId) {
+    if (
+      !current ||
+      current.project.id !== request.projectId ||
+      current.openInstanceId !== request.openInstanceId
+    ) {
       return {
         status: 'blocked',
         issue: this.sessionChangedIssue(),
@@ -274,7 +279,11 @@ export class ExportPreparationService {
     }
 
     const tracked = this.currentProject(request.projectRoot);
-    if (!tracked || tracked.project.id !== request.projectId) {
+    if (
+      !tracked ||
+      tracked.project.id !== request.projectId ||
+      tracked.openInstanceId !== request.openInstanceId
+    ) {
       return this.block(
         request.attemptId,
         [this.sessionChangedIssue()],
@@ -491,8 +500,15 @@ export class ExportPreparationService {
         issues.push(this.outputChangedIssue());
       }
       const currentAtEnd = this.currentProject(request.projectRoot);
-      if (!currentAtEnd || currentAtEnd.project.id !== request.projectId) {
+      if (
+        !currentAtEnd ||
+        currentAtEnd.project.id !== request.projectId ||
+        currentAtEnd.openInstanceId !== request.openInstanceId
+      ) {
         issues.push(this.sessionChangedIssue());
+        diagnosticDetails.push(
+          'The Main tracked Project open instance changed during preparation.',
+        );
       } else if (
         currentAtEnd.revision !== request.revision ||
         currentAtEnd.dirty !== request.dirty ||

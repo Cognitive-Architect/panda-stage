@@ -124,6 +124,9 @@ describe('EditorShell ProjectSessionController ownership', () => {
 
     expect(harness.onError).toHaveBeenCalledTimes(1);
     expect(harness.update).toHaveBeenCalledTimes(1);
+    expect(harness.update).toHaveBeenCalledWith(expect.objectContaining({
+      openInstanceId: harness.store.getProjectInstanceId(),
+    }));
   });
 
   it('flushes a pending autosave before switching projects', async () => {

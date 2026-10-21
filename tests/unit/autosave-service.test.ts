@@ -63,6 +63,47 @@ describe('AutosaveService', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('tracks one open Project instance until the autosave session is stopped', async () => {
+    const service = new AutosaveService({
+      recoveryService: recoveryService(vi.fn().mockResolvedValue({})),
+    });
+    service.track({
+      projectRoot: PROJECT_ROOT,
+      project: project('Session identity'),
+      dirty: false,
+      revision: 0,
+    });
+    service.update({
+      projectRoot: PROJECT_ROOT,
+      project: project('Session identity'),
+      dirty: false,
+      revision: 0,
+      openInstanceId: 11,
+    });
+
+    expect(service.getProjectSnapshot(PROJECT_ROOT)?.openInstanceId).toBe(11);
+    expect(() =>
+      service.update({
+        projectRoot: PROJECT_ROOT,
+        project: project('Session identity'),
+        dirty: false,
+        revision: 0,
+        openInstanceId: 12,
+      }),
+    ).toThrow(/open Project instance mismatch/u);
+
+    await service.stop(PROJECT_ROOT);
+    service.track({
+      projectRoot: PROJECT_ROOT,
+      project: project('Session identity'),
+      dirty: false,
+      revision: 0,
+      openInstanceId: 12,
+    });
+    expect(service.getProjectSnapshot(PROJECT_ROOT)?.openInstanceId).toBe(12);
+    await service.stop(PROJECT_ROOT);
+  });
+
   it('never overlaps writes and saves a newer revision on a later tick', async () => {
     let finishFirst: (() => void) | null = null;
     let activeWrites = 0;

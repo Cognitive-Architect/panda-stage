@@ -245,20 +245,60 @@ async function generateIssue816Fixtures(baseDirectory) {
   const f01Project = await writeProjectBundle(base, f01Root, { pngBytes });
   const requiredMedia = collectExportPreparationMedia(f01Project);
   if (requiredMedia.length === 0) throw new Error('F01 must contain required image media.');
-  const firstRequired = requiredMedia[0];
+  const firstShot = f01Project.shots[0];
+  const backgroundLayer = firstShot?.layers.find((layer) => layer.id === firstShot.backgroundLayerId);
+  const backgroundAsset = backgroundLayer?.source.kind === 'asset'
+    ? f01Project.assets.find((asset) => asset.id === backgroundLayer.source.assetId)
+    : null;
+  const expressionAsset = f01Project.assets.find((asset) =>
+    asset.id !== backgroundAsset?.id &&
+    f01Project.characters.some((character) => character.expressions.some(
+      (expression) => expression.id !== character.defaultExpressionId && expression.assetId === asset.id,
+    )),
+  );
+  if (!backgroundAsset) throw new Error('F01 must contain a required background image.');
+  if (!expressionAsset) throw new Error('F01 must contain an actual character expression image.');
 
   const f05Cases = {};
-  for (const name of ['missing', 'corrupt', 'replaced']) {
+  for (const name of ['missing', 'missingExpression', 'corrupt', 'replaced']) {
     const projectRoot = path.join(root, 'F05', name, 'project.pandastage');
     const project = await writeProjectBundle(base, projectRoot, { pngBytes });
-    f05Cases[name] = { projectRoot, projectId: project.id, assetId: firstRequired.asset.id };
-    if (name === 'missing') {
-      await fsp.rm(path.join(projectRoot, firstRequired.asset.relativePath));
+    const selectedAssetId = name === 'missing' ? backgroundAsset.id : expressionAsset.id;
+    const selectedAsset = project.assets.find((asset) => asset.id === selectedAssetId);
+    const usage = requiredMedia.find((entry) => entry.asset.id === selectedAssetId)?.usages[0];
+    if (!selectedAsset || !usage) throw new Error(`F05 ${name} fixture media is not used by the shot.`);
+    f05Cases[name] = {
+      projectRoot,
+      projectId: project.id,
+      assetId: selectedAsset.id,
+      expectedLocation: usage,
+    };
+    if (name === 'missing' || name === 'missingExpression') {
+      await fsp.rm(path.join(projectRoot, selectedAsset.relativePath));
     }
     if (name === 'corrupt') {
-      await fsp.writeFile(path.join(projectRoot, firstRequired.asset.relativePath), Buffer.from('broken media copy'));
+      await fsp.writeFile(path.join(projectRoot, selectedAsset.relativePath), Buffer.from('broken media copy'));
     }
   }
+  const invalidReferenceRoot = path.join(root, 'F05', 'invalid-reference', 'project.pandastage');
+  const invalidReferenceProject = await writeProjectBundle(base, invalidReferenceRoot, { pngBytes });
+  const invalidReferenceLayer = invalidReferenceProject.shots[0]?.layers.find((layer) => layer.source.kind === 'character');
+  if (!invalidReferenceLayer || invalidReferenceLayer.source.kind !== 'character') {
+    throw new Error('F05 invalid-reference fixture needs a character layer.');
+  }
+  invalidReferenceLayer.name = 'F05 invalid character layer';
+  invalidReferenceLayer.source.characterId = '20000000-0000-4000-8000-000000000099';
+  await fsp.writeFile(
+    path.join(invalidReferenceRoot, 'project.json'),
+    JSON.stringify(invalidReferenceProject, null, 2),
+    'utf8',
+  );
+  f05Cases.invalidReference = {
+    projectRoot: invalidReferenceRoot,
+    projectId: invalidReferenceProject.id,
+    layerName: invalidReferenceLayer.name,
+    expectedIssueCode: 'INVALID_PROJECT',
+  };
   const outputConflictRoot = path.join(root, 'F05', 'output-conflict');
   await fsp.mkdir(outputConflictRoot, { recursive: true });
   const outputConflictPath = path.join(outputConflictRoot, 'existing-user-movie.mp4');
@@ -273,7 +313,8 @@ async function generateIssue816Fixtures(baseDirectory) {
   f05Cases.sessionMismatch = {
     projectRoot: f01Root,
     selectedOpenInstanceId: 3,
-    requestOpenInstanceId: 4,
+    requestOpenInstanceId: 3,
+    currentOpenInstanceId: 4,
     expectedIssueCode: 'PROJECT_SESSION_CHANGED',
   };
   f05Cases.outputConflict = {

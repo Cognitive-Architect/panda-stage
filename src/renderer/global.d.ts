@@ -121,6 +121,7 @@ declare global {
   interface Window {
     __pandaStageIssue816Acceptance?: {
       lastAttemptId: string | null;
+      lastMainResponse: ExportPreparationResponse | null;
       inspect: () => Promise<unknown> | unknown;
       editUnsavedFixture: () => Promise<unknown> | unknown;
       reopenSamePath: () => Promise<unknown>;

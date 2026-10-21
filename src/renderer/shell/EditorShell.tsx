@@ -13,6 +13,7 @@ import type {
   RecoveryIgnoreResponse,
   RecoveryRestoreResponse,
 } from '../../shared/recovery-api';
+import type { ExportPreparationResponse } from '../../shared/export-preparation-types';
 import {
   ProjectSessionController,
   type ProjectSessionApi,
@@ -242,8 +243,13 @@ export class EditorShellSession {
     ) {
       return null;
     }
+    const openInstanceId = this.store.getProjectInstanceId();
+    const request = {
+      ...snapshot,
+      ...(openInstanceId === null ? {} : { openInstanceId }),
+    };
     const update = this.autosaveUpdateQueue.then(() =>
-      this.autosaveApi.update(snapshot),
+      this.autosaveApi.update(request),
     );
     this.autosaveUpdateQueue = update.then(
       (response) => {
@@ -278,9 +284,11 @@ export class EditorShellSession {
 
   async switchProject(projectRoot: string): Promise<ProjectSessionSnapshot> {
     await this.flushAutosave();
-    return this.runControllerTransition(() =>
+    const snapshot = await this.runControllerTransition(() =>
       this.controller.switchProject(projectRoot),
     );
+    await this.registerCurrentOpenInstance();
+    return snapshot;
   }
 
   async switchRecentProject(
@@ -288,12 +296,14 @@ export class EditorShellSession {
     expectedProjectId: string,
   ): Promise<ProjectSessionSnapshot> {
     await this.flushAutosave();
-    return this.runControllerTransition(() =>
+    const snapshot = await this.runControllerTransition(() =>
       this.controller.switchRecentProject(
         projectRoot,
         expectedProjectId,
       ),
     );
+    await this.registerCurrentOpenInstance();
+    return snapshot;
   }
 
   /**
@@ -342,6 +352,13 @@ export class EditorShellSession {
     const failure = this.autosaveUpdateFailure;
     this.autosaveUpdateFailure = null;
     if (failure) throw failure;
+  }
+
+  private async registerCurrentOpenInstance(): Promise<void> {
+    const snapshot = this.store.getSnapshot();
+    if (!snapshot) return;
+    await this.syncAutosave(snapshot);
+    await this.flushAutosave();
   }
 
   private assertNativeCloseSyncable(
@@ -503,6 +520,7 @@ export function EditorShell({
 
     const acceptanceApi = {
       lastAttemptId: null as string | null,
+      lastMainResponse: null as ExportPreparationResponse | null,
       inspect: () => {
         const snapshot = editorProjectStore.getSnapshot();
         if (!snapshot) return null;
@@ -638,6 +656,7 @@ export function EditorShell({
           const result = await window.pandaStage.exportPreparation.prepare(
             request,
           );
+          acceptanceApi.lastMainResponse = result;
           const current = editorProjectStore.getSnapshot();
           if (
             editorProjectStore.getProjectInstanceId() !== initialInstanceId ||

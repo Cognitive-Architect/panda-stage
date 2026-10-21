@@ -128,6 +128,7 @@ function createRendererService() {
         project: trackedSnapshot.project,
         revision: trackedSnapshot.revision,
         dirty: trackedSnapshot.dirty,
+        openInstanceId: trackedSnapshot.openInstanceId ?? null,
       };
     },
     fileStore,
@@ -160,6 +161,15 @@ async function waitForRenderer(expression, timeoutMs = 20_000) {
     await pause(50);
   }
   throw new Error(`Timed out waiting for renderer condition: ${expression}`);
+}
+
+async function waitForTrackedOpenInstance(openInstanceId, timeoutMs = 10_000) {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    if (trackedSnapshot?.openInstanceId === openInstanceId) return;
+    await pause(20);
+  }
+  throw new Error(`Timed out waiting for Main to track open Project instance ${openInstanceId}.`);
 }
 
 async function clickSelector(selector) {
@@ -221,8 +231,8 @@ async function copyCandidateEvidence(candidate, evidenceRoot) {
   return destination;
 }
 
-async function runPreparationCase({ name, projectRoot, project, targetPath, beforePrepare }) {
-  let current = { project, revision: 5, dirty: true };
+async function runPreparationCase({ name, projectRoot, project, trackedProject = project, targetPath, beforePrepare }) {
+  let current = { project: trackedProject, revision: 5, dirty: true, openInstanceId: 11 };
   const service = new ExportPreparationService({
     getCurrentProjectSnapshot: (requestedRoot) =>
       path.resolve(requestedRoot) === path.resolve(projectRoot) ? current : null,
@@ -230,8 +240,8 @@ async function runPreparationCase({ name, projectRoot, project, targetPath, befo
   });
   const selectionRequest = {
     projectRoot,
-    projectId: project.id,
-    projectName: project.name,
+    projectId: trackedProject.id,
+    projectName: trackedProject.name,
     openInstanceId: 11,
   };
   const selection = await service.selectOutput(selectionRequest, targetPath);
@@ -270,7 +280,7 @@ async function runF05(fixture, evidenceRoot) {
   const outputRoot = path.join(fixture.root, 'F05', 'preflight-output');
   await fsp.mkdir(outputRoot, { recursive: true });
 
-  for (const name of ['missing', 'corrupt', 'replaced']) {
+  for (const name of ['missing', 'missingExpression', 'corrupt', 'replaced']) {
     const projectRoot = cases[name].projectRoot;
     const project = ProjectSchema.parse(JSON.parse(await fsp.readFile(path.join(projectRoot, 'project.json'), 'utf8')));
     const targetPath = path.join(outputRoot, `${name}.mp4`);
@@ -297,9 +307,11 @@ async function runF05(fixture, evidenceRoot) {
     });
     assert(testCase.result.status === 'BLOCK', `${name} fixture unexpectedly prepared.`);
     assert(testCase.result.issues.some((item) => item.code === 'REQUIRED_MEDIA_UNAVAILABLE'), `${name} did not classify unavailable media.`);
+    assert(testCase.result.issues.some((item) => item.code === 'REQUIRED_MEDIA_UNAVAILABLE' && item.location === cases[name].expectedLocation), `${name} did not locate the unavailable media.`);
     f05Results[name] = {
       status: testCase.result.status,
       issueCodes: testCase.result.issues.map((item) => item.code),
+      issues: testCase.result.issues,
       diagnosticId: testCase.result.diagnosticId,
       technicalDetails: testCase.details,
       tempEntriesAfter: testCase.tempEntries,
@@ -309,12 +321,37 @@ async function runF05(fixture, evidenceRoot) {
     };
   }
 
+  const invalidReferenceCase = cases.invalidReference;
+  const invalidReferenceProject = JSON.parse(
+    await fsp.readFile(path.join(invalidReferenceCase.projectRoot, 'project.json'), 'utf8'),
+  );
+  const invalidReferenceResult = await runPreparationCase({
+    name: 'invalid-reference',
+    projectRoot: invalidReferenceCase.projectRoot,
+    project: invalidReferenceProject,
+    trackedProject: baselineProject,
+    targetPath: path.join(outputRoot, 'invalid-reference.mp4'),
+  });
+  assert(invalidReferenceResult.result.status === 'BLOCK', 'Invalid-reference fixture unexpectedly prepared.');
+  const invalidReferenceIssue = invalidReferenceResult.result.issues.find((item) => item.code === 'INVALID_PROJECT');
+  assert(invalidReferenceIssue, 'Invalid-reference fixture did not classify as INVALID_PROJECT.');
+  assert(invalidReferenceIssue.location.includes(invalidReferenceCase.layerName), 'Invalid-reference fixture did not locate the faulty character layer.');
+  f05Results.invalidReference = {
+    status: invalidReferenceResult.result.status,
+    issueCodes: invalidReferenceResult.result.issues.map((item) => item.code),
+    issues: invalidReferenceResult.result.issues,
+    diagnosticId: invalidReferenceResult.result.diagnosticId,
+    technicalDetails: invalidReferenceResult.details,
+    tempEntriesAfter: invalidReferenceResult.tempEntries,
+  };
+
   const sessionFixture = cases.sessionMismatch;
   const sessionProject = ProjectSchema.parse(JSON.parse(await fsp.readFile(path.join(sessionFixture.projectRoot, 'project.json'), 'utf8')));
+  let currentOpenInstanceId = sessionFixture.selectedOpenInstanceId;
   const mismatchService = new ExportPreparationService({
     getCurrentProjectSnapshot: (requestedRoot) =>
       path.resolve(requestedRoot) === path.resolve(sessionFixture.projectRoot)
-        ? { project: sessionProject, revision: 5, dirty: true }
+        ? { project: sessionProject, revision: 5, dirty: true, openInstanceId: currentOpenInstanceId }
         : null,
     fileStore: new NodeExportPreparationFileStore(path.join(fixture.root, 'F05', 'temp', 'open-instance-mismatch')),
   });
@@ -325,6 +362,7 @@ async function runF05(fixture, evidenceRoot) {
     openInstanceId: sessionFixture.selectedOpenInstanceId,
   }, path.join(outputRoot, 'open-instance-mismatch.mp4'));
   assert(mismatchSelection.status === 'selected', 'Could not create open-instance mismatch selection.');
+  currentOpenInstanceId = sessionFixture.currentOpenInstanceId;
   const mismatch = await mismatchService.prepare({
     selectionId: mismatchSelection.selectionId,
     attemptId: randomUUID(),
@@ -340,6 +378,7 @@ async function runF05(fixture, evidenceRoot) {
   f05Results.sessionMismatch = {
     status: mismatch.status,
     issueCodes: mismatch.issues.map((item) => item.code),
+    issues: mismatch.issues,
   };
   await mismatchService.dispose();
 
@@ -353,7 +392,7 @@ async function runF05(fixture, evidenceRoot) {
   const conflictService = new ExportPreparationService({
     getCurrentProjectSnapshot: (requestedRoot) =>
       path.resolve(requestedRoot) === path.resolve(conflict.projectRoot)
-        ? { project: conflictProject, revision: 5, dirty: true }
+        ? { project: conflictProject, revision: 5, dirty: true, openInstanceId: 11 }
         : null,
     fileStore: new NodeExportPreparationFileStore(path.join(fixture.root, 'F05', 'temp', 'output-conflict')),
   });
@@ -454,6 +493,7 @@ async function run() {
     await waitForRenderer("window.__pandaStageIssue816Acceptance && (await window.__pandaStageIssue816Acceptance.inspect())?.project");
 
     const beforeEdit = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+    await waitForTrackedOpenInstance(beforeEdit.openInstanceId);
     const edited = await rendererJs('window.__pandaStageIssue816Acceptance.editUnsavedFixture()');
     assert(edited.dirty === true && edited.revision === beforeEdit.revision + 1, 'Acceptance edit did not enter the dirty EditorProjectStore revision.');
     assert(edited.undoCount === beforeEdit.undoCount + 1, 'Acceptance edit did not create its expected single History entry.');
@@ -542,12 +582,19 @@ async function run() {
     const reopened = await rendererJs('window.__pandaStageIssue816Acceptance.reopenSamePath()');
     assert(reopened.projectRoot === fixtureProjectRoot && reopened.project.id === fixtureProject.id, 'Same-path test did not reopen the same Project identity.');
     assert(reopened.openInstanceId !== candidate.openInstanceId, 'Same-path reopen retained the prior open instance ID.');
+    await waitForTrackedOpenInstance(reopened.openInstanceId);
     const staleResult = await pendingStalePreparation;
     assert(staleResult.status === 'BLOCK' && staleResult.issues.some((item) => item.code === 'PROJECT_SESSION_CHANGED'), 'Late preflight result was not rejected after same-path reopen.');
+    const mainResponse = await rendererJs('window.__pandaStageIssue816Acceptance.lastMainResponse');
+    assert(mainResponse?.status === 'BLOCK' && mainResponse.issues.some((item) => item.code === 'PROJECT_SESSION_CHANGED'), 'Main did not reject the stale same-path request.');
+    const mainSessionDiagnostic = exportPreparationService.getDiagnostics(mainResponse.diagnosticId);
+    assert(mainSessionDiagnostic.some((item) => item.includes('open instance changed')), 'Main did not record a technical diagnostic for the stale same-path request.');
     assert(!existsSync(path.join(new NodeExportPreparationFileStore().rootDirectory, activeSnapshotId)), 'Stale asynchronous preparation left a frozen media directory.');
     await fsp.mkdir(path.join(evidenceRoot, 'F05'), { recursive: true });
     await fsp.writeFile(path.join(evidenceRoot, 'F05', 'same-path-reopen.json'), JSON.stringify({
       staleResult,
+      mainResponse,
+      mainSessionDiagnostic,
       priorInstanceId: candidate.openInstanceId,
       reopenedInstanceId: reopened.openInstanceId,
       staleSnapshotId: activeSnapshotId,
