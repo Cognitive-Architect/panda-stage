@@ -674,7 +674,7 @@
       }
     ]
   },
-  "count": 87,
+  "count": 88,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1707,6 +1707,18 @@
       "owner": "character",
       "supersedes": null,
       "notes": "Bounded Issue #813 Electron proof for pivot completion deduplication, precision overlay geometry and input, contextual expression/Mouth preview, and landscape Assembly viewport recovery across compact, headless, Create, and 125% zoom states; synthetic input is not OWNER human acceptance."
+    },
+    {
+      "id": "issue820-c04-s01",
+      "script": "verify:issue820-c04-s01",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #820 C04 S01 Electron proof for large composite-character assembly viewport fit and camera-only View All behavior; synthetic fixture evidence is not OWNER human acceptance."
     },
     {
       "id": "timeline",
