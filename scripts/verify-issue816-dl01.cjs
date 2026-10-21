@@ -5,6 +5,8 @@ const fsp = require('node:fs/promises');
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 const { createMainWindow } = require('../dist-electron/main/windows/main-window.js');
+const { registerProjectIpcHandlers } = require('../dist-electron/main/ipc/register-project-ipc-handlers.js');
+const { ProjectService } = require('../dist-electron/main/services/ProjectService.js');
 const { registerExportPreparationIpcHandlers } = require('../dist-electron/main/ipc/register-export-preparation-ipc-handlers.js');
 const { ExportPreparationService, MainProjectAssetReader } = require('../dist-electron/main/services/ExportPreparationService.js');
 const { NodeExportPreparationFileStore } = require('../dist-electron/main/services/ExportPreparationFileStore.js');
@@ -30,6 +32,7 @@ let mainWindow = null;
 let trackedSnapshot = null;
 let exportPreparationService = null;
 let removeExportPreparationHandlers = null;
+let removeProjectIpcHandlers = null;
 let fixtureProject = null;
 let fixtureProjectRoot = null;
 let fixtureImageBytes = null;
@@ -52,6 +55,34 @@ function defaultExportFileName(projectName) {
 }
 
 function installProjectFixtureIpc() {
+  const projectService = new ProjectService({
+    getCurrentProjectSnapshot: (projectRoot) => {
+      if (!trackedSnapshot || path.resolve(projectRoot) !== path.resolve(fixtureProjectRoot)) return null;
+      return {
+        project: trackedSnapshot.project,
+        revision: trackedSnapshot.revision,
+      };
+    },
+    onProjectSaved: (projectRoot, project, revision) => {
+      if (
+        trackedSnapshot &&
+        path.resolve(projectRoot) === path.resolve(fixtureProjectRoot) &&
+        trackedSnapshot.revision === revision
+      ) {
+        trackedSnapshot = {
+          ...trackedSnapshot,
+          project: structuredClone(project),
+          dirty: false,
+        };
+      }
+    },
+  });
+  removeProjectIpcHandlers = registerProjectIpcHandlers({
+    getMainWindow: () => mainWindow,
+    projectService,
+  });
+  ipcMain.removeHandler(IPC_CHANNELS.PROJECT_OPEN);
+
   const document = () => ({
     projectRoot: fixtureProjectRoot,
     projectFilePath: path.join(fixtureProjectRoot, 'project.json'),
@@ -568,25 +599,37 @@ async function run() {
       frozenMedia.contentRelativePath,
     );
     let frozenBytesAfterSourceReplacement;
+    let frozenBytesAfterSourceDeletion;
+    let sourceDeletedAfterPreparation = false;
     try {
       await fsp.writeFile(sourcePath, replacementSourceBytes);
       frozenBytesAfterSourceReplacement = await fsp.readFile(frozenCopyPath);
+      await fsp.unlink(sourcePath);
+      sourceDeletedAfterPreparation = true;
+      assert(!existsSync(sourcePath), 'F01 source file still existed after post-preparation deletion.');
+      frozenBytesAfterSourceDeletion = await fsp.readFile(frozenCopyPath);
     } finally {
       await fsp.writeFile(sourcePath, originalSourceBytes);
     }
     assert(hash(originalSourceBytes) === frozenMedia.sha256, 'F01 source did not match the validated manifest before replacement.');
     assert(hash(replacementSourceBytes) !== frozenMedia.sha256, 'F01 replacement source unexpectedly retained the validated hash.');
     assert(hash(frozenBytesAfterSourceReplacement) === frozenMedia.sha256, 'F01 frozen candidate bytes changed when the source was replaced after preparation.');
+    assert(sourceDeletedAfterPreparation, 'F01 source was not deleted after successful preparation.');
+    assert(hash(frozenBytesAfterSourceDeletion) === frozenMedia.sha256, 'F01 frozen candidate bytes changed when the source was deleted after preparation.');
     await fsp.writeFile(path.join(evidenceRoot, 'F01', 'candidate-after-source-replacement.json'), JSON.stringify({
       sourceRelativePath: frozenMedia.sourceRelativePath,
       contentRelativePath: frozenMedia.contentRelativePath,
       validatedSha256: frozenMedia.sha256,
       sourceReplacementSha256: hash(replacementSourceBytes),
       frozenCopySha256AfterSourceReplacement: hash(frozenBytesAfterSourceReplacement),
+      sourceDeletedAfterPreparation,
+      frozenCopySha256AfterSourceDeletion: hash(frozenBytesAfterSourceDeletion),
+      frozenCopyMatchesValidatedBytesAfterDeletion: frozenBytesAfterSourceDeletion.equals(originalSourceBytes),
       frozenCopyMatchesValidatedBytes: frozenBytesAfterSourceReplacement.equals(originalSourceBytes),
       sourceRestored: hash(await fsp.readFile(sourcePath)) === frozenMedia.sha256,
     }, null, 2), 'utf8');
     assert(frozenBytesAfterSourceReplacement.equals(originalSourceBytes), 'F01 frozen candidate bytes differ from the validated source bytes.');
+    assert(frozenBytesAfterSourceDeletion.equals(originalSourceBytes), 'F01 frozen candidate bytes differ from the validated source after source deletion.');
     await fsp.writeFile(path.join(evidenceRoot, 'F01', 'editor-before-capture.json'), JSON.stringify(beforePreparation, null, 2), 'utf8');
     await fsp.writeFile(path.join(evidenceRoot, 'F01', 'editor-after-capture.json'), JSON.stringify(afterPreparation, null, 2), 'utf8');
     await fsp.writeFile(path.join(evidenceRoot, 'F01', 'native-save-as.png'), (await mainWindow.webContents.capturePage()).toPNG());
@@ -599,6 +642,38 @@ async function run() {
       candidateEvidence,
       mediaCount: candidate.mediaManifest.length,
       mediaManifest: candidate.mediaManifest.map((entry) => ({ assetId: entry.assetId, sha256: entry.sha256, byteLength: entry.byteLength, usages: entry.usages })),
+    }, null, 2), 'utf8');
+
+    const candidateProjectEvidencePath = path.join(candidateEvidence, 'project.json');
+    const candidateProjectEvidenceBeforeSave = await fsp.readFile(candidateProjectEvidencePath);
+    const candidateProjectHashBeforeSave = hash(Buffer.from(JSON.stringify(candidate.project)));
+    const saveAfterCapture = await rendererJs('window.__pandaStageIssue816Acceptance.saveCurrentProject()');
+    assert(saveAfterCapture.ok === true, `The original Project could not be saved after candidate capture: ${JSON.stringify(saveAfterCapture)}`);
+    assert(saveAfterCapture.acknowledgement === 'current', 'Saving after capture did not acknowledge the current Project revision.');
+    const editorAfterSave = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+    assert(editorAfterSave.revision === candidate.revision && editorAfterSave.dirty === false, 'Saving after capture changed the Project revision or left it dirty.');
+    assert(editorAfterSave.undoCount === afterPreparation.undoCount, 'Saving after capture changed History.');
+    const persistedAfterSave = ProjectSchema.parse(JSON.parse(await fsp.readFile(path.join(fixtureProjectRoot, 'project.json'), 'utf8')));
+    assert(persistedAfterSave.shots[0].dialogues[0]?.text === candidate.project.shots[0].dialogues[0]?.text, 'Saving after capture did not persist the captured unsaved subtitle to the original Project.');
+    const persistedCharacter = persistedAfterSave.shots[0].layers.find((layer) => layer.id === candidateCharacter?.id);
+    assert(persistedCharacter?.x === candidateCharacter?.x && persistedCharacter?.y === candidateCharacter?.y, 'Saving after capture did not persist the captured unsaved character position.');
+    assert(candidate.project.shots[0].dialogues[0]?.text === 'DL-01 未保存字幕验收', 'Saving the original Project changed the candidate subtitle.');
+    assert(hash(Buffer.from(JSON.stringify(candidate.project))) === candidateProjectHashBeforeSave, 'Saving the original Project changed the in-memory candidate.');
+    const candidateProjectEvidenceAfterSave = await fsp.readFile(candidateProjectEvidencePath);
+    assert(candidateProjectEvidenceAfterSave.equals(candidateProjectEvidenceBeforeSave), 'Saving the original Project changed the frozen candidate evidence file.');
+    await fsp.writeFile(path.join(evidenceRoot, 'F01', 'post-capture-save.json'), JSON.stringify({
+      candidateSnapshotId: candidate.snapshotId,
+      candidateRevision: candidate.revision,
+      savedRevision: saveAfterCapture.savedRevision,
+      acknowledgement: saveAfterCapture.acknowledgement,
+      dirtyAfterSave: editorAfterSave.dirty,
+      undoCountBeforeSave: afterPreparation.undoCount,
+      undoCountAfterSave: editorAfterSave.undoCount,
+      savedProjectSha256: hash(Buffer.from(JSON.stringify(persistedAfterSave))),
+      candidateProjectSha256BeforeSave: candidateProjectHashBeforeSave,
+      candidateProjectSha256AfterSave: hash(Buffer.from(JSON.stringify(candidate.project))),
+      candidateEvidenceFileUnchanged: candidateProjectEvidenceAfterSave.equals(candidateProjectEvidenceBeforeSave),
+      persistedUnsavedSubtitleAndPosition: true,
     }, null, 2), 'utf8');
     await exportPreparationService.discard(undefined, candidate.snapshotId);
 
@@ -642,6 +717,10 @@ async function run() {
       revision: candidate.revision,
       dirtyAtCapture: candidate.dirtyAtCapture,
       projectSha256: hash(Buffer.from(JSON.stringify(candidate.project))),
+      savedRevision: saveAfterCapture.savedRevision,
+      saveAcknowledgement: saveAfterCapture.acknowledgement,
+      dirtyAfterSave: editorAfterSave.dirty,
+      projectSavedSha256: hash(Buffer.from(JSON.stringify(persistedAfterSave))),
       mediaCount: candidate.mediaManifest.length,
       outputPath,
       outputCreated: existsSync(outputPath),
@@ -679,6 +758,7 @@ async function run() {
     app.exit(1);
   } finally {
     removeExportPreparationHandlers?.();
+    removeProjectIpcHandlers?.();
     exportPreparationService?.disposeSync();
   }
 }

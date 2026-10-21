@@ -534,6 +534,7 @@ export function EditorShell({
           redoCount: editorProjectStore.history.getSnapshot().redoCount,
         };
       },
+      saveCurrentProject: () => session.saveCurrentProject(),
       editUnsavedFixture: async () => {
         const snapshot = editorProjectStore.getSnapshot();
         if (!snapshot) throw new Error('No active Project for issue 816 fixture.');

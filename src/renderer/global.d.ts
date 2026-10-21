@@ -123,6 +123,7 @@ declare global {
       lastAttemptId: string | null;
       lastMainResponse: ExportPreparationResponse | null;
       inspect: () => Promise<unknown> | unknown;
+      saveCurrentProject: () => Promise<unknown>;
       editUnsavedFixture: () => Promise<unknown> | unknown;
       reopenSamePath: () => Promise<unknown>;
       prepare: () => Promise<unknown>;
