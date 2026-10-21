@@ -489,6 +489,19 @@ describe('ExportPreparationService', () => {
     );
     expect(hash(stored)).toBe(manifest.sha256);
     expect(stored).toEqual(fixture.media.get(manifest.assetId));
+    fixture.media.set(
+      manifest.assetId,
+      Buffer.from('source changed after candidate preparation'),
+    );
+    const storedAfterSourceReplacement = await readFile(
+      path.join(
+        fixture.fileStore.rootDirectory,
+        result.candidate.snapshotId,
+        manifest.contentRelativePath,
+      ),
+    );
+    expect(hash(storedAfterSourceReplacement)).toBe(manifest.sha256);
+    expect(storedAfterSourceReplacement).toEqual(stored);
 
     fixture.setCurrent({
       project: ProjectSchema.parse({ ...request.project, name: '后续编辑' }),

@@ -556,6 +556,37 @@ async function run() {
     assert(path.resolve(outputPath) === path.resolve(fixtureProjectRoot, defaultExportFileName(fixtureProject.name)), `Native Save As chose unexpected path: ${outputPath}`);
     assert(!existsSync(outputPath), 'DL-01 wrote an MP4 during preparation.');
     const candidateEvidence = await copyCandidateEvidence(candidate, evidenceRoot);
+    const frozenMedia = candidate.mediaManifest[0];
+    assert(frozenMedia, 'F01 candidate has no frozen media to verify.');
+    const sourcePath = path.join(fixtureProjectRoot, frozenMedia.sourceRelativePath);
+    const originalSourceBytes = await fsp.readFile(sourcePath);
+    const replacementSourceBytes = Buffer.from(originalSourceBytes);
+    replacementSourceBytes[replacementSourceBytes.length - 1] ^= 0xff;
+    const frozenCopyPath = path.join(
+      new NodeExportPreparationFileStore().rootDirectory,
+      candidate.snapshotId,
+      frozenMedia.contentRelativePath,
+    );
+    let frozenBytesAfterSourceReplacement;
+    try {
+      await fsp.writeFile(sourcePath, replacementSourceBytes);
+      frozenBytesAfterSourceReplacement = await fsp.readFile(frozenCopyPath);
+    } finally {
+      await fsp.writeFile(sourcePath, originalSourceBytes);
+    }
+    assert(hash(originalSourceBytes) === frozenMedia.sha256, 'F01 source did not match the validated manifest before replacement.');
+    assert(hash(replacementSourceBytes) !== frozenMedia.sha256, 'F01 replacement source unexpectedly retained the validated hash.');
+    assert(hash(frozenBytesAfterSourceReplacement) === frozenMedia.sha256, 'F01 frozen candidate bytes changed when the source was replaced after preparation.');
+    await fsp.writeFile(path.join(evidenceRoot, 'F01', 'candidate-after-source-replacement.json'), JSON.stringify({
+      sourceRelativePath: frozenMedia.sourceRelativePath,
+      contentRelativePath: frozenMedia.contentRelativePath,
+      validatedSha256: frozenMedia.sha256,
+      sourceReplacementSha256: hash(replacementSourceBytes),
+      frozenCopySha256AfterSourceReplacement: hash(frozenBytesAfterSourceReplacement),
+      frozenCopyMatchesValidatedBytes: frozenBytesAfterSourceReplacement.equals(originalSourceBytes),
+      sourceRestored: hash(await fsp.readFile(sourcePath)) === frozenMedia.sha256,
+    }, null, 2), 'utf8');
+    assert(frozenBytesAfterSourceReplacement.equals(originalSourceBytes), 'F01 frozen candidate bytes differ from the validated source bytes.');
     await fsp.writeFile(path.join(evidenceRoot, 'F01', 'editor-before-capture.json'), JSON.stringify(beforePreparation, null, 2), 'utf8');
     await fsp.writeFile(path.join(evidenceRoot, 'F01', 'editor-after-capture.json'), JSON.stringify(afterPreparation, null, 2), 'utf8');
     await fsp.writeFile(path.join(evidenceRoot, 'F01', 'native-save-as.png'), (await mainWindow.webContents.capturePage()).toPNG());
