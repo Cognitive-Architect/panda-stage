@@ -1,5 +1,7 @@
 import {
+  calculateViewportTransform,
   resolveLayerVisualParts,
+  transformVisualRectByPart,
   type Character,
   type CharacterHead,
   type EvaluatedLayer,
@@ -7,7 +9,9 @@ import {
   type Layer,
   type LayerVisualParts,
   type Project,
+  type Size,
   type VisualLocalRect,
+  type ViewportTransform,
 } from '../../../domain';
 import type {
   CharacterAssemblySnapshot,
@@ -40,6 +44,8 @@ export interface NormalizedImageBounds {
   width: number;
   height: number;
 }
+
+export type AssemblyViewportRect = VisualLocalRect;
 
 export interface CharacterLocalPointerDelta {
   x: number;
@@ -107,6 +113,188 @@ export function findVisibleImageBounds(
     y: top / height,
     width: (right - left + 1) / width,
     height: (bottom - top + 1) / height,
+  };
+}
+
+function isFiniteRect(rect: VisualLocalRect): boolean {
+  return [rect.x, rect.y, rect.width, rect.height].every(Number.isFinite)
+    && rect.width > 0
+    && rect.height > 0;
+}
+
+function visibleImageRect(
+  rect: VisualLocalRect,
+  bounds: NormalizedImageBounds | null | undefined,
+): VisualLocalRect {
+  if (
+    !bounds ||
+    ![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite) ||
+    bounds.x < 0 ||
+    bounds.y < 0 ||
+    bounds.width <= 0 ||
+    bounds.height <= 0 ||
+    bounds.x + bounds.width > 1.000001 ||
+    bounds.y + bounds.height > 1.000001
+  ) {
+    return rect;
+  }
+  return {
+    x: rect.x + rect.width * bounds.x,
+    y: rect.y + rect.height * bounds.y,
+    width: rect.width * bounds.width,
+    height: rect.height * bounds.height,
+  };
+}
+
+function unionVisibleRects(rects: readonly VisualLocalRect[]): VisualLocalRect | null {
+  const valid = rects.filter(isFiniteRect);
+  if (valid.length === 0) return null;
+  const left = Math.min(...valid.map((rect) => rect.x));
+  const top = Math.min(...valid.map((rect) => rect.y));
+  const right = Math.max(...valid.map((rect) => rect.x + rect.width));
+  const bottom = Math.max(...valid.map((rect) => rect.y + rect.height));
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+/**
+ * Measures the current assembly selection in character-local coordinates.
+ * Decoded alpha bounds are used where available; unavailable or unreadable
+ * pixels fall back to the source rectangle recorded by the image asset.
+ */
+export function calculateAssemblyVisibleBounds(
+  visual: CharacterAssemblyPreviewVisual | null,
+  imageBoundsByAssetId: ReadonlyMap<string, NormalizedImageBounds | null>,
+): VisualLocalRect | null {
+  if (!visual) return null;
+  const rects = visual.parts.map((part) =>
+    transformVisualRectByPart(
+      visibleImageRect(
+        part.localRect,
+        imageBoundsByAssetId.get(part.assetId),
+      ),
+      part,
+    ),
+  );
+  if (visual.headPart) {
+    const part = visual.headPart;
+    rects.push(
+      transformVisualRectByPart(
+        visibleImageRect(
+          part.localRect,
+          imageBoundsByAssetId.get(part.assetId),
+        ),
+        part,
+      ),
+    );
+  }
+  return unionVisibleRects(rects);
+}
+
+export function assemblyBoundsExceedFrame(
+  bounds: VisualLocalRect | null,
+  frame: Size,
+): boolean {
+  if (!bounds || !isFiniteRect(bounds)) return false;
+  return (
+    bounds.x < -frame.width / 2 ||
+    bounds.y < -frame.height / 2 ||
+    bounds.x + bounds.width > frame.width / 2 ||
+    bounds.y + bounds.height > frame.height / 2
+  );
+}
+
+/**
+ * Returns the largest rectangle left uncovered by overlay panels, measured
+ * from the viewport's content origin.
+ */
+export function largestUnoccludedAssemblyViewportRect(
+  container: Size,
+  occlusions: readonly AssemblyViewportRect[],
+): AssemblyViewportRect {
+  const width = Number.isFinite(container.width) ? Math.max(0, container.width) : 0;
+  const height = Number.isFinite(container.height) ? Math.max(0, container.height) : 0;
+  let regions: AssemblyViewportRect[] = width > 0 && height > 0
+    ? [{ x: 0, y: 0, width, height }]
+    : [];
+
+  for (const occlusion of occlusions) {
+    if (!isFiniteRect(occlusion)) continue;
+    const remaining: AssemblyViewportRect[] = [];
+    for (const region of regions) {
+      const left = Math.max(region.x, occlusion.x);
+      const top = Math.max(region.y, occlusion.y);
+      const right = Math.min(region.x + region.width, occlusion.x + occlusion.width);
+      const bottom = Math.min(region.y + region.height, occlusion.y + occlusion.height);
+      if (right <= left || bottom <= top) {
+        remaining.push(region);
+        continue;
+      }
+      const candidates: AssemblyViewportRect[] = [
+        { x: region.x, y: region.y, width: left - region.x, height: region.height },
+        { x: right, y: region.y, width: region.x + region.width - right, height: region.height },
+        { x: region.x, y: region.y, width: region.width, height: top - region.y },
+        { x: region.x, y: bottom, width: region.width, height: region.y + region.height - bottom },
+      ];
+      remaining.push(...candidates.filter(isFiniteRect));
+    }
+    regions = remaining;
+    if (regions.length === 0) break;
+  }
+
+  return regions.sort(
+    (left, right) => right.width * right.height - left.width * left.height,
+  )[0] ?? { x: 0, y: 0, width: 0, height: 0 };
+}
+
+/**
+ * Fits character-local content into the unoccluded portion of the Assembly
+ * viewport without changing the formal Project frame or any placement data.
+ */
+export function calculateAssemblyFitViewportTransform(
+  container: Size,
+  logicalFrame: Size,
+  bounds: VisualLocalRect | null,
+  availableArea: AssemblyViewportRect,
+  padding = 24,
+): ViewportTransform {
+  const fallback = calculateViewportTransform(container, 'fit', logicalFrame);
+  if (!bounds || !isFiniteRect(bounds) || !isFiniteRect(availableArea)) {
+    return fallback;
+  }
+  const inset = Number.isFinite(padding) ? Math.max(0, padding) : 24;
+  const fitWidth = availableArea.width - inset * 2;
+  const fitHeight = availableArea.height - inset * 2;
+  if (!(fitWidth > 0 && fitHeight > 0)) return fallback;
+
+  const scale = Math.min(
+    fitWidth / bounds.width,
+    fitHeight / bounds.height,
+    Math.max(1, fallback.scale),
+  );
+  if (!(Number.isFinite(scale) && scale > 0)) return fallback;
+
+  const displayWidth = logicalFrame.width * scale;
+  const displayHeight = logicalFrame.height * scale;
+  return {
+    mode: 'fit',
+    container: {
+      width: Number.isFinite(container.width) ? Math.max(0, container.width) : 0,
+      height: Number.isFinite(container.height) ? Math.max(0, container.height) : 0,
+    },
+    logical: { ...logicalFrame },
+    scale,
+    offsetX:
+      availableArea.x +
+      (availableArea.width - bounds.width * scale) / 2 -
+      (logicalFrame.width / 2 + bounds.x) * scale,
+    offsetY:
+      availableArea.y +
+      (availableArea.height - bounds.height * scale) / 2 -
+      (logicalFrame.height / 2 + bounds.y) * scale,
+    displayWidth,
+    displayHeight,
+    contentWidth: Math.max(fallback.container.width, displayWidth),
+    contentHeight: Math.max(fallback.container.height, displayHeight),
   };
 }
 

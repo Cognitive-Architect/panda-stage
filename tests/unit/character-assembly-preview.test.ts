@@ -2,10 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
-import { ProjectSchema, migrateProject } from '../../src/domain';
+import {
+  ProjectSchema,
+  calculateViewportTransform,
+  migrateProject,
+  transformVisualRectByPart,
+} from '../../src/domain';
 import { CharacterAssemblyWorkbench } from '../../src/renderer/features/characters/CharacterAssemblyWorkbench';
 import {
+  assemblyBoundsExceedFrame,
   buildCharacterAssemblyPreviewVisual,
+  calculateAssemblyFitViewportTransform,
+  calculateAssemblyVisibleBounds,
   characterLocalPointerDelta,
   findVisibleImageBounds,
   getAssemblyPreviewExpressions,
@@ -13,6 +21,7 @@ import {
   hasPendingCharacterAssemblyEdit,
   isAssemblyHeadMotionTestRunning,
   isCharacterAssemblyPending,
+  largestUnoccludedAssemblyViewportRect,
   parseAssemblyRotationInput,
 } from '../../src/renderer/features/characters/characterAssemblyPreview';
 import type {
@@ -374,6 +383,120 @@ describe('S07 composite assembly preview', () => {
     expect(characterLocalPointerDelta(10, 20, 30, 60, 0.5)).toEqual({ x: 40, y: 80 });
     expect(headScaleFromPointerDistance(0.8, 20, 30)).toBeCloseTo(1.2);
     expect(headScaleFromPointerDistance(0.1, 20, 1)).toBe(0.05);
+  });
+
+  it('fits alpha-visible Body, Head, and selected Face bounds without changing the project frame', () => {
+    const { project, session } = fixture();
+    const head = session.draft.head!;
+    const fittedSession = {
+      ...session,
+      draft: {
+        ...session.draft,
+        facePlacement: {
+          ...session.draft.facePlacement,
+          rotationDeg: 27,
+          flipX: true,
+        },
+        head: {
+          ...head,
+          placement: {
+            ...head.placement,
+            rotationDeg: -19,
+            flipX: true,
+          },
+        },
+      },
+    };
+    const visual = buildCharacterAssemblyPreviewVisual(
+      project,
+      fittedSession,
+      { kind: 'mouth' },
+    );
+    expect(visual).not.toBeNull();
+    const alphaBounds = new Map([
+      [session.draft.bodyAssetId, { x: 0.1, y: 0.12, width: 0.8, height: 0.76 }],
+      [session.draft.head!.assetId, { x: 0.18, y: 0.08, width: 0.7, height: 0.84 }],
+      [session.draft.mouthOpenAssetId!, { x: 0.2, y: 0.15, width: 0.62, height: 0.7 }],
+    ]);
+    const bounds = calculateAssemblyVisibleBounds(visual, alphaBounds);
+    const expectedRects = visual!.parts.map((part) => {
+      const imageBounds = alphaBounds.get(part.assetId)!;
+      const visible = {
+        x: part.localRect.x + part.localRect.width * imageBounds.x,
+        y: part.localRect.y + part.localRect.height * imageBounds.y,
+        width: part.localRect.width * imageBounds.width,
+        height: part.localRect.height * imageBounds.height,
+      };
+      return transformVisualRectByPart(visible, part);
+    });
+    const headPart = visual!.headPart!;
+    const headBounds = alphaBounds.get(headPart.assetId)!;
+    expectedRects.push(transformVisualRectByPart({
+      x: headPart.localRect.x + headPart.localRect.width * headBounds.x,
+      y: headPart.localRect.y + headPart.localRect.height * headBounds.y,
+      width: headPart.localRect.width * headBounds.width,
+      height: headPart.localRect.height * headBounds.height,
+    }, headPart));
+    const expected = {
+      x: Math.min(...expectedRects.map((rect) => rect.x)),
+      y: Math.min(...expectedRects.map((rect) => rect.y)),
+      width: Math.max(...expectedRects.map((rect) => rect.x + rect.width)) -
+        Math.min(...expectedRects.map((rect) => rect.x)),
+      height: Math.max(...expectedRects.map((rect) => rect.y + rect.height)) -
+        Math.min(...expectedRects.map((rect) => rect.y)),
+    };
+    expect(bounds).toEqual(expected);
+    expect(bounds).not.toBeNull();
+    expect(assemblyBoundsExceedFrame(bounds, {
+      width: project.width,
+      height: project.height,
+    })).toBe(false);
+  });
+
+  it('fits large assembly bounds into the largest viewport area not covered by overlays', () => {
+    const container = { width: 1000, height: 700 };
+    const available = largestUnoccludedAssemblyViewportRect(container, [
+      { x: 0, y: 0, width: 240, height: 700 },
+      { x: 720, y: 0, width: 280, height: 500 },
+      { x: 0, y: 600, width: 1000, height: 100 },
+    ]);
+    expect(available).toEqual({ x: 240, y: 0, width: 480, height: 600 });
+
+    const logical = { width: 1920, height: 1080 };
+    const bounds = { x: -543, y: -724, width: 1086, height: 1448 };
+    const transform = calculateAssemblyFitViewportTransform(
+      container,
+      logical,
+      bounds,
+      available,
+      20,
+    );
+    const left = transform.offsetX + (logical.width / 2 + bounds.x) * transform.scale;
+    const top = transform.offsetY + (logical.height / 2 + bounds.y) * transform.scale;
+    const right = left + bounds.width * transform.scale;
+    const bottom = top + bounds.height * transform.scale;
+    expect(assemblyBoundsExceedFrame(bounds, logical)).toBe(true);
+    expect(transform.logical).toEqual(logical);
+    expect(left).toBeGreaterThanOrEqual(available.x + 20);
+    expect(top).toBeGreaterThanOrEqual(available.y + 20);
+    expect(right).toBeLessThanOrEqual(available.x + available.width - 20);
+    expect(bottom).toBeLessThanOrEqual(available.y + available.height - 20);
+  });
+
+  it('falls back to frame fit when the assembly or usable viewport has no valid bounds', () => {
+    const container = { width: 1000, height: 700 };
+    const logical = { width: 1920, height: 1080 };
+    const frame = calculateAssemblyFitViewportTransform(
+      container,
+      logical,
+      null,
+      { x: 0, y: 0, width: 0, height: 0 },
+    );
+    const expected = calculateViewportTransform(container, 'fit', logical);
+    expect(frame).toEqual(expected);
+    expect(largestUnoccludedAssemblyViewportRect(container, [
+      { x: 0, y: 0, width: 1000, height: 700 },
+    ])).toEqual({ x: 0, y: 0, width: 0, height: 0 });
   });
 
   it('keeps Head search and pagination in Character side panels, outside the canvas workbench', () => {

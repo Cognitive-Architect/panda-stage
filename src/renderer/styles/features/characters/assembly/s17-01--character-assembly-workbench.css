@@ -838,6 +838,11 @@
   background-size: 16px 16px;
 }
 
+.character-assembly-preview-viewport[data-camera-fit-mode='content']
+  .character-assembly-preview-stage {
+  overflow: visible;
+}
+
 .character-assembly-part {
   position: absolute;
   display: block;
@@ -1183,6 +1188,7 @@
 }
 
 .character-assembly-fine-tune-toggle,
+.character-assembly-view-all-toggle,
 .character-assembly-pivot-mode-toggle,
 .character-assembly-layout-reuse-toggle,
 .character-assembly-expression-preview-toggle {

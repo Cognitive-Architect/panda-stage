@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -12,6 +13,7 @@ import {
   type FacePlacement,
   type HeadPivot,
   type Project,
+  type VisualLocalRect,
 } from '../../../domain';
 import type {
   EditorProjectSnapshot,
@@ -33,13 +35,18 @@ import {
   characterLocalPointerDelta,
   findVisibleImageBounds,
   getAssemblyPreviewExpressions,
+  assemblyBoundsExceedFrame,
+  calculateAssemblyFitViewportTransform,
+  calculateAssemblyVisibleBounds,
   headScaleFromPointerDistance,
   isAssemblyHeadMotionTestRunning,
   isCharacterAssemblyPending,
   isCharacterCreationSnapshot,
+  largestUnoccludedAssemblyViewportRect,
   parseAssemblyRotationInput,
   type AssemblyHeadMotionTestToken,
   type AssemblyFaceSelection,
+  type AssemblyViewportRect,
   type CharacterAssemblySnapshotUnion,
   type NormalizedImageBounds,
 } from './characterAssemblyPreview';
@@ -145,6 +152,74 @@ function measureImageVisibleBounds(
     canvas.width = 0;
     canvas.height = 0;
   }
+}
+
+function assemblyViewportFitArea(
+  viewport: HTMLDivElement,
+  fineTunePanel: HTMLDivElement | null,
+): AssemblyViewportRect {
+  const container = {
+    width: viewport.clientWidth,
+    height: viewport.clientHeight,
+  };
+  if (typeof document === 'undefined' || typeof window === 'undefined') {
+    return { x: 0, y: 0, ...container };
+  }
+
+  const viewportBounds = viewport.getBoundingClientRect();
+  const originX = viewportBounds.left + viewport.clientLeft;
+  const originY = viewportBounds.top + viewport.clientTop;
+  const occlusions: DOMRect[] = [];
+  const dock = document.querySelector<HTMLElement>(
+    '[data-testid="resource-activity-dock"]',
+  );
+  const drawer = document.querySelector<HTMLElement>(
+    '[data-testid="resource-activity-drawer"]',
+  );
+  const drawerStyle = drawer ? window.getComputedStyle(drawer) : null;
+  if (
+    dock?.dataset.resourceDrawerOpen === 'true' &&
+    drawer &&
+    drawerStyle?.display !== 'none' &&
+    drawerStyle?.visibility === 'visible' &&
+    Number(drawerStyle.opacity) > 0.01
+  ) {
+    occlusions.push(drawer.getBoundingClientRect());
+  }
+  if (fineTunePanel) {
+    const panelStyle = window.getComputedStyle(fineTunePanel);
+    if (
+      panelStyle.display !== 'none' &&
+      panelStyle.visibility === 'visible' &&
+      Number(panelStyle.opacity) > 0.01
+    ) {
+      occlusions.push(fineTunePanel.getBoundingClientRect());
+    }
+  }
+  const timeline = document.querySelector<HTMLElement>(
+    '[data-testid="bottom-workspace"]',
+  );
+  if (timeline) {
+    const timelineStyle = window.getComputedStyle(timeline);
+    if (
+      timelineStyle.display !== 'none' &&
+      timelineStyle.visibility === 'visible' &&
+      Number(timelineStyle.opacity) > 0.01
+    ) {
+      occlusions.push(timeline.getBoundingClientRect());
+    }
+  }
+
+  const localOcclusions = occlusions.flatMap((bounds): AssemblyViewportRect[] => {
+    const left = Math.max(0, bounds.left - originX);
+    const top = Math.max(0, bounds.top - originY);
+    const right = Math.min(container.width, bounds.right - originX);
+    const bottom = Math.min(container.height, bounds.bottom - originY);
+    return right > left && bottom > top
+      ? [{ x: left, y: top, width: right - left, height: bottom - top }]
+      : [];
+  });
+  return largestUnoccludedAssemblyViewportRect(container, localOcclusions);
 }
 
 function layoutReuseImageAssets(
@@ -297,6 +372,8 @@ export function CharacterAssemblyWorkbench({
       { width: project.width, height: project.height },
     ),
   );
+  const cameraSessionKey = `${project.id}\u0000${projectRoot}\u0000${session.sessionId}`;
+  const [cameraFitMode, setCameraFitMode] = useState<'frame' | 'content'>('frame');
   const viewportRef = useRef<HTMLDivElement>(null);
   const fineTuneTriggerRef = useRef<HTMLButtonElement>(null);
   const fineTunePanelRef = useRef<HTMLDivElement>(null);
@@ -304,6 +381,11 @@ export function CharacterAssemblyWorkbench({
   const expressionPreviewPanelRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<ActiveDrag | null>(null);
   const mountedRef = useRef(true);
+  const cameraFitModeRef = useRef<'frame' | 'content'>('frame');
+  const cameraFitBoundsRef = useRef<VisualLocalRect | null>(null);
+  const latestAssemblyBoundsRef = useRef<VisualLocalRect | null>(null);
+  const autoFitAttemptedForRef = useRef<string | null>(null);
+  const cameraSessionKeyRef = useRef(cameraSessionKey);
 
   useEffect(() => {
     setRotationInput(String(activeRotationDeg));
@@ -546,6 +628,28 @@ export function CharacterAssemblyWorkbench({
   const imageState = imageResult.contextKey === contextKey
     ? imageResult.state
     : EMPTY_CANVAS_IMAGE_STATE;
+  const assemblyImageAssetIds = [
+    bodyPart?.assetId,
+    headPart?.assetId,
+    facePart?.assetId,
+  ].filter((assetId): assetId is string => Boolean(assetId));
+  const imageBoundsByAssetId = useMemo(() => {
+    const bounds = new Map<string, NormalizedImageBounds | null>();
+    for (const assetId of new Set(assemblyImageAssetIds)) {
+      const image = imageState.images.get(assetId);
+      if (image) bounds.set(assetId, measureImageVisibleBounds(image));
+    }
+    return bounds;
+  }, [bodyPart?.assetId, facePart?.assetId, headPart?.assetId, imageState.images]);
+  const assemblyVisibleBounds = useMemo(
+    () => calculateAssemblyVisibleBounds(visual, imageBoundsByAssetId),
+    [imageBoundsByAssetId, visual],
+  );
+  latestAssemblyBoundsRef.current = assemblyVisibleBounds;
+  const assemblyImagesSettled = assemblyImageAssetIds.length > 0 &&
+    assemblyImageAssetIds.every(
+      (assetId) => imageState.images.has(assetId) || imageState.missing.has(assetId),
+    );
   const currentLayoutReuseAssets = useMemo(
     () => layoutReuseImageAssets(project.assets),
     [project.assets],
@@ -602,11 +706,9 @@ export function CharacterAssemblyWorkbench({
           : layoutReuseAssessment && !layoutReuseAssessment.ok
             ? layoutReuseFailureMessage(layoutReuseAssessment.code)
             : '';
-  const headImage = head ? imageState.images.get(head.assetId) ?? null : null;
-  const headImageBounds = useMemo(
-    () => measureImageVisibleBounds(headImage),
-    [headImage],
-  );
+  const headImageBounds = headPart
+    ? imageBoundsByAssetId.get(headPart.assetId) ?? null
+    : null;
   const headContentRect = useMemo(() => {
     if (!headPart || !headImageBounds) return null;
     return {
@@ -616,6 +718,48 @@ export function CharacterAssemblyWorkbench({
       height: headPart.localRect.height * headImageBounds.height,
     };
   }, [headImageBounds, headPart]);
+
+  const getAssemblyCameraTransform = useCallback(
+    (mode: 'frame' | 'content', bounds: VisualLocalRect | null) => {
+      const viewport = viewportRef.current;
+      const logicalFrame = { width: project.width, height: project.height };
+      if (!viewport) {
+        return calculateViewportTransform(
+          { width: 0, height: 0 },
+          'fit',
+          logicalFrame,
+        );
+      }
+      const container = {
+        width: viewport.clientWidth,
+        height: viewport.clientHeight,
+      };
+      if (mode === 'content' && bounds) {
+        return calculateAssemblyFitViewportTransform(
+          container,
+          logicalFrame,
+          bounds,
+          assemblyViewportFitArea(viewport, fineTunePanelRef.current),
+        );
+      }
+      return calculateViewportTransform(container, 'fit', logicalFrame);
+    },
+    [project.height, project.width],
+  );
+
+  const markCameraInteraction = useCallback(() => {
+    autoFitAttemptedForRef.current = cameraSessionKey;
+  }, [cameraSessionKey]);
+
+  const showAllParts = (): void => {
+    autoFitAttemptedForRef.current = cameraSessionKey;
+    const bounds = latestAssemblyBoundsRef.current;
+    const mode = bounds ? 'content' : 'frame';
+    cameraFitModeRef.current = mode;
+    cameraFitBoundsRef.current = mode === 'content' ? bounds : null;
+    setCameraFitMode(mode);
+    setTransform(getAssemblyCameraTransform(mode, bounds));
+  };
 
   useEffect(() => {
     mountedRef.current = true;
@@ -645,22 +789,62 @@ export function CharacterAssemblyWorkbench({
   }, [contextKey, imageSourceKey, imageAssets, projectRoot]);
 
   useLayoutEffect(() => {
+    if (cameraSessionKeyRef.current === cameraSessionKey) return;
+    cameraSessionKeyRef.current = cameraSessionKey;
+    autoFitAttemptedForRef.current = null;
+    cameraFitModeRef.current = 'frame';
+    cameraFitBoundsRef.current = null;
+    setCameraFitMode('frame');
+    setTransform(getAssemblyCameraTransform('frame', null));
+  }, [cameraSessionKey, getAssemblyCameraTransform]);
+
+  useLayoutEffect(() => {
+    if (autoFitAttemptedForRef.current === cameraSessionKey) return;
+    if (!visual || !assemblyImagesSettled) return;
+    autoFitAttemptedForRef.current = cameraSessionKey;
+    if (
+      !assemblyBoundsExceedFrame(assemblyVisibleBounds, {
+        width: project.width,
+        height: project.height,
+      })
+    ) {
+      return;
+    }
+    cameraFitModeRef.current = 'content';
+    cameraFitBoundsRef.current = assemblyVisibleBounds;
+    setCameraFitMode('content');
+    setTransform(getAssemblyCameraTransform('content', assemblyVisibleBounds));
+  }, [
+    assemblyImagesSettled,
+    assemblyVisibleBounds,
+    cameraSessionKey,
+    getAssemblyCameraTransform,
+    project.height,
+    project.width,
+    visual,
+  ]);
+
+  useLayoutEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
     const update = (): void => {
-      setTransform(
-        calculateViewportTransform(
-          { width: viewport.clientWidth, height: viewport.clientHeight },
-          'fit',
-          { width: project.width, height: project.height },
-        ),
-      );
+      if (cameraFitModeRef.current === 'content') {
+        const bounds = latestAssemblyBoundsRef.current ?? cameraFitBoundsRef.current;
+        if (bounds) cameraFitBoundsRef.current = bounds;
+        setTransform(getAssemblyCameraTransform('content', bounds));
+        return;
+      }
+      setTransform(getAssemblyCameraTransform('frame', null));
     };
     const observer = new ResizeObserver(update);
     observer.observe(viewport);
+    window.addEventListener('resize', update);
     update();
-    return () => observer.disconnect();
-  }, [project.height, project.width]);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [getAssemblyCameraTransform]);
 
   const updateFacePlacement = (placement: FacePlacement): boolean => {
     const result = isCreating
@@ -1101,6 +1285,16 @@ export function CharacterAssemblyWorkbench({
     <section
       aria-label="角色组装工作区"
       className="character-assembly-workbench"
+      data-camera-fit-bounds={assemblyVisibleBounds
+        ? [
+            assemblyVisibleBounds.x,
+            assemblyVisibleBounds.y,
+            assemblyVisibleBounds.width,
+            assemblyVisibleBounds.height,
+          ].join(',')
+        : ''}
+      data-camera-fit-mode={cameraFitMode}
+      data-camera-fit-scale={transform.scale}
       data-body-asset-id={session.draft.bodyAssetId}
       data-character-id={isCreating ? '' : session.characterId}
       data-face-offset-x={session.draft.facePlacement.offsetX}
@@ -1128,6 +1322,10 @@ export function CharacterAssemblyWorkbench({
       data-selected-face={selectedFace}
       data-session-kind={isCreating ? 'create' : 'edit'}
       data-testid="character-assembly-workbench"
+      onKeyDownCapture={(event) => {
+        if (event.key !== 'Tab') markCameraInteraction();
+      }}
+      onPointerDownCapture={markCameraInteraction}
     >
       {head ? (
         <header className="character-assembly-workbench-header">
@@ -1157,6 +1355,7 @@ export function CharacterAssemblyWorkbench({
       <div
         aria-label="角色组装预览"
         className="character-assembly-preview-viewport"
+        data-camera-fit-mode={cameraFitMode}
         data-testid="character-assembly-preview"
         ref={viewportRef}
         role="group"
@@ -1608,6 +1807,15 @@ export function CharacterAssemblyWorkbench({
                 {isEditingNeckPivot ? '完成转轴' : '调整脖子转轴'}
               </button>
             ) : null}
+            <button
+              aria-label="查看角色全貌"
+              className="character-assembly-view-all-toggle"
+              data-testid="character-assembly-view-all"
+              onClick={showAllParts}
+              type="button"
+            >
+              查看全貌
+            </button>
             <button
               aria-expanded={isFineTuneOpen}
               aria-controls="character-assembly-fine-tune-panel"

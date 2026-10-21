@@ -20,10 +20,13 @@ const issue799Only = process.argv.includes('--issue799-layout-reuse');
 const issue815BaselineOnly = process.argv.includes('--issue815-c03-f01-baseline');
 const issue815Only = process.argv.includes('--issue815-c03-f01');
 const issue815Run = issue815BaselineOnly || issue815Only;
+const issue820BaselineOnly = process.argv.includes('--issue820-c04-s01-baseline');
+const issue820Only = process.argv.includes('--issue820-c04-s01');
+const issue820Run = issue820BaselineOnly || issue820Only;
 const issue813Only = process.argv.includes('--issue813-assembly-canvas-space');
 const issue813BaselineOnly = process.argv.includes('--issue813-baseline');
 const issue813Run = issue813Only || issue813BaselineOnly;
-const focusedCharacterDrawerRun = issue792Only || issue797Only || issue798Only || issue799Only || issue813Run || issue815Run;
+const focusedCharacterDrawerRun = issue792Only || issue797Only || issue798Only || issue799Only || issue813Run || issue815Run || issue820Run;
 const ISSUE683_BASELINE_SHA = 'bed0b353f40238bfd820861c0e5349f0e101e977';
 
 // Bounded S07 proof: use the production Character drawer, Assembly workbench,
@@ -31,7 +34,11 @@ const ISSUE683_BASELINE_SHA = 'bed0b353f40238bfd820861c0e5349f0e101e977';
 // a real Windows Electron renderer. The Issue #612 Create-drawer contract is
 // included; synthetic fixture bytes stay outside the repository, and the
 // receipt does not claim human visual acceptance.
-const acceptanceRoot = issue815BaselineOnly
+const acceptanceRoot = issue820BaselineOnly
+  ? 'D:\\PandaStage-Acceptance\\issue820-c04-s01\\baseline'
+  : issue820Only
+    ? 'D:\\PandaStage-Acceptance\\issue820-c04-s01\\after'
+    : issue815BaselineOnly
   ? 'D:\\PandaStage-Acceptance\\issue815-c03-f01\\baseline'
   : issue815Only
     ? 'D:\\PandaStage-Acceptance\\issue815-c03-f01\\after'
@@ -55,7 +62,9 @@ const userDataRoot = path.join(runRoot, 'electron-user-data');
 const projectRoot = path.join(
   runRoot,
   'projects',
-  issue815Run
+  issue820Run
+    ? 'issue820-c04-s01.pandastage'
+    : issue815Run
     ? 'issue815-c03-f01.pandastage'
     : issue813Run
     ? 'issue813-assembly-canvas-space.pandastage'
@@ -114,6 +123,13 @@ const IDS = Object.freeze({
   issue799TargetAngryFace: 'a0609000-0000-4000-8000-000000000027',
   issue813AlternateExpression: 'a0609000-0000-4000-8000-000000000028',
   issue813AlternateFace: 'a0609000-0000-4000-8000-000000000029',
+  issue820Body: 'a0609000-0000-4000-8000-000000000030',
+  issue820Head: 'a0609000-0000-4000-8000-000000000031',
+  issue820Face: 'a0609000-0000-4000-8000-000000000032',
+  issue820Mouth: 'a0609000-0000-4000-8000-000000000033',
+  issue820Character: 'a0609000-0000-4000-8000-000000000034',
+  issue820Voice: 'a0609000-0000-4000-8000-000000000035',
+  issue820Expression: 'a0609000-0000-4000-8000-000000000036',
 });
 
 const COLORS = new Map([
@@ -128,6 +144,10 @@ const COLORS = new Map([
   [IDS.issue799TargetMouth, [188, 92, 84]],
   [IDS.issue799TargetAngryFace, [202, 134, 96]],
   [IDS.issue813AlternateFace, [112, 166, 126]],
+  [IDS.issue820Body, [44, 93, 147]],
+  [IDS.issue820Head, [52, 119, 184]],
+  [IDS.issue820Face, [232, 200, 132]],
+  [IDS.issue820Mouth, [190, 92, 83]],
 ]);
 
 const channels = [];
@@ -284,6 +304,54 @@ function solidPng(width, height, color) {
   ]);
 }
 
+function alphaPng(width, height, color) {
+  const horizontalInset = Math.max(1, Math.round(width * 0.02));
+  const verticalInset = Math.max(1, Math.round(height * 0.025));
+  const raw = Buffer.alloc((width * 4 + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    const rowOffset = y * (width * 4 + 1);
+    raw[rowOffset] = 0;
+    const visibleRow = y >= verticalInset && y < height - verticalInset;
+    if (!visibleRow) continue;
+    for (let x = horizontalInset; x < width - horizontalInset; x += 1) {
+      const pixelOffset = rowOffset + 1 + x * 4;
+      raw[pixelOffset] = color[0];
+      raw[pixelOffset + 1] = color[1];
+      raw[pixelOffset + 2] = color[2];
+      raw[pixelOffset + 3] = 255;
+    }
+  }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 6;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk('IHDR', header),
+    pngChunk('IDAT', deflateSync(raw)),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+function fixtureImageBytes(asset) {
+  if (
+    issue820Run &&
+    [IDS.issue820Body, IDS.issue820Head, IDS.issue820Face, IDS.issue820Mouth].includes(asset.id)
+  ) {
+    return alphaPng(
+      asset.width,
+      asset.height,
+      COLORS.get(asset.id) ?? [128, 128, 128],
+    );
+  }
+  return solidPng(
+    asset.width,
+    asset.height,
+    COLORS.get(asset.id) ?? [128, 128, 128],
+  );
+}
+
 function imageAsset(id, name, width, height) {
   return {
     id,
@@ -325,7 +393,9 @@ function createFixture() {
   const issue792Character = {
     id: IDS.issue792Character,
     mode: 'composite',
-    name: issue815Run
+    name: issue820Run
+      ? 'Issue 820 Small Assembly Control'
+      : issue815Run
       ? 'Issue 815 Fine Tune Panda'
       : issue813Run
         ? 'Issue 813 Assembly Space Panda'
@@ -367,6 +437,39 @@ function createFixture() {
       pivot: { x: 360, y: 460 },
     },
     mouthOpenAssetId: IDS.mouth,
+  };
+  const issue820Character = {
+    id: IDS.issue820Character,
+    mode: 'composite',
+    name: 'Issue 820 Oversized Assembly Fixture',
+    baseAssetId: IDS.issue820Face,
+    defaultVoiceProfileId: IDS.issue820Voice,
+    expressions: [
+      { id: IDS.issue820Expression, name: 'Neutral', assetId: IDS.issue820Face },
+    ],
+    defaultExpressionId: IDS.issue820Expression,
+    defaultScale: 1,
+    defaultFlipX: false,
+    bodyAssetId: IDS.issue820Body,
+    facePlacement: {
+      offsetX: 70,
+      offsetY: -520,
+      scale: 1.1,
+      rotationDeg: 17,
+      flipX: true,
+    },
+    head: {
+      assetId: IDS.issue820Head,
+      placement: {
+        offsetX: -40,
+        offsetY: -940,
+        scale: 0.95,
+        rotationDeg: -11,
+        flipX: true,
+      },
+      pivot: { x: 0, y: -540 },
+    },
+    mouthOpenAssetId: IDS.issue820Mouth,
   };
   const issue797HeadlessCharacter = {
     id: IDS.issue797HeadlessCharacter,
@@ -495,6 +598,14 @@ function createFixture() {
       imageAsset(IDS.bodyAlt, 'Assembly Body Alternate', 720, 920),
       imageAsset(IDS.face, 'Assembly Default Face', 320, 280),
       imageAsset(IDS.mouth, 'Assembly Mouth', 320, 280),
+      ...(issue820Run
+        ? [
+            imageAsset(IDS.issue820Body, 'Issue 820 Blue Body', 1086, 1448),
+            imageAsset(IDS.issue820Head, 'Issue 820 Blue Hair Head', 1200, 1080),
+            imageAsset(IDS.issue820Face, 'Issue 820 Face', 300, 300),
+            imageAsset(IDS.issue820Mouth, 'Issue 820 Mouth', 300, 300),
+          ]
+        : []),
       ...(issue813Run
         ? [imageAsset(IDS.issue813AlternateFace, 'Assembly Alternate Face', 320, 280)]
         : []),
@@ -512,7 +623,9 @@ function createFixture() {
           ]
         : []),
     ],
-    characters: issue799Only
+    characters: issue820Run
+      ? [legacyCharacter, issue792Character, issue820Character]
+      : issue799Only
       ? [
           legacyCharacter,
           issue799SourceCharacter,
@@ -537,11 +650,21 @@ function createFixture() {
         rate: 1,
         pitch: 0,
       },
-      ...(issue792Only || issue797Only || issue798Only || issue813Run || issue815Run
+      ...(issue792Only || issue797Only || issue798Only || issue813Run || issue815Run || issue820Run
         ? [{
             id: IDS.issue792VoiceProfile,
             name: 'Issue 792 Panda voice',
             characterId: IDS.issue792Character,
+            locale: 'zh-CN',
+            rate: 1,
+            pitch: 0,
+          }]
+        : []),
+      ...(issue820Run
+        ? [{
+            id: IDS.issue820Voice,
+            name: 'Issue 820 oversized fixture voice',
+            characterId: IDS.issue820Character,
             locale: 'zh-CN',
             rate: 1,
             pitch: 0,
@@ -718,11 +841,7 @@ function registerAcceptanceHandlers() {
         },
       };
     }
-    const bytes = assetBytes.get(asset.id) ?? solidPng(
-      asset.width,
-      asset.height,
-      COLORS.get(asset.id) ?? [128, 128, 128],
-    );
+    const bytes = assetBytes.get(asset.id) ?? fixtureImageBytes(asset);
     assetBytes.set(asset.id, bytes);
     thumbnailReadEvidence.push({ assetId: asset.id, status: 'ready' });
     return {
@@ -754,11 +873,7 @@ function registerAcceptanceHandlers() {
         },
       };
     }
-    const bytes = assetBytes.get(asset.id) ?? solidPng(
-      asset.width,
-      asset.height,
-      COLORS.get(asset.id) ?? [128, 128, 128],
-    );
+    const bytes = assetBytes.get(asset.id) ?? fixtureImageBytes(asset);
     assetBytes.set(asset.id, bytes);
     canvasReadEvidence.push({ assetId: asset.id, sha256: request.sha256 });
     return {
@@ -4631,6 +4746,489 @@ async function verifyIssue813AssemblyCanvasSpace(window) {
   return passed;
 }
 
+async function verifyIssue820LargeAssetFit(window) {
+  const screenshots = [];
+  const evidence = {};
+  inProgressEvidence = evidence;
+  const readState = async () => window.webContents.executeJavaScript(`(() => {
+    const box = (element) => {
+      const bounds = element?.getBoundingClientRect();
+      return bounds ? {
+        x: bounds.left,
+        y: bounds.top,
+        right: bounds.right,
+        bottom: bounds.bottom,
+        width: bounds.width,
+        height: bounds.height,
+      } : null;
+    };
+    const overlap = (left, right) => Boolean(left && right
+      && left.x < right.right && left.right > right.x
+      && left.y < right.bottom && left.bottom > right.y);
+    const area = (rect) => rect
+      ? Math.max(0, rect.right - rect.x) * Math.max(0, rect.bottom - rect.y)
+      : 0;
+    const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    const viewport = workbench?.querySelector('[data-testid="character-assembly-preview"]');
+    const stage = viewport?.querySelector('.character-assembly-preview-stage');
+    const drawer = document.querySelector('[data-testid="resource-activity-drawer"]');
+    const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+    const panel = workbench?.querySelector('[data-testid="character-assembly-fine-tune-panel"]');
+    const timeline = document.querySelector('[data-testid="bottom-workspace"]');
+    const timelineHandle = document.querySelector('[data-testid="timeline-resize-handle"]');
+    const history = document.querySelector('[data-testid="history-controls"]');
+    const drawerVisible = dock?.dataset.resourceDrawerOpen === 'true'
+      && drawer && getComputedStyle(drawer).display !== 'none'
+      && getComputedStyle(drawer).visibility === 'visible'
+      && Number(getComputedStyle(drawer).opacity) > 0.01;
+    const timelineVisible = timeline && getComputedStyle(timeline).display !== 'none'
+      && getComputedStyle(timeline).visibility === 'visible'
+      && Number(getComputedStyle(timeline).opacity) > 0.01;
+    const panelVisible = panel && getComputedStyle(panel).display !== 'none'
+      && getComputedStyle(panel).visibility === 'visible'
+      && Number(getComputedStyle(panel).opacity) > 0.01;
+    const stageRect = box(stage);
+    const images = [...(workbench?.querySelectorAll('.character-assembly-part') ?? [])]
+      .map((image) => {
+        const rect = box(image);
+        const visible = rect && stageRect ? {
+          x: Math.max(rect.x, stageRect.x),
+          y: Math.max(rect.y, stageRect.y),
+          right: Math.min(rect.right, stageRect.right),
+          bottom: Math.min(rect.bottom, stageRect.bottom),
+        } : null;
+        const visibleArea = visible
+          ? Math.max(0, visible.right - visible.x) * Math.max(0, visible.bottom - visible.y)
+          : 0;
+        return {
+          part: image.classList.contains('character-assembly-part-body')
+            ? 'body'
+            : image.classList.contains('character-assembly-part-head')
+              ? 'head'
+              : 'face',
+          assetId: image.dataset.assetId ?? '',
+          naturalWidth: image.naturalWidth,
+          naturalHeight: image.naturalHeight,
+          rect,
+          stageClipRatio: area(rect) > 0 ? visibleArea / area(rect) : 0,
+          overlapsDrawer: drawerVisible && overlap(rect, box(drawer)),
+          overlapsPanel: panelVisible && overlap(rect, box(panel)),
+          overlapsTimeline: timelineVisible && overlap(rect, box(timeline)),
+        };
+      });
+    const timelineValue = timelineHandle?.getAttribute('aria-valuenow') ?? '';
+    return {
+      characterId: workbench?.dataset.characterId ?? '',
+      cameraFitMode: workbench?.dataset.cameraFitMode ?? '',
+      cameraFitScale: Number(workbench?.dataset.cameraFitScale ?? 0),
+      cameraFitBounds: workbench?.dataset.cameraFitBounds ?? '',
+      projectRevision: workbench?.dataset.projectRevision ?? '',
+      projectDirty: workbench?.dataset.projectDirty ?? '',
+      bodyAssetId: workbench?.dataset.bodyAssetId ?? '',
+      facePlacement: [
+        workbench?.dataset.faceOffsetX ?? '',
+        workbench?.dataset.faceOffsetY ?? '',
+        workbench?.dataset.faceScale ?? '',
+        workbench?.dataset.faceRotationDeg ?? '',
+        workbench?.dataset.faceFlipX ?? '',
+      ],
+      headPlacement: [
+        workbench?.dataset.headOffsetX ?? '',
+        workbench?.dataset.headOffsetY ?? '',
+        workbench?.dataset.headScale ?? '',
+        workbench?.dataset.headRotationDeg ?? '',
+        workbench?.dataset.headFlipX ?? '',
+        workbench?.dataset.headPivotX ?? '',
+        workbench?.dataset.headPivotY ?? '',
+      ],
+      history: {
+        undo: history?.dataset.undoCount ?? '',
+        redo: history?.dataset.redoCount ?? '',
+      },
+      timelineValue,
+      viewport: box(viewport),
+      stage: stageRect,
+      stageOverflow: stage ? getComputedStyle(stage).overflow : '',
+      drawer: drawerVisible ? box(drawer) : null,
+      panel: panelVisible ? box(panel) : null,
+      timeline: timelineVisible ? box(timeline) : null,
+      viewAllButton: box(workbench?.querySelector('[data-testid="character-assembly-view-all"]')),
+      images,
+    };
+  })()`);
+  const waitForAssemblyImages = async (label) => {
+    await waitForDom(
+      window,
+      `(() => {
+        const images = [...document.querySelectorAll('[data-testid="character-assembly-workbench"] .character-assembly-part')];
+        return images.length === 3 && images.every((image) => image.complete && image.naturalWidth > 0);
+      })()`,
+      label + ' did not load all three assembly images.',
+    );
+    await waitForPaint(window);
+  };
+  const openCharacter = async (characterId, label) => {
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-list-view"] [data-character-id="' + characterId + '"]',
+      label + ' card',
+    );
+    await waitForDom(
+      window,
+      "document.querySelector('[data-testid=character-detail-view]')?.dataset.characterEditorId === " +
+        JSON.stringify(characterId),
+      label + ' detail did not open.',
+    );
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-workspace-expressions-tab"]',
+      label + ' Expressions workspace',
+    );
+    await waitForDom(
+      window,
+      "document.querySelector('[data-testid=bottom-workspace]')?.dataset.characterAssemblyInactive === 'false'",
+      label + ' did not leave the timeline active before Assembly.',
+    );
+  };
+  const setTimelineToMiddle = async () => {
+    const timeline = await window.webContents.executeJavaScript(`(() => {
+      const element = document.querySelector('[data-testid="timeline-resize-handle"]');
+      const bounds = element?.getBoundingClientRect();
+      return element && bounds ? {
+        min: Number(element.getAttribute('aria-valuemin')),
+        max: Number(element.getAttribute('aria-valuemax')),
+        value: Number(element.getAttribute('aria-valuenow')),
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        hitTest: document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+          ?.closest('[data-testid]')?.getAttribute('data-testid') ?? '',
+      } : null;
+    })()`);
+    assert(timeline && timeline.max > timeline.min, 'Issue 820 timeline did not expose a resizable range.');
+    const midpoint = Math.round(timeline.min + (timeline.max - timeline.min) / 2);
+    const keyboardStep = 16;
+    const stepsFromMinimum = Math.round((midpoint - timeline.min) / keyboardStep);
+    const target = timeline.min + stepsFromMinimum * keyboardStep;
+    const selector = '[data-testid="timeline-resize-handle"]';
+    await pressFocusedControl(window, selector, 'HOME', 'Timeline resize handle');
+    for (let step = 0; step < stepsFromMinimum; step += 1) {
+      await pressFocusedControl(window, selector, 'ARROWUP', 'Timeline resize handle');
+    }
+    await waitForPaint(window);
+    const after = await window.webContents.executeJavaScript(`(() => {
+      const element = document.querySelector('[data-testid="timeline-resize-handle"]');
+      return {
+        value: Number(element?.getAttribute('aria-valuenow')),
+        focused: document.activeElement === element,
+      };
+    })()`);
+    const evidence = {
+      min: timeline.min,
+      max: timeline.max,
+      before: timeline.value,
+      midpoint,
+      stepsFromMinimum,
+      target,
+      after: after.value,
+      resizeInput: 'keyboard-home-arrowup',
+      rect: { x: timeline.x, y: timeline.y, width: timeline.width, height: timeline.height },
+      viewport: timeline.viewport,
+      hitTest: timeline.hitTest,
+      afterState: after,
+    };
+    assert(target > timeline.min && target < timeline.max
+      && Math.abs(target - midpoint) <= keyboardStep / 2,
+    'Issue 820 timeline keyboard target was not near its middle height: ' + JSON.stringify(evidence));
+    assert(after.value === target,
+      'Issue 820 timeline did not reach its middle height: ' + JSON.stringify(evidence));
+    return evidence;
+  };
+  const assertCameraOnly = (before, after, label) => {
+    for (const key of [
+      'projectRevision',
+      'projectDirty',
+      'bodyAssetId',
+      'facePlacement',
+      'headPlacement',
+      'history',
+      'timelineValue',
+    ]) {
+      assert(
+        JSON.stringify(before[key]) === JSON.stringify(after[key]),
+        label + ' changed ' + key + ': ' + JSON.stringify({ before: before[key], after: after[key] }),
+      );
+    }
+  };
+  const assertAssemblyVisible = (state, label) => {
+    assert(state.cameraFitMode === 'content', label + ' did not use the content-fit camera.');
+    assert(state.stageOverflow === 'visible', label + ' still clipped parts to the formal project frame.');
+    assert(state.viewport && state.images.length === 3, label + ' did not render all three parts.');
+    for (const image of state.images) {
+      assert(image.rect && image.rect.width > 0 && image.rect.height > 0, label + ' has an empty ' + image.part + ' image rectangle.');
+      assert(image.rect.x >= state.viewport.x - 1 && image.rect.right <= state.viewport.right + 1,
+        label + ' placed ' + image.part + ' outside the editor viewport: ' + JSON.stringify(image));
+      assert(image.rect.y >= state.viewport.y - 1 && image.rect.bottom <= state.viewport.bottom + 1,
+        label + ' placed ' + image.part + ' outside the editor viewport: ' + JSON.stringify(image));
+      assert(!image.overlapsDrawer, label + ' placed ' + image.part + ' behind the resource drawer.');
+      assert(!image.overlapsPanel, label + ' placed ' + image.part + ' behind the fine-tune panel.');
+      assert(!image.overlapsTimeline, label + ' placed ' + image.part + ' under the timeline.');
+    }
+  };
+
+  if (issue820BaselineOnly) {
+    await openCharacter(IDS.issue820Character, 'Issue 820 oversized Character');
+    evidence.timeline = await setTimelineToMiddle();
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-workspace-assembly-tab"]',
+      'Assembly workspace tab',
+    );
+    await waitForDom(
+      window,
+      "document.querySelector('[data-testid=character-assembly-workbench]')?.dataset.sessionKind === 'edit'",
+      'Issue 820 oversized Character did not enter Assembly.',
+    );
+    await waitForAssemblyImages('Issue 820 baseline');
+    const state = await readState();
+    const button = await window.webContents.executeJavaScript(
+      "Boolean(document.querySelector('[data-testid=character-assembly-view-all]'))",
+    );
+    const body = state.images.find((image) => image.part === 'body');
+    assert(body?.stageClipRatio < 0.99,
+      'Issue 820 baseline did not clip the oversized Body to the project frame: ' + JSON.stringify(body));
+    assert(!button, 'Issue 820 baseline unexpectedly included the new View All action.');
+    const screenshot = await capture(window, 'issue820-s01-before.png');
+    screenshots.push(screenshot);
+    evidence.baseline = {
+      state,
+      screenshot,
+      buttonPresent: button,
+      reproducedProjectFrameClip: true,
+    };
+    return {
+      issue: 820,
+      code: 'C04-S01',
+      passed: true,
+      baseline: true,
+      commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+      verificationGate: 'issue820-c04-s01-baseline',
+      projectRoot,
+      syntheticInput: true,
+      humanAcceptance: false,
+      evidenceKind: 'windows-electron-oversized-assembly-project-frame-clip',
+      evidence,
+      screenshots,
+    };
+  }
+
+  await openCharacter(IDS.issue792Character, 'Issue 820 small existing Character');
+  evidence.timeline = await setTimelineToMiddle();
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-workspace-assembly-tab"]',
+    'Small Character Assembly workspace',
+  );
+  await waitForDom(
+    window,
+    "document.querySelector('[data-testid=character-assembly-workbench]')?.dataset.sessionKind === 'edit'",
+    'Issue 820 small Character did not enter Assembly.',
+  );
+  await waitForAssemblyImages('Issue 820 small Character');
+  let smallBefore = await readState();
+  assert(smallBefore.cameraFitMode === 'frame', 'Existing small material no longer opens in its unchanged project-frame view.');
+  assert(smallBefore.viewAllButton?.width > 0, 'The View All action is not visible for the small Character.');
+  screenshots.push(await capture(window, 'issue820-s01-small-before-view-all.png'));
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-view-all"]',
+    'View All for the small Character',
+  );
+  await waitForDom(
+    window,
+    "document.querySelector('[data-testid=character-assembly-workbench]')?.dataset.cameraFitMode === 'content'",
+    'The View All action did not switch the camera to content fit.',
+  );
+  await waitForPaint(window);
+  const smallAfter = await readState();
+  assertCameraOnly(smallBefore, smallAfter, 'Small Character View All');
+  assertAssemblyVisible(smallAfter, 'Small Character View All');
+  evidence.smallMaterial = { before: smallBefore, after: smallAfter };
+  screenshots.push(await capture(window, 'issue820-s01-small-after-view-all.png'));
+
+  await clickWithNativeInput(window, '[data-testid="character-detail-back"]', 'Return to Character list');
+  await waitForDom(
+    window,
+    "document.querySelector(" + JSON.stringify('[data-testid=character-list-view] [data-character-id="' + IDS.issue820Character + '"]') + ")",
+    'Issue 820 oversized Character did not appear in the Character list.',
+  );
+  await openCharacter(IDS.issue820Character, 'Issue 820 oversized Character');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-workspace-assembly-tab"]',
+    'Oversized Character Assembly workspace',
+  );
+  await waitForDom(
+    window,
+    "document.querySelector('[data-testid=character-assembly-workbench]')?.dataset.sessionKind === 'edit'",
+    'Issue 820 oversized Character did not enter Assembly.',
+  );
+  await waitForAssemblyImages('Issue 820 oversized Character');
+  await waitForDom(
+    window,
+    "document.querySelector('[data-testid=character-assembly-workbench]')?.dataset.cameraFitMode === 'content'",
+    'The oversized Character did not receive its initial content-fit view.',
+  );
+  await waitForPaint(window);
+  let largeBefore = await readState();
+  assert(largeBefore.images.some((image) => image.part === 'body'
+      && image.naturalWidth === 1086 && image.naturalHeight === 1448),
+  'Issue 820 synthetic Body did not use the specified 1086 x 1448 dimensions.');
+  assert(largeBefore.images.some((image) => image.part === 'head'
+      && image.naturalWidth === 1200 && image.naturalHeight === 1080),
+  'Issue 820 synthetic Head did not use a large source image.');
+  assert(largeBefore.images.some((image) => image.part === 'face'
+      && image.naturalWidth === 300 && image.naturalHeight === 300),
+  'Issue 820 Face fixture did not use the specified 300 x 300 dimensions.');
+  assertAssemblyVisible(largeBefore, 'Automatic oversized fit');
+  evidence.largeAutomaticFit = largeBefore;
+  screenshots.push(await capture(window, 'issue820-s01-large-auto-fit-middle-timeline.png'));
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Open fine tune over the oversized assembly',
+  );
+  await waitForDom(
+    window,
+    "document.querySelector('[data-testid=character-assembly-fine-tune-panel]')",
+    'Fine tune did not remain available for the oversized assembly.',
+  );
+  await waitForPaint(window);
+  largeBefore = await readState();
+  assert(largeBefore.panel?.width > 0, 'Fine-tune panel has no visible bounds.');
+  const headScaleBeforeEdit = Number(largeBefore.headPlacement[2]);
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-head-scale-up"]',
+    'Make a small Head edit after automatic fit',
+  );
+  await waitForDom(
+    window,
+    'Number(document.querySelector(\'[data-testid="character-assembly-workbench"]\')?.dataset.headScale) > ' + headScaleBeforeEdit,
+    'The Head edit after automatic fit did not update the assembly draft.',
+  );
+  await waitForPaint(window);
+  const afterPlacementEdit = await readState();
+  assert(afterPlacementEdit.headPlacement[2] !== largeBefore.headPlacement[2],
+    'The post-fit Head edit did not change its draft placement.');
+  assert(afterPlacementEdit.cameraFitMode === 'content'
+      && afterPlacementEdit.cameraFitScale === largeBefore.cameraFitScale,
+    'Automatic fitting reset the camera after a user Head edit: ' + JSON.stringify({
+      before: largeBefore.cameraFitScale,
+      after: afterPlacementEdit.cameraFitScale,
+    }));
+  assert(afterPlacementEdit.projectRevision === largeBefore.projectRevision
+      && afterPlacementEdit.projectDirty === largeBefore.projectDirty
+      && JSON.stringify(afterPlacementEdit.history) === JSON.stringify(largeBefore.history),
+    'The post-fit Head draft edit changed persisted Project or History state.');
+  evidence.postFitEditDoesNotRefit = { before: largeBefore, after: afterPlacementEdit };
+  screenshots.push(await capture(window, 'issue820-s01-large-edit-without-camera-reset.png'));
+  await pressFocusedControl(
+    window,
+    '[data-testid="character-assembly-view-all"]',
+    'SPACE',
+    'View All with fine tune and resource drawer open',
+  );
+  await waitForPaint(window);
+  const largeAfter = await readState();
+  assertCameraOnly(afterPlacementEdit, largeAfter, 'Oversized Character View All');
+  assertAssemblyVisible(largeAfter, 'Oversized Character View All with overlays');
+  assert(largeAfter.panel?.width > 0 && largeAfter.drawer?.width > 0,
+    'View All closed the fine-tune panel or resource drawer instead of fitting around both.');
+  assert(Math.hypot(
+    largeAfter.stage.x - afterPlacementEdit.stage.x,
+    largeAfter.stage.y - afterPlacementEdit.stage.y,
+  ) > 1,
+  'View All did not reposition the camera around the open fine-tune panel and resource drawer.');
+  assert(largeAfter.viewAllButton?.width > 0, 'View All became unreachable after fitting content.');
+  evidence.largeManualFit = { before: afterPlacementEdit, after: largeAfter };
+  screenshots.push(await capture(window, 'issue820-s01-large-view-all-middle-timeline.png'));
+
+  const viewportBeforeResize = largeAfter.viewport;
+  window.setSize(1400, 930);
+  await waitForDom(
+    window,
+    'document.querySelector(\'[data-testid="character-assembly-preview"]\')?.getBoundingClientRect().width < ' + viewportBeforeResize.width,
+    'The Assembly viewport did not respond to the Electron window resize.',
+  );
+  await waitForDom(
+    window,
+    'Number(document.querySelector(\'[data-testid="character-assembly-workbench"]\')?.dataset.cameraFitScale) < ' + largeAfter.cameraFitScale,
+    'The content-fit camera did not recompute after the viewport became smaller.',
+  );
+  await waitForPaint(window);
+  const resized = await readState();
+  assertAssemblyVisible(resized, 'Automatic content fit after viewport resize');
+  const resizedHeadScaleBeforeEdit = Number(resized.headPlacement[2]);
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-head-scale-up"]',
+    'Make a small Head edit after viewport resize',
+  );
+  await waitForDom(
+    window,
+    'Number(document.querySelector(\'[data-testid="character-assembly-workbench"]\')?.dataset.headScale) > ' + resizedHeadScaleBeforeEdit,
+    'The Head edit after viewport resize did not update the assembly draft.',
+  );
+  await waitForPaint(window);
+  const resizedAfterEdit = await readState();
+  assert(resizedAfterEdit.cameraFitScale === resized.cameraFitScale
+      && resizedAfterEdit.stage.x === resized.stage.x
+      && resizedAfterEdit.stage.y === resized.stage.y,
+    'Automatic fitting reset the camera after a post-resize Head edit.');
+  await pressFocusedControl(
+    window,
+    '[data-testid="character-assembly-view-all"]',
+    'SPACE',
+    'View All again after viewport resize',
+  );
+  await waitForPaint(window);
+  const resizedAfterViewAll = await readState();
+  assertCameraOnly(resizedAfterEdit, resizedAfterViewAll, 'View All after viewport resize');
+  assertAssemblyVisible(resizedAfterViewAll, 'View All after viewport resize with overlays');
+  assert(resizedAfterViewAll.panel?.width > 0 && resizedAfterViewAll.drawer?.width > 0,
+    'View All after resizing closed the fine-tune panel or resource drawer.');
+  assert(Math.hypot(
+    resizedAfterViewAll.stage.x - resizedAfterEdit.stage.x,
+    resizedAfterViewAll.stage.y - resizedAfterEdit.stage.y,
+  ) > 1,
+  'View All did not recompute the camera after a Head edit in the resized viewport.');
+  evidence.viewportResize = {
+    before: largeAfter,
+    after: resized,
+    postResizeEdit: resizedAfterEdit,
+    afterViewAll: resizedAfterViewAll,
+  };
+  screenshots.push(await capture(window, 'issue820-s01-large-resized-view-all.png'));
+
+  return {
+    issue: 820,
+    code: 'C04-S01',
+    passed: true,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'verify:issue820-c04-s01',
+    projectRoot,
+    syntheticInput: true,
+    humanAcceptance: false,
+    evidenceKind: 'windows-electron-content-fit-alpha-bounds-overlay-exclusion-and-project-history-invariance',
+    evidence,
+    screenshots,
+  };
+}
+
 async function run() {
   mkdirSync(evidenceRoot, { recursive: true });
   mkdirSync(projectRoot, { recursive: true });
@@ -4656,6 +5254,9 @@ async function run() {
     windowRef.focus();
     windowRef.webContents.focus();
     await openProject(windowRef);
+    if (issue820Run) {
+      return await verifyIssue820LargeAssetFit(windowRef);
+    }
     if (issue815Run) {
       return await verifyIssue815FineTuneTimelineOverlay(windowRef);
     }
@@ -5309,11 +5910,13 @@ async function main() {
     output = await run();
   } catch (error) {
     output = {
-      issue: issue815Run ? 815 : issue813Run ? 813 : issue799Only ? 799 : issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 612,
-      code: issue815Run ? 'C03-F01' : undefined,
+      issue: issue820Run ? 820 : issue815Run ? 815 : issue813Run ? 813 : issue799Only ? 799 : issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 612,
+      code: issue820Run ? 'C04-S01' : issue815Run ? 'C03-F01' : undefined,
       passed: false,
       commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
-      verificationGate: issue815Run
+      verificationGate: issue820Run
+        ? issue820BaselineOnly ? 'issue820-c04-s01-baseline' : 'verify:issue820-c04-s01'
+        : issue815Run
         ? issue815BaselineOnly ? 'issue815-c03-f01-baseline' : 'verify:issue815-c03-f01'
         : issue813Run
         ? 'verify:issue813-assembly-canvas-space'
@@ -5344,6 +5947,6 @@ async function main() {
 main()
   .then(() => app.exit(0))
   .catch((error) => {
-    console.error(`[issue${issue815Run ? 815 : issue813Run ? 813 : issue799Only ? 799 : issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 609}] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    console.error(`[issue${issue820Run ? 820 : issue815Run ? 815 : issue813Run ? 813 : issue799Only ? 799 : issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 609}] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     app.exit(1);
   });
