@@ -97,9 +97,16 @@ describe('BFM-S02 composite Character lifecycle', () => {
       },
       expressions: [{ name: 'Normal', assetId: IDS.assetChar }],
     });
+    const createdCharacterId = createdWithHead.characters.at(-1)!.id;
+    expect(createdWithHead.characters.at(-1)).toMatchObject({
+      mode: 'composite',
+      talkingHeadMotionIntensityPercent: 100,
+    });
+    const withTalkingHeadIntensity =
+      characters.setTalkingHeadMotionIntensityPercent(createdCharacterId, 160);
     await projectService.save(
       projectRoot,
-      createdWithHead,
+      withTalkingHeadIntensity,
       editor.getSnapshot()!.revision,
     );
 
@@ -107,6 +114,7 @@ describe('BFM-S02 composite Character lifecycle', () => {
     expect(reopened.project.characters[0]).toMatchObject({
       id: IDS.character,
       mode: 'composite',
+      talkingHeadMotionIntensityPercent: 100,
       bodyAssetId: IDS.assetChar2,
       facePlacement: { offsetX: 32, offsetY: -14, scale: 1.2 },
       mouthOpenAssetId: IDS.assetChar,
@@ -128,13 +136,13 @@ describe('BFM-S02 composite Character lifecycle', () => {
         assetId: IDS.assetChar,
       },
     ]);
-    const createdCharacterId = createdWithHead.characters.at(-1)!.id;
     expect(
       reopened.project.characters.find(
         (character) => character.id === createdCharacterId,
       ),
     ).toMatchObject({
       mode: 'composite',
+      talkingHeadMotionIntensityPercent: 160,
       head: {
         assetId: IDS.assetChar2,
         placement: { offsetX: -7, offsetY: 12, scale: 1.05 },
@@ -195,7 +203,7 @@ describe('BFM-S02 composite Character lifecycle', () => {
     shots.dispose();
   });
 
-  it('opens a persisted v8 composite as v9 without changing Body/Face visuals', async () => {
+  it('opens a persisted v8 composite as v10 without changing Body/Face visuals', async () => {
     const parent = await mkdtemp(
       path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-v8-migration-'),
     );
@@ -221,7 +229,20 @@ describe('BFM-S02 composite Character lifecycle', () => {
         },
       ],
     });
-    const v8 = { ...current, schemaVersion: 8 as const };
+    const currentCharacter = current.characters[0]!;
+    if (currentCharacter.mode !== 'composite') {
+      throw new Error('Expected the v8 fixture to be composite.');
+    }
+    const {
+      talkingHeadMotionIntensityPercent: _intensityPercent,
+      ...v8Character
+    } = currentCharacter;
+    expect(_intensityPercent).toBe(100);
+    const v8 = {
+      ...current,
+      schemaVersion: 8 as const,
+      characters: [v8Character],
+    };
     const shot = current.shots[0]!;
     const evaluated = evaluateShotAtTime(shot, 0, current).layers.find(
       (layer) => layer.id === IDS.layerChar,

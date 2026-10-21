@@ -733,6 +733,7 @@ export function CharacterManager({
         {view === 'legacy' || view === 'detail' || view === 'expression' ? (
           <CharacterEditor
           character={selectedCharacter}
+          project={project ?? undefined}
           disabled={!snapshot}
           imageAssets={imageAssets}
           key={selectedCharacter?.id ?? 'empty'}
@@ -826,6 +827,15 @@ export function CharacterManager({
                   scale,
                   flipX,
                 ),
+            );
+          }}
+          onSetTalkingHeadMotionIntensityPercent={(intensityPercent) => {
+            if (!selectedCharacter) return;
+            mutate(() =>
+              characterStore.setTalkingHeadMotionIntensityPercent(
+                selectedCharacter.id,
+                intensityPercent,
+              ),
             );
           }}
           hasCurrentShot={Boolean(

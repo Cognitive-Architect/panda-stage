@@ -487,6 +487,52 @@ describe('BFM-S02 Character commands', () => {
     input.assembly.dispose();
   });
 
+  it('applies talking-head intensity as one History unit with Undo and Redo', () => {
+    const input = harness();
+    const before = input.editor.getSnapshot()!;
+
+    input.characters.setTalkingHeadMotionIntensityPercent(IDS.character, 200);
+
+    const applied = input.editor.getSnapshot()!;
+    expect(applied.revision).toBe(before.revision + 1);
+    expect(applied.dirty).toBe(true);
+    expect(applied.project.characters[0]).toMatchObject({
+      mode: 'composite',
+      talkingHeadMotionIntensityPercent: 200,
+    });
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project).toEqual(before.project);
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 0,
+      redoCount: 1,
+    });
+
+    expect(input.editor.redo()).toBe(true);
+    const redone = input.editor.getSnapshot()!;
+    expect(redone.project.characters[0]).toMatchObject({
+      mode: 'composite',
+      talkingHeadMotionIntensityPercent: 200,
+    });
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+    expect(
+      input.characters.setTalkingHeadMotionIntensityPercent(IDS.character, 200),
+    ).toBe(redone.project);
+    expect(input.editor.getSnapshot()).toBe(redone);
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+    input.assembly.dispose();
+  });
+
   it('keeps exact Apply, Body, Face, Expression, and Mouth no-ops at zero writes', () => {
     const input = harness();
     const before = input.editor.getSnapshot()!;

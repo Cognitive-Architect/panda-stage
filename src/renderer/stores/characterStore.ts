@@ -259,6 +259,21 @@ export class CharacterStore {
     );
   }
 
+  setTalkingHeadMotionIntensityPercent(
+    characterId: string,
+    intensityPercent: number,
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.setTalkingHeadMotionIntensityPercent(
+          project,
+          characterId,
+          intensityPercent,
+        ),
+      'Change character talking head intensity',
+    );
+  }
+
   dimensionWarnings(characterId: string) {
     const snapshot = this.editorStore.getSnapshot();
     if (!snapshot) return [];

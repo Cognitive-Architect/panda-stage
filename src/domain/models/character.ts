@@ -54,6 +54,13 @@ export const CharacterHeadSchema = z
   })
   .strict();
 
+export const TalkingHeadMotionIntensityPercentSchema = z
+  .number()
+  .int()
+  .min(0)
+  .max(200)
+  .default(100);
+
 const SingleImageCharacterSchema = z
   .object({
     ...CharacterBaseShape,
@@ -62,6 +69,18 @@ const SingleImageCharacterSchema = z
   .strict();
 
 const CompositeCharacterSchema = z
+  .object({
+    ...CharacterBaseShape,
+    mode: z.literal('composite'),
+    bodyAssetId: IdSchema,
+    facePlacement: FacePlacementSchema,
+    head: CharacterHeadSchema.optional(),
+    talkingHeadMotionIntensityPercent:
+      TalkingHeadMotionIntensityPercentSchema,
+  })
+  .strict();
+
+const CompositeCharacterV9Schema = z
   .object({
     ...CharacterBaseShape,
     mode: z.literal('composite'),
@@ -84,6 +103,12 @@ const CompositeCharacterV8Schema = z
 export const CharacterV8Schema = z.discriminatedUnion('mode', [
   SingleImageCharacterSchema,
   CompositeCharacterV8Schema,
+]);
+
+/** Historical v9 Character data, before persisted talking-head intensity. */
+export const CharacterV9Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterSchema,
+  CompositeCharacterV9Schema,
 ]);
 
 /**
@@ -124,5 +149,6 @@ export type HeadPivot = z.infer<typeof HeadPivotSchema>;
 export type CharacterHead = z.infer<typeof CharacterHeadSchema>;
 export type Character = z.infer<typeof CharacterSchema>;
 export type CharacterV8 = z.infer<typeof CharacterV8Schema>;
+export type CharacterV9 = z.infer<typeof CharacterV9Schema>;
 export type CharacterV6 = z.infer<typeof CharacterV6Schema>;
 export type VoiceProfile = z.infer<typeof VoiceProfileSchema>;

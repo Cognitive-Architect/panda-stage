@@ -35,10 +35,12 @@ function smoothStep(progress: number): number {
 export function resolveTalkingHeadMotionTransform(
   elapsedMs: number,
   dialogueDurationMs: number,
+  intensityPercent = 100,
 ): EvaluatedHeadGroupTransform {
   if (
     !Number.isFinite(elapsedMs) ||
     !Number.isFinite(dialogueDurationMs) ||
+    intensityPercent === 0 ||
     elapsedMs <= 0 ||
     dialogueDurationMs <= 0 ||
     elapsedMs >= dialogueDurationMs
@@ -57,7 +59,8 @@ export function resolveTalkingHeadMotionTransform(
   const motion = Math.sin(phase) * envelope;
   return {
     translateX: 0,
-    translateY: TALKING_HEAD_BOB_AMPLITUDE_PX * motion,
+    translateY:
+      TALKING_HEAD_BOB_AMPLITUDE_PX * (intensityPercent / 100) * motion,
     scaleX: 1,
     scaleY: 1,
     rotationDeg: 0,
@@ -238,6 +241,7 @@ export function projectShotHeadMotion(
   const transform = resolveTalkingHeadMotionTransform(
     neutralShot.timeMs - dialogue.startMs,
     dialogue.endMs - dialogue.startMs,
+    character.talkingHeadMotionIntensityPercent,
   );
   if (
     transform.translateX === 0 &&

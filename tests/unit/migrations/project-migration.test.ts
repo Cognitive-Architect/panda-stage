@@ -3,6 +3,7 @@ import {
   PROJECT_SCHEMA_VERSION,
   ProjectSchema,
   ProjectV8Schema,
+  ProjectV9Schema,
   UnsupportedSchemaVersionError,
   detectSchemaVersion,
   inferLegacyBackgroundLayerId,
@@ -193,10 +194,14 @@ describe('project migration framework', () => {
     expect(detectSchemaVersion({ schemaVersion: 4 })).toBe(4);
     expect(detectSchemaVersion({ schemaVersion: 5 })).toBe(5);
     expect(detectSchemaVersion({ schemaVersion: 8 })).toBe(8);
+    expect(detectSchemaVersion({ schemaVersion: 9 })).toBe(9);
+    expect(detectSchemaVersion({ schemaVersion: PROJECT_SCHEMA_VERSION })).toBe(
+      PROJECT_SCHEMA_VERSION,
+    );
   });
 
   it.each([
-    { schemaVersion: 10 },
+    { schemaVersion: PROJECT_SCHEMA_VERSION + 1 },
     { schemaVersion: 99 },
     {},
   ])('rejects unknown or missing schema versions', (input) => {
@@ -256,7 +261,7 @@ describe('project migration framework', () => {
     });
   });
 
-  it('migrates strict v8 composites to v9 without changing their visual contract', () => {
+  it('migrates strict v8 composites to v10 with default talking-head intensity', () => {
     const current = migrateProject(exampleProject);
     const sourceCharacter = current.characters[0]!;
     const composite = ProjectSchema.parse({
@@ -270,7 +275,20 @@ describe('project migration framework', () => {
         },
       ],
     });
-    const v8 = { ...composite, schemaVersion: 8 as const };
+    const currentCharacter = composite.characters[0]!;
+    if (currentCharacter.mode !== 'composite') {
+      throw new Error('Expected the v8 fixture to be composite.');
+    }
+    const {
+      talkingHeadMotionIntensityPercent: _intensityPercent,
+      ...v8Character
+    } = currentCharacter;
+    expect(_intensityPercent).toBe(100);
+    const v8 = {
+      ...composite,
+      schemaVersion: 8 as const,
+      characters: [v8Character],
+    };
     const snapshot = structuredClone(v8);
 
     expect(ProjectV8Schema.parse(v8)).toEqual(v8);
@@ -281,12 +299,18 @@ describe('project migration framework', () => {
     expect(migrated).toEqual({
       ...v8,
       schemaVersion: PROJECT_SCHEMA_VERSION,
+      characters: v8.characters.map((character) =>
+        character.mode === 'composite'
+          ? { ...character, talkingHeadMotionIntensityPercent: 100 }
+          : character,
+      ),
     });
     expect(migrated.characters[0]).toMatchObject({
       id: sourceCharacter.id,
       mode: 'composite',
       bodyAssetId: sourceCharacter.baseAssetId,
       facePlacement: { offsetX: 17, offsetY: -8, scale: 0.9 },
+      talkingHeadMotionIntensityPercent: 100,
     });
     expect(migrated.characters[0]).not.toHaveProperty('head');
 
@@ -305,6 +329,84 @@ describe('project migration framework', () => {
       ],
     };
     expect(() => ProjectV8Schema.parse(withSmuggledHead)).toThrow();
+  });
+
+  it('explicitly migrates v9 Head settings to v10 with a 100 percent default', () => {
+    const current = migrateProject(exampleProject);
+    const sourceCharacter = current.characters[0]!;
+    const composite = ProjectSchema.parse({
+      ...current,
+      characters: [
+        {
+          ...sourceCharacter,
+          mode: 'composite',
+          bodyAssetId: sourceCharacter.baseAssetId,
+          facePlacement: { offsetX: 17, offsetY: -8, scale: 0.9 },
+          head: {
+            assetId: sourceCharacter.baseAssetId,
+            placement: { offsetX: 8, offsetY: -12, scale: 0.9 },
+            pivot: { x: 24, y: 62 },
+          },
+          talkingHeadMotionIntensityPercent: 180,
+        },
+      ],
+    });
+    const { talkingHeadMotionIntensityPercent: _oldValue, ...v9Character } =
+      composite.characters[0]! as Extract<
+        (typeof composite.characters)[number],
+        { mode: 'composite' }
+      >;
+    expect(_oldValue).toBe(180);
+    const v9 = {
+      ...composite,
+      schemaVersion: 9 as const,
+      characters: [v9Character],
+    };
+
+    expect(ProjectV9Schema.parse(v9)).toEqual(v9);
+    expect(ProjectSchema.safeParse(v9).success).toBe(false);
+    const migrated = migrateProject(v9);
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(migrated.characters[0]).toMatchObject({
+      mode: 'composite',
+      head: {
+        placement: { offsetX: 8, offsetY: -12, scale: 0.9 },
+        pivot: { x: 24, y: 62 },
+      },
+      talkingHeadMotionIntensityPercent: 100,
+    });
+    expect(migrated.assets).toEqual(v9.assets);
+
+    const migratedComposite = migrated.characters[0]!;
+    if (migratedComposite.mode !== 'composite') {
+      throw new Error('Expected the migrated Character to remain composite.');
+    }
+    for (const intensityPercent of [0, 100, 200]) {
+      expect(
+        ProjectSchema.safeParse({
+          ...migrated,
+          characters: [
+            {
+              ...migratedComposite,
+              talkingHeadMotionIntensityPercent: intensityPercent,
+            },
+          ],
+        }).success,
+      ).toBe(true);
+    }
+    for (const intensityPercent of [-10, 10.5, 210]) {
+      expect(
+        ProjectSchema.safeParse({
+          ...migrated,
+          characters: [
+            {
+              ...migratedComposite,
+              talkingHeadMotionIntensityPercent: intensityPercent,
+            },
+          ],
+        }).success,
+      ).toBe(false);
+    }
   });
 
   it('explicitly migrates the legacy probe schemaVersion 1 collision', () => {

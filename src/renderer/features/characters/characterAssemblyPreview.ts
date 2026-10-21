@@ -255,6 +255,7 @@ function previewCharacter(
       defaultVoiceProfileId: PREVIEW_VOICE_ID,
       expressions,
       defaultExpressionId: defaultExpression.id,
+      talkingHeadMotionIntensityPercent: 100,
       ...(session.draft.mouthOpenAssetId
         ? { mouthOpenAssetId: session.draft.mouthOpenAssetId }
         : {}),

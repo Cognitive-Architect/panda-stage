@@ -494,3 +494,175 @@
   justify-self: end;
 }
 
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-setting {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-heading
+  > div {
+  display: grid;
+  gap: 3px;
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-heading
+  > div
+  > span {
+  color: #86a68e;
+  font-size: 10px;
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-value {
+  color: var(--character-accent);
+  font-size: 14px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-intensity-control {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-intensity-control
+  > span {
+  color: #b7cbbd;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-intensity-control
+  input[type='range'] {
+  width: 100%;
+  min-height: 24px;
+  margin: 0;
+  accent-color: var(--character-accent);
+  cursor: pointer;
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-intensity-control
+  input[type='range']:disabled {
+  cursor: not-allowed;
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-scale-labels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: -4px;
+  color: #86a68e;
+  font-size: 10px;
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-scale-labels
+  > :nth-child(2) {
+  text-align: center;
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-scale-labels
+  > :last-child {
+  text-align: right;
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-actions
+  > span {
+  color: #a9c0ae;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-actions
+  > div {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 5px;
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-actions
+  button {
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 8px;
+  color: #d4e1d7;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-actions
+  .character-talking-head-preview-button {
+  border-color: rgb(127 199 148 / 48%);
+  color: #07110a;
+  background: var(--character-accent);
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-actions
+  button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-preview {
+  width: 160px;
+  height: 128px;
+  overflow: hidden;
+  border: 1px solid rgb(127 199 148 / 22%);
+  border-radius: 8px;
+  background: var(--ui-color-surface-app);
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-preview-viewport {
+  position: relative;
+  width: 160px;
+  height: 128px;
+  overflow: hidden;
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-preview-stage {
+  position: absolute;
+  overflow: hidden;
+  transform-origin: top left;
+}
+
+.character-manager[data-character-presentation='landscape']
+  .character-talking-head-pending {
+  margin-top: 2px;
+}
+

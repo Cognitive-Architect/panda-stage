@@ -231,6 +231,21 @@ function talkingProject(options: { head?: boolean } = {}): Project {
   });
 }
 
+function withTalkingHeadIntensity(
+  project: Project,
+  characterId: string,
+  intensityPercent: number,
+): Project {
+  return ProjectSchema.parse({
+    ...project,
+    characters: project.characters.map((character) =>
+      character.id === characterId && character.mode === 'composite'
+        ? { ...character, talkingHeadMotionIntensityPercent: intensityPercent }
+        : character,
+    ),
+  });
+}
+
 function singleImageTalkingProject(): Project {
   const base = buildProject();
   return ProjectSchema.parse({
@@ -301,6 +316,22 @@ describe('Issue #669 requested-time Talking Head Motion', () => {
     expect(resolveTalkingHeadMotionTransform(375, 1_000)).toEqual(peak);
   });
 
+  it('scales only vertical motion at 0, 100, and 200 percent', () => {
+    const samples = [0, 100, 200].map((intensityPercent) =>
+      resolveTalkingHeadMotionTransform(375, 1_000, intensityPercent),
+    );
+
+    expect(samples.map(({ translateY }) => translateY)).toEqual([0, -4, -8]);
+    expect(samples.map(({ rotationDeg }) => rotationDeg)).toEqual([0, 0, 0]);
+    expect(
+      samples.map(({ translateX, scaleX, scaleY }) => [translateX, scaleX, scaleY]),
+    ).toEqual([
+      [0, 1, 1],
+      [0, 1, 1],
+      [0, 1, 1],
+    ]);
+  });
+
   it('follows A → B → A, starts each phase at neutral, and returns non-speakers to neutral', () => {
     const project = talkingProject();
     const shot = project.shots[0]!;
@@ -335,6 +366,27 @@ describe('Issue #669 requested-time Talking Head Motion', () => {
     expect(afterDialogue.visual.headGroup?.transform.translateY).toBe(0);
     expect(shot.audioClips.some((clip) => clip.role === 'bgm' && clip.startMs <= 3_500 && clip.endMs > 3_500)).toBe(true);
     expect(shot.audioClips.some((clip) => clip.role === 'sfx' && clip.startMs <= 3_500 && clip.endMs > 3_500)).toBe(true);
+  });
+
+  it('keeps each Character intensity through an A → B → A speaker change', () => {
+    const base = talkingProject();
+    const project = withTalkingHeadIntensity(
+      withTalkingHeadIntensity(base, IDS.character, 100),
+      B_CHARACTER_ID,
+      200,
+    );
+    const aSpeaking = visualFor(project, 475, IDS.layerChar).visual.headGroup;
+    const bSpeaking = visualFor(project, 1_475, B_LAYER_ID).visual.headGroup;
+    const aSpeakingAgain = visualFor(project, 2_475, IDS.layerChar).visual.headGroup;
+
+    expect(aSpeaking?.transform.translateY).toBeCloseTo(-4, 10);
+    expect(bSpeaking?.transform.translateY).toBeCloseTo(-8, 10);
+    expect(aSpeakingAgain?.transform.translateY).toBeCloseTo(-4, 10);
+    expect([
+      aSpeaking?.transform.rotationDeg,
+      bSpeaking?.transform.rotationDeg,
+      aSpeakingAgain?.transform.rotationDeg,
+    ]).toEqual([0, 0, 0]);
   });
 
   it('moves Head + Face/Mouth while preserving Body and the evaluated Position/Shake root', () => {
@@ -498,6 +550,71 @@ describe('Issue #669 requested-time Talking Head Motion', () => {
     expect(opened).toMatchObject({ dirty: false, revision: 0 });
     expect(resolveSpeakerFocusCamera(project, shot, timeMs).centerX).toBe(640);
     expect(resolveSpeakerFocusCamera(project, shot, 1_475).centerX).toBe(900);
+  });
+
+  it('keeps 0, 100, and 200 percent geometry identical across Editor, Preview, and Export', () => {
+    const timeMs = 475;
+    for (const intensityPercent of [0, 100, 200]) {
+      const project = withTalkingHeadIntensity(
+        talkingProject(),
+        IDS.character,
+        intensityPercent,
+      );
+      const shot = project.shots[0]!;
+      const activeId = activeDialogueId(project, timeMs);
+      const readyAssetIds = new Set(
+        project.assets
+          .filter((asset) => asset.kind === 'image')
+          .map((asset) => asset.id),
+      );
+      const editor = buildEditorTemporalCanvasModel({
+        project,
+        shot,
+        currentTimeMs: timeMs,
+        activeDialogueId: activeId,
+        readyAssetIds,
+        previousVisuals: new Map(),
+      });
+      const previewShot = projectProductPreviewDialogue(
+        project,
+        shot,
+        evaluateShotAtTime(shot, timeMs, project),
+        activeId,
+      );
+      const preview = buildStageRenderModel(
+        project,
+        previewShot,
+        Object.fromEntries(
+          [...readyAssetIds].map((assetId) => [assetId, `blob:${assetId}`]),
+        ),
+      );
+      const exportShot = evaluateExportShotAtTime(project, shot, timeMs);
+      const exported = buildStageRenderModel(
+        project,
+        exportShot,
+        Object.fromEntries(
+          [...readyAssetIds].map((assetId) => [assetId, `blob:${assetId}`]),
+        ),
+      );
+      const editorTransform = editor.stageModel.layers.find(
+        ({ layer }) => layer.id === IDS.layerChar,
+      )!.visual.headGroup!.transform;
+      const previewTransform = preview.layers.find(
+        (layer) => layer.id === IDS.layerChar,
+      )!.visual!.headGroup!.transform;
+      const exportTransform = exported.layers.find(
+        (layer) => layer.id === IDS.layerChar,
+      )!.visual!.headGroup!.transform;
+
+      expect(editorTransform).toEqual(previewTransform);
+      expect(previewTransform).toEqual(exportTransform);
+      expect(editorTransform.translateY).toBeCloseTo(
+        (-4 * intensityPercent) / 100,
+        10,
+      );
+      expect(editorTransform.rotationDeg).toBe(0);
+      expect(exported.timeMs).toBe(timeMs);
+    }
   });
 
   it('freezes on the same requested time, resumes from that phase, and is reproducible on replay', () => {

@@ -4,11 +4,13 @@ import type {
   CharacterDimensionWarning,
   CompositeCharacterDefinition,
   ImageAsset,
+  Project,
 } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
 import type { CharacterAssemblyEditTarget } from '../../stores/characterAssemblySessionStore';
 import { Button } from '../../ui/Button';
 import { CharacterExpressionThumbnail } from './CharacterIdentity';
+import { CharacterTalkingHeadMotionPreview } from './CharacterTalkingHeadMotionPreview';
 import { ExpressionEditor } from './ExpressionEditor';
 import {
   ImageAssetPicker,
@@ -25,6 +27,10 @@ export type CharacterDetailWorkspace =
   | 'assembly'
   | 'expressions'
   | 'settings';
+
+type HeadedCompositeCharacter = Extract<Character, { mode: 'composite' }> & {
+  head: NonNullable<Extract<Character, { mode: 'composite' }>['head']>;
+};
 
 export function isDefaultTransformPending(
   character: Pick<Character, 'defaultScale' | 'defaultFlipX'>,
@@ -283,6 +289,7 @@ function CharacterThumbnailFallback({
 
 export interface CharacterEditorProps {
   character: Character | null;
+  project?: Project;
   imageAssets: readonly ImageAsset[];
   thumbnails: Readonly<Record<string, ThumbnailState>>;
   warnings: readonly CharacterDimensionWarning[];
@@ -304,6 +311,7 @@ export interface CharacterEditorProps {
   onSetAssemblyBodyAsset?: (assetId: string) => void;
   onSetAssemblyMouthAsset?: (assetId: string | null) => void;
   onSetDefaultTransform: (scale: number, flipX: boolean) => void;
+  onSetTalkingHeadMotionIntensityPercent?: (intensityPercent: number) => void;
   hasCurrentShot?: boolean;
   onPlaceInCurrentShot?: (defaultTransformPending: boolean) => void;
   onThumbnailError: (assetId: string) => void;
@@ -317,6 +325,7 @@ export interface CharacterEditorProps {
 
 export function CharacterEditor({
   character,
+  project,
   imageAssets,
   thumbnails,
   warnings,
@@ -338,6 +347,7 @@ export function CharacterEditor({
   onSetAssemblyBodyAsset = () => undefined,
   onSetAssemblyMouthAsset = () => undefined,
   onSetDefaultTransform,
+  onSetTalkingHeadMotionIntensityPercent = () => undefined,
   hasCurrentShot = false,
   onPlaceInCurrentShot = () => undefined,
   onThumbnailError,
@@ -351,6 +361,16 @@ export function CharacterEditor({
   const [name, setName] = useState(character?.name ?? '');
   const [scale, setScale] = useState(character?.defaultScale ?? 1);
   const [flipX, setFlipX] = useState(character?.defaultFlipX ?? false);
+  const [talkingHeadMotionIntensityPercent, setTalkingHeadMotionIntensityPercent] =
+    useState(
+      character?.mode === 'composite'
+        ? character.talkingHeadMotionIntensityPercent
+        : 100,
+    );
+  const [isTalkingHeadMotionPreviewing, setIsTalkingHeadMotionPreviewing] =
+    useState(false);
+  const [hasStartedTalkingHeadMotionPreview, setHasStartedTalkingHeadMotionPreview] =
+    useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [expressionAddOpen, setExpressionAddOpen] = useState(false);
   const [activeWorkspace, setActiveWorkspace] =
@@ -358,6 +378,18 @@ export function CharacterEditor({
       assemblyDraft ? 'assembly' : 'expressions',
     );
   const assemblyDraftWasOpen = useRef(Boolean(assemblyDraft));
+
+  const persistedTalkingHeadMotionIntensityPercent =
+    character?.mode === 'composite'
+      ? character.talkingHeadMotionIntensityPercent
+      : 100;
+  const hasTalkingHeadMotionControl = Boolean(
+    character?.mode === 'composite' && character.head,
+  );
+  const talkingHeadSettingsVisible =
+    presentation === 'landscape' &&
+    view === 'detail' &&
+    activeWorkspace === 'settings';
 
   useEffect(() => {
     if (!character) return;
@@ -371,6 +403,30 @@ export function CharacterEditor({
     setScale(character.defaultScale);
     setFlipX(character.defaultFlipX);
   }, [character?.defaultFlipX, character?.defaultScale, character?.id]);
+
+  useEffect(() => {
+    setTalkingHeadMotionIntensityPercent(
+      persistedTalkingHeadMotionIntensityPercent,
+    );
+    setIsTalkingHeadMotionPreviewing(false);
+    setHasStartedTalkingHeadMotionPreview(false);
+  }, [character?.id, persistedTalkingHeadMotionIntensityPercent]);
+
+  useEffect(() => {
+    if (!talkingHeadSettingsVisible || !hasTalkingHeadMotionControl) {
+      setIsTalkingHeadMotionPreviewing(false);
+      setHasStartedTalkingHeadMotionPreview(false);
+    }
+    if (!hasTalkingHeadMotionControl) {
+      setTalkingHeadMotionIntensityPercent(
+        persistedTalkingHeadMotionIntensityPercent,
+      );
+    }
+  }, [
+    hasTalkingHeadMotionControl,
+    persistedTalkingHeadMotionIntensityPercent,
+    talkingHeadSettingsVisible,
+  ]);
 
   useEffect(() => {
     const hasAssemblyDraft = Boolean(assemblyDraft);
@@ -416,6 +472,11 @@ export function CharacterEditor({
       </div>
     );
   }
+
+  const headedCompositeCharacter: HeadedCompositeCharacter | null =
+    character.mode === 'composite' && character.head
+      ? (character as HeadedCompositeCharacter)
+      : null;
 
   const formalDefaultExpression = character.expressions.find(
     (expression) => expression.id === character.defaultExpressionId,
@@ -1142,6 +1203,152 @@ export function CharacterEditor({
                 </div>
               ) : null}
             </section>
+            {headedCompositeCharacter ? (
+              <section
+                aria-labelledby="character-talking-head-settings-heading"
+                className="character-settings-section character-talking-head-setting"
+                data-intensity-pending={
+                  talkingHeadMotionIntensityPercent !==
+                  persistedTalkingHeadMotionIntensityPercent
+                }
+                data-testid="character-talking-head-settings"
+              >
+                <div className="character-section-heading character-talking-head-heading">
+                  <div>
+                    <h4 id="character-talking-head-settings-heading">
+                      说话动作
+                    </h4>
+                    <span>
+                      {talkingHeadMotionIntensityPercent === 0
+                        ? '说话时保持静止'
+                        : '说话时自动点头'}
+                    </span>
+                  </div>
+                  <output
+                    aria-live="polite"
+                    className="character-talking-head-value"
+                    data-testid="character-talking-head-intensity-value"
+                  >
+                    {talkingHeadMotionIntensityPercent}%
+                  </output>
+                </div>
+                <label className="character-talking-head-intensity-control">
+                  <span>点头强度</span>
+                  <input
+                    aria-label="点头强度"
+                    data-testid="character-talking-head-intensity"
+                    disabled={disabled}
+                    max={200}
+                    min={0}
+                    onChange={(event) =>
+                      setTalkingHeadMotionIntensityPercent(
+                        Number(event.target.value),
+                      )
+                    }
+                    step={10}
+                    type="range"
+                    value={talkingHeadMotionIntensityPercent}
+                  />
+                </label>
+                <div
+                  aria-hidden="true"
+                  className="character-talking-head-scale-labels"
+                >
+                  <span>静止</span>
+                  <span>标准</span>
+                  <span>明显</span>
+                </div>
+                <div className="character-talking-head-actions">
+                  <span data-testid="character-talking-head-amplitude">
+                    上下约 ±
+                    {((4 * talkingHeadMotionIntensityPercent) / 100)
+                      .toFixed(1)
+                      .replace(/\.0$/u, '')}{' '}
+                    像素
+                  </span>
+                  <div>
+                    <button
+                      className="character-talking-head-preview-button"
+                      data-testid="character-talking-head-preview-toggle"
+                      disabled={disabled}
+                      onClick={() => {
+                        setHasStartedTalkingHeadMotionPreview(true);
+                        setIsTalkingHeadMotionPreviewing((playing) => !playing);
+                      }}
+                      type="button"
+                    >
+                      {isTalkingHeadMotionPreviewing ? '停止预览' : '预览'}
+                    </button>
+                    <button
+                      className="character-talking-head-default-button"
+                      data-testid="character-talking-head-restore-default"
+                      disabled={
+                        disabled || talkingHeadMotionIntensityPercent === 100
+                      }
+                      onClick={() =>
+                        setTalkingHeadMotionIntensityPercent(100)
+                      }
+                      type="button"
+                    >
+                      恢复默认
+                    </button>
+                  </div>
+                </div>
+                {hasStartedTalkingHeadMotionPreview && project ? (
+                  <CharacterTalkingHeadMotionPreview
+                    character={headedCompositeCharacter}
+                    intensityPercent={talkingHeadMotionIntensityPercent}
+                    playing={isTalkingHeadMotionPreviewing}
+                    project={project}
+                    thumbnails={thumbnails}
+                  />
+                ) : null}
+                {talkingHeadMotionIntensityPercent !==
+                persistedTalkingHeadMotionIntensityPercent ? (
+                  <div
+                    aria-live="polite"
+                    className="character-default-pending character-talking-head-pending"
+                    data-testid="character-talking-head-pending"
+                    role="status"
+                  >
+                    <div>
+                      <strong>● 有未应用更改</strong>
+                      <span>应用后保存到此角色</span>
+                    </div>
+                    <div className="character-default-action-row">
+                      <button
+                        className="character-default-revert"
+                        data-testid="character-talking-head-revert"
+                        disabled={disabled}
+                        onClick={() => {
+                          setTalkingHeadMotionIntensityPercent(
+                            persistedTalkingHeadMotionIntensityPercent,
+                          );
+                          setIsTalkingHeadMotionPreviewing(false);
+                        }}
+                        type="button"
+                      >
+                        还原
+                      </button>
+                      <button
+                        className="character-default-apply"
+                        data-testid="character-talking-head-apply"
+                        disabled={disabled}
+                        onClick={() => {
+                          setIsTalkingHeadMotionPreviewing(false);
+                          onSetTalkingHeadMotionIntensityPercent(
+                            talkingHeadMotionIntensityPercent,
+                          );
+                        }}
+                        type="button"
+                      >
+                        应用
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
             {!compositeCharacter ? (
             <section className="character-settings-section character-mouth-setting-visual">
               <div

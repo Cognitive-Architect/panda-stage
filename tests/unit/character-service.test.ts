@@ -81,6 +81,27 @@ function createPanda(project = emptyCharacterProject()): Project {
   });
 }
 
+function headedCompositeProject(): Project {
+  const project = createPanda();
+  const character = project.characters[0]!;
+  return ProjectSchema.parse({
+    ...project,
+    characters: [
+      {
+        ...character,
+        mode: 'composite',
+        bodyAssetId: character.baseAssetId,
+        facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+        head: {
+          assetId: character.baseAssetId,
+          placement: { offsetX: 0, offsetY: 0, scale: 1 },
+          pivot: { x: 320, y: 300 },
+        },
+      },
+    ],
+  });
+}
+
 function expectCharacterError(
   action: () => unknown,
   code: CharacterServiceError['code'],
@@ -125,6 +146,54 @@ describe('CharacterService', () => {
     expect(serialized).not.toContain('data:image');
     expect(result.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(character.mode).toBe('single-image');
+  });
+
+  it('validates and persists Head motion intensity from 0 to 200 percent', () => {
+    const initial = headedCompositeProject();
+    const characterId = initial.characters[0]!.id;
+    let project = initial;
+
+    for (const intensityPercent of [0, 100, 200]) {
+      project = service().setTalkingHeadMotionIntensityPercent(
+        project,
+        characterId,
+        intensityPercent,
+      );
+      expect(project.characters[0]).toMatchObject({
+        mode: 'composite',
+        talkingHeadMotionIntensityPercent: intensityPercent,
+      });
+    }
+
+    for (const intensityPercent of [-10, 10.5, 210, Number.NaN]) {
+      expectCharacterError(
+        () =>
+          service().setTalkingHeadMotionIntensityPercent(
+            project,
+            characterId,
+            intensityPercent,
+          ),
+        'INVALID_TALKING_HEAD_INTENSITY',
+      );
+    }
+
+    const composite = project.characters[0]!;
+    if (composite.mode !== 'composite') throw new Error('Expected composite.');
+    const { head: _head, ...headlessCharacter } = composite;
+    expect(_head).toBeDefined();
+    const headlessProject = ProjectSchema.parse({
+      ...project,
+      characters: [headlessCharacter],
+    });
+    expectCharacterError(
+      () =>
+        service().setTalkingHeadMotionIntensityPercent(
+          headlessProject,
+          characterId,
+          100,
+        ),
+      'INVALID_TALKING_HEAD_INTENSITY',
+    );
   });
 
   it('rejects duplicate expression names and non-image mouth references', () => {

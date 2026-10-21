@@ -858,26 +858,27 @@
   transition: transform 120ms ease-out;
 }
 
-.character-assembly-head-group.is-head-motion-test-running {
+.character-assembly-head-group.is-head-motion-test-running,
+.character-assembly-head-group.is-talking-head-motion-preview-running {
   animation: character-assembly-head-motion-test 500ms linear infinite;
 }
 
 @keyframes character-assembly-head-motion-test {
   0%,
   100% {
-    transform: translateY(0);
+    transform: translateY(0px);
   }
 
   12.5% {
-    transform: translateY(-2.828px);
+    transform: translateY(var(--head-motion-up-mid, -2.828px));
   }
 
   25% {
-    transform: translateY(-4px);
+    transform: translateY(var(--head-motion-up-peak, -4px));
   }
 
   37.5% {
-    transform: translateY(-2.828px);
+    transform: translateY(var(--head-motion-up-mid, -2.828px));
   }
 
   50% {
@@ -885,15 +886,15 @@
   }
 
   62.5% {
-    transform: translateY(2.828px);
+    transform: translateY(var(--head-motion-down-mid, 2.828px));
   }
 
   75% {
-    transform: translateY(4px);
+    transform: translateY(var(--head-motion-down-peak, 4px));
   }
 
   87.5% {
-    transform: translateY(2.828px);
+    transform: translateY(var(--head-motion-down-mid, 2.828px));
   }
 }
 

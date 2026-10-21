@@ -2,6 +2,7 @@ import {
   CharacterHeadSchema,
   FacePlacementSchema,
   ProjectSchema,
+  TalkingHeadMotionIntensityPercentSchema,
   type Character,
   type CharacterExpression,
   type CharacterHead,
@@ -29,6 +30,7 @@ export type CharacterServiceErrorCode =
   | 'COMPOSITE_CHARACTER_REQUIRED'
   | 'INVALID_FACE_PLACEMENT'
   | 'INVALID_HEAD'
+  | 'INVALID_TALKING_HEAD_INTENSITY'
   | 'EXPRESSION_SET_MISMATCH';
 
 export class CharacterServiceError extends Error {
@@ -214,6 +216,7 @@ export class CharacterService {
       mode: 'composite',
       bodyAssetId,
       facePlacement,
+      talkingHeadMotionIntensityPercent: 100,
       ...(head ? { head } : {}),
     });
   }
@@ -528,6 +531,30 @@ export class CharacterService {
       ...character,
       defaultScale,
       defaultFlipX,
+    });
+  }
+
+  setTalkingHeadMotionIntensityPercent(
+    project: Project,
+    characterId: string,
+    intensityPercent: number,
+  ): Project {
+    const character = this.compositeCharacter(project, characterId);
+    const parsedIntensity = TalkingHeadMotionIntensityPercentSchema.safeParse(
+      intensityPercent,
+    );
+    if (!character.head || !parsedIntensity.success) {
+      throw new CharacterServiceError(
+        'INVALID_TALKING_HEAD_INTENSITY',
+        'Talking head intensity requires a Head and a whole percentage from 0 to 200.',
+      );
+    }
+    if (character.talkingHeadMotionIntensityPercent === parsedIntensity.data) {
+      return project;
+    }
+    return this.replaceCharacter(project, {
+      ...character,
+      talkingHeadMotionIntensityPercent: parsedIntensity.data,
     });
   }
 
