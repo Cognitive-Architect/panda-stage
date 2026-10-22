@@ -463,6 +463,8 @@ async function verifyDay19() {
       kind: 'image',
       width: normal.width,
       height: normal.height,
+      usage: 'uncategorized',
+      keywords: [],
       sha256: normal.sha256,
     },
     {
@@ -473,6 +475,8 @@ async function verifyDay19() {
       kind: 'image',
       width: angry.width,
       height: angry.height,
+      usage: 'uncategorized',
+      keywords: [],
       sha256: angry.sha256,
     },
     {
@@ -483,6 +487,8 @@ async function verifyDay19() {
       kind: 'image',
       width: mouth.width,
       height: mouth.height,
+      usage: 'uncategorized',
+      keywords: [],
       sha256: mouth.sha256,
     },
     {
@@ -493,6 +499,8 @@ async function verifyDay19() {
       kind: 'image',
       width: replacement.width,
       height: replacement.height,
+      usage: 'uncategorized',
+      keywords: [],
       sha256: replacement.sha256,
     },
   ];
