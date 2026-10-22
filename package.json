@@ -12,6 +12,7 @@
   "scripts": {
     "verify:issue663-dialogue-voice": "pnpm build && electron scripts/verify-issue663-dialogue-voice.cjs",
     "verify:issue659-preview-mixer": "pnpm build && electron scripts/verify-issue659-preview-mixer.cjs",
+    "verify:issue660-export-audio-mix": "pnpm build && node scripts/verify-issue660-export-audio-mix.cjs",
     "verify:issue658-audio-timeline": "pnpm build && electron scripts/verify-issue658-audio-timeline.cjs",
     "verify:issue676-p0-c02": "pnpm build && electron scripts/verify-issue676-p0-c02.cjs",
     "verify:issue686-p2-c02": "pnpm build && electron scripts/verify-issue686-p2-c02.cjs",
@@ -35,6 +36,9 @@
     "research:fla-v1-5-c1-electron": "pnpm build && electron scripts/fla-c1-electron-parser.cjs",
     "research:fla-v1-5-c2": "node scripts/fla-c2-safe-recovery-envelope.cjs",
     "research:issue706-cross-corpus": "pnpm build && node scripts/research/issue706-cross-corpus-batch.cjs",
+    "evidence:issue816-fixtures": "pnpm build && node scripts/generate-issue816-fixtures.cjs",
+    "verify:issue816-dl01": "pnpm build && electron scripts/verify-issue816-dl01.cjs",
+    "verify:issue819-dl02": "pnpm build && electron scripts/verify-issue819-dl02.cjs",
     "verify:fla-v1-5-c3": "pnpm build && node scripts/fla-c3-electron-acceptance.cjs",
     "verify:fla-v1-5-c4": "pnpm build && node scripts/fla-c4-electron-acceptance.cjs",
     "verify:day03": "pnpm build && electron scripts/verify-day03.cjs",

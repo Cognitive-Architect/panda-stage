@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import type { Project } from '../domain';
+import { ExportPreparationCameraModeSchema } from './export-preparation-types';
 
 export const EXPORT_FPS = 24 as const;
 export const MAX_PENDING_FRAMES = 3 as const;
@@ -6,8 +8,10 @@ export const FRAME_FILE_DIGITS = 6 as const;
 
 const JobIdSchema = z.uuid();
 const DurationSchema = z.number().int().min(3_000).max(5_000);
+const FormalDurationSchema = z.number().int().positive().safe();
 const FrameIndexSchema = z.number().int().nonnegative();
 const FrameTimeSchema = z.number().int().nonnegative();
+export const MAX_FORMAL_EXPORT_FRAMES = 2_000_000 as const;
 
 export const ExportProbeConfigSchema = z
   .object({
@@ -22,6 +26,50 @@ export const ExportLoadProbeRequestSchema = z
     durationMs: DurationSchema,
     fps: z.literal(EXPORT_FPS),
   })
+  .strict();
+
+export const ExportStartFormalRequestSchema = z
+  .object({
+    snapshotId: JobIdSchema,
+    reuseSnapshot: z.boolean().default(false),
+  })
+  .strict();
+
+export const ExportLoadFormalMediaSchema = z
+  .object({
+    assetId: z.uuid(),
+    mimeType: z.enum(['image/png', 'image/jpeg']),
+    bytes: z.instanceof(Uint8Array).refine(
+      (bytes) => bytes.byteLength > 0 && bytes.byteLength <= 64 * 1024 * 1024,
+      'Formal export image exceeds its media budget.',
+    ),
+  })
+  .strict();
+
+export const ExportLoadFormalRequestSchema = z
+  .object({
+    jobId: JobIdSchema,
+    project: z.unknown(),
+    cameraMode: ExportPreparationCameraModeSchema,
+    media: z.array(ExportLoadFormalMediaSchema).max(512),
+  })
+  .strict()
+  .superRefine((request, context) => {
+    const totalBytes = request.media.reduce(
+      (total, entry) => total + entry.bytes.byteLength,
+      0,
+    );
+    if (totalBytes > 256 * 1024 * 1024) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Formal export media exceeds its total byte budget.',
+        path: ['media'],
+      });
+    }
+  });
+
+export const ExportFormalLoadedSchema = z
+  .object({ jobId: JobIdSchema, acknowledged: z.literal(true) })
   .strict();
 
 export const ExportProbeLoadedSchema = z
@@ -80,6 +128,7 @@ export const ExportJobPhaseSchema = z.enum([
   'rendering',
   'writing',
   'encoding',
+  'probing',
   'muxing',
   'cleaning',
   'committing',
@@ -117,6 +166,14 @@ export const ExportCancelRequestSchema = z
   })
   .strict();
 
+export const ExportRevealOutputRequestSchema = z
+  .object({ jobId: JobIdSchema })
+  .strict();
+
+export const ExportRevealOutputResponseSchema = z
+  .object({ opened: z.boolean() })
+  .strict();
+
 export const ExportCancelResponseSchema = z
   .object({
     jobId: JobIdSchema,
@@ -140,6 +197,17 @@ export type ExportProbeConfig = z.infer<typeof ExportProbeConfigSchema>;
 export type ExportLoadProbeRequest = z.infer<
   typeof ExportLoadProbeRequestSchema
 >;
+export type ExportStartFormalRequest = z.infer<
+  typeof ExportStartFormalRequestSchema
+>;
+export type ExportLoadFormalRequest = Omit<
+  z.infer<typeof ExportLoadFormalRequestSchema>,
+  'project'
+> & { project: Project };
+export type ExportLoadFormalMedia = z.infer<
+  typeof ExportLoadFormalMediaSchema
+>;
+export type ExportFormalLoaded = z.infer<typeof ExportFormalLoadedSchema>;
 export type ExportProbeLoaded = z.infer<typeof ExportProbeLoadedSchema>;
 export type ExportRenderFrameRequest = z.infer<
   typeof ExportRenderFrameRequestSchema
@@ -157,6 +225,12 @@ export type FullProbeExportRequest = z.infer<
 export type ExportStartResponse = z.infer<typeof ExportStartResponseSchema>;
 export type ExportCancelRequest = z.infer<typeof ExportCancelRequestSchema>;
 export type ExportCancelResponse = z.infer<typeof ExportCancelResponseSchema>;
+export type ExportRevealOutputRequest = z.infer<
+  typeof ExportRevealOutputRequestSchema
+>;
+export type ExportRevealOutputResponse = z.infer<
+  typeof ExportRevealOutputResponseSchema
+>;
 export type ExportJobUpdate = z.infer<typeof ExportJobUpdateSchema>;
 
 export interface FrameScheduleEntry {
@@ -187,4 +261,28 @@ export function createFrameSchedule(
     timeMs: frameTimeMs(frameIndex, config.fps),
     fileName: formatFrameFileName(frameIndex),
   }));
+}
+
+export function formalFrameCount(durationMs: number, fps = EXPORT_FPS): number {
+  const parsedDuration = FormalDurationSchema.parse(durationMs);
+  const parsedFps = z.literal(EXPORT_FPS).parse(fps);
+  const count = Math.ceil((parsedDuration / 1_000) * parsedFps);
+  if (!Number.isSafeInteger(count) || count > MAX_FORMAL_EXPORT_FRAMES) {
+    throw new Error('Formal export duration exceeds the frame budget.');
+  }
+  return count;
+}
+
+export function* iterateFormalFrameSchedule(
+  durationMs: number,
+  fps = EXPORT_FPS,
+): Generator<FrameScheduleEntry> {
+  const count = formalFrameCount(durationMs, fps);
+  for (let frameIndex = 0; frameIndex < count; frameIndex += 1) {
+    yield {
+      frameIndex,
+      timeMs: frameTimeMs(frameIndex, fps),
+      fileName: formatFrameFileName(frameIndex),
+    };
+  }
 }

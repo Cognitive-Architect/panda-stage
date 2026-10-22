@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { evaluateShotAtTime } from '../domain';
+import {
+  evaluateShotAtTime,
+  evaluateSpeakerFocusCamera,
+  prepareSpeakerFocusCamera,
+  type Project,
+} from '../domain';
 import type {
+  ExportLoadFormalRequest,
   ExportLoadProbeRequest,
   ExportRenderFrameRequest,
 } from '../shared/export-types';
@@ -11,9 +17,14 @@ import {
   PROBE_SHOT,
   PROBE_SUBTITLE_CUES,
 } from '../shared/probe/probe-project';
+import { buildDialogueSubtitleCues } from '../shared/preview/dialogue-subtitle';
 import { evaluateSubtitleAtTime } from '../shared/preview/subtitle-engine';
 import { CanvasStage } from '../renderer/stage/CanvasStage';
 import { PROBE_ASSET_URLS } from '../renderer/stage/probe-assets';
+import {
+  projectProductPreviewMouth,
+  resolveProductPreviewSubtitleStyle,
+} from '../renderer/shell/productPreviewModel';
 import {
   isExactExportFrameReady,
   readExportStageReadiness,
@@ -42,7 +53,7 @@ export function ExportRendererApp(): React.JSX.Element {
     evidenceParameters.get('issue47FlipX') === 'true';
   const issue573ExactFrameProbe =
     evidenceParameters.get('issue573ExactFrameProbe') === 'true';
-  const project = useMemo(() => {
+  const probeProject = useMemo(() => {
     if (!issue47FlipEvidence) return PROBE_PROJECT;
     const characterLayer = PROBE_SHOT.layers.find(
       (layer) => layer.id === PROBE_CHARACTER_LAYER_ID,
@@ -70,27 +81,52 @@ export function ExportRendererApp(): React.JSX.Element {
       ],
     };
   }, [issue47FlipEvidence, issue47FlipX]);
+  const [formalRequest, setFormalRequest] =
+    useState<ExportLoadFormalRequest | null>(null);
+  const [formalAssetUrls, setFormalAssetUrls] = useState<
+    Readonly<Record<string, string>>
+  >({});
+  const project: Project = formalRequest?.project ?? probeProject;
   const projectShot = project.shots[0];
   if (!projectShot) {
     throw new Error('Export renderer project must contain one shot.');
   }
-  const [durationMs, setDurationMs] = useState(PROBE_SHOT.durationMs);
+  const [probeDurationMs, setProbeDurationMs] = useState(PROBE_SHOT.durationMs);
   const [frameRequest, setFrameRequest] =
     useState<ExportRenderFrameRequest | null>(null);
   const readyAnnouncedRef = useRef(false);
   const stageReadyRef = useRef(false);
   const loadedJobIdRef = useRef<string | null>(null);
   const pendingLoadRef = useRef<ExportLoadProbeRequest | null>(null);
+  const pendingFormalLoadRef = useRef<ExportLoadFormalRequest | null>(null);
   const activeFrameRef = useRef<ExportRenderFrameRequest | null>(null);
   const captureInFlightRef = useRef(false);
   const cancelledJobIdsRef = useRef(new Set<string>());
 
   const shot = useMemo(
-    () => ({ ...projectShot, durationMs }),
-    [durationMs, projectShot],
+    () => ({
+      ...projectShot,
+      durationMs: formalRequest?.project.shots[0]?.durationMs ?? probeDurationMs,
+    }),
+    [formalRequest, probeDurationMs, projectShot],
   );
   const requestedTimeMs = frameRequest?.timeMs ?? 0;
+  useEffect(() => {
+    if (!formalRequest) {
+      setFormalAssetUrls({});
+      return undefined;
+    }
+    const urls: Record<string, string> = {};
+    for (const entry of formalRequest.media) {
+      urls[entry.assetId] = URL.createObjectURL(
+        new Blob([entry.bytes], { type: entry.mimeType }),
+      );
+    }
+    setFormalAssetUrls(urls);
+    return () => Object.values(urls).forEach((url) => URL.revokeObjectURL(url));
+  }, [formalRequest]);
   const exportAssetUrls = useMemo(() => {
+    if (formalRequest) return formalAssetUrls;
     if (!issue573ExactFrameProbe) return PROBE_ASSET_URLS;
     const characterUrl = PROBE_ASSET_URLS[PROBE_CHARACTER_ASSET_ID];
     if (!characterUrl) return PROBE_ASSET_URLS;
@@ -99,18 +135,50 @@ export function ExportRendererApp(): React.JSX.Element {
       ...PROBE_ASSET_URLS,
       [PROBE_CHARACTER_ASSET_ID]: `${characterUrl}?issue573-frame=${frame}`,
     };
-  }, [issue573ExactFrameProbe, requestedTimeMs]);
-  const evaluatedShot = useMemo(
+  }, [formalAssetUrls, formalRequest, issue573ExactFrameProbe, requestedTimeMs]);
+  const evaluatedBaseShot = useMemo(
     () => evaluateShotAtTime(shot, requestedTimeMs, project),
     [requestedTimeMs, shot, project],
   );
-  const subtitle = evaluateSubtitleAtTime(
-    PROBE_SUBTITLE_CUES,
-    evaluatedShot.timeMs,
+  const subtitleCues = useMemo(
+    () => formalRequest ? buildDialogueSubtitleCues(shot.dialogues) : PROBE_SUBTITLE_CUES,
+    [formalRequest, shot.dialogues],
   );
+  const subtitle = evaluateSubtitleAtTime(subtitleCues, evaluatedBaseShot.timeMs);
+  const evaluatedShot = useMemo(
+    () => formalRequest
+      ? projectProductPreviewMouth(
+          project,
+          shot,
+          evaluatedBaseShot,
+          subtitle?.id ?? null,
+        )
+      : evaluatedBaseShot,
+    [evaluatedBaseShot, formalRequest, project, shot, subtitle?.id],
+  );
+  const cameraPlan = useMemo(
+    () =>
+      formalRequest?.cameraMode === 'speaker-focus'
+        ? prepareSpeakerFocusCamera(project, shot)
+        : null,
+    [formalRequest?.cameraMode, project, shot],
+  );
+  const camera = cameraPlan
+    ? evaluateSpeakerFocusCamera(cameraPlan, evaluatedShot.timeMs)
+    : undefined;
+  const captionStyle = formalRequest
+    ? resolveProductPreviewSubtitleStyle(project, subtitle)
+    : undefined;
 
   const acknowledgeLoad = useCallback((request: ExportLoadProbeRequest) => {
     window.pandaStageHidden.probeLoaded({
+      jobId: request.jobId,
+      acknowledged: true,
+    });
+  }, []);
+
+  const acknowledgeFormalLoad = useCallback((request: ExportLoadFormalRequest) => {
+    window.pandaStageHidden.formalLoaded({
       jobId: request.jobId,
       acknowledged: true,
     });
@@ -134,13 +202,26 @@ export function ExportRendererApp(): React.JSX.Element {
     const removeLoadListener = window.pandaStageHidden.onLoadProbe((request) => {
       cancelledJobIdsRef.current.delete(request.jobId);
       loadedJobIdRef.current = request.jobId;
-      setDurationMs(request.durationMs);
+      pendingFormalLoadRef.current = null;
+      setFormalRequest(null);
+      setProbeDurationMs(request.durationMs);
       if (stageReadyRef.current) {
         acknowledgeLoad(request);
       } else {
         pendingLoadRef.current = request;
       }
     });
+    const removeFormalLoadListener = window.pandaStageHidden.onLoadFormal(
+      (request) => {
+        cancelledJobIdsRef.current.delete(request.jobId);
+        loadedJobIdRef.current = request.jobId;
+        pendingLoadRef.current = null;
+        pendingFormalLoadRef.current = request;
+        stageReadyRef.current = false;
+        setFrameRequest(null);
+        setFormalRequest(request);
+      },
+    );
     const removeFrameListener = window.pandaStageHidden.onRenderFrame(
       (request) => {
         if (cancelledJobIdsRef.current.has(request.jobId)) {
@@ -170,11 +251,16 @@ export function ExportRendererApp(): React.JSX.Element {
     const removeCancelListener = window.pandaStageHidden.onCancelExport(
       ({ jobId }) => {
         cancelledJobIdsRef.current.add(jobId);
+        const cancellingLoadedJob = loadedJobIdRef.current === jobId;
+        if (cancellingLoadedJob) setFormalRequest(null);
         if (loadedJobIdRef.current === jobId) {
           loadedJobIdRef.current = null;
         }
         if (pendingLoadRef.current?.jobId === jobId) {
           pendingLoadRef.current = null;
+        }
+        if (pendingFormalLoadRef.current?.jobId === jobId) {
+          pendingFormalLoadRef.current = null;
         }
         if (activeFrameRef.current?.jobId === jobId) {
           activeFrameRef.current = null;
@@ -186,10 +272,11 @@ export function ExportRendererApp(): React.JSX.Element {
 
     return () => {
       removeLoadListener();
+      removeFormalLoadListener();
       removeFrameListener();
       removeCancelListener();
     };
-  }, [acknowledgeLoad, failFrame]);
+  }, [acknowledgeFormalLoad, acknowledgeLoad, failFrame]);
 
   const handleStageError = useCallback(
     (error: Error) => {
@@ -226,6 +313,11 @@ export function ExportRendererApp(): React.JSX.Element {
     if (pendingLoad) {
       pendingLoadRef.current = null;
       acknowledgeLoad(pendingLoad);
+    }
+    const pendingFormalLoad = pendingFormalLoadRef.current;
+    if (pendingFormalLoad) {
+      pendingFormalLoadRef.current = null;
+      acknowledgeFormalLoad(pendingFormalLoad);
     }
 
     const activeFrame = activeFrameRef.current;
@@ -278,7 +370,7 @@ export function ExportRendererApp(): React.JSX.Element {
         captureInFlightRef.current = false;
       })
       .catch((error: unknown) => failFrame(activeFrame, error));
-  }, [acknowledgeLoad, failFrame]);
+  }, [acknowledgeFormalLoad, acknowledgeLoad, failFrame]);
 
   return (
     <main className="hidden-stage-shell">
@@ -286,6 +378,9 @@ export function ExportRendererApp(): React.JSX.Element {
         assetUrls={exportAssetUrls}
         caption={subtitle?.text ?? null}
         evaluatedShot={evaluatedShot}
+        camera={camera}
+        captionStyle={captionStyle}
+        showStageLabel={false}
         onError={handleStageError}
         onReady={handleStageReady}
         project={project}

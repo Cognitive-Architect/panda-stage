@@ -6,8 +6,8 @@ import {
   type VisualResourceReference,
 } from './visualParts';
 
-const MOUTH_FLAP_PERIOD_MS = 320;
-const MOUTH_OPEN_MS = 160;
+export const MOUTH_FLAP_PERIOD_MS = 320;
+export const MOUTH_OPEN_MS = 160;
 
 /**
  * Lists the image assets a single Shot may display over time.

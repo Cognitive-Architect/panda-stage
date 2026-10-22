@@ -22,6 +22,7 @@ interface CanvasStageProps {
   onImageResourceFailure?: (failure: StageImageResourceFailure) => void;
   renderToken?: string | number;
   degraded?: boolean;
+  showStageLabel?: boolean;
 }
 
 export function CanvasStage(props: CanvasStageProps): React.JSX.Element {

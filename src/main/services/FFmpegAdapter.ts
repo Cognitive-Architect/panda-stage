@@ -6,6 +6,7 @@ import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import {
   EncodePngSequenceRequestSchema,
+  MuxAudioMixRequestSchema,
   MuxProbeExpectationSchema,
   MuxSingleAudioRequestSchema,
   VideoProbeExpectationSchema,
@@ -13,6 +14,7 @@ import {
   type AudioTimingResult,
   type EncodePngSequenceRequest,
   type MuxProbeExpectation,
+  type MuxAudioMixRequest,
   type MuxSingleAudioRequest,
   type VideoProbeExpectation,
   type VideoProbeResult,
@@ -113,6 +115,16 @@ export interface MuxSingleAudioResult {
   elapsedMs: number;
   args: readonly string[];
   versionLine: string;
+  stderr: string;
+}
+
+export interface MuxAudioMixResult {
+  outputPath: string;
+  videoPath: string;
+  audioMixPlan: MuxAudioMixRequest['audioMixPlan'];
+  elapsedMs: number;
+  args: readonly string[];
+  versionLine: string | null;
   stderr: string;
 }
 
@@ -239,11 +251,9 @@ function technicalTail(stderr: string): string {
 }
 
 function createTemporaryOutputPath(outputPath: string): string {
-  const outputDirectory = path.dirname(outputPath);
-  const outputBaseName = path.basename(outputPath, path.extname(outputPath));
   return path.join(
-    outputDirectory,
-    `.${outputBaseName}.panda-stage-${randomUUID()}.mp4`,
+    path.dirname(outputPath),
+    `.panda-stage-${randomUUID()}.mp4`,
   );
 }
 
@@ -549,6 +559,137 @@ export class FFmpegAdapter {
     };
   }
 
+  async muxAudioMix(
+    rawRequest: MuxAudioMixRequest,
+    signal?: AbortSignal,
+  ): Promise<MuxAudioMixResult> {
+    const request = MuxAudioMixRequestSchema.parse(rawRequest);
+    const videoPath = path.resolve(request.videoPath);
+    const outputPath = path.resolve(request.outputPath);
+    await this.assertReadableInput(videoPath, 'video');
+    await this.assertOutputWritable(outputPath);
+    await this.assertOverwriteAllowed(outputPath, request.overwrite);
+    if (signal?.aborted) {
+      throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
+    }
+
+    const audioInputs: Array<{
+      clip: MuxAudioMixRequest['audioMixPlan']['clips'][number];
+      sourcePath: string;
+      channels: number;
+    }> = [];
+    const audioProbes = new Map<string, AudioProbeResult>();
+    for (const clip of request.audioMixPlan.clips) {
+      const sourcePath = path.resolve(clip.sourcePath);
+      await this.assertReadableInput(sourcePath, 'audio');
+      let probe = audioProbes.get(sourcePath);
+      if (!probe) {
+        probe = await this.probeAudioFile(sourcePath, signal);
+        audioProbes.set(sourcePath, probe);
+      }
+      if (signal?.aborted) {
+        throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
+      }
+      const requestedSourceEndMs =
+        clip.sourceOffsetMs + (clip.endMs - clip.startMs);
+      if (
+        !Number.isFinite(probe.durationSeconds) ||
+        probe.durationSeconds <= 0 ||
+        !Number.isSafeInteger(requestedSourceEndMs) ||
+        requestedSourceEndMs > probe.durationSeconds * 1_000
+      ) {
+        throw new FFmpegAdapterError(
+          'AUDIO_INPUT_INVALID',
+          `Audio clip ${clip.clipId} exceeds the readable source range.`,
+          { executable: this.ffprobePath, args: [] },
+        );
+      }
+      audioInputs.push({ clip, sourcePath, channels: probe.channels });
+    }
+
+    let versionLine: string | null = null;
+    if (audioInputs.length > 0) {
+      const validation = await this.validateAudioMuxExecutable(signal);
+      versionLine = validation.versionLine;
+    }
+    if (signal?.aborted) {
+      throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
+    }
+
+    const temporaryOutputPath = createTemporaryOutputPath(outputPath);
+    const args = this.buildMuxAudioMixArguments({
+      videoPath,
+      audioInputs,
+      durationMs: request.audioMixPlan.durationMs,
+      outputPath: temporaryOutputPath,
+      overwrite: request.overwrite,
+    });
+    const startedAt = performance.now();
+    let result: ProcessResult;
+    try {
+      result = await this.runProcess(this.ffmpegPath, args, { signal });
+      if (signal?.aborted) {
+        throw this.cancelledError(
+          this.ffmpegPath,
+          args,
+          result.code,
+          result.signal,
+          result.stderr,
+        );
+      }
+      if (result.code !== 0) {
+        throw this.mapMuxFailure(
+          args,
+          result,
+          audioInputs[0]?.sourcePath ?? videoPath,
+        );
+      }
+      const outputStats = await stat(temporaryOutputPath).catch(() => null);
+      if (!outputStats?.isFile() || outputStats.size === 0) {
+        throw new FFmpegAdapterError(
+          'PROCESS_FAILED',
+          'FFmpeg did not create a usable audio mix output.',
+          {
+            executable: this.ffmpegPath,
+            args,
+            exitCode: result.code,
+            signal: result.signal,
+            stderr: technicalTail(result.stderr),
+          },
+        );
+      }
+      if (signal?.aborted) {
+        throw this.cancelledError(
+          this.ffmpegPath,
+          args,
+          result.code,
+          result.signal,
+          result.stderr,
+        );
+      }
+      await this.commitTemporaryOutput(
+        temporaryOutputPath,
+        outputPath,
+        request.overwrite,
+        args,
+        result,
+      );
+    } catch (error) {
+      await this.cleanupTemporaryOutput(temporaryOutputPath, error);
+      throw error;
+    }
+
+    return {
+      outputPath,
+      videoPath,
+      audioMixPlan: request.audioMixPlan,
+      elapsedMs: Math.round(performance.now() - startedAt),
+      args,
+      versionLine,
+      stderr: technicalTail(result.stderr),
+    };
+  }
+
   async probeVideo(
     videoPath: string,
     signal?: AbortSignal,
@@ -629,6 +770,8 @@ export class FFmpegAdapter {
       frameCount: Number.isInteger(frameCount) ? frameCount : null,
       durationSeconds,
       hasAudio: Boolean(audio),
+      audioStreamCount: streams.filter((stream) => stream.codec_type === 'audio')
+        .length,
       audioCodecName: audio ? String(audio.codec_name ?? '') : null,
       audioSampleRate: audio ? Number(audio.sample_rate) : null,
       audioChannels: audio ? Number(audio.channels) : null,
@@ -944,6 +1087,90 @@ export class FFmpegAdapter {
       '+faststart',
       request.outputPath,
     ];
+  }
+
+  private buildMuxAudioMixArguments(request: {
+    videoPath: string;
+    audioInputs: Array<{
+      clip: MuxAudioMixRequest['audioMixPlan']['clips'][number];
+      sourcePath: string;
+      channels: number;
+    }>;
+    durationMs: number;
+    outputPath: string;
+    overwrite: boolean;
+  }): readonly string[] {
+    const args = [
+      request.overwrite ? '-y' : '-n',
+      '-hide_banner',
+      '-loglevel',
+      'info',
+      '-i',
+      request.videoPath,
+    ];
+    for (const input of request.audioInputs) {
+      args.push('-i', input.sourcePath);
+    }
+
+    if (request.audioInputs.length === 0) {
+      args.push(
+        '-map',
+        '0:v:0',
+        '-c:v',
+        'copy',
+        '-an',
+        '-movflags',
+        '+faststart',
+        request.outputPath,
+      );
+      return args;
+    }
+
+    const mixEndMs = request.audioInputs.reduce(
+      (latestEndMs, { clip }) => Math.max(latestEndMs, clip.endMs),
+      0,
+    );
+    const durationSamples = mixEndMs * 48;
+    const filters = request.audioInputs.map(({ clip, channels }, index) => {
+      const inputIndex = index + 1;
+      const clipDurationMs = clip.endMs - clip.startMs;
+      const channelDelays = Array.from(
+        { length: channels },
+        () => clip.startMs,
+      ).join('|');
+      return `[${inputIndex}:a:0]atrim=start=${this.seconds(clip.sourceOffsetMs)}:duration=${this.seconds(clipDurationMs)},asetpts=PTS-STARTPTS,volume=${clip.volume},aresample=48000,adelay=${channelDelays},apad=whole_len=${durationSamples}[clip_${index}]`;
+    });
+    const mixedInputs = request.audioInputs
+      .map((_, index) => `[clip_${index}]`)
+      .join('');
+    // The bundled FFmpeg predates amix's normalize option. Keep every input
+    // alive through the latest clip end, then restore the linear sum after
+    // amix's default N-way average.
+    filters.push(
+      `${mixedInputs}amix=inputs=${request.audioInputs.length}:duration=longest:dropout_transition=0,volume=${request.audioInputs.length}[mixed]`,
+    );
+    args.push(
+      '-filter_complex',
+      filters.join(';'),
+      '-map',
+      '0:v:0',
+      '-map',
+      '[mixed]',
+      '-c:v',
+      'copy',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '192k',
+      '-movflags',
+      '+faststart',
+      request.outputPath,
+    );
+    return args;
+  }
+
+  private seconds(milliseconds: number): string {
+    return (milliseconds / 1_000).toFixed(3).replace(/\.?0+$/u, '');
   }
 
   private async inspectFrameSequence(framesDirectory: string): Promise<number> {

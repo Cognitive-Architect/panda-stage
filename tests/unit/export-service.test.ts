@@ -7,13 +7,19 @@ import {
   type FullProbeMediaAdapter,
   type FrameRenderer,
 } from '../../src/main/services/ExportService';
-import type { VideoProbeResult } from '../../src/shared/ffmpeg-types';
+import type {
+  AudioProbeResult,
+  MuxAudioMixRequest,
+  VideoProbeResult,
+} from '../../src/shared/ffmpeg-types';
 import type {
   ExportFrameReady,
+  ExportLoadFormalRequest,
   ExportLoadProbeRequest,
   ExportProbeLoaded,
   ExportRenderFrameRequest,
 } from '../../src/shared/export-types';
+import type { FrozenExportInput } from '../../src/main/services/ExportPreparationService';
 
 class MemoryFileSystem implements FrameFileSystem {
   readonly directories = new Map<string, Map<string, Uint8Array>>();
@@ -30,6 +36,8 @@ class MemoryFileSystem implements FrameFileSystem {
   readonly finalOutputEvents: string[] = [];
   prepareFinalOutputCalls = 0;
   commitFinalOutputCalls = 0;
+  prepareFormalOutputCalls = 0;
+  commitFormalOutputNoReplaceCalls = 0;
   cleanupStagingCalls = 0;
   stagingCleanupFailure: Error | null = null;
   commitGate: Promise<void> | null = null;
@@ -52,6 +60,15 @@ class MemoryFileSystem implements FrameFileSystem {
     }
     this.directories.get(directory)?.set(fileName, bytes);
     this.successfulWrites.push(fileName);
+  }
+
+  async writeFrozenAudio(
+    directory: string,
+    fileName: string,
+    bytes: Uint8Array,
+  ): Promise<string> {
+    this.directories.get(directory)?.set(fileName, bytes);
+    return path.join(directory, fileName);
   }
 
   async listFrameFiles(directory: string): Promise<string[]> {
@@ -80,6 +97,13 @@ class MemoryFileSystem implements FrameFileSystem {
     return outputPath;
   }
 
+  async prepareFormalOutput(outputPath: string): Promise<string> {
+    this.prepareFormalOutputCalls += 1;
+    return this.prepareFinalOutput(outputPath, false);
+  }
+
+  async assertFormalOutputLocation(): Promise<void> {}
+
   createFinalOutputStagingPath(jobId: string, outputPath: string): string {
     const stagingPath = path.join(
       path.dirname(outputPath),
@@ -106,6 +130,23 @@ class MemoryFileSystem implements FrameFileSystem {
     this.stagingFiles.delete(stagingPath);
   }
 
+  async commitFormalOutputNoReplace(
+    stagingPath: string,
+    outputPath: string,
+  ): Promise<void> {
+    this.commitFormalOutputNoReplaceCalls += 1;
+    this.finalOutputEvents.push('commit-no-replace');
+    this.commitStarted?.();
+    if (this.commitGate) await this.commitGate;
+    if (this.finalFiles.has(outputPath)) {
+      throw new Error('formal output appeared before exclusive commit');
+    }
+    const stagedContent = this.stagingFiles.get(stagingPath);
+    if (!stagedContent) throw new Error('staging output is missing');
+    this.finalFiles.set(outputPath, stagedContent);
+    this.stagingFiles.delete(stagingPath);
+  }
+
   async cleanupFinalOutputStaging(stagingPath: string): Promise<void> {
     this.cleanupStagingCalls += 1;
     if (this.stagingCleanupFailure) throw this.stagingCleanupFailure;
@@ -115,6 +156,7 @@ class MemoryFileSystem implements FrameFileSystem {
 
 class MemoryRenderer implements FrameRenderer {
   requests: ExportRenderFrameRequest[] = [];
+  formalLoads: ExportLoadFormalRequest[] = [];
   failAtFrame: number | null = null;
   cancelledJobs: string[] = [];
   prepared = 0;
@@ -135,6 +177,11 @@ class MemoryRenderer implements FrameRenderer {
 
   async loadProbe(request: ExportLoadProbeRequest): Promise<ExportProbeLoaded> {
     return { jobId: request.jobId, acknowledged: true };
+  }
+
+  async loadFormal(request: ExportLoadFormalRequest) {
+    this.formalLoads.push(request);
+    return { jobId: request.jobId, acknowledged: true as const };
   }
 
   async renderFrame(request: ExportRenderFrameRequest): Promise<ExportFrameReady> {
@@ -167,6 +214,7 @@ const probeResult: VideoProbeResult = {
   audioChannels: 1,
   audioStartSeconds: 0,
   audioDurationSeconds: 3.4,
+  audioStreamCount: 1,
   formatDurationSeconds: 3.4,
   raw: {},
 };
@@ -175,6 +223,7 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
   encodeRequests: Array<Record<string, unknown>> = [];
   muxRequests: Array<Record<string, unknown>> = [];
   probeRequests: string[] = [];
+  audioProbeRequests: string[] = [];
   signals: AbortSignal[] = [];
   blockEncode = false;
   encodeStarted: (() => void) | null = null;
@@ -184,6 +233,7 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
   blockProbe = false;
   probeStarted: (() => void) | null = null;
   probeFailure: Error | null = null;
+  result = probeResult;
 
   constructor(private readonly fileSystem: MemoryFileSystem) {}
 
@@ -209,6 +259,20 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
     signal?: AbortSignal,
   ): Promise<void> {
     this.encodeRequests.push(request);
+    const outputPath = String(request.outputPath);
+    const outputDirectory = path.dirname(outputPath);
+    const isFormalSilentIntermediate =
+      path.basename(outputPath) === 'formal-silent.mp4';
+    if (
+      !isFormalSilentIntermediate &&
+      this.fileSystem.directories.has(outputDirectory)
+    ) {
+      this.fileSystem.directories
+        .get(outputDirectory)
+        ?.set(path.basename(outputPath), new Uint8Array([1]));
+    } else if (!isFormalSilentIntermediate && request.overwrite === false) {
+      this.fileSystem.stagingFiles.set(outputPath, 'silent video');
+    }
     if (signal) this.signals.push(signal);
     if (!this.blockEncode) return;
     this.activeProcesses = 1;
@@ -240,6 +304,36 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
     }
   }
 
+  async probeAudioFile(
+    audioPath: string,
+    signal?: AbortSignal,
+  ): Promise<AudioProbeResult> {
+    this.audioProbeRequests.push(audioPath);
+    if (signal) this.signals.push(signal);
+    return {
+      codecName: 'pcm_s16le',
+      sampleRate: 48_000,
+      channels: 1,
+      durationSeconds: 3,
+      raw: {},
+    };
+  }
+
+  async muxAudioMix(
+    request: MuxAudioMixRequest,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    this.muxRequests.push(request as unknown as Record<string, unknown>);
+    if (signal) this.signals.push(signal);
+    const stagingPath = String(request.outputPath);
+    this.fileSystem.finalOutputEvents.push('mux');
+    this.fileSystem.stagingFiles.set(stagingPath, 'new video with audio');
+    if (this.blockMux) {
+      this.muxStarted?.();
+      await this.waitForCancellation(signal, 'controlled mux cancellation');
+    }
+  }
+
   async probeVideo(
     videoPath: string,
     signal?: AbortSignal,
@@ -255,7 +349,7 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
       this.probeStarted?.();
       await this.waitForCancellation(signal, 'controlled probe cancellation');
     }
-    return probeResult;
+    return this.result;
   }
 
   getActiveProcessCount(): number {
@@ -347,6 +441,157 @@ describe('ExportService', () => {
       /导出已取消并完成资源清理；可以立即重新导出/,
     );
     expect(fileSystem.directories.size).toBe(0);
+  });
+
+  it('exports a frozen formal Shot beyond five seconds as a silent verified MP4', async () => {
+    const renderer = new MemoryRenderer();
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    const totalFrames = 157;
+    media.result = {
+      ...probeResult,
+      frameCount: totalFrames,
+      durationSeconds: totalFrames / 24,
+      hasAudio: false,
+      audioCodecName: null,
+      audioSampleRate: null,
+      audioChannels: null,
+      audioStartSeconds: null,
+      audioDurationSeconds: null,
+      audioStreamCount: 0,
+    };
+    const service = new ExportService(renderer, fileSystem, media);
+    const input = {
+      candidate: {
+        project: { shots: [{ durationMs: 6_501 }] },
+        projectRoot: 'C:\\Panda Stage\\Project',
+        cameraMode: 'static',
+        renderSettings: { width: 1_920, height: 1_080, fps: 24 },
+        outputIntent: {
+          targetPath: 'C:\\Panda Stage\\Output\\鏡頭.mp4',
+          overwriteApproved: false,
+        },
+      },
+      media: [],
+    } as unknown as FrozenExportInput;
+    let targetChecks = 0;
+    const handle = service.startFormalExport(input, async () => {
+      targetChecks += 1;
+    });
+    const result = await handle.completion;
+
+    expect(result.totalFrames).toBe(totalFrames);
+    expect(result.completedFrames).toBe(totalFrames);
+    expect(renderer.formalLoads).toHaveLength(1);
+    expect(renderer.formalLoads[0]?.project).toEqual(input.candidate.project);
+    expect(renderer.requests.at(-1)).toMatchObject({
+      frameIndex: 156,
+      timeMs: 6_500,
+    });
+    expect(media.encodeRequests).toHaveLength(1);
+    expect(media.encodeRequests[0]).toMatchObject({ fps: 24, overwrite: false });
+    expect(media.muxRequests).toHaveLength(0);
+    expect(result.probe.hasAudio).toBe(false);
+    expect(targetChecks).toBe(2);
+    expect(fileSystem.commitFormalOutputNoReplaceCalls).toBe(1);
+    expect(service.getCompletedOutputPath(handle.jobId)).toBe(result.outputPath);
+  });
+
+  it('preflights frozen audio, builds a strict mix plan, muxes once, and commits no-clobber', async () => {
+    const renderer = new MemoryRenderer();
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    media.result = {
+      ...probeResult,
+      audioDurationSeconds: 2.5,
+      formatDurationSeconds: 3,
+      audioStreamCount: 1,
+    };
+    const audioAssetId = '10000000-0000-4000-8000-000000000021';
+    const audioClipId = '70000000-0000-4000-8000-000000000021';
+    const audioBytes = new Uint8Array([4, 5, 6]);
+    const input = {
+      candidate: {
+        project: {
+          shots: [
+            {
+              durationMs: 3_000,
+              audioClips: [
+                {
+                  id: audioClipId,
+                  assetId: audioAssetId,
+                  role: 'sfx',
+                  startMs: 1_000,
+                  endMs: 2_500,
+                  offsetMs: 250,
+                  volume: 1.5,
+                },
+              ],
+            },
+          ],
+          assets: [
+            {
+              id: audioAssetId,
+              kind: 'audio',
+              mimeType: 'audio/wav',
+              durationMs: 3_000,
+            },
+          ],
+        },
+        projectRoot: 'C:\\Panda Stage\\Project',
+        cameraMode: 'static',
+        renderSettings: { width: 1_920, height: 1_080, fps: 24 },
+        outputIntent: {
+          targetPath: 'C:\\Panda Stage\\Output\\formal-audio.mp4',
+          overwriteApproved: false,
+        },
+      },
+      media: [
+        {
+          assetId: audioAssetId,
+          kind: 'audio',
+          mimeType: 'audio/wav',
+          bytes: audioBytes,
+        },
+      ],
+    } as unknown as FrozenExportInput;
+    const service = new ExportService(renderer, fileSystem, media);
+    let targetChecks = 0;
+    const handle = service.startFormalExport(input, async () => {
+      targetChecks += 1;
+    });
+    const result = await handle.completion;
+
+    expect(media.audioProbeRequests).toHaveLength(1);
+    expect(media.audioProbeRequests[0]).toContain(audioAssetId);
+    expect(media.encodeRequests[0]?.outputPath).toContain('formal-silent.mp4');
+    expect(media.muxRequests).toHaveLength(1);
+    expect(media.muxRequests[0]).toMatchObject({
+      overwrite: false,
+      audioMixPlan: {
+        durationMs: 3_000,
+        clips: [
+          {
+            clipId: audioClipId,
+            sourceOffsetMs: 250,
+            startMs: 1_000,
+            endMs: 2_500,
+            volume: 1.5,
+          },
+        ],
+      },
+    });
+    expect(result.probe.hasAudio).toBe(true);
+    expect(result.probe.audioStreamCount).toBe(1);
+    expect(targetChecks).toBe(2);
+    expect(fileSystem.commitFormalOutputNoReplaceCalls).toBe(1);
+    expect(fileSystem.finalOutputEvents).toEqual([
+      'mux',
+      'probe',
+      'commit-no-replace',
+    ]);
+    expect(fileSystem.directories.size).toBe(0);
+    expect(fileSystem.stagingFiles.size).toBe(0);
   });
 
   it('uses one Job signal through a Unicode full export and removes its frame directory', async () => {

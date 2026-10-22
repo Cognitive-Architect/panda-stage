@@ -22,6 +22,7 @@ interface AutosaveSession {
   projectRoot: string;
   project: Project;
   savedProject: Project;
+  openInstanceId: number | null;
   savedRevision: number;
   dirty: boolean;
   revision: number;
@@ -73,6 +74,7 @@ export class AutosaveService {
       projectRoot,
       project: request.project,
       savedProject: request.project,
+      openInstanceId: request.openInstanceId ?? null,
       savedRevision: request.revision,
       dirty: request.dirty,
       revision: request.revision,
@@ -208,6 +210,9 @@ export class AutosaveService {
         project: structuredClone(session.project),
         dirty: true,
         revision: session.revision,
+        ...(session.openInstanceId === null
+          ? {}
+          : { openInstanceId: session.openInstanceId }),
       };
     }
     return null;
@@ -223,6 +228,9 @@ export class AutosaveService {
       project: structuredClone(session.project),
       dirty: session.dirty,
       revision: session.revision,
+      ...(session.openInstanceId === null
+        ? {}
+        : { openInstanceId: session.openInstanceId }),
     };
   }
 
@@ -299,6 +307,21 @@ export class AutosaveService {
       throw new Error(
         `Autosave revision cannot move backwards at ${session.projectRoot}.`,
       );
+    }
+    if (
+      session.openInstanceId !== null &&
+      request.openInstanceId !== undefined &&
+      session.openInstanceId !== request.openInstanceId
+    ) {
+      throw new Error(
+        `Autosave open Project instance mismatch at ${session.projectRoot}.`,
+      );
+    }
+    if (
+      session.openInstanceId === null &&
+      request.openInstanceId !== undefined
+    ) {
+      session.openInstanceId = request.openInstanceId;
     }
     const wasDirty = session.dirty;
     session.project = request.project;

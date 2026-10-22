@@ -4,6 +4,8 @@ import {
   createFrameSchedule,
   formatFrameFileName,
   frameTimeMs,
+  formalFrameCount,
+  iterateFormalFrameSchedule,
 } from '../../src/shared/export-types';
 
 describe('export frame schedule', () => {
@@ -29,6 +31,18 @@ describe('export frame schedule', () => {
     expect(frameTimeMs(24, 24)).toBe(1_000);
     expect(frameTimeMs(71, 24)).toBe(2_958);
     expect(formatFrameFileName(71)).toBe('frame_000071.png');
+  });
+
+  it('schedules formal shots by their actual duration beyond the probe range', () => {
+    const schedule = Array.from(iterateFormalFrameSchedule(6_501));
+    expect(formalFrameCount(6_501)).toBe(157);
+    expect(schedule).toHaveLength(157);
+    expect(schedule[156]).toEqual({
+      frameIndex: 156,
+      timeMs: 6_500,
+      fileName: 'frame_000156.png',
+    });
+    expect(schedule.at(-1)?.timeMs).toBeLessThan(6_501);
   });
 
   it('accepts MP4 case-insensitively and rejects other full-export extensions', () => {

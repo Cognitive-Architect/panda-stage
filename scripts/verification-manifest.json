@@ -369,6 +369,7 @@
           "tests/integration/project-subtitle-background-migration.test.ts",
           "tests/unit/application-menu-policy.test.ts",
           "tests/unit/standalone-audio.test.ts",
+          "tests/unit/autosave-service.test.ts",
           "tests/integration/standalone-audio-persistence.test.ts"
         ],
         "verifierPatterns": ["scripts/verify-issue257-slice3*", "scripts/verify-issue657-audio-foundation.cjs"],
@@ -387,9 +388,15 @@
         ],
         "testPatterns": [
           "tests/unit/export-*.test.ts",
-          "tests/unit/ffmpeg-*.test.ts"
+          "tests/unit/formal-export-stage-label.test.ts",
+          "tests/unit/ffmpeg-*.test.ts",
+          "tests/unit/file-system-service.test.ts"
         ],
-        "verifierPatterns": [],
+        "verifierPatterns": [
+          "scripts/verify-issue816-dl01.cjs",
+          "scripts/verify-issue819-dl02.cjs",
+          "scripts/verify-issue660-export-audio-mix.cjs"
+        ],
         "suites": [],
         "riskPolicy": "full",
         "draftPolicy": "focused",
@@ -669,7 +676,7 @@
       }
     ]
   },
-  "count": 81,
+  "count": 84,
   "gates": [
     {
       "id": "issue663-dialogue-voice",
@@ -694,6 +701,18 @@
       "owner": "editor",
       "supersedes": null,
       "notes": "A03 native sandboxed Electron read/decode/gain/spectrum evidence for overlapping Dialogue/BGM/SFX, seek/pause/resume/replay/unmount; not Export mix or human listening acceptance."
+    },
+    {
+      "id": "issue660-export-audio-mix",
+      "script": "verify:issue660-export-audio-mix",
+      "suite": "issue660-export-audio-mix",
+      "subsystem": "export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "release",
+      "supersedes": null,
+      "notes": "A04 bundled-FFmpeg nine-clip Dialogue/BGM/two-SFX PCM timing and gain evidence; not formal Project/Electron acceptance or Gate B graduation."
     },
     {
       "id": "issue658-audio-timeline",
@@ -1630,6 +1649,30 @@
       "owner": "character",
       "supersedes": null,
       "notes": "Bounded Issue #609 real Electron production-UI proof for composite Character creation/edit, Body-only raw placement, and one-layer Shot placement; synthetic fixture input and screenshot evidence are not human acceptance."
+    },
+    {
+      "id": "issue816-dl01",
+      "script": "verify:issue816-dl01",
+      "suite": "project",
+      "subsystem": "export-preparation",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Controlled Issue #816 DL-01 Electron proof for native Save As, actual dirty EditorProjectStore capture, stable media copies, target/session guards, and F01/F05/F06 generated fixtures. Synthetic Project Center IPC and native-dialog UI Automation support the gate; OWNER acceptance remains separate."
+    },
+    {
+      "id": "issue819-dl02",
+      "script": "verify:issue819-dl02",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Issue #819 DL-02 Electron proof through Creator UI and native Save As for a frozen single-Shot Project, both camera modes, silent FFmpeg/FFprobe MP4 validation, boundary frames, and overwrite cancellation. Generated fixture and UI Automation support the gate; OWNER visual acceptance remains separate."
     },
     {
       "id": "timeline",

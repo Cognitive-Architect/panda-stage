@@ -14,7 +14,10 @@ import {
   type ProcessRunOptions,
   type ProcessRunner,
 } from '../../src/main/services/FFmpegAdapter';
-import { MuxSingleAudioRequestSchema } from '../../src/shared/ffmpeg-types';
+import {
+  MuxAudioMixRequestSchema,
+  MuxSingleAudioRequestSchema,
+} from '../../src/shared/ffmpeg-types';
 
 type FakeResponse =
   | ProcessResult
@@ -215,6 +218,128 @@ describe('FFmpegAdapter single-audio mux', () => {
       expect(runner.calls[0]?.args).not.toContain('-filter_complex');
     },
   );
+
+  it('builds one AAC track from dialogue, BGM, and two overlapping SFX through the full Shot tail', async () => {
+    const outputPath = path.join(temporaryRoot, 'mixed-output.mp4');
+    const runner = new FakeRunner([
+      audioProbeResult(2),
+      VERSION_RESULT,
+      AUDIO_ENCODERS_RESULT,
+      async (_executable, args) => {
+        const temporaryOutputPath = args.at(-1) ?? '';
+        await writeFile(temporaryOutputPath, 'mixed video');
+        return { code: 0, signal: null, stdout: '', stderr: 'mix log' };
+      },
+    ]);
+    const adapter = new FFmpegAdapter({ runner });
+    const audioMixPlan = {
+      durationMs: 3_000,
+      clips: [
+        {
+          clipId: '70000000-0000-4000-8000-000000000401',
+          assetId: '10000000-0000-4000-8000-000000000401',
+          role: 'dialogue' as const,
+          sourcePath: audioPath,
+          startMs: 0,
+          endMs: 2_000,
+          sourceOffsetMs: 100,
+          volume: 0.5,
+        },
+        {
+          clipId: '70000000-0000-4000-8000-000000000402',
+          assetId: '10000000-0000-4000-8000-000000000401',
+          role: 'bgm' as const,
+          sourcePath: audioPath,
+          startMs: 0,
+          endMs: 3_000,
+          sourceOffsetMs: 0,
+          volume: 1,
+        },
+        {
+          clipId: '70000000-0000-4000-8000-000000000403',
+          assetId: '10000000-0000-4000-8000-000000000401',
+          role: 'sfx' as const,
+          sourcePath: audioPath,
+          startMs: 1_500,
+          endMs: 2_500,
+          sourceOffsetMs: 0,
+          volume: 1.5,
+        },
+        {
+          clipId: '70000000-0000-4000-8000-000000000404',
+          assetId: '10000000-0000-4000-8000-000000000401',
+          role: 'sfx' as const,
+          sourcePath: audioPath,
+          startMs: 2_000,
+          endMs: 3_000,
+          sourceOffsetMs: 500,
+          volume: 2,
+        },
+      ],
+    };
+    expect(
+      MuxAudioMixRequestSchema.safeParse({
+        videoPath,
+        outputPath,
+        overwrite: false,
+        audioMixPlan,
+      }).success,
+    ).toBe(true);
+
+    await expect(
+      adapter.muxAudioMix({
+        videoPath,
+        outputPath,
+        overwrite: false,
+        audioMixPlan,
+      }),
+    ).resolves.toMatchObject({ outputPath, videoPath, audioMixPlan });
+
+    expect(runner.calls).toHaveLength(4);
+    const muxArgs = runner.calls.at(-1)?.args ?? [];
+    const filterGraph = muxArgs[muxArgs.indexOf('-filter_complex') + 1] ?? '';
+    expect(filterGraph).toContain('[1:a:0]atrim=start=0.1:duration=2');
+    expect(filterGraph).toContain('adelay=1500|1500');
+    expect(filterGraph).toContain('adelay=2000|2000');
+    expect(filterGraph).toContain('apad=whole_len=144000');
+    expect(filterGraph).toContain(
+      'amix=inputs=4:duration=longest:dropout_transition=0,volume=4',
+    );
+    expect(muxArgs).toContain('[mixed]');
+    expect(muxArgs).toContain('aac');
+    expect(muxArgs).not.toContain('-shortest');
+    expect(await readFile(outputPath, 'utf8')).toBe('mixed video');
+  });
+
+  it('blocks a mix plan whose source trim exceeds the decoded source before FFmpeg mux', async () => {
+    const runner = new FakeRunner([audioProbeResult(1)]);
+    const adapter = new FFmpegAdapter({ runner });
+    await expect(
+      adapter.muxAudioMix({
+        videoPath,
+        outputPath: path.join(temporaryRoot, 'out-of-range.mp4'),
+        overwrite: false,
+        audioMixPlan: {
+          durationMs: 3_000,
+          clips: [
+            {
+              clipId: '70000000-0000-4000-8000-000000000405',
+              assetId: '10000000-0000-4000-8000-000000000401',
+              role: 'sfx',
+              sourcePath: audioPath,
+              startMs: 0,
+              endMs: 1_000,
+              sourceOffsetMs: 2_500,
+              volume: 1,
+            },
+          ],
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'AUDIO_INPUT_INVALID' });
+    expect(runner.calls).toHaveLength(1);
+    expect(runner.calls[0]?.args).toContain('-show_streams');
+    expect(runner.calls[0]?.args).not.toContain('-filter_complex');
+  });
 
   it('rejects missing video and audio files before FFmpeg starts', async () => {
     const missingVideoRunner = new FakeRunner([]);

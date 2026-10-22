@@ -35,6 +35,7 @@ describe('recovery API contracts', () => {
         project,
         dirty: true,
         revision: 3,
+        openInstanceId: 7,
       }),
     ).toBeTruthy();
     expect(
@@ -44,6 +45,15 @@ describe('recovery API contracts', () => {
         dirty: true,
         revision: -1,
         intervalMs: 1,
+      }).success,
+    ).toBe(false);
+    expect(
+      AutosaveTrackRequestSchema.safeParse({
+        projectRoot: 'D:\\project.pandastage',
+        project,
+        dirty: true,
+        revision: 3,
+        openInstanceId: 0,
       }).success,
     ).toBe(false);
   });
