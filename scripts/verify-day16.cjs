@@ -16,7 +16,7 @@ const evidenceDirectory = path.join(
   '../docs/evidence/day-16',
 );
 const projectRoot = 'D:\\项目\\素材 导入 🐼.pandastage';
-const importedAsset = {
+const importedAssetV1 = {
   id: '16000000-0000-4000-8000-000000000099',
   name: '熊猫 图片',
   relativePath: 'assets/熊猫 图片.png',
@@ -25,9 +25,14 @@ const importedAsset = {
   width: 16,
   height: 12,
 };
+const importedAsset = {
+  ...importedAssetV1,
+  usage: 'uncategorized',
+  keywords: [],
+};
 const importedProject = migrateProject({
   ...exampleProject,
-  assets: [...exampleProject.assets, importedAsset],
+  assets: [...exampleProject.assets, importedAssetV1],
 });
 const residualPaths = [
   `${projectRoot}\\assets\\残留 图片.png`,
