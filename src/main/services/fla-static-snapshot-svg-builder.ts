@@ -50,9 +50,11 @@ import type {
   FlaDisplayListResolverInput,
 } from './fla-display-list-resolver';
 import {
+  DEFAULT_FLA_DISPLAY_LIST_RESOLVER_LIMITS,
   resolveFlaDisplayList,
   type FlaDisplayListResolverResult,
 } from './fla-display-list-resolver';
+import { prepareFlaNestedGraphicFrameSelections } from './fla-nested-graphic-frame-selector';
 import {
   adaptFlaXflDisplaySource,
   adaptFlaXflDisplaySourceCooperatively,
@@ -2099,7 +2101,11 @@ function mapResolverFailure(result: FlaDisplayListResolverResult): BuildSvgFailu
 function resolveTargetDisplayList(
   source: FlaStaticSnapshotDisplaySource,
   target: FlaRenderTarget,
-): { readonly ok: true; readonly displayList: FlaResolvedDisplayList } | BuildSvgFailure {
+): {
+  readonly ok: true;
+  readonly displayList: FlaResolvedDisplayList;
+  readonly shapeBlocks: ReadonlyMap<string, string>;
+} | BuildSvgFailure {
   let root: FlaDisplayListResolverInput['root'];
   if (target.kind === 'graphic-symbol') {
     const sourceName = target.sourceLibraryItemName;
@@ -2175,13 +2181,83 @@ function resolveTargetDisplayList(
     return { ok: false, code: 'TARGET_UNSUPPORTED', message: 'Unknown target kind: ' + (target.kind as string) };
   }
 
-  const resolved = resolveFlaDisplayList({ root, symbols: source.symbols });
+  // Selected frame parsing resets the adapter's mutable source map each time.
+  // Keep only base blocks plus Shape blocks referenced by selected contexts.
+  const shapeBlocks = new Map(source.shapeBlocks);
+  const shapeBlockLimit = DEFAULT_FLA_DISPLAY_LIST_RESOLVER_LIMITS.maxResolvedNodeCount;
+  let shapeBlockBudgetExceeded = false;
+  const captureShapeBlocks = (elements: readonly FlaDisplayListElement[]): string | null => {
+    for (const element of elements) {
+      if (element.visible === false) continue;
+      if (element.kind === 'shape') {
+        if (shapeBlocks.has(element.shapeId)) continue;
+        const xml = source.shapeBlocks.get(element.shapeId);
+        if (xml === undefined) return `Selected Graphic shape source not found: ${element.shapeId}`;
+        if (shapeBlocks.size >= shapeBlockLimit) {
+          shapeBlockBudgetExceeded = true;
+          return `Nested Graphic shape-source blocks exceeded ${shapeBlockLimit}`;
+        }
+        shapeBlocks.set(element.shapeId, xml);
+      } else if (element.kind === 'group') {
+        const nestedError = captureShapeBlocks(element.elements);
+        if (nestedError) return nestedError;
+      }
+    }
+    return null;
+  };
+  const selectionSource: FlaStaticSnapshotDisplaySource = {
+    ...source,
+    buildGraphicFrameContext: (timelineXml, frameSpanIndex, frameIndex, scope) => {
+      const frameContext = source.buildGraphicFrameContext(
+        timelineXml,
+        frameSpanIndex,
+        frameIndex,
+        scope,
+      );
+      if (!frameContext.ok) return frameContext;
+      for (const layer of frameContext.value.layers) {
+        if (!layer.visible) continue;
+        const captureError = captureShapeBlocks(layer.elements);
+        if (captureError) {
+          return {
+            ok: false,
+            code: shapeBlockBudgetExceeded ? 'BUDGET_EXCEEDED' : 'RENDER_FAILED',
+            message: captureError,
+          };
+        }
+      }
+      return frameContext;
+    },
+  };
+  const nested = prepareFlaNestedGraphicFrameSelections(selectionSource, root);
+  if (shapeBlockBudgetExceeded) {
+    return {
+      ok: false,
+      code: 'BUDGET_EXCEEDED',
+      message: `Nested Graphic shape-source blocks exceeded ${shapeBlockLimit}`,
+    };
+  }
+  if (!nested.ok) {
+    const code = nested.code === 'BUDGET_EXCEEDED'
+      ? 'BUDGET_EXCEEDED'
+      : nested.code === 'FRAME_CONTEXT_FAILED'
+        ? 'RENDER_FAILED'
+        : 'TARGET_UNSUPPORTED';
+    const sourceAddress = nested.sourceAddress ? ` (${nested.sourceAddress})` : '';
+    return {
+      ok: false,
+      code,
+      message: `${nested.code}: ${nested.message}${sourceAddress}`.slice(0, 1_000),
+    };
+  }
+
+  const resolved = resolveFlaDisplayList(nested.resolverInput);
   if (!resolved.ok) return mapResolverFailure(resolved);
-  return { ok: true, displayList: resolved.displayList };
+  return { ok: true, displayList: resolved.displayList, shapeBlocks };
 }
 
 function catalogSupportReason(
-  source: FlaStaticSnapshotDisplaySource,
+  shapeBlocks: ReadonlyMap<string, string>,
   displayList: FlaResolvedDisplayList,
   resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup,
   allowBlankFrame = false,
@@ -2200,7 +2276,7 @@ function catalogSupportReason(
       if (!media.ok) reason = 'Bitmap media ' + (media.reason === 'ambiguous' ? 'is ambiguous: ' : 'was not found: ') + node.libraryItemName;
       return;
     }
-    const shapeBlock = source.shapeBlocks.get(node.shapeId);
+    const shapeBlock = shapeBlocks.get(node.shapeId);
     const shape = shapeBlock ? parseShapeAt(shapeBlock) : null;
     if (!shape) {
       reason = 'Shape has no supported path data: ' + node.shapeId;
@@ -2291,7 +2367,7 @@ export async function buildRenderableTargetCatalog(
     finishIssue762Profile('fla.catalog.candidate.resolve', resolveStartedAt, candidateDetails);
     const supportStartedAt = startIssue762Profile();
     const check = resolved.ok
-      ? catalogSupportReason(source, resolved.displayList, resolveBitmapMedia, true)
+      ? catalogSupportReason(resolved.shapeBlocks, resolved.displayList, resolveBitmapMedia, true)
       : { unsupportedReason: resolved.message, isBlank: false };
     finishIssue762Profile('fla.catalog.candidate.support-check', supportStartedAt, {
       ...candidateDetails,
@@ -2309,7 +2385,7 @@ export async function buildRenderableTargetCatalog(
         renderTargetId: target.renderTargetId,
         stageWidth: source.stageWidth,
         stageHeight: source.stageHeight,
-        shapeBlocks: source.shapeBlocks,
+        shapeBlocks: resolved.shapeBlocks,
         resolveBitmapMedia,
       });
       finishIssue762Profile('fla.catalog.candidate.svg-capability', compositionStartedAt, {
@@ -2566,7 +2642,7 @@ export async function buildSvgForRenderTarget(
     renderTargetId: target.renderTargetId,
     stageWidth: source.stageWidth,
     stageHeight: source.stageHeight,
-    shapeBlocks: source.shapeBlocks,
+    shapeBlocks: resolved.shapeBlocks,
     resolveBitmapMedia,
   });
   finishIssue762Profile('fla.preview.svg-compose', svgStartedAt, {

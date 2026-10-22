@@ -396,7 +396,7 @@ export class FlaFrameSequenceService {
           requestId: sequence.sequenceRequestId,
           completedFrameCount: sequence.items.length,
           totalFrameCount: sequence.totalFrames,
-          currentFrameIndex: frame.frameIndex,
+          currentFrameIndex: ordinal,
         });
       }
     } catch (error) {

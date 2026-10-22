@@ -369,6 +369,7 @@
           "tests/integration/dialogue-audio-*.test.ts",
           "tests/integration/project-subtitle-background-migration.test.ts",
           "tests/unit/application-menu-policy.test.ts",
+          "tests/unit/cache-thumbnail-service.test.ts",
           "tests/unit/standalone-audio.test.ts",
           "tests/integration/standalone-audio-persistence.test.ts"
         ],

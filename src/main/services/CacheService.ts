@@ -122,7 +122,7 @@ export class CacheService {
     await mkdir(directory, { recursive: true });
     const temporaryPath = path.join(
       directory,
-      `.${cacheKey}.${randomUUID()}.tmp.png`,
+      `.thumb-${randomUUID()}.tmp.png`,
     );
     const context = { projectRoot, targetPath, temporaryPath };
     let temporaryExists = false;
