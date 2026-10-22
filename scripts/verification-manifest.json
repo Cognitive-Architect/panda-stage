@@ -712,7 +712,7 @@
       "runIn": "local",
       "owner": "release",
       "supersedes": null,
-      "notes": "A04 bundled-FFmpeg overlap/mix evidence; does not claim formal real-project Export, Windows Electron UI acceptance, or Gate B graduation."
+      "notes": "A04 bundled-FFmpeg nine-clip Dialogue/BGM/two-SFX PCM timing and gain evidence; not formal Project/Electron acceptance or Gate B graduation."
     },
     {
       "id": "issue658-audio-timeline",
