@@ -32,6 +32,8 @@ class MemoryFileSystem implements FrameFileSystem {
   readonly finalOutputEvents: string[] = [];
   prepareFinalOutputCalls = 0;
   commitFinalOutputCalls = 0;
+  prepareFormalOutputCalls = 0;
+  commitFormalOutputNoReplaceCalls = 0;
   cleanupStagingCalls = 0;
   stagingCleanupFailure: Error | null = null;
   commitGate: Promise<void> | null = null;
@@ -82,6 +84,13 @@ class MemoryFileSystem implements FrameFileSystem {
     return outputPath;
   }
 
+  async prepareFormalOutput(outputPath: string): Promise<string> {
+    this.prepareFormalOutputCalls += 1;
+    return this.prepareFinalOutput(outputPath, false);
+  }
+
+  async assertFormalOutputLocation(): Promise<void> {}
+
   createFinalOutputStagingPath(jobId: string, outputPath: string): string {
     const stagingPath = path.join(
       path.dirname(outputPath),
@@ -101,6 +110,23 @@ class MemoryFileSystem implements FrameFileSystem {
     if (this.commitGate) await this.commitGate;
     if (this.finalFiles.has(outputPath) && !overwrite) {
       throw new Error('formal output appeared before commit');
+    }
+    const stagedContent = this.stagingFiles.get(stagingPath);
+    if (!stagedContent) throw new Error('staging output is missing');
+    this.finalFiles.set(outputPath, stagedContent);
+    this.stagingFiles.delete(stagingPath);
+  }
+
+  async commitFormalOutputNoReplace(
+    stagingPath: string,
+    outputPath: string,
+  ): Promise<void> {
+    this.commitFormalOutputNoReplaceCalls += 1;
+    this.finalOutputEvents.push('commit-no-replace');
+    this.commitStarted?.();
+    if (this.commitGate) await this.commitGate;
+    if (this.finalFiles.has(outputPath)) {
+      throw new Error('formal output appeared before exclusive commit');
     }
     const stagedContent = this.stagingFiles.get(stagingPath);
     if (!stagedContent) throw new Error('staging output is missing');
@@ -410,7 +436,7 @@ describe('ExportService', () => {
     expect(media.muxRequests).toHaveLength(0);
     expect(result.probe.hasAudio).toBe(false);
     expect(targetChecks).toBe(2);
-    expect(fileSystem.commitFinalOutputCalls).toBe(1);
+    expect(fileSystem.commitFormalOutputNoReplaceCalls).toBe(1);
     expect(service.getCompletedOutputPath(handle.jobId)).toBe(result.outputPath);
   });
 

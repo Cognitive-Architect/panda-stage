@@ -66,6 +66,7 @@ let mainWindow: BrowserWindow | null = null;
 const hiddenWindowManager = new HiddenWindowManager();
 let exportService: ExportService | null = null;
 let exportPreparationService: ExportPreparationService | null = null;
+let exportFileSystem: FileSystemService | null = null;
 let removeIpcHandlers: (() => void) | null = null;
 let removeExportPreparationIpcHandlers: (() => void) | null = null;
 let removeProjectIpcHandlers: (() => void) | null = null;
@@ -210,9 +211,10 @@ async function initialize(): Promise<void> {
     ffmpegPath: mediaTools.ffmpegPath,
     ffprobePath: mediaTools.ffprobePath,
   });
+  exportFileSystem = new FileSystemService();
   exportService = new ExportService(
     hiddenWindowManager,
-    new FileSystemService(),
+    exportFileSystem,
     ffmpegAdapter,
   );
   exportService.subscribe((update) => {
@@ -256,21 +258,25 @@ async function initialize(): Promise<void> {
           () => preparation.assertOutputTargetUnchanged(request.snapshotId),
         );
       } catch (error) {
-        preparation.releaseCandidateExport(request.snapshotId);
+        try {
+          await preparation.finalizeCandidateExport(request.snapshotId);
+        } catch (cleanupError) {
+          console.error('Export snapshot cleanup failed.', cleanupError);
+        }
         throw error;
       }
+      const finalizeCandidate = async () => {
+        try {
+          await preparation.finalizeCandidateExport(request.snapshotId);
+        } catch (cleanupError) {
+          console.error('Export snapshot cleanup failed.', cleanupError);
+        }
+      };
       void handle.completion.then(
-        async () => {
-          preparation.releaseCandidateExport(request.snapshotId);
-          try {
-            await preparation.discard(undefined, request.snapshotId);
-          } catch (error) {
-            console.error('Completed export snapshot cleanup failed.', error);
-          }
-        },
+        finalizeCandidate,
         (error: unknown) => {
-          preparation.releaseCandidateExport(request.snapshotId);
           console.error(`Export Job ${handle.jobId} stopped.`, error);
+          return finalizeCandidate();
         },
       );
       return { jobId: handle.jobId, status: 'running' };
@@ -370,21 +376,11 @@ async function initialize(): Promise<void> {
           }
         : null;
     },
-    confirmOverwrite: async ({ fileName }) => {
-      const window = mainWindow;
-      if (!window || window.isDestroyed()) return false;
-      const result = await dialog.showMessageBox(window, {
-        type: 'warning',
-        title: '确认覆盖现有视频',
-        message: `“${fileName}”已存在。允许后续导出替换这个文件吗？`,
-        detail:
-          '本次只准备并校验素材，不会写入 MP4。正式导出提交前会再次核对目标文件身份。',
-        buttons: ['确认允许覆盖', '取消'],
-        defaultId: 1,
-        cancelId: 1,
-        noLink: true,
-      });
-      return result.response === 0;
+    assertFormalOutputLocation: (outputPath) => {
+      if (!exportFileSystem) {
+        throw new Error('Formal export filesystem is unavailable.');
+      }
+      return exportFileSystem.assertFormalOutputLocation(outputPath);
     },
   });
   removeExportPreparationIpcHandlers =

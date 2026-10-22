@@ -1,6 +1,6 @@
 const { app, dialog, ipcMain, shell } = require('electron');
 const { createHash } = require('node:crypto');
-const { existsSync, readFileSync } = require('node:fs');
+const { existsSync } = require('node:fs');
 const fsp = require('node:fs/promises');
 const { spawn } = require('node:child_process');
 const path = require('node:path');
@@ -40,6 +40,7 @@ let fixtureProject = null;
 let trackedSnapshot = null;
 let exportPreparationService = null;
 let exportService = null;
+let exportFileSystem = null;
 let hiddenWindowManager = null;
 let removeExportPreparationHandlers = null;
 let removeProjectIpcHandlers = null;
@@ -48,6 +49,11 @@ let assetBytesById = new Map();
 const formalStarts = [];
 const jobUpdates = [];
 const mediaFailures = [];
+const injectedCommitConflicts = [];
+const formalCommitRecords = [];
+let conflictAtCommitPath = null;
+let failNextEncoderRun = false;
+let requireEncoderProcessError = false;
 
 function defaultExportFileName(projectName) {
   let baseName = Array.from(projectName.trim(), (character) =>
@@ -164,19 +170,9 @@ function createRendererService() {
         openInstanceId: trackedSnapshot.openInstanceId ?? null,
       };
     },
-    confirmOverwrite: async ({ fileName }) => {
-      if (!mainWindow || mainWindow.isDestroyed()) return false;
-      const result = await dialog.showMessageBox(mainWindow, {
-        type: 'warning',
-        title: '\u786e\u8ba4\u8986\u76d6\u73b0\u6709\u89c6\u9891',
-        message: `\u201c${fileName}\u201d\u5df2\u5b58\u5728\u3002\u5141\u8bb8\u540e\u7eed\u5bfc\u51fa\u66ff\u6362\u8fd9\u4e2a\u6587\u4ef6\u5417\uff1f`,
-        detail: '\u672c\u6b21\u53ea\u51c6\u5907\u5e76\u6821\u9a8c\u7d20\u6750\uff0c\u4e0d\u4f1a\u5199\u5165 MP4\u3002\u6b63\u5f0f\u63d0\u4ea4\u524d\u4f1a\u518d\u6b21\u6838\u5bf9\u76ee\u6807\u6587\u4ef6\u8eab\u4efd\u3002',
-        buttons: ['\u786e\u8ba4\u5141\u8bb8\u8986\u76d6', '\u53d6\u6d88'],
-        defaultId: 1,
-        cancelId: 1,
-        noLink: true,
-      });
-      return result.response === 0;
+    assertFormalOutputLocation: (outputPath) => {
+      if (!exportFileSystem) throw new Error('Verifier formal filesystem is unavailable.');
+      return exportFileSystem.assertFormalOutputLocation(outputPath);
     },
     fileStore: new NodeExportPreparationFileStore(path.join(fixture.root, 'frozen-media')),
     mediaReader,
@@ -205,8 +201,21 @@ function createExportService() {
   });
   const mediaAdapter = new FFmpegAdapter({ ffmpegPath: mediaTools.ffmpegPath, ffprobePath: mediaTools.ffprobePath });
   const encodePngSequence = mediaAdapter.encodePngSequence.bind(mediaAdapter);
+  const runMediaProcess = mediaAdapter.runProcess.bind(mediaAdapter);
+  mediaAdapter.runProcess = (executable, args, options) => {
+    if (requireEncoderProcessError && args.includes('libx264')) {
+      requireEncoderProcessError = false;
+      return runMediaProcess(executable, ['-xerror', ...args], options);
+    }
+    return runMediaProcess(executable, args, options);
+  };
   mediaAdapter.encodePngSequence = async (request, signal) => {
     try {
+      if (failNextEncoderRun) {
+        failNextEncoderRun = false;
+        requireEncoderProcessError = true;
+        await fsp.writeFile(path.join(request.framesDirectory, 'frame_000000.png'), Buffer.from('deliberately invalid PNG for encoder failure acceptance'));
+      }
       return await encodePngSequence(request, signal);
     } catch (error) {
       const frameNames = await fsp.readdir(request.framesDirectory).catch(() => []);
@@ -227,9 +236,31 @@ function createExportService() {
       throw error;
     }
   };
+  exportFileSystem = new class extends FileSystemService {
+    async commitFormalOutputNoReplace(stagingPath, outputPath) {
+      if (conflictAtCommitPath && path.resolve(outputPath) === path.resolve(conflictAtCommitPath)) {
+        const sentinel = Buffer.from('third-party file inserted at the final commit boundary');
+        await fsp.writeFile(outputPath, sentinel, { flag: 'wx' });
+        injectedCommitConflicts.push({
+          outputPath,
+          sha256: hash(sentinel),
+          byteLength: sentinel.length,
+          insertedAfterOutputCheck: true,
+        });
+        conflictAtCommitPath = null;
+      }
+      await super.commitFormalOutputNoReplace(stagingPath, outputPath);
+      formalCommitRecords.push({
+        stagingPath,
+        outputPath,
+        sha256: hash(await fsp.readFile(outputPath)),
+        stagingRemoved: !existsSync(stagingPath),
+      });
+    }
+  }(path.join(fixture.root, 'frame-jobs'));
   exportService = new ExportService(
     hiddenWindowManager,
-    new FileSystemService(path.join(fixture.root, 'frame-jobs')),
+    exportFileSystem,
     mediaAdapter,
   );
   exportService.subscribe((update) => {
@@ -272,16 +303,13 @@ function createExportService() {
           () => exportPreparationService.assertOutputTargetUnchanged(request.snapshotId),
         );
       } catch (error) {
-        exportPreparationService.releaseCandidateExport(request.snapshotId);
+        await exportPreparationService.finalizeCandidateExport(request.snapshotId);
         throw error;
       }
       formalStarts.at(-1).jobId = handle.jobId;
       void handle.completion.then(
-        async () => {
-          exportPreparationService.releaseCandidateExport(request.snapshotId);
-          await exportPreparationService.discard(undefined, request.snapshotId).catch(() => undefined);
-        },
-        () => exportPreparationService.releaseCandidateExport(request.snapshotId),
+        () => exportPreparationService.finalizeCandidateExport(request.snapshotId),
+        () => exportPreparationService.finalizeCandidateExport(request.snapshotId),
       );
       return { jobId: handle.jobId, status: 'running' };
     },
@@ -324,7 +352,21 @@ async function clickSelector(selector) {
   await pause(150);
 }
 
-function clickNativeSaveDialog(action, screenshotPath, overwritePromptScreenshotPath = '') {
+async function clickButtonContainingText(text) {
+  const point = await rendererJs(`(() => {
+    const target = [...document.querySelectorAll('[data-testid="export-task-surface"] button')]
+      .find((button) => button.innerText.includes(${JSON.stringify(text)}));
+    if (!target) throw new Error('Missing export action ' + ${JSON.stringify(text)});
+    target.scrollIntoView({ block: 'nearest' });
+    const rect = target.getBoundingClientRect();
+    return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
+  })()`);
+  mainWindow.webContents.sendInputEvent({ type: 'mouseDown', button: 'left', clickCount: 1, ...point });
+  mainWindow.webContents.sendInputEvent({ type: 'mouseUp', button: 'left', clickCount: 1, ...point });
+  await pause(150);
+}
+
+function clickNativeSaveDialog(action, screenshotPath, overwritePromptScreenshotPath = '', selectedFileName = '') {
   return new Promise((resolve, reject) => {
     const child = spawn('powershell.exe', [
       '-NoProfile',
@@ -336,6 +378,7 @@ function clickNativeSaveDialog(action, screenshotPath, overwritePromptScreenshot
       '',
       '',
       overwritePromptScreenshotPath,
+      selectedFileName,
     ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
@@ -345,27 +388,6 @@ function clickNativeSaveDialog(action, screenshotPath, overwritePromptScreenshot
     child.once('exit', (code) => code === 0
       ? resolve(stdout.trim())
       : reject(new Error(`Native Save As ${action} failed (${code}): ${stderr.trim() || stdout.trim()}`)));
-  });
-}
-
-function clickNativeOverwriteConfirmation(action, screenshotPath) {
-  return new Promise((resolve, reject) => {
-    const child = spawn('powershell.exe', [
-      '-NoProfile',
-      '-NonInteractive',
-      '-File',
-      path.join(__dirname, 'issue816-native-dialog.ps1'),
-      action,
-      screenshotPath,
-    ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.setEncoding('utf8').on('data', (chunk) => { stdout += chunk; });
-    child.stderr.setEncoding('utf8').on('data', (chunk) => { stderr += chunk; });
-    child.once('error', reject);
-    child.once('exit', (code) => code === 0
-      ? resolve(stdout.trim())
-      : reject(new Error(`Overwrite confirmation ${action} failed (${code}): ${stderr.trim() || stdout.trim()}`)));
   });
 }
 
@@ -425,6 +447,11 @@ async function exportEvidence(outputPath, evidenceDirectory, label, mediaTools) 
     ['backgroundAfterFade', 10],
     ['eventBoundaryBefore', 47],
     ['eventBoundaryAt', 48],
+    ['visibilityBefore', 66],
+    ['visibilityAt', 68],
+    ['visibilityAfter', 70],
+    ['expressionBefore', 95],
+    ['expressionAt', 96],
     ['subtitleLastVisible', 147],
     ['subtitleEnded', 148],
   ]) {
@@ -437,6 +464,40 @@ async function exportEvidence(outputPath, evidenceDirectory, label, mediaTools) 
     assert(sample.length > 1_000, `${label}: ${name} frame ${index} evidence is empty.`);
     frameEvidence[name] = samplePath;
   }
+  const expressionRawPaths = {
+    before: path.join(evidenceDirectory, 'expression-before.rgb'),
+    at: path.join(evidenceDirectory, 'expression-at.rgb'),
+  };
+  for (const [name, index] of [['before', 95], ['at', 96]]) {
+    await runProcess(mediaTools.ffmpegPath, [
+      '-y', '-v', 'error', '-i', outputPath,
+      '-vf', `select=eq(n\\,${index})`, '-vsync', '0', '-frames:v', '1',
+      '-f', 'rawvideo', '-pix_fmt', 'rgb24', expressionRawPaths[name],
+    ]);
+  }
+  const expressionBefore = await fsp.readFile(expressionRawPaths.before);
+  const expressionAt = await fsp.readFile(expressionRawPaths.at);
+  assert(expressionBefore.length === expressionAt.length && expressionBefore.length > 0, `${label}: expression boundary samples are invalid.`);
+  let expressionChangedPixels = 0;
+  let expressionAbsoluteDelta = 0;
+  for (let offset = 0; offset < expressionBefore.length; offset += 3) {
+    const delta = Math.abs(expressionBefore[offset] - expressionAt[offset]) +
+      Math.abs(expressionBefore[offset + 1] - expressionAt[offset + 1]) +
+      Math.abs(expressionBefore[offset + 2] - expressionAt[offset + 2]);
+    if (delta > 0) expressionChangedPixels += 1;
+    expressionAbsoluteDelta += delta;
+  }
+  assert(expressionChangedPixels > 100, `${label}: expression event did not change the decoded video frame.`);
+  const expressionContrast = {
+    beforeFrameIndex: 95,
+    atFrameIndex: 96,
+    beforePngPath: frameEvidence.expressionBefore,
+    atPngPath: frameEvidence.expressionAt,
+    beforeRawSha256: hash(expressionBefore),
+    atRawSha256: hash(expressionAt),
+    changedPixels: expressionChangedPixels,
+    meanAbsoluteChannelDelta: expressionAbsoluteDelta / expressionBefore.length,
+  };
   const videoBytes = await fsp.readFile(outputPath);
   const mp4EvidencePath = path.join(evidenceDirectory, `${label}.mp4`);
   await fsp.copyFile(outputPath, mp4EvidencePath);
@@ -458,8 +519,51 @@ async function exportEvidence(outputPath, evidenceDirectory, label, mediaTools) 
     lastFramePath,
     lastNormalSampleIndex: 156,
     frameEvidence,
+    expressionContrast,
+    stageLabelContract: {
+      formalRendererProp: 'showStageLabel=false',
+      previewDefault: 'showStageLabel=true',
+      fixedStageLabel: 'PANDA STAGE · 1920 × 1080',
+    },
     projectState: null,
   };
+}
+
+async function directoryEntriesOrEmpty(directory) {
+  return fsp.readdir(directory).catch((error) => {
+    if (error?.code === 'ENOENT') return [];
+    throw error;
+  });
+}
+
+async function assertNoExportTemporaries(label) {
+  const deadline = Date.now() + 10_000;
+  let remaining;
+  do {
+    const [projectEntries, frameEntries, preparationEntries] = await Promise.all([
+      directoryEntriesOrEmpty(fixture.projectRoot),
+      directoryEntriesOrEmpty(path.join(fixture.root, 'frame-jobs')),
+      directoryEntriesOrEmpty(path.join(fixture.root, 'frozen-media')),
+    ]);
+    remaining = {
+      outputTemporaries: projectEntries.filter((entry) => entry.startsWith('.panda-stage-')),
+      frameJobDirectories: frameEntries,
+      preparationSnapshots: preparationEntries,
+    };
+    if (
+      remaining.outputTemporaries.length === 0 &&
+      remaining.frameJobDirectories.length === 0 &&
+      remaining.preparationSnapshots.length === 0
+    ) {
+      return remaining;
+    }
+    if (Date.now() < deadline) await pause(100);
+  } while (Date.now() < deadline);
+
+  assert(remaining.outputTemporaries.length === 0, `${label}: formal output staging remains: ${remaining.outputTemporaries.join(', ')}`);
+  assert(remaining.frameJobDirectories.length === 0, `${label}: frame-job directories remain: ${remaining.frameJobDirectories.join(', ')}`);
+  assert(remaining.preparationSnapshots.length === 0, `${label}: frozen-media snapshots remain: ${remaining.preparationSnapshots.join(', ')}`);
+  return remaining;
 }
 
 async function startFromCreatorUi(evidenceRoot, label, options = {}) {
@@ -468,30 +572,37 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
   await clickSelector('[data-testid="quick-action-export"]');
   const nativeSavePath = path.join(evidenceRoot, `${label}-save-as.png`);
   const overwritePromptPath = path.join(evidenceRoot, `${label}-windows-overwrite.png`);
-  const applicationOverwriteScreenshotPath = options.cancelApplicationOverwrite || options.confirmApplicationOverwrite
-    ? path.join(evidenceRoot, `${label}-${options.cancelApplicationOverwrite ? 'overwrite-cancel' : 'overwrite-confirm'}.png`)
-    : null;
-  await clickNativeSaveDialog('save', nativeSavePath, options.captureOverwritePrompt ? overwritePromptPath : '');
-  if (options.cancelApplicationOverwrite || options.confirmApplicationOverwrite) {
-    const overwriteAction = options.cancelApplicationOverwrite ? 'overwrite-cancel' : 'overwrite-confirm';
-    await clickNativeOverwriteConfirmation(overwriteAction, applicationOverwriteScreenshotPath);
-  }
-  if (options.cancelApplicationOverwrite) {
-    await waitForRenderer(`!document.querySelector('[data-testid="export-task-surface"]')`, 20_000);
+  await clickNativeSaveDialog(
+    'save',
+    nativeSavePath,
+    options.captureOverwritePrompt ? overwritePromptPath : '',
+    options.selectedFileName ?? '',
+  );
+  const taskSelector = "document.querySelector('[data-testid=\"export-task-surface\"]')";
+  const taskStatus = `${taskSelector}?.dataset.taskStatus`;
+  if (options.expectedFailureText) {
+    await waitForRenderer(
+      `${taskStatus} === 'failed' && ${taskSelector}?.innerText.includes(${JSON.stringify(options.expectedFailureText)})`,
+      30_000,
+    );
+    const image = await mainWindow.webContents.capturePage();
+    const failureScreenshotPath = path.join(evidenceRoot, `${label}-blocked.png`);
+    await fsp.writeFile(failureScreenshotPath, image.toPNG());
+    const starts = formalStarts.slice(priorJobCount);
+    assert(starts.length === 0, `${label}: unsupported output unexpectedly started a Main export.`);
     return {
       before,
       after: await rendererJs('window.__pandaStageIssue816Acceptance.inspect()'),
-      fileSha256: options.targetPath && existsSync(options.targetPath)
-        ? hash(readFileSync(options.targetPath))
-        : null,
-      cancelled: true,
+      status: 'failed',
+      taskText: await rendererJs(`${taskSelector}?.innerText ?? ''`),
+      starts,
       nativeSaveAsScreenshotPath: nativeSavePath,
       windowsOverwriteScreenshotPath: options.captureOverwritePrompt ? overwritePromptPath : null,
-      applicationOverwriteScreenshotPath,
+      failureScreenshotPath,
     };
   }
 
-  await waitForRenderer(`document.querySelector('[data-testid="export-task-surface"][data-task-status="running"]')`, 30_000);
+  await waitForRenderer(`${taskStatus} === 'running'`, 30_000);
   let progressCaptured = false;
   try {
     await waitForRenderer(`Number(document.querySelector('[data-testid="export-task-surface"] progress')?.value ?? 0) > 0`, 45_000);
@@ -501,23 +612,67 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
   } catch {
     // Export may finish before a frame-progress screenshot is sampled.
   }
-  const completionTimeoutMs = options.completionTimeoutMs ?? (label === 'speaker-focus' ? 360_000 : 180_000);
-  await waitForRenderer(`['completed', 'failed'].includes(document.querySelector('[data-testid="export-task-surface"]')?.dataset.taskStatus)`, completionTimeoutMs);
-  const taskStatus = await rendererJs(`document.querySelector('[data-testid="export-task-surface"]')?.dataset.taskStatus`);
-  if (taskStatus !== 'completed') {
+  if (options.cancelAfterProgress) {
+    assert(progressCaptured, `${label}: export completed before cancellation could be exercised.`);
+    if (options.duplicateClickDuringRun) {
+      const startCount = formalStarts.length;
+      await clickSelector('[data-testid="quick-action-export"]');
+      assert(formalStarts.length === startCount, `${label}: repeating Export started a second Main Job.`);
+    }
+    await clickButtonContainingText('取消导出');
+    await waitForRenderer(`${taskStatus} === 'cancelled'`, 60_000);
     const starts = formalStarts.slice(priorJobCount);
+    assert(starts.length === 1, `${label}: expected one cancelled Main export.`);
+    const image = await mainWindow.webContents.capturePage();
+    const cancelledScreenshotPath = path.join(evidenceRoot, `${label}-cancelled.png`);
+    await fsp.writeFile(cancelledScreenshotPath, image.toPNG());
+    return {
+      before,
+      after: await rendererJs('window.__pandaStageIssue816Acceptance.inspect()'),
+      start: starts[0],
+      status: 'cancelled',
+      progressCaptured,
+      nativeSaveAsScreenshotPath: nativeSavePath,
+      progressScreenshotPath: path.join(evidenceRoot, `${label}-progress.png`),
+      cancelledScreenshotPath,
+    };
+  }
+  const completionTimeoutMs = options.completionTimeoutMs ?? 360_000;
+  await waitForRenderer(`['completed', 'failed'].includes(${taskStatus})`, completionTimeoutMs);
+  const finalStatus = await rendererJs(taskStatus);
+  const starts = formalStarts.slice(priorJobCount);
+  if (options.expectJobFailure && finalStatus === 'failed') {
+    assert(starts.length === 1, `${label}: expected one failed Main export.`);
+    const failedJob = exportService.getJob(starts[0].jobId);
+    const taskText = await rendererJs(`${taskSelector}?.innerText ?? ''`);
+    const image = await mainWindow.webContents.capturePage();
+    const failureScreenshotPath = path.join(evidenceRoot, `${label}-failed.png`);
+    await fsp.writeFile(failureScreenshotPath, image.toPNG());
+    return {
+      before,
+      after: await rendererJs('window.__pandaStageIssue816Acceptance.inspect()'),
+      start: starts[0],
+      failedJob,
+      taskText,
+      status: finalStatus,
+      progressCaptured,
+      nativeSaveAsScreenshotPath: nativeSavePath,
+      progressScreenshotPath: progressCaptured ? path.join(evidenceRoot, `${label}-progress.png`) : null,
+      failureScreenshotPath,
+    };
+  }
+  if (finalStatus !== 'completed') {
     const failedJobId = starts.at(-1)?.jobId;
     const failedJob = failedJobId ? exportService.getJob(failedJobId) : null;
     const taskText = await rendererJs(`document.querySelector('[data-testid="export-task-surface"]')?.innerText ?? ''`);
     const image = await mainWindow.webContents.capturePage();
     await fsp.writeFile(path.join(evidenceRoot, `${label}-failed.png`), image.toPNG());
-    throw new Error(`${label}: formal export ended as ${taskStatus}. ${JSON.stringify({ failedJob, latestUpdate: jobUpdates.at(-1), taskText })}`);
+    throw new Error(`${label}: formal export ended as ${finalStatus}. ${JSON.stringify({ failedJob, latestUpdate: jobUpdates.at(-1), taskText })}`);
   }
   const after = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
   const taskImage = await mainWindow.webContents.capturePage();
   const completedScreenshotPath = path.join(evidenceRoot, `${label}-completed.png`);
   await fsp.writeFile(completedScreenshotPath, taskImage.toPNG());
-  const starts = formalStarts.slice(priorJobCount);
   assert(starts.length === 1, `${label}: expected one formal Main export start, got ${starts.length}.`);
   return {
     before,
@@ -526,7 +681,6 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
     progressCaptured,
     nativeSaveAsScreenshotPath: nativeSavePath,
     windowsOverwriteScreenshotPath: options.captureOverwritePrompt ? overwritePromptPath : null,
-    applicationOverwriteScreenshotPath,
     progressScreenshotPath: progressCaptured ? path.join(evidenceRoot, `${label}-progress.png`) : null,
     completedScreenshotPath,
   };
@@ -573,6 +727,7 @@ async function run() {
         sha256: asset.sha256,
         byteLength: assetBytesById.get(asset.id)?.length ?? null,
       })),
+      expressionAssetHashes: fixture.expressionAssetHashes,
     },
   };
 
@@ -580,6 +735,8 @@ async function run() {
     assert(fixtureProject.shots.length === 1, 'Fixture must contain exactly one Shot.');
     assert(fixtureProject.shots[0].audioClips.length === 0, 'Fixture must contain no audio clips.');
     assert(fixtureProject.shots[0].durationMs > 5_000, 'Fixture must exceed the old five-second probe ceiling.');
+    const expressionHashes = Object.values(fixture.expressionAssetHashes);
+    assert(expressionHashes.length === 2 && expressionHashes[0] !== expressionHashes[1], 'Neutral and happy fixture PNGs must have different SHA-256 hashes.');
     await waitForRenderer(`document.querySelector('[data-task4-core="recent-open"]')`);
     await clickSelector('[data-task4-core="recent-open"]');
     await waitForRenderer("window.__pandaStageIssue816Acceptance && (await window.__pandaStageIssue816Acceptance.inspect())?.project");
@@ -606,9 +763,11 @@ async function run() {
       'Native Save As cancellation changed Project revision, dirty state, or History.',
     );
 
-    const outputPath = path.join(fixture.projectRoot, defaultExportFileName(fixtureProject.name));
-    assert(!existsSync(outputPath), 'The unique fixture output target unexpectedly exists.');
-    const staticRun = await startFromCreatorUi(evidenceRoot, 'static');
+    const staticOutputPath = path.join(fixture.projectRoot, 'static.mp4');
+    assert(!existsSync(staticOutputPath), 'The unique fixture output target unexpectedly exists.');
+    const staticRun = await startFromCreatorUi(evidenceRoot, 'static', {
+      selectedFileName: path.basename(staticOutputPath),
+    });
     assert(staticRun.start.cameraMode === 'static', 'First Creator UI export did not capture static camera mode.');
     assert(staticRun.start.revision === staticRun.before.revision && staticRun.start.dirtyAtCapture === true, 'Static candidate did not capture the current dirty Project revision.');
     assert(
@@ -618,7 +777,7 @@ async function run() {
       'Static export changed Project revision, dirty state, or History.',
     );
     assert((await fsp.readFile(projectFilePath)).equals(initialProjectBytes), 'Static export wrote the unsaved editor revision into project.json.');
-    const staticEvidence = await exportEvidence(outputPath, path.join(evidenceRoot, 'static'), 'static', mediaTools);
+    const staticEvidence = await exportEvidence(staticOutputPath, path.join(evidenceRoot, 'static'), 'static', mediaTools);
     staticEvidence.cameraMode = staticRun.start.cameraMode;
     staticEvidence.progressScreenshotCaptured = staticRun.progressCaptured;
     staticEvidence.creatorUiEvidence = {
@@ -632,26 +791,29 @@ async function run() {
       dirtyAtCapture: staticRun.start.dirtyAtCapture,
     };
 
-    const staticHashBeforeConflict = hash(await fsp.readFile(outputPath));
+    const staticHashBeforeConflict = hash(await fsp.readFile(staticOutputPath));
     await clickSelector('[data-testid="right-mode-auto-camera"]');
     await waitForRenderer(`document.querySelector('[data-testid="right-mode-auto-camera"]')?.getAttribute('aria-pressed') === 'true'`);
-    const conflictCancel = await startFromCreatorUi(evidenceRoot, 'speaker-focus-conflict', {
-      cancelApplicationOverwrite: true,
+    const existingTargetReject = await startFromCreatorUi(evidenceRoot, 'existing-target-rejected', {
       captureOverwritePrompt: true,
-      targetPath: outputPath,
+      selectedFileName: path.basename(staticOutputPath),
+      expectedFailureText: '输出文件已存在',
     });
-    assert(conflictCancel.cancelled, 'Existing-target overwrite cancellation did not cancel the UI task.');
-    assert(conflictCancel.fileSha256 === staticHashBeforeConflict, 'Overwrite cancellation changed the existing MP4.');
+    assert(existingTargetReject.status === 'failed', 'Existing target was not blocked after native Save As confirmation.');
+    assert(existingTargetReject.starts.length === 0, 'Existing-target rejection started an export Job.');
+    const staticHashAfterReject = hash(await fsp.readFile(staticOutputPath));
+    assert(staticHashAfterReject === staticHashBeforeConflict, 'Existing-target rejection changed the existing MP4.');
     assert(
-      conflictCancel.after.revision === conflictCancel.before.revision &&
-      conflictCancel.after.dirty === conflictCancel.before.dirty &&
-      conflictCancel.after.undoCount === conflictCancel.before.undoCount,
-      'Overwrite cancellation changed Project revision, dirty state, or History.',
+      existingTargetReject.after.revision === existingTargetReject.before.revision &&
+      existingTargetReject.after.dirty === existingTargetReject.before.dirty &&
+      existingTargetReject.after.undoCount === existingTargetReject.before.undoCount,
+      'Existing-target rejection changed Project revision, dirty state, or History.',
     );
+    const existingTargetCleanup = await assertNoExportTemporaries('existing target rejection');
 
+    const speakerOutputPath = path.join(fixture.projectRoot, 'speaker-focus.mp4');
     const speakerRun = await startFromCreatorUi(evidenceRoot, 'speaker-focus', {
-      captureOverwritePrompt: true,
-      confirmApplicationOverwrite: true,
+      selectedFileName: path.basename(speakerOutputPath),
     });
     assert(speakerRun.start.cameraMode === 'speaker-focus', 'Speaker Focus export did not capture the existing resolver mode.');
     assert(speakerRun.start.dirtyAtCapture === true, 'Speaker Focus candidate lost the unsaved Project revision.');
@@ -662,13 +824,11 @@ async function run() {
       'Speaker Focus export changed Project revision, dirty state, or History.',
     );
     assert((await fsp.readFile(projectFilePath)).equals(initialProjectBytes), 'Speaker Focus export wrote the unsaved editor revision into project.json.');
-    const speakerEvidence = await exportEvidence(outputPath, path.join(evidenceRoot, 'speaker-focus'), 'speaker-focus', mediaTools);
+    const speakerEvidence = await exportEvidence(speakerOutputPath, path.join(evidenceRoot, 'speaker-focus'), 'speaker-focus', mediaTools);
     speakerEvidence.cameraMode = speakerRun.start.cameraMode;
     speakerEvidence.progressScreenshotCaptured = speakerRun.progressCaptured;
     speakerEvidence.creatorUiEvidence = {
       nativeSaveAs: speakerRun.nativeSaveAsScreenshotPath,
-      overwritePrompt: speakerRun.windowsOverwriteScreenshotPath,
-      overwriteConfirmation: speakerRun.applicationOverwriteScreenshotPath,
       progress: speakerRun.progressScreenshotPath,
       completed: speakerRun.completedScreenshotPath,
     };
@@ -678,6 +838,79 @@ async function run() {
       dirtyAtCapture: speakerRun.start.dirtyAtCapture,
     };
 
+    const unsupportedUiCases = [];
+    for (const scenario of [
+      { id: 'audio', expectedText: '不支持有声工程', fileName: 'unsupported-audio.mp4' },
+      { id: 'multi-shot', expectedText: '只支持单镜头工程', fileName: 'unsupported-multi-shot.mp4' },
+      { id: 'no-background', expectedText: '需要可见的图像背景', fileName: 'unsupported-no-background.mp4' },
+    ]) {
+      const scenarioState = await rendererJs(
+        `window.__pandaStageIssue816Acceptance.setExportScenario(${JSON.stringify(scenario.id)})`,
+      );
+      const targetPath = path.join(fixture.projectRoot, scenario.fileName);
+      assert(!existsSync(targetPath), `${scenario.id}: blocked target must start absent.`);
+      const blocked = await startFromCreatorUi(evidenceRoot, `unsupported-${scenario.id}`, {
+        selectedFileName: scenario.fileName,
+        expectedFailureText: scenario.expectedText,
+      });
+      assert(!existsSync(targetPath), `${scenario.id}: blocked preparation created an MP4.`);
+      assert(
+        blocked.after.revision === blocked.before.revision &&
+        blocked.after.dirty === blocked.before.dirty &&
+        blocked.after.undoCount === blocked.before.undoCount,
+        `${scenario.id}: blocked export changed Project revision, dirty state, or History.`,
+      );
+      unsupportedUiCases.push({
+        scenario: scenario.id,
+        inputProjectSha256: hash(Buffer.from(JSON.stringify(scenarioState.project), 'utf8')),
+        targetPath,
+        targetAbsent: true,
+        formalJobsStarted: blocked.starts.length,
+        taskText: blocked.taskText,
+        screenshotPath: blocked.failureScreenshotPath,
+        projectRevision: scenarioState.revision,
+        temporaryCleanup: await assertNoExportTemporaries(`${scenario.id} blocked preparation`),
+      });
+    }
+    await rendererJs("window.__pandaStageIssue816Acceptance.setExportScenario('baseline')");
+
+    const raceTargetPath = path.join(fixture.projectRoot, 'target-created-at-commit.mp4');
+    conflictAtCommitPath = raceTargetPath;
+    const raceRun = await startFromCreatorUi(evidenceRoot, 'target-created-at-commit', {
+      selectedFileName: path.basename(raceTargetPath),
+      expectJobFailure: true,
+    });
+    const raceReceipt = injectedCommitConflicts.at(-1);
+    assert(raceReceipt?.outputPath === raceTargetPath, 'The deterministic commit-boundary conflict did not run.');
+    const raceTargetSha256 = hash(await fsp.readFile(raceTargetPath));
+    assert(raceTargetSha256 === raceReceipt.sha256, 'The no-clobber commit changed the third-party target.');
+    assert(raceRun.failedJob?.status === 'failed', 'The race-conflicted Main Job was not failed.');
+    const raceCleanup = await assertNoExportTemporaries('commit-boundary target conflict');
+
+    const cancellationTargetPath = path.join(fixture.projectRoot, 'cancelled-export.mp4');
+    const cancellationRun = await startFromCreatorUi(evidenceRoot, 'cancelled-export', {
+      selectedFileName: path.basename(cancellationTargetPath),
+      cancelAfterProgress: true,
+      duplicateClickDuringRun: true,
+    });
+    assert(cancellationRun.status === 'cancelled', 'Formal UI cancellation did not finish as cancelled.');
+    assert(!existsSync(cancellationTargetPath), 'Cancelled export created a formal MP4.');
+    const cancellationJob = exportService.getJob(cancellationRun.start.jobId);
+    assert(cancellationJob?.status === 'cancelled', 'Main did not record the cancelled export.');
+    const cancellationCleanup = await assertNoExportTemporaries('formal UI cancellation');
+
+    const encoderFailureTargetPath = path.join(fixture.projectRoot, 'encoder-failure.mp4');
+    failNextEncoderRun = true;
+    const encoderFailureRun = await startFromCreatorUi(evidenceRoot, 'encoder-failure', {
+      selectedFileName: path.basename(encoderFailureTargetPath),
+      expectJobFailure: true,
+    });
+    assert(!existsSync(encoderFailureTargetPath), 'Encoder failure created a formal MP4.');
+    const encoderDiagnostic = mediaFailures.at(-1);
+    assert(encoderDiagnostic?.code === 'PROCESS_FAILED', 'The controlled encoder failure did not reach FFmpeg as a process error.');
+    const encoderFailureCleanup = await assertNoExportTemporaries('FFmpeg encoding failure');
+    assert(hash(await fsp.readFile(staticOutputPath)) === staticHashBeforeConflict, 'A failure path changed the existing static MP4.');
+
     const externalPlayerScript = path.join(__dirname, 'issue819-external-player.ps1');
     let externalPlayer = { launch: 'NOT_ATTEMPTED', screenshotPath: null };
     try {
@@ -686,7 +919,7 @@ async function run() {
         '-NonInteractive',
         '-File',
         externalPlayerScript,
-        outputPath,
+        speakerOutputPath,
         path.join(evidenceRoot, 'external-player.png'),
       ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
       const launched = await new Promise((resolve, reject) => {
@@ -733,23 +966,61 @@ async function run() {
       stateUnchanged: true,
       screenshotPath: nativeSaveAsCancelScreenshotPath,
     };
-    result.existingTargetCancel = {
+    result.existingTargetRejection = {
       existingOutputSha256: staticHashBeforeConflict,
-      afterCancelSha256: conflictCancel.fileSha256,
-      stateUnchanged: true,
-      nativeSaveAsScreenshotPath: conflictCancel.nativeSaveAsScreenshotPath,
-      windowsOverwriteScreenshotPath: conflictCancel.windowsOverwriteScreenshotPath,
-      applicationOverwriteScreenshotPath: conflictCancel.applicationOverwriteScreenshotPath,
+      afterRejectSha256: staticHashAfterReject,
+      exportJobStarted: existingTargetReject.starts.length > 0,
+      nativeSaveAsScreenshotPath: existingTargetReject.nativeSaveAsScreenshotPath,
+      windowsOverwriteScreenshotPath: existingTargetReject.windowsOverwriteScreenshotPath,
+      blockedScreenshotPath: existingTargetReject.failureScreenshotPath,
+      temporaryCleanup: existingTargetCleanup,
+    };
+    result.commitRace = {
+      ...raceReceipt,
+      thirdPartySha256After: raceTargetSha256,
+      jobStatus: raceRun.failedJob.status,
+      visibleTask: raceRun.taskText,
+      failureScreenshotPath: raceRun.failureScreenshotPath,
+      temporaryCleanup: raceCleanup,
+    };
+    result.unsupportedUiCases = unsupportedUiCases;
+    result.cancellation = {
+      targetPath: cancellationTargetPath,
+      targetExists: existsSync(cancellationTargetPath),
+      jobStatus: cancellationJob.status,
+      duplicateClickStartedSecondJob: false,
+      screenshotPath: cancellationRun.cancelledScreenshotPath,
+      temporaryCleanup: cancellationCleanup,
+    };
+    result.encoderFailure = {
+      targetPath: encoderFailureTargetPath,
+      targetExists: existsSync(encoderFailureTargetPath),
+      jobStatus: encoderFailureRun.failedJob.status,
+      executable: encoderDiagnostic.executable,
+      args: encoderDiagnostic.args,
+      stderr: encoderDiagnostic.stderr,
+      failureScreenshotPath: encoderFailureRun.failureScreenshotPath,
+      temporaryCleanup: encoderFailureCleanup,
+    };
+    result.existingStaticOutput = {
+      path: staticOutputPath,
+      sha256BeforeFailures: staticHashBeforeConflict,
+      sha256AfterFailures: hash(await fsp.readFile(staticOutputPath)),
+      unchanged: hash(await fsp.readFile(staticOutputPath)) === staticHashBeforeConflict,
     };
     result.outputs = { static: staticEvidence, speakerFocus: speakerEvidence };
     result.editorState = {
       revision: latestEditorState.revision,
       dirty: latestEditorState.dirty,
       undoCount: latestEditorState.undoCount,
-      historyUnchangedAcrossExports:
-        latestEditorState.revision === edited.revision &&
-        latestEditorState.dirty === edited.dirty &&
-        latestEditorState.undoCount === edited.undoCount,
+      positiveExportsPreservedProjectState:
+        staticRun.after.revision === staticRun.before.revision &&
+        staticRun.after.dirty === staticRun.before.dirty &&
+        staticRun.after.undoCount === staticRun.before.undoCount &&
+        speakerRun.after.revision === speakerRun.before.revision &&
+        speakerRun.after.dirty === speakerRun.before.dirty &&
+        speakerRun.after.undoCount === speakerRun.before.undoCount,
+      projectFileUnchanged: (await fsp.readFile(projectFilePath)).equals(initialProjectBytes),
     };
     result.exportJobs = jobUpdates.map((update) => ({
       jobId: update.jobId,

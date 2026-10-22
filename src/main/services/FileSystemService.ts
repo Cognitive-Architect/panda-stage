@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
 import {
   access,
+  link,
   mkdir,
   readdir,
+  realpath,
   rename,
   rm,
   stat,
@@ -12,8 +15,23 @@ import { constants } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { promisify } from 'node:util';
 
 const FRAME_NAME_PATTERN = /^frame_\d{6}\.png$/;
+const execFileAsync = promisify(execFile);
+const WINDOWS_VOLUME_INFO_SCRIPT = [
+  "$volumes = @(Get-Volume -FilePath $env:PANDA_STAGE_EXPORT_VOLUME_PATH -ErrorAction Stop)",
+  'if ($volumes.Count -ne 1) { exit 21 }',
+  "[Console]::Out.Write($volumes[0].DriveType.ToString() + '|' + $volumes[0].FileSystem)",
+].join('; ');
+
+export interface FileSystemServiceOptions {
+  inspectWindowsVolume?: (directoryPath: string) => Promise<{
+    driveType: string;
+    fileSystem: string;
+  }>;
+}
+
 export const CLEANUP_MAX_RETRIES = 3 as const;
 export const CLEANUP_RETRY_DELAY_MS = 75 as const;
 
@@ -28,12 +46,18 @@ export interface FrameFileSystem {
   cleanupJobDirectory(jobDirectory: string): Promise<void>;
   assertReadableProjectDirectory(projectDirectory: string): Promise<string>;
   prepareFinalOutput(outputPath: string, overwrite: boolean): Promise<string>;
+  prepareFormalOutput(outputPath: string): Promise<string>;
   createFinalOutputStagingPath(jobId: string, outputPath: string): string;
   commitFinalOutput(
     stagingPath: string,
     outputPath: string,
     overwrite: boolean,
   ): Promise<void>;
+  commitFormalOutputNoReplace(
+    stagingPath: string,
+    outputPath: string,
+  ): Promise<void>;
+  assertFormalOutputLocation(outputPath: string): Promise<void>;
   cleanupFinalOutputStaging(stagingPath: string): Promise<void>;
 }
 
@@ -46,6 +70,7 @@ export class FileSystemService implements FrameFileSystem {
       'panda-stage',
       'frame-jobs',
     ),
+    private readonly options: FileSystemServiceOptions = {},
   ) {
     this.rootDirectory = path.resolve(rootDirectory);
   }
@@ -149,6 +174,45 @@ export class FileSystemService implements FrameFileSystem {
     }
   }
 
+  async prepareFormalOutput(outputPath: string): Promise<string> {
+    const resolvedOutputPath = await this.prepareFinalOutput(outputPath, false);
+    await this.assertFormalOutputLocation(resolvedOutputPath);
+    return resolvedOutputPath;
+  }
+
+  async assertFormalOutputLocation(outputPath: string): Promise<void> {
+    const resolvedOutputPath = path.resolve(outputPath);
+    const outputDirectory = await realpath(path.dirname(resolvedOutputPath));
+    if (
+      !this.options.inspectWindowsVolume &&
+      process.platform !== 'win32'
+    ) {
+      throw new Error(
+        'Formal MP4 export supports only local NTFS folders on Windows.',
+      );
+    }
+
+    const inspectVolume =
+      this.options.inspectWindowsVolume ?? inspectWindowsVolumeWithPowerShell;
+    let volume: { driveType: string; fileSystem: string };
+    try {
+      volume = await inspectVolume(outputDirectory);
+    } catch (error) {
+      throw new Error(
+        'The output volume could not be verified as local NTFS.',
+        { cause: error },
+      );
+    }
+    if (
+      volume.driveType !== 'Fixed' ||
+      volume.fileSystem.toLocaleUpperCase('en-US') !== 'NTFS'
+    ) {
+      throw new Error(
+        'Formal MP4 export supports only local NTFS folders on Windows.',
+      );
+    }
+  }
+
   createFinalOutputStagingPath(jobId: string, outputPath: string): string {
     if (!/^[0-9a-f-]{36}$/iu.test(jobId)) {
       throw new Error(`Invalid export Job ID: ${jobId}`);
@@ -193,6 +257,44 @@ export class FileSystemService implements FrameFileSystem {
     }
   }
 
+  async commitFormalOutputNoReplace(
+    stagingPath: string,
+    outputPath: string,
+  ): Promise<void> {
+    const resolvedStagingPath = path.resolve(stagingPath);
+    const resolvedOutputPath = path.resolve(outputPath);
+    if (path.dirname(resolvedStagingPath) !== path.dirname(resolvedOutputPath)) {
+      throw new Error(
+        'Formal MP4 staging and target must be in the same directory.',
+      );
+    }
+    await this.assertFormalOutputLocation(resolvedOutputPath);
+    try {
+      await link(resolvedStagingPath, resolvedOutputPath);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'EEXIST' || code === 'EPERM' && await pathExists(resolvedOutputPath)) {
+        throw new Error(
+          `The formal MP4 target was created before commit; choose a new filename: ${resolvedOutputPath}`,
+          { cause: error },
+        );
+      }
+      throw new Error(
+        `The formal MP4 could not be committed without replacement: ${resolvedOutputPath}`,
+        { cause: error },
+      );
+    }
+
+    try {
+      await this.cleanupFinalOutputStaging(resolvedStagingPath);
+    } catch (error) {
+      throw new Error(
+        `The MP4 was committed, but its temporary link could not be removed: ${resolvedStagingPath}`,
+        { cause: error },
+      );
+    }
+  }
+
   async cleanupFinalOutputStaging(stagingPath: string): Promise<void> {
     const resolvedStagingPath = path.resolve(stagingPath);
     let lastError: unknown = null;
@@ -230,5 +332,44 @@ export class FileSystemService implements FrameFileSystem {
       throw new Error(`Path escapes the frame-job root: ${resolvedTarget}`);
     }
     return resolvedTarget;
+  }
+}
+
+async function inspectWindowsVolumeWithPowerShell(
+  directoryPath: string,
+): Promise<{ driveType: string; fileSystem: string }> {
+  const { stdout } = await execFileAsync(
+    'powershell.exe',
+    [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      WINDOWS_VOLUME_INFO_SCRIPT,
+    ],
+    {
+      env: {
+        ...process.env,
+        PANDA_STAGE_EXPORT_VOLUME_PATH: directoryPath,
+      },
+      windowsHide: true,
+      timeout: 5_000,
+      maxBuffer: 1_024,
+    },
+  );
+  const [driveType, fileSystem, extra] = stdout.trim().split('|');
+  if (!driveType || !fileSystem || extra !== undefined) {
+    throw new Error('Windows returned incomplete volume details.');
+  }
+  return { driveType, fileSystem };
+}
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await stat(targetPath);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
   }
 }

@@ -57,6 +57,8 @@ interface StageRendererProps {
   renderToken?: string | number;
   /** Degraded Preview is drawable, but never exact-frame ready for Export. */
   degraded?: boolean;
+  /** The fixed stage label is Preview chrome and is omitted from formal MP4 frames. */
+  showStageLabel?: boolean;
 }
 
 function useStageImages(
@@ -213,6 +215,7 @@ export function StageRenderer({
   onImageResourceFailure,
   renderToken,
   degraded = false,
+  showStageLabel = true,
 }: StageRendererProps): React.JSX.Element {
   const renderStartedAt = previewDiagnosticNow();
   const instrumentedLayers = useRef(new WeakSet<Konva.Layer>());
@@ -451,6 +454,7 @@ export function StageRenderer({
             fontFamily="Segoe UI, sans-serif"
             fontSize={24}
             text="PANDA STAGE · 1920 × 1080"
+            visible={showStageLabel}
             x={42}
             y={36}
           />

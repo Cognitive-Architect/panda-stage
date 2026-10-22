@@ -3,7 +3,8 @@ param(
   [Parameter(Mandatory = $true)][string]$ScreenshotPath,
   [string]$CreateTargetPath = '',
   [string]$CreateTargetContent = '',
-  [string]$OverwritePromptScreenshotPath = ''
+  [string]$OverwritePromptScreenshotPath = '',
+  [string]$SelectedFileName = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -189,6 +190,27 @@ while ([DateTime]::UtcNow -lt $deadline -and $null -eq $dialog) {
 if ($null -eq $dialog) { throw 'Timed out waiting for the native Save As dialog.' }
 
 $descendants = $dialog.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+
+if ($Action -eq 'save' -and $SelectedFileName) {
+  $nameField = $null
+  $fallbackNameField = $null
+  for ($elementIndex = 0; $elementIndex -lt $descendants.Count; $elementIndex++) {
+    $element = $descendants.Item($elementIndex)
+    if ($element.Current.ControlType -ne [System.Windows.Automation.ControlType]::Edit) { continue }
+    try {
+      $valuePattern = $element.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+      if ($element.Current.AutomationId -eq '1001') {
+        $nameField = $valuePattern
+        break
+      }
+      $fallbackNameField = $valuePattern
+    } catch { }
+  }
+  if ($null -eq $nameField) { $nameField = $fallbackNameField }
+  if ($null -eq $nameField) { throw 'The native Save As filename field is unavailable.' }
+  $nameField.SetValue($SelectedFileName)
+}
+
 $button = $null
 for ($elementIndex = 0; $elementIndex -lt $descendants.Count; $elementIndex++) {
   $element = $descendants.Item($elementIndex)

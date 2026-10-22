@@ -380,6 +380,7 @@ export function ExportRendererApp(): React.JSX.Element {
         evaluatedShot={evaluatedShot}
         camera={camera}
         captionStyle={captionStyle}
+        showStageLabel={false}
         onError={handleStageError}
         onReady={handleStageReady}
         project={project}

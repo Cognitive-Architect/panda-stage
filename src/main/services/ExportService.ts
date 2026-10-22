@@ -436,16 +436,14 @@ export class ExportService {
     const startedAt = performance.now();
     const shot = input.candidate.project.shots[0]!;
     const outputPath = input.candidate.outputIntent.targetPath;
-    const overwrite = input.candidate.outputIntent.overwriteApproved;
     let jobDirectory: string | null = null;
     let finalOutputStagingPath: string | null = null;
     let rendererPrepared = false;
 
     try {
       await assertOutputTargetUnchanged();
-      const resolvedOutputPath = await this.fileSystem.prepareFinalOutput(
+      const resolvedOutputPath = await this.fileSystem.prepareFormalOutput(
         outputPath,
-        overwrite,
       );
       finalOutputStagingPath = this.fileSystem.createFinalOutputStagingPath(
         active.jobId,
@@ -509,10 +507,9 @@ export class ExportService {
       active.acceptsCancellation = false;
       this.emit(record);
       await assertOutputTargetUnchanged();
-      await this.fileSystem.commitFinalOutput(
+      await this.fileSystem.commitFormalOutputNoReplace(
         finalOutputStagingPath,
         resolvedOutputPath,
-        overwrite,
       );
       finalOutputStagingPath = null;
       this.completedOutputPaths.set(active.jobId, resolvedOutputPath);

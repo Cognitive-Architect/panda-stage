@@ -70,7 +70,8 @@ export const ExportPreparationIssueSchema = z
       'UNSUPPORTED_IN_CURRENT_EXPORT_SLICE',
       'PREPARATION_BUDGET_EXCEEDED',
       'OUTPUT_TARGET_CHANGED',
-      'OUTPUT_OVERWRITE_NOT_CONFIRMED',
+      'OUTPUT_TARGET_EXISTS',
+      'OUTPUT_LOCATION_UNSUPPORTED',
       'PROJECT_SESSION_CHANGED',
       'PREPARATION_BUSY',
       'PREPARATION_FAILED',
@@ -90,7 +91,7 @@ export const ExportPreparationSelectOutputResponseSchema = z.discriminatedUnion(
         status: z.literal('selected'),
         selectionId: z.uuid(),
         fileName: z.string().trim().min(1).max(500),
-        overwriteApproved: z.boolean(),
+        overwriteApproved: z.literal(false),
       })
       .strict(),
     z
@@ -196,7 +197,7 @@ export const ExportPreparationCandidateSchema = z
         selectionId: z.uuid(),
         targetPath: FileSystemPathSchema,
         fileName: z.string().trim().min(1).max(500),
-        overwriteApproved: z.boolean(),
+        overwriteApproved: z.literal(false),
         targetIdentity: ExportOutputTargetIdentitySchema.nullable(),
       })
       .strict(),

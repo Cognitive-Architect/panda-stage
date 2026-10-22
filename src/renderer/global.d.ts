@@ -127,6 +127,9 @@ declare global {
       inspect: () => Promise<unknown> | unknown;
       saveCurrentProject: () => Promise<unknown>;
       editUnsavedFixture: () => Promise<unknown> | unknown;
+      setExportScenario: (
+        scenario: 'baseline' | 'audio' | 'multi-shot' | 'no-background',
+      ) => Promise<unknown>;
       reopenSamePath: () => Promise<unknown>;
       prepare: () => Promise<unknown>;
     };

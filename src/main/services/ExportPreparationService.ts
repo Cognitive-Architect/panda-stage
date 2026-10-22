@@ -64,7 +64,7 @@ export interface ExportPreparationServiceOptions {
   getCurrentProjectSnapshot: (
     projectRoot: string,
   ) => TrackedProjectSnapshot | null;
-  confirmOverwrite?: (request: { fileName: string }) => Promise<boolean>;
+  assertFormalOutputLocation?: (outputPath: string) => Promise<void>;
   fileStore?: ExportPreparationFileStore;
   mediaReader?: ExportPreparationMediaReader;
   now?: () => Date;
@@ -215,28 +215,15 @@ export class ExportPreparationService {
 
     try {
       const target = await captureTargetIdentity(selectedPath);
-      let overwriteApproved = false;
       if (target.identity !== null) {
-        if (!this.options.confirmOverwrite) {
-          return {
-            status: 'blocked',
-            issue: this.overwriteConfirmationIssue(),
-          };
-        }
-        const confirmed = await this.options.confirmOverwrite({
-          fileName: path.basename(target.canonicalPath),
-        });
-        if (!confirmed) return { status: 'cancelled' };
-        overwriteApproved = true;
+        return { status: 'blocked', issue: this.outputExistsIssue() };
       }
-
-      const targetAfterConfirmation = await captureTargetIdentity(
-        target.canonicalPath,
-      );
-      if (!sameCapturedTarget(target, targetAfterConfirmation)) {
+      try {
+        await this.options.assertFormalOutputLocation?.(target.canonicalPath);
+      } catch {
         return {
           status: 'blocked',
-          issue: this.outputChangedIssue(),
+          issue: this.outputLocationUnsupportedIssue(),
         };
       }
       await this.releaseAllCandidates();
@@ -249,14 +236,14 @@ export class ExportPreparationService {
         openInstanceId: request.openInstanceId,
         targetPath: target.canonicalPath,
         fileName,
-        overwriteApproved,
+        overwriteApproved: false,
         targetIdentity: target.identity,
       };
       return {
         status: 'selected',
         selectionId,
         fileName,
-        overwriteApproved,
+        overwriteApproved: false,
       };
     } catch (error) {
       return {
@@ -741,6 +728,11 @@ export class ExportPreparationService {
     this.activeExportSnapshots.delete(snapshotId);
   }
 
+  async finalizeCandidateExport(snapshotId: string): Promise<void> {
+    this.releaseCandidateExport(snapshotId);
+    await this.discard(undefined, snapshotId);
+  }
+
   getDiagnostics(diagnosticId: string): string[] {
     return [...(this.diagnostics.get(diagnosticId) ?? [])];
   }
@@ -837,16 +829,25 @@ export class ExportPreparationService {
       code: 'OUTPUT_TARGET_CHANGED',
       location: '输出位置',
       problem: '选择输出位置后，目标文件已出现、消失或发生变化。',
-      nextStep: '重新选择输出位置，并再次确认是否覆盖。',
+      nextStep: '请选择一个尚未存在的新文件名后重试。',
     };
   }
 
-  private overwriteConfirmationIssue(): ExportPreparationIssue {
+  private outputExistsIssue(): ExportPreparationIssue {
     return {
-      code: 'OUTPUT_OVERWRITE_NOT_CONFIRMED',
+      code: 'OUTPUT_TARGET_EXISTS',
       location: '输出位置',
-      problem: '无法证明你已明确同意覆盖现有视频。',
-      nextStep: '重新选择其他位置，或通过受信任的确认对话框确认覆盖。',
+      problem: '输出文件已存在，正式导出不会覆盖现有 MP4。',
+      nextStep: '请选择一个尚未存在的新文件名，例如“第一集 (2).mp4”。',
+    };
+  }
+
+  private outputLocationUnsupportedIssue(): ExportPreparationIssue {
+    return {
+      code: 'OUTPUT_LOCATION_UNSUPPORTED',
+      location: '输出位置',
+      problem: '正式 MP4 导出仅支持 Windows 本地 NTFS 文件夹。',
+      nextStep: '请选择本机 NTFS 磁盘上的文件夹后重试。',
     };
   }
 
@@ -944,16 +945,6 @@ function sameTarget(
 ): boolean {
   if (!samePath(selection.targetPath, current.canonicalPath)) return false;
   return sameTargetIdentity(selection.targetIdentity, current.identity);
-}
-
-function sameCapturedTarget(
-  expected: CapturedTarget,
-  current: CapturedTarget,
-): boolean {
-  return (
-    samePath(expected.canonicalPath, current.canonicalPath) &&
-    sameTargetIdentity(expected.identity, current.identity)
-  );
 }
 
 function sameTargetIdentity(

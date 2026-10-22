@@ -2,7 +2,6 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   mkdir,
   mkdtemp,
-  realpath,
   readFile,
   readdir,
   rm,
@@ -113,7 +112,7 @@ async function harness(options: {
   project?: Project;
   media?: Map<string, Uint8Array>;
   reader?: ExportPreparationMediaReader;
-  confirmOverwrite?: (request: { fileName: string }) => Promise<boolean>;
+  assertFormalOutputLocation?: (outputPath: string) => Promise<void>;
 } = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'panda-export-preparation-'));
   roots.push(root);
@@ -139,7 +138,7 @@ async function harness(options: {
   const service = new ExportPreparationService({
     getCurrentProjectSnapshot: (requestedRoot) =>
       path.resolve(requestedRoot) === path.resolve(projectRoot) ? current : null,
-    confirmOverwrite: options.confirmOverwrite,
+    assertFormalOutputLocation: options.assertFormalOutputLocation,
     fileStore,
     mediaReader: mediaReaderForTest,
     now: () => new Date('2026-10-21T03:00:00.000Z'),
@@ -904,6 +903,28 @@ describe('ExportPreparationService', () => {
     await fixture.service.discard(undefined, candidate.snapshotId);
   });
 
+  it('discards a frozen candidate after an export reaches either terminal outcome', async () => {
+    const fixture = await harness();
+    const selection = await selectOutput(fixture, 'candidate-cleanup.mp4');
+    const prepared = await fixture.service.prepare(
+      requestFor(fixture, selection.selectionId),
+    );
+    expect(prepared.status).toBe('PREPARATION_READY');
+    if (prepared.status !== 'PREPARATION_READY') return;
+
+    await fixture.service.acquireCandidateForExport(prepared.candidate.snapshotId);
+    expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toContain(
+      prepared.candidate.snapshotId,
+    );
+
+    await fixture.service.finalizeCandidateExport(prepared.candidate.snapshotId);
+
+    expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toEqual([]);
+    await expect(
+      fixture.service.acquireCandidateForExport(prepared.candidate.snapshotId),
+    ).rejects.toThrow('EXPORT_SNAPSHOT_UNAVAILABLE');
+  });
+
   it('blocks a renderer snapshot that no longer matches Main revision before reading media', async () => {
     const onRead = vi.fn();
     const media = new Map<string, Uint8Array>();
@@ -1055,87 +1076,86 @@ describe('ExportPreparationService', () => {
     await expect(readdir(fixture.fileStore.rootDirectory)).resolves.toEqual([]);
   });
 
-  it("rejects a changed output target and leaves the user's replacement untouched", async () => {
-    const fixture = await harness({ confirmOverwrite: async () => true });
+  it('rejects an existing MP4 even when Windows Save As returned its path', async () => {
+    const fixture = await harness();
     const target = path.join(fixture.outputDirectory, 'existing.mp4');
     await writeFile(target, 'user movie');
-    const selection = await selectOutput(fixture, 'existing.mp4');
-    await writeFile(target, 'user replacement with changed length');
     const expected = await readFile(target);
+    const result = await fixture.service.selectOutput(
+      {
+        projectRoot: fixture.projectRoot,
+        projectId: fixture.project.id,
+        projectName: fixture.project.name,
+        openInstanceId: OPEN_INSTANCE_ID,
+      },
+      target,
+    );
+
+    expect(result).toMatchObject({
+      status: 'blocked',
+      issue: { code: 'OUTPUT_TARGET_EXISTS' },
+    });
+    expect(await readFile(target)).toEqual(expected);
+    expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toEqual([]);
+  });
+
+  it('blocks a file created after output selection and preserves its bytes', async () => {
+    const fixture = await harness();
+    const target = path.join(fixture.outputDirectory, 'created-after-selection.mp4');
+    const selection = await selectOutput(fixture, 'created-after-selection.mp4');
+    const externalBytes = Buffer.from('third-party MP4 created after selection');
+    await writeFile(target, externalBytes);
     const result = await fixture.service.prepare(
       requestFor(fixture, selection.selectionId),
     );
 
     expect(result.status).toBe('BLOCK');
     if (result.status === 'BLOCK') {
-      expect(result.issues[0]?.code).toBe('OUTPUT_TARGET_CHANGED');
+      expect(result.issues.map((item) => item.code)).toContain('OUTPUT_TARGET_CHANGED');
     }
-    expect(await readFile(target)).toEqual(expected);
+    expect(await readFile(target)).toEqual(externalBytes);
+    expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toEqual([]);
   });
 
-  it.each(['modified', 'replaced', 'deleted'] as const)(
-    'blocks an output target %s during media preflight',
-    async (change) => {
-      const media = new Map<string, Uint8Array>();
-      const project = projectWithMedia(media);
-      let target = '';
-      let changed = false;
-      const reader: ExportPreparationMediaReader = {
-        async getByteLength(_projectRoot, asset) {
-          const bytes = media.get(asset.id);
-          if (!bytes) throw new Error('fixture asset is missing');
-          return bytes.byteLength;
-        },
-        async read(_projectRoot, _project, asset) {
-          if (!changed) {
-            changed = true;
-            if (change === 'deleted') {
-              await rm(target);
-            } else if (change === 'replaced') {
-              await rm(target);
-              await writeFile(target, 'replacement by another process');
-            } else {
-              await writeFile(target, 'modified user movie');
-            }
-          }
-          return { bytes: media.get(asset.id)!, mimeType: asset.mimeType };
-        },
-      };
-      const fixture = await harness({
-        project,
-        media,
-        reader,
-        confirmOverwrite: async () => true,
-      });
-      target = path.join(fixture.outputDirectory, 'preflight-target.mp4');
-      await writeFile(target, 'original user movie');
-      const selection = await selectOutput(fixture, 'preflight-target.mp4');
-      const result = await fixture.service.prepare(
-        requestFor(fixture, selection.selectionId),
+  it('blocks a file created during media preflight and preserves its bytes', async () => {
+    const media = new Map<string, Uint8Array>();
+    const project = projectWithMedia(media);
+    let target = '';
+    let changed = false;
+    const reader: ExportPreparationMediaReader = {
+      async getByteLength(_projectRoot, asset) {
+        const bytes = media.get(asset.id);
+        if (!bytes) throw new Error('fixture asset is missing');
+        return bytes.byteLength;
+      },
+      async read(_projectRoot, _project, asset) {
+        if (!changed) {
+          changed = true;
+          await writeFile(target, 'third-party MP4 created during preflight');
+        }
+        return { bytes: media.get(asset.id)!, mimeType: asset.mimeType };
+      },
+    };
+    const fixture = await harness({ project, media, reader });
+    target = path.join(fixture.outputDirectory, 'preflight-target.mp4');
+    const selection = await selectOutput(fixture, 'preflight-target.mp4');
+    const result = await fixture.service.prepare(
+      requestFor(fixture, selection.selectionId),
+    );
+
+    expect(result.status).toBe('BLOCK');
+    if (result.status === 'BLOCK') {
+      expect(result.issues.map((item) => item.code)).toContain(
+        'OUTPUT_TARGET_CHANGED',
       );
+    }
+    expect(await readFile(target, 'utf8')).toBe(
+      'third-party MP4 created during preflight',
+    );
+    expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toEqual([]);
+  });
 
-      expect(result.status).toBe('BLOCK');
-      if (result.status === 'BLOCK') {
-        expect(result.issues.map((item) => item.code)).toContain(
-          'OUTPUT_TARGET_CHANGED',
-        );
-      }
-      if (change === 'deleted') {
-        await expect(readFile(target)).rejects.toMatchObject({
-          code: 'ENOENT',
-        });
-      } else if (change === 'replaced') {
-        expect(await readFile(target, 'utf8')).toBe(
-          'replacement by another process',
-        );
-      } else {
-        expect(await readFile(target, 'utf8')).toBe('modified user movie');
-      }
-      expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toEqual([]);
-    },
-  );
-
-  it('does not treat a file that appeared during Save As selection as overwrite consent', async () => {
+  it('blocks a file that appeared while the native Save As dialog was open', async () => {
     const fixture = await harness();
     const target = path.join(fixture.outputDirectory, 'appeared-during-selection.mp4');
     const selectionRequest = {
@@ -1153,81 +1173,35 @@ describe('ExportPreparationService', () => {
 
     expect(result.status).toBe('blocked');
     if (result.status === 'blocked') {
-      expect(result.issue.code).toBe('OUTPUT_OVERWRITE_NOT_CONFIRMED');
+      expect(result.issue.code).toBe('OUTPUT_TARGET_EXISTS');
     }
     expect(await readFile(target)).toEqual(expected);
     expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toEqual([]);
   });
 
-  it('cancels overwrite when the user rejects the explicit confirmation', async () => {
-    const targetFile = 'cancel-overwrite.mp4';
-    const targetContents = 'existing user movie';
-    const confirmOverwrite = vi.fn(async () => false);
-    const fixture = await harness({ confirmOverwrite });
-    const target = path.join(fixture.outputDirectory, targetFile);
-    await writeFile(target, targetContents);
-    const result = await fixture.service.selectOutput(
-      {
-        projectRoot: fixture.projectRoot,
-        projectId: fixture.project.id,
-        projectName: fixture.project.name,
-        openInstanceId: OPEN_INSTANCE_ID,
-      },
-      target,
-    );
-
-    expect(result).toEqual({ status: 'cancelled' });
-    expect(confirmOverwrite).toHaveBeenCalledWith({ fileName: targetFile });
-    expect(await readFile(target, 'utf8')).toBe(targetContents);
-    expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toEqual([]);
-  });
-
-  it('records explicit overwrite approval with the identity of the confirmed target', async () => {
-    const targetFile = 'confirmed-overwrite.mp4';
-    const confirmOverwrite = vi.fn(async () => true);
-    const fixture = await harness({ confirmOverwrite });
-    const target = path.join(fixture.outputDirectory, targetFile);
-    await writeFile(target, 'existing user movie');
-    const selection = await fixture.service.selectOutput(
-      {
-        projectRoot: fixture.projectRoot,
-        projectId: fixture.project.id,
-        projectName: fixture.project.name,
-        openInstanceId: OPEN_INSTANCE_ID,
-      },
-      target,
-    );
-
-    expect(selection.status).toBe('selected');
-    if (selection.status !== 'selected') return;
-    expect(confirmOverwrite).toHaveBeenCalledWith({ fileName: targetFile });
-    expect(selection.overwriteApproved).toBe(true);
+  it('records false overwrite consent and a missing target in the preparation candidate', async () => {
+    const fixture = await harness();
+    const selection = await selectOutput(fixture, 'new-output.mp4');
+    expect(selection.overwriteApproved).toBe(false);
     const result = await fixture.service.prepare(
       requestFor(fixture, selection.selectionId),
     );
+
     expect(result.status).toBe('PREPARATION_READY');
     if (result.status === 'PREPARATION_READY') {
       expect(result.candidate.outputIntent).toMatchObject({
-        overwriteApproved: true,
-        targetIdentity: expect.objectContaining({
-          canonicalPath: await realpath(target),
-        }),
+        overwriteApproved: false,
+        targetIdentity: null,
       });
     }
-    expect(await readFile(target, 'utf8')).toBe('existing user movie');
   });
 
-  it('rejects a target replaced while explicit overwrite confirmation is open', async () => {
-    const targetFile = 'changed-during-confirmation.mp4';
+  it('blocks output folders that fail the local NTFS capability check', async () => {
     const fixture = await harness({
-      confirmOverwrite: async () => {
-        await writeFile(target, 'external replacement');
-        return true;
+      assertFormalOutputLocation: async () => {
+        throw new Error('network or non-NTFS output');
       },
     });
-    const target = path.join(fixture.outputDirectory, targetFile);
-    await writeFile(target, 'original user movie');
-    const expected = Buffer.from('external replacement');
     const result = await fixture.service.selectOutput(
       {
         projectRoot: fixture.projectRoot,
@@ -1235,14 +1209,14 @@ describe('ExportPreparationService', () => {
         projectName: fixture.project.name,
         openInstanceId: OPEN_INSTANCE_ID,
       },
-      target,
+      path.join(fixture.outputDirectory, 'unsupported.mp4'),
     );
 
-    expect(result.status).toBe('blocked');
-    if (result.status === 'blocked') {
-      expect(result.issue.code).toBe('OUTPUT_TARGET_CHANGED');
-    }
-    expect(await readFile(target)).toEqual(expected);
+    expect(result).toMatchObject({
+      status: 'blocked',
+      issue: { code: 'OUTPUT_LOCATION_UNSUPPORTED' },
+    });
+    expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toEqual([]);
   });
 
   it.each([

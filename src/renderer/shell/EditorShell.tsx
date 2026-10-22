@@ -15,6 +15,7 @@ import type {
 } from '../../shared/recovery-api';
 import type { ExportPreparationResponse } from '../../shared/export-preparation-types';
 import type { ExportJobUpdate } from '../../shared/export-types';
+import type { Project } from '../../domain';
 import {
   ProjectSessionController,
   type ProjectSessionApi,
@@ -119,6 +120,12 @@ export function shouldRenderProductSurface(gateA: boolean): boolean {
 
 function safeExportFailureMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
+  if (/target was created before commit/iu.test(message)) {
+    return '\u4fdd\u5b58\u4f4d\u7f6e\u5728\u5bfc\u51fa\u671f\u95f4\u51fa\u73b0\u4e86\u540c\u540d\u6587\u4ef6\u3002\u73b0\u6709\u6587\u4ef6\u672a\u88ab\u4fee\u6539\uff0c\u8bf7\u6362\u4e00\u4e2a\u65b0\u6587\u4ef6\u540d\u91cd\u8bd5\u3002';
+  }
+  if (/local NTFS|volume could not be verified|unsupported volume/iu.test(message)) {
+    return '\u6b63\u5f0f MP4 \u4ec5\u80fd\u5bfc\u51fa\u5230 Windows \u672c\u673a NTFS \u6587\u4ef6\u5939\u3002\u8bf7\u9009\u62e9\u672c\u673a NTFS \u4f4d\u7f6e\u540e\u91cd\u8bd5\u3002';
+  }
   if (/OUTPUT_TARGET_CHANGED|target changed|already exists|overwrite/iu.test(message)) {
     return '\u5bfc\u51fa\u4f4d\u7f6e\u5df2\u53d1\u751f\u53d8\u5316\u3002\u8bf7\u53e6\u9009\u4e00\u4e2a\u4fdd\u5b58\u4f4d\u7f6e\u540e\u91cd\u8bd5\u3002';
   }
@@ -630,6 +637,7 @@ export function EditorShell({
       return;
     }
 
+    let issue819BaselineProject: Project | null = null;
     const acceptanceApi = {
       lastAttemptId: null as string | null,
       lastMainResponse: null as ExportPreparationResponse | null,
@@ -693,6 +701,83 @@ export function EditorShell({
           revision: updated.revision,
           dirty: updated.dirty,
           undoCount: editorProjectStore.history.getSnapshot().undoCount,
+          project: structuredClone(updated.project),
+        };
+      },
+      setExportScenario: async (
+        scenario: 'baseline' | 'audio' | 'multi-shot' | 'no-background',
+      ) => {
+        const snapshot = editorProjectStore.getSnapshot();
+        if (!snapshot) throw new Error('No active Project for issue 819 scenario.');
+        issue819BaselineProject ??= structuredClone(snapshot.project);
+        const project = structuredClone(issue819BaselineProject);
+        const shot = project.shots[0];
+        if (!shot) throw new Error('Issue 819 fixture requires one Shot.');
+
+        if (scenario === 'audio') {
+          const audio = project.assets.find((asset) => asset.kind === 'audio');
+          if (!audio || audio.kind !== 'audio') {
+            throw new Error('Issue 819 audio scenario requires a fixture audio Asset.');
+          }
+          shot.audioClips.push({
+            id: crypto.randomUUID(),
+            name: 'Unsupported audio acceptance clip',
+            assetId: audio.id,
+            startMs: 0,
+            endMs: Math.min(audio.durationMs ?? 1_000, shot.durationMs),
+            offsetMs: 0,
+            volume: 1,
+            role: 'bgm',
+          });
+        } else if (scenario === 'multi-shot') {
+          const source = structuredClone(shot);
+          const remappedIds = new Map<string, string>();
+          const mapId = (id: string): string => {
+            const replacement = remappedIds.get(id);
+            if (!replacement) throw new Error(`Missing scenario ID mapping: ${id}`);
+            return replacement;
+          };
+          remappedIds.set(source.id, crypto.randomUUID());
+          for (const layer of source.layers) remappedIds.set(layer.id, crypto.randomUUID());
+          for (const event of source.timelineEvents) remappedIds.set(event.id, crypto.randomUUID());
+          for (const dialogue of source.dialogues) remappedIds.set(dialogue.id, crypto.randomUUID());
+          for (const clip of source.audioClips) remappedIds.set(clip.id, crypto.randomUUID());
+          project.shots.push({
+            ...source,
+            id: mapId(source.id),
+            name: 'Second unsupported Shot',
+            backgroundLayerId: source.backgroundLayerId
+              ? mapId(source.backgroundLayerId)
+              : null,
+            layers: source.layers.map((layer) => ({ ...layer, id: mapId(layer.id) })),
+            timelineEvents: source.timelineEvents.map((event) => ({
+              ...event,
+              id: mapId(event.id),
+              layerId: mapId(event.layerId),
+            })),
+            dialogues: source.dialogues.map((dialogue) => ({
+              ...dialogue,
+              id: mapId(dialogue.id),
+            })),
+            audioClips: source.audioClips.map((clip) => ({
+              ...clip,
+              id: mapId(clip.id),
+            })),
+          });
+        } else if (scenario === 'no-background') {
+          shot.backgroundLayerId = null;
+        }
+
+        editorProjectStore.updateProject(project, `Issue 819 ${scenario} scenario`);
+        const updated = editorProjectStore.getSnapshot();
+        if (!updated) throw new Error('Issue 819 Project closed during scenario setup.');
+        const syncResult = await session.syncAutosave(updated);
+        if (syncResult && !syncResult.ok) {
+          throw new Error('Issue 819 scenario did not reach Main autosave tracking.');
+        }
+        return {
+          revision: updated.revision,
+          dirty: updated.dirty,
           project: structuredClone(updated.project),
         };
       },
