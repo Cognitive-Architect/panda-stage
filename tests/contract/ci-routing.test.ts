@@ -89,6 +89,26 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual([]);
   });
 
+  it('routes the two Issue #828 lifecycle and audio model tests through core ownership', () => {
+    for (const file of [
+      'tests/integration/day14-lifecycle.test.ts',
+      'tests/unit/models/audio-clip-source-range.test.ts',
+    ]) {
+      const result = draft([change(file)]);
+      expect(result.tier).toBe('focused');
+      expect(result.matchedRouteIds).toEqual(['cross-process-core']);
+      expect(result.unknownPaths).toEqual([]);
+    }
+
+    const unknownTest = draft([
+      change('tests/unit/models/issue829-unregistered-model.test.ts', 'A'),
+    ]);
+    expect(unknownTest.tier).toBe('unknown');
+    expect(unknownTest.unknownPaths).toEqual([
+      'tests/unit/models/issue829-unregistered-model.test.ts',
+    ]);
+  });
+
   it('unions dialogue and subtitle suites without duplicates', () => {
     const result = draft([
       change('src/renderer/features/dialogue/DialogueTrack.tsx'),

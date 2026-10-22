@@ -20,12 +20,14 @@ import {
   filterAssetLibraryEntries,
   selectAssetLibraryEntries,
   type AssetLibraryFilter,
+  type AssetLibraryUsageFilter,
 } from '../../stores/assetLibrarySelectors';
 import { applyAssetDeleteResponse } from './applyAssetDeleteResponse';
 import { applyAssetMetadataResponse } from './applyAssetMetadataResponse';
 import { ASSET_DRAG_MIME } from './AssetDropPayload';
 import { AssetDetails } from './AssetDetails';
 import { AssetGrid } from './AssetGrid';
+import { IMAGE_ASSET_USAGE_OPTIONS } from './assetUsage';
 import {
   thumbnailStateFromResponse,
   type ThumbnailState,
@@ -86,6 +88,8 @@ export function AssetLibrary({
     hideHeading ? 'all' : 'background',
   );
   const [searchQuery, setSearchQuery] = useState('');
+  const [usageFilter, setUsageFilter] =
+    useState<AssetLibraryUsageFilter>('all');
   const [page, setPage] = useState(1);
   const [selectedAssetId, setSelectedAssetId] =
     useState<string | null>(null);
@@ -159,8 +163,8 @@ export function AssetLibrary({
     ? ASSET_LIBRARY_FILTERS
     : ASSET_LIBRARY_CATEGORIES;
   const visibleEntries = useMemo(
-    () => filterAssetLibraryEntries(entries, searchQuery),
-    [entries, searchQuery],
+    () => filterAssetLibraryEntries(entries, searchQuery, usageFilter),
+    [entries, searchQuery, usageFilter],
   );
   const saveImageMetadata = useCallback(
     (assetId: string, metadata: ImageAssetAuthorMetadata): void => {
@@ -197,6 +201,7 @@ export function AssetLibrary({
     [currentPage, isPortraitBrowser, visibleEntries],
   );
   const isSearchActive = searchQuery.trim().length > 0;
+  const isUsageFilterActive = usageFilter !== 'all';
   const isEntireLibraryEmpty = !isSearchActive && counts.all === 0;
   const selectedAsset = useMemo(
     () =>
@@ -255,6 +260,14 @@ export function AssetLibrary({
 
   const updateSearchQuery = (nextQuery: string): void => {
     setSearchQuery(nextQuery);
+    setPage(1);
+    clearSelectedAsset();
+  };
+
+  const updateUsageFilter = (
+    nextUsage: AssetLibraryUsageFilter,
+  ): void => {
+    setUsageFilter(nextUsage);
     setPage(1);
     clearSelectedAsset();
   };
@@ -618,6 +631,7 @@ export function AssetLibrary({
     if (previousProject !== snapshot?.projectRoot) {
       setCategory(hideHeading ? 'all' : 'background');
       setSearchQuery('');
+      setUsageFilter('all');
       setPage(1);
       pendingFocusReturnAssetId.current = null;
       setSelectedAssetId(null);
@@ -727,43 +741,68 @@ export function AssetLibrary({
             snapshot={snapshot}
           />
           <div
+            className="asset-library-filter-controls"
+            data-testid="asset-library-filter-controls"
+          >
+            <div className="asset-library-search">
+              <label
+                className={hideHeading ? 'asset-library-search-label-compact' : ''}
+                htmlFor="asset-library-search-input"
+              >
+                搜索素材
+              </label>
+              <div className="asset-library-search-control">
+                <DecorativeIcon
+                  className="asset-library-search-icon"
+                  icon={Search}
+                  size={18}
+                />
+                <input
+                  aria-label="搜索素材"
+                  id="asset-library-search-input"
+                  onChange={(event) => updateSearchQuery(event.target.value)}
+                  placeholder="搜索素材"
+                  type="search"
+                  value={searchQuery}
+                />
+                {searchQuery ? (
+                  <button
+                    aria-label="清除搜索"
+                    className="asset-library-search-clear"
+                    data-testid="asset-library-search-clear"
+                    onClick={() => updateSearchQuery('')}
+                    title="清除搜索"
+                    type="button"
+                  >
+                    <DecorativeIcon icon={X} size={18} />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            <label className="asset-library-usage-filter">
+              <span>用途</span>
+              <select
+                data-testid="asset-library-usage-filter"
+                onChange={(event) =>
+                  updateUsageFilter(
+                    event.target.value as AssetLibraryUsageFilter,
+                  )
+                }
+                value={usageFilter}
+              >
+                <option value="all">全部用途</option>
+                {IMAGE_ASSET_USAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div
             className="asset-library-browser"
             data-testid="asset-browser-view"
           >
-            {hideHeading ? (
-              <div className="asset-library-search">
-                <label htmlFor="asset-library-search-input">
-                  搜索素材
-                </label>
-                <div className="asset-library-search-control">
-                  <DecorativeIcon
-                    className="asset-library-search-icon"
-                    icon={Search}
-                    size={18}
-                  />
-                  <input
-                    aria-label="搜索素材"
-                    id="asset-library-search-input"
-                    onChange={(event) => updateSearchQuery(event.target.value)}
-                    placeholder="搜索素材"
-                    type="search"
-                    value={searchQuery}
-                  />
-                  {searchQuery ? (
-                    <button
-                      aria-label="清除搜索"
-                      className="asset-library-search-clear"
-                      data-testid="asset-library-search-clear"
-                      onClick={() => updateSearchQuery('')}
-                      title="清除搜索"
-                      type="button"
-                    >
-                      <DecorativeIcon icon={X} size={18} />
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
             <nav aria-label="素材分类" className="asset-category-tabs">
               {filterOptions.map((item) => (
                 <button
@@ -878,14 +917,18 @@ export function AssetLibrary({
                 emptyMessage={
                   isSearchActive
                     ? '没有匹配的素材'
-                    : isEntireLibraryEmpty
+                    : isUsageFilterActive
+                      ? '没有符合用途的图片'
+                      : isEntireLibraryEmpty
                       ? '素材库还是空的'
                       : undefined
                 }
                 emptyDescription={
                   isSearchActive
-                    ? '清除搜索或换一个分类试试。'
-                    : isEntireLibraryEmpty
+                    ? '清除搜索或换一个用途、分类试试。'
+                    : isUsageFilterActive
+                      ? '选择其他用途，或恢复“全部用途”。'
+                      : isEntireLibraryEmpty
                       ? '拖进图片或音频，或者点上面的「导入素材」。'
                       : undefined
                 }

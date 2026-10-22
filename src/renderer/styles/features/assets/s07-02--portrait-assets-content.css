@@ -260,7 +260,6 @@
   grid-template-areas:
     'preview heading'
     'preview metadata'
-    'author-edit author-edit'
     'references references'
     'delete delete';
   align-items: start;
@@ -301,15 +300,6 @@
   grid-area: metadata;
   align-self: start;
   gap: 4px;
-}
-
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
-  .resource-activity-dock[data-active-activity='assets']
-  .asset-details-portrait .asset-author-metadata-form,
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
-  .resource-activity-dock[data-active-activity='assets']
-  .asset-details-portrait .asset-author-metadata-edit {
-  grid-area: author-edit;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']

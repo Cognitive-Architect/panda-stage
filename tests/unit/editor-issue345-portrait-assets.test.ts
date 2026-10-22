@@ -35,17 +35,22 @@ describe('Issue #345 portrait Assets interaction and pagination', () => {
     expect(paginateAssetLibraryEntries(entries, 4)).toEqual([]);
   });
 
-  it('keeps pagination after category/search filtering and wires reset rules', () => {
+  it('keeps pagination after category/search/purpose filtering and wires reset rules', () => {
     const library = source(
       'src/renderer/features/assets/AssetLibrary.tsx',
     );
 
-    expect(library).toContain('filterAssetLibraryEntries(entries, searchQuery)');
+    expect(library).toContain(
+      'filterAssetLibraryEntries(entries, searchQuery, usageFilter)',
+    );
     expect(library).toContain('paginateAssetLibraryEntries(visibleEntries, currentPage)');
     expect(library).toContain('entries={pageEntries}');
     expect(library).toContain('setPage(1)');
     expect(library).toContain('const selectCategory');
     expect(library).toContain('const updateSearchQuery');
+    expect(library).toContain('const updateUsageFilter');
+    expect(library).toContain('setUsageFilter(nextUsage)');
+    expect(library).toContain('usageFilter !== \'all\'');
     expect(library).toContain('closeSelectedDetails(false)');
     expect(library).toContain('data-testid="asset-library-pagination"');
     expect(library).toContain('aria-label="上一页"');

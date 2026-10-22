@@ -1,6 +1,7 @@
 import type {
   Asset,
   AssetDropPayload,
+  ImageAssetUsage,
   Project,
 } from '../../domain';
 
@@ -11,6 +12,8 @@ export type AssetLibraryCategory =
 
 export type AssetLibraryFilter = 'all' | AssetLibraryCategory;
 
+export type AssetLibraryUsageFilter = 'all' | ImageAssetUsage;
+
 export interface AssetLibraryEntry {
   id: string;
   asset: Asset;
@@ -20,18 +23,19 @@ export interface AssetLibraryEntry {
 }
 
 export const ASSET_LIBRARY_CATEGORIES = [
+  { id: 'all', label: '全部' },
   { id: 'character', label: '角色图片' },
-  { id: 'background', label: '背景图片' },
+  { id: 'background', label: '未绑定角色' },
   { id: 'audio', label: '音频' },
 ] as const satisfies readonly {
-  id: AssetLibraryCategory;
+  id: AssetLibraryFilter;
   label: string;
 }[];
 
 export const ASSET_LIBRARY_FILTERS = [
   { id: 'all', label: '全部' },
   { id: 'character', label: '角色' },
-  { id: 'background', label: '背景' },
+  { id: 'background', label: '未绑定' },
   { id: 'audio', label: '音频' },
 ] as const satisfies readonly {
   id: AssetLibraryFilter;
@@ -181,11 +185,18 @@ export function assetLibraryFilterCounts(
 export function filterAssetLibraryEntries(
   entries: readonly AssetLibraryEntry[],
   query: string,
+  usage: AssetLibraryUsageFilter = 'all',
 ): AssetLibraryEntry[] {
   const normalizedQuery = query.trim().toLocaleLowerCase('zh-CN');
-  if (!normalizedQuery) return [...entries];
+  const usageFilteredEntries = usage === 'all'
+    ? entries
+    : entries.filter(
+        (entry) =>
+          entry.asset.kind === 'image' && entry.asset.usage === usage,
+      );
+  if (!normalizedQuery) return [...usageFilteredEntries];
 
-  return entries.filter((entry) =>
+  return usageFilteredEntries.filter((entry) =>
     [
       entry.asset.name,
       entry.contextLabel,

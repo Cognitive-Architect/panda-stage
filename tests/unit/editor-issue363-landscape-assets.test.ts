@@ -80,7 +80,9 @@ describe('Issue #363 landscape Asset Library presentation', () => {
     expect(dock).toContain('setAssetFlaReviewRequest');
     expect(dock).toContain('importRequestToken={assetImportRequest}');
     expect(dock).toContain('showFlaAction=');
-    expect(library).toContain('filterAssetLibraryEntries(entries, searchQuery)');
+    expect(library).toContain(
+      'filterAssetLibraryEntries(entries, searchQuery, usageFilter)',
+    );
     expect(library).toContain('paginateAssetLibraryEntries(visibleEntries, currentPage)');
     expect(styles).toContain("data-asset-library-presentation='landscape'");
     expect(styles).toContain('background: #0b120e;');

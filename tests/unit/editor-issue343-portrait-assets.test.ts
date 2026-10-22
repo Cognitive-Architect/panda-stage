@@ -75,7 +75,7 @@ describe('Issue #343 portrait Assets media library', () => {
     );
 
     expect(backgroundMarkup).toContain('data-asset-type="background"');
-    expect(backgroundMarkup).toContain('>背景</span>');
+    expect(backgroundMarkup).toContain('>未绑定角色</span>');
     expect(backgroundMarkup).toContain('1920 × 1080 px');
     expect(backgroundMarkup).toContain('data-media-kind="image"');
     expect(audioMarkup).toContain('data-asset-type="audio"');

@@ -108,7 +108,7 @@ export function AssetCard({
     category === 'character'
       ? '角色'
       : category === 'background'
-        ? '背景'
+        ? '未绑定角色'
         : '音频';
   const metadata = image
     ? `${asset.width} × ${asset.height} px`

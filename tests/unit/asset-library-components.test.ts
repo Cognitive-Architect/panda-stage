@@ -25,7 +25,7 @@ const directPayload = (assetId: string) => ({
 });
 
 describe('asset library components', () => {
-  it('renders all three categories, thumbnail placeholders, import entry, and details guidance', () => {
+  it('renders asset categories, thumbnail placeholders, import entry, and details guidance', () => {
     const project = migrateProject(exampleProject);
     const markup = renderToStaticMarkup(
       createElement(AssetLibrary, {
@@ -38,9 +38,12 @@ describe('asset library components', () => {
       }),
     );
     expect(markup).toContain('项目素材库');
+    expect(markup).toContain('全部');
     expect(markup).toContain('角色图片');
-    expect(markup).toContain('背景图片');
+    expect(markup).toContain('未绑定角色');
     expect(markup).toContain('音频');
+    expect(markup).toContain('data-testid="asset-library-usage-filter"');
+    expect(markup).toContain('全部用途');
     expect(markup).toContain('导入项目素材');
     expect(markup).toContain('data-testid="asset-browser-view"');
     expect(markup).toContain('导入 FLA');
@@ -65,13 +68,20 @@ describe('asset library components', () => {
     expect(markup).toContain('加载缩略图');
     expect(markup).not.toContain('src="assets/');
 
+    const propAsset = project.assets.find(
+      (asset) => asset.kind === 'image',
+    );
+    if (!propAsset || propAsset.kind !== 'image') {
+      throw new Error('Expected an image fixture.');
+    }
+    const propCardAsset = { ...propAsset, usage: 'prop' as const };
     const missingMarkup = renderToStaticMarkup(
       createElement(AssetCard, {
-        asset: project.assets.find((asset) => asset.kind === 'image')!,
+        asset: propCardAsset,
         category: 'background',
         contextLabel: '图片',
         dropPayload: directPayload(
-          project.assets.find((asset) => asset.kind === 'image')!.id,
+          propCardAsset.id,
         ),
         selected: false,
         dragging: false,
@@ -85,15 +95,16 @@ describe('asset library components', () => {
     );
     expect(missingMarkup).toContain('缩略图缺失');
     expect(missingMarkup).toContain('重建');
-    expect(missingMarkup).toContain('用途：未分类');
+    expect(missingMarkup).toContain('未绑定角色');
+    expect(missingMarkup).toContain('用途：道具');
 
     const sourceMissingMarkup = renderToStaticMarkup(
       createElement(AssetCard, {
-        asset: project.assets.find((asset) => asset.kind === 'image')!,
+        asset: propCardAsset,
         category: 'background',
         contextLabel: '图片',
         dropPayload: directPayload(
-          project.assets.find((asset) => asset.kind === 'image')!.id,
+          propCardAsset.id,
         ),
         selected: false,
         dragging: false,
@@ -115,6 +126,38 @@ describe('asset library components', () => {
     expect(sourceMissingMarkup).toContain(
       'data-thumbnail-source-status="missing"',
     );
+  });
+
+  it('keeps combined text and purpose filters available in desktop and touch layouts', () => {
+    const project = migrateProject(exampleProject);
+    for (const props of [
+      { presentation: 'default' as const, hideHeading: false },
+      { presentation: 'portrait' as const, hideHeading: true },
+    ]) {
+      const markup = renderToStaticMarkup(
+        createElement(AssetLibrary, {
+          snapshot: {
+            projectRoot: 'D:\\project.pandastage',
+            project,
+            dirty: false,
+            revision: 3,
+          },
+          ...props,
+        }),
+      );
+
+      expect(markup).toContain('aria-label="搜索素材"');
+      expect(markup).toContain('data-testid="asset-library-usage-filter"');
+      for (const usage of [
+        'uncategorized',
+        'background',
+        'character',
+        'prop',
+        'effect',
+      ]) {
+        expect(markup).toContain(`value="${usage}"`);
+      }
+    }
   });
 
   it('shows the source FLA, library item, and selected frame for a committed snapshot asset', () => {
