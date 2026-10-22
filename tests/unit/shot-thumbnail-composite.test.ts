@@ -133,6 +133,8 @@ function makeCompositeProject(): Project {
     width: 800,
     height: 1000,
     sha256: BASE_SHA,
+    usage: 'uncategorized' as const,
+    keywords: [],
   };
   return ProjectSchema.parse({
     ...migrated,

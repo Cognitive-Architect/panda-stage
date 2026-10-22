@@ -46,6 +46,8 @@ export const PROBE_PROJECT: Project = ProjectSchema.parse({
       mimeType: 'image/svg+xml',
       width: 1920,
       height: 1080,
+      usage: 'uncategorized',
+      keywords: [],
     },
     {
       id: PROBE_CHARACTER_ASSET_ID,
@@ -55,6 +57,8 @@ export const PROBE_PROJECT: Project = ProjectSchema.parse({
       mimeType: 'image/png',
       width: 640,
       height: 640,
+      usage: 'uncategorized',
+      keywords: [],
     },
     {
       id: PROBE_AUDIO_ASSET_ID,

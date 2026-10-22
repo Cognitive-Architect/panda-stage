@@ -1,19 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../../demo-project/project-v1.example.json';
-import { ProjectSchema, migrateFormalProject, type Project } from '../../../src/domain';
+import { ProjectSchema, migrateProject, type Project } from '../../../src/domain';
 
 function projectWithAudioRange(
   startMs: number,
   endMs: number,
   offsetMs: number,
 ): Project {
-  const input = structuredClone(exampleProject);
-  Object.assign(input.shots[0]!.audioClips[0]!, {
-    startMs,
-    endMs,
-    offsetMs,
-  });
-  return migrateFormalProject(input) as Project;
+  const project = migrateProject(exampleProject);
+  return {
+    ...project,
+    shots: project.shots.map((shot, shotIndex) =>
+      shotIndex !== 0
+        ? shot
+        : {
+            ...shot,
+            audioClips: shot.audioClips.map((clip, clipIndex) =>
+              clipIndex !== 0
+                ? clip
+                : { ...clip, startMs, endMs, offsetMs },
+            ),
+          },
+    ),
+  };
 }
 
 describe('AudioClip source range validation', () => {

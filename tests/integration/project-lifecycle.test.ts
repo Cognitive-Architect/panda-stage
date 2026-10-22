@@ -115,6 +115,8 @@ describe('project directory lifecycle', () => {
           mimeType: 'image/png',
           width: 512,
           height: 512,
+          usage: 'uncategorized' as const,
+          keywords: [],
         },
       ],
       updatedAt: '2026-07-23T13:00:00.000Z',
@@ -209,7 +211,13 @@ describe('project directory lifecycle', () => {
       width: probe.width,
       height: probe.height,
       fps: probe.fps,
-      assets: probe.assets,
+      assets: probe.assets.map((asset) => {
+        if (asset.kind !== 'image') return asset;
+        const { usage: _usage, keywords: _keywords, ...version0Asset } = asset;
+        void _usage;
+        void _keywords;
+        return version0Asset;
+      }),
       createdAt: probe.createdAt,
       updatedAt: probe.updatedAt,
       shots: probe.shots.map((shot) => ({

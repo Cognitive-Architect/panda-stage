@@ -120,7 +120,8 @@ describe('Issue #627 Character Expression editor bridge', () => {
       assets: [
         ...base.assets,
         { id: mouthId, kind: 'image', name: 'Mouth', relativePath: 'assets/mouth.png',
-          mimeType: 'image/png', width: 640, height: 640 },
+          mimeType: 'image/png', width: 640, height: 640,
+          usage: 'uncategorized', keywords: [] },
         { id: audioId, kind: 'audio', name: 'Speech', relativePath: 'assets/speech.wav',
           mimeType: 'audio/wav', durationMs: 3_000 },
       ],

@@ -38,6 +38,8 @@ function imageAsset(
     mimeType: 'image/png',
     width,
     height,
+    usage: 'uncategorized',
+    keywords: [],
   };
 }
 

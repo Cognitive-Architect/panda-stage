@@ -50,6 +50,8 @@ function imageAsset(
     mimeType: 'image/png',
     width,
     height,
+    usage: 'uncategorized',
+    keywords: [],
     ...(sha256 ? { sha256 } : {}),
   };
 }

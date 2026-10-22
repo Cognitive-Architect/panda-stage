@@ -6,6 +6,32 @@ import {
   RelativeProjectPathSchema,
 } from './common';
 
+export const ImageAssetUsageSchema = z.enum([
+  'uncategorized',
+  'background',
+  'character',
+  'prop',
+  'effect',
+]);
+
+export const AssetKeywordsSchema = z
+  .array(z.string().trim().min(1).max(32))
+  .max(8)
+  .superRefine((keywords, context) => {
+    const seen = new Set<string>();
+    keywords.forEach((keyword, index) => {
+      const normalized = keyword.toLowerCase();
+      if (seen.has(normalized)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Keywords must be unique, ignoring case.',
+          path: [index],
+        });
+      }
+      seen.add(normalized);
+    });
+  });
+
 const AssetBaseShape = {
   id: IdSchema,
   name: NameSchema,
@@ -57,6 +83,30 @@ export const ImageAssetSchema = z
     kind: z.literal('image'),
     width: z.number().int().positive(),
     height: z.number().int().positive(),
+    usage: ImageAssetUsageSchema,
+    keywords: AssetKeywordsSchema,
+    flaSnapshot: z
+      .object({
+        sourceBasename: z.string().trim().min(1).max(260),
+        sourceSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+        targetName: z.string().trim().min(1).max(500),
+        sourceLibraryItemName: z.string().trim().min(1).max(500).optional(),
+        renderTargetId: z.string().trim().min(1).max(128),
+        selectedFrameIndex: z.number().int().nonnegative(),
+        previewSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+/** Strict image shape persisted by schema v12 and earlier. */
+export const ImageAssetV12Schema = z
+  .object({
+    ...AssetBaseShape,
+    kind: z.literal('image'),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
     flaSnapshot: z
       .object({
         sourceBasename: z.string().trim().min(1).max(260),
@@ -80,6 +130,20 @@ export const AudioAssetSchema = z
   })
   .strict();
 
+/** Strict audio shape persisted by schema v12 and earlier. */
+export const AudioAssetV12Schema = z
+  .object({
+    ...AssetBaseShape,
+    kind: z.literal('audio'),
+    durationMs: PositiveMillisecondsSchema.optional(),
+  })
+  .strict();
+
+export const AssetV12Schema = z.discriminatedUnion('kind', [
+  ImageAssetV12Schema,
+  AudioAssetV12Schema,
+]);
+
 export const AssetSchema = z.discriminatedUnion('kind', [
   ImageAssetSchema,
   AudioAssetSchema,
@@ -88,3 +152,7 @@ export const AssetSchema = z.discriminatedUnion('kind', [
 export type ImageAsset = z.infer<typeof ImageAssetSchema>;
 export type AudioAsset = z.infer<typeof AudioAssetSchema>;
 export type Asset = z.infer<typeof AssetSchema>;
+export type ImageAssetV12 = z.infer<typeof ImageAssetV12Schema>;
+export type AudioAssetV12 = z.infer<typeof AudioAssetV12Schema>;
+export type AssetV12 = z.infer<typeof AssetV12Schema>;
+export type ImageAssetUsage = z.infer<typeof ImageAssetUsageSchema>;

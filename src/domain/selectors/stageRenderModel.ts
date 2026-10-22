@@ -125,6 +125,8 @@ function compatibilityImageAsset(
     mimeType: 'image/png',
     width: Math.max(1, Math.round(width)),
     height: Math.max(1, Math.round(height)),
+    usage: 'uncategorized',
+    keywords: [],
   };
 }
 

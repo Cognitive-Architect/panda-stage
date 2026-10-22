@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../../demo-project/project-v1.example.json';
 import {
-  AssetSchema,
+  AssetV12Schema,
   AudioClipSchema,
   CharacterSchema,
   DialogueSchema,
@@ -105,7 +105,7 @@ describe('ProjectSchema v7', () => {
   });
 
   it('exports executable schemas for every MVP entity', () => {
-    expect(AssetSchema.parse(exampleProject.assets[0])).toBeTruthy();
+    expect(AssetV12Schema.parse(exampleProject.assets[0])).toBeTruthy();
     const migrated = migrateProject(exampleProject);
     expect(CharacterSchema.parse(migrated.characters[0])).toBeTruthy();
     expect(VoiceProfileSchema.parse(exampleProject.voiceProfiles[0])).toBeTruthy();

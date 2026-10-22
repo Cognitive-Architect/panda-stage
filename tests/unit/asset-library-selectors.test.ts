@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { ProjectSchema, migrateProject } from '../../src/domain';
+import {
+  ProjectSchema,
+  migrateProject,
+  updateImageAssetAuthorMetadata,
+} from '../../src/domain';
 import {
   assetCategoryCounts,
   assetLibraryFilterCounts,
@@ -40,6 +44,56 @@ describe('asset library selectors', () => {
       ),
     ).toEqual(['Panda happy']);
     expect(filterAssetLibraryEntries(entries, '  ')).toEqual(entries);
+  });
+
+  it('searches author keywords while keeping same-name images independent by ID', () => {
+    const project = migrateProject(exampleProject);
+    const template = project.assets.find((asset) => asset.kind === 'image')!;
+    if (template.kind !== 'image') throw new Error('Expected image asset.');
+    const first = {
+      ...template,
+      id: randomUUID(),
+      name: '道具图A',
+      relativePath: 'assets/door-a.png',
+      usage: 'prop' as const,
+      keywords: ['门', '关闭'],
+    };
+    const second = {
+      ...first,
+      id: randomUUID(),
+      relativePath: 'assets/door-b.png',
+    };
+    const withDuplicates = ProjectSchema.parse({
+      ...project,
+      assets: [...project.assets, first, second],
+    });
+    const matches = filterAssetLibraryEntries(
+      selectAssetLibraryEntries(withDuplicates, 'all'),
+      '门',
+    ).filter((entry) => entry.asset.name === '道具图A');
+
+    expect(matches.map((entry) => entry.asset.id)).toEqual([
+      first.id,
+      second.id,
+    ]);
+    expect(matches[0]?.asset.id).not.toBe(matches[1]?.asset.id);
+
+    const edited = updateImageAssetAuthorMetadata(
+      withDuplicates,
+      first.id,
+      { name: '木门·关闭', usage: 'prop', keywords: ['门', '关闭'] },
+    );
+    expect(edited.assets.find((asset) => asset.id === first.id)?.name).toBe(
+      '木门·关闭',
+    );
+    expect(edited.assets.find((asset) => asset.id === second.id)).toEqual(
+      second,
+    );
+    expect(
+      selectAssetLibraryEntries(edited, 'background').some(
+        (entry) => entry.asset.id === first.id,
+      ),
+    ).toBe(true);
   });
 
   it('classifies a configured mouth image as a character image', () => {
@@ -182,6 +236,8 @@ describe('asset library selectors', () => {
         kind: 'image',
         width: 16,
         height: 12,
+        usage: 'uncategorized',
+        keywords: [],
       })),
     });
     const entries = selectAssetLibraryEntries(project, 'background');

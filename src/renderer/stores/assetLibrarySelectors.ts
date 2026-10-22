@@ -186,7 +186,11 @@ export function filterAssetLibraryEntries(
   if (!normalizedQuery) return [...entries];
 
   return entries.filter((entry) =>
-    [entry.asset.name, entry.contextLabel].some((value) =>
+    [
+      entry.asset.name,
+      entry.contextLabel,
+      ...(entry.asset.kind === 'image' ? entry.asset.keywords : []),
+    ].some((value) =>
       value.toLocaleLowerCase('zh-CN').includes(normalizedQuery),
     ),
   );

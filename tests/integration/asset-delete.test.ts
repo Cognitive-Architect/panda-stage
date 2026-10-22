@@ -128,6 +128,8 @@ async function createHarness(
     width: 16,
     height: 12,
     sha256: hash,
+    usage: 'uncategorized' as const,
+    keywords: [],
   };
   const referencedLayerId = randomUUID();
   const bodyCharacterId = randomUUID();

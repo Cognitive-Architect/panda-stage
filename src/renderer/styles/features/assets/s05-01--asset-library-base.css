@@ -545,6 +545,70 @@
   text-align: right;
 }
 
+.asset-card-usage {
+  color: #a9cdb2;
+  font-size: 10px;
+}
+
+.asset-author-metadata-form {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  color: #dce8df;
+  font-size: 12px;
+}
+
+.asset-author-metadata-form label {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  color: #aab9af;
+}
+
+.asset-author-metadata-form input,
+.asset-author-metadata-form select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 8px;
+  color: #eef6f0;
+  background: #101713;
+}
+
+.asset-author-metadata-form :focus-visible,
+.asset-author-metadata-edit:focus-visible {
+  outline: 2px solid #83d39a;
+  outline-offset: 2px;
+}
+
+.asset-author-metadata-form small {
+  color: #82938a;
+  line-height: 1.4;
+}
+
+.asset-author-metadata-form [role='alert'] {
+  margin: 0;
+  color: #ffd8c8;
+  line-height: 1.4;
+}
+
+.asset-author-metadata-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.asset-author-metadata-actions button,
+.asset-author-metadata-edit {
+  min-height: 44px;
+  padding: 8px 10px;
+}
+
+.asset-author-metadata-actions button {
+  flex: 1;
+}
+
 .asset-reference-warning {
   padding: 10px;
   border: 1px solid rgb(233 181 80 / 38%);

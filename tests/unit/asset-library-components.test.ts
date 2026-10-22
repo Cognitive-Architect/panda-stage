@@ -85,6 +85,7 @@ describe('asset library components', () => {
     );
     expect(missingMarkup).toContain('缩略图缺失');
     expect(missingMarkup).toContain('重建');
+    expect(missingMarkup).toContain('用途：未分类');
 
     const sourceMissingMarkup = renderToStaticMarkup(
       createElement(AssetCard, {
@@ -159,6 +160,28 @@ describe('asset library components', () => {
     expect(originDescriptionList).not.toMatch(/<div(?:\s[^>]*)?>\s*<div/u);
   });
 
+  it('shows author-confirmed image usage and keywords in the existing details surface', () => {
+    const image = migrateProject(exampleProject).assets.find(
+      (asset) => asset.kind === 'image',
+    );
+    if (!image || image.kind !== 'image') throw new Error('Expected an image fixture.');
+    const markup = renderToStaticMarkup(
+      createElement(AssetDetails, {
+        asset: { ...image, name: '木门·关闭', usage: 'prop', keywords: ['门', '关闭'] },
+        references: [],
+        busy: false,
+        onDelete: noop,
+        onSaveImageMetadata: noop,
+      }),
+    );
+
+    expect(markup).toContain('data-testid="asset-author-usage"');
+    expect(markup).toContain('<dd>道具</dd>');
+    expect(markup).toContain('data-testid="asset-author-keywords"');
+    expect(markup).toContain('<dd>门 · 关闭</dd>');
+    expect(markup).toContain('编辑名称、用途和关键词');
+  });
+
   it('renders a clear empty state for a category with no assets', () => {
     const project = migrateProject({
       ...exampleProject,
@@ -218,6 +241,8 @@ describe('asset library components', () => {
           kind: 'image' as const,
           width: 16,
           height: 12,
+          usage: 'uncategorized' as const,
+          keywords: [],
         };
         return {
           id: `asset:${asset.id}`,

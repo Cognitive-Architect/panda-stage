@@ -67,6 +67,8 @@ function imageAsset(id: string, name: string): Project['assets'][number] {
     byteSize: 2_048,
     width: 1_920,
     height: 1_080,
+    usage: 'uncategorized',
+    keywords: [],
   } as Project['assets'][number];
 }
 

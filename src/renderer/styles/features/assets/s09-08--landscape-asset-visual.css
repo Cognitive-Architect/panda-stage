@@ -221,6 +221,10 @@
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='assets']
   .asset-library[data-asset-library-presentation='landscape']
+  .asset-card-usage,
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='assets']
+  .asset-library[data-asset-library-presentation='landscape']
   .asset-card-metadata {
   display: inline;
   color: var(--ui-color-text-muted, #819188);

@@ -8,7 +8,9 @@ import {
 import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import {
   scanAssetReferences,
+  updateImageAssetAuthorMetadata,
 } from '../../../domain';
+import type { ImageAssetAuthorMetadata } from '../../../domain';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import {
@@ -159,6 +161,26 @@ export function AssetLibrary({
   const visibleEntries = useMemo(
     () => filterAssetLibraryEntries(entries, searchQuery),
     [entries, searchQuery],
+  );
+  const saveImageMetadata = useCallback(
+    (assetId: string, metadata: ImageAssetAuthorMetadata): void => {
+      const current = editorProjectStore.getSnapshot();
+      if (
+        !snapshot ||
+        !current ||
+        current.projectRoot !== snapshot.projectRoot ||
+        current.project.id !== snapshot.project.id
+      ) {
+        throw new Error('项目已切换，请重新选择素材后再编辑。');
+      }
+      const project = updateImageAssetAuthorMetadata(
+        current.project,
+        assetId,
+        metadata,
+      );
+      editorProjectStore.updateProject(project, 'Edit image asset details');
+    },
+    [snapshot],
   );
   const isPortraitBrowser = hideHeading && view === 'browser';
   const totalPages = isPortraitBrowser
@@ -809,6 +831,7 @@ export function AssetLibrary({
                       busy={busy}
                       onDelete={() => void deleteSelected()}
                       metadataError={metadataErrors[selectedAsset.id]}
+                      onSaveImageMetadata={saveImageMetadata}
                       onRefreshMetadata={() =>
                         void refreshAssetMetadata(selectedAsset.id)
                       }
@@ -934,6 +957,7 @@ export function AssetLibrary({
             metadataError={
               selectedAsset ? metadataErrors[selectedAsset.id] : undefined
             }
+            onSaveImageMetadata={saveImageMetadata}
             onRefreshMetadata={
               selectedAsset
                 ? () => void refreshAssetMetadata(selectedAsset.id)

@@ -1,4 +1,9 @@
+import { useEffect, useState } from 'react';
+import { ZodError } from 'zod';
 import type { Asset } from '../../../domain';
+import type {
+  ImageAssetAuthorMetadata,
+} from '../../../domain';
 import { Image, ImageOff, Music2 } from 'lucide-react';
 import { DecorativeIcon } from '../../ui';
 import {
@@ -9,6 +14,10 @@ import {
   audioMetadataError,
   audioMetadataState,
 } from './assetMetadataState';
+import {
+  IMAGE_ASSET_USAGE_OPTIONS,
+  imageAssetUsageLabel,
+} from './assetUsage';
 
 export interface AssetDetailsProps {
   asset: Asset | null;
@@ -19,6 +28,10 @@ export interface AssetDetailsProps {
   presentation?: 'default' | 'portrait';
   metadataError?: string;
   onRefreshMetadata?: () => void;
+  onSaveImageMetadata?: (
+    assetId: string,
+    metadata: ImageAssetAuthorMetadata,
+  ) => void;
 }
 
 function dimensions(asset: Asset): string {
@@ -81,7 +94,21 @@ export function AssetDetails({
   presentation = 'default',
   metadataError,
   onRefreshMetadata,
+  onSaveImageMetadata,
 }: AssetDetailsProps): React.JSX.Element {
+  const [editingImageMetadata, setEditingImageMetadata] = useState(false);
+  const [imageNameDraft, setImageNameDraft] = useState('');
+  const [imageUsageDraft, setImageUsageDraft] = useState<
+    NonNullable<Extract<Asset, { kind: 'image' }>['usage']>
+  >('uncategorized');
+  const [keywordsDraft, setKeywordsDraft] = useState('');
+  const [imageMetadataError, setImageMetadataError] = useState('');
+
+  useEffect(() => {
+    setEditingImageMetadata(false);
+    setImageMetadataError('');
+  }, [asset?.id]);
+
   if (!asset) {
     return (
       <aside className="asset-details asset-details-empty">
@@ -102,6 +129,48 @@ export function AssetDetails({
           : 'checking';
   const metadataState = audioMetadataState(asset, metadataError);
   const metadataErrorMessage = audioMetadataError(asset, metadataError);
+  const beginImageMetadataEdit = (): void => {
+    if (asset.kind !== 'image') return;
+    setImageNameDraft(asset.name);
+    setImageUsageDraft(asset.usage);
+    setKeywordsDraft(asset.keywords.join(', '));
+    setImageMetadataError('');
+    setEditingImageMetadata(true);
+  };
+  const cancelImageMetadataEdit = (): void => {
+    setEditingImageMetadata(false);
+    setImageMetadataError('');
+  };
+  const saveImageMetadata = (
+    event: React.FormEvent<HTMLFormElement>,
+  ): void => {
+    event.preventDefault();
+    if (asset.kind !== 'image' || !onSaveImageMetadata) return;
+    try {
+      onSaveImageMetadata(asset.id, {
+        name: imageNameDraft,
+        usage: imageUsageDraft,
+        keywords: keywordsDraft.split(/[,，\n]/u),
+      });
+      setEditingImageMetadata(false);
+      setImageMetadataError('');
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const fields = new Set(error.issues.map((issue) => issue.path[0]));
+        setImageMetadataError(
+          fields.has('name')
+            ? '名称须为 1 到 200 个字符。'
+            : fields.has('keywords')
+              ? '关键词最多 8 个，每个不超过 32 个字符。'
+              : '用途无效，请重新选择。',
+        );
+        return;
+      }
+      setImageMetadataError(
+        error instanceof Error ? error.message : '素材信息更新失败。',
+      );
+    }
+  };
   return (
     <aside
       className={`asset-details${presentation === 'portrait' ? ' asset-details-portrait' : ''}`}
@@ -126,6 +195,18 @@ export function AssetDetails({
           <dt>尺寸 / 时长</dt>
           <dd>{dimensions(asset)}</dd>
         </div>
+        {asset.kind === 'image' ? (
+          <>
+            <div data-testid="asset-author-usage">
+              <dt>用途</dt>
+              <dd>{imageAssetUsageLabel(asset.usage)}</dd>
+            </div>
+            <div data-testid="asset-author-keywords">
+              <dt>关键词</dt>
+              <dd>{asset.keywords.length > 0 ? asset.keywords.join(' · ') : '无'}</dd>
+            </div>
+          </>
+        ) : null}
         {asset.kind === 'image' && asset.flaSnapshot ? (
           <>
             <div>
@@ -171,6 +252,75 @@ export function AssetDetails({
           </dd>
         </div>
       </dl>
+      {asset.kind === 'image' && onSaveImageMetadata ? (
+        editingImageMetadata ? (
+          <form
+            className="asset-author-metadata-form"
+            data-testid="asset-author-metadata-form"
+            onSubmit={saveImageMetadata}
+          >
+            <label>
+              名称
+              <input
+                autoFocus
+                maxLength={200}
+                onChange={(event) => setImageNameDraft(event.target.value)}
+                required
+                value={imageNameDraft}
+              />
+            </label>
+            <label>
+              用途
+              <select
+                onChange={(event) =>
+                  setImageUsageDraft(
+                    event.target.value as typeof imageUsageDraft,
+                  )
+                }
+                value={imageUsageDraft}
+              >
+                {IMAGE_ASSET_USAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              关键词
+              <input
+                aria-describedby="asset-author-keywords-hint"
+                onChange={(event) => setKeywordsDraft(event.target.value)}
+                placeholder="门，关闭"
+                value={keywordsDraft}
+              />
+            </label>
+            <small id="asset-author-keywords-hint">
+              用逗号分隔，最多 8 个词；重复词会合并。
+            </small>
+            {imageMetadataError ? (
+              <p role="alert">{imageMetadataError}</p>
+            ) : null}
+            <div className="asset-author-metadata-actions">
+              <button disabled={busy} type="submit">
+                确认
+              </button>
+              <button onClick={cancelImageMetadataEdit} type="button">
+                取消
+              </button>
+            </div>
+          </form>
+        ) : (
+          <button
+            className="asset-author-metadata-edit"
+            disabled={busy}
+            onClick={beginImageMetadataEdit}
+            type="button"
+          >
+            编辑名称、用途和关键词
+          </button>
+        )
+      ) : null}
       {metadataState === 'error' && onRefreshMetadata ? (
         <button disabled={busy} onClick={onRefreshMetadata} type="button">
           重试

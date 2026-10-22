@@ -544,6 +544,8 @@ export class AssetImportService {
             kind: 'image',
             width: inspected.width,
             height: inspected.height,
+            usage: 'uncategorized',
+            keywords: [],
           }
         : {
             ...base,

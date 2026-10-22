@@ -497,6 +497,8 @@ export class FlaAssetCommitService {
         kind: 'image',
         width: validatedPng.width,
         height: validatedPng.height,
+        usage: 'uncategorized',
+        keywords: [],
       });
       const item: PlannedItem = {
         media,

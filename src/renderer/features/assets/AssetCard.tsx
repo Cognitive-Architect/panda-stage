@@ -13,6 +13,7 @@ import {
   audioMetadataError,
   audioMetadataState,
 } from './assetMetadataState';
+import { imageAssetUsageLabel } from './assetUsage';
 
 export type ThumbnailMissingReason = 'cache' | 'source' | 'error';
 
@@ -252,6 +253,14 @@ export function AssetCard({
           {asset.name}
         </strong>
         <span className="asset-card-context">{contextLabel}</span>
+        {image ? (
+          <span
+            className="asset-card-usage"
+            data-asset-usage={asset.usage}
+          >
+            用途：{imageAssetUsageLabel(asset.usage)}
+          </span>
+        ) : null}
         <span className="asset-card-metadata">{metadata}</span>
       </div>
     </article>

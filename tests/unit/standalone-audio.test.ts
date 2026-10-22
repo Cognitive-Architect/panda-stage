@@ -121,7 +121,13 @@ describe('A01 standalone audio foundation', () => {
     };
     expect(ProjectSchema.safeParse(misbound).success).toBe(false);
     project = service.create(project, { shotId: IDS.shot, assetId: ASSET, startMs: 700, role: 'sfx' });
-    const legacy = { ...project, schemaVersion: 7, shots: project.shots.map((shot) => ({ ...shot,
+    const legacyAssets = structuredClone(project.assets);
+    for (const asset of legacyAssets) {
+      if (asset.kind !== 'image') continue;
+      Reflect.deleteProperty(asset, 'usage');
+      Reflect.deleteProperty(asset, 'keywords');
+    }
+    const legacy = { ...project, schemaVersion: 7, assets: legacyAssets, shots: project.shots.map((shot) => ({ ...shot,
       audioClips: shot.audioClips.map(({ role, ...clip }) => { void role; return { ...clip, volume: 1.7 }; }),
     })) };
     const before = structuredClone(legacy);

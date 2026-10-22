@@ -39,7 +39,13 @@ describe('A01 actual ProjectService audio persistence', () => {
     expect(reopened.project.shots[0]!.audioClips).toEqual(project.shots[0]!.audioClips);
     const text = await readFile(path.join(root, 'project.json'), 'utf8');
     expect(text).not.toMatch(/selectedAudioClipId|undoCount|history/u);
-    const legacy = { ...project, schemaVersion: 7, shots: project.shots.map((shot) => ({ ...shot,
+    const legacyAssets = structuredClone(project.assets);
+    for (const asset of legacyAssets) {
+      if (asset.kind !== 'image') continue;
+      Reflect.deleteProperty(asset, 'usage');
+      Reflect.deleteProperty(asset, 'keywords');
+    }
+    const legacy = { ...project, schemaVersion: 7, assets: legacyAssets, shots: project.shots.map((shot) => ({ ...shot,
       audioClips: shot.audioClips.map(({ role, ...clip }) => { void role; return clip; }),
     })) };
     await writeFile(path.join(root, 'project.json'), JSON.stringify(legacy), 'utf8');

@@ -55,6 +55,8 @@ function compositePreviewProject(options: { head?: boolean } = {}): Project {
               width: 400,
               height: 600,
               sha256: 'e'.repeat(64),
+              usage: 'uncategorized' as const,
+              keywords: [],
             },
           ]
         : []),
@@ -67,6 +69,8 @@ function compositePreviewProject(options: { head?: boolean } = {}): Project {
         width: 120,
         height: 80,
         sha256: 'b'.repeat(64),
+        usage: 'uncategorized' as const,
+        keywords: [],
       },
       {
         id: ALT_FACE_ID,
@@ -77,6 +81,8 @@ function compositePreviewProject(options: { head?: boolean } = {}): Project {
         width: 220,
         height: 120,
         sha256: 'c'.repeat(64),
+        usage: 'uncategorized' as const,
+        keywords: [],
       },
       {
         id: AUDIO_ID,

@@ -152,6 +152,8 @@ describe('EditorProjectStore', () => {
       kind: 'image' as const,
       width: 16,
       height: 12,
+      usage: 'uncategorized' as const,
+      keywords: [],
     };
     const savedProject = ProjectSchema.parse({
       ...project,
@@ -184,6 +186,8 @@ describe('EditorProjectStore', () => {
       kind: 'image' as const,
       width: 16,
       height: 12,
+      usage: 'uncategorized' as const,
+      keywords: [],
     };
     const savedProject = ProjectSchema.parse({
       ...project,

@@ -46,6 +46,8 @@ export function buildProject(): Project {
         mimeType: 'image/png',
         width: 1920,
         height: 1080,
+        usage: 'uncategorized',
+        keywords: [],
       },
       {
         id: IDS.assetChar,
@@ -55,6 +57,8 @@ export function buildProject(): Project {
         mimeType: 'image/png',
         width: 640,
         height: 640,
+        usage: 'uncategorized',
+        keywords: [],
       },
       {
         id: IDS.assetChar2,
@@ -64,6 +68,8 @@ export function buildProject(): Project {
         mimeType: 'image/png',
         width: 640,
         height: 640,
+        usage: 'uncategorized',
+        keywords: [],
       },
     ],
     characters: [

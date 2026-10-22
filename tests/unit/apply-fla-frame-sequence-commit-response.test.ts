@@ -16,6 +16,8 @@ const existingAsset = {
   sha256: 'a'.repeat(64),
   width: 320,
   height: 240,
+  usage: 'uncategorized' as const,
+  keywords: [],
 };
 
 const importedAssetA = {
@@ -27,6 +29,8 @@ const importedAssetA = {
   sha256: 'b'.repeat(64),
   width: 320,
   height: 240,
+  usage: 'uncategorized' as const,
+  keywords: [],
 };
 
 const importedAssetB = {
@@ -38,6 +42,8 @@ const importedAssetB = {
   sha256: 'c'.repeat(64),
   width: 320,
   height: 240,
+  usage: 'uncategorized' as const,
+  keywords: [],
 };
 
 function item(

@@ -35,9 +35,16 @@ describe('schema v5 explicit flip lifecycle', () => {
     const projectRoot = path.join(parent, 'schema-v4.pandastage');
     const projectFile = path.join(projectRoot, 'project.json');
     const current = migrateProject(exampleProject);
+    const legacyAssets = structuredClone(current.assets);
+    for (const asset of legacyAssets) {
+      if (asset.kind !== 'image') continue;
+      Reflect.deleteProperty(asset, 'usage');
+      Reflect.deleteProperty(asset, 'keywords');
+    }
     const version4 = {
       ...current,
       schemaVersion: 4,
+      assets: legacyAssets,
       characters: current.characters.map((character) => {
         const { mode, ...historicalCharacter } = character;
         void mode;
