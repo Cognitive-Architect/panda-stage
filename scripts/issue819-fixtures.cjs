@@ -12,6 +12,42 @@ function hash(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
+function syntheticAudioWav(durationMs, amplitude, frequencySegments) {
+  const sampleRate = 48_000;
+  const sampleCount = Math.round((sampleRate * durationMs) / 1_000);
+  const pcm = Buffer.alloc(sampleCount * 2);
+  let segmentIndex = 0;
+  for (let index = 0; index < sampleCount; index += 1) {
+    const timeMs = (index * 1_000) / sampleRate;
+    while (
+      segmentIndex + 1 < frequencySegments.length &&
+      timeMs >= frequencySegments[segmentIndex + 1].startMs
+    ) {
+      segmentIndex += 1;
+    }
+    const frequency = frequencySegments[segmentIndex].frequencyHz;
+    const sample = Math.round(
+      amplitude * 32_767 * Math.sin((2 * Math.PI * frequency * index) / sampleRate),
+    );
+    pcm.writeInt16LE(sample, index * 2);
+  }
+
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0, 'ascii');
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write('WAVEfmt ', 8, 'ascii');
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write('data', 36, 'ascii');
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
+}
+
 const PNG_CRC_TABLE = Array.from({ length: 256 }, (_, value) => {
   let crc = value;
   for (let bit = 0; bit < 8; bit += 1) {
@@ -100,6 +136,9 @@ function pandaExpressionPng(expression) {
       line(previous[0], previous[1], point[0], point[1], 11, black);
       previous = point;
     }
+  } else if (expression === 'mouth-open') {
+    ellipse(320, 410, 34, 39, black);
+    ellipse(320, 389, 16, 8, white);
   } else {
     line(282, 410, 358, 410, 10, black);
   }
@@ -121,7 +160,7 @@ function pandaExpressionPng(expression) {
   ]);
 }
 
-async function generateIssue819Fixture(baseDirectory) {
+async function generateIssue819Fixture(baseDirectory, { includeAudioMix = false } = {}) {
   const runRoot = path.join(
     path.resolve(baseDirectory),
     `run-${new Date().toISOString().replace(/[:.]/gu, '-')}-${process.pid}`,
@@ -163,6 +202,7 @@ async function generateIssue819Fixture(baseDirectory) {
   project.assets = [];
   for (const asset of projectAssets) {
     if (asset.kind === 'audio') {
+      if (includeAudioMix) continue;
       const sourcePath = path.join(repositoryRoot, 'demo-project', asset.relativePath);
       const bytes = await fsp.readFile(sourcePath);
       asset.sha256 = hash(bytes);
@@ -186,9 +226,187 @@ async function generateIssue819Fixture(baseDirectory) {
     await fsp.writeFile(path.join(projectRoot, asset.relativePath), bytes);
   }
 
+  let audioMixFixture = null;
+  if (includeAudioMix) {
+    const characterLayer = shot.layers.find((layer) => layer.source.kind === 'character');
+    const character = project.characters.find(
+      (candidate) => candidate.id === characterLayer?.source.characterId,
+    );
+    if (!character) throw new Error('DL-03 fixture requires a character layer.');
+    const mouthOpenAssetId = randomUUID();
+    const mouthOpenBytes = pandaExpressionPng('mouth-open');
+    const mouthOpenAsset = {
+      id: mouthOpenAssetId,
+      kind: 'image',
+      name: 'DL-03 synthetic mouth-open image',
+      relativePath: 'assets/panda-mouth-open.png',
+      mimeType: 'image/png',
+      width: mouthOpenBytes.readUInt32BE(16),
+      height: mouthOpenBytes.readUInt32BE(20),
+      sha256: hash(mouthOpenBytes),
+    };
+    project.assets.push(mouthOpenAsset);
+    character.mouthOpenAssetId = mouthOpenAssetId;
+    await fsp.writeFile(path.join(projectRoot, mouthOpenAsset.relativePath), mouthOpenBytes);
+    // Keep the character stationary around the mouth-flap sample boundary.
+    // The expression change at 4s remains as an independent render control.
+    shot.timelineEvents = shot.timelineEvents.filter((event) => event.type === 'expression');
+
+    const audioDefinitions = [
+      {
+        key: 'dialogue',
+        name: 'DL-03 synthetic dialogue',
+        relativePath: 'assets/dl03-dialogue.wav',
+        durationMs: 4_000,
+        amplitude: 0.1,
+        frequencySegments: [
+          { startMs: 0, frequencyHz: 330 },
+          { startMs: 250, frequencyHz: 440 },
+          { startMs: 750, frequencyHz: 660 },
+        ],
+      },
+      {
+        key: 'bgm',
+        name: 'DL-03 synthetic BGM',
+        relativePath: 'assets/dl03-bgm.wav',
+        durationMs: 6_501,
+        amplitude: 0.08,
+        frequencySegments: [
+          { startMs: 0, frequencyHz: 220 },
+          { startMs: 1_000, frequencyHz: 260 },
+        ],
+      },
+      {
+        key: 'sfx-one',
+        name: 'DL-03 synthetic SFX one',
+        relativePath: 'assets/dl03-sfx-one.wav',
+        durationMs: 2_000,
+        amplitude: 0.08,
+        frequencySegments: [
+          { startMs: 0, frequencyHz: 600 },
+          { startMs: 250, frequencyHz: 880 },
+        ],
+      },
+      {
+        key: 'sfx-two',
+        name: 'DL-03 synthetic SFX two',
+        relativePath: 'assets/dl03-sfx-two.wav',
+        durationMs: 2_000,
+        amplitude: 0.08,
+        frequencySegments: [
+          { startMs: 0, frequencyHz: 600 },
+          { startMs: 400, frequencyHz: 1_320 },
+        ],
+      },
+    ];
+    const audioAssetIds = new Map();
+    for (const definition of audioDefinitions) {
+      const id = randomUUID();
+      const bytes = syntheticAudioWav(
+        definition.durationMs,
+        definition.amplitude,
+        definition.frequencySegments,
+      );
+      project.assets.push({
+        id,
+        kind: 'audio',
+        name: definition.name,
+        relativePath: definition.relativePath,
+        mimeType: 'audio/wav',
+        sha256: hash(bytes),
+        durationMs: definition.durationMs,
+        metadata: { status: 'ready', warnings: [] },
+      });
+      audioAssetIds.set(definition.key, id);
+      await fsp.writeFile(path.join(projectRoot, definition.relativePath), bytes);
+    }
+
+    const clipIds = {
+      dialogue: randomUUID(),
+      bgm: randomUUID(),
+      sfxOne: randomUUID(),
+      sfxTwo: randomUUID(),
+    };
+    shot.audioClips = [
+      {
+        id: clipIds.dialogue,
+        name: 'DL-03 dialogue 0–3s',
+        assetId: audioAssetIds.get('dialogue'),
+        role: 'dialogue',
+        startMs: 0,
+        endMs: 3_000,
+        offsetMs: 250,
+        volume: 1,
+      },
+      {
+        id: clipIds.bgm,
+        name: 'DL-03 BGM full Shot',
+        assetId: audioAssetIds.get('bgm'),
+        role: 'bgm',
+        startMs: 0,
+        endMs: shot.durationMs,
+        offsetMs: 0,
+        volume: 0.5,
+      },
+      {
+        id: clipIds.sfxOne,
+        name: 'DL-03 SFX one 1.5–2.5s',
+        assetId: audioAssetIds.get('sfx-one'),
+        role: 'sfx',
+        startMs: 1_500,
+        endMs: 2_500,
+        offsetMs: 250,
+        volume: 1.5,
+      },
+      {
+        id: clipIds.sfxTwo,
+        name: 'DL-03 SFX two 2–3s',
+        assetId: audioAssetIds.get('sfx-two'),
+        role: 'sfx',
+        startMs: 2_000,
+        endMs: 3_000,
+        offsetMs: 400,
+        volume: 2,
+      },
+    ];
+    if (!shot.dialogues[0]) {
+      throw new Error('DL-03 fixture requires a Dialogue to bind to its voice clip.');
+    }
+    shot.dialogues = [{
+      ...shot.dialogues[0],
+      startMs: 0,
+      endMs: 6_150,
+      text: 'DL-03: spoken line ends at 3 seconds; subtitle remains through 6.15 seconds.',
+      audioClipId: clipIds.dialogue,
+    }];
+    audioMixFixture = {
+      mouthOpenAssetId,
+      mouthOpenAssetSha256: mouthOpenAsset.sha256,
+      dialogueClipId: clipIds.dialogue,
+      dialogueAssetId: audioAssetIds.get('dialogue'),
+      dialogueStartMs: 0,
+      dialogueEndMs: 3_000,
+      dialogueOffsetMs: 250,
+      subtitleStartMs: 0,
+      subtitleEndMs: 6_150,
+      bgmClipId: clipIds.bgm,
+      bgmStartMs: 0,
+      bgmEndMs: shot.durationMs,
+      bgmVolume: 0.5,
+      sfx: [
+        { clipId: clipIds.sfxOne, startMs: 1_500, endMs: 2_500, offsetMs: 250, volume: 1.5 },
+        { clipId: clipIds.sfxTwo, startMs: 2_000, endMs: 3_000, offsetMs: 400, volume: 2 },
+      ],
+      sfxOverlapMs: 500,
+    };
+  }
+
   const validated = ProjectSchema.parse(project);
-  if (validated.shots.length !== 1 || validated.shots[0]?.audioClips.length !== 0) {
-    throw new Error('Issue #819 fixture must contain one silent Shot.');
+  if (
+    validated.shots.length !== 1 ||
+    validated.shots[0]?.audioClips.length !== (includeAudioMix ? 4 : 0)
+  ) {
+    throw new Error(`Issue #819 fixture must contain one ${includeAudioMix ? 'audio' : 'silent'} Shot.`);
   }
   await fsp.writeFile(
     path.join(projectRoot, 'project.json'),
@@ -200,6 +418,8 @@ async function generateIssue819Fixture(baseDirectory) {
     projectRoot,
     evidenceRoot,
     project: validated,
+    audioMixFixture,
+    mouthOpenAssetSha256: audioMixFixture?.mouthOpenAssetSha256 ?? null,
     expressionAssetHashes: Object.fromEntries(
       validated.assets
         .filter((asset) => asset.relativePath.endsWith('panda-neutral.png') || asset.relativePath.endsWith('panda-happy.png'))

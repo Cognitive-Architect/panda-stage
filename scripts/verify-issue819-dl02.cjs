@@ -20,9 +20,12 @@ const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
 const { ProjectSchema } = require('../dist-electron/domain/models/project.js');
 const { generateIssue819Fixture } = require('./issue819-fixtures.cjs');
 
+const dl03Mode = process.env.PANDA_STAGE_ISSUE823_DL03 === '1';
 const baseDirectory =
   process.env.PANDA_STAGE_ISSUE819_ROOT ??
-  'D:\\PandaStage-Acceptance\\issue819-dl02';
+  (dl03Mode
+    ? 'D:\\PandaStage-Acceptance\\issue823-dl03'
+    : 'D:\\PandaStage-Acceptance\\issue819-dl02');
 process.env.VITE_DEV_SERVER_URL = '';
 app.setPath('userData', path.join(path.resolve(baseDirectory), 'electron-user-data'));
 app.on('window-all-closed', () => {});
@@ -405,7 +408,97 @@ function runProcess(executable, args) {
   });
 }
 
-async function exportEvidence(outputPath, evidenceDirectory, label, mediaTools) {
+function measureToneAmplitude(samples, startSeconds, frequencyHz, sampleRate = 48_000) {
+  const start = Math.floor(startSeconds * sampleRate);
+  const count = Math.floor(0.12 * sampleRate);
+  if ((start + count) * 4 > samples.length || count <= 0) return 0;
+  let sine = 0;
+  let cosine = 0;
+  for (let index = 0; index < count; index += 1) {
+    const value = samples.readFloatLE((start + index) * 4);
+    const phase = (2 * Math.PI * frequencyHz * index) / sampleRate;
+    sine += value * Math.sin(phase);
+    cosine += value * Math.cos(phase);
+  }
+  return (2 * Math.hypot(sine, cosine)) / count;
+}
+
+async function captureAudioMixEvidence(outputPath, evidenceDirectory, mediaTools, mixFixture) {
+  const pcmPath = path.join(evidenceDirectory, 'decoded-audio.f32le');
+  await runProcess(mediaTools.ffmpegPath, [
+    '-y', '-v', 'error', '-i', outputPath,
+    '-map', '0:a:0', '-vn', '-ac', '1', '-ar', '48000',
+    '-c:a', 'pcm_f32le', '-f', 'f32le', pcmPath,
+  ]);
+  const pcm = await fsp.readFile(pcmPath);
+  assert(pcm.length >= 6 * 48_000 * 4, 'DL-03 AAC decode is shorter than six seconds.');
+
+  const measure = (timeSeconds, frequencyHz) =>
+    measureToneAmplitude(pcm, timeSeconds, frequencyHz);
+  const measurements = {
+    dialogueOffsetMarkerAt100ms: {
+      expectedHz: 440,
+      wrongZeroOffsetMarkerHz: 330,
+      expectedAmplitude: measure(0.1, 440),
+      wrongMarkerAmplitude: measure(0.1, 330),
+    },
+    dialogueOffsetMarkerAt600ms: {
+      expectedHz: 660,
+      expectedAmplitude: measure(0.6, 660),
+    },
+    bgmAt500ms: measure(0.5, 220),
+    bgmAt1200ms: measure(1.2, 260),
+    sfxOneOffsetMarkerAt1600ms: {
+      expectedHz: 880,
+      wrongZeroOffsetMarkerHz: 600,
+      expectedAmplitude: measure(1.6, 880),
+      wrongMarkerAmplitude: measure(1.6, 600),
+    },
+    sfxTwoOffsetMarkerAt2050ms: {
+      expectedHz: 1_320,
+      wrongZeroOffsetMarkerHz: 600,
+      expectedAmplitude: measure(2.05, 1_320),
+      wrongMarkerAmplitude: measure(2.05, 600),
+    },
+    overlappingSfxAt2250ms: {
+      sfxOne880Hz: measure(2.25, 880),
+      sfxTwo1320Hz: measure(2.25, 1_320),
+    },
+    sfxOneAfterEndAt2750ms: measure(2.75, 880),
+    sfxTwoAfterOverlapAt2750ms: measure(2.75, 1_320),
+    dialogueAfterEndAt3200ms: measure(3.2, 660),
+    bgmNearShotTailAt6250ms: measure(6.25, 260),
+  };
+
+  assert(measurements.dialogueOffsetMarkerAt100ms.expectedAmplitude > 0.05, 'Dialogue source offset marker is absent from the output.');
+  assert(measurements.dialogueOffsetMarkerAt100ms.wrongMarkerAmplitude < 0.025, 'Dialogue source offset was not applied.');
+  assert(measurements.dialogueOffsetMarkerAt600ms.expectedAmplitude > 0.05, 'Dialogue source-time transition is absent.');
+  assert(measurements.bgmAt500ms > 0.02 && measurements.bgmAt1200ms > 0.02, 'BGM did not span its expected source segments.');
+  assert(measurements.sfxOneOffsetMarkerAt1600ms.expectedAmplitude > 0.06, 'First SFX source offset marker is absent.');
+  assert(measurements.sfxOneOffsetMarkerAt1600ms.wrongMarkerAmplitude < 0.025, 'First SFX source offset was not applied.');
+  assert(measurements.sfxTwoOffsetMarkerAt2050ms.expectedAmplitude > 0.08, 'Second SFX source offset marker is absent.');
+  assert(measurements.sfxTwoOffsetMarkerAt2050ms.wrongMarkerAmplitude < 0.025, 'Second SFX source offset was not applied.');
+  assert(measurements.overlappingSfxAt2250ms.sfxOne880Hz > 0.06, 'First overlapping SFX is missing.');
+  assert(measurements.overlappingSfxAt2250ms.sfxTwo1320Hz > 0.08, 'Second overlapping SFX is missing.');
+  assert(measurements.sfxOneAfterEndAt2750ms < 0.025, 'First SFX continues past its clip end.');
+  assert(measurements.sfxTwoAfterOverlapAt2750ms > 0.08, 'Second SFX does not continue after the overlap.');
+  assert(measurements.dialogueAfterEndAt3200ms < 0.025, 'Dialogue continues after its audio clip ends.');
+  assert(measurements.bgmNearShotTailAt6250ms > 0.02, 'BGM does not reach the Shot tail.');
+
+  const result = {
+    pcmPath,
+    sampleRate: 48_000,
+    sampleFormat: 'f32le mono',
+    decodedDurationSeconds: pcm.length / (4 * 48_000),
+    projectMixFixture: mixFixture,
+    measurements,
+    subtitleContinuesPastDialogueAudio: mixFixture.subtitleEndMs > mixFixture.dialogueEndMs,
+  };
+  await fsp.writeFile(path.join(evidenceDirectory, 'audio-mix-samples.json'), JSON.stringify(result, null, 2), 'utf8');
+  return result;
+}
+
+async function exportEvidence(outputPath, evidenceDirectory, label, mediaTools, options = {}) {
   const rawProbe = await runProcess(mediaTools.ffprobePath, [
     '-v', 'error',
     '-count_frames',
@@ -421,15 +514,24 @@ async function exportEvidence(outputPath, evidenceDirectory, label, mediaTools) 
   const fpsParts = String(video?.avg_frame_rate ?? video?.r_frame_rate ?? '0/1').split('/');
   const fps = Number(fpsParts[0]) / Number(fpsParts[1] || 1);
   const durationSeconds = Number(video?.duration ?? probe.format?.duration);
+  const expectAudioMix = options.expectAudioMix === true;
   assert(video?.codec_name === 'h264', `${label}: FFprobe did not report H.264.`);
   assert(video?.pix_fmt === 'yuv420p', `${label}: FFprobe did not report yuv420p.`);
   assert(video?.width === 1920 && video?.height === 1080, `${label}: FFprobe frame size is not 1920x1080.`);
   assert(Math.abs(fps - 24) < 0.001, `${label}: FFprobe frame rate is not 24 fps (${fps}).`);
-  assert(audio.length === 0, `${label}: the silent export contains an audio stream.`);
+  assert(audio.length === (expectAudioMix ? 1 : 0), `${label}: expected ${expectAudioMix ? 'one' : 'zero'} audio stream(s), received ${audio.length}.`);
+  if (expectAudioMix) {
+    assert(audio[0]?.codec_name === 'aac', `${label}: FFprobe did not report AAC.`);
+    assert(audio[0]?.sample_rate === '48000', `${label}: AAC sample rate is not 48000 Hz.`);
+    assert(Math.abs(Number(audio[0]?.duration) - 6.501) < 0.08, `${label}: AAC duration is not aligned to the 6.501 second Shot.`);
+  }
   assert(frameCount === 157, `${label}: export frame count differs from the 6.501 second Shot (${frameCount} frames).`);
   assert(Math.abs(durationSeconds - frameCount / 24) < 0.08, `${label}: encoded duration does not match the frame schedule.`);
 
   await fsp.mkdir(evidenceDirectory, { recursive: true });
+  const audioMixEvidence = expectAudioMix
+    ? await captureAudioMixEvidence(outputPath, evidenceDirectory, mediaTools, options.mixFixture)
+    : null;
   const probePath = path.join(evidenceDirectory, 'ffprobe.json');
   await fsp.writeFile(probePath, JSON.stringify(probe, null, 2), 'utf8');
   const firstFramePath = path.join(evidenceDirectory, 'boundary-first.png');
@@ -443,7 +545,7 @@ async function exportEvidence(outputPath, evidenceDirectory, label, mediaTools) 
   const lastFrame = await fsp.readFile(lastFramePath);
   assert(firstFrame.length > 1_000 && lastFrame.length > 1_000, `${label}: boundary frame evidence is empty.`);
   const frameEvidence = {};
-  for (const [name, index] of [
+  const frameSamples = [
     ['backgroundAfterFade', 10],
     ['eventBoundaryBefore', 47],
     ['eventBoundaryAt', 48],
@@ -454,7 +556,15 @@ async function exportEvidence(outputPath, evidenceDirectory, label, mediaTools) 
     ['expressionAt', 96],
     ['subtitleLastVisible', 147],
     ['subtitleEnded', 148],
-  ]) {
+  ];
+  if (expectAudioMix) {
+    frameSamples.push(
+      ['mouthDialogueOpen', 71],
+      ['mouthDialogueEndedWithSubtitle', 72],
+      ['mouthBgmOnlyWithSubtitle', 74],
+    );
+  }
+  for (const [name, index] of frameSamples) {
     const samplePath = path.join(evidenceDirectory, `frame-${String(index).padStart(3, '0')}.png`);
     await runProcess(mediaTools.ffmpegPath, [
       '-y', '-v', 'error', '-i', outputPath,
@@ -498,6 +608,74 @@ async function exportEvidence(outputPath, evidenceDirectory, label, mediaTools) 
     changedPixels: expressionChangedPixels,
     meanAbsoluteChannelDelta: expressionAbsoluteDelta / expressionBefore.length,
   };
+  let mouthEvidence = null;
+  if (expectAudioMix) {
+    assert(options.mixFixture?.mouthOpenAssetId, `${label}: DL-03 fixture has no mouth-open image.`);
+    const mouthFrames = {
+      dialogueOpen: path.join(evidenceDirectory, 'mouth-dialogue-open.rgb'),
+      dialogueEnded: path.join(evidenceDirectory, 'mouth-dialogue-ended.rgb'),
+      bgmOnly: path.join(evidenceDirectory, 'mouth-bgm-only.rgb'),
+    };
+    for (const [name, index] of [
+      ['dialogueOpen', 71],
+      ['dialogueEnded', 72],
+      ['bgmOnly', 74],
+    ]) {
+      await runProcess(mediaTools.ffmpegPath, [
+        '-y', '-v', 'error', '-i', outputPath,
+        '-vf', `select=eq(n\\,${index})`, '-vsync', '0', '-frames:v', '1',
+        '-f', 'rawvideo', '-pix_fmt', 'rgb24', mouthFrames[name],
+      ]);
+    }
+    const raw = {
+      dialogueOpen: await fsp.readFile(mouthFrames.dialogueOpen),
+      dialogueEnded: await fsp.readFile(mouthFrames.dialogueEnded),
+      bgmOnly: await fsp.readFile(mouthFrames.bgmOnly),
+    };
+    assert(
+      raw.dialogueOpen.length > 0 &&
+      raw.dialogueOpen.length === raw.dialogueEnded.length &&
+      raw.dialogueEnded.length === raw.bgmOnly.length,
+      `${label}: mouth projection boundary frames are invalid.`,
+    );
+    const compareFrames = (left, right) => {
+      let changedPixels = 0;
+      let absoluteChannelDelta = 0;
+      for (let offset = 0; offset < left.length; offset += 3) {
+        const delta = Math.abs(left[offset] - right[offset]) +
+          Math.abs(left[offset + 1] - right[offset + 1]) +
+          Math.abs(left[offset + 2] - right[offset + 2]);
+        if (delta > 24) changedPixels += 1;
+        absoluteChannelDelta += delta;
+      }
+      return {
+        pixelsWithDeltaOver24: changedPixels,
+        meanAbsoluteChannelDelta: absoluteChannelDelta / left.length,
+      };
+    };
+    const activeToEnded = compareFrames(raw.dialogueOpen, raw.dialogueEnded);
+    const endedToBgmOnly = compareFrames(raw.dialogueEnded, raw.bgmOnly);
+    assert(activeToEnded.pixelsWithDeltaOver24 > 500, `${label}: Simple Mouth did not change between open dialogue and ended dialogue.`);
+    assert(endedToBgmOnly.pixelsWithDeltaOver24 < 1_000, `${label}: BGM changed the closed mouth after dialogue audio ended.`);
+    assert(endedToBgmOnly.meanAbsoluteChannelDelta < 0.1, `${label}: visual output changed during BGM-only subtitle tail.`);
+    mouthEvidence = {
+      mouthOpenAssetId: options.mixFixture.mouthOpenAssetId,
+      mouthOpenAssetSha256: options.mixFixture.mouthOpenAssetSha256,
+      dialogueClipEndMs: options.mixFixture.dialogueEndMs,
+      subtitleEndMs: options.mixFixture.subtitleEndMs,
+      dialogueOpenFrameIndex: 71,
+      dialogueEndClosedFrameIndex: 72,
+      bgmOnlyClosedFrameIndex: 74,
+      dialogueOpenToClosed: activeToEnded,
+      closedDuringBgmTail: endedToBgmOnly,
+      framePaths: {
+        dialogueOpen: frameEvidence.mouthDialogueOpen,
+        dialogueEndedWithSubtitle: frameEvidence.mouthDialogueEndedWithSubtitle,
+        bgmOnlyWithSubtitle: frameEvidence.mouthBgmOnlyWithSubtitle,
+      },
+    };
+    await fsp.writeFile(path.join(evidenceDirectory, 'mouth-projection.json'), JSON.stringify(mouthEvidence, null, 2), 'utf8');
+  }
   const videoBytes = await fsp.readFile(outputPath);
   const mp4EvidencePath = path.join(evidenceDirectory, `${label}.mp4`);
   await fsp.copyFile(outputPath, mp4EvidencePath);
@@ -514,12 +692,14 @@ async function exportEvidence(outputPath, evidenceDirectory, label, mediaTools) 
     width: video.width,
     height: video.height,
     audioStreams: audio.length,
+    audioMixEvidence,
     ffprobePath: mediaTools.ffprobePath,
     firstFramePath,
     lastFramePath,
     lastNormalSampleIndex: 156,
     frameEvidence,
     expressionContrast,
+    mouthEvidence,
     stageLabelContract: {
       formalRendererProp: 'showStageLabel=false',
       previewDefault: 'showStageLabel=true',
@@ -687,7 +867,9 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
 }
 
 async function run() {
-  fixture = await generateIssue819Fixture(path.resolve(baseDirectory));
+  fixture = await generateIssue819Fixture(path.resolve(baseDirectory), {
+    includeAudioMix: dl03Mode,
+  });
   fixtureProject = ProjectSchema.parse(JSON.parse(await fsp.readFile(path.join(fixture.projectRoot, 'project.json'), 'utf8')));
   const projectFilePath = path.join(fixture.projectRoot, 'project.json');
   const initialProjectBytes = await fsp.readFile(projectFilePath);
@@ -709,8 +891,10 @@ async function run() {
   mainWindow.webContents.focus();
 
   const result = {
-    issue: 819,
-    workOrder: 'DL-02 formal MP4 export acceptance',
+    issue: dl03Mode ? 823 : 819,
+    workOrder: dl03Mode
+      ? 'DL-03 formal single-Shot audio/video export acceptance'
+      : 'DL-02 formal MP4 export acceptance',
     root: fixture.root,
     projectRoot: fixture.projectRoot,
     platform: process.platform,
@@ -728,12 +912,16 @@ async function run() {
         byteLength: assetBytesById.get(asset.id)?.length ?? null,
       })),
       expressionAssetHashes: fixture.expressionAssetHashes,
+      mouthOpenAssetSha256: fixture.mouthOpenAssetSha256,
     },
   };
 
   try {
     assert(fixtureProject.shots.length === 1, 'Fixture must contain exactly one Shot.');
-    assert(fixtureProject.shots[0].audioClips.length === 0, 'Fixture must contain no audio clips.');
+    assert(
+      fixtureProject.shots[0].audioClips.length === (dl03Mode ? 4 : 0),
+      `Fixture must contain ${dl03Mode ? 'four valid audio clips' : 'no audio clips'}.`,
+    );
     assert(fixtureProject.shots[0].durationMs > 5_000, 'Fixture must exceed the old five-second probe ceiling.');
     const expressionHashes = Object.values(fixture.expressionAssetHashes);
     assert(expressionHashes.length === 2 && expressionHashes[0] !== expressionHashes[1], 'Neutral and happy fixture PNGs must have different SHA-256 hashes.');
@@ -777,7 +965,13 @@ async function run() {
       'Static export changed Project revision, dirty state, or History.',
     );
     assert((await fsp.readFile(projectFilePath)).equals(initialProjectBytes), 'Static export wrote the unsaved editor revision into project.json.');
-    const staticEvidence = await exportEvidence(staticOutputPath, path.join(evidenceRoot, 'static'), 'static', mediaTools);
+    const staticEvidence = await exportEvidence(
+      staticOutputPath,
+      path.join(evidenceRoot, 'static'),
+      'static',
+      mediaTools,
+      { expectAudioMix: dl03Mode, mixFixture: fixture.audioMixFixture },
+    );
     staticEvidence.cameraMode = staticRun.start.cameraMode;
     staticEvidence.progressScreenshotCaptured = staticRun.progressCaptured;
     staticEvidence.creatorUiEvidence = {
@@ -824,7 +1018,13 @@ async function run() {
       'Speaker Focus export changed Project revision, dirty state, or History.',
     );
     assert((await fsp.readFile(projectFilePath)).equals(initialProjectBytes), 'Speaker Focus export wrote the unsaved editor revision into project.json.');
-    const speakerEvidence = await exportEvidence(speakerOutputPath, path.join(evidenceRoot, 'speaker-focus'), 'speaker-focus', mediaTools);
+    const speakerEvidence = await exportEvidence(
+      speakerOutputPath,
+      path.join(evidenceRoot, 'speaker-focus'),
+      'speaker-focus',
+      mediaTools,
+      { expectAudioMix: dl03Mode, mixFixture: fixture.audioMixFixture },
+    );
     speakerEvidence.cameraMode = speakerRun.start.cameraMode;
     speakerEvidence.progressScreenshotCaptured = speakerRun.progressCaptured;
     speakerEvidence.creatorUiEvidence = {
@@ -839,8 +1039,8 @@ async function run() {
     };
 
     const unsupportedUiCases = [];
+    if (!dl03Mode) {
     for (const scenario of [
-      { id: 'audio', expectedText: '不支持有声工程', fileName: 'unsupported-audio.mp4' },
       { id: 'multi-shot', expectedText: '只支持单镜头工程', fileName: 'unsupported-multi-shot.mp4' },
       { id: 'no-background', expectedText: '需要可见的图像背景', fileName: 'unsupported-no-background.mp4' },
     ]) {
@@ -873,6 +1073,7 @@ async function run() {
       });
     }
     await rendererJs("window.__pandaStageIssue816Acceptance.setExportScenario('baseline')");
+    }
 
     const raceTargetPath = path.join(fixture.projectRoot, 'target-created-at-commit.mp4');
     conflictAtCommitPath = raceTargetPath;
@@ -944,6 +1145,7 @@ async function run() {
       shotCount: fixtureProject.shots.length,
       durationMs: fixtureProject.shots[0].durationMs,
       audioClipCount: fixtureProject.shots[0].audioClips.length,
+      audioMixFixture: fixture.audioMixFixture,
       layerNames: fixtureProject.shots[0].layers.map((layer) => layer.name),
       timelineEventTypes: [...new Set(fixtureProject.shots[0].timelineEvents.map((event) => event.type))],
       timelineEvents: fixtureProject.shots[0].timelineEvents.map((event) => ({
@@ -1038,7 +1240,9 @@ async function run() {
     };
     await fsp.writeFile(path.join(evidenceRoot, 'acceptance-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
     await fsp.writeFile(path.join(fixture.root, 'acceptance-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
-    console.log(`PASS #819 DL-02 formal MP4 export acceptance: ${fixture.root}`);
+    console.log(
+      `PASS #${dl03Mode ? '823 DL-03 formal A/V' : '819 DL-02 formal MP4'} export acceptance: ${fixture.root}`,
+    );
     mainWindow.destroy();
     hiddenWindowManager.close();
     app.exit(0);

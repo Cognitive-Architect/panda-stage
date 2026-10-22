@@ -676,7 +676,7 @@
       }
     ]
   },
-  "count": 84,
+  "count": 85,
   "gates": [
     {
       "id": "issue663-dialogue-voice",
@@ -1673,6 +1673,18 @@
       "owner": "export",
       "supersedes": null,
       "notes": "Issue #819 DL-02 Electron proof through Creator UI and native Save As for a frozen single-Shot Project, both camera modes, silent FFmpeg/FFprobe MP4 validation, boundary frames, and overwrite cancellation. Generated fixture and UI Automation support the gate; OWNER visual acceptance remains separate."
+    },
+    {
+      "id": "issue823-dl03",
+      "script": "verify:issue823-dl03",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Issue #823 DL-03 generated-project Electron proof through Creator UI and native Save As for frozen dialogue/BGM/overlapping-SFX media, FFmpeg/FFprobe AAC and decoded tone timing/gain markers, Simple Mouth open/closed frame comparison while subtitle and BGM continue, both camera modes, failure cleanup, and external-player launch. OWNER audiovisual acceptance remains separate."
     },
     {
       "id": "timeline",
