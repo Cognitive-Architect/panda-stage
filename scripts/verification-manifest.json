@@ -674,7 +674,7 @@
       }
     ]
   },
-  "count": 88,
+  "count": 89,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1719,6 +1719,18 @@
       "owner": "character",
       "supersedes": null,
       "notes": "Bounded Issue #820 C04 S01 Electron proof for large composite-character assembly viewport fit and camera-only View All behavior; synthetic fixture evidence is not OWNER human acceptance."
+    },
+    {
+      "id": "issue822-c04-s04",
+      "script": "verify:issue822-c04-s04",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #822 C04 S04 Electron proof for left-card Body/Head/Face target selection, independent Change/Manage actions, compact action geometry, and recovered preview height across timeline and narrow 125% layouts; synthetic fixture evidence is not OWNER human acceptance."
     },
     {
       "id": "timeline",

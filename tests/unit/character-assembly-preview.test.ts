@@ -305,8 +305,9 @@ describe('S07 composite assembly preview', () => {
     expect(markup).not.toContain('data-testid="character-assembly-head-asset-selected"');
     expect(markup).not.toContain('data-testid="character-assembly-head-picker"');
     expect(markup).toContain('data-edit-target="head"');
-    expect(markup).toContain('data-testid="character-assembly-edit-head"');
-    expect(markup).toContain('data-testid="character-assembly-edit-face"');
+    expect(markup).not.toContain('character-assembly-edit-head');
+    expect(markup).not.toContain('character-assembly-edit-face');
+    expect(markup).not.toContain('character-assembly-workbench-header');
     expect(markup).toContain('data-testid="character-assembly-head-drag-fallback"');
     expect(markup).toContain('data-testid="character-assembly-head-scale-handle"');
     expect(markup).not.toContain('data-testid="character-assembly-body-scale-handle"');
@@ -332,6 +333,15 @@ describe('S07 composite assembly preview', () => {
     ).toHaveLength(1);
     expect(markup).toContain('data-testid="character-assembly-expression-preview-toggle"');
     expect(markup).not.toContain('data-testid="character-assembly-expression-preview-options"');
+    const workbenchStyles = readFileSync(
+      'src/renderer/styles/features/characters/assembly/s17-01--character-assembly-workbench.css',
+      'utf8',
+    );
+    expect(workbenchStyles).toMatch(
+      /\.character-assembly-workbench\s*\{[\s\S]*?grid-template-rows:\s*minmax\(0, 1fr\) max-content;/u,
+    );
+    expect(workbenchStyles).not.toContain('.character-assembly-workbench-header');
+    expect(workbenchStyles).not.toContain('.character-assembly-edit-targets');
     const rotationControls = readFileSync(
       'src/renderer/features/characters/CharacterAssemblyWorkbench.tsx',
       'utf8',
@@ -371,8 +381,10 @@ describe('S07 composite assembly preview', () => {
     expect(headlessMarkup).not.toContain('data-testid="character-assembly-head-scale-handle"');
     expect(headlessMarkup).not.toContain('data-testid="character-assembly-head-pivot"');
     expect(headlessMarkup).not.toContain('data-testid="character-assembly-test-head-motion"');
-    expect(headlessMarkup).toContain('data-testid="character-assembly-edit-body"');
-    expect(headlessMarkup).toContain('character-assembly-workbench-header');
+    expect(headlessMarkup).not.toContain('character-assembly-edit-body');
+    expect(headlessMarkup).not.toContain('character-assembly-workbench-header');
+    expect(headlessMarkup).not.toContain('character-assembly-edit-targets');
+    expect(headlessMarkup).toContain('data-testid="character-assembly-preview"');
     expect(headlessMarkup).toContain('data-testid="character-assembly-expression-preview-toggle"');
 
     const bodyMarkup = renderToStaticMarkup(createElement(CharacterAssemblyWorkbench, {

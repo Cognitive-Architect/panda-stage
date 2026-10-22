@@ -990,18 +990,6 @@ export function CharacterAssemblyWorkbench({
     });
   };
 
-  const selectEditTarget = (target: CharacterAssemblyEditTarget): void => {
-    if (target === 'head' && !head) return;
-    if (isEditingNeckPivot || isTestingHeadMotion) return;
-    dragRef.current = null;
-    characterAssemblySessionStore.setEditTarget(
-      target,
-      session.sessionId,
-      session.generation,
-    );
-    setIsEditingNeckPivot(false);
-  };
-
   const toggleNeckPivotEditing = (): void => {
     if (!head || isTestingHeadMotion) return;
     dragRef.current = null;
@@ -1493,40 +1481,6 @@ export function CharacterAssemblyWorkbench({
       }}
       onPointerDownCapture={markCameraInteraction}
     >
-      <header className="character-assembly-workbench-header">
-        <nav aria-label="编辑目标" className="character-assembly-edit-targets">
-          <button
-            aria-pressed={activeEditTarget === 'body'}
-            data-testid="character-assembly-edit-body"
-            disabled={isEditingNeckPivot || isTestingHeadMotion}
-            onClick={() => selectEditTarget('body')}
-            type="button"
-          >
-            身体
-          </button>
-          {head ? (
-            <button
-              aria-pressed={activeEditTarget === 'head'}
-              data-testid="character-assembly-edit-head"
-              disabled={isEditingNeckPivot || isTestingHeadMotion}
-              onClick={() => selectEditTarget('head')}
-              type="button"
-            >
-              头部
-            </button>
-          ) : null}
-          <button
-            aria-pressed={activeEditTarget === 'face'}
-            data-testid="character-assembly-edit-face"
-            disabled={isEditingNeckPivot || isTestingHeadMotion}
-            onClick={() => selectEditTarget('face')}
-            type="button"
-          >
-            脸部
-          </button>
-        </nav>
-      </header>
-
       <div
         aria-label="角色组装预览"
         className="character-assembly-preview-viewport"

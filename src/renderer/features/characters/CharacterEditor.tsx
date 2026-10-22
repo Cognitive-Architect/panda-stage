@@ -1104,6 +1104,11 @@ export function CharacterEditor({
                   label: '请选择图片',
                 }}
                 label="身体"
+                onSelectedAssetActivate={
+                  assemblyDraft?.bodyAssetId
+                    ? () => onSelectAssemblyEditTarget('body')
+                    : undefined
+                }
                 onChange={(assetId) => {
                   if (assetId) onSetAssemblyBodyAsset(assetId);
                 }}
@@ -1117,6 +1122,8 @@ export function CharacterEditor({
                 testId="character-assembly-body-picker"
                 thumbnails={thumbnails}
                 disabled={disabled}
+                selectedAssetActive={assemblyEditTarget === 'body'}
+                showEditTargetStatus={false}
                 selectedSurface
               />
               <ImageAssetPicker

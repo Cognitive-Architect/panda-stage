@@ -734,35 +734,12 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
-  grid-template-rows: max-content minmax(0, 1fr) max-content;
+  grid-template-rows: minmax(0, 1fr) max-content;
   gap: var(--ui-space-3);
   overflow: hidden;
   padding: var(--ui-space-4);
   color: var(--ui-color-text-primary);
   background: var(--ui-color-surface-app);
-}
-
-.character-assembly-workbench[data-has-head='false'] {
-  grid-template-rows: minmax(0, 1fr) max-content;
-}
-
-.editor-layout[data-shell-mode='landscape'] .character-assembly-workbench {
-  grid-template-rows: max-content minmax(0, 1fr) max-content;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .character-assembly-workbench-header {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.character-assembly-workbench-header {
-  display: flex;
-  min-width: 0;
-  min-height: 38px;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ui-space-3);
 }
 
 .character-assembly-head-picker {
@@ -774,38 +751,6 @@
 
 .character-assembly-head-picker .image-asset-picker {
   gap: 3px;
-}
-
-.character-assembly-edit-targets {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 4px;
-  order: -1;
-  padding: 3px;
-  border: 1px solid var(--ui-color-border);
-  border-radius: var(--ui-radius-medium);
-  background: var(--ui-color-surface-work);
-}
-
-.character-assembly-edit-targets button {
-  min-width: 56px;
-  min-height: 36px;
-  padding: 5px 10px;
-  border: 1px solid transparent;
-  border-radius: var(--ui-radius-small);
-  color: var(--ui-color-text-secondary);
-  background: transparent;
-  font: var(--ui-font-secondary);
-}
-
-.character-assembly-edit-targets button[aria-pressed='true'] {
-  border-color: var(--ui-color-selected-border);
-  color: var(--ui-color-text-primary);
-  background: var(--ui-color-selected-surface);
-}
-
-.character-assembly-edit-targets button:disabled {
-  opacity: 0.72;
 }
 
 .character-assembly-preview-viewport {
@@ -1771,16 +1716,6 @@
   .character-assembly-workbench {
     padding: 10px;
     gap: 8px;
-  }
-
-  .character-assembly-workbench-header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .character-assembly-edit-targets {
-    align-self: flex-start;
   }
 
   .character-assembly-head-picker {

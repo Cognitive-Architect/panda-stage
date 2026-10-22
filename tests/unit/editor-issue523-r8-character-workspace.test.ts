@@ -269,6 +269,91 @@ describe('Issue #523 R8 unified Character workspace', () => {
     expect(markup).toContain('aria-pressed="true"');
   });
 
+  it('uses the Body asset card as a separate session-only edit-target control', () => {
+    const { imageAssets, thumbnails } = fixture();
+    const project = migrateProject(exampleProject);
+    const base = project.characters[0]!;
+    const body = imageAssets[0]!;
+    const character = ProjectSchema.parse({
+      ...project,
+      characters: [{
+        ...base,
+        mode: 'composite' as const,
+        bodyAssetId: body.id,
+        facePlacement: { offsetX: 8, offsetY: -4, scale: 0.9 },
+      }],
+    }).characters[0]!;
+    if (character.mode !== 'composite') {
+      throw new Error('Expected a composite Character fixture.');
+    }
+    const markup = renderToStaticMarkup(
+      createElement(CharacterEditor, {
+        character,
+        imageAssets,
+        thumbnails,
+        warnings: [],
+        assemblyDraft: {
+          bodyAssetId: character.bodyAssetId,
+          bodyPlacement: character.bodyPlacement,
+          facePlacement: character.facePlacement,
+          expressionAssets: character.expressions.map((expression) => ({
+            expressionId: expression.id,
+            assetId: expression.assetId,
+          })),
+          ...(character.head ? { head: character.head } : {}),
+          mouthOpenAssetId: character.mouthOpenAssetId ?? null,
+        },
+        assemblyEditTarget: 'body',
+        onRenameCharacter: noop,
+        onDeleteCharacter: noop,
+        onAddExpression: noop,
+        onRenameExpression: noop,
+        onSetExpressionAsset: noop,
+        onRemoveExpression: noop,
+        onSetDefaultExpression: noop,
+        onSetMouthOpenAsset: noop,
+        onSetDefaultTransform: noop,
+        onThumbnailError: noop,
+        onOpenAssembly: () => true,
+        onLeaveAssembly: () => true,
+        onSetAssemblyHeadAsset: noop,
+        onSetAssemblyBodyAsset: noop,
+        onSelectAssemblyEditTarget: noop,
+        onSetAssemblyMouthAsset: noop,
+        presentation: 'landscape',
+        view: 'detail',
+      }),
+    );
+    const bodyPickerStart = markup.indexOf('data-testid="character-assembly-body-picker"');
+    const bodyPickerEnd = markup.indexOf('</section>', bodyPickerStart);
+    const bodyPicker = markup.slice(bodyPickerStart, bodyPickerEnd);
+    const bodySelected = bodyPicker.indexOf('data-testid="character-assembly-body-picker-selected"');
+    const bodySelectedEnd = bodyPicker.indexOf('</button>', bodySelected);
+    const bodyChange = bodyPicker.indexOf('data-testid="character-assembly-body-picker-change-action"');
+
+    expect(bodyPicker).toContain('aria-pressed="true"');
+    expect(bodyPicker).toContain('data-edit-target-selected="true"');
+    expect(bodyPicker).toContain('image-asset-picker-selected--compact-edit-target');
+    expect(bodyPicker).toContain('data-testid="character-assembly-body-picker-change-action"');
+    expect(bodyChange).toBeGreaterThan(bodySelectedEnd);
+    expect(markup).not.toContain('data-testid="character-assembly-edit-body"');
+    expect(markup).not.toContain('data-testid="character-assembly-edit-head"');
+    expect(markup).not.toContain('data-testid="character-assembly-edit-face"');
+
+    const assemblyStyles = source(
+      'src/renderer/styles/features/characters/assembly/s17-01--character-assembly-workbench.css',
+    );
+    const actionRule = assemblyStyles.match(
+      /\.character-assembly-drawer-panel\s+\.image-asset-picker-selected-row--surface\s+>\s+\.character-assembly-selected-action-button\s*\{([^}]*)\}/u,
+    )?.[1] ?? '';
+    expect(actionRule).toMatch(/min-width:\s*54px/u);
+    expect(actionRule).toMatch(/width:\s*max-content/u);
+    expect(actionRule).toMatch(/height:\s*44px/u);
+    expect(actionRule).toMatch(/min-height:\s*44px/u);
+    expect(actionRule).toMatch(/margin:\s*0 8px/u);
+    expect(actionRule).toMatch(/padding:\s*0 6px/u);
+  });
+
   it('resumes Assembly as the active workspace when an edit draft survives resource navigation', () => {
     const project = migrateProject(exampleProject);
     const base = project.characters[0]!;
