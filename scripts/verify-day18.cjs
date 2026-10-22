@@ -306,22 +306,26 @@ async function verifyDay18() {
     await window.webContents.executeJavaScript(
       waitFor(
         "[...document.querySelectorAll('.asset-category-tabs button')].some(" +
-          "(button) => button.textContent?.includes('背景'))",
+          "(button) => button.textContent?.includes('未绑定'))",
         'Asset category navigation did not render.',
       ),
     );
     await window.webContents.executeJavaScript(`(() => {
       const backgroundCategory = [...document.querySelectorAll(
         '.asset-category-tabs button'
-      )].find((button) => button.textContent?.includes('背景'));
+      )].find((button) => button.textContent?.includes('未绑定'));
       if (!backgroundCategory) {
-        throw new Error('Background asset category did not render.');
+        throw new Error('Unbound-role asset category did not render.');
       }
       if (backgroundCategory.getAttribute('aria-pressed') !== 'true') {
         backgroundCategory.click();
       }
       return true;
     })()`);
+    const categoryLabels = await window.webContents.executeJavaScript(
+      `([...document.querySelectorAll('.asset-category-tabs button')])` +
+        `.map((button) => button.querySelector('span')?.textContent?.trim() ?? '')`,
+    );
     await window.webContents.executeJavaScript(
       waitFor(
         "document.querySelector('.asset-grid') && " +
@@ -654,7 +658,7 @@ async function verifyDay18() {
       branch: 'feat/day-18-asset-library-ui',
       executedAt: new Date().toISOString(),
       ui: {
-        categories: ['角色图片', '背景图片', '音频'],
+        categories: categoryLabels,
         backgroundItemsBeforeDelete: initialPageScan.seenAssetCount,
         pagedBrowserScan: initialPageScan,
         thumbnailRequestCount,
