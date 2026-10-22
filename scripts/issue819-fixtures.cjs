@@ -326,6 +326,8 @@ async function generateIssue819Fixture(baseDirectory, { includeAudioMix = false 
       bgm: randomUUID(),
       sfxOne: randomUUID(),
       sfxTwo: randomUUID(),
+      sfxOnly: randomUUID(),
+      mutedSfx: randomUUID(),
     };
     shot.audioClips = [
       {
@@ -368,6 +370,26 @@ async function generateIssue819Fixture(baseDirectory, { includeAudioMix = false 
         offsetMs: 400,
         volume: 2,
       },
+      {
+        id: clipIds.sfxOnly,
+        name: 'DL-03 moved SFX-only voice-isolation sample',
+        assetId: audioAssetIds.get('sfx-one'),
+        role: 'sfx',
+        startMs: 3_500,
+        endMs: 4_000,
+        offsetMs: 250,
+        volume: 1,
+      },
+      {
+        id: clipIds.mutedSfx,
+        name: 'DL-03 zero-gain SFX sample',
+        assetId: audioAssetIds.get('sfx-one'),
+        role: 'sfx',
+        startMs: 4_000,
+        endMs: 4_500,
+        offsetMs: 250,
+        volume: 0,
+      },
     ];
     if (!shot.dialogues[0]) {
       throw new Error('DL-03 fixture requires a Dialogue to bind to its voice clip.');
@@ -398,13 +420,29 @@ async function generateIssue819Fixture(baseDirectory, { includeAudioMix = false 
         { clipId: clipIds.sfxTwo, startMs: 2_000, endMs: 3_000, offsetMs: 400, volume: 2 },
       ],
       sfxOverlapMs: 500,
+      sfxOnly: {
+        clipId: clipIds.sfxOnly,
+        movedFromStartMs: 3_250,
+        movedFromEndMs: 3_750,
+        startMs: 3_500,
+        endMs: 4_000,
+        offsetMs: 250,
+        volume: 1,
+      },
+      mutedSfx: {
+        clipId: clipIds.mutedSfx,
+        startMs: 4_000,
+        endMs: 4_500,
+        offsetMs: 250,
+        volume: 0,
+      },
     };
   }
 
   const validated = ProjectSchema.parse(project);
   if (
     validated.shots.length !== 1 ||
-    validated.shots[0]?.audioClips.length !== (includeAudioMix ? 4 : 0)
+    validated.shots[0]?.audioClips.length !== (includeAudioMix ? 6 : 0)
   ) {
     throw new Error(`Issue #819 fixture must contain one ${includeAudioMix ? 'audio' : 'silent'} Shot.`);
   }

@@ -395,6 +395,7 @@
         "verifierPatterns": [
           "scripts/verify-issue816-dl01.cjs",
           "scripts/verify-issue819-dl02.cjs",
+          "scripts/verify-issue823-dl03.cjs",
           "scripts/verify-issue660-export-audio-mix.cjs"
         ],
         "suites": [],
@@ -1684,7 +1685,7 @@
       "runIn": "local",
       "owner": "export",
       "supersedes": null,
-      "notes": "Issue #823 DL-03 generated-project Electron proof through Creator UI and native Save As for frozen dialogue/BGM/overlapping-SFX media, FFmpeg/FFprobe AAC and decoded tone timing/gain markers, Simple Mouth open/closed frame comparison while subtitle and BGM continue, both camera modes, failure cleanup, and external-player launch. OWNER audiovisual acceptance remains separate."
+      "notes": "Issue #823 DL-03 generated-project Electron proof through Creator UI and native Save As for frozen dialogue/BGM/overlapping-SFX media, FFmpeg/FFprobe AAC and decoded tone timing/gain markers including zero gain and moved SFX, Simple Mouth open/closed frame comparison during subtitle, BGM-only, and SFX-only tails, both camera modes, frozen-source replacement, undecodable source block, partial-mix failure cleanup, and external-player launch. OWNER audiovisual acceptance remains separate."
     },
     {
       "id": "timeline",

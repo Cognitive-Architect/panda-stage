@@ -1,5 +1,5 @@
 const { app, dialog, ipcMain, shell } = require('electron');
-const { createHash } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const { existsSync } = require('node:fs');
 const fsp = require('node:fs/promises');
 const { spawn } = require('node:child_process');
@@ -18,6 +18,7 @@ const { resolveMediaToolPaths } = require('../dist-electron/main/services/produc
 const { HiddenWindowManager } = require('../dist-electron/main/windows/hidden-window-manager.js');
 const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
 const { ProjectSchema } = require('../dist-electron/domain/models/project.js');
+const { buildExportAudioMixPlan } = require('../dist-electron/domain/export-audio-mix-plan.js');
 const { generateIssue819Fixture } = require('./issue819-fixtures.cjs');
 
 const dl03Mode = process.env.PANDA_STAGE_ISSUE823_DL03 === '1';
@@ -57,6 +58,10 @@ const formalCommitRecords = [];
 let conflictAtCommitPath = null;
 let failNextEncoderRun = false;
 let requireEncoderProcessError = false;
+let replaceDialogueSourceBeforeNextMix = false;
+let failNextAudioMixProcess = false;
+const audioSourceReplacementEvidence = [];
+const audioMixProcessFailures = [];
 
 function defaultExportFileName(projectName) {
   let baseName = Array.from(projectName.trim(), (character) =>
@@ -210,7 +215,73 @@ function createExportService() {
       requireEncoderProcessError = false;
       return runMediaProcess(executable, ['-xerror', ...args], options);
     }
+    if (failNextAudioMixProcess && args.includes('-filter_complex')) {
+      failNextAudioMixProcess = false;
+      const partialOutputPath = args.at(-1) ?? '';
+      const partialBytes = Buffer.from('controlled partial audio mix');
+      return fsp.writeFile(partialOutputPath, partialBytes).then(() => {
+        audioMixProcessFailures.push({
+          executable,
+          args,
+          partialOutputPath,
+          partialSha256: hash(partialBytes),
+          returnedExitCode: 1,
+        });
+        return {
+          code: 1,
+          signal: null,
+          stdout: '',
+          stderr: 'Controlled DL-03 mid-mix process failure after partial output.',
+        };
+      });
+    }
     return runMediaProcess(executable, args, options);
+  };
+  const muxAudioMix = mediaAdapter.muxAudioMix.bind(mediaAdapter);
+  mediaAdapter.muxAudioMix = async (request, signal) => {
+    if (!replaceDialogueSourceBeforeNextMix) return muxAudioMix(request, signal);
+    replaceDialogueSourceBeforeNextMix = false;
+    const dialogueAsset = fixtureProject.assets.find(
+      (asset) => asset.id === fixture.audioMixFixture?.dialogueAssetId,
+    );
+    const replacementAsset = fixtureProject.assets.find(
+      (asset) => asset.relativePath === 'assets/dl03-sfx-one.wav',
+    );
+    assert(dialogueAsset?.kind === 'audio' && replacementAsset?.kind === 'audio', 'Source-replacement assets are missing.');
+    const sourcePath = path.join(fixture.projectRoot, dialogueAsset.relativePath);
+    const replacementPath = path.join(fixture.projectRoot, replacementAsset.relativePath);
+    const frozenDialoguePath = request.audioMixPlan.clips.find(
+      (clip) => clip.assetId === dialogueAsset.id,
+    )?.sourcePath;
+    assert(frozenDialoguePath, 'Frozen dialogue source was not included in the audio mix plan.');
+    const originalBytes = await fsp.readFile(sourcePath);
+    const replacementBytes = await fsp.readFile(replacementPath);
+    const frozenBytes = await fsp.readFile(frozenDialoguePath);
+    assert(hash(originalBytes) === dialogueAsset.sha256, 'Dialogue source differs before replacement injection.');
+    assert(hash(frozenBytes) === dialogueAsset.sha256, 'Frozen dialogue media does not match the validated source.');
+    assert(hash(replacementBytes) !== dialogueAsset.sha256, 'Replacement source unexpectedly matches the original dialogue.');
+    const record = {
+      assetId: dialogueAsset.id,
+      sourcePath,
+      originalSha256: hash(originalBytes),
+      replacementSha256: hash(replacementBytes),
+      frozenSourcePath: frozenDialoguePath,
+      frozenSha256BeforeMix: hash(frozenBytes),
+      outputPath: request.outputPath,
+      muxCompleted: false,
+      restoredSha256: null,
+    };
+    await fsp.writeFile(sourcePath, replacementBytes);
+    try {
+      const result = await muxAudioMix(request, signal);
+      record.muxCompleted = true;
+      record.mixedOutputSha256 = hash(await fsp.readFile(request.outputPath));
+      return result;
+    } finally {
+      await fsp.writeFile(sourcePath, originalBytes);
+      record.restoredSha256 = hash(await fsp.readFile(sourcePath));
+      audioSourceReplacementEvidence.push(record);
+    }
   };
   mediaAdapter.encodePngSequence = async (request, signal) => {
     try {
@@ -408,6 +479,41 @@ function runProcess(executable, args) {
   });
 }
 
+function verifyMovedAudioClipContract(mixFixture) {
+  const shot = fixtureProject.shots[0];
+  const clip = shot?.audioClips.find((item) => item.id === mixFixture.sfxOnly?.clipId);
+  const asset = clip && fixtureProject.assets.find((item) => item.id === clip.assetId);
+  assert(shot && clip && asset?.kind === 'audio', 'DL-03 moved-clip contract fixture is missing its SFX asset.');
+  const planAt = (startMs, endMs) => buildExportAudioMixPlan(shot.durationMs, [{
+    clipId: clip.id,
+    assetId: clip.assetId,
+    role: clip.role,
+    sourcePath: path.join(fixture.projectRoot, asset.relativePath),
+    startMs,
+    endMs,
+    offsetMs: clip.offsetMs,
+    volume: clip.volume,
+  }]);
+  const beforeMovePlan = planAt(mixFixture.sfxOnly.movedFromStartMs, mixFixture.sfxOnly.movedFromEndMs);
+  const movedPlan = planAt(clip.startMs, clip.endMs);
+  const beforeMove = beforeMovePlan.clips[0];
+  const moved = movedPlan.clips[0];
+  assert(moved?.startMs === clip.startMs, 'Moving the clip did not update its timeline start.');
+  assert(beforeMove?.sourceOffsetMs === clip.offsetMs, 'The source offset before move differs from the clip offset.');
+  assert(moved?.sourceOffsetMs === beforeMove.sourceOffsetMs, 'Moving the clip changed its source offset.');
+  return {
+    clipId: clip.id,
+    originalStartMs: mixFixture.sfxOnly.movedFromStartMs,
+    movedStartMs: moved.startMs,
+    originalEndMs: mixFixture.sfxOnly.movedFromEndMs,
+    movedEndMs: moved.endMs,
+    sourceOffsetBeforeMs: beforeMove.sourceOffsetMs,
+    sourceOffsetAfterMs: moved.sourceOffsetMs,
+    beforeMovePlanSha256: hash(Buffer.from(JSON.stringify(beforeMovePlan), 'utf8')),
+    movedPlanSha256: hash(Buffer.from(JSON.stringify(movedPlan), 'utf8')),
+  };
+}
+
 function measureToneAmplitude(samples, startSeconds, frequencyHz, sampleRate = 48_000) {
   const start = Math.floor(startSeconds * sampleRate);
   const count = Math.floor(0.12 * sampleRate);
@@ -467,6 +573,13 @@ async function captureAudioMixEvidence(outputPath, evidenceDirectory, mediaTools
     sfxOneAfterEndAt2750ms: measure(2.75, 880),
     sfxTwoAfterOverlapAt2750ms: measure(2.75, 1_320),
     dialogueAfterEndAt3200ms: measure(3.2, 660),
+    sfxOnlyAfterDialogueAt3600ms: {
+      expectedHz: 880,
+      wrongZeroOffsetMarkerHz: 600,
+      expectedAmplitude: measure(3.6, 880),
+      wrongMarkerAmplitude: measure(3.6, 600),
+    },
+    zeroGainSfxAt4200ms: measure(4.2, 880),
     bgmNearShotTailAt6250ms: measure(6.25, 260),
   };
 
@@ -483,6 +596,9 @@ async function captureAudioMixEvidence(outputPath, evidenceDirectory, mediaTools
   assert(measurements.sfxOneAfterEndAt2750ms < 0.025, 'First SFX continues past its clip end.');
   assert(measurements.sfxTwoAfterOverlapAt2750ms > 0.08, 'Second SFX does not continue after the overlap.');
   assert(measurements.dialogueAfterEndAt3200ms < 0.025, 'Dialogue continues after its audio clip ends.');
+  assert(measurements.sfxOnlyAfterDialogueAt3600ms.expectedAmplitude > 0.06, 'The moved SFX-only clip is missing after Dialogue ended.');
+  assert(measurements.sfxOnlyAfterDialogueAt3600ms.wrongMarkerAmplitude < 0.025, 'The moved SFX-only clip did not preserve its source offset.');
+  assert(measurements.zeroGainSfxAt4200ms < 0.025, 'The zero-gain SFX clip is audible.');
   assert(measurements.bgmNearShotTailAt6250ms > 0.02, 'BGM does not reach the Shot tail.');
 
   const result = {
@@ -492,6 +608,7 @@ async function captureAudioMixEvidence(outputPath, evidenceDirectory, mediaTools
     decodedDurationSeconds: pcm.length / (4 * 48_000),
     projectMixFixture: mixFixture,
     measurements,
+    movedClipContract: verifyMovedAudioClipContract(mixFixture),
     subtitleContinuesPastDialogueAudio: mixFixture.subtitleEndMs > mixFixture.dialogueEndMs,
   };
   await fsp.writeFile(path.join(evidenceDirectory, 'audio-mix-samples.json'), JSON.stringify(result, null, 2), 'utf8');
@@ -562,6 +679,7 @@ async function exportEvidence(outputPath, evidenceDirectory, label, mediaTools, 
       ['mouthDialogueOpen', 71],
       ['mouthDialogueEndedWithSubtitle', 72],
       ['mouthBgmOnlyWithSubtitle', 74],
+      ['mouthSfxOnlyWithSubtitle', 84],
     );
   }
   for (const [name, index] of frameSamples) {
@@ -615,11 +733,13 @@ async function exportEvidence(outputPath, evidenceDirectory, label, mediaTools, 
       dialogueOpen: path.join(evidenceDirectory, 'mouth-dialogue-open.rgb'),
       dialogueEnded: path.join(evidenceDirectory, 'mouth-dialogue-ended.rgb'),
       bgmOnly: path.join(evidenceDirectory, 'mouth-bgm-only.rgb'),
+      sfxOnly: path.join(evidenceDirectory, 'mouth-sfx-only.rgb'),
     };
     for (const [name, index] of [
       ['dialogueOpen', 71],
       ['dialogueEnded', 72],
       ['bgmOnly', 74],
+      ['sfxOnly', 84],
     ]) {
       await runProcess(mediaTools.ffmpegPath, [
         '-y', '-v', 'error', '-i', outputPath,
@@ -631,11 +751,13 @@ async function exportEvidence(outputPath, evidenceDirectory, label, mediaTools, 
       dialogueOpen: await fsp.readFile(mouthFrames.dialogueOpen),
       dialogueEnded: await fsp.readFile(mouthFrames.dialogueEnded),
       bgmOnly: await fsp.readFile(mouthFrames.bgmOnly),
+      sfxOnly: await fsp.readFile(mouthFrames.sfxOnly),
     };
     assert(
       raw.dialogueOpen.length > 0 &&
       raw.dialogueOpen.length === raw.dialogueEnded.length &&
-      raw.dialogueEnded.length === raw.bgmOnly.length,
+      raw.dialogueEnded.length === raw.bgmOnly.length &&
+      raw.bgmOnly.length === raw.sfxOnly.length,
       `${label}: mouth projection boundary frames are invalid.`,
     );
     const compareFrames = (left, right) => {
@@ -655,9 +777,12 @@ async function exportEvidence(outputPath, evidenceDirectory, label, mediaTools, 
     };
     const activeToEnded = compareFrames(raw.dialogueOpen, raw.dialogueEnded);
     const endedToBgmOnly = compareFrames(raw.dialogueEnded, raw.bgmOnly);
+    const endedToSfxOnly = compareFrames(raw.dialogueEnded, raw.sfxOnly);
     assert(activeToEnded.pixelsWithDeltaOver24 > 500, `${label}: Simple Mouth did not change between open dialogue and ended dialogue.`);
     assert(endedToBgmOnly.pixelsWithDeltaOver24 < 1_000, `${label}: BGM changed the closed mouth after dialogue audio ended.`);
     assert(endedToBgmOnly.meanAbsoluteChannelDelta < 0.1, `${label}: visual output changed during BGM-only subtitle tail.`);
+    assert(endedToSfxOnly.pixelsWithDeltaOver24 < 1_000, `${label}: SFX triggered a mouth change after dialogue ended.`);
+    assert(endedToSfxOnly.meanAbsoluteChannelDelta < 0.1, `${label}: visual output changed during SFX-only subtitle tail.`);
     mouthEvidence = {
       mouthOpenAssetId: options.mixFixture.mouthOpenAssetId,
       mouthOpenAssetSha256: options.mixFixture.mouthOpenAssetSha256,
@@ -668,10 +793,12 @@ async function exportEvidence(outputPath, evidenceDirectory, label, mediaTools, 
       bgmOnlyClosedFrameIndex: 74,
       dialogueOpenToClosed: activeToEnded,
       closedDuringBgmTail: endedToBgmOnly,
+      closedDuringSfxOnly: endedToSfxOnly,
       framePaths: {
         dialogueOpen: frameEvidence.mouthDialogueOpen,
         dialogueEndedWithSubtitle: frameEvidence.mouthDialogueEndedWithSubtitle,
         bgmOnlyWithSubtitle: frameEvidence.mouthBgmOnlyWithSubtitle,
+        sfxOnlyWithSubtitle: frameEvidence.mouthSfxOnlyWithSubtitle,
       },
     };
     await fsp.writeFile(path.join(evidenceDirectory, 'mouth-projection.json'), JSON.stringify(mouthEvidence, null, 2), 'utf8');
@@ -744,6 +871,73 @@ async function assertNoExportTemporaries(label) {
   assert(remaining.frameJobDirectories.length === 0, `${label}: frame-job directories remain: ${remaining.frameJobDirectories.join(', ')}`);
   assert(remaining.preparationSnapshots.length === 0, `${label}: frozen-media snapshots remain: ${remaining.preparationSnapshots.join(', ')}`);
   return remaining;
+}
+
+async function verifyUndecodableAudioSource(initialProjectBytes) {
+  const originalSnapshot = trackedSnapshot;
+  const invalidProject = structuredClone(originalSnapshot.project);
+  const dialogueAsset = invalidProject.assets.find(
+    (asset) => asset.id === fixture.audioMixFixture?.dialogueAssetId,
+  );
+  assert(dialogueAsset?.kind === 'audio', 'Undecodable-source scenario has no dialogue Audio asset.');
+  const sourcePath = path.join(fixture.projectRoot, dialogueAsset.relativePath);
+  const originalBytes = await fsp.readFile(sourcePath);
+  const originalSourceSha256 = hash(originalBytes);
+  const invalidBytes = Buffer.from('invalid audio source bytes for DL-03 preflight failure');
+  dialogueAsset.sha256 = hash(invalidBytes);
+  const validatedProject = ProjectSchema.parse(invalidProject);
+  const targetPath = path.join(fixture.root, 'undecodable-audio-source.mp4');
+  assert(!existsSync(targetPath), 'Undecodable-source target must start absent.');
+  const workingSnapshot = { ...originalSnapshot, project: validatedProject };
+  let response;
+
+  try {
+    trackedSnapshot = workingSnapshot;
+    await fsp.writeFile(sourcePath, invalidBytes);
+    const selected = await exportPreparationService.selectOutput({
+      projectRoot: fixture.projectRoot,
+      projectId: validatedProject.id,
+      projectName: validatedProject.name,
+      openInstanceId: workingSnapshot.openInstanceId,
+    }, targetPath);
+    assert(selected.status === 'selected', 'Undecodable-source output selection was not accepted.');
+    response = await exportPreparationService.prepare({
+      selectionId: selected.selectionId,
+      attemptId: randomUUID(),
+      projectRoot: fixture.projectRoot,
+      projectId: validatedProject.id,
+      openInstanceId: workingSnapshot.openInstanceId,
+      revision: workingSnapshot.revision,
+      dirty: workingSnapshot.dirty,
+      cameraMode: 'static',
+      project: validatedProject,
+    });
+    assert(response.status === 'BLOCK', 'Undecodable source incorrectly produced a frozen export candidate.');
+    assert(response.issues.some((issue) => issue.code === 'REQUIRED_MEDIA_UNAVAILABLE'), 'Undecodable source did not return the required-media block.');
+  } finally {
+    await fsp.writeFile(sourcePath, originalBytes);
+    trackedSnapshot = originalSnapshot;
+  }
+
+  assert(!existsSync(targetPath), 'Undecodable source created an MP4 output.');
+  assert(hash(await fsp.readFile(sourcePath)) === originalSourceSha256, 'Dialogue source was not restored after invalid-source preflight.');
+  const cleanup = await assertNoExportTemporaries('undecodable audio source preflight');
+  const diagnostics = response?.status === 'BLOCK'
+    ? exportPreparationService.getDiagnostics(response.diagnosticId)
+    : [];
+  return {
+    status: response?.status,
+    issueCodes: response?.status === 'BLOCK' ? response.issues.map((issue) => issue.code) : [],
+    diagnostics,
+    sourceAssetId: dialogueAsset.id,
+    sourcePath,
+    originalSourceSha256,
+    invalidSourceSha256: hash(invalidBytes),
+    targetPath,
+    targetExists: existsSync(targetPath),
+    projectFileUnchanged: (await fsp.readFile(path.join(fixture.projectRoot, 'project.json'))).equals(initialProjectBytes),
+    temporaryCleanup: cleanup,
+  };
 }
 
 async function startFromCreatorUi(evidenceRoot, label, options = {}) {
@@ -919,8 +1113,8 @@ async function run() {
   try {
     assert(fixtureProject.shots.length === 1, 'Fixture must contain exactly one Shot.');
     assert(
-      fixtureProject.shots[0].audioClips.length === (dl03Mode ? 4 : 0),
-      `Fixture must contain ${dl03Mode ? 'four valid audio clips' : 'no audio clips'}.`,
+      fixtureProject.shots[0].audioClips.length === (dl03Mode ? 6 : 0),
+      `Fixture must contain ${dl03Mode ? 'six valid audio clips' : 'no audio clips'}.`,
     );
     assert(fixtureProject.shots[0].durationMs > 5_000, 'Fixture must exceed the old five-second probe ceiling.');
     const expressionHashes = Object.values(fixture.expressionAssetHashes);
@@ -1006,6 +1200,7 @@ async function run() {
     const existingTargetCleanup = await assertNoExportTemporaries('existing target rejection');
 
     const speakerOutputPath = path.join(fixture.projectRoot, 'speaker-focus.mp4');
+    if (dl03Mode) replaceDialogueSourceBeforeNextMix = true;
     const speakerRun = await startFromCreatorUi(evidenceRoot, 'speaker-focus', {
       selectedFileName: path.basename(speakerOutputPath),
     });
@@ -1112,6 +1307,30 @@ async function run() {
     const encoderFailureCleanup = await assertNoExportTemporaries('FFmpeg encoding failure');
     assert(hash(await fsp.readFile(staticOutputPath)) === staticHashBeforeConflict, 'A failure path changed the existing static MP4.');
 
+    let audioMixFailure = null;
+    if (dl03Mode) {
+      const audioMixFailureTargetPath = path.join(fixture.projectRoot, 'audio-mix-failure.mp4');
+      failNextAudioMixProcess = true;
+      const audioMixFailureRun = await startFromCreatorUi(evidenceRoot, 'audio-mix-failure', {
+        selectedFileName: path.basename(audioMixFailureTargetPath),
+        expectJobFailure: true,
+      });
+      assert(!existsSync(audioMixFailureTargetPath), 'A partial audio mix created the final output target.');
+      assert(audioMixFailureRun.failedJob?.status === 'failed', 'The injected mid-mix process failure did not fail the formal Job.');
+      assert(audioMixProcessFailures.length === 1, 'The controlled mid-mix process failure did not execute exactly once.');
+      const audioMixFailureCleanup = await assertNoExportTemporaries('mid-mix FFmpeg failure');
+      assert(hash(await fsp.readFile(staticOutputPath)) === staticHashBeforeConflict, 'The mid-mix failure changed the existing static MP4.');
+      assert(hash(await fsp.readFile(speakerOutputPath)) === speakerEvidence.sha256, 'The mid-mix failure changed the existing speaker-focus MP4.');
+      audioMixFailure = {
+        targetPath: audioMixFailureTargetPath,
+        targetExists: existsSync(audioMixFailureTargetPath),
+        jobStatus: audioMixFailureRun.failedJob.status,
+        failure: audioMixProcessFailures[0],
+        failureScreenshotPath: audioMixFailureRun.failureScreenshotPath,
+        temporaryCleanup: audioMixFailureCleanup,
+      };
+    }
+
     const externalPlayerScript = path.join(__dirname, 'issue819-external-player.ps1');
     let externalPlayer = { launch: 'NOT_ATTEMPTED', screenshotPath: null };
     try {
@@ -1139,6 +1358,18 @@ async function run() {
     }
     assert(externalPlayer.launch === 'STARTED', 'External player did not open the formal MP4.');
 
+    const undecodableAudioSource = dl03Mode
+      ? await verifyUndecodableAudioSource(initialProjectBytes)
+      : null;
+    const restoredAudioSourceHashes = await Promise.all(
+      fixtureProject.assets
+        .filter((asset) => asset.kind === 'audio')
+        .map(async (asset) => ({
+          assetId: asset.id,
+          restored: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))) === asset.sha256,
+        })),
+    );
+    assert(restoredAudioSourceHashes.every((entry) => entry.restored), 'A project Audio source was not restored to its frozen fixture hash.');
     const latestEditorState = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
     result.fixture = {
       projectId: fixtureProject.id,
@@ -1204,6 +1435,9 @@ async function run() {
       failureScreenshotPath: encoderFailureRun.failureScreenshotPath,
       temporaryCleanup: encoderFailureCleanup,
     };
+    result.audioMixFailure = audioMixFailure;
+    result.sourceMediaReplacement = audioSourceReplacementEvidence[0] ?? null;
+    result.undecodableAudioSource = undecodableAudioSource;
     result.existingStaticOutput = {
       path: staticOutputPath,
       sha256BeforeFailures: staticHashBeforeConflict,
@@ -1223,6 +1457,7 @@ async function run() {
         speakerRun.after.dirty === speakerRun.before.dirty &&
         speakerRun.after.undoCount === speakerRun.before.undoCount,
       projectFileUnchanged: (await fsp.readFile(projectFilePath)).equals(initialProjectBytes),
+      sourceAudioAssetsUnchanged: restoredAudioSourceHashes.every((entry) => entry.restored),
     };
     result.exportJobs = jobUpdates.map((update) => ({
       jobId: update.jobId,
