@@ -388,6 +388,7 @@
         ],
         "testPatterns": [
           "tests/unit/export-*.test.ts",
+          "tests/unit/formal-export-stage-label.test.ts",
           "tests/unit/ffmpeg-*.test.ts",
           "tests/unit/file-system-service.test.ts"
         ],

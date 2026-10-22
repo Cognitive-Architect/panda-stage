@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { FrameFileSystem } from '../../src/main/services/FileSystemService';
@@ -821,17 +820,5 @@ describe('ExportService', () => {
       status: 'failed',
       phase: 'finished',
     });
-  });
-});
-
-describe('formal export stage chrome', () => {
-  it('keeps the fixed label in Preview by default and omits it from formal export frames', () => {
-    const stageRenderer = readFileSync('src/renderer/stage/StageRenderer.tsx', 'utf8');
-    const exportRenderer = readFileSync('src/export-renderer/ExportRendererApp.tsx', 'utf8');
-
-    expect(stageRenderer).toMatch(/showStageLabel = true/u);
-    expect(stageRenderer).toContain('visible={showStageLabel}');
-    expect(stageRenderer).toContain('text="PANDA STAGE \u00b7 1920 \u00d7 1080"');
-    expect(exportRenderer).toMatch(/<CanvasStage[\s\S]*?showStageLabel=\{false\}/u);
   });
 });
