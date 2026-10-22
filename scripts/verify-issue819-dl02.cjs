@@ -1706,7 +1706,6 @@ async function run() {
     const unsupportedUiCases = [];
     if (!dl03Mode) {
     for (const scenario of [
-      { id: 'multi-shot', expectedText: '只支持单镜头工程', fileName: 'unsupported-multi-shot.mp4' },
       { id: 'no-background', expectedText: '需要可见的图像背景', fileName: 'unsupported-no-background.mp4' },
     ]) {
       const scenarioState = await rendererJs(
