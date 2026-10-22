@@ -314,7 +314,7 @@ describe('DL-01 export preparation domain rules', () => {
     }
   });
 
-  it('classifies legal BGM/SFX volume as unsupported audio, without invalidating or mutating it', () => {
+  it('allows valid BGM/SFX within the shared Project v8 contract without mutating them', () => {
     const base = projectWithMedia();
     const clipAsset = {
       id: '10000000-0000-4000-8000-000000000020',
@@ -348,14 +348,120 @@ describe('DL-01 export preparation domain rules', () => {
     });
     const before = structuredClone(project);
     const issues = evaluateExportPreparationSupport(project, 'static');
-    expect(issues.map((item) => item.code)).toEqual([
-      'UNSUPPORTED_IN_CURRENT_EXPORT_SLICE',
-    ]);
+    expect(issues).toEqual([]);
     expect(project.shots[0]!.audioClips[0]!.volume).toBe(2);
     expect(project).toEqual(before);
   });
 
-  it('locates missing audio media while preserving the unsupported-slice issue', async () => {
+  it('freezes and returns the hashed audio bytes with the formal candidate', async () => {
+    const media = new Map<string, Uint8Array>();
+    const base = projectWithMedia(media);
+    const audioAssetId = '10000000-0000-4000-8000-000000000021';
+    const clipId = '70000000-0000-4000-8000-000000000021';
+    const audioBytes = Buffer.from('frozen audio bytes');
+    media.set(audioAssetId, audioBytes);
+    const audioAsset = {
+      id: audioAssetId,
+      kind: 'audio' as const,
+      name: 'Frozen WAV',
+      relativePath: 'assets/frozen.wav',
+      mimeType: 'audio/wav',
+      sha256: hash(audioBytes),
+      durationMs: 3_000,
+    };
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: [...base.assets, audioAsset],
+      shots: [
+        {
+          ...base.shots[0]!,
+          audioClips: [
+            {
+              id: clipId,
+              role: 'sfx',
+              name: 'Frozen SFX',
+              assetId: audioAssetId,
+              startMs: 250,
+              endMs: 1_250,
+              offsetMs: 100,
+              volume: 1.5,
+            },
+          ],
+        },
+      ],
+    });
+    const fixture = await harness({ project, media });
+    const selection = await selectOutput(fixture);
+    const prepared = await fixture.service.prepare(
+      requestFor(fixture, selection.selectionId),
+    );
+
+    expect(prepared.status).toBe('PREPARATION_READY');
+    if (prepared.status !== 'PREPARATION_READY') return;
+    expect(prepared.candidate.mediaManifest).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ assetId: audioAssetId, kind: 'audio' }),
+      ]),
+    );
+    const frozen = await fixture.service.acquireCandidateForExport(
+      prepared.candidate.snapshotId,
+    );
+    expect(frozen.media).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          assetId: audioAssetId,
+          kind: 'audio',
+          mimeType: 'audio/wav',
+          bytes: new Uint8Array(audioBytes),
+        }),
+      ]),
+    );
+  });
+
+  it('blocks zero-length audio clips during strict preflight', () => {
+    const base = projectWithMedia();
+    const audioAssetId = '10000000-0000-4000-8000-000000000022';
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: [
+        ...base.assets,
+        {
+          id: audioAssetId,
+          kind: 'audio',
+          name: 'Zero range WAV',
+          relativePath: 'assets/zero-range.wav',
+          mimeType: 'audio/wav',
+          sha256: 'd'.repeat(64),
+          durationMs: 3_000,
+        },
+      ],
+      shots: [
+        {
+          ...base.shots[0]!,
+          audioClips: [
+            {
+              id: '70000000-0000-4000-8000-000000000022',
+              role: 'sfx',
+              name: 'Zero range',
+              assetId: audioAssetId,
+              startMs: 1_000,
+              endMs: 1_000,
+              offsetMs: 0,
+              volume: 1,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(evaluateExportPreparationSupport(project, 'static')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'INVALID_PROJECT' }),
+      ]),
+    );
+  });
+
+  it('blocks missing frozen audio media before formal export', async () => {
     const media = new Map<string, Uint8Array>();
     const base = projectWithMedia(media);
     const missingAsset = {
@@ -397,10 +503,7 @@ describe('DL-01 export preparation domain rules', () => {
     expect(result.status).toBe('BLOCK');
     if (result.status === 'BLOCK') {
       expect(result.issues.map((item) => item.code)).toEqual(
-        expect.arrayContaining([
-          'UNSUPPORTED_IN_CURRENT_EXPORT_SLICE',
-          'REQUIRED_MEDIA_UNAVAILABLE',
-        ]),
+        expect.arrayContaining(['REQUIRED_MEDIA_UNAVAILABLE']),
       );
       expect(
         result.issues.find((item) => item.code === 'REQUIRED_MEDIA_UNAVAILABLE')
@@ -640,7 +743,7 @@ describe('DL-01 export preparation domain rules', () => {
   });
 
 
-  it('classifies legal BGM at volume 0 as unsupported audio without changing it', () => {
+  it('allows legal BGM at volume 0 without changing it', () => {
     const base = projectWithMedia();
     const clipAsset = {
       id: '10000000-0000-4000-8000-000000000020',
@@ -674,9 +777,7 @@ describe('DL-01 export preparation domain rules', () => {
     });
     const before = structuredClone(project);
 
-    expect(
-      evaluateExportPreparationSupport(project, 'static').map((item) => item.code),
-    ).toEqual(['UNSUPPORTED_IN_CURRENT_EXPORT_SLICE']);
+    expect(evaluateExportPreparationSupport(project, 'static')).toEqual([]);
     expect(project.shots[0]!.audioClips[0]!.volume).toBe(0);
     expect(project).toEqual(before);
   });

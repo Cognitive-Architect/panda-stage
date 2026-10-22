@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { ProjectSchema, type Project } from '../../src/domain';
+import { buildExportAudioMixPlan } from '../../src/domain/export-audio-mix-plan';
 import type { AssetPreviewAudioReadRequest, AssetPreviewAudioReadResponse } from '../../src/shared/asset-preview-audio-api';
 import {
   ProductPreviewAudioTransport, resolveProductPreviewAudio, resolveProductPreviewAudios,
@@ -186,6 +187,59 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     expect(productPreviewSourceTimeMs(-100, selection.clip, selection.asset)).toBe(0);
     expect(productPreviewSourceTimeMs(99999, selection.clip, selection.asset)).toBe(3000);
     expect(resolveProductPreviewAudio(project, shot, null)).toBeNull();
+  });
+
+  it('keeps the formal mix plan aligned with Preview timing/gain and rejects clips outside the Shot', () => {
+    const project = mixedProject();
+    const shot = project.shots[0]!;
+    const formalClipIds = new Map<string, string>([
+      [CLIP_A_ID, CLIP_A_ID],
+      ['bgm', '70000000-0000-4000-8000-000000000403'],
+      ['sfx-a', '70000000-0000-4000-8000-000000000404'],
+      ['sfx-b', '70000000-0000-4000-8000-000000000405'],
+    ]);
+    const inputs = shot.audioClips.map((clip) => ({
+      clipId: formalClipIds.get(clip.id)!,
+      assetId: clip.assetId,
+      role: clip.role,
+      sourcePath: `C:\\frozen\\${clip.assetId}.wav`,
+      startMs: clip.startMs,
+      endMs: clip.endMs,
+      offsetMs: clip.offsetMs,
+      volume: clip.volume,
+    }));
+    const plan = buildExportAudioMixPlan(shot.durationMs, inputs);
+
+    expect(plan.clips).toHaveLength(shot.audioClips.length);
+    for (const clip of shot.audioClips) {
+      const planned = plan.clips.find(
+        (entry) => entry.clipId === formalClipIds.get(clip.id),
+      )!;
+      const preview = resolveProductPreviewAudios(project, shot, clip.startMs)
+        .find((entry) => entry.clip.id === clip.id)!;
+      expect(planned.startMs).toBe(clip.startMs);
+      expect(planned.endMs).toBe(clip.endMs);
+      expect(planned.volume).toBe(preview.clip.volume);
+      expect(planned.sourceOffsetMs).toBe(
+        productPreviewSourceTimeMs(clip.startMs, preview.clip, preview.asset),
+      );
+    }
+    expect(() =>
+      buildExportAudioMixPlan(shot.durationMs, [
+        ...inputs,
+        {
+          ...inputs[0]!,
+          clipId: '70000000-0000-4000-8000-000000000499',
+          startMs: shot.durationMs,
+          endMs: shot.durationMs + 1,
+        },
+      ]),
+    ).toThrow();
+    expect(() =>
+      buildExportAudioMixPlan(shot.durationMs, [
+        { ...inputs[0]!, endMs: inputs[0]!.startMs },
+      ]),
+    ).toThrow();
   });
 
   it('mixes four sources with separate gains/offsets/durations, deduplicates read/decode, never edits Project', async () => {

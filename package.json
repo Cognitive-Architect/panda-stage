@@ -12,6 +12,7 @@
   "scripts": {
     "verify:issue663-dialogue-voice": "pnpm build && electron scripts/verify-issue663-dialogue-voice.cjs",
     "verify:issue659-preview-mixer": "pnpm build && electron scripts/verify-issue659-preview-mixer.cjs",
+    "verify:issue660-export-audio-mix": "pnpm build && node scripts/verify-issue660-export-audio-mix.cjs",
     "verify:issue658-audio-timeline": "pnpm build && electron scripts/verify-issue658-audio-timeline.cjs",
     "verify:issue676-p0-c02": "pnpm build && electron scripts/verify-issue676-p0-c02.cjs",
     "verify:issue686-p2-c02": "pnpm build && electron scripts/verify-issue686-p2-c02.cjs",

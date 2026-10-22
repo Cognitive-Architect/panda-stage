@@ -394,7 +394,8 @@
         ],
         "verifierPatterns": [
           "scripts/verify-issue816-dl01.cjs",
-          "scripts/verify-issue819-dl02.cjs"
+          "scripts/verify-issue819-dl02.cjs",
+          "scripts/verify-issue660-export-audio-mix.cjs"
         ],
         "suites": [],
         "riskPolicy": "full",
@@ -675,7 +676,7 @@
       }
     ]
   },
-  "count": 83,
+  "count": 84,
   "gates": [
     {
       "id": "issue663-dialogue-voice",
@@ -700,6 +701,18 @@
       "owner": "editor",
       "supersedes": null,
       "notes": "A03 native sandboxed Electron read/decode/gain/spectrum evidence for overlapping Dialogue/BGM/SFX, seek/pause/resume/replay/unmount; not Export mix or human listening acceptance."
+    },
+    {
+      "id": "issue660-export-audio-mix",
+      "script": "verify:issue660-export-audio-mix",
+      "suite": "issue660-export-audio-mix",
+      "subsystem": "export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "release",
+      "supersedes": null,
+      "notes": "A04 bundled-FFmpeg overlap/mix evidence; does not claim formal real-project Export, Windows Electron UI acceptance, or Gate B graduation."
     },
     {
       "id": "issue658-audio-timeline",

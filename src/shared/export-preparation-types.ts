@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Project } from '../domain';
 
 export const EXPORT_PREPARATION_SUPPORT_PROFILE_VERSION =
-  'dl01-2026-10-21.1' as const;
+  'dl03-2026-10-22.1' as const;
 
 export const EXPORT_PREPARATION_MAX_ASSETS = 512 as const;
 export const EXPORT_PREPARATION_MAX_SINGLE_ASSET_BYTES =
@@ -20,7 +20,7 @@ export const EXPORT_PREPARATION_SUPPORT_PROFILE = Object.freeze({
   version: EXPORT_PREPARATION_SUPPORT_PROFILE_VERSION,
   shotCount: { minimum: 1, maximum: 1 },
   backgroundRequired: true,
-  audio: 'unsupported' as const,
+  audio: 'supported' as const,
   cameraModes: ['static', 'speaker-focus'] as const,
   characterCompositions: ['whole-image', 'composite'] as const,
   imageMimeTypes: ['image/png', 'image/jpeg'] as const,
@@ -124,7 +124,7 @@ const ExportPreparationSupportProfileSchema = z
       .object({ minimum: z.literal(1), maximum: z.literal(1) })
       .strict(),
     backgroundRequired: z.literal(true),
-    audio: z.literal('unsupported'),
+    audio: z.literal('supported'),
     cameraModes: z.array(ExportPreparationCameraModeSchema).length(2),
     characterCompositions: z.array(z.enum(['whole-image', 'composite'])).length(
       2,

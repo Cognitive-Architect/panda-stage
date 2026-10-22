@@ -42,6 +42,11 @@ export interface FrameFileSystem {
     fileName: string,
     pngBytes: Uint8Array,
   ): Promise<void>;
+  writeFrozenAudio(
+    jobDirectory: string,
+    fileName: string,
+    bytes: Uint8Array,
+  ): Promise<string>;
   listFrameFiles(jobDirectory: string): Promise<string[]>;
   cleanupJobDirectory(jobDirectory: string): Promise<void>;
   assertReadableProjectDirectory(projectDirectory: string): Promise<string>;
@@ -93,6 +98,20 @@ export class FileSystemService implements FrameFileSystem {
     }
     const framePath = this.assertWithinRoot(path.join(safeDirectory, fileName));
     await writeFile(framePath, pngBytes, { flag: 'wx' });
+  }
+
+  async writeFrozenAudio(
+    jobDirectory: string,
+    fileName: string,
+    bytes: Uint8Array,
+  ): Promise<string> {
+    const safeDirectory = this.assertWithinRoot(jobDirectory);
+    if (!/^audio-[0-9a-f-]{36}\.(?:mp3|wav)$/iu.test(fileName)) {
+      throw new Error('Invalid frozen audio file name.');
+    }
+    const audioPath = this.assertWithinRoot(path.join(safeDirectory, fileName));
+    await writeFile(audioPath, bytes, { flag: 'wx' });
+    return audioPath;
   }
 
   async listFrameFiles(jobDirectory: string): Promise<string[]> {

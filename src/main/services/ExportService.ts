@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { buildExportAudioMixPlan } from '../../domain/export-audio-mix-plan';
+import type { ExportAudioMixPlan } from '../../shared/audio-mix-types';
 import {
   ExportProbeConfigSchema,
   FullProbeExportRequestSchema,
@@ -17,7 +19,11 @@ import {
   type ExportRenderFrameRequest,
   type FullProbeExportRequest,
 } from '../../shared/export-types';
-import type { VideoProbeResult } from '../../shared/ffmpeg-types';
+import type {
+  AudioProbeResult,
+  MuxAudioMixRequest,
+  VideoProbeResult,
+} from '../../shared/ffmpeg-types';
 import type { FrozenExportInput } from './ExportPreparationService';
 import type { FrameFileSystem } from './FileSystemService';
 
@@ -48,6 +54,14 @@ export interface FullProbeMediaAdapter {
       outputPath: string;
       overwrite: boolean;
     },
+    signal?: AbortSignal,
+  ): Promise<unknown>;
+  probeAudioFile?(
+    audioPath: string,
+    signal?: AbortSignal,
+  ): Promise<AudioProbeResult>;
+  muxAudioMix?(
+    request: MuxAudioMixRequest,
     signal?: AbortSignal,
   ): Promise<unknown>;
   probeVideo(videoPath: string, signal?: AbortSignal): Promise<VideoProbeResult>;
@@ -269,6 +283,12 @@ export class ExportService {
     }
     const shot = input.candidate.project.shots[0];
     if (!shot) throw new Error('Formal export candidate has no Shot.');
+    if (
+      (shot.audioClips?.length ?? 0) > 0 &&
+      (!this.mediaAdapter.probeAudioFile || !this.mediaAdapter.muxAudioMix)
+    ) {
+      throw new Error('Formal export requires audio preflight and mixing.');
+    }
     const active = this.createJob({
       durationMs: shot.durationMs,
       fps: input.candidate.renderSettings.fps,
@@ -455,6 +475,13 @@ export class ExportService {
       this.throwIfCancelled(active);
       jobDirectory = await this.fileSystem.createJobDirectory(active.jobId);
       record.outputDirectory = jobDirectory;
+      const audioMixPlan = await this.prepareFormalAudioMixPlan(
+        input,
+        jobDirectory,
+        adapter,
+        active,
+      );
+      this.throwIfCancelled(active);
 
       const render = await this.renderFrames(
         active,
@@ -469,23 +496,47 @@ export class ExportService {
             jobId: active.jobId,
             project: input.candidate.project,
             cameraMode: input.candidate.cameraMode,
-            media: input.media,
+            media: input.media
+              .filter((entry) => entry.kind === 'image')
+              .map(({ assetId, mimeType, bytes }) => ({
+                assetId,
+                mimeType,
+                bytes,
+              })),
           }),
       );
       this.throwIfCancelled(active);
 
       record.phase = 'encoding';
       this.emit(record);
+      const silentVideoPath = audioMixPlan
+        ? path.join(jobDirectory, 'formal-silent.mp4')
+        : finalOutputStagingPath;
       await adapter.encodePngSequence(
         {
           framesDirectory: jobDirectory,
-          outputPath: finalOutputStagingPath,
+          outputPath: silentVideoPath,
           fps: input.candidate.renderSettings.fps,
           overwrite: false,
         },
         active.controller.signal,
       );
       this.throwIfCancelled(active);
+
+      if (audioMixPlan) {
+        record.phase = 'muxing';
+        this.emit(record);
+        await adapter.muxAudioMix!(
+          {
+            videoPath: silentVideoPath,
+            audioMixPlan,
+            outputPath: finalOutputStagingPath,
+            overwrite: false,
+          },
+          active.controller.signal,
+        );
+        this.throwIfCancelled(active);
+      }
 
       record.phase = 'probing';
       this.emit(record);
@@ -497,6 +548,7 @@ export class ExportService {
         probe,
         input.candidate.renderSettings.fps,
         record.totalFrames,
+        audioMixPlan,
       );
       this.throwIfCancelled(active);
 
@@ -562,6 +614,7 @@ export class ExportService {
     probe: VideoProbeResult,
     fps: 24,
     frameCount: number,
+    audioMixPlan: ExportAudioMixPlan | null,
   ): void {
     const failures: string[] = [];
     if (probe.codecName !== 'h264') failures.push('codec');
@@ -573,7 +626,28 @@ export class ExportService {
       failures.push('frame rate');
     }
     if (probe.frameCount !== frameCount) failures.push('frame count');
-    if (probe.hasAudio) failures.push('audio stream');
+    if (audioMixPlan) {
+      if (!probe.hasAudio) failures.push('audio stream missing');
+      if (probe.audioStreamCount !== 1) failures.push('audio stream count');
+      if (probe.audioCodecName !== 'aac') failures.push('audio codec');
+      if (probe.audioSampleRate !== 48_000) failures.push('audio sample rate');
+      if (!probe.audioChannels || probe.audioChannels <= 0) {
+        failures.push('audio channels');
+      }
+      const expectedAudioDurationSeconds =
+        Math.max(...audioMixPlan.clips.map((clip) => clip.endMs)) / 1_000;
+      if (
+        !Number.isFinite(probe.audioDurationSeconds) ||
+        Math.abs(
+          (probe.audioDurationSeconds ?? Number.NaN) -
+            expectedAudioDurationSeconds,
+        ) > 0.08
+      ) {
+        failures.push('audio duration');
+      }
+    } else if (probe.hasAudio || probe.audioStreamCount !== 0) {
+      failures.push('unexpected audio stream');
+    }
     const expectedDurationSeconds = frameCount / fps;
     if (
       !Number.isFinite(probe.durationSeconds) ||
@@ -584,6 +658,111 @@ export class ExportService {
     if (failures.length > 0) {
       throw new Error('Formal MP4 verification failed: ' + failures.join(', '));
     }
+  }
+
+  private async prepareFormalAudioMixPlan(
+    input: FrozenExportInput,
+    jobDirectory: string,
+    adapter: FullProbeMediaAdapter,
+    active: ActiveJob,
+  ): Promise<ExportAudioMixPlan | null> {
+    const shot = input.candidate.project.shots[0];
+    if (!shot || (shot.audioClips?.length ?? 0) === 0) return null;
+    if (!adapter.probeAudioFile || !adapter.muxAudioMix) {
+      throw new Error('Formal export requires audio preflight and mixing.');
+    }
+
+    const frozenAudio = new Map(
+      input.media
+        .filter((entry) => entry.kind === 'audio')
+        .map((entry) => [entry.assetId, entry]),
+    );
+    const sourcePaths = new Map<string, string>();
+    for (const clip of shot.audioClips) {
+      if (
+        !Number.isSafeInteger(clip.startMs) ||
+        !Number.isSafeInteger(clip.endMs) ||
+        !Number.isSafeInteger(clip.offsetMs) ||
+        clip.startMs >= clip.endMs ||
+        clip.endMs > shot.durationMs
+      ) {
+        throw new Error(`Audio clip ${clip.id} has an invalid Shot range.`);
+      }
+      const asset = input.candidate.project.assets.find(
+        (candidate) => candidate.id === clip.assetId,
+      );
+      const media = frozenAudio.get(clip.assetId);
+      if (!asset || asset.kind !== 'audio' || !media) {
+        throw new Error(`Audio clip ${clip.id} has no frozen audio asset.`);
+      }
+      if (!sourcePaths.has(clip.assetId)) {
+        const extension =
+          media.mimeType === 'audio/mpeg'
+            ? '.mp3'
+            : media.mimeType === 'audio/wav'
+              ? '.wav'
+              : null;
+        if (!extension) {
+          throw new Error(`Audio asset ${asset.id} has an unsupported format.`);
+        }
+        const sourcePath = await this.fileSystem.writeFrozenAudio(
+          jobDirectory,
+          `audio-${asset.id}${extension}`,
+          media.bytes,
+        );
+        this.throwIfCancelled(active);
+        const probe = await adapter.probeAudioFile(
+          sourcePath,
+          active.controller.signal,
+        );
+        this.throwIfCancelled(active);
+        if (
+          !Number.isFinite(probe.durationSeconds) ||
+          probe.durationSeconds <= 0 ||
+          !Number.isInteger(probe.channels) ||
+          probe.channels <= 0
+        ) {
+          throw new Error(`Audio asset ${asset.id} has invalid media metadata.`);
+        }
+        const sourceDurationMs = probe.durationSeconds * 1_000;
+        const assetClips = shot.audioClips.filter(
+          (candidate) => candidate.assetId === clip.assetId,
+        );
+        for (const assetClip of assetClips) {
+          const requestedSourceEndMs =
+            assetClip.offsetMs + (assetClip.endMs - assetClip.startMs);
+          if (
+            !Number.isSafeInteger(requestedSourceEndMs) ||
+            requestedSourceEndMs > sourceDurationMs
+          ) {
+            throw new Error(
+              `Audio clip ${assetClip.id} exceeds the frozen source duration.`,
+            );
+          }
+        }
+        sourcePaths.set(clip.assetId, sourcePath);
+      }
+    }
+
+    return buildExportAudioMixPlan(
+      shot.durationMs,
+      shot.audioClips.map((clip) => {
+        const sourcePath = sourcePaths.get(clip.assetId);
+        if (!sourcePath) {
+          throw new Error(`Audio clip ${clip.id} has no prepared source path.`);
+        }
+        return {
+          clipId: clip.id,
+          assetId: clip.assetId,
+          role: clip.role,
+          sourcePath,
+          startMs: clip.startMs,
+          endMs: clip.endMs,
+          offsetMs: clip.offsetMs,
+          volume: clip.volume,
+        };
+      }),
+    );
   }
 
   private async renderFrames(

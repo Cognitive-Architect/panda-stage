@@ -3,6 +3,7 @@ import type { Asset } from './models/asset';
 import { evaluateShotAtTime } from './evaluate-shot-at-time';
 import { MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS } from './selectors/temporalRender';
 import { resolveLayerVisualParts } from './selectors/visualParts';
+import { audioClipGain } from './audio-contract';
 import {
   scanAssetReferences,
   type AssetReference,
@@ -299,9 +300,9 @@ function issue(
 }
 
 /**
- * DL-01 prepares the initial DL-02 slice: one shot, visible project
- * background, current Preview composition, and no audio mixing. Audio content
- * remains valid Project data and is reported as unsupported, never mutated.
+ * DL-03 adds Project v8 audio clips to the formal export slice. Project and
+ * reference validation runs before this support check; audio is frozen with
+ * the other selected media before Main builds a mix plan.
  */
 export function evaluateExportPreparationSupport(
   project: Project,
@@ -378,13 +379,63 @@ export function evaluateExportPreparationSupport(
       }
     }
     shot.audioClips.forEach((clip) => {
-      issues.push(
-        issue(
-          '镜头“' + shot.name + '”的音频片段“' + clip.name + '”',
-          '当前导出切片尚不支持有声工程。音频数据和 0..2 音量会原样保留。',
-          '保留音频内容，等待带音频导出支持后再继续。',
-        ),
+      const clipLocation =
+        '镜头“' + shot.name + '”的音频片段“' + clip.name + '”';
+      const asset = project.assets.find(
+        (candidate) => candidate.id === clip.assetId,
       );
+      if (!asset || asset.kind !== 'audio') {
+        issues.push({
+          code: 'INVALID_PROJECT',
+          location: clipLocation,
+          problem: '音频片段没有引用有效的音频素材。',
+          nextStep: '修复音频素材引用后再导出。',
+        });
+        return;
+      }
+      if (clip.startMs >= clip.endMs || clip.endMs > shot.durationMs) {
+        issues.push({
+          code: 'INVALID_PROJECT',
+          location: clipLocation,
+          problem: '音频片段的时间范围必须为正数且位于镜头时长内。',
+          nextStep: '调整片段起止时间，使其位于镜头时长内。',
+        });
+      }
+      const requestedSourceEndMs =
+        clip.offsetMs + (clip.endMs - clip.startMs);
+      if (
+        !Number.isSafeInteger(clip.offsetMs) ||
+        !Number.isSafeInteger(clip.startMs) ||
+        !Number.isSafeInteger(clip.endMs) ||
+        !Number.isSafeInteger(requestedSourceEndMs) ||
+        asset.durationMs === undefined ||
+        requestedSourceEndMs > asset.durationMs
+      ) {
+        issues.push({
+          code: 'INVALID_PROJECT',
+          location: clipLocation,
+          problem: '音频片段的源区间不可用或超出素材时长。',
+          nextStep: '修复音频源偏移或片段长度后再导出。',
+        });
+      }
+      try {
+        audioClipGain(clip.volume);
+      } catch {
+        issues.push({
+          code: 'INVALID_PROJECT',
+          location: clipLocation,
+          problem: '音频片段音量必须是 0 到 2 之间的有限值。',
+          nextStep: '将片段音量调整到 0 到 2 之间。',
+        });
+      }
+      if (!['audio/mpeg', 'audio/wav'].includes(asset.mimeType)) {
+        issues.push({
+          code: 'UNSUPPORTED_IN_CURRENT_EXPORT_SLICE',
+          location: clipLocation,
+          problem: '当前导出切片支持 MP3 和 WAV 音频素材。',
+          nextStep: '使用 MP3 或 WAV 音频素材后再导出。',
+        });
+      }
     });
   });
 

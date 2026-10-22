@@ -91,11 +91,19 @@ interface StoredCandidate {
   candidate: ExportPreparationCandidate;
 }
 
-export interface FrozenExportMedia {
-  assetId: string;
-  mimeType: 'image/png' | 'image/jpeg';
-  bytes: Uint8Array<ArrayBuffer>;
-}
+export type FrozenExportMedia =
+  | {
+      assetId: string;
+      kind: 'image';
+      mimeType: 'image/png' | 'image/jpeg';
+      bytes: Uint8Array<ArrayBuffer>;
+    }
+  | {
+      assetId: string;
+      kind: 'audio';
+      mimeType: 'audio/mpeg' | 'audio/wav';
+      bytes: Uint8Array<ArrayBuffer>;
+    };
 
 export interface FrozenExportInput {
   candidate: ExportPreparationCandidate;
@@ -670,7 +678,6 @@ export class ExportPreparationService {
       }
       const media: FrozenExportMedia[] = [];
       for (const entry of candidate.mediaManifest) {
-        if (entry.kind !== 'image') throw new Error('UNSUPPORTED_EXPORT_MEDIA');
         const bytes = await this.fileStore.readAsset?.(
           snapshotId,
           entry.contentHandleId,
@@ -678,18 +685,32 @@ export class ExportPreparationService {
         );
         if (!bytes) throw new Error('FROZEN_MEDIA_UNAVAILABLE');
         const digest = createHash('sha256').update(bytes).digest('hex');
+        const allowedMimeTypes: readonly string[] =
+          entry.kind === 'image'
+            ? ['image/png', 'image/jpeg']
+            : ['audio/mpeg', 'audio/wav'];
         if (
           bytes.byteLength !== entry.byteLength ||
           digest !== entry.sha256 ||
-          !['image/png', 'image/jpeg'].includes(entry.mimeType)
+          !allowedMimeTypes.includes(entry.mimeType)
         ) {
           throw new Error('FROZEN_MEDIA_CHANGED');
         }
-        media.push({
-          assetId: entry.assetId,
-          mimeType: entry.mimeType as FrozenExportMedia['mimeType'],
-          bytes,
-        });
+        if (entry.kind === 'image') {
+          media.push({
+            assetId: entry.assetId,
+            kind: 'image',
+            mimeType: entry.mimeType as 'image/png' | 'image/jpeg',
+            bytes,
+          });
+        } else {
+          media.push({
+            assetId: entry.assetId,
+            kind: 'audio',
+            mimeType: entry.mimeType as 'audio/mpeg' | 'audio/wav',
+            bytes,
+          });
+        }
       }
       if (media.length !== candidate.mediaManifest.length) {
         throw new Error('FROZEN_MEDIA_UNAVAILABLE');

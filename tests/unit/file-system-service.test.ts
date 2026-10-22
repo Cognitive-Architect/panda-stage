@@ -54,6 +54,29 @@ describe('FileSystemService Unicode paths and cleanup', () => {
     expect(await readdir(unicodeRoot)).toEqual([]);
   });
 
+  it('writes only named frozen audio media inside the owned Job directory', async () => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-audio-job-'));
+    temporaryRoots.push(parent);
+    const service = new FileSystemService(path.join(parent, 'jobs'));
+    const jobDirectory = await service.createJobDirectory(randomUUID());
+    const assetId = '10000000-0000-4000-8000-000000000821';
+    const bytes = new Uint8Array([1, 2, 3, 4]);
+    const audioPath = await service.writeFrozenAudio(
+      jobDirectory,
+      `audio-${assetId}.wav`,
+      bytes,
+    );
+
+    expect(audioPath).toBe(path.join(jobDirectory, `audio-${assetId}.wav`));
+    expect(new Uint8Array(await readFile(audioPath))).toEqual(bytes);
+    await expect(
+      service.writeFrozenAudio(jobDirectory, '../outside.wav', bytes),
+    ).rejects.toThrow('Invalid frozen audio file name.');
+    await expect(
+      service.writeFrozenAudio(jobDirectory, `audio-${assetId}.wav`, bytes),
+    ).rejects.toMatchObject({ code: 'EEXIST' });
+  });
+
   it('uses a finite Windows lock retry policy', () => {
     expect(CLEANUP_MAX_RETRIES).toBe(3);
     expect(CLEANUP_RETRY_DELAY_MS).toBe(75);
