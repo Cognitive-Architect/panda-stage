@@ -249,11 +249,34 @@ if ($ScreenshotPath) {
 $bounds = $button.Current.BoundingRectangle
 $x = [int]($bounds.X + $bounds.Width / 2)
 $y = [int]($bounds.Y + $bounds.Height / 2)
-if (-not [Issue816NativeClick]::SetCursorPos($x, $y)) { throw "Could not focus the native Save As button at $x,$y." }
-Start-Sleep -Milliseconds 100
-[Issue816NativeClick]::mouse_event(0x0002, 0, 0, 0, [System.UIntPtr]::Zero)
-Start-Sleep -Milliseconds 50
-[Issue816NativeClick]::mouse_event(0x0004, 0, 0, 0, [System.UIntPtr]::Zero)
+$clickMethod = 'coordinate-click'
+$invokeError = $null
+if ($Action -eq 'save') {
+  try {
+    $invokePattern = $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+    $invokePattern.Invoke()
+    $clickMethod = 'UI Automation InvokePattern'
+  } catch {
+    $invokeError = $_.Exception.Message
+  }
+}
+if ($clickMethod -eq 'coordinate-click') {
+  if (-not [Issue816NativeClick]::SetCursorPos($x, $y)) { throw "Could not focus the native Save As button at $x,$y." }
+  Start-Sleep -Milliseconds 100
+  [Issue816NativeClick]::mouse_event(0x0002, 0, 0, 0, [System.UIntPtr]::Zero)
+  Start-Sleep -Milliseconds 50
+  [Issue816NativeClick]::mouse_event(0x0004, 0, 0, 0, [System.UIntPtr]::Zero)
+} elseif ($Action -eq 'save') {
+  Start-Sleep -Milliseconds 600
+  if ($null -ne (Find-NativeSaveDialog) -and $null -eq (Find-NativeSystemOverwriteDialog)) {
+    if (-not [Issue816NativeClick]::SetCursorPos($x, $y)) { throw "Could not focus the native Save As button at $x,$y after InvokePattern." }
+    Start-Sleep -Milliseconds 100
+    [Issue816NativeClick]::mouse_event(0x0002, 0, 0, 0, [System.UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 50
+    [Issue816NativeClick]::mouse_event(0x0004, 0, 0, 0, [System.UIntPtr]::Zero)
+    $clickMethod = 'UI Automation InvokePattern with coordinate fallback'
+  }
+}
 
 if ($Action -eq 'save') {
   $promptDeadline = [DateTime]::UtcNow.AddSeconds(3)
@@ -300,5 +323,13 @@ do {
   Start-Sleep -Milliseconds 100
   $isOpen = $null -ne (Find-NativeSaveDialog)
 } while ($isOpen -and [DateTime]::UtcNow -lt $closeDeadline)
-if ($isOpen) { throw "Native Save As dialog did not close after action '$Action'." }
-Write-Output "Clicked native Save As '$Action' button at $x,$y; screenshot=$ScreenshotPath"
+if ($isOpen) {
+  $remainingDialog = Find-NativeSaveDialog
+  $details = if ($null -ne $remainingDialog) {
+    "window='$($remainingDialog.Current.Name)' class='$($remainingDialog.Current.ClassName)' bounds='$($remainingDialog.Current.BoundingRectangle)'"
+  } else {
+    'dialog lookup returned null after the close check'
+  }
+  throw "Native Save As dialog did not close after action '$Action' via $clickMethod ($details). InvokePatternError='$invokeError'; screenshot=$ScreenshotPath"
+}
+Write-Output "Clicked native Save As '$Action' button via $clickMethod at $x,$y; screenshot=$ScreenshotPath"
