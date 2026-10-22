@@ -208,7 +208,10 @@ async function generateIssue819Fixture(
     path.resolve(baseDirectory),
     `run-${new Date().toISOString().replace(/[:.]/gu, '-')}-${process.pid}`,
   );
-  const projectRoot = path.join(runRoot, 'Panda Stage formal export');
+  const projectRoot = path.join(
+    runRoot,
+    multiShot ? 'Panda Stage formal export.pandastage' : 'Panda Stage formal export',
+  );
   const evidenceRoot = path.join(runRoot, 'evidence');
   await fsp.mkdir(path.join(projectRoot, 'assets'), { recursive: true });
   await fsp.mkdir(evidenceRoot, { recursive: true });

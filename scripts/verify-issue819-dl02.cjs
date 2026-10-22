@@ -190,6 +190,7 @@ function installProjectFixtureIpc() {
   }));
   registerMock('RECENT_PROJECTS_OPEN', async (_event, request) => {
     assert(path.resolve(request.projectRoot) === path.resolve(fixture.projectRoot), 'Reopen request did not target the fixture Project root.');
+    if (!dl04Mode) return { ok: true, document: document() };
     const reopenedDocument = await projectService.open(request.projectRoot);
     assert(reopenedDocument.project.id === request.expectedProjectId, 'Reopened Project ID differs from the selected recent-project entry.');
     diskRecentProjectOpens.push({
