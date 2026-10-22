@@ -6296,6 +6296,9 @@ async function verifyIssue822AssemblyCards(window, baselineMode) {
     const header = workbench?.querySelector('.character-assembly-workbench-header');
     const style = workbench ? getComputedStyle(workbench) : null;
     const panel = document.querySelector('.character-assembly-drawer-panel');
+    const assemblyTab = document.querySelector('[data-testid="character-workspace-assembly-tab"]');
+    const expressionsTab = document.querySelector('[data-testid="character-workspace-expressions-tab"]');
+    const settingsTab = document.querySelector('[data-testid="character-workspace-settings-tab"]');
     const drawerViewport = document.querySelector('.resource-activity-surface');
     const actionIds = ${JSON.stringify(actionIds)};
     const actions = Object.fromEntries(Object.entries(actionIds).map(([target, id]) => {
@@ -6350,6 +6353,13 @@ async function verifyIssue822AssemblyCards(window, baselineMode) {
       topBlank: viewportBounds && workbenchBounds ? round(viewportBounds.y - workbenchBounds.y - paddingTop) : null,
       hasHead: workbench?.dataset.hasHead ?? '',
       editTarget: workbench?.dataset.editTarget ?? '',
+      activeWorkspace: assemblyTab?.getAttribute('aria-pressed') === 'true'
+        ? 'assembly'
+        : expressionsTab?.getAttribute('aria-pressed') === 'true'
+          ? 'expressions'
+          : settingsTab?.getAttribute('aria-pressed') === 'true'
+            ? 'settings'
+            : 'none',
       imageSizes: [...(workbench?.querySelectorAll('.character-assembly-part') ?? [])].map((image) => ({
         part: image.className.replace('character-assembly-part character-assembly-part-', ''),
         width: image.naturalWidth,
@@ -6418,12 +6428,13 @@ async function verifyIssue822AssemblyCards(window, baselineMode) {
   await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Issue 822 Assembly workspace');
   await waitForDom(
     window,
-    `(() => { const workbench = document.querySelector('[data-testid="character-assembly-workbench"]'); const images = [...(workbench?.querySelectorAll('.character-assembly-part') ?? [])]; return workbench?.dataset.sessionKind === 'edit' && images.length === 3 && images.every((image) => image.complete && image.naturalWidth > 0); })()`,
+    `document.querySelector('[data-testid="character-workspace-assembly-tab"]')?.getAttribute('aria-pressed') === 'true' && (() => { const workbench = document.querySelector('[data-testid="character-assembly-workbench"]'); const images = [...(workbench?.querySelectorAll('.character-assembly-part') ?? [])]; return workbench?.dataset.sessionKind === 'edit' && images.length === 3 && images.every((image) => image.complete && image.naturalWidth > 0); })()`,
     'Issue 822 Body, Head, and Face fixture did not load in Assembly.',
   );
   await waitForPaint(window);
   const initialLayout = await readLayout();
   evidence.initialLayout = initialLayout;
+  assert(initialLayout.activeWorkspace === 'assembly', `The baseline or after screenshot is not showing the Assembly workspace: ${JSON.stringify(initialLayout)}.`);
   screenshots.push(await capture(window, baselineMode ? 'issue822-s04-baseline.png' : 'issue822-s04-after-initial.png'));
 
   if (baselineMode) {
@@ -6750,8 +6761,10 @@ async function verifyIssue822AssemblyCards(window, baselineMode) {
   for (const profile of ['low', 'middle', 'high']) {
     const timeline = await setTimeline(profile);
     await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', `Open Assembly at ${profile} timeline`);
-    await waitForDom(window, 'document.querySelector("[data-testid=character-assembly-workbench]")', `Assembly did not open at ${profile} timeline.`);
+    await waitForDom(window, 'document.querySelector("[data-testid=character-workspace-assembly-tab]")?.getAttribute("aria-pressed") === "true"', `Assembly did not become active at ${profile} timeline.`);
+    await waitForPaint(window);
     const layout = await readLayout();
+    assert(layout.activeWorkspace === 'assembly', `${profile} timeline screenshot is not showing the Assembly workspace: ${JSON.stringify(layout)}.`);
     assert(layout.gridTrackCount === 2 && !layout.headerVisible && layout.topBlank <= 1 && layout.viewport.height > 0, `${profile} timeline retained top header space or lost the preview: ${JSON.stringify(layout)}.`);
     timelineLayouts.push({ timeline, layout });
     screenshots.push(await capture(window, `issue822-s04-timeline-${profile}.png`));
@@ -6765,9 +6778,11 @@ async function verifyIssue822AssemblyCards(window, baselineMode) {
   await waitForDom(window, 'window.innerWidth <= 840 && window.innerWidth > 600', 'Narrow 125% viewport did not become active.');
   await waitForPaint(window);
   await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Open Assembly at narrow 125%');
-  await waitForDom(window, 'document.querySelector("[data-testid=character-assembly-workbench]")', 'Assembly did not open at narrow 125%.');
+  await waitForDom(window, 'document.querySelector("[data-testid=character-workspace-assembly-tab]")?.getAttribute("aria-pressed") === "true"', 'Assembly tab did not become active at narrow 125%.');
+  await waitForPaint(window);
   const narrowLayout = await readLayout();
   evidence.narrow125Percent = narrowLayout;
+  assert(narrowLayout.activeWorkspace === 'assembly', `The narrow 125% screenshot is not showing the Assembly workspace: ${JSON.stringify(narrowLayout)}.`);
   screenshots.push(await capture(window, 'issue822-s04-narrow-125-percent.png'));
   assert(narrowLayout.gridTrackCount === 2 && !narrowLayout.headerVisible && narrowLayout.topBlank <= 1 && narrowLayout.viewport.height > 0, `Narrow 125% Assembly layout retained top space or lost its preview: ${JSON.stringify(narrowLayout)}.`);
   const narrowActionViews = [];
