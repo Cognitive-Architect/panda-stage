@@ -64,6 +64,7 @@ const jobUpdates = [];
 const mediaFailures = [];
 const injectedCommitConflicts = [];
 const formalCommitRecords = [];
+const diskRecentProjectOpens = [];
 let conflictAtCommitPath = null;
 let failNextEncoderRun = false;
 let requireEncoderProcessError = false;
@@ -86,6 +87,65 @@ function defaultExportFileName(projectName) {
     baseName = 'Panda Stage export';
   }
   return baseName + '.mp4';
+}
+
+async function projectPersistenceFingerprint(project, projectRoot) {
+  const backgroundByShot = project.shots.map((shot, shotIndex) => {
+    const layer = shot.layers.find((candidate) => candidate.id === shot.backgroundLayerId);
+    const assetId = layer?.source.kind === 'asset' ? layer.source.assetId : null;
+    const asset = assetId ? project.assets.find((candidate) => candidate.id === assetId) : null;
+    if (!asset || asset.kind !== 'image') {
+      throw new Error(`Shot ${shotIndex} has no persisted image background asset.`);
+    }
+    return { shotIndex, shotId: shot.id, backgroundLayerId: shot.backgroundLayerId, assetId, relativePath: asset.relativePath };
+  });
+  const usedAssetIds = new Set([
+    ...backgroundByShot.map((background) => background.assetId),
+    ...project.shots.flatMap((shot) => shot.audioClips.map((clip) => clip.assetId)),
+  ]);
+  const assets = [];
+  for (const assetId of [...usedAssetIds].sort()) {
+    const asset = project.assets.find((candidate) => candidate.id === assetId);
+    if (!asset) throw new Error(`Persisted Project references missing asset ${assetId}.`);
+    const bytes = await fsp.readFile(path.join(projectRoot, asset.relativePath));
+    const actualSha256 = hash(bytes);
+    assert(actualSha256 === asset.sha256, `Persisted asset ${assetId} does not match its Project SHA-256.`);
+    assets.push({ assetId, relativePath: asset.relativePath, expectedSha256: asset.sha256, actualSha256 });
+  }
+  return {
+    projectId: project.id,
+    schemaVersion: project.schemaVersion,
+    shotOrder: project.shots.map((shot) => shot.id),
+    shots: project.shots.map((shot, shotIndex) => ({
+      shotIndex,
+      shotId: shot.id,
+      name: shot.name,
+      durationMs: shot.durationMs,
+      backgroundLayerId: shot.backgroundLayerId,
+      backgroundAssetId: backgroundByShot[shotIndex].assetId,
+      dialogues: shot.dialogues.map((dialogue) => ({
+        id: dialogue.id,
+        startMs: dialogue.startMs,
+        endMs: dialogue.endMs,
+        audioClipId: dialogue.audioClipId ?? null,
+        text: dialogue.text,
+      })),
+      audioClips: shot.audioClips.map((clip) => ({
+        id: clip.id,
+        assetId: clip.assetId,
+        role: clip.role,
+        startMs: clip.startMs,
+        endMs: clip.endMs,
+        sourceOffsetMs: clip.offsetMs,
+        volume: clip.volume,
+      })),
+    })),
+    backgrounds: backgroundByShot.map((background) => ({
+      ...background,
+      sha256: assets.find((asset) => asset.assetId === background.assetId)?.actualSha256 ?? null,
+    })),
+    assets,
+  };
 }
 
 function installProjectFixtureIpc() {
@@ -128,7 +188,18 @@ function installProjectFixtureIpc() {
       status: 'available',
     }],
   }));
-  registerMock('RECENT_PROJECTS_OPEN', async () => ({ ok: true, document: document() }));
+  registerMock('RECENT_PROJECTS_OPEN', async (_event, request) => {
+    assert(path.resolve(request.projectRoot) === path.resolve(fixture.projectRoot), 'Reopen request did not target the fixture Project root.');
+    const reopenedDocument = await projectService.open(request.projectRoot);
+    assert(reopenedDocument.project.id === request.expectedProjectId, 'Reopened Project ID differs from the selected recent-project entry.');
+    diskRecentProjectOpens.push({
+      projectRoot: reopenedDocument.projectRoot,
+      projectId: reopenedDocument.project.id,
+      projectFileSha256: hash(await fsp.readFile(reopenedDocument.projectFilePath)),
+      openSource: 'ProjectService.open(projectRoot)',
+    });
+    return { ok: true, document: reopenedDocument };
+  });
   registerMock('AUTOSAVE_TRACK', async (_event, request) => {
     trackedSnapshot = structuredClone(request);
     return { ok: true };
@@ -1123,6 +1194,54 @@ function compareRawFrames(left, right) {
   };
 }
 
+function sampleBackgroundRgb(rawBytes) {
+  const width = 1_920;
+  const rectangles = [
+    { x: 16, y: 16, size: 32 },
+    { x: width - 48, y: 16, size: 32 },
+  ];
+  const channels = [[], [], []];
+  for (const rectangle of rectangles) {
+    for (let y = rectangle.y; y < rectangle.y + rectangle.size; y += 1) {
+      for (let x = rectangle.x; x < rectangle.x + rectangle.size; x += 1) {
+        const offset = (y * width + x) * 3;
+        for (let channel = 0; channel < 3; channel += 1) {
+          channels[channel].push(rawBytes[offset + channel]);
+        }
+      }
+    }
+  }
+  return channels.map((values) => {
+    values.sort((left, right) => left - right);
+    return values[Math.floor(values.length / 2)];
+  });
+}
+
+function backgroundRgbDistance(left, right) {
+  return Math.sqrt(left.reduce((sum, value, index) => sum + (value - right[index]) ** 2, 0));
+}
+
+function assertEncodedBackground(sample, expected, backgrounds, label) {
+  const observedRgb = sampleBackgroundRgb(sample.rawBytes);
+  const matches = backgrounds
+    .map((background) => ({
+      shotIndex: background.shotIndex,
+      shotId: background.shotId,
+      assetId: background.assetId,
+      sha256: background.sha256,
+      distance: backgroundRgbDistance(observedRgb, background.expectedRgb),
+    }))
+    .sort((left, right) => left.distance - right.distance);
+  const nearest = matches[0];
+  const target = matches.find((entry) => entry.shotIndex === expected.shotIndex);
+  assert(target, `${label}: expected background Shot ${expected.shotIndex + 1} is missing.`);
+  assert(
+    target.distance <= 36 && nearest?.shotIndex === expected.shotIndex,
+    `${label}: encoded frame background did not match Shot ${expected.shotIndex + 1}. ${JSON.stringify({ observedRgb, target, nearest })}`,
+  );
+  return { observedRgb, expectedRgb: expected.expectedRgb, expectedAssetId: expected.assetId, expectedSha256: expected.sha256, nearestBackground: nearest };
+}
+
 function frameAtOrAfter(schedule, timeMs) {
   const entry = schedule.find((frame) => frame.timeMs >= timeMs);
   if (!entry) throw new Error(`No formal frame at or after ${timeMs} ms.`);
@@ -1151,7 +1270,7 @@ async function extractFormalFrame(outputPath, evidenceDirectory, mediaTools, fra
   return { frameIndex, pngPath, rawBytes };
 }
 
-async function issue827ExportEvidence(outputPath, evidenceDirectory, project, cameraMode, mediaTools) {
+async function issue827ExportEvidence(outputPath, evidenceDirectory, project, cameraMode, mediaTools, backgroundEvidence) {
   await fsp.mkdir(evidenceDirectory, { recursive: true });
   const durationMs = project.shots.reduce((total, shot) => total + shot.durationMs, 0);
   const schedule = Array.from(iterateFormalProjectFrameSchedule(project));
@@ -1159,6 +1278,15 @@ async function issue827ExportEvidence(outputPath, evidenceDirectory, project, ca
   assert(schedule.length === totalFrames, 'Project frame schedule did not use one global frame count.');
   assert(durationMs === 30_000 && totalFrames === 720, 'The Issue #827 long sample must be 30 seconds / 720 frames.');
   assert(schedule.at(-1)?.timeMs === 29_958, 'The final frame must be the last normal 24 fps sample.');
+  assert(backgroundEvidence.length === project.shots.length, 'The Issue #827 sample requires one independently identified background per Shot.');
+  assert(new Set(backgroundEvidence.map((entry) => entry.assetId)).size === project.shots.length, 'Issue #827 Shot background asset IDs are not distinct.');
+  assert(new Set(backgroundEvidence.map((entry) => entry.sha256)).size === project.shots.length, 'Issue #827 Shot background hashes are not distinct.');
+  for (const [shotIndex, shot] of project.shots.entries()) {
+    const background = backgroundEvidence[shotIndex];
+    assert(background.shotIndex === shotIndex && background.shotId === shot.id, `Issue #827 background evidence does not map to Shot ${shotIndex + 1}.`);
+    const layer = shot.layers.find((candidate) => candidate.id === shot.backgroundLayerId);
+    assert(layer?.source.kind === 'asset' && layer.source.assetId === background.assetId, `Issue #827 Shot ${shotIndex + 1} does not reference its distinct background asset.`);
+  }
 
   const shotPrefixes = [];
   let prefixMs = 0;
@@ -1205,6 +1333,8 @@ async function issue827ExportEvidence(outputPath, evidenceDirectory, project, ca
     const after = await ensureSample(`boundary-${shotIndex}-after`, afterFrame.frameIndex);
     const contrast = compareRawFrames(before.rawBytes, after.rawBytes);
     assert(contrast.meanLuma > 5 && contrast.changedPixels > 500, `Shot ${shotIndex + 1} boundary did not show a complete changed frame.`);
+    const beforeBackground = assertEncodedBackground(before, backgroundEvidence[shotIndex - 1], backgroundEvidence, `Shot ${shotIndex} pre-boundary frame ${before.frameIndex}`);
+    const afterBackground = assertEncodedBackground(after, backgroundEvidence[shotIndex], backgroundEvidence, `Shot ${shotIndex + 1} post-boundary frame ${after.frameIndex}`);
     const logical = [-1, 0, 1].map((deltaMs) => {
       const position = mapProjectTime(project, current.startMs + deltaMs);
       return {
@@ -1226,6 +1356,7 @@ async function issue827ExportEvidence(outputPath, evidenceDirectory, project, ca
       afterGlobalTimeMs: afterFrame.timeMs,
       logical,
       pixelContrast: contrast,
+      encodedBackgrounds: { before: beforeBackground, after: afterBackground },
       beforePngPath: before.pngPath,
       afterPngPath: after.pngPath,
     });
@@ -1324,6 +1455,8 @@ async function issue827ExportEvidence(outputPath, evidenceDirectory, project, ca
     audioCodec: audio[0].codec_name,
     audioDurationSeconds: Number(audio[0].duration),
     shotPrefixes,
+    backgrounds: backgroundEvidence,
+    boundaries,
     schedulePath,
     ffprobePath,
     ffprobeJsonPath: ffprobePath,
@@ -1341,10 +1474,80 @@ async function issue827ExportEvidence(outputPath, evidenceDirectory, project, ca
   };
 }
 
+async function ensureQuickActionDrawerOpen() {
+  const expanded = await rendererJs(`document.querySelector('[data-testid="quick-action-drawer"]')?.getAttribute('data-expanded') === 'true'`);
+  if (!expanded) await clickSelector('[data-testid="quick-action-drawer-handle"]');
+  await waitForRenderer(`document.querySelector('[data-testid="quick-action-drawer"]')?.getAttribute('data-expanded') === 'true'`);
+}
+
+function acceptanceSessionFingerprint(snapshot) {
+  return {
+    projectId: snapshot.project?.id ?? null,
+    projectSha256: snapshot.project ? hash(Buffer.from(JSON.stringify(snapshot.project), 'utf8')) : null,
+    revision: snapshot.revision ?? null,
+    dirty: snapshot.dirty ?? null,
+    openInstanceId: snapshot.openInstanceId ?? null,
+    currentShotId: snapshot.currentShotId ?? null,
+    undoCount: snapshot.undoCount ?? null,
+    redoCount: snapshot.redoCount ?? null,
+  };
+}
+
 async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapshotBytes, initialProjectBytes, projectFilePath, mediaTools }) {
   const evidenceRoot = fixture.evidenceRoot;
-  const projectSnapshot = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
-  const project = projectSnapshot.project;
+  let projectSnapshot = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+  let project = projectSnapshot.project;
+  let saveReopenEvidence = null;
+  let persistedProjectBytesBeforeExport = initialProjectBytes;
+  if (dl04SampleId === 1) {
+    const preSaveFingerprint = await projectPersistenceFingerprint(project, fixture.projectRoot);
+    const originalInstanceId = projectSnapshot.openInstanceId;
+    await ensureQuickActionDrawerOpen();
+    await clickSelector('[data-testid="quick-action-save"]');
+    await waitForRenderer('window.__pandaStageIssue816Acceptance.inspect()?.dirty === false');
+    const savedSnapshot = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+    const savedProjectBytes = await fsp.readFile(projectFilePath);
+    const savedProject = ProjectSchema.parse(JSON.parse(savedProjectBytes.toString('utf8')));
+    const savedFingerprint = await projectPersistenceFingerprint(savedProject, fixture.projectRoot);
+    assert(JSON.stringify(preSaveFingerprint) === JSON.stringify(savedFingerprint), 'Creator Save did not persist the edited Shot, timing, background, dialogue, and audio references.');
+    const savedProjectSha256 = hash(savedProjectBytes);
+
+    await clickSelector('[data-testid="quick-action-close"]');
+    await waitForRenderer("!window.__pandaStageIssue816Acceptance.inspect()?.project && Array.from(document.querySelectorAll('[data-task4-core]')).some((element) => element.getAttribute('data-task4-core') === 'recent-open')");
+    await clickSelector('[data-task4-core="recent-open"]');
+    await waitForRenderer(`window.__pandaStageIssue816Acceptance.inspect()?.project?.id === ${JSON.stringify(savedProject.id)}`);
+    projectSnapshot = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+    project = projectSnapshot.project;
+    const reopenedBytes = await fsp.readFile(projectFilePath);
+    const reopenedFingerprint = await projectPersistenceFingerprint(project, fixture.projectRoot);
+    const diskOpenEvidence = diskRecentProjectOpens.at(-1);
+    assert(projectSnapshot.openInstanceId !== originalInstanceId, 'Recent Project open did not create a new Editor Project instance after close.');
+    assert(projectSnapshot.dirty === false, 'Project reopened from disk with an unexpected dirty state.');
+    assert(reopenedBytes.equals(savedProjectBytes), 'Reopened Project bytes differ from the Creator UI save.');
+    assert(JSON.stringify(savedFingerprint) === JSON.stringify(reopenedFingerprint), 'Reopened Project changed Shot order, durations, clip timing, background references, or asset hashes.');
+    assert(diskOpenEvidence?.projectId === savedProject.id && diskOpenEvidence.projectFileSha256 === savedProjectSha256, 'Recent Project Open did not read the saved project.json from disk.');
+    persistedProjectBytesBeforeExport = savedProjectBytes;
+    saveReopenEvidence = {
+      path: 'Creator quick-action Save, Close, then Recent Projects Open',
+      projectId: project.id,
+      originalOpenInstanceId: originalInstanceId,
+      reopenedOpenInstanceId: projectSnapshot.openInstanceId,
+      savedRevision: savedSnapshot.revision,
+      reopenedRevision: projectSnapshot.revision,
+      savedProjectSha256,
+      reopenedProjectSha256: hash(reopenedBytes),
+      diskOpenEvidence,
+      diskBytesUnchanged: reopenedBytes.equals(savedProjectBytes),
+      beforeReopen: savedFingerprint,
+      afterReopen: reopenedFingerprint,
+      reopenedDirty: projectSnapshot.dirty,
+    };
+  } else {
+    assert(projectSnapshot.dirty === true, 'The second Issue #827 sample must retain an unsaved editor snapshot.');
+  }
+  const preExportPersistenceFingerprint = await projectPersistenceFingerprint(project, fixture.projectRoot);
+  assert(JSON.stringify(preExportPersistenceFingerprint.backgrounds.map((entry) => ({ shotId: entry.shotId, assetId: entry.assetId, sha256: entry.sha256 }))) === JSON.stringify(fixture.backgroundEvidence.map((entry) => ({ shotId: entry.shotId, assetId: entry.assetId, sha256: entry.sha256 }))), 'Project background references or bytes changed before formal export.');
+  await ensureQuickActionDrawerOpen();
   const totalDurationMs = project.shots.reduce((total, shot) => total + shot.durationMs, 0);
   const desiredCameraMode = dl04SampleId === 1 ? 'static' : 'speaker-focus';
   const currentCameraMode = await rendererJs(`document.querySelector('[data-testid="right-mode-auto-camera"]')?.getAttribute('aria-pressed') === 'true'`);
@@ -1409,10 +1612,11 @@ async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapsho
     completionTimeoutMs: 1_200_000,
   });
   assert(exportRun.start.cameraMode === desiredCameraMode, 'Formal candidate did not capture the requested camera mode.');
-  assert(exportRun.start.dirtyAtCapture === true, 'Formal candidate did not freeze the unsaved editor Project.');
+  const expectedDirtyAtCapture = dl04SampleId === 2;
+  assert(exportRun.start.dirtyAtCapture === expectedDirtyAtCapture, `Formal candidate dirtyAtCapture must be ${expectedDirtyAtCapture} for sample ${dl04SampleId}.`);
   assert(exportRun.after.revision === exportRun.before.revision && exportRun.after.dirty === exportRun.before.dirty && exportRun.after.undoCount === exportRun.before.undoCount, 'Export changed Project revision, dirty state, or History.');
-  assert((await fsp.readFile(projectFilePath)).equals(initialProjectBytes), 'Export changed the persisted Project while capturing the unsaved editor snapshot.');
-  const exportEvidence = await issue827ExportEvidence(outputPath, path.join(evidenceRoot, `sample-${dl04SampleId}-output`), project, desiredCameraMode, mediaTools);
+  assert((await fsp.readFile(projectFilePath)).equals(persistedProjectBytesBeforeExport), 'Export changed the persisted Project while capturing the editor snapshot.');
+  const exportEvidence = await issue827ExportEvidence(outputPath, path.join(evidenceRoot, `sample-${dl04SampleId}-output`), project, desiredCameraMode, mediaTools, fixture.backgroundEvidence);
 
   const beforeExistingTargetHash = hash(await fsp.readFile(outputPath));
   const existingTarget = await startFromCreatorUi(evidenceRoot, 'existing-target-no-clobber', {
@@ -1423,6 +1627,91 @@ async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapsho
   const afterExistingTargetHash = hash(await fsp.readFile(outputPath));
   assert(existingTarget.starts.length === 0 && beforeExistingTargetHash === afterExistingTargetHash, 'Existing target was overwritten or started a render Job.');
   const existingTargetCleanup = await assertNoExportTemporaries('Issue #827 existing target no-clobber');
+
+  let runtimeRenderFailure = null;
+  if (dl04SampleId === 1) {
+    const failedOutputPath = path.join(fixture.projectRoot, 'issue827-late-shot-render-failure.mp4');
+    assert(!existsSync(failedOutputPath), 'Controlled late-shot failure target already exists.');
+    const priorOutputSha256 = hash(await fsp.readFile(outputPath));
+    const failureSessionBefore = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+    const projectBytesBeforeFailure = await fsp.readFile(projectFilePath);
+    const sourceHashesBeforeFailure = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+      assetId: asset.id,
+      sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+    })));
+    const injectionRecords = [];
+    const originalRenderFrame = hiddenWindowManager.renderFrame.bind(hiddenWindowManager);
+    hiddenWindowManager.renderFrame = (request) => {
+      const position = mapProjectTime(project, request.timeMs);
+      if (position.shotIndex === 1 && injectionRecords.length === 0) {
+        const injectedRequest = { ...request, shotLocalTimeMs: request.shotLocalTimeMs + 1 };
+        injectionRecords.push({
+          injection: 'test-only hidden-renderer formal frame-map mismatch',
+          jobId: request.jobId,
+          shotIndex: position.shotIndex,
+          shotId: position.shot.id,
+          frameIndex: request.frameIndex,
+          globalTimeMs: request.timeMs,
+          expectedShotLocalTimeMs: position.shotLocalTimeMs,
+          requestShotLocalTimeMs: request.shotLocalTimeMs,
+          injectedShotLocalTimeMs: injectedRequest.shotLocalTimeMs,
+        });
+        return originalRenderFrame(injectedRequest);
+      }
+      return originalRenderFrame(request);
+    };
+    let failureRun;
+    try {
+      failureRun = await startFromCreatorUi(evidenceRoot, 'issue827-late-shot-render-failure', {
+        selectedFileName: path.basename(failedOutputPath),
+        expectJobFailure: true,
+        completionTimeoutMs: 1_200_000,
+      });
+    } finally {
+      delete hiddenWindowManager.renderFrame;
+    }
+    assert(injectionRecords.length === 1 && injectionRecords[0].shotIndex === 1, 'Controlled failure did not target exactly one frame in the second Shot.');
+    assert(failureRun.status === 'failed' && failureRun.start.jobId === injectionRecords[0].jobId, 'The formal Job did not fail after the controlled second-Shot request.');
+    assert(String(failureRun.failedJob?.error ?? '').includes('Formal export frame did not match the Project Shot map.'), 'The hidden renderer did not report the deterministic Shot-map failure.');
+    assert(!existsSync(failedOutputPath), 'The failed late-Shot Job published an MP4.');
+    const failureCleanup = await assertNoExportTemporaries('Issue #830 deterministic late-Shot render failure');
+    const hiddenDiagnostics = hiddenWindowManager.getDiagnostics();
+    assert(!hiddenDiagnostics.windowOpen && hiddenDiagnostics.loadedJobId === null && hiddenDiagnostics.pendingLoadJobId === null && hiddenDiagnostics.pendingFrameJobId === null, 'Hidden renderer Job state was not released after the late-Shot failure.');
+    const failureSessionAfter = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+    const sessionBeforeFingerprint = acceptanceSessionFingerprint(failureSessionBefore);
+    const sessionAfterFingerprint = acceptanceSessionFingerprint(failureSessionAfter);
+    assert(JSON.stringify(sessionBeforeFingerprint) === JSON.stringify(sessionAfterFingerprint), 'The failed formal Job changed the Project, revision, dirty state, history, or selection.');
+    const projectBytesAfterFailure = await fsp.readFile(projectFilePath);
+    assert(projectBytesAfterFailure.equals(projectBytesBeforeFailure), 'The failed formal Job changed project.json.');
+    const sourceHashesAfterFailure = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+      assetId: asset.id,
+      sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+    })));
+    assert(JSON.stringify(sourceHashesAfterFailure) === JSON.stringify(sourceHashesBeforeFailure), 'The failed formal Job changed source assets.');
+    const outputSha256After = hash(await fsp.readFile(outputPath));
+    assert(outputSha256After === priorOutputSha256, 'The late-Shot failure changed the previously completed MP4.');
+    runtimeRenderFailure = {
+      targetPath: failedOutputPath,
+      injection: injectionRecords[0],
+      job: { jobId: failureRun.failedJob.jobId, status: failureRun.failedJob.status, phase: failureRun.failedJob.phase, error: failureRun.failedJob.error },
+      failedScreenshotPath: failureRun.failureScreenshotPath,
+      outputAbsent: !existsSync(failedOutputPath),
+      stagingCleanup: failureCleanup,
+      hiddenWindowDiagnosticsAfterFailure: hiddenDiagnostics,
+      editorStateBefore: sessionBeforeFingerprint,
+      editorStateAfter: sessionAfterFingerprint,
+      editorStateUnchanged: JSON.stringify(sessionBeforeFingerprint) === JSON.stringify(sessionAfterFingerprint),
+      projectFileSha256Before: hash(projectBytesBeforeFailure),
+      projectFileSha256After: hash(projectBytesAfterFailure),
+      projectFileUnchanged: projectBytesAfterFailure.equals(projectBytesBeforeFailure),
+      sourceAssetHashesBefore: sourceHashesBeforeFailure,
+      sourceAssetHashesAfter: sourceHashesAfterFailure,
+      sourceAssetsUnchanged: JSON.stringify(sourceHashesAfterFailure) === JSON.stringify(sourceHashesBeforeFailure),
+      priorSuccessfulOutputSha256Before: priorOutputSha256,
+      priorSuccessfulOutputSha256After: outputSha256After,
+      priorSuccessfulOutputUnchanged: outputSha256After === priorOutputSha256,
+    };
+  }
 
   const restoredSourceHashes = await Promise.all(fixtureProject.assets.map(async (asset) => {
     const bytes = await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath));
@@ -1470,11 +1759,13 @@ async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapsho
     projectId: project.id,
     projectName: project.name,
     projectPath: projectFilePath,
-    projectFileSha256: hash(initialProjectBytes),
+    projectFileSha256: hash(persistedProjectBytesBeforeExport),
     editorSnapshotPath,
     editorSnapshotSha256: hash(editorSnapshotBytes),
     editorSnapshotRevision: exportRun.start.revision,
     dirtyAtCapture: exportRun.start.dirtyAtCapture,
+    saveReopen: saveReopenEvidence,
+    persistenceFingerprint: preExportPersistenceFingerprint,
     shotCount: project.shots.length,
     totalDurationMs,
     shots: project.shots.map((shot) => ({ shotId: shot.id, name: shot.name, durationMs: shot.durationMs, dialogueCount: shot.dialogues.length, audioClipCount: shot.audioClips.length })),
@@ -1490,6 +1781,7 @@ async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapsho
   result.audioMap = fixture.audioMixFixture.mappedClips;
   result.cameraResolverEvidence = cameraEvidence;
   result.outputs = { [desiredCameraMode]: { ...exportEvidence, creatorUiEvidence: { nativeSaveAs: exportRun.nativeSaveAsScreenshotPath, progress: exportRun.progressScreenshotPath, completed: exportRun.completedScreenshotPath }, externalPlayer } };
+  result.runtimeRenderFailure = runtimeRenderFailure;
   result.editorState = {
     revision: finalEditorState.revision,
     dirty: finalEditorState.dirty,
@@ -1498,7 +1790,7 @@ async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapsho
     exportPreservedRevision: exportRun.after.revision === exportRun.before.revision,
     exportPreservedDirty: exportRun.after.dirty === exportRun.before.dirty,
     exportPreservedHistory: exportRun.after.undoCount === exportRun.before.undoCount,
-    projectFileUnchanged: (await fsp.readFile(projectFilePath)).equals(initialProjectBytes),
+    projectFileUnchanged: (await fsp.readFile(projectFilePath)).equals(persistedProjectBytesBeforeExport),
   };
   result.exportJobs = jobUpdates.map((update) => ({ jobId: update.jobId, status: update.status, phase: update.phase, completedFrames: update.completedFrames, totalFrames: update.totalFrames }));
   result.auto = 'PASS';
@@ -1543,6 +1835,9 @@ async function run() {
 
   const result = {
     issue: dl04Mode ? 827 : dl03Mode ? 823 : 819,
+    wrapperRunId: process.env.PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID ?? null,
+    sourceCommitSha: process.env.PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA ?? null,
+    sampleId: dl04Mode ? dl04SampleId : null,
     workOrder: dl04Mode
       ? 'DL-04 formal whole-Project multi-shot export acceptance'
       : dl03Mode

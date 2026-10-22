@@ -39,11 +39,12 @@ async function writeSampleEvidence(fixture, sampleId) {
     frameCount: formalFrameCount(shotStartMs),
     shotPrefixes,
     assetHashes: assets,
+    backgrounds: fixture.backgroundEvidence,
     audioMap: fixture.audioMixFixture.mappedClips,
     frames,
   };
   await fsp.writeFile(path.join(fixture.evidenceRoot, 'generated-project-receipt.json'), JSON.stringify(receipt, null, 2), 'utf8');
-  return { root: fixture.root, projectRoot: fixture.projectRoot, evidenceRoot: fixture.evidenceRoot, projectSha256: receipt.projectSha256, shotPrefixes, assetCount: assets.length, frameCount: frames.length };
+  return { root: fixture.root, projectRoot: fixture.projectRoot, evidenceRoot: fixture.evidenceRoot, projectSha256: receipt.projectSha256, shotPrefixes, backgrounds: fixture.backgroundEvidence, assetCount: assets.length, frameCount: frames.length };
 }
 
 async function writeMathFixture(outputDirectory, projectTemplate) {

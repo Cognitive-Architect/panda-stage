@@ -160,6 +160,46 @@ function pandaExpressionPng(expression) {
   ]);
 }
 
+const ISSUE827_BACKGROUND_PALETTES = {
+  1: [[36, 82, 128], [193, 93, 49], [56, 126, 77]],
+  2: [[115, 69, 140], [173, 132, 38], [36, 136, 151]],
+};
+
+function issue827BackgroundPng(sampleId, shotIndex) {
+  const palette = ISSUE827_BACKGROUND_PALETTES[sampleId];
+  const color = palette?.[shotIndex];
+  if (!color) throw new Error(`No Issue #827 background palette for sample ${sampleId}, Shot ${shotIndex + 1}.`);
+  const width = 1_920;
+  const height = 1_080;
+  const rowLength = 1 + width * 4;
+  const row = Buffer.alloc(rowLength);
+  for (let x = 0; x < width; x += 1) {
+    const offset = 1 + x * 4;
+    row[offset] = color[0];
+    row[offset + 1] = color[1];
+    row[offset + 2] = color[2];
+    row[offset + 3] = 255;
+  }
+  const scanlines = Buffer.alloc(rowLength * height);
+  for (let y = 0; y < height; y += 1) row.copy(scanlines, y * rowLength);
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 6;
+  return {
+    bytes: Buffer.concat([
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+      pngChunk('IHDR', header),
+      pngChunk('IDAT', deflateSync(scanlines)),
+      pngChunk('IEND', Buffer.alloc(0)),
+    ]),
+    expectedRgb: [...color],
+    width,
+    height,
+  };
+}
+
 async function generateIssue819Fixture(
   baseDirectory,
   { includeAudioMix = false, multiShot = false, sampleId = 1 } = {},
@@ -235,6 +275,7 @@ async function generateIssue819Fixture(
   }
 
   let audioMixFixture = null;
+  let backgroundEvidence = [];
   if (includeAudioMix) {
     const characterLayer = shot.layers.find((layer) => layer.source.kind === 'character');
     const character = project.characters.find(
@@ -546,6 +587,64 @@ async function generateIssue819Fixture(
       volume: 1,
     }];
     project.shots = [shot, second, third];
+    const originalBackgroundLayer = shot.layers.find((layer) => layer.id === shot.backgroundLayerId);
+    if (!originalBackgroundLayer || originalBackgroundLayer.source.kind !== 'asset') {
+      throw new Error('DL-04 fixture requires an asset-backed background layer in every Shot.');
+    }
+    const originalBackgroundAsset = project.assets.find(
+      (asset) => asset.id === originalBackgroundLayer.source.assetId,
+    );
+    if (!originalBackgroundAsset || originalBackgroundAsset.kind !== 'image') {
+      throw new Error('DL-04 fixture background asset is missing or is not an image.');
+    }
+    const backgroundBytesByShot = [];
+    backgroundEvidence = project.shots.map((projectShot, shotIndex) => {
+      const layer = projectShot.layers.find((candidate) => candidate.id === projectShot.backgroundLayerId);
+      if (!layer || layer.source.kind !== 'asset') {
+        throw new Error(`DL-04 fixture Shot ${shotIndex + 1} has no asset-backed background layer.`);
+      }
+      const background = issue827BackgroundPng(sampleId, shotIndex);
+      let asset;
+      if (shotIndex === 0) {
+        asset = originalBackgroundAsset;
+        asset.name = `DL-04 sample ${sampleId} Shot 1 background`;
+      } else {
+        asset = {
+          id: randomUUID(),
+          kind: 'image',
+          name: `DL-04 sample ${sampleId} Shot ${shotIndex + 1} background`,
+          relativePath: `assets/dl04-sample-${sampleId}-shot-${shotIndex + 1}-background.png`,
+          mimeType: 'image/png',
+          width: background.width,
+          height: background.height,
+          sha256: hash(background.bytes),
+        };
+        project.assets.push(asset);
+      }
+      asset.width = background.width;
+      asset.height = background.height;
+      asset.sha256 = hash(background.bytes);
+      layer.source = { kind: 'asset', assetId: asset.id };
+      backgroundBytesByShot[shotIndex] = background.bytes;
+      const evidence = {
+        shotIndex,
+        shotId: projectShot.id,
+        shotName: projectShot.name,
+        assetId: asset.id,
+        relativePath: asset.relativePath,
+        sha256: asset.sha256,
+        expectedRgb: background.expectedRgb,
+        width: background.width,
+        height: background.height,
+      };
+      return evidence;
+    });
+    for (const shotIndex of [0, 1, 2]) {
+      await fsp.writeFile(
+        path.join(projectRoot, backgroundEvidence[shotIndex].relativePath),
+        backgroundBytesByShot[shotIndex],
+      );
+    }
     audioMixFixture.shotPrefixes = [0, shot.durationMs, shot.durationMs + second.durationMs];
     audioMixFixture.mappedClips = [
       { shotIndex: 0, clipId: audioMixFixture.bgmClipId, role: 'bgm', localStartMs: 0, localEndMs: shot.durationMs - 1_000, globalStartMs: 0, globalEndMs: shot.durationMs - 1_000, sourceOffsetMs: 0 },
@@ -579,6 +678,7 @@ async function generateIssue819Fixture(
     evidenceRoot,
     project: validated,
     audioMixFixture,
+    backgroundEvidence,
     mouthOpenAssetSha256: audioMixFixture?.mouthOpenAssetSha256 ?? null,
     expressionAssetHashes: Object.fromEntries(
       validated.assets
