@@ -1681,13 +1681,21 @@ async function runIssue832Acceptance({ result, editorSnapshotPath, editorSnapsho
   await clickSelector('[data-testid="quick-action-play"]');
   await waitForRenderer(`Boolean(document.querySelector('[data-testid="product-preview-overlay"]'))`);
   await waitForRenderer(`(() => { const button = document.querySelector('[data-testid="product-preview-play-pause"]'); return button && !button.disabled; })()`, 60_000);
+  const previewInitiallyPlaying = await rendererJs(
+    `document.querySelector('[data-testid="product-preview-play-pause"]')?.getAttribute('aria-pressed') === 'true'`,
+  );
   const previewScreenshot = await mainWindow.webContents.capturePage();
   const previewScreenshotPath = path.join(evidenceRoot, 'preview-during-export.png');
   await fsp.writeFile(previewScreenshotPath, previewScreenshot.toPNG());
+  if (!previewInitiallyPlaying) {
+    await clickSelector('[data-testid="product-preview-play-pause"]');
+    await waitForRenderer(`document.querySelector('[data-testid="product-preview-play-pause"]')?.getAttribute('aria-pressed') === 'true'`, 10_000);
+  }
   await clickSelector('[data-testid="product-preview-play-pause"]');
-  await waitForRenderer(`document.querySelector('[data-testid="product-preview-play-pause"]')?.getAttribute('aria-pressed') === 'true'`, 10_000);
+  await waitForRenderer(`document.querySelector('[data-testid="product-preview-play-pause"]')?.getAttribute('aria-pressed') === 'false'`, 10_000);
   await pause(250);
   await clickSelector('[data-testid="product-preview-play-pause"]');
+  await waitForRenderer(`document.querySelector('[data-testid="product-preview-play-pause"]')?.getAttribute('aria-pressed') === 'true'`, 10_000);
   await clickSelector('[data-testid="product-preview-close"]');
   await waitForRenderer(`!document.querySelector('[data-testid="product-preview-overlay"]')`);
   const taskAfterPreview = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
