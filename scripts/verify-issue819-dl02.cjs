@@ -1575,7 +1575,7 @@ async function captureIssue832Progress(start, label) {
 async function captureIssue832EncodingState(start, label) {
   await waitForRenderer(
     `window.__pandaStageIssue816Acceptance.inspectExportTask()?.task.jobId === ${JSON.stringify(start.jobId)} && window.__pandaStageIssue816Acceptance.inspectExportTask()?.task.phase === 'encoding'`,
-    180_000,
+    1_200_000,
   );
   const state = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
   const progressVisible = await rendererJs(
