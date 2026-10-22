@@ -463,6 +463,8 @@ describe('ExportService', () => {
     const service = new ExportService(renderer, fileSystem, media);
     const input = {
       candidate: {
+        attemptId: '10000000-0000-4000-8000-000000000011',
+        snapshotId: '30000000-0000-4000-8000-000000000011',
         project: {
           shots: [
             {
@@ -483,6 +485,8 @@ describe('ExportService', () => {
       media: [],
     } as unknown as FrozenExportInput;
     let targetChecks = 0;
+    const updates: Array<Record<string, unknown>> = [];
+    service.subscribe((update) => updates.push(update));
     const handle = service.startFormalExport(input, async () => {
       targetChecks += 1;
     });
@@ -503,6 +507,18 @@ describe('ExportService', () => {
     expect(targetChecks).toBe(2);
     expect(fileSystem.commitFormalOutputNoReplaceCalls).toBe(1);
     expect(service.getCompletedOutputPath(handle.jobId)).toBe(result.outputPath);
+    expect(service.getJob(handle.jobId)).toMatchObject({
+      attemptId: input.candidate.attemptId,
+      snapshotId: input.candidate.snapshotId,
+      status: 'completed',
+    });
+    expect(updates.at(-1)).toMatchObject({
+      jobId: handle.jobId,
+      attemptId: input.candidate.attemptId,
+      snapshotId: input.candidate.snapshotId,
+      status: 'completed',
+      phase: 'finished',
+    });
   });
 
   it.each([
@@ -764,12 +780,21 @@ describe('ExportService', () => {
     const handle = service.startFullProbe(request);
     await encodeStarted;
 
+    let waitSettled = false;
+    const waitForStop = service.waitForJob(handle.jobId).then(() => {
+      waitSettled = true;
+    });
+    await Promise.resolve();
+    expect(waitSettled).toBe(false);
+
     expect(service.getActiveProcessCount()).toBe(1);
     expect(service.cancelJob('00000000-0000-4000-8000-000000000000')).toBe(
       false,
     );
     expect(service.cancelJob(handle.jobId)).toBe(true);
     expect(service.cancelJob(handle.jobId)).toBe(true);
+    await waitForStop;
+    expect(waitSettled).toBe(true);
     await expect(handle.completion).rejects.toThrow(
       new RegExp(`Export Job ${handle.jobId}.*可以立即重新导出`),
     );
@@ -995,6 +1020,10 @@ describe('ExportService', () => {
     expect(fileSystem.finalFiles.get(outputPath)).toBe('old video');
     expect(fileSystem.commitFinalOutputCalls).toBe(0);
     expect(service.getJob(handle.jobId)?.status).toBe('failed');
+    expect(service.getJob(handle.jobId)).toMatchObject({
+      originalError: 'original probe failure',
+      cleanupError: expect.stringContaining('controlled staging lock'),
+    });
   });
 
   it('waits for in-flight writes before cleanup when rendering is cancelled', async () => {
@@ -1046,7 +1075,11 @@ describe('ExportService', () => {
     expect(failure?.message).toMatch(
       /controlled file lock.*关闭占用文件或目录/,
     );
-    expect(service.getJob(failure?.jobId ?? '')?.status).toBe('failed');
+    expect(service.getJob(failure?.jobId ?? '')).toMatchObject({
+      status: 'failed',
+      originalError: 'cancel requested',
+      cleanupError: expect.stringContaining('controlled file lock'),
+    });
     expect(fileSystem.cleaned).toHaveLength(1);
 
     fileSystem.cleanupFailure = null;

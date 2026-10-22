@@ -85,11 +85,18 @@ interface ActivePreparation {
   attemptId: string;
   controller: AbortController;
   snapshotId: string;
+  completion: Promise<void>;
+  settle(): void;
 }
 
 interface StoredCandidate {
   candidate: ExportPreparationCandidate;
+  retryExpiresAt: number;
+  expiryTimer?: ReturnType<typeof setTimeout>;
 }
+
+const EXPORT_RETRY_RETENTION_MS = 30 * 60 * 1_000;
+const MAX_RETAINED_EXPORT_CANDIDATES = 2;
 
 export type FrozenExportMedia =
   | {
@@ -184,6 +191,7 @@ export class ExportPreparationService {
     request: ExportPreparationSelectOutputRequest,
     selectedPath: string | null,
   ): Promise<ExportPreparationSelectOutputResponse> {
+    await this.pruneExpiredCandidates();
     if (this.activeExportSnapshots.size > 0) {
       return {
         status: 'blocked',
@@ -234,10 +242,9 @@ export class ExportPreparationService {
           issue: this.outputLocationUnsupportedIssue(),
         };
       }
-      await this.releaseAllCandidates();
       const selectionId = randomUUID();
       const fileName = path.basename(target.canonicalPath);
-      this.selection = {
+      const selection: OutputSelection = {
         selectionId,
         projectRoot: path.resolve(request.projectRoot),
         projectId: request.projectId,
@@ -247,6 +254,46 @@ export class ExportPreparationService {
         overwriteApproved: false,
         targetIdentity: target.identity,
       };
+      if (request.snapshotId) {
+        const stored = this.candidates.get(request.snapshotId);
+        if (!stored) {
+          return {
+            status: 'blocked',
+            issue: this.unavailableSnapshotIssue(),
+          };
+        }
+        const candidate = stored.candidate;
+        if (
+          candidate.projectRoot !== selection.projectRoot ||
+          candidate.projectId !== selection.projectId ||
+          candidate.openInstanceId !== selection.openInstanceId
+        ) {
+          return {
+            status: 'blocked',
+            issue: this.sessionChangedIssue(),
+          };
+        }
+        if (await outputConflictsWithProject(selection, candidate.project)) {
+          return {
+            status: 'blocked',
+            issue: this.outputChangedIssue(),
+          };
+        }
+        stored.candidate = ExportPreparationCandidateSchema.parse({
+          ...candidate,
+          outputIntent: {
+            selectionId,
+            targetPath: selection.targetPath,
+            fileName,
+            overwriteApproved: false,
+            targetIdentity: target.identity,
+          },
+        }) as ExportPreparationCandidate;
+        stored.retryExpiresAt = this.now().getTime() + EXPORT_RETRY_RETENTION_MS;
+        this.scheduleCandidateExpiry(request.snapshotId);
+      } else {
+        this.selection = selection;
+      }
       return {
         status: 'selected',
         selectionId,
@@ -385,12 +432,19 @@ export class ExportPreparationService {
       );
     }
 
+    await this.pruneExpiredCandidates();
     const controller = new AbortController();
     const snapshotId = randomUUID();
+    let settle!: () => void;
+    const completion = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
     const active: ActivePreparation = {
       attemptId: request.attemptId,
       controller,
       snapshotId,
+      completion,
+      settle,
     };
     this.activePreparation = active;
     const diagnosticDetails: string[] = [];
@@ -599,7 +653,12 @@ export class ExportPreparationService {
         mediaManifest,
         totalMediaBytes,
       }) as ExportPreparationCandidate;
-      this.candidates.set(snapshotId, { candidate: structuredClone(candidate) });
+      this.candidates.set(snapshotId, {
+        candidate: structuredClone(candidate),
+        retryExpiresAt: this.now().getTime() + EXPORT_RETRY_RETENTION_MS,
+      });
+      this.scheduleCandidateExpiry(snapshotId);
+      await this.pruneCandidateLimit();
       return { status: 'PREPARATION_READY', candidate: structuredClone(candidate) };
     } catch (error) {
       if (error instanceof PreparationCancelledError) {
@@ -633,7 +692,20 @@ export class ExportPreparationService {
         }
       }
       if (this.activePreparation === active) this.activePreparation = null;
+      active.settle();
     }
+  }
+
+  async cancelActivePreparationAndWait(): Promise<boolean> {
+    const active = this.activePreparation;
+    if (!active) return false;
+    active.controller.abort();
+    await active.completion;
+    return true;
+  }
+
+  hasActivePreparation(): boolean {
+    return this.activePreparation !== null;
   }
 
   cancel(attemptId: string): boolean {
@@ -647,6 +719,7 @@ export class ExportPreparationService {
     snapshotId: string,
     allowStaleRevision = false,
   ): Promise<FrozenExportInput> {
+    await this.pruneExpiredCandidates();
     if (this.activeExportSnapshots.has(snapshotId)) {
       throw new Error('PREPARATION_BUSY');
     }
@@ -659,6 +732,7 @@ export class ExportPreparationService {
       current.project.id !== candidate.projectId ||
       current.openInstanceId !== candidate.openInstanceId
     ) {
+      await this.discard(undefined, snapshotId);
       throw new Error('PROJECT_SESSION_CHANGED');
     }
     if (
@@ -678,11 +752,16 @@ export class ExportPreparationService {
       }
       const media: FrozenExportMedia[] = [];
       for (const entry of candidate.mediaManifest) {
-        const bytes = await this.fileStore.readAsset?.(
-          snapshotId,
-          entry.contentHandleId,
-          entry.mimeType,
-        );
+        let bytes: Uint8Array<ArrayBuffer> | undefined;
+        try {
+          bytes = await this.fileStore.readAsset?.(
+            snapshotId,
+            entry.contentHandleId,
+            entry.mimeType,
+          );
+        } catch {
+          throw new Error('FROZEN_MEDIA_UNAVAILABLE');
+        }
         if (!bytes) throw new Error('FROZEN_MEDIA_UNAVAILABLE');
         const digest = createHash('sha256').update(bytes).digest('hex');
         const allowedMimeTypes: readonly string[] =
@@ -718,6 +797,19 @@ export class ExportPreparationService {
       return { candidate, media };
     } catch (error) {
       this.activeExportSnapshots.delete(snapshotId);
+      if (
+        error instanceof Error &&
+        /FROZEN_MEDIA_UNAVAILABLE|FROZEN_MEDIA_CHANGED/iu.test(error.message)
+      ) {
+        try {
+          await this.discard(undefined, snapshotId);
+        } catch (cleanupError) {
+          this.recordDiagnostic(
+            candidate.attemptId,
+            'Invalid frozen snapshot cleanup failed: ' + errorMessage(cleanupError),
+          );
+        }
+      }
       throw error;
     }
   }
@@ -749,9 +841,32 @@ export class ExportPreparationService {
     this.activeExportSnapshots.delete(snapshotId);
   }
 
+  async retainCandidateForRetry(snapshotId: string): Promise<void> {
+    this.activeExportSnapshots.delete(snapshotId);
+    const stored = this.candidates.get(snapshotId);
+    if (stored) {
+      stored.retryExpiresAt = this.now().getTime() + EXPORT_RETRY_RETENTION_MS;
+      this.scheduleCandidateExpiry(snapshotId);
+    }
+    await this.pruneCandidateLimit();
+  }
+
   async finalizeCandidateExport(snapshotId: string): Promise<void> {
     this.releaseCandidateExport(snapshotId);
-    await this.discard(undefined, snapshotId);
+    const stored = this.candidates.get(snapshotId);
+    if (!stored) return;
+    try {
+      await this.fileStore.delete(snapshotId);
+    } catch (error) {
+      this.recordDiagnostic(
+        stored.candidate.attemptId,
+        'Completed export snapshot cleanup failed: ' + errorMessage(error),
+      );
+      throw error;
+    } finally {
+      this.clearCandidateExpiry(stored);
+      this.candidates.delete(snapshotId);
+    }
   }
 
   getDiagnostics(diagnosticId: string): string[] {
@@ -768,6 +883,7 @@ export class ExportPreparationService {
       const candidate = this.candidates.get(snapshotId);
       if (!candidate) return false;
       await this.fileStore.delete(snapshotId);
+      this.clearCandidateExpiry(candidate);
       this.candidates.delete(snapshotId);
       return true;
     }
@@ -778,6 +894,9 @@ export class ExportPreparationService {
     this.activePreparation?.controller.abort();
     this.selection = null;
     this.activeExportSnapshots.clear();
+    for (const stored of this.candidates.values()) {
+      this.clearCandidateExpiry(stored);
+    }
     this.candidates.clear();
     await this.fileStore.dispose();
   }
@@ -786,6 +905,9 @@ export class ExportPreparationService {
     this.activePreparation?.controller.abort();
     this.selection = null;
     this.activeExportSnapshots.clear();
+    for (const stored of this.candidates.values()) {
+      this.clearCandidateExpiry(stored);
+    }
     this.candidates.clear();
     this.fileStore.disposeSync?.();
   }
@@ -795,6 +917,76 @@ export class ExportPreparationService {
       return this.options.getCurrentProjectSnapshot(projectRoot);
     } catch {
       return null;
+    }
+  }
+
+  private async pruneExpiredCandidates(): Promise<void> {
+    const now = this.now().getTime();
+    for (const [snapshotId, stored] of this.candidates) {
+      if (
+        stored.retryExpiresAt <= now &&
+        !this.activeExportSnapshots.has(snapshotId)
+      ) {
+        await this.removeCandidate(snapshotId);
+      }
+    }
+  }
+
+  private scheduleCandidateExpiry(snapshotId: string): void {
+    const stored = this.candidates.get(snapshotId);
+    if (!stored) return;
+    this.clearCandidateExpiry(stored);
+    const delay = Math.max(1, stored.retryExpiresAt - this.now().getTime());
+    stored.expiryTimer = setTimeout(() => {
+      void this.expireCandidate(snapshotId);
+    }, delay);
+    stored.expiryTimer.unref?.();
+  }
+
+  private async expireCandidate(snapshotId: string): Promise<void> {
+    const stored = this.candidates.get(snapshotId);
+    if (!stored) return;
+    if (this.activeExportSnapshots.has(snapshotId)) {
+      stored.retryExpiresAt = this.now().getTime() + EXPORT_RETRY_RETENTION_MS;
+      this.scheduleCandidateExpiry(snapshotId);
+      return;
+    }
+    if (stored.retryExpiresAt > this.now().getTime()) {
+      this.scheduleCandidateExpiry(snapshotId);
+      return;
+    }
+    await this.removeCandidate(snapshotId);
+  }
+
+  private clearCandidateExpiry(stored: StoredCandidate | undefined): void {
+    if (!stored?.expiryTimer) return;
+    clearTimeout(stored.expiryTimer);
+    stored.expiryTimer = undefined;
+  }
+
+  private async pruneCandidateLimit(): Promise<void> {
+    const retained = [...this.candidates.entries()]
+      .filter(([snapshotId]) => !this.activeExportSnapshots.has(snapshotId))
+      .sort((left, right) => left[1].retryExpiresAt - right[1].retryExpiresAt);
+    while (this.candidates.size > MAX_RETAINED_EXPORT_CANDIDATES && retained.length > 0) {
+      const [snapshotId] = retained.shift()!;
+      await this.removeCandidate(snapshotId);
+    }
+  }
+
+  private async removeCandidate(snapshotId: string): Promise<void> {
+    const stored = this.candidates.get(snapshotId);
+    this.clearCandidateExpiry(stored);
+    try {
+      await this.fileStore.delete(snapshotId);
+    } catch (error) {
+      this.recordDiagnostic(
+        stored?.candidate.attemptId ?? snapshotId,
+        'Expired export snapshot cleanup failed: ' + errorMessage(error),
+      );
+    } finally {
+      this.candidates.delete(snapshotId);
+      this.activeExportSnapshots.delete(snapshotId);
     }
   }
 
@@ -899,11 +1091,13 @@ export class ExportPreparationService {
     };
   }
 
-  private async releaseAllCandidates(): Promise<void> {
-    for (const snapshotId of this.candidates.keys()) {
-      await this.fileStore.delete(snapshotId);
-    }
-    this.candidates.clear();
+  private unavailableSnapshotIssue(): ExportPreparationIssue {
+    return {
+      code: 'PREPARATION_FAILED',
+      location: '\u539f\u5185\u5bb9\u5feb\u7167',
+      problem: '\u51bb\u7ed3\u7684\u5185\u5bb9\u4e0d\u518d\u53ef\u7528\u3002',
+      nextStep: '\u8bf7\u9009\u62e9\u201c\u6309\u5f53\u524d\u5185\u5bb9\u91cd\u65b0\u5bfc\u51fa\u201d\uff0c\u521b\u5efa\u65b0\u7684\u5185\u5bb9\u5feb\u7167\u3002',
+    };
   }
 }
 

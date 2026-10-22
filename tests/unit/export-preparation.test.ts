@@ -131,6 +131,7 @@ async function harness(options: {
   const fileStore = new NodeExportPreparationFileStore(
     path.join(root, 'snapshots'),
   );
+  let currentTime = new Date('2026-10-21T03:00:00.000Z');
   let current: TrackedProjectSnapshot = {
     project,
     revision: 7,
@@ -143,7 +144,7 @@ async function harness(options: {
     assertFormalOutputLocation: options.assertFormalOutputLocation,
     fileStore,
     mediaReader: mediaReaderForTest,
-    now: () => new Date('2026-10-21T03:00:00.000Z'),
+    now: () => new Date(currentTime),
   });
   return {
     root,
@@ -157,12 +158,16 @@ async function harness(options: {
     setCurrent: (next: TrackedProjectSnapshot) => {
       current = next;
     },
+    setNow: (next: Date) => {
+      currentTime = next;
+    },
   };
 }
 
 async function selectOutput(
   fixture: Awaited<ReturnType<typeof harness>>,
   fileName = '候选输出.mp4',
+  snapshotId?: string,
 ) {
   const selection = await fixture.service.selectOutput(
     {
@@ -170,6 +175,7 @@ async function selectOutput(
       projectId: fixture.project.id,
       projectName: fixture.project.name,
       openInstanceId: OPEN_INSTANCE_ID,
+      ...(snapshotId ? { snapshotId } : {}),
     },
     path.join(fixture.outputDirectory, fileName),
   );
@@ -1001,7 +1007,7 @@ describe('ExportPreparationService', () => {
     await fixture.service.discard(undefined, candidate.snapshotId);
   });
 
-  it('discards a frozen candidate after an export reaches either terminal outcome', async () => {
+  it('deletes a frozen candidate when a successful export is finalized', async () => {
     const fixture = await harness();
     const selection = await selectOutput(fixture, 'candidate-cleanup.mp4');
     const prepared = await fixture.service.prepare(
@@ -1021,6 +1027,81 @@ describe('ExportPreparationService', () => {
     await expect(
       fixture.service.acquireCandidateForExport(prepared.candidate.snapshotId),
     ).rejects.toThrow('EXPORT_SNAPSHOT_UNAVAILABLE');
+  });
+
+  it('retains original frozen content for retry and validates a replacement output target', async () => {
+    const fixture = await harness();
+    const selection = await selectOutput(fixture, 'first-output.mp4');
+    const prepared = await fixture.service.prepare(
+      requestFor(fixture, selection.selectionId),
+    );
+    expect(prepared.status).toBe('PREPARATION_READY');
+    if (prepared.status !== 'PREPARATION_READY') return;
+
+    const candidate = prepared.candidate;
+    const manifest = candidate.mediaManifest[0]!;
+    const frozenPath = path.join(
+      fixture.fileStore.rootDirectory,
+      candidate.snapshotId,
+      manifest.contentRelativePath,
+    );
+    const frozenBytes = await readFile(frozenPath);
+    await fixture.service.acquireCandidateForExport(candidate.snapshotId);
+    await fixture.service.retainCandidateForRetry(candidate.snapshotId);
+
+    const current = fixture.getCurrent();
+    fixture.setCurrent({
+      ...current,
+      project: ProjectSchema.parse({
+        ...current.project,
+        name: 'Edited after failure',
+      }),
+      revision: current.revision + 1,
+      dirty: true,
+    });
+
+    const retrySelection = await selectOutput(
+      fixture,
+      'retry-original-content.mp4',
+      candidate.snapshotId,
+    );
+    const retry = await fixture.service.acquireCandidateForExport(
+      candidate.snapshotId,
+      true,
+    );
+
+    expect(retry.candidate.snapshotId).toBe(candidate.snapshotId);
+    expect(retry.candidate.project.name).toBe(candidate.project.name);
+    expect(retry.candidate.outputIntent.fileName).toBe(retrySelection.fileName);
+    expect(retry.candidate.outputIntent.targetPath).toBe(
+      path.join(fixture.outputDirectory, retrySelection.fileName),
+    );
+    expect(hash(await readFile(frozenPath))).toBe(hash(frozenBytes));
+    expect(
+      retry.media.find((entry) => entry.assetId === manifest.assetId)?.bytes,
+    ).toEqual(Uint8Array.from(frozenBytes));
+
+    fixture.service.releaseCandidateExport(candidate.snapshotId);
+    await fixture.service.discard(undefined, candidate.snapshotId);
+  });
+
+  it('expires retained snapshots and removes their owned media', async () => {
+    const fixture = await harness();
+    const selection = await selectOutput(fixture, 'expires.mp4');
+    const prepared = await fixture.service.prepare(
+      requestFor(fixture, selection.selectionId),
+    );
+    expect(prepared.status).toBe('PREPARATION_READY');
+    if (prepared.status !== 'PREPARATION_READY') return;
+
+    fixture.setNow(new Date('2026-10-21T03:31:00.000Z'));
+    await expect(
+      fixture.service.acquireCandidateForExport(prepared.candidate.snapshotId),
+    ).rejects.toThrow('EXPORT_SNAPSHOT_UNAVAILABLE');
+    expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toEqual(
+      [],
+    );
+    fixture.service.disposeSync();
   });
 
   it('blocks a renderer snapshot that no longer matches Main revision before reading media', async () => {

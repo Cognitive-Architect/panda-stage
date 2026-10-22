@@ -26,11 +26,15 @@ const { generateIssue819Fixture, generateIssue827Fixture } = require('./issue819
 
 const dl03Mode = process.env.PANDA_STAGE_ISSUE823_DL03 === '1';
 const dl04Mode = process.env.PANDA_STAGE_ISSUE827_DL04 === '1';
+const dl05Mode = process.env.PANDA_STAGE_ISSUE832_DL05 === '1';
 const dl04SampleId = Number(process.env.PANDA_STAGE_ISSUE827_SAMPLE ?? '1');
 const baseDirectory =
+  process.env.PANDA_STAGE_ISSUE832_ROOT ??
   process.env.PANDA_STAGE_ISSUE827_ROOT ??
   process.env.PANDA_STAGE_ISSUE819_ROOT ??
-  (dl04Mode
+  (dl05Mode
+    ? 'D:\\PandaStage-Acceptance\\issue832-dl05'
+    : dl04Mode
     ? `D:\\PandaStage-Acceptance\\issue827-dl04\\sample-${dl04SampleId}`
     : dl03Mode
     ? 'D:\\PandaStage-Acceptance\\issue823-dl03'
@@ -70,6 +74,7 @@ let failNextEncoderRun = false;
 let requireEncoderProcessError = false;
 let replaceDialogueSourceBeforeNextMix = false;
 let failNextAudioMixProcess = false;
+let failNextOutputValidation = false;
 const audioSourceReplacementEvidence = [];
 const audioMixProcessFailures = [];
 
@@ -320,7 +325,7 @@ function createExportService() {
   };
   const muxAudioMix = mediaAdapter.muxAudioMix.bind(mediaAdapter);
   mediaAdapter.muxAudioMix = async (request, signal) => {
-    if (dl04Mode) audioMixPlans.push(structuredClone(request.audioMixPlan));
+    if (dl04Mode || dl05Mode) audioMixPlans.push(structuredClone(request.audioMixPlan));
     if (!replaceDialogueSourceBeforeNextMix) return muxAudioMix(request, signal);
     replaceDialogueSourceBeforeNextMix = false;
     const dialogueAsset = fixtureProject.assets.find(
@@ -445,27 +450,52 @@ function createExportService() {
       );
       formalStarts.push({
         jobId: null,
+        attemptId: input.candidate.attemptId,
         snapshotId: request.snapshotId,
         reuseSnapshot: request.reuseSnapshot,
         cameraMode: input.candidate.cameraMode,
         revision: input.candidate.revision,
         dirtyAtCapture: input.candidate.dirtyAtCapture,
         mediaCount: input.candidate.mediaManifest.length,
+        projectContentSha256: hash(Buffer.from(JSON.stringify(input.candidate.project), 'utf8')),
+        mediaManifest: input.candidate.mediaManifest.map((entry) => ({
+          assetId: entry.assetId,
+          sha256: entry.sha256,
+        })),
+        frozenPayloadSha256: hash(Buffer.from(JSON.stringify({
+          project: input.candidate.project,
+          media: input.candidate.mediaManifest.map((entry) => ({
+            assetId: entry.assetId,
+            sha256: entry.sha256,
+          })),
+        }), 'utf8')),
       });
       let handle;
       try {
         handle = exportService.startFormalExport(
           input,
-          () => exportPreparationService.assertOutputTargetUnchanged(request.snapshotId),
+          async () => {
+            if (failNextOutputValidation) {
+              failNextOutputValidation = false;
+              throw new Error('Controlled DL-05 output identity validation failure.');
+            }
+            return exportPreparationService.assertOutputTargetUnchanged(request.snapshotId);
+          },
         );
       } catch (error) {
-        await exportPreparationService.finalizeCandidateExport(request.snapshotId);
+        if (dl05Mode) {
+          await exportPreparationService.retainCandidateForRetry(request.snapshotId);
+        } else {
+          await exportPreparationService.finalizeCandidateExport(request.snapshotId);
+        }
         throw error;
       }
       formalStarts.at(-1).jobId = handle.jobId;
       void handle.completion.then(
         () => exportPreparationService.finalizeCandidateExport(request.snapshotId),
-        () => exportPreparationService.finalizeCandidateExport(request.snapshotId),
+        () => dl05Mode
+          ? exportPreparationService.retainCandidateForRetry(request.snapshotId)
+          : exportPreparationService.finalizeCandidateExport(request.snapshotId),
       );
       return { jobId: handle.jobId, status: 'running' };
     },
@@ -1444,6 +1474,8 @@ async function issue827ExportEvidence(outputPath, evidenceDirectory, project, ca
     evidenceVideoPath: copiedOutputPath,
     sha256: hash(outputBytes),
     byteLength: outputBytes.length,
+    audioPcmPath: pcmPath,
+    audioPcmSha256: hash(pcm),
     durationMs,
     frameCount,
     fps,
@@ -1479,6 +1511,465 @@ async function ensureQuickActionDrawerOpen() {
   const expanded = await rendererJs(`document.querySelector('[data-testid="quick-action-drawer"]')?.getAttribute('data-expanded') === 'true'`);
   if (!expanded) await clickSelector('[data-testid="quick-action-drawer-handle"]');
   await waitForRenderer(`document.querySelector('[data-testid="quick-action-drawer"]')?.getAttribute('data-expanded') === 'true'`);
+}
+
+async function beginIssue832CreatorExport(label, selectedFileName, retryAction = null) {
+  const priorStartCount = formalStarts.length;
+  await ensureQuickActionDrawerOpen();
+  if (retryAction) {
+    await clickButtonContainingText(retryAction);
+  } else {
+    await clickSelector('[data-testid="quick-action-export"]');
+  }
+  const saveAsScreenshotPath = path.join(fixture.evidenceRoot, `${label}-save-as.png`);
+  await clickNativeSaveDialog(
+    'save',
+    saveAsScreenshotPath,
+    '',
+    selectedFileName,
+  );
+  const deadline = Date.now() + 30_000;
+  while (formalStarts.length <= priorStartCount || !formalStarts[priorStartCount]?.jobId) {
+    if (Date.now() >= deadline) {
+      throw new Error(`${label}: Creator UI did not start a Main Job.`);
+    }
+    await pause(25);
+  }
+  const start = formalStarts[priorStartCount];
+  await waitForRenderer(
+    `window.__pandaStageIssue816Acceptance.inspectExportTask()?.task.jobId === ${JSON.stringify(start.jobId)}`,
+    30_000,
+  );
+  return { start, saveAsScreenshotPath };
+}
+
+async function waitForIssue832Terminal(start, timeoutMs = 1_200_000) {
+  await waitForRenderer(
+    `(() => {
+      const task = window.__pandaStageIssue816Acceptance.inspectExportTask()?.task;
+      return task?.jobId === ${JSON.stringify(start.jobId)} &&
+        ['completed', 'failed', 'cancelled'].includes(task.status);
+    })()`,
+    timeoutMs,
+  );
+  return rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
+}
+
+async function captureIssue832Progress(start, label) {
+  await waitForRenderer(
+    `(() => {
+      const task = window.__pandaStageIssue816Acceptance.inspectExportTask()?.task;
+      const progress = document.querySelector('[data-testid="export-task-surface"] progress');
+      return task?.jobId === ${JSON.stringify(start.jobId)} &&
+        task.status === 'running' && progress && Number(progress.value) > 0;
+    })()`,
+    180_000,
+  );
+  const state = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
+  const screenshotPath = path.join(fixture.evidenceRoot, `${label}-progress.png`);
+  const image = await mainWindow.webContents.capturePage();
+  await fsp.writeFile(screenshotPath, image.toPNG());
+  return { state, screenshotPath };
+}
+
+async function captureIssue832EncodingState(start, label) {
+  await waitForRenderer(
+    `window.__pandaStageIssue816Acceptance.inspectExportTask()?.task.jobId === ${JSON.stringify(start.jobId)} && window.__pandaStageIssue816Acceptance.inspectExportTask()?.task.phase === 'encoding'`,
+    180_000,
+  );
+  const state = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
+  const progressVisible = await rendererJs(
+    `Boolean(document.querySelector('[data-testid="export-task-surface"] progress'))`,
+  );
+  assert(!progressVisible, `${label}: frame percentage remained visible during encoding.`);
+  const screenshotPath = path.join(fixture.evidenceRoot, `${label}-encoding.png`);
+  const image = await mainWindow.webContents.capturePage();
+  await fsp.writeFile(screenshotPath, image.toPNG());
+  return { state, screenshotPath, progressVisible };
+}
+
+async function waitForIssue832ResourceState(expectedSnapshotIds, label) {
+  const expected = [...expectedSnapshotIds].sort();
+  const deadline = Date.now() + 15_000;
+  let actual;
+  do {
+    const [projectEntries, frameEntries, snapshotEntries] = await Promise.all([
+      directoryEntriesOrEmpty(fixture.projectRoot),
+      directoryEntriesOrEmpty(path.join(fixture.root, 'frame-jobs')),
+      directoryEntriesOrEmpty(path.join(fixture.root, 'frozen-media')),
+    ]);
+    actual = {
+      outputTemporaries: projectEntries.filter((entry) => entry.startsWith('.panda-stage-')),
+      frameJobDirectories: frameEntries,
+      snapshots: snapshotEntries.sort(),
+    };
+    if (
+      actual.outputTemporaries.length === 0 &&
+      actual.frameJobDirectories.length === 0 &&
+      JSON.stringify(actual.snapshots) === JSON.stringify(expected)
+    ) {
+      return actual;
+    }
+    if (Date.now() < deadline) await pause(100);
+  } while (Date.now() < deadline);
+  assert(actual.outputTemporaries.length === 0, `${label}: formal output staging remains.`);
+  assert(actual.frameJobDirectories.length === 0, `${label}: frame-job directories remain.`);
+  assert(
+    JSON.stringify(actual.snapshots) === JSON.stringify(expected),
+    `${label}: retained snapshots differ from the expected bounded set. ${JSON.stringify(actual.snapshots)}`,
+  );
+  return actual;
+}
+
+async function runIssue832Acceptance({ result, editorSnapshotPath, editorSnapshotBytes, initialProjectBytes, projectFilePath, mediaTools, originalContentProject }) {
+  const evidenceRoot = fixture.evidenceRoot;
+  const project = ProjectSchema.parse(originalContentProject);
+  const originalProjectContentSha256 = hash(Buffer.from(JSON.stringify(project), 'utf8'));
+  const projectBytesBeforeJob = await fsp.readFile(projectFilePath);
+  assert(projectBytesBeforeJob.equals(initialProjectBytes), 'The DL-05 fixture should begin from its unchanged on-disk Project.');
+  const initialTargetPath = path.join(fixture.projectRoot, 'issue832-cancelled-first-attempt.mp4');
+  const initial = await beginIssue832CreatorExport(
+    'initial-cancelled-attempt',
+    path.basename(initialTargetPath),
+  );
+  assert(initial.start.reuseSnapshot === false, 'The first DL-05 export must freeze a new snapshot.');
+  assert(initial.start.projectContentSha256 === originalProjectContentSha256, 'The first Main Job did not freeze the editor Project captured before the parallel edit.');
+  assert(initial.start.revision === (await rendererJs('window.__pandaStageIssue816Acceptance.inspect()')).revision, 'The initial Main Job captured a different Project revision.');
+  const firstTask = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
+  assert(firstTask.task.durationMs === 30_000, 'The export task UI did not use the complete Project duration.');
+  assert(firstTask.latestUpdate?.totalFrames === 720, 'The Main Job did not report the 30-second 24 fps frame denominator.');
+
+  const initialProgress = await captureIssue832Progress(initial.start, 'initial-cancelled-attempt');
+  const startCountDuringHide = formalStarts.length;
+  await clickSelector('[data-testid="export-task-surface"] [aria-label="隐藏导出任务"]');
+  await waitForRenderer(`!document.querySelector('[data-testid="export-task-surface"]')`);
+  const hiddenTask = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
+  assert(hiddenTask.task.jobId === initial.start.jobId && hiddenTask.task.status === 'running', 'Hiding the task surface changed the Main Job.');
+
+  await ensureQuickActionDrawerOpen();
+  await clickSelector('[data-testid="quick-action-export"]');
+  await waitForRenderer(`Boolean(document.querySelector('[data-testid="export-task-surface"]'))`);
+  const firstReopen = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
+  assert(firstReopen.task.jobId === initial.start.jobId, 'Reopening Export started a second Main Job.');
+  assert(formalStarts.length === startCountDuringHide, 'The quick action created another Main Job while one was active.');
+
+  await clickSelector('[data-testid="export-task-surface"] [aria-label="隐藏导出任务"]');
+  await waitForRenderer(`!document.querySelector('[data-testid="export-task-surface"]')`);
+  const stateBeforeEdit = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+  const editText = 'DL05 CURRENT CONTENT RETRY • 字幕更新';
+  const edit = await rendererJs(
+    `window.__pandaStageIssue816Acceptance.editSubtitleAndAddAudioFixture(${JSON.stringify(editText)})`,
+  );
+  assert(edit.revision === stateBeforeEdit.revision + 1, 'The concurrent subtitle/audio edit did not create one formal Project revision.');
+  assert(edit.undoCount === stateBeforeEdit.undoCount + 1, 'The concurrent edit did not create one History entry.');
+  assert(edit.dirty === true, 'The concurrent edit did not mark the Project dirty before Save.');
+  const currentProject = ProjectSchema.parse(edit.project);
+  const currentProjectContentSha256 = hash(Buffer.from(JSON.stringify(currentProject), 'utf8'));
+
+  await ensureQuickActionDrawerOpen();
+  await waitForRenderer(`document.querySelector('[data-testid="quick-action-save"]') && !document.querySelector('[data-testid="quick-action-save"]').disabled`);
+  await clickSelector('[data-testid="quick-action-save"]');
+  await waitForRenderer('window.__pandaStageIssue816Acceptance.inspect()?.dirty === false', 30_000);
+  const savedState = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+  const savedProjectBytes = await fsp.readFile(projectFilePath);
+  const savedProject = ProjectSchema.parse(JSON.parse(savedProjectBytes.toString('utf8')));
+  assert(savedState.revision === edit.revision && savedState.undoCount === edit.undoCount, 'Saving during export changed the Project revision or History.');
+  assert(JSON.stringify(savedProject) === JSON.stringify(currentProject), 'Creator Save did not persist the concurrent edit.');
+  const taskAfterSave = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
+  assert(taskAfterSave.task.jobId === initial.start.jobId && taskAfterSave.task.status === 'running', 'Project Save was blocked by, or completed, the active export Job.');
+
+  await clickSelector('[data-testid="quick-action-play"]');
+  await waitForRenderer(`Boolean(document.querySelector('[data-testid="product-preview-overlay"]'))`);
+  await waitForRenderer(`(() => { const button = document.querySelector('[data-testid="product-preview-play-pause"]'); return button && !button.disabled; })()`, 60_000);
+  const previewScreenshot = await mainWindow.webContents.capturePage();
+  const previewScreenshotPath = path.join(evidenceRoot, 'preview-during-export.png');
+  await fsp.writeFile(previewScreenshotPath, previewScreenshot.toPNG());
+  await clickSelector('[data-testid="product-preview-play-pause"]');
+  await waitForRenderer(`document.querySelector('[data-testid="product-preview-play-pause"]')?.getAttribute('aria-pressed') === 'true'`, 10_000);
+  await pause(250);
+  await clickSelector('[data-testid="product-preview-play-pause"]');
+  await clickSelector('[data-testid="product-preview-close"]');
+  await waitForRenderer(`!document.querySelector('[data-testid="product-preview-overlay"]')`);
+  const taskAfterPreview = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
+  assert(taskAfterPreview.task.jobId === initial.start.jobId && taskAfterPreview.task.status === 'running', 'Product Preview was blocked by, or completed, the active export Job.');
+
+  await ensureQuickActionDrawerOpen();
+  await clickSelector('[data-testid="quick-action-export"]');
+  await waitForRenderer(`Boolean(document.querySelector('[data-testid="export-task-surface"]'))`);
+  const reopened = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
+  assert(reopened.task.jobId === initial.start.jobId && reopened.task.status === 'running', 'The reopened task did not show the same running Main Job.');
+  assert(reopened.latestUpdate?.jobId === initial.start.jobId, 'The reopened panel did not use the latest event for its current Job.');
+  assert(reopened.task.completedFrames === reopened.latestUpdate.completedFrames && reopened.task.phase === reopened.latestUpdate.phase, 'The reopened task state is stale relative to the latest Main update.');
+  assert(formalStarts.length === 1, 'Hide, edit, Save, Preview, or reopen started another export.');
+  assert(reopened.task.durationMs === 30_000 && reopened.task.totalFrames === 720, 'The reopened task lost full-Project duration or frame denominator.');
+  const reopenScreenshot = await mainWindow.webContents.capturePage();
+  const reopenScreenshotPath = path.join(evidenceRoot, 'task-reopened-after-edit.png');
+  await fsp.writeFile(reopenScreenshotPath, reopenScreenshot.toPNG());
+
+  assert(reopened.task.phase !== 'committing', 'The deterministic cancellation sample reached the non-cancellable commit phase too early.');
+  await clickButtonContainingText('取消导出');
+  const cancelled = await waitForIssue832Terminal(initial.start);
+  assert(cancelled.task.status === 'cancelled', 'Creator UI cancellation did not reach the cancelled terminal state.');
+  assert(exportService.getJob(initial.start.jobId)?.status === 'cancelled', 'Main did not record cancellation as the final Job status.');
+  assert(!existsSync(initialTargetPath), 'Cancelled export published a final output.');
+  const cancellationScreenshot = await mainWindow.webContents.capturePage();
+  const cancellationScreenshotPath = path.join(evidenceRoot, 'initial-cancelled-attempt-cancelled.png');
+  await fsp.writeFile(cancellationScreenshotPath, cancellationScreenshot.toPNG());
+  const retainedAfterCancellation = await waitForIssue832ResourceState(
+    [initial.start.snapshotId],
+    'cancelled original-content candidate',
+  );
+
+  const sentinelBytes = Buffer.from('DL-05 third-party target protected during old-content retry selection.');
+  await fsp.writeFile(initialTargetPath, sentinelBytes, { flag: 'wx' });
+  const oldOutputPath = path.join(fixture.projectRoot, 'issue832-original-content-retry.mp4');
+  const oldRetry = await beginIssue832CreatorExport(
+    'retry-original-content',
+    path.basename(oldOutputPath),
+    '选择位置，重试原内容',
+  );
+  assert(oldRetry.start.reuseSnapshot === true, 'The original-content retry did not request reuse of its frozen candidate.');
+  assert(oldRetry.start.jobId !== initial.start.jobId, 'The original-content retry reused the cancelled Main jobId.');
+  assert(oldRetry.start.snapshotId === initial.start.snapshotId, 'The original-content retry did not reuse the original snapshotId.');
+  assert(oldRetry.start.attemptId === initial.start.attemptId, 'The original-content retry changed the frozen attempt identity.');
+  assert(oldRetry.start.frozenPayloadSha256 === initial.start.frozenPayloadSha256, 'The original-content retry changed its frozen Project/media identity.');
+  assert(JSON.stringify(oldRetry.start.mediaManifest) === JSON.stringify(initial.start.mediaManifest), 'The original-content retry changed its frozen media hashes.');
+  const oldProgress = await captureIssue832Progress(oldRetry.start, 'retry-original-content');
+  const oldEncoding = await captureIssue832EncodingState(oldRetry.start, 'retry-original-content');
+  const oldTerminal = await waitForIssue832Terminal(oldRetry.start);
+  assert(oldTerminal.task.status === 'completed', 'The original frozen-content retry did not complete.');
+  assert(exportService.getJob(oldRetry.start.jobId)?.status === 'completed', 'Main did not record the old-content retry as complete.');
+  assert(existsSync(oldOutputPath), 'The original-content retry did not publish its selected output.');
+  assert(hash(await fsp.readFile(initialTargetPath)) === hash(sentinelBytes), 'The retry modified a pre-existing third-party file.');
+  const oldExportEvidence = await issue827ExportEvidence(
+    oldOutputPath,
+    path.join(evidenceRoot, 'original-content-output'),
+    project,
+    oldRetry.start.cameraMode,
+    mediaTools,
+    fixture.backgroundEvidence,
+  );
+  const oldFrameIndex = 48;
+  const subtitleEvidenceDirectory = path.join(evidenceRoot, 'subtitle-content-diff');
+  await fsp.mkdir(subtitleEvidenceDirectory, { recursive: true });
+  const oldSubtitleFrame = await extractFormalFrame(
+    oldOutputPath,
+    subtitleEvidenceDirectory,
+    mediaTools,
+    oldFrameIndex,
+    'original-content-frame-048',
+  );
+  const retainedAfterOldSuccess = await waitForIssue832ResourceState([], 'completed original-content retry');
+  assert(JSON.stringify(savedProject) === JSON.stringify(ProjectSchema.parse(JSON.parse((await fsp.readFile(projectFilePath)).toString('utf8')))), 'The old-content retry changed the newly saved Project.');
+
+  failNextOutputValidation = true;
+  const currentSeedPath = path.join(fixture.projectRoot, 'issue832-current-content-seed-failure.mp4');
+  const currentSeed = await beginIssue832CreatorExport(
+    'current-content-seed-failure',
+    path.basename(currentSeedPath),
+  );
+  const currentSeedTerminal = await waitForIssue832Terminal(currentSeed.start, 60_000);
+  assert(currentSeedTerminal.task.status === 'failed', 'The controlled current-content seed did not fail.');
+  assert(exportService.getJob(currentSeed.start.jobId)?.status === 'failed', 'Main did not record the controlled current-content seed failure.');
+  const currentSeedJob = exportService.getJob(currentSeed.start.jobId);
+  assert(currentSeedJob?.originalError?.includes('Controlled DL-05 output identity validation failure.'), 'The controlled failure did not retain its original Main error.');
+  assert(currentSeedJob.cleanupError === null, 'The controlled failure unexpectedly reported a cleanup error.');
+  assert(!existsSync(currentSeedPath), 'The controlled current-content seed published an output.');
+  assert(currentSeed.start.snapshotId !== initial.start.snapshotId, 'The current-content seed reused the old snapshot.');
+  assert(currentSeed.start.projectContentSha256 === currentProjectContentSha256, 'The current-content seed did not freeze the saved Project.');
+  const retainedAfterCurrentFailure = await waitForIssue832ResourceState(
+    [currentSeed.start.snapshotId],
+    'failed current-content candidate',
+  );
+
+  const currentOutputPath = path.join(fixture.projectRoot, 'issue832-current-content-retry.mp4');
+  const currentRetry = await beginIssue832CreatorExport(
+    'retry-current-content',
+    path.basename(currentOutputPath),
+    '按当前内容重新导出',
+  );
+  assert(currentRetry.start.reuseSnapshot === false, 'The current-content retry reused a previous snapshot.');
+  assert(currentRetry.start.jobId !== currentSeed.start.jobId, 'The current-content retry reused the failed Main jobId.');
+  assert(currentRetry.start.snapshotId !== currentSeed.start.snapshotId && currentRetry.start.snapshotId !== initial.start.snapshotId, 'The current-content retry did not create a fresh snapshotId.');
+  assert(currentRetry.start.attemptId !== currentSeed.start.attemptId && currentRetry.start.attemptId !== initial.start.attemptId, 'The current-content retry did not create a fresh attemptId.');
+  assert(currentRetry.start.projectContentSha256 === currentProjectContentSha256, 'The current-content retry did not use the saved, edited Project.');
+  assert(currentRetry.start.frozenPayloadSha256 !== initial.start.frozenPayloadSha256, 'The current-content retry did not create a different frozen content identity.');
+  assert(currentRetry.start.mediaManifest.some((entry) => entry.assetId === edit.addedAudioAssetId && entry.sha256 === edit.addedAudioAssetSha256), 'The current-content retry did not freeze the newly referenced audio asset and hash.');
+  assert(!initial.start.mediaManifest.some((entry) => entry.assetId === edit.addedAudioAssetId), 'The original snapshot unexpectedly included the later-added audio source.');
+  const currentProgress = await captureIssue832Progress(currentRetry.start, 'retry-current-content');
+  const currentEncoding = await captureIssue832EncodingState(currentRetry.start, 'retry-current-content');
+  const currentTerminal = await waitForIssue832Terminal(currentRetry.start);
+  assert(currentTerminal.task.status === 'completed', 'The current-content retry did not complete.');
+  assert(exportService.getJob(currentRetry.start.jobId)?.status === 'completed', 'Main did not record the current-content retry as complete.');
+  assert(existsSync(currentOutputPath), 'The current-content retry did not publish its selected output.');
+  const currentExportEvidence = await issue827ExportEvidence(
+    currentOutputPath,
+    path.join(evidenceRoot, 'current-content-output'),
+    currentProject,
+    currentRetry.start.cameraMode,
+    mediaTools,
+    fixture.backgroundEvidence,
+  );
+  const currentSubtitleFrame = await extractFormalFrame(
+    currentOutputPath,
+    subtitleEvidenceDirectory,
+    mediaTools,
+    oldFrameIndex,
+    'current-content-frame-048',
+  );
+  const subtitleFrameDifference = compareRawFrames(
+    oldSubtitleFrame.rawBytes,
+    currentSubtitleFrame.rawBytes,
+  );
+  assert(subtitleFrameDifference.changedPixels > 100, 'The old and current retry outputs did not visibly differ at the edited subtitle time.');
+  assert(oldExportEvidence.sha256 !== currentExportEvidence.sha256, 'The old and current content MP4 files are byte-identical.');
+  const oldPcm = await fsp.readFile(oldExportEvidence.audioPcmPath);
+  const currentPcm = await fsp.readFile(currentExportEvidence.audioPcmPath);
+  const oldSfxTwoTone = goertzelAmplitude(oldPcm, 7_500, 300, 1_320);
+  const currentSfxTwoTone = goertzelAmplitude(currentPcm, 7_500, 300, 1_320);
+  assert(currentSfxTwoTone > 0.02 && currentSfxTwoTone > oldSfxTwoTone + 0.015, 'The current-content AAC track does not contain the newly frozen SFX tone.');
+  assert(hash(await fsp.readFile(initialTargetPath)) === hash(sentinelBytes), 'The current-content retry changed the protected third-party target.');
+  const finalSavedState = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+  assert(finalSavedState.revision === savedState.revision && finalSavedState.dirty === false && finalSavedState.undoCount === savedState.undoCount, 'An export retry changed the saved Project revision, dirty state, or History.');
+  assert((await fsp.readFile(projectFilePath)).equals(savedProjectBytes), 'An export retry wrote to project.json.');
+  const finalSnapshotsBeforeCleanup = await waitForIssue832ResourceState(
+    [currentSeed.start.snapshotId],
+    'completed current-content retry and unselected failed candidate',
+  );
+  const discardedUnselectedCandidate = await exportPreparationService.discard(undefined, currentSeed.start.snapshotId);
+  assert(discardedUnselectedCandidate, 'The bounded failed candidate could not be explicitly discarded after the current-content choice.');
+  const finalResources = await waitForIssue832ResourceState([], 'DL-05 completed retry lifecycle');
+
+  const projectContentEvidence = {
+    originalSnapshot: {
+      attemptId: initial.start.attemptId,
+      snapshotId: initial.start.snapshotId,
+      contentSha256: initial.start.frozenPayloadSha256,
+      projectSha256: initial.start.projectContentSha256,
+      mediaManifest: initial.start.mediaManifest,
+    },
+    editedSnapshot: {
+      attemptId: currentRetry.start.attemptId,
+      snapshotId: currentRetry.start.snapshotId,
+      contentSha256: currentRetry.start.frozenPayloadSha256,
+      projectSha256: currentRetry.start.projectContentSha256,
+      mediaManifest: currentRetry.start.mediaManifest,
+    },
+    editedProjectText: edit.text,
+    addedAudioAssetId: edit.addedAudioAssetId,
+    addedAudioAssetSha256: edit.addedAudioAssetSha256,
+    subtitleFrameDifference,
+    audioToneAt7_5Seconds: { frequencyHz: 1_320, oldSnapshotAmplitude: oldSfxTwoTone, currentSnapshotAmplitude: currentSfxTwoTone },
+  };
+  const jobIds = [initial.start.jobId, oldRetry.start.jobId, currentSeed.start.jobId, currentRetry.start.jobId];
+  assert(new Set(jobIds).size === jobIds.length, 'A new export attempt reused a previous jobId.');
+  result.fixture = {
+    projectId: project.id,
+    projectRoot: fixture.projectRoot,
+    projectDurationMs: 30_000,
+    shotCount: 3,
+    audioClipCounts: project.shots.map((shot) => shot.audioClips.length),
+    originalEditorSnapshotPath: editorSnapshotPath,
+    originalEditorSnapshotSha256: hash(editorSnapshotBytes),
+    originalProjectContentSha256,
+    editedProjectContentSha256: currentProjectContentSha256,
+    savedProjectSha256: hash(savedProjectBytes),
+    sourceAssetHashes: await Promise.all(fixtureProject.assets.filter((asset) => asset.kind === 'audio').map(async (asset) => ({
+      assetId: asset.id,
+      expectedSha256: asset.sha256,
+      initialBytesSha256: hash(assetBytesById.get(asset.id)),
+      finalBytesSha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+      unchanged: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))) === asset.sha256,
+    }))),
+  };
+  result.lifecycle = {
+    jobs: [
+      { start: initial.start, terminal: exportService.getJob(initial.start.jobId), progressScreenshotPath: initialProgress.screenshotPath, progressSnapshot: initialProgress.state, cancelledStatus: cancelled.task.status },
+      { start: oldRetry.start, terminal: exportService.getJob(oldRetry.start.jobId), progressScreenshotPath: oldProgress.screenshotPath, encoding: oldEncoding, completedStatus: oldTerminal.task.status },
+      { start: currentSeed.start, terminal: currentSeedJob, failedStatus: currentSeedTerminal.task.status },
+      { start: currentRetry.start, terminal: exportService.getJob(currentRetry.start.jobId), progressScreenshotPath: currentProgress.screenshotPath, encoding: currentEncoding, completedStatus: currentTerminal.task.status },
+    ],
+    hideReopen: {
+      sameJobId: reopened.task.jobId === initial.start.jobId,
+      latestCompletedFrames: reopened.latestUpdate.completedFrames,
+      phase: reopened.latestUpdate.phase,
+      duplicateStartCount: startCountDuringHide,
+      hideScreenshot: path.join(evidenceRoot, 'task-reopened-after-edit.png'),
+    },
+    parallelEditing: {
+      changedRevision: edit.revision,
+      savedRevision: savedState.revision,
+      savedDirty: savedState.dirty,
+      undoCount: savedState.undoCount,
+      editedText: edit.text,
+      saveDuringJob: true,
+      previewScreenshotPath,
+      previewPlaybackCompleted: true,
+    },
+    cancellation: {
+      targetPath: initialTargetPath,
+      targetAbsent: !existsSync(initialTargetPath),
+      mainStatus: exportService.getJob(initial.start.jobId)?.status,
+      retainedSnapshot: initial.start.snapshotId,
+      retainedMediaCount: retainedAfterCancellation.snapshots.length,
+      cancellationScreenshotPath,
+    },
+    oldContentRetry: {
+      outputPath: oldOutputPath,
+      output: oldExportEvidence,
+      sentinelTargetPath: initialTargetPath,
+      sentinelSha256: hash(sentinelBytes),
+      sentinelUnchanged: hash(await fsp.readFile(initialTargetPath)) === hash(sentinelBytes),
+      retainedCandidateCleanup: retainedAfterOldSuccess,
+    },
+    currentContentRetry: {
+      outputPath: currentOutputPath,
+      output: currentExportEvidence,
+      failedSeed: currentSeed.start,
+      retainedFailedSeedSnapshot: retainedAfterCurrentFailure,
+      explicitlyDiscardedUnselectedSnapshot: discardedUnselectedCandidate,
+      boundedCandidateBeforeDiscard: finalSnapshotsBeforeCleanup,
+    },
+    contentIdentity: projectContentEvidence,
+    resourceCleanup: finalResources,
+  };
+  result.outputs = {
+    originalContent: { ...oldExportEvidence, outputSha256: oldExportEvidence.sha256 },
+    currentContent: { ...currentExportEvidence, outputSha256: currentExportEvidence.sha256 },
+  };
+  result.source = {
+    ...result.source,
+    outputFiles: [
+      { path: oldOutputPath, sha256: oldExportEvidence.sha256, bytes: oldExportEvidence.byteLength },
+      { path: currentOutputPath, sha256: currentExportEvidence.sha256, bytes: currentExportEvidence.byteLength },
+    ],
+    protectedSentinel: { path: initialTargetPath, sha256: hash(sentinelBytes) },
+  };
+  result.exportJobs = jobUpdates.map((update) => ({
+    jobId: update.jobId,
+    attemptId: update.attemptId ?? null,
+    snapshotId: update.snapshotId ?? null,
+    status: update.status,
+    phase: update.phase,
+    completedFrames: update.completedFrames,
+    totalFrames: update.totalFrames,
+    originalError: update.originalError ?? null,
+    cleanupError: update.cleanupError ?? null,
+  }));
+  result.auto = 'PASS';
+  result.completedAt = new Date().toISOString();
+  result.owner = {
+    status: 'FOLLOWUP_REVIEW_READY',
+    ownerManual: 'DEFERRED_TO_DL07',
+    techReview: 'PENDING',
+    multiShotAvAccepted: false,
+  };
+  await fsp.writeFile(path.join(evidenceRoot, 'acceptance-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
+  await fsp.writeFile(path.join(fixture.root, 'acceptance-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
+  console.log(`PASS #832 DL-05 task lifecycle acceptance: ${fixture.root}`);
+  mainWindow.destroy();
+  hiddenWindowManager.close();
+  app.exit(0);
 }
 
 function acceptanceSessionFingerprint(snapshot) {
@@ -1806,7 +2297,7 @@ async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapsho
 }
 
 async function run() {
-  fixture = dl04Mode
+  fixture = dl04Mode || dl05Mode
     ? await generateIssue827Fixture(path.resolve(baseDirectory), dl04SampleId)
     : await generateIssue819Fixture(path.resolve(baseDirectory), {
         includeAudioMix: dl03Mode,
@@ -1826,20 +2317,21 @@ async function run() {
   await app.whenReady();
   mainWindow = await createMainWindow({ show: true, issue816Acceptance: true });
   mainWindow.setContentSize(1280, 800);
-  // Keep DL-04 Windows Save As dialogs above the real Creator window. A
-  // topmost owner can otherwise cover the native modal on the second child
-  // Electron process and intercept the automation's Save click.
-  mainWindow.setAlwaysOnTop(!dl04Mode);
+  // Keep the owning window below native Save As dialogs during the automated
+  // DL-04 and DL-05 flows.
+  mainWindow.setAlwaysOnTop(!dl04Mode && !dl05Mode);
   mainWindow.show();
   mainWindow.focus();
   mainWindow.webContents.focus();
 
   const result = {
-    issue: dl04Mode ? 827 : dl03Mode ? 823 : 819,
-    wrapperRunId: process.env.PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID ?? null,
-    sourceCommitSha: process.env.PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA ?? null,
-    sampleId: dl04Mode ? dl04SampleId : null,
-    workOrder: dl04Mode
+    issue: dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
+    wrapperRunId: process.env.PANDA_STAGE_ISSUE832_RUN_ID ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID ?? null,
+    sourceCommitSha: process.env.PANDA_STAGE_ISSUE832_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA ?? null,
+    sampleId: dl04Mode || dl05Mode ? dl04SampleId : null,
+    workOrder: dl05Mode
+      ? 'DL-05 export task lifecycle, frozen/current retries, and editing during a multi-shot job'
+      : dl04Mode
       ? 'DL-04 formal whole-Project multi-shot export acceptance'
       : dl03Mode
         ? 'DL-03 formal single-Shot audio/video export acceptance'
@@ -1866,11 +2358,11 @@ async function run() {
   };
 
   try {
-    if (dl04Mode) {
-      assert(fixtureProject.shots.length === 3, 'Issue #827 fixture must contain three Shots.');
-      assert(fixtureProject.shots.reduce((total, shot) => total + shot.durationMs, 0) === 30_000, 'Issue #827 fixture must be 30 seconds long.');
-      assert(fixtureProject.shots.every((shot) => shot.durationMs >= 9_000), 'Issue #827 fixture Shots must each be long enough to cross a global frame boundary.');
-      assert(fixtureProject.shots[0].audioClips.length === 2 && fixtureProject.shots[1].audioClips.length === 1 && fixtureProject.shots[2].audioClips.length === 1, 'Issue #827 fixture must place audio across all three Shots.');
+    if (dl04Mode || dl05Mode) {
+      assert(fixtureProject.shots.length === 3, 'Issue #827/832 fixture must contain three Shots.');
+      assert(fixtureProject.shots.reduce((total, shot) => total + shot.durationMs, 0) === 30_000, 'Issue #827/832 fixture must be 30 seconds long.');
+      assert(fixtureProject.shots.every((shot) => shot.durationMs >= 9_000), 'Issue #827/832 fixture Shots must each be long enough to cross a global frame boundary.');
+      assert(fixtureProject.shots[0].audioClips.length === 2 && fixtureProject.shots[1].audioClips.length === 1 && fixtureProject.shots[2].audioClips.length === 1, 'Issue #827/832 fixture must place audio across all three Shots.');
     } else {
       assert(fixtureProject.shots.length === 1, 'Fixture must contain exactly one Shot.');
       assert(
@@ -1894,6 +2386,18 @@ async function run() {
     const editorSnapshotBytes = Buffer.from(JSON.stringify(edited.project, null, 2), 'utf8');
     await fsp.writeFile(editorSnapshotPath, editorSnapshotBytes);
     await clickSelector('[data-testid="quick-action-drawer-handle"]');
+    if (dl05Mode) {
+      await runIssue832Acceptance({
+        result,
+        editorSnapshotPath,
+        editorSnapshotBytes,
+        initialProjectBytes,
+        projectFilePath,
+        mediaTools,
+        originalContentProject: edited.project,
+      });
+      return;
+    }
     if (dl04Mode) {
       await runIssue827Acceptance({ result, editorSnapshotPath, editorSnapshotBytes, initialProjectBytes, projectFilePath, mediaTools });
       return;

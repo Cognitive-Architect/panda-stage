@@ -397,6 +397,7 @@
           "scripts/verify-issue819-dl02.cjs",
           "scripts/verify-issue823-dl03.cjs",
           "scripts/verify-issue827-dl04.cjs",
+          "scripts/verify-issue832-dl05.cjs",
           "scripts/verify-issue660-export-audio-mix.cjs"
         ],
         "suites": [],
@@ -678,7 +679,7 @@
       }
     ]
   },
-  "count": 86,
+  "count": 87,
   "gates": [
     {
       "id": "issue663-dialogue-voice",
@@ -1699,6 +1700,18 @@
       "owner": "export",
       "supersedes": null,
       "notes": "Issue #827 DL-04 Windows Electron proof through Creator UI and native Save As for two distinct three-Shot Projects, one global 24 fps schedule, exact Shot-local renderer timing/readiness, prefix-mapped audio with preserved source offsets and full-Project silent tail, FFmpeg/FFprobe video and AAC evidence, selection independence, no-clobber, cancellation cleanup, frozen media hashes, and external-player launch. Human audiovisual acceptance is deferred to DL-07."
+    },
+    {
+      "id": "issue832-dl05",
+      "script": "verify:issue832-dl05",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Issue #832 DL-05 Windows Electron proof through Creator UI and native Save As for a 30-second three-Shot audio Project, hide/reopen with current Job progress, edit/Save/Preview during export, cancellation, old snapshot retry with a changed target, fresh current-content retry, output frame and PCM comparisons, protected-file hashes, and bounded snapshot cleanup. Owner audiovisual acceptance remains deferred to DL-07."
     },
     {
       "id": "timeline",

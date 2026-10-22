@@ -217,11 +217,15 @@ export const ExportCancelResponseSchema = z
 export const ExportJobUpdateSchema = z
   .object({
     jobId: JobIdSchema,
+    attemptId: z.uuid().optional(),
+    snapshotId: z.uuid().optional(),
     status: ExportJobStatusSchema,
     phase: ExportJobPhaseSchema,
     completedFrames: z.number().int().nonnegative(),
     totalFrames: z.number().int().nonnegative(),
     error: z.string().trim().min(1).max(2_000).nullable(),
+    originalError: z.string().trim().min(1).max(2_000).nullable().optional(),
+    cleanupError: z.string().trim().min(1).max(2_000).nullable().optional(),
   })
   .strict();
 

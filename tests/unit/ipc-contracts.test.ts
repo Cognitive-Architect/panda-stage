@@ -244,13 +244,34 @@ describe('IPC contracts', () => {
     expect(
       ExportJobUpdateSchema.parse({
         jobId,
+        attemptId: '00000000-0000-4000-8000-000000000001',
+        snapshotId: '00000000-0000-4000-8000-000000000002',
         status: 'cancelling',
         phase: 'encoding',
         completedFrames: 72,
         totalFrames: 72,
         error: null,
-      }).status,
-    ).toBe('cancelling');
+        originalError: 'original media error',
+        cleanupError: 'temporary directory lock',
+      }),
+    ).toMatchObject({
+      status: 'cancelling',
+      attemptId: '00000000-0000-4000-8000-000000000001',
+      snapshotId: '00000000-0000-4000-8000-000000000002',
+      originalError: 'original media error',
+      cleanupError: 'temporary directory lock',
+    });
+    expect(
+      ExportJobUpdateSchema.safeParse({
+        jobId,
+        attemptId: 'not-a-uuid',
+        status: 'running',
+        phase: 'rendering',
+        completedFrames: 0,
+        totalFrames: 72,
+        error: null,
+      }).success,
+    ).toBe(false);
     expect(
       ExportCancelRequestSchema.safeParse({ jobId, command: 'taskkill /f' })
         .success,

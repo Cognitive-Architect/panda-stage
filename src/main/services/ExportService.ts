@@ -73,6 +73,8 @@ export interface FullProbeMediaAdapter {
 
 export interface ExportJobRecord {
   jobId: string;
+  attemptId?: string;
+  snapshotId?: string;
   status: ExportJobStatus;
   phase: ExportJobPhase;
   durationMs: number;
@@ -80,6 +82,8 @@ export interface ExportJobRecord {
   completedFrames: number;
   outputDirectory: string | null;
   error: string | null;
+  originalError?: string | null;
+  cleanupError?: string | null;
 }
 
 interface FrameExportMetrics {
@@ -122,6 +126,7 @@ interface ActiveJob {
   jobId: string;
   controller: AbortController;
   acceptsCancellation: boolean;
+  completion?: Promise<unknown>;
 }
 
 class ExportCancelledError extends Error {}
@@ -163,6 +168,23 @@ export class ExportService {
 
   getActiveJobId(): string | null {
     return this.activeJob?.jobId ?? null;
+  }
+
+  canCancelJob(jobId: string): boolean {
+    return (
+      this.activeJob?.jobId === jobId &&
+      this.activeJob.acceptsCancellation &&
+      !this.activeJob.controller.signal.aborted
+    );
+  }
+
+  async waitForJob(jobId: string): Promise<void> {
+    const active = this.activeJob;
+    if (!active || active.jobId !== jobId) return;
+    await active.completion?.then(
+      () => undefined,
+      () => undefined,
+    );
   }
 
   getActiveProcessCount(): number {
@@ -222,6 +244,8 @@ export class ExportService {
     } catch (error) {
       const reason = this.errorMessage(error);
       job.status = 'failed';
+      job.originalError = null;
+      job.cleanupError = reason;
       job.error = `临时目录清理失败：${reason}`;
       this.emit(job);
       throw new ExportJobError(jobId, job.error, { cause: error });
@@ -268,9 +292,11 @@ export class ExportService {
       throw new Error('Full probe export requires an FFmpeg adapter.');
     }
     const active = this.createJob(request);
+    const completion = this.executeFullProbe(active, request, this.mediaAdapter);
+    active.completion = completion;
     return {
       jobId: active.jobId,
-      completion: this.executeFullProbe(active, request, this.mediaAdapter),
+      completion,
     };
   }
 
@@ -298,15 +324,19 @@ export class ExportService {
     const active = this.createJob({
       durationMs,
       fps: input.candidate.renderSettings.fps,
+      attemptId: input.candidate.attemptId,
+      snapshotId: input.candidate.snapshotId,
     });
+    const completion = this.executeFormalExport(
+      active,
+      input,
+      assertOutputTargetUnchanged,
+      this.mediaAdapter,
+    );
+    active.completion = completion;
     return {
       jobId: active.jobId,
-      completion: this.executeFormalExport(
-        active,
-        input,
-        assertOutputTargetUnchanged,
-        this.mediaAdapter,
-      ),
+      completion,
     };
   }
 
@@ -913,7 +943,12 @@ export class ExportService {
     };
   }
 
-  private createJob(config: { durationMs: number; fps: 24 }): ActiveJob {
+  private createJob(config: {
+    durationMs: number;
+    fps: 24;
+    attemptId?: string;
+    snapshotId?: string;
+  }): ActiveJob {
     if (this.activeJob) {
       throw new ExportJobError(
         this.activeJob.jobId,
@@ -923,6 +958,8 @@ export class ExportService {
     const jobId = randomUUID();
     const record: ExportJobRecord = {
       jobId,
+      ...(config.attemptId ? { attemptId: config.attemptId } : {}),
+      ...(config.snapshotId ? { snapshotId: config.snapshotId } : {}),
       status: 'running',
       phase: 'preparing',
       durationMs: config.durationMs,
@@ -930,6 +967,8 @@ export class ExportService {
       completedFrames: 0,
       outputDirectory: null,
       error: null,
+      originalError: null,
+      cleanupError: null,
     };
     const active = {
       jobId,
@@ -992,6 +1031,13 @@ export class ExportService {
         error instanceof ExportCleanupError && error.originalError
           ? error.originalError
           : error;
+      record.originalError =
+        error instanceof ExportCleanupError && !error.originalError
+          ? null
+          : this.errorMessage(originalError);
+      record.cleanupError = cleanupErrors
+        .map((cleanupError) => this.errorMessage(cleanupError))
+        .join('；');
       record.status = 'failed';
       record.phase = 'finished';
       record.error = `原始错误：${this.errorMessage(originalError)}；清理错误：${cleanupErrors.map((cleanupError) => this.errorMessage(cleanupError)).join('；')} 下一步：关闭占用文件或目录的程序后重试。`;
@@ -1003,6 +1049,8 @@ export class ExportService {
 
     record.status = cancelled ? 'cancelled' : 'failed';
     record.phase = 'finished';
+    record.originalError = cancelled ? null : this.errorMessage(error);
+    record.cleanupError = null;
     record.error = cancelled
       ? '导出已取消并完成资源清理；可以立即重新导出。'
       : `${this.errorMessage(error)} 下一步：检查输入路径和媒体工具后重试。`;
@@ -1031,11 +1079,19 @@ export class ExportService {
   private emit(record: ExportJobRecord): void {
     const update: ExportJobUpdate = {
       jobId: record.jobId,
+      ...(record.attemptId ? { attemptId: record.attemptId } : {}),
+      ...(record.snapshotId ? { snapshotId: record.snapshotId } : {}),
       status: record.status,
       phase: record.phase,
       completedFrames: record.completedFrames,
       totalFrames: record.totalFrames,
       error: record.error,
+      ...(record.originalError !== undefined
+        ? { originalError: record.originalError }
+        : {}),
+      ...(record.cleanupError !== undefined
+        ? { cleanupError: record.cleanupError }
+        : {}),
     };
     for (const listener of this.listeners) listener(update);
   }

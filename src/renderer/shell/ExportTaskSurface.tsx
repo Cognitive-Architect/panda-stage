@@ -8,9 +8,11 @@ import {
 import { Button, IconButton, PanelSurface } from '../ui';
 import type { ExportJobPhase } from '../../shared/export-types';
 import type { ExportPreparationCameraMode } from '../../shared/export-preparation-types';
+import { shouldShowExportFrameProgress } from './exportTaskState';
 
 export type ExportTaskStatus =
   | 'idle'
+  | 'selecting'
   | 'preparing'
   | 'starting'
   | 'running'
@@ -30,6 +32,8 @@ export interface ExportTaskState {
   attemptId?: string;
   jobId?: string;
   snapshotId?: string;
+  projectId?: string;
+  openInstanceId?: number;
   fileName?: string;
   projectRoot?: string;
   durationMs?: number;
@@ -47,13 +51,14 @@ interface ExportTaskSurfaceProps {
   onHide(): void;
   onCancel(): void;
   onRetrySameSnapshot(): void;
-  onChooseAnotherOutput(): void;
+  onRetryCurrentContent(): void;
   onRevealOutput(): void;
 }
 
 const STATUS_COPY: Record<ExportTaskStatus, string> = {
   idle: '',
-  preparing: '\u6b63\u5728\u68c0\u67e5\u955c\u5934\u548c\u7d20\u6750\u2026',
+  selecting: '\u6b63\u5728\u9009\u62e9\u4fdd\u5b58\u4f4d\u7f6e\u2026',
+  preparing: '\u6b63\u5728\u68c0\u67e5\u9879\u76ee\u955c\u5934\u548c\u7d20\u6750\u2026',
   starting: '\u6b63\u5728\u51c6\u5907\u5bfc\u51fa\u2026',
   running: '\u6b63\u5728\u5bfc\u51fa\u2026',
   cancelling: '\u6b63\u5728\u5b89\u5168\u53d6\u6d88\u2026',
@@ -67,12 +72,16 @@ function phaseCopy(phase?: ExportJobPhase): string {
     case 'rendering':
     case 'writing':
       return '\u6b63\u5728\u7ed8\u5236\u753b\u9762';
+    case 'preparing':
+      return '\u6b63\u5728\u51c6\u5907\u9879\u76ee\u548c\u7d20\u6750';
     case 'encoding':
       return '\u6b63\u5728\u5408\u6210\u89c6\u9891';
+    case 'muxing':
+      return '\u6b63\u5728\u6df7\u5408\u58f0\u97f3';
     case 'probing':
       return '\u6b63\u5728\u68c0\u67e5\u5bfc\u51fa\u7ed3\u679c';
     case 'committing':
-      return '\u6b63\u5728\u4fdd\u5b58\u89c6\u9891';
+      return '\u6b63\u5728\u4fdd\u5b58\u89c6\u9891\uff0c\u6b64\u523b\u65e0\u6cd5\u53d6\u6d88';
     case 'cleaning':
       return '\u6b63\u5728\u6e05\u7406\u4e34\u65f6\u5185\u5bb9';
     default:
@@ -86,13 +95,10 @@ export function ExportTaskSurface({
   onHide,
   onCancel,
   onRetrySameSnapshot,
-  onChooseAnotherOutput,
+  onRetryCurrentContent,
   onRevealOutput,
 }: ExportTaskSurfaceProps): React.JSX.Element | null {
   if (!open) return null;
-  const active = ['preparing', 'starting', 'running', 'cancelling'].includes(
-    task.status,
-  );
   const progress =
     task.totalFrames > 0
       ? Math.min(100, Math.floor((task.completedFrames / task.totalFrames) * 100))
@@ -101,6 +107,7 @@ export function ExportTaskSurface({
   const canCancelExport =
     (task.status === 'running' || task.status === 'cancelling') &&
     task.phase !== 'committing';
+  const hasFrameProgress = shouldShowExportFrameProgress(task);
 
   return (
     <aside
@@ -129,7 +136,7 @@ export function ExportTaskSurface({
           {task.status === 'running' ? phaseCopy(task.phase) : STATUS_COPY[task.status]}
         </div>
 
-        {active && task.totalFrames > 0 ? (
+        {hasFrameProgress ? (
           <div className="export-task-progress">
             <progress
               aria-label={'\u5bfc\u51fa\u8fdb\u5ea6'}
@@ -183,15 +190,15 @@ export function ExportTaskSurface({
               {task.snapshotId ? (
                 <Button onClick={onRetrySameSnapshot} variant="primary">
                   <RefreshCw aria-hidden="true" size={16} />
-                  {'\u91cd\u8bd5\u8fd9\u4e2a\u955c\u5934'}
+                  {'\u9009\u62e9\u4f4d\u7f6e\uff0c\u91cd\u8bd5\u539f\u5185\u5bb9'}
                 </Button>
               ) : null}
-              <Button onClick={onChooseAnotherOutput} variant="secondary">
-                {'\u53e6\u9009\u4fdd\u5b58\u4f4d\u7f6e'}
+              <Button onClick={onRetryCurrentContent} variant="secondary">
+                {'\u6309\u5f53\u524d\u5185\u5bb9\u91cd\u65b0\u5bfc\u51fa'}
               </Button>
             </>
           ) : null}
-          {task.status === 'preparing' || task.status === 'starting' ? (
+          {task.status === 'selecting' || task.status === 'preparing' || task.status === 'starting' ? (
             <LoaderCircle
               aria-label={'\u6b63\u5728\u51c6\u5907'}
               className="export-task-spinner"

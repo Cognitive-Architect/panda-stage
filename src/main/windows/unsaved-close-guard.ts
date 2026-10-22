@@ -10,6 +10,7 @@ export interface UnsavedCloseGuardDependencies {
   closeWindow: () => void;
   quitApplication: () => void;
   synchronizeRenderer: () => Promise<RendererCloseSyncResult>;
+  confirmPendingWork?: (intent: CloseIntent) => Promise<boolean>;
   reportRendererSyncFailure?: (
     error: string,
     intent: CloseIntent,
@@ -55,6 +56,19 @@ export class UnsavedCloseGuard {
   }
 
   private async resolveClose(intent: CloseIntent): Promise<void> {
+    try {
+      if (this.dependencies.confirmPendingWork) {
+        const mayContinue = await this.dependencies.confirmPendingWork(intent);
+        if (!mayContinue) return;
+      }
+    } catch (error) {
+      await this.dependencies.reportRendererSyncFailure?.(
+        error instanceof Error ? error.message : String(error),
+        intent,
+      );
+      return;
+    }
+
     let synchronized: RendererCloseSyncResult;
     try {
       synchronized = await this.dependencies.synchronizeRenderer();

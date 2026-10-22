@@ -16,6 +16,7 @@ import type {
 import type { ExportPreparationResponse } from '../../shared/export-preparation-types';
 import type { ExportJobUpdate } from '../../shared/export-types';
 import type { Project } from '../../domain';
+import { projectDurationMs } from '../../domain/selectors/projectDuration';
 import {
   ProjectSessionController,
   type ProjectSessionApi,
@@ -40,6 +41,10 @@ import {
   ExportTaskSurface,
   type ExportTaskState,
 } from './ExportTaskSurface';
+import {
+  applyExportJobUpdate,
+  safeExportFailureMessage,
+} from './exportTaskState';
 import { AdaptiveWorkspaceSwitcher } from './AdaptiveWorkspaceSwitcher';
 import { BottomWorkspace } from './BottomWorkspace';
 import { CanvasWorkspace } from './CanvasWorkspace';
@@ -116,57 +121,6 @@ export function getEditorWindowTitle(
 
 export function shouldRenderProductSurface(gateA: boolean): boolean {
   return !gateA;
-}
-
-function safeExportFailureMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/target was created before commit/iu.test(message)) {
-    return '\u4fdd\u5b58\u4f4d\u7f6e\u5728\u5bfc\u51fa\u671f\u95f4\u51fa\u73b0\u4e86\u540c\u540d\u6587\u4ef6\u3002\u73b0\u6709\u6587\u4ef6\u672a\u88ab\u4fee\u6539\uff0c\u8bf7\u6362\u4e00\u4e2a\u65b0\u6587\u4ef6\u540d\u91cd\u8bd5\u3002';
-  }
-  if (/local NTFS|volume could not be verified|unsupported volume/iu.test(message)) {
-    return '\u6b63\u5f0f MP4 \u4ec5\u80fd\u5bfc\u51fa\u5230 Windows \u672c\u673a NTFS \u6587\u4ef6\u5939\u3002\u8bf7\u9009\u62e9\u672c\u673a NTFS \u4f4d\u7f6e\u540e\u91cd\u8bd5\u3002';
-  }
-  if (/OUTPUT_TARGET_CHANGED|target changed|already exists|overwrite/iu.test(message)) {
-    return '\u5bfc\u51fa\u4f4d\u7f6e\u5df2\u53d1\u751f\u53d8\u5316\u3002\u8bf7\u53e6\u9009\u4e00\u4e2a\u4fdd\u5b58\u4f4d\u7f6e\u540e\u91cd\u8bd5\u3002';
-  }
-  if (/OUTPUT_NOT_WRITABLE|permission|access is denied/iu.test(message)) {
-    return '\u65e0\u6cd5\u5199\u5165\u8fd9\u4e2a\u4f4d\u7f6e\u3002\u8bf7\u9009\u62e9\u53ef\u5199\u5165\u7684\u6587\u4ef6\u5939\u540e\u91cd\u8bd5\u3002';
-  }
-  if (/PROJECT_SESSION_CHANGED|snapshot.*unavailable/iu.test(message)) {
-    return '\u5f53\u524d\u9879\u76ee\u5df2\u53d8\u5316\u6216\u5173\u95ed\u3002\u8bf7\u6253\u5f00\u76ee\u6807\u9879\u76ee\u5e76\u91cd\u65b0\u9009\u62e9\u4fdd\u5b58\u4f4d\u7f6e\u3002';
-  }
-  if (/frame budget|duration exceeds/iu.test(message)) {
-    return '\u955c\u5934\u65f6\u957f\u8d85\u51fa\u5f53\u524d\u5bfc\u51fa\u9650\u5236\u3002\u8bf7\u7f29\u77ed\u955c\u5934\u540e\u91cd\u8bd5\u3002';
-  }
-  const detail = message
-    .replace(/\s*下一步[:：].*$/u, '')
-    .replace(/[\r\n\t]+/gu, ' ')
-    .replace(/\s{2,}/gu, ' ')
-    .replace(/[A-Za-z]:\\[^\s"'<>|]+/gu, '\u6587\u4ef6\u8def\u5f84')
-    .slice(0, 240);
-  return detail
-    ? `\u5bfc\u51fa\u5931\u8d25\uff1a${detail}\u3002\u8bf7\u68c0\u67e5\u8f93\u5165\u8def\u5f84\u548c\u5a92\u4f53\u5de5\u5177\u540e\u91cd\u8bd5\u3002`
-    : '\u5bfc\u51fa\u672a\u5b8c\u6210\u3002\u53ef\u4ee5\u91cd\u8bd5\u8fd9\u4e2a\u955c\u5934\u6216\u53e6\u9009\u4fdd\u5b58\u4f4d\u7f6e\u3002';
-}
-
-function applyExportJobUpdate(
-  current: ExportTaskState,
-  update: ExportJobUpdate,
-): ExportTaskState {
-  if (current.jobId !== update.jobId) return current;
-  return {
-    ...current,
-    status: update.status,
-    phase: update.phase,
-    completedFrames: update.completedFrames,
-    totalFrames: update.totalFrames,
-    message:
-      update.status === 'failed'
-        ? safeExportFailureMessage(update.error)
-        : update.status === 'cancelled'
-          ? '\u5bfc\u51fa\u5df2\u53d6\u6d88\u5e76\u5b8c\u6210\u4e34\u65f6\u5185\u5bb9\u6e05\u7406\u3002'
-          : undefined,
-  };
 }
 
 export function getEditorShellRecoveryCandidate(
@@ -581,7 +535,7 @@ export function EditorShell({
     setExportTask(next);
   };
   const exportTaskIsActive = (task: ExportTaskState): boolean =>
-    ['preparing', 'starting', 'running', 'cancelling'].includes(task.status);
+    ['selecting', 'preparing', 'starting', 'running', 'cancelling'].includes(task.status);
   const blockSessionChangeDuringExport = (): boolean => {
     const task = exportTaskRef.current;
     if (!exportTaskIsActive(task)) return false;
@@ -655,6 +609,15 @@ export function EditorShell({
           redoCount: editorProjectStore.history.getSnapshot().redoCount,
         };
       },
+      inspectExportTask: () => {
+        const task = structuredClone(exportTaskRef.current);
+        return {
+          task,
+          latestUpdate: task.jobId
+            ? structuredClone(latestExportUpdatesRef.current.get(task.jobId) ?? null)
+            : null,
+        };
+      },
       saveCurrentProject: () => session.saveCurrentProject(),
       editUnsavedFixture: async () => {
         const snapshot = editorProjectStore.getSnapshot();
@@ -703,6 +666,53 @@ export function EditorShell({
           dirty: updated.dirty,
           undoCount: editorProjectStore.history.getSnapshot().undoCount,
           project: structuredClone(updated.project),
+        };
+      },
+      editSubtitleAndAddAudioFixture: async (text: string) => {
+        const snapshot = editorProjectStore.getSnapshot();
+        if (!snapshot) throw new Error('No active Project for DL-05 edit.');
+        const project = structuredClone(snapshot.project);
+        const shot = project.shots[0];
+        const dialogue = shot?.dialogues[0];
+        if (!shot || !dialogue) {
+          throw new Error('DL-05 fixture requires a first-Shot subtitle.');
+        }
+        const priorText = dialogue.text;
+        dialogue.text = text;
+        const newAudioAsset = project.assets.find(
+          (asset) =>
+            asset.kind === 'audio' &&
+            asset.relativePath.endsWith('dl03-sfx-two.wav'),
+        );
+        if (!newAudioAsset || newAudioAsset.kind !== 'audio') {
+          throw new Error('DL-05 fixture requires its unused SFX source.');
+        }
+        shot.audioClips.push({
+          id: crypto.randomUUID(),
+          name: 'DL-05 current-content retry signal',
+          assetId: newAudioAsset.id,
+          role: 'sfx',
+          startMs: 7_000,
+          endMs: 8_000,
+          offsetMs: 0,
+          volume: 0.6,
+        });
+        editorProjectStore.updateProject(project, 'DL-05 parallel edit');
+        const updated = editorProjectStore.getSnapshot();
+        if (!updated) throw new Error('DL-05 Project closed during edit.');
+        const syncResult = await session.syncAutosave(updated);
+        if (syncResult && !syncResult.ok) {
+          throw new Error('DL-05 edit did not reach Main project tracking.');
+        }
+        return {
+          priorText,
+          text,
+          revision: updated.revision,
+          dirty: updated.dirty,
+          undoCount: editorProjectStore.history.getSnapshot().undoCount,
+          project: structuredClone(updated.project),
+          addedAudioAssetId: newAudioAsset.id,
+          addedAudioAssetSha256: newAudioAsset.sha256,
         };
       },
       setExportScenario: async (
@@ -1186,17 +1196,26 @@ export function EditorShell({
   };
 
   const startCandidateExport = async (candidate: {
+    attemptId: string;
     snapshotId: string;
     projectRoot: string;
+    projectId: string;
+    openInstanceId: number;
     fileName: string;
     durationMs: number;
     cameraMode: 'static' | 'speaker-focus';
   }, reuseSnapshot = false): Promise<void> => {
+    if (['starting', 'running', 'cancelling'].includes(exportTaskRef.current.status)) {
+      return;
+    }
     exportJobIdRef.current = null;
     setExportTaskState({
       status: 'starting',
+      attemptId: candidate.attemptId,
       snapshotId: candidate.snapshotId,
       projectRoot: candidate.projectRoot,
+      projectId: candidate.projectId,
+      openInstanceId: candidate.openInstanceId,
       fileName: candidate.fileName,
       durationMs: candidate.durationMs,
       cameraMode: candidate.cameraMode,
@@ -1212,9 +1231,12 @@ export function EditorShell({
       exportJobIdRef.current = response.jobId;
       setExportTaskState({
         status: 'running',
+        attemptId: candidate.attemptId,
         jobId: response.jobId,
         snapshotId: candidate.snapshotId,
         projectRoot: candidate.projectRoot,
+        projectId: candidate.projectId,
+        openInstanceId: candidate.openInstanceId,
         fileName: candidate.fileName,
         durationMs: candidate.durationMs,
         cameraMode: candidate.cameraMode,
@@ -1231,8 +1253,11 @@ export function EditorShell({
     } catch (error) {
       setExportTaskState({
         status: 'failed',
+        attemptId: candidate.attemptId,
         snapshotId: candidate.snapshotId,
         projectRoot: candidate.projectRoot,
+        projectId: candidate.projectId,
+        openInstanceId: candidate.openInstanceId,
         fileName: candidate.fileName,
         durationMs: candidate.durationMs,
         cameraMode: candidate.cameraMode,
@@ -1253,13 +1278,14 @@ export function EditorShell({
     const initialInstanceId = editorProjectStore.getProjectInstanceId();
     if (!initial || initialInstanceId === null) return;
 
+    const previousTask = exportTaskRef.current;
     exportJobIdRef.current = null;
     setExportSurfaceOpen(true);
     setExportTaskState({
-      status: 'preparing',
+      ...previousTask,
+      status: 'selecting',
       projectRoot: initial.projectRoot,
-      completedFrames: 0,
-      totalFrames: 0,
+      message: undefined,
       issues: [],
     });
     try {
@@ -1270,21 +1296,17 @@ export function EditorShell({
         openInstanceId: initialInstanceId,
       });
       if (selection.status === 'cancelled') {
-        setExportTaskState({
-          status: 'idle',
-          completedFrames: 0,
-          totalFrames: 0,
-          issues: [],
-        });
-        setExportSurfaceOpen(false);
+        setExportTaskState(previousTask);
+        exportJobIdRef.current = previousTask.jobId ?? null;
+        setExportSurfaceOpen(previousTask.status !== 'idle');
         return;
       }
       if (selection.status === 'blocked') {
         setExportTaskState({
+          ...previousTask,
           status: 'failed',
           projectRoot: initial.projectRoot,
-          completedFrames: 0,
-          totalFrames: 0,
+          message: selection.issue.problem,
           issues: [selection.issue],
         });
         return;
@@ -1303,6 +1325,7 @@ export function EditorShell({
           selectionId: selection.selectionId,
         });
         setExportTaskState({
+          ...previousTask,
           status: 'failed',
           projectRoot: initial.projectRoot,
           completedFrames: 0,
@@ -1318,7 +1341,10 @@ export function EditorShell({
         status: 'preparing',
         attemptId,
         projectRoot: captured.projectRoot,
+        projectId: captured.project.id,
+        openInstanceId: capturedInstanceId,
         fileName: selection.fileName,
+        durationMs: projectDurationMs(captured.project),
         completedFrames: 0,
         totalFrames: 0,
         issues: [],
@@ -1339,8 +1365,12 @@ export function EditorShell({
       if (result.status === 'CANCELLED') {
         setExportTaskState({
           status: 'cancelled',
+          attemptId,
           projectRoot: captured.projectRoot,
+          projectId: captured.project.id,
+          openInstanceId: capturedInstanceId,
           fileName: selection.fileName,
+          durationMs: projectDurationMs(captured.project),
           completedFrames: 0,
           totalFrames: 0,
           message: '\u5bfc\u51fa\u51c6\u5907\u5df2\u53d6\u6d88\u3002',
@@ -1351,8 +1381,12 @@ export function EditorShell({
       if (result.status === 'BLOCK') {
         setExportTaskState({
           status: 'failed',
+          attemptId,
           projectRoot: captured.projectRoot,
+          projectId: captured.project.id,
+          openInstanceId: capturedInstanceId,
           fileName: selection.fileName,
+          durationMs: projectDurationMs(captured.project),
           completedFrames: 0,
           totalFrames: 0,
           issues: result.issues,
@@ -1372,8 +1406,12 @@ export function EditorShell({
         });
         setExportTaskState({
           status: 'failed',
+          attemptId,
           projectRoot: captured.projectRoot,
+          projectId: captured.project.id,
+          openInstanceId: capturedInstanceId,
           fileName: selection.fileName,
+          durationMs: projectDurationMs(captured.project),
           completedFrames: 0,
           totalFrames: 0,
           message:
@@ -1384,20 +1422,22 @@ export function EditorShell({
       }
       await startCandidateExport(
         {
+          attemptId: result.candidate.attemptId,
           snapshotId: result.candidate.snapshotId,
           projectRoot: result.candidate.projectRoot,
+          projectId: result.candidate.projectId,
+          openInstanceId: result.candidate.openInstanceId,
           fileName: result.candidate.outputIntent.fileName,
-          durationMs: result.candidate.project.shots[0]!.durationMs,
+          durationMs: projectDurationMs(result.candidate.project),
           cameraMode: result.candidate.cameraMode,
         },
         false,
       );
     } catch (error) {
+      const currentTask = exportTaskRef.current;
       setExportTaskState({
+        ...currentTask,
         status: 'failed',
-        projectRoot: initial.projectRoot,
-        completedFrames: 0,
-        totalFrames: 0,
         message: safeExportFailureMessage(error),
         issues: [],
       });
@@ -1419,7 +1459,17 @@ export function EditorShell({
         task.attemptId,
       );
       if (response.accepted) {
-        setExportTaskState({ ...task, status: 'cancelling', message: undefined });
+        const current = exportTaskRef.current;
+        if (
+          current.attemptId === task.attemptId &&
+          !['completed', 'failed', 'cancelled'].includes(current.status)
+        ) {
+          setExportTaskState({
+            ...current,
+            status: 'cancelling',
+            message: undefined,
+          });
+        }
       }
       return;
     }
@@ -1427,30 +1477,111 @@ export function EditorShell({
       return;
     }
     const response = await window.pandaStage.export.cancel(task.jobId);
+    const current = exportTaskRef.current;
+    if (
+      current.jobId !== task.jobId ||
+      ['completed', 'failed', 'cancelled'].includes(current.status)
+    ) {
+      return;
+    }
     if (response.accepted) {
-      setExportTaskState({ ...task, status: 'cancelling', message: undefined });
-    } else if (task.phase === 'committing') {
+      setExportTaskState({ ...current, status: 'cancelling', message: undefined });
+    } else if (current.phase === 'committing') {
       setExportTaskState({
-        ...task,
+        ...current,
         message:
-          '\u89c6\u9891\u6b63\u5728\u6700\u540e\u4fdd\u5b58\uff0c\u8bf7\u7a0d\u5019\u3002',
+          '\u89c6\u9891\u6b63\u5728\u4fdd\u5b58\uff0c\u6b64\u523b\u65e0\u6cd5\u53d6\u6d88\uff0c\u8bf7\u7a0d\u5019\u3002',
       });
     }
   };
 
-  const retrySameExportSnapshot = (): void => {
+  const retrySameExportSnapshot = async (): Promise<void> => {
     const task = exportTaskRef.current;
-    if (!task.snapshotId || !task.projectRoot || !task.fileName) return;
-    void startCandidateExport(
-      {
-        snapshotId: task.snapshotId,
+    if (
+      exportTaskIsActive(task) ||
+      !task.snapshotId ||
+      !task.projectRoot ||
+      !task.projectId ||
+      !task.openInstanceId ||
+      !task.attemptId
+    ) {
+      return;
+    }
+    const current = editorProjectStore.getSnapshot();
+    const currentInstanceId = editorProjectStore.getProjectInstanceId();
+    if (
+      !current ||
+      current.projectRoot !== task.projectRoot ||
+      current.project.id !== task.projectId ||
+      currentInstanceId !== task.openInstanceId
+    ) {
+      setExportTaskState({
+        ...task,
+        status: 'failed',
+        message: safeExportFailureMessage('PROJECT_SESSION_CHANGED'),
+      });
+      return;
+    }
+
+    exportJobIdRef.current = null;
+    setExportTaskState({ ...task, status: 'selecting', message: undefined, issues: [] });
+    setExportSurfaceOpen(true);
+    try {
+      const selection = await window.pandaStage.exportPreparation.selectOutput({
         projectRoot: task.projectRoot,
-        fileName: task.fileName,
-        durationMs: task.durationMs ?? 0,
-        cameraMode: task.cameraMode ?? 'static',
-      },
-      true,
-    );
+        projectId: task.projectId,
+        projectName: current.project.name,
+        openInstanceId: task.openInstanceId,
+        snapshotId: task.snapshotId,
+      });
+      if (selection.status === 'cancelled') {
+        setExportTaskState(task);
+        exportJobIdRef.current = task.jobId ?? null;
+        return;
+      }
+      if (selection.status === 'blocked') {
+        setExportTaskState({
+          ...task,
+          status: 'failed',
+          message: selection.issue.problem,
+          issues: [selection.issue],
+        });
+        return;
+      }
+
+      setExportTaskState({
+        ...task,
+        status: 'failed',
+        fileName: selection.fileName,
+        message: undefined,
+        issues: [],
+      });
+      await startCandidateExport(
+        {
+          attemptId: task.attemptId,
+          snapshotId: task.snapshotId,
+          projectRoot: task.projectRoot,
+          projectId: task.projectId,
+          openInstanceId: task.openInstanceId,
+          fileName: selection.fileName,
+          durationMs: task.durationMs ?? projectDurationMs(current.project),
+          cameraMode: task.cameraMode ?? 'static',
+        },
+        true,
+      );
+    } catch (error) {
+      setExportTaskState({
+        ...task,
+        status: 'failed',
+        message: safeExportFailureMessage(error),
+      });
+    }
+  };
+
+  const retryCurrentExportContent = (): void => {
+    if (!exportTaskIsActive(exportTaskRef.current)) {
+      void beginFormalExportFlow();
+    }
   };
 
   const revealExportOutput = async (): Promise<void> => {
@@ -1915,9 +2046,9 @@ export function EditorShell({
           </PendingDialoguePlacementProvider>
           <ExportTaskSurface
             onCancel={() => void cancelExportTask()}
-            onChooseAnotherOutput={() => void beginFormalExportFlow()}
+            onRetryCurrentContent={retryCurrentExportContent}
             onHide={() => setExportSurfaceOpen(false)}
-            onRetrySameSnapshot={retrySameExportSnapshot}
+            onRetrySameSnapshot={() => void retrySameExportSnapshot()}
             onRevealOutput={() => void revealExportOutput()}
             open={exportSurfaceOpen}
             task={exportTask}

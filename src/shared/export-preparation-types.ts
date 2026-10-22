@@ -50,6 +50,7 @@ export const ExportPreparationSelectOutputRequestSchema = z
     projectId: ProjectIdSchema,
     projectName: z.string().trim().min(1).max(500),
     openInstanceId: OpenInstanceIdSchema,
+    snapshotId: z.uuid().optional(),
   })
   .strict();
 
