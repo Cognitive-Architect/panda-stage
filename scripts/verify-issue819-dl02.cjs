@@ -18,13 +18,21 @@ const { resolveMediaToolPaths } = require('../dist-electron/main/services/produc
 const { HiddenWindowManager } = require('../dist-electron/main/windows/hidden-window-manager.js');
 const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
 const { ProjectSchema } = require('../dist-electron/domain/models/project.js');
+const { evaluateSpeakerFocusCamera, prepareSpeakerFocusCamera } = require('../dist-electron/domain/resolve-speaker-focus-camera.js');
 const { buildExportAudioMixPlan } = require('../dist-electron/domain/export-audio-mix-plan.js');
-const { generateIssue819Fixture } = require('./issue819-fixtures.cjs');
+const { iterateFormalProjectFrameSchedule } = require('../dist-electron/shared/export-types.js');
+const { mapProjectTime } = require('../dist-electron/domain/selectors/projectTime.js');
+const { generateIssue819Fixture, generateIssue827Fixture } = require('./issue819-fixtures.cjs');
 
 const dl03Mode = process.env.PANDA_STAGE_ISSUE823_DL03 === '1';
+const dl04Mode = process.env.PANDA_STAGE_ISSUE827_DL04 === '1';
+const dl04SampleId = Number(process.env.PANDA_STAGE_ISSUE827_SAMPLE ?? '1');
 const baseDirectory =
+  process.env.PANDA_STAGE_ISSUE827_ROOT ??
   process.env.PANDA_STAGE_ISSUE819_ROOT ??
-  (dl03Mode
+  (dl04Mode
+    ? `D:\\PandaStage-Acceptance\\issue827-dl04\\sample-${dl04SampleId}`
+    : dl03Mode
     ? 'D:\\PandaStage-Acceptance\\issue823-dl03'
     : 'D:\\PandaStage-Acceptance\\issue819-dl02');
 process.env.VITE_DEV_SERVER_URL = '';
@@ -51,6 +59,7 @@ let removeProjectIpcHandlers = null;
 let removeExportHandlers = null;
 let assetBytesById = new Map();
 const formalStarts = [];
+const audioMixPlans = [];
 const jobUpdates = [];
 const mediaFailures = [];
 const injectedCommitConflicts = [];
@@ -239,6 +248,7 @@ function createExportService() {
   };
   const muxAudioMix = mediaAdapter.muxAudioMix.bind(mediaAdapter);
   mediaAdapter.muxAudioMix = async (request, signal) => {
+    if (dl04Mode) audioMixPlans.push(structuredClone(request.audioMixPlan));
     if (!replaceDialogueSourceBeforeNextMix) return muxAudioMix(request, signal);
     replaceDialogueSourceBeforeNextMix = false;
     const dialogueAsset = fixtureProject.assets.find(
@@ -1060,10 +1070,454 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
   };
 }
 
-async function run() {
-  fixture = await generateIssue819Fixture(path.resolve(baseDirectory), {
-    includeAudioMix: dl03Mode,
+function pcmWindow(bytes, startMs, durationMs) {
+  const sampleRate = 48_000;
+  const start = Math.max(0, Math.floor((startMs * sampleRate) / 1_000));
+  const count = Math.floor((durationMs * sampleRate) / 1_000);
+  const end = Math.min(count, Math.floor(bytes.length / 4) - start);
+  if (end <= 0) throw new Error(`PCM window is outside the decoded stream at ${startMs} ms.`);
+  let squareSum = 0;
+  for (let index = 0; index < end; index += 1) {
+    const sample = bytes.readFloatLE((start + index) * 4);
+    squareSum += sample * sample;
+  }
+  return { startSample: start, sampleCount: end, rms: Math.sqrt(squareSum / end) };
+}
+
+function goertzelAmplitude(bytes, startMs, durationMs, frequencyHz) {
+  const { startSample, sampleCount } = pcmWindow(bytes, startMs, durationMs);
+  const coefficient = 2 * Math.cos((2 * Math.PI * frequencyHz) / 48_000);
+  let previous = 0;
+  let previousPrevious = 0;
+  for (let offset = 0; offset < sampleCount; offset += 1) {
+    const sample = bytes.readFloatLE((startSample + offset) * 4);
+    const current = sample + coefficient * previous - previousPrevious;
+    previousPrevious = previous;
+    previous = current;
+  }
+  const power = Math.max(
+    0,
+    previous * previous + previousPrevious * previousPrevious -
+      coefficient * previous * previousPrevious,
+  );
+  return (2 * Math.sqrt(power)) / sampleCount;
+}
+
+function compareRawFrames(left, right) {
+  assert(left.length === right.length && left.length > 0, 'Decoded RGB frame sizes differ.');
+  let changedPixels = 0;
+  let absoluteDelta = 0;
+  let lumaSum = 0;
+  for (let offset = 0; offset < left.length; offset += 3) {
+    const redDelta = Math.abs(left[offset] - right[offset]);
+    const greenDelta = Math.abs(left[offset + 1] - right[offset + 1]);
+    const blueDelta = Math.abs(left[offset + 2] - right[offset + 2]);
+    if (redDelta + greenDelta + blueDelta > 24) changedPixels += 1;
+    absoluteDelta += redDelta + greenDelta + blueDelta;
+    lumaSum += left[offset] * 0.299 + left[offset + 1] * 0.587 + left[offset + 2] * 0.114;
+  }
+  return {
+    changedPixels,
+    meanAbsoluteChannelDelta: absoluteDelta / left.length,
+    meanLuma: lumaSum / (left.length / 3),
+  };
+}
+
+function frameAtOrAfter(schedule, timeMs) {
+  const entry = schedule.find((frame) => frame.timeMs >= timeMs);
+  if (!entry) throw new Error(`No formal frame at or after ${timeMs} ms.`);
+  return entry;
+}
+
+async function extractFormalFrame(outputPath, evidenceDirectory, mediaTools, frameIndex, label) {
+  const pngPath = path.join(evidenceDirectory, `${label}.png`);
+  const rawPath = path.join(evidenceDirectory, `${label}.rgb24`);
+  const filter = `select=eq(n\\,${frameIndex})`;
+  await runProcess(mediaTools.ffmpegPath, [
+    '-y', '-v', 'error', '-i', outputPath, '-vf', filter, '-vsync', '0',
+    '-frames:v', '1', pngPath,
+  ]);
+  await runProcess(mediaTools.ffmpegPath, [
+    '-y', '-v', 'error', '-i', outputPath, '-vf', filter, '-vsync', '0',
+    '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', rawPath,
+  ]);
+  const [pngBytes, rawBytes] = await Promise.all([
+    fsp.readFile(pngPath),
+    fsp.readFile(rawPath),
+  ]);
+  await fsp.rm(rawPath, { force: true });
+  assert(pngBytes.length > 1_000, `${label}: extracted PNG frame is empty.`);
+  assert(rawBytes.length === 1_920 * 1_080 * 3, `${label}: decoded RGB frame size is invalid.`);
+  return { frameIndex, pngPath, rawBytes };
+}
+
+async function issue827ExportEvidence(outputPath, evidenceDirectory, project, cameraMode, mediaTools) {
+  await fsp.mkdir(evidenceDirectory, { recursive: true });
+  const durationMs = project.shots.reduce((total, shot) => total + shot.durationMs, 0);
+  const schedule = Array.from(iterateFormalProjectFrameSchedule(project));
+  const totalFrames = Math.ceil((durationMs * 24) / 1_000);
+  assert(schedule.length === totalFrames, 'Project frame schedule did not use one global frame count.');
+  assert(durationMs === 30_000 && totalFrames === 720, 'The Issue #827 long sample must be 30 seconds / 720 frames.');
+  assert(schedule.at(-1)?.timeMs === 29_958, 'The final frame must be the last normal 24 fps sample.');
+
+  const shotPrefixes = [];
+  let prefixMs = 0;
+  for (const [shotIndex, shot] of project.shots.entries()) {
+    shotPrefixes.push({ shotIndex, shotId: shot.id, name: shot.name, startMs: prefixMs, durationMs: shot.durationMs, endMs: prefixMs + shot.durationMs });
+    prefixMs += shot.durationMs;
+  }
+  const schedulePath = path.join(evidenceDirectory, 'global-frame-schedule.json');
+  await fsp.writeFile(schedulePath, JSON.stringify({ durationMs, fps: 24, totalFrames, shotPrefixes, frames: schedule }, null, 2), 'utf8');
+
+  const rawProbe = await runProcess(mediaTools.ffprobePath, [
+    '-v', 'error', '-count_frames', '-show_streams', '-show_format', '-of', 'json', outputPath,
+  ]);
+  const probe = JSON.parse(rawProbe.stdout);
+  const video = probe.streams?.find((stream) => stream.codec_type === 'video');
+  const audio = probe.streams?.filter((stream) => stream.codec_type === 'audio') ?? [];
+  const frameCount = Number(video?.nb_read_frames ?? video?.nb_frames);
+  const fpsParts = String(video?.avg_frame_rate ?? video?.r_frame_rate ?? '0/1').split('/');
+  const fps = Number(fpsParts[0]) / Number(fpsParts[1] || 1);
+  const durationSeconds = Number(video?.duration ?? probe.format?.duration);
+  assert(video?.codec_name === 'h264' && video?.pix_fmt === 'yuv420p', 'FFprobe video codec or pixel format differs from the formal contract.');
+  assert(video?.width === 1_920 && video?.height === 1_080, 'FFprobe video dimensions differ from 1920x1080.');
+  assert(Math.abs(fps - 24) < 0.001 && frameCount === totalFrames, 'FFprobe frame rate or frame count differs from the global schedule.');
+  assert(Math.abs(durationSeconds - totalFrames / 24) < 0.08, 'FFprobe video duration differs from the global frame schedule.');
+  assert(audio.length === 1 && audio[0]?.codec_name === 'aac' && audio[0]?.sample_rate === '48000', 'The audio Project must produce one 48 kHz AAC track.');
+  assert(Math.abs(Number(audio[0]?.duration) - durationMs / 1_000) < 0.08, 'AAC duration does not cover the complete Project including its silent tail.');
+  const ffprobePath = path.join(evidenceDirectory, 'ffprobe.json');
+  await fsp.writeFile(ffprobePath, JSON.stringify(probe, null, 2), 'utf8');
+
+  const samples = new Map();
+  const ensureSample = async (name, frameIndex) => {
+    if (!samples.has(frameIndex)) {
+      samples.set(frameIndex, await extractFormalFrame(outputPath, evidenceDirectory, mediaTools, frameIndex, name));
+    }
+    return samples.get(frameIndex);
+  };
+  const boundaries = [];
+  for (let shotIndex = 1; shotIndex < project.shots.length; shotIndex += 1) {
+    const current = shotPrefixes[shotIndex];
+    const beforeFrame = schedule.filter((frame) => frame.timeMs < current.startMs).at(-1);
+    const afterFrame = schedule.find((frame) => frame.timeMs >= current.startMs);
+    assert(beforeFrame && afterFrame, `Shot ${shotIndex + 1} has no encoded boundary samples.`);
+    const before = await ensureSample(`boundary-${shotIndex}-before`, beforeFrame.frameIndex);
+    const after = await ensureSample(`boundary-${shotIndex}-after`, afterFrame.frameIndex);
+    const contrast = compareRawFrames(before.rawBytes, after.rawBytes);
+    assert(contrast.meanLuma > 5 && contrast.changedPixels > 500, `Shot ${shotIndex + 1} boundary did not show a complete changed frame.`);
+    const logical = [-1, 0, 1].map((deltaMs) => {
+      const position = mapProjectTime(project, current.startMs + deltaMs);
+      return {
+        requestedGlobalTimeMs: current.startMs + deltaMs,
+        shotId: position.shot?.id ?? null,
+        shotIndex: position.shotIndex,
+        shotStartMs: position.shotStartMs,
+        shotLocalTimeMs: position.shotLocalTimeMs,
+      };
+    });
+    assert(logical[0].shotIndex === shotIndex - 1 && logical[1].shotIndex === shotIndex && logical[2].shotIndex === shotIndex, `Shot ${shotIndex + 1} does not follow the half-open Project boundary contract.`);
+    boundaries.push({
+      shotIndex,
+      shotId: current.shotId,
+      boundaryGlobalMs: current.startMs,
+      beforeFrameIndex: before.frameIndex,
+      beforeGlobalTimeMs: beforeFrame.timeMs,
+      afterFrameIndex: after.frameIndex,
+      afterGlobalTimeMs: afterFrame.timeMs,
+      logical,
+      pixelContrast: contrast,
+      beforePngPath: before.pngPath,
+      afterPngPath: after.pngPath,
+    });
+  }
+
+  const visualTimes = [
+    ['dialogue-open', 1_000],
+    ['dialogue-closed-subtitle', 3_500],
+    ['bgm-only-a', 4_500],
+    ['bgm-only-b', 5_500],
+    ['shot2-dialogue-open', shotPrefixes[1].startMs + 2_080],
+    ['shot2-dialogue-closed-subtitle', shotPrefixes[1].startMs + 4_000],
+    ['shot3-sfx-active', shotPrefixes[2].startMs + 4_500],
+    ['shot3-sfx-ended', shotPrefixes[2].startMs + 6_000],
+    ['last-normal-frame', schedule.at(-1).timeMs],
+  ];
+  const visualFrames = {};
+  for (const [name, timeMs] of visualTimes) {
+    const frame = frameAtOrAfter(schedule, timeMs);
+    const sample = await ensureSample(name, frame.frameIndex);
+    visualFrames[name] = { requestedTimeMs: timeMs, frameIndex: sample.frameIndex, globalTimeMs: frame.timeMs, shotId: frame.shotId, shotLocalTimeMs: frame.shotLocalTimeMs, pngPath: sample.pngPath };
+  }
+  const mouthComparison = compareRawFrames(
+    samples.get(visualFrames['dialogue-open'].frameIndex).rawBytes,
+    samples.get(visualFrames['dialogue-closed-subtitle'].frameIndex).rawBytes,
+  );
+  assert(mouthComparison.changedPixels > 500, 'Dialogue playback did not change the mouth/visual frame while the subtitle remained visible.');
+  const bgmOnlyComparison = compareRawFrames(
+    samples.get(visualFrames['bgm-only-a'].frameIndex).rawBytes,
+    samples.get(visualFrames['bgm-only-b'].frameIndex).rawBytes,
+  );
+  assert(bgmOnlyComparison.changedPixels < 20, 'BGM-only playback changed the static dialogue mouth frame.');
+  const sfxOnlyComparison = compareRawFrames(
+    samples.get(visualFrames['shot3-sfx-active'].frameIndex).rawBytes,
+    samples.get(visualFrames['shot3-sfx-ended'].frameIndex).rawBytes,
+  );
+  assert(sfxOnlyComparison.changedPixels < 20, 'SFX-only playback changed the dialogue mouth frame.');
+  await fsp.writeFile(path.join(evidenceDirectory, 'boundary-and-mouth-evidence.json'), JSON.stringify({ cameraMode, boundaries, visualFrames, mouthComparison, bgmOnlyComparison, sfxOnlyComparison }, null, 2), 'utf8');
+
+  const pcmPath = path.join(evidenceDirectory, 'decoded-audio-48k-mono.f32le');
+  await runProcess(mediaTools.ffmpegPath, ['-y', '-v', 'error', '-i', outputPath, '-map', '0:a:0', '-ac', '1', '-ar', '48000', '-f', 'f32le', pcmPath]);
+  const pcm = await fsp.readFile(pcmPath);
+  assert(pcm.length >= (durationMs / 1_000) * 48_000 * 4 * 0.99, 'Decoded AAC PCM is shorter than the complete Project.');
+  const audioMarkers = [
+    { name: 'firstShotBgm220', timeMs: 500, frequencyHz: 220 },
+    { name: 'firstShotDialogue440', timeMs: 500, frequencyHz: 440 },
+    { name: 'firstShotDialogue660', timeMs: 1_100, frequencyHz: 660 },
+    { name: 'firstShotBgm260', timeMs: 5_000, frequencyHz: 260 },
+    { name: 'delayedSecondShotDialogue440', timeMs: shotPrefixes[1].startMs + 2_500, frequencyHz: 440 },
+    { name: 'thirdShotSfx880', timeMs: shotPrefixes[2].startMs + 4_500, frequencyHz: 880 },
+  ].map((marker) => ({
+    ...marker,
+    amplitude: goertzelAmplitude(pcm, marker.timeMs, 400, marker.frequencyHz),
+    rms: pcmWindow(pcm, marker.timeMs, 400).rms,
+  }));
+  assert(audioMarkers.every((marker) => marker.amplitude > 0.005), 'A decoded global audio tone marker is missing or moved.');
+  const gaps = [
+    { name: 'interShotSilentGap', startMs: fixture.audioMixFixture.mappedClips[0].globalEndMs, endMs: fixture.audioMixFixture.mappedClips[2].globalStartMs },
+    { name: 'dialogueToThirdShotSfxGap', startMs: fixture.audioMixFixture.mappedClips[2].globalEndMs, endMs: fixture.audioMixFixture.mappedClips[3].globalStartMs },
+    { name: 'trailingSilentTail', startMs: fixture.audioMixFixture.mappedClips[3].globalEndMs, endMs: durationMs },
+  ].map((gap) => {
+    const timeMs = Math.floor((gap.startMs + gap.endMs) / 2);
+    return { ...gap, sampleTimeMs: timeMs, rms: pcmWindow(pcm, timeMs, 300).rms };
   });
+  assert(gaps.every((gap) => gap.endMs - gap.startMs >= 600 && gap.rms < 0.01), 'A Project silence gap or trailing silent tail was removed or shifted.');
+  await fsp.writeFile(path.join(evidenceDirectory, 'audio-pcm-markers.json'), JSON.stringify({ sampleRate: 48_000, channels: 1, pcmPath, pcmSha256: hash(pcm), markers: audioMarkers, silentGaps: gaps }, null, 2), 'utf8');
+
+  const plan = audioMixPlans.at(-1);
+  assert(plan && plan.durationMs === durationMs, 'Main did not mix audio against the full Project duration.');
+  const audioPlanEvidence = fixture.audioMixFixture.mappedClips.map((expected) => {
+    const actual = plan.clips.find((clip) => clip.clipId === expected.clipId);
+    assert(actual, `Audio plan omitted ${expected.clipId}.`);
+    assert(actual.startMs === expected.globalStartMs && actual.endMs === expected.globalEndMs, `Audio clip ${expected.clipId} is not mapped to its Shot prefix.`);
+    assert(actual.sourceOffsetMs === expected.sourceOffsetMs, `Audio clip ${expected.clipId} had its source offset changed.`);
+    return { ...expected, actual: { startMs: actual.startMs, endMs: actual.endMs, sourceOffsetMs: actual.sourceOffsetMs, role: actual.role, volume: actual.volume } };
+  });
+  const planPath = path.join(evidenceDirectory, 'global-audio-plan.json');
+  await fsp.writeFile(planPath, JSON.stringify({ durationMs: plan.durationMs, clips: audioPlanEvidence, fullPlan: plan }, null, 2), 'utf8');
+  const copiedOutputPath = path.join(evidenceDirectory, 'formal-output.mp4');
+  await fsp.copyFile(outputPath, copiedOutputPath);
+  const outputBytes = await fsp.readFile(outputPath);
+  return {
+    outputPath,
+    evidenceVideoPath: copiedOutputPath,
+    sha256: hash(outputBytes),
+    byteLength: outputBytes.length,
+    durationMs,
+    frameCount,
+    fps,
+    durationSeconds,
+    codec: video.codec_name,
+    pixelFormat: video.pix_fmt,
+    width: video.width,
+    height: video.height,
+    audioStreams: audio.length,
+    audioCodec: audio[0].codec_name,
+    audioDurationSeconds: Number(audio[0].duration),
+    shotPrefixes,
+    schedulePath,
+    ffprobePath,
+    ffprobeJsonPath: ffprobePath,
+    boundaryEvidencePath: path.join(evidenceDirectory, 'boundary-and-mouth-evidence.json'),
+    audioPlanPath: planPath,
+    audioPcmEvidencePath: path.join(evidenceDirectory, 'audio-pcm-markers.json'),
+    pcmPath,
+    audioMarkers,
+    silentGaps: gaps,
+    visualFrames,
+    mouthComparison,
+    bgmOnlyComparison,
+    sfxOnlyComparison,
+    cameraMode,
+  };
+}
+
+async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapshotBytes, initialProjectBytes, projectFilePath, mediaTools }) {
+  const evidenceRoot = fixture.evidenceRoot;
+  const projectSnapshot = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+  const project = projectSnapshot.project;
+  const totalDurationMs = project.shots.reduce((total, shot) => total + shot.durationMs, 0);
+  const desiredCameraMode = dl04SampleId === 1 ? 'static' : 'speaker-focus';
+  const currentCameraMode = await rendererJs(`document.querySelector('[data-testid="right-mode-auto-camera"]')?.getAttribute('aria-pressed') === 'true'`);
+  const wantsSpeakerFocus = desiredCameraMode === 'speaker-focus';
+  if (currentCameraMode !== wantsSpeakerFocus) {
+    await clickSelector('[data-testid="right-mode-auto-camera"]');
+  }
+  await waitForRenderer(`document.querySelector('[data-testid="right-mode-auto-camera"]')?.getAttribute('aria-pressed') === '${String(wantsSpeakerFocus)}'`);
+
+  await rendererJs(`(() => {
+    const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+    const alreadyOpen = dock?.getAttribute('data-resource-drawer-open') === 'true' &&
+      dock.getAttribute('data-active-activity') === 'shots';
+    if (alreadyOpen) return true;
+    const rail = dock?.querySelector('[data-testid="resource-activity-rail-shots"]');
+    if (rail) {
+      rail.click();
+      return true;
+    }
+    const handle = dock?.querySelector('[data-testid="resource-workspace-handle"]');
+    if (dock?.getAttribute('data-resource-drawer-open') !== 'true') handle?.click();
+    if (dock?.getAttribute('data-active-activity') !== 'shots') {
+      dock?.querySelector('[data-testid="resource-activity-tabs"] [data-activity="shots"]')?.click();
+    }
+    return true;
+  })()`);
+  await waitForRenderer(`(() => {
+    const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+    return dock?.getAttribute('data-resource-drawer-open') === 'true' &&
+      dock.getAttribute('data-active-activity') === 'shots' &&
+      document.querySelector('[data-testid="shot-list-view"]');
+  })()`);
+  const selectedShotId = project.shots.at(-1).id;
+  const selectedShotButton = `[data-testid="resource-activity-dock"][data-resource-drawer-open="true"] [data-shot-id="${selectedShotId}"] button`;
+  await clickSelector(selectedShotButton);
+  let shotSelectionMethod = 'electron-pointer';
+  const selectionAppliedByPointer = await rendererJs(
+    `document.querySelector(${JSON.stringify(selectedShotButton)})?.getAttribute('aria-current') === 'true'`,
+  );
+  if (!selectionAppliedByPointer) {
+    await rendererJs(`document.querySelector(${JSON.stringify(selectedShotButton)})?.click()`);
+    shotSelectionMethod = 'creator-button-click-fallback';
+  }
+  await waitForRenderer(`document.querySelector(${JSON.stringify(selectedShotButton)})?.getAttribute('aria-current') === 'true'`);
+  const selectedState = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+  assert(selectedState.currentShotId === selectedShotId, 'Creator UI did not select the final Shot before full-Project export.');
+
+  const cancelPath = path.join(fixture.projectRoot, `issue827-cancelled-${dl04SampleId}.mp4`);
+  const cancelRun = await startFromCreatorUi(evidenceRoot, 'cancelled-before-full-export', {
+    selectedFileName: path.basename(cancelPath),
+    cancelAfterProgress: true,
+    duplicateClickDuringRun: true,
+    completionTimeoutMs: 1_200_000,
+  });
+  assert(cancelRun.status === 'cancelled' && !existsSync(cancelPath), 'Cancelled formal Job published an MP4.');
+  const cancellationCleanup = await assertNoExportTemporaries('Issue #827 formal cancellation');
+
+  if (dl04SampleId === 2) replaceDialogueSourceBeforeNextMix = true;
+  const outputPath = path.join(fixture.projectRoot, `issue827-sample-${dl04SampleId}.mp4`);
+  const exportRun = await startFromCreatorUi(evidenceRoot, `issue827-sample-${dl04SampleId}`, {
+    selectedFileName: path.basename(outputPath),
+    completionTimeoutMs: 1_200_000,
+  });
+  assert(exportRun.start.cameraMode === desiredCameraMode, 'Formal candidate did not capture the requested camera mode.');
+  assert(exportRun.start.dirtyAtCapture === true, 'Formal candidate did not freeze the unsaved editor Project.');
+  assert(exportRun.after.revision === exportRun.before.revision && exportRun.after.dirty === exportRun.before.dirty && exportRun.after.undoCount === exportRun.before.undoCount, 'Export changed Project revision, dirty state, or History.');
+  assert((await fsp.readFile(projectFilePath)).equals(initialProjectBytes), 'Export changed the persisted Project while capturing the unsaved editor snapshot.');
+  const exportEvidence = await issue827ExportEvidence(outputPath, path.join(evidenceRoot, `sample-${dl04SampleId}-output`), project, desiredCameraMode, mediaTools);
+
+  const beforeExistingTargetHash = hash(await fsp.readFile(outputPath));
+  const existingTarget = await startFromCreatorUi(evidenceRoot, 'existing-target-no-clobber', {
+    captureOverwritePrompt: true,
+    selectedFileName: path.basename(outputPath),
+    expectedFailureText: '\u8f93\u51fa\u6587\u4ef6\u5df2\u5b58\u5728',
+  });
+  const afterExistingTargetHash = hash(await fsp.readFile(outputPath));
+  assert(existingTarget.starts.length === 0 && beforeExistingTargetHash === afterExistingTargetHash, 'Existing target was overwritten or started a render Job.');
+  const existingTargetCleanup = await assertNoExportTemporaries('Issue #827 existing target no-clobber');
+
+  const restoredSourceHashes = await Promise.all(fixtureProject.assets.map(async (asset) => {
+    const bytes = await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath));
+    return { assetId: asset.id, expected: asset.sha256, actual: hash(bytes), matches: hash(bytes) === asset.sha256 };
+  }));
+  assert(restoredSourceHashes.every((entry) => entry.matches), 'A fixture source asset did not match its frozen hash after export.');
+  const sourceReplacement = audioSourceReplacementEvidence.at(-1) ?? null;
+  if (dl04SampleId === 2) {
+    assert(sourceReplacement?.muxCompleted && sourceReplacement.frozenSha256BeforeMix === sourceReplacement.originalSha256, 'Frozen source replacement evidence is missing for the speaker-focus Project.');
+  }
+
+  const externalPlayerScript = path.join(__dirname, 'issue819-external-player.ps1');
+  const externalPlayer = await new Promise((resolve, reject) => {
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', externalPlayerScript, outputPath, path.join(evidenceRoot, 'external-player.png')], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8').on('data', (chunk) => { stdout += chunk; });
+    child.stderr.setEncoding('utf8').on('data', (chunk) => { stderr += chunk; });
+    child.once('error', reject);
+    child.once('close', (code) => code === 0 ? resolve(JSON.parse(stdout.trim())) : reject(new Error(stderr.trim() || stdout.trim())));
+  });
+  assert(externalPlayer.launch === 'STARTED', 'Windows external player did not launch the formal MP4.');
+
+  const prefixRows = exportEvidence.shotPrefixes;
+  const frameMapEvidence = Array.from(iterateFormalProjectFrameSchedule(project));
+  const frameMapByShot = project.shots.map((shot, index) => ({
+    shotId: shot.id,
+    shotIndex: index,
+    shotStartMs: prefixRows[index].startMs,
+    frameCount: frameMapEvidence.filter((frame) => frame.shotIndex === index).length,
+    firstFrame: frameMapEvidence.find((frame) => frame.shotIndex === index) ?? null,
+    lastFrame: frameMapEvidence.filter((frame) => frame.shotIndex === index).at(-1) ?? null,
+  }));
+  const cameraEvidence = project.shots.map((shot) => {
+    const plan = prepareSpeakerFocusCamera(project, shot);
+    return {
+      shotId: shot.id,
+      duringDialogue: evaluateSpeakerFocusCamera(plan, shot.dialogues[0]?.startMs ?? 0),
+      afterDialogue: evaluateSpeakerFocusCamera(plan, shot.dialogues[0]?.endMs ?? shot.durationMs),
+    };
+  });
+  const finalEditorState = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+  result.fixture = {
+    sampleId: dl04SampleId,
+    projectId: project.id,
+    projectName: project.name,
+    projectPath: projectFilePath,
+    projectFileSha256: hash(initialProjectBytes),
+    editorSnapshotPath,
+    editorSnapshotSha256: hash(editorSnapshotBytes),
+    editorSnapshotRevision: exportRun.start.revision,
+    dirtyAtCapture: exportRun.start.dirtyAtCapture,
+    shotCount: project.shots.length,
+    totalDurationMs,
+    shots: project.shots.map((shot) => ({ shotId: shot.id, name: shot.name, durationMs: shot.durationMs, dialogueCount: shot.dialogues.length, audioClipCount: shot.audioClips.length })),
+    assets: restoredSourceHashes,
+  };
+  result.selectionIndependence = { selectedShotBeforeExport: selectedShotId, selectionMethod: shotSelectionMethod, outputShotOrder: prefixRows.map((row) => row.shotId), fullProjectCaptured: exportRun.start.mediaCount > 0 };
+  result.cancellation = { jobStatus: exportService.getJob(cancelRun.start.jobId)?.status, targetPath: cancelPath, targetAbsent: !existsSync(cancelPath), duplicateClickStartedSecondJob: false, progressScreenshotPath: cancelRun.progressScreenshotPath, temporaryCleanup: cancellationCleanup };
+  result.existingTargetNoClobber = { path: outputPath, beforeSha256: beforeExistingTargetHash, afterSha256: afterExistingTargetHash, unchanged: beforeExistingTargetHash === afterExistingTargetHash, formalJobsStarted: existingTarget.starts.length, blockedScreenshotPath: existingTarget.failureScreenshotPath, temporaryCleanup: existingTargetCleanup };
+  result.sourceMediaReplacement = sourceReplacement;
+  result.sourceHashesAfterExport = restoredSourceHashes;
+  result.shotPrefixTable = prefixRows;
+  result.globalFrameMapByShot = frameMapByShot;
+  result.audioMap = fixture.audioMixFixture.mappedClips;
+  result.cameraResolverEvidence = cameraEvidence;
+  result.outputs = { [desiredCameraMode]: { ...exportEvidence, creatorUiEvidence: { nativeSaveAs: exportRun.nativeSaveAsScreenshotPath, progress: exportRun.progressScreenshotPath, completed: exportRun.completedScreenshotPath }, externalPlayer } };
+  result.editorState = {
+    revision: finalEditorState.revision,
+    dirty: finalEditorState.dirty,
+    undoCount: finalEditorState.undoCount,
+    selectedShotId: finalEditorState.currentShotId,
+    exportPreservedRevision: exportRun.after.revision === exportRun.before.revision,
+    exportPreservedDirty: exportRun.after.dirty === exportRun.before.dirty,
+    exportPreservedHistory: exportRun.after.undoCount === exportRun.before.undoCount,
+    projectFileUnchanged: (await fsp.readFile(projectFilePath)).equals(initialProjectBytes),
+  };
+  result.exportJobs = jobUpdates.map((update) => ({ jobId: update.jobId, status: update.status, phase: update.phase, completedFrames: update.completedFrames, totalFrames: update.totalFrames }));
+  result.auto = 'PASS';
+  result.owner = { status: 'NOT_ATTESTED', note: 'Human audiovisual review and MULTI_SHOT_AV_ACCEPTED are deferred to DL-07.' };
+  result.completedAt = new Date().toISOString();
+  await fsp.writeFile(path.join(evidenceRoot, 'acceptance-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
+  await fsp.writeFile(path.join(fixture.root, 'acceptance-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
+  console.log(`PASS #827 DL-04 sample ${dl04SampleId}: ${fixture.root}`);
+  mainWindow.destroy();
+  hiddenWindowManager.close();
+  app.exit(0);
+}
+
+async function run() {
+  fixture = dl04Mode
+    ? await generateIssue827Fixture(path.resolve(baseDirectory), dl04SampleId)
+    : await generateIssue819Fixture(path.resolve(baseDirectory), {
+        includeAudioMix: dl03Mode,
+      });
   fixtureProject = ProjectSchema.parse(JSON.parse(await fsp.readFile(path.join(fixture.projectRoot, 'project.json'), 'utf8')));
   const projectFilePath = path.join(fixture.projectRoot, 'project.json');
   const initialProjectBytes = await fsp.readFile(projectFilePath);
@@ -1079,16 +1533,21 @@ async function run() {
   await app.whenReady();
   mainWindow = await createMainWindow({ show: true, issue816Acceptance: true });
   mainWindow.setContentSize(1280, 800);
-  mainWindow.setAlwaysOnTop(true);
+  // Keep DL-04 Windows Save As dialogs above the real Creator window. A
+  // topmost owner can otherwise cover the native modal on the second child
+  // Electron process and intercept the automation's Save click.
+  mainWindow.setAlwaysOnTop(!dl04Mode);
   mainWindow.show();
   mainWindow.focus();
   mainWindow.webContents.focus();
 
   const result = {
-    issue: dl03Mode ? 823 : 819,
-    workOrder: dl03Mode
-      ? 'DL-03 formal single-Shot audio/video export acceptance'
-      : 'DL-02 formal MP4 export acceptance',
+    issue: dl04Mode ? 827 : dl03Mode ? 823 : 819,
+    workOrder: dl04Mode
+      ? 'DL-04 formal whole-Project multi-shot export acceptance'
+      : dl03Mode
+        ? 'DL-03 formal single-Shot audio/video export acceptance'
+        : 'DL-02 formal MP4 export acceptance',
     root: fixture.root,
     projectRoot: fixture.projectRoot,
     platform: process.platform,
@@ -1111,12 +1570,19 @@ async function run() {
   };
 
   try {
-    assert(fixtureProject.shots.length === 1, 'Fixture must contain exactly one Shot.');
-    assert(
-      fixtureProject.shots[0].audioClips.length === (dl03Mode ? 6 : 0),
-      `Fixture must contain ${dl03Mode ? 'six valid audio clips' : 'no audio clips'}.`,
-    );
-    assert(fixtureProject.shots[0].durationMs > 5_000, 'Fixture must exceed the old five-second probe ceiling.');
+    if (dl04Mode) {
+      assert(fixtureProject.shots.length === 3, 'Issue #827 fixture must contain three Shots.');
+      assert(fixtureProject.shots.reduce((total, shot) => total + shot.durationMs, 0) === 30_000, 'Issue #827 fixture must be 30 seconds long.');
+      assert(fixtureProject.shots.every((shot) => shot.durationMs >= 9_000), 'Issue #827 fixture Shots must each be long enough to cross a global frame boundary.');
+      assert(fixtureProject.shots[0].audioClips.length === 2 && fixtureProject.shots[1].audioClips.length === 1 && fixtureProject.shots[2].audioClips.length === 1, 'Issue #827 fixture must place audio across all three Shots.');
+    } else {
+      assert(fixtureProject.shots.length === 1, 'Fixture must contain exactly one Shot.');
+      assert(
+        fixtureProject.shots[0].audioClips.length === (dl03Mode ? 6 : 0),
+        `Fixture must contain ${dl03Mode ? 'six valid audio clips' : 'no audio clips'}.`,
+      );
+      assert(fixtureProject.shots[0].durationMs > 5_000, 'Fixture must exceed the old five-second probe ceiling.');
+    }
     const expressionHashes = Object.values(fixture.expressionAssetHashes);
     assert(expressionHashes.length === 2 && expressionHashes[0] !== expressionHashes[1], 'Neutral and happy fixture PNGs must have different SHA-256 hashes.');
     await waitForRenderer(`document.querySelector('[data-task4-core="recent-open"]')`);
@@ -1131,8 +1597,12 @@ async function run() {
     const editorSnapshotPath = path.join(evidenceRoot, 'editor-snapshot.json');
     const editorSnapshotBytes = Buffer.from(JSON.stringify(edited.project, null, 2), 'utf8');
     await fsp.writeFile(editorSnapshotPath, editorSnapshotBytes);
-    const beforeCancel = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
     await clickSelector('[data-testid="quick-action-drawer-handle"]');
+    if (dl04Mode) {
+      await runIssue827Acceptance({ result, editorSnapshotPath, editorSnapshotBytes, initialProjectBytes, projectFilePath, mediaTools });
+      return;
+    }
+    const beforeCancel = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
     await clickSelector('[data-testid="quick-action-export"]');
     const nativeSaveAsCancelScreenshotPath = path.join(evidenceRoot, 'native-save-as-cancel.png');
     await clickNativeSaveDialog('cancel', nativeSaveAsCancelScreenshotPath);

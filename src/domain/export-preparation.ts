@@ -300,9 +300,9 @@ function issue(
 }
 
 /**
- * DL-03 adds Project v8 audio clips to the formal export slice. Project and
- * reference validation runs before this support check; audio is frozen with
- * the other selected media before Main builds a mix plan.
+ * DL-04 adds whole-Project Shot sequencing to the formal export slice.
+ * Project and reference validation runs before this support check; audio is
+ * frozen with the other selected media before Main builds a mix plan.
  */
 export function evaluateExportPreparationSupport(
   project: Project,
@@ -322,13 +322,12 @@ export function evaluateExportPreparationSupport(
   if (project.shots.length > EXPORT_PREPARATION_SUPPORT_PROFILE.shotCount.maximum) {
     issues.push(
       issue(
-        '工程',
-        '当前导出切片只支持单镜头工程；镜头顺序和内容不会被裁掉。',
-        '保留原工程，等待多镜头导出支持后再继续。',
+        '\u9879\u76ee',
+        '\u6b63\u5f0f\u5bfc\u51fa\u6700\u591a\u652f\u6301 ' + EXPORT_PREPARATION_SUPPORT_PROFILE.shotCount.maximum + ' \u4e2a\u955c\u5934\u3002',
+        '\u8bf7\u51cf\u5c11\u955c\u5934\u6570\u91cf\u540e\u91cd\u65b0\u5bfc\u51fa\u3002',
       ),
     );
   }
-
   if (
     !EXPORT_PREPARATION_SUPPORT_PROFILE.cameraModes.includes(cameraMode)
   ) {

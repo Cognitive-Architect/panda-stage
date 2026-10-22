@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import type { Project } from '../domain';
+import { mapProjectTime } from '../domain/selectors/projectTime';
+import { projectDurationMs } from '../domain/selectors/projectDuration';
 import { ExportPreparationCameraModeSchema } from './export-preparation-types';
 
 export const EXPORT_FPS = 24 as const;
@@ -84,30 +86,60 @@ export const ExportRenderFrameRequestSchema = z
     jobId: JobIdSchema,
     frameIndex: FrameIndexSchema,
     timeMs: FrameTimeSchema,
+    shotId: z.uuid().optional(),
+    shotLocalTimeMs: FrameTimeSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((frame, context) => {
+    if ((frame.shotId === undefined) !== (frame.shotLocalTimeMs === undefined)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Shot identity and Shot-local time must be supplied together.',
+      });
+    }
+  });
 
 export const ExportFrameReadySchema = z
   .object({
     jobId: JobIdSchema,
     frameIndex: FrameIndexSchema,
     timeMs: FrameTimeSchema,
+    shotId: z.uuid().optional(),
+    shotLocalTimeMs: FrameTimeSchema.optional(),
     width: z.literal(1_920),
     height: z.literal(1_080),
     pngBytes: z
       .instanceof(Uint8Array)
       .refine((bytes) => bytes.byteLength > 8, 'PNG payload is empty.'),
   })
-  .strict();
+  .strict()
+  .superRefine((frame, context) => {
+    if ((frame.shotId === undefined) !== (frame.shotLocalTimeMs === undefined)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Shot identity and Shot-local time must be supplied together.',
+      });
+    }
+  });
 
 export const ExportFrameFailedSchema = z
   .object({
     jobId: JobIdSchema,
     frameIndex: FrameIndexSchema,
     timeMs: FrameTimeSchema,
+    shotId: z.uuid().optional(),
+    shotLocalTimeMs: FrameTimeSchema.optional(),
     error: z.string().trim().min(1).max(2_000),
   })
-  .strict();
+  .strict()
+  .superRefine((frame, context) => {
+    if ((frame.shotId === undefined) !== (frame.shotLocalTimeMs === undefined)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Shot identity and Shot-local time must be supplied together.',
+      });
+    }
+  });
 
 export const ExportCancelRenderRequestSchema = z
   .object({
@@ -239,6 +271,13 @@ export interface FrameScheduleEntry {
   fileName: string;
 }
 
+export interface ProjectFrameScheduleEntry extends FrameScheduleEntry {
+  shotId: string;
+  shotIndex: number;
+  shotStartMs: number;
+  shotLocalTimeMs: number;
+}
+
 export function frameTimeMs(frameIndex: number, fps = EXPORT_FPS): number {
   const parsedFrameIndex = FrameIndexSchema.parse(frameIndex);
   const parsedFps = z.literal(EXPORT_FPS).parse(fps);
@@ -283,6 +322,35 @@ export function* iterateFormalFrameSchedule(
       frameIndex,
       timeMs: frameTimeMs(frameIndex, fps),
       fileName: formatFrameFileName(frameIndex),
+    };
+  }
+}
+
+/**
+ * Maps one global formal frame grid to Project order and Shot-local time.
+ * The frame count is calculated once from the summed Project duration; no
+ * Shot gets a separately rounded frame count or a synthetic terminal frame.
+ */
+export function* iterateFormalProjectFrameSchedule(
+  project: Project,
+  fps = EXPORT_FPS,
+): Generator<ProjectFrameScheduleEntry> {
+  const durationMs = projectDurationMs(project);
+  const count = formalFrameCount(durationMs, fps);
+  for (let frameIndex = 0; frameIndex < count; frameIndex += 1) {
+    const timeMs = frameTimeMs(frameIndex, fps);
+    const position = mapProjectTime(project, timeMs);
+    if (!position.shot || position.shotIndex === null) {
+      throw new Error('Formal export Project frame has no owning Shot.');
+    }
+    yield {
+      frameIndex,
+      timeMs,
+      fileName: formatFrameFileName(frameIndex),
+      shotId: position.shot.id,
+      shotIndex: position.shotIndex,
+      shotStartMs: position.shotStartMs,
+      shotLocalTimeMs: position.shotLocalTimeMs,
     };
   }
 }

@@ -2,7 +2,9 @@ import { z } from 'zod';
 import type { Project } from '../domain';
 
 export const EXPORT_PREPARATION_SUPPORT_PROFILE_VERSION =
-  'dl03-2026-10-22.1' as const;
+  'dl04-2026-10-22.1' as const;
+
+export const EXPORT_PREPARATION_MAX_SHOTS = 256 as const;
 
 export const EXPORT_PREPARATION_MAX_ASSETS = 512 as const;
 export const EXPORT_PREPARATION_MAX_SINGLE_ASSET_BYTES =
@@ -18,7 +20,7 @@ export const EXPORT_PREPARATION_RENDER_SETTINGS = Object.freeze({
 
 export const EXPORT_PREPARATION_SUPPORT_PROFILE = Object.freeze({
   version: EXPORT_PREPARATION_SUPPORT_PROFILE_VERSION,
-  shotCount: { minimum: 1, maximum: 1 },
+  shotCount: { minimum: 1, maximum: EXPORT_PREPARATION_MAX_SHOTS },
   backgroundRequired: true,
   audio: 'supported' as const,
   cameraModes: ['static', 'speaker-focus'] as const,
@@ -121,7 +123,10 @@ const ExportPreparationSupportProfileSchema = z
   .object({
     version: z.literal(EXPORT_PREPARATION_SUPPORT_PROFILE_VERSION),
     shotCount: z
-      .object({ minimum: z.literal(1), maximum: z.literal(1) })
+      .object({
+        minimum: z.literal(1),
+        maximum: z.literal(EXPORT_PREPARATION_MAX_SHOTS),
+      })
       .strict(),
     backgroundRequired: z.literal(true),
     audio: z.literal('supported'),

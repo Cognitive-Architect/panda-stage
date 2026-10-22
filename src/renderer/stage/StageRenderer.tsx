@@ -378,6 +378,7 @@ export function StageRenderer({
       data-stage-degraded={String(degraded)}
       data-stage-ready={String(ready)}
       data-stage-render-token={renderToken == null ? '' : String(renderToken)}
+      data-stage-shot-id={displayModel!.shotId}
       data-stage-time={displayModel!.timeMs}
       data-camera-view={displayCamera ? JSON.stringify(displayCamera) : ''}
       data-testid="stage-renderer"

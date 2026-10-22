@@ -160,7 +160,10 @@ function pandaExpressionPng(expression) {
   ]);
 }
 
-async function generateIssue819Fixture(baseDirectory, { includeAudioMix = false } = {}) {
+async function generateIssue819Fixture(
+  baseDirectory,
+  { includeAudioMix = false, multiShot = false, sampleId = 1 } = {},
+) {
   const runRoot = path.join(
     path.resolve(baseDirectory),
     `run-${new Date().toISOString().replace(/[:.]/gu, '-')}-${process.pid}`,
@@ -173,12 +176,17 @@ async function generateIssue819Fixture(baseDirectory, { includeAudioMix = false 
   const legacyProject = JSON.parse(await fsp.readFile(demoProjectPath, 'utf8'));
   const project = migrateProject(legacyProject);
   project.id = randomUUID();
-  project.name = 'Panda Stage formal export';
+  project.name = multiShot
+    ? `DL-04 multi-shot sample ${sampleId}`
+    : 'Panda Stage formal export';
   project.shots = project.shots.slice(0, 1);
   const shot = project.shots[0];
   if (!shot) throw new Error('The demo Project has no Shot for the Issue #819 fixture.');
 
-  shot.durationMs = 6_501;
+  const multiShotDurations = sampleId === 1
+    ? [10_003, 9_997, 10_000]
+    : [9_000, 11_000, 10_000];
+  shot.durationMs = multiShot ? multiShotDurations[0] : 6_501;
   shot.audioClips = [];
   shot.dialogues = shot.dialogues.map((dialogue, index) => {
     const result = { ...dialogue };
@@ -194,7 +202,7 @@ async function generateIssue819Fixture(baseDirectory, { includeAudioMix = false 
     event.type === 'move' && event.startMs === 0
       ? { ...event, endMs: 3_300 }
       : event.type === 'expression'
-        ? { ...event, startMs: 4_000, endMs: 4_000 }
+        ? { ...event, startMs: multiShot ? 8_500 : 4_000, endMs: multiShot ? 8_500 : 4_000 }
         : event,
   );
 
@@ -269,7 +277,7 @@ async function generateIssue819Fixture(baseDirectory, { includeAudioMix = false 
         key: 'bgm',
         name: 'DL-03 synthetic BGM',
         relativePath: 'assets/dl03-bgm.wav',
-        durationMs: 6_501,
+        durationMs: multiShot ? shot.durationMs : 6_501,
         amplitude: 0.08,
         frequencySegments: [
           { startMs: 0, frequencyHz: 220 },
@@ -439,12 +447,126 @@ async function generateIssue819Fixture(baseDirectory, { includeAudioMix = false 
     };
   }
 
+  if (multiShot) {
+    if (!includeAudioMix || !audioMixFixture) {
+      throw new Error('DL-04 multi-shot fixtures require generated audio media.');
+    }
+    const dialogueAssetId = audioMixFixture.dialogueAssetId;
+    const bgmClip = shot.audioClips.find((clip) => clip.id === audioMixFixture.bgmClipId);
+    const dialogueClip = shot.audioClips.find((clip) => clip.id === audioMixFixture.dialogueClipId);
+    const sfxClip = shot.audioClips.find((clip) => clip.id === audioMixFixture.sfxOnly.clipId);
+    if (!bgmClip || !dialogueClip || !sfxClip) {
+      throw new Error('DL-04 fixture audio definitions are incomplete.');
+    }
+    const characterLayer = shot.layers.find((layer) => layer.source.kind === 'character');
+    if (!characterLayer) throw new Error('DL-04 fixture requires a character layer.');
+    const characterLayerId = characterLayer.id;
+    const shotDialogue = shot.dialogues[0];
+    if (!shotDialogue) throw new Error('DL-04 fixture requires a subtitle dialogue.');
+
+    shot.audioClips = [
+      { ...bgmClip, endMs: shot.durationMs - 1_000, volume: 0.35 },
+      { ...dialogueClip, startMs: 0, endMs: 2_500, offsetMs: 0, volume: 1 },
+    ];
+    shot.dialogues = [{
+      ...shotDialogue,
+      startMs: 0,
+      endMs: 6_150,
+      text: `DL-04 sample ${sampleId}, Shot 1 dialogue and subtitle tail.`,
+      audioClipId: dialogueClip.id,
+    }];
+
+    const cloneShot = (index) => {
+      const clone = structuredClone(shot);
+      const layerIds = new Map(clone.layers.map((layer) => [layer.id, randomUUID()]));
+      clone.id = randomUUID();
+      clone.name = `DL-04 sample ${sampleId} Shot ${index + 1}`;
+      clone.durationMs = multiShotDurations[index];
+      clone.backgroundLayerId = clone.backgroundLayerId
+        ? layerIds.get(clone.backgroundLayerId)
+        : null;
+      clone.layers = clone.layers.map((layer) => ({
+        ...layer,
+        id: layerIds.get(layer.id),
+        ...(layer.id === characterLayerId
+          ? {
+              x: layer.x + (sampleId === 1 ? 80 : 120) * index,
+              ...(sampleId === 2 && index === 2 ? { flipX: !layer.flipX } : {}),
+            }
+          : {}),
+      }));
+      clone.timelineEvents = clone.timelineEvents.map((event) => ({
+        ...event,
+        id: randomUUID(),
+        layerId: layerIds.get(event.layerId),
+      }));
+      clone.dialogues = clone.dialogues.map((dialogue) => {
+        const clonedDialogue = { ...dialogue, id: randomUUID() };
+        delete clonedDialogue.audioClipId;
+        return clonedDialogue;
+      });
+      clone.audioClips = [];
+      return clone;
+    };
+
+    const second = cloneShot(1);
+    const secondDialogueClipId = randomUUID();
+    second.audioClips = [{
+      id: secondDialogueClipId,
+      name: `DL-04 Shot 2 dialogue ${sampleId}`,
+      assetId: dialogueAssetId,
+      role: 'dialogue',
+      startMs: 2_000,
+      endMs: 3_500,
+      offsetMs: 0,
+      volume: 1,
+    }];
+    const secondSourceDialogue = second.dialogues[0];
+    second.dialogues = secondSourceDialogue
+      ? [{
+          ...secondSourceDialogue,
+          startMs: 2_000,
+          endMs: 4_500,
+          text: `DL-04 sample ${sampleId}, delayed Shot 2 dialogue.`,
+          audioClipId: secondDialogueClipId,
+        }]
+      : [];
+
+    const third = cloneShot(2);
+    const thirdSfxClipId = randomUUID();
+    third.dialogues = [];
+    third.audioClips = [{
+      id: thirdSfxClipId,
+      name: `DL-04 Shot 3 SFX ${sampleId}`,
+      assetId: sfxClip.assetId,
+      role: 'sfx',
+      startMs: 4_000,
+      endMs: 5_000,
+      offsetMs: 250,
+      volume: 1,
+    }];
+    project.shots = [shot, second, third];
+    audioMixFixture.shotPrefixes = [0, shot.durationMs, shot.durationMs + second.durationMs];
+    audioMixFixture.mappedClips = [
+      { shotIndex: 0, clipId: audioMixFixture.bgmClipId, role: 'bgm', localStartMs: 0, localEndMs: shot.durationMs - 1_000, globalStartMs: 0, globalEndMs: shot.durationMs - 1_000, sourceOffsetMs: 0 },
+      { shotIndex: 0, clipId: audioMixFixture.dialogueClipId, role: 'dialogue', localStartMs: 0, localEndMs: 2_500, globalStartMs: 0, globalEndMs: 2_500, sourceOffsetMs: 0 },
+      { shotIndex: 1, clipId: secondDialogueClipId, role: 'dialogue', localStartMs: 2_000, localEndMs: 3_500, globalStartMs: shot.durationMs + 2_000, globalEndMs: shot.durationMs + 3_500, sourceOffsetMs: 0 },
+      { shotIndex: 2, clipId: thirdSfxClipId, role: 'sfx', localStartMs: 4_000, localEndMs: 5_000, globalStartMs: shot.durationMs + second.durationMs + 4_000, globalEndMs: shot.durationMs + second.durationMs + 5_000, sourceOffsetMs: 250 },
+    ];
+    audioMixFixture.secondDialogueClipId = secondDialogueClipId;
+    audioMixFixture.thirdSfxClipId = thirdSfxClipId;
+    audioMixFixture.durationMs = project.shots.reduce((total, item) => total + item.durationMs, 0);
+  }
+
   const validated = ProjectSchema.parse(project);
-  if (
+  if (!multiShot && (
     validated.shots.length !== 1 ||
     validated.shots[0]?.audioClips.length !== (includeAudioMix ? 6 : 0)
-  ) {
+  )) {
     throw new Error(`Issue #819 fixture must contain one ${includeAudioMix ? 'audio' : 'silent'} Shot.`);
+  }
+  if (multiShot && (validated.shots.length !== 3 || validated.shots.some((item) => item.durationMs < 9_000))) {
+    throw new Error('Issue #827 fixture must contain three long Shots.');
   }
   await fsp.writeFile(
     path.join(projectRoot, 'project.json'),
@@ -466,4 +588,12 @@ async function generateIssue819Fixture(baseDirectory, { includeAudioMix = false 
   };
 }
 
-module.exports = { generateIssue819Fixture };
+async function generateIssue827Fixture(baseDirectory, sampleId) {
+  return generateIssue819Fixture(baseDirectory, {
+    includeAudioMix: true,
+    multiShot: true,
+    sampleId,
+  });
+}
+
+module.exports = { generateIssue819Fixture, generateIssue827Fixture };

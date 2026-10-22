@@ -233,7 +233,7 @@ describe('FFmpegAdapter single-audio mux', () => {
     ]);
     const adapter = new FFmpegAdapter({ runner });
     const audioMixPlan = {
-      durationMs: 3_000,
+      durationMs: 4_000,
       clips: [
         {
           clipId: '70000000-0000-4000-8000-000000000401',
@@ -301,7 +301,7 @@ describe('FFmpegAdapter single-audio mux', () => {
     expect(filterGraph).toContain('[1:a:0]atrim=start=0.1:duration=2');
     expect(filterGraph).toContain('adelay=1500|1500');
     expect(filterGraph).toContain('adelay=2000|2000');
-    expect(filterGraph).toContain('apad=whole_len=144000');
+    expect(filterGraph).toContain('apad=whole_len=192000');
     expect(filterGraph).toContain(
       'amix=inputs=4:duration=longest:dropout_transition=0,volume=4',
     );

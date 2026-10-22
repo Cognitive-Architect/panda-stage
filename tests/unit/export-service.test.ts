@@ -463,7 +463,15 @@ describe('ExportService', () => {
     const service = new ExportService(renderer, fileSystem, media);
     const input = {
       candidate: {
-        project: { shots: [{ durationMs: 6_501 }] },
+        project: {
+          shots: [
+            {
+              id: '50000000-0000-4000-8000-000000000011',
+              durationMs: 6_501,
+              audioClips: [],
+            },
+          ],
+        },
         projectRoot: 'C:\\Panda Stage\\Project',
         cameraMode: 'static',
         renderSettings: { width: 1_920, height: 1_080, fps: 24 },
@@ -497,14 +505,72 @@ describe('ExportService', () => {
     expect(service.getCompletedOutputPath(handle.jobId)).toBe(result.outputPath);
   });
 
+  it.each([
+    [72, '50000000-0000-4000-8000-000000000032'],
+    [144, '50000000-0000-4000-8000-000000000033'],
+  ])('blocks a render failure at the start of a later Shot (frame %i)', async (frameIndex, shotId) => {
+    const renderer = new MemoryRenderer();
+    renderer.failAtFrame = frameIndex;
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    const project = {
+      shots: [
+        {
+          id: '50000000-0000-4000-8000-000000000031',
+          durationMs: 3_000,
+          audioClips: [],
+        },
+        {
+          id: '50000000-0000-4000-8000-000000000032',
+          durationMs: 3_000,
+          audioClips: [],
+        },
+        {
+          id: '50000000-0000-4000-8000-000000000033',
+          durationMs: 3_000,
+          audioClips: [],
+        },
+      ],
+    };
+    const service = new ExportService(renderer, fileSystem, media);
+    const input = {
+      candidate: {
+        project,
+        projectRoot: 'C:\\Panda Stage\\Project',
+        cameraMode: 'static',
+        renderSettings: { width: 1_920, height: 1_080, fps: 24 },
+        outputIntent: {
+          targetPath: `C:\\Panda Stage\\Output\\failed-shot-${frameIndex}.mp4`,
+          overwriteApproved: false,
+        },
+      },
+      media: [],
+    } as unknown as FrozenExportInput;
+    const handle = service.startFormalExport(input, async () => {});
+
+    await expect(handle.completion).rejects.toThrow('simulated missing asset render failure');
+    expect(renderer.requests.at(-1)).toMatchObject({
+      frameIndex,
+      shotId,
+      shotLocalTimeMs: 0,
+    });
+    expect(service.getJob(handle.jobId)?.status).toBe('failed');
+    expect(fileSystem.finalFiles.size).toBe(0);
+    expect(fileSystem.stagingFiles.size).toBe(0);
+    expect(fileSystem.directories.size).toBe(0);
+    expect(fileSystem.commitFormalOutputNoReplaceCalls).toBe(0);
+  });
+
   it('preflights frozen audio, builds a strict mix plan, muxes once, and commits no-clobber', async () => {
     const renderer = new MemoryRenderer();
     const fileSystem = new MemoryFileSystem();
     const media = new MemoryMediaAdapter(fileSystem);
     media.result = {
       ...probeResult,
-      audioDurationSeconds: 2.5,
-      formatDurationSeconds: 3,
+      frameCount: 216,
+      durationSeconds: 9,
+      audioDurationSeconds: 9,
+      formatDurationSeconds: 9,
       audioStreamCount: 1,
     };
     const audioAssetId = '10000000-0000-4000-8000-000000000021';
@@ -515,6 +581,7 @@ describe('ExportService', () => {
         project: {
           shots: [
             {
+              id: '50000000-0000-4000-8000-000000000021',
               durationMs: 3_000,
               audioClips: [
                 {
@@ -527,6 +594,26 @@ describe('ExportService', () => {
                   volume: 1.5,
                 },
               ],
+            },
+            {
+              id: '50000000-0000-4000-8000-000000000022',
+              durationMs: 3_000,
+              audioClips: [
+                {
+                  id: '70000000-0000-4000-8000-000000000022',
+                  assetId: audioAssetId,
+                  role: 'dialogue',
+                  startMs: 700,
+                  endMs: 1_200,
+                  offsetMs: 800,
+                  volume: 0.75,
+                },
+              ],
+            },
+            {
+              id: '50000000-0000-4000-8000-000000000023',
+              durationMs: 3_000,
+              audioClips: [],
             },
           ],
           assets: [
@@ -569,7 +656,7 @@ describe('ExportService', () => {
     expect(media.muxRequests[0]).toMatchObject({
       overwrite: false,
       audioMixPlan: {
-        durationMs: 3_000,
+        durationMs: 9_000,
         clips: [
           {
             clipId: audioClipId,
@@ -578,8 +665,26 @@ describe('ExportService', () => {
             endMs: 2_500,
             volume: 1.5,
           },
+          {
+            clipId: '70000000-0000-4000-8000-000000000022',
+            sourceOffsetMs: 800,
+            startMs: 3_700,
+            endMs: 4_200,
+            volume: 0.75,
+          },
         ],
       },
+    });
+    expect(result.totalFrames).toBe(216);
+    expect(renderer.requests.find((request) => request.frameIndex === 72)).toMatchObject({
+      timeMs: 3_000,
+      shotId: '50000000-0000-4000-8000-000000000022',
+      shotLocalTimeMs: 0,
+    });
+    expect(renderer.requests.find((request) => request.frameIndex === 108)).toMatchObject({
+      timeMs: 4_500,
+      shotId: '50000000-0000-4000-8000-000000000022',
+      shotLocalTimeMs: 1_500,
     });
     expect(result.probe.hasAudio).toBe(true);
     expect(result.probe.audioStreamCount).toBe(1);

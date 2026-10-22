@@ -82,6 +82,43 @@ describe('HiddenWindowManager frame failure correlation', () => {
     manager.close();
   });
 
+  it('correlates formal frame responses with the requested Shot and local time', async () => {
+    const manager = new HiddenWindowManager();
+    const creating = manager.create();
+    manager.markReady(42);
+    await creating;
+    const jobId = randomUUID();
+    const loading = manager.loadProbe({ jobId, durationMs: 3_000, fps: 24 });
+    manager.markProbeLoaded(42, { jobId, acknowledged: true });
+    await loading;
+    const request = {
+      jobId,
+      frameIndex: 25,
+      timeMs: 1_041,
+      shotId: randomUUID(),
+      shotLocalTimeMs: 40,
+    };
+    const rendering = manager.renderFrame(request);
+
+    expect(() =>
+      manager.markFrameReady(42, {
+        ...request,
+        shotLocalTimeMs: 39,
+        width: 1_920,
+        height: 1_080,
+        pngBytes: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1]),
+      }),
+    ).toThrow(/Unexpected frame-ready response/);
+    manager.markFrameReady(42, {
+      ...request,
+      width: 1_920,
+      height: 1_080,
+      pngBytes: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1]),
+    });
+    await expect(rendering).resolves.toMatchObject(request);
+    manager.close();
+  });
+
   it('cancels only the matching Job, ignores its late frame, and releases the window', async () => {
     const manager = new HiddenWindowManager();
     const creating = manager.create();

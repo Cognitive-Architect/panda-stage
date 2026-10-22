@@ -4,6 +4,7 @@ export interface ExportStageReadinessSnapshot {
   stageReady: boolean;
   stageError: boolean;
   stageTimeMs: number | null;
+  stageShotId: string | null;
   renderToken: string | null;
 }
 
@@ -23,6 +24,7 @@ export function readExportStageReadiness(
     stageReady: stage?.dataset.stageReady === 'true',
     stageError: stage?.dataset.stageError === 'true',
     stageTimeMs: Number.isFinite(parsedTimeMs) ? parsedTimeMs : null,
+    stageShotId: stage?.dataset.stageShotId || null,
     renderToken: stage?.dataset.stageRenderToken ?? null,
   };
 }
@@ -33,12 +35,16 @@ export function readExportStageReadiness(
  */
 export function isExactExportFrameReady(
   stage: ExportStageReadinessSnapshot,
-  request: Pick<ExportRenderFrameRequest, 'jobId' | 'frameIndex' | 'timeMs'>,
+  request: Pick<
+    ExportRenderFrameRequest,
+    'jobId' | 'frameIndex' | 'timeMs' | 'shotId' | 'shotLocalTimeMs'
+  >,
 ): boolean {
   return (
     stage.stageReady &&
     !stage.stageError &&
-    stage.stageTimeMs === request.timeMs &&
+    stage.stageTimeMs === (request.shotLocalTimeMs ?? request.timeMs) &&
+    (request.shotId === undefined || stage.stageShotId === request.shotId) &&
     stage.renderToken === exportFrameRenderToken(request)
   );
 }

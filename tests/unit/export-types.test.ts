@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
+import { mapProjectTime } from '../../src/domain';
 import {
+  ExportRenderFrameRequestSchema,
   FullProbeExportRequestSchema,
   createFrameSchedule,
   formatFrameFileName,
   frameTimeMs,
   formalFrameCount,
+  iterateFormalProjectFrameSchedule,
   iterateFormalFrameSchedule,
 } from '../../src/shared/export-types';
+import { buildProject } from './domain/testProject';
 
 describe('export frame schedule', () => {
   it.each([
@@ -43,6 +47,67 @@ describe('export frame schedule', () => {
       fileName: 'frame_000156.png',
     });
     expect(schedule.at(-1)?.timeMs).toBeLessThan(6_501);
+  });
+
+  it('uses one global grid for three 1001 ms Shots and maps every frame to Shot-local time', () => {
+    const base = buildProject();
+    const firstShot = base.shots[0]!;
+    const project = {
+      ...base,
+      shots: Array.from({ length: 3 }, (_, index) => ({
+        ...firstShot,
+        id: `50000000-0000-4000-8000-00000000000${index + 1}`,
+        name: `shot-${index + 1}`,
+        durationMs: 1_001,
+      })),
+    };
+    const schedule = Array.from(iterateFormalProjectFrameSchedule(project));
+
+    expect(formalFrameCount(3 * 1_001)).toBe(73);
+    expect(schedule).toHaveLength(73);
+    expect(schedule[24]).toMatchObject({
+      timeMs: 1_000,
+      shotIndex: 0,
+      shotStartMs: 0,
+      shotLocalTimeMs: 1_000,
+    });
+    expect(schedule[25]).toMatchObject({
+      timeMs: 1_041,
+      shotIndex: 1,
+      shotStartMs: 1_001,
+      shotLocalTimeMs: 40,
+    });
+    expect(schedule.at(-1)).toMatchObject({
+      timeMs: 3_000,
+      shotIndex: 2,
+      shotStartMs: 2_002,
+      shotLocalTimeMs: 998,
+    });
+    expect(mapProjectTime(project, 1_000).shotIndex).toBe(0);
+    expect(mapProjectTime(project, 1_001).shotIndex).toBe(1);
+    expect(mapProjectTime(project, 1_002).shotLocalTimeMs).toBe(1);
+  });
+
+  it('requires formal Shot identity and local time to travel together', () => {
+    const base = {
+      jobId: '57100000-0000-4000-8000-000000000901',
+      frameIndex: 11,
+      timeMs: 458,
+    };
+    expect(ExportRenderFrameRequestSchema.safeParse(base).success).toBe(true);
+    expect(
+      ExportRenderFrameRequestSchema.safeParse({
+        ...base,
+        shotId: '50000000-0000-4000-8000-000000000001',
+      }).success,
+    ).toBe(false);
+    expect(
+      ExportRenderFrameRequestSchema.safeParse({
+        ...base,
+        shotId: '50000000-0000-4000-8000-000000000001',
+        shotLocalTimeMs: 17,
+      }).success,
+    ).toBe(true);
   });
 
   it('accepts MP4 case-insensitively and rejects other full-export extensions', () => {

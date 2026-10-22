@@ -1126,11 +1126,9 @@ export class FFmpegAdapter {
       return args;
     }
 
-    const mixEndMs = request.audioInputs.reduce(
-      (latestEndMs, { clip }) => Math.max(latestEndMs, clip.endMs),
-      0,
-    );
-    const durationSamples = mixEndMs * 48;
+    // Keep AAC alive through the complete Project timeline, including a silent
+    // tail after the last clip so a trailing silent Shot cannot shorten mux.
+    const durationSamples = request.durationMs * 48;
     const filters = request.audioInputs.map(({ clip, channels }, index) => {
       const inputIndex = index + 1;
       const clipDurationMs = clip.endMs - clip.startMs;

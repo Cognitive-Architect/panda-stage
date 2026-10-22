@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   evaluateShotAtTime,
   evaluateSpeakerFocusCamera,
+  mapProjectTime,
   prepareSpeakerFocusCamera,
   type Project,
 } from '../domain';
@@ -87,16 +88,21 @@ export function ExportRendererApp(): React.JSX.Element {
     Readonly<Record<string, string>>
   >({});
   const project: Project = formalRequest?.project ?? probeProject;
-  const projectShot = project.shots[0];
-  if (!projectShot) {
-    throw new Error('Export renderer project must contain one shot.');
-  }
   const [probeDurationMs, setProbeDurationMs] = useState(PROBE_SHOT.durationMs);
   const [frameRequest, setFrameRequest] =
     useState<ExportRenderFrameRequest | null>(null);
+  const requestedTimeMs = frameRequest?.timeMs ?? 0;
+  const formalPosition = formalRequest
+    ? mapProjectTime(project, requestedTimeMs)
+    : null;
+  const projectShot = formalPosition?.shot ?? project.shots[0];
+  if (!projectShot) {
+    throw new Error('Export renderer Project must contain a Shot.');
+  }
   const readyAnnouncedRef = useRef(false);
   const stageReadyRef = useRef(false);
   const loadedJobIdRef = useRef<string | null>(null);
+  const loadedFormalProjectRef = useRef<Project | null>(null);
   const pendingLoadRef = useRef<ExportLoadProbeRequest | null>(null);
   const pendingFormalLoadRef = useRef<ExportLoadFormalRequest | null>(null);
   const activeFrameRef = useRef<ExportRenderFrameRequest | null>(null);
@@ -104,13 +110,14 @@ export function ExportRendererApp(): React.JSX.Element {
   const cancelledJobIdsRef = useRef(new Set<string>());
 
   const shot = useMemo(
-    () => ({
-      ...projectShot,
-      durationMs: formalRequest?.project.shots[0]?.durationMs ?? probeDurationMs,
-    }),
+    () => formalRequest
+      ? projectShot
+      : { ...projectShot, durationMs: probeDurationMs },
     [formalRequest, probeDurationMs, projectShot],
   );
-  const requestedTimeMs = frameRequest?.timeMs ?? 0;
+  const shotLocalTimeMs = formalRequest
+    ? formalPosition?.shotLocalTimeMs ?? 0
+    : requestedTimeMs;
   useEffect(() => {
     if (!formalRequest) {
       setFormalAssetUrls({});
@@ -137,8 +144,8 @@ export function ExportRendererApp(): React.JSX.Element {
     };
   }, [formalAssetUrls, formalRequest, issue573ExactFrameProbe, requestedTimeMs]);
   const evaluatedBaseShot = useMemo(
-    () => evaluateShotAtTime(shot, requestedTimeMs, project),
-    [requestedTimeMs, shot, project],
+    () => evaluateShotAtTime(shot, shotLocalTimeMs, project),
+    [shotLocalTimeMs, shot, project],
   );
   const subtitleCues = useMemo(
     () => formalRequest ? buildDialogueSubtitleCues(shot.dialogues) : PROBE_SUBTITLE_CUES,
@@ -192,6 +199,12 @@ export function ExportRendererApp(): React.JSX.Element {
         jobId: request.jobId,
         frameIndex: request.frameIndex,
         timeMs: request.timeMs,
+        ...(request.shotId === undefined
+          ? {}
+          : {
+              shotId: request.shotId,
+              shotLocalTimeMs: request.shotLocalTimeMs,
+            }),
         error: error instanceof Error ? error.message : '隐藏帧渲染失败。',
       });
     },
@@ -202,6 +215,7 @@ export function ExportRendererApp(): React.JSX.Element {
     const removeLoadListener = window.pandaStageHidden.onLoadProbe((request) => {
       cancelledJobIdsRef.current.delete(request.jobId);
       loadedJobIdRef.current = request.jobId;
+      loadedFormalProjectRef.current = null;
       pendingFormalLoadRef.current = null;
       setFormalRequest(null);
       setProbeDurationMs(request.durationMs);
@@ -215,6 +229,7 @@ export function ExportRendererApp(): React.JSX.Element {
       (request) => {
         cancelledJobIdsRef.current.delete(request.jobId);
         loadedJobIdRef.current = request.jobId;
+        loadedFormalProjectRef.current = request.project;
         pendingLoadRef.current = null;
         pendingFormalLoadRef.current = request;
         stageReadyRef.current = false;
@@ -234,11 +249,38 @@ export function ExportRendererApp(): React.JSX.Element {
           );
           return;
         }
+        const formalProject = loadedFormalProjectRef.current;
+        if (formalProject) {
+          const position = mapProjectTime(formalProject, request.timeMs);
+          if (
+            !position.shot ||
+            request.shotId !== position.shot.id ||
+            request.shotLocalTimeMs !== position.shotLocalTimeMs
+          ) {
+            failFrame(
+              request,
+              new Error('Formal export frame did not match the Project Shot map.'),
+            );
+            return;
+          }
+        } else if (
+          request.shotId !== undefined ||
+          request.shotLocalTimeMs !== undefined
+        ) {
+          failFrame(request, new Error('Probe frame included formal Shot identity.'));
+          return;
+        }
         if (activeFrameRef.current || captureInFlightRef.current) {
           window.pandaStageHidden.frameFailed({
             jobId: request.jobId,
             frameIndex: request.frameIndex,
             timeMs: request.timeMs,
+            ...(request.shotId === undefined
+              ? {}
+              : {
+                  shotId: request.shotId,
+                  shotLocalTimeMs: request.shotLocalTimeMs,
+                }),
             error: '隐藏窗口仍在处理上一帧。',
           });
           return;
@@ -252,7 +294,10 @@ export function ExportRendererApp(): React.JSX.Element {
       ({ jobId }) => {
         cancelledJobIdsRef.current.add(jobId);
         const cancellingLoadedJob = loadedJobIdRef.current === jobId;
-        if (cancellingLoadedJob) setFormalRequest(null);
+        if (cancellingLoadedJob) {
+          loadedFormalProjectRef.current = null;
+          setFormalRequest(null);
+        }
         if (loadedJobIdRef.current === jobId) {
           loadedJobIdRef.current = null;
         }
@@ -362,6 +407,12 @@ export function ExportRendererApp(): React.JSX.Element {
           jobId: activeFrame.jobId,
           frameIndex: activeFrame.frameIndex,
           timeMs: activeFrame.timeMs,
+          ...(activeFrame.shotId === undefined
+            ? {}
+            : {
+                shotId: activeFrame.shotId,
+                shotLocalTimeMs: activeFrame.shotLocalTimeMs,
+              }),
           width: 1_920,
           height: 1_080,
           pngBytes,

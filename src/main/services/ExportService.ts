@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { projectDurationMs } from '../../domain/selectors/projectDuration';
 import { buildExportAudioMixPlan } from '../../domain/export-audio-mix-plan';
 import type { ExportAudioMixPlan } from '../../shared/audio-mix-types';
 import {
@@ -7,6 +8,7 @@ import {
   FullProbeExportRequestSchema,
   MAX_PENDING_FRAMES,
   formalFrameCount,
+  iterateFormalProjectFrameSchedule,
   iterateFormalFrameSchedule,
   type ExportFrameReady,
   type ExportJobPhase,
@@ -18,6 +20,7 @@ import {
   type ExportProbeLoaded,
   type ExportRenderFrameRequest,
   type FullProbeExportRequest,
+  type ProjectFrameScheduleEntry,
 } from '../../shared/export-types';
 import type {
   AudioProbeResult,
@@ -281,16 +284,19 @@ export class ExportService {
     if (!this.renderer.loadFormal) {
       throw new Error('Formal export requires the formal hidden renderer.');
     }
-    const shot = input.candidate.project.shots[0];
-    if (!shot) throw new Error('Formal export candidate has no Shot.');
+    const project = input.candidate.project;
+    if (project.shots.length === 0) {
+      throw new Error('Formal export candidate has no Shot.');
+    }
+    const durationMs = projectDurationMs(project);
     if (
-      (shot.audioClips?.length ?? 0) > 0 &&
+      project.shots.some((shot) => shot.audioClips.length > 0) &&
       (!this.mediaAdapter.probeAudioFile || !this.mediaAdapter.muxAudioMix)
     ) {
       throw new Error('Formal export requires audio preflight and mixing.');
     }
     const active = this.createJob({
-      durationMs: shot.durationMs,
+      durationMs,
       fps: input.candidate.renderSettings.fps,
     });
     return {
@@ -454,7 +460,8 @@ export class ExportService {
   ): Promise<FullProbeExportResult> {
     const record = this.requireJob(active.jobId);
     const startedAt = performance.now();
-    const shot = input.candidate.project.shots[0]!;
+    const project = input.candidate.project;
+    const durationMs = projectDurationMs(project);
     const outputPath = input.candidate.outputIntent.targetPath;
     let jobDirectory: string | null = null;
     let finalOutputStagingPath: string | null = null;
@@ -487,7 +494,7 @@ export class ExportService {
         active,
         record,
         {
-          durationMs: shot.durationMs,
+          durationMs,
           fps: input.candidate.renderSettings.fps,
         },
         jobDirectory,
@@ -504,6 +511,7 @@ export class ExportService {
                 bytes,
               })),
           }),
+        project,
       );
       this.throwIfCancelled(active);
 
@@ -634,8 +642,7 @@ export class ExportService {
       if (!probe.audioChannels || probe.audioChannels <= 0) {
         failures.push('audio channels');
       }
-      const expectedAudioDurationSeconds =
-        Math.max(...audioMixPlan.clips.map((clip) => clip.endMs)) / 1_000;
+      const expectedAudioDurationSeconds = audioMixPlan.durationMs / 1_000;
       if (
         !Number.isFinite(probe.audioDurationSeconds) ||
         Math.abs(
@@ -666,8 +673,9 @@ export class ExportService {
     adapter: FullProbeMediaAdapter,
     active: ActiveJob,
   ): Promise<ExportAudioMixPlan | null> {
-    const shot = input.candidate.project.shots[0];
-    if (!shot || (shot.audioClips?.length ?? 0) === 0) return null;
+    const project = input.candidate.project;
+    const durationMs = projectDurationMs(project);
+    if (!project.shots.some((shot) => shot.audioClips.length > 0)) return null;
     if (!adapter.probeAudioFile || !adapter.muxAudioMix) {
       throw new Error('Formal export requires audio preflight and mixing.');
     }
@@ -678,86 +686,98 @@ export class ExportService {
         .map((entry) => [entry.assetId, entry]),
     );
     const sourcePaths = new Map<string, string>();
-    for (const clip of shot.audioClips) {
-      if (
-        !Number.isSafeInteger(clip.startMs) ||
-        !Number.isSafeInteger(clip.endMs) ||
-        !Number.isSafeInteger(clip.offsetMs) ||
-        clip.startMs >= clip.endMs ||
-        clip.endMs > shot.durationMs
-      ) {
-        throw new Error(`Audio clip ${clip.id} has an invalid Shot range.`);
+    const sourceDurations = new Map<string, number>();
+    const mappedClips: Array<{
+      shotStartMs: number;
+      clip: (typeof project.shots)[number]['audioClips'][number];
+    }> = [];
+    let shotStartMs = 0;
+    for (const shot of project.shots) {
+      if (!Number.isSafeInteger(shotStartMs + shot.durationMs)) {
+        throw new Error('Formal export Project duration exceeds the safe range.');
       }
-      const asset = input.candidate.project.assets.find(
-        (candidate) => candidate.id === clip.assetId,
-      );
-      const media = frozenAudio.get(clip.assetId);
-      if (!asset || asset.kind !== 'audio' || !media) {
-        throw new Error(`Audio clip ${clip.id} has no frozen audio asset.`);
-      }
-      if (!sourcePaths.has(clip.assetId)) {
-        const extension =
-          media.mimeType === 'audio/mpeg'
-            ? '.mp3'
-            : media.mimeType === 'audio/wav'
-              ? '.wav'
-              : null;
-        if (!extension) {
-          throw new Error(`Audio asset ${asset.id} has an unsupported format.`);
-        }
-        const sourcePath = await this.fileSystem.writeFrozenAudio(
-          jobDirectory,
-          `audio-${asset.id}${extension}`,
-          media.bytes,
-        );
-        this.throwIfCancelled(active);
-        const probe = await adapter.probeAudioFile(
-          sourcePath,
-          active.controller.signal,
-        );
-        this.throwIfCancelled(active);
+      for (const clip of shot.audioClips) {
         if (
-          !Number.isFinite(probe.durationSeconds) ||
-          probe.durationSeconds <= 0 ||
-          !Number.isInteger(probe.channels) ||
-          probe.channels <= 0
+          !Number.isSafeInteger(clip.startMs) ||
+          !Number.isSafeInteger(clip.endMs) ||
+          !Number.isSafeInteger(clip.offsetMs) ||
+          clip.startMs < 0 ||
+          clip.offsetMs < 0 ||
+          clip.startMs >= clip.endMs ||
+          clip.endMs > shot.durationMs
         ) {
-          throw new Error(`Audio asset ${asset.id} has invalid media metadata.`);
+          throw new Error(`Audio clip ${clip.id} has an invalid Shot range.`);
         }
-        const sourceDurationMs = probe.durationSeconds * 1_000;
-        const assetClips = shot.audioClips.filter(
-          (candidate) => candidate.assetId === clip.assetId,
+        const asset = project.assets.find(
+          (candidate) => candidate.id === clip.assetId,
         );
-        for (const assetClip of assetClips) {
-          const requestedSourceEndMs =
-            assetClip.offsetMs + (assetClip.endMs - assetClip.startMs);
-          if (
-            !Number.isSafeInteger(requestedSourceEndMs) ||
-            requestedSourceEndMs > sourceDurationMs
-          ) {
-            throw new Error(
-              `Audio clip ${assetClip.id} exceeds the frozen source duration.`,
-            );
-          }
+        const media = frozenAudio.get(clip.assetId);
+        if (!asset || asset.kind !== 'audio' || !media) {
+          throw new Error(`Audio clip ${clip.id} has no frozen audio asset.`);
         }
-        sourcePaths.set(clip.assetId, sourcePath);
+        if (!sourcePaths.has(clip.assetId)) {
+          const extension =
+            media.mimeType === 'audio/mpeg'
+              ? '.mp3'
+              : media.mimeType === 'audio/wav'
+                ? '.wav'
+                : null;
+          if (!extension) {
+            throw new Error(`Audio asset ${asset.id} has an unsupported format.`);
+          }
+          const sourcePath = await this.fileSystem.writeFrozenAudio(
+            jobDirectory,
+            `audio-${asset.id}${extension}`,
+            media.bytes,
+          );
+          this.throwIfCancelled(active);
+          const probe = await adapter.probeAudioFile(
+            sourcePath,
+            active.controller.signal,
+          );
+          this.throwIfCancelled(active);
+          if (
+            !Number.isFinite(probe.durationSeconds) ||
+            probe.durationSeconds <= 0 ||
+            !Number.isInteger(probe.channels) ||
+            probe.channels <= 0
+          ) {
+            throw new Error(`Audio asset ${asset.id} has invalid media metadata.`);
+          }
+          sourcePaths.set(clip.assetId, sourcePath);
+          sourceDurations.set(clip.assetId, probe.durationSeconds * 1_000);
+        }
+        const requestedSourceEndMs =
+          clip.offsetMs + (clip.endMs - clip.startMs);
+        if (
+          !Number.isSafeInteger(requestedSourceEndMs) ||
+          requestedSourceEndMs > (sourceDurations.get(clip.assetId) ?? 0)
+        ) {
+          throw new Error(
+            `Audio clip ${clip.id} exceeds the frozen source duration.`,
+          );
+        }
+        mappedClips.push({ shotStartMs, clip });
       }
+      shotStartMs += shot.durationMs;
     }
 
     return buildExportAudioMixPlan(
-      shot.durationMs,
-      shot.audioClips.map((clip) => {
+      durationMs,
+      mappedClips.map(({ shotStartMs: prefixMs, clip }) => {
         const sourcePath = sourcePaths.get(clip.assetId);
-        if (!sourcePath) {
-          throw new Error(`Audio clip ${clip.id} has no prepared source path.`);
+        const startMs = prefixMs + clip.startMs;
+        const endMs = prefixMs + clip.endMs;
+        if (!sourcePath || !Number.isSafeInteger(startMs) || !Number.isSafeInteger(endMs)) {
+          throw new Error(`Audio clip ${clip.id} has no safe Project time mapping.`);
         }
         return {
           clipId: clip.id,
           assetId: clip.assetId,
           role: clip.role,
           sourcePath,
-          startMs: clip.startMs,
-          endMs: clip.endMs,
+          startMs,
+          endMs,
           offsetMs: clip.offsetMs,
           volume: clip.volume,
         };
@@ -771,6 +791,7 @@ export class ExportService {
     config: { durationMs: number; fps: 24 },
     jobDirectory: string,
     loadProject: () => Promise<unknown>,
+    project?: FrozenExportInput['candidate']['project'],
   ): Promise<FrameExportMetrics> {
     const totalFrames = formalFrameCount(config.durationMs, config.fps);
     if (totalFrames !== record.totalFrames) {
@@ -804,23 +825,33 @@ export class ExportService {
       await loadProject();
       this.throwIfCancelled(active);
 
-      for (const frame of iterateFormalFrameSchedule(
-        config.durationMs,
-        config.fps,
-      )) {
+      const frames = project
+        ? iterateFormalProjectFrameSchedule(project, config.fps)
+        : iterateFormalFrameSchedule(config.durationMs, config.fps);
+      for (const frame of frames) {
         await waitForWriteSlot();
         record.phase = 'rendering';
         this.emit(record);
-        const rendered = await this.renderer.renderFrame({
+        const request: ExportRenderFrameRequest = {
           jobId: active.jobId,
           frameIndex: frame.frameIndex,
           timeMs: frame.timeMs,
-        });
+          ...(project
+            ? {
+                shotId: (frame as ProjectFrameScheduleEntry).shotId,
+                shotLocalTimeMs: (frame as ProjectFrameScheduleEntry)
+                  .shotLocalTimeMs,
+              }
+            : {}),
+        };
+        const rendered = await this.renderer.renderFrame(request);
         this.throwIfCancelled(active);
         if (
           rendered.jobId !== active.jobId ||
           rendered.frameIndex !== frame.frameIndex ||
-          rendered.timeMs !== frame.timeMs
+          rendered.timeMs !== frame.timeMs ||
+          rendered.shotId !== request.shotId ||
+          rendered.shotLocalTimeMs !== request.shotLocalTimeMs
         ) {
           throw new Error(
             `Renderer returned mismatched frame ${rendered.frameIndex}.`,

@@ -23,8 +23,10 @@ import {
 } from '../../src/main/services/ExportPreparationService';
 import { NodeExportPreparationFileStore } from '../../src/main/services/ExportPreparationFileStore';
 import {
+  EXPORT_PREPARATION_MAX_SHOTS,
   EXPORT_PREPARATION_MAX_SINGLE_ASSET_BYTES,
   EXPORT_PREPARATION_MAX_TOTAL_MEDIA_BYTES,
+  EXPORT_PREPARATION_SUPPORT_PROFILE,
   type ExportPreparationRequest,
 } from '../../src/shared/export-preparation-types';
 import { buildProject, IDS } from './domain/testProject';
@@ -826,28 +828,23 @@ describe('DL-01 export preparation domain rules', () => {
     );
   });
 
-  it('blocks multiple shots as unsupported instead of trimming the Project', () => {
+  it('supports a three-Shot Project and keeps the Project intact', () => {
     const base = projectWithMedia();
     const project = ProjectSchema.parse({
       ...base,
-      shots: [
-        ...base.shots,
-        {
-          ...base.shots[0]!,
-          id: '50000000-0000-4000-8000-000000000002',
-          name: 'second shot',
-        },
-      ],
+      shots: Array.from({ length: 3 }, (_, index) => ({
+        ...base.shots[0]!,
+        id: `50000000-0000-4000-8000-00000000000${index + 1}`,
+        name: `shot-${index + 1}`,
+      })),
     });
     const before = structuredClone(project);
 
-    expect(evaluateExportPreparationSupport(project, 'static')).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          code: 'UNSUPPORTED_IN_CURRENT_EXPORT_SLICE',
-        }),
-      ]),
-    );
+    expect(EXPORT_PREPARATION_SUPPORT_PROFILE.shotCount).toEqual({
+      minimum: 1,
+      maximum: EXPORT_PREPARATION_MAX_SHOTS,
+    });
+    expect(evaluateExportPreparationSupport(project, 'static')).toEqual([]);
     expect(project).toEqual(before);
   });
 

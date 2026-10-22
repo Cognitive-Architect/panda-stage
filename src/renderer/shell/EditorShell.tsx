@@ -650,6 +650,7 @@ export function EditorShell({
           revision: snapshot.revision,
           dirty: snapshot.dirty,
           openInstanceId: editorProjectStore.getProjectInstanceId(),
+          currentShotId: shotStore.getCurrentShotId(),
           undoCount: editorProjectStore.history.getSnapshot().undoCount,
           redoCount: editorProjectStore.history.getSnapshot().redoCount,
         };

@@ -265,7 +265,9 @@ export class HiddenWindowManager {
       !pending ||
       pending.request.jobId !== payload.jobId ||
       pending.request.frameIndex !== payload.frameIndex ||
-      pending.request.timeMs !== payload.timeMs
+      pending.request.timeMs !== payload.timeMs ||
+      pending.request.shotId !== payload.shotId ||
+      pending.request.shotLocalTimeMs !== payload.shotLocalTimeMs
     ) {
       throw new Error(
         `Unexpected frame-ready response for Job ${payload.jobId}, frame ${payload.frameIndex}.`,
@@ -286,7 +288,9 @@ export class HiddenWindowManager {
       !pending ||
       pending.request.jobId !== payload.jobId ||
       pending.request.frameIndex !== payload.frameIndex ||
-      pending.request.timeMs !== payload.timeMs
+      pending.request.timeMs !== payload.timeMs ||
+      pending.request.shotId !== payload.shotId ||
+      pending.request.shotLocalTimeMs !== payload.shotLocalTimeMs
     ) {
       throw new Error(
         `Unexpected frame-failed response for Job ${payload.jobId}, frame ${payload.frameIndex}.`,
