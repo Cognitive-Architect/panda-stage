@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ExportAudioMixPlanSchema } from './audio-mix-types';
 import { EXPORT_FPS } from './export-types';
 
 const Mp4OutputPathSchema = z
@@ -23,6 +24,15 @@ export const MuxSingleAudioRequestSchema = z
     videoPath: z.string().trim().min(1),
     audioPath: z.string().trim().min(1),
     startMs: z.number().int().nonnegative(),
+    outputPath: Mp4OutputPathSchema,
+    overwrite: z.boolean().default(true),
+  })
+  .strict();
+
+export const MuxAudioMixRequestSchema = z
+  .object({
+    videoPath: z.string().trim().min(1),
+    audioMixPlan: ExportAudioMixPlanSchema,
     outputPath: Mp4OutputPathSchema,
     overwrite: z.boolean().default(true),
   })
@@ -66,6 +76,7 @@ export type EncodePngSequenceRequest = z.input<
 export type MuxSingleAudioRequest = z.input<
   typeof MuxSingleAudioRequestSchema
 >;
+export type MuxAudioMixRequest = z.input<typeof MuxAudioMixRequestSchema>;
 export type VideoProbeExpectation = z.input<
   typeof VideoProbeExpectationSchema
 >;

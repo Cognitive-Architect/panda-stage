@@ -1,8 +1,14 @@
 import {
+  BodyPlacementSchema,
+  CharacterHeadSchema,
+  DEFAULT_BODY_PLACEMENT,
   FacePlacementSchema,
   ProjectSchema,
+  TalkingHeadMotionIntensityPercentSchema,
   type Character,
   type CharacterExpression,
+  type CharacterHead,
+  type BodyPlacement,
   type FacePlacement,
   type ImageAsset,
   type Project,
@@ -26,6 +32,9 @@ export type CharacterServiceErrorCode =
   | 'EXPRESSION_REFERENCED'
   | 'COMPOSITE_CHARACTER_REQUIRED'
   | 'INVALID_FACE_PLACEMENT'
+  | 'INVALID_BODY_PLACEMENT'
+  | 'INVALID_HEAD'
+  | 'INVALID_TALKING_HEAD_INTENSITY'
   | 'EXPRESSION_SET_MISMATCH';
 
 export class CharacterServiceError extends Error {
@@ -58,7 +67,9 @@ export interface CreateCharacterInput {
 export interface CreateCompositeCharacterInput
   extends CreateCharacterInput {
   bodyAssetId: string;
+  bodyPlacement?: BodyPlacement;
   facePlacement: FacePlacement;
+  head?: CharacterHead;
 }
 
 export interface CharacterExpressionAssetUpdate {
@@ -69,7 +80,9 @@ export interface CharacterExpressionAssetUpdate {
 /** The complete persisted definition owned by a composite Character. */
 export interface CompositeCharacterDefinition {
   bodyAssetId: string;
+  bodyPlacement: BodyPlacement;
   facePlacement: FacePlacement;
+  head?: CharacterHead;
   expressionAssets: readonly CharacterExpressionAssetUpdate[];
   mouthOpenAssetId: string | null;
 }
@@ -77,7 +90,9 @@ export interface CompositeCharacterDefinition {
 /** Narrow fields that a single assembly Apply may change. */
 export interface CompositeCharacterUpdate {
   bodyAssetId?: string;
+  bodyPlacement?: BodyPlacement;
   facePlacement?: FacePlacement;
+  head?: CharacterHead | null;
   expressionAssets?: readonly CharacterExpressionAssetUpdate[];
   mouthOpenAssetId?: string | null;
 }
@@ -193,7 +208,11 @@ export class CharacterService {
     input: CreateCompositeCharacterInput,
   ): Project {
     const bodyAssetId = this.imageAsset(project, input.bodyAssetId).id;
+    const bodyPlacement = this.validBodyPlacement(
+      input.bodyPlacement ?? DEFAULT_BODY_PLACEMENT,
+    );
     const facePlacement = this.validFacePlacement(input.facePlacement);
+    const head = input.head ? this.validHead(project, input.head) : undefined;
     const singleImageProject = this.create(project, input);
     const character = singleImageProject.characters.at(-1);
     if (!character) {
@@ -206,7 +225,10 @@ export class CharacterService {
       ...character,
       mode: 'composite',
       bodyAssetId,
+      bodyPlacement,
       facePlacement,
+      talkingHeadMotionIntensityPercent: 100,
+      ...(head ? { head } : {}),
     });
   }
 
@@ -224,7 +246,11 @@ export class CharacterService {
   ): Project {
     const character = this.compositeCharacter(project, characterId);
     const bodyAssetId = this.imageAsset(project, definition.bodyAssetId).id;
+    const bodyPlacement = this.validBodyPlacement(definition.bodyPlacement);
     const facePlacement = this.validFacePlacement(definition.facePlacement);
+    const head = definition.head
+      ? this.validHead(project, definition.head)
+      : undefined;
     const expressions = this.resolveExpressionAssets(
       project,
       character,
@@ -246,11 +272,15 @@ export class CharacterService {
     const next: Extract<Character, { mode: 'composite' }> = {
       ...character,
       bodyAssetId,
+      bodyPlacement,
       facePlacement,
       expressions,
       baseAssetId: defaultExpression.assetId,
-      ...(mouthOpenAssetId ? { mouthOpenAssetId } : {}),
     };
+    if (mouthOpenAssetId) next.mouthOpenAssetId = mouthOpenAssetId;
+    else delete next.mouthOpenAssetId;
+    if (head) next.head = head;
+    else delete next.head;
     if (this.sameCompositeDefinition(character, next)) return project;
     return this.replaceCharacter(project, next);
   }
@@ -263,6 +293,7 @@ export class CharacterService {
     const current = this.getCompositeDefinition(project, characterId);
     return this.applyCompositeDefinition(project, characterId, {
       bodyAssetId: update.bodyAssetId ?? current.bodyAssetId,
+      bodyPlacement: update.bodyPlacement ?? current.bodyPlacement,
       facePlacement: update.facePlacement ?? current.facePlacement,
       expressionAssets:
         update.expressionAssets ?? current.expressionAssets,
@@ -270,6 +301,12 @@ export class CharacterService {
         update.mouthOpenAssetId === undefined
           ? current.mouthOpenAssetId
           : update.mouthOpenAssetId,
+      head:
+        update.head === undefined
+          ? current.head
+          : update.head === null
+            ? undefined
+            : update.head,
     });
   }
 
@@ -511,6 +548,30 @@ export class CharacterService {
     });
   }
 
+  setTalkingHeadMotionIntensityPercent(
+    project: Project,
+    characterId: string,
+    intensityPercent: number,
+  ): Project {
+    const character = this.compositeCharacter(project, characterId);
+    const parsedIntensity = TalkingHeadMotionIntensityPercentSchema.safeParse(
+      intensityPercent,
+    );
+    if (!character.head || !parsedIntensity.success) {
+      throw new CharacterServiceError(
+        'INVALID_TALKING_HEAD_INTENSITY',
+        'Talking head intensity requires a Head and a whole percentage from 0 to 200.',
+      );
+    }
+    if (character.talkingHeadMotionIntensityPercent === parsedIntensity.data) {
+      return project;
+    }
+    return this.replaceCharacter(project, {
+      ...character,
+      talkingHeadMotionIntensityPercent: parsedIntensity.data,
+    });
+  }
+
   dimensionWarnings(
     project: Project,
     characterId: string,
@@ -607,7 +668,9 @@ export class CharacterService {
   ): CompositeCharacterDefinition {
     return {
       bodyAssetId: character.bodyAssetId,
+      bodyPlacement: { ...character.bodyPlacement },
       facePlacement: { ...character.facePlacement },
+      ...(character.head ? { head: this.cloneHead(character.head) } : {}),
       expressionAssets: character.expressions.map((expression) => ({
         expressionId: expression.id,
         assetId: expression.assetId,
@@ -625,6 +688,41 @@ export class CharacterService {
       );
     }
     return { ...parsed.data };
+  }
+
+  private validBodyPlacement(raw: BodyPlacement): BodyPlacement {
+    const parsed = BodyPlacementSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new CharacterServiceError(
+        'INVALID_BODY_PLACEMENT',
+        'Body Placement must contain finite offsets and a bounded positive scale.',
+      );
+    }
+    return { ...parsed.data };
+  }
+
+  private validHead(project: Project, raw: CharacterHead): CharacterHead {
+    const parsed = CharacterHeadSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new CharacterServiceError(
+        'INVALID_HEAD',
+        'Head must contain an image asset, finite Character-local placement, and finite Character-local pivot.',
+      );
+    }
+    const asset = this.imageAsset(project, parsed.data.assetId);
+    return {
+      assetId: asset.id,
+      placement: { ...parsed.data.placement },
+      pivot: { ...parsed.data.pivot },
+    };
+  }
+
+  private cloneHead(head: CharacterHead): CharacterHead {
+    return {
+      assetId: head.assetId,
+      placement: { ...head.placement },
+      pivot: { ...head.pivot },
+    };
   }
 
   private resolveExpressionAssets(
@@ -674,9 +772,17 @@ export class CharacterService {
   ): boolean {
     return (
       current.bodyAssetId === next.bodyAssetId &&
+      current.bodyPlacement.offsetX === next.bodyPlacement.offsetX &&
+      current.bodyPlacement.offsetY === next.bodyPlacement.offsetY &&
+      current.bodyPlacement.scale === next.bodyPlacement.scale &&
       current.facePlacement.offsetX === next.facePlacement.offsetX &&
       current.facePlacement.offsetY === next.facePlacement.offsetY &&
       current.facePlacement.scale === next.facePlacement.scale &&
+      current.facePlacement.rotationDeg ===
+        next.facePlacement.rotationDeg &&
+      current.facePlacement.flipX === next.facePlacement.flipX &&
+      JSON.stringify(current.head ?? null) ===
+        JSON.stringify(next.head ?? null) &&
       current.baseAssetId === next.baseAssetId &&
       (current.mouthOpenAssetId ?? null) ===
         (next.mouthOpenAssetId ?? null) &&

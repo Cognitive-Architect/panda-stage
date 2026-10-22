@@ -11,6 +11,10 @@ import { AssetSchema, type Asset } from './asset';
 import { AudioClipV7Schema } from './audio';
 import {
   CharacterSchema,
+  CharacterV8Schema,
+  CharacterV9Schema,
+  CharacterV10Schema,
+  CharacterV11Schema,
   CharacterV6Schema,
   VoiceProfileSchema,
 } from './character';
@@ -207,7 +211,32 @@ export const ProjectV6Schema = z
 
 export const ProjectV7Schema = ProjectDataSchema.extend({
   schemaVersion: z.literal(7),
+  characters: z.array(CharacterV8Schema),
   shots: z.array(ShotV7Schema),
+});
+
+/** Strict persisted v8 envelope, before the optional composite Character Head. */
+export const ProjectV8Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(8),
+  characters: z.array(CharacterV8Schema),
+});
+
+/** Strict persisted v9 envelope, before talking-head motion intensity. */
+export const ProjectV9Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(9),
+  characters: z.array(CharacterV9Schema),
+});
+
+/** Strict persisted v10 envelope, before static Head/Face transforms. */
+export const ProjectV10Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(10),
+  characters: z.array(CharacterV10Schema),
+});
+
+/** Strict persisted v11 envelope, before independent Body placement. */
+export const ProjectV11Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(11),
+  characters: z.array(CharacterV11Schema),
 });
 
 function addAudioRoles<T extends {
@@ -400,7 +429,7 @@ export function migrateFormalProject(input: unknown): unknown {
 }
 
 // Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
-// Persisted migration (v0-v7 -> v8) is owned exclusively by `migrateProject`
+// Persisted migration (v0-v11 -> v12) is owned exclusively by `migrateProject`
 // in `../migrations`; this schema must never perform legacy migration.
 export const ProjectSchema = ProjectDataSchema.superRefine(
   validateProjectReferences,

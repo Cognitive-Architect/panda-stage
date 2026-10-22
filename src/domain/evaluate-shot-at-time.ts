@@ -2,10 +2,11 @@ import type { Layer, Project, Shot, TimelineEvent } from './models';
 import { evaluateLayerMotionAtTime } from './evaluate-layer-motion';
 
 /**
- * A single evaluated layer at one exact moment. Shape is intentionally
- * identical to the legacy evaluator so `shared/stage/render-model.ts` can
- * consume it without changes. `assetId` is the resolved image asset used by
- * the renderer (for character layers this is the active expression's asset).
+ * A single evaluated layer at one exact moment. Its formal fields remain
+ * compatible with the legacy evaluator so `shared/stage/render-model.ts` can
+ * consume it; optional runtime projection fields stay transient. `assetId` is
+ * the resolved image asset used by the renderer (for character layers this is
+ * the active expression's asset).
  */
 export interface EvaluatedLayer {
   id: string;
@@ -14,6 +15,8 @@ export interface EvaluatedLayer {
   currentExpressionId?: string | null;
   /** The transient Mouth asset projected after formal evaluation, if any. */
   mouthOverrideAssetId?: string | null;
+  /** Runtime-only Head Group transform projected from the active Dialogue. */
+  headGroupTransform?: EvaluatedHeadGroupTransform;
   anchor: 'center';
   x: number;
   y: number;
@@ -24,6 +27,15 @@ export interface EvaluatedLayer {
   opacity: number;
   visible: boolean;
   zIndex: number;
+}
+
+export interface EvaluatedHeadGroupTransform {
+  /** Translation relative to the Character-local Head pivot. */
+  translateX: number;
+  translateY: number;
+  scaleX: number;
+  scaleY: number;
+  rotationDeg: number;
 }
 
 export interface EvaluatedShot {

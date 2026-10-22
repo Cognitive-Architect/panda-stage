@@ -361,6 +361,7 @@
           "tests/integration/project-lifecycle.test.ts",
           "tests/contract/fixtures/ci-routing/core/**",
           "tests/unit/ipc-contracts.test.ts",
+          "tests/unit/project-api-contracts.test.ts",
           "tests/unit/bfm-s01-character-schema.test.ts",
           "tests/unit/bfm-s02-character-commands.test.ts",
           "tests/unit/models/project-v1.test.ts",
@@ -389,13 +390,16 @@
           "tests/unit/export-*.test.ts",
           "tests/unit/ffmpeg-*.test.ts"
         ],
-        "verifierPatterns": [],
+        "verifierPatterns": [
+          "scripts/verify-day09.cjs",
+          "scripts/verify-issue660-export-audio-mix.cjs"
+        ],
         "suites": [],
         "riskPolicy": "full",
         "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "release",
-        "notes": "Installer, release, export-core, and FFmpeg capability families remain Full risk without predeclaring speculative product paths."
+        "notes": "Installer, release, export-core, and FFmpeg capability families remain Full risk without predeclaring speculative product paths. The exact legacy Day09 export probe path is registered because this request-contract migration updates its fixture; no broad scripts/** route is added."
       }
     ],
     "routes": [
@@ -455,7 +459,7 @@
           "public/character-empty-normal.png",
           "public/character-empty-angry.png"
         ],
-        "testPatterns": ["tests/unit/character-*.test.ts", "tests/unit/legacy-character-layer-reminder.test.ts", "tests/integration/character-*.test.ts"],
+        "testPatterns": ["tests/unit/character-*.test.ts", "tests/unit/issue815-talking-head-settings.test.ts", "tests/unit/legacy-character-layer-reminder.test.ts", "tests/integration/character-*.test.ts"],
         "verifierPatterns": [
           "scripts/verify-day19*",
           "scripts/verify-issue609-character-assembly.cjs"
@@ -492,6 +496,7 @@
         ],
         "testPatterns": [
           "tests/unit/canvas-*.test.ts",
+          "tests/unit/issue669-talking-head-motion.test.ts",
           "tests/unit/stage-*.test.ts",
           "tests/unit/konva-pixel-ratio.test.ts",
           "tests/unit/viewport-*.test.ts",
@@ -669,8 +674,20 @@
       }
     ]
   },
-  "count": 81,
+  "count": 89,
   "gates": [
+    {
+      "id": "issue660-export-audio-mix",
+      "script": "verify:issue660-export-audio-mix",
+      "suite": "issue660-export-audio-mix",
+      "subsystem": "export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "release",
+      "supersedes": null,
+      "notes": "A04 real bundled-FFmpeg overlap/mix evidence with focused cancellation and cleanup tests; does not claim full real-project Export or Gate B graduation."
+    },
     {
       "id": "issue663-dialogue-voice",
       "script": "verify:issue663-dialogue-voice",
@@ -1630,6 +1647,90 @@
       "owner": "character",
       "supersedes": null,
       "notes": "Bounded Issue #609 real Electron production-UI proof for composite Character creation/edit, Body-only raw placement, and one-layer Shot placement; synthetic fixture input and screenshot evidence are not human acceptance."
+    },
+    {
+      "id": "issue792-mouth-overflow",
+      "script": "verify:issue792-mouth-overflow",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #792 Electron proof for Mouth overflow popover geometry, real pointer hit testing, keyboard activation, narrow viewport and scroll placement; synthetic fixture evidence is not OWNER human acceptance."
+    },
+    {
+      "id": "issue797-head-face-edit",
+      "script": "verify:issue797-head-face-edit",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #797 Electron proof for synchronized Head/Face edit target selection, native drag hit testing, keyboard activation, distinct Change/Manage actions, and headless Face editing; synthetic fixture evidence is not OWNER human acceptance."
+    },
+    {
+      "id": "issue798-add-to-shot-navigation",
+      "script": "verify:issue798-add-to-shot-navigation",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #798 Electron proof for shared Add to Shot navigation across Assembly/Expressions/Settings, wide and narrow geometry, scrolling, keyboard/native pointer placement, disabled transform guard, and the pending Assembly confirmation; synthetic input is not OWNER human acceptance."
+    },
+    {
+      "id": "issue799-layout-reuse",
+      "script": "verify:issue799-layout-reuse",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #799 Electron proof for exact Body reference dimensions and matching Head structure, source/target asset readiness, preview/cancel, fine tune, one existing Draft/Apply commit, Undo/Redo, Project Save and disk reopen; synthetic fixture evidence is not OWNER human acceptance."
+    },
+    {
+      "id": "issue813-assembly-canvas-space",
+      "script": "verify:issue813-assembly-canvas-space",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #813 Electron proof for pivot completion deduplication, precision overlay geometry and input, contextual expression/Mouth preview, and landscape Assembly viewport recovery across compact, headless, Create, and 125% zoom states; synthetic input is not OWNER human acceptance."
+    },
+    {
+      "id": "issue820-c04-s01",
+      "script": "verify:issue820-c04-s01",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #820 C04 S01 Electron proof for large composite-character assembly viewport fit and camera-only View All behavior; synthetic fixture evidence is not OWNER human acceptance."
+    },
+    {
+      "id": "issue822-c04-s04",
+      "script": "verify:issue822-c04-s04",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #822 C04 S04 Electron proof for left-card Body/Head/Face target selection, independent Change/Manage actions, compact action geometry, and recovered preview height across timeline and narrow 125% layouts; synthetic fixture evidence is not OWNER human acceptance."
     },
     {
       "id": "timeline",

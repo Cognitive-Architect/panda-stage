@@ -3,8 +3,11 @@ import {
   PROJECT_SCHEMA_VERSION,
   migrateProject,
   ProjectSchema,
+  evaluateShotAtTime,
+  resolveLayerVisualParts,
   type Project,
 } from '../../../../src/domain';
+import { buildProject, IDS } from '../testProject';
 
 function v1WithoutTimelineEvents(): unknown {
   return {
@@ -202,5 +205,79 @@ describe('T01 迁移回填 timelineEvents', () => {
   it('迁移结果通过严格 ProjectDataSchema 校验', () => {
     const result = migrateProject(v1WithoutTimelineEvents());
     expect(() => ProjectSchema.parse(result)).not.toThrow();
+  });
+
+  it('migrates strict v11 composite data with default Body placement and preserves its visual', () => {
+    const current = buildProject();
+    const original = current.characters[0]!;
+    const legacyV11 = {
+      ...current,
+      schemaVersion: 11,
+      characters: [
+        {
+          ...original,
+          mode: 'composite' as const,
+          bodyAssetId: IDS.assetBg,
+          facePlacement: {
+            offsetX: 82,
+            offsetY: -36,
+            scale: 0.74,
+            rotationDeg: 18,
+            flipX: true,
+          },
+          head: {
+            assetId: IDS.assetChar2,
+            placement: {
+              offsetX: -16,
+              offsetY: -152,
+              scale: 0.86,
+              rotationDeg: -12,
+              flipX: true,
+            },
+            pivot: { x: 306, y: 412 },
+          },
+          mouthOpenAssetId: IDS.assetChar2,
+          talkingHeadMotionIntensityPercent: 137,
+        },
+      ],
+    };
+    const before = structuredClone(legacyV11);
+    const result = migrateProject(legacyV11);
+    const character = result.characters[0]!;
+
+    expect(result.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(character).toMatchObject({
+      mode: 'composite',
+      bodyAssetId: IDS.assetBg,
+      bodyPlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+      facePlacement: legacyV11.characters[0]!.facePlacement,
+      head: legacyV11.characters[0]!.head,
+      talkingHeadMotionIntensityPercent: 137,
+      mouthOpenAssetId: IDS.assetChar2,
+      expressions: original.expressions,
+    });
+    expect(legacyV11).toEqual(before);
+    expect(() => ProjectSchema.parse(result)).not.toThrow();
+
+    const shot = result.shots[0]!;
+    const visual = resolveLayerVisualParts(
+      result,
+      shot,
+      evaluateShotAtTime(shot, 0, result).layers.find(
+        (layer) => layer.id === IDS.layerChar,
+      )!,
+    );
+    const bodyAsset = result.assets.find(
+      (asset) => asset.id === IDS.assetBg,
+    );
+    expect(bodyAsset?.kind).toBe('image');
+    if (bodyAsset?.kind !== 'image') throw new Error('Expected Body image.');
+    expect(visual.parts.find((part) => part.slot === 'body')?.localRect).toEqual({
+      x: -bodyAsset.width / 2,
+      y: -bodyAsset.height / 2,
+      width: bodyAsset.width,
+      height: bodyAsset.height,
+    });
+    expect(visual.headGroup?.pivot).toEqual({ x: 306, y: 412 });
   });
 });

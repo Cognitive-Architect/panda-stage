@@ -1,13 +1,71 @@
-import type { EvaluatedLayer, EvaluatedShot } from '../evaluate-shot-at-time';
+import type {
+  EvaluatedHeadGroupTransform,
+  EvaluatedLayer,
+  EvaluatedShot,
+} from '../evaluate-shot-at-time';
 import type { ImageAsset, Project, Shot } from '../models';
 import { evaluateShotAtTime } from '../evaluate-shot-at-time';
 import {
   resolveLayerVisualParts,
   type VisualResourceReference,
 } from './visualParts';
+import { buildDialogueSubtitleCues } from '../../shared/preview/dialogue-subtitle';
+import { evaluateSubtitleAtTime } from '../../shared/preview/subtitle-engine';
 
 const MOUTH_FLAP_PERIOD_MS = 320;
 const MOUTH_OPEN_MS = 160;
+export const TALKING_HEAD_BOB_AMPLITUDE_PX = 4;
+export const TALKING_HEAD_FREQUENCY_HZ = 2;
+export const TALKING_HEAD_EDGE_ENVELOPE_MS = 120;
+
+const IDENTITY_HEAD_GROUP_TRANSFORM = {
+  translateX: 0,
+  translateY: 0,
+  scaleX: 1,
+  scaleY: 1,
+  rotationDeg: 0,
+} as const;
+
+function smoothStep(progress: number): number {
+  const amount = Math.min(1, Math.max(0, progress));
+  return amount * amount * (3 - 2 * amount);
+}
+
+/** Pure requested-time V1 motion; elapsed time is local to one Dialogue. */
+export function resolveTalkingHeadMotionTransform(
+  elapsedMs: number,
+  dialogueDurationMs: number,
+  intensityPercent = 100,
+): EvaluatedHeadGroupTransform {
+  if (
+    !Number.isFinite(elapsedMs) ||
+    !Number.isFinite(dialogueDurationMs) ||
+    intensityPercent === 0 ||
+    elapsedMs <= 0 ||
+    dialogueDurationMs <= 0 ||
+    elapsedMs >= dialogueDurationMs
+  ) {
+    return { ...IDENTITY_HEAD_GROUP_TRANSFORM };
+  }
+
+  const periodMs = 1_000 / TALKING_HEAD_FREQUENCY_HZ;
+  const phase = 2 * Math.PI * ((elapsedMs % periodMs) / periodMs);
+  const envelope = Math.min(
+    smoothStep(elapsedMs / TALKING_HEAD_EDGE_ENVELOPE_MS),
+    smoothStep(
+      (dialogueDurationMs - elapsedMs) / TALKING_HEAD_EDGE_ENVELOPE_MS,
+    ),
+  );
+  const motion = Math.sin(phase) * envelope;
+  return {
+    translateX: 0,
+    translateY:
+      TALKING_HEAD_BOB_AMPLITUDE_PX * (intensityPercent / 100) * motion,
+    scaleX: 1,
+    scaleY: 1,
+    rotationDeg: 0,
+  };
+}
 
 /**
  * Lists the image assets a single Shot may display over time.
@@ -120,4 +178,116 @@ export function projectShotMouth(
   });
 
   return changed ? { ...evaluatedShot, layers } : evaluatedShot;
+}
+
+function clearHeadGroupMotion(evaluatedShot: EvaluatedShot): EvaluatedShot {
+  if (!evaluatedShot.layers.some((layer) => layer.headGroupTransform)) {
+    return evaluatedShot;
+  }
+  return {
+    ...evaluatedShot,
+    layers: evaluatedShot.layers.map((layer) => {
+      if (!layer.headGroupTransform) return layer;
+      const neutralLayer = { ...layer };
+      delete neutralLayer.headGroupTransform;
+      return neutralLayer;
+    }),
+  };
+}
+
+/**
+ * Applies one deterministic motion to the unique visible occurrence owned by
+ * the active Dialogue. Ambiguous duplicate Character occurrences stay neutral.
+ */
+export function projectShotHeadMotion(
+  project: Project,
+  shot: Shot,
+  evaluatedShot: EvaluatedShot,
+  activeDialogueId: string | null,
+): EvaluatedShot {
+  const neutralShot = clearHeadGroupMotion(evaluatedShot);
+  if (!activeDialogueId) return neutralShot;
+
+  const dialogue = shot.dialogues.find(
+    (candidate) => candidate.id === activeDialogueId,
+  );
+  if (
+    !dialogue ||
+    neutralShot.timeMs < dialogue.startMs ||
+    neutralShot.timeMs >= dialogue.endMs
+  ) {
+    return neutralShot;
+  }
+
+  const evaluatedById = new Map(
+    neutralShot.layers.map((layer) => [layer.id, layer]),
+  );
+  const matchingLayers = shot.layers.filter((layer) =>
+    layer.id !== shot.backgroundLayerId &&
+    layer.source.kind === 'character' &&
+    layer.source.characterId === dialogue.characterId &&
+    evaluatedById.get(layer.id)?.visible,
+  );
+  if (matchingLayers.length !== 1) return neutralShot;
+
+  const targetLayer = matchingLayers[0]!;
+  const character = project.characters.find(
+    (candidate) => candidate.id === dialogue.characterId,
+  );
+  if (character?.mode !== 'composite' || !character.head) {
+    return neutralShot;
+  }
+
+  const transform = resolveTalkingHeadMotionTransform(
+    neutralShot.timeMs - dialogue.startMs,
+    dialogue.endMs - dialogue.startMs,
+    character.talkingHeadMotionIntensityPercent,
+  );
+  if (
+    transform.translateX === 0 &&
+    transform.translateY === 0 &&
+    transform.rotationDeg === 0
+  ) {
+    return neutralShot;
+  }
+
+  return {
+    ...neutralShot,
+    layers: neutralShot.layers.map((layer) =>
+      layer.id === targetLayer.id
+        ? { ...layer, headGroupTransform: transform }
+        : layer,
+    ),
+  };
+}
+
+/**
+ * Shared read-only Dialogue projection for editor, Product Preview, and Export.
+ * The active cue winner is the existing subtitle/Mouth/speaker authority.
+ */
+export function projectShotDialogueVisual(
+  project: Project,
+  shot: Shot,
+  evaluatedShot: EvaluatedShot,
+  explicitActiveDialogueId?: string | null,
+): EvaluatedShot {
+  const activeDialogueId =
+    explicitActiveDialogueId === undefined
+      ? evaluateSubtitleAtTime(
+          buildDialogueSubtitleCues(shot.dialogues),
+          evaluatedShot.timeMs,
+        )?.id ?? null
+      : explicitActiveDialogueId;
+  const withMouth = projectShotMouth(
+    project,
+    shot,
+    evaluatedShot,
+    activeDialogueId,
+  );
+  return projectShotHeadMotion(
+    project,
+    shot,
+    withMouth,
+    activeDialogueId,
+  );
 }

@@ -1,8 +1,10 @@
-export const PROJECT_SCHEMA_VERSION = 8 as const;
+export const PROJECT_SCHEMA_VERSION = 12 as const;
 export const PROJECT_WIDTH = 1920 as const;
 export const PROJECT_HEIGHT = 1080 as const;
 export const PROJECT_FPS = 24 as const;
 export const LAYER_ANCHOR = 'center' as const;
 export const LAYER_MIN_SCALE = 0.05 as const;
 export const LAYER_MAX_SCALE = 20 as const;
+export const CHARACTER_PART_MIN_SCALE = LAYER_MIN_SCALE;
+export const CHARACTER_PART_MAX_SCALE = LAYER_MAX_SCALE;
 export const SHOT_MIN_DURATION_MS = 500 as const;

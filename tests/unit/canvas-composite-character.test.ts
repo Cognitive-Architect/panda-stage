@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { Image as KonvaImage, Rect } from 'react-konva';
+import { Group, Image as KonvaImage, Rect } from 'react-konva';
 import {
   evaluateShotAtTime,
   buildEditorStageRenderModel,
@@ -27,6 +27,7 @@ const BODY_ID = '10000000-0000-4000-8000-000000000004';
 const FACE_NORMAL_ID = '10000000-0000-4000-8000-000000000005';
 const FACE_ANGRY_ID = '10000000-0000-4000-8000-000000000006';
 const MOUTH_ID = '10000000-0000-4000-8000-000000000007';
+const HEAD_ID = '10000000-0000-4000-8000-000000000009';
 const AUDIO_ID = '10000000-0000-4000-8000-000000000008';
 const BODY_REPLACEMENT_ID = '10000000-0000-4000-8000-000000000012';
 const DIALOGUE_ID = '80000000-0000-4000-8000-000000000004';
@@ -53,15 +54,19 @@ function imageAsset(
   };
 }
 
-function compositeProject(options: { mouth?: boolean } = {}): Project {
+function compositeProject(
+  options: { mouth?: boolean; head?: boolean } = {},
+): Project {
   const base = buildProject();
   const mouth = options.mouth ?? true;
+  const hasHead = options.head ?? false;
   const character = base.characters[0]!;
   return ProjectSchema.parse({
     ...base,
     assets: [
       ...base.assets,
       imageAsset(BODY_ID, 'body', 800, 1_000),
+      ...(hasHead ? [imageAsset(HEAD_ID, 'head', 500, 650)] : []),
       imageAsset(FACE_NORMAL_ID, 'face-normal', 200, 100),
       imageAsset(FACE_ANGRY_ID, 'face-angry', 300, 200),
       ...(mouth ? [imageAsset(MOUTH_ID, 'mouth-open', 400, 300)] : []),
@@ -98,6 +103,15 @@ function compositeProject(options: { mouth?: boolean } = {}): Project {
         defaultExpressionId: IDS.expressionNormal,
         bodyAssetId: BODY_ID,
         facePlacement: { offsetX: 420, offsetY: -8, scale: 0.5 },
+        ...(hasHead
+          ? {
+              head: {
+                assetId: HEAD_ID,
+                placement: { offsetX: 20, offsetY: -360, scale: 0.8 },
+                pivot: { x: 15, y: -320 },
+              },
+            }
+          : {}),
         ...(mouth ? { mouthOpenAssetId: MOUTH_ID } : {}),
       },
     ],
@@ -430,6 +444,172 @@ describe('BFM-S04 composite Character Editor Canvas', () => {
       expect(event.cancelBubble).toBe(true);
       expect(onSelect).toHaveBeenLastCalledWith(IDS.layerChar);
     }
+  });
+
+  it('renders Head and Face inside one local Group while the Character Root owns transform and selection', () => {
+    const project = compositeProject({ mouth: false, head: true });
+    const { model } = selectableComposite(
+      project,
+      0,
+      [BODY_ID, HEAD_ID, FACE_NORMAL_ID],
+    );
+    const images = imageMap([BODY_ID, HEAD_ID, FACE_NORMAL_ID]);
+    const onSelect = vi.fn();
+    const element = SelectableLayer({
+      images,
+      layer: model.layer,
+      nodeRef: { current: null },
+      render: model.render,
+      selected: true,
+      visual: model.visual,
+      onSelect,
+      onCommitPosition: vi.fn(),
+      onCommitTransform: vi.fn(),
+      onError: vi.fn(),
+    });
+    const root = element.props as {
+      draggable: boolean;
+      x: number;
+      y: number;
+      children: React.ReactNode;
+    };
+    const children = childElements(root.children);
+    const headGroup = children.find(
+      (child) =>
+        child.type === Group &&
+        (child.props as { name?: string }).name ===
+          'selectable-canvas-head-group',
+    );
+    const headParts = headGroup
+      ? childElements(
+          (headGroup.props as { children?: React.ReactNode }).children,
+        ).filter((child) => child.type === KonvaImage)
+      : [];
+
+    expect(root).toMatchObject({ draggable: true, x: 500, y: 600 });
+    expect(headGroup?.props).toMatchObject({
+      x: 15,
+      y: -320,
+      offsetX: 15,
+      offsetY: -320,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+    });
+    expect((headGroup?.props as { draggable?: boolean } | undefined)?.draggable)
+      .not.toBe(true);
+    expect(
+      headParts.map(
+        (part) => (part.props as { image?: HTMLImageElement }).image,
+      ),
+    ).toEqual([images.get(HEAD_ID), images.get(FACE_NORMAL_ID)]);
+    expect(model.visual.headGroup?.partIds).toEqual([
+      `${IDS.layerChar}:head`,
+      `${IDS.layerChar}:face`,
+    ]);
+    expect(children.filter((child) => child.type === KonvaImage)).toHaveLength(3);
+    expect(
+      headParts.map(
+        (part) => (part.props as { image?: HTMLImageElement }).image,
+      ),
+    ).not.toContain(images.get(BODY_ID));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('keeps rotated and mirrored Head/Face hit areas aligned with rendered parts', () => {
+    const base = compositeProject({ mouth: false, head: true });
+    const character = base.characters[0]!;
+    if (character.mode !== 'composite' || !character.head) {
+      throw new Error('Expected a headed composite Character.');
+    }
+    const project = ProjectSchema.parse({
+      ...base,
+      characters: [
+        {
+          ...character,
+          facePlacement: {
+            ...character.facePlacement,
+            rotationDeg: 90,
+            flipX: true,
+          },
+          head: {
+            ...character.head,
+            placement: {
+              ...character.head.placement,
+              rotationDeg: -12,
+              flipX: true,
+            },
+          },
+        },
+      ],
+    });
+    const { model } = selectableComposite(
+      project,
+      0,
+      [BODY_ID, HEAD_ID, FACE_NORMAL_ID],
+    );
+    const element = SelectableLayer({
+      images: imageMap([BODY_ID, HEAD_ID, FACE_NORMAL_ID]),
+      layer: model.layer,
+      nodeRef: { current: null },
+      render: model.render,
+      selected: true,
+      visual: model.visual,
+      onSelect: vi.fn(),
+      onCommitPosition: vi.fn(),
+      onCommitTransform: vi.fn(),
+      onError: vi.fn(),
+    });
+    const children = childElements(
+      (element.props as { children: React.ReactNode }).children,
+    );
+    const headGroup = children.find(
+      (child) =>
+        child.type === Group &&
+        (child.props as { name?: string }).name ===
+          'selectable-canvas-head-group',
+    );
+    const headHitGroup = children.find(
+      (child) =>
+        child.type === Group &&
+        (child.props as { name?: string }).name ===
+          'selectable-canvas-head-hit-group',
+    );
+    const renderedParts = headGroup
+      ? childElements(
+          (headGroup.props as { children?: React.ReactNode }).children,
+        ).filter((child) => child.type === KonvaImage)
+      : [];
+    const hitAreas = headHitGroup
+      ? childElements(
+          (headHitGroup.props as { children?: React.ReactNode }).children,
+        ).filter(
+          (child) =>
+            child.type === Rect &&
+            (child.props as { name?: string }).name ===
+              'composite-visual-hit-area',
+        )
+      : [];
+    const transform = (part: React.ReactElement) => {
+      const props = part.props as Record<string, number>;
+      return {
+        offsetX: props.offsetX,
+        offsetY: props.offsetY,
+        rotation: props.rotation,
+        scaleX: props.scaleX,
+        scaleY: props.scaleY,
+        x: props.x,
+        y: props.y,
+      };
+    };
+
+    expect(renderedParts).toHaveLength(2);
+    expect(hitAreas).toHaveLength(2);
+    expect(hitAreas.map(transform)).toEqual(renderedParts.map(transform));
+    expect(renderedParts.map(transform)).toMatchObject([
+      { rotation: -12, scaleX: -1, scaleY: 1 },
+      { rotation: 90, scaleX: -1, scaleY: 1 },
+    ]);
   });
 
   it('refreshes combined bounds from Face source while keeping the root position stable', () => {

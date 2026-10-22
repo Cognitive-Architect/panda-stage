@@ -224,11 +224,21 @@ describe('IPC contracts', () => {
     expect(
       FullProbeExportRequestSchema.parse({
         projectDirectory: 'C:\\熊猫 项目',
-        audioPath: 'C:\\熊猫 项目\\音轨.wav',
+        audioClips: [
+          {
+            clipId: '70000000-0000-4000-8000-000000000660',
+            assetId: '10000000-0000-4000-8000-000000000660',
+            role: 'dialogue',
+            sourcePath: 'C:\\熊猫 项目\\音轨.wav',
+            startMs: 400,
+            endMs: 3_000,
+            offsetMs: 0,
+            volume: 1,
+          },
+        ],
         outputPath: 'C:\\熊猫 输出\\成片.mp4',
         durationMs: 3_000,
         fps: 24,
-        audioStartMs: 400,
         overwrite: true,
       }).projectDirectory,
     ).toContain('熊猫');

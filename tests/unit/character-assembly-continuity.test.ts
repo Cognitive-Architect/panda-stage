@@ -11,6 +11,7 @@ import {
 } from '../../src/renderer/stores/characterAssemblySessionStore';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import {
+  ASSEMBLY_DISCARD_CONFIRM_MESSAGE,
   isCharacterCreationSnapshot,
   resolveAssemblyExitDecision,
 } from '../../src/renderer/features/characters/characterAssemblyPreview';
@@ -46,6 +47,23 @@ function compositeProject(): Project {
   });
 }
 
+function compositeProjectWithHead(): Project {
+  const project = compositeProject();
+  return ProjectSchema.parse({
+    ...project,
+    characters: [
+      {
+        ...project.characters[0]!,
+        head: {
+          assetId: IDS.assetChar,
+          placement: { offsetX: 12, offsetY: -60, scale: 0.8 },
+          pivot: { x: 120, y: 160 },
+        },
+      },
+    ],
+  });
+}
+
 function definition(project: Project): CompositeCharacterDefinition {
   const character = project.characters[0]!;
   if (character.mode !== 'composite') {
@@ -53,6 +71,7 @@ function definition(project: Project): CompositeCharacterDefinition {
   }
   return {
     bodyAssetId: character.bodyAssetId,
+    bodyPlacement: { ...character.bodyPlacement },
     facePlacement: { ...character.facePlacement },
     expressionAssets: character.expressions.map((expression) => ({
       expressionId: expression.id,
@@ -67,7 +86,14 @@ function changedDefinition(project: Project): CompositeCharacterDefinition {
   return {
     ...current,
     bodyAssetId: IDS.assetChar2,
-    facePlacement: { offsetX: 24, offsetY: -12, scale: 1.25 },
+    bodyPlacement: { offsetX: 42, offsetY: -18, scale: 0.65 },
+    facePlacement: {
+      offsetX: 24,
+      offsetY: -12,
+      scale: 1.25,
+      rotationDeg: 30,
+      flipX: true,
+    },
     expressionAssets: [
       { expressionId: IDS.expressionNormal, assetId: IDS.assetChar2 },
       { expressionId: IDS.expressionAngry, assetId: IDS.assetChar },
@@ -110,6 +136,12 @@ function applyAssemblyChange(harnessValue: ReturnType<typeof harness>) {
 }
 
 describe('S09-R04 assembly exit decision', () => {
+  it('uses the human-facing “组装” term in the discard warning', () => {
+    expect(ASSEMBLY_DISCARD_CONFIRM_MESSAGE).toBe(
+      '组装更改尚未应用，离开将放弃这些更改。继续吗？',
+    );
+  });
+
   it('leaves immediately when nothing is pending', () => {
     expect(resolveAssemblyExitDecision(false, false)).toBe('leave');
     expect(resolveAssemblyExitDecision(false, true)).toBe('leave');
@@ -143,6 +175,103 @@ describe('S09-R04 assembly exit decision', () => {
 });
 
 describe('S09-R04 assembly workspace continuity', () => {
+  it('keeps Body/Head/Face edit selection in the active session without a Project or History write', () => {
+    const h = harness(compositeProjectWithHead());
+    const begin = beginOwned(h.assembly);
+    expect(begin.ok).toBe(true);
+    if (!begin.ok) return;
+    expect(begin.snapshot.editTarget).toBe('head');
+    const beforeProject = h.editor.getSnapshot()!;
+    const beforeHistory = h.editor.history.getSnapshot();
+
+    expect(
+      h.assembly.setEditTarget('face', begin.session.sessionId, begin.session.generation),
+    ).toBe(true);
+    const faceSelected = h.assembly.getSnapshot();
+    expect(faceSelected && !isCharacterCreationSnapshot(faceSelected)).toBe(true);
+    if (!faceSelected || isCharacterCreationSnapshot(faceSelected)) return;
+    expect(faceSelected.editTarget).toBe('face');
+    expect(faceSelected.draft.head).toEqual(begin.snapshot.draft.head);
+    expect(h.editor.getSnapshot()).toBe(beforeProject);
+    expect(h.editor.history.getSnapshot()).toEqual(beforeHistory);
+
+    expect(
+      h.assembly.setEditTarget('body', begin.session.sessionId, begin.session.generation),
+    ).toBe(true);
+    expect(h.assembly.getSnapshot()?.editTarget).toBe('body');
+    expect(h.editor.getSnapshot()).toBe(beforeProject);
+    expect(h.editor.history.getSnapshot()).toEqual(beforeHistory);
+
+    expect(
+      h.assembly.setEditTarget('head', begin.session.sessionId, begin.session.generation),
+    ).toBe(true);
+    expect(h.assembly.getSnapshot()?.editTarget).toBe('head');
+
+    const headless = harness();
+    const headlessBegin = beginOwned(headless.assembly);
+    expect(headlessBegin.ok).toBe(true);
+    if (headlessBegin.ok) {
+      expect(headlessBegin.snapshot.editTarget).toBe('face');
+      expect(
+        headless.assembly.setEditTarget(
+          'head',
+          headlessBegin.session.sessionId,
+          headlessBegin.session.generation,
+        ),
+      ).toBe(false);
+    }
+    h.assembly.dispose();
+    headless.assembly.dispose();
+  });
+
+  it('keeps target state through draft edits and rebuilds it across Apply, Undo, Redo, and reopen', () => {
+    const h = harness(compositeProjectWithHead());
+    const begin = beginOwned(h.assembly);
+    expect(begin.ok).toBe(true);
+    if (!begin.ok) return;
+    const original = begin.snapshot.draft;
+    expect(
+      h.assembly.setEditTarget('face', begin.session.sessionId, begin.session.generation),
+    ).toBe(true);
+    expect(
+      begin.session.updateDraft({
+        facePlacement: {
+          ...original.facePlacement,
+          offsetX: original.facePlacement.offsetX + 24,
+        },
+      }).ok,
+    ).toBe(true);
+    const faceDraft = h.assembly.getSnapshot();
+    expect(faceDraft && !isCharacterCreationSnapshot(faceDraft)).toBe(true);
+    if (!faceDraft || isCharacterCreationSnapshot(faceDraft)) return;
+    expect(faceDraft.editTarget).toBe('face');
+    expect(faceDraft.draft.head).toEqual(original.head);
+
+    expect(begin.session.commit().status).toBe('committed');
+    expect(h.assembly.getSnapshot()?.editTarget).toBe('head');
+    expect(h.editor.getSnapshot()?.revision).toBe(1);
+    expect(h.editor.history.getSnapshot().undoCount).toBe(1);
+
+    expect(h.editor.undo()).toBe(true);
+    expect(h.assembly.getSnapshot()?.editTarget).toBe('head');
+    expect(h.editor.redo()).toBe(true);
+    expect(h.assembly.getSnapshot()?.editTarget).toBe('head');
+
+    expect(
+      h.assembly.setEditTarget(
+        'face',
+        h.assembly.getSnapshot()!.sessionId,
+        h.assembly.getSnapshot()!.generation,
+      ),
+    ).toBe(true);
+    h.editor.open(PROJECT_ROOT, compositeProjectWithHead());
+    expect(h.assembly.getSnapshot()).toBeNull();
+    const reopened = h.assembly.begin(IDS.character);
+    expect(reopened.ok).toBe(true);
+    if (reopened.ok) expect(reopened.snapshot.editTarget).toBe('head');
+    h.assembly.dispose();
+  });
+
   it('rebuilds a fresh session after Undo and keeps the old handle stale', () => {
     const h = harness();
     applyAssemblyChange(h);

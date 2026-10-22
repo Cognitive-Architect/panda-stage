@@ -1,6 +1,9 @@
 import {
   CharacterServiceError,
+  DEFAULT_BODY_PLACEMENT,
   type CharacterExpressionDraft,
+  type CharacterHead,
+  type BodyPlacement,
   type CompositeCharacterDefinition,
   type CompositeCharacterUpdate,
   type CreateCompositeCharacterInput,
@@ -18,6 +21,8 @@ import {
 } from './EditorProjectStore';
 
 type Listener = () => void;
+
+export type CharacterAssemblyEditTarget = 'body' | 'head' | 'face';
 
 export type CharacterAssemblyErrorCode =
   | 'project-not-open'
@@ -47,6 +52,8 @@ export interface CharacterAssemblySnapshot {
   readonly projectId: string;
   readonly projectRoot: string;
   readonly characterId: string;
+  /** Session-only target for the Assembly Workbench's placement handles. */
+  readonly editTarget: CharacterAssemblyEditTarget;
   readonly draft: CompositeCharacterDefinition;
 }
 
@@ -59,7 +66,9 @@ export interface CharacterCreationDraftUpdate {
   defaultScale?: number | null;
   defaultFlipX?: boolean | null;
   bodyAssetId?: string;
+  bodyPlacement?: BodyPlacement;
   facePlacement?: FacePlacement;
+  head?: CharacterHead | null;
 }
 
 export interface CharacterCreationSnapshot {
@@ -70,6 +79,8 @@ export interface CharacterCreationSnapshot {
   readonly generation: number;
   readonly projectId: string;
   readonly projectRoot: string;
+  /** Session-only target for the Assembly Workbench's placement handles. */
+  readonly editTarget: CharacterAssemblyEditTarget;
   readonly draft: CreateCompositeCharacterInput;
 }
 
@@ -267,7 +278,9 @@ function cloneDefinition(
 ): CompositeCharacterDefinition {
   return {
     bodyAssetId: definition.bodyAssetId,
+    bodyPlacement: { ...definition.bodyPlacement },
     facePlacement: { ...definition.facePlacement },
+    ...(definition.head ? { head: cloneHead(definition.head) } : {}),
     expressionAssets: definition.expressionAssets.map((expression) => ({
       expressionId: expression.expressionId,
       assetId: expression.assetId,
@@ -283,7 +296,11 @@ function cloneCreationDraft(
     name: draft.name,
     expressions: draft.expressions.map((expression) => ({ ...expression })),
     bodyAssetId: draft.bodyAssetId,
+    ...(draft.bodyPlacement
+      ? { bodyPlacement: { ...draft.bodyPlacement } }
+      : {}),
     facePlacement: { ...draft.facePlacement },
+    ...(draft.head ? { head: cloneHead(draft.head) } : {}),
     ...(draft.defaultExpressionIndex === undefined
       ? {}
       : { defaultExpressionIndex: draft.defaultExpressionIndex }),
@@ -299,6 +316,34 @@ function cloneCreationDraft(
   };
 }
 
+function cloneHead(head: CharacterHead): CharacterHead {
+  return {
+    assetId: head.assetId,
+    placement: { ...head.placement },
+    pivot: { ...head.pivot },
+  };
+}
+
+function sameHead(
+  left: CharacterHead | null | undefined,
+  right: CharacterHead | null | undefined,
+): boolean {
+  if (left === null || left === undefined || right === null || right === undefined) {
+    return (left === null || left === undefined) &&
+      (right === null || right === undefined);
+  }
+  return (
+    left.assetId === right.assetId &&
+    left.placement.offsetX === right.placement.offsetX &&
+    left.placement.offsetY === right.placement.offsetY &&
+    left.placement.scale === right.placement.scale &&
+    left.placement.rotationDeg === right.placement.rotationDeg &&
+    left.placement.flipX === right.placement.flipX &&
+    left.pivot.x === right.pivot.x &&
+    left.pivot.y === right.pivot.y
+  );
+}
+
 function creationDraftsEqual(
   left: CreateCompositeCharacterInput,
   right: CreateCompositeCharacterInput,
@@ -306,14 +351,23 @@ function creationDraftsEqual(
   return (
     left.name === right.name &&
     left.bodyAssetId === right.bodyAssetId &&
+    (left.bodyPlacement?.offsetX ?? DEFAULT_BODY_PLACEMENT.offsetX) ===
+      (right.bodyPlacement?.offsetX ?? DEFAULT_BODY_PLACEMENT.offsetX) &&
+    (left.bodyPlacement?.offsetY ?? DEFAULT_BODY_PLACEMENT.offsetY) ===
+      (right.bodyPlacement?.offsetY ?? DEFAULT_BODY_PLACEMENT.offsetY) &&
+    (left.bodyPlacement?.scale ?? DEFAULT_BODY_PLACEMENT.scale) ===
+      (right.bodyPlacement?.scale ?? DEFAULT_BODY_PLACEMENT.scale) &&
     left.facePlacement.offsetX === right.facePlacement.offsetX &&
     left.facePlacement.offsetY === right.facePlacement.offsetY &&
     left.facePlacement.scale === right.facePlacement.scale &&
+    left.facePlacement.rotationDeg === right.facePlacement.rotationDeg &&
+    left.facePlacement.flipX === right.facePlacement.flipX &&
     (left.defaultExpressionIndex ?? 0) ===
       (right.defaultExpressionIndex ?? 0) &&
     (left.mouthOpenAssetId ?? null) === (right.mouthOpenAssetId ?? null) &&
     (left.defaultScale ?? 1) === (right.defaultScale ?? 1) &&
     (left.defaultFlipX ?? false) === (right.defaultFlipX ?? false) &&
+    sameHead(left.head, right.head) &&
     left.expressions.length === right.expressions.length &&
     left.expressions.every(
       (expression, index) =>
@@ -329,9 +383,15 @@ function definitionsEqual(
 ): boolean {
   if (
     left.bodyAssetId !== right.bodyAssetId ||
+    left.bodyPlacement.offsetX !== right.bodyPlacement.offsetX ||
+    left.bodyPlacement.offsetY !== right.bodyPlacement.offsetY ||
+    left.bodyPlacement.scale !== right.bodyPlacement.scale ||
     left.facePlacement.offsetX !== right.facePlacement.offsetX ||
     left.facePlacement.offsetY !== right.facePlacement.offsetY ||
     left.facePlacement.scale !== right.facePlacement.scale ||
+    left.facePlacement.rotationDeg !== right.facePlacement.rotationDeg ||
+    left.facePlacement.flipX !== right.facePlacement.flipX ||
+    !sameHead(left.head, right.head) ||
     left.mouthOpenAssetId !== right.mouthOpenAssetId ||
     left.expressionAssets.length !== right.expressionAssets.length
   ) {
@@ -360,8 +420,11 @@ function mergeDefinition(
   current: CompositeCharacterDefinition,
   update: CompositeCharacterUpdate,
 ): CompositeCharacterDefinition {
-  return {
+  const next: CompositeCharacterDefinition = {
     bodyAssetId: update.bodyAssetId ?? current.bodyAssetId,
+    bodyPlacement: update.bodyPlacement
+      ? { ...update.bodyPlacement }
+      : { ...current.bodyPlacement },
     facePlacement: update.facePlacement
       ? { ...update.facePlacement }
       : { ...current.facePlacement },
@@ -372,7 +435,15 @@ function mergeDefinition(
       update.mouthOpenAssetId === undefined
         ? current.mouthOpenAssetId
         : update.mouthOpenAssetId,
+    ...(update.head === undefined
+      ? current.head
+        ? { head: cloneHead(current.head) }
+        : {}
+      : update.head
+        ? { head: cloneHead(update.head) }
+        : {}),
   };
+  return next;
 }
 
 function mergeCreationDraft(
@@ -385,8 +456,15 @@ function mergeCreationDraft(
     next.expressions = update.expressions.map((expression) => ({ ...expression }));
   }
   if (update.bodyAssetId !== undefined) next.bodyAssetId = update.bodyAssetId;
+  if (update.bodyPlacement !== undefined) {
+    next.bodyPlacement = { ...update.bodyPlacement };
+  }
   if (update.facePlacement !== undefined) {
     next.facePlacement = { ...update.facePlacement };
+  }
+  if (update.head !== undefined) {
+    if (update.head === null) delete next.head;
+    else next.head = cloneHead(update.head);
   }
   if (update.defaultExpressionIndex !== undefined) {
     if (update.defaultExpressionIndex === null) {
@@ -435,6 +513,7 @@ export class CharacterAssemblySessionStore {
     | CharacterAssemblySnapshot
     | CharacterCreationSnapshot
     | null = null;
+  private editTarget: CharacterAssemblyEditTarget = 'face';
   private commitContext: CommitContext | null = null;
   private nextSessionId = 0;
   /**
@@ -458,6 +537,20 @@ export class CharacterAssemblySessionStore {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
+
+  /** Update only the active Assembly UI selection, without touching Project or History. */
+  setEditTarget(
+    target: CharacterAssemblyEditTarget,
+    sessionId: number,
+    generation: number,
+  ): boolean {
+    const active = this.activeForToken(sessionId, generation);
+    if (!active || (target === 'head' && !active.draft.head)) return false;
+    if (this.editTarget === target) return true;
+    this.editTarget = target;
+    this.emit();
+    return true;
+  }
 
   /**
    * Declare which Character the UI is still deliberately editing in assembly.
@@ -507,6 +600,7 @@ export class CharacterAssemblySessionStore {
       draft: cloneDefinition(definition),
     };
     this.active = session;
+    this.editTarget = session.draft.head ? 'head' : 'face';
     this.emit();
     return {
       ok: true,
@@ -550,6 +644,7 @@ export class CharacterAssemblySessionStore {
       draft: cloneCreationDraft(draft),
     };
     this.active = session;
+    this.editTarget = session.draft.head ? 'head' : 'face';
     this.emit();
     return {
       ok: true,
@@ -671,6 +766,7 @@ export class CharacterAssemblySessionStore {
       characterId: previous.characterId,
       draft: cloneDefinition(definition),
     };
+    this.editTarget = definition.head ? 'head' : 'face';
   }
 
   private createAssemblyHandle(
@@ -728,6 +824,7 @@ export class CharacterAssemblySessionStore {
         snapshot: this.snapshot as CharacterAssemblySnapshot,
       };
     }
+    this.reconcileEditTargetForHeadChange(active.draft.head, draft.head);
     active.draft = cloneDefinition(draft);
     this.emit();
     return {
@@ -835,6 +932,7 @@ export class CharacterAssemblySessionStore {
 
     active.baselineSnapshot = current;
     active.baselineDefinition = cloneDefinition(active.draft);
+    this.editTarget = active.draft.head ? 'head' : 'face';
     active.generation += 1;
     this.emit();
     return {
@@ -861,6 +959,7 @@ export class CharacterAssemblySessionStore {
         snapshot: this.snapshot as CharacterCreationSnapshot,
       };
     }
+    this.reconcileEditTargetForHeadChange(active.draft.head, draft.head);
     active.draft = cloneCreationDraft(draft);
     this.emit();
     return {
@@ -1073,6 +1172,7 @@ export class CharacterAssemblySessionStore {
         generation: active.generation,
         projectId: active.projectId,
         projectRoot: active.projectRoot,
+        editTarget: this.currentEditTarget(active),
         draft: cloneCreationDraft(active.draft),
       };
     }
@@ -1083,8 +1183,24 @@ export class CharacterAssemblySessionStore {
       projectId: active.projectId,
       projectRoot: active.projectRoot,
       characterId: active.characterId,
+      editTarget: this.currentEditTarget(active),
       draft: cloneDefinition(active.draft),
     };
+  }
+
+  private currentEditTarget(active: ActiveSession): CharacterAssemblyEditTarget {
+    if (this.editTarget === 'body') return 'body';
+    return active.draft.head && this.editTarget === 'head' ? 'head' : 'face';
+  }
+
+  private reconcileEditTargetForHeadChange(
+    previousHead: CharacterHead | null | undefined,
+    nextHead: CharacterHead | null | undefined,
+  ): void {
+    if (!nextHead && this.editTarget === 'head') this.editTarget = 'face';
+    else if (!previousHead && nextHead && this.editTarget === 'face') {
+      this.editTarget = 'head';
+    }
   }
 
   private mapBeginError(error: unknown): CharacterAssemblyError {
@@ -1179,6 +1295,7 @@ export class CharacterAssemblySessionStore {
   private clearActive(): void {
     this.active = null;
     this.commitContext = null;
+    this.editTarget = 'face';
   }
 
   private emit(): void {

@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 import {
+  PROJECT_SCHEMA_VERSION,
   evaluateShotAtTime,
   type Project,
   type Shot,
@@ -123,7 +124,7 @@ function buildShot(overrides: Partial<Shot> = {}): Shot {
 
 function buildProject(shot: Shot = buildShot()): Project {
   return {
-    schemaVersion: 8,
+    schemaVersion: PROJECT_SCHEMA_VERSION,
     id: randomUUID(),
     name: '熊猫剧场',
     width: 1_920,

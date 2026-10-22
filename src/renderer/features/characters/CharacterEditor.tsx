@@ -1,15 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type {
   Character,
   CharacterDimensionWarning,
   CompositeCharacterDefinition,
   ImageAsset,
+  Project,
 } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
+import type { CharacterAssemblyEditTarget } from '../../stores/characterAssemblySessionStore';
 import { Button } from '../../ui/Button';
 import { CharacterExpressionThumbnail } from './CharacterIdentity';
+import { CharacterTalkingHeadMotionPreview } from './CharacterTalkingHeadMotionPreview';
 import { ExpressionEditor } from './ExpressionEditor';
-import { ImageAssetPicker } from './ImageAssetPicker';
+import {
+  ImageAssetPicker,
+  ImageAssetPickerSelectedSurface,
+} from './ImageAssetPicker';
 import {
   getThumbnailFallbackIconKind,
   ThumbnailStateIcon,
@@ -21,6 +27,10 @@ export type CharacterDetailWorkspace =
   | 'assembly'
   | 'expressions'
   | 'settings';
+
+type HeadedCompositeCharacter = Extract<Character, { mode: 'composite' }> & {
+  head: NonNullable<Extract<Character, { mode: 'composite' }>['head']>;
+};
 
 export function isDefaultTransformPending(
   character: Pick<Character, 'defaultScale' | 'defaultFlipX'>,
@@ -39,6 +49,197 @@ export function characterRenameValue(
 ): string | null {
   const trimmed = nextName.trim();
   return trimmed.length > 0 && trimmed !== currentName ? trimmed : null;
+}
+
+const MOUTH_OVERFLOW_MENU_WIDTH = 132;
+const MOUTH_OVERFLOW_MENU_MIN_HEIGHT = 54;
+const MOUTH_OVERFLOW_MENU_GAP = 4;
+const MOUTH_OVERFLOW_MENU_VIEWPORT_MARGIN = 8;
+
+// The native top-layer popover escapes row clipping while keeping Tab order beside its trigger.
+function CharacterAssemblyMouthOverflowMenu({
+  disabled,
+  onClear,
+}: {
+  disabled: boolean;
+  onClear: () => void;
+}): React.JSX.Element {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const trigger = triggerRef.current;
+    const popover = popoverRef.current;
+    if (!trigger || !popover) return undefined;
+
+    const positionPopover = (force = false): void => {
+      if (!force && !popover.matches(':popover-open')) return;
+
+      const anchor = trigger.getBoundingClientRect();
+      const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+      const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+      if (
+        viewportWidth <= 0 ||
+        viewportHeight <= 0 ||
+        anchor.bottom <= 0 ||
+        anchor.top >= viewportHeight
+      ) {
+        if (popover.matches(':popover-open')) popover.hidePopover();
+        return;
+      }
+
+      const computedWidth = Number.parseFloat(getComputedStyle(popover).width);
+      const width = Math.min(
+        Number.isFinite(computedWidth) ? computedWidth : MOUTH_OVERFLOW_MENU_WIDTH,
+        Math.max(0, viewportWidth - MOUTH_OVERFLOW_MENU_VIEWPORT_MARGIN * 2),
+      );
+      const measuredHeight = popover.scrollHeight || MOUTH_OVERFLOW_MENU_MIN_HEIGHT;
+      const height = Math.max(MOUTH_OVERFLOW_MENU_MIN_HEIGHT, measuredHeight);
+      const spaceBelow = viewportHeight - anchor.bottom - MOUTH_OVERFLOW_MENU_VIEWPORT_MARGIN;
+      const spaceAbove = anchor.top - MOUTH_OVERFLOW_MENU_VIEWPORT_MARGIN;
+      const opensAbove =
+        spaceBelow < height + MOUTH_OVERFLOW_MENU_GAP && spaceAbove > spaceBelow;
+      const availableSpace = Math.max(
+        0,
+        (opensAbove ? spaceAbove : spaceBelow) - MOUTH_OVERFLOW_MENU_GAP,
+      );
+      const visibleHeight = Math.min(height, availableSpace);
+      const maxLeft = Math.max(
+        0,
+        viewportWidth - width - MOUTH_OVERFLOW_MENU_VIEWPORT_MARGIN,
+      );
+      const left = Math.max(
+        MOUTH_OVERFLOW_MENU_VIEWPORT_MARGIN,
+        Math.min(anchor.right - width, maxLeft),
+      );
+      const top = opensAbove
+        ? Math.max(
+            MOUTH_OVERFLOW_MENU_VIEWPORT_MARGIN,
+            anchor.top - MOUTH_OVERFLOW_MENU_GAP - visibleHeight,
+          )
+        : Math.min(
+            viewportHeight - MOUTH_OVERFLOW_MENU_VIEWPORT_MARGIN - visibleHeight,
+            anchor.bottom + MOUTH_OVERFLOW_MENU_GAP,
+          );
+
+      popover.style.width = `${width}px`;
+      popover.style.maxHeight = `${availableSpace}px`;
+      popover.style.left = `${left}px`;
+      popover.style.top = `${top}px`;
+      popover.dataset.placement = opensAbove ? 'above' : 'below';
+    };
+
+    const onBeforeToggle = (event: Event): void => {
+      if ((event as Event & { newState?: string }).newState === 'open') {
+        positionPopover(true);
+      }
+    };
+    const onToggle = (): void => {
+      const isOpen = popover.matches(':popover-open');
+      setOpen(isOpen);
+      if (isOpen) positionPopover(true);
+    };
+    const onViewportMove = (): void => positionPopover();
+    const onFocusIn = (event: FocusEvent): void => {
+      const target = event.target;
+      if (
+        popover.matches(':popover-open') &&
+        target instanceof Node &&
+        !trigger.contains(target) &&
+        !popover.contains(target)
+      ) {
+        popover.hidePopover();
+      }
+    };
+
+    popover.addEventListener('beforetoggle', onBeforeToggle);
+    popover.addEventListener('toggle', onToggle);
+    document.addEventListener('scroll', onViewportMove, true);
+    document.addEventListener('focusin', onFocusIn, true);
+    window.addEventListener('resize', onViewportMove);
+    window.visualViewport?.addEventListener('resize', onViewportMove);
+    window.visualViewport?.addEventListener('scroll', onViewportMove);
+    return () => {
+      popover.removeEventListener('beforetoggle', onBeforeToggle);
+      popover.removeEventListener('toggle', onToggle);
+      document.removeEventListener('scroll', onViewportMove, true);
+      document.removeEventListener('focusin', onFocusIn, true);
+      window.removeEventListener('resize', onViewportMove);
+      window.visualViewport?.removeEventListener('resize', onViewportMove);
+      window.visualViewport?.removeEventListener('scroll', onViewportMove);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (disabled && popoverRef.current?.matches(':popover-open')) {
+      popoverRef.current.hidePopover();
+    }
+  }, [disabled]);
+
+  const clearMouth = (): void => {
+    const picker = triggerRef.current?.closest<HTMLElement>(
+      '[data-testid="character-assembly-mouth-picker"]',
+    );
+    popoverRef.current?.hidePopover();
+    onClear();
+    window.requestAnimationFrame(() => {
+      picker
+        ?.querySelector<HTMLButtonElement>(
+          '[data-testid="character-assembly-mouth-picker-selected"]',
+        )
+        ?.focus();
+    });
+  };
+
+  return (
+    <div
+      className="character-assembly-mouth-overflow"
+      onKeyDown={(event) => {
+        if (
+          event.key === 'Escape' &&
+          popoverRef.current?.matches(':popover-open')
+        ) {
+          event.stopPropagation();
+        }
+      }}
+    >
+      <button
+        aria-controls={id}
+        aria-expanded={open}
+        aria-label="张嘴脸更多操作"
+        className="character-assembly-mouth-overflow-trigger"
+        data-testid="character-assembly-mouth-overflow-trigger"
+        disabled={disabled}
+        popoverTarget={id}
+        popoverTargetAction="toggle"
+        ref={triggerRef}
+        type="button"
+      >
+        <span aria-hidden="true">⋯</span>
+      </button>
+      <div
+        aria-label="张嘴脸更多操作"
+        className="character-assembly-mouth-overflow-menu"
+        data-testid="character-assembly-mouth-overflow-menu"
+        id={id}
+        popover="auto"
+        ref={popoverRef}
+        role="group"
+      >
+        <button
+          className="character-mouth-clear"
+          data-testid="character-assembly-mouth-clear"
+          disabled={disabled}
+          onClick={clearMouth}
+          type="button"
+        >
+          清除
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function CharacterThumbnailFallback({
@@ -88,6 +289,7 @@ function CharacterThumbnailFallback({
 
 export interface CharacterEditorProps {
   character: Character | null;
+  project?: Project;
   imageAssets: readonly ImageAsset[];
   thumbnails: Readonly<Record<string, ThumbnailState>>;
   warnings: readonly CharacterDimensionWarning[];
@@ -103,9 +305,13 @@ export interface CharacterEditorProps {
   assemblyDraft?: CompositeCharacterDefinition | null;
   onOpenAssembly?: () => boolean;
   onLeaveAssembly?: () => boolean;
+  onSetAssemblyHeadAsset?: (assetId: string | null) => void;
+  assemblyEditTarget?: CharacterAssemblyEditTarget;
+  onSelectAssemblyEditTarget?: (target: CharacterAssemblyEditTarget) => void;
   onSetAssemblyBodyAsset?: (assetId: string) => void;
   onSetAssemblyMouthAsset?: (assetId: string | null) => void;
   onSetDefaultTransform: (scale: number, flipX: boolean) => void;
+  onSetTalkingHeadMotionIntensityPercent?: (intensityPercent: number) => void;
   hasCurrentShot?: boolean;
   onPlaceInCurrentShot?: (defaultTransformPending: boolean) => void;
   onThumbnailError: (assetId: string) => void;
@@ -119,6 +325,7 @@ export interface CharacterEditorProps {
 
 export function CharacterEditor({
   character,
+  project,
   imageAssets,
   thumbnails,
   warnings,
@@ -134,9 +341,13 @@ export function CharacterEditor({
   assemblyDraft = null,
   onOpenAssembly = () => false,
   onLeaveAssembly = () => true,
+  onSetAssemblyHeadAsset = () => undefined,
+  assemblyEditTarget = 'face',
+  onSelectAssemblyEditTarget = () => undefined,
   onSetAssemblyBodyAsset = () => undefined,
   onSetAssemblyMouthAsset = () => undefined,
   onSetDefaultTransform,
+  onSetTalkingHeadMotionIntensityPercent = () => undefined,
   hasCurrentShot = false,
   onPlaceInCurrentShot = () => undefined,
   onThumbnailError,
@@ -150,6 +361,16 @@ export function CharacterEditor({
   const [name, setName] = useState(character?.name ?? '');
   const [scale, setScale] = useState(character?.defaultScale ?? 1);
   const [flipX, setFlipX] = useState(character?.defaultFlipX ?? false);
+  const [talkingHeadMotionIntensityPercent, setTalkingHeadMotionIntensityPercent] =
+    useState(
+      character?.mode === 'composite'
+        ? character.talkingHeadMotionIntensityPercent
+        : 100,
+    );
+  const [isTalkingHeadMotionPreviewing, setIsTalkingHeadMotionPreviewing] =
+    useState(false);
+  const [hasStartedTalkingHeadMotionPreview, setHasStartedTalkingHeadMotionPreview] =
+    useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [expressionAddOpen, setExpressionAddOpen] = useState(false);
   const [activeWorkspace, setActiveWorkspace] =
@@ -157,6 +378,21 @@ export function CharacterEditor({
       assemblyDraft ? 'assembly' : 'expressions',
     );
   const assemblyDraftWasOpen = useRef(Boolean(assemblyDraft));
+
+  const persistedTalkingHeadMotionIntensityPercent =
+    character?.mode === 'composite'
+      ? character.talkingHeadMotionIntensityPercent
+      : 100;
+  const hasTalkingHeadMotionControl = Boolean(
+    character?.mode === 'composite' && character.head,
+  );
+  const talkingHeadSettingsVisible =
+    view !== 'expression' &&
+    !(
+      presentation === 'landscape' &&
+      view === 'detail' &&
+      activeWorkspace !== 'settings'
+    );
 
   useEffect(() => {
     if (!character) return;
@@ -170,6 +406,30 @@ export function CharacterEditor({
     setScale(character.defaultScale);
     setFlipX(character.defaultFlipX);
   }, [character?.defaultFlipX, character?.defaultScale, character?.id]);
+
+  useEffect(() => {
+    setTalkingHeadMotionIntensityPercent(
+      persistedTalkingHeadMotionIntensityPercent,
+    );
+    setIsTalkingHeadMotionPreviewing(false);
+    setHasStartedTalkingHeadMotionPreview(false);
+  }, [character?.id, persistedTalkingHeadMotionIntensityPercent]);
+
+  useEffect(() => {
+    if (!talkingHeadSettingsVisible || !hasTalkingHeadMotionControl) {
+      setIsTalkingHeadMotionPreviewing(false);
+      setHasStartedTalkingHeadMotionPreview(false);
+    }
+    if (!hasTalkingHeadMotionControl) {
+      setTalkingHeadMotionIntensityPercent(
+        persistedTalkingHeadMotionIntensityPercent,
+      );
+    }
+  }, [
+    hasTalkingHeadMotionControl,
+    persistedTalkingHeadMotionIntensityPercent,
+    talkingHeadSettingsVisible,
+  ]);
 
   useEffect(() => {
     const hasAssemblyDraft = Boolean(assemblyDraft);
@@ -216,6 +476,11 @@ export function CharacterEditor({
     );
   }
 
+  const headedCompositeCharacter: HeadedCompositeCharacter | null =
+    character.mode === 'composite' && character.head
+      ? (character as HeadedCompositeCharacter)
+      : null;
+
   const formalDefaultExpression = character.expressions.find(
     (expression) => expression.id === character.defaultExpressionId,
   );
@@ -250,6 +515,9 @@ export function CharacterEditor({
           : null;
   const nextRenameValue = characterRenameValue(name, character.name);
   const compositeCharacter = character.mode === 'composite';
+  const assemblyMouthAssetId = assemblyDraft
+    ? assemblyDraft.mouthOpenAssetId ?? null
+    : character.mouthOpenAssetId ?? null;
 
   const switchDetailWorkspace = (
     nextWorkspace: CharacterDetailWorkspace,
@@ -266,6 +534,143 @@ export function CharacterEditor({
     if (activeWorkspace === 'expressions') setExpressionAddOpen(false);
     setActiveWorkspace(nextWorkspace);
   };
+
+  const talkingHeadIntensityInputId =
+    `character-talking-head-intensity-${character.id}`;
+  const talkingHeadIntensityLabelId =
+    `character-talking-head-label-${character.id}`;
+  const talkingHeadSettings = headedCompositeCharacter ? (
+    <section
+      aria-labelledby={talkingHeadIntensityLabelId}
+      className="character-settings-section character-talking-head-setting"
+      data-intensity-pending={
+        talkingHeadMotionIntensityPercent !==
+        persistedTalkingHeadMotionIntensityPercent
+      }
+      data-testid="character-talking-head-settings"
+    >
+      <div className="character-talking-head-intensity-control">
+        <div className="character-talking-head-field-heading">
+          <label
+            htmlFor={talkingHeadIntensityInputId}
+            id={talkingHeadIntensityLabelId}
+          >
+            点头强度
+          </label>
+          <output
+            aria-live="polite"
+            className="character-talking-head-value"
+            data-testid="character-talking-head-intensity-value"
+            htmlFor={talkingHeadIntensityInputId}
+          >
+            {talkingHeadMotionIntensityPercent}%
+          </output>
+        </div>
+        <input
+          aria-label="点头强度"
+          data-testid="character-talking-head-intensity"
+          disabled={disabled}
+          id={talkingHeadIntensityInputId}
+          max={200}
+          min={0}
+          onChange={(event) =>
+            setTalkingHeadMotionIntensityPercent(Number(event.target.value))
+          }
+          step={10}
+          type="range"
+          value={talkingHeadMotionIntensityPercent}
+        />
+      </div>
+      <div
+        aria-hidden="true"
+        className="character-talking-head-scale-labels"
+      >
+        <span>静止</span>
+        <span>标准</span>
+        <span>明显</span>
+      </div>
+      <div className="character-talking-head-actions">
+        <div>
+          <button
+            className="character-talking-head-preview-button"
+            data-testid="character-talking-head-preview-toggle"
+            disabled={disabled}
+            onClick={() => {
+              setHasStartedTalkingHeadMotionPreview(true);
+              setIsTalkingHeadMotionPreviewing((playing) => !playing);
+            }}
+            type="button"
+          >
+            {isTalkingHeadMotionPreviewing ? '停止预览' : '预览'}
+          </button>
+          <button
+            className="character-talking-head-default-button"
+            data-testid="character-talking-head-restore-default"
+            disabled={
+              disabled || talkingHeadMotionIntensityPercent === 100
+            }
+            onClick={() => setTalkingHeadMotionIntensityPercent(100)}
+            type="button"
+          >
+            恢复默认
+          </button>
+        </div>
+      </div>
+      {hasStartedTalkingHeadMotionPreview && project ? (
+        <CharacterTalkingHeadMotionPreview
+          character={headedCompositeCharacter}
+          intensityPercent={talkingHeadMotionIntensityPercent}
+          playing={isTalkingHeadMotionPreviewing}
+          project={project}
+          thumbnails={thumbnails}
+        />
+      ) : null}
+      {talkingHeadMotionIntensityPercent !==
+      persistedTalkingHeadMotionIntensityPercent ? (
+        <div
+          aria-live="polite"
+          className="character-default-pending character-talking-head-pending"
+          data-testid="character-talking-head-pending"
+          role="status"
+        >
+          <div>
+            <strong>● 有未应用更改</strong>
+            <span>应用后保存到此角色</span>
+          </div>
+          <div className="character-default-action-row">
+            <button
+              className="character-default-revert"
+              data-testid="character-talking-head-revert"
+              disabled={disabled}
+              onClick={() => {
+                setTalkingHeadMotionIntensityPercent(
+                  persistedTalkingHeadMotionIntensityPercent,
+                );
+                setIsTalkingHeadMotionPreviewing(false);
+              }}
+              type="button"
+            >
+              还原
+            </button>
+            <button
+              className="character-default-apply"
+              data-testid="character-talking-head-apply"
+              disabled={disabled}
+              onClick={() => {
+                setIsTalkingHeadMotionPreviewing(false);
+                onSetTalkingHeadMotionIntensityPercent(
+                  talkingHeadMotionIntensityPercent,
+                );
+              }}
+              type="button"
+            >
+              应用
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  ) : null;
 
   return (
     <article
@@ -286,6 +691,7 @@ export function CharacterEditor({
           className={`character-detail-navigation${landscapeDetail ? ' character-detail-navigation-detail' : ''}`}
         >
           <button
+            aria-label={landscapeDetail ? '返回角色列表' : undefined}
             className="character-back-button"
             data-testid={
               landscapeExpression
@@ -295,9 +701,14 @@ export function CharacterEditor({
             onClick={
               landscapeExpression ? onBackToDetail : onBackToList
             }
+            title={landscapeDetail ? '返回角色列表' : undefined}
             type="button"
           >
-            {landscapeExpression ? '← 返回角色详情' : '← 角色列表'}
+            {landscapeDetail ? (
+              <span aria-hidden="true">←</span>
+            ) : (
+              '← 返回角色详情'
+            )}
           </button>
           {landscapeDetail ? (
             <h1
@@ -311,6 +722,21 @@ export function CharacterEditor({
               {`${character.name} · 表情管理`}
             </strong>
           )}
+          {landscapeDetail ? (
+            <Button
+              aria-label="加入当前镜头"
+              className="character-detail-place-navigation-action"
+              data-testid="character-detail-place-current-shot"
+              disabled={placementUnavailableReason !== null}
+              onClick={() =>
+                onPlaceInCurrentShot(placementBlockedByTransform)
+              }
+              title={placementUnavailableReason ?? '加入当前镜头'}
+              variant="secondary"
+            >
+              ＋ 加入镜头
+            </Button>
+          ) : null}
           <button
             aria-label="关闭角色抽屉"
             className="resource-activity-close character-detail-close"
@@ -448,25 +874,27 @@ export function CharacterEditor({
                   </>
                 )}
               </div>
-              {activeWorkspace === 'expressions' ? (
-                <button
-                  aria-expanded={expressionAddOpen}
-                  className="character-detail-add-expression-trigger"
-                  data-testid="expression-add-trigger"
-                  disabled={disabled || imageAssets.length === 0}
-                  onClick={() =>
-                    setExpressionAddOpen((isOpen) => !isOpen)
-                  }
-                  type="button"
-                >
-                  ＋ 添加表情
-                </button>
-              ) : null}
+              <div className="character-detail-identity-actions">
+                {activeWorkspace === 'expressions' ? (
+                  <button
+                    aria-expanded={expressionAddOpen}
+                    className="character-detail-add-expression-trigger"
+                    data-testid="expression-add-trigger"
+                    disabled={disabled || imageAssets.length === 0}
+                    onClick={() =>
+                      setExpressionAddOpen((isOpen) => !isOpen)
+                    }
+                    type="button"
+                  >
+                    ＋ 添加表情
+                  </button>
+                ) : null}
+              </div>
             </div>
           </section>
         </>
       ) : null}
-      {view === 'detail' ? (
+      {view === 'detail' && !landscapeDetail ? (
         <Button
           className="character-detail-place-action"
           data-testid="character-detail-place-current-shot"
@@ -551,6 +979,7 @@ export function CharacterEditor({
           </button>
         </section>
       ) : null}
+      {view !== 'expression' && !landscapeDetail ? talkingHeadSettings : null}
       {view === 'detail' && !landscapeDetail ? (
         <section
           aria-labelledby="character-expression-summary-heading"
@@ -621,7 +1050,7 @@ export function CharacterEditor({
                 onClick={() => switchDetailWorkspace('assembly')}
                 type="button"
               >
-                装配
+                组装
               </button>
             ) : null}
             <button
@@ -661,7 +1090,7 @@ export function CharacterEditor({
           </nav>
           {compositeCharacter ? (
             <section
-              aria-label="角色装配素材"
+              aria-label="角色组装素材"
               className="character-workspace-panel character-assembly-drawer-panel"
               data-testid="character-assembly-drawer-panel"
               data-workspace="assembly"
@@ -675,6 +1104,11 @@ export function CharacterEditor({
                   label: '请选择图片',
                 }}
                 label="身体"
+                onSelectedAssetActivate={
+                  assemblyDraft?.bodyAssetId
+                    ? () => onSelectAssemblyEditTarget('body')
+                    : undefined
+                }
                 onChange={(assetId) => {
                   if (assetId) onSetAssemblyBodyAsset(assetId);
                 }}
@@ -688,40 +1122,81 @@ export function CharacterEditor({
                 testId="character-assembly-body-picker"
                 thumbnails={thumbnails}
                 disabled={disabled}
+                selectedAssetActive={assemblyEditTarget === 'body'}
+                showEditTargetStatus={false}
+                selectedSurface
+              />
+              <ImageAssetPicker
+                assets={imageAssets}
+                emptyOption={{ label: '不添加头部', optional: true }}
+                emptyActionLabel="选择"
+                label="头部"
+                onChange={onSetAssemblyHeadAsset}
+                onThumbnailError={onThumbnailError}
+                onSelectedAssetActivate={
+                  assemblyDraft?.head
+                    ? () => onSelectAssemblyEditTarget('head')
+                    : undefined
+                }
+                searchAndPaginate
+                selectedAssetId={
+                  assemblyDraft
+                    ? assemblyDraft.head?.assetId ?? null
+                    : character.head?.assetId ?? null
+                }
+                showEditTargetStatus={false}
+                showOptionalLabel={false}
+                testId="character-assembly-head-asset"
+                thumbnails={thumbnails}
+                disabled={disabled}
+                selectedAssetActive={assemblyEditTarget === 'head'}
+                selectedSurface
               />
               <div
-                className="character-assembly-default-face-summary"
+                className="character-assembly-default-face-summary image-asset-picker"
                 data-testid="character-assembly-default-face-summary"
               >
                 <div className="image-asset-picker-heading">
                   <strong>默认脸</strong>
                 </div>
                 {defaultExpression ? (
-                  <button
-                    aria-label={`管理默认脸：${defaultExpression.name}`}
-                    className="image-asset-picker-selected"
-                    data-testid="character-assembly-go-expressions"
-                    onClick={() => switchDetailWorkspace('expressions')}
-                    type="button"
-                  >
-                    <CharacterExpressionThumbnail
-                      className="image-asset-picker-selected-thumbnail"
-                      expression={defaultExpression}
-                      onThumbnailError={onThumbnailError}
-                      thumbnail={defaultThumbnail}
-                    />
-                    <span className="image-asset-picker-selected-copy">
-                      <strong>{defaultExpression.name}</strong>
-                      <small>
-                        {defaultExpressionAsset
-                          ? `${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`
-                          : '素材不可用'}
-                      </small>
-                    </span>
-                    <span className="image-asset-picker-selected-action">
+                  <ImageAssetPickerSelectedSurface>
+                    <button
+                      aria-label={`默认脸：${defaultExpression.name}，选择为编辑对象`}
+                      aria-pressed={assemblyEditTarget === 'face'}
+                      className="image-asset-picker-selected image-asset-picker-selected--compact-edit-target"
+                      data-edit-target-selected={String(assemblyEditTarget === 'face')}
+                      data-testid="character-assembly-default-face-select"
+                      disabled={disabled || !assemblyDraft}
+                      onClick={() => onSelectAssemblyEditTarget('face')}
+                      type="button"
+                    >
+                      <CharacterExpressionThumbnail
+                        className="image-asset-picker-selected-thumbnail"
+                        expression={defaultExpression}
+                        onThumbnailError={onThumbnailError}
+                        thumbnail={defaultThumbnail}
+                      />
+                      <span className="image-asset-picker-selected-copy">
+                        <strong>{defaultExpression.name}</strong>
+                        <small>
+                          {defaultExpressionAsset
+                            ? `${defaultExpressionAsset.name} · ${defaultExpressionAsset.width}×${defaultExpressionAsset.height}`
+                            : '素材不可用'}
+                        </small>
+                      </span>
+                    </button>
+                    <button
+                      aria-label={`管理默认脸：${defaultExpression.name}`}
+                      className="image-asset-picker-selected-action character-assembly-selected-action-button"
+                      data-testid="character-assembly-go-expressions"
+                      disabled={disabled}
+                      onClick={() => switchDetailWorkspace('expressions')}
+                      type="button"
+                    >
                       管理
-                    </span>
-                  </button>
+                    </button>
+                  </ImageAssetPickerSelectedSurface>
                 ) : null}
               </div>
               <ImageAssetPicker
@@ -732,31 +1207,17 @@ export function CharacterEditor({
                 label="张嘴脸"
                 onChange={onSetAssemblyMouthAsset}
                 onThumbnailError={onThumbnailError}
-                selectedAssetId={
-                  assemblyDraft?.mouthOpenAssetId ??
-                  character.mouthOpenAssetId ??
-                  null
-                }
+                selectedAssetId={assemblyMouthAssetId}
                 testId="character-assembly-mouth-picker"
                 thumbnails={thumbnails}
                 disabled={disabled}
+                selectedSurface
                 selectedAction={
-                  (assemblyDraft?.mouthOpenAssetId ??
-                    character.mouthOpenAssetId) ? (
-                    <details className="character-assembly-mouth-overflow">
-                      <summary aria-label="张嘴脸更多操作">⋯</summary>
-                      <div className="character-assembly-mouth-overflow-menu">
-                        <button
-                          className="character-mouth-clear"
-                          data-testid="character-assembly-mouth-clear"
-                          disabled={disabled}
-                          onClick={() => onSetAssemblyMouthAsset(null)}
-                          type="button"
-                        >
-                          清除
-                        </button>
-                      </div>
-                    </details>
+                  assemblyMouthAssetId ? (
+                    <CharacterAssemblyMouthOverflowMenu
+                      disabled={disabled}
+                      onClear={() => onSetAssemblyMouthAsset(null)}
+                    />
                   ) : undefined
                 }
               />
@@ -890,6 +1351,7 @@ export function CharacterEditor({
                 </div>
               ) : null}
             </section>
+            {talkingHeadSettings}
             {!compositeCharacter ? (
             <section className="character-settings-section character-mouth-setting-visual">
               <div

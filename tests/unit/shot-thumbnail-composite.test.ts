@@ -227,7 +227,13 @@ describe('Shot thumbnail composite rendering (Issue #608)', () => {
       { x: -400, y: -500, width: 800, height: 1000 },
       { x: -50, y: -240, width: 320, height: 320 },
     ]);
-    expect(visual.facePlacement).toEqual({ offsetX: 110, offsetY: -80, scale: 0.5 });
+    expect(visual.facePlacement).toEqual({
+      offsetX: 110,
+      offsetY: -80,
+      scale: 0.5,
+      rotationDeg: 0,
+      flipX: false,
+    });
     expect(visual.ownerTransform).toMatchObject({
       x: 960,
       y: 540,

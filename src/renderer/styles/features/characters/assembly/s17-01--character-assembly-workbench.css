@@ -517,12 +517,6 @@
   }
 }
 
-.character-assembly-default-face-summary {
-  display: grid;
-  min-width: 0;
-  gap: 6px;
-}
-
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
@@ -534,21 +528,71 @@
   min-width: 88px;
 }
 
-.character-assembly-drawer-panel .image-asset-picker-selected-row {
-  display: grid;
+.character-assembly-drawer-panel .image-asset-picker-selected-row--surface {
+  display: flex;
   min-width: 0;
   min-height: 82px;
-  grid-template-columns: minmax(0, 1fr) max-content;
-  align-items: center;
-  gap: 8px;
+  align-items: stretch;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--image-asset-picker-selected-surface-border);
+  border-radius: var(--image-asset-picker-selected-surface-radius);
+  background: var(--image-asset-picker-selected-surface-background);
 }
 
 .character-assembly-drawer-panel
-  .image-asset-picker-selected {
-  min-height: 82px;
+  .image-asset-picker-selected-row--surface:has(
+    > .image-asset-picker-selected:hover:not(:disabled),
+    > .image-asset-picker-selected[aria-pressed='true'],
+    > .character-assembly-mouth-overflow
+      > .character-assembly-mouth-overflow-trigger:hover:not(:disabled)
+  ) {
+  border-color: var(--image-asset-picker-selected-surface-border-hover);
+  background: var(--image-asset-picker-selected-surface-background-hover);
+}
+
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface:has(
+    > .image-asset-picker-selected:focus-visible,
+    > .character-assembly-mouth-overflow
+      > .character-assembly-mouth-overflow-trigger:focus-visible
+  ) {
+  outline: 2px solid var(--ui-color-selected-border);
+  outline-offset: 2px;
+}
+
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface
+  > .image-asset-picker-selected {
+  box-sizing: border-box;
+  width: auto;
+  min-height: 80px;
+  flex: 1 1 auto;
   padding: 6px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   grid-template-columns: 68px minmax(0, 1fr) auto;
   gap: 9px;
+}
+
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface
+  > .image-asset-picker-selected--compact-edit-target {
+  grid-template-columns: 68px minmax(0, 1fr);
+}
+
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface
+  > .image-asset-picker-selected:hover:not(:disabled),
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface
+  > .image-asset-picker-selected:focus-visible,
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface
+  > .image-asset-picker-selected-empty {
+  border-color: transparent;
+  background: transparent;
 }
 
 .character-assembly-drawer-panel
@@ -573,43 +617,95 @@
   font-size: 10px;
 }
 
-.character-assembly-mouth-overflow {
-  position: relative;
-  margin-right: 5px;
-}
-
-.character-assembly-mouth-overflow > summary {
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface
+  > .character-assembly-selected-action-button {
+  box-sizing: border-box;
   display: grid;
-  width: var(--ui-touch-icon);
-  min-width: 44px;
-  height: var(--ui-touch-icon);
+  min-width: 54px;
+  width: max-content;
+  height: 44px;
   min-height: 44px;
-  border: 1px solid rgb(154 216 172 / 25%);
+  flex: 0 0 auto;
+  align-self: center;
+  place-items: center;
+  margin: 0 8px;
+  padding: 0 6px;
+  border: 1px solid var(--ui-color-border);
   border-radius: var(--ui-radius-small);
   color: var(--ui-color-text-secondary);
   background: var(--ui-color-surface-work);
+  font: var(--ui-font-secondary);
+  font-size: 10px;
+}
+
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface
+  > .character-assembly-selected-action-button:hover:not(:disabled),
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface
+  > .character-assembly-selected-action-button:focus-visible {
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-surface-app);
+}
+
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface
+  > .character-assembly-selected-action-button:focus-visible {
+  outline: 2px solid var(--ui-color-selected-border);
+  outline-offset: 2px;
+}
+
+.character-assembly-drawer-panel
+  .image-asset-picker-selected-row--surface:has(
+    > .image-asset-picker-selected[aria-pressed='true']
+  ) {
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-selected-surface);
+}
+
+.character-assembly-mouth-overflow {
+  position: relative;
+  display: grid;
+  min-width: 44px;
+  flex: 0 0 44px;
+  align-items: center;
+  margin-right: 8px;
+}
+
+.character-assembly-mouth-overflow-trigger {
+  appearance: none;
+  display: grid;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
   cursor: pointer;
-  list-style: none;
+  padding: 0;
   place-items: center;
 }
 
-.character-assembly-mouth-overflow > summary::-webkit-details-marker {
-  display: none;
-}
-
-.character-assembly-mouth-overflow > summary:hover,
-.character-assembly-mouth-overflow > summary:focus-visible {
-  border-color: var(--ui-color-selected-border);
+.character-assembly-mouth-overflow-trigger:hover:not(:disabled),
+.character-assembly-mouth-overflow-trigger:focus-visible {
   color: var(--ui-color-text-primary);
 }
 
-.character-assembly-mouth-overflow-menu {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 4px);
-  right: 0;
+.character-assembly-mouth-overflow-menu[popover] {
+  position: fixed;
+  inset: auto;
+  width: 132px;
   min-width: 112px;
+  min-height: 54px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  margin: 0;
   padding: 4px;
+  box-sizing: border-box;
   border: 1px solid var(--ui-color-border);
   border-radius: var(--ui-radius-small);
   background: var(--ui-color-surface-app);
@@ -638,7 +734,7 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
-  grid-template-rows: max-content minmax(0, 1fr) max-content;
+  grid-template-rows: minmax(0, 1fr) max-content;
   gap: var(--ui-space-3);
   overflow: hidden;
   padding: var(--ui-space-4);
@@ -646,38 +742,15 @@
   background: var(--ui-color-surface-app);
 }
 
-.character-assembly-workbench-header {
-  display: flex;
-  min-width: 0;
-  min-height: 38px;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ui-space-3);
+.character-assembly-head-picker {
+  position: relative;
+  z-index: 6;
+  width: min(280px, 38vw);
+  min-width: 200px;
 }
 
-.character-assembly-face-choices {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
-  overflow-x: auto;
-}
-
-.character-assembly-face-choices button {
-  min-height: 36px;
-  padding: 6px 11px;
-  border: 1px solid var(--ui-color-border);
-  border-radius: var(--ui-radius-pill);
-  color: var(--ui-color-text-secondary);
-  background: var(--ui-color-surface-work);
-  font: var(--ui-font-secondary);
-  white-space: nowrap;
-}
-
-.character-assembly-face-choices button[aria-pressed='true'] {
-  border-color: var(--ui-color-selected-border);
-  color: var(--ui-color-text-primary);
-  background: var(--ui-color-selected-surface);
+.character-assembly-head-picker .image-asset-picker {
+  gap: 3px;
 }
 
 .character-assembly-preview-viewport {
@@ -711,6 +784,11 @@
   background-size: 16px 16px;
 }
 
+.character-assembly-preview-viewport[data-camera-fit-mode='content']
+  .character-assembly-preview-stage {
+  overflow: visible;
+}
+
 .character-assembly-part {
   position: absolute;
   display: block;
@@ -723,13 +801,83 @@
   z-index: 1;
 }
 
+.character-assembly-body-hit-area {
+  position: absolute;
+  z-index: 4;
+  min-width: 1px;
+  min-height: 1px;
+  border: 2px solid var(--ui-color-selected-border);
+  background: rgb(131 211 154 / 5%);
+  cursor: move;
+  outline: none;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.character-assembly-body-hit-area:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring);
+  outline-offset: 3px;
+}
+
+.character-assembly-head-group {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+  transition: transform 120ms ease-out;
+}
+
+.character-assembly-head-group.is-head-motion-test-running,
+.character-assembly-head-group.is-talking-head-motion-preview-running {
+  animation: character-assembly-head-motion-test 500ms linear infinite;
+}
+
+@keyframes character-assembly-head-motion-test {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  12.5% {
+    transform: translateY(var(--head-motion-up-mid, -2.828px));
+  }
+
+  25% {
+    transform: translateY(var(--head-motion-up-peak, -4px));
+  }
+
+  37.5% {
+    transform: translateY(var(--head-motion-up-mid, -2.828px));
+  }
+
+  50% {
+    transform: translateY(0);
+  }
+
+  62.5% {
+    transform: translateY(var(--head-motion-down-mid, 2.828px));
+  }
+
+  75% {
+    transform: translateY(var(--head-motion-down-peak, 4px));
+  }
+
+  87.5% {
+    transform: translateY(var(--head-motion-down-mid, 2.828px));
+  }
+}
+
+.character-assembly-part-head {
+  z-index: 1;
+}
+
 .character-assembly-part-face {
   z-index: 2;
 }
 
 .character-assembly-face-hit-area {
   position: absolute;
-  z-index: 3;
+  z-index: 4;
   min-width: 1px;
   min-height: 1px;
   border: 2px solid var(--ui-color-selected-border);
@@ -737,6 +885,163 @@
   cursor: move;
   outline: none;
   touch-action: none;
+  pointer-events: auto;
+}
+
+.character-assembly-head-hit-area {
+  position: absolute;
+  z-index: 4;
+  min-width: 1px;
+  min-height: 1px;
+  border: 2px solid var(--ui-color-selected-border);
+  background: rgb(131 211 154 / 8%);
+  cursor: move;
+  outline: none;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.character-assembly-head-drag-fallback,
+.character-assembly-scale-handle {
+  position: absolute;
+  z-index: 6;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--ui-color-selected-border);
+  border-radius: 50%;
+  color: var(--ui-color-text-primary);
+  background: rgb(8 16 11 / 82%);
+  cursor: move;
+  outline: none;
+  place-items: center;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.character-assembly-head-drag-fallback > span {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--ui-color-selected-border);
+  border-radius: 5px;
+  background: var(--ui-color-selected-surface);
+}
+
+.character-assembly-scale-handle {
+  border-radius: 6px;
+  cursor: nwse-resize;
+}
+
+.character-assembly-scale-handle > span {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--ui-color-selected-border);
+  border-radius: 3px;
+  background: var(--ui-color-selected-surface);
+}
+
+.character-assembly-head-hit-area:focus-visible,
+.character-assembly-head-drag-fallback:focus-visible,
+.character-assembly-scale-handle:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.character-assembly-head-hit-area::before,
+.character-assembly-head-hit-area::after {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 1px solid #0b100e;
+  border-radius: 2px;
+  background: var(--ui-color-selected-border);
+  content: '';
+}
+
+.character-assembly-head-hit-area::before {
+  top: -5px;
+  left: -5px;
+}
+
+.character-assembly-head-hit-area::after {
+  right: -5px;
+  bottom: -5px;
+}
+
+.character-assembly-pivot-handle {
+  position: absolute;
+  z-index: 5;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: move;
+  outline: none;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.character-assembly-pivot-marker {
+  position: absolute;
+  z-index: 3;
+  width: 11px;
+  height: 11px;
+  border: 1px solid rgb(131 211 154 / 45%);
+  border-radius: 50%;
+  background: rgb(8 16 11 / 30%);
+  opacity: 0.55;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.character-assembly-pivot-handle > span {
+  position: relative;
+  display: block;
+  width: 17px;
+  height: 17px;
+  border: 2px solid var(--ui-color-selected-border);
+  border-radius: 50%;
+  background: rgb(8 16 11 / 80%);
+  box-shadow: 0 0 0 2px rgb(8 16 11 / 75%);
+}
+
+.character-assembly-pivot-handle > span::before,
+.character-assembly-pivot-handle > span::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  background: var(--ui-color-selected-border);
+  content: '';
+  transform: translate(-50%, -50%);
+}
+
+.character-assembly-pivot-handle > span::before {
+  width: 27px;
+  height: 1px;
+}
+
+.character-assembly-pivot-handle > span::after {
+  width: 1px;
+  height: 27px;
+}
+
+.character-assembly-pivot-handle:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring);
+  outline-offset: 1px;
+}
+
+.character-assembly-pivot-handle:focus-visible {
+  outline-offset: 3px;
+}
+
+.character-assembly-pivot-handle:disabled {
+  cursor: default;
 }
 
 .character-assembly-face-hit-area::before,
@@ -785,11 +1090,171 @@
 }
 
 .character-assembly-placement-controls {
+  display: grid;
+  min-width: 0;
+  width: 100%;
+  gap: 6px;
+}
+
+.character-assembly-assembly-actions {
+  display: flex;
+  min-width: 0;
+  min-height: var(--ui-touch-regular);
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Keep the workbench controls in the visible canvas area beside the landscape
+   resource drawer, which overlays the canvas from the left edge. */
+.editor-layout[data-shell-mode='landscape'] .character-assembly-assembly-actions {
+  box-sizing: border-box;
+  width: max(0px, min(calc(100% - 360px), 1100px));
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
+.editor-layout[data-shell-mode='landscape'] .character-assembly-layout-reuse-panel {
+  justify-content: flex-end;
+}
+
+.editor-layout[data-shell-mode='landscape'] .character-assembly-layout-reuse-panel {
+  box-sizing: border-box;
+  width: max(0px, min(calc(100% - 360px), 1100px));
+  margin-left: auto;
+  justify-content: flex-start;
+}
+
+.editor-layout[data-shell-mode='landscape'] .character-assembly-pending-actions {
+  margin-left: 0;
+}
+
+.character-assembly-fine-tune-panel {
+  position: absolute;
+  z-index: 12;
+  top: 8px;
+  right: 8px;
+  box-sizing: border-box;
+  display: flex;
+  min-width: 0;
+  width: min(280px, calc(100% - 16px));
+  max-height: calc(100% - 16px);
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-medium);
+  background: rgb(9 17 12 / 88%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 36%);
+  pointer-events: none;
+}
+
+.character-assembly-fine-tune-toggle,
+.character-assembly-view-all-toggle,
+.character-assembly-pivot-mode-toggle,
+.character-assembly-layout-reuse-toggle,
+.character-assembly-expression-preview-toggle {
+  min-height: var(--ui-touch-regular);
+  padding: 6px 12px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-work);
+  font: var(--ui-font-secondary);
+  white-space: nowrap;
+}
+
+.character-assembly-fine-tune-toggle[aria-expanded='true'],
+.character-assembly-pivot-mode-toggle[aria-pressed='true'],
+.character-assembly-layout-reuse-toggle[aria-expanded='true'],
+.character-assembly-expression-preview-toggle[aria-expanded='true'] {
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-selected-surface);
+}
+
+.character-assembly-test-head-motion-toggle {
+  display: inline-flex;
+  width: 124px;
+  flex: 0 0 124px;
+  min-height: var(--ui-touch-regular);
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  white-space: nowrap;
+}
+
+.character-assembly-layout-reuse-panel {
   display: flex;
   min-width: 0;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-work);
+}
+
+.character-assembly-layout-reuse-panel > label {
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+}
+
+.character-assembly-layout-reuse-panel > select {
+  min-width: min(240px, 100%);
+  min-height: var(--ui-touch-regular);
+  padding: 6px 10px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-work);
+  font: var(--ui-font-secondary);
+}
+
+.character-assembly-layout-reuse-status {
+  display: grid;
+  flex: 1 1 260px;
+  min-width: 0;
+  gap: 3px;
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+  line-height: 1.45;
+}
+
+.character-assembly-expression-preview {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.character-assembly-expression-preview-options {
+  position: absolute;
+  z-index: 20;
+  right: 0;
+  bottom: calc(100% + 8px);
+  display: grid;
+  width: min(260px, calc(100vw - 32px));
+  max-height: min(360px, calc(100vh - 32px));
+  gap: 4px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface-app);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 36%);
+}
+
+.character-assembly-expression-preview-options button {
+  width: 100%;
+  min-height: var(--ui-touch-regular);
+  justify-content: start;
+  text-align: left;
+}
+
+.character-assembly-expression-preview-options button[aria-pressed='true'] {
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-selected-surface);
 }
 
 .character-assembly-control-set {
@@ -803,6 +1268,158 @@
   margin-right: 2px;
   color: var(--ui-color-text-secondary);
   font: var(--ui-font-secondary);
+}
+
+.character-assembly-fine-tune-panel .character-assembly-control-set {
+  width: 100%;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ui-color-separator);
+}
+
+.character-assembly-fine-tune-panel .character-assembly-control-label {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.character-assembly-fine-tune-panel .character-assembly-control-set output {
+  min-width: 0;
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-secondary);
+  text-align: center;
+}
+
+.character-assembly-fine-tune-panel .character-assembly-angle-control input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--ui-touch-icon);
+  padding: 0 4px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-work);
+  font: var(--ui-font-secondary);
+  text-align: center;
+  pointer-events: auto;
+}
+
+.character-assembly-fine-tune-panel button {
+  display: inline-grid;
+  min-width: var(--ui-touch-icon);
+  min-height: var(--ui-touch-icon);
+  padding: 0 var(--ui-space-2);
+  place-items: center;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-work);
+  font: var(--ui-font-body);
+  font-weight: 700;
+  pointer-events: auto;
+}
+
+.character-assembly-fine-tune-panel button:hover:not(:disabled),
+.character-assembly-fine-tune-panel button:focus-visible {
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-selected-surface);
+}
+
+.character-assembly-fine-tune-panel .character-assembly-reset {
+  min-width: 54px;
+  min-height: var(--ui-touch-icon);
+  align-self: flex-end;
+  margin-left: 2px;
+  font: var(--ui-font-secondary);
+}
+
+.character-assembly-fine-tune-panel .character-assembly-flip-toggle {
+  width: 100%;
+}
+
+.character-assembly-fine-tune-panel .character-assembly-flip-toggle[aria-pressed='true'] {
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-selected-surface);
+}
+
+.character-assembly-fine-tune-panel[data-overlay-layout='narrow']
+  .character-assembly-control-set {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.character-assembly-fine-tune-panel[data-overlay-layout='constrained']
+  .character-assembly-control-set {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.character-assembly-fine-tune-panel[data-overlay-layout='narrow'] {
+  padding: 4px;
+}
+
+.character-assembly-fine-tune-panel[data-overlay-layout='constrained'] {
+  padding: 8px;
+  overflow: auto;
+  scrollbar-width: thin;
+  background: rgb(9 17 12 / 60%);
+}
+
+.character-assembly-fine-tune-panel[data-overlay-layout='narrow']
+  .character-assembly-control-set button {
+  width: 100%;
+  padding: 0;
+}
+
+.character-assembly-fine-tune-panel[data-overlay-layout='constrained']
+  .character-assembly-control-set button {
+  box-sizing: border-box;
+  width: auto;
+  min-width: var(--ui-touch-icon);
+  margin-left: 0;
+  padding: 0 2px;
+}
+
+.character-assembly-fine-tune-panel[data-overlay-layout='narrow']
+  .character-assembly-reset {
+  padding: 0;
+}
+
+.character-assembly-fine-tune-panel[data-overlay-layout='constrained']
+  .character-assembly-reset {
+  box-sizing: border-box;
+  width: auto;
+  min-width: 54px;
+  align-self: flex-end;
+  margin-left: 0;
+  padding: 0 var(--ui-space-2);
+}
+
+.character-assembly-fine-tune-panel[data-overlay-layout='narrow']
+  .character-assembly-control-set output {
+  width: 100%;
+  min-height: 24px;
+}
+
+.character-assembly-fine-tune-panel[data-overlay-layout='constrained']
+  .character-assembly-control-set output {
+  width: 100%;
+  min-width: 0;
+  min-height: 24px;
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
+
+.character-assembly-fine-tune-panel[data-overlay-layout='constrained']
+  .character-assembly-control-label {
+  font-size: 10px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .character-assembly-placement-controls button {
@@ -900,7 +1517,7 @@
   min-height: 44px;
   padding: 0;
   border-bottom: 0;
-  background: transparent;
+  background: var(--character-surface, #0b120e);
   gap: 4px;
 }
 
@@ -983,6 +1600,7 @@
   border-radius: 0;
   background: transparent;
   gap: 12px;
+  column-gap: 6px;
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -1100,16 +1718,63 @@
     gap: 8px;
   }
 
-  .character-assembly-workbench-header {
+  .character-assembly-head-picker {
+    width: min(100%, 360px);
+    min-width: 0;
+  }
+
+  .character-assembly-workbench-footer {
     align-items: flex-start;
-    flex-direction: column;
-    gap: 6px;
+  }
+
+  .character-assembly-placement-controls {
+    width: 100%;
+  }
+
+  .character-assembly-assembly-actions {
+    align-items: flex-start;
   }
 
 }
 
-/* Issue #618: keep Character actions with identity and reserve Settings for
-   destructive whole-Character operations. */
+/* Issue #674: keep the Character identity navigation and placement action
+   quiet while preserving clear keyboard focus and touch targets. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail {
+  margin-bottom: var(--ui-space-2);
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail
+  > .character-back-button {
+  display: inline-flex;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 19px;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-identity-actions {
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Issue #618: keep the Add Expression action with identity and reserve
+   Settings for destructive whole-Character operations. */
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
@@ -1129,7 +1794,7 @@
   min-width: 0;
   flex: 1 1 auto;
   align-items: center;
-  gap: 3px;
+  gap: 0;
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -1293,6 +1958,88 @@
     )
     > .resource-activity-header {
     padding-block: 2px;
+  }
+}
+
+/* Issue #798: keep Add to Shot in the shared Character Detail navigation so
+   Assembly, Expressions, and Settings use the same action location. */
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail {
+  display: flex;
+  width: 100%;
+  align-items: center;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail
+  > .character-detail-place-navigation-action {
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 100%;
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 6px 10px;
+  border-color: rgb(127 199 148 / 32%);
+  border-radius: var(--ui-radius-small, 6px);
+  color: #d7f0dc;
+  background: rgb(127 199 148 / 10%);
+  font-size: 11px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail
+  > .character-detail-close {
+  flex: 0 0 44px;
+  margin-left: 0;
+}
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail
+  > .character-detail-place-navigation-action:hover:not(:disabled),
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-navigation-detail
+  > .character-detail-place-navigation-action:focus-visible {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  background: rgb(127 199 148 / 18%);
+}
+
+@media (max-width: 360px) {
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='characters']
+    .character-manager[data-character-presentation='landscape']
+    .character-detail-navigation-detail
+    > .character-detail-place-navigation-action {
+    padding-right: 7px;
+    padding-left: 7px;
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 1000px) {
+  .editor-body[data-shell-mode='landscape']:has(.character-detail-navigation-detail)
+    > .quick-action-drawer[data-expanded='false'] {
+    pointer-events: none;
+  }
+
+  .editor-body[data-shell-mode='landscape']:has(.character-detail-navigation-detail)
+    > .quick-action-drawer[data-expanded='false']
+    > .quick-action-drawer-handle {
+    justify-self: end;
+    pointer-events: auto;
   }
 }
 

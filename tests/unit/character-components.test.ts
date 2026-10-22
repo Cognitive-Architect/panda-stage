@@ -227,6 +227,57 @@ describe('character management components', () => {
     );
   });
 
+  it('can omit only the Assembly edit badge and optional note while preserving the card selection semantics', () => {
+    const project = migrateProject(exampleProject);
+    const imageAssets = project.assets.filter(
+      (asset) => asset.kind === 'image',
+    );
+    const selected = imageAssets[0]!;
+    const assemblyMarkup = renderToStaticMarkup(
+      createElement(ImageAssetPicker, {
+        assets: imageAssets,
+        emptyOption: { label: '不添加头部', optional: true },
+        label: '头部',
+        onChange: noop,
+        onSelectedAssetActivate: noop,
+        onThumbnailError: noop,
+        selectedAssetActive: true,
+        selectedAssetId: selected.id,
+        selectedSurface: true,
+        showEditTargetStatus: false,
+        showOptionalLabel: false,
+        testId: 'character-assembly-head-asset',
+        thumbnails: {},
+      }),
+    );
+
+    expect(assemblyMarkup).toContain('aria-pressed="true"');
+    expect(assemblyMarkup).toContain('data-edit-target-selected="true"');
+    expect(assemblyMarkup).toContain('选择为编辑对象');
+    expect(assemblyMarkup).toContain(
+      'image-asset-picker-selected--compact-edit-target',
+    );
+    expect(assemblyMarkup).toContain('更换');
+    expect(assemblyMarkup).not.toContain('编辑中');
+    expect(assemblyMarkup).not.toContain('<small>可选</small>');
+
+    const defaultMarkup = renderToStaticMarkup(
+      createElement(ImageAssetPicker, {
+        assets: imageAssets,
+        emptyOption: { label: '不添加头部', optional: true },
+        label: '头部',
+        onChange: noop,
+        onSelectedAssetActivate: noop,
+        onThumbnailError: noop,
+        selectedAssetActive: true,
+        selectedAssetId: selected.id,
+        thumbnails: {},
+      }),
+    );
+    expect(defaultMarkup).toContain('编辑中');
+    expect(defaultMarkup).toContain('<small>可选</small>');
+  });
+
   it('gives an explicit empty state when fewer than two images can define normal and angry', () => {
     const project = migrateProject(exampleProject);
     const oneImage = project.assets.filter(

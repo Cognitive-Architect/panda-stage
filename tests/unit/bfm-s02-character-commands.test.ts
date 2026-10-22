@@ -14,6 +14,28 @@ import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore
 import { buildProject, IDS } from './domain/testProject';
 
 const PROJECT_ROOT = 'D:\\bfm-s02.pandastage';
+const INITIAL_HEAD = {
+  assetId: IDS.assetChar,
+  placement: {
+    offsetX: 6,
+    offsetY: -2,
+    scale: 0.85,
+    rotationDeg: 0,
+    flipX: false,
+  },
+  pivot: { x: 320, y: 300 },
+};
+const UPDATED_HEAD = {
+  assetId: IDS.assetChar2,
+  placement: {
+    offsetX: 11,
+    offsetY: 7,
+    scale: 1.1,
+    rotationDeg: 14,
+    flipX: true,
+  },
+  pivot: { x: 280, y: 240 },
+};
 
 function compositeProject(): Project {
   const project = buildProject();
@@ -25,6 +47,8 @@ function compositeProject(): Project {
         mode: 'composite',
         bodyAssetId: IDS.assetBg,
         facePlacement: { offsetX: 8, offsetY: -4, scale: 1 },
+        mouthOpenAssetId: IDS.assetChar2,
+        head: INITIAL_HEAD,
       },
     ],
     shots: project.shots.map((shot) => ({
@@ -50,7 +74,17 @@ function definition(project: Project): CompositeCharacterDefinition {
   }
   return {
     bodyAssetId: character.bodyAssetId,
+    bodyPlacement: { ...character.bodyPlacement },
     facePlacement: { ...character.facePlacement },
+    ...(character.head
+      ? {
+          head: {
+            assetId: character.head.assetId,
+            placement: { ...character.head.placement },
+            pivot: { ...character.head.pivot },
+          },
+        }
+      : {}),
     expressionAssets: character.expressions.map((expression) => ({
       expressionId: expression.id,
       assetId: expression.assetId,
@@ -89,7 +123,15 @@ function creationDraft(
   return {
     name,
     bodyAssetId: IDS.assetBg,
-    facePlacement: { offsetX: 5, offsetY: -3, scale: 0.9 },
+    bodyPlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+    facePlacement: {
+      offsetX: 5,
+      offsetY: -3,
+      scale: 0.9,
+      rotationDeg: 0,
+      flipX: false,
+    },
+    head: INITIAL_HEAD,
     expressions: [
       { name: 'Normal', assetId: IDS.assetChar },
       { name: 'Angry', assetId: IDS.assetChar2 },
@@ -120,7 +162,15 @@ function changedDefinition(project: Project): CompositeCharacterDefinition {
   return {
     ...current,
     bodyAssetId: IDS.assetChar2,
-    facePlacement: { offsetX: 24, offsetY: -12, scale: 1.25 },
+    bodyPlacement: { offsetX: 42, offsetY: -18, scale: 0.65 },
+    facePlacement: {
+      offsetX: 24,
+      offsetY: -12,
+      scale: 1.25,
+      rotationDeg: -18,
+      flipX: true,
+    },
+    head: UPDATED_HEAD,
     expressionAssets: [
       { expressionId: IDS.expressionNormal, assetId: IDS.assetChar2 },
       { expressionId: IDS.expressionAngry, assetId: IDS.assetChar },
@@ -154,7 +204,14 @@ describe('BFM-S02 Character commands', () => {
     const created = service.createComposite(project, {
       name: 'Composite Panda',
       bodyAssetId: IDS.assetBg,
-      facePlacement: { offsetX: 5, offsetY: -3, scale: 0.9 },
+      facePlacement: {
+        offsetX: 5,
+        offsetY: -3,
+        scale: 0.9,
+        rotationDeg: 0,
+        flipX: false,
+      },
+      head: INITIAL_HEAD,
       expressions: [
         { name: 'Normal', assetId: IDS.assetChar },
         { name: 'Angry', assetId: IDS.assetChar2 },
@@ -165,8 +222,10 @@ describe('BFM-S02 Character commands', () => {
     expect(character).toMatchObject({
       mode: 'composite',
       bodyAssetId: IDS.assetBg,
+      bodyPlacement: { offsetX: 0, offsetY: 0, scale: 1 },
       facePlacement: { offsetX: 5, offsetY: -3, scale: 0.9 },
       baseAssetId: IDS.assetChar,
+      head: INITIAL_HEAD,
     });
     expect(character.expressions.map(({ id }) => id)).toEqual([
       '70000000-0000-4000-8000-000000000001',
@@ -188,7 +247,13 @@ describe('BFM-S02 Character commands', () => {
     const created = characters.createComposite({
       name: 'Composite Panda',
       bodyAssetId: IDS.assetBg,
-      facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+      facePlacement: {
+        offsetX: 0,
+        offsetY: 0,
+        scale: 1,
+        rotationDeg: 0,
+        flipX: false,
+      },
       expressions: [{ name: 'Normal', assetId: IDS.assetChar }],
     });
 
@@ -212,7 +277,15 @@ describe('BFM-S02 Character commands', () => {
     expect(
       begin.session.updateDraft({
         name: 'Created Composite Panda',
-        facePlacement: { offsetX: 18, offsetY: 7, scale: 1.1 },
+        bodyPlacement: { offsetX: 34, offsetY: -16, scale: 0.7 },
+        facePlacement: {
+          offsetX: 18,
+          offsetY: 7,
+          scale: 1.1,
+          rotationDeg: 90,
+          flipX: true,
+        },
+        head: UPDATED_HEAD,
       }).ok,
     ).toBe(true);
     expect(input.editor.getSnapshot()).toBe(before);
@@ -232,7 +305,15 @@ describe('BFM-S02 Character commands', () => {
       name: 'Created Composite Panda',
       mode: 'composite',
       bodyAssetId: IDS.assetBg,
-      facePlacement: { offsetX: 18, offsetY: 7, scale: 1.1 },
+      bodyPlacement: { offsetX: 34, offsetY: -16, scale: 0.7 },
+      facePlacement: {
+        offsetX: 18,
+        offsetY: 7,
+        scale: 1.1,
+        rotationDeg: 90,
+        flipX: true,
+      },
+      head: UPDATED_HEAD,
     });
     expect(input.editor.history.getSnapshot()).toMatchObject({
       undoCount: 1,
@@ -439,9 +520,11 @@ describe('BFM-S02 Character commands', () => {
       id: IDS.character,
       mode: 'composite',
       bodyAssetId: IDS.assetChar2,
+      bodyPlacement: next.bodyPlacement,
       facePlacement: next.facePlacement,
       baseAssetId: IDS.assetChar2,
       mouthOpenAssetId: IDS.assetChar,
+      head: UPDATED_HEAD,
     });
     expect(character.expressions.map(({ id }) => id)).toEqual([
       IDS.expressionNormal,
@@ -459,6 +542,52 @@ describe('BFM-S02 Character commands', () => {
     input.assembly.dispose();
   });
 
+  it('applies talking-head intensity as one History unit with Undo and Redo', () => {
+    const input = harness();
+    const before = input.editor.getSnapshot()!;
+
+    input.characters.setTalkingHeadMotionIntensityPercent(IDS.character, 200);
+
+    const applied = input.editor.getSnapshot()!;
+    expect(applied.revision).toBe(before.revision + 1);
+    expect(applied.dirty).toBe(true);
+    expect(applied.project.characters[0]).toMatchObject({
+      mode: 'composite',
+      talkingHeadMotionIntensityPercent: 200,
+    });
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project).toEqual(before.project);
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 0,
+      redoCount: 1,
+    });
+
+    expect(input.editor.redo()).toBe(true);
+    const redone = input.editor.getSnapshot()!;
+    expect(redone.project.characters[0]).toMatchObject({
+      mode: 'composite',
+      talkingHeadMotionIntensityPercent: 200,
+    });
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+    expect(
+      input.characters.setTalkingHeadMotionIntensityPercent(IDS.character, 200),
+    ).toBe(redone.project);
+    expect(input.editor.getSnapshot()).toBe(redone);
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+    input.assembly.dispose();
+  });
+
   it('keeps exact Apply, Body, Face, Expression, and Mouth no-ops at zero writes', () => {
     const input = harness();
     const before = input.editor.getSnapshot()!;
@@ -467,6 +596,11 @@ describe('BFM-S02 Character commands', () => {
 
     expect(
       input.characters.applyCompositeDefinition(IDS.character, current),
+    ).toBe(before.project);
+    expect(
+      input.characters.applyCompositeUpdate(IDS.character, {
+        bodyPlacement: current.bodyPlacement,
+      }),
     ).toBe(before.project);
     expect(input.characters.replaceBodyAsset(IDS.character, IDS.assetBg)).toBe(
       before.project,
@@ -506,6 +640,43 @@ describe('BFM-S02 Character commands', () => {
     ).toThrow(expect.objectContaining({ code: 'INVALID_FACE_PLACEMENT' }));
     expect(input.editor.getSnapshot()).toBe(before);
     expect(input.editor.history.getSnapshot().undoCount).toBe(0);
+
+    const invalidBody = {
+      ...changedDefinition(before.project),
+      bodyPlacement: { offsetX: 0, offsetY: 0, scale: 21 },
+    };
+    expect(() =>
+      input.characters.applyCompositeDefinition(IDS.character, invalidBody),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_BODY_PLACEMENT' }));
+    expect(input.editor.getSnapshot()).toBe(before);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(0);
+    input.assembly.dispose();
+  });
+
+  it('preserves Head when a focused Body/Face update omits the optional field', () => {
+    const input = harness();
+    const before = input.editor.getSnapshot()!;
+
+    input.characters.applyCompositeUpdate(IDS.character, {
+      bodyAssetId: IDS.assetChar2,
+      facePlacement: {
+        offsetX: 3,
+        offsetY: 4,
+        scale: 1.05,
+        rotationDeg: 0,
+        flipX: false,
+      },
+    });
+
+    expect(input.editor.getSnapshot()!.project.characters[0]).toMatchObject({
+      bodyAssetId: IDS.assetChar2,
+      facePlacement: { offsetX: 3, offsetY: 4, scale: 1.05 },
+      head: INITIAL_HEAD,
+      mouthOpenAssetId: IDS.assetChar2,
+    });
+    expect(input.editor.history.getSnapshot().undoCount).toBe(1);
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project).toEqual(before.project);
     input.assembly.dispose();
   });
 
@@ -516,12 +687,58 @@ describe('BFM-S02 Character commands', () => {
     expect(begin.ok).toBe(true);
     if (!begin.ok) return;
 
+    expect(
+      input.assembly.setEditTarget(
+        'head',
+        begin.session.sessionId,
+        begin.session.generation,
+      ),
+    ).toBe(true);
+    const headPlacement = {
+      ...INITIAL_HEAD,
+      placement: {
+        ...INITIAL_HEAD.placement,
+        rotationDeg: 90,
+        flipX: true,
+      },
+    };
+    const headUpdate = begin.session.updateDraft({ head: headPlacement });
+    expect(headUpdate.ok).toBe(true);
+    expect(
+      input.assembly.setEditTarget(
+        'face',
+        begin.session.sessionId,
+        begin.session.generation,
+      ),
+    ).toBe(true);
+    const facePlacement = {
+      ...begin.session.getSnapshot()!.draft.facePlacement,
+      offsetX: 18,
+      offsetY: 7,
+      scale: 1.1,
+      rotationDeg: -10,
+      flipX: true,
+    };
+    const bodyPlacement = { offsetX: 36, offsetY: -14, scale: 0.6 };
     const update = begin.session.updateDraft({
       bodyAssetId: IDS.assetChar2,
-      facePlacement: { offsetX: 18, offsetY: 7, scale: 1.1 },
+      bodyPlacement,
+      facePlacement,
       mouthOpenAssetId: IDS.assetChar,
     });
     expect(update.ok).toBe(true);
+    expect(
+      input.assembly.setEditTarget(
+        'head',
+        begin.session.sessionId,
+        begin.session.generation,
+      ),
+    ).toBe(true);
+    expect(begin.session.getSnapshot()?.draft).toMatchObject({
+      bodyPlacement,
+      facePlacement: { rotationDeg: -10, flipX: true },
+      head: { placement: { rotationDeg: 90, flipX: true } },
+    });
     expect(input.editor.getSnapshot()).toBe(before);
     expect(input.editor.history.getSnapshot().undoCount).toBe(0);
 
@@ -529,6 +746,116 @@ describe('BFM-S02 Character commands', () => {
     expect(committed.status).toBe('committed');
     expect(input.editor.getSnapshot()!.revision).toBe(1);
     expect(input.editor.history.getSnapshot().undoCount).toBe(1);
+    expect(input.editor.getSnapshot()!.project.characters[0]).toMatchObject({
+      bodyPlacement,
+      head: headPlacement,
+      bodyAssetId: IDS.assetChar2,
+      facePlacement: {
+        offsetX: 18,
+        offsetY: 7,
+        scale: 1.1,
+        rotationDeg: -10,
+        flipX: true,
+      },
+      mouthOpenAssetId: IDS.assetChar,
+    });
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project).toEqual(before.project);
+    expect(input.editor.redo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.characters[0]).toMatchObject({
+      bodyPlacement,
+      head: headPlacement,
+      facePlacement: { rotationDeg: -10, flipX: true },
+    });
+    input.assembly.dispose();
+  });
+
+  it('applies, undoes, and redoes clearing the optional Mouth asset', () => {
+    const input = harness();
+    const before = input.editor.getSnapshot()!;
+    const begin = input.assembly.begin(IDS.character);
+    expect(begin.ok).toBe(true);
+    if (!begin.ok) return;
+
+    const update = begin.session.updateDraft({ mouthOpenAssetId: null });
+    expect(update.ok).toBe(true);
+    expect(begin.session.getSnapshot()?.draft.mouthOpenAssetId).toBeNull();
+    expect(input.editor.getSnapshot()).toBe(before);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(0);
+
+    const committed = begin.session.commit();
+    expect(committed.status).toBe('committed');
+    expect(input.editor.getSnapshot()!.revision).toBe(1);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(1);
+    expect(input.editor.getSnapshot()!.project.characters[0]).not.toHaveProperty(
+      'mouthOpenAssetId',
+    );
+
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.characters[0]).toMatchObject({
+      mouthOpenAssetId: IDS.assetChar2,
+    });
+    expect(input.editor.redo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.characters[0]).not.toHaveProperty(
+      'mouthOpenAssetId',
+    );
+    input.assembly.dispose();
+  });
+
+  it('keeps Head choose/replace/remove, placement, and pivot in the Assembly draft until Apply', () => {
+    const input = harness();
+    const before = input.editor.getSnapshot()!;
+    const begin = input.assembly.begin(IDS.character);
+    expect(begin.ok).toBe(true);
+    if (!begin.ok) return;
+
+    const replacement = {
+      ...INITIAL_HEAD,
+      assetId: IDS.assetChar2,
+    };
+    expect(begin.session.updateDraft({ head: replacement }).ok).toBe(true);
+    expect(begin.session.getSnapshot()?.draft.head).toEqual(replacement);
+    expect(input.editor.getSnapshot()).toBe(before);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(0);
+
+    const placed = {
+      ...replacement,
+      placement: {
+        offsetX: 42,
+        offsetY: -18,
+        scale: 1.25,
+        rotationDeg: -45,
+        flipX: true,
+      },
+      pivot: { x: 286, y: 248 },
+    };
+    expect(begin.session.updateDraft({ head: placed }).ok).toBe(true);
+    expect(begin.session.getSnapshot()?.draft.head).toEqual(placed);
+    expect(input.editor.getSnapshot()).toBe(before);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(0);
+
+    const removed = begin.session.updateDraft({ head: null });
+    expect(removed.ok).toBe(true);
+    expect(begin.session.getSnapshot()?.draft).not.toHaveProperty('head');
+    expect(input.editor.getSnapshot()).toBe(before);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(0);
+
+    const finalHead = UPDATED_HEAD;
+    expect(begin.session.updateDraft({ head: finalHead }).ok).toBe(true);
+    expect(input.editor.getSnapshot()).toBe(before);
+    const applied = begin.session.commit();
+    expect(applied.status).toBe('committed');
+    expect(input.editor.getSnapshot()!.revision).toBe(before.revision + 1);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(1);
+    expect(input.editor.getSnapshot()!.project.characters[0]).toMatchObject({
+      head: finalHead,
+    });
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project).toEqual(before.project);
+    expect(input.editor.redo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.characters[0]).toMatchObject({
+      head: finalHead,
+    });
     input.assembly.dispose();
   });
 
@@ -547,6 +874,8 @@ describe('BFM-S02 Character commands', () => {
           scale: current.facePlacement.scale,
           offsetY: current.facePlacement.offsetY,
           offsetX: current.facePlacement.offsetX,
+          rotationDeg: current.facePlacement.rotationDeg,
+          flipX: current.facePlacement.flipX,
         },
         expressionAssets: [...current.expressionAssets].reverse(),
       }).ok,

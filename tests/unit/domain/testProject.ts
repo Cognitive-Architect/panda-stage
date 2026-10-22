@@ -1,4 +1,8 @@
-import { ProjectSchema, type Project } from '../../../src/domain';
+import {
+  PROJECT_SCHEMA_VERSION,
+  ProjectSchema,
+  type Project,
+} from '../../../src/domain';
 
 /**
  * Stable UUID identifiers for the test fixture. The formal current schema enforces
@@ -23,11 +27,11 @@ export const IDS = {
   unknownExpression: '20000000-0000-4000-8000-000000000099',
 } as const;
 
-/** Builds a fully valid v8 project with a background, an asset, and a
+/** Builds a fully valid current project with a background, an asset, and a
  * character layer so preset/evaluator tests have realistic fixtures. */
 export function buildProject(): Project {
   return ProjectSchema.parse({
-    schemaVersion: 8,
+    schemaVersion: PROJECT_SCHEMA_VERSION,
     id: IDS.project,
     name: '测试项目',
     width: 1920,

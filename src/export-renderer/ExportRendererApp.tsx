@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { evaluateShotAtTime } from '../domain';
 import type {
   ExportLoadProbeRequest,
   ExportRenderFrameRequest,
@@ -14,6 +13,7 @@ import {
 import { evaluateSubtitleAtTime } from '../shared/preview/subtitle-engine';
 import { CanvasStage } from '../renderer/stage/CanvasStage';
 import { PROBE_ASSET_URLS } from '../renderer/stage/probe-assets';
+import { evaluateExportShotAtTime } from './evaluateExportShotAtTime';
 import {
   isExactExportFrameReady,
   readExportStageReadiness,
@@ -101,7 +101,7 @@ export function ExportRendererApp(): React.JSX.Element {
     };
   }, [issue573ExactFrameProbe, requestedTimeMs]);
   const evaluatedShot = useMemo(
-    () => evaluateShotAtTime(shot, requestedTimeMs, project),
+    () => evaluateExportShotAtTime(project, shot, requestedTimeMs),
     [requestedTimeMs, shot, project],
   );
   const subtitle = evaluateSubtitleAtTime(

@@ -1,5 +1,6 @@
 import {
   resolveLayerVisualParts,
+  visualPartRenderTransform,
   type EvaluatedLayer,
   type EvaluatedShot,
   type LayerVisualPart,
@@ -44,7 +45,7 @@ export type StageAssetUrlMap = Readonly<Record<string, string | undefined>>;
 export interface StageRenderPart {
   /** Stable runtime render-part identity, never a persisted Project Layer. */
   readonly id: string;
-  readonly slot: 'single' | 'body' | 'face';
+  readonly slot: 'single' | 'body' | 'head' | 'face';
   readonly drawOrder: number;
   readonly asset: RenderModelAsset;
   readonly sourceUrl: string;
@@ -119,20 +120,21 @@ function localPartRender(
   part: LayerVisualPart,
   visible: boolean,
 ): StageLayerRenderInstruction {
+  const transform = visualPartRenderTransform(part);
   return {
     id: part.partId,
     assetId: part.assetId,
     isBackground: false,
     listening: false,
-    x: part.localRect.x,
-    y: part.localRect.y,
+    x: transform.x,
+    y: transform.y,
     width: part.localRect.width,
     height: part.localRect.height,
-    offsetX: 0,
-    offsetY: 0,
-    scaleX: 1,
-    scaleY: 1,
-    rotationDeg: 0,
+    offsetX: transform.offsetX,
+    offsetY: transform.offsetY,
+    scaleX: transform.scaleX,
+    scaleY: transform.scaleY,
+    rotationDeg: transform.rotation,
     opacity: 1,
     visible,
     zIndex: part.ownerZIndex,

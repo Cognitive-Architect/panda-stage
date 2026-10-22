@@ -76,6 +76,7 @@ async function createHarness(
   options: {
     referenced?: boolean;
     bodyReferenced?: boolean;
+    headReferenced?: boolean;
     deleteFaults?: AssetDeleteFileSystemFaultInjector;
     beforeCommitValidation?: () => void | Promise<void>;
     beforeAtomicReplace?: () => void | Promise<void>;
@@ -132,33 +133,55 @@ async function createHarness(
   const bodyCharacterId = randomUUID();
   const bodyExpressionId = randomUUID();
   const bodyVoiceProfileId = randomUUID();
+  const headSupportAsset = {
+    ...asset,
+    id: randomUUID(),
+    name: 'Head support image',
+    relativePath: 'assets/head-support.png',
+  };
+  const hasCharacterReference =
+    options.bodyReferenced || options.headReferenced;
+  const characterImageAssetId = options.headReferenced
+    ? headSupportAsset.id
+    : asset.id;
   const project = ProjectSchema.parse({
     ...created.project,
-    assets: [asset],
-    characters: options.bodyReferenced
+    assets: options.headReferenced ? [asset, headSupportAsset] : [asset],
+    characters: hasCharacterReference
       ? [
           {
             id: bodyCharacterId,
             name: 'Body reference character',
             mode: 'composite',
-            baseAssetId: asset.id,
+            baseAssetId: characterImageAssetId,
             defaultVoiceProfileId: bodyVoiceProfileId,
             expressions: [
               {
                 id: bodyExpressionId,
                 name: 'default',
-                assetId: asset.id,
+                assetId: characterImageAssetId,
               },
             ],
             defaultExpressionId: bodyExpressionId,
             defaultScale: 1,
             defaultFlipX: false,
-            bodyAssetId: asset.id,
+            bodyAssetId: options.headReferenced
+              ? headSupportAsset.id
+              : asset.id,
             facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+            ...(options.headReferenced
+              ? {
+                  head: {
+                    assetId: asset.id,
+                    placement: { offsetX: 0, offsetY: 0, scale: 1 },
+                    pivot: { x: 8, y: 6 },
+                  },
+                }
+              : {}),
           },
         ]
       : [],
-    voiceProfiles: options.bodyReferenced
+    voiceProfiles: hasCharacterReference
       ? [
           {
             id: bodyVoiceProfileId,
@@ -384,6 +407,24 @@ describe('asset delete integration', () => {
         expect.objectContaining({
           kind: 'character-body',
           path: 'characters[0].bodyAssetId',
+        }),
+      ]),
+    });
+    expect(await state(input)).toEqual(before);
+  });
+
+  it('blocks deletion of a composite Head asset and reports its exact location', async () => {
+    const input = await createHarness({ headReferenced: true });
+    const before = await state(input);
+
+    await expect(
+      input.deleteService.deleteAsset(request(input)),
+    ).rejects.toMatchObject({
+      code: 'ASSET_DELETE_REFERENCED',
+      references: expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'character-head',
+          path: 'characters[0].head.assetId',
         }),
       ]),
     });

@@ -3,6 +3,7 @@ import type { Project } from '../models/project';
 export type AssetReferenceKind =
   | 'character-base'
   | 'character-body'
+  | 'character-head'
   | 'character-expression'
   | 'character-mouth'
   | 'shot-background'
@@ -62,6 +63,13 @@ export function scanAssetReferences(
         kind: 'character-body',
         path: `characters[${characterIndex}].bodyAssetId`,
         label: `角色“${character.name}”的身体图片`,
+      });
+    }
+    if (character.mode === 'composite' && character.head?.assetId === assetId) {
+      references.push({
+        kind: 'character-head',
+        path: `characters[${characterIndex}].head.assetId`,
+        label: `Character “${character.name}” Head image`,
       });
     }
     character.expressions.forEach((expression, expressionIndex) => {

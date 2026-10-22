@@ -7,6 +7,10 @@ import {
 } from '../constants';
 import {
   ProjectSchema,
+  ProjectV8Schema,
+  ProjectV9Schema,
+  ProjectV10Schema,
+  ProjectV11Schema,
   ProjectV1Schema,
   inferLegacyBackgroundLayerId,
   migrateFormalProject,
@@ -32,6 +36,10 @@ export type DetectedSchemaVersion =
   | 5
   | 6
   | 7
+  | 8
+  | 9
+  | 10
+  | 11
   | typeof PROJECT_SCHEMA_VERSION;
 
 export class UnsupportedSchemaVersionError extends Error {
@@ -39,7 +47,7 @@ export class UnsupportedSchemaVersionError extends Error {
     super(
       `Unsupported project schemaVersion: ${String(
         receivedVersion,
-      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, and ${PROJECT_SCHEMA_VERSION}.`,
+      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, and ${PROJECT_SCHEMA_VERSION}.`,
     );
     this.name = 'UnsupportedSchemaVersionError';
   }
@@ -63,6 +71,10 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 5 ||
     version === 6 ||
     version === 7 ||
+    version === 8 ||
+    version === 9 ||
+    version === 10 ||
+    version === 11 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version as DetectedSchemaVersion;
@@ -172,12 +184,12 @@ function normalizeHistoricalSubtitleBackground(project: Project): Project {
 /**
  * The single authoritative persisted-project migration pipeline.
  *
- * Every persisted envelope (v0-v7) is routed here by version and resolved to
- * the current v8 project through exactly one path. The formal v1-v7
+ * Every persisted envelope (v0-v11) is routed here by version and resolved to
+ * the current v12 project through exactly one path. The formal v1-v7
  * transforms live in
  * `migrateFormalProject` (a shared helper, NOT wired into `ProjectSchema`),
  * and the current-project validator (`ProjectSchema`) is used only to
- * validate the resolved v8 shape. A narrow compatibility normalization then
+ * validate the resolved v12 shape. A narrow compatibility normalization then
  * replaces the one historical subtitle default while preserving all other
  * style values. There is no second, implicit migration path:
  * `ProjectSchema.parse` never migrates legacy input.
@@ -202,11 +214,81 @@ export function migrateProject(input: unknown): Project {
       // shared formal transform, then validated as a current project.
       project = ProjectSchema.parse(migrateFormalProject(input));
       break;
+    case 8:
+      // Historical v8 envelope: validate its strict pre-Head shape, then
+      // advance only the schema version so incumbent Character visuals stay
+      // unchanged.
+      project = ProjectSchema.parse({
+        ...ProjectV8Schema.parse(input),
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+      });
+      break;
+    case 9: {
+      const version9 = ProjectV9Schema.parse(input);
+      project = ProjectSchema.parse({
+        ...version9,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        characters: version9.characters.map((character) =>
+          character.mode === 'composite'
+            ? { ...character, talkingHeadMotionIntensityPercent: 100 }
+            : character,
+        ),
+      });
+      break;
+    }
     case PROJECT_SCHEMA_VERSION:
-      // Current v8 envelope: validate it, then apply only the narrow
+      // Current v12 envelope: validate it, then apply only the narrow
       // historical-default compatibility normalization without mutating input.
       project = ProjectSchema.parse(input);
       break;
+    case 10: {
+      const version10 = ProjectV10Schema.parse(input);
+      project = ProjectSchema.parse({
+        ...version10,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        characters: version10.characters.map((character) =>
+          character.mode === 'composite'
+            ? {
+                ...character,
+                facePlacement: {
+                  ...character.facePlacement,
+                  rotationDeg: 0,
+                  flipX: false,
+                },
+                ...(character.head
+                  ? {
+                      head: {
+                        ...character.head,
+                        placement: {
+                          ...character.head.placement,
+                          rotationDeg: 0,
+                          flipX: false,
+                        },
+                      },
+                    }
+                  : {}),
+              }
+            : character,
+        ),
+      });
+      break;
+    }
+    case 11: {
+      const version11 = ProjectV11Schema.parse(input);
+      project = ProjectSchema.parse({
+        ...version11,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        characters: version11.characters.map((character) =>
+          character.mode === 'composite'
+            ? {
+                ...character,
+                bodyPlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+              }
+            : character,
+        ),
+      });
+      break;
+    }
     default:
       throw new UnsupportedSchemaVersionError(version);
   }

@@ -449,6 +449,20 @@ describe('Issue #548 P2-B02 character workspace relocation', () => {
         // contract is covered by issue555-p3-01-selected-asset-surface.test.ts.
         continue;
       }
+      if (relocation.id === 'G143') {
+        // Issue #815 appends talking-head settings styles to this target. Keep
+        // the original relocated block byte-exact and verify the new owner
+        // section remains present without re-baselining the historical block.
+        const originalLength =
+          relocation.sourceEndByteExclusive - relocation.sourceStartByte;
+        const originalBlock = Buffer.from(target, 'utf8')
+          .subarray(0, originalLength)
+          .toString('utf8');
+        expect(sha256(originalBlock)).toBe(relocation.sourceSha256);
+        expect(Buffer.byteLength(originalBlock, 'utf8')).toBe(originalLength);
+        expect(target).toContain('.character-talking-head-setting');
+        continue;
+      }
       expect(sha256(target)).toBe(relocation.sourceSha256);
       expect(Buffer.byteLength(target, 'utf8')).toBe(
         relocation.sourceEndByteExclusive - relocation.sourceStartByte,

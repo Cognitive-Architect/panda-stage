@@ -29,6 +29,7 @@ interface FakeImage {
 const LAYER_A = 'layer-a';
 const LAYER_B = 'layer-b';
 const CHARACTER_BODY = 'character-layer:body';
+const CHARACTER_HEAD = 'character-layer:head';
 const CHARACTER_FACE = 'character-layer:face';
 
 function createFakeImage(): FakeImage {
@@ -80,6 +81,10 @@ describe('StageImageResourceSession', () => {
       'src/renderer/stage/StageRenderer.tsx',
       'utf8',
     );
+    const productPreview = readFileSync(
+      'src/renderer/shell/ProductPreviewOverlay.tsx',
+      'utf8',
+    );
     const exportRenderer = readFileSync(
       'src/export-renderer/ExportRendererApp.tsx',
       'utf8',
@@ -90,9 +95,20 @@ describe('StageImageResourceSession', () => {
     expect(stageRenderer).toContain('commitStageVisualFrame');
     expect(stageRenderer).toContain('data-stage-ready={String(ready)}');
     expect(stageRenderer).toContain('data-stage-render-token');
+    expect(productPreview).toContain(
+      "import { CanvasStage } from '../stage/CanvasStage'",
+    );
+    expect(productPreview).toContain('<CanvasStage');
+    expect(stageRenderer).toContain('buildStageRenderModel');
+    expect(stageRenderer).toContain('name="stage-character-head-group"');
+    expect(stageRenderer).toContain('visualHeadGroupRenderTransform(headGroup)');
     expect(exportRenderer).toContain('onReady={handleStageReady}');
     expect(exportRenderer).toContain('isExactExportFrameReady');
     expect(exportRenderer).toContain('onError={handleStageError}');
+    expect(exportRenderer).toContain(
+      "from '../renderer/stage/CanvasStage'",
+    );
+    expect(exportRenderer).toContain('<CanvasStage');
   });
 
   it('keeps Export-style readiness false while an old committed frame is drawable', () => {
@@ -196,6 +212,52 @@ describe('StageImageResourceSession', () => {
     expect(harness.session.getSnapshot().images.get(CHARACTER_FACE)).toBe(
       harness.images[2],
     );
+  });
+
+  it('loads Body, Head and Face as one required visual and reuses stable resources', () => {
+    const harness = createHarness();
+    const initial = [
+      { id: CHARACTER_BODY, sourceUrl: 'body-v1' },
+      { id: CHARACTER_HEAD, sourceUrl: 'head-v1' },
+      { id: CHARACTER_FACE, sourceUrl: 'face-expression' },
+    ];
+
+    reconcile(harness, initial);
+    harness.images[0]!.succeed();
+    harness.images[1]!.succeed();
+    expect(harness.session.getSnapshot()).toMatchObject({
+      ready: false,
+      images: new Map(),
+    });
+    harness.images[2]!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+
+    reconcile(harness, [
+      { id: CHARACTER_BODY, sourceUrl: 'body-v1' },
+      { id: CHARACTER_HEAD, sourceUrl: 'head-v1' },
+      { id: CHARACTER_FACE, sourceUrl: 'face-mouth' },
+    ]);
+    expect(harness.session.getSnapshot().ready).toBe(false);
+    expect(harness.session.getSnapshot().images.get(CHARACTER_BODY)).toBe(
+      harness.images[0],
+    );
+    expect(harness.session.getSnapshot().images.get(CHARACTER_HEAD)).toBe(
+      harness.images[1],
+    );
+    harness.images[3]!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    expect(harness.session.getSnapshot().images.get(CHARACTER_HEAD)).toBe(
+      harness.images[1],
+    );
+
+    reconcile(harness, [
+      { id: CHARACTER_BODY, sourceUrl: 'body-v1' },
+      { id: CHARACTER_FACE, sourceUrl: 'face-mouth' },
+    ]);
+    expect(harness.session.getSnapshot().images.has(CHARACTER_HEAD)).toBe(false);
+    expect(harness.images).toHaveLength(4);
+    harness.session.dispose();
+    expect(harness.session.isDisposed()).toBe(true);
   });
 
   it('reuses unchanged decoded sources across time and transform reconciles', () => {
