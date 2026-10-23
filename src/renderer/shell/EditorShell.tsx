@@ -44,6 +44,7 @@ import {
 import {
   applyExportJobUpdate,
   safeExportFailureMessage,
+  shouldRestoreExportTask,
 } from './exportTaskState';
 import { AdaptiveWorkspaceSwitcher } from './AdaptiveWorkspaceSwitcher';
 import { BottomWorkspace } from './BottomWorkspace';
@@ -1445,7 +1446,7 @@ export function EditorShell({
   };
 
   const onExportVideo = (): void => {
-    if (exportTaskIsActive(exportTaskRef.current)) {
+    if (shouldRestoreExportTask(exportTaskRef.current)) {
       setExportSurfaceOpen(true);
       return;
     }
@@ -2047,6 +2048,7 @@ export function EditorShell({
           <ExportTaskSurface
             onCancel={() => void cancelExportTask()}
             onRetryCurrentContent={retryCurrentExportContent}
+            onStartNewExport={retryCurrentExportContent}
             onHide={() => setExportSurfaceOpen(false)}
             onRetrySameSnapshot={() => void retrySameExportSnapshot()}
             onRevealOutput={() => void revealExportOutput()}

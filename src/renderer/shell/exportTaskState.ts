@@ -99,3 +99,7 @@ export function shouldShowExportFrameProgress(task: ExportTaskState): boolean {
     task.totalFrames > 0
   );
 }
+
+export function shouldRestoreExportTask(task: ExportTaskState): boolean {
+  return task.status !== 'idle';
+}

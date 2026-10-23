@@ -21,7 +21,10 @@ import {
   type ExportPreparationMediaReader,
   type TrackedProjectSnapshot,
 } from '../../src/main/services/ExportPreparationService';
-import { NodeExportPreparationFileStore } from '../../src/main/services/ExportPreparationFileStore';
+import {
+  NodeExportPreparationFileStore,
+  type ExportPreparationFileStore,
+} from '../../src/main/services/ExportPreparationFileStore';
 import {
   EXPORT_PREPARATION_MAX_SHOTS,
   EXPORT_PREPARATION_MAX_SINGLE_ASSET_BYTES,
@@ -203,6 +206,7 @@ function requestFor(
 }
 
 afterEach(async () => {
+  vi.useRealTimers();
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );
@@ -1102,6 +1106,246 @@ describe('ExportPreparationService', () => {
       [],
     );
     fixture.service.disposeSync();
+  });
+
+  it('keeps at most two retained snapshots by pruning the oldest retry candidate', async () => {
+    const fixture = await harness();
+    const firstSelection = await selectOutput(fixture, 'first-retained.mp4');
+    const firstPrepared = await fixture.service.prepare(
+      requestFor(fixture, firstSelection.selectionId),
+    );
+    expect(firstPrepared.status).toBe('PREPARATION_READY');
+    if (firstPrepared.status !== 'PREPARATION_READY') return;
+    fixture.setNow(new Date('2026-10-21T03:00:01.000Z'));
+    const secondSelection = await selectOutput(fixture, 'second-retained.mp4');
+    const secondPrepared = await fixture.service.prepare(
+      requestFor(fixture, secondSelection.selectionId),
+    );
+    expect(secondPrepared.status).toBe('PREPARATION_READY');
+    if (secondPrepared.status !== 'PREPARATION_READY') return;
+
+    fixture.setNow(new Date('2026-10-21T03:00:02.000Z'));
+    fixture.setNow(new Date('2026-10-21T03:00:02.000Z'));
+    const thirdSelection = await selectOutput(fixture, 'third-retained.mp4');
+    const thirdPrepared = await fixture.service.prepare(
+      requestFor(fixture, thirdSelection.selectionId),
+    );
+    expect(thirdPrepared.status).toBe('PREPARATION_READY');
+    if (thirdPrepared.status !== 'PREPARATION_READY') return;
+    expect(
+      await readDirectoryOrEmpty(fixture.fileStore.rootDirectory),
+    ).toEqual(
+      expect.arrayContaining([
+        secondPrepared.candidate.snapshotId,
+        thirdPrepared.candidate.snapshotId,
+      ]),
+    );
+    expect(
+      await readDirectoryOrEmpty(fixture.fileStore.rootDirectory),
+    ).toHaveLength(2);
+    expect(
+      fixture.fileStore.getOwnedPath(firstPrepared.candidate.snapshotId),
+    ).toBeNull();
+    expect(
+      fixture.fileStore.getOwnedPath(secondPrepared.candidate.snapshotId),
+    ).not.toBeNull();
+
+    expect(
+      await fixture.service.discard(undefined, secondPrepared.candidate.snapshotId),
+    ).toBe(true);
+    expect(
+      await fixture.service.discard(undefined, thirdPrepared.candidate.snapshotId),
+    ).toBe(true);
+    fixture.service.disposeSync();
+  });
+
+  it('blocks an expired snapshot while a same-session cleanup retry removes its owned directory', async () => {
+    vi.useFakeTimers();
+    const fixture = await harness();
+    const baseStore = fixture.fileStore;
+    let locked = true;
+    let deleteAttempts = 0;
+    const fileStore: ExportPreparationFileStore = {
+      create: (snapshotId) => baseStore.create(snapshotId),
+      writeAsset: (snapshotId, contentHandleId, mimeType, bytes) =>
+        baseStore.writeAsset(snapshotId, contentHandleId, mimeType, bytes),
+      readAsset: (snapshotId, contentHandleId, mimeType) =>
+        baseStore.readAsset(snapshotId, contentHandleId, mimeType),
+      delete: async (snapshotId) => {
+        deleteAttempts += 1;
+        if (locked) throw new Error('controlled Windows file lock');
+        await baseStore.delete(snapshotId);
+      },
+      dispose: () => baseStore.dispose(),
+      getOwnedPath: (snapshotId) => baseStore.getOwnedPath(snapshotId),
+      disposeSync: () => baseStore.disposeSync(),
+    };
+    let currentTime = new Date('2026-10-21T03:00:00.000Z');
+    const service = new ExportPreparationService({
+      getCurrentProjectSnapshot: (requestedRoot) =>
+        path.resolve(requestedRoot) === path.resolve(fixture.projectRoot)
+          ? fixture.getCurrent()
+          : null,
+      fileStore,
+      mediaReader: mediaReader(fixture.media),
+      now: () => new Date(currentTime),
+    });
+    const selection = await service.selectOutput(
+      {
+        projectRoot: fixture.projectRoot,
+        projectId: fixture.project.id,
+        projectName: fixture.project.name,
+        openInstanceId: OPEN_INSTANCE_ID,
+      },
+      path.join(fixture.outputDirectory, 'locked-expiry.mp4'),
+    );
+    expect(selection.status).toBe('selected');
+    if (selection.status !== 'selected') return;
+    const prepared = await service.prepare(requestFor(fixture, selection.selectionId));
+    expect(prepared.status).toBe('PREPARATION_READY');
+    if (prepared.status !== 'PREPARATION_READY') return;
+
+    currentTime = new Date('2026-10-21T03:31:00.000Z');
+    await expect(
+      service.acquireCandidateForExport(prepared.candidate.snapshotId),
+    ).rejects.toThrow('EXPORT_SNAPSHOT_UNAVAILABLE');
+    expect(deleteAttempts).toBe(1);
+    expect(baseStore.getOwnedPath(prepared.candidate.snapshotId)).not.toBeNull();
+    expect(service.getDiagnostics(prepared.candidate.attemptId).join('\n')).toContain(
+      'controlled Windows file lock',
+    );
+
+    locked = false;
+    await vi.advanceTimersByTimeAsync(250);
+    vi.useRealTimers();
+    const cleanupDeadline = Date.now() + 2_000;
+    while (
+      baseStore.getOwnedPath(prepared.candidate.snapshotId) !== null &&
+      Date.now() < cleanupDeadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(deleteAttempts).toBe(2);
+    expect(baseStore.getOwnedPath(prepared.candidate.snapshotId)).toBeNull();
+    await expect(
+      service.acquireCandidateForExport(prepared.candidate.snapshotId),
+    ).rejects.toThrow('EXPORT_SNAPSHOT_UNAVAILABLE');
+    await service.dispose();
+  });
+
+  it('keeps frozen media owned by an active export when the expiry timer fires', async () => {
+    vi.useFakeTimers();
+    const fixture = await harness();
+    const selection = await selectOutput(fixture, 'active-expiry.mp4');
+    const prepared = await fixture.service.prepare(
+      requestFor(fixture, selection.selectionId),
+    );
+    expect(prepared.status).toBe('PREPARATION_READY');
+    if (prepared.status !== 'PREPARATION_READY') return;
+
+    const input = await fixture.service.acquireCandidateForExport(
+      prepared.candidate.snapshotId,
+    );
+    fixture.setNow(new Date('2026-10-21T03:31:00.000Z'));
+    await vi.advanceTimersByTimeAsync(30 * 60 * 1_000);
+
+    expect(fixture.fileStore.getOwnedPath(prepared.candidate.snapshotId)).not.toBeNull();
+    expect(
+      input.media.every((item) => item.bytes.byteLength > 0),
+    ).toBe(true);
+    await expect(
+      fixture.service.assertOutputTargetUnchanged(prepared.candidate.snapshotId),
+    ).resolves.toBeUndefined();
+
+    fixture.service.releaseCandidateExport(prepared.candidate.snapshotId);
+    await expect(
+      fixture.service.discard(undefined, prepared.candidate.snapshotId),
+    ).resolves.toBe(true);
+    fixture.service.disposeSync();
+  });
+
+  it('bounds cleanup retries and records the exact owned path and takeover action', async () => {
+    vi.useFakeTimers();
+    const fixture = await harness();
+    const baseStore = fixture.fileStore;
+    let deleteAttempts = 0;
+    let snapshotId = '';
+    const fileStore: ExportPreparationFileStore = {
+      create: async (id) => {
+        snapshotId = id;
+        await baseStore.create(id);
+      },
+      writeAsset: (id, contentHandleId, mimeType, bytes) =>
+        baseStore.writeAsset(id, contentHandleId, mimeType, bytes),
+      readAsset: (id, contentHandleId, mimeType) =>
+        baseStore.readAsset(id, contentHandleId, mimeType),
+      delete: async () => {
+        deleteAttempts += 1;
+        throw new Error('controlled persistent file lock');
+      },
+      dispose: async () => {
+        throw new Error('controlled persistent file lock at shutdown');
+      },
+      getOwnedPath: (id) => baseStore.getOwnedPath(id),
+      disposeSync: () => [
+        {
+          snapshotId,
+          ownedPath: baseStore.getOwnedPath(snapshotId) ?? snapshotId,
+          error: 'controlled persistent file lock at shutdown',
+        },
+      ],
+    };
+    let currentTime = new Date('2026-10-21T03:00:00.000Z');
+    const service = new ExportPreparationService({
+      getCurrentProjectSnapshot: (requestedRoot) =>
+        path.resolve(requestedRoot) === path.resolve(fixture.projectRoot)
+          ? fixture.getCurrent()
+          : null,
+      fileStore,
+      mediaReader: mediaReader(fixture.media),
+      now: () => new Date(currentTime),
+    });
+    const selection = await service.selectOutput(
+      {
+        projectRoot: fixture.projectRoot,
+        projectId: fixture.project.id,
+        projectName: fixture.project.name,
+        openInstanceId: OPEN_INSTANCE_ID,
+      },
+      path.join(fixture.outputDirectory, 'persistent-lock.mp4'),
+    );
+    expect(selection.status).toBe('selected');
+    if (selection.status !== 'selected') return;
+    const prepared = await service.prepare(requestFor(fixture, selection.selectionId));
+    expect(prepared.status).toBe('PREPARATION_READY');
+    if (prepared.status !== 'PREPARATION_READY') return;
+
+    currentTime = new Date('2026-10-21T03:31:00.000Z');
+    await expect(
+      service.acquireCandidateForExport(prepared.candidate.snapshotId),
+    ).rejects.toThrow('EXPORT_SNAPSHOT_UNAVAILABLE');
+    await vi.advanceTimersByTimeAsync(250);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(4_000);
+
+    expect(deleteAttempts).toBe(4);
+    const diagnostics = service.getDiagnostics(prepared.candidate.attemptId).join('\n');
+    expect(diagnostics).toContain(`snapshot ${prepared.candidate.snapshotId}`);
+    expect(diagnostics).toContain(baseStore.getOwnedPath(prepared.candidate.snapshotId));
+    expect(diagnostics).toContain('attempt 4/4');
+    expect(diagnostics).toContain('Takeover action');
+
+    const shutdownFailures = service.disposeSync();
+    expect(shutdownFailures).toMatchObject([
+      {
+        snapshotId: prepared.candidate.snapshotId,
+        ownedPath: baseStore.getOwnedPath(prepared.candidate.snapshotId),
+        error: 'controlled persistent file lock at shutdown',
+      },
+    ]);
+    expect(service.getDiagnostics(prepared.candidate.attemptId).join('\n')).toContain(
+      'Application shutdown cleanup failed',
+    );
   });
 
   it('blocks a renderer snapshot that no longer matches Main revision before reading media', async () => {

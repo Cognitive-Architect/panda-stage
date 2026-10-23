@@ -52,6 +52,7 @@ interface ExportTaskSurfaceProps {
   onCancel(): void;
   onRetrySameSnapshot(): void;
   onRetryCurrentContent(): void;
+  onStartNewExport(): void;
   onRevealOutput(): void;
 }
 
@@ -96,6 +97,7 @@ export function ExportTaskSurface({
   onCancel,
   onRetrySameSnapshot,
   onRetryCurrentContent,
+  onStartNewExport,
   onRevealOutput,
 }: ExportTaskSurfaceProps): React.JSX.Element | null {
   if (!open) return null;
@@ -176,14 +178,19 @@ export function ExportTaskSurface({
             </Button>
           ) : null}
           {task.status === 'completed' ? (
-            <Button
-              className="export-task-primary"
-              onClick={onRevealOutput}
-              variant="primary"
-            >
-              <FolderOpen aria-hidden="true" size={16} />
-              {'\u663e\u793a\u89c6\u9891'}
-            </Button>
+            <>
+              <Button
+                className="export-task-primary"
+                onClick={onRevealOutput}
+                variant="primary"
+              >
+                <FolderOpen aria-hidden="true" size={16} />
+                {'\u663e\u793a\u89c6\u9891'}
+              </Button>
+              <Button onClick={onStartNewExport} variant="secondary">
+                {'\u5bfc\u51fa\u65b0\u7248\u672c'}
+              </Button>
+            </>
           ) : null}
           {task.status === 'failed' || task.status === 'cancelled' ? (
             <>

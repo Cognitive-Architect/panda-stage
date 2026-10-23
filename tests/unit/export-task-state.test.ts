@@ -3,6 +3,7 @@ import type { ExportJobUpdate } from '../../src/shared/export-types';
 import type { ExportTaskState } from '../../src/renderer/shell/ExportTaskSurface';
 import {
   applyExportJobUpdate,
+  shouldRestoreExportTask,
   shouldShowExportFrameProgress,
 } from '../../src/renderer/shell/exportTaskState';
 
@@ -33,6 +34,19 @@ function update(overrides: Partial<ExportJobUpdate> = {}): ExportJobUpdate {
 }
 
 describe('export task state', () => {
+  it.each(['selecting', 'preparing', 'starting', 'running', 'cancelling', 'completed', 'failed', 'cancelled'] as const)(
+    'restores the existing %s task from the export entry point',
+    (status) => {
+      expect(shouldRestoreExportTask({ ...baseTask, status })).toBe(true);
+    },
+  );
+
+  it('starts the formal export flow only when no prior task exists', () => {
+    expect(
+      shouldRestoreExportTask({ status: 'idle', completedFrames: 0, totalFrames: 0, issues: [] }),
+    ).toBe(false);
+  });
+
   it('ignores updates from a previous Job, Attempt, or snapshot', () => {
     expect(
       applyExportJobUpdate(baseTask, update({ jobId: '20000000-0000-4000-8000-000000000002' })),

@@ -16,6 +16,8 @@ const { FileSystemService } = require('../dist-electron/main/services/FileSystem
 const { FFmpegAdapter } = require('../dist-electron/main/services/FFmpegAdapter.js');
 const { resolveMediaToolPaths } = require('../dist-electron/main/services/production-resources.js');
 const { HiddenWindowManager } = require('../dist-electron/main/windows/hidden-window-manager.js');
+const { UnsavedCloseGuard } = require('../dist-electron/main/windows/unsaved-close-guard.js');
+const { confirmPendingExportWork } = require('../dist-electron/main/windows/export-close-confirmation.js');
 const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
 const { ProjectSchema } = require('../dist-electron/domain/models/project.js');
 const { evaluateSpeakerFocusCamera, prepareSpeakerFocusCamera } = require('../dist-electron/domain/resolve-speaker-focus-camera.js');
@@ -26,13 +28,17 @@ const { generateIssue819Fixture, generateIssue827Fixture } = require('./issue819
 
 const dl03Mode = process.env.PANDA_STAGE_ISSUE823_DL03 === '1';
 const dl04Mode = process.env.PANDA_STAGE_ISSUE827_DL04 === '1';
-const dl05Mode = process.env.PANDA_STAGE_ISSUE832_DL05 === '1';
+const dl05FollowupMode = process.env.PANDA_STAGE_ISSUE834_FOLLOWUP === '1';
+const dl05Mode = process.env.PANDA_STAGE_ISSUE832_DL05 === '1' || dl05FollowupMode;
 const dl04SampleId = Number(process.env.PANDA_STAGE_ISSUE827_SAMPLE ?? '1');
 const baseDirectory =
+  process.env.PANDA_STAGE_ISSUE834_ROOT ??
   process.env.PANDA_STAGE_ISSUE832_ROOT ??
   process.env.PANDA_STAGE_ISSUE827_ROOT ??
   process.env.PANDA_STAGE_ISSUE819_ROOT ??
-  (dl05Mode
+  (dl05FollowupMode
+    ? 'D:\\PandaStage-Acceptance\\issue834-dl05-followup'
+    : dl05Mode
     ? 'D:\\PandaStage-Acceptance\\issue832-dl05'
     : dl04Mode
     ? `D:\\PandaStage-Acceptance\\issue827-dl04\\sample-${dl04SampleId}`
@@ -48,6 +54,78 @@ const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
+function shortIssue834Project(project) {
+  const shortProject = structuredClone(project);
+  shortProject.shots = shortProject.shots.map((shot, index) => {
+    const firstDialogue = shot.dialogues[0];
+    const dialogues = index === 0 && firstDialogue
+      ? (() => {
+          const dialogue = {
+            ...firstDialogue,
+            startMs: 50,
+            endMs: 450,
+            text: 'DL05 original visible subtitle',
+          };
+          delete dialogue.audioClipId;
+          return [dialogue];
+        })()
+      : [];
+    return {
+      ...shot,
+      durationMs: 500,
+      dialogues,
+      timelineEvents: [],
+      audioClips: [],
+    };
+  });
+  return ProjectSchema.parse(shortProject);
+}
+
+function controlledGate() {
+  let markStarted;
+  let release;
+  const started = new Promise((resolve) => { markStarted = resolve; });
+  const wait = new Promise((resolve) => { release = resolve; });
+  return { started, markStarted, wait, release };
+}
+
+const closePromptEvidence = [];
+const saveDialogEvidence = [];
+function installIssue834CloseGuard(window) {
+  const guard = new UnsavedCloseGuard({
+    controller: {
+      hasDirtyProject: () => false,
+      requestClose: async () => 'allow-close',
+    },
+    confirmPendingWork: () => confirmPendingExportWork(window, {
+      getPreparation: () => exportPreparationService,
+      getExportService: () => exportService,
+      showMessageBox: async (_target, options) => {
+        closePromptEvidence.push({
+          title: options.title,
+          message: options.message,
+          buttons: options.buttons,
+        });
+        return { response: 0 };
+      },
+    }),
+    synchronizeRenderer: async () => ({ ok: true }),
+    reportRendererSyncFailure: (error) => {
+      closePromptEvidence.push({ synchronizationError: error });
+    },
+    closeWindow: () => {
+      if (!window.isDestroyed()) window.close();
+    },
+    quitApplication: () => app.quit(),
+  });
+  window.on('close', (event) => guard.handleWindowClose(event));
+  window.once('closed', () => {
+    if (mainWindow === window) mainWindow = null;
+    hiddenWindowManager?.close();
+  });
+  return guard;
+}
+
 const registerMock = (name, handler) => ipcMain.handle(IPC_CHANNELS[name], handler);
 
 let mainWindow = null;
@@ -68,6 +146,7 @@ const jobUpdates = [];
 const mediaFailures = [];
 const injectedCommitConflicts = [];
 const formalCommitRecords = [];
+const revealedOutputs = [];
 const diskRecentProjectOpens = [];
 let conflictAtCommitPath = null;
 let failNextEncoderRun = false;
@@ -75,6 +154,9 @@ let requireEncoderProcessError = false;
 let replaceDialogueSourceBeforeNextMix = false;
 let failNextAudioMixProcess = false;
 let failNextOutputValidation = false;
+let pauseNextIssue834Encode = null;
+let pauseIssue834Commit = null;
+let issue834Stage = 'startup';
 const audioSourceReplacementEvidence = [];
 const audioMixProcessFailures = [];
 
@@ -175,12 +257,12 @@ function installProjectFixtureIpc() {
   });
   ipcMain.removeHandler(IPC_CHANNELS.PROJECT_OPEN);
 
-  const document = () => ({
+  const document = (project = fixtureProject) => ({
     projectRoot: fixture.projectRoot,
     projectFilePath: path.join(fixture.projectRoot, 'project.json'),
-    project: fixtureProject,
+    project,
     migrated: false,
-    sourceVersion: fixtureProject.schemaVersion,
+    sourceVersion: project.schemaVersion,
   });
   registerMock('PROJECT_OPEN', async () => ({ ok: true, value: document() }));
   registerMock('RECENT_PROJECTS_LIST', async () => ({
@@ -195,6 +277,12 @@ function installProjectFixtureIpc() {
   }));
   registerMock('RECENT_PROJECTS_OPEN', async (_event, request) => {
     assert(path.resolve(request.projectRoot) === path.resolve(fixture.projectRoot), 'Reopen request did not target the fixture Project root.');
+    if (dl05FollowupMode) {
+      const reopenedProject = ProjectSchema.parse(
+        JSON.parse(await fsp.readFile(path.join(fixture.projectRoot, 'project.json'), 'utf8')),
+      );
+      return { ok: true, document: document(reopenedProject) };
+    }
     if (!dl04Mode) return { ok: true, document: document() };
     const reopenedDocument = await projectService.open(request.projectRoot);
     assert(reopenedDocument.project.id === request.expectedProjectId, 'Reopened Project ID differs from the selected recent-project entry.');
@@ -275,6 +363,11 @@ function createRendererService() {
     getMainWindow: () => mainWindow,
     service: exportPreparationService,
     selectOutputPath: async (window, request) => {
+      saveDialogEvidence.push({
+        phase: 'opened',
+        defaultPath: path.join(request.projectRoot, defaultExportFileName(request.projectName)),
+        at: new Date().toISOString(),
+      });
       const selected = await dialog.showSaveDialog(window, {
         title: 'Export MP4',
         buttonLabel: 'Save',
@@ -282,6 +375,8 @@ function createRendererService() {
         filters: [{ name: 'MP4 video', extensions: ['mp4'] }],
         properties: [],
       });
+      saveDialogEvidence.at(-1).result = selected.canceled ? 'cancelled' : 'selected';
+      saveDialogEvidence.at(-1).selectedPath = selected.filePath ?? null;
       return selected.canceled ? null : (selected.filePath ?? null);
     },
   });
@@ -372,6 +467,12 @@ function createExportService() {
   };
   mediaAdapter.encodePngSequence = async (request, signal) => {
     try {
+      if (dl05FollowupMode && pauseNextIssue834Encode) {
+        const gate = pauseNextIssue834Encode;
+        pauseNextIssue834Encode = null;
+        gate.markStarted();
+        await gate.wait;
+      }
       if (failNextEncoderRun) {
         failNextEncoderRun = false;
         requireEncoderProcessError = true;
@@ -399,6 +500,12 @@ function createExportService() {
   };
   exportFileSystem = new class extends FileSystemService {
     async commitFormalOutputNoReplace(stagingPath, outputPath) {
+      if (dl05FollowupMode && pauseIssue834Commit) {
+        const gate = pauseIssue834Commit;
+        pauseIssue834Commit = null;
+        gate.markStarted();
+        await gate.wait;
+      }
       if (conflictAtCommitPath && path.resolve(outputPath) === path.resolve(conflictAtCommitPath)) {
         const sentinel = Buffer.from('third-party file inserted at the final commit boundary');
         await fsp.writeFile(outputPath, sentinel, { flag: 'wx' });
@@ -506,7 +613,8 @@ function createExportService() {
     revealExportOutput: async (jobId) => {
       const outputPath = exportService.getCompletedOutputPath(jobId);
       if (!outputPath) return false;
-      shell.showItemInFolder(outputPath);
+      if (dl05FollowupMode) revealedOutputs.push(outputPath);
+      else shell.showItemInFolder(outputPath);
       return true;
     },
   });
@@ -1982,6 +2090,373 @@ async function runIssue832Acceptance({ result, editorSnapshotPath, editorSnapsho
   app.exit(0);
 }
 
+async function waitForGate(gate, label, timeoutMs = 60_000) {
+  let timer;
+  try {
+    await Promise.race([
+      gate.started,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(label + ': timed out waiting for the controlled gate.')), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function waitForWindowClosed(window, label, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (window.isDestroyed()) return;
+    await pause(50);
+  }
+  throw new Error(label + ': BrowserWindow remained open after its pending work settled.');
+}
+
+async function restoreIssue834TerminalTask(start, expectedStatus, label) {
+  const priorStarts = formalStarts.length;
+  const priorSaveDialogs = saveDialogEvidence.length;
+  await ensureQuickActionDrawerOpen();
+  await clickSelector('[data-testid="quick-action-export"]');
+  await clickSelector('[data-testid="quick-action-export"]');
+  await waitForRenderer('Boolean(document.querySelector("[data-testid=\\"export-task-surface\\"]"))');
+  const state = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
+  assert(state.task.jobId === start.jobId, label + ': toolbar Export did not restore the original Job.');
+  assert(state.task.attemptId === start.attemptId && state.task.snapshotId === start.snapshotId, label + ': restored task identity does not match its original attempt and snapshot.');
+  assert(state.task.status === expectedStatus, label + ': restored task status was ' + state.task.status + '.');
+  assert(state.latestUpdate?.jobId === start.jobId && state.latestUpdate?.status === expectedStatus, label + ': a stale or unrelated Main update replaced the terminal Job identity.');
+  assert(formalStarts.length === priorStarts, label + ': restoring the terminal task started another Main Job.');
+  assert(saveDialogEvidence.length === priorSaveDialogs, label + ': restoring the terminal task opened another Save As dialog.');
+  return state;
+}
+
+async function createIssue834WindowAndOpenProject() {
+  mainWindow = await createMainWindow({ show: true, issue816Acceptance: true });
+  installIssue834CloseGuard(mainWindow);
+  mainWindow.setContentSize(1024, 768);
+  mainWindow.setAlwaysOnTop(false);
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.focus();
+  await waitForRenderer('document.querySelector("[data-task4-core=\\"recent-open\\"]")');
+  await clickSelector('[data-task4-core="recent-open"]');
+  await waitForRenderer('window.__pandaStageIssue816Acceptance && (await window.__pandaStageIssue816Acceptance.inspect())?.project?.id === ' + JSON.stringify(fixtureProject.id));
+  return rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+}
+
+async function runIssue834FollowupAcceptance({ result, opened, initialProjectBytes, projectFilePath }) {
+  issue834Stage = 'initial-export';
+  const evidenceRoot = fixture.evidenceRoot;
+  const project = ProjectSchema.parse(opened.project);
+  const originalProjectContentSha256 = hash(Buffer.from(JSON.stringify(project), 'utf8'));
+  assert((await fsp.readFile(projectFilePath)).equals(initialProjectBytes), 'Issue #834 fixture must start from its exact shortened on-disk Project.');
+
+  const originalOutputPath = path.join(fixture.projectRoot, 'issue834-hidden-completed.mp4');
+  const originalGate = controlledGate();
+  pauseNextIssue834Encode = originalGate;
+  const original = await beginIssue832CreatorExport('issue834-hidden-completed', path.basename(originalOutputPath));
+  assert(original.start.projectContentSha256 === originalProjectContentSha256, 'The first Job did not freeze the original fixture Project.');
+  assert(original.start.revision === opened.revision, 'The first Job captured a different Project revision.');
+  await waitForGate(originalGate, 'original export encoding');
+  await waitForRenderer('window.__pandaStageIssue816Acceptance.inspectExportTask()?.task.jobId === ' + JSON.stringify(original.start.jobId) + ' && window.__pandaStageIssue816Acceptance.inspectExportTask()?.task.phase === "encoding"');
+
+  issue834Stage = 'visible-subtitle-edit';
+  await clickSelector('[data-testid="export-task-surface"] .export-task-hide');
+  await waitForRenderer('!document.querySelector("[data-testid=\\"export-task-surface\\"]")');
+  await clickSelector('[data-testid="right-activity-rail-subtitles"]');
+  await clickSelector('[data-testid="dialogue-clip"]');
+  await waitForRenderer('document.querySelector("[data-testid=\\"dialogue-clip\\"]")?.dataset.selected === "true"');
+  await clickSelector('[data-testid="right-activity-rail-properties"]');
+  await waitForRenderer('Boolean(document.querySelector("[data-testid=\\"dialogue-inspector-text\\"]"))');
+  const originalSubtitle = project.shots[0].dialogues[0]?.text;
+  const nextSubtitle = 'Issue 834 subtitle changed through the visible editor';
+  const inputBefore = await rendererJs('document.querySelector("[data-testid=\\"dialogue-inspector-text\\"]")?.value ?? null');
+  assert(inputBefore === originalSubtitle, 'The visible subtitle input did not show the expected fixture dialogue.');
+  await rendererJs('(() => { const input = document.querySelector("[data-testid=\\"dialogue-inspector-text\\"]"); if (!input) throw new Error("Visible subtitle editor is missing."); input.focus(); input.select(); return true; })()');
+  mainWindow.webContents.insertText(nextSubtitle);
+  await waitForRenderer('document.querySelector("[data-testid=\\"dialogue-inspector-text\\"]")?.value === ' + JSON.stringify(nextSubtitle));
+  mainWindow.setContentSize(1024, 768);
+  await pause(200);
+  const subtitleControl = await rendererJs('(() => { const input = document.querySelector("[data-testid=\\"dialogue-inspector-text\\"]"); if (!input) return null; const rect = input.getBoundingClientRect(); const style = getComputedStyle(input); return { value: input.value, width: rect.width, height: rect.height, display: style.display, visibility: style.visibility }; })()');
+  assert(subtitleControl?.value === nextSubtitle && subtitleControl.width > 0 && subtitleControl.height > 0 && subtitleControl.display !== 'none' && subtitleControl.visibility !== 'hidden', 'The changed subtitle input was not visible in the Windows renderer.');
+  const subtitleScreenshotPath = path.join(evidenceRoot, 'subtitle-editor-during-export-narrow.png');
+  const subtitleImage = await mainWindow.webContents.capturePage();
+  const subtitleImageSize = subtitleImage.getSize();
+  await fsp.writeFile(subtitleScreenshotPath, subtitleImage.toPNG());
+  await rendererJs('document.querySelector("[data-testid=\\"dialogue-inspector-text\\"]")?.blur()');
+  const editedExpression = '(() => { const state = window.__pandaStageIssue816Acceptance.inspect(); return state?.revision === ' + String(opened.revision + 1) + ' && state.project.shots[0].dialogues[0].text === ' + JSON.stringify(nextSubtitle) + '; })()';
+  await waitForRenderer(editedExpression);
+  const edited = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+  assert(edited.dirty && edited.undoCount === opened.undoCount + 1, 'The real subtitle input edit did not create exactly one dirty Project revision and History entry.');
+  const editedProjectContentSha256 = hash(Buffer.from(JSON.stringify(edited.project), 'utf8'));
+
+  await ensureQuickActionDrawerOpen();
+  await clickSelector('[data-testid="quick-action-save"]');
+  await waitForRenderer('window.__pandaStageIssue816Acceptance.inspect()?.dirty === false', 30_000);
+  const saved = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+  const savedProjectBytes = await fsp.readFile(projectFilePath);
+  const savedProject = ProjectSchema.parse(JSON.parse(savedProjectBytes.toString('utf8')));
+  assert(saved.revision === edited.revision && saved.undoCount === edited.undoCount, 'Saving the visible subtitle edit changed its revision or History.');
+  assert(JSON.stringify(savedProject) === JSON.stringify(edited.project), 'The real subtitle edit was not saved to the formal project file.');
+  assert(exportService.getJob(original.start.jobId)?.status === 'running', 'The initial Main Job did not remain active while editing and saving.');
+
+  issue834Stage = 'preview-during-export';
+  await clickSelector('[data-testid="quick-action-play"]');
+  await waitForRenderer('Boolean(document.querySelector("[data-testid=\\"product-preview-overlay\\"]"))');
+  await waitForRenderer('(() => { const button = document.querySelector("[data-testid=\\"product-preview-play-pause\\"]"); return button && !button.disabled; })()', 60_000);
+  const previewInitiallyPlaying = await rendererJs('document.querySelector("[data-testid=\\"product-preview-play-pause\\"]")?.getAttribute("aria-pressed") === "true"');
+  if (!previewInitiallyPlaying) {
+    await clickSelector('[data-testid="product-preview-play-pause"]');
+    await waitForRenderer('document.querySelector("[data-testid=\\"product-preview-play-pause\\"]")?.getAttribute("aria-pressed") === "true"');
+  }
+  await clickSelector('[data-testid="product-preview-close"]');
+  await waitForRenderer('!document.querySelector("[data-testid=\\"product-preview-overlay\\"]")');
+  assert(exportService.getJob(original.start.jobId)?.status === 'running', 'Product Preview blocked or completed the gated Main Job.');
+
+  originalGate.release();
+  issue834Stage = 'completed-terminal-restore';
+  const originalTerminal = await waitForIssue832Terminal(original.start, 120_000);
+  assert(originalTerminal.task.status === 'completed', 'Hidden original export did not complete.');
+  assert(exportService.getJob(original.start.jobId)?.status === 'completed' && existsSync(originalOutputPath), 'The original output did not complete while its task surface was hidden.');
+  const originalOutputSha256 = hash(await fsp.readFile(originalOutputPath));
+  assert(original.start.projectContentSha256 === originalProjectContentSha256, 'The Main Job lost its captured original Project identity.');
+  assert(JSON.stringify(ProjectSchema.parse(JSON.parse((await fsp.readFile(projectFilePath)).toString('utf8')))) === JSON.stringify(savedProject), 'The frozen original export changed the newly saved subtitle Project.');
+  const hiddenCompletedTask = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
+  assert(hiddenCompletedTask.task.jobId === original.start.jobId && hiddenCompletedTask.task.status === 'completed', 'The terminal result was not retained while the surface was hidden.');
+
+  mainWindow.setContentSize(1024, 768);
+  const completedState = await restoreIssue834TerminalTask(original.start, 'completed', 'hidden completed terminal');
+  const completedScreenshotPath = path.join(evidenceRoot, 'completed-terminal-restored-narrow.png');
+  await fsp.writeFile(completedScreenshotPath, (await mainWindow.webContents.capturePage()).toPNG());
+  const formalStartCountAtCompletedRestore = formalStarts.length;
+  const revealStartCount = revealedOutputs.length;
+  await clickButtonContainingText('\u663e\u793a\u89c6\u9891');
+  await waitForRenderer('window.__pandaStageIssue816Acceptance.inspectExportTask()?.task.jobId === ' + JSON.stringify(original.start.jobId) + ' && window.__pandaStageIssue816Acceptance.inspectExportTask()?.task.status === "completed"');
+  assert(revealedOutputs.length === revealStartCount + 1 && revealedOutputs.at(-1) === originalOutputPath, 'The restored completed task did not request reveal of its own output location.');
+  assert(exportService.getCompletedOutputPath(original.start.jobId) === originalOutputPath, 'The completed Job output location no longer belongs to the restored task.');
+  const dialogCountBeforeNewVersionCancel = saveDialogEvidence.length;
+  const startsBeforeNewVersionCancel = formalStarts.length;
+  await clickButtonContainingText('\u5bfc\u51fa\u65b0\u7248\u672c');
+  const newVersionCancelScreenshotPath = path.join(evidenceRoot, 'new-version-save-as-cancelled.png');
+  await clickNativeSaveDialog('cancel', newVersionCancelScreenshotPath);
+  await waitForRenderer('window.__pandaStageIssue816Acceptance.inspectExportTask()?.task.jobId === ' + JSON.stringify(original.start.jobId) + ' && window.__pandaStageIssue816Acceptance.inspectExportTask()?.task.status === "completed"');
+  assert(formalStarts.length === startsBeforeNewVersionCancel, 'Cancelling explicit new-version Save As started another Job.');
+  assert(saveDialogEvidence.length === dialogCountBeforeNewVersionCancel + 1 && saveDialogEvidence.at(-1).result === 'cancelled', 'Explicit new-version cancellation did not cancel its native Save As dialog.');
+  const originalAfterNewVersionCancel = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
+  assert(originalAfterNewVersionCancel.task.jobId === completedState.task.jobId && originalAfterNewVersionCancel.task.status === 'completed', 'Save As cancellation did not restore the completed result.');
+
+  const cancelledOutputPath = path.join(fixture.projectRoot, 'issue834-hidden-cancelled.mp4');
+  const cancelledGate = controlledGate();
+  pauseNextIssue834Encode = cancelledGate;
+  const cancelledRun = await beginIssue832CreatorExport(
+    'issue834-hidden-cancelled',
+    path.basename(cancelledOutputPath),
+    '\u5bfc\u51fa\u65b0\u7248\u672c',
+  );
+  await waitForGate(cancelledGate, 'hidden cancellation export encoding');
+  await clickSelector('[data-testid="export-task-surface"] .export-task-hide');
+  await waitForRenderer('!document.querySelector("[data-testid=\\"export-task-surface\\"]")');
+  assert(exportService.cancelJob(cancelledRun.start.jobId), 'Main did not accept cancellation for the hidden running Job.');
+  cancelledGate.release();
+  const cancelledTerminal = await waitForIssue832Terminal(cancelledRun.start, 120_000);
+  assert(cancelledTerminal.task.status === 'cancelled' && exportService.getJob(cancelledRun.start.jobId)?.status === 'cancelled', 'The hidden Main cancellation did not reach the cancelled terminal state.');
+  assert(!existsSync(cancelledOutputPath), 'The hidden cancelled Job published an output.');
+  const cancelledRestored = await restoreIssue834TerminalTask(cancelledRun.start, 'cancelled', 'hidden cancelled terminal');
+
+  const failedOutputPath = path.join(fixture.projectRoot, 'issue834-hidden-failed.mp4');
+  const failedGate = controlledGate();
+  pauseNextIssue834Encode = failedGate;
+  failNextEncoderRun = true;
+  const failedRun = await beginIssue832CreatorExport(
+    'issue834-hidden-failed',
+    path.basename(failedOutputPath),
+    '\u6309\u5f53\u524d\u5185\u5bb9\u91cd\u65b0\u5bfc\u51fa',
+  );
+  assert(failedRun.start.projectContentSha256 === editedProjectContentSha256, 'Current-content retry did not freeze the actual subtitle edit.');
+  await waitForGate(failedGate, 'hidden failure export encoding');
+  await clickSelector('[data-testid="export-task-surface"] .export-task-hide');
+  await waitForRenderer('!document.querySelector("[data-testid=\\"export-task-surface\\"]")');
+  failedGate.release();
+  const failedTerminal = await waitForIssue832Terminal(failedRun.start, 120_000);
+  const failedJob = exportService.getJob(failedRun.start.jobId);
+  assert(failedTerminal.task.status === 'failed' && failedJob?.status === 'failed', 'The controlled hidden encoder failure did not reach the failed terminal state.');
+  assert(!existsSync(failedOutputPath), 'The hidden failed Job published an output.');
+  const failedRestored = await restoreIssue834TerminalTask(failedRun.start, 'failed', 'hidden failed terminal');
+  const failedActions = await rendererJs('Array.from(document.querySelectorAll("[data-testid=\\"export-task-surface\\"] button")).map((button) => button.innerText)');
+  assert(failedActions.some((label) => label.includes('\u6309\u5f53\u524d\u5185\u5bb9\u91cd\u65b0\u5bfc\u51fa')), 'The restored failed task lost its current-content retry action.');
+  assert(failedActions.some((label) => label.includes('\u9009\u62e9\u4f4d\u7f6e') && label.includes('\u91cd\u8bd5')), 'The restored failed task lost its frozen-snapshot retry action.');
+
+  assert(await exportPreparationService.discard(undefined, cancelledRun.start.snapshotId), 'Cancelled terminal snapshot could not be discarded after identity checks.');
+  assert(await exportPreparationService.discard(undefined, failedRun.start.snapshotId), 'Failed terminal snapshot could not be discarded after retry-action checks.');
+
+  const runningCloseTargetPath = path.join(fixture.projectRoot, 'issue834-browser-close-running.mp4');
+  const runningCloseGate = controlledGate();
+  pauseNextIssue834Encode = runningCloseGate;
+  const runningCloseRun = await beginIssue832CreatorExport(
+    'issue834-browser-close-running',
+    path.basename(runningCloseTargetPath),
+    '\u6309\u5f53\u524d\u5185\u5bb9\u91cd\u65b0\u5bfc\u51fa',
+  );
+  await waitForGate(runningCloseGate, 'BrowserWindow running-close export encoding');
+  const runningCloseWindow = mainWindow;
+  const runningCloseWindowWebContentsId = runningCloseWindow.webContents.id;
+  const runningPromptCount = closePromptEvidence.length;
+  runningCloseWindow.close();
+  while (closePromptEvidence.length === runningPromptCount) await pause(25);
+  assert(!runningCloseWindow.isDestroyed(), 'BrowserWindow closed before its running Job was cancelled and cleaned.');
+  assert(closePromptEvidence.at(-1).buttons.length === 2, 'Running export close prompt did not offer cancel-and-close and keep-open choices.');
+  runningCloseGate.release();
+  await waitForWindowClosed(runningCloseWindow, 'running Job close');
+  const runningCloseJob = exportService.getJob(runningCloseRun.start.jobId);
+  assert(runningCloseJob?.status === 'cancelled', 'Closing during encoding did not cancel and wait for the Main Job.');
+  assert(!existsSync(runningCloseTargetPath), 'Closing during encoding published an MP4.');
+  assert(!hiddenWindowManager.getDiagnostics().windowOpen, 'The hidden renderer remained open after running-close cleanup.');
+  const runningCloseHiddenWindowClosed = !hiddenWindowManager.getDiagnostics().windowOpen;
+
+  const reopenedAfterRunningClose = await createIssue834WindowAndOpenProject();
+  assert(hash(Buffer.from(JSON.stringify(reopenedAfterRunningClose.project), 'utf8')) === editedProjectContentSha256, 'Project reopen after BrowserWindow close lost the saved subtitle edit.');
+
+  const commitTargetPath = path.join(fixture.projectRoot, 'issue834-browser-close-committing.mp4');
+  assert(!existsSync(commitTargetPath), 'The committing-close target must begin absent.');
+  const commitGate = controlledGate();
+  pauseIssue834Commit = commitGate;
+  conflictAtCommitPath = commitTargetPath;
+  const committingRun = await beginIssue832CreatorExport('issue834-browser-close-committing', path.basename(commitTargetPath));
+  await waitForGate(commitGate, 'BrowserWindow committing-close export commit');
+  await waitForRenderer('window.__pandaStageIssue816Acceptance.inspectExportTask()?.task.jobId === ' + JSON.stringify(committingRun.start.jobId) + ' && window.__pandaStageIssue816Acceptance.inspectExportTask()?.task.phase === "committing"');
+  assert(!exportService.canCancelJob(committingRun.start.jobId), 'The commit-boundary Job remained cancellable.');
+  const committingWindow = mainWindow;
+  const committingWindowWebContentsId = committingWindow.webContents.id;
+  const committingPromptCount = closePromptEvidence.length;
+  committingWindow.close();
+  while (closePromptEvidence.length === committingPromptCount) await pause(25);
+  assert(!committingWindow.isDestroyed(), 'BrowserWindow closed before the non-cancellable commit settled.');
+  assert(!existsSync(commitTargetPath), 'Commit test target appeared before the controlled commit gate was released.');
+  assert(closePromptEvidence.at(-1).buttons.length === 2, 'Committing close prompt did not offer wait-and-close and keep-open choices.');
+  commitGate.release();
+  await waitForWindowClosed(committingWindow, 'committing Job close');
+  const committingJob = exportService.getJob(committingRun.start.jobId);
+  const conflict = injectedCommitConflicts.at(-1);
+  assert(committingJob?.status === 'failed', 'The no-clobber race did not fail the committing Job.');
+  assert(conflict?.outputPath === commitTargetPath && conflict.insertedAfterOutputCheck, 'The test sentinel was not inserted at the final commit boundary.');
+  const sentinelSha256 = hash(await fsp.readFile(commitTargetPath));
+  assert(sentinelSha256 === conflict.sha256, 'No-replace commit changed the third-party sentinel.');
+  assert(committingJob.cleanupError === null, 'Commit failure reported an unrelated cleanup failure.');
+  assert(!hiddenWindowManager.getDiagnostics().windowOpen, 'The hidden renderer remained open after committing-close cleanup.');
+
+  assert(await exportPreparationService.discard(undefined, runningCloseRun.start.snapshotId), 'Running-close snapshot could not be discarded after cancellation.');
+  assert(await exportPreparationService.discard(undefined, committingRun.start.snapshotId), 'Commit-race snapshot could not be discarded after no-clobber verification.');
+  const resourceCleanup = await assertNoExportTemporaries('Issue #834 terminal and BrowserWindow close scenarios');
+  assert((await fsp.readFile(projectFilePath)).equals(savedProjectBytes), 'Terminal restore or BrowserWindow close changed the saved Project file.');
+  assert(hash(await fsp.readFile(originalOutputPath)) === originalOutputSha256, 'Later export outcomes changed the completed original MP4.');
+
+  result.fixture = {
+    projectId: project.id,
+    projectRoot: fixture.projectRoot,
+    projectDurationMs: 1_500,
+    shotCount: 3,
+    audioClipCounts: fixtureProject.shots.map((shot) => shot.audioClips.length),
+    originalProjectContentSha256,
+    editedProjectContentSha256,
+    savedProjectSha256: hash(savedProjectBytes),
+    originalSubtitle,
+    editedSubtitle: nextSubtitle,
+  };
+  result.acceptance = {
+    AC01_hiddenCompletedRestore: {
+      status: 'PASS',
+      jobId: original.start.jobId,
+      attemptId: original.start.attemptId,
+      snapshotId: original.start.snapshotId,
+      mainStatus: exportService.getJob(original.start.jobId)?.status,
+      restoredStatus: completedState.task.status,
+      formalStartCount: formalStartCountAtCompletedRestore,
+      outputPath: originalOutputPath,
+      outputSha256: originalOutputSha256,
+      revealRequestedForSameOutput: revealedOutputs.at(-1) === originalOutputPath,
+      revealPath: revealedOutputs.at(-1),
+      screenshotPath: completedScreenshotPath,
+    },
+    AC02_explicitNewVersionAndSaveAsCancellation: {
+      status: 'PASS',
+      newVersionAction: '\u5bfc\u51fa\u65b0\u7248\u672c',
+      cancelledDialog: saveDialogEvidence.at(dialogCountBeforeNewVersionCancel),
+      oldJobId: original.start.jobId,
+      oldStatusAfterCancel: originalAfterNewVersionCancel.task.status,
+      noNewJobStarted: true,
+      cancelledOutputPath,
+    },
+    AC03_hiddenCancelledAndFailedRestore: {
+      status: 'PASS',
+      cancelled: { start: cancelledRun.start, status: cancelledRestored.task.status, targetAbsent: !existsSync(cancelledOutputPath) },
+      failed: { start: failedRun.start, status: failedRestored.task.status, targetAbsent: !existsSync(failedOutputPath), originalError: failedJob?.originalError },
+      failedRetryActions: failedActions,
+    },
+    AC04_visibleSubtitleEditDuringExport: {
+      status: 'PASS',
+      inputSelector: '[data-testid="dialogue-inspector-text"]',
+      revisionBefore: opened.revision,
+      revisionAfter: edited.revision,
+      undoCountAfter: edited.undoCount,
+      originalJobCapturedProjectSha256: original.start.projectContentSha256,
+      editedProjectContentSha256,
+      screenshotPath: subtitleScreenshotPath,
+      screenshotSize: subtitleImageSize,
+      viewportDip: { width: 1024, height: 768 },
+      inputBounds: subtitleControl,
+      savedWhileJobRunning: true,
+      previewOpenedAndClosedWhileJobRunning: true,
+    },
+    AC05_runningBrowserWindowClose: {
+      status: 'PASS',
+      windowWebContentsId: runningCloseWindowWebContentsId,
+      jobId: runningCloseRun.start.jobId,
+      prompt: closePromptEvidence[runningPromptCount],
+      mainStatus: runningCloseJob?.status,
+      outputAbsent: !existsSync(runningCloseTargetPath),
+      hiddenWindowClosed: runningCloseHiddenWindowClosed,
+    },
+    AC06_committingBrowserWindowCloseAndNoClobber: {
+      status: 'PASS',
+      windowWebContentsId: committingWindowWebContentsId,
+      jobId: committingRun.start.jobId,
+      prompt: closePromptEvidence[committingPromptCount],
+      mainStatus: committingJob?.status,
+      conflict,
+      sentinelSha256After: sentinelSha256,
+      sentinelUnchanged: sentinelSha256 === conflict.sha256,
+      hiddenWindowClosed: !hiddenWindowManager.getDiagnostics().windowOpen,
+    },
+    AC07_resourceCleanup: {
+      status: 'PASS',
+      resourceCleanup,
+      closePrompts: closePromptEvidence,
+    },
+  };
+  result.exportJobs = formalStarts.map((start) => ({
+    ...start,
+    terminal: exportService.getJob(start.jobId),
+  }));
+  result.saveDialogEvidence = saveDialogEvidence;
+  result.resourceCleanup = resourceCleanup;
+  result.auto = 'PASS';
+  result.owner = {
+    status: 'FOLLOWUP_REVIEW_READY',
+    ownerManual: 'DEFERRED_TO_DL07',
+    techReview: 'PENDING',
+    dl06: 'NO GO',
+    multiShotAvAccepted: false,
+    humanWindowsElectronAcceptance: 'NOT_CLAIMED',
+  };
+  result.completedAt = new Date().toISOString();
+  await fsp.writeFile(path.join(evidenceRoot, 'acceptance-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
+  await fsp.writeFile(path.join(fixture.root, 'acceptance-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
+  console.log('PASS #834 DL-05 follow-up acceptance: ' + fixture.root);
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
+  hiddenWindowManager.close();
+  app.exit(0);
+}
+
 function acceptanceSessionFingerprint(snapshot) {
   return {
     projectId: snapshot.project?.id ?? null,
@@ -2313,6 +2788,14 @@ async function run() {
         includeAudioMix: dl03Mode,
       });
   fixtureProject = ProjectSchema.parse(JSON.parse(await fsp.readFile(path.join(fixture.projectRoot, 'project.json'), 'utf8')));
+  if (dl05FollowupMode) {
+    fixtureProject = shortIssue834Project(fixtureProject);
+    await fsp.writeFile(
+      path.join(fixture.projectRoot, 'project.json'),
+      JSON.stringify(fixtureProject, null, 2),
+      'utf8',
+    );
+  }
   const projectFilePath = path.join(fixture.projectRoot, 'project.json');
   const initialProjectBytes = await fsp.readFile(projectFilePath);
   for (const asset of fixtureProject.assets) {
@@ -2326,6 +2809,7 @@ async function run() {
   const mediaTools = resolveMediaToolPaths({ isPackaged: false, resourcesPath: process.resourcesPath });
   await app.whenReady();
   mainWindow = await createMainWindow({ show: true, issue816Acceptance: true });
+  if (dl05FollowupMode) installIssue834CloseGuard(mainWindow);
   mainWindow.setContentSize(1280, 800);
   // Keep the owning window below native Save As dialogs during the automated
   // DL-04 and DL-05 flows.
@@ -2335,11 +2819,13 @@ async function run() {
   mainWindow.webContents.focus();
 
   const result = {
-    issue: dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
-    wrapperRunId: process.env.PANDA_STAGE_ISSUE832_RUN_ID ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID ?? null,
-    sourceCommitSha: process.env.PANDA_STAGE_ISSUE832_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA ?? null,
+    issue: dl05FollowupMode ? 834 : dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
+    wrapperRunId: process.env.PANDA_STAGE_ISSUE834_RUN_ID ?? process.env.PANDA_STAGE_ISSUE832_RUN_ID ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID ?? null,
+    sourceCommitSha: process.env.PANDA_STAGE_ISSUE834_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE832_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA ?? null,
     sampleId: dl04Mode || dl05Mode ? dl04SampleId : null,
-    workOrder: dl05Mode
+    workOrder: dl05FollowupMode
+      ? 'Issue #834 DL-05 follow-up: terminal task restoration, retryable snapshot cleanup, and close confirmation'
+      : dl05Mode
       ? 'DL-05 export task lifecycle, frozen/current retries, and editing during a multi-shot job'
       : dl04Mode
       ? 'DL-04 formal whole-Project multi-shot export acceptance'
@@ -2368,7 +2854,13 @@ async function run() {
   };
 
   try {
-    if (dl04Mode || dl05Mode) {
+    if (dl05FollowupMode) {
+      assert(fixtureProject.shots.length === 3, 'Issue #834 fixture must contain three Shots.');
+      assert(fixtureProject.shots.every((shot) => shot.durationMs === 500), 'Issue #834 fixture Shots must each be 500 ms.');
+      assert(fixtureProject.shots.reduce((total, shot) => total + shot.durationMs, 0) === 1_500, 'Issue #834 fixture must be 1.5 seconds long.');
+      assert(fixtureProject.shots.every((shot) => shot.audioClips.length === 0), 'Issue #834 fixture must omit audio.');
+      assert(fixtureProject.shots[0].dialogues.length === 1, 'Issue #834 fixture must contain a visible first-Shot subtitle.');
+    } else if (dl04Mode || dl05Mode) {
       assert(fixtureProject.shots.length === 3, 'Issue #827/832 fixture must contain three Shots.');
       assert(fixtureProject.shots.reduce((total, shot) => total + shot.durationMs, 0) === 30_000, 'Issue #827/832 fixture must be 30 seconds long.');
       assert(fixtureProject.shots.every((shot) => shot.durationMs >= 9_000), 'Issue #827/832 fixture Shots must each be long enough to cross a global frame boundary.');
@@ -2388,6 +2880,11 @@ async function run() {
     await waitForRenderer("window.__pandaStageIssue816Acceptance && (await window.__pandaStageIssue816Acceptance.inspect())?.project");
     const opened = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
     assert(opened.project.id === fixtureProject.id, 'Creator UI opened a different Project.');
+
+    if (dl05FollowupMode) {
+      await runIssue834FollowupAcceptance({ result, opened, initialProjectBytes, projectFilePath });
+      return;
+    }
 
     const edited = await rendererJs('window.__pandaStageIssue816Acceptance.editUnsavedFixture()');
     assert(edited.dirty === true && edited.revision === opened.revision + 1, 'Unsaved fixture edit did not enter the formal Project revision.');
@@ -2764,6 +3261,10 @@ async function run() {
     result.auto = 'FAIL';
     result.error = String(error.stack ?? error);
     result.diagnostics = {
+      issue834Stage,
+      dialogueUi: mainWindow && !mainWindow.isDestroyed()
+        ? await rendererJs('({ activity: document.querySelector("[data-testid=\\"right-workspace\\"]")?.dataset.activeActivity ?? null, clipSelected: document.querySelector("[data-testid=\\"dialogue-clip\\"]")?.dataset.selected ?? null, inspectorText: document.querySelector("[data-testid=\\"dialogue-inspector-text\\"]")?.value ?? null, inspectorPresent: Boolean(document.querySelector("[data-testid=\\"dialogue-inspector-text\\"]")) })').catch((error) => String(error))
+        : null,
       formalStarts,
       mediaFailures,
       latestExportUpdate: jobUpdates.at(-1) ?? null,

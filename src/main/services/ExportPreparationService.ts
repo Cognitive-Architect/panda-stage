@@ -41,6 +41,7 @@ import {
 import {
   ExportPreparationFileStore,
   NodeExportPreparationFileStore,
+  type ExportPreparationCleanupFailure,
 } from './ExportPreparationFileStore';
 import { resolveProjectAssetPath } from './project-asset-path';
 
@@ -95,8 +96,18 @@ interface StoredCandidate {
   expiryTimer?: ReturnType<typeof setTimeout>;
 }
 
+interface PendingCandidateCleanup {
+  candidate: ExportPreparationCandidate;
+  attempts: number;
+  lastError: string;
+  retryTimer?: ReturnType<typeof setTimeout>;
+  inFlight?: Promise<boolean>;
+}
+
 const EXPORT_RETRY_RETENTION_MS = 30 * 60 * 1_000;
 const MAX_RETAINED_EXPORT_CANDIDATES = 2;
+const MAX_CANDIDATE_CLEANUP_ATTEMPTS = 4;
+const CANDIDATE_CLEANUP_RETRY_DELAYS_MS = [250, 1_000, 4_000] as const;
 
 export type FrozenExportMedia =
   | {
@@ -176,6 +187,10 @@ export class ExportPreparationService {
   private selection: OutputSelection | null = null;
   private activePreparation: ActivePreparation | null = null;
   private readonly candidates = new Map<string, StoredCandidate>();
+  private readonly pendingCandidateCleanups = new Map<
+    string,
+    PendingCandidateCleanup
+  >();
   private readonly activeExportSnapshots = new Set<string>();
   private readonly usedAttemptIds = new Set<string>();
   private readonly diagnostics = new Map<string, string[]>();
@@ -433,6 +448,29 @@ export class ExportPreparationService {
     }
 
     await this.pruneExpiredCandidates();
+    const hasSnapshotCapacity = await this.reserveCandidateSlot();
+    if (!hasSnapshotCapacity) {
+      return this.block(
+        request.attemptId,
+        [
+          {
+            code: 'PREPARATION_BUSY',
+            location: '导出准备',
+            problem: '上一份导出临时内容仍在清理。',
+            nextStep: '关闭占用临时目录的程序，等待本次清理重试后再导出。',
+          },
+        ],
+        [...this.pendingCandidateCleanups.entries()]
+          .map(([snapshotId, pending]) =>
+            this.candidateCleanupDiagnostic(
+              snapshotId,
+              pending,
+              pending.lastError || 'Cleanup remains pending.',
+            ),
+          )
+          .join('\n'),
+      );
+    }
     const controller = new AbortController();
     const snapshotId = randomUUID();
     let settle!: () => void;
@@ -853,19 +891,16 @@ export class ExportPreparationService {
 
   async finalizeCandidateExport(snapshotId: string): Promise<void> {
     this.releaseCandidateExport(snapshotId);
-    const stored = this.candidates.get(snapshotId);
-    if (!stored) return;
-    try {
-      await this.fileStore.delete(snapshotId);
-    } catch (error) {
-      this.recordDiagnostic(
-        stored.candidate.attemptId,
-        'Completed export snapshot cleanup failed: ' + errorMessage(error),
-      );
-      throw error;
-    } finally {
-      this.clearCandidateExpiry(stored);
-      this.candidates.delete(snapshotId);
+    const removed = await this.removeCandidate(snapshotId);
+    if (!removed) {
+      const pending = this.pendingCandidateCleanups.get(snapshotId);
+      if (pending) {
+        throw new Error(this.candidateCleanupDiagnostic(
+          snapshotId,
+          pending,
+          pending.lastError || 'Cleanup remains pending.',
+        ));
+      }
     }
   }
 
@@ -882,10 +917,7 @@ export class ExportPreparationService {
       if (this.activeExportSnapshots.has(snapshotId)) return false;
       const candidate = this.candidates.get(snapshotId);
       if (!candidate) return false;
-      await this.fileStore.delete(snapshotId);
-      this.clearCandidateExpiry(candidate);
-      this.candidates.delete(snapshotId);
-      return true;
+      return this.removeCandidate(snapshotId);
     }
     return false;
   }
@@ -894,22 +926,65 @@ export class ExportPreparationService {
     this.activePreparation?.controller.abort();
     this.selection = null;
     this.activeExportSnapshots.clear();
-    for (const stored of this.candidates.values()) {
-      this.clearCandidateExpiry(stored);
+    for (const snapshotId of [...this.candidates.keys()]) {
+      await this.removeCandidate(snapshotId);
     }
-    this.candidates.clear();
-    await this.fileStore.dispose();
+    await Promise.all(
+      [...this.pendingCandidateCleanups.values()]
+        .map((pending) => pending.inFlight)
+        .filter((inFlight): inFlight is Promise<boolean> => Boolean(inFlight))
+        .map((inFlight) => inFlight.catch(() => false)),
+    );
+    for (const pending of this.pendingCandidateCleanups.values()) {
+      this.clearCandidateCleanupRetry(pending);
+    }
+    try {
+      await this.fileStore.dispose();
+    } catch (error) {
+      for (const [snapshotId, pending] of this.pendingCandidateCleanups) {
+        this.recordDiagnostic(
+          pending.candidate.attemptId,
+          this.candidateCleanupDiagnostic(
+            snapshotId,
+            pending,
+            `Application shutdown cleanup failed: ${errorMessage(error)}`,
+          ),
+        );
+      }
+      throw error;
+    } finally {
+      for (const stored of this.candidates.values()) {
+        this.clearCandidateExpiry(stored);
+      }
+      this.candidates.clear();
+      this.pendingCandidateCleanups.clear();
+    }
   }
 
-  disposeSync(): void {
+  disposeSync(): ExportPreparationCleanupFailure[] {
     this.activePreparation?.controller.abort();
     this.selection = null;
     this.activeExportSnapshots.clear();
-    for (const stored of this.candidates.values()) {
+    const attemptsBySnapshot = new Map<string, string>();
+    for (const [snapshotId, stored] of this.candidates) {
+      attemptsBySnapshot.set(snapshotId, stored.candidate.attemptId);
       this.clearCandidateExpiry(stored);
     }
     this.candidates.clear();
-    this.fileStore.disposeSync?.();
+    for (const [snapshotId, pending] of this.pendingCandidateCleanups) {
+      attemptsBySnapshot.set(snapshotId, pending.candidate.attemptId);
+      this.clearCandidateCleanupRetry(pending);
+    }
+    this.pendingCandidateCleanups.clear();
+    const failures = this.fileStore.disposeSync?.() ?? [];
+    for (const failure of failures) {
+      const attemptId = attemptsBySnapshot.get(failure.snapshotId) ?? failure.snapshotId;
+      this.recordDiagnostic(
+        attemptId,
+        `Application shutdown cleanup failed for owned snapshot ${failure.snapshotId} at ${failure.ownedPath}: ${failure.error}. Takeover action: release the process holding this path, then remove only this exact owned snapshot directory.`,
+      );
+    }
+    return failures;
   }
 
   private currentProject(projectRoot: string): TrackedProjectSnapshot | null {
@@ -974,20 +1049,107 @@ export class ExportPreparationService {
     }
   }
 
-  private async removeCandidate(snapshotId: string): Promise<void> {
-    const stored = this.candidates.get(snapshotId);
-    this.clearCandidateExpiry(stored);
-    try {
-      await this.fileStore.delete(snapshotId);
-    } catch (error) {
-      this.recordDiagnostic(
-        stored?.candidate.attemptId ?? snapshotId,
-        'Expired export snapshot cleanup failed: ' + errorMessage(error),
-      );
-    } finally {
-      this.candidates.delete(snapshotId);
-      this.activeExportSnapshots.delete(snapshotId);
+  private async reserveCandidateSlot(): Promise<boolean> {
+    while (
+      this.candidates.size + this.pendingCandidateCleanups.size >=
+      MAX_RETAINED_EXPORT_CANDIDATES
+    ) {
+      const oldest = [...this.candidates.entries()]
+        .filter(([snapshotId]) => !this.activeExportSnapshots.has(snapshotId))
+        .sort((left, right) => left[1].retryExpiresAt - right[1].retryExpiresAt)[0];
+      if (!oldest) return false;
+      const removed = await this.removeCandidate(oldest[0]);
+      if (!removed) return false;
     }
+    return true;
+  }
+
+  private async removeCandidate(snapshotId: string): Promise<boolean> {
+    if (this.activeExportSnapshots.has(snapshotId)) return false;
+    let pending = this.pendingCandidateCleanups.get(snapshotId);
+    if (!pending) {
+      const stored = this.candidates.get(snapshotId);
+      if (!stored) return true;
+      this.clearCandidateExpiry(stored);
+      this.candidates.delete(snapshotId);
+      pending = {
+        candidate: structuredClone(stored.candidate),
+        attempts: 0,
+        lastError: '',
+      };
+      this.pendingCandidateCleanups.set(snapshotId, pending);
+    }
+    this.activeExportSnapshots.delete(snapshotId);
+    return this.attemptCandidateCleanup(snapshotId, pending);
+  }
+
+  private async attemptCandidateCleanup(
+    snapshotId: string,
+    pending: PendingCandidateCleanup,
+  ): Promise<boolean> {
+    if (this.pendingCandidateCleanups.get(snapshotId) !== pending) return true;
+    if (pending.inFlight) return pending.inFlight;
+    this.clearCandidateCleanupRetry(pending);
+    const operation = (async (): Promise<boolean> => {
+      pending.attempts += 1;
+      try {
+        await this.fileStore.delete(snapshotId);
+        this.pendingCandidateCleanups.delete(snapshotId);
+        return true;
+      } catch (error) {
+        pending.lastError = errorMessage(error);
+        this.recordDiagnostic(
+          pending.candidate.attemptId,
+          this.candidateCleanupDiagnostic(snapshotId, pending, pending.lastError),
+        );
+        this.scheduleCandidateCleanupRetry(snapshotId, pending);
+        return false;
+      }
+    })();
+    pending.inFlight = operation;
+    try {
+      return await operation;
+    } finally {
+      if (pending.inFlight === operation) pending.inFlight = undefined;
+    }
+  }
+
+  private scheduleCandidateCleanupRetry(
+    snapshotId: string,
+    pending: PendingCandidateCleanup,
+  ): void {
+    if (pending.attempts >= MAX_CANDIDATE_CLEANUP_ATTEMPTS) return;
+    const delay = CANDIDATE_CLEANUP_RETRY_DELAYS_MS[pending.attempts - 1];
+    if (delay === undefined) return;
+    pending.retryTimer = setTimeout(() => {
+      pending.retryTimer = undefined;
+      void this.attemptCandidateCleanup(snapshotId, pending);
+    }, delay);
+    pending.retryTimer.unref?.();
+  }
+
+  private clearCandidateCleanupRetry(
+    pending: PendingCandidateCleanup | undefined,
+  ): void {
+    if (!pending?.retryTimer) return;
+    clearTimeout(pending.retryTimer);
+    pending.retryTimer = undefined;
+  }
+
+  private candidateCleanupDiagnostic(
+    snapshotId: string,
+    pending: PendingCandidateCleanup,
+    error: string,
+  ): string {
+    const ownedPath = this.fileStore.getOwnedPath?.(snapshotId) ?? snapshotId;
+    const exhausted = pending.attempts >= MAX_CANDIDATE_CLEANUP_ATTEMPTS;
+    const retry = exhausted
+      ? 'Retry budget exhausted.'
+      : 'A bounded retry is scheduled.';
+    const takeover = exhausted
+      ? ' Takeover action: release the process holding this path, then remove only this exact owned snapshot directory.'
+      : '';
+    return `Export snapshot cleanup ${exhausted ? 'exhausted' : 'failed'} for snapshot ${snapshotId} at ${ownedPath} (attempt ${pending.attempts}/${MAX_CANDIDATE_CLEANUP_ATTEMPTS}): ${error}. ${retry}${takeover}`;
   }
 
   private block(

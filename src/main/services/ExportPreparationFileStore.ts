@@ -29,7 +29,14 @@ export interface ExportPreparationFileStore {
   ): Promise<Uint8Array<ArrayBuffer>>;
   delete(snapshotId: string): Promise<void>;
   dispose(): Promise<void>;
-  disposeSync?(): void;
+  getOwnedPath?(snapshotId: string): string | null;
+  disposeSync?(): ExportPreparationCleanupFailure[] | void;
+}
+
+export interface ExportPreparationCleanupFailure {
+  snapshotId: string;
+  ownedPath: string;
+  error: string;
 }
 
 export class NodeExportPreparationFileStore
@@ -115,46 +122,72 @@ export class NodeExportPreparationFileStore
   async delete(snapshotId: string): Promise<void> {
     const directory = this.resolveSnapshotDirectory(snapshotId);
     if (!this.ownedSnapshotIds.has(snapshotId)) return;
-    await rm(directory, {
-      recursive: true,
-      force: true,
-      maxRetries: 3,
-      retryDelay: 75,
-    });
+    try {
+      await rm(directory, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 75,
+      });
+    } catch (error) {
+      throw new Error(
+        `Owned export snapshot ${snapshotId} at ${directory} could not be deleted: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
     this.ownedSnapshotIds.delete(snapshotId);
   }
 
+  getOwnedPath(snapshotId: string): string | null {
+    return this.ownedSnapshotIds.has(snapshotId)
+      ? this.resolveSnapshotDirectory(snapshotId)
+      : null;
+  }
+
   async dispose(): Promise<void> {
-    const failures: unknown[] = [];
+    const failures: ExportPreparationCleanupFailure[] = [];
     for (const snapshotId of [...this.ownedSnapshotIds]) {
       try {
         await this.delete(snapshotId);
       } catch (error) {
-        failures.push(error);
+        failures.push({
+          snapshotId,
+          ownedPath: this.resolveSnapshotDirectory(snapshotId),
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
     if (failures.length > 0) {
       throw new AggregateError(
-        failures,
-        'One or more export preparation snapshots could not be cleaned.',
+        failures.map((failure) => new Error(
+          `${failure.snapshotId} at ${failure.ownedPath}: ${failure.error}`,
+        )),
+        `One or more owned export preparation snapshots could not be cleaned: ${failures.map((failure) => `${failure.snapshotId} at ${failure.ownedPath}`).join('; ')}`,
       );
     }
   }
 
-  disposeSync(): void {
+  disposeSync(): ExportPreparationCleanupFailure[] {
+    const failures: ExportPreparationCleanupFailure[] = [];
     for (const snapshotId of [...this.ownedSnapshotIds]) {
+      const ownedPath = this.resolveSnapshotDirectory(snapshotId);
       try {
-        rmSync(this.resolveSnapshotDirectory(snapshotId), {
+        rmSync(ownedPath, {
           recursive: true,
           force: true,
           maxRetries: 3,
           retryDelay: 75,
         });
         this.ownedSnapshotIds.delete(snapshotId);
-      } catch {
-        // will-quit cannot await; normal blocked/discard paths use async cleanup.
+      } catch (error) {
+        failures.push({
+          snapshotId,
+          ownedPath,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
+    return failures;
   }
 
   private requireOwnedSnapshot(snapshotId: string): string {

@@ -43,6 +43,7 @@
     "evidence:issue827-fixtures": "pnpm build && node scripts/generate-issue827-fixtures.cjs",
     "verify:issue827-dl04": "pnpm build && electron scripts/verify-issue827-dl04.cjs",
     "verify:issue832-dl05": "pnpm build && electron scripts/verify-issue832-dl05.cjs",
+    "verify:issue834-dl05-followup": "pnpm build && electron scripts/verify-issue834-dl05-followup.cjs",
     "verify:fla-v1-5-c3": "pnpm build && node scripts/fla-c3-electron-acceptance.cjs",
     "verify:fla-v1-5-c4": "pnpm build && node scripts/fla-c4-electron-acceptance.cjs",
     "verify:day03": "pnpm build && electron scripts/verify-day03.cjs",
