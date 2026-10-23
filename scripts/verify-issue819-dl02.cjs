@@ -32,6 +32,7 @@ const dl05FollowupMode = process.env.PANDA_STAGE_ISSUE834_FOLLOWUP === '1';
 const dl06R0Mode = process.env.PANDA_STAGE_ISSUE836_DL06_R0 === '1';
 const issue836R2PathBoundaryMode = process.env.PANDA_STAGE_ISSUE836_R2_PATH_BOUNDARY === '1';
 const issue836R2PathSuccessMode = process.env.PANDA_STAGE_ISSUE836_R2_PATH_SUCCESS === '1';
+const issue836R2CommitRaceMode = process.env.PANDA_STAGE_ISSUE836_R2_COMMIT_RACE === '1';
 const dl05Mode = process.env.PANDA_STAGE_ISSUE832_DL05 === '1' || dl05FollowupMode;
 const dl04SampleId = Number(process.env.PANDA_STAGE_ISSUE827_SAMPLE ?? '1');
 const baseDirectory =
@@ -3563,6 +3564,13 @@ async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapsho
 }
 
 async function run() {
+  assert(
+    !issue836R2CommitRaceMode || !(
+      dl03Mode || dl04Mode || dl05Mode || dl06R0Mode ||
+      issue836R2PathBoundaryMode || issue836R2PathSuccessMode
+    ),
+    'Issue #836 R2 commit-race mode cannot be combined with another acceptance mode.',
+  );
   assert(!(issue836R2PathBoundaryMode && issue836R2PathSuccessMode), 'Issue #836 R2 path modes are mutually exclusive.');
   assert(!(issue836R2PathBoundaryMode || issue836R2PathSuccessMode) || (dl04Mode && dl04SampleId === 1), 'Issue #836 R2 path mode requires the single Issue #827 sample 1 Creator UI fixture.');
   fixture = dl04Mode || dl05Mode
@@ -3602,11 +3610,13 @@ async function run() {
   mainWindow.webContents.focus();
 
   const result = {
-    issue: dl06R0Mode ? 836 : dl05FollowupMode ? 834 : dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
+    issue: issue836R2CommitRaceMode || dl06R0Mode ? 836 : dl05FollowupMode ? 834 : dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
     wrapperRunId: process.env.PANDA_STAGE_ISSUE836_RUN_ID ?? process.env.PANDA_STAGE_ISSUE834_RUN_ID ?? process.env.PANDA_STAGE_ISSUE832_RUN_ID ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID ?? null,
     sourceCommitSha: process.env.PANDA_STAGE_ISSUE836_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE834_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE832_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA ?? null,
     sampleId: dl04Mode || dl05Mode ? dl04SampleId : null,
-    workOrder: dl06R0Mode
+    workOrder: issue836R2CommitRaceMode
+      ? 'Issue #836 R2: Creator export with a target created after preflight at the atomic-commit boundary'
+      : dl06R0Mode
       ? 'Issue #836 DL-06 R0: same-session recovery after two bounded snapshot cleanup failures'
       : dl05FollowupMode
       ? 'Issue #834 DL-05 follow-up: terminal task restoration, retryable snapshot cleanup, and close confirmation'
@@ -3678,6 +3688,103 @@ async function run() {
     const editorSnapshotBytes = Buffer.from(JSON.stringify(edited.project, null, 2), 'utf8');
     await fsp.writeFile(editorSnapshotPath, editorSnapshotBytes);
     await clickSelector('[data-testid="quick-action-drawer-handle"]');
+    if (issue836R2CommitRaceMode) {
+      const targetPath = path.join(fixture.projectRoot, 'issue836-r2-commit-race.mp4');
+      assert(!existsSync(targetPath), 'Issue #836 commit-race target must start absent.');
+      const projectBytesBefore = await fsp.readFile(projectFilePath);
+      const sourceHashesBefore = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+        assetId: asset.id,
+        sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+      })));
+      const editorBefore = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+      const priorStartCount = formalStarts.length;
+      const priorCommitCount = formalCommitRecords.length;
+      const priorConflictCount = injectedCommitConflicts.length;
+      conflictAtCommitPath = targetPath;
+      const raceRun = await startFromCreatorUi(evidenceRoot, 'issue836-target-created-at-commit', {
+        selectedFileName: path.basename(targetPath),
+        expectJobFailure: true,
+        startTimeoutMs: 90_000,
+        completionTimeoutMs: 600_000,
+        abortOnTimeout: true,
+      });
+      const conflict = injectedCommitConflicts.at(-1);
+      assert(raceRun.status === 'failed' && raceRun.failedJob?.status === 'failed', 'The commit-race Job did not fail at final publication.');
+      assert(formalStarts.length - priorStartCount === 1, 'The commit-race path did not start exactly one formal Job.');
+      assert(formalCommitRecords.length === priorCommitCount, 'The no-replace race recorded a successful formal commit.');
+      assert(
+        injectedCommitConflicts.length - priorConflictCount === 1 &&
+        conflict?.outputPath === targetPath && conflict.insertedAfterOutputCheck,
+        'The third-party sentinel was not inserted after the final output check.',
+      );
+      assert(
+        raceRun.taskText.includes('现有文件未被修改') &&
+        raceRun.taskText.includes('换一个新文件名重试'),
+        'Creator did not show the actionable commit-race next step.',
+      );
+      const sentinelBytes = await fsp.readFile(targetPath);
+      const targetSentinelUnchanged = hash(sentinelBytes) === conflict.sha256;
+      assert(targetSentinelUnchanged, 'The no-replace commit changed the third-party target sentinel.');
+      const cleanup = await assertNoExportTemporaries('Issue #836 commit-boundary target race');
+      const editorAfter = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+      const editorBeforeFingerprint = acceptanceSessionFingerprint(editorBefore);
+      const editorAfterFingerprint = acceptanceSessionFingerprint(editorAfter);
+      const editorStatePreserved = JSON.stringify(editorBeforeFingerprint) === JSON.stringify(editorAfterFingerprint);
+      assert(editorStatePreserved, 'The failed commit-race Job changed the editor Project/session state.');
+      const projectBytesAfter = await fsp.readFile(projectFilePath);
+      const projectFileUnchanged = projectBytesAfter.equals(projectBytesBefore);
+      assert(projectFileUnchanged, 'The failed commit-race Job changed project.json.');
+      const sourceHashesAfter = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+        assetId: asset.id,
+        sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+      })));
+      const sourceAssetsUnchanged = JSON.stringify(sourceHashesBefore) === JSON.stringify(sourceHashesAfter);
+      assert(sourceAssetsUnchanged, 'The failed commit-race Job changed source assets.');
+      result.r2CommitRace = {
+        status: 'PASS',
+        targetPath,
+        targetAbsentBeforeRun: true,
+        raceInjection: conflict,
+        formalJob: {
+          jobId: raceRun.failedJob.jobId,
+          status: raceRun.failedJob.status,
+          phase: raceRun.failedJob.phase,
+          originalError: raceRun.failedJob.originalError,
+          cleanupError: raceRun.failedJob.cleanupError,
+          taskText: raceRun.taskText,
+        },
+        targetSentinel: {
+          byteLength: sentinelBytes.length,
+          sha256: hash(sentinelBytes),
+          unchanged: targetSentinelUnchanged,
+        },
+        successfulCommitCount: formalCommitRecords.length - priorCommitCount,
+        temporaryCleanup: cleanup,
+        editorBefore: editorBeforeFingerprint,
+        editorAfter: editorAfterFingerprint,
+        editorStatePreserved,
+        projectFileUnchanged,
+        projectSha256Before: hash(projectBytesBefore),
+        projectSha256After: hash(projectBytesAfter),
+        sourceHashesBefore,
+        sourceHashesAfter,
+        sourceAssetsUnchanged,
+        screenshots: {
+          saveAs: raceRun.nativeSaveAsScreenshotPath,
+          progress: raceRun.progressScreenshotPath,
+          failed: raceRun.failureScreenshotPath,
+        },
+      };
+      result.auto = 'PASS';
+      result.completedAt = new Date().toISOString();
+      await fsp.writeFile(path.join(evidenceRoot, 'issue836-r2-commit-race-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
+      await fsp.writeFile(path.join(fixture.root, 'issue836-r2-commit-race-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
+      console.log(`PASS Issue #836 R2 commit-boundary target race: ${fixture.root}`);
+      mainWindow.destroy();
+      hiddenWindowManager.close();
+      app.exit(0);
+      return;
+    }
     if (dl05Mode) {
       await runIssue832Acceptance({
         result,
