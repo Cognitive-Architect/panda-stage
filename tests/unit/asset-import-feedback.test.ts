@@ -144,6 +144,17 @@ describe('asset import floating feedback', () => {
     expect(audioDetails).toEqual([
       { sourceName: 'voice.wav', message: '音频时长读取失败，可重试。' },
     ]);
+    const audioFeedback = createAssetImportFeedback(
+      completed([result('imported', 'voice.wav')]),
+      'ignored',
+      audioDetails,
+    );
+    expect(audioFeedback).toMatchObject({
+      kind: 'warning',
+      summary: expect.stringContaining('1'),
+      details: audioDetails,
+      dismissAfterMs: null,
+    });
     expect(createAssetImportFeedback(
       { ok: true, status: 'cancelled' },
       'ignored',
