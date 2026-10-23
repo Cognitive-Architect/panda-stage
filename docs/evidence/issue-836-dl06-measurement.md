@@ -670,3 +670,56 @@ Neither case started a formal Main Job or commit. Both selected MP4 targets rema
 Receipt: `evidence\issue836-r2-media-preflight-receipt.json`, SHA-256 `f5f83e814f2719107e883558a91f8cb3d319aa48630fbc19acc2b7f12c55a7a5`; both receipt copies match. The missing-background blocked screenshot is `evidence\issue836-r2-missing-background-blocked.png` (SHA-256 `7bf003c2843f0dae875c4adde715ffb4d6f1988146468627f213b0f28728dd9c`); the corrupt-audio blocked screenshot is `evidence\issue836-r2-corrupt-audio-blocked.png` (SHA-256 `e213e91640b47e527c749d106df23ba421e77f6f441ad52f4eb00f556d53babc`). Both show Creator's actionable terminal error. Receipt status is `auto=PASS`, `owner=NOT_ATTESTED`; this is generated-fixture UI evidence only.
 
 AC03 and R2 remain **PARTIAL**. This closes the missing-background and corrupt-audio subcases only; permission failures, target failures, the complete AC03 matrix, R3 measurements, author-Project provenance, packaged-install acceptance, and human Gate B remain outstanding.
+
+## Frozen AC03 R2 Creator output-folder permission plan - v1.0.0 (before run)
+
+Frozen source HEAD: `5ae58840d740e7fe0e9840beaa99ef7108c9d791` on `issue-816-dl01-formal-export-preparation`. The implementation maps filesystem permission errors to actionable issues for the selected output folder, required-media reads, temporary media copies, and temporary preparation setup. This one Electron run checks the Creator Save As output-folder path only: a controlled `EACCES` is injected into Main's `ExportPreparationService.assertFormalOutputLocation` for the exact selected target. It exercises the real Creator task and visible error surface under a deterministic permission failure; it does **not** establish behavior under a real Windows ACL denial.
+
+The test uses generated Issue #827 sample 1. It creates a valid six-frame H.264/yuv420p MP4 sentinel, attempts a distinct absent output target, and asserts the task identifies the output location and folder-write permission, gives the writable-folder next step, starts no formal Main Job or commit, leaves the target absent, and preserves the sentinel, Project bytes, editor/session fingerprint, and all source-media hashes. It also checks owned temporary cleanup. No user Project is opened or changed. R2 and AC03 remain **PARTIAL** after this single subcase; target races, other failure modes, the full AC03 matrix, R3 measurement, author-Project provenance, packaged-install acceptance, and human Gate B remain outstanding.
+
+Acceptance root: `D:\PandaStage-Acceptance\i836r2pf3`; isolated frame-job root: `D:\PandaStage-Acceptance\i836r2pf3\frame-jobs`. Both paths were confirmed absent before freezing this plan. `node --check scripts/verify-issue819-dl02.cjs`, `git diff --check`, the focused export-preparation unit file (48 tests), `pnpm lint`, `pnpm test:integration` (38 files / 189 tests), and `pnpm build` (including typecheck) passed on this source. Build output contained the existing empty CSS import and large-chunk warnings.
+
+Run exactly once from the repository root, after this plan is committed and pushed and the same two paths are reconfirmed absent. The command clears other acceptance modes, uses the generated sample-1 Creator fixture, and invokes the Electron verifier once:
+
+```powershell
+$modeNames = @(
+    'PANDA_STAGE_ISSUE819_ROOT',
+    'PANDA_STAGE_ISSUE823_DL03',
+    'PANDA_STAGE_ISSUE827_DL04',
+    'PANDA_STAGE_ISSUE827_ROOT',
+    'PANDA_STAGE_ISSUE827_SAMPLE',
+    'PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA',
+    'PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID',
+    'PANDA_STAGE_ISSUE832_DL05',
+    'PANDA_STAGE_ISSUE832_ROOT',
+    'PANDA_STAGE_ISSUE832_RUN_ID',
+    'PANDA_STAGE_ISSUE832_SOURCE_SHA',
+    'PANDA_STAGE_ISSUE834_FOLLOWUP',
+    'PANDA_STAGE_ISSUE834_ROOT',
+    'PANDA_STAGE_ISSUE834_RUN_ID',
+    'PANDA_STAGE_ISSUE834_SOURCE_SHA',
+    'PANDA_STAGE_ISSUE836_DL06_R0',
+    'PANDA_STAGE_ISSUE836_FRAME_ROOT',
+    'PANDA_STAGE_ISSUE836_R2_COMMIT_RACE',
+    'PANDA_STAGE_ISSUE836_R2_COPY_FAILURE',
+    'PANDA_STAGE_ISSUE836_R2_COPY_FAILURE_VALID_MP4',
+    'PANDA_STAGE_ISSUE836_R2_MEDIA_PREFLIGHT',
+    'PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION',
+    'PANDA_STAGE_ISSUE836_R2_PATH_BOUNDARY',
+    'PANDA_STAGE_ISSUE836_R2_PATH_SUCCESS',
+    'PANDA_STAGE_ISSUE836_RUN_ID',
+    'PANDA_STAGE_ISSUE836_SOURCE_SHA'
+)
+foreach ($name in $modeNames) { Remove-Item "Env:$name" -ErrorAction SilentlyContinue }
+$env:PANDA_STAGE_ISSUE827_ROOT = 'D:\PandaStage-Acceptance\i836r2pf3'
+$env:PANDA_STAGE_ISSUE827_SAMPLE = '1'
+$env:PANDA_STAGE_ISSUE827_DL04 = '1'
+$env:PANDA_STAGE_ISSUE836_FRAME_ROOT = 'D:\PandaStage-Acceptance\i836r2pf3\frame-jobs'
+$env:PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION = '1'
+$env:PANDA_STAGE_ISSUE836_RUN_ID = 'i836-ac03-r2-output-permission-v1.0.0'
+$env:PANDA_STAGE_ISSUE836_SOURCE_SHA = '5ae58840d740e7fe0e9840beaa99ef7108c9d791'
+pnpm exec electron scripts/verify-issue819-dl02.cjs
+exit $LASTEXITCODE
+```
+
+Stop on the first failure and preserve all artifacts; do not retry or run another verifier under this plan. A pass establishes only the generated-fixture UI response to the injected output-folder `EACCES`. It does not establish real ACL denial, read denial in a user installation, or overall AC03 completion.
