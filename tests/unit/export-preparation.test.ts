@@ -964,7 +964,7 @@ describe('DL-01 export preparation domain rules', () => {
         code: 'PREPARATION_BUDGET_EXCEEDED',
         location: '镜头“开场”的背景',
         problem: expect.stringContaining('64 MiB'),
-        nextStep: expect.any(String),
+        nextStep: expect.stringContaining('更小'),
       }),
     ]);
 
@@ -992,8 +992,9 @@ describe('DL-01 export preparation domain rules', () => {
     expect(overAssetCount.issues).toEqual([
       expect.objectContaining({
         code: 'PREPARATION_BUDGET_EXCEEDED',
+        location: '工程素材',
         problem: expect.stringContaining(String(EXPORT_PREPARATION_MAX_ASSETS)),
-        nextStep: expect.any(String),
+        nextStep: expect.stringContaining('减少'),
       }),
     ]);
 
@@ -1033,8 +1034,13 @@ describe('DL-01 export preparation domain rules', () => {
     expect(exceeded.totalBytes).toBe(
       EXPORT_PREPARATION_MAX_TOTAL_MEDIA_BYTES + 1,
     );
-    expect(exceeded.issues.map((item) => item.code)).toEqual([
-      'PREPARATION_BUDGET_EXCEEDED',
+    expect(exceeded.issues).toEqual([
+      expect.objectContaining({
+        code: 'PREPARATION_BUDGET_EXCEEDED',
+        location: '工程素材',
+        problem: expect.stringContaining('256 MiB'),
+        nextStep: expect.stringContaining('降低'),
+      }),
     ]);
   });
 });
