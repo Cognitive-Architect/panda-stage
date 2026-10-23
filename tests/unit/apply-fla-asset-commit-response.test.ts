@@ -15,6 +15,8 @@ const imageAsset = {
   sha256: 'a'.repeat(64),
   width: 320,
   height: 240,
+  usage: 'uncategorized' as const,
+  keywords: [],
 };
 const savedProject = {
   ...project,

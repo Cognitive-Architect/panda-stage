@@ -11,6 +11,8 @@ describe('asset metadata contracts', () => {
     const asset = AssetSchema.parse({
       ...exampleProject.assets[0],
       sha256: 'a'.repeat(64),
+      usage: 'uncategorized',
+      keywords: [],
       metadata: {
         status: 'ready',
         warnings: [

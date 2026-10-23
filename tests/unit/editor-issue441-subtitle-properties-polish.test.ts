@@ -193,9 +193,12 @@ describe('Issue #441 day29 subtitle Properties UI polish', () => {
     const importPanel = source(
       'src/renderer/features/assets/AssetImportPanel.tsx',
     );
+    const importFeedback = source(
+      'src/renderer/features/assets/assetImportFeedback.ts',
+    );
     const library = source('src/renderer/features/assets/AssetLibrary.tsx');
 
-    for (const sourceText of [card, details, importPanel, library]) {
+    for (const sourceText of [card, details, importPanel, importFeedback, library]) {
       // Old engineering jargon is removed from the user-facing audio metadata
       // presentation. The codes and test ids remain for downstream consumers.
       expect(sourceText).not.toContain('等待 / 正在分析');
@@ -212,9 +215,10 @@ describe('Issue #441 day29 subtitle Properties UI polish', () => {
     expect(details).toContain('可用');
     expect(details).toContain('无法读取配音');
 
-    expect(importPanel).toContain('个配音时长分析失败');
-    expect(importPanel).toContain('已导入');
-    expect(importPanel).toContain('时长分析失败');
+    expect(importPanel).toContain('createAssetImportFeedback');
+    expect(importPanel).toContain('importedAudioFeedbackDetails');
+    expect(importFeedback).toContain('已导入');
+    expect(importFeedback).toContain('音频时长分析失败');
     expect(importPanel).not.toContain('段配音已准备好');
     expect(importPanel).not.toContain('个 Ready');
     expect(importPanel).not.toContain('音频分析完成');

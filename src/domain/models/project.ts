@@ -7,7 +7,11 @@ import {
   SHOT_MIN_DURATION_MS,
 } from '../constants';
 import { validateProjectReferences } from '../validators/projectReferences';
-import { AssetSchema, type Asset } from './asset';
+import {
+  AssetSchema,
+  AssetV12Schema,
+  type AssetV12,
+} from './asset';
 import { AudioClipV7Schema } from './audio';
 import {
   CharacterSchema,
@@ -68,6 +72,24 @@ const ProjectDataSchema = z
   })
   .strict();
 
+const ProjectV12DataSchema = z
+  .object({
+    schemaVersion: z.literal(12),
+    id: IdSchema,
+    name: NameSchema,
+    width: z.literal(PROJECT_WIDTH),
+    height: z.literal(PROJECT_HEIGHT),
+    fps: z.literal(PROJECT_FPS),
+    assets: z.array(AssetV12Schema),
+    characters: z.array(CharacterSchema),
+    voiceProfiles: z.array(VoiceProfileSchema),
+    subtitleStyles: z.array(SubtitleStyleSchema).min(1),
+    shots: z.array(ShotSchema),
+    createdAt: IsoDateTimeSchema,
+    updatedAt: IsoDateTimeSchema,
+  })
+  .strict();
+
 export const ProjectV1Schema = z
   .object({
     schemaVersion: z.literal(1),
@@ -76,7 +98,7 @@ export const ProjectV1Schema = z
     width: z.literal(PROJECT_WIDTH),
     height: z.literal(PROJECT_HEIGHT),
     fps: z.literal(PROJECT_FPS),
-    assets: z.array(AssetSchema),
+    assets: z.array(AssetV12Schema),
     characters: z.array(CharacterV1Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
@@ -94,7 +116,7 @@ export const ProjectV2Schema = z
     width: z.literal(PROJECT_WIDTH),
     height: z.literal(PROJECT_HEIGHT),
     fps: z.literal(PROJECT_FPS),
-    assets: z.array(AssetSchema),
+    assets: z.array(AssetV12Schema),
     characters: z.array(CharacterV6Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
@@ -112,7 +134,7 @@ export const ProjectV3Schema = z
     width: z.literal(PROJECT_WIDTH),
     height: z.literal(PROJECT_HEIGHT),
     fps: z.literal(PROJECT_FPS),
-    assets: z.array(AssetSchema),
+    assets: z.array(AssetV12Schema),
     characters: z.array(CharacterV6Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
@@ -130,7 +152,7 @@ export const ProjectV4Schema = z
     width: z.literal(PROJECT_WIDTH),
     height: z.literal(PROJECT_HEIGHT),
     fps: z.literal(PROJECT_FPS),
-    assets: z.array(AssetSchema),
+    assets: z.array(AssetV12Schema),
     characters: z.array(CharacterV6Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
@@ -176,7 +198,7 @@ export const ProjectV5Schema = z
     width: z.literal(PROJECT_WIDTH),
     height: z.literal(PROJECT_HEIGHT),
     fps: z.literal(PROJECT_FPS),
-    assets: z.array(AssetSchema),
+    assets: z.array(AssetV12Schema),
     characters: z.array(CharacterV6Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
@@ -199,7 +221,7 @@ export const ProjectV6Schema = z
     width: z.literal(PROJECT_WIDTH),
     height: z.literal(PROJECT_HEIGHT),
     fps: z.literal(PROJECT_FPS),
-    assets: z.array(AssetSchema),
+    assets: z.array(AssetV12Schema),
     characters: z.array(CharacterV6Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
@@ -209,35 +231,38 @@ export const ProjectV6Schema = z
   })
   .strict();
 
-export const ProjectV7Schema = ProjectDataSchema.extend({
+export const ProjectV7Schema = ProjectV12DataSchema.extend({
   schemaVersion: z.literal(7),
   characters: z.array(CharacterV8Schema),
   shots: z.array(ShotV7Schema),
 });
 
 /** Strict persisted v8 envelope, before the optional composite Character Head. */
-export const ProjectV8Schema = ProjectDataSchema.extend({
+export const ProjectV8Schema = ProjectV12DataSchema.extend({
   schemaVersion: z.literal(8),
   characters: z.array(CharacterV8Schema),
 });
 
 /** Strict persisted v9 envelope, before talking-head motion intensity. */
-export const ProjectV9Schema = ProjectDataSchema.extend({
+export const ProjectV9Schema = ProjectV12DataSchema.extend({
   schemaVersion: z.literal(9),
   characters: z.array(CharacterV9Schema),
 });
 
 /** Strict persisted v10 envelope, before static Head/Face transforms. */
-export const ProjectV10Schema = ProjectDataSchema.extend({
+export const ProjectV10Schema = ProjectV12DataSchema.extend({
   schemaVersion: z.literal(10),
   characters: z.array(CharacterV10Schema),
 });
 
 /** Strict persisted v11 envelope, before independent Body placement. */
-export const ProjectV11Schema = ProjectDataSchema.extend({
+export const ProjectV11Schema = ProjectV12DataSchema.extend({
   schemaVersion: z.literal(11),
   characters: z.array(CharacterV11Schema),
 });
+
+/** Strict persisted v12 envelope before author-defined image metadata. */
+export const ProjectV12Schema = ProjectV12DataSchema;
 
 function addAudioRoles<T extends {
   audioClips: z.infer<typeof AudioClipV7Schema>[];
@@ -261,7 +286,7 @@ const LEGACY_BACKGROUND_MIN_HEIGHT_RATIO = 0.75;
  * compatibility helper.
  */
 export function inferLegacyBackgroundLayerId(
-  assets: readonly Asset[],
+  assets: readonly AssetV12[],
   layers: readonly (Layer | LayerV3 | LayerV4)[],
 ): string | null {
   const imageAssets = new Map(
@@ -292,7 +317,7 @@ export function inferLegacyBackgroundLayerId(
 }
 
 function addBackgroundIdentity<T extends {
-  assets: Asset[];
+  assets: AssetV12[];
   shots: z.infer<typeof ShotV2Schema>[];
 }>(project: T): Array<z.infer<typeof ShotSchema>> {
   return project.shots.map((shot) => ({
@@ -429,7 +454,7 @@ export function migrateFormalProject(input: unknown): unknown {
 }
 
 // Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
-// Persisted migration (v0-v11 -> v12) is owned exclusively by `migrateProject`
+// Persisted migration (v0-v12 -> v13) is owned exclusively by `migrateProject`
 // in `../migrations`; this schema must never perform legacy migration.
 export const ProjectSchema = ProjectDataSchema.superRefine(
   validateProjectReferences,

@@ -3,6 +3,7 @@ import {
   PROJECT_SCHEMA_VERSION,
   migrateProject,
   ProjectSchema,
+  ProjectV12Schema,
   evaluateShotAtTime,
   resolveLayerVisualParts,
   type Project,
@@ -213,6 +214,13 @@ describe('T01 迁移回填 timelineEvents', () => {
     const legacyV11 = {
       ...current,
       schemaVersion: 11,
+      assets: current.assets.map((asset) => {
+        if (asset.kind !== 'image') return asset;
+        const { usage: _usage, keywords: _keywords, ...version11Asset } = asset;
+        void _usage;
+        void _keywords;
+        return version11Asset;
+      }),
       characters: [
         {
           ...original,
@@ -279,5 +287,46 @@ describe('T01 迁移回填 timelineEvents', () => {
       height: bodyAsset.height,
     });
     expect(visual.headGroup?.pivot).toEqual({ x: 306, y: 412 });
+  });
+
+  it('migrates strict v12 assets to explicitly uncategorized v13 metadata', () => {
+    const current = buildProject();
+    const legacyV12 = {
+      ...current,
+      schemaVersion: 12,
+      assets: current.assets.map((asset) => {
+        if (asset.kind !== 'image') return asset;
+        const { usage: _usage, keywords: _keywords, ...version12Asset } = asset;
+        void _usage;
+        void _keywords;
+        return version12Asset;
+      }),
+    };
+    const before = structuredClone(legacyV12);
+
+    expect(ProjectV12Schema.parse(legacyV12)).toEqual(legacyV12);
+    expect(ProjectSchema.safeParse(legacyV12).success).toBe(false);
+    expect(
+      ProjectSchema.safeParse({
+        ...legacyV12,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+      }).success,
+    ).toBe(false);
+
+    const migrated = migrateProject(legacyV12);
+
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(
+      migrated.assets.filter((asset) => asset.kind === 'image'),
+    ).toEqual(
+      legacyV12.assets.map((asset) => ({
+        ...asset,
+        usage: 'uncategorized',
+        keywords: [],
+      })),
+    );
+    expect(migrated.characters).toEqual(legacyV12.characters);
+    expect(migrated.shots).toEqual(legacyV12.shots);
+    expect(legacyV12).toEqual(before);
   });
 });

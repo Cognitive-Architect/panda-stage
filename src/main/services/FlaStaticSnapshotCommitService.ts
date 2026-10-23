@@ -306,6 +306,8 @@ export class FlaStaticSnapshotCommitService {
         kind: 'image',
         width: validatedPng.width,
         height: validatedPng.height,
+        usage: 'uncategorized',
+        keywords: [],
         flaSnapshot: {
           sourceBasename: request.source.basename,
           sourceSha256: request.source.sha256,

@@ -124,6 +124,8 @@ async function createHarness(kind: 'audio' | 'image' = 'audio') {
             mimeType: 'image/png',
             width: 16,
             height: 12,
+            usage: 'uncategorized',
+            keywords: [],
           },
     ],
   });

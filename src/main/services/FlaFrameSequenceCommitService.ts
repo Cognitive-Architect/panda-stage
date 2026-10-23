@@ -368,6 +368,8 @@ export class FlaFrameSequenceCommitService {
         kind: 'image',
         width: frame.width,
         height: frame.height,
+        usage: 'uncategorized',
+        keywords: [],
       });
       nextProject = ProjectSchema.parse({
         ...nextProject,

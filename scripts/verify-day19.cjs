@@ -463,6 +463,8 @@ async function verifyDay19() {
       kind: 'image',
       width: normal.width,
       height: normal.height,
+      usage: 'uncategorized',
+      keywords: [],
       sha256: normal.sha256,
     },
     {
@@ -473,6 +475,8 @@ async function verifyDay19() {
       kind: 'image',
       width: angry.width,
       height: angry.height,
+      usage: 'uncategorized',
+      keywords: [],
       sha256: angry.sha256,
     },
     {
@@ -483,6 +487,8 @@ async function verifyDay19() {
       kind: 'image',
       width: mouth.width,
       height: mouth.height,
+      usage: 'uncategorized',
+      keywords: [],
       sha256: mouth.sha256,
     },
     {
@@ -493,6 +499,8 @@ async function verifyDay19() {
       kind: 'image',
       width: replacement.width,
       height: replacement.height,
+      usage: 'uncategorized',
+      keywords: [],
       sha256: replacement.sha256,
     },
   ];
@@ -505,6 +513,7 @@ async function verifyDay19() {
   });
   let savedProject = null;
   let saveRequest = null;
+  let saveResponseVersion = null;
   let importRequest = null;
   const autosaveUpdates = [];
   let openCount = 0;
@@ -525,6 +534,7 @@ async function verifyDay19() {
   ipcMain.handle(IPC_CHANNELS.PROJECT_SAVE, (_event, request) => {
     saveRequest = request;
     savedProject = request.project;
+    saveResponseVersion = savedProject?.schemaVersion ?? PROJECT_SCHEMA_VERSION;
     return {
       ok: true,
       value: {
@@ -532,7 +542,7 @@ async function verifyDay19() {
         projectFilePath: `${projectRoot}\\project.json`,
         project: savedProject,
         migrated: false,
-        sourceVersion: 6,
+        sourceVersion: saveResponseVersion,
       },
     };
   });
@@ -611,7 +621,11 @@ async function verifyDay19() {
     `);
     await window.webContents.executeJavaScript(
       waitFor(
-        "document.querySelectorAll('.asset-import-result').length === 4",
+        "document.querySelector(" +
+          "'[data-testid=\"asset-import-feedback\"]' + " +
+          "'[data-feedback-kind=\"success\"] ' + " +
+          "'.asset-import-feedback-summary'" +
+          ")?.textContent?.includes('4')",
         'Four real character fixtures were not imported.',
       ),
     );
@@ -1192,6 +1206,10 @@ async function verifyDay19() {
       { name: 'imported', passed: Boolean(importRequest) },
       { name: 'importRevision', passed: importRequest?.baseRevision === 0 },
       { name: 'saveRevision', passed: saveRequest?.revision === 6 },
+      {
+        name: 'simulatedSaveVersion',
+        passed: saveResponseVersion === PROJECT_SCHEMA_VERSION,
+      },
       {
         name: 'schema',
         passed: savedProject?.schemaVersion === PROJECT_SCHEMA_VERSION,

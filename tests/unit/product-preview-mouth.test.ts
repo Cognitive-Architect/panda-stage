@@ -38,6 +38,8 @@ function imageAsset(id: string, name: string): Project['assets'][number] {
     mimeType: 'image/png',
     width: 640,
     height: 640,
+    usage: 'uncategorized',
+    keywords: [],
   };
 }
 

@@ -332,6 +332,18 @@
         "notes": "Issue #783 G009 before/after Windows Electron screenshots, bounded real-FLA layout receipts, and the combined G008 regression evidence only; Draft evidence changes use existing CI policy self-tests, production changes remain on their subsystem routes, and automation evidence is not owner human Gate C acceptance. Other unregistered evidence paths remain fail-closed."
       },
       {
+        "id": "issue835-day18-assets-evidence",
+        "sourcePatterns": ["docs/evidence/issue-835-day18/**"],
+        "testPatterns": [],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "draftPolicy": "ci-selftest",
+        "incrementalEligible": false,
+        "owner": "assets",
+        "notes": "Issue #835 Day18 asset-library acceptance evidence only. The exact issue directory is registered; other unregistered evidence paths remain fail-closed. When combined with the assets feature route on this Draft PR, CI selects focused policy and subsystem checks."
+      },
+      {
         "id": "cross-process-core",
         "sourcePatterns": [
           "src/main/**",
@@ -359,6 +371,7 @@
           "tests/integration/layer-placement-lifecycle.test.ts",
           "tests/integration/layer-transform-lifecycle.test.ts",
           "tests/integration/project-lifecycle.test.ts",
+          "tests/integration/day14-lifecycle.test.ts",
           "tests/contract/fixtures/ci-routing/core/**",
           "tests/unit/ipc-contracts.test.ts",
           "tests/unit/project-api-contracts.test.ts",
@@ -370,6 +383,7 @@
           "tests/integration/project-subtitle-background-migration.test.ts",
           "tests/unit/application-menu-policy.test.ts",
           "tests/unit/standalone-audio.test.ts",
+          "tests/unit/models/audio-clip-source-range.test.ts",
           "tests/integration/standalone-audio-persistence.test.ts"
         ],
         "verifierPatterns": ["scripts/verify-issue257-slice3*", "scripts/verify-issue657-audio-foundation.cjs"],
@@ -378,7 +392,7 @@
         "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "architecture",
-        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems."
+        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #828 lifecycle and audio source-range tests remain here without broad test globs; other unregistered test paths stay fail-closed."
       },
       {
         "id": "release-export-core",

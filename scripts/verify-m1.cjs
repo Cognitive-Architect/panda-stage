@@ -169,6 +169,8 @@ async function runGate() {
           mimeType: 'image/png',
           width: 128,
           height: 128,
+          usage: 'uncategorized',
+          keywords: [],
         },
       ],
       updatedAt: '2026-07-24T08:10:00.000Z',

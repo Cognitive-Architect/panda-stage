@@ -1,0 +1,406 @@
+{
+  "day": 18,
+  "workOrder": "B-18/45",
+  "result": "PASS",
+  "branch": "issue-825-am01",
+  "executedAt": "2026-10-23T10:44:10.861Z",
+  "ui": {
+    "categories": [
+      "全部",
+      "角色",
+      "未绑定",
+      "音频"
+    ],
+    "filterAudit": {
+      "assetLibraryVisible": true,
+      "selectedMenuVisible": true,
+      "headingVisuallyHidden": true,
+      "assetWorkspaceHeadingHidden": true,
+      "filterControlsAligned": true,
+      "filterTriggerTouchTarget": true,
+      "dragHintVisible": false,
+      "menuValues": [
+        "all",
+        "uncategorized",
+        "background",
+        "character",
+        "prop",
+        "effect"
+      ],
+      "menuLabels": [
+        "全部",
+        "未分类",
+        "背景",
+        "人物",
+        "道具",
+        "特效"
+      ],
+      "menuRightAligned": true,
+      "menuCompact": true,
+      "selectedBackgroundContrast": true,
+      "firstFocus": "all",
+      "arrowFocus": "uncategorized",
+      "focusOutline": "2.66667px",
+      "escapeReturnedFocus": true,
+      "combinedSearchAndUsage": true,
+      "audioClearedUsage": true,
+      "audioCardCount": 1,
+      "audioFilterStayedClosed": true,
+      "backgroundUsage": true,
+      "unboundAllCount": 8,
+      "selectedBackgroundMenu": true,
+      "labelsUpdated": true,
+      "selectedContrast": true,
+      "selectedScreenshotUiReady": true,
+      "rightAlignedText": true,
+      "stableCheckGap": true,
+      "hoverVisible": true,
+      "backgroundRestoredAll": true
+    },
+    "usageFilterDefaultAudit": {
+      "values": [
+        "all",
+        "uncategorized",
+        "background",
+        "character",
+        "prop",
+        "effect"
+      ],
+      "labels": [
+        "全部",
+        "未分类",
+        "背景",
+        "人物",
+        "道具",
+        "特效"
+      ],
+      "triggerRight": 406.57257080078125,
+      "menuRight": 406.57257080078125,
+      "menuWidth": 188.00003051757812,
+      "selectedColor": "rgb(238, 246, 240)",
+      "selectedBackground": "rgba(65, 145, 87, 0.34)",
+      "selectedBorder": "rgb(127, 199, 148)",
+      "selectedTextAlign": "right",
+      "checkSlots": [
+        17,
+        17,
+        17,
+        17,
+        17,
+        17
+      ],
+      "hoverPoint": {
+        "x": 313,
+        "y": 308
+      }
+    },
+    "usageFilterHoverAudit": {
+      "hovered": true,
+      "background": "rgba(65, 145, 87, 0.34)"
+    },
+    "filterRestoreAudit": {
+      "active": "false",
+      "cardCount": 8,
+      "firstAssetRestored": true,
+      "menuClosed": true
+    },
+    "responsiveAudit": {
+      "narrow": {
+        "viewportWidth": 806,
+        "viewportHeight": 558,
+        "orientation": "landscape",
+        "libraryFound": true,
+        "libraryVisible": true,
+        "controlsFound": true,
+        "controlsVisible": true,
+        "searchFound": true,
+        "triggerFound": true,
+        "triggerVisible": true,
+        "controlsWithinLibrary": true,
+        "controlsAligned": true,
+        "searchVisible": true,
+        "triggerTouchTarget": true,
+        "expectedOrientation": "landscape"
+      },
+      "touchPortrait": {
+        "viewportWidth": 806,
+        "viewportHeight": 838,
+        "orientation": "portrait",
+        "libraryFound": true,
+        "libraryVisible": true,
+        "controlsFound": true,
+        "controlsVisible": true,
+        "searchFound": true,
+        "triggerFound": true,
+        "triggerVisible": true,
+        "controlsWithinLibrary": true,
+        "controlsAligned": true,
+        "searchVisible": true,
+        "triggerTouchTarget": true,
+        "expectedOrientation": "portrait"
+      },
+      "touchLandscape": {
+        "viewportWidth": 806,
+        "viewportHeight": 558,
+        "orientation": "landscape",
+        "libraryFound": true,
+        "libraryVisible": true,
+        "controlsFound": true,
+        "controlsVisible": true,
+        "searchFound": true,
+        "triggerFound": true,
+        "triggerVisible": true,
+        "controlsWithinLibrary": true,
+        "controlsAligned": true,
+        "searchVisible": true,
+        "triggerTouchTarget": true,
+        "expectedOrientation": "landscape"
+      }
+    },
+    "backgroundItemsBeforeDelete": 100,
+    "pagedBrowserScan": {
+      "found": true,
+      "page": 13,
+      "totalPages": 13,
+      "assetIds": [
+        "18000000-0000-4000-8000-000000000097",
+        "18000000-0000-4000-8000-000000000098",
+        "18000000-0000-4000-8000-000000000099",
+        "10000000-0000-4000-8000-000000000002"
+      ],
+      "seenAssetCount": 100
+    },
+    "thumbnailRequestCount": 1840,
+    "performanceObservation": {
+      "elapsedMs": 32.60000014305115,
+      "itemCount": 100,
+      "pageCount": 13,
+      "pageSize": 8,
+      "selectedName": "背景占位 008",
+      "scrollTop": 0,
+      "scrollHeight": 1012,
+      "clientHeight": 1012
+    },
+    "dragEvidence": {
+      "payload": {
+        "version": 2,
+        "type": "asset-image",
+        "assetId": "18000000-0000-4000-8000-000000000001"
+      },
+      "types": [
+        "application/x-panda-stage-asset"
+      ],
+      "rawContainsPath": false,
+      "rawContainsAssetObject": false
+    },
+    "historyReconciliation": {
+      "before": "背景占位 003",
+      "edited": "背景占位 003 - Day18 history synchronization",
+      "afterUndo": "背景占位 003",
+      "afterRedo": "背景占位 003 - Day18 history synchronization",
+      "dirtyDraft": "Unsaved draft preserved during undo",
+      "afterDirtyUndoName": "Unsaved draft preserved during undo",
+      "conflictVisible": true,
+      "t3": {
+        "escapeCancelKeepsDraft": true,
+        "assetSwitchCancelKeepsDraft": true,
+        "confirmedAssetSwitchLoadsCorrectIdentity": true,
+        "cancelPreservesProjectState": true,
+        "cancelReturnsSavedCardIdentity": true,
+        "noOpSavePreservesProjectState": true,
+        "detailReopenPreservesSavedMetadata": true,
+        "escapeDeclineKeepsDraft": true,
+        "escapeConfirmedDiscardsDraft": true,
+        "closeDeclineKeepsDraft": true,
+        "closeConfirmedDiscardsDraft": true
+      }
+    },
+    "referenceUi": {
+      "selectedAssetId": "10000000-0000-4000-8000-000000000002",
+      "status": "Main Process 已阻止删除：素材仍被 1 处内容使用。",
+      "warning": "镜头“Opening”的背景图层“Background”",
+      "referenceListVisible": true,
+      "disclosureExpanded": true,
+      "disclosureUnderSize": true,
+      "pathsHidden": true,
+      "technicalDetailsHidden": true,
+      "sourceWarning": true,
+      "cardStillPresent": true
+    },
+    "referenceCollapsedUi": {
+      "label": "图片",
+      "dimensions": "1920 × 1080 px",
+      "disclosureUnderSize": true,
+      "expanded": "false",
+      "sourceWarning": true,
+      "technicalDetailsVisible": false
+    },
+    "referenceSourceWarningAudit": {
+      "referenceExpanded": true,
+      "warningVisible": true,
+      "warningText": "源文件缺失，无法读取或重建缩略图。"
+    },
+    "multiReferenceUi": {
+      "countVisible": true,
+      "twoLabels": true,
+      "pathsHidden": true,
+      "projectUnchanged": true
+    },
+    "unreferencedDetailsUi": {
+      "summaryLabel": "图片",
+      "noReferenceRow": true,
+      "noUnreferencedRow": true
+    },
+    "deletionUi": {
+      "status": "素材文件、缩略图缓存和项目记录已同步删除。",
+      "backgroundCount": "99",
+      "total": "共 102 项",
+      "removedCardPresent": false,
+      "rendererHasNodeRequire": false,
+      "assetsApi": [
+        "cancelMetadata",
+        "choose",
+        "delete",
+        "importDropped",
+        "readAudio",
+        "readCanvasImage",
+        "readThumbnail",
+        "refreshMetadata"
+      ]
+    },
+    "sourceAudit": {
+      "imageCount": 1,
+      "nonDataImageSources": [],
+      "missingHasRebuild": true
+    },
+    "decodeFallback": {
+      "failedCardMissing": true,
+      "failedCardHasRebuild": true,
+      "failedCardStillSelected": true,
+      "failedCardHasImage": false,
+      "healthyCardStillHasImage": true,
+      "imageCountBefore": 8,
+      "imageCountAfter": 7
+    },
+    "importFeedback": {
+      "success": {
+        "oneFeedback": true,
+        "fourFileSummary": true,
+        "noPerFileResultList": true,
+        "floating": true,
+        "doesNotOverlapToolbar": true,
+        "doesNotOverlapLibraryControls": true,
+        "visibleAt3500Ms": true,
+        "dismissedAfterTimeout": true,
+        "visibleForMs": 4671,
+        "listPositionUnchanged": true,
+        "expectedImportRevisionOnly": true
+      },
+      "pendingImportSuccess": {
+        "editMadeWhilePending": true,
+        "editPreservedAfterResponse": true,
+        "importedAssetApplied": true,
+        "revisionIncludesEditAndImport": true,
+        "remainsDirty": true,
+        "oneOrdinarySuccessToast": true,
+        "successToastDismisses": true,
+        "persistentSaveActionCommunicatesDirty": true
+      },
+      "pendingImportFailure": {
+        "editMadeWhilePending": true,
+        "editPreservedAfterException": true,
+        "errorFeedbackPersistent": true,
+        "responseAddsNoRevision": true,
+        "errorDoesNotDiscardPriorDirtyState": true
+      },
+      "duplicate": {
+        "singleNeutralNotice": true,
+        "communicatesReuse": true,
+        "focusEntered": true,
+        "hoverPaused": true,
+        "focusPaused": true,
+        "focusResumedDismissal": true,
+        "hoverResumedDismissal": true,
+        "projectStateUnchanged": true
+      },
+      "partialFailure": {
+        "persistent": true,
+        "summaryIsPartial": true,
+        "detailNamesFile": true,
+        "roleAndLive": true,
+        "actionTouchTargets": true
+      },
+      "cancellation": {
+        "clearsPreviousNotice": true,
+        "projectStateUnchanged": true
+      },
+      "audioMetadataFailure": {
+        "persistent": true,
+        "detailsNameFile": true,
+        "detailsExplainError": true,
+        "feedbackDidNotAddRevisionOrHistory": true
+      }
+    }
+  },
+  "deletionProtocol": {
+    "referenceScanBeforeMutation": true,
+    "authoritativeSnapshotRecheckedBeforeCommit": true,
+    "referencesRescannedBeforeCommit": true,
+    "staleDuringStageRollsBackAllFiles": true,
+    "referencedDeleteBlocked": true,
+    "referencedAssetStillVisible": true,
+    "unreferencedDeleteApplied": true,
+    "requests": [
+      {
+        "assetId": "10000000-0000-4000-8000-000000000002",
+        "baseRevision": 4,
+        "projectRoot": "D:\\项目\\Day 18 素材库 🐼.pandastage"
+      },
+      {
+        "assetId": "18000000-0000-4000-8000-000000000001",
+        "baseRevision": 4,
+        "projectRoot": "D:\\项目\\Day 18 素材库 🐼.pandastage"
+      }
+    ]
+  },
+  "backendEvidence": {
+    "integrationTest": "tests/integration/asset-delete.test.ts",
+    "verifiesRealAssetCacheAndProjectDeletion": true,
+    "verifiesStageFailureRollback": true,
+    "verifiesAtomicSaveFailureRollback": true,
+    "verifiesStaleRevisionBeforeMutation": true,
+    "verifiesStaleRevisionAfterStaging": true,
+    "verifiesStaleAtAtomicReplaceBoundary": true,
+    "verifiesRecoveryHashPreservedOnRace": true,
+    "pngValidation": {
+      "validCacheAccepted": true,
+      "truncatedSignatureBodyRejected": true,
+      "oversizedCacheCoveredBy": "tests/unit/asset-thumbnail-service.test.ts"
+    }
+  },
+  "screenshots": [
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/asset-library-100.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/usage-filter-default.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/usage-filter-hover.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/usage-filter-selected.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/viewport-narrow.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/viewport-touch-portrait.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/viewport-touch-landscape.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/drag-feedback.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/thumbnail-decode-fallback.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/import-success.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/import-partial-failure.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/import-audio-metadata-failure.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/pending-import-preserved-edit.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/pending-import-dirty-after-toast.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/pending-import-exception.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/reference-details-collapsed.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/reference-details-expanded.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/reference-source-warning.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/multi-reference-collapsed.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/multi-reference-expanded.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/unreferenced-details.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/reference-blocked.png",
+    "docs/evidence/issue-835-day18/run-2026-10-23T10-43-19-952Z/unreferenced-deleted.png"
+  ]
+}

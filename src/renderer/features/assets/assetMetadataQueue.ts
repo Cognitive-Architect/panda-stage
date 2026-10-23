@@ -13,12 +13,19 @@ export type AssetMetadataRefreshStatus = 'ready' | 'error' | 'stopped';
 export interface AssetMetadataRefreshOutcome {
   status: AssetMetadataRefreshStatus;
   applied: boolean;
+  message?: string;
+}
+
+export interface AssetMetadataBatchFailure {
+  assetId: string;
+  message: string;
 }
 
 export interface AssetMetadataBatchOutcome {
   readyCount: number;
   errorCount: number;
   stopped: boolean;
+  failures: AssetMetadataBatchFailure[];
 }
 
 export interface AssetMetadataBatchOptions {
@@ -56,26 +63,33 @@ export async function refreshImportedAudioMetadata(
 ): Promise<AssetMetadataBatchOutcome> {
   const uniqueAssetIds = [...new Set(assetIds)];
   if (uniqueAssetIds.length === 0) {
-    return { readyCount: 0, errorCount: 0, stopped: false };
+    return { readyCount: 0, errorCount: 0, stopped: false, failures: [] };
   }
   const initialSnapshot = options.getSnapshot();
   if (!initialSnapshot) {
-    return { readyCount: 0, errorCount: 0, stopped: true };
+    return { readyCount: 0, errorCount: 0, stopped: true, failures: [] };
   }
   const identity = identityOf(initialSnapshot);
   let readyCount = 0;
   let errorCount = 0;
+  const failures: AssetMetadataBatchFailure[] = [];
 
   for (const assetId of uniqueAssetIds) {
     if (!sameIdentity(options.getSnapshot(), identity)) {
-      return { readyCount, errorCount, stopped: true };
+      return { readyCount, errorCount, stopped: true, failures };
     }
     const result = await options.refresh(assetId, identity);
     if (result.status === 'stopped') {
-      return { readyCount, errorCount, stopped: true };
+      return { readyCount, errorCount, stopped: true, failures };
     }
     if (result.status === 'ready' && result.applied) readyCount += 1;
-    else errorCount += 1;
+    else {
+      errorCount += 1;
+      failures.push({
+        assetId,
+        message: result.message ?? '音频时长分析失败，可在素材详情中重试。',
+      });
+    }
   }
-  return { readyCount, errorCount, stopped: false };
+  return { readyCount, errorCount, stopped: false, failures };
 }

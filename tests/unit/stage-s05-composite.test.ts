@@ -33,6 +33,8 @@ function compositeProject(options: { head?: boolean } = {}): Project {
             mimeType: 'image/png',
             width: 400,
             height: 600,
+            usage: 'uncategorized' as const,
+            keywords: [],
           },
         ]
       : base.assets,

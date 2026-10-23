@@ -14,11 +14,21 @@ import {
 } from '../../../src/main/services/ProjectFileSystemService';
 import exampleProject from '../../../demo-project/project-v1.example.json';
 
+function withoutImageAuthorMetadata(project: Project): Project {
+  const legacy = structuredClone(project);
+  for (const asset of legacy.assets) {
+    if (asset.kind !== 'image') continue;
+    Reflect.deleteProperty(asset, 'usage');
+    Reflect.deleteProperty(asset, 'keywords');
+  }
+  return legacy;
+}
+
 /**
  * Focused lock-in tests for Issue #152 / #217: migration ownership is
  * consolidated into a single `migrateProject` pipeline. `ProjectSchema` is the
- * current (v11) validator only and must never migrate legacy input; every
- * persisted envelope (v0-v10) is resolved through `migrateProject`.
+ * current (v13) validator only and must never migrate legacy input; every
+ * persisted envelope (v0-v12) is resolved through `migrateProject`.
  */
 
 const V0_IDS = {
@@ -313,7 +323,7 @@ describe('migration ownership: ProjectService.open uses the single pipeline', ()
     } = source;
     expect(_bodyPlacement).toEqual({ offsetX: 0, offsetY: 0, scale: 1 });
     const v10 = {
-      ...compositeProject,
+      ...withoutImageAuthorMetadata(compositeProject),
       schemaVersion: 10 as const,
       characters: [
         {

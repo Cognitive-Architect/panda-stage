@@ -77,6 +77,12 @@ describe('BFM-S01 composite Character persistence', () => {
       name: 'BFM S01 legacy character',
     });
     const base = buildProject();
+    const legacyAssets = structuredClone(base.assets);
+    for (const asset of legacyAssets) {
+      if (asset.kind !== 'image') continue;
+      Reflect.deleteProperty(asset, 'usage');
+      Reflect.deleteProperty(asset, 'keywords');
+    }
     const { mode, ...historicalCharacter } = base.characters[0]!;
     void mode;
     const v6 = {
@@ -84,6 +90,7 @@ describe('BFM-S01 composite Character persistence', () => {
       id: created.project.id,
       name: created.project.name,
       schemaVersion: 6 as const,
+      assets: legacyAssets,
       characters: [historicalCharacter],
     };
     const source = `${JSON.stringify(v6, null, 2)}\n`;

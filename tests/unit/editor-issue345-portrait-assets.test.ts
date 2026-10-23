@@ -35,41 +35,52 @@ describe('Issue #345 portrait Assets interaction and pagination', () => {
     expect(paginateAssetLibraryEntries(entries, 4)).toEqual([]);
   });
 
-  it('keeps pagination after category/search filtering and wires reset rules', () => {
+  it('keeps pagination after category/search/purpose filtering and wires reset rules', () => {
     const library = source(
       'src/renderer/features/assets/AssetLibrary.tsx',
     );
 
-    expect(library).toContain('filterAssetLibraryEntries(entries, searchQuery)');
+    expect(library).toMatch(
+      /filterAssetLibraryEntries\([\s\S]*category === 'audio' \? 'all' : usageFilter,/u,
+    );
     expect(library).toContain('paginateAssetLibraryEntries(visibleEntries, currentPage)');
     expect(library).toContain('entries={pageEntries}');
     expect(library).toContain('setPage(1)');
     expect(library).toContain('const selectCategory');
     expect(library).toContain('const updateSearchQuery');
+    expect(library).toContain('const updateUsageFilter');
+    expect(library).toContain('setUsageFilter(nextUsage)');
+    expect(library).toContain('usageFilter !== \'all\'');
     expect(library).toContain('closeSelectedDetails(false)');
     expect(library).toContain('data-testid="asset-library-pagination"');
     expect(library).toContain('aria-label="上一页"');
     expect(library).toContain('aria-label="下一页"');
   });
 
-  it('uses a transient accessible overlay and removes the old in-flow inspector', () => {
+  it('uses a shared transient editor dialog with guarded exits and no in-flow inspector', () => {
     const library = source(
       'src/renderer/features/assets/AssetLibrary.tsx',
     );
+    const details = source('src/renderer/features/assets/AssetDetails.tsx');
     const styles = source('src/renderer/styles.css');
 
     expect(library).not.toContain('asset-selected-inspector');
     expect(library).not.toContain('asset-selected-summary');
-    expect(library).toContain(
-      'hideHeading && selectedAsset && selectedDetailsOpen',
-    );
+    expect(library).toContain('selectedAsset && selectedDetailsOpen');
     expect(library).toContain('data-testid="asset-details-overlay"');
     expect(library).toContain('role="dialog"');
     expect(library).toContain('aria-modal="true"');
     expect(library).toContain("event.key !== 'Escape'");
-    expect(library).toContain('data-testid="asset-details-close"');
+    expect(details).toContain('data-testid="asset-details-close"');
+    expect(library).toContain('放弃尚未保存的素材更改？');
+    expect(library).toContain('onDraftChange={reportMetadataDraftChange}');
+    expect(library).toContain('setSelectedDetailsOpen(true)');
     expect(library).toContain('focusAssetCard');
     expect(styles).toContain('.asset-details-overlay {');
+    expect(styles).toContain('width: min(440px, calc(100vw - 24px));');
+    expect(styles).toContain('grid-template-columns: 88px minmax(0, 1fr);');
+    expect(styles).toContain('object-fit: contain;');
+    expect(styles).toContain('max-height: calc(100dvh - 16px);');
     expect(styles).toContain('.asset-library-pagination {');
     expect(styles).not.toContain('.asset-selected-summary');
   });

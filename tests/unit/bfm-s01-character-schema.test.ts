@@ -266,6 +266,13 @@ describe('BFM-S01 Character schema', () => {
     const v6 = {
       ...project,
       schemaVersion: 6 as const,
+      assets: project.assets.map((asset) => {
+        if (asset.kind !== 'image') return asset;
+        const { usage: _usage, keywords: _keywords, ...legacyAsset } = asset;
+        void _usage;
+        void _keywords;
+        return legacyAsset;
+      }),
       characters: [historicalCharacter],
     };
 

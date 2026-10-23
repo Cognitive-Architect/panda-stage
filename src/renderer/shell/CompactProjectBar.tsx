@@ -98,7 +98,7 @@ export function QuickActionDrawer({
       : saveState === 'failed'
         ? statusText || '保存失败'
         : projectSnapshot.dirty
-          ? '保存项目'
+          ? '保存项目（有未保存更改）'
           : '保存项目（已保存）';
 
   const showRestSaveState = shouldRenderRestSaveState(expanded, saveState);
@@ -185,7 +185,9 @@ export function QuickActionDrawer({
             variant="secondary"
           />
           <IconButton
-            aria-label="保存项目"
+            aria-label={
+              saveState === 'dirty' ? saveTitle : '保存项目'
+            }
             aria-busy={saveState === 'saving'}
             className={`quick-action-drawer-action quick-action-drawer-save quick-action-drawer-save-${saveState}`}
             data-quick-action="save"

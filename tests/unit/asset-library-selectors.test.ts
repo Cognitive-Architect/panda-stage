@@ -1,12 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { ProjectSchema, migrateProject } from '../../src/domain';
+import {
+  ProjectSchema,
+  migrateProject,
+  updateImageAssetAuthorMetadata,
+} from '../../src/domain';
 import {
   assetCategoryCounts,
   assetLibraryFilterCounts,
   filterAssetLibraryEntries,
   selectAssetLibraryEntries,
 } from '../../src/renderer/stores/assetLibrarySelectors';
+import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
 describe('asset library selectors', () => {
@@ -22,6 +27,8 @@ describe('asset library selectors', () => {
         (entry) => entry.asset.name,
       ),
     ).toEqual(['Panda happy', 'Panda neutral']);
+    const audioEntry = selectAssetLibraryEntries(project, 'audio')[0];
+    expect(audioEntry?.dropPayload.type).toBe('audio');
   });
 
   it('provides an all filter and simple name search over the same entries', () => {
@@ -40,6 +47,131 @@ describe('asset library selectors', () => {
       ),
     ).toEqual(['Panda happy']);
     expect(filterAssetLibraryEntries(entries, '  ')).toEqual(entries);
+  });
+
+  it('filters every explicit image usage without changing role grouping or drop identity', () => {
+    const project = migrateProject(exampleProject);
+    const template = project.assets.find((asset) => asset.kind === 'image')!;
+    if (template.kind !== 'image') throw new Error('Expected image asset.');
+    const usages = [
+      'uncategorized',
+      'background',
+      'character',
+      'prop',
+      'effect',
+    ] as const;
+    const authoredImages = usages.map((usage) => ({
+      ...template,
+      id: randomUUID(),
+      name: `Purpose ${usage}`,
+      relativePath: `assets/${usage}.png`,
+      usage,
+      keywords: [],
+    }));
+    const withUsages = ProjectSchema.parse({
+      ...project,
+      assets: [...project.assets, ...authoredImages],
+    });
+    const entries = selectAssetLibraryEntries(withUsages, 'all');
+    const backgroundIds = new Set(
+      selectAssetLibraryEntries(withUsages, 'background').map(
+        (entry) => entry.asset.id,
+      ),
+    );
+
+    for (const [index, usage] of usages.entries()) {
+      const matchingEntries = filterAssetLibraryEntries(entries, '', usage);
+      expect(matchingEntries).toEqual(
+        entries.filter(
+          (entry) =>
+            entry.asset.kind === 'image' && entry.asset.usage === usage,
+        ),
+      );
+      expect(matchingEntries.every(
+        (entry) => entry.asset.kind === 'image' && entry.asset.usage === usage,
+      )).toBe(true);
+      const authoredEntry = matchingEntries.find(
+        (entry) => entry.asset.id === authoredImages[index]!.id,
+      );
+      expect(authoredEntry?.dropPayload).toMatchObject({
+        type: 'asset-image',
+        assetId: authoredImages[index]!.id,
+      });
+      expect(backgroundIds.has(authoredImages[index]!.id)).toBe(true);
+    }
+  });
+
+  it('searches author keywords while keeping same-name images independent by ID', () => {
+    const project = migrateProject(exampleProject);
+    const template = project.assets.find((asset) => asset.kind === 'image')!;
+    if (template.kind !== 'image') throw new Error('Expected image asset.');
+    const first = {
+      ...template,
+      id: randomUUID(),
+      name: '道具图A',
+      relativePath: 'assets/door-a.png',
+      usage: 'prop' as const,
+      keywords: ['门', '关闭'],
+    };
+    const second = {
+      ...first,
+      id: randomUUID(),
+      relativePath: 'assets/door-b.png',
+    };
+    const withDuplicates = ProjectSchema.parse({
+      ...project,
+      assets: [...project.assets, first, second],
+    });
+    const entries = selectAssetLibraryEntries(withDuplicates, 'all');
+    const projectBeforeFiltering = JSON.stringify(withDuplicates);
+    const store = new EditorProjectStore();
+    store.open('D:\\project.pandastage', withDuplicates);
+    const snapshotBeforeFiltering = store.getSnapshot();
+    const historyBeforeFiltering = store.history.getSnapshot();
+    const matches = filterAssetLibraryEntries(entries, '门', 'prop')
+      .filter((entry) => entry.asset.name === '道具图A');
+
+    expect(matches.map((entry) => entry.asset.id)).toEqual([
+      first.id,
+      second.id,
+    ]);
+    expect(matches[0]?.asset.id).not.toBe(matches[1]?.asset.id);
+    expect(matches.every((entry) => entry.dropPayload.type === 'asset-image'))
+      .toBe(true);
+    expect(filterAssetLibraryEntries(entries, '', 'prop').map(
+      (entry) => entry.asset.id,
+    )).toEqual([first.id, second.id]);
+    expect(filterAssetLibraryEntries(entries, 'missing keyword', 'prop'))
+      .toEqual([]);
+    expect(filterAssetLibraryEntries(entries, '', 'all')).toEqual(entries);
+    expect(
+      filterAssetLibraryEntries(
+        selectAssetLibraryEntries(store.getSnapshot()!.project, 'all'),
+        '道具图A',
+        'prop',
+      ).map((entry) => entry.asset.id),
+    ).toEqual([first.id, second.id]);
+    expect(store.getSnapshot()).toBe(snapshotBeforeFiltering);
+    expect(store.getSnapshot()).toMatchObject({ dirty: false, revision: 0 });
+    expect(store.history.getSnapshot()).toEqual(historyBeforeFiltering);
+    expect(JSON.stringify(withDuplicates)).toBe(projectBeforeFiltering);
+
+    const edited = updateImageAssetAuthorMetadata(
+      withDuplicates,
+      first.id,
+      { name: '木门·关闭', usage: 'prop', keywords: ['门', '关闭'] },
+    );
+    expect(edited.assets.find((asset) => asset.id === first.id)?.name).toBe(
+      '木门·关闭',
+    );
+    expect(edited.assets.find((asset) => asset.id === second.id)).toEqual(
+      second,
+    );
+    expect(
+      selectAssetLibraryEntries(edited, 'background').some(
+        (entry) => entry.asset.id === first.id,
+      ),
+    ).toBe(true);
   });
 
   it('classifies a configured mouth image as a character image', () => {
@@ -182,6 +314,8 @@ describe('asset library selectors', () => {
         kind: 'image',
         width: 16,
         height: 12,
+        usage: 'uncategorized',
+        keywords: [],
       })),
     });
     const entries = selectAssetLibraryEntries(project, 'background');

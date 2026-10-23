@@ -22,7 +22,13 @@ function createV0Fixture(): unknown {
     width: project.width,
     height: project.height,
     fps: project.fps,
-    assets: project.assets.map((asset) => ({ ...asset })),
+    assets: project.assets.map((asset) => {
+      if (asset.kind !== 'image') return { ...asset };
+      const { usage: _usage, keywords: _keywords, ...version0Asset } = asset;
+      void _usage;
+      void _keywords;
+      return version0Asset;
+    }),
     shots: project.shots.map((shot) => ({
       id: shot.id,
       name: shot.name,
@@ -76,6 +82,18 @@ function removeCurrentCharacterMode(
     void mode;
     return historicalCharacter;
   });
+}
+
+function withoutImageAuthorMetadata(
+  project: ReturnType<typeof migrateProject>,
+) {
+  const legacy = structuredClone(project);
+  for (const asset of legacy.assets) {
+    if (asset.kind !== 'image') continue;
+    Reflect.deleteProperty(asset, 'usage');
+    Reflect.deleteProperty(asset, 'keywords');
+  }
+  return legacy;
 }
 
 function legacyShot(shot: ReturnType<typeof migrateProject>['shots'][number]) {
@@ -262,7 +280,7 @@ describe('project migration framework', () => {
     });
   });
 
-  it('migrates strict v8 composites to v12 with default part transforms and intensity', () => {
+  it('migrates strict v8 composites to v13 with default part transforms and intensity', () => {
     const current = migrateProject(exampleProject);
     const sourceCharacter = current.characters[0]!;
     const composite = ProjectSchema.parse({
@@ -297,7 +315,7 @@ describe('project migration framework', () => {
     expect(_intensityPercent).toBe(100);
     expect(_bodyPlacement).toEqual({ offsetX: 0, offsetY: 0, scale: 1 });
     const v8 = {
-      ...composite,
+      ...withoutImageAuthorMetadata(composite),
       schemaVersion: 8 as const,
       characters: [v8Character],
     };
@@ -341,7 +359,7 @@ describe('project migration framework', () => {
     expect(() => ProjectV8Schema.parse(withSmuggledHead)).toThrow();
   });
 
-  it('explicitly migrates v9 Head settings to v12 with defaults for new fields', () => {
+  it('explicitly migrates v9 Head settings to v13 with defaults for new fields', () => {
     const current = migrateProject(exampleProject);
     const sourceCharacter = current.characters[0]!;
     const composite = ProjectSchema.parse({
@@ -390,7 +408,7 @@ describe('project migration framework', () => {
     expect(_oldValue).toBe(180);
     expect(_bodyPlacement).toEqual({ offsetX: 0, offsetY: 0, scale: 1 });
     const v9 = {
-      ...composite,
+      ...withoutImageAuthorMetadata(composite),
       schemaVersion: 9 as const,
       characters: [v9Character],
     };
@@ -413,7 +431,13 @@ describe('project migration framework', () => {
       },
       talkingHeadMotionIntensityPercent: 100,
     });
-    expect(migrated.assets).toEqual(v9.assets);
+    expect(migrated.assets).toEqual(
+      v9.assets.map((asset) =>
+        asset.kind === 'image'
+          ? { ...asset, usage: 'uncategorized', keywords: [] }
+          : asset,
+      ),
+    );
 
     const migratedComposite = migrated.characters[0]!;
     if (migratedComposite.mode !== 'composite') {
@@ -505,7 +529,7 @@ describe('project migration framework', () => {
     };
     expect(_bodyPlacement).toEqual({ offsetX: 0, offsetY: 0, scale: 1 });
     const v10 = {
-      ...currentWithTransforms,
+      ...withoutImageAuthorMetadata(currentWithTransforms),
       schemaVersion: 10 as const,
       characters: [v10Character],
     };
@@ -514,7 +538,13 @@ describe('project migration framework', () => {
 
     const migrated = migrateProject(v10);
     expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
-    expect(migrated.assets).toEqual(v10.assets);
+    expect(migrated.assets).toEqual(
+      v10.assets.map((asset) =>
+        asset.kind === 'image'
+          ? { ...asset, usage: 'uncategorized', keywords: [] }
+          : asset,
+      ),
+    );
     expect(migrated.characters[0]).toMatchObject({
       mode: 'composite',
       facePlacement: {
@@ -587,7 +617,7 @@ describe('project migration framework', () => {
   it('migrates the v6 whole-image shape to explicit single-image without guessing Body', () => {
     const current = migrateProject(exampleProject);
     const version6 = {
-      ...current,
+      ...withoutImageAuthorMetadata(current),
       schemaVersion: 6 as const,
       characters: removeCurrentCharacterMode(current),
       shots: current.shots.map(legacyShot),
@@ -611,7 +641,7 @@ describe('project migration framework', () => {
   it('migrates v2 to an explicit background without name or zIndex runtime inference', () => {
     const current = migrateProject(exampleProject);
     const version2 = {
-      ...current,
+      ...withoutImageAuthorMetadata(current),
       schemaVersion: 2 as const,
       characters: removeCurrentCharacterMode(current),
       shots: current.shots.map(({ backgroundLayerId, ...shot }) => {
@@ -643,7 +673,7 @@ describe('project migration framework', () => {
   it('leaves an ordinary small zIndex-0 asset layer as content during migration', () => {
     const current = migrateProject(exampleProject);
     const contentOnly = {
-      ...current,
+      ...withoutImageAuthorMetadata(current),
       schemaVersion: 2 as const,
       characters: removeCurrentCharacterMode(current),
       shots: current.shots.map(
@@ -681,7 +711,7 @@ describe('project migration framework', () => {
   it('migrates strict v3 layers to the current schema with locked=false and flipX=false', () => {
     const current = migrateProject(exampleProject);
     const version3 = {
-      ...current,
+      ...withoutImageAuthorMetadata(current),
       schemaVersion: 3 as const,
       characters: removeCurrentCharacterMode(current),
       shots: current.shots.map((shot) => ({
@@ -718,7 +748,7 @@ describe('project migration framework', () => {
       })),
     };
     const v4WithFlip = {
-      ...current,
+      ...withoutImageAuthorMetadata(current),
       schemaVersion: 4 as const,
       characters: removeCurrentCharacterMode(current),
     };
@@ -730,7 +760,7 @@ describe('project migration framework', () => {
   it('migrates v4 to the current schema, preserving locked and adding flipX=false', () => {
     const current = migrateProject(exampleProject);
     const version4 = {
-      ...current,
+      ...withoutImageAuthorMetadata(current),
       schemaVersion: 4 as const,
       characters: removeCurrentCharacterMode(current),
       shots: current.shots.map((shot, shotIndex) => ({
@@ -758,7 +788,7 @@ describe('project migration framework', () => {
   it('preserves explicit flip values in an existing v5 project', () => {
     const current = migrateProject(exampleProject);
     const version5 = {
-      ...current,
+      ...withoutImageAuthorMetadata(current),
       schemaVersion: 5 as const,
       characters: removeCurrentCharacterMode(current),
       shots: current.shots.map((shot, shotIndex) => ({
