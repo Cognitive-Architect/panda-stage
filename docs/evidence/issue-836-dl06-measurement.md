@@ -545,3 +545,53 @@ AC09 remains **PARTIAL**. Existing [`export-task-state.test.ts`](../../tests/uni
 On test-source commit `d823a225ef840031e670ae28001b01066a26cce4`, [`export-task-state.test.ts`](../../tests/unit/export-task-state.test.ts) gained a focused case where a new Job is active and a late `failed` update from the previous Job arrives. `applyExportJobUpdate` returns the unchanged current task, preserving its active Job identity and state. No production code changed, and this is a separate unit regression; it does not rerun or alter the frozen v1.3.0 Electron plan.
 
 Validation passed: `pnpm test:unit` (357 files, 2,689 tests), `pnpm typecheck`, `pnpm lint`, and `git diff --check`. This directly covers the cross-task failed-update reducer case. AC09 and R4 remain **PARTIAL** because the complete DL-04/05 regression set and R3 scenarios are still not repeated; this test does not provide author-Project, resource-measurement, packaged-install, or human Gate B evidence.
+
+## Frozen AC03 R2 Creator media-preflight plan - v1.0.0 (before run)
+
+Frozen source HEAD: `347c4aabf5731a0cbbfa4b69b1e363154751b398` on `issue-816-dl01-formal-export-preparation`. The focused verifier extension covers exactly two generated-fixture Creator UI failures: a missing image used as the first Shot background, and corrupt bytes for a used audio asset. Both run through Creator Export and native Save As. Each must retain `REQUIRED_MEDIA_UNAVAILABLE`, the exact Shot/media location, the actionable problem and next step, and must start no formal Main Job or commit, create no selected-target MP4, preserve the Project file and dirty editor/session fingerprint, preserve the SHA-256 of a valid sibling prior-output MP4, restore all source bytes exactly, and leave no export temporaries. The receipt records screenshots, source hashes, prior-output FFprobe facts, and per-case assertions.
+
+Acceptance root: `D:\PandaStage-Acceptance\i836r2pf1`; isolated frame-job root: `D:\PandaStage-Acceptance\i836r2pf1\frame-jobs`. Both paths were confirmed absent before this plan was frozen. The run uses generated Issue #827 sample 1 (three Shots, 30 seconds); it is not an author Project. `node --check scripts/verify-issue819-dl02.cjs`, `git diff --check`, `pnpm lint`, and `pnpm build` passed before freezing. Build output retained the existing empty CSS import and large-chunk warnings.
+
+Run once from the repository root with the following exact mode and source values. The package build already passed on this frozen source; this invokes one Electron verifier process against those built artifacts:
+
+```powershell
+$modeNames = @(
+    'PANDA_STAGE_ISSUE819_ROOT',
+    'PANDA_STAGE_ISSUE823_DL03',
+    'PANDA_STAGE_ISSUE827_DL04',
+    'PANDA_STAGE_ISSUE827_ROOT',
+    'PANDA_STAGE_ISSUE827_SAMPLE',
+    'PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA',
+    'PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID',
+    'PANDA_STAGE_ISSUE832_DL05',
+    'PANDA_STAGE_ISSUE832_ROOT',
+    'PANDA_STAGE_ISSUE832_RUN_ID',
+    'PANDA_STAGE_ISSUE832_SOURCE_SHA',
+    'PANDA_STAGE_ISSUE834_FOLLOWUP',
+    'PANDA_STAGE_ISSUE834_ROOT',
+    'PANDA_STAGE_ISSUE834_RUN_ID',
+    'PANDA_STAGE_ISSUE834_SOURCE_SHA',
+    'PANDA_STAGE_ISSUE836_DL06_R0',
+    'PANDA_STAGE_ISSUE836_FRAME_ROOT',
+    'PANDA_STAGE_ISSUE836_R2_COMMIT_RACE',
+    'PANDA_STAGE_ISSUE836_R2_COPY_FAILURE',
+    'PANDA_STAGE_ISSUE836_R2_COPY_FAILURE_VALID_MP4',
+    'PANDA_STAGE_ISSUE836_R2_MEDIA_PREFLIGHT',
+    'PANDA_STAGE_ISSUE836_R2_PATH_BOUNDARY',
+    'PANDA_STAGE_ISSUE836_R2_PATH_SUCCESS',
+    'PANDA_STAGE_ISSUE836_RUN_ID',
+    'PANDA_STAGE_ISSUE836_SOURCE_SHA'
+)
+foreach ($name in $modeNames) { Remove-Item "Env:$name" -ErrorAction SilentlyContinue }
+$env:PANDA_STAGE_ISSUE827_ROOT = 'D:\PandaStage-Acceptance\i836r2pf1'
+$env:PANDA_STAGE_ISSUE827_SAMPLE = '1'
+$env:PANDA_STAGE_ISSUE827_DL04 = '1'
+$env:PANDA_STAGE_ISSUE836_FRAME_ROOT = 'D:\PandaStage-Acceptance\i836r2pf1\frame-jobs'
+$env:PANDA_STAGE_ISSUE836_R2_MEDIA_PREFLIGHT = '1'
+$env:PANDA_STAGE_ISSUE836_RUN_ID = 'i836-ac03-r2-media-preflight-v1.0.0'
+$env:PANDA_STAGE_ISSUE836_SOURCE_SHA = '347c4aabf5731a0cbbfa4b69b1e363154751b398'
+pnpm exec electron scripts/verify-issue819-dl02.cjs
+exit $LASTEXITCODE
+```
+
+Stop at the first failure, preserve the acceptance root, and do not retry or run another verifier. A pass is limited to these two generated-fixture UI paths; it does not complete the missing permission, target, and other AC03 cases, establish R3 measurements, or provide author-Project, packaged-install, or human Gate B acceptance. AC03 and R2 remain **PARTIAL** pending broader required evidence.
