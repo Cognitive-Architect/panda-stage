@@ -898,12 +898,18 @@ describe('DL-01 export preparation domain rules', () => {
     expect(project).toEqual(before);
   });
 
-  it('accepts 256 Shots and reports an actionable issue at 257', () => {
+  it('evaluates Shot-count values below, at, and one above the limit', () => {
     const base = projectWithMedia();
     const makeShot = (index: number) => ({
       ...base.shots[0]!,
       id: `60000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`,
       name: `镜头-${index}`,
+    });
+    const withinLimit = ProjectSchema.parse({
+      ...base,
+      shots: Array.from({ length: EXPORT_PREPARATION_MAX_SHOTS - 1 }, (_, i) =>
+        makeShot(i + 1),
+      ),
     });
     const atLimit = ProjectSchema.parse({
       ...base,
@@ -918,6 +924,7 @@ describe('DL-01 export preparation domain rules', () => {
       ),
     });
 
+    expect(evaluateExportPreparationSupport(withinLimit, 'static')).toEqual([]);
     expect(evaluateExportPreparationSupport(atLimit, 'static')).toEqual([]);
     expect(evaluateExportPreparationSupport(overLimit, 'static')).toEqual([
       expect.objectContaining({
@@ -929,7 +936,15 @@ describe('DL-01 export preparation domain rules', () => {
     ]);
   });
 
-  it('evaluates exact per-file and aggregate budget boundaries', () => {
+  it('evaluates below, exact, and one-over preparation budget boundaries', () => {
+    const oneFileWithinLimit = evaluateExportPreparationBudget([
+      {
+        byteLength: EXPORT_PREPARATION_MAX_SINGLE_ASSET_BYTES - 1,
+        location: '镜头“开场”的背景',
+      },
+    ]);
+    expect(oneFileWithinLimit.issues).toEqual([]);
+
     const oneFileAtLimit = evaluateExportPreparationBudget([
       {
         byteLength: EXPORT_PREPARATION_MAX_SINGLE_ASSET_BYTES,
@@ -953,6 +968,13 @@ describe('DL-01 export preparation domain rules', () => {
       }),
     ]);
 
+    const withinAssetCount = evaluateExportPreparationBudget(
+      Array.from({ length: EXPORT_PREPARATION_MAX_ASSETS - 1 }, () => ({
+        byteLength: 0,
+        location: '镜头“开场”的图层',
+      })),
+    );
+    expect(withinAssetCount.issues).toEqual([]);
     expect(
       evaluateExportPreparationBudget(
         Array.from({ length: EXPORT_PREPARATION_MAX_ASSETS }, () => ({
@@ -974,6 +996,21 @@ describe('DL-01 export preparation domain rules', () => {
         nextStep: expect.any(String),
       }),
     ]);
+
+    const aggregateWithinLimit = evaluateExportPreparationBudget([
+      ...Array.from({ length: 3 }, (_, index) => ({
+        byteLength: EXPORT_PREPARATION_MAX_SINGLE_ASSET_BYTES,
+        location: '素材 ' + index,
+      })),
+      {
+        byteLength: EXPORT_PREPARATION_MAX_SINGLE_ASSET_BYTES - 1,
+        location: '素材 3',
+      },
+    ]);
+    expect(aggregateWithinLimit.totalBytes).toBe(
+      EXPORT_PREPARATION_MAX_TOTAL_MEDIA_BYTES - 1,
+    );
+    expect(aggregateWithinLimit.issues).toEqual([]);
 
     const aggregateAtLimit = evaluateExportPreparationBudget(
       Array.from({ length: 4 }, (_, index) => ({

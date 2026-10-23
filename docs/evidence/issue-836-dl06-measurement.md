@@ -362,3 +362,18 @@ R3=PARTIAL / NOT_ATTESTED
 DL06=NO GO
 DL-07=NO GO
 NEXT: Continue the remaining R2 budget and failure cases and obtain two distinct author-authorized real Projects for remaining real-project / packaged-install / human Gate B acceptance. Do not retry the frozen v1.1.0 path run or rerun R3 v1.4.0.
+
+## Frozen R2 preparation-budget boundary matrix plan - v1.0.0 (before run)
+
+This is a single unit-suite validation of the existing formal Shot-count and export-preparation budget rules. It adds explicit under-limit cases to the existing exact-limit / one-over assertions; it changes no production limits or behavior. The fixture values derive from the formal support source: 256 Shots, 512 actual media assets, 67,108,864 bytes per asset, and 268,435,456 total media bytes. The exact source SHA will be recorded in Issue #836 before running validation. No retry is permitted.
+
+Frozen matrix and expected outcomes:
+
+| Dimension | Below limit | At limit | One above | Expected |
+| --- | ---: | ---: | ---: | --- |
+| Project Shots | 255 | 256 | 257 | 255/256 have no support issue; 257 returns `UNSUPPORTED_IN_CURRENT_EXPORT_SLICE` with the 256 limit and an actionable Shot next step. |
+| Actual media asset entries | 511 | 512 | 513 | 511/512 have no budget issue; 513 returns `PREPARATION_BUDGET_EXCEEDED` with the configured asset limit and a next step. |
+| One media asset | 67,108,863 B | 67,108,864 B | 67,108,865 B | First two have no budget issue; the last identifies the Shot/background, 64 MiB limit, and next step. |
+| Aggregate media bytes | 268,435,455 B | 268,435,456 B | 268,435,457 B | First two have no budget issue; the last returns `PREPARATION_BUDGET_EXCEEDED`. Each constituent asset remains at or below its single-asset limit. |
+
+Run `pnpm test:unit`, `pnpm typecheck`, `pnpm lint`, and `git diff --check` once on the frozen source SHA. A failing command or unrelated suite failure is retained as the first result and stops this plan; no fix-and-retry is included. This is domain/unit evidence only: it does not demonstrate Creator UI behavior, filesystem resource limits, a real author Project, packaged Electron behavior, or completion of R2. Do not run Electron, integration, build, Full CI, `verify:project`, or any additional verifier for this plan.
