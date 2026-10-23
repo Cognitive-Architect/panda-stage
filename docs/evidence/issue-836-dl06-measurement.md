@@ -422,3 +422,14 @@ Frozen source SHA: `584c3ac7041b244207557a17e87eb539f41a4519`. The single planne
 | Full export resources | No approved maximum for total formal frames, decoded-memory peak, frame-job bytes, or output-staging/temp-disk bytes was found in the inspected Main/shared export source; no available-disk-space query was found in `src/main` | The R3 monitor samples per-process memory and directory sizes at 500 ms; sub-interval peaks can be missed. These samples are descriptive, not a hard resource guard or approved budget. |
 
 Minimal safe boundary: retain existing preparation caps, the 3-write bound, write-error failure/cleanup, and no-replace final commit. Do not invent a RAM or disk threshold. Until an owner-approved resource ceiling exists, report full-export disk/memory capacity as `NOT_MEASURED`; any future preflight ceiling needs a separately frozen basis and an acceptance test that proves failure before publication while preserving the Project and prior output. R2 remains PARTIAL.
+
+## R2 output-conflict and cancellation evidence map
+
+| Case | Existing evidence | Limit |
+| --- | --- | --- |
+| Target already exists | Generated Creator UI R3 sample 1 cold/warm receipts record unchanged before/after output SHA, zero formal Jobs, and no output/frame/preparation temporaries. Sample 2 also records unchanged no-clobber results. | Generated probes; this does not establish author-project provenance. |
+| Target appears after preflight | `tests/unit/file-system-service.test.ts` test “preserves a file created after preflight when the exclusive commit meets a name conflict” writes a third-party sentinel after output preparation, expects no-replace commit rejection, verifies sentinel bytes unchanged, and removes staging. This test passed in the recorded unit run. | FileSystemService-level race evidence, not a full Creator/Main end-to-end race. |
+| Formal cancellation | Both generated R3 samples record cancelled jobs, no published output, and empty temporary directories. `ExportService` unit tests also verify cancellation waits for in-flight frame writes before cleanup. | Generated fixtures; no real-project acceptance. |
+| Frame write / cleanup failure | Unit tests inject a frame write error and verify partial-directory cleanup; separate cleanup-failure cases retain the Job/error detail and exercise idempotent cleanup retry. Temporary media-copy `disk full` is blocked and distinguished from missing/corrupt media by the existing preparation test. | The failed v1.0.0 extension did not reach `prepare`; exact copy-failure presentation and Project/previous-output preservation are not additionally verified. |
+
+These existing results cover several R2 failure paths at UI, service, and filesystem layers, but they do not close the resource-budget gaps above or prove every failure path through Creator/Main on two independent author projects. R2 remains PARTIAL; do not repeat frozen R2 or R3 probes.
