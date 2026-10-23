@@ -35,6 +35,7 @@ const issue836R2PathBoundaryMode = process.env.PANDA_STAGE_ISSUE836_R2_PATH_BOUN
 const issue836R2PathSuccessMode = process.env.PANDA_STAGE_ISSUE836_R2_PATH_SUCCESS === '1';
 const issue836R2CommitRaceMode = process.env.PANDA_STAGE_ISSUE836_R2_COMMIT_RACE === '1';
 const issue836R2CopyFailureMode = process.env.PANDA_STAGE_ISSUE836_R2_COPY_FAILURE === '1';
+const issue836R2CopyFailureValidMp4Mode = process.env.PANDA_STAGE_ISSUE836_R2_COPY_FAILURE_VALID_MP4 === '1';
 const dl05Mode = process.env.PANDA_STAGE_ISSUE832_DL05 === '1' || dl05FollowupMode;
 const dl04SampleId = Number(process.env.PANDA_STAGE_ISSUE827_SAMPLE ?? '1');
 const baseDirectory =
@@ -3585,6 +3586,10 @@ async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapsho
 
 async function run() {
   assert(
+    !issue836R2CopyFailureValidMp4Mode || issue836R2CopyFailureMode,
+    'Issue #836 valid-MP4 copy-failure mode requires the copy-failure mode.',
+  );
+  assert(
     !issue836R2CommitRaceMode || !(
       dl03Mode || dl04Mode || dl05Mode || dl06R0Mode ||
       issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
@@ -3643,7 +3648,9 @@ async function run() {
     wrapperRunId: process.env.PANDA_STAGE_ISSUE836_RUN_ID ?? process.env.PANDA_STAGE_ISSUE834_RUN_ID ?? process.env.PANDA_STAGE_ISSUE832_RUN_ID ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID ?? null,
     sourceCommitSha: process.env.PANDA_STAGE_ISSUE836_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE834_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE832_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA ?? null,
     sampleId: dl04Mode || dl05Mode ? dl04SampleId : null,
-    workOrder: issue836R2CopyFailureMode
+    workOrder: issue836R2CopyFailureValidMp4Mode
+      ? 'Issue #836 R2: Creator preparation-copy failure preserving a valid MP4 sentinel'
+      : issue836R2CopyFailureMode
       ? 'Issue #836 R2: Creator preparation-copy failure with Project and output preservation'
       : issue836R2CommitRaceMode
       ? 'Issue #836 R2: Creator export with a target created after preflight at the atomic-commit boundary'
@@ -3722,10 +3729,49 @@ async function run() {
     if (issue836R2CopyFailureMode) {
       const targetPath = path.join(fixture.projectRoot, 'issue836-r2-copy-failure.mp4');
       const previousOutputPath = path.join(fixture.projectRoot, 'issue836-r2-previous-output-sentinel.mp4');
-      const previousOutputBytes = Buffer.from('pre-existing output sentinel; not a media file');
       assert(!existsSync(targetPath), 'Issue #836 copy-failure target must start absent.');
       assert(!existsSync(previousOutputPath), 'Issue #836 prior-output sentinel must start absent.');
-      await fsp.writeFile(previousOutputPath, previousOutputBytes, { flag: 'wx' });
+      let previousOutputMp4Evidence = null;
+      if (issue836R2CopyFailureValidMp4Mode) {
+        await runProcess(mediaTools.ffmpegPath, [
+          '-y', '-v', 'error',
+          '-f', 'lavfi', '-i', 'color=c=blue:s=64x64:r=24',
+          '-frames:v', '6', '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+          '-movflags', '+faststart', previousOutputPath,
+        ]);
+        const probeResult = await runProcess(mediaTools.ffprobePath, [
+          '-v', 'error', '-count_frames', '-show_streams', '-show_format', '-of', 'json', previousOutputPath,
+        ]);
+        const probe = JSON.parse(probeResult.stdout);
+        const video = probe.streams?.find((stream) => stream.codec_type === 'video');
+        const formatNames = String(probe.format?.format_name ?? '').split(',');
+        const durationSeconds = Number(probe.format?.duration);
+        const frameCount = Number(video?.nb_read_frames ?? video?.nb_frames ?? 0);
+        assert(
+          video?.codec_name === 'h264' && video.pix_fmt === 'yuv420p' &&
+          video.width === 64 && video.height === 64 &&
+          frameCount === 6 && formatNames.includes('mp4') &&
+          Number.isFinite(durationSeconds) && durationSeconds > 0,
+          'Resolved FFmpeg did not produce a valid H.264 MP4 prior-output sentinel.',
+        );
+        previousOutputMp4Evidence = {
+          generatedByResolvedFfmpeg: true,
+          codec: video.codec_name,
+          pixelFormat: video.pix_fmt,
+          width: video.width,
+          height: video.height,
+          frameCount,
+          formatNames,
+          durationSeconds,
+        };
+      } else {
+        await fsp.writeFile(
+          previousOutputPath,
+          Buffer.from('pre-existing output sentinel; not a media file'),
+          { flag: 'wx' },
+        );
+      }
+      const previousOutputBytes = await fsp.readFile(previousOutputPath);
       const projectBytesBefore = await fsp.readFile(projectFilePath);
       const sourceHashesBefore = await Promise.all(fixtureProject.assets.map(async (asset) => ({
         assetId: asset.id,
@@ -3821,6 +3867,7 @@ async function run() {
         previousOutputSha256Before: hash(previousOutputBytes),
         previousOutputSha256After: hash(previousOutputAfter),
         previousOutputUnchanged,
+        previousOutputMp4Evidence,
         sourceHashesBefore,
         sourceHashesAfter,
         sourceAssetsUnchanged,
