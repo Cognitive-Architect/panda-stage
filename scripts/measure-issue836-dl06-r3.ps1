@@ -202,6 +202,14 @@ try {
       -RedirectStandardError $stderrPath `
       -WindowStyle Normal `
       -PassThru
+    $creatorWindowForegroundActivated = $false
+    try {
+      $shell = New-Object -ComObject WScript.Shell
+      $creatorWindowForegroundActivated = [bool] $shell.AppActivate($process.Id)
+      [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)
+    }
+    catch { $creatorWindowForegroundActivated = $false }
+    Start-Sleep -Milliseconds 500
     $processStats = @{}
     $sampleCount = 0
     $peakConcurrentProcessCount = 0
@@ -276,6 +284,7 @@ try {
       endedAtUtc = $endedAt.ToString('o')
       wallClockMilliseconds = [long] ($endedAt - $startedAt).TotalMilliseconds
       electronRootProcessId = $process.Id
+      creatorWindowForegroundActivated = $creatorWindowForegroundActivated
       exitCode = $process.ExitCode
       sampleCount = $sampleCount
       peakConcurrentProcessCount = $peakConcurrentProcessCount
