@@ -1,8 +1,8 @@
 # Issue #836 DL-06 measurement plan
 
-Version: **1.0.1 — frozen before R3 measurement runs**
+Version: **1.0.2 — corrected UI-launch plan frozen after a retained harness failure, before corrected R3 runs**
 Plan date: **2026-10-23**
-R3 status before runs: **PLANNED / NOT_ATTESTED**
+R3 status: **PARTIAL / NOT_ATTESTED**; the first harness attempt stopped before export and its evidence is retained.
 
 ## Evidence availability
 
@@ -17,11 +17,15 @@ The probes use the existing Issue #827 fixture generator based on `demo-project/
 ## Frozen run plan
 
 1. Build the unpackaged Windows Electron app with `pnpm build` on the final measured commit.
-2. Run `powershell -NoProfile -File scripts/measure-issue836-dl06-r3.ps1` once. The runner starts four fresh Electron processes in this order: sample 1 cold-process, sample 1 warm-followup, sample 2 cold-process, sample 2 warm-followup.
+2. Run `powershell -NoProfile -File scripts/measure-issue836-dl06-r3.ps1 -AcceptanceRoot D:\PandaStage-Acceptance\issue836-dl06-r3-corrected` once for the corrected set. The runner starts four fresh Electron processes in this order: sample 1 cold-process, sample 1 warm-followup, sample 2 cold-process, sample 2 warm-followup.
 3. “Cold” means a fresh Electron process and generated fixture root; Windows caches are not flushed. “Warm” means an immediate repeat of the same generated sample definition in a fresh Electron process; system caches may remain warm. These runs do not form a controlled OS cold-cache benchmark.
 4. The runner samples each Electron process-tree PID every 500 ms and records per-PID peak working-set and private bytes, process sample counts, root PID, and elapsed wall time. It does not estimate p95 or substitute missing samples with zero.
 5. Each existing Issue #827 verifier receipt supplies the actual Project hash, FFprobe dimensions/frame count/duration, output byte count and SHA-256, source media hashes, and temporary cleanup evidence. The runner stores its own process-memory summary and a hash of each verifier receipt.
-6. Evidence is written under `D:\PandaStage-Acceptance\issue836-dl06-r3\`. No user Project is copied, changed, or used by the run.
+6. The first harness-failure evidence is retained under `D:\PandaStage-Acceptance\issue836-dl06-r3\`; corrected-set evidence is written under `D:\PandaStage-Acceptance\issue836-dl06-r3-corrected\`. No user Project is copied, changed, or used by the run.
+
+### Corrected launch addendum (v1.0.2)
+
+The first invocation used `Start-Process -WindowStyle Hidden` and stopped sample 1 before export because the native Save As dialog timed out. Its stdout/stderr and pre-export environment/process samples are preserved under `D:\PandaStage-Acceptance\issue836-dl06-r3\sample-1-cold-process\`; no verifier receipt was produced. This is a harness-launch failure, not an export failure. The corrected invocation uses `-WindowStyle Normal` because the existing verifier must interact with the native Save As dialog and Creator UI. It uses a separate evidence root so the first failure is retained. The four sample definitions and their order are unchanged. The corrected set is attempted once; if any sample fails, preserve it and stop without another retry.
 
 ### Pre-run capture addendum (v1.0.1)
 

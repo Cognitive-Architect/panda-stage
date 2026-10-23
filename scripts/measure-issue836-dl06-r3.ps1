@@ -200,7 +200,7 @@ try {
       -WorkingDirectory $repositoryRoot `
       -RedirectStandardOutput $stdoutPath `
       -RedirectStandardError $stderrPath `
-      -WindowStyle Hidden `
+      -WindowStyle Normal `
       -PassThru
     $processStats = @{}
     $sampleCount = 0
