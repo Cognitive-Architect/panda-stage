@@ -1,7 +1,7 @@
 # Issue #836 DL-06 measurement plan and result
 
-Report version: **1.7.0**
-Frozen plan revision: **1.0.7**, committed before the final bounded R3 continuation
+Report version: **1.8.0**
+Frozen plan revision: **1.0.8**, committed before the next bounded R3 continuation
 Plan date: **2026-10-23**
 R3 status: **PARTIAL / NOT_ATTESTED**; v1.0.7 completed the sample 1 primary MP4, but its verifier stopped in the subsequent existing-target scenario before writing an acceptance receipt. No invocation produced a complete qualifying R3 receipt. Two earlier #827 generated-probe outputs remain supplemental evidence, not counted toward the frozen DL-06 run plan.
 
@@ -122,9 +122,15 @@ The run used source commit `f94e84ed69b8c35b644bfe7e4194150d6684e561`, invocatio
 
 The controlled cancellation subtest completed, then explicit retry started primary formal Job `26d86c0a-83d9-4417-a28c-98d65f8a2cd4` / attempt `fd984191-261e-44aa-9670-d294353c2675`. Main reported `completed`, phase `finished`, and 720/720 frames with no Job or cleanup error. The output exists at `D:\PandaStage-Acceptance\i836r3\m-6cf46ede1a4c43ee\sample-1-cold-process\run-2026-10-23T06-10-19-393Z-14168\Panda Stage formal export.pandastage\issue827-sample-1.mp4`; size 189,106 bytes, SHA-256 `8c307cb4ff37b8bd75018ca2bd43b41d29c761d02d812fae956ba18d4b8da13f`. A read-only FFprobe inspection found H.264 1920×1080 video at 24 fps, 30.000 seconds / 720 frames, plus AAC mono 48 kHz audio. This output inspection is retained evidence; it is not a substitute for the missing verifier receipt or its complete post-export assertions.
 
-After the primary export, the verifier entered its existing-target/no-clobber follow-up. It again clicked the toolbar Export action while the completed task surface was open. The screenshot shows the completed task with its “导出新版本” action; the toolbar handler restores the non-idle task and does not open Save As. No third `saveDialogEvidence` entry exists, and UIA found no native Save As dialog. The native-dialog helper timed out, so the verifier did not reach its no-clobber assertions or write `acceptance-receipt.json`. The Electron process exit code is null in the manifest; the measurement wrapper exited 1 for the missing receipt. Sample 1 warm and both sample 2 runs were not started. No further R3 invocation is authorized by frozen plan v1.0.7.
+After the primary export, the verifier entered its existing-target/no-clobber follow-up. It again clicked the toolbar Export action while the completed task surface was open. The screenshot shows the completed task with its “导出新版本” action; the toolbar handler restores the non-idle task and does not open Save As. No third `saveDialogEvidence` entry exists, and UIA found no native Save As dialog. The native-dialog helper timed out, so the verifier did not reach its no-clobber assertions or write `acceptance-receipt.json`. The Electron process exit code is null in the manifest; the measurement wrapper exited 1 for the missing receipt. Sample 1 warm and both sample 2 runs were not started. v1.0.7's stop condition was honored; the new bounded plan below supersedes that stop after this additional action mismatch was confirmed.
 
 Per-PID memory sampling covered the full run but is not a machine-wide total: FFmpeg PID 16296 had the largest observed working set (676,913,152 bytes) and private bytes (814,813,184 bytes) across 16 samples; Electron PID 9796 peaked at 479,596,544 working-set bytes and 202,629,120 private bytes across 1,340 samples. Phase timings, Renderer pending queue peak, cancellation-release duration, PCM checks, and successful-export cleanup assertions remain `NOT_MEASURED` by the verifier. Raw manifest, logs, failure JSON, and screenshots are under `D:\PandaStage-Acceptance\i836r3\m-6cf46ede1a4c43ee\sample-1-cold-process\`.
+
+### Next bounded R3 continuation plan (v1.0.8, frozen before run)
+
+The v1.0.7 evidence showed a second terminal-state action mismatch after the primary MP4 completed: the no-clobber subtest used the toolbar while the completed-task surface was active. The harness now inspects the existing task status and follows the corresponding Creator path: idle uses the toolbar; completed restores the task surface then selects “导出新版本”; failed/cancelled restores the surface then selects “按当前内容重新导出”; active states fail immediately instead of waiting for a Save As dialog that cannot open. The selected action is written into the verifier receipt. No product code, samples, or measurement parameters change.
+
+This plan supersedes v1.0.7 only because its retained evidence identified the follow-on task-action mismatch. It authorizes one bounded four-run set, in the existing order sample 1 cold-process, sample 1 warm-followup, sample 2 cold-process, sample 2 warm-followup. Stop on the first verifier failure; do not retry any failed sample, and make no further R3 invocation after this plan. Run `powershell -NoProfile -File scripts/measure-issue836-dl06-r3.ps1 -AcceptanceRoot D:\PandaStage-Acceptance\i836r3`. Preserve the manifest, acceptance receipts, failure JSON, logs, and screenshots. The run source SHA must be the committed verifier/report plan SHA. Generated probes still do not establish author-supplied real-project provenance, packaged-install behavior, or human Gate B acceptance.
 
 ## R0–R4 and acceptance summary
 

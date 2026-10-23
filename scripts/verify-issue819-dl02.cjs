@@ -1171,10 +1171,28 @@ async function verifyUndecodableAudioSource(initialProjectBytes) {
 async function startFromCreatorUi(evidenceRoot, label, options = {}) {
   const before = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
   const priorJobCount = formalStarts.length;
-  if (options.retryCurrentContent) {
-    await clickButtonContainingText('\u6309\u5f53\u524d\u5185\u5bb9\u91cd\u65b0\u5bfc\u51fa');
-  } else {
+  const priorTaskStatus = await rendererJs(
+    'window.__pandaStageIssue816Acceptance.inspectExportTask()?.task?.status ?? "idle"',
+  );
+  let startAction;
+  if (priorTaskStatus === 'idle') {
+    startAction = 'quick-action-export';
     await clickSelector('[data-testid="quick-action-export"]');
+  } else if (['completed', 'failed', 'cancelled'].includes(priorTaskStatus)) {
+    await clickSelector('[data-testid="quick-action-export"]');
+    const taskSelector = "document.querySelector('[data-testid=\"export-task-surface\"]')";
+    await waitForRenderer(
+      `${taskSelector}?.dataset.taskStatus === ${JSON.stringify(priorTaskStatus)}`,
+    );
+    const actionText = priorTaskStatus === 'completed'
+      ? '\u5bfc\u51fa\u65b0\u7248\u672c'
+      : '\u6309\u5f53\u524d\u5185\u5bb9\u91cd\u65b0\u5bfc\u51fa';
+    startAction = priorTaskStatus === 'completed'
+      ? 'completed-new-version'
+      : 'failed-or-cancelled-current-content-retry';
+    await clickButtonContainingText(actionText);
+  } else {
+    throw new Error(`${label}: cannot start a new export while prior task is ${priorTaskStatus}.`);
   }
   const nativeSavePath = path.join(evidenceRoot, `${label}-save-as.png`);
   const overwritePromptPath = path.join(evidenceRoot, `${label}-windows-overwrite.png`);
@@ -1199,6 +1217,7 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
     return {
       before,
       after: await rendererJs('window.__pandaStageIssue816Acceptance.inspect()'),
+      startAction,
       status: 'failed',
       taskText: await rendererJs(`${taskSelector}?.innerText ?? ''`),
       starts,
@@ -1235,6 +1254,7 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
     return {
       before,
       after: await rendererJs('window.__pandaStageIssue816Acceptance.inspect()'),
+      startAction,
       start: starts[0],
       status: 'cancelled',
       progressCaptured,
@@ -1257,6 +1277,7 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
     return {
       before,
       after: await rendererJs('window.__pandaStageIssue816Acceptance.inspect()'),
+      startAction,
       start: starts[0],
       failedJob,
       taskText,
@@ -1273,7 +1294,7 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
     const taskText = await rendererJs(`document.querySelector('[data-testid="export-task-surface"]')?.innerText ?? ''`);
     const image = await mainWindow.webContents.capturePage();
     await fsp.writeFile(path.join(evidenceRoot, `${label}-failed.png`), image.toPNG());
-    throw new Error(`${label}: formal export ended as ${finalStatus}. ${JSON.stringify({ failedJob, latestUpdate: jobUpdates.at(-1), taskText })}`);
+    throw new Error(`${label}: formal export ended as ${finalStatus}. ${JSON.stringify({ startAction, failedJob, latestUpdate: jobUpdates.at(-1), taskText })}`);
   }
   const after = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
   const taskImage = await mainWindow.webContents.capturePage();
@@ -1283,6 +1304,7 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
   return {
     before,
     after,
+    startAction,
     start: starts[0],
     progressCaptured,
     nativeSaveAsScreenshotPath: nativeSavePath,
@@ -2814,7 +2836,6 @@ async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapsho
   const outputPath = path.join(fixture.projectRoot, `issue827-sample-${dl04SampleId}.mp4`);
   const exportRun = await startFromCreatorUi(evidenceRoot, `issue827-sample-${dl04SampleId}`, {
     selectedFileName: path.basename(outputPath),
-    retryCurrentContent: true,
     completionTimeoutMs: 1_200_000,
   });
   assert(exportRun.start.cameraMode === desiredCameraMode, 'Formal candidate did not capture the requested camera mode.');
@@ -2897,6 +2918,7 @@ async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapsho
     const outputSha256After = hash(await fsp.readFile(outputPath));
     assert(outputSha256After === priorOutputSha256, 'The late-Shot failure changed the previously completed MP4.');
     runtimeRenderFailure = {
+      startAction: failureRun.startAction,
       targetPath: failedOutputPath,
       injection: injectionRecords[0],
       job: { jobId: failureRun.failedJob.jobId, status: failureRun.failedJob.status, phase: failureRun.failedJob.phase, error: failureRun.failedJob.error },
@@ -2978,15 +3000,15 @@ async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapsho
     assets: restoredSourceHashes,
   };
   result.selectionIndependence = { selectedShotBeforeExport: selectedShotId, selectionMethod: shotSelectionMethod, outputShotOrder: prefixRows.map((row) => row.shotId), fullProjectCaptured: exportRun.start.mediaCount > 0 };
-  result.cancellation = { jobStatus: exportService.getJob(cancelRun.start.jobId)?.status, targetPath: cancelPath, targetAbsent: !existsSync(cancelPath), duplicateClickStartedSecondJob: false, progressScreenshotPath: cancelRun.progressScreenshotPath, temporaryCleanup: cancellationCleanup };
-  result.existingTargetNoClobber = { path: outputPath, beforeSha256: beforeExistingTargetHash, afterSha256: afterExistingTargetHash, unchanged: beforeExistingTargetHash === afterExistingTargetHash, formalJobsStarted: existingTarget.starts.length, blockedScreenshotPath: existingTarget.failureScreenshotPath, temporaryCleanup: existingTargetCleanup };
+  result.cancellation = { startAction: cancelRun.startAction, jobStatus: exportService.getJob(cancelRun.start.jobId)?.status, targetPath: cancelPath, targetAbsent: !existsSync(cancelPath), duplicateClickStartedSecondJob: false, progressScreenshotPath: cancelRun.progressScreenshotPath, temporaryCleanup: cancellationCleanup };
+  result.existingTargetNoClobber = { startAction: existingTarget.startAction, path: outputPath, beforeSha256: beforeExistingTargetHash, afterSha256: afterExistingTargetHash, unchanged: beforeExistingTargetHash === afterExistingTargetHash, formalJobsStarted: existingTarget.starts.length, blockedScreenshotPath: existingTarget.failureScreenshotPath, temporaryCleanup: existingTargetCleanup };
   result.sourceMediaReplacement = sourceReplacement;
   result.sourceHashesAfterExport = restoredSourceHashes;
   result.shotPrefixTable = prefixRows;
   result.globalFrameMapByShot = frameMapByShot;
   result.audioMap = fixture.audioMixFixture.mappedClips;
   result.cameraResolverEvidence = cameraEvidence;
-  result.outputs = { [desiredCameraMode]: { ...exportEvidence, creatorUiEvidence: { nativeSaveAs: exportRun.nativeSaveAsScreenshotPath, progress: exportRun.progressScreenshotPath, completed: exportRun.completedScreenshotPath }, externalPlayer } };
+  result.outputs = { [desiredCameraMode]: { ...exportEvidence, creatorUiEvidence: { startAction: exportRun.startAction, nativeSaveAs: exportRun.nativeSaveAsScreenshotPath, progress: exportRun.progressScreenshotPath, completed: exportRun.completedScreenshotPath }, externalPlayer } };
   result.runtimeRenderFailure = runtimeRenderFailure;
   result.editorState = {
     revision: finalEditorState.revision,
