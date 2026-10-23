@@ -1,13 +1,13 @@
 # Issue #836 DL-06 measurement plan and result
 
-Report version: **1.3.0**
+Report version: **1.4.0**
 Frozen plan revision: **1.0.5**, committed before the bounded R3 continuation
 Plan date: **2026-10-23**
-R3 status: **PARTIAL / NOT_ATTESTED**; five harness invocations produced no qualifying sample export and their evidence is retained.
+R3 status: **PARTIAL / NOT_ATTESTED**; five DL-06 harness invocations produced no qualifying sample export. Two earlier #827 generated-probe outputs are recorded below as supplemental evidence, not counted toward the frozen DL-06 run plan.
 
 ## Evidence availability
 
-The available acceptance-project inventory did not contain two distinct, author-authorized real Projects with three Shots and a total duration near 30 seconds. The checked candidate projects were prior issue fixtures: one was five Shots / 15 seconds and the others were one Shot / 3 seconds. They do not satisfy the requested R3 sample shape or provenance, so this plan uses generated probes only and will remain **PARTIAL / NOT_ATTESTED**.
+The available acceptance-project inventory did not contain two distinct, author-authorized real Projects with three Shots and a total duration near 30 seconds. A read-only scan of 1,173 `project.json` files under `D:\PandaStage-Acceptance` found 21 files with three Shots and 24–36 seconds; all were under the Issue #827/#830/#832/#834 verifier fixture roots. The generator `generateIssue827Fixture` builds these from `demo-project/project-v1.example.json` with generated audio/background media, so they are valid probes but do not establish real-project provenance. Older candidates also included one five-Shot / 15-second fixture and one-Shot / 3-second fixtures. This plan therefore uses generated probes only and remains **PARTIAL / NOT_ATTESTED**.
 
 The probes use the existing Issue #827 fixture generator based on `demo-project/project-v1.example.json`:
 
@@ -84,6 +84,17 @@ Freeze this plan before one invocation of `powershell -NoProfile -File scripts/m
 The v1.0.5 invocation used runner/source SHA `a9a1be241415aa56b5308c977e519711f7a6fe9c`, invocation ID `20261023T054819Z-2d8e1de9-79b1-46ba-9bbc-a6cf1d7b0c3f`, and measurement root `D:\PandaStage-Acceptance\i836r3\m-27ac04202aa94de4`. It stopped on sample 1 cold-process as frozen. AppActivate succeeded for Electron PID 2920. The generated fixture root was `D:\PandaStage-Acceptance\i836r3\m-27ac04202aa94de4\sample-1-cold-process\run-2026-10-23T05-48-22-453Z-2920`; its Project SHA-256 was `53c8168cb80cf484a22cd878a5bf1f44eb580c372a3fea6473f7f365ab4ef435`, and its ten generated asset hashes matched the fixture manifest. The existing verifier cancellation subtest started one formal Job, cancelled it at 1/720 frames, and returned the visible cleanup state. The subsequent primary sample export did not pass native Save As UI Automation: `Timed out waiting for the native Save As dialog.` No R3 acceptance receipt or MP4 was produced. This was a Save As harness/UI-session failure, not an export result.
 
 The runner recorded 33,971 ms wall time, 58 process samples, peak sampled tree count 8, and maximum sample interval 611.1 ms against the 500 ms target. The storage sampler observed a peak of 4 frame files / 1,612,141 bytes, frozen media 1,593,567 bytes, and no output staging bytes over 57 samples. These cover fixture preparation and the verifier's cancellation subtest only; they are not export memory, queue, phase-time, or successful-export disk measurements. The wrapper `exitCode` was `null`; the retained stderr and absent verifier receipt establish the failure. Details are in `D:\PandaStage-Acceptance\i836r3\m-27ac04202aa94de4\measurement-runs.json`, `sample-1-cold-process\electron-stderr.log`, `sample-1-cold-process\run-2026-10-23T05-48-22-453Z-2920\evidence\electron-failure.json`, and `electron-failure.png` under that run's evidence directory. Sample 1 warm-followup and both sample 2 runs were not started; this is the final frozen R3 continuation and no further retry was made.
+
+### Supplemental generated-probe outputs from Issue #827 (not counted as DL-06 R3)
+
+Two earlier Issue #827 receipts contain successful Creator UI outputs for the generated, distinct three-Shot / 30-second probes. Their MP4 files still exist in the acceptance folder and their current SHA-256 values match the receipts:
+
+| Sample | Prior source commit / run | Generated Project SHA-256 | Output SHA-256 | Output |
+| --- | --- | --- | --- | --- |
+| 1 | `a21f520d2d9f57601df4438f7adc4911ddbdd376` / `bf45cc93-2c80-4c7d-b445-434961b4de54` | `e8de79f1f49c507a101c4cf5fabf26d6b03bfcf0cbf8bcf232554b6ad367e2ef` | `8c307cb4ff37b8bd75018ca2bd43b41d29c761d02d812fae956ba18d4b8da13f` | 30,000 ms; 720 frames; 24 fps; 1920×1080; H.264/AAC; static |
+| 2 | `a21f520d2d9f57601df4438f7adc4911ddbdd376` / `bf45cc93-2c80-4c7d-b445-434961b4de54` | `d8a472c03bfdb36aa224219b38a8f90add437380494362d0a36ece175f697782` | `b2e65c46917a58caf151514d0a32c77541ba88174fc4fa039f48a1c8fb9fb07d` | 30,000 ms; 720 frames; 24 fps; 1920×1080; H.264/AAC; speaker-focus |
+
+The corresponding receipts are `D:\PandaStage-Acceptance\issue827-dl04\i830-bf45cc93-2c80-4c7d-b445-434961b4de54\sample-1\run-2026-10-22T10-33-45-259Z-10712\acceptance-receipt.json` and `D:\PandaStage-Acceptance\issue827-dl04\i830-bf45cc93-2c80-4c7d-b445-434961b4de54\sample-2\run-2026-10-22T10-51-06-714Z-4240\acceptance-receipt.json`. Both are `AUTO=PASS`; the recorded output paths exist and were re-hashed read-only. The source commit is an ancestor of the DL-06 product implementation commit `f38a325`, but these runs predate DL-06's frozen measurement plan and its later production changes. They provide one historical output per generated sample, not cold/warm pairs or DL-06 resource measurements, so they do not satisfy R3 and do not change the R3 stop result.
 
 ## R0–R4 and acceptance summary
 
