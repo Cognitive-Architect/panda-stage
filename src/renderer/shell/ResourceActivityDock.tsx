@@ -251,6 +251,8 @@ export function ResourceActivityDock({
       ? '素材库'
       : ACTIVITIES.find((activity) => activity.id === activeActivity)?.label ??
         '资源';
+  const hideAssetBrowserHeading =
+    activeActivity === 'assets' && assetView === 'browser';
   const hideLocalActivityTabs =
     landscapePresentation ||
     (hideSectionLabels &&
@@ -352,7 +354,8 @@ export function ResourceActivityDock({
         hidePortraitShotChrome ||
         collapseLandscapeCharacterDetailHeader ||
         useDirectLandscapeShotWorkspaceLabel ||
-        useDirectCharacterWorkspaceLabel
+        useDirectCharacterWorkspaceLabel ||
+        hideAssetBrowserHeading
           ? activeLabel
           : undefined
       }
@@ -360,7 +363,8 @@ export function ResourceActivityDock({
         hidePortraitShotChrome ||
         collapseLandscapeCharacterDetailHeader ||
         useDirectLandscapeShotWorkspaceLabel ||
-        useDirectCharacterWorkspaceLabel
+        useDirectCharacterWorkspaceLabel ||
+        hideAssetBrowserHeading
           ? undefined
           : 'resource-activity-heading'
       }
@@ -430,6 +434,7 @@ export function ResourceActivityDock({
             }
           >
             {hidePortraitShotChrome ||
+            hideAssetBrowserHeading ||
             useDirectLandscapeShotWorkspaceLabel ||
             useDirectCharacterWorkspaceLabel ? null : (
               <div>

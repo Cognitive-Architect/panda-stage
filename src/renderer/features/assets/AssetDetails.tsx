@@ -44,6 +44,11 @@ type ImageMetadataFieldErrors = Partial<
   Record<ImageMetadataField, string>
 >;
 
+interface ImageMetadataBaseline {
+  assetId: string;
+  values: ImageAssetAuthorMetadata;
+}
+
 function dimensions(asset: Asset): string {
   if (asset.kind === 'image') {
     return `${asset.width} × ${asset.height} px`;
@@ -139,8 +144,21 @@ export function AssetDetails({
   );
   const [fieldErrors, setFieldErrors] = useState<ImageMetadataFieldErrors>({});
   const [formError, setFormError] = useState('');
+  const [metadataConflict, setMetadataConflict] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const metadataBaseline = useRef<ImageMetadataBaseline | null>(
+    asset?.kind === 'image'
+      ? {
+          assetId: asset.id,
+          values: {
+            name: asset.name,
+            usage: asset.usage,
+            keywords: asset.keywords,
+          },
+        }
+      : null,
+  );
   const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
   const previewCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const wasPreviewOpenRef = useRef(false);
@@ -163,9 +181,66 @@ export function AssetDetails({
     }
     setFieldErrors({});
     setFormError('');
+    setMetadataConflict(false);
     setPreviewOpen(false);
     setMoreOpen(false);
   }, [asset?.id]);
+
+  useEffect(() => {
+    if (asset?.kind !== 'image') {
+      metadataBaseline.current = null;
+      setMetadataConflict(false);
+      return;
+    }
+
+    const nextValues: ImageAssetAuthorMetadata = {
+      name: asset.name,
+      usage: asset.usage,
+      keywords: asset.keywords,
+    };
+    const previous = metadataBaseline.current;
+    if (!previous || previous.assetId !== asset.id) {
+      metadataBaseline.current = { assetId: asset.id, values: nextValues };
+      return;
+    }
+
+    const metadataChanged =
+      previous.values.name !== nextValues.name ||
+      previous.values.usage !== nextValues.usage ||
+      previous.values.keywords.join('\u0000') !==
+        nextValues.keywords.join('\u0000');
+    if (!metadataChanged) return;
+
+    const draftMatchesPrevious =
+      imageNameDraft === previous.values.name &&
+      imageUsageDraft === previous.values.usage &&
+      keywordsDraft === previous.values.keywords.join(', ');
+    metadataBaseline.current = { assetId: asset.id, values: nextValues };
+
+    if (draftMatchesPrevious) {
+      setImageNameDraft(nextValues.name);
+      setImageUsageDraft(nextValues.usage);
+      setKeywordsDraft(nextValues.keywords.join(', '));
+      setMetadataConflict(false);
+    } else {
+      setMetadataConflict(true);
+    }
+  }, [
+    asset?.id,
+    asset?.kind,
+    asset?.kind === 'image' ? asset.name : undefined,
+    asset?.kind === 'image' ? asset.usage : undefined,
+    asset?.kind === 'image' ? asset.keywords : undefined,
+    imageNameDraft,
+    imageUsageDraft,
+    keywordsDraft,
+  ]);
+
+  useEffect(() => {
+    if (metadataConflict && !imageDraftIsDirty) {
+      setMetadataConflict(false);
+    }
+  }, [imageDraftIsDirty, metadataConflict]);
 
   useEffect(() => {
     if (asset?.kind === 'image') {
@@ -219,9 +294,11 @@ export function AssetDetails({
         keywords: keywordsDraft.split(/[,，\n]/u),
       });
       if (saved) {
+        metadataBaseline.current = { assetId: asset.id, values: saved };
         setImageNameDraft(saved.name);
         setImageUsageDraft(saved.usage);
         setKeywordsDraft(saved.keywords.join(', '));
+        setMetadataConflict(false);
       }
     } catch (error) {
       if (error instanceof ZodError) {
@@ -251,6 +328,17 @@ export function AssetDetails({
     setImageNameDraft(asset.kind === 'image' ? asset.name : '');
     setImageUsageDraft(asset.kind === 'image' ? asset.usage : 'uncategorized');
     setKeywordsDraft(asset.kind === 'image' ? asset.keywords.join(', ') : '');
+    if (asset.kind === 'image') {
+      metadataBaseline.current = {
+        assetId: asset.id,
+        values: {
+          name: asset.name,
+          usage: asset.usage,
+          keywords: asset.keywords,
+        },
+      };
+    }
+    setMetadataConflict(false);
     setFieldErrors({});
     setFormError('');
     onCancelEdit?.();
@@ -398,6 +486,11 @@ export function AssetDetails({
           {formError ? (
             <p className="asset-metadata-form-error" role="alert">
               {formError}
+            </p>
+          ) : null}
+          {metadataConflict ? (
+            <p className="asset-metadata-form-error" data-testid="asset-metadata-conflict" role="alert">
+              工程中的素材信息已改变。未保存的输入已保留；再次保存会覆盖当前值。
             </p>
           ) : null}
           <div className="asset-author-metadata-actions">

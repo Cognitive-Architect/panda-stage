@@ -289,7 +289,7 @@ async function snapshot(window, expectedRoot) {
       JSON.stringify('.asset-category-tabs button') +
     ')].findIndex((button) => button.getAttribute("aria-pressed") === "true"),' +
     'assetResultCount: document.querySelectorAll(' +
-    JSON.stringify('.asset-import-results li') +
+    JSON.stringify('[data-testid="asset-import-feedback"]') +
     ').length,' +
     'assetSelectedCount: document.querySelectorAll(' +
     JSON.stringify('.asset-card-selected') +
@@ -727,7 +727,7 @@ async function verifyIssue81() {
       'Escape did not close the right surface and return focus to its trigger.',
     );
 
-    // T1: leave local asset state and import results in A, then switch to B.
+    // T1: leave local asset state and import feedback in A, then switch to B.
     await switchActivity(window, 'assets');
     await click(window, '.asset-category-tabs button:nth-of-type(3)');
     await waitFor(
@@ -738,8 +738,10 @@ async function verifyIssue81() {
     await click(window, '[data-testid="resource-primary-action"]');
     await waitFor(
       window,
-      'document.querySelectorAll(".asset-import-results li").length === 1',
-      'A import result did not render.',
+      'document.querySelectorAll(' +
+        JSON.stringify('[data-testid="asset-import-feedback"]') +
+        ').length === 1',
+      'A import feedback did not render.',
     );
     const aAssetBrowser = await snapshot(window, projectARoot);
     await click(window, '.asset-card');
@@ -749,8 +751,8 @@ async function verifyIssue81() {
     await waitForActivity(window, 'shots');
     const bAfterA = await snapshot(window, projectBRoot);
 
-    // The resource owner must be clean after A -> B, even though the old
-    // activity was assets and the old result was still mounted at switch time.
+    // The resource owner must be clean after A -> B, including the old import
+    // feedback that was mounted when the project switch began.
     await switchActivity(window, 'assets');
     const bAssetsClean = await snapshot(window, projectBRoot);
 

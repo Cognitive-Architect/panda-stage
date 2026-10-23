@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import {
   createElement,
   type ReactElement,
@@ -14,8 +15,15 @@ import {
 } from '../../src/renderer/features/assets/AssetCard';
 import { AssetDetails } from '../../src/renderer/features/assets/AssetDetails';
 import { AssetLibrary } from '../../src/renderer/features/assets/AssetLibrary';
+import { IMAGE_ASSET_USAGE_OPTIONS } from '../../src/renderer/features/assets/assetUsage';
+import { ResourceActivityDock } from '../../src/renderer/shell/ResourceActivityDock';
 import type { AssetLibraryEntry } from '../../src/renderer/stores/assetLibrarySelectors';
 import exampleProject from '../../demo-project/project-v1.example.json';
+
+const assetLibrarySource = readFileSync(
+  new URL('../../src/renderer/features/assets/AssetLibrary.tsx', import.meta.url),
+  'utf8',
+);
 
 const noop = () => undefined;
 const directPayload = (assetId: string) => ({
@@ -38,12 +46,13 @@ describe('asset library components', () => {
       }),
     );
     expect(markup).toContain('项目素材库');
+    expect(markup).toContain('asset-library-heading-visually-hidden');
     expect(markup).toContain('全部');
     expect(markup).toContain('角色图片');
     expect(markup).toContain('未绑定角色');
     expect(markup).toContain('音频');
     expect(markup).toContain('data-testid="asset-library-usage-filter"');
-    expect(markup).toContain('全部用途');
+    expect(markup).toContain('aria-label="按用途筛选"');
     expect(markup).toContain('导入项目素材');
     expect(markup).toContain('data-testid="asset-browser-view"');
     expect(markup).toContain('导入 FLA');
@@ -52,6 +61,10 @@ describe('asset library components', () => {
     );
     expect(markup).not.toContain('Import FLA...');
     expect(markup).toContain('data-testid="asset-import-fla"');
+    expect(markup).not.toContain(
+      '打开项目后，可把 PNG、JPG、MP3 或 WAV 安全复制到项目中。',
+    );
+    expect(markup).not.toContain('也可直接拖入');
     const detailsMarkup = renderToStaticMarkup(
       createElement(AssetLibrary, {
         snapshot: {
@@ -128,6 +141,27 @@ describe('asset library components', () => {
     );
   });
 
+  it('removes the Asset Browser title while keeping the workspace accessible', () => {
+    const project = migrateProject(exampleProject);
+    const markup = renderToStaticMarkup(
+      createElement(ResourceActivityDock, {
+        activeActivity: 'assets',
+        presentation: 'landscape',
+        snapshot: {
+          projectRoot: 'D:\\project.pandastage',
+          project,
+          dirty: false,
+          revision: 3,
+        },
+      }),
+    );
+
+    expect(markup).toContain('<section aria-label=');
+    expect(markup).not.toContain('id="resource-activity-heading"');
+    expect(markup).toContain('data-testid="resource-primary-action"');
+    expect(markup).toContain('asset-library-heading-visually-hidden');
+  });
+
   it('keeps combined text and purpose filters available in desktop and touch layouts', () => {
     const project = migrateProject(exampleProject);
     for (const props of [
@@ -148,15 +182,20 @@ describe('asset library components', () => {
 
       expect(markup).toContain('aria-label="搜索素材"');
       expect(markup).toContain('data-testid="asset-library-usage-filter"');
-      for (const usage of [
+      expect(markup).toContain('aria-haspopup="menu"');
+      expect(assetLibrarySource).toContain('role="menu"');
+      expect(assetLibrarySource).toContain('role="menuitemradio"');
+      expect(assetLibrarySource).toContain(
+        'data-usage-filter-value={option.value}',
+      );
+      expect(assetLibrarySource).toContain('...IMAGE_ASSET_USAGE_OPTIONS');
+      expect(IMAGE_ASSET_USAGE_OPTIONS.map(({ value }) => value)).toEqual([
         'uncategorized',
         'background',
         'character',
         'prop',
         'effect',
-      ]) {
-        expect(markup).toContain(`value="${usage}"`);
-      }
+      ]);
     }
   });
 

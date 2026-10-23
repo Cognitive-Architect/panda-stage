@@ -5,7 +5,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Filter, Search, X } from 'lucide-react';
 import {
   scanAssetReferences,
   updateImageAssetAuthorMetadata,
@@ -90,6 +90,7 @@ export function AssetLibrary({
   const [searchQuery, setSearchQuery] = useState('');
   const [usageFilter, setUsageFilter] =
     useState<AssetLibraryUsageFilter>('all');
+  const [usageFilterMenuOpen, setUsageFilterMenuOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [selectedAssetId, setSelectedAssetId] =
     useState<string | null>(null);
@@ -116,6 +117,8 @@ export function AssetLibrary({
   const flaInspectionLifecycle = useRef<FlaInspectionLifecycle | null>(null);
   const flaInspectionOperation = useRef<FlaInspectionOperation | null>(null);
   const detailsDialogRef = useRef<HTMLDivElement | null>(null);
+  const usageFilterTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const usageFilterMenuRef = useRef<HTMLDivElement | null>(null);
   const lastOpenedAssetId = useRef<string | null>(null);
   const pendingFocusReturnAssetId = useRef<string | null>(null);
   const lastCloseRequest = useRef(closeRequestToken ?? 0);
@@ -291,6 +294,10 @@ export function AssetLibrary({
   const selectCategory = (nextCategory: AssetLibraryFilter): void => {
     if (!clearSelectedAsset()) return;
     setCategory(nextCategory);
+    if (nextCategory === 'audio' && usageFilter !== 'all') {
+      setUsageFilter('all');
+    }
+    setUsageFilterMenuOpen(false);
     setPage(1);
   };
 
@@ -305,8 +312,68 @@ export function AssetLibrary({
   ): void => {
     if (!clearSelectedAsset()) return;
     setUsageFilter(nextUsage);
+    setUsageFilterMenuOpen(false);
     setPage(1);
+    usageFilterTriggerRef.current?.focus();
   };
+
+  useEffect(() => {
+    if (!usageFilterMenuOpen) return;
+    const onPointerDown = (event: PointerEvent): void => {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        !usageFilterTriggerRef.current?.contains(target) &&
+        !usageFilterMenuRef.current?.contains(target)
+      ) {
+        setUsageFilterMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setUsageFilterMenuOpen(false);
+        usageFilterTriggerRef.current?.focus();
+        return;
+      }
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+      const items = Array.from(
+        usageFilterMenuRef.current?.querySelectorAll<HTMLButtonElement>(
+          '[role="menuitemradio"]',
+        ) ?? [],
+      );
+      if (items.length === 0) return;
+      event.preventDefault();
+      const currentIndex = items.indexOf(
+        document.activeElement as HTMLButtonElement,
+      );
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      const nextIndex =
+        currentIndex < 0
+          ? step > 0
+            ? 0
+            : items.length - 1
+          : (currentIndex + step + items.length) % items.length;
+      items[nextIndex]?.focus();
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [usageFilterMenuOpen]);
+
+  useEffect(() => {
+    if (!usageFilterMenuOpen) return;
+    const frame = window.requestAnimationFrame(() => {
+      const selected = usageFilterMenuRef.current?.querySelector<HTMLButtonElement>(
+        '[role="menuitemradio"][aria-checked="true"]',
+      );
+      (selected ?? usageFilterMenuRef.current?.querySelector('button'))?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [usageFilterMenuOpen]);
 
   const goToPage = (requestedPage: number): void => {
     if (!isPortraitBrowser) return;
@@ -531,6 +598,7 @@ export function AssetLibrary({
       return {
         status: ready ? 'ready' : 'error',
         applied: outcome.applied,
+        ...(ready ? {} : { message: outcome.status }),
       };
     } catch (error) {
       const message =
@@ -546,7 +614,7 @@ export function AssetLibrary({
         }));
       }
       setStatus(message);
-      return { status: 'error', applied: false };
+      return { status: 'error', applied: false, message };
     } finally {
       setBusy(false);
     }
@@ -740,10 +808,7 @@ export function AssetLibrary({
       }}
     >
       <div
-        className={[
-          'asset-library-heading',
-          hideHeading ? 'asset-library-heading-visually-hidden' : '',
-        ].filter(Boolean).join(' ')}
+        className="asset-library-heading asset-library-heading-visually-hidden"
       >
         <div>
           <p className="eyebrow">项目素材</p>
@@ -797,10 +862,7 @@ export function AssetLibrary({
             data-testid="asset-library-filter-controls"
           >
             <div className="asset-library-search">
-              <label
-                className={hideHeading ? 'asset-library-search-label-compact' : ''}
-                htmlFor="asset-library-search-input"
-              >
+              <label className="asset-library-search-label-compact" htmlFor="asset-library-search-input">
                 搜索素材
               </label>
               <div className="asset-library-search-control">
@@ -831,25 +893,55 @@ export function AssetLibrary({
                 ) : null}
               </div>
             </div>
-            <label className="asset-library-usage-filter">
-              <span>用途</span>
-              <select
+            <div className="asset-library-usage-filter">
+              <button
+                aria-expanded={usageFilterMenuOpen}
+                aria-haspopup="menu"
+                aria-label="按用途筛选"
+                aria-pressed={usageFilter !== 'all'}
+                className="asset-library-usage-filter-trigger"
+                data-active={usageFilter !== 'all'}
                 data-testid="asset-library-usage-filter"
-                onChange={(event) =>
-                  updateUsageFilter(
-                    event.target.value as AssetLibraryUsageFilter,
-                  )
-                }
-                value={usageFilter}
+                onClick={() => setUsageFilterMenuOpen((open) => !open)}
+                ref={usageFilterTriggerRef}
+                type="button"
               >
-                <option value="all">全部用途</option>
-                {IMAGE_ASSET_USAGE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <Filter aria-hidden="true" size={18} />
+                {usageFilter !== 'all' ? (
+                  <span aria-hidden="true" className="asset-library-usage-filter-active-dot" />
+                ) : null}
+              </button>
+              {usageFilterMenuOpen ? (
+                <div
+                  aria-label="按用途筛选"
+                  className="asset-library-usage-filter-menu"
+                  data-testid="asset-library-usage-filter-menu"
+                  id="asset-library-usage-filter-menu"
+                  ref={usageFilterMenuRef}
+                  role="menu"
+                >
+                  {[
+                    { value: 'all' as const, label: '全部用途' },
+                    ...IMAGE_ASSET_USAGE_OPTIONS,
+                  ].map((option) => (
+                    <button
+                      aria-checked={usageFilter === option.value}
+                      className="asset-library-usage-filter-option"
+                      data-usage-filter-value={option.value}
+                      key={option.value}
+                      onClick={() => updateUsageFilter(option.value)}
+                      role="menuitemradio"
+                      type="button"
+                    >
+                      <span>{option.label}</span>
+                      {usageFilter === option.value ? (
+                        <Check aria-hidden="true" size={17} />
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </div>
           <div
             className="asset-library-browser"

@@ -1,23 +1,15 @@
 /* Asset metadata editing and library filters stay local to the asset feature. */
 .asset-library-filter-controls {
-  display: grid;
+  display: flex;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) minmax(140px, 0.55fr);
-  align-items: end;
-  gap: var(--ui-space-3);
+  align-items: center;
+  gap: var(--ui-space-2);
 }
 
-.asset-library-search,
-.asset-library-usage-filter {
-  display: grid;
+.asset-library-search {
+  display: flex;
+  flex: 1 1 auto;
   min-width: 0;
-  gap: var(--ui-space-1);
-}
-
-.asset-library-search > label,
-.asset-library-usage-filter > span {
-  color: var(--ui-color-text-secondary);
-  font: var(--ui-font-eyebrow);
 }
 
 .asset-library-search-label-compact {
@@ -38,8 +30,7 @@
   align-items: center;
 }
 
-.asset-library-search-control input,
-.asset-library-usage-filter select {
+.asset-library-search-control input {
   min-height: var(--ui-touch-regular);
   padding: var(--ui-space-2) var(--ui-space-3);
   border: 1px solid var(--ui-color-border);
@@ -55,13 +46,9 @@
   padding-left: 42px;
 }
 
-.asset-library-usage-filter select {
-  width: 100%;
-  min-width: 0;
-}
-
 .asset-library-search-control input:focus-visible,
-.asset-library-usage-filter select:focus-visible {
+.asset-library-usage-filter-trigger:focus-visible,
+.asset-library-usage-filter-option:focus-visible {
   outline: 3px solid var(--ui-color-focus-ring);
   outline-offset: 2px;
 }
@@ -99,12 +86,194 @@
   background: var(--ui-color-selected-surface);
 }
 
+.asset-library-usage-filter {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.asset-library-usage-filter-trigger {
+  position: relative;
+  display: inline-grid;
+  width: var(--ui-touch-regular);
+  min-width: var(--ui-touch-regular);
+  min-height: var(--ui-touch-regular);
+  padding: 0;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-medium);
+  color: var(--ui-color-text-secondary);
+  background: var(--ui-color-surface-app);
+  place-items: center;
+}
+
+.asset-library-usage-filter-trigger[data-active='true'] {
+  border-color: var(--ui-color-selected-border);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-selected-surface);
+}
+
+.asset-library-usage-filter-active-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--ui-color-surface-app);
+  border-radius: 50%;
+  background: var(--ui-color-action-primary);
+}
+
+.asset-library-usage-filter-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  width: min(240px, calc(100vw - 24px));
+  padding: 6px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface-overlay);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 28%);
+}
+
+.asset-library-usage-filter-option {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--ui-touch-regular);
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: transparent;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+}
+
+.asset-library-usage-filter-option[aria-checked='true'] {
+  color: var(--ui-color-action-primary);
+  background: var(--ui-color-selected-surface);
+}
+
 .asset-library[data-asset-library-presentation='portrait']
   .asset-library-filter-controls,
 .asset-library[data-asset-library-presentation='landscape']
   .asset-library-filter-controls {
-  grid-template-columns: minmax(0, 1fr);
   gap: var(--ui-space-2);
+}
+
+.asset-import-feedback {
+  position: fixed;
+  z-index: 80;
+  top: calc(env(safe-area-inset-top, 0px) + 76px);
+  right: max(12px, env(safe-area-inset-right, 0px));
+  display: grid;
+  width: min(390px, calc(100vw - 24px));
+  max-height: min(55vh, 380px);
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid rgb(131 211 154 / 46%);
+  border-radius: 12px;
+  color: var(--ui-color-text-primary);
+  background: #142019;
+  box-shadow: 0 14px 36px rgb(0 0 0 / 38%);
+  gap: 8px;
+}
+
+.asset-import-feedback-success,
+.asset-import-feedback-info {
+  border-color: rgb(131 211 154 / 46%);
+}
+
+.asset-import-feedback-warning {
+  border-color: rgb(232 181 80 / 58%);
+}
+
+.asset-import-feedback-error {
+  border-color: rgb(232 126 112 / 62%);
+}
+
+.asset-import-feedback-summary {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.asset-import-feedback-actions {
+  display: flex;
+  min-height: var(--ui-touch-regular);
+  align-items: center;
+  gap: 8px;
+}
+
+.asset-import-feedback-details-toggle,
+.asset-import-feedback-close {
+  display: inline-flex;
+  min-height: var(--ui-touch-regular);
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-selected-surface);
+  align-items: center;
+  justify-content: center;
+}
+
+.asset-import-feedback-close {
+  width: var(--ui-touch-regular);
+  min-width: var(--ui-touch-regular);
+  padding: 0;
+  margin-left: auto;
+}
+
+.asset-import-feedback :focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.asset-import-feedback-details {
+  padding-top: 8px;
+  border-top: 1px solid var(--ui-color-separator);
+}
+
+.asset-import-feedback-details ul {
+  display: grid;
+  padding: 0;
+  margin: 0;
+  gap: 10px;
+  list-style: none;
+}
+
+.asset-import-feedback-details li {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.asset-import-feedback-details li span,
+.asset-import-feedback-details > p {
+  overflow-wrap: anywhere;
+  color: var(--ui-color-text-secondary);
+}
+
+.asset-import-feedback-details > p {
+  margin: 10px 0 0;
+  font-size: 11px;
+}
+
+@media (max-width: 600px) {
+  .asset-import-feedback {
+    top: calc(env(safe-area-inset-top, 0px) + 64px);
+    right: max(8px, env(safe-area-inset-right, 0px));
+    width: min(360px, calc(100vw - 16px));
+  }
+}
+
+.asset-import-feedback-compact {
+  top: calc(env(safe-area-inset-top, 0px) + 104px);
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']

@@ -39,7 +39,9 @@ describe('Issue #328 portrait Assets cleanup', () => {
     expect(assets).toContain('if (!hideHeading) onViewChange(\'details\');');
     expect(imports).toContain('onImportFla: () => void');
     expect(imports).toContain('asset-import-panel-compact');
-    expect(imports).toContain("if (compact) setStatus('');");
+    expect(imports).toContain('createPortal');
+    expect(imports).toContain('data-testid="asset-import-feedback"');
+    expect(imports).not.toContain('asset-import-results');
     expect(assets).toContain('previousHideHeading');
     expect(assets).not.toContain('selected-asset-preview');
   });
