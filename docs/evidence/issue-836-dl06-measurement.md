@@ -1,9 +1,9 @@
 # Issue #836 DL-06 measurement plan and result
 
-Report version: **1.13.0**
-Frozen plan revision: **1.4.0**, committed before the next bounded R3 continuation
+Report version: **1.14.0**
+Frozen plan revision: **1.4.0**, completed as one bounded four-run R3 continuation
 Plan date: **2026-10-23**
-R3 status: **PARTIAL / NOT_ATTESTED**; v1.2.0 produced one qualifying AUTO receipt for sample 1 cold-process. Its warm primary export completed but stopped in the no-clobber helper; v1.3.0 then stopped before any formal Job because the new foreground P/Invoke type did not compile. Sample 2 has not completed. The four-run R3 set remains incomplete; author-authorized real Projects, installer acceptance, and human Gate B review remain unavailable.
+R3 status: **PARTIAL / NOT_ATTESTED**; all four v1.4.0 generated-probe cold/warm runs completed with `auto=PASS`, matching manifest/receipt hashes, and maximum sample gaps below the frozen 5,000 ms validity limit. These generated probes do not establish author-authorized real-project provenance. Phase wall times, Renderer pending-write queue peak, and post-terminal release time remain `NOT_MEASURED`; installer acceptance and human Gate B evidence remain unavailable. DL-06 and DL-07 remain **NO GO**.
 
 ## Evidence availability
 
@@ -248,3 +248,36 @@ The 621.5 ms gap is within the measurement validity limit, but this pre-export r
 v1.3.0 did not reach an Export Job because the newly added P/Invoke declarations failed compilation. This revision adds `using System;` to the embedded C# source in `scripts/issue816-native-dialog.ps1`; the v1.3 foreground activation and UI Automation behavior remain unchanged. Before freezing, validate both PowerShell parse and compilation of the exact embedded C# type. This is a measurement-harness compile correction; product code, fixture definitions, sample order, measurement interval, and 5,000 ms validity limit remain unchanged.
 
 Freeze the exact source commit in the Issue body and measurement manifest before invocation. Execute exactly one bounded set using `powershell -NoProfile -File scripts/measure-issue836-dl06-r3.ps1 -AcceptanceRoot D:\PandaStage-Acceptance\i836r3`, in order sample 1 cold-process, sample 1 warm-followup, sample 2 cold-process, sample 2 warm-followup. Stop on the first verifier failure or measurement-invalid sample; do not retry a failed sample. Preserve all manifests, receipts, failure JSON, screenshots, and logs. Even if all generated probes pass, R3 remains **PARTIAL / NOT_ATTESTED** because author-authorized real Projects, packaged-install acceptance, and human Gate B evidence remain unavailable.
+
+## R3 bounded continuation result - frozen plan v1.4.0
+
+Report: `docs/evidence/issue-836-dl06-measurement.md`, version 1.14.0. Runner/source SHA: `2cb7e8084fa0e2b7205f53cdf7ce877dbe8f8e01`. Invocation: `20261023T095434Z-f0be2569-d9ff-429c-be03-9d793541ab16`. Measurement root: `D:\PandaStage-Acceptance\i836r3\m-6298ad32cc12454f\`. Machine-readable manifest: `measurement-runs.json` under that root; it contains each per-PID sample and storage record. All four receipt SHA-256 values match the manifest and all four receipts parse as JSON.
+
+The frozen order completed without retry: sample 1 cold-process, sample 1 warm-followup, sample 2 cold-process, sample 2 warm-followup. All four wrapper invocations report `auto=PASS`, `owner=NOT_ATTESTED`, and successful foreground activation. The maximum observed sample gap is 2,968.4 ms, below the frozen 5,000 ms validity limit. This is a sampling-valid generated-probe set, not a cold-OS-cache benchmark, installer run, or author-project acceptance.
+
+| Run | runId | Wall time | Process samples | Peak process count | Maximum sample gap | Project file SHA-256 | MP4 bytes / SHA-256 |
+| --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+| Sample 1 cold-process | `486db67d-5de8-4bd0-b641-747b695c8d3d` | 1,039,884 ms (17m 19.9s) | 1,774 | 8 | 668.8 ms | `511a55c5af179424a36720a08299fe6601e1924469485cce9c74faf30eb6b03a` | 189,106 / `8c307cb4ff37b8bd75018ca2bd43b41d29c761d02d812fae956ba18d4b8da13f` |
+| Sample 1 warm-followup | `c7834773-13de-41fa-9b62-91052773ce76` | 1,043,247 ms (17m 23.2s) | 1,748 | 8 | 842.1 ms | `5320ca61de8c554a2004f4bbef571b4af315d69f4b8490e07a7c1d3db6d29b05` | 189,106 / `8c307cb4ff37b8bd75018ca2bd43b41d29c761d02d812fae956ba18d4b8da13f` |
+| Sample 2 cold-process | `e6fb0a86-27cc-458f-bcf5-0aae604b2533` | 978,846 ms (16m 18.8s) | 1,601 | 11 | 2,968.4 ms | `d2862c3fabcc634916fd62f6d68642bfcaad1963233d21ec41b1a05eeabb40fe` | 283,805 / `b2e65c46917a58caf151514d0a32c77541ba88174fc4fa039f48a1c8fb9fb07d` |
+| Sample 2 warm-followup | `46c2b1c2-20f3-4e44-8562-e8f8da162d5c` | 977,423 ms (16m 17.4s) | 1,668 | 8 | 710.7 ms | `174564de7c60595d48e966419761fa52f25f55eaef7555936f760bfaf12a40ca` | 283,805 / `b2e65c46917a58caf151514d0a32c77541ba88174fc4fa039f48a1c8fb9fb07d` |
+
+All outputs are 30,000 ms / 720 frames / 24 fps, 1920×1080 H.264 yuv420p with a 30-second AAC audio stream. Cold and warm MP4 hashes match within each generated sample. Sample 1 used the static camera mode; sample 2 used speaker-focus. The receipts include decoded-audio evidence, Shot boundaries and per-Shot frame maps, source media hashes, save/reopen evidence, and selected-frame checks.
+
+Both sample 1 receipts record cancellation with no published target and empty temporary directories. Their no-clobber tests record equal before/after MP4 hashes, zero formal Jobs started, and empty temporary directories. The controlled second-Shot map failure was run in sample 1 only, at 241/720: it published no failed MP4, cleaned staging, and left editor state, project file, source assets, and the previous successful output unchanged. Sample 2's `runtimeRenderFailure` is null by verifier design; the deterministic late-Shot injection is limited to sample 1. Both sample 2 receipts also record successful cancellation and no-clobber assertions with unchanged before/after hashes and zero formal Jobs.
+
+Sample 1 runs each sampled 724 frame files / 48,817,478 frame-job bytes, 1,593,567 frozen-media bytes, and 189,106 output-staging bytes; the independent category peaks sum to 50,600,151 bytes. Sample 2 runs each sampled 724 frame files / 51,215,015 frame-job bytes, 1,497,279 frozen-media bytes, and 283,805 output-staging bytes; independent category peaks sum to 52,996,099 bytes. These category peaks may not have occurred simultaneously, short-lived peaks may be missed, and frame-file count is not the Renderer pending-write queue.
+
+The largest per-PID working-set/private-byte observations were FFmpeg PID 13956 at 677,085,184 / 814,919,680 bytes (sample 1 cold), PID 11500 at 676,892,672 / 814,292,992 bytes (sample 1 warm), PID 9100 at 708,898,816 / 815,079,424 bytes (sample 2 cold), and PID 13168 at 708,976,640 / 814,895,104 bytes (sample 2 warm). The manifest retains the peaks for every sampled PID, including Electron processes. The host was an Alibaba Cloud ECS with Windows Server 2022 Datacenter build 20348 x64, 16,624,439,296 bytes physical RAM, 96 DPI / 100% system scale, and Electron 43.1.1 as a built unpackaged app. FFmpeg was `N-92722-gf22fcd4483`; FFprobe was `2023-02-13-git-2296078397-essentials_build-www.gyan.dev`. This is not installer or ordinary desktop acceptance.
+
+Current requirement audit: R0 PASS; R1 PASS; R2 PARTIAL; R3 PARTIAL / NOT_ATTESTED; R4 PARTIAL. AC01 PASS; AC02 PASS; AC03 PARTIAL; AC04 PARTIAL; AC05 PARTIAL; AC06 PARTIAL (four generated-probe runs passed, but the required author-authorized real Projects and installer/human acceptance are absent); AC07 PARTIAL (per-PID/resource and storage samples are recorded, while phase timings, Renderer pending-write queue peak, and post-terminal release remain NOT_MEASURED); AC08 PARTIAL; AC09 PARTIAL; AC10 PASS; AC11 PASS; AC12 PASS.
+
+AUTO=PARTIAL at the DL-06 acceptance scope, despite four probe receipts reporting `auto=PASS`.
+TECH_REVIEW=NOT_READY_FOR_FINAL_REVIEW
+OWNER_MANUAL=DEFERRED_TO_DL07
+CI=CI_NOT_REPORTED for source SHA `2cb7e8084fa0e2b7205f53cdf7ce877dbe8f8e01`
+R3=PARTIAL / NOT_ATTESTED
+DL06=NO GO
+DL-07=NO GO
+NEXT: Obtain two distinct author-authorized real Projects and a separately frozen plan for any remaining real-project / packaged-install / human Gate B acceptance. No further R3 run was started under v1.4.0.
+PR #817 remains OPEN / DRAFT / CONFLICTING. No merge, conflict resolution, Ready transition, Issue closure, or Issue comment was made.
