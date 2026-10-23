@@ -145,6 +145,64 @@ function Find-NativeSystemOverwriteDialog {
   return $null
 }
 
+function Test-NativeDialogScreenshotBounds {
+  param([Parameter(Mandatory = $true)]$Bounds)
+
+  try {
+    if ($Bounds.IsEmpty) { return $false }
+    $values = @([double]$Bounds.X, [double]$Bounds.Y, [double]$Bounds.Width, [double]$Bounds.Height)
+    foreach ($value in $values) {
+      if ([double]::IsNaN($value) -or [double]::IsInfinity($value)) { return $false }
+      if ($value -gt [int]::MaxValue -or $value -lt [int]::MinValue) { return $false }
+    }
+    return $Bounds.Width -ge 1 -and $Bounds.Height -ge 1
+  }
+  catch {
+    return $false
+  }
+}
+
+function Get-NativeDialogScreenshotRegion {
+  param([Parameter(Mandatory = $true)]$Dialog)
+
+  $windowBounds = $Dialog.Current.BoundingRectangle
+  if (Test-NativeDialogScreenshotBounds -Bounds $windowBounds) {
+    return [pscustomobject]@{ Bounds = $windowBounds; Source = 'window' }
+  }
+
+  $controls = $Dialog.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+  $left = [double]::PositiveInfinity
+  $top = [double]::PositiveInfinity
+  $right = [double]::NegativeInfinity
+  $bottom = [double]::NegativeInfinity
+  $validControlCount = 0
+  for ($controlIndex = 0; $controlIndex -lt $controls.Count; $controlIndex++) {
+    try {
+      $control = $controls.Item($controlIndex)
+      if ($control.Current.ControlType -notin @([System.Windows.Automation.ControlType]::Button, [System.Windows.Automation.ControlType]::Text)) { continue }
+      if ($control.Current.IsOffscreen) { continue }
+      $bounds = $control.Current.BoundingRectangle
+      if (-not (Test-NativeDialogScreenshotBounds -Bounds $bounds)) { continue }
+      $left = [Math]::Min($left, $bounds.X)
+      $top = [Math]::Min($top, $bounds.Y)
+      $right = [Math]::Max($right, ($bounds.X + $bounds.Width))
+      $bottom = [Math]::Max($bottom, ($bounds.Y + $bounds.Height))
+      $validControlCount++
+    }
+    catch { }
+  }
+
+  if ($validControlCount -eq 0) { return $null }
+  $controlBounds = [pscustomobject]@{
+    X = $left
+    Y = $top
+    Width = $right - $left
+    Height = $bottom - $top
+  }
+  if (-not (Test-NativeDialogScreenshotBounds -Bounds $controlBounds)) { return $null }
+  return [pscustomobject]@{ Bounds = $controlBounds; Source = 'visible-descendant-controls' }
+}
+
 function Save-NativeDialogScreenshot {
   param(
     [Parameter(Mandatory = $true)][string]$Path,
@@ -160,6 +218,9 @@ function Save-NativeDialogScreenshot {
     foreach ($value in $values) {
       if ([double]::IsNaN($value) -or [double]::IsInfinity($value)) {
         throw 'The UI Automation bounding rectangle contains a non-finite coordinate.'
+      }
+      if ($value -gt [int]::MaxValue -or $value -lt [int]::MinValue) {
+        throw "The UI Automation bounding rectangle coordinate is outside Int32 range ($value)."
       }
     }
 
@@ -379,9 +440,24 @@ if ($Action -eq 'save') {
   if ($null -ne $systemOverwrite) {
     $dialog = $systemOverwrite.Window
     $button = $systemOverwrite.ConfirmButton
-    $dialogBounds = $dialog.Current.BoundingRectangle
     if ($OverwritePromptScreenshotPath) {
-      Save-NativeDialogScreenshot -Path $OverwritePromptScreenshotPath -Dialog $dialog -Bounds $dialogBounds -Context 'Windows Save As overwrite prompt'
+      $promptProcessId = 'unknown'
+      try { $promptProcessId = [int]$dialog.Current.ProcessId } catch { }
+      $screenshotRegion = $null
+      $regionError = $null
+      try { $screenshotRegion = Get-NativeDialogScreenshotRegion -Dialog $dialog }
+      catch { $regionError = $_.Exception.Message }
+      if ($null -eq $screenshotRegion) {
+        Write-Output "Windows Save As overwrite prompt screenshot unavailable; continuing with the matched confirmation button. target PID=$TargetProcessId dialog PID=$promptProcessId; $regionError"
+      } else {
+        try {
+          Save-NativeDialogScreenshot -Path $OverwritePromptScreenshotPath -Dialog $dialog -Bounds $screenshotRegion.Bounds -Context 'Windows Save As overwrite prompt'
+          Write-Output "Captured Windows Save As overwrite prompt from $($screenshotRegion.Source) bounds=$($screenshotRegion.Bounds)"
+        }
+        catch {
+          Write-Output "Windows Save As overwrite prompt screenshot unavailable; continuing with the matched confirmation button. target PID=$TargetProcessId dialog PID=$promptProcessId bounds=$($screenshotRegion.Bounds); $($_.Exception.Message)"
+        }
+      }
     }
 
     $bounds = $button.Current.BoundingRectangle
