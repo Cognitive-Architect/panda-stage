@@ -3332,7 +3332,7 @@ async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapsho
     };
     const pathSuccessPassed = observedPathMatches &&
       selectionResponses.length === 1 && selectionResponses[0]?.responseStatus === 'selected' &&
-      preparationResponses.length === 1 && preparationResponses[0]?.responseStatus === 'READY' &&
+      preparationResponses.length === 1 && preparationResponses[0]?.responseStatus === 'PREPARATION_READY' &&
       formalStarts.slice(priorStartCount).length === 1 && job?.status === 'completed' &&
       formalCommitRecords.slice(priorCommitCount).length === 1 &&
       pathSuccessReceipt.safety.jobCompleted && commitMatches && completedOutputPathMatches && outputExists &&

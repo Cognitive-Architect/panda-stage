@@ -1,10 +1,10 @@
 # Issue #836 DL-06 measurement plan and result
 
-Report version: **1.17.0**
+Report version: **1.18.0**
 Frozen R3 plan revision: **1.4.0**, completed as one bounded four-run continuation
 Plan date: **2026-10-23**
 R3 status: **PARTIAL / NOT_ATTESTED**; all four v1.4.0 generated-probe cold/warm runs completed with `auto=PASS`, matching manifest/receipt hashes, and maximum sample gaps below the frozen 5,000 ms validity limit. These generated probes do not establish author-authorized real-project provenance. Phase wall times, Renderer pending-write queue peak, and post-terminal release time remain `NOT_MEASURED`; installer acceptance and human Gate B evidence remain unavailable. DL-06 and DL-07 remain **NO GO**.
-R2 status: **PARTIAL**; the v1.0.0 AC08 staging-path boundary probe passed. A separate supported deep-path Creator export is frozen below and has not yet run.
+R2 status: **PARTIAL**; the v1.0.0 AC08 staging-path boundary probe passed. The v1.1.0 supported deep-path Creator export completed through atomic commit, but its runner exited 1 on a harness enum mismatch; no retry was made.
 
 ## Evidence availability
 
@@ -337,3 +337,28 @@ Frozen invocation: run `pnpm build`, then with `PANDA_STAGE_ISSUE827_DL04=1`, `P
 Expected evidence: native Save As and Main select the exact target; preparation returns READY; exactly one formal Job completes; the actual staging path and target are both within 259 characters; Main records the no-replace atomic commit and the staging file is gone. A read-only FFprobe invocation against the exact long-path output must report H.264/yuv420p 1920×1080, 24 fps, 720 frames / 30 seconds, and one 48 kHz AAC track. The receipt records output SHA-256, before/after Project SHA and Editor revision/dirty/History/selection, source media hashes, job/commit records, and temporary cleanup. If any assertion fails, preserve its first failure evidence and do not retry.
 
 This run is bounded to the successful AC08 path. It does not add performance measurements or close other R2 budget, failure, cancellation, provenance, or human acceptance requirements. The prior v1.0.0 boundary result remains separate; no R3 run is allowed by this plan.
+
+## R2 AC08 supported-path result - frozen plan v1.1.0
+
+Verifier/source SHA: `06bf78a81c2c5dd6bfd720cf7cd4864c5fbfc106`. The exact invocation ran once on 2026-10-23 from `D:\PandaStage-Acceptance\i836-r2-success-v1\中文 工作区\长路径\一层\二层\root\三级目录-中文 Windows\四级目录\run-2026-10-23T11-29-55-596Z-7008`. Host: Windows Server 2022 Datacenter build 20348 x64; Electron v43.1.1. `pnpm build` passed. The single `pnpm exec electron scripts/verify-issue819-dl02.cjs` process ran from 11:29:56.216Z to 11:42:24.070Z and exited 1.
+
+The Save As dialog selected the intended target exactly: its full path is 259 characters, including a 101-character Chinese-prefixed filename. Main selected the same path and returned `PREPARATION_READY`. The formal Job completed 720/720 frames and passed Main's FFmpeg/FFprobe/atomic-commit path. The actual same-directory staging path was 255 characters; Main's no-replace commit record names the expected output and records `stagingRemoved=true`. The 189,106-byte MP4 SHA-256 is `8c307cb4ff37b8bd75018ca2bd43b41d29c761d02d812fae956ba18d4b8da13f`. Read-only FFprobe on the exact long-path output reported H.264/yuv420p 1920×1080, 24 fps, 720 frames / 30 seconds, and one 48 kHz AAC track.
+
+The Project SHA-256 remained `7241b034c560357d9042bdc3c545fa980afa5b593c9d5f8b95ea2e369a5a95d5`. Editor state, persisted Project fingerprint, source media hashes, and temporary cleanup assertions all remained unchanged/clear. These are generated-probe results, not author-project or installer acceptance.
+
+The raw machine receipt is preserved unchanged with `status=FAIL`, SHA-256 `c519a97a4a0b6dda41774a4f6761ec0ae8c6b5d5e247ae32a78a213c69d04fe3`. Its sole false predicate expected the preparation status string `READY`; the actual response was `PREPARATION_READY`, which is the formal enum returned by `ExportPreparationService` and declared in the shared response schema. All other frozen end-to-end and preservation predicates evaluate true from that receipt. The verifier assertion was minimally corrected after the run to compare `PREPARATION_READY`; no Electron rerun was made because the frozen plan prohibited retries. A separate audit sidecar records the classification without changing the original receipt: `D:\PandaStage-Acceptance\i836-r2-success-v1\中文 工作区\长路径\一层\二层\root\三级目录-中文 Windows\四级目录\run-2026-10-23T11-29-55-596Z-7008\issue836-r2-path-success-audit.json`, SHA-256 `9f6c04e64bae501c36dd253f08fadc95e29f2dd8a2c6d0e43f33fef9cdae5580`.
+
+Assessment: **AC08 PASS by observed end-to-end path evidence** (boundary failure plus successful 259-character target / 255-character staging export). The raw runner remains exit 1 for the harness mismatch; this is not reported as an automatic verifier PASS. R2 remains PARTIAL because other capacity, failure, and project-provenance requirements remain open.
+
+Current requirement audit: R0 PASS; R1 PASS; R2 PARTIAL; R3 PARTIAL / NOT_ATTESTED; R4 PARTIAL. AC01 PASS; AC02 PASS; AC03 PARTIAL; AC04 PARTIAL; AC05 PARTIAL; AC06 PARTIAL; AC07 PARTIAL; AC08 PASS; AC09 PARTIAL; AC10 PASS; AC11 PARTIAL (the last focused Electron verifier invocation exited 1 on the corrected harness enum; no retry under the frozen plan); AC12 PASS.
+
+AUTO=PARTIAL at DL-06 scope; the supported path operation completed, while its original automated receipt remains FAIL because of the enum mismatch.
+TECH_REVIEW=NOT_READY_FOR_FINAL_REVIEW
+OWNER_MANUAL=DEFERRED_TO_DL07
+AC08=PASS (observed end-to-end path; original verifier status FAIL)
+R2=PARTIAL
+AC11=PARTIAL
+R3=PARTIAL / NOT_ATTESTED
+DL06=NO GO
+DL-07=NO GO
+NEXT: Continue the remaining R2 budget and failure cases and obtain two distinct author-authorized real Projects for remaining real-project / packaged-install / human Gate B acceptance. Do not retry the frozen v1.1.0 path run or rerun R3 v1.4.0.
