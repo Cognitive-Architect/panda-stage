@@ -411,3 +411,14 @@ The exact source SHA will be recorded in Issue #836 before validation. Run `pnpm
 ## R2 preparation-copy failure result - frozen plan v1.0.0
 
 Frozen source SHA: `584c3ac7041b244207557a17e87eb539f41a4519`. The single planned `pnpm test:unit` command exited 1 after 42.25 seconds: 356 files / 2,687 tests passed and one test failed before reaching `ExportPreparationService.prepare`. The added assertion tried to read `project/project.json`, which the unit `harness()` does not create (`ENOENT`). The run therefore supplies **no disk-full/preparation response evidence**. Per the frozen stop rule, `pnpm typecheck`, `pnpm lint`, and `git diff --check` were not run for this plan; no retry was made. Cleanup commit `f9ff402` removed the unverified test-only delta and restored the prior test body; no post-cleanup test was run. R2 remains PARTIAL.
+
+## R2 frame and temporary-disk budget audit
+
+| Area | Existing bound or guard | Evidence and remaining limit |
+| --- | --- | --- |
+| Project / media preparation | 256 Shots, 512 used assets, 67,108,864 B per asset, 268,435,456 B aggregate | Formal support values and the passing budget boundary matrix are recorded above. |
+| Frame write concurrency | Main allows at most 3 pending frame writes (`MAX_PENDING_FRAMES`) | `ExportService` unit cases cover bounded writes at 72/120 frames, injected frame-write failure and partial-directory cleanup, cancellation, and cleanup failure. This is not a total frame-byte or duration cap. |
+| Temporary media-copy failure | A write failure maps to `BLOCK / PREPARATION_FAILED` with a disk-space next step | Existing unit case injects `disk full` and verifies block classification separate from missing/corrupt media. It does not assert the exact issue location/message or prior-output/project preservation. The later v1.0.0 assertion attempt failed before `prepare` and was reverted; it adds no evidence. |
+| Full export resources | No approved maximum for total formal frames, decoded-memory peak, frame-job bytes, or output-staging/temp-disk bytes was found in the inspected Main/shared export source; no available-disk-space query was found in `src/main` | The R3 monitor samples per-process memory and directory sizes at 500 ms; sub-interval peaks can be missed. These samples are descriptive, not a hard resource guard or approved budget. |
+
+Minimal safe boundary: retain existing preparation caps, the 3-write bound, write-error failure/cleanup, and no-replace final commit. Do not invent a RAM or disk threshold. Until an owner-approved resource ceiling exists, report full-export disk/memory capacity as `NOT_MEASURED`; any future preflight ceiling needs a separately frozen basis and an acceptance test that proves failure before publication while preserving the Project and prior output. R2 remains PARTIAL.
