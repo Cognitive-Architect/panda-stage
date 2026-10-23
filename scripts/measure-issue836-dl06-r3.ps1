@@ -5,6 +5,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$maximumAcceptedSampleGapMilliseconds = [double] $SampleIntervalMilliseconds * 10
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $electronExecutable = Join-Path $repositoryRoot 'node_modules\electron\dist\electron.exe'
 $verifierScript = 'scripts/verify-issue819-dl02.cjs'
@@ -179,6 +180,8 @@ $manifest = [ordered]@{
     warmFollowup = 'Same generated sample definition in a fresh Electron process immediately after its cold-process run; caches may remain warm.'
     windowLaunch = 'Normal window; retry AppActivate on an Electron PID with a nonzero main-window handle during process sampling.'
     projectSource = 'Generated Issue #827 probes based on demo-project/project-v1.example.json; not author-supplied real Projects.'
+    maximumAcceptedSampleGapMilliseconds = $maximumAcceptedSampleGapMilliseconds
+    sampleGapValidityRule = 'Runs exceeding 10 times the target process/storage sampling interval are measurement-invalid and stop the bounded set.'
     mainProjectHashAndFrameEvidence = 'See each verifier acceptance-receipt.json under receiptPath.'
     memory = 'Sampled peak working-set and private bytes per PID in the Electron process tree; sample gaps remain visible through sampleCount.'
   }
@@ -360,6 +363,9 @@ try {
     $runResults.Add($runResult)
     $manifest.measurements = @($runResults)
     Write-JsonFile -Path $manifestPath -Value $manifest
+    if ($peakObservedSampleIntervalMilliseconds -gt $maximumAcceptedSampleGapMilliseconds) {
+      throw "DL-06 measurement run $($definition.id) is measurement-invalid: observed sampling gap $([Math]::Round($peakObservedSampleIntervalMilliseconds, 1)) ms exceeded the $maximumAcceptedSampleGapMilliseconds ms limit. Inspect the preserved measurement manifest and run evidence under $runRoot."
+    }
     if (($null -ne $processExitCode -and $processExitCode -ne 0) -or -not $receipt) {
       throw "DL-06 measurement run $($definition.id) failed; inspect its logs and retained evidence under $runRoot."
     }
