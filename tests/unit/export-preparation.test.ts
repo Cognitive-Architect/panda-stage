@@ -2064,15 +2064,30 @@ describe('ExportPreparationService', () => {
     await expect(readdir(fixture.fileStore.rootDirectory)).resolves.toEqual([]);
   });
 
-  it('reports temporary copy failures separately from missing or corrupt source media', async () => {
+  it('blocks temporary copy failures with actionable locations and cleanup', async () => {
     const fixture = await harness();
-    const brokenStore = {
-      async create() {},
+    const projectFilePath = path.join(fixture.projectRoot, 'project.json');
+    const projectBytes = Buffer.from(
+      JSON.stringify(fixture.project, null, 2) + '\n',
+    );
+    await writeFile(projectFilePath, projectBytes);
+    const previousOutputPath = path.join(
+      fixture.outputDirectory,
+      'previous-output-sentinel.mp4',
+    );
+    const previousOutputBytes = Buffer.from(
+      'pre-existing output sentinel; not a media file',
+    );
+    await writeFile(previousOutputPath, previousOutputBytes);
+    const targetPath = path.join(fixture.outputDirectory, 'copy-failure.mp4');
+    const brokenStore: ExportPreparationFileStore = {
+      create: (snapshotId) => fixture.fileStore.create(snapshotId),
       async writeAsset() {
         throw new Error('disk full');
       },
-      async delete() {},
-      async dispose() {},
+      delete: (snapshotId) => fixture.fileStore.delete(snapshotId),
+      dispose: () => fixture.fileStore.dispose(),
+      getOwnedPath: (snapshotId) => fixture.fileStore.getOwnedPath(snapshotId),
     };
     const service = new ExportPreparationService({
       getCurrentProjectSnapshot: () => fixture.getCurrent(),
@@ -2086,7 +2101,7 @@ describe('ExportPreparationService', () => {
         projectName: fixture.project.name,
         openInstanceId: OPEN_INSTANCE_ID,
       },
-      path.join(fixture.outputDirectory, 'copy-failure.mp4'),
+      targetPath,
     );
     expect(selection.status).toBe('selected');
     if (selection.status !== 'selected') return;
@@ -2096,13 +2111,40 @@ describe('ExportPreparationService', () => {
 
     expect(result.status).toBe('BLOCK');
     if (result.status === 'BLOCK') {
-      expect(result.issues.map((item) => item.code)).toContain(
-        'PREPARATION_FAILED',
+      const expectedLocations = collectExportPreparationMedia(
+        fixture.project,
+      ).map((entry) => entry.usages[0] ?? '工程素材');
+      const copyFailures = result.issues.filter(
+        (item) => item.code === 'PREPARATION_FAILED',
+      );
+      expect(expectedLocations).not.toContain('工程素材');
+      expect(copyFailures).toHaveLength(expectedLocations.length);
+      expect(copyFailures).toEqual(
+        expect.arrayContaining(
+          expectedLocations.map((location) =>
+            expect.objectContaining({
+              code: 'PREPARATION_FAILED',
+              location,
+              problem: '素材副本无法安全写入临时准备目录。',
+              nextStep: '检查可用磁盘空间后重新检查；工程和已有输出未被修改。',
+            }),
+          ),
+        ),
       );
       expect(result.issues.map((item) => item.code)).not.toContain(
         'REQUIRED_MEDIA_UNAVAILABLE',
       );
     }
+    await expect(readFile(projectFilePath)).resolves.toEqual(projectBytes);
+    await expect(readFile(previousOutputPath)).resolves.toEqual(
+      previousOutputBytes,
+    );
+    await expect(readFile(targetPath)).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(
+      readDirectoryOrEmpty(fixture.fileStore.rootDirectory),
+    ).resolves.toEqual([]);
   });
 
   it('keeps a consumed attempt id from creating a second candidate', async () => {
