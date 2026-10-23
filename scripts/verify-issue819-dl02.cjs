@@ -1324,7 +1324,7 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
   } catch (error) {
     if (options.abortOnTimeout) {
       const abort = await abortActiveExport();
-      throw new Error(`${label}: start did not reach running before timeout. Safety abort: ${JSON.stringify(abort)}. ${String(error)}`);
+      throw new Error(`${label}: start did not reach running before timeout. Safety abort: ${JSON.stringify(abort)}. ${String(error)}`, { cause: error });
     }
     throw error;
   }
@@ -1376,7 +1376,7 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
   } catch (error) {
     if (options.abortOnTimeout) {
       const abort = await abortActiveExport();
-      throw new Error(`${label}: export did not reach a terminal result before timeout. Safety abort: ${JSON.stringify(abort)}. ${String(error)}`);
+      throw new Error(`${label}: export did not reach a terminal result before timeout. Safety abort: ${JSON.stringify(abort)}. ${String(error)}`, { cause: error });
     }
     throw error;
   }
