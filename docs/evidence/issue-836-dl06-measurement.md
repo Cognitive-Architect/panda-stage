@@ -1,10 +1,10 @@
 # Issue #836 DL-06 measurement plan and result
 
-Report version: **1.15.0**
+Report version: **1.16.0**
 Frozen R3 plan revision: **1.4.0**, completed as one bounded four-run continuation
 Plan date: **2026-10-23**
 R3 status: **PARTIAL / NOT_ATTESTED**; all four v1.4.0 generated-probe cold/warm runs completed with `auto=PASS`, matching manifest/receipt hashes, and maximum sample gaps below the frozen 5,000 ms validity limit. These generated probes do not establish author-authorized real-project provenance. Phase wall times, Renderer pending-write queue peak, and post-terminal release time remain `NOT_MEASURED`; installer acceptance and human Gate B evidence remain unavailable. DL-06 and DL-07 remain **NO GO**.
-R2 status: **PARTIAL**; one focused AC08 staging-path boundary probe is frozen below and has not yet run.
+R2 status: **PARTIAL**; the one focused AC08 staging-path boundary probe frozen below passed its blocked-boundary assertions, but did not exercise media-tool execution or atomic commit on a supported deep path.
 
 ## Evidence availability
 
@@ -294,3 +294,34 @@ Frozen invocation: run `pnpm build`, then with `PANDA_STAGE_ISSUE827_DL04=1`, `P
 Expected boundary result: the native Save As dialog returns the exact 259-character target to Main; Main `ExportPreparationService.selectOutput` returns `OUTPUT_LOCATION_UNSUPPORTED` with the 259-character limit in both the problem and next step; Creator shows the actionable block; no preparation snapshot, formal Export Job, FFmpeg/FFprobe run, output MP4, or staging directory is created. The receipt compares the editor revision/dirty/History/selection, saved Project bytes and fingerprint, and source media hashes before and after. If selection is accepted unexpectedly, the harness immediately cancels during preparation or cancels the first cancellable Main Job, records the first unexpected result, and stops. No retry or R3 rerun.
 
 This probe measures the boundary failure point in Main before tool execution or atomic commit. Even on PASS, AC08 and R2 remain **PARTIAL** until a Chinese/space/deep path also completes a successful tool and atomic-commit path, and other R2 cases remain covered.
+
+## R2 AC08 bounded path-boundary result - plan v1.0.0
+
+Verifier/source commit: `561a15e59ccd954d6e306cf929edf10e5fffc979`. Report delivery commit is recorded after this result is committed. GitHub combined status and PR-workflow lookup for the verifier/source SHA returned no entries: `CI_NOT_REPORTED`.
+
+The planned single run completed on 2026-10-23 at `D:\PandaStage-Acceptance\i836-r2-path-boundary-v1\中文 工作区\长路径 深层资料\一级目录-层级导出测试\二级目录-层级导出测试\deep project root\run-2026-10-23T11-19-40-651Z-6208`. Fixture source: generated Issue #827 sample 1 derived from `demo-project/project-v1.example.json`; not an author-authorized real Project. Host: Microsoft Windows Server 2022 Datacenter, build 20348, x64. The built Electron executable was v43.1.1. `pnpm build` passed, followed by exactly one `pnpm exec electron scripts/verify-issue819-dl02.cjs` invocation with the frozen Issue #836 R2 mode and isolated frame-job root.
+
+The Creator Save As dialog selected the exact observed 259-character target path, including Chinese and spaces in the deep directory and an 80-character filename with a Chinese prefix. The same-directory longest staging candidate measured 276 characters. Main `ExportPreparationService.selectOutput` returned `blocked / OUTPUT_LOCATION_UNSUPPORTED` before preparation, with the user-facing problem “正式 MP4 导出目标或同目录暂存路径超过 Windows 259 字符上限。” and next step “改选更浅的本机 NTFS 文件夹或缩短文件名，使目标和暂存路径都不超过 259 个字符。” The Creator task surface displayed the same actionable boundary.
+
+No preparation response, formal Export Job, Job update, formal commit, output MP4, output temporary, frame-job directory, or frozen-media snapshot was created. The Project file SHA-256 remained `07f6d5e01915b77711253c2c05334fb2fe729062aca01b88cad5ab8fb752d5e6`; Editor revision 0, clean state, undo/redo counts 0, selected Shot, and source asset hashes were unchanged. The machine-readable receipt records these assertions and the Main response; its SHA-256 is `97d8e18d382a6a789f81ec7f9980e2f1467be59a4ab18ad44fa37bf1cecd8aba`. Save As and blocked-state screenshots and the receipt are under the run's `evidence` directory; evidence remains outside the repository.
+
+| Check | Result |
+| --- | --- |
+| Creator Save As selected the intended target | PASS; observed target matched the frozen path |
+| Final target / longest same-directory staging candidate | 259 / 276 characters |
+| Main boundary | PASS; `OUTPUT_LOCATION_UNSUPPORTED`, `selectOutput`, actionable 259-character copy |
+| Job, media tools, commit, output, and temporary files | None started or created |
+| Project, editor state, and source assets | Unchanged |
+| Focused AC08 probe | PASS for the blocked staging-path boundary |
+
+Requirement audit remains R0 PASS; R1 PASS; R2 PARTIAL; R3 PARTIAL / NOT_ATTESTED; R4 PARTIAL. AC01 PASS; AC02 PASS; AC03 PARTIAL; AC04 PARTIAL; AC05 PARTIAL; AC06 PARTIAL; AC07 PARTIAL; AC08 PARTIAL; AC09 PARTIAL; AC10 PASS; AC11 PASS; AC12 PASS. This result does not prove that a supported Chinese/space/deep path reaches FFmpeg and atomic commit, and it does not close the remaining R2 budgets, real-project, or recovery cases.
+
+AUTO=PARTIAL at DL-06 scope; the focused path-boundary subprobe reports PASS.
+TECH_REVIEW=NOT_READY_FOR_FINAL_REVIEW
+OWNER_MANUAL=DEFERRED_TO_DL07
+R2=PARTIAL
+AC08=PARTIAL
+R3=PARTIAL / NOT_ATTESTED
+DL06=NO GO
+DL-07=NO GO
+NEXT: Exercise a supported Chinese/space/deep output path through a successful media-tool run and atomic commit; separately obtain two author-authorized real Projects for any remaining real-project / packaged-install / human Gate B acceptance. Do not start another R3 run under frozen v1.4.0.
