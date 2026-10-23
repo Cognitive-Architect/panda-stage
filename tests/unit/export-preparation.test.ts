@@ -99,6 +99,7 @@ function mediaReader(
     onRead?: (assetId: string) => void;
     reportLengths?: Map<string, number>;
     readBytes?: Map<string, Uint8Array>;
+    readErrors?: Map<string, Error>;
   } = {},
 ): ExportPreparationMediaReader {
   return {
@@ -109,6 +110,8 @@ function mediaReader(
     },
     async read(_projectRoot, _project, asset) {
       options.onRead?.(asset.id);
+      const error = options.readErrors?.get(asset.id);
+      if (error) throw error;
       const bytes = options.readBytes?.get(asset.id) ?? bytesByAssetId.get(asset.id);
       if (!bytes) throw new Error('fixture asset is missing');
       return { bytes, mimeType: asset.mimeType };
@@ -563,6 +566,45 @@ describe('DL-01 export preparation domain rules', () => {
       ).toContain(missingClip.name);
     }
     expect(project).toEqual(before);
+    expect(fixture.getCurrent()).toMatchObject({ revision: 7, dirty: true });
+  });
+
+  it('gives actionable read-permission guidance for required media', async () => {
+    const media = new Map<string, Uint8Array>();
+    const project = projectWithMedia(media);
+    const fixture = await harness({
+      project,
+      media,
+      reader: mediaReader(media, {
+        readErrors: new Map([
+          [
+            IDS.assetBg,
+            Object.assign(new Error('permission denied'), { code: 'EACCES' }),
+          ],
+        ]),
+      }),
+    });
+    const selection = await selectOutput(fixture);
+    const result = await fixture.service.prepare(
+      requestFor(fixture, selection.selectionId),
+    );
+
+    expect(result.status).toBe('BLOCK');
+    if (result.status === 'BLOCK') {
+      expect(result.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: 'REQUIRED_MEDIA_UNAVAILABLE',
+            location: expect.stringContaining(project.shots[0]!.name),
+            problem: '无法读取所需素材，素材文件或所在目录可能没有读取权限。',
+            nextStep: '检查素材文件和上级目录的读取权限，或重新导入素材后再检查。',
+          }),
+        ]),
+      );
+    }
+    expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toEqual(
+      [],
+    );
     expect(fixture.getCurrent()).toMatchObject({ revision: 7, dirty: true });
   });
 
@@ -1999,6 +2041,34 @@ describe('ExportPreparationService', () => {
     expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toEqual([]);
   });
 
+  it('gives writable-folder guidance when output validation reports permission denial', async () => {
+    const fixture = await harness({
+      assertFormalOutputLocation: async () => {
+        throw Object.assign(new Error('permission denied'), { code: 'EACCES' });
+      },
+    });
+    const result = await fixture.service.selectOutput(
+      {
+        projectRoot: fixture.projectRoot,
+        projectId: fixture.project.id,
+        projectName: fixture.project.name,
+        openInstanceId: OPEN_INSTANCE_ID,
+      },
+      path.join(fixture.outputDirectory, 'permission-denied.mp4'),
+    );
+
+    expect(result).toMatchObject({
+      status: 'blocked',
+      issue: {
+        code: 'OUTPUT_LOCATION_UNSUPPORTED',
+        location: '输出位置',
+        problem: '所选文件夹没有创建 MP4 文件所需的写入权限。',
+        nextStep: '检查文件夹的写入权限，或选择当前账户可写的本地 NTFS 文件夹后重试。',
+      },
+    });
+    expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toEqual([]);
+  });
+
   it.each([
     {
       kind: 'unknown layer',
@@ -2127,6 +2197,95 @@ describe('ExportPreparationService', () => {
               location,
               problem: '素材副本无法安全写入临时准备目录。',
               nextStep: '检查可用磁盘空间后重新检查；工程和已有输出未被修改。',
+            }),
+          ),
+        ),
+      );
+      expect(result.issues.map((item) => item.code)).not.toContain(
+        'REQUIRED_MEDIA_UNAVAILABLE',
+      );
+    }
+    await expect(readFile(projectFilePath)).resolves.toEqual(projectBytes);
+    await expect(readFile(previousOutputPath)).resolves.toEqual(
+      previousOutputBytes,
+    );
+    await expect(readFile(targetPath)).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(
+      readDirectoryOrEmpty(fixture.fileStore.rootDirectory),
+    ).resolves.toEqual([]);
+  });
+
+  it('reports temporary-copy permission failures separately from disk exhaustion', async () => {
+    const fixture = await harness();
+    const projectFilePath = path.join(fixture.projectRoot, 'project.json');
+    const projectBytes = Buffer.from(
+      JSON.stringify(fixture.project, null, 2) + '\n',
+    );
+    await writeFile(projectFilePath, projectBytes);
+    const previousOutputPath = path.join(
+      fixture.outputDirectory,
+      'previous-output-permission-sentinel.mp4',
+    );
+    const previousOutputBytes = Buffer.from(
+      'pre-existing output sentinel; not a media file',
+    );
+    await writeFile(previousOutputPath, previousOutputBytes);
+    const targetPath = path.join(
+      fixture.outputDirectory,
+      'copy-permission-denied.mp4',
+    );
+    const permissionError = Object.assign(
+      new Error('permission denied'),
+      { code: 'EACCES' },
+    );
+    const brokenStore: ExportPreparationFileStore = {
+      create: (snapshotId) => fixture.fileStore.create(snapshotId),
+      async writeAsset() {
+        throw permissionError;
+      },
+      delete: (snapshotId) => fixture.fileStore.delete(snapshotId),
+      dispose: () => fixture.fileStore.dispose(),
+      getOwnedPath: (snapshotId) => fixture.fileStore.getOwnedPath(snapshotId),
+    };
+    const service = new ExportPreparationService({
+      getCurrentProjectSnapshot: () => fixture.getCurrent(),
+      fileStore: brokenStore,
+      mediaReader: mediaReader(fixture.media),
+    });
+    const selection = await service.selectOutput(
+      {
+        projectRoot: fixture.projectRoot,
+        projectId: fixture.project.id,
+        projectName: fixture.project.name,
+        openInstanceId: OPEN_INSTANCE_ID,
+      },
+      targetPath,
+    );
+    expect(selection.status).toBe('selected');
+    if (selection.status !== 'selected') return;
+    const result = await service.prepare(
+      requestFor(fixture, selection.selectionId),
+    );
+
+    expect(result.status).toBe('BLOCK');
+    if (result.status === 'BLOCK') {
+      const expectedLocations = collectExportPreparationMedia(
+        fixture.project,
+      ).map((entry) => entry.usages[0] ?? '工程素材');
+      const copyFailures = result.issues.filter(
+        (item) => item.code === 'PREPARATION_FAILED',
+      );
+      expect(copyFailures).toHaveLength(expectedLocations.length);
+      expect(copyFailures).toEqual(
+        expect.arrayContaining(
+          expectedLocations.map((location) =>
+            expect.objectContaining({
+              code: 'PREPARATION_FAILED',
+              location,
+              problem: '所需素材无法写入临时准备目录，目录权限可能受限。',
+              nextStep: '检查系统临时目录的写入权限后重新检查；工程和已有输出未被修改。',
             }),
           ),
         ),

@@ -272,6 +272,8 @@ export class ExportPreparationService {
           issue:
             error instanceof FormalOutputPathTooLongError
               ? this.outputPathTooLongIssue()
+              : isFilesystemPermissionError(error)
+                ? this.outputLocationPermissionIssue()
               : this.outputLocationUnsupportedIssue(),
         };
       }
@@ -336,12 +338,14 @@ export class ExportPreparationService {
     } catch (error) {
       return {
         status: 'blocked',
-        issue: {
-          code: 'OUTPUT_TARGET_CHANGED',
-          location: '输出位置',
-          problem: safeTargetProblem(error),
-          nextStep: '选择一个可写的 .mp4 输出位置后重试。',
-        },
+        issue: isFilesystemPermissionError(error)
+          ? this.outputLocationPermissionIssue()
+          : {
+              code: 'OUTPUT_TARGET_CHANGED',
+              location: '输出位置',
+              problem: safeTargetProblem(error),
+              nextStep: '选择一个可写的 .mp4 输出位置后重试。',
+            },
       };
     }
   }
@@ -569,7 +573,12 @@ export class ExportPreparationService {
               ': ' +
               errorMessage(error),
           );
-          issues.push(this.mediaUnavailableIssue(entry.usages[0] ?? '工程素材'));
+          issues.push(
+            this.mediaUnavailableIssue(
+              entry.usages[0] ?? '工程素材',
+              error,
+            ),
+          );
         }
       }
       const budget = evaluateExportPreparationBudget(budgetEntries);
@@ -619,7 +628,12 @@ export class ExportPreparationService {
               ': ' +
               errorMessage(error),
           );
-          issues.push(this.mediaUnavailableIssue(entry.usages[0] ?? '工程素材'));
+          issues.push(
+            this.mediaUnavailableIssue(
+              entry.usages[0] ?? '工程素材',
+              error,
+            ),
+          );
           continue;
         }
 
@@ -639,7 +653,12 @@ export class ExportPreparationService {
               ': ' +
               errorMessage(error),
           );
-          issues.push(this.preparationFailedIssue(entry.usages[0] ?? '工程素材'));
+          issues.push(
+            this.preparationFailedIssue(
+              entry.usages[0] ?? '工程素材',
+              error,
+            ),
+          );
           continue;
         }
         mediaManifest.push({
@@ -729,14 +748,7 @@ export class ExportPreparationService {
       diagnosticDetails.push(errorMessage(error));
       return this.block(
         request.attemptId,
-        [
-          {
-            code: 'PREPARATION_FAILED',
-            location: '导出准备',
-            problem: '工程检查未能安全完成。',
-            nextStep: '重新选择输出位置后重试；工程和已有输出未被修改。',
-          },
-        ],
+        [this.preparationSetupFailedIssue(error)],
         diagnosticDetails.join('\n'),
       );
     } finally {
@@ -1248,7 +1260,18 @@ export class ExportPreparationService {
     }
   }
 
-  private mediaUnavailableIssue(location: string): ExportPreparationIssue {
+  private mediaUnavailableIssue(
+    location: string,
+    error?: unknown,
+  ): ExportPreparationIssue {
+    if (error !== undefined && isFilesystemPermissionError(error)) {
+      return {
+        code: 'REQUIRED_MEDIA_UNAVAILABLE',
+        location,
+        problem: '无法读取所需素材，素材文件或所在目录可能没有读取权限。',
+        nextStep: '检查素材文件和上级目录的读取权限，或重新导入素材后再检查。',
+      };
+    }
     return {
       code: 'REQUIRED_MEDIA_UNAVAILABLE',
       location,
@@ -1281,6 +1304,15 @@ export class ExportPreparationService {
       location: '输出位置',
       problem: '正式 MP4 导出仅支持 Windows 本地 NTFS 文件夹。',
       nextStep: '请选择本机 NTFS 磁盘上的文件夹后重试。',
+    };
+  }
+
+  private outputLocationPermissionIssue(): ExportPreparationIssue {
+    return {
+      code: 'OUTPUT_LOCATION_UNSUPPORTED',
+      location: '输出位置',
+      problem: '所选文件夹没有创建 MP4 文件所需的写入权限。',
+      nextStep: '检查文件夹的写入权限，或选择当前账户可写的本地 NTFS 文件夹后重试。',
     };
   }
 
@@ -1317,12 +1349,40 @@ export class ExportPreparationService {
     };
   }
 
-  private preparationFailedIssue(location: string): ExportPreparationIssue {
+  private preparationFailedIssue(
+    location: string,
+    error?: unknown,
+  ): ExportPreparationIssue {
+    if (error !== undefined && isFilesystemPermissionError(error)) {
+      return {
+        code: 'PREPARATION_FAILED',
+        location,
+        problem: '所需素材无法写入临时准备目录，目录权限可能受限。',
+        nextStep: '检查系统临时目录的写入权限后重新检查；工程和已有输出未被修改。',
+      };
+    }
     return {
       code: 'PREPARATION_FAILED',
       location,
       problem: '素材副本无法安全写入临时准备目录。',
       nextStep: '检查可用磁盘空间后重新检查；工程和已有输出未被修改。',
+    };
+  }
+
+  private preparationSetupFailedIssue(error: unknown): ExportPreparationIssue {
+    if (isFilesystemPermissionError(error)) {
+      return {
+        code: 'PREPARATION_FAILED',
+        location: '导出准备',
+        problem: '无法创建临时导出准备目录，目录权限可能受限。',
+        nextStep: '检查系统临时目录的写入权限后重新检查；工程和已有输出未被修改。',
+      };
+    }
+    return {
+      code: 'PREPARATION_FAILED',
+      location: '导出准备',
+      problem: '工程检查未能安全完成。',
+      nextStep: '重新选择输出位置后重试；工程和已有输出未被修改。',
     };
   }
 
@@ -1491,6 +1551,38 @@ function stringField(
 ): string | null {
   const result = value?.[field];
   return typeof result === 'string' ? result.slice(0, 160) : null;
+}
+
+function isFilesystemPermissionError(error: unknown): boolean {
+  const seen = new Set<object>();
+  let current = error;
+  while (typeof current === 'object' && current !== null && !seen.has(current)) {
+    seen.add(current);
+    const candidate = current as {
+      code?: unknown;
+      message?: unknown;
+      cause?: unknown;
+    };
+    if (
+      typeof candidate.code === 'string' &&
+      ['EACCES', 'EPERM', 'EROFS'].includes(candidate.code)
+    ) {
+      return true;
+    }
+    if (
+      typeof candidate.message === 'string' &&
+      /(EACCES|EPERM|EROFS|permission denied|access is denied)/iu.test(
+        candidate.message,
+      )
+    ) {
+      return true;
+    }
+    current = candidate.cause;
+  }
+  return (
+    typeof current === 'string' &&
+    /(EACCES|EPERM|EROFS|permission denied|access is denied)/iu.test(current)
+  );
 }
 
 function safeTargetProblem(error: unknown): string {

@@ -37,6 +37,7 @@ const issue836R2CommitRaceMode = process.env.PANDA_STAGE_ISSUE836_R2_COMMIT_RACE
 const issue836R2CopyFailureMode = process.env.PANDA_STAGE_ISSUE836_R2_COPY_FAILURE === '1';
 const issue836R2CopyFailureValidMp4Mode = process.env.PANDA_STAGE_ISSUE836_R2_COPY_FAILURE_VALID_MP4 === '1';
 const issue836R2MediaPreflightMode = process.env.PANDA_STAGE_ISSUE836_R2_MEDIA_PREFLIGHT === '1';
+const issue836R2OutputPermissionMode = process.env.PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION === '1';
 const dl05Mode = process.env.PANDA_STAGE_ISSUE832_DL05 === '1' || dl05FollowupMode;
 const dl04SampleId = Number(process.env.PANDA_STAGE_ISSUE827_SAMPLE ?? '1');
 const baseDirectory =
@@ -1451,6 +1452,147 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
     progressScreenshotPath: progressCaptured ? path.join(evidenceRoot, `${label}-progress.png`) : null,
     completedScreenshotPath,
   };
+}
+
+async function runIssue836R2OutputPermissionAcceptance({ result, initialProjectBytes, projectFilePath, evidenceRoot, mediaTools }) {
+  assert(issue836R2OutputPermissionMode, 'Issue #836 output-permission mode is not enabled.');
+  const editorBefore = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+  const editorBeforeFingerprint = acceptanceSessionFingerprint(editorBefore);
+  const sourceHashesBefore = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+    assetId: asset.id,
+    sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+  })));
+  assert((await fsp.readFile(projectFilePath)).equals(initialProjectBytes), 'The Project changed before the output-permission case.');
+
+  const previousOutputPath = path.join(fixture.projectRoot, 'issue836-r2-output-permission-prior.mp4');
+  assert(!existsSync(previousOutputPath), 'The controlled prior-output MP4 must start absent.');
+  await runProcess(mediaTools.ffmpegPath, [
+    '-y', '-v', 'error',
+    '-f', 'lavfi', '-i', 'color=c=blue:s=64x64:r=24',
+    '-frames:v', '6', '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+    '-movflags', '+faststart', previousOutputPath,
+  ]);
+  const previousOutputProbeResult = await runProcess(mediaTools.ffprobePath, [
+    '-v', 'error', '-count_frames', '-show_streams', '-show_format', '-of', 'json', previousOutputPath,
+  ]);
+  const previousOutputProbe = JSON.parse(previousOutputProbeResult.stdout);
+  const previousOutputVideo = previousOutputProbe.streams?.find((stream) => stream.codec_type === 'video');
+  const previousOutputFormats = String(previousOutputProbe.format?.format_name ?? '').split(',');
+  const previousOutputFrameCount = Number(previousOutputVideo?.nb_read_frames ?? previousOutputVideo?.nb_frames ?? 0);
+  const previousOutputDurationSeconds = Number(previousOutputProbe.format?.duration);
+  assert(
+    previousOutputVideo?.codec_name === 'h264' && previousOutputVideo.pix_fmt === 'yuv420p' &&
+    previousOutputVideo.width === 64 && previousOutputVideo.height === 64 &&
+    previousOutputFrameCount === 6 && previousOutputFormats.includes('mp4') &&
+    Number.isFinite(previousOutputDurationSeconds) && previousOutputDurationSeconds > 0,
+    'Resolved FFmpeg did not produce a valid H.264 MP4 prior-output sentinel.',
+  );
+  const previousOutputSha256 = hash(await fsp.readFile(previousOutputPath));
+  const targetPath = path.join(fixture.projectRoot, 'issue836-r2-output-permission.mp4');
+  assert(!existsSync(targetPath), 'The selected permission-failure target must start absent.');
+
+  const permissionChecks = [];
+  const preparationOptions = exportPreparationService?.options;
+  assert(preparationOptions, 'The Main ExportPreparationService options were unavailable for controlled permission injection.');
+  const originalAssertFormalOutputLocation = preparationOptions.assertFormalOutputLocation;
+  preparationOptions.assertFormalOutputLocation = async (outputPath) => {
+    if (path.resolve(outputPath) === path.resolve(targetPath)) {
+      permissionChecks.push({ outputPath, code: 'EACCES' });
+      throw Object.assign(new Error('controlled output-folder permission denial'), { code: 'EACCES' });
+    }
+    if (originalAssertFormalOutputLocation) return originalAssertFormalOutputLocation(outputPath);
+    return undefined;
+  };
+
+  const priorStartCount = formalStarts.length;
+  const priorCommitCount = formalCommitRecords.length;
+  let failureRun;
+  try {
+    failureRun = await startFromCreatorUi(evidenceRoot, 'issue836-r2-output-permission', {
+      selectedFileName: path.basename(targetPath),
+      expectedFailureText: '所选文件夹没有创建 MP4 文件所需的写入权限。',
+      abortIfUnexpectedStart: true,
+    });
+  } finally {
+    preparationOptions.assertFormalOutputLocation = originalAssertFormalOutputLocation;
+  }
+
+  assert(permissionChecks.length === 1, 'The controlled EACCES output-location check did not run exactly once.');
+  assert(failureRun.status === 'failed' && failureRun.observedTaskStatus === 'failed', 'Creator did not block the output-permission failure.');
+  assert(failureRun.starts.length === 0, 'A formal Main Job started after the output-permission failure.');
+  assert(formalStarts.length === priorStartCount, 'The permission failure added a formal Main Job.');
+  assert(formalCommitRecords.length === priorCommitCount, 'The permission failure recorded a formal output commit.');
+  assert(failureRun.taskText.includes('检查文件夹的写入权限'), 'Creator did not show actionable output-folder permission guidance.');
+
+  const taskSnapshot = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
+  const task = taskSnapshot?.task;
+  const permissionIssue = (task?.issues ?? []).find((issue) => issue.code === 'OUTPUT_LOCATION_UNSUPPORTED');
+  assert(permissionIssue, 'The task surface omitted the output-location permission issue.');
+  assert(permissionIssue.location === '输出位置', 'The task surface did not identify the output location.');
+  assert(permissionIssue.problem === '所选文件夹没有创建 MP4 文件所需的写入权限。', 'The task surface omitted the concrete folder-permission problem.');
+  assert(permissionIssue.nextStep === '检查文件夹的写入权限，或选择当前账户可写的本地 NTFS 文件夹后重试。', 'The task surface omitted the actionable writable-folder next step.');
+  assert(!existsSync(targetPath), 'The permission failure created a partial MP4.');
+  assert(hash(await fsp.readFile(previousOutputPath)) === previousOutputSha256, 'The permission failure changed the existing prior-output MP4.');
+  assert((await fsp.readFile(projectFilePath)).equals(initialProjectBytes), 'The permission failure changed the Project file.');
+
+  const editorAfter = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+  const editorAfterFingerprint = acceptanceSessionFingerprint(editorAfter);
+  assert(JSON.stringify(editorBeforeFingerprint) === JSON.stringify(editorAfterFingerprint), 'The permission failure changed Project/session revision, dirty state, selection, or History.');
+  const sourceHashesAfter = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+    assetId: asset.id,
+    sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+  })));
+  assert(JSON.stringify(sourceHashesBefore) === JSON.stringify(sourceHashesAfter), 'The permission failure changed fixture source assets.');
+  const cleanup = await assertNoExportTemporaries('output-folder permission Creator preflight');
+
+  result.r2OutputPermissionFailure = {
+    status: 'PASS',
+    permissionChecks,
+    taskIssue: permissionIssue,
+    formalJobsStarted: failureRun.starts.length,
+    formalCommits: formalCommitRecords.length - priorCommitCount,
+    targetPath,
+    targetAbsent: !existsSync(targetPath),
+    previousOutputPath,
+    previousOutputSha256Before: previousOutputSha256,
+    previousOutputSha256After: hash(await fsp.readFile(previousOutputPath)),
+    previousOutputUnchanged: hash(await fsp.readFile(previousOutputPath)) === previousOutputSha256,
+    previousOutput: {
+      byteLength: (await fsp.stat(previousOutputPath)).size,
+      ffprobe: {
+        formatNames: previousOutputFormats,
+        durationSeconds: previousOutputDurationSeconds,
+        codec: previousOutputVideo.codec_name,
+        pixelFormat: previousOutputVideo.pix_fmt,
+        width: previousOutputVideo.width,
+        height: previousOutputVideo.height,
+        frameCount: previousOutputFrameCount,
+      },
+    },
+    projectSha256Before: hash(initialProjectBytes),
+    projectSha256After: hash(await fsp.readFile(projectFilePath)),
+    projectFileUnchanged: (await fsp.readFile(projectFilePath)).equals(initialProjectBytes),
+    editorBefore: editorBeforeFingerprint,
+    editorAfter: editorAfterFingerprint,
+    editorStatePreserved: JSON.stringify(editorBeforeFingerprint) === JSON.stringify(editorAfterFingerprint),
+    sourceHashesBefore,
+    sourceHashesAfter,
+    sourceAssetsUnchanged: true,
+    screenshots: {
+      saveAs: failureRun.nativeSaveAsScreenshotPath,
+      blocked: failureRun.failureScreenshotPath,
+    },
+    temporaryCleanup: cleanup,
+  };
+  result.auto = 'PASS';
+  result.completedAt = new Date().toISOString();
+  result.owner = { status: 'NOT_ATTESTED', note: 'Generated-fixture automated permission-preflight evidence only; author-project and human Gate B review remain deferred.' };
+  await fsp.writeFile(path.join(evidenceRoot, 'issue836-r2-output-permission-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
+  await fsp.writeFile(path.join(fixture.root, 'issue836-r2-output-permission-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
+  console.log(`PASS Issue #836 R2 output-permission Creator preflight: ${fixture.root}`);
+  mainWindow.destroy();
+  hiddenWindowManager.close();
+  app.exit(0);
 }
 
 async function runIssue836R2MediaPreflightAcceptance({ result, initialProjectBytes, projectFilePath, evidenceRoot, mediaTools }) {
@@ -3784,7 +3926,7 @@ async function run() {
     !issue836R2CommitRaceMode || !(
       dl03Mode || dl04Mode || dl05Mode || dl06R0Mode ||
       issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
-      issue836R2CopyFailureMode || issue836R2MediaPreflightMode
+      issue836R2CopyFailureMode || issue836R2MediaPreflightMode || issue836R2OutputPermissionMode
     ),
     'Issue #836 R2 commit-race mode cannot be combined with another acceptance mode.',
   );
@@ -3792,7 +3934,7 @@ async function run() {
     !issue836R2CopyFailureMode || !(
       dl03Mode || dl04Mode || dl05Mode || dl06R0Mode ||
       issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
-      issue836R2CommitRaceMode || issue836R2MediaPreflightMode
+      issue836R2CommitRaceMode || issue836R2MediaPreflightMode || issue836R2OutputPermissionMode
     ),
     'Issue #836 R2 copy-failure mode cannot be combined with another acceptance mode.',
   );
@@ -3804,9 +3946,21 @@ async function run() {
     !issue836R2MediaPreflightMode || !(
       dl03Mode || dl05Mode || dl06R0Mode ||
       issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
-      issue836R2CommitRaceMode || issue836R2CopyFailureMode
+      issue836R2CommitRaceMode || issue836R2CopyFailureMode || issue836R2OutputPermissionMode
     ),
     'Issue #836 R2 media-preflight mode cannot be combined with another focused acceptance mode.',
+  );
+  assert(
+    !issue836R2OutputPermissionMode || (dl04Mode && dl04SampleId === 1),
+    'Issue #836 R2 output-permission mode requires the single Issue #827 sample 1 Creator UI fixture.',
+  );
+  assert(
+    !issue836R2OutputPermissionMode || !(
+      dl03Mode || dl05Mode || dl06R0Mode ||
+      issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
+      issue836R2CommitRaceMode || issue836R2CopyFailureMode || issue836R2MediaPreflightMode
+    ),
+    'Issue #836 R2 output-permission mode cannot be combined with another focused acceptance mode.',
   );
   assert(!(issue836R2PathBoundaryMode && issue836R2PathSuccessMode), 'Issue #836 R2 path modes are mutually exclusive.');
   assert(!(issue836R2PathBoundaryMode || issue836R2PathSuccessMode) || (dl04Mode && dl04SampleId === 1), 'Issue #836 R2 path mode requires the single Issue #827 sample 1 Creator UI fixture.');
@@ -3847,11 +4001,13 @@ async function run() {
   mainWindow.webContents.focus();
 
   const result = {
-    issue: issue836R2CommitRaceMode || issue836R2CopyFailureMode || issue836R2MediaPreflightMode || dl06R0Mode ? 836 : dl05FollowupMode ? 834 : dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
+    issue: issue836R2CommitRaceMode || issue836R2CopyFailureMode || issue836R2MediaPreflightMode || issue836R2OutputPermissionMode || dl06R0Mode ? 836 : dl05FollowupMode ? 834 : dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
     wrapperRunId: process.env.PANDA_STAGE_ISSUE836_RUN_ID ?? process.env.PANDA_STAGE_ISSUE834_RUN_ID ?? process.env.PANDA_STAGE_ISSUE832_RUN_ID ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID ?? null,
     sourceCommitSha: process.env.PANDA_STAGE_ISSUE836_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE834_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE832_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA ?? null,
     sampleId: dl04Mode || dl05Mode ? dl04SampleId : null,
-    workOrder: issue836R2MediaPreflightMode
+    workOrder: issue836R2OutputPermissionMode
+      ? 'Issue #836 R2 AC03: Creator UI output-folder permission failure preservation'
+      : issue836R2MediaPreflightMode
       ? 'Issue #836 R2 AC03: Creator preflight for missing image and corrupt audio preservation'
       : issue836R2CopyFailureValidMp4Mode
       ? 'Issue #836 R2: Creator preparation-copy failure preserving a valid MP4 sentinel'
@@ -3931,6 +4087,10 @@ async function run() {
     const editorSnapshotBytes = Buffer.from(JSON.stringify(edited.project, null, 2), 'utf8');
     await fsp.writeFile(editorSnapshotPath, editorSnapshotBytes);
     await clickSelector('[data-testid="quick-action-drawer-handle"]');
+    if (issue836R2OutputPermissionMode) {
+      await runIssue836R2OutputPermissionAcceptance({ result, initialProjectBytes, projectFilePath, evidenceRoot, mediaTools });
+      return;
+    }
     if (issue836R2MediaPreflightMode) {
       await runIssue836R2MediaPreflightAcceptance({ result, initialProjectBytes, projectFilePath, evidenceRoot, mediaTools });
       return;
