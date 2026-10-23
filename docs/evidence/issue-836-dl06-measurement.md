@@ -1,9 +1,10 @@
 # Issue #836 DL-06 measurement plan and result
 
-Report version: **1.14.0**
-Frozen plan revision: **1.4.0**, completed as one bounded four-run R3 continuation
+Report version: **1.15.0**
+Frozen R3 plan revision: **1.4.0**, completed as one bounded four-run continuation
 Plan date: **2026-10-23**
 R3 status: **PARTIAL / NOT_ATTESTED**; all four v1.4.0 generated-probe cold/warm runs completed with `auto=PASS`, matching manifest/receipt hashes, and maximum sample gaps below the frozen 5,000 ms validity limit. These generated probes do not establish author-authorized real-project provenance. Phase wall times, Renderer pending-write queue peak, and post-terminal release time remain `NOT_MEASURED`; installer acceptance and human Gate B evidence remain unavailable. DL-06 and DL-07 remain **NO GO**.
+R2 status: **PARTIAL**; one focused AC08 staging-path boundary probe is frozen below and has not yet run.
 
 ## Evidence availability
 
@@ -281,3 +282,15 @@ DL06=NO GO
 DL-07=NO GO
 NEXT: Obtain two distinct author-authorized real Projects and a separately frozen plan for any remaining real-project / packaged-install / human Gate B acceptance. No further R3 run was started under v1.4.0.
 PR #817 remains OPEN / DRAFT / CONFLICTING. No merge, conflict resolution, Ready transition, Issue closure, or Issue comment was made.
+
+## Frozen R2 AC08 path-boundary plan - v1.0.0 (before run)
+
+This is one focused Creator UI boundary attempt on the exact verifier source SHA to be recorded in the Issue body before invocation. It uses Issue #827 sample 1 only as a generated probe derived from `demo-project/project-v1.example.json`; it does not establish author-project provenance or change the R3 result. No retry is permitted.
+
+Acceptance root: `D:\PandaStage-Acceptance\i836-r2-path-boundary-v1`. Fixture base: `D:\PandaStage-Acceptance\i836-r2-path-boundary-v1\中文 工作区\长路径 深层资料\一级目录-层级导出测试\二级目录-层级导出测试\deep project root`. Frame-job root is isolated at `D:\PandaStage-Acceptance\i836-r2-path-boundary-v1\frame-jobs`. The fixture generator adds its timestamp/PID run directory and `Panda Stage formal export.pandastage` project directory. Creator Save As enters a long MP4 filename with a Chinese prefix and ASCII padding, computed so the selected target path is exactly 259 characters. The same-directory candidate staging filename is `.panda-stage-export-` + 36 UUID characters + `-` + 36 UUID characters + `.mp4` (97 characters); its full path is expected to exceed 259 characters.
+
+Frozen invocation: run `pnpm build`, then with `PANDA_STAGE_ISSUE827_DL04=1`, `PANDA_STAGE_ISSUE827_SAMPLE=1`, `PANDA_STAGE_ISSUE836_R2_PATH_BOUNDARY=1`, `PANDA_STAGE_ISSUE827_ROOT` set to the fixture base above, and `PANDA_STAGE_ISSUE836_FRAME_ROOT` set to the isolated frame-job root, invoke `pnpm exec electron scripts/verify-issue819-dl02.cjs` once.
+
+Expected boundary result: the native Save As dialog returns the exact 259-character target to Main; Main `ExportPreparationService.selectOutput` returns `OUTPUT_LOCATION_UNSUPPORTED` with the 259-character limit in both the problem and next step; Creator shows the actionable block; no preparation snapshot, formal Export Job, FFmpeg/FFprobe run, output MP4, or staging directory is created. The receipt compares the editor revision/dirty/History/selection, saved Project bytes and fingerprint, and source media hashes before and after. If selection is accepted unexpectedly, the harness immediately cancels during preparation or cancels the first cancellable Main Job, records the first unexpected result, and stops. No retry or R3 rerun.
+
+This probe measures the boundary failure point in Main before tool execution or atomic commit. Even on PASS, AC08 and R2 remain **PARTIAL** until a Chinese/space/deep path also completes a successful tool and atomic-commit path, and other R2 cases remain covered.

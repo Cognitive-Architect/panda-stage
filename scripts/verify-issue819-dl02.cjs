@@ -30,6 +30,7 @@ const dl03Mode = process.env.PANDA_STAGE_ISSUE823_DL03 === '1';
 const dl04Mode = process.env.PANDA_STAGE_ISSUE827_DL04 === '1';
 const dl05FollowupMode = process.env.PANDA_STAGE_ISSUE834_FOLLOWUP === '1';
 const dl06R0Mode = process.env.PANDA_STAGE_ISSUE836_DL06_R0 === '1';
+const issue836R2PathBoundaryMode = process.env.PANDA_STAGE_ISSUE836_R2_PATH_BOUNDARY === '1';
 const dl05Mode = process.env.PANDA_STAGE_ISSUE832_DL05 === '1' || dl05FollowupMode;
 const dl04SampleId = Number(process.env.PANDA_STAGE_ISSUE827_SAMPLE ?? '1');
 const baseDirectory =
@@ -1206,6 +1207,72 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
   const taskSelector = "document.querySelector('[data-testid=\"export-task-surface\"]')";
   const taskStatus = `${taskSelector}?.dataset.taskStatus`;
   if (options.expectedFailureText) {
+    if (options.abortIfUnexpectedStart) {
+      const deadline = Date.now() + 30_000;
+      let observed;
+      let starts;
+      do {
+        observed = await rendererJs(`({
+          status: ${taskStatus} ?? 'idle',
+          text: ${taskSelector}?.innerText ?? '',
+        })`);
+        starts = formalStarts.slice(priorJobCount);
+        if (
+          observed.status === 'failed' ||
+          ['preparing', 'running', 'completed', 'cancelled'].includes(observed.status) ||
+          starts.length > 0
+        ) break;
+        if (Date.now() >= deadline) {
+          throw new Error(`${label}: Save As returned without a terminal path result or an observable export start.`);
+        }
+        await pause(50);
+      } while (Date.now() < deadline);
+
+      let emergencyCancel = null;
+      if (starts.some((start) => start.jobId)) {
+        for (const start of starts) {
+          if (start.jobId && exportService?.canCancelJob(start.jobId)) {
+            emergencyCancel = {
+              jobId: start.jobId,
+              accepted: exportService.cancelJob(start.jobId),
+            };
+            break;
+          }
+        }
+        await waitForRenderer(
+          `['cancelled', 'failed', 'completed'].includes(${taskStatus})`,
+          60_000,
+        ).catch(() => undefined);
+      } else if (['preparing', 'running'].includes(observed.status)) {
+        await clickButtonContainingText('取消导出');
+        await waitForRenderer(`${taskStatus} === 'cancelled'`, 60_000);
+      }
+
+      const finalState = await rendererJs(`({
+        status: ${taskStatus} ?? 'idle',
+        text: ${taskSelector}?.innerText ?? '',
+      })`);
+      const image = await mainWindow.webContents.capturePage();
+      const failureScreenshotPath = path.join(evidenceRoot, `${label}-blocked.png`);
+      await fsp.writeFile(failureScreenshotPath, image.toPNG());
+      starts = formalStarts.slice(priorJobCount);
+      const expectedBlock = finalState.status === 'failed' &&
+        finalState.text.includes(options.expectedFailureText) &&
+        starts.length === 0;
+      return {
+        before,
+        after: await rendererJs('window.__pandaStageIssue816Acceptance.inspect()'),
+        startAction,
+        status: expectedBlock ? 'failed' : 'unexpected-start',
+        observedTaskStatus: finalState.status,
+        taskText: finalState.text,
+        starts,
+        emergencyCancel,
+        nativeSaveAsScreenshotPath: nativeSavePath,
+        windowsOverwriteScreenshotPath: options.captureOverwritePrompt ? overwritePromptPath : null,
+        failureScreenshotPath,
+      };
+    }
     await waitForRenderer(
       `${taskStatus} === 'failed' && ${taskSelector}?.innerText.includes(${JSON.stringify(options.expectedFailureText)})`,
       30_000,
@@ -2776,6 +2843,178 @@ async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapsho
   const preExportPersistenceFingerprint = await projectPersistenceFingerprint(project, fixture.projectRoot);
   assert(JSON.stringify(preExportPersistenceFingerprint.backgrounds.map((entry) => ({ shotId: entry.shotId, assetId: entry.assetId, sha256: entry.sha256 }))) === JSON.stringify(fixture.backgroundEvidence.map((entry) => ({ shotId: entry.shotId, assetId: entry.assetId, sha256: entry.sha256 }))), 'Project background references or bytes changed before formal export.');
   await ensureQuickActionDrawerOpen();
+  if (issue836R2PathBoundaryMode) {
+    const pathLimit = 259;
+    const fileNamePrefix = 'i836-r2-中文长文件名-';
+    const fileNameSuffix = '.mp4';
+    const outputDirectory = path.resolve(fixture.projectRoot);
+    const fileNameLength = pathLimit - outputDirectory.length - path.sep.length;
+    const fileNameFillerLength = fileNameLength - fileNamePrefix.length - fileNameSuffix.length;
+    assert(fileNameFillerLength >= 40, 'Issue #836 R2 path root is too long to preserve a long but in-limit target filename.');
+    const fileName = `${fileNamePrefix}${'x'.repeat(fileNameFillerLength)}${fileNameSuffix}`;
+    const outputPath = path.join(outputDirectory, fileName);
+    const longestStagingName = `.panda-stage-export-${'0'.repeat(36)}-${'0'.repeat(36)}.mp4`;
+    const longestStagingPath = path.join(outputDirectory, longestStagingName);
+    assert(outputPath.length === pathLimit, `Issue #836 R2 target path must be exactly ${pathLimit} characters, got ${outputPath.length}.`);
+    assert(longestStagingPath.length > pathLimit, 'Issue #836 R2 staging path must cross the frozen Windows path limit.');
+    assert(!existsSync(outputPath), 'Issue #836 R2 output target already exists.');
+
+    const editorBefore = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+    const editorStateBefore = {
+      revision: editorBefore.revision,
+      dirty: editorBefore.dirty,
+      openInstanceId: editorBefore.openInstanceId,
+      currentShotId: editorBefore.currentShotId,
+      undoCount: editorBefore.undoCount,
+      redoCount: editorBefore.redoCount,
+    };
+    const projectBytesBefore = await fsp.readFile(projectFilePath);
+    const projectFingerprintBefore = await projectPersistenceFingerprint(editorBefore.project, fixture.projectRoot);
+    const sourceAssetHashesBefore = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+      assetId: asset.id,
+      sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+    })));
+    const priorDialogCount = saveDialogEvidence.length;
+    const priorStartCount = formalStarts.length;
+    const priorJobUpdateCount = jobUpdates.length;
+    const priorCommitCount = formalCommitRecords.length;
+    const selectionResponses = [];
+    const preparationResponses = [];
+    const originalSelectOutput = exportPreparationService.selectOutput.bind(exportPreparationService);
+    const originalPrepare = exportPreparationService.prepare.bind(exportPreparationService);
+    exportPreparationService.selectOutput = async (request, selectedPath) => {
+      const response = await originalSelectOutput(request, selectedPath);
+      selectionResponses.push({
+        projectRoot: request.projectRoot,
+        projectId: request.projectId,
+        selectedPath,
+        response,
+      });
+      return response;
+    };
+    exportPreparationService.prepare = async (request) => {
+      const response = await originalPrepare(request);
+      preparationResponses.push({ attemptId: request.attemptId, response });
+      return response;
+    };
+
+    const pathRun = await startFromCreatorUi(evidenceRoot, 'issue836-r2-path-boundary', {
+      selectedFileName: fileName,
+      expectedFailureText: '259',
+      abortIfUnexpectedStart: true,
+    });
+    const afterEditor = pathRun.after;
+    const editorStateAfter = {
+      revision: afterEditor.revision,
+      dirty: afterEditor.dirty,
+      openInstanceId: afterEditor.openInstanceId,
+      currentShotId: afterEditor.currentShotId,
+      undoCount: afterEditor.undoCount,
+      redoCount: afterEditor.redoCount,
+    };
+    const projectBytesAfter = await fsp.readFile(projectFilePath);
+    const projectFingerprintAfter = await projectPersistenceFingerprint(afterEditor.project, fixture.projectRoot);
+    const sourceAssetHashesAfter = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+      assetId: asset.id,
+      sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+    })));
+    const dialog = saveDialogEvidence.slice(priorDialogCount).at(-1) ?? null;
+    const selection = selectionResponses.at(-1) ?? null;
+    const mainBlockedAtPathGuard = selection?.response?.status === 'blocked' &&
+      selection.response.issue?.code === 'OUTPUT_LOCATION_UNSUPPORTED' &&
+      selection.response.issue.problem.includes('259') &&
+      selection.response.issue.nextStep.includes('259');
+    const nativePathMatches = Boolean(dialog?.selectedPath && selection?.selectedPath) &&
+      path.resolve(dialog.selectedPath) === outputPath &&
+      path.resolve(selection.selectedPath) === outputPath;
+    const editorStatePreserved = JSON.stringify(editorStateBefore) === JSON.stringify(editorStateAfter);
+    const projectFileUnchanged = projectBytesBefore.equals(projectBytesAfter);
+    const sourceAssetsUnchanged = JSON.stringify(sourceAssetHashesBefore) === JSON.stringify(sourceAssetHashesAfter);
+    const fingerprintUnchanged = JSON.stringify(projectFingerprintBefore) === JSON.stringify(projectFingerprintAfter);
+    const temporaryCleanup = await assertNoExportTemporaries('Issue #836 R2 path boundary');
+    const pathBoundaryReceipt = {
+      schemaVersion: 1,
+      issue: 836,
+      workOrder: 'R2 AC08 Creator UI path-boundary probe',
+      status: 'PENDING_ASSERTIONS',
+      sourceCommitSha: result.sourceCommitSha,
+      startedAt: result.startedAt,
+      completedAt: new Date().toISOString(),
+      fixtureRoot: fixture.root,
+      projectRoot: fixture.projectRoot,
+      projectSha256Before: hash(projectBytesBefore),
+      projectSha256After: hash(projectBytesAfter),
+      pathLimitCharacters: pathLimit,
+      saveAs: {
+        selectedFileName: fileName,
+        selectedFileNameCharacters: fileName.length,
+        expectedTargetPath: outputPath,
+        expectedTargetPathCharacters: outputPath.length,
+        observedTargetPath: dialog?.selectedPath ?? null,
+        observedDialog: dialog,
+        saveAsScreenshotPath: pathRun.nativeSaveAsScreenshotPath,
+        blockedScreenshotPath: pathRun.failureScreenshotPath,
+      },
+      sameDirectoryStagingCandidate: {
+        name: longestStagingName,
+        path: longestStagingPath,
+        pathCharacters: longestStagingPath.length,
+      },
+      main: {
+        selection,
+        preparationResponses,
+        failurePoint: mainBlockedAtPathGuard ? 'ExportPreparationService.selectOutput' : null,
+      },
+      creatorUi: {
+        status: pathRun.status,
+        observedTaskStatus: pathRun.observedTaskStatus ?? null,
+        taskText: pathRun.taskText,
+        formalStarts: pathRun.starts,
+        emergencyCancel: pathRun.emergencyCancel ?? null,
+      },
+      safety: {
+        nativePathMatches,
+        mainBlockedAtPathGuard,
+        actionable259CopyVisible: pathRun.taskText.includes('259'),
+        noFormalJob: formalStarts.slice(priorStartCount).length === 0,
+        noJobUpdates: jobUpdates.slice(priorJobUpdateCount).length === 0,
+        noFormalCommit: formalCommitRecords.slice(priorCommitCount).length === 0,
+        outputTargetAbsent: !existsSync(outputPath),
+        temporaryCleanup,
+        editorStateBefore,
+        editorStateAfter,
+        editorStatePreserved,
+        projectFileUnchanged,
+        sourceAssetsUnchanged,
+        projectFingerprintUnchanged: fingerprintUnchanged,
+      },
+    };
+    const pathBoundaryPassed = pathRun.status === 'failed' &&
+      pathRun.taskText.includes('259') &&
+      nativePathMatches &&
+      mainBlockedAtPathGuard &&
+      preparationResponses.length === 0 &&
+      pathBoundaryReceipt.safety.noFormalJob &&
+      pathBoundaryReceipt.safety.noJobUpdates &&
+      pathBoundaryReceipt.safety.noFormalCommit &&
+      pathBoundaryReceipt.safety.outputTargetAbsent &&
+      editorStatePreserved &&
+      projectFileUnchanged &&
+      sourceAssetsUnchanged &&
+      fingerprintUnchanged;
+    pathBoundaryReceipt.status = pathBoundaryPassed ? 'PASS' : 'FAIL';
+    result.r2PathBoundary = pathBoundaryReceipt;
+    result.auto = pathBoundaryPassed ? 'PASS' : 'FAIL';
+    result.completedAt = pathBoundaryReceipt.completedAt;
+    await fsp.writeFile(path.join(evidenceRoot, 'issue836-r2-path-boundary-receipt.json'), JSON.stringify(pathBoundaryReceipt, null, 2), 'utf8');
+    await fsp.writeFile(path.join(fixture.root, 'issue836-r2-path-boundary-receipt.json'), JSON.stringify(pathBoundaryReceipt, null, 2), 'utf8');
+    assert(pathBoundaryPassed, 'Issue #836 R2 Creator UI path-boundary probe did not meet every frozen assertion; see issue836-r2-path-boundary-receipt.json.');
+    console.log(`PASS Issue #836 R2 AC08 path boundary: ${fixture.root}`);
+    mainWindow.destroy();
+    hiddenWindowManager.close();
+    app.exit(0);
+    return;
+  }
   const totalDurationMs = project.shots.reduce((total, shot) => total + shot.durationMs, 0);
   const desiredCameraMode = dl04SampleId === 1 ? 'static' : 'speaker-focus';
   const currentCameraMode = await rendererJs(`document.querySelector('[data-testid="right-mode-auto-camera"]')?.getAttribute('aria-pressed') === 'true'`);
@@ -3034,6 +3273,7 @@ async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapsho
 }
 
 async function run() {
+  assert(!issue836R2PathBoundaryMode || (dl04Mode && dl04SampleId === 1), 'Issue #836 R2 path-boundary mode requires the single Issue #827 sample 1 Creator UI fixture.');
   fixture = dl04Mode || dl05Mode
     ? await generateIssue827Fixture(path.resolve(baseDirectory), dl04SampleId)
     : await generateIssue819Fixture(path.resolve(baseDirectory), {
