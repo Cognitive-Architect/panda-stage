@@ -9,7 +9,9 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $electronExecutable = Join-Path $repositoryRoot 'node_modules\electron\dist\electron.exe'
 $verifierScript = 'scripts/verify-issue819-dl02.cjs'
 $acceptanceRootPath = [System.IO.Path]::GetFullPath($AcceptanceRoot)
-$manifestPath = Join-Path $acceptanceRootPath 'measurement-runs.json'
+$invocationId = [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssZ') + '-' + [guid]::NewGuid().ToString()
+$measurementRoot = Join-Path $acceptanceRootPath "measurement-$invocationId"
+$manifestPath = Join-Path $measurementRoot 'measurement-runs.json'
 $runDefinitions = @(
   [pscustomobject]@{ sampleId = 1; phase = 'cold-process'; id = 'sample-1-cold-process' },
   [pscustomobject]@{ sampleId = 1; phase = 'warm-followup'; id = 'sample-1-warm-followup' },
@@ -133,7 +135,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot 'dist-electron\main\
   throw 'Run pnpm build before collecting DL-06 measurements.'
 }
 
-New-Item -ItemType Directory -Path $acceptanceRootPath -Force | Out-Null
+New-Item -ItemType Directory -Path $measurementRoot -Force | Out-Null
 $commitSha = (& git -C $repositoryRoot rev-parse HEAD).Trim()
 $os = Get-CimInstance -ClassName Win32_OperatingSystem
 $computer = Get-CimInstance -ClassName Win32_ComputerSystem
@@ -150,6 +152,8 @@ $runResults = [System.Collections.Generic.List[object]]::new()
 $manifest = [ordered]@{
   version = 'issue836-dl06-r3-measurement/1'
   issue = 836
+  invocationId = $invocationId
+  measurementRoot = $measurementRoot
   sourceCommitSha = $commitSha
   environment = [ordered]@{
     manufacturer = $computer.Manufacturer
@@ -172,6 +176,7 @@ $manifest = [ordered]@{
     sampleOrder = '1 cold-process, 1 warm-followup, 2 cold-process, 2 warm-followup'
     coldProcess = 'Fresh Electron process and freshly generated fixture root; operating-system caches are not cleared.'
     warmFollowup = 'Same generated sample definition in a fresh Electron process immediately after its cold-process run; caches may remain warm.'
+    windowLaunch = 'Normal window; retry AppActivate on an Electron PID with a nonzero main-window handle during process sampling.'
     projectSource = 'Generated Issue #827 probes based on demo-project/project-v1.example.json; not author-supplied real Projects.'
     mainProjectHashAndFrameEvidence = 'See each verifier acceptance-receipt.json under receiptPath.'
     memory = 'Sampled peak working-set and private bytes per PID in the Electron process tree; sample gaps remain visible through sampleCount.'
@@ -181,7 +186,7 @@ $manifest = [ordered]@{
 
 try {
   foreach ($definition in $runDefinitions) {
-    $runRoot = Join-Path $acceptanceRootPath $definition.id
+    $runRoot = Join-Path $measurementRoot $definition.id
     New-Item -ItemType Directory -Path $runRoot -Force | Out-Null
     $stdoutPath = Join-Path $runRoot 'electron-stdout.log'
     $stderrPath = Join-Path $runRoot 'electron-stderr.log'
@@ -203,13 +208,10 @@ try {
       -WindowStyle Normal `
       -PassThru
     $creatorWindowForegroundActivated = $false
-    try {
-      $shell = New-Object -ComObject WScript.Shell
-      $creatorWindowForegroundActivated = [bool] $shell.AppActivate($process.Id)
-      [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)
-    }
-    catch { $creatorWindowForegroundActivated = $false }
-    Start-Sleep -Milliseconds 500
+    $creatorWindowForegroundProcessId = $null
+    $creatorWindowActivationAttempts = 0
+    $shell = $null
+    try { $shell = New-Object -ComObject WScript.Shell } catch { $shell = $null }
     $processStats = @{}
     $sampleCount = 0
     $peakConcurrentProcessCount = 0
@@ -220,9 +222,11 @@ try {
     $peakOutputStagingBytes = [long] 0
     $peakConcurrentTransientBytes = [long] 0
     $peakFrameFileCount = 0
-    $projectRoot = Join-Path $runRoot 'Panda Stage formal export.pandastage'
-    $frameJobsRoot = Join-Path $runRoot 'frame-jobs'
-    $frozenMediaRoot = Join-Path $runRoot 'frozen-media'
+    $storageSampleCount = 0
+    $fixtureRunRoot = $null
+    $projectRoot = $null
+    $frameJobsRoot = $null
+    $frozenMediaRoot = $null
 
     while ($true) {
       $process.Refresh()
@@ -239,6 +243,19 @@ try {
       foreach ($processId in $processTreeIds) {
         $sampledProcess = Get-Process -Id $processId -ErrorAction SilentlyContinue
         if (-not $sampledProcess) { continue }
+        if (
+          -not $creatorWindowForegroundActivated -and
+          $null -ne $shell -and
+          $sampledProcess.ProcessName -eq 'electron' -and
+          $sampledProcess.MainWindowHandle -ne [IntPtr]::Zero
+        ) {
+          $creatorWindowActivationAttempts += 1
+          try {
+            $creatorWindowForegroundActivated = [bool] $shell.AppActivate($processId)
+            if ($creatorWindowForegroundActivated) { $creatorWindowForegroundProcessId = $processId }
+          }
+          catch { $creatorWindowForegroundActivated = $false }
+        }
         $key = [string] $processId
         if (-not $processStats.ContainsKey($key)) {
           $processStats[$key] = [ordered]@{
@@ -254,23 +271,48 @@ try {
         $stats.peakWorkingSetBytes = [Math]::Max([long] $stats.peakWorkingSetBytes, [long] $sampledProcess.WorkingSet64)
         $stats.peakPrivateBytes = [Math]::Max([long] $stats.peakPrivateBytes, [long] $sampledProcess.PrivateMemorySize64)
       }
-      $frameFiles = @(Get-ChildItem -LiteralPath $frameJobsRoot -Recurse -File -ErrorAction SilentlyContinue)
-      $peakFrameFileCount = [Math]::Max($peakFrameFileCount, $frameFiles.Count)
-      $frameJobBytesValue = ($frameFiles | Measure-Object -Property Length -Sum).Sum
-      $frameJobBytes = if ($null -eq $frameJobBytesValue) { [long] 0 } else { [long] $frameJobBytesValue }
-      $frozenMediaBytes = Get-DirectoryBytes -Path $frozenMediaRoot
-      $stagingFiles = @(Get-ChildItem -LiteralPath $projectRoot -File -Filter '.panda-stage-export-*' -ErrorAction SilentlyContinue)
-      $stagingBytesValue = ($stagingFiles | Measure-Object -Property Length -Sum).Sum
-      $stagingBytes = if ($null -eq $stagingBytesValue) { [long] 0 } else { [long] $stagingBytesValue }
-      $peakFrameJobBytes = [Math]::Max($peakFrameJobBytes, $frameJobBytes)
-      $peakFrozenMediaBytes = [Math]::Max($peakFrozenMediaBytes, $frozenMediaBytes)
-      $peakOutputStagingBytes = [Math]::Max($peakOutputStagingBytes, $stagingBytes)
-      $peakConcurrentTransientBytes = [Math]::Max($peakConcurrentTransientBytes, $frameJobBytes + $frozenMediaBytes + $stagingBytes)
+      if (-not $fixtureRunRoot) {
+        $fixtureRun = Get-ChildItem -LiteralPath $runRoot -Directory -Filter 'run-*' -ErrorAction SilentlyContinue |
+          Sort-Object Name -Descending |
+          Select-Object -First 1
+        if ($fixtureRun) {
+          $fixtureRunRoot = $fixtureRun.FullName
+          $projectRoot = Join-Path $fixtureRunRoot 'Panda Stage formal export.pandastage'
+          $frameJobsRoot = Join-Path $fixtureRunRoot 'frame-jobs'
+          $frozenMediaRoot = Join-Path $fixtureRunRoot 'frozen-media'
+        }
+      }
+      if ($fixtureRunRoot) {
+        $storageSampleCount += 1
+        $frameFiles = @(Get-ChildItem -LiteralPath $frameJobsRoot -Recurse -File -ErrorAction SilentlyContinue)
+        $peakFrameFileCount = [Math]::Max($peakFrameFileCount, $frameFiles.Count)
+        $frameJobBytesValue = ($frameFiles | Measure-Object -Property Length -Sum).Sum
+        $frameJobBytes = if ($null -eq $frameJobBytesValue) { [long] 0 } else { [long] $frameJobBytesValue }
+        $frozenMediaBytes = Get-DirectoryBytes -Path $frozenMediaRoot
+        $stagingFiles = @(Get-ChildItem -LiteralPath $projectRoot -File -Filter '.panda-stage-export-*' -ErrorAction SilentlyContinue)
+        $stagingBytesValue = ($stagingFiles | Measure-Object -Property Length -Sum).Sum
+        $stagingBytes = if ($null -eq $stagingBytesValue) { [long] 0 } else { [long] $stagingBytesValue }
+        $peakFrameJobBytes = [Math]::Max($peakFrameJobBytes, $frameJobBytes)
+        $peakFrozenMediaBytes = [Math]::Max($peakFrozenMediaBytes, $frozenMediaBytes)
+        $peakOutputStagingBytes = [Math]::Max($peakOutputStagingBytes, $stagingBytes)
+        $peakConcurrentTransientBytes = [Math]::Max($peakConcurrentTransientBytes, $frameJobBytes + $frozenMediaBytes + $stagingBytes)
+      }
       Start-Sleep -Milliseconds $SampleIntervalMilliseconds
     }
 
     $process.WaitForExit()
+    $process.Refresh()
+    $processExitCode = $null
+    try {
+      $observedExitCode = $process.ExitCode
+      if ($null -ne $observedExitCode) { $processExitCode = [int] $observedExitCode }
+    }
+    catch { $processExitCode = $null }
     $endedAt = [DateTimeOffset]::UtcNow
+    if ($null -ne $shell) {
+      [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)
+      $shell = $null
+    }
     $receipt = Get-ChildItem -LiteralPath $runRoot -Recurse -File -Filter 'acceptance-receipt.json' -ErrorAction SilentlyContinue |
       Sort-Object LastWriteTime -Descending |
       Select-Object -First 1
@@ -285,21 +327,28 @@ try {
       wallClockMilliseconds = [long] ($endedAt - $startedAt).TotalMilliseconds
       electronRootProcessId = $process.Id
       creatorWindowForegroundActivated = $creatorWindowForegroundActivated
-      exitCode = $process.ExitCode
+      creatorWindowForegroundProcessId = $creatorWindowForegroundProcessId
+      creatorWindowActivationAttempts = $creatorWindowActivationAttempts
+      exitCode = $processExitCode
       sampleCount = $sampleCount
       peakConcurrentProcessCount = $peakConcurrentProcessCount
       peakObservedSampleIntervalMilliseconds = [Math]::Round($peakObservedSampleIntervalMilliseconds, 1)
       processTree = @($processStats.Values | Sort-Object processId)
       sampledStorage = [ordered]@{
-        frameJobsPath = $frameJobsRoot
-        peakFrameFileCount = $peakFrameFileCount
-        peakFrameJobBytes = $peakFrameJobBytes
-        frozenMediaPath = $frozenMediaRoot
-        peakFrozenMediaBytes = $peakFrozenMediaBytes
-        outputStagingPath = $projectRoot
-        peakOutputStagingBytes = $peakOutputStagingBytes
-        peakConcurrentTransientBytes = $peakConcurrentTransientBytes
-        sumOfIndependentCategoryPeaksBytes = $peakFrameJobBytes + $peakFrozenMediaBytes + $peakOutputStagingBytes
+        fixtureRunRoot = if ($fixtureRunRoot) { $fixtureRunRoot } else { 'NOT_MEASURED' }
+        frameJobsPath = if ($frameJobsRoot) { $frameJobsRoot } else { 'NOT_MEASURED' }
+        peakFrameFileCount = if ($storageSampleCount -gt 0) { $peakFrameFileCount } else { 'NOT_MEASURED' }
+        peakFrameJobBytes = if ($storageSampleCount -gt 0) { $peakFrameJobBytes } else { 'NOT_MEASURED' }
+        frozenMediaPath = if ($frozenMediaRoot) { $frozenMediaRoot } else { 'NOT_MEASURED' }
+        peakFrozenMediaBytes = if ($storageSampleCount -gt 0) { $peakFrozenMediaBytes } else { 'NOT_MEASURED' }
+        outputStagingPath = if ($projectRoot) { $projectRoot } else { 'NOT_MEASURED' }
+        peakOutputStagingBytes = if ($storageSampleCount -gt 0) { $peakOutputStagingBytes } else { 'NOT_MEASURED' }
+        peakConcurrentTransientBytes = if ($storageSampleCount -gt 0) { $peakConcurrentTransientBytes } else { 'NOT_MEASURED' }
+        sumOfIndependentCategoryPeaksBytes = if ($storageSampleCount -gt 0) { $peakFrameJobBytes + $peakFrozenMediaBytes + $peakOutputStagingBytes } else { 'NOT_MEASURED' }
+        sampleCount = $storageSampleCount
+        pendingFrameQueuePeak = 'NOT_MEASURED'
+        phaseWallTimes = 'NOT_MEASURED'
+        taskReleaseAfterTerminalMilliseconds = 'NOT_MEASURED'
         note = 'Sampled directory byte totals are approximate; sub-500ms peaks can be missed. Frame file count is not the renderer pending-write queue. Independent category peaks may not have occurred simultaneously.'
       }
       receiptPath = if ($receipt) { $receipt.FullName } else { $null }
@@ -310,12 +359,15 @@ try {
     $runResults.Add($runResult)
     $manifest.measurements = @($runResults)
     Write-JsonFile -Path $manifestPath -Value $manifest
-    if ($process.ExitCode -ne 0 -or -not $receipt) {
+    if (($null -ne $processExitCode -and $processExitCode -ne 0) -or -not $receipt) {
       throw "DL-06 measurement run $($definition.id) failed; inspect its logs and retained evidence under $runRoot."
     }
   }
 }
 finally {
+  if ($null -ne $shell) {
+    [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)
+  }
   foreach ($name in $environmentNames) {
     [System.Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], 'Process')
   }
