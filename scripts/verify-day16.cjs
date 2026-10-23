@@ -186,10 +186,18 @@ async function verifyDay16() {
         return new Promise((resolve, reject) => {
           const deadline = Date.now() + 10000;
           const poll = () => {
-            const result = document.querySelector('.asset-import-result');
-            if (result) return resolve();
+            const feedback = document.querySelector(
+              '[data-testid="asset-import-feedback"]',
+            );
+            const summary = feedback?.querySelector(
+              '.asset-import-feedback-summary',
+            )?.textContent?.trim();
+            if (
+              feedback?.getAttribute('data-feedback-kind') === 'success' &&
+              summary?.includes('熊猫 图片.png')
+            ) return resolve();
             if (Date.now() >= deadline) {
-              return reject(new Error('Asset import result did not render.'));
+              return reject(new Error('Asset import success feedback did not render.'));
             }
             setTimeout(poll, 25);
           };
@@ -202,14 +210,23 @@ async function verifyDay16() {
         ?.textContent?.trim(),
       button: document.querySelector('[data-testid="resource-primary-action"]')
         ?.textContent?.trim(),
-      dropText: document.querySelector('.asset-import-drop')
+      headerNote: document.querySelector('.asset-import-header-note')
         ?.textContent?.trim(),
-      resultStatus: document.querySelector('.asset-import-result strong')
-        ?.textContent?.trim(),
-      resultMessage: document.querySelector('.asset-import-result span')
-        ?.textContent?.trim(),
-      status: document.querySelector('.asset-import-status')
-        ?.textContent?.trim(),
+      feedbackKind: document.querySelector(
+        '[data-testid="asset-import-feedback"]',
+      )?.getAttribute('data-feedback-kind') ?? null,
+      feedbackSummary: document.querySelector(
+        '[data-testid="asset-import-feedback"] .asset-import-feedback-summary',
+      )?.textContent?.trim() ?? null,
+      projectRevision: Number(document.querySelector(
+        '[data-testid="project-canvas-stage"]',
+      )?.getAttribute('data-project-revision') ?? -1),
+      assetIds: [...document.querySelectorAll(
+        '[data-testid="asset-library"] [data-asset-id]',
+      )].map((card) => card.getAttribute('data-asset-id')).filter(Boolean).sort(),
+      importedAssetVisible: Boolean(document.querySelector(
+        '[data-testid="asset-library"] [data-asset-id="16000000-0000-4000-8000-000000000099"]',
+      )),
       assetsApi: Object.keys(window.pandaStage.assets).sort(),
       rendererHasNodeRequire: typeof window.require !== 'undefined'
     }))()`);
@@ -230,9 +247,16 @@ async function verifyDay16() {
         return new Promise((resolve, reject) => {
           const deadline = Date.now() + 10000;
           const poll = () => {
-            const status = document.querySelector('.asset-import-status')
-              ?.textContent?.trim();
-            if (status?.includes('导入清理未完成')) return resolve();
+            const feedback = document.querySelector(
+              '[data-testid="asset-import-feedback"]',
+            );
+            const summary = feedback?.querySelector(
+              '.asset-import-feedback-summary',
+            )?.textContent?.trim();
+            if (
+              feedback?.getAttribute('data-feedback-kind') === 'error' &&
+              summary?.includes('导入清理未完成')
+            ) return resolve();
             if (Date.now() >= deadline) {
               return reject(new Error('Cleanup failure did not render.'));
             }
@@ -244,12 +268,23 @@ async function verifyDay16() {
     `);
     const cleanupUi = await window.webContents.executeJavaScript(
       `(() => ({
-        status: document.querySelector('.asset-import-status')
-          ?.textContent?.trim(),
-        resultStatus: document.querySelector('.asset-import-result strong')
-          ?.textContent?.trim()
+        feedbackKind: document.querySelector(
+          '[data-testid="asset-import-feedback"]',
+        )?.getAttribute('data-feedback-kind') ?? null,
+        feedbackSummary: document.querySelector(
+          '[data-testid="asset-import-feedback"] .asset-import-feedback-summary',
+        )?.textContent?.trim() ?? null,
+        projectRevision: Number(document.querySelector(
+          '[data-testid="project-canvas-stage"]',
+        )?.getAttribute('data-project-revision') ?? -1),
+        assetIds: [...document.querySelectorAll(
+          '[data-testid="asset-library"] [data-asset-id]',
+        )].map((card) => card.getAttribute('data-asset-id')).filter(Boolean).sort(),
       }))()`,
     );
+    const storeUnchangedByError =
+      cleanupUi.projectRevision === ui.projectRevision &&
+      JSON.stringify(cleanupUi.assetIds) === JSON.stringify(ui.assetIds);
     await window.webContents.executeJavaScript(`
       new Promise((resolve) =>
         requestAnimationFrame(() => requestAnimationFrame(resolve))
@@ -270,8 +305,7 @@ async function verifyDay16() {
       cleanupUi: {
         ...cleanupUi,
         residualPaths,
-        storeUnchangedByError:
-          cleanupUi.resultStatus === '已导入',
+        storeUnchangedByError,
       },
       chooseRequest,
       importedAsset,
@@ -325,22 +359,21 @@ async function verifyDay16() {
     if (
       ui.heading !== '导入项目素材' ||
       ui.button !== '导入素材' ||
-      !ui.dropText?.includes('拖入') ||
-      !ui.dropText?.includes('PNG') ||
-      !ui.dropText?.includes('JPG') ||
-      !ui.dropText?.includes('MP3') ||
-      !ui.dropText?.includes('WAV') ||
-      ui.resultStatus !== '已导入' ||
-      !ui.resultMessage?.includes('熊猫 图片.png') ||
-      ui.status !== '已导入：熊猫 图片.png' ||
+      !ui.headerNote?.includes('工作区顶部') ||
+      !ui.headerNote?.includes('导入素材') ||
+      ui.feedbackKind !== 'success' ||
+      !ui.feedbackSummary?.includes('熊猫 图片.png') ||
+      !ui.importedAssetVisible ||
       !ui.assetsApi.includes('choose') ||
       !ui.assetsApi.includes('importDropped') ||
       ui.rendererHasNodeRequire ||
-      !cleanupUi.status?.includes('导入清理未完成') ||
+      cleanupUi.feedbackKind !== 'error' ||
+      !cleanupUi.feedbackSummary?.includes('导入清理未完成') ||
       !residualPaths.every((filePath) =>
-        cleanupUi.status?.includes(filePath)
+        cleanupUi.feedbackSummary?.includes(filePath)
       ) ||
-      cleanupUi.status?.includes('复制失败') ||
+      cleanupUi.feedbackSummary?.includes('复制失败') ||
+      !storeUnchangedByError ||
       chooseRequest?.projectRoot !== projectRoot ||
       chooseRequest?.baseRevision !== 1
     ) {
