@@ -681,15 +681,16 @@ function clickNativeSaveDialog(action, screenshotPath, overwritePromptScreenshot
       '',
       overwritePromptScreenshotPath,
       selectedFileName,
+      String(process.pid),
     ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     child.stdout.setEncoding('utf8').on('data', (chunk) => { stdout += chunk; });
     child.stderr.setEncoding('utf8').on('data', (chunk) => { stderr += chunk; });
     child.once('error', reject);
-    child.once('exit', (code) => code === 0
+    child.once('close', (code) => code === 0
       ? resolve(stdout.trim())
-      : reject(new Error(`Native Save As ${action} failed (${code}): ${stderr.trim() || stdout.trim()}`)));
+      : reject(new Error(`Native Save As ${action} failed (${code}): stdout: ${stdout.trim() || '(empty)'}\nstderr: ${stderr.trim() || '(empty)'}`)));
   });
 }
 

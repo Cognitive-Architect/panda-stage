@@ -4,7 +4,8 @@ param(
   [string]$CreateTargetPath = '',
   [string]$CreateTargetContent = '',
   [string]$OverwritePromptScreenshotPath = '',
-  [string]$SelectedFileName = ''
+  [string]$SelectedFileName = '',
+  [int]$TargetProcessId = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,6 +21,8 @@ public static class Issue816NativeClick {
 '@
 
 $buttonId = if ($Action -eq 'cancel') { '2' } else { '1' }
+$script:MatchedOwnerProcessId = $null
+$script:MatchedDialogProcessId = $null
 
 function Find-NativeSaveDialog {
   $root = [System.Windows.Automation.AutomationElement]::RootElement
@@ -27,6 +30,7 @@ function Find-NativeSaveDialog {
   for ($windowIndex = 0; $windowIndex -lt $windows.Count; $windowIndex++) {
     $owner = $windows.Item($windowIndex)
     if ($owner.Current.ClassName -ne 'Chrome_WidgetWin_1' -or $owner.Current.IsEnabled) { continue }
+    if ($TargetProcessId -gt 0 -and $owner.Current.ProcessId -ne $TargetProcessId) { continue }
     $descendants = $owner.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
     for ($elementIndex = 0; $elementIndex -lt $descendants.Count; $elementIndex++) {
       $element = $descendants.Item($elementIndex)
@@ -40,7 +44,11 @@ function Find-NativeSaveDialog {
         if ($candidateButton.Current.AutomationId -eq '1') { $hasSaveButton = $true }
         if ($candidateButton.Current.AutomationId -eq '2') { $hasCancelButton = $true }
       }
-      if ($hasSaveButton -and $hasCancelButton) { return $element }
+      if ($hasSaveButton -and $hasCancelButton) {
+        $script:MatchedOwnerProcessId = [int]$owner.Current.ProcessId
+        $script:MatchedDialogProcessId = [int]$element.Current.ProcessId
+        return $element
+      }
     }
   }
   return $null
@@ -53,6 +61,7 @@ function Find-NativeOverwriteDialog {
   $topWindows = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
   for ($topIndex = 0; $topIndex -lt $topWindows.Count; $topIndex++) {
     $topWindow = $topWindows.Item($topIndex)
+    if ($TargetProcessId -gt 0 -and $topWindow.Current.ProcessId -ne $TargetProcessId) { continue }
     $candidates = New-Object System.Collections.ArrayList
     [void]$candidates.Add($topWindow)
     $descendants = $topWindow.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
@@ -102,6 +111,7 @@ function Find-NativeSystemOverwriteDialog {
   $topWindows = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
   for ($topIndex = 0; $topIndex -lt $topWindows.Count; $topIndex++) {
     $topWindow = $topWindows.Item($topIndex)
+    if ($TargetProcessId -gt 0 -and $topWindow.Current.ProcessId -ne $TargetProcessId) { continue }
     $candidates = New-Object System.Collections.ArrayList
     [void]$candidates.Add($topWindow)
     $descendants = $topWindow.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
@@ -133,6 +143,50 @@ function Find-NativeSystemOverwriteDialog {
     }
   }
   return $null
+}
+
+function Save-NativeDialogScreenshot {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)]$Dialog,
+    [Parameter(Mandatory = $true)]$Bounds,
+    [Parameter(Mandatory = $true)][string]$Context
+  )
+
+  $bitmap = $null
+  $graphics = $null
+  try {
+    $values = @([double]$Bounds.X, [double]$Bounds.Y, [double]$Bounds.Width, [double]$Bounds.Height)
+    foreach ($value in $values) {
+      if ([double]::IsNaN($value) -or [double]::IsInfinity($value)) {
+        throw 'The UI Automation bounding rectangle contains a non-finite coordinate.'
+      }
+    }
+
+    $x = [int][Math]::Floor($Bounds.X)
+    $y = [int][Math]::Floor($Bounds.Y)
+    $width = [int][Math]::Ceiling($Bounds.Width)
+    $height = [int][Math]::Ceiling($Bounds.Height)
+    if ($width -lt 1 -or $height -lt 1) {
+      throw "The UI Automation bounding rectangle has non-positive dimensions ($width x $height)."
+    }
+
+    $size = [System.Drawing.Size]::new($width, $height)
+    $source = [System.Drawing.Point]::new($x, $y)
+    $parentDirectory = Split-Path -Parent $Path
+    [void][System.IO.Directory]::CreateDirectory($parentDirectory)
+    $bitmap = [System.Drawing.Bitmap]::new($size.Width, $size.Height)
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    $graphics.CopyFromScreen($source, [System.Drawing.Point]::Empty, $size)
+    $bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+  }
+  catch {
+    throw "$Context screenshot capture failed; target PID=$TargetProcessId dialog PID=$($Dialog.Current.ProcessId) bounds=$Bounds path='$Path'; $($_.Exception.Message)"
+  }
+  finally {
+    if ($null -ne $graphics) { $graphics.Dispose() }
+    if ($null -ne $bitmap) { $bitmap.Dispose() }
+  }
 }
 
 function Get-NativeSaveDialogWindowSnapshot {
@@ -190,16 +244,7 @@ if ($Action -like 'overwrite-*') {
   $button = if ($Action -eq 'overwrite-confirm') { $confirmation.ConfirmButton } else { $confirmation.CancelButton }
   $dialogBounds = $dialog.Current.BoundingRectangle
   if ($ScreenshotPath) {
-    $parentDirectory = Split-Path -Parent $ScreenshotPath
-    [void][System.IO.Directory]::CreateDirectory($parentDirectory)
-    $size = New-Object System.Drawing.Size ([int]$dialogBounds.Width), ([int]$dialogBounds.Height)
-    $bitmap = New-Object System.Drawing.Bitmap $size.Width, $size.Height
-    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-    $source = New-Object System.Drawing.Point ([int]$dialogBounds.X), ([int]$dialogBounds.Y)
-    $graphics.CopyFromScreen($source, [System.Drawing.Point]::Empty, $size)
-    $bitmap.Save($ScreenshotPath, [System.Drawing.Imaging.ImageFormat]::Png)
-    $graphics.Dispose()
-    $bitmap.Dispose()
+    Save-NativeDialogScreenshot -Path $ScreenshotPath -Dialog $dialog -Bounds $dialogBounds -Context 'Native overwrite confirmation'
   }
 
   $bounds = $button.Current.BoundingRectangle
@@ -235,6 +280,7 @@ if ($null -eq $dialog) {
 }
 
 $descendants = $dialog.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+Write-Output "Matched native Save As owner PID=$script:MatchedOwnerProcessId dialog PID=$script:MatchedDialogProcessId target PID=$TargetProcessId bounds=$($dialog.Current.BoundingRectangle)"
 
 if ($Action -eq 'save' -and $SelectedFileName) {
   $nameField = $null
@@ -279,21 +325,17 @@ if ($Action -eq 'save' -and $CreateTargetPath) {
 
 $dialogBounds = $dialog.Current.BoundingRectangle
 if ($ScreenshotPath) {
-  $parentDirectory = Split-Path -Parent $ScreenshotPath
-  [void][System.IO.Directory]::CreateDirectory($parentDirectory)
-  $size = New-Object System.Drawing.Size ([int]$dialogBounds.Width), ([int]$dialogBounds.Height)
-  $bitmap = New-Object System.Drawing.Bitmap $size.Width, $size.Height
-  $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-  $source = New-Object System.Drawing.Point ([int]$dialogBounds.X), ([int]$dialogBounds.Y)
-  $graphics.CopyFromScreen($source, [System.Drawing.Point]::Empty, $size)
-  $bitmap.Save($ScreenshotPath, [System.Drawing.Imaging.ImageFormat]::Png)
-  $graphics.Dispose()
-  $bitmap.Dispose()
+  Save-NativeDialogScreenshot -Path $ScreenshotPath -Dialog $dialog -Bounds $dialogBounds -Context 'Native Save As dialog'
 }
 
 $bounds = $button.Current.BoundingRectangle
-$x = [int]($bounds.X + $bounds.Width / 2)
-$y = [int]($bounds.Y + $bounds.Height / 2)
+try {
+  $x = [int][Math]::Round($bounds.X + $bounds.Width / 2)
+  $y = [int][Math]::Round($bounds.Y + $bounds.Height / 2)
+}
+catch {
+  throw "Native Save As button coordinate conversion failed; target PID=$TargetProcessId owner PID=$script:MatchedOwnerProcessId dialog PID=$script:MatchedDialogProcessId button PID=$($button.Current.ProcessId) bounds=$bounds; $($_.Exception.Message)"
+}
 $clickMethod = 'coordinate-click'
 $invokeError = $null
 if ($Action -eq 'save') {
@@ -339,21 +381,17 @@ if ($Action -eq 'save') {
     $button = $systemOverwrite.ConfirmButton
     $dialogBounds = $dialog.Current.BoundingRectangle
     if ($OverwritePromptScreenshotPath) {
-      $parentDirectory = Split-Path -Parent $OverwritePromptScreenshotPath
-      [void][System.IO.Directory]::CreateDirectory($parentDirectory)
-      $size = New-Object System.Drawing.Size ([int]$dialogBounds.Width), ([int]$dialogBounds.Height)
-      $bitmap = New-Object System.Drawing.Bitmap $size.Width, $size.Height
-      $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-      $source = New-Object System.Drawing.Point ([int]$dialogBounds.X), ([int]$dialogBounds.Y)
-      $graphics.CopyFromScreen($source, [System.Drawing.Point]::Empty, $size)
-      $bitmap.Save($OverwritePromptScreenshotPath, [System.Drawing.Imaging.ImageFormat]::Png)
-      $graphics.Dispose()
-      $bitmap.Dispose()
+      Save-NativeDialogScreenshot -Path $OverwritePromptScreenshotPath -Dialog $dialog -Bounds $dialogBounds -Context 'Windows Save As overwrite prompt'
     }
 
     $bounds = $button.Current.BoundingRectangle
-    $x = [int]($bounds.X + $bounds.Width / 2)
-    $y = [int]($bounds.Y + $bounds.Height / 2)
+    try {
+      $x = [int][Math]::Round($bounds.X + $bounds.Width / 2)
+      $y = [int][Math]::Round($bounds.Y + $bounds.Height / 2)
+    }
+    catch {
+      throw "System overwrite button coordinate conversion failed; target PID=$TargetProcessId dialog PID=$($dialog.Current.ProcessId) button PID=$($button.Current.ProcessId) bounds=$bounds; $($_.Exception.Message)"
+    }
     if (-not [Issue816NativeClick]::SetCursorPos($x, $y)) { throw "Could not focus the native system overwrite confirmation at $x,$y." }
     Start-Sleep -Milliseconds 100
     [Issue816NativeClick]::mouse_event(0x0002, 0, 0, 0, [System.UIntPtr]::Zero)
