@@ -332,6 +332,18 @@
         "notes": "Issue #783 G009 before/after Windows Electron screenshots, bounded real-FLA layout receipts, and the combined G008 regression evidence only; Draft evidence changes use existing CI policy self-tests, production changes remain on their subsystem routes, and automation evidence is not owner human Gate C acceptance. Other unregistered evidence paths remain fail-closed."
       },
       {
+        "id": "issue835-day18-assets-evidence",
+        "sourcePatterns": ["docs/evidence/issue-835-day18/**"],
+        "testPatterns": [],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "draftPolicy": "ci-selftest",
+        "incrementalEligible": false,
+        "owner": "assets",
+        "notes": "Issue #835 Day18 asset-library acceptance evidence only. The exact issue directory is registered; other unregistered evidence paths remain fail-closed. When combined with the assets feature route on this Draft PR, CI selects focused policy and subsystem checks."
+      },
+      {
         "id": "cross-process-core",
         "sourcePatterns": [
           "src/main/**",
