@@ -190,7 +190,7 @@ describe('asset library components', () => {
     expect(markup).toContain('神女-cilisucai.com/神女-cilisucai.com809');
     expect(markup).toContain('<dd>1</dd>');
     const originDescriptionList = markup.match(
-      /<dl data-testid="asset-fla-snapshot-origin">([\s\S]*?)<\/dl>/u,
+      /<dl[^>]*data-testid="asset-fla-snapshot-origin"[^>]*>([\s\S]*?)<\/dl>/u,
     )?.[1];
     expect(originDescriptionList).toBeDefined();
     expect(originDescriptionList).toMatch(
@@ -203,7 +203,7 @@ describe('asset library components', () => {
     expect(originDescriptionList).not.toMatch(/<div(?:\s[^>]*)?>\s*<div/u);
   });
 
-  it('shows author-confirmed image usage and keywords in the existing details surface', () => {
+  it('opens images directly in the compact authoring form without duplicate read-only metadata', () => {
     const image = migrateProject(exampleProject).assets.find(
       (asset) => asset.kind === 'image',
     );
@@ -218,11 +218,53 @@ describe('asset library components', () => {
       }),
     );
 
+    expect(markup).toContain('data-testid="asset-author-metadata-form"');
+    expect(markup).toContain('data-testid="asset-author-name"');
     expect(markup).toContain('data-testid="asset-author-usage"');
-    expect(markup).toContain('<dd>道具</dd>');
+    expect(markup).toMatch(/<option value="prop" selected="">道具<\/option>/u);
     expect(markup).toContain('data-testid="asset-author-keywords"');
-    expect(markup).toContain('<dd>门 · 关闭</dd>');
-    expect(markup).toContain('编辑名称、用途和关键词');
+    expect(markup).toContain('value="门, 关闭"');
+    expect(markup).not.toContain('编辑名称、用途和关键词');
+    expect(markup).not.toContain('已选素材');
+    expect(markup).not.toContain('用逗号分隔，最多 8 个词');
+  });
+
+  it('keeps preview, references, technical details, and delete behind compact affordances', () => {
+    const image = migrateProject(exampleProject).assets.find(
+      (asset) => asset.kind === 'image',
+    );
+    if (!image || image.kind !== 'image') throw new Error('Expected an image fixture.');
+    const markup = renderToStaticMarkup(
+      createElement(AssetDetails, {
+        asset: {
+          ...image,
+          flaSnapshot: {
+            sourceBasename: 'doors.fla',
+            sourceSha256: 'a'.repeat(64),
+            targetName: 'DoorClosed',
+            sourceLibraryItemName: 'DoorClosed',
+            renderTargetId: 'target-door-closed',
+            selectedFrameIndex: 2,
+            previewSha256: 'b'.repeat(64),
+          },
+        },
+        busy: false,
+        onDelete: noop,
+        onSaveImageMetadata: noop,
+        references: [{ label: '镜头 1 · 图层 2', path: 'shots/shot-1/layer-2' }],
+        thumbnail: { status: 'ready', dataUrl: 'data:image/png;base64,AA==' },
+      }),
+    );
+
+    expect(markup).toContain('data-testid="asset-details-thumbnail"');
+    expect(markup).toContain('aria-haspopup="dialog"');
+    expect(markup).toContain('被 1 处使用');
+    expect(markup).toContain('shots/shot-1/layer-2');
+    expect(markup).toContain('详细信息');
+    expect(markup).toContain('doors.fla');
+    expect(markup).toContain('asset-details-delete-action');
+    expect(markup).not.toContain('asset-reference-warning');
+    expect(markup).not.toContain('asset-delete-button');
   });
 
   it('renders a clear empty state for a category with no assets', () => {

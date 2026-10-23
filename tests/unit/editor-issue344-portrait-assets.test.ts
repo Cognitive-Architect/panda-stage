@@ -22,7 +22,7 @@ describe('Issue #344 portrait Assets density and reachability', () => {
     expect(library).not.toContain('asset-selected-inspector');
     expect(library).not.toContain('asset-selected-summary');
     expect(library).toContain('data-testid="asset-details-overlay"');
-    expect(library).toContain('presentation="portrait"');
+    expect(library).toContain('presentation={resolvedPresentation}');
   });
 
   it('uses a denser two-column card treatment and an aligned action row', () => {
@@ -53,6 +53,7 @@ describe('Issue #344 portrait Assets density and reachability', () => {
     expect(markup).toContain('asset-details-portrait');
     expect(markup).toContain(asset.name);
     expect(markup).toContain(asset.relativePath);
-    expect(markup).toContain('asset-delete-button');
+    expect(markup).toContain('asset-details-delete-action');
+    expect(markup).toContain('详细信息');
   });
 });

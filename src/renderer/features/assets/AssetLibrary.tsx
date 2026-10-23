@@ -94,6 +94,7 @@ export function AssetLibrary({
   const [selectedAssetId, setSelectedAssetId] =
     useState<string | null>(null);
   const [selectedDetailsOpen, setSelectedDetailsOpen] = useState(false);
+  const [hasUnsavedMetadata, setHasUnsavedMetadata] = useState(false);
   const [draggingAssetId, setDraggingAssetId] =
     useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -114,7 +115,7 @@ export function AssetLibrary({
     useState<FlaInspectionOperation | null>(null);
   const flaInspectionLifecycle = useRef<FlaInspectionLifecycle | null>(null);
   const flaInspectionOperation = useRef<FlaInspectionOperation | null>(null);
-  const detailsCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const detailsDialogRef = useRef<HTMLDivElement | null>(null);
   const lastOpenedAssetId = useRef<string | null>(null);
   const pendingFocusReturnAssetId = useRef<string | null>(null);
   const lastCloseRequest = useRef(closeRequestToken ?? 0);
@@ -167,7 +168,10 @@ export function AssetLibrary({
     [entries, searchQuery, usageFilter],
   );
   const saveImageMetadata = useCallback(
-    (assetId: string, metadata: ImageAssetAuthorMetadata): void => {
+    (
+      assetId: string,
+      metadata: ImageAssetAuthorMetadata,
+    ): ImageAssetAuthorMetadata => {
       const current = editorProjectStore.getSnapshot();
       if (
         !snapshot ||
@@ -183,6 +187,18 @@ export function AssetLibrary({
         metadata,
       );
       editorProjectStore.updateProject(project, 'Edit image asset details');
+      const savedAsset = project.assets.find(
+        (candidate) => candidate.id === assetId,
+      );
+      if (!savedAsset || savedAsset.kind !== 'image') {
+        throw new Error('找不到已更新的图片素材。');
+      }
+      setHasUnsavedMetadata(false);
+      return {
+        name: savedAsset.name,
+        usage: savedAsset.usage,
+        keywords: savedAsset.keywords,
+      };
     },
     [snapshot],
   );
@@ -222,19 +238,39 @@ export function AssetLibrary({
       ? authoritativeReferences
       : localReferences;
 
-  const clearSelectedAsset = useCallback((): void => {
-    pendingFocusReturnAssetId.current = null;
-    setSelectedAssetId(null);
-    setSelectedDetailsOpen(false);
-    setAuthoritativeReferences([]);
-  }, []);
-
   const closeSelectedDetails = useCallback(
-    (returnFocus = true): void => {
+    (returnFocus = true, discardDraft = false): boolean => {
+      if (
+        hasUnsavedMetadata &&
+        !discardDraft &&
+        !window.confirm('放弃尚未保存的素材更改？')
+      ) {
+        return false;
+      }
+      setHasUnsavedMetadata(false);
       pendingFocusReturnAssetId.current = returnFocus
         ? lastOpenedAssetId.current ?? selectedAssetId
         : null;
       setSelectedDetailsOpen(false);
+      onViewChange('browser');
+      return true;
+    },
+    [hasUnsavedMetadata, onViewChange, selectedAssetId],
+  );
+
+  const clearSelectedAsset = useCallback((): boolean => {
+    if (selectedDetailsOpen && !closeSelectedDetails(false)) return false;
+    pendingFocusReturnAssetId.current = null;
+    setSelectedAssetId(null);
+    setSelectedDetailsOpen(false);
+    setHasUnsavedMetadata(false);
+    setAuthoritativeReferences([]);
+    return true;
+  }, [closeSelectedDetails, selectedDetailsOpen]);
+
+  const reportMetadataDraftChange = useCallback(
+    (assetId: string, dirty: boolean): void => {
+      if (assetId === selectedAssetId) setHasUnsavedMetadata(dirty);
     },
     [selectedAssetId],
   );
@@ -253,23 +289,23 @@ export function AssetLibrary({
   }, []);
 
   const selectCategory = (nextCategory: AssetLibraryFilter): void => {
+    if (!clearSelectedAsset()) return;
     setCategory(nextCategory);
     setPage(1);
-    clearSelectedAsset();
   };
 
   const updateSearchQuery = (nextQuery: string): void => {
+    if (!clearSelectedAsset()) return;
     setSearchQuery(nextQuery);
     setPage(1);
-    clearSelectedAsset();
   };
 
   const updateUsageFilter = (
     nextUsage: AssetLibraryUsageFilter,
   ): void => {
+    if (!clearSelectedAsset()) return;
     setUsageFilter(nextUsage);
     setPage(1);
-    clearSelectedAsset();
   };
 
   const goToPage = (requestedPage: number): void => {
@@ -280,13 +316,14 @@ export function AssetLibrary({
       visibleEntries,
       nextPage,
     );
+    if (selectedDetailsOpen && !closeSelectedDetails(false)) return;
     setPage(nextPage);
-    closeSelectedDetails(false);
     if (
       selectedAssetId &&
       !nextEntries.some((entry) => entry.asset.id === selectedAssetId)
     ) {
-      clearSelectedAsset();
+      setSelectedAssetId(null);
+      setAuthoritativeReferences([]);
     }
   };
 
@@ -295,11 +332,13 @@ export function AssetLibrary({
       selectedAssetId &&
       !pageEntries.some((entry) => entry.asset.id === selectedAssetId)
     ) {
+      if (!closeSelectedDetails(false)) return;
       setSelectedAssetId(null);
       setSelectedDetailsOpen(false);
+      setHasUnsavedMetadata(false);
       setAuthoritativeReferences([]);
     }
-  }, [pageEntries, selectedAssetId]);
+  }, [closeSelectedDetails, pageEntries, selectedAssetId]);
 
   useEffect(() => {
     if (page <= totalPages) return;
@@ -307,12 +346,18 @@ export function AssetLibrary({
   }, [page, totalPages]);
 
   useEffect(() => {
-    if (!selectedDetailsOpen || !isPortraitBrowser) return;
-    detailsCloseButtonRef.current?.focus();
-  }, [isPortraitBrowser, selectedDetailsOpen]);
+    if (!selectedDetailsOpen) return;
+    const firstInput = detailsDialogRef.current?.querySelector<HTMLElement>(
+      'input:not(:disabled), select:not(:disabled)',
+    );
+    const firstButton = detailsDialogRef.current?.querySelector<HTMLElement>(
+      'button:not(:disabled), summary',
+    );
+    (firstInput ?? firstButton ?? detailsDialogRef.current)?.focus();
+  }, [selectedAssetId, selectedDetailsOpen]);
 
   useEffect(() => {
-    if (!isPortraitBrowser || !selectedDetailsOpen) return;
+    if (!selectedDetailsOpen) return;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
@@ -321,7 +366,7 @@ export function AssetLibrary({
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [closeSelectedDetails, isPortraitBrowser, selectedDetailsOpen]);
+  }, [closeSelectedDetails, selectedDetailsOpen]);
 
   useEffect(() => {
     if (selectedDetailsOpen || !pendingFocusReturnAssetId.current) return;
@@ -377,14 +422,21 @@ export function AssetLibrary({
   }, [entries, snapshot]);
 
   const selectAsset = (assetId: string): void => {
-    setSelectedAssetId(assetId);
-    setSelectedDetailsOpen(hideHeading);
-    setAuthoritativeReferences([]);
-    if (hideHeading) {
-      lastOpenedAssetId.current = assetId;
-      pendingFocusReturnAssetId.current = null;
+    if (
+      selectedDetailsOpen &&
+      selectedAssetId !== assetId &&
+      !closeSelectedDetails(false)
+    ) {
+      return;
     }
+    setSelectedAssetId(assetId);
+    setSelectedDetailsOpen(true);
+    setHasUnsavedMetadata(false);
+    setAuthoritativeReferences([]);
+    lastOpenedAssetId.current = assetId;
+    pendingFocusReturnAssetId.current = null;
     if (!hideHeading) onViewChange('details');
+    else onViewChange('browser');
   };
 
   const refreshAssetMetadata = useCallback(async (
@@ -517,7 +569,7 @@ export function AssetLibrary({
     if (!current || !asset) return;
     if (
       !window.confirm(
-        `确认删除素材“${asset.name}”？Main Process 会再次检查全部项目引用。`,
+        `确认删除素材“${asset.name}”？${hasUnsavedMetadata ? '未保存的编辑也会丢弃。' : ''}Main Process 会再次检查全部项目引用。`,
       )
     ) {
       setStatus('已取消删除，项目没有发生变化。');
@@ -540,7 +592,7 @@ export function AssetLibrary({
       setStatus(outcome.status);
       if (outcome.applied) {
         setSelectedAssetId(null);
-        closeSelectedDetails(false);
+        closeSelectedDetails(false, true);
       }
     } catch (error) {
       setStatus(
@@ -821,68 +873,6 @@ export function AssetLibrary({
                 </button>
               ))}
             </nav>
-            {hideHeading && selectedAsset && selectedDetailsOpen ? (
-              <section
-                role="presentation"
-                className="asset-details-overlay"
-                data-selected-asset-id={selectedAsset.id}
-                data-testid="asset-details-overlay"
-                onClick={(event) => {
-                  if (event.target === event.currentTarget) {
-                    closeSelectedDetails();
-                  }
-                }}
-              >
-                <div
-                  aria-label="Asset details"
-                  aria-modal="true"
-                  className="asset-details-dialog"
-                  data-testid="asset-details-dialog"
-                  onClick={(event) => event.stopPropagation()}
-                  role="dialog"
-                >
-                  <button
-                    aria-label="关闭素材详情"
-                    aria-controls={`asset-details-dialog-body-${selectedAsset.id}`}
-                    data-testid="asset-details-close"
-                    onClick={() => closeSelectedDetails()}
-                    ref={detailsCloseButtonRef}
-                    type="button"
-                  >
-                    <span>当前选中</span>
-                    <span aria-hidden="true">·</span>
-                    <strong title={selectedAsset.name}>
-                      {selectedAsset.name}
-                    </strong>
-                    <DecorativeIcon
-                      className="asset-details-close-icon"
-                      icon={X}
-                      size={18}
-                    />
-                  </button>
-                {selectedDetailsOpen ? (
-                  <div
-                    className="asset-details-dialog-body"
-                    id={`asset-details-dialog-body-${selectedAsset.id}`}
-                  >
-                    <AssetDetails
-                      asset={selectedAsset}
-                      busy={busy}
-                      onDelete={() => void deleteSelected()}
-                      metadataError={metadataErrors[selectedAsset.id]}
-                      onSaveImageMetadata={saveImageMetadata}
-                      onRefreshMetadata={() =>
-                        void refreshAssetMetadata(selectedAsset.id)
-                      }
-                      presentation="portrait"
-                      references={references}
-                      thumbnail={thumbnails[selectedAsset.id]}
-                    />
-                  </div>
-                ) : null}
-                </div>
-              </section>
-            ) : null}
             <div className="asset-library-content">
               <AssetGrid
                 draggingAssetId={draggingAssetId}
@@ -993,24 +983,114 @@ export function AssetLibrary({
               返回素材库
             </button>
           </div>
-          <AssetDetails
-            asset={selectedAsset}
-            busy={busy}
-            onDelete={() => void deleteSelected()}
-            metadataError={
-              selectedAsset ? metadataErrors[selectedAsset.id] : undefined
-            }
-            onSaveImageMetadata={saveImageMetadata}
-            onRefreshMetadata={
-              selectedAsset
-                ? () => void refreshAssetMetadata(selectedAsset.id)
-                : undefined
-            }
-            references={references}
-            thumbnail={selectedAsset ? thumbnails[selectedAsset.id] : undefined}
-          />
+          {!selectedDetailsOpen ? (
+            <AssetDetails
+              key={selectedAsset?.id ?? 'empty'}
+              asset={selectedAsset}
+              busy={busy}
+              onCancelEdit={() => closeSelectedDetails(true, true)}
+              onDelete={() => void deleteSelected()}
+              metadataError={
+                selectedAsset ? metadataErrors[selectedAsset.id] : undefined
+              }
+              onDraftChange={reportMetadataDraftChange}
+              onRequestClose={() => closeSelectedDetails()}
+              onSaveImageMetadata={saveImageMetadata}
+              onRefreshMetadata={
+                selectedAsset
+                  ? () => void refreshAssetMetadata(selectedAsset.id)
+                  : undefined
+              }
+              references={references}
+              thumbnail={selectedAsset ? thumbnails[selectedAsset.id] : undefined}
+            />
+          ) : null}
         </section>
       )}
+      {selectedAsset && selectedDetailsOpen ? (
+        <section
+          role="presentation"
+          className="asset-details-overlay"
+          data-selected-asset-id={selectedAsset.id}
+          data-testid="asset-details-overlay"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              closeSelectedDetails();
+            }
+          }}
+        >
+          <div
+            aria-label="素材详情"
+            aria-modal="true"
+            aria-labelledby="asset-details-title"
+            className="asset-details-dialog"
+            data-testid="asset-details-dialog"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key !== 'Tab') return;
+              const dialog = detailsDialogRef.current;
+              if (!dialog) return;
+              const focusable = Array.from(
+                dialog.querySelectorAll<HTMLElement>(
+                  'button:not(:disabled), input:not(:disabled), select:not(:disabled), summary',
+                ),
+              ).filter(
+                (element) =>
+                  !element.closest('details:not([open])') ||
+                  element.matches('summary'),
+              );
+              if (focusable.length === 0) {
+                event.preventDefault();
+                dialog.focus();
+                return;
+              }
+              const first = focusable[0];
+              const last = focusable[focusable.length - 1];
+              if (
+                event.shiftKey &&
+                (document.activeElement === first ||
+                  !dialog.contains(document.activeElement))
+              ) {
+                event.preventDefault();
+                last?.focus();
+              } else if (
+                !event.shiftKey &&
+                (document.activeElement === last ||
+                  !dialog.contains(document.activeElement))
+              ) {
+                event.preventDefault();
+                first?.focus();
+              }
+            }}
+            ref={detailsDialogRef}
+            role="dialog"
+            tabIndex={-1}
+          >
+            <div
+              className="asset-details-dialog-body"
+              id={`asset-details-dialog-body-${selectedAsset.id}`}
+            >
+              <AssetDetails
+                key={selectedAsset.id}
+                asset={selectedAsset}
+                busy={busy}
+                onCancelEdit={() => closeSelectedDetails(true, true)}
+                onDelete={() => void deleteSelected()}
+                metadataError={metadataErrors[selectedAsset.id]}
+                onDraftChange={reportMetadataDraftChange}
+                onRequestClose={() => closeSelectedDetails()}
+                onSaveImageMetadata={saveImageMetadata}
+                onRefreshMetadata={() =>
+                  void refreshAssetMetadata(selectedAsset.id)
+                }
+                presentation={resolvedPresentation}
+                references={references}
+                thumbnail={thumbnails[selectedAsset.id]}
+              />
+            </div>
+          </div>
+        </section>
+      ) : null}
       <output className="asset-library-status">{status}</output>
     </section>
   );
