@@ -59,6 +59,23 @@ describe('export task state', () => {
     ).toBe(baseTask);
   });
 
+  it('ignores a late failure from the previous Job while a new Job is active', () => {
+    const newTask: ExportTaskState = {
+      ...baseTask,
+      attemptId: '10000000-0000-4000-8000-000000000002',
+      jobId: '20000000-0000-4000-8000-000000000002',
+      snapshotId: '30000000-0000-4000-8000-000000000002',
+    };
+    const lateFailure = update({
+      status: 'failed',
+      phase: 'finished',
+      error: 'Previous Job failed after the new Job started.',
+      originalError: 'Previous Job failed after the new Job started.',
+    });
+
+    expect(applyExportJobUpdate(newTask, lateFailure)).toBe(newTask);
+  });
+
   it.each(['completed', 'failed', 'cancelled'] as const)(
     'does not revive a %s task when a late progress event arrives',
     (status) => {
