@@ -20,6 +20,7 @@ const { UnsavedCloseGuard } = require('../dist-electron/main/windows/unsaved-clo
 const { confirmPendingExportWork } = require('../dist-electron/main/windows/export-close-confirmation.js');
 const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
 const { ProjectSchema } = require('../dist-electron/domain/models/project.js');
+const { collectExportPreparationMedia } = require('../dist-electron/domain/export-preparation.js');
 const { evaluateSpeakerFocusCamera, prepareSpeakerFocusCamera } = require('../dist-electron/domain/resolve-speaker-focus-camera.js');
 const { buildExportAudioMixPlan } = require('../dist-electron/domain/export-audio-mix-plan.js');
 const { iterateFormalProjectFrameSchedule } = require('../dist-electron/shared/export-types.js');
@@ -33,6 +34,7 @@ const dl06R0Mode = process.env.PANDA_STAGE_ISSUE836_DL06_R0 === '1';
 const issue836R2PathBoundaryMode = process.env.PANDA_STAGE_ISSUE836_R2_PATH_BOUNDARY === '1';
 const issue836R2PathSuccessMode = process.env.PANDA_STAGE_ISSUE836_R2_PATH_SUCCESS === '1';
 const issue836R2CommitRaceMode = process.env.PANDA_STAGE_ISSUE836_R2_COMMIT_RACE === '1';
+const issue836R2CopyFailureMode = process.env.PANDA_STAGE_ISSUE836_R2_COPY_FAILURE === '1';
 const dl05Mode = process.env.PANDA_STAGE_ISSUE832_DL05 === '1' || dl05FollowupMode;
 const dl04SampleId = Number(process.env.PANDA_STAGE_ISSUE827_SAMPLE ?? '1');
 const baseDirectory =
@@ -160,6 +162,7 @@ const formalCommitRecords = [];
 const revealedOutputs = [];
 const diskRecentProjectOpens = [];
 let conflictAtCommitPath = null;
+let failNextPreparationCopy = false;
 let failNextEncoderRun = false;
 let requireEncoderProcessError = false;
 let replaceDialogueSourceBeforeNextMix = false;
@@ -170,6 +173,8 @@ let pauseIssue834Commit = null;
 let issue834Stage = 'startup';
 const audioSourceReplacementEvidence = [];
 const audioMixProcessFailures = [];
+const preparationCopyFailures = [];
+let exportPreparationFileStore = null;
 
 function defaultExportFileName(projectName) {
   let baseName = Array.from(projectName.trim(), (character) =>
@@ -353,6 +358,21 @@ function createRendererService() {
     getByteLength: (...args) => verifiedReader.getByteLength(...args),
     read: (...args) => verifiedReader.read(...args),
   };
+  const fileStore = new NodeExportPreparationFileStore(path.join(fixture.root, 'frozen-media'));
+  const writeAsset = fileStore.writeAsset.bind(fileStore);
+  fileStore.writeAsset = async (...args) => {
+    if (failNextPreparationCopy) {
+      failNextPreparationCopy = false;
+      preparationCopyFailures.push({
+        snapshotId: args[0],
+        mimeType: args[2],
+        byteLength: args[3]?.byteLength ?? null,
+      });
+      throw new Error('controlled disk full');
+    }
+    return writeAsset(...args);
+  };
+  exportPreparationFileStore = fileStore;
   exportPreparationService = new ExportPreparationService({
     getCurrentProjectSnapshot: (projectRoot) => {
       if (!trackedSnapshot || path.resolve(projectRoot) !== path.resolve(fixture.projectRoot)) return null;
@@ -367,7 +387,7 @@ function createRendererService() {
       if (!exportFileSystem) throw new Error('Verifier formal filesystem is unavailable.');
       return exportFileSystem.assertFormalOutputLocation(outputPath);
     },
-    fileStore: new NodeExportPreparationFileStore(path.join(fixture.root, 'frozen-media')),
+    fileStore,
     mediaReader,
   });
   removeExportPreparationHandlers = registerExportPreparationIpcHandlers({
@@ -3567,9 +3587,18 @@ async function run() {
   assert(
     !issue836R2CommitRaceMode || !(
       dl03Mode || dl04Mode || dl05Mode || dl06R0Mode ||
-      issue836R2PathBoundaryMode || issue836R2PathSuccessMode
+      issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
+      issue836R2CopyFailureMode
     ),
     'Issue #836 R2 commit-race mode cannot be combined with another acceptance mode.',
+  );
+  assert(
+    !issue836R2CopyFailureMode || !(
+      dl03Mode || dl04Mode || dl05Mode || dl06R0Mode ||
+      issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
+      issue836R2CommitRaceMode
+    ),
+    'Issue #836 R2 copy-failure mode cannot be combined with another acceptance mode.',
   );
   assert(!(issue836R2PathBoundaryMode && issue836R2PathSuccessMode), 'Issue #836 R2 path modes are mutually exclusive.');
   assert(!(issue836R2PathBoundaryMode || issue836R2PathSuccessMode) || (dl04Mode && dl04SampleId === 1), 'Issue #836 R2 path mode requires the single Issue #827 sample 1 Creator UI fixture.');
@@ -3610,11 +3639,13 @@ async function run() {
   mainWindow.webContents.focus();
 
   const result = {
-    issue: issue836R2CommitRaceMode || dl06R0Mode ? 836 : dl05FollowupMode ? 834 : dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
+    issue: issue836R2CommitRaceMode || issue836R2CopyFailureMode || dl06R0Mode ? 836 : dl05FollowupMode ? 834 : dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
     wrapperRunId: process.env.PANDA_STAGE_ISSUE836_RUN_ID ?? process.env.PANDA_STAGE_ISSUE834_RUN_ID ?? process.env.PANDA_STAGE_ISSUE832_RUN_ID ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID ?? null,
     sourceCommitSha: process.env.PANDA_STAGE_ISSUE836_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE834_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE832_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA ?? null,
     sampleId: dl04Mode || dl05Mode ? dl04SampleId : null,
-    workOrder: issue836R2CommitRaceMode
+    workOrder: issue836R2CopyFailureMode
+      ? 'Issue #836 R2: Creator preparation-copy failure with Project and output preservation'
+      : issue836R2CommitRaceMode
       ? 'Issue #836 R2: Creator export with a target created after preflight at the atomic-commit boundary'
       : dl06R0Mode
       ? 'Issue #836 DL-06 R0: same-session recovery after two bounded snapshot cleanup failures'
@@ -3688,6 +3719,122 @@ async function run() {
     const editorSnapshotBytes = Buffer.from(JSON.stringify(edited.project, null, 2), 'utf8');
     await fsp.writeFile(editorSnapshotPath, editorSnapshotBytes);
     await clickSelector('[data-testid="quick-action-drawer-handle"]');
+    if (issue836R2CopyFailureMode) {
+      const targetPath = path.join(fixture.projectRoot, 'issue836-r2-copy-failure.mp4');
+      const previousOutputPath = path.join(fixture.projectRoot, 'issue836-r2-previous-output-sentinel.mp4');
+      const previousOutputBytes = Buffer.from('pre-existing output sentinel; not a media file');
+      assert(!existsSync(targetPath), 'Issue #836 copy-failure target must start absent.');
+      assert(!existsSync(previousOutputPath), 'Issue #836 prior-output sentinel must start absent.');
+      await fsp.writeFile(previousOutputPath, previousOutputBytes, { flag: 'wx' });
+      const projectBytesBefore = await fsp.readFile(projectFilePath);
+      const sourceHashesBefore = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+        assetId: asset.id,
+        sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+      })));
+      const editorBefore = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+      const priorStartCount = formalStarts.length;
+      const priorCommitCount = formalCommitRecords.length;
+      preparationCopyFailures.length = 0;
+      failNextPreparationCopy = true;
+      const failureRun = await startFromCreatorUi(evidenceRoot, 'issue836-preparation-copy-failure', {
+        selectedFileName: path.basename(targetPath),
+        expectedFailureText: '检查可用磁盘空间后重新检查',
+        abortIfUnexpectedStart: true,
+      });
+      assert(!failNextPreparationCopy, 'The controlled media-copy failure was not injected.');
+      assert(preparationCopyFailures.length === 1, 'Expected exactly one injected media-copy write failure.');
+      assert(failureRun.status === 'failed' && failureRun.observedTaskStatus === 'failed', 'Creator did not report the preparation-copy failure.');
+      assert(formalStarts.length === priorStartCount, 'A formal Export Job started after preparation failed.');
+      assert(formalCommitRecords.length === priorCommitCount, 'A failed preparation recorded a formal output commit.');
+      assert(failureRun.taskText.includes('检查可用磁盘空间后重新检查'), 'Creator did not show the disk-space next step.');
+      assert(!failureRun.taskText.includes('controlled disk full'), 'Creator exposed the internal injected write error.');
+      const taskSnapshot = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
+      const task = taskSnapshot?.task;
+      assert(task?.status === 'failed', 'The Creator task surface did not retain its failed terminal state.');
+      const media = collectExportPreparationMedia(fixtureProject);
+      const failedMedia = media[0];
+      const expectedLocation = failedMedia?.usages[0] ?? '工程素材';
+      assert(failedMedia && expectedLocation !== '工程素材', 'The generated fixture did not yield a concrete consumed-media location.');
+      const copyIssues = (task.issues ?? []).filter((issue) => issue.code === 'PREPARATION_FAILED');
+      assert(copyIssues.length === 1, 'The task surface did not contain exactly one preparation-copy issue.');
+      assert(
+        copyIssues[0].location === expectedLocation &&
+        copyIssues[0].problem === '素材副本无法安全写入临时准备目录。' &&
+        copyIssues[0].nextStep === '检查可用磁盘空间后重新检查；工程和已有输出未被修改。',
+        'Creator did not preserve the concrete preparation-copy issue details.',
+      );
+      assert(!(task.issues ?? []).some((issue) => issue.code === 'REQUIRED_MEDIA_UNAVAILABLE'), 'The write failure was misclassified as missing source media.');
+      assert(!(task.issues ?? []).some((issue) => JSON.stringify(issue).includes('controlled disk full')), 'The raw injected error leaked into Creator task issues.');
+      const cleanup = await assertNoExportTemporaries('Issue #836 Creator preparation-copy failure');
+      const editorAfter = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+      const editorBeforeFingerprint = acceptanceSessionFingerprint(editorBefore);
+      const editorAfterFingerprint = acceptanceSessionFingerprint(editorAfter);
+      const editorStatePreserved = JSON.stringify(editorBeforeFingerprint) === JSON.stringify(editorAfterFingerprint);
+      assert(editorStatePreserved, 'The failed preparation changed editor Project/session state.');
+      const projectBytesAfter = await fsp.readFile(projectFilePath);
+      const projectFileUnchanged = projectBytesAfter.equals(projectBytesBefore);
+      assert(projectFileUnchanged, 'The failed preparation changed project.json.');
+      const previousOutputAfter = await fsp.readFile(previousOutputPath);
+      const previousOutputUnchanged = previousOutputAfter.equals(previousOutputBytes);
+      assert(previousOutputUnchanged, 'The failed preparation changed the existing output sentinel.');
+      assert(!existsSync(targetPath), 'The failed preparation created its selected MP4 target.');
+      const sourceHashesAfter = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+        assetId: asset.id,
+        sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+      })));
+      const sourceAssetsUnchanged = JSON.stringify(sourceHashesBefore) === JSON.stringify(sourceHashesAfter);
+      assert(sourceAssetsUnchanged, 'The failed preparation changed source media.');
+      assert(
+        exportPreparationFileStore?.getOwnedPath &&
+        exportPreparationFileStore.getOwnedPath(preparationCopyFailures[0].snapshotId) === null,
+        'An owned preparation snapshot remained registered after cleanup.',
+      );
+      result.r2PreparationCopyFailure = {
+        status: 'PASS',
+        targetPath,
+        targetAbsent: true,
+        failureInjection: preparationCopyFailures.map((entry) => ({
+          mimeType: entry.mimeType,
+          byteLength: entry.byteLength,
+        })),
+        creatorTask: {
+          status: task.status,
+          taskText: failureRun.taskText,
+          issues: task.issues,
+          formalJobCount: formalStarts.length - priorStartCount,
+          successfulCommitCount: formalCommitRecords.length - priorCommitCount,
+          screenshots: {
+            saveAs: failureRun.nativeSaveAsScreenshotPath,
+            blocked: failureRun.failureScreenshotPath,
+          },
+        },
+        expectedMediaLocation: expectedLocation,
+        temporaryCleanup: cleanup,
+        editorBefore: editorBeforeFingerprint,
+        editorAfter: editorAfterFingerprint,
+        editorStatePreserved,
+        projectFileUnchanged,
+        projectSha256Before: hash(projectBytesBefore),
+        projectSha256After: hash(projectBytesAfter),
+        previousOutputPath,
+        previousOutputByteLength: previousOutputAfter.length,
+        previousOutputSha256Before: hash(previousOutputBytes),
+        previousOutputSha256After: hash(previousOutputAfter),
+        previousOutputUnchanged,
+        sourceHashesBefore,
+        sourceHashesAfter,
+        sourceAssetsUnchanged,
+      };
+      result.auto = 'PASS';
+      result.completedAt = new Date().toISOString();
+      await fsp.writeFile(path.join(evidenceRoot, 'issue836-r2-preparation-copy-failure-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
+      await fsp.writeFile(path.join(fixture.root, 'issue836-r2-preparation-copy-failure-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
+      console.log(`PASS Issue #836 R2 Creator preparation-copy failure: ${fixture.root}`);
+      mainWindow.destroy();
+      hiddenWindowManager.close();
+      app.exit(0);
+      return;
+    }
     if (issue836R2CommitRaceMode) {
       const targetPath = path.join(fixture.projectRoot, 'issue836-r2-commit-race.mp4');
       assert(!existsSync(targetPath), 'Issue #836 commit-race target must start absent.');
