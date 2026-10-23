@@ -595,3 +595,13 @@ exit $LASTEXITCODE
 ```
 
 Stop at the first failure, preserve the acceptance root, and do not retry or run another verifier. A pass is limited to these two generated-fixture UI paths; it does not complete the missing permission, target, and other AC03 cases, establish R3 measurements, or provide author-Project, packaged-install, or human Gate B acceptance. AC03 and R2 remain **PARTIAL** pending broader required evidence.
+
+## AC03 R2 Creator media-preflight result - v1.0.0 (2026-10-24)
+
+Frozen source: `347c4aabf5731a0cbbfa4b69b1e363154751b398`. The single `pnpm exec electron scripts/verify-issue819-dl02.cjs` invocation exited 1 at the first case; no retry or additional verifier was run. Windows Electron 43.1.1 started at `2026-10-23T23:39:41.675Z` and completed at `2026-10-23T23:39:46.148Z`. Acceptance root: `D:\PandaStage-Acceptance\i836r2pf1\run-2026-10-23T23-39-41-059Z-11056`.
+
+The Creator Save As dialog selected `issue836-r2-missing-background.mp4`. The task then entered `preparing`; `startFromCreatorUi` treated that intermediate state as an unexpected start and clicked Cancel before the async preflight could reach its expected terminal failure. The final task was `cancelled` with “export preparation cancelled,” with zero formal Main starts and no Main updates. Therefore this run did **not** establish missing-media preflight behavior, and the corrupt-audio case was not reached. This is a harness sequencing failure, not evidence of a product defect or of passing product behavior.
+
+Failure receipt: `evidence\electron-failure.json`, SHA-256 `76df775c3301aedf5a325472a17369a8754a38fc7e39d629f49ccac6bef0df6e`. Screenshot: `evidence\issue836-r2-missing-background-blocked.png`, SHA-256 `ca1dbf653c1163dd574a8b1f99765bf3ed150ecf0ba085691a4c1dd53186ee74` (the same capture is also `electron-failure.png`). The persisted Project SHA-256 still matches its initial value `5915cdd6f89959f4496215d5708478e74d2eef0f9fcb8aa9a860f557ffbf1e99`; all ten source-media files were restored to the recorded hashes; the selected MP4 target is absent; and the isolated frame-job root was not created. The generated prior-output sentinel remains in the preserved project root, but this early assertion failure occurred before its post-case hash assertion, so this receipt does not establish that it remained unchanged.
+
+The frozen plan's stop condition was honored. The acceptance root remains intact. AC03 and R2 remain **PARTIAL**; the full missing/corrupt/permission/target Creator matrix remains outstanding.
