@@ -16,6 +16,9 @@ Add-Type @'
 using System.Runtime.InteropServices;
 public static class Issue816NativeClick {
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, System.UIntPtr extraInfo);
 }
 '@
@@ -143,6 +146,41 @@ function Find-NativeSystemOverwriteDialog {
     }
   }
   return $null
+}
+
+function Get-NativeForegroundWindow {
+  $handle = [Issue816NativeClick]::GetForegroundWindow()
+  $processId = [uint32]0
+  if ($handle -ne [IntPtr]::Zero) {
+    [void][Issue816NativeClick]::GetWindowThreadProcessId($handle, [ref]$processId)
+  }
+  return [pscustomobject]@{ Handle = $handle; ProcessId = [int]$processId }
+}
+
+function Ensure-NativeDialogForeground {
+  param(
+    [Parameter(Mandatory = $true)]$Dialog,
+    [Parameter(Mandatory = $true)][string]$Context
+  )
+
+  $dialogInfo = $Dialog.Current
+  $dialogHandle = [IntPtr]$dialogInfo.NativeWindowHandle
+  $dialogProcessId = [int]$dialogInfo.ProcessId
+  if ($dialogHandle -eq [IntPtr]::Zero) {
+    throw "$Context has no native window handle; target PID=$TargetProcessId dialog PID=$dialogProcessId."
+  }
+
+  $activationRequested = [Issue816NativeClick]::SetForegroundWindow($dialogHandle)
+  $deadline = [DateTime]::UtcNow.AddSeconds(2)
+  $foreground = Get-NativeForegroundWindow
+  while ($foreground.ProcessId -ne $dialogProcessId -and [DateTime]::UtcNow -lt $deadline) {
+    Start-Sleep -Milliseconds 50
+    $foreground = Get-NativeForegroundWindow
+  }
+  if ($foreground.ProcessId -ne $dialogProcessId) {
+    throw "$Context did not become the foreground window; target PID=$TargetProcessId dialog PID=$dialogProcessId dialog HWND=$dialogHandle activationRequested=$activationRequested foreground PID=$($foreground.ProcessId) HWND=$($foreground.Handle)."
+  }
+  return $foreground
 }
 
 function Test-NativeDialogScreenshotBounds {
@@ -440,6 +478,8 @@ if ($Action -eq 'save') {
   if ($null -ne $systemOverwrite) {
     $dialog = $systemOverwrite.Window
     $button = $systemOverwrite.ConfirmButton
+    $foreground = Ensure-NativeDialogForeground -Dialog $dialog -Context 'Windows Save As overwrite prompt'
+    Write-Output "Foreground verified for Windows Save As overwrite prompt; target PID=$TargetProcessId dialog PID=$($dialog.Current.ProcessId) foreground PID=$($foreground.ProcessId) HWND=$($foreground.Handle)"
     if ($OverwritePromptScreenshotPath) {
       $promptProcessId = 'unknown'
       try { $promptProcessId = [int]$dialog.Current.ProcessId } catch { }
@@ -460,20 +500,31 @@ if ($Action -eq 'save') {
       }
     }
 
-    $bounds = $button.Current.BoundingRectangle
+    $clickMethod = 'UI Automation InvokePattern'
+    $invokeError = $null
     try {
-      $x = [int][Math]::Round($bounds.X + $bounds.Width / 2)
-      $y = [int][Math]::Round($bounds.Y + $bounds.Height / 2)
+      $invokePattern = $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+      $invokePattern.Invoke()
     }
     catch {
-      throw "System overwrite button coordinate conversion failed; target PID=$TargetProcessId dialog PID=$($dialog.Current.ProcessId) button PID=$($button.Current.ProcessId) bounds=$bounds; $($_.Exception.Message)"
+      $invokeError = $_.Exception.Message
+      $foreground = Ensure-NativeDialogForeground -Dialog $dialog -Context 'Windows Save As overwrite prompt coordinate fallback'
+      $bounds = $button.Current.BoundingRectangle
+      try {
+        $x = [int][Math]::Round($bounds.X + $bounds.Width / 2)
+        $y = [int][Math]::Round($bounds.Y + $bounds.Height / 2)
+      }
+      catch {
+        throw "System overwrite button coordinate conversion failed; target PID=$TargetProcessId dialog PID=$($dialog.Current.ProcessId) button PID=$($button.Current.ProcessId) bounds=$bounds; $($_.Exception.Message)"
+      }
+      if (-not [Issue816NativeClick]::SetCursorPos($x, $y)) { throw "Could not focus the native system overwrite confirmation at $x,$y." }
+      Start-Sleep -Milliseconds 100
+      [Issue816NativeClick]::mouse_event(0x0002, 0, 0, 0, [System.UIntPtr]::Zero)
+      Start-Sleep -Milliseconds 50
+      [Issue816NativeClick]::mouse_event(0x0004, 0, 0, 0, [System.UIntPtr]::Zero)
+      $clickMethod = 'foreground-verified coordinate click'
     }
-    if (-not [Issue816NativeClick]::SetCursorPos($x, $y)) { throw "Could not focus the native system overwrite confirmation at $x,$y." }
-    Start-Sleep -Milliseconds 100
-    [Issue816NativeClick]::mouse_event(0x0002, 0, 0, 0, [System.UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 50
-    [Issue816NativeClick]::mouse_event(0x0004, 0, 0, 0, [System.UIntPtr]::Zero)
-    Write-Output "Accepted the Windows Save As overwrite prompt; screenshot=$OverwritePromptScreenshotPath"
+    Write-Output "Accepted the Windows Save As overwrite prompt via $clickMethod; invokeError='$invokeError'; screenshot=$OverwritePromptScreenshotPath"
   }
 }
 

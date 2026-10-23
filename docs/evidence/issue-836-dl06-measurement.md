@@ -1,9 +1,9 @@
 # Issue #836 DL-06 measurement plan and result
 
-Report version: **1.11.0**
-Frozen plan revision: **1.2.0**, committed before the next bounded R3 continuation
+Report version: **1.12.0**
+Frozen plan revision: **1.3.0**, committed before the next bounded R3 continuation
 Plan date: **2026-10-23**
-R3 status: **PARTIAL / NOT_ATTESTED**; v1.1.0 stopped on sample 1 cold-process with its primary Job still rendering at 459/720 frames after a 5,832,594 ms sampling gap. It produced no output or acceptance receipt and did not reach the existing-target overwrite prompt. No invocation produced a complete qualifying R3 receipt. Two earlier #827 generated-probe outputs remain supplemental evidence, not counted toward the frozen DL-06 run plan.
+R3 status: **PARTIAL / NOT_ATTESTED**; v1.2.0 produced a qualifying AUTO receipt for sample 1 cold-process. Sample 1 warm-followup completed its primary 720-frame export but stopped in the native Save As helper before the no-clobber assertions. Sample 2 was not started. The four-run R3 set remains incomplete; author-authorized real Projects, installer acceptance, and human Gate B review remain unavailable.
 
 ## Evidence availability
 
@@ -199,3 +199,35 @@ After the run, read-only power-policy inspection reported the High Performance p
 The v1.1.0 evidence is a failed, incomplete sample and does not qualify as an R3 run. The 500 ms target interval was missed by a maximum gap of 5,832,594 ms. This revision makes the data-quality limit explicit: the maximum accepted sample gap is ten times the target interval (5,000 ms for this run). The measurement runner now records that limit in its manifest and, after preserving the run record, stops the bounded set if any sample exceeds it. This limit applies only to the validity of process/storage sampling; it is not an export performance threshold. No production code, fixture definition, or sample order changes. The existing-target screenshot fallback remains untested because v1.1.0 did not finish the primary export.
 
 v1.2.0 supersedes v1.1.0 because its retained evidence shows a 97-minute sampling gap and an incomplete primary render. Freeze the exact source commit in the run manifest and Issue body before running. Execute exactly one bounded set using `powershell -NoProfile -File scripts/measure-issue836-dl06-r3.ps1 -AcceptanceRoot D:\PandaStage-Acceptance\i836r3`, in the existing order sample 1 cold-process, sample 1 warm-followup, sample 2 cold-process, sample 2 warm-followup. Stop on the first verifier failure or measurement-invalid sample; do not retry any failed sample. Preserve all manifests, receipts, failure JSON, screenshots, and logs. Even if generated probes pass, R3 remains **PARTIAL / NOT_ATTESTED** because these are not author-authorized real Projects; packaged-install and human Gate B acceptance remain outside this measurement.
+
+
+## R3 bounded continuation result - frozen plan v1.2.0
+
+Source commit: `a56cd443434af45148e8d099cc32207a884aed0c`. Invocation: `20261023T091036Z-15968aa8-d164-4632-9c5b-ef244bbfda3f`. Measurement root: `D:\PandaStage-Acceptance\i836r3\m-f35a1a3fe3d24a8b`.
+
+| Run | runId | Wall time | Process samples | Peak process count | Maximum sample gap | Peak transient storage |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Sample 1 cold-process | `0de07967-ac55-43fb-a4d0-f9ceea53c0ca` | 1,043,532 ms (17m 23.5s) | 1,762 | 8 | 797.1 ms | 50,600,151 bytes |
+| Sample 1 warm-followup | `f35c972e-7fe7-4bf9-84db-ea324b57d1aa` | 802,810 ms (13m 22.8s) | 1,355 | 8 | 847.9 ms | 50,600,151 bytes |
+
+Both observed sampling gaps are below the frozen 5,000 ms validity limit. Each run sampled a peak of 724 frame files / 48,817,478 bytes, frozen media of 1,593,567 bytes, and output staging of 189,106 bytes. The sampled category peaks sum to 50,600,151 bytes; they may not have occurred simultaneously. The Renderer pending-write queue, phase wall times, and post-terminal release time remain `NOT_MEASURED`.
+
+Environment: Alibaba Cloud ECS with an Intel Xeon Platinum CPU string, 16,624,439,296 bytes physical RAM, Windows Server 2022 Datacenter build 20348 x64, 96 DPI / 100% system scale, and Electron 43.1.1 running as a built unpackaged app. The locked FFmpeg was `N-92722-gf22fcd4483`; FFprobe was `2023-02-13-git-2296078397-essentials_build-www.gyan.dev`. This is a cloud Windows Server VM, not an installer or ordinary desktop acceptance environment. AppActivate succeeded for the run Electron roots (cold PID 9088; warm PID 4004).
+
+Cold-process completed with `auto=PASS`; receipt: `D:\PandaStage-Acceptance\i836r3\m-f35a1a3fe3d24a8b\sample-1-cold-process\run-2026-10-23T09-10-40-325Z-9088\acceptance-receipt.json`. The receipt records Creator Save/Close/Recent Projects Open, cancellation with no published target and empty temporary directories, a no-clobber check with zero formal Jobs and identical before/after output hashes, and a controlled second-Shot frame-map failure at 241/720 with no failed MP4, empty cleanup directories, unchanged editor state, unchanged `project.json`, unchanged media, and an unchanged prior MP4. The saved/reopened `project.json` hash was `211859702eff20563ac7b81f8b812afb9effac6f869c9668b9dab5a594d7438b`; the receipt's initial source project hash was `c62d97ddec6318ec167f8f120e88efa01b1025def0f7578a6e70cc4fa2ad13d8`.
+
+The cold output is 189,106 bytes, SHA-256 `8c307cb4ff37b8bd75018ca2bd43b41d29c761d02d812fae956ba18d4b8da13f`. Read-only FFprobe reported H.264 1920x1080, yuv420p, 24 fps, 720 frames, 30.000 seconds, plus AAC mono 48 kHz. This remains generated-probe evidence; `owner=NOT_ATTESTED`.
+
+Warm-followup's primary Job `4cc8b524-4d88-4472-b5f9-94a3fe5b0bb2` completed 720/720 with no Job, original, or cleanup error. Its 189,106-byte MP4 hashes to the same `8c307cb4ff37b8bd75018ca2bd43b41d29c761d02d812fae956ba18d4b8da13f`; the verifier captured FFprobe JSON, and a read-only FFprobe run after failure confirmed H.264 1920x1080 yuv420p at 24 fps, 720 frames, 30.000 seconds, plus AAC mono 48 kHz.
+
+The warm run failed at the existing-target/no-clobber follow-up before its assertion or acceptance receipt. The third Save As request was recorded at `2026-10-23T09:41:01.520Z` with no selected path. The helper matched Electron PID `4004`, reported a Windows overwrite prompt, then used a coordinate click to accept it without confirming foreground ownership; it subsequently reported that the native `Export MP4` dialog remained open. Both retained helper screenshots show the unrelated VLC window instead of the prompt or Save As dialog. A read-only foreground probe after the run observed VLC PID `12036`; this supports, but does not prove, a foreground/focus mismatch at the click time. The warm fixture's on-disk `project.json` SHA-256 after the run was `e3fa1ff0cd11c49683849564ea79c876fa7cdd6dc9c12cacefd97c779b707e40`; the failure JSON's initial source project hash was `76760d370eba19fea53f807c36c919eeb30cd9919dc933a18b56b4167c599626`. The MP4's post-failure hash still matched the primary export, but the missing before/after assertion means this is not a no-clobber pass. Failure evidence is under `D:\PandaStage-Acceptance\i836r3\m-f35a1a3fe3d24a8b\sample-1-warm-followup\run-2026-10-23T09-28-03-957Z-4004\evidence\electron-failure.json`.
+
+Sample 1 warm did not produce an acceptance receipt; the bounded runner exited 1 and stopped as frozen. Sample 2 cold and warm were not started. The measured per-PID peaks were: cold FFmpeg PID 6612, 676,839,424 working-set / 814,317,568 private bytes, and Electron PID 10588, 478,334,976 / 198,299,648 bytes; warm FFmpeg PID 11884, 676,896,768 / 814,985,216 bytes, and Electron PID 15132, 480,636,928 / 200,560,640 bytes. These are sampled process values, not a machine-wide physical-memory total. The full manifest and retained evidence are under the measurement root above. GitHub status for source SHA `a56cd443434af45148e8d099cc32207a884aed0c` was `CI_NOT_REPORTED`.
+
+R3 remains **PARTIAL / NOT_ATTESTED** and DL-06 remains **NO GO**. The warm primary export is supplemental output evidence, not a successful warm acceptance attempt. The 4-run generated-probe set is incomplete, and it cannot establish author-project provenance, packaged-install acceptance, or human Gate B acceptance.
+
+### Next bounded R3 continuation plan - v1.3.0 (frozen before run)
+
+v1.2.0 confirmed that sample 1 cold-process and the warm primary export completed, but the warm no-clobber helper captured VLC instead of its matched native dialogs and failed before the assertion. This revision changes only `scripts/issue816-native-dialog.ps1`: activate and verify the matched Windows overwrite dialog is foreground before screen capture or any coordinate fallback, use the button's UI Automation `InvokePattern` first, and permit coordinate fallback only after foreground-process verification. This is a harness safety and evidence correction; no product code, fixture definitions, sample order, measurement interval, or 5,000 ms sampling validity limit changes.
+
+Freeze the exact source commit in the Issue body and measurement manifest before invocation. Execute exactly one bounded set using `powershell -NoProfile -File scripts/measure-issue836-dl06-r3.ps1 -AcceptanceRoot D:\PandaStage-Acceptance\i836r3`, preserving the order sample 1 cold-process, sample 1 warm-followup, sample 2 cold-process, sample 2 warm-followup. Stop on the first verifier failure or measurement-invalid sample; do not retry a failed sample. Preserve all manifests, receipts, failure JSON, screenshots, and logs. Even if all generated probes pass, R3 remains **PARTIAL / NOT_ATTESTED** because these are not author-authorized real Projects; packaged-install and human Gate B acceptance remain outside this measurement.
