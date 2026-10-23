@@ -1794,11 +1794,26 @@ async function ensureQuickActionDrawerOpen() {
 
 async function beginIssue832CreatorExport(label, selectedFileName, retryAction = null) {
   const priorStartCount = formalStarts.length;
+  const priorTaskStatus = await rendererJs(
+    'window.__pandaStageIssue816Acceptance.inspectExportTask()?.task?.status ?? "idle"',
+  );
   await ensureQuickActionDrawerOpen();
-  if (retryAction) {
-    await clickButtonContainingText(retryAction);
-  } else {
+  if (['completed', 'failed', 'cancelled'].includes(priorTaskStatus)) {
     await clickSelector('[data-testid="quick-action-export"]');
+    const taskSelector = "document.querySelector('[data-testid=\"export-task-surface\"]')";
+    await waitForRenderer(
+      `${taskSelector}?.dataset.taskStatus === ${JSON.stringify(priorTaskStatus)}`,
+    );
+    const actionText = retryAction ?? (priorTaskStatus === 'completed'
+      ? '\u5bfc\u51fa\u65b0\u7248\u672c'
+      : '\u6309\u5f53\u524d\u5185\u5bb9\u91cd\u65b0\u5bfc\u51fa');
+    await clickButtonContainingText(actionText);
+  } else if (priorTaskStatus === 'idle' && !retryAction) {
+    await clickSelector('[data-testid="quick-action-export"]');
+  } else if (priorTaskStatus !== 'idle') {
+    throw new Error(`${label}: cannot start a new export while prior task is ${priorTaskStatus}.`);
+  } else {
+    throw new Error(`${label}: cannot use retry action while no export task is active.`);
   }
   const saveAsScreenshotPath = path.join(fixture.evidenceRoot, `${label}-save-as.png`);
   await clickNativeSaveDialog(
