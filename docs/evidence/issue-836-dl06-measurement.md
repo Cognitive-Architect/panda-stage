@@ -655,3 +655,18 @@ exit $LASTEXITCODE
 ```
 
 Stop at the first failure, preserve v1.1.0 artifacts, and do not retry this plan. A pass would cover only the two generated-fixture UI cases; permission, target failure, the full AC03 matrix, R3 measurement, author-Project provenance, packaged-install acceptance, and human Gate B remain outstanding. AC03 and R2 remain **PARTIAL** until all required evidence is complete.
+
+## AC03 R2 Creator media-preflight follow-up result - v1.1.0 (2026-10-24)
+
+Frozen source: `8610928993d237b58817451a05aaa0b6d3e615db`. The single `pnpm exec electron scripts/verify-issue819-dl02.cjs` invocation exited 0. Windows Electron 43.1.1 ran from `2026-10-23T23:45:23.407Z` to `2026-10-23T23:45:31.245Z` under `D:\PandaStage-Acceptance\i836r2pf2\run-2026-10-23T23-45-22-798Z-5224`. This was a fresh follow-up on the new root; v1.0.0's failed root and receipt remain untouched.
+
+Both planned Creator cases reached terminal `failed` task states with `REQUIRED_MEDIA_UNAVAILABLE`, exact consumed-media location, the user-facing problem (“所需素材缺失、损坏，或内容与工程记录不一致。”), and next step (“重新导入这个素材，或修复工程中的资源引用后再检查。”):
+
+- Missing `assets/bamboo-background.png`: `镜头“Opening”的背景“Background”`.
+- Corrupt used audio `assets/dl03-bgm.wav`: `镜头“Opening”的音频片段“DL-03 BGM full Shot”`; the controlled invalid bytes had SHA-256 `ad142924f473edcac84692fc74982925fb84f96c759f91710550c2c97d73fffb`.
+
+Neither case started a formal Main Job or commit. Both selected MP4 targets remained absent; both preserved the same valid prior-output sentinel at SHA-256 `28dacbd01c0184b180ce0313bb81b56ee8a88c2ad1a75dc87ddeb1fba52c967d`. Resolved FFprobe identified it as H.264/yuv420p, 64×64, six frames, 0.25 seconds. `project.json` remained SHA-256 `ca3d2ce8b691c3afa0cdfdefa6555680d70f0bc7c9116e3a1685174f820811a7`; all ten fixture source-media hashes were restored and independently matched the receipt. The dirty editor fingerprint, revision, selection, and History were unchanged. Both cleanup checks reported no output temporaries, frame-job directories, or preparation snapshots; the isolated frame root was not created.
+
+Receipt: `evidence\issue836-r2-media-preflight-receipt.json`, SHA-256 `f5f83e814f2719107e883558a91f8cb3d319aa48630fbc19acc2b7f12c55a7a5`; both receipt copies match. The missing-background blocked screenshot is `evidence\issue836-r2-missing-background-blocked.png` (SHA-256 `7bf003c2843f0dae875c4adde715ffb4d6f1988146468627f213b0f28728dd9c`); the corrupt-audio blocked screenshot is `evidence\issue836-r2-corrupt-audio-blocked.png` (SHA-256 `e213e91640b47e527c749d106df23ba421e77f6f441ad52f4eb00f556d53babc`). Both show Creator's actionable terminal error. Receipt status is `auto=PASS`, `owner=NOT_ATTESTED`; this is generated-fixture UI evidence only.
+
+AC03 and R2 remain **PARTIAL**. This closes the missing-background and corrupt-audio subcases only; permission failures, target failures, the complete AC03 matrix, R3 measurements, author-Project provenance, packaged-install acceptance, and human Gate B remain outstanding.
