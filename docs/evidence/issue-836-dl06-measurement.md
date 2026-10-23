@@ -387,3 +387,7 @@ The below/at/one-over unit assertions passed for Shot count, actual media entry 
 ## Frozen R2 verifier lint correction plan - v1.0.0 (before run)
 
 The matrix run's two lint findings are in timeout wrappers added by R2 verifier commit `06bf78a`; `git blame` confirms the exact lines were introduced there. This narrow follow-up attaches each caught timeout error as the `cause` of the existing safety-abort error, preserving both the current user-facing message and abort behavior. It changes no product code or validation behavior. The exact corrected source SHA will be recorded in Issue #836 before validation. Run `pnpm lint` once on that SHA; zero lint findings is expected. If the command fails, retain its first result and stop without retry. No unit, integration, build, Electron, Full CI, `verify:project`, or additional verifier is part of this plan.
+
+## R2 verifier lint correction result - frozen plan v1.0.0
+
+Frozen source SHA: `79c7f2990edb7f5b4db4ed9f17e691737f4dc275`. `pnpm lint` completed once with exit 0. The two timeout wrappers now attach the caught error as `cause`; their existing safety-abort action and displayed timeout messages are unchanged. This follow-up passes its single lint check. The earlier budget-matrix run remains recorded as lint exit 1 on its earlier SHA; no command or frozen Electron probe was retried. R2 and AC11 remain PARTIAL because this does not rerun the corrected Electron verifier or establish the remaining real-project/runtime acceptance.
