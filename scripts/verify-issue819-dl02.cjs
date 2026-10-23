@@ -1263,11 +1263,12 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
         starts = formalStarts.slice(priorJobCount);
         if (
           observed.status === 'failed' ||
-          ['preparing', 'running', 'completed', 'cancelled'].includes(observed.status) ||
+          ['running', 'completed', 'cancelled'].includes(observed.status) ||
           starts.length > 0
         ) break;
         if (Date.now() >= deadline) {
-          throw new Error(`${label}: Save As returned without a terminal path result or an observable export start.`);
+          const abort = await abortActiveExport();
+          throw new Error(`${label}: expected Creator failure did not reach a terminal state. Safety abort: ${JSON.stringify(abort)}.`);
         }
         await pause(50);
       } while (Date.now() < deadline);
