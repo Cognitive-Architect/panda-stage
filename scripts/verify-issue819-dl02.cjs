@@ -1713,13 +1713,15 @@ async function runIssue832Acceptance({ result, editorSnapshotPath, editorSnapsho
   const reopenScreenshot = await mainWindow.webContents.capturePage();
   const reopenScreenshotPath = path.join(evidenceRoot, 'task-reopened-after-edit.png');
   await fsp.writeFile(reopenScreenshotPath, reopenScreenshot.toPNG());
+  const duplicateStartCount = formalStarts.length - startCountDuringHide;
 
   assert(reopened.task.phase !== 'committing', 'The deterministic cancellation sample reached the non-cancellable commit phase too early.');
   await clickButtonContainingText('取消导出');
   const cancelled = await waitForIssue832Terminal(initial.start);
   assert(cancelled.task.status === 'cancelled', 'Creator UI cancellation did not reach the cancelled terminal state.');
   assert(exportService.getJob(initial.start.jobId)?.status === 'cancelled', 'Main did not record cancellation as the final Job status.');
-  assert(!existsSync(initialTargetPath), 'Cancelled export published a final output.');
+  const cancelledTargetAbsent = !existsSync(initialTargetPath);
+  assert(cancelledTargetAbsent, 'Cancelled export published a final output.');
   const cancellationScreenshot = await mainWindow.webContents.capturePage();
   const cancellationScreenshotPath = path.join(evidenceRoot, 'initial-cancelled-attempt-cancelled.png');
   await fsp.writeFile(cancellationScreenshotPath, cancellationScreenshot.toPNG());
@@ -1901,7 +1903,7 @@ async function runIssue832Acceptance({ result, editorSnapshotPath, editorSnapsho
       sameJobId: reopened.task.jobId === initial.start.jobId,
       latestCompletedFrames: reopened.latestUpdate.completedFrames,
       phase: reopened.latestUpdate.phase,
-      duplicateStartCount: startCountDuringHide,
+      duplicateStartCount,
       hideScreenshot: path.join(evidenceRoot, 'task-reopened-after-edit.png'),
     },
     parallelEditing: {
@@ -1916,10 +1918,10 @@ async function runIssue832Acceptance({ result, editorSnapshotPath, editorSnapsho
     },
     cancellation: {
       targetPath: initialTargetPath,
-      targetAbsent: !existsSync(initialTargetPath),
+      targetAbsent: cancelledTargetAbsent,
       mainStatus: exportService.getJob(initial.start.jobId)?.status,
       retainedSnapshot: initial.start.snapshotId,
-      retainedMediaCount: retainedAfterCancellation.snapshots.length,
+      retainedSnapshotCount: retainedAfterCancellation.snapshots.length,
       cancellationScreenshotPath,
     },
     oldContentRetry: {
