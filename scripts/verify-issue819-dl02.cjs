@@ -3492,6 +3492,7 @@ async function run() {
         ? await rendererJs('({ activity: document.querySelector("[data-testid=\\"right-workspace\\"]")?.dataset.activeActivity ?? null, clipSelected: document.querySelector("[data-testid=\\"dialogue-clip\\"]")?.dataset.selected ?? null, inspectorText: document.querySelector("[data-testid=\\"dialogue-inspector-text\\"]")?.value ?? null, inspectorPresent: Boolean(document.querySelector("[data-testid=\\"dialogue-inspector-text\\"]")) })').catch((error) => String(error))
         : null,
       formalStarts,
+      saveDialogEvidence,
       mediaFailures,
       latestExportUpdate: jobUpdates.at(-1) ?? null,
       visibleTask: mainWindow && !mainWindow.isDestroyed()

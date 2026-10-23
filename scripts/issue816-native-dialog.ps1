@@ -135,6 +135,48 @@ function Find-NativeSystemOverwriteDialog {
   return $null
 }
 
+function Get-NativeSaveDialogWindowSnapshot {
+  $root = [System.Windows.Automation.AutomationElement]::RootElement
+  $windows = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
+  $snapshot = [System.Collections.Generic.List[object]]::new()
+  for ($windowIndex = 0; $windowIndex -lt $windows.Count; $windowIndex++) {
+    $owner = $windows.Item($windowIndex)
+    try { $ownerInfo = $owner.Current } catch { continue }
+    if ($ownerInfo.ClassName -notin @('Chrome_WidgetWin_1', '#32770')) { continue }
+    $dialogs = [System.Collections.Generic.List[object]]::new()
+    try {
+      $descendants = $owner.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+      for ($elementIndex = 0; $elementIndex -lt $descendants.Count; $elementIndex++) {
+        $element = $descendants.Item($elementIndex)
+        if ($element.Current.ControlType -ne [System.Windows.Automation.ControlType]::Window) { continue }
+        $buttonIds = [System.Collections.Generic.List[string]]::new()
+        $controls = $element.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+        for ($controlIndex = 0; $controlIndex -lt $controls.Count; $controlIndex++) {
+          $control = $controls.Item($controlIndex)
+          if ($control.Current.ClassName -eq 'Button') {
+            $buttonId = [string]$control.Current.AutomationId
+            if ($buttonId) { $buttonIds.Add($buttonId) }
+          }
+        }
+        $dialogs.Add([ordered]@{
+          className = [string]$element.Current.ClassName
+          processId = [int]$element.Current.ProcessId
+          isEnabled = [bool]$element.Current.IsEnabled
+          buttonAutomationIds = @($buttonIds.ToArray() | Sort-Object -Unique)
+        })
+      }
+    }
+    catch { }
+    $snapshot.Add([ordered]@{
+      ownerClassName = [string]$ownerInfo.ClassName
+      ownerProcessId = [int]$ownerInfo.ProcessId
+      ownerIsEnabled = [bool]$ownerInfo.IsEnabled
+      descendantWindows = @($dialogs.ToArray())
+    })
+  }
+  return ConvertTo-Json -InputObject @($snapshot.ToArray()) -Depth 8 -Compress
+}
+
 if ($Action -like 'overwrite-*') {
   $deadline = [DateTime]::UtcNow.AddSeconds(20)
   $confirmation = $null
@@ -187,7 +229,10 @@ while ([DateTime]::UtcNow -lt $deadline -and $null -eq $dialog) {
   if ($null -eq $dialog) { Start-Sleep -Milliseconds 100 }
 }
 
-if ($null -eq $dialog) { throw 'Timed out waiting for the native Save As dialog.' }
+if ($null -eq $dialog) {
+  $windowSnapshot = try { Get-NativeSaveDialogWindowSnapshot } catch { "NOT_MEASURED: $($_.Exception.Message)" }
+  throw "Timed out waiting for the native Save As dialog. UIA window snapshot: $windowSnapshot"
+}
 
 $descendants = $dialog.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
 
