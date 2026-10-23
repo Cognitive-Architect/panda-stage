@@ -605,3 +605,53 @@ The Creator Save As dialog selected `issue836-r2-missing-background.mp4`. The ta
 Failure receipt: `evidence\electron-failure.json`, SHA-256 `76df775c3301aedf5a325472a17369a8754a38fc7e39d629f49ccac6bef0df6e`. Screenshot: `evidence\issue836-r2-missing-background-blocked.png`, SHA-256 `ca1dbf653c1163dd574a8b1f99765bf3ed150ecf0ba085691a4c1dd53186ee74` (the same capture is also `electron-failure.png`). The persisted Project SHA-256 still matches its initial value `5915cdd6f89959f4496215d5708478e74d2eef0f9fcb8aa9a860f557ffbf1e99`; all ten source-media files were restored to the recorded hashes; the selected MP4 target is absent; and the isolated frame-job root was not created. The generated prior-output sentinel remains in the preserved project root, but this early assertion failure occurred before its post-case hash assertion, so this receipt does not establish that it remained unchanged.
 
 The frozen plan's stop condition was honored. The acceptance root remains intact. AC03 and R2 remain **PARTIAL**; the full missing/corrupt/permission/target Creator matrix remains outstanding.
+
+## Frozen AC03 R2 Creator media-preflight follow-up plan - v1.1.0 (before run)
+
+Frozen source HEAD: `8610928993d237b58817451a05aaa0b6d3e615db` on `issue-816-dl01-formal-export-preparation`. The v1.0.0 run remains failed and preserved. Its receipt showed the helper cancelled the normal `preparing` state before async preflight returned. This separate follow-up changes only the verifier's expected-failure wait: `preparing` is now allowed to settle, while a formal Main Job or a running/completed/cancelled task remains an unexpected start that triggers the existing safety abort; a 30-second timeout also invokes the safety abort. The v1.1.0 run uses a new acceptance root and does not modify or reuse v1.0.0 artifacts.
+
+Acceptance root: `D:\PandaStage-Acceptance\i836r2pf2`; isolated frame-job root: `D:\PandaStage-Acceptance\i836r2pf2\frame-jobs`. Both paths were confirmed absent before freezing this plan. The focused verifier syntax check, `git diff --check`, `pnpm lint`, and `pnpm build` passed on the frozen source; build output retained the existing empty CSS import and large-chunk warnings.
+
+Run exactly once from the repository root. This uses generated Issue #827 sample 1 and checks the missing first-Shot background plus corrupt used-audio Creator preflight cases. It remains generated-fixture automated evidence, not an author Project or human Gate B acceptance.
+
+```powershell
+$modeNames = @(
+    'PANDA_STAGE_ISSUE819_ROOT',
+    'PANDA_STAGE_ISSUE823_DL03',
+    'PANDA_STAGE_ISSUE827_DL04',
+    'PANDA_STAGE_ISSUE827_ROOT',
+    'PANDA_STAGE_ISSUE827_SAMPLE',
+    'PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA',
+    'PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID',
+    'PANDA_STAGE_ISSUE832_DL05',
+    'PANDA_STAGE_ISSUE832_ROOT',
+    'PANDA_STAGE_ISSUE832_RUN_ID',
+    'PANDA_STAGE_ISSUE832_SOURCE_SHA',
+    'PANDA_STAGE_ISSUE834_FOLLOWUP',
+    'PANDA_STAGE_ISSUE834_ROOT',
+    'PANDA_STAGE_ISSUE834_RUN_ID',
+    'PANDA_STAGE_ISSUE834_SOURCE_SHA',
+    'PANDA_STAGE_ISSUE836_DL06_R0',
+    'PANDA_STAGE_ISSUE836_FRAME_ROOT',
+    'PANDA_STAGE_ISSUE836_R2_COMMIT_RACE',
+    'PANDA_STAGE_ISSUE836_R2_COPY_FAILURE',
+    'PANDA_STAGE_ISSUE836_R2_COPY_FAILURE_VALID_MP4',
+    'PANDA_STAGE_ISSUE836_R2_MEDIA_PREFLIGHT',
+    'PANDA_STAGE_ISSUE836_R2_PATH_BOUNDARY',
+    'PANDA_STAGE_ISSUE836_R2_PATH_SUCCESS',
+    'PANDA_STAGE_ISSUE836_RUN_ID',
+    'PANDA_STAGE_ISSUE836_SOURCE_SHA'
+)
+foreach ($name in $modeNames) { Remove-Item "Env:$name" -ErrorAction SilentlyContinue }
+$env:PANDA_STAGE_ISSUE827_ROOT = 'D:\PandaStage-Acceptance\i836r2pf2'
+$env:PANDA_STAGE_ISSUE827_SAMPLE = '1'
+$env:PANDA_STAGE_ISSUE827_DL04 = '1'
+$env:PANDA_STAGE_ISSUE836_FRAME_ROOT = 'D:\PandaStage-Acceptance\i836r2pf2\frame-jobs'
+$env:PANDA_STAGE_ISSUE836_R2_MEDIA_PREFLIGHT = '1'
+$env:PANDA_STAGE_ISSUE836_RUN_ID = 'i836-ac03-r2-media-preflight-v1.1.0'
+$env:PANDA_STAGE_ISSUE836_SOURCE_SHA = '8610928993d237b58817451a05aaa0b6d3e615db'
+pnpm exec electron scripts/verify-issue819-dl02.cjs
+exit $LASTEXITCODE
+```
+
+Stop at the first failure, preserve v1.1.0 artifacts, and do not retry this plan. A pass would cover only the two generated-fixture UI cases; permission, target failure, the full AC03 matrix, R3 measurement, author-Project provenance, packaged-install acceptance, and human Gate B remain outstanding. AC03 and R2 remain **PARTIAL** until all required evidence is complete.
