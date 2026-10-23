@@ -377,3 +377,9 @@ Frozen matrix and expected outcomes:
 | Aggregate media bytes | 268,435,455 B | 268,435,456 B | 268,435,457 B | First two have no budget issue; the last returns `PREPARATION_BUDGET_EXCEEDED`. Each constituent asset remains at or below its single-asset limit. |
 
 Run `pnpm test:unit`, `pnpm typecheck`, `pnpm lint`, and `git diff --check` once on the frozen source SHA. A failing command or unrelated suite failure is retained as the first result and stops this plan; no fix-and-retry is included. This is domain/unit evidence only: it does not demonstrate Creator UI behavior, filesystem resource limits, a real author Project, packaged Electron behavior, or completion of R2. Do not run Electron, integration, build, Full CI, `verify:project`, or any additional verifier for this plan.
+
+## R2 preparation-budget boundary matrix result - frozen plan v1.0.0
+
+Frozen source SHA: `fbf8e7ee2ff147f90963d0da4425d07f45b6a22d`. The planned `pnpm test:unit` completed with exit 0: 357 test files and 2,688 tests passed. `pnpm typecheck` completed with exit 0. The planned `pnpm lint` exited 1 with two `preserve-caught-error` findings at `scripts/verify-issue819-dl02.cjs:1327` and `:1379`; this frozen matrix change touched only `tests/unit/export-preparation.test.ts` and this evidence report. Per the stop rule, the sequence ended there: `git diff --check` was not run, no fix was attempted, and no command was retried.
+
+The below/at/one-over unit assertions passed for Shot count, actual media entry count, single-file bytes, and aggregate bytes using the formal constants. The budget-matrix unit evidence is PASS; this plan's full validation is PARTIAL because lint did not pass. This does not establish Creator/Main boundary behavior, filesystem/resource limits, author-project provenance, or overall R2 acceptance. R2 remains PARTIAL; AC11 remains PARTIAL; no Electron run, integration test, build, Full CI, or repository-wide verifier was started.
