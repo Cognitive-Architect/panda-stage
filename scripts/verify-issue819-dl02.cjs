@@ -1171,7 +1171,11 @@ async function verifyUndecodableAudioSource(initialProjectBytes) {
 async function startFromCreatorUi(evidenceRoot, label, options = {}) {
   const before = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
   const priorJobCount = formalStarts.length;
-  await clickSelector('[data-testid="quick-action-export"]');
+  if (options.retryCurrentContent) {
+    await clickButtonContainingText('\u6309\u5f53\u524d\u5185\u5bb9\u91cd\u65b0\u5bfc\u51fa');
+  } else {
+    await clickSelector('[data-testid="quick-action-export"]');
+  }
   const nativeSavePath = path.join(evidenceRoot, `${label}-save-as.png`);
   const overwritePromptPath = path.join(evidenceRoot, `${label}-windows-overwrite.png`);
   await clickNativeSaveDialog(
@@ -2810,6 +2814,7 @@ async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapsho
   const outputPath = path.join(fixture.projectRoot, `issue827-sample-${dl04SampleId}.mp4`);
   const exportRun = await startFromCreatorUi(evidenceRoot, `issue827-sample-${dl04SampleId}`, {
     selectedFileName: path.basename(outputPath),
+    retryCurrentContent: true,
     completionTimeoutMs: 1_200_000,
   });
   assert(exportRun.start.cameraMode === desiredCameraMode, 'Formal candidate did not capture the requested camera mode.');

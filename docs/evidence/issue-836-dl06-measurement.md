@@ -1,9 +1,9 @@
 # Issue #836 DL-06 measurement plan and result
 
-Report version: **1.5.0**
-Frozen plan revision: **1.0.6**, committed before the final bounded R3 continuation
+Report version: **1.6.0**
+Frozen plan revision: **1.0.7**, committed before the final bounded R3 continuation
 Plan date: **2026-10-23**
-R3 status: **PARTIAL / NOT_ATTESTED**; five DL-06 harness invocations produced no qualifying sample export. Two earlier #827 generated-probe outputs are recorded below as supplemental evidence, not counted toward the frozen DL-06 run plan.
+R3 status: **PARTIAL / NOT_ATTESTED**; six DL-06 harness invocations produced no qualifying sample export. Two earlier #827 generated-probe outputs are recorded below as supplemental evidence, not counted toward the frozen DL-06 run plan.
 
 ## Evidence availability
 
@@ -96,7 +96,7 @@ Two earlier Issue #827 receipts contain successful Creator UI outputs for the ge
 
 The corresponding receipts are `D:\PandaStage-Acceptance\issue827-dl04\i830-bf45cc93-2c80-4c7d-b445-434961b4de54\sample-1\run-2026-10-22T10-33-45-259Z-10712\acceptance-receipt.json` and `D:\PandaStage-Acceptance\issue827-dl04\i830-bf45cc93-2c80-4c7d-b445-434961b4de54\sample-2\run-2026-10-22T10-51-06-714Z-4240\acceptance-receipt.json`. Both are `AUTO=PASS`; the recorded output paths exist and were re-hashed read-only. The source commit is an ancestor of the DL-06 product implementation commit `f38a325`, but these runs predate DL-06's frozen measurement plan and its later production changes. They provide one historical output per generated sample, not cold/warm pairs or DL-06 resource measurements, so they do not satisfy R3 and do not change the R3 stop result.
 
-### Final bounded R3 diagnostic continuation plan (v1.0.6, frozen before run)
+### Final bounded R3 diagnostic continuation plan (v1.0.6, frozen before run; superseded after its result)
 
 Inspection of the v1.0.5 failure evidence showed that the verifier omitted its in-memory `saveDialogEvidence` from `electron-failure.json`; the native UIA helper also reported only a timeout and did not preserve matching top-level window/control IDs. This revision adds both diagnostics without changing product code, sample definitions, or the 500 ms process/storage sampling. It records whether Main entered `selectOutputPath`; on a Save As timeout it records UIA owner/window classes, process IDs, enabled states, and descendant Button Automation IDs. It does not capture unrelated window titles or file contents.
 
@@ -104,12 +104,24 @@ This revision supersedes v1.0.5's no-retry conclusion after the post-run audit f
 
 Run one final bounded invocation with `powershell -NoProfile -File scripts/measure-issue836-dl06-r3.ps1 -AcceptanceRoot D:\PandaStage-Acceptance\i836r3`. The order remains sample 1 cold-process, sample 1 warm-followup, sample 2 cold-process, sample 2 warm-followup. The script stops on the first failure; do not retry any failed sample, and make no further R3 invocation after this plan. Preserve the manifest and all failure diagnostics. The exact source SHA is recorded in the run manifest. Generated probes still cannot establish real-project provenance, packaged-install behavior, or human Gate B acceptance; those statuses remain PARTIAL / DEFERRED regardless of this result.
 
+### v1.0.6 observed result
+
+The v1.0.6 invocation used source commit `1bde6c1c8b4c1927f46f0c9990181f04892aea2a` and stopped on sample 1 cold-process after 34,831 ms and 60 process samples. The sampled process-tree peak was 8, maximum sample interval 640.9 ms, and AppActivate succeeded for Electron PID 1364. Storage sampling observed 4 frame files / 1,612,141 bytes, 1,593,567 frozen-media bytes, and 0 output-staging bytes across 59 samples. These are setup/cancellation-subtest observations, not successful-export resource measurements. The generated Project SHA-256 was `f59363fdff1424a70a8490b8598eb8f01b86bcc8a026983aeeb336bb84ab3b74`.
+
+The retained failure JSON contained exactly one `saveDialogEvidence` entry, for the cancellation subtest's `issue827-cancelled-1.mp4` target. The primary sample did not call Main's `selectOutputPath`; no Save As dialog was open. The UIA timeout snapshot found only the enabled Electron main window (PID 1364) and no descendant windows. The screenshot showed the canceled task surface with its retry actions. Code inspection confirmed that the verifier then clicked the toolbar Export action, which restores any non-idle task surface and returns without starting a new formal export. Thus this run exposed a verifier action mismatch, not a native Save As or export failure. No primary formal Job, receipt, or output MP4 was created. The run manifest and diagnostics are under `D:\PandaStage-Acceptance\i836r3\m-063ab688606e4bf4\sample-1-cold-process\`.
+
+### Final bounded R3 continuation plan (v1.0.7, frozen before run)
+
+The v1.0.6 result newly establishes that the verifier never requested Save As for the primary sample: after the controlled cancellation, `startFromCreatorUi` clicked the toolbar action, while the product correctly restored the existing canceled task surface. The retry action wired to `retryCurrentExportContent` starts a fresh formal export. This revision updates the verifier to click “retry current content” for the post-cancellation sample. It changes no product code, sample definitions, measurement interval, or stop rule.
+
+This plan supersedes v1.0.6 only because its retained failure evidence demonstrated the harness action mismatch above. It authorizes one final bounded four-run set on the corrected verifier, stopping on the first failed run. Do not retry a failed sample and make no further R3 invocation after this plan. Run `powershell -NoProfile -File scripts/measure-issue836-dl06-r3.ps1 -AcceptanceRoot D:\PandaStage-Acceptance\i836r3`; keep the existing order: sample 1 cold-process, sample 1 warm-followup, sample 2 cold-process, sample 2 warm-followup. The source SHA and all run evidence must be preserved. Generated probes still cannot establish real-project provenance, packaged-install behavior, or human Gate B acceptance; those statuses remain PARTIAL / DEFERRED regardless of this result.
+
 ## R0–R4 and acceptance summary
 
 - **R0: PASS.** Two expired owners each exhausted four automatic deletion attempts. While locked, an explicit Creator retry stayed `PREPARATION_BUSY`, created no Job, retained both owned directories, and kept snapshot paths/errors out of visible copy. After releasing the lock, the same Main service removed both old paths and completed a distinct same-session Job. Project SHA and prior MP4 SHA were unchanged. Receipt: `D:\PandaStage-Acceptance\issue836-dl06-r0\34651315-6606-42f0-a276-e9cc3d832614\run-2026-10-23T05-20-59-950Z-4188\acceptance-receipt.json`.
 - **R1: PASS.** One versioned machine-readable matrix (`dl06-2026-10-23.1`) drives support checks, concise Creator copy, and the generated Markdown. It distinguishes all four capability layers and statuses; JPEG formal export remains `SUPPORTED_UNVERIFIED`, special FLA/Open-Fill remains `UNKNOWN` with #784/#786 references.
 - **R2: PARTIAL.** Unit coverage passes exact/over limits for 256/257 Shots, 512/513 assets, 64 MiB + 1 byte, 256 MiB + 1 byte, and Windows 259/260 character target/staging paths. Earlier deep-path Electron probes exposed the tool path failure and are retained under `D:\PandaStage-Acceptance\issue836-dl06-r2-paths\`; the final code blocks unsafe target/staging paths. A post-guard deep-path Creator UI run was not completed.
-- **R3: PARTIAL / NOT_ATTESTED.** Five harness invocations produced no qualifying sample MP4: the first three stopped at Save As UI Automation, v1.0.4 stopped at the 259-character path guard, and v1.0.5 completed the verifier's cancellation subtest but stopped at Save As UI Automation before its primary sample export. Sample 1 warm, both sample 2 runs, output/frame/PCM/FFprobe evidence, export phase timings, successful-export memory/disk, renderer queue peak, and cancellation-release duration are `NOT_MEASURED`. No real user Projects were available; no installer or human acceptance was run.
+- **R3: PARTIAL / NOT_ATTESTED.** Six harness invocations produced no qualifying sample MP4: the first three stopped at Save As UI Automation, v1.0.4 stopped at the 259-character path guard, v1.0.5 stopped at Save As after its cancellation subtest, and v1.0.6 stopped before Main's Save As callback because the verifier restored the canceled task surface. Sample 1 warm, both sample 2 runs, output/frame/PCM/FFprobe evidence, export phase timings, successful-export memory/disk, renderer queue peak, and cancellation-release duration are `NOT_MEASURED`. No real user Projects were available; no installer or human acceptance was run.
 - **R4: PARTIAL.** Versioned support matrix and this report are present; targeted quality checks and the focused R0 verifier passed. The R3 sample-export evidence and full R3 cost/release observations remain unavailable.
 
 AC01 **PASS**; AC02 **PASS**; AC03 **PARTIAL**; AC04 **PARTIAL**; AC05 **PARTIAL**; AC06 **PARTIAL**; AC07 **PARTIAL**; AC08 **PARTIAL**; AC09 **PARTIAL**; AC10 **PASS**; AC11 **PASS for local validation; final-SHA CI state is recorded in the Issue receipt**; AC12 **body-only Issue #836 receipt is the final external action after commit and CI lookup**.
