@@ -401,3 +401,9 @@ Run `pnpm test:unit`, `pnpm typecheck`, `pnpm lint`, and `git diff --check` once
 ## R2 actionable budget-failure copy result - frozen plan v1.0.0
 
 Frozen source SHA: `5a0621f0c7126c9d87e49bdd28dd20547ff43e4d`. All planned commands passed once: `pnpm test:unit` exit 0 (357 test files / 2,688 tests), `pnpm typecheck` exit 0, `pnpm lint` exit 0, and `git diff --check` exit 0. Assertions now verify the object/location, configured limit, and concrete next step for over-limit Shot count, used-asset count, single-asset bytes, and aggregate bytes. This is domain/unit message-contract evidence only; no visible Creator UI, filesystem exhaustion handling, or author-project result is established. R2 remains PARTIAL; AC11 remains PARTIAL pending final-SHA CI and required Electron evidence.
+
+## Frozen R2 preparation-copy failure plan - v1.0.0 (before run)
+
+This single service-level unit validation injects a controlled `disk full` write error into the temporary media-copy store during export preparation. Expected outcome: `BLOCK` with `PREPARATION_FAILED`, the exact used-asset Shot/object location, a concrete problem and available-disk next step; it must not be misclassified as missing/corrupt source media. The selected output target must remain absent, an existing-output sentinel byte-for-byte unchanged, and persisted `project.json` unchanged. The sentinel is a unit-test preservation marker, not an encoded MP4 or real-project artifact. The test changes no production code, limits, or UI.
+
+The exact source SHA will be recorded in Issue #836 before validation. Run `pnpm test:unit`, `pnpm typecheck`, `pnpm lint`, and `git diff --check` once; stop on any failure without a fix or retry. This is service/unit evidence only and does not prove Creator UI copy, actual disk exhaustion behavior, Windows filesystem limits, author-project provenance, or overall R2 acceptance. No integration, build, Electron, Full CI, `verify:project`, or extra verifier is in scope.

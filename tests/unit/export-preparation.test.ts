@@ -2066,6 +2066,15 @@ describe('ExportPreparationService', () => {
 
   it('reports temporary copy failures separately from missing or corrupt source media', async () => {
     const fixture = await harness();
+    const outputPath = path.join(fixture.outputDirectory, 'copy-failure.mp4');
+    const priorOutputPath = path.join(fixture.outputDirectory, 'prior-output.mp4');
+    const priorOutputBytes = Buffer.from('prior output sentinel');
+    await writeFile(priorOutputPath, priorOutputBytes);
+    const projectFilePath = path.join(fixture.projectRoot, 'project.json');
+    const projectBytesBefore = await readFile(projectFilePath);
+    const expectedLocation =
+      collectExportPreparationMedia(fixture.project)[0]?.usages[0];
+    expect(expectedLocation).toBeDefined();
     const brokenStore = {
       async create() {},
       async writeAsset() {
@@ -2086,7 +2095,7 @@ describe('ExportPreparationService', () => {
         projectName: fixture.project.name,
         openInstanceId: OPEN_INSTANCE_ID,
       },
-      path.join(fixture.outputDirectory, 'copy-failure.mp4'),
+      outputPath,
     );
     expect(selection.status).toBe('selected');
     if (selection.status !== 'selected') return;
@@ -2102,7 +2111,18 @@ describe('ExportPreparationService', () => {
       expect(result.issues.map((item) => item.code)).not.toContain(
         'REQUIRED_MEDIA_UNAVAILABLE',
       );
+      const copyFailure = result.issues.find(
+        (item) => item.code === 'PREPARATION_FAILED',
+      );
+      expect(copyFailure).toMatchObject({
+        location: expectedLocation,
+        problem: '素材副本无法安全写入临时准备目录。',
+        nextStep: '检查可用磁盘空间后重新检查；工程和已有输出未被修改。',
+      });
     }
+    await expect(readFile(outputPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await readFile(priorOutputPath)).equals(priorOutputBytes)).toBe(true);
+    expect((await readFile(projectFilePath)).equals(projectBytesBefore)).toBe(true);
   });
 
   it('keeps a consumed attempt id from creating a second candidate', async () => {
