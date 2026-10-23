@@ -1,5 +1,5 @@
 param(
-  [string] $AcceptanceRoot = 'D:\PandaStage-Acceptance\issue836-dl06-r3',
+  [string] $AcceptanceRoot = 'D:\PandaStage-Acceptance\i836r3',
   [ValidateRange(250, 5000)]
   [int] $SampleIntervalMilliseconds = 500
 )
@@ -10,7 +10,8 @@ $electronExecutable = Join-Path $repositoryRoot 'node_modules\electron\dist\elec
 $verifierScript = 'scripts/verify-issue819-dl02.cjs'
 $acceptanceRootPath = [System.IO.Path]::GetFullPath($AcceptanceRoot)
 $invocationId = [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssZ') + '-' + [guid]::NewGuid().ToString()
-$measurementRoot = Join-Path $acceptanceRootPath "measurement-$invocationId"
+$invocationFolderId = [guid]::NewGuid().ToString('N').Substring(0, 16)
+$measurementRoot = Join-Path $acceptanceRootPath "m-$invocationFolderId"
 $manifestPath = Join-Path $measurementRoot 'measurement-runs.json'
 $runDefinitions = @(
   [pscustomobject]@{ sampleId = 1; phase = 'cold-process'; id = 'sample-1-cold-process' },

@@ -1,9 +1,9 @@
 # Issue #836 DL-06 measurement plan and result
 
-Report version: **1.1.0**
-Frozen plan revision: **1.0.3**, committed before the bounded R3 set
+Report version: **1.2.0**
+Frozen plan revision: **1.0.5**, committed before the bounded R3 continuation
 Plan date: **2026-10-23**
-R3 status: **PARTIAL / NOT_ATTESTED**; three harness attempts stopped before export and their evidence is retained.
+R3 status: **PARTIAL / NOT_ATTESTED**; four harness attempts stopped before export and their evidence is retained.
 
 ## Evidence availability
 
@@ -72,6 +72,14 @@ Reviewing the failed runs found that the first runner version watched the accept
 The user-authorized Issue objective remains active. The first three invocations above are retained as launch qualification failures; they did not begin formal export. A single continuation set is permitted because the latest runner now retries foreground activation only after an Electron main-window handle exists, samples the verifier's actual timestamped fixture root, preserves each invocation in a unique directory, and records missing values as `NOT_MEASURED`.
 
 The runner code under test is the version committed at `ff8697243170587e8e2192fe41e8157c55b8779a`; the one invocation records the exact current HEAD (the plan-freeze commit) before launching. Run once with `powershell -NoProfile -File scripts/measure-issue836-dl06-r3.ps1 -AcceptanceRoot D:\PandaStage-Acceptance\issue836-dl06-r3-resumed`. The existing order and sample definitions are unchanged: sample 1 cold-process, sample 1 warm-followup, sample 2 cold-process, sample 2 warm-followup. This set is capped at four Electron process runs. The script stops on the first failed run; do not retry a failed sample. Preserve all outputs and update this report after the set. Even if all generated probes pass, R3 remains **PARTIAL / NOT_ATTESTED** because the available projects are generated rather than author-authorized real Projects and no installer/human Gate B acceptance is in scope.
+
+The v1.0.4 invocation reached the Creator window and activated it, but stopped at the formal export path guard before Save As: the selected target was 230 characters and its same-directory staging path would have been 306 characters. No formal Job started and no output or receipt was produced. The guard acted as designed; the acceptance root made the harness path too deep. This is retained as a product-boundary observation, not an export attempt.
+
+### Bounded continuation plan (v1.0.5, frozen before continuation)
+
+This revision changes only the harness acceptance root and invocation folder length after v1.0.4 showed that its generated path could not pass the product's 259-character safety guard. The default root is now `D:\PandaStage-Acceptance\i836r3`; each invocation retains a full `invocationId` in its manifest and uses a unique 16-hex-character folder name. The longest generated same-directory staging path, calculated with the six-digit fixture process ID, project filename, and 97-character staging basename (prefix, two 36-character UUIDs, separator, and `.mp4` suffix), is 206 characters. This leaves 53 characters below the guard.
+
+Freeze this plan before one invocation of `powershell -NoProfile -File scripts/measure-issue836-dl06-r3.ps1 -AcceptanceRoot D:\PandaStage-Acceptance\i836r3`. Preserve the existing four-run order and stop on the first failed run; make no further retry if this invocation fails. Its manifest must record the exact plan-freeze commit SHA. Even if the generated probes pass, R3 remains **PARTIAL / NOT_ATTESTED** because no author-authorized real Projects or installer/human Gate B acceptance are available.
 
 ## R0–R4 and acceptance summary
 
