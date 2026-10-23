@@ -36,6 +36,7 @@ const issue836R2PathSuccessMode = process.env.PANDA_STAGE_ISSUE836_R2_PATH_SUCCE
 const issue836R2CommitRaceMode = process.env.PANDA_STAGE_ISSUE836_R2_COMMIT_RACE === '1';
 const issue836R2CopyFailureMode = process.env.PANDA_STAGE_ISSUE836_R2_COPY_FAILURE === '1';
 const issue836R2CopyFailureValidMp4Mode = process.env.PANDA_STAGE_ISSUE836_R2_COPY_FAILURE_VALID_MP4 === '1';
+const issue836R2MediaPreflightMode = process.env.PANDA_STAGE_ISSUE836_R2_MEDIA_PREFLIGHT === '1';
 const dl05Mode = process.env.PANDA_STAGE_ISSUE832_DL05 === '1' || dl05FollowupMode;
 const dl04SampleId = Number(process.env.PANDA_STAGE_ISSUE827_SAMPLE ?? '1');
 const baseDirectory =
@@ -1449,6 +1450,180 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
     progressScreenshotPath: progressCaptured ? path.join(evidenceRoot, `${label}-progress.png`) : null,
     completedScreenshotPath,
   };
+}
+
+async function runIssue836R2MediaPreflightAcceptance({ result, initialProjectBytes, projectFilePath, evidenceRoot, mediaTools }) {
+  assert(issue836R2MediaPreflightMode, 'Issue #836 media-preflight mode is not enabled.');
+  const media = collectExportPreparationMedia(fixtureProject);
+  const firstShotBackground = fixture.backgroundEvidence[0];
+  const missingImage = media.find((entry) => entry.asset.id === firstShotBackground?.assetId);
+  const corruptAudio = media.find((entry) => entry.asset.kind === 'audio' && entry.usages.length > 0);
+  assert(firstShotBackground && missingImage, 'The generated sample has no consumed first-Shot background for the missing-source case.');
+  assert(corruptAudio, 'The generated sample has no consumed audio media for the corrupt-source case.');
+
+  const editorBefore = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+  const editorBeforeFingerprint = acceptanceSessionFingerprint(editorBefore);
+  const projectBytesBefore = await fsp.readFile(projectFilePath);
+  assert(projectBytesBefore.equals(initialProjectBytes), 'The generated Project changed before the media-preflight cases.');
+  const sourceHashesBefore = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+    assetId: asset.id,
+    sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+  })));
+  const previousOutputPath = path.join(fixture.projectRoot, 'issue836-r2-existing-prior-output.mp4');
+  assert(!existsSync(previousOutputPath), 'The controlled prior-output MP4 must start absent.');
+  await runProcess(mediaTools.ffmpegPath, [
+    '-y', '-v', 'error',
+    '-f', 'lavfi', '-i', 'color=c=blue:s=64x64:r=24',
+    '-frames:v', '6', '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+    '-movflags', '+faststart', previousOutputPath,
+  ]);
+  const previousOutputProbeResult = await runProcess(mediaTools.ffprobePath, [
+    '-v', 'error', '-count_frames', '-show_streams', '-show_format', '-of', 'json', previousOutputPath,
+  ]);
+  const previousOutputProbe = JSON.parse(previousOutputProbeResult.stdout);
+  const previousOutputVideo = previousOutputProbe.streams?.find((stream) => stream.codec_type === 'video');
+  const previousOutputFormats = String(previousOutputProbe.format?.format_name ?? '').split(',');
+  const previousOutputFrameCount = Number(previousOutputVideo?.nb_read_frames ?? previousOutputVideo?.nb_frames ?? 0);
+  const previousOutputDurationSeconds = Number(previousOutputProbe.format?.duration);
+  assert(
+    previousOutputVideo?.codec_name === 'h264' && previousOutputVideo.pix_fmt === 'yuv420p' &&
+    previousOutputVideo.width === 64 && previousOutputVideo.height === 64 &&
+    previousOutputFrameCount === 6 && previousOutputFormats.includes('mp4') &&
+    Number.isFinite(previousOutputDurationSeconds) && previousOutputDurationSeconds > 0,
+    'Resolved FFmpeg did not produce a valid H.264 MP4 prior-output sentinel.',
+  );
+  const previousOutputSha256 = hash(await fsp.readFile(previousOutputPath));
+  const issueProblem = '\u6240\u9700\u7d20\u6750\u7f3a\u5931\u3001\u635f\u574f\uff0c\u6216\u5185\u5bb9\u4e0e\u5de5\u7a0b\u8bb0\u5f55\u4e0d\u4e00\u81f4\u3002';
+  const issueNextStep = '\u91cd\u65b0\u5bfc\u5165\u8fd9\u4e2a\u7d20\u6750\uff0c\u6216\u4fee\u590d\u5de5\u7a0b\u4e2d\u7684\u8d44\u6e90\u5f15\u7528\u540e\u518d\u68c0\u67e5\u3002';
+  const scenarios = [
+    { id: 'missing-background', media: missingImage, mutation: 'missing' },
+    { id: 'corrupt-audio', media: corruptAudio, mutation: 'corrupt' },
+  ];
+  const scenarioResults = [];
+
+  for (const scenario of scenarios) {
+    const asset = scenario.media.asset;
+    const sourcePath = path.join(fixture.projectRoot, asset.relativePath);
+    const originalBytes = await fsp.readFile(sourcePath);
+    const originalSha256 = hash(originalBytes);
+    assert(originalSha256 === asset.sha256, `${scenario.id}: source did not match the generated Project manifest before mutation.`);
+    const targetPath = path.join(fixture.projectRoot, `issue836-r2-${scenario.id}.mp4`);
+    assert(!existsSync(targetPath), `${scenario.id}: controlled pre-existing MP4 target already exists.`);
+    const priorStartCount = formalStarts.length;
+    const priorCommitCount = formalCommitRecords.length;
+
+    try {
+      if (scenario.mutation === 'missing') {
+        await fsp.unlink(sourcePath);
+        assert(!existsSync(sourcePath), `${scenario.id}: source file remained present after removal.`);
+      } else {
+        const corruptBytes = Buffer.from('controlled corrupt audio source for Issue #836 AC03', 'utf8');
+        await fsp.writeFile(sourcePath, corruptBytes);
+        assert(hash(await fsp.readFile(sourcePath)) !== asset.sha256, `${scenario.id}: corrupt bytes still match the Project manifest.`);
+      }
+
+      const failureRun = await startFromCreatorUi(evidenceRoot, `issue836-r2-${scenario.id}`, {
+        selectedFileName: path.basename(targetPath),
+        expectedFailureText: '\u6240\u9700\u7d20\u6750\u7f3a\u5931\u3001\u635f\u574f',
+        abortIfUnexpectedStart: true,
+      });
+      assert(failureRun.status === 'failed' && failureRun.observedTaskStatus === 'failed', `${scenario.id}: Creator did not block the export in preflight.`);
+      assert(failureRun.starts.length === 0, `${scenario.id}: a formal Main Job started after preflight blocked.`);
+      assert(formalStarts.length === priorStartCount, `${scenario.id}: the failure path added a formal Main Job.`);
+      assert(formalCommitRecords.length === priorCommitCount, `${scenario.id}: the failure path recorded a formal commit.`);
+      const taskSnapshot = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
+      const task = taskSnapshot?.task;
+      assert(task?.status === 'failed', `${scenario.id}: terminal failure was not retained on the task surface.`);
+      const unavailable = (task.issues ?? []).find((issue) => issue.code === 'REQUIRED_MEDIA_UNAVAILABLE');
+      assert(unavailable, `${scenario.id}: task surface omitted REQUIRED_MEDIA_UNAVAILABLE.`);
+      assert(unavailable.location === scenario.media.usages[0], `${scenario.id}: task surface did not identify the exact Shot/media location.`);
+      assert(unavailable.problem === issueProblem, `${scenario.id}: task surface omitted the concrete missing/corrupt media problem.`);
+      assert(unavailable.nextStep === issueNextStep, `${scenario.id}: task surface omitted the actionable re-import/reference repair step.`);
+      assert(failureRun.taskText.includes(issueProblem) && failureRun.taskText.includes(issueNextStep), `${scenario.id}: visible Creator task omitted the issue and its next step.`);
+      assert(!existsSync(targetPath), `${scenario.id}: preflight failure published a partial MP4.`);
+      assert(hash(await fsp.readFile(previousOutputPath)) === previousOutputSha256, `${scenario.id}: existing prior-output MP4 changed after preflight failure.`);
+      assert((await fsp.readFile(projectFilePath)).equals(initialProjectBytes), `${scenario.id}: Project file changed after preflight failure.`);
+      const editorAfter = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+      const editorAfterFingerprint = acceptanceSessionFingerprint(editorAfter);
+      assert(JSON.stringify(editorBeforeFingerprint) === JSON.stringify(editorAfterFingerprint), `${scenario.id}: preflight failure changed Project/session revision, dirty state, selection, or History.`);
+
+      const cleanup = await assertNoExportTemporaries(`${scenario.id} Creator preflight`);
+      scenarioResults.push({
+        status: 'PASS',
+        mutation: scenario.mutation,
+        assetId: asset.id,
+        relativePath: asset.relativePath,
+        expectedLocation: scenario.media.usages[0],
+        expectedSha256: asset.sha256,
+        invalidSha256: scenario.mutation === 'corrupt' ? hash(await fsp.readFile(sourcePath)) : null,
+        failureTaskText: failureRun.taskText,
+        taskIssue: unavailable,
+        formalJobsStarted: failureRun.starts.length,
+        formalCommits: formalCommitRecords.length - priorCommitCount,
+        targetPath,
+        targetAbsent: !existsSync(targetPath),
+        previousOutputPath,
+        previousOutputSha256Before: previousOutputSha256,
+        previousOutputSha256After: hash(await fsp.readFile(previousOutputPath)),
+        previousOutputUnchanged: hash(await fsp.readFile(previousOutputPath)) === previousOutputSha256,
+        projectSha256Before: hash(initialProjectBytes),
+        projectSha256After: hash(await fsp.readFile(projectFilePath)),
+        projectFileUnchanged: (await fsp.readFile(projectFilePath)).equals(initialProjectBytes),
+        editorBefore: editorBeforeFingerprint,
+        editorAfter: editorAfterFingerprint,
+        editorStatePreserved: JSON.stringify(editorBeforeFingerprint) === JSON.stringify(editorAfterFingerprint),
+        screenshots: {
+          saveAs: failureRun.nativeSaveAsScreenshotPath,
+          overwritePrompt: null,
+          blocked: failureRun.failureScreenshotPath,
+        },
+        temporaryCleanup: cleanup,
+      });
+    } finally {
+      await fsp.writeFile(sourcePath, originalBytes);
+    }
+
+    assert(hash(await fsp.readFile(sourcePath)) === originalSha256, `${scenario.id}: source bytes were not restored exactly.`);
+  }
+
+  const sourceHashesAfter = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+    assetId: asset.id,
+    sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+  })));
+  assert(JSON.stringify(sourceHashesBefore) === JSON.stringify(sourceHashesAfter), 'Media-preflight cases changed generated source assets.');
+  assert((await fsp.readFile(projectFilePath)).equals(initialProjectBytes), 'Media-preflight cases changed project.json.');
+  result.r2MediaPreflightFailures = {
+    status: 'PASS',
+    projectSha256Before: hash(initialProjectBytes),
+    projectSha256After: hash(await fsp.readFile(projectFilePath)),
+    previousOutput: {
+      path: previousOutputPath,
+      sha256: previousOutputSha256,
+      byteLength: (await fsp.stat(previousOutputPath)).size,
+      ffprobe: {
+        formatNames: previousOutputFormats,
+        durationSeconds: previousOutputDurationSeconds,
+        codec: previousOutputVideo.codec_name,
+        pixelFormat: previousOutputVideo.pix_fmt,
+        width: previousOutputVideo.width,
+        height: previousOutputVideo.height,
+        frameCount: previousOutputFrameCount,
+      },
+    },
+    sourceHashesBefore,
+    sourceHashesAfter,
+    sourceAssetsUnchanged: true,
+    scenarios: scenarioResults,
+  };
+  result.auto = 'PASS';
+  result.completedAt = new Date().toISOString();
+  result.owner = { status: 'NOT_ATTESTED', note: 'Generated-fixture automated preflight evidence only; author-project and human Gate B review remain deferred.' };
+  await fsp.writeFile(path.join(evidenceRoot, 'issue836-r2-media-preflight-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
+  await fsp.writeFile(path.join(fixture.root, 'issue836-r2-media-preflight-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
+  console.log(`PASS Issue #836 R2 missing/corrupt-media Creator preflight: ${fixture.root}`);
+  mainWindow.destroy();
+  hiddenWindowManager.close();
+  app.exit(0);
 }
 
 function pcmWindow(bytes, startMs, durationMs) {
@@ -3608,7 +3783,7 @@ async function run() {
     !issue836R2CommitRaceMode || !(
       dl03Mode || dl04Mode || dl05Mode || dl06R0Mode ||
       issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
-      issue836R2CopyFailureMode
+      issue836R2CopyFailureMode || issue836R2MediaPreflightMode
     ),
     'Issue #836 R2 commit-race mode cannot be combined with another acceptance mode.',
   );
@@ -3616,9 +3791,21 @@ async function run() {
     !issue836R2CopyFailureMode || !(
       dl03Mode || dl04Mode || dl05Mode || dl06R0Mode ||
       issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
-      issue836R2CommitRaceMode
+      issue836R2CommitRaceMode || issue836R2MediaPreflightMode
     ),
     'Issue #836 R2 copy-failure mode cannot be combined with another acceptance mode.',
+  );
+  assert(
+    !issue836R2MediaPreflightMode || (dl04Mode && dl04SampleId === 1),
+    'Issue #836 R2 media-preflight mode requires the single Issue #827 sample 1 Creator UI fixture.',
+  );
+  assert(
+    !issue836R2MediaPreflightMode || !(
+      dl03Mode || dl05Mode || dl06R0Mode ||
+      issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
+      issue836R2CommitRaceMode || issue836R2CopyFailureMode
+    ),
+    'Issue #836 R2 media-preflight mode cannot be combined with another focused acceptance mode.',
   );
   assert(!(issue836R2PathBoundaryMode && issue836R2PathSuccessMode), 'Issue #836 R2 path modes are mutually exclusive.');
   assert(!(issue836R2PathBoundaryMode || issue836R2PathSuccessMode) || (dl04Mode && dl04SampleId === 1), 'Issue #836 R2 path mode requires the single Issue #827 sample 1 Creator UI fixture.');
@@ -3659,11 +3846,13 @@ async function run() {
   mainWindow.webContents.focus();
 
   const result = {
-    issue: issue836R2CommitRaceMode || issue836R2CopyFailureMode || dl06R0Mode ? 836 : dl05FollowupMode ? 834 : dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
+    issue: issue836R2CommitRaceMode || issue836R2CopyFailureMode || issue836R2MediaPreflightMode || dl06R0Mode ? 836 : dl05FollowupMode ? 834 : dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
     wrapperRunId: process.env.PANDA_STAGE_ISSUE836_RUN_ID ?? process.env.PANDA_STAGE_ISSUE834_RUN_ID ?? process.env.PANDA_STAGE_ISSUE832_RUN_ID ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID ?? null,
     sourceCommitSha: process.env.PANDA_STAGE_ISSUE836_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE834_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE832_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA ?? null,
     sampleId: dl04Mode || dl05Mode ? dl04SampleId : null,
-    workOrder: issue836R2CopyFailureValidMp4Mode
+    workOrder: issue836R2MediaPreflightMode
+      ? 'Issue #836 R2 AC03: Creator preflight for missing image and corrupt audio preservation'
+      : issue836R2CopyFailureValidMp4Mode
       ? 'Issue #836 R2: Creator preparation-copy failure preserving a valid MP4 sentinel'
       : issue836R2CopyFailureMode
       ? 'Issue #836 R2: Creator preparation-copy failure with Project and output preservation'
@@ -3741,6 +3930,10 @@ async function run() {
     const editorSnapshotBytes = Buffer.from(JSON.stringify(edited.project, null, 2), 'utf8');
     await fsp.writeFile(editorSnapshotPath, editorSnapshotBytes);
     await clickSelector('[data-testid="quick-action-drawer-handle"]');
+    if (issue836R2MediaPreflightMode) {
+      await runIssue836R2MediaPreflightAcceptance({ result, initialProjectBytes, projectFilePath, evidenceRoot, mediaTools });
+      return;
+    }
     if (issue836R2CopyFailureMode) {
       const targetPath = path.join(fixture.projectRoot, 'issue836-r2-copy-failure.mp4');
       const previousOutputPath = path.join(fixture.projectRoot, 'issue836-r2-previous-output-sentinel.mp4');
