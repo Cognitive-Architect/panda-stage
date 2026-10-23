@@ -13,6 +13,7 @@ Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.Drawing
 Add-Type @'
+using System;
 using System.Runtime.InteropServices;
 public static class Issue816NativeClick {
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);

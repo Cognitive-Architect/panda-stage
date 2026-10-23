@@ -1,9 +1,9 @@
 # Issue #836 DL-06 measurement plan and result
 
-Report version: **1.12.0**
-Frozen plan revision: **1.3.0**, committed before the next bounded R3 continuation
+Report version: **1.13.0**
+Frozen plan revision: **1.4.0**, committed before the next bounded R3 continuation
 Plan date: **2026-10-23**
-R3 status: **PARTIAL / NOT_ATTESTED**; v1.2.0 produced a qualifying AUTO receipt for sample 1 cold-process. Sample 1 warm-followup completed its primary 720-frame export but stopped in the native Save As helper before the no-clobber assertions. Sample 2 was not started. The four-run R3 set remains incomplete; author-authorized real Projects, installer acceptance, and human Gate B review remain unavailable.
+R3 status: **PARTIAL / NOT_ATTESTED**; v1.2.0 produced one qualifying AUTO receipt for sample 1 cold-process. Its warm primary export completed but stopped in the no-clobber helper; v1.3.0 then stopped before any formal Job because the new foreground P/Invoke type did not compile. Sample 2 has not completed. The four-run R3 set remains incomplete; author-authorized real Projects, installer acceptance, and human Gate B review remain unavailable.
 
 ## Evidence availability
 
@@ -231,3 +231,20 @@ R3 remains **PARTIAL / NOT_ATTESTED** and DL-06 remains **NO GO**. The warm prim
 v1.2.0 confirmed that sample 1 cold-process and the warm primary export completed, but the warm no-clobber helper captured VLC instead of its matched native dialogs and failed before the assertion. This revision changes only `scripts/issue816-native-dialog.ps1`: activate and verify the matched Windows overwrite dialog is foreground before screen capture or any coordinate fallback, use the button's UI Automation `InvokePattern` first, and permit coordinate fallback only after foreground-process verification. This is a harness safety and evidence correction; no product code, fixture definitions, sample order, measurement interval, or 5,000 ms sampling validity limit changes.
 
 Freeze the exact source commit in the Issue body and measurement manifest before invocation. Execute exactly one bounded set using `powershell -NoProfile -File scripts/measure-issue836-dl06-r3.ps1 -AcceptanceRoot D:\PandaStage-Acceptance\i836r3`, preserving the order sample 1 cold-process, sample 1 warm-followup, sample 2 cold-process, sample 2 warm-followup. Stop on the first verifier failure or measurement-invalid sample; do not retry a failed sample. Preserve all manifests, receipts, failure JSON, screenshots, and logs. Even if all generated probes pass, R3 remains **PARTIAL / NOT_ATTESTED** because these are not author-authorized real Projects; packaged-install and human Gate B acceptance remain outside this measurement.
+
+
+## R3 bounded continuation result - frozen plan v1.3.0
+
+Source commit: `1234a1f01d001f0f578c3dc50d40e69a1729b795`. Invocation: `20261023T095151Z-a4b1bf5c-a858-4618-bf6b-cae804883fc2`. Measurement root: `D:\PandaStage-Acceptance\i836r3\m-843d042632374661`.
+
+Sample 1 cold-process stopped after 4,935 ms / 6 process samples with peak process count 7 and a maximum sample gap of 621.5 ms, below the 5,000 ms limit. AppActivate succeeded for Electron PID 1476. The generated fixture's initial source project hash was `00c68e1d43379c40c3372df5bc06c9f5734555f747f88a44b0074182ab4175d4`.
+
+The verifier opened its first Save As request at `2026-10-23T09:51:56.808Z`, but the native helper failed while compiling its embedded C# declarations: `IntPtr` was not found because the source omitted `using System;`. The error occurred in `scripts/issue816-native-dialog.ps1` before any formal Export Job started (`formalStarts=[]`). No acceptance receipt or output MP4 was produced. The bounded runner exited 1 and honored stop-on-first-failure; sample 1 warm and both sample 2 runs were not started. Evidence: `D:\PandaStage-Acceptance\i836r3\m-843d042632374661\sample-1-cold-process\run-2026-10-23T09-51-54-621Z-1476\evidence\electron-failure.json`.
+
+The 621.5 ms gap is within the measurement validity limit, but this pre-export run does not provide exporter cost evidence. The storage sampler's zero frame/frozen-media/staging counts are pre-export observations and must not be treated as measured export peaks; export cost, phase times, pending-frame queue, and terminal release remain `NOT_MEASURED`. Source SHA `1234a1f01d001f0f578c3dc50d40e69a1729b795` had no GitHub status entries or workflow runs (`CI_NOT_REPORTED`).
+
+### Next bounded R3 continuation plan - v1.4.0 (frozen before run)
+
+v1.3.0 did not reach an Export Job because the newly added P/Invoke declarations failed compilation. This revision adds `using System;` to the embedded C# source in `scripts/issue816-native-dialog.ps1`; the v1.3 foreground activation and UI Automation behavior remain unchanged. Before freezing, validate both PowerShell parse and compilation of the exact embedded C# type. This is a measurement-harness compile correction; product code, fixture definitions, sample order, measurement interval, and 5,000 ms validity limit remain unchanged.
+
+Freeze the exact source commit in the Issue body and measurement manifest before invocation. Execute exactly one bounded set using `powershell -NoProfile -File scripts/measure-issue836-dl06-r3.ps1 -AcceptanceRoot D:\PandaStage-Acceptance\i836r3`, in order sample 1 cold-process, sample 1 warm-followup, sample 2 cold-process, sample 2 warm-followup. Stop on the first verifier failure or measurement-invalid sample; do not retry a failed sample. Preserve all manifests, receipts, failure JSON, screenshots, and logs. Even if all generated probes pass, R3 remains **PARTIAL / NOT_ATTESTED** because author-authorized real Projects, packaged-install acceptance, and human Gate B evidence remain unavailable.
