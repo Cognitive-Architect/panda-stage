@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { ZodError } from 'zod';
 import type { Asset, ImageAssetAuthorMetadata } from '../../../domain';
 import {
@@ -147,6 +147,8 @@ export function AssetDetails({
   const [metadataConflict, setMetadataConflict] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [referencesExpanded, setReferencesExpanded] = useState(false);
+  const referencesListId = useId();
   const metadataBaseline = useRef<ImageMetadataBaseline | null>(
     asset?.kind === 'image'
       ? {
@@ -184,6 +186,7 @@ export function AssetDetails({
     setMetadataConflict(false);
     setPreviewOpen(false);
     setMoreOpen(false);
+    setReferencesExpanded(false);
   }, [asset?.id]);
 
   useEffect(() => {
@@ -416,8 +419,39 @@ export function AssetDetails({
           {preview(asset, thumbnail, showPreview, previewTriggerRef)}
         </div>
         <div className="asset-details-summary-copy">
-          <span>{asset.kind === 'image' ? '图片素材' : '音频素材'}</span>
+          <span>{asset.kind === 'image' ? '图片' : '音频'}</span>
           <span>{dimensions(asset)}</span>
+          {references.length > 0 ? (
+            <details
+              className="asset-details-disclosure"
+              onToggle={(event) =>
+                setReferencesExpanded(event.currentTarget.open)
+              }
+              open={referencesExpanded}
+            >
+              <summary
+                aria-controls={referencesListId}
+                aria-expanded={referencesExpanded}
+              >
+                <span>被 {references.length} 处使用</span>
+                <DecorativeIcon
+                  className="asset-details-disclosure-chevron"
+                  icon={ChevronRight}
+                  size={16}
+                />
+              </summary>
+              <ul
+                className="asset-details-reference-list"
+                id={referencesListId}
+              >
+                {references.map((reference) => (
+                  <li key={reference.path}>
+                    <span>{reference.label}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
           {asset.kind === 'audio' ? (
             <strong title={asset.name}>{asset.name}</strong>
           ) : null}
@@ -542,82 +576,6 @@ export function AssetDetails({
           源文件缺失，无法读取或重建缩略图。
         </p>
       ) : null}
-
-      <div className="asset-details-disclosures">
-        {references.length > 0 ? (
-          <details className="asset-details-disclosure">
-            <summary>
-              <span>被 {references.length} 处使用</span>
-              <DecorativeIcon
-                className="asset-details-disclosure-chevron"
-                icon={ChevronRight}
-                size={16}
-              />
-            </summary>
-            <ul className="asset-details-reference-list">
-              {references.map((reference) => (
-                <li key={reference.path}>
-                  <span>{reference.label}</span>
-                  <code>{reference.path}</code>
-                </li>
-              ))}
-            </ul>
-          </details>
-        ) : (
-          <p className="asset-details-unreferenced">当前未被项目使用</p>
-        )}
-        <details className="asset-details-disclosure">
-          <summary>
-            <span>详细信息</span>
-            <DecorativeIcon
-              className="asset-details-disclosure-chevron"
-              icon={ChevronRight}
-              size={16}
-            />
-          </summary>
-          <dl
-            data-testid={
-              asset.kind === 'image' && asset.flaSnapshot
-                ? 'asset-fla-snapshot-origin'
-                : undefined
-            }
-            className="asset-details-technical-list"
-          >
-            <div>
-              <dt>项目内路径</dt>
-              <dd>{asset.relativePath}</dd>
-            </div>
-            <div>
-              <dt>路径状态</dt>
-              <dd>
-                {sourceStatus === 'missing'
-                  ? '源文件缺失'
-                  : sourceStatus === 'present'
-                    ? '源文件存在'
-                    : asset.kind === 'audio'
-                      ? '尚未读取源文件状态'
-                      : '正在检查源文件'}
-              </dd>
-            </div>
-            {asset.kind === 'image' && asset.flaSnapshot ? (
-              <>
-                <div>
-                  <dt>来源 FLA</dt>
-                  <dd>{asset.flaSnapshot.sourceBasename}</dd>
-                </div>
-                <div>
-                  <dt>源元件</dt>
-                  <dd>{asset.flaSnapshot.sourceLibraryItemName ?? asset.flaSnapshot.targetName}</dd>
-                </div>
-                <div>
-                  <dt>源帧</dt>
-                  <dd>{asset.flaSnapshot.selectedFrameIndex + 1}</dd>
-                </div>
-              </>
-            ) : null}
-          </dl>
-        </details>
-      </div>
 
       {previewOpen && asset.kind === 'image' && thumbnail?.status === 'ready' ? (
         <div

@@ -199,7 +199,7 @@ describe('asset library components', () => {
     }
   });
 
-  it('shows the source FLA, library item, and selected frame for a committed snapshot asset', () => {
+  it('keeps FLA origin metadata out of the compact asset detail surface', () => {
     const image = migrateProject(exampleProject).assets.find(
       (asset) => asset.kind === 'image',
     );
@@ -224,22 +224,11 @@ describe('asset library components', () => {
         thumbnail: { status: 'ready', dataUrl: 'data:image/png;base64,AA==' },
       }),
     );
-    expect(markup).toContain('data-testid="asset-fla-snapshot-origin"');
-    expect(markup).toContain('蓝发修仙女.fla');
-    expect(markup).toContain('神女-cilisucai.com/神女-cilisucai.com809');
-    expect(markup).toContain('<dd>1</dd>');
-    const originDescriptionList = markup.match(
-      /<dl[^>]*data-testid="asset-fla-snapshot-origin"[^>]*>([\s\S]*?)<\/dl>/u,
-    )?.[1];
-    expect(originDescriptionList).toBeDefined();
-    expect(originDescriptionList).toMatch(
-      /<div><dt>来源 FLA<\/dt><dd>蓝发修仙女\.fla<\/dd><\/div>/u,
-    );
-    expect(originDescriptionList).toMatch(
-      /<div><dt>源元件<\/dt><dd>神女-cilisucai\.com\/神女-cilisucai\.com809<\/dd><\/div>/u,
-    );
-    expect(originDescriptionList).toMatch(/<div><dt>源帧<\/dt><dd>1<\/dd><\/div>/u);
-    expect(originDescriptionList).not.toMatch(/<div(?:\s[^>]*)?>\s*<div/u);
+    expect(markup).not.toContain('asset-fla-snapshot-origin');
+    expect(markup).not.toContain('蓝发修仙女.fla');
+    expect(markup).not.toContain('神女-cilisucai.com/神女-cilisucai.com809');
+    expect(markup).not.toContain('详细信息');
+    expect(markup).not.toContain('项目内路径');
   });
 
   it('opens images directly in the compact authoring form without duplicate read-only metadata', () => {
@@ -268,7 +257,7 @@ describe('asset library components', () => {
     expect(markup).not.toContain('用逗号分隔，最多 8 个词');
   });
 
-  it('keeps preview, references, technical details, and delete behind compact affordances', () => {
+  it('keeps references collapsed and shows only human labels in compact details', () => {
     const image = migrateProject(exampleProject).assets.find(
       (asset) => asset.kind === 'image',
     );
@@ -297,13 +286,52 @@ describe('asset library components', () => {
 
     expect(markup).toContain('data-testid="asset-details-thumbnail"');
     expect(markup).toContain('aria-haspopup="dialog"');
+    expect(markup).toContain('<span>图片</span>');
     expect(markup).toContain('被 1 处使用');
-    expect(markup).toContain('shots/shot-1/layer-2');
-    expect(markup).toContain('详细信息');
-    expect(markup).toContain('doors.fla');
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).toContain('镜头 1 · 图层 2');
+    expect(markup).not.toContain('shots/shot-1/layer-2');
+    expect(markup).not.toContain('详细信息');
+    expect(markup).not.toContain('doors.fla');
+    expect(markup).not.toContain('data-testid="asset-fla-snapshot-origin"');
     expect(markup).toContain('asset-details-delete-action');
     expect(markup).not.toContain('asset-reference-warning');
     expect(markup).not.toContain('asset-delete-button');
+  });
+
+  it('shows a count and labels for multiple references, with no row for none', () => {
+    const image = migrateProject(exampleProject).assets.find(
+      (asset) => asset.kind === 'image',
+    );
+    if (!image || image.kind !== 'image') throw new Error('Expected an image fixture.');
+
+    const multiple = renderToStaticMarkup(
+      createElement(AssetDetails, {
+        asset: image,
+        busy: false,
+        onDelete: noop,
+        references: [
+          { label: '角色“新角色”的张嘴图片', path: 'characters[0].mouthOpenAssetId' },
+          { label: '镜头“Opening”的背景图层“Background”', path: 'shots[0].layers[0].source.assetId' },
+        ],
+      }),
+    );
+    const unreferenced = renderToStaticMarkup(
+      createElement(AssetDetails, {
+        asset: image,
+        busy: false,
+        onDelete: noop,
+        references: [],
+      }),
+    );
+
+    expect(multiple).toContain('被 2 处使用');
+    expect(multiple).toContain('角色“新角色”的张嘴图片');
+    expect(multiple).toContain('镜头“Opening”的背景图层“Background”');
+    expect(multiple).not.toContain('characters[0].mouthOpenAssetId');
+    expect(multiple).not.toContain('shots[0].layers[0].source.assetId');
+    expect(unreferenced).not.toContain('asset-details-disclosure');
+    expect(unreferenced).not.toContain('当前未被项目使用');
   });
 
   it('renders a clear empty state for a category with no assets', () => {

@@ -52,8 +52,10 @@ describe('Issue #344 portrait Assets density and reachability', () => {
 
     expect(markup).toContain('asset-details-portrait');
     expect(markup).toContain(asset.name);
-    expect(markup).toContain(asset.relativePath);
+    expect(markup).toContain('<span>图片</span>');
+    expect(markup).toContain('1920 × 1080 px');
+    expect(markup).not.toContain(asset.relativePath);
     expect(markup).toContain('asset-details-delete-action');
-    expect(markup).toContain('详细信息');
+    expect(markup).not.toContain('详细信息');
   });
 });

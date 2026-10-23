@@ -167,8 +167,13 @@ export function AssetLibrary({
     ? ASSET_LIBRARY_FILTERS
     : ASSET_LIBRARY_CATEGORIES;
   const visibleEntries = useMemo(
-    () => filterAssetLibraryEntries(entries, searchQuery, usageFilter),
-    [entries, searchQuery, usageFilter],
+    () =>
+      filterAssetLibraryEntries(
+        entries,
+        searchQuery,
+        category === 'audio' ? 'all' : usageFilter,
+      ),
+    [category, entries, searchQuery, usageFilter],
   );
   const saveImageMetadata = useCallback(
     (
@@ -220,7 +225,8 @@ export function AssetLibrary({
     [currentPage, isPortraitBrowser, visibleEntries],
   );
   const isSearchActive = searchQuery.trim().length > 0;
-  const isUsageFilterActive = usageFilter !== 'all';
+  const isUsageFilterActive =
+    category !== 'audio' && usageFilter !== 'all';
   const isEntireLibraryEmpty = !isSearchActive && counts.all === 0;
   const selectedAsset = useMemo(
     () =>
@@ -310,6 +316,7 @@ export function AssetLibrary({
   const updateUsageFilter = (
     nextUsage: AssetLibraryUsageFilter,
   ): void => {
+    if (category === 'audio') return;
     if (!clearSelectedAsset()) return;
     setUsageFilter(nextUsage);
     setUsageFilterMenuOpen(false);
@@ -895,15 +902,27 @@ export function AssetLibrary({
             </div>
             <div className="asset-library-usage-filter">
               <button
-                aria-expanded={usageFilterMenuOpen}
+                aria-expanded={category !== 'audio' && usageFilterMenuOpen}
                 aria-haspopup="menu"
-                aria-label="按用途筛选"
+                aria-label={
+                  category === 'audio'
+                    ? '按用途筛选（仅图片素材）'
+                    : '按用途筛选'
+                }
                 aria-pressed={usageFilter !== 'all'}
                 className="asset-library-usage-filter-trigger"
                 data-active={usageFilter !== 'all'}
                 data-testid="asset-library-usage-filter"
-                onClick={() => setUsageFilterMenuOpen((open) => !open)}
+                disabled={category === 'audio'}
+                onClick={() => {
+                  if (category !== 'audio') {
+                    setUsageFilterMenuOpen((open) => !open);
+                  }
+                }}
                 ref={usageFilterTriggerRef}
+                title={
+                  category === 'audio' ? '用途筛选仅适用于图片素材' : undefined
+                }
                 type="button"
               >
                 <Filter aria-hidden="true" size={18} />
@@ -911,7 +930,7 @@ export function AssetLibrary({
                   <span aria-hidden="true" className="asset-library-usage-filter-active-dot" />
                 ) : null}
               </button>
-              {usageFilterMenuOpen ? (
+              {usageFilterMenuOpen && category !== 'audio' ? (
                 <div
                   aria-label="按用途筛选"
                   className="asset-library-usage-filter-menu"
@@ -921,8 +940,12 @@ export function AssetLibrary({
                   role="menu"
                 >
                   {[
-                    { value: 'all' as const, label: '全部用途' },
-                    ...IMAGE_ASSET_USAGE_OPTIONS,
+                    { value: 'all' as const, label: '全部' },
+                    ...IMAGE_ASSET_USAGE_OPTIONS.map((option) =>
+                      option.value === 'character'
+                        ? { ...option, label: '人物' }
+                        : option,
+                    ),
                   ].map((option) => (
                     <button
                       aria-checked={usageFilter === option.value}
@@ -934,9 +957,14 @@ export function AssetLibrary({
                       type="button"
                     >
                       <span>{option.label}</span>
-                      {usageFilter === option.value ? (
-                        <Check aria-hidden="true" size={17} />
-                      ) : null}
+                      <span
+                        aria-hidden="true"
+                        className="asset-library-usage-filter-check-slot"
+                      >
+                        {usageFilter === option.value ? (
+                          <Check size={17} />
+                        ) : null}
+                      </span>
                     </button>
                   ))}
                 </div>

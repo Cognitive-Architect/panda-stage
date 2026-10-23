@@ -100,8 +100,9 @@ describe('Issue #343 portrait Assets media library', () => {
 
     expect(markup).toContain('asset-details-preview-audio');
     expect(markup).toContain('3.00 秒');
-    expect(markup).toContain('尚未读取源文件状态');
-    expect(markup).toContain(audio.relativePath);
+    expect(markup).not.toContain('尚未读取源文件状态');
+    expect(markup).not.toContain(audio.relativePath);
+    expect(markup).not.toContain('asset-details-disclosure');
   });
 
   it('keeps the portrait browser controls and optional FLA placement on existing owners', () => {
@@ -125,7 +126,8 @@ describe('Issue #343 portrait Assets media library', () => {
     expect(markup).toContain('asset-library-search-input');
     expect(markup).toContain('全部');
     expect(markup).toContain('角色');
-    expect(markup).toContain('背景');
+    expect(markup).toContain('class="asset-category-tabs"');
+    expect(markup).not.toContain('data-testid="asset-library-usage-filter-menu"');
     expect(markup).toContain('音频');
     expect(markup).not.toContain('data-testid="asset-import-fla"');
     expect(library).not.toContain('data-testid="asset-selected-summary"');

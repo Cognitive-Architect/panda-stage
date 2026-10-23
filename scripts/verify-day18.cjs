@@ -1,5 +1,6 @@
 const { readFile, mkdir, writeFile } = require('node:fs/promises');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const { app, ipcMain } = require('electron');
 const {
   createMainWindow,
@@ -14,6 +15,12 @@ const exampleProject = require('../demo-project/project-v1.example.json');
 const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 const repositoryRoot = path.join(__dirname, '..');
+const branch = process.env.GITHUB_HEAD_REF ||
+  process.env.GITHUB_REF_NAME ||
+  execFileSync('git', ['branch', '--show-current'], {
+    cwd: repositoryRoot,
+    encoding: 'utf8',
+  }).trim();
 const evidenceRelativeDirectory =
   `docs/evidence/issue-835-day18/run-${new Date().toISOString().replace(/[:.]/gu, '-')}`;
 const evidenceDirectory = path.join(
@@ -23,6 +30,8 @@ const evidenceDirectory = path.join(
 const projectRoot = 'D:\\项目\\Day 18 素材库 🐼.pandastage';
 const referencedAssetId =
   '10000000-0000-4000-8000-000000000002';
+const multiReferenceAssetId =
+  '18000000-0000-4000-8000-000000000098';
 const blockedDeleteStatusMarker = 'Main Process 已阻止删除';
 const fixtureAssetId = (index) =>
   `18000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
@@ -43,10 +52,40 @@ const fixtureAssets = Array.from({ length: 99 }, (_, offset) => {
   };
 });
 let activeVerificationStage = 'boot';
-const libraryProject = migrateProject({
+function setVerificationStage(stage) {
+  activeVerificationStage = stage;
+  console.log(`[Day18] ${stage}`);
+}
+
+const migratedLibraryProject = migrateProject({
   ...exampleProject,
   assets: [...exampleProject.assets, ...fixtureAssets],
 });
+const libraryProject = {
+  ...migratedLibraryProject,
+  assets: migratedLibraryProject.assets.map((asset) =>
+    asset.id === fixtureAssetId(3) && asset.kind === 'image'
+      ? { ...asset, usage: 'background' }
+      : asset,
+  ),
+  shots: migratedLibraryProject.shots.map((shot, shotIndex) =>
+    shotIndex === 0
+      ? {
+          ...shot,
+          layers: [
+            ...shot.layers,
+            ...[1, 2].map((number) => ({
+              ...shot.layers[0],
+              id: `60000000-0000-4000-8000-${String(number + 2).padStart(12, '0')}`,
+              name: `Fixture multi reference ${number}`,
+              source: { kind: 'asset', assetId: multiReferenceAssetId },
+              zIndex: number + 1,
+            })),
+          ],
+        }
+      : shot,
+  ),
+};
 
 app.on('window-all-closed', () => {});
 
@@ -195,12 +234,18 @@ async function closeAssetDetails(window) {
 
 async function capturePaintedPage(window) {
   // DOM checks can settle before Chromium paints the inactive verifier window.
+  window.show();
+  window.focus();
+  window.webContents.focus();
+  await window.webContents.executeJavaScript(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+  );
   await new Promise((resolve) => setTimeout(resolve, 150));
   return window.webContents.capturePage();
 }
 
 async function verifyDay18() {
-  activeVerificationStage = 'setup';
+  setVerificationStage('setup');
   const png = await readFile(
     path.join(repositoryRoot, 'tests/fixtures/assets/熊猫 图片.png'),
   );
@@ -248,6 +293,17 @@ async function verifyDay18() {
     IPC_CHANNELS.ASSET_THUMBNAIL_READ,
     (_event, request) => {
       thumbnailRequestCount += 1;
+      if (request.assetId === referencedAssetId) {
+        return {
+          ok: false,
+          error: {
+            code: 'ASSET_THUMBNAIL_SOURCE_MISSING',
+            message: '源文件缺失，无法读取或重建缩略图。',
+            assetId: request.assetId,
+            relativePath: 'assets/day18-missing-source.png',
+          },
+        };
+      }
       if (
         request.assetId === missingThumbnailAssetId ||
         !request.sha256
@@ -310,7 +366,7 @@ async function verifyDay18() {
       : { ok: true, status: 'cancelled' };
   });
 
-  activeVerificationStage = 'open asset library';
+    setVerificationStage('open asset library');
   const window = await createMainWindow({ show: false });
   try {
     window.setSize(1440, 1000);
@@ -383,6 +439,189 @@ async function verifyDay18() {
       `([...document.querySelectorAll('.asset-category-tabs button')])` +
         `.map((button) => button.querySelector('span')?.textContent?.trim() ?? '')`,
     );
+    const ensureAssetPanelVisible = async (context) => {
+      await window.webContents.executeJavaScript(`(() => {
+        const isVisiblyOnscreen = (element) => {
+          if (!(element instanceof HTMLElement)) return false;
+          const box = element.getBoundingClientRect();
+          let ancestor = element;
+          while (ancestor instanceof HTMLElement) {
+            const style = getComputedStyle(ancestor);
+            if (
+              style.display === 'none' ||
+              style.visibility === 'hidden' ||
+              Number(style.opacity) <= 0 ||
+              style.pointerEvents === 'none'
+            ) return false;
+            ancestor = ancestor.parentElement;
+          }
+          const x = Math.max(0, Math.min(
+            document.documentElement.clientWidth - 1,
+            box.left + box.width / 2,
+          ));
+          const y = Math.max(0, Math.min(
+            document.documentElement.clientHeight - 1,
+            box.top + box.height / 2,
+          ));
+          const hit = document.elementFromPoint(x, y);
+          return Boolean(element.getClientRects().length &&
+            box.width > 0 && box.height > 0 &&
+            box.right > 0 && box.left < document.documentElement.clientWidth &&
+            box.bottom > 0 && box.top < document.documentElement.clientHeight &&
+            hit && (element.contains(hit) || hit.contains(element)));
+        };
+        const portraitAssetsTab = [...document.querySelectorAll(
+          '[data-testid="editor-portrait-workspace-switcher"] [role="tab"]',
+        )].find((button) => button.textContent?.includes('素材'));
+        if (portraitAssetsTab && isVisiblyOnscreen(portraitAssetsTab)) {
+          if (portraitAssetsTab.getAttribute('aria-selected') !== 'true') {
+            portraitAssetsTab.click();
+          }
+          return true;
+        }
+        const assetsActivity = document.querySelector(
+          '[data-testid="resource-activity-rail-assets"], ' +
+            '[data-testid="resource-activity-tabs"] [data-activity="assets"]',
+        );
+        if (!(assetsActivity instanceof HTMLButtonElement)) {
+          throw new Error('Asset workspace navigation did not render.');
+        }
+        if (
+          !isVisiblyOnscreen(document.querySelector('.asset-library')) ||
+          assetsActivity.getAttribute('aria-pressed') !== 'true' ||
+          assetsActivity.getAttribute('aria-expanded') === 'false'
+        ) {
+          assetsActivity.click();
+        }
+        return true;
+      })()`);
+      await waitForRenderer(
+        window,
+        "document.querySelector('[data-testid=\"asset-library-filter-controls\"]') && " +
+          "(() => { const library = document.querySelector('.asset-library'); " +
+          "const box = library?.getBoundingClientRect(); " +
+          "const style = library && getComputedStyle(library); " +
+          "return Boolean(library?.getClientRects().length && box && style && " +
+          "style.display !== 'none' && style.visibility !== 'hidden' && " +
+          "Number(style.opacity) > 0 && box.width > 0 && box.height > 0 && " +
+          "box.right > 0 && box.left < document.documentElement.clientWidth && " +
+          "box.bottom > 0 && box.top < document.documentElement.clientHeight); })()",
+        `The asset library did not become visible in the ${context} viewport.`,
+      );
+    };
+    const usageFilterDefaultAudit = await window.webContents.executeJavaScript(`(async () => {
+      const trigger = document.querySelector(
+        '[data-testid="asset-library-usage-filter"]',
+      );
+      trigger.click();
+      await new Promise((resolve) => requestAnimationFrame(
+        () => requestAnimationFrame(resolve),
+      ));
+      const menu = document.querySelector(
+        '[data-testid="asset-library-usage-filter-menu"]',
+      );
+      const triggerBox = trigger.getBoundingClientRect();
+      const menuBox = menu.getBoundingClientRect();
+      const selected = menu.querySelector('[aria-checked="true"]');
+      const selectedText = selected.querySelector('span:first-child');
+      const characterOption = menu.querySelector(
+        '[data-usage-filter-value="character"]',
+      );
+      const hoverBox = characterOption.getBoundingClientRect();
+      const checkSlots = [...menu.querySelectorAll(
+        '.asset-library-usage-filter-check-slot',
+      )].map((slot) => slot.getBoundingClientRect().width);
+      return {
+        values: [...menu.querySelectorAll('[data-usage-filter-value]')]
+          .map((item) => item.dataset.usageFilterValue),
+        labels: [...menu.querySelectorAll('[data-usage-filter-value]')]
+          .map((item) => item.textContent.trim()),
+        triggerRight: triggerBox.right,
+        menuRight: menuBox.right,
+        menuWidth: menuBox.width,
+        selectedColor: getComputedStyle(selected).color,
+        selectedBackground: getComputedStyle(selected).backgroundColor,
+        selectedBorder: getComputedStyle(selected).borderColor,
+        selectedTextAlign: getComputedStyle(selectedText).textAlign,
+        checkSlots,
+        hoverPoint: {
+          x: Math.round(hoverBox.left + hoverBox.width / 2),
+          y: Math.round(hoverBox.top + hoverBox.height / 2),
+        },
+      };
+    })()`);
+    const usageFilterDefaultScreenshot = await capturePaintedPage(window);
+    window.webContents.sendInputEvent({
+      type: 'mouseMove',
+      x: usageFilterDefaultAudit.hoverPoint.x,
+      y: usageFilterDefaultAudit.hoverPoint.y,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const usageFilterHoverAudit = await window.webContents.executeJavaScript(`(() => {
+      const option = document.querySelector(
+        '[data-usage-filter-value="character"]',
+      );
+      return {
+        hovered: option.matches(':hover'),
+        background: getComputedStyle(option).backgroundColor,
+      };
+    })()`);
+    const usageFilterHoverScreenshot = await capturePaintedPage(window);
+    const usageFilterSelectedScreenshotAudit = await window.webContents.executeJavaScript(`(async () => {
+      const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+      const settle = async () => {
+        await nextFrame();
+        await nextFrame();
+      };
+      const trigger = document.querySelector(
+        '[data-testid="asset-library-usage-filter"]',
+      );
+      document.querySelector('[data-usage-filter-value="all"]').click();
+      await settle();
+      document.querySelectorAll('.asset-category-tabs button')[2].click();
+      await settle();
+      trigger.click();
+      await settle();
+      document.querySelector('[data-usage-filter-value="background"]').click();
+      await settle();
+      trigger.click();
+      await settle();
+      const selected = document.querySelector(
+        '[data-usage-filter-value="background"]',
+      );
+      const menu = document.querySelector(
+        '[data-testid="asset-library-usage-filter-menu"]',
+      );
+      return {
+        assetLibraryVisible: Boolean(
+          document.querySelector('.asset-library')?.getClientRects().length,
+        ),
+        menuVisible: Boolean(menu?.getClientRects().length),
+        backgroundSelected: selected?.getAttribute('aria-checked') === 'true',
+        menuWidth: menu?.getBoundingClientRect().width,
+      };
+    })()`);
+    if (
+      !usageFilterSelectedScreenshotAudit.assetLibraryVisible ||
+      !usageFilterSelectedScreenshotAudit.menuVisible ||
+      !usageFilterSelectedScreenshotAudit.backgroundSelected
+    ) {
+      throw new Error(
+        `Selected usage-filter screenshot state did not render: ${JSON.stringify(usageFilterSelectedScreenshotAudit)}`,
+      );
+    }
+    const usageFilterSelectedScreenshot = await capturePaintedPage(window);
+    await window.webContents.executeJavaScript(`(async () => {
+      const settle = () => new Promise((resolve) => requestAnimationFrame(
+        () => requestAnimationFrame(resolve),
+      ));
+      document.querySelector('[data-usage-filter-value="all"]').click();
+      await settle();
+      document.querySelector(
+        '[data-testid="asset-library-usage-filter"]',
+      ).click();
+      await settle();
+    })()`);
     const filterAudit = await window.webContents.executeJavaScript(`(async () => {
       const heading = document.querySelector('#asset-library-heading');
       const headingBox = heading?.closest('.asset-library-heading')
@@ -411,10 +650,6 @@ async function verifyDay18() {
       const dragHintVisible = [...document.querySelectorAll('.asset-import-drop')]
         .some((element) => element.getClientRects().length > 0);
 
-      trigger.click();
-      await new Promise((resolve) => requestAnimationFrame(
-        () => requestAnimationFrame(resolve),
-      ));
       const menu = document.querySelector(
         '[data-testid="asset-library-usage-filter-menu"]',
       );
@@ -428,6 +663,7 @@ async function verifyDay18() {
       );
       selectedMenuItem?.focus();
       const firstFocus = document.activeElement?.dataset.usageFilterValue;
+      const focusOutline = getComputedStyle(selectedMenuItem).outlineWidth;
       document.dispatchEvent(new KeyboardEvent('keydown', {
         key: 'ArrowDown', bubbles: true,
       }));
@@ -458,6 +694,11 @@ async function verifyDay18() {
         document.querySelector('.asset-card')?.dataset.assetId ===
           '${fixtureAssetId(1)}';
 
+      setter.call(search, '');
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise((resolve) => requestAnimationFrame(
+        () => requestAnimationFrame(resolve),
+      ));
       const audio = [...document.querySelectorAll('.asset-category-tabs button')]
         .find((button) => button.textContent?.includes('音频'));
       audio.click();
@@ -465,18 +706,54 @@ async function verifyDay18() {
         () => requestAnimationFrame(resolve),
       ));
       const audioClearedUsage = trigger.dataset.active === 'false' &&
-        trigger.getAttribute('aria-pressed') === 'false';
+        trigger.getAttribute('aria-pressed') === 'false' &&
+        trigger.disabled;
+      const audioCardCount = document.querySelectorAll('.asset-card').length;
+      trigger.click();
+      const audioFilterStayedClosed = !document.querySelector(
+        '[data-testid="asset-library-usage-filter-menu"]',
+      );
 
-      setter.call(search, '');
-      search.dispatchEvent(new Event('input', { bubbles: true }));
       const unbound = [...document.querySelectorAll('.asset-category-tabs button')]
         .find((button) => button.textContent?.includes('未绑定'));
       unbound.click();
       await new Promise((resolve) => requestAnimationFrame(
         () => requestAnimationFrame(resolve),
       ));
+      const unboundAllCount = document.querySelectorAll('.asset-card').length;
+      trigger.click();
+      await new Promise((resolve) => requestAnimationFrame(
+        () => requestAnimationFrame(resolve),
+      ));
+      document.querySelector('[data-usage-filter-value="background"]').click();
+      await new Promise((resolve) => requestAnimationFrame(
+        () => requestAnimationFrame(resolve),
+      ));
+      const backgroundUsage =
+        document.querySelectorAll('.asset-card').length === 1 &&
+        document.querySelector('.asset-card')?.dataset.assetId ===
+          '${fixtureAssetId(3)}';
+      trigger.click();
+      await new Promise((resolve) => requestAnimationFrame(
+        () => requestAnimationFrame(resolve),
+      ));
+      const selectedBackgroundMenuItem = document.querySelector(
+        '[data-usage-filter-value="background"]',
+      );
+      const currentMenu = document.querySelector(
+        '[data-testid="asset-library-usage-filter-menu"]',
+      );
+      const selectedBackgroundMenu =
+        selectedBackgroundMenuItem?.getAttribute('aria-checked') === 'true' &&
+        Boolean(selectedBackgroundMenuItem?.querySelector(
+          '.asset-library-usage-filter-check-slot svg',
+        ));
 
       return {
+        assetLibraryVisible: Boolean(
+          document.querySelector('.asset-library')?.getClientRects().length,
+        ),
+        selectedMenuVisible: Boolean(currentMenu?.getClientRects().length),
         headingVisuallyHidden: Boolean(headingBox &&
           headingBox.width <= 1 && headingBox.height <= 1),
         assetWorkspaceHeadingHidden: !activityHeadingVisible,
@@ -486,47 +763,80 @@ async function verifyDay18() {
           triggerBox.width >= 44 && triggerBox.height >= 44),
         dragHintVisible,
         menuValues,
+        menuLabels: [...menu.querySelectorAll('[data-usage-filter-value]')]
+          .map((item) => item.textContent.trim()),
+        menuRightAligned: Math.abs(
+          currentMenu.getBoundingClientRect().right -
+            trigger.getBoundingClientRect().right,
+        ) <= 1,
+        menuCompact: currentMenu.getBoundingClientRect().width < 240,
+        selectedBackgroundContrast:
+          getComputedStyle(selectedBackgroundMenuItem).color ===
+            'rgb(238, 246, 240)' &&
+          getComputedStyle(selectedBackgroundMenuItem).borderColor !==
+            'rgba(0, 0, 0, 0)',
         firstFocus,
         arrowFocus,
+        focusOutline,
         escapeReturnedFocus,
         combinedSearchAndUsage,
         audioClearedUsage,
+        audioCardCount,
+        audioFilterStayedClosed,
+        backgroundUsage,
+        unboundAllCount,
+        selectedBackgroundMenu,
       };
     })()`);
+    const filterRestoreAudit = await window.webContents.executeJavaScript(`(async () => {
+      document.querySelector('[data-usage-filter-value="all"]').click();
+      await new Promise((resolve) => requestAnimationFrame(
+        () => requestAnimationFrame(resolve),
+      ));
+      return {
+        active: document.querySelector(
+          '[data-testid="asset-library-usage-filter"]',
+        ).getAttribute('aria-pressed'),
+        cardCount: document.querySelectorAll('.asset-card').length,
+        firstAssetRestored: Boolean(document.querySelector(
+          '[data-asset-id="${fixtureAssetId(1)}"]',
+        )),
+        menuClosed: !document.querySelector(
+          '[data-testid="asset-library-usage-filter-menu"]',
+        ),
+      };
+    })()`);
+    filterAudit.menuRightAligned = usageFilterDefaultAudit.menuRight ===
+      usageFilterDefaultAudit.triggerRight ||
+      Math.abs(usageFilterDefaultAudit.menuRight -
+        usageFilterDefaultAudit.triggerRight) <= 1;
+    filterAudit.menuCompact = usageFilterDefaultAudit.menuWidth < 240;
+    filterAudit.labelsUpdated =
+      usageFilterDefaultAudit.labels.includes('全部') &&
+      usageFilterDefaultAudit.labels.includes('人物') &&
+      !usageFilterDefaultAudit.labels.includes('全部用途') &&
+      !usageFilterDefaultAudit.labels.includes('人物图片');
+    filterAudit.selectedContrast =
+      usageFilterDefaultAudit.selectedColor === 'rgb(238, 246, 240)' &&
+      usageFilterDefaultAudit.selectedBorder !== 'rgba(0, 0, 0, 0)';
+    filterAudit.selectedScreenshotUiReady =
+      usageFilterSelectedScreenshotAudit.assetLibraryVisible &&
+      usageFilterSelectedScreenshotAudit.menuVisible &&
+      usageFilterSelectedScreenshotAudit.backgroundSelected &&
+      usageFilterSelectedScreenshotAudit.menuWidth < 240;
+    filterAudit.rightAlignedText =
+      usageFilterDefaultAudit.selectedTextAlign === 'right';
+    filterAudit.stableCheckGap =
+      usageFilterDefaultAudit.checkSlots.every((width) => width === 17);
+    filterAudit.hoverVisible = usageFilterHoverAudit.hovered &&
+      usageFilterHoverAudit.background !== 'rgba(0, 0, 0, 0)';
+    filterAudit.backgroundRestoredAll =
+      filterRestoreAudit.active === 'false' &&
+      filterRestoreAudit.cardCount === filterAudit.unboundAllCount &&
+      filterRestoreAudit.firstAssetRestored &&
+      filterRestoreAudit.menuClosed;
     const responsiveAudit = {};
-    const ensureAssetPanelVisible = async (context) => {
-      await window.webContents.executeJavaScript(`(() => {
-        const portraitAssetsTab = [...document.querySelectorAll(
-          '[data-testid="editor-portrait-workspace-switcher"] [role="tab"]',
-        )].find((button) => button.textContent?.includes('素材'));
-        if (portraitAssetsTab) {
-          if (portraitAssetsTab.getAttribute('aria-selected') !== 'true') {
-            portraitAssetsTab.click();
-          }
-          return true;
-        }
-        const assetsActivity = document.querySelector(
-          '[data-testid="resource-activity-rail-assets"], ' +
-            '[data-testid="resource-activity-tabs"] [data-activity="assets"]',
-        );
-        if (!(assetsActivity instanceof HTMLButtonElement)) {
-          throw new Error('Asset workspace navigation did not render.');
-        }
-        if (
-          assetsActivity.getAttribute('aria-pressed') !== 'true' ||
-          assetsActivity.getAttribute('aria-expanded') === 'false'
-        ) {
-          assetsActivity.click();
-        }
-        return true;
-      })()`);
-      await waitForRenderer(
-        window,
-        "document.querySelector('[data-testid=\"asset-library-filter-controls\"]') && " +
-          "document.querySelector('.asset-library')?.getClientRects().length > 0",
-        `The asset library did not become visible in the ${context} viewport.`,
-      );
-    };
+    const responsiveScreenshots = {};
     for (const viewport of [
       {
         name: 'narrow', width: 820, height: 620,
@@ -549,6 +859,7 @@ async function verifyDay18() {
           `(document.documentElement.clientHeight > document.documentElement.clientWidth) === ${JSON.stringify(viewport.expectedOrientation === 'portrait')}`,
         `The ${viewport.name} verifier viewport did not resize.`,
       );
+      await new Promise((resolve) => setTimeout(resolve, 250));
       await ensureAssetPanelVisible(viewport.name);
       const layoutAudit = await window.webContents.executeJavaScript(`(() => {
           const library = document.querySelector(
@@ -567,22 +878,53 @@ async function verifyDay18() {
           const controlsBox = controls?.getBoundingClientRect();
           const searchBox = search?.getBoundingClientRect();
           const triggerBox = trigger?.getBoundingClientRect();
+          const visiblyOnscreen = (element, box) => {
+            if (!(element instanceof HTMLElement) || !box) return false;
+            let ancestor = element;
+            while (ancestor instanceof HTMLElement) {
+              const style = getComputedStyle(ancestor);
+              if (
+                style.display === 'none' ||
+                style.visibility === 'hidden' ||
+                Number(style.opacity) <= 0 ||
+                style.pointerEvents === 'none'
+              ) return false;
+              ancestor = ancestor.parentElement;
+            }
+            const x = Math.max(0, Math.min(
+              document.documentElement.clientWidth - 1,
+              box.left + box.width / 2,
+            ));
+            const y = Math.max(0, Math.min(
+              document.documentElement.clientHeight - 1,
+              box.top + box.height / 2,
+            ));
+            const hit = document.elementFromPoint(x, y);
+            return Boolean(element.getClientRects().length &&
+              box.width > 0 && box.height > 0 &&
+              box.right > 0 && box.left < document.documentElement.clientWidth &&
+              box.bottom > 0 && box.top < document.documentElement.clientHeight &&
+              hit && (element.contains(hit) || hit.contains(element)));
+          };
           return {
             viewportWidth: document.documentElement.clientWidth,
             viewportHeight: document.documentElement.clientHeight,
             orientation: document.documentElement.clientHeight >
               document.documentElement.clientWidth ? 'portrait' : 'landscape',
             libraryFound: Boolean(library),
+            libraryVisible: visiblyOnscreen(library, libraryBox),
             controlsFound: Boolean(controls),
+            controlsVisible: visiblyOnscreen(controls, controlsBox),
             searchFound: Boolean(search),
             triggerFound: Boolean(trigger),
+            triggerVisible: visiblyOnscreen(trigger, triggerBox),
             controlsWithinLibrary: Boolean(libraryBox && controlsBox &&
               controlsBox.left >= libraryBox.left - 1 &&
               controlsBox.right <= libraryBox.right + 1 &&
               controls.scrollWidth <= controls.clientWidth + 1),
             controlsAligned: Boolean(searchBox && triggerBox &&
               Math.abs(searchBox.top - triggerBox.top) <= 2),
-            searchVisible: Boolean(searchBox && searchBox.width > 0),
+            searchVisible: visiblyOnscreen(search, searchBox),
             triggerTouchTarget: Boolean(triggerBox &&
               triggerBox.width >= 44 && triggerBox.height >= 44),
           };
@@ -591,6 +933,7 @@ async function verifyDay18() {
         ...layoutAudit,
         expectedOrientation: viewport.expectedOrientation,
       };
+      responsiveScreenshots[viewport.name] = await capturePaintedPage(window);
     }
     window.setSize(1440, 1000);
     await waitForRenderer(
@@ -822,7 +1165,7 @@ async function verifyDay18() {
       ).dispatchEvent(new DragEvent('dragend', { bubbles: true }));
     `);
 
-    activeVerificationStage = 'Undo/Redo T1-T3';
+    setVerificationStage('Undo/Redo T1-T3');
     const historyReconciliation = await (async () => {
       await revealAsset(window, fixtureAssetId(3));
       await window.webContents.executeJavaScript(`
@@ -1207,9 +1550,9 @@ async function verifyDay18() {
       };
     })();
 
-    activeVerificationStage = 'referenced asset delete protection';
+    setVerificationStage('referenced asset delete protection');
     await revealAsset(window, referencedAssetId);
-    activeVerificationStage = 'referenced asset card click';
+    setVerificationStage('referenced asset card click');
     await window.webContents.executeJavaScript(`
       (() => {
         window.confirm = () => true;
@@ -1220,33 +1563,112 @@ async function verifyDay18() {
         card.click();
       })()
     `);
-    activeVerificationStage = 'wait for referenced asset details';
+    setVerificationStage('wait for referenced asset details');
     await waitForRenderer(
       window,
       `document.querySelector('[data-testid="asset-details-overlay"]')?.dataset.selectedAssetId === ${JSON.stringify(referencedAssetId)} && ` +
         "document.querySelector('[data-testid=\"asset-details-dialog\"]')?.getClientRects().length > 0",
       'The referenced asset details dialog did not render for the referenced asset.',
     );
-    activeVerificationStage = 'expand human-readable asset references';
+    const referenceCollapsedUi = await window.webContents.executeJavaScript(`(() => {
+      const summaryCopy = document.querySelector('.asset-details-summary-copy');
+      const disclosure = summaryCopy?.querySelector('.asset-details-disclosure');
+      const summary = disclosure?.querySelector('summary');
+      return {
+        label: summaryCopy?.querySelector('span')?.textContent?.trim() ?? null,
+        dimensions: summaryCopy?.querySelectorAll(':scope > span')[1]
+          ?.textContent?.trim() ?? null,
+        disclosureUnderSize: Boolean(
+          summaryCopy?.querySelectorAll(':scope > span')[1]
+            ?.nextElementSibling === disclosure,
+        ),
+        expanded: summary?.getAttribute('aria-expanded') ?? null,
+        sourceWarning: Boolean(
+          document.querySelector('.asset-details-source-error')?.getClientRects().length,
+        ),
+        technicalDetailsVisible: Boolean(
+          document.querySelector('.asset-details-technical-list, [data-testid="asset-fla-snapshot-origin"]'),
+        ),
+      };
+    })()`);
+    const referenceCollapsedScreenshot = await capturePaintedPage(window);
+    setVerificationStage('expand human-readable asset references by keyboard');
     await window.webContents.executeJavaScript(`
       (() => {
         const summary = document.querySelector(
-          '.asset-details-disclosure summary',
+          '.asset-details-summary-copy .asset-details-disclosure summary',
         );
         if (!(summary instanceof HTMLElement)) {
           throw new Error('The reference disclosure control was not found.');
         }
-        summary.click();
+        summary.focus();
       })()
     `);
+    window.show();
+    window.focus();
+    window.webContents.focus();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Enter' });
+    window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Enter' });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    let referenceKeyboardState = await window.webContents.executeJavaScript(`(() => {
+      const summary = document.querySelector(
+        '.asset-details-summary-copy .asset-details-disclosure summary',
+      );
+      return {
+        focused: document.activeElement === summary,
+        expanded: summary?.getAttribute('aria-expanded') ?? null,
+        detailsOpen: Boolean(summary?.closest('details')?.open),
+      };
+    })()`);
+    if (!referenceKeyboardState.detailsOpen) {
+      window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Space' });
+      window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Space' });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      referenceKeyboardState = await window.webContents.executeJavaScript(`(() => {
+        const summary = document.querySelector(
+          '.asset-details-summary-copy .asset-details-disclosure summary',
+        );
+        return {
+          focused: document.activeElement === summary,
+          expanded: summary?.getAttribute('aria-expanded') ?? null,
+          detailsOpen: Boolean(summary?.closest('details')?.open),
+        };
+      })()`);
+    }
+    if (!referenceKeyboardState.detailsOpen) {
+      throw new Error(
+        `Keyboard activation did not open the reference disclosure: ${JSON.stringify(referenceKeyboardState)}`,
+      );
+    }
     await waitForRenderer(
       window,
-      "document.querySelector('.asset-details-reference-list')?.getClientRects().length > 0 && " +
+      "document.querySelector('.asset-details-summary-copy .asset-details-disclosure summary')?.getAttribute('aria-expanded') === 'true' && " +
+        "document.querySelector('.asset-details-reference-list')?.getClientRects().length > 0 && " +
         "document.querySelector('.asset-details-reference-list')?.textContent?.includes('Opening') && " +
-        "document.querySelector('.asset-details-reference-list')?.textContent?.includes('.source.assetId')",
+        "!document.querySelector('.asset-details-reference-list')?.textContent?.includes('.source.assetId')",
       'Human-readable reference details did not render for the selected asset.',
     );
-    activeVerificationStage = 'open referenced delete action';
+    const referenceDetailsScreenshot = await capturePaintedPage(window);
+    const referenceSourceWarningAudit = await window.webContents.executeJavaScript(`(() => {
+      const warning = document.querySelector('.asset-details-source-error');
+      warning?.scrollIntoView({ block: 'end' });
+      const warningRect = warning?.getBoundingClientRect();
+      const dialogRect = document.querySelector(
+        '[data-testid="asset-details-dialog"]',
+      )?.getBoundingClientRect();
+      return {
+        referenceExpanded: document.querySelector(
+          '.asset-details-summary-copy .asset-details-disclosure summary',
+        )?.getAttribute('aria-expanded') === 'true',
+        warningVisible: Boolean(warningRect && dialogRect &&
+          warningRect.top >= dialogRect.top &&
+          warningRect.bottom <= dialogRect.bottom),
+        warningText: warning?.textContent?.trim() ?? null,
+      };
+    })()`);
+    const referenceSourceWarningScreenshot = await capturePaintedPage(window);
+    setVerificationStage('open referenced delete action');
     await window.webContents.executeJavaScript(`
       (() => {
         const more = document.querySelector('.asset-details-more > summary');
@@ -1269,13 +1691,17 @@ async function verifyDay18() {
         block: 'center',
       });
     })()`);
-    activeVerificationStage = 'read referenced delete evidence';
+    setVerificationStage('read referenced delete evidence');
     const referenceUi = await window.webContents.executeJavaScript(`(() => {
       const details = document.querySelector(
         '[data-testid="asset-details-overlay"]',
       );
       const referenceList = document.querySelector(
         '.asset-details-reference-list',
+      );
+      const summaryCopy = document.querySelector('.asset-details-summary-copy');
+      const summary = summaryCopy?.querySelector(
+        '.asset-details-disclosure summary',
       );
       const card = document.querySelector(
         '[data-asset-id="${referencedAssetId}"]',
@@ -1288,15 +1714,27 @@ async function verifyDay18() {
         referenceListVisible: Boolean(
           referenceList && referenceList.getClientRects().length,
         ),
+        disclosureExpanded: summary?.getAttribute('aria-expanded') === 'true',
+        disclosureUnderSize: Boolean(
+          summaryCopy?.querySelectorAll(':scope > span')[1]
+            ?.nextElementSibling === summary?.closest('details'),
+        ),
+        pathsHidden: !referenceList?.querySelector('code') &&
+          !referenceList?.textContent?.includes('.source.assetId'),
+        technicalDetailsHidden: !document.querySelector(
+          '.asset-details-technical-list, [data-testid="asset-fla-snapshot-origin"]',
+        ),
+        sourceWarning: Boolean(
+          document.querySelector('.asset-details-source-error[role="alert"]')
+            ?.textContent?.includes('源文件缺失'),
+        ),
         cardStillPresent: Boolean(card),
       };
     })()`);
-    activeVerificationStage = 'capture referenced details screenshot';
-    const referenceDetailsScreenshot = await capturePaintedPage(window);
 
-    activeVerificationStage = 'close referenced asset details';
+    setVerificationStage('close referenced asset details');
     await closeAssetDetails(window);
-    activeVerificationStage = 'verify blocked delete status persists';
+    setVerificationStage('verify blocked delete status persists');
     await waitForRenderer(
       window,
       `!document.querySelector('[data-testid="asset-details-overlay"]') && document.querySelector('.asset-library-status')?.textContent?.includes(${JSON.stringify(blockedDeleteStatusMarker)})`,
@@ -1304,7 +1742,59 @@ async function verifyDay18() {
     );
     const referenceScreenshot = await capturePaintedPage(window);
 
-    activeVerificationStage = 'unreferenced asset deletion';
+    setVerificationStage('multiple human-readable asset references');
+    await revealAsset(window, multiReferenceAssetId);
+    await window.webContents.executeJavaScript(`(() => {
+      document.querySelector('[data-asset-id="${multiReferenceAssetId}"]')?.click();
+    })()`);
+    await waitForRenderer(
+      window,
+      `document.querySelector('[data-testid="asset-details-overlay"]')?.dataset.selectedAssetId === ${JSON.stringify(multiReferenceAssetId)} && ` +
+        "document.querySelector('.asset-details-summary-copy .asset-details-disclosure summary')?.textContent?.includes('被 2 处使用')",
+      'The multi-reference asset disclosure did not show its reference count.',
+    );
+    const multiReferenceCollapsedScreenshot = await capturePaintedPage(window);
+    const multiReferenceBefore = await window.webContents.executeJavaScript(`(() => ({
+      revision: document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.projectRevision,
+      dirty: document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.saveState,
+      undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount,
+      redoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount,
+    }))()`);
+    await window.webContents.executeJavaScript(`(() => {
+      document.querySelector(
+        '.asset-details-summary-copy .asset-details-disclosure summary',
+      )?.click();
+    })()`);
+    await waitForRenderer(
+      window,
+      "document.querySelector('.asset-details-summary-copy .asset-details-disclosure summary')?.getAttribute('aria-expanded') === 'true' && " +
+        "document.querySelector('.asset-details-reference-list li:nth-child(2)')",
+      'The multiple human-readable references did not expand.',
+    );
+    const multiReferenceExpandedScreenshot = await capturePaintedPage(window);
+    const multiReferenceAfter = await window.webContents.executeJavaScript(`(() => ({
+      revision: document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.projectRevision,
+      dirty: document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.saveState,
+      undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount,
+      redoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount,
+      labels: [...document.querySelectorAll('.asset-details-reference-list li')]
+        .map((item) => item.textContent.trim()),
+      hasPath: Boolean(document.querySelector('.asset-details-reference-list code')),
+    }))()`);
+    const multiReferenceUi = {
+      countVisible: true,
+      twoLabels: multiReferenceAfter.labels.length === 2 &&
+        multiReferenceAfter.labels.some((label) => label.includes('Fixture multi reference 1')) &&
+        multiReferenceAfter.labels.some((label) => label.includes('Fixture multi reference 2')),
+      pathsHidden: !multiReferenceAfter.hasPath,
+      projectUnchanged: multiReferenceBefore.revision === multiReferenceAfter.revision &&
+        multiReferenceBefore.dirty === multiReferenceAfter.dirty &&
+        multiReferenceBefore.undoCount === multiReferenceAfter.undoCount &&
+        multiReferenceBefore.redoCount === multiReferenceAfter.redoCount,
+    };
+    await closeAssetDetails(window);
+
+    setVerificationStage('unreferenced asset deletion');
     await revealAsset(window, removableAssetId);
     await window.webContents.executeJavaScript(`
       (() => {
@@ -1322,6 +1812,15 @@ async function verifyDay18() {
         'Unreferenced asset was not selected.',
       ),
     );
+    const unreferencedDetailsUi = await window.webContents.executeJavaScript(`(() => ({
+      summaryLabel: document.querySelector('.asset-details-summary-copy > span')
+        ?.textContent?.trim() ?? null,
+      noReferenceRow: !document.querySelector(
+        '.asset-details-summary-copy .asset-details-disclosure',
+      ),
+      noUnreferencedRow: !document.querySelector('.asset-details-unreferenced'),
+    }))()`);
+    const unreferencedDetailsScreenshot = await capturePaintedPage(window);
     await window.webContents.executeJavaScript(`
       (() => {
         const more = document.querySelector('.asset-details-more > summary');
@@ -1358,7 +1857,7 @@ async function verifyDay18() {
     }))()`);
     const deletionScreenshot = await capturePaintedPage(window);
 
-    activeVerificationStage = 'thumbnail and renderer source audit';
+    setVerificationStage('thumbnail and renderer source audit');
     await revealAsset(window, missingThumbnailAssetId);
     await window.webContents.executeJavaScript(
       waitFor(
@@ -1380,7 +1879,7 @@ async function verifyDay18() {
       )
     }))()`);
 
-    activeVerificationStage = 'asset import feedback F06';
+    setVerificationStage('asset import feedback F06');
     const importFeedback = await (async () => {
       await ensureAssetPanelVisible('import feedback');
       await resetAssetBrowserToFirstPage(window);
@@ -1390,11 +1889,28 @@ async function verifyDay18() {
           const history = document.querySelector('[data-testid="history-controls"]');
           const canvas = document.querySelector('[data-testid="project-canvas-stage"]');
           const quickActions = document.querySelector('[data-testid="quick-action-drawer"]');
+          const saveButton = quickActions?.querySelector('[data-testid="quick-action-save"]');
+          const dirtyGrip = quickActions?.querySelector('.quick-action-drawer-grip');
+          const dirtyGripBox = dirtyGrip?.getBoundingClientRect();
+          const dirtyGripStyle = dirtyGrip && getComputedStyle(dirtyGrip);
           return {
             revision: Number(canvas?.dataset.projectRevision ?? NaN),
             undoCount: Number(history?.dataset.undoCount ?? NaN),
             redoCount: Number(history?.dataset.redoCount ?? NaN),
             dirty: quickActions?.dataset.saveState === 'dirty',
+            saveStateText: quickActions?.querySelector('[data-testid="project-save-state"]')
+              ?.textContent?.trim() ?? null,
+            saveTitle: saveButton?.getAttribute('title') ?? null,
+            saveAccessibleName: saveButton?.getAttribute('aria-label') ?? null,
+            saveActionEnabled: saveButton instanceof HTMLButtonElement &&
+              !saveButton.disabled,
+            dirtyIndicatorVisible: Boolean(
+              quickActions?.dataset.saveState === 'dirty' &&
+              dirtyGrip?.getClientRects().length && dirtyGripBox &&
+              dirtyGripBox.width >= 44 && dirtyGripBox.height >= 3 &&
+              dirtyGripStyle?.visibility === 'visible' &&
+              dirtyGripStyle.backgroundColor !== 'rgba(0, 0, 0, 0)',
+            ),
           };
         })()`);
       const sameInteractionState = (left, right) =>
@@ -1466,15 +1982,107 @@ async function verifyDay18() {
           throw new Error('The simulated import request did not reach Main.');
         }
         if (expectedKind) {
-          await waitForRenderer(
-            window,
-            `document.querySelector('[data-testid="asset-import-feedback"]')?.dataset.feedbackKind === ${JSON.stringify(expectedKind)} && ` +
-              `document.querySelector('[data-testid="asset-import-feedback"]')?.getClientRects().length > 0`,
-            `The ${expectedKind} import feedback did not become visible.`,
-          );
+          try {
+            await waitForRenderer(
+              window,
+              `document.querySelector('[data-testid="asset-import-feedback"]')?.dataset.feedbackKind === ${JSON.stringify(expectedKind)} && ` +
+                `document.querySelector('[data-testid="asset-import-feedback"]')?.getClientRects().length > 0`,
+              `The ${expectedKind} import feedback did not become visible.`,
+            );
+          } catch (error) {
+            const feedback = await readFeedback();
+            const message = error instanceof Error ? error.message : String(error);
+            throw new Error(
+              `${message} Current feedback: ${JSON.stringify(feedback)}`,
+              { cause: error },
+            );
+          }
         } else {
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
+      };
+      const saveAssetNameDuringImport = async (nextName) => {
+        await revealAsset(window, fixtureAssetId(3));
+        const opened = await window.webContents.executeJavaScript(`(() => {
+          const card = document.querySelector(
+            '[data-asset-id="${fixtureAssetId(3)}"]',
+          );
+          if (!card) return false;
+          card.click();
+          return true;
+        })()`);
+        if (!opened) throw new Error('The pending-import edit asset was not visible.');
+        await waitForRenderer(
+          window,
+          "document.querySelector('[data-testid=\"asset-author-name\"] input')",
+          'The image metadata editor did not open during the pending import.',
+        );
+        await window.webContents.executeJavaScript(`(() => {
+          const input = document.querySelector('[data-testid="asset-author-name"] input');
+          const setter = Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype, 'value',
+          ).set;
+          setter.call(input, ${JSON.stringify(nextName)});
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        })()`);
+        await waitForRenderer(
+          window,
+          `document.querySelector('[data-testid="asset-author-name"] input')?.value === ${JSON.stringify(nextName)}`,
+          'The pending-import metadata edit did not update its draft.',
+        );
+        await window.webContents.executeJavaScript(
+          "document.querySelector('.asset-metadata-save')?.click()",
+        );
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        const savedState = await window.webContents.executeJavaScript(`(() => ({
+          name: document.querySelector('[data-testid="asset-author-name"] input')?.value ?? null,
+          formVisible: Boolean(document.querySelector('[data-testid="asset-author-metadata-form"]')),
+          readonlyName: document.querySelector('.asset-details-readonly-name')?.textContent?.trim() ?? null,
+          detailsView: Boolean(document.querySelector('[data-testid="asset-details-view"]')),
+          overlayOpen: Boolean(document.querySelector('[data-testid="asset-details-overlay"]')),
+          selectedAssetId: document.querySelector('[data-testid="asset-details-overlay"]')?.dataset.selectedAssetId ?? null,
+          cardName: document.querySelector('[data-asset-id="${fixtureAssetId(3)}"] .asset-card-name')?.textContent?.trim() ?? null,
+          revision: Number(document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.projectRevision ?? NaN),
+          saveState: document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.saveState ?? null,
+          saveTitle: document.querySelector('[data-testid="quick-action-save"]')?.getAttribute('title') ?? null,
+        }))()`);
+        if (
+          savedState.name !== nextName &&
+          savedState.readonlyName !== nextName &&
+          savedState.cardName !== nextName
+        ) {
+          await closeAssetDetails(window);
+          await ensureAssetPanelVisible('pending import edit review');
+          await revealAsset(window, fixtureAssetId(3));
+          await window.webContents.executeJavaScript(`(() => {
+            document.querySelector('[data-asset-id="${fixtureAssetId(3)}"]')?.click();
+          })()`);
+          await waitForRenderer(
+            window,
+            `document.querySelector('[data-testid="asset-author-name"] input')?.value === ${JSON.stringify(nextName)}`,
+            'The saved metadata edit did not persist in the pending import project.',
+          );
+        }
+        const finalState = await window.webContents.executeJavaScript(`(() => ({
+          name: document.querySelector('[data-testid="asset-author-name"] input')?.value ??
+            document.querySelector('.asset-details-readonly-name')?.textContent?.trim() ??
+            document.querySelector('[data-asset-id="${fixtureAssetId(3)}"] .asset-card-name')?.textContent?.trim() ?? null,
+          revision: Number(document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.projectRevision ?? NaN),
+          saveState: document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.saveState ?? null,
+          saveTitle: document.querySelector('[data-testid="quick-action-save"]')?.getAttribute('title') ?? null,
+        }))()`);
+        if (
+          finalState.name !== nextName ||
+          finalState.saveState !== 'dirty'
+        ) {
+          throw new Error(
+            `The metadata edit did not remain dirty during the pending import: ${JSON.stringify({ savedState, finalState })}`,
+          );
+        }
+        return {
+          ...finalState,
+          dirty: finalState.saveState === 'dirty',
+        };
       };
       const readFeedback = () =>
         window.webContents.executeJavaScript(`(() => {
@@ -1576,6 +2184,125 @@ async function verifyDay18() {
           afterSuccessState.dirty === beforeSuccessState.dirty,
       };
 
+      setVerificationStage('pending import preserves intervening edit');
+      const beforePendingImportState = await readInteractionState();
+      let pendingImportRequest = null;
+      let resolvePendingImport = null;
+      const pendingSuccessAssets = [makeImageAsset(20)];
+      await triggerImport((request) => new Promise((resolve) => {
+        pendingImportRequest = request;
+        resolvePendingImport = resolve;
+      }), null);
+      const pendingImportEdit = await saveAssetNameDuringImport(
+        'Day18 edit preserved after pending import',
+      );
+      const pendingStateBeforeResponse = await readInteractionState();
+      resolvePendingImport(completedResponse(
+        pendingImportRequest,
+        [makeResult('pending-edit.png', 'imported', pendingSuccessAssets[0])],
+        pendingSuccessAssets,
+      ));
+      await waitForRenderer(
+        window,
+        "document.querySelector('[data-testid=\"asset-import-feedback\"]')?.dataset.feedbackKind === 'success' && document.querySelector('[data-testid=\"asset-import-feedback\"]')?.getClientRects().length > 0",
+        'The delayed successful import did not complete after the intervening edit.',
+      );
+      const pendingSuccessUi = await readFeedback();
+      const pendingSuccessState = await readInteractionState();
+      await closeAssetDetails(window);
+      await ensureAssetPanelVisible('pending import edit verification');
+      await revealAsset(window, fixtureAssetId(3));
+      await window.webContents.executeJavaScript(`(() => {
+        document.querySelector('[data-asset-id="${fixtureAssetId(3)}"]')?.click();
+      })()`);
+      await waitForRenderer(
+        window,
+        "document.querySelector('[data-testid=\"asset-author-name\"] input')?.value === 'Day18 edit preserved after pending import'",
+        'The pending import response did not preserve the saved image metadata edit.',
+      );
+      const pendingSuccessName = await window.webContents.executeJavaScript(
+        "document.querySelector('[data-testid=\"asset-author-name\"] input')?.value ?? null",
+      );
+      const pendingImportSuccessScreenshot = await capturePaintedPage(window);
+      await closeAssetDetails(window);
+      await ensureAssetPanelVisible('pending import asset verification');
+      await revealAsset(window, pendingSuccessAssets[0].id);
+      const pendingSuccessImportedAssetApplied =
+        await window.webContents.executeJavaScript(
+          `Boolean(document.querySelector('[data-asset-id="${pendingSuccessAssets[0].id}"]'))`,
+        );
+      await new Promise((resolve) => setTimeout(resolve, 4200));
+      const pendingSuccessDismissed = await window.webContents.executeJavaScript(
+        "!document.querySelector('[data-testid=\"asset-import-feedback\"]')",
+      );
+      const pendingSuccessAfterDismissal = await readInteractionState();
+      const pendingImportDirtyAfterToastScreenshot =
+        await capturePaintedPage(window);
+      const pendingImportSuccessAudit = {
+        editMadeWhilePending: pendingImportEdit.name ===
+          'Day18 edit preserved after pending import' &&
+          pendingImportEdit.dirty,
+        editPreservedAfterResponse: pendingSuccessName ===
+          'Day18 edit preserved after pending import',
+        importedAssetApplied: pendingSuccessImportedAssetApplied,
+        revisionIncludesEditAndImport:
+          pendingStateBeforeResponse.revision === beforePendingImportState.revision + 1 &&
+          pendingSuccessState.revision === pendingStateBeforeResponse.revision + 1,
+        remainsDirty: pendingSuccessState.dirty &&
+          pendingSuccessAfterDismissal.dirty,
+        oneOrdinarySuccessToast: pendingSuccessUi.count === 1 &&
+          pendingSuccessUi.kind === 'success' &&
+          pendingSuccessUi.summary === '已导入：pending-edit.png',
+        successToastDismisses: pendingSuccessDismissed,
+        persistentSaveActionCommunicatesDirty:
+          pendingSuccessAfterDismissal.saveTitle === '保存项目（有未保存更改）' &&
+          pendingSuccessAfterDismissal.saveAccessibleName === '保存项目（有未保存更改）' &&
+          pendingSuccessAfterDismissal.dirtyIndicatorVisible &&
+          pendingSuccessAfterDismissal.saveActionEnabled,
+      };
+
+      setVerificationStage('pending import exception preserves edit');
+      await closeAssetDetails(window);
+      const beforePendingFailureState = await readInteractionState();
+      let rejectPendingImport = null;
+      await triggerImport(() => new Promise((_resolve, reject) => {
+        rejectPendingImport = reject;
+      }), null);
+      const pendingFailureEdit = await saveAssetNameDuringImport(
+        'Day18 edit preserved after pending import failure',
+      );
+      rejectPendingImport(new Error('Simulated import response failure.'));
+      await waitForRenderer(
+        window,
+        "document.querySelector('[data-testid=\"asset-import-feedback\"]')?.dataset.feedbackKind === 'error' && document.querySelector('[data-testid=\"asset-import-feedback\"]')?.getClientRects().length > 0",
+        'The failed pending import did not show persistent error feedback.',
+      );
+      const pendingFailureUi = await readFeedback();
+      const pendingFailureState = await readInteractionState();
+      const pendingFailureName = await window.webContents.executeJavaScript(
+        "document.querySelector('[data-testid=\"asset-author-name\"] input')?.value ?? null",
+      );
+      const pendingImportFailureScreenshot = await capturePaintedPage(window);
+      const pendingImportFailureAudit = {
+        editMadeWhilePending: pendingFailureEdit.name ===
+          'Day18 edit preserved after pending import failure' &&
+          pendingFailureEdit.dirty,
+        editPreservedAfterException: pendingFailureName ===
+          'Day18 edit preserved after pending import failure',
+        errorFeedbackPersistent: pendingFailureUi.kind === 'error' &&
+          pendingFailureUi.summary?.includes('Simulated import response failure.'),
+        responseAddsNoRevision: pendingFailureState.revision ===
+          pendingFailureEdit.revision &&
+          pendingFailureState.dirty &&
+          pendingFailureState.saveTitle === '保存项目（有未保存更改）' &&
+          pendingFailureState.saveActionEnabled,
+        errorDoesNotDiscardPriorDirtyState:
+          pendingFailureState.dirty && beforePendingFailureState.dirty &&
+          pendingFailureState.dirtyIndicatorVisible,
+      };
+      await closeFeedback();
+      await closeAssetDetails(window);
+
       const duplicateResults = [
         makeResult('scene-copy-01.png', 'duplicate', null, successAssets[0].id),
         makeResult('scene-copy-02.png', 'duplicate', null, successAssets[1].id),
@@ -1673,7 +2400,7 @@ async function verifyDay18() {
         },
       }));
       const audioAsset = {
-        id: '19000000-0000-4000-8000-000000000020',
+        id: '19000000-0000-4000-8000-000000000021',
         name: 'voice-with-error',
         relativePath: 'assets/voice-with-error.wav',
         mimeType: 'audio/wav', kind: 'audio',
@@ -1701,6 +2428,8 @@ async function verifyDay18() {
       return {
         audit: {
           success: successAudit,
+          pendingImportSuccess: pendingImportSuccessAudit,
+          pendingImportFailure: pendingImportFailureAudit,
           duplicate: {
             singleNeutralNotice: duplicateUi.count === 1 && duplicateUi.kind === 'info',
             communicatesReuse: duplicateUi.summary?.includes('已存在') ?? false,
@@ -1735,6 +2464,9 @@ async function verifyDay18() {
         },
         screenshots: {
           success: successScreenshot,
+          pendingImportSuccess: pendingImportSuccessScreenshot,
+          pendingImportDirtyAfterToast: pendingImportDirtyAfterToastScreenshot,
+          pendingImportFailure: pendingImportFailureScreenshot,
           partialFailure: partialFailureScreenshot,
           audioFailure: audioFailureScreenshot,
         },
@@ -1745,11 +2477,14 @@ async function verifyDay18() {
       day: 18,
       workOrder: 'B-18/45',
       result: 'PASS',
-      branch: 'feat/day-18-asset-library-ui',
+      branch,
       executedAt: new Date().toISOString(),
       ui: {
         categories: categoryLabels,
         filterAudit,
+        usageFilterDefaultAudit,
+        usageFilterHoverAudit,
+        filterRestoreAudit,
         responsiveAudit,
         backgroundItemsBeforeDelete: initialPageScan.seenAssetCount,
         pagedBrowserScan: initialPageScan,
@@ -1758,6 +2493,10 @@ async function verifyDay18() {
         dragEvidence,
         historyReconciliation,
         referenceUi,
+        referenceCollapsedUi,
+        referenceSourceWarningAudit,
+        multiReferenceUi,
+        unreferencedDetailsUi,
         deletionUi,
         sourceAudit,
         decodeFallback,
@@ -1790,12 +2529,26 @@ async function verifyDay18() {
       },
       screenshots: [
         `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/asset-library-100.png`,
+        `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/usage-filter-default.png`,
+        `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/usage-filter-hover.png`,
+        `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/usage-filter-selected.png`,
+        `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/viewport-narrow.png`,
+        `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/viewport-touch-portrait.png`,
+        `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/viewport-touch-landscape.png`,
         `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/drag-feedback.png`,
         `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/thumbnail-decode-fallback.png`,
         `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/import-success.png`,
         `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/import-partial-failure.png`,
         `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/import-audio-metadata-failure.png`,
+        `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/pending-import-preserved-edit.png`,
+        `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/pending-import-dirty-after-toast.png`,
+        `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/pending-import-exception.png`,
+        `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/reference-details-collapsed.png`,
         `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/reference-details-expanded.png`,
+        `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/reference-source-warning.png`,
+        `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/multi-reference-collapsed.png`,
+        `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/multi-reference-expanded.png`,
+        `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/unreferenced-details.png`,
         `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/reference-blocked.png`,
         `${evidenceRelativeDirectory.replaceAll(path.sep, '/')}/unreferenced-deleted.png`,
       ],
@@ -1811,16 +2564,35 @@ async function verifyDay18() {
       !filterAudit.filterControlsAligned ||
       !filterAudit.filterTriggerTouchTarget ||
       filterAudit.dragHintVisible ||
+      !filterAudit.assetLibraryVisible ||
+      !filterAudit.selectedMenuVisible ||
       filterAudit.menuValues.length !== 6 ||
       filterAudit.firstFocus !== 'all' ||
       filterAudit.arrowFocus !== 'uncategorized' ||
       !filterAudit.escapeReturnedFocus ||
+      Number.parseFloat(filterAudit.focusOutline) < 2 ||
+      !filterAudit.menuRightAligned ||
+      !filterAudit.menuCompact ||
+      !filterAudit.labelsUpdated ||
+      !filterAudit.selectedContrast ||
+      !filterAudit.selectedScreenshotUiReady ||
+      !filterAudit.rightAlignedText ||
+      !filterAudit.stableCheckGap ||
+      !filterAudit.hoverVisible ||
       !filterAudit.combinedSearchAndUsage ||
       !filterAudit.audioClearedUsage ||
+      !filterAudit.audioFilterStayedClosed ||
+      filterAudit.audioCardCount === 0 ||
+      !filterAudit.backgroundUsage ||
+      !filterAudit.selectedBackgroundMenu ||
+      !filterAudit.backgroundRestoredAll ||
       Object.values(responsiveAudit).some((audit) =>
         !audit.controlsWithinLibrary ||
+        !audit.libraryVisible ||
+        !audit.controlsVisible ||
         !audit.controlsAligned ||
         !audit.searchVisible ||
+        !audit.triggerVisible ||
         !audit.triggerTouchTarget ||
         !audit.libraryFound ||
         !audit.controlsFound ||
@@ -1842,6 +2614,27 @@ async function verifyDay18() {
       !referenceUi.cardStillPresent ||
       referenceUi.selectedAssetId !== referencedAssetId ||
       !referenceUi.referenceListVisible ||
+      !referenceUi.disclosureExpanded ||
+      !referenceUi.disclosureUnderSize ||
+      !referenceUi.pathsHidden ||
+      !referenceUi.technicalDetailsHidden ||
+      !referenceUi.sourceWarning ||
+      !referenceSourceWarningAudit.referenceExpanded ||
+      !referenceSourceWarningAudit.warningVisible ||
+      !referenceSourceWarningAudit.warningText?.includes('源文件缺失') ||
+      referenceCollapsedUi.expanded !== 'false' ||
+      referenceCollapsedUi.label !== '图片' ||
+      !referenceCollapsedUi.dimensions?.includes('px') ||
+      !referenceCollapsedUi.disclosureUnderSize ||
+      !referenceCollapsedUi.sourceWarning ||
+      referenceCollapsedUi.technicalDetailsVisible ||
+      !multiReferenceUi.countVisible ||
+      !multiReferenceUi.twoLabels ||
+      !multiReferenceUi.pathsHidden ||
+      !multiReferenceUi.projectUnchanged ||
+      unreferencedDetailsUi.summaryLabel !== '图片' ||
+      !unreferencedDetailsUi.noReferenceRow ||
+      !unreferencedDetailsUi.noUnreferencedRow ||
       deletionUi.removedCardPresent ||
       deletionUi.backgroundCount !== '99' ||
       deletionUi.rendererHasNodeRequire ||
@@ -1862,6 +2655,8 @@ async function verifyDay18() {
       importFeedback.audit.success.visibleForMs > 5000 ||
       !importFeedback.audit.success.listPositionUnchanged ||
       !importFeedback.audit.success.expectedImportRevisionOnly ||
+      Object.values(importFeedback.audit.pendingImportSuccess).some((passed) => !passed) ||
+      Object.values(importFeedback.audit.pendingImportFailure).some((passed) => !passed) ||
       Object.values(importFeedback.audit.duplicate).some((passed) => !passed) ||
       Object.values(importFeedback.audit.partialFailure).some((passed) => !passed) ||
       Object.values(importFeedback.audit.cancellation).some((passed) => !passed) ||
@@ -1889,6 +2684,30 @@ async function verifyDay18() {
         gridScreenshot.toPNG(),
       ),
       writeFile(
+        path.join(evidenceDirectory, 'usage-filter-default.png'),
+        usageFilterDefaultScreenshot.toPNG(),
+      ),
+      writeFile(
+        path.join(evidenceDirectory, 'usage-filter-hover.png'),
+        usageFilterHoverScreenshot.toPNG(),
+      ),
+      writeFile(
+        path.join(evidenceDirectory, 'usage-filter-selected.png'),
+        usageFilterSelectedScreenshot.toPNG(),
+      ),
+      writeFile(
+        path.join(evidenceDirectory, 'viewport-narrow.png'),
+        responsiveScreenshots.narrow.toPNG(),
+      ),
+      writeFile(
+        path.join(evidenceDirectory, 'viewport-touch-portrait.png'),
+        responsiveScreenshots.touchPortrait.toPNG(),
+      ),
+      writeFile(
+        path.join(evidenceDirectory, 'viewport-touch-landscape.png'),
+        responsiveScreenshots.touchLandscape.toPNG(),
+      ),
+      writeFile(
         path.join(evidenceDirectory, 'drag-feedback.png'),
         dragScreenshot.toPNG(),
       ),
@@ -1912,8 +2731,40 @@ async function verifyDay18() {
         importFeedback.screenshots.audioFailure.toPNG(),
       ),
       writeFile(
+        path.join(evidenceDirectory, 'pending-import-preserved-edit.png'),
+        importFeedback.screenshots.pendingImportSuccess.toPNG(),
+      ),
+      writeFile(
+        path.join(evidenceDirectory, 'pending-import-dirty-after-toast.png'),
+        importFeedback.screenshots.pendingImportDirtyAfterToast.toPNG(),
+      ),
+      writeFile(
+        path.join(evidenceDirectory, 'pending-import-exception.png'),
+        importFeedback.screenshots.pendingImportFailure.toPNG(),
+      ),
+      writeFile(
+        path.join(evidenceDirectory, 'reference-details-collapsed.png'),
+        referenceCollapsedScreenshot.toPNG(),
+      ),
+      writeFile(
         path.join(evidenceDirectory, 'reference-details-expanded.png'),
         referenceDetailsScreenshot.toPNG(),
+      ),
+      writeFile(
+        path.join(evidenceDirectory, 'reference-source-warning.png'),
+        referenceSourceWarningScreenshot.toPNG(),
+      ),
+      writeFile(
+        path.join(evidenceDirectory, 'multi-reference-collapsed.png'),
+        multiReferenceCollapsedScreenshot.toPNG(),
+      ),
+      writeFile(
+        path.join(evidenceDirectory, 'multi-reference-expanded.png'),
+        multiReferenceExpandedScreenshot.toPNG(),
+      ),
+      writeFile(
+        path.join(evidenceDirectory, 'unreferenced-details.png'),
+        unreferencedDetailsScreenshot.toPNG(),
       ),
       writeFile(
         path.join(evidenceDirectory, 'reference-blocked.png'),
