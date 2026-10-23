@@ -55,6 +55,77 @@ function Get-ProcessTreeIds([int] $RootProcessId) {
   return @($ids)
 }
 
+function Get-DirectoryBytes([string] $Path) {
+  if (-not (Test-Path -LiteralPath $Path -PathType Container)) { return [long] 0 }
+  $files = Get-ChildItem -LiteralPath $Path -Recurse -File -ErrorAction SilentlyContinue
+  $sum = ($files | Measure-Object -Property Length -Sum).Sum
+  if ($null -eq $sum) { return [long] 0 }
+  return [long] $sum
+}
+
+function Get-MediaToolSnapshot {
+  $source = "const { resolveMediaToolPaths } = require('./dist-electron/main/services/production-resources.js'); console.log(JSON.stringify(resolveMediaToolPaths({ isPackaged: false, resourcesPath: process.resourcesPath })))"
+  Push-Location $repositoryRoot
+  try {
+    $resolved = (& node -e $source | ConvertFrom-Json)
+  }
+  finally {
+    Pop-Location
+  }
+  $tools = [ordered]@{}
+  foreach ($name in @('ffmpeg', 'ffprobe')) {
+    $path = $resolved.PSObject.Properties["${name}Path"].Value
+    $versionLine = (& $path -version 2>&1 | Select-Object -First 1 | Out-String).Trim()
+    $tools[$name] = [ordered]@{
+      executablePath = $path
+      versionLine = $versionLine
+      sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+  }
+  return $tools
+}
+
+function Get-DpiRegistrySnapshot {
+  $systemDpi = $null
+  try {
+    if (-not ('PandaStageIssue836Dpi' -as [type])) {
+      Add-Type -TypeDefinition @'
+using System.Runtime.InteropServices;
+public static class PandaStageIssue836Dpi {
+  [DllImport("user32.dll")] public static extern uint GetDpiForSystem();
+}
+'@
+    }
+    $systemDpi = [PandaStageIssue836Dpi]::GetDpiForSystem()
+  }
+  catch { $systemDpi = $null }
+  $systemScalePercent = if ($systemDpi) { [Math]::Round(($systemDpi / 96) * 100, 1) } else { $null }
+  $snapshot = [ordered]@{
+    systemDpi = $systemDpi
+    systemScalePercent = $systemScalePercent
+    desktopLogPixels = $null
+    win8DpiScaling = $null
+    perMonitorSettings = @()
+    interpretation = 'Raw current-user DPI registry values; active per-window DPI was not queried.'
+  }
+  try {
+    $desktop = Get-ItemProperty -LiteralPath 'HKCU:\Control Panel\Desktop' -ErrorAction Stop
+    $snapshot.desktopLogPixels = $desktop.LogPixels
+    $snapshot.win8DpiScaling = $desktop.Win8DpiScaling
+    $perMonitorRoot = 'HKCU:\Control Panel\Desktop\PerMonitorSettings'
+    if (Test-Path -LiteralPath $perMonitorRoot) {
+      $snapshot.perMonitorSettings = @(Get-ChildItem -LiteralPath $perMonitorRoot | ForEach-Object {
+        $settings = Get-ItemProperty -LiteralPath $_.PSPath
+        [ordered]@{ monitorKey = $_.PSChildName; dpiValue = $settings.DpiValue; scaleFactor = $settings.ScaleFactor }
+      })
+    }
+  }
+  catch {
+    $snapshot.interpretation = "NOT_MEASURED: $($_.Exception.Message)"
+  }
+  return $snapshot
+}
+
 if (-not (Test-Path -LiteralPath $electronExecutable -PathType Leaf)) {
   throw "Built Electron executable not found: $electronExecutable"
 }
@@ -68,6 +139,13 @@ $os = Get-CimInstance -ClassName Win32_OperatingSystem
 $computer = Get-CimInstance -ClassName Win32_ComputerSystem
 $processor = Get-CimInstance -ClassName Win32_Processor | Select-Object -First 1
 $electronPackage = Get-Content -LiteralPath (Join-Path $repositoryRoot 'node_modules\electron\package.json') -Raw | ConvertFrom-Json
+$logicalDisks = @(Get-CimInstance -ClassName Win32_LogicalDisk -Filter 'DriveType=3' -ErrorAction SilentlyContinue | ForEach-Object {
+  [ordered]@{ drive = $_.DeviceID; fileSystem = $_.FileSystem; sizeBytes = $_.Size; freeBytes = $_.FreeSpace }
+})
+$physicalDisks = @(Get-CimInstance -ClassName Win32_DiskDrive -ErrorAction SilentlyContinue | ForEach-Object {
+  [ordered]@{ model = $_.Model; interfaceType = $_.InterfaceType; mediaType = $_.MediaType; sizeBytes = $_.Size }
+})
+$mediaToolSnapshot = Get-MediaToolSnapshot
 $runResults = [System.Collections.Generic.List[object]]::new()
 $manifest = [ordered]@{
   version = 'issue836-dl06-r3-measurement/1'
@@ -83,6 +161,10 @@ $manifest = [ordered]@{
     windowsBuild = $os.BuildNumber
     osArchitecture = $os.OSArchitecture
     electronVersion = $electronPackage.version
+    logicalDisks = $logicalDisks
+    physicalDisks = $physicalDisks
+    dpiRegistry = Get-DpiRegistrySnapshot
+    mediaTools = $mediaToolSnapshot
     sampleIntervalMilliseconds = $SampleIntervalMilliseconds
     packageState = 'built unpackaged Electron; not an installer'
   }
@@ -121,11 +203,32 @@ try {
       -WindowStyle Hidden `
       -PassThru
     $processStats = @{}
+    $sampleCount = 0
+    $peakConcurrentProcessCount = 0
+    $peakObservedSampleIntervalMilliseconds = 0.0
+    $previousSampleAt = $null
+    $peakFrameJobBytes = [long] 0
+    $peakFrozenMediaBytes = [long] 0
+    $peakOutputStagingBytes = [long] 0
+    $peakConcurrentTransientBytes = [long] 0
+    $peakFrameFileCount = 0
+    $projectRoot = Join-Path $runRoot 'Panda Stage formal export.pandastage'
+    $frameJobsRoot = Join-Path $runRoot 'frame-jobs'
+    $frozenMediaRoot = Join-Path $runRoot 'frozen-media'
 
     while ($true) {
       $process.Refresh()
       if ($process.HasExited) { break }
-      foreach ($processId in (Get-ProcessTreeIds -RootProcessId $process.Id)) {
+      $sampleAt = [DateTimeOffset]::UtcNow
+      if ($null -ne $previousSampleAt) {
+        $sampleInterval = ($sampleAt - $previousSampleAt).TotalMilliseconds
+        $peakObservedSampleIntervalMilliseconds = [Math]::Max($peakObservedSampleIntervalMilliseconds, $sampleInterval)
+      }
+      $previousSampleAt = $sampleAt
+      $sampleCount += 1
+      $processTreeIds = @(Get-ProcessTreeIds -RootProcessId $process.Id)
+      $peakConcurrentProcessCount = [Math]::Max($peakConcurrentProcessCount, $processTreeIds.Count)
+      foreach ($processId in $processTreeIds) {
         $sampledProcess = Get-Process -Id $processId -ErrorAction SilentlyContinue
         if (-not $sampledProcess) { continue }
         $key = [string] $processId
@@ -143,6 +246,18 @@ try {
         $stats.peakWorkingSetBytes = [Math]::Max([long] $stats.peakWorkingSetBytes, [long] $sampledProcess.WorkingSet64)
         $stats.peakPrivateBytes = [Math]::Max([long] $stats.peakPrivateBytes, [long] $sampledProcess.PrivateMemorySize64)
       }
+      $frameFiles = @(Get-ChildItem -LiteralPath $frameJobsRoot -Recurse -File -ErrorAction SilentlyContinue)
+      $peakFrameFileCount = [Math]::Max($peakFrameFileCount, $frameFiles.Count)
+      $frameJobBytesValue = ($frameFiles | Measure-Object -Property Length -Sum).Sum
+      $frameJobBytes = if ($null -eq $frameJobBytesValue) { [long] 0 } else { [long] $frameJobBytesValue }
+      $frozenMediaBytes = Get-DirectoryBytes -Path $frozenMediaRoot
+      $stagingFiles = @(Get-ChildItem -LiteralPath $projectRoot -File -Filter '.panda-stage-export-*' -ErrorAction SilentlyContinue)
+      $stagingBytesValue = ($stagingFiles | Measure-Object -Property Length -Sum).Sum
+      $stagingBytes = if ($null -eq $stagingBytesValue) { [long] 0 } else { [long] $stagingBytesValue }
+      $peakFrameJobBytes = [Math]::Max($peakFrameJobBytes, $frameJobBytes)
+      $peakFrozenMediaBytes = [Math]::Max($peakFrozenMediaBytes, $frozenMediaBytes)
+      $peakOutputStagingBytes = [Math]::Max($peakOutputStagingBytes, $stagingBytes)
+      $peakConcurrentTransientBytes = [Math]::Max($peakConcurrentTransientBytes, $frameJobBytes + $frozenMediaBytes + $stagingBytes)
       Start-Sleep -Milliseconds $SampleIntervalMilliseconds
     }
 
@@ -162,7 +277,22 @@ try {
       wallClockMilliseconds = [long] ($endedAt - $startedAt).TotalMilliseconds
       electronRootProcessId = $process.Id
       exitCode = $process.ExitCode
+      sampleCount = $sampleCount
+      peakConcurrentProcessCount = $peakConcurrentProcessCount
+      peakObservedSampleIntervalMilliseconds = [Math]::Round($peakObservedSampleIntervalMilliseconds, 1)
       processTree = @($processStats.Values | Sort-Object processId)
+      sampledStorage = [ordered]@{
+        frameJobsPath = $frameJobsRoot
+        peakFrameFileCount = $peakFrameFileCount
+        peakFrameJobBytes = $peakFrameJobBytes
+        frozenMediaPath = $frozenMediaRoot
+        peakFrozenMediaBytes = $peakFrozenMediaBytes
+        outputStagingPath = $projectRoot
+        peakOutputStagingBytes = $peakOutputStagingBytes
+        peakConcurrentTransientBytes = $peakConcurrentTransientBytes
+        sumOfIndependentCategoryPeaksBytes = $peakFrameJobBytes + $peakFrozenMediaBytes + $peakOutputStagingBytes
+        note = 'Sampled directory byte totals are approximate; sub-500ms peaks can be missed. Frame file count is not the renderer pending-write queue. Independent category peaks may not have occurred simultaneously.'
+      }
       receiptPath = if ($receipt) { $receipt.FullName } else { $null }
       receiptSha256 = $receiptHash
       stdoutPath = $stdoutPath

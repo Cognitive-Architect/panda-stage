@@ -1,6 +1,6 @@
 # Issue #836 DL-06 measurement plan
 
-Version: **1.0.0 — frozen before R3 measurement runs**
+Version: **1.0.1 — frozen before R3 measurement runs**
 Plan date: **2026-10-23**
 R3 status before runs: **PLANNED / NOT_ATTESTED**
 
@@ -22,6 +22,12 @@ The probes use the existing Issue #827 fixture generator based on `demo-project/
 4. The runner samples each Electron process-tree PID every 500 ms and records per-PID peak working-set and private bytes, process sample counts, root PID, and elapsed wall time. It does not estimate p95 or substitute missing samples with zero.
 5. Each existing Issue #827 verifier receipt supplies the actual Project hash, FFprobe dimensions/frame count/duration, output byte count and SHA-256, source media hashes, and temporary cleanup evidence. The runner stores its own process-memory summary and a hash of each verifier receipt.
 6. Evidence is written under `D:\PandaStage-Acceptance\issue836-dl06-r3\`. No user Project is copied, changed, or used by the run.
+
+### Pre-run capture addendum (v1.0.1)
+
+Before launching the first export process, the runner records the logical-volume filesystem/capacity/free-space inventory, physical-disk model/interface/capacity, Windows system DPI plus current-user DPI registry values, Electron version, and the resolved FFmpeg/FFprobe executable paths, first version lines, and binary SHA-256 hashes. It records the exact commit SHA and the frozen 500 ms target interval. During each run it records observed maximum sampling interval, sample count, sampled concurrent process-tree count, per-PID memory peaks, and approximate frame-job/frozen-media/output-staging bytes. The monitor samples filesystem sizes and process state from the same Windows host; sub-interval peaks and very short-lived child processes may be missed.
+
+The verifier does not expose per-stage timestamps, renderer pending-write-queue peak, or the exact post-task resource-release duration in its receipt. Those fields remain **NOT_MEASURED**; frame-file count is recorded separately and is not substituted for the pending-write queue. The probes do not run cancellation on the two generated 30-second samples; cancellation/release claims remain limited to the existing focused R0/R4 evidence.
 
 ## Interpretation and stop conditions
 
