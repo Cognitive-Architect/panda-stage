@@ -31,6 +31,7 @@ const dl04Mode = process.env.PANDA_STAGE_ISSUE827_DL04 === '1';
 const dl05FollowupMode = process.env.PANDA_STAGE_ISSUE834_FOLLOWUP === '1';
 const dl06R0Mode = process.env.PANDA_STAGE_ISSUE836_DL06_R0 === '1';
 const issue836R2PathBoundaryMode = process.env.PANDA_STAGE_ISSUE836_R2_PATH_BOUNDARY === '1';
+const issue836R2PathSuccessMode = process.env.PANDA_STAGE_ISSUE836_R2_PATH_SUCCESS === '1';
 const dl05Mode = process.env.PANDA_STAGE_ISSUE832_DL05 === '1' || dl05FollowupMode;
 const dl04SampleId = Number(process.env.PANDA_STAGE_ISSUE827_SAMPLE ?? '1');
 const baseDirectory =
@@ -1206,6 +1207,26 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
   );
   const taskSelector = "document.querySelector('[data-testid=\"export-task-surface\"]')";
   const taskStatus = `${taskSelector}?.dataset.taskStatus`;
+  const abortActiveExport = async () => {
+    let state = await rendererJs(`({ status: ${taskStatus} ?? 'idle', text: ${taskSelector}?.innerText ?? '' })`);
+    let emergencyCancel = null;
+    const starts = formalStarts.slice(priorJobCount);
+    for (const start of starts) {
+      if (start.jobId && exportService?.canCancelJob(start.jobId)) {
+        emergencyCancel = { jobId: start.jobId, accepted: exportService.cancelJob(start.jobId) };
+        break;
+      }
+    }
+    if (!emergencyCancel && ['preparing', 'running'].includes(state.status)) {
+      await clickButtonContainingText('取消导出').catch(() => undefined);
+    }
+    await waitForRenderer(
+      `['cancelled', 'failed', 'completed'].includes(${taskStatus})`,
+      60_000,
+    ).catch(() => undefined);
+    state = await rendererJs(`({ status: ${taskStatus} ?? 'idle', text: ${taskSelector}?.innerText ?? '' })`);
+    return { emergencyCancel, starts: formalStarts.slice(priorJobCount), finalTask: state };
+  };
   if (options.expectedFailureText) {
     if (options.abortIfUnexpectedStart) {
       const deadline = Date.now() + 30_000;
@@ -1295,7 +1316,25 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
     };
   }
 
-  await waitForRenderer(`${taskStatus} === 'running'`, 30_000);
+  try {
+    const startCondition = options.failFastOnStartFailure
+      ? `${taskStatus} === 'running' || ${taskStatus} === 'failed'`
+      : `${taskStatus} === 'running'`;
+    await waitForRenderer(startCondition, options.startTimeoutMs ?? 30_000);
+  } catch (error) {
+    if (options.abortOnTimeout) {
+      const abort = await abortActiveExport();
+      throw new Error(`${label}: start did not reach running before timeout. Safety abort: ${JSON.stringify(abort)}. ${String(error)}`);
+    }
+    throw error;
+  }
+  if (options.failFastOnStartFailure) {
+    const currentStatus = await rendererJs(taskStatus);
+    if (currentStatus === 'failed') {
+      const taskText = await rendererJs(`${taskSelector}?.innerText ?? ''`);
+      throw new Error(`${label}: Creator/Main failed before the formal Job started. ${taskText}`);
+    }
+  }
   let progressCaptured = false;
   try {
     await waitForRenderer(`Number(document.querySelector('[data-testid="export-task-surface"] progress')?.value ?? 0) > 0`, 45_000);
@@ -1332,7 +1371,15 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
     };
   }
   const completionTimeoutMs = options.completionTimeoutMs ?? 360_000;
-  await waitForRenderer(`['completed', 'failed'].includes(${taskStatus})`, completionTimeoutMs);
+  try {
+    await waitForRenderer(`['completed', 'failed'].includes(${taskStatus})`, completionTimeoutMs);
+  } catch (error) {
+    if (options.abortOnTimeout) {
+      const abort = await abortActiveExport();
+      throw new Error(`${label}: export did not reach a terminal result before timeout. Safety abort: ${JSON.stringify(abort)}. ${String(error)}`);
+    }
+    throw error;
+  }
   const finalStatus = await rendererJs(taskStatus);
   const starts = formalStarts.slice(priorJobCount);
   if (options.expectJobFailure && finalStatus === 'failed') {
@@ -3062,6 +3109,249 @@ async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapsho
   const selectedState = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
   assert(selectedState.currentShotId === selectedShotId, 'Creator UI did not select the final Shot before full-Project export.');
 
+  if (issue836R2PathSuccessMode) {
+    const pathLimit = 259;
+    const fileNamePrefix = 'i836-r2-成功路径-中文长文件名-';
+    const fileNameSuffix = '.mp4';
+    const outputDirectory = path.resolve(fixture.projectRoot);
+    const fileNameLength = pathLimit - outputDirectory.length - path.sep.length;
+    const fileNameFillerLength = fileNameLength - fileNamePrefix.length - fileNameSuffix.length;
+    assert(fileNameFillerLength >= 40, 'Issue #836 R2 success-path root is too long to preserve a long in-limit target filename.');
+    const fileName = `${fileNamePrefix}${'x'.repeat(fileNameFillerLength)}${fileNameSuffix}`;
+    const outputPath = path.join(outputDirectory, fileName);
+    const longestStagingName = `.panda-stage-export-${'0'.repeat(36)}-${'0'.repeat(36)}.mp4`;
+    const longestStagingPath = path.join(outputDirectory, longestStagingName);
+    assert(outputPath.length === pathLimit, `Issue #836 R2 success target must be exactly ${pathLimit} characters, got ${outputPath.length}.`);
+    assert(longestStagingPath.length <= pathLimit, `Issue #836 R2 success staging candidate exceeds the frozen path limit: ${longestStagingPath.length}.`);
+    assert(!existsSync(outputPath), 'Issue #836 R2 success-path output target already exists.');
+
+    const editorBefore = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+    const editorStateBefore = {
+      revision: editorBefore.revision,
+      dirty: editorBefore.dirty,
+      openInstanceId: editorBefore.openInstanceId,
+      currentShotId: editorBefore.currentShotId,
+      undoCount: editorBefore.undoCount,
+      redoCount: editorBefore.redoCount,
+    };
+    const projectBytesBefore = await fsp.readFile(projectFilePath);
+    const projectFingerprintBefore = await projectPersistenceFingerprint(editorBefore.project, fixture.projectRoot);
+    const sourceAssetHashesBefore = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+      assetId: asset.id,
+      relativePath: asset.relativePath,
+      sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+    })));
+    const priorDialogCount = saveDialogEvidence.length;
+    const priorStartCount = formalStarts.length;
+    const priorUpdateCount = jobUpdates.length;
+    const priorCommitCount = formalCommitRecords.length;
+    const selectionResponses = [];
+    const preparationResponses = [];
+    const originalSelectOutput = exportPreparationService.selectOutput.bind(exportPreparationService);
+    const originalPrepare = exportPreparationService.prepare.bind(exportPreparationService);
+    exportPreparationService.selectOutput = async (request, selectedPath) => {
+      const response = await originalSelectOutput(request, selectedPath);
+      selectionResponses.push({
+        selectedPath,
+        responseStatus: response.status,
+        fileName: response.status === 'selected' ? response.fileName : null,
+        issue: response.status === 'blocked' ? response.issue : null,
+      });
+      return response;
+    };
+    exportPreparationService.prepare = async (request) => {
+      const response = await originalPrepare(request);
+      preparationResponses.push({
+        attemptId: request.attemptId,
+        responseStatus: response.status,
+        issueCodes: response.status === 'BLOCK' ? response.issues.map((issue) => issue.code) : [],
+      });
+      return response;
+    };
+    result.workOrder = 'Issue #836 R2 AC08 supported Chinese/space/deep-path Creator export';
+    result.r2PathSuccess = {
+      status: 'RUNNING',
+      sourceCommitSha: result.sourceCommitSha,
+      expectedOutputPath: outputPath,
+      expectedOutputPathCharacters: outputPath.length,
+      expectedLongestStagingPath: longestStagingPath,
+      expectedLongestStagingPathCharacters: longestStagingPath.length,
+      saveDialogEvidence: saveDialogEvidence.slice(priorDialogCount),
+      selectionResponses,
+      preparationResponses,
+    };
+
+    const exportRun = await startFromCreatorUi(evidenceRoot, 'issue836-r2-path-success', {
+      selectedFileName: fileName,
+      startTimeoutMs: 90_000,
+      failFastOnStartFailure: true,
+      completionTimeoutMs: 1_200_000,
+      abortOnTimeout: true,
+    });
+    const job = exportService.getJob(exportRun.start.jobId);
+    const commit = formalCommitRecords.slice(priorCommitCount).at(-1) ?? null;
+    const observedDialog = saveDialogEvidence.slice(priorDialogCount).at(-1) ?? null;
+    const projectBytesAfter = await fsp.readFile(projectFilePath);
+    const projectFingerprintAfter = await projectPersistenceFingerprint(exportRun.after.project, fixture.projectRoot);
+    const sourceAssetHashesAfter = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+      assetId: asset.id,
+      relativePath: asset.relativePath,
+      sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+    })));
+    const outputExists = existsSync(outputPath);
+    const outputBytes = outputExists ? await fsp.readFile(outputPath) : null;
+    let ffprobeEvidence = null;
+    let ffprobeError = null;
+    if (outputExists) {
+      try {
+        const probeResult = await runProcess(mediaTools.ffprobePath, [
+          '-v', 'error', '-count_frames', '-show_streams', '-show_format', '-of', 'json', outputPath,
+        ]);
+        const probe = JSON.parse(probeResult.stdout);
+        const video = probe.streams?.find((stream) => stream.codec_type === 'video');
+        const audio = probe.streams?.filter((stream) => stream.codec_type === 'audio') ?? [];
+        const frameCount = Number(video?.nb_read_frames ?? video?.nb_frames);
+        const fpsParts = String(video?.avg_frame_rate ?? video?.r_frame_rate ?? '0/1').split('/');
+        const fps = Number(fpsParts[0]) / Number(fpsParts[1] || 1);
+        const durationSeconds = Number(video?.duration ?? probe.format?.duration);
+        ffprobeEvidence = {
+          probe,
+          valid: video?.codec_name === 'h264' && video?.pix_fmt === 'yuv420p' &&
+            video?.width === 1_920 && video?.height === 1_080 &&
+            Math.abs(fps - 24) < 0.001 && frameCount === 720 &&
+            Math.abs(durationSeconds - 30) < 0.08 &&
+            audio.length === 1 && audio[0]?.codec_name === 'aac' &&
+            audio[0]?.sample_rate === '48000' && Math.abs(Number(audio[0]?.duration) - 30) < 0.08,
+          summary: {
+            videoCodec: video?.codec_name ?? null,
+            pixelFormat: video?.pix_fmt ?? null,
+            width: video?.width ?? null,
+            height: video?.height ?? null,
+            fps,
+            frameCount,
+            durationSeconds,
+            audioStreams: audio.length,
+            audioCodec: audio[0]?.codec_name ?? null,
+            audioSampleRate: audio[0]?.sample_rate ?? null,
+            audioDurationSeconds: Number(audio[0]?.duration ?? 0),
+          },
+        };
+        await fsp.writeFile(path.join(evidenceRoot, 'issue836-r2-path-success-ffprobe.json'), JSON.stringify(probe, null, 2), 'utf8');
+      } catch (error) {
+        ffprobeError = String(error.stack ?? error);
+      }
+    }
+    const temporaryCleanup = await assertNoExportTemporaries('Issue #836 R2 successful deep output path');
+    const editorStateAfter = {
+      revision: exportRun.after.revision,
+      dirty: exportRun.after.dirty,
+      openInstanceId: exportRun.after.openInstanceId,
+      currentShotId: exportRun.after.currentShotId,
+      undoCount: exportRun.after.undoCount,
+      redoCount: exportRun.after.redoCount,
+    };
+    const editorStatePreserved = JSON.stringify(editorStateBefore) === JSON.stringify(editorStateAfter);
+    const projectFileUnchanged = projectBytesBefore.equals(projectBytesAfter);
+    const projectFingerprintUnchanged = JSON.stringify(projectFingerprintBefore) === JSON.stringify(projectFingerprintAfter);
+    const sourceAssetsUnchanged = JSON.stringify(sourceAssetHashesBefore) === JSON.stringify(sourceAssetHashesAfter);
+    const observedPathMatches = Boolean(observedDialog?.selectedPath && selectionResponses.at(-1)?.selectedPath) &&
+      path.resolve(observedDialog.selectedPath) === outputPath &&
+      path.resolve(selectionResponses.at(-1).selectedPath) === outputPath;
+    const commitMatches = Boolean(commit) &&
+      path.resolve(commit.outputPath) === outputPath &&
+      commit.stagingPath.length <= pathLimit &&
+      commit.stagingRemoved;
+    const completedOutputPath = exportService.getCompletedOutputPath(exportRun.start.jobId) ?? null;
+    const completedOutputPathMatches = Boolean(completedOutputPath) && path.resolve(completedOutputPath) === outputPath;
+    const pathSuccessReceipt = {
+      schemaVersion: 1,
+      issue: 836,
+      workOrder: result.workOrder,
+      status: 'PENDING_ASSERTIONS',
+      sourceCommitSha: result.sourceCommitSha,
+      platform: process.platform,
+      electronVersion: process.versions.electron,
+      nodeVersion: process.versions.node,
+      startedAt: result.startedAt,
+      completedAt: new Date().toISOString(),
+      fixtureRoot: fixture.root,
+      projectRoot: fixture.projectRoot,
+      projectSha256Before: hash(projectBytesBefore),
+      projectSha256After: hash(projectBytesAfter),
+      pathLimitCharacters: pathLimit,
+      saveAs: {
+        selectedFileName: fileName,
+        selectedFileNameCharacters: fileName.length,
+        expectedTargetPath: outputPath,
+        expectedTargetPathCharacters: outputPath.length,
+        observedTargetPath: observedDialog?.selectedPath ?? null,
+        observedDialog,
+        saveAsScreenshotPath: exportRun.nativeSaveAsScreenshotPath,
+        progressScreenshotPath: exportRun.progressScreenshotPath,
+        completedScreenshotPath: exportRun.completedScreenshotPath,
+      },
+      sameDirectoryStagingCandidate: {
+        name: longestStagingName,
+        path: longestStagingPath,
+        pathCharacters: longestStagingPath.length,
+        actualCommit: commit,
+      },
+      main: { selectionResponses, preparationResponses },
+      export: {
+        start: exportRun.start,
+        jobStatus: job?.status ?? null,
+        outputPath: completedOutputPath,
+        completedOutputPathMatches,
+        outputExists,
+        outputByteLength: outputBytes?.length ?? null,
+        outputSha256: outputBytes ? hash(outputBytes) : null,
+        ffprobeEvidence: ffprobeEvidence ? { ...ffprobeEvidence, probe: undefined } : null,
+        ffprobeJsonPath: path.join(evidenceRoot, 'issue836-r2-path-success-ffprobe.json'),
+        ffprobeError,
+        formalStarts: formalStarts.slice(priorStartCount),
+        jobUpdates: jobUpdates.slice(priorUpdateCount).map((update) => ({ status: update.status, phase: update.phase, completedFrames: update.completedFrames, totalFrames: update.totalFrames })),
+        formalCommitCount: formalCommitRecords.slice(priorCommitCount).length,
+      },
+      safety: {
+        observedPathMatches,
+        targetPathWithinLimit: outputPath.length <= pathLimit,
+        stagingPathWithinLimit: longestStagingPath.length <= pathLimit && Boolean(commit) && commit.stagingPath.length <= pathLimit,
+        jobCompleted: job?.status === 'completed',
+        commitMatches,
+        ffprobeValid: ffprobeEvidence?.valid === true,
+        temporaryCleanup,
+        editorStateBefore,
+        editorStateAfter,
+        editorStatePreserved,
+        projectFileUnchanged,
+        projectFingerprintUnchanged,
+        sourceAssetHashesBefore,
+        sourceAssetHashesAfter,
+        sourceAssetsUnchanged,
+      },
+    };
+    const pathSuccessPassed = observedPathMatches &&
+      selectionResponses.length === 1 && selectionResponses[0]?.responseStatus === 'selected' &&
+      preparationResponses.length === 1 && preparationResponses[0]?.responseStatus === 'READY' &&
+      formalStarts.slice(priorStartCount).length === 1 && job?.status === 'completed' &&
+      formalCommitRecords.slice(priorCommitCount).length === 1 &&
+      pathSuccessReceipt.safety.jobCompleted && commitMatches && completedOutputPathMatches && outputExists &&
+      ffprobeEvidence?.valid === true && editorStatePreserved && projectFileUnchanged &&
+      projectFingerprintUnchanged && sourceAssetsUnchanged;
+    pathSuccessReceipt.status = pathSuccessPassed ? 'PASS' : 'FAIL';
+    result.r2PathSuccess = pathSuccessReceipt;
+    result.auto = pathSuccessPassed ? 'PASS' : 'FAIL';
+    result.completedAt = pathSuccessReceipt.completedAt;
+    await fsp.writeFile(path.join(evidenceRoot, 'issue836-r2-path-success-receipt.json'), JSON.stringify(pathSuccessReceipt, null, 2), 'utf8');
+    await fsp.writeFile(path.join(fixture.root, 'issue836-r2-path-success-receipt.json'), JSON.stringify(pathSuccessReceipt, null, 2), 'utf8');
+    assert(pathSuccessPassed, 'Issue #836 R2 supported deep path did not pass Save As, media-tool, atomic-commit, and preservation assertions; see issue836-r2-path-success-receipt.json.');
+    console.log(`PASS Issue #836 R2 AC08 deep path success: ${fixture.root}`);
+    mainWindow.destroy();
+    hiddenWindowManager.close();
+    app.exit(0);
+    return;
+  }
+
   const cancelPath = path.join(fixture.projectRoot, `issue827-cancelled-${dl04SampleId}.mp4`);
   const cancelRun = await startFromCreatorUi(evidenceRoot, 'cancelled-before-full-export', {
     selectedFileName: path.basename(cancelPath),
@@ -3273,7 +3563,8 @@ async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapsho
 }
 
 async function run() {
-  assert(!issue836R2PathBoundaryMode || (dl04Mode && dl04SampleId === 1), 'Issue #836 R2 path-boundary mode requires the single Issue #827 sample 1 Creator UI fixture.');
+  assert(!(issue836R2PathBoundaryMode && issue836R2PathSuccessMode), 'Issue #836 R2 path modes are mutually exclusive.');
+  assert(!(issue836R2PathBoundaryMode || issue836R2PathSuccessMode) || (dl04Mode && dl04SampleId === 1), 'Issue #836 R2 path mode requires the single Issue #827 sample 1 Creator UI fixture.');
   fixture = dl04Mode || dl05Mode
     ? await generateIssue827Fixture(path.resolve(baseDirectory), dl04SampleId)
     : await generateIssue819Fixture(path.resolve(baseDirectory), {

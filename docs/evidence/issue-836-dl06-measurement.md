@@ -1,10 +1,10 @@
 # Issue #836 DL-06 measurement plan and result
 
-Report version: **1.16.0**
+Report version: **1.17.0**
 Frozen R3 plan revision: **1.4.0**, completed as one bounded four-run continuation
 Plan date: **2026-10-23**
 R3 status: **PARTIAL / NOT_ATTESTED**; all four v1.4.0 generated-probe cold/warm runs completed with `auto=PASS`, matching manifest/receipt hashes, and maximum sample gaps below the frozen 5,000 ms validity limit. These generated probes do not establish author-authorized real-project provenance. Phase wall times, Renderer pending-write queue peak, and post-terminal release time remain `NOT_MEASURED`; installer acceptance and human Gate B evidence remain unavailable. DL-06 and DL-07 remain **NO GO**.
-R2 status: **PARTIAL**; the one focused AC08 staging-path boundary probe frozen below passed its blocked-boundary assertions, but did not exercise media-tool execution or atomic commit on a supported deep path.
+R2 status: **PARTIAL**; the v1.0.0 AC08 staging-path boundary probe passed. A separate supported deep-path Creator export is frozen below and has not yet run.
 
 ## Evidence availability
 
@@ -325,3 +325,15 @@ R3=PARTIAL / NOT_ATTESTED
 DL06=NO GO
 DL-07=NO GO
 NEXT: Exercise a supported Chinese/space/deep output path through a successful media-tool run and atomic commit; separately obtain two author-authorized real Projects for any remaining real-project / packaged-install / human Gate B acceptance. Do not start another R3 run under frozen v1.4.0.
+
+## Frozen R2 AC08 supported-path success plan - v1.1.0 (before run)
+
+This is one separate Creator UI attempt to exercise a supported Windows path end to end. It reuses generated Issue #827 sample 1 from `demo-project/project-v1.example.json`; it is not a real-project or R3 run. The exact verifier SHA will be recorded in Issue #836 before the build and invocation. No retry is permitted.
+
+Acceptance root: `D:\PandaStage-Acceptance\i836-r2-success-v1`. Fixture base: `D:\PandaStage-Acceptance\i836-r2-success-v1\中文 工作区\长路径\一层\二层\root\三级目录-中文 Windows\四级目录`. The fixture generator adds its timestamp/PID run folder and `Panda Stage formal export.pandastage`. Frame-job root is isolated at `D:\PandaStage-Acceptance\i836-r2-success-v1\frame-jobs`. The filename begins `i836-r2-成功路径-中文长文件名-` and is padded dynamically so the full Save As target path is exactly 259 characters. The longest same-directory UUID staging candidate is computed from the same actual directory and must remain at or below 259 characters (expected 255–257 for the Electron PID width observed in this environment).
+
+Frozen invocation: run `pnpm build`, then with `PANDA_STAGE_ISSUE827_DL04=1`, `PANDA_STAGE_ISSUE827_SAMPLE=1`, `PANDA_STAGE_ISSUE836_R2_PATH_SUCCESS=1`, `PANDA_STAGE_ISSUE827_ROOT` set to the fixture base above, and `PANDA_STAGE_ISSUE836_FRAME_ROOT` set to the isolated frame-job root, invoke `pnpm exec electron scripts/verify-issue819-dl02.cjs` once. Creator preparation must reach a running Job within 90 seconds; the Job has a 1,200,000 ms terminal bound. On either timeout the harness cancels any cancellable preparation/Job and stops.
+
+Expected evidence: native Save As and Main select the exact target; preparation returns READY; exactly one formal Job completes; the actual staging path and target are both within 259 characters; Main records the no-replace atomic commit and the staging file is gone. A read-only FFprobe invocation against the exact long-path output must report H.264/yuv420p 1920×1080, 24 fps, 720 frames / 30 seconds, and one 48 kHz AAC track. The receipt records output SHA-256, before/after Project SHA and Editor revision/dirty/History/selection, source media hashes, job/commit records, and temporary cleanup. If any assertion fails, preserve its first failure evidence and do not retry.
+
+This run is bounded to the successful AC08 path. It does not add performance measurements or close other R2 budget, failure, cancellation, provenance, or human acceptance requirements. The prior v1.0.0 boundary result remains separate; no R3 run is allowed by this plan.
