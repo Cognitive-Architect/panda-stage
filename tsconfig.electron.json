@@ -5,6 +5,7 @@
     "moduleResolution": "Node",
     "lib": ["ES2022"],
     "types": ["node"],
+    "resolveJsonModule": true,
     "allowJs": true,
     "rootDir": "src",
     "outDir": "dist-electron",

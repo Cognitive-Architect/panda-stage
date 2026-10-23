@@ -4,6 +4,30 @@ import { describe, expect, it, vi } from 'vitest';
 import { ExportTaskSurface } from '../../src/renderer/shell/ExportTaskSurface';
 
 describe('ExportTaskSurface', () => {
+  it('shows the shared short support summary only while export is being prepared', () => {
+    const markup = renderToStaticMarkup(
+      createElement(ExportTaskSurface, {
+        onCancel: vi.fn(),
+        onHide: vi.fn(),
+        onRetryCurrentContent: vi.fn(),
+        onRetrySameSnapshot: vi.fn(),
+        onRevealOutput: vi.fn(),
+        onStartNewExport: vi.fn(),
+        open: true,
+        task: {
+          status: 'preparing',
+          completedFrames: 0,
+          totalFrames: 0,
+          issues: [],
+        },
+      }),
+    );
+
+    expect(markup).toContain('data-testid="export-support-summary"');
+    expect(markup).toContain('PNG');
+    expect(markup).toContain('MP3/WAV');
+  });
+
   it('keeps the completed result visible beside an explicit new-export action', () => {
     const markup = renderToStaticMarkup(
       createElement(ExportTaskSurface, {
@@ -30,5 +54,6 @@ describe('ExportTaskSurface', () => {
     expect(markup).toContain('old-export.mp4');
     expect(markup).toContain('\u663e\u793a\u89c6\u9891');
     expect(markup).toContain('\u5bfc\u51fa\u65b0\u7248\u672c');
+    expect(markup).not.toContain('data-testid="export-support-summary"');
   });
 });

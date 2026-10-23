@@ -74,6 +74,13 @@
   font: var(--ui-font-secondary);
 }
 
+.export-task-support-summary {
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+  line-height: 1.45;
+}
+
 .export-task-progress progress {
   width: 100%;
   min-width: 0;

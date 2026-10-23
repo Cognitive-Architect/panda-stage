@@ -16,9 +16,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
+import {
+  EXPORT_PREPARATION_WINDOWS_FORMAL_OUTPUT_MAX_PATH_CHARACTERS,
+} from '../../shared/export-preparation-types';
 
 const FRAME_NAME_PATTERN = /^frame_\d{6}\.png$/;
 const execFileAsync = promisify(execFile);
+const LONGEST_FORMAL_OUTPUT_STAGING_NAME =
+  `.panda-stage-export-${'0'.repeat(36)}-${'0'.repeat(36)}.mp4`;
 const WINDOWS_VOLUME_INFO_SCRIPT = [
   "$volumes = @(Get-Volume -FilePath $env:PANDA_STAGE_EXPORT_VOLUME_PATH -ErrorAction Stop)",
   'if ($volumes.Count -ne 1) { exit 21 }',
@@ -34,6 +39,36 @@ export interface FileSystemServiceOptions {
 
 export const CLEANUP_MAX_RETRIES = 3 as const;
 export const CLEANUP_RETRY_DELAY_MS = 75 as const;
+
+export class FormalOutputPathTooLongError extends Error {
+  readonly code = 'FORMAL_OUTPUT_PATH_TOO_LONG';
+
+  constructor() {
+    super(
+      'The formal output or same-directory staging path exceeds the Windows ' +
+        EXPORT_PREPARATION_WINDOWS_FORMAL_OUTPUT_MAX_PATH_CHARACTERS +
+        '-character limit.',
+    );
+    this.name = 'FormalOutputPathTooLongError';
+  }
+}
+
+export function isWithinWindowsFormalExportPathLimit(
+  outputPath: string,
+): boolean {
+  const resolvedOutputPath = path.win32.resolve(outputPath);
+  const outputDirectory = path.win32.dirname(resolvedOutputPath);
+  const longestStagingPath = path.win32.join(
+    outputDirectory,
+    LONGEST_FORMAL_OUTPUT_STAGING_NAME,
+  );
+  return (
+    resolvedOutputPath.length <=
+      EXPORT_PREPARATION_WINDOWS_FORMAL_OUTPUT_MAX_PATH_CHARACTERS &&
+    longestStagingPath.length <=
+      EXPORT_PREPARATION_WINDOWS_FORMAL_OUTPUT_MAX_PATH_CHARACTERS
+  );
+}
 
 export interface FrameFileSystem {
   createJobDirectory(jobId: string): Promise<string>;
@@ -201,6 +236,12 @@ export class FileSystemService implements FrameFileSystem {
 
   async assertFormalOutputLocation(outputPath: string): Promise<void> {
     const resolvedOutputPath = path.resolve(outputPath);
+    if (
+      process.platform === 'win32' &&
+      !isWithinWindowsFormalExportPathLimit(resolvedOutputPath)
+    ) {
+      throw new FormalOutputPathTooLongError();
+    }
     const outputDirectory = await realpath(path.dirname(resolvedOutputPath));
     if (
       !this.options.inspectWindowsVolume &&

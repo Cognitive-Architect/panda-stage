@@ -1,0 +1,185 @@
+param(
+  [string] $AcceptanceRoot = 'D:\PandaStage-Acceptance\issue836-dl06-r3',
+  [ValidateRange(250, 5000)]
+  [int] $SampleIntervalMilliseconds = 500
+)
+
+$ErrorActionPreference = 'Stop'
+$repositoryRoot = Split-Path -Parent $PSScriptRoot
+$electronExecutable = Join-Path $repositoryRoot 'node_modules\electron\dist\electron.exe'
+$verifierScript = 'scripts/verify-issue819-dl02.cjs'
+$acceptanceRootPath = [System.IO.Path]::GetFullPath($AcceptanceRoot)
+$manifestPath = Join-Path $acceptanceRootPath 'measurement-runs.json'
+$runDefinitions = @(
+  [pscustomobject]@{ sampleId = 1; phase = 'cold-process'; id = 'sample-1-cold-process' },
+  [pscustomobject]@{ sampleId = 1; phase = 'warm-followup'; id = 'sample-1-warm-followup' },
+  [pscustomobject]@{ sampleId = 2; phase = 'cold-process'; id = 'sample-2-cold-process' },
+  [pscustomobject]@{ sampleId = 2; phase = 'warm-followup'; id = 'sample-2-warm-followup' }
+)
+$environmentNames = @(
+  'PANDA_STAGE_ISSUE827_DL04',
+  'PANDA_STAGE_ISSUE827_SAMPLE',
+  'PANDA_STAGE_ISSUE827_ROOT',
+  'PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID',
+  'PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA'
+)
+$previousEnvironment = @{}
+foreach ($name in $environmentNames) {
+  $previousEnvironment[$name] = [System.Environment]::GetEnvironmentVariable($name, 'Process')
+}
+
+function Write-JsonFile([string] $Path, [object] $Value) {
+  $json = ConvertTo-Json -InputObject $Value -Depth 40
+  [System.IO.File]::WriteAllText(
+    $Path,
+    $json + [Environment]::NewLine,
+    [System.Text.UTF8Encoding]::new($false)
+  )
+}
+
+function Get-ProcessTreeIds([int] $RootProcessId) {
+  $processes = @(Get-CimInstance -ClassName Win32_Process -ErrorAction SilentlyContinue)
+  $ids = [System.Collections.Generic.HashSet[int]]::new()
+  $null = $ids.Add($RootProcessId)
+  $changed = $true
+  while ($changed) {
+    $changed = $false
+    foreach ($process in $processes) {
+      $processId = [int] $process.ProcessId
+      if (-not $ids.Contains($processId) -and $ids.Contains([int] $process.ParentProcessId)) {
+        $null = $ids.Add($processId)
+        $changed = $true
+      }
+    }
+  }
+  return @($ids)
+}
+
+if (-not (Test-Path -LiteralPath $electronExecutable -PathType Leaf)) {
+  throw "Built Electron executable not found: $electronExecutable"
+}
+if (-not (Test-Path -LiteralPath (Join-Path $repositoryRoot 'dist-electron\main\index.js') -PathType Leaf)) {
+  throw 'Run pnpm build before collecting DL-06 measurements.'
+}
+
+New-Item -ItemType Directory -Path $acceptanceRootPath -Force | Out-Null
+$commitSha = (& git -C $repositoryRoot rev-parse HEAD).Trim()
+$os = Get-CimInstance -ClassName Win32_OperatingSystem
+$computer = Get-CimInstance -ClassName Win32_ComputerSystem
+$processor = Get-CimInstance -ClassName Win32_Processor | Select-Object -First 1
+$electronPackage = Get-Content -LiteralPath (Join-Path $repositoryRoot 'node_modules\electron\package.json') -Raw | ConvertFrom-Json
+$runResults = [System.Collections.Generic.List[object]]::new()
+$manifest = [ordered]@{
+  version = 'issue836-dl06-r3-measurement/1'
+  issue = 836
+  sourceCommitSha = $commitSha
+  environment = [ordered]@{
+    manufacturer = $computer.Manufacturer
+    deviceModel = $computer.Model
+    processor = $processor.Name
+    physicalMemoryBytes = [long] $computer.TotalPhysicalMemory
+    windowsCaption = $os.Caption
+    windowsVersion = $os.Version
+    windowsBuild = $os.BuildNumber
+    osArchitecture = $os.OSArchitecture
+    electronVersion = $electronPackage.version
+    sampleIntervalMilliseconds = $SampleIntervalMilliseconds
+    packageState = 'built unpackaged Electron; not an installer'
+  }
+  runDefinition = [ordered]@{
+    sampleOrder = '1 cold-process, 1 warm-followup, 2 cold-process, 2 warm-followup'
+    coldProcess = 'Fresh Electron process and freshly generated fixture root; operating-system caches are not cleared.'
+    warmFollowup = 'Same generated sample definition in a fresh Electron process immediately after its cold-process run; caches may remain warm.'
+    projectSource = 'Generated Issue #827 probes based on demo-project/project-v1.example.json; not author-supplied real Projects.'
+    mainProjectHashAndFrameEvidence = 'See each verifier acceptance-receipt.json under receiptPath.'
+    memory = 'Sampled peak working-set and private bytes per PID in the Electron process tree; sample gaps remain visible through sampleCount.'
+  }
+  measurements = @()
+}
+
+try {
+  foreach ($definition in $runDefinitions) {
+    $runRoot = Join-Path $acceptanceRootPath $definition.id
+    New-Item -ItemType Directory -Path $runRoot -Force | Out-Null
+    $stdoutPath = Join-Path $runRoot 'electron-stdout.log'
+    $stderrPath = Join-Path $runRoot 'electron-stderr.log'
+    $runId = [guid]::NewGuid().ToString()
+
+    [System.Environment]::SetEnvironmentVariable('PANDA_STAGE_ISSUE827_DL04', '1', 'Process')
+    [System.Environment]::SetEnvironmentVariable('PANDA_STAGE_ISSUE827_SAMPLE', [string] $definition.sampleId, 'Process')
+    [System.Environment]::SetEnvironmentVariable('PANDA_STAGE_ISSUE827_ROOT', $runRoot, 'Process')
+    [System.Environment]::SetEnvironmentVariable('PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID', $runId, 'Process')
+    [System.Environment]::SetEnvironmentVariable('PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA', $commitSha, 'Process')
+
+    $startedAt = [DateTimeOffset]::UtcNow
+    $process = Start-Process `
+      -FilePath $electronExecutable `
+      -ArgumentList @($verifierScript) `
+      -WorkingDirectory $repositoryRoot `
+      -RedirectStandardOutput $stdoutPath `
+      -RedirectStandardError $stderrPath `
+      -WindowStyle Hidden `
+      -PassThru
+    $processStats = @{}
+
+    while ($true) {
+      $process.Refresh()
+      if ($process.HasExited) { break }
+      foreach ($processId in (Get-ProcessTreeIds -RootProcessId $process.Id)) {
+        $sampledProcess = Get-Process -Id $processId -ErrorAction SilentlyContinue
+        if (-not $sampledProcess) { continue }
+        $key = [string] $processId
+        if (-not $processStats.ContainsKey($key)) {
+          $processStats[$key] = [ordered]@{
+            processId = $processId
+            processName = $sampledProcess.ProcessName
+            sampleCount = 0
+            peakWorkingSetBytes = [long] 0
+            peakPrivateBytes = [long] 0
+          }
+        }
+        $stats = $processStats[$key]
+        $stats.sampleCount += 1
+        $stats.peakWorkingSetBytes = [Math]::Max([long] $stats.peakWorkingSetBytes, [long] $sampledProcess.WorkingSet64)
+        $stats.peakPrivateBytes = [Math]::Max([long] $stats.peakPrivateBytes, [long] $sampledProcess.PrivateMemorySize64)
+      }
+      Start-Sleep -Milliseconds $SampleIntervalMilliseconds
+    }
+
+    $process.WaitForExit()
+    $endedAt = [DateTimeOffset]::UtcNow
+    $receipt = Get-ChildItem -LiteralPath $runRoot -Recurse -File -Filter 'acceptance-receipt.json' -ErrorAction SilentlyContinue |
+      Sort-Object LastWriteTime -Descending |
+      Select-Object -First 1
+    $receiptHash = if ($receipt) { (Get-FileHash -LiteralPath $receipt.FullName -Algorithm SHA256).Hash.ToLowerInvariant() } else { $null }
+    $runResult = [ordered]@{
+      id = $definition.id
+      sampleId = $definition.sampleId
+      phase = $definition.phase
+      runId = $runId
+      startedAtUtc = $startedAt.ToString('o')
+      endedAtUtc = $endedAt.ToString('o')
+      wallClockMilliseconds = [long] ($endedAt - $startedAt).TotalMilliseconds
+      electronRootProcessId = $process.Id
+      exitCode = $process.ExitCode
+      processTree = @($processStats.Values | Sort-Object processId)
+      receiptPath = if ($receipt) { $receipt.FullName } else { $null }
+      receiptSha256 = $receiptHash
+      stdoutPath = $stdoutPath
+      stderrPath = $stderrPath
+    }
+    $runResults.Add($runResult)
+    $manifest.measurements = @($runResults)
+    Write-JsonFile -Path $manifestPath -Value $manifest
+    if ($process.ExitCode -ne 0 -or -not $receipt) {
+      throw "DL-06 measurement run $($definition.id) failed; inspect its logs and retained evidence under $runRoot."
+    }
+  }
+}
+finally {
+  foreach ($name in $environmentNames) {
+    [System.Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], 'Process')
+  }
+}
+
+Write-Host "DL-06 R3 measurement receipts: $manifestPath"

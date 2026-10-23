@@ -13,6 +13,7 @@ import {
   EXPORT_PREPARATION_MAX_SINGLE_ASSET_BYTES,
   EXPORT_PREPARATION_MAX_TOTAL_MEDIA_BYTES,
   EXPORT_PREPARATION_SUPPORT_PROFILE,
+  isFormalExportMimeTypeSupported,
   type ExportPreparationCameraMode,
   type ExportPreparationIssue,
 } from '../shared/export-preparation-types';
@@ -355,11 +356,14 @@ export function evaluateExportPreparationSupport(
         (layer) => layer.id === shot.backgroundLayerId,
       );
       const backgroundSource = background?.source;
+      const backgroundAsset =
+        backgroundSource?.kind === 'asset'
+          ? project.assets.find((asset) => asset.id === backgroundSource.assetId)
+          : undefined;
       if (
         !background ||
         backgroundSource?.kind !== 'asset' ||
-        project.assets.find((asset) => asset.id === backgroundSource.assetId)
-          ?.kind !== 'image'
+        backgroundAsset?.kind !== 'image'
       ) {
         issues.push({
           code: 'INVALID_PROJECT',
@@ -373,6 +377,14 @@ export function evaluateExportPreparationSupport(
             location,
             '当前导出切片需要可见的图像背景。',
             '显示镜头的图像背景后重新检查。',
+          ),
+        );
+      } else if (!isFormalExportMimeTypeSupported(backgroundAsset.mimeType)) {
+        issues.push(
+          issue(
+            location,
+            '当前正式导出不支持这张背景图的文件格式。',
+            '将背景图转换为 PNG 或 JPEG 后重新检查。',
           ),
         );
       }
@@ -427,7 +439,7 @@ export function evaluateExportPreparationSupport(
           nextStep: '将片段音量调整到 0 到 2 之间。',
         });
       }
-      if (!['audio/mpeg', 'audio/wav'].includes(asset.mimeType)) {
+      if (!isFormalExportMimeTypeSupported(asset.mimeType)) {
         issues.push({
           code: 'UNSUPPORTED_IN_CURRENT_EXPORT_SLICE',
           location: clipLocation,

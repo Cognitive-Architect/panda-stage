@@ -7,7 +7,10 @@ import {
 } from 'lucide-react';
 import { Button, IconButton, PanelSurface } from '../ui';
 import type { ExportJobPhase } from '../../shared/export-types';
-import type { ExportPreparationCameraMode } from '../../shared/export-preparation-types';
+import {
+  EXPORT_PREPARATION_SUPPORT_PROFILE,
+  type ExportPreparationCameraMode,
+} from '../../shared/export-preparation-types';
 import { shouldShowExportFrameProgress } from './exportTaskState';
 
 export type ExportTaskStatus =
@@ -137,6 +140,12 @@ export function ExportTaskSurface({
         <div aria-live="polite" className="export-task-status" role="status">
           {task.status === 'running' ? phaseCopy(task.phase) : STATUS_COPY[task.status]}
         </div>
+
+        {task.status === 'selecting' || task.status === 'preparing' ? (
+          <p className="export-task-support-summary" data-testid="export-support-summary">
+            {EXPORT_PREPARATION_SUPPORT_PROFILE.capabilityMatrix.visibleSummary}
+          </p>
+        ) : null}
 
         {hasFrameProgress ? (
           <div className="export-task-progress">

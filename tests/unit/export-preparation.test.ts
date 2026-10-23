@@ -26,9 +26,12 @@ import {
   type ExportPreparationFileStore,
 } from '../../src/main/services/ExportPreparationFileStore';
 import {
+  exportCapabilityStatusForMimeType,
+  EXPORT_PREPARATION_MAX_ASSETS,
   EXPORT_PREPARATION_MAX_SHOTS,
   EXPORT_PREPARATION_MAX_SINGLE_ASSET_BYTES,
   EXPORT_PREPARATION_MAX_TOTAL_MEDIA_BYTES,
+  EXPORT_PREPARATION_WINDOWS_FORMAL_OUTPUT_MAX_PATH_CHARACTERS,
   EXPORT_PREPARATION_SUPPORT_PROFILE,
   type ExportPreparationRequest,
 } from '../../src/shared/export-preparation-types';
@@ -207,12 +210,49 @@ function requestFor(
 
 afterEach(async () => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );
 });
 
 describe('DL-01 export preparation domain rules', () => {
+  it('uses the versioned capability matrix as the formal media support source', () => {
+    const matrix = EXPORT_PREPARATION_SUPPORT_PROFILE.capabilityMatrix;
+    const flaSequence = matrix.entries.find(
+      (entry) => entry.id === 'fla-frame-sequence',
+    );
+
+    expect(matrix.version).toBe(EXPORT_PREPARATION_SUPPORT_PROFILE.version);
+    expect(EXPORT_PREPARATION_SUPPORT_PROFILE.audio).toBe('supported');
+    expect(
+      EXPORT_PREPARATION_SUPPORT_PROFILE.windowsFormalOutputMaxPathCharacters,
+    ).toBe(EXPORT_PREPARATION_WINDOWS_FORMAL_OUTPUT_MAX_PATH_CHARACTERS);
+    expect(exportCapabilityStatusForMimeType('image/png')).toBe(
+      'SUPPORTED_VERIFIED',
+    );
+    expect(exportCapabilityStatusForMimeType('image/jpeg')).toBe(
+      'SUPPORTED_UNVERIFIED',
+    );
+    expect(exportCapabilityStatusForMimeType('audio/wav')).toBe(
+      'SUPPORTED_VERIFIED',
+    );
+    expect(exportCapabilityStatusForMimeType('audio/aac')).toBe('UNKNOWN');
+    expect(flaSequence?.statuses).toEqual({
+      import: 'SUPPORTED_VERIFIED',
+      shot: 'NOT_SUPPORTED',
+      preview: 'SUPPORTED_VERIFIED',
+      formalExport: 'NOT_SUPPORTED',
+    });
+    expect(
+      EXPORT_PREPARATION_SUPPORT_PROFILE.imageMimeTypes,
+    ).toEqual(['image/png', 'image/jpeg']);
+    expect(EXPORT_PREPARATION_SUPPORT_PROFILE.audioMimeTypes).toEqual([
+      'audio/mpeg',
+      'audio/wav',
+    ]);
+  });
+
   it('enumerates current visual assets and keeps text-only subtitles audio-free', () => {
     const project = projectWithMedia();
     const media = collectExportPreparationMedia(project);
@@ -858,6 +898,37 @@ describe('DL-01 export preparation domain rules', () => {
     expect(project).toEqual(before);
   });
 
+  it('accepts 256 Shots and reports an actionable issue at 257', () => {
+    const base = projectWithMedia();
+    const makeShot = (index: number) => ({
+      ...base.shots[0]!,
+      id: `60000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`,
+      name: `镜头-${index}`,
+    });
+    const atLimit = ProjectSchema.parse({
+      ...base,
+      shots: Array.from({ length: EXPORT_PREPARATION_MAX_SHOTS }, (_, i) =>
+        makeShot(i + 1),
+      ),
+    });
+    const overLimit = ProjectSchema.parse({
+      ...base,
+      shots: Array.from({ length: EXPORT_PREPARATION_MAX_SHOTS + 1 }, (_, i) =>
+        makeShot(i + 1),
+      ),
+    });
+
+    expect(evaluateExportPreparationSupport(atLimit, 'static')).toEqual([]);
+    expect(evaluateExportPreparationSupport(overLimit, 'static')).toEqual([
+      expect.objectContaining({
+        code: 'UNSUPPORTED_IN_CURRENT_EXPORT_SLICE',
+        location: '项目',
+        problem: expect.stringContaining(String(EXPORT_PREPARATION_MAX_SHOTS)),
+        nextStep: expect.stringContaining('镜头'),
+      }),
+    ]);
+  });
+
   it('evaluates exact per-file and aggregate budget boundaries', () => {
     const oneFileAtLimit = evaluateExportPreparationBudget([
       {
@@ -866,6 +937,43 @@ describe('DL-01 export preparation domain rules', () => {
       },
     ]);
     expect(oneFileAtLimit.issues).toEqual([]);
+
+    const oneFileOverLimit = evaluateExportPreparationBudget([
+      {
+        byteLength: EXPORT_PREPARATION_MAX_SINGLE_ASSET_BYTES + 1,
+        location: '镜头“开场”的背景',
+      },
+    ]);
+    expect(oneFileOverLimit.issues).toEqual([
+      expect.objectContaining({
+        code: 'PREPARATION_BUDGET_EXCEEDED',
+        location: '镜头“开场”的背景',
+        problem: expect.stringContaining('64 MiB'),
+        nextStep: expect.any(String),
+      }),
+    ]);
+
+    expect(
+      evaluateExportPreparationBudget(
+        Array.from({ length: EXPORT_PREPARATION_MAX_ASSETS }, () => ({
+          byteLength: 0,
+          location: '镜头“开场”的图层',
+        })),
+      ).issues,
+    ).toEqual([]);
+    const overAssetCount = evaluateExportPreparationBudget(
+      Array.from({ length: EXPORT_PREPARATION_MAX_ASSETS + 1 }, () => ({
+        byteLength: 0,
+        location: '镜头“开场”的图层',
+      })),
+    );
+    expect(overAssetCount.issues).toEqual([
+      expect.objectContaining({
+        code: 'PREPARATION_BUDGET_EXCEEDED',
+        problem: expect.stringContaining(String(EXPORT_PREPARATION_MAX_ASSETS)),
+        nextStep: expect.any(String),
+      }),
+    ]);
 
     const aggregateAtLimit = evaluateExportPreparationBudget(
       Array.from({ length: 4 }, (_, index) => ({
@@ -1348,6 +1456,165 @@ describe('ExportPreparationService', () => {
     );
   });
 
+  it('recovers two exhausted expired snapshots after an explicit same-session export retry', async () => {
+    vi.useFakeTimers();
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const fixture = await harness();
+    const baseStore = fixture.fileStore;
+    const lockedSnapshotIds = new Set<string>();
+    const deleteAttempts = new Map<string, number>();
+    const fileStore: ExportPreparationFileStore = {
+      create: (snapshotId) => baseStore.create(snapshotId),
+      writeAsset: (snapshotId, contentHandleId, mimeType, bytes) =>
+        baseStore.writeAsset(snapshotId, contentHandleId, mimeType, bytes),
+      readAsset: (snapshotId, contentHandleId, mimeType) =>
+        baseStore.readAsset(snapshotId, contentHandleId, mimeType),
+      delete: async (snapshotId) => {
+        deleteAttempts.set(
+          snapshotId,
+          (deleteAttempts.get(snapshotId) ?? 0) + 1,
+        );
+        if (lockedSnapshotIds.has(snapshotId)) {
+          throw new Error('controlled Windows file lock');
+        }
+        await baseStore.delete(snapshotId);
+      },
+      dispose: () => baseStore.dispose(),
+      getOwnedPath: (snapshotId) => baseStore.getOwnedPath(snapshotId),
+      disposeSync: () => baseStore.disposeSync(),
+    };
+    let currentTime = new Date('2026-10-21T03:00:00.000Z');
+    const service = new ExportPreparationService({
+      getCurrentProjectSnapshot: (requestedRoot) =>
+        path.resolve(requestedRoot) === path.resolve(fixture.projectRoot)
+          ? fixture.getCurrent()
+          : null,
+      fileStore,
+      mediaReader: mediaReader(fixture.media),
+      now: () => new Date(currentTime),
+    });
+    const selectForService = async (fileName: string) => {
+      const selection = await service.selectOutput(
+        {
+          projectRoot: fixture.projectRoot,
+          projectId: fixture.project.id,
+          projectName: fixture.project.name,
+          openInstanceId: OPEN_INSTANCE_ID,
+        },
+        path.join(fixture.outputDirectory, fileName),
+      );
+      expect(selection.status).toBe('selected');
+      if (selection.status !== 'selected') throw new Error('selection failed');
+      return selection;
+    };
+
+    const firstSelection = await selectForService('expired-first.mp4');
+    const firstPrepared = await service.prepare(
+      requestFor(fixture, firstSelection.selectionId),
+    );
+    expect(firstPrepared.status).toBe('PREPARATION_READY');
+    if (firstPrepared.status !== 'PREPARATION_READY') return;
+
+    const secondSelection = await selectForService('expired-second.mp4');
+    const secondPrepared = await service.prepare(
+      requestFor(fixture, secondSelection.selectionId),
+    );
+    expect(secondPrepared.status).toBe('PREPARATION_READY');
+    if (secondPrepared.status !== 'PREPARATION_READY') return;
+
+    const expiredSnapshots = [
+      firstPrepared.candidate.snapshotId,
+      secondPrepared.candidate.snapshotId,
+    ];
+    const ownedPaths = new Map(
+      expiredSnapshots.map((snapshotId) => [
+        snapshotId,
+        baseStore.getOwnedPath(snapshotId),
+      ]),
+    );
+    expect([...ownedPaths.values()].every(Boolean)).toBe(true);
+    expiredSnapshots.forEach((snapshotId) => lockedSnapshotIds.add(snapshotId));
+
+    currentTime = new Date('2026-10-21T03:31:00.000Z');
+    for (const snapshotId of expiredSnapshots) {
+      await expect(
+        service.acquireCandidateForExport(snapshotId),
+      ).rejects.toThrow('EXPORT_SNAPSHOT_UNAVAILABLE');
+    }
+    await vi.advanceTimersByTimeAsync(250);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(4_000);
+
+    expect(expiredSnapshots.map((id) => deleteAttempts.get(id))).toEqual([4, 4]);
+    expect(await readDirectoryOrEmpty(baseStore.rootDirectory)).toEqual(
+      expect.arrayContaining(expiredSnapshots),
+    );
+    expect(await readDirectoryOrEmpty(baseStore.rootDirectory)).toHaveLength(2);
+    for (const snapshotId of expiredSnapshots) {
+      expect(baseStore.getOwnedPath(snapshotId)).toBe(ownedPaths.get(snapshotId));
+      await expect(
+        service.acquireCandidateForExport(snapshotId),
+      ).rejects.toThrow('EXPORT_SNAPSHOT_UNAVAILABLE');
+    }
+
+    const lockedSelection = await selectForService('blocked-while-locked.mp4');
+    const blocked = await service.prepare(
+      requestFor(fixture, lockedSelection.selectionId),
+    );
+    expect(blocked.status).toBe('BLOCK');
+    if (blocked.status !== 'BLOCK') return;
+    expect(blocked.issues[0]).toMatchObject({ code: 'PREPARATION_BUSY' });
+    expect(blocked.issues[0]?.problem).toContain('旧导出临时文件');
+    expect(blocked.issues[0]?.nextStep).toContain('解除文件占用后重试导出');
+    expect(JSON.stringify(blocked.issues)).not.toContain('controlled Windows file lock');
+    expect(JSON.stringify(blocked.issues)).not.toContain(expiredSnapshots[0]);
+    const blockedDiagnostics = service.getDiagnostics(blocked.diagnosticId).join('\n');
+    for (const snapshotId of expiredSnapshots) {
+      expect(blockedDiagnostics).toContain(snapshotId);
+      expect(blockedDiagnostics).toContain(ownedPaths.get(snapshotId));
+    }
+    expect(blockedDiagnostics).toContain('attempt 4/4; explicit recovery 1');
+    expect(blockedDiagnostics).toContain('Takeover action');
+
+    const machineLog = consoleError.mock.calls.map((call) => String(call[0])).join('\n');
+    for (const snapshotId of expiredSnapshots) {
+      expect(machineLog).toContain(snapshotId);
+      expect(machineLog).toContain(ownedPaths.get(snapshotId));
+    }
+    expect(machineLog).toContain('attempt 4/4');
+    expect(machineLog).toContain('Takeover action');
+
+    expiredSnapshots.forEach((snapshotId) => lockedSnapshotIds.delete(snapshotId));
+    const recoveredSelection = await selectForService('same-session-recovered.mp4');
+    const recovered = await service.prepare(
+      requestFor(fixture, recoveredSelection.selectionId),
+    );
+    expect(recovered.status).toBe('PREPARATION_READY');
+    if (recovered.status !== 'PREPARATION_READY') return;
+    expect(expiredSnapshots.map((id) => deleteAttempts.get(id))).toEqual([6, 6]);
+    expect(await readDirectoryOrEmpty(baseStore.rootDirectory)).toEqual([
+      recovered.candidate.snapshotId,
+    ]);
+    for (const snapshotId of expiredSnapshots) {
+      expect(baseStore.getOwnedPath(snapshotId)).toBeNull();
+      await expect(
+        service.acquireCandidateForExport(snapshotId),
+      ).rejects.toThrow('EXPORT_SNAPSHOT_UNAVAILABLE');
+    }
+
+    const recoveredInput = await service.acquireCandidateForExport(
+      recovered.candidate.snapshotId,
+    );
+    expect(recoveredInput.candidate.snapshotId).toBe(
+      recovered.candidate.snapshotId,
+    );
+    service.releaseCandidateExport(recovered.candidate.snapshotId);
+    await expect(
+      service.discard(undefined, recovered.candidate.snapshotId),
+    ).resolves.toBe(true);
+    await service.dispose();
+  });
+
   it('blocks a renderer snapshot that no longer matches Main revision before reading media', async () => {
     const onRead = vi.fn();
     const media = new Map<string, Uint8Array>();
@@ -1618,6 +1885,53 @@ describe('ExportPreparationService', () => {
       });
     }
   });
+
+  it.skipIf(process.platform !== 'win32')(
+    'blocks Windows output paths beyond the staging-path limit with an actionable issue',
+    async () => {
+      const fixture = await harness();
+      const parentDirectory = path.resolve(fixture.outputDirectory);
+      const longStagingDirectory =
+        parentDirectory.length < 230
+          ? path.join(parentDirectory, 'd'.repeat(229 - parentDirectory.length))
+          : parentDirectory;
+      const outputWithLongStagingPath = path.join(
+        longStagingDirectory,
+        'out.mp4',
+      );
+      expect(outputWithLongStagingPath.length).toBeLessThanOrEqual(259);
+      const fileNameLength = Math.max(4, 260 - parentDirectory.length - 1);
+      const fileName = `${'x'.repeat(fileNameLength - 4)}.mp4`;
+      const overlongTargetPath = path.join(parentDirectory, fileName);
+      expect(overlongTargetPath.length).toBeGreaterThan(259);
+
+      const request = {
+        projectRoot: fixture.projectRoot,
+        projectId: fixture.project.id,
+        projectName: fixture.project.name,
+        openInstanceId: OPEN_INSTANCE_ID,
+      };
+      const stagePathResult = await fixture.service.selectOutput(
+        request,
+        outputWithLongStagingPath,
+      );
+      const targetPathResult = await fixture.service.selectOutput(
+        request,
+        overlongTargetPath,
+      );
+
+      for (const result of [stagePathResult, targetPathResult]) {
+        expect(result).toMatchObject({
+          status: 'blocked',
+          issue: {
+            code: 'OUTPUT_LOCATION_UNSUPPORTED',
+            problem: expect.stringContaining('259'),
+            nextStep: expect.stringContaining('259'),
+          },
+        });
+      }
+    },
+  );
 
   it('blocks output folders that fail the local NTFS capability check', async () => {
     const fixture = await harness({

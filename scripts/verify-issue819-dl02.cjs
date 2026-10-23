@@ -29,6 +29,7 @@ const { generateIssue819Fixture, generateIssue827Fixture } = require('./issue819
 const dl03Mode = process.env.PANDA_STAGE_ISSUE823_DL03 === '1';
 const dl04Mode = process.env.PANDA_STAGE_ISSUE827_DL04 === '1';
 const dl05FollowupMode = process.env.PANDA_STAGE_ISSUE834_FOLLOWUP === '1';
+const dl06R0Mode = process.env.PANDA_STAGE_ISSUE836_DL06_R0 === '1';
 const dl05Mode = process.env.PANDA_STAGE_ISSUE832_DL05 === '1' || dl05FollowupMode;
 const dl04SampleId = Number(process.env.PANDA_STAGE_ISSUE827_SAMPLE ?? '1');
 const baseDirectory =
@@ -54,6 +55,13 @@ const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
+function frameJobsRoot() {
+  // DL-06 path probes can isolate project/output paths from the transient frame path.
+  const issue836PathProbeRoot = process.env.PANDA_STAGE_ISSUE836_FRAME_ROOT;
+  return issue836PathProbeRoot
+    ? path.resolve(issue836PathProbeRoot)
+    : path.join(fixture.root, 'frame-jobs');
+}
 function shortIssue834Project(project) {
   const shortProject = structuredClone(project);
   shortProject.shots = shortProject.shots.map((shot, index) => {
@@ -525,7 +533,7 @@ function createExportService() {
         stagingRemoved: !existsSync(stagingPath),
       });
     }
-  }(path.join(fixture.root, 'frame-jobs'));
+  }(frameJobsRoot());
   exportService = new ExportService(
     hiddenWindowManager,
     exportFileSystem,
@@ -1069,7 +1077,7 @@ async function assertNoExportTemporaries(label) {
   do {
     const [projectEntries, frameEntries, preparationEntries] = await Promise.all([
       directoryEntriesOrEmpty(fixture.projectRoot),
-      directoryEntriesOrEmpty(path.join(fixture.root, 'frame-jobs')),
+      directoryEntriesOrEmpty(frameJobsRoot()),
       directoryEntriesOrEmpty(path.join(fixture.root, 'frozen-media')),
     ]);
     remaining = {
@@ -1703,7 +1711,7 @@ async function waitForIssue832ResourceState(expectedSnapshotIds, label) {
   do {
     const [projectEntries, frameEntries, snapshotEntries] = await Promise.all([
       directoryEntriesOrEmpty(fixture.projectRoot),
-      directoryEntriesOrEmpty(path.join(fixture.root, 'frame-jobs')),
+      directoryEntriesOrEmpty(frameJobsRoot()),
       directoryEntriesOrEmpty(path.join(fixture.root, 'frozen-media')),
     ]);
     actual = {
@@ -2144,6 +2152,191 @@ async function createIssue834WindowAndOpenProject() {
   return rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
 }
 
+async function runIssue836R0CleanupRecovery({ originalOutputPath, originalOutputSha256, projectFilePath }) {
+  const service = exportPreparationService;
+  const fileStore = service?.fileStore;
+  assert(service && fileStore?.getOwnedPath, 'DL-06 R0 requires the existing Main cleanup owner and owned-path API.');
+
+  const originalDelete = fileStore.delete.bind(fileStore);
+  const originalNow = service.now;
+  const originalConsoleError = console.error;
+  const lockedSnapshotIds = new Set();
+  const deleteAttempts = new Map();
+  const machineErrors = [];
+  fileStore.delete = async (snapshotId) => {
+    deleteAttempts.set(snapshotId, (deleteAttempts.get(snapshotId) ?? 0) + 1);
+    if (lockedSnapshotIds.has(snapshotId)) {
+      throw new Error('controlled Issue #836 Windows file lock');
+    }
+    await originalDelete(snapshotId);
+  };
+  console.error = (...args) => machineErrors.push(args.map(String).join(' '));
+
+  const createCandidate = async (fileName) => {
+    const current = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+    const selection = await service.selectOutput({
+      projectRoot: current.projectRoot,
+      projectId: current.project.id,
+      projectName: current.project.name,
+      openInstanceId: current.openInstanceId,
+    }, path.join(fixture.projectRoot, fileName));
+    assert(selection.status === 'selected', `DL-06 R0 could not select ${fileName}: ${JSON.stringify(selection)}`);
+    const prepared = await service.prepare({
+      selectionId: selection.selectionId,
+      attemptId: randomUUID(),
+      projectRoot: current.projectRoot,
+      projectId: current.project.id,
+      openInstanceId: current.openInstanceId,
+      revision: current.revision,
+      dirty: current.dirty,
+      cameraMode: 'static',
+      project: current.project,
+    });
+    assert(prepared.status === 'PREPARATION_READY', `DL-06 R0 could not create ${fileName}: ${JSON.stringify(prepared)}`);
+    return prepared.candidate;
+  };
+
+  const expectUnavailable = async (snapshotId, label) => {
+    let failure = null;
+    try {
+      await service.acquireCandidateForExport(snapshotId);
+    } catch (error) {
+      failure = error;
+    }
+    assert(String(failure?.message ?? failure).includes('EXPORT_SNAPSHOT_UNAVAILABLE'), `${label}: expired snapshot became available again.`);
+  };
+
+  try {
+    const projectBytesBefore = await fsp.readFile(projectFilePath);
+    const projectSha256Before = hash(projectBytesBefore);
+    const first = await createCandidate('issue836-r0-expired-first.mp4');
+    const second = await createCandidate('issue836-r0-expired-second.mp4');
+    const expired = [first, second];
+    const expiredSnapshotIds = expired.map((candidate) => candidate.snapshotId);
+    const expiredOwnedPaths = Object.fromEntries(expired.map((candidate) => [
+      candidate.snapshotId,
+      fileStore.getOwnedPath(candidate.snapshotId),
+    ]));
+    assert(expired.every((candidate) => expiredOwnedPaths[candidate.snapshotId]), 'DL-06 R0 did not retain both exact owned paths.');
+    expiredSnapshotIds.forEach((snapshotId) => lockedSnapshotIds.add(snapshotId));
+
+    service.now = () => new Date(originalNow().getTime() + 31 * 60 * 1_000);
+    await expectUnavailable(expiredSnapshotIds[0], 'first expiry');
+    const cleanupDeadline = Date.now() + 15_000;
+    while (
+      expiredSnapshotIds.some((snapshotId) => deleteAttempts.get(snapshotId) < 4) &&
+      Date.now() < cleanupDeadline
+    ) {
+      await pause(25);
+    }
+    assert(expiredSnapshotIds.every((snapshotId) => deleteAttempts.get(snapshotId) === 4), 'Both R0 expired snapshots did not exhaust exactly four bounded cleanup attempts.');
+    const automaticDeleteAttempts = Object.fromEntries(
+      expiredSnapshotIds.map((snapshotId) => [snapshotId, deleteAttempts.get(snapshotId)]),
+    );
+    const ownedEntriesAfterExhaustion = await fsp.readdir(path.join(fixture.root, 'frozen-media'));
+    assert(expiredSnapshotIds.every((snapshotId) => ownedEntriesAfterExhaustion.includes(snapshotId)), 'A locked expired snapshot disappeared before recovery.');
+    for (const snapshotId of expiredSnapshotIds) {
+      assert(fileStore.getOwnedPath(snapshotId) === expiredOwnedPaths[snapshotId], `Owned path changed for ${snapshotId}.`);
+      await expectUnavailable(snapshotId, 'post-exhaustion check');
+    }
+
+    const startsBeforeBlockedAction = formalStarts.length;
+    const blockedSaveAsScreenshotPath = path.join(fixture.evidenceRoot, 'issue836-r0-still-locked-save-as.png');
+    await clickButtonContainingText('按当前内容重新导出');
+    await clickNativeSaveDialog('save', blockedSaveAsScreenshotPath, '', 'issue836-r0-still-locked.mp4');
+    await waitForRenderer(`(() => {
+      const task = window.__pandaStageIssue816Acceptance.inspectExportTask()?.task;
+      return task?.status === 'failed' && task.issues?.some((issue) => issue.code === 'PREPARATION_BUSY');
+    })()`, 30_000);
+    const blockedTask = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
+    const busyIssue = blockedTask.task.issues.find((issue) => issue.code === 'PREPARATION_BUSY');
+    assert(busyIssue?.problem === '旧导出临时文件还未清理，当前导出已安全停止。', 'Locked cleanup did not show the concise safe-stop message.');
+    assert(busyIssue?.nextStep.includes('解除文件占用后重试导出'), 'Locked cleanup did not explain the explicit recovery action.');
+    const visibleIssueText = JSON.stringify(blockedTask.task.issues);
+    assert(!expiredSnapshotIds.some((snapshotId) => visibleIssueText.includes(snapshotId)), 'Internal snapshot IDs leaked into the Creator surface.');
+    assert(!Object.values(expiredOwnedPaths).some((ownedPath) => visibleIssueText.includes(ownedPath)), 'Internal owned paths leaked into the Creator surface.');
+    assert(!visibleIssueText.includes('controlled Issue #836 Windows file lock'), 'Internal filesystem errors leaked into the Creator surface.');
+    const noJobCreatedWhileLocked = formalStarts.length === startsBeforeBlockedAction;
+    assert(noJobCreatedWhileLocked, 'The locked recovery action created an Export Job.');
+    assert((await fsp.readdir(path.join(fixture.root, 'frozen-media'))).length === 2, 'A blocked retry exceeded the two-snapshot ownership cap.');
+    await fsp.writeFile(path.join(fixture.evidenceRoot, 'issue836-r0-still-locked.png'), (await mainWindow.webContents.capturePage()).toPNG());
+
+    const exhaustedLogs = machineErrors.filter((line) => line.includes('attempt 4/4'));
+    const explicitRecoveryLogs = machineErrors.filter((line) => line.includes('explicit recovery 1'));
+    for (const snapshotId of expiredSnapshotIds) {
+      assert(exhaustedLogs.some((line) => line.includes(snapshotId) && line.includes(expiredOwnedPaths[snapshotId]) && line.includes('Takeover action')), `Main log omitted exhausted cleanup ownership for ${snapshotId}.`);
+      assert(explicitRecoveryLogs.some((line) => line.includes(snapshotId) && line.includes(expiredOwnedPaths[snapshotId])), `Main log omitted explicit recovery failure for ${snapshotId}.`);
+    }
+
+    service.now = originalNow;
+    expiredSnapshotIds.forEach((snapshotId) => lockedSnapshotIds.delete(snapshotId));
+    const recoveredGate = controlledGate();
+    pauseNextIssue834Encode = recoveredGate;
+    const recoveredOutputPath = path.join(fixture.projectRoot, 'issue836-r0-recovered.mp4');
+    const recoveredRun = await beginIssue832CreatorExport(
+      'issue836-r0-recovered',
+      path.basename(recoveredOutputPath),
+      '按当前内容重新导出',
+    );
+    assert(exportPreparationService === service, 'DL-06 R0 replaced the single Main cleanup owner.');
+    assert(!expiredSnapshotIds.includes(recoveredRun.start.snapshotId), 'An expired snapshot was revived for the new Job.');
+    assert(expiredSnapshotIds.every((snapshotId) => fileStore.getOwnedPath(snapshotId) === null), 'Explicit recovery did not remove both original owned paths.');
+    await waitForGate(recoveredGate, 'DL-06 R0 same-session recovered Job encoding');
+    await waitForRenderer('window.__pandaStageIssue816Acceptance.inspectExportTask()?.task.jobId === ' + JSON.stringify(recoveredRun.start.jobId) + ' && window.__pandaStageIssue816Acceptance.inspectExportTask()?.task.phase === "encoding"');
+    assert(exportService.getJob(recoveredRun.start.jobId)?.status === 'running', 'The recovered candidate did not start a new Main Export Job.');
+
+    recoveredGate.release();
+    const recoveredTerminal = await waitForIssue832Terminal(recoveredRun.start, 120_000);
+    assert(recoveredTerminal.task.status === 'completed', 'The post-recovery Export Job did not complete.');
+    assert(exportService.getJob(recoveredRun.start.jobId)?.status === 'completed' && existsSync(recoveredOutputPath), 'The same-session recovered Job did not publish its selected output.');
+    const recoveredOutputSha256 = hash(await fsp.readFile(recoveredOutputPath));
+    const candidateCleanupDeadline = Date.now() + 5_000;
+    while (fileStore.getOwnedPath(recoveredRun.start.snapshotId) !== null && Date.now() < candidateCleanupDeadline) await pause(25);
+    assert(fileStore.getOwnedPath(recoveredRun.start.snapshotId) === null, 'The recovered Job candidate was not cleaned after completion.');
+    assert((await fsp.readFile(projectFilePath)).equals(projectBytesBefore), 'R0 cleanup recovery changed the saved Project.');
+    assert(hash(await fsp.readFile(originalOutputPath)) === originalOutputSha256, 'R0 cleanup recovery changed the prior completed MP4.');
+
+    return {
+      status: 'PASS',
+      exhaustedSnapshots: expired.map((candidate) => ({
+        snapshotId: candidate.snapshotId,
+        ownedPath: expiredOwnedPaths[candidate.snapshotId],
+        automaticDeleteAttempts: automaticDeleteAttempts[candidate.snapshotId],
+        explicitRecoveryDeleteAttempts: deleteAttempts.get(candidate.snapshotId) - automaticDeleteAttempts[candidate.snapshotId],
+        totalDeleteAttempts: deleteAttempts.get(candidate.snapshotId),
+        directoryRetainedWhileLocked: ownedEntriesAfterExhaustion.includes(candidate.snapshotId),
+        unavailableAfterExpiry: true,
+        removedAfterExplicitRecovery: fileStore.getOwnedPath(candidate.snapshotId) === null,
+      })),
+      blockedRetry: {
+        status: blockedTask.task.status,
+        issue: busyIssue,
+        noJobCreated: noJobCreatedWhileLocked,
+        snapshotsStillOwned: true,
+        diagnosticLogs: explicitRecoveryLogs,
+      },
+      recoveredJob: {
+        jobId: recoveredRun.start.jobId,
+        attemptId: recoveredRun.start.attemptId,
+        snapshotId: recoveredRun.start.snapshotId,
+        status: recoveredTerminal.task.status,
+        outputPath: recoveredOutputPath,
+        outputSha256: recoveredOutputSha256,
+        sameServiceInstance: exportPreparationService === service,
+      },
+      projectSha256Before: projectSha256Before,
+      projectSha256After: hash(await fsp.readFile(projectFilePath)),
+      priorOutputSha256: originalOutputSha256,
+      priorOutputSha256After: hash(await fsp.readFile(originalOutputPath)),
+      userSurfaceScreenshotPath: path.join(fixture.evidenceRoot, 'issue836-r0-still-locked.png'),
+    };
+  } finally {
+    fileStore.delete = originalDelete;
+    service.now = originalNow;
+    console.error = originalConsoleError;
+  }
+}
+
 async function runIssue834FollowupAcceptance({ result, opened, initialProjectBytes, projectFilePath }) {
   issue834Stage = 'initial-export';
   const evidenceRoot = fixture.evidenceRoot;
@@ -2289,6 +2482,34 @@ async function runIssue834FollowupAcceptance({ result, opened, initialProjectByt
   assert(await exportPreparationService.discard(undefined, cancelledRun.start.snapshotId), 'Cancelled terminal snapshot could not be discarded after identity checks.');
   assert(await exportPreparationService.discard(undefined, failedRun.start.snapshotId), 'Failed terminal snapshot could not be discarded after retry-action checks.');
 
+  const issue836R0Evidence = dl06R0Mode
+    ? await runIssue836R0CleanupRecovery({ originalOutputPath, originalOutputSha256, projectFilePath })
+    : null;
+
+  if (issue836R0Evidence) {
+    const resetOutputPath = path.join(fixture.projectRoot, 'issue836-r0-harness-reset.mp4');
+    const resetGate = controlledGate();
+    pauseNextIssue834Encode = resetGate;
+    failNextEncoderRun = true;
+    const resetRun = await beginIssue832CreatorExport(
+      'issue836-r0-harness-reset',
+      path.basename(resetOutputPath),
+      '\u5bfc\u51fa\u65b0\u7248\u672c',
+    );
+    await waitForGate(resetGate, 'DL-06 R0 verifier state restoration');
+    resetGate.release();
+    const resetTerminal = await waitForIssue832Terminal(resetRun.start, 120_000);
+    assert(resetTerminal.task.status === 'failed', 'DL-06 R0 verifier state restoration did not leave the expected failed-task retry surface.');
+    assert(!existsSync(resetOutputPath), 'DL-06 R0 verifier state restoration unexpectedly published an MP4.');
+    assert(await exportPreparationService.discard(undefined, resetRun.start.snapshotId), 'DL-06 R0 verifier state-restoration snapshot could not be discarded.');
+    issue836R0Evidence.verifierStateRestoration = {
+      jobId: resetRun.start.jobId,
+      status: resetTerminal.task.status,
+      outputAbsent: !existsSync(resetOutputPath),
+      snapshotDiscarded: true,
+    };
+  }
+
   const runningCloseTargetPath = path.join(fixture.projectRoot, 'issue834-browser-close-running.mp4');
   const runningCloseGate = controlledGate();
   pauseNextIssue834Encode = runningCloseGate;
@@ -2432,6 +2653,9 @@ async function runIssue834FollowupAcceptance({ result, opened, initialProjectByt
       resourceCleanup,
       closePrompts: closePromptEvidence,
     },
+    ...(issue836R0Evidence
+      ? { AC08_issue836R0CleanupRecovery: issue836R0Evidence }
+      : {}),
   };
   result.exportJobs = formalStarts.map((start) => ({
     ...start,
@@ -2819,11 +3043,13 @@ async function run() {
   mainWindow.webContents.focus();
 
   const result = {
-    issue: dl05FollowupMode ? 834 : dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
-    wrapperRunId: process.env.PANDA_STAGE_ISSUE834_RUN_ID ?? process.env.PANDA_STAGE_ISSUE832_RUN_ID ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID ?? null,
-    sourceCommitSha: process.env.PANDA_STAGE_ISSUE834_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE832_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA ?? null,
+    issue: dl06R0Mode ? 836 : dl05FollowupMode ? 834 : dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
+    wrapperRunId: process.env.PANDA_STAGE_ISSUE836_RUN_ID ?? process.env.PANDA_STAGE_ISSUE834_RUN_ID ?? process.env.PANDA_STAGE_ISSUE832_RUN_ID ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID ?? null,
+    sourceCommitSha: process.env.PANDA_STAGE_ISSUE836_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE834_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE832_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA ?? null,
     sampleId: dl04Mode || dl05Mode ? dl04SampleId : null,
-    workOrder: dl05FollowupMode
+    workOrder: dl06R0Mode
+      ? 'Issue #836 DL-06 R0: same-session recovery after two bounded snapshot cleanup failures'
+      : dl05FollowupMode
       ? 'Issue #834 DL-05 follow-up: terminal task restoration, retryable snapshot cleanup, and close confirmation'
       : dl05Mode
       ? 'DL-05 export task lifecycle, frozen/current retries, and editing during a multi-shot job'

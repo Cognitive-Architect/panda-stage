@@ -1,38 +1,80 @@
 import { z } from 'zod';
 import type { Project } from '../domain';
+import supportSource from './export-preparation-support-source.json';
 
-export const EXPORT_PREPARATION_SUPPORT_PROFILE_VERSION =
-  'dl04-2026-10-22.1' as const;
+export const EXPORT_PREPARATION_SUPPORT_PROFILE_VERSION = supportSource.version;
+export const EXPORT_PREPARATION_WINDOWS_FORMAL_OUTPUT_MAX_PATH_CHARACTERS =
+  supportSource.windowsFormalOutputMaxPathCharacters as 259;
 
-export const EXPORT_PREPARATION_MAX_SHOTS = 256 as const;
+export const EXPORT_PREPARATION_MAX_SHOTS =
+  supportSource.profile.shotCount.maximum as 256;
 
-export const EXPORT_PREPARATION_MAX_ASSETS = 512 as const;
+export const EXPORT_PREPARATION_MAX_ASSETS =
+  supportSource.profile.budgets.maximumAssets as 512;
 export const EXPORT_PREPARATION_MAX_SINGLE_ASSET_BYTES =
-  64 * 1024 * 1024;
+  supportSource.profile.budgets.maximumSingleAssetBytes as 67_108_864;
 export const EXPORT_PREPARATION_MAX_TOTAL_MEDIA_BYTES =
-  256 * 1024 * 1024;
+  supportSource.profile.budgets.maximumTotalMediaBytes as 268_435_456;
 
 export const EXPORT_PREPARATION_RENDER_SETTINGS = Object.freeze({
-  width: 1_920,
-  height: 1_080,
-  fps: 24,
-} as const);
+  ...supportSource.renderSettings,
+});
+
+export const EXPORT_PREPARATION_CAPABILITY_MATRIX = Object.freeze({
+  ...supportSource.capabilityMatrix,
+});
+
+function exportSupported(status: string): boolean {
+  return status === 'SUPPORTED_VERIFIED' || status === 'SUPPORTED_UNVERIFIED';
+}
+
+function supportedMimeTypes(mediaKind: 'image' | 'audio'): string[] {
+  return [
+    ...new Set(
+      EXPORT_PREPARATION_CAPABILITY_MATRIX.entries
+        .filter(
+          (entry) =>
+            entry.mediaKind === mediaKind &&
+            exportSupported(entry.statuses.formalExport),
+        )
+        .flatMap((entry) => entry.mimeTypes),
+    ),
+  ];
+}
+
+const formalAudioSupported = EXPORT_PREPARATION_CAPABILITY_MATRIX.entries.some(
+  (entry) =>
+    entry.mediaKind === 'audio' &&
+    exportSupported(entry.statuses.formalExport),
+);
 
 export const EXPORT_PREPARATION_SUPPORT_PROFILE = Object.freeze({
   version: EXPORT_PREPARATION_SUPPORT_PROFILE_VERSION,
-  shotCount: { minimum: 1, maximum: EXPORT_PREPARATION_MAX_SHOTS },
-  backgroundRequired: true,
-  audio: 'supported' as const,
-  cameraModes: ['static', 'speaker-focus'] as const,
-  characterCompositions: ['whole-image', 'composite'] as const,
-  imageMimeTypes: ['image/png', 'image/jpeg'] as const,
-  audioMimeTypes: ['audio/mpeg', 'audio/wav'] as const,
-  budgets: {
-    maximumAssets: EXPORT_PREPARATION_MAX_ASSETS,
-    maximumSingleAssetBytes: EXPORT_PREPARATION_MAX_SINGLE_ASSET_BYTES,
-    maximumTotalMediaBytes: EXPORT_PREPARATION_MAX_TOTAL_MEDIA_BYTES,
-  },
+  windowsFormalOutputMaxPathCharacters:
+    EXPORT_PREPARATION_WINDOWS_FORMAL_OUTPUT_MAX_PATH_CHARACTERS,
+  ...supportSource.profile,
+  audio: (formalAudioSupported ? 'supported' : 'unsupported') as
+    | 'supported'
+    | 'unsupported',
+  imageMimeTypes: supportedMimeTypes('image'),
+  audioMimeTypes: supportedMimeTypes('audio'),
+  capabilityMatrix: EXPORT_PREPARATION_CAPABILITY_MATRIX,
 });
+
+export function exportCapabilityStatusForMimeType(
+  mimeType: string,
+  layer: 'import' | 'shot' | 'preview' | 'formalExport' = 'formalExport',
+): string {
+  return (
+    EXPORT_PREPARATION_CAPABILITY_MATRIX.entries.find((entry) =>
+      entry.mimeTypes.includes(mimeType),
+    )?.statuses[layer] ?? 'UNKNOWN'
+  );
+}
+
+export function isFormalExportMimeTypeSupported(mimeType: string): boolean {
+  return exportSupported(exportCapabilityStatusForMimeType(mimeType));
+}
 
 const FileSystemPathSchema = z.string().trim().min(1).max(32_767);
 const ProjectIdSchema = z.uuid();
@@ -120,9 +162,83 @@ export const ExportPreparationRequestSchema = z
   })
   .strict();
 
+const ExportPreparationCapabilityStatusSchema = z.enum([
+  'SUPPORTED_VERIFIED',
+  'SUPPORTED_UNVERIFIED',
+  'NOT_SUPPORTED',
+  'UNKNOWN',
+]);
+
+const ExportPreparationCapabilityLayerSchema = z.enum([
+  'import',
+  'shot',
+  'preview',
+  'formalExport',
+]);
+
+const ExportPreparationCapabilityMatrixSchema = z
+  .object({
+    version: z.literal(EXPORT_PREPARATION_SUPPORT_PROFILE_VERSION),
+    visibleSummary: z.string().trim().min(1).max(500),
+    layers: z
+      .array(
+        z
+          .object({
+            id: ExportPreparationCapabilityLayerSchema,
+            label: z.string().trim().min(1).max(100),
+          })
+          .strict(),
+      )
+      .length(4),
+    statuses: z
+      .array(
+        z
+          .object({
+            id: ExportPreparationCapabilityStatusSchema,
+            label: z.string().trim().min(1).max(120),
+          })
+          .strict(),
+      )
+      .length(4),
+    entries: z
+      .array(
+        z
+          .object({
+            id: z.string().trim().min(1).max(100),
+            label: z.string().trim().min(1).max(200),
+            mediaKind: z.enum([
+              'image',
+              'audio',
+              'fla-sequence',
+              'fla-special',
+              'other',
+            ]),
+            formats: z.array(z.string().trim().min(1).max(120)).max(20),
+            mimeTypes: z.array(z.string().trim().min(1).max(120)).max(20),
+            statuses: z
+              .object({
+                import: ExportPreparationCapabilityStatusSchema,
+                shot: ExportPreparationCapabilityStatusSchema,
+                preview: ExportPreparationCapabilityStatusSchema,
+                formalExport: ExportPreparationCapabilityStatusSchema,
+              })
+              .strict(),
+            evidence: z.array(z.string().trim().min(1).max(500)).min(1).max(20),
+            note: z.string().trim().min(1).max(500),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(100),
+  })
+  .strict();
+
 const ExportPreparationSupportProfileSchema = z
   .object({
     version: z.literal(EXPORT_PREPARATION_SUPPORT_PROFILE_VERSION),
+    windowsFormalOutputMaxPathCharacters: z.literal(
+      EXPORT_PREPARATION_WINDOWS_FORMAL_OUTPUT_MAX_PATH_CHARACTERS,
+    ),
     shotCount: z
       .object({
         minimum: z.literal(1),
@@ -130,13 +246,13 @@ const ExportPreparationSupportProfileSchema = z
       })
       .strict(),
     backgroundRequired: z.literal(true),
-    audio: z.literal('supported'),
+    audio: z.enum(['supported', 'unsupported']),
     cameraModes: z.array(ExportPreparationCameraModeSchema).length(2),
     characterCompositions: z.array(z.enum(['whole-image', 'composite'])).length(
       2,
     ),
-    imageMimeTypes: z.array(z.enum(['image/png', 'image/jpeg'])).length(2),
-    audioMimeTypes: z.array(z.enum(['audio/mpeg', 'audio/wav'])).length(2),
+    imageMimeTypes: z.array(z.string().trim().min(1).max(120)).max(20),
+    audioMimeTypes: z.array(z.string().trim().min(1).max(120)).max(20),
     budgets: z
       .object({
         maximumAssets: z.literal(EXPORT_PREPARATION_MAX_ASSETS),
@@ -148,8 +264,43 @@ const ExportPreparationSupportProfileSchema = z
         ),
       })
       .strict(),
+    capabilityMatrix: ExportPreparationCapabilityMatrixSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((profile, context) => {
+    const expectedImageMimeTypes = supportedMimeTypes('image');
+    const expectedAudioMimeTypes = supportedMimeTypes('audio');
+    if (
+      JSON.stringify(profile.imageMimeTypes) !==
+      JSON.stringify(expectedImageMimeTypes)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['imageMimeTypes'],
+        message: 'Image MIME types must derive from the capability matrix.',
+      });
+    }
+    if (
+      JSON.stringify(profile.audioMimeTypes) !==
+      JSON.stringify(expectedAudioMimeTypes)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['audioMimeTypes'],
+        message: 'Audio MIME types must derive from the capability matrix.',
+      });
+    }
+    if (
+      profile.audio !==
+      (expectedAudioMimeTypes.length > 0 ? 'supported' : 'unsupported')
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['audio'],
+        message: 'Audio support must derive from the capability matrix.',
+      });
+    }
+  });
 
 export const ExportPreparationMediaManifestEntrySchema = z
   .object({

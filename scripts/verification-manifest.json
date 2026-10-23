@@ -399,6 +399,7 @@
           "scripts/verify-issue827-dl04.cjs",
           "scripts/verify-issue832-dl05.cjs",
           "scripts/verify-issue834-dl05-followup.cjs",
+          "scripts/verify-issue836-dl06-r0.cjs",
           "scripts/verify-issue660-export-audio-mix.cjs"
         ],
         "suites": [],
@@ -680,7 +681,7 @@
       }
     ]
   },
-  "count": 88,
+  "count": 89,
   "gates": [
     {
       "id": "issue663-dialogue-voice",
@@ -1725,6 +1726,18 @@
       "owner": "export",
       "supersedes": null,
       "notes": "Issue #834 focused Windows Electron follow-up for hidden completed/cancelled/failed task restoration, explicit new-version Save As cancellation, visible subtitle editing during a gated export, and actual BrowserWindow close while encoding and committing with no-clobber cleanup. Retry cleanup backoff is covered by focused unit tests; human Windows audiovisual acceptance remains deferred to DL-07."
+    },
+    {
+      "id": "issue836-dl06-r0",
+      "script": "verify:issue836-dl06-r0",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Issue #836 DL-06 R0 focused Windows Electron proof for two exhausted expired-snapshot cleanup owners, sanitized locked-retry UI, exact Main diagnostics, same-session path recovery, and a new formal Export Job without changing the Project or prior MP4. Human audiovisual acceptance remains deferred to DL-07."
     },
     {
       "id": "timeline",

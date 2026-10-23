@@ -21,6 +21,7 @@ import {
   EXPORT_PREPARATION_MAX_ASSETS,
   EXPORT_PREPARATION_RENDER_SETTINGS,
   EXPORT_PREPARATION_SUPPORT_PROFILE,
+  EXPORT_PREPARATION_WINDOWS_FORMAL_OUTPUT_MAX_PATH_CHARACTERS,
   ExportPreparationCandidateSchema,
   ExportPreparationRequestSchema,
   type ExportOutputTargetIdentity,
@@ -38,6 +39,10 @@ import {
 import {
   AssetPreviewAudioService,
 } from './AssetPreviewAudioService';
+import {
+  FormalOutputPathTooLongError,
+  isWithinWindowsFormalExportPathLimit,
+} from './FileSystemService';
 import {
   ExportPreparationFileStore,
   NodeExportPreparationFileStore,
@@ -99,6 +104,7 @@ interface StoredCandidate {
 interface PendingCandidateCleanup {
   candidate: ExportPreparationCandidate;
   attempts: number;
+  explicitRecoveryAttempts: number;
   lastError: string;
   retryTimer?: ReturnType<typeof setTimeout>;
   inFlight?: Promise<boolean>;
@@ -243,6 +249,15 @@ export class ExportPreparationService {
         issue: this.sessionChangedIssue(),
       };
     }
+    if (
+      process.platform === 'win32' &&
+      !isWithinWindowsFormalExportPathLimit(selectedPath)
+    ) {
+      return {
+        status: 'blocked',
+        issue: this.outputPathTooLongIssue(),
+      };
+    }
 
     try {
       const target = await captureTargetIdentity(selectedPath);
@@ -251,10 +266,13 @@ export class ExportPreparationService {
       }
       try {
         await this.options.assertFormalOutputLocation?.(target.canonicalPath);
-      } catch {
+      } catch (error) {
         return {
           status: 'blocked',
-          issue: this.outputLocationUnsupportedIssue(),
+          issue:
+            error instanceof FormalOutputPathTooLongError
+              ? this.outputPathTooLongIssue()
+              : this.outputLocationUnsupportedIssue(),
         };
       }
       const selectionId = randomUUID();
@@ -447,8 +465,13 @@ export class ExportPreparationService {
       );
     }
 
+    const pendingCleanupIdsBeforePrune = new Set(
+      this.pendingCandidateCleanups.keys(),
+    );
     await this.pruneExpiredCandidates();
-    const hasSnapshotCapacity = await this.reserveCandidateSlot();
+    const hasSnapshotCapacity = await this.reserveCandidateSlot(
+      pendingCleanupIdsBeforePrune,
+    );
     if (!hasSnapshotCapacity) {
       return this.block(
         request.attemptId,
@@ -456,8 +479,9 @@ export class ExportPreparationService {
           {
             code: 'PREPARATION_BUSY',
             location: '导出准备',
-            problem: '上一份导出临时内容仍在清理。',
-            nextStep: '关闭占用临时目录的程序，等待本次清理重试后再导出。',
+            problem: '旧导出临时文件还未清理，当前导出已安全停止。',
+            nextStep:
+              '请解除文件占用后重试导出；仍不能清理时，先解除占用再重启 Panda Stage。',
           },
         ],
         [...this.pendingCandidateCleanups.entries()]
@@ -1049,7 +1073,17 @@ export class ExportPreparationService {
     }
   }
 
-  private async reserveCandidateSlot(): Promise<boolean> {
+  private async reserveCandidateSlot(
+    pendingCleanupIdsToRecheck: ReadonlySet<string>,
+  ): Promise<boolean> {
+    await Promise.all(
+      [...pendingCleanupIdsToRecheck].map(async (snapshotId) => {
+        const pending = this.pendingCandidateCleanups.get(snapshotId);
+        if (!pending) return;
+        await this.attemptCandidateCleanup(snapshotId, pending, 'explicit');
+      }),
+    );
+    if (this.pendingCandidateCleanups.size > 0) return false;
     while (
       this.candidates.size + this.pendingCandidateCleanups.size >=
       MAX_RETAINED_EXPORT_CANDIDATES
@@ -1075,33 +1109,54 @@ export class ExportPreparationService {
       pending = {
         candidate: structuredClone(stored.candidate),
         attempts: 0,
+        explicitRecoveryAttempts: 0,
         lastError: '',
       };
       this.pendingCandidateCleanups.set(snapshotId, pending);
     }
     this.activeExportSnapshots.delete(snapshotId);
-    return this.attemptCandidateCleanup(snapshotId, pending);
+    return this.attemptCandidateCleanup(
+      snapshotId,
+      pending,
+      pending.attempts >= MAX_CANDIDATE_CLEANUP_ATTEMPTS
+        ? 'explicit'
+        : 'automatic',
+    );
   }
 
   private async attemptCandidateCleanup(
     snapshotId: string,
     pending: PendingCandidateCleanup,
+    attemptKind: 'automatic' | 'explicit' = 'automatic',
   ): Promise<boolean> {
     if (this.pendingCandidateCleanups.get(snapshotId) !== pending) return true;
     if (pending.inFlight) return pending.inFlight;
     this.clearCandidateCleanupRetry(pending);
     const operation = (async (): Promise<boolean> => {
-      pending.attempts += 1;
+      if (
+        attemptKind === 'explicit' &&
+        pending.attempts >= MAX_CANDIDATE_CLEANUP_ATTEMPTS
+      ) {
+        pending.explicitRecoveryAttempts += 1;
+      } else {
+        pending.attempts += 1;
+      }
       try {
         await this.fileStore.delete(snapshotId);
         this.pendingCandidateCleanups.delete(snapshotId);
         return true;
       } catch (error) {
         pending.lastError = errorMessage(error);
+        const diagnostic = this.candidateCleanupDiagnostic(
+          snapshotId,
+          pending,
+          pending.lastError,
+        );
         this.recordDiagnostic(
           pending.candidate.attemptId,
-          this.candidateCleanupDiagnostic(snapshotId, pending, pending.lastError),
+          diagnostic,
         );
+        console.error(diagnostic);
         this.scheduleCandidateCleanupRetry(snapshotId, pending);
         return false;
       }
@@ -1149,7 +1204,10 @@ export class ExportPreparationService {
     const takeover = exhausted
       ? ' Takeover action: release the process holding this path, then remove only this exact owned snapshot directory.'
       : '';
-    return `Export snapshot cleanup ${exhausted ? 'exhausted' : 'failed'} for snapshot ${snapshotId} at ${ownedPath} (attempt ${pending.attempts}/${MAX_CANDIDATE_CLEANUP_ATTEMPTS}): ${error}. ${retry}${takeover}`;
+    const recoveryAttempt = pending.explicitRecoveryAttempts > 0
+      ? `; explicit recovery ${pending.explicitRecoveryAttempts}`
+      : '';
+    return `Export snapshot cleanup ${exhausted ? 'exhausted' : 'failed'} for snapshot ${snapshotId} at ${ownedPath} (attempt ${pending.attempts}/${MAX_CANDIDATE_CLEANUP_ATTEMPTS}${recoveryAttempt}): ${error}. ${retry}${takeover}`;
   }
 
   private block(
@@ -1223,6 +1281,21 @@ export class ExportPreparationService {
       location: '输出位置',
       problem: '正式 MP4 导出仅支持 Windows 本地 NTFS 文件夹。',
       nextStep: '请选择本机 NTFS 磁盘上的文件夹后重试。',
+    };
+  }
+
+  private outputPathTooLongIssue(): ExportPreparationIssue {
+    return {
+      code: 'OUTPUT_LOCATION_UNSUPPORTED',
+      location: '输出位置',
+      problem:
+        '正式 MP4 导出目标或同目录暂存路径超过 Windows ' +
+        EXPORT_PREPARATION_WINDOWS_FORMAL_OUTPUT_MAX_PATH_CHARACTERS +
+        ' 字符上限。',
+      nextStep:
+        '改选更浅的本机 NTFS 文件夹或缩短文件名，使目标和暂存路径都不超过 ' +
+        EXPORT_PREPARATION_WINDOWS_FORMAL_OUTPUT_MAX_PATH_CHARACTERS +
+        ' 个字符。',
     };
   }
 

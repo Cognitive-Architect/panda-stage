@@ -15,6 +15,7 @@ import {
   CLEANUP_MAX_RETRIES,
   CLEANUP_RETRY_DELAY_MS,
   FileSystemService,
+  isWithinWindowsFormalExportPathLimit,
 } from '../../src/main/services/FileSystemService';
 
 describe('FileSystemService Unicode paths and cleanup', () => {
@@ -26,6 +27,45 @@ describe('FileSystemService Unicode paths and cleanup', () => {
         rm(directory, { recursive: true, force: true }),
       ),
     );
+  });
+
+  it('checks the 259-character Windows formal-output and staging-path boundaries', () => {
+    const stagingAtLimitDirectory = `C:\\${'a'.repeat(158)}`;
+    const stagingOverLimitDirectory = `C:\\${'a'.repeat(159)}`;
+    expect(
+      isWithinWindowsFormalExportPathLimit(
+        path.win32.join(stagingAtLimitDirectory, 'out.mp4'),
+      ),
+    ).toBe(true);
+    expect(
+      isWithinWindowsFormalExportPathLimit(
+        path.win32.join(stagingOverLimitDirectory, 'out.mp4'),
+      ),
+    ).toBe(false);
+
+    const shortStagingDirectory = `C:\\${'b'.repeat(100)}`;
+    expect(
+      path.win32.join(
+        shortStagingDirectory,
+        `${'x'.repeat(151)}.mp4`,
+      ).length,
+    ).toBe(259);
+    expect(
+      isWithinWindowsFormalExportPathLimit(
+        path.win32.join(shortStagingDirectory, `${'x'.repeat(151)}.mp4`),
+      ),
+    ).toBe(true);
+    expect(
+      path.win32.join(
+        shortStagingDirectory,
+        `${'x'.repeat(152)}.mp4`,
+      ).length,
+    ).toBe(260);
+    expect(
+      isWithinWindowsFormalExportPathLimit(
+        path.win32.join(shortStagingDirectory, `${'x'.repeat(152)}.mp4`),
+      ),
+    ).toBe(false);
   });
 
   it('writes in a Unicode root and cleans the same Job idempotently', async () => {
