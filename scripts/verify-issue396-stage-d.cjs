@@ -1294,6 +1294,9 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         const sequenceCount = sequenceRange.querySelector('[data-testid="fla-frame-sequence-count"]')?.textContent?.trim() ?? '';
         const generatedItems = [...document.querySelectorAll('[data-testid^="fla-frame-sequence-filmstrip-item-"]')];
         await ensureMultiSelectMode();
+        candidateGridCountInMultiSelectMode = document.querySelectorAll(
+          '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind]',
+        ).length;
         const selectedSequenceRow = await waitFor(
           '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="sequence"][data-selectable="true"]',
           (row) => row.getAttribute('data-candidate-identity') === sequenceIdentity,
@@ -1349,7 +1352,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           browseView.querySelectorAll('li[data-candidate-kind]').length === 1;
         setControlledInput('[data-testid="fla-c03-search"]', '');
         await waitFor('[data-testid="fla-c03-candidate-grid"]', (element) =>
-          element.querySelectorAll('li[data-candidate-kind]').length === candidateGridCount,
+          element.querySelectorAll('li[data-candidate-kind]').length === candidateGridCountInMultiSelectMode,
         );
         const sequenceRowBeforeReturn = [...document.querySelectorAll(
           '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="sequence"]',
@@ -1810,6 +1813,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       const candidateGridCount = document.querySelectorAll(
         '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind]',
       ).length;
+      let candidateGridCountInMultiSelectMode = candidateGridCount;
       const candidateSourceRowCount = document.querySelectorAll(
         '[data-testid="fla-snapshot-targets"] .fla-snapshot-candidate-row',
       ).length;
@@ -1952,7 +1956,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         ).length === 1;
         setControlledInput('[data-testid="fla-c03-search"]', '');
         await waitFor('[data-testid="fla-c03-candidate-grid"]', (element) =>
-          element.querySelectorAll('li[data-candidate-kind]').length === candidateGridCount,
+          element.querySelectorAll('li[data-candidate-kind]').length === candidateGridCountInMultiSelectMode,
         );
       }
 
