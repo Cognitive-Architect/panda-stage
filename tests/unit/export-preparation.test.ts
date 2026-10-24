@@ -2041,6 +2041,16 @@ describe('ExportPreparationService', () => {
     expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toEqual([]);
   });
 
+  it('removes the output-directory write probe after successful selection', async () => {
+    const fixture = await harness();
+
+    await selectOutput(fixture, 'write-probe-cleanup.mp4');
+
+    await expect(
+      readDirectoryOrEmpty(fixture.outputDirectory),
+    ).resolves.toEqual([]);
+  });
+
   it('gives writable-folder guidance when output validation reports permission denial', async () => {
     const fixture = await harness({
       assertFormalOutputLocation: async () => {

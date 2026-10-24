@@ -1,10 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { constants } from 'node:fs';
 import {
-  access,
   lstat,
+  open,
   realpath,
   stat,
+  unlink,
 } from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -1416,7 +1416,7 @@ async function captureTargetIdentity(
     throw new Error('The selected output must use the .mp4 extension.');
   }
   const parentDirectory = await realpath(path.dirname(absoluteTargetPath));
-  await access(parentDirectory, constants.W_OK);
+  await assertOutputDirectoryWritable(parentDirectory);
   const canonicalPath = path.join(parentDirectory, path.basename(absoluteTargetPath));
   let linkDetails;
   try {
@@ -1447,6 +1447,21 @@ async function captureTargetIdentity(
       changedTimeNs: details.ctimeNs.toString(),
     },
   };
+}
+
+async function assertOutputDirectoryWritable(
+  outputDirectory: string,
+): Promise<void> {
+  const probePath = path.join(
+    outputDirectory,
+    `.panda-stage-permission-probe-${randomUUID()}.tmp`,
+  );
+  const probeHandle = await open(probePath, 'wx');
+  try {
+    await probeHandle.close();
+  } finally {
+    await unlink(probePath);
+  }
 }
 
 function sameTarget(

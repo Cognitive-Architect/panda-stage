@@ -38,6 +38,7 @@ const issue836R2CopyFailureMode = process.env.PANDA_STAGE_ISSUE836_R2_COPY_FAILU
 const issue836R2CopyFailureValidMp4Mode = process.env.PANDA_STAGE_ISSUE836_R2_COPY_FAILURE_VALID_MP4 === '1';
 const issue836R2MediaPreflightMode = process.env.PANDA_STAGE_ISSUE836_R2_MEDIA_PREFLIGHT === '1';
 const issue836R2OutputPermissionMode = process.env.PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION === '1';
+const issue836R2OutputPermissionAclMode = process.env.PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION_ACL === '1';
 const dl05Mode = process.env.PANDA_STAGE_ISSUE832_DL05 === '1' || dl05FollowupMode;
 const dl04SampleId = Number(process.env.PANDA_STAGE_ISSUE827_SAMPLE ?? '1');
 const baseDirectory =
@@ -178,6 +179,7 @@ const audioSourceReplacementEvidence = [];
 const audioMixProcessFailures = [];
 const preparationCopyFailures = [];
 let exportPreparationFileStore = null;
+let issue836SaveDialogPathOverride = null;
 
 function defaultExportFileName(projectName) {
   let baseName = Array.from(projectName.trim(), (character) =>
@@ -397,15 +399,17 @@ function createRendererService() {
     getMainWindow: () => mainWindow,
     service: exportPreparationService,
     selectOutputPath: async (window, request) => {
+      const defaultPath = issue836SaveDialogPathOverride ??
+        path.join(request.projectRoot, defaultExportFileName(request.projectName));
       saveDialogEvidence.push({
         phase: 'opened',
-        defaultPath: path.join(request.projectRoot, defaultExportFileName(request.projectName)),
+        defaultPath,
         at: new Date().toISOString(),
       });
       const selected = await dialog.showSaveDialog(window, {
         title: 'Export MP4',
         buttonLabel: 'Save',
-        defaultPath: path.join(request.projectRoot, defaultExportFileName(request.projectName)),
+        defaultPath,
         filters: [{ name: 'MP4 video', extensions: ['mp4'] }],
         properties: [],
       });
@@ -1455,7 +1459,15 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
 }
 
 async function runIssue836R2OutputPermissionAcceptance({ result, initialProjectBytes, projectFilePath, evidenceRoot, mediaTools }) {
-  assert(issue836R2OutputPermissionMode, 'Issue #836 output-permission mode is not enabled.');
+  const useAclPermissionMode = issue836R2OutputPermissionAclMode;
+  assert(
+    issue836R2OutputPermissionMode || useAclPermissionMode,
+    'Issue #836 output-permission mode is not enabled.',
+  );
+  assert(
+    !(issue836R2OutputPermissionMode && useAclPermissionMode),
+    'Issue #836 controlled and Windows-ACL output-permission modes are mutually exclusive.',
+  );
   const editorBefore = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
   const editorBeforeFingerprint = acceptanceSessionFingerprint(editorBefore);
   const sourceHashesBefore = await Promise.all(fixtureProject.assets.map(async (asset) => ({
@@ -1488,42 +1500,139 @@ async function runIssue836R2OutputPermissionAcceptance({ result, initialProjectB
     'Resolved FFmpeg did not produce a valid H.264 MP4 prior-output sentinel.',
   );
   const previousOutputSha256 = hash(await fsp.readFile(previousOutputPath));
-  const targetPath = path.join(fixture.projectRoot, 'issue836-r2-output-permission.mp4');
+  const permissionDirectory = useAclPermissionMode
+    ? path.join(fixture.projectRoot, 'issue836-r2-output-permission-acl')
+    : fixture.projectRoot;
+  if (useAclPermissionMode) {
+    assert(!existsSync(permissionDirectory), 'The generated ACL-denial output folder must start absent.');
+  }
+  const targetPath = path.join(
+    permissionDirectory,
+    'issue836-r2-output-permission.mp4',
+  );
   assert(!existsSync(targetPath), 'The selected permission-failure target must start absent.');
 
   const permissionChecks = [];
-  const preparationOptions = exportPreparationService?.options;
-  assert(preparationOptions, 'The Main ExportPreparationService options were unavailable for controlled permission injection.');
-  const originalAssertFormalOutputLocation = preparationOptions.assertFormalOutputLocation;
-  preparationOptions.assertFormalOutputLocation = async (outputPath) => {
-    if (path.resolve(outputPath) === path.resolve(targetPath)) {
-      permissionChecks.push({ outputPath, code: 'EACCES' });
-      throw Object.assign(new Error('controlled output-folder permission denial'), { code: 'EACCES' });
-    }
-    if (originalAssertFormalOutputLocation) return originalAssertFormalOutputLocation(outputPath);
-    return undefined;
-  };
+  const preparationOptions = useAclPermissionMode
+    ? null
+    : exportPreparationService?.options;
+  assert(
+    useAclPermissionMode || preparationOptions,
+    'The Main ExportPreparationService options were unavailable for controlled permission injection.',
+  );
+  const originalAssertFormalOutputLocation =
+    preparationOptions?.assertFormalOutputLocation;
 
   const priorStartCount = formalStarts.length;
   const priorCommitCount = formalCommitRecords.length;
+  let aclState = null;
   let failureRun;
   try {
+    if (useAclPermissionMode) {
+      await fsp.mkdir(permissionDirectory);
+      const identity = await runProcess('whoami.exe', [
+        '/user',
+        '/fo',
+        'list',
+      ]);
+      const userSid = identity.stdout.match(/SID:\s*(S-\d+(?:-\d+)+)/iu)?.[1];
+      assert(userSid, 'Could not resolve the current Windows account SID for the generated-folder ACL.');
+      aclState = {
+        directory: permissionDirectory,
+        userSid,
+        installed: true,
+        restored: false,
+      };
+      await runProcess('icacls.exe', [
+        permissionDirectory,
+        '/deny',
+        `*${userSid}:(W)`,
+      ]);
+      const permissionProbePath = path.join(
+        permissionDirectory,
+        '.panda-stage-acl-write-probe.tmp',
+      );
+      let writeError = null;
+      let probeHandle = null;
+      try {
+        probeHandle = await fsp.open(permissionProbePath, 'wx');
+      } catch (error) {
+        writeError = error;
+      } finally {
+        if (probeHandle) {
+          await probeHandle.close();
+          await fsp.unlink(permissionProbePath);
+        }
+      }
+      assert(
+        writeError && ['EACCES', 'EPERM'].includes(writeError.code),
+        'The explicit NTFS write-deny ACL did not block exclusive file creation.',
+      );
+      permissionChecks.push({
+        outputPath: targetPath,
+        code: writeError.code,
+        mechanism: 'ntfs-explicit-write-deny',
+        userSidSha256: hash(Buffer.from(userSid, 'utf8')),
+      });
+      issue836SaveDialogPathOverride = targetPath;
+    } else {
+      preparationOptions.assertFormalOutputLocation = async (outputPath) => {
+        if (path.resolve(outputPath) === path.resolve(targetPath)) {
+          permissionChecks.push({ outputPath, code: 'EACCES' });
+          throw Object.assign(new Error('controlled output-folder permission denial'), { code: 'EACCES' });
+        }
+        if (originalAssertFormalOutputLocation) return originalAssertFormalOutputLocation(outputPath);
+        return undefined;
+      };
+    }
     failureRun = await startFromCreatorUi(evidenceRoot, 'issue836-r2-output-permission', {
       selectedFileName: path.basename(targetPath),
       expectedFailureText: '所选文件夹没有创建 MP4 文件所需的写入权限。',
       abortIfUnexpectedStart: true,
     });
   } finally {
-    preparationOptions.assertFormalOutputLocation = originalAssertFormalOutputLocation;
+    if (preparationOptions) {
+      preparationOptions.assertFormalOutputLocation = originalAssertFormalOutputLocation;
+    }
+    issue836SaveDialogPathOverride = null;
+    if (aclState?.installed) {
+      await runProcess('icacls.exe', [
+        permissionDirectory,
+        '/remove:d',
+        `*${aclState.userSid}`,
+      ]);
+      aclState.installed = false;
+      const restoredProbePath = path.join(
+        permissionDirectory,
+        '.panda-stage-acl-restored-probe.tmp',
+      );
+      const restoredProbe = await fsp.open(restoredProbePath, 'wx');
+      await restoredProbe.close();
+      await fsp.unlink(restoredProbePath);
+      aclState.restored = true;
+    }
   }
 
-  assert(permissionChecks.length === 1, 'The controlled EACCES output-location check did not run exactly once.');
+  assert(permissionChecks.length === 1, 'The output-folder permission check did not run exactly once.');
+  assert(
+    !useAclPermissionMode || aclState?.restored,
+    'The generated output-folder ACL was not restored after the Creator case.',
+  );
   assert(failureRun.status === 'failed' && failureRun.observedTaskStatus === 'failed', 'Creator did not block the output-permission failure.');
   assert(failureRun.starts.length === 0, 'A formal Main Job started after the output-permission failure.');
   assert(formalStarts.length === priorStartCount, 'The permission failure added a formal Main Job.');
   assert(formalCommitRecords.length === priorCommitCount, 'The permission failure recorded a formal output commit.');
   assert(failureRun.taskText.includes('检查文件夹的写入权限'), 'Creator did not show actionable output-folder permission guidance.');
 
+  const permissionSaveDialog = [...saveDialogEvidence]
+    .reverse()
+    .find((entry) => entry.result === 'selected');
+  assert(
+    permissionSaveDialog?.selectedPath &&
+      path.resolve(permissionSaveDialog.selectedPath).toLocaleLowerCase() ===
+        path.resolve(targetPath).toLocaleLowerCase(),
+    'Creator did not select the exact output-folder permission target.',
+  );
   const taskSnapshot = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
   const task = taskSnapshot?.task;
   const permissionIssue = (task?.issues ?? []).find((issue) => issue.code === 'OUTPUT_LOCATION_UNSUPPORTED');
@@ -1547,7 +1656,18 @@ async function runIssue836R2OutputPermissionAcceptance({ result, initialProjectB
 
   result.r2OutputPermissionFailure = {
     status: 'PASS',
+    permissionMechanism: useAclPermissionMode
+      ? 'windows-ntfs-explicit-write-deny'
+      : 'controlled-eacces-injection',
     permissionChecks,
+    acl: useAclPermissionMode
+      ? {
+          directory: permissionDirectory,
+          deniedUserSidSha256: permissionChecks[0].userSidSha256,
+          accessCheckCode: permissionChecks[0].code,
+          restored: aclState.restored,
+        }
+      : null,
     taskIssue: permissionIssue,
     formalJobsStarted: failureRun.starts.length,
     formalCommits: formalCommitRecords.length - priorCommitCount,
@@ -3926,7 +4046,8 @@ async function run() {
     !issue836R2CommitRaceMode || !(
       dl03Mode || dl04Mode || dl05Mode || dl06R0Mode ||
       issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
-      issue836R2CopyFailureMode || issue836R2MediaPreflightMode || issue836R2OutputPermissionMode
+      issue836R2CopyFailureMode || issue836R2MediaPreflightMode ||
+      issue836R2OutputPermissionMode || issue836R2OutputPermissionAclMode
     ),
     'Issue #836 R2 commit-race mode cannot be combined with another acceptance mode.',
   );
@@ -3934,7 +4055,8 @@ async function run() {
     !issue836R2CopyFailureMode || !(
       dl03Mode || dl04Mode || dl05Mode || dl06R0Mode ||
       issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
-      issue836R2CommitRaceMode || issue836R2MediaPreflightMode || issue836R2OutputPermissionMode
+      issue836R2CommitRaceMode || issue836R2MediaPreflightMode ||
+      issue836R2OutputPermissionMode || issue836R2OutputPermissionAclMode
     ),
     'Issue #836 R2 copy-failure mode cannot be combined with another acceptance mode.',
   );
@@ -3946,7 +4068,8 @@ async function run() {
     !issue836R2MediaPreflightMode || !(
       dl03Mode || dl05Mode || dl06R0Mode ||
       issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
-      issue836R2CommitRaceMode || issue836R2CopyFailureMode || issue836R2OutputPermissionMode
+      issue836R2CommitRaceMode || issue836R2CopyFailureMode ||
+      issue836R2OutputPermissionMode || issue836R2OutputPermissionAclMode
     ),
     'Issue #836 R2 media-preflight mode cannot be combined with another focused acceptance mode.',
   );
@@ -3955,12 +4078,29 @@ async function run() {
     'Issue #836 R2 output-permission mode requires the single Issue #827 sample 1 Creator UI fixture.',
   );
   assert(
+    !issue836R2OutputPermissionAclMode || (dl04Mode && dl04SampleId === 1),
+    'Issue #836 R2 output-permission ACL mode requires the single Issue #827 sample 1 Creator UI fixture.',
+  );
+  assert(
+    !(issue836R2OutputPermissionMode && issue836R2OutputPermissionAclMode),
+    'Issue #836 controlled and Windows-ACL output-permission modes are mutually exclusive.',
+  );
+  assert(
     !issue836R2OutputPermissionMode || !(
       dl03Mode || dl05Mode || dl06R0Mode ||
       issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
       issue836R2CommitRaceMode || issue836R2CopyFailureMode || issue836R2MediaPreflightMode
     ),
     'Issue #836 R2 output-permission mode cannot be combined with another focused acceptance mode.',
+  );
+  assert(
+    !issue836R2OutputPermissionAclMode || !(
+      dl03Mode || dl05Mode || dl06R0Mode ||
+      issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
+      issue836R2CommitRaceMode || issue836R2CopyFailureMode ||
+      issue836R2MediaPreflightMode || issue836R2OutputPermissionMode
+    ),
+    'Issue #836 R2 output-permission ACL mode cannot be combined with another focused acceptance mode.',
   );
   assert(!(issue836R2PathBoundaryMode && issue836R2PathSuccessMode), 'Issue #836 R2 path modes are mutually exclusive.');
   assert(!(issue836R2PathBoundaryMode || issue836R2PathSuccessMode) || (dl04Mode && dl04SampleId === 1), 'Issue #836 R2 path mode requires the single Issue #827 sample 1 Creator UI fixture.');
@@ -4001,11 +4141,13 @@ async function run() {
   mainWindow.webContents.focus();
 
   const result = {
-    issue: issue836R2CommitRaceMode || issue836R2CopyFailureMode || issue836R2MediaPreflightMode || issue836R2OutputPermissionMode || dl06R0Mode ? 836 : dl05FollowupMode ? 834 : dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
+    issue: issue836R2CommitRaceMode || issue836R2CopyFailureMode || issue836R2MediaPreflightMode || issue836R2OutputPermissionMode || issue836R2OutputPermissionAclMode || dl06R0Mode ? 836 : dl05FollowupMode ? 834 : dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
     wrapperRunId: process.env.PANDA_STAGE_ISSUE836_RUN_ID ?? process.env.PANDA_STAGE_ISSUE834_RUN_ID ?? process.env.PANDA_STAGE_ISSUE832_RUN_ID ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID ?? null,
     sourceCommitSha: process.env.PANDA_STAGE_ISSUE836_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE834_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE832_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA ?? null,
     sampleId: dl04Mode || dl05Mode ? dl04SampleId : null,
-    workOrder: issue836R2OutputPermissionMode
+    workOrder: issue836R2OutputPermissionAclMode
+      ? 'Issue #836 R2 AC03: Creator UI real Windows ACL output-folder permission preservation'
+      : issue836R2OutputPermissionMode
       ? 'Issue #836 R2 AC03: Creator UI output-folder permission failure preservation'
       : issue836R2MediaPreflightMode
       ? 'Issue #836 R2 AC03: Creator preflight for missing image and corrupt audio preservation'
@@ -4087,7 +4229,7 @@ async function run() {
     const editorSnapshotBytes = Buffer.from(JSON.stringify(edited.project, null, 2), 'utf8');
     await fsp.writeFile(editorSnapshotPath, editorSnapshotBytes);
     await clickSelector('[data-testid="quick-action-drawer-handle"]');
-    if (issue836R2OutputPermissionMode) {
+    if (issue836R2OutputPermissionMode || issue836R2OutputPermissionAclMode) {
       await runIssue836R2OutputPermissionAcceptance({ result, initialProjectBytes, projectFilePath, evidenceRoot, mediaTools });
       return;
     }
