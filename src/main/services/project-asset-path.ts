@@ -1,9 +1,15 @@
 import { realpath } from 'node:fs/promises';
 import path from 'node:path';
+import { filesystemPermissionErrorCode } from './filesystem-permission-error';
+
+export interface ResolveProjectAssetPathOptions {
+  preservePermissionErrors?: boolean;
+}
 
 export async function resolveProjectAssetPath(
   projectRoot: string,
   relativePath: string,
+  options: ResolveProjectAssetPathOptions = {},
 ): Promise<string | null> {
   const assetsRoot = path.resolve(projectRoot, 'assets');
   const assetPath = path.resolve(projectRoot, relativePath);
@@ -17,7 +23,13 @@ export async function resolveProjectAssetPath(
     return isInsideDirectory(realAssetsRoot, realAssetPath)
       ? realAssetPath
       : null;
-  } catch {
+  } catch (error) {
+    if (
+      options.preservePermissionErrors &&
+      filesystemPermissionErrorCode(error)
+    ) {
+      throw error;
+    }
     return null;
   }
 }

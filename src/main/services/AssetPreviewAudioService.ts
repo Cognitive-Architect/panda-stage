@@ -127,10 +127,22 @@ export class AssetPreviewAudioService {
       );
     }
 
-    const sourcePath = await this.resolveAssetPath(
-      request.projectRoot,
-      asset.relativePath,
-    );
+    let sourcePath: string | null;
+    try {
+      sourcePath = await this.resolveAssetPath(
+        request.projectRoot,
+        asset.relativePath,
+      );
+    } catch (error) {
+      const permissionCode = filesystemPermissionErrorCode(error);
+      return this.failure(
+        'ASSET_PREVIEW_AUDIO_READ_FAILED',
+        request.assetId,
+        permissionCode
+          ? `Unable to read and validate the audio source (${permissionCode}).`
+          : 'The audio source is missing or outside the project assets directory.',
+      );
+    }
     if (!sourcePath) {
       return this.failure(
         'ASSET_PREVIEW_AUDIO_READ_FAILED',
@@ -193,7 +205,9 @@ export class AssetPreviewAudioService {
     projectRoot: string,
     relativePath: string,
   ): Promise<string | null> {
-    return resolveProjectAssetPath(projectRoot, relativePath);
+    return resolveProjectAssetPath(projectRoot, relativePath, {
+      preservePermissionErrors: true,
+    });
   }
 
   private requestAssetId(rawRequest: unknown): string {

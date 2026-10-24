@@ -141,6 +141,7 @@ export class MainProjectAssetReader implements ExportPreparationMediaReader {
     const sourcePath = await resolveProjectAssetPath(
       projectRoot,
       asset.relativePath,
+      { preservePermissionErrors: true },
     );
     if (!sourcePath) throw new Error('The project asset source is unavailable.');
     const details = await stat(sourcePath, { bigint: true });
