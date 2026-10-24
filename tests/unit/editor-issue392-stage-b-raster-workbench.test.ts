@@ -52,7 +52,7 @@ describe('Issue #775 C03 keeps the full raster catalog in the unified workbench'
     expect(workbench).toContain('data-testid="fla-unified-import"');
     expect(workbench).toContain('data-testid="fla-unified-import-counts"');
     expect(workbench).toContain('data-testid="fla-unified-import-items"');
-    expect(workbench).toContain('导入 {selectedCount} 项');
+    expect(workbench).toContain('导入所选 {selectedCount} 项');
     expect(component).toContain('runFlaUnifiedImport({');
     expect(component).toContain('window.pandaStage.fla.commitSelected');
     expect(component).toContain('confirmed: true');

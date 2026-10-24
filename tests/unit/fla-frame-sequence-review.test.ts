@@ -8,6 +8,7 @@ const noop = () => {};
 const sequenceReviewProps = () => ({
   sessionId: '00000000-0000-4000-8000-000000000001',
   source: { basename: 'x.fla', sha256: 'a'.repeat(64) },
+  sourceFps: 24,
   snapshot: null,
   checkedCandidateKeys: new Set<string>(),
   importLocked: false,
@@ -33,6 +34,10 @@ describe('R2-H.2 shares the C03 unified candidate workbench', () => {
     'utf8',
   );
   const review = readFileSync('src/renderer/fla-import/FlaFrameSequenceReview.tsx', 'utf8');
+  const unifiedStyles = readFileSync(
+    'src/renderer/styles/features/fla-import/c03-unified-workbench.css',
+    'utf8',
+  );
   const assetLibrary = readFileSync(
     'src/renderer/features/assets/AssetLibrary.tsx',
     'utf8',
@@ -55,6 +60,22 @@ describe('R2-H.2 shares the C03 unified candidate workbench', () => {
     expect(assetLibrary).toContain('setStatus(outcome.status);');
   });
 
+  it('keeps standard image import while defaulting the unified workbench to animation', () => {
+    expect(review).toContain("useState(presentation === 'unified-preview')");
+    expect(review).toContain('作为普通 PNG 图片');
+    expect(review).toContain('作为动画素材');
+    expect(review).toContain('aria-label="动画名称"');
+    expect(review).toContain('sourceFpsAvailable');
+    expect(review).toContain('data-testid="fla-frame-sequence-format-animation"');
+    expect(review).toContain('data-testid="fla-frame-sequence-format-images"');
+    expect(review).toContain("{presentation === 'unified-preview' ? '生成预览' : '生成连续画面'}");
+    expect(review).toContain("!multiSelectMode && onImportSingle");
+    expect(review).toContain("{effectiveImportAsAnimation ? '导入动画' : '导入图片'}");
+    expect(session).toContain('sourceFps={ir.document.frameRate}');
+    expect(session).toContain('onImportSingle={() => {');
+    expect(session).toContain('void runImportAction([focusedSequenceItem])');
+  });
+
   it('keeps sequence focus, preview target, operation target, and checked intent explicit', () => {
     expect(review).toContain('resolveVisibleSequenceFocus(');
     expect(review).toContain('isStaleAgainstIntent(renderedRange, currentIntent)');
@@ -66,6 +87,13 @@ describe('R2-H.2 shares the C03 unified candidate workbench', () => {
     expect(review).toContain('checkedCandidateKeys.has(flaUnifiedCandidateSelectionKey(candidate))');
     expect(review).toContain('data-testid={`fla-frame-sequence-candidate-check-${entryTarget.renderTargetId}`}');
     expect(review).not.toContain('EMPTY_SEQUENCE_IMPORT_CHECKS');
+  });
+
+  it('serializes sequence rasterization with snapshot previews and skips canceled queued work', () => {
+    expect(review).toContain("import { flaStaticSnapshotPreviewQueue } from './fla-static-snapshot-preview-transaction';");
+    expect(review).toContain('await flaStaticSnapshotPreviewQueue.run(async () => {');
+    expect(review).toContain('activeRequestIdRef.current !== requestId');
+    expect(review).toContain("code: 'SEQUENCE_CANCELLED' as const");
   });
 
   it('supports Enter activation on sequence render, cancel, and rerender controls', () => {
@@ -81,6 +109,9 @@ describe('R2-H.2 shares the C03 unified candidate workbench', () => {
     expect(review).toContain('data-testid="fla-frame-sequence-frame-counter"');
     expect(review).toContain('selectedOnlyView');
     expect(review).toContain("document.visibilityState !== 'visible'");
+    expect(review).toContain('sampleLoopingAnimationFrameIndex');
+    expect(review).toContain('window.requestAnimationFrame(sample)');
+    expect(review).not.toContain('window.setInterval');
     expect(review).toContain('strip.scrollLeft');
 
     const counterStart = review.indexOf('data-testid="fla-frame-sequence-frame-counter"');
@@ -98,15 +129,31 @@ describe('R2-H.2 shares the C03 unified candidate workbench', () => {
     expect(rerender).toBeGreaterThan(start);
     expect(playback).toBeGreaterThan(rerender);
     expect(firstThumbnail).toBeGreaterThan(playback);
-    expect(review).toContain("presentation === 'unified-preview' ? null : <span>序列预览</span>");
+    expect(review).toContain("presentation !== 'unified-preview' ? (");
     expect(review).toContain("presentation === 'unified-preview' ? ' sr-only' : ''");
     expect(review).toContain('aria-describedby={validation.message');
     expect(review).toContain('aria-invalid={!validation.valid}');
     expect(review).toContain('单次最多生成 {MAX_SEQUENCE_FRAMES} 帧。');
-    expect(review).toContain("`${selectedPreviewIndex + 1}/${displayedSequenceItems.length}`");
+    expect(review).toContain('data-testid="fla-frame-sequence-frame-counter"');
     expect(review).toContain("presentation === 'unified-preview'");
     expect(review).toContain("? playbackState.isPlaying ? '⏸' : '▶'");
     expect(review).toContain(": playbackState.isPlaying ? '⏸ 暂停' : '▶ 播放'");
+  });
+
+  it('uses concise unified idle and range copy with a content-sized start input', () => {
+    expect(review).toContain('showUnifiedGenerationHint');
+    expect(review).toContain("(phase === 'selecting' || phase === 'preview-ready')");
+    expect(review).toContain('data-testid="fla-frame-sequence-unified-idle-hint"');
+    expect(review).toContain('单击下方按钮生成预览');
+    expect(review).toContain('formatSequenceRangeSummaryForPresentation(');
+    expect(review).toContain('getSequenceStartFrameInputWidthPx(startFrameIndex + 1)');
+    expect(review).toContain("importKind={effectiveImportAsAnimation ? 'animation' : 'image'}");
+    expect(unifiedStyles).toContain('width: 52px;');
+    expect(unifiedStyles).toContain('min-height: 44px;');
+    expect(unifiedStyles).toContain(
+      '.fla-frame-sequence-review-unified-preview .fla-frame-sequence-filmstrip-region {',
+    );
+    expect(unifiedStyles).toContain('grid-template-rows: minmax(72px, 1fr);');
   });
 });
 

@@ -9,7 +9,8 @@ export type AssetReferenceKind =
   | 'shot-background'
   | 'shot-layer'
   | 'audio-clip'
-  | 'dialogue-audio';
+  | 'dialogue-audio'
+  | 'animation-frame';
 
 export interface AssetReference {
   kind: AssetReferenceKind;
@@ -49,6 +50,17 @@ export function scanAssetReferences(
   assetId: string,
 ): AssetReference[] {
   const references: AssetReference[] = [];
+
+  project.animations.forEach((animation, animationIndex) => {
+    animation.frames.forEach((frame, frameIndex) => {
+      if (frame.assetId !== assetId) return;
+      references.push({
+        kind: 'animation-frame',
+        path: `animations[${animationIndex}].frames[${frameIndex}].assetId`,
+        label: `Animation “${animation.name}” frame ${frame.ordinal + 1}`,
+      });
+    });
+  });
 
   project.characters.forEach((character, characterIndex) => {
     if (character.baseAssetId === assetId) {

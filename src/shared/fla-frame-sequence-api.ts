@@ -239,8 +239,8 @@ export const FlaFrameSequenceResponseSchema = z.union([
 //      non-latest sequence with STALE_SEQUENCE. ----------------------------
 
 // ---- R2-G commit request: takes a completed sequence result and
-//      commits the entire frame set as ordinary Panda ImageAssets
-//      transactionally (no half-created Project truth on failure). ----
+//      commits the entire frame set as Panda ImageAssets, optionally
+//      attaching a formal AnimationDefinition in the same transaction. ----
 export const FlaFrameSequenceCommitRequestSchema = z
   .object({
     format: z.literal('fla-frame-sequence-commit'),
@@ -254,6 +254,10 @@ export const FlaFrameSequenceCommitRequestSchema = z
     // the session and rejects any non-latest sequence with
     // STALE_SEQUENCE.
     confirmedSequenceRequestId: z.uuid(),
+    // Preserve the existing image-sequence route unless the user explicitly
+    // selects the new formal animation asset mode.
+    importAsAnimation: z.boolean().default(false),
+    animationName: z.string().trim().min(1).max(200).optional(),
     source: z
       .object({
         basename: z.string().trim().min(1).max(260),
@@ -295,6 +299,10 @@ export const FlaFrameSequenceCommitRequestSchema = z
   .refine(
     (request) => request.sequence.requestId === request.confirmedSequenceRequestId,
     'sequence.requestId must equal confirmedSequenceRequestId (R2-D stale guard)',
+  )
+  .refine(
+    (request) => request.animationName === undefined || request.importAsAnimation,
+    'animationName is only valid for animation imports',
   );
 
 // ---- R2-G commit result: deterministic requested-frame -> ImageAsset mapping ----

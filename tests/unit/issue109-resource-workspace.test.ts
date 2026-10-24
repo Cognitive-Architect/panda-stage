@@ -20,7 +20,7 @@ describe('Issue 109 adaptive resource workspace contract', () => {
     expect(styles).toContain('width: min(360px, calc(100vw - 24px));');
     expect(styles).toContain('.resource-activity-body');
     expect(styles).toMatch(
-      /\.resource-activity-panel\s+\.asset-category-tabs\s*\{[\s\S]*?repeat\(2, minmax\(0, 1fr\)\)/u,
+      /\.asset-library\s+\.asset-category-tabs\s*\{[^}]*display:\s*flex;[^}]*overflow-x:\s*auto;/u,
     );
   });
 

@@ -59,6 +59,8 @@ import { registerFlaStaticSnapshotIpcHandlers } from './ipc/register-fla-static-
 import { FlaFrameSequenceService } from './services/fla-frame-sequence-service';
 import { FlaFrameSequenceCommitService } from './services/FlaFrameSequenceCommitService';
 import { registerFlaFrameSequenceIpcHandlers } from './ipc/register-fla-frame-sequence-ipc-handlers';
+import { buildRenderableTargetCatalog } from './services/fla-static-snapshot-svg-builder';
+import { createFlaStaticSnapshotBitmapMediaLookup } from './services/fla-static-snapshot-media-resolver';
 
 let mainWindow: BrowserWindow | null = null;
 const hiddenWindowManager = new HiddenWindowManager();
@@ -435,6 +437,38 @@ async function initialize(): Promise<void> {
     projectService,
     getCurrentProjectSnapshot: (projectRoot) =>
       autosaveService?.getProjectSnapshot(projectRoot) ?? null,
+    getAnimationContext: async (sessionId, renderTargetId) => {
+      const session = flaImportService.getSession(sessionId);
+      if (!session?.sourceBytes) return null;
+      const catalog = await buildRenderableTargetCatalog(
+        session.sourceBytes,
+        createFlaStaticSnapshotBitmapMediaLookup(session.ir.media),
+      );
+      if (!catalog.ok) return null;
+      const target = catalog.entries.find(
+        (entry) => entry.target.renderTargetId === renderTargetId,
+      )?.target;
+      if (!target) return null;
+      return {
+        source: {
+          basename: session.ir.source.basename,
+          sha256: session.ir.source.sha256,
+        },
+        originalSourceSha256:
+          session.originalSourceSha256 ?? session.ir.source.sha256,
+        sourceFps: session.ir.document.frameRate,
+        documentCanvas: {
+          width: session.ir.document.width,
+          height: session.ir.document.height,
+        },
+        target: {
+          renderTargetId: target.renderTargetId,
+          kind: target.kind,
+          userLabel: target.userLabel,
+          frameCount: target.frameCount,
+        },
+      };
+    },
     sequenceStore: {
       isLatestAcceptedSequence: (sessionId, requestId) =>
         flaFrameSequenceService?.isLatestAcceptedSequence(sessionId, requestId) ?? false,

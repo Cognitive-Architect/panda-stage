@@ -35,6 +35,8 @@ describe('explicit background identity lifecycle', () => {
     const root = path.join(parent, 'background.pandastage');
     await mkdir(root, { recursive: true });
     const current = migrateProject(exampleProject);
+    const { animations: _animations, ...legacyCurrent } = current;
+    void _animations;
     const legacyAssets = structuredClone(current.assets);
     for (const asset of legacyAssets) {
       if (asset.kind !== 'image') continue;
@@ -42,7 +44,7 @@ describe('explicit background identity lifecycle', () => {
       Reflect.deleteProperty(asset, 'keywords');
     }
     const version2 = {
-      ...current,
+      ...legacyCurrent,
       schemaVersion: 2,
       assets: legacyAssets,
       characters: current.characters.map((character) => {

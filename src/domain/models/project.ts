@@ -6,6 +6,7 @@ import {
   PROJECT_WIDTH,
   SHOT_MIN_DURATION_MS,
 } from '../constants';
+import { AnimationDefinitionSchema } from './animation';
 import { validateProjectReferences } from '../validators/projectReferences';
 import {
   AssetSchema,
@@ -63,6 +64,7 @@ const ProjectDataSchema = z
     height: z.literal(PROJECT_HEIGHT),
     fps: z.literal(PROJECT_FPS),
     assets: z.array(AssetSchema),
+    animations: z.array(AnimationDefinitionSchema),
     characters: z.array(CharacterSchema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
@@ -89,6 +91,12 @@ const ProjectV12DataSchema = z
     updatedAt: IsoDateTimeSchema,
   })
   .strict();
+
+/** Strict persisted v13 envelope, before formal animation definitions. */
+export const ProjectV13Schema = ProjectV12DataSchema.extend({
+  schemaVersion: z.literal(13),
+  assets: z.array(AssetSchema),
+});
 
 export const ProjectV1Schema = z
   .object({
@@ -454,7 +462,7 @@ export function migrateFormalProject(input: unknown): unknown {
 }
 
 // Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
-// Persisted migration (v0-v12 -> v13) is owned exclusively by `migrateProject`
+// Persisted migration (v0-v13 -> v14) is owned exclusively by `migrateProject`
 // in `../migrations`; this schema must never perform legacy migration.
 export const ProjectSchema = ProjectDataSchema.superRefine(
   validateProjectReferences,

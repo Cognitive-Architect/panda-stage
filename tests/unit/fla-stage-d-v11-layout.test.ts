@@ -126,6 +126,11 @@ describe('Issue #775 C03 preserves the Stage D render runners in one workbench',
     expect(verifier).toContain('deletionChecks');
     expect(verifier).toContain('unifiedImportShellVisible');
     expect(verifier).toContain('input[type="checkbox"]');
+    expect(verifier).toContain('const ensureMultiSelectMode = async');
+    expect(verifier).toContain('await ensureMultiSelectMode();');
+    expect(verifier).toContain('let candidateGridCountInMultiSelectMode = candidateGridCount;');
+    expect(verifier).toContain('candidateGridCountInMultiSelectMode = document.querySelectorAll(');
+    expect(verifier).toContain('length === candidateGridCountInMultiSelectMode');
     expect(verifier).toContain('const selectTwoCandidates');
     expect(verifier).toContain('li[data-duplicate="true"]');
     expect(verifier).toContain('fla-unified-import-counts');

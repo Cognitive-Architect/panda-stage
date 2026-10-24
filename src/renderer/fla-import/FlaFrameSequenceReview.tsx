@@ -21,6 +21,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { sampleLoopingAnimationFrameIndex } from '../features/assets/animationPlayback';
 import type {
   FlaRenderableTargetCatalogEntry,
   FlaRenderTarget,
@@ -33,6 +34,7 @@ import type {
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { flaStaticSnapshotClient } from './fla-static-snapshot-render';
 import { flaFrameSequenceClient } from './fla-frame-sequence-render';
+import { flaStaticSnapshotPreviewQueue } from './fla-static-snapshot-preview-transaction';
 import { boundedUnsupportedReason, FlaStageF2UnavailableDetails } from './FlaStageF';
 import {
   FlaStageGImporting,
@@ -40,7 +42,8 @@ import {
 } from './FlaStageGTerminal';
 import {
   buildRange,
-  formatSequenceRangeSummary,
+  formatSequenceRangeSummaryForPresentation,
+  getSequenceStartFrameInputWidthPx,
   getDefaultSequenceRange,
   intentChangeReset,
   isCommitEligible,
@@ -54,7 +57,6 @@ import {
 } from './fla-frame-sequence-review-state';
 import {
   flaSequencePlaybackReducer,
-  FLA_SEQUENCE_PREVIEW_INTERVAL_MS,
   initialFlaSequencePlaybackState,
 } from './fla-frame-sequence-playback-state';
 import {
@@ -75,6 +77,7 @@ const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : us
 interface FlaFrameSequenceReviewProps {
   sessionId: string;
   source: { basename: string; sha256: string };
+  sourceFps: number;
   snapshot: EditorProjectSnapshot | null;
   checkedCandidateKeys: ReadonlySet<string>;
   importLocked: boolean;
@@ -90,6 +93,9 @@ interface FlaFrameSequenceReviewProps {
   onCandidatesChange?: (candidates: readonly FlaWorkbenchCandidate[]) => void;
   showUnifiedSequencePreview?: boolean;
   selectedOnlyView?: boolean;
+  multiSelectMode?: boolean;
+  canImportSingle?: boolean;
+  onImportSingle?: () => void;
 }
 
 function handleSequenceActionKeyDown(
@@ -114,6 +120,7 @@ type RenderPhase =
 export function FlaFrameSequenceReview({
   sessionId,
   source,
+  sourceFps,
   snapshot,
   checkedCandidateKeys,
   importLocked,
@@ -129,6 +136,9 @@ export function FlaFrameSequenceReview({
   onCandidatesChange,
   showUnifiedSequencePreview = true,
   selectedOnlyView = false,
+  multiSelectMode = true,
+  canImportSingle = false,
+  onImportSingle,
 }: FlaFrameSequenceReviewProps): React.JSX.Element {
   const [phase, setPhase] = useState<RenderPhase>('loading');
   const [entries, setEntries] = useState<FlaRenderableTargetCatalogEntry[]>([]);
@@ -139,6 +149,10 @@ export function FlaFrameSequenceReview({
   const [focusedTargetId, setFocusedTargetId] = useState<string | null>(null);
   const [startFrameIndex, setStartFrameIndex] = useState(0);
   const [endFrameIndex, setEndFrameIndex] = useState(0);
+  const [importAsAnimation, setImportAsAnimation] = useState(presentation === 'unified-preview');
+  const [animationName, setAnimationName] = useState(() =>
+    source.basename.replace(/\.fla$/iu, ''),
+  );
   const [completedFrameCount, setCompletedFrameCount] = useState(0);
   const [success, setSuccess] = useState<FlaFrameSequenceSuccess | null>(null);
   const [previewUrls, setPreviewUrls] = useState<ReadonlyArray<string>>([]);
@@ -151,6 +165,9 @@ export function FlaFrameSequenceReview({
     () => typeof document === 'undefined' || document.visibilityState === 'visible',
   );
   const [errorMessage, setErrorMessage] = useState('');
+  const sourceFpsAvailable =
+    Number.isFinite(sourceFps) && sourceFps > 0 && sourceFps <= 1_000;
+  const effectiveImportAsAnimation = importAsAnimation && sourceFpsAvailable;
 
   // R2-D: the latest completed sequence the UI has accepted. Only this one
   // is commit-eligible; an older / stale result cannot become current.
@@ -163,8 +180,10 @@ export function FlaFrameSequenceReview({
   const acceptedRequestIdRef = useRef<string | null>(null);
   const latestSequenceRef = useRef<FlaFrameSequenceSuccess | null>(null);
   const catalogInitializedRef = useRef(false);
+  const nameSuggestionTargetIdRef = useRef<string | null>(null);
   const filmstripRef = useRef<HTMLDivElement | null>(null);
   const playbackSessionKeyRef = useRef<string | null>(null);
+  const playbackStartedAtRef = useRef(0);
   // Problem B (Corrective #296): active progress subscription handle.
   // Subscribed only while a request is in flight; removed on
   // cancel / re-render / completion / unmount.
@@ -286,6 +305,16 @@ export function FlaFrameSequenceReview({
     setStartFrameIndex(restoredRange.startFrameIndex);
     setEndFrameIndex(restoredRange.endFrameIndex);
   }, [entries, focusedCandidateIdentityKey, renderedRange, selectedTargetId, sequenceCandidates, success]);
+  useEffect(() => {
+    if (!selectedTargetId || nameSuggestionTargetIdRef.current === selectedTargetId) return;
+    const entry = entries.find((item) => item.target.renderTargetId === selectedTargetId);
+    if (!entry) return;
+    nameSuggestionTargetIdRef.current = selectedTargetId;
+    if (presentation === 'unified-preview') setImportAsAnimation(true);
+    setAnimationName(presentation === 'unified-preview'
+      ? entry.target.userLabel
+      : source.basename.replace(/\.fla$/iu, ''));
+  }, [entries, presentation, selectedTargetId, source.basename]);
   const sequenceCandidateById = useMemo(
     () => new Map(sequenceCandidates.map((candidate) => [candidate.id, candidate])),
     [sequenceCandidates],
@@ -301,6 +330,7 @@ export function FlaFrameSequenceReview({
     focusedSequenceCandidate?.operation.target.renderTargetId === success?.renderTargetId;
   const canNavigatePreview = Boolean(
     sequenceIsCurrent && hasPreview && showUnifiedSequencePreview && focusedSequenceMatchesPreview &&
+      sourceFpsAvailable &&
       !importLocked && documentVisible,
   );
   const playbackContextKey = canNavigatePreview && displayedSequenceItems.length >= 2 && success && renderedRange
@@ -326,7 +356,11 @@ export function FlaFrameSequenceReview({
       disabled={!playbackContextKey}
       onClick={() => {
         if (playbackState.isPlaying) dispatchPlayback({ type: 'pause' });
-        else if (playbackContextKey) dispatchPlayback({ type: 'play', sessionKey: playbackContextKey });
+        else if (playbackContextKey) {
+          playbackStartedAtRef.current = performance.now() -
+            playbackState.selectedIndex * 1_000 / sourceFps;
+          dispatchPlayback({ type: 'play', sessionKey: playbackContextKey });
+        }
       }}
       type="button"
     >
@@ -360,15 +394,28 @@ export function FlaFrameSequenceReview({
   useEffect(() => {
     const { activeSessionKey, generation, isPlaying } = playbackState;
     if (!isPlaying || !activeSessionKey || activeSessionKey !== playbackContextKey) return undefined;
-    const timer = window.setInterval(() => {
+    let animationFrame = 0;
+    const sample = (now: number): void => {
       if (document.visibilityState !== 'visible' || playbackSessionKeyRef.current !== activeSessionKey) {
         dispatchPlayback({ type: 'invalidate' });
         return;
       }
-      dispatchPlayback({ type: 'tick', sessionKey: activeSessionKey, generation });
-    }, FLA_SEQUENCE_PREVIEW_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [playbackContextKey, playbackState.activeSessionKey, playbackState.frameCount, playbackState.generation, playbackState.isPlaying]);
+      const selectedIndex = sampleLoopingAnimationFrameIndex(
+        now - playbackStartedAtRef.current,
+        sourceFps,
+        playbackState.frameCount,
+      );
+      dispatchPlayback({
+        type: 'sample',
+        sessionKey: activeSessionKey,
+        generation,
+        selectedIndex,
+      });
+      animationFrame = window.requestAnimationFrame(sample);
+    };
+    animationFrame = window.requestAnimationFrame(sample);
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [playbackContextKey, playbackState.activeSessionKey, playbackState.frameCount, playbackState.generation, playbackState.isPlaying, sourceFps]);
 
   useIsomorphicLayoutEffect(() => {
     if (!selectedPreviewItem) return;
@@ -599,12 +646,25 @@ export function FlaFrameSequenceReview({
       setCompletedFrameCount((current) => Math.max(current, progress.completedFrameCount));
     });
     try {
-      const response: FlaFrameSequenceResponse = await flaFrameSequenceClient.render({
-        format: 'fla-frame-sequence-render',
-        version: 1,
-        requestId,
-        sessionId,
-        range,
+      const response: FlaFrameSequenceResponse = await flaStaticSnapshotPreviewQueue.run(async () => {
+        if (activeRequestIdRef.current !== requestId) {
+          return {
+            ok: false as const,
+            error: {
+              code: 'SEQUENCE_CANCELLED' as const,
+              message: 'Sequence cancelled before rendering began',
+              requestId,
+              completedFrameCount: 0,
+            },
+          };
+        }
+        return flaFrameSequenceClient.render({
+          format: 'fla-frame-sequence-render',
+          version: 1,
+          requestId,
+          sessionId,
+          range,
+        });
       });
       // Corrective C: a stale / late result can never overwrite the current
       // request or become commit-eligible.
@@ -715,6 +775,17 @@ export function FlaFrameSequenceReview({
         cancelled: true,
       };
     }
+    if (effectiveImportAsAnimation && !animationName.trim()) {
+      return {
+        items: selectedItems.map((item) => ({
+          ...item,
+          status: 'failed' as const,
+          message: '请输入动画名称后再导入。',
+        })),
+        snapshot: currentSnapshot,
+        stopFollowingRoutes: true,
+      };
+    }
     const firstItem = orderedSequenceItems[0];
     const lastItem = orderedSequenceItems[orderedSequenceItems.length - 1];
     if (!firstItem || !lastItem) {
@@ -744,6 +815,8 @@ export function FlaFrameSequenceReview({
         baseRevision: currentSnapshot.revision,
         sessionId,
         confirmedSequenceRequestId: success.requestId,
+        importAsAnimation: effectiveImportAsAnimation,
+        ...(effectiveImportAsAnimation ? { animationName: animationName.trim() } : {}),
         source,
         range,
         sequence: {
@@ -765,7 +838,7 @@ export function FlaFrameSequenceReview({
           return {
             items: selectedItems.map((item) => ({
               ...item,
-              status: response.result.summary.importedCount > 0 ? 'imported' as const : 'duplicate' as const,
+              status: response.projectChanged ? 'imported' as const : 'duplicate' as const,
               baseRevision: response.baseRevision,
               savedRevision: response.savedRevision,
               importedAssetCount: response.result.summary.importedCount,
@@ -781,7 +854,7 @@ export function FlaFrameSequenceReview({
           return {
             items: selectedItems.map((item) => ({
               ...item,
-              status: response.result.summary.importedCount > 0 ? 'imported' as const : 'duplicate' as const,
+              status: response.projectChanged ? 'imported' as const : 'duplicate' as const,
               baseRevision: response.baseRevision,
               savedRevision: response.savedRevision,
               importedAssetCount: response.result.summary.importedCount,
@@ -835,6 +908,8 @@ export function FlaFrameSequenceReview({
     sequenceAuthorityCurrent,
     sessionId,
     source,
+    effectiveImportAsAnimation,
+    animationName,
     success,
   ]);
 
@@ -867,12 +942,19 @@ export function FlaFrameSequenceReview({
   const target = selectedEntry.target;
   const supported = selectedEntry.previewSupported;
   const intentLocked = phase === 'rendering' || phase === 'committing' || importLocked;
+  const singleImportDisabled = !canImportSingle || importLocked ||
+    (effectiveImportAsAnimation && animationName.trim().length === 0);
   const canGeneratePhase = !sequenceIsCurrent && (
     phase === 'selecting' || phase === 'cancelled' || phase === 'error' ||
     phase === 'committed' || phase === 'preview-ready'
   );
   const canGenerate = supported && validation.valid && Boolean(snapshot) &&
     canGeneratePhase;
+  const showUnifiedGenerationHint =
+    presentation === 'unified-preview' &&
+    canGenerate &&
+    !importLocked &&
+    (phase === 'selecting' || phase === 'preview-ready');
   const canSelectSequence = Boolean(sequenceCandidates.find((candidate) =>
     candidate.kind === 'sequence' && candidate.operation.target.renderTargetId === selectedTargetId && candidate.selectable,
   )) && !importLocked;
@@ -888,8 +970,7 @@ export function FlaFrameSequenceReview({
     return (
       <div className={`${reviewClassName} fla-stage-g-panel`} data-fla-session-id={sessionId} data-stage-g-state="importing" data-testid="fla-frame-sequence-review">
         <FlaStageGImporting
-          context={`${source.basename} · 第 ${(renderedRange?.startFrameIndex ?? startFrameIndex) + 1}–${(renderedRange?.endFrameIndex ?? endFrameIndex) + 1} 帧`}
-          headline={`正在导入 ${orderedSequenceItems.length} 帧序列…`}
+          importKind={effectiveImportAsAnimation ? 'animation' : 'image'}
           route="sequence"
         />
       </div>
@@ -1066,28 +1147,39 @@ export function FlaFrameSequenceReview({
               </>
             ) : (
               <div className="fla-frame-sequence-preview-placeholder" data-testid="fla-frame-sequence-preview-placeholder">
-                <strong>
-                  {selectedEntry.isBlank
-                    ? '这是空白画面'
-                    : !supported
-                      ? '此项暂不可预览'
-                      : phase === 'rendering'
-                        ? '正在生成连续画面…'
-                        : phase === 'error'
-                          ? '连续画面生成失败'
-                          : '尚未生成连续画面'}
-                </strong>
-                <span>
-                  {selectedEntry.isBlank
-                    ? '源内容为空，不能导入。'
-                    : !supported
-                      ? boundedUnsupportedReason(selectedEntry.unsupportedReason)
-                      : phase === 'rendering'
-                        ? `已完成 ${completedFrameCount} / ${validation.valid ? validation.frameCount : 0} 帧`
-                        : phase === 'error'
-                          ? errorMessage || '请调整起始帧后重试。'
-                          : '选择起始帧后，按需生成最多 24 张连续图片。'}
-                </span>
+                {showUnifiedGenerationHint ? (
+                  <strong data-testid="fla-frame-sequence-unified-idle-hint">
+                    单击下方按钮生成预览
+                  </strong>
+                ) : null}
+                {showUnifiedGenerationHint ? null : (
+                  <>
+                    <strong>
+                      {selectedEntry.isBlank
+                        ? '这是空白画面'
+                        : !supported
+                          ? '此项暂不可预览'
+                          : phase === 'rendering'
+                            ? presentation === 'unified-preview' ? '正在生成预览…' : '正在生成连续画面…'
+                            : phase === 'error'
+                              ? presentation === 'unified-preview' ? '预览生成失败' : '连续画面生成失败'
+                              : presentation === 'unified-preview' ? '尚未生成预览' : '尚未生成连续画面'}
+                    </strong>
+                    <span>
+                      {selectedEntry.isBlank
+                        ? '源内容为空，不能导入。'
+                        : !supported
+                          ? boundedUnsupportedReason(selectedEntry.unsupportedReason)
+                          : phase === 'rendering'
+                            ? `已完成 ${completedFrameCount} / ${validation.valid ? validation.frameCount : 0} 帧`
+                            : phase === 'error'
+                              ? errorMessage || '请调整起始帧后重试。'
+                              : presentation === 'unified-preview'
+                                ? '调整范围后生成预览，最多 24 帧。'
+                                : '选择起始帧后，按需生成最多 24 张连续图片。'}
+                    </span>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -1130,6 +1222,9 @@ export function FlaFrameSequenceReview({
                     const value = Number(event.currentTarget.value);
                     if (Number.isFinite(value)) updateStartFrameOneBased(value);
                   }}
+                  style={presentation === 'unified-preview'
+                    ? { width: `${getSequenceStartFrameInputWidthPx(startFrameIndex + 1)}px` }
+                    : undefined}
                   data-testid="fla-frame-sequence-start"
                 />
               </label>
@@ -1144,8 +1239,57 @@ export function FlaFrameSequenceReview({
               data-testid="fla-frame-sequence-range-summary"
               aria-live="polite"
             >
-              {formatSequenceRangeSummary(startFrameIndex, endFrameIndex, validation)}
+              {formatSequenceRangeSummaryForPresentation(
+                startFrameIndex,
+                endFrameIndex,
+                validation,
+                presentation,
+              )}
             </output>
+            {presentation !== 'unified-preview' ? (
+              <fieldset
+                className="fla-frame-sequence-import-mode"
+                data-testid="fla-frame-sequence-import-mode-standard"
+                disabled={importLocked}
+              >
+                <legend>序列入库方式</legend>
+                <label>
+                  <input
+                    checked={!effectiveImportAsAnimation}
+                    name={`fla-frame-sequence-import-mode-${sessionId}`}
+                    onChange={() => setImportAsAnimation(false)}
+                    type="radio"
+                  />
+                  <span>作为普通 PNG 图片</span>
+                </label>
+                <label>
+                  <input
+                    checked={effectiveImportAsAnimation}
+                    disabled={!sourceFpsAvailable}
+                    name={`fla-frame-sequence-import-mode-${sessionId}`}
+                    onChange={() => setImportAsAnimation(true)}
+                    type="radio"
+                  />
+                  <span>作为动画素材</span>
+                </label>
+                {effectiveImportAsAnimation ? (
+                  <label className="fla-frame-sequence-animation-name">
+                    <span>动画名称</span>
+                    <input
+                      aria-label="动画名称"
+                      maxLength={200}
+                      onChange={(event) => setAnimationName(event.currentTarget.value)}
+                      value={animationName}
+                    />
+                  </label>
+                ) : null}
+                <small>
+                  {sourceFpsAvailable
+                    ? `动画将按源文件 ${sourceFps} fps 预览；目前仅支持素材库预览，不能加入镜头或正式导出。`
+                    : '源文件 FPS 无法确认，不能作为动画素材入库。'}
+                </small>
+              </fieldset>
+            ) : null}
             <p
               className={`fla-frame-sequence-range-cap${presentation === 'unified-preview' ? ' sr-only' : ''}`}
               id="fla-frame-sequence-range-cap"
@@ -1157,6 +1301,56 @@ export function FlaFrameSequenceReview({
             ) : null}
             {presentation === 'unified-preview' ? (
               <div className="fla-c03-sequence-actions" aria-live="polite">
+                {sequenceIsCurrent ? (
+                  <div className="fla-c03-sequence-import-options" data-testid="fla-frame-sequence-import-mode">
+                    <div className="fla-c03-sequence-format" role="group" aria-label="导入格式">
+                      <button
+                        aria-pressed={effectiveImportAsAnimation}
+                        data-testid="fla-frame-sequence-format-animation"
+                        disabled={!sourceFpsAvailable || importLocked}
+                        onClick={() => setImportAsAnimation(true)}
+                        title={sourceFpsAvailable ? `按 ${sourceFps} FPS 保存动画` : '源 FPS 无效，不能导入为动画'}
+                        type="button"
+                      >
+                        动画
+                      </button>
+                      <button
+                        aria-pressed={!effectiveImportAsAnimation}
+                        data-testid="fla-frame-sequence-format-images"
+                        disabled={importLocked}
+                        onClick={() => setImportAsAnimation(false)}
+                        title="逐帧导入 PNG 图片"
+                        type="button"
+                      >
+                        图片
+                      </button>
+                    </div>
+                    {effectiveImportAsAnimation ? (
+                      <details className="fla-c03-animation-name-edit" data-testid="fla-frame-sequence-name-edit">
+                        <summary title={animationName || '动画名称'}>{animationName || '填写动画名称'}</summary>
+                        <label>
+                          <span className="sr-only">动画名称</span>
+                          <input
+                            aria-label="动画名称"
+                            maxLength={200}
+                            onChange={(event) => setAnimationName(event.currentTarget.value)}
+                            value={animationName}
+                          />
+                        </label>
+                      </details>
+                    ) : null}
+                    {!sourceFpsAvailable ? (
+                      <small className="fla-c03-sequence-format-status" role="status">
+                        源 FPS 无效，本次按图片导入。
+                      </small>
+                    ) : null}
+                    {effectiveImportAsAnimation && !animationName.trim() ? (
+                      <small className="fla-c03-sequence-format-error" role="alert">
+                        请填写动画名称。
+                      </small>
+                    ) : null}
+                  </div>
+                ) : null}
                 {phase === 'rendering' ? (
                   <>
                     <output data-testid="fla-frame-sequence-progress">
@@ -1180,8 +1374,21 @@ export function FlaFrameSequenceReview({
                     onKeyDown={(event) => handleSequenceActionKeyDown(event, () => void renderSequence())}
                     data-testid="fla-frame-sequence-render"
                   >
-                    生成连续画面
+                    {presentation === 'unified-preview' ? '生成预览' : '生成连续画面'}
                   </button>
+                ) : null}
+                {sequenceIsCurrent ? (
+                  !multiSelectMode && onImportSingle ? (
+                    <button
+                      className="fla-c03-sequence-import-primary"
+                      data-testid="fla-frame-sequence-import-single"
+                      disabled={singleImportDisabled}
+                      onClick={onImportSingle}
+                      type="button"
+                    >
+                      {effectiveImportAsAnimation ? '导入动画' : '导入图片'}
+                    </button>
+                  ) : null
                 ) : null}
                 {sequenceIsCurrent ? (
                   <button
@@ -1199,27 +1406,25 @@ export function FlaFrameSequenceReview({
           </div>
 
           <div className="fla-frame-sequence-filmstrip-region" data-testid="fla-frame-sequence-filmstrip-region">
-            <header className="fla-frame-sequence-filmstrip-heading">
-              {presentation === 'unified-preview' ? null : <span>序列预览</span>}
-              <div className="fla-frame-sequence-filmstrip-controls">
-                {hasPreview ? (
-                  <output
-                    aria-label={`第 ${selectedPreviewIndex + 1} / ${displayedSequenceItems.length} 帧`}
-                    data-batch-frame-index={selectedPreviewIndex + 1}
-                    data-frame-count={displayedSequenceItems.length}
-                    data-testid="fla-frame-sequence-frame-counter"
-                  >
-                    {presentation === 'unified-preview'
-                      ? `${selectedPreviewIndex + 1}/${displayedSequenceItems.length}`
-                      : `第 ${selectedPreviewIndex + 1} / ${displayedSequenceItems.length} 帧`}
-                  </output>
-                ) : null}
-                {presentation === 'unified-preview' ? null : playbackButton}
-                {presentation === 'unified-preview'
-                  ? null
-                  : <small>{displayedSequenceItems.length > 0 ? `${displayedSequenceItems.length} 帧` : '尚未生成'}</small>}
-              </div>
-            </header>
+            {presentation !== 'unified-preview' ? (
+              <header className="fla-frame-sequence-filmstrip-heading">
+                <span>序列预览</span>
+                <div className="fla-frame-sequence-filmstrip-controls">
+                  {hasPreview ? (
+                    <output
+                      aria-label={`第 ${selectedPreviewIndex + 1} / ${displayedSequenceItems.length} 帧`}
+                      data-batch-frame-index={selectedPreviewIndex + 1}
+                      data-frame-count={displayedSequenceItems.length}
+                      data-testid="fla-frame-sequence-frame-counter"
+                    >
+                      第 {selectedPreviewIndex + 1} / {displayedSequenceItems.length} 帧
+                    </output>
+                  ) : null}
+                  {playbackButton}
+                  <small>{displayedSequenceItems.length > 0 ? `${displayedSequenceItems.length} 帧` : '尚未生成'}</small>
+                </div>
+              </header>
+            ) : null}
           <div
             className="fla-frame-sequence-filmstrip"
             data-testid="fla-frame-sequence-filmstrip"

@@ -17,7 +17,8 @@ import {
   ASSET_LIBRARY_CATEGORIES,
   ASSET_LIBRARY_FILTERS,
   assetLibraryFilterCounts,
-  filterAssetLibraryEntries,
+  filterAssetLibraryItems,
+  selectAssetLibraryItems,
   selectAssetLibraryEntries,
   type AssetLibraryFilter,
   type AssetLibraryUsageFilter,
@@ -129,7 +130,6 @@ export function AssetLibrary({
     flaInspectionOperation.current = null;
     setFlaInspection(null);
     void flaInspectionLifecycle.current?.cancel();
-    setStatus('FLA review closed; Project and Asset state are unchanged.');
   }, []);
 
   useEffect(() => {
@@ -156,24 +156,27 @@ export function AssetLibrary({
         : [],
     [category, snapshot],
   );
+  const items = useMemo(
+    () => snapshot ? selectAssetLibraryItems(snapshot.project, category) : [],
+    [category, snapshot],
+  );
   const counts = useMemo(
     () =>
       snapshot
         ? assetLibraryFilterCounts(snapshot.project)
-        : { all: 0, character: 0, background: 0, audio: 0 },
+        : { all: 0, character: 0, background: 0, audio: 0, animation: 0 },
     [snapshot],
   );
   const filterOptions = hideHeading
     ? ASSET_LIBRARY_FILTERS
     : ASSET_LIBRARY_CATEGORIES;
-  const visibleEntries = useMemo(
-    () =>
-      filterAssetLibraryEntries(
-        entries,
-        searchQuery,
-        category === 'audio' ? 'all' : usageFilter,
-      ),
-    [category, entries, searchQuery, usageFilter],
+  const visibleItems = useMemo(
+    () => filterAssetLibraryItems(
+      items,
+      searchQuery,
+      category === 'audio' || category === 'animation' ? 'all' : usageFilter,
+    ),
+    [category, items, searchQuery, usageFilter],
   );
   const saveImageMetadata = useCallback(
     (
@@ -212,21 +215,25 @@ export function AssetLibrary({
   );
   const isPortraitBrowser = hideHeading && view === 'browser';
   const totalPages = isPortraitBrowser
-    ? assetLibraryPageCount(visibleEntries.length)
+    ? assetLibraryPageCount(visibleItems.length)
     : 1;
   const currentPage = isPortraitBrowser
     ? Math.max(1, Math.min(page, totalPages))
     : 1;
-  const pageEntries = useMemo(
+  const pageItems = useMemo(
     () =>
       isPortraitBrowser
-        ? paginateAssetLibraryEntries(visibleEntries, currentPage)
-        : visibleEntries,
-    [currentPage, isPortraitBrowser, visibleEntries],
+        ? paginateAssetLibraryEntries(visibleItems, currentPage)
+        : visibleItems,
+    [currentPage, isPortraitBrowser, visibleItems],
+  );
+  const pageEntries = useMemo(
+    () => pageItems.flatMap((item) => item.kind === 'asset' ? [item.entry] : []),
+    [pageItems],
   );
   const isSearchActive = searchQuery.trim().length > 0;
   const isUsageFilterActive =
-    category !== 'audio' && usageFilter !== 'all';
+    category !== 'audio' && category !== 'animation' && usageFilter !== 'all';
   const isEntireLibraryEmpty = !isSearchActive && counts.all === 0;
   const selectedAsset = useMemo(
     () =>
@@ -300,7 +307,7 @@ export function AssetLibrary({
   const selectCategory = (nextCategory: AssetLibraryFilter): void => {
     if (!clearSelectedAsset()) return;
     setCategory(nextCategory);
-    if (nextCategory === 'audio' && usageFilter !== 'all') {
+    if ((nextCategory === 'audio' || nextCategory === 'animation') && usageFilter !== 'all') {
       setUsageFilter('all');
     }
     setUsageFilterMenuOpen(false);
@@ -316,7 +323,7 @@ export function AssetLibrary({
   const updateUsageFilter = (
     nextUsage: AssetLibraryUsageFilter,
   ): void => {
-    if (category === 'audio') return;
+    if (category === 'audio' || category === 'animation') return;
     if (!clearSelectedAsset()) return;
     setUsageFilter(nextUsage);
     setUsageFilterMenuOpen(false);
@@ -386,15 +393,15 @@ export function AssetLibrary({
     if (!isPortraitBrowser) return;
     const nextPage = Math.max(1, Math.min(requestedPage, totalPages));
     if (nextPage === currentPage) return;
-    const nextEntries = paginateAssetLibraryEntries(
-      visibleEntries,
+    const nextItems = paginateAssetLibraryEntries(
+      visibleItems,
       nextPage,
     );
     if (selectedDetailsOpen && !closeSelectedDetails(false)) return;
     setPage(nextPage);
     if (
       selectedAssetId &&
-      !nextEntries.some((entry) => entry.asset.id === selectedAssetId)
+      !nextItems.some((item) => item.kind === 'asset' && item.entry.asset.id === selectedAssetId)
     ) {
       setSelectedAssetId(null);
       setAuthoritativeReferences([]);
@@ -902,10 +909,10 @@ export function AssetLibrary({
             </div>
             <div className="asset-library-usage-filter">
               <button
-                aria-expanded={category !== 'audio' && usageFilterMenuOpen}
+                aria-expanded={category !== 'audio' && category !== 'animation' && usageFilterMenuOpen}
                 aria-haspopup="menu"
                 aria-label={
-                  category === 'audio'
+                  category === 'audio' || category === 'animation'
                     ? '按用途筛选（仅图片素材）'
                     : '按用途筛选'
                 }
@@ -913,9 +920,9 @@ export function AssetLibrary({
                 className="asset-library-usage-filter-trigger"
                 data-active={usageFilter !== 'all'}
                 data-testid="asset-library-usage-filter"
-                disabled={category === 'audio'}
+                disabled={category === 'audio' || category === 'animation'}
                 onClick={() => {
-                  if (category !== 'audio') {
+                  if (category !== 'audio' && category !== 'animation') {
                     setUsageFilterMenuOpen((open) => !open);
                   }
                 }}
@@ -930,7 +937,7 @@ export function AssetLibrary({
                   <span aria-hidden="true" className="asset-library-usage-filter-active-dot" />
                 ) : null}
               </button>
-              {usageFilterMenuOpen && category !== 'audio' ? (
+              {usageFilterMenuOpen && category !== 'audio' && category !== 'animation' ? (
                 <div
                   aria-label="按用途筛选"
                   className="asset-library-usage-filter-menu"
@@ -994,7 +1001,10 @@ export function AssetLibrary({
               ))}
             </nav>
             <div className="asset-library-content">
-              <AssetGrid
+              {snapshot ? (
+  <AssetGrid
+                project={snapshot.project}
+                projectRoot={snapshot.projectRoot}
                 draggingAssetId={draggingAssetId}
                 onDragEnd={() => {
                   setDraggingAssetId(null);
@@ -1027,6 +1037,8 @@ export function AssetLibrary({
                 emptyMessage={
                   isSearchActive
                     ? '没有匹配的素材'
+                    : category === 'animation'
+                      ? '还没有已导入的动画'
                     : isUsageFilterActive
                       ? '没有符合用途的图片'
                       : isEntireLibraryEmpty
@@ -1036,6 +1048,8 @@ export function AssetLibrary({
                 emptyDescription={
                   isSearchActive
                     ? '清除搜索或换一个用途、分类试试。'
+                    : category === 'animation'
+                      ? '从 FLA 导入动画后会显示在这里。'
                     : isUsageFilterActive
                       ? '选择其他用途，或恢复“全部用途”。'
                       : isEntireLibraryEmpty
@@ -1045,8 +1059,13 @@ export function AssetLibrary({
                 selectedAssetId={selectedAssetId}
                 metadataErrors={metadataErrors}
                 thumbnails={thumbnails}
-                entries={pageEntries}
+                items={pageItems}
               />
+) : (
+  <div className="animation-library-empty" data-testid="animation-library-empty">
+    <strong>尚未打开项目</strong>
+  </div>
+)}
               {isPortraitBrowser && totalPages > 1 ? (
                 <nav
                   aria-label="绱犳潗鍒嗛〉"
@@ -1211,7 +1230,7 @@ export function AssetLibrary({
           </div>
         </section>
       ) : null}
-      <output className="asset-library-status">{status}</output>
+      {status ? <output className="asset-library-status">{status}</output> : null}
     </section>
   );
 }

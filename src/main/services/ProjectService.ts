@@ -139,6 +139,7 @@ export class ProjectService {
         height: PROJECT_HEIGHT,
         fps: PROJECT_FPS,
         assets: [],
+        animations: [],
         characters: [],
         voiceProfiles: [],
         subtitleStyles: [
