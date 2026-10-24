@@ -1,48 +1,54 @@
-﻿# Issue #838 — EXP-PERF-01 短片正式导出路径调查
+﻿# Issue #838 — EXP-PERF-01 短片正式导出性能调查
 
-**结论：`RESEARCH_STOP`（一次正式导出尝试已启动，但诊断挂接在 Job 启动后失败）。** 没有 MP4，也没有有效的阶段耗时数据。此报告不支持任何“首要性能瓶颈”结论，不建议据此创建生产优化实施票。
+**最新结论：`RESEARCH_PARTIAL`。** 经 Owner 在会话中重新授权并先通过安全预检后，一次正式导出测量成功。108 帧生成夹具从 UI 点击到完成为 **122.872 秒**；Main Export Job 为 **119.346 秒**。本次最明显耗时段是帧管线（**111.834 秒，占 Job 的 93.7%**）。尚未拆开 Canvas 绘制/PNG 编码/IPC/文件写入内部时间；取消和已有目标 no-clobber 分支也没有重测。因此只能锁定“帧管线”为首个优化调查对象，不能断言内部哪一段应被改造。
 
-## 范围与来源
+没有生产代码改动，也没有创建优化 Issue。报告、诊断器和本机验收材料分开存放；MP4 和生成工程没有上传 GitHub。
 
-- 测量源码 SHA：`c6c356f660001af694bb706cc7553974ff8d1cfc`（PR #817 当前 HEAD）。研究分支以该 SHA 为基点；无生产源码修改。
-- 输入来源：生成的 Issue #827 sample 1；诊断运行时将 3 个 Shot 各设为 1,500 ms，24 fps，总时长 4,500 ms、108 帧，项目 1920×1080，4 个音频片段/事件，10 个工程素材。此为生成夹具，不代表真实创作项目。
-- 正式 Job：`b7f7eaac-90a9-4c88-8666-ba95d34f52bb`，快照 revision 0；最后记录状态 `running / preparing / 0 of 108 frames`。
-- 环境：Windows Server 2022 Datacenter `10.0.20348`；Electron `43.1.1`；unpackaged（`app.isPackaged=false`）；Intel Xeon Platinum，4 核/8 逻辑处理器，报告环境采样上限 2.5 GHz。GPU 证据为虚拟显示适配器 `AspDod controller` / `AspIdd controller`，实际 GPU/加速能力 `UNKNOWN`。FFmpeg 版本未知（未进入编码阶段）。这不是普通桌面或安装包验收。
+## 代码、样本与授权
 
-## 实际尝试与止损
+- 测量源码 SHA：`c6c356f660001af694bb706cc7553974ff8d1cfc`（PR #817 当时 HEAD）；诊断工具在 `research/issue-838-export-performance` 分支，基于该 SHA。
+- 样本来自生成的 Issue #827 sample 1，运行时调整为 3 个 Shot × 1,500 ms：4,500 ms、24 fps、108 帧、1920×1080，10 个素材、4 个音频片段/事件。不是用户工程或真实作品。
+- 首次授权下的正式 Job 在 2026-10-24 05:31Z 启动后因诊断器作用域错误中止于 `preparing / 0 of 108`；没有重试。Owner 后续在会话中明确授权重新测量并要求先检查测量器。
+- 预检命令 `node scripts/issue838-perf-diagnostic.cjs --preflight` 在研究分支和 c6 源码工作树各通过一次：动态生成的 verifier 语法检查通过、14 个计时钩子齐全、210 秒 Job 超时与取消、295 秒内部 STOP、300 秒外层子进程树止损均存在。预检确认 `formalJobStarted=false`、`electronSpawned=false`、`acceptanceRootCreated=false`。
+- 正式命令：`pnpm exec node scripts/issue838-perf-diagnostic.cjs`，在已构建的 c6 工作树执行一次。Launcher 返回码 0、`timedOut=false`；没有再次运行。
 
-唯一进入 Creator UI 的测量运行：
+## 成功测量回执
 
-- 命令：在 `D:\panda-issue816-dl01` 执行 `pnpm exec node scripts/issue838-perf-diagnostic.cjs`。
-- acceptance root：`D:\PandaStage-Acceptance\issue838-export-performance-2026-10-24T05-31-01-223Z-9484`。
-- fixture run：`run-2026-10-24T05-31-01-552Z-14584`；工程：`Panda Stage formal export.pandastage`。
-- Electron 启动 `2026-10-24T05:31:02.154Z`；Save As 选择 `issue838-formal-export.mp4` 于 `05:31:03.794Z`；失败回执写于 `05:31:07.359Z`。
-- Main 回执记录了上述 Job ID 和 `preparing / 0 / 108`。诊断挂接在 `startFormalExport()` 返回后引用了作用域外的 `jobStartedAt`，抛出 `ReferenceError`，导致自动化中止。失败堆栈、Job 更新、保存对话框和截图在本机 `...\run-2026-10-24T05-31-01-552Z-14584\evidence\`。launcher receipt 为 `STOP_OR_PARTIAL`，没有性能测量 receipt。
-- 从保存对话框选择至失败记录相隔约 3.565 秒，Electron 启动至失败记录约 5.205 秒；它们都不是“点击至完成”，不能记作 `T_total_ui`。shell 命令约 7.1 秒也包含 pnpm/启动过程，不能当作导出或验收耗时。
-- 另一次较早的夹具准备在 UI 前被既有 DL-04 30 秒断言拒绝，并额外生成了 `D:\PandaStage-Acceptance\issue838-export-performance-2026-10-24T05-29-23-846Z-8740`。该运行没有正式 Job；保留其目录，不纳入性能样本。
-- 失败后未发现匹配本次路径的 Electron/FFmpeg 进程；工程目录没有输出 MP4、帧任务目录或帧临时文件。任务清理是否完整没有回执，不能据此声称 cleanup 阶段成功。没有执行取消测试或现有目标 no-clobber 测试。
-- 输出原先不存在；失败后 MP4 仍不存在，因此无输出大小、SHA 或 FFprobe 结果。
+- Acceptance root：`D:\PandaStage-Acceptance\issue838-export-performance-2026-10-24T06-39-48-556Z-7428`
+- Run ID：`run-2026-10-24T06-39-48-899Z-10084`
+- 回执时间：`2026-10-24T06:41:54.616Z`；本机正式导出 MP4：`...\Panda Stage formal export.pandastage\issue838-formal-export.mp4`
+- 正式 MP4：77,519 bytes，SHA256 `e136f5ff31b8286c91dc9dc3ae49fb9517327f9620e11a6bd256f0c066f686e1`。
+- FFprobe：H.264 / yuv420p、1920×1080、24 fps、108 帧、4.5 秒；1 条 AAC / 48 kHz 音轨、4.5 秒；`ffprobeValid=true`。
+- Preservation 回执：`projectUnchanged=true`、`assetsUnchanged=true`、`editorStatePreserved=true`、`outputInitiallyAbsent=true`。成功运行结束工程 `project.json` SHA256 为 `b054393641c22a4ad057c8765f3cab8138dc32c0c842a6d09b6e6064ab0524d8`。活动 Job / 子进程计数为 0；输出临时文件、帧任务目录、准备快照均为空，staging 已清理。
+- 取消路径与已有 MP4 的 no-clobber 拒绝路径**没有**执行。首个失败运行回执中的 source project hash 与当时工程末值不一致仍未解释；成功重测是全新工程，测量器在该运行中逐字节比较导出前后工程并通过，不用成功运行倒推旧差异原因。
 
 ## 耗时拆账
 
-| 指标 | 结果 | 解释 |
-| --- | --- | --- |
-| `T_total_ui` | `NOT_MEASURED` | 运行失败，没有完成状态；只有上述非完成事件时间戳。 |
-| `T_export_job` | `NOT_MEASURED` | Main Job 已开始，但没有 job 起止计时或 commit。 |
-| `T_frame_pipeline` | `NOT_MEASURED` | 最后更新为 `preparing`，0/108 帧完成；不能把它写成 0 ms。 |
-| Canvas / PNG / IPC / 帧写盘 | `NOT_MEASURED` | 没有进入帧渲染，子段计时不可用。 |
-| `T_video_encode` | `NOT_MEASURED` | 编码未开始；FFmpeg 版本亦未知。 |
-| `T_audio_mux` | `NOT_MEASURED` | 音频混合未开始。 |
-| `T_probe` | `NOT_MEASURED` | 正式视频探测未开始。 |
-| `T_cleanup_commit` | `NOT_MEASURED` | 没有提交；清理阶段状态未持久化。 |
-| `T_verifier_extra` | `NOT_MEASURED` | 没有完成验收流程；约 7.1 秒 shell wall 不是这个分段。 |
+所有时长为单次生成夹具的 wall time，不表示 p95 或真实创作项目的承诺。百分比以 `T_export_job` 为分母。FFmpeg 数字是 adapter 方法返回的整体 elapsed，并非进程 CPU 时间；probe 统计包含音频源和最终视频探测。
 
-DL-06 报告的 16～17 分钟是包含 Electron 启动、Save As、重开、取消、no-clobber、故障注入和 FFprobe 等步骤的外层验收 wall time；它不能说明一次正式 Export Job 耗时 16～17 分钟。
+| 指标 | 秒 | 占 Job | 说明 |
+| --- | ---: | ---: | --- |
+| `T_total_ui` | 122.872 | 102.95% | 从触发正式导出到 UI 显示完成，包含 Save As。 |
+| `T_export_job` | 119.346 | 100% | Job 开始到成功提交/完成。 |
+| `T_frame_pipeline` | 111.834 | 93.7% | 108 帧，约 1.036 秒/帧；含隐藏舞台帧准备/渲染、Canvas PNG、跨进程返回与写入，当前未拆子段。 |
+| `T_video_encode` | 1.892 | 1.6% | FFmpeg PNG 序列编码 adapter elapsed。 |
+| `T_audio_mux` | 0.257 | 0.2% | 音轨混合 adapter elapsed。 |
+| `T_probe` | 0.675 | 0.6% | 6 次音频源 probe 与最终视频 probe 的 wall time 合计。 |
+| `T_cleanup_commit` | 1.534 | 1.3% | Job 目录清理 0.012 秒；原子提交 1.522 秒。 |
+| Job 未拆段残差 | 3.154 | 2.6% | Job 总时间减去上列已计时分段；包含其余准备/任务编排开销，不归给某一组件。 |
+| `T_verifier_extra` | 0.402 | — | UI 完成后的回执、哈希与临时文件检查；其中独立 FFprobe 为 0.391 秒。 |
 
-## 输入完整性与残留
+UI 与 Job 的差额近似 3.526 秒；启动至点击前另有 2.243 秒，不包含在 `T_total_ui`。嵌套/先后阶段不可把 UI、Job 和 verifier extra 相加。DL-06 的 16～17 分钟是外围多步骤验收总 wall，不是这次的纯导出耗时。
 
-- 10 个素材文件的当前 SHA256 均与失败回执的 `source.media` 记录一致；下表保留可复核值。
-- 工程 `project.json` 的回执记录 SHA256 为 `01f6365aed6a679939906170faf1df4a7346202c1b727efbee78bf084aba01e2`；结束时读取到 11,834 bytes、SHA256 `f79b24cf660b9c0a5ed5fb5dae41520bc1b7f122774d60b37572c0ef3205f7f4`。两值不一致，差异发生时间与原因未确定；因此工程未变更判据为 `INCONCLUSIVE`，不宣称工程保持原样。素材 hash 一致只证明这 10 个文件的字节一致。
+其它帧指标：PNG 临时序列共 7,516,280 bytes；`peakPendingWrites=1`。系统采样间隔 250 ms，共 492 个样本；主进程 RSS 峰值 186,863,616 bytes；最低空闲 RAM 6,750,027,776 bytes；FFmpeg 子进程峰值内存未测。
+
+## 环境与输入 hash
+
+- Windows Server 2022 Datacenter build `20348`；Electron `43.1.1`、Chromium `150.0.7871.114`、Node `24.18.0`；unpackaged。
+- CPU：Intel Xeon Platinum，8 个逻辑处理器；RAM 16,624,439,296 bytes。GPU `UNKNOWN`，系统只报告 AspDod/AspIdd 虚拟显示适配器。
+- FFmpeg：`N-92722-gf22fcd4483`（2018 build）。环境不是普通桌面或安装包验收。
+
+本次 10 个生成素材在导出前后 SHA 均一致：
 
 | 工程相对路径 | SHA256 |
 | --- | --- |
@@ -57,38 +63,36 @@ DL-06 报告的 16～17 分钟是包含 Electron 启动、Save As、重开、取
 | `assets/dl04-sample-1-shot-2-background.png` | `342c9248b18bcc8f5af654d882457e367158abd089831705dbcb11c2f6a4fa77` |
 | `assets/dl04-sample-1-shot-3-background.png` | `7dd7b9d3fe8904d1cf8bb910a00fb087ff42bb8fd7850d03468d94a732d06e95` |
 
-## 静态路径事实与待测假设
+## Bottleneck and candidate ranking
 
-静态源码显示正式路径按时间表顺序请求隐藏窗口渲染帧、等待 renderer 回传 PNG bytes、将 PNG 写入帧任务目录，再调用 FFmpeg 编码；含音频时还会混音，随后 probe、清理并提交。`renderFrames` 已返回 elapsed、字节数、并发写入与内存指标；FFmpeg encode/mux 返回 elapsed。probe 没有相同形式的 elapsed 结果。静态路径不能证明其中任何一步是实际瓶颈。
+静态源码顺序是隐藏舞台渲染并回传 PNG bytes、Main 写 PNG 序列、FFmpeg 编码/混音、probe、清理与提交；参见 [ExportService](../../src/main/services/ExportService.ts)、[ExportRendererApp](../../src/export-renderer/ExportRendererApp.tsx)、[hidden-window-manager](../../src/main/windows/hidden-window-manager.ts)、[FileSystemService](../../src/main/services/FileSystemService.ts) 和 [FFmpegAdapter](../../src/main/services/FFmpegAdapter.ts)。本次实测支持“帧管线是第一耗时段”；并不支持帧管线内部某个子步骤是第一原因。
 
-代码参考：[ExportService](../../src/main/services/ExportService.ts)、[ExportRendererApp](../../src/export-renderer/ExportRendererApp.tsx)、[hidden-window-manager](../../src/main/windows/hidden-window-manager.ts)、[FileSystemService](../../src/main/services/FileSystemService.ts)、[FFmpegAdapter](../../src/main/services/FFmpegAdapter.ts)。
+| 候选假设 | 判定 | 证据 / 风险 / 最小验证与回退 |
+| --- | --- | --- |
+| 重绘、静态帧缓存或跳过无变化画面 | `UNPROVEN` | 没有测重复画面比例。若未来先证明相邻帧重复率高，才用同工程 A/B；逐帧画面不等即回退，重点保护字幕、口型、运镜与镜头边界。 |
+| Canvas PNG 与 Renderer/Main 传递 | `LIKELY`（仅 aggregate frame pipeline） | 111.834 秒/93.7% 使帧管线成为首要方向；Canvas、传递与准备/写入未分别计时。收益不能细分。先增加内存聚合子计时，再选单一子段 A/B；不得先换 rawvideo/GPU 通路。 |
+| PNG 序列写盘再读盘 | `UNPROVEN` | 共 7.52 MB、pending writes 峰值 1；没有独立写入/读取耗时。若未来 A/B，需保持帧顺序，核对视觉/音频及清理，失败回滚原 PNG 路径。 |
+| FFmpeg 编码参数/线程/硬件 | `NOT_WORTH_NOW`（这份样本） | 编码 1.892 秒、混音 0.257 秒，远低于帧管线；不支持先投入编码优化。GPU 加速能力未知。 |
+| 验收器外围步骤 | `NOT_WORTH_NOW`（产品路径） | 本次 UI 完成后的外围只有 0.402 秒；不能用 DL-06 16～17 分钟聚合 wall 推断产品导出慢。 |
 
-下表顺序是**下一次获批诊断的测量优先级**，不是性能可能性排名；未测前没有证据支持任何一项为第一瓶颈。
+## 下一步建议（未创建 Issue）
 
-| 测量优先级 / 假设 | 状态 | 证据与可能收益场景 | 风险、最小 A/B 与回退 |
-| --- | --- | --- | --- |
-| 1. Canvas PNG 压缩与 Renderer/Main 传递 | `UNPROVEN` | 源码有 `canvas.toBlob('image/png')`、bytes 回传；没有分段耗时。若长于逐帧等待/磁盘部分，优化可能缩短高分辨率、多帧场景。收益未量化。 | 风险是帧错配、画面字节变化、IPC 峰值内存。获批后同工程先记录 renderer 编码、回传 wall；只对该段做 A/B，逐帧比对与回退到原 PNG 路径。 |
-| 2. PNG 序列落盘再由 FFmpeg 读取 | `UNPROVEN` | 代码写临时 PNG 序列后编码器读取；没有临时字节数或 I/O 时间。若磁盘吞吐为主成本，才值得试其它传递方式。 | 风险是顺序、取消、磁盘占用和清理。以相同 108 帧工程测写盘/编码读取；验证输出帧与音频一致、失败后目录清理，再决定保留或回退。 |
-| 3. FFmpeg 编码设置、线程或硬件路径 | `UNPROVEN` | 源码有 encode elapsed 结果，但此 Job 未进入编码；FFmpeg 版本/硬件支持未知。 | 风险包括 H.264 兼容、画质/文件大小、色彩和音画同步。只在编码段被证实占主导后做单变量 A/B；逐帧图像与音频/probe 门槛不通过即回退。 |
-| 4. 重绘、静态帧缓存或跳过无变化画面 | `UNPROVEN` | 当前 `renderFrames` 按全局时间表逐帧请求；本次 0 帧，未证明重复帧比例或缓存收益。 | 容易破坏字幕、口型、运镜和跨镜头状态。先由帧序列统计重复画面，不动渲染逻辑；未来若试验失败，完整恢复逐帧渲染。 |
-| 5. 导出 Job 之外的验收外围耗时 | `NOT_WORTH_NOW`（暂不做产品优化） | DL-06 外层 16～17 分钟含多种验收动作，不能归因于用户正式导出；本次 `T_verifier_extra` 未测。 | 先把 UI/Job/验收时间分开记录。只有发现用户可感知的等待来自产品流程，才讨论产品改动；自动验收脚本耗时单独处理。 |
+建议标题：**Perf｜正式导出帧管线子阶段计时与低风险优化验证**。边界先只记录隐藏舞台 ready/render、Canvas `toBlob`、Renderer/Main 返回与 Main `writeFrame` 的累计 wall time；每帧只累加内存计数，完成后写一条汇总，不逐帧同步落日志。首要目标是找出 111.834 秒内部的最大一段，当前没有足够证据选择具体性能改造。
 
-## 后续建议与验收边界
+验收建议：同一 4.5 秒 / 108 帧工程与硬件做基线和单变量 A/B；报告分段秒数及 run-to-run variance；FFprobe 核对分辨率/FPS/帧数/时长/音轨；逐帧视觉结果、音频轨和工程/素材不变；no-clobber、取消与临时清理回归通过。若分段改造未在重复测量中稳定改善，或有任一画面/音频/文件保护回归，则回退。此为方案，不是本次已执行测试，也没有授权优化施工。
 
-本 Issue 的一次正式 Job 尝试已用尽，依止损规则本票不再重跑。建议**暂不创建生产优化实施票**；如 Owner 需要，另行授权一个新的单次测量任务，先修正并审阅诊断脚本，再在相同 4.5 秒 / 108 帧工程采集 UI、Job、帧管线、encode、mux、probe、cleanup/commit 和外围验收各段。确认实际主成本后再只选一项优化。
+复现步骤：在 Windows checkout 安装依赖并构建后，先执行 `pnpm exec node scripts/issue838-perf-diagnostic.cjs --preflight`，再执行 `pnpm exec node scripts/issue838-perf-diagnostic.cjs`。前者不启动 Electron/Job；后者是有副作用的正式单次测量入口，必须单独获准，且保留 210/295/300 秒止损。当前重测只运行了一次。
 
-未来任何优化 A/B 至少固定工程、分辨率、FPS、资产与音频输入；校验 108 帧顺序和画面、音频/时长/FFprobe、既有 no-clobber 与取消清理行为，并保留旧路径可回滚。这个门槛是提案，不是本次已执行的测试。
-
-本分支保留诊断 runner `scripts/issue838-perf-diagnostic.cjs` 与片段 `scripts/issue838-perf-runtime.fragments`。失败运行使用的是 `jobStartedAt` 作用域修正前版本；仓库副本已把 `const` 改成 `var`，只做过 `node --check`，**修正后没有运行，也不是本次实际运行字节级复现**。命令只供未来 Owner 新授权后审阅使用，不要据此重跑本 Issue。验收原始日志、失败回执和截图留在上述本机 acceptance root，没有将工程、截图或媒体上传到 GitHub。
+本机运行回执及截图：`D:\PandaStage-Acceptance\issue838-export-performance-2026-10-24T06-39-48-556Z-7428\run-2026-10-24T06-39-48-899Z-10084\evidence\`；包括 JSON 计时回执、FFprobe JSON、Save As / progress / completed 截图。媒体、工程及截图没有上传。
 
 ## DoD 状态
 
-- [x] AC01：生成夹具、3 个镜头、4.5 秒 / 108 帧、10 个素材 hash、代码 SHA 与可观测环境已记录；GPU 明确为未知。
-- [x] AC02：有一次正式 Job 启动后 STOP 的证据；UI / Job / 外围时间没有混记，未知值使用 `NOT_MEASURED`。
-- [ ] AC03：分段耗时未取得，无法逐段核对；报告列明各缺项和最小后续计时建议。
-- [ ] AC04：无正常 MP4 / FFprobe，且工程 SHA 不一致；项目保存状态无法证明，未运行 no-clobber / 取消。
-- [ ] AC05：没有测得第一瓶颈，不能据此按收益作优化排名或承诺提速。
-- [ ] AC06：报告和静态检查脚本已存档，但有效测量与可运行命令尚未验证，未提供生产实施票。
-- [x] AC07：未改生产代码、未跑 Full CI / `pnpm verify:project` / DL-06 重测、未动 #836 / PR #817；本 Issue 正文记录 `RESEARCH_STOP`。
+- [x] AC01：来源、样本、资产 SHA、源码 SHA、环境已记录。
+- [x] AC02：成功正式 UI 导出，区分 UI、Job 和外围时间；DL-06 外层 wall 未混作 Job。
+- [x] AC03：主阶段秒数可核对；PNG/Canvas/IPC/write 子段未测，并提供了最小补充计时方案。
+- [ ] AC04：工程、素材、编辑器状态、输出和 cleanup 通过；取消及已有目标 no-clobber 分支未重测。
+- [x] AC05：帧管线作为实测首要耗时段，候选按证据/收益/风险/验证排序；没有无证据速度承诺。
+- [x] AC06：Markdown 报告、后续票提纲和成功执行过的诊断命令已记录。
+- [x] AC07：无生产改动；未跑 Full CI、`pnpm verify:project` 或 DL-06/30 秒矩阵；未改 #836 / PR #817。
 
-**结论回执：** `RESEARCH_STOP`；`OWNER_GO_TO_OPTIMIZE=NOT_GRANTED`；PR #817 `NO_PRODUCTION_CHANGE`；DL-06 / DL-07 `UNCHANGED`。Issue 保持开放，等待 Owner 决定是否另行授权新测量。
+**最新回执：** `RESEARCH_PARTIAL`；`OWNER_GO_TO_OPTIMIZE=NOT_GRANTED`；PR #817 `NO_PRODUCTION_CHANGE`；DL-06 / DL-07 `UNCHANGED`。Issue 保持开放，等 Owner 接受部分结果并决定是否创建后续票。
