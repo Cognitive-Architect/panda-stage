@@ -58,7 +58,7 @@ describe('animation library', () => {
     expect(Array.from(new Uint8Array(await blob.arrayBuffer()))).toEqual([20, 30]);
   });
 
-  it('renders a distinct animation item with source FPS playback and frame selection controls', () => {
+  it('renders one unified-grid animation card with concise source timing', () => {
     const project = projectWithAnimation();
     const markup = renderToStaticMarkup(createElement(AnimationLibraryPanel, {
       animations: project.animations,
@@ -68,15 +68,13 @@ describe('animation library', () => {
     }));
 
     expect(markup).toContain('data-testid="animation-library-panel"');
-    expect(markup).toContain('data-testid="animation-library-item"');
-    expect(markup).toContain('Walk cycle');
-    expect(markup).toContain('仅支持素材库预览');
-    expect(markup).toContain('12 fps');
-    expect(markup).toContain('data-testid="animation-preview-play"');
-    expect(markup).toContain('data-testid="animation-preview-replay"');
-    expect(markup).toContain('data-testid="animation-preview-seek"');
-    expect(markup).toContain('aria-label="选择动画帧"');
-    expect(markup).toContain('1 / 2');
+    expect(markup).toContain('data-testid="animation-library-card"');
+    expect(markup).toContain('data-category="animation"');
+    expect(markup).toContain('Walk');
+    expect(markup).toContain('2 帧 · 0.17 秒');
+    expect(markup).toContain('12 FPS');
+    expect(markup).not.toContain('Walk cycle');
+    expect(markup).not.toContain('animation-preview-dialog');
   });
 
   it('keeps the animation list searchable by source name and target name', () => {
@@ -87,7 +85,7 @@ describe('animation library', () => {
       projectRoot: 'D:\\project.pandastage',
       searchQuery: 'walk.fla',
     }));
-    expect(markup).toContain('Walk cycle');
+    expect(markup).toContain('Walk');
 
     const noMatch = renderToStaticMarkup(createElement(AnimationLibraryPanel, {
       animations: project.animations,

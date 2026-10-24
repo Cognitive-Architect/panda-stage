@@ -1,4 +1,5 @@
 import type {
+  AnimationDefinition,
   Asset,
   AssetDropPayload,
   ImageAssetUsage,
@@ -21,6 +22,10 @@ export interface AssetLibraryEntry {
   contextLabel: string;
   dropPayload: AssetDropPayload;
 }
+
+export type AssetLibraryItem =
+  | { kind: 'asset'; id: string; entry: AssetLibraryEntry }
+  | { kind: 'animation'; id: string; animation: AnimationDefinition };
 
 export const ASSET_LIBRARY_CATEGORIES = [
   { id: 'all', label: '全部' },
@@ -195,6 +200,26 @@ export function selectAssetLibraryEntries(
   });
 }
 
+export function selectAssetLibraryItems(
+  project: Project,
+  category: AssetLibraryFilter,
+): AssetLibraryItem[] {
+  const items: AssetLibraryItem[] = selectAssetLibraryEntries(project, category)
+    .map((entry) => ({ kind: 'asset', id: entry.id, entry }));
+  if (category === 'all' || category === 'animation') {
+    items.push(...project.animations.map((animation) => ({
+      kind: 'animation' as const,
+      id: `animation:${animation.id}`,
+      animation,
+    })));
+  }
+  const itemName = (item: AssetLibraryItem): string =>
+    item.kind === 'animation' ? item.animation.name : item.entry.asset.name;
+  return items.sort((left, right) =>
+    itemName(left).localeCompare(itemName(right), 'zh-CN') || left.id.localeCompare(right.id),
+  );
+}
+
 export function assetCategoryCounts(
   project: Project,
 ): Record<AssetLibraryCategory, number> {
@@ -210,7 +235,7 @@ export function assetLibraryFilterCounts(
 ): Record<AssetLibraryFilter, number> {
   const entries = selectAssetLibraryEntries(project, 'all');
   return {
-    all: entries.length,
+    all: entries.length + project.animations.length,
     character: entries.filter((entry) => entry.category === 'character')
       .length,
     background: entries.filter((entry) => entry.category === 'background')
@@ -218,6 +243,30 @@ export function assetLibraryFilterCounts(
     audio: entries.filter((entry) => entry.category === 'audio').length,
     animation: project.animations.length,
   };
+}
+
+export function filterAssetLibraryItems(
+  items: readonly AssetLibraryItem[],
+  query: string,
+  usage: AssetLibraryUsageFilter = 'all',
+): AssetLibraryItem[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase('zh-CN');
+  return items.filter((item) => {
+    if (usage !== 'all' && (
+      item.kind !== 'asset' ||
+      item.entry.asset.kind !== 'image' ||
+      item.entry.asset.usage !== usage
+    )) return false;
+    if (!normalizedQuery) return true;
+    const values = item.kind === 'animation'
+      ? [item.animation.name, item.animation.source.basename, item.animation.source.targetName]
+      : [
+          item.entry.asset.name,
+          item.entry.contextLabel,
+          ...(item.entry.asset.kind === 'image' ? item.entry.asset.keywords : []),
+        ];
+    return values.some((value) => value.toLocaleLowerCase('zh-CN').includes(normalizedQuery));
+  });
 }
 
 export function filterAssetLibraryEntries(

@@ -70,22 +70,24 @@
   .resource-activity-dock-landscape[data-active-activity='assets']
   .asset-library[data-asset-library-presentation='landscape']
   .asset-category-tabs {
-  display: grid;
+  display: flex;
   width: auto;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  flex: 0 0 auto;
+  flex-direction: row;
   gap: 4px;
   padding: 3px;
   border: 1px solid rgb(127 199 148 / 16%);
   border-radius: 12px;
   background: rgb(255 255 255 / 2%);
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='assets']
   .asset-library[data-asset-library-presentation='landscape']
   .asset-category-tabs button {
-  min-width: 0;
+  min-width: max-content;
   min-height: 40px;
   padding: 6px 2px;
   border-color: transparent;
@@ -95,6 +97,7 @@
   align-items: center;
   justify-content: center;
   gap: 3px;
+  flex: 0 0 auto;
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;

@@ -106,19 +106,21 @@
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .resource-activity-dock[data-active-activity='assets']
   .asset-category-tabs {
-  display: grid;
+  display: flex;
   width: auto;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  flex: 0 0 auto;
+  flex-direction: row;
   gap: 0;
   border-bottom: 1px solid var(--ui-color-separator);
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .resource-activity-dock[data-active-activity='assets']
   .asset-category-tabs button {
   display: flex;
-  min-width: 0;
+  min-width: max-content;
   min-height: 48px;
   padding: 8px 3px;
   border: 0;
@@ -129,6 +131,7 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
+  flex: 0 0 auto;
   font-size: 13px;
   white-space: nowrap;
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pause, Play, RotateCcw } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Pause, Play, RotateCcw, X } from 'lucide-react';
 import type { AnimationDefinition, Project } from '../../../domain';
 import {
   createAnimationPlaybackTimeline,
@@ -23,12 +24,239 @@ function formatFps(fps: number): string {
 }
 
 function formatDuration(durationMs: number): string {
-  if (durationMs < 1_000) return `${Math.round(durationMs)} ms`;
   return `${(durationMs / 1_000).toFixed(2)} 秒`;
 }
 
 function blobUrl(bytes: Uint8Array, mimeType: string): string {
   return URL.createObjectURL(createAnimationImageBlob(bytes, mimeType));
+}
+
+interface AnimationCoverState {
+  url: string | null;
+  error: boolean;
+}
+
+interface AnimationCardScrollPosition {
+  element: HTMLElement;
+  top: number;
+  left: number;
+}
+
+export interface AnimationLibraryCardProps {
+  animation: AnimationDefinition;
+  project: Project;
+  projectRoot: string;
+}
+
+export function AnimationLibraryCard({
+  animation,
+  project,
+  projectRoot,
+}: AnimationLibraryCardProps): React.JSX.Element {
+  const [cover, setCover] = useState<AnimationCoverState>({ url: null, error: false });
+  const [open, setOpen] = useState(false);
+  const cardRef = useRef<HTMLElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const scrollPositionsRef = useRef<AnimationCardScrollPosition[]>([]);
+  const windowScrollRef = useRef({ top: 0, left: 0 });
+  const wasOpenRef = useRef(false);
+  const firstFrame = animation.frames[0];
+
+  useEffect(() => {
+    let active = true;
+    let coverUrl: string | null = null;
+    setCover({ url: null, error: false });
+    if (!firstFrame) {
+      setCover({ url: null, error: true });
+      return undefined;
+    }
+    const asset = project.assets.find((candidate) => candidate.id === firstFrame.assetId);
+    if (!asset || asset.kind !== 'image' || asset.sha256 !== firstFrame.sha256) {
+      setCover({ url: null, error: true });
+      return undefined;
+    }
+    void window.pandaStage.assets.readCanvasImage({
+      projectRoot,
+      assetId: firstFrame.assetId,
+      sha256: firstFrame.sha256,
+    }).then((response) => {
+      if (!active) return;
+      if (!response.ok || response.mimeType !== 'image/png') {
+        setCover({ url: null, error: true });
+        return;
+      }
+      coverUrl = blobUrl(response.bytes, response.mimeType);
+      setCover({ url: coverUrl, error: false });
+    }).catch(() => {
+      if (active) setCover({ url: null, error: true });
+    });
+    return () => {
+      active = false;
+      if (coverUrl) URL.revokeObjectURL(coverUrl);
+    };
+  }, [animation.id, firstFrame, project.assets, projectRoot]);
+
+  useEffect(() => {
+    if (open) {
+      wasOpenRef.current = true;
+      const previousOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      closeButtonRef.current?.focus();
+      return () => {
+        document.body.style.overflow = previousOverflow;
+      };
+    }
+    if (!wasOpenRef.current) return undefined;
+    wasOpenRef.current = false;
+    const frame = window.requestAnimationFrame(() => {
+      cardRef.current?.focus({ preventScroll: true });
+      for (const position of scrollPositionsRef.current) {
+        position.element.scrollTop = position.top;
+        position.element.scrollLeft = position.left;
+      }
+      window.scrollTo(windowScrollRef.current.left, windowScrollRef.current.top);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open]);
+
+  const openPreview = (): void => {
+    const card = cardRef.current;
+    scrollPositionsRef.current = [];
+    for (let element = card?.parentElement ?? null; element; element = element.parentElement) {
+      if (element.scrollHeight > element.clientHeight || element.scrollWidth > element.clientWidth) {
+        scrollPositionsRef.current.push({
+          element,
+          top: element.scrollTop,
+          left: element.scrollLeft,
+        });
+      }
+    }
+    windowScrollRef.current = { top: window.scrollY, left: window.scrollX };
+    setOpen(true);
+  };
+
+  const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setOpen(false);
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), input:not(:disabled)',
+      ) ?? [],
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0]!;
+    const last = focusable[focusable.length - 1]!;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  const dialog = open ? (
+    <div
+      className="animation-preview-backdrop"
+      data-testid="animation-preview-backdrop"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) setOpen(false);
+      }}
+    >
+      <div
+        aria-labelledby={`animation-preview-title-${animation.id}`}
+        aria-modal="true"
+        className="animation-preview-dialog"
+        data-testid="animation-preview-dialog"
+        onKeyDown={handleDialogKeyDown}
+        ref={dialogRef}
+        role="dialog"
+        tabIndex={-1}
+      >
+        <button
+          aria-label="关闭动画预览"
+          className="animation-preview-close"
+          data-testid="animation-preview-close"
+          onClick={() => setOpen(false)}
+          ref={closeButtonRef}
+          type="button"
+        >
+          <X aria-hidden="true" size={20} />
+        </button>
+        <AnimationPreview
+          animation={animation}
+          project={project}
+          projectRoot={projectRoot}
+          titleId={`animation-preview-title-${animation.id}`}
+        />
+      </div>
+    </div>
+  ) : null;
+
+  return (
+    <>
+      <article
+        aria-haspopup="dialog"
+        aria-label={`${animation.name}，${animation.frames.length} 帧，${formatDuration(animation.durationMs)}，打开预览`}
+        className="asset-card animation-library-card"
+        data-animation-id={animation.id}
+        data-asset-kind="animation"
+        data-category="animation"
+        data-testid="animation-library-card"
+        onClick={openPreview}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            openPreview();
+          }
+        }}
+        ref={cardRef}
+        role="button"
+        tabIndex={0}
+      >
+        <div className="asset-card-preview animation-library-card-preview">
+          <div className="animation-library-cover-stage" data-cover-error={cover.error}>
+            {cover.url && firstFrame ? (
+              <div
+                className="animation-library-cover-canvas"
+                style={{
+                  aspectRatio: `${animation.source.canvas.width} / ${animation.source.canvas.height}`,
+                  width: `min(100%, ${320 * animation.source.canvas.width / animation.source.canvas.height}px)`,
+                }}
+              >
+                <img
+                  alt=""
+                  className="animation-library-cover-image"
+                  src={cover.url}
+                  style={{
+                    left: `${firstFrame.offset.x / animation.source.canvas.width * 100}%`,
+                    top: `${firstFrame.offset.y / animation.source.canvas.height * 100}%`,
+                    width: `${firstFrame.sourceViewport.width / animation.source.canvas.width * 100}%`,
+                    height: `${firstFrame.sourceViewport.height / animation.source.canvas.height * 100}%`,
+                  }}
+                />
+              </div>
+            ) : (
+              <span>{cover.error ? '首帧暂不可用' : '读取首帧…'}</span>
+            )}
+          </div>
+        </div>
+        <span className="asset-card-type-badge asset-card-type-badge-animation">动画</span>
+        <span className="asset-card-copy">
+          <strong className="asset-card-name" title={animation.name}>{animation.name}</strong>
+          <span className="asset-card-context">{animation.frames.length} 帧 · {formatDuration(animation.durationMs)}</span>
+          <span className="asset-card-metadata">{formatFps(animation.source.sourceFps)} FPS</span>
+        </span>
+      </article>
+      {dialog && typeof document !== 'undefined' ? createPortal(dialog, document.body) : null}
+    </>
+  );
 }
 
 export function AnimationLibraryPanel({
@@ -45,11 +273,6 @@ export function AnimationLibraryPanel({
     ),
     [animations, normalizedQuery],
   );
-  const [selectedAnimationId, setSelectedAnimationId] = useState<string | null>(null);
-  const selectedAnimation =
-    visibleAnimations.find((animation) => animation.id === selectedAnimationId) ??
-    visibleAnimations[0] ??
-    null;
 
   if (visibleAnimations.length === 0) {
     return (
@@ -61,34 +284,15 @@ export function AnimationLibraryPanel({
   }
 
   return (
-    <div className="animation-library-panel" data-testid="animation-library-panel">
-      <nav className="animation-library-list" aria-label="项目动画">
-        {visibleAnimations.map((animation) => (
-          <button
-            aria-pressed={selectedAnimation?.id === animation.id}
-            className={selectedAnimation?.id === animation.id
-              ? 'animation-library-item animation-library-item-selected'
-              : 'animation-library-item'}
-            data-animation-id={animation.id}
-            data-testid="animation-library-item"
-            key={animation.id}
-            onClick={() => setSelectedAnimationId(animation.id)}
-            type="button"
-          >
-            <strong>{animation.name}</strong>
-            <span>{animation.source.targetName}</span>
-            <small>{animation.frames.length} 帧 · {formatFps(animation.source.sourceFps)} fps</small>
-          </button>
-        ))}
-      </nav>
-      {selectedAnimation ? (
-        <AnimationPreview
-          animation={selectedAnimation}
-          key={selectedAnimation.id}
+    <div className="asset-grid" data-testid="animation-library-panel">
+      {visibleAnimations.map((animation) => (
+        <AnimationLibraryCard
+          animation={animation}
+          key={animation.id}
           project={project}
           projectRoot={projectRoot}
         />
-      ) : null}
+      ))}
     </div>
   );
 }
@@ -97,6 +301,7 @@ interface AnimationPreviewProps {
   animation: AnimationDefinition;
   project: Project;
   projectRoot: string;
+  titleId: string;
 }
 
 type FrameLoadResult = 'loaded' | 'stale' | 'error';
@@ -105,6 +310,7 @@ function AnimationPreview({
   animation,
   project,
   projectRoot,
+  titleId,
 }: AnimationPreviewProps): React.JSX.Element {
   const [frameIndex, setFrameIndex] = useState(0);
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
@@ -298,9 +504,8 @@ function AnimationPreview({
     <section className="animation-preview" data-animation-id={animation.id} data-testid="animation-preview">
       <header className="animation-preview-header">
         <div>
-          <strong>{animation.name}</strong>
-          <span>{animation.source.targetName} · {animation.frames.length} 帧 · {formatDuration(animation.durationMs)}</span>
-          <span title="动画暂不支持加入镜头或正式导出">仅支持素材库预览</span>
+          <strong id={titleId}>{animation.name}</strong>
+          <span>{animation.frames.length} 帧 · {formatFps(animation.source.sourceFps)} FPS · {formatDuration(animation.durationMs)}</span>
         </div>
         <small>{formatFps(animation.source.sourceFps)} fps</small>
       </header>
@@ -316,7 +521,7 @@ function AnimationPreview({
             data-testid="animation-preview-canvas"
             style={{
               aspectRatio: `${animation.source.canvas.width} / ${animation.source.canvas.height}`,
-              width: `min(100%, ${360 * animation.source.canvas.width / animation.source.canvas.height}px)`,
+              width: `min(100%, ${640 * animation.source.canvas.width / animation.source.canvas.height}px)`,
             }}
           >
             <img

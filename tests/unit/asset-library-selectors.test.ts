@@ -8,7 +8,9 @@ import {
 import {
   assetCategoryCounts,
   assetLibraryFilterCounts,
+  filterAssetLibraryItems,
   filterAssetLibraryEntries,
+  selectAssetLibraryItems,
   selectAssetLibraryEntries,
 } from '../../src/renderer/stores/assetLibrarySelectors';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -134,7 +136,17 @@ describe('asset library selectors', () => {
     const entries = selectAssetLibraryEntries(withAnimations, 'all');
     expect(entries.some((entry) => entry.asset.id === newAssetId)).toBe(false);
     expect(entries.some((entry) => entry.asset.id === existingImage.id)).toBe(true);
-    expect(assetLibraryFilterCounts(withAnimations).animation).toBe(2);
+    const items = selectAssetLibraryItems(withAnimations, 'all');
+    expect(items.filter((item) => item.kind === 'animation')).toHaveLength(2);
+    expect(selectAssetLibraryItems(withAnimations, 'animation')).toHaveLength(2);
+    expect(assetLibraryFilterCounts(withAnimations)).toMatchObject({
+      all: 6,
+      animation: 2,
+    });
+    expect(filterAssetLibraryItems(items, 'reused.fla')).toEqual([
+      expect.objectContaining({ kind: 'animation', animation: expect.objectContaining({ name: 'Reused animation' }) }),
+    ]);
+    expect(filterAssetLibraryItems(items, 'Created animation', 'prop')).toEqual([]);
   });
 
   it('filters every explicit image usage without changing role grouping or drop identity', () => {

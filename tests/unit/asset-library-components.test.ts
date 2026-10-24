@@ -7,7 +7,7 @@ import {
 } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { migrateProject } from '../../src/domain';
+import { ProjectSchema, migrateProject } from '../../src/domain';
 import { AssetGrid } from '../../src/renderer/features/assets/AssetGrid';
 import {
   AssetCard,
@@ -139,6 +139,61 @@ describe('asset library components', () => {
     expect(sourceMissingMarkup).toContain(
       'data-thumbnail-source-status="missing"',
     );
+  });
+
+  it('includes animations in the All count and the same paginated asset grid', () => {
+    const base = migrateProject(exampleProject);
+    const image = base.assets.find((asset) => asset.kind === 'image');
+    if (!image || image.kind !== 'image') throw new Error('Expected an image fixture.');
+    const frameDurationMs = 1_000 / 25;
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: base.assets.map((asset) =>
+        asset.id === image.id ? { ...asset, sha256: 'a'.repeat(64) } : asset,
+      ),
+      animations: [{
+        id: randomUUID(),
+        name: 'Walk cycle',
+        source: {
+          basename: 'walk.fla',
+          sha256: 'b'.repeat(64),
+          renderTargetId: 'fla-render-target-test-walk',
+          targetKind: 'graphic-symbol',
+          targetName: 'Walk',
+          startFrameIndex: 0,
+          endFrameIndex: 0,
+          sourceFps: 25,
+          canvas: { width: 1920, height: 1080 },
+          documentCanvas: { width: 1920, height: 1080 },
+          anchor: { x: 0, y: 0 },
+        },
+        durationMs: frameDurationMs,
+        frames: [{
+          ordinal: 0,
+          sourceFrameIndex: 0,
+          assetId: image.id,
+          sha256: 'a'.repeat(64),
+          sourceViewport: { x: 960, y: 540, width: 960, height: 540 },
+          offset: { x: 960, y: 540 },
+          startMs: 0,
+          durationMs: frameDurationMs,
+          createdBySequenceImport: false,
+        }],
+      }],
+    });
+    const markup = renderToStaticMarkup(createElement(AssetLibrary, {
+      snapshot: {
+        projectRoot: 'D:\\project.pandastage',
+        project,
+        dirty: false,
+        revision: 3,
+      },
+      hideHeading: true,
+    }));
+
+    expect(markup).toContain('<span>全部</span><strong>5</strong>');
+    expect(markup).toContain('data-grid-count="5"');
+    expect(markup).toContain('data-testid="animation-library-card"');
   });
 
   it('removes the Asset Browser title while keeping the workspace accessible', () => {
@@ -406,9 +461,12 @@ describe('asset library components', () => {
       },
     );
     const startedAt = performance.now();
+    const project = migrateProject(exampleProject);
     const markup = renderToStaticMarkup(
       createElement(AssetGrid, {
-        entries,
+        items: entries.map((entry) => ({ kind: 'asset' as const, id: entry.id, entry })),
+        project,
+        projectRoot: 'D:\\project.pandastage',
         selectedAssetId: entries[50]!.asset.id,
         draggingAssetId: null,
         thumbnails: {},
@@ -467,22 +525,32 @@ describe('asset library components', () => {
 
     const markup = renderToStaticMarkup(
       createElement(AssetGrid, {
-        entries: [
+        items: [
           {
+            kind: 'asset' as const,
             id: `asset:${failedAsset.id}`,
-            asset: failedAsset,
-            category: 'background',
-            contextLabel: '图片',
-            dropPayload: directPayload(failedAsset.id),
+            entry: {
+              id: `asset:${failedAsset.id}`,
+              asset: failedAsset,
+              category: 'background' as const,
+              contextLabel: '图片',
+              dropPayload: directPayload(failedAsset.id),
+            },
           },
           {
+            kind: 'asset' as const,
             id: `asset:${healthyAsset.id}`,
-            asset: healthyAsset,
-            category: 'background',
-            contextLabel: '图片',
-            dropPayload: directPayload(healthyAsset.id),
+            entry: {
+              id: `asset:${healthyAsset.id}`,
+              asset: healthyAsset,
+              category: 'background' as const,
+              contextLabel: '图片',
+              dropPayload: directPayload(healthyAsset.id),
+            },
           },
         ],
+        project,
+        projectRoot: 'D:\\project.pandastage',
         selectedAssetId: failedAsset.id,
         draggingAssetId: null,
         thumbnails: states,
