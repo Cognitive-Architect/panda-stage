@@ -52,30 +52,23 @@
 }
 
 .asset-library-browser {
-  flex-direction: column;
   min-height: 410px;
   align-items: stretch;
   gap: 12px;
 }
 
 .asset-category-tabs {
-  width: 100%;
-  flex: 0 0 auto;
-  flex-direction: row;
-  gap: 6px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
+  width: 132px;
+  flex: 0 0 132px;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .asset-category-tabs button {
   display: flex;
-  min-height: 38px;
-  padding: 6px 10px;
+  padding: 10px 11px;
   align-items: center;
   justify-content: space-between;
-  flex: 0 0 auto;
-  gap: 8px;
   color: #9fb0a5;
   background: rgb(255 255 255 / 4%);
   text-align: left;

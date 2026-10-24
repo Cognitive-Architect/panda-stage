@@ -1,0 +1,81 @@
+.asset-library-browser {
+  flex-direction: column;
+}
+
+.asset-category-tabs {
+  width: 100%;
+  flex: 0 0 auto;
+  flex-direction: row;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.asset-category-tabs button {
+  min-height: 38px;
+  padding: 6px 10px;
+  flex: 0 0 auto;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.resource-activity-panel .asset-category-tabs {
+  display: flex;
+  width: auto;
+  flex: 0 0 auto;
+  flex-direction: row;
+  gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.resource-activity-panel .asset-category-tabs button {
+  min-width: max-content;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 900px) {
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .resource-activity-dock[data-active-activity='assets']
+    .asset-category-tabs {
+    display: flex;
+    width: auto;
+    flex: 0 0 auto;
+    flex-direction: row;
+    gap: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
+    .resource-activity-dock[data-active-activity='assets']
+    .asset-category-tabs button {
+    display: flex;
+    min-width: max-content;
+    flex: 0 0 auto;
+  }
+}
+
+@media (min-width: 901px) {
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='assets']
+    .asset-library[data-asset-library-presentation='landscape']
+    .asset-category-tabs {
+    display: flex;
+    width: auto;
+    flex: 0 0 auto;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .editor-layout[data-shell-mode='landscape']
+    .resource-activity-dock-landscape[data-active-activity='assets']
+    .asset-library[data-asset-library-presentation='landscape']
+    .asset-category-tabs button {
+    min-width: max-content;
+    flex: 0 0 auto;
+  }
+}

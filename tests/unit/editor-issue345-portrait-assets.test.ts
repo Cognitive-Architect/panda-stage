@@ -41,10 +41,10 @@ describe('Issue #345 portrait Assets interaction and pagination', () => {
     );
 
     expect(library).toMatch(
-      /filterAssetLibraryEntries\([\s\S]*category === 'audio' \? 'all' : usageFilter,/u,
+      /filterAssetLibraryItems\([\s\S]*category === 'audio' \|\| category === 'animation' \? 'all' : usageFilter,/u,
     );
-    expect(library).toContain('paginateAssetLibraryEntries(visibleEntries, currentPage)');
-    expect(library).toContain('entries={pageEntries}');
+    expect(library).toContain('paginateAssetLibraryEntries(visibleItems, currentPage)');
+    expect(library).toContain('items={pageItems}');
     expect(library).toContain('setPage(1)');
     expect(library).toContain('const selectCategory');
     expect(library).toContain('const updateSearchQuery');

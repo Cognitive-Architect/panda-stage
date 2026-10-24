@@ -56,13 +56,20 @@ describe('R2-H.2 shares the C03 unified candidate workbench', () => {
     expect(assetLibrary).toContain('setStatus(outcome.status);');
   });
 
-  it('keeps image import as the default and requires a named source-FPS animation opt-in', () => {
-    expect(review).toContain('useState(false)');
+  it('keeps standard image import while defaulting the unified workbench to animation', () => {
+    expect(review).toContain("useState(presentation === 'unified-preview')");
     expect(review).toContain('作为普通 PNG 图片');
     expect(review).toContain('作为动画素材');
     expect(review).toContain('aria-label="动画名称"');
     expect(review).toContain('sourceFpsAvailable');
+    expect(review).toContain('data-testid="fla-frame-sequence-format-animation"');
+    expect(review).toContain('data-testid="fla-frame-sequence-format-images"');
+    expect(review).toContain("{presentation === 'unified-preview' ? '生成预览' : '生成连续画面'}");
+    expect(review).toContain("!multiSelectMode && onImportSingle");
+    expect(review).toContain("{effectiveImportAsAnimation ? '导入动画' : '导入图片'}");
     expect(session).toContain('sourceFps={ir.document.frameRate}');
+    expect(session).toContain('onImportSingle={() => {');
+    expect(session).toContain('void runImportAction([focusedSequenceItem])');
   });
 
   it('keeps sequence focus, preview target, operation target, and checked intent explicit', () => {

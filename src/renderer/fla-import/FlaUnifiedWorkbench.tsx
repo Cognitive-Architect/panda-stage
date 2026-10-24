@@ -12,7 +12,9 @@ export interface FlaUnifiedWorkbenchProgress {
 
 interface FlaUnifiedWorkbenchProps {
   candidates: readonly FlaWorkbenchCandidate[];
+  allCandidates: readonly FlaWorkbenchCandidate[];
   focusedCandidateIdentityKey: string | null;
+  multiSelectMode: boolean;
   searchText: string;
   selectedOnly: boolean;
   selectedCount: number;
@@ -24,11 +26,15 @@ interface FlaUnifiedWorkbenchProps {
   newEligibleCount: number;
   progress: FlaUnifiedWorkbenchProgress;
   receipt: FlaUnifiedImportReceipt | null;
+  singleModeSummary: string | null;
+  singleImportLabel: string | null;
+  singleImportDisabled: boolean;
   showSnapshotPreview: boolean;
   showSequencePreview: boolean;
   snapshotPreview: ReactNode;
   sequencePreview: ReactNode;
   onSearchTextChange: (value: string) => void;
+  onToggleMultiSelectMode: () => void;
   onToggleSelectedOnly: () => void;
   onFocusCandidate: (candidate: FlaWorkbenchCandidate) => void;
   onToggleCandidate: (candidate: FlaWorkbenchCandidate, checked: boolean) => void;
@@ -37,12 +43,15 @@ interface FlaUnifiedWorkbenchProps {
   onCancelBulkSelection: () => void;
   onClearSelection: () => void;
   onImport: () => void;
+  onImportFocused: () => void;
   onStopAfterCurrent: () => void;
 }
 
 export function FlaUnifiedWorkbench({
   candidates,
+  allCandidates,
   focusedCandidateIdentityKey,
+  multiSelectMode,
   searchText,
   selectedOnly,
   selectedCount,
@@ -54,11 +63,15 @@ export function FlaUnifiedWorkbench({
   newEligibleCount,
   progress,
   receipt,
+  singleModeSummary,
+  singleImportLabel,
+  singleImportDisabled,
   showSnapshotPreview,
   showSequencePreview,
   snapshotPreview,
   sequencePreview,
   onSearchTextChange,
+  onToggleMultiSelectMode,
   onToggleSelectedOnly,
   onFocusCandidate,
   onToggleCandidate,
@@ -67,6 +80,7 @@ export function FlaUnifiedWorkbench({
   onCancelBulkSelection,
   onClearSelection,
   onImport,
+  onImportFocused,
   onStopAfterCurrent,
 }: FlaUnifiedWorkbenchProps): React.JSX.Element {
   const [previewZoom, setPreviewZoom] = useState(1);
@@ -78,7 +92,7 @@ export function FlaUnifiedWorkbench({
     candidate.identityKey === focusedCandidateIdentityKey,
   ) ?? null;
   const relatedSnapshot = focusedCandidate?.kind === 'sequence'
-    ? candidates.find((candidate) => candidate.kind === 'snapshot' &&
+    ? allCandidates.find((candidate) => candidate.kind === 'snapshot' &&
       candidate.provenance.renderTargetId === focusedCandidate.provenance.renderTargetId) ?? null
     : null;
   const status = focusedCandidate ? focusedCandidateStatus(focusedCandidate) : null;
@@ -144,6 +158,7 @@ export function FlaUnifiedWorkbench({
     <>
       <main
         className="fla-c03-workbench"
+        data-multi-select={multiSelectMode ? 'true' : 'false'}
         data-sequence-preview={showSequencePreview ? 'true' : undefined}
         data-testid="fla-c03-workbench"
       >
@@ -162,41 +177,55 @@ export function FlaUnifiedWorkbench({
               />
             </label>
             <button
-              aria-label="全选当前结果"
-              data-testid="fla-c03-select-current-results"
-              disabled={locked || selectedOnly || visibleCandidates.every((candidate) => !candidate.selectable || candidate.checked)}
-              onClick={onSelectCurrentResults}
+              aria-label={multiSelectMode ? '返回单素材模式' : '进入多选模式'}
+              aria-pressed={multiSelectMode}
+              data-testid="fla-c03-multi-select-toggle"
+              disabled={locked || (multiSelectMode && selectedCount > 0)}
+              onClick={onToggleMultiSelectMode}
               type="button"
             >
-              全选
+              {multiSelectMode ? '单素材' : '多选'}
             </button>
-            <button
-              aria-label="清空全部已选素材"
-              data-testid="fla-c03-clear-selection"
-              disabled={locked || selectedCount === 0}
-              onClick={onClearSelection}
-              type="button"
-            >
-              清空
-            </button>
-            <button
-              aria-label={selectedOnly ? '返回浏览' : `查看已选 ${selectedCount}`}
-              aria-pressed={selectedOnly}
-              data-testid="fla-c03-selected-view"
-              disabled={(!selectedOnly && selectedCount === 0) || locked}
-              onClick={toggleSelectedView}
-              type="button"
-            >
-              {selectedOnly ? '返回浏览' : `已选 ${selectedCount}`}
-            </button>
-            {selectedOnly && searchText.trim() ? (
-              <output className="fla-c03-selected-view-status" data-testid="fla-c03-selected-view-status" role="status">
-                正在查看已选 · 搜索已暂停
-              </output>
+            {multiSelectMode ? (
+              <>
+                <button
+                  aria-label="全选当前结果"
+                  data-testid="fla-c03-select-current-results"
+                  disabled={locked || selectedOnly || visibleCandidates.every((candidate) => !candidate.selectable || candidate.checked)}
+                  onClick={onSelectCurrentResults}
+                  type="button"
+                >
+                  全选
+                </button>
+                <button
+                  aria-label="清空全部已选素材"
+                  data-testid="fla-c03-clear-selection"
+                  disabled={locked || selectedCount === 0}
+                  onClick={onClearSelection}
+                  type="button"
+                >
+                  清空
+                </button>
+                <button
+                  aria-label={selectedOnly ? '返回浏览' : `查看已选 ${selectedCount}`}
+                  aria-pressed={selectedOnly}
+                  data-testid="fla-c03-selected-view"
+                  disabled={(!selectedOnly && selectedCount === 0) || locked}
+                  onClick={toggleSelectedView}
+                  type="button"
+                >
+                  {selectedOnly ? '返回浏览' : `已选 ${selectedCount}`}
+                </button>
+                {selectedOnly && searchText.trim() ? (
+                  <output className="fla-c03-selected-view-status" data-testid="fla-c03-selected-view-status" role="status">
+                    正在查看已选 · 搜索已暂停
+                  </output>
+                ) : null}
+              </>
             ) : null}
           </div>
 
-          {bulkConfirmationOpen ? (
+          {multiSelectMode && bulkConfirmationOpen ? (
             <div className="fla-c03-bulk-confirmation" data-testid="fla-c03-bulk-confirmation" role="group" aria-label="确认批量选择">
               <span>即将勾选 {newEligibleCount} 项素材，暂不会导入。</span>
               <button type="button" disabled={newEligibleCount === 0 || locked} onClick={onConfirmBulkSelection} data-testid="fla-c03-bulk-confirm">
@@ -232,15 +261,14 @@ export function FlaUnifiedWorkbench({
             role="list"
           >
             {visibleCandidates.length > 0 ? visibleCandidates.map((candidate) => {
-              const thumbnail = candidatePreviewUrl(candidate, candidates);
-              const fullItemLabel = candidate.kind === 'sequence'
-                ? `${candidate.displayLabel} · 连续画面`
-                : candidate.displayLabel;
+              const thumbnail = candidatePreviewUrl(candidate, allCandidates);
+              const fullItemLabel = candidate.displayLabel;
               const cardLabel = candidate.cardLabel ?? candidate.displayLabel;
-              const itemLabel = candidate.kind === 'sequence'
-                ? `${cardLabel} · 连续画面`
-                : cardLabel;
-              const statusLabel = candidateStatus(candidate);
+              const itemLabel = cardLabel;
+              const statusLabel = candidate.kind === 'sequence' &&
+                (candidate.preview.status === 'verified' || candidate.preview.status === 'unscanned')
+                ? ''
+                : candidateStatus(candidate);
               return (
                 <li
                   className={`fla-c03-candidate${candidate.identityKey === focusedCandidateIdentityKey ? ' is-focused' : ''}${candidate.checked ? ' is-checked' : ''}`}
@@ -269,24 +297,27 @@ export function FlaUnifiedWorkbench({
                     </span>
                     <span className="fla-c03-candidate-copy">
                       <strong title={fullItemLabel}>{itemLabel}</strong>
+                      <small className="fla-c03-candidate-kind">{candidate.kind === 'sequence' ? '动画' : '图片'}</small>
                       {statusLabel ? <small data-status={candidate.preview.status}>{statusLabel}</small> : null}
                     </span>
                   </button>
-                  <label className="fla-c03-checkbox-hitbox">
-                    <input
-                      aria-label={`选择 ${fullItemLabel}`}
-                      checked={candidate.checked}
-                      disabled={!candidate.selectable || locked}
-                      onChange={(event) => onToggleCandidate(candidate, event.currentTarget.checked)}
-                      onKeyDown={(event) => {
-                        if ((event.key !== ' ' && event.code !== 'Space') || event.repeat) return;
-                        event.preventDefault();
-                        onToggleCandidate(candidate, !candidate.checked);
-                      }}
-                      type="checkbox"
-                    />
-                    <span className="sr-only">选择 {itemLabel}</span>
-                  </label>
+                  {multiSelectMode ? (
+                    <label className="fla-c03-checkbox-hitbox">
+                      <input
+                        aria-label={`选择 ${fullItemLabel}`}
+                        checked={candidate.checked}
+                        disabled={!candidate.selectable || locked}
+                        onChange={(event) => onToggleCandidate(candidate, event.currentTarget.checked)}
+                        onKeyDown={(event) => {
+                          if ((event.key !== ' ' && event.code !== 'Space') || event.repeat) return;
+                          event.preventDefault();
+                          onToggleCandidate(candidate, !candidate.checked);
+                        }}
+                        type="checkbox"
+                      />
+                      <span className="sr-only">选择 {itemLabel}</span>
+                    </label>
+                  ) : null}
                 </li>
               );
             }) : (
@@ -309,9 +340,7 @@ export function FlaUnifiedWorkbench({
         >
           <header className="fla-c03-preview-header">
             <div className="fla-c03-preview-title">
-              <h2 data-testid="fla-c03-focused-label">{focusedCandidate?.kind === 'sequence'
-                ? `${focusedCandidate.displayLabel} · 连续画面`
-                : focusedCandidate?.displayLabel ?? '预览'}</h2>
+              <h2 data-testid="fla-c03-focused-label">{focusedCandidate?.displayLabel ?? '预览'}</h2>
               {status ? <output data-testid="fla-c03-focused-status">{status}</output> : null}
             </div>
             <div className="fla-c03-zoom-tools" role="group" aria-label="预览缩放">
@@ -350,10 +379,12 @@ export function FlaUnifiedWorkbench({
 
       <footer className="fla-c03-import-footer" data-testid="fla-c03-import-footer">
         <div className="fla-c03-footer-summary">
-          <strong data-testid="fla-unified-import-selected-count">
+          <strong data-testid={multiSelectMode ? 'fla-unified-import-selected-count' : 'fla-single-mode-summary'}>
             {importing
-              ? stopAfterCurrentRequested ? '当前操作完成后将停止后续导入' : `正在导入已选 ${selectedCount} 项…`
-              : `已选择 ${selectedCount} 项`}
+              ? stopAfterCurrentRequested
+                ? '当前操作完成后将停止后续导入'
+                : multiSelectMode ? `正在导入已选 ${selectedCount} 项…` : '正在导入当前素材…'
+              : multiSelectMode ? `已选择 ${selectedCount} 项` : singleModeSummary ?? '选择一个素材查看预览'}
           </strong>
           {importing ? <span>当前操作结束后停止，已完成的结果会保留。</span> : null}
         </div>
@@ -367,7 +398,7 @@ export function FlaUnifiedWorkbench({
             >
               {stopAfterCurrentRequested ? '已请求停止' : '停止后续导入'}
             </button>
-          ) : (
+          ) : multiSelectMode ? (
             <button
               className="fla-c03-import-primary"
               data-testid="fla-unified-import"
@@ -375,9 +406,19 @@ export function FlaUnifiedWorkbench({
               onClick={onImport}
               type="button"
             >
-              导入 {selectedCount} 项
+              导入所选 {selectedCount} 项
             </button>
-          )}
+          ) : singleImportLabel ? (
+            <button
+              className="fla-c03-import-primary"
+              data-testid="fla-single-import"
+              disabled={singleImportDisabled || locked}
+              onClick={onImportFocused}
+              type="button"
+            >
+              {singleImportLabel}
+            </button>
+          ) : null}
         </div>
         {receipt ? <ImportReceipt receipt={receipt} /> : null}
       </footer>
@@ -396,7 +437,7 @@ function ImportReceipt({ receipt }: { receipt: FlaUnifiedImportReceipt }): React
       open={receipt.partial}
     >
       <summary>
-        {receipt.partial ? '部分导入完成' : '导入完成'}：新导入 {receipt.counts.imported} 项、复用 {receipt.counts.duplicate} 项、失败 {receipt.counts.failed} 项、未尝试 {receipt.counts.notAttempted} 项
+        {receiptSummary(receipt)}
       </summary>
       <div className="fla-c03-receipt-details">
         <output data-testid="fla-unified-import-counts">
@@ -476,7 +517,7 @@ function thumbnailPlaceholder(candidate: FlaWorkbenchCandidate): string {
   if (candidate.preview.status === 'unsupported') return '暂无法预览';
   if (candidate.preview.status === 'error') return '加载失败';
   if (candidate.kind === 'sequence' && candidate.preview.status === 'checking') return '生成中…';
-  return candidate.kind === 'sequence' ? '可生成' : '加载中…';
+  return candidate.kind === 'sequence' ? '预览' : '加载中…';
 }
 
 function candidateStatus(candidate: FlaWorkbenchCandidate): string {
@@ -486,7 +527,7 @@ function candidateStatus(candidate: FlaWorkbenchCandidate): string {
     case 'checking':
       return candidate.kind === 'sequence' ? '生成中…' : '加载中…';
     case 'unscanned':
-      return candidate.kind === 'sequence' ? '可生成' : '加载中…';
+      return candidate.kind === 'sequence' ? '' : '加载中…';
     case 'unsupported':
       return '暂无法预览';
     case 'blank':
@@ -494,6 +535,13 @@ function candidateStatus(candidate: FlaWorkbenchCandidate): string {
     case 'error':
       return '加载失败';
   }
+}
+
+function receiptSummary(receipt: FlaUnifiedImportReceipt): string {
+  if (receipt.partial) return `部分导入完成：新导入 ${receipt.counts.imported} 项、复用 ${receipt.counts.duplicate} 项、失败 ${receipt.counts.failed} 项、未尝试 ${receipt.counts.notAttempted} 项`;
+  if (receipt.selectedCount === 1 && receipt.counts.imported === 1) return '已导入素材库';
+  if (receipt.selectedCount === 1 && receipt.counts.duplicate === 1) return '素材已在素材库';
+  return `导入完成：新导入 ${receipt.counts.imported} 项、复用 ${receipt.counts.duplicate} 项、失败 ${receipt.counts.failed} 项、未尝试 ${receipt.counts.notAttempted} 项`;
 }
 
 function focusedCandidateStatus(candidate: FlaWorkbenchCandidate): string | null {
@@ -511,7 +559,7 @@ function PreviewPlaceholder({ candidate }: { candidate: FlaWorkbenchCandidate })
       : candidate.preview.status === 'error'
         ? '请重试检查，或选择其他素材。'
         : candidate.kind === 'sequence'
-          ? '生成连续画面后才可选择导入。'
+          ? '生成预览后再导入。'
           : '预览生成后会显示在这里。');
   return (
     <div

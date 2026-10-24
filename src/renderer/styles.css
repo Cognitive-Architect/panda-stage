@@ -96,6 +96,7 @@
 @import './styles/shell/resources/s09-07--landscape-asset-header.css';
 @import './styles/features/assets/s09-08--landscape-asset-visual.css';
 @import './styles/features/assets/animation-library.css';
+@import './styles/features/assets/asset-library-category-tabs.css';
 @import './styles/shell/resources/s10-01--character-detail-header.css';
 @import './styles/features/characters/workspace/s10-02--landscape-character-workbench.css';
 @import './styles/features/characters/expression/s10-03--landscape-expression-workbench.css';

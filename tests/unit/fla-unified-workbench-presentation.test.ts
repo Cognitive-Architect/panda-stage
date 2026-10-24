@@ -10,7 +10,9 @@ type WorkbenchProps = Parameters<typeof FlaUnifiedWorkbench>[0];
 
 const baseProps: WorkbenchProps = {
   candidates: [],
+  allCandidates: [],
   focusedCandidateIdentityKey: null,
+  multiSelectMode: false,
   searchText: '',
   selectedOnly: false,
   selectedCount: 0,
@@ -22,11 +24,15 @@ const baseProps: WorkbenchProps = {
   newEligibleCount: 0,
   progress: { phase: 'ready', completed: 0, total: 0, omittedCandidateCount: 0 },
   receipt: null,
+  singleModeSummary: null,
+  singleImportLabel: null,
+  singleImportDisabled: true,
   showSnapshotPreview: false,
   showSequencePreview: false,
   snapshotPreview: null,
   sequencePreview: null,
   onSearchTextChange: () => undefined,
+  onToggleMultiSelectMode: () => undefined,
   onToggleSelectedOnly: () => undefined,
   onFocusCandidate: () => undefined,
   onToggleCandidate: () => undefined,
@@ -35,6 +41,7 @@ const baseProps: WorkbenchProps = {
   onCancelBulkSelection: () => undefined,
   onClearSelection: () => undefined,
   onImport: () => undefined,
+  onImportFocused: () => undefined,
   onStopAfterCurrent: () => undefined,
 };
 
@@ -114,7 +121,7 @@ function failedReceipt(message: string): FlaUnifiedImportReceipt {
 
 describe('Issue #778 unified FLA workbench presentation', () => {
   it('states that bulk confirmation only checks candidates', () => {
-    const markup = renderWorkbench({ bulkConfirmationOpen: true, newEligibleCount: 398 });
+    const markup = renderWorkbench({ multiSelectMode: true, bulkConfirmationOpen: true, newEligibleCount: 398 });
 
     expect(markup).toContain('即将勾选 398 项素材，暂不会导入。');
     expect(markup).toContain('确认勾选');
@@ -122,7 +129,7 @@ describe('Issue #778 unified FLA workbench presentation', () => {
   });
 
   it('explains that search is paused in the selected-only view while retaining the query', () => {
-    const markup = renderWorkbench({ searchText: 'blue sleeve', selectedOnly: true, selectedCount: 1 });
+    const markup = renderWorkbench({ multiSelectMode: true, searchText: 'blue sleeve', selectedOnly: true, selectedCount: 1 });
 
     expect(markup).toContain('正在查看已选 · 搜索已暂停');
     expect(markup).toContain('value="blue sleeve"');
@@ -131,8 +138,8 @@ describe('Issue #778 unified FLA workbench presentation', () => {
   });
 
   it('keeps toolbar labels compact and truthful, and preserves reset and import semantics', () => {
-    const emptyMarkup = renderWorkbench();
-    const selectedMarkup = renderWorkbench({ selectedCount: 3 });
+    const emptyMarkup = renderWorkbench({ multiSelectMode: true });
+    const selectedMarkup = renderWorkbench({ multiSelectMode: true, selectedCount: 3 });
 
     expect(emptyMarkup).toContain('aria-label="全选当前结果"');
     expect(emptyMarkup).toContain('>全选</button>');
@@ -143,8 +150,31 @@ describe('Issue #778 unified FLA workbench presentation', () => {
     expect(emptyMarkup).toContain('aria-label="恢复默认预览大小"');
     expect(emptyMarkup).toContain('title="恢复默认预览大小"');
     expect(emptyMarkup).toContain('>适中</button>');
-    expect(emptyMarkup).toContain('>导入 0 项</button>');
+    expect(emptyMarkup).toContain('>导入所选 0 项</button>');
     expect(emptyMarkup).toMatch(/data-testid="fla-unified-import"[^>]*disabled/u);
+  });
+
+  it('starts with one-item browsing and hides batch selection until requested', () => {
+    const candidate = sequenceCandidate('verified');
+    const markup = renderWorkbench({
+      candidates: [candidate],
+      focusedCandidateIdentityKey: candidate.identityKey,
+      singleModeSummary: 'com8 · 21 帧 · 25 FPS · 0.84 秒',
+      singleImportLabel: '导入图片',
+    });
+
+    expect(markup).toContain('data-multi-select="false"');
+    expect(markup).toContain('data-testid="fla-c03-multi-select-toggle"');
+    expect(markup).toContain('>多选</button>');
+    expect(markup).toContain('data-testid="fla-single-mode-summary"');
+    expect(markup).toContain('com8 · 21 帧 · 25 FPS · 0.84 秒');
+    expect(markup).toContain('data-testid="fla-single-import"');
+    expect(markup).toContain('>导入图片</button>');
+    expect(markup).not.toContain('data-testid="fla-c03-select-current-results"');
+    expect(markup).not.toContain('data-testid="fla-c03-clear-selection"');
+    expect(markup).not.toContain('data-testid="fla-unified-import-selected-count"');
+    expect(markup).not.toContain('data-testid="fla-unified-import"');
+    expect(markup).not.toContain('type="checkbox"');
   });
 
   it('shows concise sequence readiness without changing candidate eligibility', () => {
@@ -165,11 +195,12 @@ describe('Issue #778 unified FLA workbench presentation', () => {
     const unsupportedMarkup = renderWorkbench({ candidates: [unsupported] });
 
     expect(ready).toMatchObject({ selectable: true, preview: { status: 'verified', requestId: expect.any(String) } });
-    expect(readyMarkup).toContain('<small data-status="verified">已生成</small>');
+    expect(readyMarkup).not.toContain('<small data-status="verified">已生成</small>');
     expect(readyMarkup).not.toContain('第 1–7 帧已生成');
     expect(readyMarkup).not.toContain('data-testid="fla-c03-focused-status"');
-    expect(unscannedMarkup).toContain('<span>可生成</span>');
-    expect(unscannedMarkup).toContain('<small data-status="unscanned">可生成</small>');
+    expect(unscannedMarkup).toContain('<span>预览</span>');
+    expect(unscannedMarkup).not.toContain('<small data-status="unscanned">');
+    expect(unscannedMarkup).not.toContain('可生成');
     expect(unscanned).toMatchObject({ selectable: false, checked: false });
     expect(unscannedMarkup).toMatch(/data-selectable="false"[^>]*>[\s\S]*?disabled/u);
     expect(checkingMarkup).toContain('<span>生成中…</span>');
