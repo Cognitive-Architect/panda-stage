@@ -34,6 +34,83 @@ function blobUrl(bytes: Uint8Array, mimeType: string): string {
 interface AnimationCoverState {
   url: string | null;
   error: boolean;
+  loading: boolean;
+}
+
+interface AnimationCoverReadResult {
+  ok: boolean;
+  mimeType?: string;
+  bytes?: Uint8Array;
+}
+
+export function createAnimationCoverLoader(options: {
+  read: () => Promise<AnimationCoverReadResult>;
+  createUrl: (bytes: Uint8Array, mimeType: string) => string;
+  revokeUrl: (url: string) => void;
+  onStateChange: (state: AnimationCoverState) => void;
+}): { setVisible: (visible: boolean) => void; dispose: () => void } {
+  let visible = false;
+  let disposed = false;
+  let requestPending = false;
+  let requestGeneration = 0;
+  let coverUrl: string | null = null;
+
+  const publish = (state: AnimationCoverState): void => {
+    if (!disposed) options.onStateChange(state);
+  };
+
+  const load = (): void => {
+    if (disposed || !visible || requestPending || coverUrl) return;
+    requestPending = true;
+    const generation = ++requestGeneration;
+    publish({ url: null, error: false, loading: true });
+
+    void options.read().then((response) => {
+      requestPending = false;
+      if (disposed) return;
+      if (generation !== requestGeneration || !visible) {
+        if (visible) load();
+        return;
+      }
+      if (!response.ok || response.mimeType !== 'image/png' || !response.bytes) {
+        publish({ url: null, error: true, loading: false });
+        return;
+      }
+      coverUrl = options.createUrl(response.bytes, response.mimeType);
+      publish({ url: coverUrl, error: false, loading: false });
+    }).catch(() => {
+      requestPending = false;
+      if (disposed) return;
+      if (generation !== requestGeneration || !visible) {
+        if (visible) load();
+        return;
+      }
+      publish({ url: null, error: true, loading: false });
+    });
+  };
+
+  return {
+    setVisible(nextVisible) {
+      if (disposed || visible === nextVisible) return;
+      visible = nextVisible;
+      if (visible) {
+        load();
+        return;
+      }
+      requestGeneration += 1;
+      if (coverUrl) options.revokeUrl(coverUrl);
+      coverUrl = null;
+      publish({ url: null, error: false, loading: false });
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      visible = false;
+      requestGeneration += 1;
+      if (coverUrl) options.revokeUrl(coverUrl);
+      coverUrl = null;
+    },
+  };
 }
 
 interface AnimationCardScrollPosition {
@@ -53,8 +130,9 @@ export function AnimationLibraryCard({
   project,
   projectRoot,
 }: AnimationLibraryCardProps): React.JSX.Element {
-  const [cover, setCover] = useState<AnimationCoverState>({ url: null, error: false });
+  const [cover, setCover] = useState<AnimationCoverState>({ url: null, error: false, loading: false });
   const [open, setOpen] = useState(false);
+  const coverStageRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -64,36 +142,39 @@ export function AnimationLibraryCard({
   const firstFrame = animation.frames[0];
 
   useEffect(() => {
-    let active = true;
-    let coverUrl: string | null = null;
-    setCover({ url: null, error: false });
+    setCover({ url: null, error: false, loading: false });
     if (!firstFrame) {
-      setCover({ url: null, error: true });
+      setCover({ url: null, error: true, loading: false });
       return undefined;
     }
     const asset = project.assets.find((candidate) => candidate.id === firstFrame.assetId);
     if (!asset || asset.kind !== 'image' || asset.sha256 !== firstFrame.sha256) {
-      setCover({ url: null, error: true });
+      setCover({ url: null, error: true, loading: false });
       return undefined;
     }
-    void window.pandaStage.assets.readCanvasImage({
-      projectRoot,
-      assetId: firstFrame.assetId,
-      sha256: firstFrame.sha256,
-    }).then((response) => {
-      if (!active) return;
-      if (!response.ok || response.mimeType !== 'image/png') {
-        setCover({ url: null, error: true });
-        return;
-      }
-      coverUrl = blobUrl(response.bytes, response.mimeType);
-      setCover({ url: coverUrl, error: false });
-    }).catch(() => {
-      if (active) setCover({ url: null, error: true });
+    const stage = coverStageRef.current;
+    if (!stage) return undefined;
+    const loader = createAnimationCoverLoader({
+      read: () => window.pandaStage.assets.readCanvasImage({
+        projectRoot,
+        assetId: firstFrame.assetId,
+        sha256: firstFrame.sha256,
+      }),
+      createUrl: blobUrl,
+      revokeUrl: (url) => URL.revokeObjectURL(url),
+      onStateChange: setCover,
     });
+    const observer = typeof IntersectionObserver === 'undefined'
+      ? null
+      : new IntersectionObserver((entries) => {
+          const entry = entries.find((candidate) => candidate.target === stage);
+          if (entry) loader.setVisible(entry.isIntersecting);
+        }, { rootMargin: '64px 0px' });
+    if (observer) observer.observe(stage);
+    else loader.setVisible(true);
     return () => {
-      active = false;
-      if (coverUrl) URL.revokeObjectURL(coverUrl);
+      observer?.disconnect();
+      loader.dispose();
     };
   }, [animation.id, firstFrame, project.assets, projectRoot]);
 
@@ -221,7 +302,7 @@ export function AnimationLibraryCard({
         tabIndex={0}
       >
         <div className="asset-card-preview animation-library-card-preview">
-          <div className="animation-library-cover-stage" data-cover-error={cover.error}>
+          <div className="animation-library-cover-stage" data-cover-error={cover.error} ref={coverStageRef}>
             {cover.url && firstFrame ? (
               <div
                 className="animation-library-cover-canvas"
@@ -242,9 +323,7 @@ export function AnimationLibraryCard({
                   }}
                 />
               </div>
-            ) : (
-              <span>{cover.error ? '首帧暂不可用' : '读取首帧…'}</span>
-            )}
+            ) : cover.error ? <span>首帧暂不可用</span> : cover.loading ? <span>读取首帧…</span> : null}
           </div>
         </div>
         <span className="asset-card-type-badge asset-card-type-badge-animation">动画</span>
@@ -306,7 +385,7 @@ interface AnimationPreviewProps {
 
 type FrameLoadResult = 'loaded' | 'stale' | 'error';
 
-function AnimationPreview({
+export function AnimationPreview({
   animation,
   project,
   projectRoot,
@@ -505,9 +584,7 @@ function AnimationPreview({
       <header className="animation-preview-header">
         <div>
           <strong id={titleId}>{animation.name}</strong>
-          <span>{animation.frames.length} 帧 · {formatFps(animation.source.sourceFps)} FPS · {formatDuration(animation.durationMs)}</span>
         </div>
-        <small>{formatFps(animation.source.sourceFps)} fps</small>
       </header>
       <div
         aria-busy={loading}

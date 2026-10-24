@@ -1,7 +1,9 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { FlaUnifiedImportReceipt } from './fla-unified-import';
-import type { FlaWorkbenchCandidate } from './fla-workbench-candidates';
+import { readableFlaCandidateLabel, type FlaWorkbenchCandidate } from './fla-workbench-candidates';
 import { filterFlaUnifiedCandidates } from './fla-unified-workbench-selection';
+
+const SINGLE_SUCCESS_RECEIPT_DURATION_MS = 2_400;
 
 export interface FlaUnifiedWorkbenchProgress {
   phase: 'loading' | 'scanning' | 'ready' | 'error';
@@ -91,6 +93,9 @@ export function FlaUnifiedWorkbench({
   const focusedCandidate = candidates.find((candidate) =>
     candidate.identityKey === focusedCandidateIdentityKey,
   ) ?? null;
+  const focusedCandidateLabel = focusedCandidate
+    ? readableFlaCandidateLabel(focusedCandidate.displayLabel)
+    : null;
   const relatedSnapshot = focusedCandidate?.kind === 'sequence'
     ? allCandidates.find((candidate) => candidate.kind === 'snapshot' &&
       candidate.provenance.renderTargetId === focusedCandidate.provenance.renderTargetId) ?? null
@@ -340,7 +345,7 @@ export function FlaUnifiedWorkbench({
         >
           <header className="fla-c03-preview-header">
             <div className="fla-c03-preview-title">
-              <h2 data-testid="fla-c03-focused-label">{focusedCandidate?.displayLabel ?? '预览'}</h2>
+              <h2 data-testid="fla-c03-focused-label">{focusedCandidateLabel ?? '预览'}</h2>
               {status ? <output data-testid="fla-c03-focused-status">{status}</output> : null}
             </div>
             <div className="fla-c03-zoom-tools" role="group" aria-label="预览缩放">
@@ -426,8 +431,33 @@ export function FlaUnifiedWorkbench({
   );
 }
 
-function ImportReceipt({ receipt }: { receipt: FlaUnifiedImportReceipt }): React.JSX.Element {
+function ImportReceipt({ receipt }: { receipt: FlaUnifiedImportReceipt }): React.JSX.Element | null {
+  const [dismissedReceipt, setDismissedReceipt] = useState<FlaUnifiedImportReceipt | null>(null);
+  const cleanSingleSuccess = isCleanSingleItemSuccess(receipt);
   const hasDiagnostics = receipt.warnings.length > 0 || receipt.items.some((item) => item.message);
+
+  useEffect(() => {
+    if (!cleanSingleSuccess) return undefined;
+    const timeoutId = window.setTimeout(
+      () => setDismissedReceipt(receipt),
+      SINGLE_SUCCESS_RECEIPT_DURATION_MS,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [cleanSingleSuccess, receipt]);
+
+  if (cleanSingleSuccess) {
+    if (dismissedReceipt === receipt) return null;
+    return (
+      <output
+        aria-live="polite"
+        className="fla-c03-receipt-transient"
+        data-testid="fla-unified-import-receipt"
+        role="status"
+      >
+        {receiptSummary(receipt)}
+      </output>
+    );
+  }
 
   return (
     <details
@@ -499,6 +529,24 @@ function ImportReceipt({ receipt }: { receipt: FlaUnifiedImportReceipt }): React
       </div>
     </details>
   );
+}
+
+export function isCleanSingleItemSuccess(receipt: FlaUnifiedImportReceipt): boolean {
+  const [item] = receipt.items;
+  if (
+    receipt.selectedCount !== 1 ||
+    receipt.items.length !== 1 ||
+    receipt.partial ||
+    receipt.cancelled ||
+    receipt.warnings.length > 0 ||
+    receipt.counts.failed !== 0 ||
+    receipt.counts.notAttempted !== 0 ||
+    !item ||
+    item.message
+  ) return false;
+  return item.status === 'imported'
+    ? receipt.counts.imported === 1 && receipt.counts.duplicate === 0
+    : item.status === 'duplicate' && receipt.counts.imported === 0 && receipt.counts.duplicate === 1;
 }
 
 function candidatePreviewUrl(

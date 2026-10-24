@@ -2,8 +2,11 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { FlaRenderableTargetCatalogEntry } from '../../src/shared/fla-static-snapshot-api';
-import { FlaUnifiedWorkbench } from '../../src/renderer/fla-import/FlaUnifiedWorkbench';
-import { createFlaWorkbenchCandidates } from '../../src/renderer/fla-import/fla-workbench-candidates';
+import { FlaUnifiedWorkbench, isCleanSingleItemSuccess } from '../../src/renderer/fla-import/FlaUnifiedWorkbench';
+import {
+  createFlaWorkbenchCandidates,
+  formatFlaSingleModeSummary,
+} from '../../src/renderer/fla-import/fla-workbench-candidates';
 import type { FlaUnifiedImportReceipt } from '../../src/renderer/fla-import/fla-unified-import';
 
 type WorkbenchProps = Parameters<typeof FlaUnifiedWorkbench>[0];
@@ -89,7 +92,7 @@ function sequenceCandidate(status: 'unscanned' | 'checking' | 'verified' | 'erro
     sequenceEntries: [entry],
     sequencePreviews: preview ? { [renderTargetId]: preview } : undefined,
   });
-  if (!candidate) throw new Error(`No sequence candidate for ${status}`);
+  if (!candidate || candidate.kind !== 'sequence') throw new Error(`No sequence candidate for ${status}`);
   return candidate;
 }
 
@@ -115,6 +118,31 @@ function failedReceipt(message: string): FlaUnifiedImportReceipt {
     partial: true,
     cancelled: false,
     warnings: [message],
+    snapshot: {} as FlaUnifiedImportReceipt['snapshot'],
+  };
+}
+
+function successfulReceipt(status: 'imported' | 'duplicate' = 'imported'): FlaUnifiedImportReceipt {
+  return {
+    selectedCount: 1,
+    items: [{
+      key: 'sequence:1',
+      kind: 'sequence',
+      identityKey: 'sequence-1',
+      label: 'com8',
+      status,
+    }],
+    counts: {
+      imported: status === 'imported' ? 1 : 0,
+      duplicate: status === 'duplicate' ? 1 : 0,
+      failed: 0,
+      notAttempted: 0,
+      importedAssets: status === 'imported' ? 21 : 0,
+      duplicateAssets: status === 'duplicate' ? 21 : 0,
+    },
+    partial: false,
+    cancelled: false,
+    warnings: [],
     snapshot: {} as FlaUnifiedImportReceipt['snapshot'],
   };
 }
@@ -156,10 +184,11 @@ describe('Issue #778 unified FLA workbench presentation', () => {
 
   it('starts with one-item browsing and hides batch selection until requested', () => {
     const candidate = sequenceCandidate('verified');
+    const longLabelCandidate = { ...candidate, displayLabel: 'D:\\Internal\\Library\\com8' };
     const markup = renderWorkbench({
-      candidates: [candidate],
+      candidates: [longLabelCandidate],
       focusedCandidateIdentityKey: candidate.identityKey,
-      singleModeSummary: 'com8 · 21 帧 · 25 FPS · 0.84 秒',
+      singleModeSummary: 'com8 · 21 帧 · 0.84 秒',
       singleImportLabel: '导入图片',
     });
 
@@ -167,7 +196,10 @@ describe('Issue #778 unified FLA workbench presentation', () => {
     expect(markup).toContain('data-testid="fla-c03-multi-select-toggle"');
     expect(markup).toContain('>多选</button>');
     expect(markup).toContain('data-testid="fla-single-mode-summary"');
-    expect(markup).toContain('com8 · 21 帧 · 25 FPS · 0.84 秒');
+    expect(markup).toContain('<h2 data-testid="fla-c03-focused-label">com8</h2>');
+    expect(markup).toContain('com8 · 21 帧 · 0.84 秒');
+    expect(markup).not.toContain('25 FPS');
+    expect(markup).not.toContain('D:/Internal/Library/com8');
     expect(markup).toContain('data-testid="fla-single-import"');
     expect(markup).toContain('>导入图片</button>');
     expect(markup).not.toContain('data-testid="fla-c03-select-current-results"');
@@ -175,6 +207,19 @@ describe('Issue #778 unified FLA workbench presentation', () => {
     expect(markup).not.toContain('data-testid="fla-unified-import-selected-count"');
     expect(markup).not.toContain('data-testid="fla-unified-import"');
     expect(markup).not.toContain('type="checkbox"');
+  });
+
+  it('summarizes a sequence with its short name, frame count, and duration but no source FPS', () => {
+    const candidate = sequenceCandidate('verified');
+    const sequence = {
+      ...candidate,
+      provenance: { ...candidate.provenance, frameCount: 21 },
+    };
+    const longCandidate = { ...candidate, displayLabel: 'D:\\Internal\\Library\\com8' };
+
+    expect(formatFlaSingleModeSummary(longCandidate, sequence, 25)).toBe('com8 · 21 帧 · 0.84 秒');
+    expect(formatFlaSingleModeSummary(longCandidate, sequence, Number.NaN)).toBe('com8 · 21 帧');
+    expect(formatFlaSingleModeSummary(null, null, undefined)).toBeNull();
   });
 
   it('shows concise sequence readiness without changing candidate eligibility', () => {
@@ -256,5 +301,28 @@ describe('Issue #778 unified FLA workbench presentation', () => {
     expect(diagnosticsOpenTag).toBeDefined();
     expect(diagnosticsOpenTag).not.toContain(' open');
     expect(markup.slice(diagnosticsStart)).toContain(`<code>${rawMessage}</code>`);
+  });
+
+  it('uses a transient status only for a clean single-item success', () => {
+    const imported = successfulReceipt('imported');
+    const duplicate = successfulReceipt('duplicate');
+    const warning = { ...imported, warnings: ['需要核对'] };
+    const cancelled = { ...imported, cancelled: true };
+
+    expect(isCleanSingleItemSuccess(imported)).toBe(true);
+    expect(isCleanSingleItemSuccess(duplicate)).toBe(true);
+    expect(isCleanSingleItemSuccess(warning)).toBe(false);
+    expect(isCleanSingleItemSuccess(cancelled)).toBe(false);
+
+    const simpleMarkup = renderWorkbench({ receipt: imported });
+    expect(simpleMarkup).toContain('role="status"');
+    expect(simpleMarkup).toContain('aria-live="polite"');
+    expect(simpleMarkup).toContain('>已导入素材库</output>');
+    expect(simpleMarkup).not.toContain('<details class="fla-c03-receipt"');
+    expect(simpleMarkup).not.toContain('fla-unified-import-counts');
+
+    const warningMarkup = renderWorkbench({ receipt: warning });
+    expect(warningMarkup).toContain('<details class="fla-c03-receipt"');
+    expect(warningMarkup).toContain('需要核对');
   });
 });

@@ -888,6 +888,14 @@
   font-size: 11px;
 }
 
+.fla-c03-receipt-transient {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #b7eac3;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .fla-c03-receipt[data-partial='true'] {
   border-color: rgb(213 168 92 / 55%);
   background: rgb(213 168 92 / 8%);

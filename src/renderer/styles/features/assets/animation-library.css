@@ -221,7 +221,7 @@
   outline-offset: 2px;
 }
 
-.asset-card.animation-library-card-preview {
+.asset-card-preview.animation-library-card-preview {
   display: grid;
   padding: 0;
   border-radius: 8px 8px 0 0;

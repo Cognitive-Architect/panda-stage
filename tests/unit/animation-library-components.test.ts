@@ -1,8 +1,13 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { readFile } from 'node:fs/promises';
 import { ProjectSchema, migrateProject } from '../../src/domain';
-import { AnimationLibraryPanel } from '../../src/renderer/features/assets/AnimationLibraryPanel';
+import {
+  AnimationLibraryPanel,
+  AnimationPreview,
+  createAnimationCoverLoader,
+} from '../../src/renderer/features/assets/AnimationLibraryPanel';
 import { createAnimationImageBlob } from '../../src/renderer/features/assets/animationImageBytes';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
@@ -94,5 +99,116 @@ describe('animation library', () => {
       searchQuery: 'missing',
     }));
     expect(noMatch).toContain('data-testid="animation-library-empty"');
+  });
+
+  it('renders the modal preview without duplicating source FPS or frame metadata', () => {
+    const project = projectWithAnimation();
+    const animation = project.animations[0]!;
+    const markup = renderToStaticMarkup(createElement(AnimationPreview, {
+      animation,
+      project,
+      projectRoot: 'D:\\project.pandastage',
+      titleId: 'animation-preview-title',
+    }));
+
+    expect(markup).toContain('id="animation-preview-title">Walk</strong>');
+    expect(markup).not.toContain('12 FPS');
+    expect(markup).not.toContain('12 fps');
+    expect(markup).not.toContain('2 帧 ·');
+  });
+
+  it('loads a cover only while visible and revokes its URL when it leaves view', async () => {
+    const deferredReads: Array<(value: { ok: boolean; mimeType?: string; bytes?: Uint8Array }) => void> = [];
+    const read = vi.fn(() => new Promise<{ ok: boolean; mimeType?: string; bytes?: Uint8Array }>(
+      (resolve) => deferredReads.push(resolve),
+    ));
+    const createUrl = vi.fn(() => 'blob:animation-cover');
+    const revokeUrl = vi.fn();
+    const onStateChange = vi.fn();
+    const loader = createAnimationCoverLoader({ read, createUrl, revokeUrl, onStateChange });
+
+    expect(read).not.toHaveBeenCalled();
+    loader.setVisible(true);
+    expect(read).toHaveBeenCalledTimes(1);
+    loader.setVisible(false);
+    deferredReads[0]!({ ok: true, mimeType: 'image/png', bytes: new Uint8Array([1, 2, 3]) });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(createUrl).not.toHaveBeenCalled();
+
+    loader.setVisible(true);
+    expect(read).toHaveBeenCalledTimes(2);
+    deferredReads[1]!({ ok: true, mimeType: 'image/png', bytes: new Uint8Array([4, 5, 6]) });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onStateChange).toHaveBeenLastCalledWith({
+      url: 'blob:animation-cover',
+      error: false,
+      loading: false,
+    });
+
+    loader.setVisible(false);
+    expect(revokeUrl).toHaveBeenCalledExactlyOnceWith('blob:animation-cover');
+    expect(onStateChange).toHaveBeenLastCalledWith({ url: null, error: false, loading: false });
+    loader.dispose();
+    expect(revokeUrl).toHaveBeenCalledExactlyOnceWith('blob:animation-cover');
+  });
+
+  it('discards stale replies on disposal and preserves the unavailable-cover state', async () => {
+    let resolveRead!: (value: { ok: boolean; mimeType?: string; bytes?: Uint8Array }) => void;
+    const createUrl = vi.fn(() => 'blob:stale-cover');
+    const onStateChange = vi.fn();
+    const loader = createAnimationCoverLoader({
+      read: () => new Promise((resolve) => { resolveRead = resolve; }),
+      createUrl,
+      revokeUrl: vi.fn(),
+      onStateChange,
+    });
+
+    loader.setVisible(true);
+    const stateCountBeforeDispose = onStateChange.mock.calls.length;
+    loader.dispose();
+    resolveRead({ ok: true, mimeType: 'image/png', bytes: new Uint8Array([1]) });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(createUrl).not.toHaveBeenCalled();
+    expect(onStateChange).toHaveBeenCalledTimes(stateCountBeforeDispose);
+
+    const failedState = vi.fn();
+    const failedLoader = createAnimationCoverLoader({
+      read: async () => ({ ok: false }),
+      createUrl: vi.fn(() => 'blob:unused'),
+      revokeUrl: vi.fn(),
+      onStateChange: failedState,
+    });
+    failedLoader.setVisible(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(failedState).toHaveBeenLastCalledWith({ url: null, error: true, loading: false });
+    failedLoader.dispose();
+  });
+
+  it('revokes a loaded cover when its card unmounts', async () => {
+    const revokeUrl = vi.fn();
+    const loader = createAnimationCoverLoader({
+      read: async () => ({ ok: true, mimeType: 'image/png', bytes: new Uint8Array([1]) }),
+      createUrl: () => 'blob:unmounted-cover',
+      revokeUrl,
+      onStateChange: vi.fn(),
+    });
+
+    loader.setVisible(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    loader.dispose();
+
+    expect(revokeUrl).toHaveBeenCalledExactlyOnceWith('blob:unmounted-cover');
+  });
+
+  it('matches the animation cover style to the classes on the preview element', async () => {
+    const css = await readFile('src/renderer/styles/features/assets/animation-library.css', 'utf8');
+
+    expect(css).toContain('.asset-card-preview.animation-library-card-preview {');
+    expect(css).not.toContain('.asset-card.animation-library-card-preview');
   });
 });

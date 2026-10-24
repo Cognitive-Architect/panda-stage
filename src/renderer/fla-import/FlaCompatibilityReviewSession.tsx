@@ -16,6 +16,7 @@ import { reviewMedia } from './fla-review';
 import {
   createFlaWorkbenchCandidateSelection,
   createFlaWorkbenchCandidates,
+  formatFlaSingleModeSummary,
   focusFlaWorkbenchCandidate,
   sortFlaWorkbenchCandidates,
   type FlaWorkbenchCandidate,
@@ -497,13 +498,11 @@ export function FlaCompatibilityReviewSession({
   const canImportFocusedSequence = focusedSequenceItem
     ? canImportItems([focusedSequenceItem])
     : false;
-  const singleModeSummary = focusedCandidate
-    ? focusedSequenceCandidate && ir
-      ? Number.isFinite(ir.document.frameRate) && ir.document.frameRate > 0 && ir.document.frameRate <= 1_000
-        ? `${focusedCandidate.displayLabel} · ${focusedSequenceCandidate.provenance.frameCount} 帧 · ${ir.document.frameRate} FPS · ${(focusedSequenceCandidate.provenance.frameCount / ir.document.frameRate).toFixed(2)} 秒`
-        : `${focusedCandidate.displayLabel} · ${focusedSequenceCandidate.provenance.frameCount} 帧 · 源 FPS 不可用`
-      : `${focusedCandidate.displayLabel} · 图片`
-    : null;
+  const singleModeSummary = formatFlaSingleModeSummary(
+    focusedCandidate,
+    focusedSequenceCandidate,
+    ir?.document.frameRate,
+  );
 
   const runImportAction = async (
     requestedItems: readonly FlaUnifiedImportItem[] = selectedUnifiedItems,
