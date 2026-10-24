@@ -1,0 +1,203 @@
+.animation-library-panel {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  gap: var(--ui-space-3, 12px);
+}
+
+.animation-library-list {
+  display: grid;
+  width: 190px;
+  max-height: 440px;
+  flex: 0 0 190px;
+  align-content: start;
+  gap: var(--ui-space-2, 8px);
+  overflow: auto;
+}
+
+.animation-library-item {
+  display: grid;
+  min-width: 0;
+  min-height: 68px;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-color-border, rgb(127 199 148 / 28%));
+  border-radius: var(--ui-radius-medium, 10px);
+  color: var(--ui-color-text-primary, #eef6f0);
+  background: var(--asset-library-card-surface, #17211b);
+  text-align: left;
+  gap: 3px;
+  cursor: pointer;
+}
+
+.animation-library-item:hover,
+.animation-library-item:focus-visible {
+  border-color: var(--ui-color-selected-border, #7fc794);
+}
+
+.animation-library-item:focus-visible,
+.animation-preview-controls button:focus-visible,
+.animation-preview-seek input:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring, rgb(149 224 172 / 80%));
+  outline-offset: 2px;
+}
+
+.animation-library-item-selected {
+  border-color: var(--ui-color-selected-border, #7fc794);
+  background: var(--ui-color-selected-surface, rgb(65 145 87 / 34%));
+}
+
+.animation-library-item span,
+.animation-library-item small,
+.animation-preview-header span {
+  overflow: hidden;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font: var(--ui-font-secondary, 12px/1.4 Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.animation-preview {
+  display: grid;
+  min-width: 0;
+  min-height: 260px;
+  flex: 1;
+  grid-template-rows: auto minmax(160px, 1fr) auto auto;
+  overflow: hidden;
+  border: 1px solid var(--ui-color-border, rgb(127 199 148 / 28%));
+  border-radius: var(--ui-radius-medium, 10px);
+  background: var(--asset-library-card-surface, #17211b);
+}
+
+.animation-preview-header {
+  display: flex;
+  min-width: 0;
+  padding: 10px 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.animation-preview-header > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.animation-preview-header > small {
+  flex: 0 0 auto;
+  color: var(--ui-color-text-secondary, #aebfb4);
+}
+
+.animation-preview-stage {
+  display: grid;
+  min-height: 160px;
+  padding: 12px;
+  place-items: center;
+  overflow: hidden;
+  color: var(--ui-color-text-muted, #84958b);
+  background: var(--asset-library-preview-surface, #0b120e);
+}
+
+.animation-preview-canvas {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+.animation-preview-canvas img {
+  display: block;
+  position: absolute;
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
+}
+
+.animation-preview-error {
+  margin: 0;
+  padding: 8px 12px;
+  color: #ffd7d1;
+  background: rgb(124 46 37 / 42%);
+  font: var(--ui-font-secondary, 12px/1.4 Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif);
+}
+
+.animation-preview-controls {
+  display: flex;
+  min-width: 0;
+  padding: 10px 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.animation-preview-controls button {
+  display: inline-flex;
+  min-height: 36px;
+  padding: 0 10px;
+  align-items: center;
+  gap: 6px;
+  color: var(--ui-color-text-primary, #eef6f0);
+  background: var(--ui-color-action-primary, #1d4d31);
+  cursor: pointer;
+}
+
+.animation-preview-controls button:disabled {
+  color: var(--ui-color-disabled-text, #84958b);
+  background: var(--ui-color-disabled-surface, #142019);
+  cursor: default;
+}
+
+.animation-preview-seek {
+  display: grid;
+  min-width: 160px;
+  flex: 1;
+  grid-template-columns: auto minmax(70px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--ui-color-text-secondary, #aebfb4);
+}
+
+.animation-preview-seek input {
+  width: 100%;
+  accent-color: var(--ui-color-selected-border, #7fc794);
+}
+
+.animation-preview-seek output {
+  color: var(--ui-color-text-primary, #eef6f0);
+  font-variant-numeric: tabular-nums;
+}
+
+.animation-library-empty {
+  display: grid;
+  min-height: 180px;
+  flex: 1;
+  align-content: center;
+  justify-items: center;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  text-align: center;
+  gap: 6px;
+}
+
+.animation-library-empty strong {
+  color: var(--ui-color-text-primary, #eef6f0);
+}
+
+.animation-library-empty p {
+  max-width: 420px;
+  margin: 0;
+  font: var(--ui-font-secondary, 12px/1.4 Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif);
+}
+
+@media (max-width: 760px) {
+  .animation-library-panel {
+    flex-direction: column;
+  }
+
+  .animation-library-list {
+    width: auto;
+    max-height: 156px;
+    flex: 0 0 auto;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+}

@@ -40,6 +40,7 @@ describe('asset library selectors', () => {
       character: 2,
       background: 1,
       audio: 1,
+      animation: 0,
     });
     expect(
       filterAssetLibraryEntries(entries, 'happy').map(
@@ -47,6 +48,93 @@ describe('asset library selectors', () => {
       ),
     ).toEqual(['Panda happy']);
     expect(filterAssetLibraryEntries(entries, '  ')).toEqual(entries);
+  });
+
+  it('keeps animation frames distinct and hides only sequence-created frame images', () => {
+    const project = migrateProject(exampleProject);
+    const existingImage = project.assets.find((asset) => asset.kind === 'image');
+    if (!existingImage || existingImage.kind !== 'image') {
+      throw new Error('Expected an existing image fixture.');
+    }
+    const newAssetId = randomUUID();
+    const createdHash = 'a'.repeat(64);
+    const reusedHash = 'b'.repeat(64);
+    const fps = 24;
+    const durationMs = 1_000 / fps;
+    const source = (basename: string, sha256: string) => ({
+      basename,
+      sha256,
+      renderTargetId: 'fla-render-target-test',
+      targetKind: 'graphic-symbol' as const,
+      targetName: 'Test target',
+      startFrameIndex: 0,
+      endFrameIndex: 0,
+      sourceFps: fps,
+      canvas: { width: 1920, height: 1080 },
+      documentCanvas: { width: 1920, height: 1080 },
+      anchor: { x: 960, y: 540 },
+    });
+    const withAnimations = ProjectSchema.parse({
+      ...project,
+      assets: [
+        ...project.assets.map((asset) =>
+          asset.id === existingImage.id ? { ...asset, sha256: reusedHash } : asset,
+        ),
+        {
+          id: newAssetId,
+          kind: 'image',
+          name: 'Walk frame 0000',
+          relativePath: 'assets/walk-frame-0000.png',
+          mimeType: 'image/png',
+          sha256: createdHash,
+          width: 16,
+          height: 16,
+          usage: 'uncategorized',
+          keywords: [],
+        },
+      ],
+      animations: [
+        {
+          id: randomUUID(),
+          name: 'Created animation',
+          source: source('created.fla', 'c'.repeat(64)),
+          durationMs,
+          frames: [{
+            ordinal: 0,
+            sourceFrameIndex: 0,
+            assetId: newAssetId,
+            sha256: createdHash,
+            sourceViewport: { x: 960, y: 540, width: 1920, height: 1080 },
+            offset: { x: 0, y: 0 },
+            startMs: 0,
+            durationMs,
+            createdBySequenceImport: true,
+          }],
+        },
+        {
+          id: randomUUID(),
+          name: 'Reused animation',
+          source: source('reused.fla', 'd'.repeat(64)),
+          durationMs,
+          frames: [{
+            ordinal: 0,
+            sourceFrameIndex: 0,
+            assetId: existingImage.id,
+            sha256: reusedHash,
+            sourceViewport: { x: 960, y: 540, width: 1920, height: 1080 },
+            offset: { x: 0, y: 0 },
+            startMs: 0,
+            durationMs,
+            createdBySequenceImport: false,
+          }],
+        },
+      ],
+    });
+
+    const entries = selectAssetLibraryEntries(withAnimations, 'all');
+    expect(entries.some((entry) => entry.asset.id === newAssetId)).toBe(false);
+    expect(entries.some((entry) => entry.asset.id === existingImage.id)).toBe(true);
+    expect(assetLibraryFilterCounts(withAnimations).animation).toBe(2);
   });
 
   it('filters every explicit image usage without changing role grouping or drop identity', () => {

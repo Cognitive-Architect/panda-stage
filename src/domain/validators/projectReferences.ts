@@ -47,6 +47,8 @@ export function validateProjectReferences(
   context: z.RefinementCtx,
 ): void {
   validateUniqueIds(project.assets, ['assets'], context);
+  validateUniqueIds(project.animations, ['animations'], context);
+  validateUniqueNames(project.animations, ['animations'], context);
   validateUniqueIds(project.characters, ['characters'], context);
   validateUniqueNames(project.characters, ['characters'], context);
   validateUniqueIds(project.voiceProfiles, ['voiceProfiles'], context);
@@ -63,6 +65,25 @@ export function validateProjectReferences(
   const subtitleStyles = new Set(
     project.subtitleStyles.map((style) => style.id),
   );
+
+  project.animations.forEach((animation, animationIndex) => {
+    animation.frames.forEach((frame, frameIndex) => {
+      const asset = assets.get(frame.assetId);
+      if (!asset || asset.kind !== 'image') {
+        addIssue(
+          context,
+          ['animations', animationIndex, 'frames', frameIndex, 'assetId'],
+          `Animation references unknown or non-image asset: ${frame.assetId}`,
+        );
+      } else if (asset.sha256 !== frame.sha256) {
+        addIssue(
+          context,
+          ['animations', animationIndex, 'frames', frameIndex, 'sha256'],
+          `Animation frame hash does not match image asset ${asset.id}.`,
+        );
+      }
+    });
+  });
 
   project.characters.forEach((character, characterIndex) => {
     validateUniqueIds(

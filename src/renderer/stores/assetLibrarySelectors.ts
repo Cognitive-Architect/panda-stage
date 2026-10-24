@@ -10,7 +10,7 @@ export type AssetLibraryCategory =
   | 'background'
   | 'audio';
 
-export type AssetLibraryFilter = 'all' | AssetLibraryCategory;
+export type AssetLibraryFilter = 'all' | AssetLibraryCategory | 'animation';
 
 export type AssetLibraryUsageFilter = 'all' | ImageAssetUsage;
 
@@ -27,6 +27,7 @@ export const ASSET_LIBRARY_CATEGORIES = [
   { id: 'character', label: '角色图片' },
   { id: 'background', label: '未绑定角色' },
   { id: 'audio', label: '音频' },
+  { id: 'animation', label: '动画' },
 ] as const satisfies readonly {
   id: AssetLibraryFilter;
   label: string;
@@ -37,6 +38,7 @@ export const ASSET_LIBRARY_FILTERS = [
   { id: 'character', label: '角色' },
   { id: 'background', label: '未绑定' },
   { id: 'audio', label: '音频' },
+  { id: 'animation', label: '动画' },
 ] as const satisfies readonly {
   id: AssetLibraryFilter;
   label: string;
@@ -65,7 +67,42 @@ export function selectAssetLibraryEntries(
   category: AssetLibraryFilter,
 ): AssetLibraryEntry[] {
   const entries: AssetLibraryEntry[] = [];
+  const sequenceCreatedAssetIds = new Set(
+    project.animations.flatMap((animation) =>
+      animation.frames
+        .filter((frame) => frame.createdBySequenceImport)
+        .map((frame) => frame.assetId),
+    ),
+  );
+  const separatelyUsedAssetIds = new Set<string>();
+  for (const character of project.characters) {
+    separatelyUsedAssetIds.add(character.baseAssetId);
+    if (character.mode === 'composite') {
+      separatelyUsedAssetIds.add(character.bodyAssetId);
+      if (character.head) separatelyUsedAssetIds.add(character.head.assetId);
+    }
+    for (const expression of character.expressions) {
+      separatelyUsedAssetIds.add(expression.assetId);
+    }
+    if (character.mouthOpenAssetId) {
+      separatelyUsedAssetIds.add(character.mouthOpenAssetId);
+    }
+  }
+  for (const shot of project.shots) {
+    for (const layer of shot.layers) {
+      if (layer.source.kind === 'asset') {
+        separatelyUsedAssetIds.add(layer.source.assetId);
+      }
+    }
+  }
   for (const asset of project.assets) {
+    if (
+      asset.kind === 'image' &&
+      sequenceCreatedAssetIds.has(asset.id) &&
+      !separatelyUsedAssetIds.has(asset.id)
+    ) {
+      continue;
+    }
     const resolvedCategory = assetCategory(project, asset);
     if (category !== 'all' && resolvedCategory !== category) continue;
     if (resolvedCategory === 'audio') {
@@ -179,6 +216,7 @@ export function assetLibraryFilterCounts(
     background: entries.filter((entry) => entry.category === 'background')
       .length,
     audio: entries.filter((entry) => entry.category === 'audio').length,
+    animation: project.animations.length,
   };
 }
 

@@ -303,6 +303,8 @@ export class FlaImportService {
     return {
       sessionId,
       ir: session.ir as AnimationImportIR,
+      originalSourceSha256:
+        session.trace?.originalSourceSha256 ?? session.ir.source.sha256,
       sourceBytes: session.sourceBytes,
     };
   }

@@ -27,6 +27,7 @@ import { applyAssetMetadataResponse } from './applyAssetMetadataResponse';
 import { ASSET_DRAG_MIME } from './AssetDropPayload';
 import { AssetDetails } from './AssetDetails';
 import { AssetGrid } from './AssetGrid';
+import { AnimationLibraryPanel } from './AnimationLibraryPanel';
 import { IMAGE_ASSET_USAGE_OPTIONS } from './assetUsage';
 import {
   thumbnailStateFromResponse,
@@ -160,7 +161,7 @@ export function AssetLibrary({
     () =>
       snapshot
         ? assetLibraryFilterCounts(snapshot.project)
-        : { all: 0, character: 0, background: 0, audio: 0 },
+        : { all: 0, character: 0, background: 0, audio: 0, animation: 0 },
     [snapshot],
   );
   const filterOptions = hideHeading
@@ -226,7 +227,7 @@ export function AssetLibrary({
   );
   const isSearchActive = searchQuery.trim().length > 0;
   const isUsageFilterActive =
-    category !== 'audio' && usageFilter !== 'all';
+    category !== 'audio' && category !== 'animation' && usageFilter !== 'all';
   const isEntireLibraryEmpty = !isSearchActive && counts.all === 0;
   const selectedAsset = useMemo(
     () =>
@@ -300,7 +301,7 @@ export function AssetLibrary({
   const selectCategory = (nextCategory: AssetLibraryFilter): void => {
     if (!clearSelectedAsset()) return;
     setCategory(nextCategory);
-    if (nextCategory === 'audio' && usageFilter !== 'all') {
+    if ((nextCategory === 'audio' || nextCategory === 'animation') && usageFilter !== 'all') {
       setUsageFilter('all');
     }
     setUsageFilterMenuOpen(false);
@@ -316,7 +317,7 @@ export function AssetLibrary({
   const updateUsageFilter = (
     nextUsage: AssetLibraryUsageFilter,
   ): void => {
-    if (category === 'audio') return;
+    if (category === 'audio' || category === 'animation') return;
     if (!clearSelectedAsset()) return;
     setUsageFilter(nextUsage);
     setUsageFilterMenuOpen(false);
@@ -902,10 +903,10 @@ export function AssetLibrary({
             </div>
             <div className="asset-library-usage-filter">
               <button
-                aria-expanded={category !== 'audio' && usageFilterMenuOpen}
+                aria-expanded={category !== 'audio' && category !== 'animation' && usageFilterMenuOpen}
                 aria-haspopup="menu"
                 aria-label={
-                  category === 'audio'
+                  category === 'audio' || category === 'animation'
                     ? '按用途筛选（仅图片素材）'
                     : '按用途筛选'
                 }
@@ -913,9 +914,9 @@ export function AssetLibrary({
                 className="asset-library-usage-filter-trigger"
                 data-active={usageFilter !== 'all'}
                 data-testid="asset-library-usage-filter"
-                disabled={category === 'audio'}
+                disabled={category === 'audio' || category === 'animation'}
                 onClick={() => {
-                  if (category !== 'audio') {
+                  if (category !== 'audio' && category !== 'animation') {
                     setUsageFilterMenuOpen((open) => !open);
                   }
                 }}
@@ -930,7 +931,7 @@ export function AssetLibrary({
                   <span aria-hidden="true" className="asset-library-usage-filter-active-dot" />
                 ) : null}
               </button>
-              {usageFilterMenuOpen && category !== 'audio' ? (
+              {usageFilterMenuOpen && category !== 'audio' && category !== 'animation' ? (
                 <div
                   aria-label="按用途筛选"
                   className="asset-library-usage-filter-menu"
@@ -994,7 +995,20 @@ export function AssetLibrary({
               ))}
             </nav>
             <div className="asset-library-content">
-              <AssetGrid
+              {category === 'animation' ? (
+                snapshot ? (
+                  <AnimationLibraryPanel
+                    animations={snapshot.project.animations}
+                    project={snapshot.project}
+                    projectRoot={snapshot.projectRoot}
+                    searchQuery={searchQuery}
+                  />
+                ) : (
+                  <div className="animation-library-empty" data-testid="animation-library-empty">
+                    <strong>尚未打开项目</strong>
+                  </div>
+                )
+              ) : <AssetGrid
                 draggingAssetId={draggingAssetId}
                 onDragEnd={() => {
                   setDraggingAssetId(null);
@@ -1046,7 +1060,7 @@ export function AssetLibrary({
                 metadataErrors={metadataErrors}
                 thumbnails={thumbnails}
                 entries={pageEntries}
-              />
+              />}
               {isPortraitBrowser && totalPages > 1 ? (
                 <nav
                   aria-label="绱犳潗鍒嗛〉"

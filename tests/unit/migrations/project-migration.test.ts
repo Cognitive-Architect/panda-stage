@@ -88,6 +88,7 @@ function withoutImageAuthorMetadata(
   project: ReturnType<typeof migrateProject>,
 ) {
   const legacy = structuredClone(project);
+  Reflect.deleteProperty(legacy, 'animations');
   for (const asset of legacy.assets) {
     if (asset.kind !== 'image') continue;
     Reflect.deleteProperty(asset, 'usage');

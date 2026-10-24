@@ -172,6 +172,10 @@ describe('FLA C3 production recovery entry path', () => {
     expect(request).toBeDefined();
     expect(request?.source.bytes).not.toEqual(before);
     expect(request && sourceHash(request.source.bytes)).not.toBe(beforeHash);
+    if (!response.ok) throw new Error('Expected the recovered source to be inspected.');
+    const session = service.getSession(response.sessionId);
+    expect(session?.originalSourceSha256).toBe(beforeHash);
+    expect(session?.ir.source.sha256).toBe(request?.source.sha256);
     const changedOffsets = request
       ? Array.from(request.source.bytes).flatMap((value, index) =>
           value === before[index] ? [] : [index],

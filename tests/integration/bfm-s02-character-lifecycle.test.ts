@@ -288,7 +288,7 @@ describe('BFM-S02 composite Character lifecycle', () => {
     shots.dispose();
   });
 
-  it('opens a persisted v8 composite as v13 without changing Body/Face visuals', async () => {
+  it('opens a persisted v8 composite as v14 without changing Body/Face visuals', async () => {
     const parent = await mkdtemp(
       path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-v8-migration-'),
     );
@@ -314,6 +314,8 @@ describe('BFM-S02 composite Character lifecycle', () => {
         },
       ],
     });
+    const { animations: _animations, ...legacyCurrent } = current;
+    void _animations;
     const currentCharacter = current.characters[0]!;
     if (currentCharacter.mode !== 'composite') {
       throw new Error('Expected the v8 fixture to be composite.');
@@ -339,7 +341,7 @@ describe('BFM-S02 composite Character lifecycle', () => {
       Reflect.deleteProperty(asset, 'keywords');
     }
     const v8 = {
-      ...current,
+      ...legacyCurrent,
       schemaVersion: 8 as const,
       assets: legacyAssets,
       characters: [v8Character],

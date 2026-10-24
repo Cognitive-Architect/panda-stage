@@ -8,6 +8,7 @@ const noop = () => {};
 const sequenceReviewProps = () => ({
   sessionId: '00000000-0000-4000-8000-000000000001',
   source: { basename: 'x.fla', sha256: 'a'.repeat(64) },
+  sourceFps: 24,
   snapshot: null,
   checkedCandidateKeys: new Set<string>(),
   importLocked: false,
@@ -55,6 +56,15 @@ describe('R2-H.2 shares the C03 unified candidate workbench', () => {
     expect(assetLibrary).toContain('setStatus(outcome.status);');
   });
 
+  it('keeps image import as the default and requires a named source-FPS animation opt-in', () => {
+    expect(review).toContain('useState(false)');
+    expect(review).toContain('作为普通 PNG 图片');
+    expect(review).toContain('作为动画素材');
+    expect(review).toContain('aria-label="动画名称"');
+    expect(review).toContain('sourceFpsAvailable');
+    expect(session).toContain('sourceFps={ir.document.frameRate}');
+  });
+
   it('keeps sequence focus, preview target, operation target, and checked intent explicit', () => {
     expect(review).toContain('resolveVisibleSequenceFocus(');
     expect(review).toContain('isStaleAgainstIntent(renderedRange, currentIntent)');
@@ -66,6 +76,13 @@ describe('R2-H.2 shares the C03 unified candidate workbench', () => {
     expect(review).toContain('checkedCandidateKeys.has(flaUnifiedCandidateSelectionKey(candidate))');
     expect(review).toContain('data-testid={`fla-frame-sequence-candidate-check-${entryTarget.renderTargetId}`}');
     expect(review).not.toContain('EMPTY_SEQUENCE_IMPORT_CHECKS');
+  });
+
+  it('serializes sequence rasterization with snapshot previews and skips canceled queued work', () => {
+    expect(review).toContain("import { flaStaticSnapshotPreviewQueue } from './fla-static-snapshot-preview-transaction';");
+    expect(review).toContain('await flaStaticSnapshotPreviewQueue.run(async () => {');
+    expect(review).toContain('activeRequestIdRef.current !== requestId');
+    expect(review).toContain("code: 'SEQUENCE_CANCELLED' as const");
   });
 
   it('supports Enter activation on sequence render, cancel, and rerender controls', () => {

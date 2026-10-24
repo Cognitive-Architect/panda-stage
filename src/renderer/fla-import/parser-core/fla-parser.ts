@@ -130,7 +130,13 @@ export class FLAParser {
     // Get document properties
     const width = parseFloat(root.getAttribute('width') || '550') || 550;
     const height = parseFloat(root.getAttribute('height') || '400') || 400;
-    const frameRate = parseFloat(root.getAttribute('frameRate') || '24') || 24;
+    const rawFrameRate = root.getAttribute('frameRate');
+    const parsedFrameRate = rawFrameRate === null || rawFrameRate.trim() === ''
+      ? Number.NaN
+      : Number(rawFrameRate);
+    const frameRate = Number.isFinite(parsedFrameRate) && parsedFrameRate > 0
+      ? parsedFrameRate
+      : 0;
     const backgroundColor = root.getAttribute('backgroundColor') || '#FFFFFF';
 
     // Parse symbol references and load them

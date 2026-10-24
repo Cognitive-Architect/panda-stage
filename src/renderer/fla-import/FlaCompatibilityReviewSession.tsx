@@ -629,6 +629,7 @@ export function FlaCompatibilityReviewSession({
       selectedOnlyView={selectedOnly}
       presentation="unified-preview"
       sessionId={sessionId}
+      sourceFps={ir.document.frameRate}
       source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
       embedded
       snapshot={snapshot}
