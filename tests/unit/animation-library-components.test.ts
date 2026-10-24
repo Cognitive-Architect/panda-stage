@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { ProjectSchema, migrateProject } from '../../src/domain';
 import { AnimationLibraryPanel } from '../../src/renderer/features/assets/AnimationLibraryPanel';
+import { createAnimationImageBlob } from '../../src/renderer/features/assets/animationImageBytes';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
 function projectWithAnimation() {
@@ -49,6 +50,14 @@ function projectWithAnimation() {
 }
 
 describe('animation library', () => {
+  it('creates a Blob from exactly the visible Uint8Array byte range', async () => {
+    const backing = new Uint8Array([10, 20, 30, 40]);
+    const blob = createAnimationImageBlob(backing.subarray(1, 3), 'image/png');
+
+    expect(blob.type).toBe('image/png');
+    expect(Array.from(new Uint8Array(await blob.arrayBuffer()))).toEqual([20, 30]);
+  });
+
   it('renders a distinct animation item with source FPS playback and frame selection controls', () => {
     const project = projectWithAnimation();
     const markup = renderToStaticMarkup(createElement(AnimationLibraryPanel, {

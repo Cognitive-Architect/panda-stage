@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pause, Play, RotateCcw } from 'lucide-react';
 import type { AnimationDefinition, Project } from '../../../domain';
-import { sampleAnimationFrameIndex } from './animationPlayback';
+import {
+  createAnimationPlaybackTimeline,
+  markAnimationPlaybackFrameVisible,
+  sampleAnimationPlaybackTimeline,
+  type AnimationPlaybackTimeline,
+} from './animationPlayback';
+import { createAnimationImageBlob } from './animationImageBytes';
 
 export interface AnimationLibraryPanelProps {
   animations: readonly AnimationDefinition[];
@@ -22,9 +28,7 @@ function formatDuration(durationMs: number): string {
 }
 
 function blobUrl(bytes: Uint8Array, mimeType: string): string {
-  return URL.createObjectURL(
-    new Blob([bytes.buffer as ArrayBuffer], { type: mimeType }),
-  );
+  return URL.createObjectURL(createAnimationImageBlob(bytes, mimeType));
 }
 
 export function AnimationLibraryPanel({
@@ -80,6 +84,7 @@ export function AnimationLibraryPanel({
       {selectedAnimation ? (
         <AnimationPreview
           animation={selectedAnimation}
+          key={selectedAnimation.id}
           project={project}
           projectRoot={projectRoot}
         />
@@ -93,6 +98,8 @@ interface AnimationPreviewProps {
   project: Project;
   projectRoot: string;
 }
+
+type FrameLoadResult = 'loaded' | 'stale' | 'error';
 
 function AnimationPreview({
   animation,
@@ -108,10 +115,10 @@ function AnimationPreview({
   const frameUrlRef = useRef<string | null>(null);
   const loadRequestRef = useRef(0);
   const playingRef = useRef(false);
-  const playbackStartRef = useRef(0);
+  const playbackTimelineRef = useRef<AnimationPlaybackTimeline | null>(null);
+  const pendingFrameIndexRef = useRef<number | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameIndex = animation.frames.length - 1;
-  const frameDurationMs = 1_000 / animation.source.sourceFps;
 
   const replaceFrameUrl = useCallback((nextUrl: string | null): void => {
     if (frameUrlRef.current) URL.revokeObjectURL(frameUrlRef.current);
@@ -119,10 +126,13 @@ function AnimationPreview({
     setFrameUrl(nextUrl);
   }, []);
 
-  const loadFrame = useCallback(async (requestedIndex: number): Promise<boolean> => {
+  const loadFrame = useCallback(async (
+    requestedIndex: number,
+    shouldApply?: () => boolean,
+  ): Promise<FrameLoadResult> => {
     const requestId = ++loadRequestRef.current;
     const frame = animation.frames[requestedIndex];
-    if (!frame) return false;
+    if (!frame) return 'error';
     setLoading(true);
     setError(null);
     try {
@@ -135,19 +145,23 @@ function AnimationPreview({
         assetId: frame.assetId,
         sha256: frame.sha256,
       });
-      if (requestId !== loadRequestRef.current) return false;
+      if (requestId !== loadRequestRef.current) return 'stale';
       if (!response.ok) throw new Error(response.error.message);
       if (response.mimeType !== 'image/png') {
         throw new Error('帧图片格式无效。');
+      }
+      if (shouldApply && !shouldApply()) {
+        setLoading(false);
+        return 'stale';
       }
       const nextUrl = blobUrl(response.bytes, response.mimeType);
       replaceFrameUrl(nextUrl);
       frameIndexRef.current = requestedIndex;
       setFrameIndex(requestedIndex);
       setLoading(false);
-      return true;
+      return 'loaded';
     } catch (loadError) {
-      if (requestId !== loadRequestRef.current) return false;
+      if (requestId !== loadRequestRef.current) return 'stale';
       replaceFrameUrl(null);
       setLoading(false);
       setError(
@@ -155,34 +169,57 @@ function AnimationPreview({
           loadError instanceof Error ? loadError.message : String(loadError)
         }`,
       );
-      return false;
+      return 'error';
     }
   }, [animation, project.assets, projectRoot, replaceFrameUrl]);
 
   useEffect(() => {
+    playingRef.current = false;
+    playbackTimelineRef.current = null;
+    pendingFrameIndexRef.current = null;
+    frameIndexRef.current = 0;
+    setFrameIndex(0);
+    setPlaying(false);
+    replaceFrameUrl(null);
     void loadFrame(0);
     return () => {
       loadRequestRef.current += 1;
       playingRef.current = false;
+      playbackTimelineRef.current = null;
+      pendingFrameIndexRef.current = null;
       if (animationFrameRef.current !== null) {
         window.cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
       }
       if (frameUrlRef.current) URL.revokeObjectURL(frameUrlRef.current);
       frameUrlRef.current = null;
     };
-  }, [loadFrame]);
+  }, [loadFrame, replaceFrameUrl]);
 
   const startPlayback = useCallback((fromIndex: number): void => {
-    playbackStartRef.current = performance.now() - fromIndex * frameDurationMs;
+    playbackTimelineRef.current = createAnimationPlaybackTimeline(
+      animation.source.sourceFps,
+      animation.frames.length,
+      performance.now(),
+      fromIndex,
+    );
+    pendingFrameIndexRef.current = null;
     playingRef.current = true;
     setPlaying(true);
-  }, [frameDurationMs]);
+  }, [animation]);
+
+  const pausePlayback = (): void => {
+    playingRef.current = false;
+    playbackTimelineRef.current = null;
+    pendingFrameIndexRef.current = null;
+    setPlaying(false);
+  };
 
   const play = (): void => {
     if (loading || error) return;
     if (frameIndex >= lastFrameIndex) {
       void loadFrame(0).then((loaded) => {
-        if (loaded) startPlayback(0);
+        if (loaded === 'loaded') startPlayback(0);
       });
       return;
     }
@@ -190,10 +227,9 @@ function AnimationPreview({
   };
 
   const replay = (): void => {
-    playingRef.current = false;
-    setPlaying(false);
+    pausePlayback();
     void loadFrame(0).then((loaded) => {
-      if (loaded) startPlayback(0);
+      if (loaded === 'loaded') startPlayback(0);
     });
   };
 
@@ -202,45 +238,38 @@ function AnimationPreview({
     let disposed = false;
     const stop = (): void => {
       playingRef.current = false;
+      playbackTimelineRef.current = null;
+      pendingFrameIndexRef.current = null;
       setPlaying(false);
     };
     const tick = (now: number): void => {
       if (disposed || !playingRef.current) return;
-      const sampledIndex = sampleAnimationFrameIndex(
-        now - playbackStartRef.current,
-        animation.source.sourceFps,
-        animation.frames.length,
-      );
-      if (sampledIndex > frameIndexRef.current) {
-        const nextIndex = frameIndexRef.current + 1;
-        void loadFrame(nextIndex).then((loaded) => {
-          if (disposed || !playingRef.current) return;
-          if (!loaded) {
-            stop();
-            return;
-          }
-          const completedAt = performance.now();
-          const sampledAfterLoad = sampleAnimationFrameIndex(
-            completedAt - playbackStartRef.current,
-            animation.source.sourceFps,
-            animation.frames.length,
-          );
-          if (sampledAfterLoad > nextIndex) {
-            // Keep every frame observable if a local image read takes longer
-            // than one source frame; the preview clock resumes at that frame.
-            playbackStartRef.current = completedAt - nextIndex * frameDurationMs;
-          }
-          if (nextIndex >= lastFrameIndex) {
-            stop();
-            return;
-          }
-          animationFrameRef.current = window.requestAnimationFrame(tick);
-        });
-        return;
-      }
-      if (frameIndexRef.current >= lastFrameIndex) {
+      const timeline = playbackTimelineRef.current;
+      if (!timeline) {
         stop();
         return;
+      }
+      const sample = sampleAnimationPlaybackTimeline(timeline, now);
+      if (sample.complete) {
+        stop();
+        return;
+      }
+      if (
+        sample.frameIndex !== frameIndexRef.current &&
+        pendingFrameIndexRef.current === null
+      ) {
+        const requestedIndex = sample.frameIndex;
+        pendingFrameIndexRef.current = requestedIndex;
+        void loadFrame(requestedIndex, () => {
+          const currentTimeline = playbackTimelineRef.current;
+          return playingRef.current && currentTimeline !== null &&
+            sampleAnimationPlaybackTimeline(currentTimeline, performance.now()).frameIndex === requestedIndex;
+        }).then((result) => {
+          if (pendingFrameIndexRef.current === requestedIndex) {
+            pendingFrameIndexRef.current = null;
+          }
+          if (!disposed && playingRef.current && result === 'error') stop();
+        });
       }
       animationFrameRef.current = window.requestAnimationFrame(tick);
     };
@@ -251,11 +280,17 @@ function AnimationPreview({
         window.cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [animation, frameDurationMs, lastFrameIndex, loadFrame, playing]);
+  }, [loadFrame, playing]);
+
+  useEffect(() => {
+    const timeline = playbackTimelineRef.current;
+    if (playing && frameUrl && timeline) {
+      markAnimationPlaybackFrameVisible(timeline, frameIndex, performance.now());
+    }
+  }, [frameIndex, frameUrl, playing]);
 
   const seek = (requestedIndex: number): void => {
-    playingRef.current = false;
-    setPlaying(false);
+    pausePlayback();
     void loadFrame(requestedIndex);
   };
 
@@ -306,11 +341,10 @@ function AnimationPreview({
         <button
           aria-label={playing ? '暂停动画' : '播放动画'}
           data-testid="animation-preview-play"
-          disabled={loading || animation.frames.length === 0 || Boolean(error)}
+          disabled={(loading && !frameUrl) || animation.frames.length === 0 || Boolean(error)}
           onClick={() => {
             if (playing) {
-              playingRef.current = false;
-              setPlaying(false);
+              pausePlayback();
             } else {
               play();
             }
@@ -323,7 +357,7 @@ function AnimationPreview({
         <button
           aria-label="从头重播动画"
           data-testid="animation-preview-replay"
-          disabled={loading}
+          disabled={loading && !frameUrl}
           onClick={replay}
           type="button"
         >

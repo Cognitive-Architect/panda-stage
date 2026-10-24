@@ -21,6 +21,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { sampleLoopingAnimationFrameIndex } from '../features/assets/animationPlayback';
 import type {
   FlaRenderableTargetCatalogEntry,
   FlaRenderTarget,
@@ -55,7 +56,6 @@ import {
 } from './fla-frame-sequence-review-state';
 import {
   flaSequencePlaybackReducer,
-  FLA_SEQUENCE_PREVIEW_INTERVAL_MS,
   initialFlaSequencePlaybackState,
 } from './fla-frame-sequence-playback-state';
 import {
@@ -174,6 +174,7 @@ export function FlaFrameSequenceReview({
   const catalogInitializedRef = useRef(false);
   const filmstripRef = useRef<HTMLDivElement | null>(null);
   const playbackSessionKeyRef = useRef<string | null>(null);
+  const playbackStartedAtRef = useRef(0);
   // Problem B (Corrective #296): active progress subscription handle.
   // Subscribed only while a request is in flight; removed on
   // cancel / re-render / completion / unmount.
@@ -310,6 +311,7 @@ export function FlaFrameSequenceReview({
     focusedSequenceCandidate?.operation.target.renderTargetId === success?.renderTargetId;
   const canNavigatePreview = Boolean(
     sequenceIsCurrent && hasPreview && showUnifiedSequencePreview && focusedSequenceMatchesPreview &&
+      sourceFpsAvailable &&
       !importLocked && documentVisible,
   );
   const playbackContextKey = canNavigatePreview && displayedSequenceItems.length >= 2 && success && renderedRange
@@ -335,7 +337,11 @@ export function FlaFrameSequenceReview({
       disabled={!playbackContextKey}
       onClick={() => {
         if (playbackState.isPlaying) dispatchPlayback({ type: 'pause' });
-        else if (playbackContextKey) dispatchPlayback({ type: 'play', sessionKey: playbackContextKey });
+        else if (playbackContextKey) {
+          playbackStartedAtRef.current = performance.now() -
+            playbackState.selectedIndex * 1_000 / sourceFps;
+          dispatchPlayback({ type: 'play', sessionKey: playbackContextKey });
+        }
       }}
       type="button"
     >
@@ -369,15 +375,28 @@ export function FlaFrameSequenceReview({
   useEffect(() => {
     const { activeSessionKey, generation, isPlaying } = playbackState;
     if (!isPlaying || !activeSessionKey || activeSessionKey !== playbackContextKey) return undefined;
-    const timer = window.setInterval(() => {
+    let animationFrame = 0;
+    const sample = (now: number): void => {
       if (document.visibilityState !== 'visible' || playbackSessionKeyRef.current !== activeSessionKey) {
         dispatchPlayback({ type: 'invalidate' });
         return;
       }
-      dispatchPlayback({ type: 'tick', sessionKey: activeSessionKey, generation });
-    }, FLA_SEQUENCE_PREVIEW_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [playbackContextKey, playbackState.activeSessionKey, playbackState.frameCount, playbackState.generation, playbackState.isPlaying]);
+      const selectedIndex = sampleLoopingAnimationFrameIndex(
+        now - playbackStartedAtRef.current,
+        sourceFps,
+        playbackState.frameCount,
+      );
+      dispatchPlayback({
+        type: 'sample',
+        sessionKey: activeSessionKey,
+        generation,
+        selectedIndex,
+      });
+      animationFrame = window.requestAnimationFrame(sample);
+    };
+    animationFrame = window.requestAnimationFrame(sample);
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [playbackContextKey, playbackState.activeSessionKey, playbackState.frameCount, playbackState.generation, playbackState.isPlaying, sourceFps]);
 
   useIsomorphicLayoutEffect(() => {
     if (!selectedPreviewItem) return;

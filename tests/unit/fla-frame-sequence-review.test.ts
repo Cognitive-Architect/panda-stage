@@ -98,6 +98,9 @@ describe('R2-H.2 shares the C03 unified candidate workbench', () => {
     expect(review).toContain('data-testid="fla-frame-sequence-frame-counter"');
     expect(review).toContain('selectedOnlyView');
     expect(review).toContain("document.visibilityState !== 'visible'");
+    expect(review).toContain('sampleLoopingAnimationFrameIndex');
+    expect(review).toContain('window.requestAnimationFrame(sample)');
+    expect(review).not.toContain('window.setInterval');
     expect(review).toContain('strip.scrollLeft');
 
     const counterStart = review.indexOf('data-testid="fla-frame-sequence-frame-counter"');
