@@ -797,3 +797,55 @@ The verifier created the generated Project's ACL subfolder and the Save As dialo
 Post-run ACL inspection found only the folder's inherited Administrators, SYSTEM, CREATOR OWNER, and Users entries, with no explicit deny ACE. This confirms the verifier's `finally` block restored the generated folder's ACL. The acceptance root and failure artifacts are preserved.
 
 Failure receipt: `evidence\electron-failure.json`, SHA-256 `cbb7bc2d907631ba50a18c5231bd677857546da4478219af0c5d5bf8427b3373`. Screenshot: `evidence\electron-failure.png`, SHA-256 `30c193a8c668d4d6b15b31c7945a18a39d12b3e422c8594dc611ece3b51a786c`. The v1.0.0 plan's stop condition was honored. This harness/UIA stop is inconclusive about the product's real-ACL behavior; AC03 and R2 remain **PARTIAL**. For pushed frozen source SHA `185411c0cdd02a6896c04a875676214378dfcd81`, commit status was pending with zero status entries, check-runs returned zero, and `gh pr checks 817` reported no checks: `CI_NOT_REPORTED`.
+
+## Frozen AC03 R2 Creator output-folder real NTFS ACL permission plan - v1.1.0 (before run)
+
+Frozen verifier source commit: `88d2cd88011defb93ab49907c2370cd5534fa87b` on `issue-816-dl01-formal-export-preparation`. The v1.0.0 run stopped before Save As selected a path: its deny ACL was active while the native dialog opened, and UI Automation reported `ElementNotEnabledException` while setting the filename. This v1.1.0 plan changes only that sequencing. The v1.0.0 acceptance root and evidence remain preserved.
+
+Use a fresh generated Issue #827 sample 1 Project. Its new `issue836-r2-output-permission-acl` child folder remains writable while the native Save As dialog opens and UI Automation selects the exact planned MP4 path. Once `dialog.showSaveDialog` resolves, but before the selection callback returns the path to Main, the verifier applies an explicit NTFS write-deny ACE for the current account SID to that generated child folder. It confirms exclusive file creation fails with `EACCES` or `EPERM`, records that the ACL was applied after selection, then returns the exact path so Main's exclusive output write probe handles the real denial. Expected behavior: Creator reports the output-folder permission issue before any formal Job or commit; target remains absent; prior valid MP4, Project bytes, editor/session state, and source-media hashes remain unchanged. The `finally` path removes only this explicit deny ACE, verifies exclusive create/delete access is restored, and requires the generated ACL folder to be empty.
+
+Acceptance root `D:\PandaStage-Acceptance\i836r2pf5` and isolated frame-job root `D:\PandaStage-Acceptance\i836r2pf5\frame-jobs` were confirmed absent before freezing. `node --check scripts/verify-issue819-dl02.cjs` and `git diff --check` passed for the verifier-only change. Production source is unchanged from the previously validated commit. Run exactly once after this plan is pushed and both paths are reconfirmed absent. Stop on the first failure and preserve all artifacts. If Electron is forcibly terminated before its `finally` restoration, preserve the run root and remove only the explicit deny ACE on that run's generated ACL child folder for the current SID before inspecting; do not retry.
+
+~~~powershell
+$modeNames = @(
+    'PANDA_STAGE_ISSUE819_ROOT',
+    'PANDA_STAGE_ISSUE823_DL03',
+    'PANDA_STAGE_ISSUE827_DL04',
+    'PANDA_STAGE_ISSUE827_ROOT',
+    'PANDA_STAGE_ISSUE827_SAMPLE',
+    'PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA',
+    'PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID',
+    'PANDA_STAGE_ISSUE832_DL05',
+    'PANDA_STAGE_ISSUE832_ROOT',
+    'PANDA_STAGE_ISSUE832_RUN_ID',
+    'PANDA_STAGE_ISSUE832_SOURCE_SHA',
+    'PANDA_STAGE_ISSUE834_FOLLOWUP',
+    'PANDA_STAGE_ISSUE834_ROOT',
+    'PANDA_STAGE_ISSUE834_RUN_ID',
+    'PANDA_STAGE_ISSUE834_SOURCE_SHA',
+    'PANDA_STAGE_ISSUE836_DL06_R0',
+    'PANDA_STAGE_ISSUE836_FRAME_ROOT',
+    'PANDA_STAGE_ISSUE836_R2_COMMIT_RACE',
+    'PANDA_STAGE_ISSUE836_R2_COPY_FAILURE',
+    'PANDA_STAGE_ISSUE836_R2_COPY_FAILURE_VALID_MP4',
+    'PANDA_STAGE_ISSUE836_R2_MEDIA_PREFLIGHT',
+    'PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION',
+    'PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION_ACL',
+    'PANDA_STAGE_ISSUE836_R2_PATH_BOUNDARY',
+    'PANDA_STAGE_ISSUE836_R2_PATH_SUCCESS',
+    'PANDA_STAGE_ISSUE836_RUN_ID',
+    'PANDA_STAGE_ISSUE836_SOURCE_SHA'
+)
+foreach ($name in $modeNames) { Remove-Item "Env:$name" -ErrorAction SilentlyContinue }
+$env:PANDA_STAGE_ISSUE827_ROOT = 'D:\PandaStage-Acceptance\i836r2pf5'
+$env:PANDA_STAGE_ISSUE827_SAMPLE = '1'
+$env:PANDA_STAGE_ISSUE827_DL04 = '1'
+$env:PANDA_STAGE_ISSUE836_FRAME_ROOT = 'D:\PandaStage-Acceptance\i836r2pf5\frame-jobs'
+$env:PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION_ACL = '1'
+$env:PANDA_STAGE_ISSUE836_RUN_ID = 'i836-ac03-r2-output-permission-real-acl-v1.1.0'
+$env:PANDA_STAGE_ISSUE836_SOURCE_SHA = '88d2cd88011defb93ab49907c2370cd5534fa87b'
+pnpm exec electron scripts/verify-issue819-dl02.cjs
+exit $LASTEXITCODE
+~~~
+
+A pass covers this single generated-fixture real ACL denial on the current Windows account and build. It does not complete AC03/R2, establish author-Project provenance or packaged-install behavior, measure R3 ceilings, or constitute human Gate B acceptance. AC03 and R2 remain PARTIAL pending their other cases and review.
