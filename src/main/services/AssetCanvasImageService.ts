@@ -11,6 +11,7 @@ import {
   type AssetCanvasImageReadResponse,
 } from '../../shared/asset-canvas-image-api';
 import { MediaInspectionService } from './MediaInspectionService';
+import { filesystemPermissionErrorCode } from './filesystem-permission-error';
 import { resolveProjectAssetPath } from './project-asset-path';
 
 export interface AssetCanvasImageServiceOptions {
@@ -199,10 +200,13 @@ export class AssetCanvasImageService {
         bytes,
       };
     } catch (error) {
+      const permissionCode = filesystemPermissionErrorCode(error);
       return this.failure(
         'ASSET_CANVAS_IMAGE_READ_FAILED',
         request.assetId,
-        `Unable to read the original canvas image: ${this.errorText(error)}`,
+        permissionCode
+          ? `Unable to read the original canvas image (${permissionCode}).`
+          : `Unable to read the original canvas image: ${this.errorText(error)}`,
       );
     }
   }

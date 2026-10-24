@@ -8,6 +8,7 @@ import {
   type AssetPreviewAudioReadResponse,
 } from '../../shared/asset-preview-audio-api';
 import { MediaInspectionService } from './MediaInspectionService';
+import { filesystemPermissionErrorCode } from './filesystem-permission-error';
 import { resolveProjectAssetPath } from './project-asset-path';
 
 export interface AssetPreviewAudioServiceOptions {
@@ -176,11 +177,14 @@ export class AssetPreviewAudioService {
         byteLength: bytes.byteLength,
         bytes: new Uint8Array(bytes),
       };
-    } catch {
+    } catch (error) {
+      const permissionCode = filesystemPermissionErrorCode(error);
       return this.failure(
         'ASSET_PREVIEW_AUDIO_READ_FAILED',
         request.assetId,
-        'Unable to read and validate the audio source.',
+        permissionCode
+          ? `Unable to read and validate the audio source (${permissionCode}).`
+          : 'Unable to read and validate the audio source.',
       );
     }
   }
