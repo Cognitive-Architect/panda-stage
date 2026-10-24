@@ -3,16 +3,18 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
+const { deriveIssue844FixedProjectBackgroundEvidence } = require('./issue844-fixed-project-preflight.cjs');
 
 const repoRoot = path.resolve(__dirname, '..');
 const sourceSha = 'c6c356f660001af694bb706cc7553974ff8d1cfc';
 const launcherHardStopMs = 300_000;
 const issue844Variant = process.env.PANDA_STAGE_ISSUE844_VARIANT ?? null;
 const issue844Mode = issue844Variant === 'A' || issue844Variant === 'B';
+const issue844OfflinePreflight = process.argv.includes('--issue844-offline-preflight');
 if (process.env.PANDA_STAGE_ISSUE844_VARIANT && !issue844Mode) {
   throw new Error('Issue #844 variant must be A or B.');
 }
-const issue844OfflineMode = process.argv.includes('--preflight') || process.argv.includes('--prepare-build');
+const issue844OfflineMode = process.argv.includes('--preflight') || process.argv.includes('--prepare-build') || issue844OfflinePreflight;
 const acceptanceBase = path.resolve('D:\\PandaStage-Acceptance');
 const runName = issue844Mode
   ? `issue844-${issue844Variant.toLowerCase()}-${new Date().toISOString().replace(/[:.]/gu, '-')}-${process.pid}`
@@ -47,7 +49,7 @@ if (issue844Mode && !issue844OfflineMode && issue844Variant === 'A' && issue844F
 const sourceIsAncestor = spawnSync('git', ['merge-base', '--is-ancestor', sourceSha, 'HEAD'], { cwd: repoRoot, stdio: 'ignore' });
 const trackedDiff = spawnSync('git', ['diff', '--quiet', 'HEAD', '--'], { cwd: repoRoot, stdio: 'ignore' });
 if (sourceIsAncestor.status !== 0) throw new Error('Pinned source ' + sourceSha + ' is not an ancestor of HEAD.');
-if (trackedDiff.status !== 0) throw new Error('Tracked worktree changes exist; refusing to launch.');
+if (trackedDiff.status !== 0 && !issue844OfflinePreflight) throw new Error('Tracked worktree changes exist; refusing to launch.');
 if (process.platform !== 'win32') throw new Error('This diagnostic requires Windows Electron.');
 if (fs.existsSync(acceptanceRoot)) throw new Error('Acceptance run directory already exists: ' + acceptanceRoot);
 
@@ -253,6 +255,34 @@ export function recordPreviewDuration(`,
 }
 const issue843InstrumentedSources = instrumentIssue843Sources();
 
+if (issue844OfflinePreflight) {
+  if (!issue844Mode || issue844Variant !== 'B' || !issue844FixedProjectRoot) {
+    throw new Error('Issue #844 offline fixed-Project preflight requires variant B and PANDA_STAGE_ISSUE844_PROJECT_ROOT.');
+  }
+  if (path.resolve(process.env.PANDA_STAGE_ISSUE844_PREFLIGHT_B_ROOT ?? '') !== issue844FixedProjectRoot) {
+    throw new Error('PANDA_STAGE_ISSUE844_PROJECT_ROOT must match PANDA_STAGE_ISSUE844_PREFLIGHT_B_ROOT.');
+  }
+  try {
+    writeIssue843InstrumentedSources();
+  } finally {
+    restoreIssue843Sources();
+  }
+  const sourceRestored = issue843InstrumentedSources.every((file) => fs.readFileSync(file.absolutePath).equals(file.originalBuffer));
+  if (!sourceRestored) throw new Error('Instrumented source files were not restored byte-for-byte after the offline preflight check.');
+  const preflight = spawnSync(process.execPath, [path.join(__dirname, 'issue844-fixed-project-preflight.cjs')], {
+    cwd: repoRoot,
+    env: process.env,
+    encoding: 'utf8',
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  if (preflight.error || preflight.status !== 0) {
+    throw new Error('Issue #844 offline fixed-Project preflight failed: ' + String(preflight.error ?? preflight.stderr ?? preflight.stdout));
+  }
+  const result = JSON.parse(preflight.stdout);
+  process.stdout.write(JSON.stringify({ ...result, instrumentedSourcesRestoredByteForByte: sourceRestored }, null, 2) + '\n');
+  process.exit(0);
+}
+
 function writeIssue843InstrumentedSources() {
   for (const file of issue843InstrumentedSources) {
     const newline = file.original.includes('\r\n') ? '\r\n' : '\n';
@@ -290,6 +320,10 @@ function verifyIssue843BuiltInstrumentation() {
 
 const verifierPath = path.join(repoRoot, 'scripts', 'verify-issue819-dl02.cjs');
 let runtime = fs.readFileSync(verifierPath, 'utf8').replace(/\r\n/gu, '\n');
+runtime = replaceOnce(runtime,
+  'const pause = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));',
+  deriveIssue844FixedProjectBackgroundEvidence.toString() + '\n\nconst pause = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));',
+  'Issue #844 fixed Project background evidence adapter');
 runtime = replaceOnce(runtime, "const { existsSync } = require('node:fs');",
   "const { existsSync, statfsSync } = require('node:fs');\nconst os = require('node:os');", 'OS sampling imports');
 runtime = replaceOnce(runtime,
@@ -345,11 +379,11 @@ if (issue844Mode) {
     'Issue #844 frozen Project retime guard');
   runtime = replaceOnce(runtime,
     "  fixture = dl04Mode || dl05Mode\n    ? await generateIssue827Fixture(path.resolve(baseDirectory), dl04SampleId)\n    : await generateIssue819Fixture(path.resolve(baseDirectory), {\n        includeAudioMix: dl03Mode,\n      });",
-    "  fixture = issue844FixedProjectRoot\n    ? { root: path.resolve(baseDirectory), projectRoot: issue844FixedProjectRoot, evidenceRoot: path.join(path.resolve(baseDirectory), 'evidence'), project: null, audioMixFixture: null, backgroundEvidence: [], mouthOpenAssetSha256: null, expressionAssetHashes: {} }\n    : dl04Mode || dl05Mode\n    ? await generateIssue827Fixture(path.resolve(baseDirectory), dl04SampleId)\n    : await generateIssue819Fixture(path.resolve(baseDirectory), {\n        includeAudioMix: dl03Mode,\n      });",
+    "  fixture = issue844FixedProjectRoot\n    ? { root: path.resolve(baseDirectory), projectRoot: issue844FixedProjectRoot, evidenceRoot: path.join(path.resolve(baseDirectory), 'evidence'), project: null, audioMixFixture: null, mouthOpenAssetSha256: null, expressionAssetHashes: {} }\n    : dl04Mode || dl05Mode\n    ? await generateIssue827Fixture(path.resolve(baseDirectory), dl04SampleId)\n    : await generateIssue819Fixture(path.resolve(baseDirectory), {\n        includeAudioMix: dl03Mode,\n      });",
     'Issue #844 reuse of A Project for B');
   runtime = replaceOnce(runtime,
     "  fixtureProject = ProjectSchema.parse(JSON.parse(await fsp.readFile(path.join(fixture.projectRoot, 'project.json'), 'utf8')));",
-    "  fixtureProject = ProjectSchema.parse(JSON.parse(await fsp.readFile(path.join(fixture.projectRoot, 'project.json'), 'utf8')));\n  if (issue844FixedProjectRoot) fixture.expressionAssetHashes = Object.fromEntries(fixtureProject.assets.filter((asset) => asset.relativePath.endsWith('panda-neutral.png') || asset.relativePath.endsWith('panda-happy.png')).map((asset) => [asset.relativePath, asset.sha256]));",
+    "  fixtureProject = ProjectSchema.parse(JSON.parse(await fsp.readFile(path.join(fixture.projectRoot, 'project.json'), 'utf8')));\n  if (issue844FixedProjectRoot) {\n    fixture.backgroundEvidence = await deriveIssue844FixedProjectBackgroundEvidence(fixtureProject, fixture.projectRoot);\n    fixture.expressionAssetHashes = Object.fromEntries(fixtureProject.assets.filter((asset) => asset.relativePath.endsWith('panda-neutral.png') || asset.relativePath.endsWith('panda-happy.png')).map((asset) => [asset.relativePath, asset.sha256]));\n  }",
     'Issue #844 fixed Project fixture metadata');
 }
 runtime = replaceOnce(runtime,
