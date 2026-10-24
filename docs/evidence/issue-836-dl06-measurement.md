@@ -1,10 +1,10 @@
 # Issue #836 DL-06 measurement plan and result
 
-Report version: **1.18.0**
+Report version: **1.19.0**
 Frozen R3 plan revision: **1.4.0**, completed as one bounded four-run continuation
 Plan date: **2026-10-23**
 R3 status: **PARTIAL / NOT_ATTESTED**; all four v1.4.0 generated-probe cold/warm runs completed with `auto=PASS`, matching manifest/receipt hashes, and maximum sample gaps below the frozen 5,000 ms validity limit. These generated probes do not establish author-authorized real-project provenance. Phase wall times, Renderer pending-write queue peak, and post-terminal release time remain `NOT_MEASURED`; installer acceptance and human Gate B evidence remain unavailable. DL-06 and DL-07 remain **NO GO**.
-R2 status: **PARTIAL**; the v1.0.0 AC08 staging-path boundary probe passed. The v1.1.0 supported deep-path Creator export completed through atomic commit, but its runner exited 1 on a harness enum mismatch; no retry was made.
+R2 status: **PARTIAL**; the v1.0.0 AC08 staging-path boundary probe passed. The v1.1.0 supported deep-path Creator export completed through atomic commit, but its runner exited 1 on a harness enum mismatch; no retry was made. Budget boundaries, the commit race, and generated-fixture media/copy/output-permission cases also have bounded passing evidence; complete failure, resource-budget, and author-Project coverage remain open.
 
 ## Evidence availability
 
@@ -733,3 +733,57 @@ The controlled `EACCES` check ran exactly once for the selected target. Creator 
 Receipt: `issue836-r2-output-permission-receipt.json`, SHA-256 `a9ce6138e161f67ff9ce012ada4009d4fef1d4b7d1340ff123c521b53bd3cac6`; the evidence-root copy has the same hash. Save As screenshot: `issue836-r2-output-permission-save-as.png`, SHA-256 `bf3e2ec4134ea419d9d9d744b0277988a7507ace7ba0e8f87499d7f2f41c2de3`. Blocked Creator task screenshot: `issue836-r2-output-permission-blocked.png`, SHA-256 `32efa0001e5dc17634bbabd4069fc66ca5e3276b7ae7e3be6fdaeddbf14df0c8`; it shows the specific output-folder permission issue and recovery step. Receipt status is `auto=PASS`, `owner=NOT_ATTESTED`. This proves the generated-fixture UI response to injected `EACCES`; it does not prove behavior under an actual Windows ACL denial.
 
 AC03 and R2 remain **PARTIAL**. This closes only the controlled Creator output-folder permission subcase. Real ACL behavior, target races, remaining AC03 cases, R3 measurements, author-Project provenance, packaged-install acceptance, and human Gate B remain outstanding. For pushed verifier source SHA `e5c0ebf590424dd66c37bcfacb1fb22039ce3404`, combined commit status was pending with zero status entries, GitHub check-runs returned zero, and `gh pr checks 817` reported no checks: `CI_NOT_REPORTED`.
+
+## Frozen AC03 R2 Creator output-folder real NTFS ACL permission plan - v1.0.0 (before run)
+
+Frozen source HEAD: `e1037804d0837ea263579a4cfc7c18b334df86ee` on `issue-816-dl01-formal-export-preparation`. The previous v1.0.0 controlled EACCES Creator case passed but did not exercise a Windows ACL. A disposable ACL check in the current Windows environment showed that `fs.access(W_OK)` still returns success for an explicitly denied folder while exclusive file creation returns `EPERM`; its temporary test folder was restored and removed. This follow-up therefore adds a Main-owned exclusive create/close/delete probe to output target capture. A focused unit case verifies successful selection leaves no probe file.
+
+This single Electron run uses generated Issue #827 sample 1 and applies an explicit write-deny ACE only to a newly created subfolder under that generated Project. It uses the current account SID and opens Creator's Save As dialog at a target inside the denied subfolder. The verifier first confirms that exclusive file creation is denied, then drives the normal Creator/Main preflight. Expected: the Main write probe surfaces the located output-folder permission issue before any formal Job/commit; the target remains absent; the prior valid MP4, Project bytes, editor/session state, and source-media hashes remain unchanged. The `finally` path removes only the explicit deny ACE and confirms create/delete access is restored. The plan does not alter ACLs outside the generated child folder or use an author Project.
+
+Acceptance root: `D:\PandaStage-Acceptance\i836r2pf4`; isolated frame-job root: `D:\PandaStage-Acceptance\i836r2pf4\frame-jobs`. Both were confirmed absent before freezing. On the frozen source, `node --check scripts/verify-issue819-dl02.cjs`, `git diff --check`, the focused export-preparation unit file (49 tests), `pnpm lint`, `pnpm test:integration` (38 files / 189 tests), and `pnpm build` (including typecheck) passed. Existing empty CSS import and large-chunk warnings remain. The disposable ACL check's observed `W_OK=allowed` / exclusive-create=`EPERM` result is the reason for the Main write probe.
+
+Run exactly once after this plan is committed and pushed and both paths are reconfirmed absent. The ACL is applied only after fixture generation, and the verifier restores it in `finally`. If the Electron process is forcibly terminated before `finally`, preserve the root and remove only the explicit deny ACE from that run's generated ACL subfolder with the current SID before inspecting it; do not rerun this plan.
+
+```powershell
+$modeNames = @(
+    'PANDA_STAGE_ISSUE819_ROOT',
+    'PANDA_STAGE_ISSUE823_DL03',
+    'PANDA_STAGE_ISSUE827_DL04',
+    'PANDA_STAGE_ISSUE827_ROOT',
+    'PANDA_STAGE_ISSUE827_SAMPLE',
+    'PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA',
+    'PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID',
+    'PANDA_STAGE_ISSUE832_DL05',
+    'PANDA_STAGE_ISSUE832_ROOT',
+    'PANDA_STAGE_ISSUE832_RUN_ID',
+    'PANDA_STAGE_ISSUE832_SOURCE_SHA',
+    'PANDA_STAGE_ISSUE834_FOLLOWUP',
+    'PANDA_STAGE_ISSUE834_ROOT',
+    'PANDA_STAGE_ISSUE834_RUN_ID',
+    'PANDA_STAGE_ISSUE834_SOURCE_SHA',
+    'PANDA_STAGE_ISSUE836_DL06_R0',
+    'PANDA_STAGE_ISSUE836_FRAME_ROOT',
+    'PANDA_STAGE_ISSUE836_R2_COMMIT_RACE',
+    'PANDA_STAGE_ISSUE836_R2_COPY_FAILURE',
+    'PANDA_STAGE_ISSUE836_R2_COPY_FAILURE_VALID_MP4',
+    'PANDA_STAGE_ISSUE836_R2_MEDIA_PREFLIGHT',
+    'PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION',
+    'PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION_ACL',
+    'PANDA_STAGE_ISSUE836_R2_PATH_BOUNDARY',
+    'PANDA_STAGE_ISSUE836_R2_PATH_SUCCESS',
+    'PANDA_STAGE_ISSUE836_RUN_ID',
+    'PANDA_STAGE_ISSUE836_SOURCE_SHA'
+)
+foreach ($name in $modeNames) { Remove-Item "Env:$name" -ErrorAction SilentlyContinue }
+$env:PANDA_STAGE_ISSUE827_ROOT = 'D:\PandaStage-Acceptance\i836r2pf4'
+$env:PANDA_STAGE_ISSUE827_SAMPLE = '1'
+$env:PANDA_STAGE_ISSUE827_DL04 = '1'
+$env:PANDA_STAGE_ISSUE836_FRAME_ROOT = 'D:\PandaStage-Acceptance\i836r2pf4\frame-jobs'
+$env:PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION_ACL = '1'
+$env:PANDA_STAGE_ISSUE836_RUN_ID = 'i836-ac03-r2-output-permission-real-acl-v1.0.0'
+$env:PANDA_STAGE_ISSUE836_SOURCE_SHA = 'e1037804d0837ea263579a4cfc7c18b334df86ee'
+pnpm exec electron scripts/verify-issue819-dl02.cjs
+exit $LASTEXITCODE
+```
+
+Stop on the first failure and preserve the root; no retry or additional verifier is part of this plan. A pass covers one generated-fixture real ACL denial on this Windows account and application build. It does not complete AC03/R2, cover all ACL arrangements, or establish author-Project, packaged-install, R3 resource-ceiling, or human Gate B acceptance.
