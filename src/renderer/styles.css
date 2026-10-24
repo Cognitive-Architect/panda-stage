@@ -23,6 +23,7 @@
 @import './styles/features/dialogue/workspace/s02-04--right-workspace-queue-authoring.css';
 @import './styles/shell/right-workspace/s02-05--right-workspace-width-1050.css';
 @import './styles/features/fla-import/status/s03-01--terminal-g.css';
+@import './styles/features/fla-import/status/fla-stage-g-importing.css';
 @import './styles/features/fla-import/review/s03-02--inspection-a.css';
 @import './styles/features/fla-import/raster/s03-03--raster-browser-tail.css';
 @import './styles/features/fla-import/status/s03-04--severity-f.css';

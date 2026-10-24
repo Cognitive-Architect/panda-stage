@@ -15,7 +15,7 @@ import {
 const noop = vi.fn();
 const terminalStyles = readFileSync(
   new URL(
-    '../../src/renderer/styles/features/fla-import/status/s03-01--terminal-g.css',
+    '../../src/renderer/styles/features/fla-import/status/fla-stage-g-importing.css',
     import.meta.url,
   ),
   'utf8',

@@ -220,6 +220,7 @@ export function AnimationLibraryCard({
   const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
     if (event.key === 'Escape') {
       event.preventDefault();
+      event.stopPropagation();
       setOpen(false);
       return;
     }

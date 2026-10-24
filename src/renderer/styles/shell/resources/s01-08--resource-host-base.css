@@ -234,7 +234,11 @@
 }
 
 .resource-activity-panel .asset-category-tabs {
+  display: grid;
   width: auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  overflow: visible;
 }
 
 .resource-activity-panel .asset-category-tabs button {

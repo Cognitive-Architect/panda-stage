@@ -122,6 +122,20 @@ describe('animation library', () => {
     expect(markup).toContain('data-testid="animation-preview-play"');
   });
 
+  it('keeps Escape from bubbling past the preview into the resource drawer', async () => {
+    const source = await readFile('src/renderer/features/assets/AnimationLibraryPanel.tsx', 'utf8');
+    const escapeHandler = source.match(
+      /const\s+handleDialogKeyDown\s*=\s*\([\s\S]*?=>\s*\{([\s\S]*?)\n\s{2}\};/u,
+    )?.[1];
+    const escapeBlock = escapeHandler?.match(
+      /if\s*\(event\.key\s*===\s*'Escape'\)\s*\{([\s\S]*?)\n\s{4}\}/u,
+    )?.[1];
+
+    expect(escapeBlock).toContain('event.preventDefault();');
+    expect(escapeBlock).toContain('event.stopPropagation();');
+    expect(escapeBlock).toContain('setOpen(false);');
+  });
+
   it('loads a cover only while visible and revokes its URL when it leaves view', async () => {
     const deferredReads: Array<(value: { ok: boolean; mimeType?: string; bytes?: Uint8Array }) => void> = [];
     const read = vi.fn(() => new Promise<{ ok: boolean; mimeType?: string; bytes?: Uint8Array }>(
