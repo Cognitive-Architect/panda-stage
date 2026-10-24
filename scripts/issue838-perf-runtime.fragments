@@ -1,0 +1,317 @@
+@@ GLOBAL_DIAGNOSTICS
+const formalCommitRecords = [];
+const issue838Perf = {
+  processStartedAt: performance.now(),
+  clickAt: null, uiCompletedAt: null, jobStartedAt: null, jobCompletedAt: null,
+  exportResult: null, exportCompletion: null, videoEncode: null, audioMux: null,
+  probes: [], cleanupJobDirectoryMs: 0, commitMs: 0,
+  system: {
+    sampleCount: 0, peakMainRssBytes: process.memoryUsage().rss,
+    minimumFreeRamBytes: null, initialFreeDiskBytes: null, minimumFreeDiskBytes: null,
+  },
+};
+
+@@ SHORT_PROJECT
+function shortIssue838Project(project) {
+  const shortProject = structuredClone(project);
+  shortProject.shots = shortProject.shots.map((shot, index) => {
+    const audioClips = shot.audioClips.map((clip) => {
+      if (index === 0 && clip.role === 'bgm') return { ...clip, startMs: 0, endMs: 1_500 };
+      if (index === 0 && clip.role === 'dialogue') return { ...clip, startMs: 0, endMs: 1_000 };
+      if (index === 1 && clip.role === 'dialogue') return { ...clip, startMs: 250, endMs: 1_250 };
+      if (index === 2 && clip.role === 'sfx') return { ...clip, startMs: 250, endMs: 1_250 };
+      return clip;
+    });
+    const dialogues = shot.dialogues.map((dialogue) => ({
+      ...dialogue, startMs: index === 0 ? 0 : 250, endMs: index === 0 ? 1_250 : 1_400,
+    }));
+    return { ...shot, durationMs: 1_500, timelineEvents: [], dialogues, audioClips };
+  });
+  const validated = ProjectSchema.parse(shortProject);
+  assert(validated.shots.length === 3, 'Issue #838 sample must have three Shots.');
+  assert(validated.shots.every((shot) => shot.durationMs === 1_500), 'Issue #838 Shots must each be 1.5 seconds.');
+  assert(validated.shots.some((shot) => shot.audioClips.length > 0), 'Issue #838 sample must include audio.');
+  return validated;
+}
+
+@@ PROBE_TIMERS
+  const mediaAdapter = new FFmpegAdapter({ ffmpegPath: mediaTools.ffmpegPath, ffprobePath: mediaTools.ffprobePath });
+  if (issue838PerfMode) {
+    for (const [method, kind] of [['probeAudioFile', 'audio-source'], ['probeVideo', 'final-video']]) {
+      const originalProbe = mediaAdapter[method].bind(mediaAdapter);
+      mediaAdapter[method] = async (...args) => {
+        const startedAt = performance.now();
+        const value = await originalProbe(...args);
+        issue838Perf.probes.push({ kind, elapsedMs: Math.round(performance.now() - startedAt) });
+        return value;
+      };
+    }
+  }
+  const encodePngSequence
+@@ ENCODE_TIMER
+      const encodeStartedAt = performance.now();
+      const encodeResult = await encodePngSequence(request, signal);
+      if (issue838PerfMode) issue838Perf.videoEncode = {
+        elapsedMs: encodeResult.elapsedMs,
+        wrapperWallMs: Math.round(performance.now() - encodeStartedAt),
+        versionLine: encodeResult.versionLine,
+        frameCount: encodeResult.frameCount,
+      };
+      return encodeResult;
+@@ MUX_TIMER
+    if (!replaceDialogueSourceBeforeNextMix) {
+      const muxStartedAt = performance.now();
+      const muxResult = await muxAudioMix(request, signal);
+      if (issue838PerfMode) issue838Perf.audioMux = {
+        elapsedMs: muxResult.elapsedMs,
+        wrapperWallMs: Math.round(performance.now() - muxStartedAt),
+        versionLine: muxResult.versionLine,
+      };
+      return muxResult;
+    }
+@@ CLEANUP_TIMER
+  exportFileSystem = new class extends FileSystemService {
+    async cleanupJobDirectory(directory) {
+      const startedAt = performance.now();
+      await super.cleanupJobDirectory(directory);
+      if (issue838PerfMode) issue838Perf.cleanupJobDirectoryMs += Math.round(performance.now() - startedAt);
+    }
+    async commitFormalOutputNoReplace
+@@ COMMIT_TIMER
+      const commitStartedAt = performance.now();
+      await super.commitFormalOutputNoReplace(stagingPath, outputPath);
+      if (issue838PerfMode) issue838Perf.commitMs = Math.round(performance.now() - commitStartedAt);
+@@ JOB_START
+        var jobStartedAt = performance.now();
+        handle = exportService.startFormalExport(
+          input,
+@@ JOB_COMPLETION
+      formalStarts.at(-1).jobId = handle.jobId;
+      if (issue838PerfMode) {
+        issue838Perf.jobStartedAt = jobStartedAt;
+        issue838Perf.exportCompletion = handle.completion.then(
+          (value) => {
+            issue838Perf.jobCompletedAt = performance.now();
+            issue838Perf.exportResult = value;
+            return value;
+          },
+          (error) => {
+            issue838Perf.jobCompletedAt = performance.now();
+            issue838Perf.exportResult = { error: String(error?.stack ?? error) };
+            return null;
+          },
+        );
+      }
+@@ FIXTURE_RETIMER
+  fixtureProject = ProjectSchema.parse(JSON.parse(await fsp.readFile(path.join(fixture.projectRoot, 'project.json'), 'utf8')));
+  if (issue838PerfMode) {
+    fixtureProject = shortIssue838Project(fixtureProject);
+    fixture.project = fixtureProject;
+    await fsp.writeFile(path.join(fixture.projectRoot, 'project.json'), JSON.stringify(fixtureProject, null, 2), 'utf8');
+  }
+  if (dl05FollowupMode) {
+@@ DIAGNOSTIC_BRANCH
+  if (issue838PerfMode) {
+    const outputPath = path.join(fixture.projectRoot, 'issue838-formal-export.mp4');
+    assert(!existsSync(outputPath), 'Issue #838 target must start absent.');
+    const projectBytesBefore = await fsp.readFile(projectFilePath);
+    const projectSha256Before = hash(projectBytesBefore);
+    const assetHashesBefore = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+      assetId: asset.id, relativePath: asset.relativePath,
+      sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+    })));
+    const rootStats = statfsSync ? (() => { try { return statfsSync(fixture.root); } catch { return null; } })() : null;
+    issue838Perf.system.initialFreeDiskBytes = rootStats ? Number(rootStats.bavail) * Number(rootStats.bsize) : null;
+    const sample = () => {
+      issue838Perf.system.sampleCount += 1;
+      issue838Perf.system.peakMainRssBytes = Math.max(issue838Perf.system.peakMainRssBytes, process.memoryUsage().rss);
+      const ram = os.freemem();
+      issue838Perf.system.minimumFreeRamBytes = issue838Perf.system.minimumFreeRamBytes == null
+        ? ram : Math.min(issue838Perf.system.minimumFreeRamBytes, ram);
+      if (statfsSync) {
+        try {
+          const disk = statfsSync(fixture.root);
+          const free = Number(disk.bavail) * Number(disk.bsize);
+          issue838Perf.system.minimumFreeDiskBytes = issue838Perf.system.minimumFreeDiskBytes == null
+            ? free : Math.min(issue838Perf.system.minimumFreeDiskBytes, free);
+        } catch {}
+      }
+    };
+    sample();
+    const sampleTimer = setInterval(sample, 250);
+    const hardStopTimer = setTimeout(() => {
+      const jobId = exportService?.getActiveJobId();
+      if (jobId) exportService.cancelJob(jobId);
+      void fsp.writeFile(path.join(evidenceRoot, 'issue838-stop.json'), JSON.stringify({
+        issue: 838, status: 'STOP', reason: 'Five-minute UI export wall-time limit reached.',
+        sourceCommitSha: result.sourceCommitSha, activeJobId: jobId,
+        activeProcessCount: exportService?.getActiveProcessCount() ?? null, timestamp: new Date().toISOString(),
+      }, null, 2), 'utf8').finally(() => app.exit(2));
+    }, 295_000);
+    hardStopTimer.unref();
+    let exportRun;
+    try {
+      exportRun = await startFromCreatorUi(evidenceRoot, 'issue838-formal-export', {
+        selectedFileName: path.basename(outputPath), startTimeoutMs: 30_000,
+        failFastOnStartFailure: true, completionTimeoutMs: 210_000, abortOnTimeout: true,
+      });
+    } finally {
+      clearInterval(sampleTimer);
+      clearTimeout(hardStopTimer);
+    }
+    if (issue838Perf.exportCompletion) await issue838Perf.exportCompletion;
+    const job = exportService.getJob(exportRun.start.jobId);
+    const verifierStartedAt = performance.now();
+    const outputBytes = existsSync(outputPath) ? await fsp.readFile(outputPath) : null;
+    const outputSha256 = outputBytes ? hash(outputBytes) : null;
+    const externalProbeStartedAt = performance.now();
+    let externalProbe = null;
+    let externalProbeError = null;
+    if (outputBytes) {
+      try {
+        const probeResult = await runProcess(mediaTools.ffprobePath, [
+          '-v', 'error', '-count_frames', '-show_streams', '-show_format', '-of', 'json', outputPath,
+        ]);
+        externalProbe = JSON.parse(probeResult.stdout);
+      } catch (error) { externalProbeError = String(error.stack ?? error); }
+    }
+    const externalProbeMs = Math.round(performance.now() - externalProbeStartedAt);
+    const projectBytesAfter = await fsp.readFile(projectFilePath);
+    const assetHashesAfter = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+      assetId: asset.id, relativePath: asset.relativePath,
+      sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+    })));
+    const temporaryCleanup = await assertNoExportTemporaries('Issue #838 focused formal export');
+    const editorStatePreserved =
+      exportRun.before.revision === exportRun.after.revision &&
+      exportRun.before.dirty === exportRun.after.dirty &&
+      exportRun.before.undoCount === exportRun.after.undoCount &&
+      exportRun.before.redoCount === exportRun.after.redoCount;
+    const projectUnchanged = projectBytesBefore.equals(projectBytesAfter);
+    const assetsUnchanged = JSON.stringify(assetHashesBefore) === JSON.stringify(assetHashesAfter);
+    const video = externalProbe?.streams?.find((stream) => stream.codec_type === 'video');
+    const audio = externalProbe?.streams?.filter((stream) => stream.codec_type === 'audio') ?? [];
+    const frameCount = Number(video?.nb_read_frames ?? video?.nb_frames);
+    const parts = String(video?.avg_frame_rate ?? video?.r_frame_rate ?? '0/1').split('/');
+    const fps = Number(parts[0]) / Number(parts[1] || 1);
+    const durationSeconds = Number(video?.duration ?? externalProbe?.format?.duration);
+    const audioDurationSeconds = Number(audio[0]?.duration ?? 0);
+    const ffprobeValid =
+      video?.codec_name === 'h264' && video?.pix_fmt === 'yuv420p' &&
+      video?.width === 1_920 && video?.height === 1_080 &&
+      Math.abs(fps - 24) < 0.001 && frameCount === 108 &&
+      Math.abs(durationSeconds - 4.5) < 0.08 && audio.length === 1 &&
+      audio[0]?.codec_name === 'aac' && audio[0]?.sample_rate === '48000' &&
+      Math.abs(audioDurationSeconds - 4.5) < 0.08;
+    const output = issue838Perf.exportResult ?? {};
+    const render = output.render ?? null;
+    const probeMs = issue838Perf.probes.reduce((sum, item) => sum + item.elapsedMs, 0);
+    const encodeMs = issue838Perf.videoEncode?.elapsedMs ?? null;
+    const muxMs = issue838Perf.audioMux?.elapsedMs ?? null;
+    const cleanupCommitMs = issue838Perf.cleanupJobDirectoryMs + issue838Perf.commitMs;
+    const stageSum = (render?.elapsedMs ?? 0) + (encodeMs ?? 0) + (muxMs ?? 0) + probeMs + cleanupCommitMs;
+    const jobMs = output.elapsedMs ?? null;
+    const residualMs = jobMs == null ? null : jobMs - stageSum;
+    const verifierExtraMs = Math.round(performance.now() - verifierStartedAt);
+    const cleanup = {
+      activeJobId: exportService.getActiveJobId(),
+      activeProcessCount: exportService.getActiveProcessCount(),
+      outputTemporaries: temporaryCleanup.outputTemporaries,
+      frameJobDirectories: temporaryCleanup.frameJobDirectories,
+      preparationSnapshots: temporaryCleanup.preparationSnapshots,
+      stagingRemoved: formalCommitRecords.at(-1)?.stagingRemoved ?? null,
+      cancellationPathExercised: false,
+      noClobberOverwritePathExercised: false,
+    };
+    const outputPresent = Boolean(outputBytes);
+    const passed =
+      formalStarts.length === 1 && job?.status === 'completed' && outputPresent && ffprobeValid &&
+      projectUnchanged && assetsUnchanged && editorStatePreserved &&
+      cleanup.activeJobId === null && cleanup.activeProcessCount === 0 &&
+      cleanup.outputTemporaries.length === 0 && cleanup.frameJobDirectories.length === 0 &&
+      cleanup.preparationSnapshots.length === 0 && cleanup.stagingRemoved === true;
+    const receipt = {
+      schemaVersion: 1, issue: 838,
+      status: passed ? 'MEASUREMENT_PASS' : 'MEASUREMENT_PARTIAL',
+      sourceCommitSha: result.sourceCommitSha, recordedAt: new Date().toISOString(),
+      runId: path.basename(fixture.root), fixtureRoot: fixture.root, projectRoot: fixture.projectRoot,
+      sample: {
+        source: 'Issue #827 generated sample 1, retimed for this bounded diagnostic',
+        durationMs: 4_500, shots: fixtureProject.shots.length,
+        shotDurationsMs: fixtureProject.shots.map((shot) => shot.durationMs),
+        frames: job?.totalFrames ?? render?.totalFrames ?? null, fps: 24,
+        width: 1_920, height: 1_080, assets: fixtureProject.assets.length,
+        audioEvents: fixtureProject.shots.reduce((sum, shot) => sum + shot.audioClips.length, 0),
+        sourceAssetHashes: assetHashesBefore,
+      },
+      environment: {
+        platform: process.platform, architecture: process.arch, windowsRelease: os.release(),
+        electronVersion: process.versions.electron, chromiumVersion: process.versions.chrome,
+        nodeVersion: process.versions.node, cpuModel: os.cpus()[0]?.model ?? 'UNKNOWN',
+        logicalProcessors: os.cpus().length, totalRamBytes: os.totalmem(),
+        gpuStatus: 'UNKNOWN; Windows reported only virtual display adapters AspDod/AspIdd',
+        packaged: app.isPackaged, ffmpegVersion: issue838Perf.videoEncode?.versionLine ?? 'UNKNOWN',
+      },
+      output: {
+        path: outputPath, sha256: outputSha256, bytes: outputBytes?.length ?? null, ffprobeValid, externalProbeMs,
+        video: { codec: video?.codec_name ?? null, pixelFormat: video?.pix_fmt ?? null,
+          width: video?.width ?? null, height: video?.height ?? null, fps, frames: frameCount, durationSeconds },
+        audio: { streams: audio.length, codec: audio[0]?.codec_name ?? null,
+          sampleRate: audio[0]?.sample_rate ?? null, durationSeconds: audioDurationSeconds },
+        externalProbeError,
+      },
+      timingMs: {
+        setupBeforeClick: issue838Perf.clickAt == null ? null : Math.round(issue838Perf.clickAt - issue838Perf.processStartedAt),
+        totalUiClickToCompleted: issue838Perf.clickAt == null || issue838Perf.uiCompletedAt == null
+          ? null : Math.round(issue838Perf.uiCompletedAt - issue838Perf.clickAt),
+        exportJobStartToCommit: jobMs,
+        uiMinusJobApproximation: issue838Perf.clickAt == null || issue838Perf.uiCompletedAt == null || jobMs == null
+          ? null : Math.round(issue838Perf.uiCompletedAt - issue838Perf.clickAt) - jobMs,
+        framePipeline: render?.elapsedMs ?? null, videoEncode: encodeMs, audioMux: muxMs,
+        probes: issue838Perf.probes, totalProbeMs: probeMs,
+        cleanupJobDirectory: issue838Perf.cleanupJobDirectoryMs, atomicCommit: issue838Perf.commitMs,
+        cleanupAndCommit: cleanupCommitMs, jobStageResidual: residualMs,
+        verifierExtraAfterUiCompletion: verifierExtraMs, standaloneFfprobe: externalProbeMs,
+      },
+      renderMetrics: {
+        frames: job?.totalFrames ?? null, completedFrames: job?.completedFrames ?? null,
+        pngTemporaryBytes: render?.totalBytes ?? null, peakPendingWrites: render?.peakPendingWrites ?? null,
+        framePipelineMemoryBytes: render?.memory ?? null,
+      },
+      observedSystem: {
+        samplingIntervalMs: 250, samples: issue838Perf.system.sampleCount,
+        peakMainProcessRssBytes: issue838Perf.system.peakMainRssBytes,
+        minimumFreeRamBytes: issue838Perf.system.minimumFreeRamBytes,
+        initialFreeDiskBytes: issue838Perf.system.initialFreeDiskBytes,
+        minimumFreeDiskBytes: issue838Perf.system.minimumFreeDiskBytes,
+        ffmpegPeakMemory: 'NOT_MEASURED',
+      },
+      preservation: { projectUnchanged, assetsUnchanged, editorStatePreserved,
+        outputInitiallyAbsent: true, outputAppeared: outputPresent, outputSha256 },
+      cleanup,
+      limitations: [
+        'One run only; no p95 or production-workload inference.',
+        'Canvas/PNG/IPC/write subsegments were not separately timed.',
+        'Existing-target no-clobber rejection and cancellation were not re-exercised.',
+        'GPU and FFmpeg child-process peak memory were not ascertainable.',
+        'Windows Server virtual display environment is not representative of a standard desktop or packaged installer.',
+      ],
+      evidenceFiles: {
+        saveAsScreenshot: exportRun.nativeSaveAsScreenshotPath,
+        progressScreenshot: exportRun.progressScreenshotPath,
+        completionScreenshot: exportRun.completedScreenshotPath,
+        ffprobeJson: path.join(evidenceRoot, 'issue838-ffprobe.json'),
+      },
+    };
+    if (externalProbe) await fsp.writeFile(
+      path.join(evidenceRoot, 'issue838-ffprobe.json'), JSON.stringify(externalProbe, null, 2), 'utf8',
+    );
+    await fsp.writeFile(path.join(evidenceRoot, 'issue838-export-performance-receipt.json'),
+      JSON.stringify(receipt, null, 2), 'utf8');
+    console.log('Issue #838 receipt: ' + path.join(evidenceRoot, 'issue838-export-performance-receipt.json'));
+    console.log((passed ? 'MEASUREMENT_PASS ' : 'MEASUREMENT_PARTIAL ') + fixture.root);
+    mainWindow.destroy();
+    hiddenWindowManager.close();
+    app.exit(passed ? 0 : 2);
+    return;
+  }
