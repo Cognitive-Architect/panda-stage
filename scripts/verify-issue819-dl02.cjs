@@ -180,6 +180,7 @@ const audioMixProcessFailures = [];
 const preparationCopyFailures = [];
 let exportPreparationFileStore = null;
 let issue836SaveDialogPathOverride = null;
+let issue836OutputAclSelection = null;
 
 function defaultExportFileName(projectName) {
   let baseName = Array.from(projectName.trim(), (character) =>
@@ -415,6 +416,29 @@ function createRendererService() {
       });
       saveDialogEvidence.at(-1).result = selected.canceled ? 'cancelled' : 'selected';
       saveDialogEvidence.at(-1).selectedPath = selected.filePath ?? null;
+      if (
+        issue836R2OutputPermissionAclMode &&
+        !selected.canceled &&
+        issue836OutputAclSelection
+      ) {
+        assert(
+          selected.filePath &&
+            path.resolve(selected.filePath).toLocaleLowerCase() ===
+              path.resolve(issue836OutputAclSelection.targetPath).toLocaleLowerCase(),
+          'The native Save As dialog selected a different path before the real-ACL check.',
+        );
+        const aclEvidence = await applyGeneratedOutputWriteDeny(
+          path.dirname(selected.filePath),
+          selected.filePath,
+        );
+        issue836OutputAclSelection.state = aclEvidence.state;
+        issue836OutputAclSelection.permissionChecks.push(
+          aclEvidence.permissionCheck,
+        );
+        saveDialogEvidence.at(-1).aclAppliedAfterSelection = true;
+        saveDialogEvidence.at(-1).aclWriteProbeCode =
+          aclEvidence.permissionCheck.code;
+      }
       return selected.canceled ? null : (selected.filePath ?? null);
     },
   });
@@ -736,6 +760,75 @@ function runProcess(executable, args) {
       ? resolve({ stdout, stderr })
       : reject(new Error(`${path.basename(executable)} exited ${code}: ${stderr.trim() || stdout.trim()}`)));
   });
+}
+
+async function applyGeneratedOutputWriteDeny(directory, targetPath) {
+  const identity = await runProcess('whoami.exe', ['/user', '/fo', 'list']);
+  const userSid = identity.stdout.match(/SID:\s*(S-\d+(?:-\d+)+)/iu)?.[1];
+  assert(userSid, 'Could not resolve the current Windows account SID for the generated-folder ACL.');
+  const state = {
+    directory,
+    userSid,
+    installed: true,
+    restored: false,
+  };
+
+  try {
+    await runProcess('icacls.exe', [directory, '/deny', `*${userSid}:(W)`]);
+    const permissionProbePath = path.join(
+      directory,
+      `.panda-stage-acl-write-probe-${randomUUID()}.tmp`,
+    );
+    let writeError = null;
+    let probeHandle = null;
+    try {
+      probeHandle = await fsp.open(permissionProbePath, 'wx');
+    } catch (error) {
+      writeError = error;
+    } finally {
+      if (probeHandle) {
+        await probeHandle.close();
+        await fsp.unlink(permissionProbePath);
+      }
+    }
+    assert(
+      writeError && ['EACCES', 'EPERM'].includes(writeError.code),
+      'The explicit NTFS write-deny ACL did not block exclusive file creation.',
+    );
+    return {
+      state,
+      permissionCheck: {
+        outputPath: targetPath,
+        code: writeError.code,
+        mechanism: 'ntfs-explicit-write-deny',
+        userSidSha256: hash(Buffer.from(userSid, 'utf8')),
+      },
+    };
+  } catch (error) {
+    if (state.installed) await restoreGeneratedOutputWriteDeny(state);
+    throw error;
+  }
+}
+
+async function restoreGeneratedOutputWriteDeny(state) {
+  if (!state?.installed) return;
+  await runProcess('icacls.exe', [
+    state.directory,
+    '/remove:d',
+    `*${state.userSid}`,
+  ]);
+  state.installed = false;
+  const restoredProbePath = path.join(
+    state.directory,
+    `.panda-stage-acl-restored-probe-${randomUUID()}.tmp`,
+  );
+  const restoredProbe = await fsp.open(restoredProbePath, 'wx');
+  try {
+    await restoredProbe.close();
+  } finally {
+    await fsp.unlink(restoredProbePath);
+  }
+  state.restored = true;
 }
 
 function verifyMovedAudioClipContract(mixFixture) {
@@ -1526,55 +1619,15 @@ async function runIssue836R2OutputPermissionAcceptance({ result, initialProjectB
   const priorStartCount = formalStarts.length;
   const priorCommitCount = formalCommitRecords.length;
   let aclState = null;
+  const aclSelection = useAclPermissionMode
+    ? { targetPath, permissionChecks, state: null }
+    : null;
   let failureRun;
   try {
     if (useAclPermissionMode) {
       await fsp.mkdir(permissionDirectory);
-      const identity = await runProcess('whoami.exe', [
-        '/user',
-        '/fo',
-        'list',
-      ]);
-      const userSid = identity.stdout.match(/SID:\s*(S-\d+(?:-\d+)+)/iu)?.[1];
-      assert(userSid, 'Could not resolve the current Windows account SID for the generated-folder ACL.');
-      aclState = {
-        directory: permissionDirectory,
-        userSid,
-        installed: true,
-        restored: false,
-      };
-      await runProcess('icacls.exe', [
-        permissionDirectory,
-        '/deny',
-        `*${userSid}:(W)`,
-      ]);
-      const permissionProbePath = path.join(
-        permissionDirectory,
-        '.panda-stage-acl-write-probe.tmp',
-      );
-      let writeError = null;
-      let probeHandle = null;
-      try {
-        probeHandle = await fsp.open(permissionProbePath, 'wx');
-      } catch (error) {
-        writeError = error;
-      } finally {
-        if (probeHandle) {
-          await probeHandle.close();
-          await fsp.unlink(permissionProbePath);
-        }
-      }
-      assert(
-        writeError && ['EACCES', 'EPERM'].includes(writeError.code),
-        'The explicit NTFS write-deny ACL did not block exclusive file creation.',
-      );
-      permissionChecks.push({
-        outputPath: targetPath,
-        code: writeError.code,
-        mechanism: 'ntfs-explicit-write-deny',
-        userSidSha256: hash(Buffer.from(userSid, 'utf8')),
-      });
       issue836SaveDialogPathOverride = targetPath;
+      issue836OutputAclSelection = aclSelection;
     } else {
       preparationOptions.assertFormalOutputLocation = async (outputPath) => {
         if (path.resolve(outputPath) === path.resolve(targetPath)) {
@@ -1595,28 +1648,22 @@ async function runIssue836R2OutputPermissionAcceptance({ result, initialProjectB
       preparationOptions.assertFormalOutputLocation = originalAssertFormalOutputLocation;
     }
     issue836SaveDialogPathOverride = null;
-    if (aclState?.installed) {
-      await runProcess('icacls.exe', [
-        permissionDirectory,
-        '/remove:d',
-        `*${aclState.userSid}`,
-      ]);
-      aclState.installed = false;
-      const restoredProbePath = path.join(
-        permissionDirectory,
-        '.panda-stage-acl-restored-probe.tmp',
-      );
-      const restoredProbe = await fsp.open(restoredProbePath, 'wx');
-      await restoredProbe.close();
-      await fsp.unlink(restoredProbePath);
-      aclState.restored = true;
-    }
+    issue836OutputAclSelection = null;
+    aclState = aclSelection?.state ?? null;
+    if (aclState?.installed) await restoreGeneratedOutputWriteDeny(aclState);
   }
 
   assert(permissionChecks.length === 1, 'The output-folder permission check did not run exactly once.');
   assert(
     !useAclPermissionMode || aclState?.restored,
     'The generated output-folder ACL was not restored after the Creator case.',
+  );
+  const permissionDirectoryEntriesAfterRestore = useAclPermissionMode
+    ? await fsp.readdir(permissionDirectory)
+    : null;
+  assert(
+    !useAclPermissionMode || permissionDirectoryEntriesAfterRestore.length === 0,
+    'The restored generated output folder retained a permission probe or export artifact.',
   );
   assert(failureRun.status === 'failed' && failureRun.observedTaskStatus === 'failed', 'Creator did not block the output-permission failure.');
   assert(failureRun.starts.length === 0, 'A formal Main Job started after the output-permission failure.');
@@ -1666,6 +1713,7 @@ async function runIssue836R2OutputPermissionAcceptance({ result, initialProjectB
           deniedUserSidSha256: permissionChecks[0].userSidSha256,
           accessCheckCode: permissionChecks[0].code,
           restored: aclState.restored,
+          directoryEntriesAfterRestore: permissionDirectoryEntriesAfterRestore,
         }
       : null,
     taskIssue: permissionIssue,
