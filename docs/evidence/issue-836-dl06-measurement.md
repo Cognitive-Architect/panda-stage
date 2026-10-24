@@ -859,3 +859,56 @@ The native Save As dialog completed selection of the exact planned MP4 path whil
 The `finally` path restored the ACL and verified write access. Independent post-run `icacls` inspection showed only inherited Administrators, SYSTEM, CREATOR OWNER, and Users entries, with no explicit deny ACE. The generated ACL folder is empty. The receipt lists no output temporaries, frame-job directories, or preparation snapshots. The target remains absent and both receipt copies match.
 
 Receipt SHA-256: `c54c326aa471a6b5845060f7c5032ad4361a8b9496d422c488f334880b4d8163`. Save As screenshot SHA-256: `432cc42dbafbe8d0d93c0faf6739f1233ee5bd7ffc72dc491bbd4db593f8ed45`. Blocked Creator task screenshot SHA-256: `91b6c4f2a4814ed5e6fec88eb59f944d65f9f748613f5100b582f09fb43b834b`; it shows the output-location write-permission issue and recovery step. Receipt status is `AUTO=PASS`, `OWNER=NOT_ATTESTED`. This is one generated-fixture real ACL case on this Windows account and build; it does not establish author-Project, packaged-install, R3 resource-ceiling, or human Gate B acceptance. AC03 and R2 remain **PARTIAL**.
+
+## Frozen AC03 R2 required-media read-permission real NTFS ACL plan - v1.0.0 (before run)
+
+Frozen verifier source commit: `7da6de59254f2739c1fe9d2ea153a878e1363dfa` on `issue-816-dl01-formal-export-preparation`. The existing focused unit case covers permission errors from the media reader, but there is not yet Creator/Main evidence for a real Windows ACL denial on a required source asset. A disposable Windows check against a unique temporary file applied an explicit `R` deny for the current SID: `stat` still succeeded, Node file open returned `EPERM`, and after removing the deny the original four bytes were readable. The temporary file and folder were removed.
+
+This single Electron run uses a new generated Issue #827 sample 1 Project. A required first-Shot background file inside that generated Project is the only ACL target. The Save As folder remains writable; after `dialog.showSaveDialog` resolves and the exact planned output path is checked, the verifier applies an explicit NTFS read-deny ACE for the current account SID to that one source file and confirms file open returns `EACCES` or `EPERM` before returning the output path to Main. Main then performs normal preparation and the media reader encounters the actual denied source. Expected: Creator reaches terminal `failed` with `REQUIRED_MEDIA_UNAVAILABLE`, identifies the exact Shot/background, and shows the permission-specific problem and recovery step; no formal Job or output commit starts; the target stays absent; the prior valid MP4, Project bytes, editor/session state, and all source hashes remain unchanged. The `finally` path removes only this explicit deny ACE, verifies source-file reading is restored, and the verifier checks there is no deny ACE or owned preparation/output temporary left.
+
+Acceptance root `D:\PandaStage-Acceptance\i836r2mr1` and isolated frame-job root `D:\PandaStage-Acceptance\i836r2mr1\frame-jobs` were confirmed absent before freezing. The verifier change passed `node --check scripts/verify-issue819-dl02.cjs`, `git diff --check`, and `pnpm lint`; `pnpm build` passed with the existing empty CSS import and large-chunk warnings. The focused disposable ACL probe was restored and removed. Run exactly once after this plan is pushed and both paths are reconfirmed absent. Stop on the first failure and preserve all artifacts. If Electron is forcibly terminated before its `finally` restoration, preserve the run root and remove only the explicit deny ACE from the exact generated background file for the current SID before inspecting; do not retry.
+
+~~~powershell
+$modeNames = @(
+    'PANDA_STAGE_ISSUE819_ROOT',
+    'PANDA_STAGE_ISSUE823_DL03',
+    'PANDA_STAGE_ISSUE827_DL04',
+    'PANDA_STAGE_ISSUE827_ROOT',
+    'PANDA_STAGE_ISSUE827_SAMPLE',
+    'PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA',
+    'PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID',
+    'PANDA_STAGE_ISSUE832_DL05',
+    'PANDA_STAGE_ISSUE832_ROOT',
+    'PANDA_STAGE_ISSUE832_RUN_ID',
+    'PANDA_STAGE_ISSUE832_SOURCE_SHA',
+    'PANDA_STAGE_ISSUE834_FOLLOWUP',
+    'PANDA_STAGE_ISSUE834_ROOT',
+    'PANDA_STAGE_ISSUE834_RUN_ID',
+    'PANDA_STAGE_ISSUE834_SOURCE_SHA',
+    'PANDA_STAGE_ISSUE836_DL06_R0',
+    'PANDA_STAGE_ISSUE836_FRAME_ROOT',
+    'PANDA_STAGE_ISSUE836_R2_COMMIT_RACE',
+    'PANDA_STAGE_ISSUE836_R2_COPY_FAILURE',
+    'PANDA_STAGE_ISSUE836_R2_COPY_FAILURE_VALID_MP4',
+    'PANDA_STAGE_ISSUE836_R2_MEDIA_PREFLIGHT',
+    'PANDA_STAGE_ISSUE836_R2_MEDIA_READ_PERMISSION_ACL',
+    'PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION',
+    'PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION_ACL',
+    'PANDA_STAGE_ISSUE836_R2_PATH_BOUNDARY',
+    'PANDA_STAGE_ISSUE836_R2_PATH_SUCCESS',
+    'PANDA_STAGE_ISSUE836_RUN_ID',
+    'PANDA_STAGE_ISSUE836_SOURCE_SHA'
+)
+foreach ($name in $modeNames) { Remove-Item "Env:$name" -ErrorAction SilentlyContinue }
+$env:PANDA_STAGE_ISSUE827_ROOT = 'D:\PandaStage-Acceptance\i836r2mr1'
+$env:PANDA_STAGE_ISSUE827_SAMPLE = '1'
+$env:PANDA_STAGE_ISSUE827_DL04 = '1'
+$env:PANDA_STAGE_ISSUE836_FRAME_ROOT = 'D:\PandaStage-Acceptance\i836r2mr1\frame-jobs'
+$env:PANDA_STAGE_ISSUE836_R2_MEDIA_READ_PERMISSION_ACL = '1'
+$env:PANDA_STAGE_ISSUE836_RUN_ID = 'i836-ac03-r2-media-read-permission-real-acl-v1.0.0'
+$env:PANDA_STAGE_ISSUE836_SOURCE_SHA = '7da6de59254f2739c1fe9d2ea153a878e1363dfa'
+pnpm exec electron scripts/verify-issue819-dl02.cjs
+exit $LASTEXITCODE
+~~~
+
+A pass covers one generated-fixture real ACL denial on a required source media file for this Windows account and build. It does not complete AC03/R2, establish author-Project provenance or packaged-install behavior, measure R3 ceilings, or constitute human Gate B acceptance. AC03 and R2 remain PARTIAL pending the other cases and review.
