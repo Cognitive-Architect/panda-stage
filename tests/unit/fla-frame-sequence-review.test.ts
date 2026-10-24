@@ -34,6 +34,10 @@ describe('R2-H.2 shares the C03 unified candidate workbench', () => {
     'utf8',
   );
   const review = readFileSync('src/renderer/fla-import/FlaFrameSequenceReview.tsx', 'utf8');
+  const unifiedStyles = readFileSync(
+    'src/renderer/styles/features/fla-import/c03-unified-workbench.css',
+    'utf8',
+  );
   const assetLibrary = readFileSync(
     'src/renderer/features/assets/AssetLibrary.tsx',
     'utf8',
@@ -125,15 +129,31 @@ describe('R2-H.2 shares the C03 unified candidate workbench', () => {
     expect(rerender).toBeGreaterThan(start);
     expect(playback).toBeGreaterThan(rerender);
     expect(firstThumbnail).toBeGreaterThan(playback);
-    expect(review).toContain("presentation === 'unified-preview' ? null : <span>序列预览</span>");
+    expect(review).toContain("presentation !== 'unified-preview' ? (");
     expect(review).toContain("presentation === 'unified-preview' ? ' sr-only' : ''");
     expect(review).toContain('aria-describedby={validation.message');
     expect(review).toContain('aria-invalid={!validation.valid}');
     expect(review).toContain('单次最多生成 {MAX_SEQUENCE_FRAMES} 帧。');
-    expect(review).toContain("`${selectedPreviewIndex + 1}/${displayedSequenceItems.length}`");
+    expect(review).toContain('data-testid="fla-frame-sequence-frame-counter"');
     expect(review).toContain("presentation === 'unified-preview'");
     expect(review).toContain("? playbackState.isPlaying ? '⏸' : '▶'");
     expect(review).toContain(": playbackState.isPlaying ? '⏸ 暂停' : '▶ 播放'");
+  });
+
+  it('uses concise unified idle and range copy with a content-sized start input', () => {
+    expect(review).toContain('showUnifiedGenerationHint');
+    expect(review).toContain("(phase === 'selecting' || phase === 'preview-ready')");
+    expect(review).toContain('data-testid="fla-frame-sequence-unified-idle-hint"');
+    expect(review).toContain('单击下方按钮生成预览');
+    expect(review).toContain('formatSequenceRangeSummaryForPresentation(');
+    expect(review).toContain('getSequenceStartFrameInputWidthPx(startFrameIndex + 1)');
+    expect(review).toContain("importKind={effectiveImportAsAnimation ? 'animation' : 'image'}");
+    expect(unifiedStyles).toContain('width: 52px;');
+    expect(unifiedStyles).toContain('min-height: 44px;');
+    expect(unifiedStyles).toContain(
+      '.fla-frame-sequence-review-unified-preview .fla-frame-sequence-filmstrip-region {',
+    );
+    expect(unifiedStyles).toContain('grid-template-rows: minmax(72px, 1fr);');
   });
 });
 

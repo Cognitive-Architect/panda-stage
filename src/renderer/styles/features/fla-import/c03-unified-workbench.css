@@ -578,6 +578,10 @@
   transform-origin: center;
 }
 
+.fla-frame-sequence-review-unified-preview .fla-frame-sequence-filmstrip-region {
+  grid-template-rows: minmax(72px, 1fr);
+}
+
 .fla-frame-sequence-review-unified-preview .fla-frame-sequence-range {
   min-width: 0;
   grid-template-areas:
@@ -624,7 +628,7 @@
 }
 
 .fla-frame-sequence-review-unified-preview .fla-frame-sequence-range-inputs input {
-  width: 76px;
+  width: 52px;
   min-height: 44px;
   font-size: 14px;
 }

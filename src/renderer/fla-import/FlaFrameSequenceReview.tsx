@@ -42,7 +42,8 @@ import {
 } from './FlaStageGTerminal';
 import {
   buildRange,
-  formatSequenceRangeSummary,
+  formatSequenceRangeSummaryForPresentation,
+  getSequenceStartFrameInputWidthPx,
   getDefaultSequenceRange,
   intentChangeReset,
   isCommitEligible,
@@ -949,6 +950,11 @@ export function FlaFrameSequenceReview({
   );
   const canGenerate = supported && validation.valid && Boolean(snapshot) &&
     canGeneratePhase;
+  const showUnifiedGenerationHint =
+    presentation === 'unified-preview' &&
+    canGenerate &&
+    !importLocked &&
+    (phase === 'selecting' || phase === 'preview-ready');
   const canSelectSequence = Boolean(sequenceCandidates.find((candidate) =>
     candidate.kind === 'sequence' && candidate.operation.target.renderTargetId === selectedTargetId && candidate.selectable,
   )) && !importLocked;
@@ -964,8 +970,7 @@ export function FlaFrameSequenceReview({
     return (
       <div className={`${reviewClassName} fla-stage-g-panel`} data-fla-session-id={sessionId} data-stage-g-state="importing" data-testid="fla-frame-sequence-review">
         <FlaStageGImporting
-          context={`${source.basename} · 第 ${(renderedRange?.startFrameIndex ?? startFrameIndex) + 1}–${(renderedRange?.endFrameIndex ?? endFrameIndex) + 1} 帧`}
-          headline={`正在导入 ${orderedSequenceItems.length} 帧序列…`}
+          importKind={effectiveImportAsAnimation ? 'animation' : 'image'}
           route="sequence"
         />
       </div>
@@ -1142,30 +1147,39 @@ export function FlaFrameSequenceReview({
               </>
             ) : (
               <div className="fla-frame-sequence-preview-placeholder" data-testid="fla-frame-sequence-preview-placeholder">
-                <strong>
-                  {selectedEntry.isBlank
-                    ? '这是空白画面'
-                    : !supported
-                      ? '此项暂不可预览'
-                      : phase === 'rendering'
-                        ? presentation === 'unified-preview' ? '正在生成预览…' : '正在生成连续画面…'
-                        : phase === 'error'
-                          ? presentation === 'unified-preview' ? '预览生成失败' : '连续画面生成失败'
-                          : presentation === 'unified-preview' ? '尚未生成预览' : '尚未生成连续画面'}
-                </strong>
-                <span>
-                  {selectedEntry.isBlank
-                    ? '源内容为空，不能导入。'
-                    : !supported
-                      ? boundedUnsupportedReason(selectedEntry.unsupportedReason)
-                      : phase === 'rendering'
-                        ? `已完成 ${completedFrameCount} / ${validation.valid ? validation.frameCount : 0} 帧`
-                        : phase === 'error'
-                          ? errorMessage || '请调整起始帧后重试。'
-                          : presentation === 'unified-preview'
-                            ? '调整范围后生成预览，最多 24 帧。'
-                            : '选择起始帧后，按需生成最多 24 张连续图片。'}
-                </span>
+                {showUnifiedGenerationHint ? (
+                  <strong data-testid="fla-frame-sequence-unified-idle-hint">
+                    单击下方按钮生成预览
+                  </strong>
+                ) : null}
+                {showUnifiedGenerationHint ? null : (
+                  <>
+                    <strong>
+                      {selectedEntry.isBlank
+                        ? '这是空白画面'
+                        : !supported
+                          ? '此项暂不可预览'
+                          : phase === 'rendering'
+                            ? presentation === 'unified-preview' ? '正在生成预览…' : '正在生成连续画面…'
+                            : phase === 'error'
+                              ? presentation === 'unified-preview' ? '预览生成失败' : '连续画面生成失败'
+                              : presentation === 'unified-preview' ? '尚未生成预览' : '尚未生成连续画面'}
+                    </strong>
+                    <span>
+                      {selectedEntry.isBlank
+                        ? '源内容为空，不能导入。'
+                        : !supported
+                          ? boundedUnsupportedReason(selectedEntry.unsupportedReason)
+                          : phase === 'rendering'
+                            ? `已完成 ${completedFrameCount} / ${validation.valid ? validation.frameCount : 0} 帧`
+                            : phase === 'error'
+                              ? errorMessage || '请调整起始帧后重试。'
+                              : presentation === 'unified-preview'
+                                ? '调整范围后生成预览，最多 24 帧。'
+                                : '选择起始帧后，按需生成最多 24 张连续图片。'}
+                    </span>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -1208,6 +1222,9 @@ export function FlaFrameSequenceReview({
                     const value = Number(event.currentTarget.value);
                     if (Number.isFinite(value)) updateStartFrameOneBased(value);
                   }}
+                  style={presentation === 'unified-preview'
+                    ? { width: `${getSequenceStartFrameInputWidthPx(startFrameIndex + 1)}px` }
+                    : undefined}
                   data-testid="fla-frame-sequence-start"
                 />
               </label>
@@ -1222,7 +1239,12 @@ export function FlaFrameSequenceReview({
               data-testid="fla-frame-sequence-range-summary"
               aria-live="polite"
             >
-              {formatSequenceRangeSummary(startFrameIndex, endFrameIndex, validation)}
+              {formatSequenceRangeSummaryForPresentation(
+                startFrameIndex,
+                endFrameIndex,
+                validation,
+                presentation,
+              )}
             </output>
             {presentation !== 'unified-preview' ? (
               <fieldset
@@ -1384,27 +1406,25 @@ export function FlaFrameSequenceReview({
           </div>
 
           <div className="fla-frame-sequence-filmstrip-region" data-testid="fla-frame-sequence-filmstrip-region">
-            <header className="fla-frame-sequence-filmstrip-heading">
-              {presentation === 'unified-preview' ? null : <span>序列预览</span>}
-              <div className="fla-frame-sequence-filmstrip-controls">
-                {hasPreview ? (
-                  <output
-                    aria-label={`第 ${selectedPreviewIndex + 1} / ${displayedSequenceItems.length} 帧`}
-                    data-batch-frame-index={selectedPreviewIndex + 1}
-                    data-frame-count={displayedSequenceItems.length}
-                    data-testid="fla-frame-sequence-frame-counter"
-                  >
-                    {presentation === 'unified-preview'
-                      ? `${selectedPreviewIndex + 1}/${displayedSequenceItems.length}`
-                      : `第 ${selectedPreviewIndex + 1} / ${displayedSequenceItems.length} 帧`}
-                  </output>
-                ) : null}
-                {presentation === 'unified-preview' ? null : playbackButton}
-                {presentation === 'unified-preview'
-                  ? null
-                  : <small>{displayedSequenceItems.length > 0 ? `${displayedSequenceItems.length} 帧` : '尚未生成'}</small>}
-              </div>
-            </header>
+            {presentation !== 'unified-preview' ? (
+              <header className="fla-frame-sequence-filmstrip-heading">
+                <span>序列预览</span>
+                <div className="fla-frame-sequence-filmstrip-controls">
+                  {hasPreview ? (
+                    <output
+                      aria-label={`第 ${selectedPreviewIndex + 1} / ${displayedSequenceItems.length} 帧`}
+                      data-batch-frame-index={selectedPreviewIndex + 1}
+                      data-frame-count={displayedSequenceItems.length}
+                      data-testid="fla-frame-sequence-frame-counter"
+                    >
+                      第 {selectedPreviewIndex + 1} / {displayedSequenceItems.length} 帧
+                    </output>
+                  ) : null}
+                  {playbackButton}
+                  <small>{displayedSequenceItems.length > 0 ? `${displayedSequenceItems.length} 帧` : '尚未生成'}</small>
+                </div>
+              </header>
+            ) : null}
           <div
             className="fla-frame-sequence-filmstrip"
             data-testid="fla-frame-sequence-filmstrip"
