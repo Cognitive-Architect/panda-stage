@@ -37,6 +37,7 @@ const issue836R2CommitRaceMode = process.env.PANDA_STAGE_ISSUE836_R2_COMMIT_RACE
 const issue836R2CopyFailureMode = process.env.PANDA_STAGE_ISSUE836_R2_COPY_FAILURE === '1';
 const issue836R2CopyFailureValidMp4Mode = process.env.PANDA_STAGE_ISSUE836_R2_COPY_FAILURE_VALID_MP4 === '1';
 const issue836R2MediaPreflightMode = process.env.PANDA_STAGE_ISSUE836_R2_MEDIA_PREFLIGHT === '1';
+const issue836R2MediaReadPermissionAclMode = process.env.PANDA_STAGE_ISSUE836_R2_MEDIA_READ_PERMISSION_ACL === '1';
 const issue836R2OutputPermissionMode = process.env.PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION === '1';
 const issue836R2OutputPermissionAclMode = process.env.PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION_ACL === '1';
 const dl05Mode = process.env.PANDA_STAGE_ISSUE832_DL05 === '1' || dl05FollowupMode;
@@ -181,6 +182,7 @@ const preparationCopyFailures = [];
 let exportPreparationFileStore = null;
 let issue836SaveDialogPathOverride = null;
 let issue836OutputAclSelection = null;
+let issue836RequiredMediaReadAclSelection = null;
 
 function defaultExportFileName(projectName) {
   let baseName = Array.from(projectName.trim(), (character) =>
@@ -437,6 +439,28 @@ function createRendererService() {
         );
         saveDialogEvidence.at(-1).aclAppliedAfterSelection = true;
         saveDialogEvidence.at(-1).aclWriteProbeCode =
+          aclEvidence.permissionCheck.code;
+      }
+      if (
+        issue836R2MediaReadPermissionAclMode &&
+        !selected.canceled &&
+        issue836RequiredMediaReadAclSelection
+      ) {
+        assert(
+          selected.filePath &&
+            path.resolve(selected.filePath).toLocaleLowerCase() ===
+              path.resolve(issue836RequiredMediaReadAclSelection.targetPath).toLocaleLowerCase(),
+          'The native Save As dialog selected a different target before the required-media ACL check.',
+        );
+        const aclEvidence = await applyGeneratedMediaReadDeny(
+          issue836RequiredMediaReadAclSelection.assetPath,
+        );
+        issue836RequiredMediaReadAclSelection.state = aclEvidence.state;
+        issue836RequiredMediaReadAclSelection.permissionChecks.push(
+          aclEvidence.permissionCheck,
+        );
+        saveDialogEvidence.at(-1).mediaReadAclAppliedAfterSelection = true;
+        saveDialogEvidence.at(-1).mediaReadAclProbeCode =
           aclEvidence.permissionCheck.code;
       }
       return selected.canceled ? null : (selected.filePath ?? null);
@@ -828,6 +852,60 @@ async function restoreGeneratedOutputWriteDeny(state) {
   } finally {
     await fsp.unlink(restoredProbePath);
   }
+  state.restored = true;
+}
+
+async function applyGeneratedMediaReadDeny(assetPath) {
+  const identity = await runProcess('whoami.exe', ['/user', '/fo', 'list']);
+  const userSid = identity.stdout.match(/SID:\s*(S-\d+(?:-\d+)+)/iu)?.[1];
+  assert(userSid, 'Could not resolve the current Windows account SID for the generated-media ACL.');
+  const state = {
+    assetPath,
+    userSid,
+    installed: true,
+    restored: false,
+  };
+
+  try {
+    await runProcess('icacls.exe', [assetPath, '/deny', `*${userSid}:(R)`]);
+    let readError = null;
+    let readHandle = null;
+    try {
+      readHandle = await fsp.open(assetPath, 'r');
+    } catch (error) {
+      readError = error;
+    } finally {
+      if (readHandle) await readHandle.close();
+    }
+    assert(
+      readError && ['EACCES', 'EPERM'].includes(readError.code),
+      'The explicit NTFS read-deny ACL did not block reading the generated media file.',
+    );
+    return {
+      state,
+      permissionCheck: {
+        assetPath,
+        code: readError.code,
+        mechanism: 'ntfs-explicit-read-deny',
+        userSidSha256: hash(Buffer.from(userSid, 'utf8')),
+      },
+    };
+  } catch (error) {
+    if (state.installed) await restoreGeneratedMediaReadDeny(state);
+    throw error;
+  }
+}
+
+async function restoreGeneratedMediaReadDeny(state) {
+  if (!state?.installed) return;
+  await runProcess('icacls.exe', [
+    state.assetPath,
+    '/remove:d',
+    `*${state.userSid}`,
+  ]);
+  state.installed = false;
+  const restoredRead = await fsp.open(state.assetPath, 'r');
+  await restoredRead.close();
   state.restored = true;
 }
 
@@ -1618,7 +1696,7 @@ async function runIssue836R2OutputPermissionAcceptance({ result, initialProjectB
 
   const priorStartCount = formalStarts.length;
   const priorCommitCount = formalCommitRecords.length;
-  let aclState = null;
+  let aclState;
   const aclSelection = useAclPermissionMode
     ? { targetPath, permissionChecks, state: null }
     : null;
@@ -1932,6 +2010,190 @@ async function runIssue836R2MediaPreflightAcceptance({ result, initialProjectByt
   await fsp.writeFile(path.join(evidenceRoot, 'issue836-r2-media-preflight-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
   await fsp.writeFile(path.join(fixture.root, 'issue836-r2-media-preflight-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
   console.log(`PASS Issue #836 R2 missing/corrupt-media Creator preflight: ${fixture.root}`);
+  mainWindow.destroy();
+  hiddenWindowManager.close();
+  app.exit(0);
+}
+
+async function runIssue836R2MediaReadPermissionAclAcceptance({ result, initialProjectBytes, projectFilePath, evidenceRoot, mediaTools }) {
+  assert(
+    issue836R2MediaReadPermissionAclMode,
+    'Issue #836 required-media read-permission ACL mode is not enabled.',
+  );
+  const media = collectExportPreparationMedia(fixtureProject);
+  const firstShotBackground = fixture.backgroundEvidence[0];
+  const mediaEntry = media.find(
+    (entry) => entry.asset.id === firstShotBackground?.assetId,
+  );
+  assert(
+    firstShotBackground && mediaEntry?.asset.kind === 'image' && mediaEntry.usages.length > 0,
+    'The generated sample has no consumed first-Shot background for the read-permission case.',
+  );
+
+  const projectRoot = path.resolve(fixture.projectRoot);
+  const assetPath = path.resolve(projectRoot, mediaEntry.asset.relativePath);
+  const relativeAssetPath = path.relative(projectRoot, assetPath);
+  assert(
+    relativeAssetPath && !relativeAssetPath.startsWith(`..${path.sep}`) && relativeAssetPath !== '..',
+    'The denied media path escaped the generated Project root.',
+  );
+  const assetSha256 = hash(await fsp.readFile(assetPath));
+  assert(assetSha256 === mediaEntry.asset.sha256, 'The selected generated media file did not match its Project SHA before the ACL case.');
+  assert((await fsp.readFile(projectFilePath)).equals(initialProjectBytes), 'The Project changed before the required-media read-permission case.');
+
+  const editorBefore = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+  const editorBeforeFingerprint = acceptanceSessionFingerprint(editorBefore);
+  const sourceHashesBefore = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+    assetId: asset.id,
+    sha256: hash(await fsp.readFile(path.join(projectRoot, asset.relativePath))),
+  })));
+  const previousOutputPath = path.join(projectRoot, 'issue836-r2-media-read-permission-prior.mp4');
+  assert(!existsSync(previousOutputPath), 'The required-media permission sentinel must start absent.');
+  await runProcess(mediaTools.ffmpegPath, [
+    '-y', '-v', 'error',
+    '-f', 'lavfi', '-i', 'color=c=blue:s=64x64:r=24',
+    '-frames:v', '6', '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+    '-movflags', '+faststart', previousOutputPath,
+  ]);
+  const previousOutputProbeResult = await runProcess(mediaTools.ffprobePath, [
+    '-v', 'error', '-count_frames', '-show_streams', '-show_format', '-of', 'json', previousOutputPath,
+  ]);
+  const previousOutputProbe = JSON.parse(previousOutputProbeResult.stdout);
+  const previousOutputVideo = previousOutputProbe.streams?.find((stream) => stream.codec_type === 'video');
+  const previousOutputFormats = String(previousOutputProbe.format?.format_name ?? '').split(',');
+  const previousOutputFrameCount = Number(previousOutputVideo?.nb_read_frames ?? previousOutputVideo?.nb_frames ?? 0);
+  const previousOutputDurationSeconds = Number(previousOutputProbe.format?.duration);
+  assert(
+    previousOutputVideo?.codec_name === 'h264' && previousOutputVideo.pix_fmt === 'yuv420p' &&
+    previousOutputVideo.width === 64 && previousOutputVideo.height === 64 &&
+    previousOutputFrameCount === 6 && previousOutputFormats.includes('mp4') &&
+    Number.isFinite(previousOutputDurationSeconds) && previousOutputDurationSeconds > 0,
+    'Resolved FFmpeg did not produce a valid H.264 MP4 required-media permission sentinel.',
+  );
+  const previousOutputSha256 = hash(await fsp.readFile(previousOutputPath));
+
+  const targetPath = path.join(projectRoot, 'issue836-r2-media-read-permission.mp4');
+  assert(!existsSync(targetPath), 'The selected required-media permission target must start absent.');
+  const permissionChecks = [];
+  const priorStartCount = formalStarts.length;
+  const priorCommitCount = formalCommitRecords.length;
+  const aclSelection = { targetPath, assetPath, permissionChecks, state: null };
+  let aclState;
+  let failureRun;
+  try {
+    issue836SaveDialogPathOverride = targetPath;
+    issue836RequiredMediaReadAclSelection = aclSelection;
+    failureRun = await startFromCreatorUi(evidenceRoot, 'issue836-r2-media-read-permission', {
+      selectedFileName: path.basename(targetPath),
+      expectedFailureText: '\u8bfb\u53d6\u6743\u9650',
+      abortIfUnexpectedStart: true,
+    });
+  } finally {
+    issue836SaveDialogPathOverride = null;
+    issue836RequiredMediaReadAclSelection = null;
+    aclState = aclSelection.state;
+    if (aclState?.installed) await restoreGeneratedMediaReadDeny(aclState);
+  }
+
+  assert(permissionChecks.length === 1, 'The required-media read-permission ACL check did not run exactly once.');
+  assert(aclState?.restored, 'The generated-media read-deny ACL was not restored after the Creator case.');
+  assert(failureRun.status === 'failed' && failureRun.observedTaskStatus === 'failed', 'Creator did not block the required-media read-permission failure.');
+  assert(failureRun.starts.length === 0, 'A formal Main Job started after the required-media read-permission failure.');
+  assert(formalStarts.length === priorStartCount, 'The required-media permission failure added a formal Main Job.');
+  assert(formalCommitRecords.length === priorCommitCount, 'The required-media permission failure recorded a formal output commit.');
+
+  const permissionSaveDialog = [...saveDialogEvidence]
+    .reverse()
+    .find((entry) => entry.result === 'selected');
+  assert(
+    permissionSaveDialog?.selectedPath &&
+      path.resolve(permissionSaveDialog.selectedPath).toLocaleLowerCase() ===
+        path.resolve(targetPath).toLocaleLowerCase(),
+    'Creator did not select the exact required-media permission target.',
+  );
+  const taskSnapshot = await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()');
+  const task = taskSnapshot?.task;
+  const permissionIssue = (task?.issues ?? []).find((issue) => issue.code === 'REQUIRED_MEDIA_UNAVAILABLE');
+  const expectedProblem = '\u65e0\u6cd5\u8bfb\u53d6\u6240\u9700\u7d20\u6750\uff0c\u7d20\u6750\u6587\u4ef6\u6216\u6240\u5728\u76ee\u5f55\u53ef\u80fd\u6ca1\u6709\u8bfb\u53d6\u6743\u9650\u3002';
+  const expectedNextStep = '\u68c0\u67e5\u7d20\u6750\u6587\u4ef6\u548c\u4e0a\u7ea7\u76ee\u5f55\u7684\u8bfb\u53d6\u6743\u9650\uff0c\u6216\u91cd\u65b0\u5bfc\u5165\u7d20\u6750\u540e\u518d\u68c0\u67e5\u3002';
+  assert(permissionIssue, 'The task surface omitted REQUIRED_MEDIA_UNAVAILABLE for the denied source asset.');
+  assert(permissionIssue.location === mediaEntry.usages[0], 'The task surface did not identify the exact Shot/media location.');
+  assert(permissionIssue.problem === expectedProblem, 'The task surface omitted the source-media read-permission problem.');
+  assert(permissionIssue.nextStep === expectedNextStep, 'The task surface omitted the actionable source-media read-permission next step.');
+  assert(failureRun.taskText.includes(expectedProblem) && failureRun.taskText.includes(expectedNextStep), 'Creator did not show actionable source-media read-permission guidance.');
+  assert(!existsSync(targetPath), 'The required-media permission failure created a partial MP4.');
+  assert(hash(await fsp.readFile(previousOutputPath)) === previousOutputSha256, 'The required-media permission failure changed the existing prior-output MP4.');
+  assert((await fsp.readFile(projectFilePath)).equals(initialProjectBytes), 'The required-media permission failure changed the Project file.');
+  const restoredAssetSha256 = hash(await fsp.readFile(assetPath));
+  assert(restoredAssetSha256 === assetSha256, 'The required-media ACL case changed the denied source asset bytes.');
+
+  const editorAfter = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+  const editorAfterFingerprint = acceptanceSessionFingerprint(editorAfter);
+  assert(JSON.stringify(editorBeforeFingerprint) === JSON.stringify(editorAfterFingerprint), 'The required-media permission failure changed Project/session revision, dirty state, selection, or History.');
+  const sourceHashesAfter = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+    assetId: asset.id,
+    sha256: hash(await fsp.readFile(path.join(projectRoot, asset.relativePath))),
+  })));
+  assert(JSON.stringify(sourceHashesBefore) === JSON.stringify(sourceHashesAfter), 'The required-media permission failure changed fixture source assets.');
+  const cleanup = await assertNoExportTemporaries('required-media read-permission Creator preflight');
+  const restoredAcl = await runProcess('icacls.exe', [assetPath]);
+  assert(!/\(DENY\)/iu.test(restoredAcl.stdout), 'The generated media retained an explicit deny ACL after restoration.');
+
+  result.r2RequiredMediaReadPermissionFailure = {
+    status: 'PASS',
+    permissionChecks,
+    acl: {
+      assetPath,
+      deniedUserSidSha256: permissionChecks[0].userSidSha256,
+      accessCheckCode: permissionChecks[0].code,
+      appliedAfterSaveAsSelection: true,
+      restored: aclState.restored,
+      sourceSha256Before: assetSha256,
+      sourceSha256After: restoredAssetSha256,
+      explicitDenyPresentAfterRestore: false,
+    },
+    taskIssue: permissionIssue,
+    formalJobsStarted: failureRun.starts.length,
+    formalCommits: formalCommitRecords.length - priorCommitCount,
+    targetPath,
+    targetAbsent: !existsSync(targetPath),
+    previousOutputPath,
+    previousOutputSha256Before: previousOutputSha256,
+    previousOutputSha256After: hash(await fsp.readFile(previousOutputPath)),
+    previousOutputUnchanged: hash(await fsp.readFile(previousOutputPath)) === previousOutputSha256,
+    previousOutput: {
+      byteLength: (await fsp.stat(previousOutputPath)).size,
+      ffprobe: {
+        formatNames: previousOutputFormats,
+        durationSeconds: previousOutputDurationSeconds,
+        codec: previousOutputVideo.codec_name,
+        pixelFormat: previousOutputVideo.pix_fmt,
+        width: previousOutputVideo.width,
+        height: previousOutputVideo.height,
+        frameCount: previousOutputFrameCount,
+      },
+    },
+    projectSha256Before: hash(initialProjectBytes),
+    projectSha256After: hash(await fsp.readFile(projectFilePath)),
+    projectFileUnchanged: (await fsp.readFile(projectFilePath)).equals(initialProjectBytes),
+    editorBefore: editorBeforeFingerprint,
+    editorAfter: editorAfterFingerprint,
+    editorStatePreserved: JSON.stringify(editorBeforeFingerprint) === JSON.stringify(editorAfterFingerprint),
+    sourceHashesBefore,
+    sourceHashesAfter,
+    sourceAssetsUnchanged: true,
+    screenshots: {
+      saveAs: failureRun.nativeSaveAsScreenshotPath,
+      blocked: failureRun.failureScreenshotPath,
+    },
+    temporaryCleanup: cleanup,
+  };
+  result.auto = 'PASS';
+  result.completedAt = new Date().toISOString();
+  result.owner = { status: 'NOT_ATTESTED', note: 'Generated-fixture automated permission-preflight evidence only; author-project and human Gate B review remain deferred.' };
+  await fsp.writeFile(path.join(evidenceRoot, 'issue836-r2-media-read-permission-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
+  await fsp.writeFile(path.join(fixture.root, 'issue836-r2-media-read-permission-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
+  console.log(`PASS Issue #836 R2 required-media read-permission Creator preflight: ${fixture.root}`);
   mainWindow.destroy();
   hiddenWindowManager.close();
   app.exit(0);
@@ -4095,7 +4357,8 @@ async function run() {
       dl03Mode || dl04Mode || dl05Mode || dl06R0Mode ||
       issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
       issue836R2CopyFailureMode || issue836R2MediaPreflightMode ||
-      issue836R2OutputPermissionMode || issue836R2OutputPermissionAclMode
+      issue836R2OutputPermissionMode || issue836R2OutputPermissionAclMode ||
+      issue836R2MediaReadPermissionAclMode
     ),
     'Issue #836 R2 commit-race mode cannot be combined with another acceptance mode.',
   );
@@ -4104,7 +4367,8 @@ async function run() {
       dl03Mode || dl04Mode || dl05Mode || dl06R0Mode ||
       issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
       issue836R2CommitRaceMode || issue836R2MediaPreflightMode ||
-      issue836R2OutputPermissionMode || issue836R2OutputPermissionAclMode
+      issue836R2OutputPermissionMode || issue836R2OutputPermissionAclMode ||
+      issue836R2MediaReadPermissionAclMode
     ),
     'Issue #836 R2 copy-failure mode cannot be combined with another acceptance mode.',
   );
@@ -4117,7 +4381,8 @@ async function run() {
       dl03Mode || dl05Mode || dl06R0Mode ||
       issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
       issue836R2CommitRaceMode || issue836R2CopyFailureMode ||
-      issue836R2OutputPermissionMode || issue836R2OutputPermissionAclMode
+      issue836R2OutputPermissionMode || issue836R2OutputPermissionAclMode ||
+      issue836R2MediaReadPermissionAclMode
     ),
     'Issue #836 R2 media-preflight mode cannot be combined with another focused acceptance mode.',
   );
@@ -4130,6 +4395,10 @@ async function run() {
     'Issue #836 R2 output-permission ACL mode requires the single Issue #827 sample 1 Creator UI fixture.',
   );
   assert(
+    !issue836R2MediaReadPermissionAclMode || (dl04Mode && dl04SampleId === 1),
+    'Issue #836 required-media read-permission ACL mode requires the single Issue #827 sample 1 Creator UI fixture.',
+  );
+  assert(
     !(issue836R2OutputPermissionMode && issue836R2OutputPermissionAclMode),
     'Issue #836 controlled and Windows-ACL output-permission modes are mutually exclusive.',
   );
@@ -4137,7 +4406,8 @@ async function run() {
     !issue836R2OutputPermissionMode || !(
       dl03Mode || dl05Mode || dl06R0Mode ||
       issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
-      issue836R2CommitRaceMode || issue836R2CopyFailureMode || issue836R2MediaPreflightMode
+      issue836R2CommitRaceMode || issue836R2CopyFailureMode || issue836R2MediaPreflightMode ||
+      issue836R2MediaReadPermissionAclMode
     ),
     'Issue #836 R2 output-permission mode cannot be combined with another focused acceptance mode.',
   );
@@ -4146,9 +4416,20 @@ async function run() {
       dl03Mode || dl05Mode || dl06R0Mode ||
       issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
       issue836R2CommitRaceMode || issue836R2CopyFailureMode ||
-      issue836R2MediaPreflightMode || issue836R2OutputPermissionMode
+      issue836R2MediaPreflightMode || issue836R2OutputPermissionMode ||
+      issue836R2MediaReadPermissionAclMode
     ),
     'Issue #836 R2 output-permission ACL mode cannot be combined with another focused acceptance mode.',
+  );
+  assert(
+    !issue836R2MediaReadPermissionAclMode || !(
+      dl03Mode || dl05Mode || dl06R0Mode ||
+      issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
+      issue836R2CommitRaceMode || issue836R2CopyFailureMode ||
+      issue836R2MediaPreflightMode || issue836R2OutputPermissionMode ||
+      issue836R2OutputPermissionAclMode
+    ),
+    'Issue #836 required-media read-permission ACL mode cannot be combined with another focused acceptance mode.',
   );
   assert(!(issue836R2PathBoundaryMode && issue836R2PathSuccessMode), 'Issue #836 R2 path modes are mutually exclusive.');
   assert(!(issue836R2PathBoundaryMode || issue836R2PathSuccessMode) || (dl04Mode && dl04SampleId === 1), 'Issue #836 R2 path mode requires the single Issue #827 sample 1 Creator UI fixture.');
@@ -4189,11 +4470,13 @@ async function run() {
   mainWindow.webContents.focus();
 
   const result = {
-    issue: issue836R2CommitRaceMode || issue836R2CopyFailureMode || issue836R2MediaPreflightMode || issue836R2OutputPermissionMode || issue836R2OutputPermissionAclMode || dl06R0Mode ? 836 : dl05FollowupMode ? 834 : dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
+    issue: issue836R2CommitRaceMode || issue836R2CopyFailureMode || issue836R2MediaPreflightMode || issue836R2OutputPermissionMode || issue836R2OutputPermissionAclMode || issue836R2MediaReadPermissionAclMode || dl06R0Mode ? 836 : dl05FollowupMode ? 834 : dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
     wrapperRunId: process.env.PANDA_STAGE_ISSUE836_RUN_ID ?? process.env.PANDA_STAGE_ISSUE834_RUN_ID ?? process.env.PANDA_STAGE_ISSUE832_RUN_ID ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID ?? null,
     sourceCommitSha: process.env.PANDA_STAGE_ISSUE836_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE834_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE832_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA ?? null,
     sampleId: dl04Mode || dl05Mode ? dl04SampleId : null,
-    workOrder: issue836R2OutputPermissionAclMode
+    workOrder: issue836R2MediaReadPermissionAclMode
+      ? 'Issue #836 R2 AC03: Creator UI real Windows ACL required-media read-permission preservation'
+      : issue836R2OutputPermissionAclMode
       ? 'Issue #836 R2 AC03: Creator UI real Windows ACL output-folder permission preservation'
       : issue836R2OutputPermissionMode
       ? 'Issue #836 R2 AC03: Creator UI output-folder permission failure preservation'
@@ -4279,6 +4562,10 @@ async function run() {
     await clickSelector('[data-testid="quick-action-drawer-handle"]');
     if (issue836R2OutputPermissionMode || issue836R2OutputPermissionAclMode) {
       await runIssue836R2OutputPermissionAcceptance({ result, initialProjectBytes, projectFilePath, evidenceRoot, mediaTools });
+      return;
+    }
+    if (issue836R2MediaReadPermissionAclMode) {
+      await runIssue836R2MediaReadPermissionAclAcceptance({ result, initialProjectBytes, projectFilePath, evidenceRoot, mediaTools });
       return;
     }
     if (issue836R2MediaPreflightMode) {
