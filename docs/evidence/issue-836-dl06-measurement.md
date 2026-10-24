@@ -1,10 +1,10 @@
 # Issue #836 DL-06 measurement plan and result
 
-Report version: **1.19.0**
+Report version: **1.20.0**
 Frozen R3 plan revision: **1.4.0**, completed as one bounded four-run continuation
 Plan date: **2026-10-23**
 R3 status: **PARTIAL / NOT_ATTESTED**; all four v1.4.0 generated-probe cold/warm runs completed with `auto=PASS`, matching manifest/receipt hashes, and maximum sample gaps below the frozen 5,000 ms validity limit. These generated probes do not establish author-authorized real-project provenance. Phase wall times, Renderer pending-write queue peak, and post-terminal release time remain `NOT_MEASURED`; installer acceptance and human Gate B evidence remain unavailable. DL-06 and DL-07 remain **NO GO**.
-R2 status: **PARTIAL**; the v1.0.0 AC08 staging-path boundary probe passed. The v1.1.0 supported deep-path Creator export completed through atomic commit, but its runner exited 1 on a harness enum mismatch; no retry was made. Budget boundaries, the commit race, and generated-fixture media/copy/output-permission cases also have bounded passing evidence; complete failure, resource-budget, and author-Project coverage remain open.
+R2 status: **PARTIAL**; the v1.0.0 AC08 staging-path boundary probe passed. The v1.1.0 supported deep-path Creator export completed through atomic commit, but its runner exited 1 on a harness enum mismatch; no retry was made. Budget boundaries, the commit race, and generated-fixture media/copy/controlled-output-permission cases have bounded passing evidence. The real-ACL follow-up stopped at native Save As UI Automation before Main received a target; it is inconclusive. Complete failure, resource-budget, and author-Project coverage remain open.
 
 ## Evidence availability
 
@@ -787,3 +787,13 @@ exit $LASTEXITCODE
 ```
 
 Stop on the first failure and preserve the root; no retry or additional verifier is part of this plan. A pass covers one generated-fixture real ACL denial on this Windows account and application build. It does not complete AC03/R2, cover all ACL arrangements, or establish author-Project, packaged-install, R3 resource-ceiling, or human Gate B acceptance.
+
+## AC03 R2 Creator output-folder real NTFS ACL permission result - v1.0.0 (2026-10-24)
+
+The single planned `pnpm exec electron scripts/verify-issue819-dl02.cjs` invocation exited 1 on frozen verifier source `e1037804d0837ea263579a4cfc7c18b334df86ee`. Windows Electron 43.1.1 started at `2026-10-24T00:12:52.143Z` and completed at `2026-10-24T00:12:55.344Z`. Acceptance root: `D:\PandaStage-Acceptance\i836r2pf4\run-2026-10-24T00-12-52-143Z-5776`. No retry was made.
+
+The verifier created the generated Project's ACL subfolder and the Save As dialog opened at the planned target path, but UI Automation failed while setting the filename: `ElementNotEnabledException` from the native Save As helper. The dialog was detected (PID 5776; bounds 243,0,626,771), but no selection result was recorded, so Main never received a target. The failure screenshot shows Creator still waiting at “正在选择保存位置…”. The failure receipt records zero formal Main starts and no latest export update. The MP4 target is absent; the valid prior-output sentinel remains SHA-256 `28dacbd01c0184b180ce0313bb81b56ee8a88c2ad1a75dc87ddeb1fba52c967d`. The current generated `project.json` SHA-256 is `76fe895f0f4b5fd51fb48e2d5f2779ae93b28082bb5e5028c8b205faa0535774`; because Save As never returned a selection, this run supplies no output-permission behavior evidence from Main or Creator's terminal error surface.
+
+Post-run ACL inspection found only the folder's inherited Administrators, SYSTEM, CREATOR OWNER, and Users entries, with no explicit deny ACE. This confirms the verifier's `finally` block restored the generated folder's ACL. The acceptance root and failure artifacts are preserved.
+
+Failure receipt: `evidence\electron-failure.json`, SHA-256 `cbb7bc2d907631ba50a18c5231bd677857546da4478219af0c5d5bf8427b3373`. Screenshot: `evidence\electron-failure.png`, SHA-256 `30c193a8c668d4d6b15b31c7945a18a39d12b3e422c8594dc611ece3b51a786c`. The v1.0.0 plan's stop condition was honored. This harness/UIA stop is inconclusive about the product's real-ACL behavior; AC03 and R2 remain **PARTIAL**. For pushed frozen source SHA `185411c0cdd02a6896c04a875676214378dfcd81`, commit status was pending with zero status entries, check-runs returned zero, and `gh pr checks 817` reported no checks: `CI_NOT_REPORTED`.
