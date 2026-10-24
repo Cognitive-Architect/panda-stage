@@ -82,13 +82,12 @@ function shortIssue838Project(project) {
       await super.commitFormalOutputNoReplace(stagingPath, outputPath);
       if (issue838PerfMode) issue838Perf.commitMs = Math.round(performance.now() - commitStartedAt);
 @@ JOB_START
-        var jobStartedAt = performance.now();
+        if (issue838PerfMode) issue838Perf.jobStartedAt = performance.now();
         handle = exportService.startFormalExport(
           input,
 @@ JOB_COMPLETION
       formalStarts.at(-1).jobId = handle.jobId;
       if (issue838PerfMode) {
-        issue838Perf.jobStartedAt = jobStartedAt;
         issue838Perf.exportCompletion = handle.completion.then(
           (value) => {
             issue838Perf.jobCompletedAt = performance.now();

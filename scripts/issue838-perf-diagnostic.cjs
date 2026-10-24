@@ -1,5 +1,6 @@
 const { spawn, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 
@@ -7,24 +8,13 @@ const repoRoot = path.resolve(__dirname, '..');
 const sourceSha = 'c6c356f660001af694bb706cc7553974ff8d1cfc';
 const runName = 'issue838-export-performance-' + new Date().toISOString().replace(/[:.]/gu, '-') + '-' + process.pid;
 const acceptanceRoot = path.join('D:\\PandaStage-Acceptance', runName);
-const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' });
-const parent = spawnSync('git', ['rev-parse', 'HEAD^'], { cwd: repoRoot, encoding: 'utf8' });
+const sourceIsAncestor = spawnSync('git', ['merge-base', '--is-ancestor', sourceSha, 'HEAD'], { cwd: repoRoot, stdio: 'ignore' });
 const trackedDiff = spawnSync('git', ['diff', '--quiet', 'HEAD', '--'], { cwd: repoRoot, stdio: 'ignore' });
-if (
-  head.status !== 0 ||
-  (head.stdout.trim() !== sourceSha && (parent.status !== 0 || parent.stdout.trim() !== sourceSha))
-) {
-  throw new Error('Expected pinned source ' + sourceSha + ' at HEAD or its direct parent.');
-}
+if (sourceIsAncestor.status !== 0) throw new Error('Pinned source ' + sourceSha + ' is not an ancestor of HEAD.');
 if (trackedDiff.status !== 0) throw new Error('Tracked worktree changes exist; refusing to launch.');
 if (process.platform !== 'win32') throw new Error('This diagnostic requires Windows Electron.');
 if (fs.existsSync(acceptanceRoot)) throw new Error('Acceptance run directory already exists: ' + acceptanceRoot);
-for (const requiredPath of [
-  path.join(repoRoot, 'dist-electron', 'main', 'index.js'),
-  path.join(repoRoot, 'dist', 'renderer', 'index.html'),
-]) {
-  if (!fs.existsSync(requiredPath)) throw new Error('Built app missing; run pnpm build first: ' + requiredPath);
-}
+
 const fragmentText = fs.readFileSync(path.join(__dirname, 'issue838-perf-runtime.fragments'), 'utf8');
 const fragments = new Map();
 let fragmentName = null;
@@ -101,6 +91,54 @@ runtime = replaceOnce(runtime,
   "      assert(fixtureProject.shots.every((shot) => shot.durationMs >= 9_000), 'Issue #827/832 fixture Shots must each be long enough to cross a global frame boundary.');",
   "      assert(issue838PerfMode || fixtureProject.shots.every((shot) => shot.durationMs >= 9_000), 'Issue #827/832 fixture Shots must each be long enough to cross a global frame boundary.');",
   'short fixture shot guard');
+
+if (process.argv.includes('--preflight')) {
+  const requiredHooks = [
+    'issue838Perf.jobStartedAt = performance.now();',
+    'issue838Perf.exportCompletion = handle.completion.then(',
+    'issue838Perf.videoEncode =',
+    'issue838Perf.audioMux =',
+    'issue838Perf.probes.push(',
+    'issue838Perf.cleanupJobDirectoryMs +=',
+    'issue838Perf.commitMs =',
+    'totalUiClickToCompleted:',
+    'framePipeline:',
+    'videoEncode: encodeMs',
+    'audioMux: muxMs',
+    'totalProbeMs: probeMs',
+    'cleanupAndCommit: cleanupCommitMs',
+    'verifierExtraAfterUiCompletion:',
+  ];
+  const missingHooks = requiredHooks.filter((hook) => !runtime.includes(hook));
+  if (missingHooks.length > 0) throw new Error('Generated runtime is missing hooks: ' + missingHooks.join(', '));
+  if (runtime.includes('issue838Perf.jobStartedAt = jobStartedAt')) {
+    throw new Error('Generated runtime still contains the previous out-of-scope Job timer assignment.');
+  }
+  const preflightPath = path.join(os.tmpdir(), '.issue838-runtime-preflight-' + process.pid + '-' + randomUUID() + '.cjs');
+  let syntaxCheck;
+  try {
+    fs.writeFileSync(preflightPath, runtime, { flag: 'wx' });
+    syntaxCheck = spawnSync(process.execPath, ['--check', preflightPath], { cwd: repoRoot, encoding: 'utf8' });
+  } finally {
+    if (fs.existsSync(preflightPath)) fs.unlinkSync(preflightPath);
+  }
+  if (syntaxCheck.status !== 0) {
+    throw new Error('Generated runtime syntax check failed: ' + (syntaxCheck.stderr || syntaxCheck.stdout));
+  }
+  if (fs.existsSync(acceptanceRoot)) throw new Error('Preflight must not create an acceptance run directory.');
+  process.stdout.write(JSON.stringify({
+    issue: 838, status: 'PREFLIGHT_PASS', sourceSha,
+    generatedRuntimeSyntax: 'PASS', requiredTimingHooks: requiredHooks.length,
+    formalJobStarted: false, electronSpawned: false, acceptanceRootCreated: false,
+  }) + '\n');
+  process.exit(0);
+}
+for (const requiredPath of [
+  path.join(repoRoot, 'dist-electron', 'main', 'index.js'),
+  path.join(repoRoot, 'dist', 'renderer', 'index.html'),
+]) {
+  if (!fs.existsSync(requiredPath)) throw new Error('Built app missing; run pnpm build first: ' + requiredPath);
+}
 
 fs.mkdirSync(acceptanceRoot, { recursive: false });
 const runtimePath = path.join(__dirname, '.issue838-runtime-' + process.pid + '-' + randomUUID() + '.cjs');
