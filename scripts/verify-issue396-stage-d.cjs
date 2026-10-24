@@ -898,6 +898,15 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         element.click();
       };
 
+      const ensureMultiSelectMode = async () => {
+        const workbench = await waitFor('[data-testid="fla-c03-workbench"]');
+        if (workbench.getAttribute('data-multi-select') === 'true') return;
+        click('[data-testid="fla-c03-multi-select-toggle"]');
+        await waitFor('[data-testid="fla-c03-workbench"]', (element) =>
+          element.getAttribute('data-multi-select') === 'true',
+        );
+      };
+
       const waitForCapture = async (marker) => {
         document.documentElement.dataset.issue398CaptureMarker = marker;
         while (document.documentElement.dataset.issue398CaptureDone !== marker) {
@@ -1284,9 +1293,11 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         const sequenceEnd = sequenceRange.querySelector('[data-testid="fla-frame-sequence-end"]')?.textContent?.trim() ?? '';
         const sequenceCount = sequenceRange.querySelector('[data-testid="fla-frame-sequence-count"]')?.textContent?.trim() ?? '';
         const generatedItems = [...document.querySelectorAll('[data-testid^="fla-frame-sequence-filmstrip-item-"]')];
-        const selectedSequenceRow = [...document.querySelectorAll(
+        await ensureMultiSelectMode();
+        const selectedSequenceRow = await waitFor(
           '[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="sequence"][data-selectable="true"]',
-        )].find((row) => row.getAttribute('data-candidate-identity') === sequenceIdentity);
+          (row) => row.getAttribute('data-candidate-identity') === sequenceIdentity,
+        );
         const sequenceCheckbox = selectedSequenceRow?.querySelector('input[type="checkbox"]');
         if (!(sequenceCheckbox instanceof HTMLInputElement)) {
           throw new Error('Generated sequence did not produce a selectable C03 candidate');
@@ -1534,6 +1545,7 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
       };
 
       const selectTwoCandidates = async () => {
+        await ensureMultiSelectMode();
         const duplicateRows = [...document.querySelectorAll(
           '[data-testid="fla-snapshot-targets"] li[data-duplicate="true"] .fla-snapshot-candidate-row',
         )];
