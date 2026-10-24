@@ -1049,3 +1049,14 @@ exit $LASTEXITCODE
 ~~~
 
 This one generated-fixture ACL case does not complete AC03/R2, establish author-Project provenance or packaged-install behavior, measure R3 resource ceilings, or constitute human Gate B acceptance. AC03 and R2 remain PARTIAL.
+## AC03 R2 required-media read-permission ACL result - v1.2.0 PASS (2026-10-24)
+
+The one frozen Electron invocation ran against source commit aff6d125c2a137b19f095aceb10866fd06435290. Windows Electron 43.1.1 ran from 2026-10-24T00:46:47.681Z through 2026-10-24T00:46:52.182Z in D:\PandaStage-Acceptance\i836r2mr3\run-2026-10-24T00-46-47-065Z-6372. There was no retry.
+
+After the native Save As dialog selected the exact writable output target, the verifier applied an explicit read-deny ACE to the generated first-Shot background for the current account. The access probe returned EPERM. Creator then reached failed preflight with REQUIRED_MEDIA_UNAVAILABLE at Shot Opening / background Background and displayed the permission-specific problem and actionable read-access recovery step. The receipt records zero formal Jobs and zero commits; the target MP4 remained absent.
+
+The generated Project remained unchanged at SHA-256 fef1a082a6c206ace369602db20f66f0c85540c1a2d5f95e024d66d2d2f40556. All ten source-media hashes and lengths matched before/after. The editor fingerprint was unchanged (revision 1, dirty, same Shot, undo count 1, redo count 0). The prior valid output remained unchanged at SHA-256 28dacbd01c0184b180ce0313bb81b56ee8a88c2ad1a75dc87ddeb1fba52c967d, 1,724 bytes; FFprobe reports H.264/yuv420p, 64x64, six frames, 0.25 seconds.
+
+The finally path restored access. Independent post-run icacls inspection showed only inherited allow entries, with no explicit deny ACE; Node reopened the background and read all 10,570 bytes. The frame-job root is absent, frozen-media is empty, and the receipt reports no output temporaries, frame-job directories, or preparation snapshots. Both receipt copies match. Receipt SHA-256: eb41c47cc6c76d5cdda14342c019359029e47ae68ca67d07afffbe6ef3f9e800. Save As screenshot SHA-256: 618de01b8fa37d1a62ac5b14833c30c18c833f172a89ee68dd31f466684eea59. Blocked Creator screenshot SHA-256: e7934c24d01075036355400a963b4b6942e5800a91ab26e38e8ddb96436960cc. Editor snapshot SHA-256: 1b69f59b0af207b1d99ee4c195503da65f9c51df77ef72399b962904829085d1.
+
+Receipt status is AUTO=PASS, OWNER=NOT_ATTESTED. This closes only this one generated-fixture ACL case. It does not complete AC03/R2, establish author-Project provenance or packaged-install behavior, measure R3 resource ceilings, or constitute human Gate B acceptance. AC03 and R2 remain PARTIAL.
