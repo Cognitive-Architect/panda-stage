@@ -2,26 +2,41 @@
   flex-direction: column;
 }
 
-.asset-category-tabs {
+.asset-library .asset-category-tabs {
+  display: flex;
+  min-width: 0;
   width: 100%;
   flex: 0 0 auto;
   flex-direction: row;
+  align-items: stretch;
   gap: 6px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
 }
 
-.asset-category-tabs button {
+.asset-library .asset-category-tabs button {
+  display: flex;
+  min-width: max-content;
   min-height: 38px;
   padding: 6px 10px;
-  flex: 0 0 auto;
+  flex: 1 0 max-content;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
   white-space: nowrap;
 }
 
+.asset-library .asset-category-tabs button > strong {
+  min-width: 2ch;
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
 .resource-activity-panel .asset-category-tabs {
   display: flex;
+  min-width: 0;
   width: auto;
   flex: 0 0 auto;
   flex-direction: row;
@@ -33,14 +48,16 @@
 .resource-activity-panel .asset-category-tabs button {
   min-width: max-content;
   white-space: nowrap;
-  flex: 0 0 auto;
+  flex: 1 0 max-content;
 }
 
 @media (max-width: 900px) {
   .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
     .resource-activity-dock[data-active-activity='assets']
-    .asset-category-tabs {
+      .asset-library
+      .asset-category-tabs {
     display: flex;
+    min-width: 0;
     width: auto;
     flex: 0 0 auto;
     flex-direction: row;
@@ -51,10 +68,16 @@
 
   .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
     .resource-activity-dock[data-active-activity='assets']
-    .asset-category-tabs button {
+      .asset-library
+      .asset-category-tabs button {
     display: flex;
     min-width: max-content;
-    flex: 0 0 auto;
+    min-height: 48px;
+    padding: 8px 10px;
+    flex: 1 0 max-content;
+    gap: 8px;
+    justify-content: space-between;
+    white-space: nowrap;
   }
 }
 
@@ -64,9 +87,11 @@
     .asset-library[data-asset-library-presentation='landscape']
     .asset-category-tabs {
     display: flex;
+    min-width: 0;
     width: auto;
     flex: 0 0 auto;
     flex-direction: row;
+    gap: 6px;
     overflow-x: auto;
     overflow-y: hidden;
   }
@@ -76,6 +101,11 @@
     .asset-library[data-asset-library-presentation='landscape']
     .asset-category-tabs button {
     min-width: max-content;
-    flex: 0 0 auto;
+    min-height: 44px;
+    padding: 6px 10px;
+    flex: 1 0 max-content;
+    gap: 8px;
+    justify-content: space-between;
+    white-space: nowrap;
   }
 }

@@ -24,6 +24,13 @@ const assetLibrarySource = readFileSync(
   new URL('../../src/renderer/features/assets/AssetLibrary.tsx', import.meta.url),
   'utf8',
 );
+const assetCategoryTabsStyle = readFileSync(
+  new URL(
+    '../../src/renderer/styles/features/assets/asset-library-category-tabs.css',
+    import.meta.url,
+  ),
+  'utf8',
+);
 
 const noop = () => undefined;
 const directPayload = (assetId: string) => ({
@@ -33,6 +40,52 @@ const directPayload = (assetId: string) => ({
 });
 
 describe('asset library components', () => {
+  it('does not reserve an empty status row after a quiet FLA review close', () => {
+    const project = migrateProject(exampleProject);
+    const markup = renderToStaticMarkup(
+      createElement(AssetLibrary, {
+        snapshot: {
+          projectRoot: 'D:\\project.pandastage',
+          project,
+          dirty: false,
+          revision: 3,
+        },
+        hideHeading: true,
+      }),
+    );
+    const closeStart = assetLibrarySource.indexOf(
+      'const closeFlaReview = useCallback',
+    );
+    const closeEnd = assetLibrarySource.indexOf('}, []);', closeStart);
+    const closeHandler = assetLibrarySource.slice(closeStart, closeEnd);
+
+    expect(markup).not.toContain('class="asset-library-status"');
+    expect(assetLibrarySource).not.toContain(
+      'FLA review closed; Project and Asset state are unchanged.',
+    );
+    expect(closeHandler).not.toContain('setStatus(');
+    expect(closeHandler).toContain('flaInspectionLifecycle.current?.cancel()');
+    expect(assetLibrarySource).toContain(
+      '{status ? <output className="asset-library-status">{status}</output> : null}',
+    );
+    expect(assetLibrarySource).toContain('setStatus(outcome.status);');
+    expect(assetLibrarySource).toContain('setStatus(message);');
+  });
+
+  it('sizes category tabs from their content and scrolls when the row is narrow', () => {
+    expect(assetCategoryTabsStyle).toMatch(
+      /\.asset-library\s+\.asset-category-tabs\s*\{[^}]*display:\s*flex;[^}]*min-width:\s*0;[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*hidden;/u,
+    );
+    expect(assetCategoryTabsStyle).toMatch(
+      /\.asset-library\s+\.asset-category-tabs\s+button\s*\{[^}]*min-width:\s*max-content;[^}]*flex:\s*1\s+0\s+max-content;[^}]*justify-content:\s*space-between;/u,
+    );
+    expect(assetCategoryTabsStyle).toContain('min-height: 48px;');
+    expect(assetCategoryTabsStyle).toContain('min-height: 44px;');
+    expect(assetCategoryTabsStyle).not.toMatch(
+      /grid-template-columns:\s*repeat\((?:2|4|5),/u,
+    );
+  });
+
   it('renders asset categories, thumbnail placeholders, import entry, and details guidance', () => {
     const project = migrateProject(exampleProject);
     const markup = renderToStaticMarkup(

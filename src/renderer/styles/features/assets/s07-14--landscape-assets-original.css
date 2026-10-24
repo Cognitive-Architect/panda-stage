@@ -122,11 +122,7 @@
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape
   .asset-category-tabs {
-  display: grid;
   width: auto;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
-  overflow: visible;
 }
 
 .editor-layout[data-shell-mode='landscape']

@@ -130,7 +130,6 @@ export function AssetLibrary({
     flaInspectionOperation.current = null;
     setFlaInspection(null);
     void flaInspectionLifecycle.current?.cancel();
-    setStatus('FLA review closed; Project and Asset state are unchanged.');
   }, []);
 
   useEffect(() => {
@@ -1231,7 +1230,7 @@ export function AssetLibrary({
           </div>
         </section>
       ) : null}
-      <output className="asset-library-status">{status}</output>
+      {status ? <output className="asset-library-status">{status}</output> : null}
     </section>
   );
 }

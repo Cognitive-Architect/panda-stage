@@ -47,8 +47,7 @@
 }
 
 .animation-library-item span,
-.animation-library-item small,
-.animation-preview-header span {
+.animation-library-item small {
   overflow: hidden;
   color: var(--ui-color-text-secondary, #aebfb4);
   font: var(--ui-font-secondary, 12px/1.4 Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif);
@@ -61,7 +60,7 @@
   min-width: 0;
   min-height: 260px;
   flex: 1;
-  grid-template-rows: auto minmax(160px, 1fr) auto auto;
+  grid-template-rows: auto minmax(160px, 1fr) auto;
   overflow: hidden;
   border: 1px solid var(--ui-color-border, rgb(127 199 148 / 28%));
   border-radius: var(--ui-radius-medium, 10px);
@@ -81,11 +80,6 @@
   display: grid;
   min-width: 0;
   gap: 2px;
-}
-
-.animation-preview-header > small {
-  flex: 0 0 auto;
-  color: var(--ui-color-text-secondary, #aebfb4);
 }
 
 .animation-preview-stage {
@@ -152,7 +146,7 @@
   display: grid;
   min-width: 160px;
   flex: 1;
-  grid-template-columns: auto minmax(70px, 1fr) auto;
+  grid-template-columns: minmax(70px, 1fr) auto;
   align-items: center;
   gap: 8px;
   color: var(--ui-color-text-secondary, #aebfb4);

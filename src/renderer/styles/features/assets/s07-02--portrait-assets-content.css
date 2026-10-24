@@ -106,12 +106,8 @@
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .resource-activity-dock[data-active-activity='assets']
   .asset-category-tabs {
-  display: grid;
   width: auto;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0;
   border-bottom: 1px solid var(--ui-color-separator);
-  overflow: visible;
 }
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']

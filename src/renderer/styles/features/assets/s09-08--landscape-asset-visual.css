@@ -70,15 +70,11 @@
   .resource-activity-dock-landscape[data-active-activity='assets']
   .asset-library[data-asset-library-presentation='landscape']
   .asset-category-tabs {
-  display: grid;
   width: auto;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
   padding: 3px;
   border: 1px solid rgb(127 199 148 / 16%);
   border-radius: 12px;
   background: rgb(255 255 255 / 2%);
-  overflow: visible;
 }
 
 .editor-layout[data-shell-mode='landscape']

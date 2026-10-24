@@ -647,7 +647,6 @@ export function AnimationPreview({
           重播
         </button>
         <label className="animation-preview-seek">
-          <span>帧</span>
           <input
             aria-label="选择动画帧"
             data-testid="animation-preview-seek"

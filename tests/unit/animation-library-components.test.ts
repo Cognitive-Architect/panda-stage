@@ -115,6 +115,11 @@ describe('animation library', () => {
     expect(markup).not.toContain('12 FPS');
     expect(markup).not.toContain('12 fps');
     expect(markup).not.toContain('2 帧 ·');
+    expect(markup).not.toContain('<span>帧</span>');
+    expect(markup).toContain('aria-label="选择动画帧"');
+    expect(markup).toContain('1 / 2');
+    expect(markup).toContain('data-testid="animation-preview-replay"');
+    expect(markup).toContain('data-testid="animation-preview-play"');
   });
 
   it('loads a cover only while visible and revokes its URL when it leaves view', async () => {
