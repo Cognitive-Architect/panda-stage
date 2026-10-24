@@ -19,8 +19,9 @@ import { promisify } from 'node:util';
 import {
   EXPORT_PREPARATION_WINDOWS_FORMAL_OUTPUT_MAX_PATH_CHARACTERS,
 } from '../../shared/export-preparation-types';
+import { formatFrameFileName } from '../../shared/export-types';
 
-const FRAME_NAME_PATTERN = /^frame_\d{6}\.png$/;
+const FRAME_NAME_PATTERN = /^frame_(\d{6,})\.png$/u;
 const execFileAsync = promisify(execFile);
 const LONGEST_FORMAL_OUTPUT_STAGING_NAME =
   `.panda-stage-export-${'0'.repeat(36)}-${'0'.repeat(36)}.mp4`;
@@ -128,7 +129,7 @@ export class FileSystemService implements FrameFileSystem {
     pngBytes: Uint8Array,
   ): Promise<void> {
     const safeDirectory = this.assertWithinRoot(jobDirectory);
-    if (!FRAME_NAME_PATTERN.test(fileName)) {
+    if (frameIndexFromFileName(fileName) === null) {
       throw new Error(`Invalid frame file name: ${fileName}`);
     }
     const framePath = this.assertWithinRoot(path.join(safeDirectory, fileName));
@@ -153,9 +154,15 @@ export class FileSystemService implements FrameFileSystem {
     const safeDirectory = this.assertWithinRoot(jobDirectory);
     const entries = await readdir(safeDirectory, { withFileTypes: true });
     return entries
-      .filter((entry) => entry.isFile() && FRAME_NAME_PATTERN.test(entry.name))
-      .map((entry) => entry.name)
-      .sort();
+      .flatMap((entry) => {
+        if (!entry.isFile()) return [];
+        const frameIndex = frameIndexFromFileName(entry.name);
+        return frameIndex === null
+          ? []
+          : [{ fileName: entry.name, frameIndex }];
+      })
+      .sort((left, right) => left.frameIndex - right.frameIndex)
+      .map(({ fileName }) => fileName);
   }
 
   async cleanupJobDirectory(jobDirectory: string): Promise<void> {
@@ -393,6 +400,19 @@ export class FileSystemService implements FrameFileSystem {
     }
     return resolvedTarget;
   }
+}
+
+function frameIndexFromFileName(fileName: string): number | null {
+  const match = FRAME_NAME_PATTERN.exec(fileName);
+  if (!match || match[0] !== fileName) return null;
+  const frameIndex = Number(match[1]);
+  if (
+    !Number.isSafeInteger(frameIndex) ||
+    formatFrameFileName(frameIndex) !== fileName
+  ) {
+    return null;
+  }
+  return frameIndex;
 }
 
 async function inspectWindowsVolumeWithPowerShell(

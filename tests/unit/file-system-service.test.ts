@@ -17,6 +17,7 @@ import {
   FileSystemService,
   isWithinWindowsFormalExportPathLimit,
 } from '../../src/main/services/FileSystemService';
+import { formatFrameFileName } from '../../src/shared/export-types';
 
 describe('FileSystemService Unicode paths and cleanup', () => {
   const temporaryRoots: string[] = [];
@@ -92,6 +93,72 @@ describe('FileSystemService Unicode paths and cleanup', () => {
     await service.cleanupJobDirectory(jobDirectory);
     await service.cleanupJobDirectory(jobDirectory);
     expect(await readdir(unicodeRoot)).toEqual([]);
+  });
+
+  it('writes canonical six- and seven-digit frames and lists them by numeric index', async () => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-frame-sequence-'));
+    temporaryRoots.push(parent);
+    const service = new FileSystemService(path.join(parent, 'jobs'));
+    const jobDirectory = await service.createJobDirectory(randomUUID());
+    const frames = [
+      { index: 1_000_000, bytes: new Uint8Array([10, 11, 12]) },
+      { index: 999_999, bytes: new Uint8Array([7, 8, 9]) },
+      { index: 1_999_999, bytes: new Uint8Array([13, 14, 15]) },
+      { index: 0, bytes: new Uint8Array([1, 2, 3]) },
+    ];
+
+    for (const frame of frames) {
+      const fileName = formatFrameFileName(frame.index);
+      await service.writeFrame(jobDirectory, fileName, frame.bytes);
+      expect(
+        new Uint8Array(await readFile(path.join(jobDirectory, fileName))),
+      ).toEqual(frame.bytes);
+    }
+
+    await writeFile(path.join(jobDirectory, 'frame_000042.png.tmp'), 'temporary');
+    await mkdir(path.join(jobDirectory, 'frame_000043.png'));
+
+    await expect(service.listFrameFiles(jobDirectory)).resolves.toEqual([
+      'frame_000000.png',
+      'frame_999999.png',
+      'frame_1000000.png',
+      'frame_1999999.png',
+    ]);
+
+    await expect(
+      service.writeFrame(
+        jobDirectory,
+        'frame_000000.png',
+        new Uint8Array([99]),
+      ),
+    ).rejects.toMatchObject({ code: 'EEXIST' });
+    expect(
+      new Uint8Array(
+        await readFile(path.join(jobDirectory, 'frame_000000.png')),
+      ),
+    ).toEqual(new Uint8Array([1, 2, 3]));
+
+    for (const fileName of [
+      '../frame_000004.png',
+      'frame_000004.jpg',
+      'frame_00004.png',
+      'frame_000004.png/child',
+      'frame_000004.png\\child',
+      'frame_000004.png\n',
+      'frame_0000000.png',
+    ]) {
+      await expect(
+        service.writeFrame(jobDirectory, fileName, new Uint8Array([0])),
+      ).rejects.toThrow('Invalid frame file name:');
+    }
+
+    await expect(
+      service.writeFrame(
+        parent,
+        'frame_000004.png',
+        new Uint8Array([0]),
+      ),
+    ).rejects.toThrow('Path escapes the frame-job root:');
   });
 
   it('writes only named frozen audio media inside the owned Job directory', async () => {
