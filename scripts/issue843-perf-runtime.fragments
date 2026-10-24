@@ -1,0 +1,646 @@
+@@ GLOBAL_DIAGNOSTICS
+const formalCommitRecords = [];
+const issue843Perf = {
+  processStartedAt: performance.now(),
+  clickAt: null, uiCompletedAt: null, jobStartedAt: null, jobCompletedAt: null,
+  exportResult: null, exportCompletion: null, videoEncode: null, audioMux: null,
+  probes: [], cleanupJobDirectoryMs: 0, commitMs: 0,
+  mainFrameRoundTrips: [], writeFrameRecords: [], writeSlotWaits: [],
+  jobDirectoryIds: new Map(), activeWriteFrameCount: 0, peakWriteFrameCount: 0,
+  hiddenWindowObserved: null, rendererSnapshot: null, rendererSnapshotError: null,
+  rendererSnapshotPromise: null, rendererSnapshotDurationMs: null,
+  system: {
+    sampleCount: 0, peakMainRssBytes: process.memoryUsage().rss,
+    minimumFreeRamBytes: null, initialFreeDiskBytes: null, minimumFreeDiskBytes: null,
+  },
+};
+if (issue843PerfMode) {
+  globalThis.__pandaIssue843 = {
+    recordWriteSlotWait(jobId, frameIndex, durationMs) {
+      issue843Perf.writeSlotWaits.push({ jobId, frameIndex, durationMs });
+    },
+  };
+}
+
+@@ EXPORT_SERVICE_SETUP
+if (issue843PerfMode) {
+  const originalRenderFrame = hiddenWindowManager.renderFrame.bind(hiddenWindowManager);
+  hiddenWindowManager.renderFrame = async (request) => {
+    const startedAtMs = performance.now();
+    try {
+      const result = await originalRenderFrame(request);
+      issue843Perf.mainFrameRoundTrips.push({
+        jobId: request.jobId, frameIndex: request.frameIndex, timeMs: request.timeMs,
+        shotId: request.shotId ?? null, shotLocalTimeMs: request.shotLocalTimeMs ?? null,
+        durationMs: performance.now() - startedAtMs, pngByteLength: result.pngBytes.byteLength,
+      });
+      return result;
+    } catch (error) {
+      issue843Perf.mainFrameRoundTrips.push({
+        jobId: request.jobId, frameIndex: request.frameIndex, timeMs: request.timeMs,
+        shotId: request.shotId ?? null, shotLocalTimeMs: request.shotLocalTimeMs ?? null,
+        durationMs: performance.now() - startedAtMs, error: String(error?.stack ?? error),
+      });
+      throw error;
+    }
+  };
+
+  const originalPrepareJob = hiddenWindowManager.prepareJob.bind(hiddenWindowManager);
+  hiddenWindowManager.prepareJob = async () => {
+    await originalPrepareJob();
+    const hiddenWindow = hiddenWindowManager.getWindow();
+    if (!hiddenWindow || hiddenWindow.isDestroyed()) throw new Error('Issue #843 could not observe the hidden window.');
+    issue843Perf.hiddenWindowObserved = {
+      browserWindowVisible: hiddenWindow.isVisible(),
+      webContentsBackgroundThrottling: hiddenWindow.webContents.getBackgroundThrottling(),
+      backgroundThrottlingOptionSource: 'HiddenWindowManager BrowserWindow.webPreferences omits backgroundThrottling',
+    };
+    const bootstrap = `(() => {
+      const rows = new Map();
+      const scalarDetail = (detail) => Object.fromEntries(Object.entries(detail || {}).filter(([, value]) =>
+        value === null || ['number', 'string', 'boolean'].includes(typeof value)));
+      window.__pandaIssue843Diagnostics = {
+        record(event, atMs, detail) {
+          if (!detail || typeof detail.jobId !== 'string' || !Number.isInteger(detail.frameIndex)) return;
+          const key = detail.jobId + ':' + detail.frameIndex;
+          let row = rows.get(key);
+          if (!row) {
+            row = { jobId: detail.jobId, frameIndex: detail.frameIndex, timeMs: null, shotId: null, shotLocalTimeMs: null, events: {} };
+            rows.set(key, row);
+          }
+          if (typeof detail.timeMs === 'number') row.timeMs = detail.timeMs;
+          if (typeof detail.shotId === 'string' || detail.shotId === null) row.shotId = detail.shotId;
+          if (typeof detail.shotLocalTimeMs === 'number' || detail.shotLocalTimeMs === null) row.shotLocalTimeMs = detail.shotLocalTimeMs;
+          (row.events[event] ||= []).push({ atMs, detail: scalarDetail(detail) });
+        },
+        snapshot() {
+          return {
+            rows: [...rows.values()],
+            visibility: { documentVisibilityState: document.visibilityState, documentHidden: document.hidden },
+          };
+        },
+      };
+      return true;
+    })()`;
+    await hiddenWindow.webContents.executeJavaScript(bootstrap);
+  };
+
+  const originalReleaseJob = hiddenWindowManager.releaseJob.bind(hiddenWindowManager);
+  hiddenWindowManager.releaseJob = (jobId) => {
+    const hiddenWindow = hiddenWindowManager.getWindow();
+    if (!hiddenWindow || hiddenWindow.isDestroyed() || hiddenWindow.webContents.isDestroyed()) {
+      originalReleaseJob(jobId);
+      return;
+    }
+    const startedAtMs = performance.now();
+    issue843Perf.rendererSnapshotPromise = hiddenWindow.webContents.executeJavaScript(
+      'window.__pandaIssue843Diagnostics ? window.__pandaIssue843Diagnostics.snapshot() : null',
+    ).then(
+      (snapshot) => { issue843Perf.rendererSnapshot = snapshot; },
+      (error) => { issue843Perf.rendererSnapshotError = String(error?.stack ?? error); },
+    ).finally(() => {
+      issue843Perf.rendererSnapshotDurationMs = performance.now() - startedAtMs;
+      originalReleaseJob(jobId);
+    });
+  };
+
+  const originalCreateJobDirectory = exportFileSystem.createJobDirectory.bind(exportFileSystem);
+  exportFileSystem.createJobDirectory = async (jobId) => {
+    const directory = await originalCreateJobDirectory(jobId);
+    issue843Perf.jobDirectoryIds.set(path.resolve(directory), jobId);
+    return directory;
+  };
+  const originalWriteFrame = exportFileSystem.writeFrame.bind(exportFileSystem);
+  exportFileSystem.writeFrame = async (jobDirectory, fileName, pngBytes) => {
+    const startedAtMs = performance.now();
+    const match = /^frame_(\d+)\.png$/u.exec(fileName);
+    const record = {
+      jobId: issue843Perf.jobDirectoryIds.get(path.resolve(jobDirectory)) ?? null,
+      frameIndex: match ? Number(match[1]) : null,
+      fileName,
+      pngByteLength: pngBytes.byteLength,
+      startedAtMs,
+      endedAtMs: null,
+      durationMs: null,
+      error: null,
+    };
+    issue843Perf.activeWriteFrameCount += 1;
+    issue843Perf.peakWriteFrameCount = Math.max(issue843Perf.peakWriteFrameCount, issue843Perf.activeWriteFrameCount);
+    try {
+      await originalWriteFrame(jobDirectory, fileName, pngBytes);
+    } catch (error) {
+      record.error = String(error?.stack ?? error);
+      throw error;
+    } finally {
+      record.endedAtMs = performance.now();
+      record.durationMs = record.endedAtMs - record.startedAtMs;
+      issue843Perf.activeWriteFrameCount -= 1;
+      issue843Perf.writeFrameRecords.push(record);
+    }
+  };
+}
+
+@@ SHORT_PROJECT
+function shortIssue843Project(project) {
+  const shortProject = structuredClone(project);
+  shortProject.shots = shortProject.shots.map((shot, index) => {
+    const audioClips = shot.audioClips.map((clip) => {
+      if (index === 0 && clip.role === 'bgm') return { ...clip, startMs: 0, endMs: 1_500 };
+      if (index === 0 && clip.role === 'dialogue') return { ...clip, startMs: 0, endMs: 1_000 };
+      if (index === 1 && clip.role === 'dialogue') return { ...clip, startMs: 250, endMs: 1_250 };
+      if (index === 2 && clip.role === 'sfx') return { ...clip, startMs: 250, endMs: 1_250 };
+      return clip;
+    });
+    const dialogues = shot.dialogues.map((dialogue) => ({
+      ...dialogue, startMs: index === 0 ? 0 : 250, endMs: index === 0 ? 1_250 : 1_400,
+    }));
+    return { ...shot, durationMs: 1_500, timelineEvents: [], dialogues, audioClips };
+  });
+  const validated = ProjectSchema.parse(shortProject);
+  assert(validated.shots.length === 3, 'Issue #843 sample must have three Shots.');
+  assert(validated.shots.every((shot) => shot.durationMs === 1_500), 'Issue #843 Shots must each be 1.5 seconds.');
+  assert(validated.shots.some((shot) => shot.audioClips.length > 0), 'Issue #843 sample must include audio.');
+  return validated;
+}
+
+@@ PROBE_TIMERS
+  const mediaAdapter = new FFmpegAdapter({ ffmpegPath: mediaTools.ffmpegPath, ffprobePath: mediaTools.ffprobePath });
+  if (issue843PerfMode) {
+    for (const [method, kind] of [['probeAudioFile', 'audio-source'], ['probeVideo', 'final-video']]) {
+      const originalProbe = mediaAdapter[method].bind(mediaAdapter);
+      mediaAdapter[method] = async (...args) => {
+        const startedAt = performance.now();
+        const value = await originalProbe(...args);
+        issue843Perf.probes.push({ kind, elapsedMs: Math.round(performance.now() - startedAt) });
+        return value;
+      };
+    }
+  }
+  const encodePngSequence
+@@ ENCODE_TIMER
+      const encodeStartedAt = performance.now();
+      const encodeResult = await encodePngSequence(request, signal);
+      if (issue843PerfMode) issue843Perf.videoEncode = {
+        elapsedMs: encodeResult.elapsedMs,
+        wrapperWallMs: Math.round(performance.now() - encodeStartedAt),
+        versionLine: encodeResult.versionLine,
+        frameCount: encodeResult.frameCount,
+      };
+      return encodeResult;
+@@ MUX_TIMER
+    if (!replaceDialogueSourceBeforeNextMix) {
+      const muxStartedAt = performance.now();
+      const muxResult = await muxAudioMix(request, signal);
+      if (issue843PerfMode) issue843Perf.audioMux = {
+        elapsedMs: muxResult.elapsedMs,
+        wrapperWallMs: Math.round(performance.now() - muxStartedAt),
+        versionLine: muxResult.versionLine,
+      };
+      return muxResult;
+    }
+@@ CLEANUP_TIMER
+  exportFileSystem = new class extends FileSystemService {
+    async cleanupJobDirectory(directory) {
+      const startedAt = performance.now();
+      await super.cleanupJobDirectory(directory);
+      if (issue843PerfMode) issue843Perf.cleanupJobDirectoryMs += Math.round(performance.now() - startedAt);
+    }
+    async commitFormalOutputNoReplace
+@@ COMMIT_TIMER
+      const commitStartedAt = performance.now();
+      await super.commitFormalOutputNoReplace(stagingPath, outputPath);
+      if (issue843PerfMode) issue843Perf.commitMs = Math.round(performance.now() - commitStartedAt);
+@@ JOB_START
+        if (issue843PerfMode) issue843Perf.jobStartedAt = performance.now();
+        handle = exportService.startFormalExport(
+          input,
+@@ JOB_COMPLETION
+      formalStarts.at(-1).jobId = handle.jobId;
+      if (issue843PerfMode) {
+        issue843Perf.exportCompletion = handle.completion.then(
+          (value) => {
+            issue843Perf.jobCompletedAt = performance.now();
+            issue843Perf.exportResult = value;
+            return value;
+          },
+          (error) => {
+            issue843Perf.jobCompletedAt = performance.now();
+            issue843Perf.exportResult = { error: String(error?.stack ?? error) };
+            return null;
+          },
+        );
+      }
+@@ FIXTURE_RETIMER
+  fixtureProject = ProjectSchema.parse(JSON.parse(await fsp.readFile(path.join(fixture.projectRoot, 'project.json'), 'utf8')));
+  if (issue843PerfMode) {
+    fixtureProject = shortIssue843Project(fixtureProject);
+    fixture.project = fixtureProject;
+    await fsp.writeFile(path.join(fixture.projectRoot, 'project.json'), JSON.stringify(fixtureProject, null, 2), 'utf8');
+  }
+  if (dl05FollowupMode) {
+@@ DIAGNOSTIC_BRANCH
+  if (issue843PerfMode) {
+    const outputPath = path.join(fixture.projectRoot, 'issue843-formal-export.mp4');
+    assert(!existsSync(outputPath), 'Issue #843 target must start absent.');
+    const projectBytesBefore = await fsp.readFile(projectFilePath);
+    const projectSha256Before = hash(projectBytesBefore);
+    const assetHashesBefore = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+      assetId: asset.id, relativePath: asset.relativePath,
+      sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+    })));
+    const rootStats = statfsSync ? (() => { try { return statfsSync(fixture.root); } catch { return null; } })() : null;
+    issue843Perf.system.initialFreeDiskBytes = rootStats ? Number(rootStats.bavail) * Number(rootStats.bsize) : null;
+    const sample = () => {
+      issue843Perf.system.sampleCount += 1;
+      issue843Perf.system.peakMainRssBytes = Math.max(issue843Perf.system.peakMainRssBytes, process.memoryUsage().rss);
+      const ram = os.freemem();
+      issue843Perf.system.minimumFreeRamBytes = issue843Perf.system.minimumFreeRamBytes == null
+        ? ram : Math.min(issue843Perf.system.minimumFreeRamBytes, ram);
+      if (statfsSync) {
+        try {
+          const disk = statfsSync(fixture.root);
+          const free = Number(disk.bavail) * Number(disk.bsize);
+          issue843Perf.system.minimumFreeDiskBytes = issue843Perf.system.minimumFreeDiskBytes == null
+            ? free : Math.min(issue843Perf.system.minimumFreeDiskBytes, free);
+        } catch {}
+      }
+    };
+    sample();
+    const sampleTimer = setInterval(sample, 250);
+    const hardStopTimer = setTimeout(() => {
+      const jobId = exportService?.getActiveJobId();
+      if (jobId) exportService.cancelJob(jobId);
+      void fsp.writeFile(path.join(evidenceRoot, 'issue843-stop.json'), JSON.stringify({
+        issue: 843, status: 'STOP', reason: 'Five-minute UI export wall-time limit reached.',
+        sourceCommitSha: result.sourceCommitSha, activeJobId: jobId,
+        activeProcessCount: exportService?.getActiveProcessCount() ?? null, timestamp: new Date().toISOString(),
+      }, null, 2), 'utf8').finally(() => app.exit(2));
+    }, 295_000);
+    hardStopTimer.unref();
+    let exportRun;
+    try {
+      exportRun = await startFromCreatorUi(evidenceRoot, 'issue843-formal-export', {
+        selectedFileName: path.basename(outputPath), startTimeoutMs: 30_000,
+        failFastOnStartFailure: true, completionTimeoutMs: 210_000, abortOnTimeout: true,
+      });
+    } finally {
+      clearInterval(sampleTimer);
+      clearTimeout(hardStopTimer);
+    }
+    if (issue843Perf.exportCompletion) await issue843Perf.exportCompletion;
+    if (issue843Perf.rendererSnapshotPromise) await issue843Perf.rendererSnapshotPromise;
+    const job = exportService.getJob(exportRun.start.jobId);
+    const verifierStartedAt = performance.now();
+    const outputBytes = existsSync(outputPath) ? await fsp.readFile(outputPath) : null;
+    const outputSha256 = outputBytes ? hash(outputBytes) : null;
+    const externalProbeStartedAt = performance.now();
+    let externalProbe = null;
+    let externalProbeError = null;
+    if (outputBytes) {
+      try {
+        const probeResult = await runProcess(mediaTools.ffprobePath, [
+          '-v', 'error', '-count_frames', '-show_streams', '-show_format', '-of', 'json', outputPath,
+        ]);
+        externalProbe = JSON.parse(probeResult.stdout);
+      } catch (error) { externalProbeError = String(error.stack ?? error); }
+    }
+    const externalProbeMs = Math.round(performance.now() - externalProbeStartedAt);
+    const projectBytesAfter = await fsp.readFile(projectFilePath);
+    const assetHashesAfter = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+      assetId: asset.id, relativePath: asset.relativePath,
+      sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+    })));
+    const temporaryCleanup = await assertNoExportTemporaries('Issue #843 focused formal export');
+    const editorStatePreserved =
+      exportRun.before.revision === exportRun.after.revision &&
+      exportRun.before.dirty === exportRun.after.dirty &&
+      exportRun.before.undoCount === exportRun.after.undoCount &&
+      exportRun.before.redoCount === exportRun.after.redoCount;
+    const projectUnchanged = projectBytesBefore.equals(projectBytesAfter);
+    const assetsUnchanged = JSON.stringify(assetHashesBefore) === JSON.stringify(assetHashesAfter);
+    const video = externalProbe?.streams?.find((stream) => stream.codec_type === 'video');
+    const audio = externalProbe?.streams?.filter((stream) => stream.codec_type === 'audio') ?? [];
+    const frameCount = Number(video?.nb_read_frames ?? video?.nb_frames);
+    const parts = String(video?.avg_frame_rate ?? video?.r_frame_rate ?? '0/1').split('/');
+    const fps = Number(parts[0]) / Number(parts[1] || 1);
+    const durationSeconds = Number(video?.duration ?? externalProbe?.format?.duration);
+    const audioDurationSeconds = Number(audio[0]?.duration ?? 0);
+    const ffprobeValid =
+      video?.codec_name === 'h264' && video?.pix_fmt === 'yuv420p' &&
+      video?.width === 1_920 && video?.height === 1_080 &&
+      Math.abs(fps - 24) < 0.001 && frameCount === 108 &&
+      Math.abs(durationSeconds - 4.5) < 0.08 && audio.length === 1 &&
+      audio[0]?.codec_name === 'aac' && audio[0]?.sample_rate === '48000' &&
+      Math.abs(audioDurationSeconds - 4.5) < 0.08;
+    const output = issue843Perf.exportResult ?? {};
+    const render = output.render ?? null;
+    const round3 = (value) => Math.round(value * 1_000) / 1_000;
+    const summarizeTiming = (rawValues) => {
+      const values = rawValues.filter(Number.isFinite).sort((left, right) => left - right);
+      if (values.length === 0) return { count: 0, sumMs: null, meanMs: null, medianMs: null, p95Ms: null, maxMs: null };
+      const sum = values.reduce((total, value) => total + value, 0);
+      const middle = Math.floor(values.length / 2);
+      return {
+        count: values.length,
+        sumMs: round3(sum),
+        meanMs: round3(sum / values.length),
+        medianMs: round3(values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2),
+        p95Ms: round3(values[Math.ceil(values.length * 0.95) - 1]),
+        maxMs: round3(values.at(-1)),
+      };
+    };
+    const firstRendererEvent = (row, event) => row?.events?.[event]?.[0] ?? null;
+    const elapsedBetween = (end, start) => end && start ? end.atMs - start.atMs : null;
+    const frameKey = (row) => row.jobId + ':' + row.frameIndex;
+    const rendererRows = issue843Perf.rendererSnapshot?.rows ?? [];
+    const rendererByKey = new Map(rendererRows.map((row) => [frameKey(row), row]));
+    const writeByKey = new Map(issue843Perf.writeFrameRecords
+      .filter((row) => row.jobId && Number.isInteger(row.frameIndex))
+      .map((row) => [row.jobId + ':' + row.frameIndex, row]));
+    const writeWaitByKey = new Map(issue843Perf.writeSlotWaits
+      .map((row) => [row.jobId + ':' + row.frameIndex, row]));
+    const frameTimingRows = issue843Perf.mainFrameRoundTrips.map((main) => {
+      const key = main.jobId + ':' + main.frameIndex;
+      const renderer = rendererByKey.get(key);
+      const request = firstRendererEvent(renderer, 'renderer-request');
+      const ready = firstRendererEvent(renderer, 'stage-ready');
+      const rafScheduled = firstRendererEvent(renderer, 'raf-scheduled');
+      const rafCallback = firstRendererEvent(renderer, 'raf-callback');
+      const pngStarted = firstRendererEvent(renderer, 'toBlob-start');
+      const pngCallback = firstRendererEvent(renderer, 'toBlob-callback');
+      const arrayBufferStarted = firstRendererEvent(renderer, 'arrayBuffer-start');
+      const arrayBufferComplete = firstRendererEvent(renderer, 'arrayBuffer-complete');
+      const frameReadySend = firstRendererEvent(renderer, 'frame-ready-send');
+      const rendererLocalMs = elapsedBetween(frameReadySend, request);
+      const write = writeByKey.get(key);
+      const wait = writeWaitByKey.get(key);
+      const classification = main.shotLocalTimeMs === 0
+        ? (main.frameIndex === 0 ? 'first-frame' : 'shot-transition-first-frame')
+        : 'ordinary-frame';
+      return {
+        jobId: main.jobId,
+        frameIndex: main.frameIndex,
+        key,
+        timeMs: main.timeMs,
+        shotId: main.shotId,
+        shotLocalTimeMs: main.shotLocalTimeMs,
+        classification,
+        rendererRequestToStageReadyMs: elapsedBetween(ready, request),
+        rafScheduledToCallbackMs: elapsedBetween(rafCallback, rafScheduled),
+        stageReadyIncludingRafMs: elapsedBetween(ready, request) == null || elapsedBetween(rafCallback, rafScheduled) == null
+          ? null : elapsedBetween(ready, request) + elapsedBetween(rafCallback, rafScheduled),
+        canvasToBlobMs: pngCallback?.detail?.durationMs ?? null,
+        blobArrayBufferMs: arrayBufferComplete?.detail?.durationMs ?? null,
+        rendererRequestToFrameReadySendMs: rendererLocalMs,
+        mainRequestToReplyMs: main.durationMs,
+        ipcDispatchResidualEstimateMs: rendererLocalMs == null ? null : main.durationMs - rendererLocalMs,
+        writeSlotWaitMs: wait?.durationMs ?? null,
+        writeFrameMs: write?.durationMs ?? null,
+        pngByteLength: write?.pngByteLength ?? main.pngByteLength ?? null,
+        requiredRendererEventsPresent: Boolean(request && ready && rafScheduled && rafCallback && pngStarted && pngCallback && arrayBufferStarted && arrayBufferComplete && frameReadySend),
+      };
+    });
+    const groupTimingStats = (field) => Object.fromEntries(['first-frame', 'shot-transition-first-frame', 'ordinary-frame']
+      .map((classification) => [classification, summarizeTiming(frameTimingRows
+        .filter((row) => row.classification === classification)
+        .map((row) => row[field]))]));
+    const writeIntervals = issue843Perf.writeFrameRecords
+      .filter((row) => Number.isFinite(row.startedAtMs) && Number.isFinite(row.endedAtMs))
+      .sort((left, right) => left.startedAtMs - right.startedAtMs);
+    let writeUnionMs = 0;
+    let intervalStart = null;
+    let intervalEnd = null;
+    for (const interval of writeIntervals) {
+      if (intervalStart === null) {
+        intervalStart = interval.startedAtMs;
+        intervalEnd = interval.endedAtMs;
+      } else if (interval.startedAtMs <= intervalEnd) {
+        intervalEnd = Math.max(intervalEnd, interval.endedAtMs);
+      } else {
+        writeUnionMs += intervalEnd - intervalStart;
+        intervalStart = interval.startedAtMs;
+        intervalEnd = interval.endedAtMs;
+      }
+    }
+    if (intervalStart !== null) writeUnionMs += intervalEnd - intervalStart;
+    const expectedTimingFrames = render?.totalFrames ?? 108;
+    const mainKeys = issue843Perf.mainFrameRoundTrips.map(frameKey);
+    const rendererKeys = rendererRows.map(frameKey);
+    const writeKeys = issue843Perf.writeFrameRecords
+      .filter((row) => row.jobId && Number.isInteger(row.frameIndex))
+      .map((row) => row.jobId + ':' + row.frameIndex);
+    const writeWaitKeys = issue843Perf.writeSlotWaits.map((row) => row.jobId + ':' + row.frameIndex);
+    const uniqueMainKeys = new Set(mainKeys);
+    const uniqueRendererKeys = new Set(rendererKeys);
+    const uniqueWriteKeys = new Set(writeKeys);
+    const uniqueWriteWaitKeys = new Set(writeWaitKeys);
+    const expectedKeySet = new Set(mainKeys);
+    const timingCoverage = {
+      expectedFrames: expectedTimingFrames,
+      mainRoundTripCount: mainKeys.length,
+      rendererRowCount: rendererKeys.length,
+      writeFrameCount: writeKeys.length,
+      writeSlotWaitCount: writeWaitKeys.length,
+      uniqueJobIds: new Set(issue843Perf.mainFrameRoundTrips.map((row) => row.jobId)).size,
+      duplicateMainKeys: mainKeys.length - uniqueMainKeys.size,
+      duplicateRendererKeys: rendererKeys.length - uniqueRendererKeys.size,
+      duplicateWriteKeys: writeKeys.length - uniqueWriteKeys.size,
+      duplicateWriteWaitKeys: writeWaitKeys.length - uniqueWriteWaitKeys.size,
+      missingRendererKeys: mainKeys.filter((key) => !uniqueRendererKeys.has(key)),
+      extraRendererKeys: rendererKeys.filter((key) => !expectedKeySet.has(key)),
+      missingWriteKeys: mainKeys.filter((key) => !uniqueWriteKeys.has(key)),
+      extraWriteKeys: writeKeys.filter((key) => !expectedKeySet.has(key)),
+      missingWriteWaitKeys: mainKeys.filter((key) => !uniqueWriteWaitKeys.has(key)),
+      extraWriteWaitKeys: writeWaitKeys.filter((key) => !expectedKeySet.has(key)),
+      pngBytesMatchRenderTotal: issue843Perf.writeFrameRecords.reduce((sum, row) => sum + (row.pngByteLength ?? 0), 0) === (render?.totalBytes ?? -1),
+      pngBytesMatchMainAndRenderer: issue843Perf.writeFrameRecords.reduce((sum, row) => sum + (row.pngByteLength ?? 0), 0) === issue843Perf.mainFrameRoundTrips.reduce((sum, row) => sum + (row.pngByteLength ?? 0), 0) &&
+        issue843Perf.writeFrameRecords.reduce((sum, row) => sum + (row.pngByteLength ?? 0), 0) === frameTimingRows.reduce((sum, row) => sum + (row.pngByteLength ?? 0), 0),
+    };
+    timingCoverage.complete =
+      timingCoverage.expectedFrames === 108 && timingCoverage.mainRoundTripCount === 108 &&
+      timingCoverage.rendererRowCount === 108 && timingCoverage.writeFrameCount === 108 &&
+      timingCoverage.writeSlotWaitCount === 108 && timingCoverage.uniqueJobIds === 1 &&
+      timingCoverage.duplicateMainKeys === 0 && timingCoverage.duplicateRendererKeys === 0 &&
+      timingCoverage.duplicateWriteKeys === 0 && timingCoverage.duplicateWriteWaitKeys === 0 &&
+      timingCoverage.missingRendererKeys.length === 0 && timingCoverage.extraRendererKeys.length === 0 &&
+      timingCoverage.missingWriteKeys.length === 0 && timingCoverage.extraWriteKeys.length === 0 &&
+      timingCoverage.missingWriteWaitKeys.length === 0 && timingCoverage.extraWriteWaitKeys.length === 0 &&
+      frameTimingRows.every((row) => row.requiredRendererEventsPresent) && timingCoverage.pngBytesMatchRenderTotal && timingCoverage.pngBytesMatchMainAndRenderer &&
+      Boolean(issue843Perf.hiddenWindowObserved && issue843Perf.rendererSnapshot?.visibility);
+    timingCoverage.visibilityAndThrottleObserved = Boolean(
+      issue843Perf.hiddenWindowObserved &&
+      typeof issue843Perf.hiddenWindowObserved.browserWindowVisible === 'boolean' &&
+      typeof issue843Perf.hiddenWindowObserved.webContentsBackgroundThrottling === 'boolean' &&
+      issue843Perf.rendererSnapshot?.visibility &&
+      typeof issue843Perf.rendererSnapshot.visibility.documentHidden === 'boolean' &&
+      typeof issue843Perf.rendererSnapshot.visibility.documentVisibilityState === 'string',
+    );
+    timingCoverage.complete = timingCoverage.complete && timingCoverage.visibilityAndThrottleObserved;
+    const stageReadyStats = summarizeTiming(frameTimingRows.map((row) => row.rendererRequestToStageReadyMs));
+    const rafWaitStats = summarizeTiming(frameTimingRows.map((row) => row.rafScheduledToCallbackMs));
+    const stageReadyIncludingRafStats = summarizeTiming(frameTimingRows.map((row) => row.stageReadyIncludingRafMs));
+    const canvasToBlobStats = summarizeTiming(frameTimingRows.map((row) => row.canvasToBlobMs));
+    const arrayBufferStats = summarizeTiming(frameTimingRows.map((row) => row.blobArrayBufferMs));
+    const mainRoundTripStats = summarizeTiming(frameTimingRows.map((row) => row.mainRequestToReplyMs));
+    const ipcResidualStats = summarizeTiming(frameTimingRows.map((row) => row.ipcDispatchResidualEstimateMs));
+    const writeFrameStats = summarizeTiming(frameTimingRows.map((row) => row.writeFrameMs));
+    const writeSlotWaitStats = summarizeTiming(frameTimingRows.map((row) => row.writeSlotWaitMs));
+    const probeMs = issue843Perf.probes.reduce((sum, item) => sum + item.elapsedMs, 0);
+    const encodeMs = issue843Perf.videoEncode?.elapsedMs ?? null;
+    const muxMs = issue843Perf.audioMux?.elapsedMs ?? null;
+    const cleanupCommitMs = issue843Perf.cleanupJobDirectoryMs + issue843Perf.commitMs;
+    const stageSum = (render?.elapsedMs ?? 0) + (encodeMs ?? 0) + (muxMs ?? 0) + probeMs + cleanupCommitMs;
+    const jobMs = output.elapsedMs ?? null;
+    const residualMs = jobMs == null ? null : jobMs - stageSum;
+    const verifierExtraMs = Math.round(performance.now() - verifierStartedAt);
+    const cleanup = {
+      activeJobId: exportService.getActiveJobId(),
+      activeProcessCount: exportService.getActiveProcessCount(),
+      outputTemporaries: temporaryCleanup.outputTemporaries,
+      frameJobDirectories: temporaryCleanup.frameJobDirectories,
+      preparationSnapshots: temporaryCleanup.preparationSnapshots,
+      stagingRemoved: formalCommitRecords.at(-1)?.stagingRemoved ?? null,
+      cancellationPathExercised: false,
+      noClobberOverwritePathExercised: false,
+    };
+    const outputPresent = Boolean(outputBytes);
+    const passed =
+      formalStarts.length === 1 && job?.status === 'completed' && outputPresent && ffprobeValid &&
+      projectUnchanged && assetsUnchanged && editorStatePreserved &&
+      timingCoverage.complete &&
+      cleanup.activeJobId === null && cleanup.activeProcessCount === 0 &&
+      cleanup.outputTemporaries.length === 0 && cleanup.frameJobDirectories.length === 0 &&
+      cleanup.preparationSnapshots.length === 0 && cleanup.stagingRemoved === true;
+    const receipt = {
+      schemaVersion: 1, issue: 843,
+      status: passed ? 'MEASUREMENT_PASS' : 'MEASUREMENT_PARTIAL',
+      sourceCommitSha: result.sourceCommitSha, recordedAt: new Date().toISOString(),
+      runId: path.basename(fixture.root), fixtureRoot: fixture.root, projectRoot: fixture.projectRoot,
+      sample: {
+        source: 'Issue #827 generated sample 1, retimed for this bounded diagnostic',
+        durationMs: 4_500, shots: fixtureProject.shots.length,
+        shotDurationsMs: fixtureProject.shots.map((shot) => shot.durationMs),
+        frames: job?.totalFrames ?? render?.totalFrames ?? null, fps: 24,
+        width: 1_920, height: 1_080, assets: fixtureProject.assets.length,
+        audioEvents: fixtureProject.shots.reduce((sum, shot) => sum + shot.audioClips.length, 0),
+        sourceAssetHashes: assetHashesBefore,
+      },
+      environment: {
+        platform: process.platform, architecture: process.arch, windowsRelease: os.release(),
+        electronVersion: process.versions.electron, chromiumVersion: process.versions.chrome,
+        nodeVersion: process.versions.node, cpuModel: os.cpus()[0]?.model ?? 'UNKNOWN',
+        logicalProcessors: os.cpus().length, totalRamBytes: os.totalmem(),
+        gpuStatus: 'UNKNOWN; Windows reported only virtual display adapters AspDod/AspIdd',
+        packaged: app.isPackaged, ffmpegVersion: issue843Perf.videoEncode?.versionLine ?? 'UNKNOWN',
+      },
+      output: {
+        path: outputPath, sha256: outputSha256, bytes: outputBytes?.length ?? null, ffprobeValid, externalProbeMs,
+        video: { codec: video?.codec_name ?? null, pixelFormat: video?.pix_fmt ?? null,
+          width: video?.width ?? null, height: video?.height ?? null, fps, frames: frameCount, durationSeconds },
+        audio: { streams: audio.length, codec: audio[0]?.codec_name ?? null,
+          sampleRate: audio[0]?.sample_rate ?? null, durationSeconds: audioDurationSeconds },
+        externalProbeError,
+      },
+      timingMs: {
+        setupBeforeClick: issue843Perf.clickAt == null ? null : Math.round(issue843Perf.clickAt - issue843Perf.processStartedAt),
+        totalUiClickToCompleted: issue843Perf.clickAt == null || issue843Perf.uiCompletedAt == null
+          ? null : Math.round(issue843Perf.uiCompletedAt - issue843Perf.clickAt),
+        exportJobStartToCommit: jobMs,
+        uiMinusJobApproximation: issue843Perf.clickAt == null || issue843Perf.uiCompletedAt == null || jobMs == null
+          ? null : Math.round(issue843Perf.uiCompletedAt - issue843Perf.clickAt) - jobMs,
+        framePipeline: render?.elapsedMs ?? null, videoEncode: encodeMs, audioMux: muxMs,
+        probes: issue843Perf.probes, totalProbeMs: probeMs,
+        cleanupJobDirectory: issue843Perf.cleanupJobDirectoryMs, atomicCommit: issue843Perf.commitMs,
+        cleanupAndCommit: cleanupCommitMs, jobStageResidual: residualMs,
+        T_renderFrames: render?.elapsedMs ?? null,
+        T_stageReadyRequestToReady: stageReadyStats,
+        T_rafScheduledToCallback: rafWaitStats,
+        T_stageReadyIncludingRaf: stageReadyIncludingRafStats,
+        T_canvasToBlob: canvasToBlobStats,
+        T_blobArrayBuffer: arrayBufferStats,
+        T_mainRequestToReply: mainRoundTripStats,
+        T_ipcDispatchResidualEstimate: ipcResidualStats,
+        T_writeFrame: writeFrameStats,
+        T_writeSlotWait: writeSlotWaitStats,
+        writeFrameUnionMs: round3(writeUnionMs),
+        writeFrameOverlapMs: round3(Math.max(0, issue843Perf.writeFrameRecords.reduce((sum, row) => sum + (row.durationMs ?? 0), 0) - writeUnionMs)),
+        rendererSnapshotMs: issue843Perf.rendererSnapshotDurationMs,
+        verifierExtraAfterUiCompletion: verifierExtraMs, standaloneFfprobe: externalProbeMs,
+      },
+      frameTiming: {
+        status: timingCoverage.complete ? 'COMPLETE' : 'PARTIAL',
+        coverage: timingCoverage,
+        perFrame: frameTimingRows,
+        byFrameClass: {
+          rendererRequestToStageReady: groupTimingStats('rendererRequestToStageReadyMs'),
+          rafScheduledToCallback: groupTimingStats('rafScheduledToCallbackMs'),
+          canvasToBlob: groupTimingStats('canvasToBlobMs'),
+          blobArrayBuffer: groupTimingStats('blobArrayBufferMs'),
+          mainRequestToReply: groupTimingStats('mainRequestToReplyMs'),
+          ipcDispatchResidualEstimate: groupTimingStats('ipcDispatchResidualEstimateMs'),
+          writeFrame: groupTimingStats('writeFrameMs'),
+          writeSlotWait: groupTimingStats('writeSlotWaitMs'),
+        },
+        writeFrame: {
+          sumMs: writeFrameStats.sumMs,
+          wallUnionMs: round3(writeUnionMs),
+          overlapMs: round3(Math.max(0, issue843Perf.writeFrameRecords.reduce((sum, row) => sum + (row.durationMs ?? 0), 0) - writeUnionMs)),
+          peakConcurrentWrites: issue843Perf.peakWriteFrameCount,
+        },
+        clockAndOverlap: {
+          rendererIntervalsUseRendererPerformanceNow: true,
+          mainIntervalsUseMainPerformanceNow: true,
+          absoluteTimestampsComparedAcrossProcesses: false,
+          rendererRequestToFrameReadyIsNestedInsideMainRequestToReply: true,
+          writeFrameCanOverlapSubsequentFrameRendering: true,
+          ipcDispatchResidualMeaning: 'Main request-to-reply duration minus Renderer request-received-to-frameReady-send duration; estimated dispatch/IPC/serialization/validation/queue residual, not pure IPC copy time.',
+        },
+      },
+      hiddenWindowObservation: {
+        ...issue843Perf.hiddenWindowObserved,
+        renderer: issue843Perf.rendererSnapshot?.visibility ?? null,
+        rendererSnapshotError: issue843Perf.rendererSnapshotError,
+      },
+      renderMetrics: {
+        frames: job?.totalFrames ?? null, completedFrames: job?.completedFrames ?? null,
+        pngTemporaryBytes: render?.totalBytes ?? null, peakPendingWrites: render?.peakPendingWrites ?? null,
+        framePipelineMemoryBytes: render?.memory ?? null,
+      },
+      observedSystem: {
+        samplingIntervalMs: 250, samples: issue843Perf.system.sampleCount,
+        peakMainProcessRssBytes: issue843Perf.system.peakMainRssBytes,
+        minimumFreeRamBytes: issue843Perf.system.minimumFreeRamBytes,
+        initialFreeDiskBytes: issue843Perf.system.initialFreeDiskBytes,
+        minimumFreeDiskBytes: issue843Perf.system.minimumFreeDiskBytes,
+        ffmpegPeakMemory: 'NOT_MEASURED',
+      },
+      preservation: { projectUnchanged, assetsUnchanged, editorStatePreserved,
+        outputInitiallyAbsent: true, outputAppeared: outputPresent, outputSha256 },
+      cleanup,
+      limitations: [
+        'One generated-fixture run only; p95 describes these 108 frames and is not a production-workload SLA.',
+        'toBlob callback duration includes browser scheduling/PNG work and is not a direct Canvas draw-duration measurement.',
+        'IPC residual is estimated by subtracting within-process durations; it is not a pure IPC serialization/copy measurement.',
+        'Existing-target no-clobber rejection and cancellation were not re-exercised.',
+        'GPU and FFmpeg child-process peak memory were not ascertainable.',
+        'Windows Server virtual display environment is not representative of a standard desktop or packaged installer.',
+      ],
+      evidenceFiles: {
+        saveAsScreenshot: exportRun.nativeSaveAsScreenshotPath,
+        progressScreenshot: exportRun.progressScreenshotPath,
+        completionScreenshot: exportRun.completedScreenshotPath,
+        ffprobeJson: path.join(evidenceRoot, 'issue843-ffprobe.json'),
+      },
+    };
+    if (externalProbe) await fsp.writeFile(
+      path.join(evidenceRoot, 'issue843-ffprobe.json'), JSON.stringify(externalProbe, null, 2), 'utf8',
+    );
+    await fsp.writeFile(path.join(evidenceRoot, 'issue843-export-performance-receipt.json'),
+      JSON.stringify(receipt, null, 2), 'utf8');
+    console.log('Issue #843 receipt: ' + path.join(evidenceRoot, 'issue843-export-performance-receipt.json'));
+    console.log((passed ? 'MEASUREMENT_PASS ' : 'MEASUREMENT_PARTIAL ') + fixture.root);
+    mainWindow.destroy();
+    hiddenWindowManager.close();
+    app.exit(passed ? 0 : 2);
+    return;
+  }

@@ -1,0 +1,492 @@
+const { spawn, spawnSync } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { randomUUID } = require('node:crypto');
+
+const repoRoot = path.resolve(__dirname, '..');
+const sourceSha = 'c6c356f660001af694bb706cc7553974ff8d1cfc';
+const launcherHardStopMs = 300_000;
+const runName = 'issue843-export-performance-' + new Date().toISOString().replace(/[:.]/gu, '-') + '-' + process.pid;
+const acceptanceRoot = path.join('D:\\PandaStage-Acceptance', runName);
+const sourceIsAncestor = spawnSync('git', ['merge-base', '--is-ancestor', sourceSha, 'HEAD'], { cwd: repoRoot, stdio: 'ignore' });
+const trackedDiff = spawnSync('git', ['diff', '--quiet', 'HEAD', '--'], { cwd: repoRoot, stdio: 'ignore' });
+if (sourceIsAncestor.status !== 0) throw new Error('Pinned source ' + sourceSha + ' is not an ancestor of HEAD.');
+if (trackedDiff.status !== 0) throw new Error('Tracked worktree changes exist; refusing to launch.');
+if (process.platform !== 'win32') throw new Error('This diagnostic requires Windows Electron.');
+if (fs.existsSync(acceptanceRoot)) throw new Error('Acceptance run directory already exists: ' + acceptanceRoot);
+
+const fragmentText = fs.readFileSync(path.join(__dirname, 'issue843-perf-runtime.fragments'), 'utf8');
+const fragments = new Map();
+let fragmentName = null;
+for (const line of fragmentText.split(/\r?\n/u)) {
+  const marker = line.match(/^@@ ([A-Z0-9_]+)$/u);
+  if (marker) {
+    fragmentName = marker[1];
+    fragments.set(fragmentName, []);
+  } else if (fragmentName) fragments.get(fragmentName).push(line);
+}
+function fragment(name) {
+  if (!fragments.has(name)) throw new Error('Missing runtime fragment: ' + name);
+  return fragments.get(name).join('\n').replace(/\s+$/u, '');
+}
+function replaceOnce(source, needle, replacement, label) {
+  const first = source.indexOf(needle);
+  if (first < 0 || source.indexOf(needle, first + needle.length) >= 0) {
+    throw new Error('Expected one exact verifier anchor for ' + label);
+  }
+  return source.slice(0, first) + replacement + source.slice(first + needle.length);
+}
+function instrumentIssue843Sources() {
+  const sourcePaths = [
+    'src/renderer/stage/previewDiagnostics.ts',
+    'src/renderer/stage/StageRenderer.tsx',
+    'src/export-renderer/ExportRendererApp.tsx',
+    'src/main/services/ExportService.ts',
+  ];
+  const transformed = new Map(sourcePaths.map((relativePath) => {
+    const absolutePath = path.join(repoRoot, relativePath);
+    const originalBuffer = fs.readFileSync(absolutePath);
+    const original = originalBuffer.toString('utf8').replace(/\r\n/gu, '\n');
+    return [relativePath, { absolutePath, originalBuffer, original, instrumented: original }];
+  }));
+  const edit = (relativePath, needle, replacement, label) => {
+    const file = transformed.get(relativePath);
+    file.instrumented = replaceOnce(file.instrumented, needle, replacement, label);
+  };
+
+  edit('src/renderer/stage/previewDiagnostics.ts',
+    'export function recordPreviewDuration(',
+    `export function recordIssue843FrameDiagnostic(
+  event: string,
+  renderToken: string | number | undefined,
+  detail: Record<string, number | string | boolean | null> = {},
+): void {
+  if (typeof window === 'undefined' || typeof renderToken !== 'string') return;
+  const separator = renderToken.lastIndexOf(':');
+  if (separator <= 0) return;
+  const frameIndex = Number(renderToken.slice(separator + 1));
+  if (!Number.isInteger(frameIndex)) return;
+  const target = (window as Window & {
+    __pandaIssue843Diagnostics?: {
+      record(event: string, atMs: number, detail: Record<string, number | string | boolean | null>): void;
+    };
+  }).__pandaIssue843Diagnostics;
+  target?.record(event, performance.now(), {
+    jobId: renderToken.slice(0, separator),
+    frameIndex,
+    ...detail,
+  });
+}
+
+export function recordPreviewDuration(`,
+    'renderer frame diagnostic sink');
+
+  edit('src/renderer/stage/StageRenderer.tsx',
+    '  recordPreviewDuration,\n} from \'./previewDiagnostics\';',
+    '  recordPreviewDuration,\n  recordIssue843FrameDiagnostic,\n} from \'./previewDiagnostics\';',
+    'StageRenderer diagnostic import');
+  edit('src/renderer/stage/StageRenderer.tsx',
+    '    if (!ready) return;\n\n    const frame = window.requestAnimationFrame(() => onReady?.());',
+    `    if (!ready) return;
+
+    recordIssue843FrameDiagnostic('stage-ready', renderToken, {
+      timeMs: modelResult.model?.timeMs ?? -1,
+      layerCount: layers.length,
+      ready,
+    });
+    const rafScheduledAtMs = performance.now();
+    recordIssue843FrameDiagnostic('raf-scheduled', renderToken, {
+      scheduledAtMs: rafScheduledAtMs,
+    });
+    const frame = window.requestAnimationFrame(() => {
+      recordIssue843FrameDiagnostic('raf-callback', renderToken, {
+        scheduledAtMs: rafScheduledAtMs,
+      });
+      onReady?.();
+    });`,
+    'stage ready and requestAnimationFrame timing');
+
+  edit('src/export-renderer/ExportRendererApp.tsx',
+    "import { CanvasStage } from '../renderer/stage/CanvasStage';",
+    "import { CanvasStage } from '../renderer/stage/CanvasStage';\nimport { recordIssue843FrameDiagnostic } from '../renderer/stage/previewDiagnostics';",
+    'ExportRendererApp diagnostic import');
+  edit('src/export-renderer/ExportRendererApp.tsx',
+    'function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {',
+    `function canvasToPngBytes(
+  canvas: HTMLCanvasElement,
+  request: ExportRenderFrameRequest,
+): Promise<Uint8Array> {`,
+    'PNG timing request key');
+  edit('src/export-renderer/ExportRendererApp.tsx',
+    "  return new Promise((resolve, reject) => {\n    canvas.toBlob((blob) => {",
+    `  return new Promise((resolve, reject) => {
+    const toBlobStartedAtMs = performance.now();
+    recordIssue843FrameDiagnostic('toBlob-start', request.jobId + ':' + request.frameIndex, {
+      timeMs: request.timeMs,
+    });
+    canvas.toBlob((blob) => {
+      recordIssue843FrameDiagnostic('toBlob-callback', request.jobId + ':' + request.frameIndex, {
+        durationMs: performance.now() - toBlobStartedAtMs,
+      });`,
+    'Canvas toBlob timing');
+  edit('src/export-renderer/ExportRendererApp.tsx',
+    `      void blob.arrayBuffer().then(
+        (buffer) => resolve(new Uint8Array(buffer)),
+        (error: unknown) => reject(error),
+      );`,
+    `      const arrayBufferStartedAtMs = performance.now();
+      recordIssue843FrameDiagnostic('arrayBuffer-start', request.jobId + ':' + request.frameIndex, {});
+      void blob.arrayBuffer().then(
+        (buffer) => {
+          recordIssue843FrameDiagnostic('arrayBuffer-complete', request.jobId + ':' + request.frameIndex, {
+            durationMs: performance.now() - arrayBufferStartedAtMs,
+            byteLength: buffer.byteLength,
+          });
+          resolve(new Uint8Array(buffer));
+        },
+        (error: unknown) => {
+          recordIssue843FrameDiagnostic('arrayBuffer-failed', request.jobId + ':' + request.frameIndex, {});
+          reject(error);
+        },
+      );`,
+    'Blob arrayBuffer timing');
+  edit('src/export-renderer/ExportRendererApp.tsx',
+    '      (request) => {\n        if (cancelledJobIdsRef.current.has(request.jobId)) {',
+    `      (request) => {
+        recordIssue843FrameDiagnostic('renderer-request', request.jobId + ':' + request.frameIndex, {
+          timeMs: request.timeMs,
+          shotId: request.shotId ?? null,
+          shotLocalTimeMs: request.shotLocalTimeMs ?? null,
+          documentVisibility: document.visibilityState,
+          documentHidden: document.hidden,
+        });
+        if (cancelledJobIdsRef.current.has(request.jobId)) {`,
+    'hidden renderer request timing');
+  edit('src/export-renderer/ExportRendererApp.tsx',
+    '    void canvasToPngBytes(canvas)\n',
+    `    recordIssue843FrameDiagnostic('png-capture-start', activeFrame.jobId + ':' + activeFrame.frameIndex, {});
+    void canvasToPngBytes(canvas, activeFrame)
+`,
+    'PNG capture start');
+  edit('src/export-renderer/ExportRendererApp.tsx',
+    '        window.pandaStageHidden.frameReady({',
+    `        recordIssue843FrameDiagnostic('frame-ready-send', activeFrame.jobId + ':' + activeFrame.frameIndex, {
+          pngByteLength: pngBytes.byteLength,
+        });
+        const frameReadyCallStartedAtMs = performance.now();
+        window.pandaStageHidden.frameReady({`,
+    'frameReady IPC send start');
+  edit('src/export-renderer/ExportRendererApp.tsx',
+    '          pngBytes,\n        });\n        activeFrameRef.current = null;',
+    `          pngBytes,
+        });
+        recordIssue843FrameDiagnostic('frame-ready-call-return', activeFrame.jobId + ':' + activeFrame.frameIndex, {
+          callDurationMs: performance.now() - frameReadyCallStartedAtMs,
+        });
+        activeFrameRef.current = null;`,
+    'frameReady IPC send return');
+
+  edit('src/main/services/ExportService.ts',
+    '        await waitForWriteSlot();\n        record.phase = \'rendering\';',
+    `        const issue843Collector = (globalThis as typeof globalThis & {
+          __pandaIssue843?: {
+            recordWriteSlotWait(jobId: string, frameIndex: number, durationMs: number): void;
+          };
+        }).__pandaIssue843;
+        const issue843WaitStartedAtMs = issue843Collector ? performance.now() : 0;
+        await waitForWriteSlot();
+        if (issue843Collector) {
+          issue843Collector.recordWriteSlotWait(
+            active.jobId,
+            frame.frameIndex,
+            performance.now() - issue843WaitStartedAtMs,
+          );
+        }
+        record.phase = 'rendering';`,
+    'Main write-slot queue wait timing');
+
+  return [...transformed.values()];
+}
+const issue843InstrumentedSources = instrumentIssue843Sources();
+
+function writeIssue843InstrumentedSources() {
+  for (const file of issue843InstrumentedSources) {
+    const newline = file.original.includes('\r\n') ? '\r\n' : '\n';
+    const output = newline === '\n' ? file.instrumented : file.instrumented.replace(/\n/gu, newline);
+    fs.writeFileSync(file.absolutePath, output, 'utf8');
+  }
+}
+function restoreIssue843Sources() {
+  for (const file of issue843InstrumentedSources) fs.writeFileSync(file.absolutePath, file.originalBuffer);
+}
+function verifyIssue843BuiltInstrumentation() {
+  const collectFiles = (directory) => {
+    if (!fs.existsSync(directory)) return [];
+    return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+      const entryPath = path.join(directory, entry.name);
+      return entry.isDirectory() ? collectFiles(entryPath) : [entryPath];
+    });
+  };
+  const rendererFiles = collectFiles(path.join(repoRoot, 'dist', 'renderer')).filter((file) => /\.(?:js|mjs)$/u.test(file));
+  const mainFiles = collectFiles(path.join(repoRoot, 'dist-electron', 'main')).filter((file) => /\.(?:js|cjs)$/u.test(file));
+  const rendererText = rendererFiles.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
+  const mainText = mainFiles.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
+  if (!rendererText.includes('__pandaIssue843Diagnostics')) throw new Error('Built renderer is missing Issue #843 instrumentation.');
+  if (!mainText.includes('__pandaIssue843')) throw new Error('Built Main bundle is missing Issue #843 instrumentation.');
+}
+
+const verifierPath = path.join(repoRoot, 'scripts', 'verify-issue819-dl02.cjs');
+let runtime = fs.readFileSync(verifierPath, 'utf8').replace(/\r\n/gu, '\n');
+runtime = replaceOnce(runtime, "const { existsSync } = require('node:fs');",
+  "const { existsSync, statfsSync } = require('node:fs');\nconst os = require('node:os');", 'OS sampling imports');
+runtime = replaceOnce(runtime,
+  "const issue836R2PathSuccessMode = process.env.PANDA_STAGE_ISSUE836_R2_PATH_SUCCESS === '1';",
+  "const issue836R2PathSuccessMode = process.env.PANDA_STAGE_ISSUE836_R2_PATH_SUCCESS === '1';\nconst issue843PerfMode = process.env.PANDA_STAGE_ISSUE843_PERF === '1';",
+  'Issue #843 mode flag');
+runtime = replaceOnce(runtime, 'const formalCommitRecords = [];', fragment('GLOBAL_DIAGNOSTICS'), 'timing state');
+runtime = replaceOnce(runtime, 'function controlledGate() {',
+  fragment('SHORT_PROJECT') + '\n\nfunction controlledGate() {', 'short fixture');
+runtime = replaceOnce(runtime,
+  "  const mediaAdapter = new FFmpegAdapter({ ffmpegPath: mediaTools.ffmpegPath, ffprobePath: mediaTools.ffprobePath });\n  const encodePngSequence",
+  fragment('PROBE_TIMERS'), 'probe timers');
+runtime = replaceOnce(runtime, '      return await encodePngSequence(request, signal);',
+  fragment('ENCODE_TIMER'), 'encode timer');
+runtime = replaceOnce(runtime, '    if (!replaceDialogueSourceBeforeNextMix) return muxAudioMix(request, signal);',
+  fragment('MUX_TIMER'), 'audio mux timer');
+runtime = replaceOnce(runtime, '  exportFileSystem = new class extends FileSystemService {\n    async commitFormalOutputNoReplace',
+  fragment('CLEANUP_TIMER'), 'cleanup timer');
+runtime = replaceOnce(runtime, '      await super.commitFormalOutputNoReplace(stagingPath, outputPath);',
+  fragment('COMMIT_TIMER'), 'commit timer');
+runtime = replaceOnce(runtime, '        handle = exportService.startFormalExport(\n          input,',
+  fragment('JOB_START'), 'Job start');
+runtime = replaceOnce(runtime, '      formalStarts.at(-1).jobId = handle.jobId;',
+  fragment('JOB_COMPLETION'), 'Job completion result');
+runtime = replaceOnce(runtime,
+  '  createExportService();\n  const mediaTools = resolveMediaToolPaths({ isPackaged: false, resourcesPath: process.resourcesPath });',
+  '  createExportService();\n' + fragment('EXPORT_SERVICE_SETUP') + '\n  const mediaTools = resolveMediaToolPaths({ isPackaged: false, resourcesPath: process.resourcesPath });',
+  'Issue #843 Main timing setup');
+runtime = replaceOnce(runtime,
+  "    startAction = 'quick-action-export';\n    await clickSelector('[data-testid=\"quick-action-export\"]');",
+  "    startAction = 'quick-action-export';\n    if (issue843PerfMode) issue843Perf.clickAt = performance.now();\n    await clickSelector('[data-testid=\"quick-action-export\"]');",
+  'UI click timer');
+const tick = String.fromCharCode(96);
+const completionWaitAnchor =
+  '  await waitForRenderer(' + tick + "['completed', 'failed'].includes(" + '$' + '{taskStatus})' +
+  tick + ', completionTimeoutMs);';
+runtime = replaceOnce(runtime, completionWaitAnchor,
+  completionWaitAnchor + '\n  if (issue843PerfMode) issue843Perf.uiCompletedAt = performance.now();',
+  'UI completion timer');
+runtime = replaceOnce(runtime,
+  "  fixtureProject = ProjectSchema.parse(JSON.parse(await fsp.readFile(path.join(fixture.projectRoot, 'project.json'), 'utf8')));\n  if (dl05FollowupMode) {",
+  fragment('FIXTURE_RETIMER'), 'fixture retimer');
+runtime = replaceOnce(runtime,
+  "  assert(!(issue836R2PathBoundaryMode || issue836R2PathSuccessMode) || (dl04Mode && dl04SampleId === 1), 'Issue #836 R2 path mode requires the single Issue #827 sample 1 Creator UI fixture.');",
+  "  assert(!(issue836R2PathBoundaryMode || issue836R2PathSuccessMode) || (dl04Mode && dl04SampleId === 1), 'Issue #836 R2 path mode requires the single Issue #827 sample 1 Creator UI fixture.');\n  assert(!issue843PerfMode || (dl04Mode && dl04SampleId === 1), 'Issue #843 requires generated Issue #827 sample 1.');",
+  'fixture mode guard');
+runtime = replaceOnce(runtime, '  if (issue836R2PathSuccessMode) {\n    const pathLimit = 259;',
+  fragment('DIAGNOSTIC_BRANCH') + '\n  if (issue836R2PathSuccessMode) {\n    const pathLimit = 259;',
+  'bounded one-export branch');
+runtime = replaceOnce(runtime,
+  "      assert(fixtureProject.shots.reduce((total, shot) => total + shot.durationMs, 0) === 30_000, 'Issue #827/832 fixture must be 30 seconds long.');",
+  "      assert(issue843PerfMode || fixtureProject.shots.reduce((total, shot) => total + shot.durationMs, 0) === 30_000, 'Issue #827/832 fixture must be 30 seconds long.');",
+  'short fixture duration guard');
+runtime = replaceOnce(runtime,
+  "      assert(fixtureProject.shots.every((shot) => shot.durationMs >= 9_000), 'Issue #827/832 fixture Shots must each be long enough to cross a global frame boundary.');",
+  "      assert(issue843PerfMode || fixtureProject.shots.every((shot) => shot.durationMs >= 9_000), 'Issue #827/832 fixture Shots must each be long enough to cross a global frame boundary.');",
+  'short fixture shot guard');
+
+if (process.argv.includes('--preflight')) {
+  const requiredHooks = [
+    'issue843Perf.jobStartedAt = performance.now();',
+    'issue843Perf.exportCompletion = handle.completion.then(',
+    'issue843Perf.videoEncode =',
+    'issue843Perf.audioMux =',
+    'issue843Perf.probes.push(',
+    'issue843Perf.cleanupJobDirectoryMs +=',
+    'issue843Perf.commitMs =',
+    'totalUiClickToCompleted:',
+    'framePipeline:',
+    'videoEncode: encodeMs',
+    'audioMux: muxMs',
+    'totalProbeMs: probeMs',
+    'cleanupAndCommit: cleanupCommitMs',
+    'verifierExtraAfterUiCompletion:',
+    'issue843Perf.mainFrameRoundTrips.push(',
+    'issue843Perf.writeFrameRecords.push(',
+    'rendererSnapshotPromise',
+    'recordWriteSlotWait',
+    '__pandaIssue843Diagnostics',
+    'getBackgroundThrottling()',
+  ];
+  const missingHooks = requiredHooks.filter((hook) => !runtime.includes(hook));
+  if (missingHooks.length > 0) throw new Error('Generated runtime is missing hooks: ' + missingHooks.join(', '));
+  const requiredStops = ['}, 295_000);', 'completionTimeoutMs: 210_000, abortOnTimeout: true,'];
+  const missingStops = requiredStops.filter((hook) => !runtime.includes(hook));
+  if (missingStops.length > 0) throw new Error('Generated runtime is missing stop guards: ' + missingStops.join(', '));
+  const launcherSource = fs.readFileSync(__filename, 'utf8');
+  const launcherHooks = ['const launcherHardStopMs = 300_000;', "spawnSync('taskkill.exe'", 'launcherTimedOut'];
+  for (const hook of launcherHooks) {
+    if (!launcherSource.includes(hook)) throw new Error('Launcher is missing hard-stop hook: ' + hook);
+  }
+  if (runtime.includes('issue843Perf.jobStartedAt = jobStartedAt')) {
+    throw new Error('Generated runtime still contains the previous out-of-scope Job timer assignment.');
+  }
+  const sourceHooks = [
+    'stage-ready', 'raf-scheduled', 'raf-callback', 'toBlob-start',
+    'toBlob-callback', 'arrayBuffer-start', 'arrayBuffer-complete',
+    'renderer-request', 'frame-ready-send', 'recordWriteSlotWait',
+  ];
+  const instrumentedText = issue843InstrumentedSources.map((file) => file.instrumented).join('\n');
+  const missingSourceHooks = sourceHooks.filter((hook) => !instrumentedText.includes(hook));
+  if (missingSourceHooks.length > 0) throw new Error('Temporary source instrumentation is missing hooks: ' + missingSourceHooks.join(', '));
+  const ts = require('typescript');
+  const transpileDiagnostics = issue843InstrumentedSources.flatMap((file) => {
+    const result = ts.transpileModule(file.instrumented, {
+      fileName: file.absolutePath,
+      reportDiagnostics: true,
+      compilerOptions: {
+        jsx: ts.JsxEmit.ReactJSX,
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+      },
+    });
+    return (result.diagnostics ?? []).filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
+  });
+  if (transpileDiagnostics.length > 0) {
+    throw new Error('Instrumented TypeScript syntax check failed: ' + transpileDiagnostics.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')).join('; '));
+  }
+  const preflightPath = path.join(os.tmpdir(), '.issue843-runtime-preflight-' + process.pid + '-' + randomUUID() + '.cjs');
+  const electronCandidate = require('electron');
+  if (typeof electronCandidate !== 'string' || !fs.existsSync(electronCandidate)) {
+    throw new Error('Preflight could not resolve the installed Electron executable.');
+  }
+  const resolveToolCandidate = (environmentName, packageName, executableName) => {
+    const configuredPath = process.env[environmentName]?.trim();
+    if (configuredPath) return configuredPath;
+    const packageJson = require.resolve(packageName + '/package.json');
+    return path.join(path.dirname(packageJson), executableName);
+  };
+  const ffmpegCandidate = resolveToolCandidate('PANDA_STAGE_FFMPEG_PATH', '@ffmpeg-installer/win32-x64', 'ffmpeg.exe');
+  const ffprobeCandidate = resolveToolCandidate('PANDA_STAGE_FFPROBE_PATH', '@ffprobe-installer/win32-x64', 'ffprobe.exe');
+  if (!fs.existsSync(ffmpegCandidate) || !fs.existsSync(ffprobeCandidate)) {
+    throw new Error('Preflight could not resolve the installed FFmpeg and FFprobe binaries.');
+  }
+  if (!fs.existsSync(path.join(repoRoot, 'public', 'probe', 'preview-tone.wav'))) {
+    throw new Error('Preflight could not find the existing probe audio asset.');
+  }
+  let syntaxCheck;
+  try {
+    fs.writeFileSync(preflightPath, runtime, { flag: 'wx' });
+    syntaxCheck = spawnSync(process.execPath, ['--check', preflightPath], { cwd: repoRoot, encoding: 'utf8' });
+  } finally {
+    if (fs.existsSync(preflightPath)) fs.unlinkSync(preflightPath);
+  }
+  if (syntaxCheck.status !== 0) {
+    throw new Error('Generated runtime syntax check failed: ' + (syntaxCheck.stderr || syntaxCheck.stdout));
+  }
+  if (fs.existsSync(acceptanceRoot)) throw new Error('Preflight must not create an acceptance run directory.');
+  process.stdout.write(JSON.stringify({
+    issue: 843, status: 'PREFLIGHT_PASS', sourceSha,
+    generatedRuntimeSyntax: 'PASS', requiredTimingHooks: requiredHooks.length,
+    temporarySourceHooks: sourceHooks.length, instrumentedTypeScriptTranspilation: 'PASS',
+    electronExecutableAvailable: true, ffmpegExecutableAvailable: true, ffprobeExecutableAvailable: true,
+    runtimeJobTimeoutMs: 210_000, runtimeHardStopMs: 295_000, launcherHardStopMs,
+    formalJobStarted: false, electronSpawned: false, acceptanceRootCreated: false,
+  }) + '\n');
+  process.exit(0);
+}
+if (process.argv.includes('--prepare-build')) {
+  if (fs.existsSync(acceptanceRoot)) throw new Error('Build preparation must not create an acceptance run directory.');
+  writeIssue843InstrumentedSources();
+  let build;
+  try {
+    build = spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'pnpm build'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      maxBuffer: 32 * 1024 * 1024,
+    });
+  } finally {
+    restoreIssue843Sources();
+  }
+  if (build.error || build.status !== 0) {
+    throw new Error('Diagnostic build failed: ' + String(build.error ?? build.stderr ?? build.stdout));
+  }
+  verifyIssue843BuiltInstrumentation();
+  process.stdout.write(JSON.stringify({
+    issue: 843, status: 'DIAGNOSTIC_BUILD_PASS', sourceSha,
+    instrumentedSources: issue843InstrumentedSources.map((file) => path.relative(repoRoot, file.absolutePath)),
+    sourceRestored: issue843InstrumentedSources.every((file) => fs.readFileSync(file.absolutePath).equals(file.originalBuffer)),
+    runtimeJobStarted: false, electronSpawned: false, acceptanceRootCreated: false,
+    generatedRendererAndMainBundlesContainHooks: true,
+  }) + '\n');
+  process.exit(0);
+}
+for (const requiredPath of [
+  path.join(repoRoot, 'dist-electron', 'main', 'index.js'),
+  path.join(repoRoot, 'dist', 'renderer', 'index.html'),
+]) {
+  if (!fs.existsSync(requiredPath)) throw new Error('Built app missing; run pnpm build first: ' + requiredPath);
+}
+
+fs.mkdirSync(acceptanceRoot, { recursive: false });
+const runtimePath = path.join(__dirname, '.issue843-runtime-' + process.pid + '-' + randomUUID() + '.cjs');
+fs.writeFileSync(runtimePath, runtime, { flag: 'wx' });
+const electronPath = require('electron');
+if (typeof electronPath !== 'string' || !fs.existsSync(electronPath)) {
+  fs.unlinkSync(runtimePath);
+  throw new Error('Could not resolve installed Electron.');
+}
+const childEnv = { ...process.env };
+for (const key of Object.keys(childEnv)) if (key.startsWith('PANDA_STAGE_ISSUE')) delete childEnv[key];
+childEnv.PANDA_STAGE_ISSUE827_DL04 = '1';
+childEnv.PANDA_STAGE_ISSUE827_SAMPLE = '1';
+childEnv.PANDA_STAGE_ISSUE827_ROOT = acceptanceRoot;
+childEnv.PANDA_STAGE_ISSUE836_SOURCE_SHA = sourceSha;
+childEnv.PANDA_STAGE_ISSUE843_PERF = '1';
+const child = spawn(electronPath, [runtimePath], {
+  cwd: repoRoot, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'],
+});
+const stdoutChunks = [];
+const stderrChunks = [];
+child.stdout.setEncoding('utf8').on('data', (chunk) => { stdoutChunks.push(chunk); process.stdout.write(chunk); });
+child.stderr.setEncoding('utf8').on('data', (chunk) => { stderrChunks.push(chunk); process.stderr.write(chunk); });
+let launcherTimedOut = false;
+let launcherKillResult = null;
+const launcherHardStopTimer = setTimeout(() => {
+  launcherTimedOut = true;
+  process.stderr.write('Issue #843 launcher hard stop reached; terminating only its Electron process tree.\n');
+  if (typeof child.pid === 'number') {
+    const kill = spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { encoding: 'utf8', timeout: 10_000 });
+    launcherKillResult = { status: kill.status, signal: kill.signal, error: kill.error ? String(kill.error) : null, stderr: kill.stderr };
+  }
+  if (child.exitCode === null) child.kill();
+}, launcherHardStopMs);
+child.once('error', (error) => {
+  clearTimeout(launcherHardStopTimer);
+  fs.writeFileSync(path.join(acceptanceRoot, 'launcher-error.txt'), String(error.stack ?? error));
+});
+child.once('close', (exitCode, signal) => {
+  clearTimeout(launcherHardStopTimer);
+  try {
+    fs.writeFileSync(path.join(acceptanceRoot, 'electron-stdout.log'), stdoutChunks.join(''), 'utf8');
+    fs.writeFileSync(path.join(acceptanceRoot, 'electron-stderr.log'), stderrChunks.join(''), 'utf8');
+    const runDirectory = fs.readdirSync(acceptanceRoot).filter((name) => name.startsWith('run-'))
+      .map((name) => path.join(acceptanceRoot, name)).sort().at(-1) ?? null;
+    const evidenceDirectory = runDirectory ? path.join(runDirectory, 'evidence') : null;
+    const receiptPath = evidenceDirectory
+      ? path.join(evidenceDirectory, 'issue843-export-performance-receipt.json') : null;
+    fs.writeFileSync(path.join(acceptanceRoot, 'launcher-receipt.json'), JSON.stringify({
+      issue: 843, sourceCommitSha: sourceSha, exitCode, signal,
+      status: launcherTimedOut ? 'STOP_TIME_BUDGET' : exitCode === 0 ? 'COMPLETED' : 'STOP_OR_PARTIAL',
+      timedOut: launcherTimedOut, launcherHardStopMs, launcherKillResult,
+      runDirectory,
+      receiptPath: receiptPath && fs.existsSync(receiptPath) ? receiptPath : null,
+      stdoutPath: path.join(acceptanceRoot, 'electron-stdout.log'),
+      stderrPath: path.join(acceptanceRoot, 'electron-stderr.log'),
+    }, null, 2), 'utf8');
+    process.exitCode = exitCode ?? 1;
+  } finally {
+    try { fs.unlinkSync(runtimePath); } catch {}
+  }
+});
