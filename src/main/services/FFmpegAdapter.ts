@@ -21,7 +21,7 @@ import {
 } from '../../shared/ffmpeg-types';
 import { formatFrameFileName } from '../../shared/export-types';
 
-const FRAME_FILE_PATTERN = /^frame_(\d{6})\.png$/;
+const FRAME_FILE_PATTERN = /^frame_(\d{6,})\.png$/;
 const MAX_CAPTURED_OUTPUT_CHARS = 256_000;
 
 export type FFmpegErrorCode =

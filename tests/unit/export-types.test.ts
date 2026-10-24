@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { mapProjectTime } from '../../src/domain';
 import {
+  EXPORT_FPS,
+  MAX_FORMAL_EXPORT_FRAMES,
   ExportRenderFrameRequestSchema,
   FullProbeExportRequestSchema,
   createFrameSchedule,
@@ -47,6 +49,24 @@ describe('export frame schedule', () => {
       fileName: 'frame_000156.png',
     });
     expect(schedule.at(-1)?.timeMs).toBeLessThan(6_501);
+  });
+
+  it('enforces the formal frame-count budget below, at, and one frame over the limit', () => {
+    const atLimitDurationMs = Math.floor(
+      (MAX_FORMAL_EXPORT_FRAMES * 1_000) / EXPORT_FPS,
+    );
+    const belowLimitDurationMs =
+      atLimitDurationMs - Math.ceil(1_000 / EXPORT_FPS);
+
+    expect(formalFrameCount(belowLimitDurationMs)).toBe(
+      MAX_FORMAL_EXPORT_FRAMES - 1,
+    );
+    expect(formalFrameCount(atLimitDurationMs)).toBe(
+      MAX_FORMAL_EXPORT_FRAMES,
+    );
+    expect(() => formalFrameCount(atLimitDurationMs + 1)).toThrow(
+      'Formal export duration exceeds the frame budget.',
+    );
   });
 
   it('uses one global grid for three 1001 ms Shots and maps every frame to Shot-local time', () => {

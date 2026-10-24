@@ -120,6 +120,28 @@ describe('FFmpegAdapter', () => {
     });
   });
 
+  it('does not ignore seven-digit frame indices when validating a sequence', async () => {
+    const framesDirectory = path.join(temporaryRoot, 'frames');
+    const outputDirectory = path.join(temporaryRoot, 'output');
+    await writeFrames(framesDirectory, [0, 1_000_000]);
+    await mkdir(outputDirectory);
+    const runner = new FakeRunner([]);
+    const adapter = new FFmpegAdapter({ runner });
+
+    await expect(
+      adapter.encodePngSequence({
+        framesDirectory,
+        outputPath: path.join(outputDirectory, 'output.mp4'),
+        fps: 24,
+        overwrite: false,
+      }),
+    ).rejects.toMatchObject({
+      code: 'FRAME_SEQUENCE_INVALID',
+      message: expect.stringContaining('frame_000001.png'),
+    });
+    expect(runner.calls).toHaveLength(0);
+  });
+
   it('passes paths containing spaces as individual arguments and encodes every frame', async () => {
     const framesDirectory = path.join(temporaryRoot, 'frames with spaces');
     const outputDirectory = path.join(temporaryRoot, 'output with spaces');
