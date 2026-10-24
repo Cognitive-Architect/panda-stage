@@ -448,7 +448,7 @@
       {
         "id": "assets",
         "sourcePatterns": ["src/renderer/features/assets/**"],
-        "testPatterns": ["tests/unit/asset-*.test.ts", "tests/integration/asset-*.test.ts", "tests/unit/product-copy.test.ts", "tests/unit/apply-asset-import-response.test.ts", "tests/unit/animation-library-components.test.ts", "tests/unit/animation-playback.test.ts"],
+        "testPatterns": ["tests/unit/asset-*.test.ts", "tests/integration/asset-*.test.ts", "tests/unit/product-copy.test.ts", "tests/unit/apply-asset-import-response.test.ts", "tests/unit/animation-library-components.test.ts", "tests/unit/animation-playback.test.ts", "tests/unit/animation-preview-lifecycle.test.ts"],
         "verifierPatterns": ["scripts/verify-day16*", "scripts/verify-day17*", "scripts/verify-day18*"],
         "suites": ["assets", "character"],
         "riskPolicy": "targeted",
