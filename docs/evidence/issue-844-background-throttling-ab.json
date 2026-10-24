@@ -1,0 +1,195 @@
+{
+  "schemaVersion": 1,
+  "issue": 844,
+  "recordedAt": "2026-10-24",
+  "result": "RESEARCH_STOP",
+  "hypothesis": "INCONCLUSIVE",
+  "authorization": {
+    "scope": "one paired A+B sample for Issue #844",
+    "source": "explicit owner authorization in this conversation",
+    "productionOptimizationAuthorized": false
+  },
+  "source": {
+    "productionSourceSha": "c6c356f660001af694bb706cc7553974ff8d1cfc",
+    "diagnosticPreparationCommit": "3918058998f7917879ac59789d443798920b9705",
+    "researchBranch": "research/issue-844-background-throttling-ab",
+    "productionSourceChanged": false
+  },
+  "preflight": {
+    "A": {
+      "status": "PASS",
+      "instrumentedSourceRestoredByteForByte": true,
+      "electronSpawned": false,
+      "formalJobStarted": false,
+      "acceptanceProjectCreated": false,
+      "firstParallelBootstrapAttempt": "Electron local binary initialization raced; serial rerun passed"
+    },
+    "B": {
+      "status": "PASS",
+      "singleControlledSourceAddition": "backgroundThrottling:false",
+      "instrumentedSourceRestoredByteForByte": true,
+      "electronSpawned": false,
+      "formalJobStarted": false,
+      "acceptanceProjectCreated": false
+    },
+    "timerGuardsMs": {
+      "jobAbort": 210000,
+      "internalStop": 295000,
+      "launcherProcessTreeStop": 300000
+    },
+    "builds": {
+      "A": {
+        "status": "PASS",
+        "hiddenWindowManagerSha256": "8bc56b81267f64d376b09f98349071ac670f9f2b2b140717e12589e638c073fb"
+      },
+      "B": {
+        "status": "PASS",
+        "hiddenWindowManagerSha256": "0b6e4fecc17f4b7565fa7aa90f03e44ed65f3977ee60f9389ce6f1ec48f47de9"
+      },
+      "allOther184BuildFilesAggregateSha256": "3077c10fa47df127668e5ad47c60e97d9ac24796f7003f6ddb11b3695e8e9515",
+      "rendererAssetsIdentical": true,
+      "mainEntryIdentical": true
+    }
+  },
+  "fixture": {
+    "source": "Issue #827 generated sample 1, retimed for bounded diagnostic",
+    "shotCount": 3,
+    "shotDurationsMs": [1500, 1500, 1500],
+    "totalDurationMs": 4500,
+    "frameCount": 108,
+    "fps": 24,
+    "width": 1920,
+    "height": 1080,
+    "audioEventCount": 4,
+    "assetCount": 10,
+    "projectJsonSha256BeforeAAndBeforeB": "7cffd545634e0400af4a6e7b5c0b32242c226e50b2763aca1ab14be5cf9f3d6d",
+    "projectJsonSha256AfterBSetup": "85b54607a8e85724253e6bf6d75178d421cbc767387ee1db8a48af56aafe74ff",
+    "projectJsonChangedDuringBSetup": true,
+    "assetsUnchangedAfterBSetup": true,
+    "assets": [
+      {"path":"assets/bamboo-background.png","sha256":"452f993f60e04c524283268ce583504b3f67af24cdcc806ef5d31b311e052b53"},
+      {"path":"assets/panda-neutral.png","sha256":"760c03876668ae048b1ef96ea8dc9e94bc24f1c43deda8b7af4717bde2f41a7b"},
+      {"path":"assets/panda-happy.png","sha256":"f57f44b1de40bf98459d8a7f083d1a613de749d5e9956154f41db7315ff0516e"},
+      {"path":"assets/panda-mouth-open.png","sha256":"ba2180469683347ee65206f7b3e98cef8b19916c073b8c21ba69a7fa2b827a11"},
+      {"path":"assets/dl03-dialogue.wav","sha256":"ba35983703ba44b95c01d8ba9cfa5d5e7b14feea738cf78c68c84e19c8370112"},
+      {"path":"assets/dl03-bgm.wav","sha256":"f7727a14e757b0e2adc0b68bf6b3849b94aa859ae4fcfe64d83019fa4d2f6c70"},
+      {"path":"assets/dl03-sfx-one.wav","sha256":"124ee29f9e1c1fe4c1dce1cb61ee30614e87c9ced3c2cf5dc83ae56f5556bdc0"},
+      {"path":"assets/dl03-sfx-two.wav","sha256":"8f6596eed3aa27f5c0ee890d11de24fed9198c6287ce33716730c3c03c0efdf7"},
+      {"path":"assets/dl04-sample-1-shot-2-background.png","sha256":"342c9248b18bcc8f5af654d882457e367158abd089831705dbcb11c2f6a4fa77"},
+      {"path":"assets/dl04-sample-1-shot-3-background.png","sha256":"7dd7b9d3fe8904d1cf8bb910a00fb087ff42bb8fd7850d03468d94a732d06e95"}
+    ]
+  },
+  "environment": {
+    "os": "Windows Server 2022 Datacenter",
+    "build": "20348",
+    "electron": "43.1.1",
+    "chromium": "150.0.7871.114",
+    "node": "24.18.0",
+    "cpu": "Intel(R) Xeon(R) Platinum",
+    "logicalProcessors": 8,
+    "ramBytes": 16624439296,
+    "gpuStatus": "UNKNOWN; AspDod/AspIdd virtual display adapters reported",
+    "competingElectronRoots": [
+      {"task":"#804 visual acceptance","pid":10752},
+      {"task":"#839 G3 import","pid":13520},
+      {"task":"existing Panda Stage app","pid":13344},
+      {"task":"#842 F04 diagnosis","pid":4080}
+    ],
+    "existingProcessesClosed": false,
+    "cpuSamplesPercentBeforeA": [5.6, 2.0, 1.2],
+    "cpuSamplesPercentBeforeB": [0.7, 0.5, 0.0]
+  },
+  "A": {
+    "status": "MEASUREMENT_PASS",
+    "runId": "run-2026-10-24T09-29-10-056Z-6548",
+    "windowVisible": false,
+    "effectiveBackgroundThrottling": true,
+    "rendererVisibilityState": "visible",
+    "rendererDocumentHidden": false,
+    "frameCoverage": {
+      "expected": 108,
+      "mainRoundTrips": 108,
+      "rendererRows": 108,
+      "writeFrames": 108,
+      "missingKeys": 0,
+      "duplicateKeys": 0
+    },
+    "metrics": {
+      "rafWaitSumMs": 105833,
+      "rafWaitMedianMs": 980,
+      "rafWaitP95Ms": 981.5,
+      "rafWaitMaxMs": 987.9,
+      "stageReadySumMs": 107.3,
+      "stageReadyMedianMs": 0.85,
+      "stageReadyP95Ms": 1.5,
+      "renderFramesMs": 111821,
+      "exportJobStartToCommitMs": 118374,
+      "totalUiClickToCompletedMs": 121885,
+      "toBlobMedianMs": 17.5,
+      "toBlobP95Ms": 19.2,
+      "toBlobMaxMs": 1011.1,
+      "shotFirstToBlobMs": [1011.1, 1010.2, 1010.8],
+      "ipcDispatchResidualEstimateSumMs": 104.083,
+      "writeFrameSumMs": 80.488,
+      "writeSlotWaitSumMs": 0.489,
+      "videoEncodeMs": 1946,
+      "audioMuxMs": 255
+    },
+    "output": {
+      "sha256": "e136f5ff31b8286c91dc9dc3ae49fb9517327f9620e11a6bd256f0c066f686e1",
+      "bytes": 77519,
+      "ffprobeValid": true,
+      "video": {"codec":"h264","pixelFormat":"yuv420p","width":1920,"height":1080,"fps":24,"frames":108,"durationSeconds":4.5},
+      "audio": {"codec":"aac","sampleRate":"48000","durationSeconds":4.5}
+    },
+    "preservation": {
+      "projectUnchangedDuringA": true,
+      "assetsUnchangedDuringA": true,
+      "editorStatePreserved": true,
+      "activeJobAfterA": null,
+      "activeProcessCountAfterA": 0,
+      "temporaryFilesAfterA": 0
+    }
+  },
+  "B": {
+    "attemptId": "issue844-b-2026-10-24T09-33-38-449Z-13700",
+    "buildOption": "backgroundThrottling:false",
+    "effectiveGetter": "NOT_OBSERVED",
+    "status": "STOP_BEFORE_FORMAL_JOB",
+    "formalJobStarted": false,
+    "outputCreated": false,
+    "launcherExitCode": 1,
+    "launcherTimedOut": false,
+    "launcherReceiptStatus": "STOP_OR_PARTIAL",
+    "launcherRunDirectory": null,
+    "failure": "Project background references or bytes changed before formal export.",
+    "failureGuardExpectedBackgroundEntries": 0,
+    "projectHashChangedDuringSetup": true,
+    "projectSha256BeforeSetup": "7cffd545634e0400af4a6e7b5c0b32242c226e50b2763aca1ab14be5cf9f3d6d",
+    "projectSha256AfterSetup": "85b54607a8e85724253e6bf6d75178d421cbc767387ee1db8a48af56aafe74ff",
+    "assetsUnchangedAfterSetup": true,
+    "electronProcessRemaining": false,
+    "retried": false
+  },
+  "comparison": {
+    "causalComparisonValid": false,
+    "delta": null,
+    "decodedVideoFrameEquality": "NOT_VERIFIED",
+    "decodedAudioEquality": "NOT_VERIFIED",
+    "aFfprobe": "PASS",
+    "bFfprobe": "NOT_RUN",
+    "reason": "B stopped before a formal Job and project.json changed during its setup."
+  },
+  "decision": {
+    "oneNextAction": "No retry in this ticket; a fresh pair requires new owner authorization after the fixed-project loader is corrected.",
+    "OWNER_GO_TO_OPTIMIZE": "NOT_GRANTED",
+    "PR817": "OPEN/DRAFT/UNMERGED",
+    "parentIssuesChanged": false
+  },
+  "localEvidence": {
+    "AReceipt": "D:\\PandaStage-Acceptance\\issue844-a-2026-10-24T09-29-09-672Z-10028\\run-2026-10-24T09-29-10-056Z-6548\\evidence\\issue843-export-performance-receipt.json",
+    "BLauncherReceipt": "D:\\PandaStage-Acceptance\\issue844-b-2026-10-24T09-33-38-449Z-13700\\launcher-receipt.json",
+    "BErrorLog": "D:\\PandaStage-Acceptance\\issue844-b-2026-10-24T09-33-38-449Z-13700\\electron-stderr.log",
+    "rawMediaPublished": false
+  }
+}
