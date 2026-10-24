@@ -6,6 +6,7 @@ const { randomUUID } = require('node:crypto');
 
 const repoRoot = path.resolve(__dirname, '..');
 const sourceSha = 'c6c356f660001af694bb706cc7553974ff8d1cfc';
+const launcherHardStopMs = 300_000;
 const runName = 'issue838-export-performance-' + new Date().toISOString().replace(/[:.]/gu, '-') + '-' + process.pid;
 const acceptanceRoot = path.join('D:\\PandaStage-Acceptance', runName);
 const sourceIsAncestor = spawnSync('git', ['merge-base', '--is-ancestor', sourceSha, 'HEAD'], { cwd: repoRoot, stdio: 'ignore' });
@@ -111,6 +112,14 @@ if (process.argv.includes('--preflight')) {
   ];
   const missingHooks = requiredHooks.filter((hook) => !runtime.includes(hook));
   if (missingHooks.length > 0) throw new Error('Generated runtime is missing hooks: ' + missingHooks.join(', '));
+  const requiredStops = ['}, 295_000);', 'completionTimeoutMs: 210_000, abortOnTimeout: true,'];
+  const missingStops = requiredStops.filter((hook) => !runtime.includes(hook));
+  if (missingStops.length > 0) throw new Error('Generated runtime is missing stop guards: ' + missingStops.join(', '));
+  const launcherSource = fs.readFileSync(__filename, 'utf8');
+  const launcherHooks = ['const launcherHardStopMs = 300_000;', "spawnSync('taskkill.exe'", 'launcherTimedOut'];
+  for (const hook of launcherHooks) {
+    if (!launcherSource.includes(hook)) throw new Error('Launcher is missing hard-stop hook: ' + hook);
+  }
   if (runtime.includes('issue838Perf.jobStartedAt = jobStartedAt')) {
     throw new Error('Generated runtime still contains the previous out-of-scope Job timer assignment.');
   }
@@ -129,6 +138,7 @@ if (process.argv.includes('--preflight')) {
   process.stdout.write(JSON.stringify({
     issue: 838, status: 'PREFLIGHT_PASS', sourceSha,
     generatedRuntimeSyntax: 'PASS', requiredTimingHooks: requiredHooks.length,
+    runtimeJobTimeoutMs: 210_000, runtimeHardStopMs: 295_000, launcherHardStopMs,
     formalJobStarted: false, electronSpawned: false, acceptanceRootCreated: false,
   }) + '\n');
   process.exit(0);
@@ -162,10 +172,23 @@ const stdoutChunks = [];
 const stderrChunks = [];
 child.stdout.setEncoding('utf8').on('data', (chunk) => { stdoutChunks.push(chunk); process.stdout.write(chunk); });
 child.stderr.setEncoding('utf8').on('data', (chunk) => { stderrChunks.push(chunk); process.stderr.write(chunk); });
-child.once('error', (error) => fs.writeFileSync(
-  path.join(acceptanceRoot, 'launcher-error.txt'), String(error.stack ?? error),
-));
+let launcherTimedOut = false;
+let launcherKillResult = null;
+const launcherHardStopTimer = setTimeout(() => {
+  launcherTimedOut = true;
+  process.stderr.write('Issue #838 launcher hard stop reached; terminating only its Electron process tree.\n');
+  if (typeof child.pid === 'number') {
+    const kill = spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { encoding: 'utf8', timeout: 10_000 });
+    launcherKillResult = { status: kill.status, signal: kill.signal, error: kill.error ? String(kill.error) : null, stderr: kill.stderr };
+  }
+  if (child.exitCode === null) child.kill();
+}, launcherHardStopMs);
+child.once('error', (error) => {
+  clearTimeout(launcherHardStopTimer);
+  fs.writeFileSync(path.join(acceptanceRoot, 'launcher-error.txt'), String(error.stack ?? error));
+});
 child.once('close', (exitCode, signal) => {
+  clearTimeout(launcherHardStopTimer);
   try {
     fs.writeFileSync(path.join(acceptanceRoot, 'electron-stdout.log'), stdoutChunks.join(''), 'utf8');
     fs.writeFileSync(path.join(acceptanceRoot, 'electron-stderr.log'), stderrChunks.join(''), 'utf8');
@@ -176,7 +199,8 @@ child.once('close', (exitCode, signal) => {
       ? path.join(evidenceDirectory, 'issue838-export-performance-receipt.json') : null;
     fs.writeFileSync(path.join(acceptanceRoot, 'launcher-receipt.json'), JSON.stringify({
       issue: 838, sourceCommitSha: sourceSha, exitCode, signal,
-      status: exitCode === 0 ? 'COMPLETED' : 'STOP_OR_PARTIAL',
+      status: launcherTimedOut ? 'STOP_TIME_BUDGET' : exitCode === 0 ? 'COMPLETED' : 'STOP_OR_PARTIAL',
+      timedOut: launcherTimedOut, launcherHardStopMs, launcherKillResult,
       runDirectory,
       receiptPath: receiptPath && fs.existsSync(receiptPath) ? receiptPath : null,
       stdoutPath: path.join(acceptanceRoot, 'electron-stdout.log'),
