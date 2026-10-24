@@ -925,7 +925,7 @@ The run root and failure artifacts are preserved. SHA-256: electron-failure.json
 
 ### Permission-error preservation fix and validation
 
-Commit 6a8abf4a00e3ee36c76637d6f0263805723154bb preserves nested EACCES, EPERM, or EROFS causes from media inspection in both image and audio read-service failures, using only the sanitized code and no filesystem path. Export preflight can then apply its existing actionable permission-specific REQUIRED_MEDIA_UNAVAILABLE issue. Focused image/audio/export-preparation unit tests passed (62/62); pnpm typecheck, pnpm lint, pnpm test:integration (189/189), and pnpm build passed. The full unit run reported 2,694 passed and one unrelated FLA journal test timeout while the integration suite and build were running concurrently; that exact test passed when run alone. No FLA code was changed.
+Commit 6a8abf4a00e3ee36c76637d6f0263805723154bb preserves nested EACCES, EPERM, or EROFS causes from media inspection in both image and audio read-service failures, using only the sanitized code and no filesystem path. Export preflight can then apply its existing actionable permission-specific REQUIRED_MEDIA_UNAVAILABLE issue. Focused image/audio/export-preparation unit tests passed (62/62); pnpm typecheck, pnpm lint, pnpm test:integration (189/189), and pnpm build passed. The full unit run reported 2,694 passed and one unrelated FLA journal test timeout while the integration suite and two builds were running concurrently; that exact test passed when run alone. No FLA code was changed.
 
 ## Frozen AC03 R2 required-media read-permission follow-up plan - v1.1.0 (before run)
 
@@ -974,6 +974,76 @@ $env:PANDA_STAGE_ISSUE836_FRAME_ROOT = 'D:\PandaStage-Acceptance\i836r2mr2\frame
 $env:PANDA_STAGE_ISSUE836_R2_MEDIA_READ_PERMISSION_ACL = '1'
 $env:PANDA_STAGE_ISSUE836_RUN_ID = 'i836-ac03-r2-media-read-permission-real-acl-v1.1.0'
 $env:PANDA_STAGE_ISSUE836_SOURCE_SHA = '6a8abf4a00e3ee36c76637d6f0263805723154bb'
+pnpm exec electron scripts/verify-issue819-dl02.cjs
+exit $LASTEXITCODE
+~~~
+
+This one generated-fixture ACL case does not complete AC03/R2, establish author-Project provenance or packaged-install behavior, measure R3 resource ceilings, or constitute human Gate B acceptance. AC03 and R2 remain PARTIAL.
+## AC03 R2 required-media read-permission ACL result - v1.1.0 FAIL (2026-10-24)
+
+The one frozen Electron invocation ran against source commit 6a8abf4a00e3ee36c76637d6f0263805723154bb in D:\PandaStage-Acceptance\i836r2mr2\run-2026-10-24T00-41-24-006Z-4796. It exited 1 at the same first post-run assertion. There was no retry.
+
+The preflight probe again confirmed the explicit NTFS read-deny ACL with EPERM after the exact Save As target was selected. Creator reached terminal failed and the receipt records formalStarts=[], but the task still showed the generic missing/corrupt-media problem and recovery step. The permission-specific issue remained absent. The product had not started a formal Main Job; this run failed its expected classification assertion.
+
+The verifier stopped before its explicit zero-commit, unchanged-session, and post-run sentinel comparison assertions. The output target is absent. At audit time, project.json matches the run's initial SHA-256 99991a9ab84ba308d06decdf45dc09f46fe011bb51f75d6b475942e4818d3189 and all ten media files match their initial receipt hashes. The denied background is readable again at 10,570 bytes with SHA-256 452f993f60e04c524283268ce583504b3f67af24cdcc806ef5d31b311e052b53. icacls shows only inherited allow entries and no deny ACE. The frame-job root is absent and frozen-media is empty. The 1,724-byte prior-output sentinel currently hashes to 28dacbd01c0184b180ce0313bb81b56ee8a88c2ad1a75dc87ddeb1fba52c967d; the failed receipt did not persist its pre-run sentinel hash, so this run does not independently attest the expected before/after comparison or the formal commit/session postconditions.
+
+The run root and evidence are preserved. SHA-256: electron-failure.json 6cf0c23db791c8594ab2ba211bc89b2961aaa80009b677943a8ff96ade66c34a; editor-snapshot.json 65b8e98645283ed073ed962bfa3c90c1d1bdcccbbae13ae87d361192b0595ca7; Save As screenshot 868211c7c44702ce6ba50247ffbb9bf628985a7db6e67f760aa007e0ecc5c029; blocked-task and failure screenshots 00a97537524a7b57ca207391b102b55459ba949a92ca494e3c539708c653b440.
+
+### Realpath permission propagation fix and validation
+
+The failure occurs in resolveProjectAssetPath: realpath on the denied file raises EPERM, but the helper previously caught every error and returned null. This bypassed the permission-code preservation added for media inspection errors.
+
+Commit aff6d125c2a137b19f095aceb10866fd06435290 adds an opt-in to preserve recognized filesystem permission errors for required-media reads. The Main export size inspection, image read, and audio read request preservation and map the code to the existing actionable issue; ordinary path-conflict checks keep their prior null-on-error behavior. Read-service responses expose only the sanitized error code, not the path.
+
+Focused resolver/image/audio/export-preparation tests passed (64/64); pnpm typecheck, pnpm lint, pnpm test:unit (2,697/2,697), pnpm test:integration (189/189), and pnpm build passed. The integration suite's existing left-workspace case also invokes a build; a separate build completed after integration. Existing Vite empty-CSS and chunk-size warnings remain.
+
+## Frozen AC03 R2 required-media read-permission follow-up plan - v1.2.0 (before run)
+
+The v1.0.0 and v1.1.0 plans are closed as FAIL and will not be rerun. This is a distinct follow-up against source commit aff6d125c2a137b19f095aceb10866fd06435290. It uses one fresh generated Issue #827 sample 1 Project and one explicit current-user NTFS read-deny ACE on its consumed first-Shot background. Save As remains writable; after the native dialog returns the exact planned target, the verifier applies the deny and confirms EPERM before returning the path to Main.
+
+Expected: Creator reaches terminal failed with REQUIRED_MEDIA_UNAVAILABLE, exact Shot/background location, the permission-specific problem and actionable ACL recovery step; no formal Job or commit starts; target stays absent; Project, all source media, editor/session state, and the prior valid MP4 remain unchanged. The finally path removes only this generated file's explicit deny ACE, verifies read access, and checks cleanup. Run exactly once after this plan and source commit are pushed and both fresh paths are reconfirmed absent. Stop on the first failure, preserve evidence, and do not retry. If Electron is forcibly terminated before restoration, preserve the root and remove only this file's explicit deny ACE for the current SID before inspecting.
+
+Fresh acceptance root D:\PandaStage-Acceptance\i836r2mr3 and isolated frame-job root D:\PandaStage-Acceptance\i836r2mr3\frame-jobs were confirmed absent. Run ID: i836-ac03-r2-media-read-permission-real-acl-v1.2.0.
+
+~~~powershell
+$modeNames = @(
+    'PANDA_STAGE_ISSUE819_ROOT',
+    'PANDA_STAGE_ISSUE823_DL03',
+    'PANDA_STAGE_ISSUE827_DL04',
+    'PANDA_STAGE_ISSUE827_ROOT',
+    'PANDA_STAGE_ISSUE827_SAMPLE',
+    'PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA',
+    'PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID',
+    'PANDA_STAGE_ISSUE832_DL05',
+    'PANDA_STAGE_ISSUE832_ROOT',
+    'PANDA_STAGE_ISSUE832_RUN_ID',
+    'PANDA_STAGE_ISSUE832_SOURCE_SHA',
+    'PANDA_STAGE_ISSUE834_FOLLOWUP',
+    'PANDA_STAGE_ISSUE834_ROOT',
+    'PANDA_STAGE_ISSUE834_RUN_ID',
+    'PANDA_STAGE_ISSUE834_SOURCE_SHA',
+    'PANDA_STAGE_ISSUE836_DL06_R0',
+    'PANDA_STAGE_ISSUE836_FRAME_ROOT',
+    'PANDA_STAGE_ISSUE836_R2_COMMIT_RACE',
+    'PANDA_STAGE_ISSUE836_R2_COPY_FAILURE',
+    'PANDA_STAGE_ISSUE836_R2_COPY_FAILURE_VALID_MP4',
+    'PANDA_STAGE_ISSUE836_R2_MEDIA_PREFLIGHT',
+    'PANDA_STAGE_ISSUE836_R2_MEDIA_READ_PERMISSION_ACL',
+    'PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION',
+    'PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION_ACL',
+    'PANDA_STAGE_ISSUE836_R2_PATH_BOUNDARY',
+    'PANDA_STAGE_ISSUE836_R2_PATH_SUCCESS',
+    'PANDA_STAGE_ISSUE836_RUN_ID',
+    'PANDA_STAGE_ISSUE836_SOURCE_SHA'
+)
+foreach ($name in $modeNames) { Remove-Item "Env:$name" -ErrorAction SilentlyContinue }
+$env:PANDA_STAGE_ISSUE827_ROOT = 'D:\PandaStage-Acceptance\i836r2mr3'
+$env:PANDA_STAGE_ISSUE827_SAMPLE = '1'
+$env:PANDA_STAGE_ISSUE827_DL04 = '1'
+$env:PANDA_STAGE_ISSUE836_FRAME_ROOT = 'D:\PandaStage-Acceptance\i836r2mr3\frame-jobs'
+$env:PANDA_STAGE_ISSUE836_R2_MEDIA_READ_PERMISSION_ACL = '1'
+$env:PANDA_STAGE_ISSUE836_RUN_ID = 'i836-ac03-r2-media-read-permission-real-acl-v1.2.0'
+$env:PANDA_STAGE_ISSUE836_SOURCE_SHA = 'aff6d125c2a137b19f095aceb10866fd06435290'
 pnpm exec electron scripts/verify-issue819-dl02.cjs
 exit $LASTEXITCODE
 ~~~
