@@ -1,6 +1,6 @@
 const { app, BrowserWindow } = require('electron');
 const { execFileSync } = require('node:child_process');
-const { mkdirSync, writeFileSync } = require('node:fs');
+const { cpSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 const { AssetImportService } = require('../dist-electron/main/services/AssetImportService.js');
 const { ProjectService } = require('../dist-electron/main/services/ProjectService.js');
@@ -16,6 +16,9 @@ const repositoryRoot = path.resolve(__dirname, '..');
 const fixtureAssetRoot = path.join(repositoryRoot, 'tests/fixtures/assets');
 const fixtureCharacterRoot = path.join(repositoryRoot, 'tests/fixtures/characters');
 const acceptanceRoot = 'D:\\PandaStage-Acceptance\\issue853-scene-creation';
+const sampleProjectSource = process.env.PANDA_ISSUE853_SAMPLE_PROJECT
+  ? path.resolve(process.env.PANDA_ISSUE853_SAMPLE_PROJECT)
+  : null;
 const runId = new Date().toISOString().replace(/[:.]/gu, '-');
 const runRoot = path.join(acceptanceRoot, `run-${runId}`);
 const evidenceRoot = path.join(runRoot, 'evidence');
@@ -110,6 +113,36 @@ async function waitForMainWindow() {
 }
 
 async function createSampleProject() {
+  if (sampleProjectSource) {
+    cpSync(sampleProjectSource, projectRoot, { recursive: true, errorOnExist: true });
+    const project = JSON.parse(
+      readFileSync(path.join(projectRoot, 'project.json'), 'utf8'),
+    );
+    const backgrounds = project.assets.filter(
+      (asset) =>
+        asset.name === 'Garden' &&
+        asset.kind === 'image' &&
+        asset.usage === 'background' &&
+        asset.metadata?.status !== 'error',
+    );
+    const character = project.characters.find(
+      (candidate) => candidate.mode === 'composite',
+    );
+    if (backgrounds.length === 0 || !character) {
+      throw new Error(
+        'The supplied sample Project lacks a usable Garden background or assembled Character.',
+      );
+    }
+    return {
+      project,
+      backgroundAssetIds: backgrounds.map((asset) => asset.id),
+      characterId: character.id,
+      shotName: '花园相遇复核',
+      backgroundName: backgrounds[0].name,
+      characterName: character.name,
+    };
+  }
+
   const mainSnapshot = { current: null };
   const projectService = new ProjectService({
     onProjectSaved: (_root, project, revision) => {
@@ -214,6 +247,9 @@ async function createSampleProject() {
     characterId: project.characters.find(
       (character) => character.name === '熊猫试装角色',
     )?.id,
+    shotName: '花园相遇',
+    backgroundName: '花园',
+    characterName: '熊猫试装角色',
   };
 }
 
@@ -272,16 +308,21 @@ async function run() {
     `document.querySelector('[data-testid="scene-creation-panel"]')`,
     'The structured scene panel did not open from Shot creation.',
   );
+  const structuredInput = [
+    `镜头：${sample.shotName}`,
+    `背景：${sample.backgroundName}`,
+    `出场：${sample.characterName}`,
+  ].join('\n');
   await windowRef.webContents.executeJavaScript(`(() => {
     const input = document.querySelector('[data-testid="scene-creation-input"]');
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
-    setter.call(input, '镜头：花园相遇\\n背景：花园\\n出场：熊猫试装角色');
+    setter.call(input, ${JSON.stringify(structuredInput)});
     input.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
   await click(windowRef, '[data-testid="scene-creation-inspect"]');
   await waitForDom(
     windowRef,
-    `document.querySelectorAll('[data-testid="scene-creation-background-candidate"]').length === 2 && document.querySelector('[data-testid="scene-creation-character-candidate"]')`,
+    `document.querySelectorAll('[data-testid="scene-creation-background-candidate"]').length === ${sample.backgroundAssetIds.length} && document.querySelector('[data-testid="scene-creation-character-candidate"]')`,
     'Exact-name background and Character candidates did not render.',
   );
   await waitForDom(
@@ -298,17 +339,27 @@ async function run() {
   assert(
     JSON.stringify(beforeSelection.backgroundIds) ===
       JSON.stringify(sample.backgroundAssetIds),
-    'The UI did not show both exact-name background candidates in project order.',
+    'The UI did not show all exact-name background candidates in project order.',
   );
-  assert(beforeSelection.previewDisabled, 'An ambiguous background was silently selected.');
-  await click(
-    windowRef,
-    `[data-testid="scene-creation-background-candidate"][data-candidate-id="${sample.backgroundAssetIds[0]}"]`,
+  const ambiguousBackground = sample.backgroundAssetIds.length > 1;
+  assert(
+    beforeSelection.previewDisabled === ambiguousBackground,
+    ambiguousBackground
+      ? 'An ambiguous background was silently selected.'
+      : 'The single legal exact-name background was not selected automatically.',
   );
+  if (ambiguousBackground) {
+    await click(
+      windowRef,
+      `[data-testid="scene-creation-background-candidate"][data-candidate-id="${sample.backgroundAssetIds[0]}"]`,
+    );
+  }
   await waitForDom(
     windowRef,
     `document.querySelector('[data-testid="scene-creation-preview-action"]')?.disabled === false`,
-    'The explicit background choice did not enable preview.',
+    ambiguousBackground
+      ? 'The explicit background choice did not enable preview.'
+      : 'The valid unique background did not enable preview.',
   );
   const inputScreenshot = await capture(windowRef, 'candidate-selection.png');
   await click(windowRef, '[data-testid="scene-creation-preview-action"]');
@@ -329,7 +380,7 @@ async function run() {
   await click(windowRef, '[data-testid="scene-creation-confirm"]');
   await waitForDom(
     windowRef,
-    `!document.querySelector('[data-testid="scene-creation-panel"]') && document.querySelectorAll('.shot-list-item').length === 2 && document.querySelector('.shot-list-item-selected strong')?.textContent?.trim() === '花园相遇'`,
+    `!document.querySelector('[data-testid="scene-creation-panel"]') && document.querySelectorAll('.shot-list-item').length === ${sample.project.shots.length + 1} && document.querySelector('.shot-list-item-selected strong')?.textContent?.trim() === ${JSON.stringify(sample.shotName)}`,
     'Explicit confirmation did not create and select the new Shot.',
   );
   const afterConfirm = await windowRef.webContents.executeJavaScript(`(() => ({
@@ -338,7 +389,10 @@ async function run() {
     selectedShot: document.querySelector('.shot-list-item-selected strong')?.textContent?.trim(),
   }))()`);
   assert(afterConfirm.revision === 1, 'Confirmation did not create exactly one project revision.');
-  assert(afterConfirm.shotCount === 2, 'Confirmation created an unexpected number of Shots.');
+  assert(
+    afterConfirm.shotCount === sample.project.shots.length + 1,
+    'Confirmation created an unexpected number of Shots.',
+  );
   const committedScreenshot = await capture(windowRef, 'generated-shot.png');
 
   return {
@@ -347,7 +401,8 @@ async function run() {
     passed: true,
     codeHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     generatedAt: new Date().toISOString(),
-    syntheticFixture: true,
+    syntheticFixture: !sampleProjectSource,
+    reusedExistingProjectCopy: Boolean(sampleProjectSource),
     sourcePathsOmitted: true,
     project: {
       id: sample.project.id,
@@ -359,7 +414,8 @@ async function run() {
       committedShotCount: afterConfirm.shotCount,
       selectedShot: afterConfirm.selectedShot,
       ambiguousBackgroundCandidateIds: beforeSelection.backgroundIds,
-      explicitBackgroundSelectionRequired: beforeSelection.previewDisabled,
+      backgroundCandidatesWereAmbiguous: ambiguousBackground,
+      explicitBackgroundSelectionRequired: ambiguousBackground && beforeSelection.previewDisabled,
       previewStatus: beforeConfirm.previewStatus,
     },
     screenshots: {
