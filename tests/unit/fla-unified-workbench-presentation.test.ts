@@ -196,7 +196,7 @@ describe('Issue #778 unified FLA workbench presentation', () => {
     expect(markup).toContain('data-testid="fla-c03-multi-select-toggle"');
     expect(markup).toContain('>多选</button>');
     expect(markup).toContain('data-testid="fla-single-mode-summary"');
-    expect(markup).toContain('<h2 data-testid="fla-c03-focused-label">com8</h2>');
+    expect(markup).toMatch(/<h2\b[^>]*data-testid="fla-c03-focused-label"[^>]*>com8<\/h2>/u);
     expect(markup).toContain('com8 · 21 帧 · 0.84 秒');
     expect(markup).not.toContain('25 FPS');
     expect(markup).not.toContain('D:/Internal/Library/com8');
@@ -238,6 +238,11 @@ describe('Issue #778 unified FLA workbench presentation', () => {
     const failedMarkup = renderWorkbench({ candidates: [failed] });
     const blankMarkup = renderWorkbench({ candidates: [blank] });
     const unsupportedMarkup = renderWorkbench({ candidates: [unsupported] });
+    const browsingOtherCandidateMarkup = renderWorkbench({
+      candidates: [checking, unscanned],
+      allCandidates: [checking, unscanned],
+      focusedCandidateIdentityKey: unscanned.identityKey,
+    });
 
     expect(ready).toMatchObject({ selectable: true, preview: { status: 'verified', requestId: expect.any(String) } });
     expect(readyMarkup).not.toContain('<small data-status="verified">已生成</small>');
@@ -248,8 +253,19 @@ describe('Issue #778 unified FLA workbench presentation', () => {
     expect(unscannedMarkup).not.toContain('可生成');
     expect(unscanned).toMatchObject({ selectable: false, checked: false });
     expect(unscannedMarkup).toMatch(/data-selectable="false"[^>]*>[\s\S]*?disabled/u);
-    expect(checkingMarkup).toContain('<span>生成中…</span>');
-    expect(checkingMarkup).toContain('<small data-status="checking">生成中…</small>');
+    expect(checkingMarkup).toContain('data-preview-status="checking"');
+    expect(checkingMarkup).not.toContain('生成中');
+    expect(checkingMarkup).not.toContain('data-status="checking"');
+    expect(checkingMarkup).not.toContain('fla-c03-focused-status');
+    expect(browsingOtherCandidateMarkup).toContain('data-preview-status="checking"');
+    expect(browsingOtherCandidateMarkup).toContain('data-preview-status="unscanned"');
+    expect(browsingOtherCandidateMarkup).toContain('data-preview-owner="active-render"');
+    expect(browsingOtherCandidateMarkup).toContain(`data-testid="fla-c03-focused-label">${checking.displayLabel}</h2>`);
+    expect(browsingOtherCandidateMarkup).not.toContain('生成中');
+    expect(browsingOtherCandidateMarkup).not.toContain('data-testid="fla-c03-focused-status"');
+    const catalogProgress = readyMarkup.match(/<output\b[^>]*data-testid="fla-c03-catalog-progress"[^>]*>/u)?.[0];
+    expect(catalogProgress).toBeDefined();
+    expect(catalogProgress).not.toContain('aria-live');
     expect(failedMarkup).toContain('<small data-status="error">加载失败</small>');
     expect(blankMarkup).toContain('<small data-status="blank">空白画面</small>');
     expect(unsupportedMarkup).toContain('<small data-status="unsupported">暂无法预览</small>');

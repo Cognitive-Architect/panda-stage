@@ -93,14 +93,20 @@ export function FlaUnifiedWorkbench({
   const focusedCandidate = candidates.find((candidate) =>
     candidate.identityKey === focusedCandidateIdentityKey,
   ) ?? null;
-  const focusedCandidateLabel = focusedCandidate
-    ? readableFlaCandidateLabel(focusedCandidate.displayLabel)
+  const activeSequenceRenderCandidate = candidates.find((candidate) =>
+    candidate.kind === 'sequence' && candidate.preview.status === 'checking',
+  ) ?? null;
+  const previewCandidate = activeSequenceRenderCandidate ?? focusedCandidate;
+  const previewCandidateLabel = previewCandidate
+    ? readableFlaCandidateLabel(previewCandidate.displayLabel)
     : null;
   const relatedSnapshot = focusedCandidate?.kind === 'sequence'
     ? allCandidates.find((candidate) => candidate.kind === 'snapshot' &&
       candidate.provenance.renderTargetId === focusedCandidate.provenance.renderTargetId) ?? null
     : null;
-  const status = focusedCandidate ? focusedCandidateStatus(focusedCandidate) : null;
+  const status = activeSequenceRenderCandidate
+    ? null
+    : focusedCandidate ? focusedCandidateStatus(focusedCandidate) : null;
   const canZoom = Boolean(focusedCandidate?.preview.previewUrl || showSnapshotPreview || showSequencePreview);
 
   useLayoutEffect(() => {
@@ -242,7 +248,11 @@ export function FlaUnifiedWorkbench({
             </div>
           ) : null}
 
-          <output className="fla-c03-progress" data-testid="fla-c03-catalog-progress" aria-live="polite">
+          <output
+            aria-live={progress.phase === 'ready' && progress.omittedCandidateCount === 0 ? undefined : 'polite'}
+            className="fla-c03-progress"
+            data-testid="fla-c03-catalog-progress"
+          >
             {progress.phase === 'scanning'
               ? '正在加载素材…'
               : progress.phase === 'loading'
@@ -271,7 +281,7 @@ export function FlaUnifiedWorkbench({
               const cardLabel = candidate.cardLabel ?? candidate.displayLabel;
               const itemLabel = cardLabel;
               const statusLabel = candidate.kind === 'sequence' &&
-                (candidate.preview.status === 'verified' || candidate.preview.status === 'unscanned')
+                (candidate.preview.status === 'verified' || candidate.preview.status === 'unscanned' || candidate.preview.status === 'checking')
                 ? ''
                 : candidateStatus(candidate);
               return (
@@ -298,7 +308,11 @@ export function FlaUnifiedWorkbench({
                     type="button"
                   >
                     <span className="fla-c03-thumbnail">
-                      {thumbnail ? <img alt="" loading="lazy" decoding="async" src={thumbnail} /> : <span>{thumbnailPlaceholder(candidate)}</span>}
+                      {thumbnail ? (
+                        <img alt="" loading="lazy" decoding="async" src={thumbnail} />
+                      ) : candidate.kind === 'sequence' && candidate.preview.status === 'checking' ? null : (
+                        <span>{thumbnailPlaceholder(candidate)}</span>
+                      )}
                     </span>
                     <span className="fla-c03-candidate-copy">
                       <strong title={fullItemLabel}>{itemLabel}</strong>
@@ -345,7 +359,12 @@ export function FlaUnifiedWorkbench({
         >
           <header className="fla-c03-preview-header">
             <div className="fla-c03-preview-title">
-              <h2 data-testid="fla-c03-focused-label">{focusedCandidateLabel ?? '预览'}</h2>
+              <h2
+                data-preview-owner={activeSequenceRenderCandidate ? 'active-render' : 'focused-candidate'}
+                data-testid="fla-c03-focused-label"
+              >
+                {previewCandidateLabel ?? '预览'}
+              </h2>
               {status ? <output data-testid="fla-c03-focused-status">{status}</output> : null}
             </div>
             <div className="fla-c03-zoom-tools" role="group" aria-label="预览缩放">
@@ -564,7 +583,6 @@ function thumbnailPlaceholder(candidate: FlaWorkbenchCandidate): string {
   if (candidate.preview.status === 'blank') return '空白画面';
   if (candidate.preview.status === 'unsupported') return '暂无法预览';
   if (candidate.preview.status === 'error') return '加载失败';
-  if (candidate.kind === 'sequence' && candidate.preview.status === 'checking') return '生成中…';
   return candidate.kind === 'sequence' ? '预览' : '加载中…';
 }
 
@@ -573,7 +591,7 @@ function candidateStatus(candidate: FlaWorkbenchCandidate): string {
     case 'verified':
       return candidate.kind === 'sequence' ? '已生成' : '';
     case 'checking':
-      return candidate.kind === 'sequence' ? '生成中…' : '加载中…';
+      return candidate.kind === 'sequence' ? '' : '加载中…';
     case 'unscanned':
       return candidate.kind === 'sequence' ? '' : '加载中…';
     case 'unsupported':

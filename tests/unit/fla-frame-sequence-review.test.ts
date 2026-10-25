@@ -179,6 +179,7 @@ describe('R2-H.2 Problem A/B: gateway UI gating (#296)', () => {
   });
 
   it('renders the live progress region only during an active render', () => {
+    const reviewSource = readFileSync('src/renderer/fla-import/FlaFrameSequenceReview.tsx', 'utf8');
     // Static render never enters the "rendering" phase, so the progress
     // region is absent; this documents that progress is shown only while
     // a request is in flight (Problem B).
@@ -187,6 +188,16 @@ describe('R2-H.2 Problem A/B: gateway UI gating (#296)', () => {
         ...sequenceReviewProps(),
       }),
     );
-    expect(html).not.toContain('正在渲染序列');
+    expect(html).not.toContain('fla-frame-sequence-central-progress');
+    expect(html).not.toContain('fla-frame-sequence-progress');
+    expect(reviewSource).toContain("const activeRenderIntent = phase === 'rendering' ? activeIntentRef.current : null;");
+    expect(reviewSource).toContain('return { [activeRenderIntent.renderTargetId]: { status: \'checking\' as const } };');
+    expect(reviewSource).toContain('activeRenderIntent.endFrameIndex - activeRenderIntent.startFrameIndex + 1');
+    expect(reviewSource).toContain('currentIntent?.renderTargetId !== activeRenderIntent.renderTargetId');
+    expect(reviewSource).toContain('`正在生成预览…（${previewTarget.userLabel}）`');
+    expect(reviewSource).toContain('data-testid={phase === \'rendering\' ? \'fla-frame-sequence-central-progress\' : undefined}');
+    expect(reviewSource).not.toContain('data-testid="fla-frame-sequence-progress"');
+    expect(reviewSource).toContain('data-testid="fla-frame-sequence-cancel"');
+    expect(reviewSource).not.toContain('className="fla-c03-sequence-actions" aria-live="polite"');
   });
 });

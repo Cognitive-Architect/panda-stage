@@ -217,6 +217,10 @@ export function FlaFrameSequenceReview({
   const currentIntent = selectedEntry
     ? { renderTargetId: selectedEntry.target.renderTargetId, startFrameIndex, endFrameIndex }
     : null;
+  const activeRenderIntent = phase === 'rendering' ? activeIntentRef.current : null;
+  const activeRenderFrameCount = activeRenderIntent
+    ? Math.max(0, activeRenderIntent.endFrameIndex - activeRenderIntent.startFrameIndex + 1)
+    : 0;
   const sequenceMatchesIntent = Boolean(
     currentIntent && !isStaleAgainstIntent(renderedRange, currentIntent),
   );
@@ -236,9 +240,11 @@ export function FlaFrameSequenceReview({
   const selectedPreviewItem = displayedSequenceItems[selectedPreviewIndex] ?? null;
   const selectedPreviewUrl = displayedPreviewUrls[selectedPreviewIndex] ?? null;
   const hasPreview = Boolean(selectedPreviewItem && selectedPreviewUrl);
-  const previewTargetId = sequenceIsCurrent && success
-    ? success.renderTargetId
-    : selectedEntry?.target.renderTargetId ?? null;
+  const previewTargetId = phase === 'rendering'
+    ? activeRenderIntent?.renderTargetId ?? null
+    : sequenceIsCurrent && success
+      ? success.renderTargetId
+      : selectedEntry?.target.renderTargetId ?? null;
   const previewTarget = entries.find((entry) => entry.target.renderTargetId === previewTargetId)?.target ?? null;
   const previewState = phase === 'rendering'
     ? 'rendering'
@@ -249,8 +255,9 @@ export function FlaFrameSequenceReview({
         : 'needs-preview';
 
   const sequencePreviewInputs = useMemo(() => {
-    if (phase === 'rendering' && currentIntent) {
-      return { [currentIntent.renderTargetId]: { status: 'checking' as const } };
+    if (phase === 'rendering') {
+      if (!activeRenderIntent) return undefined;
+      return { [activeRenderIntent.renderTargetId]: { status: 'checking' as const } };
     }
     const previewItem = orderedSequenceItems[selectedPreviewIndex];
     const previewUrl = previewUrls[selectedPreviewIndex];
@@ -270,7 +277,7 @@ export function FlaFrameSequenceReview({
         endFrameIndex: lastFrame.frameIndex,
       },
     };
-  }, [currentIntent, orderedSequenceItems, phase, previewUrls, selectedPreviewIndex, sequenceAuthorityCurrent, success]);
+  }, [activeRenderIntent, orderedSequenceItems, phase, previewUrls, selectedPreviewIndex, sequenceAuthorityCurrent, success]);
   const sequenceCandidates = useMemo(
     () => createFlaWorkbenchCandidates({
       context: { sessionId, source },
@@ -1100,13 +1107,14 @@ export function FlaFrameSequenceReview({
                 {previewTarget ? `${previewTarget.userLabel} · 当前帧预览` : '当前帧预览'}
               </h3>
             </div>
-            <output
-              aria-live="polite"
-              data-preview-state={previewState}
-              data-testid="fla-frame-sequence-preview-status"
-            >
-              {sequencePreviewStatus(phase, hasPreview)}
-            </output>
+            {phase === 'rendering' ? null : (
+              <output
+                data-preview-state={previewState}
+                data-testid="fla-frame-sequence-preview-status"
+              >
+                {sequencePreviewStatus(phase, hasPreview)}
+              </output>
+            )}
           </header>
 
           <div
@@ -1146,7 +1154,12 @@ export function FlaFrameSequenceReview({
                 </button>
               </>
             ) : (
-              <div className="fla-frame-sequence-preview-placeholder" data-testid="fla-frame-sequence-preview-placeholder">
+              <div
+                aria-live={phase === 'rendering' ? 'polite' : undefined}
+                className="fla-frame-sequence-preview-placeholder"
+                data-testid="fla-frame-sequence-preview-placeholder"
+                role={phase === 'rendering' ? 'status' : undefined}
+              >
                 {showUnifiedGenerationHint ? (
                   <strong data-testid="fla-frame-sequence-unified-idle-hint">
                     单击下方按钮生成预览
@@ -1155,23 +1168,25 @@ export function FlaFrameSequenceReview({
                 {showUnifiedGenerationHint ? null : (
                   <>
                     <strong>
-                      {selectedEntry.isBlank
+                      {phase === 'rendering'
+                        ? activeRenderIntent && currentIntent?.renderTargetId !== activeRenderIntent.renderTargetId && previewTarget
+                          ? `正在生成预览…（${previewTarget.userLabel}）`
+                          : '正在生成预览…'
+                        : selectedEntry.isBlank
                         ? '这是空白画面'
                         : !supported
                           ? '此项暂不可预览'
-                          : phase === 'rendering'
-                            ? presentation === 'unified-preview' ? '正在生成预览…' : '正在生成连续画面…'
                             : phase === 'error'
                               ? presentation === 'unified-preview' ? '预览生成失败' : '连续画面生成失败'
                               : presentation === 'unified-preview' ? '尚未生成预览' : '尚未生成连续画面'}
                     </strong>
-                    <span>
-                      {selectedEntry.isBlank
+                    <span data-testid={phase === 'rendering' ? 'fla-frame-sequence-central-progress' : undefined}>
+                      {phase === 'rendering'
+                        ? `已完成 ${completedFrameCount} / ${activeRenderFrameCount} 帧`
+                        : selectedEntry.isBlank
                         ? '源内容为空，不能导入。'
                         : !supported
                           ? boundedUnsupportedReason(selectedEntry.unsupportedReason)
-                          : phase === 'rendering'
-                            ? `已完成 ${completedFrameCount} / ${validation.valid ? validation.frameCount : 0} 帧`
                             : phase === 'error'
                               ? errorMessage || '请调整起始帧后重试。'
                               : presentation === 'unified-preview'
@@ -1300,7 +1315,7 @@ export function FlaFrameSequenceReview({
               <p id="fla-frame-sequence-range-error" role="alert" data-testid="fla-frame-sequence-range-error">{validation.message}</p>
             ) : null}
             {presentation === 'unified-preview' ? (
-              <div className="fla-c03-sequence-actions" aria-live="polite">
+              <div className="fla-c03-sequence-actions">
                 {sequenceIsCurrent ? (
                   <div className="fla-c03-sequence-import-options" data-testid="fla-frame-sequence-import-mode">
                     <div className="fla-c03-sequence-format" role="group" aria-label="导入格式">
@@ -1352,19 +1367,14 @@ export function FlaFrameSequenceReview({
                   </div>
                 ) : null}
                 {phase === 'rendering' ? (
-                  <>
-                    <output data-testid="fla-frame-sequence-progress">
-                      正在生成 {completedFrameCount} / {validation.valid ? validation.frameCount : 0}
-                    </output>
-                    <button
-                      type="button"
-                      onClick={() => void cancelSequence()}
-                      onKeyDown={(event) => handleSequenceActionKeyDown(event, () => void cancelSequence())}
-                      data-testid="fla-frame-sequence-cancel"
-                    >
-                      取消生成
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    onClick={() => void cancelSequence()}
+                    onKeyDown={(event) => handleSequenceActionKeyDown(event, () => void cancelSequence())}
+                    data-testid="fla-frame-sequence-cancel"
+                  >
+                    取消生成
+                  </button>
                 ) : null}
                 {canGeneratePhase ? (
                   <button
@@ -1504,13 +1514,8 @@ export function FlaFrameSequenceReview({
       <div className="fla-frame-sequence-action-bar" data-operation-target-id={target.renderTargetId} data-testid="fla-frame-sequence-action-bar">
         <div className="fla-frame-sequence-action-status">
           <strong data-testid="fla-frame-sequence-action-state" title={target.userLabel}>
-            {target.userLabel} · 第 {startFrameIndex + 1}–{endFrameIndex + 1} 帧 · {validation.valid ? `${validation.frameCount} 帧` : '范围无效'} · {sequenceFooterState(phase, supported, sequenceIsCurrent)}
+            {target.userLabel} · 第 {startFrameIndex + 1}–{endFrameIndex + 1} 帧 · {validation.valid ? `${validation.frameCount} 帧` : '范围无效'}{phase === 'rendering' ? '' : ` · ${sequenceFooterState(phase, supported, sequenceIsCurrent)}`}
           </strong>
-          {phase === 'rendering' ? (
-            <output aria-live="polite" data-testid="fla-frame-sequence-progress">
-              正在生成 {completedFrameCount} / {validation.valid ? validation.frameCount : 0}
-            </output>
-          ) : null}
           {phase === 'cancelled' ? (
             <output data-testid="fla-frame-sequence-cancelled">
               已取消：{completedFrameCount} / {validation.valid ? validation.frameCount : 0} 帧
@@ -1599,7 +1604,7 @@ function compatibilityNote(status: FlaRenderTarget['compatibility'][number]): st
 }
 
 function sequencePreviewStatus(phase: RenderPhase, hasPreview: boolean): string {
-  if (phase === 'rendering') return '正在生成';
+  if (phase === 'rendering') return '';
   if (phase === 'committing') return '正在导入';
   if (phase === 'committed') return '已导入';
   if (phase === 'error') return '需要重试';
@@ -1609,7 +1614,7 @@ function sequencePreviewStatus(phase: RenderPhase, hasPreview: boolean): string 
 
 function sequenceFooterState(phase: RenderPhase, supported: boolean, sequenceIsCurrent: boolean): string {
   if (!supported) return '不可预览';
-  if (phase === 'rendering') return '生成中';
+  if (phase === 'rendering') return '';
   if (phase === 'committing') return '导入中';
   if (phase === 'committed') return '已导入';
   if (sequenceIsCurrent) return '最新序列有效';
