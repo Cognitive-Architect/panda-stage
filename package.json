@@ -94,6 +94,7 @@
     "verify:issue606": "pnpm build && electron scripts/verify-issue606-product-preview.cjs",
     "verify:issue608-shot-thumbnail": "pnpm build && electron scripts/verify-issue608-shot-thumbnail.cjs",
     "verify:issue853-scene-creation": "pnpm build && electron scripts/verify-issue853-scene-creation.cjs",
+    "verify:issue860-ui01": "pnpm build && cross-env PANDA_ISSUE860_INITIAL_SHOTS=0 electron scripts/verify-issue860-ui01.cjs && cross-env PANDA_ISSUE860_INITIAL_SHOTS=2 electron scripts/verify-issue860-ui01.cjs",
     "verify:issue854-v0-acceptance": "pnpm build && electron scripts/verify-issue854-v0-acceptance.cjs",
     "verify:issue609-character-assembly": "pnpm build && electron scripts/verify-issue609-character-assembly.cjs",
     "verify:issue792-mouth-overflow": "pnpm build && electron scripts/verify-issue609-character-assembly.cjs --issue792-mouth-overflow",

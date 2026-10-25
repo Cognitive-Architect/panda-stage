@@ -73,6 +73,7 @@
 @import './styles/features/properties/s07-10--portrait-layer-forms.css';
 @import './styles/features/canvas/s07-11--portrait-timeline-canvas.css';
 @import './styles/shell/resources/s07-12--landscape-resource-rail.css';
+@import './styles/features/shots/shot-list-entry-actions.css';
 @import './styles/features/shots/s07-13--landscape-shots-original.css';
 @import './styles/features/assets/s07-14--landscape-assets-original.css';
 @import './styles/legacy-slices/07-portrait-assets-inspector-start-after-assets.css';

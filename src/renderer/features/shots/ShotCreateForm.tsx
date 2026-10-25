@@ -60,7 +60,6 @@ export interface ShotCreateFormProps {
   suggestedName: string;
   onBack: () => void;
   onCreate: (name: string, durationMs: number) => boolean;
-  onCreateFromStructuredInput?: () => void;
 }
 
 export function ShotCreateForm({
@@ -69,7 +68,6 @@ export function ShotCreateForm({
   suggestedName,
   onBack,
   onCreate,
-  onCreateFromStructuredInput,
 }: ShotCreateFormProps): React.JSX.Element {
   const [name, setName] = useState(suggestedName);
   const [nameEdited, setNameEdited] = useState(false);
@@ -278,17 +276,6 @@ export function ShotCreateForm({
             />
             <span>创建镜头</span>
           </button>
-          {onCreateFromStructuredInput ? (
-            <button
-              className="shot-create-structured-action"
-              data-testid="shot-create-structured-input"
-              disabled={disabled}
-              onClick={onCreateFromStructuredInput}
-              type="button"
-            >
-              粘贴结构化输入
-            </button>
-          ) : null}
         </form>
       ) : (
         <form
@@ -338,17 +325,6 @@ export function ShotCreateForm({
             />
             <span>创建镜头</span>
           </button>
-          {onCreateFromStructuredInput ? (
-            <button
-              className="shot-create-structured-action"
-              data-testid="shot-create-structured-input"
-              disabled={disabled}
-              onClick={onCreateFromStructuredInput}
-              type="button"
-            >
-              粘贴结构化输入
-            </button>
-          ) : null}
         </form>
       )}
     </section>

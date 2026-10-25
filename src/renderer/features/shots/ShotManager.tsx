@@ -134,7 +134,6 @@ export function ShotManager({
           disabled={!snapshot}
           onBack={() => onViewChange('list')}
           onCreate={createShot}
-          onCreateFromStructuredInput={() => onViewChange('scene')}
           presentation={presentation}
           suggestedName={nextAvailableShotName(project?.shots ?? [])}
         />

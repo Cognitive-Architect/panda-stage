@@ -1,9 +1,3 @@
-.shot-create-structured-action {
-  justify-self: start;
-  color: #c6dccd;
-  background: rgb(255 255 255 / 4%);
-}
-
 .scene-creation-panel {
   display: grid;
   min-width: 0;
@@ -48,7 +42,6 @@
   resize: vertical;
 }
 
-.scene-creation-format,
 .scene-creation-copy-status {
   margin: -6px 0 0;
   color: var(--ui-color-text-muted);
@@ -91,22 +84,30 @@
 }
 
 .scene-creation-prompt-action {
+  min-height: 44px;
+  padding: 8px 11px;
   color: #c6dccd;
   background: rgb(255 255 255 / 4%);
 }
 
+.scene-creation-format-details,
 .scene-creation-prompt-details {
   color: #9eafa4;
   font-size: 11px;
 }
 
+.scene-creation-format-details summary,
 .scene-creation-prompt-details summary {
   width: fit-content;
+  min-height: 44px;
+  padding: 8px 0;
   cursor: pointer;
 }
 
+.scene-creation-format-details pre,
 .scene-creation-prompt-details pre {
   max-width: 100%;
+  margin: 0 0 8px;
   padding: 9px;
   overflow: auto;
   border: 1px solid rgb(255 255 255 / 8%);
@@ -115,6 +116,12 @@
   background: rgb(0 0 0 / 18%);
   font: inherit;
   white-space: pre-wrap;
+}
+
+.scene-creation-prompt-guidance {
+  margin: 0 0 8px;
+  color: var(--ui-color-text-muted);
+  line-height: 1.5;
 }
 
 .scene-creation-error,

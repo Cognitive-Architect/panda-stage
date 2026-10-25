@@ -296,17 +296,11 @@ async function run() {
   windowRef.focus();
   await openProject(windowRef);
 
-  await click(windowRef, '[data-testid="resource-primary-action"]');
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="shot-create-view"]')`,
-    'Shot creation did not open.',
-  );
-  await click(windowRef, '[data-testid="shot-create-structured-input"]');
+  await click(windowRef, '[data-testid="resource-auto-scene-action"]');
   await waitForDom(
     windowRef,
     `document.querySelector('[data-testid="scene-creation-panel"]')`,
-    'The structured scene panel did not open from Shot creation.',
+    'The automatic scene panel did not open from the Shot list.',
   );
   const structuredInput = [
     `镜头：${sample.shotName}`,

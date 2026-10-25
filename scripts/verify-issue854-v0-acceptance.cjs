@@ -767,17 +767,35 @@ function sceneInput(sample, shotName = sample.shotName) {
 }
 
 async function openStructuredCreation(window) {
-  await click(window, '[data-testid="resource-primary-action"]');
+  await window.webContents.executeJavaScript(`(() => {
+    const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+    if (dock?.dataset.activeActivity !== 'shots' || dock.dataset.resourceDrawerOpen !== 'true') {
+      const button = document.querySelector('[data-testid="resource-activity-rail-shots"]')
+        ?? document.querySelector('[data-testid="resource-activity-tabs"] [data-activity="shots"]');
+      button?.click();
+    }
+  })()`);
   await waitForDom(
     window,
-    `document.querySelector('[data-testid="shot-create-view"]')`,
-    'The normal Shot creation view did not open.',
+    `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.activeActivity === 'shots' && document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'true'`,
+    'The Shots workspace did not open.',
   );
-  await click(window, '[data-testid="shot-create-structured-input"]');
+  const shotView = await window.webContents.executeJavaScript(
+    `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceShotView ?? null`,
+  );
+  if (shotView !== 'list') {
+    await click(window, '[data-testid="resource-primary-action"]');
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceShotView === 'list'`,
+      'The active Shot flow did not return to its list.',
+    );
+  }
+  await click(window, '[data-testid="resource-auto-scene-action"]');
   await waitForDom(
     window,
     `document.querySelector('[data-testid="scene-creation-panel"]')`,
-    'Structured scene creation did not open from the existing Shot workflow.',
+    'Automatic scene creation did not open from the Shot list.',
   );
 }
 
@@ -886,6 +904,12 @@ async function verifyCopyFeedback(window, sample) {
 
 async function verifyCopyFeedbackFlow(window, sample) {
   await openStructuredCreation(window);
+  await click(window, '.scene-creation-prompt-details > summary');
+  await waitForDom(
+    window,
+    `document.querySelector('.scene-creation-prompt-details')?.open === true`,
+    'The external-AI helper did not expand before copy feedback checks.',
+  );
   const initialLayout = await window.webContents.executeJavaScript(`(() => {
     const panel = document.querySelector('[data-testid="scene-creation-panel"]');
     const button = document.querySelector('[data-testid="scene-creation-copy-prompt"]');
@@ -1307,18 +1331,7 @@ async function run() {
   console.log('[issue854] Existing Shot manual edit path passed.');
 
   console.log('[issue854] Starting original AC03 structured-creation path.');
-  await click(windowRef, '[data-testid="resource-primary-action"]');
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="shot-create-view"]')`,
-    'The normal Shot creation view did not open.',
-  );
-  await click(windowRef, '[data-testid="shot-create-structured-input"]');
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="scene-creation-panel"]')`,
-    'Structured scene creation did not open from the existing Shot workflow.',
-  );
+  await openStructuredCreation(windowRef);
   const structuredInput = [
     `镜头：${sample.shotName}`,
     `背景：${sample.background.name}`,

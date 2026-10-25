@@ -494,6 +494,7 @@
           "scripts/verify-day20*",
           "scripts/verify-issue608-shot-thumbnail.cjs",
           "scripts/verify-issue853-scene-creation.cjs",
+          "scripts/verify-issue860-ui01.cjs",
           "scripts/verify-issue854-v0-acceptance.cjs"
         ],
         "suites": ["shot"],
@@ -692,7 +693,7 @@
       }
     ]
   },
-  "count": 91,
+  "count": 92,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1665,6 +1666,18 @@
       "owner": "shot",
       "supersedes": null,
       "notes": "Bounded Issue #853 Electron proof for exact-name ambiguous candidate choice, read-only composed preview, and explicit Shot confirmation; synthetic fixture screenshots are not owner human acceptance."
+    },
+    {
+      "id": "issue860-ui01",
+      "script": "verify:issue860-ui01",
+      "suite": "shot",
+      "subsystem": "shot",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "shot",
+      "supersedes": null,
+      "notes": "Focused Issue #860 UI-01 Electron proof for list-level manual/automatic routes, no-mutation return paths, and wide/portrait screenshots using isolated synthetic projects; not OWNER human acceptance."
     },
     {
       "id": "issue854-v0-acceptance",

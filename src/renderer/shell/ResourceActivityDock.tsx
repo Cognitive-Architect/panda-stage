@@ -461,6 +461,8 @@ export function ResourceActivityDock({
                         ? landscapeShotHeaderLayout
                         : showPortraitAssetActionGroup
                           ? 'asset-browser-portrait'
+                          : activeActivity === 'shots' && shotView === 'list'
+                            ? 'shot-list'
                           : undefined
               }
             >
@@ -494,6 +496,17 @@ export function ResourceActivityDock({
                     <span>{primaryAction.label}</span>
                   </button>
                 )}
+              {activeActivity === 'shots' && shotView === 'list' ? (
+                <button
+                  className="resource-activity-secondary-action"
+                  data-resource-action="shots-auto-scene"
+                  data-testid="resource-auto-scene-action"
+                  onClick={() => setShotView('scene')}
+                  type="button"
+                >
+                  自动布景
+                </button>
+              ) : null}
               {showLandscapeAssetActionGroup ? (
                 <button
                   aria-label="导入 FLA"

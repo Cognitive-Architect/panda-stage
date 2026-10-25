@@ -597,11 +597,11 @@ export function SceneCreationPanel({
       data-testid="scene-creation-panel"
     >
       <header className="scene-creation-heading">
-        <h3 id="scene-creation-heading">按文本布景</h3>
+        <h3 id="scene-creation-heading">自动布景</h3>
       </header>
 
       <label className="scene-creation-input-label" htmlFor="scene-creation-input">
-        粘贴场景输入
+        粘贴布景信息
         <textarea
           aria-describedby="scene-creation-format"
           data-testid="scene-creation-input"
@@ -620,9 +620,10 @@ export function SceneCreationPanel({
           value={rawInput}
         />
       </label>
-      <p className="scene-creation-format" id="scene-creation-format">
-        镜头、背景、出场各写一行
-      </p>
+      <details className="scene-creation-format-details">
+        <summary>格式示例</summary>
+        <pre id="scene-creation-format">{'镜头：花园相遇\n背景：花园\n出场：张三'}</pre>
+      </details>
 
       <div className="scene-creation-actions">
         <button
@@ -633,15 +634,22 @@ export function SceneCreationPanel({
         >
           检查素材
         </button>
+      </div>
+      <details className="scene-creation-prompt-details">
+        <summary>用外部 AI 整理文本</summary>
+        <p className="scene-creation-prompt-guidance">
+          将提示词复制到外部工具整理，再把三行结果粘贴回来。Panda Stage 不会调用 AI。
+        </p>
+        <pre>{EXTERNAL_SCENE_ORGANIZATION_PROMPT}</pre>
         <button
           className="scene-creation-prompt-action"
           data-testid="scene-creation-copy-prompt"
           onClick={() => void copyExternalPrompt()}
           type="button"
         >
-          复制整理提示词
+          复制提示词
         </button>
-      </div>
+      </details>
       {copyMessage ? (
         <output
           aria-live={copyMessageIsError ? 'assertive' : 'polite'}
@@ -748,11 +756,6 @@ export function SceneCreationPanel({
           stale={previewStale}
         />
       ) : null}
-
-      <details className="scene-creation-prompt-details">
-        <summary>查看整理提示词</summary>
-        <pre>{EXTERNAL_SCENE_ORGANIZATION_PROMPT}</pre>
-      </details>
     </section>
   );
 }
