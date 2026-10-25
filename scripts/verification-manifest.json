@@ -357,6 +357,7 @@
         ],
         "testPatterns": [
           "tests/unit/domain/**",
+          "tests/unit/scene-creation-service.test.ts",
           "tests/unit/position-authoring-session.test.ts",
           "tests/unit/position-project-service.test.ts",
           "tests/unit/speaker-focus-camera.test.ts",
@@ -371,6 +372,7 @@
           "tests/integration/layer-placement-lifecycle.test.ts",
           "tests/integration/layer-transform-lifecycle.test.ts",
           "tests/integration/project-lifecycle.test.ts",
+          "tests/integration/scene-creation-lifecycle.test.ts",
           "tests/integration/day14-lifecycle.test.ts",
           "tests/contract/fixtures/ci-routing/core/**",
           "tests/unit/ipc-contracts.test.ts",
@@ -392,7 +394,7 @@
         "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "architecture",
-        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #828 lifecycle and audio source-range tests remain here without broad test globs; other unregistered test paths stay fail-closed."
+        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #852 scene-creation, Issue #828 lifecycle, and audio source-range tests remain here without broad test globs; other unregistered test paths stay fail-closed."
       },
       {
         "id": "release-export-core",
