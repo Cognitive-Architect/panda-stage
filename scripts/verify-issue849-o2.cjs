@@ -197,6 +197,7 @@ async function main() {
   const workerLifecycle = [];
   const selectedModeReports = [];
   const hiddenRendererMemorySamples = [];
+  const hiddenMemorySamplingErrors = [];
   const selectedModes = [];
   const candidateFinalizePromises = new Map();
   const phaseUpdates = [];
@@ -213,7 +214,6 @@ async function main() {
   let actualPngMode = null;
   let memorySampleTimer = null;
   let memorySampleJobId = null;
-  let memorySampleInFlight = false;
   let primaryHiddenWindowClosed;
 
   try {
@@ -305,26 +305,34 @@ async function main() {
             }
           }
         });
-        const sampleHiddenMemory = async () => {
-          if (!hiddenWindow || memorySampleInFlight || hiddenWindow.isDestroyed()) return;
-          memorySampleInFlight = true;
+        const sampleHiddenMemory = () => {
+          if (!hiddenWindow || hiddenWindow.isDestroyed()) return;
           try {
-            const memory = await hiddenWindow.webContents.getProcessMemoryInfo();
+            const rendererPid = hiddenWindow.webContents.getOSProcessId();
+            const rendererMetric = app.getAppMetrics().find((metric) => metric.pid === rendererPid);
+            if (!rendererMetric) {
+              hiddenMemorySamplingErrors.push(`No app metric for hidden renderer pid ${rendererPid}.`);
+              return;
+            }
+            const privateBytes = rendererMetric.memory.privateBytes;
+            const workingSetBytes = rendererMetric.memory.workingSetSize;
+            if (!Number.isFinite(privateBytes) || !Number.isFinite(workingSetBytes)) {
+              hiddenMemorySamplingErrors.push(`Hidden renderer pid ${rendererPid} returned incomplete memory metrics.`);
+              return;
+            }
             hiddenRendererMemorySamples.push({
               jobId: memorySampleJobId,
               at: performance.now(),
-              privateBytes: memory.private * 1_024,
-              residentSetBytes: memory.residentSet * 1_024,
-              sharedBytes: memory.shared * 1_024,
+              privateBytes: privateBytes * 1_024,
+              workingSetBytes: workingSetBytes * 1_024,
+              peakWorkingSetBytes: rendererMetric.memory.peakWorkingSetSize * 1_024,
             });
-          } catch {
-            // A closing hidden renderer may stop answering memory samples.
-          } finally {
-            memorySampleInFlight = false;
+          } catch (error) {
+            hiddenMemorySamplingErrors.push(error instanceof Error ? error.message : String(error));
           }
         };
-        void sampleHiddenMemory();
-        memorySampleTimer = setInterval(() => void sampleHiddenMemory(), 500);
+        sampleHiddenMemory();
+        memorySampleTimer = setInterval(sampleHiddenMemory, 500);
       }
     };
     const originalRenderFrame = hiddenManager.renderFrame.bind(hiddenManager);
@@ -701,6 +709,7 @@ async function main() {
       mainFrameReady: summarizeDurations(primaryFrameResponses.map((frame) => frame.elapsedMs)),
       hiddenRendererStages: summarizeFrameTiming(primaryHiddenTimings),
       hiddenRendererMemory: summarizeHiddenRendererMemory(primaryMemorySamples),
+      hiddenMemorySamplingErrors,
       workerLifecycle: primaryWorkerLifecycle,
       selectedModeReports: selectedModeReports.filter((entry) => entry.jobId === result.jobId),
       exportPhases: phases,
@@ -757,6 +766,8 @@ async function main() {
       mainJobMs,
       frameResponses: frameResponseTimings.length,
       hiddenFrameTimings: hiddenFrameTimings.length,
+      hiddenRendererMemorySamples: hiddenRendererMemorySamples.length,
+      hiddenMemorySamplingErrors,
       projectInputBefore: await hashProjectInputs(project).catch(() => null),
       elapsedFromVerifierStartMs: performance.now() - runStartedAt,
     };
@@ -831,12 +842,12 @@ function summarizeHiddenRendererMemory(samples) {
   return {
     sampleCount: samples.length,
     privateBytes: summarize('privateBytes'),
-    residentSetBytes: summarize('residentSetBytes'),
-    sharedBytes: summarize('sharedBytes'),
+    workingSetBytes: summarize('workingSetBytes'),
+    peakWorkingSetBytes: summarize('peakWorkingSetBytes'),
     startPrivateBytes: sorted[0]?.privateBytes ?? null,
     endPrivateBytes: sorted.at(-1)?.privateBytes ?? null,
-    startResidentSetBytes: sorted[0]?.residentSetBytes ?? null,
-    endResidentSetBytes: sorted.at(-1)?.residentSetBytes ?? null,
+    startWorkingSetBytes: sorted[0]?.workingSetBytes ?? null,
+    endWorkingSetBytes: sorted.at(-1)?.workingSetBytes ?? null,
   };
 }
 

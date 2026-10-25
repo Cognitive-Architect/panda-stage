@@ -235,6 +235,8 @@ async function readReceipt(mode, runName) {
   `${mode}: timing evidence did not capture the already drawn single output layer.`);
   assert(receipt.hiddenRendererMemory?.sampleCount > 0,
     `${mode}: hidden renderer memory was not sampled.`);
+  assert(receipt.hiddenMemorySamplingErrors?.length === 0,
+    `${mode}: hidden renderer memory sampling reported an error.`);
   assert(receipt.hiddenRendererStages.readyGateMs.count === EXPECTED_FRAME_COUNT,
     `${mode}: readiness timing sample is incomplete.`);
   assert(receipt.hiddenRendererStages.requestToPngMs.count === EXPECTED_FRAME_COUNT,
@@ -538,6 +540,7 @@ async function main() {
     `- Main frame-ready: A ${formatStats(legacy.mainFrameReady)}; B ${formatStats(worker.mainFrameReady)}`,
     `- Rendering phase: A ${legacy.exportPhases.rendering ?? 'n/a'} ms; B ${worker.exportPhases.rendering ?? 'n/a'} ms`,
     `- Hidden renderer private-memory peak: A ${legacy.hiddenRendererMemory.privateBytes.maxMs} bytes; B ${worker.hiddenRendererMemory.privateBytes.maxMs} bytes (delta ${result.timing.hiddenRendererPeakPrivateMemoryDeltaBytes} bytes)`,
+    `- Hidden renderer working-set peak: A ${legacy.hiddenRendererMemory.workingSetBytes.maxMs} bytes; B ${worker.hiddenRendererMemory.workingSetBytes.maxMs} bytes`,
     '',
     '## Safety and limits',
     '',
