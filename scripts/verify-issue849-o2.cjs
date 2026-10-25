@@ -34,6 +34,10 @@ const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
 const repoRoot = path.resolve(__dirname, '..');
 const codeSha = execFileSync('git', ['-C', repoRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 const branch = execFileSync('git', ['-C', repoRoot, 'branch', '--show-current'], { encoding: 'utf8' }).trim();
+const issueNumber = Number(process.env.PANDA_STAGE_O2_ISSUE || 851);
+const expectedBranch = process.env.PANDA_STAGE_O2_EXPECTED_BRANCH || 'issue-851-o2-f01';
+const expectedFrameCount = Number(process.env.PANDA_STAGE_O2_EXPECTED_FRAMES || 108);
+const runTimeoutMs = Number(process.env.PANDA_STAGE_O2_RUN_TIMEOUT_MS || 295_000);
 const baseO1Sha = '3a05e3efba6e08bc52dc45f732f242a0f116b794';
 const baseSafeSha = '143d74c258764fede19cbd1ceb5435d6d6acaf90';
 const isMemoryPreflight = process.argv.includes('--preflight-memory');
@@ -42,22 +46,28 @@ const mode = process.env.PANDA_STAGE_O2_PNG_MODE ||
 const drawMode = 'explicit-sync';
 const fixtureRoot = path.resolve(
   process.env.PANDA_STAGE_O2_FIXTURE_ROOT ||
-    'D:\\PandaStage-Acceptance\\issue849-o2',
+    (issueNumber === 856
+      ? 'D:\\PandaStage-Acceptance\\issue856-pr817-30s'
+      : 'D:\\PandaStage-Acceptance\\issue849-o2'),
 );
+const runLabel = process.env.PANDA_STAGE_O2_RUN_LABEL || (issueNumber === 856 ? '30s' : 'f01');
 const measurementPreflightPath = path.resolve(
   process.env.PANDA_STAGE_O2_MEMORY_PREFLIGHT_RECEIPT ||
-    path.join(fixtureRoot, 'measurement-preflight-f01.json'),
+    path.join(fixtureRoot, `measurement-preflight-${runLabel}.json`),
 );
 const runName = process.env.PANDA_STAGE_O2_RUN_ID ||
-  (mode === 'legacy-blob' ? 'f01-legacy-blob' : 'f01-worker-png');
-if (!/^[a-z0-9-]+$/iu.test(runName)) throw new Error(`Invalid Issue #851 run name: ${runName}`);
+  (mode === 'legacy-blob' ? `${runLabel}-legacy-blob` : `${runLabel}-worker-png`);
+const legacyRunName = process.env.PANDA_STAGE_O2_LEGACY_RUN_ID || `${runLabel}-legacy-blob`;
+if (!Number.isInteger(issueNumber) || issueNumber <= 0) throw new Error(`Invalid O2 issue number: ${issueNumber}`);
+if (!Number.isInteger(expectedFrameCount) || expectedFrameCount <= 0) throw new Error(`Invalid expected frame count: ${expectedFrameCount}`);
+if (!Number.isFinite(runTimeoutMs) || runTimeoutMs <= 0) throw new Error(`Invalid formal Job timeout: ${runTimeoutMs}`);
+if (!/^[a-z0-9-]+$/iu.test(runName)) throw new Error(`Invalid Issue #${issueNumber} run name: ${runName}`);
 const runRoot = path.join(fixtureRoot, 'runs', runName);
 const projectRoot = path.join(fixtureRoot, 'project');
 const projectPath = path.join(projectRoot, 'project.json');
 const CANCEL_OUTPUT_PATH = path.join(runRoot, 'cancelled-output.mp4');
 const PREPARATION_REVISION = 7;
-const OPEN_INSTANCE_ID = 849;
-const RUN_TIMEOUT_MS = 295_000;
+const OPEN_INSTANCE_ID = issueNumber;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -94,7 +104,7 @@ async function sampleHiddenRendererMemory(hiddenWindow, sampleIndex, startedAt) 
 
 async function runMemoryPreflight() {
   assert(process.platform === 'win32', 'Memory sampler preflight must run on Windows.');
-  assert(branch === 'issue-851-o2-f01', `Expected isolated O2-F01 branch, got ${branch}.`);
+  assert(branch === expectedBranch, `Expected isolated branch ${expectedBranch}, got ${branch}.`);
   const existingReceipt = await fs.stat(measurementPreflightPath).then(() => true, () => false);
   assert(!existingReceipt, `Refusing to overwrite memory preflight receipt: ${measurementPreflightPath}`);
   await app.whenReady();
@@ -127,7 +137,7 @@ async function runMemoryPreflight() {
 
   const receipt = {
     status: failure ? 'STOP' : 'PASS',
-    issue: 851,
+    issue: issueNumber,
     codeSha,
     branch,
     source: 'app.getAppMetrics() matched to hiddenWindow.webContents.getOSProcessId()',
@@ -255,17 +265,17 @@ async function waitUntil(predicate, timeoutMs, message) {
 
 async function main() {
   assert(mode === 'legacy-blob' || mode === 'worker-png', `Invalid PNG mode: ${mode}`);
-  assert(process.platform === 'win32', 'Issue #851 formal export acceptance must run on Windows.');
-  assert(branch === 'issue-851-o2-f01', `Expected isolated O2-F01 branch, got ${branch}.`);
+  assert(process.platform === 'win32', `Issue #${issueNumber} formal export acceptance must run on Windows.`);
+  assert(branch === expectedBranch, `Expected isolated branch ${expectedBranch}, got ${branch}.`);
   const worktreeStatus = execFileSync('git', ['-C', repoRoot, 'status', '--porcelain'], { encoding: 'utf8' }).trim();
   assert(worktreeStatus === '', `O2 measurement requires a clean committed tree: ${worktreeStatus}`);
   let sameRoundLegacyPeakPrivateBytes = null;
   if (mode === 'worker-png') {
-    const legacyReceiptPath = path.join(fixtureRoot, 'runs', 'f01-legacy-blob', 'receipt.json');
+    const legacyReceiptPath = path.join(fixtureRoot, 'runs', legacyRunName, 'receipt.json');
     const legacyReceipt = JSON.parse(await fs.readFile(legacyReceiptPath, 'utf8'));
-    assert(legacyReceipt.status === 'PASS' && legacyReceipt.issue === 851,
+    assert(legacyReceipt.status === 'PASS' && legacyReceipt.issue === issueNumber,
       'Worker B requires a completed same-round A receipt.');
-    assert(legacyReceipt.runName === 'f01-legacy-blob' && legacyReceipt.drawMode === 'explicit-sync' &&
+    assert(legacyReceipt.runName === legacyRunName && legacyReceipt.drawMode === 'explicit-sync' &&
       legacyReceipt.pngMode === 'legacy-blob', 'Worker B found an unexpected A run or mode.');
     assert(legacyReceipt.codeSha === codeSha && legacyReceipt.branch === branch &&
       legacyReceipt.baseSafeSha === baseSafeSha,
@@ -282,7 +292,7 @@ async function main() {
   const tempJobsRoot = path.join(runRoot, 'frame-job-temp');
   const frozenMediaRoot = path.join(runRoot, 'frozen-media-temp');
   const existingRun = await fs.stat(runRoot).then(() => true, () => false);
-  assert(!existingRun, `Refusing to reuse an existing Issue #851 run directory: ${runRoot}`);
+  assert(!existingRun, `Refusing to reuse an existing Issue #${issueNumber} run directory: ${runRoot}`);
   await fs.mkdir(framesRoot, { recursive: true });
 
   let mainWindow = null;
@@ -617,7 +627,7 @@ async function main() {
     const formalInvokeStartedAt = performance.now();
     timeout = setTimeout(() => {
       if (activeHandle) exportService.cancelJob(activeHandle.jobId);
-    }, RUN_TIMEOUT_MS);
+    }, runTimeoutMs);
     const startResponse = await mainWindow.webContents.executeJavaScript(
       `window.pandaStage.export.startFormal(${JSON.stringify(exported.snapshotId)}, false)`,
     );
@@ -647,10 +657,12 @@ async function main() {
     timeout = null;
     primaryHiddenWindowClosed = hiddenManager.getDiagnostics().windowOpen === false;
     assert(primaryHiddenWindowClosed, 'Primary formal Job did not release its hidden renderer window.');
-    assert(result.totalFrames === 108, `Expected 108 frames, received ${result.totalFrames}.`);
-    assert(result.completedFrames === 108, `Expected 108 completed frames, received ${result.completedFrames}.`);
-    assert(frameResponseTimings.length === 108, `Expected 108 renderer responses, received ${frameResponseTimings.length}.`);
-    assert(hiddenFrameTimings.length === 108, `Expected 108 hidden capture timing records, received ${hiddenFrameTimings.length}.`);
+    assert(result.totalFrames === expectedFrameCount, `Expected ${expectedFrameCount} frames, received ${result.totalFrames}.`);
+    assert(result.completedFrames === expectedFrameCount, `Expected ${expectedFrameCount} completed frames, received ${result.completedFrames}.`);
+    assert(frameResponseTimings.length === expectedFrameCount,
+      `Expected ${expectedFrameCount} renderer responses, received ${frameResponseTimings.length}.`);
+    assert(hiddenFrameTimings.length === expectedFrameCount,
+      `Expected ${expectedFrameCount} hidden capture timing records, received ${hiddenFrameTimings.length}.`);
     const primaryWorkerLifecycle = workerLifecycle.filter((entry) => entry.jobId === result.jobId);
     if (mode === 'worker-png') {
       assert(primaryWorkerLifecycle.filter((entry) => entry.event === 'created').length === 1,
@@ -662,7 +674,8 @@ async function main() {
       entry.jobId === result.jobId && entry.drawMode === drawMode && entry.pngMode === mode),
     'The hidden renderer did not report the actual formal Job modes.');
     assert(candidateFingerprint !== null, 'The formal candidate fingerprint was not recorded.');
-    assert(result.elapsedMs <= 300_000, `Formal export exceeded five minutes: ${result.elapsedMs} ms.`);
+    assert(result.elapsedMs <= runTimeoutMs + 5_000,
+      `Formal export exceeded its ${runTimeoutMs + 5_000} ms limit: ${result.elapsedMs} ms.`);
     assert(result.probe.hasAudio && result.probe.audioSampleRate === 48_000, 'Output audio is not 48 kHz.');
     await candidateFinalizePromises.get(exported.snapshotId);
     const afterInputs = await hashProjectInputs(project);
@@ -825,7 +838,7 @@ async function main() {
     const phases = summarizePhases(phaseUpdates, result.jobId);
     const receipt = {
       status: 'PASS',
-      issue: 851,
+      issue: issueNumber,
       codeSha,
       branch,
       baseO1Sha,
@@ -930,7 +943,7 @@ async function main() {
     );
     failureReceipt = {
       status: liveMemoryStopReason ? 'ROLLBACK_MEMORY' : 'STOP',
-      issue: 851,
+      issue: issueNumber,
       codeSha,
       branch,
       baseO1Sha,

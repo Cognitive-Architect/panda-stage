@@ -4,31 +4,48 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { summarizeMemoryTrend } = require('./issue851-o2-memory-trend.cjs');
 
+const issueNumber = Number(process.env.PANDA_STAGE_O2_ISSUE || 851);
+const runLabel = process.env.PANDA_STAGE_O2_RUN_LABEL || (issueNumber === 856 ? '30s' : 'f01');
+const expectedBranch = process.env.PANDA_STAGE_O2_EXPECTED_BRANCH || 'issue-851-o2-f01';
+const expectedFrameCount = Number(process.env.PANDA_STAGE_O2_EXPECTED_FRAMES || 108);
+const expectedFps = Number(process.env.PANDA_STAGE_O2_EXPECTED_FPS || 24);
+const expectedDurationSeconds = Number(
+  process.env.PANDA_STAGE_O2_EXPECTED_DURATION_SECONDS || expectedFrameCount / expectedFps,
+);
+const expectedMaxJobMs = Number(process.env.PANDA_STAGE_O2_MAX_JOB_MS || 300_000);
+const expectedSampleProvenance = process.env.PANDA_STAGE_O2_SAMPLE_PROVENANCE || null;
+const evidenceBaseName = issueNumber === 851 ? 'issue851-o2-f01' : `issue${issueNumber}-o5-30s`;
 const fixtureRoot = path.resolve(
   process.env.PANDA_STAGE_O2_FIXTURE_ROOT ||
-    'D:\\PandaStage-Acceptance\\issue849-o2',
+    (issueNumber === 856
+      ? 'D:\\PandaStage-Acceptance\\issue856-pr817-30s'
+      : 'D:\\PandaStage-Acceptance\\issue849-o2'),
 );
 const fixtureProjectRoot = path.join(fixtureRoot, 'project');
 const OUTPUT_PATH = path.resolve(
   process.env.PANDA_STAGE_O2_COMPARISON_RECEIPT ||
-    path.join(fixtureRoot, 'comparison-receipt-f01.json'),
+    path.join(fixtureRoot, `comparison-receipt-${runLabel}.json`),
 );
 const REPO_EVIDENCE_JSON = path.resolve(
   process.env.PANDA_STAGE_O2_REPO_EVIDENCE_JSON ||
-    path.resolve(__dirname, '../docs/test-receipts/issue851-o2-f01-comparison.json'),
+    path.resolve(__dirname, `../docs/test-receipts/${evidenceBaseName}-comparison.json`),
 );
 const REPO_EVIDENCE_MARKDOWN = path.resolve(
   process.env.PANDA_STAGE_O2_REPO_EVIDENCE_MARKDOWN ||
-    path.resolve(__dirname, '../docs/test-receipts/issue851-o2-f01.md'),
+    path.resolve(__dirname, `../docs/test-receipts/${evidenceBaseName}.md`),
 );
-const LEGACY_RUN_NAME = process.env.PANDA_STAGE_O2_LEGACY_RUN_ID || 'f01-legacy-blob';
-const WORKER_RUN_NAME = process.env.PANDA_STAGE_O2_WORKER_RUN_ID || 'f01-worker-png';
-const EXPECTED_FRAME_COUNT = 108;
-const EXPECTED_DURATION_SECONDS = 4.5;
-const EXPECTED_FPS = 24;
-const EXPECTED_WIDTH = 1_920;
-const EXPECTED_HEIGHT = 1_080;
-const EXPECTED_SAMPLE_RATE = 48_000;
+const LEGACY_RUN_NAME = process.env.PANDA_STAGE_O2_LEGACY_RUN_ID || `${runLabel}-legacy-blob`;
+const WORKER_RUN_NAME = process.env.PANDA_STAGE_O2_WORKER_RUN_ID || `${runLabel}-worker-png`;
+const PREFLIGHT_PATH = path.resolve(
+  process.env.PANDA_STAGE_O2_MEMORY_PREFLIGHT_RECEIPT ||
+    path.join(fixtureRoot, `measurement-preflight-${runLabel}.json`),
+);
+const EXPECTED_FRAME_COUNT = expectedFrameCount;
+const EXPECTED_DURATION_SECONDS = expectedDurationSeconds;
+const EXPECTED_FPS = expectedFps;
+const EXPECTED_WIDTH = Number(process.env.PANDA_STAGE_O2_EXPECTED_WIDTH || 1_920);
+const EXPECTED_HEIGHT = Number(process.env.PANDA_STAGE_O2_EXPECTED_HEIGHT || 1_080);
+const EXPECTED_SAMPLE_RATE = Number(process.env.PANDA_STAGE_O2_EXPECTED_SAMPLE_RATE || 48_000);
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -108,10 +125,10 @@ function validateProbe(probe, label) {
   assert(Math.abs(parseRational(video.avg_frame_rate ?? video.r_frame_rate) - EXPECTED_FPS) < 0.001,
     `${label}: expected 24 fps, got ${video.avg_frame_rate ?? video.r_frame_rate}.`);
   assert(Number(video.nb_read_frames ?? video.nb_frames) === EXPECTED_FRAME_COUNT,
-    `${label}: expected 108 video frames, got ${video.nb_read_frames ?? video.nb_frames}.`);
+    `${label}: expected ${EXPECTED_FRAME_COUNT} video frames, got ${video.nb_read_frames ?? video.nb_frames}.`);
   const videoDuration = Number(video.duration ?? probe.format?.duration);
   assert(Number.isFinite(videoDuration) && Math.abs(videoDuration - EXPECTED_DURATION_SECONDS) <= 0.08,
-    `${label}: expected 4.5 seconds, got ${videoDuration}.`);
+    `${label}: expected ${EXPECTED_DURATION_SECONDS} seconds, got ${videoDuration}.`);
   assert(audioStreams.length === 1, `${label}: expected exactly one audio stream, got ${audioStreams.length}.`);
   const audio = audioStreams[0];
   assert(audio.codec_name === 'aac', `${label}: expected AAC, got ${audio.codec_name}.`);
@@ -137,7 +154,7 @@ async function decodedFrameHashes(ffmpegPath, framesRoot) {
   ]);
   const hashes = parseFrameMd5(output);
   assert(hashes.length === EXPECTED_FRAME_COUNT,
-    `Expected 108 decoded PNG frame hashes at ${framesRoot}, got ${hashes.length}.`);
+    `Expected ${EXPECTED_FRAME_COUNT} decoded PNG frame hashes at ${framesRoot}, got ${hashes.length}.`);
   return hashes;
 }
 
@@ -201,10 +218,13 @@ async function readReceipt(mode, runName) {
   const receiptPath = path.join(fixtureRoot, 'runs', runName, 'receipt.json');
   const receipt = JSON.parse(await fs.readFile(receiptPath, 'utf8'));
   assert(receipt.status === 'PASS', `${mode}: verifier receipt status is ${receipt.status}.`);
+  assert(receipt.issue === issueNumber,
+    `${mode}: receipt identifies Issue #${receipt.issue}, expected #${issueNumber}.`);
   assert(receipt.drawMode === 'explicit-sync', `${mode}: receipt used draw mode ${receipt.drawMode}.`);
   assert(receipt.pngMode === mode, `${mode}: receipt used PNG mode ${receipt.pngMode}.`);
   assert(receipt.runName === runName, `${mode}: expected run ${runName}, got ${receipt.runName}.`);
-  assert(receipt.frameCount === EXPECTED_FRAME_COUNT, `${mode}: receipt did not complete 108 frames.`);
+  assert(receipt.frameCount === EXPECTED_FRAME_COUNT,
+    `${mode}: receipt did not complete ${EXPECTED_FRAME_COUNT} frames.`);
   assert(receipt.projectInputUnchanged === true, `${mode}: project or source media changed during export.`);
   assert(receipt.cleanup?.frameJobDirectoriesRemoved === true, `${mode}: temporary frame jobs were not cleaned.`);
   assert(receipt.cleanup?.frozenMediaCandidateRemoved === true, `${mode}: frozen media was not cleaned.`);
@@ -222,18 +242,21 @@ async function readReceipt(mode, runName) {
   assert(receipt.cleanup?.ffmpegActiveProcessCount === 0,
     `${mode}: FFmpeg left an active child process after cleanup.`);
   assert(receipt.cleanup?.cancellationElapsedMs < 30_000, `${mode}: cancellation exceeded 30 seconds.`);
-  assert(receipt.frozenCandidate?.mediaManifest?.length === 6, `${mode}: expected six frozen media assets.`);
+  assert(receipt.frozenCandidate?.mediaManifest?.length === receipt.projectInputBefore?.projectAssets?.length,
+    `${mode}: frozen media manifest does not cover the Project assets.`);
   assert(receipt.cameraMode === 'speaker-focus', `${mode}: camera mode was ${receipt.cameraMode}.`);
   assert(receipt.probe?.codecName === 'h264', `${mode}: ExportService probe did not report H.264.`);
   assert(receipt.probe?.pixelFormat === 'yuv420p', `${mode}: ExportService probe did not report yuv420p.`);
   assert(receipt.probe?.fps === EXPECTED_FPS, `${mode}: ExportService probe did not report 24 fps.`);
-  assert(receipt.probe?.frameCount === EXPECTED_FRAME_COUNT, `${mode}: ExportService probe did not report 108 frames.`);
+  assert(receipt.probe?.frameCount === EXPECTED_FRAME_COUNT,
+    `${mode}: ExportService probe did not report ${EXPECTED_FRAME_COUNT} frames.`);
   assert(receipt.probe?.hasAudio === true && receipt.probe?.audioCodecName === 'aac', `${mode}: ExportService probe did not report AAC audio.`);
   assert(receipt.probe?.audioSampleRate === EXPECTED_SAMPLE_RATE, `${mode}: ExportService probe did not report 48 kHz audio.`);
   assert(receipt.probe?.audioDurationSeconds !== null &&
     Math.abs(receipt.probe.audioDurationSeconds - EXPECTED_DURATION_SECONDS) <= 0.08,
   `${mode}: ExportService probe reported a misaligned audio duration.`);
-  assert(receipt.exportServiceElapsedMs <= 300_000, `${mode}: formal Job exceeded five minutes.`);
+  assert(receipt.exportServiceElapsedMs <= expectedMaxJobMs,
+    `${mode}: formal Job exceeded ${expectedMaxJobMs} ms.`);
   assert(receipt.frameHashes.length === EXPECTED_FRAME_COUNT, `${mode}: frame receipt is incomplete.`);
   assert(receipt.frameHashes.every((frame, index) => frame.frameIndex === index),
     `${mode}: frame receipt is missing, duplicating, or reordering an index.`);
@@ -339,7 +362,7 @@ async function writeEarlyWorkerDisposition(legacy, worker, preflight, preflightB
   const result = {
     status: decision,
     verificationStatus: 'STOPPED_EARLY',
-    issue: 851,
+    issue: issueNumber,
     baseSafeSha: legacy.baseSafeSha,
     codeSha: worker.codeSha,
     branch: worker.branch,
@@ -417,12 +440,12 @@ async function writeEarlyWorkerDisposition(legacy, worker, preflight, preflightB
   const repoEvidence = JSON.parse(JSON.stringify(result));
   await fs.writeFile(REPO_EVIDENCE_JSON, JSON.stringify(repoEvidence, null, 2) + '\n', { flag: 'wx' });
   const markdown = [
-    '# Issue #851 O2-F01 early worker disposition',
+    `# Issue #${issueNumber} O2 worker early disposition`,
     '',
     `Decision: **${decision}**`,
     '',
     `- Base: \`${legacy.baseSafeSha}\`; candidate: \`${worker.codeSha}\` on \`${worker.branch}\`.`,
-    `- A: ${legacy.exportServiceElapsedMs} ms, ${legacy.frameCount}/108 frames; B recorded ${worker.frameResponses ?? 0}/108 frame responses before the verifier outcome (primary Job: ${worker.cleanup?.primaryJobStatus ?? 'unknown'}).`,
+    `- A: ${legacy.exportServiceElapsedMs} ms, ${legacy.frameCount}/${EXPECTED_FRAME_COUNT} frames; B recorded ${worker.frameResponses ?? 0}/${EXPECTED_FRAME_COUNT} frame responses before the verifier outcome (primary Job: ${worker.cleanup?.primaryJobStatus ?? 'unknown'}).`,
     `- Same frozen Project/media/font/camera/render input verified before stop: ${inputsIdentical}.`,
     `- Early-stop cleanup gates: ${cleanupPass}; ${JSON.stringify(worker.cleanup ?? {})}.`,
     `- Hidden renderer private memory A start/median/peak/end: ${legacy.hiddenRendererMemory.startPrivateBytes}/${legacy.hiddenRendererMemory.privateBytes.medianMs}/${legacyPeakPrivateBytes}/${legacy.hiddenRendererMemory.endPrivateBytes} bytes.`,
@@ -454,11 +477,12 @@ async function main() {
   const workerReceiptPath = path.join(fixtureRoot, 'runs', WORKER_RUN_NAME, 'receipt.json');
   const workerReceiptBytes = await fs.readFile(workerReceiptPath);
   const workerReceipt = JSON.parse(workerReceiptBytes.toString('utf8'));
-  const preflightPath = path.join(fixtureRoot, 'measurement-preflight-f01.json');
-  const preflightBytes = await fs.readFile(preflightPath);
+  const preflightBytes = await fs.readFile(PREFLIGHT_PATH);
   const preflight = JSON.parse(preflightBytes.toString('utf8'));
   assert(preflight.status === 'PASS' && preflight.samples?.length === 3,
     'Hidden-renderer memory sampler preflight did not pass three samples.');
+  assert(preflight.issue === issueNumber && preflight.branch === expectedBranch,
+    'Memory sampler preflight did not identify the expected Issue and branch.');
   assert(preflight.codeSha === legacy.codeSha && preflight.codeSha === workerReceipt.codeSha,
     'Memory sampler preflight and A/B runs do not share the same code SHA.');
   assert(preflight.branch === legacy.branch && workerReceipt.branch === legacy.branch &&
@@ -471,22 +495,56 @@ async function main() {
   const worker = await readReceipt('worker-png', WORKER_RUN_NAME);
   const fixture = JSON.parse(await fs.readFile(path.join(fixtureRoot, 'fixture-manifest.json'), 'utf8'));
   const project = JSON.parse(await fs.readFile(path.join(fixtureProjectRoot, 'project.json'), 'utf8'));
+  if (expectedSampleProvenance !== null) {
+    assert(fixture.provenance === expectedSampleProvenance,
+      `Fixture provenance was ${fixture.provenance}, expected ${expectedSampleProvenance}.`);
+    assert([827, 830, 832].includes(fixture.sourceIssue),
+      `Fixture source Issue #${fixture.sourceIssue} is outside the authorized 30-second sample set.`);
+    const sourceReceiptBytes = await fs.readFile(fixture.sourceGeneratedProjectReceiptPath);
+    assert(sha256(sourceReceiptBytes) === fixture.sourceGeneratedProjectReceiptSha256,
+      'Generated-project source receipt hash differs from the frozen fixture manifest.');
+    const sourceReceipt = JSON.parse(sourceReceiptBytes.toString('utf8'));
+    assert(sourceReceipt.issue === fixture.sourceIssue && sourceReceipt.sampleId === fixture.sourceSampleId &&
+      sourceReceipt.projectSha256 === fixture.sample.projectSha256 &&
+      sourceReceipt.assetHashes?.length === fixture.sample.assetCount &&
+      stableJson(sourceReceipt.assetHashes) === stableJson(fixture.sample.assetHashes),
+    'Generated-project source receipt does not match the selected sample.');
+    assert(fixture.sample.assetCount === project.assets.length &&
+      fixture.sample.projectSha256 === legacy.projectInputBefore.projectFileSha256,
+    'Copied Project does not match the selected generated sample.');
+    for (const expectedAsset of fixture.sample.assetHashes ?? []) {
+      const actualAsset = legacy.projectInputBefore.projectAssets.find((asset) =>
+        asset.assetId === expectedAsset.assetId,
+      );
+      assert(actualAsset && actualAsset.relativePath === expectedAsset.relativePath &&
+        actualAsset.byteLength === expectedAsset.byteLength && actualAsset.sha256 === expectedAsset.sha256,
+      `Copied media asset ${expectedAsset.assetId} does not match the generated sample receipt.`);
+    }
+  }
   assert(fixture.sample.durationMs === EXPECTED_DURATION_SECONDS * 1_000,
     `Fixture duration is ${fixture.sample.durationMs} ms.`);
   assert(fixture.sample.shotCount === 3 && project.shots.length === 3,
     'The comparison fixture must contain three shots.');
   assert(fixture.sample.expectedFrames === EXPECTED_FRAME_COUNT && fixture.sample.fps === EXPECTED_FPS,
-    'Fixture manifest does not describe the expected 108-frame schedule.');
+    `Fixture manifest does not describe the expected ${EXPECTED_FRAME_COUNT}-frame schedule.`);
   assert(project.width === EXPECTED_WIDTH && project.height === EXPECTED_HEIGHT && project.fps === EXPECTED_FPS,
     'Fixture render dimensions or frame rate drifted.');
-  assert(project.characters.some((character) => character.mode === 'composite' && character.mouthOpenAssetId),
-    'Fixture no longer exercises a composite character and mouth asset.');
-  assert(project.shots.every((shot) => shot.dialogues.length > 0 && shot.audioClips.length > 0),
-    'Fixture no longer exercises dialogue audio and subtitles in every shot.');
-  assert(project.shots.every((shot) => shot.timelineEvents.some((event) => event.type === 'move') &&
-    shot.timelineEvents.some((event) => event.type === 'opacity') &&
-    shot.timelineEvents.some((event) => event.type === 'expression')),
-  'Fixture no longer exercises movement, opacity, and expression changes in every shot.');
+  assert(project.characters.some((character) => character.mouthOpenAssetId),
+    'Fixture no longer includes a character mouth asset.');
+  assert(project.shots.some((shot) => shot.dialogues.length > 0) &&
+    project.shots.every((shot) => shot.audioClips.length > 0),
+  'Fixture no longer exercises dialogue and shot audio.');
+  assert(project.shots.some((shot) => shot.timelineEvents.some((event) => event.type === 'expression')),
+    'Fixture no longer exercises an expression change.');
+  if (issueNumber === 851) {
+    assert(project.characters.some((character) => character.mode === 'composite' && character.mouthOpenAssetId),
+      'The Issue #851 F01 fixture requires a composite character and mouth asset.');
+    assert(project.shots.every((shot) => shot.dialogues.length > 0),
+      'The Issue #851 F01 fixture requires dialogue in every shot.');
+    assert(project.shots.every((shot) => shot.timelineEvents.some((event) => event.type === 'move') &&
+      shot.timelineEvents.some((event) => event.type === 'opacity')),
+    'The Issue #851 F01 fixture requires movement and opacity changes in every shot.');
+  }
 
   const stableInputs = (receipt) => ({
     projectInputBefore: receipt.projectInputBefore,
@@ -499,9 +557,10 @@ async function main() {
   });
   assert(stableJson(stableInputs(legacy)) === stableJson(stableInputs(worker)),
     'A/B runs did not use identical frozen Project, media, font, camera, and render inputs.');
-  assert(legacy.codeSha === worker.codeSha && legacy.branch === worker.branch,
+  assert(legacy.codeSha === worker.codeSha && legacy.branch === worker.branch && legacy.branch === expectedBranch,
     'A/B runs were not performed from the same committed O2 source and branch.');
-  assert(legacy.issue === 851 && worker.issue === 851, 'A/B verifier receipts do not identify Issue #851.');
+  assert(legacy.issue === issueNumber && worker.issue === issueNumber,
+    `A/B verifier receipts do not identify Issue #${issueNumber}.`);
   assert(legacy.baseSafeSha === '143d74c258764fede19cbd1ceb5435d6d6acaf90' &&
     worker.baseSafeSha === legacy.baseSafeSha,
   'A/B receipts do not identify the Issue #849 safe rollback baseline.');
@@ -599,7 +658,12 @@ async function main() {
   const result = {
     status: decision,
     verificationStatus: 'PASS',
-    issue: 851,
+    issue: issueNumber,
+    sampleProvenance: fixture.provenance ?? null,
+    sampleSourceIssue: fixture.sourceIssue ?? null,
+    sampleSourceName: fixture.sourceSample ?? null,
+    sampleSourceProjectSha256: fixture.sourceProjectSha256 ?? fixture.sample.projectSha256 ?? null,
+    sampleSourceReceiptSha256: fixture.sourceGeneratedProjectReceiptSha256 ?? null,
     baseSafeSha: legacy.baseSafeSha,
     measurementPreflight: {
       status: preflight.status,
@@ -768,13 +832,17 @@ async function main() {
   const formatStats = (stats) =>
     `n=${stats.count}, p50=${stats.p50Ms ?? 'n/a'} ms, p95=${stats.p95Ms ?? 'n/a'} ms, max=${stats.maxMs ?? 'n/a'} ms`;
   const markdown = [
-    '# Issue #851 O2-F01 PNG worker comparison',
+    issueNumber === 851
+      ? '# Issue #851 O2-F01 PNG worker comparison'
+      : `# Issue #${issueNumber} O2 PNG worker comparison`,
     '',
     `Decision: **${result.timing.decision}**`,
     '',
     `- Base O1: \`${legacy.baseO1Sha}\``,
     `- Safe rollback baseline: \`${legacy.baseSafeSha}\``,
     `- Candidate: \`${legacy.codeSha}\` on \`${legacy.branch}\``,
+    `- Sample provenance: \`${fixture.provenance ?? 'NOT_RECORDED'}\` (source Issue #${fixture.sourceIssue ?? 'unknown'}, ${fixture.sourceSample ?? 'sample unspecified'})`,
+    `- Generated sample Project SHA-256: \`${fixture.sourceProjectSha256 ?? fixture.sample.projectSha256 ?? 'NOT_RECORDED'}\`; generator receipt SHA-256: \`${fixture.sourceGeneratedProjectReceiptSha256 ?? 'NOT_RECORDED'}\``,
     `- Modes: A \`${legacy.drawMode} + ${legacy.pngMode}\`; B \`${worker.drawMode} + ${worker.pngMode}\``,
     `- Frozen Project SHA-256: \`${result.inputs.projectFileSha256}\``,
     `- Frozen candidate SHA-256: \`${result.inputs.frozenCandidateSha256}\``,
