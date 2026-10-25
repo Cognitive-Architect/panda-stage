@@ -2,6 +2,7 @@ const { app, BrowserWindow, clipboard } = require('electron');
 const { execFileSync } = require('node:child_process');
 const {
   cpSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -17,11 +18,15 @@ const repositoryRoot = path.resolve(__dirname, '..');
 const sampleProjectSource = process.env.PANDA_ISSUE854_SAMPLE_PROJECT
   ? path.resolve(process.env.PANDA_ISSUE854_SAMPLE_PROJECT)
   : null;
+const thumbnailCacheProjectSource = process.env.PANDA_ISSUE854_THUMBNAIL_CACHE_PROJECT
+  ? path.resolve(process.env.PANDA_ISSUE854_THUMBNAIL_CACHE_PROJECT)
+  : null;
 const acceptanceRoot = 'D:\\PandaStage-Acceptance\\issue854-v0-acceptance';
 const runId = new Date().toISOString().replace(/[:.]/gu, '-');
 const runRoot = path.join(acceptanceRoot, `run-${runId}`);
 const evidenceRoot = path.join(runRoot, 'evidence');
-const projectRoot = path.join(runRoot, 'AC03 isolated project.pandastage');
+const primaryProjectRoot = path.join(runRoot, 'AC03 isolated project.pandastage');
+let activeProjectRoot = primaryProjectRoot;
 const userDataRoot = path.join(runRoot, 'electron-user-data');
 const receiptPath = path.join(runRoot, 'issue854-ac03-receipt.json');
 const elapsedStart = Date.now();
@@ -47,6 +52,46 @@ function configureElectronPaths() {
   }
 }
 
+function seedThumbnailCache(targetProjectRoot, project) {
+  if (!thumbnailCacheProjectSource) {
+    return { seeded: false, assetHashes: [] };
+  }
+  const cacheSourceDirectory = path.join(
+    thumbnailCacheProjectSource,
+    'cache',
+    'asset-thumbnails',
+  );
+  const referenceProject = JSON.parse(
+    readFileSync(path.join(thumbnailCacheProjectSource, 'project.json'), 'utf8'),
+  );
+  const imageAssets = project.assets.filter(
+    (asset) => asset.kind === 'image' && asset.sha256,
+  );
+  const assetHashes = [];
+  for (const asset of imageAssets) {
+    const referenceAsset = referenceProject.assets.find(
+      (candidate) => candidate.id === asset.id,
+    );
+    if (!referenceAsset || referenceAsset.sha256 !== asset.sha256) {
+      throw new Error(`The thumbnail cache does not match sample Asset ${asset.id}.`);
+    }
+    const cacheFileName = `v1-max256-${asset.sha256}.png`;
+    const sourcePath = path.join(cacheSourceDirectory, cacheFileName);
+    if (!existsSync(sourcePath)) {
+      throw new Error(`The validated thumbnail cache is missing ${cacheFileName}.`);
+    }
+    const targetDirectory = path.join(
+      targetProjectRoot,
+      'cache',
+      'asset-thumbnails',
+    );
+    mkdirSync(targetDirectory, { recursive: true });
+    copyFileSync(sourcePath, path.join(targetDirectory, cacheFileName));
+    assetHashes.push(asset.sha256);
+  }
+  return { seeded: true, assetHashes };
+}
+
 mkdirSync(runRoot, { recursive: true });
 configureElectronPaths();
 require('../dist-electron/main/index.js');
@@ -69,17 +114,108 @@ function browserWait(expression, message, timeout = 25_000) {
 }
 
 async function waitForDom(window, expression, message, timeout) {
-  await window.webContents.executeJavaScript(
-    browserWait(expression, message, timeout),
-  );
+  try {
+    await window.webContents.executeJavaScript(
+      browserWait(expression, message, timeout),
+    );
+  } catch (error) {
+    throw new Error(
+      `${message} Renderer wait failed: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
 }
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+function captureClipboardState() {
+  const formats = clipboard.availableFormats();
+  return {
+    formats,
+    buffers: formats.map((format) => [format, clipboard.readBuffer(format)]),
+    text: clipboard.readText(),
+  };
+}
+
+function restoreClipboardState(state) {
+  let formatsRestored = false;
+  try {
+    clipboard.clear();
+    for (const [format, buffer] of state.buffers) {
+      clipboard.writeBuffer(format, buffer);
+    }
+    const restoredFormats = clipboard.availableFormats();
+    formatsRestored = (
+      state.formats.length === restoredFormats.length &&
+      state.formats.every((format) => restoredFormats.includes(format)) &&
+      state.buffers.every(([format, buffer]) =>
+        clipboard.readBuffer(format).equals(buffer),
+      )
+    );
+  } catch {
+    // Continue with plain text if Windows rejects restoring a clipboard format.
+  }
+  if (clipboard.readText() !== state.text) {
+    clipboard.clear();
+    clipboard.writeText(state.text);
+    formatsRestored = false;
+  }
+  return {
+    textRestored: clipboard.readText() === state.text,
+    formatsRestored,
+  };
+}
+
+function normalizeClipboardText(text) {
+  return text.replace(/\r\n?/gu, '\n');
+}
+
 async function click(window, selector) {
-  await window.webContents.executeJavaScript(`(() => {
+  try {
+    await window.webContents.executeJavaScript(`(() => {
+      const element = document.querySelector(${JSON.stringify(selector)});
+      if (!(element instanceof HTMLElement)) {
+        throw new Error('Element not found: ' + ${JSON.stringify(selector)});
+      }
+      if (element instanceof HTMLButtonElement && element.disabled) {
+        throw new Error('Element is disabled: ' + ${JSON.stringify(selector)});
+      }
+      element.click();
+    })()`);
+  } catch (error) {
+    let state;
+    try {
+      state = await window.webContents.executeJavaScript(`(() => {
+        const element = document.querySelector(${JSON.stringify(selector)});
+        const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
+        return {
+          elementFound: Boolean(element),
+          elementTag: element?.tagName ?? null,
+          disabled: element instanceof HTMLButtonElement ? element.disabled : null,
+          elementText: element?.textContent?.trim() ?? null,
+          drawerExpanded: drawer?.dataset.expanded ?? null,
+          editorPage: Boolean(document.querySelector('[data-editor-page="editor"]')),
+          bodyTextStart: document.body.innerText.slice(0, 240),
+        };
+      })()`);
+    } catch (diagnosticError) {
+      state = {
+        diagnosticError: diagnosticError instanceof Error
+          ? diagnosticError.message
+          : String(diagnosticError),
+      };
+    }
+    throw new Error(
+      `Click failed for ${selector}: ${error instanceof Error ? error.message : String(error)} state=${JSON.stringify(state)}`,
+      { cause: error },
+    );
+  }
+}
+
+async function clickWithMouseInput(window, selector) {
+  const point = await window.webContents.executeJavaScript(`(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
     if (!(element instanceof HTMLElement)) {
       throw new Error('Element not found: ' + ${JSON.stringify(selector)});
@@ -87,8 +223,67 @@ async function click(window, selector) {
     if (element instanceof HTMLButtonElement && element.disabled) {
       throw new Error('Element is disabled: ' + ${JSON.stringify(selector)});
     }
-    element.click();
+    element.scrollIntoView({ block: 'center', behavior: 'instant' });
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      throw new Error('Element is not visibly clickable: ' + ${JSON.stringify(selector)});
+    }
+    return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
   })()`);
+  window.webContents.sendInputEvent({ type: 'mouseMove', x: point.x, y: point.y });
+  await delay(30);
+  window.webContents.sendInputEvent({
+    type: 'mouseDown',
+    button: 'left',
+    clickCount: 1,
+    x: point.x,
+    y: point.y,
+  });
+  await delay(40);
+  window.webContents.sendInputEvent({
+    type: 'mouseUp',
+    button: 'left',
+    clickCount: 1,
+    x: point.x,
+    y: point.y,
+  });
+}
+
+async function doubleClickWithMouseInput(window, selector) {
+  const point = await window.webContents.executeJavaScript(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector)});
+    if (!(element instanceof HTMLElement)) {
+      throw new Error('Element not found: ' + ${JSON.stringify(selector)});
+    }
+    if (element instanceof HTMLButtonElement && element.disabled) {
+      throw new Error('Element is disabled: ' + ${JSON.stringify(selector)});
+    }
+    element.scrollIntoView({ block: 'center', behavior: 'instant' });
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      throw new Error('Element is not visibly clickable: ' + ${JSON.stringify(selector)});
+    }
+    return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
+  })()`);
+  for (const clickCount of [1, 2]) {
+    window.webContents.sendInputEvent({ type: 'mouseMove', x: point.x, y: point.y });
+    window.webContents.sendInputEvent({
+      type: 'mouseDown',
+      button: 'left',
+      clickCount,
+      x: point.x,
+      y: point.y,
+    });
+    await delay(35);
+    window.webContents.sendInputEvent({
+      type: 'mouseUp',
+      button: 'left',
+      clickCount,
+      x: point.x,
+      y: point.y,
+    });
+    await delay(35);
+  }
 }
 
 async function capture(window, fileName) {
@@ -112,7 +307,10 @@ async function waitForMainWindow() {
   throw new Error('The production Electron window did not open.');
 }
 
-function prepareSampleProject() {
+function prepareSampleProject(
+  targetProjectRoot = activeProjectRoot,
+  shotNamePrefix = 'AC03 真实验收',
+) {
   if (!sampleProjectSource) {
     throw new Error(
       'Set PANDA_ISSUE854_SAMPLE_PROJECT to the existing frozen AC-01 sample Project.',
@@ -121,20 +319,21 @@ function prepareSampleProject() {
   if (!existsSync(path.join(sampleProjectSource, 'project.json'))) {
     throw new Error('The requested frozen sample Project is not readable.');
   }
-  if (path.resolve(sampleProjectSource) === path.resolve(projectRoot)) {
+  if (path.resolve(sampleProjectSource) === path.resolve(targetProjectRoot)) {
     throw new Error('Refusing to copy the sample Project onto itself.');
   }
   const sourceProjectJson = path.join(sampleProjectSource, 'project.json');
   const sourceProjectHashBefore = createHash('sha256')
     .update(readFileSync(sourceProjectJson))
     .digest('hex');
-  cpSync(sampleProjectSource, projectRoot, {
+  cpSync(sampleProjectSource, targetProjectRoot, {
     recursive: true,
     errorOnExist: true,
   });
   const project = JSON.parse(
-    readFileSync(path.join(projectRoot, 'project.json'), 'utf8'),
+    readFileSync(path.join(targetProjectRoot, 'project.json'), 'utf8'),
   );
+  const thumbnailCache = seedThumbnailCache(targetProjectRoot, project);
   const backgrounds = project.assets.filter(
     (asset) =>
       asset.name === 'Garden' &&
@@ -177,7 +376,9 @@ function prepareSampleProject() {
     background,
     character,
     sourceProjectHashBefore,
-    shotName: `AC03 真实验收 ${runId}`,
+    thumbnailCache,
+    targetProjectRoot,
+    shotName: `${shotNamePrefix} ${runId}`,
   };
 }
 
@@ -198,41 +399,29 @@ async function ensureShotsActivity(window) {
 }
 
 async function setSceneInput(window, input) {
-  const previousFormats = clipboard.availableFormats();
-  const previousClipboard = previousFormats.map((format) => [
-    format,
-    clipboard.readBuffer(format),
-  ]);
-  const previousText = clipboard.readText();
-  try {
-    clipboard.writeText(input);
-    await window.webContents.executeJavaScript(`(() => {
-      const textarea = document.querySelector('[data-testid="scene-creation-input"]');
-      if (!(textarea instanceof HTMLTextAreaElement)) {
-        throw new Error('Structured scene input did not render.');
-      }
-      textarea.focus();
-      textarea.setSelectionRange(0, textarea.value.length);
-    })()`);
-    window.webContents.paste();
-    await waitForDom(
-      window,
-      `document.querySelector('[data-testid="scene-creation-input"]')?.value === ${JSON.stringify(input)}`,
-      'Pasting the structured scene request did not fill the production input.',
-    );
-  } finally {
-    try {
-      clipboard.clear();
-      for (const [format, buffer] of previousClipboard) {
-        clipboard.writeBuffer(format, buffer);
-      }
-    } catch {
-      clipboard.clear();
-      clipboard.writeText(previousText);
+  console.log('[issue854] Filling structured scene input.');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="scene-creation-input"]') instanceof HTMLTextAreaElement`,
+    'Structured scene input was not ready to receive the request.',
+  );
+  await window.webContents.executeJavaScript(`(() => {
+    const textarea = document.querySelector('[data-testid="scene-creation-input"]');
+    if (!(textarea instanceof HTMLTextAreaElement)) {
+      throw new Error('Structured scene input did not render.');
     }
-  }
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    setter.call(textarea, ${JSON.stringify(input)});
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    textarea.focus();
+  })()`);
+  console.log('[issue854] Structured scene input event dispatched.');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="scene-creation-input"]')?.value === ${JSON.stringify(input)}`,
+    'The structured scene request did not fill the production input.',
+  );
 }
-
 async function readUiState(window, characterLayerId = null) {
   return window.webContents.executeJavaScript(`(() => {
     const stage = document.querySelector('[data-testid="project-canvas-stage"]');
@@ -350,6 +539,16 @@ async function openQuickActions(window) {
 
 async function saveProject(window) {
   await openQuickActions(window);
+  const state = await readUiState(window);
+  if (state.saveState === 'saved') return;
+  if (state.saveState === 'saving') {
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.saveState === 'saved'`,
+      'The Project did not finish its current save.',
+    );
+    return;
+  }
   await click(window, '[data-testid="quick-action-save"]');
   await waitForDom(
     window,
@@ -368,7 +567,7 @@ async function openProjectCenter(window) {
   );
 }
 
-async function openProject(window) {
+async function openProject(window, targetProjectRoot = activeProjectRoot) {
   if (
     await window.webContents.executeJavaScript(
       `Boolean(document.querySelector('[data-editor-page="editor"]'))`,
@@ -384,7 +583,7 @@ async function openProject(window) {
   await window.webContents.executeJavaScript(`(() => {
     const input = document.querySelector('[data-testid="project-center-screen"] .recovery-open-row input');
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-    setter.call(input, ${JSON.stringify(projectRoot)});
+    setter.call(input, ${JSON.stringify(targetProjectRoot)});
     input.dispatchEvent(new Event('input', { bubbles: true }));
     document.querySelector('[data-testid="project-center-screen"] .recovery-open-row button').click();
   })()`);
@@ -546,9 +745,9 @@ async function verifyExistingManualShot(window, sample) {
   };
 }
 
-function readProjectFile() {
+function readProjectFile(targetProjectRoot = activeProjectRoot) {
   return JSON.parse(
-    readFileSync(path.join(projectRoot, 'project.json'), 'utf8'),
+    readFileSync(path.join(targetProjectRoot, 'project.json'), 'utf8'),
   );
 }
 
@@ -559,18 +758,555 @@ function projectShotAndCharacter(project, shotName, characterLayerId) {
   return layer ? { shot, layer } : null;
 }
 
+function sceneInput(sample, shotName = sample.shotName) {
+  return [
+    `镜头：${shotName}`,
+    `背景：${sample.background.name}`,
+    `出场：${sample.character.name}`,
+  ].join('\n');
+}
+
+async function openStructuredCreation(window) {
+  await click(window, '[data-testid="resource-primary-action"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="shot-create-view"]')`,
+    'The normal Shot creation view did not open.',
+  );
+  await click(window, '[data-testid="shot-create-structured-input"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="scene-creation-panel"]')`,
+    'Structured scene creation did not open from the existing Shot workflow.',
+  );
+}
+
+async function inspectRealSample(window, sample, shotName = sample.shotName) {
+  await setSceneInput(window, sceneInput(sample, shotName));
+  await click(window, '[data-testid="scene-creation-inspect"]');
+  await waitForDom(
+    window,
+    `document.querySelectorAll('[data-testid="scene-creation-background-candidate"]').length === 1 && document.querySelectorAll('[data-testid="scene-creation-character-candidate"]').length === 1`,
+    'The exact-name real background and composite Character candidates did not render.',
+  );
+  try {
+    await waitForDom(
+      window,
+      `![...document.querySelectorAll('[data-testid="scene-creation-background-candidate"], [data-testid="scene-creation-character-candidate"]')].some((button) => button.disabled)`,
+      'The real sample candidate thumbnails did not become ready.',
+    );
+  } catch (error) {
+    const characterAssetIds = [
+      sample.character.bodyAssetId,
+      sample.character.head?.assetId,
+      ...sample.character.expressions.map((expression) => expression.assetId),
+    ].filter(Boolean);
+    const probeAssets = [
+      sample.background,
+      ...characterAssetIds
+        .map((assetId) => sample.project.assets.find((asset) => asset.id === assetId))
+        .filter(Boolean),
+    ];
+    const thumbnailReads = await window.webContents.executeJavaScript(
+      `Promise.all(${JSON.stringify(probeAssets.map((asset) => ({
+        projectRoot: sample.targetProjectRoot,
+        assetId: asset.id,
+        sha256: asset.sha256 ?? null,
+      })))}.map((request) => window.pandaStage.assets.readThumbnail(request)))`,
+    );
+    const diagnostics = await window.webContents.executeJavaScript(`(() => ({
+      activeActivity: document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.activeActivity ?? null,
+      scenePanelVisible: Boolean(document.querySelector('[data-testid="scene-creation-panel"]')),
+      input: document.querySelector('[data-testid="scene-creation-input"]')?.value ?? null,
+      errorMessages: [...document.querySelectorAll('.scene-creation-error')].map((node) => node.textContent?.trim() ?? ''),
+      candidates: [...document.querySelectorAll('[data-testid="scene-creation-background-candidate"], [data-testid="scene-creation-character-candidate"]')].map((button) => ({
+        kind: button.dataset.candidateKind ?? null,
+        id: button.dataset.candidateId ?? null,
+        disabled: button.disabled,
+        reason: button.querySelector('.scene-creation-candidate-reason')?.textContent?.trim() ?? null,
+        thumbnails: [...button.querySelectorAll('[data-thumbnail-status]')].map((node) => ({
+          status: node.dataset.thumbnailStatus ?? null,
+          label: node.textContent?.trim() ?? '',
+        })),
+      })),
+    }))()`);
+    await capture(window, 'candidate-thumbnail-read-failure.png');
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)} UI=${JSON.stringify(diagnostics)} THUMBNAIL_READS=${JSON.stringify(thumbnailReads).replaceAll(sample.targetProjectRoot, '<isolated project>')}`,
+      { cause: error },
+    );
+  }
+}
+
+async function prepareRealPreview(window, sample, shotName = sample.shotName) {
+  await inspectRealSample(window, sample, shotName);
+  await clickWithMouseInput(window, '[data-testid="scene-creation-preview-action"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="scene-creation-preview"]')?.dataset.previewStatus === 'ready' && document.querySelector('[data-testid="scene-creation-preview-image"]')?.naturalWidth > 0`,
+    'The real background and Character preview did not become ready.',
+  );
+}
+
+function projectResourceIdentity(project) {
+  return {
+    projectId: project.id,
+    assets: project.assets.map((asset) => asset.id).sort(),
+    characters: project.characters.map((character) => character.id).sort(),
+    shots: project.shots.map((shot) => ({
+      id: shot.id,
+      name: shot.name,
+      backgroundLayerId: shot.backgroundLayerId,
+      layers: shot.layers.map((layer) => ({
+        id: layer.id,
+        source: layer.source,
+      })),
+    })),
+  };
+}
+
+async function verifyCopyFeedback(window, sample) {
+  const previousClipboard = captureClipboardState();
+  let result;
+  let flowError;
+  try {
+    result = await verifyCopyFeedbackFlow(window, sample);
+  } catch (error) {
+    flowError = error;
+  }
+  const clipboardRestore = restoreClipboardState(previousClipboard);
+  if (flowError) throw flowError;
+  assert(clipboardRestore.textRestored, 'The verifier could not restore the prior system clipboard text.');
+  return {
+    ...result,
+    previousClipboardTextRestored: clipboardRestore.textRestored,
+    previousClipboardFormatsRestored: clipboardRestore.formatsRestored,
+  };
+}
+
+async function verifyCopyFeedbackFlow(window, sample) {
+  await openStructuredCreation(window);
+  const initialLayout = await window.webContents.executeJavaScript(`(() => {
+    const panel = document.querySelector('[data-testid="scene-creation-panel"]');
+    const button = document.querySelector('[data-testid="scene-creation-copy-prompt"]');
+    return {
+      panelHeight: panel?.getBoundingClientRect().height ?? null,
+      buttonTop: button?.getBoundingClientRect().top ?? null,
+    };
+  })()`);
+
+  const failureOverrideInstalled = await window.webContents.executeJavaScript(`(() => {
+    const clipboard = navigator.clipboard;
+    if (!clipboard || typeof clipboard.writeText !== 'function') return false;
+    const hadOwnProperty = Object.prototype.hasOwnProperty.call(clipboard, 'writeText');
+    const ownDescriptor = Object.getOwnPropertyDescriptor(clipboard, 'writeText');
+    try {
+      Object.defineProperty(clipboard, 'writeText', {
+        configurable: true,
+        value: () => Promise.reject(new Error('测试剪贴板拒绝访问。')),
+      });
+    } catch {
+      return false;
+    }
+    window.__issue858ClipboardRestore = () => {
+      if (hadOwnProperty && ownDescriptor) {
+        Object.defineProperty(clipboard, 'writeText', ownDescriptor);
+      } else {
+        delete clipboard.writeText;
+      }
+      delete window.__issue858ClipboardRestore;
+    };
+    return true;
+  })()`);
+  assert(failureOverrideInstalled, 'Could not install the isolated clipboard failure probe.');
+  let failedFeedbackScreenshot;
+  try {
+    await click(window, '[data-testid="scene-creation-copy-prompt"]');
+    try {
+      await waitForDom(
+        window,
+        `(() => { const alert = document.querySelector('[data-testid="scene-creation-panel"] output[role="alert"]'); const prompt = document.querySelector('.scene-creation-prompt-details pre'); return Boolean(alert?.textContent?.trim() && alert.getAttribute('aria-live') === 'assertive' && prompt?.textContent?.trim()); })()`,
+        'Clipboard failure did not show a persistent manual-copy recovery message.',
+      );
+    } catch (error) {
+      const diagnostics = await window.webContents.executeJavaScript(`(() => ({
+        panel: Boolean(document.querySelector('[data-testid="scene-creation-panel"]')),
+        alertText: document.querySelector('[data-testid="scene-creation-panel"] output[role="alert"]')?.textContent?.trim() ?? null,
+        statusText: document.querySelector('[data-testid="scene-creation-panel"] output[role="status"]')?.textContent?.trim() ?? null,
+        promptVisible: Boolean(document.querySelector('.scene-creation-prompt-details pre')?.textContent?.trim()),
+        activeElement: document.activeElement?.getAttribute('data-testid') ?? document.activeElement?.tagName ?? null,
+        buttonRect: (() => { const rect = document.querySelector('[data-testid="scene-creation-copy-prompt"]')?.getBoundingClientRect(); return rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null; })(),
+      }))()`);
+      const failureScreenshot = await capture(window, 'copy-feedback-failure-probe-missing.png');
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)} failureProbe=${JSON.stringify(diagnostics)} screenshot=${failureScreenshot}`,
+        { cause: error },
+      );
+    }
+    failedFeedbackScreenshot = await capture(window, 'copy-feedback-failure.png');
+    await delay(3_200);
+    const failurePersists = await window.webContents.executeJavaScript(
+      `Boolean(document.querySelector('[data-testid="scene-creation-panel"] output[role="alert"]'))`,
+    );
+    assert(failurePersists, 'The clipboard failure recovery message disappeared before a user action.');
+  } finally {
+    await window.webContents.executeJavaScript(
+      `window.__issue858ClipboardRestore?.()`,
+    );
+  }
+
+  const promptText = await window.webContents.executeJavaScript(
+    `document.querySelector('.scene-creation-prompt-details pre')?.textContent ?? null`,
+  );
+  await click(window, '[data-testid="scene-creation-copy-prompt"]');
+  await waitForDom(
+    window,
+    `Boolean(document.querySelector('[data-testid="scene-creation-panel"] output[role="status"]')?.textContent?.trim())`,
+    'Successful prompt copy did not show its transient confirmation.',
+  );
+  const rendererClipboardText = await window.webContents.executeJavaScript(
+    `navigator.clipboard.readText()`,
+  );
+  const electronClipboardText = clipboard.readText();
+  assert(
+    normalizeClipboardText(rendererClipboardText) === normalizeClipboardText(promptText) &&
+      normalizeClipboardText(electronClipboardText) === normalizeClipboardText(promptText),
+    `The real clipboard did not contain the original prompt text (prompt=${promptText.length}, renderer=${rendererClipboardText.length}, Electron=${electronClipboardText.length}).`,
+  );
+  const visibleFeedbackScreenshot = await capture(window, 'copy-feedback-visible.png');
+  const layoutWithFeedback = await window.webContents.executeJavaScript(`(() => {
+    const panel = document.querySelector('[data-testid="scene-creation-panel"]');
+    const button = document.querySelector('[data-testid="scene-creation-copy-prompt"]');
+    const feedback = document.querySelector('[data-testid="scene-creation-panel"] output[role="status"]');
+    const feedbackStyle = feedback ? getComputedStyle(feedback) : null;
+    return {
+      panelHeight: panel?.getBoundingClientRect().height ?? null,
+      buttonTop: button?.getBoundingClientRect().top ?? null,
+      position: feedbackStyle?.position ?? null,
+    };
+  })()`);
+  assert(
+    layoutWithFeedback.panelHeight === initialLayout.panelHeight &&
+      layoutWithFeedback.buttonTop === initialLayout.buttonTop &&
+      layoutWithFeedback.position === 'fixed',
+    'Transient copy feedback changed the panel or button layout instead of floating above it.',
+  );
+
+  await delay(1_450);
+  await click(window, '[data-testid="scene-creation-copy-prompt"]');
+  await delay(1_750);
+  const repeatedFeedbackRemains = await window.webContents.executeJavaScript(
+    `Boolean(document.querySelector('[data-testid="scene-creation-panel"] output[role="status"]'))`,
+  );
+  assert(repeatedFeedbackRemains, 'The previous copy timer cleared feedback after a rapid repeated click.');
+  await delay(1_450);
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="scene-creation-panel"] output[role="status"]')`,
+    'Successful copy feedback did not disappear about three seconds after the latest click.',
+    2_000,
+  );
+
+  await click(window, '[data-testid="scene-creation-copy-prompt"]');
+  await waitForDom(
+    window,
+    `Boolean(document.querySelector('[data-testid="scene-creation-panel"] output[role="status"]')?.textContent?.trim())`,
+    'The copy feedback did not reappear for a new copy action.',
+  );
+  await closeCleanProject(window);
+  await delay(3_200);
+  await openProject(window, sample.targetProjectRoot);
+  await openStructuredCreation(window);
+  const afterReopen = await window.webContents.executeJavaScript(`(() => ({
+    panel: Boolean(document.querySelector('[data-testid="scene-creation-panel"]')),
+    staleFeedback: Boolean(document.querySelector('[data-testid="scene-creation-panel"] output')),
+  }))()`);
+  assert(afterReopen.panel && !afterReopen.staleFeedback, 'Copy feedback resurfaced after leaving and reopening the editor page.');
+  const reopenedScreenshot = await capture(window, 'copy-feedback-after-reopen.png');
+  await closeCleanProject(window);
+
+  return {
+    failureVisibleAndPersistent: true,
+    recoveryTextOffersManualCopy: true,
+    promptCopiedVerbatimToRealClipboard: true,
+    successDisappearsAfterLatestClick: true,
+    repeatedClickResetsTimer: true,
+    panelLayoutUnchanged: true,
+    feedbackFloats: true,
+    leavingPageClearsFeedback: true,
+    screenshots: {
+      failure: failedFeedbackScreenshot,
+      visible: visibleFeedbackScreenshot,
+      reopened: reopenedScreenshot,
+    },
+  };
+}
+
+async function verifyStalePreview(window) {
+  const targetProjectRoot = path.join(runRoot, 'RF04 isolated stale preview.pandastage');
+  const sample = prepareSampleProject(targetProjectRoot, 'RF04 过期预览');
+  const existingShot = sample.project.shots.find((shot) =>
+    shot.layers.some((layer) => layer.source?.kind === 'character'),
+  );
+  const characterLayer = existingShot?.layers.find((layer) => layer.source?.kind === 'character');
+  assert(existingShot && characterLayer, 'The isolated sample has no existing editable Character Shot.');
+  await openProject(window, targetProjectRoot);
+  await selectShot(window, existingShot.name);
+  const beforeProjectEdit = await readUiState(window, characterLayer.id);
+  assert(
+    beforeProjectEdit.revision === 0 &&
+      beforeProjectEdit.shotCount === sample.project.shots.length &&
+      beforeProjectEdit.character,
+    `The stale-preview baseline is not a clean, read-only Project: ${JSON.stringify({
+      revision: beforeProjectEdit.revision,
+      shotCount: beforeProjectEdit.shotCount,
+      expectedShotCount: sample.project.shots.length,
+      selectedShot: beforeProjectEdit.selectedShot,
+    })}`,
+  );
+  await openStructuredCreation(window);
+  await prepareRealPreview(window, sample);
+  const previewState = await readUiState(window, characterLayer.id);
+  assert(
+    previewState.revision === beforeProjectEdit.revision &&
+      previewState.character?.x === beforeProjectEdit.character.x &&
+      previewState.undoCount === beforeProjectEdit.undoCount &&
+      previewState.saveState === beforeProjectEdit.saveState,
+    'Preparing the stale-preview scenario changed the Project or History.',
+  );
+  const previewScreenshot = await capture(window, 'rf04-stale-preview-before-edit.png');
+
+  await dragCharacter(window, characterLayer.id, 24);
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="scene-creation-panel"] [role="alert"]')?.textContent?.includes('预览已失效') && !document.querySelector('[data-testid="scene-creation-confirm"]')`,
+    'A formal canvas edit did not invalidate and remove the old preview confirmation.',
+  );
+  const afterProjectEdit = await readUiState(window, characterLayer.id);
+  assert(
+    afterProjectEdit.revision === beforeProjectEdit.revision + 1 &&
+      afterProjectEdit.character?.x !== beforeProjectEdit.character?.x &&
+      afterProjectEdit.saveState === 'dirty' &&
+      afterProjectEdit.undoCount === beforeProjectEdit.undoCount + 1,
+    `The formal canvas edit did not produce the expected single dirty History step: ${JSON.stringify({
+      before: {
+        revision: beforeProjectEdit.revision,
+        shotCount: beforeProjectEdit.shotCount,
+        characterX: beforeProjectEdit.character?.x,
+        saveState: beforeProjectEdit.saveState,
+        undoCount: beforeProjectEdit.undoCount,
+      },
+      after: {
+        revision: afterProjectEdit.revision,
+        shotCount: afterProjectEdit.shotCount,
+        characterX: afterProjectEdit.character?.x,
+        saveState: afterProjectEdit.saveState,
+        undoCount: afterProjectEdit.undoCount,
+      },
+    })}`,
+  );
+  const staleScreenshot = await capture(window, 'rf04-stale-preview-invalidated.png');
+  const beforeRecovery = await readUiState(window, characterLayer.id);
+  assert(
+    beforeRecovery.revision === afterProjectEdit.revision &&
+      beforeRecovery.undoCount === afterProjectEdit.undoCount &&
+      beforeRecovery.redoCount === afterProjectEdit.redoCount &&
+      beforeRecovery.saveState === afterProjectEdit.saveState,
+    'The unavailable stale confirm changed the Project after the real edit.',
+  );
+
+  await clickWithMouseInput(window, '[data-testid="scene-creation-panel"] .scene-creation-stale button');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="scene-creation-panel"] .scene-creation-stale') === null && document.querySelector('[data-testid="scene-creation-preview-action"]')`,
+    'Rechecking the current Project did not recover from the stale preview.',
+  );
+  await waitForDom(
+    window,
+    `![...document.querySelectorAll('[data-testid="scene-creation-background-candidate"], [data-testid="scene-creation-character-candidate"]')].some((button) => button.disabled)`,
+    'Rechecked candidates did not become available.',
+  );
+  await clickWithMouseInput(window, '[data-testid="scene-creation-preview-action"]');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="scene-creation-preview"]')?.dataset.previewStatus === 'ready'`,
+    'A new preview could not be prepared after rechecking.',
+  );
+  const afterRecovery = await readUiState(window, characterLayer.id);
+  assert(
+    afterRecovery.revision === afterProjectEdit.revision &&
+      afterRecovery.undoCount === afterProjectEdit.undoCount &&
+      afterRecovery.redoCount === afterProjectEdit.redoCount &&
+      afterRecovery.saveState === afterProjectEdit.saveState,
+    'Rechecking or preparing a replacement preview changed the Project or History.',
+  );
+  const recoveredScreenshot = await capture(window, 'rf04-stale-preview-recovered.png');
+  await saveProject(window);
+  const savedProject = readProjectFile(targetProjectRoot);
+  assert(
+    JSON.stringify(projectResourceIdentity(savedProject)) ===
+      JSON.stringify(projectResourceIdentity(sample.project)),
+    'Stale-preview handling changed existing Shot, Asset, or Character identities.',
+  );
+  assert(savedProject.shots.length === sample.project.shots.length, 'Stale confirmation created a Shot.');
+  await closeCleanProject(window);
+
+  return {
+    oldPreviewInvalidatedByFormalCanvasEdit: true,
+    staleConfirmUnavailable: true,
+    staleConfirmDidNotChangePostEditRevisionDirtyHistoryOrShotCount: true,
+    assetAndCharacterIdentitiesPreserved: true,
+    persistedShotCountAfterSave: savedProject.shots.length,
+    recheckAndReplacementPreviewRemainReadOnly: true,
+    thumbnailCacheSeeded: sample.thumbnailCache.seeded,
+    thumbnailCacheAssetHashes: sample.thumbnailCache.assetHashes,
+    screenshots: {
+      preview: previewScreenshot,
+      invalidated: staleScreenshot,
+      recovered: recoveredScreenshot,
+    },
+    beforeEdit: beforeProjectEdit,
+    afterEdit: afterProjectEdit,
+    afterStaleConfirmationCheck: beforeRecovery,
+    afterRecovery: afterRecovery,
+  };
+}
+
+async function verifyDoubleConfirm(window) {
+  console.log('[issue854] Starting RF04 double-confirm project.');
+  const targetProjectRoot = path.join(runRoot, 'RF04 isolated double confirm.pandastage');
+  const sample = prepareSampleProject(targetProjectRoot, 'RF04 连续确认');
+  await openProject(window, targetProjectRoot);
+  console.log('[issue854] RF04 double-confirm project opened.');
+  const beforeConfirm = await readUiState(window);
+  assert(
+    beforeConfirm.revision === 0 &&
+      beforeConfirm.shotCount === sample.project.shots.length,
+    `The double-confirm baseline is not a clean, read-only Project: ${JSON.stringify({
+      revision: beforeConfirm.revision,
+      shotCount: beforeConfirm.shotCount,
+      expectedShotCount: sample.project.shots.length,
+    })}`,
+  );
+  await openStructuredCreation(window);
+  console.log('[issue854] RF04 double-confirm panel opened.');
+  await prepareRealPreview(window, sample);
+  console.log('[issue854] RF04 double-confirm preview prepared.');
+  const preparedPreview = await readUiState(window);
+  assert(
+    preparedPreview.revision === beforeConfirm.revision &&
+      preparedPreview.undoCount === beforeConfirm.undoCount &&
+      preparedPreview.saveState === beforeConfirm.saveState,
+    'Preparing the double-confirm preview changed the Project or History.',
+  );
+  assert(beforeConfirm.revision === 0 && beforeConfirm.shotCount === sample.project.shots.length, 'The double-confirm baseline is not a clean, read-only Project.');
+  const beforeScreenshot = await capture(window, 'rf04-double-confirm-before.png');
+
+  await doubleClickWithMouseInput(window, '[data-testid="scene-creation-confirm"]');
+  console.log('[issue854] RF04 double-confirm input delivered.');
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="scene-creation-panel"]') && document.querySelectorAll('.shot-list-item').length === ${sample.project.shots.length + 1} && document.querySelector('.shot-list-item-selected strong')?.textContent?.trim() === ${JSON.stringify(sample.shotName)}`,
+    'Rapid real Electron confirmation did not create and select exactly one Shot.',
+  );
+  const afterConfirm = await readUiState(window);
+  assert(
+    afterConfirm.revision === beforeConfirm.revision + 1 &&
+      afterConfirm.shotCount === beforeConfirm.shotCount + 1 &&
+      afterConfirm.undoCount === beforeConfirm.undoCount + 1 &&
+      afterConfirm.redoCount === beforeConfirm.redoCount,
+    'Repeated confirmation did not produce exactly one revision and formal History step.',
+  );
+  const createdScreenshot = await capture(window, 'rf04-double-confirm-created-once.png');
+  await saveProject(window);
+  const createdProject = readProjectFile(targetProjectRoot);
+  const createdScene = createdProject.shots.find((shot) => shot.name === sample.shotName);
+  assert(createdScene, 'The one confirmed Shot was not present in the project snapshot.');
+  assert(
+    createdScene.layers.length === 2 &&
+      createdScene.backgroundLayerId !== null &&
+      createdScene.layers.some((layer) =>
+        layer.id === createdScene.backgroundLayerId &&
+        layer.source?.kind === 'asset' &&
+        layer.source.assetId === sample.background.id,
+      ) &&
+      createdScene.layers.filter((layer) =>
+        layer.source?.kind === 'character' &&
+        layer.source.characterId === sample.character.id,
+      ).length === 1,
+    'Repeated confirmation did not create exactly the expected background and Character layers.',
+  );
+
+  await openQuickActions(window);
+  await clickWithMouseInput(window, '[data-testid="history-controls"] button[aria-label="撤销"]');
+  await waitForDom(
+    window,
+    `document.querySelectorAll('.shot-list-item').length === ${sample.project.shots.length} && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '1'`,
+    'One Undo did not remove the entire single generated scene.',
+  );
+  const undone = await readUiState(window);
+  assert(undone.revision === afterConfirm.revision + 1, 'Undo after repeated confirmation had an unexpected revision.');
+  const undoScreenshot = await capture(window, 'rf04-double-confirm-undo.png');
+  await clickWithMouseInput(window, '[data-testid="history-controls"] button[aria-label="重做"]');
+  await waitForDom(
+    window,
+    `document.querySelectorAll('.shot-list-item').length === ${sample.project.shots.length + 1} && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '0'`,
+    'One Redo did not restore the single generated scene.',
+  );
+  const redone = await readUiState(window);
+  assert(redone.shotCount === sample.project.shots.length + 1, 'Redo restored more than one Shot.');
+  const redoScreenshot = await capture(window, 'rf04-double-confirm-redo.png');
+  await saveProject(window);
+  const savedProject = readProjectFile(targetProjectRoot);
+  const savedScene = savedProject.shots.find((shot) => shot.name === sample.shotName);
+  assert(savedProject.shots.length === sample.project.shots.length + 1 && savedScene, 'The confirmed scene did not persist exactly once.');
+  await closeCleanProject(window);
+
+  return {
+    realElectronDoubleClick: true,
+    oneShotOneBackgroundLayerOneCharacterLayer: true,
+    oneRevisionAndOneHistoryStep: true,
+    singleUndoRemovesScene: true,
+    singleRedoRestoresScene: true,
+    saveAfterRedoPreservesOneScene: true,
+    thumbnailCacheSeeded: sample.thumbnailCache.seeded,
+    thumbnailCacheAssetHashes: sample.thumbnailCache.assetHashes,
+    screenshots: {
+      before: beforeScreenshot,
+      createdOnce: createdScreenshot,
+      undo: undoScreenshot,
+      redo: redoScreenshot,
+    },
+    beforeConfirm,
+    afterConfirm,
+    afterUndo: undone,
+    afterRedo: redone,
+  };
+}
+
 async function run() {
   mkdirSync(evidenceRoot, { recursive: true });
-  const sample = prepareSampleProject();
+  activeProjectRoot = primaryProjectRoot;
+  const sample = prepareSampleProject(primaryProjectRoot, 'AC03 真实验收');
   assert(!sample.project.shots.some((shot) => shot.name === sample.shotName), 'The generated Shot name already exists.');
   windowRef = await waitForMainWindow();
   windowRef.setSize(1600, 1050);
   windowRef.show();
   windowRef.focus();
   windowRef.webContents.focus();
-  await openProject(windowRef);
+  await openProject(windowRef, sample.targetProjectRoot);
+  const copyFeedback = await verifyCopyFeedback(windowRef, sample);
+  console.log('[issue854] RF02 copy feedback passed.');
+  const stalePreview = await verifyStalePreview(windowRef);
+  console.log('[issue854] RF04 stale-preview path passed.');
+  const doubleConfirm = await verifyDoubleConfirm(windowRef);
+  console.log('[issue854] RF04 double-confirm and History path passed.');
+  activeProjectRoot = sample.targetProjectRoot;
+  await openProject(windowRef, sample.targetProjectRoot);
   const existingManualFlow = await verifyExistingManualShot(windowRef, sample);
+  console.log('[issue854] Existing Shot manual edit path passed.');
 
+  console.log('[issue854] Starting original AC03 structured-creation path.');
   await click(windowRef, '[data-testid="resource-primary-action"]');
   await waitForDom(
     windowRef,
@@ -737,8 +1473,10 @@ async function run() {
 
   return {
     issue: 854,
+    reviewFixIssue: 858,
     acceptance: 'AC03_REAL_WINDOWS_ELECTRON_HAPPY_UNDO_REDO_REOPEN_EDIT',
-    inputMethod: 'System clipboard paste through production Electron textarea; previous clipboard formats are restored.',
+    additionalAcceptance: 'ISSUE858_RF01_RF02_RF04_CURRENT_HEAD',
+    inputMethod: 'Deterministic renderer textarea input event; browser and Electron clipboard contents are checked after copying, while native Electron mouse input drives canvas edits and scene confirmation.',
     passed: true,
     codeHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     generatedAt: new Date().toISOString(),
@@ -753,6 +1491,17 @@ async function run() {
     humanAcceptance: false,
     sourcePathsOmitted: true,
     sourceProjectUnchanged: sample.sourceProjectHashBefore === sourceProjectHashAfter,
+    frozenFixture: {
+      projectId: sample.project.id,
+      projectJsonSha256: sample.sourceProjectHashBefore,
+      thumbnailCacheSeeded: sample.thumbnailCache.seeded,
+      thumbnailCacheAssetHashes: sample.thumbnailCache.assetHashes,
+    },
+    reviewFix: {
+      copyFeedback,
+      stalePreview,
+      doubleConfirm,
+    },
     project: {
       id: sample.project.id,
       root: '<isolated acceptance project>',
@@ -835,6 +1584,16 @@ async function run() {
       existingShotBeforeManualEdit: existingManualFlow.screenshots.before,
       existingShotManualEdit: existingManualFlow.screenshots.adjusted,
       existingShotSavedReopened: existingManualFlow.screenshots.reopened,
+      copyFailure: copyFeedback.screenshots.failure,
+      copySuccess: copyFeedback.screenshots.visible,
+      copyAfterReopen: copyFeedback.screenshots.reopened,
+      stalePreview: stalePreview.screenshots.preview,
+      stalePreviewInvalidated: stalePreview.screenshots.invalidated,
+      stalePreviewRecovered: stalePreview.screenshots.recovered,
+      doubleConfirmBefore: doubleConfirm.screenshots.before,
+      doubleConfirmCreatedOnce: doubleConfirm.screenshots.createdOnce,
+      doubleConfirmUndo: doubleConfirm.screenshots.undo,
+      doubleConfirmRedo: doubleConfirm.screenshots.redo,
     },
     receiptPath: '<isolated acceptance receipt>',
   };
@@ -849,7 +1608,9 @@ async function main() {
   } catch (error) {
     output = {
       issue: 854,
+      reviewFixIssue: 858,
       acceptance: 'AC03_REAL_WINDOWS_ELECTRON_HAPPY_UNDO_REDO_REOPEN_EDIT',
+      additionalAcceptance: 'ISSUE858_RF01_RF02_RF04_CURRENT_HEAD',
       passed: false,
       codeHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
       error: error instanceof Error ? error.stack ?? error.message : String(error),

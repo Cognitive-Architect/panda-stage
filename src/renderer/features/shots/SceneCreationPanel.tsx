@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   SceneCreationError,
   SceneCreationService,
+  hasShotNameConflict,
   type Asset,
   type Character,
   type Project,
@@ -347,8 +348,11 @@ export function SceneCreationPanel({
   >({});
   const [errorMessage, setErrorMessage] = useState('');
   const [copyMessage, setCopyMessage] = useState('');
+  const [copyMessageIsError, setCopyMessageIsError] = useState(false);
   const [committing, setCommitting] = useState(false);
   const commitInProgress = useRef(false);
+  const copyMessageTimerRef = useRef<number | null>(null);
+  const copyRequestIdRef = useRef(0);
   const currentProject = snapshot?.project ?? null;
   const resolvedCandidateAssets = useMemo(
     () => candidateAssets(currentProject, inspection?.resolution ?? null),
@@ -368,9 +372,36 @@ export function SceneCreationPanel({
   const shotNameConflict = Boolean(
     inspectionMatchesInput &&
       inspection &&
-      snapshot?.project.shots.some(
-        (shot) => shot.name === inspection.resolution.input.shotName,
+      snapshot &&
+      hasShotNameConflict(
+        snapshot.project.shots,
+        inspection.resolution.input.shotName,
       ),
+  );
+
+  const clearCopyMessageTimer = (): void => {
+    if (copyMessageTimerRef.current !== null) {
+      window.clearTimeout(copyMessageTimerRef.current);
+      copyMessageTimerRef.current = null;
+    }
+  };
+
+  const clearCopyFeedback = (): void => {
+    copyRequestIdRef.current += 1;
+    clearCopyMessageTimer();
+    setCopyMessage('');
+    setCopyMessageIsError(false);
+  };
+
+  useEffect(
+    () => () => {
+      copyRequestIdRef.current += 1;
+      if (copyMessageTimerRef.current !== null) {
+        window.clearTimeout(copyMessageTimerRef.current);
+        copyMessageTimerRef.current = null;
+      }
+    },
+    [],
   );
 
   useEffect(() => {
@@ -429,6 +460,7 @@ export function SceneCreationPanel({
   }, [candidateAssetKey, resolvedCandidateAssets, snapshot?.projectRoot]);
 
   const inspectInput = (): void => {
+    clearCopyFeedback();
     if (!snapshot) {
       setErrorMessage('请先打开项目。');
       return;
@@ -450,7 +482,6 @@ export function SceneCreationPanel({
       });
       setPreviewPlan(null);
       setErrorMessage('');
-      setCopyMessage('');
     } catch (error) {
       setInspection(null);
       setPreviewPlan(null);
@@ -461,6 +492,7 @@ export function SceneCreationPanel({
   const previewScene = (): void => {
     if (!inspection || !inspectionMatchesInput || stale || shotNameConflict) return;
     if (!inspection.selectedBackgroundId || !inspection.selectedCharacterId) return;
+    clearCopyFeedback();
     try {
       const plan = prepareSceneCreationPreview(
         inspection.rawInput,
@@ -481,6 +513,7 @@ export function SceneCreationPanel({
   const confirmScene = (): void => {
     const plan = previewPlan;
     if (!plan || stale || commitInProgress.current) return;
+    clearCopyFeedback();
     commitInProgress.current = true;
     setCommitting(true);
     try {
@@ -505,23 +538,37 @@ export function SceneCreationPanel({
   };
 
   const copyExternalPrompt = async (): Promise<void> => {
+    const requestId = copyRequestIdRef.current + 1;
+    copyRequestIdRef.current = requestId;
+    clearCopyMessageTimer();
     setCopyMessage('');
+    setCopyMessageIsError(false);
     try {
       if (!navigator.clipboard?.writeText) {
         throw new Error('此环境无法访问剪贴板。');
       }
       await navigator.clipboard.writeText(EXTERNAL_SCENE_ORGANIZATION_PROMPT);
+      if (copyRequestIdRef.current !== requestId) return;
       setCopyMessage('整理提示词已复制。');
+      copyMessageTimerRef.current = window.setTimeout(() => {
+        if (copyRequestIdRef.current === requestId) {
+          setCopyMessage('');
+          copyMessageTimerRef.current = null;
+        }
+      }, 3_000);
     } catch (error) {
+      if (copyRequestIdRef.current !== requestId) return;
       setCopyMessage(
         error instanceof Error
           ? `${error.message}可手动复制提示词。`
           : '无法复制提示词，请手动选择复制。',
       );
+      setCopyMessageIsError(true);
     }
   };
 
   const selectBackground = (assetId: string): void => {
+    clearCopyFeedback();
     setInspection((current) =>
       current ? { ...current, selectedBackgroundId: assetId } : current,
     );
@@ -530,6 +577,7 @@ export function SceneCreationPanel({
   };
 
   const selectCharacter = (characterId: string): void => {
+    clearCopyFeedback();
     setInspection((current) =>
       current ? { ...current, selectedCharacterId: characterId } : current,
     );
@@ -565,7 +613,7 @@ export function SceneCreationPanel({
             setInspection(null);
             setPreviewPlan(null);
             setErrorMessage('');
-            setCopyMessage('');
+            clearCopyFeedback();
           }}
           placeholder={'镜头：花园相遇\n背景：花园\n出场：张三'}
           spellCheck={false}
@@ -595,7 +643,11 @@ export function SceneCreationPanel({
         </button>
       </div>
       {copyMessage ? (
-        <output aria-live="polite" className="scene-creation-copy-status">
+        <output
+          aria-live={copyMessageIsError ? 'assertive' : 'polite'}
+          className={`scene-creation-copy-status${copyMessageIsError ? ' scene-creation-copy-status-error' : ''}`}
+          role={copyMessageIsError ? 'alert' : 'status'}
+        >
           {copyMessage}
         </output>
       ) : null}
