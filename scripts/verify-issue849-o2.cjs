@@ -622,7 +622,21 @@ async function main() {
     candidateFingerprint = makeCandidateFingerprint(exported.candidate);
     assert(exported.candidate.revision === PREPARATION_REVISION, 'Frozen candidate revision drifted.');
     assert(exported.candidate.dirtyAtCapture === false, 'Frozen candidate dirty state drifted.');
-    assert(exported.candidate.mediaManifest.length === project.assets.length, 'Frozen media manifest omitted a Project asset.');
+    const frozenMediaManifest = exported.candidate.mediaManifest;
+    assert(Array.isArray(frozenMediaManifest) && frozenMediaManifest.length > 0 &&
+      frozenMediaManifest.length <= beforeInputs.projectAssets.length,
+    'Frozen media manifest has an invalid Project asset count.');
+    const sourceAssetsById = new Map(beforeInputs.projectAssets.map((asset) => [asset.assetId, asset]));
+    const frozenAssetIds = new Set();
+    for (const frozenAsset of frozenMediaManifest) {
+      const sourceAsset = sourceAssetsById.get(frozenAsset.assetId);
+      assert(!frozenAssetIds.has(frozenAsset.assetId),
+        `Frozen media manifest contains duplicate asset ${frozenAsset.assetId}.`);
+      assert(sourceAsset && sourceAsset.sha256 === frozenAsset.sha256 &&
+        sourceAsset.byteLength === frozenAsset.byteLength,
+      `Frozen media asset ${frozenAsset.assetId} does not match the Project input hash.`);
+      frozenAssetIds.add(frozenAsset.assetId);
+    }
 
     const formalInvokeStartedAt = performance.now();
     timeout = setTimeout(() => {

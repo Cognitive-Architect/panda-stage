@@ -242,8 +242,22 @@ async function readReceipt(mode, runName) {
   assert(receipt.cleanup?.ffmpegActiveProcessCount === 0,
     `${mode}: FFmpeg left an active child process after cleanup.`);
   assert(receipt.cleanup?.cancellationElapsedMs < 30_000, `${mode}: cancellation exceeded 30 seconds.`);
-  assert(receipt.frozenCandidate?.mediaManifest?.length === receipt.projectInputBefore?.projectAssets?.length,
-    `${mode}: frozen media manifest does not cover the Project assets.`);
+  const mediaManifest = receipt.frozenCandidate?.mediaManifest;
+  const projectAssets = receipt.projectInputBefore?.projectAssets;
+  assert(Array.isArray(mediaManifest) && mediaManifest.length > 0 &&
+    Array.isArray(projectAssets) && mediaManifest.length <= projectAssets.length,
+  `${mode}: frozen media manifest has an invalid Project asset count.`);
+  const projectAssetsById = new Map(projectAssets.map((asset) => [asset.assetId, asset]));
+  const frozenAssetIds = new Set();
+  for (const frozenAsset of mediaManifest) {
+    const projectAsset = projectAssetsById.get(frozenAsset.assetId);
+    assert(!frozenAssetIds.has(frozenAsset.assetId),
+      `${mode}: frozen media manifest contains duplicate asset ${frozenAsset.assetId}.`);
+    assert(projectAsset && projectAsset.sha256 === frozenAsset.sha256 &&
+      projectAsset.byteLength === frozenAsset.byteLength,
+    `${mode}: frozen media asset ${frozenAsset.assetId} does not match the Project input hash.`);
+    frozenAssetIds.add(frozenAsset.assetId);
+  }
   assert(receipt.cameraMode === 'speaker-focus', `${mode}: camera mode was ${receipt.cameraMode}.`);
   assert(receipt.probe?.codecName === 'h264', `${mode}: ExportService probe did not report H.264.`);
   assert(receipt.probe?.pixelFormat === 'yuv420p', `${mode}: ExportService probe did not report yuv420p.`);
