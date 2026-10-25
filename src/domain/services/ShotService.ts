@@ -37,6 +37,18 @@ function normalizedName(name: string): string {
   return name.trim().toLocaleLowerCase();
 }
 
+export function hasShotNameConflict(
+  shots: readonly Pick<Shot, 'id' | 'name'>[],
+  rawName: string,
+  ignoredShotId?: string,
+): boolean {
+  const normalized = normalizedName(rawName);
+  return shots.some(
+    (shot) =>
+      shot.id !== ignoredShotId && normalizedName(shot.name) === normalized,
+  );
+}
+
 function maximumContentEndMs(shot: Shot): number {
   return Math.max(
     0,
@@ -192,13 +204,7 @@ export class ShotService {
     ignoredShotId?: string,
   ): string {
     const name = rawName.trim();
-    if (
-      project.shots.some(
-        (shot) =>
-          shot.id !== ignoredShotId &&
-          normalizedName(shot.name) === normalizedName(name),
-      )
-    ) {
+    if (hasShotNameConflict(project.shots, name, ignoredShotId)) {
       throw new ShotServiceError(
         'DUPLICATE_SHOT_NAME',
         `镜头名称“${name}”已存在，请使用不同名称。`,

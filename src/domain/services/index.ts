@@ -5,5 +5,6 @@ export * from './ExpressionEventService';
 export * from './LayerService';
 export * from './PositionProjectService';
 export * from './ShotService';
+export * from './SceneCreationService';
 export * from './SubtitleStyleService';
 export * from './AssetService';

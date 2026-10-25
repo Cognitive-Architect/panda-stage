@@ -357,6 +357,7 @@
         ],
         "testPatterns": [
           "tests/unit/domain/**",
+          "tests/unit/scene-creation-service.test.ts",
           "tests/unit/position-authoring-session.test.ts",
           "tests/unit/position-project-service.test.ts",
           "tests/unit/speaker-focus-camera.test.ts",
@@ -371,6 +372,7 @@
           "tests/integration/layer-placement-lifecycle.test.ts",
           "tests/integration/layer-transform-lifecycle.test.ts",
           "tests/integration/project-lifecycle.test.ts",
+          "tests/integration/scene-creation-lifecycle.test.ts",
           "tests/integration/day14-lifecycle.test.ts",
           "tests/contract/fixtures/ci-routing/core/**",
           "tests/unit/ipc-contracts.test.ts",
@@ -392,7 +394,7 @@
         "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "architecture",
-        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #828 lifecycle and audio source-range tests remain here without broad test globs; other unregistered test paths stay fail-closed."
+        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #852 scene-creation, Issue #828 lifecycle, and audio source-range tests remain here without broad test globs; other unregistered test paths stay fail-closed."
       },
       {
         "id": "release-export-core",
@@ -487,10 +489,13 @@
       {
         "id": "shots",
         "sourcePatterns": ["src/renderer/features/shots/**"],
-        "testPatterns": ["tests/unit/shot-*.test.ts", "tests/integration/shot-*.test.ts"],
+        "testPatterns": ["tests/unit/shot-*.test.ts", "tests/unit/scene-creation-panel.test.ts", "tests/integration/shot-*.test.ts"],
         "verifierPatterns": [
           "scripts/verify-day20*",
-          "scripts/verify-issue608-shot-thumbnail.cjs"
+          "scripts/verify-issue608-shot-thumbnail.cjs",
+          "scripts/verify-issue853-scene-creation.cjs",
+          "scripts/verify-issue860-ui01.cjs",
+          "scripts/verify-issue854-v0-acceptance.cjs"
         ],
         "suites": ["shot"],
         "riskPolicy": "targeted",
@@ -688,7 +693,7 @@
       }
     ]
   },
-  "count": 89,
+  "count": 92,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1649,6 +1654,42 @@
       "owner": "shot",
       "supersedes": null,
       "notes": "Bounded Issue #608 Electron proof for actual base Body + Face Shot thumbnails, rendered pixels, fingerprint refresh, and missing-part retry."
+    },
+    {
+      "id": "issue853-scene-creation",
+      "script": "verify:issue853-scene-creation",
+      "suite": "shot",
+      "subsystem": "shot",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "shot",
+      "supersedes": null,
+      "notes": "Bounded Issue #853 Electron proof for exact-name ambiguous candidate choice, read-only composed preview, and explicit Shot confirmation; synthetic fixture screenshots are not owner human acceptance."
+    },
+    {
+      "id": "issue860-ui01",
+      "script": "verify:issue860-ui01",
+      "suite": "shot",
+      "subsystem": "shot",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "shot",
+      "supersedes": null,
+      "notes": "Focused Issue #860 UI-01 Electron proof for list-level manual/automatic routes, no-mutation return paths, and wide/portrait screenshots using isolated synthetic projects; not OWNER human acceptance."
+    },
+    {
+      "id": "issue854-v0-acceptance",
+      "script": "verify:issue854-v0-acceptance",
+      "suite": "shot",
+      "subsystem": "shot",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "shot",
+      "supersedes": null,
+      "notes": "Bounded Issue #854 real Windows Electron acceptance of existing Shot manual-edit regression and the V0 scene creation, canvas adjustment, Undo/Redo, save/reopen/edit chain; screenshots and receipt are written only to D:\\\\PandaStage-Acceptance and do not represent OWNER human acceptance."
     },
     {
       "id": "issue609-character-assembly",
