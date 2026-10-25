@@ -96,6 +96,13 @@ describe('Konva scene pixel-ratio ownership', () => {
     expect(unchanged.batchDraw).not.toHaveBeenCalled();
   });
 
+  it('can change a hidden export backing-store ratio without scheduling a batch draw', () => {
+    const target = layerWithPixelRatio(1);
+    configureKonvaScenePixelRatio(target.layer, 1.5, false);
+    expect(target.setPixelRatio).toHaveBeenCalledWith(1.5);
+    expect(target.batchDraw).not.toHaveBeenCalled();
+  });
+
   it('rejects invalid per-layer ratios', () => {
     const target = layerWithPixelRatio(1);
     expect(() => configureKonvaScenePixelRatio(target.layer, 0)).toThrow(

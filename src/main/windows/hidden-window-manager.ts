@@ -16,6 +16,12 @@ import {
   type ExportProbeLoaded,
   type ExportRenderFrameRequest,
 } from '../../shared/export-types';
+import {
+  EXPORT_DRAW_MODE_QUERY_PARAM,
+  EXPORT_FRAME_TIMING_QUERY_PARAM,
+  resolveFormalExportDrawMode,
+  type ExportDrawMode,
+} from '../../shared/export-draw-mode';
 import { IPC_CHANNELS } from '../../shared/ipc/channels';
 
 const READY_TIMEOUT_MS = 10_000;
@@ -30,6 +36,9 @@ interface PendingRequest<TRequest, TResponse> {
 }
 
 export class HiddenWindowManager {
+  private readonly frameTiming: boolean;
+  private nextFormalDrawMode: ExportDrawMode;
+  private windowDrawMode: ExportDrawMode | null = null;
   private window: BrowserWindow | null = null;
   private readyResolve: (() => void) | null = null;
   private readyReject: ((error: Error) => void) | null = null;
@@ -49,22 +58,34 @@ export class HiddenWindowManager {
   > | null = null;
   private readonly cancelledJobIds = new Set<string>();
 
+  constructor(
+    options: { formalDrawMode?: ExportDrawMode; frameTiming?: boolean } = {},
+  ) {
+    this.frameTiming = options.frameTiming ?? false;
+    this.nextFormalDrawMode =
+      options.formalDrawMode ??
+      resolveFormalExportDrawMode(process.env.PANDA_STAGE_EXPORT_DRAW_MODE);
+  }
+
   getDiagnostics(): {
     windowOpen: boolean;
     loadedJobId: string | null;
     pendingLoadJobId: string | null;
     pendingFrameJobId: string | null;
+    drawMode: ExportDrawMode | null;
   } {
     return {
       windowOpen: this.getWindow() !== null,
       loadedJobId: this.loadedJobId,
       pendingLoadJobId: this.pendingLoad?.request.jobId ?? null,
       pendingFrameJobId: this.pendingFrame?.request.jobId ?? null,
+      drawMode: this.windowDrawMode,
     };
   }
 
-  async prepareJob(): Promise<void> {
-    await this.create();
+  async prepareJob(kind: 'probe' | 'formal' = 'probe'): Promise<void> {
+    const drawMode = kind === 'formal' ? this.nextFormalDrawMode : 'legacy-raf';
+    await this.create(drawMode);
   }
 
   releaseJob(): void {
@@ -75,9 +96,12 @@ export class HiddenWindowManager {
     return this.window && !this.window.isDestroyed() ? this.window : null;
   }
 
-  async create(): Promise<BrowserWindow> {
+  async create(drawMode: ExportDrawMode = 'legacy-raf'): Promise<BrowserWindow> {
     const existingWindow = this.getWindow();
     if (existingWindow) {
+      if (this.windowDrawMode !== drawMode) {
+        throw new Error('Hidden window draw mode cannot change during a Job.');
+      }
       return existingWindow;
     }
 
@@ -102,10 +126,12 @@ export class HiddenWindowManager {
       },
     });
     this.window = window;
+    this.windowDrawMode = drawMode;
 
     window.once('closed', () => {
       if (this.window === window) {
         this.window = null;
+        this.windowDrawMode = null;
       }
       this.rejectReady(new Error('Hidden window closed before ready.'));
       this.rejectPendingRequests(
@@ -116,10 +142,22 @@ export class HiddenWindowManager {
     try {
       const developmentUrl = process.env.VITE_DEV_SERVER_URL;
       if (developmentUrl) {
-        await window.loadURL(new URL('hidden.html', developmentUrl).toString());
+        const hiddenUrl = new URL('hidden.html', developmentUrl);
+        hiddenUrl.searchParams.set(EXPORT_DRAW_MODE_QUERY_PARAM, drawMode);
+        if (this.frameTiming) {
+          hiddenUrl.searchParams.set(EXPORT_FRAME_TIMING_QUERY_PARAM, 'true');
+        }
+        await window.loadURL(hiddenUrl.toString());
       } else {
+        const query = {
+          [EXPORT_DRAW_MODE_QUERY_PARAM]: drawMode,
+          ...(this.frameTiming
+            ? { [EXPORT_FRAME_TIMING_QUERY_PARAM]: 'true' }
+            : {}),
+        };
         await window.loadFile(
           path.join(__dirname, '../../../dist/renderer/hidden.html'),
+          { query },
         );
       }
 
@@ -166,6 +204,10 @@ export class HiddenWindowManager {
     rawRequest: ExportLoadFormalRequest,
   ): Promise<ExportFormalLoaded> {
     const request = ExportLoadFormalRequestSchema.parse(rawRequest) as ExportLoadFormalRequest;
+    console.info('Hidden formal export draw mode selected.', {
+      jobId: request.jobId,
+      drawMode: this.windowDrawMode,
+    });
     this.cancelledJobIds.delete(request.jobId);
     const window = this.requireWindow();
     if (this.pendingLoad || this.pendingFormalLoad || this.pendingFrame) {
@@ -297,6 +339,12 @@ export class HiddenWindowManager {
       );
     }
 
+    if (this.windowDrawMode === 'explicit-sync') {
+      // The current Job still fails and is cleaned up. Only the next formal
+      // Job may use the retained rAF mode.
+      this.nextFormalDrawMode = 'legacy-raf';
+    }
+
     clearTimeout(pending.timeout);
     this.pendingFrame = null;
     pending.reject(
@@ -348,6 +396,7 @@ export class HiddenWindowManager {
     this.rejectReady(cleanupError);
     this.rejectPendingRequests(cleanupError);
     this.loadedJobId = null;
+    this.windowDrawMode = null;
     this.cancelledJobIds.clear();
     const window = this.getWindow();
     this.window = null;

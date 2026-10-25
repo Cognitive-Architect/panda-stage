@@ -35,7 +35,7 @@ export interface FrameRenderer {
   loadFormal?(request: ExportLoadFormalRequest): Promise<{ jobId: string; acknowledged: true }>;
   renderFrame(request: ExportRenderFrameRequest): Promise<ExportFrameReady>;
   cancelJob(jobId: string): boolean;
-  prepareJob?(): Promise<void>;
+  prepareJob?(kind?: 'probe' | 'formal'): Promise<void>;
   releaseJob?(jobId: string): void;
 }
 
@@ -369,7 +369,7 @@ export class ExportService {
           request.projectDirectory,
         );
       this.throwIfCancelled(active);
-      await this.renderer.prepareJob?.();
+      await this.renderer.prepareJob?.('probe');
       rendererPrepared = true;
       this.throwIfCancelled(active);
       jobDirectory = await this.fileSystem.createJobDirectory(active.jobId);
@@ -507,7 +507,7 @@ export class ExportService {
         resolvedOutputPath,
       );
       this.throwIfCancelled(active);
-      await this.renderer.prepareJob?.();
+      await this.renderer.prepareJob?.('formal');
       rendererPrepared = true;
       this.throwIfCancelled(active);
       jobDirectory = await this.fileSystem.createJobDirectory(active.jobId);

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Konva from 'konva';
 import {
   evaluateShotAtTime,
   evaluateSpeakerFocusCamera,
@@ -11,6 +12,11 @@ import type {
   ExportLoadProbeRequest,
   ExportRenderFrameRequest,
 } from '../shared/export-types';
+import {
+  EXPORT_DRAW_MODE_QUERY_PARAM,
+  EXPORT_FRAME_TIMING_QUERY_PARAM,
+  parseExportDrawMode,
+} from '../shared/export-draw-mode';
 import {
   PROBE_CHARACTER_ASSET_ID,
   PROBE_CHARACTER_LAYER_ID,
@@ -27,9 +33,25 @@ import {
   resolveProductPreviewSubtitleStyle,
 } from '../renderer/shell/productPreviewModel';
 import {
+  isExactExportFrameDrawn,
   isExactExportFrameReady,
   readExportStageReadiness,
 } from './export-frame-readiness';
+import { captureExportStageCanvas } from './stage-capture';
+
+const exportStageDrawMode = parseExportDrawMode(
+  new URLSearchParams(window.location.search).get(EXPORT_DRAW_MODE_QUERY_PARAM),
+) ?? 'legacy-raf';
+const exportFrameTimingEnabled =
+  new URLSearchParams(window.location.search).get(
+    EXPORT_FRAME_TIMING_QUERY_PARAM,
+  ) === 'true';
+
+if (exportStageDrawMode === 'explicit-sync') {
+  // This hidden renderer has its own Chromium process; editor Preview retains
+  // Konva's normal automatic and rAF-scheduled drawing behavior.
+  Konva.autoDrawEnabled = false;
+}
 
 function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
@@ -106,6 +128,7 @@ export function ExportRendererApp(): React.JSX.Element {
   const pendingLoadRef = useRef<ExportLoadProbeRequest | null>(null);
   const pendingFormalLoadRef = useRef<ExportLoadFormalRequest | null>(null);
   const activeFrameRef = useRef<ExportRenderFrameRequest | null>(null);
+  const activeFrameStartedAtRef = useRef<number | null>(null);
   const captureInFlightRef = useRef(false);
   const cancelledJobIdsRef = useRef(new Set<string>());
 
@@ -194,6 +217,7 @@ export function ExportRendererApp(): React.JSX.Element {
   const failFrame = useCallback(
     (request: ExportRenderFrameRequest, error: unknown) => {
       activeFrameRef.current = null;
+      activeFrameStartedAtRef.current = null;
       captureInFlightRef.current = false;
       window.pandaStageHidden.frameFailed({
         jobId: request.jobId,
@@ -286,6 +310,7 @@ export function ExportRendererApp(): React.JSX.Element {
           return;
         }
         activeFrameRef.current = request;
+        activeFrameStartedAtRef.current = performance.now();
         stageReadyRef.current = false;
         setFrameRequest(request);
       },
@@ -309,6 +334,7 @@ export function ExportRendererApp(): React.JSX.Element {
         }
         if (activeFrameRef.current?.jobId === jobId) {
           activeFrameRef.current = null;
+          activeFrameStartedAtRef.current = null;
           captureInFlightRef.current = false;
           setFrameRequest(null);
         }
@@ -335,7 +361,7 @@ export function ExportRendererApp(): React.JSX.Element {
     [failFrame],
   );
 
-  const handleStageReady = useCallback(() => {
+  const handleStageReady = useCallback((stageInstance: Konva.Stage) => {
     stageReadyRef.current = true;
 
     if (!readyAnnouncedRef.current) {
@@ -378,11 +404,26 @@ export function ExportRendererApp(): React.JSX.Element {
       failFrame(activeFrame, new Error('Hidden stage element not found.'));
       return;
     }
-    if (!isExactExportFrameReady(readExportStageReadiness(stage), activeFrame)) {
+    const readiness = readExportStageReadiness(stage);
+    const exactFrameReady = isExactExportFrameReady(readiness, activeFrame);
+    const layerCount = stageInstance.getLayers().length;
+    const exactFrameDrawn =
+      exportStageDrawMode !== 'explicit-sync' ||
+      (isExactExportFrameDrawn(readiness, activeFrame) &&
+        Number(stage.dataset.stageDrawnLayerCount) === layerCount);
+    if (!exactFrameReady || !exactFrameDrawn) {
       captureInFlightRef.current = false;
       return;
     }
-    const canvas = stage.querySelector<HTMLCanvasElement>('canvas');
+    if (layerCount === 0) {
+      failFrame(activeFrame, new Error('Hidden export Stage has no output layers.'));
+      return;
+    }
+    // Capture the already drawn output canvas, compositing all layers when needed.
+    const stageCaptureStartedAt = performance.now();
+    const stageCapture = captureExportStageCanvas(stageInstance);
+    const canvas = stageCapture.canvas;
+    const stageCaptureMs = performance.now() - stageCaptureStartedAt;
     if (!canvas) {
       failFrame(activeFrame, new Error('隐藏舞台 Canvas 不存在。'));
       return;
@@ -395,6 +436,7 @@ export function ExportRendererApp(): React.JSX.Element {
       return;
     }
 
+    const pngEncodingStartedAt = performance.now();
     void canvasToPngBytes(canvas)
       .then((pngBytes) => {
         if (
@@ -402,6 +444,30 @@ export function ExportRendererApp(): React.JSX.Element {
           activeFrameRef.current !== activeFrame
         ) {
           return;
+        }
+        if (exportFrameTimingEnabled) {
+          const stageDuration = (key: string): number | null => {
+            const value = Number(stage.dataset[key]);
+            return Number.isFinite(value) ? value : null;
+          };
+          console.info(
+            'PANDA_STAGE_O1_FRAME ' +
+              JSON.stringify({
+                jobId: activeFrame.jobId,
+                frameIndex: activeFrame.frameIndex,
+                drawMode: exportStageDrawMode,
+                readyGateMs: stageDuration('stageReadyWaitMs'),
+                fontWaitMs: stageDuration('stageFontWaitMs'),
+                synchronousDrawMs: stageDuration('stageDrawDurationMs'),
+                stageCaptureMs,
+                captureStrategy: stageCapture.strategy,
+                pngEncodeMs: performance.now() - pngEncodingStartedAt,
+                requestToPngMs:
+                  activeFrameStartedAtRef.current === null
+                    ? null
+                    : performance.now() - activeFrameStartedAtRef.current,
+              }),
+          );
         }
         window.pandaStageHidden.frameReady({
           jobId: activeFrame.jobId,
@@ -418,6 +484,7 @@ export function ExportRendererApp(): React.JSX.Element {
           pngBytes,
         });
         activeFrameRef.current = null;
+        activeFrameStartedAtRef.current = null;
         captureInFlightRef.current = false;
       })
       .catch((error: unknown) => failFrame(activeFrame, error));
@@ -432,6 +499,7 @@ export function ExportRendererApp(): React.JSX.Element {
         camera={camera}
         captionStyle={captionStyle}
         showStageLabel={false}
+        drawMode={exportStageDrawMode}
         onError={handleStageError}
         onReady={handleStageReady}
         project={project}

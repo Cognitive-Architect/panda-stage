@@ -6,6 +6,7 @@ export interface ExportStageReadinessSnapshot {
   stageTimeMs: number | null;
   stageShotId: string | null;
   renderToken: string | null;
+  drawnRenderToken?: string | null;
 }
 
 export function exportFrameRenderToken(
@@ -26,7 +27,22 @@ export function readExportStageReadiness(
     stageTimeMs: Number.isFinite(parsedTimeMs) ? parsedTimeMs : null,
     stageShotId: stage?.dataset.stageShotId || null,
     renderToken: stage?.dataset.stageRenderToken ?? null,
+    drawnRenderToken: stage?.dataset.stageDrawnRenderToken ?? null,
   };
+}
+
+/** A synchronous draw completion marker must match the exact requested frame. */
+export function isExactExportFrameDrawn(
+  stage: ExportStageReadinessSnapshot,
+  request: Pick<
+    ExportRenderFrameRequest,
+    'jobId' | 'frameIndex' | 'timeMs' | 'shotId' | 'shotLocalTimeMs'
+  >,
+): boolean {
+  return (
+    isExactExportFrameReady(stage, request) &&
+    stage.drawnRenderToken === exportFrameRenderToken(request)
+  );
 }
 
 /**

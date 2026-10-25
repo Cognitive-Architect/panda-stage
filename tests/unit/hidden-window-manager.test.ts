@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Project } from '../../src/domain';
 
 const { FakeBrowserWindow } = vi.hoisted(() => {
   class FakeBrowserWindow {
     static instances: FakeBrowserWindow[] = [];
+    loadFileArguments: unknown[] | null = null;
+    loadURLArgument: string | null = null;
 
     readonly webContents = {
       id: 42,
@@ -21,9 +24,13 @@ const { FakeBrowserWindow } = vi.hoisted(() => {
       return this.destroyed;
     }
 
-    async loadFile(): Promise<void> {}
+    async loadFile(filePath: string, options?: unknown): Promise<void> {
+      this.loadFileArguments = [filePath, options];
+    }
 
-    async loadURL(): Promise<void> {}
+    async loadURL(url: string): Promise<void> {
+      this.loadURLArgument = url;
+    }
 
     once(event: string, listener: () => void): void {
       this.listeners.set(event, listener);
@@ -159,9 +166,49 @@ describe('HiddenWindowManager frame failure correlation', () => {
       loadedJobId: null,
       pendingLoadJobId: null,
       pendingFrameJobId: null,
+      drawMode: 'legacy-raf',
     });
 
     manager.releaseJob();
     expect(manager.getDiagnostics().windowOpen).toBe(false);
+  });
+
+  it('fixes the formal draw mode before a Job and falls back only for the next Job', async () => {
+    const manager = new HiddenWindowManager({ formalDrawMode: 'explicit-sync' });
+    const firstCreate = manager.prepareJob('formal');
+    manager.markReady(42);
+    await firstCreate;
+
+    const firstJobId = randomUUID();
+    const formalLoad = manager.loadFormal({
+      jobId: firstJobId,
+      project: {} as unknown as Project,
+      cameraMode: 'static',
+      media: [],
+    });
+    manager.markFormalLoaded(42, {
+      jobId: firstJobId,
+      acknowledged: true,
+    });
+    await formalLoad;
+
+    const frameRequest = { jobId: firstJobId, frameIndex: 0, timeMs: 0 };
+    const rendering = manager.renderFrame(frameRequest);
+    const rejected = expect(rendering).rejects.toThrow(/draw failed/);
+    manager.markFrameFailed(42, { ...frameRequest, error: 'draw failed' });
+    await rejected;
+    manager.releaseJob();
+
+    const secondCreate = manager.prepareJob('formal');
+    manager.markReady(42);
+    await secondCreate;
+    expect(FakeBrowserWindow.instances[0]?.loadFileArguments?.[1]).toEqual({
+      query: { pandaStageDrawMode: 'explicit-sync' },
+    });
+    expect(FakeBrowserWindow.instances[1]?.loadFileArguments?.[1]).toEqual({
+      query: { pandaStageDrawMode: 'legacy-raf' },
+    });
+    expect(manager.getDiagnostics().drawMode).toBe('legacy-raf');
+    manager.releaseJob();
   });
 });

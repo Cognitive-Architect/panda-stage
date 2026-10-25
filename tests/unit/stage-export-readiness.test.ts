@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   exportFrameRenderToken,
+  isExactExportFrameDrawn,
   isExactExportFrameReady,
   readExportStageReadiness,
 } from '../../src/export-renderer/export-frame-readiness';
@@ -87,6 +88,24 @@ describe('hidden Export exact frame readiness', () => {
         requestB,
       ),
     ).toBe(false);
+  });
+
+  it('requires a completed draw for the exact request before synchronous capture', () => {
+    const exactReady = {
+      stageReady: true,
+      stageError: false,
+      stageTimeMs: requestB.timeMs,
+      stageShotId: null,
+      renderToken: exportFrameRenderToken(requestB),
+      drawnRenderToken: exportFrameRenderToken(requestA),
+    };
+    expect(isExactExportFrameDrawn(exactReady, requestB)).toBe(false);
+    expect(
+      isExactExportFrameDrawn(
+        { ...exactReady, drawnRenderToken: exportFrameRenderToken(requestB) },
+        requestB,
+      ),
+    ).toBe(true);
   });
 
   it('rejects a ready frame from the preceding Shot even at the same local time', () => {

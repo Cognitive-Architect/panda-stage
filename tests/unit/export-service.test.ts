@@ -160,6 +160,7 @@ class MemoryRenderer implements FrameRenderer {
   failAtFrame: number | null = null;
   cancelledJobs: string[] = [];
   prepared = 0;
+  preparedKinds: Array<'probe' | 'formal'> = [];
   releasedJobs: string[] = [];
 
   cancelJob(jobId: string): boolean {
@@ -167,8 +168,9 @@ class MemoryRenderer implements FrameRenderer {
     return true;
   }
 
-  async prepareJob(): Promise<void> {
+  async prepareJob(kind: 'probe' | 'formal' = 'probe'): Promise<void> {
     this.prepared += 1;
+    this.preparedKinds.push(kind);
   }
 
   releaseJob(jobId: string): void {
@@ -495,6 +497,7 @@ describe('ExportService', () => {
     expect(result.totalFrames).toBe(totalFrames);
     expect(result.completedFrames).toBe(totalFrames);
     expect(renderer.formalLoads).toHaveLength(1);
+    expect(renderer.preparedKinds).toEqual(['formal']);
     expect(renderer.formalLoads[0]?.project).toEqual(input.candidate.project);
     expect(renderer.requests.at(-1)).toMatchObject({
       frameIndex: 156,
@@ -754,6 +757,7 @@ describe('ExportService', () => {
     expect(fileSystem.stagingFiles.size).toBe(0);
     expect(fileSystem.directories.size).toBe(0);
     expect(renderer.prepared).toBe(1);
+    expect(renderer.preparedKinds).toEqual(['probe']);
     expect(renderer.releasedJobs).toEqual([result.jobId]);
   });
 

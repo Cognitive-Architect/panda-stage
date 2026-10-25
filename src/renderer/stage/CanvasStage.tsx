@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef, useState } from 'react';
+import type Konva from 'konva';
 import { calculateViewportTransform } from '../../domain';
 import type { CameraView, EvaluatedShot, Project, SubtitleStyle } from '../../domain';
+import type { ExportDrawMode } from '../../shared/export-draw-mode';
 import type { StageAssetUrlMap } from '../../shared/stage/render-model';
 import { StageRenderer } from './StageRenderer';
 import {
@@ -16,13 +18,14 @@ interface CanvasStageProps {
   caption: string | null;
   captionStyle?: SubtitleStyle;
   camera?: CameraView;
-  onReady?: () => void;
+  onReady?: (stage: Konva.Stage) => void;
   onDisplayReady?: () => void;
   onError?: (error: Error) => void;
   onImageResourceFailure?: (failure: StageImageResourceFailure) => void;
   renderToken?: string | number;
   degraded?: boolean;
   showStageLabel?: boolean;
+  drawMode?: ExportDrawMode;
 }
 
 export function CanvasStage(props: CanvasStageProps): React.JSX.Element {
