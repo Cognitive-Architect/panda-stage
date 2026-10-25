@@ -1,4 +1,8 @@
-import { SceneCreationService } from '../../../domain';
+import {
+  SceneCreationService,
+  type SceneCreationResult,
+  type SceneCreationSelection,
+} from '../../../domain';
 import type { ShotStore } from '../../stores/shotStore';
 import type { EditorProjectStore } from '../../stores/EditorProjectStore';
 
@@ -18,12 +22,39 @@ export interface CreateSceneFromStructuredInputOptions {
   service?: SceneCreationService;
 }
 
-/** Build against the active snapshot, then record the complete scene as one command. */
-export function createSceneFromStructuredInput(
+export interface SceneCreationPreviewPlan {
+  identity: {
+    projectRoot: string;
+    projectId: string;
+    projectInstanceId: number | null;
+    revision: number;
+    projectFingerprint: string;
+  };
+  result: SceneCreationResult;
+}
+
+export function isSceneCreationPreviewCurrent(
+  plan: SceneCreationPreviewPlan,
+  editorStore: EditorProjectStore,
+): boolean {
+  const current = editorStore.getSnapshot();
+  return Boolean(
+    current &&
+      current.projectRoot === plan.identity.projectRoot &&
+      current.project.id === plan.identity.projectId &&
+      current.revision === plan.identity.revision &&
+      editorStore.getProjectInstanceId() === plan.identity.projectInstanceId &&
+      JSON.stringify(current.project) === plan.identity.projectFingerprint,
+  );
+}
+
+/** Build a read-only preview from the active project and capture its identity. */
+export function prepareSceneCreationPreview(
   rawInput: string,
+  selection: SceneCreationSelection,
   options: CreateSceneFromStructuredInputOptions,
-) {
-  const { editorStore, shotStore } = options;
+): SceneCreationPreviewPlan {
+  const { editorStore } = options;
   const baseline = editorStore.getSnapshot();
   if (!baseline) {
     throw new SceneCreationActionError(
@@ -33,20 +64,20 @@ export function createSceneFromStructuredInput(
   }
 
   const projectInstanceId = editorStore.getProjectInstanceId();
-  const previousShotId = shotStore.getCurrentShotId();
+  const projectFingerprint = JSON.stringify(baseline.project);
   const result = (options.service ?? new SceneCreationService()).create(
     baseline.project,
     rawInput,
+    selection,
   );
   const current = editorStore.getSnapshot();
   if (
-    current !== baseline ||
     !current ||
     current.projectRoot !== baseline.projectRoot ||
     current.project.id !== baseline.project.id ||
     current.revision !== baseline.revision ||
     editorStore.getProjectInstanceId() !== projectInstanceId ||
-    JSON.stringify(current.project) !== JSON.stringify(baseline.project)
+    JSON.stringify(current.project) !== projectFingerprint
   ) {
     throw new SceneCreationActionError(
       'PROJECT_CHANGED',
@@ -54,11 +85,37 @@ export function createSceneFromStructuredInput(
     );
   }
 
+  return {
+    identity: {
+      projectRoot: baseline.projectRoot,
+      projectId: baseline.project.id,
+      projectInstanceId,
+      revision: baseline.revision,
+      projectFingerprint,
+    },
+    result,
+  };
+}
+
+/** Commit only the exact plan prepared for the still-open, unchanged Project. */
+export function commitSceneCreationPreview(
+  plan: SceneCreationPreviewPlan,
+  options: CreateSceneFromStructuredInputOptions,
+): SceneCreationResult {
+  const { editorStore, shotStore } = options;
+  if (!isSceneCreationPreviewCurrent(plan, editorStore)) {
+    throw new SceneCreationActionError(
+      'PROJECT_CHANGED',
+      '工程已变化，当前预览已失效，请重新检查素材。',
+    );
+  }
+  const previousShotId = shotStore.getCurrentShotId();
   const selectIfActive = (shotId: string): void => {
     const active = editorStore.getSnapshot();
     if (
-      active?.projectRoot === baseline.projectRoot &&
-      active.project.id === baseline.project.id &&
+      active?.projectRoot === plan.identity.projectRoot &&
+      active.project.id === plan.identity.projectId &&
+      editorStore.getProjectInstanceId() === plan.identity.projectInstanceId &&
       active.project.shots.some((shot) => shot.id === shotId)
     ) {
       shotStore.select(shotId);
@@ -66,16 +123,25 @@ export function createSceneFromStructuredInput(
   };
 
   editorStore.updateProject(
-    result.project,
+    plan.result.project,
     'Create scene from structured input',
     {},
     {
       afterUndo: () => {
         if (previousShotId) selectIfActive(previousShotId);
       },
-      afterRedo: () => selectIfActive(result.shotId),
+      afterRedo: () => selectIfActive(plan.result.shotId),
     },
   );
-  shotStore.select(result.shotId);
-  return result;
+  shotStore.select(plan.result.shotId);
+  return plan.result;
+}
+
+/** Build and immediately commit the AC-01 controlled validation action. */
+export function createSceneFromStructuredInput(
+  rawInput: string,
+  options: CreateSceneFromStructuredInputOptions,
+): SceneCreationResult {
+  const plan = prepareSceneCreationPreview(rawInput, {}, options);
+  return commitSceneCreationPreview(plan, options);
 }

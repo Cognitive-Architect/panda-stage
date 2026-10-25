@@ -4,6 +4,8 @@ import {
 } from '../constants';
 import {
   ProjectSchema,
+  type Asset,
+  type Character,
   type ImageAsset,
   type Project,
 } from '../models';
@@ -40,11 +42,41 @@ export class SceneCreationError extends Error {
   constructor(
     readonly code: SceneCreationErrorCode,
     message: string,
-    options?: ErrorOptions,
+    options?: SceneCreationErrorOptions,
   ) {
     super(message, options);
     this.name = 'SceneCreationError';
+    this.field = options?.field;
+    this.lineNumber = options?.lineNumber;
   }
+
+  readonly field?: SceneCreationField;
+  readonly lineNumber?: number;
+}
+
+export interface SceneCreationErrorOptions extends ErrorOptions {
+  field?: SceneCreationField;
+  lineNumber?: number;
+}
+
+export interface SceneCreationCandidate<T> {
+  value: T;
+  selectable: boolean;
+  errorCode?:
+    | 'BACKGROUND_NOT_USABLE'
+    | 'CHARACTER_NOT_ASSEMBLED'
+    | 'CHARACTER_ASSET_UNAVAILABLE';
+}
+
+export interface SceneCreationResolution {
+  input: StructuredSceneInput;
+  backgroundCandidates: SceneCreationCandidate<Asset>[];
+  characterCandidates: SceneCreationCandidate<Character>[];
+}
+
+export interface SceneCreationSelection {
+  backgroundAssetId?: string;
+  characterId?: string;
 }
 
 export interface SceneCreationResult {
@@ -86,7 +118,7 @@ export function parseStructuredSceneInput(
 
   const fields: Partial<Record<SceneCreationField, string>> = {};
   const lines = rawInput.replace(/\r\n?/gu, '\n').split('\n');
-  for (const rawLine of lines) {
+  for (const [lineIndex, rawLine] of lines.entries()) {
     const line = rawLine.trim();
     if (!line) continue;
 
@@ -102,6 +134,7 @@ export function parseStructuredSceneInput(
       throw new SceneCreationError(
         'INVALID_INPUT',
         `无法识别字段行“${line}”，请使用“字段：值”格式。`,
+        { lineNumber: lineIndex + 1 },
       );
     }
 
@@ -111,12 +144,14 @@ export function parseStructuredSceneInput(
       throw new SceneCreationError(
         'UNKNOWN_FIELD',
         `不支持“${label || line}”字段。`,
+        { lineNumber: lineIndex + 1 },
       );
     }
     if (fields[field] !== undefined) {
       throw new SceneCreationError(
         'DUPLICATE_FIELD',
         `“${field}”字段只能出现一次。`,
+        { field, lineNumber: lineIndex + 1 },
       );
     }
 
@@ -125,6 +160,7 @@ export function parseStructuredSceneInput(
       throw new SceneCreationError(
         'EMPTY_FIELD',
         `“${field}”字段不能为空。`,
+        { field, lineNumber: lineIndex + 1 },
       );
     }
     fields[field] = value;
@@ -137,37 +173,90 @@ export function parseStructuredSceneInput(
   };
 }
 
-function namedImage(
-  project: Project,
+function candidateError(
+  code: SceneCreationCandidate<unknown>['errorCode'],
   name: string,
-): ImageAsset {
-  const matches = project.assets.filter((asset) => asset.name === name);
-  if (matches.length === 0) {
+): string {
+  if (code === 'BACKGROUND_NOT_USABLE') {
+    return `“${name}”不是可用的背景图片素材。`;
+  }
+  if (code === 'CHARACTER_NOT_ASSEMBLED') {
+    return `“${name}”还不是已组装的可编辑角色。`;
+  }
+  return `“${name}”引用了不可用的图片素材。`;
+}
+
+function characterCandidateError(
+  project: Project,
+  character: Character,
+): SceneCreationCandidate<Character>['errorCode'] | undefined {
+  if (character.mode !== 'composite') return 'CHARACTER_NOT_ASSEMBLED';
+  const expression = character.expressions.find(
+    (candidate) => candidate.id === character.defaultExpressionId,
+  );
+  const characterAssetIds = [
+    character.bodyAssetId,
+    ...character.expressions.map((candidate) => candidate.assetId),
+    ...(character.head ? [character.head.assetId] : []),
+    ...(character.mouthOpenAssetId ? [character.mouthOpenAssetId] : []),
+  ];
+  const unavailableCharacterAsset = characterAssetIds.some((assetId) => {
+    const asset = project.assets.find(
+      (candidate) => candidate.id === assetId,
+    );
+    return !asset || asset.kind !== 'image' || asset.metadata?.status === 'error';
+  });
+  return !expression || unavailableCharacterAsset
+    ? 'CHARACTER_ASSET_UNAVAILABLE'
+    : undefined;
+}
+
+function selectCandidate<T extends Asset | Character>(
+  candidates: SceneCreationCandidate<T>[],
+  selectionId: string | undefined,
+  kind: 'background' | 'character',
+  name: string,
+): T {
+  const notFoundCode =
+    kind === 'background' ? 'BACKGROUND_NOT_FOUND' : 'CHARACTER_NOT_FOUND';
+  const ambiguousCode =
+    kind === 'background' ? 'BACKGROUND_AMBIGUOUS' : 'CHARACTER_AMBIGUOUS';
+  if (candidates.length === 0) {
     throw new SceneCreationError(
-      'BACKGROUND_NOT_FOUND',
-      `当前工程中找不到名为“${name}”的图片素材。`,
+      notFoundCode,
+      kind === 'background'
+        ? `当前工程中找不到名为“${name}”的图片素材。`
+        : `当前工程中找不到名为“${name}”的角色。`,
     );
   }
-  if (matches.length > 1) {
+  if (!selectionId && candidates.length > 1) {
     throw new SceneCreationError(
-      'BACKGROUND_AMBIGUOUS',
-      `当前工程中有多个名为“${name}”的素材，无法安全选择。`,
+      ambiguousCode,
+      kind === 'background'
+        ? `当前工程中有多个名为“${name}”的素材，请先选择背景。`
+        : `当前工程中有多个名为“${name}”的角色，请先选择角色。`,
     );
   }
-  const asset = matches[0]!;
-  if (asset.kind !== 'image' || asset.usage !== 'background') {
+  const selected = selectionId
+    ? candidates.find(({ value }) => value.id === selectionId)
+    : candidates[0];
+  if (!selected) {
     throw new SceneCreationError(
-      'BACKGROUND_NOT_USABLE',
-      `“${name}”不是标记为背景用途的图片素材。`,
+      notFoundCode,
+      `当前工程中找不到所选的“${name}”。`,
     );
   }
-  if (asset.metadata?.status === 'error') {
+  if (!selected.selectable) {
+    const code = selected.errorCode ??
+      (kind === 'background'
+        ? 'BACKGROUND_NOT_USABLE'
+        : 'CHARACTER_ASSET_UNAVAILABLE');
     throw new SceneCreationError(
-      'BACKGROUND_NOT_USABLE',
-      `背景素材“${name}”当前不可用。`,
+      code,
+      candidateError(code, name),
     );
   }
-  return asset;
+  return selected.value;
 }
 
 export class SceneCreationService {
@@ -182,53 +271,79 @@ export class SceneCreationService {
     this.layerService = options.layerService ?? new LayerService();
   }
 
-  create(projectInput: Project, rawInput: string): SceneCreationResult {
+  resolve(projectInput: Project, rawInput: string): SceneCreationResolution {
     const project = ProjectSchema.parse(projectInput);
     const input = parseStructuredSceneInput(rawInput);
-    const background = namedImage(project, input.backgroundName);
+    return {
+      input,
+      backgroundCandidates: project.assets
+        .filter((asset) => asset.name === input.backgroundName)
+        .map((asset): SceneCreationCandidate<Asset> => {
+          const errorCode =
+            asset.kind !== 'image' ||
+            (asset.kind === 'image' &&
+              (asset.usage !== 'background' || asset.metadata?.status === 'error'))
+              ? 'BACKGROUND_NOT_USABLE'
+              : undefined;
+          return {
+            value: asset,
+            selectable: !errorCode,
+            ...(errorCode ? { errorCode } : {}),
+          };
+        }),
+      characterCandidates: project.characters
+        .filter((character) => character.name === input.characterName)
+        .map((character): SceneCreationCandidate<Character> => {
+          const errorCode = characterCandidateError(project, character);
+          return {
+            value: character,
+            selectable: !errorCode,
+            ...(errorCode ? { errorCode } : {}),
+          };
+        }),
+    };
+  }
 
-    const characters = project.characters.filter(
-      (character) => character.name === input.characterName,
+  create(
+    projectInput: Project,
+    rawInput: string,
+    selection: SceneCreationSelection = {},
+  ): SceneCreationResult {
+    const project = ProjectSchema.parse(projectInput);
+    const resolution = this.resolve(project, rawInput);
+    const backgroundCandidate = selectCandidate(
+      resolution.backgroundCandidates,
+      selection.backgroundAssetId,
+      'background',
+      resolution.input.backgroundName,
     );
-    if (characters.length === 0) {
+    if (backgroundCandidate.kind !== 'image') {
       throw new SceneCreationError(
-        'CHARACTER_NOT_FOUND',
-        `当前工程中找不到名为“${input.characterName}”的角色。`,
+        'BACKGROUND_NOT_USABLE',
+        `“${resolution.input.backgroundName}”不是图片素材。`,
       );
     }
-    if (characters.length > 1) {
-      throw new SceneCreationError(
-        'CHARACTER_AMBIGUOUS',
-        `当前工程中有多个名为“${input.characterName}”的角色，无法安全选择。`,
-      );
-    }
-    const character = characters[0]!;
+    const background = backgroundCandidate as ImageAsset;
+    const character = selectCandidate(
+      resolution.characterCandidates,
+      selection.characterId,
+      'character',
+      resolution.input.characterName,
+    );
+    const input = resolution.input;
     if (character.mode !== 'composite') {
       throw new SceneCreationError(
         'CHARACTER_NOT_ASSEMBLED',
-        `“${input.characterName}”还不是已组装的可编辑角色。`,
+        `“${resolution.input.characterName}”还不是已组装的可编辑角色。`,
       );
     }
-
     const expression = character.expressions.find(
       (candidate) => candidate.id === character.defaultExpressionId,
     );
-    const characterAssetIds = [
-      character.bodyAssetId,
-      ...character.expressions.map((candidate) => candidate.assetId),
-      ...(character.head ? [character.head.assetId] : []),
-      ...(character.mouthOpenAssetId ? [character.mouthOpenAssetId] : []),
-    ];
-    const unavailableCharacterAsset = characterAssetIds.some((assetId) => {
-      const asset = project.assets.find(
-        (candidate) => candidate.id === assetId,
-      );
-      return !asset || asset.kind !== 'image' || asset.metadata?.status === 'error';
-    });
-    if (!expression || unavailableCharacterAsset) {
+    if (!expression) {
       throw new SceneCreationError(
         'CHARACTER_ASSET_UNAVAILABLE',
-        `角色“${input.characterName}”引用了不可用的图片素材。`,
+        `角色“${resolution.input.characterName}”引用了不可用的图片素材。`,
       );
     }
 

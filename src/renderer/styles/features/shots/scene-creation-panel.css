@@ -1,0 +1,241 @@
+.shot-create-structured-action {
+  justify-self: start;
+  color: #c6dccd;
+  background: rgb(255 255 255 / 4%);
+}
+
+.scene-creation-panel {
+  display: grid;
+  min-width: 0;
+  padding: 10px;
+  align-content: start;
+  gap: 12px;
+}
+
+.scene-creation-heading,
+.scene-creation-preview-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.scene-creation-heading h3,
+.scene-creation-preview-heading h4 {
+  min-width: 0;
+  margin: 0;
+  color: #e6f7ea;
+}
+
+.scene-creation-input-label {
+  display: grid;
+  color: #aebfb4;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.scene-creation-input-label textarea {
+  width: 100%;
+  min-height: 90px;
+  padding: 9px 10px;
+  border: 1px solid rgb(154 216 172 / 25%);
+  border-radius: 8px;
+  color: #eef6f0;
+  background: #0b100e;
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.scene-creation-format,
+.scene-creation-copy-status {
+  margin: -6px 0 0;
+  color: #84958b;
+  font-size: 11px;
+}
+
+.scene-creation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.scene-creation-actions button,
+.scene-creation-preview button,
+.scene-creation-stale button,
+.scene-creation-preview-action {
+  min-height: 36px;
+  padding: 7px 11px;
+}
+
+.scene-creation-prompt-action {
+  color: #c6dccd;
+  background: rgb(255 255 255 / 4%);
+}
+
+.scene-creation-prompt-details {
+  color: #9eafa4;
+  font-size: 11px;
+}
+
+.scene-creation-prompt-details summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.scene-creation-prompt-details pre {
+  max-width: 100%;
+  padding: 9px;
+  overflow: auto;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 8px;
+  color: #aebfb4;
+  background: rgb(0 0 0 / 18%);
+  font: inherit;
+  white-space: pre-wrap;
+}
+
+.scene-creation-error,
+.scene-creation-stale {
+  margin: 0;
+  color: #f1b5ab;
+  font-size: 12px;
+}
+
+.scene-creation-stale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.scene-creation-candidates {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.scene-creation-candidates fieldset {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 10px;
+}
+
+.scene-creation-candidates legend {
+  padding: 0 5px;
+  color: #aebfb4;
+  font-size: 12px;
+}
+
+.scene-creation-candidate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.scene-creation-candidate {
+  display: grid;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 9px;
+  color: #aebfb4;
+  background: rgb(255 255 255 / 3%);
+  gap: 6px;
+  text-align: left;
+}
+
+.scene-creation-candidate-selected {
+  border-color: rgb(131 211 154 / 62%);
+  color: #e6f7ea;
+  background: rgb(45 104 62 / 24%);
+}
+
+.scene-creation-candidate:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.scene-creation-candidate-thumbnails {
+  display: flex;
+  min-width: 0;
+  min-height: 56px;
+  align-items: center;
+  gap: 3px;
+}
+
+.scene-creation-candidate-thumbnails img {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+}
+
+.scene-creation-candidate-thumbnail-fallback {
+  display: grid;
+  min-width: 0;
+  min-height: 42px;
+  color: #84958b;
+  font-size: 10px;
+  place-items: center;
+}
+
+.scene-creation-candidate-name {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.scene-creation-candidate-kind,
+.scene-creation-candidate-reason {
+  color: #84958b;
+  font-size: 10px;
+}
+
+.scene-creation-preview {
+  display: grid;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgb(131 211 154 / 18%);
+  border-radius: 12px;
+  background: rgb(7 12 9 / 46%);
+  gap: 10px;
+}
+
+.scene-creation-preview-heading {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  color: #9eafa4;
+  font-size: 11px;
+}
+
+.scene-creation-preview-image,
+.scene-creation-preview-placeholder {
+  display: grid;
+  width: min(100%, 720px);
+  max-height: 380px;
+  aspect-ratio: 16 / 9;
+  margin: 0 auto;
+  border-radius: 8px;
+  background: #09100c;
+  object-fit: contain;
+  place-items: center;
+}
+
+.scene-creation-preview-placeholder {
+  padding: 12px;
+  color: #84958b;
+  font-size: 12px;
+  text-align: center;
+}
+
+.scene-creation-confirm {
+  justify-self: start;
+}
+
+@media (max-width: 720px) {
+  .scene-creation-candidate-grid {
+    grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
+  }
+}

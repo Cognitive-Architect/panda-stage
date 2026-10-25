@@ -489,10 +489,11 @@
       {
         "id": "shots",
         "sourcePatterns": ["src/renderer/features/shots/**"],
-        "testPatterns": ["tests/unit/shot-*.test.ts", "tests/integration/shot-*.test.ts"],
+        "testPatterns": ["tests/unit/shot-*.test.ts", "tests/unit/scene-creation-panel.test.ts", "tests/integration/shot-*.test.ts"],
         "verifierPatterns": [
           "scripts/verify-day20*",
-          "scripts/verify-issue608-shot-thumbnail.cjs"
+          "scripts/verify-issue608-shot-thumbnail.cjs",
+          "scripts/verify-issue853-scene-creation.cjs"
         ],
         "suites": ["shot"],
         "riskPolicy": "targeted",
@@ -690,7 +691,7 @@
       }
     ]
   },
-  "count": 89,
+  "count": 90,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1651,6 +1652,18 @@
       "owner": "shot",
       "supersedes": null,
       "notes": "Bounded Issue #608 Electron proof for actual base Body + Face Shot thumbnails, rendered pixels, fingerprint refresh, and missing-part retry."
+    },
+    {
+      "id": "issue853-scene-creation",
+      "script": "verify:issue853-scene-creation",
+      "suite": "shot",
+      "subsystem": "shot",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "shot",
+      "supersedes": null,
+      "notes": "Bounded Issue #853 Electron proof for exact-name ambiguous candidate choice, read-only composed preview, and explicit Shot confirmation; synthetic fixture screenshots are not owner human acceptance."
     },
     {
       "id": "issue609-character-assembly",

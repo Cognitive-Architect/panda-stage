@@ -7,11 +7,12 @@ import {
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { shotStore } from '../../stores/shotStore';
 import { ShotCreateForm } from './ShotCreateForm';
+import { SceneCreationPanel } from './SceneCreationPanel';
 import { ShotEditor } from './ShotEditor';
 import { nextAvailableShotName, ShotList } from './ShotList';
 import { ShotQuickActions } from './ShotQuickActions';
 
-export type ShotWorkspaceView = 'list' | 'create';
+export type ShotWorkspaceView = 'list' | 'create' | 'scene';
 export type ShotManagerPresentation = 'default' | 'landscape';
 export type ShotEditorPresentation = 'default' | 'portrait';
 
@@ -133,8 +134,14 @@ export function ShotManager({
           disabled={!snapshot}
           onBack={() => onViewChange('list')}
           onCreate={createShot}
+          onCreateFromStructuredInput={() => onViewChange('scene')}
           presentation={presentation}
           suggestedName={nextAvailableShotName(project?.shots ?? [])}
+        />
+      ) : view === 'scene' ? (
+        <SceneCreationPanel
+          onBack={() => onViewChange('list')}
+          snapshot={snapshot}
         />
       ) : (
         <div className="shot-workspace">

@@ -16,7 +16,12 @@ import {
 } from '../../src/domain';
 import { AssetImportService } from '../../src/main/services/AssetImportService';
 import { ProjectService } from '../../src/main/services/ProjectService';
-import { createSceneFromStructuredInput } from '../../src/renderer/features/shots/createSceneFromStructuredInput';
+import {
+  commitSceneCreationPreview,
+  createSceneFromStructuredInput,
+  isSceneCreationPreviewCurrent,
+  prepareSceneCreationPreview,
+} from '../../src/renderer/features/shots/createSceneFromStructuredInput';
 import { CharacterStore } from '../../src/renderer/stores/characterStore';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { LayerStore } from '../../src/renderer/stores/layerStore';
@@ -342,6 +347,131 @@ describe('Issue #852 AC-01 scene creation lifecycle', () => {
     expect(sample.project.shots.map((shot) => shot.id)).toEqual(
       lifecycle.before.shots.map((shot) => shot.id),
     );
+  }, 30_000);
+
+  it('keeps preview read-only, commits once, and rejects a repeated confirmation', async () => {
+    const parent = await mkdtemp(
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-scene-preview-'),
+    );
+    temporaryRoots.push(parent);
+    const sample = await prepareSample(
+      parent,
+      {
+        background: path.join(fixtureAssetDirectory, '另一张 图片.png'),
+        head: path.join(fixtureCharacterDirectory, '熊猫 normal.png'),
+        body: path.join(fixtureAssetDirectory, '熊猫 图片.png'),
+      },
+      'Zhang San',
+    );
+    const baseline = sample.editorStore.getSnapshot()!;
+    const options = {
+      editorStore: sample.editorStore,
+      shotStore: sample.shotStore,
+    };
+    const plan = prepareSceneCreationPreview(
+      '镜头：Garden meeting\n背景：Garden\n出场：Zhang San',
+      {
+        backgroundAssetId: sample.assets.background.id,
+        characterId: sample.character.id,
+      },
+      options,
+    );
+
+    expect(isSceneCreationPreviewCurrent(plan, sample.editorStore)).toBe(true);
+    expect(sample.editorStore.getSnapshot()).toBe(baseline);
+    expect(baseline).toMatchObject({ dirty: false, revision: 0 });
+    expect(sample.editorStore.history.getSnapshot()).toMatchObject({
+      undoCount: 0,
+      redoCount: 0,
+    });
+
+    commitSceneCreationPreview(plan, options);
+    expect(sample.editorStore.getSnapshot()).toMatchObject({
+      dirty: true,
+      revision: baseline.revision + 1,
+    });
+    expect(sample.editorStore.getSnapshot()?.project.shots).toHaveLength(
+      baseline.project.shots.length + 1,
+    );
+    expect(sample.editorStore.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+    expect(() => commitSceneCreationPreview(plan, options)).toThrow(
+      '当前预览已失效',
+    );
+    expect(sample.editorStore.getSnapshot()?.project.shots).toHaveLength(
+      baseline.project.shots.length + 1,
+    );
+    expect(sample.editorStore.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+    sample.shotStore.dispose();
+  }, 30_000);
+
+  it('invalidates prepared previews after resource edits, same-path reopen, or project switch', async () => {
+    const parent = await mkdtemp(
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-scene-stale-'),
+    );
+    temporaryRoots.push(parent);
+    const sample = await prepareSample(
+      parent,
+      {
+        background: path.join(fixtureAssetDirectory, '另一张 图片.png'),
+        head: path.join(fixtureCharacterDirectory, '熊猫 normal.png'),
+        body: path.join(fixtureAssetDirectory, '熊猫 图片.png'),
+      },
+      'Zhang San',
+    );
+    const options = {
+      editorStore: sample.editorStore,
+      shotStore: sample.shotStore,
+    };
+    const input = '镜头：Garden meeting\n背景：Garden\n出场：Zhang San';
+    const prepare = () =>
+      prepareSceneCreationPreview(
+        input,
+        {
+          backgroundAssetId: sample.assets.background.id,
+          characterId: sample.character.id,
+        },
+        options,
+      );
+
+    const beforeResourceEdit = prepare();
+    const current = sample.editorStore.getSnapshot()!;
+    sample.editorStore.updateProject(
+      updateImageAssetAuthorMetadata(
+        current.project,
+        sample.assets.background.id,
+        { name: 'Garden', usage: 'background', keywords: ['changed'] },
+      ),
+      'Update background metadata',
+    );
+    expect(isSceneCreationPreviewCurrent(beforeResourceEdit, sample.editorStore)).toBe(false);
+    expect(() => commitSceneCreationPreview(beforeResourceEdit, options)).toThrow(
+      '当前预览已失效',
+    );
+
+    const beforeSamePathReopen = prepare();
+    const reopenedProject = sample.editorStore.getSnapshot()!.project;
+    sample.editorStore.open(sample.projectRoot, reopenedProject);
+    expect(isSceneCreationPreviewCurrent(beforeSamePathReopen, sample.editorStore)).toBe(false);
+    expect(() => commitSceneCreationPreview(beforeSamePathReopen, options)).toThrow(
+      '当前预览已失效',
+    );
+
+    const beforeProjectSwitch = prepare();
+    sample.editorStore.open(path.join(parent, 'another-project.pandastage'), reopenedProject);
+    expect(isSceneCreationPreviewCurrent(beforeProjectSwitch, sample.editorStore)).toBe(false);
+    expect(() => commitSceneCreationPreview(beforeProjectSwitch, options)).toThrow(
+      '当前预览已失效',
+    );
+    expect(sample.editorStore.getSnapshot()?.project.shots).toHaveLength(
+      reopenedProject.shots.length,
+    );
+    sample.shotStore.dispose();
   }, 30_000);
 
   it('leaves the active project, revision, dirty state, and history unchanged on build failure or stale project', async () => {

@@ -281,7 +281,7 @@ export function ResourceActivityDock({
     landscapePresentation &&
     activeActivity === 'shots';
   const landscapeShotHeaderLayout = useDirectLandscapeShotWorkspaceLabel
-    ? shotView === 'create'
+    ? shotView !== 'list'
       ? 'shot-create-landscape'
       : 'shot-list-landscape'
     : undefined;
@@ -290,7 +290,7 @@ export function ResourceActivityDock({
     activeActivity === 'characters' &&
     (characterView === 'list' || characterView === 'create');
   const showCreateIcon =
-    (activeActivity === 'shots' && shotView !== 'create') ||
+    (activeActivity === 'shots' && shotView === 'list') ||
     (activeActivity === 'characters' && characterView === 'list');
   const showCharacterCreateModeSelector =
     landscapePresentation &&
@@ -303,7 +303,7 @@ export function ResourceActivityDock({
 
   const primaryAction =
     activeActivity === 'shots'
-      ? shotView === 'create'
+      ? shotView !== 'list'
         ? {
             label: '返回镜头列表',
             onClick: () => setShotView('list'),

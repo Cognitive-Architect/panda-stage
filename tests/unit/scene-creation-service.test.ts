@@ -259,6 +259,70 @@ describe('SceneCreationService', () => {
       () => parseStructuredSceneInput('镜头：A\n背景：Garden'),
       'MISSING_FIELD',
     );
+    let parseError: unknown;
+    try {
+      parseStructuredSceneInput('镜头：A\n背景：Garden\n角色：Zhang San');
+    } catch (error) {
+      parseError = error;
+    }
+    expect(parseError).toMatchObject({ code: 'UNKNOWN_FIELD', lineNumber: 3 });
+  });
+
+  it('returns exact-name candidates and creates only after an explicit ambiguous choice', () => {
+    const project = makeProject();
+    const secondBackgroundId = '85200000-0000-4000-8000-000000000010';
+    const projectWithAmbiguity = ProjectSchema.parse({
+      ...project,
+      assets: [
+        ...project.assets,
+        { ...project.assets[0]!, id: secondBackgroundId },
+      ],
+    });
+    const service = serviceWithIds();
+    const resolution = service.resolve(projectWithAmbiguity, INPUT);
+
+    expect(resolution.backgroundCandidates.map(({ value }) => value.id)).toEqual([
+      IDS.background,
+      secondBackgroundId,
+    ]);
+    expect(resolution.backgroundCandidates.every(({ selectable }) => selectable)).toBe(true);
+    expect(resolution.characterCandidates.map(({ value }) => value.id)).toEqual([
+      IDS.character,
+    ]);
+    expect(resolution.characterCandidates.every(({ selectable }) => selectable)).toBe(true);
+    expectError(
+      () => service.create(projectWithAmbiguity, INPUT),
+      'BACKGROUND_AMBIGUOUS',
+    );
+
+    const result = service.create(projectWithAmbiguity, INPUT, {
+      backgroundAssetId: secondBackgroundId,
+    });
+    expect(result.backgroundAssetId).toBe(secondBackgroundId);
+    expect(result.characterId).toBe(IDS.character);
+    expect(result.expressionId).toBe(IDS.expression);
+  });
+
+  it('reports unusable named candidates without silently choosing them', () => {
+    const project = makeProject();
+    const unavailableBackground = ProjectSchema.parse({
+      ...project,
+      assets: project.assets.map((asset) =>
+        asset.id === IDS.background
+          ? { ...asset, usage: 'character' }
+          : asset,
+      ),
+    });
+    const resolution = serviceWithIds().resolve(unavailableBackground, INPUT);
+    expect(resolution.backgroundCandidates).toHaveLength(1);
+    expect(resolution.backgroundCandidates[0]).toMatchObject({
+      selectable: false,
+      errorCode: 'BACKGROUND_NOT_USABLE',
+    });
+    expectError(
+      () => serviceWithIds().create(unavailableBackground, INPUT),
+      'BACKGROUND_NOT_USABLE',
+    );
   });
 
   it('rejects missing, ambiguous, misclassified, and invalid assets before returning a Project', () => {
