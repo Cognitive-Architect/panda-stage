@@ -58,15 +58,13 @@ describe('HiddenWindowManager frame failure correlation', () => {
     vi.useRealTimers();
   });
 
-  it('falls back only the next formal Job after an explicit-sync frame timeout', async () => {
+  it('falls back to legacy-raf only for the next formal Job after an explicit-sync timeout', async () => {
     vi.useFakeTimers();
-    const manager = new HiddenWindowManager({
-      formalDrawMode: 'explicit-sync',
-      formalPngMode: 'worker-png',
-    });
+    const manager = new HiddenWindowManager({ formalDrawMode: 'explicit-sync' });
     const firstCreate = manager.prepareJob('formal');
     manager.markReady(42);
     await firstCreate;
+
     const jobId = randomUUID();
     const loading = manager.loadFormal({
       jobId,
@@ -86,30 +84,21 @@ describe('HiddenWindowManager frame failure correlation', () => {
     manager.markReady(42);
     await secondCreate;
     expect(FakeBrowserWindow.instances[0]?.loadFileArguments?.[1]).toEqual({
-      query: {
-        pandaStageDrawMode: 'explicit-sync',
-        pandaStagePngMode: 'worker-png',
-      },
+      query: { pandaStageDrawMode: 'explicit-sync' },
     });
     expect(FakeBrowserWindow.instances[1]?.loadFileArguments?.[1]).toEqual({
-      query: {
-        pandaStageDrawMode: 'legacy-raf',
-        pandaStagePngMode: 'legacy-blob',
-      },
+      query: { pandaStageDrawMode: 'legacy-raf' },
     });
     manager.releaseJob();
-    vi.useRealTimers();
   });
 
-  it('does not treat ordinary cancellation as a draw or PNG timeout', async () => {
+  it('does not switch modes after ordinary cancellation', async () => {
     vi.useFakeTimers();
-    const manager = new HiddenWindowManager({
-      formalDrawMode: 'explicit-sync',
-      formalPngMode: 'worker-png',
-    });
+    const manager = new HiddenWindowManager({ formalDrawMode: 'explicit-sync' });
     const firstCreate = manager.prepareJob('formal');
     manager.markReady(42);
     await firstCreate;
+
     const jobId = randomUUID();
     const loading = manager.loadFormal({
       jobId,
@@ -121,7 +110,7 @@ describe('HiddenWindowManager frame failure correlation', () => {
     await loading;
     const rendering = manager.renderFrame({ jobId, frameIndex: 0, timeMs: 0 });
     const rejected = expect(rendering).rejects.toThrow(/hidden rendering cancelled/);
-    manager.cancelJob(jobId);
+    expect(manager.cancelJob(jobId)).toBe(true);
     await rejected;
     await vi.advanceTimersByTimeAsync(15_000);
     manager.releaseJob();
@@ -130,24 +119,18 @@ describe('HiddenWindowManager frame failure correlation', () => {
     manager.markReady(42);
     await secondCreate;
     expect(FakeBrowserWindow.instances[1]?.loadFileArguments?.[1]).toEqual({
-      query: {
-        pandaStageDrawMode: 'explicit-sync',
-        pandaStagePngMode: 'worker-png',
-      },
+      query: { pandaStageDrawMode: 'explicit-sync' },
     });
     manager.releaseJob();
-    vi.useRealTimers();
   });
 
   it('keeps legacy-raf selected after a legacy frame timeout', async () => {
     vi.useFakeTimers();
-    const manager = new HiddenWindowManager({
-      formalDrawMode: 'legacy-raf',
-      formalPngMode: 'legacy-blob',
-    });
+    const manager = new HiddenWindowManager({ formalDrawMode: 'legacy-raf' });
     const firstCreate = manager.prepareJob('formal');
     manager.markReady(42);
     await firstCreate;
+
     const jobId = randomUUID();
     const loading = manager.loadFormal({
       jobId,
@@ -167,28 +150,7 @@ describe('HiddenWindowManager frame failure correlation', () => {
     manager.markReady(42);
     await secondCreate;
     expect(FakeBrowserWindow.instances[1]?.loadFileArguments?.[1]).toEqual({
-      query: {
-        pandaStageDrawMode: 'legacy-raf',
-        pandaStagePngMode: 'legacy-blob',
-      },
-    });
-    manager.releaseJob();
-    vi.useRealTimers();
-  });
-
-  it('keeps probe Jobs on the legacy drawing and PNG paths', async () => {
-    const manager = new HiddenWindowManager({
-      formalDrawMode: 'explicit-sync',
-      formalPngMode: 'worker-png',
-    });
-    const creating = manager.prepareJob('probe');
-    manager.markReady(42);
-    await creating;
-    expect(FakeBrowserWindow.instances[0]?.loadFileArguments?.[1]).toEqual({
-      query: {
-        pandaStageDrawMode: 'legacy-raf',
-        pandaStagePngMode: 'legacy-blob',
-      },
+      query: { pandaStageDrawMode: 'legacy-raf' },
     });
     manager.releaseJob();
   });
@@ -306,7 +268,6 @@ describe('HiddenWindowManager frame failure correlation', () => {
       pendingLoadJobId: null,
       pendingFrameJobId: null,
       drawMode: 'legacy-raf',
-      pngMode: 'legacy-blob',
     });
 
     manager.releaseJob();
@@ -314,10 +275,7 @@ describe('HiddenWindowManager frame failure correlation', () => {
   });
 
   it('fixes the formal draw mode before a Job and falls back only for the next Job', async () => {
-    const manager = new HiddenWindowManager({
-      formalDrawMode: 'explicit-sync',
-      formalPngMode: 'worker-png',
-    });
+    const manager = new HiddenWindowManager({ formalDrawMode: 'explicit-sync' });
     const firstCreate = manager.prepareJob('formal');
     manager.markReady(42);
     await firstCreate;
@@ -346,16 +304,10 @@ describe('HiddenWindowManager frame failure correlation', () => {
     manager.markReady(42);
     await secondCreate;
     expect(FakeBrowserWindow.instances[0]?.loadFileArguments?.[1]).toEqual({
-      query: {
-        pandaStageDrawMode: 'explicit-sync',
-        pandaStagePngMode: 'worker-png',
-      },
+      query: { pandaStageDrawMode: 'explicit-sync' },
     });
     expect(FakeBrowserWindow.instances[1]?.loadFileArguments?.[1]).toEqual({
-      query: {
-        pandaStageDrawMode: 'legacy-raf',
-        pandaStagePngMode: 'legacy-blob',
-      },
+      query: { pandaStageDrawMode: 'legacy-raf' },
     });
     expect(manager.getDiagnostics().drawMode).toBe('legacy-raf');
     manager.releaseJob();

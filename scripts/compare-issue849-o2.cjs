@@ -12,8 +12,14 @@ const OUTPUT_PATH = path.resolve(
   process.env.PANDA_STAGE_O2_COMPARISON_RECEIPT ||
     path.join(fixtureRoot, 'comparison-receipt.json'),
 );
-const REPO_EVIDENCE_JSON = path.resolve(__dirname, '../docs/test-receipts/issue849-o2-comparison.json');
-const REPO_EVIDENCE_MARKDOWN = path.resolve(__dirname, '../docs/test-receipts/issue849-o2.md');
+const REPO_EVIDENCE_JSON = path.resolve(
+  process.env.PANDA_STAGE_O2_REPO_EVIDENCE_JSON ||
+    path.resolve(__dirname, '../docs/test-receipts/issue849-o2-comparison.json'),
+);
+const REPO_EVIDENCE_MARKDOWN = path.resolve(
+  process.env.PANDA_STAGE_O2_REPO_EVIDENCE_MARKDOWN ||
+    path.resolve(__dirname, '../docs/test-receipts/issue849-o2.md'),
+);
 const LEGACY_RUN_NAME = process.env.PANDA_STAGE_O2_LEGACY_RUN_ID || 'legacy-blob';
 const WORKER_RUN_NAME = process.env.PANDA_STAGE_O2_WORKER_RUN_ID || 'worker-png';
 const EXPECTED_FRAME_COUNT = 108;
@@ -360,9 +366,20 @@ async function main() {
   const workerRequestPng = worker.hiddenRendererStages.requestToPngMs;
   const requestPngImproved = workerRequestPng.medianMs < legacyRequestPng.medianMs &&
     workerRequestPng.p95Ms <= legacyRequestPng.p95Ms;
-  const performanceDecision = savedPercent >= 10 && requestPngImproved
+  const performanceOnlyDecision = savedPercent >= 10 && requestPngImproved
     ? 'O2_PASS'
     : 'ROLLBACK_NO_VALUE';
+  const legacyPrivatePeakBytes = legacy.hiddenRendererMemory.privateBytes.maxMs;
+  const workerPrivatePeakBytes = worker.hiddenRendererMemory.privateBytes.maxMs;
+  const privatePeakRatio = workerPrivatePeakBytes / legacyPrivatePeakBytes;
+  const memoryGuardrailExceeded =
+    // Issue #849 defines a qualitative STOP for significant memory growth;
+    // require both peak and median to exceed 2x the legacy peak to avoid noise.
+    workerPrivatePeakBytes > legacyPrivatePeakBytes * 2 &&
+    worker.hiddenRendererMemory.privateBytes.medianMs > legacyPrivatePeakBytes * 2;
+  const decision = memoryGuardrailExceeded
+    ? 'ROLLBACK_NO_VALUE'
+    : performanceOnlyDecision;
   const legacyReadyGateMedian = legacy.hiddenRendererStages.readyGateMs.medianMs;
   const workerReadyGateMedian = worker.hiddenRendererStages.readyGateMs.medianMs;
   const readyGateSavedPercent = Number.isFinite(legacyReadyGateMedian) && legacyReadyGateMedian > 0
@@ -382,13 +399,32 @@ async function main() {
   assert(legacyTransitions.length === 2 && workerTransitions.length === 2,
     'A/B timing data did not include both Shot transitions.');
   const result = {
-    status: 'PASS',
+    status: decision,
+    verificationStatus: 'PASS',
     issue: 849,
     fixtureRoot,
     runs: {
       legacyBlob: { name: LEGACY_RUN_NAME, jobId: legacy.jobId, drawMode: legacy.drawMode, pngMode: legacy.pngMode },
       workerPng: { name: WORKER_RUN_NAME, jobId: worker.jobId, drawMode: worker.drawMode, pngMode: worker.pngMode },
     },
+    measurementHistory: [
+      {
+        runName: 'legacy-blob',
+        status: 'STOP',
+        reason: 'Initial memory sampler recorded no hidden renderer samples.',
+      },
+      {
+        runName: 'legacy-blob-r2',
+        status: 'PASS_SUPERSEDED',
+        codeSha: '204deb1459ec177a08028e39f2e2cc29f4eaf814',
+        reason: 'Preliminary A run; final A/B was rerun on one shared source commit after verifier correction.',
+      },
+      {
+        runName: 'worker-png',
+        status: 'STOP',
+        reason: 'Primary 108-frame export completed; verifier did not observe the termination console event during cancellation teardown.',
+      },
+    ],
     inputsIdentical: true,
     inputs: {
       projectFileSha256: legacy.projectInputBefore.projectFileSha256,
@@ -491,7 +527,20 @@ async function main() {
       readyGateSavedPercent,
       hiddenRendererPeakPrivateMemoryDeltaBytes:
         worker.hiddenRendererMemory.privateBytes.maxMs - legacy.hiddenRendererMemory.privateBytes.maxMs,
-      decision: performanceDecision,
+      performanceOnlyDecision,
+      memoryGuardrail: {
+        status: memoryGuardrailExceeded ? 'EXCEEDED' : 'WITHIN_REVIEW_LIMIT',
+        reviewLimit: 'worker private-memory peak and median must remain at or below 2x the legacy peak',
+        legacyPeakPrivateBytes: legacyPrivatePeakBytes,
+        workerPeakPrivateBytes: workerPrivatePeakBytes,
+        workerMedianPrivateBytes: worker.hiddenRendererMemory.privateBytes.medianMs,
+        workerStartPrivateBytes: worker.hiddenRendererMemory.startPrivateBytes,
+        workerEndPrivateBytes: worker.hiddenRendererMemory.endPrivateBytes,
+        peakRatio: privatePeakRatio,
+        increaseFromStartBytes:
+          worker.hiddenRendererMemory.endPrivateBytes - worker.hiddenRendererMemory.startPrivateBytes,
+      },
+      decision,
       entryPoint: 'Formal export was initiated through the official Preload API; editor UI click latency was not measured.',
       manualVisualAcceptance: 'NOT_RUN',
       uiClickToComplete: 'NOT_MEASURED',
@@ -529,12 +578,12 @@ async function main() {
     `- Media/font/render inputs identical: ${result.inputsIdentical}`,
     `- MP4 SHA-256: A \`${legacyMp4Sha256}\`; B \`${workerMp4Sha256}\``,
     `- Frames: ${EXPECTED_FRAME_COUNT}/${EXPECTED_FRAME_COUNT}; decoded RGBA hashes identical: ${result.decodedFramePixelHashesIdentical}`,
-    `- MP4: both H.264/yuv420p 1920×1080 @ 24 fps, ${EXPECTED_FRAME_COUNT} frames, AAC 48 kHz`,
+    `- MP4: both H.264/yuv420p 1920 x 1080 @ 24 fps, ${EXPECTED_FRAME_COUNT} frames, AAC 48 kHz`,
     `- Decoded PCM identical: ${result.decodedPcm.identical} (SHA-256 A \`${pcmHashes.legacyBlob}\`, B \`${pcmHashes.workerPng}\`)`,
     '',
     '## Performance',
     '',
-    `- Job wall: A ${legacyJobMs} ms; B ${workerJobMs} ms; net change ${Number.isFinite(savedPercent) ? `${savedPercent.toFixed(2)}% faster` : 'n/a'}`,
+    `- Performance-only gate: ${performanceOnlyDecision}. Job wall: A ${legacyJobMs} ms; B ${workerJobMs} ms; net change ${Number.isFinite(savedPercent) ? `${savedPercent.toFixed(2)}% faster` : 'n/a'}`,
     `- Request to PNG: A ${formatStats(legacy.hiddenRendererStages.requestToPngMs)}; B ${formatStats(worker.hiddenRendererStages.requestToPngMs)}`,
     `- PNG encode: A ${formatStats(legacy.hiddenRendererStages.pngEncodeMs)}; B ${formatStats(worker.hiddenRendererStages.workerEncodeMs)}`,
     `- Snapshot: B ${formatStats(worker.hiddenRendererStages.pngSnapshotMs)}`,
@@ -545,14 +594,22 @@ async function main() {
     `- Main frame-ready: A ${formatStats(legacy.mainFrameReady)}; B ${formatStats(worker.mainFrameReady)}`,
     `- Rendering phase: A ${legacy.exportPhases.rendering ?? 'n/a'} ms; B ${worker.exportPhases.rendering ?? 'n/a'} ms`,
     `- Hidden renderer private-memory peak: A ${legacy.hiddenRendererMemory.privateBytes.maxMs} bytes; B ${worker.hiddenRendererMemory.privateBytes.maxMs} bytes (delta ${result.timing.hiddenRendererPeakPrivateMemoryDeltaBytes} bytes)`,
+    `- Worker hidden renderer private memory: start ${worker.hiddenRendererMemory.startPrivateBytes} bytes; median ${worker.hiddenRendererMemory.privateBytes.medianMs} bytes; end ${worker.hiddenRendererMemory.endPrivateBytes} bytes; peak ${worker.hiddenRendererMemory.privateBytes.maxMs} bytes (${privatePeakRatio.toFixed(2)}x A peak). Review limit: peak and median at or below 2x A peak; status ${result.timing.memoryGuardrail.status}.`,
     `- Hidden renderer working-set peak: A ${legacy.hiddenRendererMemory.workingSetBytes.maxMs} bytes; B ${worker.hiddenRendererMemory.workingSetBytes.maxMs} bytes`,
     '',
     '## Safety and limits',
     '',
     `- No-clobber, cancellation, source immutability, staging cleanup, and hidden window cleanup: pass for both runs.`,
     `- Worker: one per formal Job, one frame in flight; cancellation Worker stopped via ${worker.cleanup.cancelledWorkerStopEvidence}.`,
+    '- Decision: retain R0 timeout fallback and O1; roll back R1 Worker PNG because hidden renderer memory exceeded the guardrail.',
     '- Human visual acceptance: NOT_RUN; editor UI click-to-complete: NOT_MEASURED; GitHub CI: CI_NOT_REPORTED.',
     '- Raw MP4 and synthetic fixture assets remain under the external acceptance directory and are not committed.',
+    '',
+    '## Measurement history',
+    '',
+    '- `legacy-blob`: STOP; the initial memory sampler recorded no hidden renderer samples.',
+    '- `legacy-blob-r2`: PASS on an earlier verifier commit; superseded by the final same-commit A/B pair.',
+    '- `worker-png`: STOP after the primary 108-frame export completed; the verifier missed the Worker termination console event during cancellation teardown. The corrected verifier accepted hidden renderer destruction as the stop evidence.',
     '',
     'See the companion JSON for per-frame hashes, stage timing distributions, memory samples, and cleanup receipts.',
     '',
@@ -560,6 +617,7 @@ async function main() {
   await fs.writeFile(REPO_EVIDENCE_MARKDOWN, markdown, { flag: 'wx' });
   process.stdout.write(JSON.stringify({
     status: result.status,
+    verificationStatus: result.verificationStatus,
     frameCount: result.frameCount,
     decodedFramesIdentical: result.decodedFramePixelHashesIdentical,
     pcmIdentical: result.decodedPcm.identical,
@@ -569,7 +627,9 @@ async function main() {
     savedPercent: result.timing.elapsedSavedPercent,
     readyGateSavedPercent: result.timing.readyGateSavedPercent,
     meets10PercentNetTarget: result.timing.meets10PercentNetTarget,
-    performanceDecision: result.timing.decision,
+    decision: result.timing.decision,
+    performanceOnlyDecision: result.timing.performanceOnlyDecision,
+    memoryGuardrail: result.timing.memoryGuardrail,
     faster: result.timing.faster,
     output: OUTPUT_PATH,
   }, null, 2) + '\n');

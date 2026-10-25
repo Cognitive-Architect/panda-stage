@@ -18,10 +18,6 @@ import {
   parseExportDrawMode,
 } from '../shared/export-draw-mode';
 import {
-  EXPORT_PNG_MODE_QUERY_PARAM,
-  parseExportPngMode,
-} from '../shared/export-png-mode';
-import {
   PROBE_CHARACTER_ASSET_ID,
   PROBE_CHARACTER_LAYER_ID,
   PROBE_PROJECT,
@@ -42,7 +38,6 @@ import {
   readExportStageReadiness,
 } from './export-frame-readiness';
 import { captureExportStageCanvas } from './stage-capture';
-import { WorkerPngEncoder } from './worker-png-encoder';
 
 const exportStageDrawMode = parseExportDrawMode(
   new URLSearchParams(window.location.search).get(EXPORT_DRAW_MODE_QUERY_PARAM),
@@ -51,12 +46,6 @@ const exportFrameTimingEnabled =
   new URLSearchParams(window.location.search).get(
     EXPORT_FRAME_TIMING_QUERY_PARAM,
   ) === 'true';
-const exportPngMode =
-  parseExportPngMode(
-    new URLSearchParams(window.location.search).get(
-      EXPORT_PNG_MODE_QUERY_PARAM,
-    ),
-  ) ?? 'legacy-blob';
 
 if (exportStageDrawMode === 'explicit-sync') {
   // This hidden renderer has its own Chromium process; editor Preview retains
@@ -64,9 +53,7 @@ if (exportStageDrawMode === 'explicit-sync') {
   Konva.autoDrawEnabled = false;
 }
 
-function canvasToPngBytes(
-  canvas: HTMLCanvasElement,
-): Promise<Uint8Array<ArrayBuffer>> {
+function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (!blob) {
@@ -144,7 +131,6 @@ export function ExportRendererApp(): React.JSX.Element {
   const activeFrameStartedAtRef = useRef<number | null>(null);
   const captureInFlightRef = useRef(false);
   const cancelledJobIdsRef = useRef(new Set<string>());
-  const workerPngEncoderRef = useRef<WorkerPngEncoder | null>(null);
 
   const shot = useMemo(
     () => formalRequest
@@ -251,8 +237,6 @@ export function ExportRendererApp(): React.JSX.Element {
 
   useEffect(() => {
     const removeLoadListener = window.pandaStageHidden.onLoadProbe((request) => {
-      workerPngEncoderRef.current?.close('PNG encoder released for probe export.');
-      workerPngEncoderRef.current = null;
       cancelledJobIdsRef.current.delete(request.jobId);
       loadedJobIdRef.current = request.jobId;
       loadedFormalProjectRef.current = null;
@@ -267,19 +251,6 @@ export function ExportRendererApp(): React.JSX.Element {
     });
     const removeFormalLoadListener = window.pandaStageHidden.onLoadFormal(
       (request) => {
-        workerPngEncoderRef.current?.close('PNG encoder replaced for formal export.');
-        workerPngEncoderRef.current =
-          exportPngMode === 'worker-png'
-            ? new WorkerPngEncoder({ jobId: request.jobId })
-            : null;
-        console.info(
-          'PANDA_STAGE_O2_JOB_MODE ' +
-            JSON.stringify({
-              jobId: request.jobId,
-              drawMode: exportStageDrawMode,
-              pngMode: exportPngMode,
-            }),
-        );
         cancelledJobIdsRef.current.delete(request.jobId);
         loadedJobIdRef.current = request.jobId;
         loadedFormalProjectRef.current = request.project;
@@ -349,10 +320,6 @@ export function ExportRendererApp(): React.JSX.Element {
         cancelledJobIdsRef.current.add(jobId);
         const cancellingLoadedJob = loadedJobIdRef.current === jobId;
         if (cancellingLoadedJob) {
-          workerPngEncoderRef.current?.close(
-            `Export Job ${jobId}: PNG encoding cancelled.`,
-          );
-          workerPngEncoderRef.current = null;
           loadedFormalProjectRef.current = null;
           setFormalRequest(null);
         }
@@ -373,16 +340,8 @@ export function ExportRendererApp(): React.JSX.Element {
         }
       },
     );
-    const closeEncoderOnPageHide = () => {
-      workerPngEncoderRef.current?.close('Hidden export page is closing.');
-      workerPngEncoderRef.current = null;
-    };
-    window.addEventListener('pagehide', closeEncoderOnPageHide, { once: true });
 
     return () => {
-      window.removeEventListener('pagehide', closeEncoderOnPageHide);
-      workerPngEncoderRef.current?.close('Hidden export renderer unmounted.');
-      workerPngEncoderRef.current = null;
       removeLoadListener();
       removeFormalLoadListener();
       removeFrameListener();
@@ -478,24 +437,8 @@ export function ExportRendererApp(): React.JSX.Element {
     }
 
     const pngEncodingStartedAt = performance.now();
-    const activePngMode = formalRequest ? exportPngMode : 'legacy-blob';
-    const pngEncoder =
-      activePngMode === 'worker-png' ? workerPngEncoderRef.current : null;
-    if (activePngMode === 'worker-png' && !pngEncoder) {
-      failFrame(activeFrame, new Error('PNG Worker encoder was not initialized for this formal Job.'));
-      return;
-    }
-    const encoding = pngEncoder
-      ? pngEncoder.encode(canvas, activeFrame).then((result) => ({
-          pngBytes: result.pngBytes,
-          timing: result.timing,
-        }))
-      : canvasToPngBytes(canvas).then((pngBytes) => ({
-          pngBytes,
-          timing: null,
-        }));
-    void encoding
-      .then(({ pngBytes, timing }) => {
+    void canvasToPngBytes(canvas)
+      .then((pngBytes) => {
         if (
           cancelledJobIdsRef.current.has(activeFrame.jobId) ||
           activeFrameRef.current !== activeFrame
@@ -512,25 +455,13 @@ export function ExportRendererApp(): React.JSX.Element {
               JSON.stringify({
                 jobId: activeFrame.jobId,
                 frameIndex: activeFrame.frameIndex,
-                timeMs: activeFrame.timeMs,
-                shotId: activeFrame.shotId ?? null,
-                shotLocalTimeMs: activeFrame.shotLocalTimeMs ?? null,
                 drawMode: exportStageDrawMode,
                 readyGateMs: stageDuration('stageReadyWaitMs'),
                 fontWaitMs: stageDuration('stageFontWaitMs'),
                 synchronousDrawMs: stageDuration('stageDrawDurationMs'),
                 stageCaptureMs,
                 captureStrategy: stageCapture.strategy,
-                pngMode: activePngMode,
-                pngEncodeMs: timing?.workerEncodeMs ?? performance.now() - pngEncodingStartedAt,
-                pngSnapshotMs: timing?.snapshotMs ?? null,
-                pngTransferDispatchMs: timing?.transferDispatchMs ?? null,
-                workerDrawMs: timing?.workerDrawMs ?? null,
-                workerConvertToBlobMs: timing?.convertToBlobMs ?? null,
-                workerArrayBufferMs: timing?.arrayBufferMs ?? null,
-                workerEncodeMs: timing?.workerEncodeMs ?? null,
-                workerReturnMs: timing?.workerReturnMs ?? null,
-                workerRoundTripMs: timing?.workerRoundTripMs ?? null,
+                pngEncodeMs: performance.now() - pngEncodingStartedAt,
                 requestToPngMs:
                   activeFrameStartedAtRef.current === null
                     ? null
@@ -556,10 +487,8 @@ export function ExportRendererApp(): React.JSX.Element {
         activeFrameStartedAtRef.current = null;
         captureInFlightRef.current = false;
       })
-      .catch((error: unknown) => {
-        if (activeFrameRef.current === activeFrame) failFrame(activeFrame, error);
-      });
-  }, [acknowledgeFormalLoad, acknowledgeLoad, failFrame, formalRequest]);
+      .catch((error: unknown) => failFrame(activeFrame, error));
+  }, [acknowledgeFormalLoad, acknowledgeLoad, failFrame]);
 
   return (
     <main className="hidden-stage-shell">
