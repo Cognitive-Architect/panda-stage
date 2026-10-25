@@ -60,6 +60,10 @@ import {
   initialFlaSequencePlaybackState,
 } from './fla-frame-sequence-playback-state';
 import {
+  phaseForFocusedSequencePreview,
+  type FlaFrameSequencePreviewPhase,
+} from './fla-frame-sequence-preview-phase';
+import {
   createFlaWorkbenchCandidateSelection,
   createFlaWorkbenchCandidates,
   type FlaWorkbenchCandidate,
@@ -107,16 +111,6 @@ function handleSequenceActionKeyDown(
   action();
 }
 
-type RenderPhase =
-  | 'loading'
-  | 'selecting'
-  | 'rendering'
-  | 'preview-ready'
-  | 'committing'
-  | 'committed'
-  | 'cancelled'
-  | 'error';
-
 export function FlaFrameSequenceReview({
   sessionId,
   source,
@@ -140,7 +134,7 @@ export function FlaFrameSequenceReview({
   canImportSingle = false,
   onImportSingle,
 }: FlaFrameSequenceReviewProps): React.JSX.Element {
-  const [phase, setPhase] = useState<RenderPhase>('loading');
+  const [phase, setPhase] = useState<FlaFrameSequencePreviewPhase>('loading');
   const [entries, setEntries] = useState<FlaRenderableTargetCatalogEntry[]>([]);
   const [targetSearch, setTargetSearch] = useState('');
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
@@ -177,6 +171,7 @@ export function FlaFrameSequenceReview({
     startFrameIndex: number;
     endFrameIndex: number;
   } | null>(null);
+  const lastRenderTargetIdRef = useRef<string | null>(null);
   const acceptedRequestIdRef = useRef<string | null>(null);
   const latestSequenceRef = useRef<FlaFrameSequenceSuccess | null>(null);
   const catalogInitializedRef = useRef(false);
@@ -240,19 +235,6 @@ export function FlaFrameSequenceReview({
   const selectedPreviewItem = displayedSequenceItems[selectedPreviewIndex] ?? null;
   const selectedPreviewUrl = displayedPreviewUrls[selectedPreviewIndex] ?? null;
   const hasPreview = Boolean(selectedPreviewItem && selectedPreviewUrl);
-  const previewTargetId = phase === 'rendering'
-    ? activeRenderIntent?.renderTargetId ?? null
-    : sequenceIsCurrent && success
-      ? success.renderTargetId
-      : selectedEntry?.target.renderTargetId ?? null;
-  const previewTarget = entries.find((entry) => entry.target.renderTargetId === previewTargetId)?.target ?? null;
-  const previewState = phase === 'rendering'
-    ? 'rendering'
-    : phase === 'error'
-      ? 'error'
-      : hasPreview
-        ? phase === 'committed' ? 'committed' : 'valid'
-        : 'needs-preview';
 
   const sequencePreviewInputs = useMemo(() => {
     if (phase === 'rendering') {
@@ -296,7 +278,7 @@ export function FlaFrameSequenceReview({
     onCandidatesChange?.(sequenceCandidates);
   }, [onCandidatesChange, sequenceCandidates]);
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (!focusedCandidateIdentityKey) return;
     const candidate = sequenceCandidates.find((item) => item.identityKey === focusedCandidateIdentityKey);
     if (!candidate || candidate.kind !== 'sequence') return;
@@ -333,6 +315,32 @@ export function FlaFrameSequenceReview({
   const focusedSequenceCandidate = sequenceCandidates.find((candidate) =>
     candidate.kind === 'sequence' && candidate.identityKey === focusedCandidateIdentityKey,
   );
+  const focusedPreviewTargetId = presentation === 'unified-preview'
+    ? focusedSequenceCandidate?.operation.target.renderTargetId ?? null
+    : selectedTargetId;
+  const phaseTargetId = activeRenderIntent?.renderTargetId ??
+    (phase === 'error' || phase === 'cancelled'
+      ? lastRenderTargetIdRef.current
+      : success?.renderTargetId ?? lastRenderTargetIdRef.current);
+  const previewPhase = phaseForFocusedSequencePreview(
+    phase,
+    presentation,
+    focusedPreviewTargetId,
+    phaseTargetId,
+  );
+  const previewTargetId = previewPhase === 'rendering'
+    ? activeRenderIntent?.renderTargetId ?? null
+    : sequenceIsCurrent && success
+      ? success.renderTargetId
+      : focusedPreviewTargetId;
+  const previewTarget = entries.find((entry) => entry.target.renderTargetId === previewTargetId)?.target ?? null;
+  const previewState = previewPhase === 'rendering'
+    ? 'rendering'
+    : previewPhase === 'error'
+      ? 'error'
+      : hasPreview
+        ? previewPhase === 'committed' ? 'committed' : 'valid'
+        : 'needs-preview';
   const focusedSequenceMatchesPreview = !focusedCandidateIdentityKey ||
     focusedSequenceCandidate?.operation.target.renderTargetId === success?.renderTargetId;
   const canNavigatePreview = Boolean(
@@ -622,6 +630,7 @@ export function FlaFrameSequenceReview({
     stopPlayback();
     if (!selectedEntry || !validation.valid || !snapshot) return;
     const renderTargetId = selectedEntry.target.renderTargetId;
+    lastRenderTargetIdRef.current = renderTargetId;
     const range = buildRange(renderTargetId, startFrameIndex, endFrameIndex);
     if (!range) {
       setErrorMessage('所选帧范围无效。');
@@ -989,6 +998,7 @@ export function FlaFrameSequenceReview({
       className={reviewClassName}
       data-preview-state={previewState}
       data-fla-session-id={sessionId}
+      data-preview-target-id={previewTargetId ?? undefined}
       data-testid="fla-frame-sequence-review"
       data-workbench-panel={embedded ? 'sequence' : undefined}
       data-unified-sequence-preview={showUnifiedSequencePreview ? 'true' : 'false'}
@@ -1099,20 +1109,30 @@ export function FlaFrameSequenceReview({
           </section>
         </aside>
 
-        <section className="fla-frame-sequence-preview-region" data-testid="fla-frame-sequence-preview-region">
+        <section
+          className="fla-frame-sequence-preview-region"
+          data-preview-candidate-identity={focusedSequenceCandidate?.identityKey ?? undefined}
+          data-preview-target-id={previewTargetId ?? undefined}
+          data-testid="fla-frame-sequence-preview-region"
+        >
           <header className="fla-frame-sequence-region-heading">
             <div>
               <p className="fla-render-panel-kicker">帧序列</p>
-              <h3 title={previewTarget?.userLabel}>
+              <h3
+                data-preview-candidate-identity={focusedSequenceCandidate?.identityKey ?? undefined}
+                data-preview-target-id={previewTargetId ?? undefined}
+                data-testid="fla-frame-sequence-focused-preview-label"
+                title={previewTarget?.userLabel}
+              >
                 {previewTarget ? `${previewTarget.userLabel} · 当前帧预览` : '当前帧预览'}
               </h3>
             </div>
-            {phase === 'rendering' || (phase === 'committing' && embedded) ? null : (
+            {previewPhase === 'rendering' || (previewPhase === 'committing' && embedded) ? null : (
               <output
                 data-preview-state={previewState}
                 data-testid="fla-frame-sequence-preview-status"
               >
-                {sequencePreviewStatus(phase, hasPreview)}
+                {sequencePreviewStatus(previewPhase, hasPreview)}
               </output>
             )}
           </header>
@@ -1139,6 +1159,8 @@ export function FlaFrameSequenceReview({
                 <img
                   alt={`${target.userLabel} 第 ${selectedPreviewItem.frameIndex + 1} 帧预览`}
                   data-frame-index={selectedPreviewItem.frameIndex}
+                  data-preview-candidate-identity={focusedSequenceCandidate?.identityKey ?? undefined}
+                  data-preview-target-id={previewTargetId ?? undefined}
                   data-testid="fla-frame-sequence-preview-image"
                   src={selectedPreviewUrl}
                 />
@@ -1155,10 +1177,10 @@ export function FlaFrameSequenceReview({
               </>
             ) : (
               <div
-                aria-live={phase === 'rendering' ? 'polite' : undefined}
+                aria-live={previewPhase === 'rendering' ? 'polite' : undefined}
                 className="fla-frame-sequence-preview-placeholder"
                 data-testid="fla-frame-sequence-preview-placeholder"
-                role={phase === 'rendering' ? 'status' : undefined}
+                role={previewPhase === 'rendering' ? 'status' : undefined}
               >
                 {showUnifiedGenerationHint ? (
                   <strong data-testid="fla-frame-sequence-unified-idle-hint">
@@ -1168,7 +1190,7 @@ export function FlaFrameSequenceReview({
                 {showUnifiedGenerationHint ? null : (
                   <>
                     <strong>
-                      {phase === 'rendering'
+                      {previewPhase === 'rendering'
                         ? activeRenderIntent && currentIntent?.renderTargetId !== activeRenderIntent.renderTargetId && previewTarget
                           ? `正在生成预览…（${previewTarget.userLabel}）`
                           : '正在生成预览…'
@@ -1176,18 +1198,21 @@ export function FlaFrameSequenceReview({
                         ? '这是空白画面'
                         : !supported
                           ? '此项暂不可预览'
-                            : phase === 'error'
+                            : previewPhase === 'error'
                               ? presentation === 'unified-preview' ? '预览生成失败' : '连续画面生成失败'
                               : presentation === 'unified-preview' ? '尚未生成预览' : '尚未生成连续画面'}
                     </strong>
-                    <span data-testid={phase === 'rendering' ? 'fla-frame-sequence-central-progress' : undefined}>
-                      {phase === 'rendering'
+                    <span
+                      data-operation-target-id={previewPhase === 'rendering' ? activeRenderIntent?.renderTargetId : undefined}
+                      data-testid={previewPhase === 'rendering' ? 'fla-frame-sequence-central-progress' : undefined}
+                    >
+                      {previewPhase === 'rendering'
                         ? `已完成 ${completedFrameCount} / ${activeRenderFrameCount} 帧`
                         : selectedEntry.isBlank
                         ? '源内容为空，不能导入。'
                         : !supported
                           ? boundedUnsupportedReason(selectedEntry.unsupportedReason)
-                            : phase === 'error'
+                            : previewPhase === 'error'
                               ? errorMessage || '请调整起始帧后重试。'
                               : presentation === 'unified-preview'
                                 ? '调整范围后生成预览，最多 24 帧。'
@@ -1366,11 +1391,12 @@ export function FlaFrameSequenceReview({
                     ) : null}
                   </div>
                 ) : null}
-                {phase === 'rendering' ? (
+                {previewPhase === 'rendering' ? (
                   <button
                     type="button"
                     onClick={() => void cancelSequence()}
                     onKeyDown={(event) => handleSequenceActionKeyDown(event, () => void cancelSequence())}
+                    data-operation-target-id={activeRenderIntent?.renderTargetId ?? undefined}
                     data-testid="fla-frame-sequence-cancel"
                   >
                     取消生成
@@ -1514,14 +1540,14 @@ export function FlaFrameSequenceReview({
       <div className="fla-frame-sequence-action-bar" data-operation-target-id={target.renderTargetId} data-testid="fla-frame-sequence-action-bar">
         <div className="fla-frame-sequence-action-status">
           <strong data-testid="fla-frame-sequence-action-state" title={target.userLabel}>
-            {target.userLabel} · 第 {startFrameIndex + 1}–{endFrameIndex + 1} 帧 · {validation.valid ? `${validation.frameCount} 帧` : '范围无效'}{phase === 'rendering' ? '' : ` · ${sequenceFooterState(phase, supported, sequenceIsCurrent)}`}
+            {target.userLabel} · 第 {startFrameIndex + 1}–{endFrameIndex + 1} 帧 · {validation.valid ? `${validation.frameCount} 帧` : '范围无效'}{previewPhase === 'rendering' ? '' : ` · ${sequenceFooterState(previewPhase, supported, sequenceIsCurrent)}`}
           </strong>
-          {phase === 'cancelled' ? (
+          {previewPhase === 'cancelled' ? (
             <output data-testid="fla-frame-sequence-cancelled">
               已取消：{completedFrameCount} / {validation.valid ? validation.frameCount : 0} 帧
             </output>
           ) : null}
-          {errorMessage ? <span role="alert" data-testid="fla-frame-sequence-error">{errorMessage}</span> : null}
+          {previewPhase === 'error' && errorMessage ? <span role="alert" data-testid="fla-frame-sequence-error">{errorMessage}</span> : null}
         </div>
         <div className="fla-frame-sequence-action-buttons">
           {canGeneratePhase ? (
@@ -1536,7 +1562,7 @@ export function FlaFrameSequenceReview({
               生成帧序列
             </button>
           ) : null}
-          {phase === 'rendering' ? (
+          {previewPhase === 'rendering' ? (
             <button
               className="fla-render-primary-action"
               type="button"
@@ -1603,7 +1629,7 @@ function compatibilityNote(status: FlaRenderTarget['compatibility'][number]): st
   }
 }
 
-function sequencePreviewStatus(phase: RenderPhase, hasPreview: boolean): string {
+function sequencePreviewStatus(phase: FlaFrameSequencePreviewPhase, hasPreview: boolean): string {
   if (phase === 'rendering') return '';
   if (phase === 'committing') return '正在导入';
   if (phase === 'committed') return '已导入';
@@ -1612,7 +1638,7 @@ function sequencePreviewStatus(phase: RenderPhase, hasPreview: boolean): string 
   return hasPreview ? '最新序列有效' : '等待生成';
 }
 
-function sequenceFooterState(phase: RenderPhase, supported: boolean, sequenceIsCurrent: boolean): string {
+function sequenceFooterState(phase: FlaFrameSequencePreviewPhase, supported: boolean, sequenceIsCurrent: boolean): string {
   if (!supported) return '不可预览';
   if (phase === 'rendering') return '';
   if (phase === 'committing') return '导入中';

@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { FlaFrameSequenceReview } from '../../src/renderer/fla-import/FlaFrameSequenceReview';
+import { phaseForFocusedSequencePreview } from '../../src/renderer/fla-import/fla-frame-sequence-preview-phase';
 
 const noop = () => {};
 const sequenceReviewProps = () => ({
@@ -196,10 +197,29 @@ describe('R2-H.2 Problem A/B: gateway UI gating (#296)', () => {
     expect(reviewSource).toContain('currentIntent?.renderTargetId !== activeRenderIntent.renderTargetId');
     expect(reviewSource).toContain('`正在生成预览…（${previewTarget.userLabel}）`');
     expect(reviewSource).toContain("if (phase === 'committing' && !embedded)");
-    expect(reviewSource).toContain("phase === 'committing' && embedded");
-    expect(reviewSource).toContain('data-testid={phase === \'rendering\' ? \'fla-frame-sequence-central-progress\' : undefined}');
+    expect(reviewSource).toContain("previewPhase === 'committing' && embedded");
+    expect(reviewSource).toContain('data-testid={previewPhase === \'rendering\' ? \'fla-frame-sequence-central-progress\' : undefined}');
     expect(reviewSource).not.toContain('data-testid="fla-frame-sequence-progress"');
     expect(reviewSource).toContain('data-testid="fla-frame-sequence-cancel"');
     expect(reviewSource).not.toContain('className="fla-c03-sequence-actions" aria-live="polite"');
+  });
+});
+
+describe('focused sequence preview phase ownership', () => {
+  it('shows render progress and cancellation only when the focused sequence owns the request', () => {
+    expect(phaseForFocusedSequencePreview('rendering', 'unified-preview', 'target-a', 'target-a')).toBe('rendering');
+    expect(phaseForFocusedSequencePreview('rendering', 'unified-preview', 'target-c', 'target-a')).toBe('selecting');
+  });
+
+  it('keeps a render error or cancellation attached to its target', () => {
+    expect(phaseForFocusedSequencePreview('error', 'unified-preview', 'target-c', 'target-a')).toBe('selecting');
+    expect(phaseForFocusedSequencePreview('error', 'unified-preview', 'target-a', 'target-a')).toBe('error');
+    expect(phaseForFocusedSequencePreview('cancelled', 'unified-preview', 'target-c', 'target-a')).toBe('selecting');
+    expect(phaseForFocusedSequencePreview('cancelled', 'unified-preview', 'target-a', 'target-a')).toBe('cancelled');
+  });
+
+  it('leaves standard sequence review phases unchanged when selection differs', () => {
+    expect(phaseForFocusedSequencePreview('rendering', 'standard', 'target-c', 'target-a')).toBe('rendering');
+    expect(phaseForFocusedSequencePreview('error', 'standard', 'target-c', 'target-a')).toBe('error');
   });
 });

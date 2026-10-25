@@ -98,20 +98,19 @@ export function FlaUnifiedWorkbench({
   const focusedCandidate = candidates.find((candidate) =>
     candidate.identityKey === focusedCandidateIdentityKey,
   ) ?? null;
-  const activeSequenceRenderCandidate = candidates.find((candidate) =>
-    candidate.kind === 'sequence' && candidate.preview.status === 'checking',
-  ) ?? null;
-  const previewCandidate = activeSequenceRenderCandidate ?? focusedCandidate;
-  const previewCandidateLabel = previewCandidate
-    ? readableFlaCandidateLabel(previewCandidate.displayLabel)
+  const focusedCandidateLabel = focusedCandidate
+    ? readableFlaCandidateLabel(focusedCandidate.displayLabel)
+    : null;
+  const focusedPreviewTargetId = focusedCandidate
+    ? focusedCandidate.kind === 'raster'
+      ? focusedCandidate.provenance.mediaId
+      : focusedCandidate.provenance.renderTargetId
     : null;
   const relatedSnapshot = focusedCandidate?.kind === 'sequence'
     ? allCandidates.find((candidate) => candidate.kind === 'snapshot' &&
       candidate.provenance.renderTargetId === focusedCandidate.provenance.renderTargetId) ?? null
     : null;
-  const status = activeSequenceRenderCandidate
-    ? null
-    : focusedCandidate ? focusedCandidateStatus(focusedCandidate) : null;
+  const status = focusedCandidate ? focusedCandidateStatus(focusedCandidate) : null;
   const canZoom = Boolean(focusedCandidate?.preview.previewUrl || showSnapshotPreview || showSequencePreview);
 
   useLayoutEffect(() => {
@@ -150,6 +149,8 @@ export function FlaUnifiedWorkbench({
         <img
           alt={focusedCandidate.displayLabel}
           className="fla-c03-preview-image"
+          data-preview-candidate-identity={focusedCandidate.identityKey}
+          data-preview-target-id={focusedPreviewTargetId ?? undefined}
           data-testid="fla-c03-focused-raster-preview"
           src={focusedCandidate.preview.previewUrl}
           style={{ transform: `scale(${previewZoom})` }}
@@ -290,7 +291,12 @@ export function FlaUnifiedWorkbench({
               const fullItemLabel = candidate.displayLabel;
               const cardLabel = candidate.cardLabel ?? candidate.displayLabel;
               const itemLabel = cardLabel;
-              const statusLabel = candidate.kind === 'sequence' &&
+              const isUnfocusedSequenceRender = candidate.kind === 'sequence' &&
+                candidate.preview.status === 'checking' &&
+                candidate.identityKey !== focusedCandidateIdentityKey;
+              const statusLabel = isUnfocusedSequenceRender
+                ? '生成中…'
+                : candidate.kind === 'sequence' &&
                 (candidate.preview.status === 'verified' || candidate.preview.status === 'unscanned' || candidate.preview.status === 'checking')
                 ? ''
                 : candidateStatus(candidate);
@@ -327,7 +333,14 @@ export function FlaUnifiedWorkbench({
                     <span className="fla-c03-candidate-copy">
                       <strong title={fullItemLabel}>{itemLabel}</strong>
                       <small className="fla-c03-candidate-kind">{candidate.kind === 'sequence' ? '动画' : '图片'}</small>
-                      {statusLabel ? <small data-status={candidate.preview.status}>{statusLabel}</small> : null}
+                      {statusLabel ? (
+                        <small
+                          data-status={candidate.preview.status}
+                          data-testid={isUnfocusedSequenceRender ? `fla-c03-sequence-progress-${candidate.id}` : undefined}
+                        >
+                          {statusLabel}
+                        </small>
+                      ) : null}
                     </span>
                   </button>
                   {multiSelectMode ? (
@@ -361,7 +374,9 @@ export function FlaUnifiedWorkbench({
           aria-label="素材预览"
           className="fla-c03-preview"
           data-candidate-kind={focusedCandidate?.kind ?? 'none'}
+          data-preview-candidate-identity={focusedCandidate?.identityKey ?? undefined}
           data-preview-status={focusedCandidate?.preview.status ?? 'empty'}
+          data-preview-target-id={focusedPreviewTargetId ?? undefined}
           data-sequence-canvas={focusedCandidate?.kind === 'sequence' && showSequencePreview ? 'true' : 'false'}
           data-sequence-preview={showSequencePreview ? 'true' : 'false'}
           data-testid="fla-c03-preview"
@@ -370,10 +385,12 @@ export function FlaUnifiedWorkbench({
           <header className="fla-c03-preview-header">
             <div className="fla-c03-preview-title">
               <h2
-                data-preview-owner={activeSequenceRenderCandidate ? 'active-render' : 'focused-candidate'}
+                data-preview-candidate-identity={focusedCandidate?.identityKey ?? undefined}
+                data-preview-owner="focused-candidate"
+                data-preview-target-id={focusedPreviewTargetId ?? undefined}
                 data-testid="fla-c03-focused-label"
               >
-                {previewCandidateLabel ?? '预览'}
+                {focusedCandidateLabel ?? '预览'}
               </h2>
               {status ? <output data-testid="fla-c03-focused-status">{status}</output> : null}
             </div>
@@ -393,6 +410,8 @@ export function FlaUnifiedWorkbench({
           </header>
           <div
             className="fla-c03-preview-stage"
+            data-preview-candidate-identity={focusedCandidate?.identityKey ?? undefined}
+            data-preview-target-id={focusedPreviewTargetId ?? undefined}
             data-testid="fla-c03-preview-stage"
             style={{ '--fla-c03-zoom': previewZoom } as CSSProperties}
           >

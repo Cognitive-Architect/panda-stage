@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import type { AnimationImportIR } from '../../src/shared/fla-import-api';
 import type { FlaRenderableTargetCatalogEntry } from '../../src/shared/fla-static-snapshot-api';
 import { FlaUnifiedWorkbench, isCleanSingleItemSuccess } from '../../src/renderer/fla-import/FlaUnifiedWorkbench';
 import {
@@ -54,15 +55,22 @@ function renderWorkbench(overrides: Partial<WorkbenchProps> = {}): string {
   return renderToStaticMarkup(createElement(FlaUnifiedWorkbench, { ...baseProps, ...overrides }));
 }
 
-function sequenceCandidate(status: 'unscanned' | 'checking' | 'verified' | 'error' | 'blank' | 'unsupported') {
-  const renderTargetId = `fla-render-target-${status.padEnd(16, '0')}`;
+function htmlAttributeValue(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+}
+
+function sequenceCandidate(
+  status: 'unscanned' | 'checking' | 'verified' | 'error' | 'blank' | 'unsupported',
+  renderTargetId = `fla-render-target-${status.padEnd(16, '0')}`,
+  userLabel = '挥剑动作',
+) {
   const entry: FlaRenderableTargetCatalogEntry = {
     target: {
       renderTargetId,
       kind: 'timeline',
-      userLabel: '挥剑动作',
-      sourceLibraryItemName: '挥剑动作',
-      sourceSymbolName: '挥剑动作',
+      userLabel,
+      sourceLibraryItemName: userLabel,
+      sourceSymbolName: userLabel,
       sourceTimelineIndex: 0,
       frameCount: 30,
       selectedFrameIndex: 0,
@@ -95,6 +103,35 @@ function sequenceCandidate(status: 'unscanned' | 'checking' | 'verified' | 'erro
     sequencePreviews: preview ? { [renderTargetId]: preview } : undefined,
   });
   if (!candidate || candidate.kind !== 'sequence') throw new Error(`No sequence candidate for ${status}`);
+  return candidate;
+}
+
+function rasterCandidate(id = 'fla-media-raster-b', name = 'Raster B') {
+  const media: AnimationImportIR['media'][number] = {
+    id,
+    name,
+    sourceReference: `LIBRARY/${name}.png`,
+    bitmapDataReference: `bitmap/${name}`,
+    sourceFormat: 'png',
+    width: 320,
+    height: 240,
+    payload: {
+      mimeType: 'image/png',
+      width: 320,
+      height: 240,
+      bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+      alpha: { kind: 'opaque', zeroAlphaPixels: 0, partialAlphaPixels: 0 },
+    },
+  };
+  const [candidate] = createFlaWorkbenchCandidates({
+    context: {
+      sessionId: '00000000-0000-4000-8000-000000000778',
+      source: { basename: 'sample.fla', sha256: 'a'.repeat(64) },
+    },
+    rasterMedia: [media],
+    rasterThumbnailUrls: { [id]: 'blob:image-b' },
+  });
+  if (!candidate || candidate.kind !== 'raster') throw new Error(`No raster candidate for ${name}`);
   return candidate;
 }
 
@@ -236,7 +273,10 @@ describe('Issue #778 unified FLA workbench presentation', () => {
       focusedCandidateIdentityKey: ready.identityKey,
     });
     const unscannedMarkup = renderWorkbench({ candidates: [unscanned] });
-    const checkingMarkup = renderWorkbench({ candidates: [checking] });
+    const checkingMarkup = renderWorkbench({
+      candidates: [checking],
+      focusedCandidateIdentityKey: checking.identityKey,
+    });
     const failedMarkup = renderWorkbench({ candidates: [failed] });
     const blankMarkup = renderWorkbench({ candidates: [blank] });
     const unsupportedMarkup = renderWorkbench({ candidates: [unsupported] });
@@ -261,9 +301,10 @@ describe('Issue #778 unified FLA workbench presentation', () => {
     expect(checkingMarkup).not.toContain('fla-c03-focused-status');
     expect(browsingOtherCandidateMarkup).toContain('data-preview-status="checking"');
     expect(browsingOtherCandidateMarkup).toContain('data-preview-status="unscanned"');
-    expect(browsingOtherCandidateMarkup).toContain('data-preview-owner="active-render"');
-    expect(browsingOtherCandidateMarkup).toContain(`data-testid="fla-c03-focused-label">${checking.displayLabel}</h2>`);
-    expect(browsingOtherCandidateMarkup).not.toContain('生成中');
+    expect(browsingOtherCandidateMarkup).toContain('data-preview-owner="focused-candidate"');
+    expect(browsingOtherCandidateMarkup).toContain(`data-testid="fla-c03-focused-label">${unscanned.displayLabel}</h2>`);
+    expect(browsingOtherCandidateMarkup).toContain(`data-testid="fla-c03-sequence-progress-${checking.id}"`);
+    expect(browsingOtherCandidateMarkup).toContain('>生成中…</small>');
     expect(browsingOtherCandidateMarkup).not.toContain('data-testid="fla-c03-focused-status"');
     const catalogProgress = readyMarkup.match(/<output\b[^>]*data-testid="fla-c03-catalog-progress"[^>]*>/u)?.[0];
     expect(catalogProgress).toBeDefined();
@@ -271,6 +312,71 @@ describe('Issue #778 unified FLA workbench presentation', () => {
     expect(failedMarkup).toContain('<small data-status="error">加载失败</small>');
     expect(blankMarkup).toContain('<small data-status="blank">空白画面</small>');
     expect(unsupportedMarkup).toContain('<small data-status="unsupported">暂无法预览</small>');
+  });
+
+  it('keeps an active sequence render with its card while a raster candidate owns the preview', () => {
+    const targetA = 'fla-render-target-sequence-a';
+    const sequenceA = sequenceCandidate('checking', targetA, 'Sequence A');
+    const rasterB = rasterCandidate();
+    const markup = renderWorkbench({
+      candidates: [sequenceA, rasterB],
+      allCandidates: [sequenceA, rasterB],
+      focusedCandidateIdentityKey: rasterB.identityKey,
+      showSequencePreview: true,
+      sequencePreview: createElement('div', {
+        'data-preview-target-id': targetA,
+        'data-testid': 'sequence-a-render-placeholder',
+      }),
+    });
+    const heading = markup.match(/<h2\b(?=[^>]*data-testid="fla-c03-focused-label")[^>]*>[^<]+<\/h2>/u)?.[0];
+    const preview = markup.match(/<section\b(?=[^>]*data-testid="fla-c03-preview")[^>]*>/u)?.[0];
+    const image = markup.match(/<img\b(?=[^>]*data-testid="fla-c03-focused-raster-preview")[^>]*>/u)?.[0];
+
+    expect(heading).toContain('>Raster B</h2>');
+    expect(heading).toContain(`data-preview-candidate-identity="${htmlAttributeValue(rasterB.identityKey)}"`);
+    expect(heading).toContain(`data-preview-target-id="${rasterB.provenance.mediaId}"`);
+    expect(preview).toContain(`data-preview-candidate-identity="${htmlAttributeValue(rasterB.identityKey)}"`);
+    expect(preview).toContain(`data-preview-target-id="${rasterB.provenance.mediaId}"`);
+    expect(image).toContain('src="blob:image-b"');
+    expect(image).toContain(`data-preview-candidate-identity="${htmlAttributeValue(rasterB.identityKey)}"`);
+    expect(image).toContain(`data-preview-target-id="${rasterB.provenance.mediaId}"`);
+    expect(markup).toContain(`data-testid="fla-c03-sequence-progress-${sequenceA.id}"`);
+    expect(markup).not.toContain('data-preview-owner="active-render"');
+  });
+
+  it('keeps a same-type focused sequence preview aligned with its own target while another renders', () => {
+    const targetA = 'fla-render-target-sequence-a';
+    const targetC = 'fla-render-target-sequence-c';
+    const sequenceA = sequenceCandidate('checking', targetA, 'Sequence A');
+    const sequenceC = sequenceCandidate('verified', targetC, 'Sequence C');
+    const markup = renderWorkbench({
+      candidates: [sequenceA, sequenceC],
+      allCandidates: [sequenceA, sequenceC],
+      focusedCandidateIdentityKey: sequenceC.identityKey,
+      showSequencePreview: true,
+      sequencePreview: createElement('section', {
+        'data-preview-target-id': targetC,
+        'data-testid': 'sequence-c-preview',
+      }, createElement('img', {
+        'data-frame-index': '4',
+        'data-preview-target-id': targetC,
+        'data-testid': 'sequence-c-image',
+        src: 'blob:sequence-c-frame-4',
+      })),
+    });
+    const heading = markup.match(/<h2\b(?=[^>]*data-testid="fla-c03-focused-label")[^>]*>[^<]+<\/h2>/u)?.[0];
+    const preview = markup.match(/<section\b(?=[^>]*data-testid="fla-c03-preview")[^>]*>/u)?.[0];
+    const sequenceImage = markup.match(/<img\b(?=[^>]*data-testid="sequence-c-image")[^>]*>/u)?.[0];
+
+    expect(heading).toContain('>Sequence C</h2>');
+    expect(heading).toContain(`data-preview-candidate-identity="${htmlAttributeValue(sequenceC.identityKey)}"`);
+    expect(heading).toContain(`data-preview-target-id="${targetC}"`);
+    expect(preview).toContain(`data-preview-candidate-identity="${htmlAttributeValue(sequenceC.identityKey)}"`);
+    expect(preview).toContain(`data-preview-target-id="${targetC}"`);
+    expect(sequenceImage).toContain('src="blob:sequence-c-frame-4"');
+    expect(sequenceImage).toContain(`data-preview-target-id="${targetC}"`);
+    expect(sequenceImage).toContain('data-frame-index="4"');
+    expect(markup).toContain(`data-testid="fla-c03-sequence-progress-${sequenceA.id}"`);
   });
 
   it('places sequence controls in a sibling region below the canvas', () => {

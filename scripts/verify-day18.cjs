@@ -21,6 +21,10 @@ const branch = process.env.GITHUB_HEAD_REF ||
     cwd: repositoryRoot,
     encoding: 'utf8',
   }).trim();
+const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+  cwd: repositoryRoot,
+  encoding: 'utf8',
+}).trim();
 const evidenceRelativeDirectory =
   `docs/evidence/issue-835-day18/run-${new Date().toISOString().replace(/[:.]/gu, '-')}`;
 const evidenceDirectory = path.join(
@@ -1920,11 +1924,75 @@ async function verifyDay18() {
         left.dirty === right.dirty;
       const readGridBounds = () =>
         window.webContents.executeJavaScript(`(() => {
-          const rect = document.querySelector('.asset-grid')?.getBoundingClientRect();
+          const grid = document.querySelector('.asset-grid');
           const content = document.querySelector('.asset-library-content');
-          return rect ? {
-            top: rect.top, left: rect.left, width: rect.width,
-            height: rect.height, scrollTop: content?.scrollTop ?? 0,
+          const browser = document.querySelector('.asset-library-browser');
+          const headingCount = document.querySelector('.asset-library-heading')?.textContent?.match(/[0-9]+/u)?.[0];
+          const readRect = (element) => {
+            const rect = element?.getBoundingClientRect();
+            return rect ? {
+              top: rect.top, left: rect.left, width: rect.width, height: rect.height,
+              right: rect.right, bottom: rect.bottom,
+            } : null;
+          };
+          const contentStyle = content ? getComputedStyle(content) : null;
+          return grid ? {
+            viewport: { width: window.innerWidth, height: window.innerHeight, devicePixelRatio: window.devicePixelRatio },
+            top: grid.getBoundingClientRect().top,
+            left: grid.getBoundingClientRect().left,
+            width: grid.getBoundingClientRect().width,
+            height: grid.getBoundingClientRect().height,
+            scrollTop: grid.scrollTop,
+            scrollHeight: grid.scrollHeight,
+            clientHeight: grid.clientHeight,
+            hasVerticalScrollbar: grid.scrollHeight > grid.clientHeight + 1,
+            cardCount: grid.querySelectorAll('.asset-card').length,
+            cardIds: [...grid.querySelectorAll('.asset-card')].map((card) => card.dataset.assetId),
+            cardNames: [...grid.querySelectorAll('.asset-card .asset-card-name')].map((name) => name.textContent?.trim() ?? ''),
+            assetLibraryHeading: document.querySelector('.asset-library-heading')?.textContent?.trim() ?? null,
+            projectAssetCount: headingCount ? Number(headingCount) : null,
+            assetLibraryPresentation: document.querySelector('.asset-library')?.dataset.assetLibraryPresentation ?? null,
+            content: readRect(content),
+            contentMargins: contentStyle ? {
+              top: contentStyle.marginTop, right: contentStyle.marginRight,
+              bottom: contentStyle.marginBottom, left: contentStyle.marginLeft,
+            } : null,
+            contentPadding: contentStyle ? {
+              top: contentStyle.paddingTop, right: contentStyle.paddingRight,
+              bottom: contentStyle.paddingBottom, left: contentStyle.paddingLeft,
+            } : null,
+            browser: readRect(browser),
+            scrollAncestors: (() => {
+              const result = [];
+              let element = grid;
+              while (element instanceof HTMLElement && result.length < 10) {
+                const style = getComputedStyle(element);
+                result.push({
+                  tag: element.tagName.toLowerCase(),
+                  id: element.id || null,
+                  className: typeof element.className === 'string' ? element.className : null,
+                  testId: element.dataset.testid ?? null,
+                  overflowY: style.overflowY,
+                  scrollTop: element.scrollTop,
+                  scrollHeight: element.scrollHeight,
+                  clientHeight: element.clientHeight,
+                });
+                element = element.parentElement;
+              }
+              const root = document.scrollingElement;
+              if (root && !result.some((entry) => entry.tag === root.tagName.toLowerCase())) {
+                result.push({
+                  tag: root.tagName.toLowerCase(), id: root.id || null,
+                  className: typeof root.className === 'string' ? root.className : null,
+                  testId: root.dataset?.testid ?? null,
+                  overflowY: getComputedStyle(root).overflowY,
+                  scrollTop: root.scrollTop,
+                  scrollHeight: root.scrollHeight,
+                  clientHeight: root.clientHeight,
+                });
+              }
+              return result;
+            })(),
           } : null;
         })()`);
       const makeImageAsset = (number) => ({
@@ -2133,10 +2201,22 @@ async function verifyDay18() {
           'The import feedback did not close on request.',
         );
       };
-      const sameBounds = (left, right) => Boolean(left && right &&
-        ['top', 'left', 'width', 'height', 'scrollTop'].every(
+      const sameGridLayout = (left, right) => Boolean(left && right &&
+        ['top', 'left', 'width', 'height'].every(
           (key) => Math.abs(left[key] - right[key]) <= 1,
-        ));
+        ) &&
+        ['top', 'left', 'width', 'height'].every(
+          (key) => Math.abs(left.content?.[key] - right.content?.[key]) <= 1,
+        ) &&
+        ['top', 'left', 'width', 'height'].every(
+          (key) => Math.abs(left.browser?.[key] - right.browser?.[key]) <= 1,
+        ) &&
+        JSON.stringify(left.contentMargins) === JSON.stringify(right.contentMargins) &&
+        JSON.stringify(left.contentPadding) === JSON.stringify(right.contentPadding) &&
+        left.scrollHeight === right.scrollHeight &&
+        left.clientHeight === right.clientHeight &&
+        left.hasVerticalScrollbar === right.hasVerticalScrollbar &&
+        left.cardCount === right.cardCount);
 
       const beforeSuccessState = await readInteractionState();
       const beforeSuccessGrid = await readGridBounds();
@@ -2153,16 +2233,154 @@ async function verifyDay18() {
       const successUi = await readFeedback();
       const successGridWhileVisible = await readGridBounds();
       const successScreenshot = await capturePaintedPage(window);
-      await new Promise((resolve) => setTimeout(resolve, 3500));
+      const successScrollStart = await window.webContents.executeJavaScript(`(() => {
+        const grid = document.querySelector('.asset-grid');
+        if (!grid) return null;
+        let scrollTarget = grid;
+        for (let element = grid; element instanceof HTMLElement; element = element.parentElement) {
+          const style = getComputedStyle(element);
+          if (/(auto|scroll|overlay)/u.test(style.overflowY) &&
+            element.scrollHeight > element.clientHeight + 1) {
+            scrollTarget = element;
+            break;
+          }
+        }
+        const rect = grid.getBoundingClientRect();
+        const toast = document.querySelector('[data-testid="asset-import-feedback"]');
+        const toastRect = toast?.getBoundingClientRect();
+        const left = Math.max(0, rect.left);
+        const right = Math.min(window.innerWidth, rect.right);
+        const top = Math.max(0, rect.top);
+        const bottom = Math.min(window.innerHeight, rect.bottom);
+        const points = [
+          { x: left + (right - left) / 2, y: top + Math.min(80, (bottom - top) / 2) },
+          { x: left + Math.min(40, (right - left) / 2), y: top + Math.min(80, (bottom - top) / 2) },
+          { x: right - Math.min(40, (right - left) / 2), y: top + Math.min(80, (bottom - top) / 2) },
+        ];
+        const point = points.find(({ x, y }) => {
+          const target = document.elementFromPoint(x, y);
+          const coveredByToast = toastRect && x >= toastRect.left && x <= toastRect.right &&
+            y >= toastRect.top && y <= toastRect.bottom;
+          return !coveredByToast && target && (target === scrollTarget || scrollTarget.contains(target));
+        });
+        window.__day18ScrollTarget = scrollTarget;
+        window.__day18WheelEvents = [];
+        window.__day18WheelListener = (event) => window.__day18WheelEvents.push({
+          target: event.target instanceof Element ? event.target.className?.toString?.() ?? event.target.tagName : null,
+          deltaY: event.deltaY,
+          defaultPrevented: event.defaultPrevented,
+        });
+        document.addEventListener('wheel', window.__day18WheelListener, true);
+        return point ? {
+          ...point,
+          target: scrollTarget.dataset.testid || scrollTarget.className || scrollTarget.tagName.toLowerCase(),
+          scrollTop: scrollTarget.scrollTop,
+          maxScrollTop: Math.max(0, scrollTarget.scrollHeight - scrollTarget.clientHeight),
+          hitTarget: document.elementFromPoint(point.x, point.y)?.className?.toString?.() ?? null,
+        } : null;
+      })()`);
+      if (successScrollStart?.maxScrollTop > 0) {
+        window.show();
+        window.focus();
+        window.webContents.focus();
+        await window.webContents.sendInputEvent({
+          type: 'mouseMove', x: successScrollStart.x, y: successScrollStart.y,
+        });
+        await window.webContents.sendInputEvent({
+          type: 'mouseWheel', x: successScrollStart.x, y: successScrollStart.y,
+          deltaY: successScrollStart.scrollTop >= successScrollStart.maxScrollTop - 1 ? 720 : -720,
+          wheelTicksY: successScrollStart.scrollTop >= successScrollStart.maxScrollTop - 1 ? 6 : -6,
+          canScroll: true,
+          deltaX: 0,
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const successScrollProbe = successScrollStart
+        ? await window.webContents.executeJavaScript(`(() => {
+            const target = window.__day18ScrollTarget;
+            const events = window.__day18WheelEvents ?? [];
+            document.removeEventListener('wheel', window.__day18WheelListener, true);
+            return { scrollTop: target?.scrollTop ?? null, events };
+          })()`)
+        : { scrollTop: null, events: [] };
+      const successScrollPosition = successScrollProbe.scrollTop;
+      const successScrollMoved = Boolean(successScrollStart && successScrollPosition !== null &&
+        Math.abs(successScrollPosition - successScrollStart.scrollTop) > 1);
+      const successCardTarget = await window.webContents.executeJavaScript(`(() => {
+        const grid = document.querySelector('.asset-grid');
+        const toast = document.querySelector('[data-testid="asset-import-feedback"]');
+        if (!grid || !toast) return null;
+        const toastRect = toast.getBoundingClientRect();
+        for (const card of grid.querySelectorAll('.asset-card')) {
+          const rect = card.getBoundingClientRect();
+          const x = Math.round(rect.left + rect.width / 2);
+          const y = Math.round(rect.top + rect.height / 2);
+          const target = document.elementFromPoint(x, y);
+          const overlapsToast = rect.left < toastRect.right && rect.right > toastRect.left &&
+            rect.top < toastRect.bottom && rect.bottom > toastRect.top;
+          if (rect.width > 0 && rect.height > 0 && !card.classList.contains('asset-card-selected') && !overlapsToast &&
+            target instanceof Element && card.contains(target)) {
+            return { assetId: card.dataset.assetId, x, y };
+          }
+        }
+        return null;
+      })()`);
+      let successCardClickSelected = false;
+      if (successCardTarget) {
+        window.webContents.sendInputEvent({
+          type: 'mouseMove', x: successCardTarget.x, y: successCardTarget.y,
+        });
+        window.webContents.sendInputEvent({
+          type: 'mouseDown', x: successCardTarget.x, y: successCardTarget.y,
+          button: 'left', clickCount: 1,
+        });
+        window.webContents.sendInputEvent({
+          type: 'mouseUp', x: successCardTarget.x, y: successCardTarget.y,
+          button: 'left', clickCount: 1,
+        });
+        await waitForRenderer(
+          window,
+          `document.querySelector('[data-asset-id="${successCardTarget.assetId}"]')?.classList.contains('asset-card-selected')`,
+          'An asset card could not be selected while the success notice was visible.',
+        );
+        successCardClickSelected = await window.webContents.executeJavaScript(
+          `document.querySelector('[data-asset-id="${successCardTarget.assetId}"]')?.classList.contains('asset-card-selected') === true`,
+        );
+      }
+      const successToastVisibleAfterInteraction = await window.webContents.executeJavaScript(
+        "Boolean(document.querySelector('[data-testid=\"asset-import-feedback\"]')?.getClientRects().length)",
+      );
+      const successGridAfterInteraction = await readGridBounds();
+      const successScrollTopAfterInteraction = successScrollStart
+        ? successGridAfterInteraction?.scrollAncestors?.find((ancestor) =>
+            ancestor.testId === successScrollStart.target || ancestor.className === successScrollStart.target,
+          )?.scrollTop ?? null
+        : null;
+      await new Promise((resolve) => setTimeout(
+        resolve,
+        Math.max(0, successShownAt + 3500 - Date.now()),
+      ));
       const successVisibleAt3500Ms = await window.webContents.executeJavaScript(
         "Boolean(document.querySelector('[data-testid=\"asset-import-feedback\"]'))",
       );
-      await new Promise((resolve) => setTimeout(resolve, 900));
+      await new Promise((resolve) => setTimeout(
+        resolve,
+        Math.max(0, successShownAt + 4400 - Date.now()),
+      ));
       const successDismissed = await window.webContents.executeJavaScript(
         "!document.querySelector('[data-testid=\"asset-import-feedback\"]')",
       );
       const successGridAfterDismissal = await readGridBounds();
       const afterSuccessState = await readInteractionState();
+      const successScrollTopAfterDismissal = successScrollStart
+        ? successGridAfterDismissal?.scrollAncestors?.find((ancestor) =>
+            ancestor.testId === successScrollStart.target || ancestor.className === successScrollStart.target,
+          )?.scrollTop ?? null
+        : null;
+      const projectAssetCountDelta = beforeSuccessGrid?.projectAssetCount != null &&
+        successGridWhileVisible?.projectAssetCount != null
+        ? successGridWhileVisible.projectAssetCount - beforeSuccessGrid.projectAssetCount
+        : null;
       const successAudit = {
         oneFeedback: successUi.count === 1,
         fourFileSummary: successUi.summary?.includes('4') && successUi.summary?.includes('素材'),
@@ -2175,14 +2393,51 @@ async function verifyDay18() {
         visibleAt3500Ms: successVisibleAt3500Ms,
         dismissedAfterTimeout: successDismissed,
         visibleForMs: Date.now() - successShownAt,
-        listPositionUnchanged: sameBounds(beforeSuccessGrid, successGridWhileVisible) &&
-          sameBounds(beforeSuccessGrid, successGridAfterDismissal),
+        geometryBeforeImport: beforeSuccessGrid,
+        geometryWhileVisible: successGridWhileVisible,
+        geometryAfterVisibleInteractions: successGridAfterInteraction,
+        geometryAfterDismissal: successGridAfterDismissal,
+        importReflow: {
+          importedAssets: successAssets.length,
+          projectAssetCountDelta,
+          gridCardCountDelta: successGridWhileVisible?.cardCount - beforeSuccessGrid?.cardCount,
+          gridScrollHeightDelta: successGridWhileVisible?.scrollHeight - beforeSuccessGrid?.scrollHeight,
+          gridWidthDelta: successGridWhileVisible?.width - beforeSuccessGrid?.width,
+          gridHeightDelta: successGridWhileVisible?.height - beforeSuccessGrid?.height,
+          scrollbarChanged: successGridWhileVisible?.hasVerticalScrollbar !== beforeSuccessGrid?.hasVerticalScrollbar,
+        },
+        toastDoesNotMoveGrid: sameGridLayout(successGridAfterInteraction, successGridAfterDismissal),
+        preservesScrollPositionOnDismissal:
+          successScrollTopAfterInteraction !== null && successScrollTopAfterDismissal !== null &&
+          Math.abs(successScrollTopAfterInteraction - successScrollTopAfterDismissal) <= 1,
+        scrollWhileVisible: {
+          targetFound: Boolean(successScrollStart),
+          scrollable: (successScrollStart?.maxScrollTop ?? 0) > 0,
+          moved: successScrollMoved,
+          target: successScrollStart?.target ?? null,
+          hitTarget: successScrollStart?.hitTarget ?? null,
+          wheelEvents: successScrollProbe.events,
+          scrollTopBefore: successScrollStart?.scrollTop ?? null,
+          scrollTopWhileVisible: successScrollPosition,
+          scrollTopAfterInteraction: successScrollTopAfterInteraction,
+          scrollTopAfterDismissal: successScrollTopAfterDismissal,
+          maxScrollTop: successScrollStart?.maxScrollTop ?? null,
+        },
+        cardClickWhileVisible: {
+          targetFound: Boolean(successCardTarget),
+          assetId: successCardTarget?.assetId ?? null,
+          selected: successCardClickSelected,
+          toastRemainedVisible: successToastVisibleAfterInteraction,
+        },
+        listPositionUnchanged: sameGridLayout(successGridAfterInteraction, successGridAfterDismissal) &&
+          Math.abs(successGridAfterInteraction?.scrollTop - successGridAfterDismissal?.scrollTop) <= 1,
         expectedImportRevisionOnly:
           afterSuccessState.revision === beforeSuccessState.revision + 1 &&
           afterSuccessState.undoCount === beforeSuccessState.undoCount &&
           afterSuccessState.redoCount === beforeSuccessState.redoCount &&
           afterSuccessState.dirty === beforeSuccessState.dirty,
       };
+      console.log(`[Day18] import feedback audit ${JSON.stringify(successAudit)}`);
 
       setVerificationStage('pending import preserves intervening edit');
       const beforePendingImportState = await readInteractionState();
@@ -2478,6 +2733,7 @@ async function verifyDay18() {
       workOrder: 'B-18/45',
       result: 'PASS',
       branch,
+      sourceSha,
       executedAt: new Date().toISOString(),
       ui: {
         categories: categoryLabels,
@@ -2654,6 +2910,16 @@ async function verifyDay18() {
       !importFeedback.audit.success.dismissedAfterTimeout ||
       importFeedback.audit.success.visibleForMs > 5000 ||
       !importFeedback.audit.success.listPositionUnchanged ||
+      (importFeedback.audit.success.importReflow.projectAssetCountDelta !== null &&
+        importFeedback.audit.success.importReflow.projectAssetCountDelta !== 4) ||
+      !importFeedback.audit.success.toastDoesNotMoveGrid ||
+      !importFeedback.audit.success.preservesScrollPositionOnDismissal ||
+      !importFeedback.audit.success.scrollWhileVisible.targetFound ||
+      !importFeedback.audit.success.scrollWhileVisible.scrollable ||
+      !importFeedback.audit.success.scrollWhileVisible.moved ||
+      !importFeedback.audit.success.cardClickWhileVisible.targetFound ||
+      !importFeedback.audit.success.cardClickWhileVisible.selected ||
+      !importFeedback.audit.success.cardClickWhileVisible.toastRemainedVisible ||
       !importFeedback.audit.success.expectedImportRevisionOnly ||
       Object.values(importFeedback.audit.pendingImportSuccess).some((passed) => !passed) ||
       Object.values(importFeedback.audit.pendingImportFailure).some((passed) => !passed) ||
