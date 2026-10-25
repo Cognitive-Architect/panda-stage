@@ -22,6 +22,11 @@ import {
   resolveFormalExportDrawMode,
   type ExportDrawMode,
 } from '../../shared/export-draw-mode';
+import {
+  EXPORT_PNG_MODE_QUERY_PARAM,
+  resolveFormalExportPngMode,
+  type ExportPngMode,
+} from '../../shared/export-png-mode';
 import { IPC_CHANNELS } from '../../shared/ipc/channels';
 
 const READY_TIMEOUT_MS = 10_000;
@@ -38,7 +43,9 @@ interface PendingRequest<TRequest, TResponse> {
 export class HiddenWindowManager {
   private readonly frameTiming: boolean;
   private nextFormalDrawMode: ExportDrawMode;
+  private nextFormalPngMode: ExportPngMode;
   private windowDrawMode: ExportDrawMode | null = null;
+  private windowPngMode: ExportPngMode | null = null;
   private window: BrowserWindow | null = null;
   private readyResolve: (() => void) | null = null;
   private readyReject: ((error: Error) => void) | null = null;
@@ -59,12 +66,19 @@ export class HiddenWindowManager {
   private readonly cancelledJobIds = new Set<string>();
 
   constructor(
-    options: { formalDrawMode?: ExportDrawMode; frameTiming?: boolean } = {},
+    options: {
+      formalDrawMode?: ExportDrawMode;
+      formalPngMode?: ExportPngMode;
+      frameTiming?: boolean;
+    } = {},
   ) {
     this.frameTiming = options.frameTiming ?? false;
     this.nextFormalDrawMode =
       options.formalDrawMode ??
       resolveFormalExportDrawMode(process.env.PANDA_STAGE_EXPORT_DRAW_MODE);
+    this.nextFormalPngMode =
+      options.formalPngMode ??
+      resolveFormalExportPngMode(process.env.PANDA_STAGE_EXPORT_PNG_MODE);
   }
 
   getDiagnostics(): {
@@ -73,6 +87,7 @@ export class HiddenWindowManager {
     pendingLoadJobId: string | null;
     pendingFrameJobId: string | null;
     drawMode: ExportDrawMode | null;
+    pngMode: ExportPngMode | null;
   } {
     return {
       windowOpen: this.getWindow() !== null,
@@ -80,12 +95,14 @@ export class HiddenWindowManager {
       pendingLoadJobId: this.pendingLoad?.request.jobId ?? null,
       pendingFrameJobId: this.pendingFrame?.request.jobId ?? null,
       drawMode: this.windowDrawMode,
+      pngMode: this.windowPngMode,
     };
   }
 
   async prepareJob(kind: 'probe' | 'formal' = 'probe'): Promise<void> {
     const drawMode = kind === 'formal' ? this.nextFormalDrawMode : 'legacy-raf';
-    await this.create(drawMode);
+    const pngMode = kind === 'formal' ? this.nextFormalPngMode : 'legacy-blob';
+    await this.create(drawMode, pngMode);
   }
 
   releaseJob(): void {
@@ -96,11 +113,14 @@ export class HiddenWindowManager {
     return this.window && !this.window.isDestroyed() ? this.window : null;
   }
 
-  async create(drawMode: ExportDrawMode = 'legacy-raf'): Promise<BrowserWindow> {
+  async create(
+    drawMode: ExportDrawMode = 'legacy-raf',
+    pngMode: ExportPngMode = 'legacy-blob',
+  ): Promise<BrowserWindow> {
     const existingWindow = this.getWindow();
     if (existingWindow) {
-      if (this.windowDrawMode !== drawMode) {
-        throw new Error('Hidden window draw mode cannot change during a Job.');
+      if (this.windowDrawMode !== drawMode || this.windowPngMode !== pngMode) {
+        throw new Error('Hidden window export modes cannot change during a Job.');
       }
       return existingWindow;
     }
@@ -127,11 +147,13 @@ export class HiddenWindowManager {
     });
     this.window = window;
     this.windowDrawMode = drawMode;
+    this.windowPngMode = pngMode;
 
     window.once('closed', () => {
       if (this.window === window) {
         this.window = null;
         this.windowDrawMode = null;
+        this.windowPngMode = null;
       }
       this.rejectReady(new Error('Hidden window closed before ready.'));
       this.rejectPendingRequests(
@@ -144,6 +166,7 @@ export class HiddenWindowManager {
       if (developmentUrl) {
         const hiddenUrl = new URL('hidden.html', developmentUrl);
         hiddenUrl.searchParams.set(EXPORT_DRAW_MODE_QUERY_PARAM, drawMode);
+        hiddenUrl.searchParams.set(EXPORT_PNG_MODE_QUERY_PARAM, pngMode);
         if (this.frameTiming) {
           hiddenUrl.searchParams.set(EXPORT_FRAME_TIMING_QUERY_PARAM, 'true');
         }
@@ -151,6 +174,7 @@ export class HiddenWindowManager {
       } else {
         const query = {
           [EXPORT_DRAW_MODE_QUERY_PARAM]: drawMode,
+          [EXPORT_PNG_MODE_QUERY_PARAM]: pngMode,
           ...(this.frameTiming
             ? { [EXPORT_FRAME_TIMING_QUERY_PARAM]: 'true' }
             : {}),
@@ -207,7 +231,16 @@ export class HiddenWindowManager {
     console.info('Hidden formal export draw mode selected.', {
       jobId: request.jobId,
       drawMode: this.windowDrawMode,
+      pngMode: this.windowPngMode,
     });
+    console.info(
+      'PANDA_STAGE_O2_JOB_MODE ' +
+        JSON.stringify({
+          jobId: request.jobId,
+          drawMode: this.windowDrawMode,
+          pngMode: this.windowPngMode,
+        }),
+    );
     this.cancelledJobIds.delete(request.jobId);
     const window = this.requireWindow();
     if (this.pendingLoad || this.pendingFormalLoad || this.pendingFrame) {
@@ -251,7 +284,7 @@ export class HiddenWindowManager {
         timeout: setTimeout(() => {
           if (this.pendingFrame?.request !== request) return;
           this.pendingFrame = null;
-          this.selectFallbackForNextFormalJob();
+          this.selectFallbacksForNextFormalJob();
           reject(
             new Error(
               `Job ${request.jobId} frame ${request.frameIndex} render timed out.`,
@@ -341,7 +374,7 @@ export class HiddenWindowManager {
       );
     }
 
-    this.selectFallbackForNextFormalJob();
+    this.selectFallbacksForNextFormalJob();
 
     clearTimeout(pending.timeout);
     this.pendingFrame = null;
@@ -395,6 +428,7 @@ export class HiddenWindowManager {
     this.rejectPendingRequests(cleanupError);
     this.loadedJobId = null;
     this.windowDrawMode = null;
+    this.windowPngMode = null;
     this.cancelledJobIds.clear();
     const window = this.getWindow();
     this.window = null;
@@ -411,11 +445,15 @@ export class HiddenWindowManager {
     return window;
   }
 
-  private selectFallbackForNextFormalJob(): void {
+  private selectFallbacksForNextFormalJob(): void {
     if (this.windowDrawMode === 'explicit-sync') {
       // The current Job still fails and is cleaned up. Only the next formal
       // Job may use the retained rAF mode.
       this.nextFormalDrawMode = 'legacy-raf';
+    }
+    if (this.windowPngMode === 'worker-png') {
+      // PNG mode rolls back independently and only for a later formal Job.
+      this.nextFormalPngMode = 'legacy-blob';
     }
   }
 
