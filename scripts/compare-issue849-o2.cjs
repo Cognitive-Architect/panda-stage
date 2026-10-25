@@ -210,6 +210,8 @@ async function readReceipt(mode, runName) {
   assert(receipt.cleanup?.cancelledJobAccepted === true, `${mode}: active formal Job cancellation was not accepted.`);
   assert(receipt.cleanup?.cancelledJobStatus === 'cancelled', `${mode}: cancellation Job did not reach cancelled status.`);
   assert(receipt.cleanup?.cancelledOutputAbsent === true, `${mode}: cancellation produced a final output.`);
+  assert(receipt.cleanup?.cancelledHiddenWindowClosed === true,
+    `${mode}: cancellation left its hidden render window open.`);
   assert(receipt.cleanup?.ffmpegActiveProcessCount === 0,
     `${mode}: FFmpeg left an active child process after cleanup.`);
   assert(receipt.cleanup?.cancellationElapsedMs < 30_000, `${mode}: cancellation exceeded 30 seconds.`);
@@ -250,8 +252,11 @@ async function readReceipt(mode, runName) {
       `${mode}: the primary Job did not use exactly one Worker.`);
     assert(receipt.cleanup.cancelledJobWorkerLifecycle.filter((entry) => entry.event === 'created').length === 1,
       `${mode}: cancellation did not create exactly one Worker.`);
-    assert(receipt.cleanup.cancelledJobWorkerLifecycle.filter((entry) => entry.event === 'terminated').length === 1,
-      `${mode}: cancellation did not explicitly terminate its Worker.`);
+    assert(receipt.cleanup.cancelledWorkerStopped === true,
+      `${mode}: cancellation did not stop its Worker.`);
+    assert(['worker-terminated-event', 'hidden-renderer-destroyed'].includes(
+      receipt.cleanup.cancelledWorkerStopEvidence,
+    ), `${mode}: cancellation Worker stop evidence is missing.`);
     for (const field of [
       'pngSnapshotMs',
       'pngTransferDispatchMs',
@@ -545,7 +550,7 @@ async function main() {
     '## Safety and limits',
     '',
     `- No-clobber, cancellation, source immutability, staging cleanup, and hidden window cleanup: pass for both runs.`,
-    `- Worker: one per formal Job, one frame in flight; cancellation Worker terminated: ${worker.cleanup.cancelledJobWorkerLifecycle.filter((entry) => entry.event === 'terminated').length === 1}.`,
+    `- Worker: one per formal Job, one frame in flight; cancellation Worker stopped via ${worker.cleanup.cancelledWorkerStopEvidence}.`,
     '- Human visual acceptance: NOT_RUN; editor UI click-to-complete: NOT_MEASURED; GitHub CI: CI_NOT_REPORTED.',
     '- Raw MP4 and synthetic fixture assets remain under the external acceptance directory and are not committed.',
     '',

@@ -611,15 +611,28 @@ async function main() {
     assert(frameResponseTimings.length > cancelFrameStart, 'Cancellation smoke did not render a frame before cancellation.');
     const cancellationElapsedMs = performance.now() - cancellationStartedAt;
     assert(cancellationElapsedMs < 30_000, `Cancellation smoke exceeded 30 seconds: ${cancellationElapsedMs} ms.`);
+    await waitUntil(
+      () => hiddenManager.getDiagnostics().windowOpen === false,
+      5_000,
+      'Cancellation did not release its hidden renderer window.',
+    );
     let cancelWorkerLifecycle = workerLifecycle.filter((entry) => entry.jobId === cancelStartResponse.jobId);
+    let cancelledRendererClosed = hiddenManager.getDiagnostics().windowOpen === false;
     if (mode === 'worker-png') {
       assert(cancelWorkerLifecycle.filter((entry) => entry.event === 'created').length === 1,
         'Cancellation smoke did not create one PNG Worker.');
-      await waitUntil(
-        () => workerLifecycle.some((entry) => entry.jobId === cancelStartResponse.jobId && entry.event === 'terminated'),
-        5_000,
-        'Cancellation did not terminate its PNG Worker.',
-      );
+      if (!cancelledRendererClosed) {
+        await waitUntil(
+          () => workerLifecycle.some((entry) => entry.jobId === cancelStartResponse.jobId && entry.event === 'terminated') ||
+            hiddenManager.getDiagnostics().windowOpen === false,
+          5_000,
+          'Cancellation did not terminate its PNG Worker or close its hidden renderer.',
+        );
+        cancelledRendererClosed = hiddenManager.getDiagnostics().windowOpen === false;
+      }
+      assert(cancelledRendererClosed ||
+        workerLifecycle.some((entry) => entry.jobId === cancelStartResponse.jobId && entry.event === 'terminated'),
+      'Cancellation left its PNG Worker without an observed termination path.');
       cancelWorkerLifecycle = workerLifecycle.filter((entry) => entry.jobId === cancelStartResponse.jobId);
     }
     const ffmpegActiveProcessCount = exportService.getActiveProcessCount();
@@ -739,6 +752,17 @@ async function main() {
         cancelledOutputAbsent: true,
         cancellationElapsedMs,
         cancelledJobWorkerLifecycle: cancelWorkerLifecycle,
+        cancelledHiddenWindowClosed: cancelledRendererClosed,
+        cancelledWorkerStopped:
+          mode !== 'worker-png' ||
+          cancelledRendererClosed ||
+          cancelWorkerLifecycle.some((entry) => entry.event === 'terminated'),
+        cancelledWorkerStopEvidence:
+          mode !== 'worker-png'
+            ? null
+            : cancelWorkerLifecycle.some((entry) => entry.event === 'terminated')
+              ? 'worker-terminated-event'
+              : 'hidden-renderer-destroyed',
         ffmpegActiveProcessCount,
         primaryWorkerReleasedWithHiddenWindow: primaryHiddenWindowClosed,
       },
@@ -768,6 +792,9 @@ async function main() {
       hiddenFrameTimings: hiddenFrameTimings.length,
       hiddenRendererMemorySamples: hiddenRendererMemorySamples.length,
       hiddenMemorySamplingErrors,
+      workerLifecycle,
+      selectedJobModes: selectedModeReports,
+      hiddenWindowDiagnostics: hiddenManager?.getDiagnostics() ?? null,
       projectInputBefore: await hashProjectInputs(project).catch(() => null),
       elapsedFromVerifierStartMs: performance.now() - runStartedAt,
     };
@@ -795,10 +822,10 @@ async function main() {
       process.stderr.write(`Electron acceptance cleanup failed: ${String(error)}\n`);
       if (!failure) failure = error;
     }
-    app.quit();
   }
 
-  if (failure) process.exitCode = 1;
+  if (failure) app.exit(1);
+  else app.quit();
 }
 
 function summarizeDurations(values) {
@@ -873,6 +900,5 @@ function summarizePhases(entries, jobId) {
 
 main().catch((error) => {
   process.stderr.write((error?.stack || String(error)) + '\n');
-  app.quit();
-  process.exitCode = 1;
+  app.exit(1);
 });
