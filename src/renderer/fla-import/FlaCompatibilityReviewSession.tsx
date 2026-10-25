@@ -582,7 +582,7 @@ export function FlaCompatibilityReviewSession({
   };
 
   useEffect(() => {
-    if (!ir || !sessionId) return undefined;
+    if (phase !== 'inspecting' && (!ir || !sessionId)) return undefined;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
@@ -591,7 +591,7 @@ export function FlaCompatibilityReviewSession({
     };
     document.addEventListener('keydown', onKeyDown, true);
     return () => document.removeEventListener('keydown', onKeyDown, true);
-  }, [closeSession, ir, sessionId]);
+  }, [closeSession, ir, phase, sessionId]);
 
   if (phase === 'inspecting') {
     return (

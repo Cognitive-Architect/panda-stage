@@ -22,6 +22,10 @@ const stageA = readFileSync(
   'src/renderer/fla-import/FlaStageAInspecting.tsx',
   'utf8',
 );
+const stageAStyles = readFileSync(
+  'src/renderer/styles/features/fla-import/review/fla-stage-a-compact-preparation.css',
+  'utf8',
+);
 const styles = readOrderedStylesheetSource();
 const issue255Styles = styles.slice(styles.indexOf('/* Issue #255:'));
 
@@ -159,8 +163,49 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
     expect(session).not.toContain('原始位图 / 零件');
     expect(session).not.toContain('单帧');
     expect(session).not.toContain('场景组合');
-    expect(stageA).toContain('正在检查 FLA');
-    expect(stageA).toContain('不会修改原文件或当前项目');
+    expect(stageA).toContain('正在准备素材…');
+  });
+
+  it('presents Stage A as a compact, accessible import-preparation dialog', () => {
+    expect(stageA).toContain('aria-busy="true"');
+    expect(stageA).toContain('aria-modal="true"');
+    expect(stageA).toContain('aria-labelledby="fla-stage-a-title"');
+    expect(stageA).toContain('id="fla-stage-a-title"');
+    expect(stageA).toContain('>导入素材</h2>');
+    expect(stageA).toContain('role="status"');
+    expect(stageA).toContain('aria-live="polite"');
+    expect(stageA).toContain('aria-hidden="true"');
+    expect(stageA).toContain('正在准备素材…');
+    expect(stageA).toContain('取消');
+    expect(stageA.match(/data-testid="fla-review-cancel"/gu) ?? []).toHaveLength(1);
+    expect(stageA).toContain('cancelButtonRef.current?.focus();');
+    expect(stageA).not.toContain('FLA 导入工作台');
+    expect(stageA).not.toContain('检查中');
+    expect(stageA).not.toContain('正在检查 FLA');
+    expect(stageA).not.toContain('检查完成后自动进入下一步');
+    expect(stageA).not.toContain('不会修改原文件或当前项目');
+    expect(stageA).not.toContain('fla-stage-a-quiet-pane');
+    expect(stageA).not.toContain('fla-stage-a-footer');
+    expect(stageAStyles).toContain('width: min(420px, calc(100vw - 24px));');
+    expect(stageAStyles).toContain('position: relative;');
+    expect(stageAStyles).toContain('top: auto;');
+    expect(stageAStyles).toContain('left: auto;');
+    expect(stageAStyles).toContain('transform: none;');
+    expect(stageAStyles).toContain('height: 48px;');
+    expect(stageAStyles).toContain('@media (max-width: 560px)');
+    expect(stageAStyles).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?animation:\s*none;/u,
+    );
+  });
+
+  it('handles Escape during Stage A and keeps keyboard focus inside the dialog', () => {
+    expect(session).toContain(
+      "if (phase !== 'inspecting' && (!ir || !sessionId)) return undefined;",
+    );
+    expect(session).toContain('[closeSession, ir, phase, sessionId]');
+    expect(session).toContain("if (event.key !== 'Escape') return;");
+    expect(stageA).toContain("if (event.key !== 'Tab') return;");
+    expect(stageA).toContain('cancelButtonRef.current?.focus();');
   });
 
   it('keeps compact toolbar, keyboard-only checkbox focus, and visible primary controls', () => {

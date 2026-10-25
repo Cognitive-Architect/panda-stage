@@ -122,10 +122,51 @@ export function AssetLibrary({
   const usageFilterMenuRef = useRef<HTMLDivElement | null>(null);
   const lastOpenedAssetId = useRef<string | null>(null);
   const pendingFocusReturnAssetId = useRef<string | null>(null);
+  const flaReviewFocusReturnTarget = useRef<HTMLElement | null>(null);
+  const pendingFlaReviewFocusReturn = useRef(false);
   const lastCloseRequest = useRef(closeRequestToken ?? 0);
   const lastFlaReviewRequest = useRef(flaReviewRequestToken ?? 0);
 
+  const restoreFlaReviewFocus = useCallback((): void => {
+    const originalTarget = flaReviewFocusReturnTarget.current;
+    if (
+      originalTarget &&
+      originalTarget !== document.body &&
+      originalTarget.isConnected &&
+      !originalTarget.hasAttribute('disabled') &&
+      originalTarget.getClientRects().length > 0
+    ) {
+      originalTarget.focus();
+      if (document.activeElement === originalTarget) return;
+    }
+
+    const fallback = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '[data-testid="resource-asset-import-fla"], [data-testid="asset-import-fla"]',
+      ),
+    ).find(
+      (element) =>
+        !element.hasAttribute('disabled') &&
+        element.getClientRects().length > 0,
+    );
+    fallback?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (
+      !pendingFlaReviewFocusReturn.current ||
+      flaReviewOpen ||
+      flaInspection
+    ) {
+      return;
+    }
+    pendingFlaReviewFocusReturn.current = false;
+    restoreFlaReviewFocus();
+  }, [flaInspection, flaReviewOpen, restoreFlaReviewFocus]);
+
   const closeFlaReview = useCallback((): void => {
+    pendingFlaReviewFocusReturn.current =
+      flaInspectionOperation.current !== null;
     setFlaReviewOpen(false);
     flaInspectionOperation.current = null;
     setFlaInspection(null);
@@ -690,6 +731,11 @@ export function AssetLibrary({
       setStatus('Open a Panda Stage project before reviewing an FLA.');
       return;
     }
+    const activeElement = document.activeElement;
+    flaReviewFocusReturnTarget.current =
+      activeElement instanceof HTMLElement && activeElement !== document.body
+        ? activeElement
+        : null;
     const lifecycle =
       flaInspectionLifecycle.current ??
       (flaInspectionLifecycle.current = new FlaInspectionLifecycle(

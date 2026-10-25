@@ -78,6 +78,19 @@ describe('asset library components', () => {
     expect(assetLibrarySource).toContain('setStatus(message);');
   });
 
+  it('returns keyboard focus to the FLA import entry after closing its review', () => {
+    expect(assetLibrarySource).toMatch(
+      /pendingFlaReviewFocusReturn\.current\s*=\s*flaInspectionOperation\.current\s*!==\s*null;/u,
+    );
+    expect(assetLibrarySource).toContain('restoreFlaReviewFocus();');
+    expect(assetLibrarySource).toContain(
+      'flaReviewFocusReturnTarget.current =',
+    );
+    expect(assetLibrarySource).toContain(
+      '[data-testid="resource-asset-import-fla"], [data-testid="asset-import-fla"]',
+    );
+  });
+
   it('sizes category tabs from their content and scrolls when the row is narrow', () => {
     expect(assetCategoryTabsStyle).toMatch(
       /\.asset-library\s+\.asset-category-tabs\s*\{[^}]*display:\s*flex;[^}]*min-width:\s*0;[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*hidden;/u,
