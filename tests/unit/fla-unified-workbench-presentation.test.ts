@@ -22,6 +22,8 @@ const baseProps: WorkbenchProps = {
   locked: false,
   canImport: false,
   importing: false,
+  importKind: 'mixed',
+  stopAfterCurrentAvailable: false,
   stopAfterCurrentRequested: false,
   bulkConfirmationOpen: false,
   newEligibleCount: 0,
@@ -317,6 +319,40 @@ describe('Issue #778 unified FLA workbench presentation', () => {
     expect(diagnosticsOpenTag).toBeDefined();
     expect(diagnosticsOpenTag).not.toContain(' open');
     expect(markup.slice(diagnosticsStart)).toContain(`<code>${rawMessage}</code>`);
+  });
+
+  it('keeps formal import feedback in one compact overlay and only offers a real stop action', () => {
+    const singleItemMarkup = renderWorkbench({
+      importing: true,
+      importKind: 'animation',
+    });
+    const multiItemMarkup = renderWorkbench({
+      importing: true,
+      importKind: 'mixed',
+      stopAfterCurrentAvailable: true,
+    });
+    const stopRequestedMarkup = renderWorkbench({
+      importing: true,
+      importKind: 'image',
+      stopAfterCurrentAvailable: false,
+      stopAfterCurrentRequested: true,
+    });
+
+    expect(singleItemMarkup).toContain('data-testid="fla-c03-import-overlay"');
+    expect(singleItemMarkup).toContain('inert=""');
+    expect(singleItemMarkup).toContain('正在导入动画素材…');
+    expect(singleItemMarkup.match(/role="status"/gu)).toHaveLength(1);
+    expect(singleItemMarkup).not.toContain('data-testid="fla-c03-import-footer"');
+    expect(singleItemMarkup).not.toContain('停止导入');
+
+    expect(multiItemMarkup).toContain('data-testid="fla-unified-import-stop"');
+    expect(multiItemMarkup).toContain('>停止导入</button>');
+    expect(multiItemMarkup).not.toContain('data-testid="fla-c03-import-footer"');
+
+    expect(stopRequestedMarkup).toContain('将在当前项完成后停止');
+    expect(stopRequestedMarkup).toMatch(/data-testid="fla-unified-import-stop"[^>]*disabled/u);
+    expect(stopRequestedMarkup).toContain('>已请求停止</button>');
+    expect(stopRequestedMarkup.match(/role="status"/gu)).toHaveLength(1);
   });
 
   it('uses a transient status only for a clean single-item success', () => {

@@ -53,12 +53,16 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
     expect(unified).toContain('data-testid="fla-c03-candidate-grid"');
     expect(unified).toContain('data-testid="fla-c03-preview"');
     expect(unified).toContain('data-testid="fla-c03-import-footer"');
+    expect(unified).toContain('inert={importing}');
+    expect(unified).toContain('data-testid="fla-c03-import-overlay"');
     expect(session).not.toContain('fla-import-workbench-tabs');
     expect(session).not.toContain('fla-render-mode-tabs');
     expect(session).not.toContain('data-testid="fla-review-pagination"');
     expect(styles).toMatch(/\.fla-c03-candidate-grid\s*\{[\s\S]*?overflow:\s*auto;[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/u);
-    expect(styles).toMatch(/\.fla-c03-session\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0, 1fr\) auto;/u);
+    expect(styles).toMatch(/\.fla-c03-session\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0, 1fr\);/u);
     expect(styles).toContain('.fla-c03-preview');
+    expect(styles).toMatch(/\.fla-c03-import-overlay-panel\s*\{[^}]*width:\s*min\(400px, 100%\);/u);
+    expect(styles).toMatch(/\.fla-c03-import-overlay\s*\{[^}]*position:\s*absolute;[^}]*pointer-events:\s*auto;/u);
   });
 
   it('searches the display list while preserving checks and restores selected-view browsing', () => {

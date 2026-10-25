@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { FlaUnifiedImportReceipt } from './fla-unified-import';
+import { FlaStageGImporting, type FlaStageGImportKind } from './FlaStageGTerminal';
 import { readableFlaCandidateLabel, type FlaWorkbenchCandidate } from './fla-workbench-candidates';
 import { filterFlaUnifiedCandidates } from './fla-unified-workbench-selection';
 
@@ -23,6 +24,8 @@ interface FlaUnifiedWorkbenchProps {
   locked: boolean;
   canImport: boolean;
   importing: boolean;
+  importKind: FlaStageGImportKind;
+  stopAfterCurrentAvailable: boolean;
   stopAfterCurrentRequested: boolean;
   bulkConfirmationOpen: boolean;
   newEligibleCount: number;
@@ -60,6 +63,8 @@ export function FlaUnifiedWorkbench({
   locked,
   canImport,
   importing,
+  importKind,
+  stopAfterCurrentAvailable,
   stopAfterCurrentRequested,
   bulkConfirmationOpen,
   newEligibleCount,
@@ -166,12 +171,17 @@ export function FlaUnifiedWorkbench({
   };
 
   return (
-    <>
+    <div
+      aria-busy={importing || undefined}
+      className="fla-c03-workbench-content"
+      data-importing={importing ? 'true' : 'false'}
+    >
       <main
         className="fla-c03-workbench"
         data-multi-select={multiSelectMode ? 'true' : 'false'}
         data-sequence-preview={showSequencePreview ? 'true' : undefined}
         data-testid="fla-c03-workbench"
+        inert={importing}
       >
         <section className="fla-c03-browser" aria-label="素材列表">
           <div className="fla-c03-browser-tools">
@@ -401,7 +411,7 @@ export function FlaUnifiedWorkbench({
         </section>
       </main>
 
-      <footer className="fla-c03-import-footer" data-testid="fla-c03-import-footer">
+      {!importing ? <footer className="fla-c03-import-footer" data-testid="fla-c03-import-footer">
         <div className="fla-c03-footer-summary">
           <strong data-testid={multiSelectMode ? 'fla-unified-import-selected-count' : 'fla-single-mode-summary'}>
             {importing
@@ -445,8 +455,30 @@ export function FlaUnifiedWorkbench({
           ) : null}
         </div>
         {receipt ? <ImportReceipt receipt={receipt} /> : null}
-      </footer>
-    </>
+      </footer> : null}
+      {importing ? (
+        <div className="fla-c03-import-overlay" data-testid="fla-c03-import-overlay">
+          <div className="fla-c03-import-overlay-panel">
+            <FlaStageGImporting
+              importKind={importKind}
+              route="unified"
+              statusMessage={stopAfterCurrentRequested ? '将在当前项完成后停止' : undefined}
+            />
+            {stopAfterCurrentAvailable || stopAfterCurrentRequested ? (
+              <button
+                className="fla-c03-import-stop"
+                data-testid="fla-unified-import-stop"
+                disabled={stopAfterCurrentRequested}
+                onClick={onStopAfterCurrent}
+                type="button"
+              >
+                {stopAfterCurrentRequested ? '已请求停止' : '停止导入'}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

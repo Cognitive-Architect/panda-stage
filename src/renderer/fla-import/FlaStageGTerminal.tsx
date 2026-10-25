@@ -9,7 +9,7 @@ import type {
   FlaStaticSnapshotCommitResponse,
 } from '../../shared/fla-static-snapshot-api';
 
-export type FlaStageGRoute = 'raster' | 'snapshot' | 'sequence';
+export type FlaStageGRoute = 'raster' | 'snapshot' | 'sequence' | 'unified';
 export type FlaStageGTerminalState = 'active' | 'importing' | 'success' | 'recovery';
 export type FlaStageGImportKind = 'animation' | 'image' | 'mixed';
 
@@ -104,9 +104,11 @@ export function mapFlaStageGRecovery(
 export function FlaStageGImporting({
   route,
   importKind,
+  statusMessage,
 }: {
   route: FlaStageGRoute;
   importKind: FlaStageGImportKind;
+  statusMessage?: string;
 }): React.JSX.Element {
   return (
     <section
@@ -125,7 +127,7 @@ export function FlaStageGImporting({
           <span />
         </span>
         <p className="fla-stage-g-importing-message" data-testid="fla-stage-g-importing-status">
-          {flaStageGImportingMessage(importKind)}
+          {statusMessage ?? flaStageGImportingMessage(importKind)}
         </p>
       </div>
     </section>

@@ -46,6 +46,19 @@ describe('Issue #405 Stage G presentation contracts', () => {
     });
   });
 
+  it('keeps stop-after-current confirmation inside the existing live status', () => {
+    const html = renderToStaticMarkup(createElement(FlaStageGImporting, {
+      route: 'unified',
+      importKind: 'mixed',
+      statusMessage: '将在当前项完成后停止',
+    }));
+
+    expect(html).toContain('role="status"');
+    expect(html).toContain('aria-live="polite"');
+    expect(html).toContain('将在当前项完成后停止');
+    expect(html.match(/role="status"/gu)).toHaveLength(1);
+  });
+
   it('renders one operation-aware importing sentence without extra copy or a card', () => {
     expect(flaStageGImportingMessage('animation')).toBe('正在导入动画素材…');
     expect(flaStageGImportingMessage('image')).toBe('正在导入图片素材…');

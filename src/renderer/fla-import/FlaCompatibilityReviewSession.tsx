@@ -28,7 +28,7 @@ import {
 } from './fla-inspection-lifecycle';
 import { FlaStaticSnapshotReview } from './FlaStaticSnapshotReview';
 import { FlaFrameSequenceReview } from './FlaFrameSequenceReview';
-import type { FlaStageGTerminalState } from './FlaStageGTerminal';
+import type { FlaStageGImportKind, FlaStageGTerminalState } from './FlaStageGTerminal';
 import { FlaStageAInspecting } from './FlaStageAInspecting';
 import { FlaStageF3Blocked } from './FlaStageF';
 import { FlaUnifiedWorkbench, type FlaUnifiedWorkbenchProgress } from './FlaUnifiedWorkbench';
@@ -86,6 +86,8 @@ export function FlaCompatibilityReviewSession({
   const [checkedCandidates, setCheckedCandidates] = useState<Map<string, FlaUnifiedImportItem>>(() => new Map());
   const [importReceipt, setImportReceipt] = useState<FlaUnifiedImportReceipt | null>(null);
   const [unifiedImportRunning, setUnifiedImportRunning] = useState(false);
+  const [unifiedImportKind, setUnifiedImportKind] = useState<FlaStageGImportKind>('mixed');
+  const [stopAfterCurrentAvailable, setStopAfterCurrentAvailable] = useState(false);
   const [stopAfterCurrentRequested, setStopAfterCurrentRequested] = useState(false);
   const [importRunnerRevision, setImportRunnerRevision] = useState(0);
   const [thumbnailUrls, setThumbnailUrls] = useState<Readonly<Record<string, string>>>({});
@@ -511,6 +513,10 @@ export function FlaCompatibilityReviewSession({
     if (!snapshot || !canImportItems(items) || unifiedImportRunningRef.current) return;
     cancelAfterCurrentRef.current = false;
     unifiedImportRunningRef.current = true;
+    const hasAnimation = items.some((item) => item.kind === 'sequence');
+    const hasImage = items.some((item) => item.kind !== 'sequence');
+    setUnifiedImportKind(hasAnimation ? (hasImage ? 'mixed' : 'animation') : 'image');
+    setStopAfterCurrentAvailable(false);
     setStopAfterCurrentRequested(false);
     setImportReceipt(null);
     setUnifiedImportRunning(true);
@@ -525,6 +531,7 @@ export function FlaCompatibilityReviewSession({
           ...(sequenceImportRunnerRef.current ? { sequence: sequenceImportRunnerRef.current } : {}),
         },
         shouldCancel: () => cancelAfterCurrentRef.current,
+        onStopActionAvailabilityChange: setStopAfterCurrentAvailable,
       });
       setImportReceipt(receipt);
       setCheckedCandidates(new Map());
@@ -555,6 +562,7 @@ export function FlaCompatibilityReviewSession({
     } finally {
       unifiedImportRunningRef.current = false;
       setUnifiedImportRunning(false);
+      setStopAfterCurrentAvailable(false);
       setPhase('ready');
       setStopAfterCurrentRequested(false);
       cancelAfterCurrentRef.current = false;
@@ -708,7 +716,7 @@ export function FlaCompatibilityReviewSession({
             data-testid="fla-review-cancel"
             disabled={closeLocked}
             onClick={closeSession}
-            title={closeLocked ? '项目保存完成前不能关闭；可停止后续导入。' : undefined}
+            title={closeLocked ? '正式导入完成前不能关闭。' : undefined}
             type="button"
           >
             ×
@@ -726,6 +734,8 @@ export function FlaCompatibilityReviewSession({
           locked={selectionLocked}
           canImport={canImportSelected}
           importing={unifiedImportRunning}
+          importKind={unifiedImportKind}
+          stopAfterCurrentAvailable={stopAfterCurrentAvailable}
           stopAfterCurrentRequested={stopAfterCurrentRequested}
           bulkConfirmationOpen={bulkConfirmationOpen}
           newEligibleCount={newEligibleCandidates.length}

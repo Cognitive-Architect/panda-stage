@@ -195,6 +195,8 @@ describe('R2-H.2 Problem A/B: gateway UI gating (#296)', () => {
     expect(reviewSource).toContain('activeRenderIntent.endFrameIndex - activeRenderIntent.startFrameIndex + 1');
     expect(reviewSource).toContain('currentIntent?.renderTargetId !== activeRenderIntent.renderTargetId');
     expect(reviewSource).toContain('`正在生成预览…（${previewTarget.userLabel}）`');
+    expect(reviewSource).toContain("if (phase === 'committing' && !embedded)");
+    expect(reviewSource).toContain("phase === 'committing' && embedded");
     expect(reviewSource).toContain('data-testid={phase === \'rendering\' ? \'fla-frame-sequence-central-progress\' : undefined}');
     expect(reviewSource).not.toContain('data-testid="fla-frame-sequence-progress"');
     expect(reviewSource).toContain('data-testid="fla-frame-sequence-cancel"');

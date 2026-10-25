@@ -973,7 +973,7 @@ export function FlaFrameSequenceReview({
     setEndFrameIndex(Math.min(lastFrameIndex, nextStartFrameIndex + MAX_SEQUENCE_FRAMES - 1));
   };
 
-  if (phase === 'committing') {
+  if (phase === 'committing' && !embedded) {
     return (
       <div className={`${reviewClassName} fla-stage-g-panel`} data-fla-session-id={sessionId} data-stage-g-state="importing" data-testid="fla-frame-sequence-review">
         <FlaStageGImporting
@@ -1107,7 +1107,7 @@ export function FlaFrameSequenceReview({
                 {previewTarget ? `${previewTarget.userLabel} · 当前帧预览` : '当前帧预览'}
               </h3>
             </div>
-            {phase === 'rendering' ? null : (
+            {phase === 'rendering' || (phase === 'committing' && embedded) ? null : (
               <output
                 data-preview-state={previewState}
                 data-testid="fla-frame-sequence-preview-status"
