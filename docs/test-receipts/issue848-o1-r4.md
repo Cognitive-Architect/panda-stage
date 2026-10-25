@@ -60,6 +60,8 @@ The explicit-sync Job saved 147.291 seconds (**70.11%**) and met the >=50% targe
 
 All listed commands exited 0: `pnpm install --frozen-lockfile`; `pnpm typecheck`; `pnpm lint`; `pnpm test:unit` (361 files, 2711 passed); `pnpm test:integration` (38 files, 189 passed); `pnpm build`; `pnpm issue848:o1-legacy`; `pnpm issue848:o1-sync`; the R4 `scripts/compare-issue848-o1.cjs` run; both CJS `node --check` commands; and `git diff --check`. The two focused Electron commands each produced 108/108 formal frames and passed cancellation, no-clobber, and cleanup checks.
 
+GitHub Actions status: `CI_NOT_REPORTED`; no workflow runs were returned for the isolated branch when checked. Full CI and `pnpm verify:project` were not run.
+
 Earlier attempts were preserved under the acceptance root: an initial verifier STOP exposed a mode-recording race; an R2 export used `Stage.toCanvas()` and was excluded as an invalid performance baseline; an R3 STOP caught an incorrect Konva canvas accessor before any frame was emitted. The final R4 harness uses Konva 10's `getNativeCanvasElement()` for single-layer drawn-output capture. The raw R4 receipts also contain an old phase-summary undercount; the committed comparison JSON recomputes durations from all progress-update timestamps. The verifier source now uses the corrected phase calculation and labels API timing accurately.
 
 Editor UI click latency and owner visual review were not run. UI click timing is therefore `NOT_MEASURED`; `apiStartToCompleteMs` is reported separately in the JSON. This receipt does not claim PR #817 integration, merge readiness, or DL-07 Gate B acceptance. Merge authorization remains `NOT_GRANTED`.
