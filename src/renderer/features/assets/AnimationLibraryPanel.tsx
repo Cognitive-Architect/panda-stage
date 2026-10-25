@@ -17,12 +17,6 @@ export interface AnimationLibraryPanelProps {
   searchQuery: string;
 }
 
-function formatFps(fps: number): string {
-  return Number.isInteger(fps)
-    ? String(fps)
-    : fps.toFixed(2).replace(/0+$/u, '').replace(/\.$/u, '');
-}
-
 function formatDuration(durationMs: number): string {
   return `${(durationMs / 1_000).toFixed(2)} 秒`;
 }
@@ -331,7 +325,6 @@ export function AnimationLibraryCard({
         <span className="asset-card-copy">
           <strong className="asset-card-name" title={animation.name}>{animation.name}</strong>
           <span className="asset-card-context">{animation.frames.length} 帧 · {formatDuration(animation.durationMs)}</span>
-          <span className="asset-card-metadata">{formatFps(animation.source.sourceFps)} FPS</span>
         </span>
       </article>
       {dialog && typeof document !== 'undefined' ? createPortal(dialog, document.body) : null}

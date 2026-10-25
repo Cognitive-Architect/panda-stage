@@ -819,7 +819,7 @@ export function FlaStaticSnapshotReview({
             </header>
             {stage ? (
               <p className="fla-snapshot-stage-fact" data-testid="fla-snapshot-source-facts">
-                {stage.width} × {stage.height} · {stage.frameRate} fps
+                {stage.width} × {stage.height}
               </p>
             ) : null}
             <p className="fla-snapshot-catalog-summary" data-testid="fla-snapshot-catalog-summary">{checkedCatalogSummary}</p>

@@ -77,7 +77,9 @@ describe('animation library', () => {
     expect(markup).toContain('data-category="animation"');
     expect(markup).toContain('Walk');
     expect(markup).toContain('2 帧 · 0.17 秒');
-    expect(markup).toContain('12 FPS');
+    expect(markup).not.toContain('12 FPS');
+    expect(markup).not.toContain('asset-card-metadata');
+    expect(project.animations[0]?.source.sourceFps).toBe(12);
     expect(markup).not.toContain('Walk cycle');
     expect(markup).not.toContain('animation-preview-dialog');
   });

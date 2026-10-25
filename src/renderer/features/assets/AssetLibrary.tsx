@@ -857,7 +857,7 @@ export function AssetLibrary({
               response,
               editorProjectStore,
             );
-            setStatus(outcome.status);
+            setStatus(response.ok ? '' : outcome.status);
           }}
           snapshot={snapshot}
         />

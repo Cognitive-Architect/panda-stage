@@ -1285,8 +1285,8 @@ export function FlaFrameSequenceReview({
                 ) : null}
                 <small>
                   {sourceFpsAvailable
-                    ? `动画将按源文件 ${sourceFps} fps 预览；目前仅支持素材库预览，不能加入镜头或正式导出。`
-                    : '源文件 FPS 无法确认，不能作为动画素材入库。'}
+                    ? '动画将按源文件时序预览；目前仅支持素材库预览，不能加入镜头或正式导出。'
+                    : '源文件播放速度无法确认，不能作为动画素材入库。'}
                 </small>
               </fieldset>
             ) : null}
@@ -1309,7 +1309,7 @@ export function FlaFrameSequenceReview({
                         data-testid="fla-frame-sequence-format-animation"
                         disabled={!sourceFpsAvailable || importLocked}
                         onClick={() => setImportAsAnimation(true)}
-                        title={sourceFpsAvailable ? `按 ${sourceFps} FPS 保存动画` : '源 FPS 无效，不能导入为动画'}
+                        title={sourceFpsAvailable ? '导入为动画素材' : '源文件播放速度无法确认，不能导入为动画'}
                         type="button"
                       >
                         动画
@@ -1341,7 +1341,7 @@ export function FlaFrameSequenceReview({
                     ) : null}
                     {!sourceFpsAvailable ? (
                       <small className="fla-c03-sequence-format-status" role="status">
-                        源 FPS 无效，本次按图片导入。
+                        源文件播放速度无法确认，本次按图片导入。
                       </small>
                     ) : null}
                     {effectiveImportAsAnimation && !animationName.trim() ? (

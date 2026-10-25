@@ -40,7 +40,7 @@ const directPayload = (assetId: string) => ({
 });
 
 describe('asset library components', () => {
-  it('does not reserve an empty status row after a quiet FLA review close', () => {
+  it('keeps successful frame sequence results out of the persistent status row', () => {
     const project = migrateProject(exampleProject);
     const markup = renderToStaticMarkup(
       createElement(AssetLibrary, {
@@ -58,6 +58,11 @@ describe('asset library components', () => {
     );
     const closeEnd = assetLibrarySource.indexOf('}, []);', closeStart);
     const closeHandler = assetLibrarySource.slice(closeStart, closeEnd);
+    const sequenceStart = assetLibrarySource.indexOf(
+      'onSequenceImported={(response) => {',
+    );
+    const sequenceEnd = assetLibrarySource.indexOf('\n          }}', sequenceStart);
+    const sequenceHandler = assetLibrarySource.slice(sequenceStart, sequenceEnd);
 
     expect(markup).not.toContain('class="asset-library-status"');
     expect(assetLibrarySource).not.toContain(
@@ -68,7 +73,8 @@ describe('asset library components', () => {
     expect(assetLibrarySource).toContain(
       '{status ? <output className="asset-library-status">{status}</output> : null}',
     );
-    expect(assetLibrarySource).toContain('setStatus(outcome.status);');
+    expect(sequenceHandler).toContain("setStatus(response.ok ? '' : outcome.status);");
+    expect(sequenceHandler).not.toContain('setStatus(outcome.status);');
     expect(assetLibrarySource).toContain('setStatus(message);');
   });
 

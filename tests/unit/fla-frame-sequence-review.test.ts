@@ -76,6 +76,14 @@ describe('R2-H.2 shares the C03 unified candidate workbench', () => {
     expect(session).toContain('void runImportAction([focusedSequenceItem])');
   });
 
+  it('keeps source-FPS validation while hiding the numeric rate from normal copy and titles', () => {
+    expect(review).toContain('sourceFpsAvailable');
+    expect(review).not.toContain('sourceFps} fps');
+    expect(review).not.toContain('按 ${sourceFps} FPS 保存动画');
+    expect(review).toContain('源文件播放速度无法确认');
+    expect(session).toContain('sourceFps={ir.document.frameRate}');
+  });
+
   it('keeps sequence focus, preview target, operation target, and checked intent explicit', () => {
     expect(review).toContain('resolveVisibleSequenceFocus(');
     expect(review).toContain('isStaleAgainstIntent(renderedRange, currentIntent)');
