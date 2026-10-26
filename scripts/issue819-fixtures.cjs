@@ -295,6 +295,8 @@ async function generateIssue819Fixture(
       mimeType: 'image/png',
       width: mouthOpenBytes.readUInt32BE(16),
       height: mouthOpenBytes.readUInt32BE(20),
+      usage: 'uncategorized',
+      keywords: [],
       sha256: hash(mouthOpenBytes),
     };
     project.assets.push(mouthOpenAsset);
