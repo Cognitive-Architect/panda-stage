@@ -163,6 +163,8 @@ function createFixture() {
     id: IDS.project,
     name: 'Issue 602 composite Canvas proof',
   });
+  const { animations: _animations, ...legacyBase } = base;
+  void _animations;
   const baseShot = base.shots[0];
   const baseSubtitle = base.subtitleStyles[0];
   const imageAssets = [
@@ -288,7 +290,7 @@ function createFixture() {
   };
 
   return migrateProject({
-    ...base,
+    ...legacyBase,
     schemaVersion: 7,
     id: IDS.project,
     name: 'Issue 602 composite Canvas proof',
