@@ -113,6 +113,60 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual([]);
   });
 
+  it('owns the exact O1/O2 export receipts, verifiers, encoder tests, and Main boundaries', () => {
+    const releasePaths = [
+      'docs/test-receipts/issue848-o1-r4-comparison.json',
+      'docs/test-receipts/issue849-o2-comparison.json',
+      'docs/test-receipts/issue851-o2-f01-comparison.json',
+      'docs/test-receipts/issue856-o5-30s-comparison.json',
+      'scripts/verify-issue848-o1.cjs',
+      'scripts/verify-issue849-o2.cjs',
+      'tests/unit/formal-output-name-series.test.ts',
+      'tests/unit/issue851-memory-trend.test.ts',
+      'tests/unit/png-encode-core.test.ts',
+      'tests/unit/worker-png-encoder.test.ts',
+    ];
+    const corePaths = [
+      'tests/unit/hidden-window-manager.test.ts',
+      'tests/unit/project-asset-path.test.ts',
+      'tests/unit/unsaved-close-controller.test.ts',
+    ];
+
+    for (const file of releasePaths) {
+      const result = draft([change(file, 'A')]);
+      expect(result.tier, file).toBe('focused');
+      expect(result.matchedRouteIds, file).toContain('release-export-core');
+      expect(result.unknownPaths, file).toEqual([]);
+    }
+
+    for (const file of corePaths) {
+      const result = draft([change(file, 'A')]);
+      expect(result.tier, file).toBe('focused');
+      expect(result.matchedRouteIds, file).toContain('cross-process-core');
+      expect(result.unknownPaths, file).toEqual([]);
+    }
+
+    const readyResult = ready([...releasePaths, ...corePaths].map((file) => change(file, 'A')));
+    expect(readyResult.tier).toBe('full');
+    expect(readyResult.suites).toEqual(manifest.routing.fullRegressionSuites);
+    expect(readyResult.unknownPaths).toEqual([]);
+  });
+
+  it('keeps future O-series receipts, verifiers, and tests fail-closed', () => {
+    const result = draft([
+      change('docs/test-receipts/issue900-o9-comparison.json', 'A'),
+      change('scripts/verify-issue900-o9.cjs', 'A'),
+      change('tests/unit/worker-png-encoder-v2.test.ts', 'A'),
+    ]);
+
+    expect(result.tier).toBe('unknown');
+    expect(result.unknownPaths).toEqual([
+      'docs/test-receipts/issue900-o9-comparison.json',
+      'scripts/verify-issue900-o9.cjs',
+      'tests/unit/worker-png-encoder-v2.test.ts',
+    ]);
+  });
+
   it('routes the two Issue #828 lifecycle and audio model tests through core ownership', () => {
     for (const file of [
       'tests/integration/day14-lifecycle.test.ts',
