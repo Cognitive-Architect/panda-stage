@@ -1,9 +1,12 @@
 import {
-  ChevronDown,
+  AlertTriangle,
   Check,
+  ChevronDown,
+  Clapperboard,
   FolderOpen,
   LoaderCircle,
   RefreshCw,
+  XCircle,
 } from 'lucide-react';
 import { Button, IconButton, PanelSurface } from '../ui';
 import type { ExportJobPhase } from '../../shared/export-types';
@@ -111,19 +114,87 @@ export function ExportTaskSurface({
     (task.status === 'running' || task.status === 'cancelling') &&
     task.phase !== 'committing';
   const hasFrameProgress = shouldShowExportFrameProgress(task);
+  const isCompleted = task.status === 'completed';
+  const isFailed = task.status === 'failed';
+  const isCancelled = task.status === 'cancelled';
+  const failureReasonIsListed =
+    isFailed &&
+    Boolean(task.message) &&
+    task.issues.some((issue) => issue.problem.trim() === task.message?.trim());
+  const title = isCompleted
+    ? '\u5bfc\u51fa\u5b8c\u6210'
+    : '\u5bfc\u51fa\u89c6\u9891';
+  const statusText =
+    task.status === 'running'
+      ? phaseCopy(task.phase)
+      : isFailed
+        ? failureReasonIsListed
+          ? STATUS_COPY.failed
+          : task.message ?? ''
+        : isCancelled
+          ? task.message ?? ''
+        : STATUS_COPY[task.status];
+  const statusKey = `${task.status}-${task.phase ?? ''}-${statusText}`;
+  const showMessage = Boolean(task.message) && !isFailed && !isCancelled;
 
   return (
     <aside
       aria-label={'\u5bfc\u51fa\u89c6\u9891\u4efb\u52a1'}
       className="export-task-surface"
       data-task-status={task.status}
+      data-task-phase={task.phase ?? ''}
       data-testid="export-task-surface"
     >
       <PanelSurface className="export-task-panel">
         <header className="export-task-header">
-          <div>
-            <h2>{'\u5bfc\u51fa\u89c6\u9891'}</h2>
-            {task.fileName ? <p>{task.fileName}</p> : null}
+          <div className="export-task-heading">
+            <span
+              aria-hidden="true"
+              className={`export-task-result-icon${
+                isCompleted
+                  ? ' export-task-result-icon-complete'
+                  : isFailed
+                    ? ' export-task-result-icon-failed'
+                    : isCancelled
+                      ? ' export-task-result-icon-cancelled'
+                      : task.status === 'running' || task.status === 'cancelling'
+                        ? ' export-task-result-icon-running'
+                        : ''
+              }`}
+            >
+              {isCompleted ? (
+                <Check focusable="false" size={18} />
+              ) : isFailed ? (
+                <AlertTriangle focusable="false" size={18} />
+              ) : isCancelled ? (
+                <XCircle focusable="false" size={18} />
+              ) : task.status === 'running' || task.status === 'cancelling' ? (
+                <LoaderCircle
+                  className="export-task-result-spinner"
+                  focusable="false"
+                  size={18}
+                />
+              ) : (
+                <Clapperboard focusable="false" size={18} />
+              )}
+            </span>
+            <div className="export-task-heading-copy">
+              <h2
+                aria-live={isCompleted || isFailed || isCancelled ? 'polite' : undefined}
+                data-testid="export-task-title"
+              >
+                {title}
+              </h2>
+              {task.fileName ? (
+                <p
+                  aria-label={`\u5bfc\u51fa\u6587\u4ef6\uff1a${task.fileName}`}
+                  className="export-task-file-name"
+                  title={task.fileName}
+                >
+                  {task.fileName}
+                </p>
+              ) : null}
+            </div>
           </div>
           <IconButton
             aria-label={'\u6536\u8d77\u5bfc\u51fa\u4efb\u52a1'}
@@ -135,21 +206,36 @@ export function ExportTaskSurface({
           />
         </header>
 
-        <div aria-live="polite" className="export-task-status" role="status">
-          {task.status === 'running' ? phaseCopy(task.phase) : STATUS_COPY[task.status]}
-        </div>
-
         {hasFrameProgress ? (
           <div className="export-task-progress">
+            <span
+              key={statusKey}
+              aria-live="polite"
+              className="export-task-status"
+              role="status"
+            >
+              {statusText}
+            </span>
+            <span className="export-task-progress-count">
+              {task.completedFrames.toLocaleString()} /{' '}
+              {task.totalFrames.toLocaleString()} 帧 · {progress}%
+            </span>
             <progress
               aria-label={'\u5bfc\u51fa\u8fdb\u5ea6'}
               max={task.totalFrames}
               value={Math.min(task.completedFrames, task.totalFrames)}
             />
-            <span>
-              {task.completedFrames.toLocaleString()} /{' '}
-              {task.totalFrames.toLocaleString()} 帧 · {progress}%
-            </span>
+          </div>
+        ) : null}
+
+        {!hasFrameProgress && !isCompleted && statusText ? (
+          <div
+            key={statusKey}
+            aria-live="polite"
+            className="export-task-status"
+            role="status"
+          >
+            {statusText}
           </div>
         ) : null}
 
@@ -173,65 +259,60 @@ export function ExportTaskSurface({
           </ul>
         ) : null}
 
-        {task.message ? (
+        {showMessage && task.message ? (
           <p className="export-task-message">{task.message}</p>
         ) : null}
 
-        <div className="export-task-actions">
-          {canCancelPreparation || canCancelExport ? (
-            <Button
-              disabled={task.status === 'cancelling' || task.phase === 'committing'}
-              onClick={onCancel}
-              variant="secondary"
-            >
-              {task.status === 'cancelling'
-                ? '\u6b63\u5728\u53d6\u6d88'
-                : '\u53d6\u6d88\u5bfc\u51fa'}
-            </Button>
-          ) : null}
-          {task.status === 'completed' ? (
-            <>
+        {canCancelPreparation ||
+        canCancelExport ||
+        isCompleted ||
+        isFailed ||
+        isCancelled ? (
+          <div className="export-task-actions">
+            {canCancelPreparation || canCancelExport ? (
               <Button
-                className="export-task-primary"
-                onClick={onRevealOutput}
-                variant="primary"
+                disabled={task.status === 'cancelling' || task.phase === 'committing'}
+                onClick={onCancel}
+                variant="secondary"
               >
-                <FolderOpen aria-hidden="true" size={16} />
-                {'\u5728\u6587\u4ef6\u5939\u4e2d\u663e\u793a'}
+                {task.status === 'cancelling'
+                  ? '\u6b63\u5728\u53d6\u6d88'
+                  : '\u53d6\u6d88\u5bfc\u51fa'}
               </Button>
-              <Button onClick={onStartNewExport} variant="secondary">
-                {'\u518d\u6b21\u5bfc\u51fa'}
-              </Button>
-            </>
-          ) : null}
-          {task.status === 'failed' || task.status === 'cancelled' ? (
-            <>
-              {task.snapshotId && task.snapshotRetryAvailable ? (
-                <Button onClick={onRetrySameSnapshot} variant="primary">
-                  <RefreshCw aria-hidden="true" size={16} />
-                  {'\u9009\u62e9\u4f4d\u7f6e\uff0c\u91cd\u8bd5\u539f\u5185\u5bb9'}
+            ) : null}
+            {isCompleted ? (
+              <>
+                <Button
+                  className="export-task-primary"
+                  onClick={onRevealOutput}
+                  variant="primary"
+                >
+                  <FolderOpen aria-hidden="true" size={16} />
+                  {'\u5728\u6587\u4ef6\u5939\u4e2d\u663e\u793a'}
                 </Button>
-              ) : null}
-              <Button
-                onClick={onRetryCurrentContent}
-                variant={task.snapshotRetryAvailable ? 'secondary' : 'primary'}
-              >
-                {'\u6309\u5f53\u524d\u5185\u5bb9\u91cd\u65b0\u5bfc\u51fa'}
-              </Button>
-            </>
-          ) : null}
-          {task.status === 'selecting' || task.status === 'preparing' || task.status === 'starting' ? (
-            <LoaderCircle
-              aria-label={'\u6b63\u5728\u51c6\u5907'}
-              className="export-task-spinner"
-              role="img"
-              size={18}
-            />
-          ) : null}
-          {task.status === 'completed' ? (
-            <Check aria-hidden="true" className="export-task-check" size={18} />
-          ) : null}
-        </div>
+                <Button onClick={onStartNewExport} variant="secondary">
+                  {'\u518d\u6b21\u5bfc\u51fa'}
+                </Button>
+              </>
+            ) : null}
+            {isFailed || isCancelled ? (
+              <>
+                {task.snapshotId && task.snapshotRetryAvailable ? (
+                  <Button onClick={onRetrySameSnapshot} variant="primary">
+                    <RefreshCw aria-hidden="true" size={16} />
+                    {'\u9009\u62e9\u4f4d\u7f6e\uff0c\u91cd\u8bd5\u539f\u5185\u5bb9'}
+                  </Button>
+                ) : null}
+                <Button
+                  onClick={onRetryCurrentContent}
+                  variant={task.snapshotRetryAvailable ? 'secondary' : 'primary'}
+                >
+                  {'\u6309\u5f53\u524d\u5185\u5bb9\u91cd\u65b0\u5bfc\u51fa'}
+                </Button>
+              </>
+            ) : null}
+          </div>
+        ) : null}
       </PanelSurface>
     </aside>
   );

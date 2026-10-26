@@ -822,6 +822,13 @@ async function readExportLayoutGeometry() {
       exportTaskSurface: rect('[data-testid="export-task-surface"]'),
       quickActionDrawer: rect('[data-testid="quick-action-drawer"]'),
       recoveryPrompt: rect('.editor-top-region > .recovery-prompt'),
+      resourceActivityDrawer: rect('[data-testid="resource-activity-drawer"]'),
+      resourceActivityOpen:
+        document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'true',
+      rightRailStack: rect('.right-rail-stack'),
+      rightWorkspaceSurface: rect('[data-testid="right-workspace-surface"]'),
+      rightWorkspaceOpen:
+        document.querySelector('[data-testid="right-workspace"]')?.dataset.surfaceOpen === 'true',
       statusText: status?.innerText ?? null,
     };
   })()`);
@@ -850,6 +857,13 @@ function assertExportLayoutGeometryStable(label, samples) {
         card.bottom <= sample.viewport.height + 2,
         `${label}: the task card is outside the visible viewport: ${JSON.stringify(sample)}`,
       );
+      const rightRail = sample.rightRailStack;
+      if (rightRail && rightRail.width > 0 && rightRail.height > 0) {
+        assert(
+          card.right + 12 <= rightRail.left + 2,
+          `${label}: the task card is less than 12px from the right tool rail: ${JSON.stringify({ card, rightRail })}`,
+        );
+      }
       const drawer = sample.quickActionDrawer;
       if (drawer && drawer.width > 0 && drawer.height > 0) {
         const overlapsDrawer =
@@ -865,6 +879,17 @@ function assertExportLayoutGeometryStable(label, samples) {
           card.top < recovery.bottom && card.bottom > recovery.top;
         assert(!overlapsRecovery,
           `${label}: the task card covers the recovery prompt: ${JSON.stringify({ card, recovery })}`);
+      }
+      for (const [surfaceName, surface, isOpen] of [
+        ['left shot drawer', sample.resourceActivityDrawer, sample.resourceActivityOpen],
+        ['right workspace drawer', sample.rightWorkspaceSurface, sample.rightWorkspaceOpen],
+      ]) {
+        if (!isOpen || !surface || surface.width <= 0 || surface.height <= 0) continue;
+        const overlapsSurface =
+          card.left < surface.right && card.right > surface.left &&
+          card.top < surface.bottom && card.bottom > surface.top;
+        assert(!overlapsSurface,
+          `${label}: the task card covers the open ${surfaceName}: ${JSON.stringify({ card, surface })}`);
       }
     }
   }
@@ -1690,6 +1715,10 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
       status: 'failed',
       taskText: await rendererJs(`${taskSelector}?.innerText ?? ''`),
       starts,
+      selectionScreenshotPath,
+      layoutGeometry: options.captureLayoutGeometry
+        ? { hiddenBefore: layoutGeometryBefore, selecting: layoutGeometrySelecting }
+        : null,
       nativeSaveAsScreenshotPath: nativeSavePath,
       windowsOverwriteScreenshotPath: options.captureOverwritePrompt ? overwritePromptPath : null,
       failureScreenshotPath,
@@ -4946,6 +4975,16 @@ async function run() {
         "document.querySelector('[data-testid=\"recovery-candidate-banner\"]')",
       );
       result.recoveryPromptVisible = true;
+      const shotDrawerAlreadyOpen = await rendererJs(
+        "document.querySelector('[data-testid=\"resource-activity-dock\"]')?.dataset.resourceDrawerOpen === 'true'",
+      );
+      if (!shotDrawerAlreadyOpen) {
+        await clickSelector('[data-testid="resource-activity-rail-shots"]');
+      }
+      await waitForRenderer(
+        "document.querySelector('[data-testid=\"resource-activity-dock\"]')?.dataset.resourceDrawerOpen === 'true'",
+      );
+      result.leftShotDrawerOpen = true;
       assert(mediaTools.ffmpegPath && existsSync(mediaTools.ffmpegPath), 'The resolved FFmpeg executable is missing.');
       assert(mediaTools.ffprobePath && existsSync(mediaTools.ffprobePath), 'The resolved FFprobe executable is missing.');
       const projectBytesBefore = await fsp.readFile(projectFilePath);
@@ -5033,6 +5072,70 @@ async function run() {
       );
       assert(existsSync(thirdOutputPath), 'The third automatic output was not created.');
 
+      const beforeConflictHash = hash(await fsp.readFile(completedPath));
+      const conflictRun = await startFromCreatorUi(
+        evidenceRoot,
+        'issue865-existing-target-failure',
+        {
+          captureLayoutGeometry: true,
+          captureOverwritePrompt: true,
+          expectedFailureText: '\u8f93\u51fa\u6587\u4ef6\u5df2\u5b58\u5728',
+          selectedFileName: path.basename(completedPath),
+          waitForPaintCapture: true,
+        },
+      );
+      const afterConflictHash = hash(await fsp.readFile(completedPath));
+      const failureGeometry = await readExportLayoutGeometry();
+      assert(
+        conflictRun.status === 'failed' && conflictRun.starts.length === 0 &&
+        beforeConflictHash === afterConflictHash,
+        `The existing target did not produce the expected safe UI failure: ${JSON.stringify(conflictRun)}`,
+      );
+      assertExportLayoutGeometryStable('Issue #865 desktop failure layout', [failureGeometry]);
+
+      const longFileName = 'Panda-Stage-animation-export-with-a-name-longer-than-the-mini-panel-width-issue865-final.mp4';
+      const longOutputPath = path.join(fixture.projectRoot, longFileName);
+      assert(!existsSync(longOutputPath), 'The long-name acceptance target must begin absent.');
+      const longNameRun = await startFromCreatorUi(
+        evidenceRoot,
+        'issue865-long-file-name',
+        {
+          captureEncodingPhase: true,
+          captureLayoutGeometry: true,
+          failFastOnStartFailure: true,
+          selectedFileName: longFileName,
+          waitForPaintCapture: true,
+          abortOnTimeout: true,
+        },
+      );
+      assert(
+        exportService.getJob(longNameRun.start.jobId)?.status === 'completed' &&
+        path.resolve(exportService.getCompletedOutputPath(longNameRun.start.jobId) ?? '') === path.resolve(longOutputPath) &&
+        existsSync(longOutputPath),
+        `The long-name UI export did not complete at the selected path: ${JSON.stringify(longNameRun)}`,
+      );
+      const longNameControls = await rendererJs(`(() => {
+        const surface = document.querySelector('[data-testid="export-task-surface"]');
+        const fileName = surface?.querySelector('.export-task-file-name');
+        const bounds = fileName?.getBoundingClientRect();
+        const surfaceBounds = surface?.getBoundingClientRect();
+        return {
+          text: fileName?.textContent ?? null,
+          title: fileName?.getAttribute('title') ?? null,
+          accessibleName: fileName?.getAttribute('aria-label') ?? null,
+          textOverflow: fileName ? getComputedStyle(fileName).textOverflow : null,
+          fileRectInsidePanel: Boolean(bounds && surfaceBounds && bounds.left >= surfaceBounds.left && bounds.right <= surfaceBounds.right),
+        };
+      })()`);
+      assert(
+        longNameControls.text === longFileName &&
+        longNameControls.title === longFileName &&
+        longNameControls.accessibleName === `\u5bfc\u51fa\u6587\u4ef6\uff1a${longFileName}` &&
+        longNameControls.textOverflow === 'ellipsis' &&
+        longNameControls.fileRectInsidePanel,
+        `The long filename was not fully available without overflowing its panel: ${JSON.stringify(longNameControls)}`,
+      );
+
       const requestedPngMode = process.env.PANDA_STAGE_EXPORT_PNG_MODE ?? 'legacy-blob';
       const requestedDrawMode = process.env.PANDA_STAGE_EXPORT_DRAW_MODE ?? 'explicit-sync';
       const relevantModeSnapshots = issue862JobModeSnapshots.filter((snapshot) =>
@@ -5101,6 +5204,26 @@ async function run() {
           format: probe.format?.format_name ?? null,
         },
       };
+      result.failureState = {
+        status: conflictRun.status,
+        taskText: conflictRun.taskText,
+        screenshot: conflictRun.failureScreenshotPath,
+        selectionScreenshot: conflictRun.selectionScreenshotPath,
+        layoutGeometry: failureGeometry,
+        nativeOverwriteScreenshot: conflictRun.windowsOverwriteScreenshotPath,
+        outputHashUnchanged: beforeConflictHash === afterConflictHash,
+        startedJobs: conflictRun.starts.length,
+      };
+      result.longFileName = {
+        fileName: longFileName,
+        outputPath: longOutputPath,
+        screenshot: longNameRun.completedScreenshotPath,
+        selectionScreenshot: longNameRun.selectionScreenshotPath,
+        progressScreenshot: longNameRun.progressScreenshotPath,
+        encodingScreenshot: longNameRun.encodingScreenshotPath,
+        layoutGeometry: longNameRun.layoutGeometry,
+        controls: longNameControls,
+      };
       const narrowWindowSize = { width: 800, height: 650 };
       mainWindow.setContentSize(narrowWindowSize.width, narrowWindowSize.height);
       const actualNarrowSize = mainWindow.getContentSize();
@@ -5116,6 +5239,7 @@ async function run() {
       const narrowControls = await rendererJs(`(() => {
         const surface = document.querySelector('[data-testid="export-task-surface"]');
         const status = surface?.querySelector('[role="status"]');
+        const title = surface?.querySelector('[data-testid="export-task-title"]');
         const buttons = [...(surface?.querySelectorAll('button') ?? [])];
         const reveal = buttons.find((button) => button.innerText.includes('\u5728\u6587\u4ef6\u5939\u4e2d\u663e\u793a'));
         const retry = buttons.find((button) => button.innerText.includes('\u518d\u6b21\u5bfc\u51fa'));
@@ -5123,6 +5247,8 @@ async function run() {
           surfaceLabel: surface?.getAttribute('aria-label') ?? null,
           statusRole: status?.getAttribute('role') ?? null,
           statusLive: status?.getAttribute('aria-live') ?? null,
+          titleText: title?.innerText ?? null,
+          titleLive: title?.getAttribute('aria-live') ?? null,
           hideLabel: surface?.querySelector('.export-task-hide')?.getAttribute('aria-label') ?? null,
           revealVisible: Boolean(reveal && !reveal.disabled && reveal.getBoundingClientRect().width > 0),
           retryVisible: Boolean(retry && !retry.disabled && retry.getBoundingClientRect().width > 0),
@@ -5130,13 +5256,13 @@ async function run() {
       })()`);
       assert(
         narrowControls.surfaceLabel === '\u5bfc\u51fa\u89c6\u9891\u4efb\u52a1' &&
-        narrowControls.statusRole === 'status' && narrowControls.statusLive === 'polite' &&
+        narrowControls.titleText === '\u5bfc\u51fa\u5b8c\u6210' && narrowControls.titleLive === 'polite' &&
         narrowControls.hideLabel === '\u6536\u8d77\u5bfc\u51fa\u4efb\u52a1' &&
         narrowControls.revealVisible && narrowControls.retryVisible,
         `The narrow completed task did not retain its accessible actions: ${JSON.stringify(narrowControls)}`,
       );
-      assert(narrowTaskJobId === thirdRun.start.jobId,
-        'The narrow layout did not display the same completed Job.');
+      assert(narrowTaskJobId === longNameRun.start.jobId,
+        'The narrow layout did not display the same completed long-name Job.');
       const narrowJobStarts = formalStarts.length;
       await clickSelector('[data-testid="export-task-surface"] .export-task-hide');
       await waitForRenderer("!document.querySelector('[data-testid=\"export-task-surface\"]')");
