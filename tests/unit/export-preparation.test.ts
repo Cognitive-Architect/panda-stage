@@ -4,6 +4,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  realpath,
   rm,
   writeFile,
 } from 'node:fs/promises';
@@ -1279,7 +1280,7 @@ describe('ExportPreparationService', () => {
     expect(retry.candidate.project.name).toBe(candidate.project.name);
     expect(retry.candidate.outputIntent.fileName).toBe(retrySelection.fileName);
     expect(retry.candidate.outputIntent.targetPath).toBe(
-      path.join(fixture.outputDirectory, retrySelection.fileName),
+      path.join(await realpath(fixture.outputDirectory), retrySelection.fileName),
     );
     expect(hash(await readFile(frozenPath))).toBe(hash(frozenBytes));
     expect(
