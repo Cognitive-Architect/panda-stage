@@ -39,6 +39,11 @@ export interface FileSystemServiceOptions {
   }>;
 }
 
+export interface FormalOutputPathSuggestion {
+  path: string;
+  ordinal: number;
+}
+
 export const CLEANUP_MAX_RETRIES = 3 as const;
 export const CLEANUP_RETRY_DELAY_MS = 75 as const;
 
@@ -118,12 +123,21 @@ export class FileSystemService implements FrameFileSystem {
   }
 
   async suggestFormalOutputPath(defaultPath: string): Promise<string> {
+    const suggestion = await this.suggestFormalOutputPathWithOrdinal(defaultPath);
+    return suggestion.path;
+  }
+
+  async suggestFormalOutputPathWithOrdinal(
+    defaultPath: string,
+    firstOrdinal = 1,
+  ): Promise<FormalOutputPathSuggestion> {
     const resolvedPath = path.resolve(defaultPath);
     if (path.extname(resolvedPath).toLocaleLowerCase() !== '.mp4') {
-      return resolvedPath;
+      return { path: resolvedPath, ordinal: 1 };
     }
     const { dir, name, ext } = path.parse(resolvedPath);
-    for (let index = 1; index <= 999; index += 1) {
+    const startOrdinal = Math.max(1, Math.floor(firstOrdinal));
+    for (let index = startOrdinal; index <= 999; index += 1) {
       const candidate =
         index === 1
           ? resolvedPath
@@ -132,11 +146,13 @@ export class FileSystemService implements FrameFileSystem {
         process.platform === 'win32' &&
         !isWithinWindowsFormalExportPathLimit(candidate)
       ) {
-        return resolvedPath;
+        return { path: resolvedPath, ordinal: 1 };
       }
-      if (!(await pathExists(candidate))) return candidate;
+      if (!(await pathExists(candidate))) {
+        return { path: candidate, ordinal: index };
+      }
     }
-    return resolvedPath;
+    return { path: resolvedPath, ordinal: 1 };
   }
 
   async createJobDirectory(jobId: string): Promise<string> {

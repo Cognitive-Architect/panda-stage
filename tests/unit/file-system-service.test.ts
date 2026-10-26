@@ -96,6 +96,39 @@ describe('FileSystemService Unicode paths and cleanup', () => {
     );
   });
 
+  it('starts at the tracked series ordinal and scans forward across occupied gaps', async () => {
+    const parent = await mkdtemp(
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-export-series-'),
+    );
+    temporaryRoots.push(parent);
+    const service = new FileSystemService(path.join(parent, 'frames'));
+    const basePath = path.join(parent, 'Scene.mp4');
+    await writeFile(basePath, 'first export', 'utf8');
+    await writeFile(path.join(parent, 'Scene (2).mp4'), 'second export', 'utf8');
+    await writeFile(path.join(parent, 'Scene (4).mp4'), 'fourth export', 'utf8');
+
+    const third = await service.suggestFormalOutputPathWithOrdinal(basePath, 2);
+    expect(third).toEqual({
+      path: path.join(parent, 'Scene (3).mp4'),
+      ordinal: 3,
+    });
+    await writeFile(third.path, 'third export', 'utf8');
+
+    await expect(
+      service.suggestFormalOutputPathWithOrdinal(basePath, third.ordinal),
+    ).resolves.toEqual({
+      path: path.join(parent, 'Scene (5).mp4'),
+      ordinal: 5,
+    });
+    await expect(readFile(basePath, 'utf8')).resolves.toBe('first export');
+    await expect(readFile(path.join(parent, 'Scene (2).mp4'), 'utf8')).resolves.toBe(
+      'second export',
+    );
+    await expect(readFile(path.join(parent, 'Scene (4).mp4'), 'utf8')).resolves.toBe(
+      'fourth export',
+    );
+  });
+
   it('writes in a Unicode root and cleans the same Job idempotently', async () => {
     const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-day09-'));
     temporaryRoots.push(parent);

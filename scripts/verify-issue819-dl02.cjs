@@ -13,6 +13,7 @@ const { ExportPreparationService, MainProjectAssetReader } = require('../dist-el
 const { NodeExportPreparationFileStore } = require('../dist-electron/main/services/ExportPreparationFileStore.js');
 const { ExportService } = require('../dist-electron/main/services/ExportService.js');
 const { FileSystemService } = require('../dist-electron/main/services/FileSystemService.js');
+const { FormalOutputNameSeriesService } = require('../dist-electron/main/services/FormalOutputNameSeriesService.js');
 const { FFmpegAdapter } = require('../dist-electron/main/services/FFmpegAdapter.js');
 const { resolveMediaToolPaths } = require('../dist-electron/main/services/production-resources.js');
 const { HiddenWindowManager } = require('../dist-electron/main/windows/hidden-window-manager.js');
@@ -157,11 +158,14 @@ let exportService = null;
 let exportFileSystem = null;
 let hiddenWindowManager = null;
 let issue862PrewarmDiagnostics = null;
+let issue862RecoveryCandidate = null;
 let removeExportPreparationHandlers = null;
 let removeProjectIpcHandlers = null;
 let removeExportHandlers = null;
 let assetBytesById = new Map();
 const formalStarts = [];
+const formalOutputNameSeries = new FormalOutputNameSeriesService();
+const formalOutputPathByJobId = new Map();
 const issue862JobModeSnapshots = [];
 const audioMixPlans = [];
 const jobUpdates = [];
@@ -334,7 +338,15 @@ function installProjectFixtureIpc() {
     trackedSnapshot = null;
     return { ok: true };
   });
-  registerMock('RECOVERY_DETECT', async () => ({ ok: true, candidate: null }));
+  registerMock('RECOVERY_DETECT', async (_event, request) => ({
+    ok: true,
+    candidate:
+      issue862RecoveryCandidate &&
+      path.resolve(request.projectRoot) ===
+        path.resolve(issue862RecoveryCandidate.projectRoot)
+        ? issue862RecoveryCandidate
+        : null,
+  }));
   registerMock('ASSET_THUMBNAIL_READ', async (_event, request) => {
     const bytes = assetBytesById.get(request.assetId);
     if (!bytes) return { ok: true, status: 'missing', assetId: request.assetId };
@@ -406,7 +418,20 @@ function createRendererService() {
     getMainWindow: () => mainWindow,
     service: exportPreparationService,
     selectOutputPath: async (window, request) => {
+      const outputSeries = issue862ExportSmoke
+        ? formalOutputNameSeries.getSeries(
+            request.projectRoot,
+            path.join(request.projectRoot, defaultExportFileName(request.projectName)),
+          )
+        : null;
+      const suggestedOutput = outputSeries
+        ? await exportFileSystem.suggestFormalOutputPathWithOrdinal(
+            path.join(outputSeries.directory, `${outputSeries.baseName}.mp4`),
+            outputSeries.nextOrdinal,
+          )
+        : null;
       const defaultPath = issue836SaveDialogPathOverride ??
+        suggestedOutput?.path ??
         path.join(request.projectRoot, defaultExportFileName(request.projectName));
       saveDialogEvidence.push({
         phase: 'opened',
@@ -467,7 +492,17 @@ function createRendererService() {
         saveDialogEvidence.at(-1).mediaReadAclProbeCode =
           aclEvidence.permissionCheck.code;
       }
-      return selected.canceled ? null : (selected.filePath ?? null);
+      const selectedPath = selected.canceled ? null : (selected.filePath ?? null);
+      if (selectedPath && outputSeries && suggestedOutput) {
+        formalOutputNameSeries.recordSelection(
+          request.projectRoot,
+          outputSeries,
+          suggestedOutput.path,
+          suggestedOutput.ordinal,
+          selectedPath,
+        );
+      }
+      return selectedPath;
     },
   });
 }
@@ -624,6 +659,15 @@ function createExportService() {
   exportService.subscribe((update) => {
     jobUpdates.push(update);
     if (issue862ExportSmoke) {
+      if (update.status === 'completed') {
+        const outputPath = exportService.getCompletedOutputPath(update.jobId);
+        if (outputPath) formalOutputNameSeries.recordCompletedOutput(outputPath);
+        formalOutputPathByJobId.delete(update.jobId);
+      } else if (update.status === 'failed' || update.status === 'cancelled') {
+        const outputPath = formalOutputPathByJobId.get(update.jobId);
+        if (outputPath) formalOutputNameSeries.discardOutput(outputPath);
+        formalOutputPathByJobId.delete(update.jobId);
+      }
       const modes = hiddenWindowManager.getDiagnostics();
       if (modes.windowOpen) {
         const snapshot = {
@@ -700,6 +744,11 @@ function createExportService() {
           },
         );
       } catch (error) {
+        if (issue862ExportSmoke) {
+          formalOutputNameSeries.discardOutput(
+            input.candidate.outputIntent.targetPath,
+          );
+        }
         if (dl05Mode) {
           await exportPreparationService.retainCandidateForRetry(request.snapshotId);
         } else {
@@ -708,6 +757,12 @@ function createExportService() {
         throw error;
       }
       formalStarts.at(-1).jobId = handle.jobId;
+      if (issue862ExportSmoke) {
+        formalOutputPathByJobId.set(
+          handle.jobId,
+          input.candidate.outputIntent.targetPath,
+        );
+      }
       void handle.completion.then(
         () => exportPreparationService.finalizeCandidateExport(request.snapshotId),
         () => dl05Mode
@@ -739,6 +794,80 @@ async function capturePageAfterUiPaint() {
     'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 50))))',
   );
   return mainWindow.webContents.capturePage();
+}
+
+async function readExportLayoutGeometry() {
+  return rendererJs(`(() => {
+    const rect = (selector) => {
+      const element = document.querySelector(selector);
+      if (!element) return null;
+      const bounds = element.getBoundingClientRect();
+      return {
+        left: Number(bounds.left.toFixed(2)),
+        top: Number(bounds.top.toFixed(2)),
+        right: Number(bounds.right.toFixed(2)),
+        bottom: Number(bounds.bottom.toFixed(2)),
+        width: Number(bounds.width.toFixed(2)),
+        height: Number(bounds.height.toFixed(2)),
+      };
+    };
+    const layout = document.querySelector('[data-testid="editor-layout"]');
+    const status = document.querySelector('[data-testid="export-task-surface"] .export-task-status');
+    return {
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      topRegionLayout: layout?.dataset.topRegionLayout ?? null,
+      editorBody: rect('[data-testid="editor-body"]'),
+      canvasViewport: rect('[data-testid="project-canvas-viewport"]'),
+      timelineDock: rect('[data-testid="timeline-dock"]'),
+      exportTaskSurface: rect('[data-testid="export-task-surface"]'),
+      quickActionDrawer: rect('[data-testid="quick-action-drawer"]'),
+      recoveryPrompt: rect('.editor-top-region > .recovery-prompt'),
+      statusText: status?.innerText ?? null,
+    };
+  })()`);
+}
+
+function assertExportLayoutGeometryStable(label, samples) {
+  const baseline = samples[0];
+  assert(baseline?.editorBody && baseline?.canvasViewport && baseline?.timelineDock,
+    `${label}: the editor geometry baseline is incomplete: ${JSON.stringify(baseline)}`);
+  for (const [sampleIndex, sample] of samples.entries()) {
+    assert(sample?.editorBody && sample?.canvasViewport && sample?.timelineDock,
+      `${label}: editor geometry sample ${sampleIndex} is incomplete: ${JSON.stringify(sample)}`);
+    for (const surface of ['editorBody', 'canvasViewport', 'timelineDock']) {
+      for (const property of ['left', 'top', 'width', 'height']) {
+        assert(
+          Math.abs(sample[surface][property] - baseline[surface][property]) <= 2,
+          `${label}: ${surface}.${property} changed beyond 2px: ${JSON.stringify({ baseline: baseline[surface], sample: sample[surface] })}`,
+        );
+      }
+    }
+    const card = sample.exportTaskSurface;
+    if (card) {
+      assert(
+        card.left >= -2 && card.top >= -2 &&
+        card.right <= sample.viewport.width + 2 &&
+        card.bottom <= sample.viewport.height + 2,
+        `${label}: the task card is outside the visible viewport: ${JSON.stringify(sample)}`,
+      );
+      const drawer = sample.quickActionDrawer;
+      if (drawer && drawer.width > 0 && drawer.height > 0) {
+        const overlapsDrawer =
+          card.left < drawer.right && card.right > drawer.left &&
+          card.top < drawer.bottom && card.bottom > drawer.top;
+        assert(!overlapsDrawer,
+          `${label}: the task card covers the quick-action drawer: ${JSON.stringify({ card, drawer })}`);
+      }
+      const recovery = sample.recoveryPrompt;
+      if (recovery && recovery.width > 0 && recovery.height > 0) {
+        const overlapsRecovery =
+          card.left < recovery.right && card.right > recovery.left &&
+          card.top < recovery.bottom && card.bottom > recovery.top;
+        assert(!overlapsRecovery,
+          `${label}: the task card covers the recovery prompt: ${JSON.stringify({ card, recovery })}`);
+      }
+    }
+  }
 }
 
 async function waitForRenderer(expression, timeoutMs = 20_000) {
@@ -1403,6 +1532,9 @@ async function verifyUndecodableAudioSource(initialProjectBytes) {
 
 async function startFromCreatorUi(evidenceRoot, label, options = {}) {
   const before = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
+  const layoutGeometryBefore = options.captureLayoutGeometry
+    ? await readExportLayoutGeometry()
+    : null;
   const priorJobCount = formalStarts.length;
   const priorTaskStatus = await rendererJs(
     'window.__pandaStageIssue816Acceptance.inspectExportTask()?.task?.status ?? "idle"',
@@ -1418,7 +1550,7 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
       `${taskSelector}?.dataset.taskStatus === ${JSON.stringify(priorTaskStatus)}`,
     );
     const actionText = priorTaskStatus === 'completed'
-      ? '\u5bfc\u51fa\u65b0\u7248\u672c'
+      ? '\u518d\u6b21\u5bfc\u51fa'
       : '\u6309\u5f53\u524d\u5185\u5bb9\u91cd\u65b0\u5bfc\u51fa';
     startAction = priorTaskStatus === 'completed'
       ? 'completed-new-version'
@@ -1426,6 +1558,21 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
     await clickButtonContainingText(actionText);
   } else {
     throw new Error(`${label}: cannot start a new export while prior task is ${priorTaskStatus}.`);
+  }
+  let layoutGeometrySelecting = null;
+  let selectionScreenshotPath = null;
+  if (options.captureLayoutGeometry) {
+    await waitForRenderer(
+      "document.querySelector('[data-testid=\"export-task-surface\"]')?.dataset.taskStatus === 'selecting'",
+    );
+    layoutGeometrySelecting = await readExportLayoutGeometry();
+    assertExportLayoutGeometryStable(
+      `${label} hidden-to-selecting geometry`,
+      [layoutGeometryBefore, layoutGeometrySelecting],
+    );
+    selectionScreenshotPath = path.join(evidenceRoot, `${label}-selecting.png`);
+    const selectionImage = await capturePageAfterUiPaint();
+    await fsp.writeFile(selectionScreenshotPath, selectionImage.toPNG());
   }
   const nativeSavePath = path.join(evidenceRoot, `${label}-save-as.png`);
   const overwritePromptPath = path.join(evidenceRoot, `${label}-windows-overwrite.png`);
@@ -1570,6 +1717,9 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
   }
   let progressCaptured = false;
   let progressUiState = null;
+  let layoutGeometryVisibleDuring = null;
+  let layoutGeometryHidden = null;
+  let layoutGeometryRestored = null;
   let restoredScreenshotPath = null;
   let encodingScreenshotPath = null;
   let encodingUiState = null;
@@ -1617,6 +1767,9 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
     // Export may finish before a frame-progress screenshot is sampled.
   }
   if (options.hideAndRestoreDuringRun && progressCaptured) {
+    if (options.captureLayoutGeometry) {
+      layoutGeometryVisibleDuring = await readExportLayoutGeometry();
+    }
     const hideButtonLabel = await rendererJs(
       `document.querySelector('[data-testid="export-task-surface"] .export-task-hide')?.getAttribute('aria-label') ?? null`,
     );
@@ -1627,12 +1780,28 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
     const startsBeforeRestore = formalStarts.length;
     await clickSelector('[data-testid="export-task-surface"] .export-task-hide');
     await waitForRenderer("!document.querySelector('[data-testid=\"export-task-surface\"]')");
+    if (options.captureLayoutGeometry) {
+      layoutGeometryHidden = await readExportLayoutGeometry();
+    }
     await clickSelector('[data-testid="quick-action-export"]');
     await waitForRenderer(
       `document.querySelector('[data-testid="export-task-surface"]')?.dataset.taskStatus === 'running' && window.__pandaStageIssue816Acceptance.inspectExportTask()?.task?.jobId === ${JSON.stringify(activeJobId)}`,
     );
     assert(formalStarts.length === startsBeforeRestore, `${label}: restoring the hidden panel started a second formal Job.`);
     restoredScreenshotPath = path.join(evidenceRoot, `${label}-restored.png`);
+    if (options.captureLayoutGeometry) {
+      layoutGeometryRestored = await readExportLayoutGeometry();
+      assertExportLayoutGeometryStable(
+        `${label} visible-hide-restore geometry`,
+        [
+          layoutGeometryBefore,
+          layoutGeometrySelecting,
+          layoutGeometryVisibleDuring,
+          layoutGeometryHidden,
+          layoutGeometryRestored,
+        ],
+      );
+    }
     const restoredImage = options.waitForPaintCapture
       ? await capturePageAfterUiPaint()
       : await mainWindow.webContents.capturePage();
@@ -1721,9 +1890,19 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
       progressCaptured,
       progressUiState,
       restoredScreenshotPath,
+      selectionScreenshotPath,
       nativeSaveAsScreenshotPath: nativeSavePath,
       progressScreenshotPath: path.join(evidenceRoot, `${label}-progress.png`),
       cancelledScreenshotPath,
+      layoutGeometry: options.captureLayoutGeometry
+        ? {
+            hiddenBefore: layoutGeometryBefore,
+            selecting: layoutGeometrySelecting,
+            visibleDuring: layoutGeometryVisibleDuring,
+            hiddenDuring: layoutGeometryHidden,
+            restored: layoutGeometryRestored,
+          }
+        : null,
     };
   }
   const completionTimeoutMs = options.completionTimeoutMs ?? 360_000;
@@ -1784,12 +1963,22 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
     progressCaptured,
     progressUiState,
     restoredScreenshotPath,
+    selectionScreenshotPath,
     encodingScreenshotPath,
     encodingUiState,
     nativeSaveAsScreenshotPath: nativeSavePath,
     windowsOverwriteScreenshotPath: options.captureOverwritePrompt ? overwritePromptPath : null,
     progressScreenshotPath: progressCaptured ? path.join(evidenceRoot, `${label}-progress.png`) : null,
     completedScreenshotPath,
+    layoutGeometry: options.captureLayoutGeometry
+      ? {
+          hiddenBefore: layoutGeometryBefore,
+          selecting: layoutGeometrySelecting,
+          visibleDuring: layoutGeometryVisibleDuring,
+          hiddenDuring: layoutGeometryHidden,
+          restored: layoutGeometryRestored,
+        }
+      : null,
   };
 }
 
@@ -4613,6 +4802,15 @@ async function run() {
         includeAudioMix: dl03Mode,
       });
   fixtureProject = ProjectSchema.parse(JSON.parse(await fsp.readFile(path.join(fixture.projectRoot, 'project.json'), 'utf8')));
+  if (issue862ExportSmoke) {
+    issue862RecoveryCandidate = {
+      projectRoot: fixture.projectRoot,
+      recoveryFilePath: path.join(fixture.evidenceRoot, 'synthetic-recovery.json'),
+      projectId: fixtureProject.id,
+      savedAtMs: Date.now(),
+      project: structuredClone(fixtureProject),
+    };
+  }
   if (dl05FollowupMode) {
     fixtureProject = shortIssue834Project(fixtureProject);
     await fsp.writeFile(
@@ -4744,6 +4942,10 @@ async function run() {
     assert(opened.project.id === fixtureProject.id, 'Creator UI opened a different Project.');
 
     if (issue862ExportSmoke) {
+      await waitForRenderer(
+        "document.querySelector('[data-testid=\"recovery-candidate-banner\"]')",
+      );
+      result.recoveryPromptVisible = true;
       assert(mediaTools.ffmpegPath && existsSync(mediaTools.ffmpegPath), 'The resolved FFmpeg executable is missing.');
       assert(mediaTools.ffprobePath && existsSync(mediaTools.ffprobePath), 'The resolved FFprobe executable is missing.');
       const projectBytesBefore = await fsp.readFile(projectFilePath);
@@ -4753,9 +4955,19 @@ async function run() {
         sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
       })));
       const cancelledPath = path.join(fixture.projectRoot, 'issue862-cancelled.mp4');
-      const completedPath = path.join(fixture.projectRoot, 'issue862-retry.mp4');
+      const completedPath = path.join(fixture.projectRoot, `${fixtureProject.name}.mp4`);
+      const secondOutputPath = path.join(
+        fixture.projectRoot,
+        `${fixtureProject.name} (2).mp4`,
+      );
+      const thirdOutputPath = path.join(
+        fixture.projectRoot,
+        `${fixtureProject.name} (3).mp4`,
+      );
       assert(!existsSync(cancelledPath), 'The cancellation target must begin absent.');
       assert(!existsSync(completedPath), 'The retry target must begin absent.');
+      assert(!existsSync(secondOutputPath), 'The second automatic name must begin absent.');
+      assert(!existsSync(thirdOutputPath), 'The third automatic name must begin absent.');
 
       await clickSelector('[data-testid="quick-action-drawer-handle"]');
       await waitForRenderer("document.querySelector('[data-testid=\"quick-action-drawer\"]')?.getAttribute('data-expanded') === 'true'");
@@ -4767,6 +4979,7 @@ async function run() {
           cancelAfterProgress: true,
           duplicateClickDuringRun: true,
           hideAndRestoreDuringRun: true,
+          captureLayoutGeometry: true,
           assertProgressSemantic: true,
           waitForPaintCapture: true,
           failFastOnStartFailure: true,
@@ -4781,7 +4994,6 @@ async function run() {
         evidenceRoot,
         'issue862-warmed-retry',
         {
-          selectedFileName: path.basename(completedPath),
           captureEncodingPhase: true,
           waitForPaintCapture: true,
           failFastOnStartFailure: true,
@@ -4792,6 +5004,34 @@ async function run() {
       assert(completedJob?.status === 'completed', `The retry Job did not complete: ${JSON.stringify(completedJob)}`);
       assert(path.resolve(exportService.getCompletedOutputPath(completedRun.start.jobId) ?? '') === path.resolve(completedPath), 'The completed Job points to a different output target.');
       assert(existsSync(completedPath), 'The completed retry did not publish its MP4.');
+
+      const secondRun = await startFromCreatorUi(
+        evidenceRoot,
+        'issue862-name-sequence-2',
+        {
+          failFastOnStartFailure: true,
+          abortOnTimeout: true,
+        },
+      );
+      assert(
+        path.resolve(exportService.getCompletedOutputPath(secondRun.start.jobId) ?? '') === path.resolve(secondOutputPath),
+        `The second continuous export suggested an unexpected name: ${JSON.stringify(secondRun.start)}`,
+      );
+      assert(existsSync(secondOutputPath), 'The second automatic output was not created.');
+
+      const thirdRun = await startFromCreatorUi(
+        evidenceRoot,
+        'issue862-name-sequence-3',
+        {
+          failFastOnStartFailure: true,
+          abortOnTimeout: true,
+        },
+      );
+      assert(
+        path.resolve(exportService.getCompletedOutputPath(thirdRun.start.jobId) ?? '') === path.resolve(thirdOutputPath),
+        `The third continuous export suggested an unexpected name: ${JSON.stringify(thirdRun.start)}`,
+      );
+      assert(existsSync(thirdOutputPath), 'The third automatic output was not created.');
 
       const requestedPngMode = process.env.PANDA_STAGE_EXPORT_PNG_MODE ?? 'legacy-blob';
       const requestedDrawMode = process.env.PANDA_STAGE_EXPORT_DRAW_MODE ?? 'explicit-sync';
@@ -4859,6 +5099,80 @@ async function run() {
           frameRate: fps,
           frameCount,
           format: probe.format?.format_name ?? null,
+        },
+      };
+      const narrowWindowSize = { width: 800, height: 650 };
+      mainWindow.setContentSize(narrowWindowSize.width, narrowWindowSize.height);
+      const actualNarrowSize = mainWindow.getContentSize();
+      await waitForRenderer(
+        `window.innerWidth === ${actualNarrowSize[0]} && window.innerHeight === ${actualNarrowSize[1]}`,
+      );
+      const narrowTaskJobId = await rendererJs(
+        'window.__pandaStageIssue816Acceptance.inspectExportTask()?.task?.jobId ?? null',
+      );
+      const narrowVisibleGeometry = await readExportLayoutGeometry();
+      assert(narrowVisibleGeometry.topRegionLayout === 'overlay',
+        `The narrow desktop case did not retain its overlay layout: ${JSON.stringify(narrowVisibleGeometry)}`);
+      const narrowControls = await rendererJs(`(() => {
+        const surface = document.querySelector('[data-testid="export-task-surface"]');
+        const status = surface?.querySelector('[role="status"]');
+        const buttons = [...(surface?.querySelectorAll('button') ?? [])];
+        const reveal = buttons.find((button) => button.innerText.includes('\u5728\u6587\u4ef6\u5939\u4e2d\u663e\u793a'));
+        const retry = buttons.find((button) => button.innerText.includes('\u518d\u6b21\u5bfc\u51fa'));
+        return {
+          surfaceLabel: surface?.getAttribute('aria-label') ?? null,
+          statusRole: status?.getAttribute('role') ?? null,
+          statusLive: status?.getAttribute('aria-live') ?? null,
+          hideLabel: surface?.querySelector('.export-task-hide')?.getAttribute('aria-label') ?? null,
+          revealVisible: Boolean(reveal && !reveal.disabled && reveal.getBoundingClientRect().width > 0),
+          retryVisible: Boolean(retry && !retry.disabled && retry.getBoundingClientRect().width > 0),
+        };
+      })()`);
+      assert(
+        narrowControls.surfaceLabel === '\u5bfc\u51fa\u89c6\u9891\u4efb\u52a1' &&
+        narrowControls.statusRole === 'status' && narrowControls.statusLive === 'polite' &&
+        narrowControls.hideLabel === '\u6536\u8d77\u5bfc\u51fa\u4efb\u52a1' &&
+        narrowControls.revealVisible && narrowControls.retryVisible,
+        `The narrow completed task did not retain its accessible actions: ${JSON.stringify(narrowControls)}`,
+      );
+      assert(narrowTaskJobId === thirdRun.start.jobId,
+        'The narrow layout did not display the same completed Job.');
+      const narrowJobStarts = formalStarts.length;
+      await clickSelector('[data-testid="export-task-surface"] .export-task-hide');
+      await waitForRenderer("!document.querySelector('[data-testid=\"export-task-surface\"]')");
+      const narrowHiddenGeometry = await readExportLayoutGeometry();
+      await clickSelector('[data-testid="quick-action-export"]');
+      await waitForRenderer(
+        `document.querySelector('[data-testid="export-task-surface"]')?.dataset.taskStatus === 'completed' && window.__pandaStageIssue816Acceptance.inspectExportTask()?.task?.jobId === ${JSON.stringify(narrowTaskJobId)}`,
+      );
+      const narrowRestoredGeometry = await readExportLayoutGeometry();
+      assert(formalStarts.length === narrowJobStarts,
+        'Restoring the completed task at narrow width started another formal Job.');
+      assertExportLayoutGeometryStable('Issue #862 narrow-window card hide/restore', [
+        narrowVisibleGeometry,
+        narrowHiddenGeometry,
+        narrowRestoredGeometry,
+      ]);
+      const narrowScreenshotPath = path.join(evidenceRoot, 'issue862-narrow-task-restored.png');
+      const narrowImage = await capturePageAfterUiPaint();
+      await fsp.writeFile(narrowScreenshotPath, narrowImage.toPNG());
+      result.outputNameSequence = await Promise.all(
+        [completedPath, secondOutputPath, thirdOutputPath].map(async (targetPath) => ({
+          path: targetPath,
+          sha256: hash(await fsp.readFile(targetPath)),
+          byteLength: (await fsp.stat(targetPath)).size,
+        })),
+      );
+      result.layoutGeometry = {
+        desktop: cancelledRun.layoutGeometry,
+        narrow: {
+          width: actualNarrowSize[0],
+          height: actualNarrowSize[1],
+          controls: narrowControls,
+          visible: narrowVisibleGeometry,
+          hidden: narrowHiddenGeometry,
+          restored: narrowRestoredGeometry,
+          screenshot: narrowScreenshotPath,
         },
       };
       result.mediaTools = {

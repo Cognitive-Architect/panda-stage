@@ -47,6 +47,18 @@ describe('export task state', () => {
     expect(message).not.toContain('\u5a92\u4f53\u5de5\u5177');
   });
 
+  it('maps a busy hidden window to the action that is safe while another Job runs', () => {
+    const message = safeExportFailureMessage(
+      'Hidden window is already prepared for another Job.',
+    );
+
+    expect(message).toContain('\u7b49\u5f85');
+    expect(message).toContain('\u7ed3\u675f\u540e\u518d\u91cd\u8bd5');
+    expect(message).not.toContain('Hidden window');
+    expect(message).not.toContain('\u68c0\u67e5\u8f93\u5165\u8def\u5f84');
+    expect(message).not.toContain('\u5a92\u4f53\u5de5\u5177');
+  });
+
   it.each(['selecting', 'preparing', 'starting', 'running', 'cancelling', 'completed', 'failed', 'cancelled'] as const)(
     'restores the existing %s task from the export entry point',
     (status) => {
