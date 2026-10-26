@@ -125,6 +125,9 @@ describe('Issue #775 C03 preserves the Stage D render runners in one workbench',
     expect(verifier).toContain('stageDv12Deletion');
     expect(verifier).toContain('deletionChecks');
     expect(verifier).toContain('unifiedImportShellVisible');
+    expect(verifier).toContain('fla-single-import');
+    expect(verifier).toContain('fla-single-mode-summary');
+    expect(verifier).toContain('primaryActionMatchesMode');
     expect(verifier).toContain('input[type="checkbox"]');
     expect(verifier).toContain('const ensureMultiSelectMode = async');
     expect(verifier).toContain('await ensureMultiSelectMode();');
@@ -136,7 +139,16 @@ describe('Issue #775 C03 preserves the Stage D render runners in one workbench',
     expect(verifier).toContain('fla-unified-import-counts');
     expect(verifier).toContain('cancellationNoMutation');
     expect(verifier).toContain('duplicateGroupPreservesSourceIdentity');
+    expect(verifier).toContain('duplicateGroupDeclaredSourceCount');
+    expect(verifier).toContain('allSnapshotIdentitiesPreserved');
+    expect(verifier).toContain('stageGeometryMatches');
+    expect(verifier).toContain('focusedTargetMatchesPreview');
     expect(verifier).toContain('exactDuplicateReused');
+    expect(verifier).toContain('waitForNativeKeyboardUntil');
+    expect(verifier).toContain('sequence-range-arrow-up');
+    expect(verifier).toContain('sequence-narrow-playback-enter');
+    expect(verifier).toContain('sequence-narrow-filmstrip-enter');
+    expect(verifier).toContain('sequence-narrow-shift-tab-playback');
     expect(verifier).not.toContain('fla-snapshot-frame-next');
     expect(verifier).toContain('ONE_CONFIRM; COMMIT_SELECTED_STATIC_SNAPSHOT_IMAGE_ASSETS');
   });
