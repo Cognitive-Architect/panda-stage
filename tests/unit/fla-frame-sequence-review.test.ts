@@ -110,6 +110,15 @@ describe('R2-H.2 shares the C03 unified candidate workbench', () => {
     expect(review.match(/onKeyDown=\{\(event\) => handleSequenceActionKeyDown\(event, \(\) => void (?:renderSequence|cancelSequence|rerenderSequence)\(\)\)\}/gu)).toHaveLength(6);
   });
 
+  it('activates playback and filmstrip controls through the Electron Enter key path', () => {
+    expect(review).toContain('const handlePlaybackKeyDown =');
+    expect(review).toContain("if (event.key !== 'Enter') return;");
+    expect(review).toContain('onKeyDown={handlePlaybackKeyDown}');
+    expect(review).toContain('onClick={togglePlayback}');
+    expect(review).toContain('onKeyDown={(event) => handleSequenceActionKeyDown(event, () =>');
+    expect(review).toContain("dispatchPlayback({ type: 'select', selectedIndex: index })");
+  });
+
   it('wires G008 playback, manual stepping, frame count, visibility, and horizontal filmstrip follow', () => {
     expect(review).toContain('flaSequencePlaybackReducer');
     expect(review).toContain('data-testid="fla-frame-sequence-playback"');

@@ -361,6 +361,19 @@ export function FlaFrameSequenceReview({
       ])
     : null;
   playbackSessionKeyRef.current = playbackContextKey;
+  const togglePlayback = () => {
+    if (playbackState.isPlaying) dispatchPlayback({ type: 'pause' });
+    else if (playbackContextKey) {
+      playbackStartedAtRef.current = performance.now() -
+        playbackState.selectedIndex * 1_000 / sourceFps;
+      dispatchPlayback({ type: 'play', sessionKey: playbackContextKey });
+    }
+  };
+  const handlePlaybackKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    if (!event.repeat) togglePlayback();
+  };
   const playbackButton = (
     <button
       aria-label={playbackState.isPlaying ? '暂停序列播放' : '播放序列'}
@@ -369,14 +382,8 @@ export function FlaFrameSequenceReview({
       data-playing={playbackState.isPlaying ? 'true' : 'false'}
       data-testid="fla-frame-sequence-playback"
       disabled={!playbackContextKey}
-      onClick={() => {
-        if (playbackState.isPlaying) dispatchPlayback({ type: 'pause' });
-        else if (playbackContextKey) {
-          playbackStartedAtRef.current = performance.now() -
-            playbackState.selectedIndex * 1_000 / sourceFps;
-          dispatchPlayback({ type: 'play', sessionKey: playbackContextKey });
-        }
-      }}
+      onClick={togglePlayback}
+      onKeyDown={handlePlaybackKeyDown}
       type="button"
     >
       {presentation === 'unified-preview'
@@ -1479,6 +1486,9 @@ export function FlaFrameSequenceReview({
                       data-frame-index={item.frameIndex}
                       data-testid={`fla-frame-sequence-filmstrip-item-${item.frameIndex}`}
                       onClick={() => dispatchPlayback({ type: 'select', selectedIndex: index })}
+                      onKeyDown={(event) => handleSequenceActionKeyDown(event, () =>
+                        dispatchPlayback({ type: 'select', selectedIndex: index }),
+                      )}
                       type="button"
                     >
                       <span className="fla-frame-sequence-filmstrip-thumb">

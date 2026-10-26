@@ -130,6 +130,7 @@ describe('Issue #775 C03 preserves the Stage D render runners in one workbench',
     expect(verifier).toContain('primaryActionMatchesMode');
     expect(verifier).toContain('fla-frame-sequence-render');
     expect(verifier).toContain("focusedCandidateKind === 'sequence'");
+    expect(verifier).toContain('const primaryActionRoot = focusedCandidateKind ===');
     expect(verifier).toContain('input[type="checkbox"]');
     expect(verifier).toContain('const ensureMultiSelectMode = async');
     expect(verifier).toContain('await ensureMultiSelectMode();');
@@ -152,6 +153,12 @@ describe('Issue #775 C03 preserves the Stage D render runners in one workbench',
     expect(verifier).toContain('waitForNativeKeyboardUntil');
     expect(verifier).toContain('sequence-range-arrow-up');
     expect(verifier).toContain('sequence-narrow-playback-enter');
+    expect(verifier).toContain('playbackActivationEvents');
+    expect(verifier).toContain('playbackStateAfterEnter');
+    expect(verifier).toContain('filmstripEnterState');
+    expect(verifier).toContain('filmstripActivationEvents');
+    expect(verifier).toContain('firstFrameSelectionResetWorks');
+    expect(verifier).toContain('filmstripSelectionBaseline');
     expect(verifier).toContain('sequence-narrow-filmstrip-enter');
     expect(verifier).toContain('sequence-narrow-shift-tab-playback');
     expect(verifier).not.toContain('fla-snapshot-frame-next');

@@ -1635,12 +1635,37 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         const playbackButton = visibleSequence?.querySelector('[data-testid="fla-frame-sequence-playback"]') ?? null;
         const keyboardReachedPlayback = keyboardPlaybackFocus.reached && playbackButton instanceof HTMLButtonElement &&
           !playbackButton.disabled && document.activeElement === playbackButton && isViewportVisible(rectData(playbackButton));
+        const playbackActivationEvents = [];
+        const recordPlaybackActivation = (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLButtonElement) || target.getAttribute('data-testid') !== 'fla-frame-sequence-playback') return;
+          playbackActivationEvents.push({
+            type: event.type,
+            key: event instanceof KeyboardEvent ? event.key : '',
+            trusted: event.isTrusted,
+            pressedAtCapture: target.getAttribute('aria-pressed'),
+          });
+        };
+        document.addEventListener('keydown', recordPlaybackActivation, true);
+        document.addEventListener('keyup', recordPlaybackActivation, true);
+        document.addEventListener('click', recordPlaybackActivation, true);
+        const readPlaybackState = () => {
+          const currentButton = visibleUnifiedSequenceReview()?.querySelector('[data-testid="fla-frame-sequence-playback"]') ?? null;
+          return {
+            pressed: currentButton?.getAttribute('aria-pressed') ?? '',
+            disabled: currentButton instanceof HTMLButtonElement ? currentButton.disabled : null,
+            focusedTestId: document.activeElement instanceof HTMLElement
+              ? document.activeElement.getAttribute('data-testid') ?? ''
+              : '',
+          };
+        };
         await waitForNativeKeyboard('sequence-narrow-playback-enter');
         const playbackAfterEnter = keyboardReachedPlayback
           ? await waitForVisibleSequenceControl('[data-testid="fla-frame-sequence-playback"]', (element) =>
             element.getAttribute('aria-pressed') === 'true',
           )
           : null;
+        const playbackStateAfterEnter = readPlaybackState();
         const playbackEnterWorks = playbackAfterEnter instanceof HTMLButtonElement &&
           playbackAfterEnter.getAttribute('aria-pressed') === 'true' && document.activeElement === playbackAfterEnter;
         await waitForNativeKeyboard('sequence-narrow-playback-space');
@@ -1649,6 +1674,10 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
             element.getAttribute('aria-pressed') === 'false',
           )
           : null;
+        const playbackStateAfterSpace = readPlaybackState();
+        document.removeEventListener('keydown', recordPlaybackActivation, true);
+        document.removeEventListener('keyup', recordPlaybackActivation, true);
+        document.removeEventListener('click', recordPlaybackActivation, true);
         const playbackSpaceWorks = playbackEnterWorks && playbackAfterSpace instanceof HTMLButtonElement &&
           playbackAfterSpace.getAttribute('aria-pressed') === 'false' && document.activeElement === playbackAfterSpace;
         const keyboardFrameFocus = await waitForNativeKeyboardUntil(
@@ -1658,19 +1687,69 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         const narrowFirstFrame = visibleUnifiedSequenceReview()?.querySelector('[data-testid="fla-frame-sequence-filmstrip-item-0"]') ?? null;
         const keyboardReachedFrameStrip = keyboardFrameFocus.reached && narrowFirstFrame instanceof HTMLButtonElement &&
           document.activeElement === narrowFirstFrame && isViewportVisible(rectData(narrowFirstFrame));
+        if (keyboardReachedFrameStrip && narrowFirstFrame instanceof HTMLButtonElement) {
+          narrowFirstFrame.focus();
+          narrowFirstFrame.click();
+        }
+        const firstFrameSelectionReset = keyboardReachedFrameStrip
+          ? await waitForVisibleSequenceControl('[data-testid="fla-frame-sequence-preview-area"]', (element) =>
+            element.getAttribute('data-preview-frame-index') === '0',
+          )
+          : null;
+        const firstFrameSelectionResetWorks = firstFrameSelectionReset !== null &&
+          narrowFirstFrame instanceof HTMLButtonElement && narrowFirstFrame.getAttribute('aria-pressed') === 'true' &&
+          document.activeElement === narrowFirstFrame;
         await waitForNativeKeyboard('sequence-narrow-tab-next-frame');
         const narrowSecondFrame = visibleUnifiedSequenceReview()?.querySelector('[data-testid="fla-frame-sequence-filmstrip-item-1"]') ?? null;
         const keyboardReachedSecondFrame = narrowSecondFrame instanceof HTMLButtonElement &&
           document.activeElement === narrowSecondFrame && isViewportVisible(rectData(narrowSecondFrame));
+        const filmstripSelectionBaseline = {
+          framePressed: narrowSecondFrame instanceof HTMLButtonElement
+            ? narrowSecondFrame.getAttribute('aria-pressed')
+            : '',
+          previewFrameIndex: visibleUnifiedSequenceReview()
+            ?.querySelector('[data-testid="fla-frame-sequence-preview-area"]')
+            ?.getAttribute('data-preview-frame-index') ?? '',
+        };
+        const filmstripActivationEvents = [];
+        const recordFilmstripActivation = (event) => {
+          if (event.target !== narrowSecondFrame) return;
+          filmstripActivationEvents.push({
+            type: event.type,
+            key: event instanceof KeyboardEvent ? event.key : '',
+            trusted: event.isTrusted,
+            defaultPrevented: event.defaultPrevented,
+          });
+        };
+        document.addEventListener('keydown', recordFilmstripActivation);
+        document.addEventListener('keyup', recordFilmstripActivation);
+        document.addEventListener('click', recordFilmstripActivation);
         await waitForNativeKeyboard('sequence-narrow-filmstrip-enter');
         const selectedSecondFrame = keyboardReachedSecondFrame
           ? await waitForVisibleSequenceControl('[data-testid="fla-frame-sequence-preview-area"]', (element) =>
             element.getAttribute('data-preview-frame-index') === '1',
           )
           : null;
-        const filmstripEnterWorks = keyboardReachedSecondFrame && selectedSecondFrame !== null &&
+        const filmstripEnterWorks = firstFrameSelectionResetWorks && keyboardReachedSecondFrame &&
+          filmstripSelectionBaseline.framePressed === 'false' && filmstripSelectionBaseline.previewFrameIndex === '0' &&
+          selectedSecondFrame !== null &&
           narrowSecondFrame instanceof HTMLButtonElement && narrowSecondFrame.getAttribute('aria-pressed') === 'true' &&
           document.activeElement === narrowSecondFrame;
+        const filmstripEnterState = {
+          firstFrameSelectionResetWorks,
+          keyboardReachedSecondFrame,
+          selectionBaseline: filmstripSelectionBaseline,
+          framePressed: narrowSecondFrame instanceof HTMLButtonElement
+            ? narrowSecondFrame.getAttribute('aria-pressed')
+            : '',
+          previewFrameIndex: selectedSecondFrame?.getAttribute('data-preview-frame-index') ?? '',
+          focusedTestId: document.activeElement instanceof HTMLElement
+            ? document.activeElement.getAttribute('data-testid') ?? ''
+            : '',
+        };
+        document.removeEventListener('keydown', recordFilmstripActivation);
+        document.removeEventListener('keyup', recordFilmstripActivation);
+        document.removeEventListener('click', recordFilmstripActivation);
         await waitForNativeKeyboard('sequence-narrow-shift-tab-frame');
         const shiftTabReturnedToFirstFrame = narrowFirstFrame instanceof HTMLButtonElement &&
           document.activeElement === narrowFirstFrame;
@@ -1700,6 +1779,13 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
           narrowAfterTouch,
           keyboardReachedAction,
           keyboardReachedPlayback,
+          keyboardReachedSecondFrame,
+          firstFrameSelectionResetWorks,
+          filmstripEnterState,
+          filmstripActivationEvents,
+          playbackActivationEvents,
+          playbackStateAfterEnter,
+          playbackStateAfterSpace,
           keyboardReachedFrameStrip,
           playbackEnterWorks,
           playbackSpaceWorks,
@@ -1979,9 +2065,6 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
         const focusedCandidateKind = document.querySelector('[data-testid="fla-c03-preview"]')
           ?.getAttribute('data-candidate-kind') ?? '';
         const footer = document.querySelector('[data-testid="fla-c03-import-footer"]');
-        const sequenceReview = [...document.querySelectorAll(
-          '[data-testid="fla-frame-sequence-review"][data-unified-sequence-preview="true"]',
-        )].find((panel) => panel.getClientRects().length > 0) ?? null;
         const primaryActionSelectors = multiSelectMode
           ? ['[data-testid="fla-unified-import"]']
           : focusedCandidateKind === 'sequence'
@@ -1990,13 +2073,13 @@ async function runStageDPath(mainWindow, acceptanceRoot, projectName, {
                 '[data-testid="fla-frame-sequence-import-single"]',
               ]
             : ['[data-testid="fla-single-import"]'];
-        const primaryActionRoots = multiSelectMode || focusedCandidateKind !== 'sequence'
-          ? [footer].filter(Boolean)
-          : [sequenceReview].filter(Boolean);
-        const visiblePrimaryActions = primaryActionRoots.flatMap((root) => [...root.querySelectorAll(
+        const primaryActionRoot = focusedCandidateKind === 'sequence' && !multiSelectMode
+          ? document
+          : footer;
+        const visiblePrimaryActions = primaryActionRoot ? [...primaryActionRoot.querySelectorAll(
           primaryActionSelectors.join(', '),
-        )]).filter((button) => button instanceof HTMLButtonElement && button.getClientRects().length > 0 &&
-          isViewportVisible(rectData(button)));
+        )].filter((button) => button instanceof HTMLButtonElement && button.getClientRects().length > 0 &&
+          isViewportVisible(rectData(button))) : [];
         const primaryAction = visiblePrimaryActions[0] ?? null;
         const expectedPrimaryActionTestIds = multiSelectMode
           ? ['fla-unified-import']
