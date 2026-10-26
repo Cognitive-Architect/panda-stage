@@ -12,6 +12,11 @@ import type { CameraView, EvaluatedShot, Project } from '../../domain';
 import type { SubtitleStyle } from '../../domain';
 import type { ExportDrawMode } from '../../shared/export-draw-mode';
 import {
+  visualHeadGroupRenderTransform,
+  type LayerVisualHeadGroup,
+  type VisualLocalRect,
+} from '../../domain';
+import {
   buildStageRenderModel,
   type StageAssetUrlMap,
   type StageRenderPart,
@@ -142,6 +147,8 @@ interface StagePartImagesProps {
   images: ReadonlyMap<string, HTMLImageElement>;
   composite: boolean;
   scheduleLayerDraw: boolean;
+  headGroup: LayerVisualHeadGroup | null;
+  visualBounds: VisualLocalRect;
 }
 
 function StagePartImages({
@@ -150,6 +157,8 @@ function StagePartImages({
   images,
   composite,
   scheduleLayerDraw,
+  headGroup,
+  visualBounds,
 }: StagePartImagesProps): React.JSX.Element {
   const visualRef = useRef<Konva.Group | null>(null);
   const orderedParts = [...parts].sort(
@@ -168,59 +177,84 @@ function StagePartImages({
       recordPreviewDuration('composite-cache-clear', startedAt, { ownerLayerId });
       return;
     }
-    const minX = Math.min(...orderedParts.map((part) => part.render.x));
-    const minY = Math.min(...orderedParts.map((part) => part.render.y));
-    const maxX = Math.max(
-      ...orderedParts.map((part) => part.render.x + part.render.width),
-    );
-    const maxY = Math.max(
-      ...orderedParts.map((part) => part.render.y + part.render.height),
-    );
-    if (maxX <= minX || maxY <= minY) return;
-    // Flatten the Body + Face overlap before the owner opacity is applied by
-    // the outer Group. This preserves one logical Character alpha.
+    if (visualBounds.width <= 0 || visualBounds.height <= 0) return;
+    // Flatten the Body + Head + Face overlap before owner opacity is applied by
+    // the outer Group. The nested Head Group is rasterized inside this
+    // Character-local cache, so changing its transform leaves Body fixed.
     visual.cache({
-      x: minX,
-      y: minY,
-      width: maxX - minX,
-      height: maxY - minY,
+      x: visualBounds.x,
+      y: visualBounds.y,
+      width: visualBounds.width,
+      height: visualBounds.height,
     });
     if (scheduleLayerDraw) visual.getLayer()?.batchDraw();
     recordPreviewDuration('composite-cache-rebuild', startedAt, {
       ownerLayerId,
       partCount: orderedParts.length,
-      visualWidth: maxX - minX,
-      visualHeight: maxY - minY,
+      visualWidth: visualBounds.width,
+      visualHeight: visualBounds.height,
       previouslyCached,
       visualSignature: orderedParts.map((part) =>
-        `${part.id}:${part.sourceUrl}:${part.render.x}:${part.render.y}:${part.render.width}:${part.render.height}`,
+        `${part.id}:${part.sourceUrl}:${part.render.x}:${part.render.y}:${part.render.width}:${part.render.height}:${part.render.offsetX}:${part.render.offsetY}:${part.render.rotationDeg}:${part.render.scaleX}:${part.render.scaleY}`,
       ).join('|'),
     });
-  }, [complete, composite, images, orderedParts, scheduleLayerDraw]);
+  }, [
+    complete,
+    composite,
+    headGroup,
+    images,
+    orderedParts,
+    scheduleLayerDraw,
+    visualBounds,
+  ]);
+
+  const renderPart = (part: StageRenderPart): React.JSX.Element | null => {
+    const image = images.get(part.id);
+    const render = part.render;
+    if (!image || !render.visible) return null;
+    return (
+      <KonvaImage
+        height={render.height}
+        image={image}
+        key={part.id}
+        listening={false}
+        opacity={1}
+        offsetX={render.offsetX}
+        offsetY={render.offsetY}
+        rotation={render.rotationDeg}
+        scaleX={render.scaleX}
+        scaleY={render.scaleY}
+        width={render.width}
+        x={render.x}
+        y={render.y}
+      />
+    );
+  };
+
+  const headPartIds = new Set(headGroup?.partIds ?? []);
 
   return (
     <Group listening={false} ref={visualRef}>
       {complete
-        ? orderedParts.map((part) => {
-            const image = images.get(part.id);
-            const render = part.render;
-            if (!image || !render.visible) return null;
-            return (
-              <KonvaImage
-                height={render.height}
-                image={image}
-                key={part.id}
-                listening={false}
-                opacity={1}
-                rotation={render.rotationDeg}
-                scaleX={render.scaleX}
-                scaleY={render.scaleY}
-                width={render.width}
-                x={render.x}
-                y={render.y}
-              />
-            );
-          })
+        ? headGroup
+          ? (
+              <>
+                {orderedParts
+                  .filter((part) => !headPartIds.has(part.id))
+                  .map(renderPart)}
+                <Group
+                  key={headGroup.id}
+                  listening={false}
+                  name="stage-character-head-group"
+                  {...visualHeadGroupRenderTransform(headGroup)}
+                >
+                  {orderedParts
+                    .filter((part) => headPartIds.has(part.id))
+                    .map(renderPart)}
+                </Group>
+              </>
+            )
+          : orderedParts.map(renderPart)
         : null}
     </Group>
   );
@@ -525,10 +559,12 @@ export function StageRenderer({
               >
                 <StagePartImages
                   composite={layer.visual.kind === 'composite-character'}
+                  headGroup={layer.visual.headGroup}
                   images={imageState.images}
                   ownerLayerId={layer.id}
                   parts={layer.parts}
                   scheduleLayerDraw={drawMode === 'legacy-raf'}
+                  visualBounds={layer.visual.combinedLocalBounds}
                 />
               </Group>
             );

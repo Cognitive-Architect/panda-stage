@@ -2,7 +2,11 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AudioClipService, ProjectSchema } from '../../src/domain';
+import {
+  AudioClipService,
+  PROJECT_SCHEMA_VERSION,
+  ProjectSchema,
+} from '../../src/domain';
 import { ProjectService } from '../../src/main/services/ProjectService';
 import { buildProject, IDS } from '../unit/domain/testProject';
 
@@ -35,14 +39,22 @@ describe('A01 actual ProjectService audio persistence', () => {
     expect(reopened.project.shots[0]!.audioClips).toEqual(project.shots[0]!.audioClips);
     const text = await readFile(path.join(root, 'project.json'), 'utf8');
     expect(text).not.toMatch(/selectedAudioClipId|undoCount|history/u);
-    const legacy = { ...project, schemaVersion: 7, shots: project.shots.map((shot) => ({ ...shot,
+    const legacyAssets = structuredClone(project.assets);
+    for (const asset of legacyAssets) {
+      if (asset.kind !== 'image') continue;
+      Reflect.deleteProperty(asset, 'usage');
+      Reflect.deleteProperty(asset, 'keywords');
+    }
+    const { animations: _animations, ...legacyProject } = project;
+    void _animations;
+    const legacy = { ...legacyProject, schemaVersion: 7, assets: legacyAssets, shots: project.shots.map((shot) => ({ ...shot,
       audioClips: shot.audioClips.map(({ role, ...clip }) => { void role; return clip; }),
     })) };
     await writeFile(path.join(root, 'project.json'), JSON.stringify(legacy), 'utf8');
     const migrated = await files.open(root);
     expect(migrated.sourceVersion).toBe(7);
     expect(migrated.migrated).toBe(true);
-    expect(migrated.project.schemaVersion).toBe(8);
+    expect(migrated.project.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(migrated.project.shots[0]!.audioClips).toEqual(legacy.shots[0]!.audioClips.map((clip) => ({ ...clip, role: 'dialogue' })));
     await files.save(root, migrated.project, 2);
     expect((await files.open(root)).project).toEqual(migrated.project);

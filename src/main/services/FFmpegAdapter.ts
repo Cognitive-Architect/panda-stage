@@ -13,8 +13,8 @@ import {
   type AudioProbeResult,
   type AudioTimingResult,
   type EncodePngSequenceRequest,
-  type MuxProbeExpectation,
   type MuxAudioMixRequest,
+  type MuxProbeExpectation,
   type MuxSingleAudioRequest,
   type VideoProbeExpectation,
   type VideoProbeResult,
@@ -611,6 +611,9 @@ export class FFmpegAdapter {
     if (audioInputs.length > 0) {
       const validation = await this.validateAudioMuxExecutable(signal);
       versionLine = validation.versionLine;
+      if (signal?.aborted) {
+        throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
+      }
     }
     if (signal?.aborted) {
       throw this.cancelledError(this.ffmpegPath, [], null, 'SIGTERM');
@@ -621,6 +624,7 @@ export class FFmpegAdapter {
       videoPath,
       audioInputs,
       durationMs: request.audioMixPlan.durationMs,
+      preserveSilentTail: request.audioMixPlan.preserveSilentTail === true,
       outputPath: temporaryOutputPath,
       overwrite: request.overwrite,
     });
@@ -638,17 +642,13 @@ export class FFmpegAdapter {
         );
       }
       if (result.code !== 0) {
-        throw this.mapMuxFailure(
-          args,
-          result,
-          audioInputs[0]?.sourcePath ?? videoPath,
-        );
+        throw this.mapAudioMixFailure(args, result, audioInputs);
       }
       const outputStats = await stat(temporaryOutputPath).catch(() => null);
       if (!outputStats?.isFile() || outputStats.size === 0) {
         throw new FFmpegAdapterError(
           'PROCESS_FAILED',
-          'FFmpeg did not create a usable audio mix output.',
+          'FFmpeg 已退出，但没有生成可用的音视频文件。',
           {
             executable: this.ffmpegPath,
             args,
@@ -1097,6 +1097,7 @@ export class FFmpegAdapter {
       channels: number;
     }>;
     durationMs: number;
+    preserveSilentTail: boolean;
     outputPath: string;
     overwrite: boolean;
   }): readonly string[] {
@@ -1126,9 +1127,15 @@ export class FFmpegAdapter {
       return args;
     }
 
-    // Keep AAC alive through the complete Project timeline, including a silent
-    // tail after the last clip so a trailing silent Shot cannot shorten mux.
-    const durationSamples = request.durationMs * 48;
+    // Formal Project export keeps AAC through the complete timeline. Legacy
+    // full-probe mixes stop at the last clip unless that full tail is requested.
+    const mixDurationMs = request.preserveSilentTail
+      ? request.durationMs
+      : request.audioInputs.reduce(
+          (latestEndMs, { clip }) => Math.max(latestEndMs, clip.endMs),
+          0,
+        );
+    const durationSamples = mixDurationMs * 48;
     const filters = request.audioInputs.map(({ clip, channels }, index) => {
       const inputIndex = index + 1;
       const clipDurationMs = clip.endMs - clip.startMs;
@@ -1142,7 +1149,7 @@ export class FFmpegAdapter {
       .map((_, index) => `[clip_${index}]`)
       .join('');
     // The bundled FFmpeg predates amix's normalize option. Keep every input
-    // alive through the latest clip end, then restore the linear sum after
+    // alive through the selected mix end, then restore the linear sum after
     // amix's default N-way average.
     filters.push(
       `${mixedInputs}amix=inputs=${request.audioInputs.length}:duration=longest:dropout_transition=0,volume=${request.audioInputs.length}[mixed]`,
@@ -1382,6 +1389,78 @@ export class FFmpegAdapter {
     return new FFmpegAdapterError(
       'PROCESS_FAILED',
       `音视频合成失败（FFmpeg 退出码 ${result.code ?? 'unknown'}）。`,
+      {
+        executable: this.ffmpegPath,
+        args,
+        exitCode: result.code,
+        signal: result.signal,
+        stderr,
+      },
+    );
+  }
+
+  private mapAudioMixFailure(
+    args: readonly string[],
+    result: ProcessResult,
+    audioInputs: Array<{
+      clip: MuxAudioMixRequest['audioMixPlan']['clips'][number];
+      sourcePath: string;
+      channels: number;
+    }>,
+  ): FFmpegAdapterError {
+    const stderr = technicalTail(result.stderr);
+    if (/unknown encoder ['"]?aac/iu.test(stderr)) {
+      return new FFmpegAdapterError(
+        'ENCODER_UNAVAILABLE',
+        '当前 FFmpeg 不包含 AAC 编码器，无法合成带声音的视频。',
+        {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr,
+        },
+      );
+    }
+    if (
+      /invalid data found|error while decoding|could not find codec parameters|invalid.*audio|failed to open codec/iu.test(
+        stderr,
+      )
+    ) {
+      const failingInput = audioInputs.find(({ sourcePath }) =>
+        stderr.includes(sourcePath),
+      );
+      const clipIdentity = failingInput
+        ? `音频片段 ${failingInput.clip.clipId}`
+        : `${audioInputs.length} 条参与混合的音频`;
+      return new FFmpegAdapterError(
+        'AUDIO_INPUT_INVALID',
+        `无法解码${clipIdentity}，请检查来源素材后重试。`,
+        {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr,
+        },
+      );
+    }
+    if (/permission denied|access is denied/iu.test(stderr)) {
+      return new FFmpegAdapterError(
+        'OUTPUT_NOT_WRITABLE',
+        'FFmpeg 无法写入含声视频输出文件。',
+        {
+          executable: this.ffmpegPath,
+          args,
+          exitCode: result.code,
+          signal: result.signal,
+          stderr,
+        },
+      );
+    }
+    return new FFmpegAdapterError(
+      'PROCESS_FAILED',
+      `多轨音频混合失败（FFmpeg 退出码 ${result.code ?? 'unknown'}）。`,
       {
         executable: this.ffmpegPath,
         args,

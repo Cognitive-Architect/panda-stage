@@ -20,10 +20,10 @@ export const ExportAudioClipInputSchema = z
   })
   .strict()
   .superRefine((clip, context) => {
-    if (clip.endMs <= clip.startMs) {
+    if (clip.endMs < clip.startMs) {
       context.addIssue({
         code: 'custom',
-        message: 'Audio clip must have a positive duration.',
+        message: 'Audio clip endMs must not be before startMs.',
         path: ['endMs'],
       });
     }
@@ -55,6 +55,7 @@ export const ExportAudioMixPlanSchema = z
   .object({
     durationMs: MillisecondsSchema.positive(),
     clips: z.array(ExportAudioMixPlanClipSchema),
+    preserveSilentTail: z.boolean().optional(),
   })
   .strict()
   .superRefine((plan, context) => {

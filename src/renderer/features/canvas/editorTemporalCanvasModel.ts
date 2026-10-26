@@ -2,7 +2,7 @@ import {
   evaluateLayerMotionAtTime,
   buildEditorStageRenderModel,
   evaluateShotAtTime,
-  projectShotMouth,
+  projectShotDialogueVisual,
   resolveLayerImageAsset,
   type EditorStageRenderModel,
   type EvaluatedLayer,
@@ -138,7 +138,7 @@ export function buildEditorTemporalCanvasModel({
       })()
     : baseEditorShot;
   const evaluatedShot = temporalInspection
-    ? projectShotMouth(
+    ? projectShotDialogueVisual(
         project,
         shot,
         evaluateShotAtTime(shot, currentTimeMs, project),

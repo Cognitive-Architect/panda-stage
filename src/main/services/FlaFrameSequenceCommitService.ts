@@ -42,7 +42,8 @@
  *  - sandbox = true, contextIsolation = true, nodeIntegration = false
  *  - PNG bytes come from the R2-C sequence service which in turn
  *    receives them from the R1 single-frame rasterizer. The R2-G
- *    commit service is the single point of handoff to ImageAsset.
+ *    commit service atomically owns ImageAsset and optional animation
+ *    persistence for the selected sequence.
  *  - ActionScript is never executed.
  */
 
@@ -59,8 +60,10 @@ import {
   type FlaFrameSequenceCommitResult,
 } from '../../shared/fla-frame-sequence-api';
 import {
+  AnimationDefinitionSchema,
   ImageAssetSchema,
   ProjectSchema,
+  type AnimationDefinition,
   type ImageAsset,
   type Project,
 } from '../../domain';
@@ -99,9 +102,27 @@ export interface FlaFrameSequenceProjectSnapshot {
   revision: number;
 }
 
+export interface FlaFrameSequenceAnimationContext {
+  source: { basename: string; sha256: string };
+  /** Raw-file identity; the request source SHA remains the recovered bytes' identity. */
+  originalSourceSha256?: string;
+  sourceFps: number;
+  documentCanvas: { width: number; height: number };
+  target: {
+    renderTargetId: string;
+    kind: 'scene' | 'timeline' | 'graphic-symbol' | 'unknown';
+    userLabel: string;
+    frameCount: number;
+  };
+}
+
 export interface FlaFrameSequenceCommitServiceOptions {
   projectService: ProjectService;
   getCurrentProjectSnapshot: (projectRoot: string) => FlaFrameSequenceProjectSnapshot | null;
+  getAnimationContext: (
+    sessionId: string,
+    renderTargetId: string,
+  ) => Promise<FlaFrameSequenceAnimationContext | null>;
   sequenceStore: FlaFrameSequenceStore;
   fileSystem?: AssetImportFileSystemService;
   hashService?: HashService;
@@ -150,6 +171,7 @@ export class FlaFrameSequenceCommitServiceError extends Error {
 export class FlaFrameSequenceCommitService {
   private readonly projectService: ProjectService;
   private readonly getCurrentProjectSnapshot: (projectRoot: string) => FlaFrameSequenceProjectSnapshot | null;
+  private readonly getAnimationContext: FlaFrameSequenceCommitServiceOptions['getAnimationContext'];
   private readonly sequenceStore: FlaFrameSequenceStore;
   private readonly fileSystem: AssetImportFileSystemService;
   private readonly hashService: HashService;
@@ -161,6 +183,7 @@ export class FlaFrameSequenceCommitService {
   constructor(options: FlaFrameSequenceCommitServiceOptions) {
     this.projectService = options.projectService;
     this.getCurrentProjectSnapshot = options.getCurrentProjectSnapshot;
+    this.getAnimationContext = options.getAnimationContext;
     this.sequenceStore = options.sequenceStore;
     this.fileSystem = options.fileSystem ?? new AssetImportFileSystemService();
     this.hashService = options.hashService ?? new HashService();
@@ -225,6 +248,40 @@ export class FlaFrameSequenceCommitService {
     if (!confirmed) {
       return this.failure('STALE_SEQUENCE', transaction.projectRoot, 'The confirmed sequence has expired; re-render before importing.');
     }
+    const expectedFrameCount =
+      request.range.endFrameIndex - request.range.startFrameIndex + 1;
+    if (confirmed.length !== expectedFrameCount) {
+      return this.failure('STALE_SEQUENCE', transaction.projectRoot, 'The confirmed sequence frame count does not match its source range.');
+    }
+    let animationContext: FlaFrameSequenceAnimationContext | null;
+    try {
+      animationContext = await this.getAnimationContext(
+        request.sessionId,
+        request.range.renderTargetId,
+      );
+    } catch {
+      animationContext = null;
+    }
+    if (
+      !animationContext ||
+      animationContext.source.basename !== request.source.basename ||
+      animationContext.source.sha256 !== request.source.sha256 ||
+      animationContext.target.renderTargetId !== request.range.renderTargetId ||
+      !Number.isFinite(animationContext.sourceFps) ||
+      animationContext.sourceFps < 0 ||
+      !Number.isFinite(animationContext.documentCanvas.width) ||
+      animationContext.documentCanvas.width <= 0 ||
+      !Number.isFinite(animationContext.documentCanvas.height) ||
+      animationContext.documentCanvas.height <= 0
+    ) {
+      return this.failure('SOURCE_MISMATCH', transaction.projectRoot, 'The FLA source or selected target is no longer available. Reopen the source and render the sequence again.');
+    }
+    if (request.range.endFrameIndex >= animationContext.target.frameCount) {
+      return this.failure('RANGE_OUT_OF_BOUNDS', transaction.projectRoot, 'The selected source frame range is outside the current render target.');
+    }
+    if (request.importAsAnimation && animationContext.target.kind === 'unknown') {
+      return this.failure('TARGET_UNSUPPORTED', transaction.projectRoot, 'The selected FLA target has no supported animation render type.');
+    }
     if (confirmed.length !== request.sequence.sha256EachFrame.length) {
       return this.failure('STALE_SEQUENCE', transaction.projectRoot, 'The confirmed sequence frame count does not match the commit request.');
     }
@@ -243,10 +300,26 @@ export class FlaFrameSequenceCommitService {
         frame.sha256 !== reqSha ||
         frame.width !== reqWidth ||
         frame.height !== reqHeight ||
-        frame.byteLength !== reqByteLength
+        frame.byteLength !== reqByteLength ||
+        frame.sequenceOrdinal !== i ||
+        frame.frameIndex !== request.range.startFrameIndex + i ||
+        request.sequence.targetRenderTargetIdEachFrame[i] !== request.range.renderTargetId
       ) {
         return this.failure('STALE_SEQUENCE', transaction.projectRoot, `Frame ${i} echoed metadata does not match the confirmed sequence.`);
       }
+    }
+
+    const animationGeometry = request.importAsAnimation
+      ? buildAnimationGeometry(confirmed)
+      : null;
+    if (
+      request.importAsAnimation &&
+      (animationContext.sourceFps <= 0 || animationContext.sourceFps > 1_000)
+    ) {
+      return this.failure('SOURCE_MISMATCH', transaction.projectRoot, 'The source FLA does not provide a verified supported frame rate; import it as regular images instead.');
+    }
+    if (request.importAsAnimation && !animationGeometry) {
+      return this.failure('TARGET_UNSUPPORTED', transaction.projectRoot, 'The renderer did not provide a trusted source viewport for every frame, so this target cannot be imported as a stable animation.');
     }
 
     const current = this.assertCurrentRevision(
@@ -286,7 +359,11 @@ export class FlaFrameSequenceCommitService {
     // + finalizeFlaCommitTemporary so a failed batch never leaves
     // a half-written asset on disk.
     const operationId = this.createId();
-    const fileSystemOps: Array<{ temporaryFileName: string; targetFileName: string }> = [];
+    const fileSystemOps: Array<{
+      temporaryFileName: string;
+      targetFileName: string;
+      targetCreated: boolean;
+    }> = [];
     const items: FlaFrameSequenceCommitItem[] = [];
     let nextProject: Project = current.project;
     let importedCount = 0;
@@ -294,12 +371,14 @@ export class FlaFrameSequenceCommitService {
     let renamedCount = 0;
     let netNewImageAssetCount = 0;
 
+    let projectSaved = false;
+    try {
     for (let i = 0; i < confirmed.length; i++) {
       const frame = confirmed[i];
       if (!frame) {
         return this.failure('ASSET_COMMIT_FAILED', transaction.projectRoot, `Frame ${i} is missing from the confirmed sequence.`);
       }
-      const existing = current.project.assets.find(
+      const existing = nextProject.assets.find(
         (asset) => asset.kind === 'image' && asset.sha256 === frame.sha256,
       ) as ImageAsset | undefined;
       const sourceStem = stripFlaExtension(request.source.basename);
@@ -341,12 +420,23 @@ export class FlaFrameSequenceCommitService {
           occupiedNames,
         );
       } catch (error) {
-        return this.failure('IMPORT_COLLISION', transaction.projectRoot, 'A safe target name could not be allocated for one of the sequence frames.', { cause: error });
+        throw new FlaFrameSequenceCommitServiceError(
+          'IMPORT_COLLISION',
+          transaction.projectRoot,
+          'A safe target name could not be allocated for one of the sequence frames.',
+          { cause: error },
+        );
       }
       const renamed = targetFileName !== preferredFileName;
       if (renamed) renamedCount += 1;
 
       const temporaryFileName = `.fla-sequence-commit.${operationId}.frame-${frame.sequenceOrdinal}.tmp`;
+      const fileSystemOp = {
+        temporaryFileName,
+        targetFileName,
+        targetCreated: false,
+      };
+      fileSystemOps.push(fileSystemOp);
       try {
         await this.fileSystem.writeFlaCommitTemporary(transaction.projectRoot, frame.pngBytes, temporaryFileName);
         await this.fileSystem.finalizeFlaCommitTemporary(
@@ -354,10 +444,35 @@ export class FlaFrameSequenceCommitService {
           temporaryFileName,
           targetFileName,
         );
+        fileSystemOp.targetCreated = true;
       } catch (error) {
-        return this.failure('ASSET_COMMIT_FAILED', transaction.projectRoot, `Frame ${frame.frameIndex} could not be written to disk.`, { cause: error });
+        // If finalization linked the target and then failed while cleaning
+        // its temporary file or reporting completion, only roll back the
+        // target when the temporary is gone and its bytes match this frame.
+        try {
+          const temporaryExists = await this.fileSystem.fileExists(
+            path.resolve(transaction.projectRoot, 'assets', temporaryFileName),
+          );
+          const targetExists = await this.fileSystem.fileExists(
+            path.resolve(transaction.projectRoot, 'assets', targetFileName),
+          );
+          if (!temporaryExists && targetExists) {
+            const targetHash = await this.hashService.hashFile(
+              path.resolve(transaction.projectRoot, 'assets', targetFileName),
+            );
+            fileSystemOp.targetCreated = targetHash.hex === frame.sha256;
+          }
+        } catch {
+          // The main rollback still removes the unique temporary name; an
+          // unverified target is left untouched and reported for review.
+        }
+        throw new FlaFrameSequenceCommitServiceError(
+          'ASSET_COMMIT_FAILED',
+          transaction.projectRoot,
+          `Frame ${frame.frameIndex} could not be written to disk.`,
+          { cause: error },
+        );
       }
-      fileSystemOps.push({ temporaryFileName, targetFileName });
 
       const asset = ImageAssetSchema.parse({
         id: this.createId(),
@@ -368,6 +483,8 @@ export class FlaFrameSequenceCommitService {
         kind: 'image',
         width: frame.width,
         height: frame.height,
+        usage: 'uncategorized',
+        keywords: [],
       });
       nextProject = ProjectSchema.parse({
         ...nextProject,
@@ -393,23 +510,64 @@ export class FlaFrameSequenceCommitService {
       });
     }
 
-    const projectChanged = netNewImageAssetCount > 0;
-    let projectSaved = false;
-    try {
+    let animation: AnimationDefinition | null = null;
+    if (request.importAsAnimation && animationGeometry) {
+      const frameDurationMs = 1_000 / animationContext.sourceFps;
+      animation = AnimationDefinitionSchema.parse({
+        id: this.createId(),
+        name: uniqueAnimationName(
+          current.project,
+          request.animationName ??
+            assetDisplayName(stripFlaExtension(request.source.basename)),
+        ),
+        source: {
+          basename: animationContext.source.basename,
+          sha256:
+            animationContext.originalSourceSha256 ??
+            animationContext.source.sha256,
+          renderTargetId: animationContext.target.renderTargetId,
+          targetKind: animationContext.target.kind,
+          targetName: animationContext.target.userLabel,
+          startFrameIndex: request.range.startFrameIndex,
+          endFrameIndex: request.range.endFrameIndex,
+          sourceFps: animationContext.sourceFps,
+          documentCanvas: animationContext.documentCanvas,
+          canvas: animationGeometry.canvas,
+          anchor: animationGeometry.anchor,
+        },
+        durationMs: confirmed.length * frameDurationMs,
+        frames: items.map((item, ordinal) => ({
+          ordinal,
+          sourceFrameIndex: item.frameIndex,
+          assetId: item.assetId,
+          sha256: item.sha256,
+          sourceViewport: animationGeometry.frames[ordinal]!.sourceViewport,
+          offset: animationGeometry.frames[ordinal]!.offset,
+          startMs: ordinal * frameDurationMs,
+          durationMs: frameDurationMs,
+          createdBySequenceImport: item.status === 'imported',
+        })),
+      });
+      nextProject = ProjectSchema.parse({
+        ...nextProject,
+        animations: [...nextProject.animations, animation],
+        updatedAt: this.now().toISOString(),
+      });
+    }
+    // An all-duplicate PNG animation still changes the formal Project by
+    // adding a definition. Regular image imports only change it for new PNGs.
+    const projectChanged = request.importAsAnimation || netNewImageAssetCount > 0;
       await this.faults.beforeProjectSave?.(nextProject);
-      // Even when projectChanged is false (all frames were duplicates),
-      // we still call save so a single revision + 1 is recorded for
-      // audit. The save is a no-op on the project.json contents but
-      // bumps the revision counter.
       const savedDocument = await transaction.save(nextProject, current.revision + 1, () => {
         this.assertCurrentRevision(transaction.projectRoot, current.project, current.revision);
       });
       projectSaved = true;
-      // Post-save verification for every newly-imported frame: the
-      // saved Project must reference the file, and the file on disk
-      // must hash back to the per-frame sha256.
+      // Post-save verification covers imported and reused images. A missing
+      // or corrupt duplicate must not leave a valid-looking animation item.
+      const checkedAssetIds = new Set<string>();
       for (const item of items) {
-        if (item.status !== 'imported') continue;
+        if (checkedAssetIds.has(item.assetId)) continue;
+        checkedAssetIds.add(item.assetId);
         const savedAsset = savedDocument.project.assets.find((a) => a.id === item.assetId);
         if (
           !savedAsset ||
@@ -426,6 +584,9 @@ export class FlaFrameSequenceCommitService {
         if (fileHash.hex !== item.sha256) {
           throw new Error(`Finalized frame ${item.frameIndex} failed post-save hash verification.`);
         }
+      }
+      if (animation && !savedDocument.project.animations.some((candidate) => candidate.id === animation.id)) {
+        throw new Error('Saved Project does not contain the imported animation definition.');
       }
       this.sequenceStore.releaseSequence(request.confirmedSequenceRequestId);
       const result: FlaFrameSequenceCommitResult = {
@@ -449,7 +610,16 @@ export class FlaFrameSequenceCommitService {
       } satisfies FlaFrameSequenceCommitResponse);
     } catch (error) {
       await this.rollbackAfterFailure(transaction, fileSystemOps, current.project, projectSaved, current.revision);
-      return this.failure('ASSET_COMMIT_FAILED', transaction.projectRoot, 'The sequence could not be committed.', { cause: error });
+      return this.failure(
+        error instanceof FlaFrameSequenceCommitServiceError
+          ? error.code
+          : 'ASSET_COMMIT_FAILED',
+        transaction.projectRoot,
+        error instanceof FlaFrameSequenceCommitServiceError
+          ? error.message
+          : 'The sequence could not be committed.',
+        { cause: error },
+      );
     }
   }
 
@@ -477,7 +647,11 @@ export class FlaFrameSequenceCommitService {
 
   private async rollbackAfterFailure(
     transaction: ProjectTransaction,
-    fileSystemOps: ReadonlyArray<{ temporaryFileName: string; targetFileName: string }>,
+    fileSystemOps: ReadonlyArray<{
+      temporaryFileName: string;
+      targetFileName: string;
+      targetCreated: boolean;
+    }>,
     originalProject: Project,
     projectSaved: boolean,
     baseRevision: number,
@@ -487,7 +661,7 @@ export class FlaFrameSequenceCommitService {
         await transaction.save(originalProject, baseRevision);
       } catch (error) {
         const residual = fileSystemOps.flatMap((op) => [
-          `assets/${op.targetFileName}`,
+          ...(op.targetCreated ? [`assets/${op.targetFileName}`] : []),
           op.temporaryFileName,
         ]);
         throw new FlaFrameSequenceCommitServiceError(
@@ -500,7 +674,7 @@ export class FlaFrameSequenceCommitService {
     }
     const cleanupTargets: Array<[string, AssetCopyCleanupKind]> = [];
     for (const op of fileSystemOps) {
-      cleanupTargets.push([op.targetFileName, 'target']);
+      if (op.targetCreated) cleanupTargets.push([op.targetFileName, 'target']);
       cleanupTargets.push([op.temporaryFileName, 'temporary']);
     }
     for (const [fileName, kind] of cleanupTargets) {
@@ -549,4 +723,82 @@ function stripFlaExtension(basename: string): string {
   // .fla files are the only accepted source for R2; strip the
   // .fla extension so the asset name reads naturally.
   return basename.replace(/\.fla$/iu, '');
+}
+
+function uniqueAnimationName(project: Project, requestedName: string): string {
+  const base = requestedName.trim().slice(0, 200) || 'Animation';
+  const names = new Set(
+    project.animations.map((animation) => animation.name.toLocaleLowerCase()),
+  );
+  if (!names.has(base.toLocaleLowerCase())) return base;
+  for (let suffixIndex = 2; suffixIndex <= 10_000; suffixIndex += 1) {
+    const suffix = ` (${suffixIndex})`;
+    const candidate = `${base.slice(0, 200 - suffix.length)}${suffix}`;
+    if (!names.has(candidate.toLocaleLowerCase())) return candidate;
+  }
+  throw new Error('Unable to allocate a unique animation name.');
+}
+
+function buildAnimationGeometry(
+  confirmed: readonly ConfirmedSequenceFrame[],
+): {
+  canvas: { width: number; height: number };
+  anchor: { x: number; y: number };
+  frames: Array<{
+    sourceViewport: { x: number; y: number; width: number; height: number };
+    offset: { x: number; y: number };
+  }>;
+} | null {
+  const validViewports: Array<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }> = [];
+  for (const frame of confirmed) {
+    const viewport = frame.sourceViewport;
+    if (
+      !viewport ||
+      !Number.isFinite(viewport.x) ||
+      !Number.isFinite(viewport.y) ||
+      !Number.isFinite(viewport.width) ||
+      viewport.width <= 0 ||
+      !Number.isFinite(viewport.height) ||
+      viewport.height <= 0
+    ) {
+      return null;
+    }
+    validViewports.push(viewport);
+  }
+  if (validViewports.length === 0) return null;
+  const anchor = {
+    x: Math.min(...validViewports.map((viewport) => viewport.x)),
+    y: Math.min(...validViewports.map((viewport) => viewport.y)),
+  };
+  const right = Math.max(
+    ...validViewports.map((viewport) => viewport.x + viewport.width),
+  );
+  const bottom = Math.max(
+    ...validViewports.map((viewport) => viewport.y + viewport.height),
+  );
+  const canvas = { width: right - anchor.x, height: bottom - anchor.y };
+  if (
+    !Number.isFinite(canvas.width) ||
+    canvas.width <= 0 ||
+    !Number.isFinite(canvas.height) ||
+    canvas.height <= 0
+  ) {
+    return null;
+  }
+  return {
+    canvas,
+    anchor,
+    frames: validViewports.map((sourceViewport) => ({
+      sourceViewport,
+      offset: {
+        x: sourceViewport.x - anchor.x,
+        y: sourceViewport.y - anchor.y,
+      },
+    })),
+  };
 }

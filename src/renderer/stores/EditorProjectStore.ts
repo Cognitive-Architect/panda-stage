@@ -18,6 +18,11 @@ export interface EditorProjectSnapshot {
   revision: number;
 }
 
+export interface SavedEditorProjectSnapshot {
+  projectRoot: string;
+  project: Project;
+}
+
 export type SaveAcknowledgement = 'current' | 'stale';
 
 type Listener = () => void;
@@ -25,6 +30,8 @@ type Listener = () => void;
 export class EditorProjectStore {
   private snapshot: EditorProjectSnapshot | null = null;
   private savedProjectJson: string | null = null;
+  private cachedSavedProjectJson: string | null = null;
+  private cachedSavedProject: Project | null = null;
   /** Runtime-only identity for one open Project instance. */
   private nextProjectInstanceId = 0;
   private activeProjectInstanceId: number | null = null;
@@ -33,6 +40,23 @@ export class EditorProjectStore {
   constructor(readonly history = new HistoryStore()) {}
 
   readonly getSnapshot = (): EditorProjectSnapshot | null => this.snapshot;
+
+  /** Read the last acknowledged save from this store's existing saved baseline. */
+  readonly getSavedProjectSnapshot = (): SavedEditorProjectSnapshot | null => {
+    const snapshot = this.snapshot;
+    const savedProjectJson = this.savedProjectJson;
+    if (!snapshot || !savedProjectJson) return null;
+    if (this.cachedSavedProjectJson !== savedProjectJson || !this.cachedSavedProject) {
+      this.cachedSavedProjectJson = savedProjectJson;
+      this.cachedSavedProject = ProjectSchema.parse(
+        JSON.parse(savedProjectJson),
+      );
+    }
+    return {
+      projectRoot: snapshot.projectRoot,
+      project: this.cachedSavedProject,
+    };
+  };
 
   /**
    * Returns the identity of the current open instance, not the persisted
@@ -319,6 +343,8 @@ export class EditorProjectStore {
   clear(): void {
     this.history.clear();
     this.savedProjectJson = null;
+    this.cachedSavedProjectJson = null;
+    this.cachedSavedProject = null;
     this.snapshot = null;
     this.activeProjectInstanceId = null;
     this.emit();

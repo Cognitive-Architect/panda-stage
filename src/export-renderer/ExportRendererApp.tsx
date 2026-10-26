@@ -32,10 +32,8 @@ import { buildDialogueSubtitleCues } from '../shared/preview/dialogue-subtitle';
 import { evaluateSubtitleAtTime } from '../shared/preview/subtitle-engine';
 import { CanvasStage } from '../renderer/stage/CanvasStage';
 import { PROBE_ASSET_URLS } from '../renderer/stage/probe-assets';
-import {
-  projectProductPreviewMouth,
-  resolveProductPreviewSubtitleStyle,
-} from '../renderer/shell/productPreviewModel';
+import { evaluateExportShotAtTime } from './evaluateExportShotAtTime';
+import { resolveProductPreviewSubtitleStyle } from '../renderer/shell/productPreviewModel';
 import {
   isExactExportFrameDrawn,
   isExactExportFrameReady,
@@ -191,14 +189,21 @@ export function ExportRendererApp(): React.JSX.Element {
   const subtitle = evaluateSubtitleAtTime(subtitleCues, evaluatedBaseShot.timeMs);
   const evaluatedShot = useMemo(
     () => formalRequest
-      ? projectProductPreviewMouth(
+      ? evaluateExportShotAtTime(
           project,
           shot,
-          evaluatedBaseShot,
+          shotLocalTimeMs,
           subtitle?.id ?? null,
         )
       : evaluatedBaseShot,
-    [evaluatedBaseShot, formalRequest, project, shot, subtitle?.id],
+    [
+      evaluatedBaseShot,
+      formalRequest,
+      project,
+      shot,
+      shotLocalTimeMs,
+      subtitle?.id,
+    ],
   );
   const cameraPlan = useMemo(
     () =>

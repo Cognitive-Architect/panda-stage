@@ -279,6 +279,8 @@ describe('DL-01 export preparation domain rules', () => {
       mimeType: 'image/png' as const,
       width: 64,
       height: 64,
+      usage: 'uncategorized' as const,
+      keywords: [],
       sha256: 'd'.repeat(64),
     };
     const project = ProjectSchema.parse({
@@ -664,6 +666,8 @@ describe('DL-01 export preparation domain rules', () => {
       mimeType: 'image/png',
       width: 64,
       height: 64,
+      usage: 'uncategorized',
+      keywords: [],
       sha256: 'b'.repeat(64),
     };
     const project = ProjectSchema.parse({
@@ -696,6 +700,8 @@ describe('DL-01 export preparation domain rules', () => {
         mimeType: 'image/png' as const,
         width: 640,
         height: 640,
+        usage: 'uncategorized' as const,
+        keywords: [],
         sha256: 'e'.repeat(64),
       },
       {
@@ -706,6 +712,8 @@ describe('DL-01 export preparation domain rules', () => {
         mimeType: 'image/png' as const,
         width: 128,
         height: 128,
+        usage: 'uncategorized' as const,
+        keywords: [],
         sha256: 'f'.repeat(64),
       },
       {

@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { projectDurationMs } from '../../domain/selectors/projectDuration';
-import { buildExportAudioMixPlan } from '../../domain/export-audio-mix-plan';
+import {
+  buildExportAudioMixPlan,
+  buildFormalExportAudioMixPlan,
+} from '../../domain';
 import type { ExportAudioMixPlan } from '../../shared/audio-mix-types';
 import {
   ExportProbeConfigSchema,
@@ -45,16 +48,6 @@ export interface FullProbeMediaAdapter {
       framesDirectory: string;
       outputPath: string;
       fps: 24;
-      overwrite: boolean;
-    },
-    signal?: AbortSignal,
-  ): Promise<unknown>;
-  muxSingleAudio(
-    request: {
-      videoPath: string;
-      audioPath: string;
-      startMs: number;
-      outputPath: string;
       overwrite: boolean;
     },
     signal?: AbortSignal,
@@ -291,8 +284,17 @@ export class ExportService {
     if (!this.mediaAdapter) {
       throw new Error('Full probe export requires an FFmpeg adapter.');
     }
+    const audioMixPlan = buildExportAudioMixPlan(
+      request.durationMs,
+      request.audioClips,
+    );
     const active = this.createJob(request);
-    const completion = this.executeFullProbe(active, request, this.mediaAdapter);
+    const completion = this.executeFullProbe(
+      active,
+      request,
+      audioMixPlan,
+      this.mediaAdapter,
+    );
     active.completion = completion;
     return {
       jobId: active.jobId,
@@ -349,6 +351,7 @@ export class ExportService {
   private async executeFullProbe(
     active: ActiveJob,
     request: FullProbeExportRequest,
+    audioMixPlan: ReturnType<typeof buildExportAudioMixPlan>,
     adapter: FullProbeMediaAdapter,
   ): Promise<FullProbeExportResult> {
     const record = this.requireJob(active.jobId);
@@ -405,11 +408,13 @@ export class ExportService {
 
       record.phase = 'muxing';
       this.emit(record);
-      await adapter.muxSingleAudio(
+      if (!adapter.muxAudioMix) {
+        throw new Error('Full probe export requires audio mixing support.');
+      }
+      await adapter.muxAudioMix(
         {
           videoPath: silentVideoPath,
-          audioPath: request.audioPath,
-          startMs: request.audioStartMs,
+          audioMixPlan,
           outputPath: finalOutputStagingPath,
           overwrite: false,
         },
@@ -792,7 +797,7 @@ export class ExportService {
       shotStartMs += shot.durationMs;
     }
 
-    return buildExportAudioMixPlan(
+    return buildFormalExportAudioMixPlan(
       durationMs,
       mappedClips.map(({ shotStartMs: prefixMs, clip }) => {
         const sourcePath = sourcePaths.get(clip.assetId);

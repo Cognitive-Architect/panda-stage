@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import {
   createElement,
   type ReactElement,
@@ -6,7 +7,7 @@ import {
 } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { migrateProject } from '../../src/domain';
+import { ProjectSchema, migrateProject } from '../../src/domain';
 import { AssetGrid } from '../../src/renderer/features/assets/AssetGrid';
 import {
   AssetCard,
@@ -14,8 +15,22 @@ import {
 } from '../../src/renderer/features/assets/AssetCard';
 import { AssetDetails } from '../../src/renderer/features/assets/AssetDetails';
 import { AssetLibrary } from '../../src/renderer/features/assets/AssetLibrary';
+import { IMAGE_ASSET_USAGE_OPTIONS } from '../../src/renderer/features/assets/assetUsage';
+import { ResourceActivityDock } from '../../src/renderer/shell/ResourceActivityDock';
 import type { AssetLibraryEntry } from '../../src/renderer/stores/assetLibrarySelectors';
 import exampleProject from '../../demo-project/project-v1.example.json';
+
+const assetLibrarySource = readFileSync(
+  new URL('../../src/renderer/features/assets/AssetLibrary.tsx', import.meta.url),
+  'utf8',
+);
+const assetCategoryTabsStyle = readFileSync(
+  new URL(
+    '../../src/renderer/styles/features/assets/asset-library-category-tabs.css',
+    import.meta.url,
+  ),
+  'utf8',
+);
 
 const noop = () => undefined;
 const directPayload = (assetId: string) => ({
@@ -25,7 +40,72 @@ const directPayload = (assetId: string) => ({
 });
 
 describe('asset library components', () => {
-  it('renders all three categories, thumbnail placeholders, import entry, and details guidance', () => {
+  it('keeps successful frame sequence results out of the persistent status row', () => {
+    const project = migrateProject(exampleProject);
+    const markup = renderToStaticMarkup(
+      createElement(AssetLibrary, {
+        snapshot: {
+          projectRoot: 'D:\\project.pandastage',
+          project,
+          dirty: false,
+          revision: 3,
+        },
+        hideHeading: true,
+      }),
+    );
+    const closeStart = assetLibrarySource.indexOf(
+      'const closeFlaReview = useCallback',
+    );
+    const closeEnd = assetLibrarySource.indexOf('}, []);', closeStart);
+    const closeHandler = assetLibrarySource.slice(closeStart, closeEnd);
+    const sequenceStart = assetLibrarySource.indexOf(
+      'onSequenceImported={(response) => {',
+    );
+    const sequenceEnd = assetLibrarySource.indexOf('\n          }}', sequenceStart);
+    const sequenceHandler = assetLibrarySource.slice(sequenceStart, sequenceEnd);
+
+    expect(markup).not.toContain('class="asset-library-status"');
+    expect(assetLibrarySource).not.toContain(
+      'FLA review closed; Project and Asset state are unchanged.',
+    );
+    expect(closeHandler).not.toContain('setStatus(');
+    expect(closeHandler).toContain('flaInspectionLifecycle.current?.cancel()');
+    expect(assetLibrarySource).toContain(
+      '{status ? <output className="asset-library-status">{status}</output> : null}',
+    );
+    expect(sequenceHandler).toContain("setStatus(response.ok ? '' : outcome.status);");
+    expect(sequenceHandler).not.toContain('setStatus(outcome.status);');
+    expect(assetLibrarySource).toContain('setStatus(message);');
+  });
+
+  it('returns keyboard focus to the FLA import entry after closing its review', () => {
+    expect(assetLibrarySource).toMatch(
+      /pendingFlaReviewFocusReturn\.current\s*=\s*flaInspectionOperation\.current\s*!==\s*null;/u,
+    );
+    expect(assetLibrarySource).toContain('restoreFlaReviewFocus();');
+    expect(assetLibrarySource).toContain(
+      'flaReviewFocusReturnTarget.current =',
+    );
+    expect(assetLibrarySource).toContain(
+      '[data-testid="resource-asset-import-fla"], [data-testid="asset-import-fla"]',
+    );
+  });
+
+  it('sizes category tabs from their content and scrolls when the row is narrow', () => {
+    expect(assetCategoryTabsStyle).toMatch(
+      /\.asset-library\s+\.asset-category-tabs\s*\{[^}]*display:\s*flex;[^}]*min-width:\s*0;[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*hidden;/u,
+    );
+    expect(assetCategoryTabsStyle).toMatch(
+      /\.asset-library\s+\.asset-category-tabs\s+button\s*\{[^}]*min-width:\s*max-content;[^}]*flex:\s*1\s+0\s+max-content;[^}]*justify-content:\s*space-between;/u,
+    );
+    expect(assetCategoryTabsStyle).toContain('min-height: 48px;');
+    expect(assetCategoryTabsStyle).toContain('min-height: 44px;');
+    expect(assetCategoryTabsStyle).not.toMatch(
+      /grid-template-columns:\s*repeat\((?:2|4|5),/u,
+    );
+  });
+
+  it('renders asset categories, thumbnail placeholders, import entry, and details guidance', () => {
     const project = migrateProject(exampleProject);
     const markup = renderToStaticMarkup(
       createElement(AssetLibrary, {
@@ -38,9 +118,13 @@ describe('asset library components', () => {
       }),
     );
     expect(markup).toContain('项目素材库');
+    expect(markup).toContain('asset-library-heading-visually-hidden');
+    expect(markup).toContain('全部');
     expect(markup).toContain('角色图片');
-    expect(markup).toContain('背景图片');
+    expect(markup).toContain('未绑定角色');
     expect(markup).toContain('音频');
+    expect(markup).toContain('data-testid="asset-library-usage-filter"');
+    expect(markup).toContain('aria-label="按用途筛选"');
     expect(markup).toContain('导入项目素材');
     expect(markup).toContain('data-testid="asset-browser-view"');
     expect(markup).toContain('导入 FLA');
@@ -49,6 +133,10 @@ describe('asset library components', () => {
     );
     expect(markup).not.toContain('Import FLA...');
     expect(markup).toContain('data-testid="asset-import-fla"');
+    expect(markup).not.toContain(
+      '打开项目后，可把 PNG、JPG、MP3 或 WAV 安全复制到项目中。',
+    );
+    expect(markup).not.toContain('也可直接拖入');
     const detailsMarkup = renderToStaticMarkup(
       createElement(AssetLibrary, {
         snapshot: {
@@ -65,13 +153,20 @@ describe('asset library components', () => {
     expect(markup).toContain('加载缩略图');
     expect(markup).not.toContain('src="assets/');
 
+    const propAsset = project.assets.find(
+      (asset) => asset.kind === 'image',
+    );
+    if (!propAsset || propAsset.kind !== 'image') {
+      throw new Error('Expected an image fixture.');
+    }
+    const propCardAsset = { ...propAsset, usage: 'prop' as const };
     const missingMarkup = renderToStaticMarkup(
       createElement(AssetCard, {
-        asset: project.assets.find((asset) => asset.kind === 'image')!,
+        asset: propCardAsset,
         category: 'background',
         contextLabel: '图片',
         dropPayload: directPayload(
-          project.assets.find((asset) => asset.kind === 'image')!.id,
+          propCardAsset.id,
         ),
         selected: false,
         dragging: false,
@@ -85,14 +180,16 @@ describe('asset library components', () => {
     );
     expect(missingMarkup).toContain('缩略图缺失');
     expect(missingMarkup).toContain('重建');
+    expect(missingMarkup).toContain('未绑定角色');
+    expect(missingMarkup).toContain('用途：道具');
 
     const sourceMissingMarkup = renderToStaticMarkup(
       createElement(AssetCard, {
-        asset: project.assets.find((asset) => asset.kind === 'image')!,
+        asset: propCardAsset,
         category: 'background',
         contextLabel: '图片',
         dropPayload: directPayload(
-          project.assets.find((asset) => asset.kind === 'image')!.id,
+          propCardAsset.id,
         ),
         selected: false,
         dragging: false,
@@ -116,7 +213,120 @@ describe('asset library components', () => {
     );
   });
 
-  it('shows the source FLA, library item, and selected frame for a committed snapshot asset', () => {
+  it('includes animations in the All count and the same paginated asset grid', () => {
+    const base = migrateProject(exampleProject);
+    const image = base.assets.find((asset) => asset.kind === 'image');
+    if (!image || image.kind !== 'image') throw new Error('Expected an image fixture.');
+    const frameDurationMs = 1_000 / 25;
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: base.assets.map((asset) =>
+        asset.id === image.id ? { ...asset, sha256: 'a'.repeat(64) } : asset,
+      ),
+      animations: [{
+        id: randomUUID(),
+        name: 'Walk cycle',
+        source: {
+          basename: 'walk.fla',
+          sha256: 'b'.repeat(64),
+          renderTargetId: 'fla-render-target-test-walk',
+          targetKind: 'graphic-symbol',
+          targetName: 'Walk',
+          startFrameIndex: 0,
+          endFrameIndex: 0,
+          sourceFps: 25,
+          canvas: { width: 1920, height: 1080 },
+          documentCanvas: { width: 1920, height: 1080 },
+          anchor: { x: 0, y: 0 },
+        },
+        durationMs: frameDurationMs,
+        frames: [{
+          ordinal: 0,
+          sourceFrameIndex: 0,
+          assetId: image.id,
+          sha256: 'a'.repeat(64),
+          sourceViewport: { x: 960, y: 540, width: 960, height: 540 },
+          offset: { x: 960, y: 540 },
+          startMs: 0,
+          durationMs: frameDurationMs,
+          createdBySequenceImport: false,
+        }],
+      }],
+    });
+    const markup = renderToStaticMarkup(createElement(AssetLibrary, {
+      snapshot: {
+        projectRoot: 'D:\\project.pandastage',
+        project,
+        dirty: false,
+        revision: 3,
+      },
+      hideHeading: true,
+    }));
+
+    expect(markup).toContain('<span>全部</span><strong>5</strong>');
+    expect(markup).toContain('data-grid-count="5"');
+    expect(markup).toContain('data-testid="animation-library-card"');
+  });
+
+  it('removes the Asset Browser title while keeping the workspace accessible', () => {
+    const project = migrateProject(exampleProject);
+    const markup = renderToStaticMarkup(
+      createElement(ResourceActivityDock, {
+        activeActivity: 'assets',
+        presentation: 'landscape',
+        snapshot: {
+          projectRoot: 'D:\\project.pandastage',
+          project,
+          dirty: false,
+          revision: 3,
+        },
+      }),
+    );
+
+    expect(markup).toContain('<section aria-label=');
+    expect(markup).not.toContain('id="resource-activity-heading"');
+    expect(markup).toContain('data-testid="resource-primary-action"');
+    expect(markup).toContain('asset-library-heading-visually-hidden');
+  });
+
+  it('keeps combined text and purpose filters available in desktop and touch layouts', () => {
+    const project = migrateProject(exampleProject);
+    for (const props of [
+      { presentation: 'default' as const, hideHeading: false },
+      { presentation: 'portrait' as const, hideHeading: true },
+    ]) {
+      const markup = renderToStaticMarkup(
+        createElement(AssetLibrary, {
+          snapshot: {
+            projectRoot: 'D:\\project.pandastage',
+            project,
+            dirty: false,
+            revision: 3,
+          },
+          ...props,
+        }),
+      );
+
+      expect(markup).toContain('aria-label="搜索素材"');
+      expect(markup).toContain('data-testid="asset-library-usage-filter"');
+      expect(markup).toContain('aria-haspopup="menu"');
+      expect(assetLibrarySource).toContain('role="menu"');
+      expect(assetLibrarySource).toContain('role="menuitemradio"');
+      expect(assetLibrarySource).toContain(
+        'data-usage-filter-value={option.value}',
+      );
+      expect(assetLibrarySource).toContain('...IMAGE_ASSET_USAGE_OPTIONS');
+      expect(IMAGE_ASSET_USAGE_OPTIONS.map(({ value }) => value)).toEqual([
+        'uncategorized',
+        'background',
+        'character',
+        'prop',
+        'effect',
+      ]);
+    }
+  });
+
+  it('keeps FLA origin metadata out of the compact asset detail surface', () => {
     const image = migrateProject(exampleProject).assets.find(
       (asset) => asset.kind === 'image',
     );
@@ -141,22 +351,114 @@ describe('asset library components', () => {
         thumbnail: { status: 'ready', dataUrl: 'data:image/png;base64,AA==' },
       }),
     );
-    expect(markup).toContain('data-testid="asset-fla-snapshot-origin"');
-    expect(markup).toContain('蓝发修仙女.fla');
-    expect(markup).toContain('神女-cilisucai.com/神女-cilisucai.com809');
-    expect(markup).toContain('<dd>1</dd>');
-    const originDescriptionList = markup.match(
-      /<dl data-testid="asset-fla-snapshot-origin">([\s\S]*?)<\/dl>/u,
-    )?.[1];
-    expect(originDescriptionList).toBeDefined();
-    expect(originDescriptionList).toMatch(
-      /<div><dt>来源 FLA<\/dt><dd>蓝发修仙女\.fla<\/dd><\/div>/u,
+    expect(markup).not.toContain('asset-fla-snapshot-origin');
+    expect(markup).not.toContain('蓝发修仙女.fla');
+    expect(markup).not.toContain('神女-cilisucai.com/神女-cilisucai.com809');
+    expect(markup).not.toContain('详细信息');
+    expect(markup).not.toContain('项目内路径');
+  });
+
+  it('opens images directly in the compact authoring form without duplicate read-only metadata', () => {
+    const image = migrateProject(exampleProject).assets.find(
+      (asset) => asset.kind === 'image',
     );
-    expect(originDescriptionList).toMatch(
-      /<div><dt>源元件<\/dt><dd>神女-cilisucai\.com\/神女-cilisucai\.com809<\/dd><\/div>/u,
+    if (!image || image.kind !== 'image') throw new Error('Expected an image fixture.');
+    const markup = renderToStaticMarkup(
+      createElement(AssetDetails, {
+        asset: { ...image, name: '木门·关闭', usage: 'prop', keywords: ['门', '关闭'] },
+        references: [],
+        busy: false,
+        onDelete: noop,
+        onSaveImageMetadata: noop,
+      }),
     );
-    expect(originDescriptionList).toMatch(/<div><dt>源帧<\/dt><dd>1<\/dd><\/div>/u);
-    expect(originDescriptionList).not.toMatch(/<div(?:\s[^>]*)?>\s*<div/u);
+
+    expect(markup).toContain('data-testid="asset-author-metadata-form"');
+    expect(markup).toContain('data-testid="asset-author-name"');
+    expect(markup).toContain('data-testid="asset-author-usage"');
+    expect(markup).toMatch(/<option value="prop" selected="">道具<\/option>/u);
+    expect(markup).toContain('data-testid="asset-author-keywords"');
+    expect(markup).toContain('value="门, 关闭"');
+    expect(markup).not.toContain('编辑名称、用途和关键词');
+    expect(markup).not.toContain('已选素材');
+    expect(markup).not.toContain('用逗号分隔，最多 8 个词');
+  });
+
+  it('keeps references collapsed and shows only human labels in compact details', () => {
+    const image = migrateProject(exampleProject).assets.find(
+      (asset) => asset.kind === 'image',
+    );
+    if (!image || image.kind !== 'image') throw new Error('Expected an image fixture.');
+    const markup = renderToStaticMarkup(
+      createElement(AssetDetails, {
+        asset: {
+          ...image,
+          flaSnapshot: {
+            sourceBasename: 'doors.fla',
+            sourceSha256: 'a'.repeat(64),
+            targetName: 'DoorClosed',
+            sourceLibraryItemName: 'DoorClosed',
+            renderTargetId: 'target-door-closed',
+            selectedFrameIndex: 2,
+            previewSha256: 'b'.repeat(64),
+          },
+        },
+        busy: false,
+        onDelete: noop,
+        onSaveImageMetadata: noop,
+        references: [{ label: '镜头 1 · 图层 2', path: 'shots/shot-1/layer-2' }],
+        thumbnail: { status: 'ready', dataUrl: 'data:image/png;base64,AA==' },
+      }),
+    );
+
+    expect(markup).toContain('data-testid="asset-details-thumbnail"');
+    expect(markup).toContain('aria-haspopup="dialog"');
+    expect(markup).toContain('<span>图片</span>');
+    expect(markup).toContain('被 1 处使用');
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).toContain('镜头 1 · 图层 2');
+    expect(markup).not.toContain('shots/shot-1/layer-2');
+    expect(markup).not.toContain('详细信息');
+    expect(markup).not.toContain('doors.fla');
+    expect(markup).not.toContain('data-testid="asset-fla-snapshot-origin"');
+    expect(markup).toContain('asset-details-delete-action');
+    expect(markup).not.toContain('asset-reference-warning');
+    expect(markup).not.toContain('asset-delete-button');
+  });
+
+  it('shows a count and labels for multiple references, with no row for none', () => {
+    const image = migrateProject(exampleProject).assets.find(
+      (asset) => asset.kind === 'image',
+    );
+    if (!image || image.kind !== 'image') throw new Error('Expected an image fixture.');
+
+    const multiple = renderToStaticMarkup(
+      createElement(AssetDetails, {
+        asset: image,
+        busy: false,
+        onDelete: noop,
+        references: [
+          { label: '角色“新角色”的张嘴图片', path: 'characters[0].mouthOpenAssetId' },
+          { label: '镜头“Opening”的背景图层“Background”', path: 'shots[0].layers[0].source.assetId' },
+        ],
+      }),
+    );
+    const unreferenced = renderToStaticMarkup(
+      createElement(AssetDetails, {
+        asset: image,
+        busy: false,
+        onDelete: noop,
+        references: [],
+      }),
+    );
+
+    expect(multiple).toContain('被 2 处使用');
+    expect(multiple).toContain('角色“新角色”的张嘴图片');
+    expect(multiple).toContain('镜头“Opening”的背景图层“Background”');
+    expect(multiple).not.toContain('characters[0].mouthOpenAssetId');
+    expect(multiple).not.toContain('shots[0].layers[0].source.assetId');
+    expect(unreferenced).not.toContain('asset-details-disclosure');
+    expect(unreferenced).not.toContain('当前未被项目使用');
   });
 
   it('renders a clear empty state for a category with no assets', () => {
@@ -218,6 +520,8 @@ describe('asset library components', () => {
           kind: 'image' as const,
           width: 16,
           height: 12,
+          usage: 'uncategorized' as const,
+          keywords: [],
         };
         return {
           id: `asset:${asset.id}`,
@@ -229,9 +533,12 @@ describe('asset library components', () => {
       },
     );
     const startedAt = performance.now();
+    const project = migrateProject(exampleProject);
     const markup = renderToStaticMarkup(
       createElement(AssetGrid, {
-        entries,
+        items: entries.map((entry) => ({ kind: 'asset' as const, id: entry.id, entry })),
+        project,
+        projectRoot: 'D:\\project.pandastage',
         selectedAssetId: entries[50]!.asset.id,
         draggingAssetId: null,
         thumbnails: {},
@@ -290,22 +597,32 @@ describe('asset library components', () => {
 
     const markup = renderToStaticMarkup(
       createElement(AssetGrid, {
-        entries: [
+        items: [
           {
+            kind: 'asset' as const,
             id: `asset:${failedAsset.id}`,
-            asset: failedAsset,
-            category: 'background',
-            contextLabel: '图片',
-            dropPayload: directPayload(failedAsset.id),
+            entry: {
+              id: `asset:${failedAsset.id}`,
+              asset: failedAsset,
+              category: 'background' as const,
+              contextLabel: '图片',
+              dropPayload: directPayload(failedAsset.id),
+            },
           },
           {
+            kind: 'asset' as const,
             id: `asset:${healthyAsset.id}`,
-            asset: healthyAsset,
-            category: 'background',
-            contextLabel: '图片',
-            dropPayload: directPayload(healthyAsset.id),
+            entry: {
+              id: `asset:${healthyAsset.id}`,
+              asset: healthyAsset,
+              category: 'background' as const,
+              contextLabel: '图片',
+              dropPayload: directPayload(healthyAsset.id),
+            },
           },
         ],
+        project,
+        projectRoot: 'D:\\project.pandastage',
         selectedAssetId: failedAsset.id,
         draggingAssetId: null,
         thumbnails: states,

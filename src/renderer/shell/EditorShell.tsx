@@ -2068,6 +2068,7 @@ export function EditorShell({
               {activeAssemblySession && projectSnapshot ? (
                 <CharacterAssemblyWorkbench
                   projectSnapshot={projectSnapshot}
+                  savedProjectSnapshot={editorProjectStore.getSavedProjectSnapshot()}
                   session={activeAssemblySession}
                 />
               ) : null}

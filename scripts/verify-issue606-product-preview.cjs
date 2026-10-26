@@ -167,6 +167,8 @@ function createFixture() {
     id: IDS.project,
     name: 'Issue 607 Product Preview review proof',
   });
+  const { animations: _animations, ...legacyBase } = base;
+  void _animations;
   const baseShot = base.shots[0];
   const baseSubtitle = base.subtitleStyles[0];
   const character = {
@@ -276,7 +278,7 @@ function createFixture() {
   };
 
   return migrateProject({
-    ...base,
+    ...legacyBase,
     schemaVersion: 7,
     id: IDS.project,
     name: 'Issue 607 Product Preview review proof',
@@ -834,7 +836,12 @@ async function run() {
       `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewReadiness === 'ready' && document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewDegraded === 'true' && document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewSurface === 'active' && document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewHandoff === 'active' && document.querySelector('[data-testid="product-preview-mouth-degraded-warning"]') && document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageDisplayReady === 'true' && document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageReady === 'false'`,
       'True Mouth decode failure did not reach a drawable, non-exact Expression fallback.',
     );
-    await pausePreview(window);
+    await seekPreview(window, 0);
+    await waitForDom(
+      window,
+      `document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageTime === '0' && document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageDisplayReady === 'true'`,
+      'Mouth decode fallback did not return to its requested initial frame.',
+    );
     const mouthDecode = await waitForPreviewPixels(
       window,
       [

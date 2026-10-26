@@ -497,7 +497,7 @@ describe('SelectableLayer interaction adapter', () => {
     expect(stage).toContain('listShotRuntimeImageAssets');
     expect(stage).toContain('buildEditorTemporalCanvasModel');
     expect(temporalModel).toContain('evaluateShotAtTime(');
-    expect(temporalModel).toContain('projectShotMouth(');
+    expect(temporalModel).toContain('projectShotDialogueVisual(');
     expect(stage).toContain('data-temporal-inspection');
     expect(stage).toContain('dropDisabled={!snapshot || !shot}');
     expect(stage).toContain('dropInteractionDisabled={temporalInspection}');

@@ -56,6 +56,8 @@ describe('Day 19 character persistence', () => {
           kind: 'image' as const,
           width: 640,
           height: 640,
+          usage: 'uncategorized' as const,
+          keywords: [],
         },
         {
           id: '19200000-0000-4000-8000-000000000012',
@@ -65,6 +67,8 @@ describe('Day 19 character persistence', () => {
           kind: 'image' as const,
           width: 900,
           height: 640,
+          usage: 'uncategorized' as const,
+          keywords: [],
         },
         {
           id: '19200000-0000-4000-8000-000000000013',
@@ -74,6 +78,8 @@ describe('Day 19 character persistence', () => {
           kind: 'image' as const,
           width: 640,
           height: 640,
+          usage: 'uncategorized' as const,
+          keywords: [],
         },
       ],
     };

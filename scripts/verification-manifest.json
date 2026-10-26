@@ -332,6 +332,18 @@
         "notes": "Issue #783 G009 before/after Windows Electron screenshots, bounded real-FLA layout receipts, and the combined G008 regression evidence only; Draft evidence changes use existing CI policy self-tests, production changes remain on their subsystem routes, and automation evidence is not owner human Gate C acceptance. Other unregistered evidence paths remain fail-closed."
       },
       {
+        "id": "issue835-day18-assets-evidence",
+        "sourcePatterns": ["docs/evidence/issue-835-day18/**"],
+        "testPatterns": [],
+        "verifierPatterns": [],
+        "suites": [],
+        "riskPolicy": "full",
+        "draftPolicy": "ci-selftest",
+        "incrementalEligible": false,
+        "owner": "assets",
+        "notes": "Issue #835 Day18 asset-library acceptance evidence only. The exact issue directory is registered; other unregistered evidence paths remain fail-closed. When combined with the assets feature route on this Draft PR, CI selects focused policy and subsystem checks."
+      },
+      {
         "id": "cross-process-core",
         "sourcePatterns": [
           "src/main/**",
@@ -359,8 +371,10 @@
           "tests/integration/layer-placement-lifecycle.test.ts",
           "tests/integration/layer-transform-lifecycle.test.ts",
           "tests/integration/project-lifecycle.test.ts",
+          "tests/integration/day14-lifecycle.test.ts",
           "tests/contract/fixtures/ci-routing/core/**",
           "tests/unit/ipc-contracts.test.ts",
+          "tests/unit/project-api-contracts.test.ts",
           "tests/unit/bfm-s01-character-schema.test.ts",
           "tests/unit/bfm-s02-character-commands.test.ts",
           "tests/unit/models/project-v1.test.ts",
@@ -370,7 +384,9 @@
           "tests/unit/application-menu-policy.test.ts",
           "tests/unit/standalone-audio.test.ts",
           "tests/unit/autosave-service.test.ts",
-          "tests/integration/standalone-audio-persistence.test.ts"
+          "tests/unit/models/audio-clip-source-range.test.ts",
+          "tests/integration/standalone-audio-persistence.test.ts",
+          "tests/integration/animation-persistence.test.ts"
         ],
         "verifierPatterns": ["scripts/verify-issue257-slice3*", "scripts/verify-issue657-audio-foundation.cjs"],
         "suites": [],
@@ -378,7 +394,7 @@
         "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "architecture",
-        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems."
+        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #828 lifecycle and audio source-range tests remain here without broad test globs; other unregistered test paths stay fail-closed."
       },
       {
         "id": "release-export-core",
@@ -400,14 +416,15 @@
           "scripts/verify-issue832-dl05.cjs",
           "scripts/verify-issue834-dl05-followup.cjs",
           "scripts/verify-issue836-dl06-r0.cjs",
-          "scripts/verify-issue660-export-audio-mix.cjs"
+          "scripts/verify-issue660-export-audio-mix.cjs",
+          "scripts/verify-day09.cjs"
         ],
         "suites": [],
         "riskPolicy": "full",
         "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "release",
-        "notes": "Installer, release, export-core, and FFmpeg capability families remain Full risk without predeclaring speculative product paths."
+        "notes": "Installer, release, export-core, and FFmpeg capability families remain Full risk without predeclaring speculative product paths. The exact legacy Day09 export probe path is registered because this request-contract migration updates its fixture; no broad scripts/** route is added."
       }
     ],
     "routes": [
@@ -441,7 +458,7 @@
       {
         "id": "assets",
         "sourcePatterns": ["src/renderer/features/assets/**"],
-        "testPatterns": ["tests/unit/asset-*.test.ts", "tests/integration/asset-*.test.ts", "tests/unit/product-copy.test.ts", "tests/unit/apply-asset-import-response.test.ts"],
+        "testPatterns": ["tests/unit/asset-*.test.ts", "tests/integration/asset-*.test.ts", "tests/unit/product-copy.test.ts", "tests/unit/apply-asset-import-response.test.ts", "tests/unit/animation-library-components.test.ts", "tests/unit/animation-playback.test.ts", "tests/unit/animation-preview-lifecycle.test.ts"],
         "verifierPatterns": ["scripts/verify-day16*", "scripts/verify-day17*", "scripts/verify-day18*"],
         "suites": ["assets", "character"],
         "riskPolicy": "targeted",
@@ -467,7 +484,7 @@
           "public/character-empty-normal.png",
           "public/character-empty-angry.png"
         ],
-        "testPatterns": ["tests/unit/character-*.test.ts", "tests/unit/legacy-character-layer-reminder.test.ts", "tests/integration/character-*.test.ts"],
+        "testPatterns": ["tests/unit/character-*.test.ts", "tests/unit/issue815-talking-head-settings.test.ts", "tests/unit/legacy-character-layer-reminder.test.ts", "tests/integration/character-*.test.ts"],
         "verifierPatterns": [
           "scripts/verify-day19*",
           "scripts/verify-issue609-character-assembly.cjs"
@@ -504,6 +521,7 @@
         ],
         "testPatterns": [
           "tests/unit/canvas-*.test.ts",
+          "tests/unit/issue669-talking-head-motion.test.ts",
           "tests/unit/stage-*.test.ts",
           "tests/unit/konva-pixel-ratio.test.ts",
           "tests/unit/viewport-*.test.ts",
@@ -681,8 +699,20 @@
       }
     ]
   },
-  "count": 90,
+  "count": 97,
   "gates": [
+    {
+      "id": "issue660-export-audio-mix",
+      "script": "verify:issue660-export-audio-mix",
+      "suite": "issue660-export-audio-mix",
+      "subsystem": "export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "release",
+      "supersedes": null,
+      "notes": "A04 bundled-FFmpeg nine-clip Dialogue/BGM/two-SFX PCM timing and gain proof with overlap and one AAC output; focused unit tests cover cancellation and temporary-file cleanup. It does not claim formal Project/Electron acceptance or Gate B graduation."
+    },
     {
       "id": "issue663-dialogue-voice",
       "script": "verify:issue663-dialogue-voice",
@@ -706,18 +736,6 @@
       "owner": "editor",
       "supersedes": null,
       "notes": "A03 native sandboxed Electron read/decode/gain/spectrum evidence for overlapping Dialogue/BGM/SFX, seek/pause/resume/replay/unmount; not Export mix or human listening acceptance."
-    },
-    {
-      "id": "issue660-export-audio-mix",
-      "script": "verify:issue660-export-audio-mix",
-      "suite": "issue660-export-audio-mix",
-      "subsystem": "export",
-      "status": "active",
-      "platform": "windows",
-      "runIn": "local",
-      "owner": "release",
-      "supersedes": null,
-      "notes": "A04 bundled-FFmpeg nine-clip Dialogue/BGM/two-SFX PCM timing and gain evidence; not formal Project/Electron acceptance or Gate B graduation."
     },
     {
       "id": "issue658-audio-timeline",
@@ -1750,6 +1768,90 @@
       "owner": "export",
       "supersedes": null,
       "notes": "Bounded Issue #862 Windows Electron production-UI smoke that begins with the startup legacy hidden-window prewarm, cancels during real frame progress, retries through the task UI, and validates the H.264 MP4 with FFprobe while checking project/media hashes. It reuses the Issue #819 Electron harness in a single focused mode; OWNER visual acceptance remains separate."
+    },
+    {
+      "id": "issue792-mouth-overflow",
+      "script": "verify:issue792-mouth-overflow",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #792 Electron proof for Mouth overflow popover geometry, real pointer hit testing, keyboard activation, narrow viewport and scroll placement; synthetic fixture evidence is not OWNER human acceptance."
+    },
+    {
+      "id": "issue797-head-face-edit",
+      "script": "verify:issue797-head-face-edit",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #797 Electron proof for synchronized Head/Face edit target selection, native drag hit testing, keyboard activation, distinct Change/Manage actions, and headless Face editing; synthetic fixture evidence is not OWNER human acceptance."
+    },
+    {
+      "id": "issue798-add-to-shot-navigation",
+      "script": "verify:issue798-add-to-shot-navigation",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #798 Electron proof for shared Add to Shot navigation across Assembly/Expressions/Settings, wide and narrow geometry, scrolling, keyboard/native pointer placement, disabled transform guard, and the pending Assembly confirmation; synthetic input is not OWNER human acceptance."
+    },
+    {
+      "id": "issue799-layout-reuse",
+      "script": "verify:issue799-layout-reuse",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #799 Electron proof for exact Body reference dimensions and matching Head structure, source/target asset readiness, preview/cancel, fine tune, one existing Draft/Apply commit, Undo/Redo, Project Save and disk reopen; synthetic fixture evidence is not OWNER human acceptance."
+    },
+    {
+      "id": "issue813-assembly-canvas-space",
+      "script": "verify:issue813-assembly-canvas-space",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #813 Electron proof for pivot completion deduplication, precision overlay geometry and input, contextual expression/Mouth preview, and landscape Assembly viewport recovery across compact, headless, Create, and 125% zoom states; synthetic input is not OWNER human acceptance."
+    },
+    {
+      "id": "issue820-c04-s01",
+      "script": "verify:issue820-c04-s01",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #820 C04 S01 Electron proof for large composite-character assembly viewport fit and camera-only View All behavior; synthetic fixture evidence is not OWNER human acceptance."
+    },
+    {
+      "id": "issue822-c04-s04",
+      "script": "verify:issue822-c04-s04",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Bounded Issue #822 C04 S04 Electron proof for left-card Body/Head/Face target selection, independent Change/Manage actions, compact action geometry, and recovered preview height across timeline and narrow 125% layouts; synthetic fixture evidence is not OWNER human acceptance."
     },
     {
       "id": "timeline",

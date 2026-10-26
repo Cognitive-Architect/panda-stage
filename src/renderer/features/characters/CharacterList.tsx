@@ -135,7 +135,13 @@ export function CharacterList({
     const began = onBeginCompositeCreate({
       name,
       bodyAssetId: imageAssets[0]?.id ?? '',
-      facePlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+      facePlacement: {
+        offsetX: 0,
+        offsetY: 0,
+        scale: 1,
+        rotationDeg: 0,
+        flipX: false,
+      },
       expressions: initialFaceAssetId
         ? [{ name: '表情1', assetId: initialFaceAssetId }]
         : [],
@@ -393,6 +399,40 @@ export function CharacterList({
                 onThumbnailError={onThumbnailError}
                 selectedAssetId={compositeDraft?.bodyAssetId || null}
                 testId="character-create-body-picker"
+                thumbnails={thumbnails}
+                disabled={disabled}
+              />
+              <ImageAssetPicker
+                assets={imageAssets}
+                emptyOption={{ label: '不添加头部', optional: true }}
+                emptyActionLabel="选择"
+                label="头部"
+                onChange={(assetId) => {
+                  if (!compositeDraft) return;
+                  const next = { ...compositeDraft };
+                  if (assetId) {
+                    next.head = compositeDraft.head
+                      ? { ...compositeDraft.head, assetId }
+                      : {
+                          assetId,
+                          placement: {
+                            offsetX: 0,
+                            offsetY: 0,
+                            scale: 1,
+                            rotationDeg: 0,
+                            flipX: false,
+                          },
+                          pivot: { x: 0, y: 0 },
+                        };
+                  } else {
+                    delete next.head;
+                  }
+                  onCompositeDraftChange(next);
+                }}
+                onThumbnailError={onThumbnailError}
+                searchAndPaginate
+                selectedAssetId={compositeDraft?.head?.assetId ?? null}
+                testId="character-create-head-picker"
                 thumbnails={thumbnails}
                 disabled={disabled}
               />

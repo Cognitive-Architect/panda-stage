@@ -58,8 +58,9 @@ describe('Issue #525 Character Detail header and inline rename', () => {
     const identityEnd = markup.indexOf('</section>', identityStart);
     const identity = markup.slice(identityStart, identityEnd);
 
-    expect(markup).toContain('← 角色列表');
-    expect(markup).not.toContain('← 返回角色列表');
+    expect(markup).toContain('aria-label="返回角色列表"');
+    expect(markup).toContain('title="返回角色列表"');
+    expect(markup).toContain('<span aria-hidden="true">←</span>');
     expect(markup).toContain('character-detail-navigation-detail');
     expect(markup).toContain(
       'class="sr-only character-detail-navigation-title"',
@@ -91,6 +92,39 @@ describe('Issue #525 Character Detail header and inline rename', () => {
     expect(editor).toContain(
       'landscapeExpression ? onBackToDetail : onBackToList',
     );
+  });
+
+  it('places the single Add-to-Shot action in the detail navigation before Close', () => {
+    const markup = detailMarkup();
+    const navigationStart = markup.indexOf('class="character-detail-navigation');
+    const placementIndex = markup.indexOf(
+      'data-testid="character-detail-place-current-shot"',
+    );
+    const closeIndex = markup.indexOf('data-testid="resource-activity-close"');
+    const identityStart = markup.indexOf('character-detail-identity');
+    const identityEnd = markup.indexOf('</section>', identityStart);
+    const identity = markup.slice(identityStart, identityEnd);
+    const styles = readOrderedStylesheetSource();
+    const placementStyles = styles.slice(styles.indexOf('/* Issue #798:'));
+
+    expect(placementIndex).toBeGreaterThan(navigationStart);
+    expect(placementIndex).toBeLessThan(closeIndex);
+    expect(markup.match(/data-testid="character-detail-place-current-shot"/gu)).toHaveLength(1);
+    expect(identity).not.toContain('character-detail-place-current-shot');
+    expect(markup).toContain('data-ui-variant="secondary"');
+    expect(markup).toContain('aria-label="加入当前镜头"');
+    expect(markup).toContain('title="请先选择镜头"');
+    expect(markup).toContain('disabled=""');
+    expect(markup).toContain('＋ 加入镜头');
+    expect(placementStyles).toContain('display: flex;');
+    expect(placementStyles).toContain('width: max-content;');
+    expect(placementStyles).toContain('margin-left: auto;');
+    expect(placementStyles).toContain('flex: 0 0 44px;');
+    expect(placementStyles).not.toContain(
+      'grid-template-columns: max-content minmax(0, 1fr) max-content 44px;',
+    );
+    expect(styles).toContain('min-height: 44px;\n  max-width: 100%;');
+    expect(styles).toContain('white-space: nowrap;');
   });
 
   it('preserves trim, empty, unchanged, and valid rename semantics', () => {

@@ -113,6 +113,26 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual([]);
   });
 
+  it('routes the two Issue #828 lifecycle and audio model tests through core ownership', () => {
+    for (const file of [
+      'tests/integration/day14-lifecycle.test.ts',
+      'tests/unit/models/audio-clip-source-range.test.ts',
+    ]) {
+      const result = draft([change(file)]);
+      expect(result.tier).toBe('focused');
+      expect(result.matchedRouteIds).toEqual(['cross-process-core']);
+      expect(result.unknownPaths).toEqual([]);
+    }
+
+    const unknownTest = draft([
+      change('tests/unit/models/issue829-unregistered-model.test.ts', 'A'),
+    ]);
+    expect(unknownTest.tier).toBe('unknown');
+    expect(unknownTest.unknownPaths).toEqual([
+      'tests/unit/models/issue829-unregistered-model.test.ts',
+    ]);
+  });
+
   it('unions dialogue and subtitle suites without duplicates', () => {
     const result = draft([
       change('src/renderer/features/dialogue/DialogueTrack.tsx'),
@@ -625,6 +645,32 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.areas).toEqual(['fla-import', 'structural-change']);
     expect(result.matchedRouteIds).toEqual(['fla-import']);
     expect(result.unknownPaths).toEqual([]);
+  });
+
+  it('routes the exact Issue #835 Day18 evidence path while preserving focused asset checks', () => {
+    const evidencePath = 'docs/evidence/issue-835-day18/run-2026-10-23T05-29-25-846Z/results.json';
+    const evidenceOnly = draft([change(evidencePath, 'A')]);
+    expect(evidenceOnly).toMatchObject({
+      tier: 'ci-selftest',
+      matchedRouteIds: ['issue835-day18-assets-evidence'],
+      suites: [],
+      unknownPaths: [],
+    });
+
+    const mixedFeatureChange = draft([
+      change('scripts/verification-manifest.json'),
+      change('tests/contract/ci-routing.test.ts'),
+      change(evidencePath, 'A'),
+      change('src/renderer/features/assets/AssetImportPanel.tsx'),
+    ]);
+    expect(mixedFeatureChange.tier).toBe('focused');
+    expect(mixedFeatureChange.suites).toEqual(['assets', 'character']);
+    expect(mixedFeatureChange.unknownPaths).toEqual([]);
+
+    const neighboringEvidence = 'docs/evidence/issue-835-day19/unregistered.json';
+    const unknown = draft([change(neighboringEvidence, 'A')]);
+    expect(unknown.tier).toBe('unknown');
+    expect(unknown.unknownPaths).toEqual([neighboringEvidence]);
   });
 
   it('does not let the V2-R0 registration absorb still-future evidence paths (fail-closed)', () => {

@@ -1,5 +1,3 @@
-export const FLA_SEQUENCE_PREVIEW_INTERVAL_MS = 1000 / 12;
-
 export interface FlaSequencePlaybackState {
   frameCount: number;
   selectedIndex: number;
@@ -12,7 +10,7 @@ export type FlaSequencePlaybackAction =
   | { type: 'load'; frameCount: number; selectedIndex?: number }
   | { type: 'play'; sessionKey: string }
   | { type: 'pause' }
-  | { type: 'tick'; sessionKey: string; generation: number }
+  | { type: 'sample'; sessionKey: string; generation: number; selectedIndex: number }
   | { type: 'step'; direction: -1 | 1 }
   | { type: 'select'; selectedIndex: number }
   | { type: 'invalidate' };
@@ -66,13 +64,12 @@ export function flaSequencePlaybackReducer(
       };
     case 'pause':
       return stopPlayback(state);
-    case 'tick':
+    case 'sample': {
       if (!state.isPlaying || state.activeSessionKey !== action.sessionKey ||
         state.generation !== action.generation || state.frameCount < 2) return state;
-      return {
-        ...state,
-        selectedIndex: (clampIndex(state.selectedIndex, state.frameCount) + 1) % state.frameCount,
-      };
+      const selectedIndex = clampIndex(action.selectedIndex, state.frameCount);
+      return selectedIndex === state.selectedIndex ? state : { ...state, selectedIndex };
+    }
     case 'step': {
       if (state.frameCount <= 0) return state;
       const selectedIndex = clampIndex(state.selectedIndex + action.direction, state.frameCount);

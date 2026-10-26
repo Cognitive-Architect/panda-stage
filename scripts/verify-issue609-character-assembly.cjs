@@ -1,6 +1,6 @@
-const { app, ipcMain } = require('electron');
+const { app, ipcMain, screen } = require('electron');
 const { deflateSync } = require('node:zlib');
-const { mkdirSync, writeFileSync } = require('node:fs');
+const { mkdirSync, readFileSync, readdirSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 const { createMainWindow } = require('../dist-electron/main/windows/main-window.js');
 const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
@@ -13,18 +13,89 @@ const {
   migrateProject,
 } = require('../dist-electron/domain/migrations/index.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
+const issue792Only = process.argv.includes('--issue792-mouth-overflow');
+const issue797Only = process.argv.includes('--issue797-head-face-edit');
+const issue798Only = process.argv.includes('--issue798-add-to-shot-navigation');
+const issue799Only = process.argv.includes('--issue799-layout-reuse');
+const issue815BaselineOnly = process.argv.includes('--issue815-c03-f01-baseline');
+const issue815Only = process.argv.includes('--issue815-c03-f01');
+const issue815Run = issue815BaselineOnly || issue815Only;
+const issue820BaselineOnly = process.argv.includes('--issue820-c04-s01-baseline');
+const issue820Only = process.argv.includes('--issue820-c04-s01');
+const issue820S02Only = process.argv.includes('--issue820-c04-s02');
+const issue820S03Only = process.argv.includes('--issue820-c04-s03');
+const issue820Run = issue820BaselineOnly || issue820Only || issue820S02Only || issue820S03Only;
+const issue822BaselineOnly = process.argv.includes('--issue822-c04-s04-baseline');
+const issue822Only = process.argv.includes('--issue822-c04-s04');
+const issue822FixtureRun = issue822BaselineOnly || issue822Only;
+const issue820FixtureRun = issue820Run || issue822FixtureRun;
+const issue813Only = process.argv.includes('--issue813-assembly-canvas-space');
+const issue813BaselineOnly = process.argv.includes('--issue813-baseline');
+const issue813Run = issue813Only || issue813BaselineOnly;
+const focusedCharacterDrawerRun = issue792Only || issue797Only || issue798Only || issue799Only || issue813Run || issue815Run || issue820Run || issue822FixtureRun;
+const ISSUE683_BASELINE_SHA = 'bed0b353f40238bfd820861c0e5349f0e101e977';
 
 // Bounded S07 proof: use the production Character drawer, Assembly workbench,
 // Asset Library drag source, Canvas drop target, and Project Save boundary in
 // a real Windows Electron renderer. The Issue #612 Create-drawer contract is
 // included; synthetic fixture bytes stay outside the repository, and the
 // receipt does not claim human visual acceptance.
-const acceptanceRoot = 'D:\\PandaStage-Acceptance\\issue609-character-assembly';
+const acceptanceRoot = issue822FixtureRun
+  ? 'D:\\PandaStage-Acceptance\\issue822-c04-s04'
+  : issue820BaselineOnly
+  ? 'D:\\PandaStage-Acceptance\\issue820-c04-s01\\baseline'
+  : issue820S03Only
+    ? 'D:\\PandaStage-Acceptance\\issue820-c04-s03'
+    : issue820S02Only
+    ? 'D:\\PandaStage-Acceptance\\issue820-c04-s02'
+    : issue820Only
+    ? 'D:\\PandaStage-Acceptance\\issue820-c04-s01\\after'
+    : issue815BaselineOnly
+  ? 'D:\\PandaStage-Acceptance\\issue815-c03-f01\\baseline'
+  : issue815Only
+    ? 'D:\\PandaStage-Acceptance\\issue815-c03-f01\\after'
+    : issue813BaselineOnly
+  ? 'D:\\PandaStage-Acceptance\\issue813-assembly-canvas-space\\baseline'
+  : issue813Only
+    ? 'D:\\PandaStage-Acceptance\\issue813-assembly-canvas-space'
+    : issue799Only
+      ? 'D:\\PandaStage-Acceptance\\issue799-layout-reuse'
+  : issue797Only
+    ? 'D:\\PandaStage-Acceptance\\issue797-head-face-edit'
+    : issue798Only
+      ? 'D:\\PandaStage-Acceptance\\issue798-add-to-shot-navigation'
+      : issue792Only
+        ? 'D:\\PandaStage-Acceptance\\issue792-mouth-overflow'
+        : 'D:\\PandaStage-Acceptance\\issue609-character-assembly';
 const runId = new Date().toISOString().replace(/[:.]/gu, '-');
 const runRoot = path.join(acceptanceRoot, `run-${runId}`);
 const evidenceRoot = path.join(runRoot, 'evidence');
 const userDataRoot = path.join(runRoot, 'electron-user-data');
-const projectRoot = path.join(runRoot, 'projects', 'issue609-assembly.pandastage');
+const projectRoot = path.join(
+  runRoot,
+  'projects',
+  issue822FixtureRun
+    ? 'issue822-c04-s04.pandastage'
+    : issue820Run
+    ? issue820S03Only
+      ? 'issue820-c04-s03.pandastage'
+      : issue820S02Only
+        ? 'issue820-c04-s02.pandastage'
+        : 'issue820-c04-s01.pandastage'
+    : issue815Run
+    ? 'issue815-c03-f01.pandastage'
+    : issue813Run
+    ? 'issue813-assembly-canvas-space.pandastage'
+    : issue799Only
+      ? 'issue799-layout-reuse.pandastage'
+    : issue797Only
+      ? 'issue797-head-face-edit.pandastage'
+      : issue798Only
+        ? 'issue798-add-to-shot-navigation.pandastage'
+        : issue792Only
+          ? 'issue792-mouth-overflow.pandastage'
+          : 'issue609-assembly.pandastage',
+);
 const resultPath = path.join(runRoot, 'results.json');
 const assetDragMime = 'application/x-panda-stage-asset';
 
@@ -39,6 +110,44 @@ const IDS = Object.freeze({
   legacyNormalExpression: 'a0609000-0000-4000-8000-000000000008',
   legacyAngryExpression: 'a0609000-0000-4000-8000-000000000009',
   legacyVoiceProfile: 'a0609000-0000-4000-8000-00000000000a',
+  issue792Head: 'a0609000-0000-4000-8000-00000000000b',
+  issue792Character: 'a0609000-0000-4000-8000-00000000000c',
+  issue792Expression: 'a0609000-0000-4000-8000-00000000000d',
+  issue792VoiceProfile: 'a0609000-0000-4000-8000-00000000000e',
+  issue797HeadlessCharacter: 'a0609000-0000-4000-8000-00000000000f',
+  issue797HeadlessExpression: 'a0609000-0000-4000-8000-000000000010',
+  issue797HeadlessVoiceProfile: 'a0609000-0000-4000-8000-000000000011',
+  issue799SourceCharacter: 'a0609000-0000-4000-8000-000000000012',
+  issue799TargetCharacter: 'a0609000-0000-4000-8000-000000000013',
+  issue799HeadlessCharacter: 'a0609000-0000-4000-8000-000000000014',
+  issue799RatioCharacter: 'a0609000-0000-4000-8000-000000000015',
+  issue799MissingCharacter: 'a0609000-0000-4000-8000-000000000016',
+  issue799SourceVoice: 'a0609000-0000-4000-8000-000000000017',
+  issue799TargetVoice: 'a0609000-0000-4000-8000-000000000018',
+  issue799HeadlessVoice: 'a0609000-0000-4000-8000-000000000019',
+  issue799RatioVoice: 'a0609000-0000-4000-8000-00000000001a',
+  issue799MissingVoice: 'a0609000-0000-4000-8000-00000000001b',
+  issue799SourceExpression: 'a0609000-0000-4000-8000-00000000001c',
+  issue799TargetExpression: 'a0609000-0000-4000-8000-00000000001d',
+  issue799TargetAngryExpression: 'a0609000-0000-4000-8000-00000000001e',
+  issue799HeadlessExpression: 'a0609000-0000-4000-8000-00000000001f',
+  issue799RatioExpression: 'a0609000-0000-4000-8000-000000000020',
+  issue799MissingExpression: 'a0609000-0000-4000-8000-000000000021',
+  issue799TargetHead: 'a0609000-0000-4000-8000-000000000022',
+  issue799MissingHead: 'a0609000-0000-4000-8000-000000000023',
+  issue799RatioBody: 'a0609000-0000-4000-8000-000000000024',
+  issue799TargetFace: 'a0609000-0000-4000-8000-000000000025',
+  issue799TargetMouth: 'a0609000-0000-4000-8000-000000000026',
+  issue799TargetAngryFace: 'a0609000-0000-4000-8000-000000000027',
+  issue813AlternateExpression: 'a0609000-0000-4000-8000-000000000028',
+  issue813AlternateFace: 'a0609000-0000-4000-8000-000000000029',
+  issue820Body: 'a0609000-0000-4000-8000-000000000030',
+  issue820Head: 'a0609000-0000-4000-8000-000000000031',
+  issue820Face: 'a0609000-0000-4000-8000-000000000032',
+  issue820Mouth: 'a0609000-0000-4000-8000-000000000033',
+  issue820Character: 'a0609000-0000-4000-8000-000000000034',
+  issue820Voice: 'a0609000-0000-4000-8000-000000000035',
+  issue820Expression: 'a0609000-0000-4000-8000-000000000036',
 });
 
 const COLORS = new Map([
@@ -46,6 +155,17 @@ const COLORS = new Map([
   [IDS.bodyAlt, [94, 104, 162]],
   [IDS.face, [231, 194, 112]],
   [IDS.mouth, [184, 90, 78]],
+  [IDS.issue799TargetHead, [143, 108, 180]],
+  [IDS.issue799MissingHead, [143, 108, 180]],
+  [IDS.issue799RatioBody, [112, 96, 130]],
+  [IDS.issue799TargetFace, [232, 200, 132]],
+  [IDS.issue799TargetMouth, [188, 92, 84]],
+  [IDS.issue799TargetAngryFace, [202, 134, 96]],
+  [IDS.issue813AlternateFace, [112, 166, 126]],
+  [IDS.issue820Body, [44, 93, 147]],
+  [IDS.issue820Head, [52, 119, 184]],
+  [IDS.issue820Face, [232, 200, 132]],
+  [IDS.issue820Mouth, [190, 92, 83]],
 ]);
 
 const channels = [];
@@ -113,6 +233,13 @@ async function capture(window, fileName) {
   const target = path.join(evidenceRoot, fileName);
   writeFileSync(target, image.toPNG());
   return path.relative(runRoot, target).replaceAll('\\', '/');
+}
+
+async function waitForPaint(window) {
+  await window.webContents.executeJavaScript(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+  );
+  await wait(60);
 }
 
 async function waitForCharacterDetailScreenshot(window, label) {
@@ -195,6 +322,54 @@ function solidPng(width, height, color) {
   ]);
 }
 
+function alphaPng(width, height, color) {
+  const horizontalInset = Math.max(1, Math.round(width * 0.02));
+  const verticalInset = Math.max(1, Math.round(height * 0.025));
+  const raw = Buffer.alloc((width * 4 + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    const rowOffset = y * (width * 4 + 1);
+    raw[rowOffset] = 0;
+    const visibleRow = y >= verticalInset && y < height - verticalInset;
+    if (!visibleRow) continue;
+    for (let x = horizontalInset; x < width - horizontalInset; x += 1) {
+      const pixelOffset = rowOffset + 1 + x * 4;
+      raw[pixelOffset] = color[0];
+      raw[pixelOffset + 1] = color[1];
+      raw[pixelOffset + 2] = color[2];
+      raw[pixelOffset + 3] = 255;
+    }
+  }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 6;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk('IHDR', header),
+    pngChunk('IDAT', deflateSync(raw)),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+function fixtureImageBytes(asset) {
+  if (
+    issue820FixtureRun &&
+    [IDS.issue820Body, IDS.issue820Head, IDS.issue820Face, IDS.issue820Mouth].includes(asset.id)
+  ) {
+    return alphaPng(
+      asset.width,
+      asset.height,
+      COLORS.get(asset.id) ?? [128, 128, 128],
+    );
+  }
+  return solidPng(
+    asset.width,
+    asset.height,
+    COLORS.get(asset.id) ?? [128, 128, 128],
+  );
+}
+
 function imageAsset(id, name, width, height) {
   return {
     id,
@@ -233,6 +408,204 @@ function createFixture() {
     defaultScale: 1,
     defaultFlipX: false,
   };
+  const issue792Character = {
+    id: IDS.issue792Character,
+    mode: 'composite',
+    name: issue820FixtureRun
+      ? 'Issue 820 Small Assembly Control'
+      : issue815Run
+      ? 'Issue 815 Fine Tune Panda'
+      : issue813Run
+        ? 'Issue 813 Assembly Space Panda'
+      : issue798Only
+        ? '角色详情导航长名称验收熊猫'
+        : issue797Only
+          ? 'Issue 797 Head and Face Panda'
+          : 'Issue 792 Composite Panda',
+    baseAssetId: IDS.face,
+    defaultVoiceProfileId: IDS.issue792VoiceProfile,
+    expressions: issue813Run
+      ? [
+          {
+            id: IDS.issue792Expression,
+            name: 'Neutral',
+            assetId: IDS.face,
+          },
+          {
+            id: IDS.issue813AlternateExpression,
+            name: 'Happy',
+            assetId: IDS.issue813AlternateFace,
+          },
+        ]
+      : [
+          {
+            id: IDS.issue792Expression,
+            name: 'Neutral',
+            assetId: IDS.face,
+          },
+        ],
+    defaultExpressionId: IDS.issue792Expression,
+    defaultScale: 1,
+    defaultFlipX: false,
+    bodyAssetId: IDS.body,
+    facePlacement: { offsetX: 0, offsetY: issue797Only ? 220 : 0, scale: 1 },
+    head: {
+      assetId: IDS.issue792Head,
+      placement: { offsetX: 0, offsetY: issue797Only ? -160 : 0, scale: 1 },
+      pivot: { x: 360, y: 460 },
+    },
+    mouthOpenAssetId: IDS.mouth,
+  };
+  const issue820Character = {
+    id: IDS.issue820Character,
+    mode: 'composite',
+    name: 'Issue 820 Oversized Assembly Fixture',
+    baseAssetId: IDS.issue820Face,
+    defaultVoiceProfileId: IDS.issue820Voice,
+    expressions: [
+      { id: IDS.issue820Expression, name: 'Neutral', assetId: IDS.issue820Face },
+    ],
+    defaultExpressionId: IDS.issue820Expression,
+    defaultScale: 1,
+    defaultFlipX: false,
+    bodyAssetId: IDS.issue820Body,
+    facePlacement: {
+      offsetX: 70,
+      offsetY: -520,
+      scale: 1.1,
+      rotationDeg: 17,
+      flipX: true,
+    },
+    head: {
+      assetId: IDS.issue820Head,
+      placement: {
+        offsetX: -40,
+        offsetY: -940,
+        scale: 0.95,
+        rotationDeg: -11,
+        flipX: true,
+      },
+      pivot: { x: 0, y: -540 },
+    },
+    mouthOpenAssetId: IDS.issue820Mouth,
+  };
+  const issue797HeadlessCharacter = {
+    id: IDS.issue797HeadlessCharacter,
+    mode: 'composite',
+    name: 'Issue 797 Headless Composite Panda',
+    baseAssetId: IDS.face,
+    defaultVoiceProfileId: IDS.issue797HeadlessVoiceProfile,
+    expressions: [
+      {
+        id: IDS.issue797HeadlessExpression,
+        name: 'Neutral',
+        assetId: IDS.face,
+      },
+    ],
+    defaultExpressionId: IDS.issue797HeadlessExpression,
+    defaultScale: 1,
+    defaultFlipX: false,
+    bodyAssetId: IDS.body,
+    facePlacement: { offsetX: 0, offsetY: 220, scale: 1 },
+  };
+  const issue799SourceCharacter = {
+    id: IDS.issue799SourceCharacter,
+    mode: 'composite',
+    name: 'Issue 799 Saved Layout Source',
+    baseAssetId: IDS.face,
+    defaultVoiceProfileId: IDS.issue799SourceVoice,
+    expressions: [
+      { id: IDS.issue799SourceExpression, name: 'Source Neutral', assetId: IDS.face },
+    ],
+    defaultExpressionId: IDS.issue799SourceExpression,
+    defaultScale: 1.25,
+    defaultFlipX: true,
+    bodyAssetId: IDS.body,
+    facePlacement: { offsetX: 46, offsetY: 190, scale: 0.92 },
+    head: {
+      assetId: IDS.issue792Head,
+      placement: { offsetX: 6, offsetY: -132, scale: 0.88 },
+      pivot: { x: 358, y: 452 },
+    },
+    mouthOpenAssetId: IDS.mouth,
+  };
+  const issue799TargetCharacter = {
+    id: IDS.issue799TargetCharacter,
+    mode: 'composite',
+    name: 'Issue 799 Target Panda',
+    baseAssetId: IDS.issue799TargetFace,
+    defaultVoiceProfileId: IDS.issue799TargetVoice,
+    expressions: [
+      { id: IDS.issue799TargetExpression, name: 'Target Neutral', assetId: IDS.issue799TargetFace },
+      { id: IDS.issue799TargetAngryExpression, name: 'Target Angry', assetId: IDS.issue799TargetAngryFace },
+    ],
+    defaultExpressionId: IDS.issue799TargetExpression,
+    defaultScale: 0.78,
+    defaultFlipX: false,
+    bodyAssetId: IDS.bodyAlt,
+    facePlacement: { offsetX: -22, offsetY: 64, scale: 1.2 },
+    head: {
+      assetId: IDS.issue799TargetHead,
+      placement: { offsetX: -18, offsetY: -60, scale: 1.1 },
+      pivot: { x: 280, y: 385 },
+    },
+    mouthOpenAssetId: IDS.issue799TargetMouth,
+  };
+  const issue799HeadlessCharacter = {
+    id: IDS.issue799HeadlessCharacter,
+    mode: 'composite',
+    name: 'Issue 799 Source Without Head',
+    baseAssetId: IDS.face,
+    defaultVoiceProfileId: IDS.issue799HeadlessVoice,
+    expressions: [
+      { id: IDS.issue799HeadlessExpression, name: 'Headless Neutral', assetId: IDS.face },
+    ],
+    defaultExpressionId: IDS.issue799HeadlessExpression,
+    defaultScale: 1,
+    defaultFlipX: false,
+    bodyAssetId: IDS.body,
+    facePlacement: { offsetX: -80, offsetY: 99, scale: 1 },
+  };
+  const issue799RatioCharacter = {
+    id: IDS.issue799RatioCharacter,
+    mode: 'composite',
+    name: 'Issue 799 Different Body Ratio',
+    baseAssetId: IDS.face,
+    defaultVoiceProfileId: IDS.issue799RatioVoice,
+    expressions: [
+      { id: IDS.issue799RatioExpression, name: 'Ratio Neutral', assetId: IDS.face },
+    ],
+    defaultExpressionId: IDS.issue799RatioExpression,
+    defaultScale: 1,
+    defaultFlipX: false,
+    bodyAssetId: IDS.issue799RatioBody,
+    facePlacement: { offsetX: 72, offsetY: 144, scale: 1 },
+    head: {
+      assetId: IDS.issue792Head,
+      placement: { offsetX: 14, offsetY: -148, scale: 0.95 },
+      pivot: { x: 380, y: 440 },
+    },
+  };
+  const issue799MissingCharacter = {
+    id: IDS.issue799MissingCharacter,
+    mode: 'composite',
+    name: 'Issue 799 Unreadable Source Asset',
+    baseAssetId: IDS.face,
+    defaultVoiceProfileId: IDS.issue799MissingVoice,
+    expressions: [
+      { id: IDS.issue799MissingExpression, name: 'Missing Neutral', assetId: IDS.face },
+    ],
+    defaultExpressionId: IDS.issue799MissingExpression,
+    defaultScale: 1,
+    defaultFlipX: false,
+    bodyAssetId: IDS.body,
+    facePlacement: { offsetX: 20, offsetY: 170, scale: 1 },
+    head: {
+      assetId: IDS.issue799MissingHead,
+      placement: { offsetX: 4, offsetY: -120, scale: 0.9 },
+      pivot: { x: 350, y: 450 },
+    },
+  };
   return ProjectSchema.parse({
     ...base,
     schemaVersion: PROJECT_SCHEMA_VERSION,
@@ -243,8 +616,54 @@ function createFixture() {
       imageAsset(IDS.bodyAlt, 'Assembly Body Alternate', 720, 920),
       imageAsset(IDS.face, 'Assembly Default Face', 320, 280),
       imageAsset(IDS.mouth, 'Assembly Mouth', 320, 280),
+      ...(issue820FixtureRun
+        ? [
+            imageAsset(IDS.issue820Body, 'Issue 820 Blue Body', 1086, 1448),
+            imageAsset(IDS.issue820Head, 'Issue 820 Blue Hair Head', 1200, 1080),
+            imageAsset(IDS.issue820Face, 'Issue 820 Face', 300, 300),
+            imageAsset(IDS.issue820Mouth, 'Issue 820 Mouth', 300, 300),
+          ]
+        : []),
+      ...(issue813Run
+        ? [imageAsset(IDS.issue813AlternateFace, 'Assembly Alternate Face', 320, 280)]
+        : []),
+      ...(focusedCharacterDrawerRun
+        ? [imageAsset(IDS.issue792Head, 'Assembly Head', 720, 920)]
+        : []),
+      ...(issue799Only
+        ? [
+            imageAsset(IDS.issue799TargetHead, 'Issue 799 Target Head', 640, 800),
+            imageAsset(IDS.issue799MissingHead, 'Issue 799 Missing Head', 720, 920),
+            imageAsset(IDS.issue799RatioBody, 'Issue 799 Different Ratio Body', 800, 920),
+            imageAsset(IDS.issue799TargetFace, 'Issue 799 Target Face', 320, 280),
+            imageAsset(IDS.issue799TargetMouth, 'Issue 799 Target Mouth', 320, 280),
+            imageAsset(IDS.issue799TargetAngryFace, 'Issue 799 Target Angry Face', 320, 280),
+          ]
+        : []),
     ],
-    characters: [legacyCharacter],
+    characters: issue820FixtureRun
+      ? [
+          legacyCharacter,
+          issue792Character,
+          issue820Character,
+          ...(issue822FixtureRun ? [issue797HeadlessCharacter] : []),
+        ]
+      : issue799Only
+      ? [
+          legacyCharacter,
+          issue799SourceCharacter,
+          issue799TargetCharacter,
+          issue799HeadlessCharacter,
+          issue799RatioCharacter,
+          issue799MissingCharacter,
+        ]
+      : issue792Only || issue797Only || issue798Only || issue813Run || issue815Run
+        ? [
+            legacyCharacter,
+            issue792Character,
+            ...(issue797Only || issue813Run ? [issue797HeadlessCharacter] : []),
+          ]
+        : [legacyCharacter],
     voiceProfiles: [
       {
         id: IDS.legacyVoiceProfile,
@@ -254,6 +673,52 @@ function createFixture() {
         rate: 1,
         pitch: 0,
       },
+      ...(issue792Only || issue797Only || issue798Only || issue813Run || issue815Run || issue820FixtureRun
+        ? [{
+            id: IDS.issue792VoiceProfile,
+            name: 'Issue 792 Panda voice',
+            characterId: IDS.issue792Character,
+            locale: 'zh-CN',
+            rate: 1,
+            pitch: 0,
+          }]
+        : []),
+      ...(issue820FixtureRun
+        ? [{
+            id: IDS.issue820Voice,
+            name: 'Issue 820 oversized fixture voice',
+            characterId: IDS.issue820Character,
+            locale: 'zh-CN',
+            rate: 1,
+            pitch: 0,
+          }]
+        : []),
+      ...(issue797Only || issue813Run || issue822FixtureRun
+        ? [{
+            id: IDS.issue797HeadlessVoiceProfile,
+            name: 'Issue 797 Headless Panda voice',
+            characterId: IDS.issue797HeadlessCharacter,
+            locale: 'zh-CN',
+            rate: 1,
+            pitch: 0,
+          }]
+        : []),
+      ...(issue799Only
+        ? [
+            [IDS.issue799SourceVoice, IDS.issue799SourceCharacter, 'Issue 799 source voice'],
+            [IDS.issue799TargetVoice, IDS.issue799TargetCharacter, 'Issue 799 target voice'],
+            [IDS.issue799HeadlessVoice, IDS.issue799HeadlessCharacter, 'Issue 799 headless voice'],
+            [IDS.issue799RatioVoice, IDS.issue799RatioCharacter, 'Issue 799 ratio voice'],
+            [IDS.issue799MissingVoice, IDS.issue799MissingCharacter, 'Issue 799 missing-asset voice'],
+          ].map(([id, characterId, name]) => ({
+            id,
+            name,
+            characterId,
+            locale: 'zh-CN',
+            rate: 1,
+            pitch: 0,
+          }))
+        : []),
     ],
     shots: [
       {
@@ -270,6 +735,47 @@ function createFixture() {
   });
 }
 
+function createIssue820V11Fixture(project) {
+  const legacy = structuredClone(project);
+  legacy.schemaVersion = 11;
+  for (const character of legacy.characters) {
+    if (character.mode === 'composite') delete character.bodyPlacement;
+  }
+  return legacy;
+}
+
+function readIssue683BaselineClipPath() {
+  const childProcess = require('node:child_process');
+  const css = childProcess.execFileSync(
+    'git',
+    ['show', `${ISSUE683_BASELINE_SHA}:src/renderer/styles/features/characters/assembly/s17-01--character-assembly-workbench.css`],
+    { encoding: 'utf8' },
+  );
+  const editor = childProcess.execFileSync(
+    'git',
+    ['show', `${ISSUE683_BASELINE_SHA}:src/renderer/features/characters/CharacterEditor.tsx`],
+    { encoding: 'utf8' },
+  );
+  const surfaceRule = css.match(
+    /\.character-assembly-drawer-panel \.image-asset-picker-selected-row--surface\s*\{[^}]*\}/u,
+  )?.[0] ?? '';
+  const menuRule = css.match(
+    /\.character-assembly-mouth-overflow-menu\s*\{[^}]*\}/u,
+  )?.[0] ?? '';
+  const menuMarkup = editor.match(
+    /<details className="character-assembly-mouth-overflow">[\s\S]*?<\/details>/u,
+  )?.[0] ?? '';
+  return {
+    commit: ISSUE683_BASELINE_SHA,
+    rowOverflowHidden: /overflow:\s*hidden/u.test(surfaceRule),
+    menuPositionedAbsolute: /position:\s*absolute/u.test(menuRule),
+    menuOpensBelowRow: /top:\s*calc\(100%\s*\+\s*4px\)/u.test(menuRule),
+    menuIsDescendantOfDetails: /<div className="character-assembly-mouth-overflow-menu">/u.test(menuMarkup),
+    surfaceRule,
+    menuRule,
+  };
+}
+
 function documentFor(root, project) {
   return {
     projectRoot: root,
@@ -280,15 +786,34 @@ function documentFor(root, project) {
   };
 }
 
+function documentForMigratedSource(root, project, sourceVersion) {
+  return {
+    projectRoot: root,
+    projectFilePath: path.join(root, 'project.json'),
+    project,
+    migrated: sourceVersion < PROJECT_SCHEMA_VERSION,
+    sourceVersion,
+  };
+}
+
 function register(channel, handler) {
   ipcMain.handle(channel, handler);
   channels.push(channel);
 }
 
 function projectForRoot(root) {
-  return path.resolve(root).toLowerCase() === path.resolve(projectRoot).toLowerCase()
-    ? activeProject
-    : null;
+  if (path.resolve(root).toLowerCase() !== path.resolve(projectRoot).toLowerCase()) {
+    return null;
+  }
+  if (issue799Only || issue820S02Only || issue820S03Only || issue822FixtureRun) {
+    const persisted = JSON.parse(
+      readFileSync(path.join(projectRoot, 'project.json'), 'utf8'),
+    );
+    return issue820S02Only
+      ? migrateProject(persisted)
+      : ProjectSchema.parse(persisted);
+  }
+  return activeProject;
 }
 
 function currentImageAsset(assetId, root) {
@@ -304,6 +829,34 @@ function registerAcceptanceHandlers() {
     status: 'cancelled',
   }));
   register(IPC_CHANNELS.PROJECT_OPEN, (_event, request) => {
+    if (
+      issue820S02Only &&
+      path.resolve(request.projectRoot).toLowerCase() ===
+        path.resolve(projectRoot).toLowerCase()
+    ) {
+      const persisted = JSON.parse(
+        readFileSync(path.join(projectRoot, 'project.json'), 'utf8'),
+      );
+      const sourceVersion = detectSchemaVersion(persisted);
+      const project = migrateProject(persisted);
+      inProgressEvidence.projectOpenDocuments ??= [];
+      inProgressEvidence.projectOpenDocuments.push({
+        sourceVersion,
+        migrated: sourceVersion < PROJECT_SCHEMA_VERSION,
+        schemaVersion: project.schemaVersion,
+        bodyPlacement: project.characters.find(
+          (character) => character.id === IDS.issue820Character,
+        )?.bodyPlacement ?? null,
+      });
+      return {
+        ok: true,
+        value: documentForMigratedSource(
+          request.projectRoot,
+          project,
+          sourceVersion,
+        ),
+      };
+    }
     const project = projectForRoot(request.projectRoot);
     return project
       ? { ok: true, value: documentFor(request.projectRoot, project) }
@@ -319,11 +872,32 @@ function registerAcceptanceHandlers() {
   register(IPC_CHANNELS.PROJECT_SAVE, (_event, request) => {
     savedProject = request.project;
     activeProject = request.project;
+    if (issue799Only || issue820S02Only || issue820S03Only || issue822FixtureRun) {
+      writeFileSync(
+        path.join(projectRoot, 'project.json'),
+        `${JSON.stringify(request.project, null, 2)}\n`,
+        'utf8',
+      );
+    }
     return { ok: true, value: documentFor(request.projectRoot, request.project) };
   });
   register(IPC_CHANNELS.PROJECT_CONFIRM_SWITCH, () => ({ outcome: 'saved' }));
   register(IPC_CHANNELS.RECENT_PROJECTS_LIST, () => ({ ok: true, entries: [] }));
   register(IPC_CHANNELS.RECENT_PROJECTS_OPEN, (_event, request) => {
+    if (issue820S02Only) {
+      const persisted = JSON.parse(
+        readFileSync(path.join(projectRoot, 'project.json'), 'utf8'),
+      );
+      const sourceVersion = detectSchemaVersion(persisted);
+      return {
+        ok: true,
+        document: documentForMigratedSource(
+          request.projectRoot,
+          migrateProject(persisted),
+          sourceVersion,
+        ),
+      };
+    }
     const project = projectForRoot(request.projectRoot);
     return project
       ? { ok: true, document: documentFor(request.projectRoot, project) }
@@ -354,11 +928,7 @@ function registerAcceptanceHandlers() {
         },
       };
     }
-    const bytes = assetBytes.get(asset.id) ?? solidPng(
-      asset.width,
-      asset.height,
-      COLORS.get(asset.id) ?? [128, 128, 128],
-    );
+    const bytes = assetBytes.get(asset.id) ?? fixtureImageBytes(asset);
     assetBytes.set(asset.id, bytes);
     thumbnailReadEvidence.push({ assetId: asset.id, status: 'ready' });
     return {
@@ -370,6 +940,16 @@ function registerAcceptanceHandlers() {
   });
   register(IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ, (_event, request) => {
     const asset = currentImageAsset(request.assetId, request.projectRoot);
+    if (issue799Only && request.assetId === IDS.issue799MissingHead) {
+      return {
+        ok: false,
+        error: {
+          code: 'ASSET_CANVAS_IMAGE_ASSET_NOT_FOUND',
+          message: 'Issue #799 deliberately unreadable source Head fixture.',
+          assetId: request.assetId,
+        },
+      };
+    }
     if (!asset || asset.sha256 !== request.sha256) {
       return {
         ok: false,
@@ -380,11 +960,7 @@ function registerAcceptanceHandlers() {
         },
       };
     }
-    const bytes = assetBytes.get(asset.id) ?? solidPng(
-      asset.width,
-      asset.height,
-      COLORS.get(asset.id) ?? [128, 128, 128],
-    );
+    const bytes = assetBytes.get(asset.id) ?? fixtureImageBytes(asset);
     assetBytes.set(asset.id, bytes);
     canvasReadEvidence.push({ assetId: asset.id, sha256: request.sha256 });
     return {
@@ -752,10 +1328,5513 @@ async function expandProjectActions(window) {
   await waitForDom(window, `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.expanded === 'true'`, 'Project actions drawer did not expand.');
 }
 
+async function sendPointerClick(window, x, y) {
+  const point = { x: Math.round(x), y: Math.round(y) };
+  window.webContents.sendInputEvent({ type: 'mouseMove', ...point });
+  window.webContents.sendInputEvent({ type: 'mouseDown', ...point, button: 'left', clickCount: 1 });
+  window.webContents.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 });
+}
+
+async function sendPointerDrag(window, startX, startY, endX, endY) {
+  window.focus();
+  window.webContents.focus();
+  const start = { x: Math.round(startX), y: Math.round(startY) };
+  const end = { x: Math.round(endX), y: Math.round(endY) };
+  window.webContents.sendInputEvent({ type: 'mouseMove', ...start });
+  await wait(40);
+  window.webContents.sendInputEvent({ type: 'mouseDown', ...start, button: 'left', clickCount: 1 });
+  await wait(40);
+  const distance = Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y));
+  const steps = Math.max(1, Math.ceil(distance / 8));
+  let previous = start;
+  for (let step = 1; step <= steps; step += 1) {
+    const next = {
+      x: Math.round(start.x + ((end.x - start.x) * step) / steps),
+      y: Math.round(start.y + ((end.y - start.y) * step) / steps),
+    };
+    window.webContents.sendInputEvent({
+      type: 'mouseMove',
+      ...next,
+      movementX: next.x - previous.x,
+      movementY: next.y - previous.y,
+    });
+    previous = next;
+    await wait(20);
+  }
+  window.webContents.sendInputEvent({ type: 'mouseUp', ...end, button: 'left', clickCount: 1 });
+  await wait(40);
+}
+
+async function sendPointerDragWithProtocol(window, startX, startY, endX, endY) {
+  const devtools = window.webContents.debugger;
+  const attachedHere = !devtools.isAttached();
+  if (attachedHere) devtools.attach('1.3');
+  const start = { x: Math.round(startX), y: Math.round(startY) };
+  const end = { x: Math.round(endX), y: Math.round(endY) };
+  try {
+    await devtools.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', ...start });
+    await wait(40);
+    await devtools.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mousePressed', ...start, button: 'left', buttons: 1, clickCount: 1,
+    });
+    await wait(40);
+    const distance = Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y));
+    const steps = Math.max(1, Math.ceil(distance / 8));
+    let previous = start;
+    for (let step = 1; step <= steps; step += 1) {
+      const next = {
+        x: Math.round(start.x + ((end.x - start.x) * step) / steps),
+        y: Math.round(start.y + ((end.y - start.y) * step) / steps),
+      };
+      await devtools.sendCommand('Input.dispatchMouseEvent', {
+        type: 'mouseMoved', ...next, button: 'left', buttons: 1,
+        deltaX: next.x - previous.x, deltaY: next.y - previous.y,
+      });
+      previous = next;
+      await wait(20);
+    }
+    await devtools.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mouseReleased', ...end, button: 'left', buttons: 0, clickCount: 1,
+    });
+    await wait(40);
+  } finally {
+    if (attachedHere && devtools.isAttached()) devtools.detach();
+  }
+}
+
+async function clickWithNativeInput(window, selector, label = selector) {
+  await waitForDom(
+    window,
+    `document.querySelector(${JSON.stringify(selector)})`,
+    `${label} did not appear.`,
+  );
+  const point = await window.webContents.executeJavaScript(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector)});
+    element.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const hitSamples = [
+      [0.5, 0.5], [0.25, 0.5], [0.75, 0.5], [0.5, 0.25], [0.5, 0.75],
+      [0.1, 0.5], [0.9, 0.5], [0.5, 0.1], [0.5, 0.9],
+      [0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75],
+    ].map(([xRatio, yRatio]) => {
+      const x = Math.round(rect.left + rect.width * xRatio);
+      const y = Math.round(rect.top + rect.height * yRatio);
+      const hit = document.elementFromPoint(x, y);
+      return {
+        x,
+        y,
+        hitTarget: hit === element || element.contains(hit),
+        hitTestId: hit?.getAttribute('data-testid') ?? '',
+      };
+    });
+    const point = hitSamples.find((sample) => sample.hitTarget) ?? hitSamples[0];
+    return {
+      ...point,
+      elementBounds: {
+        x: rect.x,
+        y: rect.y,
+        right: rect.right,
+        bottom: rect.bottom,
+      },
+      elementTestId: element.getAttribute('data-testid') ?? '',
+      viewportBounds: { width: window.innerWidth, height: window.innerHeight },
+      width: rect.width,
+      height: rect.height,
+      disabled: element.disabled ?? false,
+      visible: rect.width > 0 && rect.height > 0 && style.visibility === 'visible' && style.display !== 'none',
+      hitSamples: hitSamples.map(({ x: sampleX, y: sampleY, hitTarget, hitTestId }) => ({
+        x: sampleX,
+        y: sampleY,
+        hitTarget,
+        hitTestId,
+      })),
+    };
+  })()`);
+  assert(point.visible, `${label} is not visible in the current viewport.`);
+  assert(!point.disabled, `${label} is disabled.`);
+  assert(
+    point.hitTarget,
+    `${label} has no pointer-accessible point within its visible bounds: ${JSON.stringify(point)}.`,
+  );
+  const displayScale = screen.getDisplayMatching(window.getBounds()).scaleFactor;
+  const inputScale = await window.webContents.executeJavaScript('window.devicePixelRatio') / displayScale;
+  await sendPointerClick(window, point.x * inputScale, point.y * inputScale);
+  await wait(80);
+  return point;
+}
+
+async function pressFocusedControl(
+  window,
+  selector,
+  keyCode,
+  label = selector,
+  { tabFromSelector } = {},
+) {
+  await waitForDom(
+    window,
+    `document.querySelector(${JSON.stringify(selector)})`,
+    `${label} did not appear.`,
+  );
+  const focus = await window.webContents.executeJavaScript(`(() => {
+    const element = document.querySelector(${JSON.stringify(tabFromSelector ?? selector)});
+    element.focus();
+    return {
+      active: document.activeElement === element,
+      visibleFocus: element.matches(':focus-visible'),
+      bounds: (() => {
+        const rect = element.getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      })(),
+    };
+  })()`);
+  assert(focus.active, `${label} did not receive keyboard focus.`);
+  let tabFocus = null;
+  if (tabFromSelector) {
+    await sendKeyStroke(window, 'TAB');
+    tabFocus = await window.webContents.executeJavaScript(`(() => {
+      const element = document.querySelector(${JSON.stringify(selector)});
+      window.__issue797KeyboardEvents = [];
+      for (const type of ['keydown', 'keyup', 'click']) {
+        element.addEventListener(type, (event) => {
+          window.__issue797KeyboardEvents.push({
+            type,
+            key: event.key ?? '',
+            code: event.code ?? '',
+            defaultPrevented: event.defaultPrevented,
+            focused: document.activeElement === element,
+          });
+        }, { capture: true });
+      }
+      return {
+        active: document.activeElement === element,
+        visibleFocus: element.matches(':focus-visible'),
+        activeTestId: document.activeElement?.getAttribute('data-testid') ?? '',
+      };
+    })()`);
+    assert(
+      tabFocus.active,
+      `${label} was not reached from ${tabFromSelector} by native Tab input (active: ${tabFocus.activeTestId || 'unknown'}).`,
+    );
+  }
+  await sendKeyStroke(window, keyCode);
+  await wait(80);
+  const afterActivation = await window.webContents.executeJavaScript(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector)});
+    return {
+      active: document.activeElement === element,
+      visibleFocus: element.matches(':focus-visible'),
+      keyboardEvents: window.__issue797KeyboardEvents ?? [],
+      editTarget: document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget ?? '',
+    };
+  })()`);
+  return { ...focus, tabFocus, afterActivation };
+}
+
+async function dragWithNativeInput(window, sourceSelector, destinationSelector, label) {
+  await waitForDom(
+    window,
+    `document.querySelector(${JSON.stringify(sourceSelector)}) && document.querySelector(${JSON.stringify(destinationSelector)})`,
+    `${label} did not expose both pointer locations.`,
+  );
+  const geometry = await window.webContents.executeJavaScript(`(() => {
+    const source = document.querySelector(${JSON.stringify(sourceSelector)});
+    const destination = document.querySelector(${JSON.stringify(destinationSelector)});
+    source.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const sourceRect = source.getBoundingClientRect();
+    const destinationRect = destination.getBoundingClientRect();
+    const start = {
+      x: Math.round(sourceRect.left + sourceRect.width / 2),
+      y: Math.round(sourceRect.top + sourceRect.height / 2),
+    };
+    const end = {
+      x: Math.round(destinationRect.left + destinationRect.width / 2),
+      y: Math.round(destinationRect.top + destinationRect.height / 2),
+    };
+    const hit = document.elementFromPoint(start.x, start.y);
+    const style = getComputedStyle(source);
+    return {
+      start,
+      end,
+      sourceBounds: { x: sourceRect.x, y: sourceRect.y, width: sourceRect.width, height: sourceRect.height },
+      destinationBounds: { x: destinationRect.x, y: destinationRect.y, width: destinationRect.width, height: destinationRect.height },
+      sourceVisible: sourceRect.width > 0 && sourceRect.height > 0 && style.visibility === 'visible',
+      sourceHit: hit === source || source.contains(hit),
+      hitTestId: hit?.getAttribute('data-testid') ?? '',
+    };
+  })()`);
+  assert(geometry.sourceVisible, `${label} source is not visible.`);
+  assert(geometry.sourceHit, `${label} source is covered at its visible center by ${geometry.hitTestId || 'another element'}.`);
+  window.webContents.sendInputEvent({
+    type: 'mouseMove',
+    x: geometry.start.x,
+    y: geometry.start.y,
+  });
+  window.webContents.sendInputEvent({
+    type: 'mouseDown',
+    x: geometry.start.x,
+    y: geometry.start.y,
+    button: 'left',
+    clickCount: 1,
+  });
+  window.webContents.sendInputEvent({
+    type: 'mouseMove',
+    x: geometry.end.x,
+    y: geometry.end.y,
+    button: 'left',
+  });
+  await wait(100);
+  window.webContents.sendInputEvent({
+    type: 'mouseUp',
+    x: geometry.end.x,
+    y: geometry.end.y,
+    button: 'left',
+    clickCount: 1,
+  });
+  await wait(80);
+  return geometry;
+}
+
+async function sendKeyStroke(window, keyCode) {
+  const electronKeyCode = {
+    ARROWDOWN: 'Down',
+    ARROWUP: 'Up',
+    ARROWLEFT: 'Left',
+    ARROWRIGHT: 'Right',
+    ESC: 'Escape',
+    ENTER: 'Enter',
+    TAB: 'Tab',
+    SHIFT_TAB: 'Tab',
+    SPACE: 'Space',
+  }[keyCode] ?? keyCode;
+  const modifiers = keyCode === 'SHIFT_TAB' ? ['shift'] : undefined;
+  window.focus();
+  window.webContents.focus();
+  await wait(40);
+  window.webContents.sendInputEvent({ type: 'keyDown', keyCode: electronKeyCode, ...(modifiers ? { modifiers } : {}) });
+  await wait(40);
+  window.webContents.sendInputEvent({ type: 'keyUp', keyCode: electronKeyCode, ...(modifiers ? { modifiers } : {}) });
+}
+
+async function sendShiftedKeyStroke(window, keyCode) {
+  const electronKeyCode = {
+    ARROWDOWN: 'Down',
+    ARROWUP: 'Up',
+    ARROWLEFT: 'Left',
+    ARROWRIGHT: 'Right',
+  }[keyCode];
+  assert(electronKeyCode, `Unsupported Shift-modified keyboard key ${keyCode}.`);
+  window.focus();
+  window.webContents.focus();
+  await wait(40);
+  window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Shift', modifiers: ['shift'] });
+  window.webContents.sendInputEvent({ type: 'keyDown', keyCode: electronKeyCode, modifiers: ['shift'] });
+  await wait(40);
+  window.webContents.sendInputEvent({ type: 'keyUp', keyCode: electronKeyCode, modifiers: ['shift'] });
+  window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Shift' });
+  await wait(80);
+}
+
+function sendWindowsKeyStroke(window, key) {
+  const sendKeysValue = key === 'ENTER'
+    ? '{ENTER}'
+    : key === 'SPACE'
+      ? ' '
+      : key === 'TAB'
+        ? '{TAB}'
+        : key === 'SHIFT_TAB'
+          ? '+{TAB}'
+          : null;
+  assert(sendKeysValue !== null, `Unsupported Windows keyboard key ${key}.`);
+  const command = `$targetPid = ${process.pid}; $shell = New-Object -ComObject WScript.Shell; if (-not $shell.AppActivate($targetPid)) { throw 'Could not activate the Electron verifier window.' }; Start-Sleep -Milliseconds 80; $shell.SendKeys('${sendKeysValue}')`;
+  require('node:child_process').execFileSync(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-Command', command],
+    { encoding: 'utf8', timeout: 5000, windowsHide: true },
+  );
+  window.focus();
+  window.webContents.focus();
+}
+
+async function readIssue792MenuGeometry(window) {
+  return window.webContents.executeJavaScript(`(() => {
+    const trigger = document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]');
+    const picker = document.querySelector('[data-testid="character-assembly-mouth-picker-selected"]');
+    const menu = document.querySelector('[data-testid="character-assembly-mouth-overflow-menu"]');
+    const clear = menu?.querySelector('[data-testid="character-assembly-mouth-clear"]');
+    const row = trigger?.closest('.image-asset-picker-selected-row--surface');
+    const rect = (element) => {
+      const bounds = element?.getBoundingClientRect();
+      return bounds && {
+        left: bounds.left,
+        top: bounds.top,
+        right: bounds.right,
+        bottom: bounds.bottom,
+        width: bounds.width,
+        height: bounds.height,
+      };
+    };
+    const viewport = { width: document.documentElement.clientWidth, height: document.documentElement.clientHeight };
+    const menuBounds = menu?.getBoundingClientRect();
+    const clearBounds = clear?.getBoundingClientRect();
+    const centerX = clearBounds ? clearBounds.left + clearBounds.width / 2 : 0;
+    const centerY = clearBounds ? clearBounds.top + clearBounds.height / 2 : 0;
+    const hit = clear ? document.elementFromPoint(centerX, centerY) : null;
+    const hitButton = hit?.closest('button');
+    const clipAncestors = [];
+    for (let ancestor = row; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+      const style = getComputedStyle(ancestor);
+      if (/(hidden|clip|auto|scroll)/u.test(style.overflowX + ' ' + style.overflowY)) {
+        clipAncestors.push({
+          className: typeof ancestor.className === 'string' ? ancestor.className : '',
+          overflowX: style.overflowX,
+          overflowY: style.overflowY,
+        });
+      }
+    }
+    return {
+      viewport,
+      trigger: rect(trigger),
+      picker: rect(picker),
+      row: rect(row),
+      menu: rect(menu),
+      clear: rect(clear),
+      open: Boolean(menu?.matches(':popover-open')),
+      visible: Boolean(menu && getComputedStyle(menu).display !== 'none' && getComputedStyle(menu).visibility === 'visible' && menu.getClientRects().length),
+      position: menu ? getComputedStyle(menu).position : '',
+      placement: menu?.dataset.placement ?? '',
+      menuInsideViewport: Boolean(menuBounds
+        && menuBounds.left >= 0
+        && menuBounds.top >= 0
+        && menuBounds.right <= viewport.width + 1
+        && menuBounds.bottom <= viewport.height + 1),
+      clearIsActualHitTarget: Boolean(clear && hit && (hit === clear || clear.contains(hit)) && hitButton === clear),
+      hitTarget: hit ? {
+        tagName: hit.tagName,
+        className: typeof hit.className === 'string' ? hit.className : '',
+        testId: hit.getAttribute('data-testid') ?? '',
+      } : null,
+      pickerAndOverflowAreSeparate: Boolean(rect(picker) && rect(trigger) && picker.getBoundingClientRect().right <= trigger.getBoundingClientRect().left + 1),
+      clipAncestors,
+      selectedMouthAssetId: document.querySelector('[data-testid="character-assembly-mouth-picker"]')?.dataset.selectedAssetId ?? '',
+      ariaExpanded: trigger?.getAttribute('aria-expanded') ?? '',
+      clearDisabled: clear?.disabled ?? null,
+      pending: Boolean(document.querySelector('[data-testid="character-assembly-pending"]')),
+      revision: document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? '',
+      undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? '',
+      focusVisible: document.activeElement instanceof HTMLElement && document.activeElement.matches(':focus-visible'),
+      activeTestId: document.activeElement?.getAttribute('data-testid') ?? '',
+    };
+  })()`);
+}
+
+async function openIssue792MenuWithPointer(window) {
+  const triggerRect = await window.webContents.executeJavaScript(`(() => {
+    const trigger = document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]');
+    if (!trigger) throw new Error('Configured Mouth overflow trigger is missing.');
+    const bounds = trigger.getBoundingClientRect();
+    return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+  })()`);
+  await sendPointerClick(window, triggerRect.x, triggerRect.y);
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-mouth-overflow-menu"]')?.matches(':popover-open') && document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]')?.getAttribute('aria-expanded') === 'true'`,
+    'Mouth overflow popover did not open and update its trigger state after a real Electron pointer click.',
+  );
+  await wait(120);
+}
+
+async function verifyIssue812HeadMotionToggle(window, screenshots, readSelection, evidence) {
+  const selector = '[data-testid="character-assembly-test-head-motion"]';
+  const receipt = { profiles: [], screenshots: [] };
+  evidence.headMotionToggle = receipt;
+  const saveScreenshot = async (fileName) => {
+    const screenshot = await capture(window, fileName);
+    screenshots.push(screenshot);
+    receipt.screenshots.push(screenshot);
+  };
+
+  const readLayout = () => window.webContents.executeJavaScript(`(() => {
+    const rect = (element) => {
+      const bounds = element?.getBoundingClientRect();
+      return bounds && {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        right: bounds.right,
+        bottom: bounds.bottom,
+      };
+    };
+    const button = document.querySelector(${JSON.stringify(selector)});
+    const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    const actions = document.querySelector('.character-assembly-assembly-actions');
+    const pending = document.querySelector('[data-testid="character-assembly-pending"]');
+    const headGroup = document.querySelector('.character-assembly-head-group');
+    const body = document.querySelector('.character-assembly-part-body');
+    const headPart = document.querySelector('.character-assembly-part-head');
+    const facePart = document.querySelector('.character-assembly-part-face');
+    const pivot = document.querySelector('[data-testid="character-assembly-pivot-mode-toggle"]');
+    const fineTune = document.querySelector('[data-testid="character-assembly-fine-tune-toggle"]');
+    const layoutReuse = document.querySelector('[data-testid="character-assembly-layout-reuse-toggle"]');
+    return {
+      viewport: {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        devicePixelRatio: window.devicePixelRatio,
+        shellMode: document.querySelector('[data-testid="editor-layout"]')?.dataset.shellMode ?? '',
+      },
+      running: workbench?.dataset.headMotionTestRunning ?? '',
+      pressed: button?.getAttribute('aria-pressed') ?? '',
+      pivotDisabled: Boolean(pivot?.disabled),
+      fineTuneDisabled: Boolean(fineTune?.disabled),
+      layoutReuseDisabled: Boolean(layoutReuse?.disabled),
+      label: button?.textContent?.trim() ?? '',
+      accessibleName: button?.getAttribute('aria-label') ?? button?.innerText?.trim() ?? '',
+      cueCount: document.querySelectorAll('[data-testid="character-assembly-motion-test-cue"]').length,
+      headAnimationName: headGroup ? getComputedStyle(headGroup).animationName : '',
+      headAnimationDuration: headGroup ? getComputedStyle(headGroup).animationDuration : '',
+      headTranslateY: headGroup
+        ? (() => {
+            const transform = getComputedStyle(headGroup).transform;
+            return transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m42;
+          })()
+        : 0,
+      headAndFaceShareMotionGroup: Boolean(headGroup?.contains(headPart) && headGroup?.contains(facePart)),
+      bodyOutsideMotionGroup: Boolean(body && !headGroup?.contains(body)),
+      bodyAnimationName: body ? getComputedStyle(body).animationName : '',
+      focused: document.activeElement === button,
+      visibleFocus: Boolean(button?.matches(':focus-visible')),
+      order: [...(actions?.children ?? [])].map((element) =>
+        element.dataset.testid ?? element.classList[0] ?? element.tagName.toLowerCase(),
+      ),
+      controls: {
+        actions: rect(actions),
+        pivot: rect(document.querySelector('[data-testid="character-assembly-pivot-mode-toggle"]')),
+        fineTune: rect(document.querySelector('[data-testid="character-assembly-fine-tune-toggle"]')),
+        layoutReuse: rect(document.querySelector('[data-testid="character-assembly-layout-reuse-toggle"]')),
+        toggle: rect(button),
+        pending: rect(pending),
+        restore: rect(pending?.querySelector('button:first-child')),
+        apply: rect(pending?.querySelector('button:last-child')),
+      },
+    };
+  })()`);
+
+  const assertState = (state, running, label) => {
+    const expected = running ? '■ 停止测试' : '▶ 预览点头';
+    assert(state.running === String(running), `${label} did not expose the expected head-motion state.`);
+    assert(state.pressed === String(running), `${label} lost the toggle's aria-pressed state.`);
+    assert(state.label === expected && state.accessibleName === expected, `${label} lost its dynamic accessible button name.`);
+    assert(state.cueCount === 0, `${label} inserted the removed motion explanation or an empty cue slot.`);
+    if (running) {
+      assert(state.headAnimationName === 'character-assembly-head-motion-test', `${label} did not run the existing Head motion animation.`);
+      assert(state.headAnimationDuration === '0.5s', `${label} did not use the 2 Hz motion period.`);
+      assert(Math.abs(state.headTranslateY) <= 4.05, `${label} moved the Head outside the expected ±4 px bob envelope.`);
+      assert(state.headAndFaceShareMotionGroup, `${label} separated the Head and Face from their shared motion group.`);
+      assert(state.bodyOutsideMotionGroup, `${label} moved the Body inside the Head motion group.`);
+      assert(state.bodyAnimationName === 'none', `${label} animated the Body along with the Head group.`);
+      assert(state.pivotDisabled && state.fineTuneDisabled && state.layoutReuseDisabled, `${label} did not keep pivot and layout editing mutually exclusive with motion testing.`);
+    } else {
+      assert(state.headAnimationName === 'none', `${label} did not stop and reset the Head motion animation.`);
+      assert(Math.abs(state.headTranslateY) <= 0.1, `${label} did not return the Head to its neutral vertical position.`);
+      assert(!state.pivotDisabled && !state.fineTuneDisabled && !state.layoutReuseDisabled, `${label} left pivot or layout editing disabled after the motion test stopped.`);
+    }
+  };
+
+  const compareGeometry = (baseline, state, profile, label) => {
+    const keys = ['actions', 'pivot', 'fineTune', 'layoutReuse', 'toggle', 'pending', 'restore', 'apply'];
+    const deltas = [];
+    for (const key of keys) {
+      const before = baseline.controls[key];
+      const after = state.controls[key];
+      assert(before && after, `${profile}/${label} is missing the ${key} control needed for the layout check.`);
+      for (const dimension of ['x', 'y', 'width', 'height']) {
+        const delta = Number((after[dimension] - before[dimension]).toFixed(3));
+        deltas.push({ control: key, dimension, delta });
+      }
+    }
+    const largest = Math.max(...deltas.map((entry) => Math.abs(entry.delta)));
+    const result = { from: label, maximumDeltaCssPx: largest, deltas };
+    receipt.profiles.find((entry) => entry.name === profile)?.geometryComparisons.push(result);
+    assert(
+      largest <= 2,
+      `${profile}/${label} moved or resized an assembly action by ${largest.toFixed(2)} CSS px (limit 2): ${JSON.stringify(deltas.filter((entry) => Math.abs(entry.delta) > 2))}`,
+    );
+    assert(JSON.stringify(state.order) === JSON.stringify(baseline.order), `${profile}/${label} reordered or wrapped assembly actions.`);
+  };
+
+  const setMotionTime = (timeMs) => window.webContents.executeJavaScript(`(() => {
+    const head = document.querySelector('.character-assembly-head-group');
+    const animation = head?.getAnimations().find((candidate) =>
+      candidate.animationName === 'character-assembly-head-motion-test'
+    );
+    if (!animation) throw new Error('Head motion preview animation is missing.');
+    animation.pause();
+    animation.currentTime = ${timeMs};
+  })()`);
+
+  const verifySamePointHit = async (point, zoomFactor, profile, cycle, running) => {
+    const hit = await window.webContents.executeJavaScript(`(() => {
+      const button = document.querySelector(${JSON.stringify(selector)});
+      const target = document.elementFromPoint(${point.x / zoomFactor}, ${point.y / zoomFactor});
+      return Boolean(button && target && (target === button || button.contains(target)));
+    })()`);
+    assert(hit, `${profile} cycle ${cycle} original pointer coordinate stopped hitting the same toggle (running=${running}).`);
+  };
+
+  const configurations = [
+    { name: 'standard', width: 1660, height: 1100, zoomFactor: 1 },
+    { name: 'narrow', width: 800, height: 560, zoomFactor: 1 },
+    { name: 'zoom125', width: 1660, height: 1100, zoomFactor: 1.25 },
+  ];
+  const originalSize = window.getSize();
+  const originalZoomFactor = window.webContents.getZoomFactor();
+  const beforeProjectState = await readSelection();
+
+  try {
+    for (const configuration of configurations) {
+      window.webContents.setZoomFactor(configuration.zoomFactor);
+      window.setSize(configuration.width, configuration.height);
+      if (configuration.name === 'narrow') {
+        await waitForDom(window, 'window.innerWidth <= 840 && window.innerWidth >= 760', 'The #812 narrow-window viewport did not resize.');
+      } else {
+        await wait(160);
+      }
+      await window.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({ block: 'nearest', inline: 'nearest' })`);
+      await waitForPaint(window);
+
+      const profile = {
+        name: configuration.name,
+        zoomFactor: configuration.zoomFactor,
+        windowSize: configuration.name === 'narrow' ? { width: 800, height: 560 } : { width: 1660, height: 1100 },
+        states: [],
+        geometryComparisons: [],
+        samePointerCycles: [],
+      };
+      receipt.profiles.push(profile);
+      const initial = await readLayout();
+      profile.states.push({ name: 'initial', ...initial });
+      assertState(initial, false, `${configuration.name}/initial`);
+      assert(initial.viewport.width > 0 && initial.viewport.height > 0, `${configuration.name} did not expose a measurable viewport.`);
+      assert(initial.controls.toggle && initial.controls.pivot && initial.controls.fineTune && initial.controls.layoutReuse, `${configuration.name} is missing one of the fixed assembly actions.`);
+      assert(initial.controls.pending && initial.controls.restore && initial.controls.apply, `${configuration.name} lost the dirty-draft Restore/Apply controls.`);
+      assert(initial.controls.toggle.x >= 0 && initial.controls.toggle.y >= 0 && initial.controls.toggle.right <= initial.viewport.width + 1 && initial.controls.toggle.bottom <= initial.viewport.height + 1, `${configuration.name} motion toggle is outside the visible viewport.`);
+      assert(initial.controls.toggle.width > 0 && initial.controls.toggle.height > 0, `${configuration.name} motion toggle has an empty hitbox.`);
+      profile.initial = initial;
+      const cssAnchor = {
+        x: initial.controls.toggle.x + initial.controls.toggle.width / 2,
+        y: initial.controls.toggle.y + initial.controls.toggle.height / 2,
+      };
+      const anchor = {
+        x: Math.round(cssAnchor.x * configuration.zoomFactor),
+        y: Math.round(cssAnchor.y * configuration.zoomFactor),
+      };
+      profile.samePointerCycles.push({ inputX: anchor.x, inputY: anchor.y, cssX: cssAnchor.x, cssY: cssAnchor.y, cycles: 3 });
+      if (configuration.name === 'standard') {
+        await saveScreenshot('head-motion-toggle-standard-initial.png');
+      } else if (configuration.name === 'narrow') {
+        await saveScreenshot('head-motion-toggle-narrow.png');
+      } else {
+        await saveScreenshot('head-motion-toggle-zoom-125.png');
+      }
+
+      let previous = initial;
+      for (let cycle = 1; cycle <= 3; cycle += 1) {
+        await verifySamePointHit(anchor, configuration.zoomFactor, configuration.name, cycle, false);
+        await sendPointerClick(window, anchor.x, anchor.y);
+        await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headMotionTestRunning === 'true'`, `${configuration.name} same-point cycle ${cycle} did not start.`);
+        await setMotionTime(0);
+        await waitForPaint(window);
+        const atStart = await readLayout();
+        assert(Math.abs(atStart.headTranslateY) <= 0.1, `${configuration.name} motion preview did not start at neutral.`);
+        await setMotionTime(125);
+        await waitForPaint(window);
+        const playing = await readLayout();
+        profile.states.push({ name: `play-${cycle}`, ...playing });
+        if (configuration.name === 'standard' && cycle <= 2) {
+          await saveScreenshot(`head-motion-toggle-standard-play-${cycle}.png`);
+        } else if (cycle === 1) {
+          await saveScreenshot(`head-motion-toggle-${configuration.name}-play.png`);
+        }
+        compareGeometry(initial, playing, configuration.name, `play-${cycle}`);
+        assertState(playing, true, `${configuration.name}/play-${cycle}`);
+
+        await setMotionTime(375);
+        await waitForPaint(window);
+        const oppositePeak = await readLayout();
+        profile.states.push({ name: `opposite-peak-${cycle}`, ...oppositePeak });
+        assert(Math.abs(oppositePeak.headTranslateY - 4) <= 0.05, `${configuration.name} motion preview did not reach the +4 px opposite peak.`);
+        assertState(oppositePeak, true, `${configuration.name}/opposite-peak-${cycle}`);
+
+        await verifySamePointHit(anchor, configuration.zoomFactor, configuration.name, cycle, true);
+        await sendPointerClick(window, anchor.x, anchor.y);
+        await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headMotionTestRunning === 'false'`, `${configuration.name} same-point cycle ${cycle} did not stop.`);
+        await waitForDom(
+          window,
+          `(() => {
+            const head = document.querySelector('.character-assembly-head-group');
+            const transform = head ? getComputedStyle(head).transform : 'none';
+            return transform === 'none' || Math.abs(new DOMMatrixReadOnly(transform).m42) <= 0.1;
+          })()`,
+          `${configuration.name} Head motion did not transition back to neutral after stopping.`,
+        );
+        await waitForPaint(window);
+        const stopped = await readLayout();
+        profile.states.push({ name: `stop-${cycle}`, ...stopped });
+        compareGeometry(initial, stopped, configuration.name, `stop-${cycle}`);
+        assertState(stopped, false, `${configuration.name}/stop-${cycle}`);
+        if (configuration.name === 'standard' && cycle <= 2) {
+          await saveScreenshot(`head-motion-toggle-standard-stop-${cycle}.png`);
+        } else if (cycle === 1) {
+          await saveScreenshot(`head-motion-toggle-${configuration.name}-stop.png`);
+        }
+        previous = stopped;
+      }
+      assert(initial.controls.toggle.width >= 100 && initial.controls.toggle.height >= 44, `${configuration.name} motion toggle hitbox is below the 100×44 CSS px target.`);
+      assert(previous.running === 'false', `${configuration.name} did not finish with the test stopped.`);
+    }
+
+    window.focus();
+    window.webContents.focus();
+    await window.webContents.executeJavaScript(`(() => {
+      const button = document.querySelector(${JSON.stringify(selector)});
+      window.__issue812KeyboardEvents = [];
+      for (const type of ['keydown', 'keyup', 'click']) {
+        button?.addEventListener(type, (event) => {
+          window.__issue812KeyboardEvents.push({
+            type,
+            key: event.key ?? '',
+            code: event.code ?? '',
+            defaultPrevented: event.defaultPrevented,
+            focused: document.activeElement === button,
+            trusted: event.isTrusted,
+          });
+        }, { capture: true });
+      }
+      document.querySelector('[data-testid="character-assembly-layout-reuse-toggle"]')?.focus();
+    })()`);
+    await sendKeyStroke(window, 'TAB');
+    const tabFocus = await window.webContents.executeJavaScript(`(() => {
+      const button = document.querySelector(${JSON.stringify(selector)});
+      return {
+        focused: document.activeElement === button,
+        visibleFocus: Boolean(button?.matches(':focus-visible')),
+        activeTestId: document.activeElement?.getAttribute('data-testid') ?? '',
+      };
+    })()`);
+    assert(tabFocus.focused && tabFocus.visibleFocus, `Native Tab did not move focus to the Head motion toggle with visible focus (active: ${tabFocus.activeTestId || 'unknown'}).`);
+
+    for (const [key, running, expectedName] of [
+      ['ENTER', true, 'enter-start'],
+      ['SPACE', false, 'space-stop'],
+    ]) {
+      const eventStart = await window.webContents.executeJavaScript('window.__issue812KeyboardEvents.length');
+      sendWindowsKeyStroke(window, key);
+      try {
+        await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headMotionTestRunning === ${JSON.stringify(String(running))}`, `Keyboard ${key} did not ${running ? 'start' : 'stop'} the Head motion test.`);
+      } catch (error) {
+        const diagnostics = await window.webContents.executeJavaScript(`({
+          activeTestId: document.activeElement?.getAttribute('data-testid') ?? '',
+          events: (window.__issue812KeyboardEvents ?? []).slice(${eventStart}),
+          state: document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headMotionTestRunning ?? '',
+        })`);
+        throw new Error(`${error instanceof Error ? error.message : String(error)}; keyboard=${JSON.stringify(diagnostics)}`, { cause: error });
+      }
+      await waitForPaint(window);
+      const state = await readLayout();
+      const events = await window.webContents.executeJavaScript(`(window.__issue812KeyboardEvents ?? []).slice(${eventStart})`);
+      const profile = receipt.profiles.find((entry) => entry.name === 'zoom125');
+      profile.states.push({ name: expectedName, ...state });
+      compareGeometry(profile.initial, state, 'zoom125', expectedName);
+      assertState(state, running, `keyboard/${expectedName}`);
+      assert(state.focused && state.visibleFocus, `Keyboard ${key} lost button focus or its visible focus indication.`);
+      assert(events.some((event) => event.type === 'keydown' && event.key === inputKeyName(key) && event.trusted), `Native Windows keyboard ${key} did not reach the focused button.`);
+      assert(events.some((event) => event.type === 'click' && event.trusted), `Native Windows keyboard ${key} did not activate the focused button.`);
+      (profile.keyboard ??= []).push({ key, events });
+    }
+
+    const afterProjectState = await readSelection();
+    assert(afterProjectState.revision === beforeProjectState.revision && afterProjectState.undoCount === beforeProjectState.undoCount, 'Testing Head motion wrote a Project revision or History entry.');
+    assert(afterProjectState.headOffsetX === beforeProjectState.headOffsetX && afterProjectState.headOffsetY === beforeProjectState.headOffsetY && afterProjectState.headScale === beforeProjectState.headScale && afterProjectState.faceOffsetX === beforeProjectState.faceOffsetX && afterProjectState.faceOffsetY === beforeProjectState.faceOffsetY && afterProjectState.faceScale === beforeProjectState.faceScale && afterProjectState.pivotX === beforeProjectState.pivotX && afterProjectState.pivotY === beforeProjectState.pivotY, 'Testing Head motion changed Head, Face, or pivot draft data.');
+    receipt.projectState = { before: beforeProjectState, after: afterProjectState };
+    return receipt;
+  } finally {
+    window.webContents.setZoomFactor(originalZoomFactor);
+    window.setSize(originalSize[0], originalSize[1]);
+    await wait(120);
+  }
+}
+
+function inputKeyName(key) {
+  return key === 'SPACE' ? ' ' : key === 'ENTER' ? 'Enter' : key;
+}
+
+async function verifyIssue797HeadFaceEditTargets(window) {
+  const screenshots = [];
+  const evidence = {};
+  inProgressEvidence = evidence;
+  await window.webContents.executeJavaScript(`(() => {
+    window.__issue610ConfirmCalls = [];
+    window.__issue610ConfirmResponse = false;
+    window.confirm = (message) => {
+      window.__issue610ConfirmCalls.push(String(message));
+      return Boolean(window.__issue610ConfirmResponse);
+    };
+  })()`);
+
+  await clickWithNativeInput(
+    window,
+    `[data-testid="character-list-view"] [data-character-id="${IDS.issue792Character}"]`,
+    'Head + Face Character card',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue792Character)}`,
+    'Head + Face Character detail did not open.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-workspace-assembly-tab"]',
+    'Assembly workspace tab',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="edit"]')`,
+    'Head + Face Character did not enter the Assembly Workbench.',
+  );
+
+  const readSelection = () => window.webContents.executeJavaScript(`(() => {
+    const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    const head = document.querySelector('[data-testid="character-assembly-head-asset-selected"]');
+    const face = document.querySelector('[data-testid="character-assembly-default-face-select"]');
+    const headAction = document.querySelector('[data-testid="character-assembly-head-asset-change-action"]');
+    const faceManage = document.querySelector('[data-testid="character-assembly-go-expressions"]');
+    const rect = (element) => {
+      const bounds = element?.getBoundingClientRect();
+      return bounds && { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+    };
+    return {
+      target: workbench?.dataset.editTarget ?? '',
+      faceOffsetX: Number(workbench?.dataset.faceOffsetX),
+      faceOffsetY: Number(workbench?.dataset.faceOffsetY),
+      faceScale: Number(workbench?.dataset.faceScale),
+      headAssetId: workbench?.dataset.headAssetId ?? '',
+      headOffsetX: Number(workbench?.dataset.headOffsetX),
+      headOffsetY: Number(workbench?.dataset.headOffsetY),
+      headScale: Number(workbench?.dataset.headScale),
+      pivotX: Number(workbench?.dataset.headPivotX),
+      pivotY: Number(workbench?.dataset.headPivotY),
+      headCardPressed: head?.getAttribute('aria-pressed') ?? '',
+      faceCardPressed: face?.getAttribute('aria-pressed') ?? '',
+      headCardBounds: rect(head),
+      faceCardBounds: rect(face),
+      headActionBounds: rect(headAction),
+      faceManageBounds: rect(faceManage),
+      headActionSibling: Boolean(head && document.querySelector('[data-testid="character-assembly-head-asset-change-action"]')?.parentElement === head.parentElement),
+      faceManageSibling: Boolean(face && document.querySelector('[data-testid="character-assembly-go-expressions"]')?.parentElement === face.parentElement),
+      headActionNested: Boolean(head?.querySelector('[data-testid="character-assembly-head-asset-change-action"]')),
+      faceManageNested: Boolean(face?.querySelector('[data-testid="character-assembly-go-expressions"]')),
+      revision: document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? '',
+      undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? '',
+      faceTargetPresent: Boolean(document.querySelector('[data-testid="character-assembly-face-drag-target"]')),
+      headTargetPresent: Boolean(document.querySelector('[data-testid="character-assembly-head-drag-target"]')),
+      pivotEditing: workbench?.dataset.neckPivotEditing ?? '',
+      headMotionRunning: workbench?.dataset.headMotionTestRunning ?? '',
+      editCardSurface: face?.parentElement ? getComputedStyle(face.parentElement).borderColor : '',
+      headSurfaceBorder: head?.parentElement ? getComputedStyle(head.parentElement).borderColor : '',
+      headSurfaceBackground: head?.parentElement ? getComputedStyle(head.parentElement).backgroundColor : '',
+      faceSurfaceBorder: face?.parentElement ? getComputedStyle(face.parentElement).borderColor : '',
+      faceSurfaceBackground: face?.parentElement ? getComputedStyle(face.parentElement).backgroundColor : '',
+      headEditTargetStatus: head?.querySelector('.image-asset-picker-selected-action')?.textContent?.trim() ?? '',
+      faceEditTargetStatus: face?.querySelector('.image-asset-picker-selected-action')?.textContent?.trim() ?? '',
+      headOptionalLabel: head?.closest('.image-asset-picker')?.querySelector('.image-asset-picker-heading small')?.textContent?.trim() ?? '',
+    };
+  })()`);
+
+  const before = await readSelection();
+  assert(before.target === 'head' && before.headCardPressed === 'true' && before.faceCardPressed === 'false', 'Initial Head selection is not synchronized across the left card and Workbench.');
+  assert(before.headActionSibling && before.faceManageSibling && !before.headActionNested && !before.faceManageNested, 'Head Change and Face Manage are not separate sibling actions.');
+  assert(before.headCardBounds?.height >= 44 && before.faceCardBounds?.height >= 44, 'Head/Face selection cards lost usable keyboard and touch target sizes.');
+  assert(before.headActionBounds?.height >= 44 && before.headActionBounds?.height <= 52 && before.faceManageBounds?.height >= 44 && before.faceManageBounds?.height <= 52, 'Head Change and Face Manage are not compact 44px actions.');
+  assert(!before.headEditTargetStatus && !before.faceEditTargetStatus && !before.headOptionalLabel, 'Assembly still displays the redundant Head optional or Head/Face edit badge.');
+  assert(before.headSurfaceBorder !== before.faceSurfaceBorder && before.headSurfaceBackground !== before.faceSurfaceBackground, 'The selected Head surface is not visually distinct from the Face surface.');
+  assert(before.headTargetPresent && !before.faceTargetPresent, 'The initial Head target did not expose only its own drag handle.');
+  await waitForPaint(window);
+  const beforeShot = await capture(window, 'head-face-before.png');
+  screenshots.push(beforeShot);
+
+  const faceMouseClick = await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-default-face-select"]',
+    'Default Face card body',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'face'`,
+    'Clicking the Face card body did not select the Face placement target.',
+  );
+  const faceSelected = await readSelection();
+  assert(faceSelected.faceCardPressed === 'true' && faceSelected.headCardPressed === 'false', 'Face selection state did not synchronize back to the left cards.');
+  assert(faceSelected.faceSurfaceBorder === before.headSurfaceBorder && faceSelected.faceSurfaceBackground === before.headSurfaceBackground, 'Selecting Face did not move the full-card highlight to the Face surface.');
+  assert(faceSelected.headSurfaceBorder === before.faceSurfaceBorder && faceSelected.headSurfaceBackground === before.faceSurfaceBackground, 'Selecting Face left the Head surface highlighted.');
+  assert(faceSelected.faceTargetPresent && !faceSelected.headTargetPresent, 'Selecting Face did not expose only the Face drag handle.');
+  assert(faceSelected.revision === before.revision && faceSelected.undoCount === before.undoCount, 'Selecting an edit target wrote the Project or History.');
+
+  const faceDragGeometry = await dragWithNativeInput(
+    window,
+    '[data-testid="character-assembly-face-drag-target"]',
+    '.character-assembly-part-head',
+    'Face placement drag to the Head position',
+  );
+  await waitForDom(
+    window,
+    `(() => {
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      return Math.abs(Number(workbench?.dataset.faceOffsetY) - Number(workbench?.dataset.headOffsetY)) < 12;
+    })()`,
+    'Native Face drag did not move Face into the Head position.',
+  );
+  const faceDragged = await readSelection();
+  assert(faceDragged.target === 'face', 'Face drag lost the Face edit target.');
+  assert(faceDragged.headOffsetX === before.headOffsetX && faceDragged.headOffsetY === before.headOffsetY && faceDragged.headScale === before.headScale && faceDragged.pivotX === before.pivotX && faceDragged.pivotY === before.pivotY, 'Face drag changed Head placement or pivot.');
+  assert(faceDragged.faceOffsetY !== before.faceOffsetY, 'Face drag did not update facePlacement.');
+  assert(faceDragged.faceOffsetX === before.faceOffsetX && faceDragged.faceScale === before.faceScale, 'Face drag changed placement values outside the dragged axis.');
+  assert(faceDragged.revision === before.revision && faceDragged.undoCount === before.undoCount, 'Unapplied Face drag wrote the Project or History.');
+  await waitForPaint(window);
+  const afterFaceShot = await capture(window, 'head-face-face-selected-dragged.png');
+  screenshots.push(afterFaceShot);
+
+  const faceKeyboardFocus = await pressFocusedControl(
+    window,
+    '[data-testid="character-assembly-head-asset-selected"]',
+    'SPACE',
+    'Head card body keyboard activation',
+    { tabFromSelector: '[data-testid="character-assembly-body-picker-selected"]' },
+  );
+  try {
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'head'`,
+      'Keyboard activation did not select Head.',
+    );
+  } catch (error) {
+    const keyboardEvidence = await window.webContents.executeJavaScript(
+      'window.__issue797KeyboardEvents ?? []',
+    );
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `${message} Keyboard input evidence: ${JSON.stringify(keyboardEvidence)}`,
+      { cause: error },
+    );
+  }
+  const headSelectedByKeyboard = await readSelection();
+  assert(headSelectedByKeyboard.headCardPressed === 'true' && headSelectedByKeyboard.faceCardPressed === 'false', 'Keyboard Head selection did not synchronize the cards.');
+  assert(faceKeyboardFocus.afterActivation.visibleFocus, 'Keyboard activation did not preserve a visible focus indication.');
+  assert(headSelectedByKeyboard.faceOffsetY === faceDragged.faceOffsetY, 'Switching to Head changed the Face placement.');
+
+  const headDragGeometry = await dragWithNativeInput(
+    window,
+    '[data-testid="character-assembly-head-drag-target"]',
+    '.character-assembly-part-body',
+    'Head placement drag',
+  );
+  await waitForDom(
+    window,
+    `Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headOffsetY) !== ${JSON.stringify(before.headOffsetY)}`,
+    'Native Head drag did not update Head placement.',
+  );
+  const headDragged = await readSelection();
+  assert(headDragged.target === 'head', 'Head drag lost the Head edit target.');
+  assert(headDragged.faceOffsetX === faceDragged.faceOffsetX && headDragged.faceOffsetY === faceDragged.faceOffsetY && headDragged.faceScale === faceDragged.faceScale, 'Head drag changed Face Placement.');
+  assert(headDragged.revision === before.revision && headDragged.undoCount === before.undoCount, 'Unapplied Head drag wrote the Project or History.');
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-pivot-mode-toggle"]', 'Neck pivot mode');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.neckPivotEditing === 'true'`, 'Neck pivot mode did not activate.');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-default-face-select"]', 'Face card while editing the neck pivot');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'face' && document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.neckPivotEditing === 'false'`, 'Switching to Face did not safely exit neck pivot editing.');
+  const afterPivotSwitch = await readSelection();
+  assert(afterPivotSwitch.pivotX === before.pivotX && afterPivotSwitch.pivotY === before.pivotY, 'Switching edit target during pivot mode changed the pivot draft.');
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-test-head-motion"]', 'Test Head Motion');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headMotionTestRunning === 'true'`, 'Head motion test did not start.');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-head-asset-selected"]', 'Head card during Head motion test');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'head' && document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headMotionTestRunning === 'false'`, 'Switching to Head did not safely stop the Head motion test.');
+  const afterMotionSwitch = await readSelection();
+  assert(afterMotionSwitch.headOffsetX === headDragged.headOffsetX && afterMotionSwitch.headOffsetY === headDragged.headOffsetY && afterMotionSwitch.pivotX === before.pivotX && afterMotionSwitch.pivotY === before.pivotY, 'Switching out of Head motion test changed Head placement or pivot.');
+
+  const headMotionToggle = await verifyIssue812HeadMotionToggle(window, screenshots, readSelection, evidence);
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-default-face-select"]', 'Select Face before changing the Head asset');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'face'`, 'Face target did not activate before Head asset replacement.');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-head-asset-change-action"]', 'Head Change action');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-head-asset-candidates"]')`, 'Head Change did not open the asset picker.');
+  await clickWithNativeInput(
+    window,
+    `[data-testid="character-assembly-head-asset-candidates"] [data-asset-id="${IDS.bodyAlt}"]`,
+    'Choose replacement Head asset',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headAssetId === ${JSON.stringify(IDS.bodyAlt)} && document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'face'`,
+    'Head Change did not replace only the asset while preserving the Face edit target.',
+  );
+  const afterChangeAction = await readSelection();
+  assert(afterChangeAction.faceCardPressed === 'true' && afterChangeAction.headCardPressed === 'false', 'Head Change caused an extra Head card selection side effect.');
+  assert(afterChangeAction.faceOffsetY === faceDragged.faceOffsetY, 'Changing the Head asset changed the Face draft.');
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-pending"] button:first-of-type', 'Revert assembly draft');
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-assembly-pending"]') && document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'head' && document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headAssetId === ${JSON.stringify(IDS.issue792Head)}`,
+    'Revert did not restore the stored Head/Face placements and default Head selection.',
+  );
+  const reverted = await readSelection();
+  assert(reverted.faceOffsetY === before.faceOffsetY && reverted.headOffsetY === before.headOffsetY && reverted.headCardPressed === 'true' && reverted.faceCardPressed === 'false', 'Revert did not restore placements and synchronized selection state.');
+  assert(reverted.revision === before.revision && reverted.undoCount === before.undoCount, 'Revert wrote the Project or History.');
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-go-expressions"]', 'Manage default Face action');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-workspace-expressions-tab"]')?.getAttribute('aria-pressed') === 'true' && !document.querySelector('[data-testid="character-assembly-workbench"]')`,
+    'Manage did not open Expressions independently of the Face card body.',
+  );
+  const afterManage = await window.webContents.executeJavaScript(`({
+    expressionWorkspace: document.querySelector('[data-testid="character-workspace-expressions-tab"]')?.getAttribute('aria-pressed') ?? '',
+    assemblyWorkbench: Boolean(document.querySelector('[data-testid="character-assembly-workbench"]')),
+    revision: document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? '',
+    undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? '',
+  })`);
+  assert(afterManage.expressionWorkspace === 'true' && !afterManage.assemblyWorkbench, 'Manage performed an action other than opening Expressions.');
+  assert(afterManage.revision === before.revision && afterManage.undoCount === before.undoCount, 'Manage wrote the Project or History.');
+
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after Manage');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"][data-edit-target="head"]')`, 'A new Assembly session did not start on Head.');
+  await clickWithNativeInput(window, '[data-testid="character-detail-back"]', 'Return to Character list');
+  await waitForDom(window, `document.querySelector('[data-testid="character-list-view"] [data-character-id="${IDS.issue797HeadlessCharacter}"]')`, 'Headless composite Character did not appear in the list.');
+  await clickWithNativeInput(
+    window,
+    `[data-testid="character-list-view"] [data-character-id="${IDS.issue797HeadlessCharacter}"]`,
+    'Headless composite Character card',
+  );
+  await waitForDom(window, `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue797HeadlessCharacter)}`, 'Headless composite Character detail did not open.');
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Headless Assembly workspace tab');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"][data-edit-target="face"]') && document.querySelector('[data-testid="character-assembly-face-drag-target"]') && !document.querySelector('[data-testid="character-assembly-edit-head"]')`,
+    'A Headless Character did not expose Face editing without a Head target.',
+  );
+  const headlessBefore = await readSelection();
+  assert(headlessBefore.target === 'face' && headlessBefore.faceCardPressed === 'true', 'The Headless Character did not select Face by default.');
+  const headlessDrag = await dragWithNativeInput(
+    window,
+    '[data-testid="character-assembly-face-drag-target"]',
+    '.character-assembly-part-body',
+    'Headless Character Face placement drag',
+  );
+  await waitForDom(
+    window,
+    `Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.faceOffsetY) !== ${JSON.stringify(headlessBefore.faceOffsetY)}`,
+    'The Headless Character Face could not be dragged.',
+  );
+  const headlessAfter = await readSelection();
+  assert(headlessAfter.target === 'face' && headlessAfter.faceTargetPresent && !headlessAfter.headTargetPresent, 'The Headless Character exposed the wrong placement target.');
+  assert(headlessAfter.revision === before.revision && headlessAfter.undoCount === before.undoCount, 'Headless Face drag wrote the Project or History.');
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'head-face-headless-face-dragged.png'));
+
+  evidence.headCharacter = {
+    initial: before,
+    cardMouseInput: faceMouseClick,
+    faceSelection: faceSelected,
+    faceDrag: { geometry: faceDragGeometry, after: faceDragged },
+    keyboard: { focus: faceKeyboardFocus, selection: headSelectedByKeyboard },
+    headDrag: { geometry: headDragGeometry, after: headDragged },
+    pivotSafeSwitch: afterPivotSwitch,
+    motionTestSafeSwitch: afterMotionSwitch,
+    motionToggleStability: headMotionToggle,
+    independentChangeAction: afterChangeAction,
+    revert: reverted,
+    independentManageAction: afterManage,
+  };
+  evidence.headlessCharacter = {
+    before: headlessBefore,
+    drag: { geometry: headlessDrag, after: headlessAfter },
+  };
+  return {
+    issue: 797,
+    passed: true,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'verify:issue797-head-face-edit',
+    projectRoot,
+    syntheticInput: true,
+    humanAcceptance: false,
+    evidenceKind: 'real-electron-production-ui-native-mouse-keyboard-input-isolated-placement-targets-and-live-hit-tests',
+    preflightAcknowledgement: {
+      issueBody: true,
+      draftPrAndIssueRoute: true,
+      designMdAndCurrentCharacterUiInspected: true,
+    },
+    evidence,
+    screenshots,
+  };
+}
+
+async function readIssue798PlacementNavigation(window) {
+  return window.webContents.executeJavaScript(`(() => {
+    const detail = document.querySelector('[data-testid="character-detail-view"]');
+    const navigation = detail?.querySelector('.character-detail-navigation-detail');
+    const placement = detail?.querySelector('[data-testid="character-detail-place-current-shot"]');
+    const back = detail?.querySelector('[data-testid="character-detail-back"]');
+    const close = detail?.querySelector('[data-testid="resource-activity-close"]');
+    const identity = detail?.querySelector('.character-detail-identity');
+    const name = identity?.querySelector('.character-detail-identity-title-row h3');
+    const quickActionDrawer = document.querySelector('[data-testid="quick-action-drawer"]');
+    const quickActionHandle = quickActionDrawer?.querySelector('.quick-action-drawer-handle');
+    const bounds = (element) => {
+      const rect = element?.getBoundingClientRect();
+      return rect && {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+      };
+    };
+    const placementBounds = placement?.getBoundingClientRect();
+    const quickActionHandleBounds = quickActionHandle?.getBoundingClientRect();
+    const hit = placementBounds
+      ? document.elementFromPoint(
+          placementBounds.left + placementBounds.width / 2,
+          placementBounds.top + placementBounds.height / 2,
+        )
+      : null;
+    const quickActionHandleHit = quickActionHandleBounds
+      ? document.elementFromPoint(
+          quickActionHandleBounds.left + quickActionHandleBounds.width / 2,
+          quickActionHandleBounds.top + quickActionHandleBounds.height / 2,
+        )
+      : null;
+    const workspaceTabs = [...(detail?.querySelectorAll('[data-testid="character-workspace-switcher"] button') ?? [])];
+    return {
+      viewport: {
+        width: document.documentElement.clientWidth,
+        height: document.documentElement.clientHeight,
+      },
+      shellMode: document.querySelector('[data-testid="editor-layout"]')?.dataset.shellMode ?? '',
+      presentation: detail?.dataset.characterEditorPresentation ?? '',
+      navigation: bounds(navigation),
+      navigationPosition: navigation ? getComputedStyle(navigation).position : '',
+      navigationDisplay: navigation ? getComputedStyle(navigation).display : '',
+      navigationGridTemplateColumns: navigation ? getComputedStyle(navigation).gridTemplateColumns : '',
+      navigationInFlowChildCount: [...(navigation?.children ?? [])].filter((child) => {
+        const position = getComputedStyle(child).position;
+        return position !== 'absolute' && position !== 'fixed';
+      }).length,
+      navigationChildren: [...(navigation?.children ?? [])].map((child) => {
+        const style = getComputedStyle(child);
+        return {
+          testId: child.getAttribute('data-testid') ?? '',
+          className: child.className?.baseVal ?? child.className ?? '',
+          position: style.position,
+          gridColumn: style.gridColumn,
+          width: child.getBoundingClientRect().width,
+          height: child.getBoundingClientRect().height,
+        };
+      }),
+      navigationBackgroundColor: navigation ? getComputedStyle(navigation).backgroundColor : '',
+      quickActionDrawer: quickActionDrawer ? {
+        bounds: bounds(quickActionDrawer),
+        expanded: quickActionDrawer.dataset.expanded ?? '',
+        zIndex: getComputedStyle(quickActionDrawer).zIndex,
+        pointerEvents: getComputedStyle(quickActionDrawer).pointerEvents,
+        handle: bounds(quickActionHandle),
+        handleHitTarget: Boolean(quickActionHandle && quickActionHandleHit
+          && (quickActionHandleHit === quickActionHandle || quickActionHandle.contains(quickActionHandleHit))),
+      } : null,
+      back: bounds(back),
+      placement: bounds(placement),
+      placementFlex: placement ? getComputedStyle(placement).flex : '',
+      placementMarginLeft: placement ? getComputedStyle(placement).marginLeft : '',
+      close: bounds(close),
+      placementCount: detail?.querySelectorAll('[data-testid="character-detail-place-current-shot"]').length ?? 0,
+      placementInIdentity: Boolean(identity?.contains(placement)),
+      placementBeforeClose: Boolean(navigation && placement && close
+        && [...navigation.children].indexOf(placement) < [...navigation.children].indexOf(close)),
+      placementHitTarget: Boolean(placement && hit && (hit === placement || placement.contains(hit))),
+      placementHitTestId: hit?.getAttribute('data-testid') ?? '',
+      placementDisabled: placement?.disabled ?? null,
+      placementTitle: placement?.getAttribute('title') ?? '',
+      placementLabel: placement?.getAttribute('aria-label') ?? '',
+      placementType: placement?.getAttribute('type') ?? '',
+      placementText: placement?.textContent?.trim() ?? '',
+      name: name?.textContent?.trim() ?? '',
+      nameBounds: bounds(name),
+      nameClientWidth: name?.clientWidth ?? 0,
+      nameScrollWidth: name?.scrollWidth ?? 0,
+      expressionActionInIdentity: Boolean(identity?.querySelector('[data-testid="expression-add-trigger"]')),
+      workspaceTabs: workspaceTabs.map((button) => ({
+        label: button.textContent?.trim() ?? '',
+        pressed: button.getAttribute('aria-pressed') ?? '',
+      })),
+      activeWorkspace: workspaceTabs.find((button) => button.getAttribute('aria-pressed') === 'true')?.getAttribute('data-testid') ?? '',
+      revision: document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? '',
+      undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? '',
+      redoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount ?? '',
+    };
+  })()`);
+}
+
+async function readIssue798PlacementState(window) {
+  return window.webContents.executeJavaScript(`(() => {
+    const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+    return {
+      revision: document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? '',
+      undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? '',
+      redoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount ?? '',
+      layers: JSON.parse(stage?.dataset.layerJson ?? '[]'),
+    };
+  })()`);
+}
+
+function assertCompactPlacementNavigation(geometry, label) {
+  assert(geometry.navigationDisplay === 'flex', `${label} navigation is not laid out against its visible Flex children.`);
+  assert(geometry.navigationInFlowChildCount === 3, `${label} navigation does not have exactly the in-flow Back/Add/Close controls.`);
+  assert(geometry.placement?.width <= 120, `${label} Add to Shot grew wider than its label (${geometry.placement?.width}px).`);
+  assert(geometry.placementFlex === '0 0 auto', `${label} Add to Shot can still grow to fill the navigation.`);
+  assert(Math.abs(geometry.navigation.right - geometry.close.right) < 1, `${label} Close is not anchored to the far-right edge.`);
+  assert(geometry.back.right <= geometry.placement.left + 1 && geometry.placement.right <= geometry.close.left + 1, `${label} Back, Add to Shot, and Close overlap or are out of order.`);
+  assert(geometry.placement?.width >= 44 && geometry.placement?.height >= 44, `${label} Add to Shot is below the 44px touch target size.`);
+  assert(geometry.back?.width >= 44 && geometry.back?.height >= 44 && geometry.close?.width >= 44 && geometry.close?.height >= 44, `${label} Back or Close is below the 44px touch target size.`);
+  assert(geometry.placementHitTarget, `${label} Add to Shot center is not an actionable hit target.`);
+  const handle = geometry.quickActionDrawer?.handle;
+  if (handle) {
+    const overlapsNavigation = handle.left < geometry.navigation.right
+      && handle.right > geometry.navigation.left
+      && handle.top < geometry.navigation.bottom
+      && handle.bottom > geometry.navigation.top;
+    assert(!overlapsNavigation, `${label} Quick Actions handle overlaps the Character navigation hit targets.`);
+    assert(geometry.quickActionDrawer.handleHitTarget, `${label} Quick Actions handle is no longer reachable.`);
+  }
+}
+
+async function verifyIssue798AddToShotNavigation(window) {
+  const screenshots = [];
+  const evidence = {};
+  inProgressEvidence.issue798 = evidence;
+  await window.webContents.executeJavaScript(`(() => {
+    window.__issue610ConfirmCalls = [];
+    window.__issue610ConfirmResponse = false;
+    window.confirm = (message) => {
+      window.__issue610ConfirmCalls.push(String(message));
+      return Boolean(window.__issue610ConfirmResponse);
+    };
+  })()`);
+
+  await clickWithNativeInput(
+    window,
+    `[data-testid="character-list-view"] [data-character-id="${IDS.issue792Character}"]`,
+    'Issue #798 long-name composite Character card',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue792Character)}`,
+    'Issue #798 composite Character detail did not open.',
+  );
+
+  const expectedName = '角色详情导航长名称验收熊猫';
+  const wide = await readIssue798PlacementNavigation(window);
+  evidence.wide = wide;
+  assert(wide.shellMode === 'landscape' && wide.presentation === 'landscape', 'Issue #798 did not open the Cloud Touch landscape Character drawer.');
+  assert(wide.workspaceTabs.length === 3, 'The composite Character did not expose Assembly, Expressions, and Settings.');
+  assert(wide.name === expectedName, 'The long Character name was altered in the identity region.');
+  assert(wide.placementCount === 1 && !wide.placementInIdentity, 'Add to Shot is missing, duplicated, or still inside the avatar identity region.');
+  assert(wide.placementBeforeClose, 'Add to Shot is not immediately before Close in the shared detail navigation.');
+  assert(wide.placementType === 'button' && wide.placementLabel === '加入当前镜头' && wide.placementText === '＋ 加入镜头', 'Add to Shot lost its native button semantics or clear accessible name.');
+  assert(wide.placementTitle === '加入当前镜头' && !wide.placementDisabled, 'The enabled Add to Shot action lost its tooltip or became unavailable.');
+  assertCompactPlacementNavigation(wide, 'Wide');
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'character-detail-add-to-shot-wide.png'));
+
+  const originalZoomFactor = window.webContents.getZoomFactor();
+  window.webContents.setZoomFactor(1.25);
+  await waitForPaint(window);
+  const zoomed = await readIssue798PlacementNavigation(window);
+  evidence.zoomed = zoomed;
+  assertCompactPlacementNavigation(zoomed, '125% zoom');
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'character-detail-add-to-shot-zoom-125.png'));
+  window.webContents.setZoomFactor(originalZoomFactor);
+  await waitForPaint(window);
+
+  const workspaceEvidence = [];
+  evidence.workspaceNavigation = workspaceEvidence;
+  let sharedBounds = wide.placement;
+  for (const [testId, label, expectedExpressionAction] of [
+    ['character-workspace-assembly-tab', 'Assembly', false],
+    ['character-workspace-expressions-tab', 'Expressions', true],
+    ['character-workspace-settings-tab', 'Settings', false],
+  ]) {
+    await clickWithNativeInput(window, `[data-testid="${testId}"]`, `${label} workspace tab`);
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="${testId}"]')?.getAttribute('aria-pressed') === 'true'`,
+      `${label} workspace did not activate.`,
+    );
+    const current = await readIssue798PlacementNavigation(window);
+    const sameBounds = current.placement && sharedBounds
+      && Math.abs(current.placement.left - sharedBounds.left) < 1
+      && Math.abs(current.placement.top - sharedBounds.top) < 1
+      && Math.abs(current.placement.width - sharedBounds.width) < 1
+      && Math.abs(current.placement.height - sharedBounds.height) < 1;
+    workspaceEvidence.push({
+      workspace: label,
+      activeWorkspace: current.activeWorkspace,
+      bounds: current.placement,
+      expressionActionInIdentity: current.expressionActionInIdentity,
+      nameClientWidth: current.nameClientWidth,
+      nameScrollWidth: current.nameScrollWidth,
+    });
+    assertCompactPlacementNavigation(current, `${label} workspace`);
+    if (label === 'Settings') {
+      await waitForPaint(window);
+      screenshots.push(await capture(window, 'character-detail-add-to-shot-settings.png'));
+    }
+    assert(current.placementCount === 1 && !current.placementInIdentity && current.placementBeforeClose, `${label} moved or duplicated Add to Shot.`);
+    assert(current.expressionActionInIdentity === expectedExpressionAction, `${label} showed the Add Expression action in the wrong workspace.`);
+    assert(sameBounds, `${label} changed Add to Shot geometry; the nav action is not in a shared location.`);
+    assert(current.placementHitTarget, `${label} made Add to Shot miss its native pointer hit target.`);
+    if (label === 'Settings') {
+      assert(current.nameScrollWidth <= current.nameClientWidth + 1, 'The long Character name is visually truncated in Settings with Add to Shot moved out of identity.');
+    }
+  }
+
+  await clickWithNativeInput(window, '[data-testid="character-workspace-settings-tab"]', 'Settings before pending-transform guard');
+  await clickWithNativeInput(window, 'button[aria-label="增大初始角色大小"]', 'Increase default Character size');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-default-pending"]') && document.querySelector('[data-testid="character-detail-place-current-shot"]')?.disabled === true`,
+    'A pending default transform did not disable Add to Shot.',
+  );
+  const pendingTransform = await readIssue798PlacementNavigation(window);
+  evidence.pendingTransform = pendingTransform;
+  assert(pendingTransform.placementTitle === '先应用角色大小设置' && pendingTransform.revision === '0' && pendingTransform.undoCount === '0', 'Disabled Add to Shot did not preserve its guard tooltip and no-write behavior.');
+  await clickWithNativeInput(window, '[data-testid="character-default-revert"]', 'Revert pending default Character size');
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-default-pending"]') && document.querySelector('[data-testid="character-detail-place-current-shot"]')?.disabled === false`,
+    'Reverting the default transform did not re-enable Add to Shot.',
+  );
+  evidence.transformReverted = await readIssue798PlacementNavigation(window);
+
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Assembly before dirty-draft placement guard');
+  await chooseImage(window, 'character-assembly-body-picker', IDS.bodyAlt);
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-pending"]') && document.querySelector('[data-testid="character-assembly-body-picker"]')?.dataset.selectedAssetId === ${JSON.stringify(IDS.bodyAlt)}`,
+    'The dirty Assembly fixture was not prepared.',
+  );
+  const beforeDeclinedPlacement = await readIssue798PlacementState(window);
+  const declinedPointer = await clickWithNativeInput(
+    window,
+    '[data-testid="character-detail-place-current-shot"]',
+    'Add to Shot while Assembly changes are pending',
+  );
+  await waitForDom(
+    window,
+    'window.__issue610ConfirmCalls?.length === 1',
+    'Add to Shot did not ask before abandoning the dirty Assembly draft.',
+  );
+  const declinedPlacement = await readIssue798PlacementState(window);
+  assert(declinedPointer.hitTarget && declinedPlacement.layers.length === 0, 'Declining the Assembly confirmation still placed a Character Layer.');
+  assert(declinedPlacement.revision === beforeDeclinedPlacement.revision && declinedPlacement.undoCount === beforeDeclinedPlacement.undoCount, 'Declining dirty Assembly placement wrote Project or History.');
+  assert(await window.webContents.executeJavaScript(`Boolean(document.querySelector('[data-testid="character-assembly-pending"]'))`), 'Declining placement discarded the dirty Assembly draft.');
+  evidence.declinedDirtyAssemblyPlacement = {
+    nativePointer: declinedPointer,
+    confirmCalls: await readConfirmCalls(window),
+    before: beforeDeclinedPlacement,
+    after: declinedPlacement,
+  };
+  await clickWithNativeInput(window, '[data-testid="character-assembly-pending"] button:first-of-type', 'Revert dirty Assembly draft');
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-assembly-pending"]') && document.querySelector('[data-testid="character-workspace-assembly-tab"]')?.getAttribute('aria-pressed') === 'true'`,
+    'Reverting the canceled Assembly draft did not clear its pending changes.',
+  );
+  const revertedAssemblyDraft = await readIssue798PlacementState(window);
+  assert(revertedAssemblyDraft.revision === beforeDeclinedPlacement.revision && revertedAssemblyDraft.undoCount === beforeDeclinedPlacement.undoCount && revertedAssemblyDraft.layers.length === 0, 'Reverting the canceled Assembly draft wrote Project or History.');
+  evidence.revertedAssemblyDraft = revertedAssemblyDraft;
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-workspace-assembly-tab"]')?.getAttribute('aria-pressed') === 'true' && !document.querySelector('[data-testid="character-assembly-pending"]')`,
+    'The reverted Assembly draft was not clean before the narrow-window check.',
+  );
+
+  window.setSize(800, 560);
+  await waitForDom(window, 'window.innerWidth <= 840 && window.innerWidth >= 760', 'The Issue #798 narrow-window viewport did not resize.');
+  await waitForDom(window, `document.querySelector('[data-testid="character-workspace-assembly-tab"]')?.getAttribute('aria-pressed') === 'true'`, 'The Character detail left Assembly after viewport resize.');
+  await wait(120);
+  const narrow = await readIssue798PlacementNavigation(window);
+  evidence.narrow = narrow;
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'character-detail-add-to-shot-narrow.png'));
+  assert(narrow.placement && narrow.placement.left >= 0 && narrow.placement.right <= narrow.viewport.width + 1, 'Add to Shot overflowed the narrow viewport.');
+  assert(narrow.placement.bottom <= narrow.viewport.height && narrow.navigationPosition === 'sticky', 'The shared navigation is clipped or not sticky in the narrow viewport.');
+  assert(narrow.quickActionDrawer?.expanded === 'false' && narrow.quickActionDrawer.pointerEvents === 'none' && narrow.quickActionDrawer.handleHitTarget, 'The collapsed Quick Actions overlay intercepted navigation input or disabled its handle in the narrow viewport.');
+  assert(narrow.placementHitTarget && narrow.placement?.width >= 44 && narrow.placement?.height >= 44, 'The narrow Add to Shot target is obscured or below 44px.');
+  assert(narrow.back?.right <= narrow.placement.left + 1 && narrow.placement.right <= narrow.close.left + 1, 'Back, Add to Shot, and Close collide in the narrow viewport.');
+
+  const scrollEvidence = await window.webContents.executeJavaScript(`(() => {
+    const navigation = document.querySelector('.character-detail-navigation-detail');
+    const placement = document.querySelector('[data-testid="character-detail-place-current-shot"]');
+    const ancestors = [];
+    for (let element = navigation?.parentElement; element && element !== document.body; element = element.parentElement) {
+      const style = getComputedStyle(element);
+      if (element.scrollHeight > element.clientHeight + 1 && /(auto|scroll)/u.test(style.overflowY)) ancestors.push(element);
+    }
+    const scrollable = ancestors[0] ?? document.scrollingElement;
+    const before = scrollable?.scrollTop ?? 0;
+    if (scrollable) scrollable.scrollTop = scrollable.scrollHeight;
+    const navigationRect = navigation?.getBoundingClientRect();
+    const placementRect = placement?.getBoundingClientRect();
+    return {
+      viewportHeight: document.documentElement.clientHeight,
+      scrollableClassName: scrollable && typeof scrollable.className === 'string' ? scrollable.className : '',
+      scrollTopBefore: before,
+      scrollTopAfter: scrollable?.scrollTop ?? 0,
+      scrollHeight: scrollable?.scrollHeight ?? 0,
+      clientHeight: scrollable?.clientHeight ?? 0,
+      navigation: navigationRect && { top: navigationRect.top, bottom: navigationRect.bottom, height: navigationRect.height },
+      navigationBackgroundColor: navigation ? getComputedStyle(navigation).backgroundColor : '',
+      placement: placementRect && { left: placementRect.left, top: placementRect.top, right: placementRect.right, bottom: placementRect.bottom, width: placementRect.width, height: placementRect.height },
+      placementHitTarget: Boolean(placementRect && (() => {
+        const hit = document.elementFromPoint(placementRect.left + placementRect.width / 2, placementRect.top + placementRect.height / 2);
+        return hit === placement || placement.contains(hit);
+      })()),
+      scrolled: Boolean(scrollable && scrollable.scrollHeight > scrollable.clientHeight + 1 && scrollable.scrollTop > before),
+    };
+  })()`);
+  evidence.narrowScroll = scrollEvidence;
+  assert(scrollEvidence.scrolled, 'The narrow viewport did not scroll a containing Character detail area.');
+  assert(scrollEvidence.navigation?.top >= 0 && scrollEvidence.placement?.bottom <= scrollEvidence.viewportHeight, 'The sticky navigation action disappeared while scrolling.');
+  assert(scrollEvidence.navigationBackgroundColor !== 'rgba(0, 0, 0, 0)', 'Scrolled Character content remained visible through the sticky navigation.');
+  assert(scrollEvidence.placementHitTarget, 'Scrolling caused Add to Shot to lose its pointer hit target.');
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'character-detail-add-to-shot-narrow-scrolled.png'));
+
+  const keyboardSpace = await pressFocusedControl(
+    window,
+    '[data-testid="character-detail-place-current-shot"]',
+    'SPACE',
+    'Add to Shot Space activation after Tab from Back',
+    { tabFromSelector: '[data-testid="character-detail-back"]' },
+  );
+  await waitForDom(
+    window,
+    `JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.layerJson ?? '[]').length === 1 && document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision === '1' && document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1'`,
+    'Space on the navigation Add to Shot button did not create exactly one Character Layer and History operation.',
+  );
+  const spacePlacement = await readIssue798PlacementState(window);
+  evidence.keyboardSpacePlacement = { focus: keyboardSpace, state: spacePlacement };
+  assert(keyboardSpace.tabFocus?.active && keyboardSpace.tabFocus?.visibleFocus && keyboardSpace.afterActivation.visibleFocus, 'Tab or Space did not leave a visible focus indication on Add to Shot.');
+  assert(spacePlacement.layers.length === 1 && spacePlacement.layers[0].source?.kind === 'character' && spacePlacement.layers[0].source?.characterId === IDS.issue792Character, 'Space placement did not create exactly one formal Character Layer.');
+
+  await expandProjectActions(window);
+  await clickWithNativeInput(window, '[data-testid="history-controls"] .history-actions button:first-of-type', 'Undo Space placement');
+  await waitForDom(
+    window,
+    `JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.layerJson ?? '[]').length === 0 && document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '0' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '1'`,
+    'Undo did not remove the single Character Layer created from navigation.',
+  );
+  await clickWithNativeInput(window, '[data-testid="history-controls"] .history-actions button:last-of-type', 'Redo Space placement');
+  await waitForDom(
+    window,
+    `JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.layerJson ?? '[]').length === 1 && document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '0'`,
+    'Redo did not restore the single Character Layer created from navigation.',
+  );
+  const redonePlacement = await readIssue798PlacementState(window);
+  evidence.undoRedo = redonePlacement;
+
+  await clickWithNativeInput(window, '[data-testid="history-controls"] .history-actions button:first-of-type', 'Undo before pointer placement');
+  await waitForDom(
+    window,
+    `JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.layerJson ?? '[]').length === 0`,
+    'The existing History Undo path did not return the Shot to its initial state.',
+  );
+  const beforePointerPlacement = await readIssue798PlacementState(window);
+  assert(beforePointerPlacement.layers.length === 0 && beforePointerPlacement.undoCount === '0' && beforePointerPlacement.redoCount === '1', 'The native pointer placement did not start from the single Undo state.');
+  evidence.beforeNativePointerPlacement = beforePointerPlacement;
+  const pointerExpectedRevision = String(Number(beforePointerPlacement.revision) + 1);
+  const pointerExpectedUndoCount = String(Number(beforePointerPlacement.undoCount) + 1);
+  await window.webContents.executeJavaScript(`(() => {
+    const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
+    if (drawer?.dataset.expanded === 'true') drawer.querySelector('[data-testid="quick-action-drawer-handle"]')?.click();
+  })()`);
+  await waitForDom(window, `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.expanded === 'false'`, 'Quick Actions did not collapse before the native pointer placement check.');
+  const pointerPlacement = await clickWithNativeInput(
+    window,
+    '[data-testid="character-detail-place-current-shot"]',
+    'Place Character with native pointer input in the narrow viewport',
+  );
+  await waitForDom(
+    window,
+    `JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.layerJson ?? '[]').length === 1 && document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision === ${JSON.stringify(pointerExpectedRevision)} && document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === ${JSON.stringify(pointerExpectedUndoCount)} && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '0'`,
+    'A native pointer click did not create exactly one Character Layer from the shared navigation.',
+  );
+  const finalPlacement = await readIssue798PlacementState(window);
+  assert(pointerPlacement.hitTarget && finalPlacement.layers.length === 1 && finalPlacement.revision === pointerExpectedRevision && finalPlacement.undoCount === pointerExpectedUndoCount && finalPlacement.redoCount === '0', 'The native pointer placement was missed, duplicated, or bypassed History.');
+  evidence.nativePointerPlacement = { geometry: pointerPlacement, state: finalPlacement };
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'character-detail-add-to-shot-after-placement.png'));
+
+  await clickWithNativeInput(window, '[data-testid="character-detail-back"]', 'Back to Character list');
+  await waitForDom(window, `document.querySelector('[data-testid="character-list-view"] [data-character-id="${IDS.issue792Character}"]')`, 'The Character Detail Back control did not return to the list.');
+  await clickWithNativeInput(window, `[data-testid="character-list-view"] [data-character-id="${IDS.issue792Character}"]`, 'Reopen Character before Close test');
+  await waitForDom(window, `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue792Character)}`, 'The Character Detail did not reopen before testing Close.');
+  await clickWithNativeInput(window, '[data-testid="resource-activity-close"]', 'Close Character detail drawer');
+  await waitForDom(window, `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'false'`, 'The Character Detail Close control did not close the drawer.');
+  evidence.backAndClose = { backReturnedToList: true, closeDrawerClosed: true };
+
+  return {
+    issue: 798,
+    passed: true,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'verify:issue798-add-to-shot-navigation',
+    projectRoot,
+    syntheticInput: true,
+    humanAcceptance: false,
+    evidenceKind: 'real-electron-production-ui-native-pointer-keyboard-input-and-responsive-geometry',
+    preflightAcknowledgement: {
+      issueBody: true,
+      draftPrAndIssueRoute: true,
+      dependency797CommittedAndFocusedCiPassed: true,
+      designMdAndCurrentCharacterUiInspected: true,
+    },
+    evidence,
+    screenshots,
+  };
+}
+
+async function selectIssue799LayoutSource(window, characterId) {
+  const selector = '[data-testid="character-assembly-layout-reuse-source"]';
+  await waitForDom(
+    window,
+    `(() => {
+      const select = document.querySelector(${JSON.stringify(selector)});
+      return select && [...select.options].some((option) => option.value === ${JSON.stringify(characterId)});
+    })()`,
+    `Issue #799 source ${characterId} was not available in the Assembly picker.`,
+  );
+  const { currentIndex, targetIndex } = await window.webContents.executeJavaScript(`(() => {
+    const select = document.querySelector(${JSON.stringify(selector)});
+    return {
+      currentIndex: select.selectedIndex,
+      targetIndex: [...select.options].findIndex((option) => option.value === ${JSON.stringify(characterId)}),
+    };
+  })()`);
+  await clickWithNativeInput(window, selector, 'Focus the saved layout source picker');
+  const direction = targetIndex >= currentIndex ? 'ARROWDOWN' : 'ARROWUP';
+  for (let step = 0; step < Math.abs(targetIndex - currentIndex); step += 1) {
+    await sendKeyStroke(window, direction);
+  }
+  await sendKeyStroke(window, 'ENTER');
+  try {
+    await waitForDom(
+      window,
+      `document.querySelector(${JSON.stringify(selector)})?.value === ${JSON.stringify(characterId)}`,
+      `Issue #799 source ${characterId} was not selected in the Assembly picker.`,
+    );
+  } catch (error) {
+    const state = await window.webContents.executeJavaScript(`(() => {
+      const select = document.querySelector(${JSON.stringify(selector)});
+      const active = document.activeElement;
+      const bounds = select?.getBoundingClientRect();
+      const hit = bounds ? document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2) : null;
+      return {
+        value: select?.value ?? null,
+        selectedIndex: select?.selectedIndex ?? null,
+        targetIndex: [...(select?.options ?? [])].findIndex((option) => option.value === ${JSON.stringify(characterId)}),
+        disabled: select?.disabled ?? null,
+        activeTag: active?.tagName ?? '',
+        activeTestId: active?.dataset.testid ?? '',
+        activeIsSelect: active === select,
+        hitTag: hit?.tagName ?? '',
+        hitTestId: hit?.dataset.testid ?? '',
+      };
+    })()`);
+    throw new Error(`${error instanceof Error ? error.message : String(error)}; picker=${JSON.stringify(state)}`, { cause: error });
+  }
+}
+
+async function readIssue799LayoutState(window) {
+  return window.webContents.executeJavaScript(`(() => {
+    const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+    const history = document.querySelector('[data-testid="history-controls"]');
+    const select = document.querySelector('[data-testid="character-assembly-layout-reuse-source"]');
+    const compatibility = document.querySelector('[data-testid="character-assembly-layout-reuse-compatibility"]');
+    const preview = document.querySelector('[data-testid="character-assembly-layout-reuse-preview"]');
+    return {
+      characterId: workbench?.dataset.characterId ?? '',
+      bodyAssetId: workbench?.dataset.bodyAssetId ?? '',
+      previewFaceAssetId: workbench?.dataset.previewFaceAssetId ?? '',
+      facePlacement: {
+        offsetX: Number(workbench?.dataset.faceOffsetX),
+        offsetY: Number(workbench?.dataset.faceOffsetY),
+        scale: Number(workbench?.dataset.faceScale),
+      },
+      head: workbench?.dataset.headAssetId
+        ? {
+            assetId: workbench.dataset.headAssetId,
+            placement: {
+              offsetX: Number(workbench.dataset.headOffsetX),
+              offsetY: Number(workbench.dataset.headOffsetY),
+              scale: Number(workbench.dataset.headScale),
+            },
+            pivot: {
+              x: Number(workbench.dataset.headPivotX),
+              y: Number(workbench.dataset.headPivotY),
+            },
+          }
+        : null,
+      previewSourceId: workbench?.dataset.layoutPreviewSourceId ?? '',
+      selectedSourceId: select?.value ?? '',
+      compatibility: compatibility?.textContent?.trim() ?? '',
+      activePreview: document.querySelector('[data-testid="character-assembly-layout-reuse-active-preview"]')?.textContent?.trim() ?? '',
+      previewDisabled: preview?.disabled ?? true,
+      pending: Boolean(document.querySelector('[data-testid="character-assembly-pending"]')),
+      revision: stage?.dataset.projectRevision ?? '',
+      undoCount: history?.dataset.undoCount ?? '',
+      redoCount: history?.dataset.redoCount ?? '',
+      selectedFace: workbench?.dataset.selectedFace ?? '',
+      images: [...document.querySelectorAll('.character-assembly-part')].map((image) => ({
+        assetId: image.dataset.assetId ?? '',
+        naturalWidth: image.naturalWidth,
+        naturalHeight: image.naturalHeight,
+        complete: image.complete,
+      })),
+    };
+  })()`);
+}
+
+async function verifyIssue799LayoutReuse(window) {
+  const screenshots = [];
+  const evidence = {};
+  inProgressEvidence.issue799 = evidence;
+  const projectFilePath = path.join(projectRoot, 'project.json');
+  const persistedAtOpen = ProjectSchema.parse(
+    JSON.parse(readFileSync(projectFilePath, 'utf8')),
+  );
+  const sourceBefore = structuredClone(
+    persistedAtOpen.characters.find((character) => character.id === IDS.issue799SourceCharacter),
+  );
+  const targetBefore = structuredClone(
+    persistedAtOpen.characters.find((character) => character.id === IDS.issue799TargetCharacter),
+  );
+  assert(sourceBefore?.mode === 'composite', 'Saved layout source A was not loaded from the project file.');
+  assert(targetBefore?.mode === 'composite', 'Target B was not loaded from the project file.');
+  evidence.savedSourceLoadedFromProjectFile = {
+    projectFilePath,
+    sourceCharacterId: sourceBefore.id,
+    sourceBodyAssetId: sourceBefore.bodyAssetId,
+    sourceBodyDimensions: { width: 720, height: 920 },
+    sourceFacePlacement: sourceBefore.facePlacement,
+    sourceHead: sourceBefore.head,
+  };
+  const targetIdentity = (character) => ({
+    id: character.id,
+    mode: character.mode,
+    name: character.name,
+    baseAssetId: character.baseAssetId,
+    defaultVoiceProfileId: character.defaultVoiceProfileId,
+    expressions: character.expressions,
+    defaultExpressionId: character.defaultExpressionId,
+    mouthOpenAssetId: character.mouthOpenAssetId,
+    defaultScale: character.defaultScale,
+    defaultFlipX: character.defaultFlipX,
+    bodyAssetId: character.bodyAssetId,
+    headAssetId: character.head?.assetId,
+  });
+  const initialTargetIdentity = targetIdentity(targetBefore);
+
+  await clickWithNativeInput(
+    window,
+    `[data-testid="character-list-view"] [data-character-id="${IDS.issue799TargetCharacter}"]`,
+    'Open Issue #799 target Character B',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue799TargetCharacter)}`,
+    'Issue #799 target Character B did not open.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-workspace-assembly-tab"]',
+    'Open target B Assembly workspace',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.characterId === ${JSON.stringify(IDS.issue799TargetCharacter)}`,
+    'Target B Assembly workbench did not open.',
+  );
+  const initial = await readIssue799LayoutState(window);
+  evidence.targetBefore = initial;
+  assert(initial.bodyAssetId === IDS.bodyAlt, 'Target B did not retain its own Body asset.');
+  assert(initial.head?.assetId === IDS.issue799TargetHead, 'Target B did not retain its own Head asset.');
+  assert(initial.facePlacement.offsetX === -22 && initial.facePlacement.offsetY === 64, 'Target B fixture placement changed unexpectedly.');
+  assert(initial.revision === '0' && initial.undoCount === '0' && initial.redoCount === '0', 'Target B did not begin from a clean Project and History state.');
+
+  await clickWithNativeInput(
+    window,
+    '[aria-label="预览表情"] button:nth-of-type(2)',
+    'Preview target B alternate expression',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.previewFaceAssetId === ${JSON.stringify(IDS.issue799TargetAngryFace)}`,
+    'Target B alternate expression preview did not retain its own expression asset.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[aria-label="预览表情"] button:nth-of-type(3)',
+    'Preview target B Mouth',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.previewFaceAssetId === ${JSON.stringify(IDS.issue799TargetMouth)}`,
+    'Target B Mouth preview did not retain its own Mouth asset.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[aria-label="预览表情"] button:nth-of-type(1)',
+    'Restore target B default expression preview',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.previewFaceAssetId === ${JSON.stringify(IDS.issue799TargetFace)}`,
+    'Target B default expression preview did not return.',
+  );
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-default-face-select"]',
+    'Select Face edit target before layout preview',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'face'`,
+    'The Character workspace did not select Face as the edit target.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Open Face fine tune before layout preview',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-fine-tune-panel"]')?.getAttribute('aria-label') === '脸部精调'`,
+    'Target B Face fine-tune panel did not open.',
+  );
+  await clickWithNativeInput(window, '[data-testid="character-assembly-right-step"]', 'Adjust target B Face draft once');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-right-step"]', 'Adjust target B Face draft a second time');
+  const targetDraftBeforePreview = await readIssue799LayoutState(window);
+  assert(targetDraftBeforePreview.facePlacement.offsetX === -20, 'The pre-existing target B local draft was not prepared.');
+  assert(targetDraftBeforePreview.revision === '0' && targetDraftBeforePreview.undoCount === '0', 'Local Face tuning wrote Project or History before Apply.');
+  evidence.targetDraftBeforePreview = targetDraftBeforePreview;
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-layout-reuse-toggle"]',
+    'Open Apply Layout panel',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-layout-reuse-panel"]')`,
+    'Apply Layout panel did not open inside Assembly.',
+  );
+  const sourceSelector = '[data-testid="character-assembly-layout-reuse-source"]';
+  const availableSourceIds = await window.webContents.executeJavaScript(`[
+    ...document.querySelector(${JSON.stringify(sourceSelector)}).options,
+  ].map((option) => option.value).filter(Boolean)`);
+  evidence.availableSources = availableSourceIds;
+  assert(availableSourceIds.includes(IDS.issue799SourceCharacter), 'Saved Character A was missing from the layout source list.');
+  assert(!availableSourceIds.includes(IDS.issue799TargetCharacter), 'Target B was offered as its own saved layout source.');
+  await selectIssue799LayoutSource(window, IDS.issue799SourceCharacter);
+  await waitForDom(
+    window,
+    `(() => {
+      const button = document.querySelector('[data-testid="character-assembly-layout-reuse-preview"]');
+      const status = document.querySelector('[data-testid="character-assembly-layout-reuse-compatibility"]')?.textContent ?? '';
+      return button && !button.disabled && status.trim() === '';
+    })()`,
+    'Compatible saved source A left redundant helper text or did not enable Preview.',
+  );
+  evidence.compatibleState = await readIssue799LayoutState(window);
+  assert(evidence.compatibleState.compatibility === '', 'Compatible source state retained permanent helper text.');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-layout-reuse-preview"]',
+    'Preview saved layout from A on target B',
+  );
+  await waitForDom(
+    window,
+    `(() => {
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      return workbench?.dataset.layoutPreviewSourceId === ${JSON.stringify(IDS.issue799SourceCharacter)}
+        && Number(workbench.dataset.faceOffsetX) === 46
+        && Number(workbench.dataset.faceOffsetY) === 190
+        && Number(workbench.dataset.headOffsetX) === 6
+        && Number(workbench.dataset.headPivotX) === 358;
+    })()`,
+    'Preview did not copy the saved Face and Head layout values into B.',
+  );
+  const previewA = await readIssue799LayoutState(window);
+  evidence.previewA = previewA;
+  assert(previewA.activePreview === '预览中' && previewA.compatibility === '', 'Layout preview did not reduce its live status to the concise preview state.');
+  assert(previewA.bodyAssetId === IDS.bodyAlt && previewA.head?.assetId === IDS.issue799TargetHead, 'Preview replaced target B Body or Head asset IDs.');
+  assert(previewA.previewFaceAssetId === IDS.issue799TargetFace, 'Preview replaced target B expression selection.');
+  assert(previewA.facePlacement.offsetX === 46 && previewA.facePlacement.offsetY === 190 && previewA.facePlacement.scale === 0.92, 'Preview did not copy the mapped Face placement values.');
+  assert(previewA.head?.placement.offsetX === 6 && previewA.head.placement.offsetY === -132 && previewA.head.placement.scale === 0.88 && previewA.head.pivot.x === 358 && previewA.head.pivot.y === 452, 'Preview did not copy the mapped Head placement and pivot values.');
+  assert(previewA.revision === '0' && previewA.undoCount === '0' && previewA.pending, 'Preview changed Project or History instead of only the Assembly draft.');
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'layout-reuse-preview-from-saved-source.png'));
+
+  const rejectedSources = [
+    [IDS.issue799HeadlessCharacter, '头部结构不同', 'head-structure-mismatch'],
+    [IDS.issue799RatioCharacter, '身体尺寸不同', 'body-dimensions-mismatch'],
+    [IDS.issue799MissingCharacter, '素材不可用', 'resource-missing'],
+  ];
+  const rejectionEvidence = [];
+  for (const [characterId, expectedText, rejectionKind] of rejectedSources) {
+    await selectIssue799LayoutSource(window, characterId);
+    await waitForDom(
+      window,
+      `(() => {
+        const status = document.querySelector('[data-testid="character-assembly-layout-reuse-compatibility"]')?.textContent ?? '';
+        const button = document.querySelector('[data-testid="character-assembly-layout-reuse-preview"]');
+        return status.includes(${JSON.stringify(expectedText)}) && button?.disabled === true;
+      })()`,
+      `Issue #799 rejected source ${characterId} was not blocked with a clear ${rejectionKind} message.`,
+    );
+    const rejected = await readIssue799LayoutState(window);
+    assert(rejected.facePlacement.offsetX === 46 && rejected.head?.placement.offsetX === 6, `Selecting rejected source ${characterId} changed the staged B layout.`);
+    assert(rejected.revision === '0' && rejected.undoCount === '0', `Selecting rejected source ${characterId} wrote Project or History.`);
+    rejectionEvidence.push({ characterId, rejectionKind, state: rejected });
+    if (rejectionKind === 'resource-missing') {
+      await waitForPaint(window);
+      screenshots.push(await capture(window, 'layout-reuse-rejected-unreadable-source.png'));
+    }
+  }
+  evidence.rejectedSources = rejectionEvidence;
+
+  await selectIssue799LayoutSource(window, IDS.issue799SourceCharacter);
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-assembly-layout-reuse-preview"]')?.disabled`,
+    'Saved source A did not become compatible again after switching back from rejected sources.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-layout-reuse-cancel"]',
+    'Cancel template preview and restore target B draft',
+  );
+  await waitForDom(
+    window,
+    `(() => {
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      return workbench?.dataset.layoutPreviewSourceId === ''
+        && Number(workbench.dataset.faceOffsetX) === -20
+        && Number(workbench.dataset.headOffsetX) === -18;
+    })()`,
+    'Cancel Preview did not restore the target B draft that existed before preview.',
+  );
+  const cancelledPreview = await readIssue799LayoutState(window);
+  evidence.cancelledPreview = cancelledPreview;
+  assert(cancelledPreview.revision === '0' && cancelledPreview.undoCount === '0', 'Cancel Preview wrote Project or History.');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-pending"] button:first-child',
+    'Revert target B local Assembly draft',
+  );
+  await waitForDom(
+    window,
+    `(() => {
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      return workbench?.dataset.layoutPreviewSourceId === ''
+        && Number(workbench.dataset.faceOffsetX) === -22
+        && Number(workbench.dataset.headOffsetX) === -18
+        && !document.querySelector('[data-testid="character-assembly-pending"]');
+    })()`,
+    'Assembly Revert did not restore target B persisted values after preview cancellation.',
+  );
+  const revertedPreview = await readIssue799LayoutState(window);
+  evidence.revertedPreview = revertedPreview;
+  assert(revertedPreview.revision === '0' && revertedPreview.undoCount === '0', 'Assembly Revert wrote Project or History.');
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-layout-reuse-toggle"]',
+    'Reopen Apply Layout panel for final Apply',
+  );
+  await selectIssue799LayoutSource(window, IDS.issue799SourceCharacter);
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-assembly-layout-reuse-preview"]')?.disabled`,
+    'Saved source A was not ready for the final preview.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-layout-reuse-preview"]',
+    'Preview saved layout from A for final Apply',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.layoutPreviewSourceId === ${JSON.stringify(IDS.issue799SourceCharacter)}`,
+    'The final layout preview did not activate.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-head-asset-selected"]',
+    'Select Head for fine tune from its Assembly asset card',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'head'`,
+    'The Character workspace did not select Head as the edit target.',
+  );
+  const fineTuneExpanded = await window.webContents.executeJavaScript(
+    `document.querySelector('[data-testid="character-assembly-fine-tune-toggle"]')?.getAttribute('aria-expanded') === 'true'`,
+  );
+  if (!fineTuneExpanded) {
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-assembly-fine-tune-toggle"]',
+      'Open Head fine tune',
+    );
+  }
+  await clickWithNativeInput(window, '[data-testid="character-assembly-head-right-step"]', 'Fine tune target B Head after preview');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-default-face-select"]',
+    'Select Face for fine tune from its Assembly asset card',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'face'`,
+    'The Character workspace did not return to Face as the edit target.',
+  );
+  await clickWithNativeInput(window, '[data-testid="character-assembly-right-step"]', 'Fine tune target B Face after preview');
+  const tunedPreview = await readIssue799LayoutState(window);
+  evidence.tunedPreview = tunedPreview;
+  assert(tunedPreview.facePlacement.offsetX === 47 && tunedPreview.head?.placement.offsetX === 7, 'Target B could not fine tune the copied Face and Head layout values.');
+  assert(tunedPreview.revision === '0' && tunedPreview.undoCount === '0' && tunedPreview.pending, 'Fine tuning the preview wrote Project or History before Apply.');
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'layout-reuse-preview-fine-tuned.png'));
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-pending"] button:last-child',
+    'Apply the fine-tuned layout once',
+  );
+  await waitForDom(
+    window,
+    `(() => {
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+      const history = document.querySelector('[data-testid="history-controls"]');
+      return !document.querySelector('[data-testid="character-assembly-pending"]')
+        && Number(workbench?.dataset.faceOffsetX) === 47
+        && Number(workbench?.dataset.headOffsetX) === 7
+        && stage?.dataset.projectRevision === '1'
+        && history?.dataset.undoCount === '1'
+        && history?.dataset.redoCount === '0';
+    })()`,
+    'Apply did not commit the tuned layout as exactly one Project/History operation.',
+  );
+  const applied = await readIssue799LayoutState(window);
+  evidence.applied = applied;
+  assert(applied.bodyAssetId === IDS.bodyAlt && applied.head?.assetId === IDS.issue799TargetHead, 'Apply changed target B asset references.');
+  assert(JSON.stringify(activeProject.characters.find((character) => character.id === IDS.issue799SourceCharacter)) === JSON.stringify(sourceBefore), 'Source Character A changed before Project Save.');
+  assert(JSON.stringify(activeProject.characters.find((character) => character.id === IDS.issue799TargetCharacter)) === JSON.stringify(targetBefore), 'Apply changed Main-owned Project before its existing save boundary.');
+  evidence.sourceUnchangedBeforeSave = true;
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'layout-reuse-applied-to-target.png'));
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-workspace-expressions-tab"]',
+    'Close clean Assembly session before Undo',
+  );
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-assembly-workbench"]')`,
+    'Clean Assembly session did not close before Undo.',
+  );
+  await expandProjectActions(window);
+  await clickWithNativeInput(
+    window,
+    '[data-testid="history-controls"] .history-actions button:first-of-type',
+    'Undo applied target B layout',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '0' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '1'`,
+    'Undo did not reverse the one layout Apply operation.',
+  );
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after Undo');
+  const afterUndo = await readIssue799LayoutState(window);
+  evidence.afterUndo = afterUndo;
+  assert(afterUndo.facePlacement.offsetX === -22 && afterUndo.head?.placement.offsetX === -18, 'Undo did not restore target B original layout values.');
+  assert(afterUndo.head?.assetId === IDS.issue799TargetHead && afterUndo.bodyAssetId === IDS.bodyAlt, 'Undo changed target B asset references.');
+
+  await clickWithNativeInput(window, '[data-testid="character-workspace-expressions-tab"]', 'Close clean Assembly before Redo');
+  await waitForDom(window, `!document.querySelector('[data-testid="character-assembly-workbench"]')`, 'Assembly did not close before Redo.');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="history-controls"] .history-actions button:last-of-type',
+    'Redo applied target B layout',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '0'`,
+    'Redo did not restore the one layout Apply operation.',
+  );
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after Redo');
+  const afterRedo = await readIssue799LayoutState(window);
+  evidence.afterRedo = afterRedo;
+  assert(afterRedo.facePlacement.offsetX === 47 && afterRedo.head?.placement.offsetX === 7, 'Redo did not restore the fine-tuned target B layout.');
+
+  await expandProjectActions(window);
+  await clickWithNativeInput(window, '[data-testid="quick-action-save"]', 'Save the applied target B layout');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="quick-action-save"]')?.dataset.saveState === 'saved'`,
+    'Project Save did not finish after Apply and Redo.',
+  );
+  const diskProjectAfterSave = ProjectSchema.parse(
+    JSON.parse(readFileSync(projectFilePath, 'utf8')),
+  );
+  const savedSource = diskProjectAfterSave.characters.find((character) => character.id === IDS.issue799SourceCharacter);
+  const savedTarget = diskProjectAfterSave.characters.find((character) => character.id === IDS.issue799TargetCharacter);
+  assert(savedSource?.mode === 'composite' && JSON.stringify(savedSource) === JSON.stringify(sourceBefore), 'Saving B changed saved source A.');
+  assert(savedTarget?.mode === 'composite', 'Saved target B disappeared from project.json.');
+  assert(savedTarget.facePlacement.offsetX === 47 && savedTarget.facePlacement.offsetY === 190 && savedTarget.facePlacement.scale === 0.92, 'Saved target B Face placement differs from the applied layout.');
+  assert(savedTarget.head?.assetId === IDS.issue799TargetHead && savedTarget.head.placement.offsetX === 7 && savedTarget.head.placement.offsetY === -132 && savedTarget.head.placement.scale === 0.88 && savedTarget.head.pivot.x === 358 && savedTarget.head.pivot.y === 452, 'Saved target B Head layout or own Head asset reference differs from Apply.');
+  assert(JSON.stringify(targetIdentity(savedTarget)) === JSON.stringify(initialTargetIdentity), 'Saving the layout changed target B identity, Body, expressions, Mouth, voice, scale, flip, or Head asset reference.');
+  evidence.savedProject = {
+    sourceUnchanged: true,
+    targetFacePlacement: savedTarget.facePlacement,
+    targetHead: savedTarget.head,
+    targetIdentityPreserved: true,
+    projectFilePath,
+  };
+
+  await clickWithNativeInput(window, '[data-testid="quick-action-close"]', 'Close saved project for disk reopen');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="project-center-screen"]') && !document.querySelector('[data-testid="editor-layout"]')`,
+    'Saved project did not close to Project Center for a disk reopen.',
+  );
+  await openProject(window);
+  await clickWithNativeInput(
+    window,
+    `[data-testid="character-list-view"] [data-character-id="${IDS.issue799TargetCharacter}"]`,
+    'Reopen target B after Project Save',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue799TargetCharacter)}`,
+    'Target B did not reopen after loading project.json.',
+  );
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Open persisted target B Assembly after reopen');
+  await waitForDom(
+    window,
+    `(() => {
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      return Number(workbench?.dataset.faceOffsetX) === 47
+        && Number(workbench?.dataset.faceOffsetY) === 190
+        && Number(workbench?.dataset.headOffsetX) === 7
+        && workbench?.dataset.headAssetId === ${JSON.stringify(IDS.issue799TargetHead)};
+    })()`,
+    'Target B layout or own asset references did not persist after a project disk reopen.',
+  );
+  const reopened = await readIssue799LayoutState(window);
+  evidence.reopenedFromProjectFile = reopened;
+  assert(reopened.bodyAssetId === IDS.bodyAlt && reopened.head?.assetId === IDS.issue799TargetHead, 'Reopened target B did not keep its own Body/Head references.');
+  assert(reopened.revision === '0' && reopened.undoCount === '0' && reopened.redoCount === '0', 'Reopened project did not start with a clean session and History.');
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'layout-reuse-save-reopen.png'));
+
+  return {
+    issue: 799,
+    passed: true,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'verify:issue799-layout-reuse',
+    projectRoot,
+    syntheticInput: true,
+    humanAcceptance: false,
+    evidenceKind: 'real-electron-production-assembly-ui-native-pointer-preview-cancel-fine-tune-apply-history-save-disk-reopen',
+    sourceAndTarget: {
+      source: { id: sourceBefore.id, bodyAssetId: sourceBefore.bodyAssetId, bodyDimensions: { width: 720, height: 920 }, facePlacement: sourceBefore.facePlacement, head: sourceBefore.head },
+      target: { id: targetBefore.id, bodyAssetId: targetBefore.bodyAssetId, bodyDimensions: { width: 720, height: 920 }, originalFacePlacement: targetBefore.facePlacement, originalHead: targetBefore.head },
+    },
+    evidence,
+    screenshots,
+  };
+}
+
+async function verifyIssue792MouthOverflow(window) {
+  const screenshots = [];
+  const baselineRootCause = readIssue683BaselineClipPath();
+  const evidence = { baselineRootCause };
+  inProgressEvidence.issue792 = evidence;
+  assert(
+    baselineRootCause.rowOverflowHidden &&
+      baselineRootCause.menuPositionedAbsolute &&
+      baselineRootCause.menuOpensBelowRow &&
+      baselineRootCause.menuIsDescendantOfDetails,
+    'The #683 baseline no longer contains the issue #792 overflow-clipping path at its recorded commit.',
+  );
+  await click(
+    window,
+    `[data-testid="character-list-view"] [data-character-id="${IDS.issue792Character}"]`,
+    'Open the composite Character with configured Mouth',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue792Character)}`,
+    'Issue #792 composite Character did not open in Character detail.',
+  );
+  await click(window, '[data-testid="character-workspace-assembly-tab"]', 'Open Assembly workspace');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="edit"]') && document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]')`,
+    'Configured Mouth did not expose its Assembly overflow action.',
+  );
+
+  const initial = await readIssue792MenuGeometry(window);
+  evidence.initial = initial;
+  assert(initial.selectedMouthAssetId === IDS.mouth, 'Fixture did not start with a configured Mouth asset.');
+  assert(initial.trigger.width >= 44 && initial.trigger.height >= 44, 'Mouth overflow trigger is below the 44px target size.');
+  assert(initial.pickerAndOverflowAreSeparate, 'Mouth overflow overlaps the main picker action.');
+
+  await openIssue792MenuWithPointer(window);
+  const normal = await readIssue792MenuGeometry(window);
+  evidence.normal = normal;
+  assert(normal.open && normal.visible, 'Mouth menu did not become visible in the normal viewport.');
+  assert(normal.ariaExpanded === 'true', 'Opening the Mouth menu did not update the overflow trigger expanded state.');
+  assert(normal.menuInsideViewport && normal.clearIsActualHitTarget, 'Normal viewport menu bounds do not receive the expected clear-button hit test.');
+  screenshots.push(await capture(window, 'mouth-menu-normal-open.png'));
+
+  const pickerBounds = normal.picker;
+  await sendPointerClick(window, pickerBounds.left + pickerBounds.width / 2, pickerBounds.top + pickerBounds.height / 2);
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-mouth-picker-candidates"]')`,
+    'The main Mouth picker did not open independently from the overflow action.',
+  );
+  const pickerIndependence = await window.webContents.executeJavaScript(`({
+    candidatesVisible: Boolean(document.querySelector('[data-testid="character-assembly-mouth-picker-candidates"]')),
+    overflowOpen: Boolean(document.querySelector('[data-testid="character-assembly-mouth-overflow-menu"]')?.matches(':popover-open')),
+    selectedAssetId: document.querySelector('[data-testid="character-assembly-mouth-picker"]')?.dataset.selectedAssetId ?? '',
+  })`);
+  evidence.pickerIndependence = pickerIndependence;
+  assert(pickerIndependence.candidatesVisible && !pickerIndependence.overflowOpen, 'Main picker and overflow action were not independently activated.');
+  await window.webContents.executeJavaScript(`document.querySelector('[data-testid="character-assembly-mouth-picker-selected"]')?.click()`);
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-assembly-mouth-picker-candidates"]')`,
+    'The independently opened Mouth picker did not close after toggling its own action.',
+  );
+  await openIssue792MenuWithPointer(window);
+  const pointerClearBefore = await readIssue792MenuGeometry(window);
+  evidence.pointerClearBefore = pointerClearBefore;
+  assert(pointerClearBefore.clearIsActualHitTarget, 'Pointer clear location is not the browser hit target.');
+  await window.webContents.executeJavaScript(`(() => {
+    window.__issue792PointerEvents = [];
+    for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click']) {
+      document.addEventListener(type, (event) => {
+        const target = event.target;
+        window.__issue792PointerEvents.push({
+          type: event.type,
+          targetTag: target instanceof Element ? target.tagName : '',
+          targetTestId: target instanceof Element ? target.getAttribute('data-testid') ?? '' : '',
+          targetText: target instanceof Element ? target.textContent?.trim() ?? '' : '',
+        });
+      }, true);
+    }
+  })()`);
+  screenshots.push(await capture(window, 'mouth-menu-before-pointer-clear.png'));
+  await sendPointerClick(
+    window,
+    pointerClearBefore.clear.left + pointerClearBefore.clear.width / 2,
+    pointerClearBefore.clear.top + pointerClearBefore.clear.height / 2,
+  );
+  await wait(120);
+  const pointerClearAttempt = await readIssue792MenuGeometry(window);
+  pointerClearAttempt.input = await window.webContents.executeJavaScript(`({
+    devicePixelRatio: window.devicePixelRatio,
+    innerWidth: window.innerWidth,
+    innerHeight: window.innerHeight,
+    events: window.__issue792PointerEvents ?? [],
+  })`);
+  evidence.pointerClearAttempt = pointerClearAttempt;
+  screenshots.push(await capture(window, 'mouth-menu-after-pointer-clear-draft.png'));
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-mouth-picker"]')?.dataset.selectedAssetId === '' && document.querySelector('[data-testid="character-assembly-pending"]')`,
+    'A real pointer click on Mouth Clear did not clear the pending Mouth selection.',
+  );
+  const pointerClear = await readIssue792MenuGeometry(window);
+  evidence.pointerClear = pointerClear;
+  assert(!pointerClear.trigger && !pointerClear.open, 'Clearing Mouth left an overflow trigger or open menu behind.');
+  assert(pointerClear.revision === initial.revision && pointerClear.undoCount === initial.undoCount, 'Clearing Mouth bypassed the existing Draft/Apply boundary.');
+  screenshots.push(await capture(window, 'mouth-menu-pointer-clear-draft.png'));
+  await click(window, '[data-testid="character-assembly-pending"] button:first-of-type', 'Revert pointer-cleared Mouth draft');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-mouth-picker"]')?.dataset.selectedAssetId === ${JSON.stringify(IDS.mouth)} && document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]')`,
+    'Reverting the pointer-cleared Mouth draft did not restore the configured Mouth row.',
+  );
+
+  window.setSize(800, 560);
+  await waitForDom(window, 'window.innerWidth <= 840 && window.innerWidth >= 760', 'The narrow-window viewport did not resize.');
+  await wait(150);
+  const narrowScroll = await window.webContents.executeJavaScript(`(() => {
+    const trigger = document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]');
+    const scrolled = [];
+    for (let ancestor = trigger?.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+      const style = getComputedStyle(ancestor);
+      if (ancestor.scrollHeight > ancestor.clientHeight + 1 && /(auto|scroll)/u.test(style.overflowY)) {
+        ancestor.scrollTop = ancestor.scrollHeight;
+        const viewport = ancestor.getBoundingClientRect();
+        scrolled.push({
+          className: typeof ancestor.className === 'string' ? ancestor.className : '',
+          scrollTop: ancestor.scrollTop,
+          scrollHeight: ancestor.scrollHeight,
+          clientHeight: ancestor.clientHeight,
+          viewport: {
+            top: viewport.top,
+            bottom: viewport.bottom,
+            left: viewport.left,
+            right: viewport.right,
+          },
+        });
+      }
+    }
+    trigger?.scrollIntoView({ block: 'end', inline: 'nearest' });
+    const panel = document.querySelector('.character-assembly-drawer-panel');
+    const anchor = trigger?.getBoundingClientRect();
+    return {
+      scrolled,
+      viewportWidth: document.documentElement.clientWidth,
+      panel: panel ? {
+        scrollTop: panel.scrollTop,
+        scrollHeight: panel.scrollHeight,
+        clientHeight: panel.clientHeight,
+      } : null,
+      viewportHeight: document.documentElement.clientHeight,
+      anchorTop: anchor?.top ?? null,
+      anchorBottom: anchor?.bottom ?? null,
+    };
+  })()`);
+  evidence.narrowScroll = narrowScroll;
+  assert(
+    narrowScroll.scrolled.some(({ scrollTop }) => scrollTop > 0),
+    'The narrow-window setup did not scroll an assembly ancestor before opening the menu.',
+  );
+  assert(
+    narrowScroll.scrolled.some(
+      ({ scrollTop, clientHeight, scrollHeight }) =>
+        scrollTop + clientHeight >= scrollHeight - 1,
+    ),
+    'The narrow-window setup did not reach the bottom of its scrollable assembly viewport.',
+  );
+  const scrollViewport = narrowScroll.scrolled.find(({ viewport }) => viewport)?.viewport;
+  assert(
+    scrollViewport &&
+      narrowScroll.anchorBottom !== null &&
+      narrowScroll.anchorBottom <= scrollViewport.bottom + 2 &&
+      scrollViewport.bottom - narrowScroll.anchorBottom < 90,
+    'The overflow trigger was not positioned near the bottom edge of its scroll viewport.',
+  );
+  await openIssue792MenuWithPointer(window);
+  const narrowBottom = await readIssue792MenuGeometry(window);
+  evidence.narrowBottom = narrowBottom;
+  assert(narrowBottom.open && narrowBottom.visible, 'Mouth menu did not open in the narrow, bottom-scrolled viewport.');
+  assert(narrowBottom.menuInsideViewport && narrowBottom.clearIsActualHitTarget, 'Narrow, bottom-scrolled Mouth menu was clipped or did not hit Clear.');
+  assert(
+    scrollViewport && narrowBottom.menu.bottom > scrollViewport.bottom,
+    'The Mouth popover did not extend past the scroll viewport boundary.',
+  );
+  screenshots.push(await capture(window, 'mouth-menu-narrow-scroll-bottom.png'));
+  await sendKeyStroke(window, 'ESC');
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-assembly-mouth-overflow-menu"]')?.matches(':popover-open') && document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]')?.getAttribute('aria-expanded') === 'false'`,
+    'Escape did not dismiss the Mouth overflow popover and reset its trigger state.',
+  );
+  const escapeDismissed = await readIssue792MenuGeometry(window);
+  evidence.escapeDismissed = escapeDismissed;
+  assert(escapeDismissed.ariaExpanded === 'false', 'Escape dismissal did not update the overflow trigger expanded state.');
+  assert(escapeDismissed.trigger.width >= 44, 'Escape dismissed the containing Character drawer instead of only the Mouth popover.');
+
+  await window.webContents.executeJavaScript(`document.querySelector('[data-testid="character-assembly-mouth-picker-selected"]')?.focus()`);
+  await sendKeyStroke(window, 'TAB');
+  const triggerFocus = await readIssue792MenuGeometry(window);
+  evidence.triggerFocus = triggerFocus;
+  assert(triggerFocus.activeTestId === 'character-assembly-mouth-overflow-trigger' && triggerFocus.focusVisible, 'Tab did not reach a visible keyboard focus state on the overflow trigger.');
+  await sendKeyStroke(window, 'SPACE');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-mouth-overflow-menu"]')?.matches(':popover-open') && document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]')?.getAttribute('aria-expanded') === 'true'`,
+    'Space did not open the Mouth overflow popover and update its trigger state.',
+  );
+  await sendKeyStroke(window, 'TAB');
+  const clearFocus = await readIssue792MenuGeometry(window);
+  evidence.clearFocus = clearFocus;
+  assert(clearFocus.activeTestId === 'character-assembly-mouth-clear' && clearFocus.focusVisible, 'Tab did not reach the keyboard-visible Clear action inside the popover.');
+  await window.webContents.executeJavaScript(`(() => {
+    window.__issue792KeyboardEvents = [];
+    for (const type of ['keydown', 'keyup', 'click']) {
+      document.addEventListener(type, (event) => {
+        const target = event.target;
+        window.__issue792KeyboardEvents.push({
+          type: event.type,
+          key: event instanceof KeyboardEvent ? event.key : '',
+          targetTag: target instanceof Element ? target.tagName : '',
+          targetTestId: target instanceof Element ? target.getAttribute('data-testid') ?? '' : '',
+          targetText: target instanceof Element ? target.textContent?.trim() ?? '' : '',
+        });
+      }, true);
+    }
+  })()`);
+  screenshots.push(await capture(window, 'mouth-menu-before-space-clear.png'));
+  await sendKeyStroke(window, 'SPACE');
+  await wait(120);
+  const keyboardClearAttempt = await readIssue792MenuGeometry(window);
+  keyboardClearAttempt.inputEvents = await window.webContents.executeJavaScript(
+    'window.__issue792KeyboardEvents ?? []',
+  );
+  evidence.keyboardClearAttempt = keyboardClearAttempt;
+  screenshots.push(await capture(window, 'mouth-menu-after-space-clear.png'));
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-mouth-picker"]')?.dataset.selectedAssetId === '' && document.querySelector('[data-testid="character-assembly-pending"]')`,
+    'Space did not activate Clear from the keyboard-opened Mouth popover.',
+  );
+  const keyboardClear = await readIssue792MenuGeometry(window);
+  evidence.keyboardClear = keyboardClear;
+  assert(!keyboardClear.trigger && keyboardClear.revision === initial.revision && keyboardClear.undoCount === initial.undoCount, 'Keyboard Clear changed the Draft/Apply boundary or kept an empty Mouth overflow trigger.');
+  screenshots.push(await capture(window, 'mouth-menu-keyboard-clear-draft.png'));
+
+  const applyTarget = await window.webContents.executeJavaScript(`(() => {
+    const pending = document.querySelector('[data-testid="character-assembly-pending"]');
+    const buttons = [...(pending?.querySelectorAll('button') ?? [])].map((button) => ({
+      text: button.textContent?.trim() ?? '',
+      disabled: button.disabled,
+      lastChild: button === pending?.lastElementChild,
+    }));
+    return { buttons, selectedAssetId: document.querySelector('[data-testid="character-assembly-mouth-picker"]')?.dataset.selectedAssetId ?? null };
+  })()`);
+  evidence.applyTarget = applyTarget;
+  await click(window, '[data-testid="character-assembly-pending"] button:last-child', 'Apply the cleared Mouth draft');
+  await wait(160);
+  const applyAttempt = await readIssue792MenuGeometry(window);
+  applyAttempt.pendingButtons = await window.webContents.executeJavaScript(`({
+    pendingText: document.querySelector('[data-testid="character-assembly-pending"]')?.textContent?.trim() ?? '',
+    buttons: [...(document.querySelector('[data-testid="character-assembly-pending"]')?.querySelectorAll('button') ?? [])].map((button) => ({
+      text: button.textContent?.trim() ?? '',
+      disabled: button.disabled,
+    })),
+    redoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount ?? '',
+  })`);
+  evidence.applyAttempt = applyAttempt;
+  screenshots.push(await capture(window, 'mouth-menu-after-apply-attempt.png'));
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-assembly-pending"]') && document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision === '1' && document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1'`,
+    'Applying the Mouth clear did not create exactly one Project and History operation.',
+  );
+  const appliedClear = await readIssue792MenuGeometry(window);
+  evidence.appliedClear = appliedClear;
+  assert(
+    appliedClear.selectedMouthAssetId === '' &&
+      !appliedClear.trigger &&
+      !appliedClear.pending &&
+      appliedClear.revision === '1' &&
+      appliedClear.undoCount === '1',
+    'Applying Mouth Clear did not persist an empty Mouth selection in one operation.',
+  );
+
+  await click(window, '[data-testid="character-workspace-expressions-tab"]', 'Leave clean Assembly after applying Mouth Clear');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-workspace-expressions-tab"]')?.getAttribute('aria-pressed') === 'true' && !document.querySelector('[data-testid="character-assembly-workbench"]')`,
+    'Leaving the clean, applied Assembly draft did not close its session.',
+  );
+  await click(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly to check the applied Mouth state');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="edit"]') && document.querySelector('[data-testid="character-assembly-mouth-picker"]')?.dataset.selectedAssetId === '' && !document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]')`,
+    'Reopening Assembly did not read the applied empty Mouth state from the Project.',
+  );
+  const persistedClear = await readIssue792MenuGeometry(window);
+  evidence.persistedClear = persistedClear;
+  assert(persistedClear.selectedMouthAssetId === '' && !persistedClear.trigger, 'The applied Mouth clear did not survive reopening Assembly.');
+
+  await click(window, '[data-testid="character-workspace-expressions-tab"]', 'Leave clean Assembly before Undo');
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="character-assembly-workbench"]')`,
+    'Assembly did not close before the History Undo check.',
+  );
+  await click(window, '[data-testid="history-controls"] .history-actions button:first-of-type', 'Undo the applied Mouth clear');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '0' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '1'`,
+    'Undo did not move the Mouth clear operation to the redo stack.',
+  );
+  await click(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after Undo');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="edit"]') && document.querySelector('[data-testid="character-assembly-mouth-picker"]')?.dataset.selectedAssetId === ${JSON.stringify(IDS.mouth)} && document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]')`,
+    'Undo did not restore the configured Mouth in the Project.',
+  );
+  const undoRestoredMouth = await readIssue792MenuGeometry(window);
+  evidence.undoRestoredMouth = undoRestoredMouth;
+
+  await click(window, '[data-testid="character-workspace-expressions-tab"]', 'Leave clean Assembly before Redo');
+  await waitForDom(window, `!document.querySelector('[data-testid="character-assembly-workbench"]')`, 'Assembly did not close before the History Redo check.');
+  await click(window, '[data-testid="history-controls"] .history-actions button:last-of-type', 'Redo the applied Mouth clear');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '0'`,
+    'Redo did not restore the Mouth clear operation from the redo stack.',
+  );
+  await click(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after Redo');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="edit"]') && document.querySelector('[data-testid="character-assembly-mouth-picker"]')?.dataset.selectedAssetId === '' && !document.querySelector('[data-testid="character-assembly-mouth-overflow-trigger"]')`,
+    'Redo did not restore the cleared Mouth state in the Project.',
+  );
+  const redoClearedMouth = await readIssue792MenuGeometry(window);
+  evidence.redoClearedMouth = redoClearedMouth;
+
+  return {
+    issue: 792,
+    passed: true,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'verify:issue792-mouth-overflow',
+    projectRoot,
+    syntheticInput: true,
+    humanAcceptance: false,
+    evidenceKind: 'real-electron-production-ui-pointer-input-keyboard-input-viewport-geometry-and-elementFromPoint-hit-test',
+    evidence: {
+      baselineRootCause,
+      normal,
+      pickerIndependence,
+      pointerClearBefore,
+      pointerClear,
+      narrowScroll,
+      narrowBottom,
+      escapeDismissed,
+      triggerFocus,
+      clearFocus,
+      keyboardClear,
+      appliedClear,
+      persistedClear,
+      undoRestoredMouth,
+      redoClearedMouth,
+    },
+    screenshots,
+  };
+}
+
+async function verifyIssue815FineTuneTimelineOverlay(window) {
+  const screenshots = [];
+  const evidence = {};
+  inProgressEvidence = evidence;
+  const workbenchSelector = '[data-testid="character-assembly-workbench"]';
+  const workbenchQuery = 'document.querySelector(' + JSON.stringify(workbenchSelector) + ')';
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-list-view"] [data-character-id="' + IDS.issue792Character + '"]',
+    'Issue 815 Head + Face Character card',
+  );
+  await waitForDom(
+    window,
+    'document.querySelector(\'[data-testid="character-detail-view"]\')?.dataset.characterEditorId === ' +
+      JSON.stringify(IDS.issue792Character),
+    'Issue 815 Character detail did not open.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-workspace-expressions-tab"]',
+    'Keep timeline active before entering Assembly',
+  );
+  await waitForDom(
+    window,
+    'document.querySelector(\'[data-testid="bottom-workspace"]\')?.dataset.characterAssemblyInactive === "false"',
+    'Issue 815 timeline was not active before entering Assembly.',
+  );
+  await waitForPaint(window);
+
+  const readLayoutScript = `(() => {
+    const rect = (element) => {
+      const bounds = element?.getBoundingClientRect();
+      return bounds && {
+        x: Math.round(bounds.x * 10) / 10,
+        y: Math.round(bounds.y * 10) / 10,
+        width: Math.round(bounds.width * 10) / 10,
+        height: Math.round(bounds.height * 10) / 10,
+        right: Math.round(bounds.right * 10) / 10,
+        bottom: Math.round(bounds.bottom * 10) / 10,
+      };
+    };
+    const style = (element) => {
+      if (!element) return null;
+      const computed = getComputedStyle(element);
+      return {
+        display: computed.display,
+        visibility: computed.visibility,
+        opacity: computed.opacity,
+        zIndex: computed.zIndex,
+        overflow: computed.overflow,
+        overflowX: computed.overflowX,
+        overflowY: computed.overflowY,
+        position: computed.position,
+        pointerEvents: computed.pointerEvents,
+      };
+    };
+    const intersects = (left, right) => Boolean(left && right
+      && left.x < right.right && left.right > right.x
+      && left.y < right.bottom && left.bottom > right.y);
+    const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    const viewport = workbench?.querySelector('[data-testid="character-assembly-preview"]');
+    const trigger = workbench?.querySelector('[data-testid="character-assembly-fine-tune-toggle"]');
+    const panel = workbench?.querySelector('[data-testid="character-assembly-fine-tune-panel"]');
+    const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+    const drawer = document.querySelector('[data-testid="resource-activity-drawer"]');
+    const timeline = document.querySelector('[data-testid="timeline-resize-handle"]');
+    const viewportRect = rect(viewport);
+    const panelRect = rect(panel);
+    const drawerRect = rect(drawer);
+    const triggerRect = rect(trigger);
+    const viewportStyle = style(viewport);
+    const panelStyle = style(panel);
+    const dockStyle = style(dock);
+    const drawerStyle = style(drawer);
+    const drawerVisible = dock?.dataset.resourceDrawerOpen === 'true'
+      && drawerStyle?.display !== 'none'
+      && drawerStyle?.visibility === 'visible'
+      && Number(drawerStyle?.opacity ?? 1) > 0
+      && Boolean(drawerRect?.width > 0 && drawerRect?.height > 0);
+    const visibleCanvas = viewportRect && {
+      x: Math.max(viewportRect.x, drawerVisible ? drawerRect.right : viewportRect.x),
+      y: viewportRect.y,
+      right: viewportRect.right,
+      bottom: viewportRect.bottom,
+      width: Math.max(0, viewportRect.right - Math.max(viewportRect.x, drawerVisible ? drawerRect.right : viewportRect.x)),
+      height: viewportRect.height,
+    };
+    const buttonReachability = [...(panel?.querySelectorAll('button, input') ?? [])].map((element) => {
+      const bounds = rect(element);
+      const computed = style(element);
+      const x = bounds ? Math.round(bounds.x + bounds.width / 2) : -1;
+      const y = bounds ? Math.round(bounds.y + bounds.height / 2) : -1;
+      const hit = x >= 0 && y >= 0 ? document.elementFromPoint(x, y) : null;
+      return {
+        testId: element.dataset.testid ?? '',
+        rect: bounds,
+        style: computed,
+        disabled: Boolean(element.disabled),
+        hitTarget: Boolean(hit && (hit === element || element.contains(hit))),
+        hitTestId: hit?.closest('[data-testid]')?.getAttribute('data-testid') ?? '',
+        hitByDrawer: Boolean(hit && drawer?.contains(hit)),
+      };
+    });
+    const controlsReachable = buttonReachability.some((control) => control.hitTarget && !control.disabled);
+    const panelVisible = Boolean(panelRect?.width > 0 && panelRect?.height > 0
+      && panelStyle?.display !== 'none'
+      && panelStyle?.visibility === 'visible'
+      && Number(panelStyle?.opacity ?? 1) > 0);
+    const panelInsideViewport = Boolean(panelRect && viewportRect
+      && panelRect.x >= viewportRect.x - 1
+      && panelRect.right <= viewportRect.right + 1
+      && panelRect.y >= viewportRect.y - 1
+      && panelRect.bottom <= viewportRect.bottom + 1);
+    const panelOverlapsDrawer = drawerVisible && intersects(panelRect, drawerRect);
+    const panelOverlapsVisibleCanvas = intersects(panelRect, visibleCanvas);
+    const panelOccludedByDrawer = panelOverlapsDrawer
+      && buttonReachability.some((control) => control.hitByDrawer);
+    let classification = 'visible';
+    if (trigger?.getAttribute('aria-expanded') === 'true' && !panel) classification = 'unmounted';
+    else if (panel && !panelVisible) classification = 'hidden';
+    else if (panel && panelOccludedByDrawer) classification = 'covered';
+    else if (panel && (!panelInsideViewport || !panelOverlapsVisibleCanvas)) classification = 'clipped';
+    else if (panel && !controlsReachable) classification = 'covered';
+    const clippingAncestors = [];
+    for (let ancestor = panel?.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      const computed = getComputedStyle(ancestor);
+      if (computed.overflowX !== 'visible' || computed.overflowY !== 'visible') {
+        clippingAncestors.push({
+          testId: ancestor.getAttribute('data-testid') ?? '',
+          className: typeof ancestor.className === 'string' ? ancestor.className : '',
+          rect: rect(ancestor),
+          overflowX: computed.overflowX,
+          overflowY: computed.overflowY,
+        });
+      }
+    }
+    return {
+      shellMode: document.querySelector('[data-testid="editor-layout"]')?.dataset.shellMode ?? '',
+      viewportSize: { width: window.innerWidth, height: window.innerHeight },
+      devicePixelRatio: window.devicePixelRatio,
+      characterId: workbench?.dataset.characterId ?? '',
+      sessionKind: workbench?.dataset.sessionKind ?? '',
+      editTarget: workbench?.dataset.editTarget ?? '',
+      drawerOpen: drawerVisible,
+      viewport: viewportRect,
+      viewportStyle,
+      drawer: drawerRect,
+      drawerStyle,
+      dock: rect(dock),
+      dockStyle,
+      timeline: timeline ? {
+        rect: rect(timeline),
+        valueMin: Number(timeline.getAttribute('aria-valuemin')),
+        valueMax: Number(timeline.getAttribute('aria-valuemax')),
+        valueNow: Number(timeline.getAttribute('aria-valuenow')),
+        focused: document.activeElement === timeline,
+      } : null,
+      trigger: trigger ? {
+        ariaExpanded: trigger.getAttribute('aria-expanded'),
+        rect: triggerRect,
+        style: style(trigger),
+        disabled: trigger.disabled,
+        focused: document.activeElement === trigger,
+      } : null,
+      panelExists: Boolean(panel),
+      panel: panelRect,
+      panelStyle,
+      panelVisible,
+      panelInsideViewport,
+      panelOverlapsDrawer,
+      panelOccludedByDrawer,
+      visibleCanvas,
+      panelOverlapsVisibleCanvas,
+      controlsReachable,
+      buttonReachability,
+      panelLayout: panel?.dataset.overlayLayout ?? '',
+      overlaySide: panel?.dataset.overlaySide ?? '',
+      panelScroll: panel ? { top: panel.scrollTop, height: panel.clientHeight, scrollHeight: panel.scrollHeight } : null,
+      clippingAncestors,
+      classification,
+    };
+  })()`;
+  const readLayout = async () => ({
+    ...(await window.webContents.executeJavaScript(readLayoutScript)),
+    zoomFactor: window.webContents.getZoomFactor(),
+  });
+  const assertRepairedLayout = (layout, label) => {
+    assert(layout.trigger?.ariaExpanded === 'true', label + ' did not keep aria-expanded=true.');
+    assert(layout.panelExists, label + ' unmounted the fine tune panel.');
+    assert(layout.panelVisible, label + ' hid the fine tune panel: ' + JSON.stringify(layout));
+    assert(layout.panel.width > 0 && layout.panel.height > 0, label + ' has no panel bounding area.');
+    assert(layout.panelInsideViewport, label + ' clipped the panel outside the preview viewport.');
+    assert(!layout.panelOccludedByDrawer, label + ' put fine tune controls behind the left resource drawer.');
+    assert(layout.panelOverlapsVisibleCanvas, label + ' did not overlap the visible canvas area.');
+    assert(layout.controlsReachable, label + ' made the controls unreachable.');
+  };
+  const setTimelineToValue = async (requestedTarget, label) => {
+    const before = await readLayout();
+    const timeline = before.timeline;
+    assert(timeline?.rect && Number.isFinite(timeline.valueNow), label + ' has no timeline resize handle.');
+    const target = Math.max(timeline.valueMin, Math.min(timeline.valueMax, Math.round(requestedTarget)));
+    await clickWithNativeInput(window, '[data-testid="timeline-resize-handle"]', 'Timeline resize handle');
+    const displayScale = screen.getDisplayMatching(window.getBounds()).scaleFactor;
+    const inputScale = await window.webContents.executeJavaScript('window.devicePixelRatio') / displayScale;
+    const startX = (timeline.rect.x + timeline.rect.width / 2) * inputScale;
+    const startY = (timeline.rect.y + timeline.rect.height / 2) * inputScale;
+    const endY = (timeline.rect.y + timeline.rect.height / 2 + timeline.valueNow - target) * inputScale;
+    await sendPointerDrag(window, startX, startY, startX, endY);
+    await waitForPaint(window);
+    const after = await readLayout();
+    evidence.timelineTransitions ??= [];
+    evidence.timelineTransitions.push({ label, before: timeline.valueNow, target, after: after.timeline.valueNow });
+    assert(after.timeline.valueNow === target,
+      label + ' did not reach the requested timeline height: ' + JSON.stringify({ before: timeline, target, after: after.timeline }));
+    return { ...after, requestedTarget: target };
+  };
+  const setTimelineToFraction = async (fraction, label) => {
+    const before = await readLayout();
+    const target = before.timeline.valueMin + (before.timeline.valueMax - before.timeline.valueMin) * fraction;
+    return { ...(await setTimelineToValue(target, label)), requestedFraction: fraction };
+  };
+  const enterAssemblyAndOpenPanel = async () => {
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-workspace-assembly-tab"]',
+      'Assembly workspace tab',
+    );
+    await waitForDom(
+      window,
+      workbenchQuery + '?.dataset.sessionKind === "edit"',
+      'Issue 815 Character did not enter the Assembly Workbench.',
+    );
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-assembly-fine-tune-toggle"]',
+      'Open Head fine tune panel',
+    );
+    await waitForDom(
+      window,
+      workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+      'Issue 815 fine tune panel did not open.',
+    );
+    await waitForPaint(window);
+  };
+  const leaveAssemblyForTimeline = async () => {
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-workspace-expressions-tab"]',
+      'Leave Assembly to resize the timeline',
+    );
+    await waitForDom(
+      window,
+      'document.querySelector(\'[data-testid="bottom-workspace"]\')?.dataset.characterAssemblyInactive === "false"',
+      'Issue 815 timeline did not become active after leaving Assembly.',
+    );
+    await waitForPaint(window);
+  };
+  const recordSample = async (name, layout) => {
+    const screenshot = await capture(window, 'issue815-' + (issue815BaselineOnly ? 'before-' : 'after-') + name + '.png');
+    screenshots.push(screenshot);
+    const sample = { name, screenshot, ...layout };
+    evidence.timelineSamples.push(sample);
+    return sample;
+  };
+
+  evidence.timelineSamples = [];
+  evidence.fixture = {
+    kind: 'synthetic-head-plus-face',
+    characterId: IDS.issue792Character,
+    projectRoot,
+    note: 'Owner-supplied black-robed art is not included in this local harness fixture.',
+  };
+  const minimumLayout = await setTimelineToFraction(0, 'Minimum timeline height before Assembly');
+  const minHeight = minimumLayout.timeline.valueMin;
+  const maxHeight = minimumLayout.timeline.valueMax;
+  assert(Number.isFinite(minHeight) && Number.isFinite(maxHeight) && maxHeight > minHeight,
+    'Issue 815 timeline did not expose a resizable height range: ' + JSON.stringify(minimumLayout.timeline));
+  await enterAssemblyAndOpenPanel();
+  evidence.initialLayout = await readLayout();
+  let layout = evidence.initialLayout;
+  const samples = [];
+  samples.push(await recordSample('low', layout));
+  let previousHeight = layout.timeline.valueNow;
+  for (let step = 1; step <= 64 && previousHeight < maxHeight; step += 1) {
+    await leaveAssemblyForTimeline();
+    const resized = await setTimelineToValue(previousHeight + 16, 'Timeline height step ' + step);
+    if (resized.timeline.valueNow === previousHeight) break;
+    previousHeight = resized.timeline.valueNow;
+    await enterAssemblyAndOpenPanel();
+    layout = await readLayout();
+    assert(layout.timeline.valueNow === previousHeight,
+      'Issue 815 timeline height changed while entering Assembly: ' + JSON.stringify({ resized: resized.timeline, reopened: layout.timeline }));
+    samples.push(await recordSample('height-' + String(previousHeight).replace('.', '-'), layout));
+  }
+  const low = samples[0];
+  const high = samples.at(-1);
+  const middleSamples = samples.filter((sample) => sample.timeline.valueNow > minHeight && sample.timeline.valueNow < maxHeight);
+  const failingMiddle = middleSamples.find((sample) => sample.classification !== 'visible');
+  evidence.heightRange = { min: minHeight, max: maxHeight, sampleCount: samples.length };
+  evidence.low = low;
+  evidence.middleFailure = failingMiddle ?? null;
+  evidence.high = high;
+
+  if (issue815BaselineOnly) {
+    return {
+      issue: 815,
+      code: 'C03-F01',
+      passed: true,
+      baseline: true,
+      reproduced: Boolean(failingMiddle),
+      ownerPatternReproduced: low.classification === 'visible'
+        && high.classification === 'visible'
+        && Boolean(failingMiddle),
+      failureClassification: failingMiddle?.classification ?? low.classification,
+      commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+      verificationGate: 'issue815-c03-f01-baseline',
+      projectRoot,
+      syntheticInput: true,
+      humanAcceptance: false,
+      evidenceKind: 'real-windows-electron-middle-timeline-height-overlay-diagnostics',
+      evidence,
+      screenshots,
+    };
+  }
+
+  for (const sample of samples) {
+    assertRepairedLayout(sample, 'Timeline height ' + sample.timeline.valueNow + 'px');
+  }
+
+  await leaveAssemblyForTimeline();
+  evidence.middleSetup = await setTimelineToValue(
+    maxHeight - 16,
+    'Head control middle height before Assembly',
+  );
+  await enterAssemblyAndOpenPanel();
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-fine-tune-toggle"]', 'Close Head fine tune panel');
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\') === null',
+    'Issue 815 fine tune panel did not close.',
+  );
+  const closed = await readLayout();
+  assert(closed.trigger?.ariaExpanded === 'false' && !closed.panelExists, 'Issue 815 close state did not match aria-expanded.');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-fine-tune-toggle"]', 'Reopen Head fine tune panel');
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+    'Issue 815 fine tune panel did not reopen.',
+  );
+  layout = await readLayout();
+  assertRepairedLayout(layout, 'Reopened Head panel');
+  evidence.reopen = layout;
+  screenshots.push(await capture(window, 'issue815-after-reopen.png'));
+
+  await sendKeyStroke(window, 'ESC');
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\') === null',
+    'Issue 815 Escape did not close the fine tune panel.',
+  );
+  await waitForPaint(window);
+  const escaped = await readLayout();
+  assert(escaped.trigger?.ariaExpanded === 'false' && !escaped.panelExists,
+    'Issue 815 Escape did not update the fine tune trigger state.');
+  assert(escaped.trigger?.focused, 'Issue 815 Escape did not return focus to the fine tune trigger.');
+  evidence.keyboardEscape = escaped;
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Reopen Head fine tune panel after Escape',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+    'Issue 815 fine tune panel did not reopen after Escape.',
+  );
+  await waitForPaint(window);
+  layout = await readLayout();
+  assertRepairedLayout(layout, 'Head panel reopened after Escape');
+  evidence.reopenAfterEscape = layout;
+  screenshots.push(await capture(window, 'issue815-after-escape-reopen.png'));
+
+  const headControls = [
+    'character-assembly-head-left-step',
+    'character-assembly-head-right-step',
+    'character-assembly-head-rotation-down',
+    'character-assembly-head-rotation-up',
+    'character-assembly-head-flip-x',
+    'character-assembly-reset',
+  ];
+  for (const control of headControls) {
+    await clickWithNativeInput(window, '[data-testid="' + control + '"]', 'Reach Head control ' + control);
+    await waitForPaint(window);
+  }
+  evidence.headControlsReached = headControls;
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Close Head panel before selecting Face',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\') === null',
+    'Issue 815 Head panel did not close before selecting Face.',
+  );
+  evidence.faceTargetSwitch = await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-default-face-select"]',
+    'Switch fine tune target to Face from the visible default-face card',
+  );
+  await waitForDom(window, workbenchQuery + '?.dataset.editTarget === "face"', 'Issue 815 Face target did not activate.');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Open Face fine tune panel',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+    'Issue 815 Face fine tune panel did not open.',
+  );
+  await waitForPaint(window);
+  layout = await readLayout();
+  assertRepairedLayout(layout, 'Face panel after target switch');
+  const faceControls = [
+    'character-assembly-left-step',
+    'character-assembly-right-step',
+    'character-assembly-face-rotation-down',
+    'character-assembly-face-rotation-up',
+    'character-assembly-face-flip-x',
+    'character-assembly-reset',
+  ];
+  for (const control of faceControls) {
+    await clickWithNativeInput(window, '[data-testid="' + control + '"]', 'Reach Face control ' + control);
+    await waitForPaint(window);
+  }
+  evidence.faceControlsReached = faceControls;
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Close Face panel before selecting Head',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\') === null',
+    'Issue 815 Face panel did not close before selecting Head.',
+  );
+  evidence.headTargetSwitchBack = await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-head-asset-selected"]',
+    'Switch fine tune target back to Head from the visible head card',
+  );
+  await waitForDom(window, workbenchQuery + '?.dataset.editTarget === "head"', 'Issue 815 Head target did not reactivate.');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Reopen Head fine tune panel after target switch',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+    'Issue 815 Head fine tune panel did not reopen after target switch.',
+  );
+  await waitForPaint(window);
+  layout = await readLayout();
+  assertRepairedLayout(layout, 'Head panel after target switch back');
+  evidence.reopenHeadAfterFace = layout;
+
+  window.setSize(1120, 820);
+  await wait(180);
+  await waitForPaint(window);
+  const narrow = await readLayout();
+  assertRepairedLayout(narrow, 'Narrow window');
+  evidence.narrowWindow = narrow;
+  screenshots.push(await capture(window, 'issue815-after-narrow.png'));
+
+  window.setSize(1660, 1100);
+  window.webContents.setZoomFactor(1.25);
+  await wait(180);
+  await waitForPaint(window);
+  const zoomed = await readLayout();
+  assertRepairedLayout(zoomed, '125 percent zoom');
+  evidence.zoomed125 = zoomed;
+  screenshots.push(await capture(window, 'issue815-after-125-percent.png'));
+
+  return {
+    issue: 815,
+    code: 'C03-F01',
+    passed: true,
+    baseline: false,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'verify:issue815-c03-f01',
+    projectRoot,
+    syntheticInput: true,
+    humanAcceptance: false,
+    evidenceKind: 'real-windows-electron-native-input-height-sweep-and-responsive-layout',
+    evidence,
+    screenshots,
+  };
+}
+
+async function verifyIssue813AssemblyCanvasSpace(window) {
+  const screenshots = [];
+  const evidence = {};
+  inProgressEvidence = evidence;
+  const workbenchSelector = '[data-testid="character-assembly-workbench"]';
+  const workbenchQuery = 'document.querySelector(' + JSON.stringify(workbenchSelector) + ')';
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-list-view"] [data-character-id="' + IDS.issue792Character + '"]',
+    'Issue 813 Head + Face Character card',
+  );
+  await waitForDom(
+    window,
+    'document.querySelector(\'[data-testid="character-detail-view"]\')?.dataset.characterEditorId === ' +
+      JSON.stringify(IDS.issue792Character),
+    'Issue 813 Character detail did not open.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-workspace-assembly-tab"]',
+    'Assembly workspace tab',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.dataset.sessionKind === "edit"',
+    'Issue 813 Character did not enter the Assembly Workbench.',
+  );
+  await waitForPaint(window);
+
+  const readLayoutScript = [
+    '(() => {',
+    '  const rect = (element) => {',
+    '    const bounds = element?.getBoundingClientRect();',
+    '    return bounds && {',
+    '      x: Math.round(bounds.x * 10) / 10,',
+    '      y: Math.round(bounds.y * 10) / 10,',
+    '      width: Math.round(bounds.width * 10) / 10,',
+    '      height: Math.round(bounds.height * 10) / 10,',
+    '      right: Math.round(bounds.right * 10) / 10,',
+    '      bottom: Math.round(bounds.bottom * 10) / 10,',
+    '    };',
+    '  };',
+    '  const intersects = (left, right) => Boolean(left && right',
+    '    && left.x < right.x + right.width',
+    '    && left.x + left.width > right.x',
+    '    && left.y < right.y + right.height',
+    '    && left.y + left.height > right.y);',
+    '  const workbench = document.querySelector(\'[data-testid="character-assembly-workbench"]\');',
+    '  const viewport = workbench?.querySelector(\'[data-testid="character-assembly-preview"]\');',
+    '  const footer = workbench?.querySelector(\'.character-assembly-workbench-footer\');',
+    '  const header = workbench?.querySelector(\'.character-assembly-workbench-header\');',
+    '  const panel = workbench?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\');',
+    '  const history = document.querySelector(\'[data-testid="history-controls"]\');',
+    '  const time = document.querySelector(\'[data-current-time-ms]\');',
+    '  const actionIds = [',
+    '    \'character-assembly-pivot-mode-toggle\',',
+    '    \'character-assembly-fine-tune-toggle\',',
+    '    \'character-assembly-layout-reuse-toggle\',',
+    '    \'character-assembly-test-head-motion\',',
+    '    \'character-assembly-expression-preview-toggle\',',
+    '  ];',
+    '  const actionRects = actionIds.flatMap((id) => {',
+    '    const element = workbench?.querySelector(\'[data-testid="\' + id + \'"]\');',
+    '    return element ? [{ id, rect: rect(element) }] : [];',
+    '  });',
+    '  const panelRect = rect(panel);',
+    '  const imageRects = [...(workbench?.querySelectorAll(\'.character-assembly-part\') ?? [])].map(rect).filter(Boolean);',
+    '  const handleElements = [...(workbench?.querySelectorAll(',
+    '    \'[data-testid="character-assembly-face-drag-target"], [data-testid="character-assembly-head-drag-fallback"], [data-testid="character-assembly-head-scale-handle"], [data-testid="character-assembly-head-pivot-marker"]\',',
+    '  ) ?? [])];',
+    '  const handleRects = handleElements.map(rect).filter(Boolean);',
+    '  const expressionOptions = workbench?.querySelector(\'[data-testid="character-assembly-expression-preview-options"]\');',
+    '  const groups = [...(panel?.querySelectorAll(\'.character-assembly-control-set\') ?? [])];',
+    '  const panelButtons = [...(panel?.querySelectorAll(\'button\') ?? [])];',
+    '  const controlHandleOverlaps = panelButtons.flatMap((button) => handleElements',
+    '    .filter((handle) => intersects(rect(button), rect(handle)))',
+    '    .map((handle) => ({ button: button.dataset.testid ?? \'\', handle: handle.dataset.testid ?? \'\', buttonRect: rect(button), handleRect: rect(handle) })));',
+    '  const pivotToggle = workbench?.querySelector(\'[data-testid="character-assembly-pivot-mode-toggle"]\');',
+    '  const style = workbench ? getComputedStyle(workbench) : null;',
+    '  return {',
+    '    shellMode: document.querySelector(\'[data-testid="editor-layout"]\')?.dataset.shellMode ?? \'\',',
+    '    viewportSize: { width: window.innerWidth, height: window.innerHeight },',
+    '    devicePixelRatio: window.devicePixelRatio,',
+    '    characterId: workbench?.dataset.characterId ?? \'\',',
+    '    sessionKind: workbench?.dataset.sessionKind ?? \'\',',
+    '    hasHead: workbench?.dataset.hasHead ?? \'\',',
+    '    editTarget: workbench?.dataset.editTarget ?? \'\',',
+    '    viewport: rect(viewport),',
+    '    footer: rect(footer),',
+    '    header: rect(header),',
+    '    headerVisible: Boolean(header && getComputedStyle(header).display !== \'none\' && rect(header)?.height > 0),',
+    '    gridTrackCount: style?.gridTemplateRows.trim().split(/\\s+/u).length ?? 0,',
+    '    expressionRows: workbench?.querySelectorAll(\'.character-assembly-face-choices\').length ?? 0,',
+    '    expressionPreviewToggle: rect(workbench?.querySelector(\'[data-testid="character-assembly-expression-preview-toggle"]\')),',
+    '    expressionPreviewOpen: Boolean(expressionOptions),',
+    '    expressionChoices: [...(expressionOptions?.querySelectorAll(\'button\') ?? [])].map((button) => button.textContent.trim()),',
+    '    expressionChoiceIds: [...(expressionOptions?.querySelectorAll(\'button\') ?? [])].map((button) => button.getAttribute(\'data-expression-id\') ?? \'\'),',
+    '    selectedFace: workbench?.dataset.selectedFace ?? \'\',',
+    '    previewFaceAssetId: workbench?.dataset.previewFaceAssetId ?? \'\',',
+    '    projectRevision: workbench?.dataset.projectRevision ?? null,',
+    '    projectDirty: workbench?.dataset.projectDirty ?? null,',
+    '    history: history ? { undo: history.dataset.undoCount, redo: history.dataset.redoCount } : null,',
+    '    timelineTime: time?.dataset.currentTimeMs ?? null,',
+    '    faceOffsetX: Number(workbench?.dataset.faceOffsetX),',
+    '    faceOffsetY: Number(workbench?.dataset.faceOffsetY),',
+    '    faceScale: Number(workbench?.dataset.faceScale),',
+    '    headOffsetX: Number(workbench?.dataset.headOffsetX),',
+    '    headOffsetY: Number(workbench?.dataset.headOffsetY),',
+    '    headScale: Number(workbench?.dataset.headScale),',
+    '    pivotX: Number(workbench?.dataset.headPivotX),',
+    '    pivotY: Number(workbench?.dataset.headPivotY),',
+    '    pivotEditing: workbench?.dataset.neckPivotEditing ?? \'\',',
+    '    pivotButtonLabel: pivotToggle?.textContent.trim() ?? \'\',',
+    '    pivotCompleteCount: [...(workbench?.querySelectorAll(\'button\') ?? [])].filter((button) => button.textContent.trim() === \'完成转轴\').length,',
+    '    pivotGuidancePresent: Boolean(workbench?.querySelector(\'[data-testid="character-assembly-pivot-guidance"]\')),',
+    '    pivotHandle: rect(workbench?.querySelector(\'[data-testid="character-assembly-head-pivot"]\')),',
+    '    actionRects,',
+    '    panel: panelRect,',
+    '    panelLayout: panel?.dataset.overlayLayout ?? \'\',',
+    '    controlGroups: groups.map((group) => ({ label: group.getAttribute(\'aria-label\') ?? \'\', rect: rect(group) })),',
+    '    panelButtons: panelButtons.map((button) => ({ testId: button.dataset.testid ?? \'\', rect: rect(button), disabled: button.disabled })),',
+    '    imageRects,',
+    '    handleRects,',
+    '    imageOverlap: imageRects.some((image) => intersects(panelRect, image)),',
+    '    handleOverlap: handleRects.some((handle) => intersects(panelRect, handle)),',
+    '    controlHandleOverlaps,',
+    '    controlHandleOverlap: controlHandleOverlaps.length > 0,',
+    '    focusTestId: document.activeElement?.getAttribute(\'data-testid\') ?? \'\',',
+    '  };',
+    '})()',
+  ].join('\n');
+  const readLayout = () => window.webContents.executeJavaScript(readLayoutScript);
+  const clickVisibleExpressionOption = async (index, label) => {
+    await waitForDom(
+      window,
+      'document.querySelectorAll(".character-assembly-expression-preview-options button").length > ' + index,
+      label + ' did not appear.',
+    );
+    const availableOptions = await window.webContents.executeJavaScript(
+      'Array.from(document.querySelectorAll(".character-assembly-expression-preview-options button")).map((button) => ({ id: button.getAttribute("data-expression-id") ?? "", text: button.textContent.trim(), rect: (() => { const rect = button.getBoundingClientRect(); return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }; })() }))',
+    );
+    const point = await window.webContents.executeJavaScript(
+      '(() => { const element = document.querySelectorAll(".character-assembly-expression-preview-options button")[' + index + ']; ' +
+        'const bounds = element?.getBoundingClientRect(); const style = element ? getComputedStyle(element) : null; ' +
+        'const x = bounds ? Math.round(bounds.left + bounds.width / 2) : 0; ' +
+        'const y = bounds ? Math.round(bounds.top + bounds.height / 2) : 0; const hit = document.elementFromPoint(x, y); ' +
+        'return { x, y, width: bounds?.width ?? 0, height: bounds?.height ?? 0, ' +
+        'visible: Boolean(bounds?.width > 0 && bounds?.height > 0 && style?.visibility === "visible" && style?.display !== "none"), ' +
+        'hitTarget: Boolean(element && (hit === element || element.contains(hit))), hitTestId: hit?.getAttribute("data-testid") ?? "" }; })()',
+    );
+    assert(point.visible && point.hitTarget, label + ' is not pointer-accessible: ' + JSON.stringify({ point, availableOptions }));
+    const displayScale = screen.getDisplayMatching(window.getBounds()).scaleFactor;
+    const inputScale = await window.webContents.executeJavaScript('window.devicePixelRatio') / displayScale;
+    await sendPointerClick(window, point.x * inputScale, point.y * inputScale);
+    await wait(80);
+    return point;
+  };
+  const assertRectStable = (before, after, label) => {
+    assert(before && after, label + ' rectangle is missing.');
+    for (const key of ['x', 'y', 'width', 'height']) {
+      assert(
+        Math.abs(before[key] - after[key]) <= 2,
+        label + ' moved on ' + key + ': ' + JSON.stringify({ before, after }),
+      );
+    }
+  };
+  const assertActionsStable = (before, after, label) => {
+    const afterById = new Map(after.actionRects.map((action) => [action.id, action.rect]));
+    for (const action of before.actionRects) {
+      assertRectStable(action.rect, afterById.get(action.id), label + ' ' + action.id);
+    }
+  };
+  const assertProjectSessionStable = (before, after, label) => {
+    assert(before.projectRevision === after.projectRevision, label + ' changed Project revision.');
+    assert(before.projectDirty === after.projectDirty, label + ' changed Project dirty state.');
+    assert(JSON.stringify(before.history) === JSON.stringify(after.history), label + ' changed History.');
+    assert(before.timelineTime === after.timelineTime, label + ' changed Timeline time.');
+  };
+  const assertFineTuneOverlay = (layout, label) => {
+    assert(layout.panel, label + ' did not render the precision overlay.');
+    assert(layout.controlGroups.length === 3, label + ' did not render three adjustment groups.');
+    assert(
+      layout.controlGroups[0].rect.y < layout.controlGroups[1].rect.y &&
+        layout.controlGroups[1].rect.y < layout.controlGroups[2].rect.y,
+      label + ' adjustment groups are not vertically stacked.',
+    );
+    assert(layout.panelButtons.some((button) => button.testId === 'character-assembly-reset'), label + ' did not expose Reset.');
+    assert(
+      layout.panelButtons.every((button) => button.rect.width >= 44 && button.rect.height >= 44),
+      label + ' lost 44px touch targets.',
+    );
+    assert(
+      layout.panel.x >= layout.viewport.x - 1 &&
+        layout.panel.right <= layout.viewport.right + 1 &&
+        layout.panel.y >= layout.viewport.y - 1 &&
+        layout.panel.bottom <= layout.viewport.bottom + 1,
+      label + ' escaped the preview canvas bounds.',
+    );
+    assert(
+      !layout.controlHandleOverlap,
+      label + ' controls cover a Head, Face, or pivot handle: ' + JSON.stringify(layout.controlHandleOverlaps),
+    );
+  };
+  const before = await readLayout();
+  evidence.initialLayout = before;
+  await waitForPaint(window);
+  evidence.initialScreenshot = await capture(window, 'issue813-assembly-before.png');
+  screenshots.push(evidence.initialScreenshot);
+
+  if (issue813BaselineOnly) {
+    return {
+      issue: 813,
+      passed: true,
+      baseline: true,
+      commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+      verificationGate: 'issue813-baseline-capture',
+      projectRoot,
+      syntheticInput: true,
+      humanAcceptance: false,
+      evidenceKind: 'same-size-same-character-pre-change-electron-geometry-and-screenshot',
+      evidence,
+      screenshots,
+    };
+  }
+
+  const baselineRoot = 'D:\\PandaStage-Acceptance\\issue813-assembly-canvas-space\\baseline';
+  const baselineRuns = readdirSync(baselineRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith('run-'))
+    .map((entry) => entry.name)
+    .sort();
+  assert(baselineRuns.length > 0, 'Issue 813 baseline geometry is missing.');
+  const baselineResultsPath = path.join(
+    baselineRoot,
+    baselineRuns[baselineRuns.length - 1],
+    'results.json',
+  );
+  const baselineResults = JSON.parse(readFileSync(baselineResultsPath, 'utf8'));
+  const baselineLayout = baselineResults.evidence?.initialLayout;
+  assert(baselineResults.passed && baselineLayout?.viewport, 'Issue 813 baseline capture did not pass.');
+  evidence.baseline = {
+    resultsPath: baselineResultsPath,
+    screenshot: baselineResults.evidence.initialScreenshot,
+    layout: baselineLayout,
+  };
+  evidence.viewportChange = {
+    previewTopRise: baselineLayout.viewport.y - before.viewport.y,
+    previewHeightGain: before.viewport.height - baselineLayout.viewport.height,
+    sameLeft: Math.abs(before.viewport.x - baselineLayout.viewport.x) <= 2,
+    sameWidth: Math.abs(before.viewport.width - baselineLayout.viewport.width) <= 2,
+  };
+  assert(before.shellMode === 'landscape', 'Issue 813 assembly verifier did not use Cloud Touch landscape layout.');
+  assert(before.characterId === IDS.issue792Character, 'Issue 813 before/after fixture Character ID changed.');
+  assert(before.viewportSize.width === baselineLayout.viewportSize.width && before.viewportSize.height === baselineLayout.viewportSize.height, 'Issue 813 before/after window sizes differ.');
+  assert(Math.abs(before.viewport.x - baselineLayout.viewport.x) <= 2, 'Issue 813 changed the preview viewport left edge.');
+  assert(Math.abs(before.viewport.width - baselineLayout.viewport.width) <= 2, 'Issue 813 changed the preview viewport width.');
+  assert(evidence.viewportChange.previewTopRise > 20, 'Removing the landscape header did not raise the preview viewport.');
+  assert(evidence.viewportChange.previewHeightGain > 20, 'Removing the landscape header did not increase usable preview height.');
+  assert(!before.headerVisible && before.gridTrackCount === 2, 'Landscape Assembly still reserves an empty header row.');
+  assert(before.expressionRows === 0, 'Landscape Assembly still renders a permanent expression-choice row.');
+  assert(before.expressionPreviewToggle, 'Expression preview is not available from the contextual footer control.');
+  assert(before.pivotCompleteCount === 0 && !before.pivotGuidancePresent, 'Pivot completion still has a duplicate header action or guidance.');
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-pivot-mode-toggle"]',
+    'Toggle neck pivot editing',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.dataset.neckPivotEditing === "true"',
+    'The footer pivot toggle did not enter pivot editing.',
+  );
+  const pivotMode = await readLayout();
+  assert(pivotMode.pivotCompleteCount === 1, 'Pivot mode does not expose exactly one “完成转轴” exit.');
+  assert(pivotMode.pivotButtonLabel === '完成转轴', 'The original footer pivot toggle did not switch its label.');
+  assert(pivotMode.pivotHandle, 'Pivot mode removed the draggable green crosshair.');
+  assert(!pivotMode.pivotGuidancePresent, 'Pivot mode still displays the nonessential instruction row.');
+  assertRectStable(before.viewport, pivotMode.viewport, 'Pivot mode preview viewport');
+  assertProjectSessionStable(before, pivotMode, 'Opening pivot mode');
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'issue813-pivot-mode.png'));
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-pivot-mode-toggle"]',
+    'Complete neck pivot editing',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.dataset.neckPivotEditing === "false"',
+    'The single footer pivot toggle did not leave pivot editing.',
+  );
+
+  if (before.editTarget !== 'head') {
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-assembly-head-asset-selected"]',
+      'Select Head placement card',
+    );
+    await waitForDom(window, workbenchQuery + '?.dataset.editTarget === "head"', 'Head placement card did not select Head.');
+  }
+  const headBaseline = await readLayout();
+  const panelCycles = [];
+  for (let cycle = 1; cycle <= 3; cycle += 1) {
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-assembly-fine-tune-toggle"]',
+      'Open Head fine tune',
+    );
+    await waitForDom(
+      window,
+      workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+      'Fine tune overlay did not open.',
+    );
+    await waitForPaint(window);
+    const opened = await readLayout();
+    panelCycles.push({ cycle, opened });
+    assertFineTuneOverlay(opened, 'Head fine tune cycle ' + cycle);
+    assertRectStable(headBaseline.viewport, opened.viewport, 'Opening Head fine tune');
+    assertRectStable(headBaseline.footer, opened.footer, 'Opening Head fine tune');
+    assertActionsStable(headBaseline, opened, 'Opening Head fine tune');
+    assertProjectSessionStable(headBaseline, opened, 'Opening Head fine tune');
+    if (cycle === 1) {
+      const headX = opened.headOffsetX;
+      await clickWithNativeInput(
+        window,
+        '[data-testid="character-assembly-head-right-step"]',
+        'Move Head one pixel right',
+      );
+      await waitForDom(
+        window,
+        'Number(' + workbenchQuery + '?.dataset.headOffsetX) === ' + JSON.stringify(headX + 1),
+        'Head fine tune did not preserve its one-pixel step handler.',
+      );
+      const nudged = await readLayout();
+      assertProjectSessionStable(headBaseline, nudged, 'Head fine tune step');
+      await clickWithNativeInput(
+        window,
+        '[data-testid="character-assembly-reset"]',
+        'Reset Head placement',
+      );
+      await waitForDom(
+        window,
+        workbenchQuery + '?.dataset.headOffsetX === "0" && ' +
+          workbenchQuery + '?.dataset.headOffsetY === "0" && ' +
+          workbenchQuery + '?.dataset.headScale === "1"',
+        'Head Reset did not restore the default placement.',
+      );
+      const reset = await readLayout();
+      assertProjectSessionStable(headBaseline, reset, 'Head Reset');
+      await waitForPaint(window);
+      screenshots.push(await capture(window, 'issue813-head-fine-tune.png'));
+      await sendKeyStroke(window, 'ESC');
+      await waitForDom(
+        window,
+        '!' + workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+        'Escape did not close the fine tune overlay.',
+      );
+      const escaped = await readLayout();
+      evidence.keyboardEscape = escaped;
+      assert(
+        escaped.focusTestId === 'character-assembly-fine-tune-toggle',
+        'Escape did not return focus to the fine tune trigger: ' + JSON.stringify(escaped),
+      );
+    } else {
+      await clickWithNativeInput(
+        window,
+        '[data-testid="character-assembly-fine-tune-toggle"]',
+        'Close Head fine tune',
+      );
+      await waitForDom(
+        window,
+        '!' + workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+        'Fine tune overlay did not close.',
+      );
+    }
+    const closed = await readLayout();
+    assertRectStable(headBaseline.viewport, closed.viewport, 'Closing Head fine tune');
+    assertRectStable(headBaseline.footer, closed.footer, 'Closing Head fine tune');
+    assertActionsStable(headBaseline, closed, 'Closing Head fine tune');
+    assertProjectSessionStable(headBaseline, closed, 'Closing Head fine tune');
+  }
+  evidence.panelCycles = panelCycles;
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-expression-preview-toggle"]',
+    'Open contextual expression preview',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-expression-preview-options"]\')',
+    'The contextual expression preview options did not open.',
+  );
+  await waitForPaint(window);
+  const expressionMenu = await readLayout();
+  assert(expressionMenu.expressionChoices.length === 3, 'Expression preview did not retain Default, alternate, and Mouth choices.');
+  assert(!expressionMenu.expressionRows, 'Expression preview options were rendered as a permanent top row.');
+  assertActionsStable(headBaseline, expressionMenu, 'Opening expression preview');
+  assertRectStable(headBaseline.viewport, expressionMenu.viewport, 'Opening expression preview');
+  assertProjectSessionStable(headBaseline, expressionMenu, 'Opening expression preview');
+  screenshots.push(await capture(window, 'issue813-expression-preview-menu.png'));
+  const expressionMenuAfterCapture = await readLayout();
+  evidence.expressionMenuAfterCapture = expressionMenuAfterCapture;
+  if (!expressionMenuAfterCapture.expressionPreviewOpen) {
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-assembly-expression-preview-toggle"]',
+      'Reopen contextual expression preview after screenshot capture',
+    );
+  }
+  evidence.alternateExpressionClick = await clickVisibleExpressionOption(
+    1,
+    'Preview alternate expression',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.dataset.selectedFace === ' + JSON.stringify(IDS.issue813AlternateExpression),
+    'Alternate expression selection did not update the preview.',
+  );
+  let expressionSelected = await readLayout();
+  assert(expressionSelected.previewFaceAssetId === IDS.issue813AlternateFace, 'Alternate expression preview uses the wrong Face asset.');
+  assert(expressionSelected.focusTestId === 'character-assembly-expression-preview-toggle', 'Expression choice did not return focus to its trigger.');
+  assertProjectSessionStable(headBaseline, expressionSelected, 'Previewing alternate expression');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-expression-preview-toggle"]',
+    'Open expression preview for Mouth',
+  );
+  await clickVisibleExpressionOption(
+    2,
+    'Preview Mouth',
+  );
+  await waitForDom(window, workbenchQuery + '?.dataset.selectedFace === "$mouth"', 'Mouth preview did not remain available.');
+  expressionSelected = await readLayout();
+  assert(expressionSelected.previewFaceAssetId === IDS.mouth, 'Mouth preview uses the wrong Face asset.');
+  assertProjectSessionStable(headBaseline, expressionSelected, 'Previewing Mouth');
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-default-face-select"]',
+    'Select Face placement card',
+  );
+  await waitForDom(window, workbenchQuery + '?.dataset.editTarget === "face"', 'Face placement card did not select Face.');
+  const faceBaseline = await readLayout();
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Open Face fine tune',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+    'Face fine tune overlay did not open.',
+  );
+  await waitForPaint(window);
+  const facePanel = await readLayout();
+  assertFineTuneOverlay(facePanel, 'Face fine tune');
+  assertActionsStable(faceBaseline, facePanel, 'Opening Face fine tune');
+  assertRectStable(faceBaseline.viewport, facePanel.viewport, 'Opening Face fine tune');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-right-step"]', 'Move Face one pixel right');
+  await waitForDom(
+    window,
+    'Number(' + workbenchQuery + '?.dataset.faceOffsetX) === ' + JSON.stringify(faceBaseline.faceOffsetX + 1),
+    'Face fine tune did not preserve its one-pixel step handler.',
+  );
+  await clickWithNativeInput(window, '[data-testid="character-assembly-scale-up"]', 'Increase Face scale');
+  await waitForDom(
+    window,
+    'Number(' + workbenchQuery + '?.dataset.faceScale) === ' + JSON.stringify(Number((faceBaseline.faceScale + 0.05).toFixed(2))),
+    'Face fine tune did not preserve its 0.05 scale step.',
+  );
+  const faceAdjusted = await readLayout();
+  assertProjectSessionStable(faceBaseline, faceAdjusted, 'Face fine tune controls');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-reset"]', 'Reset Face placement');
+  await waitForDom(
+    window,
+    workbenchQuery + '?.dataset.faceOffsetX === "0" && ' +
+      workbenchQuery + '?.dataset.faceOffsetY === "0" && ' +
+      workbenchQuery + '?.dataset.faceScale === "1"',
+    'Face Reset did not restore the default placement.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Close Face fine tune',
+  );
+  const faceClosed = await readLayout();
+  assertRectStable(faceBaseline.viewport, faceClosed.viewport, 'Closing Face fine tune');
+  assertRectStable(faceBaseline.footer, faceClosed.footer, 'Closing Face fine tune');
+  assertActionsStable(faceBaseline, faceClosed, 'Closing Face fine tune');
+  assertProjectSessionStable(faceBaseline, faceClosed, 'Face Reset and close');
+
+  const originalSize = window.getSize();
+  const originalZoomFactor = window.webContents.getZoomFactor();
+  const responsiveEvidence = [];
+  try {
+    for (const scenario of [
+      { name: 'compact-landscape-125', width: 1100, height: 760, zoom: 1.25 },
+      { name: 'narrow-cloud-touch-125', width: 960, height: 800, zoom: 1.25 },
+    ]) {
+      const previousWindowWidth = (await readLayout()).viewportSize.width;
+      window.webContents.setZoomFactor(scenario.zoom);
+      const targetDevicePixelRatio = screen.getDisplayMatching(window.getBounds()).scaleFactor * scenario.zoom;
+      await waitForDom(
+        window,
+        `Math.abs(window.devicePixelRatio - ${targetDevicePixelRatio}) < 0.02`,
+        scenario.name + ' browser zoom did not settle.',
+        5_000,
+      );
+      window.setSize(scenario.width, scenario.height);
+      await waitForDom(
+        window,
+        `window.innerWidth < ${previousWindowWidth}`,
+        scenario.name + ' renderer viewport width did not shrink.',
+        5_000,
+      );
+      await wait(120);
+      const beforeOpen = await readLayout();
+      assert(beforeOpen.shellMode === 'landscape', scenario.name + ' did not retain Cloud Touch landscape mode.');
+      const openControlClick = await clickWithNativeInput(
+        window,
+        '[data-testid="character-assembly-fine-tune-toggle"]',
+        'Open fine tune at ' + scenario.name,
+      );
+      await wait(120);
+      const afterOpenClick = await readLayout();
+      if (!afterOpenClick.panel) {
+        throw new Error(scenario.name + ' fine tune overlay did not open after native click: ' + JSON.stringify({ openControlClick, beforeOpen, afterOpenClick }));
+      }
+      await waitForDom(
+        window,
+        workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+        scenario.name + ' fine tune overlay did not open.',
+        2_000,
+      );
+      await wait(60);
+      const opened = await readLayout();
+      screenshots.push(await capture(window, 'issue813-' + scenario.name + '-fine-tune.png'));
+      assertFineTuneOverlay(opened, scenario.name);
+      assertRectStable(beforeOpen.viewport, opened.viewport, scenario.name + ' viewport');
+      assertRectStable(beforeOpen.footer, opened.footer, scenario.name + ' footer');
+      assertActionsStable(beforeOpen, opened, scenario.name);
+      responsiveEvidence.push({ ...scenario, beforeOpen, opened });
+      await sendKeyStroke(window, 'ESC');
+      await waitForDom(
+        window,
+        '!' + workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+        scenario.name + ' Escape did not close the overlay.',
+      );
+    }
+  } finally {
+    window.webContents.setZoomFactor(originalZoomFactor);
+    window.setSize(originalSize[0], originalSize[1]);
+    await wait(200);
+  }
+  evidence.responsive = responsiveEvidence;
+
+  await clickWithNativeInput(window, '[data-testid="character-detail-back"]', 'Return to Character list');
+  await waitForDom(
+    window,
+    'document.querySelector(\'[data-testid="character-list-view"] [data-character-id="' + IDS.issue797HeadlessCharacter + '"]\')',
+    'Headless composite Character did not appear.',
+  );
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-list-view"] [data-character-id="' + IDS.issue797HeadlessCharacter + '"]',
+    'Headless composite Character card',
+  );
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Open headless Assembly');
+  await waitForDom(
+    window,
+    workbenchQuery + '?.dataset.characterId === ' + JSON.stringify(IDS.issue797HeadlessCharacter),
+    'Headless Character Assembly did not open.',
+  );
+  const headlessLayout = await readLayout();
+  assert(!headlessLayout.headerVisible && headlessLayout.gridTrackCount === 2, 'Headless Assembly left an empty header track.');
+  assert(headlessLayout.expressionRows === 0 && headlessLayout.expressionPreviewToggle, 'Headless Assembly lost contextual expression preview.');
+  assertRectStable(before.viewport, headlessLayout.viewport, 'Headless Assembly preview viewport');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Open headless Face fine tune',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-fine-tune-panel"]\')',
+    'Headless Face fine tune overlay did not open.',
+  );
+  const headlessPanel = await readLayout();
+  assertFineTuneOverlay(headlessPanel, 'Headless Face fine tune');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-fine-tune-toggle"]', 'Close headless Face fine tune');
+  evidence.headlessLayout = headlessLayout;
+  evidence.headlessPanel = headlessPanel;
+
+  await clickWithNativeInput(window, '[data-testid="character-detail-back"]', 'Return from headless Character');
+  await openCreate(window);
+  await click(
+    window,
+    '[data-testid="character-create-mode-switch"] input[value="composite"]',
+    'Composite Character choice',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.dataset.sessionKind === "create"',
+    'Composite Character Create did not open the Assembly Workbench.',
+  );
+  const createLayout = await readLayout();
+  assert(!createLayout.headerVisible && createLayout.gridTrackCount === 2, 'Composite Create left an empty header track.');
+  assert(createLayout.expressionRows === 0 && createLayout.expressionPreviewToggle, 'Composite Create lost contextual expression preview.');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-expression-preview-toggle"]',
+    'Open Create expression preview',
+  );
+  await waitForDom(
+    window,
+    workbenchQuery + '?.querySelector(\'[data-testid="character-assembly-expression-preview-options"]\')',
+    'Create expression preview did not open.',
+  );
+  const createMenu = await readLayout();
+  assert(createMenu.expressionChoices.includes('默认'), 'Create preview lost its Default option.');
+  assertProjectSessionStable(createLayout, createMenu, 'Opening Create expression preview');
+  evidence.createLayout = createLayout;
+  evidence.createExpressionPreview = createMenu;
+  await waitForPaint(window);
+  screenshots.push(await capture(window, 'issue813-composite-create-preview.png'));
+
+  const passed = {
+    issue: 813,
+    passed: true,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'verify:issue813-assembly-canvas-space',
+    projectRoot,
+    baselineResultsPath,
+    syntheticInput: true,
+    humanAcceptance: false,
+    evidenceKind: 'real-electron-native-pointer-keyboard-layout-stability-and-session-state',
+    evidence,
+    screenshots,
+  };
+  return passed;
+}
+
+async function verifyIssue820LargeAssetFit(window) {
+  const screenshots = [];
+  const evidence = {};
+  inProgressEvidence = evidence;
+  const readState = async () => window.webContents.executeJavaScript(`(() => {
+    const box = (element) => {
+      const bounds = element?.getBoundingClientRect();
+      return bounds ? {
+        x: bounds.left,
+        y: bounds.top,
+        right: bounds.right,
+        bottom: bounds.bottom,
+        width: bounds.width,
+        height: bounds.height,
+      } : null;
+    };
+    const overlap = (left, right) => Boolean(left && right
+      && left.x < right.right && left.right > right.x
+      && left.y < right.bottom && left.bottom > right.y);
+    const area = (rect) => rect
+      ? Math.max(0, rect.right - rect.x) * Math.max(0, rect.bottom - rect.y)
+      : 0;
+    const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    const viewport = workbench?.querySelector('[data-testid="character-assembly-preview"]');
+    const stage = viewport?.querySelector('.character-assembly-preview-stage');
+    const drawer = document.querySelector('[data-testid="resource-activity-drawer"]');
+    const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+    const panel = workbench?.querySelector('[data-testid="character-assembly-fine-tune-panel"]');
+    const timeline = document.querySelector('[data-testid="bottom-workspace"]');
+    const timelineHandle = document.querySelector('[data-testid="timeline-resize-handle"]');
+    const history = document.querySelector('[data-testid="history-controls"]');
+    const drawerVisible = dock?.dataset.resourceDrawerOpen === 'true'
+      && drawer && getComputedStyle(drawer).display !== 'none'
+      && getComputedStyle(drawer).visibility === 'visible'
+      && Number(getComputedStyle(drawer).opacity) > 0.01;
+    const timelineVisible = timeline && getComputedStyle(timeline).display !== 'none'
+      && getComputedStyle(timeline).visibility === 'visible'
+      && Number(getComputedStyle(timeline).opacity) > 0.01;
+    const panelVisible = panel && getComputedStyle(panel).display !== 'none'
+      && getComputedStyle(panel).visibility === 'visible'
+      && Number(getComputedStyle(panel).opacity) > 0.01;
+    const stageRect = box(stage);
+    const images = [...(workbench?.querySelectorAll('.character-assembly-part') ?? [])]
+      .map((image) => {
+        const rect = box(image);
+        const visible = rect && stageRect ? {
+          x: Math.max(rect.x, stageRect.x),
+          y: Math.max(rect.y, stageRect.y),
+          right: Math.min(rect.right, stageRect.right),
+          bottom: Math.min(rect.bottom, stageRect.bottom),
+        } : null;
+        const visibleArea = visible
+          ? Math.max(0, visible.right - visible.x) * Math.max(0, visible.bottom - visible.y)
+          : 0;
+        return {
+          part: image.classList.contains('character-assembly-part-body')
+            ? 'body'
+            : image.classList.contains('character-assembly-part-head')
+              ? 'head'
+              : 'face',
+          assetId: image.dataset.assetId ?? '',
+          naturalWidth: image.naturalWidth,
+          naturalHeight: image.naturalHeight,
+          rect,
+          stageClipRatio: area(rect) > 0 ? visibleArea / area(rect) : 0,
+          overlapsDrawer: drawerVisible && overlap(rect, box(drawer)),
+          overlapsPanel: panelVisible && overlap(rect, box(panel)),
+          overlapsTimeline: timelineVisible && overlap(rect, box(timeline)),
+        };
+      });
+    const timelineValue = timelineHandle?.getAttribute('aria-valuenow') ?? '';
+    return {
+      characterId: workbench?.dataset.characterId ?? '',
+      cameraFitMode: workbench?.dataset.cameraFitMode ?? '',
+      cameraFitScale: Number(workbench?.dataset.cameraFitScale ?? 0),
+      cameraFitBounds: workbench?.dataset.cameraFitBounds ?? '',
+      projectRevision: workbench?.dataset.projectRevision ?? '',
+      projectDirty: workbench?.dataset.projectDirty ?? '',
+      bodyAssetId: workbench?.dataset.bodyAssetId ?? '',
+      facePlacement: [
+        workbench?.dataset.faceOffsetX ?? '',
+        workbench?.dataset.faceOffsetY ?? '',
+        workbench?.dataset.faceScale ?? '',
+        workbench?.dataset.faceRotationDeg ?? '',
+        workbench?.dataset.faceFlipX ?? '',
+      ],
+      headPlacement: [
+        workbench?.dataset.headOffsetX ?? '',
+        workbench?.dataset.headOffsetY ?? '',
+        workbench?.dataset.headScale ?? '',
+        workbench?.dataset.headRotationDeg ?? '',
+        workbench?.dataset.headFlipX ?? '',
+        workbench?.dataset.headPivotX ?? '',
+        workbench?.dataset.headPivotY ?? '',
+      ],
+      history: {
+        undo: history?.dataset.undoCount ?? '',
+        redo: history?.dataset.redoCount ?? '',
+      },
+      timelineValue,
+      viewport: box(viewport),
+      stage: stageRect,
+      stageOverflow: stage ? getComputedStyle(stage).overflow : '',
+      drawer: drawerVisible ? box(drawer) : null,
+      panel: panelVisible ? box(panel) : null,
+      timeline: timelineVisible ? box(timeline) : null,
+      viewAllButton: box(workbench?.querySelector('[data-testid="character-assembly-view-all"]')),
+      images,
+    };
+  })()`);
+  const waitForAssemblyImages = async (label) => {
+    await waitForDom(
+      window,
+      `(() => {
+        const images = [...document.querySelectorAll('[data-testid="character-assembly-workbench"] .character-assembly-part')];
+        return images.length === 3 && images.every((image) => image.complete && image.naturalWidth > 0);
+      })()`,
+      label + ' did not load all three assembly images.',
+    );
+    await waitForPaint(window);
+  };
+  const openCharacter = async (characterId, label) => {
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-list-view"] [data-character-id="' + characterId + '"]',
+      label + ' card',
+    );
+    await waitForDom(
+      window,
+      "document.querySelector('[data-testid=character-detail-view]')?.dataset.characterEditorId === " +
+        JSON.stringify(characterId),
+      label + ' detail did not open.',
+    );
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-workspace-expressions-tab"]',
+      label + ' Expressions workspace',
+    );
+    await waitForDom(
+      window,
+      "document.querySelector('[data-testid=bottom-workspace]')?.dataset.characterAssemblyInactive === 'false'",
+      label + ' did not leave the timeline active before Assembly.',
+    );
+  };
+  const setTimelineToMiddle = async () => {
+    const timeline = await window.webContents.executeJavaScript(`(() => {
+      const element = document.querySelector('[data-testid="timeline-resize-handle"]');
+      const bounds = element?.getBoundingClientRect();
+      return element && bounds ? {
+        min: Number(element.getAttribute('aria-valuemin')),
+        max: Number(element.getAttribute('aria-valuemax')),
+        value: Number(element.getAttribute('aria-valuenow')),
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        hitTest: document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+          ?.closest('[data-testid]')?.getAttribute('data-testid') ?? '',
+      } : null;
+    })()`);
+    assert(timeline && timeline.max > timeline.min, 'Issue 820 timeline did not expose a resizable range.');
+    const midpoint = Math.round(timeline.min + (timeline.max - timeline.min) / 2);
+    const keyboardStep = 16;
+    const stepsFromMinimum = Math.round((midpoint - timeline.min) / keyboardStep);
+    const target = timeline.min + stepsFromMinimum * keyboardStep;
+    const selector = '[data-testid="timeline-resize-handle"]';
+    await pressFocusedControl(window, selector, 'HOME', 'Timeline resize handle');
+    for (let step = 0; step < stepsFromMinimum; step += 1) {
+      await pressFocusedControl(window, selector, 'ARROWUP', 'Timeline resize handle');
+    }
+    await waitForPaint(window);
+    const after = await window.webContents.executeJavaScript(`(() => {
+      const element = document.querySelector('[data-testid="timeline-resize-handle"]');
+      return {
+        value: Number(element?.getAttribute('aria-valuenow')),
+        focused: document.activeElement === element,
+      };
+    })()`);
+    const evidence = {
+      min: timeline.min,
+      max: timeline.max,
+      before: timeline.value,
+      midpoint,
+      stepsFromMinimum,
+      target,
+      after: after.value,
+      resizeInput: 'keyboard-home-arrowup',
+      rect: { x: timeline.x, y: timeline.y, width: timeline.width, height: timeline.height },
+      viewport: timeline.viewport,
+      hitTest: timeline.hitTest,
+      afterState: after,
+    };
+    assert(target > timeline.min && target < timeline.max
+      && Math.abs(target - midpoint) <= keyboardStep / 2,
+    'Issue 820 timeline keyboard target was not near its middle height: ' + JSON.stringify(evidence));
+    assert(after.value === target,
+      'Issue 820 timeline did not reach its middle height: ' + JSON.stringify(evidence));
+    return evidence;
+  };
+  const assertCameraOnly = (before, after, label) => {
+    for (const key of [
+      'projectRevision',
+      'projectDirty',
+      'bodyAssetId',
+      'facePlacement',
+      'headPlacement',
+      'history',
+      'timelineValue',
+    ]) {
+      assert(
+        JSON.stringify(before[key]) === JSON.stringify(after[key]),
+        label + ' changed ' + key + ': ' + JSON.stringify({ before: before[key], after: after[key] }),
+      );
+    }
+  };
+  const assertAssemblyVisible = (state, label) => {
+    assert(state.cameraFitMode === 'content', label + ' did not use the content-fit camera.');
+    assert(state.stageOverflow === 'visible', label + ' still clipped parts to the formal project frame.');
+    assert(state.viewport && state.images.length === 3, label + ' did not render all three parts.');
+    for (const image of state.images) {
+      assert(image.rect && image.rect.width > 0 && image.rect.height > 0, label + ' has an empty ' + image.part + ' image rectangle.');
+      assert(image.rect.x >= state.viewport.x - 1 && image.rect.right <= state.viewport.right + 1,
+        label + ' placed ' + image.part + ' outside the editor viewport: ' + JSON.stringify(image));
+      assert(image.rect.y >= state.viewport.y - 1 && image.rect.bottom <= state.viewport.bottom + 1,
+        label + ' placed ' + image.part + ' outside the editor viewport: ' + JSON.stringify(image));
+      assert(!image.overlapsDrawer, label + ' placed ' + image.part + ' behind the resource drawer.');
+      assert(!image.overlapsPanel, label + ' placed ' + image.part + ' behind the fine-tune panel.');
+      assert(!image.overlapsTimeline, label + ' placed ' + image.part + ' under the timeline.');
+    }
+  };
+
+  if (issue820BaselineOnly) {
+    await openCharacter(IDS.issue820Character, 'Issue 820 oversized Character');
+    evidence.timeline = await setTimelineToMiddle();
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-workspace-assembly-tab"]',
+      'Assembly workspace tab',
+    );
+    await waitForDom(
+      window,
+      "document.querySelector('[data-testid=character-assembly-workbench]')?.dataset.sessionKind === 'edit'",
+      'Issue 820 oversized Character did not enter Assembly.',
+    );
+    await waitForAssemblyImages('Issue 820 baseline');
+    const state = await readState();
+    const button = await window.webContents.executeJavaScript(
+      "Boolean(document.querySelector('[data-testid=character-assembly-view-all]'))",
+    );
+    const body = state.images.find((image) => image.part === 'body');
+    assert(body?.stageClipRatio < 0.99,
+      'Issue 820 baseline did not clip the oversized Body to the project frame: ' + JSON.stringify(body));
+    assert(!button, 'Issue 820 baseline unexpectedly included the new View All action.');
+    const screenshot = await capture(window, 'issue820-s01-before.png');
+    screenshots.push(screenshot);
+    evidence.baseline = {
+      state,
+      screenshot,
+      buttonPresent: button,
+      reproducedProjectFrameClip: true,
+    };
+    return {
+      issue: 820,
+      code: 'C04-S01',
+      passed: true,
+      baseline: true,
+      commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+      verificationGate: 'issue820-c04-s01-baseline',
+      projectRoot,
+      syntheticInput: true,
+      humanAcceptance: false,
+      evidenceKind: 'windows-electron-oversized-assembly-project-frame-clip',
+      evidence,
+      screenshots,
+    };
+  }
+
+  await openCharacter(IDS.issue792Character, 'Issue 820 small existing Character');
+  evidence.timeline = await setTimelineToMiddle();
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-workspace-assembly-tab"]',
+    'Small Character Assembly workspace',
+  );
+  await waitForDom(
+    window,
+    "document.querySelector('[data-testid=character-assembly-workbench]')?.dataset.sessionKind === 'edit'",
+    'Issue 820 small Character did not enter Assembly.',
+  );
+  await waitForAssemblyImages('Issue 820 small Character');
+  let smallBefore = await readState();
+  assert(smallBefore.cameraFitMode === 'frame', 'Existing small material no longer opens in its unchanged project-frame view.');
+  assert(smallBefore.viewAllButton?.width > 0, 'The View All action is not visible for the small Character.');
+  screenshots.push(await capture(window, 'issue820-s01-small-before-view-all.png'));
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-view-all"]',
+    'View All for the small Character',
+  );
+  await waitForDom(
+    window,
+    "document.querySelector('[data-testid=character-assembly-workbench]')?.dataset.cameraFitMode === 'content'",
+    'The View All action did not switch the camera to content fit.',
+  );
+  await waitForPaint(window);
+  const smallAfter = await readState();
+  assertCameraOnly(smallBefore, smallAfter, 'Small Character View All');
+  assertAssemblyVisible(smallAfter, 'Small Character View All');
+  evidence.smallMaterial = { before: smallBefore, after: smallAfter };
+  screenshots.push(await capture(window, 'issue820-s01-small-after-view-all.png'));
+
+  await clickWithNativeInput(window, '[data-testid="character-detail-back"]', 'Return to Character list');
+  await waitForDom(
+    window,
+    "document.querySelector(" + JSON.stringify('[data-testid=character-list-view] [data-character-id="' + IDS.issue820Character + '"]') + ")",
+    'Issue 820 oversized Character did not appear in the Character list.',
+  );
+  await openCharacter(IDS.issue820Character, 'Issue 820 oversized Character');
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-workspace-assembly-tab"]',
+    'Oversized Character Assembly workspace',
+  );
+  await waitForDom(
+    window,
+    "document.querySelector('[data-testid=character-assembly-workbench]')?.dataset.sessionKind === 'edit'",
+    'Issue 820 oversized Character did not enter Assembly.',
+  );
+  await waitForAssemblyImages('Issue 820 oversized Character');
+  await waitForDom(
+    window,
+    "document.querySelector('[data-testid=character-assembly-workbench]')?.dataset.cameraFitMode === 'content'",
+    'The oversized Character did not receive its initial content-fit view.',
+  );
+  await waitForPaint(window);
+  let largeBefore = await readState();
+  assert(largeBefore.images.some((image) => image.part === 'body'
+      && image.naturalWidth === 1086 && image.naturalHeight === 1448),
+  'Issue 820 synthetic Body did not use the specified 1086 x 1448 dimensions.');
+  assert(largeBefore.images.some((image) => image.part === 'head'
+      && image.naturalWidth === 1200 && image.naturalHeight === 1080),
+  'Issue 820 synthetic Head did not use a large source image.');
+  assert(largeBefore.images.some((image) => image.part === 'face'
+      && image.naturalWidth === 300 && image.naturalHeight === 300),
+  'Issue 820 Face fixture did not use the specified 300 x 300 dimensions.');
+  assertAssemblyVisible(largeBefore, 'Automatic oversized fit');
+  evidence.largeAutomaticFit = largeBefore;
+  screenshots.push(await capture(window, 'issue820-s01-large-auto-fit-middle-timeline.png'));
+
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-fine-tune-toggle"]',
+    'Open fine tune over the oversized assembly',
+  );
+  await waitForDom(
+    window,
+    "document.querySelector('[data-testid=character-assembly-fine-tune-panel]')",
+    'Fine tune did not remain available for the oversized assembly.',
+  );
+  await waitForPaint(window);
+  largeBefore = await readState();
+  assert(largeBefore.panel?.width > 0, 'Fine-tune panel has no visible bounds.');
+  const headScaleBeforeEdit = Number(largeBefore.headPlacement[2]);
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-head-scale-up"]',
+    'Make a small Head edit after automatic fit',
+  );
+  await waitForDom(
+    window,
+    'Number(document.querySelector(\'[data-testid="character-assembly-workbench"]\')?.dataset.headScale) > ' + headScaleBeforeEdit,
+    'The Head edit after automatic fit did not update the assembly draft.',
+  );
+  await waitForPaint(window);
+  const afterPlacementEdit = await readState();
+  assert(afterPlacementEdit.headPlacement[2] !== largeBefore.headPlacement[2],
+    'The post-fit Head edit did not change its draft placement.');
+  assert(afterPlacementEdit.cameraFitMode === 'content'
+      && afterPlacementEdit.cameraFitScale === largeBefore.cameraFitScale,
+    'Automatic fitting reset the camera after a user Head edit: ' + JSON.stringify({
+      before: largeBefore.cameraFitScale,
+      after: afterPlacementEdit.cameraFitScale,
+    }));
+  assert(afterPlacementEdit.projectRevision === largeBefore.projectRevision
+      && afterPlacementEdit.projectDirty === largeBefore.projectDirty
+      && JSON.stringify(afterPlacementEdit.history) === JSON.stringify(largeBefore.history),
+    'The post-fit Head draft edit changed persisted Project or History state.');
+  evidence.postFitEditDoesNotRefit = { before: largeBefore, after: afterPlacementEdit };
+  screenshots.push(await capture(window, 'issue820-s01-large-edit-without-camera-reset.png'));
+  await pressFocusedControl(
+    window,
+    '[data-testid="character-assembly-view-all"]',
+    'SPACE',
+    'View All with fine tune and resource drawer open',
+  );
+  await waitForPaint(window);
+  const largeAfter = await readState();
+  assertCameraOnly(afterPlacementEdit, largeAfter, 'Oversized Character View All');
+  assertAssemblyVisible(largeAfter, 'Oversized Character View All with overlays');
+  assert(largeAfter.panel?.width > 0 && largeAfter.drawer?.width > 0,
+    'View All closed the fine-tune panel or resource drawer instead of fitting around both.');
+  assert(Math.hypot(
+    largeAfter.stage.x - afterPlacementEdit.stage.x,
+    largeAfter.stage.y - afterPlacementEdit.stage.y,
+  ) > 1,
+  'View All did not reposition the camera around the open fine-tune panel and resource drawer.');
+  assert(largeAfter.viewAllButton?.width > 0, 'View All became unreachable after fitting content.');
+  evidence.largeManualFit = { before: afterPlacementEdit, after: largeAfter };
+  screenshots.push(await capture(window, 'issue820-s01-large-view-all-middle-timeline.png'));
+
+  const viewportBeforeResize = largeAfter.viewport;
+  window.setSize(1400, 930);
+  await waitForDom(
+    window,
+    'document.querySelector(\'[data-testid="character-assembly-preview"]\')?.getBoundingClientRect().width < ' + viewportBeforeResize.width,
+    'The Assembly viewport did not respond to the Electron window resize.',
+  );
+  await waitForDom(
+    window,
+    'Number(document.querySelector(\'[data-testid="character-assembly-workbench"]\')?.dataset.cameraFitScale) < ' + largeAfter.cameraFitScale,
+    'The content-fit camera did not recompute after the viewport became smaller.',
+  );
+  await waitForPaint(window);
+  const resized = await readState();
+  assertAssemblyVisible(resized, 'Automatic content fit after viewport resize');
+  const resizedHeadScaleBeforeEdit = Number(resized.headPlacement[2]);
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-head-scale-up"]',
+    'Make a small Head edit after viewport resize',
+  );
+  await waitForDom(
+    window,
+    'Number(document.querySelector(\'[data-testid="character-assembly-workbench"]\')?.dataset.headScale) > ' + resizedHeadScaleBeforeEdit,
+    'The Head edit after viewport resize did not update the assembly draft.',
+  );
+  await waitForPaint(window);
+  const resizedAfterEdit = await readState();
+  assert(resizedAfterEdit.cameraFitScale === resized.cameraFitScale
+      && resizedAfterEdit.stage.x === resized.stage.x
+      && resizedAfterEdit.stage.y === resized.stage.y,
+    'Automatic fitting reset the camera after a post-resize Head edit.');
+  await pressFocusedControl(
+    window,
+    '[data-testid="character-assembly-view-all"]',
+    'SPACE',
+    'View All again after viewport resize',
+  );
+  await waitForPaint(window);
+  const resizedAfterViewAll = await readState();
+  assertCameraOnly(resizedAfterEdit, resizedAfterViewAll, 'View All after viewport resize');
+  assertAssemblyVisible(resizedAfterViewAll, 'View All after viewport resize with overlays');
+  assert(resizedAfterViewAll.panel?.width > 0 && resizedAfterViewAll.drawer?.width > 0,
+    'View All after resizing closed the fine-tune panel or resource drawer.');
+  assert(Math.hypot(
+    resizedAfterViewAll.stage.x - resizedAfterEdit.stage.x,
+    resizedAfterViewAll.stage.y - resizedAfterEdit.stage.y,
+  ) > 1,
+  'View All did not recompute the camera after a Head edit in the resized viewport.');
+  evidence.viewportResize = {
+    before: largeAfter,
+    after: resized,
+    postResizeEdit: resizedAfterEdit,
+    afterViewAll: resizedAfterViewAll,
+  };
+  screenshots.push(await capture(window, 'issue820-s01-large-resized-view-all.png'));
+
+  return {
+    issue: 820,
+    code: 'C04-S01',
+    passed: true,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'verify:issue820-c04-s01',
+    projectRoot,
+    syntheticInput: true,
+    humanAcceptance: false,
+    evidenceKind: 'windows-electron-content-fit-alpha-bounds-overlay-exclusion-and-project-history-invariance',
+    evidence,
+    screenshots,
+  };
+}
+
+async function verifyIssue820BodyPlacement(window) {
+  const screenshots = [];
+  const evidence = inProgressEvidence;
+  const readState = async () => window.webContents.executeJavaScript(`(() => {
+    const box = (element) => {
+      const rect = element?.getBoundingClientRect();
+      return rect ? { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height } : null;
+    };
+    const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    const history = document.querySelector('[data-testid="history-controls"]');
+    return {
+      characterId: workbench?.dataset.characterId ?? '',
+      bodyPlacement: {
+        offsetX: Number(workbench?.dataset.bodyOffsetX),
+        offsetY: Number(workbench?.dataset.bodyOffsetY),
+        scale: Number(workbench?.dataset.bodyScale),
+      },
+      facePlacement: [
+        Number(workbench?.dataset.faceOffsetX), Number(workbench?.dataset.faceOffsetY),
+        Number(workbench?.dataset.faceScale), Number(workbench?.dataset.faceRotationDeg),
+        workbench?.dataset.faceFlipX === 'true',
+      ],
+      headPlacement: [
+        Number(workbench?.dataset.headOffsetX), Number(workbench?.dataset.headOffsetY),
+        Number(workbench?.dataset.headScale), Number(workbench?.dataset.headRotationDeg),
+        workbench?.dataset.headFlipX === 'true', Number(workbench?.dataset.headPivotX),
+        Number(workbench?.dataset.headPivotY),
+      ],
+      projectRevision: workbench?.dataset.projectRevision ?? '',
+      projectDirty: workbench?.dataset.projectDirty ?? '',
+      history: { undo: history?.dataset.undoCount ?? '', redo: history?.dataset.redoCount ?? '' },
+      pending: Boolean(document.querySelector('[data-testid="character-assembly-pending"]')),
+      cameraFitScale: Number(workbench?.dataset.cameraFitScale ?? 0),
+      images: [...document.querySelectorAll('[data-testid="character-assembly-workbench"] .character-assembly-part')]
+        .map((image) => ({
+          part: image.classList.contains('character-assembly-part-body') ? 'body'
+            : image.classList.contains('character-assembly-part-head') ? 'head' : 'face',
+          assetId: image.dataset.assetId ?? '',
+          naturalWidth: image.naturalWidth,
+          naturalHeight: image.naturalHeight,
+          rect: box(image),
+        })),
+    };
+  })()`);
+  const openCharacter = async (label) => {
+    await clickWithNativeInput(
+      window,
+      `[data-testid="character-list-view"] [data-character-id="${IDS.issue820Character}"]`,
+      `${label} Character card`,
+    );
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue820Character)}`,
+      `${label} Character detail did not open.`,
+    );
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-workspace-expressions-tab"]',
+      `${label} Expressions workspace`,
+    );
+    await clickWithNativeInput(
+      window,
+      '[data-testid="character-workspace-assembly-tab"]',
+      `${label} Assembly workspace`,
+    );
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.sessionKind === 'edit'`,
+      `${label} Assembly session did not open.`,
+    );
+    await waitForDom(
+      window,
+      `(() => { const images = [...document.querySelectorAll('[data-testid="character-assembly-workbench"] .character-assembly-part')]; return images.length === 3 && images.every((image) => image.complete && image.naturalWidth > 0); })()`,
+      `${label} Body, Head, and Face images did not load.`,
+    );
+    await waitForPaint(window);
+  };
+  const dragBody = async (label, deltaX, deltaY) => {
+    const point = await window.webContents.executeJavaScript(`(() => {
+      const target = document.querySelector('[data-testid="character-assembly-body-drag-target"]');
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      if (!target || !workbench) return null;
+      const rect = target.getBoundingClientRect();
+      const zoom = Number(workbench.dataset.cameraFitScale ?? 0);
+      const candidates = [[0.5, 0.78], [0.35, 0.8], [0.65, 0.8], [0.5, 0.68]];
+      const point = candidates.map(([xRatio, yRatio]) => ({
+        x: Math.round(rect.left + rect.width * xRatio),
+        y: Math.round(rect.top + rect.height * yRatio),
+      })).find(({ x, y }) => {
+        const hit = document.elementFromPoint(x, y);
+        return hit === target || target.contains(hit);
+      });
+      return point && zoom > 0 ? { ...point, zoom, bounds: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } } : null;
+    })()`);
+    assert(point, `${label} could not find an unobstructed native pointer point on the Body drag target.`);
+    const endX = point.x + Math.round(deltaX * point.zoom);
+    const endY = point.y + Math.round(deltaY * point.zoom);
+    await sendPointerDrag(window, point.x, point.y, endX, endY);
+    await waitForPaint(window);
+    const state = await readState();
+    assert(
+      Math.abs(state.bodyPlacement.offsetX - deltaX) < 5 &&
+        Math.abs(state.bodyPlacement.offsetY - deltaY) < 5,
+      `${label} native drag did not produce the expected local Body offset: ${JSON.stringify({ point, state: state.bodyPlacement })}`,
+    );
+    return { pointer: point, end: { x: endX, y: endY }, state };
+  };
+  const sameSessionState = (before, after, label) => {
+    assert(after.projectRevision === before.projectRevision, `${label} changed Project revision.`);
+    assert(after.projectDirty === before.projectDirty, `${label} changed Project dirty state.`);
+    assert(JSON.stringify(after.history) === JSON.stringify(before.history), `${label} changed History.`);
+  };
+
+  const legacyProject = JSON.parse(
+    readFileSync(path.join(projectRoot, 'project.json'), 'utf8'),
+  );
+  assert(legacyProject.schemaVersion === 11, 'S02 did not start from a v11 project file.');
+  const legacyCharacter = legacyProject.characters.find(
+    (character) => character.id === IDS.issue820Character,
+  );
+  assert(legacyCharacter?.mode === 'composite', 'The v11 fixture Character is missing.');
+  assert(!Object.hasOwn(legacyCharacter, 'bodyPlacement'), 'The v11 fixture unexpectedly contains Body placement.');
+  const migrated = migrateProject(legacyProject);
+  const migratedCharacter = migrated.characters.find(
+    (character) => character.id === IDS.issue820Character,
+  );
+  assert(migratedCharacter?.mode === 'composite', 'The v11 Character did not migrate.');
+  assert(
+    JSON.stringify(migratedCharacter.bodyPlacement) === JSON.stringify({ offsetX: 0, offsetY: 0, scale: 1 }),
+    'The v11 migration did not add neutral Body placement.',
+  );
+  assert(migratedCharacter.bodyAssetId === legacyCharacter.bodyAssetId, 'The v11 migration changed the Body asset reference.');
+  assert(JSON.stringify(migratedCharacter.facePlacement) === JSON.stringify(legacyCharacter.facePlacement), 'The v11 migration changed Face placement.');
+  assert(JSON.stringify(migratedCharacter.head) === JSON.stringify(legacyCharacter.head), 'The v11 migration changed Head placement or H02 pivot.');
+  assert(migratedCharacter.talkingHeadMotionIntensityPercent === legacyCharacter.talkingHeadMotionIntensityPercent, 'The v11 migration changed C02 intensity.');
+  assert(JSON.stringify(migratedCharacter.expressions) === JSON.stringify(legacyCharacter.expressions), 'The v11 migration changed expression asset references.');
+  evidence.v11Migration = {
+    sourceVersion: legacyProject.schemaVersion,
+    migratedSchemaVersion: migrated.schemaVersion,
+    bodyPlacement: migratedCharacter.bodyPlacement,
+    bodyAssetIdPreserved: true,
+    facePlacementPreserved: true,
+    headAndPivotPreserved: true,
+    talkingHeadMotionIntensityPercent: migratedCharacter.talkingHeadMotionIntensityPercent,
+    expressionsPreserved: true,
+  };
+
+  await openCharacter('S02 v11 migrated');
+  let initial = await readState();
+  assert(initial.characterId === IDS.issue820Character, 'The v11 migrated Character ID changed in Assembly.');
+  assert(JSON.stringify(initial.bodyPlacement) === JSON.stringify({ offsetX: 0, offsetY: 0, scale: 1 }), 'Opening the v11 project introduced Body visual drift.');
+  assert(initial.images.some((image) => image.part === 'body' && image.naturalWidth === 1086 && image.naturalHeight === 1448), 'S02 did not load the 1086 x 1448 Body.');
+  assert(initial.images.some((image) => image.part === 'head' && image.naturalWidth === 1200 && image.naturalHeight === 1080), 'S02 did not load the large Head.');
+  assert(initial.images.some((image) => image.part === 'face' && image.naturalWidth === 300 && image.naturalHeight === 300), 'S02 did not load the 300 x 300 Face.');
+  assert(initial.projectRevision === '0' && initial.projectDirty === 'false' && initial.history.undo === '0' && initial.history.redo === '0', 'Opening the v11 project created a Project change or History entry.');
+  assert(evidence.projectOpenDocuments?.some((document) => document.sourceVersion === 11 && document.migrated && document.schemaVersion === 12), 'The Windows renderer did not receive the migrated v11 document.');
+  evidence.v11OpenedInElectron = initial;
+  screenshots.push(await capture(window, 'issue820-s02-v11-open-neutral-body.png'));
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-body-picker-selected"]', 'Select Body edit target');
+  const cancelBase = await readState();
+  const cancelledDrag = await dragBody('Body draft that will be canceled', 80, 50);
+  assert(cancelledDrag.state.pending, 'Body drag did not expose the pending Apply/Cancel actions.');
+  sameSessionState(cancelBase, cancelledDrag.state, 'Unapplied Body drag');
+  assert(JSON.stringify(cancelledDrag.state.headPlacement) === JSON.stringify(cancelBase.headPlacement), 'Body draft changed Head or H02 pivot.');
+  assert(JSON.stringify(cancelledDrag.state.facePlacement) === JSON.stringify(cancelBase.facePlacement), 'Body draft changed Face placement.');
+  screenshots.push(await capture(window, 'issue820-s02-body-draft-before-cancel.png'));
+  await clickWithNativeInput(
+    window,
+    '[data-testid="character-assembly-pending"] button:first-of-type',
+    'Cancel the Body draft with Revert',
+  );
+  await waitForDom(window, `!document.querySelector('[data-testid="character-assembly-pending"]')`, 'Cancel did not discard the Body draft.');
+  const afterCancel = await readState();
+  sameSessionState(cancelBase, afterCancel, 'Canceling Body draft');
+  assert(JSON.stringify(afterCancel.bodyPlacement) === JSON.stringify(cancelBase.bodyPlacement), 'Cancel did not restore Body placement.');
+  evidence.cancel = { before: cancelBase, draft: cancelledDrag.state, after: afterCancel };
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-body-picker-selected"]', 'Reselect Body after Cancel');
+  const appliedDrag = await dragBody('Body draft to Apply', -64, 84);
+  await clickWithNativeInput(window, '[data-testid="character-assembly-fine-tune-toggle"]', 'Open Body fine-tune controls');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-body-scale-down"]')`, 'Body fine-tune scale control did not appear.');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-body-scale-down"]', 'Reduce Body scale once');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-body-scale-down"]', 'Reduce Body scale twice');
+  await waitForPaint(window);
+  const beforeApply = await readState();
+  assert(beforeApply.bodyPlacement.offsetX < -50 && beforeApply.bodyPlacement.offsetY > 70 && Math.abs(beforeApply.bodyPlacement.scale - 0.9) < 0.001, 'Body move and bounded scale controls did not update the draft.');
+  sameSessionState(initial, beforeApply, 'Body move and scale before Apply');
+  assert(JSON.stringify(beforeApply.headPlacement) === JSON.stringify(initial.headPlacement), 'Body edits changed Head or H02 pivot.');
+  assert(JSON.stringify(beforeApply.facePlacement) === JSON.stringify(initial.facePlacement), 'Body edits changed Face placement.');
+  const initialBodyRect = initial.images.find((image) => image.part === 'body')?.rect;
+  const appliedBodyRect = beforeApply.images.find((image) => image.part === 'body')?.rect;
+  assert(initialBodyRect && appliedBodyRect && appliedBodyRect.width < initialBodyRect.width * 0.92, 'Body scale did not reduce the rendered Body rectangle.');
+  evidence.applyDraft = { pointerDrag: appliedDrag.pointer, beforeApply, initialBodyRect, appliedBodyRect };
+  screenshots.push(await capture(window, 'issue820-s02-body-moved-scaled-draft.png'));
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-pending"] button:last-of-type', 'Apply Body move and scale');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '0' && document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.projectRevision === '1'`,
+    'Applying Body placement did not create exactly one Project revision and History entry.',
+  );
+  await waitForPaint(window);
+  const afterApply = await readState();
+  assert(!afterApply.pending && afterApply.projectDirty === 'true', 'Apply left a pending draft or did not dirty the Project.');
+  assert(JSON.stringify(afterApply.bodyPlacement) === JSON.stringify(beforeApply.bodyPlacement), 'Apply changed the Body placement values.');
+  assert(JSON.stringify(afterApply.headPlacement) === JSON.stringify(initial.headPlacement), 'Apply changed Head or H02 pivot.');
+  assert(JSON.stringify(afterApply.facePlacement) === JSON.stringify(initial.facePlacement), 'Apply changed Face placement.');
+  screenshots.push(await capture(window, 'issue820-s02-body-applied-once.png'));
+  evidence.apply = { before: beforeApply, after: afterApply, singleHistoryItem: true };
+
+  await clickWithNativeInput(window, '[data-testid="character-workspace-expressions-tab"]', 'Close clean Assembly before Undo');
+  await waitForDom(window, `!document.querySelector('[data-testid="character-assembly-workbench"]')`, 'Assembly did not close before Undo.');
+  await expandProjectActions(window);
+  await clickWithNativeInput(window, '[data-testid="history-controls"] .history-actions button:first-of-type', 'Undo Body placement Apply');
+  await waitForDom(window, `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '0' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '1'`, 'Undo did not move Body Apply to Redo.');
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after Undo');
+  await waitForDom(window, `Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.bodyScale) === 1 && Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.bodyOffsetX) === 0 && Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.bodyOffsetY) === 0`, 'Undo did not restore neutral Body placement.');
+  const afterUndo = await readState();
+  assert(JSON.stringify(afterUndo.headPlacement) === JSON.stringify(initial.headPlacement) && JSON.stringify(afterUndo.facePlacement) === JSON.stringify(initial.facePlacement), 'Undo changed Head/Face placement.');
+  evidence.undo = afterUndo;
+  screenshots.push(await capture(window, 'issue820-s02-body-undo.png'));
+
+  await clickWithNativeInput(window, '[data-testid="character-workspace-expressions-tab"]', 'Close clean Assembly before Redo');
+  await waitForDom(window, `!document.querySelector('[data-testid="character-assembly-workbench"]')`, 'Assembly did not close before Redo.');
+  await clickWithNativeInput(window, '[data-testid="history-controls"] .history-actions button:last-of-type', 'Redo Body placement Apply');
+  await waitForDom(window, `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '0'`, 'Redo did not restore the Body Apply History item.');
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after Redo');
+  await waitForDom(window, `Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.bodyScale) < 1 && Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.bodyOffsetX) < -50 && Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.bodyOffsetY) > 70`, 'Redo did not restore the moved and scaled Body.');
+  const afterRedo = await readState();
+  assert(JSON.stringify(afterRedo.bodyPlacement) === JSON.stringify(afterApply.bodyPlacement), 'Redo restored different Body placement values.');
+  evidence.redo = afterRedo;
+  screenshots.push(await capture(window, 'issue820-s02-body-redo.png'));
+
+  await expandProjectActions(window);
+  await clickWithNativeInput(window, '[data-testid="quick-action-save"]', 'Save migrated v12 Project with Body placement');
+  await waitForDom(window, `document.querySelector('[data-testid="quick-action-save"]')?.dataset.saveState === 'saved'`, 'Project Save did not finish after Body Apply and Redo.');
+  const diskProject = ProjectSchema.parse(JSON.parse(readFileSync(path.join(projectRoot, 'project.json'), 'utf8')));
+  const diskCharacter = diskProject.characters.find((character) => character.id === IDS.issue820Character);
+  assert(diskProject.schemaVersion === 12, 'Saving the migrated v11 project did not write schema v12.');
+  assert(diskCharacter?.mode === 'composite' && JSON.stringify(diskCharacter.bodyPlacement) === JSON.stringify(afterRedo.bodyPlacement), 'Saved Body placement differs from the applied value.');
+  assert(diskCharacter.bodyAssetId === legacyCharacter.bodyAssetId, 'Saving changed the Body asset reference.');
+  assert(JSON.stringify(diskCharacter.facePlacement) === JSON.stringify(legacyCharacter.facePlacement), 'Saving changed Face placement.');
+  assert(JSON.stringify(diskCharacter.head) === JSON.stringify(legacyCharacter.head), 'Saving changed Head placement or H02 pivot.');
+  assert(diskCharacter.talkingHeadMotionIntensityPercent === legacyCharacter.talkingHeadMotionIntensityPercent, 'Saving changed C02 intensity.');
+  assert(JSON.stringify(diskCharacter.expressions) === JSON.stringify(legacyCharacter.expressions), 'Saving changed expression asset references.');
+  evidence.savedV12 = {
+    projectFilePath: path.join(projectRoot, 'project.json'),
+    schemaVersion: diskProject.schemaVersion,
+    bodyPlacement: diskCharacter.bodyPlacement,
+    bodyAssetId: diskCharacter.bodyAssetId,
+    facePlacement: diskCharacter.facePlacement,
+    head: diskCharacter.head,
+    talkingHeadMotionIntensityPercent: diskCharacter.talkingHeadMotionIntensityPercent,
+    expressionAssetIds: diskCharacter.expressions.map((expression) => expression.assetId),
+  };
+
+  await clickWithNativeInput(window, '[data-testid="quick-action-close"]', 'Close saved v12 Project for disk reopen');
+  await waitForDom(window, `document.querySelector('[data-testid="project-center-screen"]') && !document.querySelector('[data-testid="editor-layout"]')`, 'Saved project did not close to Project Center.');
+  await openProject(window);
+  await openCharacter('S02 saved v12 reopen');
+  const reopened = await readState();
+  assert(JSON.stringify(reopened.bodyPlacement) === JSON.stringify(afterRedo.bodyPlacement), 'Body placement did not survive a disk Save/Reopen.');
+  assert(JSON.stringify(reopened.headPlacement) === JSON.stringify(initial.headPlacement), 'Save/Reopen changed Head placement or H02 pivot.');
+  assert(JSON.stringify(reopened.facePlacement) === JSON.stringify(initial.facePlacement), 'Save/Reopen changed Face placement.');
+  assert(reopened.projectRevision === '0' && reopened.projectDirty === 'false' && reopened.history.undo === '0' && reopened.history.redo === '0', 'Reopened v12 project did not start with a clean Project and History.');
+  assert(evidence.projectOpenDocuments?.some((document) => document.sourceVersion === 12 && !document.migrated && document.schemaVersion === 12), 'Save/Reopen did not read the persisted v12 Project.');
+  evidence.reopenedFromDisk = reopened;
+  screenshots.push(await capture(window, 'issue820-s02-body-save-reopen-v12.png'));
+
+  return {
+    issue: 820,
+    code: 'C04-S02',
+    passed: true,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'verify:issue820-c04-s02',
+    projectRoot,
+    projectFilePath: path.join(projectRoot, 'project.json'),
+    syntheticInput: true,
+    humanAcceptance: false,
+    evidenceKind: 'windows-electron-v11-migration-body-draft-cancel-apply-undo-redo-save-reopen',
+    evidence,
+    screenshots,
+  };
+}
+
+async function verifyIssue820UnifiedPartEditing(window) {
+  const screenshots = [];
+  const evidence = inProgressEvidence;
+  const handleIds = {
+    body: 'character-assembly-body-scale-handle',
+    head: 'character-assembly-head-scale-handle',
+    face: 'character-assembly-face-scale-handle',
+  };
+  const readState = async () => window.webContents.executeJavaScript(`(() => {
+    const box = (element) => {
+      const rect = element?.getBoundingClientRect();
+      return rect ? { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height } : null;
+    };
+    const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    const history = document.querySelector('[data-testid="history-controls"]');
+    const images = [...document.querySelectorAll('[data-testid="character-assembly-workbench"] .character-assembly-part')];
+    return {
+      characterId: workbench?.dataset.characterId ?? '',
+      editTarget: workbench?.dataset.editTarget ?? '',
+      bodyPlacement: {
+        offsetX: Number(workbench?.dataset.bodyOffsetX),
+        offsetY: Number(workbench?.dataset.bodyOffsetY),
+        scale: Number(workbench?.dataset.bodyScale),
+      },
+      facePlacement: [
+        Number(workbench?.dataset.faceOffsetX), Number(workbench?.dataset.faceOffsetY),
+        Number(workbench?.dataset.faceScale), Number(workbench?.dataset.faceRotationDeg),
+        workbench?.dataset.faceFlipX === 'true',
+      ],
+      headPlacement: [
+        Number(workbench?.dataset.headOffsetX), Number(workbench?.dataset.headOffsetY),
+        Number(workbench?.dataset.headScale), Number(workbench?.dataset.headRotationDeg),
+        workbench?.dataset.headFlipX === 'true', Number(workbench?.dataset.headPivotX),
+        Number(workbench?.dataset.headPivotY),
+      ],
+      projectRevision: workbench?.dataset.projectRevision ?? '',
+      projectDirty: workbench?.dataset.projectDirty ?? '',
+      history: { undo: history?.dataset.undoCount ?? '', redo: history?.dataset.redoCount ?? '' },
+      pending: Boolean(document.querySelector('[data-testid="character-assembly-pending"]')),
+      cameraFitMode: workbench?.dataset.cameraFitMode ?? '',
+      cameraFitScale: Number(workbench?.dataset.cameraFitScale ?? 0),
+      neckPivotEditing: workbench?.dataset.neckPivotEditing === 'true',
+      handleIds: ['body', 'head', 'face'].filter((part) =>
+        document.querySelector('[data-testid="character-assembly-' + part + '-scale-handle"]')),
+      dragTargetIds: [
+        ['body', 'character-assembly-body-drag-target'],
+        ['head', 'character-assembly-head-drag-target'],
+        ['head', 'character-assembly-head-drag-fallback'],
+        ['face', 'character-assembly-face-drag-target'],
+      ].filter(([, id]) => document.querySelector('[data-testid="' + id + '"]')).map(([part]) => part),
+      handles: Object.fromEntries(['body', 'head', 'face'].map((part) => [
+        part,
+        box(document.querySelector('[data-testid="character-assembly-' + part + '-scale-handle"]')),
+      ])),
+      viewport: box(document.querySelector('[data-testid="character-assembly-preview"]')),
+      images: images.map((image) => ({
+        part: image.classList.contains('character-assembly-part-body') ? 'body'
+          : image.classList.contains('character-assembly-part-head') ? 'head' : 'face',
+        assetId: image.dataset.assetId ?? '',
+        naturalWidth: image.naturalWidth,
+        naturalHeight: image.naturalHeight,
+        rect: box(image),
+      })),
+    };
+  })()`);
+  const openCharacter = async (label) => {
+    await clickWithNativeInput(
+      window,
+      `[data-testid="character-list-view"] [data-character-id="${IDS.issue820Character}"]`,
+      `${label} Character card`,
+    );
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue820Character)}`,
+      `${label} Character detail did not open.`,
+    );
+    await clickWithNativeInput(window, '[data-testid="character-workspace-expressions-tab"]', `${label} Expressions workspace`);
+    await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', `${label} Assembly workspace`);
+    await waitForDom(
+      window,
+      `(() => { const workbench = document.querySelector('[data-testid="character-assembly-workbench"]'); return workbench?.dataset.sessionKind === 'edit' && Number(workbench.dataset.cameraFitScale) > 0; })()`,
+      `${label} Assembly session or fitted camera did not become ready.`,
+    );
+    await waitForDom(
+      window,
+      `(() => { const images = [...document.querySelectorAll('[data-testid="character-assembly-workbench"] .character-assembly-part')]; return images.length === 3 && images.every((image) => image.complete && image.naturalWidth > 0); })()`,
+      `${label} Body, Head, and Face images did not load.`,
+    );
+    await waitForPaint(window);
+  };
+  const openAssembly = async (label) => {
+    await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', `${label} Assembly workspace`);
+    await waitForDom(
+      window,
+      `(() => { const workbench = document.querySelector('[data-testid="character-assembly-workbench"]'); return workbench?.dataset.sessionKind === 'edit' && Number(workbench.dataset.cameraFitScale) > 0; })()`,
+      `${label} Assembly session or fitted camera did not become ready.`,
+    );
+    await waitForPaint(window);
+  };
+  const closeAssembly = async (label) => {
+    await clickWithNativeInput(window, '[data-testid="character-workspace-expressions-tab"]', `${label} Expressions workspace`);
+    await waitForDom(window, `!document.querySelector('[data-testid="character-assembly-workbench"]')`, `${label} Assembly workspace did not close.`);
+  };
+  const selectTarget = async (target, label = target) => {
+    await clickWithNativeInput(
+      window,
+      `[data-testid="character-assembly-edit-${target}"]`,
+      `${label} edit target`,
+    );
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === ${JSON.stringify(target)}`,
+      `${label} did not become the active edit target.`,
+    );
+    await waitForPaint(window);
+  };
+  const handleGeometry = async (target) => window.webContents.executeJavaScript(`(() => {
+    const part = ${JSON.stringify(target)};
+    const handle = document.querySelector('[data-testid="${'character-assembly-' + target + '-scale-handle'}"]');
+    const image = document.querySelector('.character-assembly-part-' + part);
+    const stage = document.querySelector('.character-assembly-preview-stage');
+    const viewport = document.querySelector('[data-testid="character-assembly-preview"]');
+    const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    if (!handle || !image || !stage || !viewport || !workbench) return null;
+    const imageStyle = getComputedStyle(image);
+    const width = Number.parseFloat(imageStyle.width);
+    const height = Number.parseFloat(imageStyle.height);
+    const left = Number.parseFloat(imageStyle.left);
+    const top = Number.parseFloat(imageStyle.top);
+    const [originX, originY] = imageStyle.transformOrigin.split(/\\s+/u).map(Number.parseFloat);
+    const matrix = imageStyle.transform === 'none' ? new DOMMatrixReadOnly() : new DOMMatrixReadOnly(imageStyle.transform);
+    const transformPoint = (x, y) => ({
+      x: matrix.a * (x - originX) + matrix.c * (y - originY) + matrix.e + originX,
+      y: matrix.b * (x - originX) + matrix.d * (y - originY) + matrix.f + originY,
+    });
+    const insetX = Math.max(1, Math.round(image.naturalWidth * 0.02));
+    const insetY = Math.max(1, Math.round(image.naturalHeight * 0.025));
+    const corners = [
+      transformPoint(insetX / image.naturalWidth * width, insetY / image.naturalHeight * height),
+      transformPoint((image.naturalWidth - insetX) / image.naturalWidth * width, insetY / image.naturalHeight * height),
+      transformPoint(insetX / image.naturalWidth * width, (image.naturalHeight - insetY) / image.naturalHeight * height),
+      transformPoint((image.naturalWidth - insetX) / image.naturalWidth * width, (image.naturalHeight - insetY) / image.naturalHeight * height),
+    ];
+    const localRight = left + Math.max(...corners.map((point) => point.x));
+    const localBottom = top + Math.max(...corners.map((point) => point.y));
+    const stageRect = stage.getBoundingClientRect();
+    const viewportRect = viewport.getBoundingClientRect();
+    const handleRect = handle.getBoundingClientRect();
+    const scale = Number(workbench.dataset.cameraFitScale);
+    const actual = { x: handleRect.left + handleRect.width / 2, y: handleRect.top + handleRect.height / 2 };
+    const expected = { x: stageRect.left + localRight * scale, y: stageRect.top + localBottom * scale };
+    const partCenter = {
+      x: stageRect.left + (left + width / 2) * scale,
+      y: stageRect.top + (top + height / 2) * scale,
+    };
+    const hit = document.elementFromPoint(actual.x, actual.y);
+    return {
+      actual,
+      expected,
+      error: { x: Math.abs(actual.x - expected.x), y: Math.abs(actual.y - expected.y) },
+      partCenter,
+      handleRect: { x: handleRect.x, y: handleRect.y, right: handleRect.right, bottom: handleRect.bottom, width: handleRect.width, height: handleRect.height },
+      viewportRect: { x: viewportRect.x, y: viewportRect.y, right: viewportRect.right, bottom: viewportRect.bottom },
+      cameraFitScale: scale,
+      hitTarget: hit === handle || handle.contains(hit),
+      assetId: image.dataset.assetId ?? '',
+      naturalSize: { width: image.naturalWidth, height: image.naturalHeight },
+      transform: imageStyle.transform,
+    };
+  })()`);
+  const assertSelectedHandle = async (target, label) => {
+    const state = await readState();
+    assert(state.editTarget === target, `${label} has the wrong selected target: ${state.editTarget}.`);
+    assert(state.handleIds.length === 1 && state.handleIds[0] === target,
+      `${label} did not expose exactly one selected-part Scale Handle: ${JSON.stringify(state.handleIds)}.`);
+    assert(state.dragTargetIds.length === 1 && state.dragTargetIds[0] === target,
+      `${label} did not expose exactly one selected-part outline/drag target: ${JSON.stringify(state.dragTargetIds)}.`);
+    const geometry = await handleGeometry(target);
+    assert(geometry && geometry.cameraFitScale > 0, `${label} has no measurable fitted Handle geometry.`);
+    assert(geometry.error.x < 2 && geometry.error.y < 2,
+      `${label} Handle does not align with the alpha-visible rotated/flipped image bounds: ${JSON.stringify(geometry)}.`);
+    assert(geometry.handleRect.width >= 43.5 && geometry.handleRect.height >= 43.5,
+      `${label} Handle is smaller than the 44px interaction target: ${JSON.stringify(geometry.handleRect)}.`);
+    assert(geometry.handleRect.x >= geometry.viewportRect.x - 1
+      && geometry.handleRect.right <= geometry.viewportRect.right + 1
+      && geometry.handleRect.y >= geometry.viewportRect.y - 1
+      && geometry.handleRect.bottom <= geometry.viewportRect.bottom + 1,
+    `${label} Handle is outside the visible Assembly viewport: ${JSON.stringify(geometry)}.`);
+    assert(geometry.hitTarget, `${label} Handle did not receive its native pointer hit-test.`);
+    return { state, geometry };
+  };
+  const unchangedSessionState = (before, after, label) => {
+    assert(after.projectRevision === before.projectRevision, `${label} changed Project revision.`);
+    assert(after.projectDirty === before.projectDirty, `${label} changed Project dirty state.`);
+    assert(JSON.stringify(after.history) === JSON.stringify(before.history), `${label} changed Project History.`);
+  };
+  const dragPart = async (target, deltaX, deltaY, label) => {
+    await assertSelectedHandle(target, `${label} before drag`);
+    const before = await readState();
+    const point = await window.webContents.executeJavaScript(`(() => {
+      const target = document.querySelector('[data-testid="${'character-assembly-' + target + '-drag-target'}"]')
+        ?? document.querySelector('[data-testid="character-assembly-head-drag-fallback"]');
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      if (!target || !workbench) return null;
+      const rect = target.getBoundingClientRect();
+      const zoom = Number(workbench.dataset.cameraFitScale);
+      const candidates = [[0.5, 0.5], [0.35, 0.35], [0.65, 0.65], [0.5, 0.3]];
+      const point = candidates.map(([xRatio, yRatio]) => ({
+        x: rect.left + rect.width * xRatio,
+        y: rect.top + rect.height * yRatio,
+      })).find(({ x, y }) => {
+        const hit = document.elementFromPoint(x, y);
+        return hit === target || target.contains(hit);
+      });
+      return point && zoom > 0 ? { ...point, zoom } : null;
+    })()`);
+    assert(point, `${label} could not find an unobstructed native drag point.`);
+    await sendPointerDragWithProtocol(
+      window,
+      point.x,
+      point.y,
+      point.x + deltaX * point.zoom,
+      point.y + deltaY * point.zoom,
+    );
+    await waitForPaint(window);
+    const after = await readState();
+    const placement = target === 'body'
+      ? after.bodyPlacement
+      : target === 'head'
+        ? { offsetX: after.headPlacement[0], offsetY: after.headPlacement[1] }
+        : { offsetX: after.facePlacement[0], offsetY: after.facePlacement[1] };
+    const beforePlacement = target === 'body'
+      ? before.bodyPlacement
+      : target === 'head'
+        ? { offsetX: before.headPlacement[0], offsetY: before.headPlacement[1] }
+        : { offsetX: before.facePlacement[0], offsetY: before.facePlacement[1] };
+    const expectedPlacement = {
+      offsetX: beforePlacement.offsetX + deltaX,
+      offsetY: beforePlacement.offsetY + deltaY,
+    };
+    assert(Math.abs(placement.offsetX - expectedPlacement.offsetX) < 5
+      && Math.abs(placement.offsetY - expectedPlacement.offsetY) < 5,
+    `${label} native drag did not move only the selected part in local 2D coordinates: ${JSON.stringify({ point, beforePlacement, expectedPlacement, placement })}.`);
+    return { point, beforePlacement, expectedPlacement, placement, after };
+  };
+  const scalePart = async (target, factor, label) => {
+    const { state: before, geometry } = await assertSelectedHandle(target, `${label} before scale`);
+    const vectorX = geometry.actual.x - geometry.partCenter.x;
+    const vectorY = geometry.actual.y - geometry.partCenter.y;
+    assert(Math.hypot(vectorX, vectorY) > 8, `${label} has no usable radial distance from part center to Handle.`);
+    const end = {
+      x: geometry.partCenter.x + vectorX * factor,
+      y: geometry.partCenter.y + vectorY * factor,
+    };
+    await window.webContents.executeJavaScript(`(() => {
+      window.__issue820S03PointerTrace = [];
+      const handle = document.querySelector('[data-testid="${'character-assembly-' + target + '-scale-handle'}"]');
+      for (const type of ['pointerdown', 'gotpointercapture', 'pointermove', 'pointerup', 'pointercancel', 'lostpointercapture']) {
+        handle?.addEventListener(type, (event) => window.__issue820S03PointerTrace.push({
+          type, clientX: event.clientX, clientY: event.clientY, pointerId: event.pointerId,
+          button: event.button, buttons: event.buttons, pointerType: event.pointerType,
+          target: event.target?.getAttribute('data-testid') ?? '',
+          captured: handle.hasPointerCapture(event.pointerId),
+        }), { capture: true });
+      }
+    })()`);
+    await sendPointerDragWithProtocol(window, geometry.actual.x, geometry.actual.y, end.x, end.y);
+    await waitForPaint(window);
+    const after = await readState();
+    const pointerTrace = await window.webContents.executeJavaScript('window.__issue820S03PointerTrace ?? []');
+    const beforeScale = target === 'body'
+      ? before.bodyPlacement.scale
+      : target === 'head' ? before.headPlacement[2] : before.facePlacement[2];
+    const afterScale = target === 'body'
+      ? after.bodyPlacement.scale
+      : target === 'head' ? after.headPlacement[2] : after.facePlacement[2];
+    const observedFactor = afterScale / beforeScale;
+    evidence.lastScaleGesture = { target, factor, observedFactor, geometry, end, pointerTrace, before, after };
+    assert(Math.abs(observedFactor - factor) < 0.06,
+      `${label} did not apply proportional pointer scaling: ${JSON.stringify({ target, factor, observedFactor, beforeScale, afterScale, geometry, end, pointerTrace })}.`);
+    let viewAllRecovery = null;
+    let postScaleGeometry = await handleGeometry(target);
+    const isInsideViewport = (candidate) => candidate
+      && candidate.handleRect.x >= candidate.viewportRect.x - 1
+      && candidate.handleRect.right <= candidate.viewportRect.right + 1
+      && candidate.handleRect.y >= candidate.viewportRect.y - 1
+      && candidate.handleRect.bottom <= candidate.viewportRect.bottom + 1;
+    if (!isInsideViewport(postScaleGeometry) || !postScaleGeometry.hitTarget) {
+      const beforeViewAll = await readState();
+      await clickWithNativeInput(window, '[data-testid="character-assembly-view-all"]', `${label} View All recovery`);
+      await waitForPaint(window);
+      const afterViewAll = await readState();
+      unchangedSessionState(beforeViewAll, afterViewAll, `${label} View All recovery`);
+      assert(JSON.stringify(beforeViewAll.bodyPlacement) === JSON.stringify(afterViewAll.bodyPlacement)
+        && JSON.stringify(beforeViewAll.facePlacement) === JSON.stringify(afterViewAll.facePlacement)
+        && JSON.stringify(beforeViewAll.headPlacement) === JSON.stringify(afterViewAll.headPlacement),
+      `${label} View All recovery changed a part placement.`);
+      postScaleGeometry = await handleGeometry(target);
+      viewAllRecovery = { before: beforeViewAll.handles[target], after: postScaleGeometry };
+      assert(isInsideViewport(postScaleGeometry) && postScaleGeometry.hitTarget,
+        `${label} View All did not return the Scale Handle to an operable point: ${JSON.stringify(postScaleGeometry)}.`);
+    }
+    const aligned = await assertSelectedHandle(target, `${label} after scale`);
+    return { before: beforeScale, after: afterScale, factor: observedFactor, start: geometry, end, pointerTrace, aligned: aligned.geometry, viewAllRecovery };
+  };
+  const setTimeline = async (profile) => {
+    const selector = '[data-testid="timeline-resize-handle"]';
+    const before = await window.webContents.executeJavaScript(`(() => {
+      const element = document.querySelector(${JSON.stringify(selector)});
+      return element ? { min: Number(element.getAttribute('aria-valuemin')), max: Number(element.getAttribute('aria-valuemax')), value: Number(element.getAttribute('aria-valuenow')) } : null;
+    })()`);
+    assert(before && before.max > before.min, 'S03 did not expose an adjustable timeline height.');
+    if (profile === 'low') {
+      await pressFocusedControl(window, selector, 'HOME', 'Timeline resize handle');
+    } else if (profile === 'high') {
+      await pressFocusedControl(window, selector, 'END', 'Timeline resize handle');
+    } else {
+      await pressFocusedControl(window, selector, 'HOME', 'Timeline resize handle');
+      const stepCount = Math.max(1, Math.round((before.max - before.min) / 32));
+      for (let index = 0; index < stepCount; index += 1) {
+        await pressFocusedControl(window, selector, 'ARROWUP', 'Timeline resize handle');
+      }
+    }
+    await waitForPaint(window);
+    const value = await window.webContents.executeJavaScript(`Number(document.querySelector(${JSON.stringify(selector)})?.getAttribute('aria-valuenow'))`);
+    if (profile === 'low') assert(value === before.min, 'S03 could not set the low timeline profile.');
+    if (profile === 'high') assert(value === before.max, 'S03 could not set the high timeline profile.');
+    return { profile, min: before.min, max: before.max, value };
+  };
+
+  const sourceProject = ProjectSchema.parse(JSON.parse(readFileSync(path.join(projectRoot, 'project.json'), 'utf8')));
+  const sourceCharacter = sourceProject.characters.find((character) => character.id === IDS.issue820Character);
+  assert(sourceCharacter?.mode === 'composite', 'S03 synthetic Character fixture is missing.');
+  assert(sourceCharacter.bodyPlacement, 'S03 started without v12 Body placement data.');
+  const originalReferences = {
+    bodyAssetId: sourceCharacter.bodyAssetId,
+    mouthOpenAssetId: sourceCharacter.mouthOpenAssetId,
+    expressionAssets: sourceCharacter.expressions.map((expression) => expression.assetId),
+    defaultScale: sourceCharacter.defaultScale,
+    defaultFlipX: sourceCharacter.defaultFlipX,
+  };
+
+  await openCharacter('S03 v12 large synthetic');
+  const initial = await readState();
+  assert(initial.characterId === IDS.issue820Character, 'S03 opened a different Character.');
+  assert(initial.cameraFitMode === 'content' && initial.cameraFitScale > 0, 'S03 did not begin with the S01 fitted camera.');
+  assert(initial.images.some((image) => image.part === 'body' && image.naturalWidth === 1086 && image.naturalHeight === 1448), 'S03 Body fixture is not 1086 x 1448.');
+  assert(initial.images.some((image) => image.part === 'head' && image.naturalWidth === 1200 && image.naturalHeight === 1080), 'S03 Head fixture is not 1200 x 1080.');
+  assert(initial.images.some((image) => image.part === 'face' && image.naturalWidth === 300 && image.naturalHeight === 300), 'S03 Face fixture is not 300 x 300.');
+  assert(initial.projectRevision === '0' && initial.projectDirty === 'false' && initial.history.undo === '0' && initial.history.redo === '0', 'S03 opening changed Project or History state.');
+  evidence.initial = initial;
+  screenshots.push(await capture(window, 'issue820-s03-large-initial.png'));
+
+  const originalSize = window.getSize();
+  const originalZoomFactor = window.webContents.getZoomFactor();
+  const layoutEvidence = [];
+  await closeAssembly('Set timeline height');
+  for (const profile of ['low', 'middle', 'high']) {
+    const timeline = await setTimeline(profile);
+    await openAssembly(`${profile} timeline`);
+    const samples = [];
+    for (const target of ['body', 'head', 'face']) {
+      await selectTarget(target, `${profile} timeline ${target}`);
+      const sample = await assertSelectedHandle(target, `${profile} timeline ${target}`);
+      samples.push({ target, geometry: sample.geometry });
+    }
+    layoutEvidence.push({ timeline, samples });
+    screenshots.push(await capture(window, `issue820-s03-handles-timeline-${profile}.png`));
+    await closeAssembly(`${profile} timeline`);
+  }
+  const zoomedTimeline = await setTimeline('middle');
+  await openAssembly('125% narrow');
+  window.webContents.setZoomFactor(1.25);
+  window.setSize(1120, 820);
+  await wait(350);
+  await waitForPaint(window);
+  const zoomedSamples = [];
+  for (const target of ['body', 'head', 'face']) {
+    await selectTarget(target, `125% narrow ${target}`);
+    const sample = await assertSelectedHandle(target, `125% narrow ${target}`);
+    zoomedSamples.push({ target, geometry: sample.geometry });
+  }
+  screenshots.push(await capture(window, 'issue820-s03-handles-narrow-125-percent.png'));
+  window.webContents.setZoomFactor(originalZoomFactor);
+  window.setSize(originalSize[0], originalSize[1]);
+  await wait(350);
+  await waitForPaint(window);
+  evidence.responsiveHandles = { timelineProfiles: layoutEvidence, narrow125Percent: { timeline: zoomedTimeline, samples: zoomedSamples } };
+  unchangedSessionState(initial, await readState(), 'S03 responsive camera/layout checks');
+
+  await selectTarget('body', 'Body');
+  const bodyMove = await dragPart('body', 24, -16, 'Body placement');
+  const bodyScale = await scalePart('body', 1.2, 'Body placement');
+  const afterBody = await readState();
+  assert(JSON.stringify(afterBody.headPlacement) === JSON.stringify(initial.headPlacement), 'Body pointer edits changed Head placement or pivot.');
+  assert(JSON.stringify(afterBody.facePlacement) === JSON.stringify(initial.facePlacement), 'Body pointer edits changed Face placement.');
+  await pressFocusedControl(window, `[data-testid="${handleIds.body}"]`, 'ARROWDOWN', 'Body Scale Handle');
+  const afterBodyArrow = await readState();
+  assert(Math.abs(afterBodyArrow.bodyPlacement.scale - (afterBody.bodyPlacement.scale - 0.05)) < 0.001, 'Body Scale Handle arrow key did not use the small keyboard step.');
+  await window.webContents.executeJavaScript(`document.querySelector('[data-testid="${handleIds.body}"]')?.focus()`);
+  await sendShiftedKeyStroke(window, 'ARROWRIGHT');
+  const afterBodyShift = await readState();
+  assert(Math.abs(afterBodyShift.bodyPlacement.scale - (afterBodyArrow.bodyPlacement.scale + 0.25)) < 0.001, 'Shift+Arrow did not use the fast keyboard scale step.');
+  evidence.bodyDirectEdit = { move: bodyMove, scale: bodyScale, arrow: afterBodyArrow.bodyPlacement, shiftArrow: afterBodyShift.bodyPlacement };
+  screenshots.push(await capture(window, 'issue820-s03-body-drag-scaled-keyboard.png'));
+
+  await selectTarget('head', 'Head');
+  const headMove = await dragPart('head', -18, 12, 'Head placement');
+  const headScale = await scalePart('head', 1.18, 'Head placement with static rotation and flip');
+  let afterHead = await readState();
+  assert(JSON.stringify(afterHead.bodyPlacement) === JSON.stringify(afterBodyShift.bodyPlacement), 'Head pointer edits changed Body placement.');
+  assert(JSON.stringify(afterHead.facePlacement) === JSON.stringify(afterBodyShift.facePlacement), 'Head pointer edits changed Face placement.');
+  assert(afterHead.headPlacement[3] === -11 && afterHead.headPlacement[4] === true, 'S03 Head fixture lost its static rotation or horizontal flip.');
+  assert(afterHead.headPlacement[5] === initial.headPlacement[5] && afterHead.headPlacement[6] === initial.headPlacement[6], 'Head move/scale changed the neck Pivot.');
+  evidence.headDirectEdit = { move: headMove, scale: headScale };
+  screenshots.push(await capture(window, 'issue820-s03-head-rotated-flipped-scaled.png'));
+
+  await selectTarget('face', 'Face');
+  const faceMove = await dragPart('face', 14, -9, 'Face placement');
+  const faceScale = await scalePart('face', 1.16, 'Face placement with static rotation and flip');
+  const afterFace = await readState();
+  assert(JSON.stringify(afterFace.bodyPlacement) === JSON.stringify(afterHead.bodyPlacement), 'Face pointer edits changed Body placement.');
+  assert(JSON.stringify(afterFace.headPlacement) === JSON.stringify(afterHead.headPlacement), 'Face pointer edits changed Head placement or neck Pivot.');
+  assert(afterFace.facePlacement[3] === 17 && afterFace.facePlacement[4] === true, 'S03 Face fixture lost its static rotation or horizontal flip.');
+  evidence.faceDirectEdit = { move: faceMove, scale: faceScale };
+  screenshots.push(await capture(window, 'issue820-s03-face-rotated-flipped-scaled.png'));
+
+  const faceBeforePreviewSwitch = await readState();
+  await clickWithNativeInput(window, '[data-testid="character-assembly-expression-preview-toggle"]', 'Open expression and Mouth preview');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-expression-mouth"]', 'Preview Mouth asset');
+  await waitForDom(window, `document.querySelector('.character-assembly-part-face')?.dataset.assetId === ${JSON.stringify(IDS.issue820Mouth)}`, 'Mouth preview did not use the shared Face placement.');
+  const mouthPreview = await assertSelectedHandle('face', 'Face placement while previewing Mouth');
+  const afterMouthPreview = await readState();
+  assert(JSON.stringify(afterMouthPreview.facePlacement) === JSON.stringify(faceBeforePreviewSwitch.facePlacement), 'Switching to Mouth changed Face placement.');
+  assert(JSON.stringify(afterMouthPreview.headPlacement) === JSON.stringify(faceBeforePreviewSwitch.headPlacement), 'Switching to Mouth changed Head or Pivot.');
+  assert(mouthPreview.geometry.assetId === IDS.issue820Mouth, 'Mouth preview did not move the Face handle onto the Mouth pixels.');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-expression-preview-toggle"]', 'Open expression preview');
+  await clickWithNativeInput(window, `[data-testid="character-assembly-expression-choice"][data-expression-id="${IDS.issue820Expression}"]`, 'Restore default Face expression');
+  await waitForDom(window, `document.querySelector('.character-assembly-part-face')?.dataset.assetId === ${JSON.stringify(IDS.issue820Face)}`, 'Default Face expression did not return.');
+  const afterExpressionSwitch = await readState();
+  assert(JSON.stringify(afterExpressionSwitch.facePlacement) === JSON.stringify(faceBeforePreviewSwitch.facePlacement), 'Switching expressions changed Face placement.');
+  screenshots.push(await capture(window, 'issue820-s03-face-expression-mouth-shared-placement.png'));
+  evidence.faceExpressionMouth = { facePlacement: faceBeforePreviewSwitch.facePlacement, mouthPreview: mouthPreview.geometry, expressionAssetId: IDS.issue820Face, mouthAssetId: IDS.issue820Mouth };
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-pivot-mode-toggle"]', 'Enter neck Pivot fine tune');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.neckPivotEditing === 'true'`, 'S03 Pivot mode did not open.');
+  await window.webContents.executeJavaScript(`(() => {
+    window.__issue820S03PivotKeys = [];
+    document.querySelector('[data-testid="character-assembly-head-pivot"]')?.addEventListener('keydown', (event) => {
+      window.__issue820S03PivotKeys.push({ key: event.key, shiftKey: event.shiftKey, target: event.target?.getAttribute('data-testid') ?? '' });
+    });
+  })()`);
+  await pressFocusedControl(window, '[data-testid="character-assembly-head-pivot"]', 'ARROWRIGHT', 'Neck Pivot handle');
+  const afterPivotNudge = await readState();
+  const pivotKeyTrace = await window.webContents.executeJavaScript('window.__issue820S03PivotKeys ?? []');
+  assert(afterPivotNudge.headPlacement[5] === afterExpressionSwitch.headPlacement[5] + 1,
+    `Keyboard fine tune did not move the neck Pivot by one local unit: ${JSON.stringify({ before: afterExpressionSwitch.headPlacement, after: afterPivotNudge.headPlacement, pivotKeyTrace })}.`);
+  assert(JSON.stringify(afterPivotNudge.bodyPlacement) === JSON.stringify(afterExpressionSwitch.bodyPlacement), 'Pivot fine tune changed Body placement.');
+  assert(JSON.stringify(afterPivotNudge.facePlacement) === JSON.stringify(afterExpressionSwitch.facePlacement), 'Pivot fine tune changed Face placement.');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-pivot-mode-toggle"]', 'Leave neck Pivot fine tune');
+
+  const resetEvidence = [];
+  for (const target of ['body', 'head', 'face']) {
+    await selectTarget(target, `${target} reset`);
+    await clickWithNativeInput(window, '[data-testid="character-assembly-fine-tune-toggle"]', `Open ${target} fine tune`);
+    await waitForDom(window, `document.querySelector('[data-testid="character-assembly-reset"]')`, `${target} fine tune did not expose Reset after opening.`);
+    const resetAvailability = await window.webContents.executeJavaScript(`(() => ({
+      target: document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget ?? '',
+      expanded: document.querySelector('[data-testid="character-assembly-fine-tune-toggle"]')?.getAttribute('aria-expanded') ?? '',
+      panel: Boolean(document.querySelector('[data-testid="character-assembly-fine-tune-panel"]')),
+      reset: Boolean(document.querySelector('[data-testid="character-assembly-reset"]')),
+      pivot: document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.neckPivotEditing ?? '',
+    }))()`);
+    assert(resetAvailability.target === target && resetAvailability.panel && resetAvailability.reset && resetAvailability.pivot === 'false',
+      `${target} fine tune did not keep its target-specific Reset control available: ${JSON.stringify(resetAvailability)}.`);
+    const before = await readState();
+    await clickWithNativeInput(window, '[data-testid="character-assembly-reset"]', `Reset only ${target}`);
+    await waitForPaint(window);
+    const after = await readState();
+    if (target === 'body') {
+      assert(JSON.stringify(after.bodyPlacement) === JSON.stringify({ offsetX: 0, offsetY: 0, scale: 1 }), 'Body reset did not restore only neutral Body placement.');
+      assert(JSON.stringify(after.headPlacement) === JSON.stringify(before.headPlacement) && JSON.stringify(after.facePlacement) === JSON.stringify(before.facePlacement), 'Body reset changed Head, Face, or Pivot.');
+    } else if (target === 'head') {
+      assert(JSON.stringify(after.headPlacement.slice(0, 5)) === JSON.stringify([0, 0, 1, 0, false]), 'Head reset did not restore Head placement.');
+      assert(after.headPlacement[5] === before.headPlacement[5] && after.headPlacement[6] === before.headPlacement[6], 'Head reset changed the neck Pivot.');
+      assert(JSON.stringify(after.bodyPlacement) === JSON.stringify(before.bodyPlacement) && JSON.stringify(after.facePlacement) === JSON.stringify(before.facePlacement), 'Head reset changed Body or Face placement.');
+    } else {
+      assert(JSON.stringify(after.facePlacement) === JSON.stringify([0, 0, 1, 0, false]), 'Face reset did not restore Face placement.');
+      assert(JSON.stringify(after.bodyPlacement) === JSON.stringify(before.bodyPlacement) && JSON.stringify(after.headPlacement) === JSON.stringify(before.headPlacement), 'Face reset changed Body, Head, or Pivot.');
+    }
+    unchangedSessionState(initial, after, `${target} target reset`);
+    resetEvidence.push({ target, before: target === 'body' ? before.bodyPlacement : target === 'head' ? before.headPlacement : before.facePlacement, after: target === 'body' ? after.bodyPlacement : target === 'head' ? after.headPlacement : after.facePlacement });
+  }
+  evidence.pivotAndTargetReset = { afterPivotNudge, pivotKeyTrace, resets: resetEvidence };
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-fine-tune-toggle"]', 'Close target-specific fine tune');
+  await selectTarget('body', 'Final Body');
+  const finalBodyMove = await dragPart('body', 26, 12, 'Final Body placement');
+  const finalBodyScale = await scalePart('body', 1.15, 'Final Body scale');
+  await selectTarget('head', 'Final Head');
+  const finalHeadMove = await dragPart('head', -16, -8, 'Final Head placement');
+  const finalHeadScale = await scalePart('head', 1.12, 'Final Head scale');
+  await selectTarget('face', 'Final Face');
+  const finalFaceMove = await dragPart('face', 12, 8, 'Final Face placement');
+  const finalFaceScale = await scalePart('face', 1.12, 'Final Face scale');
+  const beforeApply = await readState();
+  unchangedSessionState(initial, beforeApply, 'S03 Body/Head/Face multi-part draft');
+  assert(beforeApply.pending, 'S03 direct edits did not remain in the shared Apply draft.');
+  assert(beforeApply.headPlacement[5] === afterPivotNudge.headPlacement[5] && beforeApply.headPlacement[6] === afterPivotNudge.headPlacement[6], 'Target edits changed the finely adjusted Pivot.');
+  assert(beforeApply.images.find((image) => image.part === 'face')?.assetId === IDS.issue820Face, 'Applying the default expression changed the Face asset reference.');
+  evidence.finalDraft = { bodyMove: finalBodyMove, bodyScale: finalBodyScale, headMove: finalHeadMove, headScale: finalHeadScale, faceMove: finalFaceMove, faceScale: finalFaceScale, beforeApply };
+  screenshots.push(await capture(window, 'issue820-s03-three-targets-one-draft-before-apply.png'));
+
+  await clickWithNativeInput(window, '[data-testid="character-assembly-pending"] button:last-of-type', 'Apply Body/Head/Face Assembly draft');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '0' && document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.projectRevision === '1'`,
+    'S03 multi-target Apply did not create exactly one Project revision and History item.',
+  );
+  await waitForPaint(window);
+  const afterApply = await readState();
+  assert(!afterApply.pending && afterApply.projectDirty === 'true', 'S03 Apply left a pending draft or clean Project state.');
+  assert(JSON.stringify(afterApply.bodyPlacement) === JSON.stringify(beforeApply.bodyPlacement), 'S03 Apply changed Body placement values.');
+  assert(JSON.stringify(afterApply.facePlacement) === JSON.stringify(beforeApply.facePlacement), 'S03 Apply changed Face placement values.');
+  assert(JSON.stringify(afterApply.headPlacement) === JSON.stringify(beforeApply.headPlacement), 'S03 Apply changed Head or Pivot values.');
+  screenshots.push(await capture(window, 'issue820-s03-one-apply-history-item.png'));
+
+  await clickWithNativeInput(window, '[data-testid="character-workspace-expressions-tab"]', 'Close Assembly before S03 Undo');
+  await waitForDom(window, `!document.querySelector('[data-testid="character-assembly-workbench"]')`, 'S03 Assembly did not close before Undo.');
+  await expandProjectActions(window);
+  await clickWithNativeInput(window, '[data-testid="history-controls"] .history-actions button:first-of-type', 'Undo S03 multi-target Apply');
+  await waitForDom(window, `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '0' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '1'`, 'S03 Undo did not restore the single Apply item.');
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after S03 Undo');
+  await waitForDom(window, `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '0' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '1'`, 'S03 Undo did not restore the original Project snapshot to the single Redo item.');
+  const afterUndo = await readState();
+  assert(JSON.stringify(afterUndo.bodyPlacement) === JSON.stringify(initial.bodyPlacement), 'S03 Undo did not restore Body placement.');
+  assert(JSON.stringify(afterUndo.facePlacement) === JSON.stringify(initial.facePlacement), 'S03 Undo did not restore Face placement.');
+  assert(JSON.stringify(afterUndo.headPlacement) === JSON.stringify(initial.headPlacement), 'S03 Undo did not restore Head and Pivot.');
+  screenshots.push(await capture(window, 'issue820-s03-one-undo-restores-three-targets.png'));
+
+  await clickWithNativeInput(window, '[data-testid="character-workspace-expressions-tab"]', 'Close Assembly before S03 Redo');
+  await clickWithNativeInput(window, '[data-testid="history-controls"] .history-actions button:last-of-type', 'Redo S03 multi-target Apply');
+  await waitForDom(window, `document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1' && document.querySelector('[data-testid="history-controls"]')?.dataset.redoCount === '0'`, 'S03 Redo did not restore the single Apply item.');
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after S03 Redo');
+  await waitForDom(window, `Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.bodyScale) > 1 && Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headScale) > 1 && Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.faceScale) > 1`, 'S03 Redo did not restore all three scaled placements.');
+  const afterRedo = await readState();
+  assert(JSON.stringify(afterRedo.bodyPlacement) === JSON.stringify(afterApply.bodyPlacement), 'S03 Redo restored different Body placement.');
+  assert(JSON.stringify(afterRedo.facePlacement) === JSON.stringify(afterApply.facePlacement), 'S03 Redo restored different Face placement.');
+  assert(JSON.stringify(afterRedo.headPlacement) === JSON.stringify(afterApply.headPlacement), 'S03 Redo restored different Head or Pivot placement.');
+  screenshots.push(await capture(window, 'issue820-s03-one-redo-restores-three-targets.png'));
+
+  await expandProjectActions(window);
+  await clickWithNativeInput(window, '[data-testid="quick-action-save"]', 'Save S03 v12 project');
+  await waitForDom(window, `document.querySelector('[data-testid="quick-action-save"]')?.dataset.saveState === 'saved'`, 'S03 Project Save did not finish.');
+  const diskProject = ProjectSchema.parse(JSON.parse(readFileSync(path.join(projectRoot, 'project.json'), 'utf8')));
+  const diskCharacter = diskProject.characters.find((character) => character.id === IDS.issue820Character);
+  assert(diskProject.schemaVersion === 12, 'S03 Save changed the formal project schema version.');
+  assert(diskCharacter?.mode === 'composite' && JSON.stringify(diskCharacter.bodyPlacement) === JSON.stringify(afterRedo.bodyPlacement), 'S03 Save did not persist Body placement.');
+  assert(JSON.stringify(diskCharacter.facePlacement) === JSON.stringify({ offsetX: afterRedo.facePlacement[0], offsetY: afterRedo.facePlacement[1], scale: afterRedo.facePlacement[2], rotationDeg: afterRedo.facePlacement[3], flipX: afterRedo.facePlacement[4] }), 'S03 Save did not persist Face placement.');
+  assert(JSON.stringify(diskCharacter.head?.placement) === JSON.stringify({ offsetX: afterRedo.headPlacement[0], offsetY: afterRedo.headPlacement[1], scale: afterRedo.headPlacement[2], rotationDeg: afterRedo.headPlacement[3], flipX: afterRedo.headPlacement[4] }), 'S03 Save did not persist Head placement.');
+  assert(diskCharacter.head?.pivot.x === afterRedo.headPlacement[5] && diskCharacter.head?.pivot.y === afterRedo.headPlacement[6], 'S03 Save changed the Pivot values.');
+  assert(diskCharacter.bodyAssetId === originalReferences.bodyAssetId && diskCharacter.mouthOpenAssetId === originalReferences.mouthOpenAssetId, 'S03 Save changed Body or Mouth asset references.');
+  assert(JSON.stringify(diskCharacter.expressions.map((expression) => expression.assetId)) === JSON.stringify(originalReferences.expressionAssets), 'S03 Save changed expression asset references.');
+  assert(diskCharacter.defaultScale === originalReferences.defaultScale && diskCharacter.defaultFlipX === originalReferences.defaultFlipX, 'S03 placement edit changed whole-character default scale or flip.');
+  evidence.savedProject = { path: path.join(projectRoot, 'project.json'), schemaVersion: diskProject.schemaVersion, bodyPlacement: diskCharacter.bodyPlacement, facePlacement: diskCharacter.facePlacement, head: diskCharacter.head, originalReferences };
+
+  await clickWithNativeInput(window, '[data-testid="quick-action-close"]', 'Close saved S03 project');
+  await waitForDom(window, `document.querySelector('[data-testid="project-center-screen"]') && !document.querySelector('[data-testid="editor-layout"]')`, 'S03 saved project did not close.');
+  await openProject(window);
+  await openCharacter('S03 saved v12 reopen');
+  const reopened = await readState();
+  assert(JSON.stringify(reopened.bodyPlacement) === JSON.stringify(afterRedo.bodyPlacement), 'S03 Save/Reopen changed Body placement.');
+  assert(JSON.stringify(reopened.facePlacement) === JSON.stringify(afterRedo.facePlacement), 'S03 Save/Reopen changed Face placement.');
+  assert(JSON.stringify(reopened.headPlacement) === JSON.stringify(afterRedo.headPlacement), 'S03 Save/Reopen changed Head or Pivot placement.');
+  assert(reopened.projectRevision === '0' && reopened.projectDirty === 'false' && reopened.history.undo === '0' && reopened.history.redo === '0', 'S03 reopened project did not begin clean.');
+  await selectTarget('face', 'S03 reopened Face');
+  const finalHandle = await assertSelectedHandle('face', 'S03 reopened Face');
+  screenshots.push(await capture(window, 'issue820-s03-save-reopen-v12.png'));
+  evidence.reopened = { state: reopened, faceHandle: finalHandle.geometry };
+
+  return {
+    issue: 820,
+    code: 'C04-S03',
+    passed: true,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'verify:issue820-c04-s03',
+    projectRoot,
+    projectFilePath: path.join(projectRoot, 'project.json'),
+    syntheticInput: true,
+    humanAcceptance: false,
+    evidenceKind: 'windows-electron-native-pointer-keyboard-alpha-rotation-flip-viewport-history-save-reopen',
+    evidence,
+    screenshots,
+  };
+}
+
+async function verifyIssue822AssemblyCards(window, baselineMode) {
+  const screenshots = [];
+  const evidence = {};
+  inProgressEvidence = evidence;
+  const baselineLayoutPath = path.join(acceptanceRoot, 's04-baseline-layout.json');
+  const cardIds = {
+    body: 'character-assembly-body-picker-selected',
+    head: 'character-assembly-head-asset-selected',
+    face: 'character-assembly-default-face-select',
+  };
+  const actionIds = {
+    body: 'character-assembly-body-picker-change-action',
+    head: 'character-assembly-head-asset-change-action',
+    face: 'character-assembly-go-expressions',
+  };
+  const readLayout = () => window.webContents.executeJavaScript(`(() => {
+    const round = (value) => Math.round(value * 10) / 10;
+    const rect = (element) => {
+      const bounds = element?.getBoundingClientRect();
+      return bounds && {
+        x: round(bounds.x), y: round(bounds.y), width: round(bounds.width),
+        height: round(bounds.height), right: round(bounds.right), bottom: round(bounds.bottom),
+      };
+    };
+    const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    const viewport = workbench?.querySelector('[data-testid="character-assembly-preview"]');
+    const footer = workbench?.querySelector('.character-assembly-workbench-footer');
+    const header = workbench?.querySelector('.character-assembly-workbench-header');
+    const style = workbench ? getComputedStyle(workbench) : null;
+    const panel = document.querySelector('.character-assembly-drawer-panel');
+    const assemblyTab = document.querySelector('[data-testid="character-workspace-assembly-tab"]');
+    const expressionsTab = document.querySelector('[data-testid="character-workspace-expressions-tab"]');
+    const settingsTab = document.querySelector('[data-testid="character-workspace-settings-tab"]');
+    const drawerViewport = document.querySelector('.resource-activity-surface');
+    const actionIds = ${JSON.stringify(actionIds)};
+    const actions = Object.fromEntries(Object.entries(actionIds).map(([target, id]) => {
+      const button = document.querySelector('[data-testid="' + id + '"]');
+      const buttonStyle = button ? getComputedStyle(button) : null;
+      const row = button?.parentElement;
+      const bounds = button?.getBoundingClientRect();
+      const rowBounds = row?.getBoundingClientRect();
+      const panelBounds = panel?.getBoundingClientRect();
+      const drawerBounds = drawerViewport?.getBoundingClientRect();
+      const hit = bounds && document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+      return [target, button ? {
+        text: button.textContent.trim(),
+        ariaLabel: button.getAttribute('aria-label') ?? '',
+        rect: rect(button),
+        row: rect(row),
+        height: buttonStyle.height,
+        minWidth: buttonStyle.minWidth,
+        width: buttonStyle.width,
+        padding: buttonStyle.padding,
+        margin: buttonStyle.margin,
+        fontSize: buttonStyle.fontSize,
+        fontWeight: buttonStyle.fontWeight,
+        borderRadius: buttonStyle.borderRadius,
+        borderColor: buttonStyle.borderColor,
+        backgroundColor: buttonStyle.backgroundColor,
+        rowCenterDelta: bounds && rowBounds ? round(Math.abs((bounds.top + bounds.height / 2) - (rowBounds.top + rowBounds.height / 2))) : null,
+        withinPanel: Boolean(bounds && panelBounds && bounds.left >= panelBounds.left - 1 && bounds.right <= panelBounds.right + 1),
+        withinDrawerViewport: Boolean(bounds && drawerBounds && bounds.left >= drawerBounds.left - 1 && bounds.right <= drawerBounds.right + 1 && bounds.top >= drawerBounds.top - 1 && bounds.bottom <= drawerBounds.bottom + 1),
+        hitTarget: Boolean(button && hit && (hit === button || button.contains(hit))),
+        hitTestId: hit?.getAttribute('data-testid') ?? '',
+        hitClass: hit?.className?.baseVal ?? hit?.className ?? '',
+      } : null];
+    }));
+    const rowGap = Number.parseFloat(style?.rowGap ?? '0') || 0;
+    const paddingTop = Number.parseFloat(style?.paddingTop ?? '0') || 0;
+    const viewportBounds = rect(viewport);
+    const workbenchBounds = rect(workbench);
+    return {
+      viewportSize: { width: window.innerWidth, height: window.innerHeight },
+      workbench: workbenchBounds,
+      viewport: viewportBounds,
+      footer: rect(footer),
+      drawerViewport: rect(drawerViewport),
+      header: rect(header),
+      headerVisible: Boolean(header && getComputedStyle(header).display !== 'none' && rect(header)?.height > 0),
+      navigation: rect(workbench?.querySelector('.character-assembly-edit-targets')),
+      gridTemplateRows: style?.gridTemplateRows ?? '',
+      gridTrackCount: style?.gridTemplateRows.trim().split(/\\s+/u).length ?? 0,
+      rowGap: round(rowGap),
+      paddingTop: round(paddingTop),
+      topBlank: viewportBounds && workbenchBounds ? round(viewportBounds.y - workbenchBounds.y - paddingTop) : null,
+      hasHead: workbench?.dataset.hasHead ?? '',
+      editTarget: workbench?.dataset.editTarget ?? '',
+      activeWorkspace: assemblyTab?.getAttribute('aria-pressed') === 'true'
+        ? 'assembly'
+        : expressionsTab?.getAttribute('aria-pressed') === 'true'
+          ? 'expressions'
+          : settingsTab?.getAttribute('aria-pressed') === 'true'
+            ? 'settings'
+            : 'none',
+      imageSizes: [...(workbench?.querySelectorAll('.character-assembly-part') ?? [])].map((image) => ({
+        part: image.className.replace('character-assembly-part character-assembly-part-', ''),
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      })),
+      footerVisible: Boolean(footer && rect(footer)?.height > 0),
+      viewAllPresent: Boolean(workbench?.querySelector('[data-testid="character-assembly-view-all"]')),
+      fineTunePresent: Boolean(workbench?.querySelector('[data-testid="character-assembly-fine-tune-toggle"]')),
+      pivotPresent: Boolean(workbench?.querySelector('[data-testid="character-assembly-pivot-mode-toggle"]')),
+      leftDrawerPresent: Boolean(panel),
+      actions,
+    };
+  })()`);
+  const readSelection = () => window.webContents.executeJavaScript(`(() => {
+    const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+    const ids = ${JSON.stringify(cardIds)};
+    const actionIds = ${JSON.stringify(actionIds)};
+    const cards = Object.fromEntries(Object.entries(ids).map(([target, id]) => {
+      const button = document.querySelector('[data-testid="' + id + '"]');
+      const action = document.querySelector('[data-testid="' + actionIds[target] + '"]');
+      const row = button?.parentElement;
+      return [target, {
+        present: Boolean(button),
+        pressed: button?.getAttribute('aria-pressed') ?? '',
+        selected: button?.getAttribute('data-edit-target-selected') ?? '',
+        nestedAction: Boolean(button?.querySelector('button')),
+        actionSibling: Boolean(button && action && action.parentElement === button.parentElement),
+        focusVisible: Boolean(button?.matches(':focus-visible')),
+        rowBorder: row ? getComputedStyle(row).borderColor : '',
+        rowBackground: row ? getComputedStyle(row).backgroundColor : '',
+      }];
+    }));
+    const handles = ['body', 'head', 'face'].filter((target) => workbench?.querySelector('[data-testid="character-assembly-' + target + '-scale-handle"]'));
+    const dragTargets = ['body', 'head', 'face'].filter((target) => workbench?.querySelector('[data-testid="character-assembly-' + target + '-drag-target"]'));
+    const history = document.querySelector('[data-testid="history-controls"]');
+    return {
+      target: workbench?.dataset.editTarget ?? '',
+      cards,
+      handles,
+      dragTargets,
+      placement: {
+        body: [workbench?.dataset.bodyOffsetX ?? '', workbench?.dataset.bodyOffsetY ?? '', workbench?.dataset.bodyScale ?? ''],
+        head: [workbench?.dataset.headOffsetX ?? '', workbench?.dataset.headOffsetY ?? '', workbench?.dataset.headScale ?? '', workbench?.dataset.headRotationDeg ?? '', workbench?.dataset.headFlipX ?? ''],
+        face: [workbench?.dataset.faceOffsetX ?? '', workbench?.dataset.faceOffsetY ?? '', workbench?.dataset.faceScale ?? '', workbench?.dataset.faceRotationDeg ?? '', workbench?.dataset.faceFlipX ?? ''],
+        pivot: [workbench?.dataset.headPivotX ?? '', workbench?.dataset.headPivotY ?? ''],
+      },
+      revision: workbench?.dataset.projectRevision ?? '',
+      dirty: workbench?.dataset.projectDirty ?? '',
+      undoCount: history?.dataset.undoCount ?? '',
+      redoCount: history?.dataset.redoCount ?? '',
+      pivotEditing: workbench?.dataset.neckPivotEditing ?? '',
+      headMotionRunning: workbench?.dataset.headMotionTestRunning ?? '',
+    };
+  })()`);
+
+  await clickWithNativeInput(
+    window,
+    `[data-testid="character-list-view"] [data-character-id="${IDS.issue820Character}"]`,
+    'Issue 822 1086 x 1448 Body, Head, Face fixture',
+  );
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue820Character)}`,
+    'Issue 822 composite Character did not open.',
+  );
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Issue 822 Assembly workspace');
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="character-workspace-assembly-tab"]')?.getAttribute('aria-pressed') === 'true' && (() => { const workbench = document.querySelector('[data-testid="character-assembly-workbench"]'); const images = [...(workbench?.querySelectorAll('.character-assembly-part') ?? [])]; return workbench?.dataset.sessionKind === 'edit' && images.length === 3 && images.every((image) => image.complete && image.naturalWidth > 0); })()`,
+    'Issue 822 Body, Head, and Face fixture did not load in Assembly.',
+  );
+  await waitForPaint(window);
+  const initialLayout = await readLayout();
+  evidence.initialLayout = initialLayout;
+  assert(initialLayout.activeWorkspace === 'assembly', `The baseline or after screenshot is not showing the Assembly workspace: ${JSON.stringify(initialLayout)}.`);
+  screenshots.push(await capture(window, baselineMode ? 'issue822-s04-baseline.png' : 'issue822-s04-after-initial.png'));
+
+  if (baselineMode) {
+    assert(initialLayout.headerVisible, 'The pre-S04 baseline did not contain the top edit-target header.');
+    assert(initialLayout.gridTrackCount === 3, `Expected three pre-S04 grid rows; got ${initialLayout.gridTemplateRows}.`);
+    assert(initialLayout.imageSizes.some((image) => image.part === 'body' && image.width === 1086 && image.height === 1448), 'Baseline Body fixture dimensions are not 1086 x 1448.');
+    const receipt = {
+      issue: 822,
+      code: 'C04-S04-BASELINE',
+      passed: true,
+      commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+      verificationGate: 'electron scripts/verify-issue609-character-assembly.cjs --issue822-c04-s04-baseline',
+      runRoot,
+      projectRoot,
+      syntheticInput: true,
+      humanAcceptance: false,
+      evidenceKind: 'windows-electron-prechange-layout-geometry',
+      layout: initialLayout,
+      screenshotAbsolute: path.join(evidenceRoot, 'issue822-s04-baseline.png'),
+    };
+    writeFileSync(baselineLayoutPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
+    evidence.baselineReceipt = baselineLayoutPath;
+    return { ...receipt, evidence, screenshots };
+  }
+
+  let baseline;
+  try {
+    baseline = JSON.parse(readFileSync(baselineLayoutPath, 'utf8'));
+  } catch (error) {
+    throw new Error(`Run --issue822-c04-s04-baseline against the pre-S04 build before the after verifier: ${baselineLayoutPath}`, { cause: error });
+  }
+  assert(baseline.code === 'C04-S04-BASELINE' && baseline.layout?.headerVisible, 'Saved S04 baseline is missing its original header geometry.');
+  assert(initialLayout.headerVisible === false && !initialLayout.navigation, 'The redundant Assembly header/navigation is still present.');
+  assert(initialLayout.gridTrackCount === 2, `The S04 workbench must have two grid tracks; got ${initialLayout.gridTemplateRows}.`);
+  assert(initialLayout.topBlank <= 1, `The S04 preview still has top blank space: ${initialLayout.topBlank}px.`);
+  const baselineLayout = baseline.layout;
+  const viewportGain = initialLayout.viewport.height - baselineLayout.viewport.height;
+  const topBlankReleased = baselineLayout.topBlank - initialLayout.topBlank;
+  assert(Math.abs(viewportGain - topBlankReleased) <= 2, `Viewport growth does not match the removed top row and gap: ${JSON.stringify({ viewportGain, topBlankReleased, before: baselineLayout, after: initialLayout })}.`);
+  assert(Math.abs(topBlankReleased - (baselineLayout.header.height + baselineLayout.rowGap)) <= 2, `Released space does not match the old header height and grid gap: ${JSON.stringify({ topBlankReleased, header: baselineLayout.header, rowGap: baselineLayout.rowGap })}.`);
+  assert(initialLayout.footerVisible && initialLayout.viewAllPresent && initialLayout.fineTunePresent && initialLayout.pivotPresent && initialLayout.leftDrawerPresent, 'Removing the header also removed a retained Assembly control surface.');
+  assert(baselineLayout.footer && initialLayout.footer && Math.abs(baselineLayout.footer.y - initialLayout.footer.y) <= 2, 'The bottom action row moved while the preview viewport gained height.');
+  evidence.viewportSpace = {
+    before: baselineLayout,
+    after: initialLayout,
+    viewportGain,
+    topBlankReleased,
+    baselineReceipt: baselineLayoutPath,
+  };
+
+  const initialState = await readSelection();
+  assert(initialState.revision === '0' && initialState.dirty === 'false' && initialState.undoCount === '0' && initialState.redoCount === '0', 'Opening the synthetic fixture changed Project or History state.');
+  await window.webContents.executeJavaScript(`(() => {
+    window.__issue822ConfirmCalls = [];
+    window.confirm = (message) => {
+      window.__issue822ConfirmCalls.push(String(message));
+      return true;
+    };
+  })()`);
+  const assertSessionUnchanged = (state, label) => {
+    assert(state.revision === initialState.revision && state.dirty === initialState.dirty, `${label} changed Project revision or dirty state.`);
+    assert(state.undoCount === initialState.undoCount && state.redoCount === initialState.redoCount, `${label} changed History.`);
+    assert(JSON.stringify(state.placement) === JSON.stringify(initialState.placement), `${label} changed Body, Head, Face, or Pivot placement.`);
+  };
+  const selectTarget = async (target, label = target, screenshot = true) => {
+    const selector = `[data-testid="${cardIds[target]}"]`;
+    await clickWithNativeInput(window, selector, `${label} Assembly card body`);
+    await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === ${JSON.stringify(target)}`, `${label} card body did not select its edit target.`);
+    await waitForPaint(window);
+    const state = await readSelection();
+    assert(state.target === target, `${label} did not update the Workbench target.`);
+    assert(Object.values(state.cards).filter((card) => card.pressed === 'true' && card.selected === 'true').length === 1, `${label} did not leave exactly one left card selected: ${JSON.stringify(state.cards)}.`);
+    assert(state.cards[target].pressed === 'true' && state.cards[target].selected === 'true', `${label} card state did not follow editTarget.`);
+    assert(!state.cards[target].nestedAction, `${label} action button is nested inside the target selector.`);
+    assert(state.cards[target].actionSibling, `${label} Change/Manage action is not a sibling of the target selector.`);
+    assert(state.handles.length === 1 && state.handles[0] === target, `${label} did not expose exactly one matching active scale handle: ${JSON.stringify(state.handles)}.`);
+    assert(state.dragTargets.length === 1 && state.dragTargets[0] === target, `${label} did not expose exactly one matching active outline: ${JSON.stringify(state.dragTargets)}.`);
+    assertSessionUnchanged(state, `${label} selection`);
+    if (screenshot) screenshots.push(await capture(window, `issue822-s04-select-${target}-${screenshots.length}.png`));
+    return state;
+  };
+
+  await clickWithNativeInput(window, '[data-testid="character-workspace-expressions-tab"]', 'Close Assembly before Headless Character');
+  await waitForDom(window, '!document.querySelector("[data-testid=character-assembly-workbench]")', 'Assembly did not close before the Headless Character case.');
+  await clickWithNativeInput(window, '[data-testid="character-detail-back"]', 'Return to Character list for Headless case');
+  await waitForDom(window, `document.querySelector('[data-testid="character-list-view"]')`, 'Character list did not return for Headless case.');
+  const headlessExitConfirms = await window.webContents.executeJavaScript('window.__issue822ConfirmCalls ?? []');
+  assert(headlessExitConfirms.length === 0, `Session-only target selection prompted before leaving Assembly: ${JSON.stringify(headlessExitConfirms)}.`);
+  await clickWithNativeInput(window, `[data-testid="character-list-view"] [data-character-id="${IDS.issue797HeadlessCharacter}"]`, 'Headless composite Character');
+  await waitForDom(window, `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue797HeadlessCharacter)}`, 'Headless composite detail did not open.');
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Headless Assembly workspace');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.hasHead === 'false'`, 'Headless Assembly fixture was not active.');
+  const headlessBefore = await readSelection();
+  assert(headlessBefore.cards.body.present && headlessBefore.cards.face.present && headlessBefore.cards.head.pressed !== 'true', `Headless Assembly exposed the wrong editable left card state: ${JSON.stringify(headlessBefore.cards)}.`);
+  assert(headlessBefore.target === 'face' && headlessBefore.handles.length === 1 && headlessBefore.handles[0] === 'face' && headlessBefore.dragTargets.length === 1 && headlessBefore.dragTargets[0] === 'face', `Headless Assembly exposed an unavailable Head edit target: ${JSON.stringify(headlessBefore)}.`);
+  const headlessAssertUnchanged = (state, label) => {
+    assert(state.revision === headlessBefore.revision && state.dirty === headlessBefore.dirty, `${label} changed Project revision or dirty state.`);
+    assert(state.undoCount === headlessBefore.undoCount && state.redoCount === headlessBefore.redoCount, `${label} changed History.`);
+    assert(JSON.stringify(state.placement) === JSON.stringify(headlessBefore.placement), `${label} changed Body, Face, or Pivot placement.`);
+  };
+  for (const target of ['body', 'face']) {
+    await clickWithNativeInput(window, `[data-testid="${cardIds[target]}"]`, `Headless ${target} card body`);
+    await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === ${JSON.stringify(target)}`, `Headless ${target} card did not select its edit target.`);
+    const state = await readSelection();
+    assert(state.target === target && state.cards[target].pressed === 'true' && state.cards[target].selected === 'true', `Headless ${target} card state did not follow the edit target.`);
+    assert(state.handles.length === 1 && state.handles[0] === target && state.dragTargets.length === 1 && state.dragTargets[0] === target, `Headless ${target} did not expose its matching handle and outline.`);
+    assert(!state.cards[target].nestedAction && state.cards[target].actionSibling, `Headless ${target} Change/Manage action is not a sibling control.`);
+    headlessAssertUnchanged(state, `Headless ${target} selection`);
+  }
+  const headlessAfter = await readSelection();
+  evidence.headless = { before: headlessBefore, after: headlessAfter, exitConfirmCalls: headlessExitConfirms };
+  screenshots.push(await capture(window, 'issue822-s04-headless-body-face.png'));
+  await clickWithNativeInput(window, '[data-testid="character-workspace-expressions-tab"]', 'Close Headless Assembly');
+  await waitForDom(window, '!document.querySelector("[data-testid=character-assembly-workbench]")', 'Headless Assembly did not close.');
+  await clickWithNativeInput(window, '[data-testid="character-detail-back"]', 'Return from Headless Character');
+  await waitForDom(window, `document.querySelector('[data-testid="character-list-view"]')`, 'Character list did not return from Headless case.');
+  await clickWithNativeInput(window, `[data-testid="character-list-view"] [data-character-id="${IDS.issue820Character}"]`, 'Reopen composite Character after Headless case');
+  await waitForDom(window, `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(IDS.issue820Character)}`, 'Composite Character did not reopen after Headless case.');
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after Headless case');
+  await waitForDom(window, 'document.querySelector("[data-testid=character-assembly-workbench]")', 'Assembly did not reopen after the Headless case.');
+
+  const targetSelections = [];
+  for (const target of ['body', 'head', 'face', 'body']) {
+    targetSelections.push(await selectTarget(target, `Mouse ${target}`));
+  }
+  evidence.nativeMouseSelection = targetSelections;
+
+  const sendNativeCardKey = async (key) => {
+    const keyData = key === 'ENTER'
+      ? { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 }
+      : { key: ' ', code: 'Space', windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 };
+    const devtools = window.webContents.debugger;
+    const attachHere = !devtools.isAttached();
+    if (attachHere) devtools.attach('1.3');
+    try {
+      await devtools.sendCommand('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...keyData });
+      await wait(50);
+      await devtools.sendCommand('Input.dispatchKeyEvent', {
+        type: 'char',
+        ...keyData,
+        text: key === 'ENTER' ? '\r' : ' ',
+        unmodifiedText: key === 'ENTER' ? '\r' : ' ',
+      });
+      await devtools.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', ...keyData });
+    } finally {
+      if (attachHere && devtools.isAttached()) devtools.detach();
+    }
+    await wait(80);
+  };
+  const activateCardWithWindowsKey = async (target, startTarget, tabKeys, key) => {
+    const selector = `[data-testid="${cardIds[target]}"]`;
+    await clickWithNativeInput(window, `[data-testid="${cardIds[startTarget]}"]`, `${startTarget} keyboard focus setup`);
+    for (const tabKey of tabKeys) await sendKeyStroke(window, tabKey);
+    const focusState = await window.webContents.executeJavaScript(`(() => {
+      const button = document.querySelector(${JSON.stringify(selector)});
+      return {
+        active: document.activeElement === button,
+        visibleFocus: Boolean(button?.matches(':focus-visible')),
+        activeTestId: document.activeElement?.getAttribute('data-testid') ?? '',
+      };
+    })()`);
+    assert(focusState.active && focusState.visibleFocus, `Native Tab did not focus the ${target} card: ${JSON.stringify(focusState)}.`);
+    await window.webContents.executeJavaScript(`(() => {
+      const button = document.querySelector(${JSON.stringify(selector)});
+      window.__issue822KeyboardEvents = [];
+      for (const type of ['keydown', 'keyup', 'click']) button?.addEventListener(type, (event) => window.__issue822KeyboardEvents.push({
+        type, key: event.key ?? '', code: event.code ?? '', trusted: event.isTrusted,
+        focused: document.activeElement === button,
+      }), { capture: true });
+    })()`);
+    await sendNativeCardKey(key);
+    await wait(120);
+    const outcome = await window.webContents.executeJavaScript(`(() => {
+      const button = document.querySelector(${JSON.stringify(selector)});
+      const events = window.__issue822KeyboardEvents ?? [];
+      return {
+        active: document.activeElement === button,
+        visibleFocus: Boolean(button?.matches(':focus-visible')),
+        rowOutlineWidth: button?.parentElement ? getComputedStyle(button.parentElement).outlineWidth : '',
+        target: document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget ?? '',
+        events,
+      };
+    })()`);
+    assert(outcome.target === target, `${key} did not select ${target}: ${JSON.stringify(outcome)}.`);
+    assert(outcome.visibleFocus && Number.parseFloat(outcome.rowOutlineWidth) >= 2, `${key} did not show keyboard focus feedback on the ${target} card: ${JSON.stringify(outcome)}.`);
+    assert(outcome.events.some((event) => event.type === 'keydown' && event.trusted), `Windows ${key} did not reach the ${target} card: ${JSON.stringify(outcome.events)}.`);
+    assert(outcome.events.some((event) => event.type === 'click' && event.trusted), `Windows ${key} did not activate the ${target} card: ${JSON.stringify(outcome.events)}.`);
+    const state = await readSelection();
+    assert(state.cards[target].pressed === 'true' && state.cards[target].selected === 'true', `${key} did not select the ${target} card state.`);
+    assertSessionUnchanged(state, `${target} ${key} selection`);
+    return { focusState, outcome, state };
+  };
+  const enterSelection = await activateCardWithWindowsKey('body', 'head', ['SHIFT_TAB', 'SHIFT_TAB'], 'ENTER');
+  const spaceSelection = await activateCardWithWindowsKey('face', 'head', ['TAB', 'TAB'], 'SPACE');
+  evidence.keyboardSelection = { bodyEnter: enterSelection, faceSpace: spaceSelection };
+
+  await window.webContents.executeJavaScript(`(() => {
+    const button = document.querySelector('[data-testid="${cardIds.body}"]');
+    window.__issue822TouchEvents = [];
+    for (const type of ['pointerdown', 'click']) button?.addEventListener(type, (event) => window.__issue822TouchEvents.push({ type, pointerType: event.pointerType ?? '', trusted: event.isTrusted }), { capture: true });
+  })()`);
+  const touchPoint = await window.webContents.executeJavaScript(`(() => {
+    const rect = document.querySelector('[data-testid="${cardIds.body}"]').getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  })()`);
+  const debuggerSession = window.webContents.debugger;
+  const attachedHere = !debuggerSession.isAttached();
+  if (attachedHere) debuggerSession.attach('1.3');
+  try {
+    await debuggerSession.sendCommand('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ id: 822, x: touchPoint.x, y: touchPoint.y, radiusX: 1, radiusY: 1, force: 1 }],
+    });
+    await wait(80);
+    await debuggerSession.sendCommand('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  } finally {
+    if (attachedHere && debuggerSession.isAttached()) debuggerSession.detach();
+  }
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'body'`, 'Touch did not select Body.');
+  const touchEvents = await window.webContents.executeJavaScript('window.__issue822TouchEvents ?? []');
+  assert(touchEvents.some((event) => event.type === 'pointerdown' && event.pointerType === 'touch' && event.trusted), `Native touch did not reach the Body card: ${JSON.stringify(touchEvents)}.`);
+  const touchState = await readSelection();
+  assertSessionUnchanged(touchState, 'Body touch selection');
+  evidence.nativeTouchSelection = { point: touchPoint, events: touchEvents, state: touchState };
+
+  const actionBaseline = await readLayout();
+  const actionMetrics = Object.values(actionBaseline.actions).filter(Boolean);
+  assert(actionMetrics.length === 3, `Expected three sibling Change/Manage buttons: ${JSON.stringify(actionBaseline.actions)}.`);
+  for (const [target, action] of Object.entries(actionBaseline.actions)) {
+    assert(action.height === '44px' && action.minWidth === '54px', `${target} action does not use the compact 44px / 54px baseline: ${JSON.stringify(action)}.`);
+    assert(action.padding === '0px 6px' && action.margin === '0px 8px', `${target} action has different spacing: ${JSON.stringify(action)}.`);
+    assert(action.rowCenterDelta <= 1 && action.withinPanel && action.hitTarget, `${target} action is not vertically aligned and clickable within the left drawer: ${JSON.stringify(action)}.`);
+  }
+  const firstAction = actionMetrics[0];
+  for (const action of actionMetrics.slice(1)) {
+    for (const key of ['rect', 'height', 'minWidth', 'padding', 'margin', 'fontSize', 'fontWeight', 'borderRadius', 'borderColor', 'backgroundColor']) {
+      if (key === 'rect') {
+        assert(Math.abs(action.rect.height - firstAction.rect.height) <= 0.5 && Math.abs(action.rect.width - firstAction.rect.width) <= 1, 'Change/Manage buttons do not have equal rendered dimensions.');
+      } else {
+        assert(action[key] === firstAction[key], `Change/Manage buttons differ in ${key}: ${JSON.stringify(actionMetrics)}.`);
+      }
+    }
+  }
+  evidence.actionGeometry = actionBaseline.actions;
+  screenshots.push(await capture(window, 'issue822-s04-unified-actions.png'));
+
+  const independentActionSteps = [];
+  evidence.independentChangeActions = { steps: independentActionSteps };
+  await selectTarget('face', 'Body Change isolation', false);
+  independentActionSteps.push('face-target-before-body-change');
+  await clickWithNativeInput(window, `[data-testid="${actionIds.body}"]`, 'Body Change action');
+  independentActionSteps.push('body-change-clicked');
+  await waitForDom(window, 'document.querySelector("[data-testid=character-assembly-body-picker-candidates]")', 'Body Change did not open the Body picker.');
+  independentActionSteps.push('body-picker-open');
+  let stateAfterAction = await readSelection();
+  assert(stateAfterAction.target === 'face', 'Body Change action changed the current edit target.');
+  await clickWithNativeInput(window, `[data-testid="${actionIds.body}"]`, 'Close Body Change picker');
+  independentActionSteps.push('body-picker-close-clicked');
+  await waitForDom(window, '!document.querySelector("[data-testid=character-assembly-body-picker-candidates]")', 'Body Change picker did not close.');
+  independentActionSteps.push('body-picker-closed');
+
+  await selectTarget('body', 'Head Change isolation', false);
+  independentActionSteps.push('body-target-before-head-change');
+  await clickWithNativeInput(window, `[data-testid="${actionIds.head}"]`, 'Head Change action');
+  independentActionSteps.push('head-change-clicked');
+  await waitForDom(window, 'document.querySelector("[data-testid=character-assembly-head-asset-candidates]")', 'Head Change did not open the Head picker.');
+  independentActionSteps.push('head-picker-open');
+  stateAfterAction = await readSelection();
+  assert(stateAfterAction.target === 'body', 'Head Change action changed the current edit target.');
+  await clickWithNativeInput(window, `[data-testid="${actionIds.head}"]`, 'Close Head Change picker');
+  independentActionSteps.push('head-picker-close-clicked');
+  await waitForDom(window, '!document.querySelector("[data-testid=character-assembly-head-asset-candidates]")', 'Head Change picker did not close.');
+  independentActionSteps.push('head-picker-closed');
+  Object.assign(evidence.independentChangeActions, { bodyChangeTarget: 'face', headChangeTarget: 'body', after: await readSelection() });
+
+  await clickWithNativeInput(window, `[data-testid="${actionIds.face}"]`, 'Default Face Manage action');
+  await waitForDom(window, `document.querySelector('[data-testid="character-workspace-expressions-tab"]')?.getAttribute('aria-pressed') === 'true' && !document.querySelector('[data-testid="character-assembly-workbench"]')`, 'Manage did not navigate to Expressions independently.');
+  const expressionsRoute = await window.webContents.executeJavaScript(`({
+    revision: document.querySelector('[data-testid="character-manager"] [data-project-revision]')?.dataset.projectRevision ?? '',
+    undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? '',
+  })`);
+  assert(expressionsRoute.revision === initialState.revision && expressionsRoute.undoCount === initialState.undoCount, 'Manage wrote Project or History state.');
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Reopen Assembly after Manage');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.sessionKind === 'edit'`, 'Assembly did not reopen after Manage.');
+  const afterManage = await readSelection();
+  assert(afterManage.target === 'head', `Manage changed the Assembly route or did not start a fresh default Head session: ${JSON.stringify(afterManage)}.`);
+  assertSessionUnchanged(afterManage, 'Manage route exit and new Assembly session');
+  evidence.independentManageAction = { beforeTarget: 'body', expressionsRoute, reopenedSessionDefaultTarget: afterManage.target, afterManage };
+
+  await selectTarget('head', 'Pivot guard setup', false);
+  await clickWithNativeInput(window, '[data-testid="character-assembly-pivot-mode-toggle"]', 'Enter Head pivot edit mode');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.neckPivotEditing === 'true'`, 'Pivot mode did not activate.');
+  await clickWithNativeInput(window, `[data-testid="${cardIds.body}"]`, 'Select Body while editing Pivot');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'body' && document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.neckPivotEditing === 'false'`, 'Body selection did not preserve the existing pivot-mode exit behavior.');
+  const pivotExit = await readSelection();
+  assertSessionUnchanged(pivotExit, 'Body selection from Pivot mode');
+  await clickWithNativeInput(window, '[data-testid="character-assembly-test-head-motion"]', 'Start Head motion test');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headMotionTestRunning === 'true'`, 'Head motion test did not start.');
+  await clickWithNativeInput(window, `[data-testid="${cardIds.head}"]`, 'Select Head while motion test is running');
+  await waitForDom(window, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.editTarget === 'head' && document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headMotionTestRunning === 'false'`, 'Head selection did not preserve the existing motion-test exit behavior.');
+  const motionExit = await readSelection();
+  assertSessionUnchanged(motionExit, 'Head selection from motion test');
+  evidence.specialModeSelection = { pivotExit, motionExit };
+
+  const setTimeline = async (profile) => {
+    const selector = '[data-testid="timeline-resize-handle"]';
+    const range = await window.webContents.executeJavaScript(`(() => {
+      const handle = document.querySelector(${JSON.stringify(selector)});
+      return handle && { min: Number(handle.getAttribute('aria-valuemin')), max: Number(handle.getAttribute('aria-valuemax')) };
+    })()`);
+    assert(range && range.max > range.min, `Timeline resize handle is missing for ${profile}.`);
+    if (profile === 'low' || profile === 'middle') await pressFocusedControl(window, selector, 'HOME', `Timeline ${profile} setup`);
+    if (profile === 'high') await pressFocusedControl(window, selector, 'END', 'Timeline high setup');
+    if (profile === 'middle') {
+      const steps = Math.max(1, Math.round((range.max - range.min) / 32));
+      for (let index = 0; index < steps; index += 1) await pressFocusedControl(window, selector, 'ARROWUP', 'Timeline middle height');
+    }
+    const value = await window.webContents.executeJavaScript(`Number(document.querySelector(${JSON.stringify(selector)})?.getAttribute('aria-valuenow'))`);
+    await waitForPaint(window);
+    return { profile, min: range.min, max: range.max, value };
+  };
+  await clickWithNativeInput(window, '[data-testid="character-workspace-expressions-tab"]', 'Close Assembly before timeline checks');
+  const timelineLayouts = [];
+  for (const profile of ['low', 'middle', 'high']) {
+    const timeline = await setTimeline(profile);
+    await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', `Open Assembly at ${profile} timeline`);
+    await waitForDom(window, 'document.querySelector("[data-testid=character-workspace-assembly-tab]")?.getAttribute("aria-pressed") === "true"', `Assembly did not become active at ${profile} timeline.`);
+    await waitForPaint(window);
+    const layout = await readLayout();
+    assert(layout.activeWorkspace === 'assembly', `${profile} timeline screenshot is not showing the Assembly workspace: ${JSON.stringify(layout)}.`);
+    assert(layout.gridTrackCount === 2 && !layout.headerVisible && layout.topBlank <= 1 && layout.viewport.height > 0, `${profile} timeline retained top header space or lost the preview: ${JSON.stringify(layout)}.`);
+    timelineLayouts.push({ timeline, layout });
+    screenshots.push(await capture(window, `issue822-s04-timeline-${profile}.png`));
+    await clickWithNativeInput(window, '[data-testid="character-workspace-expressions-tab"]', `Close ${profile} timeline Assembly`);
+  }
+  evidence.timelineLayouts = timelineLayouts;
+
+  await setTimeline('middle');
+  window.webContents.setZoomFactor(1.25);
+  window.setSize(1000, 760);
+  await waitForDom(window, 'window.innerWidth <= 840 && window.innerWidth > 600', 'Narrow 125% viewport did not become active.');
+  await waitForPaint(window);
+  await clickWithNativeInput(window, '[data-testid="character-workspace-assembly-tab"]', 'Open Assembly at narrow 125%');
+  await waitForDom(window, 'document.querySelector("[data-testid=character-workspace-assembly-tab]")?.getAttribute("aria-pressed") === "true"', 'Assembly tab did not become active at narrow 125%.');
+  await waitForPaint(window);
+  const narrowLayout = await readLayout();
+  evidence.narrow125Percent = narrowLayout;
+  assert(narrowLayout.activeWorkspace === 'assembly', `The narrow 125% screenshot is not showing the Assembly workspace: ${JSON.stringify(narrowLayout)}.`);
+  screenshots.push(await capture(window, 'issue822-s04-narrow-125-percent.png'));
+  assert(narrowLayout.gridTrackCount === 2 && !narrowLayout.headerVisible && narrowLayout.topBlank <= 1 && narrowLayout.viewport.height > 0, `Narrow 125% Assembly layout retained top space or lost its preview: ${JSON.stringify(narrowLayout)}.`);
+  const narrowActionViews = [];
+  for (const target of Object.keys(actionIds)) {
+    const id = actionIds[target];
+    await window.webContents.executeJavaScript(`(() => {
+      const action = document.querySelector('[data-testid="${id}"]');
+      action?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      return Boolean(action);
+    })()`);
+    await waitForPaint(window);
+    const scrolledLayout = await readLayout();
+    const action = scrolledLayout.actions[target];
+    assert(action && action.withinPanel && action.withinDrawerViewport && action.hitTarget && action.height === '44px', `Narrow 125% clipped the ${target} action after reaching its scroll position: ${JSON.stringify({ action, drawerViewport: scrolledLayout.drawerViewport })}.`);
+    narrowActionViews.push({ target, action, drawerViewport: scrolledLayout.drawerViewport });
+    screenshots.push(await capture(window, `issue822-s04-narrow-125-percent-${target}.png`));
+  }
+  evidence.narrow125PercentActions = narrowActionViews;
+
+  return {
+    issue: 822,
+    code: 'C04-S04',
+    passed: true,
+    commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+    verificationGate: 'electron scripts/verify-issue609-character-assembly.cjs --issue822-c04-s04',
+    baselineReceipt: baselineLayoutPath,
+    projectRoot,
+    syntheticInput: true,
+    ownerRealPng: 'OWNER_REAL_PNG_PENDING',
+    humanAcceptance: false,
+    evidenceKind: 'windows-electron-native-mouse-keyboard-touch-layout-geometry-and-button-interactions',
+    evidence,
+    screenshots,
+  };
+}
+
 async function run() {
   mkdirSync(evidenceRoot, { recursive: true });
   mkdirSync(projectRoot, { recursive: true });
   activeProject = createFixture();
+  if (issue799Only || issue820S02Only || issue820S03Only || issue822FixtureRun) {
+    const initialProject = issue820S02Only
+      ? createIssue820V11Fixture(activeProject)
+      : structuredClone(activeProject);
+    if (issue799Only || issue820S03Only || issue822FixtureRun) savedProject = initialProject;
+    if (issue820S02Only || issue820S03Only || issue822FixtureRun) activeProject = initialProject;
+    writeFileSync(
+      path.join(projectRoot, 'project.json'),
+      `${JSON.stringify(initialProject, null, 2)}\n`,
+      'utf8',
+    );
+  }
   registerAcceptanceHandlers();
   await app.whenReady();
   configureElectronPaths();
@@ -769,6 +6848,36 @@ async function run() {
     windowRef.focus();
     windowRef.webContents.focus();
     await openProject(windowRef);
+    if (issue822FixtureRun) {
+      return await verifyIssue822AssemblyCards(windowRef, issue822BaselineOnly);
+    }
+    if (issue820S03Only) {
+      return await verifyIssue820UnifiedPartEditing(windowRef);
+    }
+    if (issue820S02Only) {
+      return await verifyIssue820BodyPlacement(windowRef);
+    }
+    if (issue820Run) {
+      return await verifyIssue820LargeAssetFit(windowRef);
+    }
+    if (issue815Run) {
+      return await verifyIssue815FineTuneTimelineOverlay(windowRef);
+    }
+    if (issue813Run) {
+      return await verifyIssue813AssemblyCanvasSpace(windowRef);
+    }
+    if (issue799Only) {
+      return await verifyIssue799LayoutReuse(windowRef);
+    }
+    if (issue797Only) {
+      return await verifyIssue797HeadFaceEditTargets(windowRef);
+    }
+    if (issue798Only) {
+      return await verifyIssue798AddToShotNavigation(windowRef);
+    }
+    if (issue792Only) {
+      return await verifyIssue792MouthOverflow(windowRef);
+    }
     await windowRef.webContents.executeJavaScript(`(() => {
       window.__issue610ConfirmCalls = [];
       window.__issue610ConfirmResponse = false;
@@ -914,6 +7023,21 @@ async function run() {
     await waitForDom(windowRef, `document.querySelector('[data-testid="character-assembly-workbench"][data-session-kind="create"]')`, 'Composite creation workbench did not reopen.');
     await chooseImage(windowRef, 'character-create-body-picker', IDS.body);
     await chooseImage(windowRef, 'character-create-face-picker', IDS.face);
+    const fineTuneDefault = await windowRef.webContents.executeJavaScript(`(() => {
+      const toggle = document.querySelector('[data-testid="character-assembly-fine-tune-toggle"]');
+      return {
+        expanded: toggle?.getAttribute('aria-expanded') ?? '',
+        panelVisible: Boolean(document.querySelector('[data-testid="character-assembly-fine-tune-panel"]')),
+      };
+    })()`);
+    assert(fineTuneDefault.expanded === 'false' && !fineTuneDefault.panelVisible, 'Assembly precision controls are not collapsed by default.');
+    evidence.fineTuneDisclosureDefault = fineTuneDefault;
+    await click(windowRef, '[data-testid="character-assembly-fine-tune-toggle"]', 'Open Assembly precision controls');
+    await waitForDom(
+      windowRef,
+      `document.querySelector('[data-testid="character-assembly-fine-tune-panel"]') && document.querySelector('[data-testid="character-assembly-offset-x"]')`,
+      'Opening Fine Tune did not reveal the existing Face Placement controls.',
+    );
     const creationSurface = await windowRef.webContents.executeJavaScript(`(() => {
       const createView = document.querySelector('[data-testid="character-create-view"]');
       const form = createView?.querySelector('form.character-create-form');
@@ -1062,7 +7186,7 @@ async function run() {
     })()`);
     assert(created.characterId, 'Created Character did not reach its existing Detail workflow.');
     assert(created.revision === '1' && created.undoCount === '1', 'Create did not produce exactly one Project/History operation.');
-    assert(created.tabs.length === 3 && created.tabs[0].label === '装配', 'Composite detail did not expose Assembly, Expressions, and Settings.');
+    assert(created.tabs.length === 3 && created.tabs[0].label === '组装', 'Composite detail did not expose Assembly, Expressions, and Settings.');
     assert(created.tabs.find((tab) => tab.label.includes('表情'))?.pressed === 'true', 'Composite detail did not open on Expressions by default.');
     assert(created.expressionCount === 1, 'Composite creation imposed or created extra Expressions.');
     evidence.createdCharacter = created;
@@ -1389,10 +7513,31 @@ async function main() {
     output = await run();
   } catch (error) {
     output = {
-      issue: 612,
+      issue: issue822FixtureRun ? 822 : issue820Run ? 820 : issue815Run ? 815 : issue813Run ? 813 : issue799Only ? 799 : issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 612,
+      code: issue822FixtureRun ? issue822BaselineOnly ? 'C04-S04-BASELINE' : 'C04-S04' : issue820Run ? issue820S03Only ? 'C04-S03' : issue820S02Only ? 'C04-S02' : 'C04-S01' : issue815Run ? 'C03-F01' : undefined,
       passed: false,
       commit: require('node:child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
-      verificationGate: 'verify:issue609-character-assembly',
+      verificationGate: issue822FixtureRun
+        ? `electron scripts/verify-issue609-character-assembly.cjs ${issue822BaselineOnly ? '--issue822-c04-s04-baseline' : '--issue822-c04-s04'}`
+        : issue820Run
+        ? issue820S03Only
+          ? 'verify:issue820-c04-s03'
+          : issue820S02Only
+          ? 'verify:issue820-c04-s02'
+          : issue820BaselineOnly ? 'issue820-c04-s01-baseline' : 'verify:issue820-c04-s01'
+        : issue815Run
+        ? issue815BaselineOnly ? 'issue815-c03-f01-baseline' : 'verify:issue815-c03-f01'
+        : issue813Run
+        ? 'verify:issue813-assembly-canvas-space'
+        : issue799Only
+          ? 'verify:issue799-layout-reuse'
+          : issue797Only
+          ? 'verify:issue797-head-face-edit'
+          : issue798Only
+            ? 'verify:issue798-add-to-shot-navigation'
+            : issue792Only
+              ? 'verify:issue792-mouth-overflow'
+              : 'verify:issue609-character-assembly',
       projectRoot,
       syntheticInput: true,
       humanAcceptance: false,
@@ -1411,6 +7556,6 @@ async function main() {
 main()
   .then(() => app.exit(0))
   .catch((error) => {
-    console.error(`[issue609] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    console.error(`[issue${issue822FixtureRun ? 822 : issue820Run ? 820 : issue815Run ? 815 : issue813Run ? 813 : issue799Only ? 799 : issue797Only ? 797 : issue798Only ? 798 : issue792Only ? 792 : 609}] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     app.exit(1);
   });

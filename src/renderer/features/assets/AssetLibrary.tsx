@@ -5,25 +5,30 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Filter, Search, X } from 'lucide-react';
 import {
   scanAssetReferences,
+  updateImageAssetAuthorMetadata,
 } from '../../../domain';
+import type { ImageAssetAuthorMetadata } from '../../../domain';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import {
   ASSET_LIBRARY_CATEGORIES,
   ASSET_LIBRARY_FILTERS,
   assetLibraryFilterCounts,
-  filterAssetLibraryEntries,
+  filterAssetLibraryItems,
+  selectAssetLibraryItems,
   selectAssetLibraryEntries,
   type AssetLibraryFilter,
+  type AssetLibraryUsageFilter,
 } from '../../stores/assetLibrarySelectors';
 import { applyAssetDeleteResponse } from './applyAssetDeleteResponse';
 import { applyAssetMetadataResponse } from './applyAssetMetadataResponse';
 import { ASSET_DRAG_MIME } from './AssetDropPayload';
 import { AssetDetails } from './AssetDetails';
 import { AssetGrid } from './AssetGrid';
+import { IMAGE_ASSET_USAGE_OPTIONS } from './assetUsage';
 import {
   thumbnailStateFromResponse,
   type ThumbnailState,
@@ -84,10 +89,14 @@ export function AssetLibrary({
     hideHeading ? 'all' : 'background',
   );
   const [searchQuery, setSearchQuery] = useState('');
+  const [usageFilter, setUsageFilter] =
+    useState<AssetLibraryUsageFilter>('all');
+  const [usageFilterMenuOpen, setUsageFilterMenuOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [selectedAssetId, setSelectedAssetId] =
     useState<string | null>(null);
   const [selectedDetailsOpen, setSelectedDetailsOpen] = useState(false);
+  const [hasUnsavedMetadata, setHasUnsavedMetadata] = useState(false);
   const [draggingAssetId, setDraggingAssetId] =
     useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -108,18 +117,60 @@ export function AssetLibrary({
     useState<FlaInspectionOperation | null>(null);
   const flaInspectionLifecycle = useRef<FlaInspectionLifecycle | null>(null);
   const flaInspectionOperation = useRef<FlaInspectionOperation | null>(null);
-  const detailsCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const detailsDialogRef = useRef<HTMLDivElement | null>(null);
+  const usageFilterTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const usageFilterMenuRef = useRef<HTMLDivElement | null>(null);
   const lastOpenedAssetId = useRef<string | null>(null);
   const pendingFocusReturnAssetId = useRef<string | null>(null);
+  const flaReviewFocusReturnTarget = useRef<HTMLElement | null>(null);
+  const pendingFlaReviewFocusReturn = useRef(false);
   const lastCloseRequest = useRef(closeRequestToken ?? 0);
   const lastFlaReviewRequest = useRef(flaReviewRequestToken ?? 0);
 
+  const restoreFlaReviewFocus = useCallback((): void => {
+    const originalTarget = flaReviewFocusReturnTarget.current;
+    if (
+      originalTarget &&
+      originalTarget !== document.body &&
+      originalTarget.isConnected &&
+      !originalTarget.hasAttribute('disabled') &&
+      originalTarget.getClientRects().length > 0
+    ) {
+      originalTarget.focus();
+      if (document.activeElement === originalTarget) return;
+    }
+
+    const fallback = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '[data-testid="resource-asset-import-fla"], [data-testid="asset-import-fla"]',
+      ),
+    ).find(
+      (element) =>
+        !element.hasAttribute('disabled') &&
+        element.getClientRects().length > 0,
+    );
+    fallback?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (
+      !pendingFlaReviewFocusReturn.current ||
+      flaReviewOpen ||
+      flaInspection
+    ) {
+      return;
+    }
+    pendingFlaReviewFocusReturn.current = false;
+    restoreFlaReviewFocus();
+  }, [flaInspection, flaReviewOpen, restoreFlaReviewFocus]);
+
   const closeFlaReview = useCallback((): void => {
+    pendingFlaReviewFocusReturn.current =
+      flaInspectionOperation.current !== null;
     setFlaReviewOpen(false);
     flaInspectionOperation.current = null;
     setFlaInspection(null);
     void flaInspectionLifecycle.current?.cancel();
-    setStatus('FLA review closed; Project and Asset state are unchanged.');
   }, []);
 
   useEffect(() => {
@@ -146,35 +197,84 @@ export function AssetLibrary({
         : [],
     [category, snapshot],
   );
+  const items = useMemo(
+    () => snapshot ? selectAssetLibraryItems(snapshot.project, category) : [],
+    [category, snapshot],
+  );
   const counts = useMemo(
     () =>
       snapshot
         ? assetLibraryFilterCounts(snapshot.project)
-        : { all: 0, character: 0, background: 0, audio: 0 },
+        : { all: 0, character: 0, background: 0, audio: 0, animation: 0 },
     [snapshot],
   );
   const filterOptions = hideHeading
     ? ASSET_LIBRARY_FILTERS
     : ASSET_LIBRARY_CATEGORIES;
-  const visibleEntries = useMemo(
-    () => filterAssetLibraryEntries(entries, searchQuery),
-    [entries, searchQuery],
+  const visibleItems = useMemo(
+    () => filterAssetLibraryItems(
+      items,
+      searchQuery,
+      category === 'audio' || category === 'animation' ? 'all' : usageFilter,
+    ),
+    [category, items, searchQuery, usageFilter],
+  );
+  const saveImageMetadata = useCallback(
+    (
+      assetId: string,
+      metadata: ImageAssetAuthorMetadata,
+    ): ImageAssetAuthorMetadata => {
+      const current = editorProjectStore.getSnapshot();
+      if (
+        !snapshot ||
+        !current ||
+        current.projectRoot !== snapshot.projectRoot ||
+        current.project.id !== snapshot.project.id
+      ) {
+        throw new Error('项目已切换，请重新选择素材后再编辑。');
+      }
+      const project = updateImageAssetAuthorMetadata(
+        current.project,
+        assetId,
+        metadata,
+      );
+      editorProjectStore.updateProject(project, 'Edit image asset details');
+      const savedAsset = project.assets.find(
+        (candidate) => candidate.id === assetId,
+      );
+      if (!savedAsset || savedAsset.kind !== 'image') {
+        throw new Error('找不到已更新的图片素材。');
+      }
+      setHasUnsavedMetadata(false);
+      return {
+        name: savedAsset.name,
+        usage: savedAsset.usage,
+        keywords: savedAsset.keywords,
+      };
+    },
+    [snapshot],
   );
   const isPortraitBrowser = hideHeading && view === 'browser';
   const totalPages = isPortraitBrowser
-    ? assetLibraryPageCount(visibleEntries.length)
+    ? assetLibraryPageCount(visibleItems.length)
     : 1;
   const currentPage = isPortraitBrowser
     ? Math.max(1, Math.min(page, totalPages))
     : 1;
-  const pageEntries = useMemo(
+  const pageItems = useMemo(
     () =>
       isPortraitBrowser
-        ? paginateAssetLibraryEntries(visibleEntries, currentPage)
-        : visibleEntries,
-    [currentPage, isPortraitBrowser, visibleEntries],
+        ? paginateAssetLibraryEntries(visibleItems, currentPage)
+        : visibleItems,
+    [currentPage, isPortraitBrowser, visibleItems],
+  );
+  const pageEntries = useMemo(
+    () => pageItems.flatMap((item) => item.kind === 'asset' ? [item.entry] : []),
+    [pageItems],
   );
   const isSearchActive = searchQuery.trim().length > 0;
+  const isUsageFilterActive =
+    category !== 'audio' && category !== 'animation' && usageFilter !== 'all';
   const isEntireLibraryEmpty = !isSearchActive && counts.all === 0;
   const selectedAsset = useMemo(
     () =>
@@ -195,19 +295,39 @@ export function AssetLibrary({
       ? authoritativeReferences
       : localReferences;
 
-  const clearSelectedAsset = useCallback((): void => {
-    pendingFocusReturnAssetId.current = null;
-    setSelectedAssetId(null);
-    setSelectedDetailsOpen(false);
-    setAuthoritativeReferences([]);
-  }, []);
-
   const closeSelectedDetails = useCallback(
-    (returnFocus = true): void => {
+    (returnFocus = true, discardDraft = false): boolean => {
+      if (
+        hasUnsavedMetadata &&
+        !discardDraft &&
+        !window.confirm('放弃尚未保存的素材更改？')
+      ) {
+        return false;
+      }
+      setHasUnsavedMetadata(false);
       pendingFocusReturnAssetId.current = returnFocus
         ? lastOpenedAssetId.current ?? selectedAssetId
         : null;
       setSelectedDetailsOpen(false);
+      onViewChange('browser');
+      return true;
+    },
+    [hasUnsavedMetadata, onViewChange, selectedAssetId],
+  );
+
+  const clearSelectedAsset = useCallback((): boolean => {
+    if (selectedDetailsOpen && !closeSelectedDetails(false)) return false;
+    pendingFocusReturnAssetId.current = null;
+    setSelectedAssetId(null);
+    setSelectedDetailsOpen(false);
+    setHasUnsavedMetadata(false);
+    setAuthoritativeReferences([]);
+    return true;
+  }, [closeSelectedDetails, selectedDetailsOpen]);
+
+  const reportMetadataDraftChange = useCallback(
+    (assetId: string, dirty: boolean): void => {
+      if (assetId === selectedAssetId) setHasUnsavedMetadata(dirty);
     },
     [selectedAssetId],
   );
@@ -226,32 +346,106 @@ export function AssetLibrary({
   }, []);
 
   const selectCategory = (nextCategory: AssetLibraryFilter): void => {
+    if (!clearSelectedAsset()) return;
     setCategory(nextCategory);
+    if ((nextCategory === 'audio' || nextCategory === 'animation') && usageFilter !== 'all') {
+      setUsageFilter('all');
+    }
+    setUsageFilterMenuOpen(false);
     setPage(1);
-    clearSelectedAsset();
   };
 
   const updateSearchQuery = (nextQuery: string): void => {
+    if (!clearSelectedAsset()) return;
     setSearchQuery(nextQuery);
     setPage(1);
-    clearSelectedAsset();
   };
+
+  const updateUsageFilter = (
+    nextUsage: AssetLibraryUsageFilter,
+  ): void => {
+    if (category === 'audio' || category === 'animation') return;
+    if (!clearSelectedAsset()) return;
+    setUsageFilter(nextUsage);
+    setUsageFilterMenuOpen(false);
+    setPage(1);
+    usageFilterTriggerRef.current?.focus();
+  };
+
+  useEffect(() => {
+    if (!usageFilterMenuOpen) return;
+    const onPointerDown = (event: PointerEvent): void => {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        !usageFilterTriggerRef.current?.contains(target) &&
+        !usageFilterMenuRef.current?.contains(target)
+      ) {
+        setUsageFilterMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setUsageFilterMenuOpen(false);
+        usageFilterTriggerRef.current?.focus();
+        return;
+      }
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+      const items = Array.from(
+        usageFilterMenuRef.current?.querySelectorAll<HTMLButtonElement>(
+          '[role="menuitemradio"]',
+        ) ?? [],
+      );
+      if (items.length === 0) return;
+      event.preventDefault();
+      const currentIndex = items.indexOf(
+        document.activeElement as HTMLButtonElement,
+      );
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      const nextIndex =
+        currentIndex < 0
+          ? step > 0
+            ? 0
+            : items.length - 1
+          : (currentIndex + step + items.length) % items.length;
+      items[nextIndex]?.focus();
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [usageFilterMenuOpen]);
+
+  useEffect(() => {
+    if (!usageFilterMenuOpen) return;
+    const frame = window.requestAnimationFrame(() => {
+      const selected = usageFilterMenuRef.current?.querySelector<HTMLButtonElement>(
+        '[role="menuitemradio"][aria-checked="true"]',
+      );
+      (selected ?? usageFilterMenuRef.current?.querySelector('button'))?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [usageFilterMenuOpen]);
 
   const goToPage = (requestedPage: number): void => {
     if (!isPortraitBrowser) return;
     const nextPage = Math.max(1, Math.min(requestedPage, totalPages));
     if (nextPage === currentPage) return;
-    const nextEntries = paginateAssetLibraryEntries(
-      visibleEntries,
+    const nextItems = paginateAssetLibraryEntries(
+      visibleItems,
       nextPage,
     );
+    if (selectedDetailsOpen && !closeSelectedDetails(false)) return;
     setPage(nextPage);
-    closeSelectedDetails(false);
     if (
       selectedAssetId &&
-      !nextEntries.some((entry) => entry.asset.id === selectedAssetId)
+      !nextItems.some((item) => item.kind === 'asset' && item.entry.asset.id === selectedAssetId)
     ) {
-      clearSelectedAsset();
+      setSelectedAssetId(null);
+      setAuthoritativeReferences([]);
     }
   };
 
@@ -260,11 +454,13 @@ export function AssetLibrary({
       selectedAssetId &&
       !pageEntries.some((entry) => entry.asset.id === selectedAssetId)
     ) {
+      if (!closeSelectedDetails(false)) return;
       setSelectedAssetId(null);
       setSelectedDetailsOpen(false);
+      setHasUnsavedMetadata(false);
       setAuthoritativeReferences([]);
     }
-  }, [pageEntries, selectedAssetId]);
+  }, [closeSelectedDetails, pageEntries, selectedAssetId]);
 
   useEffect(() => {
     if (page <= totalPages) return;
@@ -272,12 +468,18 @@ export function AssetLibrary({
   }, [page, totalPages]);
 
   useEffect(() => {
-    if (!selectedDetailsOpen || !isPortraitBrowser) return;
-    detailsCloseButtonRef.current?.focus();
-  }, [isPortraitBrowser, selectedDetailsOpen]);
+    if (!selectedDetailsOpen) return;
+    const firstInput = detailsDialogRef.current?.querySelector<HTMLElement>(
+      'input:not(:disabled), select:not(:disabled)',
+    );
+    const firstButton = detailsDialogRef.current?.querySelector<HTMLElement>(
+      'button:not(:disabled), summary',
+    );
+    (firstInput ?? firstButton ?? detailsDialogRef.current)?.focus();
+  }, [selectedAssetId, selectedDetailsOpen]);
 
   useEffect(() => {
-    if (!isPortraitBrowser || !selectedDetailsOpen) return;
+    if (!selectedDetailsOpen) return;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
@@ -286,7 +488,7 @@ export function AssetLibrary({
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [closeSelectedDetails, isPortraitBrowser, selectedDetailsOpen]);
+  }, [closeSelectedDetails, selectedDetailsOpen]);
 
   useEffect(() => {
     if (selectedDetailsOpen || !pendingFocusReturnAssetId.current) return;
@@ -342,14 +544,21 @@ export function AssetLibrary({
   }, [entries, snapshot]);
 
   const selectAsset = (assetId: string): void => {
-    setSelectedAssetId(assetId);
-    setSelectedDetailsOpen(hideHeading);
-    setAuthoritativeReferences([]);
-    if (hideHeading) {
-      lastOpenedAssetId.current = assetId;
-      pendingFocusReturnAssetId.current = null;
+    if (
+      selectedDetailsOpen &&
+      selectedAssetId !== assetId &&
+      !closeSelectedDetails(false)
+    ) {
+      return;
     }
+    setSelectedAssetId(assetId);
+    setSelectedDetailsOpen(true);
+    setHasUnsavedMetadata(false);
+    setAuthoritativeReferences([]);
+    lastOpenedAssetId.current = assetId;
+    pendingFocusReturnAssetId.current = null;
     if (!hideHeading) onViewChange('details');
+    else onViewChange('browser');
   };
 
   const refreshAssetMetadata = useCallback(async (
@@ -444,6 +653,7 @@ export function AssetLibrary({
       return {
         status: ready ? 'ready' : 'error',
         applied: outcome.applied,
+        ...(ready ? {} : { message: outcome.status }),
       };
     } catch (error) {
       const message =
@@ -459,7 +669,7 @@ export function AssetLibrary({
         }));
       }
       setStatus(message);
-      return { status: 'error', applied: false };
+      return { status: 'error', applied: false, message };
     } finally {
       setBusy(false);
     }
@@ -482,7 +692,7 @@ export function AssetLibrary({
     if (!current || !asset) return;
     if (
       !window.confirm(
-        `确认删除素材“${asset.name}”？Main Process 会再次检查全部项目引用。`,
+        `确认删除素材“${asset.name}”？${hasUnsavedMetadata ? '未保存的编辑也会丢弃。' : ''}Main Process 会再次检查全部项目引用。`,
       )
     ) {
       setStatus('已取消删除，项目没有发生变化。');
@@ -505,7 +715,7 @@ export function AssetLibrary({
       setStatus(outcome.status);
       if (outcome.applied) {
         setSelectedAssetId(null);
-        closeSelectedDetails(false);
+        closeSelectedDetails(false, true);
       }
     } catch (error) {
       setStatus(
@@ -521,6 +731,11 @@ export function AssetLibrary({
       setStatus('Open a Panda Stage project before reviewing an FLA.');
       return;
     }
+    const activeElement = document.activeElement;
+    flaReviewFocusReturnTarget.current =
+      activeElement instanceof HTMLElement && activeElement !== document.body
+        ? activeElement
+        : null;
     const lifecycle =
       flaInspectionLifecycle.current ??
       (flaInspectionLifecycle.current = new FlaInspectionLifecycle(
@@ -596,6 +811,7 @@ export function AssetLibrary({
     if (previousProject !== snapshot?.projectRoot) {
       setCategory(hideHeading ? 'all' : 'background');
       setSearchQuery('');
+      setUsageFilter('all');
       setPage(1);
       pendingFocusReturnAssetId.current = null;
       setSelectedAssetId(null);
@@ -652,10 +868,7 @@ export function AssetLibrary({
       }}
     >
       <div
-        className={[
-          'asset-library-heading',
-          hideHeading ? 'asset-library-heading-visually-hidden' : '',
-        ].filter(Boolean).join(' ')}
+        className="asset-library-heading asset-library-heading-visually-hidden"
       >
         <div>
           <p className="eyebrow">项目素材</p>
@@ -690,7 +903,7 @@ export function AssetLibrary({
               response,
               editorProjectStore,
             );
-            setStatus(outcome.status);
+            setStatus(response.ok ? '' : outcome.status);
           }}
           snapshot={snapshot}
         />
@@ -705,43 +918,116 @@ export function AssetLibrary({
             snapshot={snapshot}
           />
           <div
+            className="asset-library-filter-controls"
+            data-testid="asset-library-filter-controls"
+          >
+            <div className="asset-library-search">
+              <label className="asset-library-search-label-compact" htmlFor="asset-library-search-input">
+                搜索素材
+              </label>
+              <div className="asset-library-search-control">
+                <DecorativeIcon
+                  className="asset-library-search-icon"
+                  icon={Search}
+                  size={18}
+                />
+                <input
+                  aria-label="搜索素材"
+                  id="asset-library-search-input"
+                  onChange={(event) => updateSearchQuery(event.target.value)}
+                  placeholder="搜索素材"
+                  type="search"
+                  value={searchQuery}
+                />
+                {searchQuery ? (
+                  <button
+                    aria-label="清除搜索"
+                    className="asset-library-search-clear"
+                    data-testid="asset-library-search-clear"
+                    onClick={() => updateSearchQuery('')}
+                    title="清除搜索"
+                    type="button"
+                  >
+                    <DecorativeIcon icon={X} size={18} />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            <div className="asset-library-usage-filter">
+              <button
+                aria-expanded={category !== 'audio' && category !== 'animation' && usageFilterMenuOpen}
+                aria-haspopup="menu"
+                aria-label={
+                  category === 'audio' || category === 'animation'
+                    ? '按用途筛选（仅图片素材）'
+                    : '按用途筛选'
+                }
+                aria-pressed={usageFilter !== 'all'}
+                className="asset-library-usage-filter-trigger"
+                data-active={usageFilter !== 'all'}
+                data-testid="asset-library-usage-filter"
+                disabled={category === 'audio' || category === 'animation'}
+                onClick={() => {
+                  if (category !== 'audio' && category !== 'animation') {
+                    setUsageFilterMenuOpen((open) => !open);
+                  }
+                }}
+                ref={usageFilterTriggerRef}
+                title={
+                  category === 'audio' ? '用途筛选仅适用于图片素材' : undefined
+                }
+                type="button"
+              >
+                <Filter aria-hidden="true" size={18} />
+                {usageFilter !== 'all' ? (
+                  <span aria-hidden="true" className="asset-library-usage-filter-active-dot" />
+                ) : null}
+              </button>
+              {usageFilterMenuOpen && category !== 'audio' && category !== 'animation' ? (
+                <div
+                  aria-label="按用途筛选"
+                  className="asset-library-usage-filter-menu"
+                  data-testid="asset-library-usage-filter-menu"
+                  id="asset-library-usage-filter-menu"
+                  ref={usageFilterMenuRef}
+                  role="menu"
+                >
+                  {[
+                    { value: 'all' as const, label: '全部' },
+                    ...IMAGE_ASSET_USAGE_OPTIONS.map((option) =>
+                      option.value === 'character'
+                        ? { ...option, label: '人物' }
+                        : option,
+                    ),
+                  ].map((option) => (
+                    <button
+                      aria-checked={usageFilter === option.value}
+                      className="asset-library-usage-filter-option"
+                      data-usage-filter-value={option.value}
+                      key={option.value}
+                      onClick={() => updateUsageFilter(option.value)}
+                      role="menuitemradio"
+                      type="button"
+                    >
+                      <span>{option.label}</span>
+                      <span
+                        aria-hidden="true"
+                        className="asset-library-usage-filter-check-slot"
+                      >
+                        {usageFilter === option.value ? (
+                          <Check size={17} />
+                        ) : null}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+          <div
             className="asset-library-browser"
             data-testid="asset-browser-view"
           >
-            {hideHeading ? (
-              <div className="asset-library-search">
-                <label htmlFor="asset-library-search-input">
-                  搜索素材
-                </label>
-                <div className="asset-library-search-control">
-                  <DecorativeIcon
-                    className="asset-library-search-icon"
-                    icon={Search}
-                    size={18}
-                  />
-                  <input
-                    aria-label="搜索素材"
-                    id="asset-library-search-input"
-                    onChange={(event) => updateSearchQuery(event.target.value)}
-                    placeholder="搜索素材"
-                    type="search"
-                    value={searchQuery}
-                  />
-                  {searchQuery ? (
-                    <button
-                      aria-label="清除搜索"
-                      className="asset-library-search-clear"
-                      data-testid="asset-library-search-clear"
-                      onClick={() => updateSearchQuery('')}
-                      title="清除搜索"
-                      type="button"
-                    >
-                      <DecorativeIcon icon={X} size={18} />
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
             <nav aria-label="素材分类" className="asset-category-tabs">
               {filterOptions.map((item) => (
                 <button
@@ -760,69 +1046,11 @@ export function AssetLibrary({
                 </button>
               ))}
             </nav>
-            {hideHeading && selectedAsset && selectedDetailsOpen ? (
-              <section
-                role="presentation"
-                className="asset-details-overlay"
-                data-selected-asset-id={selectedAsset.id}
-                data-testid="asset-details-overlay"
-                onClick={(event) => {
-                  if (event.target === event.currentTarget) {
-                    closeSelectedDetails();
-                  }
-                }}
-              >
-                <div
-                  aria-label="Asset details"
-                  aria-modal="true"
-                  className="asset-details-dialog"
-                  data-testid="asset-details-dialog"
-                  onClick={(event) => event.stopPropagation()}
-                  role="dialog"
-                >
-                  <button
-                    aria-label="关闭素材详情"
-                    aria-controls={`asset-details-dialog-body-${selectedAsset.id}`}
-                    data-testid="asset-details-close"
-                    onClick={() => closeSelectedDetails()}
-                    ref={detailsCloseButtonRef}
-                    type="button"
-                  >
-                    <span>当前选中</span>
-                    <span aria-hidden="true">·</span>
-                    <strong title={selectedAsset.name}>
-                      {selectedAsset.name}
-                    </strong>
-                    <DecorativeIcon
-                      className="asset-details-close-icon"
-                      icon={X}
-                      size={18}
-                    />
-                  </button>
-                {selectedDetailsOpen ? (
-                  <div
-                    className="asset-details-dialog-body"
-                    id={`asset-details-dialog-body-${selectedAsset.id}`}
-                  >
-                    <AssetDetails
-                      asset={selectedAsset}
-                      busy={busy}
-                      onDelete={() => void deleteSelected()}
-                      metadataError={metadataErrors[selectedAsset.id]}
-                      onRefreshMetadata={() =>
-                        void refreshAssetMetadata(selectedAsset.id)
-                      }
-                      presentation="portrait"
-                      references={references}
-                      thumbnail={thumbnails[selectedAsset.id]}
-                    />
-                  </div>
-                ) : null}
-                </div>
-              </section>
-            ) : null}
             <div className="asset-library-content">
-              <AssetGrid
+              {snapshot ? (
+  <AssetGrid
+                project={snapshot.project}
+                projectRoot={snapshot.projectRoot}
                 draggingAssetId={draggingAssetId}
                 onDragEnd={() => {
                   setDraggingAssetId(null);
@@ -855,22 +1083,35 @@ export function AssetLibrary({
                 emptyMessage={
                   isSearchActive
                     ? '没有匹配的素材'
-                    : isEntireLibraryEmpty
+                    : category === 'animation'
+                      ? '还没有已导入的动画'
+                    : isUsageFilterActive
+                      ? '没有符合用途的图片'
+                      : isEntireLibraryEmpty
                       ? '素材库还是空的'
                       : undefined
                 }
                 emptyDescription={
                   isSearchActive
-                    ? '清除搜索或换一个分类试试。'
-                    : isEntireLibraryEmpty
+                    ? '清除搜索或换一个用途、分类试试。'
+                    : category === 'animation'
+                      ? '从 FLA 导入动画后会显示在这里。'
+                    : isUsageFilterActive
+                      ? '选择其他用途，或恢复“全部用途”。'
+                      : isEntireLibraryEmpty
                       ? '拖进图片或音频，或者点上面的「导入素材」。'
                       : undefined
                 }
                 selectedAssetId={selectedAssetId}
                 metadataErrors={metadataErrors}
                 thumbnails={thumbnails}
-                entries={pageEntries}
+                items={pageItems}
               />
+) : (
+  <div className="animation-library-empty" data-testid="animation-library-empty">
+    <strong>尚未打开项目</strong>
+  </div>
+)}
               {isPortraitBrowser && totalPages > 1 ? (
                 <nav
                   aria-label="绱犳潗鍒嗛〉"
@@ -927,24 +1168,115 @@ export function AssetLibrary({
               返回素材库
             </button>
           </div>
-          <AssetDetails
-            asset={selectedAsset}
-            busy={busy}
-            onDelete={() => void deleteSelected()}
-            metadataError={
-              selectedAsset ? metadataErrors[selectedAsset.id] : undefined
-            }
-            onRefreshMetadata={
-              selectedAsset
-                ? () => void refreshAssetMetadata(selectedAsset.id)
-                : undefined
-            }
-            references={references}
-            thumbnail={selectedAsset ? thumbnails[selectedAsset.id] : undefined}
-          />
+          {!selectedDetailsOpen ? (
+            <AssetDetails
+              key={selectedAsset?.id ?? 'empty'}
+              asset={selectedAsset}
+              busy={busy}
+              onCancelEdit={() => closeSelectedDetails(true, true)}
+              onDelete={() => void deleteSelected()}
+              metadataError={
+                selectedAsset ? metadataErrors[selectedAsset.id] : undefined
+              }
+              onDraftChange={reportMetadataDraftChange}
+              onRequestClose={() => closeSelectedDetails()}
+              onSaveImageMetadata={saveImageMetadata}
+              onRefreshMetadata={
+                selectedAsset
+                  ? () => void refreshAssetMetadata(selectedAsset.id)
+                  : undefined
+              }
+              references={references}
+              thumbnail={selectedAsset ? thumbnails[selectedAsset.id] : undefined}
+            />
+          ) : null}
         </section>
       )}
-      <output className="asset-library-status">{status}</output>
+      {selectedAsset && selectedDetailsOpen ? (
+        <section
+          role="presentation"
+          className="asset-details-overlay"
+          data-selected-asset-id={selectedAsset.id}
+          data-testid="asset-details-overlay"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              closeSelectedDetails();
+            }
+          }}
+        >
+          <div
+            aria-label="素材详情"
+            aria-modal="true"
+            aria-labelledby="asset-details-title"
+            className="asset-details-dialog"
+            data-testid="asset-details-dialog"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key !== 'Tab') return;
+              const dialog = detailsDialogRef.current;
+              if (!dialog) return;
+              const focusable = Array.from(
+                dialog.querySelectorAll<HTMLElement>(
+                  'button:not(:disabled), input:not(:disabled), select:not(:disabled), summary',
+                ),
+              ).filter(
+                (element) =>
+                  !element.closest('details:not([open])') ||
+                  element.matches('summary'),
+              );
+              if (focusable.length === 0) {
+                event.preventDefault();
+                dialog.focus();
+                return;
+              }
+              const first = focusable[0];
+              const last = focusable[focusable.length - 1];
+              if (
+                event.shiftKey &&
+                (document.activeElement === first ||
+                  !dialog.contains(document.activeElement))
+              ) {
+                event.preventDefault();
+                last?.focus();
+              } else if (
+                !event.shiftKey &&
+                (document.activeElement === last ||
+                  !dialog.contains(document.activeElement))
+              ) {
+                event.preventDefault();
+                first?.focus();
+              }
+            }}
+            ref={detailsDialogRef}
+            role="dialog"
+            tabIndex={-1}
+          >
+            <div
+              className="asset-details-dialog-body"
+              id={`asset-details-dialog-body-${selectedAsset.id}`}
+            >
+              <AssetDetails
+                key={selectedAsset.id}
+                asset={selectedAsset}
+                busy={busy}
+                onCancelEdit={() => closeSelectedDetails(true, true)}
+                onDelete={() => void deleteSelected()}
+                metadataError={metadataErrors[selectedAsset.id]}
+                onDraftChange={reportMetadataDraftChange}
+                onRequestClose={() => closeSelectedDetails()}
+                onSaveImageMetadata={saveImageMetadata}
+                onRefreshMetadata={() =>
+                  void refreshAssetMetadata(selectedAsset.id)
+                }
+                presentation={resolvedPresentation}
+                references={references}
+                thumbnail={thumbnails[selectedAsset.id]}
+              />
+            </div>
+          </div>
+        </section>
+      ) : null}
+      {status ? <output className="asset-library-status">{status}</output> : null}
     </section>
   );
 }

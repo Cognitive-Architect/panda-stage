@@ -217,6 +217,7 @@ describe('Issue #523 R8 unified Character workspace', () => {
         onThumbnailError: noop,
         onOpenAssembly: () => true,
         onLeaveAssembly: () => true,
+        onSetAssemblyHeadAsset: noop,
         onSetAssemblyBodyAsset: noop,
         onSetAssemblyMouthAsset: noop,
         presentation: 'landscape',
@@ -225,16 +226,132 @@ describe('Issue #523 R8 unified Character workspace', () => {
     );
 
     expect(markup).toContain('data-testid="character-workspace-assembly-tab"');
+    expect(markup).toContain('>组装</button>');
+    expect(markup).toContain('aria-label="角色组装素材"');
     expect(markup.match(/data-workspace="(?:assembly|expressions|settings)"/gu)).toHaveLength(3);
     expect(markup).toMatch(
       /data-workspace="expressions"[^>]*id="character-workspace-expressions"/u,
     );
     expect(markup).toContain('data-testid="character-assembly-body-picker"');
+    expect(markup).toContain('data-testid="character-assembly-head-asset"');
+    const headPickerStart = markup.indexOf('data-testid="character-assembly-head-asset"');
+    const headPickerEnd = markup.indexOf('</section>', headPickerStart);
+    const headPicker = markup.slice(headPickerStart, headPickerEnd);
+    expect(headPicker).not.toContain('<small>可选</small>');
     expect(markup).toContain('data-testid="character-assembly-mouth-picker"');
     expect(markup).toContain('data-testid="character-assembly-go-expressions"');
-    expect(markup).toContain('class="image-asset-picker-selected-action">管理</span>');
+    expect(markup).toMatch(
+      /<button[^>]*class="image-asset-picker-selected-action character-assembly-selected-action-button"[^>]*data-testid="character-assembly-go-expressions"[^>]*>管理<\/button>/u,
+    );
     expect(markup).not.toContain('character-detail-mouth-visual-picker');
+    const defaultFaceTestId = markup.indexOf('data-testid="character-assembly-default-face-select"');
+    const defaultFaceStart = markup.lastIndexOf('<button', defaultFaceTestId);
+    const defaultFaceEnd = markup.indexOf('</button>', defaultFaceStart);
+    const defaultFace = markup.slice(defaultFaceStart, defaultFaceEnd);
+    expect(defaultFace).toContain('aria-pressed=');
+    expect(defaultFace).toContain('data-edit-target-selected=');
+    expect(defaultFace).not.toContain('image-asset-picker-selected-action');
+    expect(markup.indexOf('data-testid="character-assembly-body-picker"')).toBeLessThan(
+      markup.indexOf('data-testid="character-assembly-head-asset"'),
+    );
+    expect(markup.indexOf('data-testid="character-assembly-head-asset"')).toBeLessThan(
+      markup.indexOf('data-testid="character-assembly-default-face-summary"'),
+    );
+    expect(markup.indexOf('data-testid="character-assembly-default-face-summary"')).toBeLessThan(
+      markup.indexOf('data-testid="character-assembly-mouth-picker"'),
+    );
+    expect(
+      source('src/renderer/features/characters/CharacterAssemblyWorkbench.tsx'),
+    ).not.toContain('character-assembly-head-asset');
+    const manager = source('src/renderer/features/characters/CharacterManager.tsx');
+    expect(manager).toContain('...currentHead, assetId');
+    expect(manager).toContain('updateAssembly({ head });');
     expect(markup).toContain('aria-pressed="true"');
+  });
+
+  it('uses the Body asset card as a separate session-only edit-target control', () => {
+    const { imageAssets, thumbnails } = fixture();
+    const project = migrateProject(exampleProject);
+    const base = project.characters[0]!;
+    const body = imageAssets[0]!;
+    const character = ProjectSchema.parse({
+      ...project,
+      characters: [{
+        ...base,
+        mode: 'composite' as const,
+        bodyAssetId: body.id,
+        facePlacement: { offsetX: 8, offsetY: -4, scale: 0.9 },
+      }],
+    }).characters[0]!;
+    if (character.mode !== 'composite') {
+      throw new Error('Expected a composite Character fixture.');
+    }
+    const markup = renderToStaticMarkup(
+      createElement(CharacterEditor, {
+        character,
+        imageAssets,
+        thumbnails,
+        warnings: [],
+        assemblyDraft: {
+          bodyAssetId: character.bodyAssetId,
+          bodyPlacement: character.bodyPlacement,
+          facePlacement: character.facePlacement,
+          expressionAssets: character.expressions.map((expression) => ({
+            expressionId: expression.id,
+            assetId: expression.assetId,
+          })),
+          ...(character.head ? { head: character.head } : {}),
+          mouthOpenAssetId: character.mouthOpenAssetId ?? null,
+        },
+        assemblyEditTarget: 'body',
+        onRenameCharacter: noop,
+        onDeleteCharacter: noop,
+        onAddExpression: noop,
+        onRenameExpression: noop,
+        onSetExpressionAsset: noop,
+        onRemoveExpression: noop,
+        onSetDefaultExpression: noop,
+        onSetMouthOpenAsset: noop,
+        onSetDefaultTransform: noop,
+        onThumbnailError: noop,
+        onOpenAssembly: () => true,
+        onLeaveAssembly: () => true,
+        onSetAssemblyHeadAsset: noop,
+        onSetAssemblyBodyAsset: noop,
+        onSelectAssemblyEditTarget: noop,
+        onSetAssemblyMouthAsset: noop,
+        presentation: 'landscape',
+        view: 'detail',
+      }),
+    );
+    const bodyPickerStart = markup.indexOf('data-testid="character-assembly-body-picker"');
+    const bodyPickerEnd = markup.indexOf('</section>', bodyPickerStart);
+    const bodyPicker = markup.slice(bodyPickerStart, bodyPickerEnd);
+    const bodySelected = bodyPicker.indexOf('data-testid="character-assembly-body-picker-selected"');
+    const bodySelectedEnd = bodyPicker.indexOf('</button>', bodySelected);
+    const bodyChange = bodyPicker.indexOf('data-testid="character-assembly-body-picker-change-action"');
+
+    expect(bodyPicker).toContain('aria-pressed="true"');
+    expect(bodyPicker).toContain('data-edit-target-selected="true"');
+    expect(bodyPicker).toContain('image-asset-picker-selected--compact-edit-target');
+    expect(bodyPicker).toContain('data-testid="character-assembly-body-picker-change-action"');
+    expect(bodyChange).toBeGreaterThan(bodySelectedEnd);
+    expect(markup).not.toContain('data-testid="character-assembly-edit-body"');
+    expect(markup).not.toContain('data-testid="character-assembly-edit-head"');
+    expect(markup).not.toContain('data-testid="character-assembly-edit-face"');
+
+    const assemblyStyles = source(
+      'src/renderer/styles/features/characters/assembly/s17-01--character-assembly-workbench.css',
+    );
+    const actionRule = assemblyStyles.match(
+      /\.character-assembly-drawer-panel\s+\.image-asset-picker-selected-row--surface\s+>\s+\.character-assembly-selected-action-button\s*\{([^}]*)\}/u,
+    )?.[1] ?? '';
+    expect(actionRule).toMatch(/min-width:\s*54px/u);
+    expect(actionRule).toMatch(/width:\s*max-content/u);
+    expect(actionRule).toMatch(/height:\s*44px/u);
+    expect(actionRule).toMatch(/min-height:\s*44px/u);
+    expect(actionRule).toMatch(/margin:\s*0 8px/u);
+    expect(actionRule).toMatch(/padding:\s*0 6px/u);
   });
 
   it('resumes Assembly as the active workspace when an edit draft survives resource navigation', () => {
@@ -256,7 +373,14 @@ describe('Issue #523 R8 unified Character workspace', () => {
     }).characters[0]!;
     const assemblyDraft = {
       bodyAssetId: body.id,
-      facePlacement: { offsetX: 8, offsetY: -4, scale: 0.9 },
+      bodyPlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+      facePlacement: {
+        offsetX: 8,
+        offsetY: -4,
+        scale: 0.9,
+        rotationDeg: 0,
+        flipX: false,
+      },
       expressionAssets: character.expressions.map((expression) => ({
         expressionId: expression.id,
         assetId: expression.assetId,

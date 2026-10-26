@@ -3,12 +3,14 @@ import type { Project } from '../models/project';
 export type AssetReferenceKind =
   | 'character-base'
   | 'character-body'
+  | 'character-head'
   | 'character-expression'
   | 'character-mouth'
   | 'shot-background'
   | 'shot-layer'
   | 'audio-clip'
-  | 'dialogue-audio';
+  | 'dialogue-audio'
+  | 'animation-frame';
 
 export interface AssetReference {
   kind: AssetReferenceKind;
@@ -49,6 +51,17 @@ export function scanAssetReferences(
 ): AssetReference[] {
   const references: AssetReference[] = [];
 
+  project.animations.forEach((animation, animationIndex) => {
+    animation.frames.forEach((frame, frameIndex) => {
+      if (frame.assetId !== assetId) return;
+      references.push({
+        kind: 'animation-frame',
+        path: `animations[${animationIndex}].frames[${frameIndex}].assetId`,
+        label: `Animation “${animation.name}” frame ${frame.ordinal + 1}`,
+      });
+    });
+  });
+
   project.characters.forEach((character, characterIndex) => {
     if (character.baseAssetId === assetId) {
       references.push({
@@ -62,6 +75,13 @@ export function scanAssetReferences(
         kind: 'character-body',
         path: `characters[${characterIndex}].bodyAssetId`,
         label: `角色“${character.name}”的身体图片`,
+      });
+    }
+    if (character.mode === 'composite' && character.head?.assetId === assetId) {
+      references.push({
+        kind: 'character-head',
+        path: `characters[${characterIndex}].head.assetId`,
+        label: `Character “${character.name}” Head image`,
       });
     }
     character.expressions.forEach((expression, expressionIndex) => {

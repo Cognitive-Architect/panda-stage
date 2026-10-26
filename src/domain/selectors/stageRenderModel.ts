@@ -125,6 +125,8 @@ function compatibilityImageAsset(
     mimeType: 'image/png',
     width: Math.max(1, Math.round(width)),
     height: Math.max(1, Math.round(height)),
+    usage: 'uncategorized',
+    keywords: [],
   };
 }
 
@@ -161,6 +163,7 @@ function emptyVisual(
     },
     facePlacement: null,
     parts: [],
+    headGroup: null,
     combinedLocalBounds: { x: 0, y: 0, width: 0, height: 0 },
     activeFace: null,
     resources: { required: [], candidates: [], fallback: [] },

@@ -13,6 +13,7 @@ import {
   countLegacyCharacterImageLayers,
   type CreateCharacterInput,
   type CreateCompositeCharacterInput,
+  type CharacterHead,
   type CompositeCharacterDefinition,
   type ImageAsset,
   type Project,
@@ -547,7 +548,7 @@ export function CharacterManager({
       active.sessionId !== editAssemblySnapshot?.sessionId ||
       active.generation !== editAssemblySnapshot.generation
     ) {
-      setStatus('角色装配草稿已失效，请重新打开装配。');
+      setStatus('角色组装草稿已失效，请重新打开组装。');
       return;
     }
     const result = active.updateDraft(update);
@@ -732,6 +733,7 @@ export function CharacterManager({
         {view === 'legacy' || view === 'detail' || view === 'expression' ? (
           <CharacterEditor
           character={selectedCharacter}
+          project={project ?? undefined}
           disabled={!snapshot}
           imageAssets={imageAssets}
           key={selectedCharacter?.id ?? 'empty'}
@@ -827,6 +829,15 @@ export function CharacterManager({
                 ),
             );
           }}
+          onSetTalkingHeadMotionIntensityPercent={(intensityPercent) => {
+            if (!selectedCharacter) return;
+            mutate(() =>
+              characterStore.setTalkingHeadMotionIntensityPercent(
+                selectedCharacter.id,
+                intensityPercent,
+              ),
+            );
+          }}
           hasCurrentShot={Boolean(
             snapshot && currentShotId && project?.shots.some(
               (shot) => shot.id === currentShotId,
@@ -852,8 +863,36 @@ export function CharacterManager({
             );
           }}
           assemblyDraft={assemblyDraft}
+          assemblyEditTarget={editAssemblySnapshot?.editTarget ?? 'face'}
+          onSelectAssemblyEditTarget={(target) => {
+            if (!editAssemblySnapshot) return;
+            characterAssemblySessionStore.setEditTarget(
+              target,
+              editAssemblySnapshot.sessionId,
+              editAssemblySnapshot.generation,
+            );
+          }}
           onOpenAssembly={openAssembly}
           onLeaveAssembly={leaveAssembly}
+          onSetAssemblyHeadAsset={(assetId) => {
+            const currentHead = assemblyDraft?.head;
+            const head: CharacterHead | null = assetId
+              ? currentHead
+                ? { ...currentHead, assetId }
+                : {
+                    assetId,
+                    placement: {
+                      offsetX: 0,
+                      offsetY: 0,
+                      scale: 1,
+                      rotationDeg: 0,
+                      flipX: false,
+                    },
+                    pivot: { x: 0, y: 0 },
+                  }
+              : null;
+            updateAssembly({ head });
+          }}
           onSetAssemblyBodyAsset={(assetId) =>
             updateAssembly({ bodyAssetId: assetId })
           }

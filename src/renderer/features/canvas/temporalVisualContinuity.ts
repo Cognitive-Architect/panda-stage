@@ -16,7 +16,7 @@ import { canvasImageResourceKey } from './canvasImageResources';
  * The EvaluatedLayer fields keep the existing transform/visibility contract
  * readable to the Canvas. `visual` and `assetSourceKeys` are the important
  * continuity payload: a previous Character is reproduced from its own Body /
- * Face parts and decoded resource versions, not re-resolved from a replacement
+ * Head / Face parts and decoded resource versions, not re-resolved from a replacement
  * Character definition.
  */
 export type EditorTemporalVisual = EvaluatedLayer & {
@@ -221,7 +221,7 @@ function mouthExpressionFallback(
 
 /**
  * Keeps a complete visual for each logical editor Layer while a temporal
- * replacement is decoding. Body and Face are resolved and gated as one unit;
+ * replacement is decoding. Body, Head and Face are resolved and gated as one unit;
  * this function never chooses one newly-ready part beside an older part.
  */
 export function resolveEditorTemporalAssetResolution(

@@ -4,6 +4,7 @@ import {
   ProjectCreateAtRequestSchema,
   ProjectCreateRequestSchema,
   ProjectOpenRequestSchema,
+  ProjectDocumentSchema,
   ProjectOperationResponseSchema,
   ProjectSaveRequestSchema,
   projectNameIssue,
@@ -141,6 +142,19 @@ describe('project API contracts', () => {
         revision: 4,
       }),
     ).toBeTruthy();
+  });
+
+  it('accepts source schema version 9 for a migrated project document', () => {
+    const project = migrateProject(exampleProject);
+    expect(
+      ProjectDocumentSchema.parse({
+        projectRoot: 'D:\\作品\\旧项目.pandastage',
+        projectFilePath: 'D:\\作品\\旧项目.pandastage\\project.json',
+        project,
+        migrated: true,
+        sourceVersion: 9,
+      }).sourceVersion,
+    ).toBe(9);
   });
 
   it('validates standardized operation errors', () => {

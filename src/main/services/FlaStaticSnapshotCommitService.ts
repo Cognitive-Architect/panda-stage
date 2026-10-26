@@ -306,9 +306,12 @@ export class FlaStaticSnapshotCommitService {
         kind: 'image',
         width: validatedPng.width,
         height: validatedPng.height,
+        usage: 'uncategorized',
+        keywords: [],
         flaSnapshot: {
           sourceBasename: request.source.basename,
-          sourceSha256: request.source.sha256,
+          sourceSha256:
+            confirmed.source.originalSourceSha256 ?? request.source.sha256,
           targetName: request.target.userLabel,
           ...(request.target.sourceLibraryItemName
             ? { sourceLibraryItemName: request.target.sourceLibraryItemName }

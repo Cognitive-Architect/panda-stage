@@ -1,6 +1,8 @@
 import type {
+  AnimationDefinition,
   Asset,
   AssetDropPayload,
+  ImageAssetUsage,
   Project,
 } from '../../domain';
 
@@ -9,7 +11,9 @@ export type AssetLibraryCategory =
   | 'background'
   | 'audio';
 
-export type AssetLibraryFilter = 'all' | AssetLibraryCategory;
+export type AssetLibraryFilter = 'all' | AssetLibraryCategory | 'animation';
+
+export type AssetLibraryUsageFilter = 'all' | ImageAssetUsage;
 
 export interface AssetLibraryEntry {
   id: string;
@@ -19,20 +23,27 @@ export interface AssetLibraryEntry {
   dropPayload: AssetDropPayload;
 }
 
+export type AssetLibraryItem =
+  | { kind: 'asset'; id: string; entry: AssetLibraryEntry }
+  | { kind: 'animation'; id: string; animation: AnimationDefinition };
+
 export const ASSET_LIBRARY_CATEGORIES = [
+  { id: 'all', label: '全部' },
   { id: 'character', label: '角色图片' },
-  { id: 'background', label: '背景图片' },
+  { id: 'background', label: '未绑定角色' },
   { id: 'audio', label: '音频' },
+  { id: 'animation', label: '动画' },
 ] as const satisfies readonly {
-  id: AssetLibraryCategory;
+  id: AssetLibraryFilter;
   label: string;
 }[];
 
 export const ASSET_LIBRARY_FILTERS = [
   { id: 'all', label: '全部' },
   { id: 'character', label: '角色' },
-  { id: 'background', label: '背景' },
+  { id: 'background', label: '未绑定' },
   { id: 'audio', label: '音频' },
+  { id: 'animation', label: '动画' },
 ] as const satisfies readonly {
   id: AssetLibraryFilter;
   label: string;
@@ -61,7 +72,42 @@ export function selectAssetLibraryEntries(
   category: AssetLibraryFilter,
 ): AssetLibraryEntry[] {
   const entries: AssetLibraryEntry[] = [];
+  const sequenceCreatedAssetIds = new Set(
+    project.animations.flatMap((animation) =>
+      animation.frames
+        .filter((frame) => frame.createdBySequenceImport)
+        .map((frame) => frame.assetId),
+    ),
+  );
+  const separatelyUsedAssetIds = new Set<string>();
+  for (const character of project.characters) {
+    separatelyUsedAssetIds.add(character.baseAssetId);
+    if (character.mode === 'composite') {
+      separatelyUsedAssetIds.add(character.bodyAssetId);
+      if (character.head) separatelyUsedAssetIds.add(character.head.assetId);
+    }
+    for (const expression of character.expressions) {
+      separatelyUsedAssetIds.add(expression.assetId);
+    }
+    if (character.mouthOpenAssetId) {
+      separatelyUsedAssetIds.add(character.mouthOpenAssetId);
+    }
+  }
+  for (const shot of project.shots) {
+    for (const layer of shot.layers) {
+      if (layer.source.kind === 'asset') {
+        separatelyUsedAssetIds.add(layer.source.assetId);
+      }
+    }
+  }
   for (const asset of project.assets) {
+    if (
+      asset.kind === 'image' &&
+      sequenceCreatedAssetIds.has(asset.id) &&
+      !separatelyUsedAssetIds.has(asset.id)
+    ) {
+      continue;
+    }
     const resolvedCategory = assetCategory(project, asset);
     if (category !== 'all' && resolvedCategory !== category) continue;
     if (resolvedCategory === 'audio') {
@@ -154,6 +200,26 @@ export function selectAssetLibraryEntries(
   });
 }
 
+export function selectAssetLibraryItems(
+  project: Project,
+  category: AssetLibraryFilter,
+): AssetLibraryItem[] {
+  const items: AssetLibraryItem[] = selectAssetLibraryEntries(project, category)
+    .map((entry) => ({ kind: 'asset', id: entry.id, entry }));
+  if (category === 'all' || category === 'animation') {
+    items.push(...project.animations.map((animation) => ({
+      kind: 'animation' as const,
+      id: `animation:${animation.id}`,
+      animation,
+    })));
+  }
+  const itemName = (item: AssetLibraryItem): string =>
+    item.kind === 'animation' ? item.animation.name : item.entry.asset.name;
+  return items.sort((left, right) =>
+    itemName(left).localeCompare(itemName(right), 'zh-CN') || left.id.localeCompare(right.id),
+  );
+}
+
 export function assetCategoryCounts(
   project: Project,
 ): Record<AssetLibraryCategory, number> {
@@ -169,24 +235,60 @@ export function assetLibraryFilterCounts(
 ): Record<AssetLibraryFilter, number> {
   const entries = selectAssetLibraryEntries(project, 'all');
   return {
-    all: entries.length,
+    all: entries.length + project.animations.length,
     character: entries.filter((entry) => entry.category === 'character')
       .length,
     background: entries.filter((entry) => entry.category === 'background')
       .length,
     audio: entries.filter((entry) => entry.category === 'audio').length,
+    animation: project.animations.length,
   };
+}
+
+export function filterAssetLibraryItems(
+  items: readonly AssetLibraryItem[],
+  query: string,
+  usage: AssetLibraryUsageFilter = 'all',
+): AssetLibraryItem[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase('zh-CN');
+  return items.filter((item) => {
+    if (usage !== 'all' && (
+      item.kind !== 'asset' ||
+      item.entry.asset.kind !== 'image' ||
+      item.entry.asset.usage !== usage
+    )) return false;
+    if (!normalizedQuery) return true;
+    const values = item.kind === 'animation'
+      ? [item.animation.name, item.animation.source.basename, item.animation.source.targetName]
+      : [
+          item.entry.asset.name,
+          item.entry.contextLabel,
+          ...(item.entry.asset.kind === 'image' ? item.entry.asset.keywords : []),
+        ];
+    return values.some((value) => value.toLocaleLowerCase('zh-CN').includes(normalizedQuery));
+  });
 }
 
 export function filterAssetLibraryEntries(
   entries: readonly AssetLibraryEntry[],
   query: string,
+  usage: AssetLibraryUsageFilter = 'all',
 ): AssetLibraryEntry[] {
   const normalizedQuery = query.trim().toLocaleLowerCase('zh-CN');
-  if (!normalizedQuery) return [...entries];
+  const usageFilteredEntries = usage === 'all'
+    ? entries
+    : entries.filter(
+        (entry) =>
+          entry.asset.kind === 'image' && entry.asset.usage === usage,
+      );
+  if (!normalizedQuery) return [...usageFilteredEntries];
 
-  return entries.filter((entry) =>
-    [entry.asset.name, entry.contextLabel].some((value) =>
+  return usageFilteredEntries.filter((entry) =>
+    [
+      entry.asset.name,
+      entry.contextLabel,
+      ...(entry.asset.kind === 'image' ? entry.asset.keywords : []),
+    ].some((value) =>
       value.toLocaleLowerCase('zh-CN').includes(normalizedQuery),
     ),
   );

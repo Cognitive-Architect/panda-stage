@@ -58,6 +58,26 @@ export function formatSequenceRangeSummary(
     : `${range} · 范围无效`;
 }
 
+export function formatSequenceRangeSummaryForPresentation(
+  startFrameIndex: number,
+  endFrameIndex: number,
+  validation: RangeValidation,
+  presentation: 'standard' | 'unified-preview',
+): string {
+  if (presentation === 'unified-preview' && validation.valid) {
+    return `共 ${validation.frameCount} 帧`;
+  }
+  return formatSequenceRangeSummary(startFrameIndex, endFrameIndex, validation);
+}
+
+export function getSequenceStartFrameInputWidthPx(frameNumber: number): number {
+  const safeFrameNumber = Number.isFinite(frameNumber)
+    ? Math.max(1, Math.trunc(frameNumber))
+    : 1;
+  const digitCount = String(safeFrameNumber).length;
+  return Math.max(52, 42 + digitCount * 8);
+}
+
 /**
  * A sequence search can hide the current target. In that case keep focus
  * empty instead of moving it to the first result while the operation still

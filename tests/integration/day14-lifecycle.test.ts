@@ -86,6 +86,8 @@ describe('Day 14 complete moved-project lifecycle', () => {
           mimeType: 'image/png',
           width: 256,
           height: 256,
+          usage: 'uncategorized' as const,
+          keywords: [],
         },
       ],
     };

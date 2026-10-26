@@ -120,7 +120,8 @@ describe('Issue #454 Quick Action Drawer', () => {
     expect(clean).not.toContain('data-testid="project-save-state"');
     expect(clean).not.toContain('data-testid="project-save-state-rest"');
     expect(dirty).toContain('data-save-state="dirty"');
-    expect(dirty).not.toContain('有未保存更改');
+    expect(dirty).toContain('aria-label="保存项目（有未保存更改）"');
+    expect(dirty).toContain('title="保存项目（有未保存更改）"');
     expect(dirty).not.toContain('data-testid="project-save-state"');
     expect(dirty).not.toContain('data-testid="project-save-state-rest"');
     expect(dirty).not.toContain('data-testid="quick-action-save" disabled');

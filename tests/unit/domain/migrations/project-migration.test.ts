@@ -3,8 +3,13 @@ import {
   PROJECT_SCHEMA_VERSION,
   migrateProject,
   ProjectSchema,
+  ProjectV12Schema,
+  ProjectV13Schema,
+  evaluateShotAtTime,
+  resolveLayerVisualParts,
   type Project,
 } from '../../../../src/domain';
+import { buildProject, IDS } from '../testProject';
 
 function v1WithoutTimelineEvents(): unknown {
   return {
@@ -202,5 +207,149 @@ describe('T01 迁移回填 timelineEvents', () => {
   it('迁移结果通过严格 ProjectDataSchema 校验', () => {
     const result = migrateProject(v1WithoutTimelineEvents());
     expect(() => ProjectSchema.parse(result)).not.toThrow();
+  });
+
+  it('migrates strict v11 composite data with default Body placement and preserves its visual', () => {
+    const current = buildProject();
+    const original = current.characters[0]!;
+    const { animations: _animations, ...version11Fields } = current;
+    void _animations;
+    const legacyV11 = {
+      ...version11Fields,
+      schemaVersion: 11,
+      assets: current.assets.map((asset) => {
+        if (asset.kind !== 'image') return asset;
+        const { usage: _usage, keywords: _keywords, ...version11Asset } = asset;
+        void _usage;
+        void _keywords;
+        return version11Asset;
+      }),
+      characters: [
+        {
+          ...original,
+          mode: 'composite' as const,
+          bodyAssetId: IDS.assetBg,
+          facePlacement: {
+            offsetX: 82,
+            offsetY: -36,
+            scale: 0.74,
+            rotationDeg: 18,
+            flipX: true,
+          },
+          head: {
+            assetId: IDS.assetChar2,
+            placement: {
+              offsetX: -16,
+              offsetY: -152,
+              scale: 0.86,
+              rotationDeg: -12,
+              flipX: true,
+            },
+            pivot: { x: 306, y: 412 },
+          },
+          mouthOpenAssetId: IDS.assetChar2,
+          talkingHeadMotionIntensityPercent: 137,
+        },
+      ],
+    };
+    const before = structuredClone(legacyV11);
+    const result = migrateProject(legacyV11);
+    const character = result.characters[0]!;
+
+    expect(result.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(character).toMatchObject({
+      mode: 'composite',
+      bodyAssetId: IDS.assetBg,
+      bodyPlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+      facePlacement: legacyV11.characters[0]!.facePlacement,
+      head: legacyV11.characters[0]!.head,
+      talkingHeadMotionIntensityPercent: 137,
+      mouthOpenAssetId: IDS.assetChar2,
+      expressions: original.expressions,
+    });
+    expect(legacyV11).toEqual(before);
+    expect(() => ProjectSchema.parse(result)).not.toThrow();
+
+    const shot = result.shots[0]!;
+    const visual = resolveLayerVisualParts(
+      result,
+      shot,
+      evaluateShotAtTime(shot, 0, result).layers.find(
+        (layer) => layer.id === IDS.layerChar,
+      )!,
+    );
+    const bodyAsset = result.assets.find(
+      (asset) => asset.id === IDS.assetBg,
+    );
+    expect(bodyAsset?.kind).toBe('image');
+    if (bodyAsset?.kind !== 'image') throw new Error('Expected Body image.');
+    expect(visual.parts.find((part) => part.slot === 'body')?.localRect).toEqual({
+      x: -bodyAsset.width / 2,
+      y: -bodyAsset.height / 2,
+      width: bodyAsset.width,
+      height: bodyAsset.height,
+    });
+    expect(visual.headGroup?.pivot).toEqual({ x: 306, y: 412 });
+  });
+
+  it('migrates strict v12 assets to explicitly uncategorized v13 metadata', () => {
+    const current = buildProject();
+    const { animations: _animations, ...withoutAnimations } = current;
+    void _animations;
+    const legacyV12 = {
+      ...withoutAnimations,
+      schemaVersion: 12,
+      assets: current.assets.map((asset) => {
+        if (asset.kind !== 'image') return asset;
+        const { usage: _usage, keywords: _keywords, ...version12Asset } = asset;
+        void _usage;
+        void _keywords;
+        return version12Asset;
+      }),
+    };
+    const before = structuredClone(legacyV12);
+
+    expect(ProjectV12Schema.parse(legacyV12)).toEqual(legacyV12);
+    expect(ProjectSchema.safeParse(legacyV12).success).toBe(false);
+    expect(
+      ProjectSchema.safeParse({
+        ...legacyV12,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+      }).success,
+    ).toBe(false);
+
+    const migrated = migrateProject(legacyV12);
+
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(
+      migrated.assets.filter((asset) => asset.kind === 'image'),
+    ).toEqual(
+      legacyV12.assets.map((asset) => ({
+        ...asset,
+        usage: 'uncategorized',
+        keywords: [],
+      })),
+    );
+    expect(migrated.characters).toEqual(legacyV12.characters);
+    expect(migrated.shots).toEqual(legacyV12.shots);
+    expect(legacyV12).toEqual(before);
+  });
+
+  it('migrates strict v13 projects to v14 with an empty animation collection', () => {
+    const current = buildProject();
+    const { animations: _animations, ...version13Fields } = current;
+    void _animations;
+    const legacyV13 = { ...version13Fields, schemaVersion: 13 };
+    const before = structuredClone(legacyV13);
+
+    expect(ProjectV13Schema.parse(legacyV13)).toEqual(legacyV13);
+    expect(ProjectSchema.safeParse(legacyV13).success).toBe(false);
+
+    const migrated = migrateProject(legacyV13);
+
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(migrated.animations).toEqual([]);
+    expect(migrated.assets).toEqual(current.assets);
+    expect(legacyV13).toEqual(before);
   });
 });

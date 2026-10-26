@@ -221,6 +221,21 @@ const probeResult: VideoProbeResult = {
   raw: {},
 };
 
+function exportAudioClips(sourcePath: string) {
+  return [
+    {
+      clipId: '70000000-0000-4000-8000-000000000660',
+      assetId: '10000000-0000-4000-8000-000000000660',
+      role: 'dialogue' as const,
+      sourcePath,
+      startMs: 400,
+      endMs: 3_400,
+      offsetMs: 200,
+      volume: 1.8,
+    },
+  ];
+}
+
 class MemoryMediaAdapter implements FullProbeMediaAdapter {
   encodeRequests: Array<Record<string, unknown>> = [];
   muxRequests: Array<Record<string, unknown>> = [];
@@ -231,6 +246,7 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
   encodeStarted: (() => void) | null = null;
   activeProcesses = 0;
   blockMux = false;
+  muxFailure: Error | null = null;
   muxStarted: (() => void) | null = null;
   blockProbe = false;
   probeStarted: (() => void) | null = null;
@@ -291,15 +307,21 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
     });
   }
 
-  async muxSingleAudio(
-    request: Record<string, unknown>,
+  async muxAudioMix(
+    request: MuxAudioMixRequest,
     signal?: AbortSignal,
   ): Promise<void> {
-    this.muxRequests.push(request);
+    this.muxRequests.push(request as unknown as Record<string, unknown>);
     if (signal) this.signals.push(signal);
     const stagingPath = String(request.outputPath);
     this.fileSystem.finalOutputEvents.push('mux');
-    this.fileSystem.stagingFiles.set(stagingPath, 'new video');
+    if (this.muxFailure) throw this.muxFailure;
+    this.fileSystem.stagingFiles.set(
+      stagingPath,
+      request.audioMixPlan.preserveSilentTail === true
+        ? 'new video with audio'
+        : 'new video',
+    );
     if (this.blockMux) {
       this.muxStarted?.();
       await this.waitForCancellation(signal, 'controlled mux cancellation');
@@ -319,21 +341,6 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
       durationSeconds: 3,
       raw: {},
     };
-  }
-
-  async muxAudioMix(
-    request: MuxAudioMixRequest,
-    signal?: AbortSignal,
-  ): Promise<void> {
-    this.muxRequests.push(request as unknown as Record<string, unknown>);
-    if (signal) this.signals.push(signal);
-    const stagingPath = String(request.outputPath);
-    this.fileSystem.finalOutputEvents.push('mux');
-    this.fileSystem.stagingFiles.set(stagingPath, 'new video with audio');
-    if (this.blockMux) {
-      this.muxStarted?.();
-      await this.waitForCancellation(signal, 'controlled mux cancellation');
-    }
   }
 
   async probeVideo(
@@ -762,6 +769,7 @@ describe('ExportService', () => {
       overwrite: false,
       audioMixPlan: {
         durationMs: 9_000,
+        preserveSilentTail: true,
         clips: [
           {
             clipId: audioClipId,
@@ -815,11 +823,10 @@ describe('ExportService', () => {
 
     const result = await service.runFullProbe({
       projectDirectory,
-      audioPath,
+      audioClips: exportAudioClips(audioPath),
       outputPath,
       durationMs: 3_000,
       fps: 24,
-      audioStartMs: 400,
       overwrite: true,
     });
 
@@ -828,7 +835,21 @@ describe('ExportService', () => {
     expect(fileSystem.projectDirectories).toEqual([projectDirectory]);
     const stagingPath = String(media.muxRequests[0]?.outputPath);
     expect(media.muxRequests[0]).toMatchObject({
-      audioPath,
+      audioMixPlan: {
+        durationMs: 3_000,
+        clips: [
+          {
+            clipId: '70000000-0000-4000-8000-000000000660',
+            assetId: '10000000-0000-4000-8000-000000000660',
+            role: 'dialogue',
+            sourcePath: audioPath,
+            startMs: 400,
+            endMs: 3_000,
+            sourceOffsetMs: 200,
+            volume: 1.8,
+          },
+        ],
+      },
       outputPath: stagingPath,
       overwrite: false,
     });
@@ -860,11 +881,10 @@ describe('ExportService', () => {
     const service = new ExportService(renderer, fileSystem, media);
     const request = {
       projectDirectory: 'C:\\项目 空格',
-      audioPath: 'C:\\项目 空格\\声音.wav',
+      audioClips: exportAudioClips('C:\\项目 空格\\声音.wav'),
       outputPath: 'C:\\输出 空格\\成片.mp4',
       durationMs: 3_000 as const,
       fps: 24 as const,
-      audioStartMs: 400,
       overwrite: true,
     };
     const handle = service.startFullProbe(request);
@@ -917,11 +937,10 @@ describe('ExportService', () => {
     const service = new ExportService(renderer, fileSystem, media);
     const handle = service.startFullProbe({
       projectDirectory: 'C:\\项目',
-      audioPath: 'C:\\项目\\音频.wav',
+      audioClips: exportAudioClips('C:\\项目\\音频.wav'),
       outputPath,
       durationMs: 3_000,
       fps: 24,
-      audioStartMs: 400,
       overwrite: true,
     });
     await muxStarted;
@@ -950,11 +969,10 @@ describe('ExportService', () => {
     const service = new ExportService(renderer, fileSystem, media);
     const handle = service.startFullProbe({
       projectDirectory: 'C:\\项目',
-      audioPath: 'C:\\项目\\音频.wav',
+      audioClips: exportAudioClips('C:\\项目\\音频.wav'),
       outputPath,
       durationMs: 3_000,
       fps: 24,
-      audioStartMs: 400,
       overwrite: true,
     });
     await probeStarted;
@@ -978,11 +996,10 @@ describe('ExportService', () => {
     const service = new ExportService(renderer, fileSystem, media);
     const handle = service.startFullProbe({
       projectDirectory: 'C:\\项目',
-      audioPath: 'C:\\项目\\音频.wav',
+      audioClips: exportAudioClips('C:\\项目\\音频.wav'),
       outputPath,
       durationMs: 3_000,
       fps: 24,
-      audioStartMs: 400,
       overwrite: true,
     });
 
@@ -990,6 +1007,31 @@ describe('ExportService', () => {
     expect(fileSystem.finalFiles.get(outputPath)).toBe('old video');
     expect(fileSystem.stagingFiles.size).toBe(0);
     expect(fileSystem.commitFinalOutputCalls).toBe(0);
+    expect(service.getJob(handle.jobId)?.status).toBe('failed');
+  });
+
+  it('routes an invalid mix source through job cleanup and preserves the prior output', async () => {
+    const renderer = new MemoryRenderer();
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    media.muxFailure = new Error('AUDIO_INPUT_INVALID: source clip could not be read');
+    const outputPath = 'C:\\输出\\来源无效.mp4';
+    fileSystem.finalFiles.set(outputPath, 'old video');
+    const service = new ExportService(renderer, fileSystem, media);
+    const handle = service.startFullProbe({
+      projectDirectory: 'C:\\项目',
+      audioClips: exportAudioClips('C:\\项目\\损坏音频.wav'),
+      outputPath,
+      durationMs: 3_000,
+      fps: 24,
+      overwrite: true,
+    });
+
+    await expect(handle.completion).rejects.toThrow(/AUDIO_INPUT_INVALID/u);
+    expect(fileSystem.finalFiles.get(outputPath)).toBe('old video');
+    expect(fileSystem.cleanupStagingCalls).toBe(1);
+    expect(fileSystem.stagingFiles.size).toBe(0);
+    expect(fileSystem.directories.size).toBe(0);
     expect(service.getJob(handle.jobId)?.status).toBe('failed');
   });
 
@@ -1011,11 +1053,10 @@ describe('ExportService', () => {
     const service = new ExportService(renderer, fileSystem, media);
     const handle = service.startFullProbe({
       projectDirectory: 'C:\\项目',
-      audioPath: 'C:\\项目\\音频.wav',
+      audioClips: exportAudioClips('C:\\项目\\音频.wav'),
       outputPath,
       durationMs: 3_000,
       fps: 24,
-      audioStartMs: 400,
       overwrite: true,
     });
     await commitStarted;
@@ -1042,11 +1083,10 @@ describe('ExportService', () => {
     const service = new ExportService(renderer, fileSystem, media);
     const handle = service.startFullProbe({
       projectDirectory: 'C:\\项目',
-      audioPath: 'C:\\项目\\音频.wav',
+      audioClips: exportAudioClips('C:\\项目\\音频.wav'),
       outputPath,
       durationMs: 3_000,
       fps: 24,
-      audioStartMs: 400,
       overwrite: false,
     });
 
@@ -1068,11 +1108,10 @@ describe('ExportService', () => {
     expect(() =>
       service.startFullProbe({
         projectDirectory: 'C:\\项目',
-        audioPath: 'C:\\项目\\音频.wav',
+        audioClips: exportAudioClips('C:\\项目\\音频.wav'),
         outputPath: 'C:\\输出\\错误格式.mkv',
         durationMs: 3_000,
         fps: 24,
-        audioStartMs: 400,
         overwrite: true,
       }),
     ).toThrow(/仅支持 \.mp4/);
@@ -1094,11 +1133,10 @@ describe('ExportService', () => {
     const service = new ExportService(renderer, fileSystem, media);
     const handle = service.startFullProbe({
       projectDirectory: 'C:\\项目',
-      audioPath: 'C:\\项目\\音频.wav',
+      audioClips: exportAudioClips('C:\\项目\\音频.wav'),
       outputPath,
       durationMs: 3_000,
       fps: 24,
-      audioStartMs: 400,
       overwrite: true,
     });
 
@@ -1186,11 +1224,10 @@ describe('ExportService', () => {
     const service = new ExportService(renderer, fileSystem, media);
     const handle = service.startFullProbe({
       projectDirectory: 'C:\\项目',
-      audioPath: 'C:\\项目\\音频.wav',
+      audioClips: exportAudioClips('C:\\项目\\音频.wav'),
       outputPath: 'C:\\输出\\成片.mp4',
       durationMs: 3_000,
       fps: 24,
-      audioStartMs: 400,
       overwrite: true,
     });
 

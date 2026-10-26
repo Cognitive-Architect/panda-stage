@@ -62,6 +62,7 @@ const runtime = {
   assertions: {},
   screenshots: {},
   failure: null,
+  lastUiEvaluationFailure: null,
   snapshotPreviewGate: null,
   failNextRasterCommit: false,
 };
@@ -495,7 +496,16 @@ async function waitForMainWindow() {
 }
 
 async function evaluate(window, expression) {
-  return window.webContents.executeJavaScript(expression);
+  try {
+    return await window.webContents.executeJavaScript(expression);
+  } catch (error) {
+    runtime.lastUiEvaluationFailure = {
+      expression,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack ?? null : null,
+    };
+    throw error;
+  }
 }
 
 async function waitForExpression(window, expression, timeoutMs = 60_000) {
@@ -746,7 +756,7 @@ async function triggerFlaReview(window, sourcePath, sourceName) {
       : '[data-testid="resource-asset-import-fla"]';
   })()`);
   await click(window, selector);
-  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="fla-review-session"]') && document.querySelector('[data-testid="fla-import-workbench-tabs"]'))`, 180_000);
+  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="fla-review-session"][data-workbench-route="unified"]') && document.querySelector('[data-testid="fla-c03-workbench"]') && document.querySelector('[data-testid="fla-c03-candidate-grid"]'))`, 180_000);
   const inspectionDeadline = Date.now() + 180_000;
   while (runtime.inspections.length < priorInspectionCount + 1 && Date.now() < inspectionDeadline) await delay(50);
   assert(runtime.inspections.length === priorInspectionCount + 1, `${sourceName}: expected exactly one Main-owned source inspection.`);
@@ -758,21 +768,20 @@ async function triggerFlaReview(window, sourcePath, sourceName) {
 async function readWorkbenchFacts(window) {
   return evaluate(window, `(() => {
     const root = document.querySelector('[data-testid="fla-review-session"]');
-    const tabs = [...(root?.querySelectorAll('[data-testid="fla-import-workbench-tabs"] [role="tab"]') ?? [])];
-    const selectedTab = tabs.find((tab) => tab.getAttribute('aria-selected') === 'true');
-    const sourcePanel = document.querySelector('#fla-source-assets-panel');
-    const sourceCards = [...(sourcePanel?.querySelectorAll('[data-fla-media-id]') ?? [])];
-    const sourceChecks = [...(sourcePanel?.querySelectorAll('input[type="checkbox"]') ?? [])];
-    const countText = document.querySelector('[data-testid="fla-review-media-count"]')?.textContent?.trim() ?? '';
+    const grid = root?.querySelector('[data-testid="fla-c03-candidate-grid"]');
+    const rasterCandidates = [...(grid?.querySelectorAll('li[data-candidate-kind="raster"]') ?? [])];
+    const rasterIds = rasterCandidates.map((candidate) =>
+      candidate.querySelector('button[data-testid^="fla-c03-focus-raster-"]')?.getAttribute('data-testid')?.replace('fla-c03-focus-raster-', '') ?? null,
+    ).filter((id) => id !== null);
     const selectedText = document.querySelector('[data-testid="fla-unified-import-selected-count"]')?.textContent?.trim() ?? '';
     return {
-      title: root?.querySelector('[data-testid="fla-review-header"] h2')?.textContent?.trim() ?? '',
-      tabCount: tabs.length,
-      selectedTab: selectedTab?.getAttribute('data-testid') ?? null,
-      sourcePanelVisible: Boolean(sourcePanel && !sourcePanel.hidden),
-      sourceBitmapCount: Number(countText.match(/[0-9]+/u)?.[0] ?? 0),
-      selectedSourceItems: sourceChecks.filter((input) => input.checked).length,
-      sourceMediaIds: sourceCards.map((card) => card.getAttribute('data-fla-media-id')),
+      title: root?.querySelector('[data-testid="fla-review-header"] h1')?.textContent?.trim() ?? '',
+      workbenchRoute: root?.getAttribute('data-workbench-route') ?? null,
+      tabCount: root?.querySelectorAll('[role="tab"]').length ?? 0,
+      sourcePanelVisible: Boolean(grid),
+      sourceBitmapCount: rasterCandidates.length,
+      selectedSourceItems: rasterCandidates.filter((candidate) => candidate.querySelector('input[type="checkbox"]')?.checked).length,
+      sourceMediaIds: rasterIds,
       selectedCount: Number(selectedText.match(/[0-9]+/u)?.[0] ?? 0),
     };
   })()`);
@@ -780,17 +789,20 @@ async function readWorkbenchFacts(window) {
 
 async function openSnapshotCatalog(window, sessionId) {
   assert(sessionId, 'Cannot correlate the render-target catalog without the active FLA session ID.');
-  const selected = await evaluate(window, `document.querySelector('[data-testid="fla-workbench-tab-compositions"]')?.getAttribute('aria-selected') === 'true'`);
-  if (!selected) await click(window, '[data-testid="fla-workbench-tab-compositions"]');
-  await waitForExpression(window, `Boolean(document.querySelector('#fla-composition-panel') && !document.querySelector('#fla-composition-panel').hidden && document.querySelector('[data-testid="fla-render-workbench"]'))`, 90_000);
+  await waitForExpression(window, `Boolean(document.querySelector('[data-testid="fla-c03-workbench"]') && document.querySelector('[data-testid="fla-snapshot-review"]'))`, 90_000);
   const catalogDeadline = Date.now() + 180_000;
-  while (!runtime.catalogs.some((catalog) => catalog.sessionId === sessionId && catalog.outcome === 'success') && Date.now() < catalogDeadline) await delay(100);
-  const catalog = runtime.catalogs.findLast((entry) => entry.sessionId === sessionId && entry.outcome === 'success');
-  assert(catalog, `Timed out waiting for a successful Main-owned render-target catalog for session ${sessionId}.`);
+  while (!runtime.catalogs.some((catalog) => catalog.sessionId === sessionId && catalog.outcome === 'success' && catalog.includeAuthoredStates) && Date.now() < catalogDeadline) await delay(100);
+  const catalog = runtime.catalogs.findLast((entry) => entry.sessionId === sessionId && entry.outcome === 'success' && entry.includeAuthoredStates);
+  assert(catalog, `Timed out waiting for a successful authored-state render-target catalog for session ${sessionId}.`);
   await waitForExpression(window, `(() => {
     const root = document.querySelector('[data-testid="fla-snapshot-review"]');
-    const state = root?.getAttribute('data-preview-state');
-    return state === 'ready' || state === 'error' || Boolean(document.querySelector('[data-testid="fla-snapshot-empty"]'));
+    if (!root) return false;
+    const state = root.getAttribute('data-preview-state');
+    if (state === 'error' || root.querySelector('[data-testid="fla-snapshot-empty"]')) return true;
+    return root.getAttribute('data-fla-session-id') === ${JSON.stringify(sessionId)} &&
+      state === 'ready' &&
+      !root.querySelector('[data-testid="fla-snapshot-loading"]') &&
+      !root.querySelector('[data-testid="fla-snapshot-scan-progress"]');
   })()`, 180_000);
   return catalog;
 }
@@ -798,6 +810,9 @@ async function openSnapshotCatalog(window, sessionId) {
 async function focusBluehairTarget(window) {
   const rowSelector = `[data-testid="fla-snapshot-targets"] [data-render-target-id="${BLUEHAIR_TARGET_ID}"]`;
   await waitForExpression(window, `Boolean(document.querySelector(${JSON.stringify(rowSelector)}))`, 60_000);
+  const unifiedFocusSelector = `[data-testid="fla-c03-focus-snapshot-${BLUEHAIR_TARGET_ID}:0"]`;
+  await waitForExpression(window, `Boolean(document.querySelector(${JSON.stringify(unifiedFocusSelector)}))`, 60_000);
+  await click(window, unifiedFocusSelector);
   const rowFacts = await evaluate(window, `(() => {
     const row = document.querySelector(${JSON.stringify(rowSelector)});
     return {
@@ -816,6 +831,28 @@ async function focusBluehairTarget(window) {
       image.getAttribute('data-render-target-id') === ${JSON.stringify(BLUEHAIR_TARGET_ID)};
   })()`, 180_000);
   return rowFacts;
+}
+
+async function setUnifiedCandidateChecked(window, kind, candidateId, checked) {
+  const focusSelector = `[data-testid="fla-c03-focus-${kind}-${candidateId}"]`;
+  const facts = await evaluate(window, `(() => {
+    const button = document.querySelector(${JSON.stringify(focusSelector)});
+    const row = button?.closest('li[data-candidate-kind]');
+    const checkbox = row?.querySelector('input[type="checkbox"]');
+    if (!(checkbox instanceof HTMLInputElement)) throw new Error('Missing unified candidate checkbox ' + ${JSON.stringify(focusSelector)});
+    if (checkbox.disabled && checkbox.checked !== ${checked}) throw new Error('Unified candidate checkbox is disabled ' + ${JSON.stringify(focusSelector)});
+    if (checkbox.checked !== ${checked}) checkbox.click();
+    return { checked: checkbox.checked, disabled: checkbox.disabled, kind: row?.getAttribute('data-candidate-kind') ?? null };
+  })()`);
+  assert(facts.kind === kind, `Expected a ${kind} candidate checkbox, got ${facts.kind}.`);
+  await waitForExpression(window, `document.querySelector(${JSON.stringify(focusSelector)})?.closest('li[data-candidate-kind]')?.querySelector('input[type="checkbox"]')?.checked === ${checked}`, 60_000);
+  return facts;
+}
+
+async function selectBluehairSnapshot(window, frameIndex = 0, expectedUnifiedCount = 1) {
+  await setUnifiedCandidateChecked(window, 'snapshot', `${BLUEHAIR_TARGET_ID}:${frameIndex}`, true);
+  await waitForExpression(window, `Number(document.querySelector('[data-testid="fla-unified-import-selected-count"]')?.textContent?.match(/[0-9]+/)?.[0] ?? 0) === ${expectedUnifiedCount}`);
+  return readSnapshotSelection(window);
 }
 
 async function readPreviewBytes(window) {
@@ -839,22 +876,26 @@ async function readUnifiedImportReceipt(window) {
   return evaluate(window, `(() => {
     const root = document.querySelector('[data-testid="fla-unified-import-receipt"]');
     const countsText = document.querySelector('[data-testid="fla-unified-import-counts"]')?.textContent?.replace(/\\s+/gu, ' ').trim() ?? '';
-    const receiptNumbers = countsText.match(/[0-9]+/gu)?.map(Number) ?? [];
-    let receiptNumberIndex = 0;
-    const count = () => receiptNumbers[receiptNumberIndex++] ?? -1;
-    const items = [...(document.querySelector('[data-testid="fla-unified-import-items"]')?.querySelectorAll('li') ?? [])].map((item) => ({
-      kind: item.dataset.kind,
-      status: item.dataset.status,
-      baseRevision: item.dataset.baseRevision === undefined ? null : Number(item.dataset.baseRevision),
-      savedRevision: item.dataset.savedRevision === undefined ? null : Number(item.dataset.savedRevision),
-    }));
+    const summaryText = root?.querySelector('summary')?.textContent?.replace(/\\s+/gu, ' ').trim() ?? '';
+    const detailNumbers = countsText.match(/[0-9]+/gu)?.map(Number) ?? [];
+    const summaryNumbers = summaryText.match(/[0-9]+/gu)?.map(Number) ?? [];
+    const items = [...(document.querySelector('[data-testid="fla-unified-import-items"]')?.querySelectorAll('li') ?? [])].map((item) => {
+      const revisionNumbers = item.querySelector('small')?.textContent?.match(/[0-9]+/gu)?.map(Number) ?? [];
+      return {
+        kind: item.dataset.kind,
+        status: item.dataset.status,
+        baseRevision: revisionNumbers.length >= 2 ? revisionNumbers[0] : null,
+        savedRevision: revisionNumbers.length >= 2 ? revisionNumbers[1] : null,
+      };
+    });
     return {
-      countsText,
-      selectedCount: count(/共\\s*(\\d+)\\s*项/u),
-      imported: count(/新导入\\s*(\\d+)\\s*项/u),
-      duplicate: count(/复用\\s*(\\d+)\\s*项/u),
-      failed: count(/失败\\s*(\\d+)\\s*项/u),
-      notAttempted: count(/未尝试\\s*(\\d+)\\s*项/u),
+      countsText: summaryText,
+      detailText: countsText,
+      selectedCount: detailNumbers[0] ?? -1,
+      imported: summaryNumbers[0] ?? -1,
+      duplicate: summaryNumbers[1] ?? -1,
+      failed: summaryNumbers[2] ?? -1,
+      notAttempted: summaryNumbers[3] ?? -1,
       partial: root?.getAttribute('data-partial') === 'true',
       cancelled: Boolean(document.querySelector('[data-testid="fla-unified-import-cancelled"]')),
       items,
@@ -896,8 +937,12 @@ async function selectOneRawBitmap(window, expectedCount = null, expectedUnifiedC
   if (expectedCount !== null) assert(facts.sourceBitmapCount === expectedCount, `Expected ${expectedCount} raw bitmaps, got ${facts.sourceBitmapCount}.`);
   const mediaId = facts.sourceMediaIds[0];
   assert(mediaId, 'The raw bitmap list has no selectable item.');
-  await click(window, `[data-fla-media-id="${mediaId}"] input[type="checkbox"]`);
+  await setUnifiedCandidateChecked(window, 'raster', mediaId, true);
   await waitForExpression(window, `Number(document.querySelector('[data-testid="fla-unified-import-selected-count"]')?.textContent?.match(/[0-9]+/)?.[0] ?? 0) === ${expectedUnifiedCount}`);
+  await waitForExpression(window, `(() => {
+    const button = document.querySelector('[data-testid="fla-unified-import"]');
+    return button instanceof HTMLButtonElement && !button.disabled;
+  })()`, 180_000);
   const beforeImportRevision = await readUiRevision(window);
   const selected = await evaluate(window, `(() => ({
     mediaId: ${JSON.stringify(mediaId)},
@@ -928,9 +973,9 @@ async function commitOneRawBitmap(window, projectRoot, expectedSourceSha256) {
 async function openReview(window, sourcePath, sourceName) {
   const inspection = await triggerFlaReview(window, sourcePath, sourceName);
   const workbench = await readWorkbenchFacts(window);
-  assert(workbench.title === 'FLA 导入工作台', `${sourceName}: expected the unified FLA import workbench.`);
-  assert(workbench.tabCount === 2, `${sourceName}: expected the composed and raw bitmap sections.`);
+  assert(workbench.workbenchRoute === 'unified' && workbench.sourcePanelVisible, `${sourceName}: expected the unified FLA candidate workbench.`);
   assert(workbench.selectedSourceItems === 0, `${sourceName}: raw bitmap items were selected on initial open.`);
+  assert(workbench.selectedCount === 0, `${sourceName}: candidates were selected automatically on initial open.`);
   return { inspection, workbench };
 }
 
@@ -1022,9 +1067,7 @@ async function verifyCharacterImport(window, project) {
   assert(beforeSelection.sourceLibraryItemName === BLUEHAIR_TARGET && beforeSelection.sourceFrame === '1' && beforeSelection.targetIdDetail === BLUEHAIR_TARGET_ID, 'The UI did not show source item, one-based frame, and exact target identity.');
   runtime.screenshots.preview = await capture(window, join(runtime.repoEvidenceDir, 'bluehair-com809-preview.png'));
 
-  await click(window, `[data-testid="fla-snapshot-targets"] [data-render-target-id="${BLUEHAIR_TARGET_ID}"] input[type="checkbox"]`);
-  await waitForExpression(window, `document.querySelector('[data-testid="fla-snapshot-targets"] [data-render-target-id="${BLUEHAIR_TARGET_ID}"] input[type="checkbox"]')?.checked === true && Number(document.querySelector('[data-testid="fla-snapshot-candidate-summary"] > div:last-child dd')?.textContent?.trim() ?? 0) === 1`);
-  const selection = await readSnapshotSelection(window);
+  const selection = await selectBluehairSnapshot(window, 0, 1);
   assert(selection.selectedCount === 1 && selection.rowSelected && selection.rowSelectable, 'Explicit selection did not pin exactly one supported candidate.');
   assert((await readUiRevision(window)) === revisionBefore, 'Selecting/previewing the character changed the Project revision before commit.');
   runtime.screenshots.importPreview = await capture(window, join(runtime.repoEvidenceDir, 'bluehair-com809-selected-one-before-import.png'));
@@ -1262,7 +1305,7 @@ async function verifySaveCloseReopenAndDuplicate(window, project, importFacts, s
   await focusBluehairTarget(window);
   const duplicatePreview = await readPreviewBytes(window);
   assert(duplicatePreview && sha256(duplicatePreview) === BLUEHAIR_PREVIEW_SHA256, 'Duplicate retry preview differed from the original confirmed PNG.');
-  await click(window, `[data-testid="fla-snapshot-targets"] [data-render-target-id="${BLUEHAIR_TARGET_ID}"] input[type="checkbox"]`);
+  await selectBluehairSnapshot(window, 0, 1);
   await waitForExpression(window, `Number(document.querySelector('[data-testid="fla-snapshot-candidate-summary"] > div:last-child dd')?.textContent?.trim() ?? 0) === 1`);
   await click(window, '[data-testid="fla-unified-import"]');
   await waitForExpression(window, `Boolean(document.querySelector('[data-testid="fla-unified-import-counts"]'))`, 180_000);
@@ -1390,47 +1433,62 @@ async function verifySnapshotSearchFocusSwitch(window, catalog) {
     .find(({ row }) => row?.selectable && !row.blank && row.label && labelCounts.get(row.label) === 1);
   assert(targetB?.row, 'No unique, supported nonblank graphic-state candidate B was available in the rendered catalog.');
 
-  await setInput(window, '[data-testid="fla-snapshot-target-search"]', targetB.row.label);
+  const targetBFocusTestId = `fla-c03-focus-snapshot-${targetB.row.renderTargetId}:${targetB.row.selectedFrameIndex}`;
+  const targetBFocusSelector = `[data-testid="${targetBFocusTestId}"]`;
+  await setInput(window, '[data-testid="fla-c03-search"]', targetB.row.label);
   await waitForExpression(window, `(() => {
-    const rows = [...document.querySelectorAll('[data-testid="fla-snapshot-targets"] [data-render-target-id]')];
-    const row = rows[0];
+    const rows = [...document.querySelectorAll('[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind]')];
+    return rows.length === 1 && Boolean(document.querySelector(${JSON.stringify(targetBFocusSelector)}));
+  })()`, 60_000);
+  await click(window, targetBFocusSelector);
+  await waitForExpression(window, `(() => {
+    const rows = [...document.querySelectorAll('[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind]')];
+    const row = rows.find((candidate) => candidate.querySelector('button[data-testid]')?.getAttribute('data-testid') === ${JSON.stringify(targetBFocusTestId)});
     const preview = document.querySelector('[data-testid="fla-snapshot-preview-image"]');
     const selectedCount = Number(document.querySelector('[data-testid="fla-unified-import-selected-count"]')?.textContent?.match(/[0-9]+/)?.[0] ?? 0);
     return rows.length === 1 &&
-      row?.getAttribute('data-render-target-id') === ${JSON.stringify(targetB.row.renderTargetId)} &&
-      row?.getAttribute('data-source-frame-index') === ${JSON.stringify(String(targetB.row.selectedFrameIndex))} &&
-      row?.getAttribute('data-catalog-role') === 'graphic-state' &&
-      row?.getAttribute('data-focused') === 'true' &&
+      row?.getAttribute('data-candidate-kind') === 'snapshot' &&
+      row?.classList.contains('is-focused') &&
       preview instanceof HTMLImageElement && preview.complete && preview.naturalWidth > 0 &&
       preview.getAttribute('data-render-target-id') === ${JSON.stringify(targetB.row.renderTargetId)} &&
+      preview.getAttribute('data-source-frame-index') === ${JSON.stringify(String(targetB.row.selectedFrameIndex))} &&
       selectedCount === 0;
   })()`, 180_000);
   const searchB = await evaluate(window, `(() => {
-    const row = document.querySelector('[data-testid="fla-snapshot-targets"] [data-render-target-id]');
+    const row = document.querySelector('[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="snapshot"].is-focused');
     const preview = document.querySelector('[data-testid="fla-snapshot-preview-image"]');
     return {
-      visibleCount: document.querySelectorAll('[data-testid="fla-snapshot-targets"] [data-render-target-id]').length,
-      focusedTargetId: row?.getAttribute('data-render-target-id') ?? null,
-      focusedFrameIndex: Number(row?.getAttribute('data-source-frame-index') ?? -1),
-      focusedRole: row?.getAttribute('data-catalog-role') ?? null,
+      visibleCount: document.querySelectorAll('[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind]').length,
+      focusedTargetId: document.querySelector('[data-testid="fla-snapshot-preview-image"]')?.getAttribute('data-render-target-id') ?? null,
+      focusedFrameIndex: Number(document.querySelector('[data-testid="fla-snapshot-preview-image"]')?.getAttribute('data-source-frame-index') ?? -1),
+      focusedRole: row?.getAttribute('data-candidate-kind') ?? null,
       previewTargetId: preview?.getAttribute('data-render-target-id') ?? null,
       selectedCount: Number(document.querySelector('[data-testid="fla-unified-import-selected-count"]')?.textContent?.match(/[0-9]+/)?.[0] ?? 0),
     };
   })()`);
   runtime.screenshots.snapshotSearchFocusSwitch = await capture(window, join(runtime.repoEvidenceDir, 'snapshot-filter-focus-switch-a-to-b.png'));
 
-  await setInput(window, '[data-testid="fla-snapshot-target-search"]', targetA.label);
+  const targetAFocusTestId = `fla-c03-focus-snapshot-${targetA.renderTargetId}:${targetA.selectedFrameIndex}`;
+  const targetAFocusSelector = `[data-testid="${targetAFocusTestId}"]`;
+  await setInput(window, '[data-testid="fla-c03-search"]', targetA.label);
   await waitForExpression(window, `(() => {
-    const rows = [...document.querySelectorAll('[data-testid="fla-snapshot-targets"] [data-render-target-id]')];
-    const row = rows.find((candidate) => candidate.getAttribute('data-render-target-id') === ${JSON.stringify(BLUEHAIR_TARGET_ID)} && candidate.getAttribute('data-source-frame-index') === '0');
+    const rows = [...document.querySelectorAll('[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind]')];
+    return rows.length === 1 && Boolean(document.querySelector(${JSON.stringify(targetAFocusSelector)}));
+  })()`, 60_000);
+  await click(window, targetAFocusSelector);
+  await waitForExpression(window, `(() => {
     const preview = document.querySelector('[data-testid="fla-snapshot-preview-image"]');
-    return rows.length === 1 && row?.getAttribute('data-focused') === 'true' &&
+    const row = [...document.querySelectorAll('[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind]')]
+      .find((candidate) => candidate.querySelector('button[data-testid]')?.getAttribute('data-testid') === ${JSON.stringify(targetAFocusTestId)});
+    return row?.classList.contains('is-focused') &&
       preview instanceof HTMLImageElement && preview.complete && preview.naturalWidth > 0 &&
       preview.getAttribute('data-render-target-id') === ${JSON.stringify(BLUEHAIR_TARGET_ID)} &&
       preview.getAttribute('data-source-frame-index') === '0';
   })()`, 180_000);
   const restoredPreviewBytes = await readPreviewBytes(window);
   assert(restoredPreviewBytes && sha256(restoredPreviewBytes) === BLUEHAIR_PREVIEW_SHA256, 'Returning from filtered candidate B did not restore the exact approved frame-0 preview A.');
+  await setInput(window, '[data-testid="fla-c03-search"]', '');
+  await waitForExpression(window, `document.querySelectorAll('[data-testid="fla-c03-candidate-grid"] li[data-candidate-kind="raster"]').length === 336`, 60_000);
   return {
     initialCandidateA: targetA,
     searchedCandidateB: {
@@ -1462,16 +1520,14 @@ async function verifyMixedComposedAndBitmapImport(window, project) {
   const focusSwitchFacts = await verifySnapshotSearchFocusSwitch(window, catalog);
   const previewBytes = await readPreviewBytes(window);
   assert(previewBytes && sha256(previewBytes) === BLUEHAIR_PREVIEW_SHA256, 'Mixed import composed preview differed from the approved PNG.');
-  await click(window, `[data-testid="fla-snapshot-targets"] [data-render-target-id="${BLUEHAIR_TARGET_ID}"] input[type="checkbox"]`);
+  await selectBluehairSnapshot(window, 0, 1);
   await waitForExpression(window, `Number(document.querySelector('[data-testid="fla-unified-import-selected-count"]')?.textContent?.match(/[0-9]+/)?.[0] ?? 0) === 1`);
   const compositionSelectedRevision = await readUiRevision(window);
   assert(compositionSelectedRevision === revisionBefore, 'Selecting the composed PNG mutated the Project before import.');
 
-  await click(window, '[data-testid="fla-workbench-tab-source-assets"]');
-  await waitForExpression(window, `document.querySelector('[data-testid="fla-workbench-tab-source-assets"]')?.getAttribute('aria-selected') === 'true'`);
   const bitmapSelection = await selectOneRawBitmap(window, 336, 2);
-  assert(bitmapSelection.selectedCount === 2, 'Switching routes dropped the checked composed PNG or failed to retain the bitmap selection.');
-  assert((await readUiRevision(window)) === revisionBefore, 'Cross-route selection changed the Project before the shared import action.');
+  assert(bitmapSelection.selectedCount === 2, 'Unified candidate selection did not retain both the composed PNG and bitmap.');
+  assert((await readUiRevision(window)) === revisionBefore, 'Unified candidate selection changed the Project before the shared import action.');
 
   const snapshotCommitCountBefore = runtime.snapshotCommits.length;
   const rasterCommitCountBefore = runtime.rasterCommits.length;
@@ -1488,11 +1544,9 @@ async function verifyMixedComposedAndBitmapImport(window, project) {
   assert(snapshotCommit.baseRevision === revisionBefore && rasterCommit.savedRevision === revisionBefore + 2, 'Mixed route revisions did not advance sequentially exactly twice.');
 
   const receipt = await readUnifiedImportReceipt(window);
-  const countsText = receipt.countsText;
   const receiptItems = receipt.items;
-  assert(countsText.includes('共 2 项') && countsText.includes('新导入 2 项') && countsText.includes('失败 0 项') && countsText.includes('未尝试 0 项'), `Shared receipt did not report exact mixed outcomes: ${countsText}`);
   assert(receiptItems.length === 2 && receiptItems.every((item) => item.status === 'imported') && new Set(receiptItems.map((item) => item.kind)).size === 2, 'Shared receipt did not preserve both route-specific item results.');
-  assert(receipt.selectedCount === 2 && receipt.imported === 2 && receipt.duplicate === 0 && receipt.failed === 0 && receipt.notAttempted === 0, `Shared receipt did not report exact mixed counts: ${countsText}`);
+  assert(receipt.selectedCount === 2 && receipt.imported === 2 && receipt.duplicate === 0 && receipt.failed === 0 && receipt.notAttempted === 0, `Shared receipt did not report exact mixed counts: ${JSON.stringify(receipt)}`);
   assert(!receipt.partial && !receipt.cancelled, 'Successful mixed import was marked partial or cancelled.');
   const snapshotReceiptItem = receiptItems.find((item) => item.kind === 'snapshot');
   const rasterReceiptItem = receiptItems.find((item) => item.kind === 'raster');
@@ -1533,10 +1587,8 @@ async function verifyUnifiedImportCancellation(window, project) {
   const catalog = await openSnapshotCatalog(window, inspection.inspection.sessionId);
   assert(catalog.entries.some((entry) => entry.renderTargetId === BLUEHAIR_TARGET_ID && entry.selectedFrameIndex === 0 && entry.previewSupported && !entry.isBlank), 'Cancellation scenario did not expose the approved supported candidate A.');
   await focusBluehairTarget(window);
-  await click(window, `[data-testid="fla-snapshot-targets"] [data-render-target-id="${BLUEHAIR_TARGET_ID}"][data-source-frame-index="0"] input[type="checkbox"]`);
+  await selectBluehairSnapshot(window, 0, 1);
   await waitForExpression(window, `Number(document.querySelector('[data-testid="fla-unified-import-selected-count"]')?.textContent?.match(/[0-9]+/)?.[0] ?? 0) === 1`);
-  await click(window, '[data-testid="fla-workbench-tab-source-assets"]');
-  await waitForExpression(window, `document.querySelector('[data-testid="fla-workbench-tab-source-assets"]')?.getAttribute('aria-selected') === 'true'`);
   const bitmapSelection = await selectOneRawBitmap(window, 336, 2);
 
   const snapshotCommitCountBefore = runtime.snapshotCommits.length;
@@ -1586,10 +1638,8 @@ async function verifyUnifiedImportPartialRouteFailure(window, project) {
   const catalog = await openSnapshotCatalog(window, inspection.inspection.sessionId);
   assert(catalog.entries.some((entry) => entry.renderTargetId === BLUEHAIR_TARGET_ID && entry.selectedFrameIndex === 0 && entry.previewSupported && !entry.isBlank), 'Partial-failure scenario did not expose the approved supported candidate A.');
   await focusBluehairTarget(window);
-  await click(window, `[data-testid="fla-snapshot-targets"] [data-render-target-id="${BLUEHAIR_TARGET_ID}"][data-source-frame-index="0"] input[type="checkbox"]`);
+  await selectBluehairSnapshot(window, 0, 1);
   await waitForExpression(window, `Number(document.querySelector('[data-testid="fla-unified-import-selected-count"]')?.textContent?.match(/[0-9]+/)?.[0] ?? 0) === 1`);
-  await click(window, '[data-testid="fla-workbench-tab-source-assets"]');
-  await waitForExpression(window, `document.querySelector('[data-testid="fla-workbench-tab-source-assets"]')?.getAttribute('aria-selected') === 'true'`);
   const bitmapSelection = await selectOneRawBitmap(window, 336, 2);
 
   runtime.failNextRasterCommit = true;
@@ -1702,6 +1752,7 @@ function writeReceipt(status, extra = {}) {
     thumbnailReads: runtime.thumbnailReads,
     scenarios: runtime.scenarios,
     assertions: runtime.assertions,
+    lastUiEvaluationFailure: runtime.lastUiEvaluationFailure,
     finalWindows: captureWindowFacts(),
     ...extra,
   };
@@ -1805,7 +1856,7 @@ async function main() {
     mixedSourceSingleBitmapCommit: mixedBitmap.commit.selectedCount === 1 && mixedBitmap.projectAfter.assetCount === 1,
     sameFlaCompositionAndBitmapOneAction: unifiedMixed.oneActionTwoRoutes && unifiedMixed.projectAfter.assetCount === 2 && unifiedMixed.receipt.items.length === 2,
     sameFlaRouteRevisionsThreaded: unifiedMixed.rasterCommit.baseRevision === unifiedMixed.snapshotCommit.savedRevision,
-    sameFlaExactPerItemReceipt: unifiedMixed.receipt.items.every((item) => item.status === 'imported') && unifiedMixed.receipt.countsText.includes('未尝试 0 项'),
+    sameFlaExactPerItemReceipt: unifiedMixed.receipt.items.every((item) => item.status === 'imported') && unifiedMixed.receipt.notAttempted === 0,
     unsupportedVectorFailsClosedWithReason: !unsupported.uiState.selectable && unsupported.uiState.importDisabled && Boolean(unsupported.target.unsupportedReason),
     filterSearchAtoBUpdatesFocusedFullPreviewWithoutSelection: unifiedMixed.filterFocusSwitch.searchB.visibleCount === 1 && unifiedMixed.filterFocusSwitch.searchB.focusedTargetId === unifiedMixed.filterFocusSwitch.searchedCandidateB.renderTargetId && unifiedMixed.filterFocusSwitch.searchB.previewTargetId === unifiedMixed.filterFocusSwitch.searchedCandidateB.renderTargetId && unifiedMixed.filterFocusSwitch.noSelectionDuringFilter,
     returningToCandidateARestoresApprovedPreview: unifiedMixed.filterFocusSwitch.restoredCandidateA.previewSha256 === BLUEHAIR_PREVIEW_SHA256,

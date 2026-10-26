@@ -15,6 +15,7 @@
 import {
   listShotRuntimeImageAssets,
   projectShotMouth,
+  projectShotDialogueVisual,
   resolveLayerVisualParts,
   resolveShotVisualParts,
   type EvaluatedShot,
@@ -101,7 +102,7 @@ export interface ProductPreviewMouthFallback {
 
 /**
  * Separates the exact current visual from bounded warmup candidates. The
- * resolver remains the only owner of Body/Face/Mouth meaning; this plan only
+ * resolver remains the only owner of Body/Head/Face/Mouth meaning; this plan only
  * classifies the resources that the Preview image session already owns.
  */
 export interface ProductPreviewImagePlan {
@@ -236,6 +237,21 @@ export function projectProductPreviewMouth(
   activeDialogueId: string | null,
 ): EvaluatedShot {
   return projectShotMouth(
+    project,
+    shot,
+    evaluatedShot,
+    activeDialogueId,
+  );
+}
+
+/** Applies the shared read-only Mouth and Head projection for one requested time. */
+export function projectProductPreviewDialogue(
+  project: Project,
+  shot: Shot,
+  evaluatedShot: EvaluatedShot,
+  activeDialogueId?: string | null,
+): EvaluatedShot {
+  return projectShotDialogueVisual(
     project,
     shot,
     evaluatedShot,

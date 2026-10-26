@@ -38,6 +38,8 @@ function imageAsset(id: string, name: string): Project['assets'][number] {
     mimeType: 'image/png',
     width: 640,
     height: 640,
+    usage: 'uncategorized',
+    keywords: [],
   };
 }
 
@@ -467,7 +469,7 @@ describe('Product Preview mouth integration - Phase 3 C', () => {
 
     expect(overlay).toContain('evaluateShotAtTime(');
     expect(overlay).toContain('evaluateSubtitleAtTime(cues, evaluatedShot.timeMs)');
-    expect(overlay).toContain('projectProductPreviewMouth(');
+    expect(overlay).toContain('projectProductPreviewDialogue(');
     expect(overlay).toContain('activeCue?.id ?? null');
     expect(overlay).toContain('evaluatedShot={renderedShot}');
     expect(overlay).not.toContain('mouthTime');

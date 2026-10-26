@@ -1,12 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { ProjectSchema, migrateProject } from '../../src/domain';
+import {
+  ProjectSchema,
+  migrateProject,
+  updateImageAssetAuthorMetadata,
+} from '../../src/domain';
 import {
   assetCategoryCounts,
   assetLibraryFilterCounts,
+  filterAssetLibraryItems,
   filterAssetLibraryEntries,
+  selectAssetLibraryItems,
   selectAssetLibraryEntries,
 } from '../../src/renderer/stores/assetLibrarySelectors';
+import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
 describe('asset library selectors', () => {
@@ -22,6 +29,8 @@ describe('asset library selectors', () => {
         (entry) => entry.asset.name,
       ),
     ).toEqual(['Panda happy', 'Panda neutral']);
+    const audioEntry = selectAssetLibraryEntries(project, 'audio')[0];
+    expect(audioEntry?.dropPayload.type).toBe('audio');
   });
 
   it('provides an all filter and simple name search over the same entries', () => {
@@ -33,6 +42,7 @@ describe('asset library selectors', () => {
       character: 2,
       background: 1,
       audio: 1,
+      animation: 0,
     });
     expect(
       filterAssetLibraryEntries(entries, 'happy').map(
@@ -40,6 +50,228 @@ describe('asset library selectors', () => {
       ),
     ).toEqual(['Panda happy']);
     expect(filterAssetLibraryEntries(entries, '  ')).toEqual(entries);
+  });
+
+  it('keeps animation frames distinct and hides only sequence-created frame images', () => {
+    const project = migrateProject(exampleProject);
+    const existingImage = project.assets.find((asset) => asset.kind === 'image');
+    if (!existingImage || existingImage.kind !== 'image') {
+      throw new Error('Expected an existing image fixture.');
+    }
+    const newAssetId = randomUUID();
+    const createdHash = 'a'.repeat(64);
+    const reusedHash = 'b'.repeat(64);
+    const fps = 24;
+    const durationMs = 1_000 / fps;
+    const source = (basename: string, sha256: string) => ({
+      basename,
+      sha256,
+      renderTargetId: 'fla-render-target-test',
+      targetKind: 'graphic-symbol' as const,
+      targetName: 'Test target',
+      startFrameIndex: 0,
+      endFrameIndex: 0,
+      sourceFps: fps,
+      canvas: { width: 1920, height: 1080 },
+      documentCanvas: { width: 1920, height: 1080 },
+      anchor: { x: 960, y: 540 },
+    });
+    const withAnimations = ProjectSchema.parse({
+      ...project,
+      assets: [
+        ...project.assets.map((asset) =>
+          asset.id === existingImage.id ? { ...asset, sha256: reusedHash } : asset,
+        ),
+        {
+          id: newAssetId,
+          kind: 'image',
+          name: 'Walk frame 0000',
+          relativePath: 'assets/walk-frame-0000.png',
+          mimeType: 'image/png',
+          sha256: createdHash,
+          width: 16,
+          height: 16,
+          usage: 'uncategorized',
+          keywords: [],
+        },
+      ],
+      animations: [
+        {
+          id: randomUUID(),
+          name: 'Created animation',
+          source: source('created.fla', 'c'.repeat(64)),
+          durationMs,
+          frames: [{
+            ordinal: 0,
+            sourceFrameIndex: 0,
+            assetId: newAssetId,
+            sha256: createdHash,
+            sourceViewport: { x: 960, y: 540, width: 1920, height: 1080 },
+            offset: { x: 0, y: 0 },
+            startMs: 0,
+            durationMs,
+            createdBySequenceImport: true,
+          }],
+        },
+        {
+          id: randomUUID(),
+          name: 'Reused animation',
+          source: source('reused.fla', 'd'.repeat(64)),
+          durationMs,
+          frames: [{
+            ordinal: 0,
+            sourceFrameIndex: 0,
+            assetId: existingImage.id,
+            sha256: reusedHash,
+            sourceViewport: { x: 960, y: 540, width: 1920, height: 1080 },
+            offset: { x: 0, y: 0 },
+            startMs: 0,
+            durationMs,
+            createdBySequenceImport: false,
+          }],
+        },
+      ],
+    });
+
+    const entries = selectAssetLibraryEntries(withAnimations, 'all');
+    expect(entries.some((entry) => entry.asset.id === newAssetId)).toBe(false);
+    expect(entries.some((entry) => entry.asset.id === existingImage.id)).toBe(true);
+    const items = selectAssetLibraryItems(withAnimations, 'all');
+    expect(items.filter((item) => item.kind === 'animation')).toHaveLength(2);
+    expect(selectAssetLibraryItems(withAnimations, 'animation')).toHaveLength(2);
+    expect(assetLibraryFilterCounts(withAnimations)).toMatchObject({
+      all: 6,
+      animation: 2,
+    });
+    expect(filterAssetLibraryItems(items, 'reused.fla')).toEqual([
+      expect.objectContaining({ kind: 'animation', animation: expect.objectContaining({ name: 'Reused animation' }) }),
+    ]);
+    expect(filterAssetLibraryItems(items, 'Created animation', 'prop')).toEqual([]);
+  });
+
+  it('filters every explicit image usage without changing role grouping or drop identity', () => {
+    const project = migrateProject(exampleProject);
+    const template = project.assets.find((asset) => asset.kind === 'image')!;
+    if (template.kind !== 'image') throw new Error('Expected image asset.');
+    const usages = [
+      'uncategorized',
+      'background',
+      'character',
+      'prop',
+      'effect',
+    ] as const;
+    const authoredImages = usages.map((usage) => ({
+      ...template,
+      id: randomUUID(),
+      name: `Purpose ${usage}`,
+      relativePath: `assets/${usage}.png`,
+      usage,
+      keywords: [],
+    }));
+    const withUsages = ProjectSchema.parse({
+      ...project,
+      assets: [...project.assets, ...authoredImages],
+    });
+    const entries = selectAssetLibraryEntries(withUsages, 'all');
+    const backgroundIds = new Set(
+      selectAssetLibraryEntries(withUsages, 'background').map(
+        (entry) => entry.asset.id,
+      ),
+    );
+
+    for (const [index, usage] of usages.entries()) {
+      const matchingEntries = filterAssetLibraryEntries(entries, '', usage);
+      expect(matchingEntries).toEqual(
+        entries.filter(
+          (entry) =>
+            entry.asset.kind === 'image' && entry.asset.usage === usage,
+        ),
+      );
+      expect(matchingEntries.every(
+        (entry) => entry.asset.kind === 'image' && entry.asset.usage === usage,
+      )).toBe(true);
+      const authoredEntry = matchingEntries.find(
+        (entry) => entry.asset.id === authoredImages[index]!.id,
+      );
+      expect(authoredEntry?.dropPayload).toMatchObject({
+        type: 'asset-image',
+        assetId: authoredImages[index]!.id,
+      });
+      expect(backgroundIds.has(authoredImages[index]!.id)).toBe(true);
+    }
+  });
+
+  it('searches author keywords while keeping same-name images independent by ID', () => {
+    const project = migrateProject(exampleProject);
+    const template = project.assets.find((asset) => asset.kind === 'image')!;
+    if (template.kind !== 'image') throw new Error('Expected image asset.');
+    const first = {
+      ...template,
+      id: randomUUID(),
+      name: '道具图A',
+      relativePath: 'assets/door-a.png',
+      usage: 'prop' as const,
+      keywords: ['门', '关闭'],
+    };
+    const second = {
+      ...first,
+      id: randomUUID(),
+      relativePath: 'assets/door-b.png',
+    };
+    const withDuplicates = ProjectSchema.parse({
+      ...project,
+      assets: [...project.assets, first, second],
+    });
+    const entries = selectAssetLibraryEntries(withDuplicates, 'all');
+    const projectBeforeFiltering = JSON.stringify(withDuplicates);
+    const store = new EditorProjectStore();
+    store.open('D:\\project.pandastage', withDuplicates);
+    const snapshotBeforeFiltering = store.getSnapshot();
+    const historyBeforeFiltering = store.history.getSnapshot();
+    const matches = filterAssetLibraryEntries(entries, '门', 'prop')
+      .filter((entry) => entry.asset.name === '道具图A');
+
+    expect(matches.map((entry) => entry.asset.id)).toEqual([
+      first.id,
+      second.id,
+    ]);
+    expect(matches[0]?.asset.id).not.toBe(matches[1]?.asset.id);
+    expect(matches.every((entry) => entry.dropPayload.type === 'asset-image'))
+      .toBe(true);
+    expect(filterAssetLibraryEntries(entries, '', 'prop').map(
+      (entry) => entry.asset.id,
+    )).toEqual([first.id, second.id]);
+    expect(filterAssetLibraryEntries(entries, 'missing keyword', 'prop'))
+      .toEqual([]);
+    expect(filterAssetLibraryEntries(entries, '', 'all')).toEqual(entries);
+    expect(
+      filterAssetLibraryEntries(
+        selectAssetLibraryEntries(store.getSnapshot()!.project, 'all'),
+        '道具图A',
+        'prop',
+      ).map((entry) => entry.asset.id),
+    ).toEqual([first.id, second.id]);
+    expect(store.getSnapshot()).toBe(snapshotBeforeFiltering);
+    expect(store.getSnapshot()).toMatchObject({ dirty: false, revision: 0 });
+    expect(store.history.getSnapshot()).toEqual(historyBeforeFiltering);
+    expect(JSON.stringify(withDuplicates)).toBe(projectBeforeFiltering);
+
+    const edited = updateImageAssetAuthorMetadata(
+      withDuplicates,
+      first.id,
+      { name: '木门·关闭', usage: 'prop', keywords: ['门', '关闭'] },
+    );
+    expect(edited.assets.find((asset) => asset.id === first.id)?.name).toBe(
+      '木门·关闭',
+    );
+    expect(edited.assets.find((asset) => asset.id === second.id)).toEqual(
+      second,
+    );
+    expect(
+      selectAssetLibraryEntries(edited, 'background').some(
+        (entry) => entry.asset.id === first.id,
+      ),
+    ).toBe(true);
   });
 
   it('classifies a configured mouth image as a character image', () => {
@@ -182,6 +414,8 @@ describe('asset library selectors', () => {
         kind: 'image',
         width: 16,
         height: 12,
+        usage: 'uncategorized',
+        keywords: [],
       })),
     });
     const entries = selectAssetLibraryEntries(project, 'background');

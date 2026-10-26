@@ -47,6 +47,8 @@ export function validateProjectReferences(
   context: z.RefinementCtx,
 ): void {
   validateUniqueIds(project.assets, ['assets'], context);
+  validateUniqueIds(project.animations, ['animations'], context);
+  validateUniqueNames(project.animations, ['animations'], context);
   validateUniqueIds(project.characters, ['characters'], context);
   validateUniqueNames(project.characters, ['characters'], context);
   validateUniqueIds(project.voiceProfiles, ['voiceProfiles'], context);
@@ -63,6 +65,25 @@ export function validateProjectReferences(
   const subtitleStyles = new Set(
     project.subtitleStyles.map((style) => style.id),
   );
+
+  project.animations.forEach((animation, animationIndex) => {
+    animation.frames.forEach((frame, frameIndex) => {
+      const asset = assets.get(frame.assetId);
+      if (!asset || asset.kind !== 'image') {
+        addIssue(
+          context,
+          ['animations', animationIndex, 'frames', frameIndex, 'assetId'],
+          `Animation references unknown or non-image asset: ${frame.assetId}`,
+        );
+      } else if (asset.sha256 !== frame.sha256) {
+        addIssue(
+          context,
+          ['animations', animationIndex, 'frames', frameIndex, 'sha256'],
+          `Animation frame hash does not match image asset ${asset.id}.`,
+        );
+      }
+    });
+  });
 
   project.characters.forEach((character, characterIndex) => {
     validateUniqueIds(
@@ -133,6 +154,16 @@ export function validateProjectReferences(
           ['characters', characterIndex, 'bodyAssetId'],
           `Composite character references unknown or non-image body asset: ${character.bodyAssetId}`,
         );
+      }
+      if (character.head) {
+        const headAsset = assets.get(character.head.assetId);
+        if (!headAsset || headAsset.kind !== 'image') {
+          addIssue(
+            context,
+            ['characters', characterIndex, 'head', 'assetId'],
+            `Composite character references unknown or non-image Head asset: ${character.head.assetId}`,
+          );
+        }
       }
     }
     const defaultVoice = voiceProfiles.get(character.defaultVoiceProfileId);

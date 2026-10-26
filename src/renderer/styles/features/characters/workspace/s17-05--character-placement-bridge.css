@@ -6,3 +6,19 @@
   min-height: var(--ui-touch-icon);
   margin: 0 0 var(--ui-space-2);
 }
+
+.editor-layout[data-shell-mode='landscape']
+  .resource-activity-dock-landscape[data-active-activity='characters']
+  .character-manager[data-character-presentation='landscape']
+  .character-detail-identity-actions
+  > .character-detail-place-action {
+  display: inline-flex;
+  width: auto;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+}

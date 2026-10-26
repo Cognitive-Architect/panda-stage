@@ -338,11 +338,19 @@ async function runVerification() {
 
   const requestFor = (name) => ({
     projectDirectory,
-    audioPath,
+    audioClips: [{
+      clipId: '70000000-0000-4000-8000-000000000609',
+      assetId: '10000000-0000-4000-8000-000000000609',
+      role: 'dialogue',
+      sourcePath: audioPath,
+      startMs: AUDIO_START_MS,
+      endMs: 3_000,
+      offsetMs: 0,
+      volume: 1,
+    }],
     outputPath: path.join(outputDirectory, `${name}.mp4`),
     durationMs: 3_000,
     fps: 24,
-    audioStartMs: AUDIO_START_MS,
     overwrite: true,
   });
 
@@ -570,8 +578,8 @@ async function runVerification() {
       audioSampleRate: 48_000,
       audioChannels: 1,
       videoDurationSeconds: 3,
-      audioDurationSeconds: 3.4,
-      formatDurationSeconds: 3.4,
+      audioDurationSeconds: 3,
+      formatDurationSeconds: 3,
       durationToleranceSeconds: 0.05,
     });
     const timing = await adapter.analyzeAudioTiming(recoveryOutputPath);
@@ -588,7 +596,7 @@ async function runVerification() {
       playback.videoWidth !== 1_920 ||
       playback.videoHeight !== 1_080 ||
       playback.muted ||
-      Math.abs(playback.duration - 3.4) > 0.08
+      Math.abs(playback.duration - 3) > 0.08
     ) {
       throw new Error(`Recovered playback mismatch: ${JSON.stringify(playback)}`);
     }
