@@ -778,7 +778,7 @@ function createExportService() {
     revealExportOutput: async (jobId) => {
       const outputPath = exportService.getCompletedOutputPath(jobId);
       if (!outputPath) return false;
-      if (dl05FollowupMode) revealedOutputs.push(outputPath);
+      if (dl05FollowupMode || issue862ExportSmoke) revealedOutputs.push(outputPath);
       else shell.showItemInFolder(outputPath);
       return true;
     },
@@ -5043,6 +5043,29 @@ async function run() {
       assert(completedJob?.status === 'completed', `The retry Job did not complete: ${JSON.stringify(completedJob)}`);
       assert(path.resolve(exportService.getCompletedOutputPath(completedRun.start.jobId) ?? '') === path.resolve(completedPath), 'The completed Job points to a different output target.');
       assert(existsSync(completedPath), 'The completed retry did not publish its MP4.');
+      assert(
+        completedRun.startAction === 'failed-or-cancelled-current-content-retry',
+        'Retrying the cancelled task did not use its current-content recovery action.',
+      );
+
+      const revealStartCount = revealedOutputs.length;
+      const jobsBeforeReveal = formalStarts.length;
+      await clickButtonContainingText('\u5728\u6587\u4ef6\u5939\u4e2d\u663e\u793a');
+      const revealDeadline = Date.now() + 5_000;
+      while (revealedOutputs.length === revealStartCount && Date.now() < revealDeadline) {
+        await pause(25);
+      }
+      const completedTaskActions = {
+        revealOutputPath: revealedOutputs.at(-1) ?? null,
+        revealMatchesCompletedOutput:
+          path.resolve(revealedOutputs.at(-1) ?? '') === path.resolve(completedPath),
+        jobsStartedByReveal: formalStarts.length - jobsBeforeReveal,
+      };
+      assert(
+        completedTaskActions.revealMatchesCompletedOutput &&
+        completedTaskActions.jobsStartedByReveal === 0,
+        `The completed task reveal action did not target its output safely: ${JSON.stringify(completedTaskActions)}`,
+      );
 
       const secondRun = await startFromCreatorUi(
         evidenceRoot,
@@ -5053,8 +5076,9 @@ async function run() {
         },
       );
       assert(
+        secondRun.startAction === 'completed-new-version' &&
         path.resolve(exportService.getCompletedOutputPath(secondRun.start.jobId) ?? '') === path.resolve(secondOutputPath),
-        `The second continuous export suggested an unexpected name: ${JSON.stringify(secondRun.start)}`,
+        `The completed task's again-export action suggested an unexpected name: ${JSON.stringify(secondRun)}`,
       );
       assert(existsSync(secondOutputPath), 'The second automatic output was not created.');
 
@@ -5109,6 +5133,7 @@ async function run() {
         },
       );
       assert(
+        longNameRun.startAction === 'failed-or-cancelled-current-content-retry' &&
         exportService.getJob(longNameRun.start.jobId)?.status === 'completed' &&
         path.resolve(exportService.getCompletedOutputPath(longNameRun.start.jobId) ?? '') === path.resolve(longOutputPath) &&
         existsSync(longOutputPath),
@@ -5203,6 +5228,13 @@ async function run() {
           frameCount,
           format: probe.format?.format_name ?? null,
         },
+      };
+      result.completedTaskActions = {
+        ...completedTaskActions,
+        againExportAction: secondRun.startAction,
+        againExportJobId: secondRun.start.jobId,
+        againExportStatus: exportService.getJob(secondRun.start.jobId)?.status,
+        againExportTarget: exportService.getCompletedOutputPath(secondRun.start.jobId),
       };
       result.failureState = {
         status: conflictRun.status,
