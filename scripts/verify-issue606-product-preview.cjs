@@ -167,6 +167,8 @@ function createFixture() {
     id: IDS.project,
     name: 'Issue 607 Product Preview review proof',
   });
+  const { animations: _animations, ...legacyBase } = base;
+  void _animations;
   const baseShot = base.shots[0];
   const baseSubtitle = base.subtitleStyles[0];
   const character = {
@@ -276,7 +278,7 @@ function createFixture() {
   };
 
   return migrateProject({
-    ...base,
+    ...legacyBase,
     schemaVersion: 7,
     id: IDS.project,
     name: 'Issue 607 Product Preview review proof',
