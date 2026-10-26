@@ -203,10 +203,26 @@ button.export-task-hide[data-ui-button][data-ui-variant='secondary']:hover:not(:
 }
 
 .export-task-progress progress {
+  appearance: none;
   grid-column: 1 / -1;
   width: 100%;
+  height: 4px;
   min-width: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ui-color-border);
   accent-color: var(--ui-color-action-primary);
+}
+
+.export-task-progress progress::-webkit-progress-bar {
+  border-radius: inherit;
+  background: var(--ui-color-border);
+}
+
+.export-task-progress progress::-webkit-progress-value {
+  border-radius: inherit;
+  background: var(--ui-color-action-primary);
 }
 
 .export-task-progress-count {
