@@ -16,6 +16,7 @@ import { reviewMedia } from './fla-review';
 import {
   createFlaWorkbenchCandidateSelection,
   createFlaWorkbenchCandidates,
+  formatFlaSingleModeSummary,
   focusFlaWorkbenchCandidate,
   sortFlaWorkbenchCandidates,
   type FlaWorkbenchCandidate,
@@ -27,7 +28,7 @@ import {
 } from './fla-inspection-lifecycle';
 import { FlaStaticSnapshotReview } from './FlaStaticSnapshotReview';
 import { FlaFrameSequenceReview } from './FlaFrameSequenceReview';
-import type { FlaStageGTerminalState } from './FlaStageGTerminal';
+import type { FlaStageGImportKind, FlaStageGTerminalState } from './FlaStageGTerminal';
 import { FlaStageAInspecting } from './FlaStageAInspecting';
 import { FlaStageF3Blocked } from './FlaStageF';
 import { FlaUnifiedWorkbench, type FlaUnifiedWorkbenchProgress } from './FlaUnifiedWorkbench';
@@ -76,6 +77,7 @@ export function FlaCompatibilityReviewSession({
   const [sequenceCandidates, setSequenceCandidates] = useState<readonly FlaWorkbenchCandidate[]>([]);
   const [focusedCandidateIdentityKey, setFocusedCandidateIdentityKey] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedOnly, setSelectedOnly] = useState(false);
   const [bulkConfirmationOpen, setBulkConfirmationOpen] = useState(false);
   const [catalogProgress, setCatalogProgress] = useState<FlaUnifiedWorkbenchProgress>({
@@ -84,6 +86,8 @@ export function FlaCompatibilityReviewSession({
   const [checkedCandidates, setCheckedCandidates] = useState<Map<string, FlaUnifiedImportItem>>(() => new Map());
   const [importReceipt, setImportReceipt] = useState<FlaUnifiedImportReceipt | null>(null);
   const [unifiedImportRunning, setUnifiedImportRunning] = useState(false);
+  const [unifiedImportKind, setUnifiedImportKind] = useState<FlaStageGImportKind>('mixed');
+  const [stopAfterCurrentAvailable, setStopAfterCurrentAvailable] = useState(false);
   const [stopAfterCurrentRequested, setStopAfterCurrentRequested] = useState(false);
   const [importRunnerRevision, setImportRunnerRevision] = useState(0);
   const [thumbnailUrls, setThumbnailUrls] = useState<Readonly<Record<string, string>>>({});
@@ -114,6 +118,7 @@ export function FlaCompatibilityReviewSession({
           setSequenceCandidates([]);
           setFocusedCandidateIdentityKey(null);
           setSearchText('');
+          setMultiSelectMode(false);
           setSelectedOnly(false);
           setBulkConfirmationOpen(false);
           setCatalogProgress({ phase: 'loading', completed: 0, total: 0, omittedCandidateCount: 0 });
@@ -187,8 +192,17 @@ export function FlaCompatibilityReviewSession({
     })),
     [checkedCandidateKeys, focusedCandidateIdentityKey, rasterCandidates, snapshotCandidates, visibleSequenceCandidates],
   );
+  const workbenchCandidates = useMemo(() => {
+    if (multiSelectMode) return unifiedCandidates;
+    const sequenceTargets = new Set(visibleSequenceCandidates.map((candidate) =>
+      candidate.provenance.renderTargetId,
+    ));
+    return unifiedCandidates.filter((candidate) => candidate.kind !== 'snapshot' ||
+      candidate.operation.target.frameCount <= 1 ||
+      !sequenceTargets.has(candidate.provenance.renderTargetId));
+  }, [multiSelectMode, unifiedCandidates, visibleSequenceCandidates]);
   const selectedCount = checkedCandidates.size;
-  const focusedCandidate = unifiedCandidates.find((candidate) =>
+  const focusedCandidate = workbenchCandidates.find((candidate) =>
     candidate.identityKey === focusedCandidateIdentityKey,
   ) ?? null;
   const focusedRenderTargetId = focusedCandidate && focusedCandidate.kind !== 'raster'
@@ -217,12 +231,12 @@ export function FlaCompatibilityReviewSession({
   }, [searchText, unifiedCandidates]);
 
   useEffect(() => {
-    if (unifiedCandidates.length === 0 || catalogProgress.phase === 'loading') return;
-    if (focusedCandidateIdentityKey && unifiedCandidates.some((candidate) =>
+    if (workbenchCandidates.length === 0 || catalogProgress.phase === 'loading') return;
+    if (focusedCandidateIdentityKey && workbenchCandidates.some((candidate) =>
       candidate.identityKey === focusedCandidateIdentityKey,
     )) return;
-    setFocusedCandidateIdentityKey(unifiedCandidates[0]?.identityKey ?? null);
-  }, [catalogProgress.phase, focusedCandidateIdentityKey, unifiedCandidates]);
+    setFocusedCandidateIdentityKey(workbenchCandidates[0]?.identityKey ?? null);
+  }, [catalogProgress.phase, focusedCandidateIdentityKey, workbenchCandidates]);
 
   useEffect(() => {
     if (!ir) return undefined;
@@ -285,6 +299,10 @@ export function FlaCompatibilityReviewSession({
   }, []);
   const focusUnifiedCandidate = (candidate: FlaWorkbenchCandidate): void => {
     if (unifiedImportRunningRef.current) return;
+    setImportReceipt((current) => current &&
+      (current.partial || current.counts.failed > 0 || current.warnings.length > 0)
+      ? current
+      : null);
     setFocusedCandidateIdentityKey(candidate.identityKey);
     if (candidate.kind === 'raster') {
       setRasterSelection((current) => focusFlaWorkbenchCandidate(current, candidate.id));
@@ -309,7 +327,14 @@ export function FlaCompatibilityReviewSession({
   const clearAllUnifiedCandidates = (): void => {
     if (selectionLocked) return;
     setCheckedCandidates(new Map());
+    setSelectedOnly(false);
     setBulkConfirmationOpen(false);
+  };
+  const toggleMultiSelectMode = (): void => {
+    if (selectionLocked || (multiSelectMode && checkedCandidates.size > 0)) return;
+    setBulkConfirmationOpen(false);
+    setSelectedOnly(false);
+    setMultiSelectMode((current) => !current);
   };
   const reconcileUnifiedCandidates = useCallback((
     kind: 'raster' | 'snapshot' | 'sequence',
@@ -446,25 +471,52 @@ export function FlaCompatibilityReviewSession({
     }
   }, [onCommit, rasterCandidates]);
 
-  const canImportSelected = useMemo(() => {
+  const canImportItems = useCallback((items: readonly FlaUnifiedImportItem[]): boolean => {
     if (
       !snapshot ||
-      selectedUnifiedItems.length === 0 ||
+      items.length === 0 ||
       unifiedImportRunning ||
       snapshotWorkInProgress ||
       sequenceWorkInProgress ||
       renderTerminalState !== 'active'
     ) return false;
-    return selectedUnifiedItems.every((item) => item.kind === 'raster' ||
+    return items.every((item) => item.kind === 'raster' ||
       (item.kind === 'snapshot' && snapshotImportRunnerRef.current !== null) ||
       (item.kind === 'sequence' && sequenceImportRunnerRef.current !== null));
-  }, [importRunnerRevision, renderTerminalState, selectedUnifiedItems, snapshot, snapshotWorkInProgress, sequenceWorkInProgress, unifiedImportRunning]);
+  }, [importRunnerRevision, renderTerminalState, snapshot, snapshotWorkInProgress, sequenceWorkInProgress, unifiedImportRunning]);
+  const canImportSelected = canImportItems(selectedUnifiedItems);
+  const focusedSingleCandidate = !multiSelectMode && focusedCandidate?.selectable &&
+    (focusedCandidate.kind === 'raster' ||
+      (focusedCandidate.kind === 'snapshot' && focusedCandidate.operation.target.frameCount <= 1))
+    ? focusedCandidate
+    : null;
+  const focusedSingleItem = focusedSingleCandidate
+    ? describeFlaUnifiedCandidate(focusedSingleCandidate)
+    : null;
+  const canImportFocused = focusedSingleItem ? canImportItems([focusedSingleItem]) : false;
+  const focusedSequenceItem = !multiSelectMode && focusedSequenceCandidate?.selectable
+    ? describeFlaUnifiedCandidate(focusedSequenceCandidate)
+    : null;
+  const canImportFocusedSequence = focusedSequenceItem
+    ? canImportItems([focusedSequenceItem])
+    : false;
+  const singleModeSummary = formatFlaSingleModeSummary(
+    focusedCandidate,
+    focusedSequenceCandidate,
+    ir?.document.frameRate,
+  );
 
-  const runImportAction = async (): Promise<void> => {
-    if (!snapshot || !canImportSelected || unifiedImportRunningRef.current) return;
-    const items = [...selectedUnifiedItems];
+  const runImportAction = async (
+    requestedItems: readonly FlaUnifiedImportItem[] = selectedUnifiedItems,
+  ): Promise<void> => {
+    const items = [...requestedItems];
+    if (!snapshot || !canImportItems(items) || unifiedImportRunningRef.current) return;
     cancelAfterCurrentRef.current = false;
     unifiedImportRunningRef.current = true;
+    const hasAnimation = items.some((item) => item.kind === 'sequence');
+    const hasImage = items.some((item) => item.kind !== 'sequence');
+    setUnifiedImportKind(hasAnimation ? (hasImage ? 'mixed' : 'animation') : 'image');
+    setStopAfterCurrentAvailable(false);
     setStopAfterCurrentRequested(false);
     setImportReceipt(null);
     setUnifiedImportRunning(true);
@@ -479,6 +531,7 @@ export function FlaCompatibilityReviewSession({
           ...(sequenceImportRunnerRef.current ? { sequence: sequenceImportRunnerRef.current } : {}),
         },
         shouldCancel: () => cancelAfterCurrentRef.current,
+        onStopActionAvailabilityChange: setStopAfterCurrentAvailable,
       });
       setImportReceipt(receipt);
       setCheckedCandidates(new Map());
@@ -509,6 +562,7 @@ export function FlaCompatibilityReviewSession({
     } finally {
       unifiedImportRunningRef.current = false;
       setUnifiedImportRunning(false);
+      setStopAfterCurrentAvailable(false);
       setPhase('ready');
       setStopAfterCurrentRequested(false);
       cancelAfterCurrentRef.current = false;
@@ -528,7 +582,7 @@ export function FlaCompatibilityReviewSession({
   };
 
   useEffect(() => {
-    if (!ir || !sessionId) return undefined;
+    if (phase !== 'inspecting' && (!ir || !sessionId)) return undefined;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
@@ -537,7 +591,7 @@ export function FlaCompatibilityReviewSession({
     };
     document.addEventListener('keydown', onKeyDown, true);
     return () => document.removeEventListener('keydown', onKeyDown, true);
-  }, [closeSession, ir, sessionId]);
+  }, [closeSession, ir, phase, sessionId]);
 
   if (phase === 'inspecting') {
     return (
@@ -627,8 +681,14 @@ export function FlaCompatibilityReviewSession({
       focusedCandidateIdentityKey={focusedSequenceCandidate?.identityKey ?? null}
       showUnifiedSequencePreview={showGeneratedSequencePreview}
       selectedOnlyView={selectedOnly}
+      multiSelectMode={multiSelectMode}
+      canImportSingle={canImportFocusedSequence}
+      onImportSingle={() => {
+        if (focusedSequenceItem) void runImportAction([focusedSequenceItem]);
+      }}
       presentation="unified-preview"
       sessionId={sessionId}
+      sourceFps={ir.document.frameRate}
       source={{ basename: ir.source.basename, sha256: ir.source.sha256 }}
       embedded
       snapshot={snapshot}
@@ -656,7 +716,7 @@ export function FlaCompatibilityReviewSession({
             data-testid="fla-review-cancel"
             disabled={closeLocked}
             onClick={closeSession}
-            title={closeLocked ? '项目保存完成前不能关闭；可停止后续导入。' : undefined}
+            title={closeLocked ? '正式导入完成前不能关闭。' : undefined}
             type="button"
           >
             ×
@@ -664,19 +724,26 @@ export function FlaCompatibilityReviewSession({
         </header>
 
         <FlaUnifiedWorkbench
-          candidates={unifiedCandidates}
+          candidates={workbenchCandidates}
+          allCandidates={unifiedCandidates}
           focusedCandidateIdentityKey={focusedCandidateIdentityKey}
+          multiSelectMode={multiSelectMode}
           searchText={searchText}
           selectedOnly={selectedOnly}
           selectedCount={selectedCount}
           locked={selectionLocked}
           canImport={canImportSelected}
           importing={unifiedImportRunning}
+          importKind={unifiedImportKind}
+          stopAfterCurrentAvailable={stopAfterCurrentAvailable}
           stopAfterCurrentRequested={stopAfterCurrentRequested}
           bulkConfirmationOpen={bulkConfirmationOpen}
           newEligibleCount={newEligibleCandidates.length}
           progress={catalogProgress}
           receipt={importReceipt}
+          singleModeSummary={singleModeSummary}
+          singleImportLabel={focusedSingleCandidate ? '导入图片' : null}
+          singleImportDisabled={!canImportFocused}
           showSnapshotPreview={showSnapshotPreview}
           showSequencePreview={showSequencePreview}
           snapshotPreview={snapshotPreview}
@@ -684,6 +751,7 @@ export function FlaCompatibilityReviewSession({
           onSearchTextChange={(value) => {
             setSearchText(value);
           }}
+          onToggleMultiSelectMode={toggleMultiSelectMode}
           onToggleSelectedOnly={() => {
             setBulkConfirmationOpen(false);
             setSelectedOnly((current) => !current);
@@ -697,6 +765,9 @@ export function FlaCompatibilityReviewSession({
           onCancelBulkSelection={() => setBulkConfirmationOpen(false)}
           onClearSelection={clearAllUnifiedCandidates}
           onImport={() => void runImportAction()}
+          onImportFocused={() => {
+            if (focusedSingleItem) void runImportAction([focusedSingleItem]);
+          }}
           onStopAfterCurrent={requestStopAfterCurrent}
         />
       </section>

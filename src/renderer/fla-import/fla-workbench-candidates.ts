@@ -383,6 +383,26 @@ export function readableRenderTargetLabel(target: FlaRenderTarget, includeFrame:
   return `${label} · 第 ${(target.selectedFrameIndex ?? 0) + 1} 帧`;
 }
 
+export function formatFlaSingleModeSummary(
+  focusedCandidate: FlaWorkbenchCandidate | null,
+  focusedSequenceCandidate: FlaWorkbenchCandidate | null,
+  sourceFps: number | undefined,
+): string | null {
+  if (!focusedCandidate) return null;
+  const label = readableFlaCandidateLabel(focusedCandidate.displayLabel);
+  if (focusedSequenceCandidate?.kind !== 'sequence') return `${label} · 图片`;
+  const frameCount = focusedSequenceCandidate.provenance.frameCount;
+  if (
+    typeof sourceFps === 'number' &&
+    Number.isFinite(sourceFps) &&
+    sourceFps > 0 &&
+    sourceFps <= 1_000
+  ) {
+    return `${label} · ${frameCount} 帧 · ${(frameCount / sourceFps).toFixed(2)} 秒`;
+  }
+  return `${label} · ${frameCount} 帧`;
+}
+
 export function focusFlaWorkbenchCandidate(
   selection: FlaWorkbenchCandidateSelection,
   candidateId: string | null,

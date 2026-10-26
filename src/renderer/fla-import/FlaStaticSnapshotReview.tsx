@@ -659,6 +659,7 @@ export function FlaStaticSnapshotReview({
     selectedItems,
     currentSnapshot,
     shouldCancel,
+    onItemCompleted,
   ): Promise<FlaUnifiedRouteResult> => {
     const selectedKeys = new Set(selectedItems.map((item) => item.key));
     const selectedCandidates = candidates.filter((candidate) =>
@@ -694,7 +695,7 @@ export function FlaStaticSnapshotReview({
         source,
         snapshot: currentSnapshot,
         onImported,
-        onProgress: () => undefined,
+        onProgress: (completedCount) => onItemCompleted?.(completedCount),
         shouldCancel,
       });
     } finally {
@@ -731,8 +732,8 @@ export function FlaStaticSnapshotReview({
   const runUnifiedImportRef = useRef(runUnifiedImport);
   runUnifiedImportRef.current = runUnifiedImport;
   const registeredImportRunner = useCallback<FlaUnifiedImportRunner>(
-    (selectedItems, currentSnapshot, shouldCancel) =>
-      runUnifiedImportRef.current(selectedItems, currentSnapshot, shouldCancel),
+    (selectedItems, currentSnapshot, shouldCancel, onItemCompleted) =>
+      runUnifiedImportRef.current(selectedItems, currentSnapshot, shouldCancel, onItemCompleted),
     [],
   );
   useEffect(() => {
@@ -819,7 +820,7 @@ export function FlaStaticSnapshotReview({
             </header>
             {stage ? (
               <p className="fla-snapshot-stage-fact" data-testid="fla-snapshot-source-facts">
-                {stage.width} × {stage.height} · {stage.frameRate} fps
+                {stage.width} × {stage.height}
               </p>
             ) : null}
             <p className="fla-snapshot-catalog-summary" data-testid="fla-snapshot-catalog-summary">{checkedCatalogSummary}</p>
@@ -1252,10 +1253,6 @@ export async function runFlaStaticSnapshotBatchImport(options: {
           };
         }
 
-        if (shouldCancel()) {
-          return { kind: 'cancelled' as const };
-        }
-
         commitAttempted = true;
         const commitStartedAt = startIssue762Profile();
         const response = await client.commit({
@@ -1301,11 +1298,6 @@ export async function runFlaStaticSnapshotBatchImport(options: {
       }
     } else if (outcome.value?.kind === 'preview-failed' || outcome.value?.kind === 'preview-changed') {
       items.push({ key, label, status: 'failed', message: outcome.value.message });
-    } else if (outcome.value?.kind === 'cancelled') {
-      items.push({ key, label, status: 'not-attempted', message: '已取消后续导入，此项未尝试。' });
-      cancelled = true;
-      stopAfterFailure = true;
-      stopReason = '已取消后续导入；剩余项目未尝试。';
     } else if (outcome.value?.kind === 'commit-response' && outcome.value.response.ok) {
       const response = outcome.value.response;
       currentProject = response.project;

@@ -86,6 +86,8 @@ export interface FlaStaticSnapshotSource {
   bytes: Uint8Array;
   basename: string;
   sha256: string;
+  /** SHA-256 of the selected FLA file before any in-memory recovery. */
+  originalSourceSha256?: string;
   /** Main-owned decoded inspection media; never returned to the Renderer. */
   media?: AnimationImportIR['media'];
 }
@@ -103,7 +105,11 @@ export interface FlaConfirmedSnapshotPreview {
   height: number;
   byteLength: number;
   target: FlaRenderTarget;
-  source: { basename: string; sha256: string };
+  source: {
+    basename: string;
+    sha256: string;
+    originalSourceSha256?: string;
+  };
 }
 
 export interface FlaStaticSnapshotRenderSessionOptions {
@@ -511,7 +517,13 @@ export class FlaStaticSnapshotRenderSession {
             height: raster.height,
             byteLength,
             target,
-            source: { basename: source.basename, sha256: source.sha256 },
+            source: {
+              basename: source.basename,
+              sha256: source.sha256,
+              ...(source.originalSourceSha256
+                ? { originalSourceSha256: source.originalSourceSha256 }
+                : {}),
+            },
           });
           this.settleActive(active, response);
         },

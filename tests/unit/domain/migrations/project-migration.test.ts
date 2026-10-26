@@ -4,6 +4,7 @@ import {
   migrateProject,
   ProjectSchema,
   ProjectV12Schema,
+  ProjectV13Schema,
   evaluateShotAtTime,
   resolveLayerVisualParts,
   type Project,
@@ -211,8 +212,10 @@ describe('T01 迁移回填 timelineEvents', () => {
   it('migrates strict v11 composite data with default Body placement and preserves its visual', () => {
     const current = buildProject();
     const original = current.characters[0]!;
+    const { animations: _animations, ...version11Fields } = current;
+    void _animations;
     const legacyV11 = {
-      ...current,
+      ...version11Fields,
       schemaVersion: 11,
       assets: current.assets.map((asset) => {
         if (asset.kind !== 'image') return asset;
@@ -291,8 +294,10 @@ describe('T01 迁移回填 timelineEvents', () => {
 
   it('migrates strict v12 assets to explicitly uncategorized v13 metadata', () => {
     const current = buildProject();
+    const { animations: _animations, ...withoutAnimations } = current;
+    void _animations;
     const legacyV12 = {
-      ...current,
+      ...withoutAnimations,
       schemaVersion: 12,
       assets: current.assets.map((asset) => {
         if (asset.kind !== 'image') return asset;
@@ -328,5 +333,23 @@ describe('T01 迁移回填 timelineEvents', () => {
     expect(migrated.characters).toEqual(legacyV12.characters);
     expect(migrated.shots).toEqual(legacyV12.shots);
     expect(legacyV12).toEqual(before);
+  });
+
+  it('migrates strict v13 projects to v14 with an empty animation collection', () => {
+    const current = buildProject();
+    const { animations: _animations, ...version13Fields } = current;
+    void _animations;
+    const legacyV13 = { ...version13Fields, schemaVersion: 13 };
+    const before = structuredClone(legacyV13);
+
+    expect(ProjectV13Schema.parse(legacyV13)).toEqual(legacyV13);
+    expect(ProjectSchema.safeParse(legacyV13).success).toBe(false);
+
+    const migrated = migrateProject(legacyV13);
+
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(migrated.animations).toEqual([]);
+    expect(migrated.assets).toEqual(current.assets);
+    expect(legacyV13).toEqual(before);
   });
 });

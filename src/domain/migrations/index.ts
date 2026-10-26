@@ -12,6 +12,7 @@ import {
   ProjectV10Schema,
   ProjectV11Schema,
   ProjectV12Schema,
+  ProjectV13Schema,
   ProjectV1Schema,
   inferLegacyBackgroundLayerId,
   migrateFormalProject,
@@ -42,6 +43,7 @@ export type DetectedSchemaVersion =
   | 10
   | 11
   | 12
+  | 13
   | typeof PROJECT_SCHEMA_VERSION;
 
 export class UnsupportedSchemaVersionError extends Error {
@@ -49,7 +51,7 @@ export class UnsupportedSchemaVersionError extends Error {
     super(
       `Unsupported project schemaVersion: ${String(
         receivedVersion,
-      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, and ${PROJECT_SCHEMA_VERSION}.`,
+      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, and ${PROJECT_SCHEMA_VERSION}.`,
     );
     this.name = 'UnsupportedSchemaVersionError';
   }
@@ -78,6 +80,7 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 10 ||
     version === 11 ||
     version === 12 ||
+    version === 13 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version as DetectedSchemaVersion;
@@ -98,6 +101,7 @@ function migrateImageAuthorMetadata(input: unknown): Project {
   return ProjectSchema.parse({
     ...envelope,
     schemaVersion: PROJECT_SCHEMA_VERSION,
+    animations: [],
     assets: envelope.assets.map((asset) => {
       if (
         !asset ||
@@ -213,12 +217,12 @@ function normalizeHistoricalSubtitleBackground(project: Project): Project {
 /**
  * The single authoritative persisted-project migration pipeline.
  *
- * Every persisted envelope (v0-v12) is routed here by version and resolved to
- * the current v13 project through exactly one path. The formal v1-v7
+ * Every persisted envelope (v0-v13) is routed here by version and resolved to
+ * the current v14 project through exactly one path. The formal v1-v7
  * transforms live in
  * `migrateFormalProject` (a shared helper, NOT wired into `ProjectSchema`),
  * and the current-project validator (`ProjectSchema`) is used only to
- * validate the resolved v13 shape. A narrow compatibility normalization then
+ * validate the resolved v14 shape. A narrow compatibility normalization then
  * replaces the one historical subtitle default while preserving all other
  * style values. There is no second, implicit migration path:
  * `ProjectSchema.parse` never migrates legacy input.
@@ -267,11 +271,20 @@ export function migrateProject(input: unknown): Project {
     }
     case 12:
       // v12 image assets had no author-defined usage or search keywords.
-      // Their facts remain explicitly uncategorized during the v13 upgrade.
+      // Their facts remain explicitly uncategorized during the v14 upgrade.
       project = migrateImageAuthorMetadata(ProjectV12Schema.parse(input));
       break;
+    case 13: {
+      const version13 = ProjectV13Schema.parse(input);
+      project = ProjectSchema.parse({
+        ...version13,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        animations: [],
+      });
+      break;
+    }
     case PROJECT_SCHEMA_VERSION:
-      // Current v13 envelope: validate it, then apply only the narrow
+      // Current v14 envelope: validate it, then apply only the narrow
       // historical-default compatibility normalization without mutating input.
       project = ProjectSchema.parse(input);
       break;

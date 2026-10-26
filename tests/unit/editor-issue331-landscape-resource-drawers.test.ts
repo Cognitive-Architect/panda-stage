@@ -53,7 +53,7 @@ describe('Issue #331 landscape resource drawers', () => {
     expect(shots).toContain('presentation?: ShotManagerPresentation');
     expect(shots).toContain("presentation === 'landscape' ? null");
     expect(assets).toContain('selectAssetLibraryEntries');
-    expect(assets).toContain('filterAssetLibraryEntries');
+    expect(assets).toContain('filterAssetLibraryItems');
     expect(assets).toContain('onImportFla={openFlaReview}');
     expect(assets).toContain('if (!hideHeading) onViewChange(\'details\');');
     expect(characters).toContain('characterStore.create');

@@ -72,6 +72,7 @@ export function buildProject(): Project {
         keywords: [],
       },
     ],
+    animations: [],
     characters: [
       {
         id: IDS.character,

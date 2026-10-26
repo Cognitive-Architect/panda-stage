@@ -31,6 +31,7 @@ export type FlaUnifiedImportRunner = (
   items: readonly FlaUnifiedImportItem[],
   snapshot: EditorProjectSnapshot,
   shouldCancel: () => boolean,
+  onItemCompleted?: (completedCount: number) => void,
 ) => Promise<FlaUnifiedRouteResult>;
 
 export interface FlaUnifiedImportReceipt {
@@ -73,11 +74,28 @@ export async function runFlaUnifiedImport(input: {
   snapshot: EditorProjectSnapshot;
   runners: Partial<Record<FlaWorkbenchCandidateKind, FlaUnifiedImportRunner>>;
   shouldCancel: () => boolean;
+  onStopActionAvailabilityChange?: (available: boolean) => void;
 }): Promise<FlaUnifiedImportReceipt> {
-  const { items, runners, shouldCancel } = input;
+  const { items, runners, shouldCancel, onStopActionAvailabilityChange } = input;
   const resultsByKey = new Map<string, FlaUnifiedImportResultItem>();
   const warnings: string[] = [];
   const routeOrder = [...new Set(items.map((item) => item.kind))];
+  const routeOperationCount = (kind: FlaWorkbenchCandidateKind): number => {
+    const routeItems = items.filter((item) => item.kind === kind);
+    if (routeItems.length === 0) return 0;
+    // Snapshot candidates commit one at a time; raster selections commit as
+    // one atomic batch and a sequence candidate is one transaction.
+    return kind === 'snapshot' ? routeItems.length : 1;
+  };
+  let remainingOperations = routeOrder.reduce((total, kind) => total + routeOperationCount(kind), 0);
+  let lastReportedStopAvailability: boolean | null = null;
+  const updateStopAvailability = (): void => {
+    const available = remainingOperations > 1;
+    if (available === lastReportedStopAvailability) return;
+    lastReportedStopAvailability = available;
+    onStopActionAvailabilityChange?.(available);
+  };
+  updateStopAvailability();
   let snapshot = input.snapshot;
   let stopFollowingRoutes = false;
   let cancelled = false;
@@ -96,6 +114,8 @@ export async function runFlaUnifiedImport(input: {
           message: cancelled ? '已取消后续导入，此项未尝试。' : '前一项未能完成，后续项目未尝试。',
         });
       }
+      remainingOperations = 0;
+      updateStopAvailability();
       continue;
     }
 
@@ -110,12 +130,26 @@ export async function runFlaUnifiedImport(input: {
       }
       warnings.push(`${kind} 候选没有注册安全导入路由；已停止后续操作。`);
       stopFollowingRoutes = true;
+      remainingOperations = 0;
+      updateStopAvailability();
       continue;
     }
 
+    const currentRouteOperationCount = routeOperationCount(kind);
+    let completedRouteOperations = 0;
+    const reportCompletedRouteOperations = (completedCount: number): void => {
+      const boundedCount = Math.max(
+        completedRouteOperations,
+        Math.min(currentRouteOperationCount, Math.trunc(completedCount)),
+      );
+      remainingOperations = Math.max(0, remainingOperations - (boundedCount - completedRouteOperations));
+      completedRouteOperations = boundedCount;
+      updateStopAvailability();
+    };
+
     let routeResult: FlaUnifiedRouteResult;
     try {
-      routeResult = await runner(routeItems, snapshot, shouldCancel);
+      routeResult = await runner(routeItems, snapshot, shouldCancel, reportCompletedRouteOperations);
     } catch (error) {
       const message = error instanceof Error
         ? `导入结果无法确认：${error.message}`
@@ -125,8 +159,12 @@ export async function runFlaUnifiedImport(input: {
       }
       warnings.push('导入路由异常结束；为避免重复写入，已停止后续项目。');
       stopFollowingRoutes = true;
+      remainingOperations = 0;
+      updateStopAvailability();
       continue;
     }
+
+    reportCompletedRouteOperations(currentRouteOperationCount);
 
     snapshot = routeResult.snapshot;
     warnings.push(...(routeResult.warnings ?? []));
@@ -159,6 +197,8 @@ export async function runFlaUnifiedImport(input: {
       })
     ) {
       stopFollowingRoutes = true;
+      remainingOperations = 0;
+      updateStopAvailability();
     }
   }
 

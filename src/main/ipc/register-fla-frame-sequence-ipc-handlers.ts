@@ -121,7 +121,11 @@ const defaultBuildFrameSource = async function* buildFrameSource(
     if (!svg.ok) {
       throw new Error(`R2 SVG build failed for frame ${i}: ${svg.message}`);
     }
-    yield { frameIndex: i, svg: svg.svg };
+    yield {
+      frameIndex: i,
+      svg: svg.svg,
+      sourceViewport: svg.composition.framing.viewBox,
+    };
   }
 };
 

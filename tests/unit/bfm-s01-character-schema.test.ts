@@ -261,10 +261,12 @@ describe('BFM-S01 Character schema', () => {
 
   it('keeps the historical v6 Character shape independent from current validation', () => {
     const project = buildProject();
+    const { animations: _animations, ...legacyProject } = project;
+    void _animations;
     const { mode, ...historicalCharacter } = project.characters[0]!;
     void mode;
     const v6 = {
-      ...project,
+      ...legacyProject,
       schemaVersion: 6 as const,
       assets: project.assets.map((asset) => {
         if (asset.kind !== 'image') return asset;

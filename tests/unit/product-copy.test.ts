@@ -48,7 +48,7 @@ describe('Stage 1A product copy', () => {
       'utf8',
     );
     expect(flaWorkbench).toContain('data-testid="fla-unified-import"');
-    expect(flaWorkbench).toContain('导入 {selectedCount} 项');
+    expect(flaWorkbench).toContain('data-testid="fla-single-import"');
     expect(ASSET_LIBRARY_SOURCE).not.toContain('已确认 FLA 素材选择；尚未创建项目素材。');
     expect(ASSET_LIBRARY_SOURCE).not.toContain('Read-only FLA selection intent');
     expect(ASSET_LIBRARY_SOURCE).not.toContain('Slice 3');
