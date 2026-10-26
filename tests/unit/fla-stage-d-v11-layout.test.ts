@@ -128,6 +128,8 @@ describe('Issue #775 C03 preserves the Stage D render runners in one workbench',
     expect(verifier).toContain('fla-single-import');
     expect(verifier).toContain('fla-single-mode-summary');
     expect(verifier).toContain('primaryActionMatchesMode');
+    expect(verifier).toContain('fla-frame-sequence-render');
+    expect(verifier).toContain("focusedCandidateKind === 'sequence'");
     expect(verifier).toContain('input[type="checkbox"]');
     expect(verifier).toContain('const ensureMultiSelectMode = async');
     expect(verifier).toContain('await ensureMultiSelectMode();');
@@ -140,8 +142,11 @@ describe('Issue #775 C03 preserves the Stage D render runners in one workbench',
     expect(verifier).toContain('cancellationNoMutation');
     expect(verifier).toContain('duplicateGroupPreservesSourceIdentity');
     expect(verifier).toContain('duplicateGroupDeclaredSourceCount');
-    expect(verifier).toContain('allSnapshotIdentitiesPreserved');
+    expect(verifier).toContain('candidateRepresentsSourceRow');
+    expect(verifier).toContain('allSourceTargetIdentitiesRepresented');
+    expect(verifier).toContain('representedSourceTargetCount');
     expect(verifier).toContain('stageGeometryMatches');
+    expect(verifier).toContain('previewGeometry.naturalWidth === previewGeometry.generatedWidth');
     expect(verifier).toContain('focusedTargetMatchesPreview');
     expect(verifier).toContain('exactDuplicateReused');
     expect(verifier).toContain('waitForNativeKeyboardUntil');
