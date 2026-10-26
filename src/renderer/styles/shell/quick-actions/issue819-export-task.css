@@ -9,13 +9,57 @@
 }
 
 .export-task-surface {
-  position: absolute;
+  position: relative;
   z-index: 46;
-  top: 58px;
-  right: 16px;
-  width: min(420px, calc(100vw - 32px));
-  max-height: min(70vh, 560px);
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(45vh, 380px);
   overflow: auto;
+  pointer-events: auto;
+  justify-self: end;
+}
+
+.editor-layout[data-top-region-layout='overlay']:has(
+    > .editor-top-region > .export-task-surface
+  ) {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.editor-layout[data-top-region-layout='overlay']:has(
+    > .editor-top-region > .export-task-surface
+  )
+  > .editor-top-region {
+  position: relative;
+  z-index: 45;
+  top: auto;
+  right: auto;
+  left: auto;
+  display: grid;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  overflow: visible;
+  pointer-events: auto;
+}
+
+.editor-layout[data-top-region-layout='overlay']:has(
+    > .editor-top-region > .export-task-surface
+  )
+  > .editor-top-region
+  > .recovery-prompt {
+  position: relative;
+  top: auto;
+  left: auto;
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  transform: none;
+}
+
+.editor-top-region > .export-task-surface {
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .export-task-panel {
@@ -74,13 +118,6 @@
   font: var(--ui-font-secondary);
 }
 
-.export-task-support-summary {
-  margin: 0;
-  color: var(--ui-color-text-secondary);
-  font: var(--ui-font-secondary);
-  line-height: 1.45;
-}
-
 .export-task-progress progress {
   width: 100%;
   min-width: 0;
@@ -91,6 +128,34 @@
   color: var(--ui-color-text-secondary);
   font: var(--ui-font-secondary);
   font-variant-numeric: tabular-nums;
+}
+
+.export-task-indeterminate {
+  position: relative;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--ui-color-border);
+}
+
+.export-task-indeterminate::after {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 36%;
+  border-radius: inherit;
+  background: var(--ui-color-action-primary);
+  content: '';
+  animation: export-task-progress-pulse 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes export-task-progress-pulse {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(180%);
+  }
 }
 
 .export-task-issues {
@@ -137,9 +202,12 @@
 
 @media (max-width: 520px) {
   .export-task-surface {
-    top: 56px;
-    right: 8px;
-    width: calc(100vw - 16px);
+    width: min(340px, calc(100vw - 16px));
+  }
+
+  .editor-top-region > .export-task-surface {
+    grid-column: 1;
+    justify-self: stretch;
   }
 }
 
@@ -147,5 +215,11 @@
   .export-task-spinner {
     animation-duration: 0.01ms;
     animation-iteration-count: 1;
+  }
+
+  .export-task-indeterminate::after {
+    left: 32%;
+    width: 36%;
+    animation: none;
   }
 }

@@ -1,16 +1,13 @@
 import {
+  ChevronDown,
   Check,
   FolderOpen,
   LoaderCircle,
   RefreshCw,
-  X,
 } from 'lucide-react';
 import { Button, IconButton, PanelSurface } from '../ui';
 import type { ExportJobPhase } from '../../shared/export-types';
-import {
-  EXPORT_PREPARATION_SUPPORT_PROFILE,
-  type ExportPreparationCameraMode,
-} from '../../shared/export-preparation-types';
+import type { ExportPreparationCameraMode } from '../../shared/export-preparation-types';
 import { shouldShowExportFrameProgress } from './exportTaskState';
 
 export type ExportTaskStatus =
@@ -41,6 +38,7 @@ export interface ExportTaskState {
   projectRoot?: string;
   durationMs?: number;
   cameraMode?: ExportPreparationCameraMode;
+  snapshotRetryAvailable?: boolean;
   phase?: ExportJobPhase;
   completedFrames: number;
   totalFrames: number;
@@ -128,11 +126,11 @@ export function ExportTaskSurface({
             {task.fileName ? <p>{task.fileName}</p> : null}
           </div>
           <IconButton
-            aria-label={'\u9690\u85cf\u5bfc\u51fa\u4efb\u52a1'}
+            aria-label={'\u6536\u8d77\u5bfc\u51fa\u4efb\u52a1'}
             className="export-task-hide"
-            icon={<X aria-hidden="true" size={18} />}
+            icon={<ChevronDown aria-hidden="true" size={18} />}
             onClick={onHide}
-            title={'\u9690\u85cf'}
+            title={'\u6536\u8d77'}
             variant="secondary"
           />
         </header>
@@ -141,12 +139,6 @@ export function ExportTaskSurface({
           {task.status === 'running' ? phaseCopy(task.phase) : STATUS_COPY[task.status]}
         </div>
 
-        {task.status === 'selecting' || task.status === 'preparing' ? (
-          <p className="export-task-support-summary" data-testid="export-support-summary">
-            {EXPORT_PREPARATION_SUPPORT_PROFILE.capabilityMatrix.visibleSummary}
-          </p>
-        ) : null}
-
         {hasFrameProgress ? (
           <div className="export-task-progress">
             <progress
@@ -154,8 +146,19 @@ export function ExportTaskSurface({
               max={task.totalFrames}
               value={Math.min(task.completedFrames, task.totalFrames)}
             />
-            <span>{progress}%</span>
+            <span>
+              {task.completedFrames.toLocaleString()} /{' '}
+              {task.totalFrames.toLocaleString()} 帧 · {progress}%
+            </span>
           </div>
+        ) : null}
+
+        {task.status === 'running' && !hasFrameProgress ? (
+          <div
+            aria-label={phaseCopy(task.phase)}
+            className="export-task-indeterminate"
+            role="progressbar"
+          />
         ) : null}
 
         {task.issues.length > 0 ? (
@@ -194,22 +197,25 @@ export function ExportTaskSurface({
                 variant="primary"
               >
                 <FolderOpen aria-hidden="true" size={16} />
-                {'\u663e\u793a\u89c6\u9891'}
+                {'\u5728\u6587\u4ef6\u5939\u4e2d\u663e\u793a'}
               </Button>
               <Button onClick={onStartNewExport} variant="secondary">
-                {'\u5bfc\u51fa\u65b0\u7248\u672c'}
+                {'\u518d\u6b21\u5bfc\u51fa'}
               </Button>
             </>
           ) : null}
           {task.status === 'failed' || task.status === 'cancelled' ? (
             <>
-              {task.snapshotId ? (
+              {task.snapshotId && task.snapshotRetryAvailable ? (
                 <Button onClick={onRetrySameSnapshot} variant="primary">
                   <RefreshCw aria-hidden="true" size={16} />
                   {'\u9009\u62e9\u4f4d\u7f6e\uff0c\u91cd\u8bd5\u539f\u5185\u5bb9'}
                 </Button>
               ) : null}
-              <Button onClick={onRetryCurrentContent} variant="secondary">
+              <Button
+                onClick={onRetryCurrentContent}
+                variant={task.snapshotRetryAvailable ? 'secondary' : 'primary'}
+              >
                 {'\u6309\u5f53\u524d\u5185\u5bb9\u91cd\u65b0\u5bfc\u51fa'}
               </Button>
             </>

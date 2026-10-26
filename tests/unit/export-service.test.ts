@@ -578,6 +578,92 @@ describe('ExportService', () => {
     expect(fileSystem.stagingFiles.size).toBe(0);
     expect(fileSystem.directories.size).toBe(0);
     expect(fileSystem.commitFormalOutputNoReplaceCalls).toBe(0);
+    expect(renderer.releasedJobs).toEqual([handle.jobId]);
+
+    renderer.failAtFrame = null;
+    media.result = {
+      ...probeResult,
+      frameCount: 216,
+      durationSeconds: 9,
+      hasAudio: false,
+      audioCodecName: null,
+      audioSampleRate: null,
+      audioChannels: null,
+      audioStartSeconds: null,
+      audioDurationSeconds: null,
+      audioStreamCount: 0,
+      formatDurationSeconds: 9,
+    };
+    const retryInput = structuredClone(input);
+    retryInput.candidate.outputIntent.targetPath =
+      `C:\\Panda Stage\\Output\\retry-shot-${frameIndex}.mp4`;
+    const retry = service.startFormalExport(retryInput, async () => {});
+    await expect(retry.completion).resolves.toMatchObject({
+      status: 'completed',
+    });
+    expect(renderer.releasedJobs).toEqual([handle.jobId, retry.jobId]);
+  });
+
+  it('releases the formal renderer after cancellation and accepts the next export', async () => {
+    const renderer = new MemoryRenderer();
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    const service = new ExportService(renderer, fileSystem, media);
+    const input = {
+      candidate: {
+        project: {
+          shots: [
+            {
+              id: '50000000-0000-4000-8000-000000000041',
+              durationMs: 3_000,
+              audioClips: [],
+            },
+          ],
+        },
+        projectRoot: 'C:\\Panda Stage\\Project',
+        cameraMode: 'static',
+        renderSettings: { width: 1_920, height: 1_080, fps: 24 },
+        outputIntent: {
+          targetPath: 'C:\\Panda Stage\\Output\\cancelled.mp4',
+          overwriteApproved: false,
+        },
+      },
+      media: [],
+    } as unknown as FrozenExportInput;
+    const renderFrame = renderer.renderFrame.bind(renderer);
+    let cancelJobId: string | null = null;
+    renderer.renderFrame = async (request) => {
+      const rendered = await renderFrame(request);
+      if (request.frameIndex === 0 && cancelJobId) {
+        const jobId = cancelJobId;
+        cancelJobId = null;
+        service.cancelJob(jobId);
+      }
+      return rendered;
+    };
+
+    const cancelled = service.startFormalExport(input, async () => {});
+    cancelJobId = cancelled.jobId;
+    await expect(cancelled.completion).rejects.toThrow(/\u5df2\u53d6\u6d88/);
+    expect(renderer.releasedJobs).toEqual([cancelled.jobId]);
+
+    renderer.renderFrame = renderFrame;
+    media.result = {
+      ...probeResult,
+      hasAudio: false,
+      audioCodecName: null,
+      audioSampleRate: null,
+      audioChannels: null,
+      audioStartSeconds: null,
+      audioDurationSeconds: null,
+      audioStreamCount: 0,
+    };
+    const retryInput = structuredClone(input);
+    retryInput.candidate.outputIntent.targetPath =
+      'C:\\Panda Stage\\Output\\after-cancel.mp4';
+    const retry = service.startFormalExport(retryInput, async () => {});
+    await expect(retry.completion).resolves.toMatchObject({ status: 'completed' });
+    expect(renderer.releasedJobs).toEqual([cancelled.jobId, retry.jobId]);
   });
 
   it('preflights frozen audio, builds a strict mix plan, muxes once, and commits no-clobber', async () => {

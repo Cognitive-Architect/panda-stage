@@ -81,6 +81,7 @@ import type {
   ExportPreparationResponse,
   ExportPreparationSelectOutputRequest,
   ExportPreparationSelectOutputResponse,
+  ExportPreparationSnapshotStatusResponse,
 } from '../shared/export-preparation-types';
 import type {
   NativeCloseSyncRequest,
@@ -248,6 +249,9 @@ declare global {
         cancel: (
           attemptId: string,
         ) => Promise<ExportPreparationCancelResponse>;
+        getSnapshotRetryStatus: (
+          snapshotId: string,
+        ) => Promise<ExportPreparationSnapshotStatusResponse>;
         discard: (
           request: ExportPreparationDiscardRequest,
         ) => Promise<ExportPreparationDiscardResponse>;

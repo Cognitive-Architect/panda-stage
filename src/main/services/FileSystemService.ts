@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import {
   access,
   link,
+  lstat,
   mkdir,
   readdir,
   realpath,
@@ -114,6 +115,28 @@ export class FileSystemService implements FrameFileSystem {
     private readonly options: FileSystemServiceOptions = {},
   ) {
     this.rootDirectory = path.resolve(rootDirectory);
+  }
+
+  async suggestFormalOutputPath(defaultPath: string): Promise<string> {
+    const resolvedPath = path.resolve(defaultPath);
+    if (path.extname(resolvedPath).toLocaleLowerCase() !== '.mp4') {
+      return resolvedPath;
+    }
+    const { dir, name, ext } = path.parse(resolvedPath);
+    for (let index = 1; index <= 999; index += 1) {
+      const candidate =
+        index === 1
+          ? resolvedPath
+          : path.join(dir, `${name} (${index})${ext}`);
+      if (
+        process.platform === 'win32' &&
+        !isWithinWindowsFormalExportPathLimit(candidate)
+      ) {
+        return resolvedPath;
+      }
+      if (!(await pathExists(candidate))) return candidate;
+    }
+    return resolvedPath;
   }
 
   async createJobDirectory(jobId: string): Promise<string> {
@@ -446,7 +469,7 @@ async function inspectWindowsVolumeWithPowerShell(
 
 async function pathExists(targetPath: string): Promise<boolean> {
   try {
-    await stat(targetPath);
+    await lstat(targetPath);
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;

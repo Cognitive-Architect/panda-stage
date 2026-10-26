@@ -18,6 +18,7 @@ export const IPC_CHANNELS = Object.freeze({
   EXPORT_PREPARATION_START: 'export-preparation:start',
   EXPORT_PREPARATION_CANCEL: 'export-preparation:cancel',
   EXPORT_PREPARATION_DISCARD: 'export-preparation:discard',
+  EXPORT_PREPARATION_SNAPSHOT_STATUS: 'export-preparation:snapshot-status',
   PROJECT_CREATE: 'project:create',
   PROJECT_CREATE_AT: 'project:create-at',
   PROJECT_CHOOSE_DIRECTORY: 'project:choose-directory',

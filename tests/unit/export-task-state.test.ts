@@ -3,6 +3,7 @@ import type { ExportJobUpdate } from '../../src/shared/export-types';
 import type { ExportTaskState } from '../../src/renderer/shell/ExportTaskSurface';
 import {
   applyExportJobUpdate,
+  safeExportFailureMessage,
   shouldRestoreExportTask,
   shouldShowExportFrameProgress,
 } from '../../src/renderer/shell/exportTaskState';
@@ -34,6 +35,18 @@ function update(overrides: Partial<ExportJobUpdate> = {}): ExportJobUpdate {
 }
 
 describe('export task state', () => {
+  it('maps a hidden window mode conflict to a direct recovery step', () => {
+    const message = safeExportFailureMessage(
+      'Hidden window export modes cannot change during a Job.',
+    );
+
+    expect(message).toContain('\u91cd\u65b0\u5bfc\u51fa');
+    expect(message).toContain('\u91cd\u542f Panda Stage');
+    expect(message).not.toContain('Hidden window');
+    expect(message).not.toContain('\u68c0\u67e5\u8f93\u5165\u8def\u5f84');
+    expect(message).not.toContain('\u5a92\u4f53\u5de5\u5177');
+  });
+
   it.each(['selecting', 'preparing', 'starting', 'running', 'cancelling', 'completed', 'failed', 'cancelled'] as const)(
     'restores the existing %s task from the export entry point',
     (status) => {

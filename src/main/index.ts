@@ -68,6 +68,7 @@ const hiddenWindowManager = new HiddenWindowManager();
 let exportService: ExportService | null = null;
 let exportPreparationService: ExportPreparationService | null = null;
 let exportFileSystem: FileSystemService | null = null;
+const lastFormalOutputPaths = new Map<string, string>();
 let removeIpcHandlers: (() => void) | null = null;
 let removeExportPreparationIpcHandlers: (() => void) | null = null;
 let removeProjectIpcHandlers: (() => void) | null = null;
@@ -133,6 +134,10 @@ function defaultExportFileName(projectName: string): string {
     baseName = '未命名工程';
   }
   return baseName + '.mp4';
+}
+
+function exportOutputProjectKey(projectRoot: string): string {
+  return path.resolve(projectRoot).toLocaleLowerCase('en-US');
 }
 
 if (process.env.PANDA_STAGE_GATE_A === '1') {
@@ -281,7 +286,13 @@ async function initialize(): Promise<void> {
         }
       };
       void handle.completion.then(
-        finalizeCandidate,
+        async (result) => {
+          lastFormalOutputPaths.set(
+            exportOutputProjectKey(result.projectDirectory),
+            result.outputPath,
+          );
+          await finalizeCandidate();
+        },
         (error: unknown) => {
           console.error(`Export Job ${handle.jobId} stopped.`, error);
           return preparation
@@ -400,13 +411,23 @@ async function initialize(): Promise<void> {
       getMainWindow: () => mainWindow,
       service: exportPreparationService,
       selectOutputPath: async (window, request) => {
-        const selection = await dialog.showSaveDialog(window, {
-          title: '选择导出视频位置',
-          buttonLabel: '选择输出位置',
-          defaultPath: path.join(
+      if (!exportFileSystem) {
+        throw new Error('Formal export filesystem is unavailable.');
+      }
+      const previousOutputPath = lastFormalOutputPaths.get(
+        exportOutputProjectKey(request.projectRoot),
+      );
+      const defaultPath = await exportFileSystem.suggestFormalOutputPath(
+        previousOutputPath ??
+          path.join(
             request.projectRoot,
             defaultExportFileName(request.projectName),
           ),
+      );
+      const selection = await dialog.showSaveDialog(window, {
+          title: '选择导出视频位置',
+          buttonLabel: '选择输出位置',
+        defaultPath,
           filters: [{ name: 'MP4 视频', extensions: ['mp4'] }],
           properties: [],
         });

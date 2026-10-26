@@ -64,6 +64,9 @@ describe('HiddenWindowManager frame failure correlation', () => {
       formalDrawMode: 'explicit-sync',
       formalPngMode: 'worker-png',
     });
+    const startupWindow = manager.create();
+    manager.markReady(42);
+    await startupWindow;
     const firstCreate = manager.prepareJob('formal');
     manager.markReady(42);
     await firstCreate;
@@ -87,11 +90,17 @@ describe('HiddenWindowManager frame failure correlation', () => {
     await secondCreate;
     expect(FakeBrowserWindow.instances[0]?.loadFileArguments?.[1]).toEqual({
       query: {
+        pandaStageDrawMode: 'legacy-raf',
+        pandaStagePngMode: 'legacy-blob',
+      },
+    });
+    expect(FakeBrowserWindow.instances[1]?.loadFileArguments?.[1]).toEqual({
+      query: {
         pandaStageDrawMode: 'explicit-sync',
         pandaStagePngMode: 'worker-png',
       },
     });
-    expect(FakeBrowserWindow.instances[1]?.loadFileArguments?.[1]).toEqual({
+    expect(FakeBrowserWindow.instances[2]?.loadFileArguments?.[1]).toEqual({
       query: {
         pandaStageDrawMode: 'legacy-raf',
         pandaStagePngMode: 'legacy-blob',
@@ -358,6 +367,81 @@ describe('HiddenWindowManager frame failure correlation', () => {
       },
     });
     expect(manager.getDiagnostics().drawMode).toBe('legacy-raf');
+    manager.releaseJob();
+  });
+
+  it('replaces an idle startup window and keeps each Job mode locked until release', async () => {
+    const manager = new HiddenWindowManager({
+      formalDrawMode: 'explicit-sync',
+      formalPngMode: 'worker-png',
+    });
+    const startupWindow = manager.create();
+    manager.markReady(42);
+    await startupWindow;
+
+    const firstJob = manager.prepareJob('formal');
+    manager.markReady(42);
+    await firstJob;
+
+    expect(FakeBrowserWindow.instances[0]?.isDestroyed()).toBe(true);
+    expect(FakeBrowserWindow.instances[1]?.loadFileArguments?.[1]).toEqual({
+      query: {
+        pandaStageDrawMode: 'explicit-sync',
+        pandaStagePngMode: 'worker-png',
+      },
+    });
+    await expect(manager.create('legacy-raf', 'legacy-blob')).rejects.toThrow(
+      /Hidden window export modes cannot change during a Job/,
+    );
+
+    const firstJobId = randomUUID();
+    const formalLoad = manager.loadFormal({
+      jobId: firstJobId,
+      project: {} as unknown as Project,
+      cameraMode: 'static',
+      media: [],
+    });
+    manager.markFormalLoaded(42, {
+      jobId: firstJobId,
+      acknowledged: true,
+    });
+    await formalLoad;
+    manager.releaseJob();
+
+    const secondJob = manager.prepareJob('formal');
+    manager.markReady(42);
+    await secondJob;
+    expect(FakeBrowserWindow.instances[1]?.isDestroyed()).toBe(true);
+    expect(FakeBrowserWindow.instances[2]?.loadFileArguments?.[1]).toEqual({
+      query: {
+        pandaStageDrawMode: 'explicit-sync',
+        pandaStagePngMode: 'worker-png',
+      },
+    });
+    manager.releaseJob();
+  });
+
+  it('clears the mode reservation when hidden-window startup fails so retry can proceed', async () => {
+    const manager = new HiddenWindowManager({
+      formalDrawMode: 'explicit-sync',
+      formalPngMode: 'worker-png',
+    });
+    const failedStartup = manager.prepareJob('formal');
+    manager.close();
+    await expect(failedStartup).rejects.toThrow(
+      /Hidden window closed during cleanup/,
+    );
+
+    const retry = manager.prepareJob('formal');
+    manager.markReady(42);
+    await retry;
+    expect(FakeBrowserWindow.instances).toHaveLength(2);
+    expect(FakeBrowserWindow.instances[1]?.loadFileArguments?.[1]).toEqual({
+      query: {
+        pandaStageDrawMode: 'explicit-sync',
+        pandaStagePngMode: 'worker-png',
+      },
+    });
     manager.releaseJob();
   });
 });

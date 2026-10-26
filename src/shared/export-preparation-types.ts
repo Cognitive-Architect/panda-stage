@@ -414,6 +414,17 @@ export const ExportPreparationDiscardResponseSchema = z
   .object({ discarded: z.boolean() })
   .strict();
 
+export const ExportPreparationSnapshotStatusRequestSchema = z
+  .object({ snapshotId: z.uuid() })
+  .strict();
+
+export const ExportPreparationSnapshotStatusResponseSchema = z
+  .object({
+    available: z.boolean(),
+    expiresAt: z.number().int().nonnegative().nullable(),
+  })
+  .strict();
+
 export const ExportPreparationCancelResponseSchema = z
   .object({ accepted: z.boolean() })
   .strict();
@@ -459,4 +470,10 @@ export type ExportPreparationCancelRequest = z.infer<
 >;
 export type ExportPreparationDiscardRequest = z.infer<
   typeof ExportPreparationDiscardRequestSchema
+>;
+export type ExportPreparationSnapshotStatusRequest = z.infer<
+  typeof ExportPreparationSnapshotStatusRequestSchema
+>;
+export type ExportPreparationSnapshotStatusResponse = z.infer<
+  typeof ExportPreparationSnapshotStatusResponseSchema
 >;

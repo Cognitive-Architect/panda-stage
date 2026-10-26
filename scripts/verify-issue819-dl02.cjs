@@ -40,9 +40,11 @@ const issue836R2MediaPreflightMode = process.env.PANDA_STAGE_ISSUE836_R2_MEDIA_P
 const issue836R2MediaReadPermissionAclMode = process.env.PANDA_STAGE_ISSUE836_R2_MEDIA_READ_PERMISSION_ACL === '1';
 const issue836R2OutputPermissionMode = process.env.PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION === '1';
 const issue836R2OutputPermissionAclMode = process.env.PANDA_STAGE_ISSUE836_R2_OUTPUT_PERMISSION_ACL === '1';
+const issue862ExportSmoke = process.env.PANDA_STAGE_ISSUE862_EXPORT_SMOKE === '1';
 const dl05Mode = process.env.PANDA_STAGE_ISSUE832_DL05 === '1' || dl05FollowupMode;
 const dl04SampleId = Number(process.env.PANDA_STAGE_ISSUE827_SAMPLE ?? '1');
 const baseDirectory =
+  process.env.PANDA_STAGE_ISSUE862_ROOT ??
   process.env.PANDA_STAGE_ISSUE834_ROOT ??
   process.env.PANDA_STAGE_ISSUE832_ROOT ??
   process.env.PANDA_STAGE_ISSUE827_ROOT ??
@@ -154,11 +156,13 @@ let exportPreparationService = null;
 let exportService = null;
 let exportFileSystem = null;
 let hiddenWindowManager = null;
+let issue862PrewarmDiagnostics = null;
 let removeExportPreparationHandlers = null;
 let removeProjectIpcHandlers = null;
 let removeExportHandlers = null;
 let assetBytesById = new Map();
 const formalStarts = [];
+const issue862JobModeSnapshots = [];
 const audioMixPlans = [];
 const jobUpdates = [];
 const mediaFailures = [];
@@ -619,6 +623,26 @@ function createExportService() {
   );
   exportService.subscribe((update) => {
     jobUpdates.push(update);
+    if (issue862ExportSmoke) {
+      const modes = hiddenWindowManager.getDiagnostics();
+      if (modes.windowOpen) {
+        const snapshot = {
+          jobId: update.jobId,
+          status: update.status,
+          phase: update.phase,
+          drawMode: modes.drawMode,
+          pngMode: modes.pngMode,
+        };
+        const previous = issue862JobModeSnapshots.at(-1);
+        if (
+          !previous || previous.jobId !== snapshot.jobId ||
+          previous.status !== snapshot.status || previous.phase !== snapshot.phase ||
+          previous.drawMode !== snapshot.drawMode || previous.pngMode !== snapshot.pngMode
+        ) {
+          issue862JobModeSnapshots.push(snapshot);
+        }
+      }
+    }
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.EXPORT_JOB_UPDATE, update);
     }
@@ -708,6 +732,13 @@ function createExportService() {
 
 function rendererJs(code) {
   return mainWindow.webContents.executeJavaScript(code, true);
+}
+
+async function capturePageAfterUiPaint() {
+  await rendererJs(
+    'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 50))))',
+  );
+  return mainWindow.webContents.capturePage();
 }
 
 async function waitForRenderer(expression, timeoutMs = 20_000) {
@@ -1498,7 +1529,9 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
       `${taskStatus} === 'failed' && ${taskSelector}?.innerText.includes(${JSON.stringify(options.expectedFailureText)})`,
       30_000,
     );
-    const image = await mainWindow.webContents.capturePage();
+    const image = options.waitForPaintCapture
+      ? await capturePageAfterUiPaint()
+      : await mainWindow.webContents.capturePage();
     const failureScreenshotPath = path.join(evidenceRoot, `${label}-blocked.png`);
     await fsp.writeFile(failureScreenshotPath, image.toPNG());
     const starts = formalStarts.slice(priorJobCount);
@@ -1536,13 +1569,132 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
     }
   }
   let progressCaptured = false;
+  let progressUiState = null;
+  let restoredScreenshotPath = null;
+  let encodingScreenshotPath = null;
+  let encodingUiState = null;
   try {
-    await waitForRenderer(`Number(document.querySelector('[data-testid="export-task-surface"] progress')?.value ?? 0) > 0`, 45_000);
-    const image = await mainWindow.webContents.capturePage();
+    const progressCondition = options.assertProgressSemantic
+      ? `(() => {
+          const task = window.__pandaStageIssue816Acceptance.inspectExportTask()?.task;
+          const progress = document.querySelector('[data-testid="export-task-surface"] progress');
+          return task?.jobId === ${JSON.stringify(await rendererJs('window.__pandaStageIssue816Acceptance.inspectExportTask()?.task?.jobId ?? null'))} &&
+            task.completedFrames > 0 && progress &&
+            Number(progress.max) === task.totalFrames &&
+            Number(progress.value) === task.completedFrames;
+        })()`
+      : `Number(document.querySelector('[data-testid="export-task-surface"] progress')?.value ?? 0) > 0`;
+    await waitForRenderer(progressCondition, 45_000);
+    if (options.assertProgressSemantic) {
+      progressUiState = await rendererJs(`(() => {
+        const task = window.__pandaStageIssue816Acceptance.inspectExportTask()?.task;
+        const progress = document.querySelector('[data-testid="export-task-surface"] progress');
+        return {
+          jobId: task?.jobId ?? null,
+          phase: task?.phase ?? null,
+          completedFrames: task?.completedFrames ?? null,
+          totalFrames: task?.totalFrames ?? null,
+          progressValue: progress ? Number(progress.value) : null,
+          progressMax: progress ? Number(progress.max) : null,
+          progressText: document.querySelector('[data-testid="export-task-surface"] .export-task-progress')?.innerText ?? null,
+        };
+      })()`);
+      assert(
+        progressUiState.completedFrames > 0 &&
+        progressUiState.progressValue === progressUiState.completedFrames &&
+        progressUiState.progressMax === progressUiState.totalFrames &&
+        progressUiState.progressText.includes(`${progressUiState.completedFrames} / ${progressUiState.totalFrames}`) &&
+        progressUiState.progressText.includes(`${Math.floor((progressUiState.completedFrames / progressUiState.totalFrames) * 100)}%`),
+        `${label}: visible frame progress did not match the real Job counts: ${JSON.stringify(progressUiState)}`,
+      );
+    }
+    const image = options.waitForPaintCapture
+      ? await capturePageAfterUiPaint()
+      : await mainWindow.webContents.capturePage();
     await fsp.writeFile(path.join(evidenceRoot, `${label}-progress.png`), image.toPNG());
     progressCaptured = true;
   } catch {
     // Export may finish before a frame-progress screenshot is sampled.
+  }
+  if (options.hideAndRestoreDuringRun && progressCaptured) {
+    const hideButtonLabel = await rendererJs(
+      `document.querySelector('[data-testid="export-task-surface"] .export-task-hide')?.getAttribute('aria-label') ?? null`,
+    );
+    assert(hideButtonLabel === '收起导出任务', `${label}: task hide button has an unexpected accessible name.`);
+    const activeJobId = await rendererJs(
+      'window.__pandaStageIssue816Acceptance.inspectExportTask()?.task?.jobId ?? null',
+    );
+    const startsBeforeRestore = formalStarts.length;
+    await clickSelector('[data-testid="export-task-surface"] .export-task-hide');
+    await waitForRenderer("!document.querySelector('[data-testid=\"export-task-surface\"]')");
+    await clickSelector('[data-testid="quick-action-export"]');
+    await waitForRenderer(
+      `document.querySelector('[data-testid="export-task-surface"]')?.dataset.taskStatus === 'running' && window.__pandaStageIssue816Acceptance.inspectExportTask()?.task?.jobId === ${JSON.stringify(activeJobId)}`,
+    );
+    assert(formalStarts.length === startsBeforeRestore, `${label}: restoring the hidden panel started a second formal Job.`);
+    restoredScreenshotPath = path.join(evidenceRoot, `${label}-restored.png`);
+    const restoredImage = options.waitForPaintCapture
+      ? await capturePageAfterUiPaint()
+      : await mainWindow.webContents.capturePage();
+    const restoredImageBytes = restoredImage.toPNG();
+    await fsp.writeFile(restoredScreenshotPath, restoredImageBytes);
+    if (options.assertProgressSemantic) {
+      progressUiState = await rendererJs(`(() => {
+        const task = window.__pandaStageIssue816Acceptance.inspectExportTask()?.task;
+        const progress = document.querySelector('[data-testid="export-task-surface"] progress');
+        return {
+          jobId: task?.jobId ?? null,
+          phase: task?.phase ?? null,
+          completedFrames: task?.completedFrames ?? null,
+          totalFrames: task?.totalFrames ?? null,
+          progressValue: progress ? Number(progress.value) : null,
+          progressMax: progress ? Number(progress.max) : null,
+          progressText: document.querySelector('[data-testid="export-task-surface"] .export-task-progress')?.innerText ?? null,
+        };
+      })()`);
+      assert(
+        progressUiState.jobId === activeJobId &&
+        progressUiState.progressValue === progressUiState.completedFrames &&
+        progressUiState.progressMax === progressUiState.totalFrames &&
+        progressUiState.progressText.includes(`${progressUiState.completedFrames} / ${progressUiState.totalFrames}`),
+        `${label}: restored panel frame progress diverged from the active Job: ${JSON.stringify(progressUiState)}`,
+      );
+      await fsp.writeFile(path.join(evidenceRoot, `${label}-progress.png`), restoredImageBytes);
+    }
+  }
+  if (options.captureEncodingPhase) {
+    const activeJobId = await rendererJs(
+      'window.__pandaStageIssue816Acceptance.inspectExportTask()?.task?.jobId ?? null',
+    );
+    await waitForRenderer(
+      `window.__pandaStageIssue816Acceptance.inspectExportTask()?.task?.jobId === ${JSON.stringify(activeJobId)} && window.__pandaStageIssue816Acceptance.inspectExportTask()?.task?.phase === 'encoding'`,
+      options.encodingTimeoutMs ?? 180_000,
+    );
+    encodingUiState = await rendererJs(`(() => {
+      const task = window.__pandaStageIssue816Acceptance.inspectExportTask()?.task;
+      const surface = document.querySelector('[data-testid="export-task-surface"]');
+      return {
+        jobId: task?.jobId ?? null,
+        status: task?.status ?? null,
+        phase: task?.phase ?? null,
+        statusText: surface?.querySelector('.export-task-status')?.innerText ?? null,
+        hasDeterminateProgress: Boolean(surface?.querySelector('.export-task-progress progress')),
+        indeterminateLabel: surface?.querySelector('.export-task-indeterminate')?.getAttribute('aria-label') ?? null,
+      };
+    })()`);
+    assert(
+      encodingUiState.status === 'running' &&
+      encodingUiState.phase === 'encoding' &&
+      encodingUiState.statusText === '正在合成视频' &&
+      !encodingUiState.hasDeterminateProgress &&
+      encodingUiState.indeterminateLabel === '正在合成视频',
+      `${label}: encoding phase exposed misleading frame progress or copy: ${JSON.stringify(encodingUiState)}`,
+    );
+    encodingScreenshotPath = path.join(evidenceRoot, `${label}-encoding.png`);
+    const encodingImage = options.waitForPaintCapture
+      ? await capturePageAfterUiPaint()
+      : await mainWindow.webContents.capturePage();
+    await fsp.writeFile(encodingScreenshotPath, encodingImage.toPNG());
   }
   if (options.cancelAfterProgress) {
     assert(progressCaptured, `${label}: export completed before cancellation could be exercised.`);
@@ -1555,7 +1707,9 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
     await waitForRenderer(`${taskStatus} === 'cancelled'`, 60_000);
     const starts = formalStarts.slice(priorJobCount);
     assert(starts.length === 1, `${label}: expected one cancelled Main export.`);
-    const image = await mainWindow.webContents.capturePage();
+    const image = options.waitForPaintCapture
+      ? await capturePageAfterUiPaint()
+      : await mainWindow.webContents.capturePage();
     const cancelledScreenshotPath = path.join(evidenceRoot, `${label}-cancelled.png`);
     await fsp.writeFile(cancelledScreenshotPath, image.toPNG());
     return {
@@ -1565,6 +1719,8 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
       start: starts[0],
       status: 'cancelled',
       progressCaptured,
+      progressUiState,
+      restoredScreenshotPath,
       nativeSaveAsScreenshotPath: nativeSavePath,
       progressScreenshotPath: path.join(evidenceRoot, `${label}-progress.png`),
       cancelledScreenshotPath,
@@ -1586,7 +1742,9 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
     assert(starts.length === 1, `${label}: expected one failed Main export.`);
     const failedJob = exportService.getJob(starts[0].jobId);
     const taskText = await rendererJs(`${taskSelector}?.innerText ?? ''`);
-    const image = await mainWindow.webContents.capturePage();
+    const image = options.waitForPaintCapture
+      ? await capturePageAfterUiPaint()
+      : await mainWindow.webContents.capturePage();
     const failureScreenshotPath = path.join(evidenceRoot, `${label}-failed.png`);
     await fsp.writeFile(failureScreenshotPath, image.toPNG());
     return {
@@ -1612,7 +1770,9 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
     throw new Error(`${label}: formal export ended as ${finalStatus}. ${JSON.stringify({ startAction, failedJob, latestUpdate: jobUpdates.at(-1), taskText })}`);
   }
   const after = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
-  const taskImage = await mainWindow.webContents.capturePage();
+  const taskImage = options.waitForPaintCapture
+    ? await capturePageAfterUiPaint()
+    : await mainWindow.webContents.capturePage();
   const completedScreenshotPath = path.join(evidenceRoot, `${label}-completed.png`);
   await fsp.writeFile(completedScreenshotPath, taskImage.toPNG());
   assert(starts.length === 1, `${label}: expected one formal Main export start, got ${starts.length}.`);
@@ -1622,6 +1782,10 @@ async function startFromCreatorUi(evidenceRoot, label, options = {}) {
     startAction,
     start: starts[0],
     progressCaptured,
+    progressUiState,
+    restoredScreenshotPath,
+    encodingScreenshotPath,
+    encodingUiState,
     nativeSaveAsScreenshotPath: nativeSavePath,
     windowsOverwriteScreenshotPath: options.captureOverwritePrompt ? overwritePromptPath : null,
     progressScreenshotPath: progressCaptured ? path.join(evidenceRoot, `${label}-progress.png`) : null,
@@ -4349,6 +4513,16 @@ async function runIssue827Acceptance({ result, editorSnapshotPath, editorSnapsho
 
 async function run() {
   assert(
+    !issue862ExportSmoke || !(
+      dl03Mode || dl04Mode || dl05Mode || dl06R0Mode ||
+      issue836R2PathBoundaryMode || issue836R2PathSuccessMode ||
+      issue836R2CommitRaceMode || issue836R2CopyFailureMode ||
+      issue836R2MediaPreflightMode || issue836R2OutputPermissionMode ||
+      issue836R2OutputPermissionAclMode || issue836R2MediaReadPermissionAclMode
+    ),
+    'Issue #862 export smoke cannot be combined with another acceptance mode.',
+  );
+  assert(
     !issue836R2CopyFailureValidMp4Mode || issue836R2CopyFailureMode,
     'Issue #836 valid-MP4 copy-failure mode requires the copy-failure mode.',
   );
@@ -4459,6 +4633,16 @@ async function run() {
   createExportService();
   const mediaTools = resolveMediaToolPaths({ isPackaged: false, resourcesPath: process.resourcesPath });
   await app.whenReady();
+  if (issue862ExportSmoke) {
+    await hiddenWindowManager.create();
+    issue862PrewarmDiagnostics = hiddenWindowManager.getDiagnostics();
+    assert(
+      issue862PrewarmDiagnostics.windowOpen &&
+      issue862PrewarmDiagnostics.drawMode === 'legacy-raf' &&
+      issue862PrewarmDiagnostics.pngMode === 'legacy-blob',
+      `Issue #862 smoke did not reproduce the normal startup prewarm modes: ${JSON.stringify(issue862PrewarmDiagnostics)}`,
+    );
+  }
   mainWindow = await createMainWindow({ show: true, issue816Acceptance: true });
   if (dl05FollowupMode) installIssue834CloseGuard(mainWindow);
   mainWindow.setContentSize(1280, 800);
@@ -4470,11 +4654,13 @@ async function run() {
   mainWindow.webContents.focus();
 
   const result = {
-    issue: issue836R2CommitRaceMode || issue836R2CopyFailureMode || issue836R2MediaPreflightMode || issue836R2OutputPermissionMode || issue836R2OutputPermissionAclMode || issue836R2MediaReadPermissionAclMode || dl06R0Mode ? 836 : dl05FollowupMode ? 834 : dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
+    issue: issue862ExportSmoke ? 862 : issue836R2CommitRaceMode || issue836R2CopyFailureMode || issue836R2MediaPreflightMode || issue836R2OutputPermissionMode || issue836R2OutputPermissionAclMode || issue836R2MediaReadPermissionAclMode || dl06R0Mode ? 836 : dl05FollowupMode ? 834 : dl05Mode ? 832 : dl04Mode ? 827 : dl03Mode ? 823 : 819,
     wrapperRunId: process.env.PANDA_STAGE_ISSUE836_RUN_ID ?? process.env.PANDA_STAGE_ISSUE834_RUN_ID ?? process.env.PANDA_STAGE_ISSUE832_RUN_ID ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_RUN_ID ?? null,
     sourceCommitSha: process.env.PANDA_STAGE_ISSUE836_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE834_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE832_SOURCE_SHA ?? process.env.PANDA_STAGE_ISSUE827_WRAPPER_COMMIT_SHA ?? null,
     sampleId: dl04Mode || dl05Mode ? dl04SampleId : null,
-    workOrder: issue836R2MediaReadPermissionAclMode
+    workOrder: issue862ExportSmoke
+      ? 'Issue #862 startup-prewarm cancel-and-retry formal MP4 Electron smoke'
+      : issue836R2MediaReadPermissionAclMode
       ? 'Issue #836 R2 AC03: Creator UI real Windows ACL required-media read-permission preservation'
       : issue836R2OutputPermissionAclMode
       ? 'Issue #836 R2 AC03: Creator UI real Windows ACL output-folder permission preservation'
@@ -4518,6 +4704,15 @@ async function run() {
       expressionAssetHashes: fixture.expressionAssetHashes,
       mouthOpenAssetSha256: fixture.mouthOpenAssetSha256,
     },
+    ...(issue862ExportSmoke
+      ? {
+          prewarmedWindow: issue862PrewarmDiagnostics,
+          requestedFormalModes: {
+            drawMode: process.env.PANDA_STAGE_EXPORT_DRAW_MODE ?? 'explicit-sync',
+            pngMode: process.env.PANDA_STAGE_EXPORT_PNG_MODE ?? 'legacy-blob',
+          },
+        }
+      : {}),
   };
 
   try {
@@ -4547,6 +4742,152 @@ async function run() {
     await waitForRenderer("window.__pandaStageIssue816Acceptance && (await window.__pandaStageIssue816Acceptance.inspect())?.project");
     const opened = await rendererJs('window.__pandaStageIssue816Acceptance.inspect()');
     assert(opened.project.id === fixtureProject.id, 'Creator UI opened a different Project.');
+
+    if (issue862ExportSmoke) {
+      assert(mediaTools.ffmpegPath && existsSync(mediaTools.ffmpegPath), 'The resolved FFmpeg executable is missing.');
+      assert(mediaTools.ffprobePath && existsSync(mediaTools.ffprobePath), 'The resolved FFprobe executable is missing.');
+      const projectBytesBefore = await fsp.readFile(projectFilePath);
+      const assetHashesBefore = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+        assetId: asset.id,
+        relativePath: asset.relativePath,
+        sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+      })));
+      const cancelledPath = path.join(fixture.projectRoot, 'issue862-cancelled.mp4');
+      const completedPath = path.join(fixture.projectRoot, 'issue862-retry.mp4');
+      assert(!existsSync(cancelledPath), 'The cancellation target must begin absent.');
+      assert(!existsSync(completedPath), 'The retry target must begin absent.');
+
+      await clickSelector('[data-testid="quick-action-drawer-handle"]');
+      await waitForRenderer("document.querySelector('[data-testid=\"quick-action-drawer\"]')?.getAttribute('data-expanded') === 'true'");
+      const cancelledRun = await startFromCreatorUi(
+        evidenceRoot,
+        'issue862-warmed-cancel',
+        {
+          selectedFileName: path.basename(cancelledPath),
+          cancelAfterProgress: true,
+          duplicateClickDuringRun: true,
+          hideAndRestoreDuringRun: true,
+          assertProgressSemantic: true,
+          waitForPaintCapture: true,
+          failFastOnStartFailure: true,
+          abortOnTimeout: true,
+        },
+      );
+      assert(cancelledRun.status === 'cancelled', 'The warmed-window formal Job did not reach cancelled.');
+      assert(!existsSync(cancelledPath), 'The cancelled warmed-window Job published an MP4.');
+      assert(!hiddenWindowManager.getDiagnostics().windowOpen, 'The cancelled Job did not release its hidden renderer.');
+
+      const completedRun = await startFromCreatorUi(
+        evidenceRoot,
+        'issue862-warmed-retry',
+        {
+          selectedFileName: path.basename(completedPath),
+          captureEncodingPhase: true,
+          waitForPaintCapture: true,
+          failFastOnStartFailure: true,
+          abortOnTimeout: true,
+        },
+      );
+      const completedJob = exportService.getJob(completedRun.start.jobId);
+      assert(completedJob?.status === 'completed', `The retry Job did not complete: ${JSON.stringify(completedJob)}`);
+      assert(path.resolve(exportService.getCompletedOutputPath(completedRun.start.jobId) ?? '') === path.resolve(completedPath), 'The completed Job points to a different output target.');
+      assert(existsSync(completedPath), 'The completed retry did not publish its MP4.');
+
+      const requestedPngMode = process.env.PANDA_STAGE_EXPORT_PNG_MODE ?? 'legacy-blob';
+      const requestedDrawMode = process.env.PANDA_STAGE_EXPORT_DRAW_MODE ?? 'explicit-sync';
+      const relevantModeSnapshots = issue862JobModeSnapshots.filter((snapshot) =>
+        snapshot.jobId === cancelledRun.start.jobId || snapshot.jobId === completedRun.start.jobId,
+      );
+      assert(
+        relevantModeSnapshots.some((snapshot) =>
+          snapshot.drawMode === requestedDrawMode && snapshot.pngMode === requestedPngMode,
+        ),
+        `The formal Job did not render using the requested mode pair: ${JSON.stringify(relevantModeSnapshots)}`,
+      );
+      const probeResult = await runProcess(mediaTools.ffprobePath, [
+        '-v', 'error', '-count_frames', '-show_streams', '-show_format', '-of', 'json', completedPath,
+      ]);
+      const probe = JSON.parse(probeResult.stdout);
+      const video = probe.streams?.find((stream) => stream.codec_type === 'video');
+      const frameCount = Number(video?.nb_read_frames ?? video?.nb_frames);
+      const fpsParts = String(video?.avg_frame_rate ?? video?.r_frame_rate ?? '0/1').split('/');
+      const fps = Number(fpsParts[0]) / Number(fpsParts[1] || 1);
+      assert(video?.codec_name === 'h264', 'FFprobe did not report H.264 for the retry output.');
+      assert(video?.pix_fmt === 'yuv420p', 'FFprobe did not report yuv420p for the retry output.');
+      assert(video?.width === 1920 && video?.height === 1080, 'FFprobe reported unexpected retry output dimensions.');
+      assert(Math.abs(fps - 24) < 0.001 && frameCount === 157, 'FFprobe reported an unexpected retry frame rate or count.');
+
+      const projectBytesAfter = await fsp.readFile(projectFilePath);
+      const assetHashesAfter = await Promise.all(fixtureProject.assets.map(async (asset) => ({
+        assetId: asset.id,
+        relativePath: asset.relativePath,
+        sha256: hash(await fsp.readFile(path.join(fixture.projectRoot, asset.relativePath))),
+      })));
+      assert(projectBytesAfter.equals(projectBytesBefore), 'The UI export smoke changed the input project.json.');
+      assert(JSON.stringify(assetHashesAfter) === JSON.stringify(assetHashesBefore), 'The UI export smoke changed an input media file.');
+      const temporaryCleanup = await assertNoExportTemporaries('Issue #862 warmed-window smoke');
+      const ffmpegVersion = await runProcess(mediaTools.ffmpegPath, ['-version']);
+      const ffprobeVersion = await runProcess(mediaTools.ffprobePath, ['-version']);
+      result.prewarmedWindow = issue862PrewarmDiagnostics;
+      result.formalModesObserved = relevantModeSnapshots;
+      result.cancelledJob = {
+        jobId: cancelledRun.start.jobId,
+        status: exportService.getJob(cancelledRun.start.jobId)?.status,
+        targetPath: cancelledPath,
+        targetAbsent: !existsSync(cancelledPath),
+        progressScreenshot: cancelledRun.progressScreenshotPath,
+        progressUiState: cancelledRun.progressUiState,
+        restoredScreenshot: cancelledRun.restoredScreenshotPath,
+        cancelledScreenshot: cancelledRun.cancelledScreenshotPath,
+        duplicateClickStartedSecondJob: false,
+        hiddenRendererReleased: !hiddenWindowManager.getDiagnostics().windowOpen,
+      };
+      result.retryJob = {
+        jobId: completedRun.start.jobId,
+        status: completedJob.status,
+        targetPath: completedPath,
+        sha256: hash(await fsp.readFile(completedPath)),
+        byteLength: (await fsp.stat(completedPath)).size,
+        encodingScreenshot: completedRun.encodingScreenshotPath,
+        encodingUiState: completedRun.encodingUiState,
+        completedScreenshot: completedRun.completedScreenshotPath,
+        ffprobe: {
+          codec: video.codec_name,
+          pixelFormat: video.pix_fmt,
+          width: video.width,
+          height: video.height,
+          frameRate: fps,
+          frameCount,
+          format: probe.format?.format_name ?? null,
+        },
+      };
+      result.mediaTools = {
+        ffmpegPath: mediaTools.ffmpegPath,
+        ffmpegVersion: ffmpegVersion.stdout.split(/\r?\n/u)[0],
+        ffprobePath: mediaTools.ffprobePath,
+        ffprobeVersion: ffprobeVersion.stdout.split(/\r?\n/u)[0],
+      };
+      result.inputPreservation = {
+        projectPath: projectFilePath,
+        projectSha256Before: hash(projectBytesBefore),
+        projectSha256After: hash(projectBytesAfter),
+        projectUnchanged: projectBytesBefore.equals(projectBytesAfter),
+        mediaBefore: assetHashesBefore,
+        mediaAfter: assetHashesAfter,
+        mediaUnchanged: JSON.stringify(assetHashesBefore) === JSON.stringify(assetHashesAfter),
+      };
+      result.temporaryCleanup = temporaryCleanup;
+      result.auto = 'PASS';
+      result.completedAt = new Date().toISOString();
+      result.owner = 'NOT_ATTESTED';
+      await fsp.writeFile(path.join(evidenceRoot, 'issue862-export-smoke-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
+      await fsp.writeFile(path.join(fixture.root, 'issue862-export-smoke-receipt.json'), JSON.stringify(result, null, 2), 'utf8');
+      console.log(`PASS #862 warmed-window cancel-and-retry formal export smoke: ${fixture.root}`);
+      mainWindow.destroy();
+      hiddenWindowManager.close();
+      app.exit(0);
+      return;
+    }
 
     if (dl05FollowupMode) {
       await runIssue834FollowupAcceptance({ result, opened, initialProjectBytes, projectFilePath });

@@ -1282,6 +1282,29 @@ describe('ExportPreparationService', () => {
     await fixture.service.discard(undefined, candidate.snapshotId);
   });
 
+  it('reports whether the frozen retry snapshot is still available', async () => {
+    const fixture = await harness();
+    const selection = await selectOutput(fixture, 'retry-status.mp4');
+    const prepared = await fixture.service.prepare(
+      requestFor(fixture, selection.selectionId),
+    );
+    expect(prepared.status).toBe('PREPARATION_READY');
+    if (prepared.status !== 'PREPARATION_READY') return;
+
+    const snapshotId = prepared.candidate.snapshotId;
+    await expect(fixture.service.getSnapshotRetryStatus(snapshotId)).resolves.toEqual({
+      available: true,
+      expiresAt: new Date('2026-10-21T03:30:00.000Z').getTime(),
+    });
+    fixture.setNow(new Date('2026-10-21T03:30:01.000Z'));
+    await expect(fixture.service.getSnapshotRetryStatus(snapshotId)).resolves.toEqual({
+      available: false,
+      expiresAt: null,
+    });
+    expect(await readDirectoryOrEmpty(fixture.fileStore.rootDirectory)).toEqual([]);
+    fixture.service.disposeSync();
+  });
+
   it('expires retained snapshots and removes their owned media', async () => {
     const fixture = await harness();
     const selection = await selectOutput(fixture, 'expires.mp4');

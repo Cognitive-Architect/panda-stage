@@ -783,6 +783,16 @@ export class ExportPreparationService {
     return this.activePreparation !== null;
   }
 
+  async getSnapshotRetryStatus(
+    snapshotId: string,
+  ): Promise<{ available: boolean; expiresAt: number | null }> {
+    await this.pruneExpiredCandidates();
+    const stored = this.candidates.get(snapshotId);
+    return stored
+      ? { available: true, expiresAt: stored.retryExpiresAt }
+      : { available: false, expiresAt: null };
+  }
+
   cancel(attemptId: string): boolean {
     const active = this.activePreparation;
     if (!active || active.attemptId !== attemptId) return false;

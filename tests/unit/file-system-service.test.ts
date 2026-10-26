@@ -69,6 +69,33 @@ describe('FileSystemService Unicode paths and cleanup', () => {
     ).toBe(false);
   });
 
+  it('suggests the next unused same-name MP4 without touching existing outputs', async () => {
+    const parent = await mkdtemp(
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-export-name-'),
+    );
+    temporaryRoots.push(parent);
+    const service = new FileSystemService(path.join(parent, 'frames'));
+    const outputPath = path.join(parent, 'Scene.mp4');
+
+    await expect(service.suggestFormalOutputPath(outputPath)).resolves.toBe(
+      outputPath,
+    );
+    await writeFile(outputPath, 'first export', 'utf8');
+    const secondOutputPath = path.join(parent, 'Scene (2).mp4');
+    await expect(service.suggestFormalOutputPath(outputPath)).resolves.toBe(
+      secondOutputPath,
+    );
+    await writeFile(secondOutputPath, 'second export', 'utf8');
+
+    await expect(service.suggestFormalOutputPath(outputPath)).resolves.toBe(
+      path.join(parent, 'Scene (3).mp4'),
+    );
+    await expect(readFile(outputPath, 'utf8')).resolves.toBe('first export');
+    await expect(readFile(secondOutputPath, 'utf8')).resolves.toBe(
+      'second export',
+    );
+  });
+
   it('writes in a Unicode root and cleans the same Job idempotently', async () => {
     const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-day09-'));
     temporaryRoots.push(parent);

@@ -51,6 +51,7 @@ describe('IPC channel registry', () => {
       'export-preparation:start',
       'export-preparation:cancel',
       'export-preparation:discard',
+      'export-preparation:snapshot-status',
       'project:create',
       'project:create-at',
       'project:choose-directory',

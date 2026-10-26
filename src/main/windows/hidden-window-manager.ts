@@ -44,6 +44,10 @@ export class HiddenWindowManager {
   private readonly frameTiming: boolean;
   private nextFormalDrawMode: ExportDrawMode;
   private nextFormalPngMode: ExportPngMode;
+  private jobModeLock: {
+    drawMode: ExportDrawMode;
+    pngMode: ExportPngMode;
+  } | null = null;
   private windowDrawMode: ExportDrawMode | null = null;
   private windowPngMode: ExportPngMode | null = null;
   private window: BrowserWindow | null = null;
@@ -102,10 +106,21 @@ export class HiddenWindowManager {
   async prepareJob(kind: 'probe' | 'formal' = 'probe'): Promise<void> {
     const drawMode = kind === 'formal' ? this.nextFormalDrawMode : 'legacy-raf';
     const pngMode = kind === 'formal' ? this.nextFormalPngMode : 'legacy-blob';
-    await this.create(drawMode, pngMode);
+    if (this.jobModeLock) {
+      throw new Error('Hidden window is already prepared for another Job.');
+    }
+    const jobModeLock = { drawMode, pngMode };
+    this.jobModeLock = jobModeLock;
+    try {
+      await this.create(drawMode, pngMode);
+    } catch (error) {
+      if (this.jobModeLock === jobModeLock) this.jobModeLock = null;
+      throw error;
+    }
   }
 
   releaseJob(): void {
+    this.jobModeLock = null;
     this.close();
   }
 
@@ -120,9 +135,19 @@ export class HiddenWindowManager {
     const existingWindow = this.getWindow();
     if (existingWindow) {
       if (this.windowDrawMode !== drawMode || this.windowPngMode !== pngMode) {
-        throw new Error('Hidden window export modes cannot change during a Job.');
+        if (
+          this.jobModeLock &&
+          (this.jobModeLock.drawMode !== drawMode ||
+            this.jobModeLock.pngMode !== pngMode)
+        ) {
+          throw new Error(
+            'Hidden window export modes cannot change during a Job.',
+          );
+        }
+        this.close();
+      } else {
+        return existingWindow;
       }
-      return existingWindow;
     }
 
     const readyPromise = new Promise<void>((resolve, reject) => {

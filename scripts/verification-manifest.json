@@ -681,7 +681,7 @@
       }
     ]
   },
-  "count": 89,
+  "count": 90,
   "gates": [
     {
       "id": "issue663-dialogue-voice",
@@ -1738,6 +1738,18 @@
       "owner": "export",
       "supersedes": null,
       "notes": "Issue #836 DL-06 R0 focused Windows Electron proof for two exhausted expired-snapshot cleanup owners, sanitized locked-retry UI, exact Main diagnostics, same-session path recovery, and a new formal Export Job without changing the Project or prior MP4. Human audiovisual acceptance remains deferred to DL-07."
+    },
+    {
+      "id": "issue862-export-smoke",
+      "script": "verify:issue862-export-smoke",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Bounded Issue #862 Windows Electron production-UI smoke that begins with the startup legacy hidden-window prewarm, cancels during real frame progress, retries through the task UI, and validates the H.264 MP4 with FFprobe while checking project/media hashes. It reuses the Issue #819 Electron harness in a single focused mode; OWNER visual acceptance remains separate."
     },
     {
       "id": "timeline",

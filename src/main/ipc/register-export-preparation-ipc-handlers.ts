@@ -12,6 +12,8 @@ import {
   ExportPreparationResponseSchema,
   ExportPreparationSelectOutputRequestSchema,
   ExportPreparationSelectOutputResponseSchema,
+  ExportPreparationSnapshotStatusRequestSchema,
+  ExportPreparationSnapshotStatusResponseSchema,
   type ExportPreparationSelectOutputRequest,
 } from '../../shared/export-preparation-types';
 import { IPC_CHANNELS } from '../../shared/ipc/channels';
@@ -108,10 +110,27 @@ export function registerExportPreparationIpcHandlers(
     },
   );
 
+  ipcMain.handle(
+    IPC_CHANNELS.EXPORT_PREPARATION_SNAPSHOT_STATUS,
+    async (event, rawRequest: unknown) => {
+      assertTrustedSender(
+        event,
+        dependencies.getMainWindow(),
+        IPC_CHANNELS.EXPORT_PREPARATION_SNAPSHOT_STATUS,
+      );
+      const request =
+        ExportPreparationSnapshotStatusRequestSchema.parse(rawRequest);
+      return ExportPreparationSnapshotStatusResponseSchema.parse(
+        await dependencies.service.getSnapshotRetryStatus(request.snapshotId),
+      );
+    },
+  );
+
   return () => {
     ipcMain.removeHandler(IPC_CHANNELS.EXPORT_PREPARATION_SELECT_OUTPUT);
     ipcMain.removeHandler(IPC_CHANNELS.EXPORT_PREPARATION_START);
     ipcMain.removeHandler(IPC_CHANNELS.EXPORT_PREPARATION_CANCEL);
     ipcMain.removeHandler(IPC_CHANNELS.EXPORT_PREPARATION_DISCARD);
+    ipcMain.removeHandler(IPC_CHANNELS.EXPORT_PREPARATION_SNAPSHOT_STATUS);
   };
 }

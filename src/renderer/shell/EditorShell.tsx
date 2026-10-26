@@ -584,6 +584,55 @@ export function EditorShell({
   );
 
   useEffect(() => {
+    const snapshotId = exportTask.snapshotId;
+    if (
+      !snapshotId ||
+      (exportTask.status !== 'failed' && exportTask.status !== 'cancelled')
+    ) {
+      return;
+    }
+    let current = true;
+    let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+    const refreshSnapshotStatus = async (): Promise<void> => {
+      try {
+        const status =
+          await window.pandaStage.exportPreparation.getSnapshotRetryStatus(
+            snapshotId,
+          );
+        if (!current) return;
+        const latest = exportTaskRef.current;
+        if (
+          latest.snapshotId !== snapshotId ||
+          (latest.status !== 'failed' && latest.status !== 'cancelled')
+        ) {
+          return;
+        }
+        setExportTaskState({
+          ...latest,
+          snapshotRetryAvailable: status.available,
+        });
+        if (status.available && status.expiresAt !== null) {
+          const delay = Math.max(1, status.expiresAt - Date.now() + 1);
+          expiryTimer = setTimeout(() => void refreshSnapshotStatus(), delay);
+        }
+      } catch {
+        if (!current) return;
+        const latest = exportTaskRef.current;
+        if (latest.snapshotId !== snapshotId) return;
+        setExportTaskState({
+          ...latest,
+          snapshotRetryAvailable: false,
+        });
+      }
+    };
+    void refreshSnapshotStatus();
+    return () => {
+      current = false;
+      if (expiryTimer) clearTimeout(expiryTimer);
+    };
+  }, [exportTask.snapshotId, exportTask.status]);
+
+  useEffect(() => {
     if (
       new URLSearchParams(window.location.search).get(
         'issue816Acceptance',
@@ -1528,6 +1577,19 @@ export function EditorShell({
     setExportTaskState({ ...task, status: 'selecting', message: undefined, issues: [] });
     setExportSurfaceOpen(true);
     try {
+      const retryStatus =
+        await window.pandaStage.exportPreparation.getSnapshotRetryStatus(
+          task.snapshotId,
+        );
+      if (!retryStatus.available) {
+        setExportTaskState({
+          ...task,
+          status: 'failed',
+          snapshotRetryAvailable: false,
+          message: safeExportFailureMessage('EXPORT_SNAPSHOT_UNAVAILABLE'),
+        });
+        return;
+      }
       const selection = await window.pandaStage.exportPreparation.selectOutput({
         projectRoot: task.projectRoot,
         projectId: task.projectId,
@@ -1545,6 +1607,10 @@ export function EditorShell({
           ...task,
           status: 'failed',
           message: selection.issue.problem,
+          snapshotRetryAvailable:
+            selection.issue.code === 'PREPARATION_FAILED'
+              ? false
+              : task.snapshotRetryAvailable,
           issues: [selection.issue],
         });
         return;
@@ -1911,6 +1977,16 @@ export function EditorShell({
                 value={portraitWorkspace}
               />
             ) : null}
+            <ExportTaskSurface
+              onCancel={() => void cancelExportTask()}
+              onRetryCurrentContent={retryCurrentExportContent}
+              onStartNewExport={retryCurrentExportContent}
+              onHide={() => setExportSurfaceOpen(false)}
+              onRetrySameSnapshot={() => void retrySameExportSnapshot()}
+              onRevealOutput={() => void revealExportOutput()}
+              open={exportSurfaceOpen}
+              task={exportTask}
+            />
           </div>
           <PendingDialoguePlacementProvider>
             <div
@@ -2045,16 +2121,6 @@ export function EditorShell({
               showHistoryControls={false}
             />
           </PendingDialoguePlacementProvider>
-          <ExportTaskSurface
-            onCancel={() => void cancelExportTask()}
-            onRetryCurrentContent={retryCurrentExportContent}
-            onStartNewExport={retryCurrentExportContent}
-            onHide={() => setExportSurfaceOpen(false)}
-            onRetrySameSnapshot={() => void retrySameExportSnapshot()}
-            onRevealOutput={() => void revealExportOutput()}
-            open={exportSurfaceOpen}
-            task={exportTask}
-          />
           {productPreviewOpen ? (
             <ProductPreviewOverlay
               autoPlay

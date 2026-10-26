@@ -60,6 +60,8 @@ import {
   ExportPreparationResponseSchema,
   ExportPreparationSelectOutputRequestSchema,
   ExportPreparationSelectOutputResponseSchema,
+  ExportPreparationSnapshotStatusRequestSchema,
+  ExportPreparationSnapshotStatusResponseSchema,
   type ExportPreparationRequest,
   type ExportPreparationSelectOutputRequest,
 } from '../shared/export-preparation-types';
@@ -517,6 +519,15 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return ExportPreparationCancelResponseSchema.parse(response);
+    },
+    getSnapshotRetryStatus: async (snapshotId: string) => {
+      const request =
+        ExportPreparationSnapshotStatusRequestSchema.parse({ snapshotId });
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.EXPORT_PREPARATION_SNAPSHOT_STATUS,
+        request,
+      );
+      return ExportPreparationSnapshotStatusResponseSchema.parse(response);
     },
     discard: async (
       rawRequest: { selectionId?: string; snapshotId?: string },
