@@ -252,6 +252,7 @@ export function QuickActionDrawer({
             aria-busy={exportBusy}
             aria-pressed={exportSurfaceOpen}
             className="quick-action-drawer-action quick-action-drawer-export"
+            data-quick-action="export"
             data-task4-core="export-video"
             data-testid="quick-action-export"
             disabled={busy}
