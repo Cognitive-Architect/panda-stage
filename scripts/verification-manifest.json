@@ -554,7 +554,8 @@
           "scripts/verify-issue457*",
           "scripts/verify-issue579*",
           "scripts/verify-issue602*",
-          "scripts/verify-issue606*"
+          "scripts/verify-issue606*",
+          "scripts/verify-issue871-am03-electron*"
         ],
         "suites": ["canvas", "history"],
         "riskPolicy": "targeted",
@@ -714,7 +715,7 @@
       }
     ]
   },
-  "count": 97,
+  "count": 98,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1039,6 +1040,18 @@
       "owner": "canvas",
       "supersedes": null,
       "notes": "Focused real Windows Electron Product Preview proof for atomic Body+Face pixels, expression/Mouth replacement, delayed-part no-half-frame behavior, partial opacity, Mouth fallback warning with non-exact readiness, and fatal Body failure."
+    },
+    {
+      "id": "issue871-am03-electron",
+      "script": "verify:issue871-am03-electron",
+      "suite": "canvas",
+      "subsystem": "canvas",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "canvas",
+      "supersedes": null,
+      "notes": "Local synthetic Electron evidence for AM-03 nonzero-time animation drop, distinct PNG frame pixels, pending-frame retention, before-start visibility, Canvas drag, and Inspector scale. Synthetic drop input is not OWNER human acceptance."
     },
     {
       "id": "fla-v1-5-c3",
