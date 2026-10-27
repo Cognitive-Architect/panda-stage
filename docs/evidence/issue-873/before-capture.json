@@ -1,0 +1,659 @@
+{
+  "issue": 873,
+  "passed": true,
+  "captureOnly": true,
+  "commit": "18d7181147e172ed75de55cc7f8e47563bc2c7ea",
+  "verificationGate": "Windows Electron screenshot capture for Issue #873",
+  "syntheticInput": true,
+  "humanAcceptance": false,
+  "evidenceKind": "Windows Electron wide and narrow Character Settings screenshots with native hit-target geometry",
+  "evidence": {
+    "wide": {
+      "viewport": {
+        "width": 1646,
+        "height": 1038
+      },
+      "shellMode": "landscape",
+      "deviceMode": "cloud-touch",
+      "presentation": "landscape",
+      "navigation": {
+        "left": 88.66667175292969,
+        "top": 12.666666984558105,
+        "right": 423.33335876464844,
+        "bottom": 56.666666984558105,
+        "width": 334.66668701171875,
+        "height": 44
+      },
+      "navigationPosition": "sticky",
+      "navigationDisplay": "flex",
+      "navigationGridTemplateColumns": "max-content minmax(0px, 1fr)",
+      "navigationInFlowChildCount": 3,
+      "navigationChildren": [
+        {
+          "testId": "character-detail-back",
+          "className": "character-back-button",
+          "position": "static",
+          "gridColumn": "auto",
+          "width": 44,
+          "height": 44
+        },
+        {
+          "testId": "",
+          "className": "sr-only character-detail-navigation-title",
+          "position": "absolute",
+          "gridColumn": "auto",
+          "width": 1,
+          "height": 1
+        },
+        {
+          "testId": "character-detail-place-current-shot",
+          "className": "character-detail-place-navigation-action",
+          "position": "static",
+          "gridColumn": "auto",
+          "width": 79.375,
+          "height": 44
+        },
+        {
+          "testId": "resource-activity-close",
+          "className": "resource-activity-close character-detail-close",
+          "position": "static",
+          "gridColumn": "auto",
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "navigationBackgroundColor": "rgb(11, 18, 14)",
+      "quickActionDrawer": {
+        "bounds": {
+          "left": 625,
+          "top": 12,
+          "right": 1021,
+          "bottom": 56,
+          "width": 396,
+          "height": 44
+        },
+        "expanded": "false",
+        "zIndex": "40",
+        "pointerEvents": "auto",
+        "handle": {
+          "left": 775,
+          "top": 12,
+          "right": 871,
+          "bottom": 56,
+          "width": 96,
+          "height": 44
+        },
+        "handleHitTarget": true
+      },
+      "back": {
+        "left": 88.66667175292969,
+        "top": 12.666666984558105,
+        "right": 132.6666717529297,
+        "bottom": 56.666666984558105,
+        "width": 44,
+        "height": 44
+      },
+      "placement": {
+        "left": 295.9583435058594,
+        "top": 12.666666984558105,
+        "right": 375.3333435058594,
+        "bottom": 56.666666984558105,
+        "width": 79.375,
+        "height": 44
+      },
+      "placementFlex": "0 0 auto",
+      "placementMarginLeft": "159.292px",
+      "close": {
+        "left": 379.3333435058594,
+        "top": 12.666666984558105,
+        "right": 423.3333435058594,
+        "bottom": 56.666666984558105,
+        "width": 44,
+        "height": 44
+      },
+      "placementCount": 1,
+      "placementInIdentity": false,
+      "placementBeforeClose": true,
+      "placementHitTarget": true,
+      "placementHitTestId": "character-detail-place-current-shot",
+      "placementDisabled": false,
+      "placementTitle": "加入当前镜头",
+      "placementLabel": "加入当前镜头",
+      "placementType": "button",
+      "placementText": "＋ 加入镜头",
+      "name": "角色详情导航长名称验收熊猫",
+      "nameBounds": {
+        "left": 194.6666717529297,
+        "top": 93,
+        "right": 358.7291717529297,
+        "bottom": 116.33333396911621,
+        "width": 164.0625,
+        "height": 23.33333396911621
+      },
+      "nameClientWidth": 164,
+      "nameScrollWidth": 221,
+      "expressionActionInIdentity": true,
+      "workspaceTabs": [
+        {
+          "label": "组装",
+          "pressed": "false"
+        },
+        {
+          "label": "表情1",
+          "pressed": "true"
+        },
+        {
+          "label": "设置",
+          "pressed": "false"
+        }
+      ],
+      "activeWorkspace": "character-workspace-expressions-tab",
+      "revision": "0",
+      "undoCount": "0",
+      "redoCount": "0"
+    },
+    "zoomed": {
+      "viewport": {
+        "width": 1317,
+        "height": 830
+      },
+      "shellMode": "landscape",
+      "deviceMode": "cloud-touch",
+      "presentation": "landscape",
+      "navigation": {
+        "left": 88.53334045410156,
+        "top": 12.533333778381348,
+        "right": 423.46669006347656,
+        "bottom": 56.53333759307861,
+        "width": 334.933349609375,
+        "height": 44.000003814697266
+      },
+      "navigationPosition": "sticky",
+      "navigationDisplay": "flex",
+      "navigationGridTemplateColumns": "max-content minmax(0px, 1fr)",
+      "navigationInFlowChildCount": 3,
+      "navigationChildren": [
+        {
+          "testId": "character-detail-back",
+          "className": "character-back-button",
+          "position": "static",
+          "gridColumn": "auto",
+          "width": 44.000003814697266,
+          "height": 44.000003814697266
+        },
+        {
+          "testId": "",
+          "className": "sr-only character-detail-navigation-title",
+          "position": "absolute",
+          "gridColumn": "auto",
+          "width": 1,
+          "height": 1
+        },
+        {
+          "testId": "character-detail-place-current-shot",
+          "className": "character-detail-place-navigation-action",
+          "position": "static",
+          "gridColumn": "auto",
+          "width": 79.09166717529297,
+          "height": 44.000003814697266
+        },
+        {
+          "testId": "resource-activity-close",
+          "className": "resource-activity-close character-detail-close",
+          "position": "static",
+          "gridColumn": "auto",
+          "width": 44.000003814697266,
+          "height": 44.000003814697266
+        }
+      ],
+      "navigationBackgroundColor": "rgb(11, 18, 14)",
+      "quickActionDrawer": {
+        "bounds": {
+          "left": 460.4000244140625,
+          "top": 12.000000953674316,
+          "right": 856.4000549316406,
+          "bottom": 56.00000476837158,
+          "width": 396.0000305175781,
+          "height": 44.000003814697266
+        },
+        "expanded": "false",
+        "zIndex": "40",
+        "pointerEvents": "auto",
+        "handle": {
+          "left": 610.4000244140625,
+          "top": 12.000000953674316,
+          "right": 706.400032043457,
+          "bottom": 56.00000476837158,
+          "width": 96.00000762939453,
+          "height": 44.000003814697266
+        },
+        "handleHitTarget": true
+      },
+      "back": {
+        "left": 88.53334045410156,
+        "top": 12.533333778381348,
+        "right": 132.53334426879883,
+        "bottom": 56.53333759307861,
+        "width": 44.000003814697266,
+        "height": 44.000003814697266
+      },
+      "placement": {
+        "left": 296.3750305175781,
+        "top": 12.533333778381348,
+        "right": 375.4666976928711,
+        "bottom": 56.53333759307861,
+        "width": 79.09166717529297,
+        "height": 44.000003814697266
+      },
+      "placementFlex": "0 0 auto",
+      "placementMarginLeft": "159.842px",
+      "close": {
+        "left": 379.4666748046875,
+        "top": 12.533333778381348,
+        "right": 423.46667861938477,
+        "bottom": 56.53333759307861,
+        "width": 44.000003814697266,
+        "height": 44.000003814697266
+      },
+      "placementCount": 1,
+      "placementInIdentity": false,
+      "placementBeforeClose": true,
+      "placementHitTarget": true,
+      "placementHitTestId": "character-detail-place-current-shot",
+      "placementDisabled": false,
+      "placementTitle": "加入当前镜头",
+      "placementLabel": "加入当前镜头",
+      "placementType": "button",
+      "placementText": "＋ 加入镜头",
+      "name": "角色详情导航长名称验收熊猫",
+      "nameBounds": {
+        "left": 194.53334045410156,
+        "top": 93.33333587646484,
+        "right": 358.9583435058594,
+        "bottom": 115.73333740234375,
+        "width": 164.4250030517578,
+        "height": 22.400001525878906
+      },
+      "nameClientWidth": 164,
+      "nameScrollWidth": 221,
+      "expressionActionInIdentity": true,
+      "workspaceTabs": [
+        {
+          "label": "组装",
+          "pressed": "false"
+        },
+        {
+          "label": "表情1",
+          "pressed": "true"
+        },
+        {
+          "label": "设置",
+          "pressed": "false"
+        }
+      ],
+      "activeWorkspace": "character-workspace-expressions-tab",
+      "revision": "0",
+      "undoCount": "0",
+      "redoCount": "0"
+    },
+    "workspaceNavigation": [
+      {
+        "workspace": "Assembly",
+        "activeWorkspace": "character-workspace-assembly-tab",
+        "bounds": {
+          "left": 295.9583435058594,
+          "top": 12.666666984558105,
+          "right": 375.3333435058594,
+          "bottom": 56.666666984558105,
+          "width": 79.375,
+          "height": 44
+        },
+        "expressionActionInIdentity": false,
+        "nameClientWidth": 221,
+        "nameScrollWidth": 221
+      },
+      {
+        "workspace": "Expressions",
+        "activeWorkspace": "character-workspace-expressions-tab",
+        "bounds": {
+          "left": 295.9583435058594,
+          "top": 12.666666984558105,
+          "right": 375.3333435058594,
+          "bottom": 56.666666984558105,
+          "width": 79.375,
+          "height": 44
+        },
+        "expressionActionInIdentity": true,
+        "nameClientWidth": 164,
+        "nameScrollWidth": 221
+      },
+      {
+        "workspace": "Settings",
+        "activeWorkspace": "character-workspace-settings-tab",
+        "bounds": {
+          "left": 295.9583435058594,
+          "top": 12.666666984558105,
+          "right": 375.3333435058594,
+          "bottom": 56.666666984558105,
+          "width": 79.375,
+          "height": 44
+        },
+        "expressionActionInIdentity": false,
+        "nameClientWidth": 221,
+        "nameScrollWidth": 221
+      }
+    ],
+    "issue873Settings": {
+      "wideSettings": {
+        "viewport": {
+          "width": 1646,
+          "height": 1038
+        },
+        "shellMode": "landscape",
+        "deviceMode": "cloud-touch",
+        "presentation": "landscape",
+        "navigation": {
+          "left": 88.66667175292969,
+          "top": 12.666666984558105,
+          "right": 423.33335876464844,
+          "bottom": 56.666666984558105,
+          "width": 334.66668701171875,
+          "height": 44
+        },
+        "navigationPosition": "sticky",
+        "navigationDisplay": "flex",
+        "navigationGridTemplateColumns": "max-content minmax(0px, 1fr)",
+        "navigationInFlowChildCount": 3,
+        "navigationChildren": [
+          {
+            "testId": "character-detail-back",
+            "className": "character-back-button",
+            "position": "static",
+            "gridColumn": "auto",
+            "width": 44,
+            "height": 44
+          },
+          {
+            "testId": "",
+            "className": "sr-only character-detail-navigation-title",
+            "position": "absolute",
+            "gridColumn": "auto",
+            "width": 1,
+            "height": 1
+          },
+          {
+            "testId": "character-detail-place-current-shot",
+            "className": "character-detail-place-navigation-action",
+            "position": "static",
+            "gridColumn": "auto",
+            "width": 79.375,
+            "height": 44
+          },
+          {
+            "testId": "resource-activity-close",
+            "className": "resource-activity-close character-detail-close",
+            "position": "static",
+            "gridColumn": "auto",
+            "width": 44,
+            "height": 44
+          }
+        ],
+        "navigationBackgroundColor": "rgb(11, 18, 14)",
+        "quickActionDrawer": {
+          "bounds": {
+            "left": 625,
+            "top": 12,
+            "right": 1021,
+            "bottom": 56,
+            "width": 396,
+            "height": 44
+          },
+          "expanded": "false",
+          "zIndex": "40",
+          "pointerEvents": "auto",
+          "handle": {
+            "left": 775,
+            "top": 12,
+            "right": 871,
+            "bottom": 56,
+            "width": 96,
+            "height": 44
+          },
+          "handleHitTarget": true
+        },
+        "back": {
+          "left": 88.66667175292969,
+          "top": 12.666666984558105,
+          "right": 132.6666717529297,
+          "bottom": 56.666666984558105,
+          "width": 44,
+          "height": 44
+        },
+        "placement": {
+          "left": 295.9583435058594,
+          "top": 12.666666984558105,
+          "right": 375.3333435058594,
+          "bottom": 56.666666984558105,
+          "width": 79.375,
+          "height": 44
+        },
+        "placementFlex": "0 0 auto",
+        "placementMarginLeft": "159.292px",
+        "close": {
+          "left": 379.3333435058594,
+          "top": 12.666666984558105,
+          "right": 423.3333435058594,
+          "bottom": 56.666666984558105,
+          "width": 44,
+          "height": 44
+        },
+        "placementCount": 1,
+        "placementInIdentity": false,
+        "placementBeforeClose": true,
+        "placementHitTarget": true,
+        "placementHitTestId": "character-detail-place-current-shot",
+        "placementDisabled": false,
+        "placementTitle": "加入当前镜头",
+        "placementLabel": "加入当前镜头",
+        "placementType": "button",
+        "placementText": "＋ 加入镜头",
+        "name": "角色详情导航长名称验收熊猫",
+        "nameBounds": {
+          "left": 194.6666717529297,
+          "top": 93,
+          "right": 415.3333435058594,
+          "bottom": 116.33333396911621,
+          "width": 220.6666717529297,
+          "height": 23.33333396911621
+        },
+        "nameClientWidth": 221,
+        "nameScrollWidth": 221,
+        "expressionActionInIdentity": false,
+        "workspaceTabs": [
+          {
+            "label": "组装",
+            "pressed": "false"
+          },
+          {
+            "label": "表情1",
+            "pressed": "false"
+          },
+          {
+            "label": "设置",
+            "pressed": "true"
+          }
+        ],
+        "activeWorkspace": "character-workspace-settings-tab",
+        "revision": "0",
+        "undoCount": "0",
+        "redoCount": "0"
+      },
+      "narrowSettings": {
+        "viewport": {
+          "width": 786,
+          "height": 498
+        },
+        "shellMode": "landscape",
+        "deviceMode": "cloud-touch",
+        "presentation": "landscape",
+        "navigation": {
+          "left": 84.66667175292969,
+          "top": 8.666666984558105,
+          "right": 404.00001525878906,
+          "bottom": 52.666666984558105,
+          "width": 319.3333435058594,
+          "height": 44
+        },
+        "navigationPosition": "sticky",
+        "navigationDisplay": "flex",
+        "navigationGridTemplateColumns": "max-content minmax(0px, 1fr)",
+        "navigationInFlowChildCount": 3,
+        "navigationChildren": [
+          {
+            "testId": "character-detail-back",
+            "className": "character-back-button",
+            "position": "static",
+            "gridColumn": "auto",
+            "width": 44,
+            "height": 44
+          },
+          {
+            "testId": "",
+            "className": "sr-only character-detail-navigation-title",
+            "position": "absolute",
+            "gridColumn": "auto",
+            "width": 1,
+            "height": 1
+          },
+          {
+            "testId": "character-detail-place-current-shot",
+            "className": "character-detail-place-navigation-action",
+            "position": "static",
+            "gridColumn": "auto",
+            "width": 79.375,
+            "height": 44
+          },
+          {
+            "testId": "resource-activity-close",
+            "className": "resource-activity-close character-detail-close",
+            "position": "static",
+            "gridColumn": "auto",
+            "width": 44,
+            "height": 44
+          }
+        ],
+        "navigationBackgroundColor": "rgb(11, 18, 14)",
+        "quickActionDrawer": {
+          "bounds": {
+            "left": 200.5,
+            "top": 8,
+            "right": 585.5,
+            "bottom": 52,
+            "width": 385,
+            "height": 44
+          },
+          "expanded": "false",
+          "zIndex": "40",
+          "pointerEvents": "none",
+          "handle": {
+            "left": 489.5,
+            "top": 8,
+            "right": 585.5,
+            "bottom": 52,
+            "width": 96,
+            "height": 44
+          },
+          "handleHitTarget": true
+        },
+        "back": {
+          "left": 84.66667175292969,
+          "top": 8.666666984558105,
+          "right": 128.6666717529297,
+          "bottom": 52.666666984558105,
+          "width": 44,
+          "height": 44
+        },
+        "placement": {
+          "left": 276.625,
+          "top": 8.666666984558105,
+          "right": 356,
+          "bottom": 52.666666984558105,
+          "width": 79.375,
+          "height": 44
+        },
+        "placementFlex": "0 0 auto",
+        "placementMarginLeft": "143.958px",
+        "close": {
+          "left": 360,
+          "top": 8.666666984558105,
+          "right": 404,
+          "bottom": 52.666666984558105,
+          "width": 44,
+          "height": 44
+        },
+        "placementCount": 1,
+        "placementInIdentity": false,
+        "placementBeforeClose": true,
+        "placementHitTarget": true,
+        "placementHitTestId": "character-detail-place-current-shot",
+        "placementDisabled": false,
+        "placementTitle": "加入当前镜头",
+        "placementLabel": "加入当前镜头",
+        "placementType": "button",
+        "placementText": "＋ 加入镜头",
+        "name": "角色详情导航长名称验收熊猫",
+        "nameBounds": {
+          "left": 190.6666717529297,
+          "top": 89,
+          "right": 396.00001525878906,
+          "bottom": 112.33333396911621,
+          "width": 205.33334350585938,
+          "height": 23.33333396911621
+        },
+        "nameClientWidth": 205,
+        "nameScrollWidth": 221,
+        "expressionActionInIdentity": false,
+        "workspaceTabs": [
+          {
+            "label": "组装",
+            "pressed": "false"
+          },
+          {
+            "label": "表情1",
+            "pressed": "false"
+          },
+          {
+            "label": "设置",
+            "pressed": "true"
+          }
+        ],
+        "activeWorkspace": "character-workspace-settings-tab",
+        "revision": "0",
+        "undoCount": "0",
+        "redoCount": "0"
+      },
+      "narrowDeleteGeometry": {
+        "bounds": {
+          "left": 338.66668701171875,
+          "top": 279.16668701171875,
+          "right": 404.0000228881836,
+          "bottom": 319.16668701171875,
+          "width": 65.33333587646484,
+          "height": 40
+        },
+        "viewport": {
+          "width": 786,
+          "height": 498
+        },
+        "hitTarget": true
+      }
+    }
+  },
+  "screenshots": [
+    "evidence/character-detail-add-to-shot-wide.png",
+    "evidence/character-detail-add-to-shot-zoom-125.png",
+    "evidence/character-detail-add-to-shot-settings.png",
+    "evidence/issue873-character-settings-narrow.png",
+    "evidence/issue873-character-settings-narrow-delete.png"
+  ]
+}
