@@ -28,6 +28,10 @@ import {
 } from '../../shared/preview/subtitle-layout';
 import { SubtitleRenderer } from '../features/subtitles/SubtitleRenderer';
 import {
+  createStageCompositeCacheSignature,
+  shouldReuseStageCompositeCache,
+} from './compositeCacheSignature';
+import {
   previewDiagnosticNow,
   previewDiagnosticScenePixelRatio,
   recordPreviewDiagnostic,
@@ -169,27 +173,14 @@ function StagePartImages({
       left.drawOrder - right.drawOrder,
   );
   const complete = orderedParts.every((part) => images.has(part.id));
-  const cacheInputSignature = JSON.stringify({
+  const cacheInputSignature = createStageCompositeCacheSignature({
     ownerLayerId,
     composite,
     complete,
     visualBounds,
-    headGroup: headGroup
-      ? {
-          id: headGroup.id,
-          partIds: headGroup.partIds,
-          pivot: headGroup.pivot,
-          transform: headGroup.transform,
-        }
-      : null,
-    parts: orderedParts.map((part) => ({
-      id: part.id,
-      slot: part.slot,
-      drawOrder: part.drawOrder,
-      sourceUrl: part.sourceUrl,
-      render: part.render,
-      imageReady: images.has(part.id),
-    })),
+    headGroup,
+    orderedParts,
+    images,
   });
   const forceCompositeCacheRebuild = shouldForceCompositeCacheRebuild();
   useLayoutEffect(() => {
@@ -200,9 +191,13 @@ function StagePartImages({
       composite && complete && orderedParts.length >= 2 &&
       visualBounds.width > 0 && visualBounds.height > 0;
     if (
-      !forceCompositeCacheRebuild &&
-      cachedVisualSignatureRef.current === cacheInputSignature &&
-      (cacheEligible === previouslyCached)
+      shouldReuseStageCompositeCache({
+        forceRebuild: forceCompositeCacheRebuild,
+        previousSignature: cachedVisualSignatureRef.current,
+        inputSignature: cacheInputSignature,
+        cacheEligible,
+        previouslyCached,
+      })
     ) {
       if (cacheEligible) {
         recordPreviewDiagnostic('composite-cache-reuse', {
