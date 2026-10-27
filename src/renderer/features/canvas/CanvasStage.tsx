@@ -18,6 +18,7 @@ import {
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
   calculateViewportTransform,
+  evaluateShotAtTime,
   listShotRuntimeImageAssets,
   resolveImageAsset,
   type Shot,
@@ -66,6 +67,7 @@ import {
 import {
   buildEditorTemporalCanvasModel,
 } from './editorTemporalCanvasModel';
+import { isAnimationBaseTransformEditableAtTime } from '../properties/layerTransformTemporalGuard';
 import {
   failedRequiredCanvasLayers,
   scheduleCanvasPendingFeedback,
@@ -385,11 +387,83 @@ export function CanvasStage({
     timelineUi.currentTimeMs === 0;
   const temporalInspection =
     temporalCanvasModel?.temporalInspection ?? !directEditingEnabled;
-  const rejectTemporalCanvasEdit = (): void => {
-    setInteractionStatus('时间轴预览中 · 回到 0:00 可调整图层');
+  const rejectTemporalCanvasEdit = (animationLayer = false): string => {
+    const message =
+      animationLayer
+        ? '动画基础变换仅能在当前可见且素材就绪的帧编辑。'
+        : '时间轴预览中 · 回到 0:00 可调整图层';
+    setInteractionStatus(message);
+    return message;
   };
-  const canCommitCanvasEdit = (): boolean =>
-    timelineUiStore.getSnapshot().currentTimeMs === 0;
+  const canCommitCanvasEdit = (
+    stageLayer: NonNullable<typeof stageModel>['layers'][number],
+  ): boolean => {
+    const currentTimeMs = timelineUiStore.getSnapshot().currentTimeMs;
+    if (stageLayer.layer.source.kind !== 'animation') {
+      return currentTimeMs === 0;
+    }
+    const current = editorProjectStore.getSnapshot();
+    const currentShot = current?.project.shots.find(
+      (candidate) => candidate.id === shot?.id,
+    );
+    const currentLayer = currentShot?.layers.find(
+      (candidate) => candidate.id === stageLayer.layer.id,
+    );
+    const evaluated = currentShot && current
+      ? evaluateShotAtTime(currentShot, currentTimeMs, current.project).layers.find(
+          (candidate) => candidate.id === stageLayer.layer.id,
+        )
+      : undefined;
+    const currentFrameAssetId = stageLayer.visual.parts[0]?.assetId;
+    return Boolean(
+      snapshot &&
+        shot &&
+        current &&
+        currentLayer?.source.kind === 'animation' &&
+        !currentLayer.locked &&
+        editorProjectStore.getProjectInstanceId() === projectInstanceId &&
+        current.project.id === snapshot.project.id &&
+        current.projectRoot === snapshot.projectRoot &&
+        current.revision === snapshot.revision &&
+        shotStore.getCurrentShotId() === shot.id &&
+        selectionStore.getSelectedLayerId() === stageLayer.layer.id &&
+        isAnimationBaseTransformEditableAtTime(
+          current.project,
+          shot.id,
+          stageLayer.layer.id,
+          currentTimeMs,
+        ) &&
+        evaluated?.visible &&
+        evaluated.assetId === currentFrameAssetId &&
+        stageLayer.render.visible &&
+        isStageLayerVisualReady(stageLayer),
+    );
+  };
+  const directEditingEnabledForStageLayer = (
+    stageLayer: NonNullable<typeof stageModel>['layers'][number],
+  ): boolean => {
+    if (stageLayer.layer.source.kind !== 'animation') {
+      return directEditingEnabled;
+    }
+    const evaluated = shot && snapshot
+      ? evaluateShotAtTime(
+          shot,
+          timelineUi.currentTimeMs,
+          snapshot.project,
+        ).layers.find((candidate) => candidate.id === stageLayer.layer.id)
+      : undefined;
+    return Boolean(
+      evaluated?.visible &&
+        evaluated.assetId === stageLayer.visual.parts[0]?.assetId &&
+        isAnimationBaseTransformEditableAtTime(
+          snapshot!.project,
+          shot!.id,
+          stageLayer.layer.id,
+          timelineUi.currentTimeMs,
+        ) &&
+        isStageLayerVisualReady(stageLayer),
+    );
+  };
   const activeSubtitleStyle = activeCue
     ? snapshot?.project.subtitleStyles.find(
         (style) => style.id === activeCue.styleId,
@@ -493,7 +567,11 @@ export function CanvasStage({
       ({ layer }) => layer.id === selectedLayerId,
     ) ?? null;
   const transformerVisible = isTransformerOverlayVisible({
-    selected: directEditingEnabled && Boolean(selectedStageLayer),
+    selected: Boolean(
+      selectedStageLayer &&
+        selectedStageLayer.render.visible &&
+        directEditingEnabledForStageLayer(selectedStageLayer),
+    ),
     isBackground: selectedStageLayer?.render.isBackground ?? false,
     locked: selectedStageLayer?.layer.locked ?? false,
     imageReady: selectedStageLayer
@@ -536,7 +614,10 @@ export function CanvasStage({
         }
         mode={viewport.mode}
         onAssetDrop={(payload, point) => {
-          if (payload.type !== 'animation' && !canCommitCanvasEdit()) {
+          if (
+            payload.type !== 'animation' &&
+            timelineUiStore.getSnapshot().currentTimeMs !== 0
+          ) {
             rejectTemporalCanvasEdit();
             return;
           }
@@ -669,7 +750,7 @@ export function CanvasStage({
                         const image = imageForStageLayer(stageLayer);
                         return (
                           <SelectableLayer
-                            directEditingEnabled={directEditingEnabled}
+                            directEditingEnabled={directEditingEnabledForStageLayer(stageLayer)}
                             image={image}
                             images={currentReadyImages}
                             imagesByResourceKey={imageState.imagesByResourceKey}
@@ -677,9 +758,12 @@ export function CanvasStage({
                             layer={layer}
                             nodeRef={getLayerNodeRef(layer.id)}
                              onCommitPosition={(layerId, position) => {
-                              if (!canCommitCanvasEdit()) {
-                                rejectTemporalCanvasEdit();
-                                return;
+                              if (!canCommitCanvasEdit(stageLayer)) {
+                                throw new Error(
+                                  rejectTemporalCanvasEdit(
+                                    layer.source.kind === 'animation',
+                                  ),
+                                );
                               }
                               layerStore.updatePosition(layerId, position);
                               setInteractionStatus(
@@ -696,9 +780,12 @@ export function CanvasStage({
                                );
                              }}
                              onCommitTransform={(layerId, transform) => {
-                              if (!canCommitCanvasEdit()) {
-                                rejectTemporalCanvasEdit();
-                                return;
+                              if (!canCommitCanvasEdit(stageLayer)) {
+                                throw new Error(
+                                  rejectTemporalCanvasEdit(
+                                    layer.source.kind === 'animation',
+                                  ),
+                                );
                               }
                               layerStore.updateTransform(layerId, transform);
                               setInteractionStatus(

@@ -2,8 +2,13 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { LayerTransformController } from '../../src/renderer/features/properties/LayerTransformPanel';
 import { LayerTransformPanel } from '../../src/renderer/features/properties/LayerTransformPanel';
-import { evaluateShotAtTime } from '../../src/domain';
 import {
+  evaluateShotAtTime,
+  LayerService,
+  ProjectSchema,
+} from '../../src/domain';
+import {
+  isAnimationBaseTransformEditableAtTime,
   isLayerTransformEditableAtTime,
   runLayerTransformMutation,
   TEMPORAL_TRANSFORM_STATUS,
@@ -16,7 +21,39 @@ import {
 } from '../../src/renderer/features/properties/positionAuthoringPresentation';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
-import { buildProject, IDS } from './domain/testProject';
+import {
+  buildProject,
+  buildProjectWithAnimation,
+  IDS,
+} from './domain/testProject';
+
+function projectWithVisibleAnimation(startTimeMs = 1_000) {
+  const project = buildProjectWithAnimation();
+  const animationLayer = {
+    id: IDS.animationLayer,
+    name: 'test animation',
+    source: { kind: 'animation' as const, animationId: IDS.animation },
+    anchor: 'center' as const,
+    x: 640,
+    y: 420,
+    scaleX: 1,
+    scaleY: 1,
+    rotationDeg: 0,
+    opacity: 1,
+    visible: true,
+    zIndex: 3,
+    locked: false,
+    flipX: false,
+    startTimeMs,
+  };
+  return ProjectSchema.parse({
+    ...project,
+    shots: project.shots.map((shot) => ({
+      ...shot,
+      layers: [...shot.layers, animationLayer],
+    })),
+  });
+}
 
 function temporalController(): LayerTransformController {
   const project = buildProject();
@@ -224,6 +261,168 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
     ).toBe(false);
     expect(writes).toBe(1);
     expect(blocked).toBe(1);
+  });
+
+  it('allows only the visible, unoverridden animation base transform at nonzero time', () => {
+    const project = projectWithVisibleAnimation();
+    expect(
+      isAnimationBaseTransformEditableAtTime(
+        project,
+        IDS.shot,
+        IDS.animationLayer,
+        1_000,
+      ),
+    ).toBe(true);
+    expect(
+      isAnimationBaseTransformEditableAtTime(
+        project,
+        IDS.shot,
+        IDS.animationLayer,
+        999,
+      ),
+    ).toBe(false);
+    expect(
+      isAnimationBaseTransformEditableAtTime(
+        project,
+        IDS.shot,
+        IDS.layerChar,
+        1_000,
+      ),
+    ).toBe(false);
+
+    const locked = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((shot) => ({
+        ...shot,
+        layers: shot.layers.map((layer) =>
+          layer.id === IDS.animationLayer ? { ...layer, locked: true } : layer,
+        ),
+      })),
+    });
+    expect(
+      isAnimationBaseTransformEditableAtTime(
+        locked,
+        IDS.shot,
+        IDS.animationLayer,
+        1_000,
+      ),
+    ).toBe(false);
+
+    const overridden = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((shot) => ({
+        ...shot,
+        timelineEvents: [
+          {
+            id: '40000000-0000-4000-8000-000000000031',
+            type: 'move' as const,
+            layerId: IDS.animationLayer,
+            startMs: 0,
+            endMs: 2_000,
+            easing: 'linear' as const,
+            from: { x: 640, y: 420 },
+            to: { x: 800, y: 420 },
+          },
+        ],
+      })),
+    });
+    expect(
+      isAnimationBaseTransformEditableAtTime(
+        overridden,
+        IDS.shot,
+        IDS.animationLayer,
+        1_000,
+      ),
+    ).toBe(false);
+  });
+
+  it('exposes base X/Y and scale for a visible animation while keeping other temporal controls gated', () => {
+    const project = projectWithVisibleAnimation();
+    const layer = project.shots[0]!.layers.find(
+      (candidate) => candidate.id === IDS.animationLayer,
+    )!;
+    const markup = renderToStaticMarkup(
+      LayerTransformPanel({
+        compact: true,
+        controller: {
+          ...temporalController(),
+          layer,
+          selectedLayerId: layer.id,
+          animationBaseTransformEditable: true,
+          draft: {
+            x: String(layer.x),
+            y: String(layer.y),
+            scale: String(layer.scaleX),
+            rotationDeg: String(layer.rotationDeg),
+            opacity: String(layer.opacity),
+          },
+          status: '当前编辑的是动画基础变换，会作用于整段动画。',
+        },
+        showResetTransform: true,
+      }),
+    );
+    expect(markup).toMatch(
+      /data-testid="layer-transform-x"[^>]*value="640"/u,
+    );
+    expect(markup).not.toMatch(
+      /data-testid="layer-transform-x"[^>]*disabled=""/u,
+    );
+    expect(markup).not.toMatch(
+      /aria-label="缩放百分比"[^>]*disabled=""/u,
+    );
+    expect(markup).not.toMatch(
+      /layer-transform-submit-action" disabled=""/u,
+    );
+    expect(markup).toMatch(
+      /layer-transform-reset-action[^>]*disabled=""/u,
+    );
+    expect(markup).toMatch(/layer-transform-toggle-action"[^>]*disabled=""/u);
+    expect(markup).toContain('会作用于整段动画');
+  });
+
+  it('keeps the base transform stable across seeks and records undo/redo in project history', () => {
+    const project = projectWithVisibleAnimation();
+    const shot = project.shots[0]!;
+    const layer = shot.layers.find(
+      (candidate) => candidate.id === IDS.animationLayer,
+    )!;
+    const service = new LayerService();
+    const store = new EditorProjectStore();
+    store.open('C:\\PandaStage-Acceptance\\issue871-animation.pandastage', project);
+    const edited = service.updateTransform(project, shot.id, layer.id, {
+      x: 720,
+      y: 480,
+      scale: 1.25,
+      rotationDeg: layer.rotationDeg,
+      opacity: layer.opacity,
+      flipX: layer.flipX,
+    });
+    store.updateProject(edited, 'Transform animation base layer');
+
+    expect(store.getSnapshot()).toMatchObject({ revision: 1, dirty: true });
+    expect(store.history.getSnapshot().undoCount).toBe(1);
+    expect(
+      store.getSnapshot()!.project.shots[0]!.timelineEvents,
+    ).toEqual(shot.timelineEvents);
+    for (const timeMs of [999, 1_000, 1_400, 1_800, 1_400, 1_000]) {
+      const evaluated = evaluateShotAtTime(
+        store.getSnapshot()!.project.shots[0]!,
+        timeMs,
+        store.getSnapshot()!.project,
+      ).layers.find((candidate) => candidate.id === layer.id)!;
+      expect(evaluated).toMatchObject({ x: 720, y: 480, scaleX: 1.25, scaleY: 1.25 });
+      if (timeMs < layer.startTimeMs!) expect(evaluated.visible).toBe(false);
+    }
+
+    expect(store.undo()).toBe(true);
+    expect(store.getSnapshot()!.project.shots[0]!.layers.find(
+      (candidate) => candidate.id === layer.id,
+    )).toMatchObject({ x: 640, y: 420, scaleX: 1, scaleY: 1 });
+    expect(store.history.getSnapshot().redoCount).toBe(1);
+    expect(store.redo()).toBe(true);
+    expect(store.getSnapshot()!.project.shots[0]!.layers.find(
+      (candidate) => candidate.id === layer.id,
+    )).toMatchObject({ x: 720, y: 480, scaleX: 1.25, scaleY: 1.25 });
   });
 
   it('proves the production Timeline → Canvas seam changes only evaluated visuals', () => {

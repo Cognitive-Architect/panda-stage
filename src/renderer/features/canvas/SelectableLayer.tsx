@@ -274,6 +274,11 @@ export function SelectableLayer({
       id={`canvas-layer-${layer.id}`}
       listening={canSelect}
       name="selectable-canvas-layer"
+      onDragStart={(event) => {
+        if (layer.source.kind !== 'animation') return;
+        event.cancelBubble = true;
+        onSelect(layer.id);
+      }}
       onClick={(event) =>
         stopAndSelect(event, layer.id, onSelect)
       }
