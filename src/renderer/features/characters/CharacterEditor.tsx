@@ -410,13 +410,11 @@ export function CharacterEditor({
       persistedTalkingHeadMotionIntensityPercent,
     );
     setIsTalkingHeadMotionPreviewing(false);
-    setHasStartedTalkingHeadMotionPreview(false);
   }, [character?.id, persistedTalkingHeadMotionIntensityPercent]);
 
   useEffect(() => {
     if (!talkingHeadSettingsVisible || !hasTalkingHeadMotionControl) {
       setIsTalkingHeadMotionPreviewing(false);
-      setHasStartedTalkingHeadMotionPreview(false);
     }
     if (!hasTalkingHeadMotionControl) {
       setTalkingHeadMotionIntensityPercent(
