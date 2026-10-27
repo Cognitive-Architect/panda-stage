@@ -388,6 +388,8 @@
           "tests/unit/project-asset-path.test.ts",
           "tests/unit/unsaved-close-controller.test.ts",
           "tests/unit/models/audio-clip-source-range.test.ts",
+          "tests/unit/layer-service.test.ts",
+          "tests/unit/layer-stores.test.ts",
           "tests/integration/standalone-audio-persistence.test.ts",
           "tests/integration/animation-persistence.test.ts"
         ],
@@ -397,7 +399,7 @@
         "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "architecture",
-        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #828 lifecycle/audio source-range tests and Main window/filesystem boundary tests remain here without broad test globs; other unregistered test paths stay fail-closed."
+        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #828 lifecycle/audio source-range tests and Main window/filesystem boundary tests, plus Issue #868 animation LayerService/store-history tests, remain here without broad test globs; other unregistered test paths stay fail-closed."
       },
       {
         "id": "release-export-core",
