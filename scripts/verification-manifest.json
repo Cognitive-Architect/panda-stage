@@ -552,7 +552,8 @@
           "scripts/verify-issue457*",
           "scripts/verify-issue579*",
           "scripts/verify-issue602*",
-          "scripts/verify-issue606*"
+          "scripts/verify-issue606*",
+          "scripts/verify-issue872-motion-preview-pixels.cjs"
         ],
         "suites": ["canvas", "history"],
         "riskPolicy": "targeted",
@@ -712,7 +713,7 @@
       }
     ]
   },
-  "count": 97,
+  "count": 98,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1037,6 +1038,18 @@
       "owner": "canvas",
       "supersedes": null,
       "notes": "Focused real Windows Electron Product Preview proof for atomic Body+Face pixels, expression/Mouth replacement, delayed-part no-half-frame behavior, partial opacity, Mouth fallback warning with non-exact readiness, and fatal Body failure."
+    },
+    {
+      "id": "issue872-motion-pixels",
+      "script": "verify:issue872-motion-pixels",
+      "suite": "canvas",
+      "subsystem": "canvas",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "canvas",
+      "supersedes": null,
+      "notes": "Focused Issue #872 Windows Electron Product Preview pixel verifier for the synthetic Issue #867 fixture at 0/100/200% intensity and 125/250/375ms dialogue phases. Requires the generated external acceptance fixture; editor/export pixel equivalence and real-material OWNER acceptance remain separate."
     },
     {
       "id": "fla-v1-5-c3",
