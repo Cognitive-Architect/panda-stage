@@ -84,6 +84,11 @@ const SURFACE_PIXEL_TOLERANCE = {
   maxAbsoluteChannelError: 24,
   pixelsOver16Ratio: 0.001,
 };
+const MP4_PIXEL_TOLERANCE = {
+  meanAbsoluteChannelError: 8,
+  p95AbsoluteChannelError: 24,
+  pixelsOver16Ratio: 0.03,
+};
 const registeredChannels = [];
 
 app.on('window-all-closed', () => {});
@@ -1490,9 +1495,9 @@ async function run() {
     const previewFormalPixelsMatch = withinSurfaceTolerance(previewFormalPixelDiffs);
     const editorFormalPixelsMatch = withinSurfaceTolerance(editorFormalPixelDiffs);
     const mp4PixelQualityWithinThreshold = Object.values(mp4PixelDiffs).every((metrics) =>
-      metrics.meanAbsoluteChannelError <= 8 &&
-      metrics.p95AbsoluteChannelError <= 24 &&
-      metrics.pixelsOver16Ratio <= 0.03,
+      metrics.meanAbsoluteChannelError <= MP4_PIXEL_TOLERANCE.meanAbsoluteChannelError &&
+      metrics.p95AbsoluteChannelError <= MP4_PIXEL_TOLERANCE.p95AbsoluteChannelError &&
+      metrics.pixelsOver16Ratio <= MP4_PIXEL_TOLERANCE.pixelsOver16Ratio,
     );
     const previewCacheEvent = [...(previewCapture.cacheEvents ?? [])].reverse().find((event) =>
       (event.event === 'composite-cache-rebuild' || event.event === 'composite-cache-reuse') &&
@@ -1514,6 +1519,7 @@ async function run() {
       frameIndex: SURFACE_COMPARISON_FRAME_INDEX,
       timeMs: SURFACE_COMPARISON_TIME_MS,
       pixelTolerance: SURFACE_PIXEL_TOLERANCE,
+      mp4PixelTolerance: MP4_PIXEL_TOLERANCE,
       editor: {
         ...editorCapture.metadata,
         crops: Object.fromEntries(cropNames.map((name) => [name, {
