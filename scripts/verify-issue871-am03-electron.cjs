@@ -548,6 +548,14 @@ async function run() {
     await seek(window, 1040);
     const reverse = await state(window);
     assert(reverse.visual.assetId === ids.frames[1], 'Reverse seek did not select the second frame.');
+    await seek(window, 1040);
+    const repeatedSeek = await state(window);
+    const repeatedSeekPixel = await pixel(window, repeatedSeek.layer.x, repeatedSeek.layer.y);
+    assert(repeatedSeek.visual.assetId === reverse.visual.assetId &&
+      repeatedSeek.layer.x === reverse.layer.x && repeatedSeek.layer.y === reverse.layer.y &&
+      repeatedSeek.layer.scaleX === reverse.layer.scaleX && repeatedSeek.layer.scaleY === reverse.layer.scaleY &&
+      repeatedSeekPixel.slice(0, 3).every((value, index) => Math.abs(value - colors[1][index]) <= 2),
+    'Repeated paused seek changed the frame pixels or base transform.');
 
     await seek(window, 960);
     const beforeStart = await state(window);
@@ -584,6 +592,7 @@ async function run() {
       startTimeMs: current.layer.startTimeMs,
       frames,
       reverseAssetId: reverse.visual.assetId,
+      repeatedSeek: { assetId: repeatedSeek.visual.assetId, pixel: repeatedSeekPixel },
       beforeStartVisible: beforeStart.visual.visible,
       moved: moved.layer,
       scaled: scaled.layer,
@@ -602,6 +611,7 @@ async function run() {
       frames,
       frameManifest,
       pendingEvidence,
+      repeatedSeek: { assetId: repeatedSeek.visual.assetId, pixel: repeatedSeekPixel },
       lastHold: { timeMs: 1500, assetId: last.visual.assetId },
       moved: moved.layer,
       scaled: scaled.layer,
