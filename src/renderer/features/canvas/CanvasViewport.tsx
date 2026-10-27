@@ -15,7 +15,10 @@ import {
   type Point,
   type ViewportTransform,
 } from '../../../domain';
-import type { AssetDropPayload } from '../assets/AssetDropPayload';
+import type {
+  AnimationDropTarget,
+  AssetDropPayload,
+} from '../assets/AssetDropPayload';
 import {
   useCanvasDrop,
   type CanvasDropPreview,
@@ -28,6 +31,7 @@ export interface CanvasViewportProps {
   viewportChrome?: ReactNode;
   dropDisabled?: boolean;
   dropInteractionDisabled?: boolean;
+  animationDropTarget?: AnimationDropTarget | null;
   onAssetDrop?: (payload: AssetDropPayload, point: Point) => void;
   onDropError?: (message: string) => void;
   onDropPreview?: (preview: CanvasDropPreview | null) => void;
@@ -68,6 +72,7 @@ export function CanvasViewport({
   viewportChrome = null,
   dropDisabled = false,
   dropInteractionDisabled = false,
+  animationDropTarget = null,
   onAssetDrop = () => undefined,
   onDropError = () => undefined,
   onDropPreview = () => undefined,
@@ -94,6 +99,7 @@ export function CanvasViewport({
     transform,
     disabled: dropDisabled,
     interactionDisabled: dropInteractionDisabled,
+    animationDropTarget,
     onPreview: onDropPreview,
     onDropAsset: onAssetDrop,
     onError: onDropError,

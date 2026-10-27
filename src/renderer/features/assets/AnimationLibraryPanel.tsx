@@ -9,7 +9,12 @@ import {
   type AnimationPlaybackTimeline,
 } from './animationPlayback';
 import { createAnimationImageBlob } from './animationImageBytes';
-import { writeAssetDropPayload } from './AssetDropPayload';
+import { editorProjectStore } from '../../stores/EditorProjectStore';
+import { shotStore } from '../../stores/shotStore';
+import {
+  writeAnimationDropContext,
+  writeAssetDropPayload,
+} from './AssetDropPayload';
 
 export interface AnimationLibraryPanelProps {
   animations: readonly AnimationDefinition[];
@@ -302,6 +307,29 @@ export function AnimationLibraryCard({
             type: 'animation',
             animationId: animation.id,
           });
+          const snapshot = editorProjectStore.getSnapshot();
+          const shotId = shotStore.getCurrentShotId();
+          const projectInstanceId =
+            editorProjectStore.getProjectInstanceId();
+          if (
+            snapshot?.project.id === project.id &&
+            snapshot.projectRoot === projectRoot &&
+            snapshot.project.animations.some(
+              (candidate) => candidate.id === animation.id,
+            ) &&
+            shotId &&
+            snapshot.project.shots.some((candidate) => candidate.id === shotId) &&
+            projectInstanceId !== null
+          ) {
+            writeAnimationDropContext(event.dataTransfer, {
+              version: 1,
+              animationId: animation.id,
+              projectId: project.id,
+              projectInstanceId,
+              projectRevision: snapshot.revision,
+              shotId,
+            });
+          }
         }}
         onDragEnd={() => {
           window.setTimeout(() => {

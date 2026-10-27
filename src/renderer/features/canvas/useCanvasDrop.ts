@@ -11,7 +11,10 @@ import {
 } from '../../../domain';
 import {
   ASSET_DRAG_MIME,
+  isCurrentAnimationDropContext,
   parseAssetDropPayload,
+  readAnimationDropContext,
+  type AnimationDropTarget,
   type AssetDropPayload,
 } from '../assets/AssetDropPayload';
 
@@ -33,6 +36,7 @@ export interface CanvasDropOptions {
   transform: ViewportTransform;
   disabled: boolean;
   interactionDisabled: boolean;
+  animationDropTarget: AnimationDropTarget | null;
   onPreview: (preview: CanvasDropPreview | null) => void;
   onDropAsset: (
     payload: AssetDropPayload,
@@ -88,6 +92,7 @@ export function useCanvasDrop({
   transform,
   disabled,
   interactionDisabled,
+  animationDropTarget,
   onPreview,
   onDropAsset,
   onError,
@@ -155,6 +160,17 @@ export function useCanvasDrop({
       onPreview(null);
       if (!payload) {
         onError('拖放载荷无效；未创建图层。');
+        return;
+      }
+      if (
+        payload.type === 'animation' &&
+        !isCurrentAnimationDropContext(
+          readAnimationDropContext(event.dataTransfer),
+          animationDropTarget,
+          payload.animationId,
+        )
+      ) {
+        onError('动画拖放请求已过期，请从当前工程的当前镜头重新拖入。');
         return;
       }
       if (interactionDisabled && payload.type !== 'animation') {

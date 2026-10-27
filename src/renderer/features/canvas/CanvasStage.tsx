@@ -203,6 +203,7 @@ export function CanvasStage({
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
   );
+  const projectInstanceId = editorProjectStore.getProjectInstanceId();
   const currentShotId = useSyncExternalStore(
     shotStore.subscribe,
     shotStore.getCurrentShotId,
@@ -523,6 +524,16 @@ export function CanvasStage({
       <CanvasViewport
         dropDisabled={!snapshot || !shot}
         dropInteractionDisabled={temporalInspection}
+        animationDropTarget={
+          snapshot && shot && projectInstanceId !== null
+            ? {
+                projectId: snapshot.project.id,
+                projectInstanceId,
+                projectRevision: snapshot.revision,
+                shotId: shot.id,
+              }
+            : null
+        }
         mode={viewport.mode}
         onAssetDrop={(payload, point) => {
           if (payload.type !== 'animation' && !canCommitCanvasEdit()) {

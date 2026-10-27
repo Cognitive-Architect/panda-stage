@@ -140,6 +140,23 @@ describe('CanvasViewport chrome pointer routing', () => {
       /onViewportChromePointerDown=\{\(\) => selectionStore\.clear\(\)\}/u,
     );
   });
+
+  it('rejects animation drops when their captured project, revision, or Shot context expired', () => {
+    const drop = readFileSync(
+      'src/renderer/features/canvas/useCanvasDrop.ts',
+      'utf8',
+    );
+    const stage = readFileSync(
+      'src/renderer/features/canvas/CanvasStage.tsx',
+      'utf8',
+    );
+
+    expect(drop).toContain('isCurrentAnimationDropContext(');
+    expect(drop).toContain('animationDropTarget');
+    expect(drop).toContain('payload.animationId');
+    expect(stage).toContain('projectRevision: snapshot.revision');
+    expect(stage).toContain('shotId: shot.id');
+  });
 });
 
 describe('CanvasStage permanent guide contract', () => {
