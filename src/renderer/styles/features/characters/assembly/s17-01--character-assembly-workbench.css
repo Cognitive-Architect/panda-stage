@@ -1872,38 +1872,20 @@
   .character-settings-workspace
   > .character-danger-zone {
   margin-top: 7px;
-  padding-top: 12px;
-  border-top: 1px solid rgb(214 113 98 / 30%);
+  display: flex;
+  padding-top: 8px;
+  border-top: 1px solid rgb(214 113 98 / 22%);
   border-bottom: 0;
-  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-danger-zone-copy h4 {
-  margin: 0;
-  color: #e3b5ae;
-  font-size: 12px;
-}
-
-.editor-layout[data-shell-mode='landscape']
-  .resource-activity-dock-landscape[data-active-activity='characters']
-  .character-manager[data-character-presentation='landscape']
-  .character-danger-zone-copy p {
-  margin: 4px 0 0;
-  color: #a9bbb0;
-  font-size: 10px;
-  line-height: 1.45;
+  justify-content: flex-end;
+  gap: 0;
 }
 
 .editor-layout[data-shell-mode='landscape']
   .resource-activity-dock-landscape[data-active-activity='characters']
   .character-manager[data-character-presentation='landscape']
   .character-delete-settings-action {
-  min-height: 40px;
+  min-height: 44px;
   padding: 7px 10px;
   border-color: rgb(214 113 98 / 38%);
   color: #f0c1b8;
@@ -1924,6 +1906,12 @@
   background: rgb(120 48 42 / 32%);
 }
 
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .character-manager[data-character-presentation='landscape']
+  .character-delete-settings-action {
+  min-height: var(--ui-touch-regular);
+}
+
 @media (max-width: 420px) {
   .editor-layout[data-shell-mode='landscape']
     .resource-activity-dock-landscape[data-active-activity='characters']
@@ -1941,13 +1929,6 @@
     font-size: 9px;
   }
 
-  .editor-layout[data-shell-mode='landscape']
-    .resource-activity-dock-landscape[data-active-activity='characters']
-    .character-manager[data-character-presentation='landscape']
-    .character-settings-workspace
-    > .character-danger-zone {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 /* Issue #619: keep selector chrome thin, give selected assets even insets,

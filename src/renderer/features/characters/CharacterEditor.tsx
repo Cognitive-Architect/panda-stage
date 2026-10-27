@@ -1393,16 +1393,10 @@ export function CharacterEditor({
             </section>
             ) : null}
             <section
-              aria-labelledby="character-danger-zone-heading"
+              aria-label="删除角色"
               className="character-settings-section character-danger-zone"
               data-testid="character-danger-zone"
             >
-              <div className="character-danger-zone-copy">
-                <h4 id="character-danger-zone-heading">危险操作</h4>
-                <p>
-                  删除当前角色；如果角色被镜头或对白引用，删除会被阻止。
-                </p>
-              </div>
               <button
                 className="character-delete-settings-action"
                 data-testid="character-delete-settings"
