@@ -36,7 +36,11 @@ import {
   EXPORT_PREPARATION_SUPPORT_PROFILE,
   type ExportPreparationRequest,
 } from '../../src/shared/export-preparation-types';
-import { buildProject, IDS } from './domain/testProject';
+import {
+  buildProject,
+  buildProjectWithAnimation,
+  IDS,
+} from './domain/testProject';
 
 const roots: string[] = [];
 const OPEN_INSTANCE_ID = 4;
@@ -267,6 +271,52 @@ describe('DL-01 export preparation domain rules', () => {
     expect(media.every((entry) => entry.asset.kind === 'image')).toBe(true);
     expect(evaluateExportPreparationSupport(project, 'static')).toEqual([]);
     expect(evaluateExportPreparationSupport(project, 'speaker-focus')).toEqual([]);
+  });
+
+  it('blocks animation export before creating a preparation snapshot', async () => {
+    const base = buildProjectWithAnimation();
+    const shot = base.shots[0]!;
+    const animationLayer = {
+      id: IDS.animationLayer,
+      name: 'test animation',
+      source: { kind: 'animation' as const, animationId: IDS.animation },
+      startTimeMs: 1_000,
+      anchor: 'center' as const,
+      x: 700,
+      y: 500,
+      scaleX: 1,
+      scaleY: 1,
+      rotationDeg: 0,
+      opacity: 1,
+      visible: true,
+      locked: false,
+      flipX: false,
+      zIndex: 3,
+    };
+    const project = ProjectSchema.parse({
+      ...base,
+      shots: [{ ...shot, layers: [...shot.layers, animationLayer] }],
+    });
+    const fixture = await harness({ project });
+    const selection = await selectOutput(fixture, 'animation-not-exported.mp4');
+    const createSnapshot = vi.spyOn(fixture.fileStore, 'create');
+
+    const result = await fixture.service.prepare(
+      requestFor(fixture, selection.selectionId),
+    );
+
+    expect(result.status).toBe('BLOCK');
+    if (result.status !== 'BLOCK') return;
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          problem: '当前版本暂不支持镜头动画导出',
+        }),
+      ]),
+    );
+    expect(createSnapshot).not.toHaveBeenCalled();
+    expect(await readDirectoryOrEmpty(path.join(fixture.root, 'snapshots')))
+      .toEqual([]);
   });
 
   it('prepares only expressions used by the shot timeline, not preload candidates', async () => {

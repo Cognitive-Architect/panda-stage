@@ -519,6 +519,16 @@ export class ExportPreparationService {
 
     try {
       const issues = evaluateExportPreparationSupport(project, request.cameraMode);
+      const animationExportIssue = issues.find(
+        (item) => item.problem === '当前版本暂不支持镜头动画导出',
+      );
+      if (animationExportIssue) {
+        return this.block(
+          request.attemptId,
+          [animationExportIssue],
+          'animation layers are not supported by the formal MP4 export renderer',
+        );
+      }
       const media = collectExportPreparationMedia(project);
       const mediaSizes = new Map<string, number>();
       const budgetEntries: Array<{ byteLength: number; location: string }> = [];

@@ -24,6 +24,10 @@ export type LayerServiceErrorCode =
   | 'ASSET_TYPE_MISMATCH'
   | 'BACKGROUND_LAYER_INVALID'
   | 'CHARACTER_IDENTITY_MISMATCH'
+  | 'ANIMATION_NOT_FOUND'
+  | 'ANIMATION_INSTANCE_LIMIT'
+  | 'INVALID_ANIMATION_START_TIME'
+  | 'ANIMATION_FRAME_INVALID'
   | 'INVALID_POSITION'
   | 'INVALID_TRANSFORM'
   | 'BACKGROUND_COVER_INVALID'
@@ -43,6 +47,8 @@ export class LayerServiceError extends Error {
 
 export type CreateLayerInput = AssetDropPayload & {
   position: Point;
+  /** Captured from the formal Shot timeline at the instant of an animation drop. */
+  startTimeMs?: number;
 };
 
 export interface LayerServiceOptions {
@@ -148,6 +154,73 @@ export class LayerService {
     input: CreateLayerInput,
   ): CreateLayerResult {
     const shot = this.shot(project, shotId);
+    const position = clampLayerPosition(input.position);
+    if (input.type === 'animation') {
+      const animation = project.animations.find(
+        (candidate) => candidate.id === input.animationId,
+      );
+      if (!animation) {
+        throw new LayerServiceError(
+          'ANIMATION_NOT_FOUND',
+          'Animation definition is unavailable.',
+        );
+      }
+      if (shot.layers.some((layer) => layer.source.kind === 'animation')) {
+        throw new LayerServiceError(
+          'ANIMATION_INSTANCE_LIMIT',
+          'This shot currently supports one animation layer.',
+        );
+      }
+      if (
+        input.startTimeMs === undefined ||
+        !Number.isFinite(input.startTimeMs) ||
+        input.startTimeMs < 0 ||
+        input.startTimeMs > shot.durationMs
+      ) {
+        throw new LayerServiceError(
+          'INVALID_ANIMATION_START_TIME',
+          'Animation start time must be within the shot duration.',
+        );
+      }
+      for (const frame of animation.frames) {
+        const frameAsset = project.assets.find(
+          (candidate) => candidate.id === frame.assetId,
+        );
+        if (
+          !frameAsset ||
+          frameAsset.kind !== 'image' ||
+          frameAsset.sha256 !== frame.sha256
+        ) {
+          throw new LayerServiceError(
+            'ANIMATION_FRAME_INVALID',
+            'An animation frame is missing or has a mismatched content hash.',
+          );
+        }
+      }
+      const usedIds = this.projectIds(project);
+      const layer: Layer = {
+        id: this.nextUniqueId(usedIds),
+        name: animation.name,
+        source: { kind: 'animation', animationId: animation.id },
+        startTimeMs: input.startTimeMs,
+        anchor: 'center',
+        x: position.x,
+        y: position.y,
+        scaleX: 1,
+        scaleY: 1,
+        rotationDeg: 0,
+        opacity: 1,
+        visible: true,
+        locked: false,
+        flipX: false,
+        zIndex: Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1,
+      };
+      const nextShot = { ...shot, layers: [...shot.layers, layer] };
+      return {
+        project: this.replaceShot(project, nextShot),
+        layer,
+      };
+    }
     const asset = project.assets.find(
       (candidate) => candidate.id === input.assetId,
     );
@@ -201,7 +274,6 @@ export class LayerService {
     }
 
     const usedIds = this.projectIds(project);
-    const position = clampLayerPosition(input.position);
     const scale =
       input.type === 'character-expression'
         ? character!.defaultScale
@@ -650,6 +722,7 @@ export class LayerService {
     return new Set([
       project.id,
       ...project.assets.map((asset) => asset.id),
+      ...project.animations.map((animation) => animation.id),
       ...project.characters.flatMap((character) => [
         character.id,
         ...character.expressions.map((expression) => expression.id),

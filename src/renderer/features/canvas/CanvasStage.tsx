@@ -222,7 +222,7 @@ export function CanvasStage({
   const [dropPreview, setDropPreview] =
     useState<CanvasDropPreview | null>(null);
   const [interactionStatus, setInteractionStatus] = useState(
-    '从素材库拖入图片，或点击普通图层进行选择。',
+    '从素材库拖入图片或动画，或点击普通图层进行选择。',
   );
   const selectedLayerId = useSyncExternalStore(
     selectionStore.subscribe,
@@ -525,7 +525,7 @@ export function CanvasStage({
         dropInteractionDisabled={temporalInspection}
         mode={viewport.mode}
         onAssetDrop={(payload, point) => {
-          if (!canCommitCanvasEdit()) {
+          if (payload.type !== 'animation' && !canCommitCanvasEdit()) {
             rejectTemporalCanvasEdit();
             return;
           }
@@ -533,6 +533,9 @@ export function CanvasStage({
             const layer = layerStore.createFromAsset({
               ...payload,
               position: point,
+              ...(payload.type === 'animation'
+                ? { startTimeMs: timelineUiStore.getSnapshot().currentTimeMs }
+                : {}),
             });
             selectionStore.select(layer.id);
             setInteractionStatus(

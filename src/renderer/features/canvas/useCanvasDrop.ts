@@ -32,6 +32,7 @@ export interface CanvasDropOptions {
   viewportRef: RefObject<HTMLDivElement | null>;
   transform: ViewportTransform;
   disabled: boolean;
+  interactionDisabled: boolean;
   onPreview: (preview: CanvasDropPreview | null) => void;
   onDropAsset: (
     payload: AssetDropPayload,
@@ -86,6 +87,7 @@ export function useCanvasDrop({
   viewportRef,
   transform,
   disabled,
+  interactionDisabled,
   onPreview,
   onDropAsset,
   onError,
@@ -111,11 +113,12 @@ export function useCanvasDrop({
 
   const preview = (event: DragEvent<HTMLDivElement>): void => {
     const point = pointFor(event);
-    if (!point) {
+    const payload = readPayload(event);
+    if (!point || (interactionDisabled && payload && payload.type !== 'animation')) {
       onPreview(null);
       return;
     }
-    onPreview({ payload: readPayload(event), point });
+    onPreview({ payload, point });
   };
 
   return {
@@ -152,6 +155,10 @@ export function useCanvasDrop({
       onPreview(null);
       if (!payload) {
         onError('拖放载荷无效；未创建图层。');
+        return;
+      }
+      if (interactionDisabled && payload.type !== 'animation') {
+        onError('时间轴预览中只能添加动画实例；其他图层请回到 0:00。');
         return;
       }
       if (payload.type === 'audio') {

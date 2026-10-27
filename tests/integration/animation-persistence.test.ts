@@ -12,6 +12,7 @@ import {
 } from '../../src/main/services/FlaFrameSequenceCommitService';
 import type { ConfirmedSequenceFrame } from '../../src/main/services/fla-frame-sequence-service';
 import { ProjectService } from '../../src/main/services/ProjectService';
+import { LayerService, ShotService } from '../../src/domain';
 import { FlaFrameSequenceCommitRequestSchema } from '../../src/shared/fla-frame-sequence-api';
 
 const temporaryParents: string[] = [];
@@ -159,10 +160,37 @@ describe('formal animation persistence', () => {
       committed.project.animations[0]?.frames[0]?.assetId,
     ]);
 
+    const withShot = new ShotService().create(committed.project, {
+      name: 'Animation shot',
+      durationMs: 3_000,
+    });
+    await projectService.save(projectRoot, withShot, committed.savedRevision);
+    if (!current) throw new Error('Expected the saved project snapshot.');
+    const shot = current.project.shots[0]!;
+    const placed = new LayerService({
+      createId: () => '29000000-0000-4000-8000-000000000001',
+    }).createFromAsset(current.project, shot.id, {
+      version: 3,
+      type: 'animation',
+      animationId: committed.project.animations[0]!.id,
+      position: { x: 320, y: 240 },
+      startTimeMs: 500,
+    });
+    await projectService.save(projectRoot, placed.project, current.revision);
+
     const reopened = await new ProjectService().open(projectRoot);
     expect(reopened.migrated).toBe(false);
     expect(reopened.project.animations).toEqual(committed.project.animations);
     expect(reopened.project.animations[0]?.durationMs).toBe(2_000 / 30);
+    expect(reopened.project.shots[0]?.layers.at(-1)).toMatchObject({
+      source: {
+        kind: 'animation',
+        animationId: committed.project.animations[0]!.id,
+      },
+      startTimeMs: 500,
+      x: 320,
+      y: 240,
+    });
 
     const asset = reopened.project.assets.find(
       (candidate) => candidate.id === reopened.project.animations[0]?.frames[0]?.assetId,

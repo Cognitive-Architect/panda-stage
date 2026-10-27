@@ -343,6 +343,15 @@ export function evaluateExportPreparationSupport(
 
   project.shots.forEach((shot) => {
     const location = '镜头“' + shot.name + '”';
+    if (shot.layers.some((layer) => layer.source.kind === 'animation')) {
+      issues.push(
+        issue(
+          location,
+          '当前版本暂不支持镜头动画导出',
+          '等待动画视频导出支持后再导出，或先从本次项目删除动画实例。',
+        ),
+      );
+    }
     if (shot.backgroundLayerId === null) {
       issues.push(
         issue(

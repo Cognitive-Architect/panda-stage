@@ -9,6 +9,7 @@ import {
   type AnimationPlaybackTimeline,
 } from './animationPlayback';
 import { createAnimationImageBlob } from './animationImageBytes';
+import { writeAssetDropPayload } from './AssetDropPayload';
 
 export interface AnimationLibraryPanelProps {
   animations: readonly AnimationDefinition[];
@@ -133,6 +134,7 @@ export function AnimationLibraryCard({
   const scrollPositionsRef = useRef<AnimationCardScrollPosition[]>([]);
   const windowScrollRef = useRef({ top: 0, left: 0 });
   const wasOpenRef = useRef(false);
+  const draggedCardRef = useRef(false);
   const firstFrame = animation.frames[0];
 
   useEffect(() => {
@@ -284,7 +286,28 @@ export function AnimationLibraryCard({
         data-asset-kind="animation"
         data-category="animation"
         data-testid="animation-library-card"
-        onClick={openPreview}
+        draggable
+        onClick={() => {
+          if (draggedCardRef.current) {
+            draggedCardRef.current = false;
+            return;
+          }
+          openPreview();
+        }}
+        onDragStart={(event) => {
+          draggedCardRef.current = true;
+          event.dataTransfer.effectAllowed = 'copy';
+          writeAssetDropPayload(event.dataTransfer, {
+            version: 3,
+            type: 'animation',
+            animationId: animation.id,
+          });
+        }}
+        onDragEnd={() => {
+          window.setTimeout(() => {
+            draggedCardRef.current = false;
+          }, 0);
+        }}
         onKeyDown={(event) => {
           if (event.target !== event.currentTarget) return;
           if (event.key === 'Enter' || event.key === ' ') {

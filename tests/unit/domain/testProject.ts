@@ -23,6 +23,8 @@ export const IDS = {
   layerBg: '60000000-0000-4000-8000-000000000001',
   layerAsset: '60000000-0000-4000-8000-000000000002',
   layerChar: '60000000-0000-4000-8000-000000000003',
+  animation: '70000000-0000-4000-8000-000000000001',
+  animationLayer: '70000000-0000-4000-8000-000000000002',
   /** A UUID-format id that intentionally does not belong to any character. */
   unknownExpression: '20000000-0000-4000-8000-000000000099',
 } as const;
@@ -180,5 +182,52 @@ export function buildProject(): Project {
     ],
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
+  });
+}
+
+export function buildProjectWithAnimation(): Project {
+  const project = buildProject();
+  const frameSha = 'a'.repeat(64);
+  const frameDurationMs = 40;
+  const animation = {
+    id: IDS.animation,
+    name: 'test animation',
+    source: {
+      basename: 'test.fla',
+      sha256: 'b'.repeat(64),
+      renderTargetId: 'test-render-target',
+      targetKind: 'graphic-symbol' as const,
+      targetName: 'test animation',
+      startFrameIndex: 0,
+      endFrameIndex: 20,
+      sourceFps: 25,
+      canvas: { width: 1000, height: 1000 },
+      documentCanvas: { width: 1000, height: 1000 },
+      anchor: { x: 100, y: 100 },
+    },
+    durationMs: 21 * frameDurationMs,
+    frames: Array.from({ length: 21 }, (_, ordinal) => ({
+      ordinal,
+      sourceFrameIndex: ordinal,
+      assetId: IDS.assetChar,
+      sha256: frameSha,
+      sourceViewport: {
+        x: 100 + ordinal,
+        y: 100,
+        width: 640,
+        height: 640,
+      },
+      offset: { x: ordinal, y: 0 },
+      startMs: ordinal * frameDurationMs,
+      durationMs: frameDurationMs,
+      createdBySequenceImport: true,
+    })),
+  };
+  return ProjectSchema.parse({
+    ...project,
+    assets: project.assets.map((asset) =>
+      asset.id === IDS.assetChar ? { ...asset, sha256: frameSha } : asset,
+    ),
+    animations: [animation],
   });
 }

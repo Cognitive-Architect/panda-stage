@@ -99,6 +99,18 @@ export function getRightInspectorLayerSummary(
     };
   }
 
+  if (source.kind === 'animation') {
+    const animation = snapshot.project.animations.find(
+      (candidate) => candidate.id === source.animationId,
+    );
+    const firstFrameAssetId = animation?.frames[0]?.assetId;
+    const asset =
+      snapshot.project.assets.find(
+        (candidate) => candidate.id === firstFrameAssetId,
+      ) ?? null;
+    return { asset, typeLabel: '正式动画图层' };
+  }
+
   const character =
     snapshot.project.characters?.find(
       (candidate) => candidate.id === source.characterId,

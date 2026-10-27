@@ -3,13 +3,14 @@ import exampleProject from '../../demo-project/project-v1.example.json';
 import {
   LayerService,
   migrateProject,
+  type Project,
 } from '../../src/domain';
+import { buildProjectWithAnimation, IDS } from './domain/testProject';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { LayerStore } from '../../src/renderer/stores/layerStore';
 import { LayerSelectionStore } from '../../src/renderer/stores/selectionStore';
 
-function harness() {
-  const project = migrateProject(exampleProject);
+function harness(project: Project = migrateProject(exampleProject)) {
   const editor = new EditorProjectStore();
   editor.open('D:\\day22.pandastage', project);
   const listeners = new Set<() => void>();
@@ -163,6 +164,72 @@ describe('Day 22 layer stores', () => {
     expect(input.editor.history.getSnapshot()).toMatchObject({
       undoCount: 1,
       redoCount: 0,
+    });
+  });
+
+  it('undoes and redoes an animation instance with its start time and selection', () => {
+    const input = harness(buildProjectWithAnimation());
+    const shot = input.project.shots[0]!;
+    const layer = input.layers.createFromAsset({
+      version: 3,
+      type: 'animation',
+      animationId: IDS.animation,
+      position: { x: 350, y: 260 },
+      startTimeMs: 1_000,
+    });
+
+    expect(input.editor.getSnapshot()).toMatchObject({ revision: 1, dirty: true });
+    expect(input.selection.getSelectedLayerId()).toBe(layer.id);
+    input.layers.updatePosition(layer.id, { x: 400, y: 280 });
+    input.layers.updateTransform(layer.id, {
+      x: 400,
+      y: 280,
+      scale: 1.2,
+      rotationDeg: 0,
+      opacity: 1,
+      flipX: false,
+    });
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.at(-1)).toMatchObject({
+      startTimeMs: 1_000,
+      x: 400,
+      y: 280,
+      scaleX: 1.2,
+      scaleY: 1.2,
+    });
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.at(-1)).toMatchObject({
+      x: 400,
+      y: 280,
+      scaleX: 1,
+      scaleY: 1,
+    });
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.at(-1)).toMatchObject({
+      x: 350,
+      y: 260,
+    });
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers).not.toContainEqual(
+      expect.objectContaining({ id: layer.id }),
+    );
+    expect(input.editor.redo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.shots.find(
+      (candidate) => candidate.id === shot.id,
+    )?.layers).toContainEqual(expect.objectContaining({
+      id: layer.id,
+      source: { kind: 'animation', animationId: IDS.animation },
+      startTimeMs: 1_000,
+      x: 350,
+      y: 260,
+    }));
+    expect(input.selection.getSelectedLayerId()).toBe(layer.id);
+    expect(input.editor.redo()).toBe(true);
+    expect(input.editor.redo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.at(-1)).toMatchObject({
+      x: 400,
+      y: 280,
+      scaleX: 1.2,
+      scaleY: 1.2,
     });
   });
 

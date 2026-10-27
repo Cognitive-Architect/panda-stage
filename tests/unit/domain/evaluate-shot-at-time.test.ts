@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   evaluateLayerMotionAtTime,
   evaluateShotAtTime,
+  resolveLayerVisualParts,
 } from '../../../src/domain';
 import type { EvaluatedLayer, Project, Shot, TimelineEvent } from '../../../src/domain';
-import { buildProject, IDS } from './testProject';
+import { buildProject, buildProjectWithAnimation, IDS } from './testProject';
 
 function shotWithEvents(events: readonly TimelineEvent[]): Shot {
   const project = buildProject();
@@ -17,6 +18,60 @@ const MOTION_LAYER = { id: IDS.layerChar, x: 500, y: 600 };
 describe('T02 evaluateShotAtTime', () => {
   const project: Project = buildProject();
   const shot = project.shots[0]!;
+
+  it('samples one animation from Shot time at its source FPS and anchors every crop to its common canvas', () => {
+    const animationProject = buildProjectWithAnimation();
+    const baseShot = animationProject.shots[0]!;
+    const animationLayer = {
+      id: IDS.animationLayer,
+      name: 'test animation',
+      source: { kind: 'animation' as const, animationId: IDS.animation },
+      startTimeMs: 1_000,
+      anchor: 'center' as const,
+      x: 700,
+      y: 500,
+      scaleX: 1,
+      scaleY: 1,
+      rotationDeg: 0,
+      opacity: 1,
+      visible: true,
+      locked: false,
+      flipX: false,
+      zIndex: 3,
+    };
+    const shotWithAnimation: Shot = {
+      ...baseShot,
+      layers: [...baseShot.layers, animationLayer],
+    };
+    const at = (timeMs: number) =>
+      evaluateShotAtTime(shotWithAnimation, timeMs, animationProject).layers.find(
+        (layer) => layer.id === IDS.animationLayer,
+      )!;
+
+    expect(at(999).visible).toBe(false);
+    expect(at(1_000)).toMatchObject({
+      visible: true,
+      animationFrame: { offset: { x: 0, y: 0 } },
+    });
+    expect(at(1_040).animationFrame?.offset.x).toBe(1);
+    expect(at(1_800).animationFrame?.offset.x).toBe(20);
+    expect(at(1_840).animationFrame?.offset.x).toBe(20);
+    expect(at(1_040).animationFrame?.offset.x).toBe(1);
+    expect(at(1_000).animationFrame?.offset.x).toBe(0);
+
+    const visual = resolveLayerVisualParts(
+      animationProject,
+      shotWithAnimation,
+      at(1_040),
+    );
+    expect(visual.parts[0]?.localRect).toMatchObject({ x: -499, y: -500 });
+    expect(visual.combinedLocalBounds).toEqual({
+      x: -500,
+      y: -500,
+      width: 1000,
+      height: 1000,
+    });
+  });
 
   it('clamps the requested time into [0, durationMs]', () => {
     expect(evaluateShotAtTime(shot, -100, project).timeMs).toBe(0);

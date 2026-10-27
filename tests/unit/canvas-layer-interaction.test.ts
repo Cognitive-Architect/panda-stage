@@ -501,8 +501,20 @@ describe('SelectableLayer interaction adapter', () => {
     expect(stage).toContain('data-temporal-inspection');
     expect(stage).toContain('dropDisabled={!snapshot || !shot}');
     expect(stage).toContain('dropInteractionDisabled={temporalInspection}');
-    expect(
-      readFileSync('src/renderer/features/canvas/CanvasViewport.tsx', 'utf8'),
-    ).toContain('disabled: dropDisabled || dropInteractionDisabled');
+    const viewport = readFileSync(
+      'src/renderer/features/canvas/CanvasViewport.tsx',
+      'utf8',
+    );
+    const canvasDrop = readFileSync(
+      'src/renderer/features/canvas/useCanvasDrop.ts',
+      'utf8',
+    );
+    expect(viewport).toContain('disabled: dropDisabled,');
+    expect(viewport).toContain(
+      'interactionDisabled: dropInteractionDisabled,',
+    );
+    expect(canvasDrop).toContain(
+      "interactionDisabled && payload.type !== 'animation'",
+    );
   });
 });

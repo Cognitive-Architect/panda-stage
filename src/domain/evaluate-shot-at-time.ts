@@ -15,6 +15,13 @@ export interface EvaluatedLayer {
   currentExpressionId?: string | null;
   /** The transient Mouth asset projected after formal evaluation, if any. */
   mouthOverrideAssetId?: string | null;
+  /** Transient source-canvas projection for a formal animation instance. */
+  animationFrame?: {
+    animationId: string;
+    offset: { x: number; y: number };
+    viewport: { width: number; height: number };
+    canvas: { width: number; height: number };
+  };
   /** Runtime-only Head Group transform projected from the active Dialogue. */
   headGroupTransform?: EvaluatedHeadGroupTransform;
   anchor: 'center';
@@ -72,6 +79,7 @@ function eventEasing(event: TimelineEvent): 'linear' | 'ease-in-out' {
 interface ResolvedLayerVisualState {
   assetId: string | null;
   currentExpressionId: string | null;
+  animationFrame?: EvaluatedLayer['animationFrame'];
 }
 
 function resolveLayerVisualState(
@@ -80,6 +88,9 @@ function resolveLayerVisualState(
 ): ResolvedLayerVisualState {
   if (layer.source.kind === 'asset') {
     return { assetId: layer.source.assetId, currentExpressionId: null };
+  }
+  if (layer.source.kind === 'animation') {
+    return { assetId: null, currentExpressionId: null };
   }
   const characterId = layer.source.characterId;
   const expressionId = layer.source.expressionId;
@@ -92,6 +103,40 @@ function resolveLayerVisualState(
   return {
     assetId: expression?.assetId ?? null,
     currentExpressionId: expression?.id ?? null,
+  };
+}
+
+function resolveAnimationFrame(
+  project: Project,
+  animationId: string,
+  startTimeMs: number,
+  timeMs: number,
+): ResolvedLayerVisualState {
+  const animation = project.animations.find(
+    (candidate) => candidate.id === animationId,
+  );
+  if (!animation) return { assetId: null, currentExpressionId: null };
+  const sourceFrameIndex = Math.max(
+    0,
+    Math.min(
+      animation.frames.length - 1,
+      Math.floor(Math.max(0, timeMs - startTimeMs) * animation.source.sourceFps / 1_000),
+    ),
+  );
+  const frame = animation.frames[sourceFrameIndex];
+  if (!frame) return { assetId: null, currentExpressionId: null };
+  return {
+    assetId: frame.assetId,
+    currentExpressionId: null,
+    animationFrame: {
+      animationId: animation.id,
+      offset: frame.offset,
+      viewport: {
+        width: frame.sourceViewport.width,
+        height: frame.sourceViewport.height,
+      },
+      canvas: animation.source.canvas,
+    },
   };
 }
 
@@ -154,7 +199,18 @@ export function evaluateShotAtTime(
       let opacity = layer.opacity;
       let flipX = layer.flipX;
       let visible = layer.visible;
-      const initialVisual = resolveLayerVisualState(project, layer);
+      const animationSource =
+        layer.source.kind === 'animation' ? layer.source : null;
+      const animationVisible =
+        !animationSource || timeMs >= (layer.startTimeMs ?? 0);
+      const initialVisual = animationSource
+        ? resolveAnimationFrame(
+            project,
+            animationSource.animationId,
+            layer.startTimeMs ?? 0,
+            timeMs,
+          )
+        : resolveLayerVisualState(project, layer);
       let assetId = initialVisual.assetId;
       let currentExpressionId = initialVisual.currentExpressionId;
 
@@ -232,6 +288,9 @@ export function evaluateShotAtTime(
         assetId: assetId ?? '',
         currentExpressionId,
         mouthOverrideAssetId: null,
+        ...(initialVisual.animationFrame
+          ? { animationFrame: initialVisual.animationFrame }
+          : {}),
         anchor: layer.anchor,
         x: motion.displayPosition.x,
         y: motion.displayPosition.y,
@@ -240,7 +299,7 @@ export function evaluateShotAtTime(
         flipX,
         rotationDeg,
         opacity,
-        visible,
+        visible: visible && animationVisible,
         zIndex: layer.zIndex,
       };
     });

@@ -75,6 +75,7 @@ describe('animation library', () => {
     expect(markup).toContain('data-testid="animation-library-panel"');
     expect(markup).toContain('data-testid="animation-library-card"');
     expect(markup).toContain('data-category="animation"');
+    expect(markup).toContain('draggable="true"');
     expect(markup).toContain('Walk');
     expect(markup).toContain('2 帧 · 0.17 秒');
     expect(markup).not.toContain('12 FPS');

@@ -56,6 +56,9 @@ export function validateProjectReferences(
   validateUniqueIds(project.shots, ['shots'], context);
 
   const assets = new Map(project.assets.map((asset) => [asset.id, asset]));
+  const animations = new Map(
+    project.animations.map((animation) => [animation.id, animation]),
+  );
   const characters = new Map(
     project.characters.map((character) => [character.id, character]),
   );
@@ -239,6 +242,26 @@ export function validateProjectReferences(
             context,
             ['shots', shotIndex, 'layers', layerIndex, 'source', 'assetId'],
             `Layer references unknown or non-image asset: ${layer.source.assetId}`,
+          );
+        }
+        return;
+      }
+      if (layer.source.kind === 'animation') {
+        if (!animations.has(layer.source.animationId)) {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'layers', layerIndex, 'source', 'animationId'],
+            `Layer references unknown animation: ${layer.source.animationId}`,
+          );
+        }
+        if (
+          layer.startTimeMs === undefined ||
+          layer.startTimeMs > shot.durationMs
+        ) {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'layers', layerIndex, 'startTimeMs'],
+            'Animation start time must be within the shot duration.',
           );
         }
         return;

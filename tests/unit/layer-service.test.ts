@@ -6,6 +6,7 @@ import {
   ProjectSchema,
   migrateProject,
 } from '../../src/domain';
+import { buildProjectWithAnimation, IDS } from './domain/testProject';
 
 const CREATED_LAYER_ID = 'd2200000-0000-4000-8000-000000000001';
 const NOW = new Date('2026-07-26T01:00:00.000Z');
@@ -22,6 +23,64 @@ function service() {
 }
 
 describe('LayerService', () => {
+  it('creates one animation instance from its formal definition and captures the timeline start', () => {
+    const project = buildProjectWithAnimation();
+    const shot = project.shots[0]!;
+    const result = service().createFromAsset(project, shot.id, {
+      version: 3,
+      type: 'animation',
+      animationId: IDS.animation,
+      position: { x: 700, y: 500 },
+      startTimeMs: 1_000,
+    });
+
+    expect(result.layer).toMatchObject({
+      id: CREATED_LAYER_ID,
+      name: 'test animation',
+      source: { kind: 'animation', animationId: IDS.animation },
+      startTimeMs: 1_000,
+      x: 700,
+      y: 500,
+    });
+    expect(result.project.animations).toEqual(project.animations);
+    expect(result.project.shots[0]!.layers).toContainEqual(result.layer);
+  });
+
+  it('rejects invalid animation references, start times, and a second instance without changing the source project', () => {
+    const project = buildProjectWithAnimation();
+    const shot = project.shots[0]!;
+    expect(() => service().createFromAsset(project, shot.id, {
+      version: 3,
+      type: 'animation',
+      animationId: '70000000-0000-4000-8000-000000000099',
+      position: { x: 700, y: 500 },
+      startTimeMs: 1_000,
+    })).toThrow(expect.objectContaining({ code: 'ANIMATION_NOT_FOUND' }));
+    expect(() => service().createFromAsset(project, shot.id, {
+      version: 3,
+      type: 'animation',
+      animationId: IDS.animation,
+      position: { x: 700, y: 500 },
+      startTimeMs: shot.durationMs + 1,
+    })).toThrow(expect.objectContaining({ code: 'INVALID_ANIMATION_START_TIME' }));
+
+    const withFirst = service().createFromAsset(project, shot.id, {
+      version: 3,
+      type: 'animation',
+      animationId: IDS.animation,
+      position: { x: 700, y: 500 },
+      startTimeMs: 1_000,
+    });
+    expect(() => service().createFromAsset(withFirst.project, shot.id, {
+      version: 3,
+      type: 'animation',
+      animationId: IDS.animation,
+      position: { x: 900, y: 500 },
+      startTimeMs: 1_000,
+    })).toThrow(expect.objectContaining({ code: 'ANIMATION_INSTANCE_LIMIT' }));
+    expect(project.shots[0]!.layers).toHaveLength(3);
+  });
+
   it('creates a centered direct-asset layer with the next zIndex', () => {
     const project = fixture();
     const shot = project.shots[0]!;

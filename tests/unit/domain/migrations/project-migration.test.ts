@@ -5,11 +5,12 @@ import {
   ProjectSchema,
   ProjectV12Schema,
   ProjectV13Schema,
+  ProjectV14Schema,
   evaluateShotAtTime,
   resolveLayerVisualParts,
   type Project,
 } from '../../../../src/domain';
-import { buildProject, IDS } from '../testProject';
+import { buildProject, buildProjectWithAnimation, IDS } from '../testProject';
 
 function v1WithoutTimelineEvents(): unknown {
   return {
@@ -335,7 +336,7 @@ describe('T01 迁移回填 timelineEvents', () => {
     expect(legacyV12).toEqual(before);
   });
 
-  it('migrates strict v13 projects to v14 with an empty animation collection', () => {
+  it('migrates strict v13 projects to v15 with an empty animation collection', () => {
     const current = buildProject();
     const { animations: _animations, ...version13Fields } = current;
     void _animations;
@@ -351,5 +352,49 @@ describe('T01 迁移回填 timelineEvents', () => {
     expect(migrated.animations).toEqual([]);
     expect(migrated.assets).toEqual(current.assets);
     expect(legacyV13).toEqual(before);
+  });
+
+  it('strictly migrates v14 projects to v15 while retaining animation definitions', () => {
+    const current = buildProjectWithAnimation();
+    const legacyV14 = { ...current, schemaVersion: 14 };
+    const before = structuredClone(legacyV14);
+
+    expect(ProjectV14Schema.parse(legacyV14)).toEqual(legacyV14);
+    expect(ProjectSchema.safeParse(legacyV14).success).toBe(false);
+
+    const migrated = migrateProject(legacyV14);
+
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(migrated.animations).toEqual(current.animations);
+    expect(migrated.shots).toEqual(current.shots);
+    expect(legacyV14).toEqual(before);
+
+    const withV15Layer = {
+      ...legacyV14,
+      shots: legacyV14.shots.map((shot) => ({
+        ...shot,
+        layers: [
+          ...shot.layers,
+          {
+            id: IDS.animationLayer,
+            name: 'test animation',
+            source: { kind: 'animation', animationId: IDS.animation },
+            startTimeMs: 1_000,
+            anchor: 'center',
+            x: 500,
+            y: 500,
+            scaleX: 1,
+            scaleY: 1,
+            rotationDeg: 0,
+            opacity: 1,
+            visible: true,
+            locked: false,
+            flipX: false,
+            zIndex: 4,
+          },
+        ],
+      })),
+    };
+    expect(ProjectV14Schema.safeParse(withV15Layer).success).toBe(false);
   });
 });

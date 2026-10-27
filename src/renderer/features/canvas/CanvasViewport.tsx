@@ -92,7 +92,8 @@ export function CanvasViewport({
   const dropHandlers = useCanvasDrop({
     viewportRef,
     transform,
-    disabled: dropDisabled || dropInteractionDisabled,
+    disabled: dropDisabled,
+    interactionDisabled: dropInteractionDisabled,
     onPreview: onDropPreview,
     onDropAsset: onAssetDrop,
     onError: onDropError,

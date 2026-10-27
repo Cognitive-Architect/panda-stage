@@ -40,6 +40,21 @@ describe('asset drag payload', () => {
     ).toEqual(characterPayload);
   });
 
+  it('carries only the formal animation definition ID for an animation drop', () => {
+    const animationPayload = {
+      version: 3 as const,
+      type: 'animation' as const,
+      animationId: '70000000-0000-4000-8000-000000000001',
+    };
+    const serialized = serializeAssetDropPayload(animationPayload);
+    expect(parseAssetDropPayload(serialized)).toEqual(animationPayload);
+    expect(Object.keys(JSON.parse(serialized))).toEqual([
+      'version',
+      'type',
+      'animationId',
+    ]);
+  });
+
   it('writes only the allowlisted custom MIME payload', () => {
     const setData = vi.fn();
     const transfer: Pick<DataTransfer, 'effectAllowed' | 'setData'> = {
