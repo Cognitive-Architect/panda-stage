@@ -12,6 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ProjectSchema, type Project } from '../../src/domain';
+import { buildProjectWithAnimation } from '../unit/domain/testProject';
 import { applyAssetDeleteResponse } from '../../src/renderer/features/assets/applyAssetDeleteResponse';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { AssetDeleteService } from '../../src/main/services/AssetDeleteService';
@@ -77,6 +78,7 @@ async function createHarness(
     referenced?: boolean;
     bodyReferenced?: boolean;
     headReferenced?: boolean;
+    animationReferenced?: boolean;
     deleteFaults?: AssetDeleteFileSystemFaultInjector;
     beforeCommitValidation?: () => void | Promise<void>;
     beforeAtomicReplace?: () => void | Promise<void>;
@@ -143,12 +145,26 @@ async function createHarness(
   };
   const hasCharacterReference =
     options.bodyReferenced || options.headReferenced;
+  const animationTemplate = options.animationReferenced
+    ? buildProjectWithAnimation().animations[0]
+    : undefined;
+  const animations = animationTemplate
+    ? [
+        {
+          ...animationTemplate,
+          frames: animationTemplate.frames.map(
+            (frame) => ({ ...frame, assetId: asset.id, sha256: hash }),
+          ),
+        },
+      ]
+    : created.project.animations;
   const characterImageAssetId = options.headReferenced
     ? headSupportAsset.id
     : asset.id;
   const project = ProjectSchema.parse({
     ...created.project,
     assets: options.headReferenced ? [asset, headSupportAsset] : [asset],
+    animations,
     characters: hasCharacterReference
       ? [
           {
@@ -396,6 +412,27 @@ describe('asset delete integration', () => {
       input.autosaveService.getProjectSnapshot(input.projectRoot),
     ).toMatchObject({ revision: 3, dirty: true });
   });
+
+  it('blocks deletion of an animation frame asset without changing files or project state', async () => {
+    const input = await createHarness({ animationReferenced: true });
+    const before = await state(input);
+
+    await expect(
+      input.deleteService.deleteAsset(request(input)),
+    ).rejects.toMatchObject({
+      code: 'ASSET_DELETE_REFERENCED',
+      references: expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'animation-frame',
+          path: 'animations[0].frames[0].assetId',
+        }),
+      ]),
+    });
+    expect(await state(input)).toEqual(before);
+    expect(
+      input.autosaveService.getProjectSnapshot(input.projectRoot),
+    ).toMatchObject({ revision: 3, dirty: true });
+  }, 15_000);
 
   it('blocks a referenced composite Body through the shared asset reference path', async () => {
     const input = await createHarness({ bodyReferenced: true });
