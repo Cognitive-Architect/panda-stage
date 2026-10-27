@@ -6,13 +6,14 @@ const path = require('node:path');
 const { deflateSync } = require('node:zlib');
 const { createMainWindow } = require('../dist-electron/main/windows/main-window.js');
 const { AssetCanvasImageService } = require('../dist-electron/main/services/AssetCanvasImageService.js');
+const { ProjectService } = require('../dist-electron/main/services/ProjectService.js');
 const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
-const { detectSchemaVersion, migrateProject } = require('../dist-electron/domain/migrations/index.js');
+const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
 const root = 'D:\\PandaStage-Acceptance\\issue871-am03-fix';
 const evidence = path.join(root, 'am03-electron');
 const userData = path.join(root, 'electron-user-data');
-const projectRoot = path.join(root, 'projects', 'issue871-electron.pandastage');
+const projectRoot = path.join(root, 'projects', 'issue871-electron-' + process.pid + '-' + Date.now() + '.pandastage');
 const resultPath = path.join(evidence, 'results.json');
 const example = require('../demo-project/project-v1.example.json');
 const fallbackPng = readFileSync(path.join(__dirname, '..', 'public/probe/panda-character.png'));
@@ -31,6 +32,8 @@ const offsets = sizes.map((size) => ({ x: (400 - size.width) / 2, y: (400 - size
 const bytesByAsset = new Map();
 const registeredChannels = [];
 const canvasImageReadEvidence = [];
+const projectOpenEvidence = [];
+const projectSaveEvidence = [];
 let fixture;
 let savedProject = null;
 let blockedAssetId = null;
@@ -85,7 +88,7 @@ function solidPng(width, height, color) {
   ]);
 }
 
-function makeFixture() {
+function makeFixture(projectId = ids.project) {
   const frames = colors.map((color, index) => {
     const size = sizes[index];
     const bytes = solidPng(size.width, size.height, color);
@@ -124,7 +127,7 @@ function makeFixture() {
   };
   const base = migrateProject({
     ...example,
-    id: ids.project,
+    id: projectId,
     name: 'Issue 871 AM-03 Electron Evidence',
   });
   const fallbackDimensions = {
@@ -186,36 +189,52 @@ function register(channel, handler) {
   registeredChannels.push(channel);
 }
 
-function documentFor(candidate) {
-  const current = migrateProject(candidate);
-  return {
-    projectRoot,
-    projectFilePath: path.join(projectRoot, 'project.json'),
-    project: current,
-    migrated: false,
-    sourceVersion: detectSchemaVersion(current),
-  };
-}
-
-function mockIpc() {
+function mockIpc(projectService) {
   const canvasImageService = new AssetCanvasImageService({
     getCurrentProjectSnapshot: (requestedRoot) => requestedRoot === projectRoot
       ? { project: savedProject ?? fixture }
       : null,
   });
   register(IPC_CHANNELS.PROJECT_CHOOSE_DIRECTORY, () => ({ ok: true, status: 'cancelled' }));
-  register(IPC_CHANNELS.PROJECT_OPEN, (_event, request) => request.projectRoot === projectRoot
-    ? { ok: true, value: documentFor(savedProject ?? fixture) }
-    : { ok: false, error: { code: 'PROJECT_NOT_FOUND', message: 'Synthetic fixture missing.', projectRoot: request.projectRoot } });
-  register(IPC_CHANNELS.PROJECT_SAVE, (_event, request) => {
-    savedProject = request.project;
-    return { ok: true, value: documentFor(savedProject) };
+  register(IPC_CHANNELS.PROJECT_OPEN, async (_event, request) => {
+    if (request.projectRoot !== projectRoot) {
+      return { ok: false, error: { code: 'PROJECT_NOT_FOUND', message: 'Synthetic fixture missing.', projectRoot: request.projectRoot } };
+    }
+    const document = await projectService.open(projectRoot);
+    savedProject = document.project;
+    projectOpenEvidence.push({ projectId: document.project.id, sourceVersion: document.sourceVersion });
+    return { ok: true, value: document };
+  });
+  register(IPC_CHANNELS.PROJECT_SAVE, async (_event, request) => {
+    assert(request.projectRoot === projectRoot, 'Unexpected project root in save request.');
+    const document = await projectService.save(request.projectRoot, request.project, request.revision);
+    savedProject = document.project;
+    const animationLayer = document.project.shots.flatMap((shot) => shot.layers)
+      .find((layer) => layer.source.kind === 'animation' && layer.source.animationId === ids.animation);
+    projectSaveEvidence.push({
+      revision: request.revision,
+      projectId: document.project.id,
+      layer: animationLayer ? {
+        id: animationLayer.id,
+        x: animationLayer.x,
+        y: animationLayer.y,
+        scaleX: animationLayer.scaleX,
+        scaleY: animationLayer.scaleY,
+      } : null,
+    });
+    return { ok: true, value: document };
   });
   register(IPC_CHANNELS.PROJECT_CONFIRM_SWITCH, () => ({ outcome: 'saved' }));
   register(IPC_CHANNELS.RECENT_PROJECTS_LIST, () => ({ ok: true, entries: [] }));
-  register(IPC_CHANNELS.RECENT_PROJECTS_OPEN, (_event, request) => request.projectRoot === projectRoot
-    ? { ok: true, document: documentFor(savedProject ?? fixture) }
-    : { ok: false, error: { code: 'RECENT_PROJECT_NOT_FOUND', message: 'Synthetic fixture missing.', projectRoot: request.projectRoot } });
+  register(IPC_CHANNELS.RECENT_PROJECTS_OPEN, async (_event, request) => {
+    if (request.projectRoot !== projectRoot) {
+      return { ok: false, error: { code: 'RECENT_PROJECT_NOT_FOUND', message: 'Synthetic fixture missing.', projectRoot: request.projectRoot } };
+    }
+    const document = await projectService.open(projectRoot);
+    savedProject = document.project;
+    projectOpenEvidence.push({ projectId: document.project.id, sourceVersion: document.sourceVersion });
+    return { ok: true, document };
+  });
   register(IPC_CHANNELS.AUTOSAVE_TRACK, () => ({ ok: true }));
   register(IPC_CHANNELS.AUTOSAVE_UPDATE, () => ({ ok: true }));
   register(IPC_CHANNELS.AUTOSAVE_STOP, () => ({ ok: true }));
@@ -402,6 +421,13 @@ async function state(window) {
   );
 }
 
+async function historyState(window) {
+  return window.webContents.executeJavaScript(
+    '(() => { const e=document.querySelector(\'[data-testid="history-controls"]\');' +
+    'return e?{undoCount:Number(e.dataset.undoCount),redoCount:Number(e.dataset.redoCount)}:null; })()',
+  );
+}
+
 async function pixel(window, x, y) {
   return window.webContents.executeJavaScript(
     '(() => { const c=document.querySelector(\'[data-testid="project-canvas-stage"] canvas\');' +
@@ -412,7 +438,14 @@ async function pixel(window, x, y) {
 
 async function run() {
   mkdirSync(evidence, { recursive: true });
-  fixture = makeFixture();
+  mkdirSync(path.dirname(projectRoot), { recursive: true });
+  const projectService = new ProjectService();
+  const createdDocument = await projectService.create(projectRoot, {
+    name: 'Issue 871 AM-03 Electron Evidence',
+  });
+  fixture = makeFixture(createdDocument.project.id);
+  const initialDocument = await projectService.save(projectRoot, fixture, 0);
+  savedProject = initialDocument.project;
   const frameManifest = ids.frames.map((assetId, index) => ({
     assetId,
     sha256: createHash('sha256').update(bytesByAsset.get(assetId)).digest('hex'),
@@ -425,7 +458,7 @@ async function run() {
       height: sizes[index].height,
     },
   }));
-  mockIpc();
+  mockIpc(projectService);
   await app.whenReady();
   for (const [key, folder] of [['userData', userData], ['sessionData', path.join(userData, 'session-data')]]) {
     mkdirSync(folder, { recursive: true });
@@ -579,8 +612,91 @@ async function run() {
     const scaled = await state(window);
     assert(Math.abs(scaled.layer.scaleX - current.layer.scaleX * 1.1) < 0.002,
       'Inspector scale action did not change animation base scale.');
+    await click(window, '[data-testid="quick-action-drawer-handle"]');
+    await waitFor(window,
+      'document.querySelector(\'[data-testid="quick-action-drawer"]\')?.dataset.expanded === "true" && document.querySelector(\'[data-testid="history-controls"]\')',
+      'Project history controls did not open.');
+    const historyBeforeUndo = await historyState(window);
+    assert(historyBeforeUndo && historyBeforeUndo.undoCount > 0,
+      'Canvas/Inspector edits did not enter project history: ' + JSON.stringify(historyBeforeUndo));
+    await click(window, '[data-testid="history-controls"] button:first-of-type');
+    await waitFor(window,
+      'Number(document.querySelector(\'[data-testid="history-controls"]\')?.dataset.redoCount) > ' + historyBeforeUndo.redoCount,
+      'Undo did not create a redo entry.');
+    const undone = await state(window);
+    assert(Math.abs(undone.layer.x - moved.layer.x) < 3 &&
+      Math.abs(undone.layer.y - moved.layer.y) < 3 &&
+      Math.abs(undone.layer.scaleX - moved.layer.scaleX) < 0.002 &&
+      Math.abs(undone.layer.scaleY - moved.layer.scaleY) < 0.002,
+    'Undo did not restore the prior animation transform: ' + JSON.stringify(undone.layer));
+    await click(window, '[data-testid="history-controls"] button:last-of-type');
+    await waitFor(window,
+      'Number(document.querySelector(\'[data-testid="history-controls"]\')?.dataset.redoCount) === ' + historyBeforeUndo.redoCount,
+      'Redo did not clear its history entry.');
+    const redone = await state(window);
+    assert(Math.abs(redone.layer.x - scaled.layer.x) < 3 &&
+      Math.abs(redone.layer.y - scaled.layer.y) < 3 &&
+      Math.abs(redone.layer.scaleX - scaled.layer.scaleX) < 0.002 &&
+      Math.abs(redone.layer.scaleY - scaled.layer.scaleY) < 0.002,
+    'Redo did not restore the edited animation transform: ' + JSON.stringify(redone.layer));
     assert(ids.frames.every((assetId) => canvasImageReadEvidence.some((read) => read.assetId === assetId && read.status === 'ready')),
       'Not every synthetic animation frame passed through the file-backed Canvas image service.');
+    const saveCountBefore = projectSaveEvidence.length;
+    await click(window, '[data-testid="quick-action-save"]');
+    const saveDeadline = Date.now() + 20_000;
+    while (projectSaveEvidence.length === saveCountBefore && Date.now() < saveDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    assert(projectSaveEvidence.length === saveCountBefore + 1,
+      'Quick Save did not call Main ProjectService.save.');
+    await waitFor(window,
+      'document.querySelector(\'[data-testid="quick-action-save"]\')?.dataset.saveState !== "saving" && document.querySelector(\'[data-testid="quick-action-save"]\')?.disabled === true',
+      'Quick Save did not settle with the saved project clean.');
+    const savedOnDisk = JSON.parse(readFileSync(path.join(projectRoot, 'project.json'), 'utf8'));
+    const savedLayer = savedOnDisk.shots.flatMap((shot) => shot.layers)
+      .find((layer) => layer.id === layerId);
+    assert(savedLayer &&
+      Math.abs(savedLayer.x - redone.layer.x) < 3 &&
+      Math.abs(savedLayer.y - redone.layer.y) < 3 &&
+      Math.abs(savedLayer.scaleX - redone.layer.scaleX) < 0.002 &&
+      Math.abs(savedLayer.scaleY - redone.layer.scaleY) < 0.002,
+    'Saved project.json does not contain the redone Canvas/Inspector transform: ' + JSON.stringify(savedLayer));
+    const openCountBeforeClose = projectOpenEvidence.length;
+    await click(window, '[data-testid="quick-action-close"]');
+    await waitFor(window,
+      'document.querySelector(\'.editor-shell\')?.dataset.editorPage === "project-center"',
+      'Saved project did not close to Project Center.');
+    await openProject(window);
+    assert(projectOpenEvidence.length > openCountBeforeClose,
+      'Reopen did not read the project through Main ProjectService.open.');
+    await seek(window, 1040);
+    const reopened = await state(window);
+    const reopenedPixel = await pixel(window, reopened.layer.x, reopened.layer.y);
+    assert(Math.abs(reopened.layer.x - redone.layer.x) < 3 &&
+      Math.abs(reopened.layer.y - redone.layer.y) < 3 &&
+      Math.abs(reopened.layer.scaleX - redone.layer.scaleX) < 0.002 &&
+      Math.abs(reopened.layer.scaleY - redone.layer.scaleY) < 0.002,
+    'Reopened Canvas project lost the edited animation transform: ' + JSON.stringify(reopened.layer));
+    assert(reopened.visual.assetId === ids.frames[1] &&
+      reopenedPixel.slice(0, 3).every((value, index) => Math.abs(value - colors[1][index]) <= 2),
+    'Reopened Canvas did not render the expected frame after seeking: ' + JSON.stringify({ reopened, reopenedPixel }));
+    const reopenedDocument = await projectService.open(projectRoot);
+    const reopenedDiskLayer = reopenedDocument.project.shots.flatMap((shot) => shot.layers)
+      .find((layer) => layer.id === layerId);
+    assert(reopenedDiskLayer && reopenedDiskLayer.x === savedLayer.x &&
+      reopenedDiskLayer.y === savedLayer.y && reopenedDiskLayer.scaleX === savedLayer.scaleX &&
+      reopenedDiskLayer.scaleY === savedLayer.scaleY,
+    'ProjectService.open did not return the saved animation transform.');
+    const saveReopen = {
+      projectRoot,
+      saveCalls: projectSaveEvidence,
+      savedLayer,
+      undone: undone.layer,
+      redone: redone.layer,
+      reopenedLayer: reopened.layer,
+      reopenedPixel,
+      reopenedProjectVersion: reopenedDocument.sourceVersion,
+    };
     await window.webContents.executeJavaScript('window.__issue871ReceiptState=true');
     writeFileSync(path.join(evidence, 'interactive-state.json'), JSON.stringify({
       commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
@@ -596,7 +712,10 @@ async function run() {
       beforeStartVisible: beforeStart.visual.visible,
       moved: moved.layer,
       scaled: scaled.layer,
-      saveReopen: 'Covered by focused animation-persistence integration; this runtime probe verifies Canvas/Inspector gestures and rendered pixels.',
+      undone: undone.layer,
+      redone: redone.layer,
+      historyBeforeUndo,
+      saveReopen,
       playback: 'Shot timeline is seek-only; no Shot playback state is present.',
     }, null, 2), 'utf8');
     writeFileSync(path.join(evidence, 'canvas-evidence.png'), (await window.webContents.capturePage()).toPNG());
@@ -615,6 +734,9 @@ async function run() {
       lastHold: { timeMs: 1500, assetId: last.visual.assetId },
       moved: moved.layer,
       scaled: scaled.layer,
+      undone: undone.layer,
+      redone: redone.layer,
+      saveReopen,
       evidence,
     };
   } finally {
