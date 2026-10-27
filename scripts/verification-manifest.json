@@ -1049,7 +1049,7 @@
       "runIn": "local",
       "owner": "canvas",
       "supersedes": null,
-      "notes": "Focused Issue #872 Windows Electron Product Preview verifier for synthetic Issue #867 intensity/phase pixels, Shot Face-resource round trip, and same-window project close/reopen Stage unmount. Requires the generated external fixture; editor/export pixel equivalence, dialogue speaker switching, alpha, and real-material OWNER acceptance remain separate."
+      "notes": "Focused Issue #872 Windows Electron Product Preview verifier for synthetic Issue #867 intensity/phase, dialogue-edge, A-to-B speaker-switch pixels, pause/seek, 0.5/1.0 Character opacity over a multi-part composite, Shot Face-resource round trip, and same-window project close/reopen Stage unmount. Requires the generated external fixture; Editor/MP4 pixel equivalence and real-material OWNER acceptance remain separate."
     },
     {
       "id": "fla-v1-5-c3",
