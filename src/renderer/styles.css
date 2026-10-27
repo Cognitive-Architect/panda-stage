@@ -173,4 +173,5 @@
 @import './styles/features/dialogue/properties/audio-picker.css';
 @import './styles/features/fla-import/render/fla-snapshot-preview-fit.css';
 @import './styles/features/fla-import/raster/issue767-u1-workbench-tabs.css';
+@import './styles/shell/quick-actions/issue819-export-task.css';
 @import './styles/features/fla-import/review/fla-stage-a-compact-preparation.css';

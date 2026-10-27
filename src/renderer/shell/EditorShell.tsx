@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -12,6 +13,10 @@ import type {
   RecoveryIgnoreResponse,
   RecoveryRestoreResponse,
 } from '../../shared/recovery-api';
+import type { ExportPreparationResponse } from '../../shared/export-preparation-types';
+import type { ExportJobUpdate } from '../../shared/export-types';
+import type { Project } from '../../domain';
+import { projectDurationMs } from '../../domain/selectors/projectDuration';
 import {
   ProjectSessionController,
   type ProjectSessionApi,
@@ -32,6 +37,15 @@ import { characterAssemblySessionStore } from '../stores/characterAssemblySessio
 import { CharacterAssemblyWorkbench } from '../features/characters/CharacterAssemblyWorkbench';
 import { PendingDialoguePlacementProvider } from '../features/timeline/PendingDialoguePlacement';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
+import {
+  ExportTaskSurface,
+  type ExportTaskState,
+} from './ExportTaskSurface';
+import {
+  applyExportJobUpdate,
+  safeExportFailureMessage,
+  shouldRestoreExportTask,
+} from './exportTaskState';
 import { AdaptiveWorkspaceSwitcher } from './AdaptiveWorkspaceSwitcher';
 import { BottomWorkspace } from './BottomWorkspace';
 import { CanvasWorkspace } from './CanvasWorkspace';
@@ -241,8 +255,13 @@ export class EditorShellSession {
     ) {
       return null;
     }
+    const openInstanceId = this.store.getProjectInstanceId();
+    const request = {
+      ...snapshot,
+      ...(openInstanceId === null ? {} : { openInstanceId }),
+    };
     const update = this.autosaveUpdateQueue.then(() =>
-      this.autosaveApi.update(snapshot),
+      this.autosaveApi.update(request),
     );
     this.autosaveUpdateQueue = update.then(
       (response) => {
@@ -277,9 +296,11 @@ export class EditorShellSession {
 
   async switchProject(projectRoot: string): Promise<ProjectSessionSnapshot> {
     await this.flushAutosave();
-    return this.runControllerTransition(() =>
+    const snapshot = await this.runControllerTransition(() =>
       this.controller.switchProject(projectRoot),
     );
+    await this.registerCurrentOpenInstance();
+    return snapshot;
   }
 
   async switchRecentProject(
@@ -287,12 +308,14 @@ export class EditorShellSession {
     expectedProjectId: string,
   ): Promise<ProjectSessionSnapshot> {
     await this.flushAutosave();
-    return this.runControllerTransition(() =>
+    const snapshot = await this.runControllerTransition(() =>
       this.controller.switchRecentProject(
         projectRoot,
         expectedProjectId,
       ),
     );
+    await this.registerCurrentOpenInstance();
+    return snapshot;
   }
 
   /**
@@ -341,6 +364,13 @@ export class EditorShellSession {
     const failure = this.autosaveUpdateFailure;
     this.autosaveUpdateFailure = null;
     if (failure) throw failure;
+  }
+
+  private async registerCurrentOpenInstance(): Promise<void> {
+    const snapshot = this.store.getSnapshot();
+    if (!snapshot) return;
+    await this.syncAutosave(snapshot);
+    await this.flushAutosave();
   }
 
   private assertNativeCloseSyncable(
@@ -436,6 +466,7 @@ export function EditorShell({
   const [productPreviewOpen, setProductPreviewOpen] = useState(false);
   // Preview Camera is an editor-session mode, not Project or Preview state.
   const [autoCameraEnabled, setAutoCameraEnabled] = useState(false);
+  const issue816FlowActive = useRef(false);
   const [productPreviewSurfaceActive, setProductPreviewSurfaceActive] =
     useState(false);
   const commitProductPreviewSurface = useCallback((): void => {
@@ -443,6 +474,16 @@ export function EditorShell({
   }, []);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [closeConfirmStatus, setCloseConfirmStatus] = useState('');
+  const [exportTask, setExportTask] = useState<ExportTaskState>({
+    status: 'idle',
+    completedFrames: 0,
+    totalFrames: 0,
+    issues: [],
+  });
+  const exportTaskRef = useRef(exportTask);
+  const [exportSurfaceOpen, setExportSurfaceOpen] = useState(false);
+  const exportJobIdRef = useRef<string | null>(null);
+  const latestExportUpdatesRef = useRef(new Map<string, ExportJobUpdate>());
   const [saveActivity, setSaveActivity] = useState<{
     phase: 'idle' | 'saving' | 'failed';
     revision: number | null;
@@ -490,6 +531,430 @@ export function EditorShell({
   const renderProductSurface = shouldRenderProductSurface(gateA);
   const isPortrait = layoutMode === 'portrait';
 
+  const setExportTaskState = (next: ExportTaskState): void => {
+    exportTaskRef.current = next;
+    setExportTask(next);
+  };
+  const exportTaskIsActive = (task: ExportTaskState): boolean =>
+    ['selecting', 'preparing', 'starting', 'running', 'cancelling'].includes(task.status);
+  const blockSessionChangeDuringExport = (): boolean => {
+    const task = exportTaskRef.current;
+    if (!exportTaskIsActive(task)) return false;
+    setExportSurfaceOpen(true);
+    setExportTaskState({
+      ...task,
+      message:
+        '\u6b63\u5728\u5bfc\u51fa\u89c6\u9891\uff0c\u5b8c\u6210\u6216\u53d6\u6d88\u540e\u518d\u5207\u6362\u6216\u5173\u95ed\u9879\u76ee\u3002',
+    });
+    return true;
+  };
+  const clearExportTask = async (): Promise<void> => {
+    const task = exportTaskRef.current;
+    if (task.snapshotId && !exportTaskIsActive(task)) {
+      await window.pandaStage.exportPreparation.discard({
+        snapshotId: task.snapshotId,
+      });
+    }
+    exportJobIdRef.current = null;
+    setExportSurfaceOpen(false);
+    setExportTaskState({
+      status: 'idle',
+      completedFrames: 0,
+      totalFrames: 0,
+      issues: [],
+    });
+  };
+
+  useEffect(
+    () =>
+      window.pandaStage.export.onUpdate((update) => {
+        const updates = latestExportUpdatesRef.current;
+        updates.set(update.jobId, update);
+        while (updates.size > 32) {
+          const oldest = updates.keys().next().value;
+          if (!oldest) break;
+          updates.delete(oldest);
+        }
+        if (exportJobIdRef.current !== update.jobId) return;
+        const current = exportTaskRef.current;
+        const next = applyExportJobUpdate(current, update);
+        if (next !== current) setExportTaskState(next);
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    const snapshotId = exportTask.snapshotId;
+    if (
+      !snapshotId ||
+      (exportTask.status !== 'failed' && exportTask.status !== 'cancelled')
+    ) {
+      return;
+    }
+    let current = true;
+    let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+    const refreshSnapshotStatus = async (): Promise<void> => {
+      try {
+        const status =
+          await window.pandaStage.exportPreparation.getSnapshotRetryStatus(
+            snapshotId,
+          );
+        if (!current) return;
+        const latest = exportTaskRef.current;
+        if (
+          latest.snapshotId !== snapshotId ||
+          (latest.status !== 'failed' && latest.status !== 'cancelled')
+        ) {
+          return;
+        }
+        setExportTaskState({
+          ...latest,
+          snapshotRetryAvailable: status.available,
+        });
+        if (status.available && status.expiresAt !== null) {
+          const delay = Math.max(1, status.expiresAt - Date.now() + 1);
+          expiryTimer = setTimeout(() => void refreshSnapshotStatus(), delay);
+        }
+      } catch {
+        if (!current) return;
+        const latest = exportTaskRef.current;
+        if (latest.snapshotId !== snapshotId) return;
+        setExportTaskState({
+          ...latest,
+          snapshotRetryAvailable: false,
+        });
+      }
+    };
+    void refreshSnapshotStatus();
+    return () => {
+      current = false;
+      if (expiryTimer) clearTimeout(expiryTimer);
+    };
+  }, [exportTask.snapshotId, exportTask.status]);
+
+  useEffect(() => {
+    if (
+      new URLSearchParams(window.location.search).get(
+        'issue816Acceptance',
+      ) !== '1'
+    ) {
+      return;
+    }
+
+    let issue819BaselineProject: Project | null = null;
+    const acceptanceApi = {
+      lastAttemptId: null as string | null,
+      lastMainResponse: null as ExportPreparationResponse | null,
+      inspect: () => {
+        const snapshot = editorProjectStore.getSnapshot();
+        if (!snapshot) return null;
+        return {
+          projectRoot: snapshot.projectRoot,
+          project: structuredClone(snapshot.project),
+          revision: snapshot.revision,
+          dirty: snapshot.dirty,
+          openInstanceId: editorProjectStore.getProjectInstanceId(),
+          currentShotId: shotStore.getCurrentShotId(),
+          undoCount: editorProjectStore.history.getSnapshot().undoCount,
+          redoCount: editorProjectStore.history.getSnapshot().redoCount,
+        };
+      },
+      inspectExportTask: () => {
+        const task = structuredClone(exportTaskRef.current);
+        return {
+          task,
+          latestUpdate: task.jobId
+            ? structuredClone(latestExportUpdatesRef.current.get(task.jobId) ?? null)
+            : null,
+        };
+      },
+      saveCurrentProject: () => session.saveCurrentProject(),
+      editUnsavedFixture: async () => {
+        const snapshot = editorProjectStore.getSnapshot();
+        if (!snapshot) throw new Error('No active Project for issue 816 fixture.');
+        const project = structuredClone(snapshot.project);
+        const shot = project.shots[0];
+        if (!shot) throw new Error('Issue 816 fixture requires one shot.');
+        const layer =
+          shot.layers.find((candidate) => candidate.source.kind === 'character') ??
+          shot.layers.find((candidate) => candidate.id !== shot.backgroundLayerId);
+        if (!layer) throw new Error('Issue 816 fixture requires a character layer.');
+        if (shot.dialogues.length > 0) {
+          shot.dialogues[0] = {
+            ...shot.dialogues[0]!,
+            text: 'DL-02 未保存字幕验收',
+          };
+        } else {
+          const character = project.characters[0];
+          const voiceProfile = project.voiceProfiles.find(
+            (candidate) => candidate.characterId === character?.id,
+          );
+          if (!character || !voiceProfile) {
+            throw new Error('Issue 816 fixture requires a character voice profile.');
+          }
+          shot.dialogues.push({
+            id: crypto.randomUUID(),
+            characterId: character.id,
+            voiceProfileId: voiceProfile.id,
+            subtitleStyleId: shot.defaultSubtitleStyleId,
+            startMs: 250,
+            endMs: Math.min(1_500, shot.durationMs),
+            text: 'DL-02 未保存字幕验收',
+          });
+        }
+        layer.x += 37;
+        layer.y += 19;
+        editorProjectStore.updateProject(project, 'Issue 819 acceptance edit');
+        const updated = editorProjectStore.getSnapshot();
+        if (!updated) throw new Error('Issue 816 Project closed during fixture edit.');
+        const syncResult = await session.syncAutosave(updated);
+        if (syncResult && !syncResult.ok) {
+          throw new Error('Issue 816 fixture edit did not reach Main autosave tracking.');
+        }
+        return {
+          revision: updated.revision,
+          dirty: updated.dirty,
+          undoCount: editorProjectStore.history.getSnapshot().undoCount,
+          project: structuredClone(updated.project),
+        };
+      },
+      editSubtitleAndAddAudioFixture: async (text: string) => {
+        const snapshot = editorProjectStore.getSnapshot();
+        if (!snapshot) throw new Error('No active Project for DL-05 edit.');
+        const project = structuredClone(snapshot.project);
+        const shot = project.shots[0];
+        const dialogue = shot?.dialogues[0];
+        if (!shot || !dialogue) {
+          throw new Error('DL-05 fixture requires a first-Shot subtitle.');
+        }
+        const priorText = dialogue.text;
+        dialogue.text = text;
+        const newAudioAsset = project.assets.find(
+          (asset) =>
+            asset.kind === 'audio' &&
+            asset.relativePath.endsWith('dl03-sfx-two.wav'),
+        );
+        if (!newAudioAsset || newAudioAsset.kind !== 'audio') {
+          throw new Error('DL-05 fixture requires its unused SFX source.');
+        }
+        shot.audioClips.push({
+          id: crypto.randomUUID(),
+          name: 'DL-05 current-content retry signal',
+          assetId: newAudioAsset.id,
+          role: 'sfx',
+          startMs: 7_000,
+          endMs: 8_000,
+          offsetMs: 0,
+          volume: 0.6,
+        });
+        editorProjectStore.updateProject(project, 'DL-05 parallel edit');
+        const updated = editorProjectStore.getSnapshot();
+        if (!updated) throw new Error('DL-05 Project closed during edit.');
+        const syncResult = await session.syncAutosave(updated);
+        if (syncResult && !syncResult.ok) {
+          throw new Error('DL-05 edit did not reach Main project tracking.');
+        }
+        return {
+          priorText,
+          text,
+          revision: updated.revision,
+          dirty: updated.dirty,
+          undoCount: editorProjectStore.history.getSnapshot().undoCount,
+          project: structuredClone(updated.project),
+          addedAudioAssetId: newAudioAsset.id,
+          addedAudioAssetSha256: newAudioAsset.sha256,
+        };
+      },
+      setExportScenario: async (
+        scenario: 'baseline' | 'audio' | 'multi-shot' | 'no-background',
+      ) => {
+        const snapshot = editorProjectStore.getSnapshot();
+        if (!snapshot) throw new Error('No active Project for issue 819 scenario.');
+        issue819BaselineProject ??= structuredClone(snapshot.project);
+        const project = structuredClone(issue819BaselineProject);
+        const shot = project.shots[0];
+        if (!shot) throw new Error('Issue 819 fixture requires one Shot.');
+
+        if (scenario === 'audio') {
+          const audio = project.assets.find((asset) => asset.kind === 'audio');
+          if (!audio || audio.kind !== 'audio') {
+            throw new Error('Issue 819 audio scenario requires a fixture audio Asset.');
+          }
+          shot.audioClips.push({
+            id: crypto.randomUUID(),
+            name: 'Unsupported audio acceptance clip',
+            assetId: audio.id,
+            startMs: 0,
+            endMs: Math.min(audio.durationMs ?? 1_000, shot.durationMs),
+            offsetMs: 0,
+            volume: 1,
+            role: 'bgm',
+          });
+        } else if (scenario === 'multi-shot') {
+          const source = structuredClone(shot);
+          const remappedIds = new Map<string, string>();
+          const mapId = (id: string): string => {
+            const replacement = remappedIds.get(id);
+            if (!replacement) throw new Error(`Missing scenario ID mapping: ${id}`);
+            return replacement;
+          };
+          remappedIds.set(source.id, crypto.randomUUID());
+          for (const layer of source.layers) remappedIds.set(layer.id, crypto.randomUUID());
+          for (const event of source.timelineEvents) remappedIds.set(event.id, crypto.randomUUID());
+          for (const dialogue of source.dialogues) remappedIds.set(dialogue.id, crypto.randomUUID());
+          for (const clip of source.audioClips) remappedIds.set(clip.id, crypto.randomUUID());
+          project.shots.push({
+            ...source,
+            id: mapId(source.id),
+            name: 'Second unsupported Shot',
+            backgroundLayerId: source.backgroundLayerId
+              ? mapId(source.backgroundLayerId)
+              : null,
+            layers: source.layers.map((layer) => ({ ...layer, id: mapId(layer.id) })),
+            timelineEvents: source.timelineEvents.map((event) => ({
+              ...event,
+              id: mapId(event.id),
+              layerId: mapId(event.layerId),
+            })),
+            dialogues: source.dialogues.map((dialogue) => ({
+              ...dialogue,
+              id: mapId(dialogue.id),
+            })),
+            audioClips: source.audioClips.map((clip) => ({
+              ...clip,
+              id: mapId(clip.id),
+            })),
+          });
+        } else if (scenario === 'no-background') {
+          shot.backgroundLayerId = null;
+        }
+
+        editorProjectStore.updateProject(project, `Issue 819 ${scenario} scenario`);
+        const updated = editorProjectStore.getSnapshot();
+        if (!updated) throw new Error('Issue 819 Project closed during scenario setup.');
+        const syncResult = await session.syncAutosave(updated);
+        if (syncResult && !syncResult.ok) {
+          throw new Error('Issue 819 scenario did not reach Main autosave tracking.');
+        }
+        return {
+          revision: updated.revision,
+          dirty: updated.dirty,
+          project: structuredClone(updated.project),
+        };
+      },
+      reopenSamePath: async () => {
+        const snapshot = editorProjectStore.getSnapshot();
+        if (!snapshot) throw new Error('No active Project to reopen for issue 816.');
+        const projectId = snapshot.project.id;
+        const projectRoot = snapshot.projectRoot;
+        await session.closeProject();
+        await session.switchRecentProject(projectRoot, projectId);
+        return acceptanceApi.inspect();
+      },
+      prepare: async () => {
+        if (issue816FlowActive.current) {
+          return { status: 'PREPARATION_BUSY' };
+        }
+        const initial = editorProjectStore.getSnapshot();
+        const initialInstanceId = editorProjectStore.getProjectInstanceId();
+        if (!initial || initialInstanceId === null) {
+          return { status: 'NO_PROJECT' };
+        }
+
+        issue816FlowActive.current = true;
+        try {
+          const selection =
+            await window.pandaStage.exportPreparation.selectOutput({
+              projectRoot: initial.projectRoot,
+              projectId: initial.project.id,
+              projectName: initial.project.name,
+              openInstanceId: initialInstanceId,
+            });
+          if (selection.status !== 'selected') return selection;
+
+          const attemptId = crypto.randomUUID();
+          const captured = editorProjectStore.getSnapshot();
+          const capturedInstanceId =
+            editorProjectStore.getProjectInstanceId();
+          if (
+            !captured ||
+            capturedInstanceId !== initialInstanceId ||
+            captured.projectRoot !== initial.projectRoot ||
+            captured.project.id !== initial.project.id
+          ) {
+            await window.pandaStage.exportPreparation.discard({
+              selectionId: selection.selectionId,
+            });
+            return {
+              status: 'BLOCK',
+              attemptId,
+              diagnosticId: crypto.randomUUID(),
+              issues: [
+                {
+                  code: 'PROJECT_SESSION_CHANGED',
+                  location: '当前工程',
+                  problem: '输出位置选择后，当前工程已关闭或切换。',
+                  nextStep: '打开目标工程并重新选择输出位置。',
+                },
+              ],
+            };
+          }
+
+          const request = {
+            selectionId: selection.selectionId,
+            attemptId,
+            projectRoot: captured.projectRoot,
+            projectId: captured.project.id,
+            openInstanceId: capturedInstanceId,
+            revision: captured.revision,
+            dirty: captured.dirty,
+            cameraMode: autoCameraEnabled ? 'speaker-focus' : 'static',
+            project: structuredClone(captured.project),
+          } as const;
+          acceptanceApi.lastAttemptId = attemptId;
+          const result = await window.pandaStage.exportPreparation.prepare(
+            request,
+          );
+          acceptanceApi.lastMainResponse = result;
+          const current = editorProjectStore.getSnapshot();
+          if (
+            editorProjectStore.getProjectInstanceId() !== initialInstanceId ||
+            !current ||
+            current.projectRoot !== initial.projectRoot ||
+            current.project.id !== initial.project.id
+          ) {
+            if (result.status === 'PREPARATION_READY') {
+              await window.pandaStage.exportPreparation.discard({
+                snapshotId: result.candidate.snapshotId,
+              });
+            }
+            return {
+              status: 'BLOCK',
+              attemptId,
+              diagnosticId: crypto.randomUUID(),
+              issues: [
+                {
+                  code: 'PROJECT_SESSION_CHANGED',
+                  location: '当前工程',
+                  problem: '工程检查期间，当前工程已关闭或切换。',
+                  nextStep: '打开目标工程并重新选择输出位置。',
+                },
+              ],
+            };
+          }
+          return result;
+        } finally {
+          issue816FlowActive.current = false;
+        }
+      },
+    };
+    window.__pandaStageIssue816Acceptance = acceptanceApi;
+
+    return () => {
+      delete window.__pandaStageIssue816Acceptance;
+    };
+  }, [autoCameraEnabled]);
+
   useEffect(() => {
     setPortraitWorkspace((current) =>
       reconcileEditorWorkspace(layoutMode, current),
@@ -533,6 +998,15 @@ export function EditorShell({
 
   useEffect(() => {
     return window.pandaStage.nativeClose.onSyncRequest(({ requestId }) => {
+      if (blockSessionChangeDuringExport()) {
+        window.pandaStage.nativeClose.respondSync({
+          ok: false,
+          requestId,
+          error:
+            '\u6b63\u5728\u5bfc\u51fa\u89c6\u9891\u3002\u8bf7\u5b8c\u6210\u6216\u53d6\u6d88\u5bfc\u51fa\u540e\u518d\u5173\u95ed\u7a97\u53e3\u3002',
+        });
+        return;
+      }
       void session
         .prepareForNativeClose(editorProjectStore.getSnapshot)
         .then(() => {
@@ -571,7 +1045,9 @@ export function EditorShell({
     projectRoot: string,
     cleanStatus = '项目已打开，暂无未保存更改。',
   ): Promise<void> => {
+    if (blockSessionChangeDuringExport()) return;
     const nextSession = await session.switchProject(projectRoot);
+    await clearExportTask();
     // The preview belongs to the project that was open when it was requested.
     setProductPreviewOpen(false);
     setProductPreviewSurfaceActive(false);
@@ -585,11 +1061,13 @@ export function EditorShell({
     projectRoot: string,
     expectedProjectId: string,
   ): Promise<void> => {
+    if (blockSessionChangeDuringExport()) return;
     try {
       const nextSession = await session.switchRecentProject(
         projectRoot,
         expectedProjectId,
       );
+      await clearExportTask();
       updateSession(
         nextSession,
         '已从最近项目打开，暂无未保存更改。',
@@ -605,6 +1083,7 @@ export function EditorShell({
   };
 
   const openProjectCenter = (): void => {
+    if (blockSessionChangeDuringExport()) return;
     setProductPreviewOpen(false);
     setProductPreviewSurfaceActive(false);
     setRequestedPage('project-center');
@@ -618,6 +1097,7 @@ export function EditorShell({
   };
 
   const openProject = async (): Promise<void> => {
+    if (blockSessionChangeDuringExport()) return;
     const projectRoot = openCandidatePath.trim();
     const validation = validateProjectOpenCandidate(
       projectRoot,
@@ -638,6 +1118,7 @@ export function EditorShell({
   };
 
   const openProjectFromChooser = async (): Promise<void> => {
+    if (blockSessionChangeDuringExport()) return;
     setBusy(true);
     try {
       const response = await window.pandaStage.project.chooseDirectory();
@@ -711,6 +1192,7 @@ export function EditorShell({
   };
 
   const createProject = async (): Promise<void> => {
+    if (blockSessionChangeDuringExport()) return;
     const parentDirectory = newProjectParentDirectory.trim();
     const projectName = newProjectName.trim();
     const validation = validateNewProjectInput(parentDirectory, projectName);
@@ -763,6 +1245,434 @@ export function EditorShell({
     setProductPreviewOpen(true);
   };
 
+  const startCandidateExport = async (candidate: {
+    attemptId: string;
+    snapshotId: string;
+    projectRoot: string;
+    projectId: string;
+    openInstanceId: number;
+    fileName: string;
+    durationMs: number;
+    cameraMode: 'static' | 'speaker-focus';
+  }, reuseSnapshot = false): Promise<void> => {
+    if (['starting', 'running', 'cancelling'].includes(exportTaskRef.current.status)) {
+      return;
+    }
+    exportJobIdRef.current = null;
+    setExportTaskState({
+      status: 'starting',
+      attemptId: candidate.attemptId,
+      snapshotId: candidate.snapshotId,
+      projectRoot: candidate.projectRoot,
+      projectId: candidate.projectId,
+      openInstanceId: candidate.openInstanceId,
+      fileName: candidate.fileName,
+      durationMs: candidate.durationMs,
+      cameraMode: candidate.cameraMode,
+      completedFrames: 0,
+      totalFrames: 0,
+      issues: [],
+    });
+    try {
+      const response = await window.pandaStage.export.startFormal(
+        candidate.snapshotId,
+        reuseSnapshot,
+      );
+      exportJobIdRef.current = response.jobId;
+      setExportTaskState({
+        status: 'running',
+        attemptId: candidate.attemptId,
+        jobId: response.jobId,
+        snapshotId: candidate.snapshotId,
+        projectRoot: candidate.projectRoot,
+        projectId: candidate.projectId,
+        openInstanceId: candidate.openInstanceId,
+        fileName: candidate.fileName,
+        durationMs: candidate.durationMs,
+        cameraMode: candidate.cameraMode,
+        completedFrames: 0,
+        totalFrames: 0,
+        issues: [],
+      });
+      const latest = latestExportUpdatesRef.current.get(response.jobId);
+      if (latest) {
+        setExportTaskState(
+          applyExportJobUpdate(exportTaskRef.current, latest),
+        );
+      }
+    } catch (error) {
+      setExportTaskState({
+        status: 'failed',
+        attemptId: candidate.attemptId,
+        snapshotId: candidate.snapshotId,
+        projectRoot: candidate.projectRoot,
+        projectId: candidate.projectId,
+        openInstanceId: candidate.openInstanceId,
+        fileName: candidate.fileName,
+        durationMs: candidate.durationMs,
+        cameraMode: candidate.cameraMode,
+        completedFrames: 0,
+        totalFrames: 0,
+        message: safeExportFailureMessage(error),
+        issues: [],
+      });
+    }
+  };
+
+  const beginFormalExportFlow = async (): Promise<void> => {
+    if (exportTaskIsActive(exportTaskRef.current)) {
+      setExportSurfaceOpen(true);
+      return;
+    }
+    const initial = editorProjectStore.getSnapshot();
+    const initialInstanceId = editorProjectStore.getProjectInstanceId();
+    if (!initial || initialInstanceId === null) return;
+
+    const previousTask = exportTaskRef.current;
+    exportJobIdRef.current = null;
+    setExportSurfaceOpen(true);
+    setExportTaskState({
+      ...previousTask,
+      status: 'selecting',
+      projectRoot: initial.projectRoot,
+      message: undefined,
+      issues: [],
+    });
+    try {
+      const selection = await window.pandaStage.exportPreparation.selectOutput({
+        projectRoot: initial.projectRoot,
+        projectId: initial.project.id,
+        projectName: initial.project.name,
+        openInstanceId: initialInstanceId,
+      });
+      if (selection.status === 'cancelled') {
+        setExportTaskState(previousTask);
+        exportJobIdRef.current = previousTask.jobId ?? null;
+        setExportSurfaceOpen(previousTask.status !== 'idle');
+        return;
+      }
+      if (selection.status === 'blocked') {
+        setExportTaskState({
+          ...previousTask,
+          status: 'failed',
+          projectRoot: initial.projectRoot,
+          message: selection.issue.problem,
+          issues: [selection.issue],
+        });
+        return;
+      }
+
+      const attemptId = crypto.randomUUID();
+      const captured = editorProjectStore.getSnapshot();
+      const capturedInstanceId = editorProjectStore.getProjectInstanceId();
+      if (
+        !captured ||
+        capturedInstanceId !== initialInstanceId ||
+        captured.projectRoot !== initial.projectRoot ||
+        captured.project.id !== initial.project.id
+      ) {
+        await window.pandaStage.exportPreparation.discard({
+          selectionId: selection.selectionId,
+        });
+        setExportTaskState({
+          ...previousTask,
+          status: 'failed',
+          projectRoot: initial.projectRoot,
+          completedFrames: 0,
+          totalFrames: 0,
+          message:
+            '\u5f53\u524d\u9879\u76ee\u5df2\u53d8\u5316\u3002\u8bf7\u6253\u5f00\u76ee\u6807\u9879\u76ee\u540e\u91cd\u65b0\u5bfc\u51fa\u3002',
+          issues: [],
+        });
+        return;
+      }
+
+      setExportTaskState({
+        status: 'preparing',
+        attemptId,
+        projectRoot: captured.projectRoot,
+        projectId: captured.project.id,
+        openInstanceId: capturedInstanceId,
+        fileName: selection.fileName,
+        durationMs: projectDurationMs(captured.project),
+        completedFrames: 0,
+        totalFrames: 0,
+        issues: [],
+      });
+      const cameraMode = autoCameraEnabled ? 'speaker-focus' : 'static';
+      const result = await window.pandaStage.exportPreparation.prepare({
+        selectionId: selection.selectionId,
+        attemptId,
+        projectRoot: captured.projectRoot,
+        projectId: captured.project.id,
+        openInstanceId: capturedInstanceId,
+        revision: captured.revision,
+        dirty: captured.dirty,
+        cameraMode,
+        project: structuredClone(captured.project),
+      });
+
+      if (result.status === 'CANCELLED') {
+        setExportTaskState({
+          status: 'cancelled',
+          attemptId,
+          projectRoot: captured.projectRoot,
+          projectId: captured.project.id,
+          openInstanceId: capturedInstanceId,
+          fileName: selection.fileName,
+          durationMs: projectDurationMs(captured.project),
+          completedFrames: 0,
+          totalFrames: 0,
+          message: '\u5bfc\u51fa\u51c6\u5907\u5df2\u53d6\u6d88\u3002',
+          issues: [],
+        });
+        return;
+      }
+      if (result.status === 'BLOCK') {
+        setExportTaskState({
+          status: 'failed',
+          attemptId,
+          projectRoot: captured.projectRoot,
+          projectId: captured.project.id,
+          openInstanceId: capturedInstanceId,
+          fileName: selection.fileName,
+          durationMs: projectDurationMs(captured.project),
+          completedFrames: 0,
+          totalFrames: 0,
+          issues: result.issues,
+        });
+        return;
+      }
+
+      const current = editorProjectStore.getSnapshot();
+      if (
+        editorProjectStore.getProjectInstanceId() !== initialInstanceId ||
+        !current ||
+        current.projectRoot !== initial.projectRoot ||
+        current.project.id !== initial.project.id
+      ) {
+        await window.pandaStage.exportPreparation.discard({
+          snapshotId: result.candidate.snapshotId,
+        });
+        setExportTaskState({
+          status: 'failed',
+          attemptId,
+          projectRoot: captured.projectRoot,
+          projectId: captured.project.id,
+          openInstanceId: capturedInstanceId,
+          fileName: selection.fileName,
+          durationMs: projectDurationMs(captured.project),
+          completedFrames: 0,
+          totalFrames: 0,
+          message:
+            '\u5f53\u524d\u9879\u76ee\u5df2\u53d8\u5316\u3002\u8bf7\u6253\u5f00\u76ee\u6807\u9879\u76ee\u540e\u91cd\u65b0\u5bfc\u51fa\u3002',
+          issues: [],
+        });
+        return;
+      }
+      await startCandidateExport(
+        {
+          attemptId: result.candidate.attemptId,
+          snapshotId: result.candidate.snapshotId,
+          projectRoot: result.candidate.projectRoot,
+          projectId: result.candidate.projectId,
+          openInstanceId: result.candidate.openInstanceId,
+          fileName: result.candidate.outputIntent.fileName,
+          durationMs: projectDurationMs(result.candidate.project),
+          cameraMode: result.candidate.cameraMode,
+        },
+        false,
+      );
+    } catch (error) {
+      const currentTask = exportTaskRef.current;
+      setExportTaskState({
+        ...currentTask,
+        status: 'failed',
+        message: safeExportFailureMessage(error),
+        issues: [],
+      });
+    }
+  };
+
+  const onExportVideo = (): void => {
+    if (shouldRestoreExportTask(exportTaskRef.current)) {
+      setExportSurfaceOpen(true);
+      return;
+    }
+    void beginFormalExportFlow();
+  };
+
+  const cancelExportTask = async (): Promise<void> => {
+    const task = exportTaskRef.current;
+    if (task.status === 'preparing' && task.attemptId) {
+      const response = await window.pandaStage.exportPreparation.cancel(
+        task.attemptId,
+      );
+      if (response.accepted) {
+        const current = exportTaskRef.current;
+        if (
+          current.attemptId === task.attemptId &&
+          !['completed', 'failed', 'cancelled'].includes(current.status)
+        ) {
+          setExportTaskState({
+            ...current,
+            status: 'cancelling',
+            message: undefined,
+          });
+        }
+      }
+      return;
+    }
+    if (!task.jobId || (task.status !== 'running' && task.status !== 'cancelling')) {
+      return;
+    }
+    const response = await window.pandaStage.export.cancel(task.jobId);
+    const current = exportTaskRef.current;
+    if (
+      current.jobId !== task.jobId ||
+      ['completed', 'failed', 'cancelled'].includes(current.status)
+    ) {
+      return;
+    }
+    if (response.accepted) {
+      setExportTaskState({ ...current, status: 'cancelling', message: undefined });
+    } else if (current.phase === 'committing') {
+      setExportTaskState({
+        ...current,
+        message:
+          '\u89c6\u9891\u6b63\u5728\u4fdd\u5b58\uff0c\u6b64\u523b\u65e0\u6cd5\u53d6\u6d88\uff0c\u8bf7\u7a0d\u5019\u3002',
+      });
+    }
+  };
+
+  const retrySameExportSnapshot = async (): Promise<void> => {
+    const task = exportTaskRef.current;
+    if (
+      exportTaskIsActive(task) ||
+      !task.snapshotId ||
+      !task.projectRoot ||
+      !task.projectId ||
+      !task.openInstanceId ||
+      !task.attemptId
+    ) {
+      return;
+    }
+    const current = editorProjectStore.getSnapshot();
+    const currentInstanceId = editorProjectStore.getProjectInstanceId();
+    if (
+      !current ||
+      current.projectRoot !== task.projectRoot ||
+      current.project.id !== task.projectId ||
+      currentInstanceId !== task.openInstanceId
+    ) {
+      setExportTaskState({
+        ...task,
+        status: 'failed',
+        message: safeExportFailureMessage('PROJECT_SESSION_CHANGED'),
+      });
+      return;
+    }
+
+    exportJobIdRef.current = null;
+    setExportTaskState({ ...task, status: 'selecting', message: undefined, issues: [] });
+    setExportSurfaceOpen(true);
+    try {
+      const retryStatus =
+        await window.pandaStage.exportPreparation.getSnapshotRetryStatus(
+          task.snapshotId,
+        );
+      if (!retryStatus.available) {
+        setExportTaskState({
+          ...task,
+          status: 'failed',
+          snapshotRetryAvailable: false,
+          message: safeExportFailureMessage('EXPORT_SNAPSHOT_UNAVAILABLE'),
+        });
+        return;
+      }
+      const selection = await window.pandaStage.exportPreparation.selectOutput({
+        projectRoot: task.projectRoot,
+        projectId: task.projectId,
+        projectName: current.project.name,
+        openInstanceId: task.openInstanceId,
+        snapshotId: task.snapshotId,
+      });
+      if (selection.status === 'cancelled') {
+        setExportTaskState(task);
+        exportJobIdRef.current = task.jobId ?? null;
+        return;
+      }
+      if (selection.status === 'blocked') {
+        setExportTaskState({
+          ...task,
+          status: 'failed',
+          message: selection.issue.problem,
+          snapshotRetryAvailable:
+            selection.issue.code === 'PREPARATION_FAILED'
+              ? false
+              : task.snapshotRetryAvailable,
+          issues: [selection.issue],
+        });
+        return;
+      }
+
+      setExportTaskState({
+        ...task,
+        status: 'failed',
+        fileName: selection.fileName,
+        message: undefined,
+        issues: [],
+      });
+      await startCandidateExport(
+        {
+          attemptId: task.attemptId,
+          snapshotId: task.snapshotId,
+          projectRoot: task.projectRoot,
+          projectId: task.projectId,
+          openInstanceId: task.openInstanceId,
+          fileName: selection.fileName,
+          durationMs: task.durationMs ?? projectDurationMs(current.project),
+          cameraMode: task.cameraMode ?? 'static',
+        },
+        true,
+      );
+    } catch (error) {
+      setExportTaskState({
+        ...task,
+        status: 'failed',
+        message: safeExportFailureMessage(error),
+      });
+    }
+  };
+
+  const retryCurrentExportContent = (): void => {
+    if (!exportTaskIsActive(exportTaskRef.current)) {
+      void beginFormalExportFlow();
+    }
+  };
+
+  const revealExportOutput = async (): Promise<void> => {
+    const jobId = exportTaskRef.current.jobId;
+    if (!jobId) return;
+    try {
+      const response = await window.pandaStage.export.revealOutput(jobId);
+      if (!response.opened) {
+        const current = exportTaskRef.current;
+        setExportTaskState({
+          ...current,
+          message:
+            '\u65e0\u6cd5\u663e\u793a\u89c6\u9891\u6587\u4ef6\u3002\u8bf7\u9009\u62e9\u5176\u4ed6\u4f4d\u7f6e\u540e\u91cd\u65b0\u5bfc\u51fa\u3002',
+        });
+      }
+    } catch (error) {
+      const current = exportTaskRef.current;
+      setExportTaskState({
+        ...current,
+        message: safeExportFailureMessage(error),
+      });
+    }
+  };
+
   const openProjectFolder = async (): Promise<void> => {
     if (!projectSnapshot) return;
     setBusy(true);
@@ -792,6 +1702,7 @@ export function EditorShell({
   };
 
   const requestCloseProject = (): void => {
+    if (blockSessionChangeDuringExport()) return;
     if (!projectSnapshot) return;
     if (
       closeProjectRequestAction(projectSnapshot.dirty) ===
@@ -821,7 +1732,9 @@ export function EditorShell({
     choice: Exclude<CloseProjectChoice, 'cancel'>,
     dirtyBeforeClose: boolean,
   ): Promise<void> => {
+    if (blockSessionChangeDuringExport()) return;
     const nextSession = await session.closeProject();
+    await clearExportTask();
     setSessionSnapshot(nextSession);
     setProductPreviewOpen(false);
     setProductPreviewSurfaceActive(false);
@@ -838,6 +1751,7 @@ export function EditorShell({
   const closeProject = async (
     choice: CloseProjectChoice,
   ): Promise<void> => {
+    if (choice !== 'cancel' && blockSessionChangeDuringExport()) return;
     if (choice === 'cancel') {
       cancelCloseProject();
       return;
@@ -1063,6 +1977,16 @@ export function EditorShell({
                 value={portraitWorkspace}
               />
             ) : null}
+            <ExportTaskSurface
+              onCancel={() => void cancelExportTask()}
+              onRetryCurrentContent={retryCurrentExportContent}
+              onStartNewExport={retryCurrentExportContent}
+              onHide={() => setExportSurfaceOpen(false)}
+              onRetrySameSnapshot={() => void retrySameExportSnapshot()}
+              onRevealOutput={() => void revealExportOutput()}
+              open={exportSurfaceOpen}
+              task={exportTask}
+            />
           </div>
           <PendingDialoguePlacementProvider>
             <div
@@ -1076,7 +2000,10 @@ export function EditorShell({
               <CompactProjectBar
                 busy={busy}
                 closeConfirmOpen={closeConfirmOpen}
+                exportBusy={exportTaskIsActive(exportTask)}
+                exportSurfaceOpen={exportSurfaceOpen}
                 key={`quick-action-drawer:${projectSnapshot.projectRoot}`}
+                onExportVideo={onExportVideo}
                 onOpenProductPreview={openProductPreview}
                 onOpenProjectCenter={openProjectCenter}
                 onOpenProjectFolder={openProjectFolder}

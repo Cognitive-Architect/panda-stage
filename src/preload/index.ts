@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import { ProjectSchema } from '../domain';
 import { IPC_CHANNELS } from '../shared/ipc/channels';
 import {
   AssetImportDroppedRequestSchema,
@@ -44,9 +45,26 @@ import {
   ExportJobUpdateSchema,
   ExportStartResponseSchema,
   FullProbeExportRequestSchema,
+  ExportStartFormalRequestSchema,
+  ExportRevealOutputRequestSchema,
+  ExportRevealOutputResponseSchema,
   type ExportJobUpdate,
   type FullProbeExportRequest,
 } from '../shared/export-types';
+import {
+  ExportPreparationCancelRequestSchema,
+  ExportPreparationCancelResponseSchema,
+  ExportPreparationDiscardRequestSchema,
+  ExportPreparationDiscardResponseSchema,
+  ExportPreparationRequestSchema,
+  ExportPreparationResponseSchema,
+  ExportPreparationSelectOutputRequestSchema,
+  ExportPreparationSelectOutputResponseSchema,
+  ExportPreparationSnapshotStatusRequestSchema,
+  ExportPreparationSnapshotStatusResponseSchema,
+  type ExportPreparationRequest,
+  type ExportPreparationSelectOutputRequest,
+} from '../shared/export-preparation-types';
 import {
   ProjectChooseDirectoryRequestSchema,
   ProjectChooseDirectoryResponseSchema,
@@ -428,6 +446,17 @@ const pandaStageApi = Object.freeze({
       );
       return ExportStartResponseSchema.parse(response);
     },
+    startFormal: async (snapshotId: string, reuseSnapshot = false) => {
+      const request = ExportStartFormalRequestSchema.parse({
+        snapshotId,
+        reuseSnapshot,
+      });
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.EXPORT_START_FORMAL,
+        request,
+      );
+      return ExportStartResponseSchema.parse(response);
+    },
     cancel: async (jobId: string) => {
       const request = ExportCancelRequestSchema.parse({ jobId });
       const response: unknown = await ipcRenderer.invoke(
@@ -435,6 +464,14 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return ExportCancelResponseSchema.parse(response);
+    },
+    revealOutput: async (jobId: string) => {
+      const request = ExportRevealOutputRequestSchema.parse({ jobId });
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.EXPORT_REVEAL_OUTPUT,
+        request,
+      );
+      return ExportRevealOutputResponseSchema.parse(response);
     },
     onUpdate: (callback: (update: ExportJobUpdate) => void): Unsubscribe => {
       const listener = (
@@ -444,6 +481,63 @@ const pandaStageApi = Object.freeze({
       ipcRenderer.on(IPC_CHANNELS.EXPORT_JOB_UPDATE, listener);
       return () =>
         ipcRenderer.removeListener(IPC_CHANNELS.EXPORT_JOB_UPDATE, listener);
+    },
+  }),
+  exportPreparation: Object.freeze({
+    selectOutput: async (
+      rawRequest: ExportPreparationSelectOutputRequest,
+    ) => {
+      const request =
+        ExportPreparationSelectOutputRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.EXPORT_PREPARATION_SELECT_OUTPUT,
+        request,
+      );
+      return ExportPreparationSelectOutputResponseSchema.parse(response);
+    },
+    prepare: async (rawRequest: ExportPreparationRequest) => {
+      const parsed = ExportPreparationRequestSchema.parse(rawRequest);
+      const request = {
+        ...parsed,
+        project: ProjectSchema.parse(parsed.project),
+      };
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.EXPORT_PREPARATION_START,
+        request,
+      );
+      const result = ExportPreparationResponseSchema.parse(response);
+      if (result.status === 'PREPARATION_READY') {
+        ProjectSchema.parse(result.candidate.project);
+      }
+      return result;
+    },
+    cancel: async (attemptId: string) => {
+      const request =
+        ExportPreparationCancelRequestSchema.parse({ attemptId });
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.EXPORT_PREPARATION_CANCEL,
+        request,
+      );
+      return ExportPreparationCancelResponseSchema.parse(response);
+    },
+    getSnapshotRetryStatus: async (snapshotId: string) => {
+      const request =
+        ExportPreparationSnapshotStatusRequestSchema.parse({ snapshotId });
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.EXPORT_PREPARATION_SNAPSHOT_STATUS,
+        request,
+      );
+      return ExportPreparationSnapshotStatusResponseSchema.parse(response);
+    },
+    discard: async (
+      rawRequest: { selectionId?: string; snapshotId?: string },
+    ) => {
+      const request = ExportPreparationDiscardRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.EXPORT_PREPARATION_DISCARD,
+        request,
+      );
+      return ExportPreparationDiscardResponseSchema.parse(response);
     },
   }),
   fla: Object.freeze({

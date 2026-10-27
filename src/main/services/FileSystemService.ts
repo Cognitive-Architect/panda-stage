@@ -1,8 +1,12 @@
 import { randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
 import {
   access,
+  link,
+  lstat,
   mkdir,
   readdir,
+  realpath,
   rename,
   rm,
   stat,
@@ -12,10 +16,66 @@ import { constants } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { promisify } from 'node:util';
+import {
+  EXPORT_PREPARATION_WINDOWS_FORMAL_OUTPUT_MAX_PATH_CHARACTERS,
+} from '../../shared/export-preparation-types';
+import { formatFrameFileName } from '../../shared/export-types';
 
-const FRAME_NAME_PATTERN = /^frame_\d{6}\.png$/;
+const FRAME_NAME_PATTERN = /^frame_(\d{6,})\.png$/u;
+const execFileAsync = promisify(execFile);
+const LONGEST_FORMAL_OUTPUT_STAGING_NAME =
+  `.panda-stage-export-${'0'.repeat(36)}-${'0'.repeat(36)}.mp4`;
+const WINDOWS_VOLUME_INFO_SCRIPT = [
+  "$volumes = @(Get-Volume -FilePath $env:PANDA_STAGE_EXPORT_VOLUME_PATH -ErrorAction Stop)",
+  'if ($volumes.Count -ne 1) { exit 21 }',
+  "[Console]::Out.Write($volumes[0].DriveType.ToString() + '|' + $volumes[0].FileSystem)",
+].join('; ');
+
+export interface FileSystemServiceOptions {
+  inspectWindowsVolume?: (directoryPath: string) => Promise<{
+    driveType: string;
+    fileSystem: string;
+  }>;
+}
+
+export interface FormalOutputPathSuggestion {
+  path: string;
+  ordinal: number;
+}
+
 export const CLEANUP_MAX_RETRIES = 3 as const;
 export const CLEANUP_RETRY_DELAY_MS = 75 as const;
+
+export class FormalOutputPathTooLongError extends Error {
+  readonly code = 'FORMAL_OUTPUT_PATH_TOO_LONG';
+
+  constructor() {
+    super(
+      'The formal output or same-directory staging path exceeds the Windows ' +
+        EXPORT_PREPARATION_WINDOWS_FORMAL_OUTPUT_MAX_PATH_CHARACTERS +
+        '-character limit.',
+    );
+    this.name = 'FormalOutputPathTooLongError';
+  }
+}
+
+export function isWithinWindowsFormalExportPathLimit(
+  outputPath: string,
+): boolean {
+  const resolvedOutputPath = path.win32.resolve(outputPath);
+  const outputDirectory = path.win32.dirname(resolvedOutputPath);
+  const longestStagingPath = path.win32.join(
+    outputDirectory,
+    LONGEST_FORMAL_OUTPUT_STAGING_NAME,
+  );
+  return (
+    resolvedOutputPath.length <=
+      EXPORT_PREPARATION_WINDOWS_FORMAL_OUTPUT_MAX_PATH_CHARACTERS &&
+    longestStagingPath.length <=
+      EXPORT_PREPARATION_WINDOWS_FORMAL_OUTPUT_MAX_PATH_CHARACTERS
+  );
+}
 
 export interface FrameFileSystem {
   createJobDirectory(jobId: string): Promise<string>;
@@ -24,16 +84,27 @@ export interface FrameFileSystem {
     fileName: string,
     pngBytes: Uint8Array,
   ): Promise<void>;
+  writeFrozenAudio(
+    jobDirectory: string,
+    fileName: string,
+    bytes: Uint8Array,
+  ): Promise<string>;
   listFrameFiles(jobDirectory: string): Promise<string[]>;
   cleanupJobDirectory(jobDirectory: string): Promise<void>;
   assertReadableProjectDirectory(projectDirectory: string): Promise<string>;
   prepareFinalOutput(outputPath: string, overwrite: boolean): Promise<string>;
+  prepareFormalOutput(outputPath: string): Promise<string>;
   createFinalOutputStagingPath(jobId: string, outputPath: string): string;
   commitFinalOutput(
     stagingPath: string,
     outputPath: string,
     overwrite: boolean,
   ): Promise<void>;
+  commitFormalOutputNoReplace(
+    stagingPath: string,
+    outputPath: string,
+  ): Promise<void>;
+  assertFormalOutputLocation(outputPath: string): Promise<void>;
   cleanupFinalOutputStaging(stagingPath: string): Promise<void>;
 }
 
@@ -46,8 +117,42 @@ export class FileSystemService implements FrameFileSystem {
       'panda-stage',
       'frame-jobs',
     ),
+    private readonly options: FileSystemServiceOptions = {},
   ) {
     this.rootDirectory = path.resolve(rootDirectory);
+  }
+
+  async suggestFormalOutputPath(defaultPath: string): Promise<string> {
+    const suggestion = await this.suggestFormalOutputPathWithOrdinal(defaultPath);
+    return suggestion.path;
+  }
+
+  async suggestFormalOutputPathWithOrdinal(
+    defaultPath: string,
+    firstOrdinal = 1,
+  ): Promise<FormalOutputPathSuggestion> {
+    const resolvedPath = path.resolve(defaultPath);
+    if (path.extname(resolvedPath).toLocaleLowerCase() !== '.mp4') {
+      return { path: resolvedPath, ordinal: 1 };
+    }
+    const { dir, name, ext } = path.parse(resolvedPath);
+    const startOrdinal = Math.max(1, Math.floor(firstOrdinal));
+    for (let index = startOrdinal; index <= 999; index += 1) {
+      const candidate =
+        index === 1
+          ? resolvedPath
+          : path.join(dir, `${name} (${index})${ext}`);
+      if (
+        process.platform === 'win32' &&
+        !isWithinWindowsFormalExportPathLimit(candidate)
+      ) {
+        return { path: resolvedPath, ordinal: 1 };
+      }
+      if (!(await pathExists(candidate))) {
+        return { path: candidate, ordinal: index };
+      }
+    }
+    return { path: resolvedPath, ordinal: 1 };
   }
 
   async createJobDirectory(jobId: string): Promise<string> {
@@ -63,20 +168,40 @@ export class FileSystemService implements FrameFileSystem {
     pngBytes: Uint8Array,
   ): Promise<void> {
     const safeDirectory = this.assertWithinRoot(jobDirectory);
-    if (!FRAME_NAME_PATTERN.test(fileName)) {
+    if (frameIndexFromFileName(fileName) === null) {
       throw new Error(`Invalid frame file name: ${fileName}`);
     }
     const framePath = this.assertWithinRoot(path.join(safeDirectory, fileName));
     await writeFile(framePath, pngBytes, { flag: 'wx' });
   }
 
+  async writeFrozenAudio(
+    jobDirectory: string,
+    fileName: string,
+    bytes: Uint8Array,
+  ): Promise<string> {
+    const safeDirectory = this.assertWithinRoot(jobDirectory);
+    if (!/^audio-[0-9a-f-]{36}\.(?:mp3|wav)$/iu.test(fileName)) {
+      throw new Error('Invalid frozen audio file name.');
+    }
+    const audioPath = this.assertWithinRoot(path.join(safeDirectory, fileName));
+    await writeFile(audioPath, bytes, { flag: 'wx' });
+    return audioPath;
+  }
+
   async listFrameFiles(jobDirectory: string): Promise<string[]> {
     const safeDirectory = this.assertWithinRoot(jobDirectory);
     const entries = await readdir(safeDirectory, { withFileTypes: true });
     return entries
-      .filter((entry) => entry.isFile() && FRAME_NAME_PATTERN.test(entry.name))
-      .map((entry) => entry.name)
-      .sort();
+      .flatMap((entry) => {
+        if (!entry.isFile()) return [];
+        const frameIndex = frameIndexFromFileName(entry.name);
+        return frameIndex === null
+          ? []
+          : [{ fileName: entry.name, frameIndex }];
+      })
+      .sort((left, right) => left.frameIndex - right.frameIndex)
+      .map(({ fileName }) => fileName);
   }
 
   async cleanupJobDirectory(jobDirectory: string): Promise<void> {
@@ -149,19 +274,60 @@ export class FileSystemService implements FrameFileSystem {
     }
   }
 
+  async prepareFormalOutput(outputPath: string): Promise<string> {
+    const resolvedOutputPath = await this.prepareFinalOutput(outputPath, false);
+    await this.assertFormalOutputLocation(resolvedOutputPath);
+    return resolvedOutputPath;
+  }
+
+  async assertFormalOutputLocation(outputPath: string): Promise<void> {
+    const resolvedOutputPath = path.resolve(outputPath);
+    if (
+      process.platform === 'win32' &&
+      !isWithinWindowsFormalExportPathLimit(resolvedOutputPath)
+    ) {
+      throw new FormalOutputPathTooLongError();
+    }
+    const outputDirectory = await realpath(path.dirname(resolvedOutputPath));
+    if (
+      !this.options.inspectWindowsVolume &&
+      process.platform !== 'win32'
+    ) {
+      throw new Error(
+        'Formal MP4 export supports only local NTFS folders on Windows.',
+      );
+    }
+
+    const inspectVolume =
+      this.options.inspectWindowsVolume ?? inspectWindowsVolumeWithPowerShell;
+    let volume: { driveType: string; fileSystem: string };
+    try {
+      volume = await inspectVolume(outputDirectory);
+    } catch (error) {
+      throw new Error(
+        'The output volume could not be verified as local NTFS.',
+        { cause: error },
+      );
+    }
+    if (
+      volume.driveType !== 'Fixed' ||
+      volume.fileSystem.toLocaleUpperCase('en-US') !== 'NTFS'
+    ) {
+      throw new Error(
+        'Formal MP4 export supports only local NTFS folders on Windows.',
+      );
+    }
+  }
+
   createFinalOutputStagingPath(jobId: string, outputPath: string): string {
     if (!/^[0-9a-f-]{36}$/iu.test(jobId)) {
       throw new Error(`Invalid export Job ID: ${jobId}`);
     }
     const resolvedOutputPath = path.resolve(outputPath);
     const outputDirectory = path.dirname(resolvedOutputPath);
-    const outputBaseName = path.basename(
-      resolvedOutputPath,
-      path.extname(resolvedOutputPath),
-    );
     return path.join(
       outputDirectory,
-      `.${outputBaseName}.panda-stage-${jobId}-${randomUUID()}.mp4`,
+      `.panda-stage-export-${jobId}-${randomUUID()}.mp4`,
     );
   }
 
@@ -192,6 +358,44 @@ export class FileSystemService implements FrameFileSystem {
     } catch (error) {
       throw new Error(
         `已通过探测，但无法将本 Job 暂存文件提交为正式输出：${resolvedOutputPath}。`,
+        { cause: error },
+      );
+    }
+  }
+
+  async commitFormalOutputNoReplace(
+    stagingPath: string,
+    outputPath: string,
+  ): Promise<void> {
+    const resolvedStagingPath = path.resolve(stagingPath);
+    const resolvedOutputPath = path.resolve(outputPath);
+    if (path.dirname(resolvedStagingPath) !== path.dirname(resolvedOutputPath)) {
+      throw new Error(
+        'Formal MP4 staging and target must be in the same directory.',
+      );
+    }
+    await this.assertFormalOutputLocation(resolvedOutputPath);
+    try {
+      await link(resolvedStagingPath, resolvedOutputPath);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'EEXIST' || code === 'EPERM' && await pathExists(resolvedOutputPath)) {
+        throw new Error(
+          `The formal MP4 target was created before commit; choose a new filename: ${resolvedOutputPath}`,
+          { cause: error },
+        );
+      }
+      throw new Error(
+        `The formal MP4 could not be committed without replacement: ${resolvedOutputPath}`,
+        { cause: error },
+      );
+    }
+
+    try {
+      await this.cleanupFinalOutputStaging(resolvedStagingPath);
+    } catch (error) {
+      throw new Error(
+        `The MP4 was committed, but its temporary link could not be removed: ${resolvedStagingPath}`,
         { cause: error },
       );
     }
@@ -234,5 +438,57 @@ export class FileSystemService implements FrameFileSystem {
       throw new Error(`Path escapes the frame-job root: ${resolvedTarget}`);
     }
     return resolvedTarget;
+  }
+}
+
+function frameIndexFromFileName(fileName: string): number | null {
+  const match = FRAME_NAME_PATTERN.exec(fileName);
+  if (!match || match[0] !== fileName) return null;
+  const frameIndex = Number(match[1]);
+  if (
+    !Number.isSafeInteger(frameIndex) ||
+    formatFrameFileName(frameIndex) !== fileName
+  ) {
+    return null;
+  }
+  return frameIndex;
+}
+
+async function inspectWindowsVolumeWithPowerShell(
+  directoryPath: string,
+): Promise<{ driveType: string; fileSystem: string }> {
+  const { stdout } = await execFileAsync(
+    'powershell.exe',
+    [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      WINDOWS_VOLUME_INFO_SCRIPT,
+    ],
+    {
+      env: {
+        ...process.env,
+        PANDA_STAGE_EXPORT_VOLUME_PATH: directoryPath,
+      },
+      windowsHide: true,
+      timeout: 5_000,
+      maxBuffer: 1_024,
+    },
+  );
+  const [driveType, fileSystem, extra] = stdout.trim().split('|');
+  if (!driveType || !fileSystem || extra !== undefined) {
+    throw new Error('Windows returned incomplete volume details.');
+  }
+  return { driveType, fileSystem };
+}
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await lstat(targetPath);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
   }
 }

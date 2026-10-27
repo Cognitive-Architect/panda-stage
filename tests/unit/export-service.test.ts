@@ -7,13 +7,19 @@ import {
   type FullProbeMediaAdapter,
   type FrameRenderer,
 } from '../../src/main/services/ExportService';
-import type { VideoProbeResult } from '../../src/shared/ffmpeg-types';
+import type {
+  AudioProbeResult,
+  MuxAudioMixRequest,
+  VideoProbeResult,
+} from '../../src/shared/ffmpeg-types';
 import type {
   ExportFrameReady,
+  ExportLoadFormalRequest,
   ExportLoadProbeRequest,
   ExportProbeLoaded,
   ExportRenderFrameRequest,
 } from '../../src/shared/export-types';
+import type { FrozenExportInput } from '../../src/main/services/ExportPreparationService';
 
 class MemoryFileSystem implements FrameFileSystem {
   readonly directories = new Map<string, Map<string, Uint8Array>>();
@@ -30,6 +36,8 @@ class MemoryFileSystem implements FrameFileSystem {
   readonly finalOutputEvents: string[] = [];
   prepareFinalOutputCalls = 0;
   commitFinalOutputCalls = 0;
+  prepareFormalOutputCalls = 0;
+  commitFormalOutputNoReplaceCalls = 0;
   cleanupStagingCalls = 0;
   stagingCleanupFailure: Error | null = null;
   commitGate: Promise<void> | null = null;
@@ -52,6 +60,15 @@ class MemoryFileSystem implements FrameFileSystem {
     }
     this.directories.get(directory)?.set(fileName, bytes);
     this.successfulWrites.push(fileName);
+  }
+
+  async writeFrozenAudio(
+    directory: string,
+    fileName: string,
+    bytes: Uint8Array,
+  ): Promise<string> {
+    this.directories.get(directory)?.set(fileName, bytes);
+    return path.join(directory, fileName);
   }
 
   async listFrameFiles(directory: string): Promise<string[]> {
@@ -80,6 +97,13 @@ class MemoryFileSystem implements FrameFileSystem {
     return outputPath;
   }
 
+  async prepareFormalOutput(outputPath: string): Promise<string> {
+    this.prepareFormalOutputCalls += 1;
+    return this.prepareFinalOutput(outputPath, false);
+  }
+
+  async assertFormalOutputLocation(): Promise<void> {}
+
   createFinalOutputStagingPath(jobId: string, outputPath: string): string {
     const stagingPath = path.join(
       path.dirname(outputPath),
@@ -106,6 +130,23 @@ class MemoryFileSystem implements FrameFileSystem {
     this.stagingFiles.delete(stagingPath);
   }
 
+  async commitFormalOutputNoReplace(
+    stagingPath: string,
+    outputPath: string,
+  ): Promise<void> {
+    this.commitFormalOutputNoReplaceCalls += 1;
+    this.finalOutputEvents.push('commit-no-replace');
+    this.commitStarted?.();
+    if (this.commitGate) await this.commitGate;
+    if (this.finalFiles.has(outputPath)) {
+      throw new Error('formal output appeared before exclusive commit');
+    }
+    const stagedContent = this.stagingFiles.get(stagingPath);
+    if (!stagedContent) throw new Error('staging output is missing');
+    this.finalFiles.set(outputPath, stagedContent);
+    this.stagingFiles.delete(stagingPath);
+  }
+
   async cleanupFinalOutputStaging(stagingPath: string): Promise<void> {
     this.cleanupStagingCalls += 1;
     if (this.stagingCleanupFailure) throw this.stagingCleanupFailure;
@@ -115,9 +156,11 @@ class MemoryFileSystem implements FrameFileSystem {
 
 class MemoryRenderer implements FrameRenderer {
   requests: ExportRenderFrameRequest[] = [];
+  formalLoads: ExportLoadFormalRequest[] = [];
   failAtFrame: number | null = null;
   cancelledJobs: string[] = [];
   prepared = 0;
+  preparedKinds: Array<'probe' | 'formal'> = [];
   releasedJobs: string[] = [];
 
   cancelJob(jobId: string): boolean {
@@ -125,8 +168,9 @@ class MemoryRenderer implements FrameRenderer {
     return true;
   }
 
-  async prepareJob(): Promise<void> {
+  async prepareJob(kind: 'probe' | 'formal' = 'probe'): Promise<void> {
     this.prepared += 1;
+    this.preparedKinds.push(kind);
   }
 
   releaseJob(jobId: string): void {
@@ -135,6 +179,11 @@ class MemoryRenderer implements FrameRenderer {
 
   async loadProbe(request: ExportLoadProbeRequest): Promise<ExportProbeLoaded> {
     return { jobId: request.jobId, acknowledged: true };
+  }
+
+  async loadFormal(request: ExportLoadFormalRequest) {
+    this.formalLoads.push(request);
+    return { jobId: request.jobId, acknowledged: true as const };
   }
 
   async renderFrame(request: ExportRenderFrameRequest): Promise<ExportFrameReady> {
@@ -166,8 +215,9 @@ const probeResult: VideoProbeResult = {
   audioSampleRate: 48_000,
   audioChannels: 1,
   audioStartSeconds: 0,
-  audioDurationSeconds: 3,
-  formatDurationSeconds: 3,
+  audioDurationSeconds: 3.4,
+  audioStreamCount: 1,
+  formatDurationSeconds: 3.4,
   raw: {},
 };
 
@@ -190,6 +240,7 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
   encodeRequests: Array<Record<string, unknown>> = [];
   muxRequests: Array<Record<string, unknown>> = [];
   probeRequests: string[] = [];
+  audioProbeRequests: string[] = [];
   signals: AbortSignal[] = [];
   blockEncode = false;
   encodeStarted: (() => void) | null = null;
@@ -200,6 +251,7 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
   blockProbe = false;
   probeStarted: (() => void) | null = null;
   probeFailure: Error | null = null;
+  result = probeResult;
 
   constructor(private readonly fileSystem: MemoryFileSystem) {}
 
@@ -225,6 +277,20 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
     signal?: AbortSignal,
   ): Promise<void> {
     this.encodeRequests.push(request);
+    const outputPath = String(request.outputPath);
+    const outputDirectory = path.dirname(outputPath);
+    const isFormalSilentIntermediate =
+      path.basename(outputPath) === 'formal-silent.mp4';
+    if (
+      !isFormalSilentIntermediate &&
+      this.fileSystem.directories.has(outputDirectory)
+    ) {
+      this.fileSystem.directories
+        .get(outputDirectory)
+        ?.set(path.basename(outputPath), new Uint8Array([1]));
+    } else if (!isFormalSilentIntermediate && request.overwrite === false) {
+      this.fileSystem.stagingFiles.set(outputPath, 'silent video');
+    }
     if (signal) this.signals.push(signal);
     if (!this.blockEncode) return;
     this.activeProcesses = 1;
@@ -242,19 +308,39 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
   }
 
   async muxAudioMix(
-    request: Record<string, unknown>,
+    request: MuxAudioMixRequest,
     signal?: AbortSignal,
   ): Promise<void> {
-    this.muxRequests.push(request);
+    this.muxRequests.push(request as unknown as Record<string, unknown>);
     if (signal) this.signals.push(signal);
     const stagingPath = String(request.outputPath);
     this.fileSystem.finalOutputEvents.push('mux');
     if (this.muxFailure) throw this.muxFailure;
-    this.fileSystem.stagingFiles.set(stagingPath, 'new video');
+    this.fileSystem.stagingFiles.set(
+      stagingPath,
+      request.audioMixPlan.preserveSilentTail === true
+        ? 'new video with audio'
+        : 'new video',
+    );
     if (this.blockMux) {
       this.muxStarted?.();
       await this.waitForCancellation(signal, 'controlled mux cancellation');
     }
+  }
+
+  async probeAudioFile(
+    audioPath: string,
+    signal?: AbortSignal,
+  ): Promise<AudioProbeResult> {
+    this.audioProbeRequests.push(audioPath);
+    if (signal) this.signals.push(signal);
+    return {
+      codecName: 'pcm_s16le',
+      sampleRate: 48_000,
+      channels: 1,
+      durationSeconds: 3,
+      raw: {},
+    };
   }
 
   async probeVideo(
@@ -272,7 +358,7 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
       this.probeStarted?.();
       await this.waitForCancellation(signal, 'controlled probe cancellation');
     }
-    return probeResult;
+    return this.result;
   }
 
   getActiveProcessCount(): number {
@@ -366,6 +452,366 @@ describe('ExportService', () => {
     expect(fileSystem.directories.size).toBe(0);
   });
 
+  it('exports a frozen formal Shot beyond five seconds as a silent verified MP4', async () => {
+    const renderer = new MemoryRenderer();
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    const totalFrames = 157;
+    media.result = {
+      ...probeResult,
+      frameCount: totalFrames,
+      durationSeconds: totalFrames / 24,
+      hasAudio: false,
+      audioCodecName: null,
+      audioSampleRate: null,
+      audioChannels: null,
+      audioStartSeconds: null,
+      audioDurationSeconds: null,
+      audioStreamCount: 0,
+    };
+    const service = new ExportService(renderer, fileSystem, media);
+    const input = {
+      candidate: {
+        attemptId: '10000000-0000-4000-8000-000000000011',
+        snapshotId: '30000000-0000-4000-8000-000000000011',
+        project: {
+          shots: [
+            {
+              id: '50000000-0000-4000-8000-000000000011',
+              durationMs: 6_501,
+              audioClips: [],
+            },
+          ],
+        },
+        projectRoot: 'C:\\Panda Stage\\Project',
+        cameraMode: 'static',
+        renderSettings: { width: 1_920, height: 1_080, fps: 24 },
+        outputIntent: {
+          targetPath: 'C:\\Panda Stage\\Output\\鏡頭.mp4',
+          overwriteApproved: false,
+        },
+      },
+      media: [],
+    } as unknown as FrozenExportInput;
+    let targetChecks = 0;
+    const updates: Array<Record<string, unknown>> = [];
+    service.subscribe((update) => updates.push(update));
+    const handle = service.startFormalExport(input, async () => {
+      targetChecks += 1;
+    });
+    const result = await handle.completion;
+
+    expect(result.totalFrames).toBe(totalFrames);
+    expect(result.completedFrames).toBe(totalFrames);
+    expect(renderer.formalLoads).toHaveLength(1);
+    expect(renderer.preparedKinds).toEqual(['formal']);
+    expect(renderer.formalLoads[0]?.project).toEqual(input.candidate.project);
+    expect(renderer.requests.at(-1)).toMatchObject({
+      frameIndex: 156,
+      timeMs: 6_500,
+    });
+    expect(media.encodeRequests).toHaveLength(1);
+    expect(media.encodeRequests[0]).toMatchObject({ fps: 24, overwrite: false });
+    expect(media.muxRequests).toHaveLength(0);
+    expect(result.probe.hasAudio).toBe(false);
+    expect(targetChecks).toBe(2);
+    expect(fileSystem.commitFormalOutputNoReplaceCalls).toBe(1);
+    expect(service.getCompletedOutputPath(handle.jobId)).toBe(result.outputPath);
+    expect(service.getJob(handle.jobId)).toMatchObject({
+      attemptId: input.candidate.attemptId,
+      snapshotId: input.candidate.snapshotId,
+      status: 'completed',
+    });
+    expect(updates.at(-1)).toMatchObject({
+      jobId: handle.jobId,
+      attemptId: input.candidate.attemptId,
+      snapshotId: input.candidate.snapshotId,
+      status: 'completed',
+      phase: 'finished',
+    });
+  });
+
+  it.each([
+    [72, '50000000-0000-4000-8000-000000000032'],
+    [144, '50000000-0000-4000-8000-000000000033'],
+  ])('blocks a render failure at the start of a later Shot (frame %i)', async (frameIndex, shotId) => {
+    const renderer = new MemoryRenderer();
+    renderer.failAtFrame = frameIndex;
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    const project = {
+      shots: [
+        {
+          id: '50000000-0000-4000-8000-000000000031',
+          durationMs: 3_000,
+          audioClips: [],
+        },
+        {
+          id: '50000000-0000-4000-8000-000000000032',
+          durationMs: 3_000,
+          audioClips: [],
+        },
+        {
+          id: '50000000-0000-4000-8000-000000000033',
+          durationMs: 3_000,
+          audioClips: [],
+        },
+      ],
+    };
+    const service = new ExportService(renderer, fileSystem, media);
+    const input = {
+      candidate: {
+        project,
+        projectRoot: 'C:\\Panda Stage\\Project',
+        cameraMode: 'static',
+        renderSettings: { width: 1_920, height: 1_080, fps: 24 },
+        outputIntent: {
+          targetPath: `C:\\Panda Stage\\Output\\failed-shot-${frameIndex}.mp4`,
+          overwriteApproved: false,
+        },
+      },
+      media: [],
+    } as unknown as FrozenExportInput;
+    const handle = service.startFormalExport(input, async () => {});
+
+    await expect(handle.completion).rejects.toThrow('simulated missing asset render failure');
+    expect(renderer.requests.at(-1)).toMatchObject({
+      frameIndex,
+      shotId,
+      shotLocalTimeMs: 0,
+    });
+    expect(service.getJob(handle.jobId)?.status).toBe('failed');
+    expect(fileSystem.finalFiles.size).toBe(0);
+    expect(fileSystem.stagingFiles.size).toBe(0);
+    expect(fileSystem.directories.size).toBe(0);
+    expect(fileSystem.commitFormalOutputNoReplaceCalls).toBe(0);
+    expect(renderer.releasedJobs).toEqual([handle.jobId]);
+
+    renderer.failAtFrame = null;
+    media.result = {
+      ...probeResult,
+      frameCount: 216,
+      durationSeconds: 9,
+      hasAudio: false,
+      audioCodecName: null,
+      audioSampleRate: null,
+      audioChannels: null,
+      audioStartSeconds: null,
+      audioDurationSeconds: null,
+      audioStreamCount: 0,
+      formatDurationSeconds: 9,
+    };
+    const retryInput = structuredClone(input);
+    retryInput.candidate.outputIntent.targetPath =
+      `C:\\Panda Stage\\Output\\retry-shot-${frameIndex}.mp4`;
+    const retry = service.startFormalExport(retryInput, async () => {});
+    await expect(retry.completion).resolves.toMatchObject({
+      status: 'completed',
+    });
+    expect(renderer.releasedJobs).toEqual([handle.jobId, retry.jobId]);
+  });
+
+  it('releases the formal renderer after cancellation and accepts the next export', async () => {
+    const renderer = new MemoryRenderer();
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    const service = new ExportService(renderer, fileSystem, media);
+    const input = {
+      candidate: {
+        project: {
+          shots: [
+            {
+              id: '50000000-0000-4000-8000-000000000041',
+              durationMs: 3_000,
+              audioClips: [],
+            },
+          ],
+        },
+        projectRoot: 'C:\\Panda Stage\\Project',
+        cameraMode: 'static',
+        renderSettings: { width: 1_920, height: 1_080, fps: 24 },
+        outputIntent: {
+          targetPath: 'C:\\Panda Stage\\Output\\cancelled.mp4',
+          overwriteApproved: false,
+        },
+      },
+      media: [],
+    } as unknown as FrozenExportInput;
+    const renderFrame = renderer.renderFrame.bind(renderer);
+    let cancelJobId: string | null = null;
+    renderer.renderFrame = async (request) => {
+      const rendered = await renderFrame(request);
+      if (request.frameIndex === 0 && cancelJobId) {
+        const jobId = cancelJobId;
+        cancelJobId = null;
+        service.cancelJob(jobId);
+      }
+      return rendered;
+    };
+
+    const cancelled = service.startFormalExport(input, async () => {});
+    cancelJobId = cancelled.jobId;
+    await expect(cancelled.completion).rejects.toThrow(/\u5df2\u53d6\u6d88/);
+    expect(renderer.releasedJobs).toEqual([cancelled.jobId]);
+
+    renderer.renderFrame = renderFrame;
+    media.result = {
+      ...probeResult,
+      hasAudio: false,
+      audioCodecName: null,
+      audioSampleRate: null,
+      audioChannels: null,
+      audioStartSeconds: null,
+      audioDurationSeconds: null,
+      audioStreamCount: 0,
+    };
+    const retryInput = structuredClone(input);
+    retryInput.candidate.outputIntent.targetPath =
+      'C:\\Panda Stage\\Output\\after-cancel.mp4';
+    const retry = service.startFormalExport(retryInput, async () => {});
+    await expect(retry.completion).resolves.toMatchObject({ status: 'completed' });
+    expect(renderer.releasedJobs).toEqual([cancelled.jobId, retry.jobId]);
+  });
+
+  it('preflights frozen audio, builds a strict mix plan, muxes once, and commits no-clobber', async () => {
+    const renderer = new MemoryRenderer();
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    media.result = {
+      ...probeResult,
+      frameCount: 216,
+      durationSeconds: 9,
+      audioDurationSeconds: 9,
+      formatDurationSeconds: 9,
+      audioStreamCount: 1,
+    };
+    const audioAssetId = '10000000-0000-4000-8000-000000000021';
+    const audioClipId = '70000000-0000-4000-8000-000000000021';
+    const audioBytes = new Uint8Array([4, 5, 6]);
+    const input = {
+      candidate: {
+        project: {
+          shots: [
+            {
+              id: '50000000-0000-4000-8000-000000000021',
+              durationMs: 3_000,
+              audioClips: [
+                {
+                  id: audioClipId,
+                  assetId: audioAssetId,
+                  role: 'sfx',
+                  startMs: 1_000,
+                  endMs: 2_500,
+                  offsetMs: 250,
+                  volume: 1.5,
+                },
+              ],
+            },
+            {
+              id: '50000000-0000-4000-8000-000000000022',
+              durationMs: 3_000,
+              audioClips: [
+                {
+                  id: '70000000-0000-4000-8000-000000000022',
+                  assetId: audioAssetId,
+                  role: 'dialogue',
+                  startMs: 700,
+                  endMs: 1_200,
+                  offsetMs: 800,
+                  volume: 0.75,
+                },
+              ],
+            },
+            {
+              id: '50000000-0000-4000-8000-000000000023',
+              durationMs: 3_000,
+              audioClips: [],
+            },
+          ],
+          assets: [
+            {
+              id: audioAssetId,
+              kind: 'audio',
+              mimeType: 'audio/wav',
+              durationMs: 3_000,
+            },
+          ],
+        },
+        projectRoot: 'C:\\Panda Stage\\Project',
+        cameraMode: 'static',
+        renderSettings: { width: 1_920, height: 1_080, fps: 24 },
+        outputIntent: {
+          targetPath: 'C:\\Panda Stage\\Output\\formal-audio.mp4',
+          overwriteApproved: false,
+        },
+      },
+      media: [
+        {
+          assetId: audioAssetId,
+          kind: 'audio',
+          mimeType: 'audio/wav',
+          bytes: audioBytes,
+        },
+      ],
+    } as unknown as FrozenExportInput;
+    const service = new ExportService(renderer, fileSystem, media);
+    let targetChecks = 0;
+    const handle = service.startFormalExport(input, async () => {
+      targetChecks += 1;
+    });
+    const result = await handle.completion;
+
+    expect(media.audioProbeRequests).toHaveLength(1);
+    expect(media.audioProbeRequests[0]).toContain(audioAssetId);
+    expect(media.encodeRequests[0]?.outputPath).toContain('formal-silent.mp4');
+    expect(media.muxRequests).toHaveLength(1);
+    expect(media.muxRequests[0]).toMatchObject({
+      overwrite: false,
+      audioMixPlan: {
+        durationMs: 9_000,
+        preserveSilentTail: true,
+        clips: [
+          {
+            clipId: audioClipId,
+            sourceOffsetMs: 250,
+            startMs: 1_000,
+            endMs: 2_500,
+            volume: 1.5,
+          },
+          {
+            clipId: '70000000-0000-4000-8000-000000000022',
+            sourceOffsetMs: 800,
+            startMs: 3_700,
+            endMs: 4_200,
+            volume: 0.75,
+          },
+        ],
+      },
+    });
+    expect(result.totalFrames).toBe(216);
+    expect(renderer.requests.find((request) => request.frameIndex === 72)).toMatchObject({
+      timeMs: 3_000,
+      shotId: '50000000-0000-4000-8000-000000000022',
+      shotLocalTimeMs: 0,
+    });
+    expect(renderer.requests.find((request) => request.frameIndex === 108)).toMatchObject({
+      timeMs: 4_500,
+      shotId: '50000000-0000-4000-8000-000000000022',
+      shotLocalTimeMs: 1_500,
+    });
+    expect(result.probe.hasAudio).toBe(true);
+    expect(result.probe.audioStreamCount).toBe(1);
+    expect(targetChecks).toBe(2);
+    expect(fileSystem.commitFormalOutputNoReplaceCalls).toBe(1);
+    expect(fileSystem.finalOutputEvents).toEqual([
+      'mux',
+      'probe',
+      'commit-no-replace',
+    ]);
+    expect(fileSystem.directories.size).toBe(0);
+    expect(fileSystem.stagingFiles.size).toBe(0);
+  });
+
   it('uses one Job signal through a Unicode full export and removes its frame directory', async () => {
     const renderer = new MemoryRenderer();
     const fileSystem = new MemoryFileSystem();
@@ -418,6 +864,7 @@ describe('ExportService', () => {
     expect(fileSystem.stagingFiles.size).toBe(0);
     expect(fileSystem.directories.size).toBe(0);
     expect(renderer.prepared).toBe(1);
+    expect(renderer.preparedKinds).toEqual(['probe']);
     expect(renderer.releasedJobs).toEqual([result.jobId]);
   });
 
@@ -443,12 +890,21 @@ describe('ExportService', () => {
     const handle = service.startFullProbe(request);
     await encodeStarted;
 
+    let waitSettled = false;
+    const waitForStop = service.waitForJob(handle.jobId).then(() => {
+      waitSettled = true;
+    });
+    await Promise.resolve();
+    expect(waitSettled).toBe(false);
+
     expect(service.getActiveProcessCount()).toBe(1);
     expect(service.cancelJob('00000000-0000-4000-8000-000000000000')).toBe(
       false,
     );
     expect(service.cancelJob(handle.jobId)).toBe(true);
     expect(service.cancelJob(handle.jobId)).toBe(true);
+    await waitForStop;
+    expect(waitSettled).toBe(true);
     await expect(handle.completion).rejects.toThrow(
       new RegExp(`Export Job ${handle.jobId}.*可以立即重新导出`),
     );
@@ -692,6 +1148,10 @@ describe('ExportService', () => {
     expect(fileSystem.finalFiles.get(outputPath)).toBe('old video');
     expect(fileSystem.commitFinalOutputCalls).toBe(0);
     expect(service.getJob(handle.jobId)?.status).toBe('failed');
+    expect(service.getJob(handle.jobId)).toMatchObject({
+      originalError: 'original probe failure',
+      cleanupError: expect.stringContaining('controlled staging lock'),
+    });
   });
 
   it('waits for in-flight writes before cleanup when rendering is cancelled', async () => {
@@ -743,7 +1203,11 @@ describe('ExportService', () => {
     expect(failure?.message).toMatch(
       /controlled file lock.*关闭占用文件或目录/,
     );
-    expect(service.getJob(failure?.jobId ?? '')?.status).toBe('failed');
+    expect(service.getJob(failure?.jobId ?? '')).toMatchObject({
+      status: 'failed',
+      originalError: 'cancel requested',
+      cleanupError: expect.stringContaining('controlled file lock'),
+    });
     expect(fileSystem.cleaned).toHaveLength(1);
 
     fileSystem.cleanupFailure = null;

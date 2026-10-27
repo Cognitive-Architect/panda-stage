@@ -89,7 +89,6 @@ describe('StageImageResourceSession', () => {
       'src/export-renderer/ExportRendererApp.tsx',
       'utf8',
     );
-
     expect(stageRenderer).toContain('StageImageResourceSession');
     expect(stageRenderer).toContain('isStageFrameReady');
     expect(stageRenderer).toContain('commitStageVisualFrame');
@@ -109,6 +108,31 @@ describe('StageImageResourceSession', () => {
       "from '../renderer/stage/CanvasStage'",
     );
     expect(exportRenderer).toContain('<CanvasStage');
+  });
+
+  it('draws all hidden export layers before capture and includes subtitle fonts in readiness', () => {
+    const stageRenderer = readFileSync(
+      'src/renderer/stage/StageRenderer.tsx',
+      'utf8',
+    );
+    const exportRenderer = readFileSync(
+      'src/export-renderer/ExportRendererApp.tsx',
+      'utf8',
+    );
+    const stageCapture = readFileSync(
+      'src/export-renderer/stage-capture.ts',
+      'utf8',
+    );
+
+    expect(stageRenderer).toContain('await waitForSubtitleFonts');
+    expect(stageRenderer).toContain('drawStageLayersSynchronously');
+    expect(stageRenderer).toContain("scheduleLayerDraw={drawMode === 'legacy-raf'}");
+    expect(exportRenderer).toContain('Konva.autoDrawEnabled = false');
+    expect(exportRenderer).toContain('isExactExportFrameDrawn');
+    expect(exportRenderer).toContain('captureExportStageCanvas(stageInstance)');
+    expect(stageCapture).toContain("strategy: 'drawn-output-layer'");
+    expect(stageCapture).toContain("strategy: 'stage-composite'");
+    expect(exportRenderer).toContain('EXPORT_FRAME_TIMING_QUERY_PARAM');
   });
 
   it('keeps Export-style readiness false while an old committed frame is drawable', () => {

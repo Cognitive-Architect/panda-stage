@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   exportFrameRenderToken,
+  isExactExportFrameDrawn,
   isExactExportFrameReady,
   readExportStageReadiness,
 } from '../../src/export-renderer/export-frame-readiness';
@@ -32,6 +33,7 @@ describe('hidden Export exact frame readiness', () => {
       stageReady: false,
       stageError: false,
       stageTimeMs: requestA.timeMs,
+      stageShotId: null,
       renderToken: exportFrameRenderToken(requestA),
     });
     expect(sentFrames).toEqual([]);
@@ -42,6 +44,7 @@ describe('hidden Export exact frame readiness', () => {
       stageReady: true,
       stageError: false,
       stageTimeMs: requestB.timeMs,
+      stageShotId: null,
       renderToken: exportFrameRenderToken(requestA),
     });
     expect(sentFrames).toEqual([]);
@@ -51,6 +54,7 @@ describe('hidden Export exact frame readiness', () => {
       stageReady: true,
       stageError: false,
       stageTimeMs: requestB.timeMs,
+      stageShotId: null,
       renderToken: exportFrameRenderToken(requestB),
     });
     expect(sentFrames).toEqual([requestB]);
@@ -78,10 +82,55 @@ describe('hidden Export exact frame readiness', () => {
           stageReady: true,
           stageError: true,
           stageTimeMs: requestB.timeMs,
+        stageShotId: null,
           renderToken: exportFrameRenderToken(requestB),
         },
         requestB,
       ),
     ).toBe(false);
+  });
+
+  it('requires a completed draw for the exact request before synchronous capture', () => {
+    const exactReady = {
+      stageReady: true,
+      stageError: false,
+      stageTimeMs: requestB.timeMs,
+      stageShotId: null,
+      renderToken: exportFrameRenderToken(requestB),
+      drawnRenderToken: exportFrameRenderToken(requestA),
+    };
+    expect(isExactExportFrameDrawn(exactReady, requestB)).toBe(false);
+    expect(
+      isExactExportFrameDrawn(
+        { ...exactReady, drawnRenderToken: exportFrameRenderToken(requestB) },
+        requestB,
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects a ready frame from the preceding Shot even at the same local time', () => {
+    const previousShotId = '50000000-0000-4000-8000-000000000001';
+    const nextShotId = '50000000-0000-4000-8000-000000000002';
+    const request: ExportRenderFrameRequest = {
+      ...requestB,
+      timeMs: 2_001,
+      shotId: nextShotId,
+      shotLocalTimeMs: 1,
+    };
+    const previousShotReadiness = {
+      stageReady: true,
+      stageError: false,
+      stageTimeMs: 1,
+      stageShotId: previousShotId,
+      renderToken: exportFrameRenderToken(request),
+    };
+
+    expect(isExactExportFrameReady(previousShotReadiness, request)).toBe(false);
+    expect(
+      isExactExportFrameReady(
+        { ...previousShotReadiness, stageShotId: nextShotId },
+        request,
+      ),
+    ).toBe(true);
   });
 });

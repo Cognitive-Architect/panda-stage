@@ -13,6 +13,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectSchema, type Project } from '../../src/domain';
 import { AssetPreviewAudioService } from '../../src/main/services/AssetPreviewAudioService';
+import { MediaInspectionError } from '../../src/main/services/MediaInspectionService';
 import type { MediaInspectionService } from '../../src/main/services/MediaInspectionService';
 import {
   ASSET_PREVIEW_AUDIO_MAX_BYTES,
@@ -328,6 +329,34 @@ describe('AssetPreviewAudioService', () => {
       ok: false,
       error: { code: 'ASSET_PREVIEW_AUDIO_HASH_MISMATCH' },
     });
+  });
+
+  it('preserves a nested filesystem permission code without exposing its path', async () => {
+    const input = await createAudioProject();
+    const permissionError = Object.assign(
+      new Error('access is denied'),
+      { code: 'EACCES' },
+    );
+    const wrappedError = new MediaInspectionError(
+      'ASSET_IMPORT_INVALID_CONTENT',
+      'The media contents are invalid.',
+      { cause: permissionError },
+    );
+    const response = await new AssetPreviewAudioService({
+      inspectionService: {
+        inspect: vi.fn().mockRejectedValue(wrappedError),
+      } as unknown as MediaInspectionService,
+      getCurrentProjectSnapshot: () => ({ project: input.project }),
+    }).read(request(input));
+
+    expect(response).toMatchObject({
+      ok: false,
+      error: {
+        code: 'ASSET_PREVIEW_AUDIO_READ_FAILED',
+        message: expect.stringContaining('EACCES'),
+      },
+    });
+    expect(JSON.stringify(response)).not.toContain(input.projectRoot);
   });
 
   it('deduplicates identical in-flight reads and clears the key after failure', async () => {

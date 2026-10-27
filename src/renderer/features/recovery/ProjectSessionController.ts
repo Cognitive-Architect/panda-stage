@@ -266,7 +266,13 @@ export class ProjectSessionController {
         currentForRollback
       ) {
         try {
-          const restored = await this.api.track(currentForRollback);
+          const rollbackInstanceId = this.store.getProjectInstanceId();
+          const restored = await this.api.track({
+            ...currentForRollback,
+            ...(rollbackInstanceId === null
+              ? {}
+              : { openInstanceId: rollbackInstanceId }),
+          });
           if (!restored.ok) {
             rollbackFailures.push(restored.error.message);
           }

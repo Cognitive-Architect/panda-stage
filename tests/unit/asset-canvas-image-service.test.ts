@@ -13,6 +13,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectSchema, type Project } from '../../src/domain';
 import { AssetCanvasImageService } from '../../src/main/services/AssetCanvasImageService';
+import { MediaInspectionError } from '../../src/main/services/MediaInspectionService';
 import type { MediaInspectionService } from '../../src/main/services/MediaInspectionService';
 import {
   CANVAS_IMAGE_MAX_BYTES,
@@ -392,6 +393,34 @@ describe('AssetCanvasImageService', () => {
       ok: false,
       error: { code: 'ASSET_CANVAS_IMAGE_HASH_MISMATCH' },
     });
+  });
+
+  it('preserves a nested filesystem permission code without exposing its path', async () => {
+    const input = await createPngProject();
+    const permissionError = Object.assign(
+      new Error('operation not permitted'),
+      { code: 'EPERM' },
+    );
+    const wrappedError = new MediaInspectionError(
+      'ASSET_IMPORT_INVALID_CONTENT',
+      'The image contents are invalid.',
+      { cause: permissionError },
+    );
+    const response = await new AssetCanvasImageService({
+      inspectionService: {
+        inspect: vi.fn().mockRejectedValue(wrappedError),
+      } as unknown as MediaInspectionService,
+      getCurrentProjectSnapshot: () => ({ project: input.project }),
+    }).read(request(input));
+
+    expect(response).toMatchObject({
+      ok: false,
+      error: {
+        code: 'ASSET_CANVAS_IMAGE_READ_FAILED',
+        message: expect.stringContaining('EPERM'),
+      },
+    });
+    expect(JSON.stringify(response)).not.toContain(input.projectRoot);
   });
 
   it('deduplicates identical in-flight reads and clears the entry after failure', async () => {

@@ -6,6 +6,7 @@ import {
   FolderOpen,
   Home,
   LoaderCircle,
+  Download,
   Play,
   Save,
   X,
@@ -32,10 +33,13 @@ export interface CompactProjectBarProps {
   busy: boolean;
   productPreviewOpen: boolean;
   closeConfirmOpen: boolean;
+  exportBusy?: boolean;
+  exportSurfaceOpen?: boolean;
   onOpenProjectCenter(): void;
   onOpenProjectFolder(): Promise<void>;
   onSaveProject(): Promise<void>;
   onOpenProductPreview(): void;
+  onExportVideo?(): void;
   onRequestCloseProject(): void;
   presentation?: EditorShellLayoutMode;
 }
@@ -73,10 +77,13 @@ export function QuickActionDrawer({
   busy,
   productPreviewOpen,
   closeConfirmOpen,
+  exportBusy = false,
+  exportSurfaceOpen = false,
   onOpenProjectCenter,
   onOpenProjectFolder,
   onSaveProject,
   onOpenProductPreview,
+  onExportVideo = () => undefined,
   onRequestCloseProject,
   presentation = 'landscape',
 }: CompactProjectBarProps): React.JSX.Element {
@@ -234,6 +241,44 @@ export function QuickActionDrawer({
             }
             onClick={onOpenProductPreview}
             title="预览当前镜头"
+            variant="primary"
+          />
+          <IconButton
+            aria-label={
+              exportBusy || exportSurfaceOpen
+                ? '\u663e\u793a\u5bfc\u51fa\u4efb\u52a1'
+                : '\u5bfc\u51fa\u89c6\u9891'
+            }
+            aria-busy={exportBusy}
+            aria-pressed={exportSurfaceOpen}
+            className="quick-action-drawer-action quick-action-drawer-export"
+            data-quick-action="export"
+            data-task4-core="export-video"
+            data-testid="quick-action-export"
+            disabled={busy}
+            icon={
+              exportBusy ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="ui-icon quick-action-drawer-spinner"
+                  focusable="false"
+                  size={18}
+                />
+              ) : (
+                <Download
+                  aria-hidden="true"
+                  className="ui-icon"
+                  focusable="false"
+                  size={18}
+                />
+              )
+            }
+            onClick={onExportVideo}
+            title={
+              exportBusy || exportSurfaceOpen
+                ? '\u663e\u793a\u5bfc\u51fa\u4efb\u52a1'
+                : '\u5bfc\u51fa\u89c6\u9891'
+            }
             variant="primary"
           />
           <div

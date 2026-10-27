@@ -12,8 +12,8 @@ import {
 import { buildDialogueSubtitleCues } from '../../shared/preview/dialogue-subtitle';
 import { evaluateSubtitleAtTime } from '../../shared/preview/subtitle-engine';
 
-const MOUTH_FLAP_PERIOD_MS = 320;
-const MOUTH_OPEN_MS = 160;
+export const MOUTH_FLAP_PERIOD_MS = 320;
+export const MOUTH_OPEN_MS = 160;
 export const TALKING_HEAD_BOB_AMPLITUDE_PX = 4;
 export const TALKING_HEAD_FREQUENCY_HZ = 2;
 export const TALKING_HEAD_EDGE_ENVELOPE_MS = 120;

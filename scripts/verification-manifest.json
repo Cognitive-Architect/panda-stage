@@ -383,6 +383,10 @@
           "tests/integration/project-subtitle-background-migration.test.ts",
           "tests/unit/application-menu-policy.test.ts",
           "tests/unit/standalone-audio.test.ts",
+          "tests/unit/autosave-service.test.ts",
+          "tests/unit/hidden-window-manager.test.ts",
+          "tests/unit/project-asset-path.test.ts",
+          "tests/unit/unsaved-close-controller.test.ts",
           "tests/unit/models/audio-clip-source-range.test.ts",
           "tests/integration/standalone-audio-persistence.test.ts",
           "tests/integration/animation-persistence.test.ts"
@@ -393,28 +397,47 @@
         "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "architecture",
-        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #828 lifecycle and audio source-range tests remain here without broad test globs; other unregistered test paths stay fail-closed."
+        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #828 lifecycle/audio source-range tests and Main window/filesystem boundary tests remain here without broad test globs; other unregistered test paths stay fail-closed."
       },
       {
         "id": "release-export-core",
         "sourcePatterns": [
           "build/**",
-          "resources/**"
+          "resources/**",
+          "docs/test-receipts/issue848-o1-r4-comparison.json",
+          "docs/test-receipts/issue849-o2-comparison.json",
+          "docs/test-receipts/issue851-o2-f01-comparison.json",
+          "docs/test-receipts/issue856-o5-30s-comparison.json"
         ],
         "testPatterns": [
           "tests/unit/export-*.test.ts",
-          "tests/unit/ffmpeg-*.test.ts"
+          "tests/unit/formal-export-stage-label.test.ts",
+          "tests/unit/formal-output-name-series.test.ts",
+          "tests/unit/issue851-memory-trend.test.ts",
+          "tests/unit/png-encode-core.test.ts",
+          "tests/unit/worker-png-encoder.test.ts",
+          "tests/unit/ffmpeg-*.test.ts",
+          "tests/unit/file-system-service.test.ts"
         ],
         "verifierPatterns": [
-          "scripts/verify-day09.cjs",
-          "scripts/verify-issue660-export-audio-mix.cjs"
+          "scripts/verify-issue816-dl01.cjs",
+          "scripts/verify-issue819-dl02.cjs",
+          "scripts/verify-issue823-dl03.cjs",
+          "scripts/verify-issue827-dl04.cjs",
+          "scripts/verify-issue832-dl05.cjs",
+          "scripts/verify-issue834-dl05-followup.cjs",
+          "scripts/verify-issue836-dl06-r0.cjs",
+          "scripts/verify-issue848-o1.cjs",
+          "scripts/verify-issue849-o2.cjs",
+          "scripts/verify-issue660-export-audio-mix.cjs",
+          "scripts/verify-day09.cjs"
         ],
         "suites": [],
         "riskPolicy": "full",
         "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "release",
-        "notes": "Installer, release, export-core, and FFmpeg capability families remain Full risk without predeclaring speculative product paths. The exact legacy Day09 export probe path is registered because this request-contract migration updates its fixture; no broad scripts/** route is added."
+        "notes": "Installer, release, export-core, and FFmpeg capability families remain Full risk without predeclaring speculative product paths. Exact O1/O2 performance verifier scripts and comparison receipts, plus the explicit formal-output-series and PNG-worker export tests, are registered here because they validate release export behavior. The exact legacy Day09 export probe path remains registered; verifier ownership does not use a broad catch-all pattern."
       }
     ],
     "routes": [
@@ -689,7 +712,7 @@
       }
     ]
   },
-  "count": 89,
+  "count": 97,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -701,7 +724,7 @@
       "runIn": "local",
       "owner": "release",
       "supersedes": null,
-      "notes": "A04 real bundled-FFmpeg overlap/mix evidence with focused cancellation and cleanup tests; does not claim full real-project Export or Gate B graduation."
+      "notes": "A04 bundled-FFmpeg nine-clip Dialogue/BGM/two-SFX PCM timing and gain proof with overlap and one AAC output; focused unit tests cover cancellation and temporary-file cleanup. It does not claim formal Project/Electron acceptance or Gate B graduation."
     },
     {
       "id": "issue663-dialogue-voice",
@@ -1662,6 +1685,102 @@
       "owner": "character",
       "supersedes": null,
       "notes": "Bounded Issue #609 real Electron production-UI proof for composite Character creation/edit, Body-only raw placement, and one-layer Shot placement; synthetic fixture input and screenshot evidence are not human acceptance."
+    },
+    {
+      "id": "issue816-dl01",
+      "script": "verify:issue816-dl01",
+      "suite": "project",
+      "subsystem": "export-preparation",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Controlled Issue #816 DL-01 Electron proof for native Save As, actual dirty EditorProjectStore capture, stable media copies, target/session guards, and F01/F05/F06 generated fixtures. Synthetic Project Center IPC and native-dialog UI Automation support the gate; OWNER acceptance remains separate."
+    },
+    {
+      "id": "issue819-dl02",
+      "script": "verify:issue819-dl02",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Issue #819 DL-02 Electron proof through Creator UI and native Save As for a frozen single-Shot Project, both camera modes, silent FFmpeg/FFprobe MP4 validation, boundary frames, and overwrite cancellation. Generated fixture and UI Automation support the gate; OWNER visual acceptance remains separate."
+    },
+    {
+      "id": "issue823-dl03",
+      "script": "verify:issue823-dl03",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Issue #823 DL-03 generated-project Electron proof through Creator UI and native Save As for frozen dialogue/BGM/overlapping-SFX media, FFmpeg/FFprobe AAC and decoded tone timing/gain markers including zero gain and moved SFX, Simple Mouth open/closed frame comparison during subtitle, BGM-only, and SFX-only tails, both camera modes, frozen-source replacement, undecodable source block, partial-mix failure cleanup, and external-player launch. OWNER audiovisual acceptance remains separate."
+    },
+    {
+      "id": "issue827-dl04",
+      "script": "verify:issue827-dl04",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Issue #827 DL-04 Windows Electron proof through Creator UI and native Save As for two distinct three-Shot Projects, one global 24 fps schedule, exact Shot-local renderer timing/readiness, prefix-mapped audio with preserved source offsets and full-Project silent tail, FFmpeg/FFprobe video and AAC evidence, selection independence, no-clobber, cancellation cleanup, frozen media hashes, and external-player launch. Human audiovisual acceptance is deferred to DL-07."
+    },
+    {
+      "id": "issue832-dl05",
+      "script": "verify:issue832-dl05",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Issue #832 DL-05 Windows Electron proof through Creator UI and native Save As for a 30-second three-Shot audio Project, hide/reopen with current Job progress, edit/Save/Preview during export, cancellation, old snapshot retry with a changed target, fresh current-content retry, output frame and PCM comparisons, protected-file hashes, and bounded snapshot cleanup. Owner audiovisual acceptance remains deferred to DL-07."
+    },
+    {
+      "id": "issue834-dl05-followup",
+      "script": "verify:issue834-dl05-followup",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Issue #834 focused Windows Electron follow-up for hidden completed/cancelled/failed task restoration, explicit new-version Save As cancellation, visible subtitle editing during a gated export, and actual BrowserWindow close while encoding and committing with no-clobber cleanup. Retry cleanup backoff is covered by focused unit tests; human Windows audiovisual acceptance remains deferred to DL-07."
+    },
+    {
+      "id": "issue836-dl06-r0",
+      "script": "verify:issue836-dl06-r0",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Issue #836 DL-06 R0 focused Windows Electron proof for two exhausted expired-snapshot cleanup owners, sanitized locked-retry UI, exact Main diagnostics, same-session path recovery, and a new formal Export Job without changing the Project or prior MP4. Human audiovisual acceptance remains deferred to DL-07."
+    },
+    {
+      "id": "issue862-export-smoke",
+      "script": "verify:issue862-export-smoke",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Bounded Issue #862 Windows Electron production-UI smoke that begins with the startup legacy hidden-window prewarm, cancels during real frame progress, retries through the task UI, and validates the H.264 MP4 with FFprobe while checking project/media hashes. It reuses the Issue #819 Electron harness in a single focused mode; OWNER visual acceptance remains separate."
     },
     {
       "id": "issue792-mouth-overflow",
