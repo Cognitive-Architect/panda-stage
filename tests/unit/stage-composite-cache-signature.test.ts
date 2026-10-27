@@ -161,6 +161,21 @@ describe('stage composite cache signature', () => {
       ...input,
       visualBounds: { ...input.visualBounds, width: input.visualBounds.width + 1 },
     })],
+    ['visual bounds origin', (input: StageCompositeCacheSignatureInput) => ({
+      ...input,
+      visualBounds: { ...input.visualBounds, x: input.visualBounds.x + 1 },
+    })],
+    ['head group identity', (input: StageCompositeCacheSignatureInput) => ({
+      ...input,
+      headGroup: { ...input.headGroup!, id: 'replacement-head-group' },
+    })],
+    ['head group part membership', (input: StageCompositeCacheSignatureInput) => ({
+      ...input,
+      headGroup: {
+        ...input.headGroup!,
+        partIds: ['head-part'],
+      },
+    })],
     ['head transform', (input: StageCompositeCacheSignatureInput) => ({
       ...input,
       headGroup: {
@@ -280,6 +295,30 @@ describe('stage composite cache signature', () => {
       }),
     ).toBe(false);
 
+    expect(
+      shouldReuseStageCompositeCache({
+        forceRebuild: false,
+        previousSignature: 'same',
+        inputSignature: 'same',
+        cacheEligible: true,
+        previouslyCached: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('clears a previously cached visual when it becomes ineligible', () => {
+    expect(
+      shouldReuseStageCompositeCache({
+        forceRebuild: false,
+        previousSignature: 'same',
+        inputSignature: 'same',
+        cacheEligible: false,
+        previouslyCached: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('builds a newly eligible visual when no Konva cache exists yet', () => {
     expect(
       shouldReuseStageCompositeCache({
         forceRebuild: false,
