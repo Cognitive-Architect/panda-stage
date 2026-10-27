@@ -5,6 +5,7 @@ const { mkdirSync, readFileSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 const { deflateSync } = require('node:zlib');
 const { createMainWindow } = require('../dist-electron/main/windows/main-window.js');
+const { AssetCanvasImageService } = require('../dist-electron/main/services/AssetCanvasImageService.js');
 const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
 const { detectSchemaVersion, migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
@@ -29,10 +30,12 @@ const sizes = [{ width: 200, height: 200 }, { width: 160, height: 180 }, { width
 const offsets = sizes.map((size) => ({ x: (400 - size.width) / 2, y: (400 - size.height) / 2 }));
 const bytesByAsset = new Map();
 const registeredChannels = [];
+const canvasImageReadEvidence = [];
 let fixture;
 let savedProject = null;
 let blockedAssetId = null;
 let releaseBlockedAssetRead = null;
+const blockedAssetReadWaiters = [];
 
 app.on('window-all-closed', () => {});
 
@@ -124,10 +127,34 @@ function makeFixture() {
     id: ids.project,
     name: 'Issue 871 AM-03 Electron Evidence',
   });
+  const fallbackDimensions = {
+    width: fallbackPng.readUInt32BE(16),
+    height: fallbackPng.readUInt32BE(20),
+  };
+  const fallbackSha256 = createHash('sha256').update(fallbackPng).digest('hex');
+  const baseAssets = base.assets.map((asset) => {
+    if (asset.kind !== 'image') return asset;
+    const assetPath = path.join(projectRoot, asset.relativePath);
+    mkdirSync(path.dirname(assetPath), { recursive: true });
+    writeFileSync(assetPath, fallbackPng);
+    bytesByAsset.set(asset.id, fallbackPng);
+    return {
+      ...asset,
+      mimeType: 'image/png',
+      width: fallbackDimensions.width,
+      height: fallbackDimensions.height,
+      sha256: fallbackSha256,
+    };
+  });
+  for (const frame of frames) {
+    const assetPath = path.join(projectRoot, 'assets', 'issue871-frame-' + frame.ordinal + '.png');
+    mkdirSync(path.dirname(assetPath), { recursive: true });
+    writeFileSync(assetPath, bytesByAsset.get(frame.assetId));
+  }
   return migrateProject({
     ...base,
     assets: [
-      ...base.assets.map((asset) => asset.kind === 'image' ? { ...asset, sha256: 'a'.repeat(64) } : asset),
+      ...baseAssets,
       ...frames.map((frame, index) => ({
         id: frame.assetId,
         kind: 'image',
@@ -171,6 +198,11 @@ function documentFor(candidate) {
 }
 
 function mockIpc() {
+  const canvasImageService = new AssetCanvasImageService({
+    getCurrentProjectSnapshot: (requestedRoot) => requestedRoot === projectRoot
+      ? { project: savedProject ?? fixture }
+      : null,
+  });
   register(IPC_CHANNELS.PROJECT_CHOOSE_DIRECTORY, () => ({ ok: true, status: 'cancelled' }));
   register(IPC_CHANNELS.PROJECT_OPEN, (_event, request) => request.projectRoot === projectRoot
     ? { ok: true, value: documentFor(savedProject ?? fixture) }
@@ -193,17 +225,23 @@ function mockIpc() {
     const bytes = bytesByAsset.get(request.assetId) ?? fallbackPng;
     return { ok: true, status: 'ready', assetId: request.assetId, dataUrl: 'data:image/png;base64,' + bytes.toString('base64') };
   });
-  register(IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ, (_event, request) => {
-    const asset = (savedProject ?? fixture).assets.find((item) => item.id === request.assetId);
-    if (!asset || asset.kind !== 'image') {
-      return { ok: false, error: { code: 'ASSET_CANVAS_IMAGE_ASSET_NOT_FOUND', message: 'Synthetic image not found.', assetId: request.assetId } };
-    }
-    const bytes = bytesByAsset.get(asset.id) ?? fallbackPng;
-    const response = { ok: true, status: 'ready', assetId: asset.id, mimeType: 'image/png', width: asset.width, height: asset.height, byteLength: bytes.length, bytes: new Uint8Array(bytes) };
-    if (asset.id === blockedAssetId) {
-      blockedAssetId = null;
+  register(IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ, async (_event, request) => {
+    const response = await canvasImageService.read(request);
+    canvasImageReadEvidence.push({
+      assetId: request.assetId,
+      sha256: request.sha256,
+      status: response.ok ? response.status : response.error.code,
+      byteLength: response.ok ? response.byteLength : null,
+    });
+    if (response.ok && response.assetId === blockedAssetId) {
       return new Promise((resolve) => {
-        releaseBlockedAssetRead = () => resolve(response);
+        blockedAssetReadWaiters.push(() => resolve(response));
+        releaseBlockedAssetRead = () => {
+          blockedAssetId = null;
+          const waiters = blockedAssetReadWaiters.splice(0);
+          waiters.forEach((release) => release());
+          releaseBlockedAssetRead = null;
+        };
       });
     }
     return response;
@@ -272,6 +310,56 @@ async function pointerDrag(window, from, to, steps = 6) {
     await new Promise((resolve) => setTimeout(resolve, 35));
   }
   window.webContents.sendInputEvent({ type: 'mouseUp', x: to.x, y: to.y, button: 'left', clickCount: 1 });
+  await new Promise((resolve) => setTimeout(resolve, 250));
+}
+
+async function browserDrag(window, from, to, steps = 12) {
+  const debuggerApi = window.webContents.debugger;
+  let attachedHere = false;
+  window.show();
+  window.focus();
+  window.webContents.focus();
+  if (!debuggerApi.isAttached()) {
+    debuggerApi.attach('1.3');
+    attachedHere = true;
+  }
+  try {
+    await debuggerApi.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: from.x,
+      y: from.y,
+      buttons: 0,
+    });
+    await debuggerApi.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: from.x,
+      y: from.y,
+      button: 'left',
+      buttons: 1,
+      clickCount: 1,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    for (let i = 1; i <= steps; i += 1) {
+      await debuggerApi.sendCommand('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: Math.round(from.x + (to.x - from.x) * i / steps),
+        y: Math.round(from.y + (to.y - from.y) * i / steps),
+        button: 'left',
+        buttons: 1,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 35));
+    }
+    await debuggerApi.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: to.x,
+      y: to.y,
+      button: 'left',
+      buttons: 0,
+      clickCount: 1,
+    });
+  } finally {
+    if (attachedHere && debuggerApi.isAttached()) debuggerApi.detach();
+  }
   await new Promise((resolve) => setTimeout(resolve, 250));
 }
 
@@ -356,34 +444,51 @@ async function run() {
     await seek(window, 1000);
     const source = await window.webContents.executeJavaScript(
       '(() => { const e=document.querySelector(\'[data-testid="animation-library-card"][data-animation-id="' + ids.animation + '"]\');' +
-      'const r=e.getBoundingClientRect(); return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}; })()',
+      'e.scrollIntoView({block:"center",inline:"center"}); const r=e.getBoundingClientRect();' +
+      'const x=Math.round(r.left+r.width/2),y=Math.round(r.top+r.height/2),hit=document.elementFromPoint(x,y);' +
+      'return {x,y,hitIsCard:hit===e||e.contains(hit),hitTag:hit?.tagName||null,hitClass:String(hit?.className||"")}; })()',
     );
     const target = await point(window, 1300, 700);
+    const targetHit = await window.webContents.executeJavaScript(
+      '(() => { const e=document.elementFromPoint(' + target.x + ',' + target.y + ');' +
+      'const v=e?.closest?.(\'[data-testid="project-canvas-viewport"]\'); const r=v?.getBoundingClientRect();' +
+      'return {tag:e?.tagName||null,className:String(e?.className||""),inCanvas:Boolean(v),' +
+      'viewport:r?{left:r.left,top:r.top,width:r.width,height:r.height}:null}; })()',
+    );
     blockedAssetId = ids.frames[1];
     await window.webContents.executeJavaScript(
-      'window.__issue871Drop=null; document.addEventListener("drop",e=>{const d=e.dataTransfer;' +
+      'window.__issue871DragStart=null; window.__issue871Drop=null;' +
+      'window.__issue871DnDEvents=[];' +
+      'window.__issue871MouseMoves=[];' +
+      'document.addEventListener("mousemove",e=>{window.__issue871MouseMoves.push({x:e.clientX,y:e.clientY,buttons:e.buttons,trusted:e.isTrusted});' +
+      'if(window.__issue871MouseMoves.length>32)window.__issue871MouseMoves.shift();},true);' +
+      'document.addEventListener("dragstart",e=>{const d=e.dataTransfer;' +
+      'window.__issue871DragStart={trusted:e.isTrusted,payload:d?.getData("application/x-panda-stage-asset")||"",' +
+      'context:d?.getData("application/x-panda-stage-animation-context")||""};},false);' +
+      'document.addEventListener("drop",e=>{const d=e.dataTransfer;' +
       'window.__issue871Drop={trusted:e.isTrusted,target:e.target?.closest?.(\'[data-testid="project-canvas-viewport"]\')?"canvas":"other",' +
-      'payload:d?.getData("application/x-panda-stage-asset")||"",context:d?.getData("application/x-panda-stage-animation-context")||""};},true);',
+      'payload:d?.getData("application/x-panda-stage-asset")||"",context:d?.getData("application/x-panda-stage-animation-context")||""};},false);' +
+      '["dragstart","dragenter","dragover","drop","dragend"].forEach(type=>document.addEventListener(type,e=>{' +
+      'window.__issue871DnDEvents.push({type,trusted:e.isTrusted,target:e.target?.closest?.(\'[data-testid="project-canvas-viewport"]\')?"canvas":"other",' +
+      'targetTag:e.target?.tagName||null,targetClass:String(e.target?.className||""),' +
+      'types:e.dataTransfer?Array.from(e.dataTransfer.types):[]});},false));',
     );
-    await window.webContents.executeJavaScript(
-      'window.__issue871From=' + JSON.stringify(source) + '; window.__issue871To=' + JSON.stringify(target) + ';' +
-      '(() => {' +
-      'const card=[...document.querySelectorAll("[data-testid=animation-library-card]")].find(e=>e.dataset.animationId==="' + ids.animation + '");' +
-      'const viewport=document.querySelector("[data-testid=project-canvas-viewport]");' +
-      'const transfer=new DataTransfer();' +
-      'const event=(type,point)=>new DragEvent(type,{bubbles:true,cancelable:true,dataTransfer:transfer,clientX:point.x,clientY:point.y});' +
-      'card.dispatchEvent(event("dragstart",window.__issue871From));' +
-      'viewport.dispatchEvent(event("dragenter",window.__issue871To));' +
-      'viewport.dispatchEvent(event("dragover",window.__issue871To));' +
-      'viewport.dispatchEvent(event("drop",window.__issue871To));' +
-      'card.dispatchEvent(event("dragend",window.__issue871To));' +
-      '})()',
-    );
-    await waitFor(window, 'window.__issue871Drop!==null', 'Animation drag produced no drop event.', 5000);
+    await browserDrag(window, source, target, 12);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const dragStart = await window.webContents.executeJavaScript('window.__issue871DragStart');
     const drop = await window.webContents.executeJavaScript('window.__issue871Drop');
+    const dndEvents = await window.webContents.executeJavaScript('window.__issue871DnDEvents');
+    const mouseMoves = await window.webContents.executeJavaScript('window.__issue871MouseMoves');
+    assert(drop !== null, 'Animation drag produced no drop event: ' + JSON.stringify({ source, target, targetHit, dragStart, dndEvents, mouseMoves }));
+    assert(dragStart?.trusted === true && drop.trusted === true,
+      'Animation drop must use trusted Electron mouse input: ' + JSON.stringify({ dragStart, drop }));
+    assert(dndEvents.some((event) => event.type === 'dragover' && event.trusted && event.target === 'canvas'),
+      'Trusted dragover did not reach Canvas: ' + JSON.stringify(dndEvents));
     assert(drop.target === 'canvas', 'Drag ended outside canvas: ' + JSON.stringify(drop));
     const payload = JSON.parse(drop.payload || 'null');
-    assert(payload?.animationId === ids.animation && JSON.parse(drop.context || 'null')?.animationId === ids.animation,
+    assert(payload?.animationId === ids.animation && JSON.parse(drop.context || 'null')?.animationId === ids.animation &&
+      JSON.parse(dragStart.payload || 'null')?.animationId === ids.animation &&
+      JSON.parse(dragStart.context || 'null')?.animationId === ids.animation,
       'Drop did not carry the active animation ID and context.');
     await waitFor(window,
       'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson).some(x=>x.source?.kind==="animation"&&x.source.animationId==="' + ids.animation + '"&&x.startTimeMs===1000)',
@@ -466,10 +571,15 @@ async function run() {
     const scaled = await state(window);
     assert(Math.abs(scaled.layer.scaleX - current.layer.scaleX * 1.1) < 0.002,
       'Inspector scale action did not change animation base scale.');
+    assert(ids.frames.every((assetId) => canvasImageReadEvidence.some((read) => read.assetId === assetId && read.status === 'ready')),
+      'Not every synthetic animation frame passed through the file-backed Canvas image service.');
     await window.webContents.executeJavaScript('window.__issue871ReceiptState=true');
     writeFileSync(path.join(evidence, 'interactive-state.json'), JSON.stringify({
       commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+      dragStart,
       drop,
+      dndEvents,
+      canvasImageReadEvidence,
       layerId,
       startTimeMs: current.layer.startTimeMs,
       frames,
@@ -485,7 +595,10 @@ async function run() {
       issue: 871,
       passed: true,
       commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+      dragStart,
       drop,
+      dndEvents,
+      canvasImageReadEvidence,
       frames,
       frameManifest,
       pendingEvidence,

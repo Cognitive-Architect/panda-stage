@@ -360,6 +360,7 @@ export function AnimationLibraryCard({
                 <img
                   alt=""
                   className="animation-library-cover-image"
+                  draggable={false}
                   src={cover.url}
                   style={{
                     left: `${firstFrame.offset.x / animation.source.canvas.width * 100}%`,

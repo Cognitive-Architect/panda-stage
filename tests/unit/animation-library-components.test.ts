@@ -139,6 +139,13 @@ describe('animation library', () => {
     expect(escapeBlock).toContain('setOpen(false);');
   });
 
+  it('keeps the cover image from taking over the animation card drag', async () => {
+    const source = await readFile('src/renderer/features/assets/AnimationLibraryPanel.tsx', 'utf8');
+    const coverImage = source.match(/<img\s+alt=""\s+className="animation-library-cover-image"[\s\S]*?\/>/u)?.[0];
+
+    expect(coverImage).toContain('draggable={false}');
+  });
+
   it('loads a cover only while visible and revokes its URL when it leaves view', async () => {
     const deferredReads: Array<(value: { ok: boolean; mimeType?: string; bytes?: Uint8Array }) => void> = [];
     const read = vi.fn(() => new Promise<{ ok: boolean; mimeType?: string; bytes?: Uint8Array }>(
