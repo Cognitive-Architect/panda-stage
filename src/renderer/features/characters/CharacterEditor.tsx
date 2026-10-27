@@ -705,7 +705,10 @@ export function CharacterEditor({
             type="button"
           >
             {landscapeDetail ? (
-              <span aria-hidden="true">←</span>
+              <>
+                <span aria-hidden="true">←</span>
+                <span>返回角色列表</span>
+              </>
             ) : (
               '← 返回角色详情'
             )}
