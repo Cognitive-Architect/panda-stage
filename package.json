@@ -58,6 +58,7 @@
     "verify:issue834-dl05-followup": "pnpm build && electron scripts/verify-issue834-dl05-followup.cjs",
     "verify:issue836-dl06-r0": "pnpm build && electron scripts/verify-issue836-dl06-r0.cjs",
     "verify:issue862-export-smoke": "pnpm build && cross-env PANDA_STAGE_ISSUE862_EXPORT_SMOKE=1 PANDA_STAGE_ISSUE862_ROOT=D:\\PandaStage-Acceptance\\issue862-export-smoke PANDA_STAGE_EXPORT_DRAW_MODE=explicit-sync PANDA_STAGE_EXPORT_PNG_MODE=worker-png electron scripts/verify-issue819-dl02.cjs",
+    "evidence:issue867-fixture": "pnpm build && node scripts/generate-issue867-sample.cjs",
     "docs:export-support-matrix": "node scripts/generate-export-support-matrix.cjs",
     "verify:fla-v1-5-c3": "pnpm build && node scripts/fla-c3-electron-acceptance.cjs",
     "verify:fla-v1-5-c4": "pnpm build && node scripts/fla-c4-electron-acceptance.cjs",
