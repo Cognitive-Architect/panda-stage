@@ -75,6 +75,68 @@ function loadAndValidateSource(projectRoot) {
   return { project, dialogue, manifestSha256: sha256(manifestBytes) };
 }
 
+function appendResourceSwitchShot(project) {
+  const sourceShot = project.shots[0];
+  assert(sourceShot, 'Synthetic fixture has no source Shot to duplicate.');
+  const character = project.characters.find((item) => item.mode === 'composite' && item.head);
+  assert(character?.mouthOpenAssetId, 'Synthetic Character has no Mouth resource for the Shot-switch case.');
+  const sourceCharacterLayer = sourceShot.layers.find((layer) =>
+    layer.source.kind === 'character' && layer.source.characterId === character.id,
+  );
+  assert(sourceCharacterLayer, 'Synthetic source Shot has no Character layer.');
+
+  const switchedExpressionId = randomUUID();
+  character.expressions.push({
+    id: switchedExpressionId,
+    name: 'Synthetic resource switch',
+    assetId: character.mouthOpenAssetId,
+  });
+  const layerIds = new Map(sourceShot.layers.map((layer) => [layer.id, randomUUID()]));
+  const audioClipIds = new Map(sourceShot.audioClips.map((clip) => [clip.id, randomUUID()]));
+  const alternateShot = {
+    ...structuredClone(sourceShot),
+    id: randomUUID(),
+    name: `${sourceShot.name} resource switch`,
+    layers: sourceShot.layers.map((layer) => {
+      const source = structuredClone(layer.source);
+      if (source.kind === 'character' && source.characterId === character.id) {
+        source.expressionId = switchedExpressionId;
+      }
+      return { ...structuredClone(layer), id: layerIds.get(layer.id), source };
+    }),
+    backgroundLayerId: sourceShot.backgroundLayerId === null
+      ? null
+      : layerIds.get(sourceShot.backgroundLayerId),
+    audioClips: sourceShot.audioClips.map((clip) => ({
+      ...structuredClone(clip),
+      id: audioClipIds.get(clip.id),
+    })),
+    dialogues: sourceShot.dialogues.map((dialogue) => ({
+      ...structuredClone(dialogue),
+      id: randomUUID(),
+      audioClipId: dialogue.audioClipId === undefined
+        ? undefined
+        : audioClipIds.get(dialogue.audioClipId),
+    })),
+    timelineEvents: sourceShot.timelineEvents.map((event) => ({
+      ...structuredClone(event),
+      id: randomUUID(),
+      layerId: layerIds.get(event.layerId),
+    })),
+  };
+  project.shots.push(alternateShot);
+  return {
+    baseShotId: sourceShot.id,
+    alternateShotId: alternateShot.id,
+    baseCharacterLayerId: sourceCharacterLayer.id,
+    alternateCharacterLayerId: layerIds.get(sourceCharacterLayer.id),
+    baseFaceAssetId: character.expressions.find(
+      (expression) => expression.id === sourceCharacterLayer.source.expressionId,
+    )?.assetId,
+    alternateFaceAssetId: character.mouthOpenAssetId,
+  };
+}
+
 function prepareIntensityProject(sourceRoot, sourceProject, intensityPercent) {
   const projectRoot = path.join(runRoot, `intensity-${intensityPercent}.pandastage`);
   cpSync(sourceRoot, projectRoot, { recursive: true, errorOnExist: true });
@@ -86,6 +148,7 @@ function prepareIntensityProject(sourceRoot, sourceProject, intensityPercent) {
   project.id = randomUUID();
   project.name = `Issue 872 synthetic motion pixels ${intensityPercent}%`;
   project.updatedAt = new Date().toISOString();
+  const resourceSwitch = appendResourceSwitchShot(project);
   const validated = ProjectSchema.parse(project);
   writeFileSync(projectPath, JSON.stringify(validated, null, 2), 'utf8');
   return {
@@ -93,6 +156,7 @@ function prepareIntensityProject(sourceRoot, sourceProject, intensityPercent) {
     projectId: validated.id,
     sourceProjectId: sourceProject.id,
     intensityPercent,
+    ...resourceSwitch,
   };
 }
 
@@ -220,7 +284,78 @@ async function openProject(window, projectRoot) {
   await waitFor(window, `Boolean(document.querySelector('[data-testid="editor-layout"]'))`, 'Synthetic project did not open.');
 }
 
-async function openPreview(window) {
+async function closeProjectAndAssertStageUnmounted(window) {
+  await closePreview(window);
+  const saveState = await evaluate(
+    window,
+    `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.saveState ?? null`,
+  );
+  assert(saveState !== 'dirty', `Synthetic project unexpectedly became dirty before close: ${saveState}`);
+  await evaluate(window, `(() => {
+    const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
+    if (drawer?.dataset.expanded !== 'true') {
+      drawer?.querySelector('[data-testid="quick-action-drawer-handle"]')?.click();
+    }
+    drawer?.querySelector('[data-testid="quick-action-close"]')?.click();
+  })()`);
+  await waitFor(
+    window,
+    `Boolean(document.querySelector('[data-testid="project-center-screen"] .recovery-open-row input'))`,
+    'Editor did not return to Project Center after closing the synthetic project.',
+  );
+  await waitFor(
+    window,
+    `!document.querySelector('[data-testid="project-canvas-stage"]') &&
+      !document.querySelector('[data-testid="stage-renderer"]') &&
+      !document.querySelector('[data-testid="product-preview-overlay"]')`,
+    'Editor Stage or Product Preview remained mounted after project close.',
+  );
+  return { projectCenterVisible: true, editorStageUnmounted: true };
+}
+
+async function closePreview(window) {
+  await evaluate(window, `document.querySelector('[data-testid="product-preview-close"]')?.click()`);
+  await waitFor(
+    window,
+    `!document.querySelector('[data-testid="product-preview-overlay"]')`,
+    'Product Preview did not close.',
+  );
+}
+
+async function selectShot(window, shotId, characterLayerId, faceAssetId) {
+  await evaluate(window, `(() => {
+    const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+    if (!dock) throw new Error('Shot selection resource dock is missing.');
+    if (dock.dataset.resourceDrawerOpen !== 'true') {
+      dock.querySelector('[data-testid="resource-workspace-handle"]')?.click();
+    }
+    if (dock.dataset.activeActivity !== 'shots') {
+      dock.querySelector('[data-testid="resource-activity-tabs"] [data-activity="shots"]')?.click();
+    }
+    const shotButton = document.querySelector(
+      '[data-testid="shot-list-view"] [data-shot-id="' + ${JSON.stringify(shotId)} + '"] button',
+    );
+    if (!shotButton) throw new Error('Requested synthetic Shot is not listed.');
+    shotButton.click();
+  })()`);
+  await waitFor(
+    window,
+    `(() => {
+      const selected = document.querySelector(
+        '[data-testid="shot-list-view"] [data-shot-id="' + ${JSON.stringify(shotId)} + '"] button[aria-current="true"]',
+      );
+      const canvas = document.querySelector('[data-testid="project-canvas-stage"]');
+      const layers = JSON.parse(canvas?.dataset.layerJson ?? '[]');
+      const readyAssets = JSON.parse(canvas?.dataset.renderedAssetIds ?? '[]');
+      return Boolean(selected) &&
+        layers.some((layer) => layer.id === ${JSON.stringify(characterLayerId)}) &&
+        readyAssets.includes(${JSON.stringify(faceAssetId)});
+    })()` ,
+    'Editor did not select the requested Shot and load its alternate Face resource.',
+  );
+}
+
+async function openPreview(window, expectedShotId) {
   await evaluate(window, `(() => {
     const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
     if (drawer?.dataset.expanded !== 'true') {
@@ -248,7 +383,8 @@ async function openPreview(window) {
     window,
     `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewSurface === 'active' &&
       document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageReady === 'true' &&
-      document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageDisplayReady === 'true'`,
+      document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageDisplayReady === 'true' &&
+      document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageShotId === ${JSON.stringify(expectedShotId)}`,
     'Product Preview did not mount a display-ready Stage.',
   );
   await evaluate(window, `(() => {
@@ -276,7 +412,7 @@ async function openPreview(window) {
   );
 }
 
-async function seekAndCapture(window, intensityPercent, checkpoint) {
+async function seekAndCapture(window, intensityPercent, checkpoint, ownerLayerId, target = 'primary') {
   await evaluate(window, `(() => {
     const input = document.querySelector('[data-testid="product-preview-scrubber"]');
     if (!(input instanceof HTMLInputElement)) throw new Error('Preview scrubber missing.');
@@ -371,7 +507,8 @@ async function seekAndCapture(window, intensityPercent, checkpoint) {
   })()`);
   const cacheEvents = capture.cacheEvents;
   const lastCacheEvent = [...cacheEvents].reverse().find((event) =>
-    event.event === 'composite-cache-rebuild' || event.event === 'composite-cache-reuse',
+    (event.event === 'composite-cache-rebuild' || event.event === 'composite-cache-reuse') &&
+      event.ownerLayerId === ownerLayerId,
   );
   const visualSignature = lastCacheEvent?.visualSignature
     ? JSON.parse(lastCacheEvent.visualSignature)
@@ -387,14 +524,15 @@ async function seekAndCapture(window, intensityPercent, checkpoint) {
   };
   assert(capture.stageReady && capture.stageDisplayReady, `Preview Stage was not exact and drawable: ${JSON.stringify(captureMetadata)}`);
   assert(capture.stageTimeMs === checkpoint.timeMs, `Preview Stage time drifted: ${JSON.stringify(captureMetadata)}`);
-  assert(visualSignature?.headGroup?.transform, 'Composite cache diagnostic omitted the Head Group transform.');
+  assert(visualSignature?.headGroup?.transform, `Composite cache diagnostic omitted the Head Group transform for ${ownerLayerId}.`);
   const png = Buffer.from(headCropPngBase64, 'base64');
   const faceMouthPng = Buffer.from(faceMouthCropPngBase64, 'base64');
-  const filename = `head-${intensityPercent}-${checkpoint.label}.png`;
-  const faceMouthFilename = `face-mouth-${intensityPercent}-${checkpoint.label}.png`;
+  const filename = `head-${target}-${intensityPercent}-${checkpoint.label}.png`;
+  const faceMouthFilename = `face-mouth-${target}-${intensityPercent}-${checkpoint.label}.png`;
   writeFileSync(path.join(evidenceRoot, filename), png);
   writeFileSync(path.join(evidenceRoot, faceMouthFilename), faceMouthPng);
   return {
+    target,
     intensityPercent,
     checkpoint: checkpoint.label,
     requestedTimeMs: checkpoint.timeMs,
@@ -436,24 +574,81 @@ async function run() {
   await app.whenReady();
   await configureElectronPaths();
   const results = [];
+  const shotSwitchResults = [];
+  const lifecycle = { openedProjectIds: [], closeTransitions: [] };
   let window = null;
   try {
+    window = await createMainWindow({ show: true });
+    window.setSize(1600, 1000);
+    window.show();
+    window.focus();
+    window.webContents.focus();
     for (const variant of projectVariants) {
-      window = await createMainWindow({ show: true });
-      window.setSize(1600, 1000);
-      window.show();
-      window.focus();
-      window.webContents.focus();
       await openProject(window, variant.projectRoot);
-      await openPreview(window);
+      lifecycle.openedProjectIds.push(variant.projectId);
+      await openPreview(window, variant.baseShotId);
       const { intensityPercent } = variant;
       for (const checkpoint of checkpoints) {
-        results.push(await seekAndCapture(window, intensityPercent, checkpoint));
+        results.push(await seekAndCapture(
+          window,
+          intensityPercent,
+          checkpoint,
+          variant.baseCharacterLayerId,
+        ));
       }
-      await evaluate(window, `document.querySelector('[data-testid="product-preview-close"]')?.click()`);
-      await waitFor(window, `!document.querySelector('[data-testid="product-preview-overlay"]')`, 'Preview did not unmount.');
-      window.destroy();
-      window = null;
+      await closePreview(window);
+      await selectShot(
+        window,
+        variant.alternateShotId,
+        variant.alternateCharacterLayerId,
+        variant.alternateFaceAssetId,
+      );
+      await openPreview(window, variant.alternateShotId);
+      const neutralCheckpoint = checkpoints.find(({ label }) => label === 'neutral');
+      assert(neutralCheckpoint, 'Synthetic phase matrix omitted its neutral checkpoint.');
+      const alternateShotCapture = await seekAndCapture(
+        window,
+        intensityPercent,
+        neutralCheckpoint,
+        variant.alternateCharacterLayerId,
+        'alternate-shot',
+      );
+      await closePreview(window);
+      await selectShot(
+        window,
+        variant.baseShotId,
+        variant.baseCharacterLayerId,
+        variant.baseFaceAssetId,
+      );
+      await openPreview(window, variant.baseShotId);
+      const returnedShotCapture = await seekAndCapture(
+        window,
+        intensityPercent,
+        neutralCheckpoint,
+        variant.baseCharacterLayerId,
+        'returned-shot',
+      );
+      const originalNeutralCapture = results.find((item) =>
+        item.intensityPercent === intensityPercent && item.checkpoint === 'neutral' && item.target === 'primary',
+      );
+      assert(originalNeutralCapture, `Initial neutral sample missing at ${intensityPercent}%.`);
+      shotSwitchResults.push({
+        intensityPercent,
+        baseShotId: variant.baseShotId,
+        alternateShotId: variant.alternateShotId,
+        baseFaceCropSha256: originalNeutralCapture.faceMouthCropSha256,
+        alternateFaceCropSha256: alternateShotCapture.faceMouthCropSha256,
+        returnedFaceCropSha256: returnedShotCapture.faceMouthCropSha256,
+        baseBodyPixels: originalNeutralCapture.bodyPixels,
+        alternateBodyPixels: alternateShotCapture.bodyPixels,
+        returnedBodyPixels: returnedShotCapture.bodyPixels,
+        alternateHeadGroupTransform: alternateShotCapture.headGroupTransform,
+        returnedHeadGroupTransform: returnedShotCapture.headGroupTransform,
+      });
+      lifecycle.closeTransitions.push({
+        projectId: variant.projectId,
+        ...await closeProjectAndAssertStageUnmounted(window),
+      });
     }
   } finally {
     if (window && !window.isDestroyed()) window.destroy();
@@ -493,6 +688,22 @@ async function run() {
     twoHundredMotion['lower-right'].headCropSha256 !== hundredMotion['lower-right'].headCropSha256;
   const neutralStable = new Set(intensities.map((value) => byIntensity.get(value).neutral.headCropSha256)).size === 1;
   const neutralFaceMouthStable = new Set(intensities.map((value) => byIntensity.get(value).neutral.faceMouthCropSha256)).size === 1;
+  const shotSwitchPixelChanged = shotSwitchResults.every((item) =>
+    item.baseFaceCropSha256 !== item.alternateFaceCropSha256,
+  );
+  const shotSwitchRoundTripStable = shotSwitchResults.every((item) =>
+    item.baseFaceCropSha256 === item.returnedFaceCropSha256,
+  );
+  const shotSwitchBodyPixelsStable = shotSwitchResults.every((item) =>
+    JSON.stringify(item.baseBodyPixels) === JSON.stringify(item.alternateBodyPixels) &&
+    JSON.stringify(item.baseBodyPixels) === JSON.stringify(item.returnedBodyPixels),
+  );
+  const shotSwitchHeadGroupStayedNeutral = shotSwitchResults.every((item) =>
+    item.alternateHeadGroupTransform.translateX === 0 &&
+    item.alternateHeadGroupTransform.translateY === 0 &&
+    item.returnedHeadGroupTransform.translateX === 0 &&
+    item.returnedHeadGroupTransform.translateY === 0,
+  );
   const zeroMotionOpenMouthStable = zeroMotion['upper-left'].faceMouthCropSha256 === zeroMotion['lower-right'].faceMouthCropSha256;
   const zeroMotionClosedMouthDistinct = zeroMotion.neutral.faceMouthCropSha256 !== zeroMotion['upper-left'].faceMouthCropSha256;
   assert(bodyPixelVisible, 'The selected Body pixel matched the background; adjust the pixel probe region.');
@@ -504,6 +715,12 @@ async function run() {
   assert(neutralFaceMouthStable, 'Rendered Face/Mouth pixels differed at the neutral phase across intensities.');
   assert(zeroMotionOpenMouthStable, 'Face/Mouth pixels differed between the two open-mouth phases at 0% motion.');
   assert(zeroMotionClosedMouthDistinct, 'Face/Mouth pixels did not distinguish the closed-mouth phase at 0% motion.');
+  assert(shotSwitchPixelChanged, 'The alternate Shot did not display its changed Face resource.');
+  assert(shotSwitchRoundTripStable, 'Returning to the original Shot did not restore its original Face pixels.');
+  assert(shotSwitchBodyPixelsStable, 'Body pixels changed while switching the Shot Face resource.');
+  assert(shotSwitchHeadGroupStayedNeutral, 'The selected neutral Shot checkpoint unexpectedly moved its Head Group.');
+  assert(lifecycle.openedProjectIds.length === projectVariants.length, 'The single Editor window did not open every project copy.');
+  assert(lifecycle.closeTransitions.length === projectVariants.length && lifecycle.closeTransitions.every((item) => item.editorStageUnmounted), 'A project close did not unmount the Editor Stage.');
 
   const receipt = {
     issue: 872,
@@ -516,8 +733,16 @@ async function run() {
     sourceIsSyntheticIssue867V14: true,
     dialogueWindowMs: { startMs: dialogue.startMs, endMs: dialogue.endMs },
     projectVariants: projectVariants.map(({ projectRoot, projectId }) => ({ projectRoot, projectId })),
+    lifecycle: {
+      editorWindowCount: 1,
+      openedProjectIds: lifecycle.openedProjectIds,
+      projectCloseCount: lifecycle.closeTransitions.length,
+      stageUnmountsVerified: lifecycle.closeTransitions.every((transition) => transition.editorStageUnmounted),
+      closeTransitions: lifecycle.closeTransitions,
+    },
     checkpoints,
     results,
+    shotSwitchResults,
     assertions: {
       bodyPixelsStable,
       bodyPixelVisible,
@@ -529,8 +754,13 @@ async function run() {
       neutralFaceMouthStable,
       zeroMotionOpenMouthStable,
       zeroMotionClosedMouthDistinct,
+      shotSwitchPixelChanged,
+      shotSwitchRoundTripStable,
+      shotSwitchBodyPixelsStable,
+      shotSwitchHeadGroupStayedNeutral,
+      projectCloseUnmountsStage: lifecycle.closeTransitions.length === projectVariants.length && lifecycle.closeTransitions.every((item) => item.editorStageUnmounted),
     },
-    scope: 'Product Preview canvas pixels only. Does not cover dialogue switching, alpha overlays, editor/export pixel equivalence, or AN01 real-material acceptance.',
+    scope: 'Synthetic Product Preview pixels at 0/100/200% intensity and selected phases, Shot selection with a changed Face resource and pixel round trip, and three same-window project close/reopen cycles with Editor Stage unmount assertions. Does not cover dialogue speaker switching, alpha overlays, Editor/export pixel equivalence, or AN01 real-material acceptance.',
   };
   const resultPath = path.join(runRoot, 'receipt.json');
   writeFileSync(resultPath, JSON.stringify(receipt, null, 2), 'utf8');
