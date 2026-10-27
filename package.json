@@ -117,6 +117,7 @@
     "verify:issue579": "pnpm build && electron scripts/verify-issue579-live-scrub.cjs",
     "verify:issue602": "pnpm build && electron scripts/verify-issue602-composite.cjs",
     "verify:issue606": "pnpm build && electron scripts/verify-issue606-product-preview.cjs",
+    "verify:issue872-motion-pixels": "pnpm build && electron scripts/verify-issue872-motion-preview-pixels.cjs",
     "verify:issue608-shot-thumbnail": "pnpm build && electron scripts/verify-issue608-shot-thumbnail.cjs",
     "verify:issue609-character-assembly": "pnpm build && electron scripts/verify-issue609-character-assembly.cjs",
     "verify:issue792-mouth-overflow": "pnpm build && electron scripts/verify-issue609-character-assembly.cjs --issue792-mouth-overflow",
