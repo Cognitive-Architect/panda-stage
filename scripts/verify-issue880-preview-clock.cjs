@@ -1,4 +1,4 @@
-const { app, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const {
   existsSync,
   mkdirSync,
@@ -647,6 +647,7 @@ async function run() {
     baselineCase,
   };
   let window = null;
+  let focusHelper = null;
   let failure = null;
   try {
     await app.whenReady();
@@ -846,7 +847,19 @@ async function run() {
     }
 
     const beforeBlur = await readState(window);
-    window.blur();
+    const workArea = screen.getDisplayMatching(window.getBounds()).workArea;
+    focusHelper = new BrowserWindow({
+      x: Math.max(workArea.x, workArea.x + workArea.width - 230),
+      y: workArea.y + 20,
+      width: 220,
+      height: 120,
+      show: false,
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    });
+    await focusHelper.loadURL('data:text/html,<title>Product Preview focus transfer</title><body></body>');
+    focusHelper.show();
+    focusHelper.focus();
+    focusHelper.webContents.focus();
     await waitFor(
       window,
       `document.visibilityState === 'visible' && !document.hasFocus() &&
@@ -859,6 +872,8 @@ async function run() {
     assert(afterBlur.previewTimeMs > beforeBlur.previewTimeMs, 'Preview time did not advance during visible blur.');
     window.focus();
     window.webContents.focus();
+    focusHelper.destroy();
+    focusHelper = null;
     await waitFor(window, 'document.visibilityState === "visible"', 'Window did not return to visible state.');
 
     const beforeHide = await readState(window);
@@ -870,6 +885,14 @@ async function run() {
       'Hiding the Electron window did not pause Product Preview.',
     );
     const afterHide = await readState(window);
+    receipt.hiddenPauseMeasurement = {
+      beforeTimeMs: beforeHide.previewTimeMs,
+      afterTimeMs: afterHide.previewTimeMs,
+      deltaMs: afterHide.previewTimeMs - beforeHide.previewTimeMs,
+      beforeSampledAtMs: beforeHide.sampledAtMs,
+      afterSampledAtMs: afterHide.sampledAtMs,
+      playingAfterHide: afterHide.playing,
+    };
     assert(afterHide.previewTimeMs >= beforeHide.previewTimeMs, 'Hidden pause moved Preview time backward.');
     assert(afterHide.previewTimeMs - beforeHide.previewTimeMs <= 150, 'Hidden pause did not freeze at the current visible position.');
     assert(afterHide.activeSources === 0, `Hidden pause retained ${afterHide.activeSources} audio source(s).`);
@@ -997,6 +1020,7 @@ async function run() {
       try { receipt.runtimeSnapshot = await evaluate(window, 'window.__issue882Stall ?? null'); } catch { /* Renderer may be unavailable after a failed pause. */ }
     }
   } finally {
+    if (focusHelper && !focusHelper.isDestroyed()) focusHelper.destroy();
     if (window && !window.isDestroyed()) window.destroy();
     mkdirSync(runRoot, { recursive: true });
     writeFileSync(resultPath, JSON.stringify({

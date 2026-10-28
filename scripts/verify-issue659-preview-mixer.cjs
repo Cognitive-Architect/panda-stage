@@ -92,11 +92,13 @@ async function seek(timeMs) {
 async function audioState() {
   return js(`(() => {
     const probe = window.__mixerProbe;
-    const voices = probe.sources.filter(source => !source.stopped);
     const context = probe.contexts[0];
+    const audioNow = context?.currentTime ?? 0;
+    const voices = probe.sources.filter(source => !source.stopped && source.args?.[0] <= audioNow);
+    const scheduled = probe.sources.filter(source => !source.stopped && source.args?.[0] > audioNow);
     const bins = new Float32Array(context?.analyser.frequencyBinCount ?? 0);
     if (context) context.analyser.getFloatFrequencyData(bins);
-    return { contexts: probe.contexts.length, active: voices.length, closed: probe.contexts.map(context => context.state),
+    return { contexts: probe.contexts.length, active: voices.length, scheduled: scheduled.length, closed: probe.contexts.map(context => context.state),
       starts: voices.map(source => source.args), gains: voices.map(source => source.gain?.gain.value),
       frequencies: [220,440,660,880].map(frequency => {
         const bin = Math.round(frequency * 4096 / (context?.sampleRate ?? 48000));

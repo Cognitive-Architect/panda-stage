@@ -534,11 +534,15 @@ describe('product preview overlay contract', () => {
   it('drives one subordinate Shot-local mixer independently of the subtitle winner', () => {
     const overlay = readSource(OVERLAY_PATH);
 
-    expect(overlay).toContain('useProductPreviewAudio({');
+    expect(overlay).toContain('const audioInput = useMemo(');
+    expect(overlay).toContain('const audioController = useProductPreviewAudio(audioInput);');
     const audio = readSource(AUDIO_PATH);
-    expect(audio).toContain('resolveProductPreviewAudios(input.project, input.shot, snapshot.timeMs)');
+    expect(audio).toContain('private planFor(');
+    expect(audio).toContain('const position = this.masterPosition(snapshot, input);');
+    expect(audio).toContain('for (const clip of shot.audioClips)');
+    expect(audio).toContain('clipEndMasterMs <= position || clipStartMasterMs >= horizon');
     expect(overlay).not.toContain('activeDialogueId: activeCue?.id ?? null');
-    const audioCall = overlay.slice(overlay.indexOf('const audioWarning = useProductPreviewAudio({'), overlay.indexOf('useLayoutEffect(() => {', overlay.indexOf('const audioWarning =')));
+    const audioCall = overlay.slice(overlay.indexOf('const audioInput = useMemo('), overlay.indexOf('const audioWarning = audioController.warning;'));
     expect(audioCall).toContain('readMasterSnapshot');
     expect(audioCall).not.toContain('timeMs: activeShotTimeMs');
     expect(overlay).toContain('playing,');
@@ -583,7 +587,7 @@ describe('product preview overlay contract', () => {
       expect(overlay).toContain(selector);
     }
     expect(overlay).toMatch(
-      /type:\s*playbackClockAnchorRef\.current\s*\?\s*'pause'\s*:\s*'play'/u,
+      /type:\s*playbackClockAnchorRef\.current\s*\|\|\s*playbackStartPendingRef\.current\s*\?\s*'pause'\s*:\s*'play'/u,
     );
     expect(overlay).toContain('role="dialog"');
     expect(overlay).toContain('aria-modal={previewSurfaceActive}');
@@ -690,9 +694,13 @@ describe('product preview overlay contract', () => {
     expect(overlay).toContain('canStartProductPreviewPlayback(');
     expect(overlay).toContain('shouldStartProductPreviewAutoplay({');
     expect(overlay).toContain('const initialAutoplayConsumedRef = useRef(false);');
+    expect(overlay).toContain('const playbackStartPendingRef = useRef(false);');
+    expect(overlay).toContain('playbackClockAnchorRef.current || playbackStartPendingRef.current');
     expect(overlay).toContain('!initialAutoplayConsumedRef.current &&');
     expect(overlay).toContain('autoplayConsumed: initialAutoplayConsumedRef.current');
-    expect(overlay).toContain('if (next.playing) initialAutoplayConsumedRef.current = true;');
+    expect(overlay).toContain('audioController.prepareForPlayback(next.timeMs).then((preparation) => {');
+    expect(overlay).toContain('preparation.reason === \'cancelled\'');
+    expect(overlay).toContain('initialAutoplayConsumedRef.current = true;');
     expect(overlay).toContain('const readMasterSnapshot = useCallback(');
     expect(overlay).toContain('resolveProductPreviewClockTime(anchor, sampledAtMs, durationMs)');
     expect(overlay).toContain('clockGeneration: playbackClockGenerationRef.current');
