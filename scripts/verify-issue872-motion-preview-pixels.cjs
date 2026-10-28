@@ -597,8 +597,16 @@ async function closeProjectAndAssertStageUnmounted(window) {
   return { projectCenterVisible: true, editorStageUnmounted: true };
 }
 
-async function closePreview(window) {
-  await evaluate(window, `document.querySelector('[data-testid="product-preview-close"]')?.click()`);
+async function closePreview(window, method = 'button') {
+  if (method === 'escape') {
+    window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+  } else if (method === 'button') {
+    await evaluate(window, `document.querySelector('[data-testid="product-preview-close"]')?.click()`);
+  } else {
+    throw new Error(`Unsupported Product Preview close method: ${method}`);
+  }
   await waitFor(
     window,
     `!document.querySelector('[data-testid="product-preview-overlay"]')`,
@@ -619,6 +627,7 @@ async function closePreview(window) {
   assert(restored.focusedTestId === 'quick-action-play', 'Focus did not return to the Product Preview opener.');
   issue877R2SurfaceChecks.push({
     closed: true,
+    closeMethod: method === 'escape' ? 'Escape' : 'close-button',
     layoutVisible: true,
     editorSiblingsRestored: true,
     geometryStable: true,
@@ -1509,6 +1518,80 @@ async function run() {
         alternateHeadGroupTransform: alternateShotCapture.headGroupTransform,
         returnedHeadGroupTransform: returnedShotCapture.headGroupTransform,
       });
+      if (intensityPercent === 100) {
+        await closePreview(window);
+        const normalEditorState = await readIssue877R2SurfaceState(window);
+        const hasPositiveEditorSize = (state) =>
+          state.geometry.layout?.width > 0 &&
+          state.geometry.layout?.height > 0 &&
+          state.geometry.editorStage?.width > 0 &&
+          state.geometry.editorStage?.height > 0 &&
+          state.editorCanvasBuffer?.width > 0 &&
+          state.editorCanvasBuffer?.height > 0;
+        assert(hasPositiveEditorSize(normalEditorState), 'Normal-window Editor or Canvas has no drawable size before the narrow-window check.');
+
+        window.setSize(840, 640);
+        await waitFor(
+          window,
+          `window.innerWidth >= 800 && window.innerWidth <= 900 && window.innerHeight >= 560 && window.innerHeight <= 640`,
+          'Electron did not enter the configured narrow-window size.',
+        );
+        await evaluate(window, `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+        const narrowViewport = await evaluate(
+          window,
+          `({ width: window.innerWidth, height: window.innerHeight })`,
+        );
+        const narrowEditorState = await readIssue877R2SurfaceState(window);
+        assert(narrowEditorState.layoutVisibility === 'visible', 'Editor layout was hidden before narrow-window Preview opened.');
+        assert(Object.values(narrowEditorState.regionVisibility).every((value) => value === 'visible'), 'An Editor sibling was hidden before narrow-window Preview opened.');
+        assert(hasPositiveEditorSize(narrowEditorState), 'Narrow-window Editor or Canvas has no drawable size before Preview opened.');
+
+        await openPreview(window, variant.baseShotId);
+        window.setSize(1120, 760);
+        await waitFor(
+          window,
+          `window.innerWidth >= ${narrowViewport.width + 200} && window.innerHeight >= ${narrowViewport.height + 80}`,
+          'Electron did not grow the measured viewport while Product Preview was active.',
+        );
+        await evaluate(window, `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+        const resizedViewport = await evaluate(
+          window,
+          `({ width: window.innerWidth, height: window.innerHeight })`,
+        );
+        const resizedActive = await readIssue877R2SurfaceState(window);
+        assert(resizedActive.active === 'true', 'Product Preview lost active ownership during a window resize.');
+        assert(resizedActive.layoutVisibility === 'visible', 'R2 hid the Editor layout ancestor after a window resize.');
+        assert(Object.values(resizedActive.regionVisibility).every((value) => value === 'hidden'), 'An Editor sibling became visible during active Preview after a window resize.');
+        assert(Object.values(resizedActive.previewVisibility).every((value) => value === 'visible'), 'Product Preview became hidden during a window resize.');
+        assert(resizedActive.overlayBackground === 'rgb(6, 14, 11)', 'The active Preview background became translucent after a window resize.');
+        assert(hasPositiveEditorSize(resizedActive), 'Editor or Canvas lost its drawable size while Preview was resized.');
+        window.__issue877R2PreviewBaseline = resizedActive;
+        await closePreview(window, 'escape');
+
+        window.setSize(1600, 1000);
+        await waitFor(
+          window,
+          `window.innerWidth >= 1500 && window.innerHeight >= 900`,
+          'Electron did not return to the normal-window size after Escape closed Preview.',
+        );
+        await evaluate(window, `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+        const restoredNormal = await readIssue877R2SurfaceState(window);
+        assert(restoredNormal.layoutVisibility === 'visible', 'Editor layout remained hidden after the normal-window resize.');
+        assert(Object.values(restoredNormal.regionVisibility).every((value) => value === 'visible'), 'An Editor sibling remained hidden after the normal-window resize.');
+        assert(hasPositiveEditorSize(restoredNormal), 'Editor or Canvas did not regain a drawable size after the normal-window resize.');
+        assert(sameIssue877R2Geometry(normalEditorState, restoredNormal), 'Editor or Canvas geometry did not return to its normal-window size.');
+        issue877R2SurfaceChecks.push({
+          active: true,
+          closed: true,
+          narrowViewport,
+          resizedViewport,
+          narrowWindow: true,
+          resizedWhilePreviewActive: true,
+          escapeCloseRestoredEditor: true,
+          normalWindowGeometryRestored: true,
+          geometryStable: true,
+        });
+      }
       lifecycle.closeTransitions.push({
         projectId: variant.projectId,
         ...await closeProjectAndAssertStageUnmounted(window),
