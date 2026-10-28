@@ -271,10 +271,10 @@ describe('EditorShell state boundary', () => {
     expect(shell).toContain('shotStore.getCurrentShotId');
     // Opening the preview must not mutate project/session state.
     expect(shell).toMatch(
-      /const openProductPreview = \(\): void => \{\s*setProductPreviewSurfaceActive\(false\);\s*setProductPreviewOpen\(true\);\s*\};/u,
+      /const openProductPreview = \(\): void => \{\s*productPreviewOpenerRef\.current =[\s\S]*?document\.activeElement instanceof HTMLElement[\s\S]*?setProductPreviewSurfaceActive\(false\);\s*setProductPreviewOpen\(true\);\s*\};/u,
     );
     expect(shell).toMatch(
-      /const closeProductPreview = \(\): void => \{\s*setProductPreviewSurfaceActive\(false\);\s*setProductPreviewOpen\(false\);\s*\};/u,
+      /const closeProductPreview = \(\): void => \{\s*setProductPreviewSurfaceActive\(false\);\s*setProductPreviewOpen\(false\);\s*window\.requestAnimationFrame\(\(\) => \{\s*productPreviewOpenerRef\.current\?\.focus\(\{ preventScroll: true \}\);\s*productPreviewOpenerRef\.current = null;\s*\}\);\s*\};/u,
     );
     // The overlay never re-enters the session or store layer.
     expect(overlay).not.toContain('EditorShellSession');

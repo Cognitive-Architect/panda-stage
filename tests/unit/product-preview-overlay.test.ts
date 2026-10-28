@@ -504,6 +504,9 @@ describe('product preview overlay contract', () => {
     const styles = readSource(
       'src/renderer/styles/shell/product-preview/s06-09--product-preview.css',
     );
+    const surfaceStyles = readSource(
+      'src/renderer/styles/shell/product-preview/s17-01--whole-project-preview.css',
+    );
 
     expect(overlay).toContain(
       "useState<ProductPreviewInitialReadiness>('preparing')",
@@ -534,6 +537,15 @@ describe('product preview overlay contract', () => {
       ".product-preview-overlay[data-preview-surface='warming']",
     );
     expect(styles).toContain('background: transparent;');
+    expect(surfaceStyles).toMatch(
+      /\.product-preview-overlay\[data-preview-surface='active'\]\s*\{\s*background:\s*rgb\(6 14 11\);\s*\}/u,
+    );
+    expect(surfaceStyles).toMatch(
+      /\.editor-layout\[data-preview-surface-active='true'\]\s*>\s*\.editor-top-region,\s*\.editor-layout\[data-preview-surface-active='true'\]\s*>\s*\.editor-body,\s*\.editor-layout\[data-preview-surface-active='true'\]\s*>\s*\.bottom-workspace\s*\{\s*visibility:\s*hidden;/u,
+    );
+    expect(surfaceStyles).not.toMatch(
+      /\.editor-layout\[data-preview-surface-active='true'\]\s*\{\s*visibility:\s*hidden/u,
+    );
     expect(styles).toMatch(
       /\.product-preview-overlay\[data-preview-surface='warming'\][\s\S]*?pointer-events:\s*auto;/u,
     );
@@ -584,6 +596,13 @@ describe('product preview overlay contract', () => {
     );
     expect(shell).toContain('const commitProductPreviewSurface = useCallback');
     expect(shell).toContain('onHandoffReady={commitProductPreviewSurface}');
+    expect(shell).toContain(
+      "data-preview-surface-active={productPreviewSurfaceActive ? 'true' : 'false'}",
+    );
+    expect(shell).toContain('productPreviewOpenerRef.current =');
+    expect(shell).toContain(
+      'productPreviewOpenerRef.current?.focus({ preventScroll: true })',
+    );
     expect(shell).not.toContain(
       'onHandoffReady={() => setProductPreviewSurfaceActive(true)}',
     );
