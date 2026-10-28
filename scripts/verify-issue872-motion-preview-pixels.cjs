@@ -90,6 +90,7 @@ const MP4_PIXEL_TOLERANCE = {
   pixelsOver16Ratio: 0.03,
 };
 const registeredChannels = [];
+const issue877R2SurfaceChecks = [];
 
 app.on('window-all-closed', () => {});
 
@@ -500,6 +501,53 @@ async function evaluate(window, source) {
   return window.webContents.executeJavaScript(source);
 }
 
+async function readIssue877R2SurfaceState(window) {
+  return evaluate(window, `(() => {
+    const byTestId = (testId) => document.querySelector('[data-testid="' + testId + '"]');
+    const visibility = (element) => element ? getComputedStyle(element).visibility : null;
+    const rect = (element) => {
+      if (!element) return null;
+      const bounds = element.getBoundingClientRect();
+      return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+    };
+    const layout = byTestId('editor-layout');
+    const top = byTestId('editor-top-region');
+    const body = byTestId('editor-body');
+    const bottom = byTestId('bottom-workspace');
+    const editorStage = byTestId('project-canvas-stage');
+    const editorCanvas = editorStage?.querySelector('canvas');
+    const overlay = byTestId('product-preview-overlay');
+    const previewStage = overlay?.querySelector('.product-preview-stage');
+    const previewRenderer = previewStage?.querySelector('[data-testid="stage-renderer"]');
+    const previewCanvas = previewStage?.querySelector('canvas');
+    return {
+      active: layout?.dataset.previewSurfaceActive ?? null,
+      layoutVisibility: visibility(layout),
+      regionVisibility: {
+        top: visibility(top), body: visibility(body), bottom: visibility(bottom),
+      },
+      editorStageVisibility: visibility(editorStage),
+      editorCanvasVisibility: visibility(editorCanvas),
+      previewVisibility: {
+        overlay: visibility(overlay), stage: visibility(previewStage),
+        renderer: visibility(previewRenderer), canvas: visibility(previewCanvas),
+      },
+      overlayBackground: overlay ? getComputedStyle(overlay).backgroundColor : null,
+      geometry: {
+        layout: rect(layout), top: rect(top), body: rect(body), bottom: rect(bottom),
+        editorStage: rect(editorStage), editorCanvas: rect(editorCanvas),
+      },
+      editorCanvasBuffer: editorCanvas ? { width: editorCanvas.width, height: editorCanvas.height } : null,
+      focusedTestId: document.activeElement?.getAttribute('data-testid') ?? null,
+    };
+  })()`);
+}
+
+function sameIssue877R2Geometry(before, after) {
+  return JSON.stringify(before.geometry) === JSON.stringify(after.geometry) &&
+    JSON.stringify(before.editorCanvasBuffer) === JSON.stringify(after.editorCanvasBuffer);
+}
+
 async function openProject(window, projectRoot) {
   await waitFor(
     window,
@@ -517,7 +565,11 @@ async function openProject(window, projectRoot) {
 }
 
 async function closeProjectAndAssertStageUnmounted(window) {
-  await closePreview(window);
+  const previewStillOpen = await evaluate(
+    window,
+    `Boolean(document.querySelector('[data-testid="product-preview-overlay"]'))`,
+  );
+  if (previewStillOpen) await closePreview(window);
   const saveState = await evaluate(
     window,
     `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.saveState ?? null`,
@@ -552,6 +604,27 @@ async function closePreview(window) {
     `!document.querySelector('[data-testid="product-preview-overlay"]')`,
     'Product Preview did not close.',
   );
+  await waitFor(
+    window,
+    `document.activeElement?.dataset.testid === 'quick-action-play' &&
+      document.querySelector('[data-testid="editor-layout"]')?.dataset.previewSurfaceActive === 'false'`,
+    'Editor visibility state or opener focus did not restore after Product Preview closed.',
+  );
+  const restored = await readIssue877R2SurfaceState(window);
+  const baseline = window.__issue877R2PreviewBaseline;
+  assert(baseline, 'Product Preview close has no saved Editor geometry baseline.');
+  assert(restored.layoutVisibility === 'visible', 'Editor layout remained hidden after Preview closed.');
+  assert(Object.values(restored.regionVisibility).every((value) => value === 'visible'), 'An Editor sibling remained hidden after Preview closed.');
+  assert(sameIssue877R2Geometry(baseline, restored), 'Editor or Canvas dimensions changed after Preview closed.');
+  assert(restored.focusedTestId === 'quick-action-play', 'Focus did not return to the Product Preview opener.');
+  issue877R2SurfaceChecks.push({
+    closed: true,
+    layoutVisible: true,
+    editorSiblingsRestored: true,
+    geometryStable: true,
+    openerFocusRestored: true,
+  });
+  delete window.__issue877R2PreviewBaseline;
 }
 
 async function selectShot(window, shotId, characterLayerId, faceAssetId) {
@@ -599,7 +672,15 @@ async function openPreview(window, expectedShotId) {
     `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.expanded === 'true'`,
     'Quick Action Drawer did not open.',
   );
-  await evaluate(window, `document.querySelector('[data-testid="quick-action-play"]')?.click()`);
+  const before = await readIssue877R2SurfaceState(window);
+  assert(before.layoutVisibility === 'visible', 'Editor layout was hidden before Preview opened.');
+  assert(Object.values(before.regionVisibility).every((value) => value === 'visible'), 'An Editor sibling was hidden before Preview opened.');
+  window.__issue877R2PreviewBaseline = before;
+  await evaluate(window, `(() => {
+    const trigger = document.querySelector('[data-testid="quick-action-play"]');
+    trigger?.focus({ preventScroll: true });
+    trigger?.click();
+  })()`);
   await waitFor(
     window,
     `Boolean(document.querySelector('[data-testid="product-preview-overlay"]'))`,
@@ -619,6 +700,22 @@ async function openPreview(window, expectedShotId) {
       document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageShotId === ${JSON.stringify(expectedShotId)}`,
     'Product Preview did not mount a display-ready Stage.',
   );
+  const active = await readIssue877R2SurfaceState(window);
+  assert(active.active === 'true', 'R2 did not activate on the Editor layout after first-frame handoff.');
+  assert(active.layoutVisibility === 'visible', 'R2 hid the Editor layout ancestor.');
+  assert(Object.values(active.regionVisibility).every((value) => value === 'hidden'), 'R2 did not hide every fully obscured Editor sibling.');
+  assert(active.editorStageVisibility === 'hidden' && active.editorCanvasVisibility === 'hidden', 'The obscured Editor Canvas remains visible.');
+  assert(Object.values(active.previewVisibility).every((value) => value === 'visible'), 'R2 hid the Product Preview or one of its ancestors.');
+  assert(active.overlayBackground === 'rgb(6, 14, 11)', `Active Preview background is not opaque: ${active.overlayBackground}`);
+  assert(sameIssue877R2Geometry(window.__issue877R2PreviewBaseline, active), 'Editor or Canvas dimensions changed while Preview was active.');
+  issue877R2SurfaceChecks.push({
+    active: true,
+    editorSiblingsHidden: true,
+    editorCanvasHidden: true,
+    previewVisible: true,
+    opaqueBackground: true,
+    geometryStable: true,
+  });
   await evaluate(window, `(() => {
     const overlay = document.querySelector('[data-testid="product-preview-overlay"]');
     if (overlay?.dataset.previewPlaying === 'true') {
@@ -1743,6 +1840,7 @@ async function run() {
   'The cross-surface MP4 checkpoint did not capture visible Speaker B motion.');
   assert(lifecycle.openedProjectIds.length === projectVariants.length + 1, 'The single Editor window did not open every intensity and surface-comparison project copy.');
   assert(lifecycle.closeTransitions.length === projectVariants.length + 1 && lifecycle.closeTransitions.every((item) => item.editorStageUnmounted), 'A project close did not unmount the Editor Stage.');
+  assert(issue877R2SurfaceChecks.length > 0 && issue877R2SurfaceChecks.every((item) => item.geometryStable), 'R2 preview surface lifecycle checks did not pass.');
 
   const receipt = {
     issue: 872,
@@ -1772,6 +1870,7 @@ async function run() {
     speakerSwitchResults,
     alphaResults,
     surfaceComparison,
+    issue877R2SurfaceChecks,
     assertions: {
       bodyPixelsStable,
       bodyPixelVisible,
@@ -1810,6 +1909,7 @@ async function run() {
       editorFormalPixelsExact: surfaceComparison.assertions.editorFormalPixelsExact,
       mp4PixelQualityWithinThreshold: surfaceComparison.assertions.mp4PixelQualityWithinThreshold,
       projectCloseUnmountsStage: lifecycle.closeTransitions.length === projectVariants.length + 1 && lifecycle.closeTransitions.every((item) => item.editorStageUnmounted),
+      issue877R2SurfaceLifecycle: issue877R2SurfaceChecks.length > 0 && issue877R2SurfaceChecks.every((item) => item.geometryStable),
     },
     speakerSwitch: projectVariants.map(({ intensityPercent, speakerAEndMs, speakerBId, speakerBDialogueStartMs, speakerBDialogueEndMs }) => ({
       intensityPercent,
