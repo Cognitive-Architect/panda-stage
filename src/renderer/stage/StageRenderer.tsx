@@ -529,6 +529,21 @@ export function StageRenderer({
       data-layer-render-json={JSON.stringify(
         displayModel!.layers.map((layer) => layer.render),
       )}
+      data-layer-visual-state-json={
+        showStageLabel
+          ? JSON.stringify(
+              displayModel!.layers.map(({ id, visual }) => ({
+                layerId: id,
+                activeFace: visual?.activeFace
+                  ? {
+                      source: visual.activeFace.source,
+                      assetId: visual.activeFace.assetId,
+                    }
+                  : null,
+              })),
+            )
+          : undefined
+      }
       data-render-contract="shared-stage-layer-v1"
       data-stage-error={String(Boolean(error))}
       data-stage-display-ready={String(displayReady)}

@@ -117,6 +117,7 @@ export function ProductPreviewOverlay({
   const [timeMs, setTimeMs] = useState(0);
   const [playing, setPlaying] = useState(false);
   const timeMsRef = useRef(timeMs);
+  const initialAutoplayConsumedRef = useRef(false);
   const playbackClockAnchorRef =
     useRef<ProductPreviewClockAnchor | null>(null);
   const playbackClockGenerationRef = useRef(0);
@@ -241,6 +242,7 @@ export function ProductPreviewOverlay({
         action,
       );
       if (next.playing && document.visibilityState !== 'visible') return;
+      if (next.playing) initialAutoplayConsumedRef.current = true;
       commitTransportState(next, now);
       if (next.repositionAudio) {
         setSeekRevision((current) => current + 1);
@@ -621,11 +623,13 @@ export function ProductPreviewOverlay({
   }, [handoffPhase]);
   useEffect(() => {
     if (
+      !initialAutoplayConsumedRef.current &&
       !playbackClockAnchorRef.current &&
       document.visibilityState === 'visible' &&
       previewSurfaceActive &&
       shouldStartProductPreviewAutoplay({
         autoPlay,
+        autoplayConsumed: initialAutoplayConsumedRef.current,
         dataReady: initialReadiness === 'ready',
         durationMs: projectDurationMs(project),
         revealPhase: handoffPhase,
@@ -637,6 +641,7 @@ export function ProductPreviewOverlay({
         durationMs,
         { type: 'play' },
       );
+      if (next.playing) initialAutoplayConsumedRef.current = true;
       commitTransportState(next, now);
     }
   }, [

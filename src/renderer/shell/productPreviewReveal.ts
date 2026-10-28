@@ -183,6 +183,7 @@ export function shouldBlockProductPreviewWarmupKeyboard(
 
 export interface ProductPreviewAutoplayGateInput {
   autoPlay: boolean;
+  autoplayConsumed?: boolean;
   dataReady: boolean;
   durationMs: number;
   revealPhase: ProductPreviewRevealPhase | ProductPreviewHandoffPhase;
@@ -190,12 +191,14 @@ export interface ProductPreviewAutoplayGateInput {
 
 export function shouldStartProductPreviewAutoplay({
   autoPlay,
+  autoplayConsumed = false,
   dataReady,
   durationMs,
   revealPhase,
 }: ProductPreviewAutoplayGateInput): boolean {
   return (
     autoPlay &&
+    !autoplayConsumed &&
     durationMs > 0 &&
     canStartProductPreviewPlayback(dataReady, revealPhase)
   );

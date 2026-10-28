@@ -454,6 +454,49 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     transport.dispose();
   });
 
+  it('waits for a fresh master sync before a delayed read can start an expired clip after a renderer stall', async () => {
+    const project = mixedProject();
+    const shot = project.shots[0]!;
+    shot.audioClips.push({
+      ...shot.audioClips[0]!,
+      id: CLIP_B_ID,
+      startMs: 1_500,
+      endMs: 2_000,
+      offsetMs: 500,
+      volume: 1,
+    });
+    const context = new FakeContext();
+    const read = deferred<AssetPreviewAudioReadResponse>();
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    const transport = new ProductPreviewAudioTransport({
+      createContext: () => context.api(),
+      readAudio: () => read.promise,
+    });
+
+    try {
+      transport.sync(syncInput(project, { timeMs: 950 }));
+      clock.mockReturnValue(1_500);
+      read.resolve(readyResponse({
+        projectRoot: PROJECT_ROOT,
+        assetId: AUDIO_ID,
+        sha256: 'c'.repeat(64),
+      }));
+      await flush();
+      expect(context.sources).toHaveLength(0);
+
+      clock.mockReturnValue(1_516);
+      transport.sync(syncInput(project, { timeMs: 1_550 }));
+      await flush();
+      expect(context.sources.map((source) => source.start.mock.calls[0])).toEqual([
+        [10, 1.55, 0.95],
+        [10, 0.55, 0.45],
+      ]);
+    } finally {
+      clock.mockRestore();
+      transport.dispose();
+    }
+  });
+
   it('invalidates pending Project A decode when opening Project B, with no stale cache or ownership', async () => {
     const project = mixedProject();
     const other = { ...project, id: 'project-b' };

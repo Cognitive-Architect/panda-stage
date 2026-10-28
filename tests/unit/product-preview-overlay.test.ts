@@ -657,6 +657,7 @@ describe('product preview overlay contract', () => {
 
   it('keeps the Editor visible until the real Preview handoff is committed', () => {
     const overlay = readSource(OVERLAY_PATH);
+    const stageRenderer = readSource('src/renderer/stage/StageRenderer.tsx');
     const styles = readSource(
       'src/renderer/styles/shell/product-preview/s06-09--product-preview.css',
     );
@@ -686,6 +687,15 @@ describe('product preview overlay contract', () => {
     expect(overlay).toContain('onHandoffReady();');
     expect(overlay).toContain('canStartProductPreviewPlayback(');
     expect(overlay).toContain('shouldStartProductPreviewAutoplay({');
+    expect(overlay).toContain('const initialAutoplayConsumedRef = useRef(false);');
+    expect(overlay).toContain('!initialAutoplayConsumedRef.current &&');
+    expect(overlay).toContain('autoplayConsumed: initialAutoplayConsumedRef.current');
+    expect(overlay).toContain('if (next.playing) initialAutoplayConsumedRef.current = true;');
+    expect(stageRenderer).toContain('data-layer-visual-state-json={');
+    expect(stageRenderer).toMatch(
+      /data-layer-visual-state-json=\{\s*showStageLabel\s*\?\s*JSON\.stringify/u,
+    );
+    expect(stageRenderer).toContain('activeFace: visual?.activeFace');
     expect(overlay).toMatch(
       /initialReadinessError[\s\S]*?编辑器保持不变/u,
     );
