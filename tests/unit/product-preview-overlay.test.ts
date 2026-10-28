@@ -464,7 +464,7 @@ describe('product preview overlay contract', () => {
       '{ timeMs: 0, playing: false, repositionAudio: true }',
     );
     expect(overlay).toContain('setRange(nextRange)');
-    expect(overlay).toContain('setSeekRevision((current) => current + 1)');
+    expect(overlay).toContain('seekRevisionRef.current = nextSeekRevision');
   });
 
   it('reuses the formal evaluator and renderer instead of a preview copy', () => {
@@ -555,6 +555,43 @@ describe('product preview overlay contract', () => {
     expect(overlay).toContain('data-testid="product-preview-range"');
     expect(overlay).toContain("{ value: 'project', label: '整个项目' }");
     expect(overlay).toContain("{ value: 'shot', label: '当前镜头' }");
+  });
+
+  it('synchronizes prepared audio at the master anchor and cancels on the transport event', () => {
+    const overlay = readSource(OVERLAY_PATH);
+    const commitStart = overlay.indexOf('const commitTransportState = useCallback(');
+    const commitEnd = overlay.indexOf('const pauseAtCurrentClock', commitStart);
+    const commit = overlay.slice(commitStart, commitEnd);
+    const anchor = commit.indexOf('playbackClockAnchorRef.current = next.playing');
+    const immediateSync = commit.indexOf('audioController.syncImmediately(');
+    const immediateCancel = commit.indexOf('audioController.cancelPlaybackImmediately()');
+
+    expect(anchor).toBeGreaterThanOrEqual(0);
+    expect(immediateSync).toBeGreaterThan(anchor);
+    expect(immediateCancel).toBeGreaterThan(anchor);
+    expect(commit).toContain('seekRevision: nextSeekRevision');
+    expect(immediateCancel).toBeLessThan(commit.indexOf('setPlaying(next.playing)'));
+  });
+
+  it('interrupts the old clock before Replay waits for audio preparation', () => {
+    const overlay = readSource(OVERLAY_PATH);
+    const actionStart = overlay.indexOf('const applyTransportAction = useCallback(');
+    const actionEnd = overlay.indexOf('const switchPreviewRange', actionStart);
+    const action = overlay.slice(actionStart, actionEnd);
+    const replayGuard = action.indexOf("if (action.type === 'replay')");
+    const replayStop = action.indexOf('playing: false, repositionAudio: false', replayGuard);
+    const preparation = action.indexOf('audioController.prepareForPlayback(next.timeMs).then');
+    const closeStart = overlay.indexOf('const closePreview = useCallback(');
+    const closeEnd = overlay.indexOf('const applyTransportAction', closeStart);
+    const close = overlay.slice(closeStart, closeEnd);
+
+    expect(replayGuard).toBeGreaterThanOrEqual(0);
+    expect(replayStop).toBeGreaterThan(replayGuard);
+    expect(replayStop).toBeLessThan(preparation);
+    expect(close.indexOf('audioController.cancelPlaybackImmediately()'))
+      .toBeLessThan(close.indexOf('onClose()'));
+    expect(action).toContain('requestId !== playbackStartRequestRef.current');
+    expect(action).toContain("preparation.reason === 'cancelled'");
   });
 
   it('shows a Chinese empty state when the project has no shot', () => {

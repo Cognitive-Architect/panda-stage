@@ -134,6 +134,7 @@ export function ProductPreviewOverlay({
     useState<ProductPreviewHandoffPhase>('warming');
   const [showWarmupStatus, setShowWarmupStatus] = useState(false);
   const [seekRevision, setSeekRevision] = useState(0);
+  const seekRevisionRef = useRef(seekRevision);
   const [stageImageFailures, setStageImageFailures] = useState<
     StageImageResourceFailure[]
   >([]);
@@ -192,6 +193,9 @@ export function ProductPreviewOverlay({
   useLayoutEffect(() => {
     timeMsRef.current = timeMs;
   }, [timeMs]);
+  useLayoutEffect(() => {
+    seekRevisionRef.current = seekRevision;
+  }, [seekRevision]);
 
   const readMasterSnapshot = useCallback(
     (sampledAtMs: number) => {
@@ -227,6 +231,8 @@ export function ProductPreviewOverlay({
     () => ({ projectRoot, project, shot, range, playing, seekRevision, syncTick: audioSyncTick, readMasterSnapshot }),
     [audioSyncTick, playing, project, projectRoot, range, readMasterSnapshot, seekRevision, shot],
   );
+  const audioInputRef = useRef(audioInput);
+  audioInputRef.current = audioInput;
   const audioController = useProductPreviewAudio(audioInput);
   const audioWarning = audioController.warning;
 
@@ -237,16 +243,35 @@ export function ProductPreviewOverlay({
     ): void => {
       playbackStartRequestRef.current += 1;
       playbackStartPendingRef.current = false;
-      audioController.cancelPendingStartPreparation();
       playbackClockGenerationRef.current += 1;
       playbackClockAnchorRef.current = next.playing
         ? { startedAtMs: anchoredAtMs, startTimeMs: next.timeMs }
         : null;
       timeMsRef.current = next.timeMs;
+      let nextSeekRevision = seekRevisionRef.current;
+      if (next.repositionAudio) {
+        nextSeekRevision += 1;
+        seekRevisionRef.current = nextSeekRevision;
+        setSeekRevision(nextSeekRevision);
+      }
+      if (next.playing) {
+        audioController.cancelPendingStartPreparation();
+        audioController.syncImmediately({
+          ...audioInputRef.current,
+          playing: true,
+          seekRevision: nextSeekRevision,
+        });
+      } else {
+        audioController.cancelPlaybackImmediately();
+      }
       setTimeMs(next.timeMs);
       setPlaying(next.playing);
     },
-    [audioController.cancelPendingStartPreparation],
+    [
+      audioController.cancelPendingStartPreparation,
+      audioController.cancelPlaybackImmediately,
+      audioController.syncImmediately,
+    ],
   );
 
   const pauseAtCurrentClock = useCallback((): number => {
@@ -265,6 +290,11 @@ export function ProductPreviewOverlay({
     );
     return positionMs;
   }, [commitTransportState]);
+
+  const closePreview = useCallback((): void => {
+    audioController.cancelPlaybackImmediately();
+    onClose();
+  }, [audioController.cancelPlaybackImmediately, onClose]);
 
   const applyTransportAction = useCallback(
     (action: ProductPreviewTransportAction): void => {
@@ -289,6 +319,14 @@ export function ProductPreviewOverlay({
       );
       if (next.playing && document.visibilityState !== 'visible') return;
       if (next.playing) {
+        if (action.type === 'replay') {
+          // End the current clock/audio generation before replay preparation can
+          // yield to a slow read or the bounded startup timeout.
+          commitTransportState(
+            { timeMs: next.timeMs, playing: false, repositionAudio: false },
+            now,
+          );
+        }
         playbackStartPendingRef.current = true;
         const requestId = ++playbackStartRequestRef.current;
         const clockGeneration = playbackClockGenerationRef.current;
@@ -302,12 +340,10 @@ export function ProductPreviewOverlay({
               !previewSurfaceActive || document.visibilityState !== 'visible') return;
           initialAutoplayConsumedRef.current = true;
           commitTransportState(next, window.performance.now());
-          if (next.repositionAudio) setSeekRevision((current) => current + 1);
         });
         return;
       }
       commitTransportState(next, now);
-      if (next.repositionAudio) setSeekRevision((current) => current + 1);
     },
     [
       displayedTimeMs,
@@ -330,7 +366,6 @@ export function ProductPreviewOverlay({
         window.performance.now(),
       );
       setRange(nextRange);
-      setSeekRevision((current) => current + 1);
     },
     [commitTransportState, range],
   );
@@ -342,7 +377,6 @@ export function ProductPreviewOverlay({
       { timeMs: 0, playing: false, repositionAudio: true },
       window.performance.now(),
     );
-    setSeekRevision((current) => current + 1);
   }, [commitTransportState, project.id]);
 
   useLayoutEffect(() => {
@@ -353,7 +387,6 @@ export function ProductPreviewOverlay({
       { timeMs: 0, playing: false, repositionAudio: true },
       window.performance.now(),
     );
-    setSeekRevision((current) => current + 1);
   }, [commitTransportState, currentShot?.id, range]);
 
   useLayoutEffect(() => {
@@ -435,7 +468,7 @@ export function ProductPreviewOverlay({
         if (event.key === 'Escape') {
           event.preventDefault();
           event.stopPropagation();
-          onClose();
+          closePreview();
           return;
         }
         const targetInsidePreview =
@@ -456,12 +489,12 @@ export function ProductPreviewOverlay({
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        onClose();
+        closePreview();
       }
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [handoffPhase, onClose]);
+  }, [closePreview, handoffPhase]);
 
   const evaluatedShot = useMemo(
     () => {
@@ -836,7 +869,7 @@ export function ProductPreviewOverlay({
           <button
             className="product-preview-warmup-cancel"
             data-testid="product-preview-cancel"
-            onClick={onClose}
+            onClick={closePreview}
             type="button"
           >
             取消
@@ -849,7 +882,7 @@ export function ProductPreviewOverlay({
           className="product-preview-close task4-hit-target"
           data-task4-core="preview-close"
           data-testid="product-preview-close"
-          onClick={onClose}
+          onClick={closePreview}
           title="关闭预览"
           type="button"
         >

@@ -258,6 +258,12 @@ export class ProductPreviewAudioTransport {
     this.startConsumers.clear();
   }
 
+  cancelPlaybackImmediately(): void {
+    if (this.disposed) return;
+    this.cancelPendingStartPreparation();
+    this.clearVoices();
+  }
+
   sync(input: ProductPreviewAudioSyncInput): void {
     if (this.disposed) return;
     const previous = this.latestInput;
@@ -365,16 +371,31 @@ export class ProductPreviewAudioTransport {
         left[1].clipStartMasterMs - right[1].clipStartMasterMs);
     for (const [key, voice] of waiting) {
       voice.state = 'loading';
-      void this.startVoice(key, voice);
+      const input = this.latestInput;
+      const assetKey = input ? this.assetKey(voice.selection, input) : null;
+      const preparedBuffer = assetKey ? this.bufferCache.get(assetKey) : undefined;
+      if (preparedBuffer && this.context?.state === 'running') {
+        if (assetKey) {
+          this.bufferCache.delete(assetKey);
+          this.bufferCache.set(assetKey, preparedBuffer);
+        }
+        // Prepared startup buffers must reach Web Audio in the same Overlay
+        // commit as the master anchor, before React can defer its passive sync.
+        this.startVoiceWithBuffer(key, voice, preparedBuffer);
+      } else {
+        void this.startVoice(key, voice);
+      }
     }
     this.pumpReadQueue();
   }
 
   private async startVoice(key: string, voice: Voice): Promise<void> {
     try {
+      const input = this.latestInput;
+      if (!input) return;
       const buffer = await this.requestBuffer(
         voice.selection,
-        this.latestInput!,
+        input,
         voice.consumerId,
         voice.priority,
       );
@@ -395,15 +416,44 @@ export class ProductPreviewAudioTransport {
       }
       if (!clockSample) return;
       if (context.state !== 'running') throw new Error('Audio context unavailable.');
+      this.startVoiceWithBuffer(key, voice, buffer, clockSample);
+    } catch {
+      this.detachConsumer(voice.consumerId);
+      if (!this.isCurrentOwner(key, voice)) return;
+      voice.state = 'failed';
+      this.publishWarning();
+    }
+  }
 
+  private startVoiceWithBuffer(
+    key: string,
+    voice: Voice,
+    buffer: AudioBuffer,
+    sampledClock?: ProductPreviewAudioClockSample,
+  ): void {
+    this.detachConsumer(voice.consumerId);
+    const clockSample = sampledClock ?? this.currentClockSampleForVoice(key, voice);
+    if (!clockSample && this.isCurrentOwner(key, voice)) {
+      voice.state = 'waiting';
+      return;
+    }
+    if (!clockSample) return;
+
+    try {
+      const input = this.latestInput;
+      const context = this.context;
+      if (!input || !context || context.state !== 'running') {
+        voice.state = 'waiting';
+        return;
+      }
       const snapshot = clockSample.snapshot;
-      const position = this.masterPosition(snapshot, this.latestInput!);
+      const position = this.masterPosition(snapshot, input);
       if (position >= voice.clipEndMasterMs ||
           position + PRODUCT_PREVIEW_AUDIO_LOOKAHEAD_MS < voice.clipStartMasterMs) {
         voice.state = 'ended';
         return;
       }
-      const shotLocalTime = this.shotLocalTime(snapshot, voice, this.latestInput!);
+      const shotLocalTime = this.shotLocalTime(snapshot, voice, input);
       if (shotLocalTime >= voice.selection.clip.endMs) {
         voice.state = 'ended';
         return;
@@ -441,7 +491,6 @@ export class ProductPreviewAudioTransport {
       source.start(scheduledAt, offsetMs / 1_000, durationMs / 1_000);
       voice.state = scheduledAt > audioNow ? 'scheduled' : 'started';
     } catch {
-      this.detachConsumer(voice.consumerId);
       if (!this.isCurrentOwner(key, voice)) return;
       voice.state = 'failed';
       this.publishWarning();
@@ -816,6 +865,8 @@ export interface ProductPreviewAudioController {
   warning: string | null;
   prepareForPlayback: (startTimeMs: number) => Promise<ProductPreviewAudioStartPreparationResult>;
   cancelPendingStartPreparation: () => void;
+  cancelPlaybackImmediately: () => void;
+  syncImmediately: (input: ProductPreviewAudioSyncInput) => void;
 }
 
 export function useProductPreviewAudio(input: ProductPreviewAudioSyncInput): ProductPreviewAudioController {
@@ -837,5 +888,11 @@ export function useProductPreviewAudio(input: ProductPreviewAudioSyncInput): Pro
   const cancelPendingStartPreparation = useCallback(() => {
     transportRef.current?.cancelPendingStartPreparation();
   }, []);
-  return { warning, prepareForPlayback, cancelPendingStartPreparation };
+  const cancelPlaybackImmediately = useCallback(() => {
+    transportRef.current?.cancelPlaybackImmediately();
+  }, []);
+  const syncImmediately = useCallback((nextInput: ProductPreviewAudioSyncInput) => {
+    transportRef.current?.sync(nextInput);
+  }, []);
+  return { warning, prepareForPlayback, cancelPendingStartPreparation, cancelPlaybackImmediately, syncImmediately };
 }

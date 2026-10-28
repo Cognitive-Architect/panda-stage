@@ -1046,6 +1046,163 @@ describe('AU-02 bounded future audio preparation', () => {
     transport.dispose();
   });
 
+  it('preserves prepared opening SFX, dialogue and BGM across a delayed passive sync', async () => {
+    const project = buildAudioProject();
+    const shot = project.shots[0]!;
+    const template = shot.audioClips[0]!;
+    shot.audioClips = [
+      { ...template, id: SFX_A_ID, role: 'sfx', startMs: 0, endMs: 50, offsetMs: 0 },
+      { ...template, id: CLIP_A_ID, role: 'dialogue', startMs: 0, endMs: 1_000, offsetMs: 0 },
+      { ...template, id: BGM_ID, role: 'bgm', startMs: 0, endMs: 1_500, offsetMs: 500 },
+    ];
+    const { context, transport, readAudio } = setup(project);
+    const preparationInput = syncInput(project, { timeMs: 0, playing: false });
+
+    await expect(transport.prepareForPlayback(preparationInput, 0))
+      .resolves.toMatchObject({ ready: true });
+    expect(readAudio).toHaveBeenCalledTimes(1);
+    expect(context.sources).toHaveLength(0);
+
+    // The Overlay synchronously syncs at the exact master anchor. Its later
+    // passive effect may arrive after the short clip has ended without losing it.
+    transport.sync(syncInput(project, { timeMs: 0, playing: true }));
+    const openingEffect = sourceWithWindow(context, 0, 0.05);
+    const openingDialogue = sourceWithWindow(context, 0, 1);
+    const openingBgm = sourceWithWindow(context, 0.5, 1.5);
+    expect(openingEffect).toBeDefined();
+    expect(openingDialogue).toBeDefined();
+    expect(openingBgm).toBeDefined();
+    await flush();
+
+    context.currentTime = 10.08;
+    transport.sync(syncInput(project, { timeMs: 80, playing: true }));
+    await flush();
+    expect(openingEffect!.start).toHaveBeenCalledTimes(1);
+    expect(openingEffect!.start).toHaveBeenCalledWith(10, 0, 0.05);
+    expect(openingDialogue!.start).toHaveBeenCalledTimes(1);
+    expect(openingDialogue!.start).toHaveBeenCalledWith(10, 0, 1);
+    expect(openingBgm!.start).toHaveBeenCalledTimes(1);
+    expect(openingBgm!.start).toHaveBeenCalledWith(10, 0.5, 1.5);
+    transport.dispose();
+  });
+
+  it('cancels a future source before a delayed pause effect can reach its start time', async () => {
+    const project = buildAudioProject();
+    const shot = project.shots[0]!;
+    shot.audioClips = [{ ...shot.audioClips[0]!, id: SFX_A_ID, role: 'sfx',
+      startMs: 15, endMs: 45, offsetMs: 0 }];
+    const { context, transport } = setup(project);
+
+    transport.sync(syncInput(project, { timeMs: 0 }));
+    await flush();
+    const source = context.sources[0]!;
+    expect(source.start).toHaveBeenCalledWith(10.015, 0, 0.03);
+
+    // Pause/Stop/Seek call this synchronously before React's passive sync effect.
+    transport.cancelPlaybackImmediately();
+    expect(source.stop).toHaveBeenCalledTimes(1);
+
+    // Let the old scheduled time pass, then deliver the delayed passive effect.
+    context.currentTime = 10.1;
+    expect(source.start.mock.calls[0]![0]).toBeLessThan(context.currentTime);
+
+    transport.sync(syncInput(project, { timeMs: 0, playing: false }));
+    expect(source.stop).toHaveBeenCalledTimes(1);
+    transport.dispose();
+  });
+
+  it.each([1_500, 3_900])('interrupts old playback before Replay waits at %ims', async (startTimeMs) => {
+    const project = buildAudioProject();
+    const shot = project.shots[0]!;
+    const template = shot.audioClips[0]!;
+    const openingAssetId = '10000000-0000-4000-8000-0000000004ff';
+    const audioAsset = project.assets.find((asset) => asset.id === AUDIO_ID)!;
+    project.assets.push({ ...audioAsset, id: openingAssetId, name: 'Opening audio',
+      relativePath: 'assets/opening.wav', sha256: 'd'.repeat(64) });
+    shot.audioClips = [
+      { ...template, id: SFX_A_ID, role: 'sfx', assetId: openingAssetId,
+        startMs: 0, endMs: 500, offsetMs: 0 },
+      { ...template, id: CLIP_A_ID, role: 'dialogue', assetId: AUDIO_ID,
+        startMs: 1_000, endMs: 4_000, offsetMs: 0 },
+    ];
+    const openingRead = deferred<AssetPreviewAudioReadResponse>();
+    const readAudio = vi.fn((request: AssetPreviewAudioReadRequest) =>
+      request.assetId === openingAssetId ? openingRead.promise : Promise.resolve(readyResponse(request)));
+    const context = new FakeContext();
+    const transport = new ProductPreviewAudioTransport({ createContext: () => context.api(), readAudio });
+    const input = liveClockInput(project, performance.now(), startTimeMs);
+
+    transport.sync(input);
+    await flush();
+    const oldSource = context.sources[0]!;
+    expect(oldSource).toBeDefined();
+    context.currentTime = 10.02;
+
+    // Overlay commits the paused/repositioned master state synchronously,
+    // cancelling old voices before starting bounded Replay preparation.
+    transport.cancelPlaybackImmediately();
+    expect(oldSource.stop).toHaveBeenCalledTimes(1);
+    const replayInput = syncInput(project, { timeMs: 0, playing: false });
+    const replayPreparation = transport.prepareForPlayback(replayInput, 0);
+    await flush();
+    expect(readAudio).toHaveBeenCalledWith(expect.objectContaining({ assetId: openingAssetId }));
+    await new Promise<void>((resolve) => setTimeout(resolve, 180));
+    expect(replayInput.readMasterSnapshot(performance.now()).timeMs).toBe(0);
+    expect(oldSource.stop).toHaveBeenCalledTimes(1);
+
+    openingRead.resolve(readyResponse({ projectRoot: PROJECT_ROOT, assetId: openingAssetId,
+      sha256: 'd'.repeat(64) }));
+    await expect(replayPreparation).resolves.toMatchObject({ ready: true });
+    transport.sync(syncInput(project, { timeMs: 0, playing: true, seekRevision: 1 }));
+    await flush();
+    expect(oldSource.stop).toHaveBeenCalledTimes(1);
+    expect(sourceWithWindow(context, 0, 0.5)).toBeDefined();
+    transport.dispose();
+  });
+
+  it('keeps old playback stopped when Replay preparation reaches the 500ms bound', async () => {
+    const project = buildAudioProject();
+    const shot = project.shots[0]!;
+    const template = shot.audioClips[0]!;
+    const openingAssetId = '10000000-0000-4000-8000-0000000004fe';
+    const audioAsset = project.assets.find((asset) => asset.id === AUDIO_ID)!;
+    project.assets.push({ ...audioAsset, id: openingAssetId, name: 'Slow opening audio',
+      relativePath: 'assets/slow-opening.wav', sha256: 'e'.repeat(64) });
+    shot.audioClips = [
+      { ...template, id: SFX_A_ID, role: 'sfx', assetId: openingAssetId,
+        startMs: 0, endMs: 500, offsetMs: 0 },
+      { ...template, id: CLIP_A_ID, role: 'dialogue', assetId: AUDIO_ID,
+        startMs: 1_000, endMs: 4_000, offsetMs: 0 },
+    ];
+    const openingRead = deferred<AssetPreviewAudioReadResponse>();
+    const readAudio = vi.fn((request: AssetPreviewAudioReadRequest) =>
+      request.assetId === openingAssetId ? openingRead.promise : Promise.resolve(readyResponse(request)));
+    const context = new FakeContext();
+    const warnings: (string | null)[] = [];
+    const transport = new ProductPreviewAudioTransport({ createContext: () => context.api(), readAudio,
+      onWarning: (warning) => warnings.push(warning) });
+    const input = liveClockInput(project, performance.now(), 1_500);
+
+    transport.sync(input);
+    await flush();
+    const oldSource = context.sources[0]!;
+    expect(oldSource).toBeDefined();
+
+    transport.cancelPlaybackImmediately();
+    expect(oldSource.stop).toHaveBeenCalledTimes(1);
+    const preparation = transport.prepareForPlayback(syncInput(project, { timeMs: 0, playing: false }), 0);
+    await expect(preparation).resolves.toMatchObject({ ready: false, reason: 'timeout' });
+    expect(warnings.at(-1)).toBeTruthy();
+    expect(oldSource.stop).toHaveBeenCalledTimes(1);
+
+    openingRead.resolve(readyResponse({ projectRoot: PROJECT_ROOT, assetId: openingAssetId,
+      sha256: 'e'.repeat(64) }));
+    await flush();
+    expect(context.sources).toHaveLength(1);
+    expect(oldSource.stop).toHaveBeenCalledTimes(1);
+    transport.dispose();
+  }, 2_000);
+
   it('reserves capacity for a newly current cue while obsolete future reads remain truly in flight', async () => {
     const project = buildAudioProject();
     const shot = project.shots[0]!;
