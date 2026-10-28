@@ -56,10 +56,22 @@ export interface ProductPreviewAudioSyncInput {
   projectRoot: string;
   project: Project;
   shot: Shot | null;
-  timeMs: number;
-  masterTimeSampledAtMs: number;
+  range: 'project' | 'shot';
   playing: boolean;
   seekRevision: number;
+  readMasterSnapshot: (sampledAtMs: number) => ProductPreviewAudioMasterSnapshot;
+}
+
+/** A read-only sample from Product Preview's existing playback clock anchor. */
+export interface ProductPreviewAudioMasterSnapshot {
+  projectRoot: string;
+  projectId: string;
+  range: 'project' | 'shot';
+  shotId: string | null;
+  timeMs: number;
+  sampledAtMs: number;
+  playing: boolean;
+  clockGeneration: number;
 }
 
 export const PRODUCT_PREVIEW_AUDIO_CACHE_ENTRIES = 8;
@@ -71,10 +83,20 @@ const AUDIO_READ_WARNING = '部分音频无法预览，画面和字幕将继续�
 interface Voice {
   selection: ProductPreviewAudioSelection;
   state: 'waiting' | 'loading' | 'started' | 'ended' | 'failed';
+  projectRoot: string;
+  projectId: string;
+  range: 'project' | 'shot';
+  shotId: string;
+  clockGeneration: number;
   source?: AudioBufferSourceNode;
   gain?: GainNode;
   startedAt?: number;
   masterAtStart?: number;
+}
+
+interface ProductPreviewAudioClockSample {
+  snapshot: ProductPreviewAudioMasterSnapshot;
+  audioContextTime: number | null;
 }
 
 /**
@@ -93,7 +115,7 @@ export class ProductPreviewAudioTransport {
   private cacheBytes = 0;
   private cacheEpoch = 0;
   private latestInput: ProductPreviewAudioSyncInput | null = null;
-  private latestMasterSampledAtMs: number | null = null;
+  private latestMasterSnapshot: ProductPreviewAudioMasterSnapshot | null = null;
   private warning: string | null = null;
   private disposed = false;
 
@@ -106,23 +128,29 @@ export class ProductPreviewAudioTransport {
   sync(input: ProductPreviewAudioSyncInput): void {
     if (this.disposed) return;
     const previous = this.latestInput;
+    const previousSnapshot = this.latestMasterSnapshot;
     this.latestInput = input;
-    this.latestMasterSampledAtMs = input.masterTimeSampledAtMs;
+    const clockSample = this.readMasterClockSample(input);
+    const snapshot = clockSample?.snapshot ?? null;
+    this.latestMasterSnapshot = snapshot;
     const projectChanged = previous && (previous.projectRoot !== input.projectRoot || previous.project.id !== input.project.id);
+    const snapshotOwnerChanged = previousSnapshot !== null &&
+      (!snapshot || !this.sameSnapshotOwner(previousSnapshot, snapshot));
     if (projectChanged) {
       this.cacheEpoch += 1;
       this.bufferCache.clear();
       this.cacheBytes = 0;
     }
     if (projectChanged || previous?.shot?.id !== input.shot?.id ||
-        previous?.seekRevision !== input.seekRevision || previous?.playing !== input.playing) this.clearVoices();
-    if (!input.playing || !input.shot) {
+        previous?.range !== input.range || previous?.seekRevision !== input.seekRevision ||
+        previous?.playing !== input.playing || snapshotOwnerChanged) this.clearVoices();
+    if (!snapshot || !this.snapshotMatchesInput(snapshot, input) || !input.playing || !input.shot) {
       this.clearVoices();
       this.publishWarning();
       return;
     }
 
-    const selections = resolveProductPreviewAudios(input.project, input.shot, input.timeMs);
+    const selections = resolveProductPreviewAudios(input.project, input.shot, snapshot.timeMs);
     const desired = new Set(selections.map((selection) => this.voiceKey(selection)));
     for (const [key, voice] of this.voices) {
       if (!desired.has(key)) {
@@ -134,13 +162,22 @@ export class ProductPreviewAudioTransport {
       const key = this.voiceKey(selection);
       let voice = this.voices.get(key);
       // Correct bounded drift against the incumbent master; ordinary ticks do not restart.
-      if (voice?.state === 'started' && this.context && voice.startedAt !== undefined && voice.masterAtStart !== undefined &&
-          Math.abs(voice.masterAtStart + (this.context.currentTime - voice.startedAt) * 1000 - input.timeMs) > PRODUCT_PREVIEW_AUDIO_DRIFT_MS) {
+      if (voice?.state === 'started' && clockSample?.audioContextTime !== null &&
+          clockSample?.audioContextTime !== undefined && voice.startedAt !== undefined && voice.masterAtStart !== undefined &&
+          Math.abs(voice.masterAtStart + (clockSample.audioContextTime - voice.startedAt) * 1000 - snapshot.timeMs) > PRODUCT_PREVIEW_AUDIO_DRIFT_MS) {
         this.releaseVoice(voice);
         this.voices.delete(key);
         voice = undefined;
       }
-      if (!voice) this.voices.set(key, { selection, state: 'waiting' });
+      if (!voice) this.voices.set(key, {
+        selection,
+        state: 'waiting',
+        projectRoot: snapshot.projectRoot,
+        projectId: snapshot.projectId,
+        range: snapshot.range,
+        shotId: snapshot.shotId!,
+        clockGeneration: snapshot.clockGeneration,
+      });
     }
     this.pump();
     this.publishWarning();
@@ -151,7 +188,7 @@ export class ProductPreviewAudioTransport {
     this.disposed = true;
     this.cacheEpoch += 1;
     this.latestInput = null;
-    this.latestMasterSampledAtMs = null;
+    this.latestMasterSnapshot = null;
     this.clearVoices();
     this.bufferCache.clear();
     this.cacheBytes = 0;
@@ -175,24 +212,35 @@ export class ProductPreviewAudioTransport {
     let waitForFreshInput = false;
     try {
       const buffer = await this.bufferFor(voice.selection);
-      if (!this.isCurrent(key, voice)) return;
-      if (!this.hasFreshMasterInput()) {
+      let clockSample = this.currentClockSampleForVoice(key, voice);
+      if (!clockSample && this.isCurrentOwner(key, voice)) {
         voice.state = 'waiting';
         waitForFreshInput = true;
+        return;
+      }
+      if (!clockSample) return;
+      let { snapshot } = clockSample;
+      if (!isAudioClipActiveAtTime(voice.selection.clip, snapshot.timeMs)) {
+        voice.state = 'ended';
         return;
       }
       const context = this.context!;
       if (context.state === 'suspended') await context.resume();
-      if (!this.isCurrent(key, voice)) return;
-      if (!this.hasFreshMasterInput()) {
+      clockSample = this.currentClockSampleForVoice(key, voice);
+      if (!clockSample && this.isCurrentOwner(key, voice)) {
         voice.state = 'waiting';
         waitForFreshInput = true;
         return;
       }
+      if (!clockSample) return;
+      ({ snapshot } = clockSample);
+      if (!isAudioClipActiveAtTime(voice.selection.clip, snapshot.timeMs)) {
+        voice.state = 'ended';
+        return;
+      }
       if (context.state !== 'running') throw new Error('Audio context unavailable.');
-      const input = this.latestInput!;
-      const offset = productPreviewSourceTimeMs(input.timeMs, voice.selection.clip, voice.selection.asset) / 1000;
-      const duration = Math.min((voice.selection.clip.endMs - input.timeMs) / 1000, buffer.duration - offset);
+      const offset = productPreviewSourceTimeMs(snapshot.timeMs, voice.selection.clip, voice.selection.asset) / 1000;
+      const duration = Math.min((voice.selection.clip.endMs - snapshot.timeMs) / 1000, buffer.duration - offset);
       if (duration <= 0) { voice.state = 'ended'; return; }
       const source = context.createBufferSource();
       const gain = context.createGain();
@@ -202,10 +250,10 @@ export class ProductPreviewAudioTransport {
       gain.gain.value = audioClipGain(voice.selection.clip.volume);
       source.connect(gain);
       gain.connect(context.destination);
-      voice.startedAt = context.currentTime;
-      voice.masterAtStart = input.timeMs;
+      voice.startedAt = clockSample.audioContextTime ?? context.currentTime;
+      voice.masterAtStart = snapshot.timeMs;
       source.onended = () => {
-        if (!this.isCurrent(key, voice)) return;
+        if (!this.currentClockSampleForVoice(key, voice)) return;
         this.releaseVoice(voice);
         // The next master tick, not the audio clock, decides whether to rebuild.
         this.voices.delete(key);
@@ -213,7 +261,8 @@ export class ProductPreviewAudioTransport {
       source.start(voice.startedAt, offset, duration);
       voice.state = 'started';
     } catch {
-      if (this.isCurrent(key, voice)) {
+      const clockSample = this.currentClockSampleForVoice(key, voice);
+      if (clockSample && isAudioClipActiveAtTime(voice.selection.clip, clockSample.snapshot.timeMs)) {
         this.releaseVoice(voice);
         voice.state = 'failed';
         this.publishWarning();
@@ -225,12 +274,47 @@ export class ProductPreviewAudioTransport {
     }
   }
 
-  private hasFreshMasterInput(): boolean {
-    if (this.latestMasterSampledAtMs === null) return false;
-    const nowMs = performance.now();
-    return Number.isFinite(nowMs) && Number.isFinite(this.latestMasterSampledAtMs) &&
-      nowMs >= this.latestMasterSampledAtMs &&
-      nowMs - this.latestMasterSampledAtMs <= PRODUCT_PREVIEW_AUDIO_DRIFT_MS;
+  private readMasterClockSample(input: ProductPreviewAudioSyncInput): ProductPreviewAudioClockSample | null {
+    const audioContextTime = this.context?.currentTime ?? null;
+    const sampledAtMs = performance.now();
+    if (!Number.isFinite(sampledAtMs)) return null;
+    let snapshot: ProductPreviewAudioMasterSnapshot;
+    try {
+      snapshot = input.readMasterSnapshot(sampledAtMs);
+    } catch {
+      return null;
+    }
+    if (!Number.isFinite(snapshot.timeMs) || snapshot.sampledAtMs !== sampledAtMs ||
+        !Number.isFinite(snapshot.clockGeneration)) return null;
+    return { snapshot, audioContextTime };
+  }
+
+  private snapshotMatchesInput(snapshot: ProductPreviewAudioMasterSnapshot, input: ProductPreviewAudioSyncInput): boolean {
+    return snapshot.projectRoot === input.projectRoot && snapshot.projectId === input.project.id &&
+      snapshot.range === input.range && snapshot.shotId === (input.shot?.id ?? null) &&
+      snapshot.playing === input.playing;
+  }
+
+  private sameSnapshotOwner(left: ProductPreviewAudioMasterSnapshot, right: ProductPreviewAudioMasterSnapshot): boolean {
+    return left.projectRoot === right.projectRoot && left.projectId === right.projectId &&
+      left.range === right.range && left.shotId === right.shotId &&
+      left.playing === right.playing && left.clockGeneration === right.clockGeneration;
+  }
+
+  private isCurrentOwner(key: string, voice: Voice): boolean {
+    return !this.disposed && this.voices.get(key) === voice && this.latestInput?.playing === true;
+  }
+
+  private currentClockSampleForVoice(key: string, voice: Voice): ProductPreviewAudioClockSample | null {
+    const input = this.latestInput;
+    if (!input || !this.isCurrentOwner(key, voice)) return null;
+    const sample = this.readMasterClockSample(input);
+    const snapshot = sample?.snapshot;
+    if (!snapshot || !this.snapshotMatchesInput(snapshot, input) || !snapshot.playing ||
+        snapshot.projectRoot !== voice.projectRoot || snapshot.projectId !== voice.projectId ||
+        snapshot.range !== voice.range || snapshot.shotId !== voice.shotId ||
+        snapshot.clockGeneration !== voice.clockGeneration) return null;
+    return sample;
   }
 
   private bufferFor(selection: ProductPreviewAudioSelection): Promise<AudioBuffer> {
@@ -274,10 +358,6 @@ export class ProductPreviewAudioTransport {
   }
   private voiceKey({ clip, asset }: ProductPreviewAudioSelection): string {
     return [clip.id, asset.id, asset.sha256, clip.startMs, clip.endMs, clip.offsetMs, clip.volume].join('\u0000');
-  }
-  private isCurrent(key: string, voice: Voice): boolean {
-    return !this.disposed && this.latestInput?.playing === true && this.voices.get(key) === voice &&
-      isAudioClipActiveAtTime(voice.selection.clip, this.latestInput.timeMs);
   }
   private releaseVoice(voice: Voice): void {
     if (voice.source) {

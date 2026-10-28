@@ -134,9 +134,49 @@ function deferred<T>() {
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 }
-function syncInput(project: Project, overrides: Partial<ProductPreviewAudioSyncInput> = {}): ProductPreviewAudioSyncInput {
-  return { projectRoot: PROJECT_ROOT, project, shot: project.shots[0]!, timeMs: 600,
-    masterTimeSampledAtMs: performance.now(), playing: true, seekRevision: 0, ...overrides };
+type TestSyncOverrides = Partial<Omit<ProductPreviewAudioSyncInput, 'readMasterSnapshot'>> & {
+  timeMs?: number;
+  readMasterSnapshot?: ProductPreviewAudioSyncInput['readMasterSnapshot'];
+};
+function syncInput(project: Project, overrides: TestSyncOverrides = {}): ProductPreviewAudioSyncInput {
+  const timeMs = overrides.timeMs ?? 600;
+  const input = {
+    projectRoot: overrides.projectRoot ?? PROJECT_ROOT,
+    project: overrides.project ?? project,
+    shot: overrides.shot === undefined ? project.shots[0]! : overrides.shot,
+    range: overrides.range ?? 'project',
+    playing: overrides.playing ?? true,
+    seekRevision: overrides.seekRevision ?? 0,
+  };
+  return {
+    ...input,
+    readMasterSnapshot: overrides.readMasterSnapshot ?? ((sampledAtMs) => ({
+      projectRoot: input.projectRoot,
+      projectId: input.project.id,
+      range: input.range,
+      shotId: input.shot?.id ?? null,
+      timeMs,
+      sampledAtMs,
+      playing: input.playing,
+      clockGeneration: input.seekRevision,
+    })),
+  };
+}
+function liveClockInput(project: Project, delayBaseMs: number, anchorTimeMs = 600) {
+  const input = syncInput(project, { timeMs: anchorTimeMs });
+  return Object.assign(input, {
+    range: 'project' as const,
+    readMasterSnapshot: (sampledAtMs: number) => ({
+      projectRoot: input.projectRoot,
+      projectId: input.project.id,
+      range: 'project' as const,
+      shotId: input.shot?.id ?? null,
+      timeMs: anchorTimeMs + sampledAtMs - delayBaseMs,
+      sampledAtMs,
+      playing: input.playing,
+      clockGeneration: input.seekRevision,
+    }),
+  });
 }
 function mixedProject(): Project {
   const project = buildAudioProject();
@@ -363,6 +403,49 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     transport.dispose();
   });
 
+  it.each([[40, 50], [70, 15]] as const)(
+    'ignores a React sample %i ms old but still corrects genuine drift',
+    async (sampleAgeMs, genuineDriftMs) => {
+      const project = buildAudioProject();
+      const shot = project.shots[0]!;
+      shot.audioClips = [{ ...shot.audioClips[0]!, id: CLIP_A_ID, startMs: 500, endMs: 1_000, offsetMs: 100 }];
+      const context = new FakeContext();
+      const clock = vi.spyOn(performance, 'now').mockReturnValue(1_000);
+      const staleReactInput = liveClockInput(project, 1_000);
+      const audioTransport = new ProductPreviewAudioTransport({
+        createContext: () => context.api(),
+        readAudio: async (request) => readyResponse(request),
+      });
+
+      try {
+        audioTransport.sync(staleReactInput);
+        await flush();
+
+        clock.mockReturnValue(1_000 + sampleAgeMs);
+        context.currentTime = 10 + (sampleAgeMs + genuineDriftMs) / 1_000;
+        audioTransport.sync(staleReactInput);
+        await flush();
+        expect(context.sources).toHaveLength(1);
+        expect(context.sources[0]!.stop).not.toHaveBeenCalled();
+
+        context.currentTime += 0.1;
+        audioTransport.sync(staleReactInput);
+        await flush();
+        const expectedMasterTimeMs = 600 + sampleAgeMs;
+        expect(context.sources).toHaveLength(2);
+        expect(context.sources[0]!.stop).toHaveBeenCalledTimes(1);
+        expect(context.sources[1]!.start).toHaveBeenCalledWith(
+          context.currentTime,
+          (expectedMasterTimeMs - 500 + 100) / 1_000,
+          (1_000 - expectedMasterTimeMs) / 1_000,
+        );
+      } finally {
+        clock.mockRestore();
+        audioTransport.dispose();
+      }
+    },
+  );
+
   it('stops and replays repeatedly without stacking sources or accumulating cache', async () => {
     const { project, context, transport, readAudio } = setup();
     for (let index = 0; index < 5; index++) {
@@ -454,7 +537,7 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     transport.dispose();
   });
 
-  it('waits for a fresh master sync before a delayed read can start an expired clip after a renderer stall', async () => {
+  it('uses the live master after a stalled read and skips clips outside their current window', async () => {
     const project = mixedProject();
     const shot = project.shots[0]!;
     shot.audioClips.push({
@@ -474,22 +557,24 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     });
 
     try {
-      transport.sync(syncInput(project, { timeMs: 950 }));
-      clock.mockReturnValue(1_500);
+      transport.sync(liveClockInput(project, 1_000, 950));
+      clock.mockReturnValue(1_550);
       read.resolve(readyResponse({
         projectRoot: PROJECT_ROOT,
         assetId: AUDIO_ID,
         sha256: 'c'.repeat(64),
       }));
       await flush();
-      expect(context.sources).toHaveLength(0);
+      expect(context.sources.map((source) => source.start.mock.calls[0])).toEqual([
+        [10, 1.5, 1],
+      ]);
 
-      clock.mockReturnValue(1_516);
+      context.currentTime = 10.05;
       transport.sync(syncInput(project, { timeMs: 1_550 }));
       await flush();
       expect(context.sources.map((source) => source.start.mock.calls[0])).toEqual([
-        [10, 1.55, 0.95],
-        [10, 0.55, 0.45],
+        [10, 1.5, 1],
+        [10.05, 0.55, 0.45],
       ]);
     } finally {
       clock.mockRestore();
@@ -514,16 +599,70 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     });
 
     try {
-      transport.sync(syncInput(project, { timeMs: 1_341, masterTimeSampledAtMs: 1_000 }));
+      transport.sync(syncInput(project, {
+        timeMs: 1_341,
+        readMasterSnapshot: () => ({
+          projectRoot: PROJECT_ROOT,
+          projectId: project.id,
+          range: 'project',
+          shotId: shot.id,
+          timeMs: 1_341,
+          sampledAtMs: 1_000,
+          playing: true,
+          clockGeneration: 0,
+        }),
+      }));
       await flush();
       expect(context.sources).toHaveLength(0);
 
       nowMs = 1_516;
-      transport.sync(syncInput(project, { timeMs: 1_888, masterTimeSampledAtMs: 1_516 }));
+      transport.sync(syncInput(project, { timeMs: 1_888 }));
       await flush();
       expect(context.sources.map((source) => source.start.mock.calls[0])).toEqual([
         [10, 0.588, 0.812],
       ]);
+    } finally {
+      clock.mockRestore();
+      transport.dispose();
+    }
+  });
+
+  it.each([
+    ['decode', 40], ['decode', 70], ['decode', 100], ['decode', 200],
+    ['resume', 40], ['resume', 70], ['resume', 100], ['resume', 200],
+  ] as const)('%s completion starts from the live master time after %i ms', async (stage, delayMs) => {
+    const project = buildAudioProject();
+    const shot = project.shots[0]!;
+    shot.audioClips = [{ ...shot.audioClips[0]!, id: CLIP_A_ID, startMs: 500, endMs: 1_000, offsetMs: 100 }];
+    const context = new FakeContext();
+    const decode = deferred<AudioBuffer>();
+    const resume = deferred<void>();
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    if (stage === 'decode') context.decodeAudioData.mockImplementation(() => decode.promise);
+    if (stage === 'resume') {
+      context.state = 'suspended';
+      context.resume.mockImplementation(() => resume.promise);
+    }
+    const transport = new ProductPreviewAudioTransport({
+      createContext: () => context.api(),
+      readAudio: async (request) => readyResponse(request),
+    });
+
+    try {
+      transport.sync(liveClockInput(project, 1_000));
+      await flush();
+      clock.mockReturnValue(1_000 + delayMs);
+      if (stage === 'decode') decode.resolve(buffer());
+      else { context.state = 'running'; resume.resolve(); }
+      await flush();
+
+      const expectedTimeMs = 600 + delayMs;
+      expect(context.sources).toHaveLength(1);
+      expect(context.sources[0]!.start).toHaveBeenCalledWith(
+        10,
+        (expectedTimeMs - 500 + 100) / 1_000,
+        (1_000 - expectedTimeMs) / 1_000,
+      );
     } finally {
       clock.mockRestore();
       transport.dispose();
@@ -757,8 +896,15 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     const overlay = readFileSync('src/renderer/shell/ProductPreviewOverlay.tsx', 'utf8');
     const call = overlay.slice(overlay.indexOf('const audioWarning = useProductPreviewAudio({'), overlay.indexOf('useLayoutEffect(() => {', overlay.indexOf('const audioWarning =')));
     expect(call).not.toContain('activeDialogueId');
-    expect(call).toContain('timeMs: activeShotTimeMs');
+    expect(call).toContain('readMasterSnapshot');
+    expect(call).not.toContain('timeMs: activeShotTimeMs');
+    expect(call).not.toContain('masterTimeSampledAtMs');
+    const reader = overlay.slice(overlay.indexOf('const readMasterSnapshot = useCallback('), overlay.indexOf('const audioWarning ='));
+    expect(reader).toContain('playbackClockAnchorRef.current');
+    expect(reader).toContain('resolveProductPreviewClockTime(anchor, sampledAtMs, durationMs)');
+    expect(reader).toContain('playbackClockGenerationRef.current');
     const audio = readFileSync('src/renderer/shell/productPreviewAudio.ts', 'utf8');
     expect(audio).not.toMatch(/setTimeMs|evaluateMouth|AutoCamera|updateProject|historyStore/u);
+    expect(audio).not.toMatch(/requestAnimationFrame|setInterval|setTimeout/u);
   });
 });

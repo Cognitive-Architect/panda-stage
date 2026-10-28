@@ -536,9 +536,11 @@ describe('product preview overlay contract', () => {
 
     expect(overlay).toContain('useProductPreviewAudio({');
     const audio = readSource(AUDIO_PATH);
-    expect(audio).toContain('resolveProductPreviewAudios(input.project, input.shot, input.timeMs)');
+    expect(audio).toContain('resolveProductPreviewAudios(input.project, input.shot, snapshot.timeMs)');
     expect(overlay).not.toContain('activeDialogueId: activeCue?.id ?? null');
-    expect(overlay).toContain('timeMs: activeShotTimeMs');
+    const audioCall = overlay.slice(overlay.indexOf('const audioWarning = useProductPreviewAudio({'), overlay.indexOf('useLayoutEffect(() => {', overlay.indexOf('const audioWarning =')));
+    expect(audioCall).toContain('readMasterSnapshot');
+    expect(audioCall).not.toContain('timeMs: activeShotTimeMs');
     expect(overlay).toContain('playing,');
     expect(overlay).toContain('seekRevision,');
     expect(overlay).toContain('resolveProductPreviewTransportAction(');
@@ -691,9 +693,9 @@ describe('product preview overlay contract', () => {
     expect(overlay).toContain('!initialAutoplayConsumedRef.current &&');
     expect(overlay).toContain('autoplayConsumed: initialAutoplayConsumedRef.current');
     expect(overlay).toContain('if (next.playing) initialAutoplayConsumedRef.current = true;');
-    expect(overlay).toContain('const masterTimeSampledAtMsRef = useRef(0);');
-    expect(overlay).toContain('masterTimeSampledAtMs: masterTimeSampledAtMsRef.current');
-    expect(overlay).toContain('masterTimeSampledAtMsRef.current = now;');
+    expect(overlay).toContain('const readMasterSnapshot = useCallback(');
+    expect(overlay).toContain('resolveProductPreviewClockTime(anchor, sampledAtMs, durationMs)');
+    expect(overlay).toContain('clockGeneration: playbackClockGenerationRef.current');
     expect(stageRenderer).toContain('data-layer-visual-state-json={');
     expect(stageRenderer).toMatch(
       /data-layer-visual-state-json=\{\s*showStageLabel\s*\?\s*JSON\.stringify/u,

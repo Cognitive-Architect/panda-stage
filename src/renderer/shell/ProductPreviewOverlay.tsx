@@ -117,7 +117,6 @@ export function ProductPreviewOverlay({
   const [timeMs, setTimeMs] = useState(0);
   const [playing, setPlaying] = useState(false);
   const timeMsRef = useRef(timeMs);
-  const masterTimeSampledAtMsRef = useRef(0);
   const initialAutoplayConsumedRef = useRef(false);
   const playbackClockAnchorRef =
     useRef<ProductPreviewClockAnchor | null>(null);
@@ -198,7 +197,6 @@ export function ProductPreviewOverlay({
         ? { startedAtMs: anchoredAtMs, startTimeMs: next.timeMs }
         : null;
       timeMsRef.current = next.timeMs;
-      masterTimeSampledAtMsRef.current = anchoredAtMs;
       setTimeMs(next.timeMs);
       setPlaying(next.playing);
     },
@@ -334,7 +332,6 @@ export function ProductPreviewOverlay({
         focused: document.hasFocus(),
       });
       timeMsRef.current = elapsed.timeMs;
-      masterTimeSampledAtMsRef.current = now;
       setTimeMs(elapsed.timeMs);
       if (elapsed.ended) {
         commitTransportState(
@@ -704,14 +701,42 @@ export function ProductPreviewOverlay({
           ? 'degraded'
           : assets.status;
   const atEnd = durationMs > 0 && displayedTimeMs >= durationMs;
+  const readMasterSnapshot = useCallback(
+    (sampledAtMs: number) => {
+      const anchor = playbackClockAnchorRef.current;
+      const masterStep = anchor
+        ? resolveProductPreviewClockTime(anchor, sampledAtMs, durationMs)
+        : { timeMs: clampProductPreviewTime(timeMsRef.current, durationMs), ended: false };
+      const liveProjectPosition = range === 'project'
+        ? mapProjectTime(project, masterStep.timeMs)
+        : null;
+      const liveShot = range === 'project'
+        ? liveProjectPosition?.shot ?? null
+        : currentShot;
+      const shotLocalTimeMs = range === 'project'
+        ? liveProjectPosition?.shotLocalTimeMs ?? 0
+        : clampProductPreviewTime(masterStep.timeMs, liveShot?.durationMs ?? 0);
+      return {
+        projectRoot,
+        projectId: project.id,
+        range,
+        shotId: liveShot?.id ?? null,
+        timeMs: shotLocalTimeMs,
+        sampledAtMs,
+        playing: anchor !== null && !masterStep.ended && liveShot !== null,
+        clockGeneration: playbackClockGenerationRef.current,
+      };
+    },
+    [currentShot, durationMs, project, projectRoot, range],
+  );
   const audioWarning = useProductPreviewAudio({
     projectRoot,
     project,
     shot,
-    timeMs: activeShotTimeMs,
-    masterTimeSampledAtMs: masterTimeSampledAtMsRef.current,
+    range,
     playing,
     seekRevision,
+    readMasterSnapshot,
   });
   useLayoutEffect(() => {
     recordPreviewDuration('overlay-render-to-commit', renderStartedAt, { timeMs });

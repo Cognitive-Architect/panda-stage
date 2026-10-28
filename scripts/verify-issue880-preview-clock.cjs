@@ -242,7 +242,7 @@ async function installAudioProbe(window) {
       }
       createBufferSource() {
         const source = super.createBufferSource();
-        const record = { active: false, startCount: 0, stopCount: 0, startArgs: null };
+        const record = { active: false, startCount: 0, stopCount: 0, startArgs: null, context: this };
         probe.sources.push(record);
         const nativeStart = source.start.bind(source);
         const nativeStop = source.stop.bind(source);
@@ -319,6 +319,7 @@ async function readState(window) {
     let layerVisuals = [];
     try { layerVisuals = JSON.parse(stage?.dataset.layerVisualStateJson ?? '[]'); } catch {}
     return {
+      sampledAtMs: performance.now(),
       previewTimeMs: Number(overlay?.dataset.previewTime ?? -1),
       playing: overlay?.dataset.previewPlaying === 'true',
       range: overlay?.dataset.previewRange ?? null,
@@ -330,7 +331,16 @@ async function readState(window) {
       layerVisuals,
       starts: probe.starts,
       stops: probe.stops,
-      startedSources: probe.sources.filter((source) => source.startCount > 0).map((source) => ({ ...source })),
+      startedSources: probe.sources.filter((source) => source.startCount > 0).map((source) => ({
+        active: source.active,
+        startArgs: source.startArgs,
+        currentOffsetSeconds: source.active && source.startArgs
+          ? Number(source.startArgs[1]) + Math.min(
+            Math.max(0, source.context.currentTime - Number(source.startArgs[0])),
+            Number(source.startArgs[2] ?? Number.POSITIVE_INFINITY),
+          )
+          : null,
+      })),
       activeSources: probe.sources.filter((source) => source.active).length,
       contextStates: probe.contexts.map((context) => context.state),
       audioWarning: document.querySelector('[data-testid="product-preview-audio-warning"]')?.textContent ?? null,
@@ -503,11 +513,14 @@ async function runFrontstageStall(window) {
     firstPostStallMaster: stallRecord.firstPostStallMaster,
     firstPostStallStage: stallRecord.firstPostStallStage,
     audioAfterCommit: {
+      sampledAtMs: afterAudio.sampledAtMs,
       starts: afterAudio.starts,
       stops: afterAudio.stops,
       activeSources: afterAudio.activeSources,
       latestOffsetSeconds,
       sourceStartArgs: startedSources.map((source) => source.startArgs),
+      currentOffsets: startedSources.filter((source) => source.active)
+        .map((source) => source.currentOffsetSeconds),
     },
   };
 }
@@ -710,22 +723,36 @@ async function run() {
       assert(activeFace?.source === receipt.frontstageStall.expectedActiveFace.source &&
         activeFace?.assetId === receipt.frontstageStall.expectedActiveFace.assetId,
       `Mouth projection did not follow master time: received ${JSON.stringify(activeFace)}.`);
-      assert(frontstageStall.audioAfterCommit.starts > startsBeforeStall &&
-        frontstageStall.audioAfterCommit.activeSources === 1,
-      'Audio did not reconcile to one current voice after the renderer stall.');
+      assert(frontstageStall.audioAfterCommit.activeSources === 1,
+        'Audio did not reconcile to one current voice after the renderer stall.');
       const postStallSources = frontstageStall.audioAfterCommit.sourceStartArgs.slice(startsBeforeStall);
       const expectedAudioOffsetSeconds = (frontstageStall.firstPostStallMaster.previewTimeMs - secondClip.startMs + secondClip.offsetMs) / 1_000;
+      const expectedAudioOffsetAtReadSeconds = (
+        frontstageStall.firstPostStallMaster.previewTimeMs +
+        Math.max(0, frontstageStall.audioAfterCommit.sampledAtMs - frontstageStall.firstPostStallMaster.committedAtMs) -
+        secondClip.startMs + secondClip.offsetMs
+      ) / 1_000;
+      const activeAudioOffsetSeconds = frontstageStall.audioAfterCommit.currentOffsets[0];
       receipt.frontstageStall.postStallSourceStartArgs = postStallSources;
       receipt.frontstageStall.expectedAudioOffsetSeconds = expectedAudioOffsetSeconds;
-      assert(postStallSources.length > 0 && postStallSources.every((source) =>
-        Number.isFinite(Number(source?.[1])) &&
-        Math.abs(Number(source?.[1]) - expectedAudioOffsetSeconds) <= 0.15 &&
-        Number(source?.[1]) + Number(source?.[2]) >= 1.3 &&
-        Number(source?.[1]) + Number(source?.[2]) <= 1.5),
-      'A stale or expired dialogue source restarted after the renderer stall.');
-      assert(Number.isFinite(frontstageStall.audioAfterCommit.latestOffsetSeconds) &&
-        Math.abs(frontstageStall.audioAfterCommit.latestOffsetSeconds - expectedAudioOffsetSeconds) <= 0.15,
-      `Current dialogue audio started at offset ${frontstageStall.audioAfterCommit.latestOffsetSeconds}s instead of the post-stall master position near ${expectedAudioOffsetSeconds}s.`);
+      receipt.frontstageStall.audioReconciliation = {
+        restartReason: postStallSources.length > 0 ? 'master-drift' : 'active-source-remained-aligned',
+        restarted: postStallSources.length > 0,
+        expectedStartOffsetSeconds: expectedAudioOffsetSeconds,
+        expectedOffsetAtReadSeconds: expectedAudioOffsetAtReadSeconds,
+        activeSourceOffsetSeconds: activeAudioOffsetSeconds ?? null,
+      };
+      assert(Number.isFinite(activeAudioOffsetSeconds) &&
+        Math.abs(activeAudioOffsetSeconds - expectedAudioOffsetAtReadSeconds) <= 0.15,
+      `Current dialogue audio was at ${activeAudioOffsetSeconds}s instead of the post-stall master position near ${expectedAudioOffsetAtReadSeconds}s.`);
+      if (postStallSources.length > 0) {
+        assert(postStallSources.every((source) =>
+          Number.isFinite(Number(source?.[1])) &&
+          Math.abs(Number(source?.[1]) - expectedAudioOffsetSeconds) <= 0.15 &&
+          Number(source?.[1]) + Number(source?.[2]) >= 1.3 &&
+          Number(source?.[1]) + Number(source?.[2]) <= 1.5),
+        'A dialogue source restarted at a stale or expired offset after the renderer stall.');
+      }
     }
 
     if (baselineCase !== 'stall') {
