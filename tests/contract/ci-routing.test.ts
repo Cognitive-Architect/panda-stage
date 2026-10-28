@@ -81,6 +81,13 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual([]);
   });
 
+  it('routes the Issue #880 Product Preview clock verifier through the editor owner', () => {
+    const result = draft([change('scripts/verify-issue880-preview-clock.cjs', 'A')]);
+    expect(result.tier).toBe('targeted');
+    expect(result.matchedRouteIds).toEqual(['editor-shell']);
+    expect(result.suites).toEqual(['editor', 'timeline']);
+    expect(result.unknownPaths).toEqual([]);
+  });
   it('keeps the Main Process application menu policy test on the Full-risk core owner', () => {
     const result = draft([change('tests/unit/application-menu-policy.test.ts')]);
     expect(result.tier).toBe('focused');
