@@ -14,7 +14,7 @@ import {
   type ProductPreviewAudioContext, type ProductPreviewAudioSyncInput,
 } from '../../src/renderer/shell/productPreviewAudio';
 import { buildProject, IDS } from './domain/testProject';
-import { advanceProductPreviewTime } from '../../src/renderer/shell/productPreviewModel';
+import { resolveProductPreviewClockTime } from '../../src/renderer/shell/productPreviewModel';
 
 const AUDIO_ID = '10000000-0000-4000-8000-000000000401';
 const AUDIO_B_ID = '10000000-0000-4000-8000-000000000402';
@@ -473,7 +473,7 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     transport.dispose();
   });
 
-  it.each(['dialogue', 'bgm', 'sfx'] as const)('rebuilds naturally ended %s on the next clamped master tick using the latest source offset', async (role) => {
+  it.each(['dialogue', 'bgm', 'sfx'] as const)('does not replay expired %s after an absolute clock catch-up', async (role) => {
     const { project, context, transport, readAudio } = setup(buildAudioProject());
     project.shots[0]!.audioClips[0]!.role = role;
     if (role !== 'dialogue') project.shots[0]!.dialogues = [];
@@ -486,19 +486,61 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     expect(old.disconnect).toHaveBeenCalledTimes(1);
     expect(context.gains[0]!.disconnect).toHaveBeenCalledTimes(1);
     expect(context.sources).toHaveLength(1); // Callback is cleanup only, not a second clock.
-    const next = advanceProductPreviewTime(600, 3000, project.shots[0]!.durationMs);
-    expect(next.timeMs).toBe(850); // The incumbent 250ms clamp must remain intact.
-    transport.sync(syncInput(project, { timeMs: next.timeMs })); await flush();
-    expect(context.sources).toHaveLength(2);
-    expect(context.sources[1]!.start).toHaveBeenCalledWith(13, 0.45, 0.15);
-    expect(internals(transport).voices.size).toBe(1);
-    expect(context.sources.filter((source) => source.buffer !== null)).toHaveLength(1);
+    const next = resolveProductPreviewClockTime(
+      { startedAtMs: 10_000, startTimeMs: 600 },
+      context.currentTime * 1_000,
+      project.shots[0]!.durationMs,
+    );
+    expect(next.timeMs).toBe(3_000);
+    expect(next.ended).toBe(true);
+    transport.sync(syncInput(project, { timeMs: next.timeMs, playing: false })); await flush();
+    expect(context.sources).toHaveLength(1);
+    expect(internals(transport).voices.size).toBe(0);
+    expect(context.sources.filter((source) => source.buffer !== null)).toHaveLength(0);
     expect(readAudio).toHaveBeenCalledTimes(1);
     expect(context.decodeAudioData).toHaveBeenCalledTimes(1);
-    lateEnd(); // Even a repeated old callback cannot remove the replacement Voice.
-    transport.sync(syncInput(project, { timeMs: 850 })); await flush();
-    expect(context.sources).toHaveLength(2);
-    expect(context.sources[1]!.stop).not.toHaveBeenCalled();
+    lateEnd(); // A stale callback cannot recreate audio after Preview has ended.
+    transport.sync(syncInput(project, { timeMs: next.timeMs, playing: false })); await flush();
+    expect(context.sources).toHaveLength(1);
+    expect(internals(transport).voices.size).toBe(0);
+    transport.dispose();
+  });
+
+  it('catches audio up to the current master time without replaying expired clips', async () => {
+    const { project, context, transport } = setup(mixedProject());
+    const template = project.shots[0]!.audioClips[0]!;
+    project.shots[0]!.audioClips.push({
+      ...template,
+      id: CLIP_B_ID,
+      role: 'dialogue',
+      startMs: 1_500,
+      endMs: 2_000,
+      offsetMs: 500,
+      volume: 1,
+    });
+    transport.sync(syncInput(project)); await flush();
+    expect(context.sources).toHaveLength(4);
+
+    context.currentTime += 1.2;
+    context.sources[0]!.onended!(); // Dialogue A is over by 1800 ms.
+    context.sources[2]!.onended!(); // Both SFX windows are over by 1800 ms.
+    context.sources[3]!.onended!();
+    const next = resolveProductPreviewClockTime(
+      { startedAtMs: 10_000, startTimeMs: 600 },
+      context.currentTime * 1_000,
+      project.shots[0]!.durationMs,
+    );
+    expect(next.timeMs).toBe(1_800);
+
+    transport.sync(syncInput(project, { timeMs: next.timeMs })); await flush();
+
+    expect(context.sources).toHaveLength(5);
+    expect(context.sources[1]!.stop).not.toHaveBeenCalled(); // BGM stayed aligned.
+    expect(context.sources[4]!.start).toHaveBeenCalledWith(11.2, 0.8, 0.2);
+    expect(context.sources[0]!.buffer).toBeNull();
+    expect(context.sources[2]!.buffer).toBeNull();
+    expect(context.sources[3]!.buffer).toBeNull();
+    expect(internals(transport).voices.size).toBe(2);
     transport.dispose();
   });
 

@@ -85,7 +85,8 @@ describe('Issue #653 persistent automatic Camera mode', () => {
     expect(preview).toContain('evaluateSpeakerFocusCamera(cameraPlan, activeShotTimeMs)');
     expect(preview).toContain('camera={camera}');
     expect(preview).toContain('shouldStartProductPreviewAutoplay({');
-    expect(preview).toContain('setPlaying(true)');
+    expect(preview).toContain("{ type: 'play' },");
+    expect(preview).toContain('commitTransportState(next, now);');
     expect(shell).toMatch(/<ProductPreviewOverlay\s+autoPlay\s+autoCameraEnabled=\{autoCameraEnabled\}/u);
     expect(shouldStartProductPreviewAutoplay({
       autoPlay: true,

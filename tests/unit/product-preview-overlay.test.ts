@@ -20,14 +20,14 @@ import {
 } from '../../src/domain';
 import { evaluateSubtitleAtTime } from '../../src/shared/preview/subtitle-engine';
 import {
-  PRODUCT_PREVIEW_MAX_STEP_MS,
-  advanceProductPreviewTime,
   buildProductPreviewCues,
   clampProductPreviewTime,
   formatProductPreviewTimecode,
   listProductPreviewAssetIds,
+  resolveProductPreviewClockTime,
   resolveProductPreviewTransportAction,
   resolveProductPreviewShot,
+  resolveProductPreviewVisibilityPause,
 } from '../../src/renderer/shell/productPreviewModel';
 
 const OVERLAY_PATH = 'src/renderer/shell/ProductPreviewOverlay.tsx';
@@ -249,22 +249,136 @@ describe('product preview model', () => {
     expect(evaluateSubtitleAtTime(cues, 1_500)).toBeNull();
   });
 
-  it('advances a clamped local clock and stops exactly at the shot end', () => {
-    expect(advanceProductPreviewTime(0, 16, 4_000)).toEqual({
-      timeMs: 16,
+  it.each([16, 100, 250, 500, 1_000])(
+    'reads %i ms of monotonic foreground time without a per-frame cap',
+    (elapsedMs) => {
+      expect(
+        resolveProductPreviewClockTime(
+          { startedAtMs: 1_000, startTimeMs: 300 },
+          1_000 + elapsedMs,
+          4_000,
+        ),
+      ).toEqual({ timeMs: 300 + elapsedMs, ended: false });
+    },
+  );
+
+  it('uses one absolute anchor so repeated long RAF gaps cannot accumulate drift', () => {
+    const anchor = { startedAtMs: 1_000, startTimeMs: 0 };
+
+    expect(resolveProductPreviewClockTime(anchor, 1_500, 4_000).timeMs).toBe(
+      500,
+    );
+    expect(resolveProductPreviewClockTime(anchor, 2_000, 4_000).timeMs).toBe(
+      1_000,
+    );
+  });
+
+  it('reanchors pause/resume, seek and replay from their current transport positions', () => {
+    const firstAnchor = { startedAtMs: 1_000, startTimeMs: 1_250 };
+    const afterStall = resolveProductPreviewClockTime(
+      firstAnchor,
+      1_500,
+      4_000,
+    );
+    expect(afterStall.timeMs).toBe(1_750);
+
+    const paused = resolveProductPreviewTransportAction(
+      afterStall.timeMs,
+      4_000,
+      { type: 'pause' },
+    );
+    expect(paused).toEqual({
+      timeMs: 1_750,
+      playing: false,
+      repositionAudio: false,
+    });
+    const resumed = resolveProductPreviewTransportAction(
+      paused.timeMs,
+      4_000,
+      { type: 'play' },
+    );
+    expect(
+      resolveProductPreviewClockTime(
+        { startedAtMs: 2_000, startTimeMs: resumed.timeMs },
+        2_100,
+        4_000,
+      ).timeMs,
+    ).toBe(1_850);
+
+    const sought = resolveProductPreviewTransportAction(
+      1_850,
+      4_000,
+      { type: 'seek', timeMs: 2_750 },
+    );
+    expect(sought).toEqual({
+      timeMs: 2_750,
+      playing: false,
+      repositionAudio: true,
+    });
+    const replayed = resolveProductPreviewTransportAction(
+      sought.timeMs,
+      4_000,
+      { type: 'replay' },
+    );
+    expect(
+      resolveProductPreviewClockTime(
+        { startedAtMs: 5_500, startTimeMs: replayed.timeMs },
+        5_516,
+        4_000,
+      ).timeMs,
+    ).toBe(16);
+  });
+
+  it('never moves backward for an invalid/earlier monotonic timestamp and stops at the duration', () => {
+    const anchor = { startedAtMs: 1_000, startTimeMs: 3_900 };
+
+    expect(resolveProductPreviewClockTime(anchor, 900, 4_000)).toEqual({
+      timeMs: 3_900,
       ended: false,
     });
-    // A suspended tab must not fast-forward the whole shot in one frame.
-    expect(advanceProductPreviewTime(0, 10_000, 4_000)).toEqual({
-      timeMs: PRODUCT_PREVIEW_MAX_STEP_MS,
-      ended: false,
-    });
-    expect(advanceProductPreviewTime(3_900, 200, 4_000)).toEqual({
+    expect(resolveProductPreviewClockTime(anchor, 1_200, 4_000)).toEqual({
       timeMs: 4_000,
       ended: true,
     });
-    expect(advanceProductPreviewTime(0, Number.NaN, 4_000).timeMs).toBe(0);
-    expect(advanceProductPreviewTime(0, -50, 4_000).timeMs).toBe(0);
+    expect(resolveProductPreviewClockTime(anchor, Number.NaN, 4_000)).toEqual({
+      timeMs: 3_900,
+      ended: false,
+    });
+  });
+
+  it('pauses at the current absolute time when hidden and stays paused when visible', () => {
+    const anchor = { startedAtMs: 1_000, startTimeMs: 200 };
+    const pause = resolveProductPreviewVisibilityPause(
+      'hidden',
+      anchor,
+      1_500,
+      4_000,
+    );
+
+    expect(pause).toEqual({
+      timeMs: 700,
+      playing: false,
+      repositionAudio: false,
+    });
+    expect(
+      resolveProductPreviewVisibilityPause('visible', anchor, 2_000, 4_000),
+    ).toBeNull();
+    expect(
+      resolveProductPreviewVisibilityPause('hidden', null, 2_000, 4_000),
+    ).toBeNull();
+    const explicitPlay = resolveProductPreviewTransportAction(
+      pause!.timeMs,
+      4_000,
+      { type: 'play' },
+    );
+    expect(explicitPlay.playing).toBe(true);
+    expect(
+      resolveProductPreviewClockTime(
+        { startedAtMs: 3_500, startTimeMs: explicitPlay.timeMs },
+        3_516,
+        4_000,
+      ).timeMs,
+    ).toBe(716);
   });
 
   it('clamps and formats scrub positions without leaking fractions', () => {
@@ -313,6 +427,46 @@ describe('product preview model', () => {
 });
 
 describe('product preview overlay contract', () => {
+  it('uses the absolute Preview clock and pauses hidden pages without auto-resuming', () => {
+    const overlay = readSource(OVERLAY_PATH);
+
+    expect(overlay).toContain('resolveProductPreviewClockTime(');
+    expect(overlay).toContain('playbackClockAnchorRef.current = next.playing');
+    expect(overlay).toContain(
+      'generation !== playbackClockGenerationRef.current',
+    );
+    expect(overlay).toContain(
+      "document.addEventListener('visibilitychange', onVisibilityChange)",
+    );
+    expect(overlay).toContain(
+      "if (document.visibilityState === 'hidden') onVisibilityChange();",
+    );
+    expect(overlay).toContain('resolveProductPreviewVisibilityPause(');
+    expect(overlay).toContain("document.visibilityState === 'visible'");
+    expect(overlay).toContain(
+      "if (next.playing && document.visibilityState !== 'visible') return;",
+    );
+    expect(overlay).toContain('projectIdRef.current = project.id');
+    expect(overlay).not.toContain("addEventListener('blur'");
+    expect(overlay).not.toContain('advanceProductPreviewTime');
+    expect(overlay).not.toContain('PRODUCT_PREVIEW_MAX_STEP_MS');
+  });
+
+  it('invalidates old RAF work when project, shot range or range ownership changes', () => {
+    const overlay = readSource(OVERLAY_PATH);
+
+    expect(overlay).toContain('playbackClockGenerationRef.current += 1');
+    expect(overlay).toContain(
+      'if (projectIdRef.current === project.id) return;',
+    );
+    expect(overlay).toContain("if (range !== 'shot') return;");
+    expect(overlay).toContain(
+      '{ timeMs: 0, playing: false, repositionAudio: true }',
+    );
+    expect(overlay).toContain('setRange(nextRange)');
+    expect(overlay).toContain('setSeekRevision((current) => current + 1)');
+  });
+
   it('reuses the formal evaluator and renderer instead of a preview copy', () => {
     const overlay = readSource(OVERLAY_PATH);
 
@@ -426,7 +580,9 @@ describe('product preview overlay contract', () => {
     ]) {
       expect(overlay).toContain(selector);
     }
-    expect(overlay).toContain("type: playing ? 'pause' : 'play'");
+    expect(overlay).toMatch(
+      /type:\s*playbackClockAnchorRef\.current\s*\?\s*'pause'\s*:\s*'play'/u,
+    );
     expect(overlay).toContain('role="dialog"');
     expect(overlay).toContain('aria-modal={previewSurfaceActive}');
   });
