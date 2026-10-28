@@ -691,6 +691,9 @@ describe('product preview overlay contract', () => {
     expect(overlay).toContain('!initialAutoplayConsumedRef.current &&');
     expect(overlay).toContain('autoplayConsumed: initialAutoplayConsumedRef.current');
     expect(overlay).toContain('if (next.playing) initialAutoplayConsumedRef.current = true;');
+    expect(overlay).toContain('const masterTimeSampledAtMsRef = useRef(0);');
+    expect(overlay).toContain('masterTimeSampledAtMs: masterTimeSampledAtMsRef.current');
+    expect(overlay).toContain('masterTimeSampledAtMsRef.current = now;');
     expect(stageRenderer).toContain('data-layer-visual-state-json={');
     expect(stageRenderer).toMatch(
       /data-layer-visual-state-json=\{\s*showStageLabel\s*\?\s*JSON\.stringify/u,

@@ -57,6 +57,7 @@ export interface ProductPreviewAudioSyncInput {
   project: Project;
   shot: Shot | null;
   timeMs: number;
+  masterTimeSampledAtMs: number;
   playing: boolean;
   seekRevision: number;
 }
@@ -92,7 +93,7 @@ export class ProductPreviewAudioTransport {
   private cacheBytes = 0;
   private cacheEpoch = 0;
   private latestInput: ProductPreviewAudioSyncInput | null = null;
-  private latestInputAtMs: number | null = null;
+  private latestMasterSampledAtMs: number | null = null;
   private warning: string | null = null;
   private disposed = false;
 
@@ -106,7 +107,7 @@ export class ProductPreviewAudioTransport {
     if (this.disposed) return;
     const previous = this.latestInput;
     this.latestInput = input;
-    this.latestInputAtMs = performance.now();
+    this.latestMasterSampledAtMs = input.masterTimeSampledAtMs;
     const projectChanged = previous && (previous.projectRoot !== input.projectRoot || previous.project.id !== input.project.id);
     if (projectChanged) {
       this.cacheEpoch += 1;
@@ -150,7 +151,7 @@ export class ProductPreviewAudioTransport {
     this.disposed = true;
     this.cacheEpoch += 1;
     this.latestInput = null;
-    this.latestInputAtMs = null;
+    this.latestMasterSampledAtMs = null;
     this.clearVoices();
     this.bufferCache.clear();
     this.cacheBytes = 0;
@@ -225,10 +226,11 @@ export class ProductPreviewAudioTransport {
   }
 
   private hasFreshMasterInput(): boolean {
-    if (this.latestInputAtMs === null) return false;
+    if (this.latestMasterSampledAtMs === null) return false;
     const nowMs = performance.now();
-    return Number.isFinite(nowMs) && nowMs >= this.latestInputAtMs &&
-      nowMs - this.latestInputAtMs <= PRODUCT_PREVIEW_AUDIO_DRIFT_MS;
+    return Number.isFinite(nowMs) && Number.isFinite(this.latestMasterSampledAtMs) &&
+      nowMs >= this.latestMasterSampledAtMs &&
+      nowMs - this.latestMasterSampledAtMs <= PRODUCT_PREVIEW_AUDIO_DRIFT_MS;
   }
 
   private bufferFor(selection: ProductPreviewAudioSelection): Promise<AudioBuffer> {

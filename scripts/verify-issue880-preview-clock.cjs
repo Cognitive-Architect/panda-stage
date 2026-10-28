@@ -714,12 +714,15 @@ async function run() {
         frontstageStall.audioAfterCommit.activeSources === 1,
       'Audio did not reconcile to one current voice after the renderer stall.');
       const postStallSources = frontstageStall.audioAfterCommit.sourceStartArgs.slice(startsBeforeStall);
+      const expectedAudioOffsetSeconds = (frontstageStall.firstPostStallMaster.previewTimeMs - secondClip.startMs + secondClip.offsetMs) / 1_000;
       receipt.frontstageStall.postStallSourceStartArgs = postStallSources;
+      receipt.frontstageStall.expectedAudioOffsetSeconds = expectedAudioOffsetSeconds;
       assert(postStallSources.length > 0 && postStallSources.every((source) =>
+        Number.isFinite(Number(source?.[1])) &&
+        Math.abs(Number(source?.[1]) - expectedAudioOffsetSeconds) <= 0.15 &&
         Number(source?.[1]) + Number(source?.[2]) >= 1.3 &&
         Number(source?.[1]) + Number(source?.[2]) <= 1.5),
-      'An expired dialogue voice was restarted after the renderer stall.');
-      const expectedAudioOffsetSeconds = (frontstageStall.firstPostStallMaster.previewTimeMs - secondClip.startMs + secondClip.offsetMs) / 1_000;
+      'A stale or expired dialogue source restarted after the renderer stall.');
       assert(Number.isFinite(frontstageStall.audioAfterCommit.latestOffsetSeconds) &&
         Math.abs(frontstageStall.audioAfterCommit.latestOffsetSeconds - expectedAudioOffsetSeconds) <= 0.15,
       `Current dialogue audio started at offset ${frontstageStall.audioAfterCommit.latestOffsetSeconds}s instead of the post-stall master position near ${expectedAudioOffsetSeconds}s.`);
@@ -867,9 +870,7 @@ async function run() {
     assert(afterVisibleWait.activeSources === 0, 'Audio restarted before an explicit Play action.');
     assert(afterVisibleWait.starts === pausedStartCount, 'Audio source was duplicated on visibility restore.');
 
-    const clipsAtResume = shot.audioClips.filter(
-      (clip) => clip.startMs <= afterHide.previewTimeMs && afterHide.previewTimeMs < clip.endMs,
-    );
+    const clipWindows = shot.audioClips.map(({ startMs, endMs }) => ({ startMs, endMs }));
     const startsBeforeResume = afterVisibleWait.starts;
     await evaluate(window, `document.querySelector('[data-testid="product-preview-play-pause"]')?.click()`);
     await waitFor(
@@ -877,17 +878,24 @@ async function run() {
       `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewPlaying === 'true'`,
       'Explicit Play did not resume Product Preview.',
     );
+    await delay(120);
     await waitFor(
       window,
       `(() => {
+        const overlay = document.querySelector('[data-testid="product-preview-overlay"]');
+        const timeMs = Number(overlay?.dataset.previewTime ?? -1);
+        const activeClipCount = ${JSON.stringify(clipWindows)}.filter((clip) => clip.startMs <= timeMs && timeMs < clip.endMs).length;
         const probe = window.__issue880AudioProbe;
-        return probe?.sources.filter((source) => source.active).length === ${clipsAtResume.length} &&
-          probe.starts === ${startsBeforeResume + clipsAtResume.length};
+        return overlay?.dataset.previewPlaying === 'true' &&
+          timeMs >= ${afterHide.previewTimeMs + 50} &&
+          probe?.sources.filter((source) => source.active).length === activeClipCount;
       })()`,
-      'Explicit resume did not create exactly one current native voice per active clip.',
+      'Explicit resume did not reconcile one native voice per clip active at the current master time.',
     );
-    await delay(120);
     const afterResume = await readState(window);
+    const clipsAtResume = shot.audioClips.filter(
+      (clip) => clip.startMs <= afterResume.previewTimeMs && afterResume.previewTimeMs < clip.endMs,
+    );
     assert(afterResume.previewTimeMs > afterHide.previewTimeMs, 'Explicit Play did not advance from the saved position.');
     assert(afterResume.previewTimeMs - afterHide.previewTimeMs < 500, 'Explicit Play included hidden wall time.');
     assert(afterResume.activeSources === clipsAtResume.length, 'Explicit Play created duplicate native audio voices.');
