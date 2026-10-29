@@ -184,6 +184,45 @@ describe('AssetPreviewAudioService', () => {
     expect(JSON.stringify(response)).not.toContain(input.projectRoot);
   });
 
+  it('reuses only a byte-identical file fingerprint for later hash checks and invalidates it after mutation', async () => {
+    const input = await createAudioProject();
+    const service = new AssetPreviewAudioService({
+      getCurrentProjectSnapshot: () => ({ project: input.project }),
+      enableValidatedHashIndex: true,
+    });
+
+    await expect(service.read(request(input))).resolves.toMatchObject({ ok: true, status: 'ready' });
+    expect(service.getHashValidationIndexSnapshot()).toMatchObject({
+      enabled: true,
+      entries: 1,
+      hits: 0,
+      misses: 1,
+      sha256Computations: 1,
+    });
+
+    await expect(service.read(request(input))).resolves.toMatchObject({ ok: true, status: 'ready' });
+    expect(service.getHashValidationIndexSnapshot()).toMatchObject({
+      entries: 1,
+      hits: 1,
+      misses: 1,
+      sha256Computations: 1,
+    });
+
+    const changedBytes = Buffer.from(input.bytes);
+    changedBytes.writeInt16LE(1, 44);
+    await writeFile(input.sourcePath, changedBytes);
+    await expect(service.read(request(input))).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'ASSET_PREVIEW_AUDIO_HASH_MISMATCH' },
+    });
+    expect(service.getHashValidationIndexSnapshot()).toMatchObject({
+      entries: 0,
+      hits: 1,
+      misses: 2,
+      sha256Computations: 2,
+    });
+  });
+
   it('enforces assets containment, declared MIME, and media signature', async () => {
     const traversal = await createAudioProject({
       writeSource: false,

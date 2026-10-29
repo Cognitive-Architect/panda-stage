@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
+import type { BigIntStats } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
+import path from 'node:path';
 import { ProjectSchema, type Project } from '../../domain';
 import {
   ASSET_PREVIEW_AUDIO_MAX_BYTES,
@@ -16,7 +18,20 @@ export interface AssetPreviewAudioServiceOptions {
     projectRoot: string,
   ) => { project: Project } | null;
   inspectionService?: MediaInspectionService;
+  /** Reuse only a successful hash check for the same immutable project/file identity. */
+  enableValidatedHashIndex?: boolean;
 }
+
+export interface AssetPreviewAudioHashIndexSnapshot {
+  enabled: boolean;
+  entries: number;
+  hits: number;
+  misses: number;
+  sha256Computations: number;
+  evictions: number;
+}
+
+const ASSET_PREVIEW_AUDIO_HASH_INDEX_MAX_ENTRIES = 32;
 
 /**
  * Secure, read-only bridge prepared for the later Product Preview phase.
@@ -28,6 +43,12 @@ export class AssetPreviewAudioService {
     projectRoot: string,
   ) => { project: Project } | null;
   private readonly inspectionService: MediaInspectionService;
+  private readonly enableValidatedHashIndex: boolean;
+  private readonly validatedHashes = new Map<string, string>();
+  private hashIndexHits = 0;
+  private hashIndexMisses = 0;
+  private sha256Computations = 0;
+  private hashIndexEvictions = 0;
   private readonly activeReads = new Map<
     string,
     Promise<AssetPreviewAudioReadResponse>
@@ -37,6 +58,18 @@ export class AssetPreviewAudioService {
     this.getCurrentProjectSnapshot = options.getCurrentProjectSnapshot;
     this.inspectionService =
       options.inspectionService ?? new MediaInspectionService();
+    this.enableValidatedHashIndex = options.enableValidatedHashIndex ?? false;
+  }
+
+  getHashValidationIndexSnapshot(): AssetPreviewAudioHashIndexSnapshot {
+    return {
+      enabled: this.enableValidatedHashIndex,
+      entries: this.validatedHashes.size,
+      hits: this.hashIndexHits,
+      misses: this.hashIndexMisses,
+      sha256Computations: this.sha256Computations,
+      evictions: this.hashIndexEvictions,
+    };
   }
 
   read(rawRequest: unknown): Promise<AssetPreviewAudioReadResponse> {
@@ -152,11 +185,11 @@ export class AssetPreviewAudioService {
     }
 
     try {
-      const sourceStats = await stat(sourcePath);
-      if (!sourceStats.isFile() || sourceStats.size <= 0) {
+      const sourceStats = await stat(sourcePath, { bigint: true });
+      if (!sourceStats.isFile() || sourceStats.size <= 0n) {
         throw new Error('not a regular non-empty file');
       }
-      if (sourceStats.size > ASSET_PREVIEW_AUDIO_MAX_BYTES) {
+      if (sourceStats.size > BigInt(ASSET_PREVIEW_AUDIO_MAX_BYTES)) {
         throw new Error('source exceeds preview limit');
       }
       const inspected = await this.inspectionService.inspect(
@@ -173,13 +206,44 @@ export class AssetPreviewAudioService {
       ) {
         throw new Error('source byte length is outside the preview limit');
       }
-      const actualSha256 = createHash('sha256').update(bytes).digest('hex');
-      if (actualSha256 !== request.sha256) {
-        return this.failure(
-          'ASSET_PREVIEW_AUDIO_HASH_MISMATCH',
-          request.assetId,
-          'The source file hash does not match the project asset.',
-        );
+      const afterReadStats = await stat(sourcePath, { bigint: true });
+      const beforeFingerprint = this.fileFingerprint(sourceStats);
+      const afterFingerprint = this.fileFingerprint(afterReadStats);
+      const stableFile = beforeFingerprint !== null && beforeFingerprint === afterFingerprint &&
+        BigInt(bytes.byteLength) === afterReadStats.size;
+      const hashIndexKey = this.hashIndexKey(request, project, asset.id, sourcePath);
+      const indexedFingerprint = this.enableValidatedHashIndex
+        ? this.validatedHashes.get(hashIndexKey) ?? null
+        : null;
+      const hashIndexHit = this.enableValidatedHashIndex && stableFile &&
+        indexedFingerprint !== null && indexedFingerprint === afterFingerprint;
+      if (hashIndexHit) {
+        this.hashIndexHits += 1;
+        this.validatedHashes.delete(hashIndexKey);
+        this.validatedHashes.set(hashIndexKey, afterFingerprint);
+      } else {
+        if (this.enableValidatedHashIndex) {
+          this.hashIndexMisses += 1;
+          this.validatedHashes.delete(hashIndexKey);
+        }
+        this.sha256Computations += 1;
+        const actualSha256 = createHash('sha256').update(bytes).digest('hex');
+        if (actualSha256 !== request.sha256) {
+          return this.failure(
+            'ASSET_PREVIEW_AUDIO_HASH_MISMATCH',
+            request.assetId,
+            'The source file hash does not match the project asset.',
+          );
+        }
+        if (this.enableValidatedHashIndex && stableFile && afterFingerprint) {
+          this.validatedHashes.set(hashIndexKey, afterFingerprint);
+          while (this.validatedHashes.size > ASSET_PREVIEW_AUDIO_HASH_INDEX_MAX_ENTRIES) {
+            const oldestKey = this.validatedHashes.keys().next().value;
+            if (oldestKey === undefined) break;
+            this.validatedHashes.delete(oldestKey);
+            this.hashIndexEvictions += 1;
+          }
+        }
       }
       return {
         ok: true,
@@ -187,7 +251,7 @@ export class AssetPreviewAudioService {
         assetId: request.assetId,
         mimeType: asset.mimeType,
         byteLength: bytes.byteLength,
-        bytes: new Uint8Array(bytes),
+        bytes,
       };
     } catch (error) {
       const permissionCode = filesystemPermissionErrorCode(error);
@@ -208,6 +272,21 @@ export class AssetPreviewAudioService {
     return resolveProjectAssetPath(projectRoot, relativePath, {
       preservePermissionErrors: true,
     });
+  }
+
+  private hashIndexKey(
+    request: AssetPreviewAudioReadRequest,
+    project: Project,
+    assetId: string,
+    sourcePath: string,
+  ): string {
+    return [path.resolve(request.projectRoot), project.id, project.updatedAt, assetId,
+      request.sha256, path.resolve(sourcePath)].join('\u0000');
+  }
+
+  private fileFingerprint(stats: BigIntStats): string | null {
+    if (stats.ino === 0n) return null;
+    return [stats.dev, stats.ino, stats.size, stats.mtimeNs, stats.ctimeNs, stats.birthtimeNs].join(':');
   }
 
   private requestAssetId(rawRequest: unknown): string {

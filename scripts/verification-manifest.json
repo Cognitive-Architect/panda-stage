@@ -662,6 +662,7 @@
           "tests/unit/close-project-flow.test.ts",
           "tests/unit/project-launcher.test.ts",
           "tests/unit/product-preview-*.test.ts",
+          "tests/unit/issue886-au03-audio-working-set.test.ts",
           "tests/unit/speaker-focus-preview-contract.test.ts",
           "tests/unit/issue653-auto-camera-mode.test.ts",
           "tests/unit/project-time-mapper.test.ts",
@@ -705,7 +706,8 @@
           "scripts/verify-css-split.cjs",
           "scripts/verify-issue659-preview-mixer.cjs",
           "scripts/verify-issue880-preview-clock.cjs",
-          "scripts/verify-issue884-au02-audio-schedule.cjs"
+          "scripts/verify-issue884-au02-audio-schedule.cjs",
+          "scripts/verify-issue886-au03-audio-workset.cjs"
         ],
         "suites": ["editor", "timeline"],
         "riskPolicy": "targeted",
@@ -715,7 +717,7 @@
       }
     ]
   },
-  "count": 100,
+  "count": 101,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1076,6 +1078,18 @@
       "owner": "editor",
       "supersedes": null,
       "notes": "Issue #884 AU-02 L1 native Web Audio proof for bounded startup preparation, a short cue through a controlled renderer gap, future-source cancellation on pause, and next-Shot scheduling through handoff. Synthetic v14 media only; not physical speaker output or OWNER listening acceptance."
+    },
+    {
+      "id": "issue886-au03-audio-workset",
+      "script": "verify:issue886-au03-audio-workset",
+      "suite": "editor",
+      "subsystem": "editor",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "Issue #886 AU-03 L1 native AudioContext working-set measurement on the generated original v14 long-BGM fixture. Records reads, native decodes, unique PCM, active sources, pause/resume, Replay, same-source Shot handoff, the 44.1 kHz control, and close. It does not claim physical speaker output or OWNER listening acceptance."
     },
     {
       "id": "fla-v1-5-c3",

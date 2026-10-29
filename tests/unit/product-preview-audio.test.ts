@@ -499,7 +499,11 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     }
     expect(context.sources.slice(0, -4).every((source) => source.stop.mock.calls.length === 1)).toBe(true);
     expect(readAudio).toHaveBeenCalledTimes(1);
-    expect(internals(transport).bufferCache.size).toBe(1);
+    expect(internals(transport).bufferCache.size).toBe(0);
+    expect(transport.getWorkingSetSnapshot()).toMatchObject({
+      activeSourceCount: 4,
+      retainedUniquePcmBytes: expect.any(Number),
+    });
     transport.dispose();
   });
 
@@ -896,7 +900,7 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
       expect(internals(transport).bufferCache.size).toBeLessThanOrEqual(PRODUCT_PREVIEW_AUDIO_CACHE_ENTRIES);
       expect(internals(transport).cacheBytes).toBeLessThanOrEqual(PRODUCT_PREVIEW_AUDIO_CACHE_BYTES);
     }
-    expect([...internals(transport).bufferCache.keys()][0]).toContain('asset-4');
+    expect([...internals(transport).bufferCache.keys()][0]).toContain('asset-3');
     context.decodeAudioData.mockResolvedValue(buffer(PRODUCT_PREVIEW_AUDIO_CACHE_BYTES / 4 + 1));
     project.shots[0]!.audioClips = [{ ...template, assetId: AUDIO_ID }];
     transport.sync(syncInput(project, { seekRevision: 20 })); await flush();
@@ -932,7 +936,7 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     transport.sync(syncInput(project, { seekRevision: 1 })); await flush();
     expect(internals(transport).bufferCache.size).toBe(1);
     expect(internals(transport).cacheBytes).toBe(40 * 1024 * 1024);
-    expect([...internals(transport).bufferCache.keys()][0]).toContain(AUDIO_B_ID);
+    expect([...internals(transport).bufferCache.keys()][0]).toContain(AUDIO_ID);
     transport.dispose();
   });
 
@@ -952,7 +956,7 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     const audio = readFileSync('src/renderer/shell/productPreviewAudio.ts', 'utf8');
     expect(audio).not.toMatch(/setTimeMs|evaluateMouth|AutoCamera|updateProject|historyStore/u);
     expect(audio).not.toMatch(/requestAnimationFrame|setInterval/u);
-    expect(audio.match(/setTimeout\(/gu)).toHaveLength(1);
+    expect(audio.match(/setTimeout\(/gu)).toHaveLength(2);
     expect(audio).toContain('PRODUCT_PREVIEW_AUDIO_STARTUP_TIMEOUT_MS');
   });
 });
