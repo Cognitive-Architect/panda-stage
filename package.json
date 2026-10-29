@@ -170,6 +170,7 @@
     "electron-builder": "26.15.3",
     "eslint": "^10.7.0",
     "globals": "^17.7.0",
+    "happy-dom": "21.0.4",
     "js-yaml": "^4.3.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.64.0",

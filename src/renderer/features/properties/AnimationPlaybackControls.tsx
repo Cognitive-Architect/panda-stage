@@ -1,11 +1,107 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { layerStore } from '../../stores/layerStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 
+export interface AnimationStartEditContext {
+  projectInstanceId: number | null;
+  projectId: string;
+  projectRoot: string;
+  shotId: string;
+  layerId: string;
+  revision: number;
+  startTimeMs: number;
+  shotDurationMs: number;
+  locked: boolean;
+}
+
+export function sameAnimationStartEditContext(
+  original: AnimationStartEditContext | null,
+  current: AnimationStartEditContext | null,
+): boolean {
+  return Boolean(
+    original &&
+      current &&
+      original.projectInstanceId === current.projectInstanceId &&
+      original.projectId === current.projectId &&
+      original.projectRoot === current.projectRoot &&
+      original.shotId === current.shotId &&
+      original.layerId === current.layerId &&
+      original.revision === current.revision &&
+      original.startTimeMs === current.startTimeMs &&
+      original.shotDurationMs === current.shotDurationMs &&
+      original.locked === current.locked,
+  );
+}
+
+export type ParsedAnimationStartTime =
+  | { kind: 'valid'; startTimeMs: number }
+  | { kind: 'invalid'; message: string };
+
+export function parseAnimationStartTime(
+  value: string,
+  shotDurationMs: number,
+): ParsedAnimationStartTime {
+  if (!value.trim()) {
+    return { kind: 'invalid', message: '请输入动画开始时间。' };
+  }
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    return {
+      kind: 'invalid',
+      message: '开始时间必须是 0 或更大的有效数字。',
+    };
+  }
+  const rawStartTimeMs = seconds * 1_000;
+  if (rawStartTimeMs > shotDurationMs) {
+    return {
+      kind: 'invalid',
+      message: `开始时间不能超过当前镜头时长（${formatStartSeconds(shotDurationMs)} 秒）。`,
+    };
+  }
+  const startTimeMs = Math.round(rawStartTimeMs);
+  if (startTimeMs > shotDurationMs) {
+    return {
+      kind: 'invalid',
+      message: `开始时间不能超过当前镜头时长（${formatStartSeconds(shotDurationMs)} 秒）。`,
+    };
+  }
+  return { kind: 'valid', startTimeMs };
+}
+
 function formatStartSeconds(startTimeMs: number): string {
   return String(Number((startTimeMs / 1_000).toFixed(3)));
+}
+
+function currentAnimationStartEditContext(): AnimationStartEditContext | null {
+  const snapshot = editorProjectStore.getSnapshot();
+  const shotId = shotStore.getCurrentShotId();
+  const layerId = selectionStore.getSelectedLayerId();
+  const shot = snapshot?.project.shots.find(
+    (candidate) => candidate.id === shotId,
+  );
+  const layer = shot?.layers.find((candidate) => candidate.id === layerId);
+  if (
+    !snapshot ||
+    !shot ||
+    !layer ||
+    layer.source.kind !== 'animation' ||
+    !layer.animationPlayback
+  ) {
+    return null;
+  }
+  return {
+    projectInstanceId: editorProjectStore.getProjectInstanceId(),
+    projectId: snapshot.project.id,
+    projectRoot: snapshot.projectRoot,
+    shotId: shot.id,
+    layerId: layer.id,
+    revision: snapshot.revision,
+    startTimeMs: layer.startTimeMs ?? 0,
+    shotDurationMs: shot.durationMs,
+    locked: layer.locked,
+  };
 }
 
 export function AnimationPlaybackControls(): React.JSX.Element | null {
@@ -30,15 +126,45 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
   const startTimeMs = layer?.source.kind === 'animation'
     ? layer.startTimeMs ?? 0
     : 0;
+  const projectInstanceId = editorProjectStore.getProjectInstanceId();
   const [startDraft, setStartDraft] = useState(() =>
     formatStartSeconds(startTimeMs),
   );
   const [status, setStatus] = useState('');
+  const activeStartEditRef = useRef<{
+    id: number;
+    context: AnimationStartEditContext;
+  } | null>(null);
+  const nextStartEditIdRef = useRef(0);
+  const cancelOnBlurIdRef = useRef<number | null>(null);
 
   useEffect(() => {
+    const activeEdit = activeStartEditRef.current;
+    const currentContext = currentAnimationStartEditContext();
+    const discardedStaleDraft =
+      activeEdit !== null &&
+      !sameAnimationStartEditContext(activeEdit.context, currentContext);
+    activeStartEditRef.current = null;
+    cancelOnBlurIdRef.current = null;
     setStartDraft(formatStartSeconds(startTimeMs));
-    setStatus('');
-  }, [layer?.id, shot?.id, startTimeMs]);
+    setStatus(
+      discardedStaleDraft && currentContext
+        ? currentContext.locked
+          ? '动画图层已锁定，开始时间草稿已取消。'
+          : '工程状态已变化，开始时间草稿已取消，请重新编辑。'
+        : '',
+    );
+  }, [
+    layer?.id,
+    layer?.locked,
+    projectInstanceId,
+    snapshot?.project.id,
+    snapshot?.projectRoot,
+    snapshot?.revision,
+    shot?.durationMs,
+    shot?.id,
+    startTimeMs,
+  ]);
 
   if (
     !snapshot ||
@@ -55,6 +181,7 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
     if (
       currentSnapshot?.project.id !== snapshot.project.id ||
       currentSnapshot.projectRoot !== snapshot.projectRoot ||
+      editorProjectStore.getProjectInstanceId() !== projectInstanceId ||
       shotStore.getCurrentShotId() !== shot.id ||
       selectionStore.getSelectedLayerId() !== layer.id
     ) {
@@ -66,29 +193,100 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
     startTimeMs?: number;
     mode?: 'once' | 'loop';
     endBehavior?: 'hold' | 'hide';
-  }): void => {
+  }): boolean => {
     try {
       assertCurrentSelection();
       layerStore.updateAnimationPlayback(layer.id, input);
       setStatus('');
+      return true;
     } catch (error) {
       setStatus(error instanceof Error ? error.message : '动画播放设置未能更新。');
+      return false;
     }
   };
 
   const commitStartTime = (): void => {
-    if (!startDraft.trim()) {
-      setStatus('请输入动画开始时间。');
-      setStartDraft(formatStartSeconds(layer.startTimeMs ?? 0));
+    const activeEdit = activeStartEditRef.current;
+    if (!activeEdit) return;
+    if (cancelOnBlurIdRef.current === activeEdit.id) {
+      activeStartEditRef.current = null;
+      cancelOnBlurIdRef.current = null;
       return;
     }
-    const seconds = Number(startDraft);
-    if (!Number.isFinite(seconds) || seconds < 0) {
-      setStatus('开始时间必须是 0 或更大的有效数字。');
-      setStartDraft(formatStartSeconds(layer.startTimeMs ?? 0));
+    activeStartEditRef.current = null;
+    cancelOnBlurIdRef.current = null;
+
+    const currentContext = currentAnimationStartEditContext();
+    const savedStartTimeMs = currentContext?.startTimeMs ?? startTimeMs;
+    if (currentContext?.locked) {
+      setStartDraft(formatStartSeconds(savedStartTimeMs));
+      setStatus('动画图层已锁定，开始时间草稿已取消。');
       return;
     }
-    updatePlayback({ startTimeMs: Math.round(seconds * 1_000) });
+    if (!sameAnimationStartEditContext(activeEdit.context, currentContext)) {
+      setStartDraft(formatStartSeconds(savedStartTimeMs));
+      setStatus(currentContext ? '工程状态已变化，开始时间草稿已取消，请重新编辑。' : '');
+      return;
+    }
+
+    const parsed = parseAnimationStartTime(startDraft, activeEdit.context.shotDurationMs);
+    if (parsed.kind === 'invalid') {
+      setStartDraft(formatStartSeconds(savedStartTimeMs));
+      setStatus(parsed.message);
+      return;
+    }
+    if (parsed.startTimeMs === activeEdit.context.startTimeMs) {
+      setStartDraft(formatStartSeconds(savedStartTimeMs));
+      setStatus('');
+      return;
+    }
+
+    if (!updatePlayback({ startTimeMs: parsed.startTimeMs })) {
+      const latestContext = currentAnimationStartEditContext();
+      setStartDraft(
+        formatStartSeconds(latestContext?.startTimeMs ?? savedStartTimeMs),
+      );
+    }
+  };
+
+  const beginStartEdit = (): void => {
+    const context = currentAnimationStartEditContext();
+    activeStartEditRef.current = context
+      ? { id: ++nextStartEditIdRef.current, context }
+      : null;
+    cancelOnBlurIdRef.current = null;
+  };
+
+  const changeStartDraft = (value: string): void => {
+    const context = currentAnimationStartEditContext();
+    const activeEdit = activeStartEditRef.current;
+    if (activeEdit && !sameAnimationStartEditContext(activeEdit.context, context)) {
+      activeStartEditRef.current = null;
+      cancelOnBlurIdRef.current = null;
+      setStartDraft(formatStartSeconds(context?.startTimeMs ?? startTimeMs));
+      setStatus(context ? '工程状态已变化，开始时间草稿已取消，请重新编辑。' : '');
+      return;
+    }
+    if (!activeEdit) {
+      if (!context || context.locked) return;
+      activeStartEditRef.current = {
+        id: ++nextStartEditIdRef.current,
+        context,
+      };
+    }
+    setStartDraft(value);
+    setStatus('');
+  };
+
+  const cancelStartEdit = (input: HTMLInputElement): void => {
+    const currentContext = currentAnimationStartEditContext();
+    const activeEdit = activeStartEditRef.current;
+    cancelOnBlurIdRef.current = activeEdit?.id ?? null;
+    setStartDraft(
+      formatStartSeconds(currentContext?.startTimeMs ?? startTimeMs),
+    );
+    setStatus('');
+    input.blur();
   };
 
   const locked = layer.locked;
@@ -109,12 +307,17 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
             max={shot.durationMs / 1_000}
             min={0}
             onBlur={commitStartTime}
-            onChange={(event) => setStartDraft(event.target.value)}
+            onChange={(event) => changeStartDraft(event.target.value)}
+            onFocus={beginStartEdit}
             onKeyDown={(event) => {
-              if (event.key === 'Enter') event.currentTarget.blur();
-              if (event.key === 'Escape') {
-                setStartDraft(formatStartSeconds(layer.startTimeMs ?? 0));
+              if (event.key === 'Enter') {
+                event.preventDefault();
                 event.currentTarget.blur();
+              }
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                cancelStartEdit(event.currentTarget);
               }
             }}
             step="0.001"

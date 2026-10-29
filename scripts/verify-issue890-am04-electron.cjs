@@ -373,6 +373,15 @@ async function setControlValue(window, selector, value, blur = false) {
   await new Promise((resolve) => setTimeout(resolve, 120));
 }
 
+async function pressKey(window, keyCode) {
+  window.show();
+  window.focus();
+  window.webContents.focus();
+  window.webContents.sendInputEvent({ type: 'keyDown', keyCode });
+  window.webContents.sendInputEvent({ type: 'keyUp', keyCode });
+  await new Promise((resolve) => setTimeout(resolve, 120));
+}
+
 async function openProject(window) {
   await waitFor(
     window,
@@ -685,6 +694,56 @@ async function run() {
         '.find(x=>x.id==="' + layerBId + '")?.startTimeMs===1000',
       'Inspector did not set instance B start time to 1000ms.',
     );
+    const historyBeforeEscape = await historyState(window);
+    const saveStateBeforeEscape = await window.webContents.executeJavaScript(
+      '(() => { const e=document.querySelector(\'[data-testid="quick-action-save"]\');' +
+      'return e?{disabled:e.disabled,state:e.dataset.saveState??null}:null; })()',
+    );
+    assert(historyBeforeEscape && saveStateBeforeEscape,
+      'Could not capture Project/History state before testing Escape cancellation.');
+    await click(window, '[data-testid="animation-start-seconds"]');
+    await setControlValue(window, '[data-testid="animation-start-seconds"]', '5', false);
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="animation-start-seconds"]\')?.value==="5"&&' +
+        'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+          '.find(x=>x.id==="' + layerBId + '")?.startTimeMs===1000',
+      'Editing the start-time draft changed Project data before confirmation.',
+    );
+    await window.webContents.executeJavaScript(
+      'window.__issue891EscapeTrusted=false;' +
+      'document.addEventListener("keydown",e=>{if(e.key==="Escape")window.__issue891EscapeTrusted=e.isTrusted;},' +
+      '{capture:true,once:true});',
+    );
+    await pressKey(window, 'Escape');
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="animation-start-seconds"]\')?.value==="1"&&' +
+        'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+          '.find(x=>x.id==="' + layerBId + '")?.startTimeMs===1000',
+      'Escape did not restore the saved start time before blur.',
+    );
+    const historyAfterEscape = await historyState(window);
+    const saveStateAfterEscape = await window.webContents.executeJavaScript(
+      '(() => { const e=document.querySelector(\'[data-testid="quick-action-save"]\');' +
+      'return e?{disabled:e.disabled,state:e.dataset.saveState??null}:null; })()',
+    );
+    const escapeWasTrusted = await window.webContents.executeJavaScript(
+      'window.__issue891EscapeTrusted===true',
+    );
+    assert(escapeWasTrusted &&
+      JSON.stringify(historyAfterEscape) === JSON.stringify(historyBeforeEscape) &&
+      JSON.stringify(saveStateAfterEscape) === JSON.stringify(saveStateBeforeEscape),
+    'Trusted Escape changed History or the Project save state.');
+    const escapeCancelEvidence = {
+      trustedKeyEvent: escapeWasTrusted,
+      attemptedStartSeconds: 5,
+      savedStartTimeMs: 1_000,
+      historyBefore: historyBeforeEscape,
+      historyAfter: historyAfterEscape,
+      saveStateBefore: saveStateBeforeEscape,
+      saveStateAfter: saveStateAfterEscape,
+    };
     await setControlValue(window, '[data-testid="animation-end-behavior"]', 'hide');
     await waitFor(
       window,
@@ -997,6 +1056,7 @@ async function run() {
       frameAssetCount: ids.frames.length,
       layerIds: { a: layerAId, b: layerBId, copiedAndDeleted: duplicateId },
       drops: { first: firstDrop, second: secondDrop, trustedEvents: dnd },
+      escapeCancel: escapeCancelEvidence,
       firstDropStartTimeMs: 0,
       secondDropStartTimeMs: firstSeek,
       startTimes: { a: savedA.startTimeMs, b: savedB.startTimeMs },
