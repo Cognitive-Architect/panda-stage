@@ -6,6 +6,7 @@ import {
   ProjectV12Schema,
   ProjectV13Schema,
   ProjectV14Schema,
+  ProjectV15Schema,
   evaluateShotAtTime,
   resolveLayerVisualParts,
   type Project,
@@ -336,7 +337,7 @@ describe('T01 迁移回填 timelineEvents', () => {
     expect(legacyV12).toEqual(before);
   });
 
-  it('migrates strict v13 projects to v15 with an empty animation collection', () => {
+  it('migrates strict v13 projects to v16 with an empty animation collection', () => {
     const current = buildProject();
     const { animations: _animations, ...version13Fields } = current;
     void _animations;
@@ -354,7 +355,7 @@ describe('T01 迁移回填 timelineEvents', () => {
     expect(legacyV13).toEqual(before);
   });
 
-  it('strictly migrates v14 projects to v15 while retaining animation definitions', () => {
+  it('strictly migrates v14 projects to v16 while retaining animation definitions', () => {
     const current = buildProjectWithAnimation();
     const legacyV14 = { ...current, schemaVersion: 14 };
     const before = structuredClone(legacyV14);
@@ -396,5 +397,62 @@ describe('T01 迁移回填 timelineEvents', () => {
       })),
     };
     expect(ProjectV14Schema.safeParse(withV15Layer).success).toBe(false);
+  });
+
+  it('strictly migrates v15 animation instances to v16 with once+hold defaults', () => {
+    const current = buildProjectWithAnimation();
+    const shot = current.shots[0]!;
+    const v15Layer = {
+      id: IDS.animationLayer,
+      name: 'walk instance',
+      source: { kind: 'animation' as const, animationId: IDS.animation },
+      startTimeMs: 1_234,
+      anchor: 'center' as const,
+      x: 510,
+      y: 520,
+      scaleX: 1.25,
+      scaleY: 1.25,
+      rotationDeg: 0,
+      opacity: 1,
+      visible: true,
+      locked: false,
+      flipX: false,
+      zIndex: 3,
+    };
+    const legacyV15 = {
+      ...current,
+      schemaVersion: 15,
+      shots: [{ ...shot, layers: [...shot.layers, v15Layer] }],
+    };
+    const before = structuredClone(legacyV15);
+
+    expect(ProjectV15Schema.parse(legacyV15)).toEqual(legacyV15);
+    expect(ProjectSchema.safeParse(legacyV15).success).toBe(false);
+    expect(ProjectV15Schema.safeParse({
+      ...legacyV15,
+      shots: [{
+        ...legacyV15.shots[0]!,
+        layers: [...legacyV15.shots[0]!.layers, {
+          ...v15Layer,
+          animationPlayback: { mode: 'once', endBehavior: 'hold' },
+          id: '70000000-0000-4000-8000-000000000003',
+        }],
+      }],
+    }).success).toBe(false);
+
+    const migrated = migrateProject(legacyV15);
+    const migratedLayer = migrated.shots[0]!.layers.at(-1)!;
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(migratedLayer).toMatchObject({
+      id: IDS.animationLayer,
+      source: { kind: 'animation', animationId: IDS.animation },
+      startTimeMs: 1_234,
+      x: 510,
+      y: 520,
+      scaleX: 1.25,
+      scaleY: 1.25,
+      animationPlayback: { mode: 'once', endBehavior: 'hold' },
+    });
+    expect(legacyV15).toEqual(before);
   });
 });

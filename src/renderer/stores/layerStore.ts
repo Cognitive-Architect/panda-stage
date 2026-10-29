@@ -1,6 +1,7 @@
 import {
   LayerService,
   type CreateLayerInput,
+  type AnimationPlaybackInput,
   type Layer,
   type LayerOrderAction,
   type LayerTransformInput,
@@ -93,6 +94,47 @@ export class LayerStore {
       this.editorStore.updateProject(next, 'Move layer');
     }
     return next;
+  }
+
+  updateAnimationPlayback(
+    layerId: string,
+    input: AnimationPlaybackInput,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.updateAnimationPlayback(
+      project,
+      shotId,
+      layerId,
+      input,
+    );
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Edit animation playback');
+    }
+    return next;
+  }
+
+  duplicateAnimationLayer(layerId: string): Layer {
+    const { project, projectRoot, shotId } = this.context();
+    const result = this.service.duplicateAnimationLayer(
+      project,
+      shotId,
+      layerId,
+    );
+    this.editorStore.updateProject(
+      result.project,
+      'Duplicate animation layer',
+      {},
+      {
+        afterRedo: () =>
+          this.restoreCreatedLayerSelection(
+            project.id,
+            projectRoot,
+            shotId,
+            result.layer.id,
+          ),
+      },
+    );
+    return result.layer;
   }
 
   setLocked(layerId: string, locked: boolean): Project {

@@ -6,6 +6,7 @@ import { DialogueSchema } from './dialogue';
 import {
   LayerSchema,
   LayerV14Schema,
+  LayerV15Schema,
   LayerV3Schema,
   LayerV4Schema,
 } from './layer';
@@ -34,6 +35,16 @@ export const ShotSchema = z
     audioClips: z.array(AudioClipSchema),
     layers: z.array(LayerSchema),
     /** The only layer rendered with the background cover contract. */
+    backgroundLayerId: IdSchema.nullable(),
+  })
+  .strict();
+
+/** Exact current-v15 shot shape before per-instance playback was introduced. */
+export const ShotV15Schema = z
+  .object({
+    ...ShotBaseShape,
+    audioClips: z.array(AudioClipSchema),
+    layers: z.array(LayerV15Schema),
     backgroundLayerId: IdSchema.nullable(),
   })
   .strict();

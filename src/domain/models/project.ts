@@ -29,6 +29,7 @@ import { LayerV14Schema } from './layer';
 import {
   ShotSchema,
   ShotV14Schema,
+  ShotV15Schema,
   ShotV2Schema,
   ShotV3Schema,
   ShotV4Schema,
@@ -61,6 +62,26 @@ export const ProjectV14Schema = z
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
     shots: z.array(ShotV14Schema),
+    createdAt: IsoDateTimeSchema,
+    updatedAt: IsoDateTimeSchema,
+  })
+  .strict();
+
+/** Strict persisted v15 envelope before per-instance animation playback. */
+export const ProjectV15Schema = z
+  .object({
+    schemaVersion: z.literal(15),
+    id: IdSchema,
+    name: NameSchema,
+    width: z.literal(PROJECT_WIDTH),
+    height: z.literal(PROJECT_HEIGHT),
+    fps: z.literal(PROJECT_FPS),
+    assets: z.array(AssetSchema),
+    animations: z.array(AnimationDefinitionSchema),
+    characters: z.array(CharacterSchema),
+    voiceProfiles: z.array(VoiceProfileSchema),
+    subtitleStyles: z.array(SubtitleStyleSchema).min(1),
+    shots: z.array(ShotV15Schema),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
   })
@@ -483,7 +504,7 @@ export function migrateFormalProject(input: unknown): unknown {
 }
 
 // Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
-// Persisted migration (v0-v14 -> v15) is owned exclusively by `migrateProject`
+// Persisted migration (v0-v15 -> v16) is owned exclusively by `migrateProject`
 // in `../migrations`; this schema must never perform legacy migration.
 export const ProjectSchema = ProjectDataSchema.superRefine(
   validateProjectReferences,

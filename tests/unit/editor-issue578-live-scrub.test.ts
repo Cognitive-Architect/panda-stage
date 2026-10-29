@@ -33,6 +33,7 @@ function projectWithVisibleAnimation(startTimeMs = 1_000) {
     id: IDS.animationLayer,
     name: 'test animation',
     source: { kind: 'animation' as const, animationId: IDS.animation },
+    animationPlayback: { mode: 'once', endBehavior: 'hold' } as const,
     anchor: 'center' as const,
     x: 640,
     y: 420,

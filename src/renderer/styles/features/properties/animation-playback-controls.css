@@ -1,0 +1,60 @@
+.animation-playback-controls {
+  display: grid;
+  min-width: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--ui-color-separator);
+  gap: 9px;
+}
+
+.animation-playback-controls h3 {
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 12px;
+}
+
+.animation-playback-fields {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.animation-playback-fields label {
+  display: grid;
+  min-width: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+  gap: 4px;
+}
+
+.animation-playback-fields input,
+.animation-playback-fields select {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  padding: 7px 8px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+  font: inherit;
+}
+
+.animation-playback-fields input:disabled,
+.animation-playback-fields select:disabled {
+  color: var(--ui-color-disabled-text);
+  background: var(--ui-color-disabled-surface);
+}
+
+.animation-playback-controls output {
+  color: #ffd7d2;
+  font-size: 11px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .animation-playback-fields input,
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .animation-playback-fields select {
+  min-height: 44px;
+  font-size: 14px;
+}

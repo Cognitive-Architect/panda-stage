@@ -124,7 +124,7 @@ afterEach(async () => {
 });
 
 describe('formal animation persistence', () => {
-  it('saves one animation with repeated frame references and reopens a playable project', async () => {
+  it('saves one shared animation with independently configured instances and reopens both', async () => {
     const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-animation-persistence-'));
     temporaryParents.push(parent);
     const projectRoot = path.join(parent, 'animation.pandastage');
@@ -215,30 +215,68 @@ describe('formal animation persistence', () => {
       },
     );
     await projectService.save(projectRoot, transformed, current.revision);
+    if (!current) throw new Error('Expected the transformed project revision.');
+    const second = new LayerService().createFromAsset(
+      transformed,
+      shot.id,
+      {
+        version: 3,
+        type: 'animation',
+        animationId: committed.project.animations[0]!.id,
+        position: { x: 900, y: 600 },
+        startTimeMs: 1_000,
+      },
+    );
+    const configuredSecond = new LayerService().updateAnimationPlayback(
+      second.project,
+      shot.id,
+      second.layer.id,
+      { mode: 'loop', endBehavior: 'hide' },
+    );
+    await projectService.save(projectRoot, configuredSecond, current.revision);
 
     const reopened = await new ProjectService().open(projectRoot);
     expect(reopened.migrated).toBe(false);
     expect(reopened.project.animations).toEqual(committed.project.animations);
     expect(reopened.project.animations[0]?.durationMs).toBe(2_000 / 30);
-    expect(reopened.project.shots[0]?.layers.at(-1)).toMatchObject({
+    const reopenedShot = reopened.project.shots[0]!;
+    const reopenedFirstLayer = reopenedShot.layers.find(
+      (layer) => layer.id === placed.layer.id,
+    )!;
+    const reopenedSecondLayer = reopenedShot.layers.find(
+      (layer) => layer.id === second.layer.id,
+    )!;
+    expect(reopenedShot.layers.filter((layer) => layer.source.kind === 'animation'))
+      .toHaveLength(2);
+    expect(reopenedFirstLayer).toMatchObject({
       source: {
         kind: 'animation',
         animationId: committed.project.animations[0]!.id,
       },
       startTimeMs: 500,
+      animationPlayback: { mode: 'once', endBehavior: 'hold' },
       x: 420,
       y: 330,
       scaleX: 1.25,
       scaleY: 1.25,
     });
-    const reopenedShot = reopened.project.shots[0]!;
-    const reopenedLayer = reopenedShot.layers.at(-1)!;
+    expect(reopenedSecondLayer).toMatchObject({
+      source: {
+        kind: 'animation',
+        animationId: committed.project.animations[0]!.id,
+      },
+      startTimeMs: 1_000,
+      animationPlayback: { mode: 'loop', endBehavior: 'hide' },
+      x: 900,
+      y: 600,
+    });
+    expect(reopened.project.animations).toEqual(committed.project.animations);
     for (const timeMs of [499, 500, 516, 550, 516, 500]) {
       const evaluated = evaluateShotAtTime(
         reopenedShot,
         timeMs,
         reopened.project,
-      ).layers.find((candidate) => candidate.id === reopenedLayer.id)!;
+      ).layers.find((candidate) => candidate.id === reopenedFirstLayer.id)!;
       expect(evaluated).toMatchObject({
         x: 420,
         y: 330,
@@ -247,6 +285,20 @@ describe('formal animation persistence', () => {
       });
       if (timeMs < 500) expect(evaluated.visible).toBe(false);
     }
+    const atSecondStart = evaluateShotAtTime(
+      reopenedShot,
+      1_000,
+      reopened.project,
+    ).layers.find((candidate) => candidate.id === reopenedSecondLayer.id)!;
+    expect(atSecondStart.visible).toBe(true);
+    expect(atSecondStart.animationFrame?.offset.x).toBe(0);
+    const afterSecondCycle = evaluateShotAtTime(
+      reopenedShot,
+      1_067,
+      reopened.project,
+    ).layers.find((candidate) => candidate.id === reopenedSecondLayer.id)!;
+    expect(afterSecondCycle.visible).toBe(true);
+    expect(afterSecondCycle.animationFrame?.offset.x).toBe(0);
 
     const asset = reopened.project.assets.find(
       (candidate) => candidate.id === reopened.project.animations[0]?.frames[0]?.assetId,

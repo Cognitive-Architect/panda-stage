@@ -233,6 +233,128 @@ describe('Day 22 layer stores', () => {
     });
   });
 
+  it('keeps start, mode, copy, position, and delete edits independent in History', () => {
+    const input = harness(buildProjectWithAnimation());
+    const shotId = input.project.shots[0]!.id;
+    const originalAnimations = input.project.animations;
+    const originalAssets = input.project.assets;
+    const first = input.layers.createFromAsset({
+      version: 3,
+      type: 'animation',
+      animationId: IDS.animation,
+      position: { x: 350, y: 260 },
+      startTimeMs: 0,
+    });
+    input.layers.updateAnimationPlayback(first.id, { startTimeMs: 200 });
+    input.layers.updateAnimationPlayback(first.id, { endBehavior: 'hide' });
+    input.layers.updateAnimationPlayback(first.id, { mode: 'loop' });
+    input.layers.updatePosition(first.id, { x: 360, y: 270 });
+    const second = input.layers.duplicateAnimationLayer(first.id);
+    input.layers.updateAnimationPlayback(second.id, { startTimeMs: 1_000 });
+    input.layers.updateAnimationPlayback(second.id, { mode: 'once' });
+    input.layers.updatePosition(second.id, { x: 420, y: 620 });
+
+    const beforeDelete = input.editor.getSnapshot()!.project.shots.find(
+      (candidate) => candidate.id === shotId,
+    )!;
+    expect(beforeDelete.layers.find((layer) => layer.id === first.id)).toMatchObject({
+      startTimeMs: 200,
+      animationPlayback: { mode: 'loop', endBehavior: 'hide' },
+      x: 360,
+      y: 270,
+    });
+    expect(beforeDelete.layers.find((layer) => layer.id === second.id)).toMatchObject({
+      startTimeMs: 1_000,
+      animationPlayback: { mode: 'once', endBehavior: 'hide' },
+      x: 420,
+      y: 620,
+    });
+    input.layers.deleteLayer(first.id);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.some(
+      (layer) => layer.id === first.id,
+    )).toBe(false);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.some(
+      (layer) => layer.id === second.id,
+    )).toBe(true);
+    expect(input.editor.getSnapshot()!.project.animations).toEqual(originalAnimations);
+    expect(input.editor.getSnapshot()!.project.assets).toEqual(originalAssets);
+
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.some(
+      (layer) => layer.id === first.id,
+    )).toBe(true);
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.find(
+      (layer) => layer.id === second.id,
+    )).toMatchObject({ x: 384, y: 294 });
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.find(
+      (layer) => layer.id === second.id,
+    )).toMatchObject({
+      startTimeMs: 1_000,
+      animationPlayback: { mode: 'loop', endBehavior: 'hide' },
+      x: 384,
+      y: 294,
+    });
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.find(
+      (layer) => layer.id === second.id,
+    )).toMatchObject({
+      startTimeMs: 200,
+      animationPlayback: { mode: 'loop', endBehavior: 'hide' },
+      x: 384,
+      y: 294,
+    });
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.some(
+      (layer) => layer.id === second.id,
+    )).toBe(false);
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.find(
+      (layer) => layer.id === first.id,
+    )).toMatchObject({ x: 350, y: 260 });
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.find(
+      (layer) => layer.id === first.id,
+    )).toMatchObject({
+      startTimeMs: 200,
+      animationPlayback: { mode: 'once', endBehavior: 'hide' },
+    });
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.find(
+      (layer) => layer.id === first.id,
+    )).toMatchObject({
+      startTimeMs: 200,
+      animationPlayback: { mode: 'once', endBehavior: 'hold' },
+    });
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.find(
+      (layer) => layer.id === first.id,
+    )).toMatchObject({
+      startTimeMs: 0,
+      animationPlayback: { mode: 'once', endBehavior: 'hold' },
+    });
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.some(
+      (layer) => layer.id === first.id,
+    )).toBe(false);
+
+    for (let index = 0; index < 10; index += 1) {
+      expect(input.editor.redo()).toBe(true);
+    }
+    const redoneShot = input.editor.getSnapshot()!.project.shots[0]!;
+    expect(redoneShot.layers.some((layer) => layer.id === first.id)).toBe(false);
+    expect(redoneShot.layers.find((layer) => layer.id === second.id)).toMatchObject({
+      source: { kind: 'animation', animationId: IDS.animation },
+      startTimeMs: 1_000,
+      animationPlayback: { mode: 'once', endBehavior: 'hide' },
+      x: 420,
+      y: 620,
+    });
+    expect(input.editor.getSnapshot()!.project.animations).toEqual(originalAnimations);
+    expect(input.editor.getSnapshot()!.project.assets).toEqual(originalAssets);
+  });
+
   it('does not restore Create layer selection after the shot context changes', () => {
     const input = harness();
     const asset = input.project.assets.find(

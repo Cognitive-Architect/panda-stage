@@ -39,6 +39,7 @@ describe('LayerService', () => {
       name: 'test animation',
       source: { kind: 'animation', animationId: IDS.animation },
       startTimeMs: 1_000,
+      animationPlayback: { mode: 'once', endBehavior: 'hold' },
       x: 700,
       y: 500,
     });
@@ -46,7 +47,7 @@ describe('LayerService', () => {
     expect(result.project.shots[0]!.layers).toContainEqual(result.layer);
   });
 
-  it('rejects invalid animation references, start times, and a second instance without changing the source project', () => {
+  it('rejects invalid animation references and start times without changing the source project', () => {
     const project = buildProjectWithAnimation();
     const shot = project.shots[0]!;
     expect(() => service().createFromAsset(project, shot.id, {
@@ -64,21 +65,161 @@ describe('LayerService', () => {
       startTimeMs: shot.durationMs + 1,
     })).toThrow(expect.objectContaining({ code: 'INVALID_ANIMATION_START_TIME' }));
 
-    const withFirst = service().createFromAsset(project, shot.id, {
+    expect(() => service().createFromAsset(project, shot.id, {
+      version: 3,
+      type: 'animation',
+      animationId: IDS.animation,
+      position: { x: 900, y: 500 },
+      startTimeMs: 1_000,
+    })).not.toThrow();
+    expect(project.shots[0]!.layers).toHaveLength(3);
+  });
+
+  it('creates independent instances of one animation in the same Shot without adding assets', () => {
+    const project = buildProjectWithAnimation();
+    const shot = project.shots[0]!;
+    let generatedId = 0;
+    const layerService = new LayerService({
+      createId: () =>
+        `d2200000-0000-4000-8000-${String(++generatedId).padStart(12, '0')}`,
+      now: () => NOW,
+    });
+    const input = (startTimeMs: number, x: number) => ({
+      version: 3 as const,
+      type: 'animation' as const,
+      animationId: IDS.animation,
+      position: { x, y: 500 },
+      startTimeMs,
+    });
+    const first = layerService.createFromAsset(
+      project,
+      shot.id,
+      input(0, 700),
+    );
+    const second = layerService.createFromAsset(
+      first.project,
+      shot.id,
+      input(1_000, 900),
+    );
+    const instances = second.project.shots[0]!.layers.filter(
+      (layer) => layer.source.kind === 'animation',
+    );
+
+    expect(instances).toHaveLength(2);
+    expect(instances.map((layer) => layer.id)).toEqual([
+      first.layer.id,
+      second.layer.id,
+    ]);
+    expect(new Set(instances.map((layer) => layer.id)).size).toBe(2);
+    expect(instances.map((layer) => layer.source)).toEqual([
+      { kind: 'animation', animationId: IDS.animation },
+      { kind: 'animation', animationId: IDS.animation },
+    ]);
+    expect(instances.map((layer) => layer.startTimeMs)).toEqual([0, 1_000]);
+    expect(instances.map((layer) => layer.animationPlayback)).toEqual([
+      { mode: 'once', endBehavior: 'hold' },
+      { mode: 'once', endBehavior: 'hold' },
+    ]);
+    expect(second.project.animations).toEqual(project.animations);
+    expect(second.project.assets).toEqual(project.assets);
+  });
+
+  it('updates animation settings with range, enum, and lock validation', () => {
+    const project = buildProjectWithAnimation();
+    const shot = project.shots[0]!;
+    const created = service().createFromAsset(project, shot.id, {
+      version: 3,
+      type: 'animation',
+      animationId: IDS.animation,
+      position: { x: 700, y: 500 },
+      startTimeMs: 0,
+    });
+    const updated = service().updateAnimationPlayback(
+      created.project,
+      shot.id,
+      created.layer.id,
+      { startTimeMs: 1_000, mode: 'loop', endBehavior: 'hide' },
+    );
+    expect(updated.shots[0]!.layers.at(-1)).toMatchObject({
+      startTimeMs: 1_000,
+      animationPlayback: { mode: 'loop', endBehavior: 'hide' },
+    });
+    expect(() => service().updateAnimationPlayback(
+      created.project,
+      shot.id,
+      created.layer.id,
+      { startTimeMs: shot.durationMs + 1 },
+    )).toThrow(expect.objectContaining({ code: 'INVALID_ANIMATION_START_TIME' }));
+    expect(() => service().updateAnimationPlayback(
+      created.project,
+      shot.id,
+      created.layer.id,
+      { mode: 'ping-pong' as 'once' },
+    )).toThrow(expect.objectContaining({ code: 'INVALID_ANIMATION_PLAYBACK' }));
+    const locked = service().setLocked(
+      created.project,
+      shot.id,
+      created.layer.id,
+      true,
+    );
+    expect(() => service().updateAnimationPlayback(
+      locked,
+      shot.id,
+      created.layer.id,
+      { mode: 'loop' },
+    )).toThrow(expect.objectContaining({ code: 'LAYER_LOCKED' }));
+  });
+
+  it('duplicates and deletes only one animation instance while keeping the shared definition', () => {
+    const project = buildProjectWithAnimation();
+    const shot = project.shots[0]!;
+    let generatedId = 0;
+    const layerService = new LayerService({
+      createId: () =>
+        `d3200000-0000-4000-8000-${String(++generatedId).padStart(12, '0')}`,
+      now: () => NOW,
+    });
+    const created = layerService.createFromAsset(project, shot.id, {
       version: 3,
       type: 'animation',
       animationId: IDS.animation,
       position: { x: 700, y: 500 },
       startTimeMs: 1_000,
     });
-    expect(() => service().createFromAsset(withFirst.project, shot.id, {
-      version: 3,
-      type: 'animation',
-      animationId: IDS.animation,
-      position: { x: 900, y: 500 },
+    const configured = layerService.updateAnimationPlayback(
+      created.project,
+      shot.id,
+      created.layer.id,
+      { mode: 'loop', endBehavior: 'hide' },
+    );
+    const duplicated = layerService.duplicateAnimationLayer(
+      configured,
+      shot.id,
+      created.layer.id,
+    );
+    expect(duplicated.layer).toMatchObject({
+      source: { kind: 'animation', animationId: IDS.animation },
       startTimeMs: 1_000,
-    })).toThrow(expect.objectContaining({ code: 'ANIMATION_INSTANCE_LIMIT' }));
-    expect(project.shots[0]!.layers).toHaveLength(3);
+      animationPlayback: { mode: 'loop', endBehavior: 'hide' },
+      x: 724,
+      y: 524,
+      zIndex: 4,
+    });
+    expect(duplicated.layer.id).not.toBe(created.layer.id);
+
+    const deleted = layerService.deleteLayer(
+      duplicated.project,
+      shot.id,
+      created.layer.id,
+    );
+    expect(deleted.shots[0]!.layers.some(
+      (layer) => layer.id === duplicated.layer.id,
+    )).toBe(true);
+    expect(deleted.shots[0]!.layers.some(
+      (layer) => layer.id === created.layer.id,
+    )).toBe(false);
+    expect(deleted.animations).toEqual(project.animations);
+    expect(deleted.assets).toEqual(project.assets);
   });
 
   it('creates a centered direct-asset layer with the next zIndex', () => {

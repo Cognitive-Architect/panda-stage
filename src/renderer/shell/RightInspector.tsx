@@ -21,6 +21,7 @@ import {
 import { LayerBackgroundControl } from '../features/properties/LayerBackgroundControl';
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
+import { AnimationPlaybackControls } from '../features/properties/AnimationPlaybackControls';
 import { ExpressionAtTimeControl } from '../features/properties/ExpressionAtTimeControl';
 import { DialogueInspector } from '../features/dialogue/DialogueInspector';
 import { DecorativeIcon } from '../ui';
@@ -563,12 +564,15 @@ export function RightInspector({
   );
 
   const transformPanel = (
-    <LayerTransformPanel
-      backgroundLayerSelected={selection.state === 'background'}
-      compact={compact}
-      showResetTransform={Boolean(compact) || landscapePresentation}
-      showLockControl={!compact && !landscapePresentation}
-    />
+    <>
+      <LayerTransformPanel
+        backgroundLayerSelected={selection.state === 'background'}
+        compact={compact}
+        showResetTransform={Boolean(compact) || landscapePresentation}
+        showLockControl={!compact && !landscapePresentation}
+      />
+      <AnimationPlaybackControls />
+    </>
   );
   const backgroundPanel = <LayerBackgroundControl />;
   const orderPanel = (

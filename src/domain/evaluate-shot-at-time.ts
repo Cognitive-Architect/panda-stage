@@ -79,6 +79,7 @@ function eventEasing(event: TimelineEvent): 'linear' | 'ease-in-out' {
 interface ResolvedLayerVisualState {
   assetId: string | null;
   currentExpressionId: string | null;
+  animationVisible?: boolean;
   animationFrame?: EvaluatedLayer['animationFrame'];
 }
 
@@ -110,24 +111,42 @@ function resolveAnimationFrame(
   project: Project,
   animationId: string,
   startTimeMs: number,
+  playback: NonNullable<Layer['animationPlayback']>,
   timeMs: number,
 ): ResolvedLayerVisualState {
   const animation = project.animations.find(
     (candidate) => candidate.id === animationId,
   );
-  if (!animation) return { assetId: null, currentExpressionId: null };
-  const sourceFrameIndex = Math.max(
-    0,
-    Math.min(
-      animation.frames.length - 1,
-      Math.floor(Math.max(0, timeMs - startTimeMs) * animation.source.sourceFps / 1_000),
-    ),
+  if (!animation || animation.frames.length === 0) {
+    return {
+      assetId: null,
+      currentExpressionId: null,
+      animationVisible: false,
+    };
+  }
+  const elapsedMs = timeMs - startTimeMs;
+  const elapsedSourceFrames = Math.floor(
+    Math.max(0, elapsedMs) * animation.source.sourceFps / 1_000,
   );
+  const completedOnce = elapsedSourceFrames >= animation.frames.length;
+  const sourceFrameIndex =
+    playback.mode === 'loop'
+      ? elapsedSourceFrames % animation.frames.length
+      : Math.min(animation.frames.length - 1, elapsedSourceFrames);
   const frame = animation.frames[sourceFrameIndex];
-  if (!frame) return { assetId: null, currentExpressionId: null };
+  if (!frame) {
+    return {
+      assetId: null,
+      currentExpressionId: null,
+      animationVisible: false,
+    };
+  }
   return {
     assetId: frame.assetId,
     currentExpressionId: null,
+    animationVisible:
+      elapsedMs >= 0 &&
+      !(playback.mode === 'once' && playback.endBehavior === 'hide' && completedOnce),
     animationFrame: {
       animationId: animation.id,
       offset: frame.offset,
@@ -201,16 +220,16 @@ export function evaluateShotAtTime(
       let visible = layer.visible;
       const animationSource =
         layer.source.kind === 'animation' ? layer.source : null;
-      const animationVisible =
-        !animationSource || timeMs >= (layer.startTimeMs ?? 0);
       const initialVisual = animationSource
         ? resolveAnimationFrame(
             project,
             animationSource.animationId,
             layer.startTimeMs ?? 0,
+            layer.animationPlayback ?? { mode: 'once', endBehavior: 'hold' },
             timeMs,
           )
         : resolveLayerVisualState(project, layer);
+      const animationVisible = initialVisual.animationVisible ?? true;
       let assetId = initialVisual.assetId;
       let currentExpressionId = initialVisual.currentExpressionId;
 

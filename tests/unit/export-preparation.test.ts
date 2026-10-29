@@ -273,7 +273,14 @@ describe('DL-01 export preparation domain rules', () => {
     expect(evaluateExportPreparationSupport(project, 'speaker-focus')).toEqual([]);
   });
 
-  it('blocks animation export before creating a preparation snapshot', async () => {
+  it.each([
+    { mode: 'once', endBehavior: 'hold' },
+    { mode: 'once', endBehavior: 'hide' },
+    { mode: 'loop', endBehavior: 'hold' },
+    { mode: 'loop', endBehavior: 'hide' },
+  ] as const)(
+    'blocks animation export before creating a preparation snapshot (%#)',
+    async (animationPlayback) => {
     const base = buildProjectWithAnimation();
     const shot = base.shots[0]!;
     const animationLayer = {
@@ -281,6 +288,7 @@ describe('DL-01 export preparation domain rules', () => {
       name: 'test animation',
       source: { kind: 'animation' as const, animationId: IDS.animation },
       startTimeMs: 1_000,
+      animationPlayback,
       anchor: 'center' as const,
       x: 700,
       y: 500,
@@ -299,6 +307,9 @@ describe('DL-01 export preparation domain rules', () => {
     });
     const fixture = await harness({ project });
     const selection = await selectOutput(fixture, 'animation-not-exported.mp4');
+    const outputPath = path.join(fixture.outputDirectory, 'animation-not-exported.mp4');
+    const sentinel = 'existing MP4 must remain untouched while animation export is blocked';
+    await writeFile(outputPath, sentinel, 'utf8');
     const createSnapshot = vi.spyOn(fixture.fileStore, 'create');
 
     const result = await fixture.service.prepare(
@@ -317,7 +328,9 @@ describe('DL-01 export preparation domain rules', () => {
     expect(createSnapshot).not.toHaveBeenCalled();
     expect(await readDirectoryOrEmpty(path.join(fixture.root, 'snapshots')))
       .toEqual([]);
-  });
+    expect(await readFile(outputPath, 'utf8')).toBe(sentinel);
+    },
+  );
 
   it('prepares only expressions used by the shot timeline, not preload candidates', async () => {
     const media = new Map<string, Uint8Array>();
