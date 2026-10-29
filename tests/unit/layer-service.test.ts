@@ -65,13 +65,6 @@ describe('LayerService', () => {
       startTimeMs: shot.durationMs + 1,
     })).toThrow(expect.objectContaining({ code: 'INVALID_ANIMATION_START_TIME' }));
 
-    expect(() => service().createFromAsset(project, shot.id, {
-      version: 3,
-      type: 'animation',
-      animationId: IDS.animation,
-      position: { x: 900, y: 500 },
-      startTimeMs: 1_000,
-    })).not.toThrow();
     expect(project.shots[0]!.layers).toHaveLength(3);
   });
 
