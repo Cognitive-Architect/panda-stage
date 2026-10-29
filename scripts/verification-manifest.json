@@ -552,7 +552,8 @@
           "scripts/verify-issue457*",
           "scripts/verify-issue579*",
           "scripts/verify-issue602*",
-          "scripts/verify-issue606*"
+          "scripts/verify-issue606*",
+          "scripts/verify-issue872-motion-preview-pixels.cjs"
         ],
         "suites": ["canvas", "history"],
         "riskPolicy": "targeted",
@@ -618,6 +619,12 @@
           "src/renderer/features/actions/**",
           "src/renderer/features/editor/**",
           "src/renderer/shell/**",
+          "src/main/services/AssetPreviewAudioService.ts",
+          "src/main/ipc/register-asset-library-ipc-handlers.ts",
+          "src/preload/index.ts",
+          "src/renderer/global.d.ts",
+          "src/shared/asset-preview-audio-api.ts",
+          "src/shared/ipc/channels.ts",
           "src/renderer/styles.css",
           "src/renderer/styles/**",
           "src/renderer/ui/**",
@@ -661,6 +668,12 @@
           "tests/unit/close-project-flow.test.ts",
           "tests/unit/project-launcher.test.ts",
           "tests/unit/product-preview-*.test.ts",
+          "tests/unit/issue886-au03-audio-working-set.test.ts",
+          "tests/unit/issue887-au03-capacity.test.ts",
+          "tests/unit/issue888-au03-followup.test.ts",
+          "tests/unit/issue889-au03-transition.test.ts",
+          "tests/unit/asset-preview-audio-service.test.ts",
+          "tests/unit/asset-library-ipc-handlers.test.ts",
           "tests/unit/speaker-focus-preview-contract.test.ts",
           "tests/unit/issue653-auto-camera-mode.test.ts",
           "tests/unit/project-time-mapper.test.ts",
@@ -702,17 +715,26 @@
           "scripts/verify-issue457*",
           "scripts/verify-issue460*",
           "scripts/verify-css-split.cjs",
-          "scripts/verify-issue659-preview-mixer.cjs"
+          "scripts/verify-issue659-preview-mixer.cjs",
+          "scripts/verify-issue880-preview-clock.cjs",
+          "scripts/verify-issue884-au02-audio-schedule.cjs",
+          "scripts/verify-issue886-au03-audio-workset.cjs",
+          "scripts/generate-issue887-au03-capacity-fixtures.cjs",
+          "scripts/verify-issue887-au03-capacity.cjs",
+          "scripts/generate-issue888-au03-followup-fixtures.cjs",
+          "scripts/verify-issue888-au03-followup.cjs",
+          "scripts/generate-issue889-au03-transition-fixtures.cjs",
+          "scripts/verify-issue889-au03-transition.cjs"
         ],
         "suites": ["editor", "timeline"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "editor",
-        "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted."
+        "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. Issues #887, #888, and #889 register their audio capacity/transition tests, generated fixtures, and native Windows verifiers here. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted."
       }
     ]
   },
-  "count": 97,
+  "count": 104,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1037,6 +1059,90 @@
       "owner": "canvas",
       "supersedes": null,
       "notes": "Focused real Windows Electron Product Preview proof for atomic Body+Face pixels, expression/Mouth replacement, delayed-part no-half-frame behavior, partial opacity, Mouth fallback warning with non-exact readiness, and fatal Body failure."
+    },
+    {
+      "id": "issue872-motion-pixels",
+      "script": "verify:issue872-motion-pixels",
+      "suite": "canvas",
+      "subsystem": "canvas",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "canvas",
+      "supersedes": null,
+      "notes": "Focused Issue #872 Windows Electron Product Preview verifier for synthetic Issue #867 intensity/phase, dialogue-edge, A-to-B speaker-switch pixels, pause/seek, 0.5/1.0 Character opacity over a multi-part composite, Shot Face-resource round trip, and same-window project close/reopen Stage unmount. Requires the generated external fixture; Editor/MP4 pixel equivalence and real-material OWNER acceptance remain separate."
+    },
+    {
+      "id": "issue880-preview-clock",
+      "script": "verify:issue880-preview-clock",
+      "suite": "editor",
+      "subsystem": "editor",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "Focused Issue #880 Windows Electron proof on the synthetic Issue #867 v14 fixture: visible blur continues, hidden 2s pauses Preview and native audio, restore remains paused, explicit Play resumes without duplicate voices, and Escape closes the audio context. Human listening acceptance remains separate."
+    },
+    {
+      "id": "issue884-au02-audio-schedule",
+      "script": "verify:issue884-au02",
+      "suite": "editor",
+      "subsystem": "editor",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "Issue #884 AU-02 L1 native Web Audio proof for bounded startup preparation, a short cue through a controlled renderer gap, future-source cancellation on pause, and next-Shot scheduling through handoff. Synthetic v14 media only; not physical speaker output or OWNER listening acceptance."
+    },
+    {
+      "id": "issue886-au03-audio-workset",
+      "script": "verify:issue886-au03-audio-workset",
+      "suite": "editor",
+      "subsystem": "editor",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "Issue #886 AU-03 L1 native AudioContext working-set measurement on the generated original v14 long-BGM fixture. Records reads, native decodes, unique PCM, active sources, pause/resume, Replay, same-source Shot handoff, the 44.1 kHz control, and close. It does not claim physical speaker output or OWNER listening acceptance."
+    },
+    {
+      "id": "issue887-au03-capacity",
+      "script": "verify:issue887-au03-capacity",
+      "suite": "editor",
+      "subsystem": "editor",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "Issue #887 native Windows Electron L1 capacity verifier on original v14 generated audio. Set PANDA_STAGE_ISSUE887_ROOT, PANDA_STAGE_ISSUE887_CASE, and PANDA_STAGE_ISSUE887_PROJECT_ROOT after evidence:issue887-au03-fixtures. Measures exact source-size preflight, validated source reads, native decode sample rate/channels/PCM, playback source scheduling, and project immutability; it does not claim physical speaker output or OWNER listening acceptance."
+    },
+    {
+      "id": "issue888-au03-followup",
+      "script": "verify:issue888-au03-followup",
+      "suite": "editor",
+      "subsystem": "audio",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "Issue #888 native Windows Electron L1 follow-up for F01 two distinct concurrent 150s WAV sources and F02 future 240s WAV segmented prewarm at master+300ms. Requires PANDA_STAGE_ISSUE888_CASE and PANDA_STAGE_ISSUE888_PROJECT_ROOT from evidence:issue888-au03-fixtures; phase defaults to baseline and candidate mode asserts the repaired starts. Optional PANDA_STAGE_ISSUE888_READ_DELAY_MS and PANDA_STAGE_ISSUE888_DECODE_DELAY_MS record the prewarm window boundary. Native L1 records AudioContext source scheduling and PCM samples but does not claim physical speaker output or OWNER listening acceptance."
+    },
+    {
+      "id": "issue889-au03-transition",
+      "script": "verify:issue889-au03-transition",
+      "suite": "editor",
+      "subsystem": "audio",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "Issue #889 native Windows Electron L1 A-only -> B-only -> A+B transition using one Preview transport and original synthetic v14 fixture. Set PANDA_STAGE_ISSUE889_PROJECT_ROOT from evidence:issue889-au03-fixtures; phase defaults to candidate, while baseline mode is reserved for the frozen HEAD reproduction. Candidate mode asserts safe decision invalidation after unleased PCM LRU eviction, both distinct source starts/gains, reverse/repeat transitions, same-source overlap, memory ledger, and project immutability. Native L1 does not claim physical speaker output or OWNER listening acceptance."
     },
     {
       "id": "fla-v1-5-c3",

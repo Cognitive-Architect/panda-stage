@@ -56,11 +56,15 @@ export function resolveTalkingHeadMotionTransform(
       (dialogueDurationMs - elapsedMs) / TALKING_HEAD_EDGE_ENVELOPE_MS,
     ),
   );
-  const motion = Math.sin(phase) * envelope;
+  // Start each Dialogue from neutral toward the frozen upper-left endpoint,
+  // then return through neutral toward the lower-right endpoint.
+  const rawMotion = -Math.sin(phase) * envelope;
+  const motion = Math.abs(rawMotion) < 1e-12 ? 0 : rawMotion;
+  const offset =
+    TALKING_HEAD_BOB_AMPLITUDE_PX * (intensityPercent / 100) * motion;
   return {
-    translateX: 0,
-    translateY:
-      TALKING_HEAD_BOB_AMPLITUDE_PX * (intensityPercent / 100) * motion,
+    translateX: offset,
+    translateY: offset,
     scaleX: 1,
     scaleY: 1,
     rotationDeg: 0,

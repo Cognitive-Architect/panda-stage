@@ -827,9 +827,12 @@
   transition: transform 120ms ease-out;
 }
 
-.character-assembly-head-group.is-head-motion-test-running,
-.character-assembly-head-group.is-talking-head-motion-preview-running {
+.character-assembly-head-group.is-head-motion-test-running {
   animation: character-assembly-head-motion-test 500ms linear infinite;
+}
+
+.character-assembly-head-group.is-talking-head-motion-preview-running {
+  transition: none;
 }
 
 @keyframes character-assembly-head-motion-test {

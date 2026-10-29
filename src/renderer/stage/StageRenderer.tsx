@@ -28,10 +28,15 @@ import {
 } from '../../shared/preview/subtitle-layout';
 import { SubtitleRenderer } from '../features/subtitles/SubtitleRenderer';
 import {
+  createStageCompositeCacheSignature,
+  shouldReuseStageCompositeCache,
+} from './compositeCacheSignature';
+import {
   previewDiagnosticNow,
   previewDiagnosticScenePixelRatio,
   recordPreviewDiagnostic,
   recordPreviewDuration,
+  shouldForceCompositeCacheRebuild,
 } from './previewDiagnostics';
 import {
   configureKonvaScenePixelRatio,
@@ -161,23 +166,55 @@ function StagePartImages({
   visualBounds,
 }: StagePartImagesProps): React.JSX.Element {
   const visualRef = useRef<Konva.Group | null>(null);
+  const cachedVisualSignatureRef = useRef<string | null>(null);
   const orderedParts = [...parts].sort(
     (left, right) =>
       left.render.zIndex - right.render.zIndex ||
       left.drawOrder - right.drawOrder,
   );
   const complete = orderedParts.every((part) => images.has(part.id));
+  const cacheInputSignature = createStageCompositeCacheSignature({
+    ownerLayerId,
+    composite,
+    complete,
+    visualBounds,
+    headGroup,
+    orderedParts,
+    images,
+  });
+  const forceCompositeCacheRebuild = shouldForceCompositeCacheRebuild();
   useLayoutEffect(() => {
     const visual = visualRef.current;
     if (!visual) return;
-    const startedAt = previewDiagnosticNow();
     const previouslyCached = visual.isCached();
+    const cacheEligible =
+      composite && complete && orderedParts.length >= 2 &&
+      visualBounds.width > 0 && visualBounds.height > 0;
+    if (
+      shouldReuseStageCompositeCache({
+        forceRebuild: forceCompositeCacheRebuild,
+        previousSignature: cachedVisualSignatureRef.current,
+        inputSignature: cacheInputSignature,
+        cacheEligible,
+        previouslyCached,
+      })
+    ) {
+      if (cacheEligible) {
+        recordPreviewDiagnostic('composite-cache-reuse', {
+          ownerLayerId,
+          partCount: orderedParts.length,
+          visualSignature: cacheInputSignature,
+        });
+      }
+      return;
+    }
+    const startedAt = previewDiagnosticNow();
     visual.clearCache();
-    if (!composite || !complete || orderedParts.length < 2) {
+    if (!cacheEligible) {
+      cachedVisualSignatureRef.current = cacheInputSignature;
       recordPreviewDuration('composite-cache-clear', startedAt, { ownerLayerId });
       return;
     }
-    if (visualBounds.width <= 0 || visualBounds.height <= 0) return;
     // Flatten the Body + Head + Face overlap before owner opacity is applied by
     // the outer Group. The nested Head Group is rasterized inside this
     // Character-local cache, so changing its transform leaves Body fixed.
@@ -187,6 +224,7 @@ function StagePartImages({
       width: visualBounds.width,
       height: visualBounds.height,
     });
+    cachedVisualSignatureRef.current = cacheInputSignature;
     if (scheduleLayerDraw) visual.getLayer()?.batchDraw();
     recordPreviewDuration('composite-cache-rebuild', startedAt, {
       ownerLayerId,
@@ -194,13 +232,13 @@ function StagePartImages({
       visualWidth: visualBounds.width,
       visualHeight: visualBounds.height,
       previouslyCached,
-      visualSignature: orderedParts.map((part) =>
-        `${part.id}:${part.sourceUrl}:${part.render.x}:${part.render.y}:${part.render.width}:${part.render.height}:${part.render.offsetX}:${part.render.offsetY}:${part.render.rotationDeg}:${part.render.scaleX}:${part.render.scaleY}`,
-      ).join('|'),
+      visualSignature: cacheInputSignature,
     });
   }, [
+    cacheInputSignature,
     complete,
     composite,
+    forceCompositeCacheRebuild,
     headGroup,
     images,
     orderedParts,
@@ -491,6 +529,21 @@ export function StageRenderer({
       data-layer-render-json={JSON.stringify(
         displayModel!.layers.map((layer) => layer.render),
       )}
+      data-layer-visual-state-json={
+        showStageLabel
+          ? JSON.stringify(
+              displayModel!.layers.map(({ id, visual }) => ({
+                layerId: id,
+                activeFace: visual?.activeFace
+                  ? {
+                      source: visual.activeFace.source,
+                      assetId: visual.activeFace.assetId,
+                    }
+                  : null,
+              })),
+            )
+          : undefined
+      }
       data-render-contract="shared-stage-layer-v1"
       data-stage-error={String(Boolean(error))}
       data-stage-display-ready={String(displayReady)}

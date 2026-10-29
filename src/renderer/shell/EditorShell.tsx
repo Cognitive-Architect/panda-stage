@@ -464,6 +464,7 @@ export function EditorShell({
   const [newProjectNameTouched, setNewProjectNameTouched] = useState(false);
   const [newProjectStatus, setNewProjectStatus] = useState('');
   const [productPreviewOpen, setProductPreviewOpen] = useState(false);
+  const productPreviewOpenerRef = useRef<HTMLElement | null>(null);
   // Preview Camera is an editor-session mode, not Project or Preview state.
   const [autoCameraEnabled, setAutoCameraEnabled] = useState(false);
   const issue816FlowActive = useRef(false);
@@ -1241,6 +1242,10 @@ export function EditorShell({
   };
 
   const openProductPreview = (): void => {
+    productPreviewOpenerRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     setProductPreviewSurfaceActive(false);
     setProductPreviewOpen(true);
   };
@@ -1699,6 +1704,10 @@ export function EditorShell({
   const closeProductPreview = (): void => {
     setProductPreviewSurfaceActive(false);
     setProductPreviewOpen(false);
+    window.requestAnimationFrame(() => {
+      productPreviewOpenerRef.current?.focus({ preventScroll: true });
+      productPreviewOpenerRef.current = null;
+    });
   };
 
   const requestCloseProject = (): void => {
@@ -1954,6 +1963,7 @@ export function EditorShell({
         <div
           className="editor-layout"
           data-active-workspace={portraitWorkspace}
+          data-preview-surface-active={productPreviewSurfaceActive ? 'true' : 'false'}
           data-shell-mode={layoutMode}
           data-top-region-layout={isPortrait ? 'flow' : 'overlay'}
           data-testid="editor-layout"

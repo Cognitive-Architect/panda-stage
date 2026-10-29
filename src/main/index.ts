@@ -533,6 +533,7 @@ async function initialize(): Promise<void> {
     assetPreviewAudioService: new AssetPreviewAudioService({
       getCurrentProjectSnapshot: (projectRoot) =>
         autosaveService?.getProjectSnapshot(projectRoot) ?? null,
+      enableValidatedHashIndex: true,
     }),
   });
   flaAssetCommitService = new FlaAssetCommitService({

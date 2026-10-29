@@ -22,6 +22,7 @@ import type {
   AssetCanvasImageReadResponse,
 } from '../shared/asset-canvas-image-api';
 import type {
+  AssetPreviewAudioInfoResponse,
   AssetPreviewAudioReadRequest,
   AssetPreviewAudioReadResponse,
 } from '../shared/asset-preview-audio-api';
@@ -185,6 +186,9 @@ declare global {
         readAudio: (
           request: AssetPreviewAudioReadRequest,
         ) => Promise<AssetPreviewAudioReadResponse>;
+        getAudioInfo: (
+          request: AssetPreviewAudioReadRequest,
+        ) => Promise<AssetPreviewAudioInfoResponse>;
       };
       recentProjects: {
         list: () => Promise<RecentProjectsListResponse>;
