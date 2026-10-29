@@ -670,6 +670,7 @@
           "tests/unit/product-preview-*.test.ts",
           "tests/unit/issue886-au03-audio-working-set.test.ts",
           "tests/unit/issue887-au03-capacity.test.ts",
+          "tests/unit/issue888-au03-followup.test.ts",
           "tests/unit/asset-preview-audio-service.test.ts",
           "tests/unit/asset-library-ipc-handlers.test.ts",
           "tests/unit/speaker-focus-preview-contract.test.ts",
@@ -718,17 +719,19 @@
           "scripts/verify-issue884-au02-audio-schedule.cjs",
           "scripts/verify-issue886-au03-audio-workset.cjs",
           "scripts/generate-issue887-au03-capacity-fixtures.cjs",
-          "scripts/verify-issue887-au03-capacity.cjs"
+          "scripts/verify-issue887-au03-capacity.cjs",
+          "scripts/generate-issue888-au03-followup-fixtures.cjs",
+          "scripts/verify-issue888-au03-followup.cjs"
         ],
         "suites": ["editor", "timeline"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "editor",
-        "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. Issue #887 registers its audio source-size IPC contract, capacity unit tests, and native Windows verifier here. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted."
+        "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. Issues #887 and #888 register their audio capacity tests, generated fixtures, and native Windows verifiers here. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted."
       }
     ]
   },
-  "count": 102,
+  "count": 103,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1113,6 +1116,18 @@
       "owner": "editor",
       "supersedes": null,
       "notes": "Issue #887 native Windows Electron L1 capacity verifier on original v14 generated audio. Set PANDA_STAGE_ISSUE887_ROOT, PANDA_STAGE_ISSUE887_CASE, and PANDA_STAGE_ISSUE887_PROJECT_ROOT after evidence:issue887-au03-fixtures. Measures exact source-size preflight, validated source reads, native decode sample rate/channels/PCM, playback source scheduling, and project immutability; it does not claim physical speaker output or OWNER listening acceptance."
+    },
+    {
+      "id": "issue888-au03-followup",
+      "script": "verify:issue888-au03-followup",
+      "suite": "editor",
+      "subsystem": "audio",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "Issue #888 native Windows Electron L1 follow-up for F01 two distinct concurrent 150s WAV sources and F02 future 240s WAV segmented prewarm at master+300ms. Requires PANDA_STAGE_ISSUE888_CASE and PANDA_STAGE_ISSUE888_PROJECT_ROOT from evidence:issue888-au03-fixtures; phase defaults to baseline and candidate mode asserts the repaired starts. Optional PANDA_STAGE_ISSUE888_READ_DELAY_MS and PANDA_STAGE_ISSUE888_DECODE_DELAY_MS record the prewarm window boundary. Native L1 records AudioContext source scheduling and PCM samples but does not claim physical speaker output or OWNER listening acceptance."
     },
     {
       "id": "fla-v1-5-c3",

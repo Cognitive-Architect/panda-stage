@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { audioClipGain, audioClipSourceTimeMs, isAudioClipActiveAtTime } from '../../domain';
 import type { AudioAsset, AudioClip, Dialogue, Project, Shot } from '../../domain';
-import type {
-  AssetPreviewAudioInfoResponse,
-  AssetPreviewAudioReadRequest,
-  AssetPreviewAudioReadResponse,
+import {
+  ASSET_PREVIEW_AUDIO_MAX_BYTES,
+  type AssetPreviewAudioInfoResponse,
+  type AssetPreviewAudioReadRequest,
+  type AssetPreviewAudioReadResponse,
 } from '../../shared/asset-preview-audio-api';
 
 export interface ProductPreviewAudioSelection {
@@ -266,6 +267,7 @@ export class ProductPreviewAudioTransport {
   private readonly createContext: () => ProductPreviewAudioContext;
   private readonly readAudio: NonNullable<ProductPreviewAudioTransportOptions['readAudio']>;
   private readonly getAudioInfo: NonNullable<ProductPreviewAudioTransportOptions['getAudioInfo']>;
+  private readonly hasAudioInfoProvider: boolean;
   private readonly onWarning: NonNullable<ProductPreviewAudioTransportOptions['onWarning']>;
   private context: ProductPreviewAudioContext | null = null;
   private readonly voices = new Map<string, Voice>();
@@ -279,6 +281,9 @@ export class ProductPreviewAudioTransport {
   private readonly waveSources = new Map<string, WaveSourceRecord>();
   private readonly waveSourceCache = new Map<string, WaveSourceRecord>();
   private readonly waveSourceReads = new Map<string, WaveSourceReadState>();
+  private readonly sourceInfoCache = new Map<string, AssetPreviewAudioInfoResponse | null>();
+  private readonly sourceInfoTasks = new Map<string, Promise<AssetPreviewAudioInfoResponse | null>>();
+  private readonly waveStreamDecisions = new Map<string, boolean>();
   private readonly startConsumers = new Map<number, string[]>();
   private cancelStartupPreparation: (() => void) | null = null;
   private cacheBytes = 0;
@@ -289,6 +294,7 @@ export class ProductPreviewAudioTransport {
   private peakEstimatedWorkingSetBytes = 0;
   private readTaskSequence = 0;
   private startupGeneration = 0;
+  private sourceInfoRefreshPending = false;
   private latestInput: ProductPreviewAudioSyncInput | null = null;
   private latestMasterSnapshot: ProductPreviewAudioMasterSnapshot | null = null;
   private warning: string | null = null;
@@ -298,12 +304,11 @@ export class ProductPreviewAudioTransport {
   constructor(options: ProductPreviewAudioTransportOptions = {}) {
     this.createContext = options.createContext ?? (() => new AudioContext({ latencyHint: 'interactive' }));
     this.readAudio = options.readAudio ?? ((request) => window.pandaStage.assets.readAudio(request));
-    this.getAudioInfo = options.getAudioInfo ?? ((request) => {
-      const getInfo = typeof window !== 'undefined' && window.pandaStage
-        ? window.pandaStage.assets.getAudioInfo
-        : undefined;
-      return getInfo ? getInfo(request) : Promise.resolve(null);
-    });
+    const getAudioInfo = options.getAudioInfo ?? (typeof window !== 'undefined' && window.pandaStage
+      ? window.pandaStage.assets.getAudioInfo
+      : undefined);
+    this.hasAudioInfoProvider = typeof getAudioInfo === 'function';
+    this.getAudioInfo = getAudioInfo ?? (() => Promise.resolve(null));
     this.onWarning = options.onWarning ?? (() => undefined);
   }
 
@@ -327,7 +332,7 @@ export class ProductPreviewAudioTransport {
     }
 
     const snapshot = this.snapshotAtStart(input, clockSample.snapshot, startTimeMs);
-    const plan = this.planFor(input, snapshot, PRODUCT_PREVIEW_AUDIO_LOOKAHEAD_MS)
+    let plan = this.planFor(input, snapshot, PRODUCT_PREVIEW_AUDIO_LOOKAHEAD_MS, false)
       .sort((left, right) => left.priority - right.priority);
     if (plan.length === 0) {
       this.startupWarning = false;
@@ -336,6 +341,21 @@ export class ProductPreviewAudioTransport {
     }
 
     this.latestInput = input;
+    const sourceInfoPreparation = this.hasAudioInfoProvider
+      ? this.preflightWaveSourceSizes(plan, input)
+      : Promise.resolve();
+    const infoBudgetMs = Math.max(0, PRODUCT_PREVIEW_AUDIO_STARTUP_TIMEOUT_MS - (performance.now() - startedAt));
+    let infoTimeout: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      sourceInfoPreparation.then(() => true),
+      new Promise<boolean>((resolve) => { infoTimeout = setTimeout(() => resolve(false), infoBudgetMs); }),
+    ]);
+    if (infoTimeout !== undefined) clearTimeout(infoTimeout);
+    if (generation !== this.startupGeneration || this.disposed) {
+      return { ready: false, reason: 'cancelled', waitedMs: Math.max(0, performance.now() - startedAt) };
+    }
+    plan = this.planFor(input, snapshot, PRODUCT_PREVIEW_AUDIO_LOOKAHEAD_MS, true)
+      .sort((left, right) => left.priority - right.priority);
     let context: ProductPreviewAudioContext;
     try {
       context = this.context ??= this.createContext();
@@ -374,11 +394,13 @@ export class ProductPreviewAudioTransport {
     });
     this.cancelStartupPreparation = cancelPreparation;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const preparationBudgetMs = Math.max(0,
+      PRODUCT_PREVIEW_AUDIO_STARTUP_TIMEOUT_MS - (performance.now() - startedAt));
     const outcome = await Promise.race([
       allReady,
       cancelled,
       new Promise<'timeout'>((resolve) => {
-        timeoutId = setTimeout(() => resolve('timeout'), PRODUCT_PREVIEW_AUDIO_STARTUP_TIMEOUT_MS);
+        timeoutId = setTimeout(() => resolve('timeout'), preparationBudgetMs);
       }),
     ]);
     if (timeoutId !== undefined) clearTimeout(timeoutId);
@@ -425,6 +447,9 @@ export class ProductPreviewAudioTransport {
 
     if (projectChanged) {
       this.cacheEpoch += 1;
+      this.sourceInfoCache.clear();
+      this.sourceInfoTasks.clear();
+      this.waveStreamDecisions.clear();
       this.discardObsoleteReadWork();
     }
     if (projectChanged || selectedShotChanged || previous?.range !== input.range ||
@@ -439,7 +464,14 @@ export class ProductPreviewAudioTransport {
     }
 
     const position = this.masterPosition(snapshot, input);
-    const planned = this.planFor(input, snapshot, PRODUCT_PREVIEW_AUDIO_LOOKAHEAD_MS)
+    const candidatePlan = this.planFor(input, snapshot, PRODUCT_PREVIEW_AUDIO_LOOKAHEAD_MS, false)
+      .sort((left, right) => left.priority - right.priority);
+    if (this.hasAudioInfoProvider) void this.preflightWaveSourceSizes(candidatePlan, input, true);
+    const pendingSourceSize = this.hasAudioInfoProvider && candidatePlan.some((item) => this.needsWaveSourceSize(item.selection, input) &&
+      !this.waveStreamDecisions.has(this.assetKey(item.selection, input)) &&
+      this.sourceInfoTasks.has(this.sourceInfoKey({ projectRoot: input.projectRoot,
+        assetId: item.selection.asset.id, sha256: item.selection.asset.sha256! })));
+    const planned = this.planFor(input, snapshot, PRODUCT_PREVIEW_AUDIO_LOOKAHEAD_MS, !pendingSourceSize)
       .sort((left, right) => left.priority - right.priority);
     const desired = new Set(planned.map((item) => this.voiceKey(item, input.range)));
     for (const [key, voice] of this.voices) {
@@ -503,6 +535,9 @@ export class ProductPreviewAudioTransport {
     this.latestMasterSnapshot = null;
     this.clearVoices();
     this.clearRetainedBuffers();
+    this.sourceInfoCache.clear();
+    this.sourceInfoTasks.clear();
+    this.waveStreamDecisions.clear();
     for (const task of [...this.readQueue]) this.dropQueuedTask(task, new Error('Audio transport disposed.'));
     if (this.context) void this.context.close().catch(() => undefined);
     this.context = null;
@@ -547,8 +582,12 @@ export class ProductPreviewAudioTransport {
       .sort((left, right) => left[1].priority - right[1].priority ||
         left[1].clipStartMasterMs - right[1].clipStartMasterMs);
     for (const [key, voice] of waiting) {
-      voice.state = 'loading';
       const input = this.latestInput;
+      const sourceAssetKey = input ? this.assetKey(voice.selection, input) : null;
+      if (this.sourceInfoRefreshPending && sourceAssetKey && !this.waveStreamDecisions.has(sourceAssetKey) &&
+          voice.selection.asset.mimeType === 'audio/wav' &&
+          (voice.selection.asset.durationMs ?? 0) >= PRODUCT_PREVIEW_AUDIO_WAV_PROXY_MIN_SOURCE_MS) continue;
+      voice.state = 'loading';
       const assetKey = input ? this.decodedBufferKey(voice.selection, input) : null;
       const preparedRecord = assetKey ? this.getRetainedRecord(assetKey) : undefined;
       const taskKey = assetKey ? this.cacheEpoch + '\u0000' + assetKey : null;
@@ -937,8 +976,78 @@ export class ProductPreviewAudioTransport {
     return record;
   }
 
+  private preflightWaveSourceSizes(
+    plan: PlannedVoice[],
+    input: ProductPreviewAudioSyncInput,
+    refreshPlanWhenReady = false,
+  ): Promise<void> {
+    const candidates = new Map<string, ProductPreviewAudioSelection>();
+    for (const item of plan) {
+      if (!this.needsWaveSourceSize(item.selection, input)) continue;
+      candidates.set(this.assetKey(item.selection, input), item.selection);
+    }
+    if (candidates.size === 0) return Promise.resolve();
+
+    const requests = [...candidates.values()].map((selection) => ({
+      projectRoot: input.projectRoot,
+      assetId: selection.asset.id,
+      sha256: selection.asset.sha256!,
+    }));
+    const hasUncachedSourceInfo = requests.some((request) => !this.sourceInfoCache.has(this.sourceInfoKey(request)));
+    const tasks = requests.map((request) => this.getAudioInfoCached(request));
+    const ready = Promise.all(tasks).then(() => undefined);
+    if (refreshPlanWhenReady && hasUncachedSourceInfo && !this.sourceInfoRefreshPending) {
+      this.sourceInfoRefreshPending = true;
+      void ready.finally(() => {
+        this.sourceInfoRefreshPending = false;
+        if (this.disposed) return;
+        const latestInput = this.latestInput;
+        if (latestInput?.playing) this.sync(latestInput);
+      });
+    }
+    return ready;
+  }
+
+  private needsWaveSourceSize(selection: ProductPreviewAudioSelection, input: ProductPreviewAudioSyncInput): boolean {
+    const { asset, clip } = selection;
+    return asset.mimeType === 'audio/wav' &&
+      (asset.durationMs ?? 0) >= PRODUCT_PREVIEW_AUDIO_WAV_PROXY_MIN_SOURCE_MS &&
+      clip.endMs - clip.startMs > PRODUCT_PREVIEW_AUDIO_WAV_PROXY_MAX_CLIP_MS &&
+      this.waveProxyRange(selection, input) === null;
+  }
+
+  private sourceInfoKey(request: Pick<AssetPreviewAudioReadRequest, 'projectRoot' | 'assetId' | 'sha256'>): string {
+    return [request.projectRoot, request.assetId, request.sha256].join('\u0000');
+  }
+
+  private getAudioInfoCached(request: AssetPreviewAudioReadRequest): Promise<AssetPreviewAudioInfoResponse | null> {
+    const key = this.sourceInfoKey(request);
+    if (this.sourceInfoCache.has(key)) return Promise.resolve(this.sourceInfoCache.get(key) ?? null);
+    const pending = this.sourceInfoTasks.get(key);
+    if (pending) return pending;
+
+    const epoch = this.cacheEpoch;
+    const task = Promise.resolve().then(() => this.getAudioInfo(request)).catch(() => null).then((info) => {
+      if (!this.disposed && epoch === this.cacheEpoch) this.sourceInfoCache.set(key, info);
+      return info;
+    }).finally(() => {
+      if (this.sourceInfoTasks.get(key) === task) this.sourceInfoTasks.delete(key);
+    });
+    this.sourceInfoTasks.set(key, task);
+    return task;
+  }
+
+  private cachedSourceByteLength(selection: ProductPreviewAudioSelection, input: ProductPreviewAudioSyncInput): number | null {
+    const key = this.sourceInfoKey({ projectRoot: input.projectRoot,
+      assetId: selection.asset.id, sha256: selection.asset.sha256! });
+    const info = this.sourceInfoCache.get(key);
+    return info?.ok === true && info.assetId === selection.asset.id && info.mimeType === selection.asset.mimeType
+      ? info.byteLength
+      : null;
+  }
+
   private async readAudioInfoByteLength(task: AudioReadTask): Promise<number | null> {
-    const info = await this.getAudioInfo(task.request);
+    const info = await this.getAudioInfoCached(task.request);
     if (!info) return null;
     if (!info.ok || info.assetId !== task.request.assetId || info.mimeType !== task.selection.asset.mimeType) {
       throw new Error('Audio source information is unavailable.');
@@ -1001,7 +1110,7 @@ export class ProductPreviewAudioTransport {
 
   private async loadWaveSource(state: WaveSourceReadState): Promise<void> {
     try {
-      const info = await this.getAudioInfo(state.request);
+      const info = await this.getAudioInfoCached(state.request);
       if (info && (!info.ok || info.assetId !== state.request.assetId || info.mimeType !== state.selection.asset.mimeType)) {
         throw new Error('Audio source information is unavailable.');
       }
@@ -1487,11 +1596,16 @@ export class ProductPreviewAudioTransport {
       this.decodeInputCopyBytes() + this.waveSourceBytes() + this.sourceReadReservationsBytes();
   }
 
+  private reclaimableIdlePcmBytes(protectedKeys: ReadonlySet<string> = new Set()): number {
+    return [...this.bufferRecords.entries()]
+      .filter(([key, record]) => !protectedKeys.has(key) &&
+        record.voiceLeases.size === 0 && record.consumerLeases.size === 0)
+      .reduce((sum, [, record]) => sum + record.bytes, 0);
+  }
+
   private canFitDecodedBuffer(bytes: number): boolean {
     if (bytes > PRODUCT_PREVIEW_AUDIO_WORKING_SET_BYTES) return false;
-    const reclaimable = [...this.bufferRecords.values()]
-      .filter((record) => record.voiceLeases.size === 0 && record.consumerLeases.size === 0)
-      .reduce((sum, record) => sum + record.bytes, 0) + this.waveSourceCacheBytes;
+    const reclaimable = this.reclaimableIdlePcmBytes() + this.waveSourceCacheBytes;
     return this.estimatedWorkingSetBytes() - reclaimable + bytes <= PRODUCT_PREVIEW_AUDIO_WORKING_SET_BYTES;
   }
 
@@ -1574,6 +1688,7 @@ export class ProductPreviewAudioTransport {
     input: ProductPreviewAudioSyncInput,
     snapshot: ProductPreviewAudioMasterSnapshot,
     lookaheadMs: number,
+    freezeWaveStreamDecisions = true,
   ): PlannedVoice[] {
     const position = this.masterPosition(snapshot, input);
     const horizon = position + lookaheadMs;
@@ -1590,7 +1705,7 @@ export class ProductPreviewAudioTransport {
             ? CURRENT_PLAYBACK_PRIORITY
             : PREFETCH_PRIORITY });
       }
-      return this.splitLongWaveVoices(plan, input, position, horizon);
+      return this.splitLongWaveVoices(plan, input, position, horizon, freezeWaveStreamDecisions);
     }
 
     let shotStartMs = 0;
@@ -1606,7 +1721,7 @@ export class ProductPreviewAudioTransport {
       }
       shotStartMs += shot.durationMs;
     }
-    return this.splitLongWaveVoices(plan, input, position, horizon);
+    return this.splitLongWaveVoices(plan, input, position, horizon, freezeWaveStreamDecisions);
   }
 
   private splitLongWaveVoices(
@@ -1614,31 +1729,99 @@ export class ProductPreviewAudioTransport {
     input: ProductPreviewAudioSyncInput,
     position: number,
     horizon: number,
+    freezeWaveStreamDecisions: boolean,
   ): PlannedVoice[] {
     const splitAssets = new Set<string>();
     const currentAssets = new Map<string, ProductPreviewAudioSelection>();
+    const streamCandidates = new Map<string, { selection: ProductPreviewAudioSelection; items: PlannedVoice[] }>();
     for (const item of plan) {
-      if (item.priority !== CURRENT_PLAYBACK_PRIORITY) continue;
-      currentAssets.set(this.assetKey(item.selection, input), item.selection);
       const { asset, clip } = item.selection;
-      if (asset.mimeType === 'audio/wav' && (asset.durationMs ?? 0) > 180_000 &&
+      const assetKey = this.assetKey(item.selection, input);
+      if (item.priority === CURRENT_PLAYBACK_PRIORITY) currentAssets.set(assetKey, item.selection);
+      if ((item.priority === CURRENT_PLAYBACK_PRIORITY || this.hasAudioInfoProvider) &&
+          asset.mimeType === 'audio/wav' && (asset.durationMs ?? 0) >= PRODUCT_PREVIEW_AUDIO_WAV_PROXY_MIN_SOURCE_MS &&
           clip.endMs - clip.startMs > PRODUCT_PREVIEW_AUDIO_WAV_STREAM_CHUNK_MS) {
-        splitAssets.add(this.assetKey(item.selection, input));
+        const candidate = streamCandidates.get(assetKey) ?? { selection: item.selection, items: [] };
+        candidate.items.push(item);
+        streamCandidates.set(assetKey, candidate);
       }
     }
     const currentFullDecodeBytes = [...currentAssets.entries()].reduce((sum, [key, selection]) => {
       const item = plan.find((candidate) => this.assetKey(candidate.selection, input) === key &&
         candidate.priority === CURRENT_PLAYBACK_PRIORITY);
+      const decodedKey = item ? this.decodedBufferKey(item.selection, input) : this.assetKey(selection, input);
+      const taskKey = this.cacheEpoch + '\u0000' + decodedKey;
+      if (this.getRetainedRecord(decodedKey) || this.readTasks.has(taskKey)) return sum;
       return sum + this.estimatedDecodeBytes(selection, this.context,
         undefined, item ? this.waveProxyRange(item.selection, input) : null);
     }, 0);
     if (currentFullDecodeBytes > PRODUCT_PREVIEW_AUDIO_WORKING_SET_BYTES) {
       for (const item of plan) {
-        const { asset, clip } = item.selection;
-        if (item.priority === CURRENT_PLAYBACK_PRIORITY && asset.mimeType === 'audio/wav' &&
-            clip.endMs - clip.startMs > PRODUCT_PREVIEW_AUDIO_WAV_STREAM_CHUNK_MS) {
+        if (item.priority === CURRENT_PLAYBACK_PRIORITY && streamCandidates.has(this.assetKey(item.selection, input))) {
           splitAssets.add(this.assetKey(item.selection, input));
         }
+      }
+    }
+
+    const routeCosts = new Map<string, { fullBytes: number; streamBytes: number; selection: ProductPreviewAudioSelection }>();
+    const protectedPcmKeys = new Set(plan.map((item) => this.decodedBufferKey(item.selection, input)));
+    const baselineWorkingSetBytes = Math.max(0,
+      this.estimatedWorkingSetBytes() - this.reclaimableIdlePcmBytes(protectedPcmKeys));
+    let projectedWorkingSetBytes = baselineWorkingSetBytes;
+    for (const [assetKey, candidate] of streamCandidates) {
+      const priorDecision = this.waveStreamDecisions.get(assetKey);
+      if (priorDecision !== undefined) {
+        if (priorDecision) splitAssets.add(assetKey);
+        else splitAssets.delete(assetKey);
+        continue;
+      }
+      const fullKey = this.decodedBufferKey(candidate.selection, input);
+      const fullTaskKey = this.cacheEpoch + '\u0000' + fullKey;
+      if (this.getRetainedRecord(fullKey) || this.readTasks.has(fullTaskKey)) {
+        if (freezeWaveStreamDecisions) this.waveStreamDecisions.set(assetKey, false);
+        splitAssets.delete(assetKey);
+        continue;
+      }
+
+      const knownSourceBytes = this.cachedSourceByteLength(candidate.selection, input);
+      if (knownSourceBytes === null && !freezeWaveStreamDecisions) continue;
+      const sourceBytes = knownSourceBytes ??
+        (this.hasAudioInfoProvider ? ASSET_PREVIEW_AUDIO_MAX_BYTES : 0);
+      const fullBytes = this.estimatedDecodeBytes(candidate.selection, this.context) + sourceBytes;
+      const streamBytes = this.estimatedWaveStreamCost(candidate.items, candidate.selection, sourceBytes,
+        input, position, horizon);
+      routeCosts.set(assetKey, { fullBytes, streamBytes, selection: candidate.selection });
+      if ((candidate.selection.asset.durationMs ?? 0) > 180_000) splitAssets.add(assetKey);
+      projectedWorkingSetBytes += splitAssets.has(assetKey) ? streamBytes : fullBytes;
+    }
+
+    const currentFullCandidates = [...routeCosts.entries()].filter(([assetKey]) =>
+      currentAssets.has(assetKey) && !splitAssets.has(assetKey));
+    const currentFullWorkingSetBytes = baselineWorkingSetBytes +
+      currentFullCandidates.reduce((sum, [, cost]) => sum + cost.fullBytes, 0);
+    if (currentFullWorkingSetBytes > PRODUCT_PREVIEW_AUDIO_WORKING_SET_BYTES) {
+      for (const [assetKey, cost] of currentFullCandidates) {
+        splitAssets.add(assetKey);
+        projectedWorkingSetBytes -= cost.fullBytes - cost.streamBytes;
+      }
+    }
+
+    if (projectedWorkingSetBytes > PRODUCT_PREVIEW_AUDIO_WORKING_SET_BYTES) {
+      const candidates = [...routeCosts.entries()]
+        .filter(([assetKey]) => !splitAssets.has(assetKey))
+        .map(([assetKey, cost]) => ({ assetKey, ...cost, savedBytes: cost.fullBytes - cost.streamBytes }))
+        .filter((candidate) => candidate.savedBytes > 0)
+        .sort((left, right) => right.savedBytes - left.savedBytes);
+      for (const candidate of candidates) {
+        if (projectedWorkingSetBytes <= PRODUCT_PREVIEW_AUDIO_WORKING_SET_BYTES) break;
+        splitAssets.add(candidate.assetKey);
+        projectedWorkingSetBytes -= candidate.savedBytes;
+      }
+    }
+
+    if (freezeWaveStreamDecisions) {
+      for (const assetKey of streamCandidates.keys()) {
+        if (!this.waveStreamDecisions.has(assetKey)) this.waveStreamDecisions.set(assetKey, splitAssets.has(assetKey));
       }
     }
 
@@ -1679,6 +1862,43 @@ export class ProductPreviewAudioTransport {
       }
     }
     return segmented;
+  }
+
+  private estimatedWaveStreamCost(
+    items: PlannedVoice[],
+    selection: ProductPreviewAudioSelection,
+    sourceBytes: number,
+    input: ProductPreviewAudioSyncInput,
+    position: number,
+    horizon: number,
+  ): number {
+    const assetKey = this.assetKey(selection, input);
+    let cost = this.waveSources.has(assetKey) || this.waveSourceReads.has(assetKey) ? 0 : sourceBytes;
+    const segments = new Map<string, ProductPreviewAudioSelection>();
+    const chunkMs = PRODUCT_PREVIEW_AUDIO_WAV_STREAM_CHUNK_MS;
+    for (const item of items) {
+      const { clip } = item.selection;
+      const durationMs = clip.endMs - clip.startMs;
+      const totalChunks = Math.ceil(durationMs / chunkMs);
+      const firstChunk = Math.max(0, Math.floor(Math.max(0, position - item.clipStartMasterMs) / chunkMs));
+      const lastChunk = Math.min(totalChunks - 1,
+        Math.ceil((horizon - item.clipStartMasterMs) / chunkMs) - 1);
+      for (let chunkIndex = firstChunk; chunkIndex <= lastChunk; chunkIndex += 1) {
+        const segmentStartMs = clip.startMs + chunkIndex * chunkMs;
+        const segmentEndMs = Math.min(clip.endMs, segmentStartMs + chunkMs);
+        const segmentClip: AudioClip = { ...clip, startMs: segmentStartMs, endMs: segmentEndMs,
+          offsetMs: clip.offsetMs + segmentStartMs - clip.startMs };
+        const segmentSelection = { ...item.selection, clip: segmentClip };
+        const range = this.waveProxyRange(segmentSelection, input);
+        if (!range) continue;
+        const segmentKey = `${range.sourceStartMs}:${range.durationMs}`;
+        if (segments.has(segmentKey)) continue;
+        segments.set(segmentKey, segmentSelection);
+        cost += this.estimatedDecodeBytes(segmentSelection, this.context, undefined, range);
+        cost += Math.ceil(sourceBytes * range.durationMs / Math.max(1, selection.asset.durationMs ?? 1)) + 128;
+      }
+    }
+    return cost;
   }
 
   private snapshotAtStart(

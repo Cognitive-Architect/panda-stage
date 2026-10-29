@@ -12,10 +12,22 @@ const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
 const issueCase = process.env.PANDA_STAGE_ISSUE887_CASE;
 const configuredProjectRoot = process.env.PANDA_STAGE_ISSUE887_PROJECT_ROOT;
 if (!configuredProjectRoot) throw new Error('PANDA_STAGE_ISSUE887_PROJECT_ROOT is required.');
+const isIssue888Case = issueCase === 'F01' || issueCase === 'F02';
+const issueNumber = isIssue888Case ? 888 : 887;
+const issue888Phase = process.env.PANDA_STAGE_ISSUE888_PHASE ?? 'baseline';
+const issue888ReadDelayMs = Math.max(0, Number(process.env.PANDA_STAGE_ISSUE888_READ_DELAY_MS ?? 0));
+const issue888DecodeDelayMs = Math.max(0, Number(process.env.PANDA_STAGE_ISSUE888_DECODE_DELAY_MS ?? 0));
+if (isIssue888Case && !['baseline', 'candidate'].includes(issue888Phase)) {
+  throw new Error('PANDA_STAGE_ISSUE888_PHASE must be baseline or candidate.');
+}
+if (!Number.isFinite(issue888ReadDelayMs) || !Number.isFinite(issue888DecodeDelayMs)) {
+  throw new Error('Issue #888 injected delays must be finite millisecond values.');
+}
 const projectRoot = path.resolve(configuredProjectRoot);
 const fixtureRunRoot = path.dirname(projectRoot);
 const caseRunRoot = mkdtempSync(path.join(fixtureRunRoot, `native-${issueCase ?? 'missing'}-`));
-const resultPath = path.join(caseRunRoot, `issue887-${issueCase ?? 'missing'}-L1-current.json`);
+const delayProfile = isIssue888Case ? `-read${issue888ReadDelayMs}-decode${issue888DecodeDelayMs}` : '';
+const resultPath = path.join(caseRunRoot, `issue${issueNumber}-${issueCase ?? 'missing'}${delayProfile}-L1-${isIssue888Case ? issue888Phase : 'current'}.json`);
 const workingSetLimitBytes = 128 * 1024 * 1024;
 
 app.on('window-all-closed', () => {});
@@ -35,8 +47,8 @@ function sha256(bytes) {
 }
 
 function loadFixture() {
-  assert(['A-full', 'A-offset', 'A-proxy-control', 'B-overlap', 'C-mp3'].includes(issueCase),
-    'PANDA_STAGE_ISSUE887_CASE must select an Issue #887 fixture case.');
+  assert(['A-full', 'A-offset', 'A-proxy-control', 'B-overlap', 'C-mp3', 'F01', 'F02'].includes(issueCase),
+    'PANDA_STAGE_ISSUE887_CASE must select an Issue #887 or Issue #888 fixture case.');
   const projectPath = path.join(projectRoot, 'project.json');
   const projectBytes = readFileSync(projectPath);
   const project = ProjectSchema.parse(JSON.parse(projectBytes.toString('utf8')));
@@ -66,7 +78,8 @@ function loadFixture() {
     assert(!relative.startsWith('..') && !path.isAbsolute(relative), `Audio source escaped fixture root: ${asset.id}.`);
     const bytes = readFileSync(filePath);
     assert(sha256(bytes) === asset.sha256, `Audio source hash mismatch: ${asset.id}.`);
-    const manifestAsset = manifest.assets.find((entry) => entry.id === asset.id);
+    const manifestAsset = manifest.assets.find((entry) => entry.id === asset.id ||
+      entry.sha256 === asset.sha256 || entry.relativePath === asset.relativePath);
     const sampleBoundaries = [];
     if (asset.mimeType === 'audio/wav' && bytes.toString('ascii', 0, 4) === 'RIFF' &&
         bytes.readUInt16LE(20) === 1 && bytes.readUInt16LE(34) === 16) {
@@ -88,12 +101,13 @@ function loadFixture() {
     }
     return { assetId: asset.id, name: asset.name, relativePath: asset.relativePath, filePath,
       mimeType: asset.mimeType, sha256: asset.sha256, durationMs: asset.durationMs,
-      sourceFileBytes: bytes.byteLength, sampleRateFromFileHz: manifestAsset?.sampleRateFromFileHz ?? null,
-      sourceChannels: manifestAsset?.channelsInFile ?? null,
+      sourceFileBytes: bytes.byteLength, sampleRateFromFileHz: manifestAsset?.sampleRateFromFileHz ?? manifestAsset?.sampleRate ?? null,
+      sourceChannels: manifestAsset?.channelsInFile ?? manifestAsset?.channels ?? null,
       sampleBoundaries,
       estimatedOutputPcmBytesAt48kHz: manifestAsset?.pcmBytesAt48kHz ?? null,
-      estimatedPaddedReservationBytes: asset.durationMs && manifestAsset?.channelsInFile
-        ? Math.ceil((asset.durationMs / 1_000 + 1) * 48_000) * manifestAsset.channelsInFile * Float32Array.BYTES_PER_ELEMENT
+      estimatedPaddedReservationBytes: asset.durationMs && (manifestAsset?.channelsInFile ?? manifestAsset?.channels)
+        ? Math.ceil((asset.durationMs / 1_000 + 1) * 48_000) *
+          (manifestAsset.channelsInFile ?? manifestAsset.channels) * Float32Array.BYTES_PER_ELEMENT
         : null };
   });
   return { project, projectBytes, projectSha256, imageMedia, audioAssets, sourceRecords, manifestPath,
@@ -170,7 +184,10 @@ function registerFixtureIpc(projectRootValue, project, imageMedia, service, read
       readMetrics.actualValidatedReadTasks += 1;
       readMetrics.active += 1;
       readMetrics.maxActive = Math.max(readMetrics.maxActive, readMetrics.active);
-      read = service.read(request);
+      read = (async () => {
+        if (readMetrics.injectedReadDelayMs > 0) await delay(readMetrics.injectedReadDelayMs);
+        return service.read(request);
+      })();
       activeReads.set(key, read);
     }
     try {
@@ -212,7 +229,7 @@ async function readState(window) {
       playbackStartedAtMs: probe?.playbackStartedAtMs ?? null, decodeInFlight: probe?.decodeInFlight ?? 0,
       decodes: probe?.decodes ?? [], reads: probe?.readRoundTrips ?? [], readWrapperInstalled: probe?.readWrapperInstalled ?? false,
       contexts: probe?.contexts.map(item => ({ id: item.id, state: item.ref.deref()?.state ?? 'collected', sampleRate: item.sampleRate })) ?? [],
-      sources: probe?.sources ?? [], activeSourceCount: active.length,
+      sources: probe?.sources ?? [], timelineSamples: probe?.timelineSamples ?? [], activeSourceCount: active.length,
       activeUniquePcmBytes: [...new Map(active.map(item => [item.bufferId, item.pcmBytes])).values()].reduce((sum, value) => sum + (value ?? 0), 0),
       warning: document.querySelector('[data-testid="product-preview-audio-warning"]')?.textContent ?? null };
   })()`);
@@ -232,6 +249,65 @@ async function waitForQuiet(window, readMetrics, message, timeoutMs = 90_000) {
   throw new Error(message);
 }
 
+function deriveWorkingSetPeak(fixture, readMetrics, decodes, observedAtMs) {
+  const events = [];
+  const totals = { sourceReadReservationBytes: 0, actualSourceBytes: 0, decodeInputCopyBytes: 0,
+    decodePcmReservationBytes: 0, retainedPcmBytes: 0, retainedWaveSourceBytes: 0 };
+  const addInterval = (field, startAtMs, endAtMs, bytes, assetId) => {
+    if (!Number.isFinite(startAtMs) || !Number.isFinite(endAtMs) || endAtMs <= startAtMs || bytes <= 0) return;
+    events.push({ atMs: startAtMs, delta: bytes, field, assetId });
+    events.push({ atMs: endAtMs, delta: -bytes, field, assetId });
+  };
+  const sourceForDecode = (decode) => fixture.sourceRecords.find((source) => source.sampleBoundaries.some((sample) =>
+    Math.abs(sample.firstChannelSample - (decode.firstChannelSample ?? NaN)) <= 0.00002));
+  const perSource = [];
+  for (const source of fixture.sourceRecords) {
+    const read = readMetrics.requests.find((entry) => entry.assetId === source.assetId && !entry.shared);
+    if (!read) continue;
+    const sourceDecode = decodes.find((entry) => entry.status === 'ready' &&
+      sourceForDecode(entry)?.assetId === source.assetId);
+    const info = readMetrics.infoRequests.find((entry) => entry.assetId === source.assetId && entry.status === 'ready');
+    const sourceBytes = info?.byteLength ?? read.byteLength ?? source.sourceFileBytes;
+    const decodeDoneAtMs = sourceDecode?.completedAtMs ?? read.completedAtMs;
+    const isSegmented = Boolean(sourceDecode && source.durationMs &&
+      sourceDecode.durationSeconds < source.durationMs / 1_000 - 0.01);
+    const pcmReservationBytes = source.estimatedPaddedReservationBytes ?? 0;
+    const retainedPcmBytes = sourceDecode?.pcmBytes ?? 0;
+    addInterval('sourceReadReservationBytes', read.startedAtMs, read.completedAtMs, sourceBytes, source.assetId);
+    if (isSegmented) {
+      addInterval('retainedWaveSourceBytes', read.completedAtMs, observedAtMs, sourceBytes, source.assetId);
+      addInterval('decodePcmReservationBytes', read.startedAtMs, decodeDoneAtMs,
+        sourceDecode ? Math.ceil((sourceDecode.durationSeconds + 1) * sourceDecode.sampleRate) *
+          sourceDecode.channels * Float32Array.BYTES_PER_ELEMENT : 0, source.assetId);
+      addInterval('decodeInputCopyBytes', sourceDecode?.startedAtMs, decodeDoneAtMs,
+        sourceDecode?.inputByteLength ?? 0, source.assetId);
+    } else {
+      addInterval('actualSourceBytes', read.completedAtMs, decodeDoneAtMs, sourceBytes, source.assetId);
+      addInterval('decodePcmReservationBytes', read.startedAtMs, decodeDoneAtMs,
+        pcmReservationBytes, source.assetId);
+    }
+    addInterval('retainedPcmBytes', decodeDoneAtMs, observedAtMs, retainedPcmBytes, source.assetId);
+    perSource.push({ assetId: source.assetId, sourceBytes, pcmReservationBytes, retainedPcmBytes,
+      segmented: isSegmented, readStartedAtMs: read.startedAtMs, readCompletedAtMs: read.completedAtMs,
+      decodeStartedAtMs: sourceDecode?.startedAtMs ?? null, decodeCompletedAtMs: sourceDecode?.completedAtMs ?? null });
+  }
+  events.sort((left, right) => left.atMs - right.atMs || left.delta - right.delta);
+  let peakBytes = 0;
+  let peakAtMs = null;
+  let peakByCategory = null;
+  for (const event of events) {
+    totals[event.field] += event.delta;
+    const currentBytes = Object.values(totals).reduce((sum, value) => sum + value, 0);
+    if (currentBytes > peakBytes) {
+      peakBytes = currentBytes;
+      peakAtMs = event.atMs;
+      peakByCategory = { ...totals };
+    }
+  }
+  return { method: 'Event-derived renderer budget model; source reservation, actual full-source input, segmented source cache, proxy input copy, decode reservation, and retained PCM are separate intervals. Unit tests exercise the production transport snapshot directly; this native L1 interval estimate is not OS RSS.',
+    limitBytes: workingSetLimitBytes, peakEstimatedWorkingSetBytes: peakBytes, peakAtMs, peakByCategory, perSource };
+}
+
 async function click(window, selector) {
   await evaluate(window, `document.querySelector(${JSON.stringify(selector)})?.click()`);
   await delay(60);
@@ -248,15 +324,21 @@ async function openProject(window, projectRootValue) {
     'The synthetic v14 Project did not open in the Editor.');
 }
 
-async function installProbe(window) {
+async function installProbe(window, decodeDelayMs = 0) {
   await evaluate(window, `(() => {
     const NativeAudioContext = window.AudioContext;
     if (!NativeAudioContext) throw new Error('Native AudioContext is unavailable.');
     window.__issue887NativeAudioContext = NativeAudioContext;
     const probe = window.__issue887Au03 = { contexts: [], sources: [], decodes: [], bufferInfo: new WeakMap(),
       nextContextId: 1, nextBufferId: 1, decodeInFlight: 0, readRoundTrips: [], readWrapperInstalled: false,
-      playbackStartedAtMs: null };
+      playbackStartedAtMs: null, timelineSamples: [] };
+    const injectedDecodeDelayMs = ${decodeDelayMs};
     const overlay = () => document.querySelector('[data-testid="product-preview-overlay"]');
+    setInterval(() => { const current = overlay(); if (!current) return;
+      probe.timelineSamples.push({ atMs: Date.now(), previewTimeMs: Number(current.dataset.previewTime ?? -1),
+        projectTimeMs: Number(current.dataset.previewProjectTime ?? -1), playing: current.dataset.previewPlaying === 'true' });
+      if (probe.timelineSamples.length > 3_000) probe.timelineSamples.splice(0, probe.timelineSamples.length - 3_000);
+    }, 20);
     new MutationObserver(() => { if (overlay()?.dataset.previewPlaying === 'true' && probe.playbackStartedAtMs === null) {
       probe.playbackStartedAtMs = Date.now(); } }).observe(document.body, { subtree: true, attributes: true,
       attributeFilter: ['data-preview-playing'] });
@@ -274,14 +356,20 @@ async function installProbe(window) {
           inputChannels: isWaveInput ? inputView.getUint16(22, true) : null,
           startedAtMs: Date.now(), durationMs: null, sampleRate: null, channels: null, length: null, durationSeconds: null,
           pcmBytes: null, bufferId: null, status: 'running' }; probe.decodeInFlight += 1;
-        return super.decodeAudioData(data, ...callbacks).then(buffer => {
+        const decodePromise = injectedDecodeDelayMs > 0
+          ? new Promise((resolve, reject) => setTimeout(() => {
+            try { Promise.resolve(super.decodeAudioData(data, ...callbacks)).then(resolve, reject); }
+            catch (error) { reject(error); }
+          }, injectedDecodeDelayMs))
+          : super.decodeAudioData(data, ...callbacks);
+        return Promise.resolve(decodePromise).then(buffer => {
           const info = { bufferId: probe.nextBufferId++, sampleRate: buffer.sampleRate, channels: buffer.numberOfChannels,
             length: buffer.length, durationSeconds: buffer.duration,
             pcmBytes: buffer.length * buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT,
             firstChannelSample: buffer.numberOfChannels > 0 && buffer.length > 0 ? buffer.getChannelData(0)[0] : null };
           probe.bufferInfo.set(buffer, info); Object.assign(record, info, { durationMs: performance.now() - startedAt,
-            status: 'ready' }); probe.decodes.push(record); return buffer;
-        }, error => { record.durationMs = performance.now() - startedAt; record.status = 'failed';
+            completedAtMs: Date.now(), status: 'ready' }); probe.decodes.push(record); return buffer;
+        }, error => { record.durationMs = performance.now() - startedAt; record.completedAtMs = Date.now(); record.status = 'failed';
           record.errorName = error?.name ?? 'Error'; probe.decodes.push(record); throw error;
         }).finally(() => { probe.decodeInFlight -= 1; });
       }
@@ -289,12 +377,27 @@ async function installProbe(window) {
         const source = super.createBufferSource();
         const record = { contextId: this.__issue887Id, startCount: 0, stopCount: 0, startArgs: null,
           previewTimeAtStartCallMs: null, projectTimeAtStartCallMs: null, bufferId: null, sampleRate: null,
-          channels: null, durationSeconds: null, pcmBytes: null, active: false, ended: false };
+          channels: null, durationSeconds: null, pcmBytes: null, gain: null, contextTimeAtStartCall: null,
+          scheduledProjectTimeMs: null, sampleAtStartOffset: null, active: false, ended: false };
         const nativeStart = source.start.bind(source); const nativeStop = source.stop.bind(source);
+        const nativeConnect = source.connect.bind(source);
+        source.connect = (destination, ...args) => {
+          if (destination?.gain) record.gain = destination.gain.value;
+          return nativeConnect(destination, ...args);
+        };
         source.start = (...args) => { const info = probe.bufferInfo.get(source.buffer); record.startCount += 1;
           record.startArgs = args; record.previewTimeAtStartCallMs = Number(overlay()?.dataset.previewTime ?? -1);
           record.projectTimeAtStartCallMs = Number(overlay()?.dataset.previewProjectTime ?? -1);
-          if (info) Object.assign(record, info); record.active = true; return nativeStart(...args); };
+          record.contextTimeAtStartCall = this.currentTime;
+          record.scheduledProjectTimeMs = record.projectTimeAtStartCallMs < 0 ? null :
+            record.projectTimeAtStartCallMs + Math.max(0, ((args[0] ?? this.currentTime) - this.currentTime) * 1_000);
+          if (info) {
+            Object.assign(record, info);
+            const offsetFrames = Math.round((args[1] ?? 0) * info.sampleRate);
+            record.sampleAtStartOffset = source.buffer.numberOfChannels > 0 && offsetFrames < source.buffer.length
+              ? source.buffer.getChannelData(0)[offsetFrames] : null;
+          }
+          record.active = true; return nativeStart(...args); };
         source.stop = (...args) => { record.stopCount += 1; record.active = false; return nativeStop(...args); };
         source.addEventListener('ended', () => { record.ended = true; record.active = false; });
         probe.sources.push(record); return source;
@@ -309,13 +412,25 @@ async function installProbe(window) {
   })()`);
 }
 
-async function openPreview(window, shotId) {
+async function openPreview(window, shotId, pauseAtProjectTimeMs = null) {
   await evaluate(window, `(() => { const drawer = document.querySelector('[data-testid="quick-action-drawer"]');
     if (drawer?.dataset.expanded !== 'true') drawer?.querySelector('[data-testid="quick-action-drawer-handle"]')?.click(); })()`);
   await waitFor(window, `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.expanded === 'true'`,
     'Quick Action Drawer did not open.');
-  await click(window, '[data-testid="quick-action-play"]');
+  if (pauseAtProjectTimeMs === null) {
+    await click(window, '[data-testid="quick-action-play"]');
+  } else {
+    await evaluate(window, `document.querySelector('[data-testid="quick-action-play"]')?.click()`);
+  }
   await waitFor(window, `Boolean(document.querySelector('[data-testid="product-preview-overlay"]'))`, 'Product Preview did not mount.');
+  if (pauseAtProjectTimeMs !== null) {
+    await waitFor(window, `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewPlaying === 'true'`,
+      'Product Preview did not start before the F02 cold prewarm seek.');
+    await evaluate(window, `document.querySelector('[data-testid="product-preview-play-pause"]')?.click()`);
+    await waitFor(window, `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewPlaying === 'false'`,
+      'F02 preview did not pause before positioning the future clip.');
+    await seek(window, pauseAtProjectTimeMs);
+  }
   await waitFor(window, `document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageReady === 'true' &&
     document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageDisplayReady === 'true' &&
     document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageShotId === ${JSON.stringify(shotId)}`,
@@ -495,7 +610,7 @@ async function run() {
     enableValidatedHashIndex: true,
   });
   const readMetrics = { requests: [], infoRequests: [], actualValidatedReadTasks: 0,
-    active: 0, maxActive: 0, infoActive: 0 };
+    active: 0, maxActive: 0, infoActive: 0, injectedReadDelayMs: isIssue888Case ? issue888ReadDelayMs : 0 };
   registerFixtureIpc(projectRoot, fixture.project, fixture.imageMedia, service, readMetrics);
   const repositoryRoot = path.resolve(__dirname, '..');
   const sourceRevision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' }).trim();
@@ -504,9 +619,11 @@ async function run() {
     { cwd: repositoryRoot, encoding: 'utf8' }).trim();
   const initialProjectSha256 = sha256(fixture.projectBytes);
   const receipt = {
-    issue: 887,
-    parentIssue: 886,
+    issue: issueNumber,
+    parentIssue: isIssue888Case ? 887 : 886,
     caseId: issueCase,
+    ...(isIssue888Case ? { phase: issue888Phase,
+      injectedDelays: { readMs: issue888ReadDelayMs, decodeMs: issue888DecodeDelayMs } } : {}),
     classification: 'L1 native Windows Electron AudioContext/source graph plus production AssetPreviewAudioService IPC; this is not physical speaker acceptance.',
     baselineSourceRevision: fixture.baselineSourceRevision,
     candidateSourceRevision: sourceRevision,
@@ -530,6 +647,8 @@ async function run() {
     resultPath,
   };
   let window = null;
+  let f02PrewarmStartSnapshot = null;
+  let f02PlaybackResumeRequestedAtMs = null;
   try {
     assert(existsSync(projectRoot), `Fixture Project root does not exist: ${projectRoot}`);
     await app.whenReady();
@@ -539,14 +658,226 @@ async function run() {
     await openProject(window, projectRoot);
     const before = await evaluate(window, `({ revision: document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.projectRevision ?? null,
       undo: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? null })`);
-    await installProbe(window);
-    await openPreview(window, fixture.project.shots[0].id);
-    await waitFor(window, `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewPlaying === 'true'`,
-      'Product Preview did not enter playback.');
-    const firstShot = await waitForQuiet(window, readMetrics, 'Playback reads or native decodes did not settle.');
+    await installProbe(window, isIssue888Case ? issue888DecodeDelayMs : 0);
+    await openPreview(window, fixture.project.shots[0].id,
+      isIssue888Case && issueCase === 'F02' ? 200 : null);
+    if (isIssue888Case && issueCase === 'F02') {
+      f02PrewarmStartSnapshot = await readState(window);
+      assert(!f02PrewarmStartSnapshot.playing && f02PrewarmStartSnapshot.projectTimeMs === 200,
+        `F02 cold fixture did not position the R5 master at 200ms: ${f02PrewarmStartSnapshot.projectTimeMs}.`);
+      assert(readMetrics.infoRequests.length === 0 && readMetrics.requests.length === 0,
+        'F02 fixture warmed source metadata or media before the 300ms-future cold playback measurement.');
+      await evaluate(window, `window.__issue887Au03.playbackStartedAtMs = null`);
+      f02PlaybackResumeRequestedAtMs = Date.now();
+      await evaluate(window, `document.querySelector('[data-testid="product-preview-play-pause"]')?.click()`);
+    }
+    if (isIssue888Case && issueCase === 'F01') {
+      await waitFor(window, `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewPlaying === 'true' ||
+        Boolean(document.querySelector('[data-testid="product-preview-audio-warning"]')?.textContent)`,
+      'F01 did not reach playback or expose an audio warning.', 15_000);
+    } else {
+      await waitFor(window, `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewPlaying === 'true'`,
+        'Product Preview did not enter playback.', isIssue888Case ? 15_000 : 90_000);
+    }
+    const firstShot = await waitForQuiet(window, readMetrics, 'Playback reads or native decodes did not settle.',
+      isIssue888Case ? 20_000 : 90_000);
     receipt.playback.firstShot = firstShot;
 
-    if (issueCase === 'A-full') {
+    if (isIssue888Case) {
+      if (issueCase === 'F02') {
+        await waitFor(window, `Number(document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewProjectTime ?? -1) >= 1_200 ||
+          document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewPlaying === 'false'`,
+        'F02 did not cross the future clip start while Product Preview was playing.', 20_000);
+      }
+      const playbackAtClassification = await readState(window);
+      const startedSources = playbackAtClassification.sources.filter((source) => source.startCount > 0);
+      const sourceByBufferId = new Map(playbackAtClassification.decodes.map((decode) => [decode.bufferId, decode]));
+      const targetSourceRecords = fixture.sourceRecords;
+      const nearestTimelineSample = (timestampMs) => playbackAtClassification.timelineSamples
+        .reduce((best, item) => !best || Math.abs(item.atMs - timestampMs) < Math.abs(best.atMs - timestampMs) ? item : best, null);
+      const prewarmEvents = [
+        ...readMetrics.infoRequests.map((entry) => ({ kind: 'source-info', atMs: entry.startedAtMs,
+          assetId: entry.assetId, status: entry.status, byteLength: entry.byteLength })),
+        ...readMetrics.requests.map((entry) => ({ kind: 'source-read', atMs: entry.startedAtMs,
+          assetId: entry.assetId, status: entry.status, byteLength: entry.byteLength })),
+        ...playbackAtClassification.decodes.map((entry) => ({ kind: 'decode', atMs: entry.startedAtMs,
+          bufferId: entry.bufferId, status: entry.status, inputByteLength: entry.inputByteLength,
+          pcmBytes: entry.pcmBytes })),
+      ].sort((left, right) => left.atMs - right.atMs).map((event) => ({ ...event,
+        timeline: nearestTimelineSample(event.atMs) }));
+      if (issueCase === 'F01') {
+        const distinctIdentities = new Set(startedSources.map((source) => {
+          const decode = sourceByBufferId.get(source.bufferId);
+          const matched = targetSourceRecords.find((record) => record.sampleBoundaries.some((sample) =>
+            sample.offsetMs === 0 && Math.abs(sample.firstChannelSample - (decode?.firstChannelSample ?? NaN)) <= 0.02));
+          return matched?.sha256 ?? null;
+        }).filter(Boolean));
+        const byAsset = Object.fromEntries(fixture.sourceRecords.map((source) => [source.assetId, {
+          sourceBytes: source.sourceFileBytes, pcmReservationBytes: source.estimatedPaddedReservationBytes,
+          expectedGain: fixture.project.shots.flatMap((shot) => shot.audioClips)
+            .find((clip) => clip.assetId === source.assetId)?.volume ?? null,
+          info: readMetrics.infoRequests.filter((entry) => entry.assetId === source.assetId),
+          reads: readMetrics.requests.filter((entry) => entry.assetId === source.assetId),
+          decodes: playbackAtClassification.decodes.filter((entry) => {
+            const sourceSample = source.sampleBoundaries.find((sample) => sample.offsetMs === 0)?.firstChannelSample;
+            return typeof sourceSample === 'number' && Math.abs(entry.firstChannelSample - sourceSample) <= 0.02;
+          }),
+          starts: startedSources.filter((entry) => {
+            const decode = sourceByBufferId.get(entry.bufferId);
+            const sourceSample = source.sampleBoundaries.find((sample) => sample.offsetMs === 0)?.firstChannelSample;
+            return typeof sourceSample === 'number' && Math.abs((decode?.firstChannelSample ?? NaN) - sourceSample) <= 0.02;
+          }),
+        }]));
+        const oneReadOnly = readMetrics.actualValidatedReadTasks === 1 &&
+          playbackAtClassification.decodes.filter((entry) => entry.status === 'ready').length === 1;
+        const classification = startedSources.length >= 2 && distinctIdentities.size >= 2
+          ? 'NOT_REPRODUCED_BOTH_150S_SOURCES_PLAYED'
+          : startedSources.length === 1 && oneReadOnly
+            ? 'REPRODUCED_ONLY_ONE_150S_SOURCE_STARTED_AFTER_OTHER_FAILED_CAPACITY'
+            : readMetrics.infoRequests.length > 0 && readMetrics.actualValidatedReadTasks === 0 &&
+              playbackAtClassification.decodes.filter((entry) => entry.status === 'ready').length < 2
+              ? 'REPRODUCED_CAPACITY_REJECTION_AFTER_SOURCE_PREFLIGHT_BEFORE_READ'
+              : startedSources.length === 1
+                ? 'REPRODUCED_OR_PARTIAL_ONLY_ONE_150S_SOURCE_STARTED'
+                : 'NOT_REPRODUCED_OTHER_REJECTION_LAYER';
+        receipt.playback = { ...receipt.playback, ...playbackAtClassification,
+          rejectionClassification: classification, sourceStarts: startedSources, distinctStartedSourceHashes: [...distinctIdentities],
+          sourcesByAssetId: byAsset, observedPrewarmEvents: prewarmEvents,
+          capacityWarning: playbackAtClassification.warning,
+          expectedBaselineClassification: 'REPRODUCED_ONLY_ONE_150S_SOURCE_STARTED_AFTER_OTHER_FAILED_CAPACITY' };
+      } else {
+        const targetMasterStartMs = fixture.project.shots[0].durationMs;
+        const firstTargetStart = startedSources.find((source) => Math.abs((source.scheduledProjectTimeMs ?? -1) - targetMasterStartMs) <= 30) ??
+          startedSources[0] ?? null;
+        const firstAsset = fixture.sourceRecords[0];
+        const firstAssetStart = fixture.project.shots[1]?.audioClips[0]?.startMs ?? 0;
+        const sourceOffsetMs = firstTargetStart ? (firstTargetStart.startArgs?.[1] ?? 0) * 1_000 : null;
+        const expectedOffsetMs = firstTargetStart
+          ? Math.max(0, firstTargetStart.projectTimeAtStartCallMs - targetMasterStartMs) : null;
+        const onTime = Boolean(firstTargetStart && Math.abs(sourceOffsetMs ?? -1) <= 1 &&
+          Math.abs((firstTargetStart.scheduledProjectTimeMs ?? -1) - targetMasterStartMs) <= 30);
+        const sourceDecode = firstTargetStart ? sourceByBufferId.get(firstTargetStart.bufferId) : null;
+        const sampleAtStartMatchesSource = Boolean(firstTargetStart && sourceDecode &&
+          typeof firstTargetStart.sampleAtStartOffset === 'number' && firstAsset && (() => {
+            const wav = readFileSync(firstAsset.filePath);
+            const sampleRate = wav.readUInt32LE(24);
+            const blockAlign = wav.readUInt16LE(32);
+            const sourceOffsetSeconds = firstTargetStart.startArgs?.[1] ?? -1;
+            if (sourceOffsetSeconds < 0) return false;
+            const sourceFrame = Math.round(sourceOffsetSeconds * sampleRate);
+            const firstSourceSample = wav.readInt16LE(44) / 32_768;
+            const expectedSampleAtOffset = wav.readInt16LE(44 + sourceFrame * blockAlign) / 32_768;
+            return firstAsset.sampleBoundaries.some((sample) => sample.offsetMs === 0 &&
+              Math.abs(sample.firstChannelSample - sourceDecode.firstChannelSample) <= 0.00002) &&
+              Math.abs(firstSourceSample - sourceDecode.firstChannelSample) <= 0.00002 &&
+              Math.abs(expectedSampleAtOffset - firstTargetStart.sampleAtStartOffset) <= 0.0001;
+          })());
+        const classification = onTime && startedSources.length === 1
+          ? 'NOT_REPRODUCED_FUTURE_WAV_STARTED_ON_TIME_ONCE'
+          : firstTargetStart && sourceOffsetMs !== null && sourceOffsetMs > 0
+            ? 'REPRODUCED_FUTURE_WAV_STARTED_LATE_WITH_ADVANCED_OFFSET'
+            : firstTargetStart
+              ? 'NOT_REPRODUCED_FUTURE_WAV_STARTED_WITH_OTHER_TIMING'
+              : 'REPRODUCED_FUTURE_WAV_DID_NOT_START';
+        receipt.playback = { ...receipt.playback, ...playbackAtClassification,
+          rejectionClassification: classification, sourceStarts: startedSources,
+          observedPrewarmEvents: prewarmEvents,
+          targetClip: { masterStartMs: targetMasterStartMs, shotLocalStartMs: firstAssetStart,
+            prewarmStartProjectTimeMs: f02PrewarmStartSnapshot?.projectTimeMs ?? null,
+            prewarmLeadMs: f02PrewarmStartSnapshot
+              ? targetMasterStartMs - f02PrewarmStartSnapshot.projectTimeMs : null,
+            observedPreviewProjectTimeMs: playbackAtClassification.projectTimeMs },
+          firstTargetStart, targetSourceOffsetMs: sourceOffsetMs, expectedOffsetFromLatenessMs: expectedOffsetMs,
+          sourceSampleMatchesGeneratedWav: sampleAtStartMatchesSource, onTime,
+          startupWaitMs: f02PlaybackResumeRequestedAtMs !== null &&
+            typeof playbackAtClassification.playbackStartedAtMs === 'number'
+            ? Math.max(0, playbackAtClassification.playbackStartedAtMs - f02PlaybackResumeRequestedAtMs) : null,
+          injectedDelayMs: { read: issue888ReadDelayMs, decode: issue888DecodeDelayMs },
+          capacityWarning: playbackAtClassification.warning,
+          expectedOnTimeClassification: 'NOT_REPRODUCED_FUTURE_WAV_STARTED_ON_TIME_ONCE' };
+      }
+
+      receipt.mainAudioRead = { ipcRequests: readMetrics.requests.length,
+        infoRequests: readMetrics.infoRequests.map((entry) => ({ ...entry })),
+        actualValidatedReadTasks: readMetrics.actualValidatedReadTasks, maximumConcurrentTasks: readMetrics.maxActive,
+        requests: readMetrics.requests.map((entry) => ({ ...entry })),
+        hashValidationIndex: service.getHashValidationIndexSnapshot(),
+        rendererRoundTripWrapperInstalled: playbackAtClassification.readWrapperInstalled,
+        rendererRoundTrips: playbackAtClassification.reads };
+      receipt.memoryEvidence = { limitBytes: workingSetLimitBytes,
+        sourceReadReservationsObserved: readMetrics.infoRequests.map((entry) => ({ assetId: entry.assetId,
+          reservedOrExpectedBytes: entry.byteLength, status: entry.status })),
+        actualReadBytes: readMetrics.requests.map((entry) => ({ assetId: entry.assetId, byteLength: entry.byteLength,
+          status: entry.status })),
+        decodeInputsAndPcm: playbackAtClassification.decodes.map(({ inputByteLength, pcmBytes, status, durationSeconds }) =>
+          ({ inputByteLength, pcmBytes, status, durationSeconds })),
+        activeNativePcmBytes: playbackAtClassification.activeUniquePcmBytes,
+        workingSetLedgerEstimate: deriveWorkingSetPeak(fixture, readMetrics,
+          playbackAtClassification.decodes, Date.now()),
+        sourceFileBytesHeldByFixture: fixture.sourceRecords.map(({ assetId, sourceFileBytes }) => ({ assetId, sourceFileBytes })),
+        workingSetIsNotOperatingSystemRss: true };
+      receipt.playback.projectRevisionAfter = playbackAtClassification.projectRevision;
+      receipt.playback.undoCountAfter = playbackAtClassification.undoCount;
+      receipt.playback.projectRevisionBefore = before.revision;
+      receipt.playback.undoCountBefore = before.undo;
+      receipt.playback.finalState = playbackAtClassification;
+      receipt.projectUnchanged = sha256(readFileSync(path.join(projectRoot, 'project.json'))) === initialProjectSha256 &&
+        before.revision === playbackAtClassification.projectRevision && before.undo === playbackAtClassification.undoCount;
+      assert(receipt.projectUnchanged, 'Fixture Project revision, history, or bytes changed during Issue #888 native playback measurement.');
+
+      if (issue888Phase === 'candidate' && issueCase === 'F01') {
+        assert(startedSources.length === 2 && receipt.playback.distinctStartedSourceHashes.length === 2,
+          'F01 candidate did not start both distinct 150s source WAVs.');
+        const expectedGains = fixture.sourceRecords.map((source) => fixture.project.shots.flatMap((shot) => shot.audioClips)
+          .find((clip) => clip.assetId === source.assetId)?.volume);
+        const actualGains = startedSources.map((source) => source.gain).sort((left, right) => left - right);
+        assert(actualGains.length === 2 && expectedGains.every((gain) => actualGains.some((actual) => Math.abs(actual - gain) < 0.001)),
+          `F01 candidate gains ${actualGains.join(', ')} do not match the two clip gains.`);
+        assert(playbackAtClassification.warning === null, 'F01 candidate retained a preview capacity warning.');
+        const scheduledProjectTimes = startedSources.map((source) => source.scheduledProjectTimeMs ?? -10_000);
+        const audioStartTimes = startedSources.map((source) => source.startArgs?.[0] ?? -10_000);
+        const firstSampleMatchesGeneratedSources = startedSources.every((source) => {
+          const decode = sourceByBufferId.get(source.bufferId);
+          const matchingAsset = targetSourceRecords.find((record) => record.sampleBoundaries.some((sample) =>
+            sample.offsetMs === 0 && Math.abs(sample.firstChannelSample - (decode?.firstChannelSample ?? NaN)) <= 0.00002));
+          if (!matchingAsset || !decode || typeof source.sampleAtStartOffset !== 'number') return false;
+          const wav = readFileSync(matchingAsset.filePath);
+          const sampleRate = wav.readUInt32LE(24);
+          const blockAlign = wav.readUInt16LE(32);
+          const sourceOffsetSeconds = source.startArgs?.[1] ?? -1;
+          if (sourceOffsetSeconds < 0) return false;
+          const sampleFrame = Math.round(sourceOffsetSeconds * sampleRate);
+          const expectedSample = wav.readInt16LE(44 + sampleFrame * blockAlign) / 32_768;
+          return sampleFrame >= 0 && Math.abs(expectedSample - source.sampleAtStartOffset) <= 0.0001;
+        });
+        const ledgerEstimate = receipt.memoryEvidence.workingSetLedgerEstimate;
+        assert(firstSampleMatchesGeneratedSources && startedSources.every((source) => source.startCount === 1 &&
+          (source.startArgs?.[1] ?? Infinity) >= 0 && (source.startArgs?.[1] ?? Infinity) <= 0.01) &&
+          Math.max(...scheduledProjectTimes) - Math.min(...scheduledProjectTimes) <= 2 &&
+          Math.abs(scheduledProjectTimes[0] ?? -10_000) <= 2 &&
+          Math.max(...audioStartTimes) - Math.min(...audioStartTimes) <= 0.002,
+        'F01 candidate sources did not start once at the shared master time with matching first samples.');
+        assert(ledgerEstimate.peakEstimatedWorkingSetBytes <= workingSetLimitBytes,
+          `F01 candidate event-derived working-set peak ${ledgerEstimate.peakEstimatedWorkingSetBytes} exceeded 128 MiB.`);
+      }
+      if (issue888Phase === 'candidate' && issueCase === 'F02') {
+        assert(startedSources.length === 1, `F02 candidate expected exactly one first-chunk start; observed ${startedSources.length}.`);
+        assert(playbackAtClassification.warning === null, 'F02 candidate retained a preview audio warning.');
+        assert(readMetrics.actualValidatedReadTasks === 1, `F02 candidate expected one validated source read; observed ${readMetrics.actualValidatedReadTasks}.`);
+        if (issue888ReadDelayMs + issue888DecodeDelayMs < 300) {
+          assert(receipt.playback.onTime, 'F02 candidate inside-window delay did not schedule the first sample on time.');
+          assert(playbackAtClassification.decodes.length === 1, 'F02 on-time prewarm decoded the first chunk more than once.');
+          assert(receipt.playback.sourceSampleMatchesGeneratedWav, 'F02 on-time start did not preserve the generated WAV first sample.');
+        } else {
+          assert(receipt.playback.targetSourceOffsetMs !== null && receipt.playback.targetSourceOffsetMs > 0 &&
+            receipt.playback.expectedOffsetFromLatenessMs !== null &&
+            Math.abs(receipt.playback.targetSourceOffsetMs - receipt.playback.expectedOffsetFromLatenessMs) <= 100,
+          'F02 over-window delay did not report a late start with a matching advanced source offset.');
+          assert(receipt.playback.sourceSampleMatchesGeneratedWav, 'F02 late start did not retain the generated WAV source identity at its offset.');
+        }
+      }
+      receipt.measurementCompleted = true;
+    } else if (issueCase === 'A-full') {
       await waitFor(window,
         `Number(document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewTime ?? -1) >= 10_100`,
         'The four-minute WAV preview did not reach its first streamed chunk boundary.', 30_000);
@@ -576,6 +907,7 @@ async function run() {
         sampleBoundaryChecks, activeSources: boundaryState.activeSourceCount };
     }
 
+    if (!isIssue888Case) {
     if ((issueCase === 'A-offset' || issueCase === 'A-proxy-control') && fixture.project.shots.length > 1) {
       await stopIfPlaying(window);
       const nextShotStartMs = fixture.project.shots[0].durationMs;
@@ -674,6 +1006,7 @@ async function run() {
       before.revision === afterMeasurement.projectRevision && before.undo === afterMeasurement.undoCount;
     assert(receipt.projectUnchanged, 'Fixture Project revision, history, or bytes changed during native playback measurement.');
     receipt.measurementCompleted = true;
+    }
   } catch (error) {
     receipt.measurementCompleted = false;
     receipt.error = error instanceof Error ? `${error.name}: ${error.message}` : String(error);

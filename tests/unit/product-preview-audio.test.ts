@@ -957,7 +957,7 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     const audio = readFileSync('src/renderer/shell/productPreviewAudio.ts', 'utf8');
     expect(audio).not.toMatch(/setTimeMs|evaluateMouth|AutoCamera|updateProject|historyStore/u);
     expect(audio).not.toMatch(/requestAnimationFrame|setInterval/u);
-    expect(audio.match(/setTimeout\(/gu)).toHaveLength(3);
+    expect(audio.match(/setTimeout\(/gu)).toHaveLength(4);
     expect(audio).toContain('PRODUCT_PREVIEW_AUDIO_STARTUP_TIMEOUT_MS');
   });
 });
