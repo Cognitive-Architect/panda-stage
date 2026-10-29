@@ -153,6 +153,7 @@ function registerFixtureIpc(projectRoot, project, imageMedia, service, readMetri
       width: asset.width, height: asset.height, byteLength: bytes.byteLength, bytes: new Uint8Array(bytes) };
   });
   const activeReads = new Map();
+  register(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_INFO, (_event, request) => service.getInfo(request));
   register(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ, async (_event, request) => {
     const key = `${request.projectRoot}\\u0000${request.assetId}\\u0000${request.sha256}`;
     const startedAt = performance.now();

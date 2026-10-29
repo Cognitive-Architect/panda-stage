@@ -619,6 +619,12 @@
           "src/renderer/features/actions/**",
           "src/renderer/features/editor/**",
           "src/renderer/shell/**",
+          "src/main/services/AssetPreviewAudioService.ts",
+          "src/main/ipc/register-asset-library-ipc-handlers.ts",
+          "src/preload/index.ts",
+          "src/renderer/global.d.ts",
+          "src/shared/asset-preview-audio-api.ts",
+          "src/shared/ipc/channels.ts",
           "src/renderer/styles.css",
           "src/renderer/styles/**",
           "src/renderer/ui/**",
@@ -663,6 +669,9 @@
           "tests/unit/project-launcher.test.ts",
           "tests/unit/product-preview-*.test.ts",
           "tests/unit/issue886-au03-audio-working-set.test.ts",
+          "tests/unit/issue887-au03-capacity.test.ts",
+          "tests/unit/asset-preview-audio-service.test.ts",
+          "tests/unit/asset-library-ipc-handlers.test.ts",
           "tests/unit/speaker-focus-preview-contract.test.ts",
           "tests/unit/issue653-auto-camera-mode.test.ts",
           "tests/unit/project-time-mapper.test.ts",
@@ -707,17 +716,19 @@
           "scripts/verify-issue659-preview-mixer.cjs",
           "scripts/verify-issue880-preview-clock.cjs",
           "scripts/verify-issue884-au02-audio-schedule.cjs",
-          "scripts/verify-issue886-au03-audio-workset.cjs"
+          "scripts/verify-issue886-au03-audio-workset.cjs",
+          "scripts/generate-issue887-au03-capacity-fixtures.cjs",
+          "scripts/verify-issue887-au03-capacity.cjs"
         ],
         "suites": ["editor", "timeline"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "editor",
-        "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted."
+        "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. Issue #887 registers its audio source-size IPC contract, capacity unit tests, and native Windows verifier here. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted."
       }
     ]
   },
-  "count": 101,
+  "count": 102,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1090,6 +1101,18 @@
       "owner": "editor",
       "supersedes": null,
       "notes": "Issue #886 AU-03 L1 native AudioContext working-set measurement on the generated original v14 long-BGM fixture. Records reads, native decodes, unique PCM, active sources, pause/resume, Replay, same-source Shot handoff, the 44.1 kHz control, and close. It does not claim physical speaker output or OWNER listening acceptance."
+    },
+    {
+      "id": "issue887-au03-capacity",
+      "script": "verify:issue887-au03-capacity",
+      "suite": "editor",
+      "subsystem": "editor",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "Issue #887 native Windows Electron L1 capacity verifier on original v14 generated audio. Set PANDA_STAGE_ISSUE887_ROOT, PANDA_STAGE_ISSUE887_CASE, and PANDA_STAGE_ISSUE887_PROJECT_ROOT after evidence:issue887-au03-fixtures. Measures exact source-size preflight, validated source reads, native decode sample rate/channels/PCM, playback source scheduling, and project immutability; it does not claim physical speaker output or OWNER listening acceptance."
     },
     {
       "id": "fla-v1-5-c3",

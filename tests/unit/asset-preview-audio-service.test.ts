@@ -109,7 +109,9 @@ describe('AssetPreviewAudioService', () => {
   it('rejects malformed, untracked, unknown, non-audio, and hash-mismatched requests', async () => {
     const input = await createAudioProject();
     const service = new AssetPreviewAudioService({
-      getCurrentProjectSnapshot: () => ({ project: input.project }),
+      getCurrentProjectSnapshot: (projectRoot) => projectRoot === input.projectRoot
+        ? { project: input.project }
+        : null,
     });
     await expect(service.read(null)).resolves.toMatchObject({
       ok: false,
@@ -182,6 +184,32 @@ describe('AssetPreviewAudioService', () => {
     expect(Buffer.from(response.bytes)).toEqual(input.bytes);
     expect(response.byteLength).toBe(response.bytes.byteLength);
     expect(JSON.stringify(response)).not.toContain(input.projectRoot);
+  });
+
+  it('returns a bounded byte-length preflight for the current validated project asset', async () => {
+    const input = await createAudioProject();
+    const service = new AssetPreviewAudioService({
+      getCurrentProjectSnapshot: (projectRoot) => projectRoot === input.projectRoot
+        ? { project: input.project }
+        : null,
+    });
+    await expect(service.getInfo(request(input))).resolves.toEqual({
+      ok: true,
+      status: 'ready',
+      assetId: input.assetId,
+      mimeType: 'audio/wav',
+      byteLength: input.bytes.byteLength,
+    });
+    await expect(service.getInfo({ ...request(input), sha256: 'b'.repeat(64) })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'ASSET_PREVIEW_AUDIO_HASH_MISMATCH' },
+    });
+    await expect(service.getInfo({ ...request(input), projectRoot: path.join(input.projectRoot, 'untracked') }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'ASSET_PREVIEW_AUDIO_PROJECT_NOT_TRACKED' } });
+    expect(JSON.stringify(await service.getInfo(request(input)))).not.toContain(input.projectRoot);
+    await writeFile(input.sourcePath, Buffer.concat([input.bytes, Buffer.from([1])]));
+    await expect(service.read({ ...request(input), expectedByteLength: input.bytes.byteLength }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'ASSET_PREVIEW_AUDIO_READ_FAILED' } });
   });
 
   it('reuses only a byte-identical file fingerprint for later hash checks and invalidates it after mutation', async () => {

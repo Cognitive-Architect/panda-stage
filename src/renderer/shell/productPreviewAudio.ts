@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { audioClipGain, audioClipSourceTimeMs, isAudioClipActiveAtTime } from '../../domain';
 import type { AudioAsset, AudioClip, Dialogue, Project, Shot } from '../../domain';
-import type { AssetPreviewAudioReadRequest, AssetPreviewAudioReadResponse } from '../../shared/asset-preview-audio-api';
+import type {
+  AssetPreviewAudioInfoResponse,
+  AssetPreviewAudioReadRequest,
+  AssetPreviewAudioReadResponse,
+} from '../../shared/asset-preview-audio-api';
 
 export interface ProductPreviewAudioSelection {
   clip: AudioClip;
@@ -49,6 +53,7 @@ export type ProductPreviewAudioContext = Pick<AudioContext,
 export interface ProductPreviewAudioTransportOptions {
   createContext?: () => ProductPreviewAudioContext;
   readAudio?: (request: AssetPreviewAudioReadRequest) => Promise<AssetPreviewAudioReadResponse>;
+  getAudioInfo?: (request: AssetPreviewAudioReadRequest) => Promise<AssetPreviewAudioInfoResponse | null>;
   onWarning?: (message: string | null) => void;
 }
 
@@ -91,7 +96,11 @@ export const PRODUCT_PREVIEW_AUDIO_WORKING_SET_BYTES = 128 * 1024 * 1024;
 export const PRODUCT_PREVIEW_AUDIO_RECENT_OVERSIZED_TTL_MS = 30_000;
 export const PRODUCT_PREVIEW_AUDIO_WAV_PROXY_MIN_SOURCE_MS = 30_000;
 export const PRODUCT_PREVIEW_AUDIO_WAV_PROXY_MAX_CLIP_MS = 10_000;
+export const PRODUCT_PREVIEW_AUDIO_WAV_STREAM_CHUNK_MS = PRODUCT_PREVIEW_AUDIO_WAV_PROXY_MAX_CLIP_MS;
+export const PRODUCT_PREVIEW_AUDIO_WAV_SOURCE_CACHE_ENTRIES = 4;
+export const PRODUCT_PREVIEW_AUDIO_WAV_SOURCE_CACHE_BYTES = 96 * 1024 * 1024;
 export const PRODUCT_PREVIEW_AUDIO_MAX_READS = 4;
+export const PRODUCT_PREVIEW_AUDIO_MAX_QUEUED_TASKS = 16;
 export const PRODUCT_PREVIEW_AUDIO_DRIFT_MS = 80;
 export const PRODUCT_PREVIEW_AUDIO_LOOKAHEAD_MS = 400;
 export const PRODUCT_PREVIEW_AUDIO_SYNC_INTERVAL_MS = 100;
@@ -99,6 +108,7 @@ export const PRODUCT_PREVIEW_AUDIO_STARTUP_TIMEOUT_MS = 500;
 const AUDIO_READ_WARNING = '部分音频无法预览，画面和字幕将继续播放。';
 const PREFETCH_PRIORITY = 2;
 const CURRENT_PLAYBACK_PRIORITY = 1;
+const AUDIO_CAPACITY_WARNING = '预览容量不足，部分音轨未播放；请缩短或拆分音频后重试。';
 
 interface PlannedVoice {
   selection: ProductPreviewAudioSelection;
@@ -120,7 +130,9 @@ interface Voice extends PlannedVoice {
   source?: AudioBufferSourceNode;
   gain?: GainNode;
   bufferRecord?: DecodedAudioBufferRecord;
+  waveSourceLeaseKey?: string;
   capacityDeferred?: boolean;
+  capacityFailed?: boolean;
   startedAt?: number;
   masterAtStart?: number;
 }
@@ -133,6 +145,7 @@ interface ProductPreviewAudioClockSample {
 interface AudioReadTask {
   key: string;
   assetKey: string;
+  sourceAssetKey: string;
   selection: ProductPreviewAudioSelection;
   request: AssetPreviewAudioReadRequest;
   epoch: number;
@@ -144,6 +157,7 @@ interface AudioReadTask {
   resolve: (record: DecodedAudioBufferRecord) => void;
   reject: (reason: unknown) => void;
   readByteLength: number;
+  readReservationBytes: number;
   additionalInFlightCompressedBytes: number;
   decodeReservationBytes: number;
   waveProxyRange: WaveProxyRange | null;
@@ -155,6 +169,7 @@ interface DecodedAudioBufferRecord {
   buffer: AudioBuffer;
   bytes: number;
   sourceStartMs: number;
+  waveSourceKey?: string;
   epoch: number;
   voiceLeases: Set<string>;
   consumerLeases: Set<string>;
@@ -184,11 +199,42 @@ interface WaveAudioPreviewProxy {
   sourceStartMs: number;
 }
 
+interface WaveSourceRecord {
+  key: string;
+  bytes: Uint8Array;
+  metadata: WaveAudioMetadata;
+  epoch: number;
+  consumerLeases: Set<string>;
+  idleExpiresAtMs: number | null;
+  expiryTimer: ReturnType<typeof setTimeout> | null;
+}
+
+interface WaveSourceReadState {
+  key: string;
+  epoch: number;
+  selection: ProductPreviewAudioSelection;
+  request: AssetPreviewAudioReadRequest;
+  consumers: Set<string>;
+  status: 'inspecting' | 'reading';
+  reservedBytes: number;
+  readByteLength: number;
+  promise: Promise<WaveSourceRecord>;
+  resolve: (record: WaveSourceRecord) => void;
+  reject: (reason: unknown) => void;
+  cancelWhenComplete?: boolean;
+}
+
 export interface ProductPreviewAudioWorkingSetSnapshot {
   contextState: AudioContextState | 'unavailable';
   actualInFlightReadCount: number;
   inFlightDecodeCount: number;
   inFlightCompressedBytes: number;
+  inFlightSourceReadBytes: number;
+  decodeInputCopyBytes: number;
+  retainedWaveSourceBytes: number;
+  sourceReadReservationBytes: number;
+  waveSourceCacheEntries: number;
+  waveSourceCacheBytes: number;
   queuedTaskCount: number;
   deferredFutureVoiceCount: number;
   decodeReservationBytes: number;
@@ -219,6 +265,7 @@ class AudioWorkingSetCapacityError extends Error {
 export class ProductPreviewAudioTransport {
   private readonly createContext: () => ProductPreviewAudioContext;
   private readonly readAudio: NonNullable<ProductPreviewAudioTransportOptions['readAudio']>;
+  private readonly getAudioInfo: NonNullable<ProductPreviewAudioTransportOptions['getAudioInfo']>;
   private readonly onWarning: NonNullable<ProductPreviewAudioTransportOptions['onWarning']>;
   private context: ProductPreviewAudioContext | null = null;
   private readonly voices = new Map<string, Voice>();
@@ -229,9 +276,13 @@ export class ProductPreviewAudioTransport {
   private readonly reads = new Map<string, Promise<DecodedAudioBufferRecord>>();
   private readonly readTasks = new Map<string, AudioReadTask>();
   private readonly readQueue: AudioReadTask[] = [];
+  private readonly waveSources = new Map<string, WaveSourceRecord>();
+  private readonly waveSourceCache = new Map<string, WaveSourceRecord>();
+  private readonly waveSourceReads = new Map<string, WaveSourceReadState>();
   private readonly startConsumers = new Map<number, string[]>();
   private cancelStartupPreparation: (() => void) | null = null;
   private cacheBytes = 0;
+  private waveSourceCacheBytes = 0;
   private cacheEpoch = 0;
   private recentOversized: DecodedAudioBufferRecord | null = null;
   private recentOversizedTimer: ReturnType<typeof setTimeout> | null = null;
@@ -247,6 +298,12 @@ export class ProductPreviewAudioTransport {
   constructor(options: ProductPreviewAudioTransportOptions = {}) {
     this.createContext = options.createContext ?? (() => new AudioContext({ latencyHint: 'interactive' }));
     this.readAudio = options.readAudio ?? ((request) => window.pandaStage.assets.readAudio(request));
+    this.getAudioInfo = options.getAudioInfo ?? ((request) => {
+      const getInfo = typeof window !== 'undefined' && window.pandaStage
+        ? window.pandaStage.assets.getAudioInfo
+        : undefined;
+      return getInfo ? getInfo(request) : Promise.resolve(null);
+    });
     this.onWarning = options.onWarning ?? (() => undefined);
   }
 
@@ -457,9 +514,16 @@ export class ProductPreviewAudioTransport {
     const tasks = [...this.readTasks.values()];
     return {
       contextState: this.context?.state ?? 'unavailable',
-      actualInFlightReadCount: tasks.filter((task) => task.status === 'reading').length,
+      actualInFlightReadCount: tasks.filter((task) => task.status === 'reading' && !task.waveProxyRange).length +
+        [...this.waveSourceReads.values()].filter((read) => read.status === 'reading').length,
       inFlightDecodeCount: tasks.filter((task) => task.status === 'decoding').length,
       inFlightCompressedBytes: this.inFlightCompressedBytes(),
+      inFlightSourceReadBytes: this.inFlightSourceReadBytes(),
+      decodeInputCopyBytes: this.decodeInputCopyBytes(),
+      retainedWaveSourceBytes: this.waveSourceBytes(),
+      sourceReadReservationBytes: this.sourceReadReservationsBytes(),
+      waveSourceCacheEntries: this.waveSourceCache.size,
+      waveSourceCacheBytes: this.waveSourceCacheBytes,
       queuedTaskCount: this.readQueue.length,
       deferredFutureVoiceCount: [...this.voices.values()].filter((voice) => voice.capacityDeferred).length,
       decodeReservationBytes: this.decodeReservationsBytes(),
@@ -540,6 +604,7 @@ export class ProductPreviewAudioTransport {
         this.publishWarning();
         return;
       }
+      voice.capacityFailed = error instanceof AudioWorkingSetCapacityError;
       voice.state = 'failed';
       this.publishWarning();
     } finally {
@@ -600,6 +665,10 @@ export class ProductPreviewAudioTransport {
       voice.gain = gain;
       record.voiceLeases.add(key);
       voice.bufferRecord = record;
+      if (record.waveSourceKey && this.waveSources.has(record.waveSourceKey)) {
+        this.acquireWaveSourceLease(this.waveSources.get(record.waveSourceKey)!, key);
+        voice.waveSourceLeaseKey = record.waveSourceKey;
+      }
       this.removeIdleRecord(record);
       source.buffer = record.buffer;
       gain.gain.value = audioClipGain(voice.selection.clip.volume);
@@ -615,6 +684,8 @@ export class ProductPreviewAudioTransport {
       };
       source.start(scheduledAt, offsetMs / 1_000, durationMs / 1_000);
       voice.state = scheduledAt > audioNow ? 'scheduled' : 'started';
+      this.startupWarning = false;
+      this.publishWarning();
     } catch {
       this.releaseVoice(voice, false);
       if (!this.isCurrentOwner(key, voice)) return;
@@ -687,6 +758,7 @@ export class ProductPreviewAudioTransport {
     priority: number,
   ): Promise<DecodedAudioBufferRecord> {
     const assetKey = this.decodedBufferKey(selection, input);
+    const sourceAssetKey = this.assetKey(selection, input);
     const waveProxyRange = this.waveProxyRange(selection, input);
     const retained = this.getRetainedRecord(assetKey);
     if (retained) {
@@ -697,10 +769,15 @@ export class ProductPreviewAudioTransport {
     let task = this.readTasks.get(taskKey);
     if (task) {
       task.consumers.add(consumerId);
+      this.waveSourceReads.get(task.sourceAssetKey)?.consumers.add(consumerId);
       task.priority = Math.min(task.priority, priority);
       this.sortReadQueue();
       this.pumpReadQueue();
       return task.promise;
+    }
+
+    if (this.readQueue.length >= PRODUCT_PREVIEW_AUDIO_MAX_QUEUED_TASKS) {
+      return Promise.reject(new AudioWorkingSetCapacityError());
     }
 
     let resolve!: (record: DecodedAudioBufferRecord) => void;
@@ -709,6 +786,7 @@ export class ProductPreviewAudioTransport {
     task = {
       key: taskKey,
       assetKey,
+      sourceAssetKey,
       selection,
       request: {
         projectRoot: input.projectRoot,
@@ -724,6 +802,7 @@ export class ProductPreviewAudioTransport {
       resolve,
       reject,
       readByteLength: 0,
+      readReservationBytes: 0,
       additionalInFlightCompressedBytes: 0,
       decodeReservationBytes: 0,
       waveProxyRange,
@@ -769,64 +848,7 @@ export class ProductPreviewAudioTransport {
 
   private runReadTask(task: AudioReadTask, context: ProductPreviewAudioContext): void {
     this.reads.set(task.key, task.promise);
-    let readResult: Promise<AssetPreviewAudioReadResponse>;
-    try {
-      readResult = Promise.resolve(this.readAudio(task.request));
-    } catch (error) {
-      readResult = Promise.reject(error);
-    }
-    void readResult.then(async (response) => {
-      if (this.disposed || task.epoch !== this.cacheEpoch) throw new Error('Obsolete audio read.');
-      if (!response.ok || response.status !== 'ready') throw new Error('Audio read failed.');
-      task.readByteLength = response.byteLength ?? response.bytes.byteLength;
-      this.updatePeakWorkingSet();
-      if (task.cancelBeforeDecode) throw new AudioWorkingSetCapacityError();
-      if (task.consumers.size === 0) throw new Error('Obsolete queued audio decode.');
-      const sourceBytes = response.bytes;
-      const waveProxy = task.waveProxyRange
-        ? this.createWavePreviewProxy(sourceBytes, task.waveProxyRange)
-        : null;
-      const decodeBytes = waveProxy?.bytes ?? sourceBytes;
-      task.additionalInFlightCompressedBytes = waveProxy?.bytes.byteLength ?? 0;
-      const decodeInput = decodeBytes.byteOffset === 0 &&
-        decodeBytes.buffer instanceof ArrayBuffer &&
-        decodeBytes.byteLength === decodeBytes.buffer.byteLength
-        ? decodeBytes.buffer
-        : Uint8Array.from(decodeBytes).buffer;
-      if (decodeInput !== decodeBytes.buffer) {
-        task.additionalInFlightCompressedBytes += decodeBytes.byteLength;
-      }
-      this.updatePeakWorkingSet();
-      const mediaEstimate = this.estimatedDecodeBytes(task.selection, context, decodeBytes);
-      if (!this.reserveTaskBytes(task, mediaEstimate)) {
-        if (task.priority < PREFETCH_PRIORITY) this.cancelPrewarmForCapacity(mediaEstimate);
-        if (!this.reserveTaskBytes(task, mediaEstimate)) throw new AudioWorkingSetCapacityError();
-      }
-      task.status = 'decoding';
-      const buffer = await context.decodeAudioData(decodeInput);
-      if (this.disposed || task.epoch !== this.cacheEpoch) throw new Error('Obsolete decode.');
-      const bytes = this.bufferBytes(buffer);
-      if (!this.reserveTaskBytes(task, bytes)) {
-        task.decodeReservationBytes = bytes;
-        this.updatePeakWorkingSet();
-        throw new AudioWorkingSetCapacityError();
-      }
-      const record: DecodedAudioBufferRecord = {
-        key: task.assetKey,
-        buffer,
-        bytes,
-        sourceStartMs: waveProxy?.sourceStartMs ?? 0,
-        epoch: task.epoch,
-        voiceLeases: new Set(),
-        consumerLeases: new Set(task.consumers),
-        idleExpiresAtMs: null,
-      };
-      task.decodeReservationBytes = 0;
-      this.bufferRecords.set(record.key, record);
-      this.updatePeakWorkingSet();
-      if (record.consumerLeases.size === 0) this.retainIdleRecord(record);
-      return record;
-    }).then((record) => {
+    void this.decodeReadTask(task, context).then((record) => {
       this.finishReadTask(task);
       task.resolve(record);
     }, (error: unknown) => {
@@ -835,10 +857,220 @@ export class ProductPreviewAudioTransport {
     });
   }
 
+  private async decodeReadTask(
+    task: AudioReadTask,
+    context: ProductPreviewAudioContext,
+  ): Promise<DecodedAudioBufferRecord> {
+    let sourceBytes: Uint8Array;
+    let waveProxy: WaveAudioPreviewProxy | null = null;
+    let waveSource: WaveSourceRecord | null = null;
+    if (task.waveProxyRange) {
+      waveSource = await this.requestWaveSource(task);
+      if (this.disposed || task.epoch !== this.cacheEpoch) throw new Error('Obsolete audio read.');
+      if (task.cancelBeforeDecode) throw new AudioWorkingSetCapacityError();
+      waveProxy = this.createWavePreviewProxy(waveSource.bytes, task.waveProxyRange, context.sampleRate);
+      sourceBytes = waveSource.bytes;
+    } else {
+      const expectedByteLength = await this.readAudioInfoByteLength(task);
+      if (this.disposed || task.epoch !== this.cacheEpoch) throw new Error('Obsolete audio read.');
+      if (task.cancelBeforeDecode) throw new AudioWorkingSetCapacityError();
+      if (task.consumers.size === 0) throw new Error('Obsolete audio read.');
+      if (expectedByteLength !== null) this.reserveReadBytes(task, expectedByteLength);
+      const response = await this.readAudio(task.request);
+      if (this.disposed || task.epoch !== this.cacheEpoch) throw new Error('Obsolete audio read.');
+      if (!response.ok || response.status !== 'ready') throw new Error('Audio read failed.');
+      if (response.assetId !== task.request.assetId || response.mimeType !== task.selection.asset.mimeType) {
+        throw new Error('Audio source metadata changed while reading.');
+      }
+      this.setReadResultByteLength(task, response.byteLength ?? response.bytes.byteLength);
+      this.updatePeakWorkingSet();
+      if (task.cancelBeforeDecode) throw new AudioWorkingSetCapacityError();
+      // A current read may finish after Pause/Seek cancels its last consumer.
+      // Decode it into the bounded idle LRU so an immediate Replay can reuse
+      // the validated bytes; future prewarm work with no consumer is discarded.
+      if (task.consumers.size === 0 && task.priority >= PREFETCH_PRIORITY) {
+        throw new Error('Obsolete queued audio decode.');
+      }
+      sourceBytes = response.bytes;
+    }
+
+    const decodeBytes = waveProxy?.bytes ?? sourceBytes;
+    task.additionalInFlightCompressedBytes = waveProxy?.bytes.byteLength ?? 0;
+    const decodeInput = decodeBytes.byteOffset === 0 &&
+      decodeBytes.buffer instanceof ArrayBuffer &&
+      decodeBytes.byteLength === decodeBytes.buffer.byteLength
+      ? decodeBytes.buffer
+      : Uint8Array.from(decodeBytes).buffer;
+    if (decodeInput !== decodeBytes.buffer) {
+      task.additionalInFlightCompressedBytes += decodeBytes.byteLength;
+    }
+    this.updatePeakWorkingSet();
+    const mediaEstimate = this.estimatedDecodeBytes(task.selection, context, decodeBytes);
+    if (!this.reserveTaskBytes(task, mediaEstimate)) {
+      if (task.priority < PREFETCH_PRIORITY) this.cancelPrewarmForCapacity(mediaEstimate);
+      if (!this.reserveTaskBytes(task, mediaEstimate)) throw new AudioWorkingSetCapacityError();
+    }
+    task.status = 'decoding';
+    const buffer = await context.decodeAudioData(decodeInput);
+    if (this.disposed || task.epoch !== this.cacheEpoch) throw new Error('Obsolete decode.');
+    const bytes = this.bufferBytes(buffer);
+    if (!this.reserveTaskBytes(task, bytes)) {
+      task.decodeReservationBytes = bytes;
+      this.updatePeakWorkingSet();
+      throw new AudioWorkingSetCapacityError();
+    }
+    const record: DecodedAudioBufferRecord = {
+      key: task.assetKey,
+      buffer,
+      bytes,
+      sourceStartMs: waveProxy?.sourceStartMs ?? 0,
+      ...(waveProxy && waveSource ? { waveSourceKey: waveSource.key } : {}),
+      epoch: task.epoch,
+      voiceLeases: new Set(),
+      consumerLeases: new Set(task.consumers),
+      idleExpiresAtMs: null,
+    };
+    task.decodeReservationBytes = 0;
+    this.bufferRecords.set(record.key, record);
+    this.updatePeakWorkingSet();
+    if (record.consumerLeases.size === 0) this.retainIdleRecord(record);
+    return record;
+  }
+
+  private async readAudioInfoByteLength(task: AudioReadTask): Promise<number | null> {
+    const info = await this.getAudioInfo(task.request);
+    if (!info) return null;
+    if (!info.ok || info.assetId !== task.request.assetId || info.mimeType !== task.selection.asset.mimeType) {
+      throw new Error('Audio source information is unavailable.');
+    }
+    task.request = { ...task.request, expectedByteLength: info.byteLength };
+    return info.byteLength;
+  }
+
+  private reserveReadBytes(task: AudioReadTask, byteLength: number): void {
+    const target = Math.max(0, Math.ceil(byteLength));
+    const delta = target - task.readReservationBytes;
+    if (delta > 0 && !this.makeWorkingSetRoom(delta)) throw new AudioWorkingSetCapacityError();
+    task.readReservationBytes = target;
+    this.updatePeakWorkingSet();
+  }
+
+  private setReadResultByteLength(task: AudioReadTask, byteLength: number): void {
+    const actual = Math.max(0, Math.ceil(byteLength));
+    const delta = actual - task.readReservationBytes;
+    if (delta > 0 && !this.makeWorkingSetRoom(delta)) throw new AudioWorkingSetCapacityError();
+    task.readByteLength = actual;
+    task.readReservationBytes = 0;
+    this.updatePeakWorkingSet();
+  }
+
+  private async requestWaveSource(task: AudioReadTask): Promise<WaveSourceRecord> {
+    const cached = this.getWaveSource(task.sourceAssetKey);
+    if (cached) {
+      for (const consumerId of task.consumers) this.acquireWaveSourceLease(cached, consumerId);
+      return cached;
+    }
+    let state = this.waveSourceReads.get(task.sourceAssetKey);
+    if (!state) {
+      let resolve!: (record: WaveSourceRecord) => void;
+      let reject!: (reason: unknown) => void;
+      const promise = new Promise<WaveSourceRecord>((yes, no) => { resolve = yes; reject = no; });
+      state = {
+        key: task.sourceAssetKey,
+        epoch: task.epoch,
+        selection: task.selection,
+        request: task.request,
+        consumers: new Set(task.consumers),
+        status: 'inspecting',
+        reservedBytes: 0,
+        readByteLength: 0,
+        promise,
+        resolve,
+        reject,
+      };
+      this.waveSourceReads.set(state.key, state);
+      void this.loadWaveSource(state);
+    } else {
+      for (const consumerId of task.consumers) state.consumers.add(consumerId);
+    }
+    const record = await state.promise;
+    if (task.epoch !== this.cacheEpoch || this.disposed) throw new Error('Obsolete audio read.');
+    for (const consumerId of task.consumers) this.acquireWaveSourceLease(record, consumerId);
+    return record;
+  }
+
+  private async loadWaveSource(state: WaveSourceReadState): Promise<void> {
+    try {
+      const info = await this.getAudioInfo(state.request);
+      if (info && (!info.ok || info.assetId !== state.request.assetId || info.mimeType !== state.selection.asset.mimeType)) {
+        throw new Error('Audio source information is unavailable.');
+      }
+      if (info) {
+        const additionalBytes = Math.max(0, info.byteLength - state.reservedBytes);
+        if (additionalBytes > 0 && !this.makeWorkingSetRoom(additionalBytes)) {
+          throw new AudioWorkingSetCapacityError();
+        }
+        state.reservedBytes = info.byteLength;
+        state.request = { ...state.request, expectedByteLength: info.byteLength };
+        this.updatePeakWorkingSet();
+      }
+      if (state.cancelWhenComplete || state.epoch !== this.cacheEpoch || this.disposed) {
+        throw new Error('Obsolete audio read.');
+      }
+      state.status = 'reading';
+      let readResult: Promise<AssetPreviewAudioReadResponse>;
+      try {
+        readResult = Promise.resolve(this.readAudio(state.request));
+      } catch (error) {
+        readResult = Promise.reject(error);
+      }
+      const response = await readResult;
+      if (!response.ok || response.status !== 'ready' || response.assetId !== state.request.assetId ||
+          response.mimeType !== state.selection.asset.mimeType) {
+        throw new Error('Audio read failed.');
+      }
+      const actualBytes = response.byteLength ?? response.bytes.byteLength;
+      const additionalBytes = Math.max(0, actualBytes - state.reservedBytes);
+      if (additionalBytes > 0 && !this.makeWorkingSetRoom(additionalBytes)) {
+        throw new AudioWorkingSetCapacityError();
+      }
+      state.readByteLength = actualBytes;
+      state.reservedBytes = 0;
+      this.updatePeakWorkingSet();
+      if (state.cancelWhenComplete || state.epoch !== this.cacheEpoch || this.disposed || state.consumers.size === 0) {
+        throw new Error('Obsolete audio read.');
+      }
+      const metadata = this.readWaveMetadata(response.bytes);
+      if (!metadata) throw new Error('WAV source metadata is invalid.');
+      const record: WaveSourceRecord = {
+        key: state.key,
+        bytes: response.bytes,
+        metadata,
+        epoch: state.epoch,
+        consumerLeases: new Set(state.consumers),
+        idleExpiresAtMs: null,
+        expiryTimer: null,
+      };
+      this.waveSources.set(record.key, record);
+      state.readByteLength = 0;
+      this.waveSourceReads.delete(state.key);
+      this.updatePeakWorkingSet();
+      state.resolve(record);
+    } catch (error) {
+      state.reservedBytes = 0;
+      state.readByteLength = 0;
+      if (this.waveSourceReads.get(state.key) === state) this.waveSourceReads.delete(state.key);
+      this.updatePeakWorkingSet();
+      state.reject(error);
+    }
+  }
+
   private finishReadTask(task: AudioReadTask): void {
     if (this.reads.get(task.key) === task.promise) this.reads.delete(task.key);
     if (this.readTasks.get(task.key) === task) this.readTasks.delete(task.key);
+    task.readReservationBytes = 0;
     task.decodeReservationBytes = 0;
+    task.additionalInFlightCompressedBytes = 0;
     this.pumpReadQueue();
   }
 
@@ -851,6 +1083,9 @@ export class ProductPreviewAudioTransport {
         task.cancelBeforeDecode = true;
         task.decodeReservationBytes = 0;
       }
+    }
+    for (const state of this.waveSourceReads.values()) {
+      if (state.epoch !== this.cacheEpoch) state.cancelWhenComplete = true;
     }
   }
 
@@ -876,7 +1111,8 @@ export class ProductPreviewAudioTransport {
   private makeWorkingSetRoom(additionalBytes: number): boolean {
     if (this.estimatedWorkingSetBytes() + additionalBytes <= PRODUCT_PREVIEW_AUDIO_WORKING_SET_BYTES) return true;
     while (this.estimatedWorkingSetBytes() + additionalBytes > PRODUCT_PREVIEW_AUDIO_WORKING_SET_BYTES) {
-      if (!this.evictOldestIdleLruRecord() && !this.evictRecentOversizedRecord()) return false;
+      if (!this.evictOldestIdleLruRecord() && !this.evictRecentOversizedRecord() &&
+          !this.evictOldestWaveSource()) return false;
     }
     return true;
   }
@@ -919,6 +1155,96 @@ export class ProductPreviewAudioTransport {
       for (const id of ids) changed = record.consumerLeases.delete(id) || changed;
       if (changed) this.retainIdleRecord(record);
     }
+    for (const state of this.waveSourceReads.values()) {
+      for (const id of ids) state.consumers.delete(id);
+    }
+    for (const source of [...this.waveSources.values()]) {
+      let changed = false;
+      for (const id of ids) changed = source.consumerLeases.delete(id) || changed;
+      if (changed && source.consumerLeases.size === 0) this.retainIdleWaveSource(source);
+    }
+  }
+
+  private getWaveSource(key: string): WaveSourceRecord | undefined {
+    const source = this.waveSources.get(key);
+    if (!source) return undefined;
+    if (source.epoch !== this.cacheEpoch ||
+        (source.idleExpiresAtMs !== null && source.idleExpiresAtMs <= Date.now())) {
+      this.removeWaveSource(source);
+      return undefined;
+    }
+    if (this.waveSourceCache.has(key)) {
+      this.waveSourceCache.delete(key);
+      this.waveSourceCache.set(key, source);
+    }
+    return source;
+  }
+
+  private acquireWaveSourceLease(source: WaveSourceRecord, consumerId: string): void {
+    this.removeIdleWaveSource(source);
+    source.consumerLeases.add(consumerId);
+  }
+
+  private releaseWaveSourceLease(key: string, consumerId: string): void {
+    const source = this.waveSources.get(key);
+    if (!source || !source.consumerLeases.delete(consumerId)) return;
+    if (source.consumerLeases.size === 0) this.retainIdleWaveSource(source);
+  }
+
+  private removeIdleWaveSource(source: WaveSourceRecord): void {
+    if (this.waveSourceCache.has(source.key)) {
+      this.waveSourceCache.delete(source.key);
+      this.waveSourceCacheBytes = Math.max(0, this.waveSourceCacheBytes - source.bytes.byteLength);
+    }
+    if (source.expiryTimer !== null) clearTimeout(source.expiryTimer);
+    source.expiryTimer = null;
+    source.idleExpiresAtMs = null;
+  }
+
+  private retainIdleWaveSource(source: WaveSourceRecord): void {
+    if (source.consumerLeases.size > 0) return;
+    if (this.disposed || source.epoch !== this.cacheEpoch ||
+        source.bytes.byteLength > PRODUCT_PREVIEW_AUDIO_WAV_SOURCE_CACHE_BYTES) {
+      this.removeWaveSource(source);
+      return;
+    }
+    this.removeIdleWaveSource(source);
+    while (this.waveSourceCache.size >= PRODUCT_PREVIEW_AUDIO_WAV_SOURCE_CACHE_ENTRIES ||
+        this.waveSourceCacheBytes + source.bytes.byteLength > PRODUCT_PREVIEW_AUDIO_WAV_SOURCE_CACHE_BYTES) {
+      if (!this.evictOldestWaveSource()) break;
+    }
+    if (this.waveSourceCacheBytes + source.bytes.byteLength > PRODUCT_PREVIEW_AUDIO_WAV_SOURCE_CACHE_BYTES) {
+      this.removeWaveSource(source);
+      return;
+    }
+    this.waveSourceCache.set(source.key, source);
+    this.waveSourceCacheBytes += source.bytes.byteLength;
+    source.idleExpiresAtMs = Date.now() + PRODUCT_PREVIEW_AUDIO_RECENT_OVERSIZED_TTL_MS;
+    source.expiryTimer = setTimeout(() => {
+      if (this.waveSources.get(source.key) === source && source.consumerLeases.size === 0) {
+        this.removeWaveSource(source);
+      }
+    }, PRODUCT_PREVIEW_AUDIO_RECENT_OVERSIZED_TTL_MS);
+    const unref = (source.expiryTimer as unknown as { unref?: () => void }).unref;
+    unref?.call(source.expiryTimer);
+    this.updatePeakWorkingSet();
+  }
+
+  private evictOldestWaveSource(): boolean {
+    const oldest = this.waveSourceCache.keys().next().value as string | undefined;
+    if (oldest === undefined) return false;
+    const source = this.waveSources.get(oldest);
+    if (!source || source.consumerLeases.size > 0) {
+      this.waveSourceCache.delete(oldest);
+      return true;
+    }
+    this.removeWaveSource(source);
+    return true;
+  }
+
+  private removeWaveSource(source: WaveSourceRecord): void {
+    this.removeIdleWaveSource(source);
+    if (this.waveSources.get(source.key) === source) this.waveSources.delete(source.key);
   }
 
   private removeIdleRecord(record: DecodedAudioBufferRecord): void {
@@ -1014,6 +1340,12 @@ export class ProductPreviewAudioTransport {
     this.bufferCache.clear();
     this.bufferRecords.clear();
     this.cacheBytes = 0;
+    for (const source of this.waveSources.values()) {
+      if (source.expiryTimer !== null) clearTimeout(source.expiryTimer);
+    }
+    this.waveSources.clear();
+    this.waveSourceCache.clear();
+    this.waveSourceCacheBytes = 0;
   }
 
   private estimatedDecodeBytes(
@@ -1097,31 +1429,31 @@ export class ProductPreviewAudioTransport {
     const { asset, clip } = selection;
     const durationMs = clip.endMs - clip.startMs;
     const sourceStartMs = clip.offsetMs;
-    if (clip.role !== 'bgm' || asset.mimeType !== 'audio/wav' ||
+    if (asset.mimeType !== 'audio/wav' ||
         (asset.durationMs ?? 0) < PRODUCT_PREVIEW_AUDIO_WAV_PROXY_MIN_SOURCE_MS ||
         durationMs <= 0 || durationMs > PRODUCT_PREVIEW_AUDIO_WAV_PROXY_MAX_CLIP_MS ||
         sourceStartMs < 0 || sourceStartMs + durationMs > (asset.durationMs ?? 0)) return null;
-
-    let matchingUses = 0;
-    for (const shot of input.project.shots) {
-      for (const candidate of shot.audioClips) {
-        if (candidate.assetId !== asset.id) continue;
-        matchingUses += 1;
-        if (candidate.offsetMs !== sourceStartMs || candidate.endMs - candidate.startMs !== durationMs) return null;
-      }
-    }
-    return matchingUses > 0 ? { sourceStartMs, durationMs } : null;
+    void input;
+    return { sourceStartMs, durationMs };
   }
 
-  private createWavePreviewProxy(bytes: Uint8Array, range: WaveProxyRange): WaveAudioPreviewProxy | null {
+  private createWavePreviewProxy(
+    bytes: Uint8Array,
+    range: WaveProxyRange,
+    outputSampleRate: number,
+  ): WaveAudioPreviewProxy | null {
     const metadata = this.readWaveMetadata(bytes);
     if (!metadata?.canonicalPcmChunks || !metadata.dataOffset || !metadata.formatChunkEnd ||
         (metadata.formatCode !== 1 && metadata.formatCode !== 3)) return null;
     const totalFrames = metadata.dataBytes / metadata.blockAlign;
-    const firstFrame = Math.min(totalFrames, Math.max(0, Math.round(range.sourceStartMs * metadata.sampleRate / 1_000)));
+    const resamplePaddingFrames = outputSampleRate === metadata.sampleRate
+      ? 0
+      : Math.ceil(metadata.sampleRate * 0.1);
+    const firstFrame = Math.min(totalFrames, Math.max(0,
+      Math.round(range.sourceStartMs * metadata.sampleRate / 1_000) - resamplePaddingFrames));
     const requestedEndMs = range.sourceStartMs + range.durationMs;
     const finalFrame = Math.min(totalFrames, Math.max(firstFrame,
-      Math.round(requestedEndMs * metadata.sampleRate / 1_000)));
+      Math.round(requestedEndMs * metadata.sampleRate / 1_000) + resamplePaddingFrames));
     if (finalFrame <= firstFrame) return null;
 
     const dataLength = (finalFrame - firstFrame) * metadata.blockAlign;
@@ -1142,27 +1474,45 @@ export class ProductPreviewAudioTransport {
     return [...new Set(this.bufferRecords.values())].reduce((sum, record) => sum + record.bytes, 0);
   }
 
+  private waveSourceBytes(): number {
+    return [...new Set(this.waveSources.values())].reduce((sum, source) => sum + source.bytes.byteLength, 0);
+  }
+
   private decodeReservationsBytes(): number {
     return [...this.readTasks.values()].reduce((sum, task) => sum + task.decodeReservationBytes, 0);
   }
 
   private estimatedWorkingSetBytes(): number {
-    return this.retainedPcmBytes() + this.decodeReservationsBytes() + this.inFlightCompressedBytes();
+    return this.retainedPcmBytes() + this.decodeReservationsBytes() + this.inFlightSourceReadBytes() +
+      this.decodeInputCopyBytes() + this.waveSourceBytes() + this.sourceReadReservationsBytes();
   }
 
   private canFitDecodedBuffer(bytes: number): boolean {
     if (bytes > PRODUCT_PREVIEW_AUDIO_WORKING_SET_BYTES) return false;
     const reclaimable = [...this.bufferRecords.values()]
       .filter((record) => record.voiceLeases.size === 0 && record.consumerLeases.size === 0)
-      .reduce((sum, record) => sum + record.bytes, 0);
+      .reduce((sum, record) => sum + record.bytes, 0) + this.waveSourceCacheBytes;
     return this.estimatedWorkingSetBytes() - reclaimable + bytes <= PRODUCT_PREVIEW_AUDIO_WORKING_SET_BYTES;
   }
 
   private inFlightCompressedBytes(): number {
+    return this.inFlightSourceReadBytes() + this.decodeInputCopyBytes();
+  }
+
+  private inFlightSourceReadBytes(): number {
     return [...this.readTasks.values()].reduce((sum, task) =>
-      sum + (task.status === 'reading' || task.status === 'decoding'
-        ? task.readByteLength + task.additionalInFlightCompressedBytes
-        : 0), 0);
+      sum + (task.status === 'reading' || task.status === 'decoding' ? task.readByteLength : 0), 0) +
+      [...this.waveSourceReads.values()].reduce((sum, read) => sum + read.readByteLength, 0);
+  }
+
+  private decodeInputCopyBytes(): number {
+    return [...this.readTasks.values()].reduce((sum, task) =>
+      sum + (task.status === 'reading' || task.status === 'decoding' ? task.additionalInFlightCompressedBytes : 0), 0);
+  }
+
+  private sourceReadReservationsBytes(): number {
+    return [...this.readTasks.values()].reduce((sum, task) => sum + task.readReservationBytes, 0) +
+      [...this.waveSourceReads.values()].reduce((sum, read) => sum + read.reservedBytes, 0);
   }
 
   private updatePeakWorkingSet(): void {
@@ -1240,7 +1590,7 @@ export class ProductPreviewAudioTransport {
             ? CURRENT_PLAYBACK_PRIORITY
             : PREFETCH_PRIORITY });
       }
-      return plan;
+      return this.splitLongWaveVoices(plan, input, position, horizon);
     }
 
     let shotStartMs = 0;
@@ -1256,7 +1606,79 @@ export class ProductPreviewAudioTransport {
       }
       shotStartMs += shot.durationMs;
     }
-    return plan;
+    return this.splitLongWaveVoices(plan, input, position, horizon);
+  }
+
+  private splitLongWaveVoices(
+    plan: PlannedVoice[],
+    input: ProductPreviewAudioSyncInput,
+    position: number,
+    horizon: number,
+  ): PlannedVoice[] {
+    const splitAssets = new Set<string>();
+    const currentAssets = new Map<string, ProductPreviewAudioSelection>();
+    for (const item of plan) {
+      if (item.priority !== CURRENT_PLAYBACK_PRIORITY) continue;
+      currentAssets.set(this.assetKey(item.selection, input), item.selection);
+      const { asset, clip } = item.selection;
+      if (asset.mimeType === 'audio/wav' && (asset.durationMs ?? 0) > 180_000 &&
+          clip.endMs - clip.startMs > PRODUCT_PREVIEW_AUDIO_WAV_STREAM_CHUNK_MS) {
+        splitAssets.add(this.assetKey(item.selection, input));
+      }
+    }
+    const currentFullDecodeBytes = [...currentAssets.entries()].reduce((sum, [key, selection]) => {
+      const item = plan.find((candidate) => this.assetKey(candidate.selection, input) === key &&
+        candidate.priority === CURRENT_PLAYBACK_PRIORITY);
+      return sum + this.estimatedDecodeBytes(selection, this.context,
+        undefined, item ? this.waveProxyRange(item.selection, input) : null);
+    }, 0);
+    if (currentFullDecodeBytes > PRODUCT_PREVIEW_AUDIO_WORKING_SET_BYTES) {
+      for (const item of plan) {
+        const { asset, clip } = item.selection;
+        if (item.priority === CURRENT_PLAYBACK_PRIORITY && asset.mimeType === 'audio/wav' &&
+            clip.endMs - clip.startMs > PRODUCT_PREVIEW_AUDIO_WAV_STREAM_CHUNK_MS) {
+          splitAssets.add(this.assetKey(item.selection, input));
+        }
+      }
+    }
+
+    if (splitAssets.size === 0) return plan;
+    const segmented: PlannedVoice[] = [];
+    for (const item of plan) {
+      const { asset, clip } = item.selection;
+      const clipDurationMs = clip.endMs - clip.startMs;
+      if (!splitAssets.has(this.assetKey(item.selection, input)) ||
+          asset.mimeType !== 'audio/wav' || clipDurationMs <= PRODUCT_PREVIEW_AUDIO_WAV_STREAM_CHUNK_MS) {
+        segmented.push(item);
+        continue;
+      }
+      const chunkMs = PRODUCT_PREVIEW_AUDIO_WAV_STREAM_CHUNK_MS;
+      const totalChunks = Math.ceil(clipDurationMs / chunkMs);
+      const firstChunk = Math.max(0, Math.floor(Math.max(0, position - item.clipStartMasterMs) / chunkMs));
+      const lastChunk = Math.min(totalChunks - 1,
+        Math.ceil((horizon - item.clipStartMasterMs) / chunkMs) - 1);
+      for (let chunkIndex = firstChunk; chunkIndex <= lastChunk; chunkIndex += 1) {
+        const segmentStartMs = clip.startMs + chunkIndex * chunkMs;
+        const segmentEndMs = Math.min(clip.endMs, segmentStartMs + chunkMs);
+        const clipStartMasterMs = item.clipStartMasterMs + segmentStartMs - clip.startMs;
+        const clipEndMasterMs = item.clipStartMasterMs + segmentEndMs - clip.startMs;
+        if (clipEndMasterMs <= position || clipStartMasterMs >= horizon) continue;
+        const segmentClip: AudioClip = {
+          ...clip,
+          startMs: segmentStartMs,
+          endMs: segmentEndMs,
+          offsetMs: clip.offsetMs + segmentStartMs - clip.startMs,
+        };
+        segmented.push({
+          ...item,
+          selection: { ...item.selection, clip: segmentClip },
+          clipStartMasterMs,
+          clipEndMasterMs,
+          priority: clipStartMasterMs <= position ? CURRENT_PLAYBACK_PRIORITY : PREFETCH_PRIORITY,
+        });
+      }
+    }
+    return segmented;
   }
 
   private snapshotAtStart(
@@ -1328,6 +1750,10 @@ export class ProductPreviewAudioTransport {
     voice.gain?.disconnect();
     voice.gain = undefined;
     this.releaseVoiceBufferLease(voice);
+    if (voice.waveSourceLeaseKey) {
+      this.releaseWaveSourceLease(voice.waveSourceLeaseKey, voice.key);
+      voice.waveSourceLeaseKey = undefined;
+    }
   }
 
   private releaseVoiceBufferLease(voice: Voice): void {
@@ -1361,9 +1787,10 @@ export class ProductPreviewAudioTransport {
 
   private publishWarning(): void {
     if (this.disposed) return;
-    const warning = this.startupWarning || [...this.voices.values()].some((voice) => voice.state === 'failed')
-      ? AUDIO_READ_WARNING
-      : null;
+    const failedVoices = [...this.voices.values()].filter((voice) => voice.state === 'failed');
+    const warning = failedVoices.some((voice) => voice.capacityFailed)
+      ? AUDIO_CAPACITY_WARNING
+      : this.startupWarning || failedVoices.length > 0 ? AUDIO_READ_WARNING : null;
     if (warning !== this.warning) { this.warning = warning; this.onWarning(warning); }
   }
 }

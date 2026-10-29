@@ -505,13 +505,15 @@ describe('product preview overlay contract', () => {
     ]) {
       expect(sources).not.toContain(forbidden);
     }
-    // Phase 2 consumes only the two existing bounded, read-only asset seams.
+    // Product Preview uses the validated audio metadata/read seams and the existing image read seam.
     expect(overlay).not.toContain('window.pandaStage.');
     expect(images).toContain('window.pandaStage.assets.readCanvasImage');
     expect(images).not.toContain('readThumbnail');
     expect(audio).toContain('window.pandaStage.assets.readAudio');
+    expect(audio).toContain('window.pandaStage.assets.getAudioInfo');
     expect(sources.match(/window\.pandaStage\.[a-zA-Z.]+/gu)).toEqual([
       'window.pandaStage.assets.readAudio',
+      'window.pandaStage.assets.getAudioInfo',
       'window.pandaStage.assets.readCanvasImage',
     ]);
   });

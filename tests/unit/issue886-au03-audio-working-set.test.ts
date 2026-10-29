@@ -292,20 +292,26 @@ describe('Issue #886 AU-03 bounded audio working set', () => {
       expect(decodeInput).toBeInstanceOf(ArrayBuffer);
       const proxyBytes = new Uint8Array(decodeInput!);
       const proxyView = new DataView(decodeInput!);
-      const proxyFrames = clipDurationMs * 8;
+      const requestedFrames = clipDurationMs * 8;
+      const resamplePaddingFrames = 800;
+      const proxyFrames = requestedFrames + resamplePaddingFrames * 2;
       expect(proxyBytes.byteLength).toBe(44 + proxyFrames * 4);
       expect(proxyView.getUint32(4, true) + 8).toBe(proxyBytes.byteLength);
       expect(proxyView.getUint32(24, true)).toBe(8_000);
       expect(proxyView.getUint16(22, true)).toBe(2);
       expect(proxyView.getUint32(40, true)).toBe(proxyFrames * 4);
-      expect(proxyView.getInt16(44, true)).toBe(1_234);
-      expect(proxyView.getInt16(44 + (proxyFrames - 1) * 4, true)).toBe(-2_345);
-      expect(context.decodedBuffers[0]?.duration).toBe(clipDurationMs / 1_000);
+      expect(proxyView.getInt16(44 + resamplePaddingFrames * 4, true)).toBe(1_234);
+      expect(proxyView.getInt16(44 + (resamplePaddingFrames + requestedFrames - 1) * 4, true)).toBe(-2_345);
+      expect(context.decodedBuffers[0]?.duration).toBe(clipDurationMs / 1_000 + 0.2);
 
       transport.sync(inputAt(project, 0, true));
-      const preparedProxyBuffer = context.decodedBuffers.find((buffer) => buffer.duration === clipDurationMs / 1_000);
-      expect(context.sources.some((source) => source.buffer === preparedProxyBuffer &&
-        source.start.mock.calls.length === 1)).toBe(true);
+      const preparedProxyBuffer = context.decodedBuffers.find((buffer) =>
+        buffer.duration === clipDurationMs / 1_000 + 0.2);
+      const preparedSource = context.sources.find((source) => source.buffer === preparedProxyBuffer &&
+        source.start.mock.calls.length === 1);
+      expect(preparedSource).toBeDefined();
+      expect(preparedSource?.start.mock.calls[0]?.[1]).toBeCloseTo(0.1, 6);
+      expect(preparedSource?.start.mock.calls[0]?.[2]).toBe(clipDurationMs / 1_000);
       await flush();
       transport.sync(inputAt(project, clipDurationMs - 200, true));
       await flush();
@@ -315,12 +321,10 @@ describe('Issue #886 AU-03 bounded audio working set', () => {
       expect(context.decodeAudioData).toHaveBeenCalledTimes(1);
       expect(started).toHaveLength(2);
       expect(new Set(started.map((source) => source.buffer)).size).toBe(1);
-      expect(transport.getWorkingSetSnapshot()).toMatchObject({
-        activeSourceCount: 2,
-        activeUniquePcmBytes: 3_072_000,
-        retainedUniquePcmBytes: 3_072_000,
-        estimatedWorkingSetBytes: 3_072_000,
-      });
+      const activeSnapshot = transport.getWorkingSetSnapshot();
+      expect(activeSnapshot).toMatchObject({ activeSourceCount: 2 });
+      expect(activeSnapshot.activeUniquePcmBytes).toBeCloseTo(3_148_800, 5);
+      expect(activeSnapshot.retainedUniquePcmBytes).toBeCloseTo(3_148_800, 5);
     } finally {
       transport.dispose();
     }
@@ -354,25 +358,34 @@ describe('Issue #886 AU-03 bounded audio working set', () => {
       transport.sync(inputAt(project, 0, true));
       await flushMicrotasks();
 
-      const proxyByteLength = 44 + clipDurationMs * 8 * 4;
+      const proxyFrames = clipDurationMs * 8 + 800 * 2;
+      const proxyByteLength = 44 + proxyFrames * 4;
       expect(context.decodeAudioData).toHaveBeenCalledTimes(1);
-      expect(transport.getWorkingSetSnapshot()).toMatchObject({
+      const decodingSnapshot = transport.getWorkingSetSnapshot();
+      expect(decodingSnapshot).toMatchObject({
         actualInFlightReadCount: 0,
         inFlightDecodeCount: 1,
-        inFlightCompressedBytes: sourceBytes.byteLength + proxyByteLength,
+        inFlightCompressedBytes: proxyByteLength,
+        inFlightSourceReadBytes: 0,
+        decodeInputCopyBytes: proxyByteLength,
+        retainedWaveSourceBytes: sourceBytes.byteLength,
       });
-      expect(transport.getWorkingSetSnapshot().estimatedWorkingSetBytes).toBeLessThanOrEqual(
-        PRODUCT_PREVIEW_AUDIO_WORKING_SET_BYTES);
+      expect(decodingSnapshot.estimatedWorkingSetBytes).toBeGreaterThanOrEqual(
+        sourceBytes.byteLength + proxyByteLength + decodingSnapshot.decodeReservationBytes);
+      expect(decodingSnapshot.estimatedWorkingSetBytes).toBeLessThanOrEqual(PRODUCT_PREVIEW_AUDIO_WORKING_SET_BYTES);
 
-      finishDecode(decodedBuffer(48_000, clipDurationMs / 1_000));
+      finishDecode(decodedBuffer(48_000, clipDurationMs / 1_000 + 0.2));
       await flush();
-      expect(transport.getWorkingSetSnapshot()).toMatchObject({
+      const completedSnapshot = transport.getWorkingSetSnapshot();
+      expect(completedSnapshot).toMatchObject({
         inFlightDecodeCount: 0,
         inFlightCompressedBytes: 0,
-        activeUniquePcmBytes: 3_072_000,
+        retainedWaveSourceBytes: sourceBytes.byteLength,
       });
+      expect(completedSnapshot.activeUniquePcmBytes).toBeCloseTo(3_148_800, 5);
+      expect(completedSnapshot.retainedUniquePcmBytes).toBeCloseTo(3_148_800, 5);
     } finally {
-      if (finishDecode) finishDecode(decodedBuffer(48_000, clipDurationMs / 1_000));
+      if (finishDecode) finishDecode(decodedBuffer(48_000, clipDurationMs / 1_000 + 0.2));
       await flush();
       transport.dispose();
     }

@@ -916,6 +916,7 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     project.shots[0]!.audioClips = project.assets.filter((asset) => asset.kind === 'audio')
       .map((asset) => ({ ...template, id: asset.id, assetId: asset.id }));
     bounded.sync(syncInput(project));
+    await flush();
     expect(reads).toHaveLength(PRODUCT_PREVIEW_AUDIO_MAX_READS);
     expect(internals(bounded).reads.size).toBe(PRODUCT_PREVIEW_AUDIO_MAX_READS);
     reads[0]!.resolve(readyResponse({ projectRoot: PROJECT_ROOT, assetId: AUDIO_ID, sha256: 'c'.repeat(64) }));
@@ -956,7 +957,7 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     const audio = readFileSync('src/renderer/shell/productPreviewAudio.ts', 'utf8');
     expect(audio).not.toMatch(/setTimeMs|evaluateMouth|AutoCamera|updateProject|historyStore/u);
     expect(audio).not.toMatch(/requestAnimationFrame|setInterval/u);
-    expect(audio.match(/setTimeout\(/gu)).toHaveLength(2);
+    expect(audio.match(/setTimeout\(/gu)).toHaveLength(3);
     expect(audio).toContain('PRODUCT_PREVIEW_AUDIO_STARTUP_TIMEOUT_MS');
   });
 });
@@ -994,6 +995,32 @@ describe('AU-02 bounded future audio preparation', () => {
     transport.dispose();
   });
 
+  it('clears the startup timeout warning once a delayed current voice is scheduled', async () => {
+    const project = buildAudioProject();
+    const shot = project.shots[0]!;
+    const template = shot.audioClips[0]!;
+    shot.audioClips = [{ ...template, id: CLIP_A_ID, startMs: 0, endMs: 800, offsetMs: 0 }];
+    const context = new FakeContext();
+    const read = deferred<AssetPreviewAudioReadResponse>();
+    const warnings: (string | null)[] = [];
+    const transport = new ProductPreviewAudioTransport({ createContext: () => context.api(),
+      readAudio: () => read.promise, onWarning: (warning) => warnings.push(warning) });
+
+    const preparation = await transport.prepareForPlayback(syncInput(project, { timeMs: 0, playing: false }), 0);
+    expect(preparation).toMatchObject({ ready: false, reason: 'timeout' });
+    expect(warnings.at(-1)).toBeTruthy();
+
+    transport.sync(syncInput(project, { timeMs: 0, playing: true }));
+    read.resolve(readyResponse({ projectRoot: PROJECT_ROOT, assetId: AUDIO_ID, sha256: 'c'.repeat(64) }));
+    await flush();
+    await flush();
+
+    expect(context.sources).toHaveLength(1);
+    expect(context.sources[0]!.start).toHaveBeenCalledTimes(1);
+    expect(warnings.at(-1)).toBeNull();
+    transport.dispose();
+  }, 2_000);
+
   it('schedules 40–150ms effects across the 0→200ms render gap exactly once', async () => {
     const project = buildAudioProject();
     const shot = project.shots[0]!;
@@ -1010,6 +1037,7 @@ describe('AU-02 bounded future audio preparation', () => {
     const { context, transport } = setup(project);
 
     transport.sync(syncInput(project, { timeMs: 0 }));
+    await flush();
     await flush();
     expect(context.sources).toHaveLength(4);
     expect(context.sources.map((source) => source.start.mock.calls[0])
@@ -1235,10 +1263,12 @@ describe('AU-02 bounded future audio preparation', () => {
     const transport = new ProductPreviewAudioTransport({ createContext: () => context.api(), readAudio: reads });
 
     transport.sync(syncInput(project, { timeMs: 0 }));
+    await flush();
     expect(reads).toHaveBeenCalledTimes(PRODUCT_PREVIEW_AUDIO_MAX_READS - 1);
     expect(internals(transport).reads.size).toBe(PRODUCT_PREVIEW_AUDIO_MAX_READS - 1);
 
     transport.sync(syncInput(project, { timeMs: 1_500, seekRevision: 1 }));
+    await flush();
     expect(reads).toHaveBeenCalledTimes(PRODUCT_PREVIEW_AUDIO_MAX_READS);
     expect(internals(transport).reads.size).toBe(PRODUCT_PREVIEW_AUDIO_MAX_READS);
     expect(pending.has(targetAssetId)).toBe(true);

@@ -172,6 +172,14 @@ function registerFixtureIpc(projectRoot, project) {
       bytes: new Uint8Array(bytes),
     };
   });
+  register(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_INFO, (_event, request) => {
+    const asset = assetFor(request);
+    const bytes = assetBytes.get(request.assetId);
+    if (!asset || asset.kind !== 'audio' || !bytes || asset.sha256 !== request.sha256 || sha256(bytes) !== request.sha256) {
+      return { ok: false, error: { code: 'ASSET_PREVIEW_AUDIO_READ_FAILED', message: 'Fixture audio integrity check failed.', assetId: request.assetId } };
+    }
+    return { ok: true, status: 'ready', assetId: asset.id, mimeType: asset.mimeType, byteLength: bytes.byteLength };
+  });
   register(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ, (_event, request) => {
     const asset = assetFor(request);
     const bytes = assetBytes.get(request.assetId);

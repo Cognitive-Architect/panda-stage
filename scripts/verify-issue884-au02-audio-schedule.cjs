@@ -229,6 +229,15 @@ function registerFixtureIpc(projectRoot, project, media, audioReads) {
     return { ok: true, status: 'ready', assetId: asset.id, mimeType: asset.mimeType,
       width: asset.width, height: asset.height, byteLength: bytes.byteLength, bytes: new Uint8Array(bytes) };
   });
+  register(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_INFO, (_event, request) => {
+    const asset = assetFor(request.assetId);
+    const bytes = media.get(request.assetId);
+    if (path.resolve(request.projectRoot) !== resolvedRoot || !asset || asset.kind !== 'audio' || !bytes ||
+        asset.sha256 !== request.sha256 || sha256(bytes) !== request.sha256) {
+      return fail('ASSET_PREVIEW_AUDIO_READ_FAILED', 'Fixture audio integrity check failed.', { assetId: request.assetId });
+    }
+    return { ok: true, status: 'ready', assetId: asset.id, mimeType: asset.mimeType, byteLength: bytes.byteLength };
+  });
   register(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ, async (_event, request) => {
     const asset = assetFor(request.assetId);
     const bytes = media.get(request.assetId);

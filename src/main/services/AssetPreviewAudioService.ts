@@ -6,6 +6,8 @@ import { ProjectSchema, type Project } from '../../domain';
 import {
   ASSET_PREVIEW_AUDIO_MAX_BYTES,
   AssetPreviewAudioReadRequestSchema,
+  type AssetPreviewAudioErrorResponse,
+  type AssetPreviewAudioInfoResponse,
   type AssetPreviewAudioReadRequest,
   type AssetPreviewAudioReadResponse,
 } from '../../shared/asset-preview-audio-api';
@@ -70,6 +72,103 @@ export class AssetPreviewAudioService {
       sha256Computations: this.sha256Computations,
       evictions: this.hashIndexEvictions,
     };
+  }
+
+  async getInfo(rawRequest: unknown): Promise<AssetPreviewAudioInfoResponse> {
+    let request: AssetPreviewAudioReadRequest;
+    try {
+      request = AssetPreviewAudioReadRequestSchema.parse(rawRequest);
+    } catch {
+      return this.failure(
+        'ASSET_PREVIEW_AUDIO_INVALID_REQUEST',
+        this.requestAssetId(rawRequest),
+        'Audio preview request is invalid.',
+      );
+    }
+
+    let snapshot: { project: Project } | null;
+    try {
+      snapshot = this.getCurrentProjectSnapshot(request.projectRoot);
+    } catch {
+      return this.failure(
+        'ASSET_PREVIEW_AUDIO_READ_FAILED', request.assetId,
+        'Unable to read the current project snapshot.',
+      );
+    }
+    if (!snapshot) {
+      return this.failure(
+        'ASSET_PREVIEW_AUDIO_PROJECT_NOT_TRACKED', request.assetId,
+        'The project is not currently tracked by the Main Process.',
+      );
+    }
+
+    let project: Project;
+    try {
+      project = ProjectSchema.parse(snapshot.project);
+    } catch {
+      return this.failure(
+        'ASSET_PREVIEW_AUDIO_READ_FAILED', request.assetId,
+        'The current project snapshot is invalid.',
+      );
+    }
+    const asset = project.assets.find((candidate) => candidate.id === request.assetId);
+    if (!asset) {
+      return this.failure(
+        'ASSET_PREVIEW_AUDIO_ASSET_NOT_FOUND', request.assetId,
+        'The project does not contain this asset.',
+      );
+    }
+    if (asset.kind !== 'audio') {
+      return this.failure(
+        'ASSET_PREVIEW_AUDIO_NOT_AUDIO', request.assetId,
+        'The project asset is not audio.',
+      );
+    }
+    if (asset.sha256 !== request.sha256) {
+      return this.failure(
+        'ASSET_PREVIEW_AUDIO_HASH_MISMATCH', request.assetId,
+        'The asset content hash no longer matches the current project.',
+      );
+    }
+    if (asset.mimeType !== 'audio/mpeg' && asset.mimeType !== 'audio/wav') {
+      return this.failure(
+        'ASSET_PREVIEW_AUDIO_READ_FAILED', request.assetId,
+        'The asset MIME type is not supported for preview.',
+      );
+    }
+
+    try {
+      const sourcePath = await this.resolveAssetPath(request.projectRoot, asset.relativePath);
+      if (!sourcePath) throw new Error('audio source is outside project assets');
+      const before = await stat(sourcePath, { bigint: true });
+      if (!before.isFile() || before.size <= 0n || before.size > BigInt(ASSET_PREVIEW_AUDIO_MAX_BYTES)) {
+        throw new Error('audio source size is outside preview limits');
+      }
+      if (request.expectedByteLength !== undefined && before.size !== BigInt(request.expectedByteLength)) {
+        throw new Error('audio source size changed after preview preflight');
+      }
+      const after = await stat(sourcePath, { bigint: true });
+      const beforeFingerprint = this.fileFingerprint(before);
+      const afterFingerprint = this.fileFingerprint(after);
+      if (!beforeFingerprint || beforeFingerprint !== afterFingerprint) {
+        throw new Error('audio source changed while its size was measured');
+      }
+      return {
+        ok: true,
+        status: 'ready',
+        assetId: asset.id,
+        mimeType: asset.mimeType,
+        byteLength: Number(after.size),
+      };
+    } catch (error) {
+      const permissionCode = filesystemPermissionErrorCode(error);
+      return this.failure(
+        'ASSET_PREVIEW_AUDIO_READ_FAILED', request.assetId,
+        permissionCode
+          ? `Unable to inspect the audio source (${permissionCode}).`
+          : 'The audio source is missing, unstable, or outside the project assets directory.',
+      );
+    }
   }
 
   read(rawRequest: unknown): Promise<AssetPreviewAudioReadResponse> {
@@ -192,6 +291,9 @@ export class AssetPreviewAudioService {
       if (sourceStats.size > BigInt(ASSET_PREVIEW_AUDIO_MAX_BYTES)) {
         throw new Error('source exceeds preview limit');
       }
+      if (request.expectedByteLength !== undefined && sourceStats.size !== BigInt(request.expectedByteLength)) {
+        throw new Error('source size changed after preview preflight');
+      }
       const inspected = await this.inspectionService.inspect(
         sourcePath,
         asset.mimeType,
@@ -309,16 +411,10 @@ export class AssetPreviewAudioService {
   }
 
   private failure(
-    code:
-      | 'ASSET_PREVIEW_AUDIO_INVALID_REQUEST'
-      | 'ASSET_PREVIEW_AUDIO_PROJECT_NOT_TRACKED'
-      | 'ASSET_PREVIEW_AUDIO_ASSET_NOT_FOUND'
-      | 'ASSET_PREVIEW_AUDIO_NOT_AUDIO'
-      | 'ASSET_PREVIEW_AUDIO_HASH_MISMATCH'
-      | 'ASSET_PREVIEW_AUDIO_READ_FAILED',
+    code: AssetPreviewAudioErrorResponse['error']['code'],
     assetId: string,
     message: string,
-  ): AssetPreviewAudioReadResponse {
+  ): AssetPreviewAudioErrorResponse {
     return {
       ok: false,
       error: {
