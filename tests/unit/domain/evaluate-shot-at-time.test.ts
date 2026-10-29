@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   evaluateLayerMotionAtTime,
   evaluateShotAtTime,
+  resolveLayerVisualParts,
 } from '../../../src/domain';
-import type { EvaluatedLayer, Project, Shot, TimelineEvent } from '../../../src/domain';
-import { buildProject, IDS } from './testProject';
+import type { EvaluatedLayer, Layer, Project, Shot, TimelineEvent } from '../../../src/domain';
+import { buildProject, buildProjectWithAnimation, IDS } from './testProject';
 
 function shotWithEvents(events: readonly TimelineEvent[]): Shot {
   const project = buildProject();
@@ -17,6 +18,271 @@ const MOTION_LAYER = { id: IDS.layerChar, x: 500, y: 600 };
 describe('T02 evaluateShotAtTime', () => {
   const project: Project = buildProject();
   const shot = project.shots[0]!;
+
+  it('samples one animation from Shot time at its source FPS and anchors every crop to its common canvas', () => {
+    const animationProject = buildProjectWithAnimation();
+    const baseShot = animationProject.shots[0]!;
+    const animationLayer = {
+      id: IDS.animationLayer,
+      name: 'test animation',
+      source: { kind: 'animation' as const, animationId: IDS.animation },
+      startTimeMs: 1_000,
+      animationPlayback: { mode: 'once', endBehavior: 'hold' } as const,
+      anchor: 'center' as const,
+      x: 700,
+      y: 500,
+      scaleX: 1,
+      scaleY: 1,
+      rotationDeg: 0,
+      opacity: 1,
+      visible: true,
+      locked: false,
+      flipX: false,
+      zIndex: 3,
+    };
+    const shotWithAnimation: Shot = {
+      ...baseShot,
+      layers: [...baseShot.layers, animationLayer],
+    };
+    const at = (timeMs: number) =>
+      evaluateShotAtTime(shotWithAnimation, timeMs, animationProject).layers.find(
+        (layer) => layer.id === IDS.animationLayer,
+      )!;
+
+    expect(at(999).visible).toBe(false);
+    expect(at(1_000)).toMatchObject({
+      visible: true,
+      animationFrame: { offset: { x: 0, y: 0 } },
+    });
+    expect(at(1_040).animationFrame?.offset.x).toBe(1);
+    expect(at(1_800).animationFrame?.offset.x).toBe(20);
+    expect(at(1_840).animationFrame?.offset.x).toBe(20);
+    expect(at(1_040).animationFrame?.offset.x).toBe(1);
+    expect(at(1_000).animationFrame?.offset.x).toBe(0);
+
+    const visual = resolveLayerVisualParts(
+      animationProject,
+      shotWithAnimation,
+      at(1_040),
+    );
+    expect(visual.parts[0]?.localRect).toMatchObject({ x: -499, y: -500 });
+    expect(visual.combinedLocalBounds).toEqual({
+      x: -500,
+      y: -500,
+      width: 1000,
+      height: 1000,
+    });
+  });
+
+  it('evaluates once hold, once hide, and loop boundaries per animation instance', () => {
+    const animationProject = buildProjectWithAnimation();
+    const baseShot = animationProject.shots[0]!;
+    const animationLayer: Layer = {
+      id: IDS.animationLayer,
+      name: 'test animation',
+      source: { kind: 'animation', animationId: IDS.animation },
+      startTimeMs: 1_000,
+      animationPlayback: { mode: 'once', endBehavior: 'hold' },
+      anchor: 'center',
+      x: 700,
+      y: 500,
+      scaleX: 1,
+      scaleY: 1,
+      rotationDeg: 0,
+      opacity: 1,
+      visible: true,
+      locked: false,
+      flipX: false,
+      zIndex: 3,
+    };
+    const at = (
+      timeMs: number,
+      mode: 'once' | 'loop',
+      endBehavior: 'hold' | 'hide' = 'hold',
+    ) => {
+      const shotWithAnimation: Shot = {
+        ...baseShot,
+        layers: [{
+          ...animationLayer,
+          animationPlayback: { mode, endBehavior },
+        }],
+      };
+      return evaluateShotAtTime(
+        shotWithAnimation,
+        timeMs,
+        animationProject,
+      ).layers[0]!;
+    };
+
+    expect(at(999, 'loop').visible).toBe(false);
+    expect(at(1_000, 'loop').animationFrame?.offset.x).toBe(0);
+    expect(at(1_040, 'loop').animationFrame?.offset.x).toBe(1);
+    expect(at(1_800, 'loop').animationFrame?.offset.x).toBe(20);
+    expect(at(1_839, 'loop').animationFrame?.offset.x).toBe(20);
+    expect(at(1_840, 'loop').animationFrame?.offset.x).toBe(0);
+    expect(at(1_880, 'loop').animationFrame?.offset.x).toBe(1);
+    expect(at(2_680, 'loop').animationFrame?.offset.x).toBe(0);
+
+    expect(at(1_839, 'once').visible).toBe(true);
+    expect(at(1_840, 'once').visible).toBe(true);
+    expect(at(1_840, 'once').animationFrame?.offset.x).toBe(20);
+    expect(at(1_839, 'once', 'hide').visible).toBe(true);
+    expect(at(1_840, 'once', 'hide').visible).toBe(false);
+    expect(at(1_039, 'once', 'hide').visible).toBe(true);
+    expect(at(1_839, 'once', 'hide').animationFrame?.offset.x).toBe(20);
+  });
+
+  it('uses source-frame counts for fractional-millisecond loop periods and one-frame cycles', () => {
+    const original = buildProjectWithAnimation();
+    const originalAnimation = original.animations[0]!;
+    const frameDurationMs = 1_000 / 30;
+    const fractionalCycleProject: Project = {
+      ...original,
+      animations: [{
+        ...originalAnimation,
+        source: {
+          ...originalAnimation.source,
+          sourceFps: 30,
+          startFrameIndex: 0,
+          endFrameIndex: 1,
+        },
+        durationMs: 2 * frameDurationMs,
+        frames: originalAnimation.frames.slice(0, 2).map((frame, ordinal) => ({
+          ...frame,
+          ordinal,
+          sourceFrameIndex: ordinal,
+          startMs: ordinal * frameDurationMs,
+          durationMs: frameDurationMs,
+        })),
+      }],
+    };
+    const shot = fractionalCycleProject.shots[0]!;
+    const layer: Layer = {
+      id: IDS.animationLayer,
+      name: 'fractional cycle',
+      source: { kind: 'animation', animationId: IDS.animation },
+      startTimeMs: 0,
+      animationPlayback: { mode: 'loop', endBehavior: 'hold' },
+      anchor: 'center',
+      x: 500,
+      y: 500,
+      scaleX: 1,
+      scaleY: 1,
+      rotationDeg: 0,
+      opacity: 1,
+      visible: true,
+      locked: false,
+      flipX: false,
+      zIndex: 3,
+    };
+    const shotWithLayer = { ...shot, layers: [layer] };
+    const frameAt = (timeMs: number) =>
+      evaluateShotAtTime(
+        shotWithLayer,
+        timeMs,
+        fractionalCycleProject,
+      ).layers[0]!.animationFrame?.offset.x;
+
+    expect(frameAt(0)).toBe(0);
+    expect(frameAt(33)).toBe(0);
+    expect(frameAt(34)).toBe(1);
+    expect(frameAt(66)).toBe(1);
+    expect(frameAt(67)).toBe(0);
+    expect(frameAt(100)).toBe(1);
+    expect(frameAt(133)).toBe(1);
+    expect(frameAt(134)).toBe(0);
+
+    const oneFrameProject: Project = {
+      ...fractionalCycleProject,
+      animations: [{
+        ...fractionalCycleProject.animations[0]!,
+        source: {
+          ...fractionalCycleProject.animations[0]!.source,
+          endFrameIndex: 0,
+        },
+        durationMs: frameDurationMs,
+        frames: fractionalCycleProject.animations[0]!.frames.slice(0, 1),
+      }],
+    };
+    const oneFrame = evaluateShotAtTime(
+      { ...oneFrameProject.shots[0]!, layers: [{ ...layer, source: { kind: 'animation', animationId: IDS.animation } }] },
+      10_000,
+      oneFrameProject,
+    ).layers[0]!;
+    expect(oneFrame.visible).toBe(true);
+    expect(oneFrame.animationFrame?.offset.x).toBe(0);
+  });
+
+  it('keeps same-source instances on one seekable Shot clock with independent starts and transforms', () => {
+    const projectWithAnimation = buildProjectWithAnimation();
+    const baseShot = projectWithAnimation.shots[0]!;
+    const layerA: Layer = {
+      id: '70000000-0000-4000-8000-000000000021',
+      name: 'A',
+      source: { kind: 'animation', animationId: IDS.animation },
+      startTimeMs: 0,
+      animationPlayback: { mode: 'loop', endBehavior: 'hide' },
+      anchor: 'center',
+      x: 300,
+      y: 400,
+      scaleX: 1,
+      scaleY: 1,
+      rotationDeg: 0,
+      opacity: 1,
+      visible: true,
+      locked: false,
+      flipX: false,
+      zIndex: 3,
+    };
+    const layerB: Layer = {
+      ...layerA,
+      id: '70000000-0000-4000-8000-000000000022',
+      name: 'B',
+      startTimeMs: 1_000,
+      animationPlayback: { mode: 'loop', endBehavior: 'hold' },
+      x: 900,
+      y: 600,
+      scaleX: 1.5,
+      scaleY: 1.5,
+      zIndex: 4,
+    };
+    const shot: Shot = {
+      ...baseShot,
+      layers: [...baseShot.layers, layerA, layerB],
+    };
+    const statesAt = (timeMs: number) => {
+      const evaluated = evaluateShotAtTime(shot, timeMs, projectWithAnimation);
+      return [layerA, layerB].map((layer) => {
+        const state = evaluated.layers.find((candidate) => candidate.id === layer.id)!;
+        return {
+          frame: state.animationFrame?.offset.x,
+          visible: state.visible,
+          x: state.x,
+          y: state.y,
+          scaleX: state.scaleX,
+          scaleY: state.scaleY,
+        };
+      });
+    };
+
+    expect(statesAt(0)).toEqual([
+      { frame: 0, visible: true, x: 300, y: 400, scaleX: 1, scaleY: 1 },
+      { frame: 0, visible: false, x: 900, y: 600, scaleX: 1.5, scaleY: 1.5 },
+    ]);
+    expect(statesAt(1_000).map((state) => [state.frame, state.visible])).toEqual([
+      [4, true],
+      [0, true],
+    ]);
+    expect(statesAt(1_040).map((state) => [state.frame, state.visible])).toEqual([
+      [5, true],
+      [1, true],
+    ]);
+    expect(statesAt(1_840).map((state) => [state.frame, state.visible])).toEqual([
+      [4, true],
+      [0, true],
+    ]);
+    expect(statesAt(1_040)).toEqual(statesAt(1_040));
+  });
 
   it('clamps the requested time into [0, durationMs]', () => {
     expect(evaluateShotAtTime(shot, -100, project).timeMs).toBe(0);

@@ -77,6 +77,7 @@ export interface VisualPartRenderTransform {
 
 export type VisualPartSource =
   | { kind: 'asset'; assetId: string }
+  | { kind: 'animation-frame'; animationId: string; assetId: string }
   | { kind: 'character-body'; assetId: string }
   | { kind: 'character-head'; assetId: string }
   | { kind: 'character-expression'; expressionId: string; assetId: string }
@@ -116,7 +117,8 @@ export type VisualResourceReason =
   | 'active-mouth'
   | 'alternate-expression'
   | 'mouth-override'
-  | 'current-expression-fallback';
+  | 'current-expression-fallback'
+  | 'animation-frame';
 
 export interface VisualResourceReference {
   assetId: string;
@@ -552,6 +554,79 @@ export function resolveLayerVisualParts(
         fallback: [],
       },
     );
+  }
+
+  if (source.kind === 'animation') {
+    const animation = project.animations.find(
+      (candidate) => candidate.id === source.animationId,
+    );
+    const frameAssetId = evaluated.assetId || animation?.frames[0]?.assetId;
+    if (!animation || !frameAssetId) {
+      throw new Error(`Cannot resolve animation ${source.animationId}.`);
+    }
+    const asset = imageAsset(project, frameAssetId, layer.id);
+    const frame = animation.frames.find(
+      (candidate) => candidate.assetId === frameAssetId,
+    ) ?? animation.frames[0]!;
+    const canvas =
+      evaluated.animationFrame?.animationId === animation.id
+        ? evaluated.animationFrame.canvas
+        : animation.source.canvas;
+    const offset =
+      evaluated.animationFrame?.animationId === animation.id
+        ? evaluated.animationFrame.offset
+        : frame.offset;
+    const viewport =
+      evaluated.animationFrame?.animationId === animation.id
+        ? evaluated.animationFrame.viewport
+        : frame.sourceViewport;
+    const part: LayerVisualPart = {
+      partId: `${layer.id}:animation-frame`,
+      ownerLayerId: layer.id,
+      slot: 'single',
+      source: {
+        kind: 'animation-frame',
+        animationId: animation.id,
+        assetId: asset.id,
+      },
+      assetId: asset.id,
+      localRect: {
+        x: offset.x - canvas.width / 2,
+        y: offset.y - canvas.height / 2,
+        width: viewport.width,
+        height: viewport.height,
+      },
+      rotationDeg: 0,
+      flipX: false,
+      drawOrder: 0,
+      ownerZIndex: evaluated.zIndex,
+    };
+    const otherFrames = animation.frames
+      .filter((candidate) => candidate.assetId !== asset.id)
+      .map((candidate) => ({
+        assetId: candidate.assetId,
+        reason: 'animation-frame' as const,
+      }));
+    return {
+      ...baseResult(
+        evaluated,
+        'ordinary-image',
+        null,
+        [part],
+        null,
+        {
+          required: [{ assetId: asset.id, reason: 'current-layer' }],
+          candidates: otherFrames,
+          fallback: [],
+        },
+      ),
+      combinedLocalBounds: {
+        x: -canvas.width / 2,
+        y: -canvas.height / 2,
+        width: canvas.width,
+        height: canvas.height,
+      },
+    };
   }
 
   const character = project.characters.find(

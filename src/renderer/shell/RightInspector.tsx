@@ -21,6 +21,7 @@ import {
 import { LayerBackgroundControl } from '../features/properties/LayerBackgroundControl';
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
+import { AnimationPlaybackControls } from '../features/properties/AnimationPlaybackControls';
 import { ExpressionAtTimeControl } from '../features/properties/ExpressionAtTimeControl';
 import { DialogueInspector } from '../features/dialogue/DialogueInspector';
 import { DecorativeIcon } from '../ui';
@@ -97,6 +98,18 @@ export function getRightInspectorLayerSummary(
       typeLabel:
         asset?.kind === 'audio' ? '音频素材图层' : '图片素材图层',
     };
+  }
+
+  if (source.kind === 'animation') {
+    const animation = snapshot.project.animations.find(
+      (candidate) => candidate.id === source.animationId,
+    );
+    const firstFrameAssetId = animation?.frames[0]?.assetId;
+    const asset =
+      snapshot.project.assets.find(
+        (candidate) => candidate.id === firstFrameAssetId,
+      ) ?? null;
+    return { asset, typeLabel: '正式动画图层' };
   }
 
   const character =
@@ -551,12 +564,15 @@ export function RightInspector({
   );
 
   const transformPanel = (
-    <LayerTransformPanel
-      backgroundLayerSelected={selection.state === 'background'}
-      compact={compact}
-      showResetTransform={Boolean(compact) || landscapePresentation}
-      showLockControl={!compact && !landscapePresentation}
-    />
+    <>
+      <LayerTransformPanel
+        backgroundLayerSelected={selection.state === 'background'}
+        compact={compact}
+        showResetTransform={Boolean(compact) || landscapePresentation}
+        showLockControl={!compact && !landscapePresentation}
+      />
+      <AnimationPlaybackControls />
+    </>
   );
   const backgroundPanel = <LayerBackgroundControl />;
   const orderPanel = (

@@ -4,7 +4,7 @@ import {
   scanAssetReferences,
   type AnimationDefinition,
 } from '../../../src/domain';
-import { buildProject, IDS } from './testProject';
+import { buildProject, buildProjectWithAnimation, IDS } from './testProject';
 
 const frameSha = 'a'.repeat(64);
 
@@ -100,5 +100,76 @@ describe('formal AnimationDefinition', () => {
     wrongTiming.frames[1]!.durationMs += 1;
     expect(ProjectSchema.safeParse(projectWithAnimation(wrongTiming)).success)
       .toBe(false);
+  });
+
+  it('requires each animation layer to reference a valid definition and an in-range start time', () => {
+    const project = buildProjectWithAnimation();
+    const shot = project.shots[0]!;
+    const layer = {
+      id: '70000000-0000-4000-8000-000000000002',
+      name: 'walk instance',
+      source: { kind: 'animation' as const, animationId: IDS.animation as string },
+      startTimeMs: 1_000,
+      animationPlayback: { mode: 'once', endBehavior: 'hold' } as const,
+      anchor: 'center' as const,
+      x: 500,
+      y: 500,
+      scaleX: 1,
+      scaleY: 1,
+      rotationDeg: 0,
+      opacity: 1,
+      visible: true,
+      locked: false,
+      flipX: false,
+      zIndex: 3,
+    };
+    const withLayer = (nextLayer: typeof layer) =>
+      ProjectSchema.safeParse({
+        ...project,
+        shots: [{ ...shot, layers: [...shot.layers, nextLayer] }],
+      }).success;
+
+    expect(withLayer(layer)).toBe(true);
+    expect(
+      withLayer({
+        ...layer,
+        source: {
+          kind: 'animation',
+          animationId: '70000000-0000-4000-8000-000000000099',
+        },
+      }),
+    ).toBe(false);
+    expect(
+      ProjectSchema.safeParse({
+        ...project,
+        shots: [{
+          ...shot,
+          layers: [
+            ...shot.layers,
+            { ...layer, startTimeMs: shot.durationMs + 1 },
+          ],
+        }],
+      }).success,
+    ).toBe(false);
+    const { startTimeMs: _startTimeMs, ...missingStart } = layer;
+    void _startTimeMs;
+    expect(withLayer(missingStart as typeof layer)).toBe(false);
+
+    const { animationPlayback: _animationPlayback, ...missingPlayback } = layer;
+    void _animationPlayback;
+    expect(withLayer(missingPlayback as typeof layer)).toBe(false);
+
+    const ordinaryLayer = shot.layers[1]!;
+    expect(ProjectSchema.safeParse({
+      ...project,
+      shots: [{
+        ...shot,
+        layers: [...shot.layers, {
+          ...ordinaryLayer,
+          id: '70000000-0000-4000-8000-000000000098',
+          animationPlayback: { mode: 'once', endBehavior: 'hold' },
+        }],
+      }],
+    }).success).toBe(false);
   });
 });

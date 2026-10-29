@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { deflateSync } from 'node:zlib';
+import { deflateSync, inflateSync } from 'node:zlib';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AssetCanvasImageService } from '../../src/main/services/AssetCanvasImageService';
 import {
@@ -12,7 +12,15 @@ import {
 } from '../../src/main/services/FlaFrameSequenceCommitService';
 import type { ConfirmedSequenceFrame } from '../../src/main/services/fla-frame-sequence-service';
 import { ProjectService } from '../../src/main/services/ProjectService';
+import {
+  evaluateShotAtTime,
+  LayerService,
+  listShotRuntimeImageAssets,
+  ShotService,
+} from '../../src/domain';
 import { FlaFrameSequenceCommitRequestSchema } from '../../src/shared/fla-frame-sequence-api';
+import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
+import { canvasImageResourceKey } from '../../src/renderer/features/canvas/canvasImageResources';
 
 const temporaryParents: string[] = [];
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -41,7 +49,7 @@ function pngChunk(type: string, data: Buffer): Buffer {
   return chunk;
 }
 
-function createPng(): Buffer {
+function createPng(rgba: readonly [number, number, number, number] = [0, 0, 0, 0]): Buffer {
   const header = Buffer.alloc(13);
   header.writeUInt32BE(1, 0);
   header.writeUInt32BE(1, 4);
@@ -50,7 +58,7 @@ function createPng(): Buffer {
   return Buffer.concat([
     PNG_SIGNATURE,
     pngChunk('IHDR', header),
-    pngChunk('IDAT', deflateSync(Buffer.alloc(5))),
+    pngChunk('IDAT', deflateSync(Buffer.from([0, ...rgba]))),
     pngChunk('IEND', Buffer.alloc(0)),
   ]);
 }
@@ -58,11 +66,12 @@ function createPng(): Buffer {
 function confirmedFrame(
   frameIndex: number,
   bytes: Buffer,
+  sourceViewport = { x: 0, y: 0, width: 1, height: 1 },
 ): ConfirmedSequenceFrame {
   return {
     frameIndex,
     sequenceOrdinal: frameIndex,
-    sourceViewport: { x: 0, y: 0, width: 1, height: 1 },
+    sourceViewport,
     pngBytes: new Uint8Array(bytes),
     sha256: createHash('sha256').update(bytes).digest('hex'),
     width: 1,
@@ -72,6 +81,21 @@ function confirmedFrame(
     frameWallClockMs: 1,
     receivedAt: frameIndex,
   };
+}
+
+function decodedSinglePixelPng(bytes: Buffer): number[] {
+  const dataChunks: Buffer[] = [];
+  let offset = PNG_SIGNATURE.length;
+  while (offset < bytes.length) {
+    const length = bytes.readUInt32BE(offset);
+    const type = bytes.toString('ascii', offset + 4, offset + 8);
+    if (type === 'IDAT') dataChunks.push(bytes.subarray(offset + 8, offset + 8 + length));
+    offset += length + 12;
+    if (type === 'IEND') break;
+  }
+  const scanline = inflateSync(Buffer.concat(dataChunks));
+  if (scanline[0] !== 0) throw new Error('Expected an unfiltered synthetic PNG row.');
+  return [...scanline.subarray(1, 5)];
 }
 
 const animationContext: FlaFrameSequenceAnimationContext = {
@@ -100,7 +124,7 @@ afterEach(async () => {
 });
 
 describe('formal animation persistence', () => {
-  it('saves one animation with repeated frame references and reopens a playable project', async () => {
+  it('saves one shared animation with independently configured instances and reopens both', async () => {
     const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-animation-persistence-'));
     temporaryParents.push(parent);
     const projectRoot = path.join(parent, 'animation.pandastage');
@@ -159,10 +183,122 @@ describe('formal animation persistence', () => {
       committed.project.animations[0]?.frames[0]?.assetId,
     ]);
 
+    const withShot = new ShotService().create(committed.project, {
+      name: 'Animation shot',
+      durationMs: 3_000,
+    });
+    await projectService.save(projectRoot, withShot, committed.savedRevision);
+    if (!current) throw new Error('Expected the saved project snapshot.');
+    const shot = current.project.shots[0]!;
+    const placed = new LayerService({
+      createId: () => '29000000-0000-4000-8000-000000000001',
+    }).createFromAsset(current.project, shot.id, {
+      version: 3,
+      type: 'animation',
+      animationId: committed.project.animations[0]!.id,
+      position: { x: 320, y: 240 },
+      startTimeMs: 500,
+    });
+    await projectService.save(projectRoot, placed.project, current.revision);
+    if (!current) throw new Error('Expected the placed project revision.');
+    const transformed = new LayerService().updateTransform(
+      placed.project,
+      shot.id,
+      placed.layer.id,
+      {
+        x: 420,
+        y: 330,
+        scale: 1.25,
+        rotationDeg: placed.layer.rotationDeg,
+        opacity: placed.layer.opacity,
+        flipX: placed.layer.flipX,
+      },
+    );
+    await projectService.save(projectRoot, transformed, current.revision);
+    if (!current) throw new Error('Expected the transformed project revision.');
+    const second = new LayerService().createFromAsset(
+      transformed,
+      shot.id,
+      {
+        version: 3,
+        type: 'animation',
+        animationId: committed.project.animations[0]!.id,
+        position: { x: 900, y: 600 },
+        startTimeMs: 1_000,
+      },
+    );
+    const configuredSecond = new LayerService().updateAnimationPlayback(
+      second.project,
+      shot.id,
+      second.layer.id,
+      { mode: 'loop', endBehavior: 'hide' },
+    );
+    await projectService.save(projectRoot, configuredSecond, current.revision);
+
     const reopened = await new ProjectService().open(projectRoot);
     expect(reopened.migrated).toBe(false);
     expect(reopened.project.animations).toEqual(committed.project.animations);
     expect(reopened.project.animations[0]?.durationMs).toBe(2_000 / 30);
+    const reopenedShot = reopened.project.shots[0]!;
+    const reopenedFirstLayer = reopenedShot.layers.find(
+      (layer) => layer.id === placed.layer.id,
+    )!;
+    const reopenedSecondLayer = reopenedShot.layers.find(
+      (layer) => layer.id === second.layer.id,
+    )!;
+    expect(reopenedShot.layers.filter((layer) => layer.source.kind === 'animation'))
+      .toHaveLength(2);
+    expect(reopenedFirstLayer).toMatchObject({
+      source: {
+        kind: 'animation',
+        animationId: committed.project.animations[0]!.id,
+      },
+      startTimeMs: 500,
+      animationPlayback: { mode: 'once', endBehavior: 'hold' },
+      x: 420,
+      y: 330,
+      scaleX: 1.25,
+      scaleY: 1.25,
+    });
+    expect(reopenedSecondLayer).toMatchObject({
+      source: {
+        kind: 'animation',
+        animationId: committed.project.animations[0]!.id,
+      },
+      startTimeMs: 1_000,
+      animationPlayback: { mode: 'loop', endBehavior: 'hide' },
+      x: 900,
+      y: 600,
+    });
+    expect(reopened.project.animations).toEqual(committed.project.animations);
+    for (const timeMs of [499, 500, 516, 550, 516, 500]) {
+      const evaluated = evaluateShotAtTime(
+        reopenedShot,
+        timeMs,
+        reopened.project,
+      ).layers.find((candidate) => candidate.id === reopenedFirstLayer.id)!;
+      expect(evaluated).toMatchObject({
+        x: 420,
+        y: 330,
+        scaleX: 1.25,
+        scaleY: 1.25,
+      });
+      if (timeMs < 500) expect(evaluated.visible).toBe(false);
+    }
+    const atSecondStart = evaluateShotAtTime(
+      reopenedShot,
+      1_000,
+      reopened.project,
+    ).layers.find((candidate) => candidate.id === reopenedSecondLayer.id)!;
+    expect(atSecondStart.visible).toBe(true);
+    expect(atSecondStart.animationFrame?.offset.x).toBe(0);
+    const afterSecondCycle = evaluateShotAtTime(
+      reopenedShot,
+      1_067,
+      reopened.project,
+    ).layers.find((candidate) => candidate.id === reopenedSecondLayer.id)!;
+    expect(afterSecondCycle.visible).toBe(true);
+    expect(afterSecondCycle.animationFrame?.offset.x).toBe(0);
 
     const asset = reopened.project.assets.find(
       (candidate) => candidate.id === reopened.project.animations[0]?.frames[0]?.assetId,
@@ -174,4 +310,183 @@ describe('formal animation persistence', () => {
     expect(imageRead.ok).toBe(true);
     if (imageRead.ok) expect(Buffer.from(imageRead.bytes)).toEqual(png);
   });
+
+  it('loads three content-distinct PNG frames through Shot resources and the temporal Canvas render model', async () => {
+    const parent = await mkdtemp(path.join(os.tmpdir(), 'panda-animation-distinct-frames-'));
+    temporaryParents.push(parent);
+    const projectRoot = path.join(parent, 'distinct-frames.pandastage');
+    let current: { project: Awaited<ReturnType<ProjectService['create']>>['project']; revision: number } | null = null;
+    const projectService = new ProjectService({
+      onProjectSaved: (root, project, revision) => {
+        if (root === projectRoot && revision !== undefined) current = { project, revision };
+      },
+    });
+    const created = await projectService.create(projectRoot, { name: 'Distinct animation frames' });
+    current = { project: created.project, revision: 0 };
+
+    const colors = [
+      [240, 20, 40, 255],
+      [20, 220, 60, 255],
+      [30, 80, 240, 255],
+    ] as const;
+    const pngs = colors.map((color) => createPng(color));
+    const frames = pngs.map((bytes, index) =>
+      confirmedFrame(index, bytes, {
+        x: index,
+        y: index === 2 ? 1 : 0,
+        width: 1,
+        height: 1,
+      }),
+    );
+    const distinctContext: FlaFrameSequenceAnimationContext = {
+      ...animationContext,
+      target: { ...animationContext.target, frameCount: 3 },
+    };
+    let nextId = 1;
+    const commitService = new FlaFrameSequenceCommitService({
+      projectService,
+      getCurrentProjectSnapshot: (root) => root === projectRoot ? current : null,
+      getAnimationContext: async () => distinctContext,
+      sequenceStore: temporarySequenceStore(frames),
+      createId: () => `28100000-0000-4000-8000-${String(nextId++).padStart(12, '0')}`,
+    });
+    const request = FlaFrameSequenceCommitRequestSchema.parse({
+      format: 'fla-frame-sequence-commit',
+      version: 1,
+      projectRoot,
+      project: created.project,
+      baseRevision: 0,
+      sessionId: SESSION_ID,
+      confirmedSequenceRequestId: SEQUENCE_ID,
+      importAsAnimation: true,
+      animationName: 'Three distinct colors',
+      source: distinctContext.source,
+      range: { renderTargetId: TARGET_ID, startFrameIndex: 0, endFrameIndex: 2 },
+      sequence: {
+        requestId: SEQUENCE_ID,
+        sha256EachFrame: frames.map((frame) => frame.sha256),
+        widthEachFrame: frames.map((frame) => frame.width),
+        heightEachFrame: frames.map((frame) => frame.height),
+        byteLengthEachFrame: frames.map((frame) => frame.byteLength),
+        targetRenderTargetIdEachFrame: frames.map(() => TARGET_ID),
+      },
+      confirmed: true,
+    });
+    const committed = await commitService.commit(request);
+    expect(committed.ok).toBe(true);
+    if (!committed.ok) return;
+
+    const withShot = new ShotService().create(committed.project, {
+      name: 'Distinct animation shot',
+      durationMs: 3_000,
+    });
+    await projectService.save(projectRoot, withShot, committed.savedRevision);
+    if (!current) throw new Error('Expected the imported animation project.');
+    const shot = current.project.shots[0]!;
+    const placed = new LayerService({
+      createId: () => '28100000-0000-4000-8000-000000000010',
+    }).createFromAsset(current.project, shot.id, {
+      version: 3,
+      type: 'animation',
+      animationId: committed.project.animations[0]!.id,
+      position: { x: 320, y: 240 },
+      startTimeMs: 0,
+    });
+    await projectService.save(projectRoot, placed.project, current.revision);
+    const reopened = await new ProjectService().open(projectRoot);
+    const animation = reopened.project.animations[0]!;
+    const reopenedShot = reopened.project.shots[0]!;
+    const animationLayer = reopenedShot.layers.find(
+      (layer) => layer.id === placed.layer.id,
+    )!;
+    const frameAssetIds = animation.frames.map((frame) => frame.assetId);
+    expect(new Set(frameAssetIds).size).toBe(3);
+    expect(new Set(animation.frames.map((frame) => frame.sha256)).size).toBe(3);
+    expect(animation.frames.map((frame) => frame.offset)).toEqual([
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+      { x: 2, y: 1 },
+    ]);
+
+    const imageService = new AssetCanvasImageService({
+      getCurrentProjectSnapshot: (root) => root === projectRoot ? { project: reopened.project } : null,
+    });
+    const loadedPixels: number[][] = [];
+    for (let index = 0; index < animation.frames.length; index += 1) {
+      const frame = animation.frames[index]!;
+      const response = await imageService.read({
+        projectRoot,
+        assetId: frame.assetId,
+        sha256: frame.sha256,
+      });
+      expect(response.ok).toBe(true);
+      if (!response.ok) continue;
+      const loadedBytes = Buffer.from(response.bytes);
+      expect(loadedBytes).toEqual(pngs[index]);
+      loadedPixels.push(decodedSinglePixelPng(loadedBytes));
+    }
+    expect(loadedPixels).toEqual(colors);
+    expect(new Set(loadedPixels.map((pixel) => pixel.join(','))).size).toBe(3);
+
+    const shotAssets = listShotRuntimeImageAssets(reopened.project, reopenedShot);
+    expect(new Set(shotAssets.map((asset) => asset.id))).toEqual(new Set(frameAssetIds));
+    const readyAssetIds = new Set(shotAssets.map((asset) => asset.id));
+    const readyAssetSourceKeys = new Map(
+      shotAssets.map((asset) => [asset.id, asset.sha256!]),
+    );
+    const readyResourceKeys = new Set(
+      shotAssets.map((asset) => canvasImageResourceKey(asset.id, asset.sha256!)),
+    );
+    const models = new Map<number, ReturnType<typeof buildEditorTemporalCanvasModel>>();
+    let previousVisuals = new Map();
+    for (const timeMs of [0, 40, 80, 3_000, 40, 0]) {
+      const model = buildEditorTemporalCanvasModel({
+        project: reopened.project,
+        shot: reopenedShot,
+        currentTimeMs: timeMs,
+        readyAssetIds,
+        readyAssetSourceKeys,
+        readyResourceKeys,
+        previousVisuals,
+      });
+      models.set(timeMs, model);
+      previousVisuals = new Map(model.lastValidVisuals);
+    }
+    const stageAssetId = (timeMs: number): string =>
+      models.get(timeMs)!.stageModel.layers.find(
+        (layer) => layer.layer.id === animationLayer.id,
+      )!.visual.parts[0]!.assetId;
+    expect([stageAssetId(0), stageAssetId(40), stageAssetId(80)]).toEqual(frameAssetIds);
+    expect(stageAssetId(3_000)).toBe(frameAssetIds[2]);
+    expect(stageAssetId(40)).toBe(frameAssetIds[1]);
+    expect(stageAssetId(0)).toBe(frameAssetIds[0]);
+    const frameRects = [0, 40, 80].map((timeMs) =>
+      models.get(timeMs)!.stageModel.layers.find(
+        (layer) => layer.layer.id === animationLayer.id,
+      )!.visual.parts[0]!.localRect,
+    );
+    expect(new Set(frameRects.map((rect) => `${rect.x},${rect.y},${rect.width},${rect.height}`)).size).toBe(3);
+    expect(models.get(40)!.visualStatusByLayer.get(animationLayer.id)).toBe('current-complete');
+
+    const frameOneId = frameAssetIds[1]!;
+    const pendingAssets = new Set(shotAssets.filter((asset) => asset.id !== frameOneId).map((asset) => asset.id));
+    const pendingSourceKeys = new Map(
+      shotAssets.filter((asset) => asset.id !== frameOneId).map((asset) => [asset.id, asset.sha256!]),
+    );
+    const pendingModel = buildEditorTemporalCanvasModel({
+      project: reopened.project,
+      shot: reopenedShot,
+      currentTimeMs: 40,
+      readyAssetIds: pendingAssets,
+      readyAssetSourceKeys: pendingSourceKeys,
+      readyResourceKeys: new Set(
+        shotAssets.filter((asset) => asset.id !== frameOneId).map((asset) =>
+          canvasImageResourceKey(asset.id, asset.sha256!),
+        ),
+      ),
+      previousVisuals: models.get(0)!.lastValidVisuals,
+    });
+    expect(pendingModel.visualStatusByLayer.get(animationLayer.id)).toBe('previous-complete');
+    expect(pendingModel.targetReadyLayerIds.has(animationLayer.id)).toBe(false);
+  }, 20_000);
 });

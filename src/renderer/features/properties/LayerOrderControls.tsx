@@ -7,6 +7,7 @@ import {
   ArrowDown,
   ArrowUp,
   BringToFront,
+  Copy,
   Lock,
   SendToBack,
   ShieldCheck,
@@ -162,6 +163,18 @@ export function LayerOrderControls({
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : '图层删除失败。',
+      );
+    }
+  };
+
+  const duplicateAnimationLayer = (): void => {
+    if (!layer || layer.source.kind !== 'animation' || disabled) return;
+    try {
+      layerStore.duplicateAnimationLayer(layer.id);
+      setStatus('');
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : '动画图层复制失败。',
       );
     }
   };
@@ -345,6 +358,20 @@ export function LayerOrderControls({
                   <span>置底</span>
                 </span>
               </button>
+              {layer?.source.kind === 'animation' ? (
+                <button
+                  aria-label="复制动画图层"
+                  data-testid="duplicate-animation-layer"
+                  disabled={disabled}
+                  onClick={duplicateAnimationLayer}
+                  type="button"
+                >
+                  <span className="ui-icon-label">
+                    <DecorativeIcon icon={Copy} size={16} />
+                    <span>复制动画</span>
+                  </span>
+                </button>
+              ) : null}
             </div>
 
             <div className="layer-order-state">
@@ -487,6 +514,20 @@ export function LayerOrderControls({
         >
           置底
         </button>
+        {layer?.source.kind === 'animation' ? (
+          <button
+            aria-label="复制动画图层"
+            data-testid="duplicate-animation-layer"
+            disabled={disabled}
+            onClick={duplicateAnimationLayer}
+            type="button"
+          >
+            <span className="ui-icon-label">
+              <DecorativeIcon icon={Copy} size={16} />
+              <span>复制动画</span>
+            </span>
+          </button>
+        ) : null}
         <button
           className="layer-delete-button"
           disabled={disabled}

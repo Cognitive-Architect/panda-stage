@@ -388,6 +388,8 @@
           "tests/unit/project-asset-path.test.ts",
           "tests/unit/unsaved-close-controller.test.ts",
           "tests/unit/models/audio-clip-source-range.test.ts",
+          "tests/unit/layer-service.test.ts",
+          "tests/unit/layer-stores.test.ts",
           "tests/integration/standalone-audio-persistence.test.ts",
           "tests/integration/animation-persistence.test.ts"
         ],
@@ -397,7 +399,7 @@
         "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "architecture",
-        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #828 lifecycle/audio source-range tests and Main window/filesystem boundary tests remain here without broad test globs; other unregistered test paths stay fail-closed."
+        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #828 lifecycle/audio source-range tests and Main window/filesystem boundary tests, plus Issue #868 animation LayerService/store-history tests, remain here without broad test globs; other unregistered test paths stay fail-closed."
       },
       {
         "id": "release-export-core",
@@ -528,6 +530,13 @@
           "src/renderer/features/canvas/**",
           "src/renderer/features/properties/**",
           "src/renderer/stage/**",
+          "src/domain/evaluate-shot-at-time.ts",
+          "src/domain/migrations/**",
+          "src/domain/models/layer.ts",
+          "src/domain/models/project.ts",
+          "src/domain/models/shot.ts",
+          "src/domain/services/LayerService.ts",
+          "src/renderer/stores/layerStore.ts",
           "src/export-renderer/**",
           "docs/evidence/issue-606/receipt.json",
           "docs/design/huabu.png"
@@ -539,6 +548,12 @@
           "tests/unit/konva-pixel-ratio.test.ts",
           "tests/unit/viewport-*.test.ts",
           "tests/unit/editor-issue578-live-scrub.test.ts",
+          "tests/unit/domain/evaluate-shot-at-time.test.ts",
+          "tests/unit/domain/migrations/project-migration.test.ts",
+          "tests/unit/export-preparation.test.ts",
+          "tests/unit/layer-service.test.ts",
+          "tests/unit/layer-stores.test.ts",
+          "tests/integration/animation-persistence.test.ts",
           "tests/unit/temporal-visual-continuity.test.ts",
           "tests/unit/feedback-hygiene.test.ts"
         ],
@@ -552,7 +567,9 @@
           "scripts/verify-issue457*",
           "scripts/verify-issue579*",
           "scripts/verify-issue602*",
-          "scripts/verify-issue606*"
+          "scripts/verify-issue606*",
+          "scripts/verify-issue871-am03-electron*",
+          "scripts/verify-issue890-am04-electron*"
         ],
         "suites": ["canvas", "history"],
         "riskPolicy": "targeted",
@@ -712,7 +729,7 @@
       }
     ]
   },
-  "count": 97,
+  "count": 99,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1037,6 +1054,30 @@
       "owner": "canvas",
       "supersedes": null,
       "notes": "Focused real Windows Electron Product Preview proof for atomic Body+Face pixels, expression/Mouth replacement, delayed-part no-half-frame behavior, partial opacity, Mouth fallback warning with non-exact readiness, and fatal Body failure."
+    },
+    {
+      "id": "issue871-am03-electron",
+      "script": "verify:issue871-am03-electron",
+      "suite": "canvas",
+      "subsystem": "canvas",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "canvas",
+      "supersedes": null,
+      "notes": "Local synthetic Electron evidence for AM-03 nonzero-time animation drop, distinct PNG frame pixels, pending-frame retention, before-start visibility, Canvas drag, and Inspector scale. Synthetic drop input is not OWNER human acceptance."
+    },
+    {
+      "id": "issue890-am04-electron",
+      "script": "verify:issue890-am04-electron",
+      "suite": "canvas",
+      "subsystem": "canvas",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "canvas",
+      "supersedes": null,
+      "notes": "Local synthetic Windows Electron evidence for same-source dual animation drops, independent UI timing and playback modes, Canvas transforms, duplicate/delete History, continuous Product Preview pause/replay/reverse seek, real ProjectService save/reopen, and file-backed 21-frame PNG rendering. Does not replace OWNER acceptance with private footage."
     },
     {
       "id": "fla-v1-5-c3",

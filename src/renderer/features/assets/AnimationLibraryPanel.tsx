@@ -9,6 +9,12 @@ import {
   type AnimationPlaybackTimeline,
 } from './animationPlayback';
 import { createAnimationImageBlob } from './animationImageBytes';
+import { editorProjectStore } from '../../stores/EditorProjectStore';
+import { shotStore } from '../../stores/shotStore';
+import {
+  writeAnimationDropContext,
+  writeAssetDropPayload,
+} from './AssetDropPayload';
 
 export interface AnimationLibraryPanelProps {
   animations: readonly AnimationDefinition[];
@@ -133,6 +139,7 @@ export function AnimationLibraryCard({
   const scrollPositionsRef = useRef<AnimationCardScrollPosition[]>([]);
   const windowScrollRef = useRef({ top: 0, left: 0 });
   const wasOpenRef = useRef(false);
+  const draggedCardRef = useRef(false);
   const firstFrame = animation.frames[0];
 
   useEffect(() => {
@@ -284,7 +291,51 @@ export function AnimationLibraryCard({
         data-asset-kind="animation"
         data-category="animation"
         data-testid="animation-library-card"
-        onClick={openPreview}
+        draggable
+        onClick={() => {
+          if (draggedCardRef.current) {
+            draggedCardRef.current = false;
+            return;
+          }
+          openPreview();
+        }}
+        onDragStart={(event) => {
+          draggedCardRef.current = true;
+          event.dataTransfer.effectAllowed = 'copy';
+          writeAssetDropPayload(event.dataTransfer, {
+            version: 3,
+            type: 'animation',
+            animationId: animation.id,
+          });
+          const snapshot = editorProjectStore.getSnapshot();
+          const shotId = shotStore.getCurrentShotId();
+          const projectInstanceId =
+            editorProjectStore.getProjectInstanceId();
+          if (
+            snapshot?.project.id === project.id &&
+            snapshot.projectRoot === projectRoot &&
+            snapshot.project.animations.some(
+              (candidate) => candidate.id === animation.id,
+            ) &&
+            shotId &&
+            snapshot.project.shots.some((candidate) => candidate.id === shotId) &&
+            projectInstanceId !== null
+          ) {
+            writeAnimationDropContext(event.dataTransfer, {
+              version: 1,
+              animationId: animation.id,
+              projectId: project.id,
+              projectInstanceId,
+              projectRevision: snapshot.revision,
+              shotId,
+            });
+          }
+        }}
+        onDragEnd={() => {
+          window.setTimeout(() => {
+            draggedCardRef.current = false;
+          }, 0);
+        }}
         onKeyDown={(event) => {
           if (event.target !== event.currentTarget) return;
           if (event.key === 'Enter' || event.key === ' ') {
@@ -309,6 +360,7 @@ export function AnimationLibraryCard({
                 <img
                   alt=""
                   className="animation-library-cover-image"
+                  draggable={false}
                   src={cover.url}
                   style={{
                     left: `${firstFrame.offset.x / animation.source.canvas.width * 100}%`,

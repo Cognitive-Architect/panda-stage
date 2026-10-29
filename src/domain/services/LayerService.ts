@@ -10,6 +10,7 @@ import {
 } from '../geometry';
 import {
   ProjectSchema,
+  type AnimationPlayback,
   type Layer,
   type Project,
   type Shot,
@@ -24,6 +25,11 @@ export type LayerServiceErrorCode =
   | 'ASSET_TYPE_MISMATCH'
   | 'BACKGROUND_LAYER_INVALID'
   | 'CHARACTER_IDENTITY_MISMATCH'
+  | 'ANIMATION_NOT_FOUND'
+  | 'ANIMATION_LAYER_REQUIRED'
+  | 'INVALID_ANIMATION_START_TIME'
+  | 'INVALID_ANIMATION_PLAYBACK'
+  | 'ANIMATION_FRAME_INVALID'
   | 'INVALID_POSITION'
   | 'INVALID_TRANSFORM'
   | 'BACKGROUND_COVER_INVALID'
@@ -43,6 +49,8 @@ export class LayerServiceError extends Error {
 
 export type CreateLayerInput = AssetDropPayload & {
   position: Point;
+  /** Captured from the formal Shot timeline at the instant of an animation drop. */
+  startTimeMs?: number;
 };
 
 export interface LayerServiceOptions {
@@ -62,6 +70,12 @@ export interface LayerTransformInput {
   rotationDeg: number;
   opacity: number;
   flipX: boolean;
+}
+
+export interface AnimationPlaybackInput {
+  startTimeMs?: number;
+  mode?: AnimationPlayback['mode'];
+  endBehavior?: AnimationPlayback['endBehavior'];
 }
 
 export type LayerOrderAction =
@@ -148,6 +162,68 @@ export class LayerService {
     input: CreateLayerInput,
   ): CreateLayerResult {
     const shot = this.shot(project, shotId);
+    const position = clampLayerPosition(input.position);
+    if (input.type === 'animation') {
+      const animation = project.animations.find(
+        (candidate) => candidate.id === input.animationId,
+      );
+      if (!animation) {
+        throw new LayerServiceError(
+          'ANIMATION_NOT_FOUND',
+          'Animation definition is unavailable.',
+        );
+      }
+      if (
+        input.startTimeMs === undefined ||
+        !Number.isFinite(input.startTimeMs) ||
+        input.startTimeMs < 0 ||
+        input.startTimeMs > shot.durationMs
+      ) {
+        throw new LayerServiceError(
+          'INVALID_ANIMATION_START_TIME',
+          'Animation start time must be within the shot duration.',
+        );
+      }
+      for (const frame of animation.frames) {
+        const frameAsset = project.assets.find(
+          (candidate) => candidate.id === frame.assetId,
+        );
+        if (
+          !frameAsset ||
+          frameAsset.kind !== 'image' ||
+          frameAsset.sha256 !== frame.sha256
+        ) {
+          throw new LayerServiceError(
+            'ANIMATION_FRAME_INVALID',
+            'An animation frame is missing or has a mismatched content hash.',
+          );
+        }
+      }
+      const usedIds = this.projectIds(project);
+      const layer: Layer = {
+        id: this.nextUniqueId(usedIds),
+        name: animation.name,
+        source: { kind: 'animation', animationId: animation.id },
+        startTimeMs: input.startTimeMs,
+        animationPlayback: { mode: 'once', endBehavior: 'hold' },
+        anchor: 'center',
+        x: position.x,
+        y: position.y,
+        scaleX: 1,
+        scaleY: 1,
+        rotationDeg: 0,
+        opacity: 1,
+        visible: true,
+        locked: false,
+        flipX: false,
+        zIndex: Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1,
+      };
+      const nextShot = { ...shot, layers: [...shot.layers, layer] };
+      return {
+        project: this.replaceShot(project, nextShot),
+        layer,
+      };
+    }
     const asset = project.assets.find(
       (candidate) => candidate.id === input.assetId,
     );
@@ -201,7 +277,6 @@ export class LayerService {
     }
 
     const usedIds = this.projectIds(project);
-    const position = clampLayerPosition(input.position);
     const scale =
       input.type === 'character-expression'
         ? character!.defaultScale
@@ -469,6 +544,63 @@ export class LayerService {
     return this.replaceShot(project, { ...shot, layers });
   }
 
+  updateAnimationPlayback(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    input: AnimationPlaybackInput,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layerIndex = this.layerIndex(shot, layerId);
+    const layer = shot.layers[layerIndex]!;
+    if (layer.source.kind !== 'animation' || !layer.animationPlayback) {
+      throw new LayerServiceError(
+        'ANIMATION_LAYER_REQUIRED',
+        '只能修改动画图层的播放设置。',
+      );
+    }
+    this.assertEditable(shot, layer);
+
+    const startTimeMs = input.startTimeMs ?? layer.startTimeMs;
+    if (
+      startTimeMs === undefined ||
+      !Number.isFinite(startTimeMs) ||
+      startTimeMs < 0 ||
+      startTimeMs > shot.durationMs
+    ) {
+      throw new LayerServiceError(
+        'INVALID_ANIMATION_START_TIME',
+        '动画开始时间必须位于当前镜头时长内。',
+      );
+    }
+    const mode = input.mode ?? layer.animationPlayback.mode;
+    const endBehavior =
+      input.endBehavior ?? layer.animationPlayback.endBehavior;
+    if (
+      (mode !== 'once' && mode !== 'loop') ||
+      (endBehavior !== 'hold' && endBehavior !== 'hide')
+    ) {
+      throw new LayerServiceError(
+        'INVALID_ANIMATION_PLAYBACK',
+        '请选择有效的动画播放方式和结束行为。',
+      );
+    }
+    if (
+      startTimeMs === layer.startTimeMs &&
+      mode === layer.animationPlayback.mode &&
+      endBehavior === layer.animationPlayback.endBehavior
+    ) {
+      return project;
+    }
+    const layers = [...shot.layers];
+    layers[layerIndex] = {
+      ...layer,
+      startTimeMs,
+      animationPlayback: { mode, endBehavior },
+    };
+    return this.replaceShot(project, { ...shot, layers });
+  }
+
   reorder(
     project: Project,
     shotId: string,
@@ -531,6 +663,59 @@ export class LayerService {
         (event) => event.layerId !== layer.id,
       ),
     });
+  }
+
+  duplicateAnimationLayer(
+    project: Project,
+    shotId: string,
+    layerId: string,
+  ): CreateLayerResult {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    if (layer.source.kind !== 'animation' || !layer.animationPlayback) {
+      throw new LayerServiceError(
+        'ANIMATION_LAYER_REQUIRED',
+        '只能复制动画图层。',
+      );
+    }
+    this.assertContentLayer(shot, layer);
+    this.assertEditable(shot, layer);
+
+    const usedIds = this.projectIds(project);
+    const duplicateId = this.nextUniqueId(usedIds);
+    usedIds.add(duplicateId);
+    const offsetPosition = clampLayerPosition({
+      x: layer.x + 24,
+      y: layer.y + 24,
+    });
+    const position =
+      offsetPosition.x === layer.x && offsetPosition.y === layer.y
+        ? clampLayerPosition({ x: layer.x - 24, y: layer.y - 24 })
+        : offsetPosition;
+    const duplicate: Layer = {
+      ...layer,
+      id: duplicateId,
+      name: `${layer.name} 副本`,
+      x: position.x,
+      y: position.y,
+      zIndex: Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1,
+    };
+    const duplicatedEvents = shot.timelineEvents
+      .filter((event) => event.layerId === layer.id)
+      .map((event) => {
+        const id = this.nextUniqueId(usedIds);
+        usedIds.add(id);
+        return { ...event, id, layerId: duplicate.id };
+      });
+    const nextShot = {
+      ...shot,
+      layers: [...shot.layers, duplicate],
+      timelineEvents: [...shot.timelineEvents, ...duplicatedEvents],
+    };
+    return {
+      project: this.replaceShot(project, nextShot),
+      layer: duplicate,
+    };
   }
 
   setLocked(
@@ -650,6 +835,7 @@ export class LayerService {
     return new Set([
       project.id,
       ...project.assets.map((asset) => asset.id),
+      ...project.animations.map((animation) => animation.id),
       ...project.characters.flatMap((character) => [
         character.id,
         ...character.expressions.map((expression) => expression.id),

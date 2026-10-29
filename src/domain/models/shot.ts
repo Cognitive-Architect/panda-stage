@@ -5,6 +5,8 @@ import { IdSchema, NameSchema } from './common';
 import { DialogueSchema } from './dialogue';
 import {
   LayerSchema,
+  LayerV14Schema,
+  LayerV15Schema,
   LayerV3Schema,
   LayerV4Schema,
 } from './layer';
@@ -37,9 +39,35 @@ export const ShotSchema = z
   })
   .strict();
 
-export const ShotV7Schema = ShotSchema.extend({
-  audioClips: z.array(AudioClipV7Schema),
-});
+/** Exact current-v15 shot shape before per-instance playback was introduced. */
+export const ShotV15Schema = z
+  .object({
+    ...ShotBaseShape,
+    audioClips: z.array(AudioClipSchema),
+    layers: z.array(LayerV15Schema),
+    backgroundLayerId: IdSchema.nullable(),
+  })
+  .strict();
+
+/** Exact persisted v14 shot shape, retained for the v14 -> v15 migration. */
+export const ShotV14Schema = z
+  .object({
+    ...ShotBaseShape,
+    audioClips: z.array(AudioClipSchema),
+    layers: z.array(LayerV14Schema),
+    backgroundLayerId: IdSchema.nullable(),
+  })
+  .strict();
+
+/** Historical v7+ shot shape before current v15 animation instances. */
+export const ShotV7Schema = z
+  .object({
+    ...ShotBaseShape,
+    audioClips: z.array(AudioClipV7Schema),
+    layers: z.array(LayerV14Schema),
+    backgroundLayerId: IdSchema.nullable(),
+  })
+  .strict();
 
 export const ShotV3Schema = z
   .object({

@@ -17,16 +17,27 @@ export function resolveLayerImageAsset(
   layer: Layer,
 ): ImageAsset | null {
   let assetId: string | undefined;
-  if (layer.source.kind === 'asset') {
-    assetId = layer.source.assetId;
-  } else {
-    const source = layer.source;
-    const character = project.characters.find(
-      (candidate) => candidate.id === source.characterId,
-    );
-    assetId = character?.expressions.find(
-      (expression) => expression.id === source.expressionId,
-    )?.assetId;
+  const source = layer.source;
+  switch (source.kind) {
+    case 'asset':
+      assetId = source.assetId;
+      break;
+    case 'character': {
+      const character = project.characters.find(
+        (candidate) => candidate.id === source.characterId,
+      );
+      assetId = character?.expressions.find(
+        (expression) => expression.id === source.expressionId,
+      )?.assetId;
+      break;
+    }
+    case 'animation': {
+      const animation = project.animations.find(
+        (candidate) => candidate.id === source.animationId,
+      );
+      assetId = animation?.frames[0]?.assetId;
+      break;
+    }
   }
   return resolveImageAsset(project, assetId);
 }

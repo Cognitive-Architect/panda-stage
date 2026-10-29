@@ -75,6 +75,7 @@ describe('animation library', () => {
     expect(markup).toContain('data-testid="animation-library-panel"');
     expect(markup).toContain('data-testid="animation-library-card"');
     expect(markup).toContain('data-category="animation"');
+    expect(markup).toContain('draggable="true"');
     expect(markup).toContain('Walk');
     expect(markup).toContain('2 帧 · 0.17 秒');
     expect(markup).not.toContain('12 FPS');
@@ -136,6 +137,13 @@ describe('animation library', () => {
     expect(escapeBlock).toContain('event.preventDefault();');
     expect(escapeBlock).toContain('event.stopPropagation();');
     expect(escapeBlock).toContain('setOpen(false);');
+  });
+
+  it('keeps the cover image from taking over the animation card drag', async () => {
+    const source = await readFile('src/renderer/features/assets/AnimationLibraryPanel.tsx', 'utf8');
+    const coverImage = source.match(/<img\s+alt=""\s+className="animation-library-cover-image"[\s\S]*?\/>/u)?.[0];
+
+    expect(coverImage).toContain('draggable={false}');
   });
 
   it('loads a cover only while visible and revokes its URL when it leaves view', async () => {

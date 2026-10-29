@@ -5,11 +5,13 @@ import {
   ProjectSchema,
   ProjectV12Schema,
   ProjectV13Schema,
+  ProjectV14Schema,
+  ProjectV15Schema,
   evaluateShotAtTime,
   resolveLayerVisualParts,
   type Project,
 } from '../../../../src/domain';
-import { buildProject, IDS } from '../testProject';
+import { buildProject, buildProjectWithAnimation, IDS } from '../testProject';
 
 function v1WithoutTimelineEvents(): unknown {
   return {
@@ -335,7 +337,7 @@ describe('T01 迁移回填 timelineEvents', () => {
     expect(legacyV12).toEqual(before);
   });
 
-  it('migrates strict v13 projects to v14 with an empty animation collection', () => {
+  it('migrates strict v13 projects to v16 with an empty animation collection', () => {
     const current = buildProject();
     const { animations: _animations, ...version13Fields } = current;
     void _animations;
@@ -351,5 +353,106 @@ describe('T01 迁移回填 timelineEvents', () => {
     expect(migrated.animations).toEqual([]);
     expect(migrated.assets).toEqual(current.assets);
     expect(legacyV13).toEqual(before);
+  });
+
+  it('strictly migrates v14 projects to v16 while retaining animation definitions', () => {
+    const current = buildProjectWithAnimation();
+    const legacyV14 = { ...current, schemaVersion: 14 };
+    const before = structuredClone(legacyV14);
+
+    expect(ProjectV14Schema.parse(legacyV14)).toEqual(legacyV14);
+    expect(ProjectSchema.safeParse(legacyV14).success).toBe(false);
+
+    const migrated = migrateProject(legacyV14);
+
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(migrated.animations).toEqual(current.animations);
+    expect(migrated.shots).toEqual(current.shots);
+    expect(legacyV14).toEqual(before);
+
+    const withV15Layer = {
+      ...legacyV14,
+      shots: legacyV14.shots.map((shot) => ({
+        ...shot,
+        layers: [
+          ...shot.layers,
+          {
+            id: IDS.animationLayer,
+            name: 'test animation',
+            source: { kind: 'animation', animationId: IDS.animation },
+            startTimeMs: 1_000,
+            anchor: 'center',
+            x: 500,
+            y: 500,
+            scaleX: 1,
+            scaleY: 1,
+            rotationDeg: 0,
+            opacity: 1,
+            visible: true,
+            locked: false,
+            flipX: false,
+            zIndex: 4,
+          },
+        ],
+      })),
+    };
+    expect(ProjectV14Schema.safeParse(withV15Layer).success).toBe(false);
+  });
+
+  it('strictly migrates v15 animation instances to v16 with once+hold defaults', () => {
+    const current = buildProjectWithAnimation();
+    const shot = current.shots[0]!;
+    const v15Layer = {
+      id: IDS.animationLayer,
+      name: 'walk instance',
+      source: { kind: 'animation' as const, animationId: IDS.animation },
+      startTimeMs: 1_234,
+      anchor: 'center' as const,
+      x: 510,
+      y: 520,
+      scaleX: 1.25,
+      scaleY: 1.25,
+      rotationDeg: 0,
+      opacity: 1,
+      visible: true,
+      locked: false,
+      flipX: false,
+      zIndex: 3,
+    };
+    const legacyV15 = {
+      ...current,
+      schemaVersion: 15,
+      shots: [{ ...shot, layers: [...shot.layers, v15Layer] }],
+    };
+    const before = structuredClone(legacyV15);
+
+    expect(ProjectV15Schema.parse(legacyV15)).toEqual(legacyV15);
+    expect(ProjectSchema.safeParse(legacyV15).success).toBe(false);
+    expect(ProjectV15Schema.safeParse({
+      ...legacyV15,
+      shots: [{
+        ...legacyV15.shots[0]!,
+        layers: [...legacyV15.shots[0]!.layers, {
+          ...v15Layer,
+          animationPlayback: { mode: 'once', endBehavior: 'hold' },
+          id: '70000000-0000-4000-8000-000000000003',
+        }],
+      }],
+    }).success).toBe(false);
+
+    const migrated = migrateProject(legacyV15);
+    const migratedLayer = migrated.shots[0]!.layers.at(-1)!;
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(migratedLayer).toMatchObject({
+      id: IDS.animationLayer,
+      source: { kind: 'animation', animationId: IDS.animation },
+      startTimeMs: 1_234,
+      x: 510,
+      y: 520,
+      scaleX: 1.25,
+      scaleY: 1.25,
+      animationPlayback: { mode: 'once', endBehavior: 'hold' },
+    });
+    expect(legacyV15).toEqual(before);
   });
 });
