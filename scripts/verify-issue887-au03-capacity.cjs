@@ -9,12 +9,15 @@ const { ProjectSchema } = require('../dist-electron/domain/index.js');
 const { AssetPreviewAudioService } = require('../dist-electron/main/services/AssetPreviewAudioService.js');
 const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
 
+const PRODUCT_PREVIEW_AUDIO_WAV_STREAM_CHUNK_MS = 10_000;
 const issueCase = process.env.PANDA_STAGE_ISSUE887_CASE;
 const configuredProjectRoot = process.env.PANDA_STAGE_ISSUE887_PROJECT_ROOT;
 if (!configuredProjectRoot) throw new Error('PANDA_STAGE_ISSUE887_PROJECT_ROOT is required.');
 const isIssue888Case = issueCase === 'F01' || issueCase === 'F02';
-const issueNumber = isIssue888Case ? 888 : 887;
+const isIssue889Case = issueCase === 'S01';
+const issueNumber = isIssue889Case ? 889 : isIssue888Case ? 888 : 887;
 const issue888Phase = process.env.PANDA_STAGE_ISSUE888_PHASE ?? 'baseline';
+const issue889Phase = process.env.PANDA_STAGE_ISSUE889_PHASE ?? 'baseline';
 const issue888ReadDelayMs = Math.max(0, Number(process.env.PANDA_STAGE_ISSUE888_READ_DELAY_MS ?? 0));
 const issue888DecodeDelayMs = Math.max(0, Number(process.env.PANDA_STAGE_ISSUE888_DECODE_DELAY_MS ?? 0));
 if (isIssue888Case && !['baseline', 'candidate'].includes(issue888Phase)) {
@@ -23,11 +26,16 @@ if (isIssue888Case && !['baseline', 'candidate'].includes(issue888Phase)) {
 if (!Number.isFinite(issue888ReadDelayMs) || !Number.isFinite(issue888DecodeDelayMs)) {
   throw new Error('Issue #888 injected delays must be finite millisecond values.');
 }
+if (isIssue889Case && !['baseline', 'candidate'].includes(issue889Phase)) {
+  throw new Error('PANDA_STAGE_ISSUE889_PHASE must be baseline or candidate.');
+}
 const projectRoot = path.resolve(configuredProjectRoot);
 const fixtureRunRoot = path.dirname(projectRoot);
 const caseRunRoot = mkdtempSync(path.join(fixtureRunRoot, `native-${issueCase ?? 'missing'}-`));
 const delayProfile = isIssue888Case ? `-read${issue888ReadDelayMs}-decode${issue888DecodeDelayMs}` : '';
-const resultPath = path.join(caseRunRoot, `issue${issueNumber}-${issueCase ?? 'missing'}${delayProfile}-L1-${isIssue888Case ? issue888Phase : 'current'}.json`);
+const phase = isIssue888Case ? issue888Phase : isIssue889Case ? issue889Phase : 'current';
+const resultPath = path.join(caseRunRoot,
+  `issue${issueNumber}-${issueCase ?? 'missing'}${delayProfile}-L1-${phase}.json`);
 const workingSetLimitBytes = 128 * 1024 * 1024;
 
 app.on('window-all-closed', () => {});
@@ -47,7 +55,7 @@ function sha256(bytes) {
 }
 
 function loadFixture() {
-  assert(['A-full', 'A-offset', 'A-proxy-control', 'B-overlap', 'C-mp3', 'F01', 'F02'].includes(issueCase),
+  assert(['A-full', 'A-offset', 'A-proxy-control', 'B-overlap', 'C-mp3', 'F01', 'F02', 'S01'].includes(issueCase),
     'PANDA_STAGE_ISSUE887_CASE must select an Issue #887 or Issue #888 fixture case.');
   const projectPath = path.join(projectRoot, 'project.json');
   const projectBytes = readFileSync(projectPath);
@@ -101,16 +109,17 @@ function loadFixture() {
     }
     return { assetId: asset.id, name: asset.name, relativePath: asset.relativePath, filePath,
       mimeType: asset.mimeType, sha256: asset.sha256, durationMs: asset.durationMs,
-      sourceFileBytes: bytes.byteLength, sampleRateFromFileHz: manifestAsset?.sampleRateFromFileHz ?? manifestAsset?.sampleRate ?? null,
+      sourceFileBytes: bytes.byteLength, sampleRateFromFileHz: manifestAsset?.sampleRateHz ?? manifestAsset?.sampleRateFromFileHz ?? manifestAsset?.sampleRate ?? null,
       sourceChannels: manifestAsset?.channelsInFile ?? manifestAsset?.channels ?? null,
       sampleBoundaries,
-      estimatedOutputPcmBytesAt48kHz: manifestAsset?.pcmBytesAt48kHz ?? null,
-      estimatedPaddedReservationBytes: asset.durationMs && (manifestAsset?.channelsInFile ?? manifestAsset?.channels)
+      estimatedOutputPcmBytesAt48kHz: manifestAsset?.decodedPcmBytesAt48kHz ?? manifestAsset?.pcmBytesAt48kHz ?? null,
+      estimatedPaddedReservationBytes: manifestAsset?.paddedDecodeReservationBytesAt48kHz ??
+        (asset.durationMs && (manifestAsset?.channelsInFile ?? manifestAsset?.channels)
         ? Math.ceil((asset.durationMs / 1_000 + 1) * 48_000) *
           (manifestAsset.channelsInFile ?? manifestAsset.channels) * Float32Array.BYTES_PER_ELEMENT
-        : null };
+        : null) };
   });
-  return { project, projectBytes, projectSha256, imageMedia, audioAssets, sourceRecords, manifestPath,
+  return { projectRoot, project, projectBytes, projectSha256, imageMedia, audioAssets, sourceRecords, manifestPath,
     caseManifest, baselineSourceRevision: manifest.sourceRevision };
 }
 
@@ -226,10 +235,12 @@ async function readState(window) {
       playing: overlay?.dataset.previewPlaying === 'true',
       projectRevision: document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.projectRevision ?? null,
       undoCount: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? null,
+      stageShotId: document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageShotId ?? null,
       playbackStartedAtMs: probe?.playbackStartedAtMs ?? null, decodeInFlight: probe?.decodeInFlight ?? 0,
       decodes: probe?.decodes ?? [], reads: probe?.readRoundTrips ?? [], readWrapperInstalled: probe?.readWrapperInstalled ?? false,
       contexts: probe?.contexts.map(item => ({ id: item.id, state: item.ref.deref()?.state ?? 'collected', sampleRate: item.sampleRate })) ?? [],
       sources: probe?.sources ?? [], timelineSamples: probe?.timelineSamples ?? [], activeSourceCount: active.length,
+      routeAudit: probe?.routeAudit?.snapshot?.() ?? null,
       activeUniquePcmBytes: [...new Map(active.map(item => [item.bufferId, item.pcmBytes])).values()].reduce((sum, value) => sum + (value ?? 0), 0),
       warning: document.querySelector('[data-testid="product-preview-audio-warning"]')?.textContent ?? null };
   })()`);
@@ -308,6 +319,122 @@ function deriveWorkingSetPeak(fixture, readMetrics, decodes, observedAtMs) {
     limitBytes: workingSetLimitBytes, peakEstimatedWorkingSetBytes: peakBytes, peakAtMs, peakByCategory, perSource };
 }
 
+function deriveIssue889WorkingSetPeak(fixture, readMetrics, decodes, memoryEvents, observedAtMs) {
+  const events = [];
+  const totals = { retainedPcmBytes: 0, decodeReservationBytes: 0, inFlightSourceReadBytes: 0,
+    decodeInputCopyBytes: 0, retainedWaveSourceBytes: 0, sourceReadReservationBytes: 0 };
+  const readStartAlignments = [];
+  const addInterval = (field, startAtMs, endAtMs, bytes, assetId) => {
+    if (!Number.isFinite(startAtMs) || !Number.isFinite(endAtMs) || endAtMs <= startAtMs || bytes <= 0) return;
+    events.push({ atMs: startAtMs, delta: bytes, field, assetId });
+    events.push({ atMs: endAtMs, delta: -bytes, field, assetId });
+  };
+  const sourceForDecode = (decode) => fixture.sourceRecords.find((source) => source.sampleBoundaries.some((sample) =>
+    sample.offsetMs === 0 && Math.abs(sample.firstChannelSample - (decode.firstChannelSample ?? NaN)) <= 0.00002));
+  const pairedDecodes = new Set();
+  const pairedReadForDecode = new Map();
+  const reads = readMetrics.requests.filter((entry) => !entry.shared && Number.isFinite(entry.startedAtMs) &&
+    Number.isFinite(entry.completedAtMs)).sort((left, right) => left.startedAtMs - right.startedAtMs);
+  for (const read of reads) {
+    const source = fixture.sourceRecords.find((entry) => entry.assetId === read.assetId);
+    const byteLength = read.byteLength ?? source?.sourceFileBytes ?? 0;
+    const infoCompletedAtMs = readMetrics.infoRequests.filter((entry) => entry.assetId === read.assetId &&
+      entry.status === 'ready' && Number.isFinite(entry.completedAtMs) &&
+      Math.abs(entry.completedAtMs - read.startedAtMs) <= 1)
+      .sort((left, right) => right.completedAtMs - left.completedAtMs)[0]?.completedAtMs;
+    const preReadIdlePcmEviction = memoryEvents.find((entry) => entry.kind === 'pcm-record-delete' &&
+      entry.assetId !== read.assetId && entry.voiceLeases === 0 && entry.consumerLeases === 0 &&
+      entry.atMs >= read.startedAtMs && entry.atMs <= read.startedAtMs + 2 &&
+      memoryEvents.some((candidate) => candidate.kind === 'pcm-lru-delete' && candidate.key === entry.key &&
+        candidate.atMs <= entry.atMs));
+    let readStartedAtMs = read.startedAtMs;
+    if (infoCompletedAtMs !== undefined && preReadIdlePcmEviction &&
+        preReadIdlePcmEviction.atMs >= infoCompletedAtMs) {
+      // Main and renderer Date.now() timestamps can differ by a millisecond.
+      // reserveReadBytes() evicts idle PCM after the info response and before
+      // invoking the source-read IPC, so align these same-boundary events.
+      readStartedAtMs = preReadIdlePcmEviction.atMs;
+      readStartAlignments.push({ assetId: read.assetId, observedReadStartedAtMs: read.startedAtMs,
+        infoCompletedAtMs, idlePcmEvictionAtMs: preReadIdlePcmEviction.atMs,
+        alignedReadStartedAtMs: readStartedAtMs,
+        offsetMs: readStartedAtMs - read.startedAtMs });
+    }
+    addInterval('sourceReadReservationBytes', readStartedAtMs, read.completedAtMs, byteLength, read.assetId);
+    const decode = decodes.filter((entry) => !pairedDecodes.has(entry) &&
+      sourceForDecode(entry)?.assetId === read.assetId && entry.startedAtMs >= read.startedAtMs)
+      .sort((left, right) => left.startedAtMs - right.startedAtMs)[0];
+    if (decode) {
+      pairedDecodes.add(decode);
+      pairedReadForDecode.set(decode, read);
+    }
+    const isFullDecode = decode && source && decode.durationSeconds >= source.durationMs / 1_000 - 0.01;
+    const waveSourceReadyAt = memoryEvents.find((entry) => entry.kind === 'wave-source-set' &&
+      entry.assetId === read.assetId && entry.atMs >= read.completedAtMs)?.atMs;
+    const rawReadDoneAt = isFullDecode
+      ? decode.completedAtMs
+      : waveSourceReadyAt ?? read.completedAtMs;
+    addInterval('inFlightSourceReadBytes', read.completedAtMs, rawReadDoneAt, byteLength, read.assetId);
+  }
+  for (const decode of decodes) {
+    if (decode.status !== 'ready' || !Number.isFinite(decode.startedAtMs) || !Number.isFinite(decode.completedAtMs)) continue;
+    const source = sourceForDecode(decode);
+    const reservationBytes = Math.ceil((decode.durationSeconds + 1) * decode.sampleRate) *
+      decode.channels * Float32Array.BYTES_PER_ELEMENT;
+    const read = pairedReadForDecode.get(decode);
+    const reservationStartAtMs = read && decode.durationSeconds >= (source?.durationMs ?? Infinity) / 1_000 - 0.01
+      ? readStartAlignments.find((entry) => entry.assetId === source?.assetId &&
+        entry.observedReadStartedAtMs === read.startedAtMs)?.alignedReadStartedAtMs ?? read.startedAtMs
+      : decode.startedAtMs;
+    addInterval('decodeReservationBytes', reservationStartAtMs, decode.completedAtMs, reservationBytes, source?.assetId);
+    if (source && decode.durationSeconds < source.durationMs / 1_000 - 0.01) {
+      addInterval('decodeInputCopyBytes', decode.startedAtMs, decode.completedAtMs,
+        decode.inputByteLength ?? 0, source.assetId);
+    }
+  }
+  const retainedLives = (setKind, deleteKind, field) => {
+    const live = new Map();
+    for (const entry of memoryEvents) {
+      if (entry.kind === setKind) {
+        const previous = live.get(entry.key);
+        if (previous) addInterval(field, previous.atMs, entry.atMs, previous.bytes, previous.assetId);
+        live.set(entry.key, { atMs: entry.atMs, bytes: entry.bytes ?? 0, assetId: entry.assetId });
+      } else if (entry.kind === deleteKind) {
+        const previous = live.get(entry.key);
+        if (previous) {
+          addInterval(field, previous.atMs, entry.atMs, previous.bytes, previous.assetId);
+          live.delete(entry.key);
+        }
+      }
+    }
+    for (const [key, previous] of live) {
+      addInterval(field, previous.atMs, observedAtMs, previous.bytes, previous.assetId);
+      live.delete(key);
+    }
+  };
+  retainedLives('pcm-record-set', 'pcm-record-delete', 'retainedPcmBytes');
+  retainedLives('wave-source-set', 'wave-source-delete', 'retainedWaveSourceBytes');
+  events.sort((left, right) => left.atMs - right.atMs || left.delta - right.delta);
+  let peakBytes = 0;
+  let peakAtMs = null;
+  let peakByCategory = null;
+  for (const event of events) {
+    totals[event.field] += event.delta;
+    const currentBytes = Object.values(totals).reduce((sum, value) => sum + value, 0);
+    if (currentBytes > peakBytes) {
+      peakBytes = currentBytes;
+      peakAtMs = event.atMs;
+      peakByCategory = { ...totals };
+    }
+  }
+  return { method: 'Native L1 event intervals from validated reads, decode reservations, proxy input copies, retained PCM records, and retained WAV source records. Main/renderer timestamps are aligned only when the info response and unleased idle-PCM eviction prove that eviction preceded the source-read IPC. Estimated renderer working set, not Windows RSS.',
+    limitBytes: workingSetLimitBytes, peakEstimatedWorkingSetBytes: peakBytes, peakAtMs, peakByCategory,
+    observedMaxConcurrentValidatedReads: readMetrics.maxActive,
+    readStartAlignments,
+    validatedReadBytes: reads.reduce((sum, entry) => sum + (entry.byteLength ?? 0), 0),
+    decodedPcmBytes: decodes.filter((entry) => entry.status === 'ready')
+      .reduce((sum, entry) => sum + (entry.pcmBytes ?? 0), 0) };
+}
+
 async function click(window, selector) {
   await evaluate(window, `document.querySelector(${JSON.stringify(selector)})?.click()`);
   await delay(60);
@@ -378,7 +505,8 @@ async function installProbe(window, decodeDelayMs = 0) {
         const record = { contextId: this.__issue887Id, startCount: 0, stopCount: 0, startArgs: null,
           previewTimeAtStartCallMs: null, projectTimeAtStartCallMs: null, bufferId: null, sampleRate: null,
           channels: null, durationSeconds: null, pcmBytes: null, gain: null, contextTimeAtStartCall: null,
-          scheduledProjectTimeMs: null, sampleAtStartOffset: null, active: false, ended: false };
+          scheduledProjectTimeMs: null, sampleAtStartOffset: null, startAtMs: null, stopAtMs: null,
+          endedAtMs: null, active: false, ended: false };
         const nativeStart = source.start.bind(source); const nativeStop = source.stop.bind(source);
         const nativeConnect = source.connect.bind(source);
         source.connect = (destination, ...args) => {
@@ -386,6 +514,7 @@ async function installProbe(window, decodeDelayMs = 0) {
           return nativeConnect(destination, ...args);
         };
         source.start = (...args) => { const info = probe.bufferInfo.get(source.buffer); record.startCount += 1;
+          record.startAtMs = Date.now();
           record.startArgs = args; record.previewTimeAtStartCallMs = Number(overlay()?.dataset.previewTime ?? -1);
           record.projectTimeAtStartCallMs = Number(overlay()?.dataset.previewProjectTime ?? -1);
           record.contextTimeAtStartCall = this.currentTime;
@@ -398,8 +527,8 @@ async function installProbe(window, decodeDelayMs = 0) {
               ? source.buffer.getChannelData(0)[offsetFrames] : null;
           }
           record.active = true; return nativeStart(...args); };
-        source.stop = (...args) => { record.stopCount += 1; record.active = false; return nativeStop(...args); };
-        source.addEventListener('ended', () => { record.ended = true; record.active = false; });
+        source.stop = (...args) => { record.stopCount += 1; record.stopAtMs = Date.now(); record.active = false; return nativeStop(...args); };
+        source.addEventListener('ended', () => { record.ended = true; record.endedAtMs = Date.now(); record.active = false; });
         probe.sources.push(record); return source;
       }
     };
@@ -410,6 +539,211 @@ async function installProbe(window, decodeDelayMs = 0) {
         byteLength: response?.byteLength ?? null, status: response?.status ?? response?.error?.code ?? 'unknown' });
       return response; }; probe.readWrapperInstalled = window.pandaStage.assets.readAudio !== readAudio; } catch {} }
   })()`);
+}
+
+async function installRouteAudit(window, fixture) {
+  const assets = fixture.audioAssets.map((asset) => ({ assetId: asset.id, name: asset.name,
+    sha256: asset.sha256, assetKey: [fixture.projectRoot, fixture.project.id, asset.id, asset.sha256].join('\u0000') }));
+  await evaluate(window, `(() => {
+    const probe = window.__issue887Au03;
+    const projectRoot = ${JSON.stringify(fixture.projectRoot)};
+    const projectId = ${JSON.stringify(fixture.project.id)};
+    const assets = ${JSON.stringify(assets)};
+    const basePrefix = projectRoot + '\\u0000' + projectId + '\\u0000';
+    const native = { set: Map.prototype.set, get: Map.prototype.get, delete: Map.prototype.delete,
+      clear: Map.prototype.clear, entries: Map.prototype.entries };
+    const routeMaps = [];
+    const recordMaps = [];
+    const lruMaps = [];
+    const waveSourceMaps = [];
+    const waveSourceCacheMaps = [];
+    const labels = new WeakMap();
+    const sourceMapAssignments = new Map();
+    const events = [];
+    const overlay = () => document.querySelector('[data-testid="product-preview-overlay"]');
+    const assetForKey = key => typeof key === 'string'
+      ? assets.find(asset => key === asset.assetKey || key.startsWith(asset.assetKey + '\\u0000')) ?? null : null;
+    const keyDetails = key => {
+      const asset = assetForKey(key);
+      return asset ? { assetId: asset.assetId, name: asset.name, sha256: asset.sha256,
+        key, routeKind: key === asset.assetKey ? 'full' : 'segmented' } : null;
+    };
+    const recordEvent = (kind, details) => {
+      const current = overlay();
+      events.push({ kind, atMs: Date.now(), projectTimeMs: Number(current?.dataset.previewProjectTime ?? -1), ...details });
+      if (events.length > 20_000) events.splice(0, events.length - 20_000);
+    };
+    const addMap = (collection, map, label) => {
+      if (!labels.has(map)) { labels.set(map, label); collection.push(map); }
+    };
+    const waveSourceMapLabel = (map, key) => {
+      let maps = sourceMapAssignments.get(key);
+      if (!maps) { maps = []; sourceMapAssignments.set(key, maps); }
+      if (!maps.includes(map)) {
+        const label = maps.length === 0 ? 'waveSources' : 'waveSourceCache';
+        maps.push(map);
+        addMap(label === 'waveSources' ? waveSourceMaps : waveSourceCacheMaps, map, label);
+      }
+      return labels.get(map);
+    };
+    Map.prototype.set = function(key, value) {
+      const details = keyDetails(key);
+      if (details && typeof value === 'boolean') {
+        addMap(routeMaps, this, 'waveStreamDecisions');
+        recordEvent('route-set', { ...details, split: value });
+      } else if (details && value && typeof value === 'object' && value.buffer &&
+          value.voiceLeases instanceof Set && value.consumerLeases instanceof Set && Number.isFinite(value.bytes)) {
+        addMap(recordMaps, this, 'bufferRecords');
+        recordEvent('pcm-record-set', { ...details, bytes: value.bytes,
+          voiceLeases: value.voiceLeases.size, consumerLeases: value.consumerLeases.size });
+      } else if (details && value && typeof value === 'object' && Number.isFinite(value.length) &&
+          Number.isFinite(value.numberOfChannels)) {
+        addMap(lruMaps, this, 'bufferCache');
+        recordEvent('pcm-lru-set', { ...details, bytes: value.length * value.numberOfChannels * 4,
+          channels: value.numberOfChannels, frames: value.length });
+      } else if (details && value && typeof value === 'object' && value.bytes instanceof Uint8Array &&
+          value.consumerLeases instanceof Set) {
+        const label = waveSourceMapLabel(this, key);
+        recordEvent(label === 'waveSources' ? 'wave-source-set' : 'wave-source-cache-set',
+          { ...details, bytes: value.bytes.byteLength, consumerLeases: value.consumerLeases.size });
+      }
+      return native.set.call(this, key, value);
+    };
+    Map.prototype.get = function(key) {
+      const value = native.get.call(this, key);
+      if (labels.get(this) === 'waveStreamDecisions') {
+        const details = keyDetails(key);
+        if (details) recordEvent('route-read', { ...details, split: value ?? null });
+      }
+      return value;
+    };
+    Map.prototype.delete = function(key) {
+      const value = native.get.call(this, key);
+      const details = keyDetails(key);
+      const label = labels.get(this);
+      if (details && label === 'waveStreamDecisions') {
+        recordEvent('route-delete', { ...details, split: value ?? null });
+      } else if (details && label === 'bufferRecords' && value) {
+        recordEvent('pcm-record-delete', { ...details, bytes: value.bytes ?? null,
+          voiceLeases: value.voiceLeases?.size ?? null, consumerLeases: value.consumerLeases?.size ?? null });
+      } else if (details && label === 'bufferCache' && value) {
+        recordEvent('pcm-lru-delete', { ...details, bytes: value.length * value.numberOfChannels * 4,
+          channels: value.numberOfChannels, frames: value.length });
+      } else if (details && label === 'waveSources' && value) {
+        recordEvent('wave-source-delete', { ...details, bytes: value.bytes?.byteLength ?? null,
+          consumerLeases: value.consumerLeases?.size ?? null });
+      } else if (details && label === 'waveSourceCache' && value) {
+        recordEvent('wave-source-cache-delete', { ...details, bytes: value.bytes?.byteLength ?? null,
+          consumerLeases: value.consumerLeases?.size ?? null });
+      }
+      return native.delete.call(this, key);
+    };
+    Map.prototype.clear = function() {
+      const label = labels.get(this);
+      if (label) recordEvent('tracked-map-clear', { label, entriesBefore: this.size });
+      return native.clear.call(this);
+    };
+    probe.routeAudit = {
+      events,
+      snapshot() {
+        const decisions = assets.map(asset => ({ ...asset,
+          split: routeMaps.map(map => native.get.call(map, asset.assetKey)).find(value => value !== undefined) ?? null }));
+        const pcmRecords = [];
+        for (const map of recordMaps) for (const [key, record] of native.entries.call(map)) {
+          const details = keyDetails(key);
+          if (!details) continue;
+          pcmRecords.push({ ...details, bytes: record.bytes, voiceLeases: record.voiceLeases.size,
+            consumerLeases: record.consumerLeases.size });
+        }
+        const idleLru = [];
+        for (const map of lruMaps) for (const [key, buffer] of native.entries.call(map)) {
+          const details = keyDetails(key);
+          if (!details) continue;
+          idleLru.push({ ...details, bytes: buffer.length * buffer.numberOfChannels * 4,
+            channels: buffer.numberOfChannels, frames: buffer.length });
+        }
+        const waveSources = [];
+        for (const map of waveSourceMaps) for (const [key, source] of native.entries.call(map)) {
+          const details = keyDetails(key);
+          if (details) waveSources.push({ ...details, bytes: source.bytes.byteLength,
+            consumerLeases: source.consumerLeases.size });
+        }
+        const idleWaveSourceCache = [];
+        for (const map of waveSourceCacheMaps) for (const [key, source] of native.entries.call(map)) {
+          const details = keyDetails(key);
+          if (details) idleWaveSourceCache.push({ ...details, bytes: source.bytes.byteLength,
+            consumerLeases: source.consumerLeases.size });
+        }
+        return { decisions, pcmRecords, idleLru, waveSources, idleWaveSourceCache,
+          idlePcmBytes: idleLru.reduce((sum, entry) => sum + entry.bytes, 0),
+          waveSourceBytes: waveSources.reduce((sum, entry) => sum + entry.bytes, 0),
+          waveSourceCacheBytes: idleWaveSourceCache.reduce((sum, entry) => sum + entry.bytes, 0),
+          routeEventCount: events.length };
+      },
+    };
+  })()`);
+}
+
+async function readRouteAuditEvents(window) {
+  return evaluate(window, `window.__issue887Au03?.routeAudit?.events ?? []`);
+}
+
+function assetIdForNativeSource(source, state, sourceRecords) {
+  const decoded = state.decodes.find((entry) => entry.bufferId === source.bufferId);
+  if (typeof decoded?.firstChannelSample !== 'number') return null;
+  return sourceRecords.find((record) => record.sampleBoundaries.some((sample) => sample.offsetMs === 0 &&
+    Math.abs(sample.firstChannelSample - decoded.firstChannelSample) <= 0.00002))?.assetId ?? null;
+}
+
+function startedNativeSources(state, startIndex, sourceRecords) {
+  return state.sources.slice(startIndex).filter((source) => source.startCount > 0).map((source) => ({
+    ...source,
+    assetId: assetIdForNativeSource(source, state, sourceRecords),
+  }));
+}
+
+function transitionSnapshot(label, targetProjectTimeMs, state, startIndex, sourceRecords) {
+  return {
+    label,
+    targetProjectTimeMs,
+    observedProjectTimeMs: state.projectTimeMs,
+    stageShotId: state.stageShotId,
+    routeDecisions: state.routeAudit?.decisions ?? [],
+    retainedPcmRecords: state.routeAudit?.pcmRecords ?? [],
+    idlePcmLru: state.routeAudit?.idleLru ?? [],
+    idlePcmBytes: state.routeAudit?.idlePcmBytes ?? null,
+    activeUniquePcmBytes: state.activeUniquePcmBytes,
+    waveSources: state.routeAudit?.waveSources ?? [],
+    waveSourceBytes: state.routeAudit?.waveSourceBytes ?? null,
+    idleWaveSourceCache: state.routeAudit?.idleWaveSourceCache ?? [],
+    waveSourceCacheBytes: state.routeAudit?.waveSourceCacheBytes ?? null,
+    newSourceStarts: startedNativeSources(state, startIndex, sourceRecords),
+    warning: state.warning,
+    sourceReadCount: state.reads.length,
+    decodeCount: state.decodes.length,
+  };
+}
+
+async function playAtProjectTime(window, projectTimeMs, expectedNewStarts, readMetrics, sourceRecords, label) {
+  await stopIfPlaying(window);
+  await seek(window, projectTimeMs);
+  const before = await readState(window);
+  const startIndex = before.sources.length;
+  await click(window, '[data-testid="product-preview-play-pause"]');
+  await waitFor(window,
+    `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewPlaying === 'true'`,
+    `${label} did not start Product Preview.`);
+  const condition = expectedNewStarts === 2
+    ? `window.__issue887Au03?.sources.slice(${startIndex}).filter(source => source.startCount > 0).length >= 2 ||
+      Boolean(document.querySelector('[data-testid="product-preview-audio-warning"]')?.textContent)`
+    : `window.__issue887Au03?.sources.slice(${startIndex}).some(source => source.startCount > 0) ||
+      Boolean(document.querySelector('[data-testid="product-preview-audio-warning"]')?.textContent)`;
+  await waitFor(window, condition, `${label} neither started its expected source nor exposed an audio warning.`, 20_000);
+  const started = await waitForQuiet(window, readMetrics, `${label} reads or native decodes did not settle.`, 20_000);
+  await delay(80);
+  return { state: await readState(window), startIndex,
+    startedCount: started.sources.slice(startIndex).filter((source) => source.startCount > 0).length,
+    label, targetProjectTimeMs: projectTimeMs, sourceRecords };
 }
 
 async function openPreview(window, shotId, pauseAtProjectTimeMs = null) {
@@ -620,12 +954,14 @@ async function run() {
   const initialProjectSha256 = sha256(fixture.projectBytes);
   const receipt = {
     issue: issueNumber,
-    parentIssue: isIssue888Case ? 887 : 886,
+    parentIssue: isIssue889Case ? 888 : isIssue888Case ? 887 : 886,
     caseId: issueCase,
     ...(isIssue888Case ? { phase: issue888Phase,
       injectedDelays: { readMs: issue888ReadDelayMs, decodeMs: issue888DecodeDelayMs } } : {}),
+    ...(isIssue889Case ? { phase: issue889Phase } : {}),
     classification: 'L1 native Windows Electron AudioContext/source graph plus production AssetPreviewAudioService IPC; this is not physical speaker acceptance.',
     baselineSourceRevision: fixture.baselineSourceRevision,
+    baselineAudioTransportSha256: sha256(readFileSync(path.join(repositoryRoot, 'src/renderer/shell/productPreviewAudio.ts'))),
     candidateSourceRevision: sourceRevision,
     candidateWorkingTree: { trackedDiffSha256: sha256(candidatePatch), status: candidateWorkingTreeStatus },
     observedAt: new Date().toISOString(),
@@ -659,6 +995,7 @@ async function run() {
     const before = await evaluate(window, `({ revision: document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.projectRevision ?? null,
       undo: document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount ?? null })`);
     await installProbe(window, isIssue888Case ? issue888DecodeDelayMs : 0);
+    if (isIssue889Case) await installRouteAudit(window, fixture);
     await openPreview(window, fixture.project.shots[0].id,
       isIssue888Case && issueCase === 'F02' ? 200 : null);
     if (isIssue888Case && issueCase === 'F02') {
@@ -877,6 +1214,298 @@ async function run() {
         }
       }
       receipt.measurementCompleted = true;
+    } else if (isIssue889Case) {
+      assert(fixture.project.schemaVersion === 14 && fixture.project.shots.length >= 3,
+        'S01 must remain a synthetic v14 Project with at least the three required Shots.');
+      assert(firstShot.previewRange === 'project', `S01 must keep one project Preview transport; got ${firstShot.previewRange}.`);
+      const [assetA, assetB] = fixture.audioAssets;
+      assert(assetA && assetB && assetA.sha256 !== assetB.sha256,
+        'S01 requires two different generated 150-second WAV source identities.');
+      const expectedClipGain = (assetId) => fixture.project.shots.flatMap((shot) => shot.audioClips)
+        .find((clip) => clip.assetId === assetId)?.volume;
+      const sourceSampleAtStart = (source, sourceRecord) => {
+        if (!sourceRecord || typeof source.sampleAtStartOffset !== 'number') return null;
+        const wav = readFileSync(sourceRecord.filePath);
+        const sampleRate = wav.readUInt32LE(24);
+        const blockAlign = wav.readUInt16LE(32);
+        const sourceFrame = Math.round((source.startArgs?.[1] ?? 0) * sampleRate);
+        const byteOffset = 44 + sourceFrame * blockAlign;
+        return byteOffset + 2 <= wav.byteLength ? wav.readInt16LE(byteOffset) / 32_768 : null;
+      };
+      const decisionFor = (state, assetId) => state.routeAudit?.decisions.find((entry) => entry.assetId === assetId)?.split ?? null;
+      const hasFullRecord = (state, assetId) => state.routeAudit?.pcmRecords.some((entry) =>
+        entry.assetId === assetId && entry.routeKind === 'full') ?? false;
+      const aStarts = startedNativeSources(firstShot, 0, fixture.sourceRecords);
+      const aDecode = aStarts[0] ? firstShot.decodes.find((entry) => entry.bufferId === aStarts[0].bufferId) : null;
+      assert(aStarts.length === 1 && aStarts[0]?.assetId === assetA.id,
+        'S01 Shot 1 did not play only the generated A source once.');
+      assert(aDecode?.durationSeconds >= 149.99 && decisionFor(firstShot, assetA.id) === false &&
+        hasFullRecord(firstShot, assetA.id),
+      'S01 Shot 1 did not establish A as a full-decode, non-streamed route with a retained PCM record.');
+
+      const transitionSteps = [transitionSnapshot('shot1-A-only', 0, firstShot, 0, fixture.sourceRecords)];
+      await stopIfPlaying(window);
+      let aEvictedAtBOffsetMs = null;
+      let lastBState = null;
+      for (let bOffsetMs = 0; bOffsetMs <= 100_000; bOffsetMs += PRODUCT_PREVIEW_AUDIO_WAV_STREAM_CHUNK_MS) {
+        const transition = await playAtProjectTime(window, 150_000 + bOffsetMs, 1, readMetrics,
+          fixture.sourceRecords, `S01 Shot 2 B at +${bOffsetMs}ms`);
+        const bStarts = startedNativeSources(transition.state, transition.startIndex, fixture.sourceRecords);
+        assert(bStarts.some((source) => source.assetId === assetB.id),
+          `S01 Shot 2 did not start B at source offset ${bOffsetMs}ms.`);
+        await stopIfPlaying(window);
+        lastBState = await readState(window);
+        transitionSteps.push(transitionSnapshot(`shot2-B-at-${bOffsetMs}ms`, 150_000 + bOffsetMs,
+          lastBState, transition.startIndex, fixture.sourceRecords));
+        if (!hasFullRecord(lastBState, assetA.id)) {
+          aEvictedAtBOffsetMs = bOffsetMs;
+          break;
+        }
+      }
+      assert(lastBState && aEvictedAtBOffsetMs !== null && !hasFullRecord(lastBState, assetA.id),
+        'S01 did not legally evict A full PCM from the existing idle LRU before Shot 3.');
+      const eventsBeforeOverlap = await readRouteAuditEvents(window);
+      const aFullLruEviction = eventsBeforeOverlap.find((entry) => entry.kind === 'pcm-record-delete' &&
+        entry.assetId === assetA.id && entry.routeKind === 'full' && entry.voiceLeases === 0 && entry.consumerLeases === 0);
+      const aFullLruEvictionIndex = eventsBeforeOverlap.indexOf(aFullLruEviction);
+      const aIdleLruRemoval = eventsBeforeOverlap.slice(0, aFullLruEvictionIndex).reverse().find((entry) =>
+        entry.kind === 'pcm-lru-delete' && entry.assetId === assetA.id && entry.routeKind === 'full');
+      assert(aFullLruEviction && aIdleLruRemoval,
+        'S01 A full PCM disappeared without an observed unleased idle-LRU removal and retained-record eviction.');
+
+      const overlap = await playAtProjectTime(window, 300_000, 2, readMetrics, fixture.sourceRecords,
+        'S01 Shot 3 A+B overlap');
+      const eventsAfterOverlap = await readRouteAuditEvents(window);
+      const overlapStarts = startedNativeSources(overlap.state, overlap.startIndex, fixture.sourceRecords);
+      const overlapIds = [...new Set(overlapStarts.map((source) => source.assetId).filter(Boolean))].sort();
+      const overlapRoutes = Object.fromEntries(overlap.state.routeAudit.decisions.map((entry) => [entry.assetId, entry.split]));
+      const firstBStep = transitionSteps.find((entry) => entry.label === 'shot2-B-at-0ms');
+      const routeReadsAfterEviction = eventsAfterOverlap.filter((entry) => entry.kind === 'route-read' &&
+        entry.projectTimeMs >= 299_000 && (entry.assetId === assetA.id || entry.assetId === assetB.id));
+      let classification;
+      if (overlapIds.length === 2 && overlap.state.warning === null) {
+        classification = 'NOT_REPRODUCED_BOTH_DISTINCT_150S_SOURCES_PLAYED';
+      } else if (overlapRoutes[assetA.id] === false && overlapRoutes[assetB.id] === false &&
+          overlapIds.length < 2 && (overlap.state.warning !== null || overlapStarts.length < 2)) {
+        classification = 'REPRODUCED_STALE_FALSE_ROUTES_BLOCKED_A_PLUS_B_AFTER_A_EVICTION';
+      } else {
+        classification = 'NOT_REPRODUCED_OTHER_ROUTE_OR_REJECTION_LAYER';
+      }
+      receipt.playback = {
+        ...receipt.playback,
+        rejectionClassification: classification,
+        expectedBaselineClassification: 'REPRODUCED_STALE_FALSE_ROUTES_BLOCKED_A_PLUS_B_AFTER_A_EVICTION',
+        sourceIdentities: fixture.sourceRecords.map(({ assetId, sha256: sourceSha256, sourceFileBytes,
+          estimatedOutputPcmBytesAt48kHz, estimatedPaddedReservationBytes }) =>
+          ({ assetId, sha256: sourceSha256, sourceFileBytes, estimatedOutputPcmBytesAt48kHz,
+            estimatedPaddedReservationBytes })),
+        shot1A: { decision: decisionFor(firstShot, assetA.id), started: aStarts, decode: aDecode,
+          retainedFullPcm: hasFullRecord(firstShot, assetA.id) },
+        shot2B: { firstStep: firstBStep, decisionAfterB: decisionFor(lastBState, assetB.id),
+          aDecisionAfterEviction: decisionFor(lastBState, assetA.id),
+          sourceOffsetsPlayedMs: transitionSteps.filter((entry) => entry.label.startsWith('shot2-B-at-'))
+            .map((entry) => entry.targetProjectTimeMs - 150_000),
+          aFullPcmEvictedAtBOffsetMs: aEvictedAtBOffsetMs,
+          aFullPcmEviction: { idleLruRemoval: aIdleLruRemoval, retainedRecordRemoval: aFullLruEviction } },
+        shot3AB: { overlapStarts, distinctStartedAssetIds: overlapIds, routeDecisions: overlapRoutes,
+          routeReadsAfterEviction, warning: overlap.state.warning,
+          activeUniquePcmBytes: overlap.state.activeUniquePcmBytes, workingSetLimitBytes,
+          decodeBuffers: overlap.state.decodes.map(({ bufferId, inputByteLength, pcmBytes, durationSeconds,
+            status, startedAtMs, completedAtMs }) =>
+            ({ bufferId, inputByteLength, pcmBytes, durationSeconds, status, startedAtMs, completedAtMs })) },
+        transitionSteps,
+      };
+      transitionSteps.push(transitionSnapshot('shot3-A+B', 300_000, overlap.state, overlap.startIndex,
+        fixture.sourceRecords));
+      receipt.mainAudioRead = { ipcRequests: readMetrics.requests.length,
+        infoRequests: readMetrics.infoRequests.map((entry) => ({ ...entry })),
+        actualValidatedReadTasks: readMetrics.actualValidatedReadTasks, maximumConcurrentTasks: readMetrics.maxActive,
+        requests: readMetrics.requests.map((entry) => ({ ...entry })),
+        hashValidationIndex: service.getHashValidationIndexSnapshot(),
+        rendererRoundTripWrapperInstalled: overlap.state.readWrapperInstalled,
+        rendererRoundTrips: overlap.state.reads };
+      if (issue889Phase === 'baseline') {
+        assert(classification === 'REPRODUCED_STALE_FALSE_ROUTES_BLOCKED_A_PLUS_B_AFTER_A_EVICTION',
+          `S01 frozen baseline did not reproduce the stale false-route rejection: ${classification}.`);
+      } else {
+        assert(classification !== 'REPRODUCED_STALE_FALSE_ROUTES_BLOCKED_A_PLUS_B_AFTER_A_EVICTION',
+          `S01 candidate still reproduces the stale false-route rejection: ${classification}.`);
+        assert(decisionFor(lastBState, assetA.id) === null,
+          'S01 candidate did not invalidate A route state at the unleased LRU eviction boundary.');
+      }
+
+      let secondAChunk = null;
+      if (issue889Phase === 'candidate') {
+        const sourceCountAfterOverlapStart = overlap.state.sources.length;
+        await waitFor(window,
+          `Number(document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewProjectTime ?? -1) >= 310_100`,
+          'S01 Shot 3 did not reach the first 10-second WAV chunk boundary.', 30_000);
+        const chunkBoundaryState = await readState(window);
+        const chunkStarts = startedNativeSources(chunkBoundaryState, sourceCountAfterOverlapStart, fixture.sourceRecords);
+        const nextAChunk = chunkStarts.find((source) => source.assetId === assetA.id);
+        const nextAChunkDecode = nextAChunk
+          ? chunkBoundaryState.decodes.find((entry) => entry.bufferId === nextAChunk.bufferId) : null;
+        const sourceARecord = fixture.sourceRecords.find((entry) => entry.assetId === assetA.id);
+        const expectedBoundarySample = sourceARecord?.sampleBoundaries.find((entry) => entry.offsetMs === 10_000)?.firstChannelSample;
+        assert(nextAChunk && nextAChunk.startCount === 1 &&
+          Math.abs((nextAChunk.startArgs?.[2] ?? 0) - PRODUCT_PREVIEW_AUDIO_WAV_STREAM_CHUNK_MS / 1_000) <= 0.02 &&
+          Math.abs((nextAChunk.scheduledProjectTimeMs ?? -1) - 310_000) <= 50 &&
+          nextAChunkDecode && typeof expectedBoundarySample === 'number' &&
+          Math.abs(nextAChunkDecode.firstChannelSample - expectedBoundarySample) <= 0.00002 &&
+          Math.abs((nextAChunk.sampleAtStartOffset ?? Infinity) - nextAChunkDecode.firstChannelSample) <= 0.00002 &&
+          chunkBoundaryState.warning === null && chunkBoundaryState.activeSourceCount === 2,
+        'S01 A 10-second continuation did not start once at the seamless boundary with the generated source sample.');
+        secondAChunk = { source: nextAChunk, decode: nextAChunkDecode,
+          expectedBoundarySample, activeSourceCount: chunkBoundaryState.activeSourceCount,
+          warning: chunkBoundaryState.warning };
+        transitionSteps.push(transitionSnapshot('shot3-A-second-10s-chunk', 310_000,
+          chunkBoundaryState, sourceCountAfterOverlapStart, fixture.sourceRecords));
+      }
+
+      await stopIfPlaying(window);
+      const readsBeforeSameSource = readMetrics.actualValidatedReadTasks;
+      const sameSourceOverlap = await playAtProjectTime(window, 450_000, 2, readMetrics, fixture.sourceRecords,
+        'S01 Shot 4 A+A same-source overlap');
+      const sameStarts = startedNativeSources(sameSourceOverlap.state, sameSourceOverlap.startIndex, fixture.sourceRecords);
+      const sameBufferIds = [...new Set(sameStarts.map((source) => source.bufferId))];
+      const sameOverlapSummary = transitionSnapshot('shot4-A+A-same-source-overlap', 450_000,
+        sameSourceOverlap.state, sameSourceOverlap.startIndex, fixture.sourceRecords);
+      transitionSteps.push(sameOverlapSummary);
+      receipt.playback.sameSourceOverlap = { ...sameOverlapSummary, distinctSourceNodes: sameStarts.length,
+        sourceAssetIds: sameStarts.map((source) => source.assetId), bufferIds: sameBufferIds,
+        gains: sameStarts.map((source) => source.gain) };
+      if (issue889Phase === 'candidate') {
+        assert(sameStarts.length === 2 && sameStarts.every((source) => source.assetId === assetA.id) &&
+          sameBufferIds.length === 1 && sameSourceOverlap.state.warning === null,
+        'S01 Shot 4 same-source overlap did not create two source nodes over one shared PCM buffer.');
+        const expectedSameSourceGains = fixture.project.shots[3].audioClips
+          .filter((clip) => clip.assetId === assetA.id).map((clip) => clip.volume).sort((a, b) => a - b);
+        const actualSameSourceGains = sameStarts.map((source) => source.gain ?? -1).sort((a, b) => a - b);
+        assert(sameStarts.every((source) => source.startCount === 1) &&
+          actualSameSourceGains.length === expectedSameSourceGains.length &&
+          actualSameSourceGains.every((gain, index) => Math.abs(gain - expectedSameSourceGains[index]) <= 0.001),
+        'S01 Shot 4 same-source overlap changed its source count or clip gains.');
+      }
+      await stopIfPlaying(window);
+
+      const reverse = await playAtProjectTime(window, 0, 1, readMetrics, fixture.sourceRecords,
+        'S01 reverse switch to Shot 1 A');
+      const reverseStarts = startedNativeSources(reverse.state, reverse.startIndex, fixture.sourceRecords);
+      receipt.playback.reverseToShot1 = transitionSnapshot('reverse-shot1-A', 0, reverse.state,
+        reverse.startIndex, fixture.sourceRecords);
+      transitionSteps.push(receipt.playback.reverseToShot1);
+      await stopIfPlaying(window);
+      const repeatedOverlap = await playAtProjectTime(window, 300_000, 2, readMetrics, fixture.sourceRecords,
+        'S01 forward switch back to Shot 3 A+B');
+      const repeatedStarts = startedNativeSources(repeatedOverlap.state, repeatedOverlap.startIndex, fixture.sourceRecords);
+      receipt.playback.repeatShot3 = transitionSnapshot('repeat-shot3-A+B', 300_000,
+        repeatedOverlap.state, repeatedOverlap.startIndex, fixture.sourceRecords);
+      transitionSteps.push(receipt.playback.repeatShot3);
+
+      const validateOverlapStarts = (starts, state, label) => {
+        const identities = [...new Set(starts.map((source) => source.assetId).filter(Boolean))].sort();
+        assert(identities.length === 2 && identities.includes(assetA.id) && identities.includes(assetB.id),
+          `${label} did not start exactly the two distinct source identities.`);
+        const byAsset = new Map(starts.map((source) => [source.assetId, source]));
+        for (const asset of [assetA, assetB]) {
+          const source = byAsset.get(asset.id);
+          const decode = source ? state.decodes.find((entry) => entry.bufferId === source.bufferId) : null;
+          const sourceRecord = fixture.sourceRecords.find((entry) => entry.assetId === asset.id);
+          const firstSample = sourceRecord?.sampleBoundaries.find((entry) => entry.offsetMs === 0)?.firstChannelSample;
+          const expectedStartSample = sourceSampleAtStart(source, sourceRecord);
+          assert(source && decode && typeof firstSample === 'number' &&
+            Math.abs(decode.firstChannelSample - firstSample) <= 0.00002 &&
+            typeof expectedStartSample === 'number' &&
+            Math.abs((source.sampleAtStartOffset ?? Infinity) - expectedStartSample) <= 0.0001,
+          `${label} did not preserve the generated source sample for ${asset.name}.`);
+          assert(source.startCount === 1 && Math.abs((source.gain ?? -1) - expectedClipGain(asset.id)) <= 0.001 &&
+            Math.abs((source.scheduledProjectTimeMs ?? -10_000) - 300_000) <= 50,
+          `${label} changed ${asset.name} start count, gain, or project start time.`);
+        }
+        assert(starts[0]?.contextId === starts[1]?.contextId,
+          `${label} used more than one AudioContext for the project Preview transport.`);
+      };
+
+      receipt.playback.projectRevisionBefore = before.revision;
+      receipt.playback.undoCountBefore = before.undo;
+      receipt.playback.sameSourceOverlap.readsBefore = readsBeforeSameSource;
+      if (issue889Phase === 'candidate') {
+        assert(overlap.state.warning === null && overlapRoutes[assetA.id] === true,
+          'S01 Shot 3 did not re-evaluate evicted A into a bounded route without an audio warning.');
+        validateOverlapStarts(overlapStarts, overlap.state, 'S01 Shot 3');
+        assert(overlap.state.activeSourceCount === 2 && secondAChunk,
+          'S01 Shot 3 did not keep exactly two active sources across the segmented continuation.');
+        receipt.playback.shot3SecondChunk = secondAChunk;
+        assert(reverseStarts.length === 1 && reverseStarts[0]?.assetId === assetA.id && reverse.state.warning === null,
+          'S01 reverse Shot 1 did not restart A once without a warning.');
+        validateOverlapStarts(repeatedStarts, repeatedOverlap.state, 'S01 repeated Shot 3');
+        assert(repeatedOverlap.state.warning === null,
+          'S01 repeated Shot 3 retained an audio warning after the reverse switch.');
+      }
+      receipt.playback.sameSourceOverlap.readsAfter = readMetrics.actualValidatedReadTasks;
+      await stopIfPlaying(window);
+      await click(window, '[data-testid="product-preview-close"]');
+      await waitFor(window, `!document.querySelector('[data-testid="product-preview-overlay"]')`,
+        'S01 Product Preview did not close.');
+      await waitFor(window, `window.__issue887Au03?.contexts.every(item => item.ref.deref()?.state === 'closed')`,
+        'S01 close left an AudioContext open.', 10_000);
+      const closedState = await readState(window);
+      const routeAndLruEvents = await readRouteAuditEvents(window);
+      receipt.playback.closedState = closedState;
+      receipt.memoryEvidence = {
+        limitBytes: workingSetLimitBytes,
+        estimatedPeak: deriveIssue889WorkingSetPeak(fixture, readMetrics, overlap.state.decodes,
+          routeAndLruEvents, Date.now()),
+        fixtureBudgets: fixture.caseManifest,
+        pcmLruBytesByTransition: transitionSteps.map(({ label, idlePcmBytes }) => ({ label, idlePcmBytes })),
+        observedIdlePcmLruPeakBytes: Math.max(...transitionSteps.map((entry) => entry.idlePcmBytes ?? 0)),
+        observedIdlePcmLruPeakEntries: Math.max(...transitionSteps.map((entry) => entry.idlePcmLru?.length ?? 0)),
+        waveSourceBytesByTransition: transitionSteps.map(({ label, waveSourceBytes }) => ({ label, waveSourceBytes })),
+        observedWaveSourcePeakBytes: Math.max(...transitionSteps.map((entry) => entry.waveSourceBytes ?? 0)),
+        observedWaveSourceCachePeakBytes: Math.max(...transitionSteps.map((entry) => entry.waveSourceCacheBytes ?? 0)),
+        observedWaveSourceCachePeakEntries: Math.max(...transitionSteps.map((entry) => entry.idleWaveSourceCache?.length ?? 0)),
+        sourceReadAndDecodeLedger: {
+          infoRequests: readMetrics.infoRequests.map((entry) => ({ ...entry })),
+          validatedReads: readMetrics.requests.map((entry) => ({ ...entry })),
+          decodeBuffers: overlap.state.decodes.map(({ bufferId, inputByteLength, pcmBytes, durationSeconds,
+            status, startedAtMs, completedAtMs }) =>
+            ({ bufferId, inputByteLength, pcmBytes, durationSeconds, status, startedAtMs, completedAtMs })),
+          retainedPcmEvents: routeAndLruEvents.filter((entry) => entry.kind.startsWith('pcm-')),
+          retainedWaveSourceEvents: routeAndLruEvents.filter((entry) => entry.kind.startsWith('wave-source-')),
+          routeDecisionEvents: routeAndLruEvents.filter((entry) => entry.kind.startsWith('route-')),
+        },
+        sourceFileBytes: fixture.sourceRecords.map(({ assetId, sha256: sourceSha256, sourceFileBytes,
+          estimatedOutputPcmBytesAt48kHz, estimatedPaddedReservationBytes }) =>
+          ({ assetId, sha256: sourceSha256, sourceFileBytes, estimatedOutputPcmBytesAt48kHz,
+            estimatedPaddedReservationBytes })),
+        estimatedWorkingSetIsNotOperatingSystemRss: true,
+      };
+      assert(receipt.memoryEvidence.estimatedPeak.peakEstimatedWorkingSetBytes <= workingSetLimitBytes,
+        `S01 event-derived estimated peak ${receipt.memoryEvidence.estimatedPeak.peakEstimatedWorkingSetBytes} exceeded 128 MiB.`);
+      assert(receipt.memoryEvidence.observedIdlePcmLruPeakBytes <= 64 * 1024 * 1024 &&
+        receipt.memoryEvidence.observedIdlePcmLruPeakEntries <= 8,
+      'S01 observed idle PCM LRU exceeded the existing 8-entry/64 MiB budget.');
+      assert(receipt.memoryEvidence.observedWaveSourceCachePeakBytes <= 96 * 1024 * 1024 &&
+        receipt.memoryEvidence.observedWaveSourceCachePeakEntries <= 4,
+      'S01 observed WAV source cache exceeded the existing 4-entry/96 MiB budget.');
+      receipt.mainAudioRead = { ipcRequests: readMetrics.requests.length,
+        infoRequests: readMetrics.infoRequests.map((entry) => ({ ...entry })),
+        actualValidatedReadTasks: readMetrics.actualValidatedReadTasks, maximumConcurrentTasks: readMetrics.maxActive,
+        requests: readMetrics.requests.map((entry) => ({ ...entry })),
+        hashValidationIndex: service.getHashValidationIndexSnapshot(),
+        rendererRoundTripWrapperInstalled: overlap.state.readWrapperInstalled,
+        rendererRoundTrips: overlap.state.reads };
+      receipt.playback.sourceStarts = overlapStarts;
+      receipt.playback.finalState = closedState;
+      receipt.playback.projectRevisionAfter = closedState.projectRevision;
+      receipt.playback.undoCountAfter = closedState.undoCount;
+      receipt.projectUnchanged = sha256(readFileSync(path.join(projectRoot, 'project.json'))) === initialProjectSha256 &&
+        before.revision === closedState.projectRevision && before.undo === closedState.undoCount;
+      assert(receipt.projectUnchanged, 'S01 playback changed Project bytes, revision, or undo history.');
+      assert(closedState.contexts.length > 0 && closedState.contexts.every((context) => context.state === 'closed') &&
+        closedState.activeSourceCount === 0,
+      'S01 shutdown left an AudioContext or active source alive.');
+      receipt.measurementCompleted = true;
     } else if (issueCase === 'A-full') {
       await waitFor(window,
         `Number(document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewTime ?? -1) >= 10_100`,
@@ -907,7 +1536,7 @@ async function run() {
         sampleBoundaryChecks, activeSources: boundaryState.activeSourceCount };
     }
 
-    if (!isIssue888Case) {
+    if (!isIssue888Case && !isIssue889Case) {
     if ((issueCase === 'A-offset' || issueCase === 'A-proxy-control') && fixture.project.shots.length > 1) {
       await stopIfPlaying(window);
       const nextShotStartMs = fixture.project.shots[0].durationMs;
@@ -1024,9 +1653,22 @@ async function run() {
   console.log(JSON.stringify({ measurementCompleted: receipt.measurementCompleted, issueCase, resultPath,
     rejectionClassification: receipt.playback?.rejectionClassification ?? null,
     reads: receipt.mainAudioRead?.requests?.map(({ assetId, status, byteLength }) => ({ assetId, status, byteLength })) ?? [],
-    playbackDecodes: receipt.playback?.firstShot?.decodes?.map(({ status, inputByteLength, sampleRate, channels, durationSeconds, pcmBytes }) =>
-      ({ status, inputByteLength, sampleRate, channels, durationSeconds, pcmBytes })) ?? [],
-    startedSources: receipt.playback?.sourceStarts?.length ?? 0,
+    playbackDecodes: (isIssue889Case
+      ? receipt.memoryEvidence?.sourceReadAndDecodeLedger?.decodeBuffers ?? receipt.playback?.shot3AB?.decodeBuffers
+      : receipt.playback?.firstShot?.decodes)?.map(({ status, inputByteLength, sampleRate, channels,
+        durationSeconds, pcmBytes }) => ({ status, inputByteLength, sampleRate, channels, durationSeconds, pcmBytes })) ?? [],
+    startedSources: isIssue889Case
+      ? receipt.playback?.shot3AB?.overlapStarts?.length ?? 0
+      : receipt.playback?.sourceStarts?.length ?? 0,
+    issue889: isIssue889Case ? {
+      phase: issue889Phase,
+      aFullPcmEvictedAtBOffsetMs: receipt.playback?.shot2B?.aFullPcmEvictedAtBOffsetMs ?? null,
+      aDecisionAfterEviction: receipt.playback?.shot2B?.aDecisionAfterEviction ?? null,
+      shot3RouteDecisions: receipt.playback?.shot3AB?.routeDecisions ?? null,
+      shot3StartedAssetIds: receipt.playback?.shot3AB?.distinctStartedAssetIds ?? [],
+      estimatedWorkingSetPeakBytes: receipt.memoryEvidence?.estimatedPeak?.peakEstimatedWorkingSetBytes ?? null,
+      estimatedWorkingSetIsNotOperatingSystemRss: receipt.memoryEvidence?.estimatedWorkingSetIsNotOperatingSystemRss ?? null,
+    } : null,
     mp3NativeDecodeMeasurement: receipt.mp3NativeDecodeMeasurement,
     error: receipt.error ?? null }, null, 2));
   app.exit(receipt.measurementCompleted ? 0 : 1);

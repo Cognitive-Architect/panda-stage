@@ -671,6 +671,7 @@
           "tests/unit/issue886-au03-audio-working-set.test.ts",
           "tests/unit/issue887-au03-capacity.test.ts",
           "tests/unit/issue888-au03-followup.test.ts",
+          "tests/unit/issue889-au03-transition.test.ts",
           "tests/unit/asset-preview-audio-service.test.ts",
           "tests/unit/asset-library-ipc-handlers.test.ts",
           "tests/unit/speaker-focus-preview-contract.test.ts",
@@ -721,17 +722,19 @@
           "scripts/generate-issue887-au03-capacity-fixtures.cjs",
           "scripts/verify-issue887-au03-capacity.cjs",
           "scripts/generate-issue888-au03-followup-fixtures.cjs",
-          "scripts/verify-issue888-au03-followup.cjs"
+          "scripts/verify-issue888-au03-followup.cjs",
+          "scripts/generate-issue889-au03-transition-fixtures.cjs",
+          "scripts/verify-issue889-au03-transition.cjs"
         ],
         "suites": ["editor", "timeline"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "editor",
-        "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. Issues #887 and #888 register their audio capacity tests, generated fixtures, and native Windows verifiers here. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted."
+        "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. Issues #887, #888, and #889 register their audio capacity/transition tests, generated fixtures, and native Windows verifiers here. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted."
       }
     ]
   },
-  "count": 103,
+  "count": 104,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1128,6 +1131,18 @@
       "owner": "editor",
       "supersedes": null,
       "notes": "Issue #888 native Windows Electron L1 follow-up for F01 two distinct concurrent 150s WAV sources and F02 future 240s WAV segmented prewarm at master+300ms. Requires PANDA_STAGE_ISSUE888_CASE and PANDA_STAGE_ISSUE888_PROJECT_ROOT from evidence:issue888-au03-fixtures; phase defaults to baseline and candidate mode asserts the repaired starts. Optional PANDA_STAGE_ISSUE888_READ_DELAY_MS and PANDA_STAGE_ISSUE888_DECODE_DELAY_MS record the prewarm window boundary. Native L1 records AudioContext source scheduling and PCM samples but does not claim physical speaker output or OWNER listening acceptance."
+    },
+    {
+      "id": "issue889-au03-transition",
+      "script": "verify:issue889-au03-transition",
+      "suite": "editor",
+      "subsystem": "audio",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "Issue #889 native Windows Electron L1 A-only -> B-only -> A+B transition using one Preview transport and original synthetic v14 fixture. Set PANDA_STAGE_ISSUE889_PROJECT_ROOT from evidence:issue889-au03-fixtures; phase defaults to candidate, while baseline mode is reserved for the frozen HEAD reproduction. Candidate mode asserts safe decision invalidation after unleased PCM LRU eviction, both distinct source starts/gains, reverse/repeat transitions, same-source overlap, memory ledger, and project immutability. Native L1 does not claim physical speaker output or OWNER listening acceptance."
     },
     {
       "id": "fla-v1-5-c3",

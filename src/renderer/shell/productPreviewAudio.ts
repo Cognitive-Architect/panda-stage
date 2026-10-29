@@ -1438,6 +1438,13 @@ export class ProductPreviewAudioTransport {
   }
 
   private removeRetainedRecord(record: DecodedAudioBufferRecord): void {
+    // A full-decode decision is reusable only while its PCM remains retained.
+    // Idle LRU eviction is a safe boundary: no voice or preparation still owns
+    // the record, so a later plan must budget the source against its new mix.
+    if (record.voiceLeases.size === 0 && record.consumerLeases.size === 0 &&
+        this.waveStreamDecisions.get(record.key) === false) {
+      this.waveStreamDecisions.delete(record.key);
+    }
     this.removeIdleRecord(record);
     if (this.bufferRecords.get(record.key) === record) this.bufferRecords.delete(record.key);
   }
