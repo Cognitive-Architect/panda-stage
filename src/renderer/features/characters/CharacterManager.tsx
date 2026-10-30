@@ -15,6 +15,7 @@ import {
   type CreateCompositeCharacterInput,
   type CharacterHead,
   type CompositeCharacterDefinition,
+  type ExpressionCharacter,
   type ImageAsset,
   type Project,
 } from '../../../domain';
@@ -142,6 +143,10 @@ export function placeCharacterInCurrentShot({
     reportStatus('请先打开项目、选择镜头和角色。');
     return;
   }
+  if (character.mode === 'adaptive-parts') {
+    reportStatus('Adaptive Parts characters are not supported in Stage layers yet.');
+    return;
+  }
   if (defaultTransformPending) {
     reportStatus('先应用角色大小设置。');
     return;
@@ -172,7 +177,11 @@ export function placeCharacterInCurrentShot({
     const liveCharacter = snapshot.project.characters.find(
       (candidate) => candidate.id === characterId,
     );
-    if (!liveShot || !liveCharacter) return null;
+    if (
+      !liveShot ||
+      !liveCharacter ||
+      liveCharacter.mode === 'adaptive-parts'
+    ) return null;
     return { snapshot, character: liveCharacter, shotDurationMs: liveShot.durationMs };
   };
 
@@ -235,11 +244,16 @@ export function CharacterManager({
       activeSession.projectId === snapshot?.project.id &&
       activeSession.projectRoot === snapshot?.projectRoot &&
       snapshot.project.characters.some(
-        (character) => character.id === activeSession.characterId,
+        (character) =>
+          character.id === activeSession.characterId &&
+          character.mode !== 'adaptive-parts',
       )
         ? activeSession.characterId
         : null;
-    return resumableCharacterId ?? snapshot?.project.characters[0]?.id ?? null;
+    return resumableCharacterId ??
+      snapshot?.project.characters.find(
+        (character) => character.mode !== 'adaptive-parts',
+      )?.id ?? null;
   });
   const selectedCharacterIdRef = useRef(selectedCharacterId);
   selectedCharacterIdRef.current = selectedCharacterId;
@@ -266,6 +280,10 @@ export function CharacterManager({
   const creationBaselineIdsRef = useRef<Set<string> | null>(null);
   const creationStartViewRef = useRef<CharacterWorkspaceView | null>(null);
   const project = snapshot?.project ?? null;
+  const expressionCharacters = project?.characters.filter(
+    (character): character is ExpressionCharacter =>
+      character.mode !== 'adaptive-parts',
+  ) ?? [];
   const imageAssets = useMemo(
     () =>
       (project?.assets.filter(
@@ -280,7 +298,7 @@ export function CharacterManager({
     );
   }, [imageAssets, project, snapshot, thumbnailEntries]);
   const selectedCharacter =
-    project?.characters.find(
+    expressionCharacters.find(
       (character) => character.id === selectedCharacterId,
       ) ?? null;
   const editAssemblySnapshot =
@@ -323,14 +341,14 @@ export function CharacterManager({
   useEffect(() => {
     if (
       selectedCharacterId &&
-      project?.characters.some(
+      expressionCharacters.some(
         (character) => character.id === selectedCharacterId,
       )
     ) {
       return;
     }
-    setSelectedCharacterId(project?.characters[0]?.id ?? null);
-  }, [project, selectedCharacterId]);
+    setSelectedCharacterId(expressionCharacters[0]?.id ?? null);
+  }, [expressionCharacters, selectedCharacterId]);
 
   useEffect(() => {
     if (!snapshot) {
@@ -417,7 +435,7 @@ export function CharacterManager({
     const next = mutate(() => characterStore.create(input));
     if (next) {
       const createdCharacter = next.characters.at(-1);
-      if (!createdCharacter) return;
+      if (!createdCharacter || createdCharacter.mode === 'adaptive-parts') return;
       showBindingReminder(
         next,
         createdCharacter.expressions.map((expression) => expression.assetId),
@@ -659,7 +677,7 @@ export function CharacterManager({
           <div>
             <span>
               {snapshot
-                ? `${snapshot.project.characters.length} 个角色`
+                ? `${expressionCharacters.length} 个角色`
                 : '尚未打开项目'}
             </span>
           </div>
@@ -671,7 +689,7 @@ export function CharacterManager({
       >
         {view === 'legacy' ? (
           <CharacterList
-            characters={project?.characters ?? []}
+            characters={expressionCharacters}
             disabled={!snapshot}
             imageAssets={imageAssets}
             mode="legacy"
@@ -690,7 +708,7 @@ export function CharacterManager({
           />
         ) : view === 'list' ? (
           <CharacterList
-            characters={project?.characters ?? []}
+            characters={expressionCharacters}
             disabled={!snapshot}
             imageAssets={imageAssets}
             mode="list"
@@ -707,7 +725,7 @@ export function CharacterManager({
           />
         ) : view === 'create' ? (
           <CharacterList
-            characters={project?.characters ?? []}
+            characters={expressionCharacters}
             disabled={!snapshot}
             imageAssets={imageAssets}
             mode="create"

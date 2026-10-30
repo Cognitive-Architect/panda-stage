@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
@@ -309,7 +310,7 @@ describe('asset library selectors', () => {
 
   it('classifies a composite Body as Character-related without guessing Character identity', () => {
     const project = migrateProject(exampleProject);
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
     const bodyAsset = project.assets.find(
       (asset) =>
         asset.kind === 'image' &&
@@ -347,7 +348,7 @@ describe('asset library selectors', () => {
 
   it('emits one explicit identity entry per character expression even when assets are shared', () => {
     const project = migrateProject(exampleProject);
-    const characterA = project.characters[0]!;
+    const characterA = asExpressionCharacter(project.characters[0]!);
     const sharedAssetId = characterA.expressions[0]!.assetId;
     const characterB = {
       ...characterA,

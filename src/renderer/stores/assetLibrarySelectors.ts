@@ -55,14 +55,18 @@ export function assetCategory(
 ): AssetLibraryCategory {
   if (asset.kind === 'audio') return 'audio';
   const characterAssetIds = new Set(
-    project.characters.flatMap((character) => [
-      character.baseAssetId,
-      ...(character.mode === 'composite' ? [character.bodyAssetId] : []),
-      ...character.expressions.map((expression) => expression.assetId),
-      ...(character.mouthOpenAssetId
-        ? [character.mouthOpenAssetId]
-        : []),
-    ]),
+    project.characters.flatMap((character) =>
+      character.mode === 'adaptive-parts'
+        ? character.parts.map((part) => part.assetId)
+        : [
+            character.baseAssetId,
+            ...(character.mode === 'composite' ? [character.bodyAssetId] : []),
+            ...character.expressions.map((expression) => expression.assetId),
+            ...(character.mouthOpenAssetId
+              ? [character.mouthOpenAssetId]
+              : []),
+          ],
+    ),
   );
   return characterAssetIds.has(asset.id) ? 'character' : 'background';
 }
@@ -81,6 +85,10 @@ export function selectAssetLibraryEntries(
   );
   const separatelyUsedAssetIds = new Set<string>();
   for (const character of project.characters) {
+    if (character.mode === 'adaptive-parts') {
+      character.parts.forEach((part) => separatelyUsedAssetIds.add(part.assetId));
+      continue;
+    }
     separatelyUsedAssetIds.add(character.baseAssetId);
     if (character.mode === 'composite') {
       separatelyUsedAssetIds.add(character.bodyAssetId);
@@ -141,7 +149,7 @@ export function selectAssetLibraryEntries(
 
     const expressionEntries = project.characters.flatMap(
       (character) =>
-        character.expressions
+        (character.mode === 'adaptive-parts' ? [] : character.expressions)
           .filter((expression) => expression.assetId === asset.id)
           .map((expression) => ({
             id: `expression:${character.id}:${expression.id}`,
@@ -169,8 +177,15 @@ export function selectAssetLibraryEntries(
         character.mode === 'composite' &&
         character.bodyAssetId === asset.id,
     );
+    const isPartAsset = project.characters.some(
+      (character) =>
+        character.mode === 'adaptive-parts' &&
+        character.parts.some((part) => part.assetId === asset.id),
+    );
     const isMouthAsset = project.characters.some(
-      (character) => character.mouthOpenAssetId === asset.id,
+      (character) =>
+        character.mode !== 'adaptive-parts' &&
+        character.mouthOpenAssetId === asset.id,
     );
     entries.push({
       id: `character-direct:${asset.id}`,
@@ -178,7 +193,9 @@ export function selectAssetLibraryEntries(
       category: resolvedCategory,
       contextLabel: isBodyAsset
         ? '身体素材 · 作为普通图片放置'
-        : isMouthAsset
+          : isPartAsset
+            ? 'Character Part image · use as a regular image'
+            : isMouthAsset
           ? '嘴型素材 · 作为普通图片放置'
           : '角色素材 · 作为普通图片放置',
       dropPayload: {

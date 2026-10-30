@@ -149,7 +149,11 @@ export function projectShotMouth(
   const speakingCharacter = project.characters.find(
     (candidate) => candidate.id === dialogue.characterId,
   );
-  if (!speakingCharacter?.mouthOpenAssetId) return evaluatedShot;
+  if (
+    !speakingCharacter ||
+    speakingCharacter.mode === 'adaptive-parts' ||
+    !speakingCharacter.mouthOpenAssetId
+  ) return evaluatedShot;
 
   const mouthAsset = project.assets.find(
     (candidate) => candidate.id === speakingCharacter.mouthOpenAssetId,

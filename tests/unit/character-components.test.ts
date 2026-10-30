@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -21,7 +22,7 @@ const noop = () => undefined;
 
 function projectWithWarning(): Project {
   const project = migrateProject(exampleProject);
-  const character = project.characters[0]!;
+  const character = asExpressionCharacter(project.characters[0]!);
   const secondExpression = character.expressions[1]!;
   return ProjectSchema.parse({
     ...project,
@@ -125,7 +126,7 @@ describe('character management components', () => {
 
   it('shows expression thumbnails, a default marker, protected deletion, and understandable size warnings', () => {
     const project = projectWithWarning();
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
     const imageAssets = project.assets.filter(
       (asset) => asset.kind === 'image',
     );

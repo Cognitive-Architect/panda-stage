@@ -3,6 +3,7 @@ import type {
   Character,
   CharacterDimensionWarning,
   CompositeCharacterDefinition,
+  ExpressionCharacter,
   ImageAsset,
   Project,
 } from '../../../domain';
@@ -33,7 +34,7 @@ type HeadedCompositeCharacter = Extract<Character, { mode: 'composite' }> & {
 };
 
 export function isDefaultTransformPending(
-  character: Pick<Character, 'defaultScale' | 'defaultFlipX'>,
+  character: Pick<ExpressionCharacter, 'defaultScale' | 'defaultFlipX'>,
   scale: number,
   flipX: boolean,
 ): boolean {
@@ -456,7 +457,7 @@ export function CharacterEditor({
     );
   };
 
-  if (!character) {
+  if (!character || character.mode === 'adaptive-parts') {
     return (
       <div className="character-editor character-editor-empty">
         <strong>选择一个角色开始编辑</strong>

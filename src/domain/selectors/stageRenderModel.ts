@@ -44,8 +44,18 @@ export function buildEditorStageRenderModel(
   const layers = [...shot.layers]
     .sort((left, right) => left.zIndex - right.zIndex)
     .map((layer): EditorStageRenderLayer => {
-      const baseAsset = resolveLayerImageAsset(project, layer);
-      const evaluated = evaluatedById.get(layer.id) ?? {
+      const layerSource = layer.source;
+      const character =
+        layerSource.kind === 'character'
+          ? project.characters.find(
+              (candidate) => candidate.id === layerSource.characterId,
+            )
+          : undefined;
+      const unsupportedCharacter = character?.mode === 'adaptive-parts';
+      const baseAsset = unsupportedCharacter
+        ? null
+        : resolveLayerImageAsset(project, layer);
+      const evaluatedSource = evaluatedById.get(layer.id) ?? {
         id: layer.id,
         assetId: baseAsset?.id ?? '',
         anchor: layer.anchor,
@@ -59,7 +69,12 @@ export function buildEditorStageRenderModel(
         visible: layer.visible,
         zIndex: layer.zIndex,
       };
-      const visual = visualOverrides?.has(layer.id)
+      const evaluated = unsupportedCharacter
+        ? { ...evaluatedSource, assetId: '', visible: false }
+        : evaluatedSource;
+      const visual = unsupportedCharacter
+        ? resolveLayerVisualParts(project, shot, evaluated)
+        : visualOverrides?.has(layer.id)
         ? visualOverrides.get(layer.id) ?? emptyVisual(project, layer, evaluated)
         : resolveLayerVisualParts(project, shot, evaluated);
       // `asset` remains as a compatibility/diagnostic primary asset for the
@@ -144,9 +159,11 @@ function emptyVisual(
   return {
     ownerLayerId: layer.id,
     kind:
-      character?.mode === 'composite'
-        ? 'composite-character'
-        : character
+      character?.mode === 'adaptive-parts'
+        ? 'unsupported-character'
+        : character?.mode === 'composite'
+          ? 'composite-character'
+          : character
           ? 'single-image-character'
           : 'ordinary-image',
     ownerTransform: {

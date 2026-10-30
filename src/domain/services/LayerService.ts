@@ -165,9 +165,11 @@ export class LayerService {
     }
 
     const expressionAssetIds = new Set(
-      project.characters.flatMap((character) => [
-        ...character.expressions.map((expression) => expression.assetId),
-      ]),
+      project.characters.flatMap((character) =>
+        character.mode === 'adaptive-parts'
+          ? []
+          : character.expressions.map((expression) => expression.assetId),
+      ),
     );
     if (input.type === 'asset-image' && expressionAssetIds.has(asset.id)) {
       throw new LayerServiceError(
@@ -183,8 +185,10 @@ export class LayerService {
           )
         : undefined;
     const expression =
-      input.type === 'character-expression'
-        ? character?.expressions.find(
+      input.type === 'character-expression' &&
+      character &&
+      character.mode !== 'adaptive-parts'
+        ? character.expressions.find(
             (candidate) => candidate.id === input.expressionId,
           )
         : undefined;
@@ -652,7 +656,9 @@ export class LayerService {
       ...project.assets.map((asset) => asset.id),
       ...project.characters.flatMap((character) => [
         character.id,
-        ...character.expressions.map((expression) => expression.id),
+        ...(character.mode === 'adaptive-parts'
+          ? character.parts.map((part) => part.partId)
+          : character.expressions.map((expression) => expression.id)),
       ]),
       ...project.voiceProfiles.map((profile) => profile.id),
       ...project.subtitleStyles.map((style) => style.id),

@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -31,7 +32,7 @@ function fixture({
   const imageAssets = project.assets.filter(
     (asset): asset is ImageAsset => asset.kind === 'image',
   );
-  const base = project.characters[0]!;
+  const base = asExpressionCharacter(project.characters[0]!);
   const character = composite
     ? ProjectSchema.parse({
         ...project,
@@ -209,11 +210,11 @@ describe('Issue #614 Character Detail polish', () => {
 
     const migrated = migrateProject(exampleProject);
     const expressionNames = migrated.characters.map((character) =>
-      character.expressions.map((expression) => expression.name),
+      asExpressionCharacter(character).expressions.map((expression) => expression.name),
     );
     expect(
       migrateProject(migrated).characters.map((character) =>
-        character.expressions.map((expression) => expression.name),
+        asExpressionCharacter(character).expressions.map((expression) => expression.name),
       ),
     ).toEqual(expressionNames);
   });

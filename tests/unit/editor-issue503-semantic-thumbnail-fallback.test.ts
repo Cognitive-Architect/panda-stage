@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -10,7 +11,7 @@ import { ImageAssetPicker } from '../../src/renderer/features/characters/ImageAs
 
 const noop = () => undefined;
 const project = migrateProject(exampleProject);
-const character = project.characters[0]!;
+const character = asExpressionCharacter(project.characters[0]!);
 const imageAssets = project.assets.filter((asset) => asset.kind === 'image');
 const firstAsset = imageAssets[0]!;
 

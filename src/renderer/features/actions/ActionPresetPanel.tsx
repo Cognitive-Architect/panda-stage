@@ -62,14 +62,14 @@ export function ActionPresetPanel(): React.JSX.Element {
       return [];
     }
     const characterId = layer.source.characterId;
-    return (
-      project.characters
-        .find((candidate) => candidate.id === characterId)
-        ?.expressions.map((expression) => ({
+    const character = project.characters.find(
+      (candidate) => candidate.id === characterId,
+    );
+    if (!character || character.mode === 'adaptive-parts') return [];
+    return character.expressions.map((expression) => ({
           id: expression.id,
           name: expression.name,
-        })) ?? []
-    );
+        }));
   })();
 
   const presetDisabled = (id: ActionPresetId): boolean => {

@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { describe, expect, it } from 'vitest';
 import {
   ProjectSchema,
@@ -83,7 +84,7 @@ describe('scanAssetReferences', () => {
 
 describe('character reference scans', () => {
   it('uses the shared scanner for character and expression deletion protection', () => {
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
     const expression = character.expressions[0]!;
 
     expect(
@@ -101,7 +102,7 @@ describe('character reference scans', () => {
   });
 
   it('reports a character mouth asset through the asset scanner', () => {
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
     const withMouth = ProjectSchema.parse({
       ...project,
       characters: project.characters.map((candidate) =>

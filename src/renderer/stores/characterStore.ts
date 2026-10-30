@@ -2,8 +2,11 @@ import {
   CharacterService,
   type CharacterExpressionAssetUpdate,
   type CharacterExpressionDraft,
+  type AdaptivePartUpdate,
+  type AdaptivePartsCharacterDefinition,
   type CompositeCharacterDefinition,
   type CompositeCharacterUpdate,
+  type CreateAdaptivePartsCharacterInput,
   type CreateCharacterInput,
   type CreateCompositeCharacterInput,
   type FacePlacement,
@@ -42,6 +45,80 @@ export class CharacterStore {
     return this.apply(
       (project) => this.service.createComposite(project, input),
       'Create composite character',
+      expectedSnapshot,
+    );
+  }
+
+  createAdaptiveParts(
+    input: CreateAdaptivePartsCharacterInput,
+    expectedSnapshot?: EditorProjectSnapshot,
+  ): Project {
+    return this.apply(
+      (project) => this.service.createAdaptiveParts(project, input),
+      'Create Adaptive Parts character',
+      expectedSnapshot,
+    );
+  }
+
+  getAdaptivePartsDefinition(
+    characterId: string,
+  ): AdaptivePartsCharacterDefinition {
+    const snapshot = this.requireSnapshot();
+    return this.service.getAdaptivePartsDefinition(
+      snapshot.project,
+      characterId,
+    );
+  }
+
+  applyAdaptivePartsDefinition(
+    characterId: string,
+    definition: AdaptivePartsCharacterDefinition,
+    expectedSnapshot?: EditorProjectSnapshot,
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.applyAdaptivePartsDefinition(
+          project,
+          characterId,
+          definition,
+        ),
+      'Apply Adaptive Parts definition',
+      expectedSnapshot,
+    );
+  }
+
+  updateAdaptivePartsDefinition(
+    characterId: string,
+    definition: AdaptivePartsCharacterDefinition,
+    expectedSnapshot?: EditorProjectSnapshot,
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.updateAdaptivePartsDefinition(
+          project,
+          characterId,
+          definition,
+        ),
+      'Update Adaptive Parts definition',
+      expectedSnapshot,
+    );
+  }
+
+  updateAdaptivePart(
+    characterId: string,
+    partId: string,
+    update: AdaptivePartUpdate,
+    expectedSnapshot?: EditorProjectSnapshot,
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.updateAdaptivePart(
+          project,
+          characterId,
+          partId,
+          update,
+        ),
+      'Update Adaptive Part',
       expectedSnapshot,
     );
   }

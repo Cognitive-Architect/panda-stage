@@ -1,6 +1,8 @@
 import {
+  AdaptivePartsCharacterSchema,
   BodyPlacementSchema,
   CharacterHeadSchema,
+  CharacterPartSchema,
   DEFAULT_BODY_PLACEMENT,
   FacePlacementSchema,
   ProjectSchema,
@@ -8,6 +10,10 @@ import {
   type Character,
   type CharacterExpression,
   type CharacterHead,
+  type CharacterPart,
+  type CharacterPartTransform,
+  type AdaptivePartsCharacter,
+  type ExpressionCharacter,
   type BodyPlacement,
   type FacePlacement,
   type ImageAsset,
@@ -31,6 +37,10 @@ export type CharacterServiceErrorCode =
   | 'CHARACTER_REFERENCED'
   | 'EXPRESSION_REFERENCED'
   | 'COMPOSITE_CHARACTER_REQUIRED'
+  | 'EXPRESSION_CHARACTER_REQUIRED'
+  | 'ADAPTIVE_PARTS_CHARACTER_REQUIRED'
+  | 'ADAPTIVE_PART_NOT_FOUND'
+  | 'INVALID_ADAPTIVE_PARTS_DEFINITION'
   | 'INVALID_FACE_PLACEMENT'
   | 'INVALID_BODY_PLACEMENT'
   | 'INVALID_HEAD'
@@ -72,6 +82,14 @@ export interface CreateCompositeCharacterInput
   head?: CharacterHead;
 }
 
+export interface CreateAdaptivePartsCharacterInput {
+  name: string;
+  sourceRootTransform?: CharacterPartTransform;
+  parts: readonly CharacterPart[];
+  defaultScale?: number;
+  defaultFlipX?: boolean;
+}
+
 export interface CharacterExpressionAssetUpdate {
   expressionId: string;
   assetId: string;
@@ -96,6 +114,16 @@ export interface CompositeCharacterUpdate {
   expressionAssets?: readonly CharacterExpressionAssetUpdate[];
   mouthOpenAssetId?: string | null;
 }
+
+/** Complete static, Character-local definition consumed by the later C2 renderer. */
+export interface AdaptivePartsCharacterDefinition {
+  /** Source container transform retained outside Character-local Part transforms. */
+  sourceRootTransform: CharacterPartTransform;
+  parts: readonly CharacterPart[];
+}
+
+/** Updates one Part while preserving its stable identity. */
+export type AdaptivePartUpdate = Partial<Omit<CharacterPart, 'partId'>>;
 
 export interface CharacterDimensionWarning {
   assetId: string;
@@ -215,7 +243,7 @@ export class CharacterService {
     const head = input.head ? this.validHead(project, input.head) : undefined;
     const singleImageProject = this.create(project, input);
     const character = singleImageProject.characters.at(-1);
-    if (!character) {
+    if (!character || character.mode === 'adaptive-parts') {
       throw new CharacterServiceError(
         'CHARACTER_NOT_FOUND',
         'The newly created Character was not found.',
@@ -229,6 +257,120 @@ export class CharacterService {
       facePlacement,
       talkingHeadMotionIntensityPercent: 100,
       ...(head ? { head } : {}),
+    });
+  }
+
+  createAdaptiveParts(
+    project: Project,
+    input: CreateAdaptivePartsCharacterInput,
+  ): Project {
+    const name = input.name.trim();
+    if (
+      project.characters.some(
+        (character) => normalizedName(character.name) === normalizedName(name),
+      )
+    ) {
+      throw new CharacterServiceError(
+        'DUPLICATE_CHARACTER_NAME',
+        `Character name already exists: ${name}`,
+      );
+    }
+    const characterId = this.createId();
+    const voiceProfileId = this.createId();
+    const character = this.validAdaptivePartsCharacter(project, {
+      id: characterId,
+      name,
+      mode: 'adaptive-parts',
+      defaultVoiceProfileId: voiceProfileId,
+      defaultScale: input.defaultScale ?? 1,
+      defaultFlipX: input.defaultFlipX ?? false,
+      sourceRootTransform: input.sourceRootTransform,
+      parts: input.parts,
+    });
+    return this.finish(project, {
+      ...project,
+      characters: [...project.characters, character],
+      voiceProfiles: [
+        ...project.voiceProfiles,
+        {
+          id: voiceProfileId,
+          name: `${name} Default Voice`,
+          characterId,
+          locale: 'zh-CN',
+          rate: 1,
+          pitch: 0,
+        },
+      ],
+    });
+  }
+
+  getAdaptivePartsDefinition(
+    project: Project,
+    characterId: string,
+  ): AdaptivePartsCharacterDefinition {
+    const character = this.adaptivePartsCharacter(project, characterId);
+    return {
+      sourceRootTransform: { ...character.sourceRootTransform },
+      parts: character.parts.map((part) => this.clonePart(part)),
+    };
+  }
+
+  applyAdaptivePartsDefinition(
+    project: Project,
+    characterId: string,
+    definition: AdaptivePartsCharacterDefinition,
+  ): Project {
+    const character = this.adaptivePartsCharacter(project, characterId);
+    const next = this.validAdaptivePartsCharacter(project, {
+      ...character,
+      sourceRootTransform: definition.sourceRootTransform,
+      parts: definition.parts,
+    });
+    if (
+      JSON.stringify({
+        sourceRootTransform: character.sourceRootTransform,
+        parts: character.parts,
+      }) ===
+      JSON.stringify({
+        sourceRootTransform: next.sourceRootTransform,
+        parts: next.parts,
+      })
+    ) {
+      return project;
+    }
+    return this.replaceCharacter(project, next);
+  }
+
+  updateAdaptivePartsDefinition(
+    project: Project,
+    characterId: string,
+    definition: AdaptivePartsCharacterDefinition,
+  ): Project {
+    return this.applyAdaptivePartsDefinition(project, characterId, definition);
+  }
+
+  updateAdaptivePart(
+    project: Project,
+    characterId: string,
+    partId: string,
+    update: AdaptivePartUpdate,
+  ): Project {
+    const character = this.adaptivePartsCharacter(project, characterId);
+    const part = character.parts.find((candidate) => candidate.partId === partId);
+    if (!part) {
+      throw new CharacterServiceError(
+        'ADAPTIVE_PART_NOT_FOUND',
+        `Adaptive Part not found: ${partId}`,
+      );
+    }
+    const parts = character.parts.map((candidate) =>
+      candidate.partId === partId
+        ? { ...candidate, ...update, partId: candidate.partId }
+        : candidate,
+    );
+    return this.applyAdaptivePartsDefinition(project, characterId, {
+      sourceRootTransform: character.sourceRootTransform,
+      parts,
     });
   }
 
@@ -396,7 +538,7 @@ export class CharacterService {
     characterId: string,
     draft: CharacterExpressionDraft,
   ): Project {
-    const character = this.character(project, characterId);
+    const character = this.expressionCharacter(project, characterId);
     this.assertUniqueExpressionNames([
       ...character.expressions,
       { name: draft.name },
@@ -418,7 +560,7 @@ export class CharacterService {
     expressionId: string,
     rawName: string,
   ): Project {
-    const character = this.character(project, characterId);
+    const character = this.expressionCharacter(project, characterId);
     this.expression(character, expressionId);
     const expressions = character.expressions.map((expression) =>
       expression.id === expressionId
@@ -435,7 +577,7 @@ export class CharacterService {
     expressionId: string,
     assetId: string,
   ): Project {
-    const character = this.character(project, characterId);
+    const character = this.expressionCharacter(project, characterId);
     const expression = this.expression(character, expressionId);
     const imageAssetId = this.imageAsset(project, assetId).id;
     if (expression.assetId === imageAssetId) return project;
@@ -458,7 +600,7 @@ export class CharacterService {
     characterId: string,
     expressionId: string,
   ): Project {
-    const character = this.character(project, characterId);
+    const character = this.expressionCharacter(project, characterId);
     const expression = this.expression(character, expressionId);
     if (character.defaultExpressionId === expression.id) {
       throw new CharacterServiceError(
@@ -497,7 +639,7 @@ export class CharacterService {
     characterId: string,
     expressionId: string,
   ): Project {
-    const character = this.character(project, characterId);
+    const character = this.expressionCharacter(project, characterId);
     const expression = this.expression(character, expressionId);
     if (character.defaultExpressionId === expression.id) return project;
     return this.replaceCharacter(project, {
@@ -512,7 +654,7 @@ export class CharacterService {
     characterId: string,
     assetId: string | null,
   ): Project {
-    const character = this.character(project, characterId);
+    const character = this.expressionCharacter(project, characterId);
     const mouthOpenAssetId = assetId
       ? this.imageAsset(project, assetId).id
       : undefined;
@@ -576,7 +718,7 @@ export class CharacterService {
     project: Project,
     characterId: string,
   ): CharacterDimensionWarning[] {
-    const character = this.character(project, characterId);
+    const character = this.expressionCharacter(project, characterId);
     const defaultExpression = this.expression(
       character,
       character.defaultExpressionId,
@@ -628,7 +770,7 @@ export class CharacterService {
     expressionId: string | undefined,
     center: { x: number; y: number },
   ): ResolvedCharacterAppearance {
-    const character = this.character(project, characterId);
+    const character = this.expressionCharacter(project, characterId);
     const expression = this.expression(
       character,
       expressionId ?? character.defaultExpressionId,
@@ -661,6 +803,87 @@ export class CharacterService {
       );
     }
     return character;
+  }
+
+  private adaptivePartsCharacter(
+    project: Project,
+    characterId: string,
+  ): AdaptivePartsCharacter {
+    const character = this.character(project, characterId);
+    if (character.mode !== 'adaptive-parts') {
+      throw new CharacterServiceError(
+        'ADAPTIVE_PARTS_CHARACTER_REQUIRED',
+        `Character ${characterId} must use Adaptive Parts for this operation.`,
+      );
+    }
+    return character;
+  }
+
+  private expressionCharacter(
+    project: Project,
+    characterId: string,
+  ): ExpressionCharacter {
+    const character = this.character(project, characterId);
+    if (character.mode === 'adaptive-parts') {
+      throw new CharacterServiceError(
+        'EXPRESSION_CHARACTER_REQUIRED',
+        `Adaptive Parts Character ${characterId} does not have Expressions.`,
+      );
+    }
+    return character;
+  }
+
+  private validAdaptivePartsCharacter(
+    project: Project,
+    raw: unknown,
+  ): AdaptivePartsCharacter {
+    const parsed = AdaptivePartsCharacterSchema.safeParse(raw);
+    if (!parsed.success) {
+      const details = parsed.error.issues
+        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+        .join('; ');
+      throw new CharacterServiceError(
+        'INVALID_ADAPTIVE_PARTS_DEFINITION',
+        `Adaptive Parts definition is invalid: ${details}`,
+      );
+    }
+    const parts = parsed.data.parts.map((rawPart, index) => {
+      const partResult = CharacterPartSchema.safeParse(rawPart);
+      if (!partResult.success) {
+        throw new CharacterServiceError(
+          'INVALID_ADAPTIVE_PARTS_DEFINITION',
+          `Adaptive Part ${index} is invalid: ${partResult.error.message}`,
+        );
+      }
+      const part = partResult.data;
+      const asset = this.imageAsset(project, part.assetId);
+      const expectedWidth = Math.round(
+        part.imageMapping.crop.width * part.imageMapping.exportScale,
+      );
+      const expectedHeight = Math.round(
+        part.imageMapping.crop.height * part.imageMapping.exportScale,
+      );
+      if (asset.width !== expectedWidth || asset.height !== expectedHeight) {
+        throw new CharacterServiceError(
+          'INVALID_ADAPTIVE_PARTS_DEFINITION',
+          `Adaptive Part ${part.partId} crop mapping expects ${expectedWidth}×${expectedHeight}, but asset ${asset.id} is ${asset.width}×${asset.height}.`,
+        );
+      }
+      return part;
+    });
+    return { ...parsed.data, parts };
+  }
+
+  private clonePart(part: CharacterPart): CharacterPart {
+    return {
+      ...part,
+      source: { ...part.source },
+      restTransform: { ...part.restTransform },
+      imageMapping: {
+        ...part.imageMapping,
+        crop: { ...part.imageMapping.crop },
+      },
+    };
   }
 
   private definitionOf(
@@ -836,7 +1059,7 @@ export class CharacterService {
   }
 
   private expression(
-    character: Character,
+    character: ExpressionCharacter,
     expressionId: string,
   ): CharacterExpression {
     const expression = character.expressions.find(

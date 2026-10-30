@@ -14,7 +14,8 @@ import { resolveImageAsset } from './canvasLayers';
 export type LayerVisualKind =
   | 'ordinary-image'
   | 'single-image-character'
-  | 'composite-character';
+  | 'composite-character'
+  | 'unsupported-character';
 
 export type VisualPartSlot = 'single' | 'body' | 'head' | 'face';
 
@@ -559,6 +560,19 @@ export function resolveLayerVisualParts(
   );
   if (!character) {
     throw new Error(`Cannot resolve Character ${source.characterId}.`);
+  }
+  if (character.mode === 'adaptive-parts') {
+    return {
+      ownerLayerId: layer.id,
+      kind: 'unsupported-character',
+      ownerTransform: ownerTransform(evaluated),
+      facePlacement: null,
+      parts: [],
+      headGroup: null,
+      combinedLocalBounds: { x: 0, y: 0, width: 0, height: 0 },
+      activeFace: null,
+      resources: { required: [], candidates: [], fallback: [] },
+    };
   }
   const resolved = resolveCharacterFace(
     project,

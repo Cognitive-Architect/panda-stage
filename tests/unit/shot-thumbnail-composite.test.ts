@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
@@ -113,7 +114,7 @@ function installBrowser(readThumbnail: (assetId: string) => Promise<unknown>) {
 
 function makeCompositeProject(): Project {
   const migrated = migrateProject(exampleProject);
-  const character = migrated.characters[0]!;
+  const character = asExpressionCharacter(migrated.characters[0]!);
   const shot = migrated.shots[0]!;
   const baseExpression = character.expressions[0]!;
   const compositeCharacter = {
@@ -257,7 +258,7 @@ describe('Shot thumbnail composite rendering (Issue #608)', () => {
     const baseline = shotThumbnailFingerprint(project, shot);
     const baseLayerSource = shot.layers[1]!.source;
     if (baseLayerSource.kind !== 'character') throw new Error('Expected Character Layer.');
-    const currentFaceId = project.characters[0]!.expressions.find(
+    const currentFaceId = asExpressionCharacter(project.characters[0]!).expressions.find(
       ({ id }) => id === baseLayerSource.expressionId,
     )!.assetId;
 
@@ -281,7 +282,7 @@ describe('Shot thumbnail composite rendering (Issue #608)', () => {
       ...character,
       facePlacement: { ...character.facePlacement, offsetX: 111 },
     }));
-    const alternateExpressionId = project.characters[0]!.expressions[1]!.id;
+    const alternateExpressionId = asExpressionCharacter(project.characters[0]!).expressions[1]!.id;
     const layerSource = project.shots[0]!.layers[1]!.source;
     if (layerSource.kind !== 'character') throw new Error('Expected Character Layer.');
     const changedBaseFace = withShotLayer(project, (layer) => ({
@@ -335,7 +336,7 @@ describe('Shot thumbnail composite rendering (Issue #608)', () => {
   it('keeps the fingerprint stable for names, timing, dialogue/audio, Mouth, and unused alternate expression state', () => {
     const project = makeCompositeProject();
     const baseline = shotThumbnailFingerprint(project, project.shots[0]!);
-    const alternateExpression = project.characters[0]!.expressions[1]!;
+    const alternateExpression = asExpressionCharacter(project.characters[0]!).expressions[1]!;
     const alternateAssetId = alternateExpression.assetId;
     const unrelated = ProjectSchema.parse({
       ...project,
@@ -347,7 +348,7 @@ describe('Shot thumbnail composite rendering (Issue #608)', () => {
       ),
       characters: [
         {
-          ...project.characters[0]!,
+          ...asExpressionCharacter(project.characters[0]!),
           name: 'Renamed Character',
           mouthOpenAssetId: alternateAssetId,
           baseAssetId: alternateAssetId,
@@ -382,7 +383,7 @@ describe('Shot thumbnail composite rendering (Issue #608)', () => {
 
     expect(canvases).toHaveLength(2);
     const [main, composite] = canvases;
-    const faceAssetId = project.characters[0]!.expressions[0]!.assetId;
+    const faceAssetId = asExpressionCharacter(project.characters[0]!).expressions[0]!.assetId;
     expect(composite!.context.draws.map(({ image }) => (image as FakeImage).src)).toEqual(
       [readyThumbnail(IDS.body).dataUrl, readyThumbnail(faceAssetId).dataUrl],
     );

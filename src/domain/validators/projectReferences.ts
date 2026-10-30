@@ -86,83 +86,113 @@ export function validateProjectReferences(
   });
 
   project.characters.forEach((character, characterIndex) => {
-    validateUniqueIds(
-      character.expressions,
-      ['characters', characterIndex, 'expressions'],
-      context,
-    );
-    validateUniqueNames(
-      character.expressions,
-      ['characters', characterIndex, 'expressions'],
-      context,
-    );
-    const baseAsset = assets.get(character.baseAssetId);
-    if (!baseAsset || baseAsset.kind !== 'image') {
-      addIssue(
-        context,
-        ['characters', characterIndex, 'baseAssetId'],
-        `Character references unknown or non-image base asset: ${character.baseAssetId}`,
-      );
-    }
-    character.expressions.forEach((expression, expressionIndex) => {
-      const expressionAsset = assets.get(expression.assetId);
-      if (!expressionAsset || expressionAsset.kind !== 'image') {
-        addIssue(
-          context,
-          [
-            'characters',
-            characterIndex,
-            'expressions',
-            expressionIndex,
-            'assetId',
-          ],
-          `Expression references unknown or non-image asset: ${expression.assetId}`,
-        );
-      }
-    });
-    const defaultExpression = character.expressions.find(
-      (expression) => expression.id === character.defaultExpressionId,
-    );
-    if (!defaultExpression) {
-      addIssue(
-        context,
-        ['characters', characterIndex, 'defaultExpressionId'],
-        `Character references an unknown default expression: ${character.defaultExpressionId}`,
-      );
-    } else if (defaultExpression.assetId !== character.baseAssetId) {
-      addIssue(
-        context,
-        ['characters', characterIndex, 'baseAssetId'],
-        'Character baseAssetId must match the default expression asset.',
-      );
-    }
-    if (character.mouthOpenAssetId) {
-      const mouthAsset = assets.get(character.mouthOpenAssetId);
-      if (!mouthAsset || mouthAsset.kind !== 'image') {
-        addIssue(
-          context,
-          ['characters', characterIndex, 'mouthOpenAssetId'],
-          `Character references unknown or non-image mouth asset: ${character.mouthOpenAssetId}`,
-        );
-      }
-    }
-    if (character.mode === 'composite') {
-      const bodyAsset = assets.get(character.bodyAssetId);
-      if (!bodyAsset || bodyAsset.kind !== 'image') {
-        addIssue(
-          context,
-          ['characters', characterIndex, 'bodyAssetId'],
-          `Composite character references unknown or non-image body asset: ${character.bodyAssetId}`,
-        );
-      }
-      if (character.head) {
-        const headAsset = assets.get(character.head.assetId);
-        if (!headAsset || headAsset.kind !== 'image') {
+    if (character.mode === 'adaptive-parts') {
+      character.parts.forEach((part, partIndex) => {
+        const partAsset = assets.get(part.assetId);
+        if (!partAsset || partAsset.kind !== 'image') {
           addIssue(
             context,
-            ['characters', characterIndex, 'head', 'assetId'],
-            `Composite character references unknown or non-image Head asset: ${character.head.assetId}`,
+            ['characters', characterIndex, 'parts', partIndex, 'assetId'],
+            `Part references unknown or non-image asset: ${part.assetId}`,
           );
+          return;
+        }
+        const expectedWidth = Math.round(
+          part.imageMapping.crop.width * part.imageMapping.exportScale,
+        );
+        const expectedHeight = Math.round(
+          part.imageMapping.crop.height * part.imageMapping.exportScale,
+        );
+        if (
+          partAsset.width !== expectedWidth ||
+          partAsset.height !== expectedHeight
+        ) {
+          addIssue(
+            context,
+            ['characters', characterIndex, 'parts', partIndex, 'imageMapping'],
+            `Part crop mapping resolves to ${expectedWidth}×${expectedHeight}, but asset ${partAsset.id} is ${partAsset.width}×${partAsset.height}.`,
+          );
+        }
+      });
+    } else {
+      validateUniqueIds(
+        character.expressions,
+        ['characters', characterIndex, 'expressions'],
+        context,
+      );
+      validateUniqueNames(
+        character.expressions,
+        ['characters', characterIndex, 'expressions'],
+        context,
+      );
+      const baseAsset = assets.get(character.baseAssetId);
+      if (!baseAsset || baseAsset.kind !== 'image') {
+        addIssue(
+          context,
+          ['characters', characterIndex, 'baseAssetId'],
+          `Character references unknown or non-image base asset: ${character.baseAssetId}`,
+        );
+      }
+      character.expressions.forEach((expression, expressionIndex) => {
+        const expressionAsset = assets.get(expression.assetId);
+        if (!expressionAsset || expressionAsset.kind !== 'image') {
+          addIssue(
+            context,
+            [
+              'characters',
+              characterIndex,
+              'expressions',
+              expressionIndex,
+              'assetId',
+            ],
+            `Expression references unknown or non-image asset: ${expression.assetId}`,
+          );
+        }
+      });
+      const defaultExpression = character.expressions.find(
+        (expression) => expression.id === character.defaultExpressionId,
+      );
+      if (!defaultExpression) {
+        addIssue(
+          context,
+          ['characters', characterIndex, 'defaultExpressionId'],
+          `Character references an unknown default expression: ${character.defaultExpressionId}`,
+        );
+      } else if (defaultExpression.assetId !== character.baseAssetId) {
+        addIssue(
+          context,
+          ['characters', characterIndex, 'baseAssetId'],
+          'Character baseAssetId must match the default expression asset.',
+        );
+      }
+      if (character.mouthOpenAssetId) {
+        const mouthAsset = assets.get(character.mouthOpenAssetId);
+        if (!mouthAsset || mouthAsset.kind !== 'image') {
+          addIssue(
+            context,
+            ['characters', characterIndex, 'mouthOpenAssetId'],
+            `Character references unknown or non-image mouth asset: ${character.mouthOpenAssetId}`,
+          );
+        }
+      }
+      if (character.mode === 'composite') {
+        const bodyAsset = assets.get(character.bodyAssetId);
+        if (!bodyAsset || bodyAsset.kind !== 'image') {
+          addIssue(
+            context,
+            ['characters', characterIndex, 'bodyAssetId'],
+            `Composite character references unknown or non-image body asset: ${character.bodyAssetId}`,
+          );
+        }
+        if (character.head) {
+          const headAsset = assets.get(character.head.assetId);
+          if (!headAsset || headAsset.kind !== 'image') {
+            addIssue(
+              context,
+              ['characters', characterIndex, 'head', 'assetId'],
+              `Composite character references unknown or non-image Head asset: ${character.head.assetId}`,
+            );
+          }
         }
       }
     }
@@ -250,6 +280,12 @@ export function validateProjectReferences(
           context,
           ['shots', shotIndex, 'layers', layerIndex, 'source', 'characterId'],
           `Layer references unknown character: ${characterSource.characterId}`,
+        );
+      } else if (character.mode === 'adaptive-parts') {
+        addIssue(
+          context,
+          ['shots', shotIndex, 'layers', layerIndex, 'source', 'characterId'],
+          `Adaptive Parts Character ${character.id} is not supported in Stage layers yet.`,
         );
       } else if (
         !character.expressions.some(
@@ -385,7 +421,9 @@ export function validateProjectReferences(
         } else {
           const character = characters.get(layer.source.characterId);
           if (
-            !character?.expressions.some(
+            !character ||
+            character.mode === 'adaptive-parts' ||
+            !character.expressions.some(
               (expression) => expression.id === event.expressionId,
             )
           ) {

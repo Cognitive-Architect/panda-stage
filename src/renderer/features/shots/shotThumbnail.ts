@@ -70,18 +70,22 @@ function unresolvedFingerprint(project: Project, shot: Shot): string {
             (candidate) => candidate.id === characterSource.characterId,
           )
         : undefined;
+      const expressionCharacter =
+        character && character.mode !== 'adaptive-parts' ? character : undefined;
       const expression = characterSource
-        ? character?.expressions.find(
+        ? expressionCharacter?.expressions.find(
             (candidate) => candidate.id === characterSource.expressionId,
           ) ??
-          character?.expressions.find(
-            (candidate) => candidate.id === character.defaultExpressionId,
+          expressionCharacter?.expressions.find(
+            (candidate) => candidate.id === expressionCharacter.defaultExpressionId,
           )
         : undefined;
       const assetIds =
         layer.source.kind === 'asset'
           ? [layer.source.assetId]
-          : character?.mode === 'composite'
+          : character?.mode === 'adaptive-parts'
+            ? []
+            : character?.mode === 'composite'
             ? [character.bodyAssetId, expression?.assetId].filter(
                 (assetId): assetId is string => Boolean(assetId),
               )
@@ -90,7 +94,9 @@ function unresolvedFingerprint(project: Project, shot: Shot): string {
               : [];
       return {
         kind:
-          character?.mode === 'composite'
+          character?.mode === 'adaptive-parts'
+            ? 'unsupported-character'
+            : character?.mode === 'composite'
             ? 'composite-character'
             : character
               ? 'single-image-character'

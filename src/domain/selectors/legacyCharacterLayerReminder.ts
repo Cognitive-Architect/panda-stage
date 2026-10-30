@@ -11,7 +11,9 @@ export interface LegacyCharacterImageLayerMatch {
 function characterExpressionAssetIds(project: Project): Set<string> {
   return new Set(
     project.characters.flatMap((character) =>
-      character.expressions.map((expression) => expression.assetId),
+      character.mode === 'adaptive-parts'
+        ? []
+        : character.expressions.map((expression) => expression.assetId),
     ),
   );
 }

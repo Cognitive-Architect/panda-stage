@@ -4,6 +4,7 @@ export type AssetReferenceKind =
   | 'character-base'
   | 'character-body'
   | 'character-head'
+  | 'character-part'
   | 'character-expression'
   | 'character-mouth'
   | 'shot-background'
@@ -63,6 +64,19 @@ export function scanAssetReferences(
   });
 
   project.characters.forEach((character, characterIndex) => {
+    if (character.mode === 'adaptive-parts') {
+      character.parts.forEach((part, partIndex) => {
+        if (part.assetId !== assetId) return;
+        references.push({
+          kind: 'character-part',
+          path: `characters[${characterIndex}].parts[${partIndex}].assetId`,
+          label:
+            `Character "${character.name}" Part ` +
+            `${part.displayName ?? part.partId}`,
+        });
+      });
+      return;
+    }
     if (character.baseAssetId === assetId) {
       references.push({
         kind: 'character-base',

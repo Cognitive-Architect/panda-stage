@@ -351,7 +351,11 @@ export function CharacterAssemblyWorkbench({
     );
     return (
       expressions.find(
-        (expression) => expression.id === character?.defaultExpressionId,
+        (expression) =>
+          expression.id ===
+          (character?.mode === 'adaptive-parts'
+            ? undefined
+            : character?.defaultExpressionId),
       )?.id ?? expressions[0]?.id ?? ''
     );
   }, [expressions, project.characters, session]);

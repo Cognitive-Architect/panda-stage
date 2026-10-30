@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   Character,
   CharacterExpression,
+  ExpressionCharacter,
   ImageAsset,
 } from '../../../domain';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
@@ -15,8 +16,13 @@ import {
 } from './ThumbnailStateIcon';
 
 export function getCharacterDefaultExpression(
-  character: Pick<Character, 'expressions' | 'defaultExpressionId'>,
+  character:
+    | Character
+    | Pick<ExpressionCharacter, 'expressions' | 'defaultExpressionId'>,
 ): CharacterExpression | undefined {
+  if ('mode' in character && character.mode === 'adaptive-parts') {
+    return undefined;
+  }
   return (
     character.expressions.find(
       (expression) => expression.id === character.defaultExpressionId,
@@ -141,7 +147,7 @@ export function useCharacterAvatarThumbnails(
 }
 
 export interface CharacterAvatarProps {
-  character: Pick<Character, 'name' | 'expressions' | 'defaultExpressionId'>;
+  character: Character;
   thumbnail?: ThumbnailState;
   className?: string;
   onThumbnailError?: (assetId: string) => void;
@@ -155,7 +161,9 @@ export function CharacterAvatar({
 }: CharacterAvatarProps): React.JSX.Element {
   const defaultExpression = getCharacterDefaultExpression(character);
   const status = thumbnail?.status ?? (defaultExpression ? 'loading' : 'missing');
-  const label = thumbnailLabel(thumbnail, Boolean(defaultExpression));
+  const label = character.mode === 'adaptive-parts'
+    ? 'Static Parts'
+    : thumbnailLabel(thumbnail, Boolean(defaultExpression));
   const iconKind = getThumbnailFallbackIconKind(thumbnail, {
     assetConfigured: Boolean(defaultExpression),
   });
@@ -166,7 +174,9 @@ export function CharacterAvatar({
 
   return (
     <span
-      aria-label={`${character.name} 默认表情头像`}
+      aria-label={character.mode === 'adaptive-parts'
+        ? `${character.name} static Parts`
+        : `${character.name} 默认表情头像`}
       className={classes}
       data-character-avatar="true"
       data-thumbnail-status={status}
@@ -231,8 +241,9 @@ export function CharacterIdentityRow({
         <strong>{character.name}</strong>
         {showDefaultExpression ? (
           <small>
-            默认表情：
-            {getCharacterDefaultExpression(character)?.name ?? '未配置'}
+            {character.mode === 'adaptive-parts'
+              ? `静态 Parts · ${character.parts.length}`
+              : `默认表情：${getCharacterDefaultExpression(character)?.name ?? '未配置'}`}
           </small>
         ) : null}
       </span>
