@@ -956,7 +956,21 @@ async function main() {
     assert(JSON.stringify(editedPart.sourceRestTransform) === JSON.stringify(sourceRestTransform), 'Apply changed the saved source-rest baseline.');
     const originalPart = prepared.parts.find((part) => part.partId === partId);
     assert(originalPart && editedPart.assetId === originalPart.assetId && editedPart.drawOrder === originalPart.drawOrder && JSON.stringify(editedPart.imageMapping) === JSON.stringify(originalPart.imageMapping), 'Part edit changed source identity, crop, asset, or draw order.');
-    receipt.ac03 = { result: 'PASS', independentPart: 'c0/com6', listAndCanvasSelection: 'PASS', drag, scale, inspector: { offsetX: editedPart.staticAdjustment.offsetX, offsetY: editedPart.staticAdjustment.offsetY, scale: editedPart.staticAdjustment.scale, rotationDeg: editedPart.staticAdjustment.rotationDeg }, unchangedOtherPartIds: adaptive.parts.filter((part) => part.partId !== partId).map((part) => part.partId) };
+    receipt.ac03 = {
+      result: 'BLOCKED',
+      coverage: 'PARTIAL',
+      interactivePart: 'c0/com6',
+      listAndCanvasSelection: 'PASS',
+      drag,
+      scale,
+      inspector: { offsetX: editedPart.staticAdjustment.offsetX, offsetY: editedPart.staticAdjustment.offsetY, scale: editedPart.staticAdjustment.scale, rotationDeg: editedPart.staticAdjustment.rotationDeg },
+      unchangedOtherPartIds: adaptive.parts.filter((part) => part.partId !== partId).map((part) => part.partId),
+      notRun: [
+        'second independent source Part drag and scale',
+        'touch interaction',
+        'narrow and zoomed viewport drift/clipping',
+      ],
+    };
     receipt.ac04 = { result: 'PASS', sourceRestTransform: editedPart.sourceRestTransform, currentRestTransform: editedPart.restTransform, crop: editedPart.imageMapping.crop, c0RootTransform: sourceRootTransform };
     receipt.ac05 = { result: 'PASS', before: { revision: beforeDraft.revision, dirty: beforeDraft.dirty, undoCount: beforeDraft.undoCount }, draft: { revision: afterDraft.revision, dirty: afterDraft.dirty, undoCount: afterDraft.undoCount }, apply: { revision: afterApply.revision, dirty: afterApply.dirty, undoCount: afterApply.undoCount } };
     await click(mainWindow, '[data-testid="adaptive-parts-return"]', 'Return to Character detail after Apply');
@@ -1168,7 +1182,13 @@ async function main() {
       syntheticCompatibilityControlUsesImportedLocalAssets: true,
     };
     receipt.ac06 = { result: 'PASS', sharedCharacterDefinition: 'Shot Layer references the same Character ID after Apply; no per-Shot Character copy was created.' };
-    receipt.ac09 = { result: 'AUTO_PASS', inspectorCollapsedAndFloating: 'PASS', narrowAndTouchHumanVisualReview: 'OWNER_NOT_ATTESTED' };
+    receipt.ac09 = {
+      result: 'BLOCKED',
+      coverage: 'PARTIAL',
+      inspectorCollapsedAndFloating: 'PASS',
+      visualDesignReview: 'NOT_ATTESTED',
+      notRun: ['compact-token and feedback review', 'wide/narrow window review', 'Cloud Touch review', 'different timeline-height review'],
+    };
     receipt.ac10 = { result: 'AUTO_PASS', command: 'PANDA_STAGE_ISSUE899_SOURCE_DIR=<local Issue 893 isolated-layers> electron scripts/verify-issue899-c3-v0.cjs', screenshots: path.join(evidenceRoot, '*.png'), receiptPath: resultPath };
     receipt.ac11 = { result: 'NOT_ATTESTED', ownerWindowsRealMaterialSignOff: 'OWNER must personally review the actual source sample and Body+Arm composite on Windows.' };
     receipt.schemaCollision = 'DEFERRED_BY_OWNER / MERGE_BLOCKED';
