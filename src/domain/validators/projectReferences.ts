@@ -282,12 +282,15 @@ export function validateProjectReferences(
           `Layer references unknown character: ${characterSource.characterId}`,
         );
       } else if (character.mode === 'adaptive-parts') {
-        addIssue(
-          context,
-          ['shots', shotIndex, 'layers', layerIndex, 'source', 'characterId'],
-          `Adaptive Parts Character ${character.id} is not supported in Stage layers yet.`,
-        );
+        if (characterSource.expressionId !== undefined) {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'layers', layerIndex, 'source', 'expressionId'],
+            `Adaptive Parts Layer ${layer.id} must not reference an Expression.`,
+          );
+        }
       } else if (
+        !characterSource.expressionId ||
         !character.expressions.some(
           (expression) => expression.id === characterSource.expressionId,
         )
@@ -295,7 +298,7 @@ export function validateProjectReferences(
         addIssue(
           context,
           ['shots', shotIndex, 'layers', layerIndex, 'source', 'expressionId'],
-          `Layer references unknown character expression: ${characterSource.expressionId}`,
+          `Layer references unknown character expression: ${characterSource.expressionId ?? '(missing)'}`,
         );
       }
     });

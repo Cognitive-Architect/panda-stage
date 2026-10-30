@@ -509,7 +509,8 @@
         "testPatterns": ["tests/unit/character-*.test.ts", "tests/unit/issue815-talking-head-settings.test.ts", "tests/unit/legacy-character-layer-reminder.test.ts", "tests/integration/character-*.test.ts"],
         "verifierPatterns": [
           "scripts/verify-day19*",
-          "scripts/verify-issue609-character-assembly.cjs"
+        "scripts/verify-issue609-character-assembly.cjs",
+        "scripts/verify-issue897-c2-adaptive-parts.cjs"
         ],
         "suites": ["character"],
         "riskPolicy": "targeted",
@@ -743,7 +744,7 @@
       }
     ]
   },
-  "count": 104,
+  "count": 105,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1980,6 +1981,18 @@
       "owner": "character",
       "supersedes": null,
       "notes": "Bounded Issue #822 C04 S04 Electron proof for left-card Body/Head/Face target selection, independent Change/Manage actions, compact action geometry, and recovered preview height across timeline and narrow 125% layouts; synthetic fixture evidence is not OWNER human acceptance."
+    },
+    {
+      "id": "issue897-c2-adaptive-parts",
+      "script": "verify:issue897-c2",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Issue #897 C2 Windows Electron proof for synthetic Adaptive Parts placement into a Shot, Undo/Redo, Save/reopen, Stage and Product Preview sampling, and formal six-second MP4 export with frame comparisons; generated evidence is AUTO_PASS, while OWNER visual acceptance remains separate."
     },
     {
       "id": "timeline",

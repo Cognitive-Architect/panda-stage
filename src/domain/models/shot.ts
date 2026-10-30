@@ -5,6 +5,7 @@ import { IdSchema, NameSchema } from './common';
 import { DialogueSchema } from './dialogue';
 import {
   LayerSchema,
+  LayerV15Schema,
   LayerV3Schema,
   LayerV4Schema,
 } from './layer';
@@ -31,13 +32,18 @@ export const ShotSchema = z
   .object({
     ...ShotBaseShape,
     audioClips: z.array(AudioClipSchema),
-    layers: z.array(LayerSchema),
+    layers: z.array(LayerV15Schema),
     /** The only layer rendered with the background cover contract. */
     backgroundLayerId: IdSchema.nullable(),
   })
   .strict();
 
-export const ShotV7Schema = ShotSchema.extend({
+/** Strict v14 and earlier shape: character Layers require an Expression id. */
+export const ShotV14Schema = ShotSchema.extend({
+  layers: z.array(LayerSchema),
+});
+
+export const ShotV7Schema = ShotV14Schema.extend({
   audioClips: z.array(AudioClipV7Schema),
 });
 

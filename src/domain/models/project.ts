@@ -29,6 +29,7 @@ import type { Layer, LayerV3, LayerV4 } from './layer';
 import { LayerSchema } from './layer';
 import {
   ShotSchema,
+  ShotV14Schema,
   ShotV2Schema,
   ShotV3Schema,
   ShotV4Schema,
@@ -87,7 +88,7 @@ const ProjectV12DataSchema = z
     characters: z.array(CharacterV14Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
-    shots: z.array(ShotSchema),
+    shots: z.array(ShotV14Schema),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
   })
@@ -103,6 +104,7 @@ export const ProjectV13Schema = ProjectV12DataSchema.extend({
 export const ProjectV14Schema = ProjectDataSchema.extend({
   schemaVersion: z.literal(14),
   characters: z.array(CharacterV14Schema),
+  shots: z.array(ShotV14Schema),
 });
 
 export const ProjectV1Schema = z

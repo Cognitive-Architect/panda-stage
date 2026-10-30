@@ -45,7 +45,7 @@ export type StageAssetUrlMap = Readonly<Record<string, string | undefined>>;
 export interface StageRenderPart {
   /** Stable runtime render-part identity, never a persisted Project Layer. */
   readonly id: string;
-  readonly slot: 'single' | 'body' | 'head' | 'face';
+  readonly slot: 'single' | 'body' | 'head' | 'face' | 'adaptive-part';
   readonly drawOrder: number;
   readonly asset: RenderModelAsset;
   readonly sourceUrl: string;
@@ -135,6 +135,8 @@ function localPartRender(
     scaleX: transform.scaleX,
     scaleY: transform.scaleY,
     rotationDeg: transform.rotation,
+    ...(transform.skewX === undefined ? {} : { skewX: transform.skewX }),
+    ...(transform.skewY === undefined ? {} : { skewY: transform.skewY }),
     opacity: 1,
     visible,
     zIndex: part.ownerZIndex,
@@ -291,7 +293,10 @@ function buildFormalStageRenderModel(
         sourceUrl,
         render: isBackground
           ? render
-          : localPartRender(part, visual.ownerTransform.visible),
+          : localPartRender(
+              part,
+              visual.ownerTransform.visible && part.visible !== false,
+            ),
       };
     });
 

@@ -204,46 +204,53 @@ export class LayerService {
       );
     }
 
-    const usedIds = this.projectIds(project);
     const position = clampLayerPosition(input.position);
     const scale =
       input.type === 'character-expression'
         ? character!.defaultScale
         : 1;
-    const layer: Layer = {
-      id: this.nextUniqueId(usedIds),
-      name: asset.name,
-      source:
-        input.type === 'character-expression'
-          ? {
-              kind: 'character',
-              characterId: character!.id,
-              expressionId: expression!.id,
-            }
-          : { kind: 'asset', assetId: asset.id },
-      anchor: 'center',
-      x: position.x,
-      y: position.y,
-      scaleX: scale,
-      scaleY: scale,
-      rotationDeg: 0,
-      opacity: 1,
-      visible: true,
-      locked: false,
-      flipX:
-        input.type === 'character-expression'
-          ? character!.defaultFlipX
-          : false,
-      zIndex: Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1,
-    };
-    const nextShot = {
-      ...shot,
-      layers: [...shot.layers, layer],
-    };
-    return {
-      project: this.replaceShot(project, nextShot),
-      layer,
-    };
+    return this.appendLayer(
+      project,
+      shot,
+      asset.name,
+      input.type === 'character-expression'
+        ? {
+            kind: 'character',
+            characterId: character!.id,
+            expressionId: expression!.id,
+          }
+        : { kind: 'asset', assetId: asset.id },
+      position,
+      scale,
+      input.type === 'character-expression' ? character!.defaultFlipX : false,
+    );
+  }
+
+  createFromAdaptiveCharacter(
+    project: Project,
+    shotId: string,
+    characterId: string,
+    rawPosition: Point,
+  ): CreateLayerResult {
+    const shot = this.shot(project, shotId);
+    const character = project.characters.find(
+      (candidate) => candidate.id === characterId,
+    );
+    if (!character || character.mode !== 'adaptive-parts') {
+      throw new LayerServiceError(
+        'CHARACTER_IDENTITY_MISMATCH',
+        '所选角色目前无法放入镜头。',
+      );
+    }
+    return this.appendLayer(
+      project,
+      shot,
+      character.name,
+      { kind: 'character', characterId: character.id },
+      clampLayerPosition(rawPosition),
+      character.defaultScale,
+      character.defaultFlipX,
+    );
   }
 
   setBackground(
@@ -648,6 +655,40 @@ export class LayerService {
       ),
       updatedAt: this.now().toISOString(),
     });
+  }
+
+  private appendLayer(
+    project: Project,
+    shot: Shot,
+    name: string,
+    source: Layer['source'],
+    position: Point,
+    scale: number,
+    flipX: boolean,
+  ): CreateLayerResult {
+    const layer: Layer = {
+      id: this.nextUniqueId(this.projectIds(project)),
+      name,
+      source,
+      anchor: 'center',
+      x: position.x,
+      y: position.y,
+      scaleX: scale,
+      scaleY: scale,
+      rotationDeg: 0,
+      opacity: 1,
+      visible: true,
+      locked: false,
+      flipX,
+      zIndex: Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1,
+    };
+    return {
+      project: this.replaceShot(project, {
+        ...shot,
+        layers: [...shot.layers, layer],
+      }),
+      layer,
+    };
   }
 
   private projectIds(project: Project): Set<string> {

@@ -17,9 +17,23 @@ export const CharacterLayerSourceSchema = z
   })
   .strict();
 
+/** Current Project shape: Adaptive Parts Layers point to a Character without an Expression. */
+export const CharacterLayerSourceV15Schema = z
+  .object({
+    kind: z.literal('character'),
+    characterId: IdSchema,
+    expressionId: IdSchema.optional(),
+  })
+  .strict();
+
 export const LayerSourceSchema = z.discriminatedUnion('kind', [
   AssetLayerSourceSchema,
   CharacterLayerSourceSchema,
+]);
+
+export const LayerSourceV15Schema = z.discriminatedUnion('kind', [
+  AssetLayerSourceSchema,
+  CharacterLayerSourceV15Schema,
 ]);
 
 const LayerV3Shape = {
@@ -57,7 +71,18 @@ export const LayerSchema = z
   })
   .strict();
 
+/** Current Project layer shape; historical layer schemas keep required Expression identity. */
+export const LayerV15Schema = z
+  .object({
+    ...LayerV3Shape,
+    source: LayerSourceV15Schema,
+    locked: z.boolean(),
+    flipX: z.boolean(),
+  })
+  .strict();
+
 export type LayerSource = z.infer<typeof LayerSourceSchema>;
+export type LayerSourceV15 = z.infer<typeof LayerSourceV15Schema>;
 export type LayerV3 = z.infer<typeof LayerV3Schema>;
 export type LayerV4 = z.infer<typeof LayerV4Schema>;
-export type Layer = z.infer<typeof LayerSchema>;
+export type Layer = z.infer<typeof LayerV15Schema>;

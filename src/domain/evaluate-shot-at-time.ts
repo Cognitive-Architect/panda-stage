@@ -102,7 +102,7 @@ function resolveExpressionState(
   project: Project,
   characterId: string,
   expressionId: string,
-  fallbackExpressionId: string,
+  fallbackExpressionId: string | undefined,
 ): ResolvedLayerVisualState {
   const character = project.characters.find(
     (candidate) => candidate.id === characterId,

@@ -457,7 +457,7 @@ export function CharacterEditor({
     );
   };
 
-  if (!character || character.mode === 'adaptive-parts') {
+  if (!character) {
     return (
       <div className="character-editor character-editor-empty">
         <strong>选择一个角色开始编辑</strong>
@@ -472,6 +472,34 @@ export function CharacterEditor({
           >
             加入当前镜头
           </Button>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (character.mode === 'adaptive-parts') {
+    const placementUnavailableReason = disabled
+      ? '请先打开项目'
+      : !hasCurrentShot
+        ? '请先选择镜头'
+        : null;
+    return (
+      <div className="character-editor character-editor-empty">
+        <strong>{character.name}</strong>
+        {view === 'detail' ? (
+          <div className="character-detail-identity-actions">
+            <Button
+              aria-label="加入当前镜头"
+              className="character-detail-place-action"
+              data-testid="character-detail-place-current-shot"
+              disabled={placementUnavailableReason !== null}
+              onClick={() => onPlaceInCurrentShot(false)}
+              title={placementUnavailableReason ?? '加入当前镜头'}
+              variant="secondary"
+            >
+              ＋ 加入镜头
+            </Button>
+          </div>
         ) : null}
       </div>
     );

@@ -4,6 +4,7 @@ import type {
   EvaluatedShot,
 } from '../evaluate-shot-at-time';
 import type {
+  CharacterPartTransform,
   FacePlacement,
   ImageAsset,
   Layer,
@@ -15,9 +16,15 @@ export type LayerVisualKind =
   | 'ordinary-image'
   | 'single-image-character'
   | 'composite-character'
+  | 'adaptive-parts-character'
   | 'unsupported-character';
 
-export type VisualPartSlot = 'single' | 'body' | 'head' | 'face';
+export type VisualPartSlot =
+  | 'single'
+  | 'body'
+  | 'head'
+  | 'face'
+  | 'adaptive-part';
 
 export interface VisualLocalRect {
   x: number;
@@ -74,6 +81,8 @@ export interface VisualPartRenderTransform {
   scaleX: number;
   scaleY: number;
   rotation: number;
+  skewX?: number;
+  skewY?: number;
 }
 
 export type VisualPartSource =
@@ -81,7 +90,8 @@ export type VisualPartSource =
   | { kind: 'character-body'; assetId: string }
   | { kind: 'character-head'; assetId: string }
   | { kind: 'character-expression'; expressionId: string; assetId: string }
-  | { kind: 'character-mouth'; assetId: string };
+  | { kind: 'character-mouth'; assetId: string }
+  | { kind: 'adaptive-part'; characterPartId: string; assetId: string };
 
 export interface LayerVisualPart {
   /** Stable runtime identity; never persisted as a Project Layer. */
@@ -95,6 +105,10 @@ export interface LayerVisualPart {
   rotationDeg: number;
   /** Static horizontal mirror about this part's center. */
   flipX: boolean;
+  /** Optional exact source-pixel-to-Character affine, used by Adaptive Parts. */
+  imageTransform?: CharacterPartTransform;
+  /** Persisted visibility for an Adaptive Part; other visual kinds default visible. */
+  visible?: boolean;
   drawOrder: number;
   ownerZIndex: number;
 }
@@ -225,6 +239,33 @@ export function visualHeadGroupRenderTransform(
 export function visualPartRenderTransform(
   part: LayerVisualPart,
 ): VisualPartRenderTransform {
+  if (part.imageTransform) {
+    const { a, b, c, d, tx, ty } = part.imageTransform;
+    const determinant = a * d - b * c;
+    const scaleX = Math.hypot(a, b);
+    if (
+      !Number.isFinite(determinant) ||
+      !Number.isFinite(scaleX) ||
+      Math.abs(determinant) < 1e-12 ||
+      scaleX < 1e-12
+    ) {
+      throw new Error(`Adaptive Part ${part.partId} has an invalid affine transform.`);
+    }
+    const rotation = (Math.atan2(b, a) * 180) / Math.PI;
+    const scaleY = determinant / scaleX;
+    const skewX =
+      (Math.atan((a * c + b * d) / determinant) * 180) / Math.PI;
+    return {
+      x: tx,
+      y: ty,
+      offsetX: 0,
+      offsetY: 0,
+      scaleX,
+      scaleY,
+      rotation,
+      ...(Math.abs(skewX) > 1e-10 ? { skewX } : {}),
+    };
+  }
   if (part.rotationDeg === 0 && !part.flipX) {
     return {
       x: part.localRect.x,
@@ -293,8 +334,18 @@ function transformedRect(
 
 export function transformPointByVisualPart(
   point: VisualPoint,
-  part: Pick<LayerVisualPart, 'localRect' | 'rotationDeg' | 'flipX'>,
+  part: Pick<
+    LayerVisualPart,
+    'localRect' | 'rotationDeg' | 'flipX' | 'imageTransform'
+  >,
 ): VisualPoint {
+  if (part.imageTransform) {
+    const matrix = part.imageTransform;
+    return {
+      x: matrix.a * point.x + matrix.c * point.y + matrix.tx,
+      y: matrix.b * point.x + matrix.d * point.y + matrix.ty,
+    };
+  }
   const centerX = part.localRect.x + part.localRect.width / 2;
   const centerY = part.localRect.y + part.localRect.height / 2;
   let relativeX = point.x - centerX;
@@ -309,7 +360,10 @@ export function transformPointByVisualPart(
 
 export function transformVisualRectByPart(
   rect: VisualLocalRect,
-  part: Pick<LayerVisualPart, 'localRect' | 'rotationDeg' | 'flipX'>,
+  part: Pick<
+    LayerVisualPart,
+    'localRect' | 'rotationDeg' | 'flipX' | 'imageTransform'
+  >,
 ): VisualLocalRect {
   const points = [
     { x: rect.x, y: rect.y },
@@ -337,9 +391,13 @@ function visualBounds(
   parts: readonly LayerVisualPart[],
   headGroup: LayerVisualHeadGroup | null,
 ): VisualLocalRect {
+  const visibleParts = parts.filter((part) => part.visible !== false);
+  if (visibleParts.length === 0) {
+    return { x: 0, y: 0, width: 0, height: 0 };
+  }
   const headPartIds = new Set(headGroup?.partIds ?? []);
   return unionRects(
-    parts.map((part) => {
+    visibleParts.map((part) => {
       const transformedPart = transformedPartRect(part);
       return headPartIds.has(part.partId) && headGroup
         ? transformedRect(transformedPart, headGroup)
@@ -486,6 +544,80 @@ function resolveCharacterFace(
   };
 }
 
+type AdaptivePartsCharacter = Extract<
+  Project['characters'][number],
+  { mode: 'adaptive-parts' }
+>;
+
+function adaptivePartVisuals(
+  project: Project,
+  character: AdaptivePartsCharacter,
+  ownerLayerId: string,
+  ownerZIndex: number,
+): LayerVisualPart[] {
+  return character.parts.map((part): LayerVisualPart => {
+    const asset = imageAsset(project, part.assetId, ownerLayerId);
+    const mapping = part.imageMapping;
+    const expectedWidth = Math.round(mapping.crop.width * mapping.exportScale);
+    const expectedHeight = Math.round(mapping.crop.height * mapping.exportScale);
+    if (asset.width !== expectedWidth || asset.height !== expectedHeight) {
+      throw new Error(
+        `Adaptive Part ${part.partId} crop resolves to ${expectedWidth}x${expectedHeight}, but asset ${asset.id} is ${asset.width}x${asset.height}.`,
+      );
+    }
+    const cropToSource: CharacterPartTransform = {
+      a: 1 / mapping.exportScale,
+      b: 0,
+      c: 0,
+      d: 1 / mapping.exportScale,
+      tx: mapping.crop.x,
+      ty: mapping.crop.y,
+    };
+    const imageTransform = composeAffine(
+      character.sourceRootTransform,
+      composeAffine(part.restTransform, cropToSource),
+    );
+    return {
+      partId: `${ownerLayerId}:${part.partId}`,
+      ownerLayerId,
+      slot: 'adaptive-part',
+      source: {
+        kind: 'adaptive-part',
+        characterPartId: part.partId,
+        assetId: asset.id,
+      },
+      assetId: asset.id,
+      localRect: {
+        x: 0,
+        y: 0,
+        width: asset.width,
+        height: asset.height,
+      },
+      rotationDeg: 0,
+      flipX: false,
+      imageTransform,
+      visible: part.visible,
+      drawOrder: part.drawOrder,
+      ownerZIndex,
+    };
+  });
+}
+
+/** Returns the source-stage visual center used by a center-anchored Shot Layer. */
+export function adaptiveCharacterSourceAnchor(
+  project: Project,
+  character: AdaptivePartsCharacter,
+): VisualPoint {
+  const bounds = visualBounds(
+    adaptivePartVisuals(project, character, character.id, 0),
+    null,
+  );
+  return {
+    x: bounds.x + bounds.width / 2,
+    y: bounds.y + bounds.height / 2,
+  };
+}
+
 function baseResult(
   evaluated: EvaluatedLayer,
   kind: LayerVisualKind,
@@ -506,6 +638,24 @@ function baseResult(
     activeFace,
     resources,
   };
+}
+
+function composeAffine(
+  outer: CharacterPartTransform,
+  inner: CharacterPartTransform,
+): CharacterPartTransform {
+  const result = {
+    a: outer.a * inner.a + outer.c * inner.b,
+    b: outer.b * inner.a + outer.d * inner.b,
+    c: outer.a * inner.c + outer.c * inner.d,
+    d: outer.b * inner.c + outer.d * inner.d,
+    tx: outer.a * inner.tx + outer.c * inner.ty + outer.tx,
+    ty: outer.b * inner.tx + outer.d * inner.ty + outer.ty,
+  };
+  if (Object.values(result).some((value) => !Number.isFinite(value))) {
+    throw new Error('Adaptive Part transform composition is not finite.');
+  }
+  return result;
 }
 
 /**
@@ -562,23 +712,48 @@ export function resolveLayerVisualParts(
     throw new Error(`Cannot resolve Character ${source.characterId}.`);
   }
   if (character.mode === 'adaptive-parts') {
-    return {
-      ownerLayerId: layer.id,
-      kind: 'unsupported-character',
-      ownerTransform: ownerTransform(evaluated),
-      facePlacement: null,
-      parts: [],
-      headGroup: null,
-      combinedLocalBounds: { x: 0, y: 0, width: 0, height: 0 },
-      activeFace: null,
-      resources: { required: [], candidates: [], fallback: [] },
-    };
+    const sourceParts = adaptivePartVisuals(
+      project,
+      character,
+      layer.id,
+      evaluated.zIndex,
+    );
+    // Adaptive source coordinates may be absolute to the imported stage. The
+    // persisted Layer is center anchored, so express the composed Part layout
+    // around the visible Character bounds center. Placement stores that same
+    // source-stage center on the Layer, preserving the imported pose while
+    // keeping owner scale/mirror/rotation around the visual pivot.
+    const sourceBounds = visualBounds(sourceParts, null);
+    const sourceCenterX = sourceBounds.x + sourceBounds.width / 2;
+    const sourceCenterY = sourceBounds.y + sourceBounds.height / 2;
+    const parts = sourceParts.map((part) => ({
+      ...part,
+      imageTransform: {
+        ...part.imageTransform!,
+        tx: part.imageTransform!.tx - sourceCenterX,
+        ty: part.imageTransform!.ty - sourceCenterY,
+      },
+    }));
+    return baseResult(
+      evaluated,
+      'adaptive-parts-character',
+      null,
+      parts,
+      null,
+      {
+        required: [...new Set(parts.map((part) => part.assetId))].map(
+          (assetId) => ({ assetId, reason: 'current-layer' as const }),
+        ),
+        candidates: [],
+        fallback: [],
+      },
+    );
   }
   const resolved = resolveCharacterFace(
     project,
     character,
     evaluated,
-    source.expressionId,
+    source.expressionId ?? character.defaultExpressionId,
   );
   const requiredAssetIds = new Set<string>();
   const fallbackAssetIds = new Set<string>();

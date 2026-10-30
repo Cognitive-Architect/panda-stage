@@ -12,8 +12,10 @@ import {
   evaluateShotAtTime,
   migrateProject,
   scanAssetReferences,
+  visualPartRenderTransform,
   type Project,
 } from '../../src/domain';
+import { buildStageRenderModel } from '../../src/shared/stage/render-model';
 import {
   adaptivePartsFixture,
   adaptivePartsSourceRootTransform,
@@ -299,7 +301,7 @@ describe('Adaptive Parts Character C1 model', () => {
     ).toBe(false);
   });
 
-  it('keeps Adaptive Parts outside Stage character rendering in C1', () => {
+  it('renders Adaptive Parts through the formal Stage model without weakening identity checks', () => {
     const { project, characterId } = createAdaptivePartsProject();
     const characterLayer = project.shots[0]!.layers.find(
       (layer) => layer.source.kind === 'character',
@@ -327,6 +329,77 @@ describe('Adaptive Parts Character C1 model', () => {
       expect((error as LayerServiceError).code).toBe('CHARACTER_IDENTITY_MISMATCH');
     }
 
+    const placed = layerService.createFromAdaptiveCharacter(
+      project,
+      IDS.shot,
+      characterId,
+      { x: 960, y: 540 },
+    );
+    expect(placed.layer.source).toEqual({ kind: 'character', characterId });
+    expect(placed.layer).toMatchObject({ x: 960, y: 540, scaleX: 1, scaleY: 1 });
+    const shot = placed.project.shots[0]!;
+    const evaluated = evaluateShotAtTime(shot, 0, placed.project);
+    const rendered = buildEditorStageRenderModel(placed.project, shot, evaluated);
+    const layer = rendered.layers.find(
+      (candidate) => candidate.layer.id === placed.layer.id,
+    )!;
+    expect(layer.evaluated).toMatchObject({ assetId: '', visible: true });
+    expect(layer.visual.kind).toBe('adaptive-parts-character');
+    expect(layer.visual.parts).toHaveLength(6);
+    expect(layer.visual.parts.map((part) => part.partId)).toEqual(
+      character.parts.map((part) => `${placed.layer.id}:${part.partId}`),
+    );
+    expect(new Set(layer.visual.parts.map((part) => part.assetId))).toEqual(
+      new Set([IDS.assetChar]),
+    );
+    expect(layer.render.visible).toBe(true);
+    expect(layer.asset.id).toBe(IDS.assetChar);
+
+    const previewAndExport = buildStageRenderModel(
+      placed.project,
+      evaluated,
+      Object.fromEntries(
+        placed.project.assets
+          .filter((asset) => asset.kind === 'image')
+          .map((asset) => [asset.id, `synthetic://${asset.id}`]),
+      ),
+    );
+    const sharedLayer = previewAndExport.layers.find(
+      (candidate) => candidate.id === placed.layer.id,
+    )!;
+    expect(sharedLayer.parts.map(({ id, drawOrder }) => ({ id, drawOrder }))).toEqual(
+      layer.visual.parts.map(({ partId, drawOrder }) => ({
+        id: partId,
+        drawOrder,
+      })),
+    );
+    const partAssetUrl = `synthetic://${character.parts[0]!.assetId}`;
+    expect(sharedLayer.parts.map(({ sourceUrl }) => sourceUrl)).toEqual(
+      character.parts.map(() => partAssetUrl),
+    );
+    expect(sharedLayer.parts.map(({ render }) => ({
+      x: render.x,
+      y: render.y,
+      scaleX: render.scaleX,
+      scaleY: render.scaleY,
+      rotationDeg: render.rotationDeg,
+      skewX: render.skewX,
+      visible: render.visible,
+    }))).toEqual(
+      layer.visual.parts.map((part) => {
+        const transform = visualPartRenderTransform(part);
+        return {
+          x: transform.x,
+          y: transform.y,
+          scaleX: transform.scaleX,
+          scaleY: transform.scaleY,
+          rotationDeg: transform.rotation,
+          skewX: transform.skewX,
+          visible: part.visible !== false,
+        };
+      }),
+    );
+
     const unsupportedProject = {
       ...project,
       shots: project.shots.map((shot) => ({
@@ -346,26 +419,8 @@ describe('Adaptive Parts Character C1 model', () => {
       })),
     } as Project;
     expect(() => ProjectSchema.parse(unsupportedProject)).toThrow(
-      /Adaptive Parts Character/u,
+      /must not reference an Expression/u,
     );
 
-    const shot = unsupportedProject.shots[0]!;
-    const evaluated = evaluateShotAtTime(shot, 0, unsupportedProject);
-    const rendered = buildEditorStageRenderModel(
-      unsupportedProject,
-      shot,
-      evaluated,
-    );
-    const layer = rendered.layers.find(
-      (candidate) => candidate.layer.id === characterLayer.id,
-    )!;
-    expect(layer.evaluated).toMatchObject({ assetId: '', visible: false });
-    expect(layer.visual).toMatchObject({
-      kind: 'unsupported-character',
-      parts: [],
-      resources: { required: [], candidates: [], fallback: [] },
-    });
-    expect(layer.render.visible).toBe(false);
-    expect(layer.asset.id).not.toBe(IDS.assetChar);
   });
 });

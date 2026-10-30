@@ -2,16 +2,21 @@ import { describe, expect, it } from 'vitest';
 import {
   evaluateShotAtTime,
   listShotRuntimeImageAssets,
+  CharacterService,
+  LayerService,
   projectShotMouth,
   ProjectSchema,
   resolveLayerVisualParts,
   transformPointByVisualPart,
   transformPointByVisualHeadGroup,
+  adaptiveCharacterSourceAnchor,
   visualHeadGroupRenderTransform,
   visualPartRenderTransform,
   withVisualHeadGroupTransform,
   type Project,
+  type CharacterPart,
 } from '../../../src/domain';
+import { adaptivePartsFixture } from '../../helpers/adaptivePartsFixtures';
 import { buildProject, IDS } from './testProject';
 
 const BODY_ID = '10000000-0000-4000-8000-000000000004';
@@ -793,5 +798,154 @@ describe('BFM-S03 unified visual-parts resolver', () => {
     expect(listShotRuntimeImageAssets(invalid, shot)).not.toContain(
       project.assets.find((asset) => asset.id === AUDIO_ID),
     );
+  });
+
+  it('composes Adaptive Part crop, local affine, and source root once while retaining repeated asset identities', () => {
+    const base = buildProject();
+    const cropAssetId = '10000000-0000-4000-8000-000000000099';
+    const cropAsset = imageAsset(cropAssetId, 'shared-cropped-part', 80, 60);
+    const sourceRootTransform = {
+      a: 0.9,
+      b: 0.1,
+      c: -0.15,
+      d: 1.1,
+      tx: 55,
+      ty: -24,
+    };
+    const mapping = {
+      sourceWidth: 100,
+      sourceHeight: 80,
+      crop: { x: 10, y: 20, width: 40, height: 30 },
+      exportScale: 2,
+    };
+    const parts: CharacterPart[] = [
+      {
+        ...adaptivePartsFixture(IDS.assetChar)[0]!,
+        partId: '71000000-0000-4000-8000-000000000101',
+        assetId: cropAssetId,
+        source: { kind: 'manual', sourceId: 'manual:shared:part-a' },
+        restTransform: {
+          a: 1.2,
+          b: 0.2,
+          c: 0.3,
+          d: 0.8,
+          tx: 20,
+          ty: 30,
+        },
+        imageMapping: mapping,
+        drawOrder: 0,
+        visible: true,
+      },
+      {
+        ...adaptivePartsFixture(IDS.assetChar)[1]!,
+        partId: '71000000-0000-4000-8000-000000000102',
+        assetId: cropAssetId,
+        source: { kind: 'manual', sourceId: 'manual:shared:part-b' },
+        restTransform: {
+          a: 1,
+          b: 0,
+          c: 0,
+          d: 1,
+          tx: 140,
+          ty: 50,
+        },
+        imageMapping: mapping,
+        drawOrder: 1,
+        visible: true,
+      },
+      {
+        ...adaptivePartsFixture(IDS.assetChar)[2]!,
+        partId: '71000000-0000-4000-8000-000000000103',
+        assetId: IDS.assetChar,
+        source: { kind: 'manual', sourceId: 'manual:body-arm-composite' },
+        restTransform: {
+          a: 1,
+          b: 0,
+          c: 0,
+          d: 1,
+          tx: 2_000,
+          ty: 1_000,
+        },
+        drawOrder: 2,
+        visible: false,
+      },
+    ];
+    const withAsset = ProjectSchema.parse({
+      ...base,
+      assets: [...base.assets, cropAsset],
+    });
+    const characterProject = new CharacterService().createAdaptiveParts(
+      withAsset,
+      {
+        name: 'Affine Synthetic Character',
+        sourceRootTransform,
+        parts,
+      },
+    );
+    const character = characterProject.characters.at(-1)!;
+    if (character.mode !== 'adaptive-parts') {
+      throw new Error('Expected an Adaptive Parts Character.');
+    }
+    const placed = new LayerService().createFromAdaptiveCharacter(
+      characterProject,
+      IDS.shot,
+      character.id,
+      { x: 960, y: 540 },
+    );
+    const shot = placed.project.shots[0]!;
+    const evaluated = evaluateShotAtTime(shot, 0, placed.project);
+    const layer = evaluated.layers.find((item) => item.id === placed.layer.id)!;
+    const visual = resolveLayerVisualParts(placed.project, shot, layer);
+    const first = visual.parts[0]!;
+    const second = visual.parts[1]!;
+    const hiddenComposite = visual.parts[2]!;
+
+    expect(visual.parts.map((part) => part.drawOrder)).toEqual([0, 1, 2]);
+    const sourceAnchor = adaptiveCharacterSourceAnchor(placed.project, character);
+    expect(sourceAnchor.x).toBeCloseTo(148.75, 10);
+    expect(sourceAnchor.y).toBeCloseTo(68.8, 10);
+    expect(visual.parts.map((part) => part.source.kind)).toEqual([
+      'adaptive-part',
+      'adaptive-part',
+      'adaptive-part',
+    ]);
+    expect(visual.parts.map((part) => part.assetId)).toEqual([
+      cropAssetId,
+      cropAssetId,
+      IDS.assetChar,
+    ]);
+    expect(first.partId).not.toBe(second.partId);
+    expect(first.imageTransform?.a).toBeCloseTo(0.525, 10);
+    expect(first.imageTransform?.b).toBeCloseTo(0.17, 10);
+    expect(first.imageTransform?.c).toBeCloseTo(0.075, 10);
+    expect(first.imageTransform?.d).toBeCloseTo(0.455, 10);
+    expect(first.imageTransform?.tx).toBeCloseTo(-66.75, 10);
+    expect(first.imageTransform?.ty).toBeCloseTo(-36.2, 10);
+    expect(second.imageTransform?.a).toBeCloseTo(0.45, 10);
+    expect(second.imageTransform?.b).toBeCloseTo(0.05, 10);
+    expect(second.imageTransform?.c).toBeCloseTo(-0.075, 10);
+    expect(second.imageTransform?.d).toBeCloseTo(0.55, 10);
+    expect(second.imageTransform?.tx).toBeCloseTo(30.75, 10);
+    expect(second.imageTransform?.ty).toBeCloseTo(-0.8, 10);
+    expect(hiddenComposite.visible).toBe(false);
+    expect(visual.combinedLocalBounds.x).toBeCloseTo(-66.75, 10);
+    expect(visual.combinedLocalBounds.y).toBeCloseTo(-36.2, 10);
+    expect(visual.combinedLocalBounds.width).toBeCloseTo(133.5, 10);
+    expect(visual.combinedLocalBounds.height).toBeCloseTo(72.4, 10);
+    const firstOrigin = transformPointByVisualPart({ x: 0, y: 0 }, first);
+    expect(firstOrigin.x).toBeCloseTo(-66.75, 10);
+    expect(firstOrigin.y).toBeCloseTo(-36.2, 10);
+    expect(visualPartRenderTransform(first).skewX).not.toBeUndefined();
+    expect(visual.resources.required.map((resource) => resource.assetId)).toEqual([
+      cropAssetId,
+      IDS.assetChar,
+    ]);
+
+    expect(() => ProjectSchema.parse({
+      ...placed.project,
+      assets: placed.project.assets.map((asset) =>
+        asset.id === cropAssetId ? { ...asset, width: 81 } : asset,
+      ),
+    })).toThrow(/Part crop mapping resolves to 80×60/u);
   });
 });

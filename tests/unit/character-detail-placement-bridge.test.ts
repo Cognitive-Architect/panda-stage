@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   CharacterService,
+  adaptiveCharacterSourceAnchor,
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
   ProjectSchema,
@@ -125,6 +126,109 @@ describe('Issue #639 Character detail placement bridge', () => {
     expect(editorSource).toContain('先应用角色大小设置');
     expect(managerSource).toContain('onPlaceInCurrentShot={(defaultTransformPending) =>');
     expect(readOrderedStylesheetSource()).toContain('min-height: var(--ui-touch-icon);');
+  });
+
+  it('keeps the existing detail placement action available for an Adaptive Parts Character', () => {
+    const project = new CharacterService().createAdaptiveParts(buildProject(), {
+      name: 'Synthetic Static Parts',
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = project.characters.at(-1)!;
+    const markup = renderToStaticMarkup(createElement(CharacterEditor, {
+      character,
+      imageAssets: project.assets.filter(
+        (asset): asset is ImageAsset => asset.kind === 'image',
+      ),
+      thumbnails: {},
+      warnings: [],
+      onRenameCharacter: () => undefined,
+      onDeleteCharacter: () => undefined,
+      onAddExpression: () => undefined,
+      onRenameExpression: () => undefined,
+      onSetExpressionAsset: () => undefined,
+      onRemoveExpression: () => undefined,
+      onSetDefaultExpression: () => undefined,
+      onSetMouthOpenAsset: () => undefined,
+      onSetDefaultTransform: () => undefined,
+      onThumbnailError: () => undefined,
+      hasCurrentShot: true,
+      onPlaceInCurrentShot: () => undefined,
+      view: 'detail',
+      presentation: 'landscape',
+    }));
+    const placementButton = markup.slice(
+      markup.indexOf('data-testid="character-detail-place-current-shot"'),
+      markup.indexOf('</button>', markup.indexOf('data-testid="character-detail-place-current-shot"')),
+    );
+
+    expect(markup).toContain('Synthetic Static Parts');
+    expect(placementButton).toContain('加入当前镜头');
+    expect(placementButton).not.toContain('disabled=""');
+  });
+
+  it('keeps Adaptive Character placement transforms independent across Shots', () => {
+    const adaptiveProject = new CharacterService().createAdaptiveParts(buildProject(), {
+      name: 'Synthetic Static Parts',
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const firstShot = adaptiveProject.shots[0]!;
+    const secondShotId = '50000000-0000-4000-8000-000000000002';
+    const secondLayers = firstShot.layers.map((layer, index) => ({
+      ...layer,
+      id: `60000000-0000-4000-8000-00000000001${index}`,
+    }));
+    const secondShot = {
+      ...firstShot,
+      id: secondShotId,
+      name: 'Independent Shot',
+      backgroundLayerId: secondLayers[0]!.id,
+      layers: secondLayers,
+    };
+    const project = ProjectSchema.parse({
+      ...adaptiveProject,
+      shots: [firstShot, secondShot],
+    });
+    const characterId = project.characters.at(-1)!.id;
+    open(project);
+
+    expect(place({
+      characterId,
+      getCurrentCharacterId: () => characterId,
+    })).toEqual(['']);
+    const firstLayer = editorProjectStore.getSnapshot()!.project.shots[0]!.layers.at(-1)!;
+    layerStore.updateTransform(firstLayer.id, {
+      x: 600,
+      y: 630,
+      scale: 1.25,
+      rotationDeg: 0,
+      opacity: 1,
+      flipX: false,
+    });
+
+    shotStore.select(secondShotId);
+    expect(place({
+      characterId,
+      getCurrentCharacterId: () => characterId,
+    })).toEqual(['']);
+    const secondLayer = editorProjectStore.getSnapshot()!.project.shots[1]!.layers.at(-1)!;
+    layerStore.updateTransform(secondLayer.id, {
+      x: 1_250,
+      y: 700,
+      scale: 0.8,
+      rotationDeg: 18,
+      opacity: 1,
+      flipX: true,
+    });
+
+    const shots = editorProjectStore.getSnapshot()!.project.shots;
+    const firstPlaced = shots[0]!.layers.find((layer) => layer.id === firstLayer.id)!;
+    const secondPlaced = shots[1]!.layers.find((layer) => layer.id === secondLayer.id)!;
+    expect(firstPlaced.source).toEqual({ kind: 'character', characterId });
+    expect(secondPlaced.source).toEqual({ kind: 'character', characterId });
+    expect(firstPlaced).toMatchObject({ x: 600, y: 630, scaleX: 1.25, scaleY: 1.25, rotationDeg: 0, flipX: false });
+    expect(secondPlaced).toMatchObject({ x: 1_250, y: 700, scaleX: 0.8, scaleY: 0.8, rotationDeg: 18, flipX: true });
   });
 
   it('uses the formal default Expression even when it is not the first row', () => {
@@ -340,11 +444,13 @@ describe('Issue #639 Character detail placement bridge', () => {
     expect(editorProjectStore.history.getSnapshot()).toBe(history);
   });
 
-  it('uses concise Chinese feedback and leaves the project untouched for unsupported Stage placement', () => {
+  it('places an Adaptive Parts Character through the existing Character-to-Shot path', () => {
     const project = new CharacterService().createAdaptiveParts(buildProject(), {
       name: 'Synthetic Static Parts',
       sourceRootTransform: adaptivePartsSourceRootTransform(),
       parts: adaptivePartsFixture(IDS.assetChar),
+      defaultScale: 1.4,
+      defaultFlipX: true,
     });
     const character = project.characters.at(-1)!;
     open(project);
@@ -354,10 +460,34 @@ describe('Issue #639 Character detail placement bridge', () => {
       characterId: character.id,
       getCurrentCharacterId: () => character.id,
     });
+    const after = editorProjectStore.getSnapshot()!;
+    const created = after.project.shots[0]!.layers.at(-1)!;
+    const sourceAnchor = character.mode === 'adaptive-parts'
+      ? adaptiveCharacterSourceAnchor(project, character)
+      : { x: 0, y: 0 };
 
-    expect(statuses).toEqual(['该角色暂不能放到舞台上。']);
-    expect(editorProjectStore.getSnapshot()).toBe(before);
-    expect(editorProjectStore.history.getSnapshot()).toBe(history);
+    expect(statuses).toEqual(['']);
+    expect(created.source).toEqual({ kind: 'character', characterId: character.id });
+    expect(created).toMatchObject({
+      x: sourceAnchor.x,
+      y: sourceAnchor.y,
+      scaleX: 1.4,
+      scaleY: 1.4,
+      flipX: true,
+    });
+    expect(selectionStore.getSelectedLayerId()).toBe(created.id);
+    expect(after.revision).toBe(before!.revision + 1);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(
+      history.undoCount + 1,
+    );
+    expect(editorProjectStore.undo()).toBe(true);
+    expect(editorProjectStore.getSnapshot()!.project.shots[0]!.layers).toHaveLength(
+      before!.project.shots[0]!.layers.length,
+    );
+    expect(editorProjectStore.redo()).toBe(true);
+    expect(editorProjectStore.getSnapshot()!.project.shots[0]!.layers.at(-1)!.id).toBe(
+      created.id,
+    );
   });
 
   it('does not place after the Character is deleted during the Assembly exit boundary', () => {

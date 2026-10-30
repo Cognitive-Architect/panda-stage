@@ -10,6 +10,7 @@ import {
   CharacterServiceError,
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
+  adaptiveCharacterSourceAnchor,
   countLegacyCharacterImageLayers,
   type CreateCharacterInput,
   type CreateCompositeCharacterInput,
@@ -143,22 +144,20 @@ export function placeCharacterInCurrentShot({
     reportStatus('请先打开项目、选择镜头和角色。');
     return;
   }
-  if (character.mode === 'adaptive-parts') {
-    reportStatus('该角色暂不能放到舞台上。');
-    return;
-  }
   if (defaultTransformPending) {
     reportStatus('先应用角色大小设置。');
     return;
   }
-  const initialExpression = character.expressions.find(
-    (candidate) => candidate.id === character.defaultExpressionId,
-  );
-  if (!initialExpression || !before.project.assets.some(
-    (asset) => asset.kind === 'image' && asset.id === initialExpression.assetId,
-  )) {
-    reportStatus('默认表情素材不可用，请先设置默认表情。');
-    return;
+  if (character.mode !== 'adaptive-parts') {
+    const initialExpression = character.expressions.find(
+      (candidate) => candidate.id === character.defaultExpressionId,
+    );
+    if (!initialExpression || !before.project.assets.some(
+      (asset) => asset.kind === 'image' && asset.id === initialExpression.assetId,
+    )) {
+      reportStatus('默认表情素材不可用，请先设置默认表情。');
+      return;
+    }
   }
   if (!leaveAssembly()) return;
 
@@ -177,11 +176,7 @@ export function placeCharacterInCurrentShot({
     const liveCharacter = snapshot.project.characters.find(
       (candidate) => candidate.id === characterId,
     );
-    if (
-      !liveShot ||
-      !liveCharacter ||
-      liveCharacter.mode === 'adaptive-parts'
-    ) return null;
+    if (!liveShot || !liveCharacter) return null;
     return { snapshot, character: liveCharacter, shotDurationMs: liveShot.durationMs };
   };
 
@@ -199,24 +194,33 @@ export function placeCharacterInCurrentShot({
     reportStatus('项目、镜头或角色已变化，请重试。');
     return;
   }
-  const expression = live.character.expressions.find(
-    (candidate) => candidate.id === live.character.defaultExpressionId,
-  );
-  if (!expression || !live.snapshot.project.assets.some(
-    (asset) => asset.kind === 'image' && asset.id === expression.assetId,
-  )) {
-    reportStatus('默认表情素材不可用，请先设置默认表情。');
-    return;
-  }
   try {
-    const layer = layerStore.createFromAsset({
-      version: 2,
-      type: 'character-expression',
-      assetId: expression.assetId,
-      characterId: live.character.id,
-      expressionId: expression.id,
-      position: { x: PROJECT_WIDTH / 2, y: PROJECT_HEIGHT / 2 },
-    });
+    const position = live.character.mode === 'adaptive-parts'
+      ? adaptiveCharacterSourceAnchor(live.snapshot.project, live.character)
+      : { x: PROJECT_WIDTH / 2, y: PROJECT_HEIGHT / 2 };
+    let layer: ReturnType<typeof layerStore.createAdaptiveCharacter>;
+    if (live.character.mode === 'adaptive-parts') {
+      layer = layerStore.createAdaptiveCharacter(live.character.id, position);
+    } else {
+      const liveCharacter = live.character;
+      const expression = liveCharacter.expressions.find(
+        (candidate) => candidate.id === liveCharacter.defaultExpressionId,
+      );
+      if (!expression || !live.snapshot.project.assets.some(
+        (asset) => asset.kind === 'image' && asset.id === expression.assetId,
+      )) {
+        reportStatus('默认表情素材不可用，请先设置默认表情。');
+        return;
+      }
+      layer = layerStore.createFromAsset({
+        version: 2,
+        type: 'character-expression',
+        assetId: expression.assetId,
+        characterId: liveCharacter.id,
+        expressionId: expression.id,
+        position,
+      });
+    }
     selectionStore.select(layer.id);
     reportStatus('');
   } catch (error) {
@@ -250,10 +254,7 @@ export function CharacterManager({
       )
         ? activeSession.characterId
         : null;
-    return resumableCharacterId ??
-      snapshot?.project.characters.find(
-        (character) => character.mode !== 'adaptive-parts',
-      )?.id ?? null;
+    return resumableCharacterId ?? snapshot?.project.characters[0]?.id ?? null;
   });
   const selectedCharacterIdRef = useRef(selectedCharacterId);
   selectedCharacterIdRef.current = selectedCharacterId;
@@ -280,10 +281,11 @@ export function CharacterManager({
   const creationBaselineIdsRef = useRef<Set<string> | null>(null);
   const creationStartViewRef = useRef<CharacterWorkspaceView | null>(null);
   const project = snapshot?.project ?? null;
-  const expressionCharacters = project?.characters.filter(
+  const characters = project?.characters ?? [];
+  const expressionCharacters = characters.filter(
     (character): character is ExpressionCharacter =>
       character.mode !== 'adaptive-parts',
-  ) ?? [];
+  );
   const imageAssets = useMemo(
     () =>
       (project?.assets.filter(
@@ -301,6 +303,8 @@ export function CharacterManager({
     expressionCharacters.find(
       (character) => character.id === selectedCharacterId,
       ) ?? null;
+  const selectedDisplayCharacter =
+    characters.find((character) => character.id === selectedCharacterId) ?? null;
   const editAssemblySnapshot =
     assemblySnapshot &&
     !isCharacterCreationSnapshot(assemblySnapshot) &&
@@ -341,14 +345,14 @@ export function CharacterManager({
   useEffect(() => {
     if (
       selectedCharacterId &&
-      expressionCharacters.some(
+      characters.some(
         (character) => character.id === selectedCharacterId,
       )
     ) {
       return;
     }
-    setSelectedCharacterId(expressionCharacters[0]?.id ?? null);
-  }, [expressionCharacters, selectedCharacterId]);
+    setSelectedCharacterId(characters[0]?.id ?? null);
+  }, [characters, selectedCharacterId]);
 
   useEffect(() => {
     if (!snapshot) {
@@ -677,7 +681,7 @@ export function CharacterManager({
           <div>
             <span>
               {snapshot
-                ? `${expressionCharacters.length} 个角色`
+                ? `${characters.length} 个角色`
                 : '尚未打开项目'}
             </span>
           </div>
@@ -689,7 +693,7 @@ export function CharacterManager({
       >
         {view === 'legacy' ? (
           <CharacterList
-            characters={expressionCharacters}
+            characters={characters}
             disabled={!snapshot}
             imageAssets={imageAssets}
             mode="legacy"
@@ -708,7 +712,7 @@ export function CharacterManager({
           />
         ) : view === 'list' ? (
           <CharacterList
-            characters={expressionCharacters}
+            characters={characters}
             disabled={!snapshot}
             imageAssets={imageAssets}
             mode="list"
@@ -725,7 +729,7 @@ export function CharacterManager({
           />
         ) : view === 'create' ? (
           <CharacterList
-            characters={expressionCharacters}
+            characters={characters}
             disabled={!snapshot}
             imageAssets={imageAssets}
             mode="create"
@@ -750,11 +754,11 @@ export function CharacterManager({
         ) : null}
         {view === 'legacy' || view === 'detail' || view === 'expression' ? (
           <CharacterEditor
-          character={selectedCharacter}
+          character={selectedDisplayCharacter}
           project={project ?? undefined}
           disabled={!snapshot}
           imageAssets={imageAssets}
-          key={selectedCharacter?.id ?? 'empty'}
+          key={selectedDisplayCharacter?.id ?? 'empty'}
           onAddExpression={(name, assetId) => {
             if (!selectedCharacter) return;
             const next = mutate(
