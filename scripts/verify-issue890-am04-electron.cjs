@@ -518,17 +518,14 @@ async function readStageState(window, stageSelector = '[data-testid="project-can
 async function readPreviewState(window) {
   return window.webContents.executeJavaScript(
     '(() => { const o=document.querySelector(\'[data-testid="product-preview-overlay"]\'); if(!o) return null;' +
-    'const s=o.querySelector(\'[data-testid="project-canvas-stage"]\');' +
-    'const state=s?JSON.parse(s.dataset.layerJson||"[]"):[];' +
-    'const evaluated=s?JSON.parse(s.dataset.evaluatedLayerJson||"[]"):[];' +
-    'const status=s?JSON.parse(s.dataset.visualStatusJson||"[]"):[];' +
-    'const ready=s?JSON.parse(s.dataset.targetReadyLayerIds||"[]"):[];' +
+    'const s=o.querySelector(\'[data-testid="stage-renderer"]\');' +
+    'const state=s?JSON.parse(s.dataset.layerRenderJson||"[]"):[];' +
     'return {time:Number(o.dataset.previewTime),projectTime:Number(o.dataset.previewProjectTime),' +
     'playing:o.dataset.previewPlaying==="true",surface:o.dataset.previewSurface,' +
-    'layers:state.filter(x=>x.source?.kind==="animation").map(layer=>({' +
-    'layer,visual:evaluated.find(x=>x.id===layer.id)||null,' +
-    'visualStatus:status.find(pair=>pair[0]===layer.id)?.[1]??null,' +
-    'ready:ready.includes(layer.id)}))}; })()',
+    'stageTime:Number(s?.dataset.stageTime??0),stageReady:s?.dataset.stageReady==="true",' +
+    'stageDisplayReady:s?.dataset.stageDisplayReady==="true",stagePresent:Boolean(s),' +
+    'layers:state.map(visual=>({layer:{id:visual.id,x:visual.x,y:visual.y,scaleX:visual.scaleX,scaleY:visual.scaleY},' +
+    'visual:{assetId:visual.assetId,visible:visual.visible}}))}; })()',
   );
 }
 
@@ -806,6 +803,17 @@ async function run() {
       'document.querySelector(\'[data-testid="layer-transform-panel"]\')?.dataset.selectedLayerId==="' + layerAId + '"',
       'Could not select instance A for duplicate/delete coverage.',
     );
+    const layerSectionOpen = await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-testid="right-inspector-layer-section"]\')?.open === true',
+    );
+    if (!layerSectionOpen) {
+      await click(window, '[data-testid="right-inspector-layer-section"] > summary');
+    }
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="right-inspector-layer-section"]\')?.open === true',
+      'Layer controls did not expand in the Inspector.',
+    );
     const duplicateStateBefore = await window.webContents.executeJavaScript(`(() => {
       const stage = document.querySelector('[data-testid="project-canvas-stage"]');
       const layers = JSON.parse(stage?.dataset.layerJson || '[]');
@@ -941,7 +949,10 @@ async function run() {
     await click(window, '[data-testid="product-preview-play-pause"]');
     await waitFor(
       window,
-      'Number(document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewProjectTime)>=2200',
+      'Number(document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewProjectTime)>=2200&&' +
+        '(() => { const s=document.querySelector(\'[data-testid="product-preview-overlay"] [data-testid="stage-renderer"]\');' +
+        'return Number(s?.dataset.stageTime)>=2200&&s?.dataset.stageReady==="true"&&' +
+        's?.dataset.stageDisplayReady==="true"; })()',
       'Product Preview did not advance continuously past two 840ms animation periods.',
       12_000,
     );
@@ -949,10 +960,15 @@ async function run() {
     assert(continuous.playing, 'Product Preview stopped before the pause action.');
     const continuousA = animationRecord(continuous, layerAId);
     const continuousB = animationRecord(continuous, layerBId);
-    const continuousFrameIndex = Math.floor(continuous.time * 25 / 1_000) % 21;
+    const continuousFrameIndex = Math.floor(continuous.stageTime * 25 / 1_000) % 21;
     assert(continuousA.visual?.assetId === ids.frames[continuousFrameIndex] &&
       continuousA.visual.visible === true,
-    'Looping instance A did not advance to the deterministic preview frame: ' + JSON.stringify(continuousA));
+    'Looping instance A did not advance to the deterministic preview frame: ' + JSON.stringify({
+      stageTime: continuous.stageTime,
+      previewTime: continuous.time,
+      frameIndex: continuousFrameIndex,
+      instance: continuousA,
+    }));
     assert(continuousB.visual?.visible === false,
       'Once+hide instance B remained visible after its 840ms cycle.');
     await click(window, '[data-testid="product-preview-play-pause"]');
@@ -991,8 +1007,10 @@ async function run() {
     );
     await waitFor(
       window,
-      '(() => { const s=document.querySelector(\'[data-testid="product-preview-overlay"] [data-testid="project-canvas-stage"]\');' +
-        'const r=JSON.parse(s?.dataset.targetReadyLayerIds||"[]");return r.includes("' + layerAId + '")&&r.includes("' + layerBId + '"); })()',
+      '(() => { const s=document.querySelector(\'[data-testid="product-preview-overlay"] [data-testid="stage-renderer"]\');' +
+        'const r=JSON.parse(s?.dataset.layerRenderJson||"[]");return s?.dataset.stageReady==="true"&&' +
+        's?.dataset.stageDisplayReady==="true"&&r.some(x=>x.id==="' + layerAId + '"&&x.assetId==="' + ids.frames[5] + '")&&' +
+        'r.some(x=>x.id==="' + layerBId + '"&&x.assetId==="' + ids.frames[1] + '"); })()',
       'Both animation frames did not become ready after reverse seek.',
       20_000,
     );
@@ -1012,13 +1030,13 @@ async function run() {
     'Preview playback changed the independent instance transforms.');
     const pixelA = await canvasPixel(
       window,
-      '[data-testid="product-preview-overlay"] [data-testid="project-canvas-stage"]',
+      '[data-testid="product-preview-overlay"] [data-testid="stage-renderer"]',
       reverseA.layer.x,
       reverseA.layer.y,
     );
     const pixelB = await canvasPixel(
       window,
-      '[data-testid="product-preview-overlay"] [data-testid="project-canvas-stage"]',
+      '[data-testid="product-preview-overlay"] [data-testid="stage-renderer"]',
       reverseB.layer.x,
       reverseB.layer.y,
     );
