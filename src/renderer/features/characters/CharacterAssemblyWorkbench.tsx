@@ -414,7 +414,14 @@ function AdaptivePartsAssemblyWorkbench({
       setMessage('组装草稿已失效，请重新打开。');
       return;
     }
-    const result = handle.setDraft(update(session.draft));
+    const current = handle.getSnapshot();
+    if (!current) {
+      setMessage('组装草稿已失效，请重新打开。');
+      return;
+    }
+    // Read the current session draft instead of the last React render. Rapid
+    // edits to different Parts can arrive before React commits a rerender.
+    const result = handle.setDraft(update(current.draft));
     if (!result.ok) setMessage(result.error.message);
     else setMessage('');
   };
@@ -430,12 +437,14 @@ function AdaptivePartsAssemblyWorkbench({
     return { ...(part?.staticAdjustment ?? DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT) };
   };
   const setAdjustment = (partId: string, adjustment: CharacterPartStaticAdjustment): void => {
-    const part = session.draft.parts.find((candidate) => candidate.partId === partId);
+    const current = activeHandle()?.getSnapshot()?.draft;
+    if (!current) return;
+    const part = current.parts.find((candidate) => candidate.partId === partId);
     if (!part) return;
     try {
       const sourceRestTransform = part.sourceRestTransform ?? part.restTransform;
       const restTransform = characterPartTransformFromStaticAdjustment(
-        session.draft.sourceRootTransform,
+        current.sourceRootTransform,
         sourceRestTransform,
         part.imageMapping,
         adjustment,
