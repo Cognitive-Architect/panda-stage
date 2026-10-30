@@ -369,8 +369,6 @@ export function CharacterEditor({
     );
   const [isTalkingHeadMotionPreviewing, setIsTalkingHeadMotionPreviewing] =
     useState(false);
-  const [hasStartedTalkingHeadMotionPreview, setHasStartedTalkingHeadMotionPreview] =
-    useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [expressionAddOpen, setExpressionAddOpen] = useState(false);
   const [activeWorkspace, setActiveWorkspace] =
@@ -412,13 +410,11 @@ export function CharacterEditor({
       persistedTalkingHeadMotionIntensityPercent,
     );
     setIsTalkingHeadMotionPreviewing(false);
-    setHasStartedTalkingHeadMotionPreview(false);
   }, [character?.id, persistedTalkingHeadMotionIntensityPercent]);
 
   useEffect(() => {
     if (!talkingHeadSettingsVisible || !hasTalkingHeadMotionControl) {
       setIsTalkingHeadMotionPreviewing(false);
-      setHasStartedTalkingHeadMotionPreview(false);
     }
     if (!hasTalkingHeadMotionControl) {
       setTalkingHeadMotionIntensityPercent(
@@ -549,7 +545,7 @@ export function CharacterEditor({
       }
       data-testid="character-talking-head-settings"
     >
-      <div className="character-talking-head-intensity-control">
+      <div className="character-talking-head-layout">
         <div className="character-talking-head-field-heading">
           <label
             htmlFor={talkingHeadIntensityInputId}
@@ -557,74 +553,78 @@ export function CharacterEditor({
           >
             点头强度
           </label>
-          <output
-            aria-live="polite"
-            className="character-talking-head-value"
-            data-testid="character-talking-head-intensity-value"
-            htmlFor={talkingHeadIntensityInputId}
-          >
-            {talkingHeadMotionIntensityPercent}%
-          </output>
+          <div className="character-talking-head-value-actions">
+            <output
+              aria-live="polite"
+              className="character-talking-head-value"
+              data-testid="character-talking-head-intensity-value"
+              htmlFor={talkingHeadIntensityInputId}
+            >
+              {talkingHeadMotionIntensityPercent}%
+            </output>
+            <button
+              className="character-talking-head-default-button"
+              data-testid="character-talking-head-restore-default"
+              disabled={
+                disabled || talkingHeadMotionIntensityPercent === 100
+              }
+              onClick={() => setTalkingHeadMotionIntensityPercent(100)}
+              type="button"
+            >
+              恢复默认
+            </button>
+          </div>
         </div>
-        <input
-          aria-label="点头强度"
-          data-testid="character-talking-head-intensity"
-          disabled={disabled}
-          id={talkingHeadIntensityInputId}
-          max={200}
-          min={0}
-          onChange={(event) =>
-            setTalkingHeadMotionIntensityPercent(Number(event.target.value))
-          }
-          step={10}
-          type="range"
-          value={talkingHeadMotionIntensityPercent}
-        />
-      </div>
-      <div
-        aria-hidden="true"
-        className="character-talking-head-scale-labels"
-      >
-        <span>静止</span>
-        <span>标准</span>
-        <span>明显</span>
-      </div>
-      <div className="character-talking-head-actions">
-        <div>
-          <button
-            className="character-talking-head-preview-button"
-            data-testid="character-talking-head-preview-toggle"
+        <div className="character-talking-head-intensity-control">
+          <input
+            aria-label="点头强度"
+            data-testid="character-talking-head-intensity"
             disabled={disabled}
-            onClick={() => {
-              setHasStartedTalkingHeadMotionPreview(true);
-              setIsTalkingHeadMotionPreviewing((playing) => !playing);
-            }}
-            type="button"
-          >
-            {isTalkingHeadMotionPreviewing ? '停止预览' : '预览'}
-          </button>
-          <button
-            className="character-talking-head-default-button"
-            data-testid="character-talking-head-restore-default"
-            disabled={
-              disabled || talkingHeadMotionIntensityPercent === 100
+            id={talkingHeadIntensityInputId}
+            max={200}
+            min={0}
+            onChange={(event) =>
+              setTalkingHeadMotionIntensityPercent(Number(event.target.value))
             }
-            onClick={() => setTalkingHeadMotionIntensityPercent(100)}
-            type="button"
+            step={10}
+            type="range"
+            value={talkingHeadMotionIntensityPercent}
+          />
+          <div
+            aria-hidden="true"
+            className="character-talking-head-scale-labels"
           >
-            恢复默认
-          </button>
+            <span>静止</span>
+            <span>标准</span>
+            <span>明显</span>
+          </div>
+        </div>
+        <div className="character-talking-head-preview-column">
+          {project ? (
+            <CharacterTalkingHeadMotionPreview
+              character={headedCompositeCharacter}
+              intensityPercent={talkingHeadMotionIntensityPercent}
+              playing={isTalkingHeadMotionPreviewing}
+              project={project}
+              thumbnails={thumbnails}
+            />
+          ) : null}
+          <div className="character-talking-head-actions">
+            <button
+              aria-pressed={isTalkingHeadMotionPreviewing}
+              className="character-talking-head-preview-button"
+              data-testid="character-talking-head-preview-toggle"
+              disabled={disabled}
+              onClick={() =>
+                setIsTalkingHeadMotionPreviewing((playing) => !playing)
+              }
+              type="button"
+            >
+              {isTalkingHeadMotionPreviewing ? '停止预览' : '预览'}
+            </button>
+          </div>
         </div>
       </div>
-      {hasStartedTalkingHeadMotionPreview && project ? (
-        <CharacterTalkingHeadMotionPreview
-          character={headedCompositeCharacter}
-          intensityPercent={talkingHeadMotionIntensityPercent}
-          playing={isTalkingHeadMotionPreviewing}
-          project={project}
-          thumbnails={thumbnails}
-        />
-      ) : null}
       {talkingHeadMotionIntensityPercent !==
       persistedTalkingHeadMotionIntensityPercent ? (
         <div
@@ -635,7 +635,6 @@ export function CharacterEditor({
         >
           <div>
             <strong>● 有未应用更改</strong>
-            <span>应用后保存到此角色</span>
           </div>
           <div className="character-default-action-row">
             <button
@@ -705,7 +704,10 @@ export function CharacterEditor({
             type="button"
           >
             {landscapeDetail ? (
-              <span aria-hidden="true">←</span>
+              <>
+                <span aria-hidden="true">←</span>
+                <span>返回角色列表</span>
+              </>
             ) : (
               '← 返回角色详情'
             )}
@@ -1389,16 +1391,10 @@ export function CharacterEditor({
             </section>
             ) : null}
             <section
-              aria-labelledby="character-danger-zone-heading"
+              aria-label="删除角色"
               className="character-settings-section character-danger-zone"
               data-testid="character-danger-zone"
             >
-              <div className="character-danger-zone-copy">
-                <h4 id="character-danger-zone-heading">危险操作</h4>
-                <p>
-                  删除当前角色；如果角色被镜头或对白引用，删除会被阻止。
-                </p>
-              </div>
               <button
                 className="character-delete-settings-action"
                 data-testid="character-delete-settings"

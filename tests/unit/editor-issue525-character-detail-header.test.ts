@@ -61,6 +61,7 @@ describe('Issue #525 Character Detail header and inline rename', () => {
     expect(markup).toContain('aria-label="返回角色列表"');
     expect(markup).toContain('title="返回角色列表"');
     expect(markup).toContain('<span aria-hidden="true">←</span>');
+    expect(markup).toContain('<span>返回角色列表</span>');
     expect(markup).toContain('character-detail-navigation-detail');
     expect(markup).toContain(
       'class="sr-only character-detail-navigation-title"',
@@ -68,6 +69,21 @@ describe('Issue #525 Character Detail header and inline rename', () => {
     expect(markup).toContain('id="character-detail-title"');
     expect(identity).not.toContain('个表情');
     expect(markup).toContain('character-workspace-expressions-tab');
+  });
+
+  it('keeps the detail actions in one quiet, compact navigation row', () => {
+    const markup = detailMarkup();
+    const styles = readOrderedStylesheetSource();
+    const characterChrome = styles.slice(styles.indexOf('/* Issue #616:'));
+
+    expect(markup).toContain('aria-label="返回角色列表"');
+    expect(markup).toContain('aria-label="加入当前镜头"');
+    expect(markup).toContain('aria-label="关闭角色抽屉"');
+    expect(characterChrome).toContain('min-height: 50px;');
+    expect(characterChrome).toContain('background: transparent;');
+    expect(characterChrome).toContain('border-bottom: 1px solid rgb(127 199 148 / 13%)');
+    expect(characterChrome).toContain('margin-bottom: 0;');
+    expect(characterChrome).toContain('var(--ui-touch-regular)');
   });
 
   it('keeps rename inside the identity region with explicit cancel/save controls', () => {
