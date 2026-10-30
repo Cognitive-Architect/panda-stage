@@ -1,3 +1,4 @@
+import Konva from 'konva';
 import { describe, expect, it } from 'vitest';
 import {
   evaluateShotAtTime,
@@ -26,6 +27,50 @@ const FACE_ANGRY_ID = '10000000-0000-4000-8000-000000000006';
 const MOUTH_ID = '10000000-0000-4000-8000-000000000007';
 const AUDIO_ID = '10000000-0000-4000-8000-000000000008';
 const DIALOGUE_ID = '80000000-0000-4000-8000-000000000004';
+
+function konvaCornerDeviation(
+  part: Parameters<typeof visualPartRenderTransform>[0],
+  width: number,
+  height: number,
+): number {
+  const source = part.imageTransform;
+  if (!source) throw new Error(`Part ${part.partId} has no source affine.`);
+  const render = visualPartRenderTransform(part);
+  const node = new Konva.Group({
+    x: render.x,
+    y: render.y,
+    offsetX: render.offsetX,
+    offsetY: render.offsetY,
+    rotation: render.rotation,
+    scaleX: render.scaleX,
+    scaleY: render.scaleY,
+    skewX: render.skewX ?? 0,
+    skewY: render.skewY ?? 0,
+  });
+  const actual = node.getTransform().getMatrix();
+  const corners = [
+    { x: 0, y: 0 },
+    { x: width, y: 0 },
+    { x: width, y: height },
+    { x: 0, y: height },
+  ];
+  let maximumDeviation = 0;
+  for (const corner of corners) {
+    // Independent oracle: apply the original source affine directly, without
+    // calling the product's decomposition or Konva transform helper.
+    const expectedX = source.a * corner.x + source.c * corner.y + source.tx;
+    const expectedY = source.b * corner.x + source.d * corner.y + source.ty;
+    const actualX = actual[0]! * corner.x + actual[2]! * corner.y + actual[4]!;
+    const actualY = actual[1]! * corner.x + actual[3]! * corner.y + actual[5]!;
+    maximumDeviation = Math.max(
+      maximumDeviation,
+      Math.abs(actualX - expectedX),
+      Math.abs(actualY - expectedY),
+    );
+  }
+  node.destroy();
+  return maximumDeviation;
+}
 const AUDIO_CLIP_ID = '70000000-0000-4000-8000-000000000004';
 const EXPRESSION_EVENT_ID = '90000000-0000-4000-8000-000000000004';
 
@@ -935,7 +980,52 @@ describe('BFM-S03 unified visual-parts resolver', () => {
     const firstOrigin = transformPointByVisualPart({ x: 0, y: 0 }, first);
     expect(firstOrigin.x).toBeCloseTo(-66.75, 10);
     expect(firstOrigin.y).toBeCloseTo(-36.2, 10);
-    expect(visualPartRenderTransform(first).skewX).not.toBeUndefined();
+    const firstRenderTransform = visualPartRenderTransform(first);
+    const firstMatrix = first.imageTransform!;
+    const firstDeterminant =
+      firstMatrix.a * firstMatrix.d - firstMatrix.b * firstMatrix.c;
+    expect(firstRenderTransform.skewX).toBeCloseTo(
+      (firstMatrix.a * firstMatrix.c + firstMatrix.b * firstMatrix.d) /
+        firstDeterminant,
+      12,
+    );
+    expect(firstRenderTransform.skewX).toBeCloseTo(0.51619679, 7);
+    expect(konvaCornerDeviation(
+      first,
+      mapping.crop.width * mapping.exportScale,
+      mapping.crop.height * mapping.exportScale,
+    )).toBeLessThan(1e-9);
+
+    const mirroredPart = {
+      ...first,
+      partId: '71000000-0000-4000-8000-000000000104',
+      imageTransform: {
+        a: 0.8,
+        b: 0.35,
+        c: 0.9,
+        d: -0.45,
+        tx: -23.4,
+        ty: 18.1,
+      },
+    };
+    const mirroredMatrix = mirroredPart.imageTransform;
+    const mirroredDeterminant =
+      mirroredMatrix.a * mirroredMatrix.d -
+      mirroredMatrix.b * mirroredMatrix.c;
+    const mirroredRenderTransform = visualPartRenderTransform(mirroredPart);
+    expect(mirroredDeterminant).toBeLessThan(0);
+    expect(mirroredRenderTransform.scaleY).toBeLessThan(0);
+    expect(mirroredRenderTransform.skewX).toBeCloseTo(
+      (mirroredMatrix.a * mirroredMatrix.c +
+        mirroredMatrix.b * mirroredMatrix.d) /
+        mirroredDeterminant,
+      12,
+    );
+    expect(konvaCornerDeviation(
+      mirroredPart,
+      mapping.crop.width * mapping.exportScale,
+      mapping.crop.height * mapping.exportScale,
+    )).toBeLessThan(1e-9);
     expect(visual.resources.required.map((resource) => resource.assetId)).toEqual([
       cropAssetId,
       IDS.assetChar,

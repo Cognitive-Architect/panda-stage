@@ -253,8 +253,10 @@ export function visualPartRenderTransform(
     }
     const rotation = (Math.atan2(b, a) * 180) / Math.PI;
     const scaleY = determinant / scaleX;
-    const skewX =
-      (Math.atan((a * c + b * d) / determinant) * 180) / Math.PI;
+    // Konva's Transform.skew expects unitless shear coefficients. With its
+    // translate → rotate → skew → scale order, this coefficient reconstructs
+    // the original second column for both positive and negative determinants.
+    const skewX = (a * c + b * d) / determinant;
     return {
       x: tx,
       y: ty,

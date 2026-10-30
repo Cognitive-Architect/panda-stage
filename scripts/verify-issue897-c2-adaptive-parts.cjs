@@ -11,7 +11,10 @@ const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
 const { ProjectSchema, PROJECT_SCHEMA_VERSION, CharacterService } = require('../dist-electron/domain/index.js');
 const { evaluateShotAtTime } = require('../dist-electron/domain/evaluate-shot-at-time.js');
 const { buildEditorStageRenderModel } = require('../dist-electron/domain/selectors/stageRenderModel.js');
-const { resolveLayerVisualParts } = require('../dist-electron/domain/selectors/visualParts.js');
+const {
+  resolveLayerVisualParts,
+  visualPartRenderTransform,
+} = require('../dist-electron/domain/selectors/visualParts.js');
 const { registerIpcHandlers } = require('../dist-electron/main/ipc/register-ipc-handlers.js');
 const { registerExportPreparationIpcHandlers } = require('../dist-electron/main/ipc/register-export-preparation-ipc-handlers.js');
 const { ExportPreparationService, MainProjectAssetReader } = require('../dist-electron/main/services/ExportPreparationService.js');
@@ -45,6 +48,7 @@ const IDS = Object.freeze({
   bodyArm: '89700000-0000-4000-8000-000000000004',
   leg: '89700000-0000-4000-8000-000000000005',
   head: '89700000-0000-4000-8000-000000000006',
+  skewPatch: '89700000-0000-4000-8000-000000000014',
   classicCharacter: '89700000-0000-4000-8000-000000000007',
   classicExpression: '89700000-0000-4000-8000-000000000008',
   classicVoice: '89700000-0000-4000-8000-000000000009',
@@ -58,7 +62,15 @@ const IDS = Object.freeze({
   bodyArmPart: '89700000-0000-4000-8000-000000000011',
   headPart: '89700000-0000-4000-8000-000000000012',
   hiddenPart: '89700000-0000-4000-8000-000000000013',
+  skewPart: '89700000-0000-4000-8000-000000000015',
 });
+
+const SKEW_MARKERS = [
+  { name: 'top-left', x: 11, y: 11, color: [250, 230, 20] },
+  { name: 'top-right', x: 133, y: 11, color: [20, 220, 60] },
+  { name: 'bottom-right', x: 133, y: 97, color: [30, 110, 240] },
+  { name: 'bottom-left', x: 11, y: 97, color: [10, 220, 230] },
+];
 
 let mainWindow = null;
 let hiddenWindowManager = null;
@@ -188,6 +200,18 @@ function createArtBytes(kind, width, height) {
     ellipse(rgba, width, height, 38, 58, 3, 5, [28, 33, 39]);
     ellipse(rgba, width, height, 62, 58, 3, 5, [28, 33, 39]);
     rect(rgba, width, height, 43, 76, 14, 3, [155, 72, 65]);
+  } else if (kind === 'skew-patch') {
+    rect(rgba, width, height, 0, 0, width, height, [37, 38, 49]);
+    rect(rgba, width, height, 4, 4, width - 8, height - 8, [226, 83, 45]);
+    for (let y = 20; y < height - 12; y += 16) {
+      for (let x = 20; x < width - 12; x += 20) {
+        rect(rgba, width, height, x, y, 7, 9, [49, 59, 73]);
+      }
+    }
+    rect(rgba, width, height, 4, 4, 14, 14, [250, 230, 20]);
+    rect(rgba, width, height, width - 18, 4, 14, 14, [20, 220, 60]);
+    rect(rgba, width, height, width - 18, height - 18, 14, 14, [30, 110, 240]);
+    rect(rgba, width, height, 4, height - 18, 14, 14, [10, 220, 230]);
   }
   return encodePng(width, height, rgba);
 }
@@ -231,6 +255,7 @@ function buildProject() {
     asset(IDS.bodyArm, 'Body Arm Composite', 160, 210, 'body-arm', 'character'),
     asset(IDS.leg, 'Repeated Leg Part', 80, 100, 'leg', 'character'),
     asset(IDS.head, 'Synthetic Head Part', 100, 100, 'head', 'character'),
+    asset(IDS.skewPatch, 'Synthetic Skewed Part', 144, 108, 'skew-patch', 'character'),
   ];
   const legacyCharacter = {
     id: IDS.classicCharacter,
@@ -305,6 +330,7 @@ function buildProject() {
     body: { sourceWidth: 180, sourceHeight: 230, crop: { x: 10, y: 10, width: 160, height: 210 }, exportScale: 1 },
     leg: { sourceWidth: 100, sourceHeight: 120, crop: { x: 10, y: 10, width: 80, height: 100 }, exportScale: 1 },
     head: { sourceWidth: 120, sourceHeight: 120, crop: { x: 10, y: 10, width: 100, height: 100 }, exportScale: 1 },
+    skew: { sourceWidth: 160, sourceHeight: 120, crop: { x: 12, y: 8, width: 96, height: 72 }, exportScale: 1.5 },
   };
   const parts = [
     makePart(IDS.leftLegPart, IDS.leg, 'synthetic:leg:left', 'Left leg', 0,
@@ -313,9 +339,11 @@ function buildProject() {
       { a: 1, b: 0, c: 0, d: 1, tx: 865, ty: 580 }, mappings.leg),
     makePart(IDS.bodyArmPart, IDS.bodyArm, 'synthetic:body-arm:composite', 'Body + arm composite', 2,
       { a: 0.99, b: 0.04, c: -0.04, d: 0.99, tx: 785, ty: 430 }, mappings.body, 'manual'),
-    makePart(IDS.headPart, IDS.head, 'synthetic:head:instance', 'Head', 3,
+    makePart(IDS.skewPart, IDS.skewPatch, 'synthetic:skew:torso-panel', 'Skew oracle panel', 3,
+      { a: 0.9, b: 0.2, c: 0.55, d: 1.05, tx: 775, ty: 465 }, mappings.skew, 'manual'),
+    makePart(IDS.headPart, IDS.head, 'synthetic:head:instance', 'Head', 4,
       { a: 1, b: 0, c: 0, d: 1, tx: 815, ty: 345 }, mappings.head),
-    makePart(IDS.hiddenPart, IDS.head, 'synthetic:hidden:control', 'Hidden visibility control', 4,
+    makePart(IDS.hiddenPart, IDS.head, 'synthetic:hidden:control', 'Hidden visibility control', 5,
       { a: 1, b: 0, c: 0, d: 1, tx: 1_500, ty: 800 }, mappings.head, 'source-instance', false),
   ];
   const service = new CharacterService({
@@ -721,6 +749,120 @@ async function decodeRgb(ffmpegPath, imagePath) {
   return result.stdout;
 }
 
+function affinePoint(matrix, point) {
+  return {
+    x: matrix.a * point.x + matrix.c * point.y + matrix.tx,
+    y: matrix.b * point.x + matrix.d * point.y + matrix.ty,
+  };
+}
+
+function ownerPoint(point, owner) {
+  const radians = (owner.rotationDeg * Math.PI) / 180;
+  const scaleX = owner.scaleX * (owner.flipX ? -1 : 1);
+  const x = point.x * scaleX;
+  const y = point.y * owner.scaleY;
+  return {
+    x: owner.x + x * Math.cos(radians) - y * Math.sin(radians),
+    y: owner.y + x * Math.sin(radians) + y * Math.cos(radians),
+  };
+}
+
+function buildSkewAffineOracle(Konva, part, owner, width, height) {
+  const source = part.imageTransform;
+  assert(source, `Skew Part ${part.partId} has no raw affine matrix.`);
+  const render = visualPartRenderTransform(part);
+  const node = new Konva.Group({
+    x: render.x,
+    y: render.y,
+    offsetX: render.offsetX,
+    offsetY: render.offsetY,
+    rotation: render.rotation,
+    scaleX: render.scaleX,
+    scaleY: render.scaleY,
+    skewX: render.skewX ?? 0,
+    skewY: render.skewY ?? 0,
+  });
+  const actualMatrix = [...node.getTransform().getMatrix()];
+  node.destroy();
+  const sourceCorners = [
+    { x: 0, y: 0 },
+    { x: width, y: 0 },
+    { x: width, y: height },
+    { x: 0, y: height },
+  ];
+  let maxCornerDeviation = 0;
+  const corners = sourceCorners.map((point) => {
+    const expected = affinePoint(source, point);
+    const actual = {
+      x: actualMatrix[0] * point.x + actualMatrix[2] * point.y + actualMatrix[4],
+      y: actualMatrix[1] * point.x + actualMatrix[3] * point.y + actualMatrix[5],
+    };
+    maxCornerDeviation = Math.max(
+      maxCornerDeviation,
+      Math.abs(expected.x - actual.x),
+      Math.abs(expected.y - actual.y),
+    );
+    return {
+      source: point,
+      expectedLocal: expected,
+      konvaLocal: actual,
+      expectedStage: ownerPoint(expected, owner),
+    };
+  });
+  const skewFactor = render.skewX ?? 0;
+  assert(Math.abs(skewFactor) >= 0.3, `Skew fixture is not visibly nonzero: ${skewFactor}.`);
+  assert(maxCornerDeviation <= 1e-8, `Konva corners differ from the raw source affine by ${maxCornerDeviation}.`);
+  for (const corner of corners) {
+    assert(
+      corner.expectedStage.x >= 2 && corner.expectedStage.x <= 1918 &&
+      corner.expectedStage.y >= 2 && corner.expectedStage.y <= 1078,
+      `Skew Part corner is outside the Stage: ${JSON.stringify(corner.expectedStage)}.`,
+    );
+  }
+  const markers = SKEW_MARKERS.map((marker) => ({
+    ...marker,
+    stagePoint: ownerPoint(affinePoint(source, marker), owner),
+  }));
+  return {
+    partId: part.partId,
+    sourceMatrix: { ...source },
+    determinant: source.a * source.d - source.b * source.c,
+    skewFactor,
+    cropAndScale: { crop: { x: 12, y: 8, width: 96, height: 72 }, exportScale: 1.5 },
+    konvaMatrix: actualMatrix,
+    corners,
+    maxCornerDeviation,
+    markers,
+  };
+}
+
+function sampleSkewMarkers(rgb, width, height, markers, tolerance, label) {
+  assert(rgb.length === width * height * 3, `${label} RGB buffer does not match ${width}x${height}.`);
+  const scaleX = width / 1920;
+  const scaleY = height / 1080;
+  return markers.map((marker) => {
+    const x = Math.round(marker.stagePoint.x * scaleX);
+    const y = Math.round(marker.stagePoint.y * scaleY);
+    assert(x >= 0 && x < width && y >= 0 && y < height, `${label} ${marker.name} sample is outside the image.`);
+    const offset = (y * width + x) * 3;
+    const actual = [rgb[offset], rgb[offset + 1], rgb[offset + 2]];
+    const maxChannelDeviation = Math.max(...actual.map((value, channel) => Math.abs(value - marker.color[channel])));
+    assert(
+      maxChannelDeviation <= tolerance,
+      `${label} ${marker.name} marker missed its source-matrix point: expected ${JSON.stringify(marker.color)}, got ${JSON.stringify(actual)} at ${x},${y}.`,
+    );
+    return {
+      name: marker.name,
+      sourcePoint: { x: marker.x, y: marker.y },
+      expectedStagePoint: marker.stagePoint,
+      sampledPixel: { x, y },
+      expectedRgb: marker.color,
+      actualRgb: actual,
+      maxChannelDeviation,
+    };
+  });
+}
+
 async function comparePngs(ffmpegPath, referencePath, candidatePath) {
   const [reference, candidate] = await Promise.all([
     decodeRgb(ffmpegPath, referencePath),
@@ -775,6 +917,7 @@ async function normalizePng(ffmpegPath, sourcePath, fileName) {
 }
 
 async function main() {
+  const Konva = (await import('konva')).default;
   await fsp.mkdir(evidenceRoot, { recursive: true });
   await fsp.mkdir(path.join(projectRoot, 'assets'), { recursive: true });
   activeProject = buildProject();
@@ -833,7 +976,7 @@ async function main() {
     assert(placementCount >= 1, 'Adaptive Parts detail did not expose the existing Add to Current Shot action.');
     await click(mainWindow, placementSelector, 'Add Adaptive Parts to current Shot');
     await waitFor(mainWindow, `JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.layerJson ?? '[]').some((layer) => layer.source?.characterId === ${JSON.stringify(IDS.adaptiveCharacter)})`, 'Adaptive Parts was not placed as a Shot Character Layer.');
-    await waitFor(mainWindow, `(() => { const stage = document.querySelector('[data-testid="project-canvas-stage"]'); const ids = JSON.parse(stage?.dataset.renderedAssetIds ?? '[]'); const incomplete = JSON.parse(stage?.dataset.incompleteVisualLayerIds ?? '[]'); return [${JSON.stringify(IDS.background)}, ${JSON.stringify(IDS.bodyArm)}, ${JSON.stringify(IDS.leg)}, ${JSON.stringify(IDS.head)}].every((id) => ids.includes(id)) && incomplete.length === 0; })()`, 'The editor Stage did not load every visible Adaptive Part and the background.');
+    await waitFor(mainWindow, `(() => { const stage = document.querySelector('[data-testid="project-canvas-stage"]'); const ids = JSON.parse(stage?.dataset.renderedAssetIds ?? '[]'); const incomplete = JSON.parse(stage?.dataset.incompleteVisualLayerIds ?? '[]'); return [${JSON.stringify(IDS.background)}, ${JSON.stringify(IDS.bodyArm)}, ${JSON.stringify(IDS.leg)}, ${JSON.stringify(IDS.head)}, ${JSON.stringify(IDS.skewPatch)}].every((id) => ids.includes(id)) && incomplete.length === 0; })()`, 'The editor Stage did not load every visible Adaptive Part and the background.');
 
     const afterPlacement = await page(mainWindow, 'window.__pandaStageIssue816Acceptance.inspect()');
     const shotAfterPlacement = afterPlacement.project.shots.find((shot) => shot.id === IDS.shot);
@@ -889,10 +1032,25 @@ async function main() {
       const adaptiveEntry = model.layers.find(({ layer }) => layer.source.kind === 'character' && layer.source.characterId === IDS.adaptiveCharacter);
       assert(adaptiveEntry?.visual.kind === 'adaptive-parts-character', 'Editor Stage did not resolve the Adaptive visual through the shared render model.');
       const visualParts = resolveLayerVisualParts(activeProject, shot, adaptiveEntry.evaluated).parts;
-      assert(visualParts.filter((part) => part.visible).length === 4, 'Visible Part count differs from the four visible source/composite instances.');
+      assert(visualParts.filter((part) => part.visible).length === 5, 'Visible Part count differs from the four source/composite instances plus skew oracle Part.');
       const sourceOrder = visualParts.map((part) => part.source.kind === 'adaptive-part' ? part.source.characterPartId : 'unexpected');
-      assert(JSON.stringify(sourceOrder) === JSON.stringify([IDS.leftLegPart, IDS.rightLegPart, IDS.bodyArmPart, IDS.headPart, IDS.hiddenPart]), 'Part draw order or identity changed in the shared editor model.');
+      assert(JSON.stringify(sourceOrder) === JSON.stringify([IDS.leftLegPart, IDS.rightLegPart, IDS.bodyArmPart, IDS.skewPart, IDS.headPart, IDS.hiddenPart]), 'Part draw order or identity changed in the shared editor model.');
       assert(visualParts[0].assetId === visualParts[1].assetId && visualParts[0].partId !== visualParts[1].partId, 'Repeated leg image was deduplicated by asset instead of Part identity.');
+      const skewPart = visualParts.find((part) => part.source.kind === 'adaptive-part' && part.source.characterPartId === IDS.skewPart);
+      assert(skewPart?.visible, 'Synthetic skew oracle Part is missing or hidden.');
+      if (sample.name === 'start') {
+        const oracle = buildSkewAffineOracle(Konva, skewPart, adaptiveEntry.evaluated, 144, 108);
+        const stageRgb = await decodeRgb(mediaTools.ffmpegPath, rendered.path);
+        oracle.stagePixels = sampleSkewMarkers(
+          stageRgb,
+          rendered.width,
+          rendered.height,
+          oracle.markers,
+          20,
+          'Editor Stage',
+        );
+        receipt.skewOracle = oracle;
+      }
       receipt.stageSamples[sample.name] = {
         requestedTimeMs: sample.timeMs,
         actualTimeMs: actualTime,
@@ -932,6 +1090,17 @@ async function main() {
       receipt.lastStep = `product-preview:capture-screen:${sample.name}`;
       const screenPath = await captureWhole(mainWindow, `preview-${sample.name}-screen.png`);
       assert(rendered.stageData.stageReady === 'true' && rendered.stageData.displayReady === 'true' && rendered.stageData.stageError === 'false', `Product Preview ${sample.name} has not loaded the full shared StageRenderer asset set: ${JSON.stringify(rendered.stageData)}.`);
+      if (sample.name === 'start') {
+        const previewRgb = await decodeRgb(mediaTools.ffmpegPath, rendered.path);
+        receipt.skewOracle.previewPixels = sampleSkewMarkers(
+          previewRgb,
+          rendered.width,
+          rendered.height,
+          receipt.skewOracle.markers,
+          20,
+          'Product Preview',
+        );
+      }
       receipt.previewSamples[sample.name] = {
         requestedTimeMs: sample.timeMs,
         actualTimeMs: actualTime,
@@ -976,6 +1145,15 @@ async function main() {
     receipt.export.frameCount = decoded.frameCount;
     receipt.export.fps = decoded.fps;
     receipt.export.frames = decoded.frames;
+    const exportRgb = await decodeRgb(mediaTools.ffmpegPath, decoded.frames.start);
+    receipt.skewOracle.exportPixels = sampleSkewMarkers(
+      exportRgb,
+      1920,
+      1080,
+      receipt.skewOracle.markers,
+      44,
+      'Formal MP4',
+    );
     receipt.comparisons = {};
     for (const sample of sampleTimes) {
       const stagePath = await normalizePng(mediaTools.ffmpegPath, receipt.stageSamples[sample.name].canvas, `stage-${sample.name}-normalized.png`);
