@@ -1219,6 +1219,12 @@ async function main() {
     })()`);
     assert(portraitPropertiesHidden,
       'The inactive Properties workspace is visible behind the Adaptive Parts assembly in portrait orientation.');
+    const portraitResourcesHidden = await page(mainWindow, `(() => {
+      const resources = document.querySelector('.editor-workspace-slot-resources');
+      return Boolean(resources?.hidden && getComputedStyle(resources).display === 'none');
+    })()`);
+    assert(portraitResourcesHidden,
+      'The inactive resource workspace reserves visible space behind the Adaptive Parts assembly in portrait orientation.');
     await captureWhole(mainWindow, 'c3-assembly-portrait-orientation.png');
     await click(mainWindow, '[data-testid="adaptive-parts-inspector-toggle"]', 'Reopen the Part inspector after portrait orientation');
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')`, 'Portrait orientation did not preserve the assembly inspector.');
@@ -1246,6 +1252,7 @@ async function main() {
       applyCancelVisible: true,
       assemblySessionPreserved: true,
       inactivePropertiesHidden: portraitPropertiesHidden,
+      inactiveResourcesHidden: portraitResourcesHidden,
       pendingDraftPreserved: portraitTouchAdjustment,
       resetProjectState: { revision: afterNarrowReset.revision, dirty: afterNarrowReset.dirty, undoCount: afterNarrowReset.undoCount },
       physicalTouchHardware: 'NOT_RUN',

@@ -1905,6 +1905,8 @@ export function EditorShell({
     !isPortrait ||
     portraitWorkspace === 'assets' ||
     (portraitWorkspace === 'canvas' && portraitCanvasSurface === 'shots');
+  const portraitResourcesSlotVisible =
+    portraitResourcesVisible && !(isPortrait && assemblyActive);
   const portraitPropertiesVisible =
     !isPortrait ||
     portraitWorkspace === 'properties';
@@ -2026,11 +2028,11 @@ export function EditorShell({
                 presentation={layoutMode}
               />
             <div
-              aria-hidden={!portraitResourcesVisible}
+              aria-hidden={!portraitResourcesSlotVisible}
               className="editor-workspace-slot editor-workspace-slot-resources"
-              data-active={portraitResourcesVisible}
+              data-active={portraitResourcesSlotVisible}
               data-workspace-owner="resources"
-              hidden={!portraitResourcesVisible}
+              hidden={!portraitResourcesSlotVisible}
             >
               <LeftWorkspace
                 activeActivity={
