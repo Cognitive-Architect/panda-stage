@@ -273,6 +273,16 @@ async function ensureCharacterListReady(window, characterRail, characterList, la
   })()`, `${label}: Character list is not visible.`);
 }
 
+async function waitForAdaptiveAssemblyDrawerHidden(window, label) {
+  await waitFor(window, `(() => {
+    const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+    const surface = document.querySelector('[data-testid="resource-activity-drawer"]');
+    const style = surface ? getComputedStyle(surface) : null;
+    return dock?.dataset.resourceDrawerOpen === 'true' &&
+      style?.visibility === 'hidden' && Number(style.opacity) < 0.01;
+  })()`, label);
+}
+
 async function captureWhole(window, fileName) {
   await page(window, 'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
   const image = await window.webContents.capturePage();
@@ -1112,12 +1122,13 @@ async function main() {
       })()`);
       assert(missingThumbnail.status === 'missing' && missingThumbnail.accessibleLabel === '素材不可用' && missingThumbnail.errorIcon && missingThumbnail.rowVisible && missingThumbnail.selectable && missingThumbnail.canvasPartCount === 4,
         `Missing-source fallback did not preserve a clear, selectable Part row: ${JSON.stringify(missingThumbnail)}.`);
-      await captureWhole(mainWindow, 'c3-missing-asset-fallback.png');
       await click(mainWindow, `${missingRowSelector} [data-testid="adaptive-parts-assembly-row-select"]`, 'Select the Part whose source image is missing');
       await waitFor(mainWindow, `document.querySelector(${JSON.stringify(missingRowSelector)} + ' [data-testid="adaptive-parts-assembly-row-select"]')?.getAttribute('aria-pressed') === 'true'`, 'A Part with a missing source could not be selected from its row.');
       const afterMissingSelection = await inspect(mainWindow);
       assert(afterMissingSelection.revision === beforeMissingAsset.revision && afterMissingSelection.dirty === beforeMissingAsset.dirty && afterMissingSelection.undoCount === beforeMissingAsset.undoCount,
         'Showing/selecting a missing source wrote a Project revision, dirty state, or History entry.');
+      await waitForAdaptiveAssemblyDrawerHidden(mainWindow, 'The Character drawer did not hide before capturing the missing-source fallback.');
+      await captureWhole(mainWindow, 'c3-missing-asset-fallback.png');
       missingAssetEvidence = {
         result: 'PASS',
         partId: missingPartId,
@@ -1150,6 +1161,7 @@ async function main() {
       const bounds = workbench?.getBoundingClientRect();
       return Boolean(bounds?.width && bounds.height) && style?.visibility === 'visible' && Number(style.opacity) >= 0.99;
     })()`, 'The recovered assembly did not become visible for its evidence capture.');
+    await waitForAdaptiveAssemblyDrawerHidden(mainWindow, 'The Character drawer did not hide before capturing the recovered source image.');
     const recoveredAssetReads = assetCanvasImageReadCounts.get(missingAsset.id) ?? 0;
     const afterMissingRecovery = await inspect(mainWindow);
     assert(recoveredAssetReads > missingAssetEvidence.missingReadCount, 'A new assembly session did not retry the restored source image.');
@@ -1169,12 +1181,7 @@ async function main() {
       `document.querySelector('.adaptive-parts-assembly-canvas-toolbar')?.innerText?.trim() ?? ''`);
     assert(!assemblyToolbarText.includes('拖动部件移动') && !assemblyToolbarText.includes('拖动角点缩放'),
       `Assembly canvas contains permanent interaction instructions: ${assemblyToolbarText}.`);
-    await waitFor(mainWindow, `(() => {
-      const dock = document.querySelector('[data-testid="resource-activity-dock"]');
-      const surface = document.querySelector('[data-testid="resource-activity-drawer"]');
-      const style = surface ? getComputedStyle(surface) : null;
-      return dock?.dataset.resourceDrawerOpen === 'true' && style?.visibility === 'hidden' && Number(style.opacity) < 0.01;
-    })()`, 'The resource drawer is not visually hidden while preserving its mounted Character owner.');
+    await waitForAdaptiveAssemblyDrawerHidden(mainWindow, 'The resource drawer is not visually hidden while preserving its mounted Character owner.');
     receipt.ac01 = { result: 'PASS', path: 'Characters list → C0 detail → assembly' };
     ac09Checks.permanentCanvasInstructions = 'PASS: no persistent drag/scale helper copy';
 
