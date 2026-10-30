@@ -311,13 +311,22 @@ async function waitFor(window, expression, message, timeout) {
 
 async function click(window, selector) {
   const point = await window.webContents.executeJavaScript(
-    '(() => { const e=Array.from(document.querySelectorAll(' + JSON.stringify(selector) + ')).find((candidate) => {' +
+    '(() => { const selector=' + JSON.stringify(selector) + ';' +
+    'const e=Array.from(document.querySelectorAll(selector)).find((candidate) => {' +
     'if (!(candidate instanceof HTMLElement)) return false; const style=getComputedStyle(candidate);' +
     'const rect=candidate.getBoundingClientRect(); return style.display!=="none"&&style.visibility!=="hidden"&&' +
     'rect.width>0&&rect.height>0; });' +
-    'if (!(e instanceof HTMLElement)) throw new Error("Missing visible target: " + ' + JSON.stringify(selector) + ');' +
+    'if (!(e instanceof HTMLElement)) throw new Error("Missing visible target: " + selector);' +
     'e.scrollIntoView({block:"center",inline:"center"}); const r=e.getBoundingClientRect();' +
-    'return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}; })()',
+    'const points=[{x:r.left+r.width/2,y:r.top+r.height/2},' +
+    '{x:r.left+r.width*0.2,y:r.top+r.height*0.2},{x:r.left+r.width*0.8,y:r.top+r.height*0.2},' +
+    '{x:r.left+r.width*0.2,y:r.top+r.height*0.8},{x:r.left+r.width*0.8,y:r.top+r.height*0.8}];' +
+    'const point=points.find(({x,y})=>{const hit=document.elementFromPoint(x,y);return hit===e||e.contains(hit);});' +
+    'if(!point){const x=r.left+r.width/2,y=r.top+r.height/2,hit=document.elementFromPoint(x,y);' +
+    'throw new Error("Target is not hit-testable after scroll: " + JSON.stringify({selector,rect:{x:r.x,y:r.y,width:r.width,height:r.height},' +
+    'viewport:{width:document.documentElement.clientWidth,height:document.documentElement.clientHeight},' +
+    'hit:hit?{tag:hit.tagName,id:hit.id,className:String(hit.className),testId:hit.dataset?.testid,text:hit.textContent?.trim().slice(0,80)}:null}));}' +
+    'return {x:Math.round(point.x),y:Math.round(point.y)}; })()',
   );
   window.show();
   window.focus();
@@ -802,16 +811,23 @@ async function run() {
       const layers = JSON.parse(stage?.dataset.layerJson || '[]');
       const selectedLayerId = document.querySelector('[data-testid="layer-transform-panel"]')?.dataset.selectedLayerId;
       const controls = Array.from(document.querySelectorAll('[data-testid="duplicate-animation-layer"]')).map((button, index) => {
+        if (index === 0) button.scrollIntoView({ block: 'center', inline: 'center' });
         const rect = button.getBoundingClientRect();
         const style = getComputedStyle(button);
         const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
         return { index, disabled: button.disabled, display: style.display, visibility: style.visibility,
           pointerEvents: style.pointerEvents, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-          centerHitsButton: hit === button || button.contains(hit) };
+          centerHitsButton: hit === button || button.contains(hit),
+          centerHit: hit ? { tag: hit.tagName, id: hit.id, className: String(hit.className),
+            testId: hit.dataset?.testid, text: hit.textContent?.trim().slice(0, 80) } : null };
       });
-      return { selectedLayerId, animationLayerIds: layers.filter((layer) => layer.source?.kind === 'animation').map((layer) => layer.id), controls };
+      return { selectedLayerId, viewport: { width: document.documentElement.clientWidth,
+        height: document.documentElement.clientHeight },
+        animationLayerIds: layers.filter((layer) => layer.source?.kind === 'animation').map((layer) => layer.id), controls };
     })()`);
     console.log('[issue890] duplicate state before click: ' + JSON.stringify(duplicateStateBefore));
+    writeFileSync(path.join(evidence, 'duplicate-control-debug.png'),
+      (await window.webContents.capturePage()).toPNG());
     await click(window, '[data-testid="duplicate-animation-layer"]');
     await new Promise((resolve) => setTimeout(resolve, 300));
     const duplicateStateAfter = await window.webContents.executeJavaScript(`(() => {
