@@ -797,7 +797,31 @@ async function run() {
       'document.querySelector(\'[data-testid="layer-transform-panel"]\')?.dataset.selectedLayerId==="' + layerAId + '"',
       'Could not select instance A for duplicate/delete coverage.',
     );
+    const duplicateStateBefore = await window.webContents.executeJavaScript(`(() => {
+      const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+      const layers = JSON.parse(stage?.dataset.layerJson || '[]');
+      const selectedLayerId = document.querySelector('[data-testid="layer-transform-panel"]')?.dataset.selectedLayerId;
+      const controls = Array.from(document.querySelectorAll('[data-testid="duplicate-animation-layer"]')).map((button, index) => {
+        const rect = button.getBoundingClientRect();
+        const style = getComputedStyle(button);
+        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return { index, disabled: button.disabled, display: style.display, visibility: style.visibility,
+          pointerEvents: style.pointerEvents, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          centerHitsButton: hit === button || button.contains(hit) };
+      });
+      return { selectedLayerId, animationLayerIds: layers.filter((layer) => layer.source?.kind === 'animation').map((layer) => layer.id), controls };
+    })()`);
+    console.log('[issue890] duplicate state before click: ' + JSON.stringify(duplicateStateBefore));
     await click(window, '[data-testid="duplicate-animation-layer"]');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const duplicateStateAfter = await window.webContents.executeJavaScript(`(() => {
+      const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+      const layers = JSON.parse(stage?.dataset.layerJson || '[]');
+      return { selectedLayerId: document.querySelector('[data-testid="layer-transform-panel"]')?.dataset.selectedLayerId,
+        animationLayerIds: layers.filter((layer) => layer.source?.kind === 'animation').map((layer) => layer.id),
+        alerts: Array.from(document.querySelectorAll('[role="alert"]')).map((element) => element.textContent) };
+    })()`);
+    console.log('[issue890] duplicate state after click: ' + JSON.stringify(duplicateStateAfter));
     await waitFor(
       window,
       'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
