@@ -701,7 +701,6 @@ function AdaptivePartsAssemblyWorkbench({
             })}
         </div>
         <div className="adaptive-parts-assembly-canvas-toolbar">
-          <span>拖动部件移动，拖动角点缩放</span>
           <button type="button" onClick={() => setTransform(calculateViewportTransform(
             { width: viewportRef.current?.clientWidth ?? 0, height: viewportRef.current?.clientHeight ?? 0 },
             'fit',

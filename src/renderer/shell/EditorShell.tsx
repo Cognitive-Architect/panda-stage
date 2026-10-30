@@ -2034,10 +2034,16 @@ export function EditorShell({
             >
               <LeftWorkspace
                 activeActivity={
-                  isPortrait ? portraitResourceActivity : undefined
+                  isPortrait
+                    ? assemblyActive
+                      ? 'characters'
+                      : portraitResourceActivity
+                    : undefined
                 }
                 drawerOpen={
-                  isPortrait && portraitResourcesVisible ? true : undefined
+                  assemblyActive || (isPortrait && portraitResourcesVisible)
+                    ? true
+                    : undefined
                 }
                 onDrawerOpenChange={(open) => {
                   if (!isPortrait || open) return;
@@ -2089,7 +2095,7 @@ export function EditorShell({
               data-active={portraitPropertiesVisible || assemblyActive}
               data-workspace-owner="properties"
               data-character-assembly-inactive={assemblyActive ? 'true' : 'false'}
-              hidden={!portraitPropertiesVisible && !assemblyActive}
+              hidden={!portraitPropertiesVisible || (isPortrait && assemblyActive)}
               inert={assemblyActive || undefined}
             >
               {isPortrait ? (
