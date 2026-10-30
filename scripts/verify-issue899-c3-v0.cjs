@@ -79,6 +79,7 @@ let adaptiveCharacterId = null;
 let singleImageCharacterId = null;
 let bodyArmCharacterId = null;
 let bodyArmPartId = null;
+let longListCharacterId = null;
 const registeredChannels = [];
 const jobUpdates = [];
 const assetBytes = new Map();
@@ -532,6 +533,43 @@ async function prepareImportedProject() {
   assert(bodyArmCharacter?.mode === 'adaptive-parts' && bodyArmCharacter.parts.length === 1, 'CharacterService did not create the synthetic Body+Arm as one Adaptive Part.');
   bodyArmCharacterId = bodyArmCharacter.id;
 
+  const longListParts = Array.from({ length: 24 }, (_, index) => {
+    const partId = require('node:crypto').randomUUID();
+    const transform = {
+      a: 1,
+      b: 0,
+      c: 0,
+      d: 1,
+      tx: 680 + (index % 6) * 8,
+      ty: 260 + Math.floor(index / 6) * 8,
+    };
+    return {
+      partId,
+      assetId: bodyArmAsset.id,
+      source: { kind: 'manual', sourceId: `synthetic/repeated-image/${index + 1}` },
+      restTransform: transform,
+      sourceRestTransform: { ...transform },
+      staticAdjustment: { ...DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT },
+      imageMapping: {
+        sourceWidth: bodyArmAsset.width,
+        sourceHeight: bodyArmAsset.height,
+        crop: { x: 0, y: 0, width: bodyArmAsset.width, height: bodyArmAsset.height },
+        exportScale: 1,
+      },
+      drawOrder: index,
+      visible: true,
+      displayName: `Repeated image Part ${String(index + 1).padStart(2, '0')}`,
+    };
+  });
+  project = characterService.createAdaptiveParts(project, {
+    name: 'Synthetic repeated-image long-list control',
+    sourceRootTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+    parts: longListParts,
+  });
+  const longListCharacter = project.characters.at(-1);
+  assert(longListCharacter?.mode === 'adaptive-parts' && longListCharacter.parts.length === 24, 'CharacterService did not create the 24-Part repeated-image control.');
+  longListCharacterId = longListCharacter.id;
+
   const shotService = new ShotService();
   project = shotService.create(project, { name: 'C0 C3 static assembly export', durationMs: 6_000 });
   const shot = project.shots.at(-1);
@@ -560,6 +598,9 @@ async function prepareImportedProject() {
     bodyArmAssetId: bodyArmAsset.id,
     bodyArmCharacterId,
     bodyArmPartId,
+    longListCharacterId,
+    longListPartCount: longListParts.length,
+    longListAssetId: bodyArmAsset.id,
     assetImport: {
       baseRevision: operation.baseRevision,
       savedRevision: operation.savedRevision,
@@ -937,6 +978,11 @@ async function main() {
     assert(await page(mainWindow, `Boolean(document.querySelector(${JSON.stringify(com2Row)}))`), 'Hidden Part was removed from the Part list.');
     await click(mainWindow, `${com2Row} [data-testid="adaptive-parts-assembly-row-select"]`, 'Select the hidden com2 Part');
     await click(mainWindow, `${com2Row} [data-adaptive-part-action="visibility"]`, 'Show com2');
+    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value === '0' && document.querySelector('[data-testid="adaptive-parts-scale-percent"]')?.value === '100'`, 'Selecting the second source Part did not load its independent source-relative controls.');
+    const secondPartDrag = await dragPart(mainWindow, com2, 12, 8);
+    await waitFor(mainWindow, `Number(document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value) > 0`, 'Dragging the second source Part did not update its own offset.');
+    const secondPartScale = await scalePart(mainWindow, com2, 10, 8);
+    await waitFor(mainWindow, `Number(document.querySelector('[data-testid="adaptive-parts-scale-percent"]')?.value) > 100`, 'Scaling the second source Part did not update its own scale.');
 
     await page(mainWindow, `window.prompt = () => 'com6 edited'; true;`);
     const com6Row = `.adaptive-parts-assembly-row[data-part-id="${partId}"]`;
@@ -952,21 +998,26 @@ async function main() {
     assert(afterApply.revision === historyBeforeApply.revision + 1 && afterApply.dirty && afterApply.undoCount === historyBeforeApply.undoCount + 1, 'One Apply did not produce exactly one dirty project revision and History entry.');
     const savedCharacterAfterApply = afterApply.project.characters.find((candidate) => candidate.id === adaptiveCharacterId);
     const editedPart = savedCharacterAfterApply?.mode === 'adaptive-parts' ? savedCharacterAfterApply.parts.find((part) => part.partId === partId) : null;
+    const editedSecondPart = savedCharacterAfterApply?.mode === 'adaptive-parts' ? savedCharacterAfterApply.parts.find((part) => part.partId === com2) : null;
     assert(editedPart?.displayName === 'com6 edited' && editedPart.staticAdjustment?.offsetX > 0 && editedPart.staticAdjustment?.scale > 1 && editedPart.staticAdjustment?.rotationDeg === 6, 'Apply did not persist the renamed and transformed C0 Part.');
+    assert(editedSecondPart?.staticAdjustment?.offsetX > 0 && editedSecondPart.staticAdjustment?.scale > 1, 'Apply did not persist the independent drag and scale of the second C0 Part.');
     assert(JSON.stringify(editedPart.sourceRestTransform) === JSON.stringify(sourceRestTransform), 'Apply changed the saved source-rest baseline.');
     const originalPart = prepared.parts.find((part) => part.partId === partId);
     assert(originalPart && editedPart.assetId === originalPart.assetId && editedPart.drawOrder === originalPart.drawOrder && JSON.stringify(editedPart.imageMapping) === JSON.stringify(originalPart.imageMapping), 'Part edit changed source identity, crop, asset, or draw order.');
     receipt.ac03 = {
       result: 'BLOCKED',
       coverage: 'PARTIAL',
-      interactivePart: 'c0/com6',
+      interactiveParts: [
+        { sourceId: 'c0/com6', drag, scale },
+        { sourceId: 'c0/com2', drag: secondPartDrag, scale: secondPartScale },
+      ],
       listAndCanvasSelection: 'PASS',
-      drag,
-      scale,
-      inspector: { offsetX: editedPart.staticAdjustment.offsetX, offsetY: editedPart.staticAdjustment.offsetY, scale: editedPart.staticAdjustment.scale, rotationDeg: editedPart.staticAdjustment.rotationDeg },
-      unchangedOtherPartIds: adaptive.parts.filter((part) => part.partId !== partId).map((part) => part.partId),
+      inspector: {
+        com6: { offsetX: editedPart.staticAdjustment.offsetX, offsetY: editedPart.staticAdjustment.offsetY, scale: editedPart.staticAdjustment.scale, rotationDeg: editedPart.staticAdjustment.rotationDeg },
+        com2: { offsetX: editedSecondPart.staticAdjustment.offsetX, offsetY: editedSecondPart.staticAdjustment.offsetY, scale: editedSecondPart.staticAdjustment.scale, rotationDeg: editedSecondPart.staticAdjustment.rotationDeg },
+      },
+      unchangedOtherPartIds: adaptive.parts.filter((part) => part.partId !== partId && part.partId !== com2).map((part) => part.partId),
       notRun: [
-        'second independent source Part drag and scale',
         'touch interaction',
         'narrow and zoomed viewport drift/clipping',
       ],
@@ -1155,6 +1206,40 @@ async function main() {
     await click(mainWindow, '[data-testid="adaptive-parts-back-to-list"]', 'Return to Character list after Body+Arm control');
     await waitFor(mainWindow, `document.querySelector(${JSON.stringify(characterList)})`, 'Character list did not return after the Body+Arm control.');
     receipt.syntheticBodyArm = { result: 'PASS', partCount: bodyArmList.length, partId: prepared.bodyArmPartId, sourceId: 'synthetic/body-arm-composite', displayName: bodyArmList[0].name, canvasPartCount: bodyArmCanvasParts, drag: bodyArmDrag, sourceReset: 'PASS', canceledWithoutProjectWrite: true, assetPath: prepared.bodyArmPath };
+
+    await click(mainWindow, `${characterList} [data-character-id="${prepared.longListCharacterId}"]`, 'Open repeated-image long-list compatibility control');
+    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-open"]')`, 'Long-list Adaptive Character detail did not expose the assembly entry.');
+    await click(mainWindow, '[data-testid="adaptive-parts-assembly-open"]', 'Open the repeated-image long list');
+    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Repeated-image long-list workbench did not open.');
+    const longListRows = await page(mainWindow, `([...document.querySelectorAll('.adaptive-parts-assembly-row')]).map((row) => ({ partId: row.dataset.partId, name: row.querySelector('.adaptive-parts-assembly-name')?.innerText?.trim() ?? '' }))`);
+    const longListProjectCharacter = await page(mainWindow, `(() => { const state = window.__pandaStageIssue816Acceptance?.inspect?.(); const character = state?.project?.characters?.find((item) => item.id === ${JSON.stringify(prepared.longListCharacterId)}); return character?.mode === 'adaptive-parts' ? { partCount: character.parts.length, assetIds: [...new Set(character.parts.map((part) => part.assetId))], partIds: character.parts.map((part) => part.partId) } : null; })()`);
+    assert(longListRows.length === prepared.longListPartCount && longListProjectCharacter?.partCount === prepared.longListPartCount, `Long list displayed ${longListRows.length} rows; expected ${prepared.longListPartCount}.`);
+    assert(new Set(longListRows.map((row) => row.partId)).size === prepared.longListPartCount && new Set(longListRows.map((row) => row.name)).size === prepared.longListPartCount, 'Repeated-image Part rows lost unique identities or names.');
+    assert(longListProjectCharacter.assetIds.length === 1 && longListProjectCharacter.partIds.length === prepared.longListPartCount, 'Repeated-image control did not retain one shared Asset across distinct Part identities.');
+    const lastLongListPartId = longListRows.at(-1)?.partId;
+    assert(lastLongListPartId, 'Long-list control has no last Part to select.');
+    const lastLongListRow = `.adaptive-parts-assembly-row[data-part-id="${lastLongListPartId}"]`;
+    await click(mainWindow, `${lastLongListRow} [data-testid="adaptive-parts-assembly-row-select"]`, 'Select the last Part in the repeated-image long list');
+    const longListViewport = await page(mainWindow, `(() => { const list = document.querySelector('.adaptive-parts-assembly-list'); const row = document.querySelector(${JSON.stringify(lastLongListRow)}); const canvas = document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"].is-selected'); return { clientHeight: list?.clientHeight ?? 0, scrollHeight: list?.scrollHeight ?? 0, scrollTop: list?.scrollTop ?? 0, lastRowSelected: row?.querySelector('[data-testid="adaptive-parts-assembly-row-select"]')?.getAttribute('aria-pressed') === 'true', selectedCanvasPart: canvas?.dataset.partId ?? null }; })()`);
+    assert(longListViewport.scrollHeight > longListViewport.clientHeight && longListViewport.scrollTop > 0, `Long-list scrolling did not reach the bottom row: ${JSON.stringify(longListViewport)}.`);
+    assert(longListViewport.lastRowSelected && longListViewport.selectedCanvasPart === lastLongListPartId, 'Selecting the last repeated-image Part did not synchronize list and canvas selection.');
+    const longListBeforeCancel = await inspect(mainWindow);
+    await click(mainWindow, '[data-testid="adaptive-parts-assembly-cancel"]', 'Cancel repeated-image long-list inspection');
+    await waitFor(mainWindow, `!document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Long-list inspection did not cancel.');
+    const longListAfterCancel = await inspect(mainWindow);
+    assert(longListAfterCancel.revision === longListBeforeCancel.revision && longListAfterCancel.undoCount === longListBeforeCancel.undoCount, 'Long-list selection wrote a Project revision or History entry.');
+    await click(mainWindow, '[data-testid="adaptive-parts-back-to-list"]', 'Return to Character list after long-list compatibility');
+    await waitFor(mainWindow, `document.querySelector(${JSON.stringify(characterList)})`, 'Character list did not return after long-list compatibility.');
+    receipt.syntheticLongList = {
+      result: 'PASS',
+      partCount: longListRows.length,
+      uniquePartIds: new Set(longListRows.map((row) => row.partId)).size,
+      uniqueNames: new Set(longListRows.map((row) => row.name)).size,
+      distinctSharedAssetCount: longListProjectCharacter.assetIds.length,
+      selectedLastPartId: lastLongListPartId,
+      viewport: longListViewport,
+      canceledWithoutProjectWrite: true,
+    };
     receipt.ac08 = {
       result: 'BLOCKED',
       coverage: 'PARTIAL',
@@ -1162,17 +1247,19 @@ async function main() {
       legacyCompositeAssemblyWorkbenchEntry: 'PASS',
       legacyCompositeNeckPivotAndNod: 'NOT_RUN',
       syntheticBodyArmSinglePart: 'PASS',
+      repeatedImageLongList: 'PASS',
       hiddenPartRemainsInListAndCanBeReselected: 'PASS',
       domainNegativeCases: {
         duplicatePartIdentity: 'PASS: tests/integration/adaptive-parts-lifecycle.test.ts',
+        repeatedImageAsset: 'PASS: tests/integration/adaptive-parts-lifecycle.test.ts and syntheticLongList',
+        missingAssetReferenceRejected: 'PASS: tests/integration/adaptive-parts-lifecycle.test.ts',
         invalidAssetDimensions: 'PASS: tests/integration/adaptive-parts-lifecycle.test.ts',
         invalidMatrix: 'PASS: tests/integration/adaptive-parts-lifecycle.test.ts',
         staleCrossProjectDraft: 'PASS: tests/integration/adaptive-parts-lifecycle.test.ts',
       },
       notRun: [
-        'missing asset reference rendering/recovery',
-        'same image asset referenced by distinct Part IDs in the UI',
-        'long Part list navigation',
+        'missing asset thumbnail rendering/recovery for pre-existing broken project data',
+        'legacy composite neck-pivot/nod interaction',
       ],
       legacyVerifier: {
         command: 'pnpm verify:issue609-character-assembly',

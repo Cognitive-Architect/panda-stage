@@ -77,6 +77,10 @@ describe('Adaptive Parts Character lifecycle', () => {
     if (!character || character.mode !== 'adaptive-parts') {
       throw new Error('Expected the Adaptive Parts test Character.');
     }
+    expect(character.parts.map((part) => part.assetId)).toEqual(
+      Array.from({ length: 6 }, () => IDS.assetChar),
+    );
+    expect(new Set(character.parts.map((part) => part.partId)).size).toBe(6);
     expect(character.sourceRootTransform).toEqual(
       adaptivePartsSourceRootTransform(),
     );
@@ -122,6 +126,15 @@ describe('Adaptive Parts Character lifecycle', () => {
     invalidAsset.parts[0]!.assetId = IDS.assetBg;
     expect(() =>
       characters.applyAdaptivePartsDefinition(character.id, invalidAsset),
+    ).toThrow();
+    expect(editor.getSnapshot()).toBe(appliedSnapshot);
+    expect(editor.getSnapshot()).toMatchObject({ dirty: true, revision: 3 });
+    expect(editor.history.getSnapshot()).toMatchObject({ undoCount: 3, redoCount: 0 });
+
+    const missingAsset = characters.getAdaptivePartsDefinition(character.id);
+    missingAsset.parts[0]!.assetId = '71000000-0000-4000-8000-000000000099';
+    expect(() =>
+      characters.applyAdaptivePartsDefinition(character.id, missingAsset),
     ).toThrow();
     expect(editor.getSnapshot()).toBe(appliedSnapshot);
     expect(editor.getSnapshot()).toMatchObject({ dirty: true, revision: 3 });
