@@ -118,6 +118,31 @@ describe('Adaptive Parts Character lifecycle', () => {
     expect(editor.getSnapshot()).toBe(appliedSnapshot);
     expect(editor.history.getSnapshot()).toMatchObject({ undoCount: 3, redoCount: 0 });
 
+    const invalidAsset = characters.getAdaptivePartsDefinition(character.id);
+    invalidAsset.parts[0]!.assetId = IDS.assetBg;
+    expect(() =>
+      characters.applyAdaptivePartsDefinition(character.id, invalidAsset),
+    ).toThrow();
+    expect(editor.getSnapshot()).toBe(appliedSnapshot);
+    expect(editor.getSnapshot()).toMatchObject({ dirty: true, revision: 3 });
+    expect(editor.history.getSnapshot()).toMatchObject({ undoCount: 3, redoCount: 0 });
+
+    const invalidMatrix = characters.getAdaptivePartsDefinition(character.id);
+    invalidMatrix.parts[0]!.restTransform = {
+      a: 0,
+      b: 0,
+      c: 0,
+      d: 0,
+      tx: 0,
+      ty: 0,
+    };
+    expect(() =>
+      characters.applyAdaptivePartsDefinition(character.id, invalidMatrix),
+    ).toThrow();
+    expect(editor.getSnapshot()).toBe(appliedSnapshot);
+    expect(editor.getSnapshot()).toMatchObject({ dirty: true, revision: 3 });
+    expect(editor.history.getSnapshot()).toMatchObject({ undoCount: 3, redoCount: 0 });
+
     expect(editor.undo()).toBe(true);
     const undone = editor.getSnapshot()!;
     const undoneCharacter = undone.project.characters.find(
@@ -173,11 +198,12 @@ describe('Adaptive Parts Character lifecycle', () => {
     const editor = new EditorProjectStore();
     editor.open('D:\\adaptive-parts-a.pandastage', project);
     const characters = new CharacterStore(editor, new CharacterService());
+    const initialSnapshot = editor.getSnapshot()!;
     characters.createAdaptiveParts({
       name: 'Synthetic Static Parts',
       sourceRootTransform: adaptivePartsSourceRootTransform(),
       parts: adaptivePartsFixture(IDS.assetChar),
-    });
+    }, initialSnapshot);
     const staleSnapshot = editor.getSnapshot()!;
     const character = staleSnapshot.project.characters.find(
       (candidate) => candidate.name === 'Synthetic Static Parts',
@@ -199,11 +225,124 @@ describe('Adaptive Parts Character lifecycle', () => {
       characters.applyAdaptivePartsDefinition(
         character.id,
         draft,
-        staleSnapshot,
       ),
     ).toThrow(CharacterStoreStaleError);
     expect(editor.getSnapshot()).toBe(currentSnapshot);
     expect(editor.history.getSnapshot()).toMatchObject({ undoCount: 0, redoCount: 0 });
     expect(currentSnapshot).toMatchObject({ dirty: false, revision: 0 });
+  });
+
+  it('rejects a definition read before a same-project edit while immediate updates use current state', () => {
+    const project = buildProject();
+    const editor = new EditorProjectStore();
+    editor.open('D:\\adaptive-parts-edit.pandastage', project);
+    const characters = new CharacterStore(editor, new CharacterService());
+    characters.createAdaptiveParts(
+      {
+        name: 'Synthetic Static Parts',
+        sourceRootTransform: adaptivePartsSourceRootTransform(),
+        parts: adaptivePartsFixture(IDS.assetChar),
+      },
+      editor.getSnapshot()!,
+    );
+    const createdSnapshot = editor.getSnapshot()!;
+    const character = createdSnapshot.project.characters.find(
+      (candidate) => candidate.name === 'Synthetic Static Parts',
+    );
+    if (!character || character.mode !== 'adaptive-parts') {
+      throw new Error('Expected the Adaptive Parts test Character.');
+    }
+
+    const staleDraft = characters.getAdaptivePartsDefinition(character.id);
+    staleDraft.parts[0]!.visible = false;
+    const copiedDraft = structuredClone(staleDraft);
+    expect(() =>
+      characters.applyAdaptivePartsDefinition(character.id, copiedDraft),
+    ).toThrow(CharacterStoreStaleError);
+    expect(editor.getSnapshot()).toBe(createdSnapshot);
+    expect(editor.history.getSnapshot()).toMatchObject({ undoCount: 1, redoCount: 0 });
+
+    characters.updateAdaptivePart(character.id, character.parts[0]!.partId, {
+      visible: false,
+    });
+    const currentSnapshot = editor.getSnapshot()!;
+    expect(currentSnapshot).toMatchObject({ dirty: true, revision: 2 });
+    expect(editor.history.getSnapshot()).toMatchObject({ undoCount: 2, redoCount: 0 });
+
+    expect(() =>
+      characters.applyAdaptivePartsDefinition(character.id, staleDraft),
+    ).toThrow(CharacterStoreStaleError);
+    expect(editor.getSnapshot()).toBe(currentSnapshot);
+    expect(editor.getSnapshot()).toMatchObject({ dirty: true, revision: 2 });
+    expect(editor.history.getSnapshot()).toMatchObject({ undoCount: 2, redoCount: 0 });
+  });
+
+  it.each([
+    ['the same root', 'D:\\adaptive-parts-reopen.pandastage'],
+    ['a different root with the same project ID', 'D:\\adaptive-parts-reopen-copy.pandastage'],
+  ])('rejects a definition read before close/reopen at %s', (_label, reopenedRoot) => {
+    const project = buildProject();
+    const originalRoot = 'D:\\adaptive-parts-reopen.pandastage';
+    const editor = new EditorProjectStore();
+    editor.open(originalRoot, project);
+    const characters = new CharacterStore(editor, new CharacterService());
+    characters.createAdaptiveParts(
+      {
+        name: 'Synthetic Static Parts',
+        sourceRootTransform: adaptivePartsSourceRootTransform(),
+        parts: adaptivePartsFixture(IDS.assetChar),
+      },
+      editor.getSnapshot()!,
+    );
+    const createdSnapshot = editor.getSnapshot()!;
+    const character = createdSnapshot.project.characters.find(
+      (candidate) => candidate.name === 'Synthetic Static Parts',
+    );
+    if (!character || character.mode !== 'adaptive-parts') {
+      throw new Error('Expected the Adaptive Parts test Character.');
+    }
+    const draft = characters.getAdaptivePartsDefinition(character.id);
+    draft.parts[0]!.visible = false;
+
+    editor.clear();
+    editor.open(reopenedRoot, createdSnapshot.project);
+    const currentSnapshot = editor.getSnapshot()!;
+    expect(currentSnapshot.project.id).toBe(createdSnapshot.project.id);
+    expect(() =>
+      characters.applyAdaptivePartsDefinition(character.id, draft),
+    ).toThrow(CharacterStoreStaleError);
+    expect(editor.getSnapshot()).toBe(currentSnapshot);
+    expect(editor.getSnapshot()).toMatchObject({ dirty: false, revision: 0 });
+    expect(editor.history.getSnapshot()).toMatchObject({ undoCount: 0, redoCount: 0 });
+  });
+
+  it('keeps edits to discarded definition drafts out of project, dirty state, revision, and history', () => {
+    const project = buildProject();
+    const editor = new EditorProjectStore();
+    editor.open('D:\\adaptive-parts-discard.pandastage', project);
+    const characters = new CharacterStore(editor, new CharacterService());
+    characters.createAdaptiveParts(
+      {
+        name: 'Synthetic Static Parts',
+        sourceRootTransform: adaptivePartsSourceRootTransform(),
+        parts: adaptivePartsFixture(IDS.assetChar),
+      },
+      editor.getSnapshot()!,
+    );
+    const character = editor.getSnapshot()!.project.characters.find(
+      (candidate) => candidate.name === 'Synthetic Static Parts',
+    );
+    if (!character || character.mode !== 'adaptive-parts') {
+      throw new Error('Expected the Adaptive Parts test Character.');
+    }
+    const before = editor.getSnapshot()!;
+    const cancelDraft = characters.getAdaptivePartsDefinition(character.id);
+    cancelDraft.parts[0]!.displayName = 'Canceled change';
+    const escapeDraft = characters.getAdaptivePartsDefinition(character.id);
+    escapeDraft.parts[1]!.visible = false;
+
+    expect(editor.getSnapshot()).toBe(before);
+    expect(editor.getSnapshot()).toMatchObject({ dirty: true, revision: 1 });
+    expect(editor.history.getSnapshot()).toMatchObject({ undoCount: 1, redoCount: 0 });
   });
 });

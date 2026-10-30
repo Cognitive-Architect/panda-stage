@@ -3,6 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  CharacterService,
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
   ProjectSchema,
@@ -24,6 +25,10 @@ import { selectionStore } from '../../src/renderer/stores/selectionStore';
 import { shotStore } from '../../src/renderer/stores/shotStore';
 import { timelineUiStore } from '../../src/renderer/features/timeline/timelineUiStore';
 import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
+import {
+  adaptivePartsFixture,
+  adaptivePartsSourceRootTransform,
+} from '../helpers/adaptivePartsFixtures';
 import { buildProject, IDS } from './domain/testProject';
 
 function open(project: Project = buildProject()): void {
@@ -331,6 +336,26 @@ describe('Issue #639 Character detail placement bridge', () => {
     const history = editorProjectStore.history.getSnapshot();
     expect(place({ characterId: null }).at(-1)).toContain('请先打开项目、选择镜头和角色');
     expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(1_000);
+    expect(editorProjectStore.getSnapshot()).toBe(before);
+    expect(editorProjectStore.history.getSnapshot()).toBe(history);
+  });
+
+  it('uses concise Chinese feedback and leaves the project untouched for unsupported Stage placement', () => {
+    const project = new CharacterService().createAdaptiveParts(buildProject(), {
+      name: 'Synthetic Static Parts',
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = project.characters.at(-1)!;
+    open(project);
+    const before = editorProjectStore.getSnapshot();
+    const history = editorProjectStore.history.getSnapshot();
+    const statuses = place({
+      characterId: character.id,
+      getCurrentCharacterId: () => character.id,
+    });
+
+    expect(statuses).toEqual(['该角色暂不能放到舞台上。']);
     expect(editorProjectStore.getSnapshot()).toBe(before);
     expect(editorProjectStore.history.getSnapshot()).toBe(history);
   });

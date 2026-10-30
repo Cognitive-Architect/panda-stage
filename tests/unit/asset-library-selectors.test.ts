@@ -2,6 +2,7 @@ import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
+  CharacterService,
   ProjectSchema,
   migrateProject,
   updateImageAssetAuthorMetadata,
@@ -15,6 +16,11 @@ import {
   selectAssetLibraryEntries,
 } from '../../src/renderer/stores/assetLibrarySelectors';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
+import {
+  adaptivePartsFixture,
+  adaptivePartsSourceRootTransform,
+} from '../helpers/adaptivePartsFixtures';
+import { buildProject, IDS } from './domain/testProject';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
 describe('asset library selectors', () => {
@@ -344,6 +350,48 @@ describe('asset library selectors', () => {
     });
     expect(bodyEntry?.dropPayload).not.toHaveProperty('characterId');
     expect(bodyEntry?.dropPayload).not.toHaveProperty('expressionId');
+  });
+
+  it('labels a Part image in concise Chinese while keeping it a regular image drop', () => {
+    const base = buildProject();
+    const sourceAsset = base.assets.find(
+      (asset) => asset.id === IDS.assetChar2,
+    );
+    if (!sourceAsset || sourceAsset.kind !== 'image') {
+      throw new Error('Expected an image fixture.');
+    }
+    const partAssetId = '10000000-0000-4000-8000-000000000099';
+    const withPartAsset = ProjectSchema.parse({
+      ...base,
+      assets: [
+        ...base.assets,
+        {
+          ...sourceAsset,
+          id: partAssetId,
+          name: 'Part image',
+          relativePath: 'part-only.png',
+        },
+      ],
+    });
+    const project = new CharacterService().createAdaptiveParts(withPartAsset, {
+      name: 'Synthetic Static Parts',
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(partAssetId),
+    });
+    const partEntry = selectAssetLibraryEntries(project, 'character').find(
+      (entry) =>
+        entry.id === `character-direct:${partAssetId}` &&
+        entry.asset.id === partAssetId,
+    );
+
+    expect(partEntry).toMatchObject({
+      contextLabel: '部件图片 · 作为普通图片放置',
+      dropPayload: {
+        version: 2,
+        type: 'asset-image',
+        assetId: partAssetId,
+      },
+    });
   });
 
   it('emits one explicit identity entry per character expression even when assets are shared', () => {

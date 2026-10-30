@@ -144,7 +144,7 @@ export function placeCharacterInCurrentShot({
     return;
   }
   if (character.mode === 'adaptive-parts') {
-    reportStatus('Adaptive Parts characters are not supported in Stage layers yet.');
+    reportStatus('该角色暂不能放到舞台上。');
     return;
   }
   if (defaultTransformPending) {

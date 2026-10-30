@@ -194,7 +194,7 @@ export function selectAssetLibraryEntries(
       contextLabel: isBodyAsset
         ? '身体素材 · 作为普通图片放置'
           : isPartAsset
-            ? 'Character Part image · use as a regular image'
+            ? '部件图片 · 作为普通图片放置'
             : isMouthAsset
           ? '嘴型素材 · 作为普通图片放置'
           : '角色素材 · 作为普通图片放置',
