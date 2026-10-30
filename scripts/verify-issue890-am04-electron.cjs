@@ -311,8 +311,11 @@ async function waitFor(window, expression, message, timeout) {
 
 async function click(window, selector) {
   const point = await window.webContents.executeJavaScript(
-    '(() => { const e=document.querySelector(' + JSON.stringify(selector) + ');' +
-    'if (!(e instanceof HTMLElement)) throw new Error("Missing target: " + ' + JSON.stringify(selector) + ');' +
+    '(() => { const e=Array.from(document.querySelectorAll(' + JSON.stringify(selector) + ')).find((candidate) => {' +
+    'if (!(candidate instanceof HTMLElement)) return false; const style=getComputedStyle(candidate);' +
+    'const rect=candidate.getBoundingClientRect(); return style.display!=="none"&&style.visibility!=="hidden"&&' +
+    'rect.width>0&&rect.height>0; });' +
+    'if (!(e instanceof HTMLElement)) throw new Error("Missing visible target: " + ' + JSON.stringify(selector) + ');' +
     'e.scrollIntoView({block:"center",inline:"center"}); const r=e.getBoundingClientRect();' +
     'return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}; })()',
   );
