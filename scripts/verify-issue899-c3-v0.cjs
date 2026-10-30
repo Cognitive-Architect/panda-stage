@@ -1141,14 +1141,39 @@ async function main() {
     await click(mainWindow, '[data-testid="adaptive-parts-back-to-list"]', 'Return to Character list after Body+Arm control');
     await waitFor(mainWindow, `document.querySelector(${JSON.stringify(characterList)})`, 'Character list did not return after the Body+Arm control.');
     receipt.syntheticBodyArm = { result: 'PASS', partCount: bodyArmList.length, partId: prepared.bodyArmPartId, sourceId: 'synthetic/body-arm-composite', displayName: bodyArmList[0].name, canvasPartCount: bodyArmCanvasParts, drag: bodyArmDrag, sourceReset: 'PASS', canceledWithoutProjectWrite: true, assetPath: prepared.bodyArmPath };
-    receipt.ac08 = { result: 'PASS', legacySingleImageDetail: 'PASS', legacyCompositeAssemblyWorkbench: 'PASS', syntheticBodyArmSinglePart: 'PASS', syntheticCompatibilityControlUsesImportedLocalAssets: true };
+    receipt.ac08 = {
+      result: 'BLOCKED',
+      coverage: 'PARTIAL',
+      legacySingleImageDetail: 'PASS',
+      legacyCompositeAssemblyWorkbenchEntry: 'PASS',
+      legacyCompositeNeckPivotAndNod: 'NOT_RUN',
+      syntheticBodyArmSinglePart: 'PASS',
+      hiddenPartRemainsInListAndCanBeReselected: 'PASS',
+      domainNegativeCases: {
+        duplicatePartIdentity: 'PASS: tests/integration/adaptive-parts-lifecycle.test.ts',
+        invalidAssetDimensions: 'PASS: tests/integration/adaptive-parts-lifecycle.test.ts',
+        invalidMatrix: 'PASS: tests/integration/adaptive-parts-lifecycle.test.ts',
+        staleCrossProjectDraft: 'PASS: tests/integration/adaptive-parts-lifecycle.test.ts',
+      },
+      notRun: [
+        'missing asset reference rendering/recovery',
+        'same image asset referenced by distinct Part IDs in the UI',
+        'long Part list navigation',
+      ],
+      legacyVerifier: {
+        command: 'pnpm verify:issue609-character-assembly',
+        result: 'FAILED_BEFORE_UI',
+        reason: 'Historical fixture assets omit schema-required usage and keywords; UI behavior was not reached.',
+      },
+      syntheticCompatibilityControlUsesImportedLocalAssets: true,
+    };
     receipt.ac06 = { result: 'PASS', sharedCharacterDefinition: 'Shot Layer references the same Character ID after Apply; no per-Shot Character copy was created.' };
     receipt.ac09 = { result: 'AUTO_PASS', inspectorCollapsedAndFloating: 'PASS', narrowAndTouchHumanVisualReview: 'OWNER_NOT_ATTESTED' };
     receipt.ac10 = { result: 'AUTO_PASS', command: 'PANDA_STAGE_ISSUE899_SOURCE_DIR=<local Issue 893 isolated-layers> electron scripts/verify-issue899-c3-v0.cjs', screenshots: path.join(evidenceRoot, '*.png'), receiptPath: resultPath };
     receipt.ac11 = { result: 'NOT_ATTESTED', ownerWindowsRealMaterialSignOff: 'OWNER must personally review the actual source sample and Body+Arm composite on Windows.' };
     receipt.schemaCollision = 'DEFERRED_BY_OWNER / MERGE_BLOCKED';
-    receipt.auto = 'AUTO_PASS';
-    receipt.status = 'C3_AUTO_PASS_OWNER_GATE_PENDING';
+    receipt.auto = 'PARTIAL';
+    receipt.status = 'C3_PARTIAL_OWNER_GATE_PENDING';
     receipt.completedAt = new Date().toISOString();
     await fsp.writeFile(resultPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
     return receipt;
