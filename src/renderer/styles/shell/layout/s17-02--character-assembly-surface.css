@@ -3,7 +3,10 @@
   grid-template: minmax(0, 1fr) / minmax(0, 1fr);
 }
 
-.editor-shell[data-character-assembly-active='true']
+.editor-shell[data-character-assembly-active='true'][data-character-assembly-kind='adaptive-parts']
+  .resource-activity-dock[data-active-activity='characters']
+  .resource-activity-surface,
+.editor-shell[data-character-assembly-active='true'][data-character-assembly-kind='create']
   .resource-activity-dock[data-active-activity='characters']
   .resource-activity-surface {
   visibility: hidden;

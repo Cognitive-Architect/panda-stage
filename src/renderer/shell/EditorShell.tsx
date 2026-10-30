@@ -514,6 +514,13 @@ export function EditorShell({
       ? characterAssemblySnapshot
       : null;
   const assemblyActive = activeAssemblySession !== null;
+  const assemblyKind = activeAssemblySession
+    ? activeAssemblySession.kind ?? 'composite'
+    : 'none';
+  const assemblyHidesResourceDrawer =
+    assemblyKind === 'adaptive-parts' || assemblyKind === 'create';
+  const legacyCompositeAssemblyActive =
+    assemblyActive && assemblyKind === 'composite';
   const recoveryCandidate = getEditorShellRecoveryCandidate(
     shellState,
     sessionSnapshot,
@@ -1906,7 +1913,9 @@ export function EditorShell({
     portraitWorkspace === 'assets' ||
     (portraitWorkspace === 'canvas' && portraitCanvasSurface === 'shots');
   const portraitResourcesSlotVisible =
-    portraitResourcesVisible && !(isPortrait && assemblyActive);
+    (portraitResourcesVisible &&
+      !(isPortrait && assemblyHidesResourceDrawer)) ||
+    (isPortrait && legacyCompositeAssemblyActive);
   const portraitPropertiesVisible =
     !isPortrait ||
     portraitWorkspace === 'properties';
@@ -1933,6 +1942,7 @@ export function EditorShell({
       data-editor-shell-region={sessionRegion}
       data-editor-page={page}
       data-character-assembly-active={assemblyActive ? 'true' : 'false'}
+      data-character-assembly-kind={assemblyKind}
       data-gate-a={gateA ? 'enabled' : 'disabled'}
     >
       {!renderProductSurface ? null : page === 'project-center' ? (

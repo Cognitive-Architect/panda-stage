@@ -619,6 +619,11 @@ async function prepareImportedProject() {
     expressions: [{ name: 'Neutral', assetId: parts[3].assetId }],
     bodyAssetId: parts[0].assetId,
     facePlacement: { offsetX: 0, offsetY: 0, scale: 1, rotationDeg: 0, flipX: false },
+    head: {
+      assetId: parts[1].assetId,
+      placement: { offsetX: 0, offsetY: -40, scale: 1, rotationDeg: 0, flipX: false },
+      pivot: { x: 144, y: 322 },
+    },
   });
   const compositeCharacterId = project.characters.at(-1)?.id ?? null;
   bodyArmPartId = require('node:crypto').randomUUID();
@@ -1534,6 +1539,108 @@ async function main() {
     await click(mainWindow, '[data-testid="character-workspace-assembly-tab"]', 'Open existing composite assembly tab');
     await waitFor(mainWindow, `document.querySelector('[data-testid="character-assembly-workbench"]')`, 'Existing composite assembly workbench did not open.');
     assert(!(await page(mainWindow, `Boolean(document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]'))`)), 'Composite Character was routed into the Adaptive Parts workbench.');
+    const legacyCompositeBefore = await page(mainWindow, `(() => {
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      return {
+        headAssetId: workbench?.dataset.headAssetId ?? '',
+        pivotX: Number(workbench?.dataset.headPivotX),
+        pivotY: Number(workbench?.dataset.headPivotY),
+        bodyPlacement: [workbench?.dataset.bodyOffsetX, workbench?.dataset.bodyOffsetY, workbench?.dataset.bodyScale],
+        headPlacement: [workbench?.dataset.headOffsetX, workbench?.dataset.headOffsetY, workbench?.dataset.headScale],
+        facePlacement: [workbench?.dataset.faceOffsetX, workbench?.dataset.faceOffsetY, workbench?.dataset.faceScale],
+        projectRevision: workbench?.dataset.projectRevision ?? '',
+        projectDirty: workbench?.dataset.projectDirty ?? '',
+        headMotionRunning: workbench?.dataset.headMotionTestRunning ?? '',
+      };
+    })()`);
+    assert(legacyCompositeBefore.headAssetId && Number.isFinite(legacyCompositeBefore.pivotX) && Number.isFinite(legacyCompositeBefore.pivotY), 'Legacy composite compatibility control did not load a Head with a neck pivot.');
+    const legacyPivotToggle = '[data-testid="character-assembly-pivot-mode-toggle"]';
+    const legacyPivotHandle = '[data-testid="character-assembly-head-pivot"]';
+    await clickPoint(mainWindow, legacyPivotToggle, 'Enter the legacy composite neck-pivot tool');
+    await waitFor(mainWindow, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.neckPivotEditing === 'true'`, 'Legacy composite neck-pivot tool did not activate.');
+    await page(mainWindow, `document.querySelector(${JSON.stringify(legacyPivotHandle)})?.focus()`);
+    mainWindow.focus();
+    mainWindow.webContents.focus();
+    await pause(40);
+    mainWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Right' });
+    await pause(40);
+    mainWindow.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Right' });
+    await waitFor(mainWindow, `Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headPivotX) === ${legacyCompositeBefore.pivotX + 1}`, 'Native ArrowRight did not nudge the legacy composite neck pivot by one local unit.');
+    const legacyPivotNudged = await page(mainWindow, `(() => {
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      return {
+        pivotX: Number(workbench?.dataset.headPivotX),
+        pivotY: Number(workbench?.dataset.headPivotY),
+        bodyPlacement: [workbench?.dataset.bodyOffsetX, workbench?.dataset.bodyOffsetY, workbench?.dataset.bodyScale],
+        headPlacement: [workbench?.dataset.headOffsetX, workbench?.dataset.headOffsetY, workbench?.dataset.headScale],
+        facePlacement: [workbench?.dataset.faceOffsetX, workbench?.dataset.faceOffsetY, workbench?.dataset.faceScale],
+        projectRevision: workbench?.dataset.projectRevision ?? '',
+        projectDirty: workbench?.dataset.projectDirty ?? '',
+      };
+    })()`);
+    assert(legacyPivotNudged.pivotX === legacyCompositeBefore.pivotX + 1 && legacyPivotNudged.pivotY === legacyCompositeBefore.pivotY, 'Legacy composite pivot nudge changed an unexpected pivot coordinate.');
+    assert(JSON.stringify(legacyPivotNudged.bodyPlacement) === JSON.stringify(legacyCompositeBefore.bodyPlacement)
+      && JSON.stringify(legacyPivotNudged.headPlacement) === JSON.stringify(legacyCompositeBefore.headPlacement)
+      && JSON.stringify(legacyPivotNudged.facePlacement) === JSON.stringify(legacyCompositeBefore.facePlacement), 'Legacy composite pivot nudge changed Body, Head, or Face placement.');
+    assert(legacyPivotNudged.projectRevision === legacyCompositeBefore.projectRevision && legacyPivotNudged.projectDirty === legacyCompositeBefore.projectDirty, 'Legacy composite pivot draft wrote the Project before Apply.');
+    await captureWhole(mainWindow, 'c3-legacy-composite-neck-pivot.png');
+    await page(mainWindow, `document.querySelector(${JSON.stringify(legacyPivotHandle)})?.focus()`);
+    mainWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Left' });
+    await pause(40);
+    mainWindow.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Left' });
+    await waitFor(mainWindow, `Number(document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headPivotX) === ${legacyCompositeBefore.pivotX}`, 'Legacy composite pivot could not return to its original value.');
+    await clickPoint(mainWindow, legacyPivotToggle, 'Leave the legacy composite neck-pivot tool');
+    const legacyMotionToggle = '[data-testid="character-assembly-test-head-motion"]';
+    await clickPoint(mainWindow, legacyMotionToggle, 'Preview legacy composite nod');
+    await waitFor(mainWindow, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headMotionTestRunning === 'true'`, 'Legacy composite nod preview did not start.');
+    await pause(280);
+    const legacyNodRunning = await page(mainWindow, `(() => {
+      const workbench = document.querySelector('[data-testid="character-assembly-workbench"]');
+      const group = document.querySelector('.character-assembly-head-group');
+      const body = document.querySelector('.character-assembly-part-body');
+      const head = document.querySelector('.character-assembly-part-head');
+      const face = document.querySelector('.character-assembly-part-face');
+      return {
+        running: workbench?.dataset.headMotionTestRunning ?? '',
+        animationName: group ? getComputedStyle(group).animationName : '',
+        animationDuration: group ? getComputedStyle(group).animationDuration : '',
+        headAndFaceShareMotionGroup: Boolean(group?.contains(head) && group?.contains(face)),
+        bodyOutsideMotionGroup: Boolean(body && !group?.contains(body)),
+        projectRevision: workbench?.dataset.projectRevision ?? '',
+        projectDirty: workbench?.dataset.projectDirty ?? '',
+      };
+    })()`);
+    assert(legacyNodRunning.animationName === 'character-assembly-head-motion-test' && legacyNodRunning.animationDuration === '0.5s', `Legacy composite nod preview did not use the existing 2 Hz motion: ${JSON.stringify(legacyNodRunning)}.`);
+    assert(legacyNodRunning.headAndFaceShareMotionGroup && legacyNodRunning.bodyOutsideMotionGroup, 'Legacy composite nod preview moved the wrong parts.');
+    assert(legacyNodRunning.projectRevision === legacyCompositeBefore.projectRevision && legacyNodRunning.projectDirty === legacyCompositeBefore.projectDirty, 'Legacy composite nod preview wrote the Project.');
+    await captureWhole(mainWindow, 'c3-legacy-composite-nod.png');
+    await clickPoint(mainWindow, legacyMotionToggle, 'Stop legacy composite nod preview');
+    await waitFor(mainWindow, `document.querySelector('[data-testid="character-assembly-workbench"]')?.dataset.headMotionTestRunning === 'false'`, 'Legacy composite nod preview did not stop.');
+    const legacyNodStopped = await page(mainWindow, `(() => {
+      const group = document.querySelector('.character-assembly-head-group');
+      return group ? getComputedStyle(group).animationName : '';
+    })()`);
+    assert(legacyNodStopped === 'none', `Legacy composite nod preview did not reset after stopping: ${legacyNodStopped}.`);
+    receipt.legacyCompositeNeckPivotAndNod = {
+      result: 'PASS',
+      pivotBefore: { x: legacyCompositeBefore.pivotX, y: legacyCompositeBefore.pivotY },
+      pivotNudged: { x: legacyPivotNudged.pivotX, y: legacyPivotNudged.pivotY },
+      pivotRestored: true,
+      unchangedPlacements: true,
+      nodPreview: legacyNodRunning,
+      nodStoppedAnimationName: legacyNodStopped,
+      screenshots: ['c3-legacy-composite-neck-pivot.png', 'c3-legacy-composite-nod.png'],
+    };
+    if (!(await page(mainWindow, `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'true'`))) {
+      await clickPoint(mainWindow, characterRail, 'Reopen Characters drawer after legacy composite assembly');
+      await waitFor(mainWindow, `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'true'`, 'Characters drawer did not reopen after legacy composite assembly.');
+    }
+    await waitFor(mainWindow, `(() => {
+      const button = document.querySelector('[data-testid="character-detail-back"]');
+      const rect = button?.getBoundingClientRect();
+      const style = button ? getComputedStyle(button) : null;
+      return Boolean(rect?.width && rect.height && style?.visibility === 'visible' && style.display !== 'none');
+    })()`, 'Legacy composite detail navigation did not return after reopening the Characters drawer.');
     await click(mainWindow, '[data-testid="character-detail-back"]', 'Return to Character list after composite compatibility');
     await ensureCharacterListReady(mainWindow, characterRail, characterList, 'Single-image compatibility control');
     await click(mainWindow, `${characterList} [data-character-id="${singleImageCharacterId}"]`, 'Open the legacy single-image control');
@@ -1601,7 +1708,7 @@ async function main() {
       coverage: 'PARTIAL',
       legacySingleImageDetail: 'PASS',
       legacyCompositeAssemblyWorkbenchEntry: 'PASS',
-      legacyCompositeNeckPivotAndNod: 'NOT_RUN',
+      legacyCompositeNeckPivotAndNod: receipt.legacyCompositeNeckPivotAndNod.result,
       syntheticBodyArmSinglePart: 'PASS',
       repeatedImageLongList: 'PASS',
       hiddenPartRemainsInListAndCanBeReselected: 'PASS',
@@ -1615,7 +1722,6 @@ async function main() {
       },
       notRun: [
         'missing asset thumbnail rendering/recovery for pre-existing broken project data',
-        'legacy composite neck-pivot/nod interaction',
       ],
       legacyVerifier: {
         command: 'pnpm verify:issue609-character-assembly',
