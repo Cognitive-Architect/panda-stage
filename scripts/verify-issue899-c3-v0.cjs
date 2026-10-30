@@ -1134,6 +1134,9 @@ async function main() {
     }
     await click(mainWindow, '[data-testid="adaptive-parts-assembly-cancel"]', 'Close assembly after missing-source fallback check');
     await waitFor(mainWindow, `!document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Assembly did not close after the missing-source fallback check.');
+    await ensureCharacterListReady(mainWindow, characterRail, characterList, 'Character list after missing-source fallback');
+    await click(mainWindow, `${characterList} [data-character-id="${adaptiveCharacterId}"]`, 'Reopen C0 detail after restoring its source image');
+    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-open"]')`, 'C0 detail did not expose the assembly entry after source recovery.');
     await click(mainWindow, '[data-testid="adaptive-parts-assembly-open"]', 'Reopen Adaptive Parts assembly after restoring the source image');
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Adaptive Parts assembly did not reopen after restoring its source image.');
     await waitFor(mainWindow, `(() => {
