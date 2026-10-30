@@ -365,6 +365,7 @@ async function setControlValue(window, selector, value, blur = false) {
     '(() => { const e=document.querySelector(' + JSON.stringify(selector) + ');' +
     'if (!(e instanceof HTMLInputElement || e instanceof HTMLSelectElement)) throw new Error("Missing input: " + ' +
     JSON.stringify(selector) + '); const p=e instanceof HTMLInputElement?HTMLInputElement.prototype:HTMLSelectElement.prototype;' +
+    (blur ? 'e.focus();' : '') +
     'Object.getOwnPropertyDescriptor(p,"value").set.call(e,' + JSON.stringify(String(value)) + ');' +
     'e.dispatchEvent(new Event("input",{bubbles:true})); e.dispatchEvent(new Event("change",{bubbles:true}));' +
     (blur ? 'e.blur();' : '') +
