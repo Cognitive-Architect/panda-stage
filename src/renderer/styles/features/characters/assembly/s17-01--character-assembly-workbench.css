@@ -1169,6 +1169,10 @@
   object-fit: contain;
 }
 
+.adaptive-parts-assembly-thumbnail[data-thumbnail-status='missing'] {
+  color: var(--ui-color-danger, #e28a7a);
+}
+
 .adaptive-parts-assembly-name {
   min-width: 0;
   overflow: hidden;

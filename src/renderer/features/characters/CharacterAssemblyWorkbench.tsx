@@ -42,6 +42,7 @@ import {
   type CanvasImageAssetSource,
   type CanvasImageState,
 } from '../canvas/canvasImageResources';
+import { ThumbnailStateIcon } from './ThumbnailStateIcon';
 import {
   buildCharacterAssemblyPreviewVisual,
   buildAdaptivePartsAssemblyPreviewVisual,
@@ -586,6 +587,7 @@ function AdaptivePartsAssemblyWorkbench({
               ? `${baseName} · 部件 ${index + 1}`
               : baseName;
             const image = imageState.images.get(part.assetId);
+            const imageMissing = imageState.missing.has(part.assetId);
             return (
               <div
                 className="adaptive-parts-assembly-row"
@@ -601,8 +603,19 @@ function AdaptivePartsAssemblyWorkbench({
                   onClick={() => activeHandle()?.selectPart(part.partId)}
                   type="button"
                 >
-                  <span className="adaptive-parts-assembly-thumbnail">
-                    {image ? <img alt="" src={image.src} /> : <span aria-hidden="true">▧</span>}
+                  <span
+                    aria-label={imageMissing ? '素材不可用' : undefined}
+                    className="adaptive-parts-assembly-thumbnail"
+                    data-thumbnail-status={image ? 'ready' : imageMissing ? 'missing' : 'loading'}
+                    title={imageMissing ? '素材不可用' : undefined}
+                  >
+                    {image ? (
+                      <img alt="" src={image.src} />
+                    ) : imageMissing ? (
+                      <ThumbnailStateIcon kind="error" size={16} />
+                    ) : (
+                      <span aria-hidden="true">▧</span>
+                    )}
                   </span>
                   <span className="adaptive-parts-assembly-name">{name}</span>
                 </button>

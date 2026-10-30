@@ -83,6 +83,7 @@ let longListCharacterId = null;
 const registeredChannels = [];
 const jobUpdates = [];
 const assetBytes = new Map();
+const assetCanvasImageReadCounts = new Map();
 
 process.env.VITE_DEV_SERVER_URL = '';
 app.setPath('userData', path.join(runRoot, 'electron-user-data'));
@@ -259,8 +260,10 @@ async function ensureCharacterListReady(window, characterRail, characterList, la
     const style = element ? getComputedStyle(element) : null;
     return Boolean(rect?.width && rect.height && style?.display !== 'none' && style?.visibility !== 'hidden');
   })()`);
-  if (!(await isVisible(characterList)) && await isVisible('[data-testid="adaptive-parts-back-to-list"]')) {
+  const activeSubview = await page(window, `document.querySelector('[data-testid="resource-activity-panel"]')?.dataset.activeSubview ?? null`);
+  if (activeSubview !== 'list' && await isVisible('[data-testid="adaptive-parts-back-to-list"]')) {
     await click(window, '[data-testid="adaptive-parts-back-to-list"]', `${label}: return to Character list`);
+    await waitFor(window, `document.querySelector('[data-testid="resource-activity-panel"]')?.dataset.activeSubview === 'list'`, `${label}: Character detail did not return to the list.`);
   }
   await waitFor(window, `(() => {
     const list = document.querySelector(${JSON.stringify(characterList)});
@@ -779,7 +782,13 @@ function registerProjectHandlers(projectService) {
   register(IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ, async (_event, request) => {
     const asset = activeProject?.assets.find((candidate) => candidate.id === request.assetId && candidate.kind === 'image' && candidate.sha256 === request.sha256);
     if (!asset) return { ok: false, error: { code: 'ASSET_NOT_FOUND', message: 'Local C0 image asset is unavailable.', assetId: request.assetId } };
-    const bytes = await fsp.readFile(path.join(projectRoot, asset.relativePath));
+    assetCanvasImageReadCounts.set(asset.id, (assetCanvasImageReadCounts.get(asset.id) ?? 0) + 1);
+    let bytes;
+    try {
+      bytes = await fsp.readFile(path.join(projectRoot, asset.relativePath));
+    } catch {
+      return { ok: false, error: { code: 'ASSET_CANVAS_IMAGE_READ_FAILED', message: 'The local image source could not be read.', assetId: asset.id } };
+    }
     assetBytes.set(asset.id, bytes);
     return { ok: true, status: 'ready', assetId: asset.id, mimeType: asset.mimeType, width: asset.width, height: asset.height, byteLength: bytes.length, bytes: new Uint8Array(bytes) };
   });
@@ -1062,8 +1071,97 @@ async function main() {
     await waitFor(mainWindow, `document.querySelector(${JSON.stringify(characterList)})`, 'Character list did not open.');
     await click(mainWindow, `${characterList} [data-character-id="${adaptiveCharacterId}"]`, 'C0 Adaptive Parts Character');
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-open"]')`, 'Adaptive Character detail has no normal assembly entry.');
-    await click(mainWindow, '[data-testid="adaptive-parts-assembly-open"]', 'Open Adaptive Parts assembly');
-    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Adaptive Parts assembly workbench did not open.');
+
+    const missingPartId = sourcePartIds['c0/com4'];
+    const missingPart = adaptive.parts.find((part) => part.partId === missingPartId);
+    const missingAsset = activeProject.assets.find((asset) => asset.id === missingPart?.assetId);
+    assert(missingPart && missingAsset, 'C0 com4 source Asset was not available for the missing-source recovery check.');
+    const missingAssetPath = path.join(projectRoot, missingAsset.relativePath);
+    const unavailableAssetPath = `${missingAssetPath}.issue899-unavailable`;
+    const priorMissingAssetReads = assetCanvasImageReadCounts.get(missingAsset.id) ?? 0;
+    const beforeMissingAsset = await inspect(mainWindow);
+    await fsp.rename(missingAssetPath, unavailableAssetPath);
+    let missingAssetEvidence;
+    try {
+      await click(mainWindow, '[data-testid="adaptive-parts-assembly-open"]', 'Open Adaptive Parts assembly with a missing source image');
+      await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Adaptive Parts assembly workbench did not open for missing-source coverage.');
+      const missingRowSelector = `.adaptive-parts-assembly-row[data-part-id="${missingPartId}"]`;
+      const missingCanvasPartSelector = `[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${missingPartId}"]`;
+      await waitFor(mainWindow, `(() => {
+        const thumbnail = document.querySelector(${JSON.stringify(missingRowSelector)} + ' .adaptive-parts-assembly-thumbnail');
+        return thumbnail?.dataset.thumbnailStatus === 'missing' &&
+          thumbnail.querySelector('[data-thumbnail-icon="error"]') &&
+          document.querySelectorAll('.adaptive-parts-assembly-row').length === 5 &&
+          document.querySelectorAll('[data-testid="adaptive-parts-assembly-canvas-part"]').length === 4 &&
+          !document.querySelector(${JSON.stringify(missingCanvasPartSelector)});
+      })()`, 'A missing C0 source did not leave a visible error thumbnail and the other four rendered Parts.');
+      const missingReadCount = assetCanvasImageReadCounts.get(missingAsset.id) ?? 0;
+      assert(missingReadCount > priorMissingAssetReads, 'Adaptive assembly did not request the missing C0 source from the local project.');
+      const missingThumbnail = await page(mainWindow, `(() => {
+        const row = document.querySelector(${JSON.stringify(missingRowSelector)});
+        const thumbnail = row?.querySelector('.adaptive-parts-assembly-thumbnail');
+        const button = row?.querySelector('[data-testid="adaptive-parts-assembly-row-select"]');
+        return {
+          status: thumbnail?.dataset.thumbnailStatus ?? null,
+          accessibleLabel: thumbnail?.getAttribute('aria-label') ?? null,
+          errorIcon: Boolean(thumbnail?.querySelector('[data-thumbnail-icon="error"]')),
+          rowVisible: Boolean(row?.getClientRects().length),
+          selectable: Boolean(button && !button.disabled),
+          canvasPartCount: document.querySelectorAll('[data-testid="adaptive-parts-assembly-canvas-part"]').length,
+        };
+      })()`);
+      assert(missingThumbnail.status === 'missing' && missingThumbnail.accessibleLabel === '素材不可用' && missingThumbnail.errorIcon && missingThumbnail.rowVisible && missingThumbnail.selectable && missingThumbnail.canvasPartCount === 4,
+        `Missing-source fallback did not preserve a clear, selectable Part row: ${JSON.stringify(missingThumbnail)}.`);
+      await captureWhole(mainWindow, 'c3-missing-asset-fallback.png');
+      await click(mainWindow, `${missingRowSelector} [data-testid="adaptive-parts-assembly-row-select"]`, 'Select the Part whose source image is missing');
+      await waitFor(mainWindow, `document.querySelector(${JSON.stringify(missingRowSelector)} + ' [data-testid="adaptive-parts-assembly-row-select"]')?.getAttribute('aria-pressed') === 'true'`, 'A Part with a missing source could not be selected from its row.');
+      const afterMissingSelection = await inspect(mainWindow);
+      assert(afterMissingSelection.revision === beforeMissingAsset.revision && afterMissingSelection.dirty === beforeMissingAsset.dirty && afterMissingSelection.undoCount === beforeMissingAsset.undoCount,
+        'Showing/selecting a missing source wrote a Project revision, dirty state, or History entry.');
+      missingAssetEvidence = {
+        result: 'PASS',
+        partId: missingPartId,
+        assetId: missingAsset.id,
+        missingReadCount,
+        thumbnail: missingThumbnail,
+        selectableWhileMissing: true,
+        otherCanvasPartCount: missingThumbnail.canvasPartCount,
+        selectionDidNotWriteProject: true,
+        screenshot: 'c3-missing-asset-fallback.png',
+      };
+    } finally {
+      await fsp.rename(unavailableAssetPath, missingAssetPath);
+    }
+    await click(mainWindow, '[data-testid="adaptive-parts-assembly-cancel"]', 'Close assembly after missing-source fallback check');
+    await waitFor(mainWindow, `!document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Assembly did not close after the missing-source fallback check.');
+    await click(mainWindow, '[data-testid="adaptive-parts-assembly-open"]', 'Reopen Adaptive Parts assembly after restoring the source image');
+    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Adaptive Parts assembly did not reopen after restoring its source image.');
+    await waitFor(mainWindow, `(() => {
+      const row = document.querySelector('.adaptive-parts-assembly-row[data-part-id="${missingPartId}"]');
+      return row?.querySelector('.adaptive-parts-assembly-thumbnail')?.dataset.thumbnailStatus === 'ready' &&
+        document.querySelectorAll('[data-testid="adaptive-parts-assembly-canvas-part"]').length === 5;
+    })()`, 'Reopening the assembly did not retry and render the restored source image.');
+    await waitFor(mainWindow, `(() => {
+      const workbench = document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]');
+      const style = workbench ? getComputedStyle(workbench) : null;
+      const bounds = workbench?.getBoundingClientRect();
+      return Boolean(bounds?.width && bounds.height) && style?.visibility === 'visible' && Number(style.opacity) >= 0.99;
+    })()`, 'The recovered assembly did not become visible for its evidence capture.');
+    const recoveredAssetReads = assetCanvasImageReadCounts.get(missingAsset.id) ?? 0;
+    const afterMissingRecovery = await inspect(mainWindow);
+    assert(recoveredAssetReads > missingAssetEvidence.missingReadCount, 'A new assembly session did not retry the restored source image.');
+    assert(afterMissingRecovery.revision === beforeMissingAsset.revision && afterMissingRecovery.dirty === beforeMissingAsset.dirty && afterMissingRecovery.undoCount === beforeMissingAsset.undoCount,
+      'Missing-source recovery wrote a Project revision, dirty state, or History entry.');
+    await captureWhole(mainWindow, 'c3-missing-asset-recovered.png');
+    receipt.missingAssetRecovery = {
+      ...missingAssetEvidence,
+      result: 'PASS',
+      restoredReadCount: recoveredAssetReads,
+      retriedOnReopen: true,
+      canvasPartCountAfterRecovery: 5,
+      recoveryDidNotWriteProject: true,
+      recoveryScreenshot: 'c3-missing-asset-recovered.png',
+    };
     const assemblyToolbarText = await page(mainWindow,
       `document.querySelector('.adaptive-parts-assembly-canvas-toolbar')?.innerText?.trim() ?? ''`);
     assert(!assemblyToolbarText.includes('拖动部件移动') && !assemblyToolbarText.includes('拖动角点缩放'),
@@ -1366,18 +1464,7 @@ async function main() {
     receipt.applyUndoRedoSave = { undo: 'PASS', redo: 'PASS', save: 'PASS', sourceRestSurvives: 'PASS', savedProjectSha256: sha256(await fsp.readFile(path.join(projectRoot, 'project.json'))) };
 
     await collapseProjectActions(mainWindow);
-    if (!(await page(mainWindow, `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'true'`))) {
-      await click(mainWindow, characterRail, 'Open Character drawer before Stage samples');
-      await waitFor(mainWindow, `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'true'`, 'Character drawer did not open before Stage samples.');
-    }
-    if (await page(mainWindow, `(() => {
-      const back = document.querySelector('[data-testid="adaptive-parts-back-to-list"]');
-      const style = back ? getComputedStyle(back) : null;
-      return Boolean(back?.getClientRects().length && style?.visibility !== 'hidden');
-    })()`)) {
-      await click(mainWindow, '[data-testid="adaptive-parts-back-to-list"]', 'Return to Character list before Stage samples');
-      await waitFor(mainWindow, `document.querySelector(${JSON.stringify(characterList)})`, 'Character list did not open before Stage samples.');
-    }
+    await ensureCharacterListReady(mainWindow, characterRail, characterList, 'Character list before Stage samples');
     await click(mainWindow, '[data-testid="resource-activity-close"]', 'Close Character drawer before Stage samples');
     await waitFor(mainWindow, `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'false'`, 'Character drawer did not close before Stage samples.');
     await waitFor(mainWindow, `(() => {
@@ -1704,11 +1791,12 @@ async function main() {
       canceledWithoutProjectWrite: true,
     };
     receipt.ac08 = {
-      result: 'BLOCKED',
-      coverage: 'PARTIAL',
+      result: 'PASS',
+      coverage: 'PASS: missing source renders an error thumbnail, keeps its row selectable, omits only its canvas image, and retries after the restored source is reopened.',
       legacySingleImageDetail: 'PASS',
       legacyCompositeAssemblyWorkbenchEntry: 'PASS',
       legacyCompositeNeckPivotAndNod: receipt.legacyCompositeNeckPivotAndNod.result,
+      missingAssetThumbnailAndRecovery: receipt.missingAssetRecovery.result,
       syntheticBodyArmSinglePart: 'PASS',
       repeatedImageLongList: 'PASS',
       hiddenPartRemainsInListAndCanBeReselected: 'PASS',
@@ -1720,9 +1808,6 @@ async function main() {
         invalidMatrix: 'PASS: tests/integration/adaptive-parts-lifecycle.test.ts',
         staleCrossProjectDraft: 'PASS: tests/integration/adaptive-parts-lifecycle.test.ts',
       },
-      notRun: [
-        'missing asset thumbnail rendering/recovery for pre-existing broken project data',
-      ],
       legacyVerifier: {
         command: 'pnpm verify:issue609-character-assembly',
         result: 'FAILED_BEFORE_UI',
