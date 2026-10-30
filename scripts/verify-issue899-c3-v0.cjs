@@ -944,16 +944,29 @@ async function main() {
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-open"]')`, 'Adaptive Character detail has no normal assembly entry.');
     await click(mainWindow, '[data-testid="adaptive-parts-assembly-open"]', 'Open Adaptive Parts assembly');
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Adaptive Parts assembly workbench did not open.');
+    await waitFor(mainWindow, `(() => {
+      const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+      const surface = document.querySelector('[data-testid="resource-activity-drawer"]');
+      const style = surface ? getComputedStyle(surface) : null;
+      return dock?.dataset.resourceDrawerOpen === 'true' && style?.visibility === 'hidden' && Number(style.opacity) < 0.01;
+    })()`, 'The resource drawer is not visually hidden while preserving its mounted Character owner.');
     receipt.ac01 = { result: 'PASS', path: 'Characters list → C0 detail → assembly' };
-    await captureWhole(mainWindow, 'c3-assembly-initial.png');
 
     const rows = await page(mainWindow, `([...document.querySelectorAll('.adaptive-parts-assembly-row')]).map((row) => ({ partId: row.dataset.partId, drawOrder: Number(row.dataset.drawOrder), name: row.querySelector('.adaptive-parts-assembly-name')?.innerText?.trim() ?? '', visible: row.querySelector('[data-part-visible]')?.dataset.partVisible ?? null }))`);
     assert(rows.length === 5, `C0 Part list shows ${rows.length} rows; expected 5.`);
+    const visibleRows = await page(mainWindow, `(() => [...document.querySelectorAll('.adaptive-parts-assembly-row')].map((row) => {
+      const bounds = row.getBoundingClientRect();
+      const target = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+      const style = getComputedStyle(row);
+      return { partId: row.dataset.partId, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, display: style.display, visibility: style.visibility, hitTestedWithinRow: Boolean(target && row.contains(target)) };
+    }))()`);
+    assert(visibleRows.length === rows.length && visibleRows.every((row) => row.width > 0 && row.height > 0 && row.display !== 'none' && row.visibility === 'visible' && row.hitTestedWithinRow), `Part rows are not visibly available: ${JSON.stringify(visibleRows)}.`);
+    await captureWhole(mainWindow, 'c3-assembly-initial.png');
     assert(JSON.stringify(rows.map((row) => row.drawOrder)) === JSON.stringify([4, 3, 2, 1, 0]), `Part rows do not present descending drawOrder: ${JSON.stringify(rows)}.`);
     assert(JSON.stringify(rows.map((row) => row.name)) === JSON.stringify(['com3', 'com4', 'com5', 'com2', 'com6']), `Part rows do not retain the C0 source names: ${JSON.stringify(rows)}.`);
     assert(Number(await page(mainWindow, `Number(document.querySelector('[data-testid="adaptive-parts-assembly-count"]')?.innerText?.match(/\\d+/)?.[0] ?? 0)`)) === 5, 'Part count display is not 5.');
     assert(await page(mainWindow, `document.querySelector('[data-testid="adaptive-parts-inspector-toggle"]')?.getAttribute('aria-expanded') === 'false'`), 'Inspector did not start collapsed.');
-    receipt.ac02 = { result: 'PASS', count: rows.length, displayedOrder: rows.map(({ drawOrder, name, partId }) => ({ drawOrder, name, partId })) };
+    receipt.ac02 = { result: 'PASS', count: rows.length, displayedOrder: rows.map(({ drawOrder, name, partId }) => ({ drawOrder, name, partId })), visibleRows };
 
     const partId = sourcePartIds['c0/com6'];
     const selectedRow = `.adaptive-parts-assembly-row[data-part-id="${partId}"] [data-testid="adaptive-parts-assembly-row-select"]`;
@@ -993,7 +1006,7 @@ async function main() {
 
     const historyBeforeApply = await inspect(mainWindow);
     await click(mainWindow, '[data-testid="adaptive-parts-assembly-apply"]', 'Apply the C0 Part edits');
-    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]') && document.querySelector('[data-testid="adaptive-parts-return"]')`, 'Apply did not keep the committed assembly available for further edits.');
+    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]') && document.querySelector('[data-testid="adaptive-parts-assembly-apply"]') && document.querySelector('[data-testid="adaptive-parts-assembly-cancel"]')`, 'Apply did not keep the committed assembly available for further edits.');
     const afterApply = await inspect(mainWindow);
     assert(afterApply.revision === historyBeforeApply.revision + 1 && afterApply.dirty && afterApply.undoCount === historyBeforeApply.undoCount + 1, 'One Apply did not produce exactly one dirty project revision and History entry.');
     const savedCharacterAfterApply = afterApply.project.characters.find((candidate) => candidate.id === adaptiveCharacterId);
@@ -1024,7 +1037,7 @@ async function main() {
     };
     receipt.ac04 = { result: 'PASS', sourceRestTransform: editedPart.sourceRestTransform, currentRestTransform: editedPart.restTransform, crop: editedPart.imageMapping.crop, c0RootTransform: sourceRootTransform };
     receipt.ac05 = { result: 'PASS', before: { revision: beforeDraft.revision, dirty: beforeDraft.dirty, undoCount: beforeDraft.undoCount }, draft: { revision: afterDraft.revision, dirty: afterDraft.dirty, undoCount: afterDraft.undoCount }, apply: { revision: afterApply.revision, dirty: afterApply.dirty, undoCount: afterApply.undoCount } };
-    await click(mainWindow, '[data-testid="adaptive-parts-return"]', 'Return to Character detail after Apply');
+    await click(mainWindow, '[data-testid="adaptive-parts-assembly-cancel"]', 'Return to Character detail after clean Apply');
     await waitFor(mainWindow, `!document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Committed assembly did not return to Character detail.');
 
     await expandProjectActions(mainWindow);
@@ -1045,6 +1058,8 @@ async function main() {
     receipt.applyUndoRedoSave = { undo: 'PASS', redo: 'PASS', save: 'PASS', sourceRestSurvives: 'PASS', savedProjectSha256: sha256(await fsp.readFile(path.join(projectRoot, 'project.json'))) };
 
     await collapseProjectActions(mainWindow);
+    await click(mainWindow, characterRail, 'Close Character drawer before Stage samples');
+    await waitFor(mainWindow, `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'false'`, 'Character drawer did not close before Stage samples.');
 
     if (await page(mainWindow, `document.querySelector('[data-testid="timeline-collapse"]')?.dataset.expanded === 'false'`)) await click(mainWindow, '[data-testid="timeline-collapse"]', 'Expand Timeline ruler');
     receipt.stageSamples = {};
@@ -1153,8 +1168,8 @@ async function main() {
     await click(mainWindow, '[data-testid="adaptive-parts-inspector-reset"]', 'Reset edited com6 to its source pose');
     assert(await page(mainWindow, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value === '0' && document.querySelector('[data-testid="adaptive-parts-offset-y"]')?.value === '0' && document.querySelector('[data-testid="adaptive-parts-scale-percent"]')?.value === '100' && document.querySelector('[data-testid="adaptive-parts-rotation-deg"]')?.value === '0'`), 'Reset Source Position did not restore 0 / 0 / 100 / 0.');
     await click(mainWindow, '[data-testid="adaptive-parts-assembly-apply"]', 'Apply source-pose reset');
-    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]') && document.querySelector('[data-testid="adaptive-parts-return"]')`, 'Source-pose reset did not remain available after Apply.');
-    await click(mainWindow, '[data-testid="adaptive-parts-return"]', 'Return to Character detail after source-pose reset');
+    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]') && document.querySelector('[data-testid="adaptive-parts-assembly-apply"]') && document.querySelector('[data-testid="adaptive-parts-assembly-cancel"]')`, 'Source-pose reset did not remain available after Apply.');
+    await click(mainWindow, '[data-testid="adaptive-parts-assembly-cancel"]', 'Return to Character detail after source-pose reset');
     await waitFor(mainWindow, `!document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Source-pose reset did not return to Character detail.');
     await expandProjectActions(mainWindow);
     await click(mainWindow, '[data-testid="quick-action-save"]', 'Save the source-pose reset');

@@ -3,6 +3,14 @@
   grid-template: minmax(0, 1fr) / minmax(0, 1fr);
 }
 
+.editor-shell[data-character-assembly-active='true']
+  .resource-activity-dock[data-active-activity='characters']
+  .resource-activity-surface {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .editor-workspace-slot-canvas[data-character-assembly-active='true']
   > .character-assembly-canvas-owner {
   position: absolute;
