@@ -1092,6 +1092,285 @@
   gap: 10px 16px;
 }
 
+.adaptive-parts-assembly-workbench {
+  grid-template-columns: minmax(170px, 220px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) max-content;
+  gap: var(--ui-space-3);
+}
+
+.adaptive-parts-assembly-list {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--ui-space-3);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-large);
+  background: var(--ui-color-surface-work);
+}
+
+.adaptive-parts-assembly-list h2 {
+  margin: 0 0 var(--ui-space-2);
+  font: var(--ui-font-secondary);
+  font-weight: 700;
+}
+
+.adaptive-parts-assembly-rows {
+  display: grid;
+  gap: var(--ui-space-1);
+}
+
+.adaptive-parts-assembly-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  align-items: stretch;
+  gap: var(--ui-space-1);
+}
+
+.adaptive-parts-assembly-row-select {
+  display: grid;
+  min-width: 0;
+  min-height: 52px;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-1);
+  border: 1px solid transparent;
+  border-radius: var(--ui-radius-medium);
+  color: var(--ui-color-text-primary);
+  text-align: left;
+  background: transparent;
+}
+
+.adaptive-parts-assembly-row-select[aria-pressed='true'] {
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-selected-surface);
+}
+
+.adaptive-parts-assembly-row-select[data-part-visible='false'] {
+  color: var(--ui-color-text-muted);
+  opacity: 0.72;
+}
+
+.adaptive-parts-assembly-thumbnail {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-app);
+}
+
+.adaptive-parts-assembly-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.adaptive-parts-assembly-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--ui-font-secondary);
+}
+
+.adaptive-parts-assembly-name input {
+  width: 100%;
+  min-width: 0;
+}
+
+.adaptive-parts-row-menu {
+  position: relative;
+  display: grid;
+  align-items: center;
+}
+
+.adaptive-parts-row-menu summary {
+  display: grid;
+  min-width: 30px;
+  min-height: var(--ui-touch-icon);
+  place-items: center;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  cursor: pointer;
+  list-style: none;
+}
+
+.adaptive-parts-row-menu summary::-webkit-details-marker { display: none; }
+
+.adaptive-parts-row-menu[open] > div {
+  position: absolute;
+  z-index: 12;
+  top: 100%;
+  right: 0;
+  display: grid;
+  min-width: 150px;
+  gap: 2px;
+  padding: var(--ui-space-1);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface-overlay);
+  box-shadow: var(--ui-shadow-overlay);
+}
+
+.adaptive-parts-row-menu button,
+.adaptive-parts-assembly-canvas-toolbar button,
+.adaptive-parts-inspector-fields button,
+.adaptive-parts-assembly-footer button {
+  min-height: var(--ui-touch-icon);
+  padding: 0 var(--ui-space-2);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-work);
+  cursor: pointer;
+}
+
+.adaptive-parts-assembly-viewport {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.adaptive-parts-assembly-canvas-part {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.adaptive-parts-assembly-canvas-part:active { cursor: grabbing; }
+
+.adaptive-parts-assembly-canvas-part.is-selected {
+  z-index: 5;
+  border: 1px solid var(--ui-color-selected-border);
+}
+
+.adaptive-parts-assembly-canvas-part img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  user-select: none;
+}
+
+.adaptive-parts-assembly-scale-handle {
+  position: absolute;
+  right: -8px;
+  bottom: -8px;
+  width: var(--ui-touch-icon);
+  height: var(--ui-touch-icon);
+  min-width: var(--ui-touch-icon);
+  min-height: var(--ui-touch-icon);
+  padding: 0;
+  border: 2px solid var(--ui-color-selected-border);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-app);
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.adaptive-parts-assembly-canvas-toolbar {
+  position: absolute;
+  right: var(--ui-space-2);
+  bottom: var(--ui-space-2);
+  left: var(--ui-space-2);
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-space-2);
+  color: var(--ui-color-text-secondary);
+  pointer-events: none;
+}
+
+.adaptive-parts-assembly-canvas-toolbar button { pointer-events: auto; }
+
+.adaptive-parts-inspector-toggle {
+  min-width: var(--ui-touch-icon);
+  min-height: var(--ui-touch-icon);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-work);
+}
+
+.adaptive-parts-inspector-fields {
+  display: grid;
+  gap: var(--ui-space-3);
+  margin-top: var(--ui-space-3);
+}
+
+.adaptive-parts-inspector-fields label {
+  display: grid;
+  gap: var(--ui-space-1);
+  color: var(--ui-color-text-secondary);
+  font: var(--ui-font-secondary);
+}
+
+.adaptive-parts-inspector-fields input {
+  min-width: 0;
+  min-height: var(--ui-touch-icon);
+}
+
+.adaptive-parts-assembly-footer {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  min-height: var(--ui-touch-regular);
+}
+
+.adaptive-parts-assembly-footer [role='status'] {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--ui-color-text-secondary);
+}
+
+.adaptive-parts-assembly-inspector {
+  position: absolute;
+  z-index: 7;
+  top: var(--ui-space-2);
+  right: var(--ui-space-2);
+  width: max-content;
+  max-width: min(260px, calc(100% - 160px));
+  padding: 0;
+  border: 0;
+  border-radius: var(--ui-radius-large);
+  background: transparent;
+  overflow: visible;
+}
+
+.adaptive-parts-assembly-inspector:has(.adaptive-parts-inspector-fields) {
+  box-sizing: border-box;
+  width: min(250px, calc(100% - 160px));
+  max-height: 75%;
+  overflow: auto;
+  padding: var(--ui-space-3);
+  border: 1px solid var(--ui-color-border);
+  background: var(--ui-color-surface-overlay);
+  box-shadow: var(--ui-shadow-overlay);
+}
+
+.adaptive-parts-assembly-workbench button:focus-visible,
+.adaptive-parts-assembly-workbench [role='button']:focus-visible,
+.adaptive-parts-assembly-workbench summary:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .adaptive-parts-assembly-workbench {
+    grid-template-columns: minmax(142px, 180px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) max-content;
+  }
+
+  .adaptive-parts-assembly-footer { grid-column: 1 / -1; }
+}
+
 .character-assembly-placement-controls {
   display: grid;
   min-width: 0;

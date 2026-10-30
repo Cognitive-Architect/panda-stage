@@ -9,9 +9,14 @@ import {
 import {
   CHARACTER_PART_MAX_SCALE,
   CHARACTER_PART_MIN_SCALE,
+  DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT,
   DEFAULT_BODY_PLACEMENT,
   calculateViewportTransform,
+  characterPartTransformFromStaticAdjustment,
   transformVisualRectByPart,
+  type AdaptivePartsCharacterDefinition,
+  type CharacterPartStaticAdjustment,
+  type LayerVisualPart,
   type BodyPlacement,
   type CharacterHead,
   type FacePlacement,
@@ -25,6 +30,8 @@ import type {
 } from '../../stores/EditorProjectStore';
 import {
   characterAssemblySessionStore,
+  type AdaptivePartsAssemblySessionHandle,
+  type AdaptivePartsAssemblySnapshot,
   type CharacterAssemblyEditTarget,
   type CharacterAssemblySessionHandle,
   type CharacterCreationSessionHandle,
@@ -37,6 +44,7 @@ import {
 } from '../canvas/canvasImageResources';
 import {
   buildCharacterAssemblyPreviewVisual,
+  buildAdaptivePartsAssemblyPreviewVisual,
   characterLocalPointerDelta,
   characterPartScaleFromPointerDistance,
   findVisibleImageBounds,
@@ -47,6 +55,7 @@ import {
   isAssemblyHeadMotionTestRunning,
   isCharacterAssemblyPending,
   isCharacterCreationSnapshot,
+  isAdaptivePartsAssemblySnapshot,
   largestUnoccludedAssemblyViewportRect,
   parseAssemblyRotationInput,
   visibleImageRect,
@@ -285,6 +294,480 @@ export function CharacterAssemblyWorkbench({
   savedProjectSnapshot,
   session,
 }: CharacterAssemblyWorkbenchProps): React.JSX.Element {
+  if (isAdaptivePartsAssemblySnapshot(session)) {
+    return (
+      <AdaptivePartsAssemblyWorkbench
+        projectSnapshot={projectSnapshot}
+        session={session}
+      />
+    );
+  }
+  return (
+    <CompositeCharacterAssemblyWorkbench
+      projectSnapshot={projectSnapshot}
+      savedProjectSnapshot={savedProjectSnapshot}
+      session={session}
+    />
+  );
+}
+
+type AdaptivePartPointerDrag =
+  | {
+      kind: 'move';
+      partId: string;
+      pointerId: number;
+      startX: number;
+      startY: number;
+      adjustment: CharacterPartStaticAdjustment;
+    }
+  | {
+      kind: 'scale';
+      partId: string;
+      pointerId: number;
+      centerX: number;
+      centerY: number;
+      startDistance: number;
+      adjustment: CharacterPartStaticAdjustment;
+    };
+
+function partPoint(part: LayerVisualPart, x: number, y: number): { x: number; y: number } {
+  const transform = part.imageTransform;
+  if (!transform) return { x: part.localRect.x + x, y: part.localRect.y + y };
+  return {
+    x: transform.a * x + transform.c * y + transform.tx,
+    y: transform.b * x + transform.d * y + transform.ty,
+  };
+}
+
+function AdaptivePartsAssemblyWorkbench({
+  projectSnapshot,
+  session,
+}: {
+  projectSnapshot: EditorProjectSnapshot;
+  session: AdaptivePartsAssemblySnapshot;
+}): React.JSX.Element {
+  const { project, projectRoot } = projectSnapshot;
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<AdaptivePartPointerDrag | null>(null);
+  const [transform, setTransform] = useState(() =>
+    calculateViewportTransform({ width: 0, height: 0 }, 'fit', {
+      width: project.width,
+      height: project.height,
+    }),
+  );
+  const [imageState, setImageState] = useState(EMPTY_CANVAS_IMAGE_STATE);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [message, setMessage] = useState('');
+  const visual = useMemo(
+    () => buildAdaptivePartsAssemblyPreviewVisual(project, session),
+    [project, session],
+  );
+  const imageAssets = useMemo(() => {
+    const ids = new Set(session.draft.parts.map((part) => part.assetId));
+    return project.assets.flatMap((asset): CanvasImageAssetSource[] =>
+      asset.kind === 'image' && ids.has(asset.id)
+        ? [{ id: asset.id, ...(asset.sha256 ? { sha256: asset.sha256 } : {}) }]
+        : [],
+    );
+  }, [project.assets, session.draft.parts]);
+  const contextKey = `${project.id}\u0000${projectRoot}`;
+  const imageSessionRef = useRef<CanvasImageResourceSession | null>(null);
+  useEffect(() => {
+    const imageSession = new CanvasImageResourceSession();
+    imageSessionRef.current = imageSession;
+    return () => {
+      imageSessionRef.current = null;
+      imageSession.dispose();
+    };
+  }, []);
+  useEffect(() => {
+    imageSessionRef.current?.reconcile(
+      { contextKey, projectRoot, assets: imageAssets },
+      (state) => setImageState(state),
+    );
+  }, [contextKey, imageAssets, projectRoot]);
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const update = (): void => setTransform(calculateViewportTransform(
+      { width: viewport.clientWidth, height: viewport.clientHeight },
+      'fit',
+      { width: project.width, height: project.height },
+    ));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [project.height, project.width]);
+
+  const activeHandle = (): AdaptivePartsAssemblySessionHandle | null => {
+    const handle = characterAssemblySessionStore.getActiveAdaptivePartsAssemblySessionHandle();
+    return handle?.sessionId === session.sessionId && handle.generation === session.generation
+      ? handle
+      : null;
+  };
+  const setDefinition = (
+    update: (definition: AdaptivePartsCharacterDefinition) => AdaptivePartsCharacterDefinition,
+  ): void => {
+    const handle = activeHandle();
+    if (!handle) {
+      setMessage('组装草稿已失效，请重新打开。');
+      return;
+    }
+    const result = handle.setDraft(update(session.draft));
+    if (!result.ok) setMessage(result.error.message);
+    else setMessage('');
+  };
+  const updatePart = (
+    partId: string,
+    update: (part: AdaptivePartsCharacterDefinition['parts'][number]) => AdaptivePartsCharacterDefinition['parts'][number],
+  ): void => setDefinition((definition) => ({
+    ...definition,
+    parts: definition.parts.map((part) => part.partId === partId ? update(part) : part),
+  }));
+  const adjustmentOf = (partId: string): CharacterPartStaticAdjustment => {
+    const part = session.draft.parts.find((candidate) => candidate.partId === partId);
+    return { ...(part?.staticAdjustment ?? DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT) };
+  };
+  const setAdjustment = (partId: string, adjustment: CharacterPartStaticAdjustment): void => {
+    const part = session.draft.parts.find((candidate) => candidate.partId === partId);
+    if (!part) return;
+    try {
+      const sourceRestTransform = part.sourceRestTransform ?? part.restTransform;
+      const restTransform = characterPartTransformFromStaticAdjustment(
+        session.draft.sourceRootTransform,
+        sourceRestTransform,
+        part.imageMapping,
+        adjustment,
+      );
+      updatePart(partId, (current) => ({
+        ...current,
+        sourceRestTransform: { ...sourceRestTransform },
+        staticAdjustment: { ...adjustment },
+        restTransform,
+      }));
+    } catch {
+      setMessage('数值超出可用范围，部件位置未更改。');
+    }
+  };
+  const selectedPart = session.draft.parts.find(
+    (part) => part.partId === session.selectedPartId,
+  ) ?? null;
+  const selectedAdjustment = selectedPart
+    ? adjustmentOf(selectedPart.partId)
+    : null;
+  const rows = [...session.draft.parts].sort(
+    (left, right) => right.drawOrder - left.drawOrder,
+  );
+  const assetNames = new Map(
+    project.assets.flatMap((asset) => asset.kind === 'image' ? [[asset.id, asset.name] as const] : []),
+  );
+
+  const pointerToLocal = (clientX: number, clientY: number): { x: number; y: number } => {
+    const bounds = viewportRef.current?.getBoundingClientRect();
+    if (!bounds) return { x: 0, y: 0 };
+    return {
+      x: (clientX - bounds.left - transform.offsetX) / Math.max(0.0001, transform.scale) - project.width / 2,
+      y: (clientY - bounds.top - transform.offsetY) / Math.max(0.0001, transform.scale) - project.height / 2,
+    };
+  };
+  const beginMove = (event: React.PointerEvent, part: LayerVisualPart): void => {
+    if (part.source.kind !== 'adaptive-part') return;
+    const partId = part.source.characterPartId;
+    const handle = activeHandle();
+    if (!handle?.selectPart(partId)) return;
+    event.preventDefault();
+    const point = pointerToLocal(event.clientX, event.clientY);
+    dragRef.current = {
+      kind: 'move',
+      partId,
+      pointerId: event.pointerId,
+      startX: point.x,
+      startY: point.y,
+      adjustment: adjustmentOf(partId),
+    };
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+  };
+  const beginScale = (event: React.PointerEvent, part: LayerVisualPart): void => {
+    if (part.source.kind !== 'adaptive-part') return;
+    const partId = part.source.characterPartId;
+    const handle = activeHandle();
+    if (!handle?.selectPart(partId)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const center = partPoint(part, part.localRect.width / 2, part.localRect.height / 2);
+    const point = pointerToLocal(event.clientX, event.clientY);
+    dragRef.current = {
+      kind: 'scale',
+      partId,
+      pointerId: event.pointerId,
+      centerX: center.x,
+      centerY: center.y,
+      startDistance: Math.hypot(point.x - center.x, point.y - center.y),
+      adjustment: adjustmentOf(partId),
+    };
+  };
+  useEffect(() => {
+    const onMove = (event: PointerEvent): void => {
+      const drag = dragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      const point = pointerToLocal(event.clientX, event.clientY);
+      if (drag.kind === 'move') {
+        setAdjustment(drag.partId, {
+          ...drag.adjustment,
+          offsetX: drag.adjustment.offsetX + point.x - drag.startX,
+          offsetY: drag.adjustment.offsetY + point.y - drag.startY,
+        });
+      } else {
+        const scale = characterPartScaleFromPointerDistance(
+          drag.adjustment.scale,
+          drag.startDistance,
+          Math.hypot(point.x - drag.centerX, point.y - drag.centerY),
+        );
+        setAdjustment(drag.partId, { ...drag.adjustment, scale });
+      }
+    };
+    const onEnd = (event: PointerEvent): void => {
+      if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onEnd);
+    window.addEventListener('pointercancel', onEnd);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onEnd);
+      window.removeEventListener('pointercancel', onEnd);
+    };
+  }, [project.height, project.width, transform]);
+
+  const applyDraft = (): void => {
+    const handle = activeHandle();
+    if (!handle) {
+      setMessage('组装草稿已失效，请重新打开。');
+      return;
+    }
+    const result = handle.commit();
+    if (result.status === 'rejected' || result.status === 'stale') {
+      setMessage(result.error.message);
+    } else {
+      setMessage(result.status === 'no-op' ? '没有待应用的更改。' : '部件已应用。');
+    }
+  };
+  const cancelDraft = (): void => {
+    if (isCharacterAssemblyPending(project, session) &&
+      !window.confirm('组装更改尚未应用，取消将放弃这些更改。继续吗？')) return;
+    activeHandle()?.cancel();
+  };
+  return (
+    <section
+      aria-label="Adaptive Parts 角色组装工作区"
+      className="character-assembly-workbench adaptive-parts-assembly-workbench"
+      data-character-id={session.characterId}
+      data-project-revision={projectSnapshot.revision}
+      data-project-dirty={projectSnapshot.dirty}
+      data-testid="adaptive-parts-assembly-workbench"
+    >
+      <aside className="adaptive-parts-assembly-list" aria-label="部件列表">
+        <h2 data-testid="adaptive-parts-assembly-count">部件 · {rows.length}</h2>
+        <div className="adaptive-parts-assembly-rows">
+          {rows.map((part, index) => {
+            const matchingAssetParts = session.draft.parts.filter((candidate) => candidate.assetId === part.assetId).length;
+            const baseName = part.displayName ?? assetNames.get(part.assetId) ?? `部件 ${index + 1}`;
+            const name = matchingAssetParts > 1 && !part.displayName
+              ? `${baseName} · 部件 ${index + 1}`
+              : baseName;
+            const image = imageState.images.get(part.assetId);
+            return (
+              <div
+                className="adaptive-parts-assembly-row"
+                data-draw-order={part.drawOrder}
+                data-part-id={part.partId}
+                key={part.partId}
+              >
+                <button
+                  aria-pressed={session.selectedPartId === part.partId}
+                  className="adaptive-parts-assembly-row-select"
+                  data-part-visible={part.visible}
+                  data-testid="adaptive-parts-assembly-row-select"
+                  onClick={() => activeHandle()?.selectPart(part.partId)}
+                  type="button"
+                >
+                  <span className="adaptive-parts-assembly-thumbnail">
+                    {image ? <img alt="" src={image.src} /> : <span aria-hidden="true">▧</span>}
+                  </span>
+                  <span className="adaptive-parts-assembly-name">{name}</span>
+                </button>
+                <details className="adaptive-parts-row-menu" data-testid="adaptive-parts-row-menu">
+                  <summary aria-label={`部件选项：${name}`} title="部件选项">•••</summary>
+                  <div role="menu">
+                      <button data-adaptive-part-action="rename" role="menuitem" type="button" onClick={() => {
+                      const nextName = window.prompt('部件名称', part.displayName ?? name);
+                      if (nextName === null) return;
+                      const trimmed = nextName.trim();
+                      if (!trimmed) {
+                        setMessage('名称不能为空。');
+                        return;
+                      }
+                      updatePart(part.partId, (current) => ({ ...current, displayName: trimmed }));
+                    }}>重命名</button>
+                    <button data-adaptive-part-action="visibility" role="menuitem" type="button" onClick={() => updatePart(part.partId, (current) => ({ ...current, visible: !current.visible }))}>
+                      {part.visible ? '隐藏' : '显示'}
+                    </button>
+                    <button data-adaptive-part-action="reset" role="menuitem" type="button" onClick={() => {
+                      const sourceRestTransform = part.sourceRestTransform ?? part.restTransform;
+                      updatePart(part.partId, (current) => ({
+                        ...current,
+                        sourceRestTransform: { ...sourceRestTransform },
+                        restTransform: { ...sourceRestTransform },
+                        staticAdjustment: { ...DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT },
+                      }));
+                    }}>重置源位置</button>
+                  </div>
+                </details>
+              </div>
+            );
+          })}
+        </div>
+      </aside>
+
+      <div
+        aria-label="角色部件画布"
+        className="character-assembly-preview-viewport adaptive-parts-assembly-viewport"
+        ref={viewportRef}
+        role="group"
+        data-testid="adaptive-parts-assembly-canvas"
+      >
+        <div
+          className="character-assembly-preview-stage"
+          style={{
+            height: project.height,
+            left: transform.offsetX,
+            top: transform.offsetY,
+            transform: `scale(${transform.scale})`,
+            transformOrigin: 'top left',
+            width: project.width,
+          }}
+        >
+          {[...(visual?.parts ?? [])]
+            .filter((part) => part.visible !== false)
+            .sort((left, right) => left.drawOrder - right.drawOrder)
+            .map((part) => {
+              const image = imageState.images.get(part.assetId);
+              const imageTransform = part.imageTransform;
+              if (!image || !imageTransform || part.source.kind !== 'adaptive-part') return null;
+              const partId = part.source.characterPartId;
+              const selected = session.selectedPartId === partId;
+              const sourcePart = session.draft.parts.find((candidate) => candidate.partId === partId);
+              const matrix = `matrix(${imageTransform.a}, ${imageTransform.b}, ${imageTransform.c}, ${imageTransform.d}, ${project.width / 2 + imageTransform.tx}, ${project.height / 2 + imageTransform.ty})`;
+              return (
+                <div
+                  className={`adaptive-parts-assembly-canvas-part${selected ? ' is-selected' : ''}`}
+                  data-part-id={partId}
+                  data-testid="adaptive-parts-assembly-canvas-part"
+                  key={part.partId}
+                  style={{
+                    height: part.localRect.height,
+                    left: 0,
+                    top: 0,
+                    transform: matrix,
+                    transformOrigin: 'top left',
+                    width: part.localRect.width,
+                  }}
+                  onPointerDown={(event) => beginMove(event, part)}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`选择并拖动${sourcePart?.displayName ?? assetNames.get(part.assetId) ?? '部件'}`}
+                >
+                  <img alt="" draggable={false} src={image.src} />
+                  {selected ? (
+                    <button
+                      aria-label="拖动右下角调整部件大小"
+                      className="adaptive-parts-assembly-scale-handle"
+                      onPointerDown={(event) => beginScale(event, part)}
+                      type="button"
+                    />
+                  ) : null}
+                </div>
+              );
+            })}
+        </div>
+        <div className="adaptive-parts-assembly-canvas-toolbar">
+          <span>拖动部件移动，拖动角点缩放</span>
+          <button type="button" onClick={() => setTransform(calculateViewportTransform(
+            { width: viewportRef.current?.clientWidth ?? 0, height: viewportRef.current?.clientHeight ?? 0 },
+            'fit',
+            { width: project.width, height: project.height },
+          ))}>适配画布</button>
+        </div>
+      </div>
+
+      <aside className="adaptive-parts-assembly-inspector" aria-label="部件检查器">
+        <button
+          aria-expanded={inspectorOpen}
+          className="adaptive-parts-inspector-toggle"
+          data-testid="adaptive-parts-inspector-toggle"
+          disabled={!selectedPart}
+          onClick={() => setInspectorOpen((open) => !open)}
+          type="button"
+        >
+          {inspectorOpen ? '收起微调' : '微调部件'}
+        </button>
+        {inspectorOpen && selectedPart && selectedAdjustment ? (
+          <div className="adaptive-parts-inspector-fields">
+            <strong>{selectedPart.displayName ?? assetNames.get(selectedPart.assetId) ?? '部件'}</strong>
+            <label>水平偏移
+              <input aria-label="水平偏移" data-testid="adaptive-parts-offset-x" type="number" min={-1_000_000} max={1_000_000} step="1" value={selectedAdjustment.offsetX} onChange={(event) => {
+                const offsetX = Number(event.currentTarget.value);
+                if (event.currentTarget.value !== '' && Number.isFinite(offsetX) && Math.abs(offsetX) <= 1_000_000) setAdjustment(selectedPart.partId, { ...selectedAdjustment, offsetX });
+              }} />
+            </label>
+            <label>垂直偏移
+              <input aria-label="垂直偏移" data-testid="adaptive-parts-offset-y" type="number" min={-1_000_000} max={1_000_000} step="1" value={selectedAdjustment.offsetY} onChange={(event) => {
+                const offsetY = Number(event.currentTarget.value);
+                if (event.currentTarget.value !== '' && Number.isFinite(offsetY) && Math.abs(offsetY) <= 1_000_000) setAdjustment(selectedPart.partId, { ...selectedAdjustment, offsetY });
+              }} />
+            </label>
+            <label>大小（%）
+              <input aria-label="大小百分比" data-testid="adaptive-parts-scale-percent" type="number" min={CHARACTER_PART_MIN_SCALE * 100} max={CHARACTER_PART_MAX_SCALE * 100} step="1" value={Math.round(selectedAdjustment.scale * 100)} onChange={(event) => {
+                const scale = Number(event.currentTarget.value) / 100;
+                if (event.currentTarget.value !== '' && Number.isFinite(scale) && scale >= CHARACTER_PART_MIN_SCALE && scale <= CHARACTER_PART_MAX_SCALE) setAdjustment(selectedPart.partId, { ...selectedAdjustment, scale });
+              }} />
+            </label>
+            <label>旋转（°）
+              <input aria-label="旋转角度" data-testid="adaptive-parts-rotation-deg" type="number" min={-180} max={180} step="1" value={selectedAdjustment.rotationDeg} onChange={(event) => {
+                const rotationDeg = Number(event.currentTarget.value);
+                if (event.currentTarget.value !== '' && Number.isFinite(rotationDeg) && rotationDeg >= -180 && rotationDeg <= 180) setAdjustment(selectedPart.partId, { ...selectedAdjustment, rotationDeg });
+              }} />
+            </label>
+            <button data-testid="adaptive-parts-inspector-reset" type="button" onClick={() => {
+              const sourceRestTransform = selectedPart.sourceRestTransform ?? selectedPart.restTransform;
+              updatePart(selectedPart.partId, (part) => ({
+                ...part,
+                sourceRestTransform: { ...sourceRestTransform },
+                restTransform: { ...sourceRestTransform },
+                staticAdjustment: { ...DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT },
+              }));
+            }}>重置到源位置</button>
+          </div>
+        ) : null}
+      </aside>
+
+      <footer className="character-assembly-workbench-footer adaptive-parts-assembly-footer">
+        <span role="status" aria-live="polite">{message}</span>
+        <button data-testid="adaptive-parts-assembly-cancel" type="button" onClick={cancelDraft}>取消</button>
+        <button data-testid="adaptive-parts-assembly-apply" type="button" onClick={applyDraft}>应用</button>
+      </footer>
+    </section>
+  );
+}
+
+function CompositeCharacterAssemblyWorkbench({
+  projectSnapshot,
+  savedProjectSnapshot,
+  session,
+}: CharacterAssemblyWorkbenchProps & {
+  session: Exclude<CharacterAssemblySnapshotUnion, AdaptivePartsAssemblySnapshot>;
+}): React.JSX.Element {
   const { project, projectRoot } = projectSnapshot;
   const resolvedSavedProjectSnapshot =
     savedProjectSnapshot === undefined

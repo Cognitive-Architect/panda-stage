@@ -113,6 +113,30 @@ export class CharacterStore {
     );
   }
 
+  /**
+   * Apply an immutable assembly draft against the exact project snapshot that
+   * the assembly session captured. Unlike get/apply draft bindings this also
+   * supports the session's defensive deep clone while retaining stale guards.
+   */
+  applyAdaptivePartsDefinitionAtSnapshot(
+    characterId: string,
+    definition: AdaptivePartsCharacterDefinition,
+    expectedSnapshot: EditorProjectSnapshot,
+    expectedProjectInstanceId: number,
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.applyAdaptivePartsDefinition(
+          project,
+          characterId,
+          definition,
+        ),
+      'Apply Adaptive Parts definition',
+      expectedSnapshot,
+      expectedProjectInstanceId,
+    );
+  }
+
   updateAdaptivePart(
     characterId: string,
     partId: string,

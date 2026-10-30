@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CharacterService,
   ProjectSchema,
+  characterPartTransformFromStaticAdjustment,
   type CompositeCharacterDefinition,
   type Project,
 } from '../../src/domain';
@@ -12,9 +13,14 @@ import {
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import {
   ASSEMBLY_DISCARD_CONFIRM_MESSAGE,
+  isAdaptivePartsAssemblySnapshot,
   isCharacterCreationSnapshot,
   resolveAssemblyExitDecision,
 } from '../../src/renderer/features/characters/characterAssemblyPreview';
+import {
+  adaptivePartsFixture,
+  adaptivePartsSourceRootTransform,
+} from '../helpers/adaptivePartsFixtures';
 import { buildProject, IDS } from './domain/testProject';
 
 const PROJECT_ROOT = 'D:\\s09-r04.pandastage';
@@ -116,6 +122,34 @@ function harness(project = compositeProject()) {
   return { editor, characters, assembly, project };
 }
 
+function adaptivePartsProjectWithLegacyParts(): { project: Project; characterId: string } {
+  const created = new CharacterService().createAdaptiveParts(buildProject(), {
+    name: 'Adaptive Parts Session Fixture',
+    sourceRootTransform: adaptivePartsSourceRootTransform(),
+    parts: adaptivePartsFixture(IDS.assetChar),
+  });
+  const character = created.characters.at(-1);
+  if (!character || character.mode !== 'adaptive-parts') {
+    throw new Error('Expected an Adaptive Parts fixture.');
+  }
+  const project = ProjectSchema.parse({
+    ...created,
+    characters: created.characters.map((candidate) => {
+      if (candidate.id !== character.id || candidate.mode !== 'adaptive-parts') return candidate;
+      return {
+        ...candidate,
+        parts: candidate.parts.map((part) => {
+          const legacyPart = { ...part };
+          delete legacyPart.sourceRestTransform;
+          delete legacyPart.staticAdjustment;
+          return legacyPart;
+        }),
+      };
+    }),
+  });
+  return { project, characterId: character.id };
+}
+
 /** begin + declare the UI continuity intent, as CharacterManager does. */
 function beginOwned(
   assembly: CharacterAssemblySessionStore,
@@ -189,7 +223,7 @@ describe('S09-R04 assembly workspace continuity', () => {
     ).toBe(true);
     const faceSelected = h.assembly.getSnapshot();
     expect(faceSelected && !isCharacterCreationSnapshot(faceSelected)).toBe(true);
-    if (!faceSelected || isCharacterCreationSnapshot(faceSelected)) return;
+    if (!faceSelected || isCharacterCreationSnapshot(faceSelected) || isAdaptivePartsAssemblySnapshot(faceSelected)) return;
     expect(faceSelected.editTarget).toBe('face');
     expect(faceSelected.draft.head).toEqual(begin.snapshot.draft.head);
     expect(h.editor.getSnapshot()).toBe(beforeProject);
@@ -198,14 +232,14 @@ describe('S09-R04 assembly workspace continuity', () => {
     expect(
       h.assembly.setEditTarget('body', begin.session.sessionId, begin.session.generation),
     ).toBe(true);
-    expect(h.assembly.getSnapshot()?.editTarget).toBe('body');
+    expect(h.assembly.getSnapshot()).toMatchObject({ editTarget: 'body' });
     expect(h.editor.getSnapshot()).toBe(beforeProject);
     expect(h.editor.history.getSnapshot()).toEqual(beforeHistory);
 
     expect(
       h.assembly.setEditTarget('head', begin.session.sessionId, begin.session.generation),
     ).toBe(true);
-    expect(h.assembly.getSnapshot()?.editTarget).toBe('head');
+    expect(h.assembly.getSnapshot()).toMatchObject({ editTarget: 'head' });
 
     const headless = harness();
     const headlessBegin = beginOwned(headless.assembly);
@@ -243,19 +277,19 @@ describe('S09-R04 assembly workspace continuity', () => {
     ).toBe(true);
     const faceDraft = h.assembly.getSnapshot();
     expect(faceDraft && !isCharacterCreationSnapshot(faceDraft)).toBe(true);
-    if (!faceDraft || isCharacterCreationSnapshot(faceDraft)) return;
+    if (!faceDraft || isCharacterCreationSnapshot(faceDraft) || isAdaptivePartsAssemblySnapshot(faceDraft)) return;
     expect(faceDraft.editTarget).toBe('face');
     expect(faceDraft.draft.head).toEqual(original.head);
 
     expect(begin.session.commit().status).toBe('committed');
-    expect(h.assembly.getSnapshot()?.editTarget).toBe('head');
+    expect(h.assembly.getSnapshot()).toMatchObject({ editTarget: 'head' });
     expect(h.editor.getSnapshot()?.revision).toBe(1);
     expect(h.editor.history.getSnapshot().undoCount).toBe(1);
 
     expect(h.editor.undo()).toBe(true);
-    expect(h.assembly.getSnapshot()?.editTarget).toBe('head');
+    expect(h.assembly.getSnapshot()).toMatchObject({ editTarget: 'head' });
     expect(h.editor.redo()).toBe(true);
-    expect(h.assembly.getSnapshot()?.editTarget).toBe('head');
+    expect(h.assembly.getSnapshot()).toMatchObject({ editTarget: 'head' });
 
     expect(
       h.assembly.setEditTarget(
@@ -406,6 +440,98 @@ describe('S09-R04 assembly workspace continuity', () => {
     h.editor.open(PROJECT_ROOT, compositeProject());
     expect(h.editor.getProjectInstanceId()).not.toBe(instanceBefore);
     expect(h.assembly.getSnapshot()).toBeNull();
+    h.assembly.dispose();
+  });
+});
+
+describe('C3 Adaptive Parts assembly session', () => {
+  it('captures legacy source poses in draft only and applies one atomic update with undo/redo continuity', () => {
+    const { project, characterId } = adaptivePartsProjectWithLegacyParts();
+    const h = harness(project);
+    const before = h.editor.getSnapshot()!;
+    const historyBefore = h.editor.history.getSnapshot();
+    const begun = h.assembly.beginAdaptiveParts(characterId);
+    expect(begun.ok).toBe(true);
+    if (!begun.ok) return;
+    expect(isAdaptivePartsAssemblySnapshot(begun.snapshot)).toBe(true);
+    expect(begun.snapshot.draft.parts[0]!.sourceRestTransform).toEqual(
+      begun.snapshot.draft.parts[0]!.restTransform,
+    );
+    expect(begun.snapshot.draft.parts[0]!.staticAdjustment).toEqual({
+      offsetX: 0,
+      offsetY: 0,
+      scale: 1,
+      rotationDeg: 0,
+    });
+    expect(h.editor.getSnapshot()).toBe(before);
+    expect(h.editor.getSnapshot()!.dirty).toBe(false);
+    expect(h.editor.history.getSnapshot()).toEqual(historyBefore);
+
+    expect(begun.session.selectPart(begun.snapshot.draft.parts[0]!.partId)).toBe(true);
+    expect(begun.session.commit().status).toBe('no-op');
+    begun.session.cancel();
+    expect(h.editor.getSnapshot()).toBe(before);
+    expect(h.editor.history.getSnapshot()).toEqual(historyBefore);
+    expect(h.assembly.getSnapshot()).toBeNull();
+
+    const reopened = h.assembly.beginAdaptiveParts(characterId);
+    expect(reopened.ok).toBe(true);
+    if (!reopened.ok) return;
+    h.assembly.setAssemblyContinuityOwner(characterId);
+    const definition = reopened.snapshot.draft;
+    const part = definition.parts[0]!;
+    const adjustment = { offsetX: 16, offsetY: -8, scale: 1.1, rotationDeg: 14 };
+    const sourceRestTransform = part.sourceRestTransform ?? part.restTransform;
+    const restTransform = characterPartTransformFromStaticAdjustment(
+      definition.sourceRootTransform,
+      sourceRestTransform,
+      part.imageMapping,
+      adjustment,
+    );
+    expect(reopened.session.setDraft({
+      ...definition,
+      parts: definition.parts.map((candidate) => candidate.partId === part.partId
+        ? { ...candidate, sourceRestTransform, staticAdjustment: adjustment, restTransform }
+        : candidate),
+    }).ok).toBe(true);
+    expect(reopened.session.commit().status).toBe('committed');
+    const committed = h.editor.getSnapshot()!;
+    expect(committed.revision).toBe(before.revision + 1);
+    expect(committed.dirty).toBe(true);
+    expect(h.editor.history.getSnapshot().undoCount).toBe(historyBefore.undoCount + 1);
+    const committedCharacter = committed.project.characters.find(
+      (candidate) => candidate.id === characterId,
+    );
+    expect(committedCharacter?.mode).toBe('adaptive-parts');
+    if (committedCharacter?.mode !== 'adaptive-parts') return;
+    expect(committedCharacter.parts.every((candidate) =>
+      candidate.sourceRestTransform && candidate.staticAdjustment,
+    )).toBe(true);
+    expect(committedCharacter.parts[0]).toMatchObject({
+      partId: part.partId,
+      assetId: part.assetId,
+      staticAdjustment: adjustment,
+    });
+
+    expect(h.editor.undo()).toBe(true);
+    const afterUndo = h.assembly.getSnapshot();
+    expect(afterUndo).not.toBeNull();
+    expect(afterUndo && isAdaptivePartsAssemblySnapshot(afterUndo)).toBe(true);
+    expect(reopened.session.getSnapshot()).toBeNull();
+    const undoCharacter = h.editor.getSnapshot()!.project.characters.find(
+      (candidate) => candidate.id === characterId,
+    );
+    if (undoCharacter?.mode === 'adaptive-parts') {
+      expect(undoCharacter.parts[0]!.sourceRestTransform).toBeUndefined();
+      expect(undoCharacter.parts[0]!.staticAdjustment).toBeUndefined();
+    }
+    expect(h.editor.redo()).toBe(true);
+    const afterRedo = h.editor.getSnapshot()!.project.characters.find(
+      (candidate) => candidate.id === characterId,
+    );
+    if (afterRedo?.mode === 'adaptive-parts') {
+      expect(afterRedo.parts[0]!.staticAdjustment).toEqual(adjustment);
+    }
     h.assembly.dispose();
   });
 });

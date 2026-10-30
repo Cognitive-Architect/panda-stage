@@ -304,6 +304,7 @@ export interface CharacterEditorProps {
   onSetDefaultExpression: (expressionId: string) => void;
   onSetMouthOpenAsset: (assetId: string | null) => void;
   assemblyDraft?: CompositeCharacterDefinition | null;
+  adaptiveAssemblyActive?: boolean;
   onOpenAssembly?: () => boolean;
   onLeaveAssembly?: () => boolean;
   onSetAssemblyHeadAsset?: (assetId: string | null) => void;
@@ -340,6 +341,7 @@ export function CharacterEditor({
   onSetDefaultExpression,
   onSetMouthOpenAsset,
   assemblyDraft = null,
+  adaptiveAssemblyActive = false,
   onOpenAssembly = () => false,
   onLeaveAssembly = () => true,
   onSetAssemblyHeadAsset = () => undefined,
@@ -488,6 +490,26 @@ export function CharacterEditor({
         <strong>{character.name}</strong>
         {view === 'detail' ? (
           <div className="character-detail-identity-actions">
+            {!adaptiveAssemblyActive ? (
+              <Button
+                aria-label="返回角色列表"
+                className="character-detail-place-action"
+                data-testid="adaptive-parts-back-to-list"
+                onClick={onBackToList}
+                variant="secondary"
+              >
+                返回角色列表
+              </Button>
+            ) : null}
+            <Button
+              aria-label={adaptiveAssemblyActive ? '返回角色' : '组装角色'}
+              className="character-detail-place-action"
+              data-testid={adaptiveAssemblyActive ? 'adaptive-parts-return' : 'adaptive-parts-assembly-open'}
+              onClick={() => adaptiveAssemblyActive ? onLeaveAssembly() : onOpenAssembly()}
+              variant="secondary"
+            >
+              {adaptiveAssemblyActive ? '返回角色' : '组装'}
+            </Button>
             <Button
               aria-label="加入当前镜头"
               className="character-detail-place-action"

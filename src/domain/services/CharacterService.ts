@@ -4,6 +4,7 @@ import {
   CharacterHeadSchema,
   CharacterPartSchema,
   DEFAULT_BODY_PLACEMENT,
+  DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT,
   FacePlacementSchema,
   ProjectSchema,
   TalkingHeadMotionIntensityPercentSchema,
@@ -311,7 +312,15 @@ export class CharacterService {
     const character = this.adaptivePartsCharacter(project, characterId);
     return {
       sourceRootTransform: { ...character.sourceRootTransform },
-      parts: character.parts.map((part) => this.clonePart(part)),
+      parts: character.parts.map((part) => this.clonePart({
+        ...part,
+        // Legacy v15 parts have no separately persisted source pose. Capture
+        // the current static pose in this in-memory draft only; Apply is the
+        // first operation that can persist the compatibility fields.
+        sourceRestTransform: part.sourceRestTransform ?? part.restTransform,
+        staticAdjustment:
+          part.staticAdjustment ?? DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT,
+      })),
     };
   }
 
@@ -869,7 +878,12 @@ export class CharacterService {
           `Adaptive Part ${part.partId} crop mapping expects ${expectedWidth}×${expectedHeight}, but asset ${asset.id} is ${asset.width}×${asset.height}.`,
         );
       }
-      return part;
+      return {
+        ...part,
+        sourceRestTransform: part.sourceRestTransform ?? part.restTransform,
+        staticAdjustment:
+          part.staticAdjustment ?? DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT,
+      };
     });
     return { ...parsed.data, parts };
   }
@@ -879,6 +893,12 @@ export class CharacterService {
       ...part,
       source: { ...part.source },
       restTransform: { ...part.restTransform },
+      ...(part.sourceRestTransform
+        ? { sourceRestTransform: { ...part.sourceRestTransform } }
+        : {}),
+      ...(part.staticAdjustment
+        ? { staticAdjustment: { ...part.staticAdjustment } }
+        : {}),
       imageMapping: {
         ...part.imageMapping,
         crop: { ...part.imageMapping.crop },

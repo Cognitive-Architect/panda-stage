@@ -43,6 +43,7 @@ import { CharacterList } from './CharacterList';
 import {
   ASSEMBLY_DISCARD_CONFIRM_MESSAGE,
   isCharacterAssemblyPending,
+  isAdaptivePartsAssemblySnapshot,
   isCharacterCreationSnapshot,
   resolveAssemblyExitDecision,
 } from './characterAssemblyPreview';
@@ -248,9 +249,7 @@ export function CharacterManager({
       activeSession.projectId === snapshot?.project.id &&
       activeSession.projectRoot === snapshot?.projectRoot &&
       snapshot.project.characters.some(
-        (character) =>
-          character.id === activeSession.characterId &&
-          character.mode !== 'adaptive-parts',
+        (character) => character.id === activeSession.characterId,
       )
         ? activeSession.characterId
         : null;
@@ -308,11 +307,16 @@ export function CharacterManager({
   const editAssemblySnapshot =
     assemblySnapshot &&
     !isCharacterCreationSnapshot(assemblySnapshot) &&
-    assemblySnapshot.characterId === selectedCharacter?.id
+    assemblySnapshot.characterId === selectedDisplayCharacter?.id
       ? assemblySnapshot
       : null;
   const assemblyDraft: CompositeCharacterDefinition | null =
-    editAssemblySnapshot?.draft ?? null;
+    editAssemblySnapshot && !isAdaptivePartsAssemblySnapshot(editAssemblySnapshot)
+      ? editAssemblySnapshot.draft
+      : null;
+  const adaptiveAssemblyActive = Boolean(
+    editAssemblySnapshot && isAdaptivePartsAssemblySnapshot(editAssemblySnapshot),
+  );
   const assemblyPending = Boolean(
     editAssemblySnapshot &&
       project &&
@@ -512,10 +516,13 @@ export function CharacterManager({
   };
 
   const openAssembly = (): boolean => {
-    if (!selectedCharacter || selectedCharacter.mode !== 'composite') {
-      return false;
-    }
-    const result = characterAssemblySessionStore.begin(selectedCharacter.id);
+    if (!selectedDisplayCharacter) return false;
+    const result = selectedDisplayCharacter.mode === 'adaptive-parts'
+      ? characterAssemblySessionStore.beginAdaptiveParts(selectedDisplayCharacter.id)
+      : selectedDisplayCharacter.mode === 'composite'
+        ? characterAssemblySessionStore.begin(selectedDisplayCharacter.id)
+        : null;
+    if (!result) return false;
     if (!result.ok) {
       setStatus(result.error.message);
       return false;
@@ -541,7 +548,9 @@ export function CharacterManager({
   };
 
   const discardAssemblySession = (): void => {
-    const active = characterAssemblySessionStore.getActiveAssemblySessionHandle();
+    const active = adaptiveAssemblyActive
+      ? characterAssemblySessionStore.getActiveAdaptivePartsAssemblySessionHandle()
+      : characterAssemblySessionStore.getActiveAssemblySessionHandle();
     if (
       active &&
       editAssemblySnapshot &&
@@ -558,6 +567,11 @@ export function CharacterManager({
     if (!confirmAssemblyDiscard()) return false;
     discardAssemblySession();
     return true;
+  };
+
+  const selectCharacter = (characterId: string): void => {
+    if (editAssemblySnapshot && !leaveAssembly()) return;
+    setSelectedCharacterId(characterId);
   };
 
   const updateAssembly = (
@@ -610,7 +624,9 @@ export function CharacterManager({
     if (assemblySnapshot.characterId === selectedCharacterId) {
       ownedSessionIdRef.current = assemblySnapshot.sessionId;
     }
-    const active = characterAssemblySessionStore.getActiveAssemblySessionHandle();
+    const active = isAdaptivePartsAssemblySnapshot(assemblySnapshot)
+      ? characterAssemblySessionStore.getActiveAdaptivePartsAssemblySessionHandle()
+      : characterAssemblySessionStore.getActiveAssemblySessionHandle();
     if (active && active.sessionId === ownedSessionIdRef.current) {
       // Keep the latest generation for safe cleanup after an Apply.
       ownedSessionIdRef.current = active.sessionId;
@@ -703,7 +719,7 @@ export function CharacterManager({
             onCancelCompositeCreate={cancelOwnedSession}
             onCompositeDraftChange={updateCompositeCreation}
             onCreate={createCharacter}
-            onSelect={setSelectedCharacterId}
+            onSelect={selectCharacter}
             onThumbnailError={markThumbnailError}
             presentation={presentation}
             selectedCharacterId={selectedCharacterId}
@@ -718,7 +734,7 @@ export function CharacterManager({
             mode="list"
             onCreate={createCharacter}
             onSelect={(characterId) => {
-              setSelectedCharacterId(characterId);
+              selectCharacter(characterId);
               onViewChange('detail');
             }}
             onThumbnailError={markThumbnailError}
@@ -744,7 +760,7 @@ export function CharacterManager({
             onCancelCompositeCreate={cancelOwnedSession}
             onCompositeDraftChange={updateCompositeCreation}
             onCreate={createCharacter}
-            onSelect={setSelectedCharacterId}
+            onSelect={selectCharacter}
             onThumbnailError={markThumbnailError}
             presentation={presentation}
             selectedCharacterId={selectedCharacterId}
@@ -885,7 +901,12 @@ export function CharacterManager({
             );
           }}
           assemblyDraft={assemblyDraft}
-          assemblyEditTarget={editAssemblySnapshot?.editTarget ?? 'face'}
+          adaptiveAssemblyActive={adaptiveAssemblyActive}
+          assemblyEditTarget={
+            editAssemblySnapshot && !isAdaptivePartsAssemblySnapshot(editAssemblySnapshot)
+              ? editAssemblySnapshot.editTarget
+              : 'face'
+          }
           onSelectAssemblyEditTarget={(target) => {
             if (!editAssemblySnapshot) return;
             characterAssemblySessionStore.setEditTarget(

@@ -195,6 +195,25 @@ export const CharacterPartTransformSchema = z
     }
   });
 
+/** User-authored static change relative to an immutable source pose. */
+export const CharacterPartStaticAdjustmentSchema = z
+  .object({
+    offsetX: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
+    offsetY: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
+    scale: FiniteNumberSchema.min(CHARACTER_PART_MIN_SCALE).max(
+      CHARACTER_PART_MAX_SCALE,
+    ),
+    rotationDeg: FiniteNumberSchema.min(-180).max(180),
+  })
+  .strict();
+
+export type CharacterPartStaticAdjustment = z.infer<
+  typeof CharacterPartStaticAdjustmentSchema
+>;
+
+export const DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT: Readonly<CharacterPartStaticAdjustment> =
+  Object.freeze({ offsetX: 0, offsetY: 0, scale: 1, rotationDeg: 0 });
+
 const PartCropSchema = z
   .object({
     x: z.number().int().nonnegative(),
@@ -237,6 +256,10 @@ export const CharacterPartSchema = z
     source: CharacterPartSourceSchema,
     /** Full 2D affine transform from source-image coordinates to Character-local coordinates. */
     restTransform: CharacterPartTransformSchema,
+    /** Immutable source-pose transform. Optional only for legacy v15 records. */
+    sourceRestTransform: CharacterPartTransformSchema.optional(),
+    /** Static authoring controls relative to sourceRestTransform. */
+    staticAdjustment: CharacterPartStaticAdjustmentSchema.optional(),
     imageMapping: CharacterPartImageMappingSchema,
     /** Unique integer order, lower values behind higher values. */
     drawOrder: z.number().int().nonnegative().max(1_000_000),

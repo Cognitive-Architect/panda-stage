@@ -510,7 +510,8 @@
         "verifierPatterns": [
           "scripts/verify-day19*",
         "scripts/verify-issue609-character-assembly.cjs",
-        "scripts/verify-issue897-c2-adaptive-parts.cjs"
+        "scripts/verify-issue897-c2-adaptive-parts.cjs",
+        "scripts/verify-issue899-c3-v0.cjs"
         ],
         "suites": ["character"],
         "riskPolicy": "targeted",
@@ -744,7 +745,7 @@
       }
     ]
   },
-  "count": 105,
+  "count": 106,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1993,6 +1994,18 @@
       "owner": "character",
       "supersedes": null,
       "notes": "Issue #897 C2 Windows Electron proof for synthetic Adaptive Parts placement into a Shot, Undo/Redo, Save/reopen, Stage and Product Preview sampling, and formal six-second MP4 export with frame comparisons; generated evidence is AUTO_PASS, while OWNER visual acceptance remains separate."
+    },
+    {
+      "id": "issue899-c3-v0-adaptive-parts-ui",
+      "script": "verify:issue899-c3-v0",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Issue #899 C3 V0 Electron acceptance over locally selected Issue #893 C0 isolated PNGs through production AssetImportService and CharacterService, real Adaptive Parts assembly UI edits, Save/reopen, Stage/Preview six-second MP4 sampling. Requires PANDA_STAGE_ISSUE899_SOURCE_DIR and keeps all private sample assets in the external acceptance directory; AUTO_PASS does not attest OWNER review."
     },
     {
       "id": "timeline",

@@ -163,6 +163,8 @@ describe('Issue #639 Character detail placement bridge', () => {
     );
 
     expect(markup).toContain('Synthetic Static Parts');
+    expect(markup).toContain('data-testid="adaptive-parts-back-to-list"');
+    expect(markup).toContain('aria-label="返回角色列表"');
     expect(placementButton).toContain('加入当前镜头');
     expect(placementButton).not.toContain('disabled=""');
   });
@@ -330,7 +332,9 @@ describe('Issue #639 Character detail placement bridge', () => {
     const statuses = place({ leaveAssembly: () => false });
 
     expect(statuses).toEqual([]);
-    expect(characterAssemblySessionStore.getSnapshot()?.draft.bodyAssetId).toBe(IDS.assetChar2);
+    expect(characterAssemblySessionStore.getSnapshot()).toMatchObject({
+      draft: { bodyAssetId: IDS.assetChar2 },
+    });
     expect(begin.session.getSnapshot()).not.toBeNull();
     expect(timelineUiStore.getSnapshot()).toMatchObject({ currentTimeMs: 1_000, scrollPx: 240 });
     expect(editorProjectStore.getSnapshot()).toBe(before);
