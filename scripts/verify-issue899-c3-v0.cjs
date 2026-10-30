@@ -372,6 +372,98 @@ async function scalePart(window, partId, dx, dy) {
   return { cssStart: { x: rect.x, y: rect.y }, cssDelta: { x: dx, y: dy }, inputFactor: factor };
 }
 
+async function clickPoint(window, selector, label = selector) {
+  await waitFor(window, "document.querySelector(" + JSON.stringify(selector) + ")", label + " did not appear.");
+  const target = await page(window,
+    "(() => { const element = document.querySelector(" + JSON.stringify(selector) + "); " +
+    "const bounds = element.getBoundingClientRect(); const style = getComputedStyle(element); " +
+    "return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2, " +
+    "width: bounds.width, height: bounds.height, display: style.display, visibility: style.visibility, " +
+    "disabled: Boolean(element.disabled) }; })()");
+  assert(target.width > 0 && target.height > 0 && target.display !== 'none' &&
+    target.visibility === 'visible' && !target.disabled,
+  label + " has no usable pointer target: " + JSON.stringify(target));
+  const displayScale = screen.getDisplayMatching(window.getBounds()).scaleFactor;
+  const dpr = await page(window, 'window.devicePixelRatio');
+  const factor = dpr / displayScale;
+  const point = { x: Math.round(target.x * factor), y: Math.round(target.y * factor) };
+  window.webContents.sendInputEvent({ type: 'mouseMove', ...point });
+  await pause(30);
+  window.webContents.sendInputEvent({ type: 'mouseDown', button: 'left', clickCount: 1, ...point });
+  await pause(35);
+  window.webContents.sendInputEvent({ type: 'mouseUp', button: 'left', clickCount: 1, ...point });
+  await pause(100);
+  return { cssPoint: { x: target.x, y: target.y }, inputFactor: factor };
+}
+
+async function inspectAssemblyViewport(window) {
+  return page(window,
+    "(() => { const rect = (node) => { if (!node) return null; const bounds = node.getBoundingClientRect(); " +
+    "return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, right: bounds.right, bottom: bounds.bottom }; }; " +
+    "const root = document.querySelector('[data-testid=\"adaptive-parts-assembly-workbench\"]'); " +
+    "const list = document.querySelector('.adaptive-parts-assembly-list'); " +
+    "const viewport = document.querySelector('[data-testid=\"adaptive-parts-assembly-canvas\"]'); " +
+    "const stage = viewport?.querySelector('.character-assembly-preview-stage'); " +
+    "const rows = [...document.querySelectorAll('.adaptive-parts-assembly-row')]; " +
+    "const footer = document.querySelector('.adaptive-parts-assembly-footer'); " +
+    "const inspector = document.querySelector('.adaptive-parts-assembly-inspector'); " +
+    "const scale = Number(stage?.style.transform.match(/^scale\\(([^)]+)\\)$/)?.[1] ?? 0); " +
+    "return { innerWidth: window.innerWidth, innerHeight: window.innerHeight, dpr: window.devicePixelRatio, " +
+    "shellMode: document.querySelector('[data-testid=\"editor-layout\"]')?.dataset.shellMode ?? null, " +
+    "workbench: rect(root), list: rect(list), viewport: rect(viewport), footer: rect(footer), inspector: rect(inspector), stageScale: scale, " +
+    "parts: [...(viewport?.querySelectorAll('[data-testid=\"adaptive-parts-assembly-canvas-part\"]') ?? [])].map((part) => ({ partId: part.dataset.partId, ...rect(part) })), " +
+    "rows: rows.map((row) => { const bounds = row.getBoundingClientRect(); const target = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2); " +
+    "const style = getComputedStyle(row); return { partId: row.dataset.partId, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, " +
+    "visible: style.display !== 'none' && style.visibility === 'visible', hitTestedWithinRow: Boolean(target && row.contains(target)), " +
+    "insideWindow: bounds.left >= 0 && bounds.right <= window.innerWidth && bounds.top >= 0 && bounds.bottom <= window.innerHeight }; }), " +
+    "footerButtons: [...(footer?.querySelectorAll('button') ?? [])].map((button) => ({ text: button.innerText.trim(), ...rect(button) })) }; })()");
+}
+
+async function touchDragPart(window, partId, dx, dy) {
+  const selector = '[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="' + partId + '"]';
+  const target = await page(window,
+    "(() => { const element = document.querySelector(" + JSON.stringify(selector) + "); if (!element) return null; " +
+    "const bounds = element.getBoundingClientRect(); const x = bounds.left + bounds.width / 2; const y = bounds.top + bounds.height / 2; " +
+    "const hit = document.elementFromPoint(x, y); return { x, y, width: bounds.width, height: bounds.height, " +
+    "hitPartId: hit?.closest('[data-testid=\"adaptive-parts-assembly-canvas-part\"]')?.dataset.partId ?? null }; })()");
+  assert(target && target.width > 12 && target.height > 12 && target.hitPartId === partId,
+    "Touch drag target is clipped or covered: " + JSON.stringify(target));
+  await page(window,
+    "(() => { window.__pandaStageIssue899TouchTrace = []; const host = document.querySelector('[data-testid=\"adaptive-parts-assembly-canvas\"]'); " +
+    "for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel']) host?.addEventListener(type, (event) => { " +
+    "window.__pandaStageIssue899TouchTrace.push({ type: event.type, pointerType: event.pointerType, x: event.clientX, y: event.clientY, " +
+    "partId: event.target?.closest('[data-testid=\"adaptive-parts-assembly-canvas-part\"]')?.dataset.partId ?? null }); }, true); })()");
+  const debuggerApi = window.webContents.debugger;
+  const attachedBefore = debuggerApi.isAttached();
+  let disableTouchError = null;
+  if (!attachedBefore) debuggerApi.attach('1.3');
+  try {
+    await debuggerApi.sendCommand('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: target.x, y: target.y, id: 1, force: 1 }],
+    });
+    await pause(70);
+    await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x: target.x + dx, y: target.y + dy, id: 1, force: 1 }],
+    });
+    await pause(100);
+    await debuggerApi.sendCommand('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await pause(140);
+  } finally {
+    try {
+      await debuggerApi.sendCommand('Emulation.setTouchEmulationEnabled', { enabled: false });
+    } catch (error) {
+      disableTouchError = error;
+    }
+    if (!attachedBefore && debuggerApi.isAttached()) debuggerApi.detach();
+  }
+  if (disableTouchError && debuggerApi.isAttached()) throw disableTouchError;
+  const events = await page(window, 'window.__pandaStageIssue899TouchTrace ?? []');
+  return { cssStart: { x: target.x, y: target.y }, cssDelta: { x: dx, y: dy }, events };
+}
+
 async function inspect(window) {
   return page(window, 'window.__pandaStageIssue816Acceptance?.inspect?.() ?? null');
 }
@@ -969,6 +1061,117 @@ async function main() {
     receipt.ac02 = { result: 'PASS', count: rows.length, displayedOrder: rows.map(({ drawOrder, name, partId }) => ({ drawOrder, name, partId })), visibleRows };
 
     const partId = sourcePartIds['c0/com6'];
+    const wideViewport = await inspectAssemblyViewport(mainWindow);
+    mainWindow.setSize(880, 760);
+    await pause(450);
+    await waitFor(mainWindow, 'window.innerWidth <= 900 && window.innerWidth >= 800', 'The assembly window did not enter the narrow landscape breakpoint.');
+    const narrowViewport = await inspectAssemblyViewport(mainWindow);
+    assert(narrowViewport.rows.length === 5 &&
+      narrowViewport.rows.every((row) => row.visible && row.hitTestedWithinRow && row.insideWindow),
+    'Narrow assembly Part rows are clipped or cannot receive pointer input: ' + JSON.stringify(narrowViewport));
+    assert(narrowViewport.viewport?.width > 100 && narrowViewport.viewport?.height > 100 &&
+      narrowViewport.footerButtons.length >= 2 &&
+      narrowViewport.footerButtons.every((button) => button.width > 0 && button.height > 0 &&
+        button.x >= 0 && button.right <= narrowViewport.innerWidth &&
+        button.y >= 0 && button.bottom <= narrowViewport.innerHeight),
+    'Narrow assembly canvas or Apply/Cancel controls are clipped: ' + JSON.stringify(narrowViewport));
+    assert(narrowViewport.stageScale > 0 && narrowViewport.stageScale < wideViewport.stageScale,
+      'The adaptive canvas did not refit to the narrower viewport: ' +
+      JSON.stringify({ wideScale: wideViewport.stageScale, narrowScale: narrowViewport.stageScale }));
+    await captureWhole(mainWindow, 'c3-assembly-narrow-before-touch.png');
+    const narrowSelectedRow = '.adaptive-parts-assembly-row[data-part-id="' + partId + '"] [data-testid="adaptive-parts-assembly-row-select"]';
+    const narrowClick = await clickPoint(mainWindow, narrowSelectedRow, 'Select C0 com6 in the narrow Part list');
+    const narrowPartSelector = '[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="' + partId + '"]';
+    await waitFor(mainWindow, "document.querySelector(" + JSON.stringify(narrowPartSelector) + ")?.classList.contains('is-selected')", 'Narrow Part-list selection did not reach the canvas.');
+    const partRectBeforeTouch = await page(mainWindow,
+      "(() => { const bounds = document.querySelector(" + JSON.stringify(narrowPartSelector) + ").getBoundingClientRect(); return { x: bounds.x, y: bounds.y }; })()");
+    const partGeometryBeforeTouch = await page(mainWindow,
+      "(() => { const part = document.querySelector(" + JSON.stringify(narrowPartSelector) + "); const stage = document.querySelector('.adaptive-parts-assembly-viewport .character-assembly-preview-stage'); " +
+      "const viewport = document.querySelector('[data-testid=\"adaptive-parts-assembly-canvas\"]'); const bounds = part.getBoundingClientRect(); " +
+      "return { rect: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }, partTransform: part.style.transform, " +
+      "computedPartTransform: getComputedStyle(part).transform, stageTransform: stage?.style.transform ?? null, " +
+      "computedStageTransform: stage ? getComputedStyle(stage).transform : null, viewport: { width: viewport?.clientWidth ?? 0, height: viewport?.clientHeight ?? 0 } }; })()");
+    const untouchedPartId = sourcePartIds['c0/com5'];
+    const untouchedPartSelector = '[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="' + untouchedPartId + '"]';
+    const untouchedPartRectBefore = await page(mainWindow,
+      "(() => { const bounds = document.querySelector(" + JSON.stringify(untouchedPartSelector) + ").getBoundingClientRect(); return { x: bounds.x, y: bounds.y }; })()");
+    const touchDrag = await touchDragPart(mainWindow, partId, 18, 12);
+    const partRectAfterTouch = await page(mainWindow,
+      "(() => { const bounds = document.querySelector(" + JSON.stringify(narrowPartSelector) + ").getBoundingClientRect(); return { x: bounds.x, y: bounds.y }; })()");
+    const untouchedPartRectAfter = await page(mainWindow,
+      "(() => { const bounds = document.querySelector(" + JSON.stringify(untouchedPartSelector) + ").getBoundingClientRect(); return { x: bounds.x, y: bounds.y }; })()");
+    const touchDelta = {
+      x: partRectAfterTouch.x - partRectBeforeTouch.x,
+      y: partRectAfterTouch.y - partRectBeforeTouch.y,
+    };
+    const partGeometryAfterTouch = await page(mainWindow,
+      "(() => { const part = document.querySelector(" + JSON.stringify(narrowPartSelector) + "); const stage = document.querySelector('.adaptive-parts-assembly-viewport .character-assembly-preview-stage'); " +
+      "const viewport = document.querySelector('[data-testid=\"adaptive-parts-assembly-canvas\"]'); const bounds = part.getBoundingClientRect(); " +
+      "return { rect: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }, partTransform: part.style.transform, " +
+      "computedPartTransform: getComputedStyle(part).transform, stageTransform: stage?.style.transform ?? null, " +
+      "computedStageTransform: stage ? getComputedStyle(stage).transform : null, viewport: { width: viewport?.clientWidth ?? 0, height: viewport?.clientHeight ?? 0 } }; })()");
+    await click(mainWindow, '[data-testid="adaptive-parts-inspector-toggle"]', 'Open the narrow Part inspector after touch');
+    const touchAdjustment = await page(mainWindow,
+      "(() => ({ offsetX: Number(document.querySelector('[data-testid=\"adaptive-parts-offset-x\"]')?.value ?? NaN), " +
+      "offsetY: Number(document.querySelector('[data-testid=\"adaptive-parts-offset-y\"]')?.value ?? NaN), " +
+      "scalePercent: Number(document.querySelector('[data-testid=\"adaptive-parts-scale-percent\"]')?.value ?? NaN) }))()");
+    const narrowInspectorLayout = await inspectAssemblyViewport(mainWindow);
+    const narrowInspectorOverlapsArt = narrowInspectorLayout.parts.some((part) =>
+      narrowInspectorLayout.inspector &&
+      part.x < narrowInspectorLayout.inspector.right &&
+      part.right > narrowInspectorLayout.inspector.x &&
+      part.y < narrowInspectorLayout.inspector.bottom &&
+      part.bottom > narrowInspectorLayout.inspector.y,
+    );
+    assert(narrowInspectorLayout.inspector?.width <= 182 && !narrowInspectorOverlapsArt,
+      'The narrow Part inspector covers the assembled character: ' +
+      JSON.stringify({ inspector: narrowInspectorLayout.inspector, parts: narrowInspectorLayout.parts }));
+    const fiberSnapshot = await page(mainWindow,
+      "(() => { const element = document.querySelector(" + JSON.stringify(narrowPartSelector) + "); " +
+      "const fiberKey = Object.keys(element ?? {}).find((key) => key.startsWith('__reactFiber$')); let fiber = fiberKey ? element[fiberKey] : null; " +
+      "const snapshots = []; while (fiber && snapshots.length < 32) { const props = fiber.memoizedProps; " +
+      "if (props?.session?.draft) { const part = props.session.draft.parts.find((candidate) => candidate.partId === " + JSON.stringify(partId) + "); " +
+      "snapshots.push({ component: fiber.type?.name ?? fiber.elementType?.name ?? null, sourceRootTransform: props.session.draft.sourceRootTransform, " +
+      "part: part ? { restTransform: part.restTransform, sourceRestTransform: part.sourceRestTransform, staticAdjustment: part.staticAdjustment, imageMapping: part.imageMapping } : null }); } " +
+      "fiber = fiber.return; } return snapshots; })()");
+    receipt.narrowTouchDebug = { touchDrag, touchDelta, touchAdjustment, partGeometryBeforeTouch, partGeometryAfterTouch, fiberSnapshot };
+    assert(touchDrag.events.some((event) => event.type === 'pointerdown' && event.pointerType === 'touch' && event.partId === partId) &&
+      touchDrag.events.some((event) => event.type === 'pointerup' && event.pointerType === 'touch'),
+    'Chrome touch emulation did not produce a complete touch PointerEvent sequence: ' + JSON.stringify(touchDrag.events));
+    assert(Math.abs(touchDelta.x - touchDrag.cssDelta.x) <= 3 && Math.abs(touchDelta.y - touchDrag.cssDelta.y) <= 3,
+      'Narrow touch drag drifted from the pointer by more than 3 CSS pixels: ' + JSON.stringify(receipt.narrowTouchDebug));
+    assert(Math.abs(untouchedPartRectAfter.x - untouchedPartRectBefore.x) <= 1 &&
+      Math.abs(untouchedPartRectAfter.y - untouchedPartRectBefore.y) <= 1,
+    'Touch dragging one Part moved another Part: ' + JSON.stringify({ untouchedPartRectBefore, untouchedPartRectAfter }));
+    await waitFor(mainWindow,
+      "Number(document.querySelector('[data-testid=\"adaptive-parts-offset-x\"]')?.value) > 0 && Number(document.querySelector('[data-testid=\"adaptive-parts-offset-y\"]')?.value) > 0",
+      'Emulated touch drag did not update the selected Part in the narrow viewport.');
+    await captureWhole(mainWindow, 'c3-assembly-narrow-touch-draft.png');
+    await waitFor(mainWindow, "document.querySelector('[data-testid=\"adaptive-parts-inspector-reset\"]')", 'Narrow Part inspector did not open after touch.');
+    await click(mainWindow, '[data-testid="adaptive-parts-inspector-reset"]', 'Reset the narrow touch draft to source pose');
+    await waitFor(mainWindow,
+      "document.querySelector('[data-testid=\"adaptive-parts-offset-x\"]')?.value === '0' && document.querySelector('[data-testid=\"adaptive-parts-offset-y\"]')?.value === '0' && document.querySelector('[data-testid=\"adaptive-parts-scale-percent\"]')?.value === '100'",
+      'Reset did not discard the narrow touch draft.');
+    await click(mainWindow, '[data-testid="adaptive-parts-inspector-toggle"]', 'Close the narrow Part inspector');
+    const afterNarrowReset = await inspect(mainWindow);
+    assert(afterNarrowReset.revision === 0 && !afterNarrowReset.dirty && afterNarrowReset.undoCount === 0,
+      'Narrow-window touch interaction or reset changed the formal Project state.');
+    mainWindow.setSize(1660, 1100);
+    await pause(450);
+    await waitFor(mainWindow, 'window.innerWidth > 900', 'The assembly window did not restore to its wide layout.');
+    receipt.narrowViewport = {
+      result: 'PASS',
+      wide: { innerWidth: wideViewport.innerWidth, innerHeight: wideViewport.innerHeight, stageScale: wideViewport.stageScale },
+      narrow: narrowViewport,
+      inspectorLayout: narrowInspectorLayout,
+      inspectorAvoidsPartBounds: !narrowInspectorOverlapsArt,
+      partListPointer: narrowClick,
+      touchEmulation: { drag: touchDrag, screenDelta: touchDelta, otherPartUnchanged: true },
+      resetProjectState: { revision: afterNarrowReset.revision, dirty: afterNarrowReset.dirty, undoCount: afterNarrowReset.undoCount },
+      screenshots: ['c3-assembly-narrow-before-touch.png', 'c3-assembly-narrow-touch-draft.png'],
+      physicalTouchHardware: 'NOT_RUN',
+      cloudTouchDeviceMode: 'NOT_RUN',
+    };
     const selectedRow = `.adaptive-parts-assembly-row[data-part-id="${partId}"] [data-testid="adaptive-parts-assembly-row-select"]`;
     await click(mainWindow, selectedRow, 'Select C0 com6 from the Part list');
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${partId}"].is-selected')`, 'List selection did not synchronize to the canvas.');
@@ -1018,8 +1221,8 @@ async function main() {
     const originalPart = prepared.parts.find((part) => part.partId === partId);
     assert(originalPart && editedPart.assetId === originalPart.assetId && editedPart.drawOrder === originalPart.drawOrder && JSON.stringify(editedPart.imageMapping) === JSON.stringify(originalPart.imageMapping), 'Part edit changed source identity, crop, asset, or draw order.');
     receipt.ac03 = {
-      result: 'BLOCKED',
-      coverage: 'PARTIAL',
+      result: 'PASS',
+      coverage: 'Windows Electron mouse drag/scale plus touch PointerEvents at an 880 CSS-pixel viewport; resized canvas fit exercised.',
       interactiveParts: [
         { sourceId: 'c0/com6', drag, scale },
         { sourceId: 'c0/com2', drag: secondPartDrag, scale: secondPartScale },
@@ -1030,10 +1233,8 @@ async function main() {
         com2: { offsetX: editedSecondPart.staticAdjustment.offsetX, offsetY: editedSecondPart.staticAdjustment.offsetY, scale: editedSecondPart.staticAdjustment.scale, rotationDeg: editedSecondPart.staticAdjustment.rotationDeg },
       },
       unchangedOtherPartIds: adaptive.parts.filter((part) => part.partId !== partId && part.partId !== com2).map((part) => part.partId),
-      notRun: [
-        'touch interaction',
-        'narrow and zoomed viewport drift/clipping',
-      ],
+      notRun: ['physical touchscreen hardware acceptance'],
+      narrowViewport: receipt.narrowViewport,
     };
     receipt.ac04 = { result: 'PASS', sourceRestTransform: editedPart.sourceRestTransform, currentRestTransform: editedPart.restTransform, crop: editedPart.imageMapping.crop, c0RootTransform: sourceRootTransform };
     receipt.ac05 = { result: 'PASS', before: { revision: beforeDraft.revision, dirty: beforeDraft.dirty, undoCount: beforeDraft.undoCount }, draft: { revision: afterDraft.revision, dirty: afterDraft.dirty, undoCount: afterDraft.undoCount }, apply: { revision: afterApply.revision, dirty: afterApply.dirty, undoCount: afterApply.undoCount } };
@@ -1060,6 +1261,11 @@ async function main() {
     await collapseProjectActions(mainWindow);
     await click(mainWindow, characterRail, 'Close Character drawer before Stage samples');
     await waitFor(mainWindow, `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen === 'false'`, 'Character drawer did not close before Stage samples.');
+    await waitFor(mainWindow, `(() => {
+      const drawer = document.querySelector('[data-testid="resource-activity-drawer"]');
+      const style = drawer ? getComputedStyle(drawer) : null;
+      return style?.visibility === 'hidden' && Number(style.opacity) < 0.01;
+    })()`, 'Character drawer hide transition did not finish before Stage samples.');
 
     if (await page(mainWindow, `document.querySelector('[data-testid="timeline-collapse"]')?.dataset.expanded === 'false'`)) await click(mainWindow, '[data-testid="timeline-collapse"]', 'Expand Timeline ruler');
     receipt.stageSamples = {};
@@ -1088,7 +1294,7 @@ async function main() {
       const screenPath = await captureWhole(mainWindow, `stage-${sample.name}-screen.png`);
       assert(rendered.stageData.incompleteVisualLayerIds.length === 0, `Stage ${sample.name} reports incomplete visual Layers.`);
       const normalized = await normalizePng(mediaTools.ffmpegPath, rendered.path, `stage-${sample.name}-1920x1080.png`);
-      receipt.stageSamples[sample.name] = { requestedTimeMs: sample.timeMs, actualTimeMs: actualTime, screenshot: screenPath, canvas: rendered.path, normalized, stageReady: rendered.stageData.stageReady, displayReady: rendered.stageData.displayReady, currentTimeMs: rendered.stageData.currentTimeMs };
+      receipt.stageSamples[sample.name] = { requestedTimeMs: sample.timeMs, actualTimeMs: actualTime, screenshot: screenPath, canvas: rendered.path, canvasCapture: { cssRect: rendered.cssRect, cropRect: rendered.cropRect, fullImageSize: rendered.fullImageSize }, normalized, stageReady: rendered.stageData.stageReady, displayReady: rendered.stageData.displayReady, currentTimeMs: rendered.stageData.currentTimeMs };
     }
 
     await expandProjectActions(mainWindow);
@@ -1104,7 +1310,7 @@ async function main() {
       const rendered = await captureCanvas(mainWindow, previewSelector, `preview-${sample.name}-canvas.png`);
       const screenPath = await captureWhole(mainWindow, `preview-${sample.name}-screen.png`);
       const normalized = await normalizePng(mediaTools.ffmpegPath, rendered.path, `preview-${sample.name}-1920x1080.png`);
-      receipt.previewSamples[sample.name] = { requestedTimeMs: sample.timeMs, actualTimeMs: actualTime, screenshot: screenPath, canvas: rendered.path, normalized };
+      receipt.previewSamples[sample.name] = { requestedTimeMs: sample.timeMs, actualTimeMs: actualTime, screenshot: screenPath, canvas: rendered.path, canvasCapture: { cssRect: rendered.cssRect, cropRect: rendered.cropRect, fullImageSize: rendered.fullImageSize }, normalized };
     }
     await click(mainWindow, '[data-testid="product-preview-close"]', 'Close Product Preview');
     await waitFor(mainWindow, `!document.querySelector('[data-testid="product-preview-overlay"]')`, 'Product Preview did not close.');
@@ -1288,8 +1494,9 @@ async function main() {
       result: 'BLOCKED',
       coverage: 'PARTIAL',
       inspectorCollapsedAndFloating: 'PASS',
+      narrowLandscape: 'PASS: 880 CSS-pixel window, five Part rows and Apply/Cancel visible, touch PointerEvents tracked, inspector avoids Part bounds.',
       visualDesignReview: 'NOT_ATTESTED',
-      notRun: ['compact-token and feedback review', 'wide/narrow window review', 'Cloud Touch review', 'different timeline-height review'],
+      notRun: ['compact-token and feedback review', 'Cloud Touch hardware/device-mode review', 'different timeline-height review'],
     };
     receipt.ac10 = { result: 'AUTO_PASS', command: 'PANDA_STAGE_ISSUE899_SOURCE_DIR=<local Issue 893 isolated-layers> electron scripts/verify-issue899-c3-v0.cjs', screenshots: path.join(evidenceRoot, '*.png'), receiptPath: resultPath };
     receipt.ac11 = { result: 'NOT_ATTESTED', ownerWindowsRealMaterialSignOff: 'OWNER must personally review the actual source sample and Body+Arm composite on Windows.' };

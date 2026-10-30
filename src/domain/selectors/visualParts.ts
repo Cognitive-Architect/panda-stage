@@ -720,12 +720,29 @@ export function resolveLayerVisualParts(
       layer.id,
       evaluated.zIndex,
     );
+    // Keep the visual pivot tied to the trusted source pose. If it followed
+    // the edited bounds, moving an edge Part would recenter every other Part
+    // and make the selected Part lag behind the pointer. C3 persists this
+    // baseline; legacy Parts without one retain their current behavior until
+    // the assembly draft captures and applies it.
+    const sourcePoseCharacter: AdaptivePartsCharacter = {
+      ...character,
+      parts: character.parts.map((part) => ({
+        ...part,
+        restTransform: part.sourceRestTransform ?? part.restTransform,
+      })),
+    };
+    const sourcePoseParts = adaptivePartVisuals(
+      project,
+      sourcePoseCharacter,
+      layer.id,
+      evaluated.zIndex,
+    );
     // Adaptive source coordinates may be absolute to the imported stage. The
-    // persisted Layer is center anchored, so express the composed Part layout
-    // around the visible Character bounds center. Placement stores that same
-    // source-stage center on the Layer, preserving the imported pose while
-    // keeping owner scale/mirror/rotation around the visual pivot.
-    const sourceBounds = visualBounds(sourceParts, null);
+    // persisted Layer is center anchored, so express the current Parts around
+    // the stable source-pose bounds center. Placement stores that same center
+    // on the Layer, preserving the imported pose and owner transforms.
+    const sourceBounds = visualBounds(sourcePoseParts, null);
     const sourceCenterX = sourceBounds.x + sourceBounds.width / 2;
     const sourceCenterY = sourceBounds.y + sourceBounds.height / 2;
     const parts = sourceParts.map((part) => ({

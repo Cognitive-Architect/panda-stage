@@ -19,6 +19,7 @@ import {
 } from '../../../src/domain';
 import { adaptivePartsFixture } from '../../helpers/adaptivePartsFixtures';
 import { buildProject, IDS } from './testProject';
+import { characterPartTransformFromStaticAdjustment } from '../../../src/domain/geometry/characterPartLayout';
 
 const BODY_ID = '10000000-0000-4000-8000-000000000004';
 const HEAD_ID = '10000000-0000-4000-8000-000000000009';
@@ -843,6 +844,92 @@ describe('BFM-S03 unified visual-parts resolver', () => {
     expect(listShotRuntimeImageAssets(invalid, shot)).not.toContain(
       project.assets.find((asset) => asset.id === AUDIO_ID),
     );
+  });
+
+  it('keeps the Adaptive Character pivot fixed to source pose while a Part receives a static adjustment', () => {
+    const project = buildProject();
+    const created = new CharacterService().createAdaptiveParts(project, {
+      name: 'Source-pivot Adaptive Character',
+      sourceRootTransform: {
+        a: 1,
+        b: 0,
+        c: 0,
+        d: 1,
+        tx: 790,
+        ty: 47.6,
+      },
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const initialCharacter = created.characters.at(-1)!;
+    if (initialCharacter.mode !== 'adaptive-parts') {
+      throw new Error('Expected an Adaptive Parts Character.');
+    }
+    const sourcePoseParts = initialCharacter.parts.map((part) => ({
+      ...part,
+      sourceRestTransform: { ...part.restTransform },
+      staticAdjustment: { offsetX: 0, offsetY: 0, scale: 1, rotationDeg: 0 },
+    }));
+    const replaceParts = (candidate: Project, parts: CharacterPart[]): Project =>
+      ProjectSchema.parse({
+        ...candidate,
+        characters: candidate.characters.map((character) =>
+          character.id === initialCharacter.id && character.mode === 'adaptive-parts'
+            ? { ...character, parts }
+            : character,
+        ),
+      });
+    const baseline = replaceParts(created, sourcePoseParts);
+    const placed = new LayerService().createFromAdaptiveCharacter(
+      baseline,
+      IDS.shot,
+      initialCharacter.id,
+      { x: 960, y: 540 },
+    );
+    const sourcePartId = sourcePoseParts[0]!.partId;
+    const adjustment = {
+      offsetX: 48,
+      offsetY: -24,
+      scale: 1,
+      rotationDeg: 0,
+    };
+    const editedParts = sourcePoseParts.map((part) =>
+      part.partId === sourcePartId
+        ? {
+            ...part,
+            staticAdjustment: adjustment,
+            restTransform: characterPartTransformFromStaticAdjustment(
+              initialCharacter.sourceRootTransform,
+              part.sourceRestTransform!,
+              part.imageMapping,
+              adjustment,
+            ),
+          }
+        : part,
+    );
+    const edited = replaceParts(placed.project, editedParts);
+    const resolve = (candidate: Project) => {
+      const shot = candidate.shots.find((item) => item.id === IDS.shot)!;
+      const evaluated = evaluateShotAtTime(shot, 0, candidate);
+      const layer = evaluated.layers.find((item) => item.id === placed.layer.id)!;
+      return resolveLayerVisualParts(candidate, shot, layer);
+    };
+    const before = resolve(placed.project);
+    const after = resolve(edited);
+    const visualFor = (visual: ReturnType<typeof resolve>, partId: string) =>
+      visual.parts.find((part) =>
+        part.source.kind === 'adaptive-part' &&
+        part.source.characterPartId === partId,
+      )!;
+    const beforeSelected = visualFor(before, sourcePartId);
+    const afterSelected = visualFor(after, sourcePartId);
+
+    expect(afterSelected.imageTransform!.tx - beforeSelected.imageTransform!.tx).toBeCloseTo(48, 8);
+    expect(afterSelected.imageTransform!.ty - beforeSelected.imageTransform!.ty).toBeCloseTo(-24, 8);
+    for (const part of sourcePoseParts.filter((candidate) => candidate.partId !== sourcePartId)) {
+      expect(visualFor(after, part.partId).imageTransform).toEqual(
+        visualFor(before, part.partId).imageTransform,
+      );
+    }
   });
 
   it('composes Adaptive Part crop, local affine, and source root once while retaining repeated asset identities', () => {

@@ -1368,6 +1368,14 @@
     grid-template-rows: minmax(0, 1fr) max-content;
   }
 
+  .adaptive-parts-assembly-inspector {
+    max-width: min(180px, calc(100% - 160px));
+  }
+
+  .adaptive-parts-assembly-inspector:has(.adaptive-parts-inspector-fields) {
+    width: min(180px, calc(100% - 160px));
+  }
+
   .adaptive-parts-assembly-footer { grid-column: 1 / -1; }
 }
 
