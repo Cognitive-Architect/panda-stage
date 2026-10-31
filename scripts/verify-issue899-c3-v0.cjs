@@ -1432,11 +1432,20 @@ async function verifyIssue901UiA(window, prepared, receipt) {
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')`, 'Compact inspector fields did not open.');
   const inspectorFieldIds = await page(window, `['adaptive-parts-offset-x','adaptive-parts-offset-y','adaptive-parts-scale-percent','adaptive-parts-rotation-deg'].map((id) => Boolean(document.querySelector('[data-testid="' + id + '"]')))`);
   assert(inspectorFieldIds.every(Boolean), `Compact inspector does not show exactly the four transform fields: ${JSON.stringify(inspectorFieldIds)}.`);
-  await clickPoint(window, '[data-testid="adaptive-parts-inspector-close"]', 'Close the inspector with its X button');
+  const inspectorClosePointer = await clickPoint(window, '[data-testid="adaptive-parts-inspector-close"]', 'Close the inspector with its X button');
+  assert(inspectorClosePointer.targetSize.width >= 44 && inspectorClosePointer.targetSize.height >= 44, 'The inspector close button is below the 44px touch target.');
   await waitFor(window, `!document.querySelector('[data-testid="adaptive-parts-inspector-fields"]') && document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Inspector X closed the workbench instead of only the inspector.');
   await clickPoint(window, '[data-testid="adaptive-parts-inspector-toggle"]', 'Reopen compact Part inspector');
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')`, 'Compact inspector did not reopen.');
-  await clickPoint(window, '[data-testid="adaptive-parts-offset-x-step-up"]', 'Increment X by one');
+  const xInputSelector = JSON.stringify('[data-testid="adaptive-parts-offset-x"]');
+  const inspectorStepDownPointer = await clickPoint(window, '[data-testid="adaptive-parts-offset-x-step-down"]', 'Decrement X by one');
+  assert(inspectorStepDownPointer.targetSize.width >= 44 && inspectorStepDownPointer.targetSize.height >= 44, 'The inspector minus stepper is below the 44px touch target.');
+  await waitFor(window, 'document.querySelector(' + xInputSelector + ')?.value === "-1"', 'X minus stepper did not decrement by one.');
+  const inspectorStepUpPointer = await clickPoint(window, '[data-testid="adaptive-parts-offset-x-step-up"]', 'Restore X with the plus stepper');
+  assert(inspectorStepUpPointer.targetSize.width >= 44 && inspectorStepUpPointer.targetSize.height >= 44, 'The inspector plus stepper is below the 44px touch target.');
+  await waitFor(window, 'document.querySelector(' + xInputSelector + ')?.value === "0"', 'X plus stepper did not restore the value after decrement.');
+  const inspectorStepUpAfterDownPointer = await clickPoint(window, '[data-testid="adaptive-parts-offset-x-step-up"]', 'Increment X by one');
+  assert(inspectorStepUpAfterDownPointer.targetSize.width >= 44 && inspectorStepUpAfterDownPointer.targetSize.height >= 44, 'The inspector plus stepper is below the 44px touch target.');
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value === '1'`, 'X stepper did not increment by one.');
   await page(window, `document.querySelector('[data-testid="adaptive-parts-offset-x-step-up"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }))`);
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value === '11'`, 'Shift+X stepper did not increment by ten.');
@@ -1462,6 +1471,154 @@ async function verifyIssue901UiA(window, prepared, receipt) {
   assert(wideInspectorGeometry.width >= 252 && wideInspectorGeometry.width <= 260 && wideInspectorGeometry.inputBarWidth >= 84 && wideInspectorGeometry.inputBarWidth <= 110 && wideInspectorGeometry.stepperWidth >= 44, `The compact inspector or numeric field bars have unexpected sizing: ${JSON.stringify(wideInspectorGeometry)}.`);
   await captureWhole(window, 'issue903-inspector-256.png');
   issue903.inspectorWide = wideInspectorGeometry;
+  const inspectNumericField = async (testId) => {
+    const selector = JSON.stringify('[data-testid="' + testId + '"]');
+    const applySelector = JSON.stringify('[data-testid="adaptive-parts-assembly-apply"]');
+    const expression =
+      '(() => {' +
+      'const input = document.querySelector(' + selector + ');' +
+      'const wrapper = input?.closest(".adaptive-parts-inspector-input-wrap");' +
+      'const panel = input?.closest(".adaptive-parts-assembly-inspector");' +
+      'const panelBounds = panel?.getBoundingClientRect();' +
+      'const wrapperBounds = wrapper?.getBoundingClientRect();' +
+      'const suffix = wrapper && wrapper.lastElementChild !== input ? wrapper.lastElementChild : null;' +
+      'const suffixBounds = suffix?.getBoundingClientRect();' +
+      'const errorId = input?.getAttribute("aria-describedby");' +
+      'const error = errorId ? document.getElementById(errorId) : null;' +
+      'const errorBounds = error?.getBoundingClientRect();' +
+      'const errorStyle = error ? getComputedStyle(error) : null;' +
+      'const suffixStyle = suffix ? getComputedStyle(suffix) : null;' +
+      'return {' +
+      'value: input?.value ?? null,' +
+      'invalid: input?.getAttribute("aria-invalid") === "true",' +
+      'focused: document.activeElement === input,' +
+      'caretAtEnd: Boolean(input && input.selectionStart === input.value.length),' +
+      'scrollLeft: input?.scrollLeft ?? 0,' +
+      'inputWidth: input?.getBoundingClientRect().width ?? 0,' +
+      'fieldWithinPanel: Boolean(wrapperBounds && panelBounds && wrapperBounds.left >= panelBounds.left - 1 && wrapperBounds.right <= panelBounds.right + 1),' +
+      'suffix: suffix?.textContent ?? "",' +
+      'suffixWithinPanel: !suffix || Boolean(suffixBounds && panelBounds && suffixBounds.width > 0 && suffixBounds.height > 0 && suffixBounds.left >= wrapperBounds.left - 1 && suffixBounds.right <= wrapperBounds.right + 1 && suffixBounds.left >= panelBounds.left - 1 && suffixBounds.right <= panelBounds.right + 1 && suffixStyle.visibility === "visible"),' +
+      'errorText: error?.textContent?.trim() ?? "",' +
+      'errorVisible: !errorId || Boolean(error && errorBounds && errorBounds.width > 0 && errorBounds.height > 0 && errorStyle.display !== "none" && errorStyle.visibility === "visible"),' +
+      'errorWithinPanel: !error || Boolean(errorBounds && panelBounds && errorBounds.left >= panelBounds.left - 1 && errorBounds.right <= panelBounds.right + 1),' +
+      'footerMessage: document.querySelector(".adaptive-parts-assembly-footer [role=\\"status\\"]")?.textContent?.trim() ?? "",' +
+      'applyDisabled: document.querySelector(' + applySelector + ')?.disabled ?? null' +
+      '};' +
+      '})()';
+    return page(window, expression);
+  };
+  const waitForNumericValue = async (testId, value, label) => {
+    const selector = JSON.stringify('[data-testid="' + testId + '"]');
+    await waitFor(window, 'document.querySelector(' + selector + ')?.value === ' + JSON.stringify(value), label);
+  };
+  const waitForNumericError = async (testId, label) => {
+    const selector = JSON.stringify('[data-testid="' + testId + '"]');
+    await waitFor(window, 'document.querySelector(' + selector + ')?.getAttribute("aria-invalid") === "true"', label);
+  };
+  const offsetInputId = 'adaptive-parts-offset-x';
+  const scaleInputId = 'adaptive-parts-scale-percent';
+  const rotationInputId = 'adaptive-parts-rotation-deg';
+  await replaceInputText(window, '[data-testid="adaptive-parts-offset-x"]', '-1000000');
+  await waitForNumericValue(offsetInputId, '-1000000', 'The -1,000,000 offset was not editable.');
+  const offsetExtremeAllowed = await inspectNumericField(offsetInputId);
+  assert(offsetExtremeAllowed.focused && offsetExtremeAllowed.caretAtEnd && offsetExtremeAllowed.fieldWithinPanel && !offsetExtremeAllowed.invalid && offsetExtremeAllowed.value === '-1000000', 'The allowed extreme offset was not fully inspectable in the focused input: ' + JSON.stringify(offsetExtremeAllowed) + '.');
+  const boundaryCharacter = activeProject.characters.find((character) => character.id === adaptiveCharacterId);
+  const boundaryPart = boundaryCharacter?.mode === 'adaptive-parts'
+    ? boundaryCharacter.parts.find((part) => part.partId === firstPartId)
+    : null;
+  const boundaryRoot = boundaryCharacter?.mode === 'adaptive-parts' ? boundaryCharacter.sourceRootTransform : null;
+  const boundaryRest = boundaryPart?.sourceRestTransform ?? boundaryPart?.restTransform ?? null;
+  const boundarySourcePose = boundaryRoot && boundaryRest
+    ? {
+      tx: boundaryRoot.a * boundaryRest.tx + boundaryRoot.c * boundaryRest.ty + boundaryRoot.tx,
+      ty: boundaryRoot.b * boundaryRest.tx + boundaryRoot.d * boundaryRest.ty + boundaryRoot.ty,
+    }
+    : null;
+  const boundarySourcePoseIsIdentity = Boolean(boundaryRoot && boundarySourcePose &&
+    boundaryRoot.a === 1 && boundaryRoot.b === 0 && boundaryRoot.c === 0 && boundaryRoot.d === 1 &&
+    boundarySourcePose.tx === 0 && boundarySourcePose.ty === 0);
+  const requiredRestTransformTx = boundarySourcePoseIsIdentity && boundaryRoot
+    ? -1_000_000 - boundaryRoot.tx
+    : null;
+  const offsetLimitBoundaryResult = {
+    result: offsetExtremeAllowed.applyDisabled || offsetExtremeAllowed.footerMessage ? 'FAIL' : 'PASS',
+    valueAcceptedByField: offsetExtremeAllowed.value === '-1000000' && !offsetExtremeAllowed.invalid,
+    applyDisabled: offsetExtremeAllowed.applyDisabled,
+    footerMessage: offsetExtremeAllowed.footerMessage,
+    sourceRootTransform: boundaryRoot,
+    sourceRestTransform: boundaryRest,
+    sourcePose: boundarySourcePose,
+    requiredRestTransformTx,
+    restTransformRange: [-1_000_000, 1_000_000],
+    reason: offsetExtremeAllowed.applyDisabled
+      ? 'The input accepts -1,000,000 but this C0 source root requires a derived restTransform tx outside the existing CharacterPartTransformSchema range. Fixing that requires out-of-scope schema/geometry changes.'
+      : null,
+  };
+  await captureWhole(window, 'issue903-inspector-offset-minus-million.png');
+  await clickPoint(window, '[data-testid="adaptive-parts-scale-percent"]', 'Blur the extreme offset while retaining the selected Part');
+  const offsetExtremeAfterBlur = await inspectNumericField(offsetInputId);
+  assert(offsetExtremeAfterBlur.value === '-1000000' && !offsetExtremeAfterBlur.invalid && offsetExtremeAfterBlur.fieldWithinPanel, 'Blurring changed the allowed extreme offset: ' + JSON.stringify(offsetExtremeAfterBlur) + '.');
+  const rowRestoreSelector = firstRow + ' [data-testid="adaptive-parts-restore-button"]';
+  const offsetExtremeRestorePointer = await clickPoint(window, rowRestoreSelector, 'Restore the Part after the extreme offset check');
+  await waitForNumericValue(offsetInputId, '0', 'Source restore did not reset the extreme offset draft.');
+
+  await replaceInputText(window, '[data-testid="adaptive-parts-offset-x"]', '1000001');
+  await waitForNumericError(offsetInputId, 'The over-limit offset was not rejected.');
+  const offsetOutOfRange = await inspectNumericField(offsetInputId);
+  assert(offsetOutOfRange.value === '1000001' && offsetOutOfRange.invalid && offsetOutOfRange.errorVisible && offsetOutOfRange.errorWithinPanel && offsetOutOfRange.errorText && offsetOutOfRange.applyDisabled, 'The over-limit offset error was missing or hidden: ' + JSON.stringify(offsetOutOfRange) + '.');
+  await captureWhole(window, 'issue903-inspector-offset-out-of-range.png');
+  await sendKey(window, 'Escape');
+  await waitForNumericValue(offsetInputId, '0', 'Escape did not restore the valid offset after the range error.');
+  assert(!(await inspectNumericField(offsetInputId)).invalid, 'Escape did not clear the offset range error.');
+
+  await replaceInputText(window, '[data-testid="adaptive-parts-scale-percent"]', '100');
+  await waitForNumericValue(scaleInputId, '100', 'The 100% scale value was not editable.');
+  const scaleExtremeAllowed = await inspectNumericField(scaleInputId);
+  assert(scaleExtremeAllowed.value === '100' && scaleExtremeAllowed.focused && scaleExtremeAllowed.caretAtEnd && !scaleExtremeAllowed.invalid && scaleExtremeAllowed.suffix === '%' && scaleExtremeAllowed.suffixWithinPanel, 'The 100% value or suffix was not inspectable: ' + JSON.stringify(scaleExtremeAllowed) + '.');
+  await replaceInputText(window, '[data-testid="adaptive-parts-scale-percent"]', '0');
+  await waitForNumericError(scaleInputId, 'The invalid scale was not rejected.');
+  const scaleOutOfRange = await inspectNumericField(scaleInputId);
+  assert(scaleOutOfRange.invalid && scaleOutOfRange.errorVisible && scaleOutOfRange.errorWithinPanel && scaleOutOfRange.errorText && scaleOutOfRange.applyDisabled, 'The scale range error was missing or hidden: ' + JSON.stringify(scaleOutOfRange) + '.');
+  await captureWhole(window, 'issue903-inspector-scale-out-of-range.png');
+  await sendKey(window, 'Escape');
+  await waitForNumericValue(scaleInputId, '100', 'Escape did not restore the valid 100% scale after the range error.');
+
+  await replaceInputText(window, '[data-testid="adaptive-parts-rotation-deg"]', '-180');
+  await waitForNumericValue(rotationInputId, '-180', 'The -180 degree rotation was not editable.');
+  const rotationExtremeAllowed = await inspectNumericField(rotationInputId);
+  assert(rotationExtremeAllowed.value === '-180' && rotationExtremeAllowed.focused && rotationExtremeAllowed.caretAtEnd && !rotationExtremeAllowed.invalid && rotationExtremeAllowed.suffix === '°' && rotationExtremeAllowed.suffixWithinPanel, 'The -180° value or suffix was not inspectable: ' + JSON.stringify(rotationExtremeAllowed) + '.');
+  const rotationCommitPointer = await clickPoint(window, '[data-testid="adaptive-parts-offset-x"]', 'Commit the -180 degree value before testing Escape on a new edit');
+  const rotationAfterBlur = await inspectNumericField(rotationInputId);
+  assert(rotationAfterBlur.value === '-180' && !rotationAfterBlur.invalid, 'Blurring changed the allowed -180 degree rotation: ' + JSON.stringify(rotationAfterBlur) + '.');
+  await replaceInputText(window, '[data-testid="adaptive-parts-rotation-deg"]', '-181');
+  await waitForNumericError(rotationInputId, 'The out-of-range rotation was not rejected.');
+  const rotationOutOfRange = await inspectNumericField(rotationInputId);
+  assert(rotationOutOfRange.invalid && rotationOutOfRange.errorVisible && rotationOutOfRange.errorWithinPanel && rotationOutOfRange.errorText && rotationOutOfRange.applyDisabled, 'The rotation range error was missing or hidden: ' + JSON.stringify(rotationOutOfRange) + '.');
+  await captureWhole(window, 'issue903-inspector-rotation-out-of-range.png');
+  await sendKey(window, 'Escape');
+  await waitForNumericValue(rotationInputId, '-180', 'Escape did not restore the valid -180 degree rotation after the range error.');
+  const rotationExtremeRestorePointer = await clickPoint(window, rowRestoreSelector, 'Restore the Part after numeric boundary checks');
+  await waitFor(window, 'document.querySelector("[data-testid=\\"adaptive-parts-offset-x\\"]")?.value === "0" && document.querySelector("[data-testid=\\"adaptive-parts-offset-y\\"]")?.value === "0" && document.querySelector("[data-testid=\\"adaptive-parts-scale-percent\\"]")?.value === "100" && document.querySelector("[data-testid=\\"adaptive-parts-rotation-deg\\"]")?.value === "0"', 'Source restore did not clear the numeric boundary drafts.');
+  issue903.inspectorBoundaries = {
+    result: offsetLimitBoundaryResult.result,
+    offsetLimit: offsetLimitBoundaryResult,
+    allowed: {
+      offsetX: offsetExtremeAllowed,
+      offsetXAfterBlur: offsetExtremeAfterBlur,
+      scalePercent: scaleExtremeAllowed,
+      rotationDeg: rotationExtremeAllowed,
+      rotationDegAfterBlur: rotationAfterBlur,
+    },
+    rejected: { offsetX: offsetOutOfRange, scalePercent: scaleOutOfRange, rotationDeg: rotationOutOfRange },
+    restorePointers: { afterOffset: offsetExtremeRestorePointer, afterRotation: rotationExtremeRestorePointer, rotationCommit: rotationCommitPointer },
+    restoredToSource: true,
+  };
+  issue903.inspectorControls = {
+    close: inspectorClosePointer,
+    stepDown: inspectorStepDownPointer,
+    stepUpFromMinus: inspectorStepUpPointer,
+    stepUp: inspectorStepUpAfterDownPointer,
+  };
   issue903.rowButtons = {
     select: rowSelectPointer,
     visibility: eyePointer,
