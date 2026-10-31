@@ -607,6 +607,8 @@ async function inspectAssemblyViewport(window) {
     "return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, right: bounds.right, bottom: bounds.bottom }; }; " +
     "const root = document.querySelector('[data-testid=\"adaptive-parts-assembly-workbench\"]'); " +
     "const list = document.querySelector('.adaptive-parts-assembly-list'); " +
+    "const rowsViewport = document.querySelector('.adaptive-parts-assembly-rows'); " +
+    "const rowsViewportBounds = rowsViewport?.getBoundingClientRect() ?? null; " +
     "const viewport = document.querySelector('[data-testid=\"adaptive-parts-assembly-canvas\"]'); " +
     "const stage = viewport?.querySelector('.character-assembly-preview-stage'); " +
     "const rows = [...document.querySelectorAll('.adaptive-parts-assembly-row')]; " +
@@ -615,12 +617,16 @@ async function inspectAssemblyViewport(window) {
     "const scale = Number(stage?.style.transform.match(/^scale\\(([^)]+)\\)$/)?.[1] ?? 0); " +
     "return { innerWidth: window.innerWidth, innerHeight: window.innerHeight, dpr: window.devicePixelRatio, " +
     "shellMode: document.querySelector('[data-testid=\"editor-layout\"]')?.dataset.shellMode ?? null, " +
-    "workbench: rect(root), list: rect(list), viewport: rect(viewport), footer: rect(footer), inspector: rect(inspector), stageScale: scale, " +
+    "workbench: rect(root), list: rect(list), rowsViewport: rect(rowsViewport), viewport: rect(viewport), footer: rect(footer), inspector: rect(inspector), stageScale: scale, " +
     "parts: [...(viewport?.querySelectorAll('[data-testid=\"adaptive-parts-assembly-canvas-part\"]') ?? [])].map((part) => ({ partId: part.dataset.partId, ...rect(part) })), " +
     "rows: rows.map((row) => { const bounds = row.getBoundingClientRect(); const hitTarget = row.querySelector('[data-testid=\"adaptive-parts-assembly-row-select\"]') ?? row; " +
-    "const hitBounds = hitTarget.getBoundingClientRect(); const target = document.elementFromPoint(hitBounds.left + hitBounds.width / 2, hitBounds.top + hitBounds.height / 2); " +
+    "const hitBounds = hitTarget.getBoundingClientRect(); const visibleLeft = Math.max(hitBounds.left, rowsViewportBounds?.left ?? 0); " +
+    "const visibleRight = Math.min(hitBounds.right, rowsViewportBounds?.right ?? window.innerWidth); const visibleTop = Math.max(hitBounds.top, rowsViewportBounds?.top ?? 0); " +
+    "const visibleBottom = Math.min(hitBounds.bottom, rowsViewportBounds?.bottom ?? window.innerHeight); const hasVisibleHitArea = visibleRight > visibleLeft && visibleBottom > visibleTop; " +
+    "const hitTestPoint = hasVisibleHitArea ? { x: visibleLeft + (visibleRight - visibleLeft) / 2, y: visibleTop + (visibleBottom - visibleTop) / 2 } : null; " +
+    "const target = hitTestPoint ? document.elementFromPoint(hitTestPoint.x, hitTestPoint.y) : null; " +
     "const style = getComputedStyle(row); return { partId: row.dataset.partId, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, " +
-    "visible: style.display !== 'none' && style.visibility === 'visible', hitTestedWithinRow: Boolean(target && row.contains(target)), " +
+    "visible: style.display !== 'none' && style.visibility === 'visible', hitTestPoint, hitTestedWithinRow: Boolean(target && row.contains(target)), " +
     "insideWindow: bounds.left >= 0 && bounds.right <= window.innerWidth && bounds.top >= 0 && bounds.bottom <= window.innerHeight }; }), " +
     "footerButtons: [...(footer?.querySelectorAll('button') ?? [])].map((button) => ({ text: button.innerText.trim(), ...rect(button) })) }; })()");
 }
@@ -2630,8 +2636,8 @@ async function main() {
     await waitFor(mainWindow, 'window.innerWidth <= 900 && window.innerWidth >= 800', 'The assembly window did not enter the narrow landscape breakpoint.');
     const narrowViewport = await inspectAssemblyViewport(mainWindow);
     const narrowRowsInListViewport = narrowViewport.rows.filter((row) =>
-      narrowViewport.list && row.y < narrowViewport.list.bottom &&
-      row.y + row.height > narrowViewport.list.y,
+      narrowViewport.rowsViewport && row.y < narrowViewport.rowsViewport.bottom &&
+      row.y + row.height > narrowViewport.rowsViewport.y,
     );
     assert(narrowViewport.rows.length === 5 && narrowRowsInListViewport.length >= 3 &&
       narrowRowsInListViewport.every((row) => row.visible && row.hitTestedWithinRow && row.insideWindow),
