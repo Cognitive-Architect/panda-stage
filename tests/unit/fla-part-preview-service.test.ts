@@ -10,9 +10,26 @@ import type {
 } from '../../src/main/services/fla-static-snapshot-render-session';
 import { stableRenderTargetId } from '../../src/main/services/fla-static-snapshot-svg-builder';
 import type { FlaImportService } from '../../src/main/services/FlaImportService';
-import { FlaPartPreviewRequestSchema } from '../../src/shared/fla-part-preview-api';
+import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
+import { migrateProject } from '../../src/domain';
+import exampleProject from '../../demo-project/project-v1.example.json';
+import { FLA_PART_PREVIEW_LIMITS, FlaPartPreviewRequestSchema } from '../../src/shared/fla-part-preview-api';
 
 const SESSION_ID = '90600000-0000-4000-8000-000000000001';
+
+interface FixtureMatrix {
+  readonly a: number;
+  readonly b: number;
+  readonly c: number;
+  readonly d: number;
+  readonly tx: number;
+  readonly ty: number;
+}
+
+const DEFAULT_SCENE_MATRICES: readonly FixtureMatrix[] = [
+  { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+  { a: 1, b: 0, c: 0, d: 1, tx: 10, ty: 2 },
+];
 
 function crc32(bytes: Buffer): number {
   let crc = 0xffffffff;
@@ -61,20 +78,31 @@ function makePng(width: number, height: number, paint: number): Uint8Array {
   ]));
 }
 
+function makePngWithTextChunk(width: number, height: number, paint: number, textByteLength: number): Uint8Array {
+  const png = Buffer.from(makePng(width, height, paint));
+  const signatureLength = 8;
+  const headerChunkLength = 12 + 13;
+  const textData = Buffer.alloc(textByteLength, 0x61);
+  Buffer.from('preview\0', 'ascii').copy(textData);
+  const textChunk = pngChunk('tEXt', textData);
+  return new Uint8Array(Buffer.concat([
+    png.subarray(0, signatureLength + headerChunkLength),
+    textChunk,
+    png.subarray(signatureLength + headerChunkLength),
+  ]));
+}
+
 async function buildTwoPartFla(
   sceneKind: 'parts' | 'visible-text' | 'empty-mask' = 'parts',
   includeSecondScene = false,
+  sceneMatrices: readonly FixtureMatrix[] = DEFAULT_SCENE_MATRICES,
 ): Promise<Uint8Array> {
+  const symbolElements = sceneMatrices.map((matrix) => `<DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
+            <matrix><Matrix a="${matrix.a}" b="${matrix.b}" c="${matrix.c}" d="${matrix.d}" tx="${matrix.tx}" ty="${matrix.ty}"/></matrix>
+          </DOMSymbolInstance>`).join('\n          ');
   const sceneLayers = sceneKind === 'parts'
     ? `<DOMLayer name="Parts"><frames>
-        <DOMFrame index="0" duration="1"><elements>
-          <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
-            <matrix><Matrix a="1" b="0" c="0" d="1" tx="0" ty="0"/></matrix>
-          </DOMSymbolInstance>
-          <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
-            <matrix><Matrix a="1" b="0" c="0" d="1" tx="10" ty="2"/></matrix>
-          </DOMSymbolInstance>
-        </elements></DOMFrame>
+        <DOMFrame index="0" duration="1"><elements>${symbolElements}</elements></DOMFrame>
       </frames></DOMLayer>`
     : sceneKind === 'visible-text'
       ? `<DOMLayer name="Visible text"><frames>
@@ -115,8 +143,9 @@ async function fixture(
   withAddresses = true,
   sceneKind: 'parts' | 'visible-text' | 'empty-mask' = 'parts',
   includeSecondScene = false,
+  sceneMatrices: readonly FixtureMatrix[] = DEFAULT_SCENE_MATRICES,
 ) {
-  const bytes = await buildTwoPartFla(sceneKind, includeSecondScene);
+  const bytes = await buildTwoPartFla(sceneKind, includeSecondScene, sceneMatrices);
   const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');
   if (!prepared.ok) throw new Error(prepared.message);
   const rawSha256 = createHash('sha256').update(bytes).digest('hex');
@@ -212,6 +241,23 @@ function rasterizerFor(fixtureData: Awaited<ReturnType<typeof fixture>>) {
   return { calls, outputs, rasterizer, previewService };
 }
 
+function projectStateSnapshot(store: EditorProjectStore) {
+  const snapshot = store.getSnapshot();
+  if (!snapshot) throw new Error('Expected a current EditorProjectStore snapshot');
+  const history = store.history.getSnapshot();
+  return {
+    projectInstanceId: store.getProjectInstanceId(),
+    projectId: snapshot.project.id,
+    revision: snapshot.revision,
+    dirty: snapshot.dirty,
+    historyUndoCount: history.undoCount,
+    historyRedoCount: history.redoCount,
+    characterCount: snapshot.project.characters.length,
+    assetCount: snapshot.project.assets.length,
+    imageAssetCount: snapshot.project.assets.filter((asset) => asset.kind === 'image').length,
+  };
+}
+
 describe('F1-02 Main part preview service', () => {
   it('keeps a source-addressed plan in Main and reassembles from emitted PNG bytes', async () => {
     const data = await fixture();
@@ -241,6 +287,60 @@ describe('F1-02 Main part preview service', () => {
     expect(plan?.units.every((unit) => unit.sourceAddress && unit.occurrencePath.length > 0)).toBe(true);
     // The renderer response carries only an opaque plan id and PNGs.
     expect(response).not.toHaveProperty('plan');
+    previewService.close();
+  });
+
+  it.each([
+    ['negative translation', { a: 1, b: 0, c: 0, d: 1, tx: -4, ty: 3 }],
+    ['mirror', { a: -1, b: 0, c: 0, d: 1, tx: 12, ty: 0 }],
+    ['skew', { a: 1, b: 0.25, c: 0.1, d: 1, tx: 2, ty: -1 }],
+  ] as const)('preserves %s in the full-stage PartPlan contract', async (_label, firstMatrix) => {
+    const data = await fixture(true, 'parts', false, [firstMatrix, DEFAULT_SCENE_MATRICES[1]!]);
+    const { previewService } = rasterizerFor(data);
+    const previewRequest = { ...request(1), target: { renderTargetId: data.targetId, selectedFrameIndex: 0 } };
+
+    const response = await previewService.preview(previewRequest);
+
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error('Expected transformed occurrences to remain independently previewable');
+    }
+    const plan = previewService.getPlan(response.planId, SESSION_ID, 1);
+    expect(plan?.units[0]?.worldTransform).toEqual(firstMatrix);
+    expect(plan?.units[0]?.drawOrder).toBe(0);
+    expect(plan?.stage).toMatchObject({
+      width: 32,
+      height: 24,
+      coordinateSpace: 'root-scene-stage-pixels',
+    });
+    expect(plan?.units.every((unit) => unit.stageMapping.crop === null &&
+      unit.stageMapping.outputScale === 1 &&
+      unit.stageMapping.stageOrigin.x === 0 &&
+      unit.stageMapping.stageOrigin.y === 0)).toBe(true);
+    expect(response.stage).toMatchObject({ width: 32, height: 24 });
+    expect(response.partPreviews).toHaveLength(2);
+    expect(response.partPreviews.every((part) => part.image.width === 32 && part.image.height === 24)).toBe(true);
+    expect(response.reassembledPreview).toMatchObject({ width: 32, height: 24 });
+    previewService.close();
+  });
+
+  it('uses whole-image-only for a singular occurrence transform without emitting a false Part', async () => {
+    const singular: FixtureMatrix = { a: 0, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+    const data = await fixture(true, 'parts', false, [singular, DEFAULT_SCENE_MATRICES[1]!]);
+    const { calls, previewService } = rasterizerFor(data);
+    const previewRequest = { ...request(1), target: { renderTargetId: data.targetId, selectedFrameIndex: 0 } };
+
+    const response = await previewService.preview(previewRequest);
+
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.capability !== 'WHOLE_IMAGE_ONLY') {
+      throw new Error('Expected singular transforms to fall back to a whole-image preview');
+    }
+    expect(response.reason).toContain('non-invertible world transform');
+    expect(response.partPreviews).toEqual([]);
+    expect(response.reassembledPreview).toBeNull();
+    expect(calls).toHaveLength(1);
+    expect(previewService.getPlan(response.planId, SESSION_ID, 1)?.units).toEqual([]);
     previewService.close();
   });
 
@@ -305,6 +405,131 @@ describe('F1-02 Main part preview service', () => {
     expect(rasterize).toHaveBeenCalledTimes(1);
     expect(response).not.toHaveProperty('partPreviews');
     previewService.close();
+  });
+
+  it('returns whole-image-only when valid part PNGs exceed the reassembly input budget', async () => {
+    const data = await fixture();
+    const calls: FlaStaticSnapshotRasterizeInput[] = [];
+    const rasterizer: FlaStaticSnapshotRasterizer = {
+      async rasterize(input) {
+        calls.push(input);
+        const pngBytes = calls.length === 2
+          ? makePngWithTextChunk(
+              input.width,
+              input.height,
+              29,
+              FLA_PART_PREVIEW_LIMITS.maxCompositionInputBytes + 1,
+            )
+          : makePng(input.width, input.height, calls.length * 31);
+        return { pngBytes, width: input.width, height: input.height, pixelCount: input.pixelCount };
+      },
+      cancel: vi.fn(() => true),
+      close: vi.fn(),
+    };
+    const previewService = new FlaPartPreviewService({
+      flaImportService: data.flaImportService,
+      renderSession: data.renderSession as never,
+      rasterizer,
+      wallTimeMs: 10_000,
+    });
+    const previewRequest = { ...request(1), target: { renderTargetId: data.targetId, selectedFrameIndex: 0 } };
+
+    const response = await previewService.preview(previewRequest);
+
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.capability !== 'WHOLE_IMAGE_ONLY') {
+      throw new Error('Expected bounded PNG output to fall back to the native whole image');
+    }
+    expect(response.reason).toContain('independent PNGs exceed the bounded reassembly input budget');
+    expect(response.partPreviews).toEqual([]);
+    expect(response.reassembledPreview).toBeNull();
+    expect(response.metrics.unitCount).toBe(0);
+    expect(response.metrics.rasterCount).toBe(2);
+    expect(calls).toHaveLength(2);
+    previewService.close();
+  }, 15_000);
+
+  it('keeps an open EditorProjectStore snapshot unchanged after success, cancellation, and failure', async () => {
+    const projectStore = new EditorProjectStore();
+    const project = migrateProject(exampleProject);
+    projectStore.open('D:\\PandaStage-Acceptance\\issue906-f1-02-project-fixture', project);
+    projectStore.updateProject({ ...project, name: `${project.name} with a pending edit` });
+    const before = projectStateSnapshot(projectStore);
+    expect(before).toMatchObject({
+      projectInstanceId: 1,
+      revision: 1,
+      dirty: true,
+      historyUndoCount: 1,
+      historyRedoCount: 0,
+      characterCount: 1,
+      assetCount: 4,
+      imageAssetCount: 3,
+    });
+
+    const data = await fixture();
+    const rasterCounter = { count: 0, cancellationReject: null as ((error: Error) => void) | null };
+    const rasterizer: FlaStaticSnapshotRasterizer = {
+      rasterize(input) {
+        rasterCounter.count += 1;
+        if (rasterCounter.count === 5) {
+          return new Promise((_resolve, reject) => { rasterCounter.cancellationReject = reject; });
+        }
+        const pngBytes = makePng(input.width, input.height, rasterCounter.count * 19);
+        return Promise.resolve({ pngBytes, width: input.width, height: input.height, pixelCount: input.pixelCount });
+      },
+      cancel() {
+        rasterCounter.cancellationReject?.(new Error('controlled project-state cancellation'));
+        return true;
+      },
+      close() {},
+    };
+    const previewService = new FlaPartPreviewService({
+      flaImportService: data.flaImportService,
+      renderSession: data.renderSession as never,
+      rasterizer,
+      wallTimeMs: 10_000,
+    });
+    const sourceHashBefore = createHash('sha256').update(data.bytes).digest('hex');
+
+    const success = await previewService.preview({
+      ...request(1),
+      target: { renderTargetId: data.targetId, selectedFrameIndex: 0 },
+    });
+    expect(success.ok).toBe(true);
+    expect(projectStateSnapshot(projectStore)).toEqual(before);
+
+    const cancellationRequest = {
+      ...request(2),
+      target: { renderTargetId: data.targetId, selectedFrameIndex: 0 },
+    };
+    const cancellationPromise = previewService.preview(cancellationRequest);
+    await vi.waitFor(() => expect(rasterCounter.cancellationReject).not.toBeNull());
+    expect(previewService.cancel({
+      format: 'fla-part-preview-cancel',
+      version: 1,
+      requestId: cancellationRequest.requestId,
+      sessionId: SESSION_ID,
+      generation: 2,
+    }).accepted).toBe(true);
+    const cancelled = await cancellationPromise;
+    expect(cancelled.ok).toBe(false);
+    if (cancelled.ok) throw new Error('Expected cancelled preview');
+    expect(cancelled.error.code).toBe('RENDER_CANCELLED');
+    expect(projectStateSnapshot(projectStore)).toEqual(before);
+    previewService.close();
+
+    const failureData = await fixture(true, 'visible-text');
+    const failedPreview = rasterizerFor(failureData).previewService;
+    const failure = await failedPreview.preview({
+      ...request(1),
+      target: { renderTargetId: failureData.targetId, selectedFrameIndex: 0 },
+    });
+    expect(failure.ok).toBe(false);
+    if (failure.ok) throw new Error('Expected unsupported-content failure');
+    expect(failure.error.code).toBe('UNSUPPORTED_SOURCE');
+    expect(projectStateSnapshot(projectStore)).toEqual(before);
+    expect(createHash('sha256').update(data.bytes).digest('hex')).toBe(sourceHashBefore);
+    failedPreview.close();
   });
 
   it('rejects stale generations and cancels the active sandbox raster job', async () => {
