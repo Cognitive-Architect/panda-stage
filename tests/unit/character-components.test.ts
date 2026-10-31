@@ -17,6 +17,10 @@ import {
   visibleCharacterThumbnails,
 } from '../../src/renderer/features/characters/CharacterManager';
 import { ImageAssetPicker } from '../../src/renderer/features/characters/ImageAssetPicker';
+import {
+  adaptivePartsFixture,
+  adaptivePartsSourceRootTransform,
+} from '../helpers/adaptivePartsFixtures';
 
 const noop = () => undefined;
 
@@ -310,5 +314,41 @@ describe('character management components', () => {
     );
     expect(noImageMarkup).toContain('请选择图片');
     expect(noImageMarkup).toContain('请选择不同图片');
+  });
+
+  it('shows the Adaptive Parts count in Chinese', () => {
+    const project = migrateProject(exampleProject);
+    const imageAsset = project.assets.find((asset) => asset.kind === 'image');
+    if (!imageAsset || imageAsset.kind !== 'image') {
+      throw new Error('Expected an image fixture.');
+    }
+    const squareAssetProject = ProjectSchema.parse({
+      ...project,
+      assets: project.assets.map((asset) =>
+        asset.id === imageAsset.id && asset.kind === 'image'
+          ? { ...asset, width: 640, height: 640 }
+          : asset,
+      ),
+    });
+    const adaptiveProject = new CharacterService().createAdaptiveParts(squareAssetProject, {
+      name: '五部件角色',
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(imageAsset.id).slice(0, 5),
+    });
+    const character = adaptiveProject.characters.at(-1)!;
+    const markup = renderToStaticMarkup(
+      createElement(CharacterList, {
+        characters: [character],
+        imageAssets: adaptiveProject.assets.filter(
+          (asset) => asset.kind === 'image',
+        ),
+        selectedCharacterId: character.id,
+        onCreate: noop,
+        onSelect: noop,
+        mode: 'list',
+      }),
+    );
+
+    expect(markup).toContain('<small>5 个零件</small>');
   });
 });

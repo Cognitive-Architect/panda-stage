@@ -486,43 +486,50 @@ export function CharacterEditor({
         ? '请先选择镜头'
         : null;
     return (
-      <div className="character-editor character-editor-empty">
-        <strong>{character.name}</strong>
+      <div className="character-editor character-editor-empty character-editor-adaptive-detail">
         {view === 'detail' ? (
-          <div className="character-detail-identity-actions">
-            {!adaptiveAssemblyActive ? (
+          <header className="character-adaptive-detail-header">
+            <div className="character-adaptive-detail-heading">
+              {!adaptiveAssemblyActive ? (
+                <Button
+                  aria-label="返回角色列表"
+                  className="character-adaptive-detail-back"
+                  data-testid="adaptive-parts-back-to-list"
+                  onClick={onBackToList}
+                  title="返回角色列表"
+                  variant="secondary"
+                >
+                  <span aria-hidden="true">←</span>
+                </Button>
+              ) : null}
+              <strong title={character.name}>{character.name}</strong>
+            </div>
+            <div className="character-detail-identity-actions character-adaptive-detail-actions">
               <Button
-                aria-label="返回角色列表"
+                aria-label={adaptiveAssemblyActive ? '返回角色' : '组装角色'}
                 className="character-detail-place-action"
-                data-testid="adaptive-parts-back-to-list"
-                onClick={onBackToList}
+                data-testid={adaptiveAssemblyActive ? 'adaptive-parts-return' : 'adaptive-parts-assembly-open'}
+                onClick={() => adaptiveAssemblyActive ? onLeaveAssembly() : onOpenAssembly()}
                 variant="secondary"
               >
-                返回角色列表
+                {adaptiveAssemblyActive ? '返回角色' : '组装'}
               </Button>
-            ) : null}
-            <Button
-              aria-label={adaptiveAssemblyActive ? '返回角色' : '组装角色'}
-              className="character-detail-place-action"
-              data-testid={adaptiveAssemblyActive ? 'adaptive-parts-return' : 'adaptive-parts-assembly-open'}
-              onClick={() => adaptiveAssemblyActive ? onLeaveAssembly() : onOpenAssembly()}
-              variant="secondary"
-            >
-              {adaptiveAssemblyActive ? '返回角色' : '组装'}
-            </Button>
-            <Button
-              aria-label="加入当前镜头"
-              className="character-detail-place-action"
-              data-testid="character-detail-place-current-shot"
-              disabled={placementUnavailableReason !== null}
-              onClick={() => onPlaceInCurrentShot(false)}
-              title={placementUnavailableReason ?? '加入当前镜头'}
-              variant="secondary"
-            >
-              ＋ 加入镜头
-            </Button>
-          </div>
-        ) : null}
+              <Button
+                aria-label="加入当前镜头"
+                className="character-detail-place-action"
+                data-testid="character-detail-place-current-shot"
+                disabled={placementUnavailableReason !== null}
+                onClick={() => onPlaceInCurrentShot(false)}
+                title={placementUnavailableReason ?? '加入当前镜头'}
+                variant="secondary"
+              >
+                ＋ 加入镜头
+              </Button>
+            </div>
+          </header>
+        ) : (
+          <strong>{character.name}</strong>
+        )}
       </div>
     );
   }

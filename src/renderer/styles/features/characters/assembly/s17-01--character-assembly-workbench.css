@@ -1093,15 +1093,19 @@
 }
 
 .adaptive-parts-assembly-workbench {
-  grid-template-columns: minmax(170px, 220px) minmax(0, 1fr);
+  position: relative;
+  min-height: 0;
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) max-content;
   gap: var(--ui-space-3);
 }
 
 .adaptive-parts-assembly-list {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   padding: var(--ui-space-3);
   border: 1px solid var(--ui-color-border);
   border-radius: var(--ui-radius-large);
@@ -1116,25 +1120,31 @@
 
 .adaptive-parts-assembly-rows {
   display: grid;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-content: start;
   gap: var(--ui-space-1);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 2px 3px 2px 0;
 }
 
 .adaptive-parts-assembly-row {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) 30px;
-  align-items: stretch;
-  gap: var(--ui-space-1);
+  grid-template-columns: minmax(0, 1fr) var(--ui-touch-icon) var(--ui-touch-icon);
+  align-items: center;
+  gap: 4px;
 }
 
 .adaptive-parts-assembly-row-select {
   display: grid;
   min-width: 0;
-  min-height: 52px;
+  min-height: var(--ui-touch-icon);
   grid-template-columns: 42px minmax(0, 1fr);
   align-items: center;
-  gap: var(--ui-space-2);
-  padding: var(--ui-space-1);
+  gap: 7px;
+  padding: 3px 5px;
   border: 1px solid transparent;
   border-radius: var(--ui-radius-medium);
   color: var(--ui-color-text-primary);
@@ -1143,8 +1153,9 @@
 }
 
 .adaptive-parts-assembly-row-select[aria-pressed='true'] {
-  border-color: var(--ui-color-selected-border);
-  background: var(--ui-color-selected-surface);
+  border-color: color-mix(in srgb, var(--ui-color-selected-border) 45%, transparent);
+  background: color-mix(in srgb, var(--ui-color-selected-surface) 56%, transparent);
+  box-shadow: inset 3px 0 0 var(--ui-color-selected-border);
 }
 
 .adaptive-parts-assembly-row-select[data-part-visible='false'] {
@@ -1181,44 +1192,98 @@
   font: var(--ui-font-secondary);
 }
 
-.adaptive-parts-assembly-name input {
+.adaptive-parts-assembly-row-edit {
+  display: grid;
+  min-width: 0;
+  min-height: var(--ui-touch-icon);
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  padding: 3px 5px;
+  border: 1px solid var(--ui-color-selected-border);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-selected-surface);
+}
+
+.adaptive-parts-assembly-rename {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.adaptive-parts-assembly-rename input {
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
+  min-height: 38px;
+  padding: 0 6px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-app);
+  font: var(--ui-font-secondary);
+}
+
+.adaptive-parts-assembly-rename-error {
+  color: var(--ui-color-danger, #e28a7a);
+  font-size: 11px;
 }
 
 .adaptive-parts-row-menu {
-  position: relative;
   display: grid;
   align-items: center;
+  justify-items: center;
 }
 
-.adaptive-parts-row-menu summary {
+.adaptive-parts-visibility-toggle,
+.adaptive-parts-row-menu-trigger {
   display: grid;
-  min-width: 30px;
+  width: var(--ui-touch-icon);
+  min-width: var(--ui-touch-icon);
+  height: var(--ui-touch-icon);
   min-height: var(--ui-touch-icon);
   place-items: center;
   border: 1px solid var(--ui-color-border);
   border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
   cursor: pointer;
-  list-style: none;
 }
 
-.adaptive-parts-row-menu summary::-webkit-details-marker { display: none; }
+.adaptive-parts-visibility-toggle[aria-pressed='true'] {
+  color: var(--ui-color-text-primary);
+}
 
-.adaptive-parts-row-menu[open] > div {
-  position: absolute;
-  z-index: 12;
-  top: 100%;
-  right: 0;
+.adaptive-parts-visibility-toggle svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.adaptive-parts-row-menu-popover {
+  position: fixed;
+  inset: auto;
+  z-index: 20;
+  box-sizing: border-box;
   display: grid;
-  min-width: 150px;
-  gap: 2px;
-  padding: var(--ui-space-1);
+  min-width: 184px;
+  max-width: calc(100vw - 16px);
+  gap: 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 5px;
   border: 1px solid var(--ui-color-border);
   border-radius: var(--ui-radius-medium);
+  color: var(--ui-color-text-primary);
   background: var(--ui-color-surface-overlay);
   box-shadow: var(--ui-shadow-overlay);
 }
+
+.adaptive-parts-row-menu-popover:not(:popover-open) { display: none; }
 
 .adaptive-parts-row-menu button,
 .adaptive-parts-assembly-canvas-toolbar button,
@@ -1231,6 +1296,18 @@
   color: var(--ui-color-text-primary);
   background: var(--ui-color-surface-work);
   cursor: pointer;
+}
+
+.adaptive-parts-row-menu-popover button {
+  min-width: 0;
+  text-align: left;
+}
+
+.adaptive-parts-row-menu button:disabled,
+.adaptive-parts-inspector-fields button:disabled,
+.adaptive-parts-assembly-footer button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
 }
 
 .adaptive-parts-assembly-viewport {
@@ -1304,63 +1381,136 @@
 .adaptive-parts-assembly-canvas-toolbar button { pointer-events: auto; }
 
 .adaptive-parts-inspector-toggle {
+  box-sizing: border-box;
+  width: var(--ui-touch-icon);
   min-width: var(--ui-touch-icon);
   min-height: var(--ui-touch-icon);
+  padding: 0 4px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: 999px;
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-work);
+  box-shadow: var(--ui-shadow-overlay);
+  cursor: pointer;
+}
+
+.adaptive-parts-inspector-fields {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.adaptive-parts-inspector-fields > strong {
+  overflow: hidden;
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adaptive-parts-inspector-offsets,
+.adaptive-parts-inspector-transform-fields {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.adaptive-parts-inspector-field {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+}
+
+.adaptive-parts-inspector-input-wrap {
+  display: flex;
+  min-width: 0;
+  min-height: var(--ui-touch-icon);
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px;
   border: 1px solid var(--ui-color-border);
   border-radius: var(--ui-radius-small);
   color: var(--ui-color-text-primary);
   background: var(--ui-color-surface-work);
 }
 
-.adaptive-parts-inspector-fields {
-  display: grid;
-  gap: var(--ui-space-3);
-  margin-top: var(--ui-space-3);
-}
-
-.adaptive-parts-inspector-fields label {
-  display: grid;
-  gap: var(--ui-space-1);
-  color: var(--ui-color-text-secondary);
-  font: var(--ui-font-secondary);
-}
-
-.adaptive-parts-inspector-fields input {
+.adaptive-parts-inspector-input-wrap input {
+  box-sizing: border-box;
+  width: 100%;
   min-width: 0;
-  min-height: var(--ui-touch-icon);
+  height: 40px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  color: inherit;
+  background: transparent;
+  font: var(--ui-font-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.adaptive-parts-inspector-input-wrap:focus-within {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: 1px;
+}
+
+.adaptive-parts-inspector-input-wrap input[aria-invalid='true'] {
+  color: var(--ui-color-danger, #e28a7a);
+}
+
+.adaptive-parts-inspector-field-error {
+  grid-column: 1 / -1;
+  color: var(--ui-color-danger, #e28a7a);
+  line-height: 1.3;
 }
 
 .adaptive-parts-assembly-footer {
   grid-column: 1 / -1;
   grid-row: 2;
+  display: flex;
+  min-width: 0;
   min-height: var(--ui-touch-regular);
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .adaptive-parts-assembly-footer [role='status'] {
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   color: var(--ui-color-text-secondary);
+}
+
+.adaptive-parts-assembly-footer-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--ui-space-2);
+  margin-left: auto;
+}
+
+.adaptive-parts-assembly-footer-actions [data-testid='adaptive-parts-assembly-apply'] {
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-selected-surface);
 }
 
 .adaptive-parts-assembly-inspector {
   position: absolute;
   z-index: 7;
-  top: var(--ui-space-2);
-  right: var(--ui-space-2);
-  width: max-content;
-  max-width: min(260px, calc(100% - 160px));
+  box-sizing: border-box;
+  max-width: calc(100% - 16px);
+  max-height: calc(100% - 16px);
+  overflow: auto;
   padding: 0;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: var(--ui-radius-large);
   background: transparent;
-  overflow: visible;
 }
 
 .adaptive-parts-assembly-inspector:has(.adaptive-parts-inspector-fields) {
-  box-sizing: border-box;
-  width: min(250px, calc(100% - 160px));
-  max-height: 75%;
-  overflow: auto;
   padding: var(--ui-space-3);
   border: 1px solid var(--ui-color-border);
   background: var(--ui-color-surface-overlay);
@@ -1369,26 +1519,107 @@
 
 .adaptive-parts-assembly-workbench button:focus-visible,
 .adaptive-parts-assembly-workbench [role='button']:focus-visible,
-.adaptive-parts-assembly-workbench summary:focus-visible {
+.adaptive-parts-assembly-workbench input:focus-visible {
   outline: 2px solid var(--ui-color-focus-ring);
   outline-offset: 2px;
 }
 
+.character-editor-adaptive-detail {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  place-content: start;
+  text-align: left;
+}
+
+.character-adaptive-detail-header,
+.character-adaptive-detail-heading,
+.character-adaptive-detail-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.character-adaptive-detail-header {
+  width: 100%;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.character-adaptive-detail-heading {
+  flex: 1 1 auto;
+  gap: 8px;
+}
+
+.character-adaptive-detail-heading > strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-editor-adaptive-detail .character-adaptive-detail-back {
+  box-sizing: border-box;
+  display: inline-flex;
+  width: var(--ui-touch-icon);
+  min-width: var(--ui-touch-icon);
+  min-height: var(--ui-touch-icon);
+  flex: 0 0 var(--ui-touch-icon);
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  font-size: 19px;
+}
+
+.character-adaptive-detail-actions {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.character-editor-adaptive-detail .character-adaptive-detail-actions > .character-detail-place-action {
+  display: inline-flex;
+  width: auto;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
 @media (max-width: 900px) {
   .adaptive-parts-assembly-workbench {
-    grid-template-columns: minmax(142px, 180px) minmax(0, 1fr);
+    grid-template-columns: minmax(158px, 190px) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) max-content;
   }
 
-  .adaptive-parts-assembly-inspector {
-    max-width: min(180px, calc(100% - 160px));
+  .adaptive-parts-assembly-row {
+    grid-template-columns: minmax(0, 1fr) 44px 44px;
   }
 
-  .adaptive-parts-assembly-inspector:has(.adaptive-parts-inspector-fields) {
-    width: min(180px, calc(100% - 160px));
+  .adaptive-parts-inspector-fields {
+    gap: 6px;
   }
 
-  .adaptive-parts-assembly-footer { grid-column: 1 / -1; }
+  .adaptive-parts-assembly-footer {
+    grid-column: 1 / -1;
+  }
+
+  .character-adaptive-detail-header {
+    gap: 6px;
+  }
+
+  .character-adaptive-detail-actions {
+    gap: 4px;
+  }
+
+  .character-editor-adaptive-detail .character-adaptive-detail-actions > .character-detail-place-action {
+    padding: 5px 7px;
+    font-size: 12px;
+  }
 }
 
 .character-assembly-placement-controls {

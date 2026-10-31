@@ -302,7 +302,7 @@ export function CharacterList({
                     <strong>{character.name}</strong>
                     <small>
                       {character.mode === 'adaptive-parts'
-                        ? `${character.parts.length} static Parts`
+                        ? `${character.parts.length} 个零件`
                         : `${character.expressions.length} 个表情 · 默认 ${defaultExpression?.name ?? '未配置'}`}
                     </small>
                   </span>

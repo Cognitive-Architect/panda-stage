@@ -745,7 +745,7 @@
       }
     ]
   },
-  "count": 106,
+  "count": 107,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -2006,6 +2006,18 @@
       "owner": "character",
       "supersedes": null,
       "notes": "Issue #899 C3 V0 Electron acceptance over locally selected Issue #893 C0 isolated PNGs through production AssetImportService and CharacterService, real Adaptive Parts assembly UI edits, Save/reopen, Stage/Preview six-second MP4 sampling. Requires PANDA_STAGE_ISSUE899_SOURCE_DIR and keeps all private sample assets in the external acceptance directory; AUTO_PASS does not attest OWNER review."
+    },
+    {
+      "id": "issue901-ui-a-adaptive-parts-controls",
+      "script": "verify:issue901-ui-a",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Issue #901 UI-A Windows Electron proof for direct visibility toggles, unclipped Part menus, inline rename, compact precise inspector input, lower-right Apply/Cancel, View All, and Adaptive Parts detail navigation. Requires local Issue #893 isolated-layer PNGs through PANDA_STAGE_ISSUE901_SOURCE_DIR or PANDA_STAGE_ISSUE899_SOURCE_DIR; screenshots and receipt stay in the external acceptance directory, and AUTO_PASS does not attest OWNER review."
     },
     {
       "id": "timeline",
