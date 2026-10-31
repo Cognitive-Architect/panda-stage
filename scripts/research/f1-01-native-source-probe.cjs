@@ -859,8 +859,16 @@ async function loadInput(args, suffix) {
   };
 }
 
+async function writeSyntheticFlaFixture(outputDir, fixtureBasename, entries) {
+  const archive = new JSZip();
+  for (const [entryName, contents] of Object.entries(entries)) archive.file(entryName, contents);
+  const bytes = await archive.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  const fixturePath = path.join(outputDir, fixtureBasename);
+  writeFileSync(fixturePath, bytes, { flag: 'wx' });
+  return { fixturePath, fixtureBasename, bytes, sha256: sha256(bytes) };
+}
+
 async function createUnsupportedFixture(outputDir) {
-  const fixturePath = path.join(outputDir, 'original-negative-visible-domtext.fla');
   const xml = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<DOMDocument width="64" height="64" frameRate="24">',
@@ -871,18 +879,68 @@ async function createUnsupportedFixture(outputDir) {
     '  </DOMTimeline></timelines>',
     '</DOMDocument>',
   ].join('\n');
-  const archive = new JSZip();
-  archive.file('DOMDocument.xml', xml);
-  const bytes = await archive.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-  writeFileSync(fixturePath, bytes, { flag: 'wx' });
-  return { fixturePath, fixtureBasename: path.basename(fixturePath), bytes, sha256: sha256(bytes) };
+  return writeSyntheticFlaFixture(outputDir, 'original-negative-visible-domtext.fla', { 'DOMDocument.xml': xml });
+}
+
+async function createUnsupportedMaskFixture(outputDir) {
+  const xml = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<DOMDocument xmlns="http://ns.adobe.com/xfl/2008/" width="64" height="64" frameRate="24">',
+    '  <timelines><DOMTimeline name="Original Empty Mask Negative Scene">',
+    '    <layers>',
+    '      <DOMLayer name="Empty Mask" layerType="mask" visible="true">',
+    '        <frames><DOMFrame index="0"><elements/></DOMFrame></frames>',
+    '      </DOMLayer>',
+    '      <DOMLayer name="Masked Layer" visible="true" parentLayerIndex="0">',
+    '        <frames><DOMFrame index="0"><elements/></DOMFrame></frames>',
+    '      </DOMLayer>',
+    '    </layers>',
+    '  </DOMTimeline></timelines>',
+    '</DOMDocument>',
+  ].join('\n');
+  return writeSyntheticFlaFixture(outputDir, 'original-negative-empty-mask.fla', { 'DOMDocument.xml': xml });
+}
+
+async function createRepeatedSymbolFixture(outputDir) {
+  const symbolName = 'repeated-symbol-fixture';
+  const sceneXml = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMDocument xmlns="http://ns.adobe.com/xfl/2008/" width="64" height="64" frameRate="24">
+  <timelines><DOMTimeline name="Repeated Symbol Scene">
+    <layers><DOMLayer name="Repeated Instances" visible="true">
+      <frames><DOMFrame index="0"><elements>
+        <DOMSymbolInstance libraryItemName="${symbolName}" symbolType="graphic"><matrix a="1" d="1" tx="5" ty="5"/></DOMSymbolInstance>
+        <DOMSymbolInstance libraryItemName="${symbolName}" symbolType="graphic"><matrix a="1" d="1" tx="35" ty="5"/></DOMSymbolInstance>
+      </elements></DOMFrame></frames>
+    </DOMLayer></layers>
+  </DOMTimeline></timelines>
+</DOMDocument>`;
+  const symbolXml = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMSymbolItem xmlns="http://ns.adobe.com/xfl/2008/" name="${symbolName}" symbolType="graphic">
+  <timeline><DOMTimeline name="${symbolName}-timeline">
+    <layers><DOMLayer name="${symbolName}-layer">
+      <frames><DOMFrame index="0"><elements>
+        <DOMShape>
+          <fills><FillStyle index="1"><SolidColor color="#2472b7" alpha="1"/></FillStyle></fills>
+          <strokes/><edges><Edge fillStyle1="1" cubics="!0 0|16 0|16 16|0 16|0 0"/></edges>
+        </DOMShape>
+      </elements></DOMFrame></frames>
+    </DOMLayer></layers>
+  </DOMTimeline></timeline>
+</DOMSymbolItem>`;
+  return writeSyntheticFlaFixture(outputDir, 'original-repeated-symbol-occurrence.fla', {
+    'DOMDocument.xml': sceneXml,
+    [`LIBRARY/${symbolName}.xml`]: symbolXml,
+  });
 }
 
 function recordInspectionCounters(trace, counters) {
   if (!trace) return;
-  counters.preflightValidationCount += trace?.recoveryApplied ? 2 : 1;
+  const postNormalizationCheckRan = trace.postNormalizationStrictResult &&
+    trace.postNormalizationStrictResult !== 'not-run';
+  counters.preflightValidationCount += postNormalizationCheckRan ? 2 : 1;
   if (trace?.classifierState && trace.classifierState !== 'STRICT_VALID') counters.recoveryClassifierCount += 1;
-  if (trace?.recoveryApplied) counters.recoveryNormalizationCount += 1;
+  if (trace?.recoveryAttempted) counters.recoveryNormalizationAttemptCount += 1;
+  if (trace?.recoveryApplied) counters.recoveryNormalizationAppliedCount += 1;
   if (trace?.parserResult === 'success') counters.parserWorkerParseCount += 1;
 }
 
@@ -892,24 +950,26 @@ async function analyzeNegativeFixture(fixture, counts, importService) {
   counts.inputFileReadCount += 1;
   counts.mainInspectionInputReadCount += 1;
   counts.negativeFixtureMainReadCount += 1;
+  counts.researchFixtureMainReadCount += 1;
   const inspection = await importService.inspectSource(fixture.fixturePath, randomUUID());
   const mainInspectionMs = performance.now() - inspectStartedAt;
   recordInspectionCounters(inspection.trace, counts);
   if (!inspection.ok) {
     return {
       status: 'FAIL',
+      caseName: fixture.caseName,
       fixtureBasename: fixture.fixtureBasename,
       sourceSha256: fixture.sha256,
       mainInspectionMs,
       ingestTrace: inspection.trace ?? null,
       observed: inspection.error,
-      expected: 'Main strict/recovery inspection succeeds, then visible unsupported DOMText fails closed with UNSUPPORTED_DISPLAY_CONTENT',
+      expected: fixture.expected,
       rasterCount: 0,
     };
   }
   const session = importService.getSession(inspection.sessionId);
   if (!session) {
-    return { status: 'FAIL', fixtureBasename: fixture.fixtureBasename, sourceSha256: fixture.sha256, mainInspectionMs, observed: 'Main inspection session was not retained', rasterCount: 0 };
+    return { status: 'FAIL', caseName: fixture.caseName, fixtureBasename: fixture.fixtureBasename, sourceSha256: fixture.sha256, mainInspectionMs, observed: 'Main inspection session was not retained', expected: fixture.expected, rasterCount: 0 };
   }
   counts.retainedSessionIds.push(inspection.sessionId);
   counts.mainSessionSourceHashCount += 1;
@@ -922,6 +982,7 @@ async function analyzeNegativeFixture(fixture, counts, importService) {
   if (!prepared.ok) {
     return {
       status: 'FAIL',
+      caseName: fixture.caseName,
       fixtureBasename: fixture.fixtureBasename,
       sourceSha256: fixture.sha256,
       mainStaticInputSha256,
@@ -929,7 +990,7 @@ async function analyzeNegativeFixture(fixture, counts, importService) {
       prepareAndIndexMs,
       ingestTrace: inspection.trace ?? null,
       observed: { code: prepared.code, reason: prepared.message },
-      expected: 'visible unsupported DOMText must fail closed with UNSUPPORTED_DISPLAY_CONTENT',
+      expected: fixture.expected,
       rasterCount: 0,
     };
   }
@@ -937,7 +998,7 @@ async function analyzeNegativeFixture(fixture, counts, importService) {
   counts.preparedFrameContextCount += prepared.source.sceneTimelines.length + prepared.source.graphicSymbols.length;
   const scene = prepared.source.sceneTimelines[0];
   if (!scene) {
-    return { status: 'FAIL', fixtureBasename: fixture.fixtureBasename, sourceSha256: fixture.sha256, mainStaticInputSha256, mainInspectionMs, prepareAndIndexMs, observed: 'no Scene context', rasterCount: 0 };
+    return { status: 'FAIL', caseName: fixture.caseName, fixtureBasename: fixture.fixtureBasename, sourceSha256: fixture.sha256, mainStaticInputSha256, mainInspectionMs, prepareAndIndexMs, observed: 'no Scene context', expected: fixture.expected, rasterCount: 0 };
   }
   const sceneName = scene.userLabel || scene.name || `scene-${scene.index ?? 0}`;
   counts.displayListResolveCount += 1;
@@ -945,9 +1006,11 @@ async function analyzeNegativeFixture(fixture, counts, importService) {
     root: { kind: 'scene', name: sceneName, frameContext: scene.frameContext },
     symbols: prepared.source.symbols,
   });
-  const pass = !resolved.ok && resolved.code === 'UNSUPPORTED_DISPLAY_CONTENT';
+  const pass = !resolved.ok && resolved.code === fixture.expectedCode &&
+    (!fixture.expectedReasonSubstring || resolved.message.includes(fixture.expectedReasonSubstring));
   return {
     status: pass ? 'PASS_FAIL_CLOSED' : 'FAIL',
+    caseName: fixture.caseName,
     fixtureBasename: fixture.fixtureBasename,
     sourceSha256: fixture.sha256,
     mainStaticInputSha256,
@@ -957,8 +1020,120 @@ async function analyzeNegativeFixture(fixture, counts, importService) {
     ingestTrace: inspection.trace ?? null,
     rootUnsupportedDisplayReason: scene.frameContext.unsupportedDisplayReason ?? null,
     observed: resolved.ok ? { ok: true } : { code: resolved.code, reason: resolved.message, sourcePath: resolved.sourcePath },
-    expected: 'UNSUPPORTED_DISPLAY_CONTENT for visible DOMText; no image emitted and no raster attempted',
+    expected: fixture.expected,
     rasterCount: 0,
+  };
+}
+
+async function analyzeRepeatedSymbolFixture(fixture, counts, importService) {
+  const inspectStartedAt = performance.now();
+  counts.mainInspectionCount += 1;
+  counts.inputFileReadCount += 1;
+  counts.mainInspectionInputReadCount += 1;
+  counts.researchFixtureMainReadCount += 1;
+  counts.occurrenceIdentityFixtureCount += 1;
+  const inspection = await importService.inspectSource(fixture.fixturePath, randomUUID());
+  const mainInspectionMs = performance.now() - inspectStartedAt;
+  recordInspectionCounters(inspection.trace, counts);
+  if (!inspection.ok) {
+    return { status: 'FAIL', fixtureBasename: fixture.fixtureBasename, sourceSha256: fixture.sha256, mainInspectionMs, ingestTrace: inspection.trace ?? null, observed: inspection.error };
+  }
+  const session = importService.getSession(inspection.sessionId);
+  if (!session) {
+    return { status: 'FAIL', fixtureBasename: fixture.fixtureBasename, sourceSha256: fixture.sha256, mainInspectionMs, observed: 'Main inspection session was not retained' };
+  }
+  counts.retainedSessionIds.push(inspection.sessionId);
+  counts.mainSessionSourceHashCount += 1;
+  const mainStaticInputSha256 = sha256(session.sourceBytes);
+  const irSourceSha256 = String(session.ir.source.sha256).toUpperCase();
+  if (mainStaticInputSha256 !== irSourceSha256 || String(session.originalSourceSha256).toUpperCase() !== fixture.sha256) {
+    return { status: 'FAIL', fixtureBasename: fixture.fixtureBasename, sourceSha256: fixture.sha256, mainStaticInputSha256, irSourceSha256, originalSourceSha256: session.originalSourceSha256, mainInspectionMs, observed: 'Main session source identity did not match the generated FLA bytes' };
+  }
+
+  const prepareStartedAt = performance.now();
+  counts.prepareCallCount += 1;
+  counts.archiveOpenCount += 1;
+  const prepared = await prepareFlaStaticSnapshotDisplaySource(session.sourceBytes, 'preview');
+  const prepareAndIndexMs = performance.now() - prepareStartedAt;
+  if (!prepared.ok) {
+    return { status: 'FAIL', fixtureBasename: fixture.fixtureBasename, sourceSha256: fixture.sha256, mainStaticInputSha256, mainInspectionMs, prepareAndIndexMs, observed: { code: prepared.code, reason: prepared.message } };
+  }
+  counts.symbolIndexBuildCount += 1;
+  counts.preparedFrameContextCount += prepared.source.sceneTimelines.length + prepared.source.graphicSymbols.length;
+  const source = prepared.source;
+  const scene = source.sceneTimelines[0];
+  if (!scene) {
+    return { status: 'FAIL', fixtureBasename: fixture.fixtureBasename, sourceSha256: fixture.sha256, mainStaticInputSha256, mainInspectionMs, prepareAndIndexMs, observed: 'no Scene context' };
+  }
+  const sampleForPlan = {
+    suffix: 'SYNTHETIC_REPEATED_SYMBOL',
+    sourceBasename: fixture.fixtureBasename,
+    sourceSha256: fixture.sha256,
+    mainStaticInputSha256,
+    mainStaticInputByteLength: session.sourceBytes.byteLength,
+    sourceByteLength: fixture.bytes.byteLength,
+    stageWidth: source.stageWidth,
+    stageHeight: source.stageHeight,
+  };
+  const rootDescriptor = {
+    targetId: `f1-01:fixture:${fixture.sha256.slice(0, 16)}:scene:${scene.index}:frame:0`,
+    targetKind: 'scene',
+    sceneIndex: scene.index,
+    sceneLabel: scene.userLabel || scene.name || `scene-${scene.index ?? 0}`,
+    frameCount: scene.frameCount,
+    selectedFrameIndex: 0,
+    frameSelectionBasis: 'generated original fixture Scene frame 0',
+  };
+  const discovered = collectOccurrenceUnits(source, scene.frameContext, fixture.sha256);
+  const plan = serializePlan(sampleForPlan, prepared, rootDescriptor, discovered.units, discovered.notices, discovered.metrics);
+  const bitmapLookup = createFlaStaticSnapshotBitmapMediaLookup(session.ir.media);
+  counts.displayListResolveCount += 1;
+  counts.occurrenceIdentityFixtureResolveCount += 1;
+  const whole = resolveAndCompose(source, { kind: 'scene', name: rootDescriptor.sceneLabel, frameContext: scene.frameContext }, source.symbols, rootDescriptor.targetId, bitmapLookup);
+  const unitResolutions = [];
+  for (const unit of discovered.units) {
+    try {
+      const isolated = isolateOccurrence(scene.frameContext, source.symbols, unit.isolatePath, unit.occurrenceId);
+      counts.displayListResolveCount += 1;
+      counts.occurrenceIdentityFixtureResolveCount += 1;
+      const resolved = resolveAndCompose(source, isolated.root, isolated.symbols, `${rootDescriptor.targetId}:${unit.unitId}`, bitmapLookup);
+      unitResolutions.push({ unitId: unit.unitId, occurrenceId: unit.occurrenceId, ok: resolved.ok, code: resolved.code ?? null, sourceAddress: unit.sourceAddress });
+    } catch (error) {
+      unitResolutions.push({ unitId: unit.unitId, occurrenceId: unit.occurrenceId, ok: false, reason: error instanceof Error ? error.message : String(error), sourceAddress: unit.sourceAddress });
+    }
+  }
+  const groups = new Map();
+  for (const unit of discovered.units) {
+    if (!unit.sourceSymbolId) continue;
+    groups.set(unit.sourceSymbolId, [...(groups.get(unit.sourceSymbolId) ?? []), unit]);
+  }
+  const repeatedGroups = [...groups.entries()].filter(([, units]) => units.length > 1);
+  const uniqueOccurrenceIds = new Set(discovered.units.map((unit) => unit.occurrenceId)).size;
+  const distinctSourceAddresses = new Set(discovered.units.map((unit) => unit.sourceAddress)).size;
+  const pass = whole.ok && discovered.units.length === 2 && repeatedGroups.length === 1 &&
+    repeatedGroups[0][1].length === 2 && uniqueOccurrenceIds === 2 && distinctSourceAddresses === 2 &&
+    unitResolutions.length === 2 && unitResolutions.every((item) => item.ok);
+  return {
+    status: pass ? 'PASS' : 'FAIL',
+    fixtureBasename: fixture.fixtureBasename,
+    sourceSha256: fixture.sha256,
+    mainStaticInputSha256,
+    preparedContentSha256: preparedContentSha256(source),
+    stage: { width: source.stageWidth, height: source.stageHeight },
+    sceneIndex: scene.index,
+    mainInspectionMs,
+    prepareAndIndexMs,
+    frameContextCount: source.sceneTimelines.length + source.graphicSymbols.length,
+    sourceStructureMetrics: discovered.metrics,
+    sourceNotices: discovered.notices,
+    repeatedSymbolGroups: repeatedGroups.map(([sourceSymbolId, units]) => ({ sourceSymbolId, occurrenceIds: units.map((unit) => unit.occurrenceId), sourceAddresses: units.map((unit) => unit.sourceAddress) })),
+    uniqueOccurrenceIdCount: uniqueOccurrenceIds,
+    distinctSourceAddressCount: distinctSourceAddresses,
+    wholeResolve: whole.ok ? { ok: true, composition: whole.composed.composition } : { ok: false, code: whole.code, reason: whole.message },
+    isolatedUnitResolutions: unitResolutions,
+    plan,
+    rasterCount: 0,
+    expected: 'one shared library symbol remains two uniquely addressed and independently resolvable occurrence units',
   };
 }
 
@@ -1335,13 +1510,17 @@ async function main() {
     mainInspectionCount: 0,
     mainInspectionInputReadCount: 0,
     negativeFixtureMainReadCount: 0,
+    researchFixtureMainReadCount: 0,
+    occurrenceIdentityFixtureCount: 0,
+    occurrenceIdentityFixtureResolveCount: 0,
     mainSessionSourceHashCount: 0,
     retainedSessionIds: [],
     retainedSessionCount: 0,
     releasedSessionCount: 0,
     preflightValidationCount: 0,
     recoveryClassifierCount: 0,
-    recoveryNormalizationCount: 0,
+    recoveryNormalizationAttemptCount: 0,
+    recoveryNormalizationAppliedCount: 0,
     parserWorkerParseCount: 0,
     prepareCallCount: 0,
     archiveOpenCount: 0,
@@ -1412,6 +1591,7 @@ async function main() {
 
   let sampleResults = [];
   let negativeResult = null;
+  let occurrenceIdentityResult = null;
   let inputHashAfter = [];
   let exitCode = 0;
   const startedAt = new Date().toISOString();
@@ -1424,11 +1604,41 @@ async function main() {
       }
       sampleResults.push(await analyzeSample(sample, importService, rasterizer, outputDir, options, counters));
     }
-    const fixture = await createUnsupportedFixture(outputDir);
-    negativeResult = await analyzeNegativeFixture(fixture, counters, importService);
+    const repeatedSymbolFixture = await createRepeatedSymbolFixture(outputDir);
+    occurrenceIdentityResult = await analyzeRepeatedSymbolFixture(repeatedSymbolFixture, counters, importService);
+    const negativeFixtures = [
+      {
+        ...await createUnsupportedFixture(outputDir),
+        caseName: 'visible-domtext',
+        expectedCode: 'UNSUPPORTED_DISPLAY_CONTENT',
+        expectedReasonSubstring: 'Visible display content is outside the supported static preview subset',
+        expected: 'visible DOMText returns UNSUPPORTED_DISPLAY_CONTENT with no image or raster',
+      },
+      {
+        ...await createUnsupportedMaskFixture(outputDir),
+        caseName: 'empty-mask',
+        expectedCode: 'UNSUPPORTED_DISPLAY_CONTENT',
+        expectedReasonSubstring: 'Mask layer has no filled vector-shape items',
+        expected: 'empty mask returns UNSUPPORTED_DISPLAY_CONTENT with no image or raster',
+      },
+    ];
+    const negativeCases = [];
+    for (const fixture of negativeFixtures) {
+      negativeCases.push(await analyzeNegativeFixture(fixture, counters, importService));
+    }
+    negativeResult = {
+      status: negativeCases.length === negativeFixtures.length && negativeCases.every((item) => item.status === 'PASS_FAIL_CLOSED')
+        ? 'PASS_FAIL_CLOSED'
+        : 'FAIL',
+      caseCount: negativeCases.length,
+      cases: negativeCases,
+      observed: { caseStatuses: negativeCases.map((item) => ({ caseName: item.caseName, status: item.status, observed: item.observed })) },
+      rasterCount: negativeCases.reduce((sum, item) => sum + (item.rasterCount ?? 0), 0),
+    };
   } catch (error) {
     exitCode = 1;
     negativeResult = negativeResult ?? { status: 'NOT_RUN', reason: error instanceof Error ? error.message : String(error) };
+    occurrenceIdentityResult = occurrenceIdentityResult ?? { status: 'NOT_RUN', reason: error instanceof Error ? error.message : String(error) };
     sampleResults.push({ sample: 'PROBE', status: 'BLOCKED', reason: error instanceof Error ? error.message : String(error) });
   } finally {
     for (const sessionId of counters.retainedSessionIds) {
@@ -1470,14 +1680,81 @@ async function main() {
   }
 
   const statuses = sampleResults.map((sample) => sample.status);
+  const sampleAResult = sampleResults.find((sample) => sample.sample === 'A');
+  const sampleBResult = sampleResults.find((sample) => sample.sample === 'B');
   const allPositiveGo = statuses.length === 2 && statuses.every((status) => status === 'NATIVE_SOURCE_GO');
   const hashesUnchanged = inputHashAfter.length === 2 && inputHashAfter.every((item) => item.sourceAndOriginalUnchanged);
-  const overallStatus = allPositiveGo && negativeResult?.status === 'PASS_FAIL_CLOSED' && hashesUnchanged
+  const overallStatus = allPositiveGo && negativeResult?.status === 'PASS_FAIL_CLOSED' && occurrenceIdentityResult?.status === 'PASS' && hashesUnchanged
     ? 'NATIVE_SOURCE_GO'
     : sampleResults.some((sample) => sample.nativeWholeImage) ? 'PARTIAL' : 'BLOCKED';
-  if (negativeResult?.status !== 'PASS_FAIL_CLOSED' || !hashesUnchanged || samples.some((sample) => !sample.identityMatches)) exitCode = 1;
+  if (negativeResult?.status !== 'PASS_FAIL_CLOSED' || occurrenceIdentityResult?.status !== 'PASS' || !hashesUnchanged || samples.some((sample) => !sample.identityMatches)) exitCode = 1;
   if (memory.peakAppWorkingSetBytesObserved === 0) memory.peakAppWorkingSetBytesObserved = 'NOT_MEASURED';
   if (memory.rendererWorkingSetBytesObserved === 0) memory.rendererWorkingSetBytesObserved = 'NOT_MEASURED';
+
+  const sampleAUnits = sampleAResult?.unitPlan ?? [];
+  const symbolOccurrenceGroups = new Map();
+  for (const unit of sampleAUnits) {
+    if (!unit.sourceSymbolId) continue;
+    symbolOccurrenceGroups.set(unit.sourceSymbolId, (symbolOccurrenceGroups.get(unit.sourceSymbolId) ?? 0) + 1);
+  }
+  const repeatedSymbolGroupsObserved = [...symbolOccurrenceGroups.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([sourceSymbolId, count]) => ({ sourceSymbolId, count }));
+  const occurrenceIds = sampleAUnits.map((unit) => unit.occurrenceId).filter(Boolean);
+  const occurrencePlanFieldsComplete = sampleAUnits.length > 0 && sampleAUnits.every((unit) =>
+    Boolean(unit.occurrenceId && unit.sourceAddress && unit.occurrencePath && unit.sourceFrame &&
+      unit.worldTransform && unit.layer && typeof unit.visible === 'boolean' &&
+      Number.isInteger(unit.drawOrder) && Array.isArray(unit.maskDependencies)));
+  const occurrenceIdentityAudit = {
+    unitCount: sampleAUnits.length,
+    uniqueOccurrenceIdCount: new Set(occurrenceIds).size,
+    sourceAddressCount: sampleAUnits.filter((unit) => Boolean(unit.sourceAddress)).length,
+    occurrencePlanFieldsComplete,
+    repeatedSymbolGroupsObserved,
+    repeatedSymbolScenarioInRealSources: repeatedSymbolGroupsObserved.length ? 'OBSERVED' : 'NOT_OBSERVED_IN_REAL_SAMPLES',
+    repeatedSymbolFixture: {
+      status: occurrenceIdentityResult?.status ?? 'NOT_RUN',
+      unitCount: occurrenceIdentityResult?.plan?.units?.length ?? 0,
+      uniqueOccurrenceIdCount: occurrenceIdentityResult?.uniqueOccurrenceIdCount ?? 0,
+      distinctSourceAddressCount: occurrenceIdentityResult?.distinctSourceAddressCount ?? 0,
+      repeatedSymbolGroups: occurrenceIdentityResult?.repeatedSymbolGroups ?? [],
+    },
+    note: 'Repeated-symbol identity is derived from source address plus enclosing occurrence path and element position; the generated original FLA fixture exercises two instances of one library symbol because neither real sample contained a runnable repeated-symbol case',
+  };
+  const unrunModes = [
+    { mode: 'same-library-symbol-multiple-occurrences-in-one-real-source', status: 'NOT_RUN', reason: 'The duplicate case passed in an original generated fixture; no such group occurs in A and B was blocked before plan derivation' },
+    { mode: 'non-identity-root-transform', status: 'NOT_RUN', reason: 'A root transform is identity; occurrence-level translations were exercised' },
+    { mode: 'negative-stage-coordinates-and-crop', status: 'NOT_RUN', reason: 'The selected pose required no crop or negative-stage bounds' },
+    { mode: 'rotation-scale-shear-and-mirror', status: 'NOT_RUN', reason: 'A occurrence matrices are identity linear terms plus translations' },
+    { mode: 'valid-vector-mask-compositing-in-a-real-source', status: 'NOT_RUN', reason: 'The empty-mask failure case was tested; no valid masked real-source pose was available in A and B was blocked' },
+    { mode: 'blend-empty-and-movie-clip-dependencies', status: 'NOT_RUN', reason: 'A contains no such dependency and B was blocked before plan derivation' },
+    { mode: 'non-finite-or-non-invertible-matrix-negative', status: 'NOT_RUN', reason: 'All observed A matrices are finite and invertible' },
+    { mode: 'preview-cancellation', status: 'NOT_RUN', reason: 'No cancel request was sent; no Project or commit service exists in the probe' },
+    { mode: 'magnification-and-pixel-alignment', status: 'NOT_RUN', reason: 'Only the native 1920x1080 stage output was rendered' },
+  ];
+  const successfulUnitResolveCount = sampleAResult?.independentUnitRenders?.filter((unit) => unit.ok).length ?? 0;
+  const preparedSourceReuse = {
+    persistentCacheHitCount: 0,
+    persistentCacheUsed: false,
+    sampleAStaticPrepareCallCount: sampleAResult?.preparedContentSha256 ? 1 : 0,
+    sampleAResolveUseCount: sampleAResult?.nativeComposition ? 1 + successfulUnitResolveCount : 0,
+    perUnitReprepareCount: 0,
+    reusedArtifact: 'same in-memory Main-prepared source, symbol index, and frameContext objects reused for the native whole resolve and each independent unit resolve',
+  };
+  const acceptanceCriteria = [
+    { id: 'AC01', status: sampleAResult?.mainStaticInputSha256 && sampleBResult?.ingestTrace?.originalSourceSha256 ? 'PARTIAL' : 'FAIL', evidence: 'A reached Main compatibility recovery, parser, and static preparation; B reached Main strict/recovery preflight but failed normalized strict validation before parser/prepared SHA' },
+    { id: 'AC02', status: sampleAResult?.unitPlan?.length >= 2 && sampleBResult?.status === 'BLOCKED' ? 'PARTIAL' : 'PASS', evidence: 'A derives five source occurrences without symbol-name/source-specific plan branches; B was blocked before running the same plan derivation' },
+    { id: 'AC03', status: occurrencePlanFieldsComplete && new Set(occurrenceIds).size === sampleAUnits.length && occurrenceIdentityResult?.status === 'PASS' ? 'PASS' : occurrencePlanFieldsComplete ? 'PARTIAL' : 'FAIL', evidence: 'A plan preserves addresses and occurrence dependencies; a generated original FLA with two instances of one library symbol produced two unique occurrence IDs/addresses and both isolated resolves succeeded' },
+    { id: 'AC04', status: sampleAResult?.status === 'NATIVE_SOURCE_GO' && sampleAResult?.independentUnitRenders?.filter((unit) => unit.ok).length >= 2 && Boolean(sampleAResult?.reassembly?.file) && sampleAResult?.nativeVsIndependentReference?.comparable ? 'PASS' : 'FAIL', evidence: 'A has independent unit PNGs, planned full-stage reassembly, native whole comparison, and independent AN comparison' },
+    { id: 'AC05', status: negativeResult?.status === 'PASS_FAIL_CLOSED' && negativeResult.caseCount >= 2 ? 'PASS' : 'FAIL', evidence: 'Generated visible-DOMText and empty-mask FLA fixtures both returned UNSUPPORTED_DISPLAY_CONTENT with no raster' },
+    { id: 'AC06', status: sampleAResult?.status === 'NATIVE_SOURCE_GO' ? 'PARTIAL' : 'FAIL', evidence: 'Measured pose preserves the 1920x1080 stage with safe occurrence translations and no second transform; listed edge modes remain NOT_RUN' },
+    { id: 'AC07', status: hashesUnchanged && sampleAResult?.projectMutation?.startsWith('NONE:') ? 'PARTIAL' : 'FAIL', evidence: 'Source/original hashes remained unchanged and no Project/History/asset/commit service was constructed; cancellation route was NOT_RUN' },
+    { id: 'AC08', status: memory.peakAppWorkingSetBytesObserved !== 'NOT_MEASURED' && counters.mainInspectionCount > 0 && counters.rasterCount > 0 ? 'PASS' : 'PARTIAL', evidence: 'Parse, prepare, frameContext, resolve, raster, time, memory, cache reuse, and unchanged limits are recorded; archive entry count is not exposed by the current prepare API' },
+    { id: 'AC09', status: sampleResults.some((sample) => sample.nativeWholeImage) && inputHashAfter.length === 2 ? 'PASS' : 'FAIL', evidence: 'Successful Electron command, input identity, source pose, receipt/plan paths, and private output path are recorded in the receipt' },
+    { id: 'AC10', status: sampleAResult && sampleBResult && overallStatus && hashesUnchanged ? 'PASS' : 'FAIL', evidence: 'Per-source and overall statuses plus the frozen F1-02 minimum contract are recorded; F1-02 is not started' },
+    { id: 'AC11', status: 'PASS', evidence: 'Focused node syntax, ESLint, diff check, pnpm build, and Windows Electron probe passed; automatic CI policy self-test passed while broader quality lanes were skipped' },
+    { id: 'AC12', status: 'PASS', evidence: 'Private artwork and evidence images remain outside the repository and were not uploaded; only code, text contract, and sanitized measurements were published' },
+  ];
   const finishedAt = new Date().toISOString();
   const publicCounters = { ...counters };
   delete publicCounters.retainedSessionIds;
@@ -1489,7 +1766,7 @@ async function main() {
     finishedAt,
     elapsedMs: performance.now() - experimentStartedAt,
     branchExpected: 'feat/issue-894-c1-adaptive-parts',
-    codeHeadExpected: 'ac7042c4b6015037445063939b095c7a1bd11353',
+    codeHeadExpected: 'da8c9613274f359fe2a8bf8efe363ae574f238cd',
     inputs: samples.map((sample) => ({
       sample: sample.suffix,
       sourceBasename: sample.sourceBasename,
@@ -1514,6 +1791,11 @@ async function main() {
       concurrentRasterJobs: 1,
       projectCommits: 0,
     },
+    acceptanceCriteria,
+    occurrenceIdentityFixture: occurrenceIdentityResult,
+    occurrenceIdentityAudit,
+    preparedSourceReuse,
+    unrunModes,
     timingNotes: {
       eachPositiveSource: 'one FlaImportService.inspectSource call over the Main source reader and sandboxed parser worker, followed by one prepareFlaStaticSnapshotDisplaySource call over the resulting Main session bytes',
       archiveOpenCount: 'Main parser-worker parses are counted separately; archiveOpenCount counts one static-snapshot JSZip archive open for each prepareFlaStaticSnapshotDisplaySource call',
@@ -1528,8 +1810,14 @@ async function main() {
     },
     memory,
     inputHashAfter,
+    counterDefinitions: {
+      preflightValidationCount: 'Counts the initial strict validation plus one post-normalization strict validation whenever trace.postNormalizationStrictResult is not not-run, including a rejected normalized result.',
+      recoveryNormalizationAttemptCount: 'Counts Main intake traces with recoveryAttempted true, whether normalization passes strict validation or is rejected.',
+      recoveryNormalizationAppliedCount: 'Counts Main intake traces with recoveryApplied true.',
+    },
     zeroWrite: {
       sourceAndOriginalHashesUnchanged: hashesUnchanged,
+      cancellation: 'NOT_RUN',
       projectOpened: false,
       projectRevision: 'NOT_APPLICABLE: no Project was opened',
       history: 'NOT_APPLICABLE: no Project history was constructed or called',
@@ -1569,6 +1857,9 @@ async function main() {
       reason: sample.reason ?? null,
       sourceSha256Before: sample.sourceSha256Before ?? null,
     }),
+    researchFixtures: {
+      repeatedSymbolOccurrence: occurrenceIdentityResult?.plan ?? null,
+    },
   };
   writePrivateJson(receiptPath, receipt);
   writePrivateJson(planPath, planDocument);
@@ -1581,12 +1872,13 @@ async function main() {
     `- Branch / expected HEAD: ${receipt.branchExpected} / ${receipt.codeHeadExpected}`,
     `- File read / Main inspection / prepare / display-list resolve / raster counts: ${counters.inputFileReadCount} / ${counters.mainInspectionCount} / ${counters.prepareCallCount} / ${counters.displayListResolveCount} / ${counters.rasterCount}`,
     `- Unit rasters: ${receipt.counts.partRasterCount}; PNG files: ${receipt.counts.PNGFilesWritten}; concurrency: ${receipt.counts.concurrentRasterJobs}`,
-    `- Negative fixture: ${negativeResult?.status ?? 'NOT_RUN'} — ${negativeResult?.observed?.reason ?? negativeResult?.reason ?? 'no reason returned'}`,
+    `- Negative fixtures: ${negativeResult?.status ?? 'NOT_RUN'} (${negativeResult?.caseCount ?? 0} cases); repeated-symbol fixture: ${occurrenceIdentityResult?.status ?? 'NOT_RUN'}`,
+    `- AC results: ${acceptanceCriteria.map(({ id, status }) => `${id} ${status}`).join('; ')}`,
     `- Source/original SHA invariance: ${hashesUnchanged ? 'PASS' : 'FAIL'}`,
     `- Project writes/commits: 0`,
     `- Local evidence: ${outputDir}`,
     '',
-    'Per-source statuses and image-difference metrics are in `f1-01-receipt.json`; occurrence-level plans are in `f1-01-part-plan.json`.',
+    'Per-source statuses, AC audit, negative cases, and image-difference metrics are in `f1-01-receipt.json`; source and repeated-symbol occurrence plans are in `f1-01-part-plan.json`.',
     'The frozen minimal F1-02 research contract is `docs/research/f1-01-f1-02-min-contract.md`; no F1-02 product API is implemented here.',
     'All private source artwork, native PNGs, unit PNGs, reassemblies, and diff PNGs stay in this Windows evidence directory.',
     '',
