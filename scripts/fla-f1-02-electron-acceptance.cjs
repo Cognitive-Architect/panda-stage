@@ -377,9 +377,62 @@ async function runAcceptance() {
   const response = observedResponse;
   const plan = partPreviewService.getPlan(response.planId, sessionId, request.generation);
   if (!plan) throw new Error('The Main-held PartPlan was missing or expired before acceptance capture');
+  const preparedBatch = partPreviewService.getPreparedBatch(response.planId, sessionId, request.generation);
+  if (!preparedBatch) throw new Error('The exact successful Part PNG batch was missing from the Main-held result');
   if (response.capability !== 'EDITABLE_PARTS_READY' || plan.units.length !== 5 || response.partPreviews.length !== 5) {
     throw new Error(`Sample A expected five independent source parts; got ${plan.units.length}`);
   }
+  if (preparedBatch.plan.planId !== plan.planId || preparedBatch.identity.planId !== plan.planId ||
+      preparedBatch.identity.sessionId !== request.sessionId ||
+      preparedBatch.identity.requestId !== request.requestId ||
+      preparedBatch.identity.generation !== request.generation ||
+      preparedBatch.identity.rawSourceSha256 !== plan.source.rawSha256 ||
+      preparedBatch.identity.normalizedSourceSha256 !== plan.source.normalizedSha256 ||
+      preparedBatch.identity.poseIdentity !== plan.poseIdentity ||
+      preparedBatch.identity.target.renderTargetId !== plan.target.renderTargetId ||
+      preparedBatch.identity.target.sceneIndex !== plan.target.sceneIndex ||
+      preparedBatch.identity.target.selectedFrameIndex !== plan.target.selectedFrameIndex) {
+    throw new Error('Main-held PNG batch identity does not match the successful PartPlan');
+  }
+  if (preparedBatch.parts.length !== response.partPreviews.length) {
+    throw new Error('Main-held PNG batch does not have the preview response Part count');
+  }
+  const mainHeldPartSummaries = preparedBatch.parts.map((part, index) => {
+    const previewPart = response.partPreviews[index];
+    const planUnit = plan.units[index];
+    if (!previewPart || !planUnit || part.unitId !== previewPart.unitId ||
+        part.occurrenceId !== previewPart.occurrenceId || part.drawOrder !== previewPart.drawOrder ||
+        part.drawOrder !== index || part.unitId !== planUnit.unitId ||
+        part.occurrenceId !== planUnit.occurrenceId || part.drawOrder !== planUnit.drawOrder ||
+        JSON.stringify(part.stageMapping) !== JSON.stringify(planUnit.stageMapping) ||
+        part.image.sha256 !== previewPart.image.sha256 ||
+        part.image.byteLength !== previewPart.image.byteLength ||
+        sha256(Buffer.from(part.image.bytes)) !== part.image.sha256 ||
+        Buffer.compare(Buffer.from(part.image.bytes), Buffer.from(previewPart.image.bytes)) !== 0) {
+      throw new Error(`Main-held PNG batch Part ${index} does not match the emitted response bytes and plan mapping`);
+    }
+    return {
+      unitId: part.unitId,
+      occurrenceId: part.occurrenceId,
+      drawOrder: part.drawOrder,
+      sha256: part.image.sha256,
+      byteLength: part.image.byteLength,
+      stageMapping: part.stageMapping,
+    };
+  });
+  const partPngBytes = preparedBatch.parts.reduce((sum, part) => sum + part.image.byteLength, 0);
+  if (partPngBytes !== preparedBatch.partPngBytes) {
+    throw new Error('Main-held PNG batch byte total does not match its Part payloads');
+  }
+  const mainHeldPngBatchObservation = {
+    identity: preparedBatch.identity,
+    planCapability: preparedBatch.plan.capability,
+    partCount: preparedBatch.parts.length,
+    partPngBytes,
+    exactResponseBytesAndDigestsMatch: true,
+    unitOccurrenceOrderAndStageMappingsMatch: true,
+    parts: mainHeldPartSummaries,
+  };
   if (response.metrics.sourcePreparationCountForRequest !== 1 || response.metrics.rasterCount !== 7 ||
       response.metrics.displayListResolveCount !== 6) {
     throw new Error('Sample A did not use one prepared source, six display resolutions, and seven sandbox rasters');
@@ -422,6 +475,10 @@ async function runAcceptance() {
       path.join(OUTPUT_DIRECTORY, 'main-held-part-plan.json'),
       Buffer.from(JSON.stringify(summarizePlan(plan), null, 2), 'utf8'),
     ),
+    mainHeldPngBatchReceipt: writeNewFile(
+      path.join(OUTPUT_DIRECTORY, 'main-held-part-png-batch.json'),
+      Buffer.from(JSON.stringify(mainHeldPngBatchObservation, null, 2), 'utf8'),
+    ),
   };
 
   const sourceHashAfterRun = sha256File(sourcePath);
@@ -452,6 +509,7 @@ async function runAcceptance() {
     planId: response.planId,
     poseIdentity: response.poseIdentity,
     unitCount: plan.units.length,
+    mainHeldPngBatchObservation,
     metrics: response.metrics,
     electronMemory: memoryReceipt,
     comparisons: harnessStatus.comparisons,
@@ -507,7 +565,7 @@ async function runAcceptance() {
     },
   };
   writeNewFile(path.join(OUTPUT_DIRECTORY, 'receipt.json'), Buffer.from(JSON.stringify(receipt, null, 2), 'utf8'));
-  process.stdout.write(`${JSON.stringify({ accepted: true, sourceStatus, issueAcceptanceStatus: 'PASS', outputDirectory: OUTPUT_DIRECTORY, capability: response.capability, unitCount: plan.units.length, metrics: response.metrics, electronMemory: memoryReceipt, comparisons: harnessStatus.comparisons }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ accepted: true, sourceStatus, issueAcceptanceStatus: 'PASS', outputDirectory: OUTPUT_DIRECTORY, capability: response.capability, unitCount: plan.units.length, mainHeldPngBatchObservation, metrics: response.metrics, electronMemory: memoryReceipt, comparisons: harnessStatus.comparisons }, null, 2)}\n`);
 }
 
 function bestEffortCleanup(label, action) {

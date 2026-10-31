@@ -56,6 +56,13 @@ interface FlaPartPreviewPng {
   bytes: Uint8Array;
 }
 
+interface FlaPartPreviewPart {
+  readonly unitId: string;
+  readonly occurrenceId: string;
+  readonly drawOrder: number;
+  readonly image: FlaPartPreviewPng;
+}
+
 type MaskDependency = FlaPartPreviewUnit['maskDependencies'][number];
 
 interface SourcePathEntry {
@@ -521,6 +528,49 @@ export interface FlaPartPreviewServiceOptions {
   readonly wallTimeMs?: number;
 }
 
+export interface FlaPreparedPartBatchPart {
+  readonly unitId: string;
+  readonly occurrenceId: string;
+  readonly drawOrder: number;
+  readonly stageMapping: FlaPartPreviewUnit['stageMapping'];
+  readonly image: FlaPreparedPartBatchImage;
+}
+
+export interface FlaPreparedPartBatchImage {
+  readonly width: number;
+  readonly height: number;
+  readonly pixelCount: number;
+  readonly sha256: string;
+  readonly byteLength: number;
+  readonly bytes: Uint8Array;
+}
+
+export interface FlaPreparedPartBatch {
+  readonly plan: FlaPartPlan;
+  readonly identity: {
+    readonly planId: string;
+    readonly sessionId: string;
+    readonly requestId: string;
+    readonly generation: number;
+    readonly rawSourceSha256: string;
+    readonly normalizedSourceSha256: string;
+    readonly poseIdentity: string;
+    readonly target: {
+      readonly renderTargetId: string;
+      readonly sceneIndex: number;
+      readonly selectedFrameIndex: number;
+    };
+  };
+  readonly parts: readonly FlaPreparedPartBatchPart[];
+  readonly partPngBytes: number;
+}
+
+interface HeldPartPreviewResult {
+  readonly plan: FlaPartPlan;
+  readonly parts: readonly FlaPartPreviewPart[] | null;
+  readonly partPngBytes: number;
+}
+
 export class FlaPartPreviewService {
   private readonly flaImportService: FlaImportService;
   private readonly renderSession: FlaStaticSnapshotRenderSession;
@@ -529,7 +579,7 @@ export class FlaPartPreviewService {
   private readonly wallTimeMs: number;
   private readonly latestGenerationBySession = new Map<string, number>();
   private active: ActivePartPreview | null = null;
-  private heldPlan: FlaPartPlan | null = null;
+  private heldResult: HeldPartPreviewResult | null = null;
   private expiryTimer: NodeJS.Timeout | null = null;
   private closed = false;
 
@@ -557,7 +607,7 @@ export class FlaPartPreviewService {
     if (this.active) {
       this.cancelActive(this.active, 'RENDER_CANCELLED', 'Superseded by a newer Part preview request');
     }
-    this.clearHeldPlan();
+    this.clearHeldResult();
 
     const inspection = this.flaImportService.getSession(request.sessionId);
     const staticSource = toSnapshotSource(inspection);
@@ -587,7 +637,7 @@ export class FlaPartPreviewService {
       .then((response) => this.settle(active, response))
       .catch((error: unknown) => {
         if (active.settled) return;
-        if (this.heldPlan?.sessionId === active.request.sessionId) this.clearHeldPlan();
+        if (this.heldResult?.plan.requestId === active.request.requestId) this.clearHeldResult();
         const code = active.cancelCode ?? 'RENDER_FAILED';
         this.settle(active, this.failure(code, error instanceof Error ? error.message : String(error), request));
       });
@@ -608,16 +658,22 @@ export class FlaPartPreviewService {
       (request.generation === undefined || active.request.generation === request.generation));
     if (matches && active) {
       this.cancelActive(active, 'RENDER_CANCELLED', 'Part preview was cancelled');
-      if (this.heldPlan?.sessionId === active.request.sessionId) this.clearHeldPlan();
+      if (this.heldResult?.plan.requestId === active.request.requestId) this.clearHeldResult();
       return FlaPartPreviewCancelResponseSchema.parse({
         accepted: true,
         cancelledRequestId: active.request.requestId,
       });
     }
-    if (request.sessionId && this.heldPlan?.sessionId === request.sessionId &&
-        (request.generation === undefined || this.heldPlan.generation === request.generation)) {
-      this.clearHeldPlan();
-      return FlaPartPreviewCancelResponseSchema.parse({ accepted: true });
+    const held = this.getValidHeldResult();
+    if (held &&
+        (!request.requestId || held.plan.requestId === request.requestId) &&
+        (!request.sessionId || held.plan.sessionId === request.sessionId) &&
+        (request.generation === undefined || held.plan.generation === request.generation)) {
+      this.clearHeldResult();
+      return FlaPartPreviewCancelResponseSchema.parse({
+        accepted: true,
+        cancelledRequestId: held.plan.requestId,
+      });
     }
     return FlaPartPreviewCancelResponseSchema.parse({ accepted: false });
   }
@@ -626,33 +682,73 @@ export class FlaPartPreviewService {
     if (this.active?.request.sessionId === sessionId) {
       this.cancelActive(this.active, 'RENDER_CANCELLED', 'FLA inspection session was released');
     }
-    if (this.heldPlan?.sessionId === sessionId) this.clearHeldPlan();
+    if (this.heldResult?.plan.sessionId === sessionId) this.clearHeldResult();
     this.latestGenerationBySession.delete(sessionId);
   }
 
   invalidateAll(): void {
     if (this.active) this.cancelActive(this.active, 'RENDER_CANCELLED', 'Preview context changed');
-    this.clearHeldPlan();
+    this.clearHeldResult();
     this.latestGenerationBySession.clear();
   }
 
   /** Main-only future F1-03 read path; no IPC route exposes this in F1-02. */
   getPlan(planId: string, sessionId?: string, generation?: number): FlaPartPlan | null {
-    const plan = this.heldPlan;
-    if (!plan || plan.planId !== planId || plan.expiresAt <= this.now().toISOString() ||
-        (sessionId && plan.sessionId !== sessionId) ||
-        (generation !== undefined && plan.generation !== generation)) {
-      if (plan && plan.expiresAt <= this.now().toISOString()) this.clearHeldPlan();
+    const held = this.getValidHeldResult();
+    if (!held || held.plan.planId !== planId ||
+        (sessionId && held.plan.sessionId !== sessionId) ||
+        (generation !== undefined && held.plan.generation !== generation)) return null;
+    return structuredClone(held.plan);
+  }
+
+  /** Main-only, read-only handoff for the exact Parts emitted with a held plan. */
+  getPreparedBatch(planId: string, sessionId: string, generation: number): FlaPreparedPartBatch | null {
+    const held = this.getValidHeldResult();
+    if (!held || held.plan.planId !== planId || held.plan.sessionId !== sessionId ||
+        held.plan.generation !== generation || held.plan.capability !== 'EDITABLE_PARTS_READY' || !held.parts) {
       return null;
     }
-    return plan;
+    const plan = structuredClone(held.plan);
+    const parts = held.parts.map((part) => ({
+      unitId: part.unitId,
+      occurrenceId: part.occurrenceId,
+      drawOrder: part.drawOrder,
+      stageMapping: structuredClone(plan.units[part.drawOrder]!.stageMapping),
+      image: {
+        width: part.image.width,
+        height: part.image.height,
+        pixelCount: part.image.pixelCount,
+        sha256: part.image.sha256,
+        byteLength: part.image.byteLength,
+        bytes: Uint8Array.from(part.image.bytes),
+      },
+    }));
+    return {
+      plan,
+      identity: {
+        planId: plan.planId,
+        sessionId: plan.sessionId,
+        requestId: plan.requestId,
+        generation: plan.generation,
+        rawSourceSha256: plan.source.rawSha256,
+        normalizedSourceSha256: plan.source.normalizedSha256,
+        poseIdentity: plan.poseIdentity,
+        target: {
+          renderTargetId: plan.target.renderTargetId,
+          sceneIndex: plan.target.sceneIndex,
+          selectedFrameIndex: plan.target.selectedFrameIndex,
+        },
+      },
+      parts,
+      partPngBytes: held.partPngBytes,
+    };
   }
 
   close(): void {
     if (this.closed) return;
     this.closed = true;
     if (this.active) this.cancelActive(this.active, 'RENDER_CANCELLED', 'Part preview service closed');
-    this.clearHeldPlan();
+    this.clearHeldResult();
     this.latestGenerationBySession.clear();
   }
 
@@ -809,12 +905,7 @@ export class FlaPartPreviewService {
       );
     }
 
-    const partPreviews: Array<{
-      unitId: string;
-      occurrenceId: string;
-      drawOrder: number;
-      image: FlaPartPreviewPng;
-    }> = [];
+    const partPreviews: FlaPartPreviewPart[] = [];
     let partPngBytes = 0;
     for (const candidate of collection.candidates) {
       if (!this.ensureCurrentAndWithinBudget(active)) {
@@ -963,8 +1054,7 @@ export class FlaPartPreviewService {
       null,
       units,
     );
-    this.holdPlan(plan);
-    return FlaPartPreviewResponseSchema.parse({
+    const response = FlaPartPreviewResponseSchema.parse({
       ok: true,
       status: 'PREVIEW_READY',
       capability: 'EDITABLE_PARTS_READY',
@@ -993,6 +1083,11 @@ export class FlaPartPreviewService {
         elapsedMs: Math.min(this.wallTimeMs, Date.now() - startedAt),
       },
     });
+    if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error('Editable Part preview response failed its validated capability check');
+    }
+    this.holdResult(plan, response.partPreviews);
+    return response;
   }
 
   private makeReassemblySvg(
@@ -1070,8 +1165,7 @@ export class FlaPartPreviewService {
   ): FlaPartPreviewResponse {
     const safeReason = reason.trim().slice(0, 1_000) || 'Part isolation is not supported for this Scene.';
     const plan = this.createPlan(active, source, native, 'WHOLE_IMAGE_ONLY', safeReason, []);
-    this.holdPlan(plan);
-    return FlaPartPreviewResponseSchema.parse({
+    const response = FlaPartPreviewResponseSchema.parse({
       ok: true,
       status: 'PREVIEW_READY',
       capability: 'WHOLE_IMAGE_ONLY',
@@ -1101,6 +1195,11 @@ export class FlaPartPreviewService {
         elapsedMs: Math.min(this.wallTimeMs, partialMetrics.elapsedMs),
       },
     });
+    if (!response.ok || response.capability !== 'WHOLE_IMAGE_ONLY') {
+      throw new Error('Whole-image preview response failed its validated capability check');
+    }
+    this.holdResult(plan, null);
+    return response;
   }
 
   private createPlan(
@@ -1159,18 +1258,82 @@ export class FlaPartPreviewService {
     });
   }
 
-  private holdPlan(plan: FlaPartPlan): void {
-    this.clearHeldPlan();
-    this.heldPlan = plan;
+  private holdResult(plan: FlaPartPlan, partPreviews: readonly FlaPartPreviewPart[] | null): void {
+    let parts: readonly FlaPartPreviewPart[] | null = null;
+    let partPngBytes = 0;
+    if (plan.capability === 'EDITABLE_PARTS_READY') {
+      if (!partPreviews || partPreviews.length < 2 ||
+          partPreviews.length > FLA_PART_PREVIEW_LIMITS.maxParts ||
+          partPreviews.length !== plan.units.length) {
+        throw new Error('Editable Part preview cannot hold an incomplete PNG batch');
+      }
+      const copiedParts = partPreviews.map((part, index) => {
+        const unit = plan.units[index];
+        const image = part.image;
+        if (!unit || unit.unitId !== part.unitId || unit.occurrenceId !== part.occurrenceId ||
+            unit.drawOrder !== index || part.drawOrder !== index ||
+            image.width !== plan.stage.width || image.height !== plan.stage.height ||
+            image.pixelCount !== plan.stage.pixelCount || image.byteLength !== image.bytes.byteLength ||
+            image.byteLength <= 0 || digestPng(image.bytes) !== image.sha256) {
+          throw new Error('Editable Part preview PNG does not match its PartPlan unit');
+        }
+        partPngBytes += image.byteLength;
+        if (partPngBytes > FLA_PART_PREVIEW_LIMITS.maxCompositionInputBytes ||
+            partPngBytes > FLA_PART_PREVIEW_LIMITS.maxTotalPngBytes) {
+          throw new Error('Editable Part preview PNGs exceed the retained batch byte budget');
+        }
+        return Object.freeze({
+          unitId: part.unitId,
+          occurrenceId: part.occurrenceId,
+          drawOrder: part.drawOrder,
+          image: Object.freeze({
+            width: image.width,
+            height: image.height,
+            pixelCount: image.pixelCount,
+            sha256: image.sha256,
+            byteLength: image.byteLength,
+            bytes: Uint8Array.from(image.bytes),
+          }),
+        });
+      });
+      parts = Object.freeze(copiedParts);
+    } else if (partPreviews !== null) {
+      throw new Error('Whole-image fallback cannot retain an editable Part PNG batch');
+    }
+
+    const heldResult: HeldPartPreviewResult = Object.freeze({
+      plan: structuredClone(plan),
+      parts,
+      partPngBytes,
+    });
+    this.clearHeldResult();
+    this.heldResult = heldResult;
+    const planId = heldResult.plan.planId;
     this.expiryTimer = setTimeout(() => {
-      if (this.heldPlan?.planId === plan.planId) this.clearHeldPlan();
+      if (this.heldResult?.plan.planId === planId) this.clearHeldResult();
     }, FLA_PART_PREVIEW_LIMITS.planLifetimeMs);
   }
 
-  private clearHeldPlan(): void {
+  private getValidHeldResult(): HeldPartPreviewResult | null {
+    const held = this.heldResult;
+    if (!held) return null;
+    if (Date.parse(held.plan.expiresAt) <= this.now().getTime()) {
+      this.clearHeldResult();
+      return null;
+    }
+    const source = toSnapshotSource(this.flaImportService.getSession(held.plan.sessionId));
+    if (!source || source.sha256.toLowerCase() !== held.plan.source.normalizedSha256 ||
+        (source.originalSourceSha256 ?? source.sha256).toLowerCase() !== held.plan.source.rawSha256) {
+      this.clearHeldResult();
+      return null;
+    }
+    return held;
+  }
+
+  private clearHeldResult(): void {
     if (this.expiryTimer) clearTimeout(this.expiryTimer);
     this.expiryTimer = null;
-    this.heldPlan = null;
+    this.heldResult = null;
   }
 
   private failure(

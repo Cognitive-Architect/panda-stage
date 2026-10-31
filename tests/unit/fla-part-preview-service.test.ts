@@ -16,6 +16,7 @@ import exampleProject from '../../demo-project/project-v1.example.json';
 import { FLA_PART_PREVIEW_LIMITS, FlaPartPreviewRequestSchema } from '../../src/shared/fla-part-preview-api';
 
 const SESSION_ID = '90600000-0000-4000-8000-000000000001';
+const SECOND_SESSION_ID = '90600000-0000-4000-8000-000000000003';
 
 interface FixtureMatrix {
   readonly a: number;
@@ -176,8 +177,11 @@ async function fixture(
     originalSourceSha256: rawSha256,
     sourceBytes: bytes,
   };
+  const registeredSessionIds = new Set([SESSION_ID]);
   const flaImportService = {
-    getSession: vi.fn((sessionId: string) => sessionId === SESSION_ID ? inspectionSession : null),
+    getSession: vi.fn((sessionId: string) => registeredSessionIds.has(sessionId)
+      ? { ...inspectionSession, sessionId }
+      : null),
   } as unknown as FlaImportService;
   const renderSession = {
     prepareDisplaySourceForPartPreview: vi.fn(async () => ({
@@ -197,6 +201,7 @@ async function fixture(
     displaySource,
     inspectionSession,
     flaImportService,
+    registerSession: (sessionId: string) => registeredSessionIds.add(sessionId),
     renderSession,
     targetId,
     secondTargetId: secondScene
@@ -205,12 +210,16 @@ async function fixture(
   };
 }
 
-function request(generation = 1) {
+function request(
+  generation = 1,
+  sessionId = SESSION_ID,
+  requestId = `90600000-0000-4000-8000-${String(generation).padStart(12, '0')}`,
+) {
   return FlaPartPreviewRequestSchema.parse({
     format: 'fla-part-preview',
     version: 1,
-    requestId: `90600000-0000-4000-8000-${String(generation).padStart(12, '0')}`,
-    sessionId: SESSION_ID,
+    requestId,
+    sessionId,
     generation,
     target: {
       renderTargetId: 'fla-render-target-placeholder0000',
@@ -258,6 +267,29 @@ function projectStateSnapshot(store: EditorProjectStore) {
   };
 }
 
+function heldPartPreviewStorage(service: FlaPartPreviewService) {
+  return (service as unknown as {
+    heldResult: {
+      parts: readonly { image: { bytes: Uint8Array } }[] | null;
+      partPngBytes: number;
+    } | null;
+  }).heldResult;
+}
+
+function cancelRequest(
+  requestId?: string,
+  sessionId?: string,
+  generation?: number,
+) {
+  return {
+    format: 'fla-part-preview-cancel',
+    version: 1,
+    ...(requestId ? { requestId } : {}),
+    ...(sessionId ? { sessionId } : {}),
+    ...(generation === undefined ? {} : { generation }),
+  };
+}
+
 describe('F1-02 Main part preview service', () => {
   it('keeps a source-addressed plan in Main and reassembles from emitted PNG bytes', async () => {
     const data = await fixture();
@@ -287,6 +319,76 @@ describe('F1-02 Main part preview service', () => {
     expect(plan?.units.every((unit) => unit.sourceAddress && unit.occurrencePath.length > 0)).toBe(true);
     // The renderer response carries only an opaque plan id and PNGs.
     expect(response).not.toHaveProperty('plan');
+    previewService.close();
+  });
+
+  it('retains the exact successful Part PNG batch with its matching Main-held plan', async () => {
+    const data = await fixture();
+    const { calls, outputs, previewService } = rasterizerFor(data);
+    const previewRequest = { ...request(1), target: { renderTargetId: data.targetId, selectedFrameIndex: 0 } };
+
+    const response = await previewService.preview(previewRequest);
+
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error('Expected a successful editable Part preview');
+    }
+    const batch = previewService.getPreparedBatch(response.planId, SESSION_ID, 1);
+    expect(batch).not.toBeNull();
+    if (!batch) throw new Error('Expected Main to retain the generated Part batch');
+    expect(batch.identity).toEqual({
+      planId: response.planId,
+      sessionId: SESSION_ID,
+      requestId: previewRequest.requestId,
+      generation: 1,
+      rawSourceSha256: data.rawSha256,
+      normalizedSourceSha256: batch.plan.source.normalizedSha256,
+      poseIdentity: response.poseIdentity,
+      target: {
+        renderTargetId: data.targetId,
+        sceneIndex: batch.plan.target.sceneIndex,
+        selectedFrameIndex: 0,
+      },
+    });
+    expect(batch.plan).toEqual(previewService.getPlan(response.planId, SESSION_ID, 1));
+    expect(batch.parts.map((part) => ({
+      unitId: part.unitId,
+      occurrenceId: part.occurrenceId,
+      drawOrder: part.drawOrder,
+      sha256: part.image.sha256,
+      byteLength: part.image.byteLength,
+    }))).toEqual(response.partPreviews.map((part) => ({
+      unitId: part.unitId,
+      occurrenceId: part.occurrenceId,
+      drawOrder: part.drawOrder,
+      sha256: part.image.sha256,
+      byteLength: part.image.byteLength,
+    })));
+    expect(batch.parts.map((part) => part.stageMapping)).toEqual(
+      batch.plan.units.map((unit) => unit.stageMapping),
+    );
+    const expectedPartPngs = outputs.slice(1, 3).map((bytes) => Buffer.from(bytes));
+    expect(batch.parts.map((part) => createHash('sha256').update(part.image.bytes).digest('hex')))
+      .toEqual(response.partPreviews.map((part) => part.image.sha256));
+    expect(batch.parts.map((part) => Buffer.from(part.image.bytes)))
+      .toEqual(expectedPartPngs);
+    expect(batch.partPngBytes).toBe(batch.parts.reduce((sum, part) => sum + part.image.byteLength, 0));
+    expect(batch.partPngBytes).toBeLessThanOrEqual(FLA_PART_PREVIEW_LIMITS.maxCompositionInputBytes);
+    expect(heldPartPreviewStorage(previewService)?.parts).toHaveLength(2);
+
+    const originalWorldTx = batch.plan.units[0]?.worldTransform.tx;
+    batch.parts[0]!.image.bytes[0] = batch.parts[0]!.image.bytes[0]! ^ 0xff;
+    batch.plan.units[0]!.worldTransform.tx += 999;
+    response.partPreviews[0]!.image.bytes[0] = response.partPreviews[0]!.image.bytes[0]! ^ 0xff;
+    const freshBatch = previewService.getPreparedBatch(response.planId, SESSION_ID, 1);
+    expect(freshBatch?.parts.map((part) => Buffer.from(part.image.bytes)))
+      .toEqual(expectedPartPngs);
+    expect(freshBatch?.parts.map((part) => part.image.sha256)).toEqual(
+      response.partPreviews.map((part) => part.image.sha256),
+    );
+    expect(freshBatch?.plan.units[0]?.worldTransform.tx).toBe(originalWorldTx);
+    expect(calls).toHaveLength(4);
+    expect(data.renderSession.prepareDisplaySourceForPartPreview).toHaveBeenCalledTimes(1);
     previewService.close();
   });
 
@@ -341,6 +443,8 @@ describe('F1-02 Main part preview service', () => {
     expect(response.reassembledPreview).toBeNull();
     expect(calls).toHaveLength(1);
     expect(previewService.getPlan(response.planId, SESSION_ID, 1)?.units).toEqual([]);
+    expect(previewService.getPreparedBatch(response.planId, SESSION_ID, 1)).toBeNull();
+    expect(heldPartPreviewStorage(previewService)).toMatchObject({ parts: null, partPngBytes: 0 });
     previewService.close();
   });
 
@@ -359,6 +463,8 @@ describe('F1-02 Main part preview service', () => {
     expect(response.reassembledPreview).toBeNull();
     expect(calls).toHaveLength(1);
     expect(previewService.getPlan(response.planId)?.units).toEqual([]);
+    expect(previewService.getPreparedBatch(response.planId, SESSION_ID, 1)).toBeNull();
+    expect(heldPartPreviewStorage(previewService)).toMatchObject({ parts: null, partPngBytes: 0 });
     previewService.close();
   });
 
@@ -404,6 +510,61 @@ describe('F1-02 Main part preview service', () => {
     expect(response.error.message).toBe('controlled raster failure');
     expect(rasterize).toHaveBeenCalledTimes(1);
     expect(response).not.toHaveProperty('partPreviews');
+    expect(heldPartPreviewStorage(previewService)).toBeNull();
+    previewService.close();
+  });
+
+  it('does not retain a partial independent PNG batch when a later Part raster fails', async () => {
+    const data = await fixture();
+    let rasterCount = 0;
+    const rasterizer: FlaStaticSnapshotRasterizer = {
+      async rasterize(input) {
+        rasterCount += 1;
+        if (rasterCount === 3) throw new Error('controlled second-Part raster failure');
+        const pngBytes = makePng(input.width, input.height, rasterCount * 23);
+        return { pngBytes, width: input.width, height: input.height, pixelCount: input.pixelCount };
+      },
+      cancel: vi.fn(() => true),
+      close() {},
+    };
+    const service = new FlaPartPreviewService({
+      flaImportService: data.flaImportService,
+      renderSession: data.renderSession as never,
+      rasterizer,
+      wallTimeMs: 10_000,
+    });
+
+    const response = await service.preview({
+      ...request(1),
+      target: { renderTargetId: data.targetId, selectedFrameIndex: 0 },
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.capability !== 'WHOLE_IMAGE_ONLY') {
+      throw new Error('Expected partial Part rasterization to fall back to a whole image');
+    }
+    expect(response.partPreviews).toEqual([]);
+    expect(response.reassembledPreview).toBeNull();
+    expect(service.getPlan(response.planId)?.capability).toBe('WHOLE_IMAGE_ONLY');
+    expect(service.getPreparedBatch(response.planId, SESSION_ID, 1)).toBeNull();
+    expect(heldPartPreviewStorage(service)).toMatchObject({ parts: null, partPngBytes: 0 });
+    expect(rasterCount).toBe(3);
+    service.close();
+  });
+
+  it('does not hold a plan or batch for an invalid Scene target', async () => {
+    const data = await fixture();
+    const { previewService } = rasterizerFor(data);
+
+    const response = await previewService.preview({
+      ...request(1),
+      target: { renderTargetId: 'fla-render-target-missing000000', selectedFrameIndex: 0 },
+    });
+
+    expect(response.ok).toBe(false);
+    if (response.ok) throw new Error('Expected invalid target rejection');
+    expect(response.error.code).toBe('TARGET_NOT_FOUND');
+    expect(heldPartPreviewStorage(previewService)).toBeNull();
     previewService.close();
   });
 
@@ -446,6 +607,8 @@ describe('F1-02 Main part preview service', () => {
     expect(response.metrics.unitCount).toBe(0);
     expect(response.metrics.rasterCount).toBe(2);
     expect(calls).toHaveLength(2);
+    expect(previewService.getPreparedBatch(response.planId, SESSION_ID, 1)).toBeNull();
+    expect(heldPartPreviewStorage(previewService)).toMatchObject({ parts: null, partPngBytes: 0 });
     previewService.close();
   }, 15_000);
 
@@ -496,6 +659,18 @@ describe('F1-02 Main part preview service', () => {
       target: { renderTargetId: data.targetId, selectedFrameIndex: 0 },
     });
     expect(success.ok).toBe(true);
+    if (!success.ok || success.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error('Expected a completed editable preview for the project-state fixture');
+    }
+    expect(previewService.getPreparedBatch(success.planId, SESSION_ID, 1)).not.toBeNull();
+    expect(projectStateSnapshot(projectStore)).toEqual(before);
+    expect(previewService.cancel(cancelRequest(success.requestId))).toMatchObject({
+      accepted: true,
+      cancelledRequestId: success.requestId,
+    });
+    expect(previewService.getPlan(success.planId, SESSION_ID, 1)).toBeNull();
+    expect(previewService.getPreparedBatch(success.planId, SESSION_ID, 1)).toBeNull();
+    expect(heldPartPreviewStorage(previewService)).toBeNull();
     expect(projectStateSnapshot(projectStore)).toEqual(before);
 
     const cancellationRequest = {
@@ -515,6 +690,7 @@ describe('F1-02 Main part preview service', () => {
     expect(cancelled.ok).toBe(false);
     if (cancelled.ok) throw new Error('Expected cancelled preview');
     expect(cancelled.error.code).toBe('RENDER_CANCELLED');
+    expect(heldPartPreviewStorage(previewService)).toBeNull();
     expect(projectStateSnapshot(projectStore)).toEqual(before);
     previewService.close();
 
@@ -569,12 +745,85 @@ describe('F1-02 Main part preview service', () => {
     if (cancelledResponse.ok) throw new Error('Expected cancelled response');
     expect(cancelledResponse.status).toBe('CANCELLED');
     expect(cancelled).toHaveLength(1);
+    expect(heldPartPreviewStorage(previewService)).toBeNull();
 
     const stale = await previewService.preview(firstRequest);
     expect(stale.ok).toBe(false);
     if (stale.ok) throw new Error('Expected stale generation rejection');
     expect(stale.error.code).toBe('STALE_GENERATION');
     previewService.close();
+  });
+
+  it('cancels a completed held batch by request ID alone and rejects stale identity', async () => {
+    const data = await fixture();
+    const { previewService } = rasterizerFor(data);
+    const previewRequest = { ...request(1), target: { renderTargetId: data.targetId, selectedFrameIndex: 0 } };
+    const response = await previewService.preview(previewRequest);
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error('Expected a completed editable preview');
+    }
+    expect(previewService.getPreparedBatch(response.planId, SESSION_ID, 1)).not.toBeNull();
+
+    expect(previewService.cancel(cancelRequest('90700000-0000-4000-8000-000000000001', SESSION_ID, 1)))
+      .toEqual({ accepted: false });
+    expect(previewService.cancel(cancelRequest(previewRequest.requestId, SESSION_ID, 2)))
+      .toEqual({ accepted: false });
+    expect(previewService.cancel(cancelRequest(previewRequest.requestId, SECOND_SESSION_ID, 1)))
+      .toEqual({ accepted: false });
+    expect(previewService.getPreparedBatch(response.planId, SESSION_ID, 1)).not.toBeNull();
+
+    expect(previewService.cancel(cancelRequest(previewRequest.requestId))).toEqual({
+      accepted: true,
+      cancelledRequestId: previewRequest.requestId,
+    });
+    expect(previewService.getPlan(response.planId, SESSION_ID, 1)).toBeNull();
+    expect(previewService.getPreparedBatch(response.planId, SESSION_ID, 1)).toBeNull();
+    expect(heldPartPreviewStorage(previewService)).toBeNull();
+    expect(previewService.cancel(cancelRequest(previewRequest.requestId))).toEqual({ accepted: false });
+    previewService.close();
+  });
+
+  it('replaces completed batches on same-session and cross-session previews', async () => {
+    const data = await fixture();
+    data.registerSession(SECOND_SESSION_ID);
+    const { calls, previewService } = rasterizerFor(data);
+
+    const firstRequest = { ...request(1), target: { renderTargetId: data.targetId, selectedFrameIndex: 0 } };
+    const first = await previewService.preview(firstRequest);
+    expect(first.ok).toBe(true);
+    if (!first.ok || first.capability !== 'EDITABLE_PARTS_READY') throw new Error('Expected first Part batch');
+    expect(previewService.getPreparedBatch(first.planId, SESSION_ID, 1)).not.toBeNull();
+
+    const sameSessionRequest = { ...request(2), target: firstRequest.target };
+    const sameSession = await previewService.preview(sameSessionRequest);
+    expect(sameSession.ok).toBe(true);
+    if (!sameSession.ok || sameSession.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error('Expected same-session replacement Part batch');
+    }
+    expect(previewService.getPreparedBatch(first.planId, SESSION_ID, 1)).toBeNull();
+    expect(previewService.getPreparedBatch(sameSession.planId, SESSION_ID, 2)).not.toBeNull();
+    expect(heldPartPreviewStorage(previewService)?.parts).toHaveLength(2);
+
+    const crossSessionRequest = {
+      ...request(1, SECOND_SESSION_ID, '90700000-0000-4000-8000-000000000002'),
+      target: firstRequest.target,
+    };
+    const crossSession = await previewService.preview(crossSessionRequest);
+    expect(crossSession.ok).toBe(true);
+    if (!crossSession.ok || crossSession.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error('Expected cross-session replacement Part batch');
+    }
+    expect(previewService.getPreparedBatch(sameSession.planId, SESSION_ID, 2)).toBeNull();
+    expect(previewService.getPreparedBatch(crossSession.planId, SECOND_SESSION_ID, 1)?.identity).toMatchObject({
+      requestId: crossSessionRequest.requestId,
+      sessionId: SECOND_SESSION_ID,
+      generation: 1,
+    });
+    expect(heldPartPreviewStorage(previewService)?.parts).toHaveLength(2);
+    expect(calls).toHaveLength(12);
+    previewService.close();
+    expect(heldPartPreviewStorage(previewService)).toBeNull();
   });
 
   it('replaces an active generation across Scene targets and ignores its late raster result', async () => {
@@ -628,10 +877,12 @@ describe('F1-02 Main part preview service', () => {
     expect(replacement.ok).toBe(true);
     if (!replacement.ok) throw new Error('Expected replacement preview');
     expect(previewService.getPlan(replacement.planId, SESSION_ID, 2)).not.toBeNull();
+    expect(previewService.getPreparedBatch(replacement.planId, SESSION_ID, 2)).not.toBeNull();
 
     staleRaster.complete?.();
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(previewService.getPlan(replacement.planId, SESSION_ID, 2)).not.toBeNull();
+    expect(previewService.getPreparedBatch(replacement.planId, SESSION_ID, 2)).not.toBeNull();
     previewService.close();
   });
 
@@ -664,6 +915,7 @@ describe('F1-02 Main part preview service', () => {
     if (response.ok) throw new Error('Expected timeout response');
     expect(response.error.code).toBe('RENDER_TIMEOUT');
     expect(cancelled).toHaveLength(1);
+    expect(heldPartPreviewStorage(previewService)).toBeNull();
     previewService.close();
   });
 
@@ -688,9 +940,41 @@ describe('F1-02 Main part preview service', () => {
     const response = await service.preview(previewRequest);
     expect(response.ok).toBe(true);
     if (!response.ok || response.status !== 'PREVIEW_READY') throw new Error('Expected preview plan');
+    if (response.capability !== 'EDITABLE_PARTS_READY') throw new Error('Expected retained Parts');
     expect(service.getPlan(response.planId)).not.toBeNull();
+    expect(service.getPreparedBatch(response.planId, SESSION_ID, 1)).not.toBeNull();
+    expect(heldPartPreviewStorage(service)?.partPngBytes).toBeGreaterThan(0);
     now = new Date(now.getTime() + 6 * 60_000);
     expect(service.getPlan(response.planId)).toBeNull();
+    expect(service.getPreparedBatch(response.planId, SESSION_ID, 1)).toBeNull();
+    expect(heldPartPreviewStorage(service)).toBeNull();
     service.close();
   });
+
+  it.each(['inspection-session release', 'project context change', 'service close'] as const)(
+    'releases the Main-held Part PNG bytes on %s',
+    async (invalidation) => {
+      const data = await fixture();
+      const { previewService } = rasterizerFor(data);
+      const response = await previewService.preview({
+        ...request(1),
+        target: { renderTargetId: data.targetId, selectedFrameIndex: 0 },
+      });
+      expect(response.ok).toBe(true);
+      if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
+        throw new Error('Expected a completed editable Part batch');
+      }
+      expect(previewService.getPreparedBatch(response.planId, SESSION_ID, 1)).not.toBeNull();
+      expect(heldPartPreviewStorage(previewService)?.partPngBytes).toBeGreaterThan(0);
+
+      if (invalidation === 'inspection-session release') previewService.invalidateSession(SESSION_ID);
+      else if (invalidation === 'project context change') previewService.invalidateAll();
+      else previewService.close();
+
+      expect(previewService.getPlan(response.planId, SESSION_ID, 1)).toBeNull();
+      expect(previewService.getPreparedBatch(response.planId, SESSION_ID, 1)).toBeNull();
+      expect(heldPartPreviewStorage(previewService)).toBeNull();
+      previewService.close();
+    },
+  );
 });
