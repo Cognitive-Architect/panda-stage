@@ -511,6 +511,32 @@ describe('Issue #639 Character detail placement bridge', () => {
     expect(editorProjectStore.getSnapshot()!.project.shots[0]!.layers).toHaveLength(beforeCount);
   });
 
+  it('keeps the Adaptive Parts workbench open when a Shot join is rejected before exit', () => {
+    open();
+    const before = editorProjectStore.getSnapshot()!;
+    const undoCount = editorProjectStore.history.getSnapshot().undoCount;
+    const leaveAssembly = vi.fn(() => true);
+    const reportStatus = vi.fn();
+
+    const placed = placeCharacterInCurrentShot({
+      characterId: 'missing-character',
+      getCurrentCharacterId: () => 'missing-character',
+      defaultTransformPending: false,
+      leaveAssembly,
+      reportStatus,
+    });
+
+    expect(placed).toBe(false);
+    expect(reportStatus).toHaveBeenCalledWith('请先打开项目、选择镜头和角色。');
+    expect(leaveAssembly).not.toHaveBeenCalled();
+    expect(editorProjectStore.getSnapshot()).toMatchObject({
+      project: before.project,
+      revision: before.revision,
+      dirty: before.dirty,
+    });
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(undoCount);
+  });
+
   it('keeps raw Body and Mouth image placement as ordinary asset-image Layers', () => {
     const project = compositeProject();
     open(ProjectSchema.parse({
