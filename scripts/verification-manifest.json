@@ -389,7 +389,16 @@
           "tests/unit/unsaved-close-controller.test.ts",
           "tests/unit/models/audio-clip-source-range.test.ts",
           "tests/integration/standalone-audio-persistence.test.ts",
-          "tests/integration/animation-persistence.test.ts"
+          "tests/integration/animation-persistence.test.ts",
+          "tests/helpers/adaptivePartsFixtures.ts",
+          "tests/helpers/characterAssertions.ts",
+          "tests/integration/adaptive-parts-lifecycle.test.ts",
+          "tests/integration/history-lifecycle.test.ts",
+          "tests/unit/adaptive-parts-character.test.ts",
+          "tests/unit/day23-layer-controls.test.ts",
+          "tests/unit/layer-service.test.ts",
+          "tests/unit/layer-stores.test.ts",
+          "tests/unit/reference-scanner.test.ts"
         ],
         "verifierPatterns": ["scripts/verify-issue257-slice3*", "scripts/verify-issue657-audio-foundation.cjs"],
         "suites": [],
@@ -397,7 +406,7 @@
         "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "architecture",
-        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #828 lifecycle/audio source-range tests and Main window/filesystem boundary tests remain here without broad test globs; other unregistered test paths stay fail-closed."
+        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. Exact Issue #828 lifecycle/audio source-range tests, Main window/filesystem boundary tests, and Issue #894 Adaptive Parts/Layer/history helpers and lifecycle tests remain here without broad test globs; other unregistered test paths stay fail-closed."
       },
       {
         "id": "release-export-core",
@@ -500,7 +509,9 @@
         "testPatterns": ["tests/unit/character-*.test.ts", "tests/unit/issue815-talking-head-settings.test.ts", "tests/unit/legacy-character-layer-reminder.test.ts", "tests/integration/character-*.test.ts"],
         "verifierPatterns": [
           "scripts/verify-day19*",
-          "scripts/verify-issue609-character-assembly.cjs"
+        "scripts/verify-issue609-character-assembly.cjs",
+        "scripts/verify-issue897-c2-adaptive-parts.cjs",
+        "scripts/verify-issue899-c3-v0.cjs"
         ],
         "suites": ["character"],
         "riskPolicy": "targeted",
@@ -734,7 +745,7 @@
       }
     ]
   },
-  "count": 104,
+  "count": 108,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -1971,6 +1982,54 @@
       "owner": "character",
       "supersedes": null,
       "notes": "Bounded Issue #822 C04 S04 Electron proof for left-card Body/Head/Face target selection, independent Change/Manage actions, compact action geometry, and recovered preview height across timeline and narrow 125% layouts; synthetic fixture evidence is not OWNER human acceptance."
+    },
+    {
+      "id": "issue897-c2-adaptive-parts",
+      "script": "verify:issue897-c2",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Issue #897 C2 Windows Electron proof for synthetic Adaptive Parts placement into a Shot, Undo/Redo, Save/reopen, Stage and Product Preview sampling, and formal six-second MP4 export with frame comparisons; generated evidence is AUTO_PASS, while OWNER visual acceptance remains separate."
+    },
+    {
+      "id": "issue899-c3-v0-adaptive-parts-ui",
+      "script": "verify:issue899-c3-v0",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Issue #899 C3 V0 Electron acceptance over locally selected Issue #893 C0 isolated PNGs through production AssetImportService and CharacterService, real Adaptive Parts assembly UI edits, Save/reopen, Stage/Preview six-second MP4 sampling. Requires PANDA_STAGE_ISSUE899_SOURCE_DIR and keeps all private sample assets in the external acceptance directory; AUTO_PASS does not attest OWNER review."
+    },
+    {
+      "id": "issue901-ui-a-adaptive-parts-controls",
+      "script": "verify:issue901-ui-a",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Issue #901 UI-A Windows Electron proof for direct visibility toggles, unclipped Part menus, inline rename, compact precise inspector input, lower-right Apply/Cancel, View All, and Adaptive Parts detail navigation. Requires local Issue #893 isolated-layer PNGs through PANDA_STAGE_ISSUE901_SOURCE_DIR or PANDA_STAGE_ISSUE899_SOURCE_DIR; screenshots and receipt stay in the external acceptance directory, and AUTO_PASS does not attest OWNER review."
+    },
+    {
+      "id": "issue906-f1-02-main-owned-part-preview",
+      "script": "verify:issue906-f1-02",
+      "suite": "assets",
+      "subsystem": "fla-part-preview",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "fla-rendering",
+      "supersedes": null,
+      "notes": "Issue #906 F1-02 Windows Electron acceptance for bounded Main-owned source-occurrence part preview and stage-identity PNG reassembly. Defaults to the previously authorized isolated Sample A and Animate frame; all artwork, screenshots, and receipts stay under the external acceptance directory."
     },
     {
       "id": "timeline",

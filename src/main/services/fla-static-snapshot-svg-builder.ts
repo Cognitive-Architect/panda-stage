@@ -2030,7 +2030,7 @@ function reconstructSolidStrokes(
  * at different times, so target ids derive from source bytes and a logical
  * target key rather than from catalog build order.
  */
-function stableRenderTargetId(bytes: Uint8Array, logicalTargetKey: string): string {
+export function stableRenderTargetId(bytes: Uint8Array, logicalTargetKey: string): string {
   const digest = crypto
     .createHash('sha256')
     .update(bytes)

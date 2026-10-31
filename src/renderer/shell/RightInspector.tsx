@@ -103,10 +103,12 @@ export function getRightInspectorLayerSummary(
     snapshot.project.characters?.find(
       (candidate) => candidate.id === source.characterId,
     ) ?? null;
-  const expression = character?.expressions.find(
+  const expressionCharacter =
+    character && character.mode !== 'adaptive-parts' ? character : null;
+  const expression = expressionCharacter?.expressions.find(
     (candidate) => candidate.id === source.expressionId,
   );
-  const assetId = expression?.assetId ?? character?.baseAssetId;
+  const assetId = expression?.assetId ?? expressionCharacter?.baseAssetId;
   const asset =
     snapshot.project.assets.find((candidate) => candidate.id === assetId) ??
     null;

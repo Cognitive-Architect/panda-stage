@@ -77,6 +77,7 @@ async function createHarness(
     referenced?: boolean;
     bodyReferenced?: boolean;
     headReferenced?: boolean;
+    partReferenced?: boolean;
     deleteFaults?: AssetDeleteFileSystemFaultInjector;
     beforeCommitValidation?: () => void | Promise<void>;
     beforeAtomicReplace?: () => void | Promise<void>;
@@ -141,6 +142,8 @@ async function createHarness(
     name: 'Head support image',
     relativePath: 'assets/head-support.png',
   };
+  const partCharacterId = randomUUID();
+  const partVoiceProfileId = randomUUID();
   const hasCharacterReference =
     options.bodyReferenced || options.headReferenced;
   const characterImageAssetId = options.headReferenced
@@ -149,7 +152,40 @@ async function createHarness(
   const project = ProjectSchema.parse({
     ...created.project,
     assets: options.headReferenced ? [asset, headSupportAsset] : [asset],
-    characters: hasCharacterReference
+    characters: options.partReferenced
+      ? [
+          {
+            id: partCharacterId,
+            name: 'Part reference character',
+            mode: 'adaptive-parts',
+            defaultVoiceProfileId: partVoiceProfileId,
+            defaultScale: 1,
+            defaultFlipX: false,
+            parts: [
+              {
+                partId: randomUUID(),
+                assetId: asset.id,
+                source: {
+                  kind: 'source-instance',
+                  sourceId: 'asset-delete-part-instance',
+                  sourcePoseFrame: 0,
+                  effectiveFrame: 0,
+                },
+                restTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+                imageMapping: {
+                  sourceWidth: 16,
+                  sourceHeight: 12,
+                  crop: { x: 0, y: 0, width: 16, height: 12 },
+                  exportScale: 1,
+                },
+                drawOrder: 0,
+                visible: true,
+                displayName: 'Referenced Part',
+              },
+            ],
+          },
+        ]
+      : hasCharacterReference
       ? [
           {
             id: bodyCharacterId,
@@ -183,7 +219,18 @@ async function createHarness(
           },
         ]
       : [],
-    voiceProfiles: hasCharacterReference
+    voiceProfiles: options.partReferenced
+      ? [
+          {
+            id: partVoiceProfileId,
+            name: 'Part reference voice',
+            characterId: partCharacterId,
+            locale: 'zh-CN',
+            rate: 1,
+            pitch: 0,
+          },
+        ]
+      : hasCharacterReference
       ? [
           {
             id: bodyVoiceProfileId,
@@ -427,6 +474,24 @@ describe('asset delete integration', () => {
         expect.objectContaining({
           kind: 'character-head',
           path: 'characters[0].head.assetId',
+        }),
+      ]),
+    });
+    expect(await state(input)).toEqual(before);
+  });
+
+  it('blocks deletion of an asset referenced by an Adaptive Part', async () => {
+    const input = await createHarness({ partReferenced: true });
+    const before = await state(input);
+
+    await expect(
+      input.deleteService.deleteAsset(request(input)),
+    ).rejects.toMatchObject({
+      code: 'ASSET_DELETE_REFERENCED',
+      references: expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'character-part',
+          path: 'characters[0].parts[0].assetId',
         }),
       ]),
     });

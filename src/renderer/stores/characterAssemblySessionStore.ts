@@ -1,6 +1,7 @@
 import {
   CharacterServiceError,
   DEFAULT_BODY_PLACEMENT,
+  type AdaptivePartsCharacterDefinition,
   type CharacterExpressionDraft,
   type CharacterHead,
   type BodyPlacement,
@@ -8,6 +9,7 @@ import {
   type CompositeCharacterUpdate,
   type CreateCompositeCharacterInput,
   type FacePlacement,
+  type Project,
 } from '../../domain';
 import {
   CharacterStore,
@@ -28,6 +30,7 @@ export type CharacterAssemblyErrorCode =
   | 'project-not-open'
   | 'character-not-found'
   | 'not-composite'
+  | 'not-adaptive-parts'
   | 'stale-session'
   | 'project-changed'
   | 'invalid-definition'
@@ -46,6 +49,7 @@ export class CharacterAssemblyError extends Error {
 
 export interface CharacterAssemblySnapshot {
   readonly status: 'active';
+  readonly kind?: 'edit';
   readonly sessionId: number;
   /** Changes after a successful commit so old callbacks cannot reuse it. */
   readonly generation: number;
@@ -84,6 +88,19 @@ export interface CharacterCreationSnapshot {
   readonly draft: CreateCompositeCharacterInput;
 }
 
+export interface AdaptivePartsAssemblySnapshot {
+  readonly status: 'active';
+  readonly kind: 'adaptive-parts';
+  readonly sessionId: number;
+  readonly generation: number;
+  readonly projectId: string;
+  readonly projectRoot: string;
+  readonly characterId: string;
+  /** Session-only Part selection; changing it never changes Project state. */
+  readonly selectedPartId: string | null;
+  readonly draft: AdaptivePartsCharacterDefinition;
+}
+
 export interface CharacterAssemblyDraftResult {
   readonly ok: true;
   readonly snapshot: CharacterAssemblySnapshot;
@@ -97,6 +114,20 @@ export interface CharacterAssemblyDraftRejected {
 export type CharacterAssemblyDraftUpdateResult =
   | CharacterAssemblyDraftResult
   | CharacterAssemblyDraftRejected;
+
+export interface AdaptivePartsDraftResult {
+  readonly ok: true;
+  readonly snapshot: AdaptivePartsAssemblySnapshot;
+}
+
+export interface AdaptivePartsDraftRejected {
+  readonly ok: false;
+  readonly error: CharacterAssemblyError;
+}
+
+export type AdaptivePartsDraftUpdateResult =
+  | AdaptivePartsDraftResult
+  | AdaptivePartsDraftRejected;
 
 export interface CharacterAssemblySessionHandle {
   readonly sessionId: number;
@@ -142,10 +173,27 @@ export interface CharacterCreationSessionHandle {
   exit(): void;
 }
 
+export interface AdaptivePartsAssemblySessionHandle {
+  readonly sessionId: number;
+  readonly generation: number;
+  getSnapshot(): AdaptivePartsAssemblySnapshot | null;
+  setDraft(draft: AdaptivePartsCharacterDefinition): AdaptivePartsDraftUpdateResult;
+  selectPart(partId: string | null): boolean;
+  commit(draft?: AdaptivePartsCharacterDefinition): AdaptivePartsAssemblyCommitResult;
+  cancel(): void;
+  exit(): void;
+}
+
 export interface CharacterAssemblyBeginSuccess {
   readonly ok: true;
   readonly session: CharacterAssemblySessionHandle;
   readonly snapshot: CharacterAssemblySnapshot;
+}
+
+export interface AdaptivePartsAssemblyBeginSuccess {
+  readonly ok: true;
+  readonly session: AdaptivePartsAssemblySessionHandle;
+  readonly snapshot: AdaptivePartsAssemblySnapshot;
 }
 
 export interface CharacterAssemblyBeginFailure {
@@ -155,6 +203,10 @@ export interface CharacterAssemblyBeginFailure {
 
 export type CharacterAssemblyBeginResult =
   | CharacterAssemblyBeginSuccess
+  | CharacterAssemblyBeginFailure;
+
+export type AdaptivePartsAssemblyBeginResult =
+  | AdaptivePartsAssemblyBeginSuccess
   | CharacterAssemblyBeginFailure;
 
 export interface CharacterCreationBeginSuccess {
@@ -193,6 +245,28 @@ export type CharacterAssemblyCommitResult =
   | CharacterAssemblyCommitSuccess
   | CharacterAssemblyNoOp
   | CharacterAssemblyCommitFailure;
+
+export interface AdaptivePartsAssemblyCommitSuccess {
+  readonly status: 'committed';
+  readonly session: AdaptivePartsAssemblySessionHandle;
+  readonly snapshot: AdaptivePartsAssemblySnapshot;
+}
+
+export interface AdaptivePartsAssemblyNoOp {
+  readonly status: 'no-op';
+  readonly snapshot: AdaptivePartsAssemblySnapshot;
+}
+
+export interface AdaptivePartsAssemblyCommitFailure {
+  readonly status: 'rejected' | 'stale';
+  readonly error: CharacterAssemblyError;
+  readonly snapshot: AdaptivePartsAssemblySnapshot | null;
+}
+
+export type AdaptivePartsAssemblyCommitResult =
+  | AdaptivePartsAssemblyCommitSuccess
+  | AdaptivePartsAssemblyNoOp
+  | AdaptivePartsAssemblyCommitFailure;
 
 export interface CharacterCreationDraftSuccess {
   readonly ok: true;
@@ -236,6 +310,8 @@ export interface CharacterAssemblySessionDependencies {
     | 'getCompositeDefinition'
     | 'applyCompositeDefinition'
     | 'createComposite'
+    | 'getAdaptivePartsDefinition'
+    | 'applyAdaptivePartsDefinitionAtSnapshot'
   >;
 }
 
@@ -264,7 +340,21 @@ interface ActiveCreationSession {
   draft: CreateCompositeCharacterInput;
 }
 
-type ActiveSession = ActiveAssemblySession | ActiveCreationSession;
+interface ActiveAdaptivePartsSession {
+  readonly kind: 'adaptive-parts';
+  readonly sessionId: number;
+  generation: number;
+  baselineSnapshot: EditorProjectSnapshot;
+  baselineDefinition: AdaptivePartsCharacterDefinition;
+  readonly projectId: string;
+  readonly projectRoot: string;
+  readonly projectInstanceId: number | null;
+  readonly characterId: string;
+  draft: AdaptivePartsCharacterDefinition;
+  selectedPartId: string | null;
+}
+
+type ActiveSession = ActiveAssemblySession | ActiveCreationSession | ActiveAdaptivePartsSession;
 
 interface CommitContext {
   readonly sessionId: number;
@@ -314,6 +404,36 @@ function cloneCreationDraft(
       ? {}
       : { defaultFlipX: draft.defaultFlipX }),
   };
+}
+
+function cloneAdaptivePartsDefinition(
+  definition: AdaptivePartsCharacterDefinition,
+): AdaptivePartsCharacterDefinition {
+  return {
+    sourceRootTransform: { ...definition.sourceRootTransform },
+    parts: definition.parts.map((part) => ({
+      ...part,
+      source: { ...part.source },
+      restTransform: { ...part.restTransform },
+      ...(part.sourceRestTransform
+        ? { sourceRestTransform: { ...part.sourceRestTransform } }
+        : {}),
+      ...(part.staticAdjustment
+        ? { staticAdjustment: { ...part.staticAdjustment } }
+        : {}),
+      imageMapping: {
+        ...part.imageMapping,
+        crop: { ...part.imageMapping.crop },
+      },
+    })),
+  };
+}
+
+function adaptivePartsDefinitionsEqual(
+  left: AdaptivePartsCharacterDefinition,
+  right: AdaptivePartsCharacterDefinition,
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function cloneHead(head: CharacterHead): CharacterHead {
@@ -511,6 +631,7 @@ export class CharacterAssemblySessionStore {
   private active: ActiveSession | null = null;
   private snapshot:
     | CharacterAssemblySnapshot
+    | AdaptivePartsAssemblySnapshot
     | CharacterCreationSnapshot
     | null = null;
   private editTarget: CharacterAssemblyEditTarget = 'face';
@@ -530,7 +651,7 @@ export class CharacterAssemblySessionStore {
     );
   }
 
-  readonly getSnapshot = (): CharacterAssemblySnapshot | CharacterCreationSnapshot | null =>
+  readonly getSnapshot = (): CharacterAssemblySnapshot | AdaptivePartsAssemblySnapshot | CharacterCreationSnapshot | null =>
     this.snapshot;
 
   readonly subscribe = (listener: Listener): (() => void) => {
@@ -545,7 +666,11 @@ export class CharacterAssemblySessionStore {
     generation: number,
   ): boolean {
     const active = this.activeForToken(sessionId, generation);
-    if (!active || (target === 'head' && !active.draft.head)) return false;
+    if (
+      !active ||
+      active.kind === 'adaptive-parts' ||
+      (target === 'head' && !active.draft.head)
+    ) return false;
     if (this.editTarget === target) return true;
     this.editTarget = target;
     this.emit();
@@ -609,6 +734,52 @@ export class CharacterAssemblySessionStore {
     };
   }
 
+  beginAdaptiveParts(characterId: string): AdaptivePartsAssemblyBeginResult {
+    const hadActiveSession = this.active !== null;
+    this.continuityOwner = null;
+    this.clearActive();
+    if (hadActiveSession) this.emit();
+
+    const snapshot = this.dependencies.editorStore.getSnapshot();
+    if (!snapshot) {
+      return {
+        ok: false,
+        error: new CharacterAssemblyError(
+          'project-not-open',
+          'Open a Project before starting Adaptive Parts assembly.',
+        ),
+      };
+    }
+
+    let definition: AdaptivePartsCharacterDefinition;
+    try {
+      definition = this.dependencies.characterStore.getAdaptivePartsDefinition(characterId);
+    } catch (error) {
+      return { ok: false, error: this.mapBeginError(error) };
+    }
+
+    const session: ActiveAdaptivePartsSession = {
+      kind: 'adaptive-parts',
+      sessionId: ++this.nextSessionId,
+      generation: 0,
+      baselineSnapshot: snapshot,
+      baselineDefinition: cloneAdaptivePartsDefinition(definition),
+      projectId: snapshot.project.id,
+      projectRoot: snapshot.projectRoot,
+      projectInstanceId: this.dependencies.editorStore.getProjectInstanceId(),
+      characterId,
+      draft: cloneAdaptivePartsDefinition(definition),
+      selectedPartId: null,
+    };
+    this.active = session;
+    this.emit();
+    return {
+      ok: true,
+      session: this.createAdaptivePartsHandle(session.sessionId, session.generation),
+      snapshot: this.snapshot as AdaptivePartsAssemblySnapshot,
+    };
+  }
+
   /**
    * Capture the Project lifetime before a new composite draft is edited.
    * Nothing in the draft is validated or persisted at this point; validation
@@ -655,11 +826,18 @@ export class CharacterAssemblySessionStore {
 
   getActiveSessionHandle():
     | CharacterAssemblySessionHandle
+    | AdaptivePartsAssemblySessionHandle
     | CharacterCreationSessionHandle
     | null {
     if (!this.active) return null;
     if (this.active.kind === 'create') {
       return this.createCreationHandle(
+        this.active.sessionId,
+        this.active.generation,
+      );
+    }
+    if (this.active.kind === 'adaptive-parts') {
+      return this.createAdaptivePartsHandle(
         this.active.sessionId,
         this.active.generation,
       );
@@ -681,6 +859,14 @@ export class CharacterAssemblySessionStore {
   getActiveAssemblySessionHandle(): CharacterAssemblySessionHandle | null {
     if (!this.active || this.active.kind !== 'edit') return null;
     return this.createAssemblyHandle(
+      this.active.sessionId,
+      this.active.generation,
+    );
+  }
+
+  getActiveAdaptivePartsAssemblySessionHandle(): AdaptivePartsAssemblySessionHandle | null {
+    if (!this.active || this.active.kind !== 'adaptive-parts') return null;
+    return this.createAdaptivePartsHandle(
       this.active.sessionId,
       this.active.generation,
     );
@@ -719,11 +905,15 @@ export class CharacterAssemblySessionStore {
    */
   private canResumeAssembly(
     previous: ActiveSession,
-  ): previous is ActiveAssemblySession {
-    if (previous.kind !== 'edit') return false;
+  ): previous is ActiveAssemblySession | ActiveAdaptivePartsSession {
+    if (previous.kind === 'create') return false;
     if (this.continuityOwner !== previous.characterId) return false;
     // Never trade a genuinely pending draft for workspace continuity.
-    if (!definitionsEqual(previous.draft, previous.baselineDefinition)) {
+    if (
+      previous.kind === 'edit'
+        ? !definitionsEqual(previous.draft, previous.baselineDefinition)
+        : !adaptivePartsDefinitionsEqual(previous.draft, previous.baselineDefinition)
+    ) {
       return false;
     }
     const current = this.dependencies.editorStore.getSnapshot();
@@ -739,13 +929,46 @@ export class CharacterAssemblySessionStore {
     const character = current.project.characters.find(
       (candidate) => candidate.id === previous.characterId,
     );
-    return Boolean(character && character.mode === 'composite');
+    return Boolean(
+      character &&
+      (previous.kind === 'edit'
+        ? character.mode === 'composite'
+        : character.mode === 'adaptive-parts'),
+    );
   }
 
   /** Read-only rebuild: no Project write, no dirty change, no History entry. */
-  private resumeAssembly(previous: ActiveAssemblySession): void {
+  private resumeAssembly(
+    previous: ActiveAssemblySession | ActiveAdaptivePartsSession,
+  ): void {
     const current = this.dependencies.editorStore.getSnapshot();
     if (!current) return;
+    if (previous.kind === 'adaptive-parts') {
+      let definition: AdaptivePartsCharacterDefinition;
+      try {
+        definition = this.dependencies.characterStore.getAdaptivePartsDefinition(
+          previous.characterId,
+        );
+      } catch {
+        return;
+      }
+      this.active = {
+        kind: 'adaptive-parts',
+        sessionId: ++this.nextSessionId,
+        generation: 0,
+        baselineSnapshot: current,
+        baselineDefinition: cloneAdaptivePartsDefinition(definition),
+        projectId: current.project.id,
+        projectRoot: current.projectRoot,
+        projectInstanceId: this.dependencies.editorStore.getProjectInstanceId(),
+        characterId: previous.characterId,
+        draft: cloneAdaptivePartsDefinition(definition),
+        selectedPartId: previous.selectedPartId && definition.parts.some(
+          (part) => part.partId === previous.selectedPartId,
+        ) ? previous.selectedPartId : null,
+      };
+      return;
+    }
     let definition: CompositeCharacterDefinition;
     try {
       definition = this.dependencies.characterStore.getCompositeDefinition(
@@ -783,6 +1006,22 @@ export class CharacterAssemblySessionStore {
         this.updateDraft(sessionId, generation, update),
       commit: (draft) =>
         this.commit(sessionId, generation, draft),
+      cancel: () => this.exit(sessionId, generation),
+      exit: () => this.exit(sessionId, generation),
+    };
+  }
+
+  private createAdaptivePartsHandle(
+    sessionId: number,
+    generation: number,
+  ): AdaptivePartsAssemblySessionHandle {
+    return {
+      sessionId,
+      generation,
+      getSnapshot: () => this.adaptivePartsSnapshotForToken(sessionId, generation),
+      setDraft: (draft) => this.setAdaptivePartsDraft(sessionId, generation, draft),
+      selectPart: (partId) => this.selectAdaptivePart(sessionId, generation, partId),
+      commit: (draft) => this.commitAdaptiveParts(sessionId, generation, draft),
       cancel: () => this.exit(sessionId, generation),
       exit: () => this.exit(sessionId, generation),
     };
@@ -845,6 +1084,138 @@ export class CharacterAssemblySessionStore {
       generation,
       mergeDefinition(active.draft, update),
     );
+  }
+
+  private setAdaptivePartsDraft(
+    sessionId: number,
+    generation: number,
+    draft: AdaptivePartsCharacterDefinition,
+  ): AdaptivePartsDraftUpdateResult {
+    const active = this.activeAdaptivePartsForToken(sessionId, generation);
+    if (!active) return this.staleAdaptivePartsDraftResult();
+    if (!this.baselineIsCurrent(active)) {
+      this.invalidate();
+      return this.staleAdaptivePartsDraftResult();
+    }
+    if (adaptivePartsDefinitionsEqual(active.draft, draft)) {
+      return { ok: true, snapshot: this.snapshot as AdaptivePartsAssemblySnapshot };
+    }
+    active.draft = cloneAdaptivePartsDefinition(draft);
+    if (
+      active.selectedPartId &&
+      !active.draft.parts.some((part) => part.partId === active.selectedPartId)
+    ) {
+      active.selectedPartId = null;
+    }
+    this.emit();
+    return { ok: true, snapshot: this.snapshot as AdaptivePartsAssemblySnapshot };
+  }
+
+  private selectAdaptivePart(
+    sessionId: number,
+    generation: number,
+    partId: string | null,
+  ): boolean {
+    const active = this.activeAdaptivePartsForToken(sessionId, generation);
+    if (!active || (partId !== null && !active.draft.parts.some((part) => part.partId === partId))) {
+      return false;
+    }
+    if (active.selectedPartId === partId) return true;
+    active.selectedPartId = partId;
+    this.emit();
+    return true;
+  }
+
+  private commitAdaptiveParts(
+    sessionId: number,
+    generation: number,
+    finalDraft?: AdaptivePartsCharacterDefinition,
+  ): AdaptivePartsAssemblyCommitResult {
+    const active = this.activeAdaptivePartsForToken(sessionId, generation);
+    if (!active) return this.staleAdaptivePartsCommitResult();
+    if (finalDraft !== undefined) {
+      const draftResult = this.setAdaptivePartsDraft(sessionId, generation, finalDraft);
+      if (!draftResult.ok) return this.staleAdaptivePartsCommitResult();
+    }
+    if (!this.baselineIsCurrent(active)) {
+      this.invalidate();
+      return this.staleAdaptivePartsCommitResult();
+    }
+    if (adaptivePartsDefinitionsEqual(active.draft, active.baselineDefinition)) {
+      return { status: 'no-op', snapshot: this.snapshot as AdaptivePartsAssemblySnapshot };
+    }
+
+    const baseline = active.baselineSnapshot;
+    const projectInstanceId = active.projectInstanceId;
+    if (projectInstanceId === null) {
+      this.invalidate();
+      return this.staleAdaptivePartsCommitResult();
+    }
+    this.commitContext = {
+      sessionId: active.sessionId,
+      generation: active.generation,
+      editorChangeCount: 0,
+      contextChanged: false,
+    };
+    let resultProject: Project;
+    try {
+      resultProject = this.dependencies.characterStore.applyAdaptivePartsDefinitionAtSnapshot(
+        active.characterId,
+        cloneAdaptivePartsDefinition(active.draft),
+        baseline,
+        projectInstanceId,
+      );
+    } catch (error) {
+      this.commitContext = null;
+      if (error instanceof CharacterStoreStaleError) {
+        this.invalidate();
+        return this.staleAdaptivePartsCommitResult();
+      }
+      if (error instanceof CharacterServiceError) {
+        return {
+          status: 'rejected',
+          error: this.definitionError(error),
+          snapshot: this.snapshot as AdaptivePartsAssemblySnapshot,
+        };
+      }
+      this.invalidate();
+      return {
+        status: 'stale',
+        error: new CharacterAssemblyError(
+          'commit-failed',
+          'Adaptive Parts assembly could not be committed safely.',
+          error,
+        ),
+        snapshot: null,
+      };
+    }
+
+    const current = this.dependencies.editorStore.getSnapshot();
+    const commitState = this.commitContext;
+    this.commitContext = null;
+    if (
+      !current || !commitState ||
+      commitState.sessionId !== active.sessionId ||
+      commitState.generation !== active.generation ||
+      commitState.editorChangeCount !== 1 || commitState.contextChanged ||
+      current.projectRoot !== baseline.projectRoot ||
+      current.project.id !== baseline.project.id ||
+      current.revision !== baseline.revision + 1 ||
+      JSON.stringify(current.project) !== JSON.stringify(resultProject)
+    ) {
+      this.invalidate();
+      return this.staleAdaptivePartsCommitResult();
+    }
+
+    active.baselineSnapshot = current;
+    active.baselineDefinition = cloneAdaptivePartsDefinition(active.draft);
+    active.generation += 1;
+    this.emit();
+    return {
+      status: 'committed',
+      session: this.createAdaptivePartsHandle(active.sessionId, active.generation),
+      snapshot: this.snapshot as AdaptivePartsAssemblySnapshot,
+    };
   }
 
   private commit(
@@ -1105,7 +1476,10 @@ export class CharacterAssemblySessionStore {
       current === active.baselineSnapshot &&
       current.projectRoot === active.projectRoot &&
       current.project.id === active.projectId &&
-      current.revision === active.baselineSnapshot.revision
+      current.revision === active.baselineSnapshot.revision &&
+      (!('projectInstanceId' in active) ||
+        this.dependencies.editorStore.getProjectInstanceId() ===
+          active.projectInstanceId)
     );
   }
 
@@ -1135,6 +1509,14 @@ export class CharacterAssemblySessionStore {
     return active?.kind === 'create' ? active : null;
   }
 
+  private activeAdaptivePartsForToken(
+    sessionId: number,
+    generation: number,
+  ): ActiveAdaptivePartsSession | null {
+    const active = this.activeForToken(sessionId, generation);
+    return active?.kind === 'adaptive-parts' ? active : null;
+  }
+
   private commitContextMatchesActive(): boolean {
     return (
       this.active !== null &&
@@ -1160,9 +1542,17 @@ export class CharacterAssemblySessionStore {
     return active ? (this.snapshot as CharacterCreationSnapshot) : null;
   }
 
+  private adaptivePartsSnapshotForToken(
+    sessionId: number,
+    generation: number,
+  ): AdaptivePartsAssemblySnapshot | null {
+    const active = this.activeAdaptivePartsForToken(sessionId, generation);
+    return active ? (this.snapshot as AdaptivePartsAssemblySnapshot) : null;
+  }
+
   private snapshotFor(
     active: ActiveSession | null,
-  ): CharacterAssemblySnapshot | CharacterCreationSnapshot | null {
+  ): CharacterAssemblySnapshot | AdaptivePartsAssemblySnapshot | CharacterCreationSnapshot | null {
     if (!active) return null;
     if (active.kind === 'create') {
       return {
@@ -1174,6 +1564,19 @@ export class CharacterAssemblySessionStore {
         projectRoot: active.projectRoot,
         editTarget: this.currentEditTarget(active),
         draft: cloneCreationDraft(active.draft),
+      };
+    }
+    if (active.kind === 'adaptive-parts') {
+      return {
+        status: 'active',
+        kind: 'adaptive-parts',
+        sessionId: active.sessionId,
+        generation: active.generation,
+        projectId: active.projectId,
+        projectRoot: active.projectRoot,
+        characterId: active.characterId,
+        selectedPartId: active.selectedPartId,
+        draft: cloneAdaptivePartsDefinition(active.draft),
       };
     }
     return {
@@ -1188,7 +1591,9 @@ export class CharacterAssemblySessionStore {
     };
   }
 
-  private currentEditTarget(active: ActiveSession): CharacterAssemblyEditTarget {
+  private currentEditTarget(
+    active: ActiveAssemblySession | ActiveCreationSession,
+  ): CharacterAssemblyEditTarget {
     if (this.editTarget === 'body') return 'body';
     return active.draft.head && this.editTarget === 'head' ? 'head' : 'face';
   }
@@ -1215,6 +1620,13 @@ export class CharacterAssemblySessionStore {
       if (error.code === 'COMPOSITE_CHARACTER_REQUIRED') {
         return new CharacterAssemblyError(
           'not-composite',
+          error.message,
+          error,
+        );
+      }
+      if (error.code === 'ADAPTIVE_PARTS_CHARACTER_REQUIRED') {
+        return new CharacterAssemblyError(
+          'not-adaptive-parts',
           error.message,
           error,
         );
@@ -1256,6 +1668,16 @@ export class CharacterAssemblySessionStore {
     };
   }
 
+  private staleAdaptivePartsDraftResult(): AdaptivePartsDraftRejected {
+    return {
+      ok: false,
+      error: new CharacterAssemblyError(
+        'stale-session',
+        'This Adaptive Parts assembly draft is no longer current.',
+      ),
+    };
+  }
+
   private staleCommitResult(): CharacterAssemblyCommitFailure {
     return {
       status: 'stale',
@@ -1273,6 +1695,17 @@ export class CharacterAssemblySessionStore {
       error: new CharacterAssemblyError(
         'stale-session',
         'This new Character creation callback is no longer current.',
+      ),
+      snapshot: null,
+    };
+  }
+
+  private staleAdaptivePartsCommitResult(): AdaptivePartsAssemblyCommitFailure {
+    return {
+      status: 'stale',
+      error: new CharacterAssemblyError(
+        'stale-session',
+        'This Adaptive Parts assembly callback is no longer current.',
       ),
       snapshot: null,
     };

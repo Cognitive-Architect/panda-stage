@@ -194,6 +194,39 @@ describe('RH-07 FAST Draft policy', () => {
     ]);
   });
 
+  it('routes the exact Adaptive Parts support and lifecycle paths through Full-risk core ownership', () => {
+    const paths = [
+      'tests/helpers/adaptivePartsFixtures.ts',
+      'tests/helpers/characterAssertions.ts',
+      'tests/integration/adaptive-parts-lifecycle.test.ts',
+      'tests/integration/history-lifecycle.test.ts',
+      'tests/unit/adaptive-parts-character.test.ts',
+      'tests/unit/day23-layer-controls.test.ts',
+      'tests/unit/layer-service.test.ts',
+      'tests/unit/layer-stores.test.ts',
+      'tests/unit/reference-scanner.test.ts',
+    ];
+
+    for (const file of paths) {
+      const result = draft([change(file, 'A')]);
+      expect(result.tier, file).toBe('focused');
+      expect(result.matchedRouteIds, file).toEqual(['cross-process-core']);
+      expect(result.areas, file).toContain('cross-process-core');
+      expect(result.unknownPaths, file).toEqual([]);
+    }
+
+    const readyResult = ready(paths.map((file) => change(file, 'A')));
+    expect(readyResult.tier).toBe('full');
+    expect(readyResult.suites).toEqual(manifest.routing.fullRegressionSuites);
+    expect(readyResult.unknownPaths).toEqual([]);
+
+    const futurePath = 'tests/unit/adaptive-parts-next.test.ts';
+    expect(draft([change(futurePath, 'A')])).toMatchObject({
+      tier: 'unknown',
+      unknownPaths: [futurePath],
+    });
+  });
+
   it('unions dialogue and subtitle suites without duplicates', () => {
     const result = draft([
       change('src/renderer/features/dialogue/DialogueTrack.tsx'),

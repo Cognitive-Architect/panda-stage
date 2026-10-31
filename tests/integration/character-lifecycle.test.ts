@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -167,7 +168,7 @@ describe('Day 19 character persistence', () => {
       `${JSON.stringify(project, null, 2)}\n`,
       'utf8',
     );
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
     const expression = character.expressions[1]!;
     const replacement = project.assets.find(
       (asset) =>
@@ -194,7 +195,7 @@ describe('Day 19 character persistence', () => {
     await projectService.save(root, replaced, 1);
     const reopened = await projectService.open(root);
     const persistedExpression =
-      reopened.project.characters[0]!.expressions.find(
+      asExpressionCharacter(reopened.project.characters[0]!).expressions.find(
         (candidate) => candidate.id === expression.id,
       );
 
@@ -203,7 +204,7 @@ describe('Day 19 character persistence', () => {
       name: expression.name,
       assetId: replacement.id,
     });
-    expect(reopened.project.characters[0]!.baseAssetId).toBe(
+    expect(asExpressionCharacter(reopened.project.characters[0]!).baseAssetId).toBe(
       replacement.id,
     );
     expect(

@@ -158,6 +158,14 @@ import {
   type FlaFrameSequenceProgress,
   type FlaFrameSequenceRequest,
 } from '../shared/fla-frame-sequence-api';
+import {
+  FlaPartPreviewCancelRequestSchema,
+  FlaPartPreviewCancelResponseSchema,
+  FlaPartPreviewRequestSchema,
+  FlaPartPreviewResponseSchema,
+  type FlaPartPreviewCancelRequest,
+  type FlaPartPreviewRequest,
+} from '../shared/fla-part-preview-api';
 
 type Unsubscribe = () => void;
 
@@ -622,6 +630,22 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return FlaStaticSnapshotCancelResponseSchema.parse(response);
+    },
+    partPreview: async (rawRequest: FlaPartPreviewRequest) => {
+      const request = FlaPartPreviewRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_PART_PREVIEW,
+        request,
+      );
+      return FlaPartPreviewResponseSchema.parse(response);
+    },
+    partPreviewCancel: async (rawRequest: FlaPartPreviewCancelRequest) => {
+      const request = FlaPartPreviewCancelRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_PART_PREVIEW_CANCEL,
+        request,
+      );
+      return FlaPartPreviewCancelResponseSchema.parse(response);
     },
     // V2-R2 Frame Sequence (Issue #294).  Bounded contiguous frame range
     // preview, per-session cancel, and N-frame ImageAsset commit.  The

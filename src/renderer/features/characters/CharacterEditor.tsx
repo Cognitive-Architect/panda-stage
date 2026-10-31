@@ -3,6 +3,7 @@ import type {
   Character,
   CharacterDimensionWarning,
   CompositeCharacterDefinition,
+  ExpressionCharacter,
   ImageAsset,
   Project,
 } from '../../../domain';
@@ -33,7 +34,7 @@ type HeadedCompositeCharacter = Extract<Character, { mode: 'composite' }> & {
 };
 
 export function isDefaultTransformPending(
-  character: Pick<Character, 'defaultScale' | 'defaultFlipX'>,
+  character: Pick<ExpressionCharacter, 'defaultScale' | 'defaultFlipX'>,
   scale: number,
   flipX: boolean,
 ): boolean {
@@ -303,6 +304,7 @@ export interface CharacterEditorProps {
   onSetDefaultExpression: (expressionId: string) => void;
   onSetMouthOpenAsset: (assetId: string | null) => void;
   assemblyDraft?: CompositeCharacterDefinition | null;
+  adaptiveAssemblyActive?: boolean;
   onOpenAssembly?: () => boolean;
   onLeaveAssembly?: () => boolean;
   onSetAssemblyHeadAsset?: (assetId: string | null) => void;
@@ -339,6 +341,7 @@ export function CharacterEditor({
   onSetDefaultExpression,
   onSetMouthOpenAsset,
   assemblyDraft = null,
+  adaptiveAssemblyActive = false,
   onOpenAssembly = () => false,
   onLeaveAssembly = () => true,
   onSetAssemblyHeadAsset = () => undefined,
@@ -472,6 +475,52 @@ export function CharacterEditor({
             加入当前镜头
           </Button>
         ) : null}
+      </div>
+    );
+  }
+
+  if (character.mode === 'adaptive-parts') {
+    const placementUnavailableReason = disabled
+      ? '请先打开项目'
+      : !hasCurrentShot
+        ? '请先选择镜头'
+        : null;
+    return (
+      <div className="character-editor character-editor-empty character-editor-adaptive-detail">
+        {view === 'detail' ? (
+          <header className="character-adaptive-detail-header">
+            <div className="character-adaptive-detail-heading">
+              {!adaptiveAssemblyActive ? (
+                <Button
+                  aria-label="返回角色列表"
+                  className="character-adaptive-detail-back"
+                  data-testid="adaptive-parts-back-to-list"
+                  onClick={onBackToList}
+                  title="返回角色列表"
+                  variant="secondary"
+                >
+                  <span aria-hidden="true">←</span>
+                </Button>
+              ) : null}
+              <strong title={character.name}>{character.name}</strong>
+            </div>
+            <div className="character-detail-identity-actions character-adaptive-detail-actions">
+              <Button
+                aria-label="加入当前镜头"
+                className="character-detail-place-action"
+                data-testid="character-detail-place-current-shot"
+                disabled={placementUnavailableReason !== null}
+                onClick={() => onPlaceInCurrentShot(false)}
+                title={placementUnavailableReason ?? '加入当前镜头'}
+                variant="secondary"
+              >
+                ＋ 加入镜头
+              </Button>
+            </div>
+          </header>
+        ) : (
+          <strong>{character.name}</strong>
+        )}
       </div>
     );
   }

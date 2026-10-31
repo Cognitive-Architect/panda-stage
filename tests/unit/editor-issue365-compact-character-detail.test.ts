@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -19,7 +20,7 @@ function source(path: string): string {
 
 function fixture() {
   const project = migrateProject(exampleProject);
-  const character = project.characters[0]!;
+  const character = asExpressionCharacter(project.characters[0]!);
   const imageAssets = project.assets.filter(
     (asset) => asset.kind === 'image',
   );

@@ -1,8 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  CharacterService,
+  adaptiveCharacterSourceAnchor,
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
   ProjectSchema,
@@ -13,9 +15,21 @@ import {
   CharacterEditor,
   isDefaultTransformPending,
 } from '../../src/renderer/features/characters/CharacterEditor';
-import { placeCharacterInCurrentShot } from '../../src/renderer/features/characters/CharacterManager';
+import {
+  CharacterAssemblyWorkbench,
+  resolveAdaptivePartRename,
+  resolveAdaptivePartsDefinitionUpdate,
+} from '../../src/renderer/features/characters/CharacterAssemblyWorkbench';
+import {
+  CharacterManager,
+  placeCharacterInCurrentShot,
+} from '../../src/renderer/features/characters/CharacterManager';
+import type { AdaptivePartsAssemblyActionsRef } from '../../src/renderer/features/characters/CharacterManager';
 import { bindTimelineRulerScroll } from '../../src/renderer/features/timeline/TimelineDock';
-import { characterAssemblySessionStore } from '../../src/renderer/stores/characterAssemblySessionStore';
+import {
+  characterAssemblySessionStore,
+  type AdaptivePartsAssemblySessionHandle,
+} from '../../src/renderer/stores/characterAssemblySessionStore';
 import { characterStore } from '../../src/renderer/stores/characterStore';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { layerStore } from '../../src/renderer/stores/layerStore';
@@ -24,6 +38,10 @@ import { selectionStore } from '../../src/renderer/stores/selectionStore';
 import { shotStore } from '../../src/renderer/stores/shotStore';
 import { timelineUiStore } from '../../src/renderer/features/timeline/timelineUiStore';
 import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
+import {
+  adaptivePartsFixture,
+  adaptivePartsSourceRootTransform,
+} from '../helpers/adaptivePartsFixtures';
 import { buildProject, IDS } from './domain/testProject';
 
 function open(project: Project = buildProject()): void {
@@ -120,6 +138,108 @@ describe('Issue #639 Character detail placement bridge', () => {
     expect(editorSource).toContain('先应用角色大小设置');
     expect(managerSource).toContain('onPlaceInCurrentShot={(defaultTransformPending) =>');
     expect(readOrderedStylesheetSource()).toContain('min-height: var(--ui-touch-icon);');
+  });
+
+  it('keeps Adaptive Parts detail placement without a duplicate assembly entry', () => {
+    const project = new CharacterService().createAdaptiveParts(buildProject(), {
+      name: 'Synthetic Static Parts',
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = project.characters.at(-1)!;
+    const markup = renderToStaticMarkup(createElement(CharacterEditor, {
+      character,
+      imageAssets: project.assets.filter(
+        (asset): asset is ImageAsset => asset.kind === 'image',
+      ),
+      thumbnails: {},
+      warnings: [],
+      onRenameCharacter: () => undefined,
+      onDeleteCharacter: () => undefined,
+      onAddExpression: () => undefined,
+      onRenameExpression: () => undefined,
+      onSetExpressionAsset: () => undefined,
+      onRemoveExpression: () => undefined,
+      onSetDefaultExpression: () => undefined,
+      onSetMouthOpenAsset: () => undefined,
+      onSetDefaultTransform: () => undefined,
+      onThumbnailError: () => undefined,
+      hasCurrentShot: true,
+      onPlaceInCurrentShot: () => undefined,
+      view: 'detail',
+      presentation: 'landscape',
+    }));
+    expect(markup).toContain('Synthetic Static Parts');
+    expect(markup).toContain('class="character-adaptive-detail-header"');
+    expect(markup).toContain('data-testid="adaptive-parts-back-to-list"');
+    expect(markup).not.toContain('data-testid="adaptive-parts-assembly-open"');
+    expect(markup).toContain('data-testid="character-detail-place-current-shot"');
+    const managerSource = readFileSync('src/renderer/features/characters/CharacterManager.tsx', 'utf8');
+    expect(managerSource).toContain('openAssembly(characterId);');
+  });
+
+  it('keeps Adaptive Character placement transforms independent across Shots', () => {
+    const adaptiveProject = new CharacterService().createAdaptiveParts(buildProject(), {
+      name: 'Synthetic Static Parts',
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const firstShot = adaptiveProject.shots[0]!;
+    const secondShotId = '50000000-0000-4000-8000-000000000002';
+    const secondLayers = firstShot.layers.map((layer, index) => ({
+      ...layer,
+      id: `60000000-0000-4000-8000-00000000001${index}`,
+    }));
+    const secondShot = {
+      ...firstShot,
+      id: secondShotId,
+      name: 'Independent Shot',
+      backgroundLayerId: secondLayers[0]!.id,
+      layers: secondLayers,
+    };
+    const project = ProjectSchema.parse({
+      ...adaptiveProject,
+      shots: [firstShot, secondShot],
+    });
+    const characterId = project.characters.at(-1)!.id;
+    open(project);
+
+    expect(place({
+      characterId,
+      getCurrentCharacterId: () => characterId,
+    })).toEqual(['']);
+    const firstLayer = editorProjectStore.getSnapshot()!.project.shots[0]!.layers.at(-1)!;
+    layerStore.updateTransform(firstLayer.id, {
+      x: 600,
+      y: 630,
+      scale: 1.25,
+      rotationDeg: 0,
+      opacity: 1,
+      flipX: false,
+    });
+
+    shotStore.select(secondShotId);
+    expect(place({
+      characterId,
+      getCurrentCharacterId: () => characterId,
+    })).toEqual(['']);
+    const secondLayer = editorProjectStore.getSnapshot()!.project.shots[1]!.layers.at(-1)!;
+    layerStore.updateTransform(secondLayer.id, {
+      x: 1_250,
+      y: 700,
+      scale: 0.8,
+      rotationDeg: 18,
+      opacity: 1,
+      flipX: true,
+    });
+
+    const shots = editorProjectStore.getSnapshot()!.project.shots;
+    const firstPlaced = shots[0]!.layers.find((layer) => layer.id === firstLayer.id)!;
+    const secondPlaced = shots[1]!.layers.find((layer) => layer.id === secondLayer.id)!;
+    expect(firstPlaced.source).toEqual({ kind: 'character', characterId });
+    expect(secondPlaced.source).toEqual({ kind: 'character', characterId });
+    expect(firstPlaced).toMatchObject({ x: 600, y: 630, scaleX: 1.25, scaleY: 1.25, rotationDeg: 0, flipX: false });
+    expect(secondPlaced).toMatchObject({ x: 1_250, y: 700, scaleX: 0.8, scaleY: 0.8, rotationDeg: 18, flipX: true });
   });
 
   it('uses the formal default Expression even when it is not the first row', () => {
@@ -221,7 +341,9 @@ describe('Issue #639 Character detail placement bridge', () => {
     const statuses = place({ leaveAssembly: () => false });
 
     expect(statuses).toEqual([]);
-    expect(characterAssemblySessionStore.getSnapshot()?.draft.bodyAssetId).toBe(IDS.assetChar2);
+    expect(characterAssemblySessionStore.getSnapshot()).toMatchObject({
+      draft: { bodyAssetId: IDS.assetChar2 },
+    });
     expect(begin.session.getSnapshot()).not.toBeNull();
     expect(timelineUiStore.getSnapshot()).toMatchObject({ currentTimeMs: 1_000, scrollPx: 240 });
     expect(editorProjectStore.getSnapshot()).toBe(before);
@@ -335,6 +457,52 @@ describe('Issue #639 Character detail placement bridge', () => {
     expect(editorProjectStore.history.getSnapshot()).toBe(history);
   });
 
+  it('places an Adaptive Parts Character through the existing Character-to-Shot path', () => {
+    const project = new CharacterService().createAdaptiveParts(buildProject(), {
+      name: 'Synthetic Static Parts',
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(IDS.assetChar),
+      defaultScale: 1.4,
+      defaultFlipX: true,
+    });
+    const character = project.characters.at(-1)!;
+    open(project);
+    const before = editorProjectStore.getSnapshot();
+    const history = editorProjectStore.history.getSnapshot();
+    const statuses = place({
+      characterId: character.id,
+      getCurrentCharacterId: () => character.id,
+    });
+    const after = editorProjectStore.getSnapshot()!;
+    const created = after.project.shots[0]!.layers.at(-1)!;
+    const sourceAnchor = character.mode === 'adaptive-parts'
+      ? adaptiveCharacterSourceAnchor(project, character)
+      : { x: 0, y: 0 };
+
+    expect(statuses).toEqual(['']);
+    expect(created.source).toEqual({ kind: 'character', characterId: character.id });
+    expect(created).toMatchObject({
+      x: sourceAnchor.x,
+      y: sourceAnchor.y,
+      scaleX: 1.4,
+      scaleY: 1.4,
+      flipX: true,
+    });
+    expect(selectionStore.getSelectedLayerId()).toBe(created.id);
+    expect(after.revision).toBe(before!.revision + 1);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(
+      history.undoCount + 1,
+    );
+    expect(editorProjectStore.undo()).toBe(true);
+    expect(editorProjectStore.getSnapshot()!.project.shots[0]!.layers).toHaveLength(
+      before!.project.shots[0]!.layers.length,
+    );
+    expect(editorProjectStore.redo()).toBe(true);
+    expect(editorProjectStore.getSnapshot()!.project.shots[0]!.layers.at(-1)!.id).toBe(
+      created.id,
+    );
+  });
+
   it('does not place after the Character is deleted during the Assembly exit boundary', () => {
     const project = buildProject();
     open(ProjectSchema.parse({
@@ -354,6 +522,32 @@ describe('Issue #639 Character detail placement bridge', () => {
     expect(editorProjectStore.getSnapshot()!.project.shots[0]!.layers).toHaveLength(beforeCount);
   });
 
+  it('keeps the Adaptive Parts workbench open when a Shot join is rejected before exit', () => {
+    open();
+    const before = editorProjectStore.getSnapshot()!;
+    const undoCount = editorProjectStore.history.getSnapshot().undoCount;
+    const leaveAssembly = vi.fn(() => true);
+    const reportStatus = vi.fn();
+
+    const placed = placeCharacterInCurrentShot({
+      characterId: 'missing-character',
+      getCurrentCharacterId: () => 'missing-character',
+      defaultTransformPending: false,
+      leaveAssembly,
+      reportStatus,
+    });
+
+    expect(placed).toBe(false);
+    expect(reportStatus).toHaveBeenCalledWith('请先打开项目、选择镜头和角色。');
+    expect(leaveAssembly).not.toHaveBeenCalled();
+    expect(editorProjectStore.getSnapshot()).toMatchObject({
+      project: before.project,
+      revision: before.revision,
+      dirty: before.dirty,
+    });
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(undoCount);
+  });
+
   it('keeps raw Body and Mouth image placement as ordinary asset-image Layers', () => {
     const project = compositeProject();
     open(ProjectSchema.parse({
@@ -369,5 +563,332 @@ describe('Issue #639 Character detail placement bridge', () => {
       });
       expect(layer.source).toEqual({ kind: 'asset', assetId });
     }
+  });
+});
+
+describe('Adaptive Parts inline rename completion', () => {
+  it('keeps the real expired-handle and missing-snapshot errors actionable for inline rename', () => {
+    const project = new CharacterService().createAdaptiveParts(buildProject(), {
+      name: 'Synthetic Static Parts',
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = project.characters.at(-1)!;
+    open(project);
+    const before = editorProjectStore.getSnapshot()!;
+    const historyBefore = editorProjectStore.history.getSnapshot();
+    const begun = characterAssemblySessionStore.beginAdaptiveParts(character.id);
+    expect(begun.ok).toBe(true);
+    if (!begun.ok) return;
+
+    const part = begun.snapshot.draft.parts[0]!;
+    const displayName = part.displayName ?? part.partId;
+    const inputValue = '  C0 temporary name  ';
+    const activeHandle = characterAssemblySessionStore.getActiveAdaptivePartsAssemblySessionHandle();
+    expect(activeHandle).not.toBeNull();
+    if (!activeHandle) return;
+    const missingSnapshotHandle: AdaptivePartsAssemblySessionHandle = {
+      sessionId: activeHandle.sessionId,
+      generation: activeHandle.generation,
+      getSnapshot: () => null,
+      setDraft: activeHandle.setDraft.bind(activeHandle),
+      selectPart: activeHandle.selectPart.bind(activeHandle),
+      commit: activeHandle.commit.bind(activeHandle),
+      cancel: activeHandle.cancel.bind(activeHandle),
+      exit: activeHandle.exit.bind(activeHandle),
+    };
+    const missingSnapshotResult = resolveAdaptivePartsDefinitionUpdate(
+      missingSnapshotHandle,
+      (definition) => ({
+        ...definition,
+        parts: definition.parts.map((candidate) => candidate.partId === part.partId
+          ? { ...candidate, displayName: 'C0 temporary name' }
+          : candidate),
+      }),
+    );
+    expect(missingSnapshotResult).toEqual({
+      ok: false,
+      message: '组装草稿已失效，请重新打开。',
+    });
+    expect(resolveAdaptivePartRename(inputValue, displayName, () => missingSnapshotResult)).toEqual({
+      ok: false,
+      inputValue,
+      error: '组装草稿已失效，请重新打开。',
+    });
+
+    begun.session.exit();
+    const activeHandleAfterExit = characterAssemblySessionStore.getActiveAdaptivePartsAssemblySessionHandle();
+    expect(activeHandleAfterExit).toBeNull();
+    const expiredHandleResult = resolveAdaptivePartsDefinitionUpdate(
+      activeHandleAfterExit,
+      (definition) => definition,
+    );
+    expect(expiredHandleResult).toEqual({
+      ok: false,
+      message: '组装草稿已失效，请重新打开。',
+    });
+    expect(resolveAdaptivePartRename(inputValue, displayName, () => expiredHandleResult)).toEqual({
+      ok: false,
+      inputValue,
+      error: '组装草稿已失效，请重新打开。',
+    });
+    expect(editorProjectStore.getSnapshot()).toMatchObject({
+      project: before.project,
+      revision: before.revision,
+      dirty: before.dirty,
+    });
+    expect(editorProjectStore.history.getSnapshot()).toEqual(historyBefore);
+    const source = readFileSync('src/renderer/features/characters/CharacterAssemblyWorkbench.tsx', 'utf8');
+    expect(source).toContain('value={renameValue}');
+    expect(source).toContain('setRenameError(completion.error)');
+    expect(source).toContain('aria-invalid={Boolean(renameError)}');
+  });
+
+  it('keeps the controlled input value and error when the session rejects a rename', () => {
+    const inputValue = '  C0 temporary name  ';
+    const rename = vi.fn(() => ({ ok: false as const, message: 'The assembly session expired.' }));
+
+    const result = resolveAdaptivePartRename(inputValue, 'com3', rename);
+
+    expect(rename).toHaveBeenCalledWith('C0 temporary name');
+    expect(result).toEqual({
+      ok: false,
+      inputValue,
+      error: 'The assembly session expired.',
+    });
+  });
+
+  it('keeps the rename input and reports a real stale-session draft rejection without writing the Project', () => {
+    const project = new CharacterService().createAdaptiveParts(buildProject(), {
+      name: 'Synthetic Static Parts',
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = project.characters.at(-1)!;
+    open(project);
+
+    const before = editorProjectStore.getSnapshot()!;
+    const historyBefore = editorProjectStore.history.getSnapshot();
+    const begun = characterAssemblySessionStore.beginAdaptiveParts(character.id);
+    expect(begun.ok).toBe(true);
+    if (!begun.ok) return;
+
+    const part = begun.snapshot.draft.parts[0]!;
+    const displayName = part.displayName ?? part.partId;
+    const inputValue = `  ${displayName} stale  `;
+    begun.session.exit();
+
+    let rejectedWrite: ReturnType<typeof begun.session.setDraft> | null = null;
+    const result = resolveAdaptivePartRename(inputValue, displayName, (name) => {
+      rejectedWrite = begun.session.setDraft({
+        ...begun.snapshot.draft,
+        parts: begun.snapshot.draft.parts.map((candidate) => candidate.partId === part.partId
+          ? { ...candidate, displayName: name }
+          : candidate),
+      });
+      return rejectedWrite.ok
+        ? { ok: true }
+        : { ok: false, message: rejectedWrite.error.message };
+    });
+
+    expect(rejectedWrite).toMatchObject({
+      ok: false,
+      error: { code: 'stale-session' },
+    });
+    expect(result).toEqual({
+      ok: false,
+      inputValue,
+      error: 'This Adaptive Parts assembly draft is no longer current.',
+    });
+    expect(editorProjectStore.getSnapshot()).toMatchObject({
+      project: before.project,
+      revision: before.revision,
+      dirty: before.dirty,
+    });
+    expect(editorProjectStore.history.getSnapshot()).toEqual(historyBefore);
+  });
+
+  it('keeps trim, empty-name, length, and no-change behavior', () => {
+    const rename = vi.fn(() => ({ ok: true as const }));
+
+    expect(resolveAdaptivePartRename('  New name  ', 'com3', rename)).toEqual({
+      ok: true,
+      value: 'New name',
+    });
+    expect(resolveAdaptivePartRename('com3', 'com3', rename)).toEqual({
+      ok: true,
+      value: 'com3',
+    });
+    expect(rename).toHaveBeenCalledTimes(1);
+    expect(resolveAdaptivePartRename('   ', 'com3', rename).ok).toBe(false);
+    expect(resolveAdaptivePartRename('x'.repeat(201), 'com3', rename).ok).toBe(false);
+  });
+});
+
+describe('Adaptive Parts assembly header', () => {
+  it('exits the resumed assembly session after a successful Shot join', () => {
+    const project = new CharacterService().createAdaptiveParts(buildProject(), {
+      name: 'Synthetic Static Parts',
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = project.characters.at(-1)!;
+    open(project);
+    const before = editorProjectStore.getSnapshot()!;
+    const historyBefore = editorProjectStore.history.getSnapshot();
+    const begin = characterAssemblySessionStore.beginAdaptiveParts(character.id);
+    expect(begin.ok).toBe(true);
+    if (!begin.ok) return;
+    characterAssemblySessionStore.setAssemblyContinuityOwner(character.id);
+
+    const actionsRef: AdaptivePartsAssemblyActionsRef = { current: null };
+    const onViewChange = vi.fn();
+    renderToStaticMarkup(createElement(CharacterManager, {
+      adaptivePartsActionsRef: actionsRef,
+      onViewChange,
+      snapshot: editorProjectStore.getSnapshot()!,
+      view: 'list',
+    }));
+    expect(actionsRef.current).not.toBeNull();
+
+    const result = actionsRef.current!.joinCurrentShot();
+    const after = editorProjectStore.getSnapshot()!;
+
+    expect(result).toEqual({ ok: true });
+    expect(after.revision).toBe(before.revision + 1);
+    expect(after.project.shots[0]?.layers).toHaveLength(
+      before.project.shots[0]!.layers.length + 1,
+    );
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(
+      historyBefore.undoCount + 1,
+    );
+    expect(characterAssemblySessionStore.getSnapshot()).toBeNull();
+    expect(onViewChange).toHaveBeenCalledWith('list');
+  });
+
+  it('keeps Escape inside inline rename and numeric draft fields', () => {
+    const workbench = readFileSync(
+      'src/renderer/features/characters/CharacterAssemblyWorkbench.tsx',
+      'utf8',
+    );
+
+    expect(workbench).toMatch(
+      /else if \(event\.key === 'Escape'\) \{\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);/u,
+    );
+    expect(workbench).toMatch(
+      /if \(event\.key !== 'Escape'\) return;\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*cancelNumericDraft/u,
+    );
+  });
+
+  it('centers the title between icon Back and the single Shot join action', () => {
+    const longName = 'C0 Adaptive Parts Character Name with a Long Display Title';
+    const project = new CharacterService().createAdaptiveParts(buildProject(), {
+      name: longName,
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = project.characters.at(-1)!;
+    open(project);
+    const begun = characterAssemblySessionStore.beginAdaptiveParts(character.id);
+    expect(begun.ok).toBe(true);
+    if (!begun.ok) return;
+
+    const markup = renderToStaticMarkup(createElement(CharacterAssemblyWorkbench, {
+      projectSnapshot: editorProjectStore.getSnapshot()!,
+      session: begun.snapshot,
+    }));
+
+    expect(markup).toContain('data-testid="adaptive-parts-back-to-list"');
+    expect(markup).toContain('aria-label="返回角色列表"');
+    expect(markup).toContain('<svg aria-hidden="true"');
+    expect(markup).toContain('class="adaptive-parts-assembly-join-shot"');
+    expect(markup).toContain('加入镜头');
+    expect(markup).toContain(`<strong title="${longName}">${longName}</strong>`);
+    expect(markup.match(/data-testid="adaptive-parts-join-current-shot"/gu)).toHaveLength(1);
+    expect(markup).not.toContain('返回角色列表</button>');
+    const styles = readFileSync(
+      'src/renderer/styles/features/characters/assembly/s17-01--character-assembly-workbench.css',
+      'utf8',
+    );
+    expect(styles).toMatch(/\.adaptive-parts-assembly-header > strong\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/u);
+    begun.session.cancel();
+  });
+
+  it('reports an actionable error when the Shot join action is unavailable', () => {
+    const source = readFileSync(
+      'src/renderer/features/characters/CharacterAssemblyWorkbench.tsx',
+      'utf8',
+    );
+    const missingJoinAction = source.slice(
+      source.indexOf('if (!joinAction) {'),
+      source.indexOf('const result = joinAction();'),
+    );
+
+    expect(missingJoinAction).toContain('setMessage(');
+    expect(source).toContain('if (!result?.ok) {');
+    expect(source).toContain('if (result?.message) setMessage(result.message);');
+  });
+
+  it('keeps the active Adaptive Parts draft when Shot placement fails', () => {
+    const project = new CharacterService().createAdaptiveParts(buildProject(), {
+      name: 'Synthetic Static Parts',
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = project.characters.at(-1)!;
+    const noShotProject = ProjectSchema.parse({ ...project, shots: [] });
+    editorProjectStore.open('D:/r07-placement-no-shot.pandastage', noShotProject);
+    const before = editorProjectStore.getSnapshot()!;
+    const historyBefore = editorProjectStore.history.getSnapshot();
+    const begun = characterAssemblySessionStore.beginAdaptiveParts(character.id);
+    expect(begun.ok).toBe(true);
+    if (!begun.ok) return;
+
+    const actionsRef: AdaptivePartsAssemblyActionsRef = { current: null };
+    const onViewChange = vi.fn();
+    renderToStaticMarkup(createElement(CharacterManager, {
+      adaptivePartsActionsRef: actionsRef,
+      onViewChange,
+      snapshot: editorProjectStore.getSnapshot()!,
+      view: 'list',
+    }));
+    const draftBefore = characterAssemblySessionStore.getSnapshot();
+    expect(actionsRef.current).not.toBeNull();
+    const result = actionsRef.current!.joinCurrentShot();
+
+    expect(result).toEqual({ ok: false, message: '请先打开项目、选择镜头和角色。' });
+    expect(characterAssemblySessionStore.getSnapshot()).toEqual(draftBefore);
+    expect(onViewChange).not.toHaveBeenCalled();
+    expect(editorProjectStore.getSnapshot()).toMatchObject({
+      project: before.project,
+      revision: before.revision,
+      dirty: before.dirty,
+    });
+    expect(editorProjectStore.history.getSnapshot()).toEqual(historyBefore);
+    begun.session.cancel();
+  });
+
+  it('disables Shot join when the Project has no current Shot', () => {
+    const project = new CharacterService().createAdaptiveParts(buildProject(), {
+      name: 'Synthetic Static Parts',
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = project.characters.at(-1)!;
+    const noShotProject = ProjectSchema.parse({ ...project, shots: [] });
+    editorProjectStore.open('D:/r07-placement-no-shot.pandastage', noShotProject);
+    expect(shotStore.getCurrentShotId()).toBeNull();
+    const begun = characterAssemblySessionStore.beginAdaptiveParts(character.id);
+    expect(begun.ok).toBe(true);
+    if (!begun.ok) return;
+
+    const markup = renderToStaticMarkup(createElement(CharacterAssemblyWorkbench, {
+      projectSnapshot: editorProjectStore.getSnapshot()!,
+      session: begun.snapshot,
+    }));
+    const join = markup.match(/<button(?=[^>]*data-testid="adaptive-parts-join-current-shot")[^>]*>/u)?.[0];
+
+    expect(join).toContain('disabled=""');
+    begun.session.cancel();
   });
 });

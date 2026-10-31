@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
@@ -52,7 +53,7 @@ describe('Day 24 history lifecycle', () => {
     const input = harness();
     const shot = input.project.shots[0]!;
     const layer = shot.layers[1]!;
-    const character = input.project.characters[0]!;
+    const character = asExpressionCharacter(input.project.characters[0]!);
     const expression = character.expressions[1]!;
 
     input.layers.updateTransform(layer.id, {
@@ -85,7 +86,7 @@ describe('Day 24 history lifecycle', () => {
     ).toBe(true);
     expect(input.editor.undo()).toBe(true);
     expect(
-      input.editor.getSnapshot()!.project.characters[0]!.expressions[1]!
+      asExpressionCharacter(input.editor.getSnapshot()!.project.characters[0]!).expressions[1]!
         .name,
     ).toBe(expression.name);
     expect(input.editor.undo()).toBe(true);

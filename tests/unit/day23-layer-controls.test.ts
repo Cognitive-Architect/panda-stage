@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
@@ -173,7 +174,7 @@ describe('Day 23 layer control adapters', () => {
 
   it('keeps the same center across expression size changes and flip state', () => {
     const project = migrateProject(exampleProject);
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
     const center = { x: 812.5, y: 431.25 };
     const service = new CharacterService();
     const first = service.resolveAppearance(

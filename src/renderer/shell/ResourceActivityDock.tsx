@@ -10,7 +10,10 @@ import { characterAssemblySessionStore } from '../stores/characterAssemblySessio
 import { AssetLibrary } from '../features/assets/AssetLibrary';
 import type { AssetWorkspaceView } from '../features/assets/AssetLibrary';
 import { CharacterManager } from '../features/characters/CharacterManager';
-import type { CharacterWorkspaceView } from '../features/characters/CharacterManager';
+import type {
+  AdaptivePartsAssemblyActionsRef,
+  CharacterWorkspaceView,
+} from '../features/characters/CharacterManager';
 import {
   ASSEMBLY_DISCARD_CONFIRM_MESSAGE,
   hasPendingCharacterAssemblyEdit,
@@ -49,6 +52,7 @@ export interface ResourceActivityDockProps {
   /** Optional portrait workspace request; the resource owner remains single. */
   activeActivity?: ResourceActivity;
   onActiveActivityChange?(activity: ResourceActivity): void;
+  adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
   /** Hide redundant section labels only for portrait resource surfaces. */
   hideSectionLabels?: boolean;
 }
@@ -110,6 +114,7 @@ export function ResourceActivityDock({
   onDrawerOpenChange,
   activeActivity: requestedActivity,
   onActiveActivityChange,
+  adaptivePartsActionsRef,
   hideSectionLabels = false,
 }: ResourceActivityDockProps): React.JSX.Element {
   const landscapePresentation = presentation === 'landscape';
@@ -134,6 +139,7 @@ export function ResourceActivityDock({
   const [internalDrawerOpen, setInternalDrawerOpen] = useState(() => !narrow);
   const drawerOpen = requestedDrawerOpen ?? internalDrawerOpen;
   const surfaceOpen = drawerOpen;
+  const previousRequestedDrawerOpen = useRef(requestedDrawerOpen);
 
   const confirmLeavingCharacterActivity = (): boolean => {
     if (activeActivity !== 'characters' || !snapshot) return true;
@@ -160,8 +166,16 @@ export function ResourceActivityDock({
     }
     onDrawerOpenChange?.(open);
   };
+  const setDrawerOpenRef = useRef(setDrawerOpen);
+  setDrawerOpenRef.current = setDrawerOpen;
 
   useEffect(() => {
+    const wasDrawerOpenControlled =
+      previousRequestedDrawerOpen.current !== undefined;
+    previousRequestedDrawerOpen.current = requestedDrawerOpen;
+    // Returning from a temporarily forced-open assembly must preserve the
+    // drawer state the user had before the shell took control.
+    if (wasDrawerOpenControlled && requestedDrawerOpen === undefined) return;
     if (requestedDrawerOpen === undefined) {
       const nextOpen = !narrow;
       const session = characterAssemblySessionStore.getSnapshot();
@@ -226,7 +240,7 @@ export function ResourceActivityDock({
     if (!narrow) return undefined;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
-        setDrawerOpen(false);
+        setDrawerOpenRef.current(false);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -617,6 +631,7 @@ export function ResourceActivityDock({
               />
             ) : (
               <CharacterManager
+                adaptivePartsActionsRef={adaptivePartsActionsRef}
                 hideHeading={landscapePresentation}
                 onViewChange={setCharacterView}
                 presentation={

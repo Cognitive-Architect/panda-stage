@@ -2,8 +2,11 @@ import {
   CharacterService,
   type CharacterExpressionAssetUpdate,
   type CharacterExpressionDraft,
+  type AdaptivePartUpdate,
+  type AdaptivePartsCharacterDefinition,
   type CompositeCharacterDefinition,
   type CompositeCharacterUpdate,
+  type CreateAdaptivePartsCharacterInput,
   type CreateCharacterInput,
   type CreateCompositeCharacterInput,
   type FacePlacement,
@@ -22,7 +25,21 @@ export class CharacterStoreStaleError extends Error {
   }
 }
 
+interface AdaptivePartsDraftBinding {
+  snapshot: EditorProjectSnapshot;
+  projectInstanceId: number;
+  projectRoot: string;
+  projectId: string;
+  revision: number;
+  projectJson: string;
+}
+
 export class CharacterStore {
+  private readonly adaptivePartsDraftBindings = new WeakMap<
+    AdaptivePartsCharacterDefinition,
+    AdaptivePartsDraftBinding
+  >();
+
   constructor(
     private readonly editorStore: EditorProjectStore,
     private readonly service: CharacterService,
@@ -43,6 +60,97 @@ export class CharacterStore {
       (project) => this.service.createComposite(project, input),
       'Create composite character',
       expectedSnapshot,
+    );
+  }
+
+  createAdaptiveParts(
+    input: CreateAdaptivePartsCharacterInput,
+    expectedSnapshot: EditorProjectSnapshot,
+  ): Project {
+    return this.apply(
+      (project) => this.service.createAdaptiveParts(project, input),
+      'Create Adaptive Parts character',
+      expectedSnapshot,
+    );
+  }
+
+  getAdaptivePartsDefinition(
+    characterId: string,
+  ): AdaptivePartsCharacterDefinition {
+    const snapshot = this.requireSnapshot();
+    const definition = this.service.getAdaptivePartsDefinition(
+      snapshot.project,
+      characterId,
+    );
+    const projectInstanceId = this.editorStore.getProjectInstanceId();
+    if (projectInstanceId === null) throw new CharacterStoreStaleError();
+    this.adaptivePartsDraftBindings.set(definition, {
+      snapshot,
+      projectInstanceId,
+      projectRoot: snapshot.projectRoot,
+      projectId: snapshot.project.id,
+      revision: snapshot.revision,
+      projectJson: JSON.stringify(snapshot.project),
+    });
+    return definition;
+  }
+
+  applyAdaptivePartsDefinition(
+    characterId: string,
+    definition: AdaptivePartsCharacterDefinition,
+  ): Project {
+    const binding = this.requireCurrentAdaptivePartsDraft(definition);
+    return this.apply(
+      (project) =>
+        this.service.applyAdaptivePartsDefinition(
+          project,
+          characterId,
+          definition,
+        ),
+      'Apply Adaptive Parts definition',
+      binding.snapshot,
+      binding.projectInstanceId,
+    );
+  }
+
+  /**
+   * Apply an immutable assembly draft against the exact project snapshot that
+   * the assembly session captured. Unlike get/apply draft bindings this also
+   * supports the session's defensive deep clone while retaining stale guards.
+   */
+  applyAdaptivePartsDefinitionAtSnapshot(
+    characterId: string,
+    definition: AdaptivePartsCharacterDefinition,
+    expectedSnapshot: EditorProjectSnapshot,
+    expectedProjectInstanceId: number,
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.applyAdaptivePartsDefinition(
+          project,
+          characterId,
+          definition,
+        ),
+      'Apply Adaptive Parts definition',
+      expectedSnapshot,
+      expectedProjectInstanceId,
+    );
+  }
+
+  updateAdaptivePart(
+    characterId: string,
+    partId: string,
+    update: AdaptivePartUpdate,
+  ): Project {
+    return this.apply(
+      (project) =>
+        this.service.updateAdaptivePart(
+          project,
+          characterId,
+          partId,
+          update,
+        ),
+      'Update Adaptive Part',
     );
   }
 
@@ -284,10 +392,17 @@ export class CharacterStore {
     mutation: (project: Project) => Project,
     label: string,
     expectedSnapshot?: EditorProjectSnapshot,
+    expectedProjectInstanceId?: number,
   ): Project {
     const snapshot = this.editorStore.getSnapshot();
     if (!snapshot) throw new Error('请先打开项目。');
-    if (expectedSnapshot && snapshot !== expectedSnapshot) {
+    const projectInstanceId = this.editorStore.getProjectInstanceId();
+    if (
+      expectedSnapshot &&
+      (snapshot !== expectedSnapshot ||
+        (expectedProjectInstanceId !== undefined &&
+          projectInstanceId !== expectedProjectInstanceId))
+    ) {
       throw new CharacterStoreStaleError();
     }
 
@@ -296,6 +411,7 @@ export class CharacterStore {
     if (
       !current ||
       current !== snapshot ||
+      this.editorStore.getProjectInstanceId() !== projectInstanceId ||
       current.projectRoot !== snapshot.projectRoot ||
       current.project.id !== snapshot.project.id ||
       current.revision !== snapshot.revision ||
@@ -311,6 +427,29 @@ export class CharacterStore {
     }
     this.editorStore.updateProject(project, label);
     return project;
+  }
+
+  private requireCurrentAdaptivePartsDraft(
+    definition: AdaptivePartsCharacterDefinition,
+  ): AdaptivePartsDraftBinding {
+    if (!definition || typeof definition !== 'object') {
+      throw new CharacterStoreStaleError();
+    }
+    const binding = this.adaptivePartsDraftBindings.get(definition);
+    const current = this.editorStore.getSnapshot();
+    if (
+      !binding ||
+      !current ||
+      current !== binding.snapshot ||
+      this.editorStore.getProjectInstanceId() !== binding.projectInstanceId ||
+      current.projectRoot !== binding.projectRoot ||
+      current.project.id !== binding.projectId ||
+      current.revision !== binding.revision ||
+      JSON.stringify(current.project) !== binding.projectJson
+    ) {
+      throw new CharacterStoreStaleError();
+    }
+    return binding;
   }
 
   private requireSnapshot(): EditorProjectSnapshot {

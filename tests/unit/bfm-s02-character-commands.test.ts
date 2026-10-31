@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { describe, expect, it } from 'vitest';
 import {
   CharacterService,
@@ -43,7 +44,7 @@ function compositeProject(): Project {
     ...project,
     characters: [
       {
-        ...project.characters[0]!,
+        ...asExpressionCharacter(project.characters[0]!),
         mode: 'composite',
         bodyAssetId: IDS.assetBg,
         facePlacement: { offsetX: 8, offsetY: -4, scale: 1 },
@@ -68,7 +69,7 @@ function compositeProject(): Project {
 }
 
 function definition(project: Project): CompositeCharacterDefinition {
-  const character = project.characters[0]!;
+  const character = asExpressionCharacter(project.characters[0]!);
   if (character.mode !== 'composite') {
     throw new Error('Expected a composite fixture.');
   }
@@ -217,7 +218,7 @@ describe('BFM-S02 Character commands', () => {
         { name: 'Angry', assetId: IDS.assetChar2 },
       ],
     });
-    const character = created.characters[0]!;
+    const character = asExpressionCharacter(created.characters[0]!);
 
     expect(character).toMatchObject({
       mode: 'composite',
@@ -509,7 +510,7 @@ describe('BFM-S02 Character commands', () => {
     input.characters.applyCompositeDefinition(IDS.character, next);
 
     const after = input.editor.getSnapshot()!;
-    const character = after.project.characters[0]!;
+    const character = asExpressionCharacter(after.project.characters[0]!);
     expect(after.revision).toBe(before.revision + 1);
     expect(after.dirty).toBe(true);
     expect(input.editor.history.getSnapshot()).toMatchObject({

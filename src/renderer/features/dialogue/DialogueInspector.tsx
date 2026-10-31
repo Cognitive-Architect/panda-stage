@@ -16,6 +16,7 @@ import { SubtitleStyleControls } from '../subtitles/SubtitleStyleControls';
 import {
   CharacterAvatar,
   CharacterIdentityPicker,
+  getCharacterDefaultExpression,
   useCharacterAvatarThumbnails,
 } from '../characters/CharacterIdentity';
 import {
@@ -753,10 +754,7 @@ export function DialogueInspector({
                 onThumbnailError={onCharacterThumbnailError}
                 thumbnail={
                   characterThumbnails[
-                    character.expressions.find(
-                      (expression) =>
-                        expression.id === character.defaultExpressionId,
-                    )?.assetId ?? character.expressions[0]?.assetId ?? ''
+                    getCharacterDefaultExpression(character)?.assetId ?? ''
                   ]
                 }
               />
@@ -1603,10 +1601,7 @@ export function DialogueInspector({
             onThumbnailError={onCharacterThumbnailError}
             thumbnail={
               characterThumbnails[
-                character.expressions.find(
-                  (expression) =>
-                    expression.id === character.defaultExpressionId,
-                )?.assetId ?? character.expressions[0]?.assetId ?? ''
+                getCharacterDefaultExpression(character)?.assetId ?? ''
               ]
             }
           />

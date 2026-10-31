@@ -216,7 +216,11 @@ function addShotVisualAssets(
     const character = project.characters.find(
       (candidate) => candidate.id === dialogue.characterId,
     );
-    if (!character?.mouthOpenAssetId) continue;
+    if (
+      !character ||
+      character.mode === 'adaptive-parts' ||
+      !character.mouthOpenAssetId
+    ) continue;
     const characterLayerIds = new Set(
       shot.layers
         .filter(

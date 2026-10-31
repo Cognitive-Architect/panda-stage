@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { describe, expect, it } from 'vitest';
 import {
   ProjectSchema,
@@ -334,7 +335,7 @@ describe('Product Preview mouth projection - Phase 3 B', () => {
     const noMouth = {
       ...project,
       characters: project.characters.map((character) => {
-        const next = { ...character };
+        const next = { ...asExpressionCharacter(character) };
         delete next.mouthOpenAssetId;
         return next;
       }),

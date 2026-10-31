@@ -35,6 +35,7 @@ import {
 import { shotStore } from '../stores/shotStore';
 import { characterAssemblySessionStore } from '../stores/characterAssemblySessionStore';
 import { CharacterAssemblyWorkbench } from '../features/characters/CharacterAssemblyWorkbench';
+import type { AdaptivePartsAssemblyActionsRef } from '../features/characters/CharacterManager';
 import { PendingDialoguePlacementProvider } from '../features/timeline/PendingDialoguePlacement';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
 import {
@@ -468,6 +469,7 @@ export function EditorShell({
   // Preview Camera is an editor-session mode, not Project or Preview state.
   const [autoCameraEnabled, setAutoCameraEnabled] = useState(false);
   const issue816FlowActive = useRef(false);
+  const adaptivePartsActionsRef = useRef<AdaptivePartsAssemblyActionsRef['current']>(null);
   const [productPreviewSurfaceActive, setProductPreviewSurfaceActive] =
     useState(false);
   const commitProductPreviewSurface = useCallback((): void => {
@@ -514,6 +516,13 @@ export function EditorShell({
       ? characterAssemblySnapshot
       : null;
   const assemblyActive = activeAssemblySession !== null;
+  const assemblyKind = activeAssemblySession
+    ? activeAssemblySession.kind ?? 'composite'
+    : 'none';
+  const assemblyHidesResourceDrawer =
+    assemblyKind === 'adaptive-parts' || assemblyKind === 'create';
+  const legacyCompositeAssemblyActive =
+    assemblyActive && assemblyKind === 'composite';
   const recoveryCandidate = getEditorShellRecoveryCandidate(
     shellState,
     sessionSnapshot,
@@ -1905,6 +1914,10 @@ export function EditorShell({
     !isPortrait ||
     portraitWorkspace === 'assets' ||
     (portraitWorkspace === 'canvas' && portraitCanvasSurface === 'shots');
+  const portraitResourcesSlotVisible =
+    (portraitResourcesVisible &&
+      !(isPortrait && assemblyHidesResourceDrawer)) ||
+    (isPortrait && legacyCompositeAssemblyActive);
   const portraitPropertiesVisible =
     !isPortrait ||
     portraitWorkspace === 'properties';
@@ -1931,6 +1944,7 @@ export function EditorShell({
       data-editor-shell-region={sessionRegion}
       data-editor-page={page}
       data-character-assembly-active={assemblyActive ? 'true' : 'false'}
+      data-character-assembly-kind={assemblyKind}
       data-gate-a={gateA ? 'enabled' : 'disabled'}
     >
       {!renderProductSurface ? null : page === 'project-center' ? (
@@ -2026,18 +2040,25 @@ export function EditorShell({
                 presentation={layoutMode}
               />
             <div
-              aria-hidden={!portraitResourcesVisible}
+              aria-hidden={!portraitResourcesSlotVisible}
               className="editor-workspace-slot editor-workspace-slot-resources"
-              data-active={portraitResourcesVisible}
+              data-active={portraitResourcesSlotVisible}
               data-workspace-owner="resources"
-              hidden={!portraitResourcesVisible}
+              hidden={!portraitResourcesSlotVisible}
             >
               <LeftWorkspace
+                adaptivePartsActionsRef={adaptivePartsActionsRef}
                 activeActivity={
-                  isPortrait ? portraitResourceActivity : undefined
+                  isPortrait
+                    ? assemblyActive
+                      ? 'characters'
+                      : portraitResourceActivity
+                    : undefined
                 }
                 drawerOpen={
-                  isPortrait && portraitResourcesVisible ? true : undefined
+                  assemblyActive || (isPortrait && portraitResourcesVisible)
+                    ? true
+                    : undefined
                 }
                 onDrawerOpenChange={(open) => {
                   if (!isPortrait || open) return;
@@ -2077,6 +2098,7 @@ export function EditorShell({
               </div>
               {activeAssemblySession && projectSnapshot ? (
                 <CharacterAssemblyWorkbench
+                  adaptivePartsActionsRef={adaptivePartsActionsRef}
                   projectSnapshot={projectSnapshot}
                   savedProjectSnapshot={editorProjectStore.getSavedProjectSnapshot()}
                   session={activeAssemblySession}
@@ -2089,7 +2111,7 @@ export function EditorShell({
               data-active={portraitPropertiesVisible || assemblyActive}
               data-workspace-owner="properties"
               data-character-assembly-inactive={assemblyActive ? 'true' : 'false'}
-              hidden={!portraitPropertiesVisible && !assemblyActive}
+              hidden={!portraitPropertiesVisible || (isPortrait && assemblyActive)}
               inert={assemblyActive || undefined}
             >
               {isPortrait ? (

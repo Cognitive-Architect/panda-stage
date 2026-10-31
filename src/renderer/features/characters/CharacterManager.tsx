@@ -10,11 +10,13 @@ import {
   CharacterServiceError,
   PROJECT_HEIGHT,
   PROJECT_WIDTH,
+  adaptiveCharacterSourceAnchor,
   countLegacyCharacterImageLayers,
   type CreateCharacterInput,
   type CreateCompositeCharacterInput,
   type CharacterHead,
   type CompositeCharacterDefinition,
+  type ExpressionCharacter,
   type ImageAsset,
   type Project,
 } from '../../../domain';
@@ -41,6 +43,7 @@ import { CharacterList } from './CharacterList';
 import {
   ASSEMBLY_DISCARD_CONFIRM_MESSAGE,
   isCharacterAssemblyPending,
+  isAdaptivePartsAssemblySnapshot,
   isCharacterCreationSnapshot,
   resolveAssemblyExitDecision,
 } from './characterAssemblyPreview';
@@ -116,6 +119,21 @@ export interface CharacterManagerProps {
   modeSwitchTarget?: HTMLElement | null;
   /** Keep drawer close owned by ResourceActivityDock while sharing the detail header. */
   onCloseDrawer?: () => void;
+  adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
+}
+
+export interface AdaptivePartsAssemblyActionResult {
+  ok: boolean;
+  message?: string;
+}
+
+export interface AdaptivePartsAssemblyActions {
+  backToCharacterList: () => boolean;
+  joinCurrentShot: () => AdaptivePartsAssemblyActionResult;
+}
+
+export interface AdaptivePartsAssemblyActionsRef {
+  current: AdaptivePartsAssemblyActions | null;
 }
 
 /** Character detail bridge into the existing 0:00 LayerStore creation path. */
@@ -131,7 +149,7 @@ export function placeCharacterInCurrentShot({
   defaultTransformPending: boolean;
   leaveAssembly: () => boolean;
   reportStatus: (message: string) => void;
-}): void {
+}): boolean {
   const before = editorProjectStore.getSnapshot();
   const shotId = shotStore.getCurrentShotId();
   const shot = before?.project.shots.find((candidate) => candidate.id === shotId);
@@ -140,22 +158,24 @@ export function placeCharacterInCurrentShot({
   );
   if (!before || !shot || !character || !characterId) {
     reportStatus('请先打开项目、选择镜头和角色。');
-    return;
+    return false;
   }
   if (defaultTransformPending) {
     reportStatus('先应用角色大小设置。');
-    return;
+    return false;
   }
-  const initialExpression = character.expressions.find(
-    (candidate) => candidate.id === character.defaultExpressionId,
-  );
-  if (!initialExpression || !before.project.assets.some(
-    (asset) => asset.kind === 'image' && asset.id === initialExpression.assetId,
-  )) {
-    reportStatus('默认表情素材不可用，请先设置默认表情。');
-    return;
+  if (character.mode !== 'adaptive-parts') {
+    const initialExpression = character.expressions.find(
+      (candidate) => candidate.id === character.defaultExpressionId,
+    );
+    if (!initialExpression || !before.project.assets.some(
+      (asset) => asset.kind === 'image' && asset.id === initialExpression.assetId,
+    )) {
+      reportStatus('默认表情素材不可用，请先设置默认表情。');
+      return false;
+    }
   }
-  if (!leaveAssembly()) return;
+  if (!leaveAssembly()) return false;
 
   const currentContext = (): {
     snapshot: EditorProjectSnapshot;
@@ -179,7 +199,7 @@ export function placeCharacterInCurrentShot({
   let live = currentContext();
   if (!live) {
     reportStatus('项目、镜头或角色已变化，请重试。');
-    return;
+    return false;
   }
   const timeline = timelineUiStore.getSnapshot();
   if (timeline.currentTimeMs !== 0 || timeline.scrollPx !== 0) {
@@ -188,30 +208,41 @@ export function placeCharacterInCurrentShot({
   live = currentContext();
   if (!live || timelineUiStore.getSnapshot().currentTimeMs !== 0) {
     reportStatus('项目、镜头或角色已变化，请重试。');
-    return;
-  }
-  const expression = live.character.expressions.find(
-    (candidate) => candidate.id === live.character.defaultExpressionId,
-  );
-  if (!expression || !live.snapshot.project.assets.some(
-    (asset) => asset.kind === 'image' && asset.id === expression.assetId,
-  )) {
-    reportStatus('默认表情素材不可用，请先设置默认表情。');
-    return;
+    return false;
   }
   try {
-    const layer = layerStore.createFromAsset({
-      version: 2,
-      type: 'character-expression',
-      assetId: expression.assetId,
-      characterId: live.character.id,
-      expressionId: expression.id,
-      position: { x: PROJECT_WIDTH / 2, y: PROJECT_HEIGHT / 2 },
-    });
+    const position = live.character.mode === 'adaptive-parts'
+      ? adaptiveCharacterSourceAnchor(live.snapshot.project, live.character)
+      : { x: PROJECT_WIDTH / 2, y: PROJECT_HEIGHT / 2 };
+    let layer: ReturnType<typeof layerStore.createAdaptiveCharacter>;
+    if (live.character.mode === 'adaptive-parts') {
+      layer = layerStore.createAdaptiveCharacter(live.character.id, position);
+    } else {
+      const liveCharacter = live.character;
+      const expression = liveCharacter.expressions.find(
+        (candidate) => candidate.id === liveCharacter.defaultExpressionId,
+      );
+      if (!expression || !live.snapshot.project.assets.some(
+        (asset) => asset.kind === 'image' && asset.id === expression.assetId,
+      )) {
+        reportStatus('默认表情素材不可用，请先设置默认表情。');
+        return false;
+      }
+      layer = layerStore.createFromAsset({
+        version: 2,
+        type: 'character-expression',
+        assetId: expression.assetId,
+        characterId: liveCharacter.id,
+        expressionId: expression.id,
+        position,
+      });
+    }
     selectionStore.select(layer.id);
     reportStatus('');
+    return true;
   } catch (error) {
     reportStatus(error instanceof Error ? error.message : '角色加入镜头失败。');
+    return false;
   }
 }
 
@@ -223,6 +254,7 @@ export function CharacterManager({
   presentation = 'default',
   modeSwitchTarget = null,
   onCloseDrawer = () => undefined,
+  adaptivePartsActionsRef,
 }: CharacterManagerProps): React.JSX.Element {
   const service = useMemo(() => new CharacterService(), []);
   const [selectedCharacterId, setSelectedCharacterId] = useState<
@@ -266,6 +298,11 @@ export function CharacterManager({
   const creationBaselineIdsRef = useRef<Set<string> | null>(null);
   const creationStartViewRef = useRef<CharacterWorkspaceView | null>(null);
   const project = snapshot?.project ?? null;
+  const characters = project?.characters ?? [];
+  const expressionCharacters = characters.filter(
+    (character): character is ExpressionCharacter =>
+      character.mode !== 'adaptive-parts',
+  );
   const imageAssets = useMemo(
     () =>
       (project?.assets.filter(
@@ -280,17 +317,24 @@ export function CharacterManager({
     );
   }, [imageAssets, project, snapshot, thumbnailEntries]);
   const selectedCharacter =
-    project?.characters.find(
+    expressionCharacters.find(
       (character) => character.id === selectedCharacterId,
       ) ?? null;
+  const selectedDisplayCharacter =
+    characters.find((character) => character.id === selectedCharacterId) ?? null;
   const editAssemblySnapshot =
     assemblySnapshot &&
     !isCharacterCreationSnapshot(assemblySnapshot) &&
-    assemblySnapshot.characterId === selectedCharacter?.id
+    assemblySnapshot.characterId === selectedDisplayCharacter?.id
       ? assemblySnapshot
       : null;
   const assemblyDraft: CompositeCharacterDefinition | null =
-    editAssemblySnapshot?.draft ?? null;
+    editAssemblySnapshot && !isAdaptivePartsAssemblySnapshot(editAssemblySnapshot)
+      ? editAssemblySnapshot.draft
+      : null;
+  const adaptiveAssemblyActive = Boolean(
+    editAssemblySnapshot && isAdaptivePartsAssemblySnapshot(editAssemblySnapshot),
+  );
   const assemblyPending = Boolean(
     editAssemblySnapshot &&
       project &&
@@ -323,14 +367,14 @@ export function CharacterManager({
   useEffect(() => {
     if (
       selectedCharacterId &&
-      project?.characters.some(
+      characters.some(
         (character) => character.id === selectedCharacterId,
       )
     ) {
       return;
     }
-    setSelectedCharacterId(project?.characters[0]?.id ?? null);
-  }, [project, selectedCharacterId]);
+    setSelectedCharacterId(characters[0]?.id ?? null);
+  }, [characters, selectedCharacterId]);
 
   useEffect(() => {
     if (!snapshot) {
@@ -417,7 +461,7 @@ export function CharacterManager({
     const next = mutate(() => characterStore.create(input));
     if (next) {
       const createdCharacter = next.characters.at(-1);
-      if (!createdCharacter) return;
+      if (!createdCharacter || createdCharacter.mode === 'adaptive-parts') return;
       showBindingReminder(
         next,
         createdCharacter.expressions.map((expression) => expression.assetId),
@@ -489,11 +533,18 @@ export function CharacterManager({
     creationStartViewRef.current = null;
   };
 
-  const openAssembly = (): boolean => {
-    if (!selectedCharacter || selectedCharacter.mode !== 'composite') {
+  const openAssembly = (characterId: string | null = selectedCharacterId): boolean => {
+    const character = characters.find((candidate) => candidate.id === characterId);
+    if (!character) return false;
+    const result = character.mode === 'adaptive-parts'
+      ? characterAssemblySessionStore.beginAdaptiveParts(character.id)
+      : character.mode === 'composite'
+        ? characterAssemblySessionStore.begin(character.id)
+        : null;
+    if (!result) {
+      setStatus('无法打开角色工作台，请返回角色列表后重试。');
       return false;
     }
-    const result = characterAssemblySessionStore.begin(selectedCharacter.id);
     if (!result.ok) {
       setStatus(result.error.message);
       return false;
@@ -518,12 +569,24 @@ export function CharacterManager({
     );
   };
 
-  const discardAssemblySession = (): void => {
-    const active = characterAssemblySessionStore.getActiveAssemblySessionHandle();
+  const discardAssemblySession = (
+    resumedAdaptiveCharacterId?: string,
+  ): void => {
+    const active = adaptiveAssemblyActive
+      ? characterAssemblySessionStore.getActiveAdaptivePartsAssemblySessionHandle()
+      : characterAssemblySessionStore.getActiveAssemblySessionHandle();
+    const currentAssembly = characterAssemblySessionStore.getSnapshot();
+    const isResumedAdaptiveSession = Boolean(
+      resumedAdaptiveCharacterId &&
+        currentAssembly &&
+        isAdaptivePartsAssemblySnapshot(currentAssembly) &&
+        currentAssembly.characterId === resumedAdaptiveCharacterId,
+    );
     if (
       active &&
-      editAssemblySnapshot &&
-      active.sessionId === editAssemblySnapshot.sessionId
+      ((editAssemblySnapshot &&
+        active.sessionId === editAssemblySnapshot.sessionId) ||
+        isResumedAdaptiveSession)
     ) {
       active.cancel();
     }
@@ -535,6 +598,52 @@ export function CharacterManager({
     if (!editAssemblySnapshot) return true;
     if (!confirmAssemblyDiscard()) return false;
     discardAssemblySession();
+    return true;
+  };
+
+  const joinAdaptivePartsCurrentShot = (): AdaptivePartsAssemblyActionResult => {
+    let message = '';
+    const joined = placeCharacterInCurrentShot({
+      characterId: selectedCharacterIdRef.current,
+      getCurrentCharacterId: () => selectedCharacterIdRef.current,
+      defaultTransformPending: false,
+      // Ask before changing the layer store, but keep the editable assembly
+      // draft alive until placement has succeeded.
+      leaveAssembly: confirmAssemblyDiscard,
+      reportStatus: (nextMessage) => {
+        message = nextMessage;
+        setStatus(nextMessage);
+      },
+    });
+    if (!joined) return { ok: false, ...(message ? { message } : {}) };
+    discardAssemblySession(selectedCharacterIdRef.current ?? undefined);
+    onViewChange('list');
+    return { ok: true };
+  };
+
+  const adaptivePartsActions: AdaptivePartsAssemblyActions = {
+    backToCharacterList: () => {
+      if (!leaveAssembly()) return false;
+      onViewChange('list');
+      return true;
+    },
+    joinCurrentShot: joinAdaptivePartsCurrentShot,
+  };
+  const latestAdaptivePartsActionsRef = useRef<AdaptivePartsAssemblyActions | null>(null);
+  latestAdaptivePartsActionsRef.current = adaptivePartsActions;
+  if (adaptivePartsActionsRef) adaptivePartsActionsRef.current = adaptivePartsActions;
+  useEffect(() => () => {
+    if (
+      adaptivePartsActionsRef?.current ===
+      latestAdaptivePartsActionsRef.current
+    ) {
+      adaptivePartsActionsRef.current = null;
+    }
+  }, [adaptivePartsActionsRef]);
+
+  const selectCharacter = (characterId: string): boolean => {
+    if (editAssemblySnapshot && !leaveAssembly()) return false;
+    setSelectedCharacterId(characterId);
     return true;
   };
 
@@ -588,7 +697,9 @@ export function CharacterManager({
     if (assemblySnapshot.characterId === selectedCharacterId) {
       ownedSessionIdRef.current = assemblySnapshot.sessionId;
     }
-    const active = characterAssemblySessionStore.getActiveAssemblySessionHandle();
+    const active = isAdaptivePartsAssemblySnapshot(assemblySnapshot)
+      ? characterAssemblySessionStore.getActiveAdaptivePartsAssemblySessionHandle()
+      : characterAssemblySessionStore.getActiveAssemblySessionHandle();
     if (active && active.sessionId === ownedSessionIdRef.current) {
       // Keep the latest generation for safe cleanup after an Apply.
       ownedSessionIdRef.current = active.sessionId;
@@ -659,7 +770,7 @@ export function CharacterManager({
           <div>
             <span>
               {snapshot
-                ? `${snapshot.project.characters.length} 个角色`
+                ? `${characters.length} 个角色`
                 : '尚未打开项目'}
             </span>
           </div>
@@ -671,7 +782,7 @@ export function CharacterManager({
       >
         {view === 'legacy' ? (
           <CharacterList
-            characters={project?.characters ?? []}
+            characters={characters}
             disabled={!snapshot}
             imageAssets={imageAssets}
             mode="legacy"
@@ -681,7 +792,7 @@ export function CharacterManager({
             onCancelCompositeCreate={cancelOwnedSession}
             onCompositeDraftChange={updateCompositeCreation}
             onCreate={createCharacter}
-            onSelect={setSelectedCharacterId}
+            onSelect={selectCharacter}
             onThumbnailError={markThumbnailError}
             presentation={presentation}
             selectedCharacterId={selectedCharacterId}
@@ -690,13 +801,18 @@ export function CharacterManager({
           />
         ) : view === 'list' ? (
           <CharacterList
-            characters={project?.characters ?? []}
+            characters={characters}
             disabled={!snapshot}
             imageAssets={imageAssets}
             mode="list"
             onCreate={createCharacter}
             onSelect={(characterId) => {
-              setSelectedCharacterId(characterId);
+              if (!selectCharacter(characterId)) return;
+              const character = characters.find((candidate) => candidate.id === characterId);
+              if (character?.mode === 'adaptive-parts') {
+                openAssembly(characterId);
+                return;
+              }
               onViewChange('detail');
             }}
             onThumbnailError={markThumbnailError}
@@ -707,7 +823,7 @@ export function CharacterManager({
           />
         ) : view === 'create' ? (
           <CharacterList
-            characters={project?.characters ?? []}
+            characters={characters}
             disabled={!snapshot}
             imageAssets={imageAssets}
             mode="create"
@@ -722,7 +838,7 @@ export function CharacterManager({
             onCancelCompositeCreate={cancelOwnedSession}
             onCompositeDraftChange={updateCompositeCreation}
             onCreate={createCharacter}
-            onSelect={setSelectedCharacterId}
+            onSelect={selectCharacter}
             onThumbnailError={markThumbnailError}
             presentation={presentation}
             selectedCharacterId={selectedCharacterId}
@@ -732,11 +848,11 @@ export function CharacterManager({
         ) : null}
         {view === 'legacy' || view === 'detail' || view === 'expression' ? (
           <CharacterEditor
-          character={selectedCharacter}
+          character={selectedDisplayCharacter}
           project={project ?? undefined}
           disabled={!snapshot}
           imageAssets={imageAssets}
-          key={selectedCharacter?.id ?? 'empty'}
+          key={selectedDisplayCharacter?.id ?? 'empty'}
           onAddExpression={(name, assetId) => {
             if (!selectedCharacter) return;
             const next = mutate(
@@ -863,7 +979,12 @@ export function CharacterManager({
             );
           }}
           assemblyDraft={assemblyDraft}
-          assemblyEditTarget={editAssemblySnapshot?.editTarget ?? 'face'}
+          adaptiveAssemblyActive={adaptiveAssemblyActive}
+          assemblyEditTarget={
+            editAssemblySnapshot && !isAdaptivePartsAssemblySnapshot(editAssemblySnapshot)
+              ? editAssemblySnapshot.editTarget
+              : 'face'
+          }
           onSelectAssemblyEditTarget={(target) => {
             if (!editAssemblySnapshot) return;
             characterAssemblySessionStore.setEditTarget(

@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../../helpers/characterAssertions';
 import { describe, expect, it } from 'vitest';
 import {
   PROJECT_SCHEMA_VERSION,
@@ -284,7 +285,7 @@ describe('migration ownership: ProjectService.open uses the single pipeline', ()
 
   it('v10 open -> save -> reopen preserves Head, Face, Pivot, and C02 intensity', async () => {
     const current = migrateProject(exampleProject);
-    const sourceCharacter = current.characters[0]!;
+    const sourceCharacter = asExpressionCharacter(current.characters[0]!);
     const compositeProject = ProjectSchema.parse({
       ...current,
       characters: [
@@ -314,7 +315,7 @@ describe('migration ownership: ProjectService.open uses the single pipeline', ()
         },
       ],
     });
-    const source = compositeProject.characters[0]!;
+    const source = asExpressionCharacter(compositeProject.characters[0]!);
     if (source.mode !== 'composite' || !source.head) {
       throw new Error('Expected a v10 composite Character fixture.');
     }
