@@ -1251,8 +1251,15 @@
 .adaptive-parts-assembly-canvas-part:active { cursor: grabbing; }
 
 .adaptive-parts-assembly-canvas-part.is-selected {
+  border-color: transparent;
+}
+
+.adaptive-parts-assembly-selection-outline {
+  position: absolute;
   z-index: 5;
+  box-sizing: border-box;
   border: 1px solid var(--ui-color-selected-border);
+  pointer-events: none;
 }
 
 .adaptive-parts-assembly-canvas-part img {
@@ -1267,6 +1274,7 @@
   position: absolute;
   right: -8px;
   bottom: -8px;
+  pointer-events: auto;
   width: var(--ui-touch-icon);
   height: var(--ui-touch-icon);
   min-width: var(--ui-touch-icon);

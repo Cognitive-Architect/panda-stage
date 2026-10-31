@@ -27,6 +27,10 @@ const { resolveMediaToolPaths } = require('../dist-electron/main/services/produc
 const { HiddenWindowManager } = require('../dist-electron/main/windows/hidden-window-manager.js');
 const { registerIpcHandlers } = require('../dist-electron/main/ipc/register-ipc-handlers.js');
 const { registerExportPreparationIpcHandlers } = require('../dist-electron/main/ipc/register-export-preparation-ipc-handlers.js');
+const {
+  bodyArmOverlayArgs,
+  orderedBodyArmRecords,
+} = require('./issue899-c0-body-arm-overlay.cjs');
 
 const sourceDir = process.env.PANDA_STAGE_ISSUE899_SOURCE_DIR;
 const acceptanceRoot = process.env.PANDA_STAGE_ISSUE899_ROOT ?? 'D:\\PandaStage-Acceptance\\issue899-c3';
@@ -68,6 +72,8 @@ const sourceRecords = [
 ];
 
 let mainWindow = null;
+let currentVerifierAction = null;
+const rendererDiagnostics = [];
 let hiddenWindowManager = null;
 let exportService = null;
 let exportPreparationService = null;
@@ -128,6 +134,34 @@ function encodeSolidPng(width, height, color) {
       raw[offset + 1] = color[1];
       raw[offset + 2] = color[2];
       raw[offset + 3] = color[3];
+    }
+  }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 6;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk('IHDR', header),
+    pngChunk('IDAT', deflateSync(raw)),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+function encodeMaskedOverlayPng(width, height, color, opaquePixels) {
+  const stride = width * 4;
+  const raw = Buffer.alloc((stride + 1) * height);
+  const opaque = new Set(opaquePixels.map(([x, y]) => `${x},${y}`));
+  for (let y = 0; y < height; y += 1) {
+    const rowOffset = y * (stride + 1);
+    raw[rowOffset] = 0;
+    for (let x = 0; x < width; x += 1) {
+      const offset = rowOffset + 1 + x * 4;
+      raw[offset] = color[0];
+      raw[offset + 1] = color[1];
+      raw[offset + 2] = color[2];
+      raw[offset + 3] = opaque.has(`${x},${y}`) ? color[3] : 0;
     }
   }
   const header = Buffer.alloc(13);
@@ -220,6 +254,7 @@ async function waitFor(window, expression, message, timeout) {
 }
 
 async function click(window, selector, label = selector) {
+  currentVerifierAction = label;
   await waitFor(window, `document.querySelector(${JSON.stringify(selector)})`, `${label} did not appear.`);
   const point = await page(window, `(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
@@ -364,7 +399,14 @@ async function dragPart(window, partId, dx, dy) {
     const element = document.querySelector(${JSON.stringify(selector)});
     if (!element) throw new Error('Selected Part canvas target is unavailable.');
     const rect = element.getBoundingClientRect();
-    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, width: rect.width, height: rect.height };
+    const fractions = [0.15, 0.3, 0.5, 0.7, 0.85];
+    for (const fy of fractions) for (const fx of fractions) {
+      const x = rect.left + rect.width * fx;
+      const y = rect.top + rect.height * fy;
+      const hit = document.elementFromPoint(x, y);
+      if (hit === element || element.contains(hit)) return { x, y, width: rect.width, height: rect.height };
+    }
+    throw new Error('Selected Part has no exposed canvas pixel for dragging.');
   })()`);
   assert(rect.width > 12 && rect.height > 12, `Part canvas bounds are too small for a real drag: ${JSON.stringify(rect)}.`);
   const displayScale = screen.getDisplayMatching(window.getBounds()).scaleFactor;
@@ -384,7 +426,7 @@ async function dragPart(window, partId, dx, dy) {
 }
 
 async function scalePart(window, partId, dx, dy) {
-  const selector = `[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${partId}"] .adaptive-parts-assembly-scale-handle`;
+  const selector = `[data-testid="adaptive-parts-assembly-selection-outline"][data-part-id="${partId}"] .adaptive-parts-assembly-scale-handle`;
   const rect = await page(window, `(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
     if (!element) throw new Error('Selected Part scale handle is unavailable.');
@@ -405,6 +447,109 @@ async function scalePart(window, partId, dx, dy) {
   window.webContents.sendInputEvent({ type: 'mouseUp', button: 'left', clickCount: 1, ...to });
   await pause(120);
   return { cssStart: { x: rect.x, y: rect.y }, cssDelta: { x: dx, y: dy }, inputFactor: factor };
+}
+
+async function verifyAssemblyOcclusionPixel(window, character) {
+  await page(window, 'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+  const geometry = await page(window, `(() => {
+    const stage = document.querySelector('.adaptive-parts-assembly-viewport .character-assembly-preview-stage');
+    if (!stage) throw new Error('Adaptive assembly Stage is unavailable.');
+    const stageRect = stage.getBoundingClientRect();
+    const stageScale = Number(stage.style.transform.match(/^scale\\(([^)]+)\\)$/)?.[1] ?? 0);
+    const order = new Map([...document.querySelectorAll('.adaptive-parts-assembly-row')]
+      .map((row) => [row.dataset.partId, Number(row.dataset.drawOrder)]));
+    const parts = [...document.querySelectorAll('[data-testid="adaptive-parts-assembly-canvas-part"]')]
+      .map((element) => ({ element, id: element.dataset.partId, drawOrder: order.get(element.dataset.partId), rect: element.getBoundingClientRect() }));
+    const overlaps = [];
+    for (let i = 0; i < parts.length; i += 1) for (let j = i + 1; j < parts.length; j += 1) {
+      const first = parts[i]; const second = parts[j];
+      const left = Math.max(first.rect.left, second.rect.left) + 8;
+      const top = Math.max(first.rect.top, second.rect.top) + 8;
+      const right = Math.min(first.rect.right, second.rect.right) - 8;
+      const bottom = Math.min(first.rect.bottom, second.rect.bottom) - 8;
+      const area = Math.max(0, right - left) * Math.max(0, bottom - top);
+      if (area < 64) continue;
+      const rear = first.drawOrder < second.drawOrder ? first : second;
+      const front = rear === first ? second : first;
+      const inversePoint = (part, x, y) => {
+        const matrix = new DOMMatrix(part.element.style.transform).inverse();
+        const stagePoint = new DOMPoint((x - stageRect.left) / stageScale, (y - stageRect.top) / stageScale);
+        const local = matrix.transformPoint(stagePoint);
+        return { x: local.x, y: local.y, width: part.element.clientWidth, height: part.element.clientHeight };
+      };
+      const samples = [];
+      for (let y = top; y < bottom && samples.length < 160; y += 7) for (let x = left; x < right && samples.length < 160; x += 7) {
+        const rearPoint = inversePoint(rear, x, y);
+        const frontPoint = inversePoint(front, x, y);
+        if ([rearPoint, frontPoint].every((point) => point.x > 5 && point.y > 5 && point.x < point.width - 8 && point.y < point.height - 8)) {
+          samples.push({ x, y, rearPoint, frontPoint });
+        }
+      }
+      if (samples.length) overlaps.push({ area, rearPartId: rear.id, frontPartId: front.id, samples });
+    }
+    overlaps.sort((left, right) => right.area - left.area);
+    return { viewport: { width: window.innerWidth, height: window.innerHeight }, overlaps };
+  })()`);
+  const overlap = geometry.overlaps[0];
+  assert(overlap, 'The source C0 assembly has no two-Part image overlap to verify.');
+  const sourceByPartId = new Map(character.parts.map((part) => [part.partId, part]));
+  const alphaAt = (assetId, point) => {
+    const bytes = assetBytes.get(assetId);
+    assert(bytes, `Source image bytes are unavailable for Asset ${assetId}.`);
+    const image = nativeImage.createFromBuffer(bytes);
+    const size = image.getSize();
+    const bitmap = image.toBitmap();
+    const x = Math.max(0, Math.min(size.width - 1, Math.floor((point.x / point.width) * size.width)));
+    const y = Math.max(0, Math.min(size.height - 1, Math.floor((point.y / point.height) * size.height)));
+    return bitmap[(y * size.width + x) * 4 + 3];
+  };
+  const opaqueSample = overlap.samples.find((sample) =>
+    alphaAt(sourceByPartId.get(overlap.rearPartId).assetId, sample.rearPoint) > 245 &&
+    alphaAt(sourceByPartId.get(overlap.frontPartId).assetId, sample.frontPoint) > 245,
+  );
+  assert(opaqueSample, `No opaque source-pixel overlap was found for Parts ${overlap.rearPartId} and ${overlap.frontPartId}.`);
+
+  const frontRow = `.adaptive-parts-assembly-row[data-part-id="${overlap.frontPartId}"] [data-testid="adaptive-parts-assembly-row-select"]`;
+  const rearRow = `.adaptive-parts-assembly-row[data-part-id="${overlap.rearPartId}"] [data-testid="adaptive-parts-assembly-row-select"]`;
+  await click(window, frontRow, 'Select the front overlapping C0 Part');
+  const frontSelected = await page(window,
+    `document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${overlap.frontPartId}"]')?.classList.contains('is-selected')`);
+  assert(frontSelected, 'The front overlapping C0 Part did not become selected.');
+  const before = await window.webContents.capturePage();
+  await fsp.writeFile(path.join(evidenceRoot, 'c3-overlap-front-selected.png'), before.toPNG());
+  await click(window, rearRow, 'Select the rear overlapping C0 Part');
+  const rearSelected = await page(window,
+    `document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${overlap.rearPartId}"]')?.classList.contains('is-selected')`);
+  assert(rearSelected, 'The rear overlapping C0 Part did not become selected.');
+  const after = await window.webContents.capturePage();
+  await fsp.writeFile(path.join(evidenceRoot, 'c3-overlap-rear-selected.png'), after.toPNG());
+  const pixel = (image, point) => {
+    const size = image.getSize();
+    const scaleX = size.width / geometry.viewport.width;
+    const scaleY = size.height / geometry.viewport.height;
+    const x = Math.max(0, Math.min(size.width - 1, Math.floor(point.x * scaleX)));
+    const y = Math.max(0, Math.min(size.height - 1, Math.floor(point.y * scaleY)));
+    const bitmap = image.toBitmap();
+    const offset = (y * size.width + x) * 4;
+    return [bitmap[offset + 2], bitmap[offset + 1], bitmap[offset], bitmap[offset + 3]];
+  };
+  const beforeRgba = pixel(before, opaqueSample);
+  const afterRgba = pixel(after, opaqueSample);
+  assert(JSON.stringify(beforeRgba) === JSON.stringify(afterRgba),
+    `Selecting rear Part ${overlap.rearPartId} changed the overlapping front pixel: ${JSON.stringify({ beforeRgba, afterRgba })}.`);
+  return {
+    result: 'PASS',
+    rearPartId: overlap.rearPartId,
+    frontPartId: overlap.frontPartId,
+    sampleCssPoint: { x: opaqueSample.x, y: opaqueSample.y },
+    sourceAlpha: {
+      rear: alphaAt(sourceByPartId.get(overlap.rearPartId).assetId, opaqueSample.rearPoint),
+      front: alphaAt(sourceByPartId.get(overlap.frontPartId).assetId, opaqueSample.frontPoint),
+    },
+    pixelBefore: beforeRgba,
+    pixelAfter: afterRgba,
+    screenshots: ['c3-overlap-front-selected.png', 'c3-overlap-rear-selected.png'],
+  };
 }
 
 async function clickPoint(window, selector, label = selector) {
@@ -458,9 +603,11 @@ async function touchDragPart(window, partId, dx, dy) {
   const selector = '[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="' + partId + '"]';
   const target = await page(window,
     "(() => { const element = document.querySelector(" + JSON.stringify(selector) + "); if (!element) return null; " +
-    "const bounds = element.getBoundingClientRect(); const x = bounds.left + bounds.width / 2; const y = bounds.top + bounds.height / 2; " +
-    "const hit = document.elementFromPoint(x, y); return { x, y, width: bounds.width, height: bounds.height, " +
-    "hitPartId: hit?.closest('[data-testid=\"adaptive-parts-assembly-canvas-part\"]')?.dataset.partId ?? null }; })()");
+    "const bounds = element.getBoundingClientRect(); const fractions = [0.15, 0.3, 0.5, 0.7, 0.85]; " +
+    "for (const fy of fractions) for (const fx of fractions) { const x = bounds.left + bounds.width * fx; const y = bounds.top + bounds.height * fy; " +
+    "const hit = document.elementFromPoint(x, y); const hitPartId = hit?.closest('[data-testid=\"adaptive-parts-assembly-canvas-part\"]')?.dataset.partId ?? null; " +
+    "if (hitPartId === element.dataset.partId) return { x, y, width: bounds.width, height: bounds.height, hitPartId }; } " +
+    "return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2, width: bounds.width, height: bounds.height, hitPartId: null }; })()");
   assert(target && target.width > 12 && target.height > 12 && target.hitPartId === partId,
     "Touch drag target is clipped or covered: " + JSON.stringify(target));
   await page(window,
@@ -924,6 +1071,54 @@ async function decodeRgb(ffmpegPath, imagePath) {
   return result.stdout;
 }
 
+async function verifyBodyArmOverlayOrdering(ffmpegPath) {
+  const fixtureRoot = path.join(cropRoot, 'body-arm-overlay-pixel-fixture');
+  await fsp.mkdir(fixtureRoot, { recursive: true });
+  const backPath = path.join(fixtureRoot, 'com2-back.png');
+  const frontPath = path.join(fixtureRoot, 'com5-front.png');
+  const outputPath = path.join(fixtureRoot, 'com2-back-com5-front.png');
+  const bodyPixels = [];
+  const armPixels = [];
+  for (let y = 0; y < 4; y += 1) {
+    for (let x = 0; x < 4; x += 1) {
+      if (x <= 2 && y <= 2) bodyPixels.push([x, y]);
+      if (x >= 1 && y >= 1) armPixels.push([x, y]);
+    }
+  }
+  await fsp.writeFile(backPath, encodeMaskedOverlayPng(4, 4, [230, 30, 20, 255], bodyPixels));
+  await fsp.writeFile(frontPath, encodeMaskedOverlayPng(4, 4, [15, 70, 240, 255], armPixels));
+  const byName = new Map([
+    ['com2', { sourceName: 'com2', drawOrder: 1, sourcePath: backPath }],
+    ['com5', { sourceName: 'com5', drawOrder: 2, sourcePath: frontPath }],
+  ]);
+  const [back, front] = orderedBodyArmRecords(byName);
+  assert(back.sourceName === 'com2' && front.sourceName === 'com5',
+    `Body+Arm Parts are not ordered by drawOrder: ${back.sourceName}, ${front.sourceName}.`);
+  await runProcess(ffmpegPath, bodyArmOverlayArgs(back.sourcePath, front.sourcePath, outputPath));
+  const decoded = await runProcess(ffmpegPath, [
+    '-v', 'error', '-i', outputPath, '-frames:v', '1',
+    '-f', 'rawvideo', '-pix_fmt', 'rgba', 'pipe:1',
+  ]);
+  const pixel = (x, y) => [...decoded.stdout.subarray((y * 4 + x) * 4, (y * 4 + x) * 4 + 4)];
+  const overlap = pixel(1, 1);
+  const backOnly = pixel(0, 0);
+  const transparent = pixel(3, 0);
+  assert(JSON.stringify(overlap) === JSON.stringify([15, 70, 240, 255]),
+    `The higher-drawOrder com5 PNG is not in front at overlap: ${JSON.stringify(overlap)}.`);
+  assert(JSON.stringify(backOnly) === JSON.stringify([230, 30, 20, 255]),
+    `The back com2 PNG did not remain visible through transparent com5 pixels: ${JSON.stringify(backOnly)}.`);
+  assert(transparent[3] === 0,
+    `The synthetic Body+Arm output did not preserve fully transparent pixels: ${JSON.stringify(transparent)}.`);
+  return {
+    result: 'PASS',
+    order: [{ sourceName: back.sourceName, drawOrder: back.drawOrder }, { sourceName: front.sourceName, drawOrder: front.drawOrder }],
+    overlapRgba: overlap,
+    backOnlyRgba: backOnly,
+    transparentRgba: transparent,
+    fixturePaths: { backPath, frontPath, outputPath },
+  };
+}
+
 async function comparePngs(ffmpegPath, referencePath, candidatePath) {
   const [reference, candidate] = await Promise.all([decodeRgb(ffmpegPath, referencePath), decodeRgb(ffmpegPath, candidatePath)]);
   assert(reference.length === candidate.length && reference.length > 0, `Pixel comparison dimensions differ: ${referencePath} vs ${candidatePath}.`);
@@ -993,8 +1188,22 @@ async function main() {
   });
   registerProjectHandlers(projectService);
   const mediaTools = registerExportServices();
+  const bodyArmOverlayPixelFixture = await verifyBodyArmOverlayOrdering(mediaTools.ffmpegPath);
   await app.whenReady();
   mainWindow = await createMainWindow({ show: true, issue816Acceptance: true });
+  mainWindow.webContents.on('console-message', (...args) => {
+    const details = args[1];
+    rendererDiagnostics.push({
+      level: typeof details === 'object' ? details?.level : details,
+      message: typeof details === 'object' ? details?.message : args[2],
+      lineNumber: typeof details === 'object' ? details?.lineNumber : args[3],
+      sourceId: typeof details === 'object' ? details?.sourceId : args[4],
+    });
+    if (rendererDiagnostics.length > 150) rendererDiagnostics.shift();
+  });
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    rendererDiagnostics.push({ kind: 'render-process-gone', details });
+  });
   mainWindow.setSize(1660, 1100);
   mainWindow.show();
   mainWindow.focus();
@@ -1033,6 +1242,7 @@ async function main() {
       partIdsBySourceId: sourcePartIds,
       parts: adaptive.parts,
     },
+    bodyArmOverlayPixelFixture,
     evidenceRoot,
     outputPath,
     owner: 'NOT_ATTESTED',
@@ -1387,6 +1597,13 @@ async function main() {
       physicalTouchHardware: 'NOT_RUN',
       cloudTouchDeviceMode: 'VIEWPORT_SIMULATED; physical hardware NOT_RUN',
     };
+    const beforeOcclusionReview = await inspect(mainWindow);
+    receipt.adaptiveOcclusion = await verifyAssemblyOcclusionPixel(mainWindow, adaptive);
+    const afterOcclusionReview = await inspect(mainWindow);
+    assert(afterOcclusionReview.revision === beforeOcclusionReview.revision &&
+      afterOcclusionReview.dirty === beforeOcclusionReview.dirty &&
+      afterOcclusionReview.undoCount === beforeOcclusionReview.undoCount,
+    'Selecting overlapping Parts wrote a Project revision, dirty state, or History entry.');
     const selectedRow = `.adaptive-parts-assembly-row[data-part-id="${partId}"] [data-testid="adaptive-parts-assembly-row-select"]`;
     await click(mainWindow, selectedRow, 'Select C0 com6 from the Part list');
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${partId}"].is-selected')`, 'List selection did not synchronize to the canvas.');
@@ -1404,16 +1621,43 @@ async function main() {
 
     const com2 = sourcePartIds['c0/com2'];
     const com2Row = `.adaptive-parts-assembly-row[data-part-id="${com2}"]`;
+    const assemblyRectsBeforeHide = await page(mainWindow, `(() => Object.fromEntries(
+      [...document.querySelectorAll('[data-testid="adaptive-parts-assembly-canvas-part"]')]
+        .map((part) => { const rect = part.getBoundingClientRect(); return [part.dataset.partId, { x: rect.x, y: rect.y, width: rect.width, height: rect.height }]; }),
+    ))()`);
     await click(mainWindow, `${com2Row} summary`, 'Open com2 Part menu');
     await click(mainWindow, `${com2Row} [data-adaptive-part-action="visibility"]`, 'Hide com2');
     assert(await page(mainWindow, `Boolean(document.querySelector(${JSON.stringify(com2Row)}))`), 'Hidden Part was removed from the Part list.');
+    await waitFor(mainWindow, `!document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${com2}"]')`, 'Hiding com2 did not remove only its rendered image.');
+    const assemblyRectsWhileHidden = await page(mainWindow, `(() => Object.fromEntries(
+      [...document.querySelectorAll('[data-testid="adaptive-parts-assembly-canvas-part"]')]
+        .map((part) => { const rect = part.getBoundingClientRect(); return [part.dataset.partId, { x: rect.x, y: rect.y, width: rect.width, height: rect.height }]; }),
+    ))()`);
+    for (const [visiblePartId, beforeRect] of Object.entries(assemblyRectsBeforeHide)) {
+      if (visiblePartId === com2) continue;
+      const hiddenRect = assemblyRectsWhileHidden[visiblePartId];
+      assert(hiddenRect && ['x', 'y', 'width', 'height'].every((key) => Math.abs(hiddenRect[key] - beforeRect[key]) <= 0.75),
+        `Hiding edge com2 moved ${visiblePartId}: ${JSON.stringify({ beforeRect, hiddenRect })}.`);
+    }
     await click(mainWindow, `${com2Row} [data-testid="adaptive-parts-assembly-row-select"]`, 'Select the hidden com2 Part');
     await click(mainWindow, `${com2Row} [data-adaptive-part-action="visibility"]`, 'Show com2');
+    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${com2}"]')`, 'Showing com2 did not restore its canvas image.');
+    const assemblyRectsAfterReveal = await page(mainWindow, `(() => Object.fromEntries(
+      [...document.querySelectorAll('[data-testid="adaptive-parts-assembly-canvas-part"]')]
+        .map((part) => { const rect = part.getBoundingClientRect(); return [part.dataset.partId, { x: rect.x, y: rect.y, width: rect.width, height: rect.height }]; }),
+    ))()`);
+    for (const [visiblePartId, beforeRect] of Object.entries(assemblyRectsBeforeHide)) {
+      const revealedRect = assemblyRectsAfterReveal[visiblePartId];
+      assert(revealedRect && ['x', 'y', 'width', 'height'].every((key) => Math.abs(revealedRect[key] - beforeRect[key]) <= 0.75),
+        `Revealing edge com2 changed ${visiblePartId} world bounds: ${JSON.stringify({ beforeRect, revealedRect })}.`);
+    }
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value === '0' && document.querySelector('[data-testid="adaptive-parts-scale-percent"]')?.value === '100'`, 'Selecting the second source Part did not load its independent source-relative controls.');
-    const secondPartDrag = await dragPart(mainWindow, com2, 12, 8);
-    await waitFor(mainWindow, `Number(document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value) > 0`, 'Dragging the second source Part did not update its own offset.');
-    const secondPartScale = await scalePart(mainWindow, com2, 10, 8);
-    await waitFor(mainWindow, `Number(document.querySelector('[data-testid="adaptive-parts-scale-percent"]')?.value) > 100`, 'Scaling the second source Part did not update its own scale.');
+    const secondPartOffsetX = 18;
+    await setInputValue(mainWindow, '[data-testid="adaptive-parts-offset-x"]', secondPartOffsetX);
+    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value === '${secondPartOffsetX}'`, 'The second source Part inspector did not update its own offset.');
+    const secondPartScalePercent = 110;
+    await setInputValue(mainWindow, '[data-testid="adaptive-parts-scale-percent"]', secondPartScalePercent);
+    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-scale-percent"]')?.value === '${secondPartScalePercent}'`, 'The second source Part inspector did not update its own scale.');
 
     await page(mainWindow, `window.prompt = () => 'com6 edited'; true;`);
     const com6Row = `.adaptive-parts-assembly-row[data-part-id="${partId}"]`;
@@ -1422,26 +1666,72 @@ async function main() {
     await waitFor(mainWindow, `document.querySelector(${JSON.stringify(com6Row)})?.innerText.includes('com6 edited')`, 'Part rename did not update its displayed name.');
     await captureWhole(mainWindow, 'c3-assembly-edited-draft.png');
 
+    const com2MenuOpen = await page(mainWindow, `document.querySelector(${JSON.stringify(com2Row)} + ' .adaptive-parts-row-menu')?.open === true`);
+    if (!com2MenuOpen) await click(mainWindow, `${com2Row} summary`, 'Open com2 Part menu before Apply');
+    await click(mainWindow, `${com2Row} [data-adaptive-part-action="visibility"]`, 'Hide com2 for Apply and History coverage');
+    await waitFor(mainWindow, `!document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${com2}"]')`, 'The final com2 hide did not remove its canvas image.');
+
     const historyBeforeApply = await inspect(mainWindow);
     await click(mainWindow, '[data-testid="adaptive-parts-assembly-apply"]', 'Apply the C0 Part edits');
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]') && document.querySelector('[data-testid="adaptive-parts-assembly-apply"]') && document.querySelector('[data-testid="adaptive-parts-assembly-cancel"]')`, 'Apply did not keep the committed assembly available for further edits.');
+    const afterFirstApply = await inspect(mainWindow);
+    assert(afterFirstApply.revision === historyBeforeApply.revision + 1 && afterFirstApply.dirty && afterFirstApply.undoCount === historyBeforeApply.undoCount + 1, 'The first Apply did not produce exactly one dirty project revision and History entry.');
+    const firstApplyStatus = await page(mainWindow, `document.querySelector('.adaptive-parts-assembly-footer [role="status"]')?.textContent?.trim() ?? null`);
+    assert(!firstApplyStatus, `Successful Apply left persistent status copy: ${firstApplyStatus}.`);
+    const beforeNoOpApply = await inspect(mainWindow);
+    await click(mainWindow, '[data-testid="adaptive-parts-assembly-apply"]', 'Apply the clean C0 Part draft again');
+    const afterNoOpApply = await inspect(mainWindow);
+    const noOpApplyStatus = await page(mainWindow, `document.querySelector('.adaptive-parts-assembly-footer [role="status"]')?.textContent?.trim() ?? null`);
+    assert(afterNoOpApply.revision === beforeNoOpApply.revision &&
+      afterNoOpApply.dirty === beforeNoOpApply.dirty &&
+      afterNoOpApply.undoCount === beforeNoOpApply.undoCount &&
+      !noOpApplyStatus,
+    'A no-op Apply changed project/history state or left persistent status copy.');
+
+    await click(mainWindow, `${com6Row} [data-testid="adaptive-parts-assembly-row-select"]`, 'Select com6 for a second same-page Apply');
+    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${partId}"]')?.classList.contains('is-selected')`, 'com6 did not select for the second same-page Apply.');
+    const secondApplyInputBefore = await page(mainWindow, `(() => ({
+      offsetX: Number(document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value ?? NaN),
+      scalePercent: Number(document.querySelector('[data-testid="adaptive-parts-scale-percent"]')?.value ?? NaN),
+    }))()`);
+    const secondApplyBefore = await inspect(mainWindow);
+    const secondDrag = await dragPart(mainWindow, partId, 13, 7);
+    await waitFor(mainWindow, `Number(document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value) > ${secondApplyInputBefore.offsetX + 1}`, 'Pointer drag after the first Apply used a stale session callback.');
+    const secondScale = await scalePart(mainWindow, partId, 11, 8);
+    await waitFor(mainWindow, `Number(document.querySelector('[data-testid="adaptive-parts-scale-percent"]')?.value) > ${secondApplyInputBefore.scalePercent + 1}`, 'Pointer scale after the first Apply used a stale session callback.');
+    const afterSecondDraft = await inspect(mainWindow);
+    assert(afterSecondDraft.revision === secondApplyBefore.revision &&
+      afterSecondDraft.dirty === secondApplyBefore.dirty &&
+      afterSecondDraft.undoCount === secondApplyBefore.undoCount,
+    'The second same-page drag/scale changed the formal Project before Apply.');
+    await click(mainWindow, '[data-testid="adaptive-parts-assembly-apply"]', 'Apply the second C0 Part edit in the same page');
     const afterApply = await inspect(mainWindow);
-    assert(afterApply.revision === historyBeforeApply.revision + 1 && afterApply.dirty && afterApply.undoCount === historyBeforeApply.undoCount + 1, 'One Apply did not produce exactly one dirty project revision and History entry.');
+    assert(afterApply.revision === secondApplyBefore.revision + 1 &&
+      afterApply.dirty && afterApply.undoCount === secondApplyBefore.undoCount + 1,
+    'The second Apply did not produce exactly one dirty project revision and History entry.');
+    const secondApplyStatus = await page(mainWindow, `document.querySelector('.adaptive-parts-assembly-footer [role="status"]')?.textContent?.trim() ?? null`);
+    assert(!secondApplyStatus, `Second successful Apply left persistent status copy: ${secondApplyStatus}.`);
     const savedCharacterAfterApply = afterApply.project.characters.find((candidate) => candidate.id === adaptiveCharacterId);
     const editedPart = savedCharacterAfterApply?.mode === 'adaptive-parts' ? savedCharacterAfterApply.parts.find((part) => part.partId === partId) : null;
     const editedSecondPart = savedCharacterAfterApply?.mode === 'adaptive-parts' ? savedCharacterAfterApply.parts.find((part) => part.partId === com2) : null;
     assert(editedPart?.displayName === 'com6 edited' && editedPart.staticAdjustment?.offsetX > 0 && editedPart.staticAdjustment?.scale > 1 && editedPart.staticAdjustment?.rotationDeg === 6, 'Apply did not persist the renamed and transformed C0 Part.');
-    assert(editedSecondPart?.staticAdjustment?.offsetX > 0 && editedSecondPart.staticAdjustment?.scale > 1, 'Apply did not persist the independent drag and scale of the second C0 Part.');
+    assert(editedSecondPart?.staticAdjustment?.offsetX > 0 && editedSecondPart.staticAdjustment?.scale > 1 && editedSecondPart.visible === false, 'Apply did not persist the independent drag, scale, and hidden state of the second C0 Part.');
     assert(JSON.stringify(editedPart.sourceRestTransform) === JSON.stringify(sourceRestTransform), 'Apply changed the saved source-rest baseline.');
     const originalPart = prepared.parts.find((part) => part.partId === partId);
     assert(originalPart && editedPart.assetId === originalPart.assetId && editedPart.drawOrder === originalPart.drawOrder && JSON.stringify(editedPart.imageMapping) === JSON.stringify(originalPart.imageMapping), 'Part edit changed source identity, crop, asset, or draw order.');
     receipt.ac03 = {
       result: 'PASS',
-      coverage: 'Windows Electron mouse drag/scale plus touch PointerEvents at an 880 CSS-pixel viewport; resized canvas fit exercised.',
+      coverage: 'Windows Electron two same-page Applies, including drag/scale after the first commit, plus touch PointerEvents at an 880 CSS-pixel viewport; resized canvas fit exercised.',
       interactiveParts: [
         { sourceId: 'c0/com6', drag, scale },
-        { sourceId: 'c0/com2', drag: secondPartDrag, scale: secondPartScale },
+        { sourceId: 'c0/com2', inspectorOffsetX: secondPartOffsetX, inspectorScalePercent: secondPartScalePercent },
+        { sourceId: 'c0/com6', drag: secondDrag, scale: secondScale, afterFirstApply: true },
       ],
+      applyStates: {
+        first: { before: { revision: historyBeforeApply.revision, undoCount: historyBeforeApply.undoCount }, after: { revision: afterFirstApply.revision, undoCount: afterFirstApply.undoCount } },
+        noOp: { before: { revision: beforeNoOpApply.revision, undoCount: beforeNoOpApply.undoCount }, after: { revision: afterNoOpApply.revision, undoCount: afterNoOpApply.undoCount }, status: noOpApplyStatus },
+        second: { before: { revision: secondApplyBefore.revision, undoCount: secondApplyBefore.undoCount }, draft: { revision: afterSecondDraft.revision, undoCount: afterSecondDraft.undoCount }, after: { revision: afterApply.revision, undoCount: afterApply.undoCount } },
+      },
       listAndCanvasSelection: 'PASS',
       inspector: {
         com6: { offsetX: editedPart.staticAdjustment.offsetX, offsetY: editedPart.staticAdjustment.offsetY, scale: editedPart.staticAdjustment.scale, rotationDeg: editedPart.staticAdjustment.rotationDeg },
@@ -1452,26 +1742,54 @@ async function main() {
       narrowViewport: receipt.narrowViewport,
     };
     receipt.ac04 = { result: 'PASS', sourceRestTransform: editedPart.sourceRestTransform, currentRestTransform: editedPart.restTransform, crop: editedPart.imageMapping.crop, c0RootTransform: sourceRootTransform };
-    receipt.ac05 = { result: 'PASS', before: { revision: beforeDraft.revision, dirty: beforeDraft.dirty, undoCount: beforeDraft.undoCount }, draft: { revision: afterDraft.revision, dirty: afterDraft.dirty, undoCount: afterDraft.undoCount }, apply: { revision: afterApply.revision, dirty: afterApply.dirty, undoCount: afterApply.undoCount } };
+    receipt.ac05 = { result: 'PASS', before: { revision: beforeDraft.revision, dirty: beforeDraft.dirty, undoCount: beforeDraft.undoCount }, draft: { revision: afterDraft.revision, dirty: afterDraft.dirty, undoCount: afterDraft.undoCount }, firstApply: { revision: afterFirstApply.revision, dirty: afterFirstApply.dirty, undoCount: afterFirstApply.undoCount }, noOpApply: { revision: afterNoOpApply.revision, dirty: afterNoOpApply.dirty, undoCount: afterNoOpApply.undoCount }, secondDraft: { revision: afterSecondDraft.revision, dirty: afterSecondDraft.dirty, undoCount: afterSecondDraft.undoCount }, secondApply: { revision: afterApply.revision, dirty: afterApply.dirty, undoCount: afterApply.undoCount } };
     await click(mainWindow, '[data-testid="adaptive-parts-assembly-cancel"]', 'Return to Character detail after clean Apply');
     await waitFor(mainWindow, `!document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Committed assembly did not return to Character detail.');
 
     await expandProjectActions(mainWindow);
-    await click(mainWindow, '[data-testid="quick-action-history"] .history-actions button:first-of-type', 'Undo C0 assembly Apply');
-    await waitFor(mainWindow, `window.__pandaStageIssue816Acceptance?.inspect?.()?.redoCount === 1`, 'Undo did not create a Redo entry.');
-    const afterUndo = await inspect(mainWindow);
-    const undoneCharacter = afterUndo.project.characters.find((candidate) => candidate.id === adaptiveCharacterId);
-    assert(undoneCharacter?.mode === 'adaptive-parts' && undoneCharacter.parts.find((part) => part.partId === partId)?.displayName !== 'com6 edited', 'Undo did not restore the prior Part definition.');
-    await click(mainWindow, '[data-testid="quick-action-history"] .history-actions button:last-of-type', 'Redo C0 assembly Apply');
-    await waitFor(mainWindow, `window.__pandaStageIssue816Acceptance?.inspect?.()?.undoCount === 1 && window.__pandaStageIssue816Acceptance?.inspect?.()?.redoCount === 0`, 'Redo did not restore the assembly Apply.');
+    await click(mainWindow, '[data-testid="quick-action-history"] .history-actions button:first-of-type', 'Undo the second same-page assembly Apply');
+    await waitFor(mainWindow, `window.__pandaStageIssue816Acceptance?.inspect?.()?.redoCount === 1`, 'Undo of the second Apply did not create a Redo entry.');
+    const afterSecondUndo = await inspect(mainWindow);
+    const secondUndoCharacter = afterSecondUndo.project.characters.find((candidate) => candidate.id === adaptiveCharacterId);
+    const firstAppliedCom2 = afterFirstApply.project.characters.find((candidate) => candidate.id === adaptiveCharacterId)?.mode === 'adaptive-parts'
+      ? afterFirstApply.project.characters.find((candidate) => candidate.id === adaptiveCharacterId).parts.find((part) => part.partId === com2)
+      : null;
+    const secondUndoCom2 = secondUndoCharacter?.mode === 'adaptive-parts' ? secondUndoCharacter.parts.find((part) => part.partId === com2) : null;
+    assert(secondUndoCharacter?.mode === 'adaptive-parts' &&
+      secondUndoCharacter.parts.find((part) => part.partId === partId)?.displayName === 'com6 edited' &&
+      secondUndoCom2?.visible === false &&
+      JSON.stringify(secondUndoCom2.staticAdjustment) === JSON.stringify(firstAppliedCom2?.staticAdjustment),
+    'Undo of the second Apply did not restore the first Apply while keeping com2 hidden.');
+    await click(mainWindow, '[data-testid="quick-action-history"] .history-actions button:first-of-type', 'Undo the first same-page assembly Apply');
+    await waitFor(mainWindow, `window.__pandaStageIssue816Acceptance?.inspect?.()?.redoCount === 2`, 'Undo of the first Apply did not preserve both Redo entries.');
+    const afterFirstUndo = await inspect(mainWindow);
+    const firstUndoCharacter = afterFirstUndo.project.characters.find((candidate) => candidate.id === adaptiveCharacterId);
+    assert(firstUndoCharacter?.mode === 'adaptive-parts' &&
+      firstUndoCharacter.parts.find((part) => part.partId === partId)?.displayName !== 'com6 edited' &&
+      firstUndoCharacter.parts.find((part) => part.partId === com2)?.visible === true,
+    'Undo of the first Apply did not restore the original name and com2 visibility.');
+    await click(mainWindow, '[data-testid="quick-action-history"] .history-actions button:last-of-type', 'Redo the first same-page assembly Apply');
+    await waitFor(mainWindow, `window.__pandaStageIssue816Acceptance?.inspect?.()?.undoCount === ${historyBeforeApply.undoCount + 1} && window.__pandaStageIssue816Acceptance?.inspect?.()?.redoCount === 1`, 'First Redo did not restore exactly the first assembly Apply.');
+    const afterFirstRedo = await inspect(mainWindow);
+    const firstRedoCharacter = afterFirstRedo.project.characters.find((candidate) => candidate.id === adaptiveCharacterId);
+    assert(firstRedoCharacter?.mode === 'adaptive-parts' &&
+      firstRedoCharacter.parts.find((part) => part.partId === partId)?.displayName === 'com6 edited' &&
+      firstRedoCharacter.parts.find((part) => part.partId === com2)?.visible === false,
+    'First Redo did not restore com6 edits and the hidden com2 state.');
+    await click(mainWindow, '[data-testid="quick-action-history"] .history-actions button:last-of-type', 'Redo the second same-page assembly Apply');
+    await waitFor(mainWindow, `window.__pandaStageIssue816Acceptance?.inspect?.()?.undoCount === ${historyBeforeApply.undoCount + 2} && window.__pandaStageIssue816Acceptance?.inspect?.()?.redoCount === 0`, 'Second Redo did not restore exactly the second assembly Apply.');
     const afterRedo = await inspect(mainWindow);
-    assert(afterRedo.project.characters.find((candidate) => candidate.id === adaptiveCharacterId)?.mode === 'adaptive-parts', 'Redo lost the Adaptive Parts Character.');
+    const redoneCharacter = afterRedo.project.characters.find((candidate) => candidate.id === adaptiveCharacterId);
+    assert(redoneCharacter?.mode === 'adaptive-parts' &&
+      redoneCharacter.parts.find((part) => part.partId === partId)?.displayName === 'com6 edited' &&
+      redoneCharacter.parts.find((part) => part.partId === com2)?.visible === false,
+    'Second Redo lost the Adaptive Parts Character, edits, or hidden state.');
     await click(mainWindow, '[data-testid="quick-action-save"]', 'Save the edited C0 Project');
     await waitFor(mainWindow, `window.__pandaStageIssue816Acceptance?.inspect?.()?.dirty === false`, 'Edited C0 Project did not save.');
     const persistedEdited = await projectService.open(projectRoot);
     const persistedEditedCharacter = persistedEdited.project.characters.find((candidate) => candidate.id === adaptiveCharacterId);
     assert(persistedEditedCharacter?.mode === 'adaptive-parts' && persistedEditedCharacter.parts.find((part) => part.partId === partId)?.staticAdjustment?.scale > 1, 'Save/reopen did not persist the edited Part transform.');
-    receipt.applyUndoRedoSave = { undo: 'PASS', redo: 'PASS', save: 'PASS', sourceRestSurvives: 'PASS', savedProjectSha256: sha256(await fsp.readFile(path.join(projectRoot, 'project.json'))) };
+    receipt.applyUndoRedoSave = { undo: 'PASS', redo: 'PASS', visibilityUndoRedo: 'PASS', samePageApplyCount: 2, save: 'PASS', sourceRestSurvives: 'PASS', savedProjectSha256: sha256(await fsp.readFile(path.join(projectRoot, 'project.json'))) };
 
     await collapseProjectActions(mainWindow);
     await ensureCharacterListReady(mainWindow, characterRail, characterList, 'Character list before Stage samples');
@@ -1849,6 +2167,8 @@ async function main() {
     receipt.auto = 'AUTO_FAIL';
     receipt.status = 'C3_PARTIAL';
     receipt.failedAt = new Date().toISOString();
+    receipt.failedAtAction = currentVerifierAction;
+    receipt.rendererDiagnostics = rendererDiagnostics;
     receipt.error = error instanceof Error ? error.stack ?? error.message : String(error);
     receipt.trackedSnapshot = trackedSnapshot;
     receipt.jobUpdates = jobUpdates;

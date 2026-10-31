@@ -392,14 +392,17 @@ function transformedPartRect(part: LayerVisualPart): VisualLocalRect {
 function visualBounds(
   parts: readonly LayerVisualPart[],
   headGroup: LayerVisualHeadGroup | null,
+  includeHidden = false,
 ): VisualLocalRect {
-  const visibleParts = parts.filter((part) => part.visible !== false);
-  if (visibleParts.length === 0) {
+  const boundedParts = includeHidden
+    ? parts
+    : parts.filter((part) => part.visible !== false);
+  if (boundedParts.length === 0) {
     return { x: 0, y: 0, width: 0, height: 0 };
   }
   const headPartIds = new Set(headGroup?.partIds ?? []);
   return unionRects(
-    visibleParts.map((part) => {
+    boundedParts.map((part) => {
       const transformedPart = transformedPartRect(part);
       return headPartIds.has(part.partId) && headGroup
         ? transformedRect(transformedPart, headGroup)
@@ -613,6 +616,7 @@ export function adaptiveCharacterSourceAnchor(
   const bounds = visualBounds(
     adaptivePartVisuals(project, character, character.id, 0),
     null,
+    true,
   );
   return {
     x: bounds.x + bounds.width / 2,
@@ -742,7 +746,9 @@ export function resolveLayerVisualParts(
     // persisted Layer is center anchored, so express the current Parts around
     // the stable source-pose bounds center. Placement stores that same center
     // on the Layer, preserving the imported pose and owner transforms.
-    const sourceBounds = visualBounds(sourcePoseParts, null);
+    // Visibility controls pixels and output bounds, but it must not move the
+    // Character's source pivot or the remaining Parts in existing Shots.
+    const sourceBounds = visualBounds(sourcePoseParts, null, true);
     const sourceCenterX = sourceBounds.x + sourceBounds.width / 2;
     const sourceCenterY = sourceBounds.y + sourceBounds.height / 2;
     const parts = sourceParts.map((part) => ({

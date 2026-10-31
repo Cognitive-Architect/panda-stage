@@ -72,6 +72,7 @@ function konvaCornerDeviation(
   node.destroy();
   return maximumDeviation;
 }
+
 const AUDIO_CLIP_ID = '70000000-0000-4000-8000-000000000004';
 const EXPRESSION_EVENT_ID = '90000000-0000-4000-8000-000000000004';
 
@@ -1034,8 +1035,8 @@ describe('BFM-S03 unified visual-parts resolver', () => {
 
     expect(visual.parts.map((part) => part.drawOrder)).toEqual([0, 1, 2]);
     const sourceAnchor = adaptiveCharacterSourceAnchor(placed.project, character);
-    expect(sourceAnchor.x).toBeCloseTo(148.75, 10);
-    expect(sourceAnchor.y).toBeCloseTo(68.8, 10);
+    expect(sourceAnchor.x).toBeCloseTo(1181.5, 10);
+    expect(sourceAnchor.y).toBeCloseTo(1038.3, 10);
     expect(visual.parts.map((part) => part.source.kind)).toEqual([
       'adaptive-part',
       'adaptive-part',
@@ -1051,22 +1052,22 @@ describe('BFM-S03 unified visual-parts resolver', () => {
     expect(first.imageTransform?.b).toBeCloseTo(0.17, 10);
     expect(first.imageTransform?.c).toBeCloseTo(0.075, 10);
     expect(first.imageTransform?.d).toBeCloseTo(0.455, 10);
-    expect(first.imageTransform?.tx).toBeCloseTo(-66.75, 10);
-    expect(first.imageTransform?.ty).toBeCloseTo(-36.2, 10);
+    expect(first.imageTransform?.tx).toBeCloseTo(-1099.5, 10);
+    expect(first.imageTransform?.ty).toBeCloseTo(-1005.7, 10);
     expect(second.imageTransform?.a).toBeCloseTo(0.45, 10);
     expect(second.imageTransform?.b).toBeCloseTo(0.05, 10);
     expect(second.imageTransform?.c).toBeCloseTo(-0.075, 10);
     expect(second.imageTransform?.d).toBeCloseTo(0.55, 10);
-    expect(second.imageTransform?.tx).toBeCloseTo(30.75, 10);
-    expect(second.imageTransform?.ty).toBeCloseTo(-0.8, 10);
+    expect(second.imageTransform?.tx).toBeCloseTo(-1002, 10);
+    expect(second.imageTransform?.ty).toBeCloseTo(-970.3, 10);
     expect(hiddenComposite.visible).toBe(false);
-    expect(visual.combinedLocalBounds.x).toBeCloseTo(-66.75, 10);
-    expect(visual.combinedLocalBounds.y).toBeCloseTo(-36.2, 10);
+    expect(visual.combinedLocalBounds.x).toBeCloseTo(-1099.5, 10);
+    expect(visual.combinedLocalBounds.y).toBeCloseTo(-1005.7, 10);
     expect(visual.combinedLocalBounds.width).toBeCloseTo(133.5, 10);
     expect(visual.combinedLocalBounds.height).toBeCloseTo(72.4, 10);
     const firstOrigin = transformPointByVisualPart({ x: 0, y: 0 }, first);
-    expect(firstOrigin.x).toBeCloseTo(-66.75, 10);
-    expect(firstOrigin.y).toBeCloseTo(-36.2, 10);
+    expect(firstOrigin.x).toBeCloseTo(-1099.5, 10);
+    expect(firstOrigin.y).toBeCloseTo(-1005.7, 10);
     const firstRenderTransform = visualPartRenderTransform(first);
     const firstMatrix = first.imageTransform!;
     const firstDeterminant =

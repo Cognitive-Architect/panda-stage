@@ -466,6 +466,18 @@ function AdaptivePartsAssemblyWorkbench({
   const selectedAdjustment = selectedPart
     ? adjustmentOf(selectedPart.partId)
     : null;
+  const selectedCanvasPart = (visual?.parts ?? []).find((part) =>
+    part.source.kind === 'adaptive-part' &&
+    part.source.characterPartId === session.selectedPartId &&
+    part.visible !== false,
+  ) ?? null;
+  const selectedCanvasImage = selectedCanvasPart
+    ? imageState.images.get(selectedCanvasPart.assetId)
+    : null;
+  const selectedCanvasTransform = selectedCanvasPart?.imageTransform;
+  const selectedCanvasMatrix = selectedCanvasTransform
+    ? `matrix(${selectedCanvasTransform.a}, ${selectedCanvasTransform.b}, ${selectedCanvasTransform.c}, ${selectedCanvasTransform.d}, ${project.width / 2 + selectedCanvasTransform.tx}, ${project.height / 2 + selectedCanvasTransform.ty})`
+    : null;
   const rows = [...session.draft.parts].sort(
     (left, right) => right.drawOrder - left.drawOrder,
   );
@@ -481,6 +493,10 @@ function AdaptivePartsAssemblyWorkbench({
       y: (clientY - bounds.top - transform.offsetY) / Math.max(0.0001, transform.scale) - project.height / 2,
     };
   };
+  const pointerToLocalRef = useRef(pointerToLocal);
+  pointerToLocalRef.current = pointerToLocal;
+  const setAdjustmentRef = useRef(setAdjustment);
+  setAdjustmentRef.current = setAdjustment;
   const beginMove = (event: React.PointerEvent, part: LayerVisualPart): void => {
     if (part.source.kind !== 'adaptive-part') return;
     const partId = part.source.characterPartId;
@@ -521,9 +537,9 @@ function AdaptivePartsAssemblyWorkbench({
     const onMove = (event: PointerEvent): void => {
       const drag = dragRef.current;
       if (!drag || drag.pointerId !== event.pointerId) return;
-      const point = pointerToLocal(event.clientX, event.clientY);
+      const point = pointerToLocalRef.current(event.clientX, event.clientY);
       if (drag.kind === 'move') {
-        setAdjustment(drag.partId, {
+        setAdjustmentRef.current(drag.partId, {
           ...drag.adjustment,
           offsetX: drag.adjustment.offsetX + point.x - drag.startX,
           offsetY: drag.adjustment.offsetY + point.y - drag.startY,
@@ -534,7 +550,7 @@ function AdaptivePartsAssemblyWorkbench({
           drag.startDistance,
           Math.hypot(point.x - drag.centerX, point.y - drag.centerY),
         );
-        setAdjustment(drag.partId, { ...drag.adjustment, scale });
+        setAdjustmentRef.current(drag.partId, { ...drag.adjustment, scale });
       }
     };
     const onEnd = (event: PointerEvent): void => {
@@ -560,7 +576,7 @@ function AdaptivePartsAssemblyWorkbench({
     if (result.status === 'rejected' || result.status === 'stale') {
       setMessage(result.error.message);
     } else {
-      setMessage(result.status === 'no-op' ? '没有待应用的更改。' : '部件已应用。');
+      setMessage('');
     }
   };
   const cancelDraft = (): void => {
@@ -701,17 +717,32 @@ function AdaptivePartsAssemblyWorkbench({
                   aria-label={`选择并拖动${sourcePart?.displayName ?? assetNames.get(part.assetId) ?? '部件'}`}
                 >
                   <img alt="" draggable={false} src={image.src} />
-                  {selected ? (
-                    <button
-                      aria-label="拖动右下角调整部件大小"
-                      className="adaptive-parts-assembly-scale-handle"
-                      onPointerDown={(event) => beginScale(event, part)}
-                      type="button"
-                    />
-                  ) : null}
+
                 </div>
               );
             })}
+          {selectedCanvasPart && selectedCanvasImage && selectedCanvasMatrix ? (
+            <div
+              className="adaptive-parts-assembly-selection-outline"
+              data-part-id={selectedCanvasPart.source.kind === 'adaptive-part' ? selectedCanvasPart.source.characterPartId : undefined}
+              data-testid="adaptive-parts-assembly-selection-outline"
+              style={{
+                height: selectedCanvasPart.localRect.height,
+                left: 0,
+                top: 0,
+                transform: selectedCanvasMatrix,
+                transformOrigin: 'top left',
+                width: selectedCanvasPart.localRect.width,
+              }}
+            >
+              <button
+                aria-label="调整选中部件大小"
+                className="adaptive-parts-assembly-scale-handle"
+                onPointerDown={(event) => beginScale(event, selectedCanvasPart)}
+                type="button"
+              />
+            </div>
+          ) : null}
         </div>
         <div className="adaptive-parts-assembly-canvas-toolbar">
           <button type="button" onClick={() => setTransform(calculateViewportTransform(
@@ -774,7 +805,7 @@ function AdaptivePartsAssemblyWorkbench({
       </aside>
 
       <footer className="character-assembly-workbench-footer adaptive-parts-assembly-footer">
-        <span role="status" aria-live="polite">{message}</span>
+        {message ? <span role="status" aria-live="polite">{message}</span> : null}
         <button data-testid="adaptive-parts-assembly-cancel" type="button" onClick={cancelDraft}>取消</button>
         <button data-testid="adaptive-parts-assembly-apply" type="button" onClick={applyDraft}>应用</button>
       </footer>

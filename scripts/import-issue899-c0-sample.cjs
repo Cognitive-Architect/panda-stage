@@ -20,6 +20,10 @@ const {
 const { AssetImportService } = require('../dist-electron/main/services/AssetImportService.js');
 const { ProjectService } = require('../dist-electron/main/services/ProjectService.js');
 const { resolveMediaToolPaths } = require('../dist-electron/main/services/production-resources.js');
+const {
+  bodyArmOverlayArgs,
+  orderedBodyArmRecords,
+} = require('./issue899-c0-body-arm-overlay.cjs');
 
 const [, , sourceDirArgument, outputRootArgument] = process.argv;
 const sourceDir = sourceDirArgument ? path.resolve(sourceDirArgument) : null;
@@ -109,23 +113,19 @@ async function createSampleProject() {
   }
 
   const byName = new Map(candidateRecords.map((record) => [record.sourceName, record]));
-  const bodyRecord = byName.get('com5');
-  const armRecord = byName.get('com2');
-  assert(bodyRecord && armRecord, 'C0 Body+Arm inputs com5 and com2 are required.');
-  const bodyArmFullPath = path.join(cropRoot, 'c0-body-arm-com5-plus-com2-full.png');
+  const [bodyRecord, armRecord] = orderedBodyArmRecords(byName);
+  const bodyArmFullPath = path.join(cropRoot, 'c0-body-arm-com2-back-com5-front-full.png');
   const mediaTools = resolveMediaToolPaths({ isPackaged: false, resourcesPath: process.resourcesPath });
-  await runProcess(mediaTools.ffmpegPath, [
-    '-hide_banner', '-loglevel', 'error', '-y',
-    '-i', bodyRecord.sourcePath,
-    '-i', armRecord.sourcePath,
-    '-filter_complex', '[0:v][1:v]overlay=0:0:format=auto[v]',
-    '-map', '[v]', '-frames:v', '1', '-pix_fmt', 'rgba', bodyArmFullPath,
-  ]);
+  await runProcess(mediaTools.ffmpegPath, bodyArmOverlayArgs(
+    bodyRecord.sourcePath,
+    armRecord.sourcePath,
+    bodyArmFullPath,
+  ));
   const bodyArmImage = nativeImage.createFromPath(bodyArmFullPath);
   const bodyArmSize = bodyArmImage.getSize();
   assert(bodyArmSize.width === 1920 && bodyArmSize.height === 1080, 'The local Body+Arm composite must retain the C0 stage frame.');
   const bodyArmBounds = alphaBounds(bodyArmImage.toBitmap(), bodyArmSize.width, bodyArmSize.height);
-  const bodyArmCropPath = path.join(cropRoot, 'c0-body-arm-com5-plus-com2-crop.png');
+  const bodyArmCropPath = path.join(cropRoot, 'c0-body-arm-com2-back-com5-front-crop.png');
   await fsp.writeFile(bodyArmCropPath, bodyArmImage.crop(bodyArmBounds).toPNG());
 
   const backgroundPath = path.join(cropRoot, 'synthetic-canvas-background.png');
@@ -192,12 +192,12 @@ async function createSampleProject() {
   assert(c0Character?.mode === 'adaptive-parts' && c0Character.parts.length === 5, 'CharacterService did not create the five-part C0 Character.');
   const bodyArmPartId = randomUUID();
   project = characterService.createAdaptiveParts(project, {
-    name: 'Body+Arm（C0 com5+com2）',
+    name: 'Body+Arm（C0 com2+com5）',
     sourceRootTransform: { ...sourceRootTransform },
     parts: [{
       partId: bodyArmPartId,
       assetId: bodyArmAsset.id,
-      source: { kind: 'manual', sourceId: 'c0/body-arm/com5+com2' },
+      source: { kind: 'manual', sourceId: 'c0/body-arm/com2+com5' },
       restTransform: { ...sourceRestTransform },
       sourceRestTransform: { ...sourceRestTransform },
       staticAdjustment: { ...DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT },
@@ -247,7 +247,7 @@ async function createSampleProject() {
     projectId: persisted.project.id,
     sourceDir,
     sourcePartOrder: sourceRecords.map((record) => record.sourceId),
-    bodyArmComposition: { sourceParts: ['c0/com5', 'c0/com2'], output: bodyArmCropPath, partCount: 1, partId: bodyArmPartId },
+    bodyArmComposition: { sourceParts: ['c0/com2', 'c0/com5'], output: bodyArmCropPath, drawOrder: 'com2 back (1), com5 front (2)', partCount: 1, partId: bodyArmPartId },
     characterIds: { c0: c0Character.id, bodyArm: bodyArmCharacter.id },
     shotIds,
     importedAssets: operation.results.map((result) => ({ sourceName: result.sourceName, status: result.status, assetId: result.asset?.id, width: result.asset?.width, height: result.asset?.height, sha256: result.sha256 })),
