@@ -1886,12 +1886,12 @@ async function main() {
 
     const com2 = sourcePartIds['c0/com2'];
     const com2Row = `.adaptive-parts-assembly-row[data-part-id="${com2}"]`;
+    const com2VisibilityToggle = `${com2Row} [data-testid="adaptive-parts-visibility-toggle"]`;
     const assemblyRectsBeforeHide = await page(mainWindow, `(() => Object.fromEntries(
       [...document.querySelectorAll('[data-testid="adaptive-parts-assembly-canvas-part"]')]
         .map((part) => { const rect = part.getBoundingClientRect(); return [part.dataset.partId, { x: rect.x, y: rect.y, width: rect.width, height: rect.height }]; }),
     ))()`);
-    await click(mainWindow, `${com2Row} summary`, 'Open com2 Part menu');
-    await click(mainWindow, `${com2Row} [data-adaptive-part-action="visibility"]`, 'Hide com2');
+    await click(mainWindow, com2VisibilityToggle, 'Hide com2 directly');
     assert(await page(mainWindow, `Boolean(document.querySelector(${JSON.stringify(com2Row)}))`), 'Hidden Part was removed from the Part list.');
     await waitFor(mainWindow, `!document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${com2}"]')`, 'Hiding com2 did not remove only its rendered image.');
     const assemblyRectsWhileHidden = await page(mainWindow, `(() => Object.fromEntries(
@@ -1905,7 +1905,7 @@ async function main() {
         `Hiding edge com2 moved ${visiblePartId}: ${JSON.stringify({ beforeRect, hiddenRect })}.`);
     }
     await click(mainWindow, `${com2Row} [data-testid="adaptive-parts-assembly-row-select"]`, 'Select the hidden com2 Part');
-    await click(mainWindow, `${com2Row} [data-adaptive-part-action="visibility"]`, 'Show com2');
+    await click(mainWindow, com2VisibilityToggle, 'Show com2 directly');
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${com2}"]')`, 'Showing com2 did not restore its canvas image.');
     const assemblyRectsAfterReveal = await page(mainWindow, `(() => Object.fromEntries(
       [...document.querySelectorAll('[data-testid="adaptive-parts-assembly-canvas-part"]')]
@@ -1924,16 +1924,12 @@ async function main() {
     await setInputValue(mainWindow, '[data-testid="adaptive-parts-scale-percent"]', secondPartScalePercent);
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-scale-percent"]')?.value === '${secondPartScalePercent}'`, 'The second source Part inspector did not update its own scale.');
 
-    await page(mainWindow, `window.prompt = () => 'com6 edited'; true;`);
     const com6Row = `.adaptive-parts-assembly-row[data-part-id="${partId}"]`;
-    await click(mainWindow, `${com6Row} summary`, 'Open com6 Part menu');
-    await click(mainWindow, `${com6Row} [data-adaptive-part-action="rename"]`, 'Rename com6');
+    await renameAdaptivePart(mainWindow, com6Row, 'com6 edited');
     await waitFor(mainWindow, `document.querySelector(${JSON.stringify(com6Row)})?.innerText.includes('com6 edited')`, 'Part rename did not update its displayed name.');
     await captureWhole(mainWindow, 'c3-assembly-edited-draft.png');
 
-    const com2MenuOpen = await page(mainWindow, `document.querySelector(${JSON.stringify(com2Row)} + ' .adaptive-parts-row-menu')?.open === true`);
-    if (!com2MenuOpen) await click(mainWindow, `${com2Row} summary`, 'Open com2 Part menu before Apply');
-    await click(mainWindow, `${com2Row} [data-adaptive-part-action="visibility"]`, 'Hide com2 for Apply and History coverage');
+    await click(mainWindow, com2VisibilityToggle, 'Hide com2 for Apply and History coverage');
     await waitFor(mainWindow, `!document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${com2}"]')`, 'The final com2 hide did not remove its canvas image.');
 
     const historyBeforeApply = await inspect(mainWindow);
@@ -1944,14 +1940,16 @@ async function main() {
     const firstApplyStatus = await page(mainWindow, `document.querySelector('.adaptive-parts-assembly-footer [role="status"]')?.textContent?.trim() ?? null`);
     assert(!firstApplyStatus, `Successful Apply left persistent status copy: ${firstApplyStatus}.`);
     const beforeNoOpApply = await inspect(mainWindow);
-    await click(mainWindow, '[data-testid="adaptive-parts-assembly-apply"]', 'Apply the clean C0 Part draft again');
+    const noOpApplyDisabled = await page(mainWindow,
+      `document.querySelector('[data-testid="adaptive-parts-assembly-apply"]')?.disabled === true`);
     const afterNoOpApply = await inspect(mainWindow);
     const noOpApplyStatus = await page(mainWindow, `document.querySelector('.adaptive-parts-assembly-footer [role="status"]')?.textContent?.trim() ?? null`);
-    assert(afterNoOpApply.revision === beforeNoOpApply.revision &&
+    assert(noOpApplyDisabled &&
+      afterNoOpApply.revision === beforeNoOpApply.revision &&
       afterNoOpApply.dirty === beforeNoOpApply.dirty &&
       afterNoOpApply.undoCount === beforeNoOpApply.undoCount &&
       !noOpApplyStatus,
-    'A no-op Apply changed project/history state or left persistent status copy.');
+    'Clean Apply was not disabled or changed project/history state or left persistent status copy.');
 
     await click(mainWindow, `${com6Row} [data-testid="adaptive-parts-assembly-row-select"]`, 'Select com6 for a second same-page Apply');
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${partId}"]')?.classList.contains('is-selected')`, 'com6 did not select for the second same-page Apply.');
@@ -2364,7 +2362,7 @@ async function main() {
     assert(lastLongListPartId, 'Long-list control has no last Part to select.');
     const lastLongListRow = `.adaptive-parts-assembly-row[data-part-id="${lastLongListPartId}"]`;
     await click(mainWindow, `${lastLongListRow} [data-testid="adaptive-parts-assembly-row-select"]`, 'Select the last Part in the repeated-image long list');
-    const longListViewport = await page(mainWindow, `(() => { const list = document.querySelector('.adaptive-parts-assembly-list'); const row = document.querySelector(${JSON.stringify(lastLongListRow)}); const canvas = document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"].is-selected'); return { clientHeight: list?.clientHeight ?? 0, scrollHeight: list?.scrollHeight ?? 0, scrollTop: list?.scrollTop ?? 0, lastRowSelected: row?.querySelector('[data-testid="adaptive-parts-assembly-row-select"]')?.getAttribute('aria-pressed') === 'true', selectedCanvasPart: canvas?.dataset.partId ?? null }; })()`);
+    const longListViewport = await page(mainWindow, `(() => { const list = document.querySelector('.adaptive-parts-assembly-rows'); const row = document.querySelector(${JSON.stringify(lastLongListRow)}); const canvas = document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"].is-selected'); return { clientHeight: list?.clientHeight ?? 0, scrollHeight: list?.scrollHeight ?? 0, scrollTop: list?.scrollTop ?? 0, lastRowSelected: row?.querySelector('[data-testid="adaptive-parts-assembly-row-select"]')?.getAttribute('aria-pressed') === 'true', selectedCanvasPart: canvas?.dataset.partId ?? null }; })()`);
     assert(longListViewport.scrollHeight > longListViewport.clientHeight && longListViewport.scrollTop > 0, `Long-list scrolling did not reach the bottom row: ${JSON.stringify(longListViewport)}.`);
     assert(longListViewport.lastRowSelected && longListViewport.selectedCanvasPart === lastLongListPartId, 'Selecting the last repeated-image Part did not synchronize list and canvas selection.');
     const longListBeforeCancel = await inspect(mainWindow);

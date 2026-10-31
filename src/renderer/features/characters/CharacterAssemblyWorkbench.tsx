@@ -1056,39 +1056,59 @@ function AdaptivePartsAssemblyWorkbench({
     const viewport = viewportRef.current;
     const inspector = inspectorRef.current;
     if (!workbench || !viewport || !inspector) return undefined;
-    const frame = window.requestAnimationFrame(() => {
+    let frame = 0;
+    const placeInspector = (): void => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
       const workbenchBounds = workbench.getBoundingClientRect();
       const viewportBounds = viewport.getBoundingClientRect();
       if (viewportBounds.width <= 0 || viewportBounds.height <= 0) return;
 
       const margin = 8;
+      const preferredWidth = window.innerWidth <= 900 ? 182 : 248;
       const width = Math.min(
-        inspectorOpen ? 248 : 44,
+        inspectorOpen ? preferredWidth : 44,
         Math.max(44, viewportBounds.width - margin * 2),
       );
       const height = Math.min(
         Math.max(inspectorOpen ? inspector.scrollHeight : 44, 44),
         Math.max(44, viewportBounds.height - margin * 2),
       );
+      const partElements = [
+        ...viewport.querySelectorAll<HTMLElement>(
+          '[data-testid="adaptive-parts-assembly-canvas-part"]',
+        ),
+      ];
       const selectedElement = session.selectedPartId
-        ? [...viewport.querySelectorAll<HTMLElement>(
-            '[data-testid="adaptive-parts-assembly-canvas-part"]',
-          )].find((element) => element.dataset.partId === session.selectedPartId)
+        ? partElements.find((element) => element.dataset.partId === session.selectedPartId)
         : undefined;
       const toolbarButton = viewport.querySelector<HTMLButtonElement>(
         '.adaptive-parts-assembly-canvas-toolbar button',
       );
-      const obstacles = [selectedElement, toolbarButton]
-        .filter((element): element is HTMLElement => Boolean(element))
-        .map((element) => {
+      const obstacles = [
+        ...partElements.map((element) => {
           const bounds = element.getBoundingClientRect();
           return {
             left: bounds.left,
             right: bounds.right,
             top: bounds.top,
             bottom: bounds.bottom,
+            weight: element === selectedElement ? 4 : 1,
           };
-        });
+        }),
+        ...(toolbarButton
+          ? (() => {
+              const bounds = toolbarButton.getBoundingClientRect();
+              return [{
+                left: bounds.left,
+                right: bounds.right,
+                top: bounds.top,
+                bottom: bounds.bottom,
+                weight: 2,
+              }];
+            })()
+          : []),
+      ];
       const candidates = [
         {
           corner: 'top-right',
@@ -1112,7 +1132,7 @@ function AdaptivePartsAssemblyWorkbench({
         },
       ];
       const score = (candidate: (typeof candidates)[number]): number =>
-        obstacles.reduce((total, obstacle, index) => {
+        obstacles.reduce((total, obstacle) => {
           const overlapWidth = Math.max(
             0,
             Math.min(candidate.left + width, obstacle.right) -
@@ -1128,7 +1148,7 @@ function AdaptivePartsAssemblyWorkbench({
             1,
             (obstacle.right - obstacle.left) * (obstacle.bottom - obstacle.top),
           );
-          return total + overlap / obstacleArea * (index === 0 ? 4 : 1);
+          return total + overlap / obstacleArea * obstacle.weight;
         }, 0);
       const best = candidates.reduce((currentBest, candidate) =>
         score(candidate) < score(currentBest) ? candidate : currentBest,
@@ -1147,8 +1167,17 @@ function AdaptivePartsAssemblyWorkbench({
         width,
         corner: best.corner,
       });
-    });
-    return () => window.cancelAnimationFrame(frame);
+      });
+    };
+    placeInspector();
+    const observer = new ResizeObserver(placeInspector);
+    observer.observe(viewport);
+    window.addEventListener('resize', placeInspector);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener('resize', placeInspector);
+    };
   }, [
     inspectorOpen,
     numericDrafts,
