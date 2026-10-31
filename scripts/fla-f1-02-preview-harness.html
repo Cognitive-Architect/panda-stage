@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>F1-02 Private Preview Acceptance</title>
+    <style>
+      :root { color-scheme: dark; font-family: Segoe UI, sans-serif; background: #121820; color: #e7edf4; }
+      body { margin: 0; padding: 18px; }
+      h1 { margin: 0 0 8px; font-size: 19px; }
+      #status { color: #a9bbcd; font-size: 13px; margin: 0 0 16px; }
+      #summary { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 11px 13px; border: 1px solid #334354; border-radius: 8px; margin-bottom: 15px; font-size: 12px; }
+      #images { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+      .panel { min-width: 0; border: 1px solid #334354; border-radius: 8px; background: #1a2430; overflow: hidden; }
+      .panel h2 { margin: 0; padding: 8px 10px; border-bottom: 1px solid #334354; font-size: 13px; font-weight: 600; }
+      .art { height: 240px; display: grid; place-items: center; background-color: #202c38; background-image: linear-gradient(45deg, #2c3845 25%, transparent 25%), linear-gradient(-45deg, #2c3845 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #2c3845 75%), linear-gradient(-45deg, transparent 75%, #2c3845 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0; }
+      img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+      #parts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+      .part .art { height: 176px; }
+      .small { color: #a9bbcd; padding: 6px 8px; font-size: 11px; overflow-wrap: anywhere; }
+      .error { color: #ff9f9f; }
+      @media (max-width: 850px) { #images { grid-template-columns: 1fr; } #parts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    </style>
+  </head>
+  <body>
+    <h1>F1-02 source parts · private Windows Electron acceptance</h1>
+    <p id="status">Waiting for the Main-owned preview request.</p>
+    <div id="summary"></div>
+    <section id="images"></section>
+    <section id="parts"></section>
+    <script>
+      const statusNode = document.getElementById('status');
+      const summaryNode = document.getElementById('summary');
+      const imagesNode = document.getElementById('images');
+      const partsNode = document.getElementById('parts');
+
+      function addPanel(parent, title, url, detail = '') {
+        const panel = document.createElement('article');
+        panel.className = 'panel';
+        const heading = document.createElement('h2');
+        heading.textContent = title;
+        const art = document.createElement('div');
+        art.className = 'art';
+        const image = document.createElement('img');
+        image.src = url;
+        art.append(image);
+        panel.append(heading, art);
+        if (detail) {
+          const note = document.createElement('div');
+          note.className = 'small';
+          note.textContent = detail;
+          panel.append(note);
+        }
+        parent.append(panel);
+      }
+
+      function imageUrl(image) {
+        const bytes = image.bytes instanceof Uint8Array ? image.bytes : new Uint8Array(image.bytes);
+        return URL.createObjectURL(new Blob([bytes], { type: 'image/png' }));
+      }
+
+      async function loadedImage(url) {
+        const image = new Image();
+        image.decoding = 'sync';
+        image.src = url;
+        await image.decode();
+        return image;
+      }
+
+      async function difference(leftUrl, rightUrl) {
+        const left = await loadedImage(leftUrl);
+        const right = await loadedImage(rightUrl);
+        if (left.naturalWidth !== right.naturalWidth || left.naturalHeight !== right.naturalHeight) {
+          return {
+            comparable: false,
+            reason: `Dimensions differ (${left.naturalWidth}x${left.naturalHeight} vs ${right.naturalWidth}x${right.naturalHeight})`,
+          };
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = left.naturalWidth;
+        canvas.height = left.naturalHeight;
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        if (!context) throw new Error('Canvas comparison context is unavailable');
+        context.drawImage(left, 0, 0);
+        const leftData = context.getImageData(0, 0, canvas.width, canvas.height).data;
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(right, 0, 0);
+        const rightData = context.getImageData(0, 0, canvas.width, canvas.height).data;
+        let differentPixels = 0;
+        let absoluteChannelDifference = 0;
+        let maximumChannelDifference = 0;
+        for (let index = 0; index < leftData.length; index += 4) {
+          let pixelDifferent = false;
+          for (let channel = 0; channel < 4; channel += 1) {
+            const delta = Math.abs((leftData[index + channel] || 0) - (rightData[index + channel] || 0));
+            absoluteChannelDifference += delta;
+            maximumChannelDifference = Math.max(maximumChannelDifference, delta);
+            if (delta !== 0) pixelDifferent = true;
+          }
+          if (pixelDifferent) differentPixels += 1;
+        }
+        return {
+          comparable: true,
+          width: canvas.width,
+          height: canvas.height,
+          differentPixels,
+          totalPixels: canvas.width * canvas.height,
+          meanAbsoluteChannelDifference: absoluteChannelDifference / leftData.length,
+          maximumChannelDifference,
+        };
+      }
+
+      window.__startF1Preview = async (request, referenceDataUrl) => {
+        try {
+          const api = window.pandaStage && window.pandaStage.fla;
+          if (!api || typeof api.partPreview !== 'function') {
+            throw new Error('Production Preload partPreview API is unavailable');
+          }
+          statusNode.textContent = 'Inspecting and rendering with the Main-owned PartPlan…';
+          const response = await api.partPreview(request);
+          if (!response.ok) throw new Error(`${response.error.code}: ${response.error.message}`);
+          const nativeUrl = imageUrl(response.nativePreview);
+          addPanel(imagesNode, 'Native whole Scene', nativeUrl,
+            `${response.nativePreview.width}×${response.nativePreview.height} · ${response.nativePreview.byteLength} bytes`);
+          if (response.capability === 'EDITABLE_PARTS_READY' && response.reassembledPreview) {
+            const reassembledUrl = imageUrl(response.reassembledPreview);
+            addPanel(imagesNode, 'Reassembled from emitted part PNGs', reassembledUrl,
+              `${response.reassembledPreview.width}×${response.reassembledPreview.height} · ${response.reassembledPreview.byteLength} bytes`);
+            for (const [index, part] of response.partPreviews.entries()) {
+              const url = imageUrl(part.image);
+              addPanel(partsNode, `Part ${index + 1}`, url,
+                `draw ${part.drawOrder} · ${part.unitId} · ${part.image.width}×${part.image.height}`);
+            }
+            if (referenceDataUrl) addPanel(imagesNode, 'Animate 2023 reference', referenceDataUrl, 'Private independent stage-frame export');
+            const comparisons = referenceDataUrl
+              ? {
+                  nativeVsReassembled: await difference(nativeUrl, reassembledUrl),
+                  nativeVsAnimateReference: await difference(nativeUrl, referenceDataUrl),
+                  reassembledVsAnimateReference: await difference(reassembledUrl, referenceDataUrl),
+                }
+              : { reference: { comparable: false, reason: 'No reference PNG was supplied' } };
+            window.__f1Status = {
+              done: true,
+              ok: true,
+              capability: response.capability,
+              planId: response.planId,
+              poseIdentity: response.poseIdentity,
+              requestId: response.requestId,
+              generation: response.generation,
+              target: response.target,
+              stage: response.stage,
+              partCount: response.partPreviews.length,
+              metrics: response.metrics,
+              comparisons,
+            };
+          } else {
+            if (referenceDataUrl) addPanel(imagesNode, 'Animate 2023 reference', referenceDataUrl, 'Private independent stage-frame export');
+            window.__f1Status = {
+              done: true,
+              ok: true,
+              capability: response.capability,
+              reason: response.reason,
+              planId: response.planId,
+              requestId: response.requestId,
+              generation: response.generation,
+              target: response.target,
+              stage: response.stage,
+              partCount: 0,
+              metrics: response.metrics,
+              comparisons: {},
+            };
+          }
+          const status = window.__f1Status;
+          statusNode.textContent = `${status.capability} · ${status.partCount} part PNGs · ${status.metrics.elapsedMs} ms`;
+          for (const [label, value] of Object.entries({
+            'Prepared source cache hit': status.metrics.preparedSourceCacheHit,
+            'Source preparations': status.metrics.sourcePreparationCountForRequest,
+            'Display-list resolves': status.metrics.displayListResolveCount,
+            'Sandbox rasters': status.metrics.rasterCount,
+            'Returned PNG bytes': status.metrics.totalPngBytes,
+            'Pose identity': status.poseIdentity || '',
+          })) {
+            const item = document.createElement('span');
+            item.textContent = `${label}: ${value}`;
+            summaryNode.append(item);
+          }
+          status.statusText = statusNode.textContent;
+          window.__f1Status = status;
+          return status;
+        } catch (error) {
+          statusNode.classList.add('error');
+          statusNode.textContent = error instanceof Error ? error.message : String(error);
+          window.__f1Status = { done: true, ok: false, error: statusNode.textContent };
+          return window.__f1Status;
+        }
+      };
+    </script>
+  </body>
+</html>

@@ -59,6 +59,8 @@ import { FlaStaticSnapshotRenderSession } from './services/fla-static-snapshot-r
 import { FlaStaticSnapshotWindowManager } from './services/fla-static-snapshot-window-manager';
 import { FlaStaticSnapshotCommitService } from './services/FlaStaticSnapshotCommitService';
 import { registerFlaStaticSnapshotIpcHandlers } from './ipc/register-fla-static-snapshot-ipc-handlers';
+import { registerFlaPartPreviewIpcHandlers } from './ipc/register-fla-part-preview-ipc-handlers';
+import { FlaPartPreviewService } from './services/FlaPartPreviewService';
 import { FlaFrameSequenceService } from './services/fla-frame-sequence-service';
 import { FlaFrameSequenceCommitService } from './services/FlaFrameSequenceCommitService';
 import { registerFlaFrameSequenceIpcHandlers } from './ipc/register-fla-frame-sequence-ipc-handlers';
@@ -87,6 +89,9 @@ let flaAssetCommitService: FlaAssetCommitService | null = null;
 let flaSnapshotRenderSession: FlaStaticSnapshotRenderSession | null = null;
 let flaSnapshotCommitService: FlaStaticSnapshotCommitService | null = null;
 let removeFlaSnapshotIpcHandlers: (() => void) | null = null;
+let flaPartPreviewService: FlaPartPreviewService | null = null;
+let removeFlaPartPreviewIpcHandlers: (() => void) | null = null;
+let removeFlaSessionReleaseListener: (() => void) | null = null;
 let flaFrameSequenceService: FlaFrameSequenceService | null = null;
 let flaFrameSequenceCommitService: FlaFrameSequenceCommitService | null = null;
 let removeFlaFrameSequenceIpcHandlers: (() => void) | null = null;
@@ -388,6 +393,7 @@ async function initialize(): Promise<void> {
     onRecentProjectError: (error) => {
       console.error('Recent project update failed.', error);
     },
+    onProjectContextChanged: () => flaPartPreviewService?.invalidateAll(),
   });
   exportPreparationService = new ExportPreparationService({
     getCurrentProjectSnapshot: (projectRoot) => {
@@ -460,6 +466,7 @@ async function initialize(): Promise<void> {
     projectService,
     recoveryService,
     autosaveService,
+    onProjectContextChanged: () => flaPartPreviewService?.invalidateAll(),
   });
   removeRecentProjectsIpcHandlers = registerRecentProjectsIpcHandlers({
     getMainWindow: () => mainWindow,
@@ -548,6 +555,7 @@ async function initialize(): Promise<void> {
     flaImportService,
     flaAssetCommitService,
     selectFlaSource,
+    onInspectionStarting: () => flaPartPreviewService?.invalidateAll(),
   });
 
   // V2-R1 Static Snapshot (Issue #287).  The render session reuses the
@@ -574,6 +582,18 @@ async function initialize(): Promise<void> {
     },
   });
   flaSnapshotRenderSession = flaSnapshotSession;
+  flaPartPreviewService = new FlaPartPreviewService({
+    flaImportService,
+    renderSession: flaSnapshotSession,
+    rasterizer: flaSnapshotWindowManager,
+  });
+  removeFlaPartPreviewIpcHandlers = registerFlaPartPreviewIpcHandlers({
+    getMainWindow: () => mainWindow,
+    service: flaPartPreviewService,
+  });
+  removeFlaSessionReleaseListener = flaImportService.onSessionReleased((sessionId) => {
+    flaPartPreviewService?.invalidateSession(sessionId);
+  });
   flaSnapshotCommitService = new FlaStaticSnapshotCommitService({
     projectService,
     getCurrentProjectSnapshot: (projectRoot) =>
@@ -815,6 +835,12 @@ app.on('will-quit', () => {
   removeFlaImportIpcHandlers = null;
   removeFlaSnapshotIpcHandlers?.();
   removeFlaSnapshotIpcHandlers = null;
+  removeFlaPartPreviewIpcHandlers?.();
+  removeFlaPartPreviewIpcHandlers = null;
+  flaPartPreviewService?.close();
+  flaPartPreviewService = null;
+  removeFlaSessionReleaseListener?.();
+  removeFlaSessionReleaseListener = null;
   flaSnapshotRenderSession?.close();
   flaSnapshotRenderSession = null;
   flaSnapshotCommitService = null;

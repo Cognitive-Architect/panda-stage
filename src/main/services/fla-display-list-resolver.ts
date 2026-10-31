@@ -47,6 +47,11 @@ export type FlaDisplayListElement =
   | {
       readonly kind: 'shape';
       readonly shapeId: string;
+      /** Source-grounded XFL address retained for adaptive Part identity. */
+      readonly sourceAddress?: string;
+      readonly sourceParentFrameIndex?: number;
+      readonly sourceParentFrameSpanStart?: number;
+      readonly sourceParentSpanTweenType?: string;
       /** Transform from this node's local space into its immediate parent. */
       readonly localTransform?: FlaDisplayListMatrix;
       readonly visible?: boolean;
@@ -54,6 +59,10 @@ export type FlaDisplayListElement =
   | {
       readonly kind: 'bitmap';
       readonly libraryItemName: string;
+      readonly sourceAddress?: string;
+      readonly sourceParentFrameIndex?: number;
+      readonly sourceParentFrameSpanStart?: number;
+      readonly sourceParentSpanTweenType?: string;
       /** Transform from this node's local space into its immediate parent. */
       readonly localTransform?: FlaDisplayListMatrix;
       readonly visible?: boolean;
@@ -61,6 +70,10 @@ export type FlaDisplayListElement =
   | {
       readonly kind: 'group';
       readonly groupId: string;
+      readonly sourceAddress?: string;
+      readonly sourceParentFrameIndex?: number;
+      readonly sourceParentFrameSpanStart?: number;
+      readonly sourceParentSpanTweenType?: string;
       /** Transform from this group’s local space into its immediate parent. */
       readonly localTransform?: FlaDisplayListMatrix;
       readonly visible?: boolean;

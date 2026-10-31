@@ -71,6 +71,8 @@ export const IPC_CHANNELS = Object.freeze({
   FLA_SNAPSHOT_RENDER_CANCEL: 'fla:snapshot-render-cancel',
   FLA_SNAPSHOT_RENDER_RESULT: 'fla:snapshot-render-result',
   FLA_SNAPSHOT_RENDER_ERROR: 'fla:snapshot-render-error',
+  FLA_PART_PREVIEW: 'fla:part-preview',
+  FLA_PART_PREVIEW_CANCEL: 'fla:part-preview-cancel',
   // V2-R2 Frame Sequence (Issue #294).  Bounded contiguous frame range
   // preview, per-session cancel, and N-frame ImageAsset commit.  The
   // renderer only sends serialized R2 contract objects (the FLA source

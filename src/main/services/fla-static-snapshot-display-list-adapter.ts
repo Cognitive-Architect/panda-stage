@@ -600,6 +600,12 @@ function parseDisplayElements(
       children.push({
         kind: 'group',
         groupId: `fla-group-${crypto.createHash('sha256').update(`${context.scope}\u0000${path}`).digest('hex').slice(0, 24)}`,
+        sourceAddress: `${context.scope}/${path}`,
+        sourceParentFrameIndex: context.sourceParentFrameIndex,
+        sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,
+        ...(context.sourceParentSpanTweenType !== undefined
+          ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
+          : {}),
         localTransform: matrixResult.matrix,
         elements: parsedChildren.value,
       });
@@ -616,7 +622,17 @@ function parseDisplayElements(
     if (child.name === 'DOMShape') {
       const shapeId = `fla-shape-${crypto.createHash('sha256').update(`${context.scope}\u0000${path}`).digest('hex').slice(0, 24)}`;
       context.state.shapeBlocks.set(shapeId, child.xml);
-      children.push({ kind: 'shape', shapeId, ...(localTransform ? { localTransform } : {}) });
+      children.push({
+        kind: 'shape',
+        shapeId,
+        sourceAddress: `${context.scope}/${path}`,
+        sourceParentFrameIndex: context.sourceParentFrameIndex,
+        sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,
+        ...(context.sourceParentSpanTweenType !== undefined
+          ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
+          : {}),
+        ...(localTransform ? { localTransform } : {}),
+      });
       continue;
     }
 
@@ -625,7 +641,17 @@ function parseDisplayElements(
       return fail('RENDER_FAILED', `${child.name} is missing libraryItemName`);
     }
     if (child.name === 'DOMBitmapInstance') {
-      children.push({ kind: 'bitmap', libraryItemName, ...(localTransform ? { localTransform } : {}) });
+      children.push({
+        kind: 'bitmap',
+        libraryItemName,
+        sourceAddress: `${context.scope}/${path}`,
+        sourceParentFrameIndex: context.sourceParentFrameIndex,
+        sourceParentFrameSpanStart: context.sourceParentFrameSpanStart,
+        ...(context.sourceParentSpanTweenType !== undefined
+          ? { sourceParentSpanTweenType: context.sourceParentSpanTweenType }
+          : {}),
+        ...(localTransform ? { localTransform } : {}),
+      });
       continue;
     }
 

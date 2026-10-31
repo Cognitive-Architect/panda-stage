@@ -745,7 +745,7 @@
       }
     ]
   },
-  "count": 107,
+  "count": 108,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -2018,6 +2018,18 @@
       "owner": "character",
       "supersedes": null,
       "notes": "Issue #901 UI-A Windows Electron proof for direct visibility toggles, unclipped Part menus, inline rename, compact precise inspector input, lower-right Apply/Cancel, View All, and Adaptive Parts detail navigation. Requires local Issue #893 isolated-layer PNGs through PANDA_STAGE_ISSUE901_SOURCE_DIR or PANDA_STAGE_ISSUE899_SOURCE_DIR; screenshots and receipt stay in the external acceptance directory, and AUTO_PASS does not attest OWNER review."
+    },
+    {
+      "id": "issue906-f1-02-main-owned-part-preview",
+      "script": "verify:issue906-f1-02",
+      "suite": "assets",
+      "subsystem": "fla-part-preview",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "fla-rendering",
+      "supersedes": null,
+      "notes": "Issue #906 F1-02 Windows Electron acceptance for bounded Main-owned source-occurrence part preview and stage-identity PNG reassembly. Defaults to the previously authorized isolated Sample A and Animate frame; all artwork, screenshots, and receipts stay under the external acceptance directory."
     },
     {
       "id": "timeline",

@@ -22,6 +22,7 @@ export interface FlaImportIpcDependencies {
   flaImportService: FlaImportService;
   flaAssetCommitService: FlaAssetCommitService;
   selectFlaSource: (window: BrowserWindow) => Promise<string | null>;
+  onInspectionStarting?: () => void;
 }
 
 function assertTrustedSender(
@@ -98,6 +99,7 @@ export function registerFlaImportIpcHandlers(
         error: { code: 'USER_CANCELLED', message: 'FLA inspection was cancelled' },
       });
     }
+    dependencies.onInspectionStarting?.();
     // Start the Main-owned inspection first, then tell the Renderer that the
     // chooser boundary has been crossed. The signal stays narrow and
     // source-free: it only authorizes the existing Stage A presentation to
