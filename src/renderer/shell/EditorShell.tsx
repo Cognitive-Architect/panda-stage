@@ -35,6 +35,7 @@ import {
 import { shotStore } from '../stores/shotStore';
 import { characterAssemblySessionStore } from '../stores/characterAssemblySessionStore';
 import { CharacterAssemblyWorkbench } from '../features/characters/CharacterAssemblyWorkbench';
+import type { AdaptivePartsAssemblyActionsRef } from '../features/characters/CharacterManager';
 import { PendingDialoguePlacementProvider } from '../features/timeline/PendingDialoguePlacement';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
 import {
@@ -468,6 +469,7 @@ export function EditorShell({
   // Preview Camera is an editor-session mode, not Project or Preview state.
   const [autoCameraEnabled, setAutoCameraEnabled] = useState(false);
   const issue816FlowActive = useRef(false);
+  const adaptivePartsActionsRef = useRef<AdaptivePartsAssemblyActionsRef['current']>(null);
   const [productPreviewSurfaceActive, setProductPreviewSurfaceActive] =
     useState(false);
   const commitProductPreviewSurface = useCallback((): void => {
@@ -2045,6 +2047,7 @@ export function EditorShell({
               hidden={!portraitResourcesSlotVisible}
             >
               <LeftWorkspace
+                adaptivePartsActionsRef={adaptivePartsActionsRef}
                 activeActivity={
                   isPortrait
                     ? assemblyActive
@@ -2095,6 +2098,7 @@ export function EditorShell({
               </div>
               {activeAssemblySession && projectSnapshot ? (
                 <CharacterAssemblyWorkbench
+                  adaptivePartsActionsRef={adaptivePartsActionsRef}
                   projectSnapshot={projectSnapshot}
                   savedProjectSnapshot={editorProjectStore.getSavedProjectSnapshot()}
                   session={activeAssemblySession}

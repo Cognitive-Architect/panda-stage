@@ -162,7 +162,7 @@ export function CharacterAvatar({
   const defaultExpression = getCharacterDefaultExpression(character);
   const status = thumbnail?.status ?? (defaultExpression ? 'loading' : 'missing');
   const label = character.mode === 'adaptive-parts'
-    ? 'Static Parts'
+    ? '静态零件'
     : thumbnailLabel(thumbnail, Boolean(defaultExpression));
   const iconKind = getThumbnailFallbackIconKind(thumbnail, {
     assetConfigured: Boolean(defaultExpression),
@@ -175,7 +175,7 @@ export function CharacterAvatar({
   return (
     <span
       aria-label={character.mode === 'adaptive-parts'
-        ? `${character.name} static Parts`
+        ? `${character.name} 静态零件`
         : `${character.name} 默认表情头像`}
       className={classes}
       data-character-avatar="true"
@@ -242,7 +242,7 @@ export function CharacterIdentityRow({
         {showDefaultExpression ? (
           <small>
             {character.mode === 'adaptive-parts'
-              ? `静态 Parts · ${character.parts.length}`
+              ? `静态零件 · ${character.parts.length}`
               : `默认表情：${getCharacterDefaultExpression(character)?.name ?? '未配置'}`}
           </small>
         ) : null}

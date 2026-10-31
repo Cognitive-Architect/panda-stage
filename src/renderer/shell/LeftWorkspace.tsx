@@ -2,6 +2,7 @@ import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { ProjectRecoveryPanel } from '../features/recovery/ProjectRecoveryPanel';
 import { ResourceActivityDock } from './ResourceActivityDock';
 import type { ResourceActivity } from './ResourceActivityDock';
+import type { AdaptivePartsAssemblyActionsRef } from '../features/characters/CharacterManager';
 import { LegacyCompatibilityActivity } from './LegacyCompatibilityActivity';
 import type { EditorShellLayoutMode } from './adaptiveEditorShell';
 
@@ -13,6 +14,7 @@ export interface LeftWorkspaceProps {
   onDrawerOpenChange?(open: boolean): void;
   activeActivity?: ResourceActivity;
   onActiveActivityChange?(activity: ResourceActivity): void;
+  adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
   onOpenRecentProject(
     projectRoot: string,
     expectedProjectId: string,
@@ -27,6 +29,7 @@ export function LeftWorkspace({
   onDrawerOpenChange,
   activeActivity,
   onActiveActivityChange,
+  adaptivePartsActionsRef,
   onOpenRecentProject,
 }: LeftWorkspaceProps): React.JSX.Element {
   const projectUtilities = (
@@ -51,6 +54,7 @@ export function LeftWorkspace({
     >
       <ResourceActivityDock
         activeActivity={activeActivity}
+        adaptivePartsActionsRef={adaptivePartsActionsRef}
         auxiliaryContent={shellMode === 'landscape' ? undefined : projectUtilities}
         compact={
           shellMode === undefined ? undefined : shellMode === 'landscape'

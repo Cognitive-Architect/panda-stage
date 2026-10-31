@@ -506,15 +506,6 @@ export function CharacterEditor({
             </div>
             <div className="character-detail-identity-actions character-adaptive-detail-actions">
               <Button
-                aria-label={adaptiveAssemblyActive ? '返回角色' : '组装角色'}
-                className="character-detail-place-action"
-                data-testid={adaptiveAssemblyActive ? 'adaptive-parts-return' : 'adaptive-parts-assembly-open'}
-                onClick={() => adaptiveAssemblyActive ? onLeaveAssembly() : onOpenAssembly()}
-                variant="secondary"
-              >
-                {adaptiveAssemblyActive ? '返回角色' : '组装'}
-              </Button>
-              <Button
                 aria-label="加入当前镜头"
                 className="character-detail-place-action"
                 data-testid="character-detail-place-current-shot"

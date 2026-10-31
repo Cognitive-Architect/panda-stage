@@ -10,7 +10,10 @@ import { characterAssemblySessionStore } from '../stores/characterAssemblySessio
 import { AssetLibrary } from '../features/assets/AssetLibrary';
 import type { AssetWorkspaceView } from '../features/assets/AssetLibrary';
 import { CharacterManager } from '../features/characters/CharacterManager';
-import type { CharacterWorkspaceView } from '../features/characters/CharacterManager';
+import type {
+  AdaptivePartsAssemblyActionsRef,
+  CharacterWorkspaceView,
+} from '../features/characters/CharacterManager';
 import {
   ASSEMBLY_DISCARD_CONFIRM_MESSAGE,
   hasPendingCharacterAssemblyEdit,
@@ -49,6 +52,7 @@ export interface ResourceActivityDockProps {
   /** Optional portrait workspace request; the resource owner remains single. */
   activeActivity?: ResourceActivity;
   onActiveActivityChange?(activity: ResourceActivity): void;
+  adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
   /** Hide redundant section labels only for portrait resource surfaces. */
   hideSectionLabels?: boolean;
 }
@@ -110,6 +114,7 @@ export function ResourceActivityDock({
   onDrawerOpenChange,
   activeActivity: requestedActivity,
   onActiveActivityChange,
+  adaptivePartsActionsRef,
   hideSectionLabels = false,
 }: ResourceActivityDockProps): React.JSX.Element {
   const landscapePresentation = presentation === 'landscape';
@@ -617,6 +622,7 @@ export function ResourceActivityDock({
               />
             ) : (
               <CharacterManager
+                adaptivePartsActionsRef={adaptivePartsActionsRef}
                 hideHeading={landscapePresentation}
                 onViewChange={setCharacterView}
                 presentation={

@@ -128,7 +128,7 @@ describe('Issue #639 Character detail placement bridge', () => {
     expect(readOrderedStylesheetSource()).toContain('min-height: var(--ui-touch-icon);');
   });
 
-  it('keeps the existing detail placement action available for an Adaptive Parts Character', () => {
+  it('keeps Adaptive Parts detail placement without a duplicate assembly entry', () => {
     const project = new CharacterService().createAdaptiveParts(buildProject(), {
       name: 'Synthetic Static Parts',
       sourceRootTransform: adaptivePartsSourceRootTransform(),
@@ -157,20 +157,13 @@ describe('Issue #639 Character detail placement bridge', () => {
       view: 'detail',
       presentation: 'landscape',
     }));
-    const placementButton = markup.slice(
-      markup.indexOf('data-testid="character-detail-place-current-shot"'),
-      markup.indexOf('</button>', markup.indexOf('data-testid="character-detail-place-current-shot"')),
-    );
-
     expect(markup).toContain('Synthetic Static Parts');
     expect(markup).toContain('class="character-adaptive-detail-header"');
     expect(markup).toContain('data-testid="adaptive-parts-back-to-list"');
-    expect(markup).toContain('aria-label="返回角色列表"');
-    expect(markup).toContain('aria-label="组装角色"');
-    expect(markup).toContain('＋ 加入镜头');
-    expect(markup).not.toContain('返回角色列表</button>');
-    expect(placementButton).toContain('加入当前镜头');
-    expect(placementButton).not.toContain('disabled=""');
+    expect(markup).not.toContain('data-testid="adaptive-parts-assembly-open"');
+    expect(markup).toContain('data-testid="character-detail-place-current-shot"');
+    const managerSource = readFileSync('src/renderer/features/characters/CharacterManager.tsx', 'utf8');
+    expect(managerSource).toContain('openAssembly(characterId);');
   });
 
   it('keeps Adaptive Character placement transforms independent across Shots', () => {

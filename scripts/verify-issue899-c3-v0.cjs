@@ -599,7 +599,8 @@ async function inspectAssemblyViewport(window) {
     "shellMode: document.querySelector('[data-testid=\"editor-layout\"]')?.dataset.shellMode ?? null, " +
     "workbench: rect(root), list: rect(list), viewport: rect(viewport), footer: rect(footer), inspector: rect(inspector), stageScale: scale, " +
     "parts: [...(viewport?.querySelectorAll('[data-testid=\"adaptive-parts-assembly-canvas-part\"]') ?? [])].map((part) => ({ partId: part.dataset.partId, ...rect(part) })), " +
-    "rows: rows.map((row) => { const bounds = row.getBoundingClientRect(); const target = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2); " +
+    "rows: rows.map((row) => { const bounds = row.getBoundingClientRect(); const hitTarget = row.querySelector('[data-testid=\"adaptive-parts-assembly-row-select\"]') ?? row; " +
+    "const hitBounds = hitTarget.getBoundingClientRect(); const target = document.elementFromPoint(hitBounds.left + hitBounds.width / 2, hitBounds.top + hitBounds.height / 2); " +
     "const style = getComputedStyle(row); return { partId: row.dataset.partId, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, " +
     "visible: style.display !== 'none' && style.visibility === 'visible', hitTestedWithinRow: Boolean(target && row.contains(target)), " +
     "insideWindow: bounds.left >= 0 && bounds.right <= window.innerWidth && bounds.top >= 0 && bounds.bottom <= window.innerHeight }; }), " +
@@ -681,8 +682,7 @@ async function sendKey(window, keyCode, modifiers = []) {
 }
 
 async function replaceInputText(window, selector, text) {
-  await clickPoint(window, selector, `Focus ${selector}`);
-  await page(window, `document.querySelector(${JSON.stringify(selector)})?.select()`);
+  await page(window, `(() => { const input = document.querySelector(${JSON.stringify(selector)}); input?.focus(); input?.select(); })()`);
   await sendKey(window, 'A', ['control']);
   if (text) window.webContents.insertText(text);
   else await sendKey(window, 'Backspace');
@@ -690,8 +690,7 @@ async function replaceInputText(window, selector, text) {
 }
 
 async function renameAdaptivePart(window, rowSelector, nextName, screenshotName) {
-  await clickPoint(window, `${rowSelector} [data-testid="adaptive-parts-row-menu-trigger"]`, 'Open Part options');
-  await clickPoint(window, `${rowSelector} [data-adaptive-part-action="rename"]`, 'Start inline Part rename');
+  await click(window, `${rowSelector} [data-testid="adaptive-parts-rename-button"]`, 'Start inline Part rename');
   const input = '[data-testid="adaptive-parts-rename-input"]';
   await waitFor(window, `document.querySelector(${JSON.stringify(input)})`, 'Inline Part rename input did not appear.');
   await replaceInputText(window, input, nextName);
@@ -705,35 +704,42 @@ async function renameAdaptivePart(window, rowSelector, nextName, screenshotName)
 
 async function verifyIssue901UiA(window, prepared, receipt) {
   const checks = {};
+  const progress = (message) => process.stdout.write(`[issue901-ui-a] ${message}\n`);
   const characterRail = '[data-testid="resource-activity-rail-characters"]';
   const characterList = '[data-testid="character-list-view"]';
   const listRows = '.adaptive-parts-assembly-rows';
   const adaptiveCard = `[data-character-id="${adaptiveCharacterId}"]`;
   const longListCard = `[data-character-id="${prepared.longListCharacterId}"]`;
 
-  await clickPoint(window, characterRail, 'Open Characters');
+  await click(window, characterRail, 'Open Characters');
   await waitFor(window, `document.querySelector(${JSON.stringify(characterList)})`, 'Character list did not open.');
   const cardCopy = await page(window, `document.querySelector(${JSON.stringify(adaptiveCard)})?.querySelector('.character-list-copy small')?.textContent?.trim() ?? ''`);
   assert(cardCopy === '5 个零件', `Adaptive Parts list copy is ${JSON.stringify(cardCopy)}.`);
   await captureWhole(window, 'issue901-ui01-character-list.png');
-  await clickPoint(window, adaptiveCard, 'Open the five-Part C0 Character');
-  await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-assembly-open"]')`, 'Adaptive Character detail did not open.');
+  const beforeOpen = await inspect(window);
+  await click(window, adaptiveCard, 'Open the five-Part C0 Character');
+  await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]') && document.querySelectorAll('[data-testid="adaptive-parts-assembly-row"]').length === 5`, 'The Adaptive Character list row did not open its Part list and canvas.');
   const header = await page(window, `(() => {
-    const header = document.querySelector('.character-editor-adaptive-detail .character-adaptive-detail-header');
+    const header = document.querySelector('[data-testid="adaptive-parts-assembly-header"]');
     return {
       present: Boolean(header),
-      name: header?.querySelector('.character-adaptive-detail-heading strong')?.textContent?.trim() ?? '',
+      name: header?.querySelector('strong')?.textContent?.trim() ?? '',
       back: header?.querySelector('[data-testid="adaptive-parts-back-to-list"]')?.getAttribute('aria-label') ?? '',
-      actions: [...(header?.querySelectorAll('button') ?? [])].map((button) => button.innerText.trim()),
+      join: document.querySelector('[data-testid="adaptive-parts-join-current-shot"]')?.innerText?.trim() ?? '',
+      selectedRows: document.querySelectorAll('[data-testid="adaptive-parts-assembly-row-select"][aria-pressed="true"]').length,
+      inspectorFields: Boolean(document.querySelector('[data-testid="adaptive-parts-inspector-fields"]')),
+      inspectorDisabled: document.querySelector('[data-testid="adaptive-parts-inspector-toggle"]')?.disabled ?? false,
     };
   })()`);
-  assert(header.present && header.name === 'C0 五部件角色' && header.back === '返回角色列表', `Adaptive detail header is not compact and navigable: ${JSON.stringify(header)}.`);
-  assert(header.actions.includes('组装') && header.actions.includes('＋ 加入镜头'), `Adaptive detail actions are unexpected: ${JSON.stringify(header.actions)}.`);
-  await captureWhole(window, 'issue901-ui05-adaptive-detail-header.png');
-  checks.ui05 = { result: 'PASS', header };
+  assert(header.present && header.name === 'C0 五部件角色' && header.back === '返回角色列表', `Adaptive workbench header is not compact and navigable: ${JSON.stringify(header)}.`);
+  assert(header.join.includes('加入镜头') && header.selectedRows === 0 && !header.inspectorFields && header.inspectorDisabled, `Adaptive workbench did not start with the source pose and no selected Part: ${JSON.stringify(header)}.`);
+  const afterOpen = await inspect(window);
+  assert(afterOpen.revision === beforeOpen.revision && afterOpen.dirty === beforeOpen.dirty && afterOpen.undoCount === beforeOpen.undoCount, 'Opening the Adaptive workbench wrote a Project revision, dirty state, or History entry.');
+  const bodyCopy = await page(window, `document.body.innerText`);
+  assert(!/Static Parts|static Parts|静态 Parts/.test(bodyCopy), `Adaptive Parts fallback copy is inconsistent: ${bodyCopy.match(/Static Parts|static Parts|静态 Parts/)?.[0]}.`);
+  await captureWhole(window, 'issue901-ui05-adaptive-workbench-header.png');
+  checks.ui05 = { result: 'PASS', header, directEntry: true, openingCreatedNoProjectHistory: true, fallbackCopyUsesChinese: true };
 
-  await clickPoint(window, '[data-testid="adaptive-parts-assembly-open"]', 'Open C0 Adaptive Parts assembly');
-  await waitFor(window, `document.querySelectorAll('[data-testid="adaptive-parts-assembly-row"]').length === 5`, 'The C0 assembly did not render five Part rows.');
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"] .adaptive-parts-assembly-canvas-toolbar button')?.textContent?.trim() === '查看全貌'`, 'The assembly canvas has no 查看全貌 action.');
   const c0Rows = await page(window, `([...document.querySelectorAll('[data-testid="adaptive-parts-assembly-row"]')]).map((row) => ({
     partId: row.dataset.partId,
@@ -743,99 +749,135 @@ async function verifyIssue901UiA(window, prepared, receipt) {
   assert(c0Rows.length === 5 && new Set(c0Rows.map((row) => row.partId)).size === 5, `C0 row identities are not unique: ${JSON.stringify(c0Rows)}.`);
   assert(['com6', 'com2', 'com5', 'com4', 'com3'].every((name) => c0Rows.some((row) => row.name === name)), `The C0 row list lost source names: ${JSON.stringify(c0Rows)}.`);
   await captureWhole(window, 'issue901-ui01-assembly-list.png');
+  progress('captured direct-entry workbench');
 
   const firstPartId = c0Rows[0].partId;
   assert(c0Rows[0].name === 'com3', `The top C0 row is ${JSON.stringify(c0Rows[0])}; expected com3.`);
   const firstRow = `[data-testid="adaptive-parts-assembly-row"][data-part-id="${firstPartId}"]`;
   const firstSelect = `${firstRow} [data-testid="adaptive-parts-assembly-row-select"]`;
   const firstEye = `${firstRow} [data-testid="adaptive-parts-visibility-toggle"]`;
-  await clickPoint(window, firstSelect, 'Select first C0 Part');
+  const wideRowGeometry = await page(window, `(() => {
+    const list = document.querySelector('.adaptive-parts-assembly-list')?.getBoundingClientRect();
+    const rows = [...document.querySelectorAll('[data-testid="adaptive-parts-assembly-row"]')].filter((row) => ['com3', 'com4'].includes(row.querySelector('.adaptive-parts-assembly-name')?.textContent?.trim()));
+    return { listWidth: list?.width ?? 0, rows: rows.map((row) => {
+      const name = row.querySelector('.adaptive-parts-assembly-name');
+      const nameRect = name?.getBoundingClientRect();
+      const controls = ['adaptive-parts-visibility-toggle', 'adaptive-parts-rename-button', 'adaptive-parts-restore-button'].map((id) => {
+        const rect = row.querySelector('[data-testid="' + id + '"]')?.getBoundingClientRect();
+        return { id, width: rect?.width ?? 0, height: rect?.height ?? 0 };
+      });
+      return { name: name?.textContent?.trim() ?? '', nameWidth: nameRect?.width ?? 0, controls };
+    }) };
+  })()`);
+  progress(`measured desktop row controls: ${JSON.stringify(wideRowGeometry)}`);
+  assert(wideRowGeometry.listWidth >= 270 && wideRowGeometry.listWidth <= 290, `Desktop Part list width is outside 270–290 CSS pixels: ${JSON.stringify(wideRowGeometry)}.`);
+  assert(wideRowGeometry.rows.length === 2 && wideRowGeometry.rows.every((row) => row.nameWidth > 0 && row.controls.every((control) => control.width >= 44 && control.height >= 44)), `com3/com4 names or 44px direct row controls are unavailable: ${JSON.stringify(wideRowGeometry)}.`);
+  const originalWindowSize = window.getSize();
+  progress(`resizing from ${JSON.stringify(originalWindowSize)} to 880x760`);
+  window.setSize(880, 760);
+  await pause(450);
+  progress(`Electron size is ${JSON.stringify(window.getSize())}; renderer size is ${JSON.stringify(await page(window, '({ width: window.innerWidth, height: window.innerHeight })'))}`);
+  await waitFor(window, 'window.innerWidth <= 900 && window.innerWidth >= 800', 'The workbench window did not enter the 880px compact breakpoint.');
+  const narrowRowGeometry = await page(window, `(() => {
+    const row = document.querySelector(${JSON.stringify(firstRow)});
+    const name = row?.querySelector('.adaptive-parts-assembly-name')?.getBoundingClientRect();
+    const controls = ['adaptive-parts-visibility-toggle', 'adaptive-parts-rename-button', 'adaptive-parts-restore-button'].map((id) => {
+      const rect = row?.querySelector('[data-testid="' + id + '"]')?.getBoundingClientRect();
+      return { id, width: rect?.width ?? 0, height: rect?.height ?? 0, top: rect?.top ?? 0 };
+    });
+    return { nameTop: name?.top ?? 0, nameBottom: name?.bottom ?? 0, controls };
+  })()`);
+  assert(narrowRowGeometry && narrowRowGeometry.controls.every((control) => control.width >= 44 && control.height >= 44) && narrowRowGeometry.nameBottom <= Math.min(...narrowRowGeometry.controls.map((control) => control.top)) + 2, `At 880px the name does not wrap above three 44px direct controls: ${JSON.stringify(narrowRowGeometry)}.`);
+  await captureWhole(window, 'issue901-ui02-narrow-880.png');
+  window.setSize(originalWindowSize[0], originalWindowSize[1]);
+  await pause(350);
+  progress(`measured 880px row layout: ${JSON.stringify(narrowRowGeometry)}`);
+
   const selectionBeforeEye = await page(window, `document.querySelector(${JSON.stringify(firstSelect)})?.getAttribute('aria-pressed')`);
   const beforeEye = await inspect(window);
-  await clickPoint(window, firstEye, 'Toggle the selected Part visibility');
-  await waitFor(window, `document.querySelector(${JSON.stringify(firstEye)})?.getAttribute('aria-pressed') === 'false'`, 'The direct visibility control did not hide the selected Part.');
+  progress(`clicking visibility; initially pressed=${selectionBeforeEye}`);
+  await click(window, firstEye, 'Toggle the first Part visibility');
+  progress('visibility click returned');
+  await waitFor(window, `document.querySelector(${JSON.stringify(firstEye)})?.getAttribute('aria-pressed') === 'false'`, `The direct visibility control did not hide the Part: ${JSON.stringify(await page(window, `(() => { const row = document.querySelector(${JSON.stringify(firstRow)}); return { pressed: row?.querySelector('[data-testid="adaptive-parts-visibility-toggle"]')?.getAttribute('aria-pressed') ?? null, selected: row?.querySelector('[data-testid="adaptive-parts-assembly-row-select"]')?.getAttribute('aria-pressed') ?? null, canvasPart: Boolean(document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${firstPartId}"]')), status: document.querySelector('.adaptive-parts-assembly-footer [role="status"]')?.textContent?.trim() ?? '' }; })()`))}.`);
   await waitFor(window, `!document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${firstPartId}"]')`, 'A hidden Part is still rendered on the assembly canvas.');
   const hiddenSelection = await page(window, `document.querySelector(${JSON.stringify(firstSelect)})?.getAttribute('aria-pressed')`);
   const afterEye = await inspect(window);
-  assert(selectionBeforeEye === 'true' && hiddenSelection === 'true', 'Hiding a Part changed its list selection.');
+  assert(selectionBeforeEye === 'false' && hiddenSelection === 'false', 'Hiding a Part changed its list selection.');
   assert(afterEye.revision === beforeEye.revision && afterEye.undoCount === beforeEye.undoCount, 'Direct visibility toggle wrote a Project revision or History entry before Apply.');
   await captureWhole(window, 'issue901-ui01-direct-eye-hidden.png');
-  await clickPoint(window, firstEye, 'Show the selected Part again');
+  await click(window, firstEye, 'Show the first Part again');
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${firstPartId}"]')`, 'The direct visibility control did not restore the Part.');
 
-  const menuRow = c0Rows.at(-1);
-  const lastRow = `[data-testid="adaptive-parts-assembly-row"][data-part-id="${menuRow.partId}"]`;
-  await clickPoint(window, `${lastRow} [data-testid="adaptive-parts-row-menu-trigger"]`, 'Open the bottom C0 Part menu');
-  const menuSelector = `${lastRow} [data-testid="adaptive-parts-row-popover"]`;
-  const menuGeometry = await page(window, `(() => {
-    const menu = document.querySelector(${JSON.stringify(menuSelector)});
-    const rect = menu?.getBoundingClientRect();
-    return { open: Boolean(menu?.matches(':popover-open')), placement: menu?.dataset.placement ?? '', x: rect?.x ?? -1, y: rect?.y ?? -1, right: rect?.right ?? -1, bottom: rect?.bottom ?? -1, width: rect?.width ?? 0, height: rect?.height ?? 0 };
-  })()`);
-  const viewport = await page(window, '({ width: window.innerWidth, height: window.innerHeight })');
-  assert(menuGeometry.open && menuGeometry.x >= 8 && menuGeometry.y >= 8 && menuGeometry.right <= viewport.width - 8 && menuGeometry.bottom <= viewport.height - 8, `Part menu is outside the viewport: ${JSON.stringify(menuGeometry)}.`);
-  await captureWhole(window, 'issue901-ui02-row-menu.png');
-  await clickPoint(window, '[data-testid="adaptive-parts-assembly-count"]', 'Dismiss the Part menu outside');
-  await waitFor(window, `!document.querySelector(${JSON.stringify(menuSelector)})?.matches(':popover-open')`, 'The Part menu did not close after outside input.');
-  await clickPoint(window, `${lastRow} [data-testid="adaptive-parts-row-menu-trigger"]`, 'Reopen the bottom C0 Part menu');
-  await sendKey(window, 'Escape');
-  await waitFor(window, `!document.querySelector(${JSON.stringify(menuSelector)})?.matches(':popover-open')`, 'Escape did not close the Part menu.');
-
   await renameAdaptivePart(window, firstRow, 'C0 临时重命名', 'issue901-ui01-row-rename-inline.png');
-  await clickPoint(window, `${firstRow} [data-testid="adaptive-parts-row-menu-trigger"]`, 'Open renamed Part options');
-  await clickPoint(window, `${firstRow} [data-adaptive-part-action="rename"]`, 'Start a rename to cancel with Escape');
+  await click(window, `${firstRow} [data-testid="adaptive-parts-rename-button"]`, 'Start a rename to cancel with Escape');
   await replaceInputText(window, '[data-testid="adaptive-parts-rename-input"]', '不应提交');
   await sendKey(window, 'Escape');
   await waitFor(window, `!document.querySelector('[data-testid="adaptive-parts-rename-input"]')`, 'Escape did not cancel inline rename.');
   assert(await page(window, `document.querySelector(${JSON.stringify(firstRow + ' .adaptive-parts-assembly-name')})?.textContent?.trim() === 'C0 临时重命名'`), 'Escape changed the existing Part name.');
-  await clickPoint(window, `${firstRow} [data-testid="adaptive-parts-row-menu-trigger"]`, 'Open Part options before blank-name validation');
-  await clickPoint(window, `${firstRow} [data-adaptive-part-action="rename"]`, 'Start blank-name validation');
+  await click(window, `${firstRow} [data-testid="adaptive-parts-rename-button"]`, 'Start blank-name validation');
   await replaceInputText(window, '[data-testid="adaptive-parts-rename-input"]', '');
-  await clickPoint(window, '[data-testid="adaptive-parts-assembly-count"]', 'Blur the blank inline name');
+  await page(window, `document.querySelector('[data-testid="adaptive-parts-rename-input"]')?.blur()`);
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-rename-input"]')?.getAttribute('aria-invalid') === 'true'`, 'Blank inline names were not rejected.');
+  const renameFailureVisible = await page(window, `(() => { const input = document.querySelector('[data-testid="adaptive-parts-rename-input"]'); const errorId = input?.getAttribute('aria-describedby'); return Boolean(input && input.value === '' && errorId && document.getElementById(errorId)?.textContent?.trim()); })()`);
+  assert(renameFailureVisible, 'A rejected inline rename did not keep its input and visible error.');
   await page(window, `document.querySelector('[data-testid="adaptive-parts-rename-input"]')?.focus()`);
   await sendKey(window, 'Escape');
   await waitFor(window, `!document.querySelector('[data-testid="adaptive-parts-rename-input"]')`, 'Escape did not close blank-name validation.');
 
-  await clickPoint(window, '[data-testid="adaptive-parts-inspector-toggle"]', 'Open compact Part inspector');
+  await click(window, firstSelect, 'Select com3 for compact Part inspector checks');
+  await click(window, '[data-testid="adaptive-parts-inspector-toggle"]', 'Open compact Part inspector');
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')`, 'Compact inspector fields did not open.');
+  const inspectorFieldIds = await page(window, `['adaptive-parts-offset-x','adaptive-parts-offset-y','adaptive-parts-scale-percent','adaptive-parts-rotation-deg'].map((id) => Boolean(document.querySelector('[data-testid="' + id + '"]')))`);
+  assert(inspectorFieldIds.every(Boolean), `Compact inspector does not show exactly the four transform fields: ${JSON.stringify(inspectorFieldIds)}.`);
+  await click(window, '[data-testid="adaptive-parts-inspector-close"]', 'Close the inspector with its X button');
+  await waitFor(window, `!document.querySelector('[data-testid="adaptive-parts-inspector-fields"]') && document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Inspector X closed the workbench instead of only the inspector.');
+  await click(window, '[data-testid="adaptive-parts-inspector-toggle"]', 'Reopen compact Part inspector');
+  await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')`, 'Compact inspector did not reopen.');
+  await click(window, '[data-testid="adaptive-parts-offset-x-step-up"]', 'Increment X by one');
+  await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value === '1'`, 'X stepper did not increment by one.');
+  await page(window, `document.querySelector('[data-testid="adaptive-parts-offset-x-step-up"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }))`);
+  await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value === '11'`, 'Shift+X stepper did not increment by ten.');
   await replaceInputText(window, '[data-testid="adaptive-parts-offset-x"]', '12.345');
-  await clickPoint(window, '[data-testid="adaptive-parts-offset-y"]', 'Commit X offset and focus Y offset');
+  await page(window, `document.querySelector('[data-testid="adaptive-parts-offset-y"]')?.focus()`);
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value === '12.3'`, 'Blur did not return X offset to concise one-decimal display.');
   await replaceInputText(window, '[data-testid="adaptive-parts-offset-x"]', '');
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.getAttribute('aria-invalid') === 'true'`, 'An empty numeric draft was not marked invalid.');
   assert(await page(window, `document.querySelector('[data-testid="adaptive-parts-assembly-apply"]')?.disabled === true`), 'Apply stayed enabled for an invalid numeric draft.');
   await sendKey(window, 'Escape');
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value === '12.3'`, 'Escape did not restore the previous high-precision X offset.');
+  await click(window, `${firstRow} [data-testid="adaptive-parts-restore-button"]`, 'Restore only the selected Part to its source pose');
+  await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value === '0' && document.querySelector('[data-testid="adaptive-parts-offset-y"]')?.value === '0'`, 'Direct source restore did not reset the current Part draft.');
+  assert(await page(window, `document.querySelector(${JSON.stringify(firstRow + ' .adaptive-parts-assembly-name')})?.textContent?.trim() === 'C0 临时重命名'`), 'Source restore changed the Part name while restoring its pose.');
   await captureWhole(window, 'issue901-ui03-compact-inspector.png');
 
   await page(window, '(() => { window.confirm = () => true; return true; })()');
-  await clickPoint(window, '[data-testid="adaptive-parts-assembly-cancel"]', 'Cancel pending Adaptive Parts edits');
+  await click(window, '[data-testid="adaptive-parts-assembly-cancel"]', 'Cancel pending Adaptive Parts edits');
   await waitFor(window, `!document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Cancel did not close the pending assembly draft.');
   const afterCancel = await inspect(window);
-  assert(afterCancel.revision === beforeEye.revision && afterCancel.undoCount === beforeEye.undoCount, 'Cancel wrote a Project revision or History entry.');
-  checks.ui01 = { result: 'PASS', parts: c0Rows.length, directVisibilityPreservedSelection: true, directVisibilityCreatedNoProjectHistory: true, inlineRenameEnterEscapeAndBlankValidation: 'PASS', cancelCreatedNoProjectHistory: true };
-  checks.ui02 = { result: 'PASS', popoverEscapesListClipping: true, outsideDismiss: true, escapeDismiss: true, bottomMenu: menuGeometry };
+  assert(afterCancel.revision === beforeOpen.revision && afterCancel.undoCount === beforeOpen.undoCount, 'Cancel wrote a Project revision or History entry.');
+  checks.ui01 = { result: 'PASS', parts: c0Rows.length, directVisibilityCreatedNoProjectHistory: true, inlineRenameEnterEscapeAndBlankValidation: 'PASS', rejectedRenameRetainedInputAndError: true, sourceRestoreWasPartLocalAndCancelRevertedIt: true, cancelCreatedNoProjectHistory: true };
+  checks.ui02 = { result: 'PASS', wideListWidth: wideRowGeometry.listWidth, com3AndCom4: wideRowGeometry.rows, direct44pxControls: true };
 
   await ensureCharacterListReady(window, characterRail, characterList, 'C0 after cancel');
-  await clickPoint(window, adaptiveCard, 'Reopen C0 Adaptive Character detail');
-  await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-assembly-open"]')`, 'C0 detail did not reopen after cancel.');
-  await clickPoint(window, '[data-testid="adaptive-parts-assembly-open"]', 'Open a fresh C0 assembly draft');
+  await click(window, adaptiveCard, 'Open a fresh C0 assembly draft');
   await waitFor(window, `document.querySelectorAll('[data-testid="adaptive-parts-assembly-row"]').length === 5`, 'Fresh C0 assembly did not reopen.');
   const applyPartId = c0Rows[0].partId;
   const applyRow = `[data-testid="adaptive-parts-assembly-row"][data-part-id="${applyPartId}"]`;
-  await clickPoint(window, `${applyRow} [data-testid="adaptive-parts-assembly-row-select"]`, 'Select a Part for precision Apply');
-  await clickPoint(window, '[data-testid="adaptive-parts-inspector-toggle"]', 'Open precision inspector');
+  await click(window, `${applyRow} [data-testid="adaptive-parts-assembly-row-select"]`, 'Select a Part for precision Apply');
+  await click(window, '[data-testid="adaptive-parts-inspector-toggle"]', 'Open precision inspector');
   for (const [testId, value, nextTestId] of [
     ['adaptive-parts-offset-x', '12.345', 'adaptive-parts-offset-y'],
     ['adaptive-parts-offset-y', '7.891', 'adaptive-parts-scale-percent'],
     ['adaptive-parts-scale-percent', '110.25', 'adaptive-parts-rotation-deg'],
-    ['adaptive-parts-rotation-deg', '12.375', 'adaptive-parts-inspector-toggle'],
+    ['adaptive-parts-rotation-deg', '12.375', 'adaptive-parts-inspector-close'],
   ]) {
     await replaceInputText(window, `[data-testid="${testId}"]`, value);
-    await clickPoint(window, `[data-testid="${nextTestId}"]`, `Commit ${testId} and continue`);
+    if (testId === 'adaptive-parts-rotation-deg') {
+      await page(window, `document.querySelector('[data-testid="adaptive-parts-rotation-deg"]')?.blur()`);
+    }
+    await click(window, `[data-testid="${nextTestId}"]`, `Commit ${testId} and continue`);
   }
-  await clickPoint(window, '[data-testid="adaptive-parts-inspector-toggle"]', 'Reopen precision inspector');
+  await click(window, '[data-testid="adaptive-parts-inspector-toggle"]', 'Reopen precision inspector');
   const conciseValues = await page(window, `Object.fromEntries(['adaptive-parts-offset-x','adaptive-parts-offset-y','adaptive-parts-scale-percent','adaptive-parts-rotation-deg'].map((id) => [id, document.querySelector('[data-testid="' + id + '"]')?.value ?? null]))`);
   assert(JSON.stringify(Object.values(conciseValues)) === JSON.stringify(['12.3', '7.9', '110.3', '12.4']), `Inspector rounded display is unexpected: ${JSON.stringify(conciseValues)}.`);
   await renameAdaptivePart(window, applyRow, 'C0 精确微调部件');
@@ -849,7 +891,7 @@ async function verifyIssue901UiA(window, prepared, receipt) {
   assert(actionGeometry.cancel && actionGeometry.apply && !actionGeometry.disabled && actionGeometry.apply.right <= actionGeometry.footer.right + 1 && actionGeometry.apply.right >= actionGeometry.footer.right - 24, `Apply/Cancel are not available at the workbench lower-right: ${JSON.stringify(actionGeometry)}.`);
   await captureWhole(window, 'issue901-ui04-bottom-right-actions.png');
   const beforeApply = await inspect(window);
-  await clickPoint(window, '[data-testid="adaptive-parts-assembly-apply"]', 'Apply precise Adaptive Parts edits');
+  await click(window, '[data-testid="adaptive-parts-assembly-apply"]', 'Apply precise Adaptive Parts edits');
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]') && document.querySelector('[data-testid="adaptive-parts-assembly-apply"]')`, 'Apply did not keep the committed assembly available for further edits.');
   const afterApply = await inspect(window);
   const appliedCharacter = afterApply.project.characters.find((character) => character.id === adaptiveCharacterId);
@@ -857,12 +899,12 @@ async function verifyIssue901UiA(window, prepared, receipt) {
   assert(afterApply.revision === beforeApply.revision + 1 && afterApply.undoCount === beforeApply.undoCount + 1, 'Apply did not create exactly one Project revision and History entry.');
   assert(appliedPart?.displayName === 'C0 精确微调部件' && appliedPart.staticAdjustment?.offsetX === 12.345 && appliedPart.staticAdjustment?.offsetY === 7.891 && appliedPart.staticAdjustment?.scale === 1.1025 && appliedPart.staticAdjustment?.rotationDeg === 12.375, `Apply lost the exact inline name or numeric precision: ${JSON.stringify(appliedPart)}.`);
   await expandProjectActions(window);
-  await clickPoint(window, '[data-testid="quick-action-history"] [aria-label="撤销"]', 'Undo applied Adaptive Parts edits');
+  await click(window, '[data-testid="quick-action-history"] [aria-label="撤销"]', 'Undo applied Adaptive Parts edits');
   const afterUndo = await inspect(window);
   const undoneCharacter = afterUndo.project.characters.find((character) => character.id === adaptiveCharacterId);
   const undonePart = undoneCharacter?.mode === 'adaptive-parts' ? undoneCharacter.parts.find((part) => part.partId === applyPartId) : null;
   assert(undonePart?.displayName === 'com3' && undonePart.staticAdjustment?.offsetX === 0, 'Undo did not restore the original Adaptive Part name and adjustment.');
-  await clickPoint(window, '[data-testid="quick-action-history"] [aria-label="重做"]', 'Redo applied Adaptive Parts edits');
+  await click(window, '[data-testid="quick-action-history"] [aria-label="重做"]', 'Redo applied Adaptive Parts edits');
   const afterRedo = await inspect(window);
   const redoneCharacter = afterRedo.project.characters.find((character) => character.id === adaptiveCharacterId);
   const redonePart = redoneCharacter?.mode === 'adaptive-parts' ? redoneCharacter.parts.find((part) => part.partId === applyPartId) : null;
@@ -870,32 +912,18 @@ async function verifyIssue901UiA(window, prepared, receipt) {
   checks.ui03 = { result: 'PASS', displayedValues: conciseValues, exactAppliedValues: appliedPart.staticAdjustment, undoRedo: 'PASS' };
   checks.ui04 = { result: 'PASS', lowerRightActions: actionGeometry, applyCreatedOneRevisionAndHistoryEntry: true, cancelPreservedProjectAndHistory: true, viewAllLabel: '查看全貌' };
 
-  await clickPoint(window, '[data-testid="adaptive-parts-assembly-cancel"]', 'Close the clean committed assembly session');
+  await click(window, '[data-testid="adaptive-parts-assembly-cancel"]', 'Close the clean committed assembly session');
   await waitFor(window, `!document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'The clean assembly session did not close.');
   await ensureCharacterListReady(window, characterRail, characterList, 'Character list before long-list checks');
-  await clickPoint(window, longListCard, 'Open repeated-image long-list control');
-  await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-assembly-open"]')`, 'Long-list Character detail did not open.');
-  await clickPoint(window, '[data-testid="adaptive-parts-assembly-open"]', 'Open 24-Part long list');
+  await click(window, longListCard, 'Open repeated-image long-list control');
   await waitFor(window, `document.querySelectorAll('[data-testid="adaptive-parts-assembly-row"]').length === 24`, 'Long-list workbench did not render 24 rows.');
   await page(window, `(() => { const rows = document.querySelector(${JSON.stringify(listRows)}); if (rows) rows.scrollTop = rows.scrollHeight; })()`);
   await waitFor(window, `(() => { const rows = document.querySelector(${JSON.stringify(listRows)}); return Boolean(rows && rows.scrollHeight > rows.clientHeight && rows.scrollTop > 0); })()`, 'The internal Part list did not scroll independently.');
   const longListLastPartId = await page(window, `document.querySelectorAll('[data-testid="adaptive-parts-assembly-row"]')[23]?.dataset.partId ?? null`);
   assert(longListLastPartId, 'The repeated-image list has no last row.');
   const longListLastRow = `[data-testid="adaptive-parts-assembly-row"][data-part-id="${longListLastPartId}"]`;
-  await clickPoint(window, `${longListLastRow} [data-testid="adaptive-parts-row-menu-trigger"]`, 'Open the last long-list Part menu');
-  const longMenuSelector = `${longListLastRow} [data-testid="adaptive-parts-row-popover"]`;
-  const longMenu = await page(window, `(() => {
-    const menu = document.querySelector(${JSON.stringify(longMenuSelector)});
-    const rect = menu?.getBoundingClientRect();
-    const list = document.querySelector(${JSON.stringify(listRows)})?.getBoundingClientRect();
-    return { open: Boolean(menu?.matches(':popover-open')), placement: menu?.dataset.placement ?? '', x: rect?.x ?? -1, y: rect?.y ?? -1, right: rect?.right ?? -1, bottom: rect?.bottom ?? -1, escapesList: Boolean(rect && list && (rect.top < list.top || rect.right > list.right || rect.bottom > list.bottom || rect.left < list.left)) };
-  })()`);
-  assert(longMenu.open && longMenu.escapesList && longMenu.x >= 8 && longMenu.y >= 8 && longMenu.right <= viewport.width - 8 && longMenu.bottom <= viewport.height - 8, `Last-row menu was clipped by the scrolling list or viewport: ${JSON.stringify(longMenu)}.`);
-  await captureWhole(window, 'issue901-ui02-long-list-menu.png');
-  await clickPoint(window, '[data-testid="adaptive-parts-assembly-count"]', 'Dismiss long-list menu');
-  await waitFor(window, `!document.querySelector(${JSON.stringify(longMenuSelector)})?.matches(':popover-open')`, 'Long-list menu did not dismiss.');
-  await clickPoint(window, `${longListLastRow} [data-testid="adaptive-parts-assembly-row-select"]`, 'Select last long-list Part');
-  await clickPoint(window, '[data-testid="adaptive-parts-inspector-toggle"]', 'Open floating inspector for selected long-list Part');
+  await click(window, `${longListLastRow} [data-testid="adaptive-parts-assembly-row-select"]`, 'Select last long-list Part');
+  await click(window, '[data-testid="adaptive-parts-inspector-toggle"]', 'Open floating inspector for selected long-list Part');
   const inspectorGeometry = await page(window, `(() => {
     const panel = document.querySelector('.adaptive-parts-assembly-inspector')?.getBoundingClientRect();
     const part = document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"].is-selected')?.getBoundingClientRect();
@@ -907,7 +935,8 @@ async function verifyIssue901UiA(window, prepared, receipt) {
   })()`);
   assert(inspectorGeometry?.insideCanvas && inspectorGeometry.overlapArea === 0, `Floating inspector covers the selected Part or escapes the canvas: ${JSON.stringify(inspectorGeometry)}.`);
   await captureWhole(window, 'issue901-ui02-long-list-inspector.png');
-  checks.ui02.longList = { rows: 24, scrollable: true, selectedLastPartId: longListLastPartId, bottomRowMenu: longMenu, inspector: inspectorGeometry };
+  checks.ui02.narrow880 = narrowRowGeometry;
+  checks.ui02.longList = { rows: 24, scrollable: true, selectedLastPartId: longListLastPartId, inspector: inspectorGeometry };
   checks.screenshots = (await fsp.readdir(evidenceRoot)).filter((file) => file.startsWith('issue901-') && file.endsWith('.png')).map((file) => path.join(evidenceRoot, file));
   receipt.uiA = checks;
   receipt.ownerAcceptance = 'PENDING: human Windows review of the five UI checkpoints; physical touchscreen input not exercised.';
@@ -1554,9 +1583,6 @@ async function main() {
     const characterList = '[data-testid="character-list-view"]';
     await click(mainWindow, characterRail, 'Characters activity');
     await waitFor(mainWindow, `document.querySelector(${JSON.stringify(characterList)})`, 'Character list did not open.');
-    await click(mainWindow, `${characterList} [data-character-id="${adaptiveCharacterId}"]`, 'C0 Adaptive Parts Character');
-    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-open"]')`, 'Adaptive Character detail has no normal assembly entry.');
-
     const missingPartId = sourcePartIds['c0/com4'];
     const missingPart = adaptive.parts.find((part) => part.partId === missingPartId);
     const missingAsset = activeProject.assets.find((asset) => asset.id === missingPart?.assetId);
@@ -1568,7 +1594,7 @@ async function main() {
     await fsp.rename(missingAssetPath, unavailableAssetPath);
     let missingAssetEvidence;
     try {
-      await click(mainWindow, '[data-testid="adaptive-parts-assembly-open"]', 'Open Adaptive Parts assembly with a missing source image');
+      await click(mainWindow, `${characterList} [data-character-id="${adaptiveCharacterId}"]`, 'Open C0 Adaptive Parts with a missing source image');
       await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Adaptive Parts assembly workbench did not open for missing-source coverage.');
       const missingRowSelector = `.adaptive-parts-assembly-row[data-part-id="${missingPartId}"]`;
       const missingCanvasPartSelector = `[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${missingPartId}"]`;
@@ -1621,9 +1647,7 @@ async function main() {
     await click(mainWindow, '[data-testid="adaptive-parts-assembly-cancel"]', 'Close assembly after missing-source fallback check');
     await waitFor(mainWindow, `!document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Assembly did not close after the missing-source fallback check.');
     await ensureCharacterListReady(mainWindow, characterRail, characterList, 'Character list after missing-source fallback');
-    await click(mainWindow, `${characterList} [data-character-id="${adaptiveCharacterId}"]`, 'Reopen C0 detail after restoring its source image');
-    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-open"]')`, 'C0 detail did not expose the assembly entry after source recovery.');
-    await click(mainWindow, '[data-testid="adaptive-parts-assembly-open"]', 'Reopen Adaptive Parts assembly after restoring the source image');
+    await click(mainWindow, `${characterList} [data-character-id="${adaptiveCharacterId}"]`, 'Reopen C0 after restoring its source image');
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Adaptive Parts assembly did not reopen after restoring its source image.');
     await waitFor(mainWindow, `(() => {
       const row = document.querySelector('.adaptive-parts-assembly-row[data-part-id="${missingPartId}"]');
@@ -1657,16 +1681,18 @@ async function main() {
     assert(!assemblyToolbarText.includes('拖动部件移动') && !assemblyToolbarText.includes('拖动角点缩放'),
       `Assembly canvas contains permanent interaction instructions: ${assemblyToolbarText}.`);
     await waitForAdaptiveAssemblyDrawerHidden(mainWindow, 'The resource drawer is not visually hidden while preserving its mounted Character owner.');
-    receipt.ac01 = { result: 'PASS', path: 'Characters list → C0 detail → assembly' };
+    receipt.ac01 = { result: 'PASS', path: 'Characters list → Adaptive Parts workbench' };
     ac09Checks.permanentCanvasInstructions = 'PASS: no persistent drag/scale helper copy';
 
     const rows = await page(mainWindow, `([...document.querySelectorAll('.adaptive-parts-assembly-row')]).map((row) => ({ partId: row.dataset.partId, drawOrder: Number(row.dataset.drawOrder), name: row.querySelector('.adaptive-parts-assembly-name')?.innerText?.trim() ?? '', visible: row.querySelector('[data-part-visible]')?.dataset.partVisible ?? null }))`);
     assert(rows.length === 5, `C0 Part list shows ${rows.length} rows; expected 5.`);
     const visibleRows = await page(mainWindow, `(() => [...document.querySelectorAll('.adaptive-parts-assembly-row')].map((row) => {
       const bounds = row.getBoundingClientRect();
-      const target = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+      const hitTarget = row.querySelector('[data-testid="adaptive-parts-assembly-row-select"]') ?? row;
+      const hitBounds = hitTarget.getBoundingClientRect();
+      const target = document.elementFromPoint(hitBounds.left + hitBounds.width / 2, hitBounds.top + hitBounds.height / 2);
       const style = getComputedStyle(row);
-      return { partId: row.dataset.partId, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, display: style.display, visibility: style.visibility, hitTestedWithinRow: Boolean(target && row.contains(target)) };
+      return { partId: row.dataset.partId, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, display: style.display, visibility: style.visibility, hitTestedWithinRow: Boolean(target && row.contains(target)), hitTarget: target ? { tag: target.tagName, className: typeof target.className === 'string' ? target.className : '', testId: target.getAttribute('data-testid') } : null };
     }))()`);
     assert(visibleRows.length === rows.length && visibleRows.every((row) => row.width > 0 && row.height > 0 && row.display !== 'none' && row.visibility === 'visible' && row.hitTestedWithinRow), `Part rows are not visibly available: ${JSON.stringify(visibleRows)}.`);
     await captureWhole(mainWindow, 'c3-assembly-initial.png');
@@ -1712,9 +1738,13 @@ async function main() {
     await pause(450);
     await waitFor(mainWindow, 'window.innerWidth <= 900 && window.innerWidth >= 800', 'The assembly window did not enter the narrow landscape breakpoint.');
     const narrowViewport = await inspectAssemblyViewport(mainWindow);
-    assert(narrowViewport.rows.length === 5 &&
-      narrowViewport.rows.every((row) => row.visible && row.hitTestedWithinRow && row.insideWindow),
-    'Narrow assembly Part rows are clipped or cannot receive pointer input: ' + JSON.stringify(narrowViewport));
+    const narrowRowsInListViewport = narrowViewport.rows.filter((row) =>
+      narrowViewport.list && row.y < narrowViewport.list.bottom &&
+      row.y + row.height > narrowViewport.list.y,
+    );
+    assert(narrowViewport.rows.length === 5 && narrowRowsInListViewport.length >= 3 &&
+      narrowRowsInListViewport.every((row) => row.visible && row.hitTestedWithinRow && row.insideWindow),
+    'Narrow assembly Part rows do not expose a scrollable, hit-tested visible range: ' + JSON.stringify({ narrowViewport, narrowRowsInListViewport }));
     assert(narrowViewport.viewport?.width > 100 && narrowViewport.viewport?.height > 100 &&
       narrowViewport.footerButtons.length >= 2 &&
       narrowViewport.footerButtons.every((button) => button.width > 0 && button.height > 0 &&
@@ -1726,7 +1756,14 @@ async function main() {
       JSON.stringify({ wideScale: wideViewport.stageScale, narrowScale: narrowViewport.stageScale }));
     await captureWhole(mainWindow, 'c3-assembly-narrow-before-touch.png');
     const narrowSelectedRow = '.adaptive-parts-assembly-row[data-part-id="' + partId + '"] [data-testid="adaptive-parts-assembly-row-select"]';
-    const narrowClick = await clickPoint(mainWindow, narrowSelectedRow, 'Select C0 com6 in the narrow Part list');
+    await click(mainWindow, narrowSelectedRow, 'Select C0 com6 in the narrow Part list');
+    const narrowScrolledLayout = await inspectAssemblyViewport(mainWindow);
+    const narrowSelectedRowLayout = narrowScrolledLayout.rows.find((row) => row.partId === partId);
+    assert(narrowSelectedRowLayout?.hitTestedWithinRow && narrowSelectedRowLayout.visible &&
+      narrowScrolledLayout.list && narrowSelectedRowLayout.y < narrowScrolledLayout.list.bottom &&
+      narrowSelectedRowLayout.y + narrowSelectedRowLayout.height > narrowScrolledLayout.list.y,
+    'Scrolling to com6 did not make its row directly hit-testable: ' + JSON.stringify({ narrowSelectedRowLayout, list: narrowScrolledLayout.list }));
+    const narrowClick = { method: 'DOM click after automatic scroll-into-view', partId };
     const narrowPartSelector = '[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="' + partId + '"]';
     await waitFor(mainWindow, "document.querySelector(" + JSON.stringify(narrowPartSelector) + ")?.classList.contains('is-selected')", 'Narrow Part-list selection did not reach the canvas.');
     const partRectBeforeTouch = await page(mainWindow,
@@ -1769,7 +1806,7 @@ async function main() {
       part.y < narrowInspectorLayout.inspector.bottom &&
       part.bottom > narrowInspectorLayout.inspector.y,
     );
-    assert(narrowInspectorLayout.inspector?.width <= 182 && !narrowInspectorOverlapsArt,
+    assert(narrowInspectorLayout.inspector?.width <= 264 && !narrowInspectorOverlapsArt,
       'The narrow Part inspector covers the assembled character: ' +
       JSON.stringify({ inspector: narrowInspectorLayout.inspector, parts: narrowInspectorLayout.parts }));
     const fiberSnapshot = await page(mainWindow,
@@ -1793,7 +1830,7 @@ async function main() {
       "Number(document.querySelector('[data-testid=\"adaptive-parts-offset-x\"]')?.value) > 0 && Number(document.querySelector('[data-testid=\"adaptive-parts-offset-y\"]')?.value) > 0",
       'Emulated touch drag did not update the selected Part in the narrow viewport.');
     await captureWhole(mainWindow, 'c3-assembly-narrow-touch-draft.png');
-    await click(mainWindow, '[data-testid="adaptive-parts-inspector-toggle"]', 'Close the narrow Part inspector before orientation change');
+    await click(mainWindow, '[data-testid="adaptive-parts-inspector-close"]', 'Close the narrow Part inspector before orientation change');
     mainWindow.setSize(820, 980);
     await pause(450);
     await waitFor(mainWindow, 'window.innerWidth <= 900 && window.innerHeight > window.innerWidth', 'The assembly window did not enter the portrait Cloud Touch viewport.');
@@ -1825,11 +1862,11 @@ async function main() {
       portraitTouchAdjustment.scalePercent === touchAdjustment.scalePercent,
     'Portrait orientation did not preserve the pending touch draft: ' +
       JSON.stringify({ before: touchAdjustment, after: portraitTouchAdjustment }));
-    await click(mainWindow, '[data-testid="adaptive-parts-inspector-reset"]', 'Reset the preserved portrait touch draft');
+    await click(mainWindow, `.adaptive-parts-assembly-row[data-part-id="${partId}"] [data-testid="adaptive-parts-restore-button"]`, 'Reset the preserved portrait touch draft');
     await waitFor(mainWindow,
       "document.querySelector('[data-testid=\"adaptive-parts-offset-x\"]')?.value === '0' && document.querySelector('[data-testid=\"adaptive-parts-offset-y\"]')?.value === '0' && document.querySelector('[data-testid=\"adaptive-parts-scale-percent\"]')?.value === '100'",
       'Reset did not discard the preserved portrait touch draft.');
-    await click(mainWindow, '[data-testid="adaptive-parts-inspector-toggle"]', 'Close the Part inspector after portrait orientation');
+    await click(mainWindow, '[data-testid="adaptive-parts-inspector-close"]', 'Close the Part inspector after portrait orientation');
     const afterNarrowReset = await inspect(mainWindow);
     assert(afterNarrowReset.revision === 0 && !afterNarrowReset.dirty && afterNarrowReset.undoCount === 0,
       'Orientation change or touch-draft reset changed the formal Project state.');
@@ -2159,7 +2196,6 @@ async function main() {
       return Boolean(list?.getClientRects().length && style?.visibility !== 'hidden');
     })()`, 'Character list did not return after reopen.');
     await click(mainWindow, `${characterList} [data-character-id="${adaptiveCharacterId}"]`, 'Reopen C0 Adaptive Parts Character');
-    await click(mainWindow, '[data-testid="adaptive-parts-assembly-open"]', 'Reopen C0 assembly');
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'C0 assembly did not reopen.');
     const cancelPartId = sourcePartIds['c0/com4'];
     await click(mainWindow, `.adaptive-parts-assembly-row[data-part-id="${cancelPartId}"] [data-testid="adaptive-parts-assembly-row-select"]`, 'Select com4 for Cancel check');
@@ -2185,18 +2221,17 @@ async function main() {
       const style = list ? getComputedStyle(list) : null;
       return Boolean(list?.getClientRects().length && style?.visibility !== 'hidden');
     })()`)) {
-      await click(mainWindow, `${characterList} [data-character-id="${adaptiveCharacterId}"]`, 'Return to C0 detail for source reset');
+      await click(mainWindow, `${characterList} [data-character-id="${adaptiveCharacterId}"]`, 'Open C0 for source reset');
     }
     await waitFor(mainWindow, `(() => {
-      const button = document.querySelector('[data-testid="adaptive-parts-assembly-open"]');
-      const style = button ? getComputedStyle(button) : null;
-      return Boolean(button?.getClientRects().length && style?.visibility !== 'hidden');
-    })()`, 'C0 detail did not expose assembly before source reset.');
-    await click(mainWindow, '[data-testid="adaptive-parts-assembly-open"]', 'Reopen C0 assembly for source reset');
+      const workbench = document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]');
+      const style = workbench ? getComputedStyle(workbench) : null;
+      return Boolean(workbench?.getClientRects().length && style?.visibility !== 'hidden');
+    })()`, 'C0 workbench did not open before source reset.');
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'C0 assembly did not reopen for source reset.');
     await click(mainWindow, `.adaptive-parts-assembly-row[data-part-id="${partId}"] [data-testid="adaptive-parts-assembly-row-select"]`, 'Select edited com6 for source reset');
     await click(mainWindow, '[data-testid="adaptive-parts-inspector-toggle"]', 'Open inspector for source reset');
-    await click(mainWindow, '[data-testid="adaptive-parts-inspector-reset"]', 'Reset edited com6 to its source pose');
+    await click(mainWindow, `.adaptive-parts-assembly-row[data-part-id="${partId}"] [data-testid="adaptive-parts-restore-button"]`, 'Reset edited com6 to its source pose');
     assert(await page(mainWindow, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value === '0' && document.querySelector('[data-testid="adaptive-parts-offset-y"]')?.value === '0' && document.querySelector('[data-testid="adaptive-parts-scale-percent"]')?.value === '100' && document.querySelector('[data-testid="adaptive-parts-rotation-deg"]')?.value === '0'`), 'Reset Source Position did not restore 0 / 0 / 100 / 0.');
     await click(mainWindow, '[data-testid="adaptive-parts-assembly-apply"]', 'Apply source-pose reset');
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]') && document.querySelector('[data-testid="adaptive-parts-assembly-apply"]') && document.querySelector('[data-testid="adaptive-parts-assembly-cancel"]')`, 'Source-pose reset did not remain available after Apply.');
@@ -2323,12 +2358,10 @@ async function main() {
     await ensureCharacterListReady(mainWindow, characterRail, characterList, 'Single-image compatibility control');
     await click(mainWindow, `${characterList} [data-character-id="${singleImageCharacterId}"]`, 'Open the legacy single-image control');
     await waitFor(mainWindow, `document.querySelector('[data-testid="character-detail-view"]')?.dataset.characterEditorId === ${JSON.stringify(singleImageCharacterId)}`, 'Legacy single-image detail did not open.');
-    assert(!(await page(mainWindow, `Boolean(document.querySelector('[data-testid="adaptive-parts-assembly-open"]'))`)), 'Legacy single-image Character incorrectly exposes the Adaptive assembly entry.');
+    assert(!(await page(mainWindow, `Boolean(document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]'))`)), 'Legacy single-image Character incorrectly opened the Adaptive Parts workbench.');
     await click(mainWindow, '[data-testid="character-detail-back"]', 'Return to Character list after single-image compatibility');
     await ensureCharacterListReady(mainWindow, characterRail, characterList, 'Synthetic Body+Arm control');
     await click(mainWindow, `${characterList} [data-character-id="${prepared.bodyArmCharacterId}"]`, 'Open the synthetic Body+Arm Adaptive Part control');
-    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-open"]')`, 'Synthetic Body+Arm detail did not expose the Adaptive assembly entry.');
-    await click(mainWindow, '[data-testid="adaptive-parts-assembly-open"]', 'Open the synthetic Body+Arm assembly');
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Synthetic Body+Arm assembly did not open.');
     const bodyArmRow = `.adaptive-parts-assembly-row[data-part-id="${prepared.bodyArmPartId}"]`;
     const bodyArmList = await page(mainWindow, `([...document.querySelectorAll('.adaptive-parts-assembly-row')]).map((row) => ({ partId: row.dataset.partId, name: row.querySelector('.adaptive-parts-assembly-name')?.innerText?.trim() ?? '' }))`);
@@ -2339,7 +2372,7 @@ async function main() {
     const bodyArmBefore = await inspect(mainWindow);
     const bodyArmDrag = await dragPart(mainWindow, prepared.bodyArmPartId, 14, 10);
     await waitFor(mainWindow, `Number(document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value) > 0`, 'Dragging the combined Body+Arm Part did not adjust the single Part.');
-    await click(mainWindow, '[data-testid="adaptive-parts-inspector-reset"]', 'Restore the Body+Arm Part source pose');
+    await click(mainWindow, `${bodyArmRow} [data-testid="adaptive-parts-restore-button"]`, 'Restore the Body+Arm Part source pose');
     assert(await page(mainWindow, `document.querySelectorAll('[data-testid="adaptive-parts-assembly-canvas-part"]').length === 1 && document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value === '0' && document.querySelector('[data-testid="adaptive-parts-offset-y"]')?.value === '0'`), 'Body+Arm source reset split the Part or changed its source-pose controls.');
     await captureWhole(mainWindow, 'synthetic-body-arm-single-part.png');
     await click(mainWindow, '[data-testid="adaptive-parts-assembly-cancel"]', 'Cancel the synthetic Body+Arm draft');
@@ -2350,8 +2383,6 @@ async function main() {
     receipt.syntheticBodyArm = { result: 'PASS', partCount: bodyArmList.length, partId: prepared.bodyArmPartId, sourceId: 'synthetic/body-arm-composite', displayName: bodyArmList[0].name, canvasPartCount: bodyArmCanvasParts, drag: bodyArmDrag, sourceReset: 'PASS', canceledWithoutProjectWrite: true, assetPath: prepared.bodyArmPath };
 
     await click(mainWindow, `${characterList} [data-character-id="${prepared.longListCharacterId}"]`, 'Open repeated-image long-list compatibility control');
-    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-open"]')`, 'Long-list Adaptive Character detail did not expose the assembly entry.');
-    await click(mainWindow, '[data-testid="adaptive-parts-assembly-open"]', 'Open the repeated-image long list');
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Repeated-image long-list workbench did not open.');
     const longListRows = await page(mainWindow, `([...document.querySelectorAll('.adaptive-parts-assembly-row')]).map((row) => ({ partId: row.dataset.partId, name: row.querySelector('.adaptive-parts-assembly-name')?.innerText?.trim() ?? '' }))`);
     const longListProjectCharacter = await page(mainWindow, `(() => { const state = window.__pandaStageIssue816Acceptance?.inspect?.(); const character = state?.project?.characters?.find((item) => item.id === ${JSON.stringify(prepared.longListCharacterId)}); return character?.mode === 'adaptive-parts' ? { partCount: character.parts.length, assetIds: [...new Set(character.parts.map((part) => part.assetId))], partIds: character.parts.map((part) => part.partId) } : null; })()`);

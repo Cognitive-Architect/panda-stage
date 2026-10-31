@@ -1,12 +1,13 @@
 import {
   useCallback,
   useEffect,
-  useId,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
+import { Minus, Pencil, Plus, RotateCcw, X } from 'lucide-react';
 import {
   CHARACTER_PART_MAX_SCALE,
   CHARACTER_PART_MIN_SCALE,
@@ -76,11 +77,14 @@ import {
   type CharacterLayoutReuseImageDimensions,
   type CharacterLayoutReuseTarget,
 } from './characterLayoutReuse';
+import type { AdaptivePartsAssemblyActionsRef } from './CharacterManager';
+import { shotStore } from '../../stores/shotStore';
 
 interface CharacterAssemblyWorkbenchProps {
   projectSnapshot: EditorProjectSnapshot;
   savedProjectSnapshot?: SavedEditorProjectSnapshot | null;
   session: CharacterAssemblySnapshotUnion;
+  adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
 }
 
 interface ActiveDragStart {
@@ -295,10 +299,12 @@ export function CharacterAssemblyWorkbench({
   projectSnapshot,
   savedProjectSnapshot,
   session,
+  adaptivePartsActionsRef,
 }: CharacterAssemblyWorkbenchProps): React.JSX.Element {
   if (isAdaptivePartsAssemblySnapshot(session)) {
     return (
       <AdaptivePartsAssemblyWorkbench
+        adaptivePartsActionsRef={adaptivePartsActionsRef}
         projectSnapshot={projectSnapshot}
         session={session}
       />
@@ -343,6 +349,42 @@ function partPoint(part: LayerVisualPart, x: number, y: number): { x: number; y:
 
 type AdaptivePartsCharacterPart = AdaptivePartsCharacterDefinition['parts'][number];
 type AdaptiveAdjustmentField = keyof CharacterPartStaticAdjustment;
+export type AdaptivePartsUpdateResult = { ok: true } | { ok: false; message?: string };
+export type AdaptivePartRenameCompletion =
+  | { ok: true; value: string }
+  | { ok: false; inputValue: string; error: string };
+
+export function resolveAdaptivePartRename(
+  inputValue: string,
+  displayName: string,
+  rename: (name: string) => AdaptivePartsUpdateResult,
+): AdaptivePartRenameCompletion {
+  const trimmed = inputValue.trim();
+  if (!trimmed) {
+    return {
+      ok: false,
+      inputValue,
+      error: '\u540d\u79f0\u4e0d\u80fd\u4e3a\u7a7a\u3002',
+    };
+  }
+  if (trimmed.length > 200) {
+    return {
+      ok: false,
+      inputValue,
+      error: '\u540d\u79f0\u4e0d\u80fd\u8d85\u8fc7 200 \u4e2a\u5b57\u7b26\u3002',
+    };
+  }
+  if (trimmed === displayName) return { ok: true, value: trimmed };
+  const result = rename(trimmed);
+  if (!result.ok) {
+    return {
+      ok: false,
+      inputValue,
+      error: result.message ?? '\u96f6\u4ef6\u91cd\u547d\u540d\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5\u3002',
+    };
+  }
+  return { ok: true, value: trimmed };
+}
 type AdaptiveAdjustmentDrafts = Record<
   string,
   Partial<Record<AdaptiveAdjustmentField, string>>
@@ -411,114 +453,19 @@ function AdaptivePartsAssemblyRow({
   imageMissing: boolean;
   imageSrc?: string;
   onMessage: (message: string) => void;
-  onRename: (name: string) => void;
+  onRename: (name: string) => AdaptivePartsUpdateResult;
   onRestore: () => void;
   onSelect: () => void;
   onToggleVisibility: () => void;
   part: AdaptivePartsCharacterPart;
   selected: boolean;
 }): React.JSX.Element {
-  const popoverId = useId();
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameFinishedRef = useRef(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(displayName);
   const [renameError, setRenameError] = useState('');
   const visible = part.visible !== false;
-
-  useEffect(() => {
-    const trigger = triggerRef.current;
-    const popover = popoverRef.current;
-    if (!trigger || !popover) return undefined;
-
-    const positionPopover = (force = false): void => {
-      if (!force && !popover.matches(':popover-open')) return;
-      const anchor = trigger.getBoundingClientRect();
-      const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
-      const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
-      if (
-        viewportWidth <= 0 ||
-        viewportHeight <= 0 ||
-        anchor.bottom <= 0 ||
-        anchor.top >= viewportHeight
-      ) {
-        if (popover.matches(':popover-open')) popover.hidePopover();
-        return;
-      }
-
-      const measuredWidth = Number.parseFloat(getComputedStyle(popover).width);
-      const width = Math.min(
-        Number.isFinite(measuredWidth) ? measuredWidth : 184,
-        Math.max(0, viewportWidth - 16),
-      );
-      const height = Math.max(popover.scrollHeight, 3 * 44 + 10);
-      const spaceBelow = viewportHeight - anchor.bottom - 8;
-      const spaceAbove = anchor.top - 8;
-      const opensAbove = spaceBelow < height + 4 && spaceAbove > spaceBelow;
-      const availableSpace = Math.max(
-        0,
-        (opensAbove ? spaceAbove : spaceBelow) - 4,
-      );
-      const visibleHeight = Math.min(height, availableSpace);
-      const left = Math.max(8, Math.min(anchor.right - width, viewportWidth - width - 8));
-      const top = opensAbove
-        ? Math.max(8, anchor.top - visibleHeight - 4)
-        : Math.min(viewportHeight - visibleHeight - 8, anchor.bottom + 4);
-
-      popover.style.width = `${width}px`;
-      popover.style.maxHeight = `${availableSpace}px`;
-      popover.style.left = `${left}px`;
-      popover.style.top = `${top}px`;
-      popover.dataset.placement = opensAbove ? 'above' : 'below';
-    };
-    const onBeforeToggle = (event: Event): void => {
-      if ((event as Event & { newState?: string }).newState === 'open') {
-        positionPopover(true);
-      }
-    };
-    const onToggle = (): void => {
-      const open = popover.matches(':popover-open');
-      setMenuOpen(open);
-      if (open) {
-        positionPopover(true);
-        window.requestAnimationFrame(() =>
-          popover.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus(),
-        );
-      }
-    };
-    const onViewportMove = (): void => positionPopover();
-    const onFocusIn = (event: FocusEvent): void => {
-      const target = event.target;
-      if (
-        popover.matches(':popover-open') &&
-        target instanceof Node &&
-        !trigger.contains(target) &&
-        !popover.contains(target)
-      ) {
-        popover.hidePopover();
-      }
-    };
-
-    popover.addEventListener('beforetoggle', onBeforeToggle);
-    popover.addEventListener('toggle', onToggle);
-    document.addEventListener('scroll', onViewportMove, true);
-    document.addEventListener('focusin', onFocusIn, true);
-    window.addEventListener('resize', onViewportMove);
-    window.visualViewport?.addEventListener('resize', onViewportMove);
-    window.visualViewport?.addEventListener('scroll', onViewportMove);
-    return () => {
-      popover.removeEventListener('beforetoggle', onBeforeToggle);
-      popover.removeEventListener('toggle', onToggle);
-      document.removeEventListener('scroll', onViewportMove, true);
-      document.removeEventListener('focusin', onFocusIn, true);
-      window.removeEventListener('resize', onViewportMove);
-      window.visualViewport?.removeEventListener('resize', onViewportMove);
-      window.visualViewport?.removeEventListener('scroll', onViewportMove);
-    };
-  }, []);
 
   useEffect(() => {
     if (!renaming) return;
@@ -529,38 +476,24 @@ function AdaptivePartsAssemblyRow({
   }, [renaming]);
 
   const finishRename = (): boolean => {
-    const trimmed = renameValue.trim();
-    if (!trimmed) {
-      setRenameError('名称不能为空。');
-      onMessage('名称不能为空。');
-      return false;
-    }
-    if (trimmed.length > 200) {
-      setRenameError('名称不能超过 200 个字符。');
-      onMessage('名称不能超过 200 个字符。');
+    const completion = resolveAdaptivePartRename(renameValue, displayName, onRename);
+    if (!completion.ok) {
+      setRenameError(completion.error);
+      onMessage(completion.error);
       return false;
     }
     renameFinishedRef.current = true;
-    if (trimmed !== displayName) onRename(trimmed);
     setRenameError('');
     setRenaming(false);
     onMessage('');
     return true;
   };
-
   const startRename = (): void => {
-    popoverRef.current?.hidePopover();
     renameFinishedRef.current = false;
     setRenameValue(displayName);
     setRenameError('');
     onMessage('');
     setRenaming(true);
-  };
-
-  const restoreAndClose = (): void => {
-    popoverRef.current?.hidePopover();
-    onRestore();
-    window.requestAnimationFrame(() => triggerRef.current?.focus());
   };
 
   return (
@@ -570,18 +503,7 @@ function AdaptivePartsAssemblyRow({
       data-part-id={part.partId}
       data-selected={selected}
       data-testid="adaptive-parts-assembly-row"
-      onKeyDown={(event) => {
-        if (event.key === 'Escape' && menuOpen) event.stopPropagation();
-        if (!menuOpen || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp')) return;
-        const items = [...(popoverRef.current?.querySelectorAll<HTMLButtonElement>(
-          'button:not(:disabled)',
-        ) ?? [])];
-        if (!items.length) return;
-        event.preventDefault();
-        const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
-        const delta = event.key === 'ArrowDown' ? 1 : -1;
-        items[(currentIndex + delta + items.length) % items.length]?.focus();
-      }}
+
     >
       {renaming ? (
         <div className="adaptive-parts-assembly-row-edit">
@@ -666,7 +588,7 @@ function AdaptivePartsAssemblyRow({
               <span aria-hidden="true">▧</span>
             )}
           </span>
-          <span className="adaptive-parts-assembly-name">{displayName}</span>
+          <span aria-label={displayName} className="adaptive-parts-assembly-name" title={displayName}>{displayName}</span>
         </button>
       )}
       <button
@@ -683,51 +605,27 @@ function AdaptivePartsAssemblyRow({
           {visible ? <circle cx="12" cy="12" r="2.7" /> : <path d="M4 4 20 20" />}
         </svg>
       </button>
-      <div className="adaptive-parts-row-menu" data-testid="adaptive-parts-row-menu">
-        <button
-          aria-controls={popoverId}
-          aria-expanded={menuOpen}
-          aria-haspopup="menu"
-          aria-label={`部件选项：${displayName}`}
-          className="adaptive-parts-row-menu-trigger"
-          data-testid="adaptive-parts-row-menu-trigger"
-          popoverTarget={popoverId}
-          popoverTargetAction="toggle"
-          ref={triggerRef}
-          title="部件选项"
-          type="button"
-        >
-          <span aria-hidden="true">···</span>
-        </button>
-        <div
-          aria-label={`部件选项：${displayName}`}
-          className="adaptive-parts-row-menu-popover"
-          data-testid="adaptive-parts-row-popover"
-          id={popoverId}
-          popover="auto"
-          ref={popoverRef}
-          role="menu"
-        >
-          <button
-            data-adaptive-part-action="rename"
-            onClick={startRename}
-            role="menuitem"
-            type="button"
-          >
-            重命名
-          </button>
-          <button
-            data-adaptive-part-action="reset"
-            disabled={!part.sourceRestTransform}
-            onClick={restoreAndClose}
-            role="menuitem"
-            title={part.sourceRestTransform ? '恢复原始源姿势' : '此零件没有可信的原始位置记录'}
-            type="button"
-          >
-            恢复原位
-          </button>
-        </div>
-      </div>
+      <button
+        aria-label={`重命名${displayName}`}
+        className="adaptive-parts-row-action"
+        data-testid="adaptive-parts-rename-button"
+        onClick={startRename}
+        title={`重命名${displayName}`}
+        type="button"
+      >
+        <Pencil aria-hidden="true" size={18} />
+      </button>
+      <button
+        aria-label={`恢复${displayName}原始源姿势`}
+        className="adaptive-parts-row-action"
+        data-testid="adaptive-parts-restore-button"
+        disabled={!part.sourceRestTransform}
+        onClick={onRestore}
+        title={part.sourceRestTransform ? '恢复原始源姿势' : '此零件没有可信的原始位置记录'}
+        type="button"
+      >
+        <RotateCcw aria-hidden="true" size={18} />
+      </button>
     </div>
   );
 }
@@ -735,11 +633,22 @@ function AdaptivePartsAssemblyRow({
 function AdaptivePartsAssemblyWorkbench({
   projectSnapshot,
   session,
+  adaptivePartsActionsRef,
 }: {
   projectSnapshot: EditorProjectSnapshot;
   session: AdaptivePartsAssemblySnapshot;
+  adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
 }): React.JSX.Element {
   const { project, projectRoot } = projectSnapshot;
+  const currentShotId = useSyncExternalStore(
+    shotStore.subscribe,
+    shotStore.getCurrentShotId,
+    shotStore.getCurrentShotId,
+  );
+  const hasCurrentShot = project.shots.some((shot) => shot.id === currentShotId);
+  const assemblyCharacterName = project.characters.find(
+    (character) => character.id === session.characterId,
+  )?.name ?? '角色';
   const workbenchRef = useRef<HTMLElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const inspectorRef = useRef<HTMLElement>(null);
@@ -813,27 +722,31 @@ function AdaptivePartsAssemblyWorkbench({
   };
   const setDefinition = (
     update: (definition: AdaptivePartsCharacterDefinition) => AdaptivePartsCharacterDefinition,
-  ): void => {
+  ): AdaptivePartsUpdateResult => {
     const handle = activeHandle();
     if (!handle) {
       setMessage('组装草稿已失效，请重新打开。');
-      return;
+      return { ok: false };
     }
     const current = handle.getSnapshot();
     if (!current) {
       setMessage('组装草稿已失效，请重新打开。');
-      return;
+      return { ok: false };
     }
     // Read the current session draft instead of the last React render. Rapid
     // edits to different Parts can arrive before React commits a rerender.
     const result = handle.setDraft(update(current.draft));
-    if (!result.ok) setMessage(result.error.message);
-    else setMessage('');
+    if (!result.ok) {
+      setMessage(result.error.message);
+      return { ok: false, message: result.error.message };
+    }
+    setMessage('');
+    return { ok: true };
   };
   const updatePart = (
     partId: string,
     update: (part: AdaptivePartsCharacterDefinition['parts'][number]) => AdaptivePartsCharacterDefinition['parts'][number],
-  ): void => setDefinition((definition) => ({
+  ): AdaptivePartsUpdateResult => setDefinition((definition) => ({
     ...definition,
     parts: definition.parts.map((part) => part.partId === partId ? update(part) : part),
   }));
@@ -841,11 +754,11 @@ function AdaptivePartsAssemblyWorkbench({
     const part = session.draft.parts.find((candidate) => candidate.partId === partId);
     return { ...(part?.staticAdjustment ?? DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT) };
   };
-  const setAdjustment = (partId: string, adjustment: CharacterPartStaticAdjustment): void => {
+  const setAdjustment = (partId: string, adjustment: CharacterPartStaticAdjustment): AdaptivePartsUpdateResult => {
     const current = activeHandle()?.getSnapshot()?.draft;
-    if (!current) return;
+    if (!current) return { ok: false };
     const part = current.parts.find((candidate) => candidate.partId === partId);
-    if (!part) return;
+    if (!part) return { ok: false };
     try {
       const sourceRestTransform = part.sourceRestTransform ?? part.restTransform;
       const restTransform = characterPartTransformFromStaticAdjustment(
@@ -854,17 +767,18 @@ function AdaptivePartsAssemblyWorkbench({
         part.imageMapping,
         adjustment,
       );
-      updatePart(partId, (current) => ({
+      return updatePart(partId, (current) => ({
         ...current,
         sourceRestTransform: { ...sourceRestTransform },
         staticAdjustment: { ...adjustment },
         restTransform,
       }));
     } catch {
-      setMessage('数值超出可用范围，部件位置未更改。');
+      const message = '\u8c03\u6574\u5931\u8d25\uff0c\u96f6\u4ef6\u4f4d\u7f6e\u672a\u66f4\u6539\u3002';
+      setMessage(message);
+      return { ok: false, message };
     }
-  };
-  const selectedPart = session.draft.parts.find(
+  };  const selectedPart = session.draft.parts.find(
     (part) => part.partId === session.selectedPartId,
   ) ?? null;
   const selectedAdjustment = selectedPart
@@ -909,16 +823,16 @@ function AdaptivePartsAssemblyWorkbench({
     partId: string,
     field: AdaptiveAdjustmentField,
     value: number,
-  ): void => {
+  ): AdaptivePartsUpdateResult => {
     const currentPart = activeHandle()?.getSnapshot()?.draft.parts.find(
       (part) => part.partId === partId,
     );
-    if (!currentPart) return;
+    if (!currentPart) return { ok: false };
     const currentAdjustment = {
       ...(currentPart.staticAdjustment ?? DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT),
     };
-    if (Object.is(currentAdjustment[field], value)) return;
-    setAdjustment(partId, {
+    if (Object.is(currentAdjustment[field], value)) return { ok: true };
+    return setAdjustment(partId, {
       ...currentAdjustment,
       [field]: value,
     } as CharacterPartStaticAdjustment);
@@ -938,10 +852,71 @@ function AdaptivePartsAssemblyWorkbench({
       return;
     }
     const value = parseAdaptiveAdjustmentInput(field, rawValue);
-    if (value !== null) {
-      writeAdjustmentField(partId, field, value);
-      setMessage('');
+    if (value === null) return;
+    const result = writeAdjustmentField(partId, field, value);
+    if (result.ok) setMessage('');
+    else if (result.message) setMessage(result.message);
+  };
+  const adjustmentStep = (field: AdaptiveAdjustmentField, large: boolean): number => {
+    if (field === 'scale') return large ? 5 : 1;
+    return large ? 10 : 1;
+  };
+  const canStepAdjustment = (
+    partId: string,
+    field: AdaptiveAdjustmentField,
+    direction: -1 | 1,
+    large = false,
+  ): boolean => {
+    const part = activeHandle()?.getSnapshot()?.draft.parts.find(
+      (candidate) => candidate.partId === partId,
+    );
+    if (!part) return false;
+    const adjustment = part.staticAdjustment ?? DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT;
+    const rawValue = numericDrafts[partId]?.[field] ??
+      String(adaptiveAdjustmentInputValue(field, adjustment));
+    if (adaptiveAdjustmentInputError(field, rawValue)) return false;
+    const nextValue = Number(rawValue) + direction * adjustmentStep(field, large);
+    return !adaptiveAdjustmentInputError(field, String(nextValue));
+  };
+  const stepAdjustment = (
+    partId: string,
+    field: AdaptiveAdjustmentField,
+    direction: -1 | 1,
+    large: boolean,
+  ): void => {
+    const part = activeHandle()?.getSnapshot()?.draft.parts.find(
+      (candidate) => candidate.partId === partId,
+    );
+    if (!part) {
+      setMessage('组装草稿已失效，请重新打开。');
+      return;
     }
+    const adjustment = part.staticAdjustment ?? DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT;
+    const rawValue = numericDrafts[partId]?.[field] ??
+      String(adaptiveAdjustmentInputValue(field, adjustment));
+    const inputError = adaptiveAdjustmentInputError(field, rawValue);
+    if (inputError) {
+      setMessage(inputError);
+      return;
+    }
+    const nextRawValue = String(Number(rawValue) + direction * adjustmentStep(field, large));
+    const nextError = adaptiveAdjustmentInputError(field, nextRawValue);
+    if (nextError) {
+      setMessage(nextError);
+      return;
+    }
+    const value = parseAdaptiveAdjustmentInput(field, nextRawValue);
+    if (value === null) return;
+    const result = writeAdjustmentField(partId, field, value);
+    if (!result.ok) {
+      if (result.message) setMessage(result.message);
+      return;
+    }
+    setNumericDrafts((current) => ({
+      ...current,
+      [partId]: { ...current[partId], [field]: nextRawValue },
+    }));
+    setMessage('');
   };
   const beginNumericDraft = (
     partId: string,
@@ -972,16 +947,21 @@ function AdaptivePartsAssemblyWorkbench({
   const finishNumericDraft = (
     partId: string,
     field: AdaptiveAdjustmentField,
-  ): void => {
+  ): boolean => {
     const rawValue = numericDrafts[partId]?.[field];
-    if (rawValue === undefined) return;
+    if (rawValue === undefined) return true;
     const inputError = adaptiveAdjustmentInputError(field, rawValue);
     if (inputError) {
       setMessage(inputError);
-      return;
+      return false;
     }
     const value = parseAdaptiveAdjustmentInput(field, rawValue);
-    if (value !== null) writeAdjustmentField(partId, field, value);
+    if (value === null) return false;
+    const result = writeAdjustmentField(partId, field, value);
+    if (!result.ok) {
+      if (result.message) setMessage(result.message);
+      return false;
+    }
     setNumericDrafts((current) => {
       const partDrafts = { ...current[partId] };
       delete partDrafts[field];
@@ -997,14 +977,18 @@ function AdaptivePartsAssemblyWorkbench({
       }
     }
     setMessage('');
-  };
-  const cancelNumericDraft = (
+    return true;
+  };  const cancelNumericDraft = (
     partId: string,
     field: AdaptiveAdjustmentField,
   ): void => {
     const originalValue = numericInitialValuesRef.current[partId]?.[field];
     if (originalValue !== undefined) {
-      writeAdjustmentField(partId, field, originalValue);
+      const result = writeAdjustmentField(partId, field, originalValue);
+      if (!result.ok) {
+        if (result.message) setMessage(result.message);
+        return;
+      }
       delete numericInitialValuesRef.current[partId]![field];
       if (Object.keys(numericInitialValuesRef.current[partId]!).length === 0) {
         delete numericInitialValuesRef.current[partId];
@@ -1019,8 +1003,7 @@ function AdaptivePartsAssemblyWorkbench({
       return next;
     });
     setMessage('');
-  };
-  const clearNumericDraftsForPart = (partId: string): void => {
+  };  const clearNumericDraftsForPart = (partId: string): void => {
     delete numericInitialValuesRef.current[partId];
     setNumericDrafts((current) => {
       const next = { ...current };
@@ -1033,24 +1016,32 @@ function AdaptivePartsAssemblyWorkbench({
       (part) => part.partId === partId,
     );
     if (!currentPart) {
-      setMessage('组装草稿已失效，请重新打开。');
+      setMessage('\u7ec4\u88c5\u8349\u7a3f\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u6253\u5f00\u3002');
+      return;
+    }
+    const invalidDraft = invalidAdjustmentDrafts.find((draft) => draft.partId === partId);
+    if (invalidDraft) {
+      setMessage(adaptiveAdjustmentInputError(invalidDraft.field, invalidDraft.rawValue) ?? '\u8bf7\u5148\u4fee\u6b63\u65e0\u6548\u6570\u503c\u3002');
       return;
     }
     if (!currentPart.sourceRestTransform) {
-      setMessage('无法取得此零件的可信原始位置，无法恢复原位。');
+      setMessage('\u65e0\u6cd5\u83b7\u53d6\u6b64\u96f6\u4ef6\u7684\u53ef\u4fe1\u539f\u59cb\u4f4d\u7f6e\uff0c\u65e0\u6cd5\u6062\u590d\u539f\u4f4d\u3002');
       return;
     }
     const sourceRestTransform = currentPart.sourceRestTransform;
-    updatePart(partId, (part) => ({
+    const result = updatePart(partId, (part) => ({
       ...part,
       sourceRestTransform: { ...sourceRestTransform },
       restTransform: { ...sourceRestTransform },
       staticAdjustment: { ...DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT },
     }));
+    if (!result.ok) {
+      if (result.message) setMessage(result.message);
+      return;
+    }
     clearNumericDraftsForPart(partId);
     setMessage('');
   };
-
   useLayoutEffect(() => {
     const workbench = workbenchRef.current;
     const viewport = viewportRef.current;
@@ -1065,7 +1056,12 @@ function AdaptivePartsAssemblyWorkbench({
       if (viewportBounds.width <= 0 || viewportBounds.height <= 0) return;
 
       const margin = 8;
-      const preferredWidth = window.innerWidth <= 900 ? 182 : 248;
+      const listBounds = workbench
+        .querySelector<HTMLElement>('.adaptive-parts-assembly-list')
+        ?.getBoundingClientRect();
+      const preferredWidth = window.innerWidth <= 900
+        ? Math.min(264, Math.max(44, (listBounds?.width ?? viewportBounds.width) - margin * 2))
+        : 296;
       const width = Math.min(
         inspectorOpen ? preferredWidth : 44,
         Math.max(44, viewportBounds.width - margin * 2),
@@ -1130,6 +1126,13 @@ function AdaptivePartsAssemblyWorkbench({
           left: viewportBounds.left + margin,
           top: viewportBounds.bottom - height - margin,
         },
+        ...(window.innerWidth <= 900 && listBounds
+          ? [{
+              corner: 'list-column',
+              left: listBounds.left + margin,
+              top: viewportBounds.top + margin,
+            }]
+          : []),
       ];
       const score = (candidate: (typeof candidates)[number]): number =>
         obstacles.reduce((total, obstacle) => {
@@ -1153,9 +1156,12 @@ function AdaptivePartsAssemblyWorkbench({
       const best = candidates.reduce((currentBest, candidate) =>
         score(candidate) < score(currentBest) ? candidate : currentBest,
       );
+      const horizontalBounds = best.corner === 'list-column'
+        ? workbenchBounds
+        : viewportBounds;
       const left = Math.max(
-        viewportBounds.left + margin,
-        Math.min(best.left, viewportBounds.right - width - margin),
+        horizontalBounds.left + margin,
+        Math.min(best.left, horizontalBounds.right - width - margin),
       );
       const top = Math.max(
         viewportBounds.top + margin,
@@ -1291,6 +1297,16 @@ function AdaptivePartsAssemblyWorkbench({
       !window.confirm('组装更改尚未应用，取消将放弃这些更改。继续吗？')) return;
     activeHandle()?.cancel();
   };
+  const returnToCharacterList = (): void => {
+    const result = adaptivePartsActionsRef?.current?.backToCharacterList();
+    if (result === undefined) {
+      setMessage('\u8fd4\u56de\u89d2\u8272\u5217\u8868\u64cd\u4f5c\u4e0d\u53ef\u7528\uff0c\u8bf7\u91cd\u65b0\u6253\u5f00\u89d2\u8272\u3002');
+    }
+  };
+  const joinCurrentShot = (): void => {
+    const result = adaptivePartsActionsRef?.current?.joinCurrentShot();
+    if (result?.message) setMessage(result.message);
+  };
   const renderAdaptiveAdjustmentField = (
     field: AdaptiveAdjustmentField,
     label: string,
@@ -1303,35 +1319,64 @@ function AdaptivePartsAssemblyWorkbench({
       formatAdaptiveAdjustmentInput(field, selectedAdjustment!);
     const error = adaptiveAdjustmentInputError(field, rawValue);
     const errorId = `${testId}-error`;
+    const inputId = `${testId}-input`;
     return (
-      <label className="adaptive-parts-inspector-field">
-        <span>{label}</span>
-        <span className="adaptive-parts-inspector-input-wrap">
-          <input
-            aria-describedby={error ? errorId : undefined}
-            aria-invalid={Boolean(error)}
-            aria-label={ariaLabel}
-            autoComplete="off"
-            data-testid={testId}
-            inputMode="decimal"
-            onBlur={() => finishNumericDraft(partId, field)}
-            onChange={(event) => setNumericDraft(partId, field, event.currentTarget.value)}
-            onFocus={() => beginNumericDraft(partId, field)}
-            onKeyDown={(event) => {
-              if (event.key !== 'Escape') return;
-              event.preventDefault();
-              cancelNumericDraft(partId, field);
-            }}
-            type="text"
-            value={rawValue}
-          />
-          {suffix ? <span aria-hidden="true">{suffix}</span> : null}
-        </span>
+      <div className="adaptive-parts-inspector-field">
+        <span className="adaptive-parts-inspector-label">{label}</span>
+        <div className="adaptive-parts-inspector-field-controls">
+          <button
+            aria-controls={inputId}
+            aria-label={`\u51cf\u5c11${ariaLabel}\uff0c\u6309 Shift \u4f7f\u7528\u5927\u6b65\u957f`}
+            className="adaptive-parts-inspector-step"
+            data-testid={`${testId}-step-down`}
+            disabled={Boolean(error) || !canStepAdjustment(partId, field, -1)}
+            onClick={(event) => stepAdjustment(partId, field, -1, event.shiftKey)}
+            onMouseDown={(event) => event.preventDefault()}
+            title={`\u51cf\u5c11${ariaLabel}\uff1b\u6309 Shift \u51cf\u5c11\u8f83\u5927\u6b65\u957f`}
+            type="button"
+          >
+            <Minus aria-hidden="true" size={16} />
+          </button>
+          <span className="adaptive-parts-inspector-input-wrap">
+            <input
+              aria-describedby={error ? errorId : undefined}
+              aria-invalid={Boolean(error)}
+              aria-label={ariaLabel}
+              autoComplete="off"
+              data-testid={testId}
+              id={inputId}
+              inputMode="decimal"
+              onBlur={() => finishNumericDraft(partId, field)}
+              onChange={(event) => setNumericDraft(partId, field, event.currentTarget.value)}
+              onFocus={() => beginNumericDraft(partId, field)}
+              onKeyDown={(event) => {
+                if (event.key !== 'Escape') return;
+                event.preventDefault();
+                cancelNumericDraft(partId, field);
+              }}
+              type="text"
+              value={rawValue}
+            />
+            {suffix ? <span aria-hidden="true">{suffix}</span> : null}
+          </span>
+          <button
+            aria-controls={inputId}
+            aria-label={`\u589e\u52a0${ariaLabel}\uff0c\u6309 Shift \u4f7f\u7528\u5927\u6b65\u957f`}
+            className="adaptive-parts-inspector-step"
+            data-testid={`${testId}-step-up`}
+            disabled={Boolean(error) || !canStepAdjustment(partId, field, 1)}
+            onClick={(event) => stepAdjustment(partId, field, 1, event.shiftKey)}
+            onMouseDown={(event) => event.preventDefault()}
+            title={`\u589e\u52a0${ariaLabel}\uff1b\u6309 Shift \u589e\u52a0\u8f83\u5927\u6b65\u957f`}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={16} />
+          </button>
+        </div>
         {error ? <small className="adaptive-parts-inspector-field-error" id={errorId}>{error}</small> : null}
-      </label>
+      </div>
     );
-  };
-  return (
+  };  return (
     <section
       aria-label="Adaptive Parts 角色组装工作区"
       className="character-assembly-workbench adaptive-parts-assembly-workbench"
@@ -1341,8 +1386,32 @@ function AdaptivePartsAssemblyWorkbench({
       data-testid="adaptive-parts-assembly-workbench"
       ref={workbenchRef}
     >
+      <header className="adaptive-parts-assembly-header" data-testid="adaptive-parts-assembly-header">
+        <button
+          aria-label={'\u8fd4\u56de\u89d2\u8272\u5217\u8868'}
+          className="adaptive-parts-assembly-back"
+          data-testid="adaptive-parts-back-to-list"
+          onClick={returnToCharacterList}
+          title={'\u8fd4\u56de\u89d2\u8272\u5217\u8868'}
+          type="button"
+        >
+          <span aria-hidden="true">&#8592;</span>
+          {'\u8fd4\u56de\u89d2\u8272\u5217\u8868'}
+        </button>
+        <strong title={assemblyCharacterName}>{assemblyCharacterName}</strong>
+      </header>
       <aside className="adaptive-parts-assembly-list" aria-label="部件列表">
         <h2 data-testid="adaptive-parts-assembly-count">部件 · {rows.length}</h2>
+        <button
+          className="adaptive-parts-assembly-join-shot"
+          data-testid="adaptive-parts-join-current-shot"
+          disabled={!hasCurrentShot}
+          onClick={joinCurrentShot}
+          title={hasCurrentShot ? '\u5c06\u6b64\u89d2\u8272\u52a0\u5165\u5f53\u524d\u955c\u5934' : '\u8bf7\u5148\u9009\u62e9\u955c\u5934'}
+          type="button"
+        >
+          {'\uff0b \u52a0\u5165\u955c\u5934'}
+        </button>
         <div className="adaptive-parts-assembly-rows">
           {rows.map((part, index) => {
             const matchingAssetParts = session.draft.parts.filter((candidate) => candidate.assetId === part.assetId).length;
@@ -1473,39 +1542,39 @@ function AdaptivePartsAssemblyWorkbench({
           width: inspectorPosition.width,
         }}
       >
-        <button
-          aria-label={inspectorOpen ? '收起部件微调' : '精确调整部件'}
-          aria-expanded={inspectorOpen}
-          className="adaptive-parts-inspector-toggle"
-          data-testid="adaptive-parts-inspector-toggle"
-          disabled={!selectedPart}
-          onClick={() => setInspectorOpen((open) => !open)}
-          type="button"
-        >
-          {inspectorOpen ? '完成' : '精调'}
-        </button>
-        {inspectorOpen && selectedPart && selectedAdjustment ? (
+        {!inspectorOpen ? (
+          <button
+            aria-label={'\u7cbe\u8c03\u5f53\u524d\u96f6\u4ef6'}
+            aria-expanded={false}
+            className="adaptive-parts-inspector-toggle"
+            data-testid="adaptive-parts-inspector-toggle"
+            disabled={!selectedPart}
+            onClick={() => setInspectorOpen(true)}
+            type="button"
+          >
+            {'\u7cbe\u8c03'}
+          </button>
+        ) : selectedPart && selectedAdjustment ? (
           <div className="adaptive-parts-inspector-fields" data-testid="adaptive-parts-inspector-fields">
-            <strong title={selectedPart.displayName ?? assetNames.get(selectedPart.assetId) ?? '部件'}>
-              {selectedPart.displayName ?? assetNames.get(selectedPart.assetId) ?? '部件'}
-            </strong>
-            <div className="adaptive-parts-inspector-offsets">
-              {renderAdaptiveAdjustmentField('offsetX', 'X', '水平偏移', 'adaptive-parts-offset-x')}
-              {renderAdaptiveAdjustmentField('offsetY', 'Y', '垂直偏移', 'adaptive-parts-offset-y')}
+            <div className="adaptive-parts-inspector-heading">
+              <strong title={selectedPart.displayName ?? assetNames.get(selectedPart.assetId) ?? '\u96f6\u4ef6'}>
+                {selectedPart.displayName ?? assetNames.get(selectedPart.assetId) ?? '\u96f6\u4ef6'}
+              </strong>
+              <button
+                aria-label={'\u5173\u95ed\u7cbe\u8c03\u9762\u677f'}
+                className="adaptive-parts-inspector-close"
+                data-testid="adaptive-parts-inspector-close"
+                onClick={() => setInspectorOpen(false)}
+                title={'\u5173\u95ed\u7cbe\u8c03\u9762\u677f'}
+                type="button"
+              >
+                <X aria-hidden="true" size={18} />
+              </button>
             </div>
-            <div className="adaptive-parts-inspector-transform-fields">
-              {renderAdaptiveAdjustmentField('scale', '大小', '大小百分比', 'adaptive-parts-scale-percent', '%')}
-              {renderAdaptiveAdjustmentField('rotationDeg', '旋转', '旋转角度', 'adaptive-parts-rotation-deg', '°')}
-            </div>
-            <button
-              data-testid="adaptive-parts-inspector-reset"
-              disabled={!selectedPart.sourceRestTransform}
-              onClick={() => restorePartToSourcePose(selectedPart.partId)}
-              title={selectedPart.sourceRestTransform ? '恢复原始源姿势' : '此零件没有可信的原始位置记录'}
-              type="button"
-            >
-              恢复原位
-            </button>
+            {renderAdaptiveAdjustmentField('offsetX', 'X', 'X \u504f\u79fb', 'adaptive-parts-offset-x')}
+            {renderAdaptiveAdjustmentField('offsetY', 'Y', 'Y \u504f\u79fb', 'adaptive-parts-offset-y')}
+            {renderAdaptiveAdjustmentField('scale', '\u5927\u5c0f', '\u5927\u5c0f\u767e\u5206\u6bd4', 'adaptive-parts-scale-percent', '%')}
+            {renderAdaptiveAdjustmentField('rotationDeg', '\u65cb\u8f6c', '\u65cb\u8f6c\u89d2\u5ea6', 'adaptive-parts-rotation-deg', '\u00b0')}
           </div>
         ) : null}
       </aside>
