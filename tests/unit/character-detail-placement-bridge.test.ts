@@ -570,6 +570,56 @@ describe('Adaptive Parts inline rename completion', () => {
     });
   });
 
+  it('keeps the rename input and reports a real stale-session draft rejection without writing the Project', () => {
+    const project = new CharacterService().createAdaptiveParts(buildProject(), {
+      name: 'Synthetic Static Parts',
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = project.characters.at(-1)!;
+    open(project);
+
+    const before = editorProjectStore.getSnapshot()!;
+    const historyBefore = editorProjectStore.history.getSnapshot();
+    const begun = characterAssemblySessionStore.beginAdaptiveParts(character.id);
+    expect(begun.ok).toBe(true);
+    if (!begun.ok) return;
+
+    const part = begun.snapshot.draft.parts[0]!;
+    const displayName = part.displayName ?? part.partId;
+    const inputValue = `  ${displayName} stale  `;
+    begun.session.exit();
+
+    let rejectedWrite: ReturnType<typeof begun.session.setDraft> | null = null;
+    const result = resolveAdaptivePartRename(inputValue, displayName, (name) => {
+      rejectedWrite = begun.session.setDraft({
+        ...begun.snapshot.draft,
+        parts: begun.snapshot.draft.parts.map((candidate) => candidate.partId === part.partId
+          ? { ...candidate, displayName: name }
+          : candidate),
+      });
+      return rejectedWrite.ok
+        ? { ok: true }
+        : { ok: false, message: rejectedWrite.error.message };
+    });
+
+    expect(rejectedWrite).toMatchObject({
+      ok: false,
+      error: { code: 'stale-session' },
+    });
+    expect(result).toEqual({
+      ok: false,
+      inputValue,
+      error: 'This Adaptive Parts assembly draft is no longer current.',
+    });
+    expect(editorProjectStore.getSnapshot()).toMatchObject({
+      project: before.project,
+      revision: before.revision,
+      dirty: before.dirty,
+    });
+    expect(editorProjectStore.history.getSnapshot()).toEqual(historyBefore);
+  });
+
   it('keeps trim, empty-name, length, and no-change behavior', () => {
     const rename = vi.fn(() => ({ ok: true as const }));
 
