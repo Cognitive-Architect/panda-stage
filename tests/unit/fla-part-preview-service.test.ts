@@ -61,19 +61,40 @@ function makePng(width: number, height: number, paint: number): Uint8Array {
   ]));
 }
 
-async function buildTwoPartFla(): Promise<Uint8Array> {
+async function buildTwoPartFla(
+  sceneKind: 'parts' | 'visible-text' | 'empty-mask' = 'parts',
+  includeSecondScene = false,
+): Promise<Uint8Array> {
+  const sceneLayers = sceneKind === 'parts'
+    ? `<DOMLayer name="Parts"><frames>
+        <DOMFrame index="0" duration="1"><elements>
+          <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
+            <matrix><Matrix a="1" b="0" c="0" d="1" tx="0" ty="0"/></matrix>
+          </DOMSymbolInstance>
+          <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
+            <matrix><Matrix a="1" b="0" c="0" d="1" tx="10" ty="2"/></matrix>
+          </DOMSymbolInstance>
+        </elements></DOMFrame>
+      </frames></DOMLayer>`
+    : sceneKind === 'visible-text'
+      ? `<DOMLayer name="Visible text"><frames>
+          <DOMFrame index="0" duration="1"><elements><DOMText><matrix><Matrix a="1" d="1"/></matrix></DOMText></elements></DOMFrame>
+        </frames></DOMLayer>`
+      : `<DOMLayer name="Empty mask" layerType="mask"><frames>
+          <DOMFrame index="0" duration="1"><elements/></DOMFrame>
+        </frames></DOMLayer>
+        <DOMLayer name="Masked content" parentLayerIndex="0"><frames>
+          <DOMFrame index="0" duration="1"><elements><DOMShape>
+            <fills><FillStyle index="1"><SolidColor color="#f03a55" alpha="1"/></FillStyle></fills>
+            <edges><Edge fillStyle1="1" cubics="!0 0|12 0|12 12|0 12|0 0"/></edges>
+          </DOMShape></elements></DOMFrame>
+        </frames></DOMLayer>`;
+  const secondScene = includeSecondScene
+    ? `<DOMTimeline name="Second Scene"><layers>${sceneLayers}</layers></DOMTimeline>`
+    : '';
   const document = `<?xml version="1.0" encoding="UTF-8"?>
 <DOMDocument width="32" height="24" xmlns="http://ns.adobe.com/xfl/2008/">
-  <timelines><DOMTimeline name="Scene"><layers><DOMLayer name="Parts"><frames>
-    <DOMFrame index="0" duration="1"><elements>
-      <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
-        <matrix><Matrix a="1" b="0" c="0" d="1" tx="0" ty="0"/></matrix>
-      </DOMSymbolInstance>
-      <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
-        <matrix><Matrix a="1" b="0" c="0" d="1" tx="10" ty="2"/></matrix>
-      </DOMSymbolInstance>
-    </elements></DOMFrame>
-  </frames></DOMLayer></layers></DOMTimeline></timelines>
+  <timelines><DOMTimeline name="Scene"><layers>${sceneLayers}</layers></DOMTimeline>${secondScene}</timelines>
 </DOMDocument>`;
   const graphic = `<?xml version="1.0" encoding="UTF-8"?>
 <DOMSymbolItem name="MyGraphic" xmlns="http://ns.adobe.com/xfl/2008/">
@@ -90,8 +111,12 @@ async function buildTwoPartFla(): Promise<Uint8Array> {
   return zip.generateAsync({ type: 'uint8array' });
 }
 
-async function fixture(withAddresses = true) {
-  const bytes = await buildTwoPartFla();
+async function fixture(
+  withAddresses = true,
+  sceneKind: 'parts' | 'visible-text' | 'empty-mask' = 'parts',
+  includeSecondScene = false,
+) {
+  const bytes = await buildTwoPartFla(sceneKind, includeSecondScene);
   const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');
   if (!prepared.ok) throw new Error(prepared.message);
   const rawSha256 = createHash('sha256').update(bytes).digest('hex');
@@ -136,6 +161,7 @@ async function fixture(withAddresses = true) {
   const scene = displaySource.sceneTimelines[0];
   if (!scene) throw new Error('Fixture Scene missing');
   const targetId = stableRenderTargetId(bytes, `scene\u0000timeline\u0000${scene.index}`);
+  const secondScene = displaySource.sceneTimelines[1];
   return {
     bytes,
     rawSha256,
@@ -144,6 +170,9 @@ async function fixture(withAddresses = true) {
     flaImportService,
     renderSession,
     targetId,
+    secondTargetId: secondScene
+      ? stableRenderTargetId(bytes, `scene\u0000timeline\u0000${secondScene.index}`)
+      : null,
   };
 }
 
@@ -233,6 +262,51 @@ describe('F1-02 Main part preview service', () => {
     previewService.close();
   });
 
+  it.each([
+    ['visible-text', 'Visible display content is outside the supported static preview subset'],
+    ['empty-mask', 'Mask layer has no filled vector-shape items'],
+  ] as const)('fails closed for %s in the production display-source path', async (sceneKind, expectedReason) => {
+    const data = await fixture(true, sceneKind);
+    const { calls, previewService } = rasterizerFor(data);
+    const previewRequest = { ...request(1), target: { renderTargetId: data.targetId, selectedFrameIndex: 0 } };
+
+    const response = await previewService.preview(previewRequest);
+
+    expect(response.ok).toBe(false);
+    if (response.ok) throw new Error('Expected unsupported display content to be rejected');
+    expect(response).toMatchObject({ capability: 'UNSUPPORTED' });
+    expect(response.error.code).toBe('UNSUPPORTED_SOURCE');
+    expect(response.error.message).toContain(expectedReason);
+    expect(response).not.toHaveProperty('partPreviews');
+    expect(calls).toHaveLength(0);
+    expect(previewService.getPlan('any-plan-id', SESSION_ID, 1)).toBeNull();
+    previewService.close();
+  });
+
+  it('returns a typed failure when the native preview raster fails', async () => {
+    const data = await fixture();
+    const rasterize = vi.fn<FlaStaticSnapshotRasterizer['rasterize']>(async () => {
+      throw new Error('controlled raster failure');
+    });
+    const previewService = new FlaPartPreviewService({
+      flaImportService: data.flaImportService,
+      renderSession: data.renderSession as never,
+      rasterizer: { rasterize, cancel: vi.fn(() => true), close: vi.fn() },
+      wallTimeMs: 10_000,
+    });
+    const previewRequest = { ...request(1), target: { renderTargetId: data.targetId, selectedFrameIndex: 0 } };
+
+    const response = await previewService.preview(previewRequest);
+
+    expect(response.ok).toBe(false);
+    if (response.ok) throw new Error('Expected raster failure');
+    expect(response.error.code).toBe('RENDER_FAILED');
+    expect(response.error.message).toBe('controlled raster failure');
+    expect(rasterize).toHaveBeenCalledTimes(1);
+    expect(response).not.toHaveProperty('partPreviews');
+    previewService.close();
+  });
+
   it('rejects stale generations and cancels the active sandbox raster job', async () => {
     const data = await fixture();
     const pending = new Map<string, (error: Error) => void>();
@@ -275,6 +349,64 @@ describe('F1-02 Main part preview service', () => {
     expect(stale.ok).toBe(false);
     if (stale.ok) throw new Error('Expected stale generation rejection');
     expect(stale.error.code).toBe('STALE_GENERATION');
+    previewService.close();
+  });
+
+  it('replaces an active generation across Scene targets and ignores its late raster result', async () => {
+    const data = await fixture(true, 'parts', true);
+    if (!data.secondTargetId) throw new Error('Expected second Scene target');
+    const staleRaster = { complete: null as (() => void) | null };
+    const cancelled: string[] = [];
+    const rasterizer: FlaStaticSnapshotRasterizer = {
+      rasterize(input) {
+        if (!staleRaster.complete) {
+          return new Promise((resolve) => {
+            staleRaster.complete = () => resolve({
+              pngBytes: makePng(input.width, input.height, 11),
+              width: input.width,
+              height: input.height,
+              pixelCount: input.pixelCount,
+            });
+          });
+        }
+        const pngBytes = makePng(input.width, input.height, 17);
+        return Promise.resolve({ pngBytes, width: input.width, height: input.height, pixelCount: input.pixelCount });
+      },
+      cancel(requestId) {
+        cancelled.push(requestId);
+        return true;
+      },
+      close() {},
+    };
+    const previewService = new FlaPartPreviewService({
+      flaImportService: data.flaImportService,
+      renderSession: data.renderSession as never,
+      rasterizer,
+      wallTimeMs: 10_000,
+    });
+    const firstRequest = { ...request(1), target: { renderTargetId: data.targetId, selectedFrameIndex: 0 } };
+    const stalePromise = previewService.preview(firstRequest);
+    await vi.waitFor(() => expect(staleRaster.complete).not.toBeNull());
+
+    const replacementRequest = {
+      ...request(2),
+      target: { renderTargetId: data.secondTargetId, selectedFrameIndex: 0 },
+    };
+    const replacementPromise = previewService.preview(replacementRequest);
+    const staleResponse = await stalePromise;
+    expect(staleResponse.ok).toBe(false);
+    if (staleResponse.ok) throw new Error('Expected superseded Scene response');
+    expect(staleResponse.error.code).toBe('RENDER_CANCELLED');
+    expect(cancelled).toHaveLength(1);
+
+    const replacement = await replacementPromise;
+    expect(replacement.ok).toBe(true);
+    if (!replacement.ok) throw new Error('Expected replacement preview');
+    expect(previewService.getPlan(replacement.planId, SESSION_ID, 2)).not.toBeNull();
+
+    staleRaster.complete?.();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(previewService.getPlan(replacement.planId, SESSION_ID, 2)).not.toBeNull();
     previewService.close();
   });
 

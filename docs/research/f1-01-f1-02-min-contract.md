@@ -3,8 +3,8 @@
 Status: the Issue #906 Main-owned preview contract is implemented in the
 current branch. Automated Windows Electron acceptance against isolated Sample
 A completed on 2026-10-31 with source result `NATIVE_SOURCE_GO`; the overall
-Issue #906 acceptance remains `PARTIAL` pending the residual checks below and
-owner review.
+Issue #906 status is `FIX_PARTIAL` pending the residual checks below and owner
+review.
 
 ## Main-owned PartPlan
 
@@ -77,10 +77,12 @@ RSS peaked at 269,598,720 bytes; Electron-reported aggregate peak working set
 was 1,051,168 KB and aggregate private bytes were 514,808 KB. The aggregate
 working set sums per-process values and can count shared pages more than once;
 the per-process high-water marks remain in the private receipt. The harness did
-not open a Panda project: project revision/history/asset before-and-after
-snapshots are `NOT_RUN`. The PartPreview service is not given a Project,
-History, Character, or project-asset mutation service, and the source FLA hash
-was unchanged.
+not open a Panda project. Its receipt records `NO_PROJECT_OPEN`; project
+instance, revision, History, Character, and image-asset counts are `null` in
+both before/after slots because no project existed in this harness. This does
+not establish before/after state for an opened project. The PartPreview service
+is not given a Project, History, Character, or project-asset mutation service,
+and the source FLA hash was unchanged.
 
 ### Issue #906 acceptance coverage
 
@@ -90,13 +92,14 @@ was unchanged.
 | AC02 | **PASS** | Five Sample A source occurrences; a repeated-symbol synthetic FLA verifies two occurrences retain separate identities. |
 | AC03 | **PARTIAL** | Full-stage un-cropped mapping, painter order, and positive translation are covered. Negative translation, mirror, skew, singular transforms, and crop recomputation remain `NOT_RUN`. |
 | AC04 | **PASS** | Windows Electron displayed native, five independent parts, actual-PNG reassembly, and the Animate reference; dimensions and pixel comparisons were recorded. |
-| AC05 | **PASS** | Unit coverage exercises cancellation during rasterization, newer-generation rejection, timeout cancellation, and plan expiry. |
-| AC06 | **PARTIAL** | Missing source identity safely falls back to `WHOLE_IMAGE_ONLY`; cancellation and timeout return typed errors. Unknown visual content, empty masks, raster failure, and PNG-budget failure fixtures remain `NOT_RUN`. |
-| AC07 | **PARTIAL** | Source bytes were unchanged and no project mutation service is available to PartPreview. No Panda project was opened, so revision/history/asset snapshots remain `NOT_RUN`. |
+| AC05 | **PASS** | Unit coverage exercises cancellation, stale-generation rejection, timeout cancellation, plan expiry, and an active generation replaced by a different valid Scene target; the old raster is deliberately resolved after the replacement plan is held and cannot replace it. |
+| AC06 | **PARTIAL** | Missing source identity falls back to `WHOLE_IMAGE_ONLY`. Production-path negative fixtures for visible DOMText and an empty mask reject before rasterization; a native raster failure returns typed `RENDER_FAILED`. The >32 MiB reassembly and >64 MiB batch-output fallback branches remain `NOT_RUN`. |
+| AC07 | **PARTIAL** | The receipt records source hash before/after as equal and the no-project state explicitly. Project instance/revision/History/Character/image-asset values are N/A (`null`) because no Panda project was open; opened-project before/after mutation observation remains `NOT_RUN`. PartPreview has no project mutation-service dependency. |
 | AC08 | **PASS** | One source preparation, six display-list resolutions, seven rasters, batch time, cancellation behavior, Main RSS, and Electron process memory were recorded. |
 | AC09 | **PASS** | Main sender checks and strict IPC schema tests pass; source bytes and filesystem paths are absent from renderer responses. |
 | AC10 | **PASS** | Typecheck, lint, unit, integration, build, and the targeted Windows Electron verifier pass. |
 | AC11 | **PASS** | Main-held plan identity, session/request/generation binding, five-minute expiry, and lifecycle invalidation are implemented and tested. |
+| AC12 | **PASS** | Final start/end HEAD, scoped files, private evidence directory, comparison metrics, this AC matrix, validation/CI result, and remaining STOP items are recorded in the Issue #906 and PR #895 comments. |
 
 The residual `PARTIAL` items do not change Sample A's `NATIVE_SOURCE_GO` result
 and do not authorize F1-03 commits, formal import UI, or broader real-material

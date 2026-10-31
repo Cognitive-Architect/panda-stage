@@ -456,7 +456,7 @@ async function runAcceptance() {
     electronMemory: memoryReceipt,
     comparisons: harnessStatus.comparisons,
     evidence,
-    issueAcceptanceStatus: 'PARTIAL',
+    issueAcceptanceStatus: 'FIX_PARTIAL',
     acceptanceCoverage: {
       AC01: 'PASS',
       AC02: 'PASS',
@@ -469,10 +469,19 @@ async function runAcceptance() {
       AC09: 'PASS',
       AC10: 'PASS',
       AC11: 'PASS',
+      AC12: 'NOT_RUN',
     },
     mutationObservation: {
       pandaProjectLoaded: false,
-      projectStateSnapshot: 'NOT_RUN',
+      projectStateSnapshot: 'NO_PROJECT_OPEN',
+      projectStateBeforeAfter: {
+        status: 'NO_PROJECT_OPEN',
+        projectInstanceId: null,
+        revision: null,
+        historyEntryCount: null,
+        characterCount: null,
+        imageAssetCount: null,
+      },
       projectMutationServicesInjectedIntoPartPreview: false,
       sourceBytesReturnedToRenderer: false,
       sourceHashBeforeAndAfterMatches: true,
@@ -480,7 +489,7 @@ async function runAcceptance() {
     },
   };
   writeNewFile(path.join(OUTPUT_DIRECTORY, 'receipt.json'), Buffer.from(JSON.stringify(receipt, null, 2), 'utf8'));
-  process.stdout.write(`${JSON.stringify({ accepted: true, sourceStatus, issueAcceptanceStatus: 'PARTIAL', outputDirectory: OUTPUT_DIRECTORY, capability: response.capability, unitCount: plan.units.length, metrics: response.metrics, electronMemory: memoryReceipt, comparisons: harnessStatus.comparisons }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ accepted: true, sourceStatus, issueAcceptanceStatus: 'FIX_PARTIAL', outputDirectory: OUTPUT_DIRECTORY, capability: response.capability, unitCount: plan.units.length, metrics: response.metrics, electronMemory: memoryReceipt, comparisons: harnessStatus.comparisons }, null, 2)}\n`);
 }
 
 function bestEffortCleanup(label, action) {
