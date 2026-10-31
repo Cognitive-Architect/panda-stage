@@ -1101,22 +1101,25 @@
 }
 
 .adaptive-parts-assembly-header {
-  display: flex;
+  display: grid;
   min-width: 0;
   min-height: var(--ui-touch-icon);
   grid-column: 1 / -1;
   grid-row: 1;
   align-items: center;
+  grid-template-columns: minmax(44px, 1fr) minmax(0, 1fr) minmax(44px, 1fr);
   gap: var(--ui-space-3);
 }
 
 .adaptive-parts-assembly-back {
   display: inline-flex;
+  box-sizing: border-box;
+  width: var(--ui-touch-icon);
   min-width: var(--ui-touch-icon);
   min-height: var(--ui-touch-icon);
   align-items: center;
-  gap: 8px;
-  padding: 0 var(--ui-space-2);
+  justify-content: center;
+  padding: 0;
   border: 1px solid var(--ui-color-border);
   border-radius: var(--ui-radius-small);
   color: var(--ui-color-text-primary);
@@ -1125,10 +1128,14 @@
 }
 
 .adaptive-parts-assembly-header > strong {
+  grid-column: 2;
+  justify-self: center;
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   color: var(--ui-color-text-primary);
   font: var(--ui-font-primary);
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1154,13 +1161,25 @@
 }
 
 .adaptive-parts-assembly-join-shot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 var(--ui-space-2);
   min-height: var(--ui-touch-icon);
-  margin-bottom: var(--ui-space-2);
   border: 1px solid var(--ui-color-selected-border);
   border-radius: var(--ui-radius-small);
   color: var(--ui-color-text-primary);
   background: var(--ui-color-selected-surface);
   cursor: pointer;
+}
+
+.adaptive-parts-assembly-header .adaptive-parts-assembly-join-shot {
+  grid-column: 3;
+  justify-self: end;
+  min-height: var(--ui-touch-regular);
+  margin: 0;
+  white-space: nowrap;
 }
 
 .adaptive-parts-assembly-join-shot:disabled {
@@ -1396,7 +1415,18 @@
   pointer-events: none;
 }
 
-.adaptive-parts-assembly-canvas-toolbar button { pointer-events: auto; }
+.adaptive-parts-assembly-canvas-toolbar button {
+  min-height: var(--ui-touch-regular);
+  padding: 6px 12px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-work);
+  font: var(--ui-font-secondary);
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
 
 .adaptive-parts-inspector-toggle {
   box-sizing: border-box;
@@ -1491,7 +1521,7 @@
 .adaptive-parts-inspector-field-controls {
   display: grid;
   min-width: 0;
-  grid-template-columns: var(--ui-touch-icon) minmax(0, 1fr) var(--ui-touch-icon);
+  grid-template-columns: var(--ui-touch-icon) minmax(84px, 1fr) var(--ui-touch-icon);
   align-items: center;
   gap: 4px;
 }

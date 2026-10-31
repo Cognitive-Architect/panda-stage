@@ -7,7 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { Minus, Pencil, Plus, RotateCcw, X } from 'lucide-react';
+import { ArrowLeft, Minus, Pencil, Plus, RotateCcw, X } from 'lucide-react';
 import {
   CHARACTER_PART_MAX_SCALE,
   CHARACTER_PART_MIN_SCALE,
@@ -385,6 +385,21 @@ export function resolveAdaptivePartRename(
   }
   return { ok: true, value: trimmed };
 }
+
+const expiredAdaptivePartsDraftMessage = '\u7ec4\u88c5\u8349\u7a3f\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u6253\u5f00\u3002';
+
+export function resolveAdaptivePartsDefinitionUpdate(
+  handle: AdaptivePartsAssemblySessionHandle | null,
+  update: (definition: AdaptivePartsCharacterDefinition) => AdaptivePartsCharacterDefinition,
+): AdaptivePartsUpdateResult {
+  if (!handle) return { ok: false, message: expiredAdaptivePartsDraftMessage };
+  const current = handle.getSnapshot();
+  if (!current) return { ok: false, message: expiredAdaptivePartsDraftMessage };
+  const result = handle.setDraft(update(current.draft));
+  if (!result.ok) return { ok: false, message: result.error.message };
+  return { ok: true };
+}
+
 type AdaptiveAdjustmentDrafts = Record<
   string,
   Partial<Record<AdaptiveAdjustmentField, string>>
@@ -543,6 +558,7 @@ function AdaptivePartsAssemblyRow({
                   if (finishRename()) event.currentTarget.blur();
                 } else if (event.key === 'Escape') {
                   event.preventDefault();
+                  event.stopPropagation();
                   renameFinishedRef.current = true;
                   setRenameValue(displayName);
                   setRenameError('');
@@ -723,25 +739,13 @@ function AdaptivePartsAssemblyWorkbench({
   const setDefinition = (
     update: (definition: AdaptivePartsCharacterDefinition) => AdaptivePartsCharacterDefinition,
   ): AdaptivePartsUpdateResult => {
-    const handle = activeHandle();
-    if (!handle) {
-      setMessage('组装草稿已失效，请重新打开。');
-      return { ok: false };
-    }
-    const current = handle.getSnapshot();
-    if (!current) {
-      setMessage('组装草稿已失效，请重新打开。');
-      return { ok: false };
-    }
-    // Read the current session draft instead of the last React render. Rapid
-    // edits to different Parts can arrive before React commits a rerender.
-    const result = handle.setDraft(update(current.draft));
+    const result = resolveAdaptivePartsDefinitionUpdate(activeHandle(), update);
     if (!result.ok) {
-      setMessage(result.error.message);
-      return { ok: false, message: result.error.message };
+      if (result.message) setMessage(result.message);
+      return result;
     }
     setMessage('');
-    return { ok: true };
+    return result;
   };
   const updatePart = (
     partId: string,
@@ -1060,8 +1064,8 @@ function AdaptivePartsAssemblyWorkbench({
         .querySelector<HTMLElement>('.adaptive-parts-assembly-list')
         ?.getBoundingClientRect();
       const preferredWidth = window.innerWidth <= 900
-        ? Math.min(264, Math.max(44, (listBounds?.width ?? viewportBounds.width) - margin * 2))
-        : 296;
+        ? Math.min(256, Math.max(44, (listBounds?.width ?? viewportBounds.width) - margin * 2))
+        : 256;
       const width = Math.min(
         inspectorOpen ? preferredWidth : 44,
         Math.max(44, viewportBounds.width - margin * 2),
@@ -1304,8 +1308,17 @@ function AdaptivePartsAssemblyWorkbench({
     }
   };
   const joinCurrentShot = (): void => {
-    const result = adaptivePartsActionsRef?.current?.joinCurrentShot();
-    if (result?.message) setMessage(result.message);
+    const joinAction = adaptivePartsActionsRef?.current?.joinCurrentShot;
+    if (!joinAction) {
+      setMessage('\u52a0\u5165\u955c\u5934\u64cd\u4f5c\u4e0d\u53ef\u7528\uff0c\u8bf7\u8fd4\u56de\u89d2\u8272\u5217\u8868\u540e\u91cd\u8bd5\u3002');
+      return;
+    }
+    const result = joinAction();
+    if (!result?.ok) {
+      if (result?.message) setMessage(result.message);
+      return;
+    }
+    setMessage('');
   };
   const renderAdaptiveAdjustmentField = (
     field: AdaptiveAdjustmentField,
@@ -1352,6 +1365,7 @@ function AdaptivePartsAssemblyWorkbench({
               onKeyDown={(event) => {
                 if (event.key !== 'Escape') return;
                 event.preventDefault();
+                event.stopPropagation();
                 cancelNumericDraft(partId, field);
               }}
               type="text"
@@ -1395,13 +1409,9 @@ function AdaptivePartsAssemblyWorkbench({
           title={'\u8fd4\u56de\u89d2\u8272\u5217\u8868'}
           type="button"
         >
-          <span aria-hidden="true">&#8592;</span>
-          {'\u8fd4\u56de\u89d2\u8272\u5217\u8868'}
+          <ArrowLeft aria-hidden="true" size={18} />
         </button>
         <strong title={assemblyCharacterName}>{assemblyCharacterName}</strong>
-      </header>
-      <aside className="adaptive-parts-assembly-list" aria-label="部件列表">
-        <h2 data-testid="adaptive-parts-assembly-count">部件 · {rows.length}</h2>
         <button
           className="adaptive-parts-assembly-join-shot"
           data-testid="adaptive-parts-join-current-shot"
@@ -1410,8 +1420,12 @@ function AdaptivePartsAssemblyWorkbench({
           title={hasCurrentShot ? '\u5c06\u6b64\u89d2\u8272\u52a0\u5165\u5f53\u524d\u955c\u5934' : '\u8bf7\u5148\u9009\u62e9\u955c\u5934'}
           type="button"
         >
-          {'\uff0b \u52a0\u5165\u955c\u5934'}
+          <Plus aria-hidden="true" size={16} />
+          <span>{'\u52a0\u5165\u955c\u5934'}</span>
         </button>
+      </header>
+      <aside className="adaptive-parts-assembly-list" aria-label="部件列表">
+        <h2 data-testid="adaptive-parts-assembly-count">部件 · {rows.length}</h2>
         <div className="adaptive-parts-assembly-rows">
           {rows.map((part, index) => {
             const matchingAssetParts = session.draft.parts.filter((candidate) => candidate.assetId === part.assetId).length;

@@ -139,6 +139,7 @@ export function ResourceActivityDock({
   const [internalDrawerOpen, setInternalDrawerOpen] = useState(() => !narrow);
   const drawerOpen = requestedDrawerOpen ?? internalDrawerOpen;
   const surfaceOpen = drawerOpen;
+  const previousRequestedDrawerOpen = useRef(requestedDrawerOpen);
 
   const confirmLeavingCharacterActivity = (): boolean => {
     if (activeActivity !== 'characters' || !snapshot) return true;
@@ -165,8 +166,16 @@ export function ResourceActivityDock({
     }
     onDrawerOpenChange?.(open);
   };
+  const setDrawerOpenRef = useRef(setDrawerOpen);
+  setDrawerOpenRef.current = setDrawerOpen;
 
   useEffect(() => {
+    const wasDrawerOpenControlled =
+      previousRequestedDrawerOpen.current !== undefined;
+    previousRequestedDrawerOpen.current = requestedDrawerOpen;
+    // Returning from a temporarily forced-open assembly must preserve the
+    // drawer state the user had before the shell took control.
+    if (wasDrawerOpenControlled && requestedDrawerOpen === undefined) return;
     if (requestedDrawerOpen === undefined) {
       const nextOpen = !narrow;
       const session = characterAssemblySessionStore.getSnapshot();
@@ -231,7 +240,7 @@ export function ResourceActivityDock({
     if (!narrow) return undefined;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
-        setDrawerOpen(false);
+        setDrawerOpenRef.current(false);
       }
     };
     window.addEventListener('keydown', onKeyDown);

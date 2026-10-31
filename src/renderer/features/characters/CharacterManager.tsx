@@ -569,14 +569,24 @@ export function CharacterManager({
     );
   };
 
-  const discardAssemblySession = (): void => {
+  const discardAssemblySession = (
+    resumedAdaptiveCharacterId?: string,
+  ): void => {
     const active = adaptiveAssemblyActive
       ? characterAssemblySessionStore.getActiveAdaptivePartsAssemblySessionHandle()
       : characterAssemblySessionStore.getActiveAssemblySessionHandle();
+    const currentAssembly = characterAssemblySessionStore.getSnapshot();
+    const isResumedAdaptiveSession = Boolean(
+      resumedAdaptiveCharacterId &&
+        currentAssembly &&
+        isAdaptivePartsAssemblySnapshot(currentAssembly) &&
+        currentAssembly.characterId === resumedAdaptiveCharacterId,
+    );
     if (
       active &&
-      editAssemblySnapshot &&
-      active.sessionId === editAssemblySnapshot.sessionId
+      ((editAssemblySnapshot &&
+        active.sessionId === editAssemblySnapshot.sessionId) ||
+        isResumedAdaptiveSession)
     ) {
       active.cancel();
     }
@@ -606,7 +616,7 @@ export function CharacterManager({
       },
     });
     if (!joined) return { ok: false, ...(message ? { message } : {}) };
-    discardAssemblySession();
+    discardAssemblySession(selectedCharacterIdRef.current ?? undefined);
     onViewChange('list');
     return { ok: true };
   };

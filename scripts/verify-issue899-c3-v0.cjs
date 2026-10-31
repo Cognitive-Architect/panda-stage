@@ -33,10 +33,15 @@ const {
 } = require('./issue899-c0-body-arm-overlay.cjs');
 
 const issue901UiA = process.argv.includes('--issue901-ui-a');
+const issue903BackProbe = process.env.PANDA_STAGE_ISSUE903_BACK_PROBE === '1';
+const issue903BackProbeBaseline = process.env.PANDA_STAGE_ISSUE903_BACK_BASELINE === '1';
+const issue903BackBaselineReceiptPath = process.env.PANDA_STAGE_ISSUE903_BACK_BASELINE_RECEIPT;
 const sourceDir = process.env.PANDA_STAGE_ISSUE901_SOURCE_DIR ?? process.env.PANDA_STAGE_ISSUE899_SOURCE_DIR;
-const acceptanceRoot = issue901UiA
-  ? process.env.PANDA_STAGE_ISSUE901_ROOT ?? 'D:\\PandaStage-Acceptance\\issue901-ui-a'
-  : process.env.PANDA_STAGE_ISSUE899_ROOT ?? 'D:\\PandaStage-Acceptance\\issue899-c3';
+const acceptanceRoot = issue903BackProbe
+  ? process.env.PANDA_STAGE_ISSUE903_ROOT ?? 'D:\\PandaStage-Acceptance\\issue903-back-probe'
+  : issue901UiA
+    ? process.env.PANDA_STAGE_ISSUE901_ROOT ?? 'D:\\PandaStage-Acceptance\\issue901-ui-a'
+    : process.env.PANDA_STAGE_ISSUE899_ROOT ?? 'D:\\PandaStage-Acceptance\\issue899-c3';
 const runId = new Date().toISOString().replace(/[:.]/gu, '-');
 const runRoot = path.join(acceptanceRoot, `run-${runId}`);
 const evidenceRoot = path.join(runRoot, 'evidence');
@@ -45,7 +50,11 @@ const projectRoot = path.join(runRoot, 'projects', 'c0-adaptive-parts.pandastage
 const outputPath = path.join(runRoot, 'c0-adaptive-parts-edited-6s.mp4');
 const resultPath = path.join(
   runRoot,
-  issue901UiA ? 'issue901-ui-a-receipt.json' : 'issue899-c3-v0-receipt.json',
+  issue903BackProbe
+    ? 'issue903-back-probe-receipt.json'
+    : issue901UiA
+      ? 'issue901-ui-a-receipt.json'
+      : 'issue899-c3-v0-receipt.json',
 );
 const sourceRootTransform = { a: 1, b: 0, c: 0, d: 1, tx: 790, ty: 47.6 };
 const sourceRestTransform = { a: 1, b: 0, c: 0, d: 1, tx: -790, ty: -47.6 };
@@ -94,12 +103,15 @@ let bodyArmPartId = null;
 let longListCharacterId = null;
 const registeredChannels = [];
 const jobUpdates = [];
+const electronAppDiagnostics = [];
 const assetBytes = new Map();
 const assetCanvasImageReadCounts = new Map();
 
 process.env.VITE_DEV_SERVER_URL = '';
 app.setPath('userData', path.join(runRoot, 'electron-user-data'));
 app.on('window-all-closed', () => {});
+app.on('before-quit', () => electronAppDiagnostics.push({ kind: 'app-before-quit' }));
+app.on('will-quit', () => electronAppDiagnostics.push({ kind: 'app-will-quit' }));
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -325,7 +337,7 @@ async function waitForAdaptiveAssemblyDrawerHidden(window, label) {
 }
 
 async function captureWhole(window, fileName) {
-  await page(window, 'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+  await page(window, 'Promise.race([new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))), new Promise((resolve) => setTimeout(resolve, 300))])');
   const image = await window.webContents.capturePage();
   const target = path.join(evidenceRoot, fileName);
   await fsp.writeFile(target, image.toPNG());
@@ -564,11 +576,12 @@ async function clickPoint(window, selector, label = selector) {
   const target = await page(window,
     "(() => { const element = document.querySelector(" + JSON.stringify(selector) + "); " +
     "const bounds = element.getBoundingClientRect(); const style = getComputedStyle(element); " +
+    "const hit = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2); " +
     "return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2, " +
     "width: bounds.width, height: bounds.height, display: style.display, visibility: style.visibility, " +
-    "disabled: Boolean(element.disabled) }; })()");
+    "disabled: Boolean(element.disabled), hitTestedWithinTarget: Boolean(hit && (hit === element || element.contains(hit))) }; })()");
   assert(target.width > 0 && target.height > 0 && target.display !== 'none' &&
-    target.visibility === 'visible' && !target.disabled,
+    target.visibility === 'visible' && !target.disabled && target.hitTestedWithinTarget,
   label + " has no usable pointer target: " + JSON.stringify(target));
   const displayScale = screen.getDisplayMatching(window.getBounds()).scaleFactor;
   const dpr = await page(window, 'window.devicePixelRatio');
@@ -580,7 +593,12 @@ async function clickPoint(window, selector, label = selector) {
   await pause(35);
   window.webContents.sendInputEvent({ type: 'mouseUp', button: 'left', clickCount: 1, ...point });
   await pause(100);
-  return { cssPoint: { x: target.x, y: target.y }, inputFactor: factor };
+  return {
+    cssPoint: { x: target.x, y: target.y },
+    targetSize: { width: target.width, height: target.height },
+    hitTestedWithinTarget: target.hitTestedWithinTarget,
+    inputFactor: factor,
+  };
 }
 
 async function inspectAssemblyViewport(window) {
@@ -658,6 +676,23 @@ async function inspect(window) {
   return page(window, 'window.__pandaStageIssue816Acceptance?.inspect?.() ?? null');
 }
 
+async function inspectAdaptivePartsDraft(window) {
+  return page(window, `(() => {
+    const rows = [...document.querySelectorAll('[data-testid="adaptive-parts-assembly-row"]')].map((row) => ({
+      partId: row.dataset.partId ?? null,
+      name: row.querySelector('.adaptive-parts-assembly-name')?.textContent?.trim() ?? '',
+      visible: row.querySelector('[data-testid="adaptive-parts-visibility-toggle"]')?.getAttribute('aria-pressed') === 'true',
+    }));
+    const fieldIds = ['adaptive-parts-offset-x','adaptive-parts-offset-y','adaptive-parts-scale-percent','adaptive-parts-rotation-deg'];
+    return {
+      rows,
+      selectedPartId: document.querySelector('[data-testid="adaptive-parts-assembly-row-select"][aria-pressed="true"]')?.closest('[data-testid="adaptive-parts-assembly-row"]')?.dataset.partId ?? null,
+      values: Object.fromEntries(fieldIds.map((id) => [id, document.querySelector('[data-testid="' + id + '"]')?.value ?? null])),
+      applyDisabled: document.querySelector('[data-testid="adaptive-parts-assembly-apply"]')?.disabled ?? null,
+    };
+  })()`);
+}
+
 async function openProject(window) {
   const selector = '[data-testid="project-center-screen"] .recovery-open-row input';
   await waitFor(window, `document.querySelector(${JSON.stringify(selector)})`, 'Project Center did not render its project path input.');
@@ -690,7 +725,7 @@ async function replaceInputText(window, selector, text) {
 }
 
 async function renameAdaptivePart(window, rowSelector, nextName, screenshotName) {
-  await click(window, `${rowSelector} [data-testid="adaptive-parts-rename-button"]`, 'Start inline Part rename');
+  const pointer = await clickPoint(window, `${rowSelector} [data-testid="adaptive-parts-rename-button"]`, 'Start inline Part rename');
   const input = '[data-testid="adaptive-parts-rename-input"]';
   await waitFor(window, `document.querySelector(${JSON.stringify(input)})`, 'Inline Part rename input did not appear.');
   await replaceInputText(window, input, nextName);
@@ -700,10 +735,460 @@ async function renameAdaptivePart(window, rowSelector, nextName, screenshotName)
     const row = document.querySelector(${JSON.stringify(rowSelector)});
     return row?.querySelector('.adaptive-parts-assembly-name')?.textContent?.trim() === ${JSON.stringify(nextName)};
   })()`, 'Inline Part rename did not commit with Enter.');
+  return pointer;
+}
+
+async function verifyIssue903BackProbe(window) {
+  const characterRail = '[data-testid="resource-activity-rail-characters"]';
+  const characterList = '[data-testid="character-list-view"]';
+  const adaptiveCard = `[data-character-id="${adaptiveCharacterId}"]`;
+  const backSelector = '[data-testid="adaptive-parts-back-to-list"]';
+  const originalWindowSize = window.getSize();
+  window.setSize(880, 760);
+  await pause(450);
+  await waitFor(window, 'window.innerWidth <= 900 && window.innerWidth >= 800', 'The Back probe did not enter the narrow 880px viewport.');
+  const viewport = await page(window, '({ width: window.innerWidth, height: window.innerHeight })');
+
+  await clickPoint(window, characterRail, 'Open Characters for top-Back diagnosis');
+  await waitFor(window, `(() => {
+    const list = document.querySelector(${JSON.stringify(characterList)});
+    const rect = list?.getBoundingClientRect();
+    const style = list ? getComputedStyle(list) : null;
+    return Boolean(rect?.width && rect.height && style?.display !== 'none' && style?.visibility !== 'hidden');
+  })()`, 'Character list did not become visible before the Back probe.');
+
+  const beforeOpen = await inspect(window);
+  const drawerAtList = await page(window, `(() => {
+    const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+    const panel = document.querySelector('[data-testid="resource-activity-panel"]');
+    return { drawerOpen: dock?.dataset.resourceDrawerOpen ?? null, activeActivity: dock?.dataset.activeActivity ?? null, activeSubview: panel?.dataset.activeSubview ?? null };
+  })()`);
+  assert(drawerAtList.drawerOpen === 'true' && drawerAtList.activeActivity === 'characters' && drawerAtList.activeSubview === 'list', `The Character list was not open in the narrow Back-probe baseline: ${JSON.stringify(drawerAtList)}.`);
+  await captureWhole(window, 'issue903-back-probe-before-open.png');
+  const adaptiveCardPointer = await clickPoint(window, adaptiveCard, 'Open C0 Character for top-Back diagnosis');
+  await waitFor(window, `(() => {
+    const element = document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]');
+    const rect = element?.getBoundingClientRect();
+    const style = element ? getComputedStyle(element) : null;
+    return Boolean(rect?.width && rect.height && style?.display !== 'none' && style?.visibility !== 'hidden' && rect.right > 0 && rect.bottom > 0 && rect.left < innerWidth && rect.top < innerHeight);
+  })()`, 'The C0 Adaptive Parts workbench did not become visible for the Back probe.');
+  await captureWhole(window, 'issue903-back-probe-workbench-at-880.png');
+  const beforeBack = await inspect(window);
+  const drawerAtWorkbench = await page(window, `(() => {
+    const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+    const panel = document.querySelector('[data-testid="resource-activity-panel"]');
+    return { drawerOpen: dock?.dataset.resourceDrawerOpen ?? null, activeActivity: dock?.dataset.activeActivity ?? null, activeSubview: panel?.dataset.activeSubview ?? null };
+  })()`);
+  assert(drawerAtWorkbench.drawerOpen === 'true' && drawerAtWorkbench.activeActivity === 'characters', `The assembly did not retain the narrow Character drawer: ${JSON.stringify(drawerAtWorkbench)}.`);
+  const beforeControl = await page(window, `(() => {
+    const element = document.querySelector(${JSON.stringify(backSelector)});
+    const bounds = element?.getBoundingClientRect();
+    const style = element ? getComputedStyle(element) : null;
+    const hit = bounds ? document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2) : null;
+    return {
+      exists: Boolean(element),
+      visible: Boolean(bounds?.width && bounds.height && style?.visibility === 'visible' && style?.display !== 'none'),
+      width: bounds?.width ?? 0,
+      height: bounds?.height ?? 0,
+      hitTag: hit?.tagName ?? null,
+      hitTestStack: bounds ? document.elementsFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2).slice(0, 6).map((node) => ({ tag: node.tagName, className: typeof node.className === 'string' ? node.className : '', testId: node.getAttribute('data-testid'), zIndex: getComputedStyle(node).zIndex })) : [],
+      hitTestedWithinControl: Boolean(hit && element?.contains(hit)),
+      workbenchBounds: (() => { const rect = document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')?.getBoundingClientRect(); return rect ? { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height } : null; })(),
+      headerBounds: (() => { const rect = document.querySelector('[data-testid="adaptive-parts-assembly-header"]')?.getBoundingClientRect(); return rect ? { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height } : null; })(),
+      listBounds: (() => { const rect = document.querySelector('.adaptive-parts-assembly-list')?.getBoundingClientRect(); return rect ? { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height } : null; })(),
+      activeActivity: document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.activeActivity ?? null,
+      activeSubview: document.querySelector('[data-testid="resource-activity-panel"]')?.dataset.activeSubview ?? null,
+      drawerOpen: document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen ?? null,
+    };
+  })()`);
+  assert(beforeControl.visible && beforeControl.width >= 44 && beforeControl.height >= 44 && beforeControl.hitTestedWithinControl, `Top Back was not a visible 44px hit target before the narrow probe: ${JSON.stringify(beforeControl)}.`);
+  await captureWhole(window, 'issue903-back-probe-before-click.png');
+  await page(window, `(() => {
+    window.__pandaStageIssue903CleanConfirmCalls = [];
+    window.confirm = (message) => {
+      window.__pandaStageIssue903CleanConfirmCalls.push(String(message));
+      return false;
+    };
+    window.__pandaStageIssue903RuntimeEvents = [];
+    window.__pandaStageIssue903BackInteractions = [];
+    const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+    const record = (event) => {
+      const target = event.target instanceof Element ? event.target.closest('button') : null;
+      window.__pandaStageIssue903BackInteractions.push({
+        kind: event.type,
+        targetTestId: target?.dataset.testid ?? null,
+        trusted: event.isTrusted,
+        drawerOpen: dock?.dataset.resourceDrawerOpen ?? null,
+      });
+    };
+    for (const type of ['pointerdown', 'pointerup', 'click']) document.addEventListener(type, record, true);
+    if (dock && !window.__pandaStageIssue903DrawerObserver) {
+      window.__pandaStageIssue903DrawerObserver = new MutationObserver((records) => {
+        for (const entry of records) window.__pandaStageIssue903BackInteractions.push({
+          kind: 'drawer-state-change',
+          drawerOpen: dock.dataset.resourceDrawerOpen ?? null,
+          oldValue: entry.oldValue,
+        });
+      });
+      window.__pandaStageIssue903DrawerObserver.observe(dock, { attributes: true, attributeOldValue: true, attributeFilter: ['data-resource-drawer-open'] });
+    }
+    if (!window.__pandaStageIssue903RuntimeEventsInstalled) {
+      window.__pandaStageIssue903RuntimeEventsInstalled = true;
+      window.addEventListener('error', (event) => window.__pandaStageIssue903RuntimeEvents.push({ kind: 'error', message: event.message, filename: event.filename, line: event.lineno }));
+      window.addEventListener('unhandledrejection', (event) => window.__pandaStageIssue903RuntimeEvents.push({ kind: 'unhandledrejection', reason: String(event.reason) }));
+    }
+    return true;
+  })()`);
+  const diagnosticsStart = rendererDiagnostics.length;
+  const pointer = await clickPoint(window, backSelector, 'Coordinate-click top Back in a clean Adaptive Parts session at 880px');
+  await pause(350);
+  const returnListSettle = await page(window, `(() => {
+    const visible = (element) => {
+      if (!element) return false;
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return Boolean(rect.width && rect.height && style.display !== 'none' && style.visibility !== 'hidden' && rect.right > 0 && rect.bottom > 0 && rect.left < innerWidth && rect.top < innerHeight);
+    };
+    return new Promise((resolve) => {
+      const started = performance.now();
+      const poll = () => {
+        const lists = [...document.querySelectorAll(${JSON.stringify(characterList)})];
+        const result = { elapsedMs: Math.round(performance.now() - started), visible: lists.some(visible), lists: lists.map((element) => { const rect = element.getBoundingClientRect(); const style = getComputedStyle(element); return { visible: visible(element), rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height }, display: style.display, visibility: style.visibility, opacity: style.opacity }; }) };
+        if (result.visible || result.elapsedMs >= 2500) { resolve(result); return; }
+        setTimeout(poll, 40);
+      };
+      poll();
+    });
+  })()`);
+
+  const windowState = {
+    destroyed: window.isDestroyed(),
+    visible: window.isDestroyed() ? false : window.isVisible(),
+    focused: window.isDestroyed() ? false : window.isFocused(),
+    title: window.isDestroyed() ? null : window.getTitle(),
+    webContentsDestroyed: window.isDestroyed() ? true : window.webContents.isDestroyed(),
+  };
+  let afterUi = null;
+  let afterProject = null;
+  let runtimeEvents = [];
+  if (!windowState.destroyed && !windowState.webContentsDestroyed) {
+    afterUi = await page(window, `(() => {
+      const visible = (element) => {
+        if (!element) return false;
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return Boolean(rect.width && rect.height && style.display !== 'none' && style.visibility !== 'hidden' && rect.right > 0 && rect.bottom > 0 && rect.left < innerWidth && rect.top < innerHeight);
+      };
+      const listInstances = [...document.querySelectorAll(${JSON.stringify(characterList)})];
+      const list = listInstances.find(visible) ?? listInstances[0] ?? null;
+      const workbench = document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]');
+      const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+      const panel = document.querySelector('[data-testid="resource-activity-panel"]');
+      const surface = document.querySelector('[data-testid="resource-activity-drawer"]');
+      const editorShell = document.querySelector('.editor-shell');
+      const describe = (element) => {
+        if (!element) return null;
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return { rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height }, display: style.display, visibility: style.visibility, opacity: style.opacity };
+      };
+      const matchedVisibilityRules = (element) => {
+        const matches = [];
+        const visit = (rules) => {
+          for (const rule of rules) {
+            if (rule.cssRules) { visit(rule.cssRules); continue; }
+            if (!rule.selectorText || !rule.style) continue;
+            try {
+              if (!element.matches(rule.selectorText)) continue;
+              if (rule.style.visibility || rule.style.opacity || rule.style.pointerEvents) matches.push({ selector: rule.selectorText, visibility: rule.style.visibility || null, opacity: rule.style.opacity || null, pointerEvents: rule.style.pointerEvents || null });
+            } catch {}
+          }
+        };
+        for (const sheet of document.styleSheets) { try { visit(sheet.cssRules); } catch {} }
+        return matches;
+      };
+      return {
+        title: document.title,
+        editorAssemblyState: { active: editorShell?.dataset.characterAssemblyActive ?? null, kind: editorShell?.dataset.characterAssemblyKind ?? null },
+        editorAssemblySelectorMatch: Boolean(editorShell?.matches('.editor-shell[data-character-assembly-active="true"]')),
+        editorShellLayout: document.querySelector('[data-testid="editor-layout"]')?.dataset.shellMode ?? null,
+        activeActivity: dock?.dataset.activeActivity ?? null,
+        activeSubview: panel?.dataset.activeSubview ?? null,
+        drawerOpen: dock?.dataset.resourceDrawerOpen ?? null,
+        dockInstances: [...document.querySelectorAll('[data-testid="resource-activity-dock"]')].map((element) => ({ className: element.className, drawerOpen: element.dataset.resourceDrawerOpen, mode: element.dataset.resourceMode, hidden: element.closest('[hidden]') !== null, surfaceVisibility: element.querySelector('[data-testid="resource-activity-drawer"]') ? getComputedStyle(element.querySelector('[data-testid="resource-activity-drawer"]')).visibility : null })),
+        visibleCharacterList: visible(list),
+        characterListInstances: listInstances.map(describe),
+        resourceSurface: describe(surface),
+        resourceSurfaceInlineStyle: surface?.getAttribute('style') ?? null,
+        resourceSurfaceComputedTransitions: surface ? { transition: getComputedStyle(surface).transition, animation: getComputedStyle(surface).animation, visibility: getComputedStyle(surface).visibility, opacity: getComputedStyle(surface).opacity, pointerEvents: getComputedStyle(surface).pointerEvents } : null,
+        resourceSurfaceMatchedVisibilityRules: surface ? matchedVisibilityRules(surface) : [],
+        resourceSurfaceAncestors: (() => { const chain = []; let node = surface; while (node && chain.length < 7) { const rect = node.getBoundingClientRect(); const style = getComputedStyle(node); chain.push({ tag: node.tagName, className: typeof node.className === 'string' ? node.className : '', testId: node.getAttribute('data-testid'), hidden: node.hidden, display: style.display, visibility: style.visibility, opacity: style.opacity, rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height } }); node = node.parentElement; } return chain; })(),
+        workbenchPresent: Boolean(workbench),
+        visibleAdaptiveWorkbench: visible(workbench),
+        characterRows: list?.querySelectorAll('[data-character-id]').length ?? 0,
+        bodyText: document.body.innerText.slice(0, 900),
+        confirmCalls: window.__pandaStageIssue903CleanConfirmCalls ?? [],
+        runtimeEvents: window.__pandaStageIssue903RuntimeEvents ?? [],
+        interactions: window.__pandaStageIssue903BackInteractions ?? [],
+      };
+    })()`);
+    afterUi.returnListSettle = returnListSettle;
+    afterProject = await inspect(window);
+    runtimeEvents = afterUi.runtimeEvents;
+    afterUi.afterPaint = await page(window, `Promise.race([new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+      const surface = document.querySelector('[data-testid="resource-activity-drawer"]');
+      const list = document.querySelector(${JSON.stringify(characterList)});
+      const style = (element) => element ? { visibility: getComputedStyle(element).visibility, opacity: getComputedStyle(element).opacity, pointerEvents: getComputedStyle(element).pointerEvents } : null;
+      resolve({ framesReceived: true, surface: style(surface), list: style(list), animations: surface?.getAnimations().map((animation) => ({ playState: animation.playState, currentTime: animation.currentTime, transitionProperty: animation.transitionProperty ?? null })) ?? [] });
+    }))), new Promise((resolve) => setTimeout(() => resolve({ framesReceived: false }), 400))])`);
+    await captureWhole(window, 'issue903-back-probe-after-click.png');
+  }
+  let cssCascadeDiagnostics = null;
+  if (!windowState.destroyed && !windowState.webContentsDestroyed) {
+    const debuggerApi = window.webContents.debugger;
+    const attachedBefore = debuggerApi.isAttached();
+    try {
+      if (!attachedBefore) debuggerApi.attach('1.3');
+      await debuggerApi.sendCommand('DOM.enable');
+      await debuggerApi.sendCommand('CSS.enable');
+      const { root } = await debuggerApi.sendCommand('DOM.getDocument', { depth: -1, pierce: true });
+      const [{ nodeId: surfaceNodeId }, { nodeId: listNodeId }] = await Promise.all([
+        debuggerApi.sendCommand('DOM.querySelector', { nodeId: root.nodeId, selector: '[data-testid="resource-activity-drawer"]' }),
+        debuggerApi.sendCommand('DOM.querySelector', { nodeId: root.nodeId, selector: '[data-testid="character-list-view"]' }),
+      ]);
+      const [matched, computed, listComputed] = await Promise.all([
+        debuggerApi.sendCommand('CSS.getMatchedStylesForNode', { nodeId: surfaceNodeId }),
+        debuggerApi.sendCommand('CSS.getComputedStyleForNode', { nodeId: surfaceNodeId }),
+        debuggerApi.sendCommand('CSS.getComputedStyleForNode', { nodeId: listNodeId }),
+      ]);
+      cssCascadeDiagnostics = {
+        matchedRules: (matched.matchedCSSRules ?? []).map(({ rule, matchingSelectors }) => ({
+          selectors: rule.selectorList?.selectors?.map((selector) => selector.text) ?? [],
+          matchingSelectors,
+          visibility: rule.style?.cssProperties?.find((property) => property.name === 'visibility')?.value ?? null,
+          opacity: rule.style?.cssProperties?.find((property) => property.name === 'opacity')?.value ?? null,
+          pointerEvents: rule.style?.cssProperties?.find((property) => property.name === 'pointer-events')?.value ?? null,
+        })).filter((rule) => rule.visibility !== null || rule.opacity !== null || rule.pointerEvents !== null),
+        computed: (computed.computedStyle ?? []).filter((property) => ['visibility', 'opacity', 'pointer-events'].includes(property.name)),
+        listComputed: (listComputed.computedStyle ?? []).filter((property) => ['visibility', 'opacity', 'pointer-events'].includes(property.name)),
+      };
+    } catch (error) {
+      cssCascadeDiagnostics = { error: error instanceof Error ? error.message : String(error) };
+    } finally {
+      if (!attachedBefore && debuggerApi.isAttached()) debuggerApi.detach();
+    }
+    cssCascadeDiagnostics.postDebuggerRendererComputed = await page(window, `(() => {
+      const surface = document.querySelector('[data-testid="resource-activity-drawer"]');
+      const list = document.querySelector(${JSON.stringify(characterList)});
+      return { surface: surface ? { visibility: getComputedStyle(surface).visibility, opacity: getComputedStyle(surface).opacity, pointerEvents: getComputedStyle(surface).pointerEvents } : null, list: list ? { visibility: getComputedStyle(list).visibility, opacity: getComputedStyle(list).opacity } : null };
+    })()`);
+    await captureWhole(window, 'issue903-back-probe-after-click-final.png');
+  }
+  const electronDiagnostics = rendererDiagnostics.slice(diagnosticsStart);
+  const appDiagnostics = [...electronAppDiagnostics];
+  const fatalRendererDiagnostic = electronDiagnostics.some((entry) =>
+    entry.kind === 'render-process-gone' ||
+    (entry.kind === 'did-fail-load' && entry.errorCode !== 0) ||
+    entry.kind === 'unresponsive' ||
+    entry.level === 'error' ||
+    entry.level === 3,
+  ) || runtimeEvents.some((entry) => entry.kind === 'error' || entry.kind === 'unhandledrejection');
+  const appQuitRequested = appDiagnostics.some((entry) => entry.kind === 'app-before-quit' || entry.kind === 'app-will-quit');
+  const cleanTrustedClick = Boolean(afterUi?.interactions.some((entry) =>
+    entry.kind === 'click' && entry.targetTestId === 'adaptive-parts-back-to-list' && entry.trusted,
+  ));
+  let classification;
+  if (windowState.destroyed) classification = 'ELECTRON_WINDOW_DESTROYED';
+  else if (appQuitRequested) classification = 'ELECTRON_APP_QUIT_REQUESTED';
+  else if (!windowState.visible) classification = 'ELECTRON_WINDOW_HIDDEN';
+  else if (electronDiagnostics.some((entry) => entry.kind === 'render-process-gone')) classification = 'RENDERER_PROCESS_GONE';
+  else if (fatalRendererDiagnostic) classification = 'RENDERER_ERROR_OR_LOAD_FAILURE';
+  else if (afterUi?.confirmCalls.length) classification = 'BACK_BLOCKED_BY_CONFIRMATION';
+  else if (!afterUi?.bodyText.trim()) classification = 'BLANK_RENDERER';
+  else if (afterUi?.visibleCharacterList && afterUi?.activeActivity === 'characters' && afterUi?.activeSubview === 'list' && afterUi?.drawerOpen === 'true') classification = 'RETURNED_TO_VISIBLE_CHARACTER_LIST';
+  else if (afterUi?.drawerOpen !== 'true') classification = 'CHARACTER_DRAWER_HIDDEN';
+  else if (afterUi?.visibleAdaptiveWorkbench) classification = 'WORKBENCH_REMAINS_VISIBLE';
+  else classification = 'NO_VISIBLE_CHARACTER_LIST';
+
+  const cleanProjectPreserved = afterProject?.revision === beforeOpen.revision &&
+    afterProject?.dirty === beforeOpen.dirty &&
+    afterProject?.undoCount === beforeOpen.undoCount &&
+    JSON.stringify(afterProject?.project) === JSON.stringify(beforeOpen.project);
+  const cleanBackPassed = classification === 'RETURNED_TO_VISIBLE_CHARACTER_LIST' &&
+    cleanTrustedClick && !afterUi?.workbenchPresent && beforeControl.visible &&
+    beforeControl.hitTestedWithinControl && afterUi?.confirmCalls.length === 0 &&
+    cleanProjectPreserved && drawerAtList.drawerOpen === 'true' &&
+    drawerAtWorkbench.drawerOpen === 'true';
+  const cleanBack = {
+    result: cleanBackPassed ? 'PASS' : classification,
+    classification,
+    beforeOpen: { revision: beforeOpen.revision, dirty: beforeOpen.dirty, undoCount: beforeOpen.undoCount },
+    drawerAtList,
+    drawerAtWorkbench,
+    beforeControl,
+    beforeBack: { revision: beforeBack.revision, dirty: beforeBack.dirty, undoCount: beforeBack.undoCount },
+    viewport,
+    adaptiveCardPointer,
+    pointer,
+    trustedClick: cleanTrustedClick,
+    windowState,
+    afterUi,
+    afterProject: afterProject && { revision: afterProject.revision, dirty: afterProject.dirty, undoCount: afterProject.undoCount },
+  };
+  let dirtyBack = { result: 'NOT_RUN', reason: `Clean Back classification was ${classification}.` };
+  if (cleanBackPassed) {
+    await clickPoint(window, adaptiveCard, 'Reopen C0 for dirty Back decline and accept checks');
+    await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]') && document.querySelectorAll('[data-testid="adaptive-parts-assembly-row"]').length === 5`, 'The C0 workbench did not reopen for dirty Back checks.');
+    const beforeDirtyEdit = await inspect(window);
+    const cleanDraft = await inspectAdaptivePartsDraft(window);
+    const firstVisibility = '[data-testid="adaptive-parts-assembly-row"] [data-testid="adaptive-parts-visibility-toggle"]';
+    await clickPoint(window, firstVisibility, 'Change the first Part visibility to create a dirty Back draft');
+    await waitFor(window, `document.querySelector(${JSON.stringify(firstVisibility)})?.getAttribute('aria-pressed') === 'false'`, 'The Part visibility draft did not change before Back.');
+    const dirtyDraftBeforeDecline = await inspectAdaptivePartsDraft(window);
+    const dirtyProjectBeforeDecline = await inspect(window);
+    await page(window, `(() => { window.__pandaStageIssue903DirtyBackConfirmCalls = []; window.confirm = (message) => { window.__pandaStageIssue903DirtyBackConfirmCalls.push(String(message)); return false; }; })()`);
+    const declinePointer = await clickPoint(window, backSelector, 'Decline dirty Back and preserve the exact C0 draft');
+    await waitFor(window, `Boolean(document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]'))`, 'Declining dirty Back closed the assembly workbench.');
+    const afterDirtyDecline = await inspect(window);
+    const draftAfterDecline = await inspectAdaptivePartsDraft(window);
+    const promptsAfterDecline = await page(window, 'window.__pandaStageIssue903DirtyBackConfirmCalls ?? []');
+    const declinePreservedDraft = JSON.stringify(draftAfterDecline) === JSON.stringify(dirtyDraftBeforeDecline);
+    const declinePreservedProject = afterDirtyDecline.revision === dirtyProjectBeforeDecline.revision &&
+      afterDirtyDecline.dirty === dirtyProjectBeforeDecline.dirty &&
+      afterDirtyDecline.undoCount === dirtyProjectBeforeDecline.undoCount &&
+      JSON.stringify(afterDirtyDecline.project) === JSON.stringify(dirtyProjectBeforeDecline.project);
+    await captureWhole(window, 'issue903-back-probe-dirty-decline.png');
+
+    await page(window, `(() => { window.confirm = (message) => { window.__pandaStageIssue903DirtyBackConfirmCalls.push(String(message)); return true; }; })()`);
+    const acceptPointer = await clickPoint(window, backSelector, 'Accept dirty Back and discard only the local assembly draft');
+    await waitFor(window, `(() => {
+      const list = document.querySelector(${JSON.stringify(characterList)});
+      const rect = list?.getBoundingClientRect();
+      const style = list ? getComputedStyle(list) : null;
+      return !document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]') && Boolean(rect?.width && rect.height && style?.display !== 'none' && style?.visibility !== 'hidden');
+    })()`, 'Accepting dirty Back did not return to the visible Character list.');
+    const afterDirtyAccept = await inspect(window);
+    const dirtyAcceptUi = await page(window, `(() => {
+      const dock = document.querySelector('[data-testid="resource-activity-dock"]');
+      const panel = document.querySelector('[data-testid="resource-activity-panel"]');
+      return { drawerOpen: dock?.dataset.resourceDrawerOpen ?? null, activeActivity: dock?.dataset.activeActivity ?? null, activeSubview: panel?.dataset.activeSubview ?? null, workbenchPresent: Boolean(document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')) };
+    })()`);
+    const promptsAfterAccept = await page(window, 'window.__pandaStageIssue903DirtyBackConfirmCalls ?? []');
+    const acceptPreservedProject = afterDirtyAccept.revision === dirtyProjectBeforeDecline.revision &&
+      afterDirtyAccept.dirty === dirtyProjectBeforeDecline.dirty &&
+      afterDirtyAccept.undoCount === dirtyProjectBeforeDecline.undoCount &&
+      JSON.stringify(afterDirtyAccept.project) === JSON.stringify(dirtyProjectBeforeDecline.project);
+    await captureWhole(window, 'issue903-back-probe-dirty-accept.png');
+
+    await clickPoint(window, adaptiveCard, 'Reopen C0 after accepting dirty Back');
+    await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'The same Character did not reopen after accepting dirty Back.');
+    const reopenedDraft = await inspectAdaptivePartsDraft(window);
+    const reopenedProject = await inspect(window);
+    const reopenedOriginalDraft = JSON.stringify(reopenedDraft) === JSON.stringify(cleanDraft);
+    const finalCleanPointer = await clickPoint(window, backSelector, 'Return to the Character list after clean reopen');
+    await waitFor(window, `!document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]') && document.querySelector(${JSON.stringify(characterList)})`, 'Clean Back after reopen did not return to the list.');
+    const finalConfirmCalls = await page(window, 'window.__pandaStageIssue903DirtyBackConfirmCalls ?? []');
+    const finalProject = await inspect(window);
+    const dirtyBackPassed = promptsAfterDecline.length === 1 && promptsAfterAccept.length === 2 &&
+      declinePreservedDraft && declinePreservedProject && acceptPreservedProject &&
+      dirtyAcceptUi.drawerOpen === 'true' && dirtyAcceptUi.activeActivity === 'characters' && dirtyAcceptUi.activeSubview === 'list' && !dirtyAcceptUi.workbenchPresent &&
+      reopenedOriginalDraft && reopenedProject.revision === beforeDirtyEdit.revision &&
+      reopenedProject.undoCount === beforeDirtyEdit.undoCount && JSON.stringify(reopenedProject.project) === JSON.stringify(beforeDirtyEdit.project) &&
+      finalConfirmCalls.length === 2 && finalProject.revision === beforeDirtyEdit.revision &&
+      finalProject.undoCount === beforeDirtyEdit.undoCount && JSON.stringify(finalProject.project) === JSON.stringify(beforeDirtyEdit.project);
+    dirtyBack = {
+      result: dirtyBackPassed ? 'PASS' : 'DIRTY_BACK_ASSERTION_FAILED',
+      declinePointer,
+      acceptPointer,
+      finalCleanPointer,
+      confirmationPrompts: finalConfirmCalls.length,
+      draftBeforeDecline: dirtyDraftBeforeDecline,
+      draftAfterDecline,
+      declinePreservedDraft,
+      declinePreservedProject,
+      dirtyAcceptUi,
+      acceptPreservedProject,
+      reopenedDraft,
+      reopenedOriginalDraft,
+      projectPreserved: acceptPreservedProject && finalProject.revision === beforeDirtyEdit.revision && finalProject.undoCount === beforeDirtyEdit.undoCount,
+      cleanDraft,
+    };
+  }
+
+  if (!window.isDestroyed()) window.setSize(...originalWindowSize);
+  const overallResult = cleanBack.result === 'PASS' && dirtyBack.result === 'PASS'
+    ? 'PASS'
+    : cleanBack.result !== 'PASS' ? cleanBack.result : dirtyBack.result;
+  let baselineComparison = null;
+  if (!issue903BackProbeBaseline && issue903BackBaselineReceiptPath) {
+    try {
+      const baselineReceipt = JSON.parse(await fsp.readFile(issue903BackBaselineReceiptPath, 'utf8'));
+      const baselineBack = baselineReceipt.issue903NavBack01?.cleanBack;
+      const baselineProjectPreserved = baselineBack?.afterProject?.revision === baselineBack?.beforeOpen?.revision &&
+        baselineBack?.afterProject?.dirty === baselineBack?.beforeOpen?.dirty &&
+        baselineBack?.afterProject?.undoCount === baselineBack?.beforeOpen?.undoCount;
+      baselineComparison = {
+        receiptPath: issue903BackBaselineReceiptPath,
+        status: baselineReceipt.status,
+        classification: baselineBack?.classification ?? null,
+        appWindowStayedVisible: baselineBack?.windowState?.visible === true && baselineBack?.windowState?.destroyed === false,
+        rendererStayedAlive: baselineBack?.windowState?.webContentsDestroyed === false && !(baselineReceipt.issue903NavBack01?.rendererDiagnostics ?? []).some((entry) => entry.kind === 'render-process-gone'),
+        drawerAtList: baselineBack?.drawerAtList?.drawerOpen ?? null,
+        drawerAtWorkbench: baselineBack?.drawerAtWorkbench?.drawerOpen ?? null,
+        drawerAfterBack: baselineBack?.afterUi?.drawerOpen ?? null,
+        activeSubviewAfterBack: baselineBack?.afterUi?.activeSubview ?? null,
+        listVisibleAfterBack: baselineBack?.afterUi?.visibleCharacterList ?? false,
+        workbenchGoneAfterBack: baselineBack?.afterUi?.workbenchPresent === false,
+        projectAndHistoryPreserved: baselineProjectPreserved,
+        reproduced: baselineReceipt.status === 'CHARACTER_DRAWER_HIDDEN' &&
+          baselineBack?.classification === 'CHARACTER_DRAWER_HIDDEN' &&
+          baselineBack?.drawerAtList?.drawerOpen === 'true' && baselineBack?.drawerAtWorkbench?.drawerOpen === 'true' &&
+          baselineBack?.afterUi?.drawerOpen === 'false' && baselineBack?.afterUi?.activeActivity === 'characters' &&
+          baselineBack?.afterUi?.activeSubview === 'list' && baselineBack?.afterUi?.visibleCharacterList === false &&
+          baselineBack?.afterUi?.workbenchPresent === false && baselineBack?.windowState?.visible === true &&
+          baselineBack?.windowState?.destroyed === false && baselineProjectPreserved,
+      };
+    } catch (error) {
+      baselineComparison = {
+        receiptPath: issue903BackBaselineReceiptPath,
+        error: error instanceof Error ? error.message : String(error),
+        reproduced: false,
+      };
+    }
+  }
+  const rootCauseConfirmed = Boolean(baselineComparison?.reproduced && overallResult === 'PASS');
+
+  return {
+    result: overallResult,
+    cleanBack,
+    dirtyBack,
+    diagnosis: {
+      rootCauseStatus: issue903BackProbeBaseline ? 'PRE_FIX_BASELINE' : rootCauseConfirmed ? 'CONFIRMED_BY_PRE_FIX_BASELINE_AND_POST_FIX_REGRESSION' : 'NOT_CONFIRMED',
+      candidate: 'At a narrow viewport, releasing EditorShell’s temporary drawerOpen=true override let ResourceActivityDock apply its default-narrow closed state, leaving the Character list hidden after Back.',
+      runMode: issue903BackProbeBaseline ? 'PRE_FIX_BASELINE' : 'POST_FIX_REGRESSION',
+      ownerReportedFailure: 'NOT_REPRODUCED_AS_AN_ELECTRON_OR_RENDERER_EXIT; THE_PRE_FIX_BASELINE_REPRODUCED_A_HIDDEN_CHARACTER_DRAWER',
+      baselineComparison,
+    },
+    viewport: { requested: { width: 880, height: 760 }, measured: viewport },
+    windowState,
+    rendererDiagnostics: electronDiagnostics,
+    runtimeEvents,
+    cssCascadeDiagnostics,
+    electronAppDiagnostics: appDiagnostics,
+    screenshots: [
+      'issue903-back-probe-before-open.png',
+      'issue903-back-probe-workbench-at-880.png',
+      'issue903-back-probe-before-click.png',
+      'issue903-back-probe-after-click.png',
+      'issue903-back-probe-after-click-final.png',
+      ...(cleanBackPassed ? ['issue903-back-probe-dirty-decline.png', 'issue903-back-probe-dirty-accept.png'] : []),
+    ],
+  };
 }
 
 async function verifyIssue901UiA(window, prepared, receipt) {
   const checks = {};
+  const issue903 = {};
   const progress = (message) => process.stdout.write(`[issue901-ui-a] ${message}\n`);
   const characterRail = '[data-testid="resource-activity-rail-characters"]';
   const characterList = '[data-testid="character-list-view"]';
@@ -711,36 +1196,81 @@ async function verifyIssue901UiA(window, prepared, receipt) {
   const adaptiveCard = `[data-character-id="${adaptiveCharacterId}"]`;
   const longListCard = `[data-character-id="${prepared.longListCharacterId}"]`;
 
-  await click(window, characterRail, 'Open Characters');
+  await clickPoint(window, characterRail, 'Open Characters');
   await waitFor(window, `document.querySelector(${JSON.stringify(characterList)})`, 'Character list did not open.');
   const cardCopy = await page(window, `document.querySelector(${JSON.stringify(adaptiveCard)})?.querySelector('.character-list-copy small')?.textContent?.trim() ?? ''`);
   assert(cardCopy === '5 个零件', `Adaptive Parts list copy is ${JSON.stringify(cardCopy)}.`);
   await captureWhole(window, 'issue901-ui01-character-list.png');
   const beforeOpen = await inspect(window);
-  await click(window, adaptiveCard, 'Open the five-Part C0 Character');
+  await clickPoint(window, adaptiveCard, 'Open the five-Part C0 Character');
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]') && document.querySelectorAll('[data-testid="adaptive-parts-assembly-row"]').length === 5`, 'The Adaptive Character list row did not open its Part list and canvas.');
   const header = await page(window, `(() => {
     const header = document.querySelector('[data-testid="adaptive-parts-assembly-header"]');
+    const back = header?.querySelector('[data-testid="adaptive-parts-back-to-list"]');
+    const title = header?.querySelector('strong');
+    const join = header?.querySelector('[data-testid="adaptive-parts-join-current-shot"]');
+    const headerBounds = header?.getBoundingClientRect();
+    const titleBounds = title?.getBoundingClientRect();
+    const backBounds = back?.getBoundingClientRect();
+    const joinBounds = join?.getBoundingClientRect();
     return {
       present: Boolean(header),
-      name: header?.querySelector('strong')?.textContent?.trim() ?? '',
-      back: header?.querySelector('[data-testid="adaptive-parts-back-to-list"]')?.getAttribute('aria-label') ?? '',
-      join: document.querySelector('[data-testid="adaptive-parts-join-current-shot"]')?.innerText?.trim() ?? '',
+      name: title?.textContent?.trim() ?? '',
+      back: back?.getAttribute('aria-label') ?? '',
+      backText: back?.innerText?.trim() ?? '',
+      backWidth: backBounds?.width ?? 0,
+      backHeight: backBounds?.height ?? 0,
+      titleCenterX: titleBounds ? titleBounds.left + titleBounds.width / 2 : 0,
+      headerCenterX: headerBounds ? headerBounds.left + headerBounds.width / 2 : 0,
+      join: join?.innerText?.trim() ?? '',
+      joinCount: document.querySelectorAll('[data-testid="adaptive-parts-join-current-shot"]').length,
+      listJoinCount: document.querySelectorAll('.adaptive-parts-assembly-list [data-testid="adaptive-parts-join-current-shot"]').length,
+      joinWidth: joinBounds?.width ?? 0,
+      joinHeight: joinBounds?.height ?? 0,
       selectedRows: document.querySelectorAll('[data-testid="adaptive-parts-assembly-row-select"][aria-pressed="true"]').length,
       inspectorFields: Boolean(document.querySelector('[data-testid="adaptive-parts-inspector-fields"]')),
       inspectorDisabled: document.querySelector('[data-testid="adaptive-parts-inspector-toggle"]')?.disabled ?? false,
     };
   })()`);
-  assert(header.present && header.name === 'C0 五部件角色' && header.back === '返回角色列表', `Adaptive workbench header is not compact and navigable: ${JSON.stringify(header)}.`);
+  assert(header.present && header.name === 'C0 五部件角色' && header.back === '返回角色列表' && !header.backText && header.backWidth >= 44 && header.backHeight >= 44, `Adaptive workbench header is not compact and navigable: ${JSON.stringify(header)}.`);
+  assert(Math.abs(header.titleCenterX - header.headerCenterX) <= 2 && header.joinCount === 1 && header.listJoinCount === 0 && header.joinWidth >= 80 && header.joinHeight >= 44, `Adaptive header title or compact Shot CTA geometry is incorrect: ${JSON.stringify(header)}.`);
+  issue903.header = { result: 'PASS', ...header };
   assert(header.join.includes('加入镜头') && header.selectedRows === 0 && !header.inspectorFields && header.inspectorDisabled, `Adaptive workbench did not start with the source pose and no selected Part: ${JSON.stringify(header)}.`);
   const afterOpen = await inspect(window);
   assert(afterOpen.revision === beforeOpen.revision && afterOpen.dirty === beforeOpen.dirty && afterOpen.undoCount === beforeOpen.undoCount, 'Opening the Adaptive workbench wrote a Project revision, dirty state, or History entry.');
   const bodyCopy = await page(window, `document.body.innerText`);
   assert(!/Static Parts|static Parts|静态 Parts/.test(bodyCopy), `Adaptive Parts fallback copy is inconsistent: ${bodyCopy.match(/Static Parts|static Parts|静态 Parts/)?.[0]}.`);
   await captureWhole(window, 'issue901-ui05-adaptive-workbench-header.png');
+  await captureWhole(window, 'issue903-header-centered-cta.png');
   checks.ui05 = { result: 'PASS', header, directEntry: true, openingCreatedNoProjectHistory: true, fallbackCopyUsesChinese: true };
 
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-assembly-workbench"] .adaptive-parts-assembly-canvas-toolbar button')?.textContent?.trim() === '查看全貌'`, 'The assembly canvas has no 查看全貌 action.');
+  const viewAllSelector = '[data-testid="adaptive-parts-assembly-workbench"] .adaptive-parts-assembly-canvas-toolbar button';
+  const viewAllBefore = await page(window, `(() => {
+    const button = document.querySelector(${JSON.stringify(viewAllSelector)});
+    const rect = button?.getBoundingClientRect();
+    return { width: rect?.width ?? 0, height: rect?.height ?? 0, pointerEvents: button ? getComputedStyle(button).pointerEvents : null };
+  })()`);
+  assert(viewAllBefore.height >= 44 && viewAllBefore.pointerEvents === 'auto', `The 查看全貌 target is not touchable: ${JSON.stringify(viewAllBefore)}.`);
+  await page(window, `(() => {
+    const button = document.querySelector(${JSON.stringify(viewAllSelector)});
+    window.__pandaStageIssue903ViewAllClick = null;
+    button?.addEventListener('click', (event) => {
+      const stage = document.querySelector('[data-testid="adaptive-parts-assembly-canvas"] .character-assembly-preview-stage');
+      window.__pandaStageIssue903ViewAllClick = { trusted: event.isTrusted, transform: stage?.style.transform ?? '' };
+    }, { once: true });
+  })()`);
+  const viewAllPointer = await clickPoint(window, viewAllSelector, 'Click 查看全貌 with an Electron pointer coordinate');
+  const viewAllAfter = await page(window, `(() => {
+    const viewport = document.querySelector('[data-testid="adaptive-parts-assembly-canvas"]');
+    const stage = document.querySelector('[data-testid="adaptive-parts-assembly-canvas"] .character-assembly-preview-stage');
+    const scale = Number(stage?.style.transform.match(/^scale\\(([^)]+)\\)$/)?.[1] ?? 0);
+    const expectedScale = viewport ? Math.min(viewport.clientWidth / 1920, viewport.clientHeight / 1080) : 0;
+    return { click: window.__pandaStageIssue903ViewAllClick ?? null, transform: stage?.style.transform ?? '', scale, expectedScale };
+  })()`);
+  assert(viewAllAfter.click?.trusted && viewAllAfter.scale > 0 && Math.abs(viewAllAfter.scale - viewAllAfter.expectedScale) < 0.002, `查看全貌 did not receive a trusted coordinate click with the canvas in fit scale: ${JSON.stringify({ pointer: viewAllPointer, before: viewAllBefore, after: viewAllAfter })}.`);
+  await captureWhole(window, 'issue903-view-all-pointer.png');
+  issue903.viewAll = { result: 'PASS', pointer: viewAllPointer, click: viewAllAfter.click, after: viewAllAfter, target: viewAllBefore };
   const c0Rows = await page(window, `([...document.querySelectorAll('[data-testid="adaptive-parts-assembly-row"]')]).map((row) => ({
     partId: row.dataset.partId,
     name: row.querySelector('.adaptive-parts-assembly-name')?.textContent?.trim() ?? '',
@@ -778,6 +1308,7 @@ async function verifyIssue901UiA(window, prepared, receipt) {
   await pause(450);
   progress(`Electron size is ${JSON.stringify(window.getSize())}; renderer size is ${JSON.stringify(await page(window, '({ width: window.innerWidth, height: window.innerHeight })'))}`);
   await waitFor(window, 'window.innerWidth <= 900 && window.innerWidth >= 800', 'The workbench window did not enter the 880px compact breakpoint.');
+  progress('checking row geometry at 880px');
   const narrowRowGeometry = await page(window, `(() => {
     const row = document.querySelector(${JSON.stringify(firstRow)});
     const name = row?.querySelector('.adaptive-parts-assembly-name')?.getBoundingClientRect();
@@ -787,8 +1318,80 @@ async function verifyIssue901UiA(window, prepared, receipt) {
     });
     return { nameTop: name?.top ?? 0, nameBottom: name?.bottom ?? 0, controls };
   })()`);
+  progress(`measured 880px row geometry: ${JSON.stringify(narrowRowGeometry)}`);
   assert(narrowRowGeometry && narrowRowGeometry.controls.every((control) => control.width >= 44 && control.height >= 44) && narrowRowGeometry.nameBottom <= Math.min(...narrowRowGeometry.controls.map((control) => control.top)) + 2, `At 880px the name does not wrap above three 44px direct controls: ${JSON.stringify(narrowRowGeometry)}.`);
+  const narrowHeader = await page(window, `(() => {
+    const header = document.querySelector('[data-testid="adaptive-parts-assembly-header"]')?.getBoundingClientRect();
+    const back = document.querySelector('[data-testid="adaptive-parts-back-to-list"]')?.getBoundingClientRect();
+    const title = document.querySelector('[data-testid="adaptive-parts-assembly-header"] strong')?.getBoundingClientRect();
+    const join = document.querySelector('[data-testid="adaptive-parts-join-current-shot"]')?.getBoundingClientRect();
+    return {
+      viewport: { width: innerWidth, height: innerHeight },
+      header: header ? { left: header.left, right: header.right, top: header.top, bottom: header.bottom, centerX: header.left + header.width / 2 } : null,
+      back: back ? { left: back.left, right: back.right, width: back.width, height: back.height } : null,
+      title: title ? { left: title.left, right: title.right, width: title.width, centerX: title.left + title.width / 2 } : null,
+      join: join ? { left: join.left, right: join.right, width: join.width, height: join.height } : null,
+    };
+  })()`);
+  assert(narrowHeader.header && narrowHeader.back && narrowHeader.title && narrowHeader.join && narrowHeader.back.width >= 44 && narrowHeader.back.height >= 44 && narrowHeader.join.width >= 80 && narrowHeader.join.height >= 44 && narrowHeader.back.left >= 0 && narrowHeader.join.right <= narrowHeader.viewport.width && Math.abs(narrowHeader.header.centerX - narrowHeader.title.centerX) <= 2, `The compact 880px header has clipped controls or an off-center title: ${JSON.stringify(narrowHeader)}.`);
+  issue903.header880 = { result: 'PASS', ...narrowHeader };
+
+  await page(window, `(() => {
+    const button = document.querySelector(${JSON.stringify(viewAllSelector)});
+    window.__pandaStageIssue903ViewAllNarrowClick = null;
+    button?.addEventListener('click', (event) => {
+      const stage = document.querySelector('[data-testid="adaptive-parts-assembly-canvas"] .character-assembly-preview-stage');
+      window.__pandaStageIssue903ViewAllNarrowClick = { trusted: event.isTrusted, transform: stage?.style.transform ?? '' };
+    }, { once: true });
+  })()`);
+  const viewAllNarrowPointer = await clickPoint(window, viewAllSelector, 'Click 查看全貌 with a pointer coordinate at 880px');
+  const viewAllNarrowAfter = await page(window, `(() => {
+    const button = document.querySelector(${JSON.stringify(viewAllSelector)});
+    const rect = button?.getBoundingClientRect();
+    const viewport = document.querySelector('[data-testid="adaptive-parts-assembly-canvas"]');
+    const stage = document.querySelector('[data-testid="adaptive-parts-assembly-canvas"] .character-assembly-preview-stage');
+    const scale = Number(stage?.style.transform.match(/^scale\\(([^)]+)\\)$/)?.[1] ?? 0);
+    const expectedScale = viewport ? Math.min(viewport.clientWidth / 1920, viewport.clientHeight / 1080) : 0;
+    return { width: rect?.width ?? 0, height: rect?.height ?? 0, pointerEvents: button ? getComputedStyle(button).pointerEvents : null, click: window.__pandaStageIssue903ViewAllNarrowClick ?? null, scale, expectedScale };
+  })()`);
+  assert(viewAllNarrowAfter.width >= 44 && viewAllNarrowAfter.height >= 44 && viewAllNarrowAfter.pointerEvents === 'auto' && viewAllNarrowAfter.click?.trusted && viewAllNarrowAfter.scale > 0 && Math.abs(viewAllNarrowAfter.scale - viewAllNarrowAfter.expectedScale) < 0.002, `The 880px 查看全貌 control did not receive a trusted hit or fit the canvas: ${JSON.stringify({ pointer: viewAllNarrowPointer, after: viewAllNarrowAfter })}.`);
+  await captureWhole(window, 'issue903-view-all-pointer-narrow-880.png');
+  issue903.viewAllNarrow880 = { result: 'PASS', pointer: viewAllNarrowPointer, ...viewAllNarrowAfter };
+
+  window.setSize(820, 980);
+  await pause(450);
+  await waitFor(window, 'window.innerWidth >= 780 && window.innerWidth <= 840', 'The header probe did not enter an 820px portrait viewport.');
+  const portraitHeader = await page(window, `(() => {
+    const header = document.querySelector('[data-testid="adaptive-parts-assembly-header"]')?.getBoundingClientRect();
+    const back = document.querySelector('[data-testid="adaptive-parts-back-to-list"]')?.getBoundingClientRect();
+    const titleElement = document.querySelector('[data-testid="adaptive-parts-assembly-header"] strong');
+    const title = titleElement?.getBoundingClientRect();
+    const join = document.querySelector('[data-testid="adaptive-parts-join-current-shot"]')?.getBoundingClientRect();
+    const originalText = titleElement?.textContent ?? '';
+    const originalTitle = titleElement?.getAttribute('title');
+    const longName = 'C0 超长名称用于验证窄屏居中标题不会挤出顶栏与触控按钮';
+    if (titleElement) { titleElement.textContent = longName; titleElement.setAttribute('title', longName); }
+    const longNameStyle = titleElement ? getComputedStyle(titleElement) : null;
+    const longNameContract = titleElement ? { clientWidth: titleElement.clientWidth, scrollWidth: titleElement.scrollWidth, whiteSpace: longNameStyle?.whiteSpace, overflow: longNameStyle?.overflow, textOverflow: longNameStyle?.textOverflow } : null;
+    if (titleElement) { titleElement.textContent = originalText; if (originalTitle === null) titleElement.removeAttribute('title'); else titleElement.setAttribute('title', originalTitle); }
+    return {
+      viewport: { width: innerWidth, height: innerHeight },
+      header: header ? { left: header.left, right: header.right, centerX: header.left + header.width / 2 } : null,
+      back: back ? { left: back.left, right: back.right, width: back.width, height: back.height } : null,
+      title: title ? { left: title.left, right: title.right, centerX: title.left + title.width / 2 } : null,
+      join: join ? { left: join.left, right: join.right, width: join.width, height: join.height } : null,
+      longNameContract,
+    };
+  })()`);
+  assert(portraitHeader.header && portraitHeader.back && portraitHeader.title && portraitHeader.join && portraitHeader.back.width >= 44 && portraitHeader.back.height >= 44 && portraitHeader.join.width >= 80 && portraitHeader.join.height >= 44 && portraitHeader.back.left >= 0 && portraitHeader.join.right <= portraitHeader.viewport.width && Math.abs(portraitHeader.header.centerX - portraitHeader.title.centerX) <= 2 && portraitHeader.longNameContract?.scrollWidth > portraitHeader.longNameContract?.clientWidth && portraitHeader.longNameContract.whiteSpace === 'nowrap' && portraitHeader.longNameContract.overflow === 'hidden' && portraitHeader.longNameContract.textOverflow === 'ellipsis', `The portrait header clipped controls, lost title centering, or lacks long-name ellipsis: ${JSON.stringify(portraitHeader)}.`);
+  await captureWhole(window, 'issue903-header-portrait-820.png');
+  issue903.headerPortrait820 = { result: 'PASS', ...portraitHeader };
+  window.setSize(originalWindowSize[0], originalWindowSize[1]);
+  await pause(350);
+
+  progress('capturing 880px evidence');
   await captureWhole(window, 'issue901-ui02-narrow-880.png');
+  progress('captured 880px evidence');
   window.setSize(originalWindowSize[0], originalWindowSize[1]);
   await pause(350);
   progress(`measured 880px row layout: ${JSON.stringify(narrowRowGeometry)}`);
@@ -796,7 +1399,7 @@ async function verifyIssue901UiA(window, prepared, receipt) {
   const selectionBeforeEye = await page(window, `document.querySelector(${JSON.stringify(firstSelect)})?.getAttribute('aria-pressed')`);
   const beforeEye = await inspect(window);
   progress(`clicking visibility; initially pressed=${selectionBeforeEye}`);
-  await click(window, firstEye, 'Toggle the first Part visibility');
+  const eyePointer = await clickPoint(window, firstEye, 'Toggle the first Part visibility');
   progress('visibility click returned');
   await waitFor(window, `document.querySelector(${JSON.stringify(firstEye)})?.getAttribute('aria-pressed') === 'false'`, `The direct visibility control did not hide the Part: ${JSON.stringify(await page(window, `(() => { const row = document.querySelector(${JSON.stringify(firstRow)}); return { pressed: row?.querySelector('[data-testid="adaptive-parts-visibility-toggle"]')?.getAttribute('aria-pressed') ?? null, selected: row?.querySelector('[data-testid="adaptive-parts-assembly-row-select"]')?.getAttribute('aria-pressed') ?? null, canvasPart: Boolean(document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${firstPartId}"]')), status: document.querySelector('.adaptive-parts-assembly-footer [role="status"]')?.textContent?.trim() ?? '' }; })()`))}.`);
   await waitFor(window, `!document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${firstPartId}"]')`, 'A hidden Part is still rendered on the assembly canvas.');
@@ -805,16 +1408,16 @@ async function verifyIssue901UiA(window, prepared, receipt) {
   assert(selectionBeforeEye === 'false' && hiddenSelection === 'false', 'Hiding a Part changed its list selection.');
   assert(afterEye.revision === beforeEye.revision && afterEye.undoCount === beforeEye.undoCount, 'Direct visibility toggle wrote a Project revision or History entry before Apply.');
   await captureWhole(window, 'issue901-ui01-direct-eye-hidden.png');
-  await click(window, firstEye, 'Show the first Part again');
+  await clickPoint(window, firstEye, 'Show the first Part again');
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${firstPartId}"]')`, 'The direct visibility control did not restore the Part.');
 
-  await renameAdaptivePart(window, firstRow, 'C0 临时重命名', 'issue901-ui01-row-rename-inline.png');
-  await click(window, `${firstRow} [data-testid="adaptive-parts-rename-button"]`, 'Start a rename to cancel with Escape');
+  const renamePointer = await renameAdaptivePart(window, firstRow, 'C0 临时重命名', 'issue901-ui01-row-rename-inline.png');
+  await clickPoint(window, `${firstRow} [data-testid="adaptive-parts-rename-button"]`, 'Start a rename to cancel with Escape');
   await replaceInputText(window, '[data-testid="adaptive-parts-rename-input"]', '不应提交');
   await sendKey(window, 'Escape');
   await waitFor(window, `!document.querySelector('[data-testid="adaptive-parts-rename-input"]')`, 'Escape did not cancel inline rename.');
   assert(await page(window, `document.querySelector(${JSON.stringify(firstRow + ' .adaptive-parts-assembly-name')})?.textContent?.trim() === 'C0 临时重命名'`), 'Escape changed the existing Part name.');
-  await click(window, `${firstRow} [data-testid="adaptive-parts-rename-button"]`, 'Start blank-name validation');
+  await clickPoint(window, `${firstRow} [data-testid="adaptive-parts-rename-button"]`, 'Start blank-name validation');
   await replaceInputText(window, '[data-testid="adaptive-parts-rename-input"]', '');
   await page(window, `document.querySelector('[data-testid="adaptive-parts-rename-input"]')?.blur()`);
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-rename-input"]')?.getAttribute('aria-invalid') === 'true'`, 'Blank inline names were not rejected.');
@@ -824,16 +1427,16 @@ async function verifyIssue901UiA(window, prepared, receipt) {
   await sendKey(window, 'Escape');
   await waitFor(window, `!document.querySelector('[data-testid="adaptive-parts-rename-input"]')`, 'Escape did not close blank-name validation.');
 
-  await click(window, firstSelect, 'Select com3 for compact Part inspector checks');
-  await click(window, '[data-testid="adaptive-parts-inspector-toggle"]', 'Open compact Part inspector');
+  const rowSelectPointer = await clickPoint(window, firstSelect, 'Select com3 for compact Part inspector checks');
+  await clickPoint(window, '[data-testid="adaptive-parts-inspector-toggle"]', 'Open compact Part inspector');
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')`, 'Compact inspector fields did not open.');
   const inspectorFieldIds = await page(window, `['adaptive-parts-offset-x','adaptive-parts-offset-y','adaptive-parts-scale-percent','adaptive-parts-rotation-deg'].map((id) => Boolean(document.querySelector('[data-testid="' + id + '"]')))`);
   assert(inspectorFieldIds.every(Boolean), `Compact inspector does not show exactly the four transform fields: ${JSON.stringify(inspectorFieldIds)}.`);
-  await click(window, '[data-testid="adaptive-parts-inspector-close"]', 'Close the inspector with its X button');
+  await clickPoint(window, '[data-testid="adaptive-parts-inspector-close"]', 'Close the inspector with its X button');
   await waitFor(window, `!document.querySelector('[data-testid="adaptive-parts-inspector-fields"]') && document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Inspector X closed the workbench instead of only the inspector.');
-  await click(window, '[data-testid="adaptive-parts-inspector-toggle"]', 'Reopen compact Part inspector');
+  await clickPoint(window, '[data-testid="adaptive-parts-inspector-toggle"]', 'Reopen compact Part inspector');
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')`, 'Compact inspector did not reopen.');
-  await click(window, '[data-testid="adaptive-parts-offset-x-step-up"]', 'Increment X by one');
+  await clickPoint(window, '[data-testid="adaptive-parts-offset-x-step-up"]', 'Increment X by one');
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value === '1'`, 'X stepper did not increment by one.');
   await page(window, `document.querySelector('[data-testid="adaptive-parts-offset-x-step-up"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }))`);
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value === '11'`, 'Shift+X stepper did not increment by ten.');
@@ -845,17 +1448,80 @@ async function verifyIssue901UiA(window, prepared, receipt) {
   assert(await page(window, `document.querySelector('[data-testid="adaptive-parts-assembly-apply"]')?.disabled === true`), 'Apply stayed enabled for an invalid numeric draft.');
   await sendKey(window, 'Escape');
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value === '12.3'`, 'Escape did not restore the previous high-precision X offset.');
-  await click(window, `${firstRow} [data-testid="adaptive-parts-restore-button"]`, 'Restore only the selected Part to its source pose');
+  const restorePointer = await clickPoint(window, `${firstRow} [data-testid="adaptive-parts-restore-button"]`, 'Restore only the selected Part to its source pose');
   await waitFor(window, `document.querySelector('[data-testid="adaptive-parts-offset-x"]')?.value === '0' && document.querySelector('[data-testid="adaptive-parts-offset-y"]')?.value === '0'`, 'Direct source restore did not reset the current Part draft.');
   assert(await page(window, `document.querySelector(${JSON.stringify(firstRow + ' .adaptive-parts-assembly-name')})?.textContent?.trim() === 'C0 临时重命名'`), 'Source restore changed the Part name while restoring its pose.');
-  await captureWhole(window, 'issue901-ui03-compact-inspector.png');
+  const wideInspectorGeometry = await page(window, `(() => {
+    const panel = document.querySelector('.adaptive-parts-assembly-inspector');
+    const bounds = panel?.getBoundingClientRect();
+    const input = panel?.querySelector('.adaptive-parts-inspector-input-wrap');
+    const inputBounds = input?.getBoundingClientRect();
+    const stepper = panel?.querySelector('[data-testid="adaptive-parts-offset-x-step-down"]')?.getBoundingClientRect();
+    return { width: bounds?.width ?? 0, inputBarWidth: inputBounds?.width ?? 0, stepperWidth: stepper?.width ?? 0 };
+  })()`);
+  assert(wideInspectorGeometry.width >= 252 && wideInspectorGeometry.width <= 260 && wideInspectorGeometry.inputBarWidth >= 84 && wideInspectorGeometry.inputBarWidth <= 110 && wideInspectorGeometry.stepperWidth >= 44, `The compact inspector or numeric field bars have unexpected sizing: ${JSON.stringify(wideInspectorGeometry)}.`);
+  await captureWhole(window, 'issue903-inspector-256.png');
+  issue903.inspectorWide = wideInspectorGeometry;
+  issue903.rowButtons = {
+    select: rowSelectPointer,
+    visibility: eyePointer,
+    rename: renamePointer,
+    restore: restorePointer,
+  };
 
-  await page(window, '(() => { window.confirm = () => true; return true; })()');
-  await click(window, '[data-testid="adaptive-parts-assembly-cancel"]', 'Cancel pending Adaptive Parts edits');
-  await waitFor(window, `!document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'Cancel did not close the pending assembly draft.');
-  const afterCancel = await inspect(window);
-  assert(afterCancel.revision === beforeOpen.revision && afterCancel.undoCount === beforeOpen.undoCount, 'Cancel wrote a Project revision or History entry.');
-  checks.ui01 = { result: 'PASS', parts: c0Rows.length, directVisibilityCreatedNoProjectHistory: true, inlineRenameEnterEscapeAndBlankValidation: 'PASS', rejectedRenameRetainedInputAndError: true, sourceRestoreWasPartLocalAndCancelRevertedIt: true, cancelCreatedNoProjectHistory: true };
+  const inspectorTestSize = window.getSize();
+  window.setSize(820, 980);
+  await pause(450);
+  await waitFor(window, 'window.innerWidth <= 900 && window.innerHeight > window.innerWidth', 'The inspector did not enter the portrait 820x980 viewport.');
+  const portraitInspectorGeometry = await page(window, `(() => {
+    const panel = document.querySelector('.adaptive-parts-assembly-inspector')?.getBoundingClientRect();
+    const part = document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"].is-selected')?.getBoundingClientRect();
+    const canvas = document.querySelector('[data-testid="adaptive-parts-assembly-canvas"]')?.getBoundingClientRect();
+    const workbench = document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')?.getBoundingClientRect();
+    if (!panel || !part || !canvas || !workbench) return null;
+    const overlapWidth = Math.max(0, Math.min(panel.right, part.right) - Math.max(panel.left, part.left));
+    const overlapHeight = Math.max(0, Math.min(panel.bottom, part.bottom) - Math.max(panel.top, part.top));
+    return {
+      width: panel.width,
+      insideWorkbench: panel.left >= workbench.left && panel.top >= workbench.top && panel.right <= workbench.right && panel.bottom <= workbench.bottom,
+      insideCanvas: panel.left >= canvas.left && panel.top >= canvas.top && panel.right <= canvas.right && panel.bottom <= canvas.bottom,
+      overlapArea: overlapWidth * overlapHeight,
+      placement: document.querySelector('.adaptive-parts-assembly-inspector')?.dataset.position ?? '',
+      closeHeight: document.querySelector('[data-testid="adaptive-parts-inspector-close"]')?.getBoundingClientRect().height ?? 0,
+    };
+  })()`);
+  assert(portraitInspectorGeometry?.insideWorkbench && portraitInspectorGeometry.overlapArea === 0 && portraitInspectorGeometry.width <= 256 && portraitInspectorGeometry.closeHeight >= 44, `The portrait inspector escaped the workbench or covered its selected Part: ${JSON.stringify(portraitInspectorGeometry)}.`);
+  await captureWhole(window, 'issue903-inspector-portrait-820x980.png');
+  window.setSize(inspectorTestSize[0], inspectorTestSize[1]);
+  await pause(350);
+
+  const beforeDirtyBack = await inspect(window);
+  await page(window, `(() => { window.__pandaStageIssue903BackConfirmCalls = []; window.confirm = (message) => { window.__pandaStageIssue903BackConfirmCalls.push(String(message)); return false; }; })()`);
+  const dirtyBackDeclinePointer = await clickPoint(window, '[data-testid="adaptive-parts-back-to-list"]', 'Decline dirty top-Back and keep editing');
+  await waitFor(window, `Boolean(document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]'))`, 'Declining dirty top-Back closed the assembly workbench.');
+  const afterDirtyBackDecline = await inspect(window);
+  const declinedBackPrompts = await page(window, 'window.__pandaStageIssue903BackConfirmCalls ?? []');
+  assert(declinedBackPrompts.length === 1 && afterDirtyBackDecline.revision === beforeDirtyBack.revision && afterDirtyBackDecline.dirty === beforeDirtyBack.dirty && afterDirtyBackDecline.undoCount === beforeDirtyBack.undoCount, 'Declining dirty top-Back changed the Project or History.');
+  await page(window, `(() => { window.confirm = (message) => { window.__pandaStageIssue903BackConfirmCalls.push(String(message)); return true; }; })()`);
+  const dirtyBackAcceptPointer = await clickPoint(window, '[data-testid="adaptive-parts-back-to-list"]', 'Accept dirty top-Back and return to Characters');
+  await waitFor(window, `!document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]') && document.querySelector('[data-testid="character-list-view"]')`, 'Accepting dirty top-Back did not return to the Character list.');
+  const afterDirtyBackAccept = await inspect(window);
+  const drawerAfterDirtyBack = await page(window, `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceDrawerOpen ?? null`);
+  const acceptedBackPrompts = await page(window, 'window.__pandaStageIssue903BackConfirmCalls ?? []');
+  const dirtyBackObserved = {
+    declinedPrompts: declinedBackPrompts.length,
+    acceptedPrompts: acceptedBackPrompts.length,
+    drawer: drawerAfterDirtyBack,
+    before: { revision: beforeDirtyBack.revision, dirty: beforeDirtyBack.dirty, undoCount: beforeDirtyBack.undoCount },
+    after: { revision: afterDirtyBackAccept.revision, dirty: afterDirtyBackAccept.dirty, undoCount: afterDirtyBackAccept.undoCount },
+  };
+  issue903.dirtyBack = { result: 'OBSERVED', declinePointer: dirtyBackDeclinePointer, acceptPointer: dirtyBackAcceptPointer, ...dirtyBackObserved };
+  receipt.issue903 = issue903;
+  assert(acceptedBackPrompts.length === 2 && drawerAfterDirtyBack === 'true' && afterDirtyBackAccept.revision === beforeDirtyBack.revision && afterDirtyBackAccept.dirty === beforeDirtyBack.dirty && afterDirtyBackAccept.undoCount === beforeDirtyBack.undoCount, `Accepting dirty top-Back did not preserve the Project, History, and visible Character list: ${JSON.stringify(dirtyBackObserved)}.`);
+  await captureWhole(window, 'issue903-dirty-back-decline-accept.png');
+  issue903.dirtyBack = { result: 'PASS', declinePointer: dirtyBackDeclinePointer, acceptPointer: dirtyBackAcceptPointer, ...dirtyBackObserved, projectAndHistoryPreserved: true };
+  receipt.issue903 = issue903;
+  checks.ui01 = { result: 'PASS', parts: c0Rows.length, directVisibilityCreatedNoProjectHistory: true, inlineRenameEnterEscapeAndBlankValidation: 'PASS', rejectedRenameRetainedInputAndError: true, sourceRestoreWasPartLocal: true, dirtyBackDeclineAndAccept: 'PASS' };
   checks.ui02 = { result: 'PASS', wideListWidth: wideRowGeometry.listWidth, com3AndCom4: wideRowGeometry.rows, direct44pxControls: true };
 
   await ensureCharacterListReady(window, characterRail, characterList, 'C0 after cancel');
@@ -912,10 +1578,49 @@ async function verifyIssue901UiA(window, prepared, receipt) {
   checks.ui03 = { result: 'PASS', displayedValues: conciseValues, exactAppliedValues: appliedPart.staticAdjustment, undoRedo: 'PASS' };
   checks.ui04 = { result: 'PASS', lowerRightActions: actionGeometry, applyCreatedOneRevisionAndHistoryEntry: true, cancelPreservedProjectAndHistory: true, viewAllLabel: '查看全貌' };
 
-  await click(window, '[data-testid="adaptive-parts-assembly-cancel"]', 'Close the clean committed assembly session');
-  await waitFor(window, `!document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]')`, 'The clean assembly session did not close.');
+  const beforeCleanJoin = await inspect(window);
+  const cleanJoinShot = beforeCleanJoin.project.shots[0];
+  const cleanJoinLayerIds = new Set(cleanJoinShot.layers.map((layer) => layer.id));
+  await page(window, `(() => { window.__pandaStageIssue903CleanJoinConfirmCalls = []; window.confirm = (message) => { window.__pandaStageIssue903CleanJoinConfirmCalls.push(String(message)); return true; }; })()`);
+  const cleanJoinPointer = await clickPoint(window, '[data-testid="adaptive-parts-join-current-shot"]', 'Join the clean Adaptive Parts Character to the current Shot');
+  await waitFor(window, `!document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]') && document.querySelector('[data-testid="character-list-view"]')`, 'A clean Shot join did not return to the Character list.');
+  const afterCleanJoin = await inspect(window);
+  const cleanJoinShotAfter = afterCleanJoin.project.shots.find((shot) => shot.id === cleanJoinShot.id);
+  const cleanJoinedLayer = cleanJoinShotAfter?.layers.find((layer) => !cleanJoinLayerIds.has(layer.id));
+  const cleanJoinPrompts = await page(window, 'window.__pandaStageIssue903CleanJoinConfirmCalls ?? []');
+  assert(cleanJoinPrompts.length === 0 && afterCleanJoin.revision === beforeCleanJoin.revision + 1 && afterCleanJoin.undoCount === beforeCleanJoin.undoCount + 1 && cleanJoinShotAfter?.layers.length === cleanJoinShot.layers.length + 1 && cleanJoinedLayer?.source.kind === 'character' && cleanJoinedLayer.source.characterId === adaptiveCharacterId, `A clean coordinate-click Shot join did not add exactly one Character Layer: ${JSON.stringify({ cleanJoinPrompts, before: { revision: beforeCleanJoin.revision, undoCount: beforeCleanJoin.undoCount, layerCount: cleanJoinShot.layers.length }, after: { revision: afterCleanJoin.revision, undoCount: afterCleanJoin.undoCount, layerCount: cleanJoinShotAfter?.layers.length }, joinedSource: cleanJoinedLayer?.source })}.`);
+  await captureWhole(window, 'issue903-clean-shot-join.png');
+  issue903.cleanJoin = { result: 'PASS', pointer: cleanJoinPointer, confirmationPrompts: cleanJoinPrompts.length, revisionDelta: 1, historyDelta: 1, joinedSource: cleanJoinedLayer.source };
+
+  await ensureCharacterListReady(window, characterRail, characterList, 'Character list before dirty Shot join');
+  await clickPoint(window, adaptiveCard, 'Open C0 for dirty Shot join confirmation');
+  await waitFor(window, `document.querySelectorAll('[data-testid="adaptive-parts-assembly-row"]').length === 5`, 'C0 did not reopen for dirty Shot join.');
+  const beforeDirtyJoinEdit = await inspect(window);
+  await clickPoint(window, firstEye, 'Make the C0 draft dirty before Shot join');
+  await waitFor(window, `document.querySelector(${JSON.stringify(firstEye)})?.getAttribute('aria-pressed') === 'false'`, 'The C0 draft did not become dirty before Shot join.');
+  const beforeDirtyJoin = await inspect(window);
+  const dirtyJoinShot = beforeDirtyJoin.project.shots.find((shot) => shot.id === beforeDirtyJoinEdit.currentShotId) ?? beforeDirtyJoin.project.shots[0];
+  const dirtyJoinLayerIds = new Set(dirtyJoinShot.layers.map((layer) => layer.id));
+  await page(window, `(() => { window.__pandaStageIssue903JoinConfirmCalls = []; window.confirm = (message) => { window.__pandaStageIssue903JoinConfirmCalls.push(String(message)); return false; }; })()`);
+  const dirtyJoinDeclinePointer = await clickPoint(window, '[data-testid="adaptive-parts-join-current-shot"]', 'Decline dirty Shot join and keep the C0 draft');
+  await waitFor(window, `Boolean(document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]'))`, 'Declining dirty Shot join closed the assembly workbench.');
+  const afterDirtyJoinDecline = await inspect(window);
+  const declinedJoinPrompts = await page(window, 'window.__pandaStageIssue903JoinConfirmCalls ?? []');
+  const declinedJoinShot = afterDirtyJoinDecline.project.shots.find((shot) => shot.id === dirtyJoinShot.id);
+  assert(declinedJoinPrompts.length === 1 && afterDirtyJoinDecline.revision === beforeDirtyJoin.revision && afterDirtyJoinDecline.dirty === beforeDirtyJoin.dirty && afterDirtyJoinDecline.undoCount === beforeDirtyJoin.undoCount && declinedJoinShot?.layers.length === dirtyJoinShot.layers.length, 'Declining dirty Shot join changed the Project, History, or Shot Layers.');
+  await page(window, `(() => { window.confirm = (message) => { window.__pandaStageIssue903JoinConfirmCalls.push(String(message)); return true; }; })()`);
+  const dirtyJoinAcceptPointer = await clickPoint(window, '[data-testid="adaptive-parts-join-current-shot"]', 'Accept dirty Shot join and place the Character');
+  await waitFor(window, `!document.querySelector('[data-testid="adaptive-parts-assembly-workbench"]') && document.querySelector('[data-testid="character-list-view"]')`, 'Accepting dirty Shot join did not return to the Character list.');
+  const afterDirtyJoinAccept = await inspect(window);
+  const acceptedJoinShot = afterDirtyJoinAccept.project.shots.find((shot) => shot.id === dirtyJoinShot.id);
+  const acceptedJoinedLayer = acceptedJoinShot?.layers.find((layer) => !dirtyJoinLayerIds.has(layer.id));
+  const acceptedJoinPrompts = await page(window, 'window.__pandaStageIssue903JoinConfirmCalls ?? []');
+  assert(acceptedJoinPrompts.length === 2 && afterDirtyJoinAccept.revision === beforeDirtyJoin.revision + 1 && afterDirtyJoinAccept.undoCount === beforeDirtyJoin.undoCount + 1 && acceptedJoinShot?.layers.length === dirtyJoinShot.layers.length + 1 && acceptedJoinedLayer?.source.kind === 'character' && acceptedJoinedLayer.source.characterId === adaptiveCharacterId, `Accepting dirty Shot join did not place exactly one Character Layer: ${JSON.stringify({ acceptedJoinPrompts, before: { revision: beforeDirtyJoin.revision, undoCount: beforeDirtyJoin.undoCount, layerCount: dirtyJoinShot.layers.length }, after: { revision: afterDirtyJoinAccept.revision, undoCount: afterDirtyJoinAccept.undoCount, layerCount: acceptedJoinShot?.layers.length }, joinedSource: acceptedJoinedLayer?.source })}.`);
+  await captureWhole(window, 'issue903-dirty-shot-join-decline-accept.png');
+  issue903.dirtyJoin = { result: 'PASS', declinePointer: dirtyJoinDeclinePointer, acceptPointer: dirtyJoinAcceptPointer, declinedPrompts: 1, acceptedPrompts: acceptedJoinPrompts.length, declinePreservedDraftAndProject: true, acceptedRevisionDelta: 1, acceptedHistoryDelta: 1, joinedSource: acceptedJoinedLayer.source };
+
   await ensureCharacterListReady(window, characterRail, characterList, 'Character list before long-list checks');
-  await click(window, longListCard, 'Open repeated-image long-list control');
+  await clickPoint(window, longListCard, 'Open repeated-image long-list control');
   await waitFor(window, `document.querySelectorAll('[data-testid="adaptive-parts-assembly-row"]').length === 24`, 'Long-list workbench did not render 24 rows.');
   await page(window, `(() => { const rows = document.querySelector(${JSON.stringify(listRows)}); if (rows) rows.scrollTop = rows.scrollHeight; })()`);
   await waitFor(window, `(() => { const rows = document.querySelector(${JSON.stringify(listRows)}); return Boolean(rows && rows.scrollHeight > rows.clientHeight && rows.scrollTop > 0); })()`, 'The internal Part list did not scroll independently.');
@@ -937,9 +1642,11 @@ async function verifyIssue901UiA(window, prepared, receipt) {
   await captureWhole(window, 'issue901-ui02-long-list-inspector.png');
   checks.ui02.narrow880 = narrowRowGeometry;
   checks.ui02.longList = { rows: 24, scrollable: true, selectedLastPartId: longListLastPartId, inspector: inspectorGeometry };
-  checks.screenshots = (await fsp.readdir(evidenceRoot)).filter((file) => file.startsWith('issue901-') && file.endsWith('.png')).map((file) => path.join(evidenceRoot, file));
+  checks.issue903 = issue903;
+  checks.screenshots = (await fsp.readdir(evidenceRoot)).filter((file) => /^issue(?:901|903)-.*\.png$/u.test(file)).map((file) => path.join(evidenceRoot, file));
   receipt.uiA = checks;
-  receipt.ownerAcceptance = 'PENDING: human Windows review of the five UI checkpoints; physical touchscreen input not exercised.';
+  receipt.issue903 = issue903;
+  receipt.ownerAcceptance = 'NOT_ATTESTED: physical Cloud Touch input and Owner review were not performed.';
   receipt.auto = 'AUTO_PASS';
   receipt.status = 'UI_A_AUTO_PASS_OWNER_REVIEW_PENDING';
   receipt.completedAt = new Date().toISOString();
@@ -1489,14 +2196,28 @@ async function main() {
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
     rendererDiagnostics.push({ kind: 'render-process-gone', details });
   });
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    rendererDiagnostics.push({ kind: 'did-fail-load', errorCode, errorDescription, validatedURL, isMainFrame });
+  });
+  mainWindow.on('close', (event) => {
+    rendererDiagnostics.push({ kind: 'window-close', defaultPrevented: event.defaultPrevented });
+  });
+  mainWindow.on('closed', () => {
+    rendererDiagnostics.push({ kind: 'window-closed' });
+  });
+  mainWindow.on('unresponsive', () => {
+    rendererDiagnostics.push({ kind: 'unresponsive' });
+  });
   mainWindow.setSize(1660, 1100);
   mainWindow.show();
   mainWindow.focus();
   mainWindow.webContents.focus();
 
   const receipt = {
-    issue: issue901UiA ? 901 : 899,
-    checkpoint: issue901UiA ? 'UI-A' : 'C3 V0',
+    issue: issue903BackProbe ? 903 : issue901UiA ? 901 : 899,
+    checkpoint: issue903BackProbe
+      ? issue903BackProbeBaseline ? 'NAV-BACK pre-fix baseline' : 'NAV-BACK post-fix 880px regression'
+      : issue901UiA ? 'UI-A' : 'C3 V0',
     startedAt: new Date().toISOString(),
     runId,
     branch: require('node:child_process').execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim(),
@@ -1556,6 +2277,19 @@ async function main() {
         } : null;
       })()`);
       throw new Error(`Initial C0 Stage did not finish loading its source Parts: ${JSON.stringify(stageState)}.`);
+    }
+    if (issue903BackProbe) {
+      receipt.initialProjectState = {
+        revision: initial.revision,
+        dirty: initial.dirty,
+        undoCount: initial.undoCount,
+      };
+      receipt.issue903NavBack01 = await verifyIssue903BackProbe(mainWindow);
+      receipt.auto = 'PROBE_COMPLETE';
+      receipt.status = receipt.issue903NavBack01.result;
+      receipt.completedAt = new Date().toISOString();
+      await fsp.writeFile(resultPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
+      return receipt;
     }
     if (issue901UiA) {
       receipt.initialProjectState = {
@@ -2459,7 +3193,7 @@ async function main() {
     return receipt;
   } catch (error) {
     receipt.auto = 'AUTO_FAIL';
-    receipt.status = issue901UiA ? 'UI_A_AUTO_FAIL' : 'C3_PARTIAL';
+    receipt.status = issue903BackProbe ? 'ISSUE903_BACK_PROBE_FAILED' : issue901UiA ? 'UI_A_AUTO_FAIL' : 'C3_PARTIAL';
     receipt.failedAt = new Date().toISOString();
     receipt.failedAtAction = currentVerifierAction;
     receipt.rendererDiagnostics = rendererDiagnostics;
@@ -2501,6 +3235,6 @@ main()
     app.exit(0);
   })
   .catch((error) => {
-    process.stderr.write(`[${issue901UiA ? 'issue901-ui-a' : 'issue899-c3'}] ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+    process.stderr.write(`[${issue903BackProbe ? 'issue903-back-probe' : issue901UiA ? 'issue901-ui-a' : 'issue899-c3'}] ${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
     app.exit(1);
   });
