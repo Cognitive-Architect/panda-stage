@@ -15,6 +15,11 @@ import type {
 } from '../../shared/recovery-api';
 import type { ExportPreparationResponse } from '../../shared/export-preparation-types';
 import type { ExportJobUpdate } from '../../shared/export-types';
+import {
+  FlaPartPreviewResponseSchema,
+  type FlaPartPreviewRequest,
+  type FlaPartPreviewResponse,
+} from '../../shared/fla-part-preview-api';
 import type { Project } from '../../domain';
 import { projectDurationMs } from '../../domain/selectors/projectDuration';
 import {
@@ -35,6 +40,7 @@ import {
 import { shotStore } from '../stores/shotStore';
 import { characterAssemblySessionStore } from '../stores/characterAssemblySessionStore';
 import { CharacterAssemblyWorkbench } from '../features/characters/CharacterAssemblyWorkbench';
+import { createCharacterFromPreparedParts } from '../features/fla-import/createCharacterFromPreparedParts';
 import type { AdaptivePartsAssemblyActionsRef } from '../features/characters/CharacterManager';
 import { PendingDialoguePlacementProvider } from '../features/timeline/PendingDialoguePlacement';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
@@ -282,6 +288,7 @@ export class EditorShellSession {
   async prepareForNativeClose(
     getSnapshot: () => EditorProjectSnapshot | null,
   ): Promise<void> {
+    this.store.assertProjectOperationIdle();
     while (true) {
       const snapshot = getSnapshot();
       this.assertNativeCloseSyncable(snapshot);
@@ -290,13 +297,16 @@ export class EditorShellSession {
         throw new Error(response.error.message);
       }
       await this.flushAutosave();
+      this.store.assertProjectOperationIdle();
       this.assertNativeCloseSyncable(snapshot);
       if (getSnapshot() === snapshot) return;
     }
   }
 
   async switchProject(projectRoot: string): Promise<ProjectSessionSnapshot> {
+    this.store.assertProjectOperationIdle();
     await this.flushAutosave();
+    this.store.assertProjectOperationIdle();
     const snapshot = await this.runControllerTransition(() =>
       this.controller.switchProject(projectRoot),
     );
@@ -308,7 +318,9 @@ export class EditorShellSession {
     projectRoot: string,
     expectedProjectId: string,
   ): Promise<ProjectSessionSnapshot> {
+    this.store.assertProjectOperationIdle();
     await this.flushAutosave();
+    this.store.assertProjectOperationIdle();
     const snapshot = await this.runControllerTransition(() =>
       this.controller.switchRecentProject(
         projectRoot,
@@ -324,13 +336,16 @@ export class EditorShellSession {
    * The window itself stays open; the native `×` guard is untouched.
    */
   async closeProject(): Promise<ProjectSessionSnapshot> {
+    this.store.assertProjectOperationIdle();
     await this.flushAutosave();
+    this.store.assertProjectOperationIdle();
     return this.runControllerTransition(() =>
       this.controller.closeProject(),
     );
   }
 
   async restoreRecovery(): Promise<RecoveryRestoreResponse> {
+    this.store.assertProjectOperationIdle();
     const candidate = this.getSnapshot().recoveryCandidate;
     if (!candidate) throw new Error('No recovery candidate is available.');
     const response = await this.recoveryApi.restore({
@@ -356,8 +371,16 @@ export class EditorShellSession {
   }
 
   async saveCurrentProject(): Promise<EditorProjectSaveResult> {
+    this.store.assertProjectOperationIdle();
     await this.flushAutosave();
+    this.store.assertProjectOperationIdle();
     return saveCurrentProject(this.projectSaveApi, this.store);
+  }
+
+  assertNoControllerTransition(): void {
+    if (this.controllerTransitionDepth > 0) {
+      throw new Error('The Project is changing sessions and cannot start a confirmed operation.');
+    }
   }
 
   private async flushAutosave(): Promise<void> {
@@ -641,6 +664,172 @@ export function EditorShell({
       if (expiryTimer) clearTimeout(expiryTimer);
     };
   }, [exportTask.snapshotId, exportTask.status]);
+
+  useEffect(() => {
+    if (
+      new URLSearchParams(window.location.search).get('flaF103Acceptance') !== '1'
+    ) {
+      return;
+    }
+    let lastCreatedCharacterId: string | null = null;
+    const switchAcceptanceProject = session.switchProject.bind(session);
+    const acceptanceApi = {
+      openProject: async (projectRoot: string) => {
+        const opened = await switchAcceptanceProject(projectRoot);
+        setRequestedPage('editor');
+        return opened;
+      },
+      closeProject: () => session.closeProject(),
+      inspect: () => {
+        const snapshot = editorProjectStore.getSnapshot();
+        if (!snapshot) return null;
+        return {
+          projectRoot: snapshot.projectRoot,
+          project: structuredClone(snapshot.project),
+          revision: snapshot.revision,
+          dirty: snapshot.dirty,
+          openInstanceId: editorProjectStore.getProjectInstanceId(),
+          undoCount: editorProjectStore.history.getSnapshot().undoCount,
+          redoCount: editorProjectStore.history.getSnapshot().redoCount,
+          nextUndoLabel: editorProjectStore.history.getSnapshot().nextUndoLabel,
+        };
+      },
+      createCharacter: async (
+        rawPreview: FlaPartPreviewResponse,
+        name: string,
+        operationId?: string,
+      ) => {
+        session.assertNoControllerTransition();
+        const preview = FlaPartPreviewResponseSchema.parse(rawPreview);
+        if (!preview.ok || preview.status !== 'PREVIEW_READY' || preview.capability !== 'EDITABLE_PARTS_READY') {
+          throw new Error('F1-03 acceptance requires a confirmed editable Part preview.');
+        }
+        const result = await createCharacterFromPreparedParts({
+          preview,
+          name,
+          operationId,
+          api: window.pandaStage.fla,
+          store: editorProjectStore,
+          ensureMainSnapshot: async (snapshot) => {
+            session.assertNoControllerTransition();
+            const response = await session.syncAutosave(snapshot);
+            if (response && !response.ok) throw new Error(response.error.message);
+            session.assertNoControllerTransition();
+          },
+        });
+        lastCreatedCharacterId = result.characterId;
+        return result;
+      },
+      previewAndCreate: async (
+        request: FlaPartPreviewRequest,
+        name: string,
+        operationId?: string,
+      ) => {
+        session.assertNoControllerTransition();
+        const preview = await window.pandaStage.fla.partPreview(request);
+        if (!preview.ok || preview.status !== 'PREVIEW_READY' || preview.capability !== 'EDITABLE_PARTS_READY') {
+          throw new Error(preview.ok ? 'The FLA preview is not an editable Part batch.' : preview.error.message);
+        }
+        const result = await createCharacterFromPreparedParts({
+          preview,
+          name,
+          operationId,
+          api: window.pandaStage.fla,
+          store: editorProjectStore,
+          ensureMainSnapshot: async (snapshot) => {
+            session.assertNoControllerTransition();
+            const response = await session.syncAutosave(snapshot);
+            if (response && !response.ok) throw new Error(response.error.message);
+            session.assertNoControllerTransition();
+          },
+        });
+        lastCreatedCharacterId = result.characterId;
+        return {
+          preview: {
+            planId: preview.planId,
+            sessionId: preview.sessionId,
+            requestId: preview.requestId,
+            generation: preview.generation,
+            capability: preview.capability,
+            poseIdentity: preview.poseIdentity,
+            target: preview.target,
+            stage: preview.stage,
+            partPreviews: preview.partPreviews.map((part) => ({
+              unitId: part.unitId,
+              occurrenceId: part.occurrenceId,
+              drawOrder: part.drawOrder,
+              sha256: part.image.sha256,
+              byteLength: part.image.byteLength,
+              width: part.image.width,
+              height: part.image.height,
+            })),
+          },
+          result,
+          state: acceptanceApi.inspect(),
+        };
+      },
+      undo: () => editorProjectStore.undo(),
+      redo: () => editorProjectStore.redo(),
+      save: () => session.saveCurrentProject(),
+      editUnsavedFixture: () => {
+        const snapshot = editorProjectStore.getSnapshot();
+        if (!snapshot) throw new Error('Open a Project before creating the F1-03 dirty snapshot.');
+        const existingCharacter = snapshot.project.characters[0];
+        if (!existingCharacter) throw new Error('The F1-03 acceptance Project requires an existing Character.');
+        const editedName = `${existingCharacter.name} F1-03 edit`;
+        editorProjectStore.updateProject(
+          {
+            ...snapshot.project,
+            characters: snapshot.project.characters.map((character) =>
+              character.id === existingCharacter.id
+                ? { ...character, name: editedName }
+                : character,
+            ),
+          },
+          'Edit existing Character',
+        );
+        return {
+          ...acceptanceApi.inspect(),
+          editedCharacterId: existingCharacter.id,
+          originalCharacterName: existingCharacter.name,
+          editedCharacterName: editedName,
+        };
+      },
+      readCreatedCharacterAssets: async (characterId?: string) => {
+        const snapshot = editorProjectStore.getSnapshot();
+        const targetCharacterId = characterId ?? lastCreatedCharacterId;
+        if (!snapshot || !targetCharacterId) throw new Error('No F1-03 Character is available to read.');
+        const character = snapshot.project.characters.find((item) => item.id === targetCharacterId);
+        if (!character || character.mode !== 'adaptive-parts') throw new Error('The saved F1-03 Character was not reopened.');
+        const assetIds = [...new Set(character.parts.map((part) => part.assetId))];
+        const reads = await Promise.all(assetIds.map(async (assetId) => {
+          const asset = snapshot.project.assets.find((item) => item.id === assetId);
+          if (!asset || asset.kind !== 'image' || !asset.sha256) throw new Error(`Character image Asset ${assetId} is missing.`);
+          const response = await window.pandaStage.assets.readCanvasImage({
+            projectRoot: snapshot.projectRoot,
+            assetId: asset.id,
+            sha256: asset.sha256,
+          });
+          if (!response.ok) throw new Error(response.error.message);
+          return {
+            assetId: response.assetId,
+            sha256: asset.sha256,
+            width: response.width,
+            height: response.height,
+            byteLength: response.byteLength,
+          };
+        }));
+        return reads;
+      },
+    };
+    const acceptanceWindow = window as Window & {
+      __pandaStageFlaF103Acceptance?: typeof acceptanceApi;
+    };
+    acceptanceWindow.__pandaStageFlaF103Acceptance = acceptanceApi;
+    return () => {
+      delete acceptanceWindow.__pandaStageFlaF103Acceptance;
+    };
+  }, [session]);
 
   useEffect(() => {
     if (

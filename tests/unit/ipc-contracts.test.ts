@@ -103,6 +103,8 @@ describe('IPC channel registry', () => {
       'fla:snapshot-render-error',
       'fla:part-preview',
       'fla:part-preview-cancel',
+      'fla:character-create',
+      'fla:character-create-status',
       'fla:frame-sequence-render',
       'fla:frame-sequence-cancel',
       'fla:frame-sequence-commit',

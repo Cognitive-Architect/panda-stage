@@ -126,6 +126,12 @@ import type {
   FlaPartPreviewRequest,
   FlaPartPreviewResponse,
 } from '../shared/fla-part-preview-api';
+import type {
+  FlaCharacterCreateRequest,
+  FlaCharacterCreateResponse,
+  FlaCharacterCreateStatusRequest,
+  FlaCharacterCreateStatusResponse,
+} from '../shared/fla-character-create-api';
 
 declare global {
   interface Window {
@@ -293,6 +299,12 @@ declare global {
         partPreviewCancel: (
           request: FlaPartPreviewCancelRequest,
         ) => Promise<FlaPartPreviewCancelResponse>;
+        createCharacterFromParts: (
+          request: FlaCharacterCreateRequest,
+        ) => Promise<FlaCharacterCreateResponse>;
+        getCharacterCreateStatus: (
+          request: FlaCharacterCreateStatusRequest,
+        ) => Promise<FlaCharacterCreateStatusResponse>;
         frameSequenceRender: (
           request: FlaFrameSequenceRequest,
         ) => Promise<FlaFrameSequenceResponse>;

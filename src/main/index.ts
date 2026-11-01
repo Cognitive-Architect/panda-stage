@@ -61,6 +61,8 @@ import { FlaStaticSnapshotCommitService } from './services/FlaStaticSnapshotComm
 import { registerFlaStaticSnapshotIpcHandlers } from './ipc/register-fla-static-snapshot-ipc-handlers';
 import { registerFlaPartPreviewIpcHandlers } from './ipc/register-fla-part-preview-ipc-handlers';
 import { FlaPartPreviewService } from './services/FlaPartPreviewService';
+import { FlaCharacterCreateService } from './services/FlaCharacterCreateService';
+import { registerFlaCharacterCreateIpcHandlers } from './ipc/register-fla-character-create-ipc-handlers';
 import { FlaFrameSequenceService } from './services/fla-frame-sequence-service';
 import { FlaFrameSequenceCommitService } from './services/FlaFrameSequenceCommitService';
 import { registerFlaFrameSequenceIpcHandlers } from './ipc/register-fla-frame-sequence-ipc-handlers';
@@ -91,6 +93,8 @@ let flaSnapshotCommitService: FlaStaticSnapshotCommitService | null = null;
 let removeFlaSnapshotIpcHandlers: (() => void) | null = null;
 let flaPartPreviewService: FlaPartPreviewService | null = null;
 let removeFlaPartPreviewIpcHandlers: (() => void) | null = null;
+let flaCharacterCreateService: FlaCharacterCreateService | null = null;
+let removeFlaCharacterCreateIpcHandlers: (() => void) | null = null;
 let removeFlaSessionReleaseListener: (() => void) | null = null;
 let flaFrameSequenceService: FlaFrameSequenceService | null = null;
 let flaFrameSequenceCommitService: FlaFrameSequenceCommitService | null = null;
@@ -351,8 +355,10 @@ async function initialize(): Promise<void> {
     pathService,
     getCurrentProjectSnapshot: (projectRoot) =>
       autosaveService?.getProjectSnapshot(projectRoot) ?? null,
-    onProjectOpened: (projectRoot, project) =>
-      flaAssetCommitService?.recoverProjectArtifacts(projectRoot, project),
+    onProjectOpened: async (projectRoot, project) => {
+      await flaAssetCommitService?.recoverProjectArtifacts(projectRoot, project);
+      await flaCharacterCreateService?.recoverProjectArtifacts(projectRoot, project);
+    },
     onProjectSaved: async (projectRoot, project, revision) => {
       try {
         await recoveryService.cleanupAfterFormalSave(
@@ -590,6 +596,25 @@ async function initialize(): Promise<void> {
   removeFlaPartPreviewIpcHandlers = registerFlaPartPreviewIpcHandlers({
     getMainWindow: () => mainWindow,
     service: flaPartPreviewService,
+  });
+  flaCharacterCreateService = new FlaCharacterCreateService({
+    projectService,
+    partPreviewService: flaPartPreviewService,
+    getCurrentProjectSnapshot: (projectRoot) => {
+      const snapshot = autosaveService?.getProjectSnapshot(projectRoot);
+      return snapshot
+        ? {
+            projectRoot: snapshot.projectRoot,
+            project: snapshot.project,
+            revision: snapshot.revision,
+            openInstanceId: snapshot.openInstanceId ?? null,
+          }
+        : null;
+    },
+  });
+  removeFlaCharacterCreateIpcHandlers = registerFlaCharacterCreateIpcHandlers({
+    getMainWindow: () => mainWindow,
+    service: flaCharacterCreateService,
   });
   removeFlaSessionReleaseListener = flaImportService.onSessionReleased((sessionId) => {
     flaPartPreviewService?.invalidateSession(sessionId);
@@ -837,6 +862,9 @@ app.on('will-quit', () => {
   removeFlaSnapshotIpcHandlers = null;
   removeFlaPartPreviewIpcHandlers?.();
   removeFlaPartPreviewIpcHandlers = null;
+  removeFlaCharacterCreateIpcHandlers?.();
+  removeFlaCharacterCreateIpcHandlers = null;
+  flaCharacterCreateService = null;
   flaPartPreviewService?.close();
   flaPartPreviewService = null;
   removeFlaSessionReleaseListener?.();
