@@ -357,7 +357,7 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
             rotationDeg: String(layer.rotationDeg),
             opacity: String(layer.opacity),
           },
-          status: '当前编辑的是动画基础变换，会作用于整段动画。',
+          status: '',
         },
         showResetTransform: true,
       }),
@@ -378,7 +378,7 @@ describe('Issue #578/#579 Live Scrub editor contract', () => {
       /layer-transform-reset-action[^>]*disabled=""/u,
     );
     expect(markup).toMatch(/layer-transform-toggle-action"[^>]*disabled=""/u);
-    expect(markup).toContain('会作用于整段动画');
+    expect(markup).not.toContain('会作用于整段动画');
   });
 
   it('keeps the base transform stable across seeks and records undo/redo in project history', () => {

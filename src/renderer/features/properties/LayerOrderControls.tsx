@@ -7,7 +7,6 @@ import {
   ArrowDown,
   ArrowUp,
   BringToFront,
-  Copy,
   Lock,
   SendToBack,
   ShieldCheck,
@@ -167,18 +166,6 @@ export function LayerOrderControls({
     }
   };
 
-  const duplicateAnimationLayer = (): void => {
-    if (!layer || layer.source.kind !== 'animation' || disabled) return;
-    try {
-      layerStore.duplicateAnimationLayer(layer.id);
-      setStatus('');
-    } catch (error) {
-      setStatus(
-        error instanceof Error ? error.message : '动画图层复制失败。',
-      );
-    }
-  };
-
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (
@@ -275,10 +262,7 @@ export function LayerOrderControls({
         ) : (
           <>
             <div className="layer-order-compact-heading">
-              <div>
-                <p className="eyebrow">层级顺序</p>
-                <h3>层级顺序</h3>
-              </div>
+              <h3>层级顺序</h3>
               {orderPosition ? (
                 <span
                   className="layer-order-position"
@@ -288,11 +272,6 @@ export function LayerOrderControls({
                 </span>
               ) : null}
             </div>
-            {!layer.locked ? (
-              <p className="layer-order-compact-help">
-                调整当前对象在镜头中的前后关系
-              </p>
-            ) : null}
             <div className="layer-order-actions">
               <button
                 aria-label="上移"
@@ -358,20 +337,6 @@ export function LayerOrderControls({
                   <span>置底</span>
                 </span>
               </button>
-              {layer?.source.kind === 'animation' ? (
-                <button
-                  aria-label="复制动画图层"
-                  data-testid="duplicate-animation-layer"
-                  disabled={disabled}
-                  onClick={duplicateAnimationLayer}
-                  type="button"
-                >
-                  <span className="ui-icon-label">
-                    <DecorativeIcon icon={Copy} size={16} />
-                    <span>复制动画</span>
-                  </span>
-                </button>
-              ) : null}
             </div>
 
             <div className="layer-order-state">
@@ -379,7 +344,7 @@ export function LayerOrderControls({
               <div className="layer-lock-state">
                 <button
                   aria-checked={Boolean(layer?.locked)}
-                  aria-describedby="layer-lock-state-help"
+                  aria-describedby={layer?.locked ? 'layer-lock-state-help' : undefined}
                   aria-label={getLayerLockAriaLabel(
                     Boolean(layer?.locked),
                     presentation,
@@ -411,20 +376,13 @@ export function LayerOrderControls({
                     {layer?.locked ? 'ON' : 'OFF'}
                   </span>
                 </button>
-                <p id="layer-lock-state-help">
-                  {layer?.locked
-                    ? '排序与删除暂不可用。'
-                    : '锁定后不可排序或删除。'}
-                </p>
+                {layer?.locked ? (
+                  <p id="layer-lock-state-help">排序与删除暂不可用。</p>
+                ) : null}
               </div>
             </div>
 
             <div className="layer-order-danger-zone">
-              <div className="layer-order-danger-copy">
-                <p className="layer-order-subheading">危险操作</p>
-                <strong>删除当前图层</strong>
-                <span>{getLayerDeleteDescription(presentation)}</span>
-              </div>
               <button
                 aria-label="删除图层"
                 className="layer-delete-button"
@@ -438,15 +396,6 @@ export function LayerOrderControls({
                 </span>
               </button>
             </div>
-            {presentation === 'landscape' ? null : (
-              <p data-testid="layer-order-guidance">
-                {layer?.locked
-                  ? '排序与删除暂不可用。'
-                  : layer
-                    ? '排序操作会影响当前镜头中的普通图层。'
-                    : '请先在画布中选择普通图层。'}
-              </p>
-            )}
           </>
         )}
         <output data-testid="layer-order-status">{status}</output>
@@ -461,10 +410,7 @@ export function LayerOrderControls({
       data-presentation={presentation}
       data-testid="layer-order-controls"
     >
-      <div>
-        <p className="eyebrow">图层顺序</p>
-        <h3>层级与删除</h3>
-      </div>
+      <h3>层级顺序</h3>
       <div className="layer-order-actions">
         <button
           disabled={isLayerOrderActionDisabled(
@@ -514,20 +460,6 @@ export function LayerOrderControls({
         >
           置底
         </button>
-        {layer?.source.kind === 'animation' ? (
-          <button
-            aria-label="复制动画图层"
-            data-testid="duplicate-animation-layer"
-            disabled={disabled}
-            onClick={duplicateAnimationLayer}
-            type="button"
-          >
-            <span className="ui-icon-label">
-              <DecorativeIcon icon={Copy} size={16} />
-              <span>复制动画</span>
-            </span>
-          </button>
-        ) : null}
         <button
           className="layer-delete-button"
           disabled={disabled}
@@ -548,15 +480,15 @@ export function LayerOrderControls({
           锁定图层
         </label>
       ) : null}
-      <p data-testid="layer-order-guidance">
-        {isBackgroundLayer
-          ? '正式背景受到保护，不能执行普通排序或删除操作。'
-          : layer?.locked
-            ? '请先解锁图层，再修改顺序或删除。'
-            : layer
-              ? '排序操作会影响当前镜头中的普通图层。'
+      {isBackgroundLayer || layer?.locked || !layer ? (
+        <p data-testid="layer-order-guidance">
+          {isBackgroundLayer
+            ? '正式背景受到保护，不能执行普通排序或删除操作。'
+            : layer?.locked
+              ? '请先解锁图层，再修改顺序或删除。'
               : '请先在画布中选择普通图层。'}
-      </p>
+        </p>
+      ) : null}
       <output data-testid="layer-order-status">{status}</output>
     </section>
   );

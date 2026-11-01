@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Copy } from 'lucide-react';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { layerStore } from '../../stores/layerStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
+import { Button, DecorativeIcon, SegmentedTabs } from '../../ui';
 
 export interface AnimationStartEditContext {
   projectInstanceId: number | null;
@@ -205,6 +207,18 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
     }
   };
 
+  const duplicateAnimation = (): void => {
+    try {
+      assertCurrentSelection();
+      layerStore.duplicateAnimationLayer(layer.id);
+      setStatus('');
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : '动画图层复制失败。',
+      );
+    }
+  };
+
   const commitStartTime = (): void => {
     const activeEdit = activeStartEditRef.current;
     if (!activeEdit) return;
@@ -296,7 +310,22 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
       className="animation-playback-controls"
       data-testid="animation-playback-controls"
     >
-      <h3>动画播放</h3>
+      <div className="animation-playback-heading">
+        <h3>动画播放</h3>
+        <Button
+          aria-label="复制动画图层"
+          className="animation-playback-duplicate"
+          data-testid="duplicate-animation-layer"
+          disabled={locked}
+          onClick={duplicateAnimation}
+          variant="secondary"
+        >
+          <span className="ui-icon-label">
+            <DecorativeIcon icon={Copy} size={16} />
+            <span>复制动画</span>
+          </span>
+        </Button>
+      </div>
       <div className="animation-playback-fields">
         <label>
           <span>开始时间（秒）</span>
@@ -325,39 +354,43 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
             value={startDraft}
           />
         </label>
-        <label>
+        <div
+          className="animation-playback-field"
+          data-testid="animation-playback-mode"
+        >
           <span>播放方式</span>
-          <select
+          <SegmentedTabs
             aria-label="动画播放方式"
-            data-testid="animation-playback-mode"
-            disabled={locked}
-            onChange={(event) =>
-              updatePlayback({ mode: event.target.value as 'once' | 'loop' })
+            className="animation-playback-segmented"
+            options={[
+              { value: 'once', label: '单次', disabled: locked },
+              { value: 'loop', label: '循环', disabled: locked },
+            ]}
+            onChange={(value) =>
+              updatePlayback({ mode: value as 'once' | 'loop' })
             }
             value={layer.animationPlayback.mode}
-          >
-            <option value="once">单次</option>
-            <option value="loop">循环</option>
-          </select>
-        </label>
+          />
+        </div>
         {layer.animationPlayback.mode === 'once' ? (
-          <label>
+          <div
+            className="animation-playback-field"
+            data-testid="animation-end-behavior"
+          >
             <span>播放结束</span>
-            <select
+            <SegmentedTabs
               aria-label="动画播放结束"
-              data-testid="animation-end-behavior"
-              disabled={locked}
-              onChange={(event) =>
-                updatePlayback({
-                  endBehavior: event.target.value as 'hold' | 'hide',
-                })
+              className="animation-playback-segmented"
+              options={[
+                { value: 'hold', label: '保持', disabled: locked },
+                { value: 'hide', label: '隐藏', disabled: locked },
+              ]}
+              onChange={(value) =>
+                updatePlayback({ endBehavior: value as 'hold' | 'hide' })
               }
               value={layer.animationPlayback.endBehavior}
-            >
-              <option value="hold">保持最后一帧</option>
-              <option value="hide">隐藏</option>
-            </select>
-          </label>
+            />
+          </div>
         ) : null}
       </div>
       {status ? <output role="alert">{status}</output> : null}

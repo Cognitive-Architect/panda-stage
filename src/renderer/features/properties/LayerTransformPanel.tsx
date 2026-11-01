@@ -131,10 +131,8 @@ const ROTATION_STEP_DEG = 15;
 /** Format the domain scale as an editable, user-facing percentage. */
 export function formatScalePercent(scale: number): string {
   if (!Number.isFinite(scale)) return '';
-  const percent = scale * 100;
-  return Number.isInteger(percent)
-    ? String(percent)
-    : String(Number(percent.toPrecision(12)));
+  const percent = Number((scale * 100).toFixed(1));
+  return String(Object.is(percent, -0) ? 0 : percent);
 }
 
 /** Convert a percentage draft back to the existing domain scale semantics. */
@@ -368,7 +366,7 @@ export function useLayerTransformController({
         ? layer?.locked
           ? '动画图层已锁定；请先回到 0:00 解锁。'
           : animationBaseTransformEditable
-            ? '当前编辑的是动画基础变换，会作用于整段动画。'
+            ? ''
             : '动画当前不可见或受镜头变换事件控制；请定位到可见且未被事件覆盖的帧。'
         : positionAuthoringActive
           ? POSITION_AUTHORING_GUIDANCE

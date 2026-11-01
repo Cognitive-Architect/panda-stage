@@ -10,7 +10,9 @@ const { ProjectService } = require('../dist-electron/main/services/ProjectServic
 const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
 const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 
-const root = 'D:\\PandaStage-Acceptance\\issue890-am04';
+const root = process.env.PANDA_STAGE_ISSUE890_AM04_ROOT
+  ? path.resolve(process.env.PANDA_STAGE_ISSUE890_AM04_ROOT)
+  : 'D:\\PandaStage-Acceptance\\issue890-am04';
 const evidence = path.join(root, 'electron');
 const userData = path.join(root, 'electron-user-data');
 const projectRoot = path.join(root, 'projects', 'issue890-electron-' + process.pid + '-' + Date.now() + '.pandastage');
@@ -386,6 +388,31 @@ async function setControlValue(window, selector, value, blur = false) {
   await new Promise((resolve) => setTimeout(resolve, 120));
 }
 
+async function dragRangeValue(window, selector, value, min = 0, max = 100) {
+  const diagnostics = await window.webContents.executeJavaScript(
+    '(() => { const e=document.querySelector(' + JSON.stringify(selector) + ');' +
+      'if (!(e instanceof HTMLInputElement) || e.type!=="range") throw new Error("Missing range: " + ' +
+      JSON.stringify(selector) + '); e.scrollIntoView({block:"center",inline:"center"});' +
+      'const toolbar=document.querySelector(\'[data-testid="timeline-toolbar"]\');' +
+      'let r=e.getBoundingClientRect(); const toolbarTop=toolbar?.getBoundingClientRect().top;' +
+      'if(Number.isFinite(toolbarTop)&&r.bottom>=toolbarTop){let p=e.parentElement,scroller=null;' +
+      'while(p){const style=getComputedStyle(p);if(p.scrollHeight>p.clientHeight+1&&/(auto|scroll)/.test(style.overflowY)){scroller=p;break;}p=p.parentElement;}' +
+      'if(scroller)scroller.scrollTop+=r.bottom-toolbarTop+8; r=e.getBoundingClientRect();}' +
+      'const y=Math.round(r.top+r.height/2);' +
+      'const parsedThumbWidth=parseFloat(getComputedStyle(e,"::-webkit-slider-thumb").width);' +
+      'const thumbWidth=Number.isFinite(parsedThumbWidth)&&parsedThumbWidth>0&&parsedThumbWidth<r.width/2?parsedThumbWidth:16;' +
+      'const trackLeft=r.left+thumbWidth/2,trackWidth=Math.max(0,r.width-thumbWidth);' +
+      'const x=(v)=>Math.round(trackLeft+(Number(v)-' + min + ')/(' + (max - min) + ')*trackWidth);' +
+      'const from={x:x(e.value),y},to={x:x(' + Number(value) + '),y};' +
+      'const hit=(p)=>{const h=document.elementFromPoint(p.x,p.y);return h?{tag:h.tagName,id:h.id,testId:h.dataset?.testid,className:String(h.className)}:null;};' +
+      'const fromHit=hit(from),toHit=hit(to);if(fromHit?.testId!==e.dataset.testid||toHit?.testId!==e.dataset.testid)' +
+      'throw new Error("Opacity slider is occluded: "+JSON.stringify({from,to,rect:{x:r.x,y:r.y,width:r.width,height:r.height},toolbarTop,fromHit,toHit}));' +
+      'return {from,to,rangeValue:e.value,disabled:e.disabled,rect:{x:r.x,y:r.y,width:r.width,height:r.height},thumbWidth,toolbarTop}; })()',
+  );
+  console.log('[issue890] range drag target: ' + JSON.stringify(diagnostics));
+  await browserDrag(window, diagnostics.from, diagnostics.to, 10);
+}
+
 async function pressKey(window, keyCode) {
   window.show();
   window.focus();
@@ -643,7 +670,7 @@ async function run() {
       'document.querySelector(\'[data-testid="animation-playback-controls"]\')',
       'Animation playback controls did not appear in the Inspector.',
     );
-    await setControlValue(window, '[data-testid="animation-playback-mode"]', 'loop');
+    await click(window, '[data-testid="animation-playback-mode"] .ui-segmented-tabs__item:nth-child(2)');
     await waitFor(
       window,
       'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
@@ -754,12 +781,28 @@ async function run() {
       saveStateBefore: saveStateBeforeEscape,
       saveStateAfter: saveStateAfterEscape,
     };
-    await setControlValue(window, '[data-testid="animation-end-behavior"]', 'hide');
+    await click(window, '[data-testid="animation-end-behavior"] .ui-segmented-tabs__item:nth-child(2)');
     await waitFor(
       window,
       'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
         '.find(x=>x.id==="' + layerBId + '")?.animationPlayback?.endBehavior==="hide"',
       'Inspector did not set once+hide for instance B.',
+    );
+    await click(window, '[data-testid="animation-playback-mode"] .ui-segmented-tabs__item:nth-child(2)');
+    await waitFor(
+      window,
+      '!document.querySelector(\'[data-testid="animation-end-behavior"]\')&&' +
+        'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+          '.find(x=>x.id==="' + layerBId + '")?.animationPlayback?.endBehavior==="hide"',
+      'Loop mode did not hide the end choice while preserving its saved value.',
+    );
+    await click(window, '[data-testid="animation-playback-mode"] .ui-segmented-tabs__item:first-child');
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="animation-end-behavior"]\')&&' +
+        'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+          '.find(x=>x.id==="' + layerBId + '")?.animationPlayback?.endBehavior==="hide"',
+      'Returning to once did not restore the persisted end choice.',
     );
     editor = await readStageState(window);
     let b = animationRecord(editor, layerBId).layer;
@@ -825,15 +868,24 @@ async function run() {
         const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
         return { index, disabled: button.disabled, display: style.display, visibility: style.visibility,
           pointerEvents: style.pointerEvents, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          inPlayback: Boolean(button.closest('[data-testid="animation-playback-controls"]')),
+          inLayerOrder: Boolean(button.closest('[data-testid="layer-order-controls"]')),
           centerHitsButton: hit === button || button.contains(hit),
           centerHit: hit ? { tag: hit.tagName, id: hit.id, className: String(hit.className),
             testId: hit.dataset?.testid, text: hit.textContent?.trim().slice(0, 80) } : null };
       });
       return { selectedLayerId, viewport: { width: document.documentElement.clientWidth,
         height: document.documentElement.clientHeight },
-        animationLayerIds: layers.filter((layer) => layer.source?.kind === 'animation').map((layer) => layer.id), controls };
+        animationLayerIds: layers.filter((layer) => layer.source?.kind === 'animation').map((layer) => layer.id),
+        layerOrderDuplicateCount: document.querySelectorAll('[data-testid="layer-order-controls"] [data-testid="duplicate-animation-layer"]').length,
+        controls };
     })()`);
     console.log('[issue890] duplicate state before click: ' + JSON.stringify(duplicateStateBefore));
+    assert(duplicateStateBefore.controls.length === 1 &&
+      duplicateStateBefore.controls[0].inPlayback &&
+      !duplicateStateBefore.controls[0].inLayerOrder &&
+      duplicateStateBefore.layerOrderDuplicateCount === 0,
+    'Duplicate Animation is not a single action in the Animation Playback heading.');
     writeFileSync(path.join(evidence, 'duplicate-control-debug.png'),
       (await window.webContents.capturePage()).toPNG());
     await click(window, '[data-testid="duplicate-animation-layer"]');
@@ -899,6 +951,45 @@ async function run() {
       fixture.assets.length > 21,
     'Synthetic fixture unexpectedly duplicated animation definitions or frame assets.');
 
+    await seekEditor(window, 1_000);
+    editor = await readStageState(window);
+    b = animationRecord(editor, layerBId).layer;
+    await clickPoint(window, await canvasPoint(window, b.x, b.y));
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="layer-transform-panel"]\')?.dataset.selectedLayerId==="' + layerBId + '"',
+      'Could not select instance B for scale precision coverage.',
+    );
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="layer-opacity-range"]\')&&' +
+        '!document.querySelector(\'[data-testid="layer-canvas-background"]\')&&' +
+        '!document.querySelector(\'[data-testid="current-background-name"]\')',
+      'Animation Appearance still contains background-management controls.',
+    );
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="layer-transform-scale"] input\')',
+      'Scale input did not appear for instance B.',
+    );
+    await setControlValue(window, '[data-testid="layer-transform-scale"] input', '179.986731171', true);
+    await waitFor(
+      window,
+      'Math.abs(JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+        '.find(x=>x.id==="' + layerBId + '")?.scaleX-1.79986731171)<1e-12&&' +
+        'document.querySelector(\'[data-testid="layer-transform-scale"] input\')?.value==="180"',
+      'Scale precision was not preserved while the input displayed the rounded percentage.',
+    );
+    await setControlValue(window, 'input[aria-label="旋转角度"]', '15', true);
+    await waitFor(
+      window,
+      'Math.abs(JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+        '.find(x=>x.id==="' + layerBId + '")?.scaleX-1.79986731171)<1e-12&&' +
+        'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+          '.find(x=>x.id==="' + layerBId + '")?.rotationDeg===15',
+      'Editing rotation changed the exact stored scale.',
+    );
+
     const saveCountBefore = projectSaveEvidence.length;
     await click(window, '[data-testid="quick-action-save"]');
     await waitFor(
@@ -925,8 +1016,10 @@ async function run() {
     const savedB = savedLayers.find((layer) => layer.id === layerBId);
     assert(savedA?.startTimeMs === 0 && savedA.animationPlayback?.mode === 'loop' &&
       savedB?.startTimeMs === 1_000 && savedB.animationPlayback?.mode === 'once' &&
-      savedB.animationPlayback?.endBehavior === 'hide',
-    'Save did not preserve the independent start/mode/end settings.');
+      savedB.animationPlayback?.endBehavior === 'hide' &&
+      Math.abs(savedB.scaleX - 1.79986731171) < 1e-12 &&
+      savedB.rotationDeg === 15,
+    'Save did not preserve the independent playback settings and exact transform values.');
     const savedAssetIds = savedDocument.assets.map((asset) => asset.id);
     assert(ids.frames.every((assetId) => savedAssetIds.includes(assetId)),
       'Save lost one or more shared frame assets.');
@@ -940,10 +1033,22 @@ async function run() {
       'Product Preview did not become active and ready.',
       30_000,
     );
+    const previewPlayingBeforeSeek = await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewPlaying==="true"',
+    );
+    if (previewPlayingBeforeSeek) {
+      await click(window, '[data-testid="product-preview-play-pause"]');
+    }
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewPlaying==="false"',
+      'Product Preview did not pause before the deterministic start seek.',
+    );
     await setControlValue(window, '[data-testid="product-preview-scrubber"]', 0);
     await waitFor(
       window,
-      'Number(document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewProjectTime)===0',
+      'Number(document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewProjectTime)===0&&' +
+        'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewPlaying==="false"',
       'Product Preview did not seek to its start.',
     );
     await click(window, '[data-testid="product-preview-play-pause"]');
@@ -1057,6 +1162,53 @@ async function run() {
     );
     assert(isCleanAfterPreview, 'Preview play/seek changed the saved Project dirty state.');
 
+    await seekEditor(window, 0);
+    editor = await readStageState(window);
+    a = animationRecord(editor, layerAId).layer;
+    await clickPoint(window, await canvasPoint(window, a.x, a.y));
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="layer-transform-panel"]\')?.dataset.selectedLayerId==="' + layerAId + '"&&' +
+        'document.querySelector(\'[data-testid="layer-opacity-range"]\')&&!document.querySelector(\'[data-testid="layer-opacity-range"]\').disabled',
+      'Animation opacity control was not editable at the animation start.',
+    );
+    await waitFor(
+      window,
+      '!document.querySelector(\'[data-testid="layer-canvas-background"]\')&&' +
+        '!document.querySelector(\'[data-testid="current-background-name"]\')',
+      'Animation Appearance still contains background-management controls.',
+    );
+    await dragRangeValue(window, '[data-testid="layer-opacity-range"]', 65);
+    const opacityAfterDrag = await window.webContents.executeJavaScript(
+      '(() => { const e=document.querySelector(\'[data-testid="layer-opacity-range"]\');' +
+        'const stage=document.querySelector(\'[data-testid="project-canvas-stage"]\');' +
+        'const layer=JSON.parse(stage?.dataset.layerJson||"[]").find(x=>x.id==="' + layerAId + '");' +
+        'return {rangeValue:e?.value,opacity:layer?.opacity,output:document.querySelector(\'[data-testid="layer-opacity-value"]\')?.textContent}; })()',
+    );
+    console.log('[issue890] animation opacity after drag: ' + JSON.stringify(opacityAfterDrag));
+    await waitFor(
+      window,
+      'Math.abs(JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+        '.find(x=>x.id==="' + layerAId + '")?.opacity-0.65)<0.002',
+      'Animation opacity did not commit through the existing Appearance control.',
+    );
+    const opacitySaveCountBefore = projectSaveEvidence.length;
+    await click(window, '[data-testid="quick-action-save"]');
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="quick-action-save"]\')?.dataset.saveState!=="saving"&&' +
+        'document.querySelector(\'[data-testid="quick-action-save"]\')?.disabled===true',
+      'Saving animation opacity did not settle with the project clean.',
+    );
+    assert(projectSaveEvidence.length === opacitySaveCountBefore + 1,
+      'Saving animation opacity did not call Main ProjectService.save.');
+    const opacitySavedDocument = JSON.parse(readFileSync(path.join(projectRoot, 'project.json'), 'utf8'));
+    const opacitySavedLayers = opacitySavedDocument.shots.flatMap((shot) => shot.layers)
+      .filter((layer) => layer.source.kind === 'animation');
+    assert(Math.abs(opacitySavedLayers.find((layer) => layer.id === layerAId)?.opacity - 0.65) < 0.002 &&
+      Math.abs(opacitySavedLayers.find((layer) => layer.id === layerBId)?.scaleX - 1.79986731171) < 1e-12,
+    'Saving animation opacity changed its value or the other instance exact scale.');
+
     const openCountBeforeClose = projectOpenEvidence.length;
     await click(window, '[data-testid="quick-action-close"]');
     await waitFor(
@@ -1074,8 +1226,21 @@ async function run() {
     assert(reopenedA.layer.animationPlayback?.mode === 'loop' && reopenedA.layer.startTimeMs === 0 &&
       reopenedB.layer.animationPlayback?.mode === 'once' &&
       reopenedB.layer.animationPlayback?.endBehavior === 'hide' &&
-      reopenedB.layer.startTimeMs === 1_000,
-    'Reopen did not restore each instance playback contract.');
+      reopenedB.layer.startTimeMs === 1_000 &&
+      Math.abs(reopenedB.layer.scaleX - 1.79986731171) < 1e-12 &&
+      reopenedB.layer.rotationDeg === 15,
+    'Reopen did not restore each instance playback contract and exact transform values.');
+    assert(Math.abs(reopenedA.layer.opacity - 0.65) < 0.002,
+      'Reopen did not restore the saved animation opacity.');
+    await seekEditor(window, 1_000);
+    const reopenedBPoint = await canvasPoint(window, reopenedB.layer.x, reopenedB.layer.y);
+    await clickPoint(window, reopenedBPoint);
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="layer-transform-panel"]\')?.dataset.selectedLayerId==="' + layerBId + '"&&' +
+        'document.querySelector(\'[data-testid="layer-transform-scale"] input\')?.value==="180"',
+      'Reopened scale did not render as a concise percentage without changing the saved value.',
+    );
     const hiddenAt2000 = await seekEditor(window, 2_000);
     editor = await readStageState(window);
     assert(!animationRecord(editor, layerBId).visual?.visible &&

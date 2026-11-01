@@ -96,6 +96,20 @@ async function blur(input: HTMLInputElement): Promise<void> {
   await act(async () => input.blur());
 }
 
+async function clickPlaybackTab(
+  ariaLabel: string,
+  optionLabel: string,
+): Promise<void> {
+  const tabList = Array.from(
+    container.querySelectorAll<HTMLElement>('[role="tablist"]'),
+  ).find((candidate) => candidate.getAttribute('aria-label') === ariaLabel);
+  const tab = Array.from(
+    tabList?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? [],
+  ).find((candidate) => candidate.textContent?.trim() === optionLabel);
+  if (!tab) throw new Error(`Missing ${optionLabel} option in ${ariaLabel}.`);
+  await act(async () => tab.click());
+}
+
 describe('AnimationPlaybackControls start-time editing', () => {
   beforeEach(async () => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
@@ -113,6 +127,80 @@ describe('AnimationPlaybackControls start-time editing', () => {
     await act(async () => root.unmount());
     container.remove();
     selectionStore.clear();
+  });
+
+  it('uses segmented playback settings and retains the end choice through looping', async () => {
+    await clickPlaybackTab('动画播放方式', '循环');
+
+    expect(currentAnimationLayer()?.animationPlayback).toEqual({
+      mode: 'loop',
+      endBehavior: 'hold',
+    });
+    expect(
+      container.querySelector('[data-testid="animation-end-behavior"]'),
+    ).toBeNull();
+
+    await clickPlaybackTab('动画播放方式', '单次');
+    await clickPlaybackTab('动画播放结束', '隐藏');
+    expect(currentAnimationLayer()?.animationPlayback).toEqual({
+      mode: 'once',
+      endBehavior: 'hide',
+    });
+
+    await clickPlaybackTab('动画播放方式', '循环');
+    expect(
+      container.querySelector('[data-testid="animation-end-behavior"]'),
+    ).toBeNull();
+    await clickPlaybackTab('动画播放方式', '单次');
+
+    expect(currentAnimationLayer()?.animationPlayback).toEqual({
+      mode: 'once',
+      endBehavior: 'hide',
+    });
+  });
+
+  it('duplicates only from Animation Playback and keeps the existing History behavior', async () => {
+    const button = container.querySelector<HTMLButtonElement>(
+      '[data-testid="duplicate-animation-layer"]',
+    );
+    expect(button).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="layer-order-controls"]'),
+    ).toBeNull();
+
+    await act(async () => button!.click());
+
+    const animationLayers = editorProjectStore
+      .getSnapshot()!
+      .project.shots.find((candidate) => candidate.id === IDS.shot)!
+      .layers.filter((candidate) => candidate.source.kind === 'animation');
+    expect(animationLayers).toHaveLength(2);
+    expect(new Set(animationLayers.map((candidate) => candidate.id)).size).toBe(2);
+    expect(animationLayers.map((candidate) => candidate.source)).toEqual([
+      { kind: 'animation', animationId: IDS.animation },
+      { kind: 'animation', animationId: IDS.animation },
+    ]);
+    const duplicateId = animationLayers.find(
+      (candidate) => candidate.id !== IDS.animationLayer,
+    )!.id;
+    expect(selectionStore.getSelectedLayerId()).toBe(duplicateId);
+    expect(editorProjectStore.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+
+    await act(async () => editorProjectStore.undo());
+    expect(
+      editorProjectStore.getSnapshot()!.project.shots[0]!.layers.filter(
+        (candidate) => candidate.source.kind === 'animation',
+      ),
+    ).toHaveLength(1);
+    await act(async () => editorProjectStore.redo());
+    expect(
+      editorProjectStore.getSnapshot()!.project.shots[0]!.layers.filter(
+        (candidate) => candidate.source.kind === 'animation',
+      ),
+    ).toHaveLength(2);
   });
 
   it('cancels Escape before its synchronous blur without touching project or History', async () => {
@@ -245,6 +333,8 @@ describe('AnimationPlaybackControls start-time editing', () => {
     await act(async () => selectionStore.select(IDS.layerAsset));
 
     expect(container.querySelector('[data-testid="animation-start-seconds"]')).toBeNull();
+    expect(container.querySelector('[data-testid="animation-playback-controls"]')).toBeNull();
+    expect(container.querySelector('[data-testid="duplicate-animation-layer"]')).toBeNull();
     await blur(input);
     expect(currentAnimationLayer()?.startTimeMs).toBe(1_000);
     expect(editorProjectStore.getSnapshot()).toMatchObject({ revision: 0, dirty: false });
@@ -257,6 +347,15 @@ describe('AnimationPlaybackControls start-time editing', () => {
 
     expect(input.disabled).toBe(true);
     expect(input.value).toBe('1');
+    expect(
+      container.querySelector<HTMLButtonElement>(
+        '[data-testid="duplicate-animation-layer"]',
+      )?.disabled,
+    ).toBe(true);
+    expect(
+      Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+        .every((tab) => tab.disabled),
+    ).toBe(true);
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('已锁定');
     expect(currentAnimationLayer()).toMatchObject({
       startTimeMs: 1_000,
