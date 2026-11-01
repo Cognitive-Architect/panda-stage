@@ -1,11 +1,40 @@
 import { readFileSync } from 'node:fs';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { FlaCharacterImportPartsControl } from '../../src/renderer/features/fla-import/FlaCharacterImportPartsControl';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
 }
 
 describe('F1-04 import transaction UI safeguards', () => {
+  it('renders one collapsed canvas control or one expanded sidebar header', () => {
+    const renderControl = (expanded: boolean): string => renderToStaticMarkup(
+      createElement(FlaCharacterImportPartsControl, {
+        disabled: false,
+        expanded,
+        onToggle: () => undefined,
+        partCount: 5,
+      }),
+    );
+    const collapsed = renderControl(false);
+    const expanded = renderControl(true);
+
+    expect(collapsed).toContain('class="fla-character-import-parts-toggle"');
+    expect(collapsed).toContain('aria-label="展开零件，5 个"');
+    expect(collapsed).toContain('aria-expanded="false"');
+    expect(collapsed).toContain('<span>零件 5</span>');
+    expect(collapsed).not.toContain('fla-character-import-parts-header');
+
+    expect(expanded).toContain('class="fla-character-import-parts-header"');
+    expect(expanded).toContain('<h2 class="fla-character-import-parts-heading">零件 5</h2>');
+    expect(expanded).toContain('aria-label="收起零件"');
+    expect(expanded).toContain('aria-expanded="true"');
+    expect(expanded).toContain('class="fla-character-import-parts-collapse"');
+    expect(expanded).not.toContain('class="fla-character-import-parts-toggle"');
+  });
+
   it('invalidates a selected preview before waiting for cancellation', () => {
     const flow = source('src/renderer/features/fla-import/FlaCharacterImportFlow.tsx');
     const prepare = flow.slice(
@@ -69,9 +98,10 @@ describe('F1-04 import transaction UI safeguards', () => {
       shell.indexOf('const clearExportTask ='),
     );
     expect(sessionGuard).toContain('if (flaCharacterCommitActiveRef.current && !allowPersistedFlaRecovery)');
-    expect(shell).toContain('pendingRecord.credential.operationId === armedOperationId');
-    expect(shell).toContain("flaCharacterOperationStateRef.current === 'safe-to-close'");
-    expect(shell).toContain('角色保存仍待核对，请回到保存结果页面查询后再关闭窗口。');
+    expect(shell).toContain('decideFlaCharacterNativeClose({');
+    expect(shell).toContain('assertSnapshotCanClose: (snapshot) =>');
+    expect(shell).toContain("flaCharacterOperationStateRef.current !== 'safe-to-close'");
+    expect(shell).toContain('角色保存仍待核对，窗口保持打开。');
   });
 
   it('persists the operation credential before starting the Main create request', () => {
@@ -85,44 +115,57 @@ describe('F1-04 import transaction UI safeguards', () => {
       create.indexOf('onCreateCharacter(preview, name.trim(), operationId)'),
     );
     expect(flow).toContain("setOperationSafetyState('in-progress')");
+    expect(flow).toContain('decideFlaCharacterCreateStatus(');
+    expect(flow).toContain('decideFlaCharacterCreateQueryFailure(code)');
+    expect(flow).not.toContain("code === 'RECOVERY_REQUIRED' || code === 'OPERATION_ID_CONFLICT'");
 
     const recovery = source('src/renderer/features/fla-import/FlaCharacterCreateRecoveryPanel.tsx');
-    expect(recovery).toContain("status.status === 'IN_PROGRESS'");
-    expect(recovery).toContain("onOperationStateChange('in-progress')");
-    expect(recovery).toContain("status.status === 'RECOVERY_REQUIRED'");
+    expect(recovery).toContain('decideFlaCharacterCreateStatus(');
+    expect(recovery).toContain('decision.operationState');
+    expect(recovery).toContain('if (decision.canClose)');
     expect(recovery).toContain('onSafeExit(credential.operationId)');
 
     const queryBody = recovery.slice(
       recovery.indexOf('const query = async'),
       recovery.indexOf('const copyReceipt = async'),
     );
-    const queryErrorBranch = queryBody.slice(
-      queryBody.lastIndexOf('if (!status.ok) {'),
-      queryBody.indexOf('} catch', queryBody.lastIndexOf('if (!status.ok) {')),
-    );
-    expect(queryErrorBranch).toContain("onOperationStateChange('unknown')");
-    expect(queryErrorBranch).not.toContain("onOperationStateChange('safe-to-close')");
-    expect(queryErrorBranch).not.toContain('setSafeExitAvailable(true)');
-
-    const resultConflictBranch = queryBody.slice(
-      queryBody.indexOf('if (!matchesPendingFlaCharacterCreateOutcome'),
-      queryBody.indexOf("const resolved = await onResolved(credential, 'committed')"),
-    );
-    expect(resultConflictBranch).toContain("onOperationStateChange('unknown')");
-    expect(resultConflictBranch).not.toContain("onOperationStateChange('safe-to-close')");
+    expect(queryBody).toContain('const decision = decideFlaCharacterCreateStatus');
+    expect(queryBody).toContain('decision.kind === \'failed\' || decision.kind === \'not-found\'');
+    expect(queryBody).toContain("onOperationStateChange('unknown')");
+    expect(queryBody).not.toContain("status.status === 'RECOVERY_REQUIRED') {\n        setSafeExitAvailable(true)");
   });
 
-  it('keeps assembled and source previews in one stable-height viewport', () => {
+  it('keeps the assembled preview, unsupported whole-image fallback, and part collapse in one viewport', () => {
     const flow = source('src/renderer/features/fla-import/FlaCharacterImportFlow.tsx');
+    const partsControl = source('src/renderer/features/fla-import/FlaCharacterImportPartsControl.tsx');
     const styles = source('src/renderer/styles/features/fla-import/f1-04--character-import.css');
 
-    expect(flow).toContain('data-testid="fla-character-import-mode-assembled"');
-    expect(flow).toContain('data-testid="fla-character-import-mode-source"');
-    expect(flow).toContain('data-testid="fla-character-import-parts-toggle"');
+    expect(flow).not.toContain('data-testid="fla-character-import-mode-assembled"');
+    expect(flow).not.toContain('data-testid="fla-character-import-mode-source"');
+    expect(flow).toContain('editablePreview && !partsExpanded');
+    expect(flow).toContain('FlaCharacterImportPartsControl');
+    expect(flow).toContain('data-preview-mode="assembled"');
+    expect(flow).toContain("phase === 'whole-image-only' || !previewImages.reassembled");
+    expect(partsControl).toContain('aria-expanded="false"');
+    expect(partsControl).toContain('aria-expanded="true"');
+    expect(partsControl).toContain('aria-controls="fla-character-import-parts"');
+    expect(partsControl).toContain('data-testid="fla-character-import-parts-toggle"');
+    expect(partsControl).toContain('icon={Layers}');
+    expect(partsControl).toContain('className="fla-character-import-parts-collapse"');
+    expect(flow).toContain('data-testid="fla-character-import-parts-panel"');
     expect(flow).toContain('className="fla-character-import-preview-workspace"');
+    expect(flow).toContain('sourceBasename || \'选择 FLA 文件\'');
+    expect(flow).toContain('const showPreviewStatus = !centerLoading');
     expect(flow).not.toContain('查看原始整图');
+    expect(styles).toContain('position: absolute;');
+    expect(styles).toContain('right: var(--ui-space-2);');
     expect(styles).toContain('.fla-character-import-preview-workspace[data-parts-expanded=\'true\']');
+    expect(styles).toContain('grid-template-rows: auto minmax(0, 1fr);');
+    expect(styles).toContain('.fla-character-import-parts-header');
+    expect(styles).toContain('min-height: var(--ui-touch-icon);');
     expect(styles).toContain('grid-template-rows: auto minmax(0, 1fr) auto;');
+    expect(styles).toContain('width: clamp(240px, 22vw, 300px);');
+    expect(styles).toContain('align-items: center;');
   });
 
   it('keeps character list entry actions paired and confines styling to landscape', () => {

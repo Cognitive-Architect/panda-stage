@@ -4,7 +4,9 @@ import type {
   FlaCharacterCreateOperationState,
 } from './FlaCharacterImportFlow';
 import {
-  matchesPendingFlaCharacterCreateOutcome,
+  decideFlaCharacterCreateStatus,
+  readPendingFlaCharacterCreateRecord,
+  samePendingFlaCharacterCreateCredential,
   type PendingFlaCharacterCreateCredential,
 } from './fla-character-create-recovery';
 import './fla-character-create-recovery.css';
@@ -30,7 +32,7 @@ function messageForStatus(
       case 'IN_PROGRESS':
         return '保存仍在进行。继续查询结果；当前不能安全关闭。';
       case 'RECOVERY_REQUIRED':
-        return '保存需要恢复。Main 已保留本次恢复记录；请复制核对信息，安全关闭后从项目中心重新打开项目。';
+        return 'Main 要求恢复保存，但当前状态没有提供可验证的恢复路径。请保留窗口和核对信息，继续查询；不要重新创建或关闭。';
       case 'FAILED':
         return '本次没有保存成功，可以重新准备角色。';
       case 'NOT_FOUND':
@@ -73,51 +75,49 @@ export function FlaCharacterCreateRecoveryPanel({
     try {
       const status = await onQuery(credential);
       setMessage(messageForStatus(status));
-      if (status.ok && status.status === 'COMMITTED') {
-        if (!matchesPendingFlaCharacterCreateOutcome(credential, status.result)) {
+      const persistedRecord = readPendingFlaCharacterCreateRecord();
+      const hasVerifiedReentryCredential = persistedRecord.kind === 'valid' &&
+        samePendingFlaCharacterCreateCredential(persistedRecord.credential, credential);
+      const decision = decideFlaCharacterCreateStatus(credential, status, {
+        hasVerifiedReentryCredential,
+      });
+      if (decision.kind === 'committed' || decision.kind === 'committed-project-not-current') {
+        if (!status.ok || status.status !== 'COMMITTED') {
           onOperationStateChange('unknown');
-          setMessage('保存记录与本次编号不一致。不要重新创建；保持窗口打开并复制核对信息。');
+          setMessage('保存结果无法与本次操作对应。保持窗口打开并复制核对信息。');
+          return;
+        }
+        if (!hasVerifiedReentryCredential) {
+          onOperationStateChange('unknown');
+          setMessage('Main 已确认保存，但本机核对记录无法验证。保持窗口打开并复制核对信息。');
           return;
         }
         const resolved = await onResolved(credential, 'committed');
         if (!resolved) {
-          setSafeExitAvailable(true);
-          onOperationStateChange('safe-to-close');
-          setMessage('保存已确认，但当前项目快照尚未同步。核对信息仍保留，请稍后从项目中心重新打开项目。');
+          if (decision.canClose) {
+            setSafeExitAvailable(true);
+            onOperationStateChange('safe-to-close');
+            setMessage('保存已确认，项目尚未重新载入。本机核对记录已验证；可安全关闭后从项目中心重新打开项目。');
+          } else {
+            onOperationStateChange('unknown');
+            setMessage('保存已确认，但当前项目快照尚未同步。请保持窗口打开并重试查询。');
+          }
           return;
         }
         onOperationStateChange('terminal');
         return;
       }
-      if (status.ok && (status.status === 'FAILED' || status.status === 'NOT_FOUND')) {
+      if (decision.kind === 'failed' || decision.kind === 'not-found') {
         const resolved = await onResolved(credential, 'not-committed');
         if (!resolved) {
-          setSafeExitAvailable(true);
-          onOperationStateChange('safe-to-close');
-          setMessage('本次没有保存成功，但核对信息暂时无法清理。请保留记录后重试。');
+          onOperationStateChange('unknown');
+          setMessage('本次结果已核对，但本机核对信息无法清理。请保持窗口打开并重试查询。');
           return;
         }
         onOperationStateChange('terminal');
         return;
       }
-      if (status.ok && status.status === 'IN_PROGRESS') {
-        onOperationStateChange('in-progress');
-        return;
-      }
-      if (status.ok && status.status === 'RECOVERY_REQUIRED') {
-        setSafeExitAvailable(true);
-        onOperationStateChange('safe-to-close');
-        return;
-      }
-      if (!status.ok) {
-        if (status.error.code === 'OPERATION_IN_PROGRESS') {
-          onOperationStateChange('in-progress');
-          return;
-        }
-        onOperationStateChange('unknown');
-        return;
-      }
-      onOperationStateChange('unknown');
+      onOperationStateChange(decision.operationState);
     } catch {
       setMessage('查询没有返回结果。当前保持锁定；请重试查询或复制编号。');
       onOperationStateChange('unknown');

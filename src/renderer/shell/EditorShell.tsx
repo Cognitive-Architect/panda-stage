@@ -50,9 +50,10 @@ import {
 } from '../features/fla-import/FlaCharacterCreateRecoveryPanel';
 import {
   clearPendingFlaCharacterCreateCredential,
+  decideFlaCharacterNativeClose,
+  isFlaCharacterOperationLocked,
   queryPendingFlaCharacterCreateStatus,
   readPendingFlaCharacterCreateRecord,
-  samePendingFlaCharacterCreateCredential,
   type PendingFlaCharacterCreateCredential,
   type PendingFlaCharacterCreateRecord,
 } from '../features/fla-import/fla-character-create-recovery';
@@ -309,12 +310,14 @@ export class EditorShellSession {
     getSnapshot: () => EditorProjectSnapshot | null,
     options: {
       shouldSkipAutosave?: (snapshot: EditorProjectSnapshot) => boolean;
+      assertSnapshotCanClose?: (snapshot: EditorProjectSnapshot | null) => void;
     } = {},
   ): Promise<void> {
     this.store.assertProjectOperationIdle();
     while (true) {
       const snapshot = getSnapshot();
       this.assertNativeCloseSyncable(snapshot);
+      options.assertSnapshotCanClose?.(snapshot);
       const skipAutosave = Boolean(
         snapshot &&
           !snapshot.dirty &&
@@ -606,8 +609,10 @@ export function EditorShell({
     flaCharacterRecoveryRecord.kind !== 'none',
   );
   const setFlaCharacterCommitActive = (committing: boolean): void => {
-    flaCharacterCommitActiveRef.current =
-      committing || flaCharacterRecoveryRecordRef.current.kind !== 'none';
+    flaCharacterCommitActiveRef.current = committing || isFlaCharacterOperationLocked(
+      flaCharacterOperationStateRef.current,
+      flaCharacterRecoveryRecordRef.current.kind !== 'none',
+    );
   };
   const setFlaCharacterRecoveryCredential = (
     credential: PendingFlaCharacterCreateCredential | null,
@@ -617,17 +622,19 @@ export function EditorShell({
       : readPendingFlaCharacterCreateRecord();
     flaCharacterRecoveryRecordRef.current = nextRecord;
     setFlaCharacterRecoveryRecord(nextRecord);
-    flaCharacterCommitActiveRef.current =
-      nextRecord.kind !== 'none' ||
-      flaCharacterOperationStateRef.current !== 'terminal';
+    flaCharacterCommitActiveRef.current = isFlaCharacterOperationLocked(
+      flaCharacterOperationStateRef.current,
+      nextRecord.kind !== 'none',
+    );
   };
   const setFlaCharacterOperationState = (
     state: FlaCharacterCreateOperationState,
   ): void => {
     flaCharacterOperationStateRef.current = state;
-    flaCharacterCommitActiveRef.current =
-      state !== 'terminal' ||
-      flaCharacterRecoveryRecordRef.current.kind !== 'none';
+    flaCharacterCommitActiveRef.current = isFlaCharacterOperationLocked(
+      state,
+      flaCharacterRecoveryRecordRef.current.kind !== 'none',
+    );
   };
   const armSafeFlaCharacterClose = (operationId: string): void => {
     const record = flaCharacterRecoveryRecordRef.current;
@@ -1320,17 +1327,33 @@ export function EditorShell({
       const pendingRecord = flaCharacterRecoveryRecordRef.current;
       const persistedRecord = readPendingFlaCharacterCreateRecord();
       const armedOperationId = safeFlaCharacterCloseArmedRef.current;
-      const allowPersistedFlaRecoveryClose = Boolean(
-        armedOperationId &&
-          pendingRecord.kind === 'valid' &&
-          persistedRecord.kind === 'valid' &&
-          samePendingFlaCharacterCreateCredential(
-            pendingRecord.credential,
-            persistedRecord.credential,
-          ) &&
-          pendingRecord.credential.operationId === armedOperationId &&
-          flaCharacterOperationStateRef.current === 'safe-to-close',
-      );
+      const currentSnapshot = editorProjectStore.getSnapshot();
+      const closeDecision = decideFlaCharacterNativeClose({
+        operationLocked: flaCharacterCommitActiveRef.current,
+        pendingRecord,
+        persistedRecord,
+        armedOperationId,
+        operationState: flaCharacterOperationStateRef.current,
+        currentProject: currentSnapshot
+          ? {
+            projectRoot: currentSnapshot.projectRoot,
+            projectId: currentSnapshot.project.id,
+            dirty: currentSnapshot.dirty,
+          }
+          : null,
+      });
+      const allowPersistedFlaRecoveryClose = closeDecision.allowed;
+      if (closeDecision.reason === 'dirty-project' || closeDecision.reason === 'project-mismatch') {
+        safeFlaCharacterCloseArmedRef.current = null;
+        window.pandaStage.nativeClose.respondSync({
+          ok: false,
+          requestId,
+          error: closeDecision.reason === 'dirty-project'
+            ? '已确认角色保存，但当前项目仍有未保存编辑。请先同步项目，再安全关闭。'
+            : '当前打开项目与待核对的保存记录身份不一致。请先在项目中心核对后再关闭。',
+        });
+        return;
+      }
       if (blockSessionChangeDuringExport(allowPersistedFlaRecoveryClose)) {
         const exportActive = exportTaskIsActive(exportTaskRef.current);
         safeFlaCharacterCloseArmedRef.current = null;
@@ -1347,20 +1370,10 @@ export function EditorShell({
         return;
       }
       const staleCommittedSnapshot = allowPersistedFlaRecoveryClose &&
+        closeDecision.skipAutosave &&
         pendingRecord.kind === 'valid' &&
-        editorProjectStore.getSnapshot()?.projectRoot === pendingRecord.credential.projectRoot &&
-        editorProjectStore.getSnapshot()?.project.id === pendingRecord.credential.projectId &&
-        (editorProjectStore.getSnapshot()?.revision ?? Number.POSITIVE_INFINITY) <
-          pendingRecord.credential.baseRevision + 1;
-      if (staleCommittedSnapshot && editorProjectStore.getSnapshot()?.dirty) {
-        safeFlaCharacterCloseArmedRef.current = null;
-        window.pandaStage.nativeClose.respondSync({
-          ok: false,
-          requestId,
-          error: '已确认角色保存，但当前项目仍有未保存编辑且快照较旧。请保持窗口打开并先恢复到最新项目状态。',
-        });
-        return;
-      }
+        currentSnapshot !== null &&
+        currentSnapshot.revision < pendingRecord.credential.baseRevision + 1;
       void session
         .prepareForNativeClose(editorProjectStore.getSnapshot, {
           shouldSkipAutosave: (snapshot) => Boolean(
@@ -1371,6 +1384,31 @@ export function EditorShell({
               snapshot.project.id === pendingRecord.credential.projectId &&
               snapshot.revision < pendingRecord.credential.baseRevision + 1,
           ),
+          assertSnapshotCanClose: (snapshot) => {
+            const latestPendingRecord = flaCharacterRecoveryRecordRef.current;
+            const latestPersistedRecord = readPendingFlaCharacterCreateRecord();
+            const latestDecision = decideFlaCharacterNativeClose({
+              operationLocked: flaCharacterCommitActiveRef.current,
+              pendingRecord: latestPendingRecord,
+              persistedRecord: latestPersistedRecord,
+              armedOperationId: safeFlaCharacterCloseArmedRef.current,
+              operationState: flaCharacterOperationStateRef.current,
+              currentProject: snapshot
+                ? {
+                  projectRoot: snapshot.projectRoot,
+                  projectId: snapshot.project.id,
+                  dirty: snapshot.dirty,
+                }
+                : null,
+            });
+            if (!latestDecision.allowed) {
+              throw new Error(latestDecision.reason === 'dirty-project'
+                ? '已确认角色保存，但当前项目出现未保存编辑。窗口保持打开，请先同步项目。'
+                : latestDecision.reason === 'project-mismatch'
+                  ? '当前打开项目与待核对的保存记录身份不一致。窗口保持打开，请先核对项目。'
+                  : '角色保存仍待核对，窗口保持打开。');
+            }
+          },
         })
         .then(() => {
           safeFlaCharacterCloseArmedRef.current = null;
@@ -1493,6 +1531,15 @@ export function EditorShell({
         true,
       );
       if (!opened) return false;
+      const reopened = editorProjectStore.getSnapshot();
+      if (
+        reopened?.projectRoot !== credential.projectRoot ||
+        reopened.project.id !== credential.projectId ||
+        reopened.revision < credential.baseRevision + 1
+      ) {
+        setStatus('重新打开的项目与本次已确认保存记录不匹配。保留核对信息并继续核查。');
+        return false;
+      }
       if (!clearPendingFlaCharacterCreateCredential(credential)) {
         setStatus('角色已保存，但本机核对信息暂时无法清理。请重试查询。');
         return false;

@@ -5,10 +5,16 @@ import type {
 } from '../../src/shared/fla-character-create-api';
 import {
   clearPendingFlaCharacterCreateCredential,
+  decideFlaCharacterCreateQueryFailure,
+  decideFlaCharacterCreateCommittedOutcome,
+  decideFlaCharacterCreateStatus,
+  decideFlaCharacterNativeClose,
+  isFlaCharacterOperationLocked,
   matchesPendingFlaCharacterCreateOutcome,
   queryPendingFlaCharacterCreateStatus,
   readPendingFlaCharacterCreateRecord,
   samePendingFlaCharacterCreateCredential,
+  shouldBlockFlaCharacterImportClose,
   writePendingFlaCharacterCreateCredential,
   type PendingFlaCharacterCreateCredential,
 } from '../../src/renderer/features/fla-import/fla-character-create-recovery';
@@ -206,5 +212,193 @@ describe('FLA Character create recovery credentials', () => {
       status: 'ERROR',
       error: { code: 'OPERATION_ID_CONFLICT' },
     });
+  });
+
+  it('keeps conflicts, query errors, and unverified recovery-required results locked', () => {
+    const conflict = decideFlaCharacterCreateStatus(credential, {
+      ok: true,
+      status: 'RECOVERY_REQUIRED',
+      operationId: OTHER_OPERATION_ID,
+    });
+    const recoveryRequired = decideFlaCharacterCreateStatus(credential, {
+      ok: true,
+      status: 'RECOVERY_REQUIRED',
+      operationId: OPERATION_ID,
+      message: 'needs recovery',
+    });
+    const queryConflict = decideFlaCharacterCreateQueryFailure('OPERATION_ID_CONFLICT');
+    const queryRecoveryError = decideFlaCharacterCreateQueryFailure('RECOVERY_REQUIRED');
+
+    expect(conflict).toMatchObject({ kind: 'conflict', operationState: 'unknown', canClose: false });
+    expect(recoveryRequired).toMatchObject({
+      kind: 'recovery-required',
+      operationState: 'unknown',
+      canClose: false,
+      shouldClearCredential: false,
+    });
+    expect(queryConflict.canClose).toBe(false);
+    expect(queryConflict.operationState).toBe('unknown');
+    expect(queryRecoveryError.canClose).toBe(false);
+    expect(decideFlaCharacterCreateQueryFailure().operationState).toBe('unknown');
+  });
+
+  it('distinguishes in-progress, verified commit, identity-only reentry, failure, and not-found behavior', () => {
+    const inProgress = decideFlaCharacterCreateStatus(credential, {
+      ok: true,
+      status: 'IN_PROGRESS',
+      operationId: OPERATION_ID,
+    });
+    const identityOnly = decideFlaCharacterCreateStatus(credential, {
+      ok: true,
+      status: 'COMMITTED',
+      result: committedOutcome(),
+    });
+    const identityOnlyWithReentry = decideFlaCharacterCreateStatus(credential, {
+      ok: true,
+      status: 'COMMITTED',
+      result: committedOutcome(),
+    }, { hasVerifiedReentryCredential: true });
+    const mismatchedCommit = decideFlaCharacterCreateStatus(credential, {
+      ok: true,
+      status: 'COMMITTED',
+      result: committedOutcome({ operationId: OTHER_OPERATION_ID }),
+    });
+    const failed = decideFlaCharacterCreateStatus(credential, {
+      ok: true,
+      status: 'FAILED',
+      operationId: OPERATION_ID,
+      error: { code: 'DUPLICATE_CHARACTER_NAME', message: 'duplicate' },
+    });
+    const notFound = decideFlaCharacterCreateStatus(credential, {
+      ok: true,
+      status: 'NOT_FOUND',
+      operationId: OPERATION_ID,
+    });
+
+    expect(inProgress).toMatchObject({ kind: 'in-progress', operationState: 'in-progress', canClose: false });
+    expect(identityOnly).toMatchObject({
+      kind: 'committed-project-not-current',
+      operationState: 'unknown',
+      canClose: false,
+      shouldClearCredential: false,
+    });
+    expect(identityOnlyWithReentry).toMatchObject({
+      kind: 'committed-project-not-current',
+      operationState: 'safe-to-close',
+      canClose: true,
+      nextAction: 'reopen-project-center',
+    });
+    expect(mismatchedCommit).toMatchObject({ kind: 'conflict', operationState: 'unknown', canClose: false });
+    expect(failed).toMatchObject({
+      kind: 'failed',
+      operationState: 'terminal',
+      shouldClearCredential: true,
+      canCreateAfterCredentialClear: true,
+    });
+    expect(notFound).toMatchObject({
+      kind: 'not-found',
+      operationState: 'terminal',
+      shouldClearCredential: true,
+      canCreateAfterCredentialClear: true,
+    });
+  });
+
+  it('keeps a committed result with a stale renderer snapshot pending for verified reentry', () => {
+    const savedProject = { id: credential.projectId, characters: [{ id: 'new-character' }] };
+    const result = committedOutcome({ project: savedProject });
+    const staleSnapshot = {
+      projectRoot: credential.projectRoot,
+      project: { id: credential.projectId, characters: [] },
+      revision: credential.baseRevision,
+    };
+    const currentSnapshot = {
+      projectRoot: credential.projectRoot,
+      project: savedProject,
+      revision: credential.baseRevision + 1,
+    };
+
+    expect(decideFlaCharacterCreateCommittedOutcome(
+      credential,
+      result,
+      staleSnapshot,
+      true,
+    )).toMatchObject({
+      kind: 'committed-project-not-current',
+      operationState: 'safe-to-close',
+      canClose: true,
+      shouldClearCredential: false,
+      nextAction: 'reopen-project-center',
+    });
+    expect(decideFlaCharacterCreateCommittedOutcome(
+      credential,
+      result,
+      staleSnapshot,
+      false,
+    )).toMatchObject({
+      kind: 'committed-project-not-current',
+      operationState: 'unknown',
+      canClose: false,
+      shouldClearCredential: false,
+    });
+    expect(decideFlaCharacterCreateCommittedOutcome(
+      credential,
+      result,
+      currentSnapshot,
+      true,
+    )).toMatchObject({
+      kind: 'committed',
+      operationState: 'terminal',
+      shouldClearCredential: true,
+    });
+  });
+
+  it('locks Escape and drawer close while the create operation is pending', () => {
+    expect(shouldBlockFlaCharacterImportClose('committing', false)).toBe(true);
+    expect(shouldBlockFlaCharacterImportClose('error', true)).toBe(true);
+    expect(shouldBlockFlaCharacterImportClose('preview-ready', false)).toBe(false);
+    expect(isFlaCharacterOperationLocked('safe-to-close', true)).toBe(true);
+    expect(isFlaCharacterOperationLocked('terminal', false)).toBe(false);
+  });
+
+  it('allows native close only for the armed, matching receipt and blocks stale dirty projects', () => {
+    const validRecord = { kind: 'valid' as const, credential };
+    const base = {
+      operationLocked: true,
+      pendingRecord: validRecord,
+      persistedRecord: validRecord,
+      armedOperationId: OPERATION_ID,
+      operationState: 'safe-to-close' as const,
+      currentProject: {
+        projectRoot: credential.projectRoot,
+        projectId: credential.projectId,
+        dirty: false,
+      },
+    };
+
+    expect(decideFlaCharacterNativeClose(base)).toEqual({
+      allowed: true,
+      skipAutosave: true,
+      reason: null,
+    });
+    expect(decideFlaCharacterNativeClose({
+      ...base,
+      currentProject: { ...base.currentProject, dirty: true },
+    })).toMatchObject({ allowed: false, reason: 'dirty-project', skipAutosave: false });
+    expect(decideFlaCharacterNativeClose({
+      ...base,
+      currentProject: { ...base.currentProject, projectId: 'different-project' },
+    })).toMatchObject({ allowed: false, reason: 'project-mismatch' });
+    expect(decideFlaCharacterNativeClose({
+      ...base,
+      persistedRecord: { kind: 'valid', credential: { ...credential, poseIdentity: 'd'.repeat(64) } },
+    })).toMatchObject({ allowed: false, reason: 'credential-mismatch' });
+    expect(decideFlaCharacterNativeClose({
+      ...base,
+      armedOperationId: OTHER_OPERATION_ID,
+    })).toMatchObject({ allowed: false, reason: 'not-armed' });
+    expect(decideFlaCharacterNativeClose({
+      ...base,
+      operationState: 'unknown',
+    })).toMatchObject({ allowed: false, reason: 'not-armed' });
   });
 });
