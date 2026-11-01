@@ -538,11 +538,12 @@ describe('F1-03 FLA Part Character commit', () => {
     expect(status).toMatchObject({ ok: true, status: 'FAILED', error: { code: 'COMMIT_FAILED' } });
   });
 
-  it('recovers the exact saved result when the response fails after the atomic Project save', async () => {
+  it('keeps the committed Project when preview cancellation and response loss happen after the atomic save', async () => {
     const h = await harness();
     const service = h.createService({
       faults: {
         afterProjectSave() {
+          h.setPreviewAvailable(false);
           throw new Error('injected response-loss window');
         },
       },
@@ -550,6 +551,8 @@ describe('F1-03 FLA Part Character commit', () => {
 
     const result = fullResult(await service.commit(h.request()));
     expect(result.savedRevision).toBe(1);
+    expect(h.current.project.characters).toHaveLength(1);
+    expect(await readdir(path.join(h.projectRoot, 'assets'))).toHaveLength(2);
     const status = await service.getStatus({
       format: 'panda-fla-character-create-status',
       version: 1,
