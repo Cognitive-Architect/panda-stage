@@ -44,8 +44,15 @@ const bytesByAsset = new Map();
 const projectOpenEvidence = [];
 const projectSaveEvidence = [];
 const canvasImageReadEvidence = [];
+const rendererDiagnostics = [];
 let fixture;
 let savedProject = null;
+let currentPhase = 'bootstrap';
+
+function setPhase(phase) {
+  currentPhase = phase;
+  console.log('[issue890] phase: ' + phase);
+}
 
 app.on('window-all-closed', () => {});
 
@@ -393,21 +400,24 @@ async function dragRangeValue(window, selector, value, min = 0, max = 100) {
     '(() => { const e=document.querySelector(' + JSON.stringify(selector) + ');' +
       'if (!(e instanceof HTMLInputElement) || e.type!=="range") throw new Error("Missing range: " + ' +
       JSON.stringify(selector) + '); e.scrollIntoView({block:"center",inline:"center"});' +
-      'const toolbar=document.querySelector(\'[data-testid="timeline-toolbar"]\');' +
-      'let r=e.getBoundingClientRect(); const toolbarTop=toolbar?.getBoundingClientRect().top;' +
-      'if(Number.isFinite(toolbarTop)&&r.bottom>=toolbarTop){let p=e.parentElement,scroller=null;' +
-      'while(p){const style=getComputedStyle(p);if(p.scrollHeight>p.clientHeight+1&&/(auto|scroll)/.test(style.overflowY)){scroller=p;break;}p=p.parentElement;}' +
-      'if(scroller)scroller.scrollTop+=r.bottom-toolbarTop+8; r=e.getBoundingClientRect();}' +
-      'const y=Math.round(r.top+r.height/2);' +
       'const parsedThumbWidth=parseFloat(getComputedStyle(e,"::-webkit-slider-thumb").width);' +
-      'const thumbWidth=Number.isFinite(parsedThumbWidth)&&parsedThumbWidth>0&&parsedThumbWidth<r.width/2?parsedThumbWidth:16;' +
-      'const trackLeft=r.left+thumbWidth/2,trackWidth=Math.max(0,r.width-thumbWidth);' +
-      'const x=(v)=>Math.round(trackLeft+(Number(v)-' + min + ')/(' + (max - min) + ')*trackWidth);' +
-      'const from={x:x(e.value),y},to={x:x(' + Number(value) + '),y};' +
+      'const metrics=()=>{const r=e.getBoundingClientRect();const thumbWidth=Number.isFinite(parsedThumbWidth)&&' +
+      'parsedThumbWidth>0&&parsedThumbWidth<r.width/2?parsedThumbWidth:16;const trackLeft=r.left+thumbWidth/2;' +
+      'const trackWidth=Math.max(0,r.width-thumbWidth);const x=(v)=>Math.round(trackLeft+(Number(v)-' + min + ')/(' + (max - min) + ')*trackWidth);' +
+      'const y=Math.round(r.top+r.height/2);const from={x:x(e.value),y},to={x:x(' + Number(value) + '),y};' +
       'const hit=(p)=>{const h=document.elementFromPoint(p.x,p.y);return h?{tag:h.tagName,id:h.id,testId:h.dataset?.testid,className:String(h.className)}:null;};' +
-      'const fromHit=hit(from),toHit=hit(to);if(fromHit?.testId!==e.dataset.testid||toHit?.testId!==e.dataset.testid)' +
-      'throw new Error("Opacity slider is occluded: "+JSON.stringify({from,to,rect:{x:r.x,y:r.y,width:r.width,height:r.height},toolbarTop,fromHit,toHit}));' +
-      'return {from,to,rangeValue:e.value,disabled:e.disabled,rect:{x:r.x,y:r.y,width:r.width,height:r.height},thumbWidth,toolbarTop}; })()',
+      'return {from,to,rect:{x:r.x,y:r.y,width:r.width,height:r.height},thumbWidth,fromHit:hit(from),toHit:hit(to)};};' +
+      'const scrollers=[];for(let p=e.parentElement;p;p=p.parentElement){const style=getComputedStyle(p);' +
+      'if(p.scrollHeight>p.clientHeight+1&&/(auto|scroll)/.test(style.overflowY))scrollers.push(p);}' +
+      'let state=metrics();for(const scroller of scrollers){for(let attempt=0;attempt<8&&' +
+      '(state.fromHit?.testId!==e.dataset.testid||state.toHit?.testId!==e.dataset.testid);attempt++){' +
+      'const maxScroll=Math.max(0,scroller.scrollHeight-scroller.clientHeight);if(scroller.scrollTop>=maxScroll-1)break;' +
+      'scroller.scrollTop=Math.min(maxScroll,scroller.scrollTop+48);state=metrics();}}' +
+      'if(state.fromHit?.testId!==e.dataset.testid||state.toHit?.testId!==e.dataset.testid)' +
+      'throw new Error("Opacity slider is occluded after scrolling: "+JSON.stringify({...state,rangeValue:e.value,' +
+      'disabled:e.disabled,scrollers:scrollers.map(s=>({className:String(s.className),scrollTop:s.scrollTop,' +
+      'scrollHeight:s.scrollHeight,clientHeight:s.clientHeight}))}));' +
+      'return {...state,rangeValue:e.value,disabled:e.disabled,scrollTops:scrollers.map(s=>s.scrollTop)}; })()',
   );
   console.log('[issue890] range drag target: ' + JSON.stringify(diagnostics));
   await browserDrag(window, diagnostics.from, diagnostics.to, 10);
@@ -620,6 +630,32 @@ async function run() {
   window.setSize(1600, 1050);
   window.show();
   window.focus();
+  window.webContents.on('console-message', (_event, detailOrLevel, legacyMessage, legacyLine, legacySourceId) => {
+    const details = detailOrLevel && typeof detailOrLevel === 'object'
+      ? detailOrLevel
+      : { level: detailOrLevel, message: legacyMessage, line: legacyLine, sourceId: legacySourceId };
+    const diagnostic = {
+      type: 'console',
+      level: details.level ?? null,
+      message: String(details.message ?? '').slice(0, 2_000),
+      line: details.line ?? details.lineNumber ?? null,
+      sourceId: details.sourceId ?? null,
+    };
+    if (Number(diagnostic.level) >= 2 && rendererDiagnostics.length < 80) {
+      rendererDiagnostics.push(diagnostic);
+      console.error('[issue890 renderer] ' + JSON.stringify(diagnostic));
+    }
+  });
+  window.webContents.on('render-process-gone', (_event, details) => {
+    const diagnostic = {
+      type: 'render-process-gone',
+      reason: details.reason,
+      exitCode: details.exitCode,
+    };
+    rendererDiagnostics.push(diagnostic);
+    console.error('[issue890 renderer] ' + JSON.stringify(diagnostic));
+  });
+  setPhase('open synthetic project and initialize editor');
   try {
     await openProject(window);
     await waitFor(window, 'document.querySelector(\'[data-testid="timeline-ruler-track"]\')', 'Timeline ruler missing.');
@@ -857,6 +893,7 @@ async function run() {
       'document.querySelector(\'[data-testid="right-inspector-layer-section"]\')?.open === true',
       'Layer controls did not expand in the Inspector.',
     );
+    setPhase('duplicate placement and creation');
     const duplicateStateBefore = await window.webContents.executeJavaScript(`(() => {
       const stage = document.querySelector('[data-testid="project-canvas-stage"]');
       const layers = JSON.parse(stage?.dataset.layerJson || '[]');
@@ -912,6 +949,7 @@ async function run() {
     const duplicateId = duplicate.layer.id;
     assert(duplicate.layer.id !== layerAId && duplicate.layer.id !== layerBId,
       'Duplicate layer ID was not unique.');
+    setPhase('duplicate deletion and History Undo/Redo');
     await click(window, '.layer-delete-button');
     await waitFor(
       window,
@@ -951,6 +989,7 @@ async function run() {
       fixture.assets.length > 21,
     'Synthetic fixture unexpectedly duplicated animation definitions or frame assets.');
 
+    setPhase('scale precision and initial save');
     await seekEditor(window, 1_000);
     editor = await readStageState(window);
     b = animationRecord(editor, layerBId).layer;
@@ -1025,6 +1064,7 @@ async function run() {
       'Save lost one or more shared frame assets.');
     const historyBeforePreview = await historyState(window);
 
+    setPhase('Product Preview open and readiness');
     await click(window, '[data-testid="quick-action-play"]');
     await waitFor(
       window,
@@ -1033,6 +1073,7 @@ async function run() {
       'Product Preview did not become active and ready.',
       30_000,
     );
+    setPhase('Product Preview pause and deterministic seek');
     const previewPlayingBeforeSeek = await window.webContents.executeJavaScript(
       'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewPlaying==="true"',
     );
@@ -1051,6 +1092,7 @@ async function run() {
         'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewPlaying==="false"',
       'Product Preview did not seek to its start.',
     );
+    setPhase('Product Preview continuous playback');
     await click(window, '[data-testid="product-preview-play-pause"]');
     await waitFor(
       window,
@@ -1076,6 +1118,7 @@ async function run() {
     }));
     assert(continuousB.visual?.visible === false,
       'Once+hide instance B remained visible after its 840ms cycle.');
+    setPhase('Product Preview pause, replay, and reverse seek');
     await click(window, '[data-testid="product-preview-play-pause"]');
     await waitFor(
       window,
@@ -1148,6 +1191,7 @@ async function run() {
     assert(nearColor(pixelA, [...colors[5], 255]) && nearColor(pixelB, [...colors[1], 255]),
       'Preview pixels did not match independently evaluated source frames: ' + JSON.stringify({ pixelA, pixelB }));
 
+    setPhase('Product Preview history and close');
     const historyAfterPreview = await historyState(window);
     assert(JSON.stringify(historyAfterPreview) === JSON.stringify(historyBeforePreview),
       'Preview play, pause, replay, or seek created a History entry.');
@@ -1162,15 +1206,30 @@ async function run() {
     );
     assert(isCleanAfterPreview, 'Preview play/seek changed the saved Project dirty state.');
 
+    setPhase('animation opacity edit and save');
     await seekEditor(window, 0);
     editor = await readStageState(window);
     a = animationRecord(editor, layerAId).layer;
     await clickPoint(window, await canvasPoint(window, a.x, a.y));
     await waitFor(
       window,
-      'document.querySelector(\'[data-testid="layer-transform-panel"]\')?.dataset.selectedLayerId==="' + layerAId + '"&&' +
-        'document.querySelector(\'[data-testid="layer-opacity-range"]\')&&!document.querySelector(\'[data-testid="layer-opacity-range"]\').disabled',
-      'Animation opacity control was not editable at the animation start.',
+      'document.querySelector(\'[data-testid="layer-transform-panel"]\')?.dataset.selectedLayerId==="' + layerAId + '"',
+      'Could not select animation layer A at the animation start.',
+    );
+    const appearanceSectionOpen = await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-testid="right-inspector-appearance-section"]\')?.open===true',
+    );
+    if (!appearanceSectionOpen) {
+      await click(window, '[data-testid="right-inspector-appearance-section"] > summary');
+    }
+    await waitFor(
+      window,
+      '(() => { const section=document.querySelector(\'[data-testid="right-inspector-appearance-section"]\');' +
+        'const input=document.querySelector(\'[data-testid="layer-opacity-range"]\');' +
+        'if(!section?.open||!input||input.disabled)return false;' +
+        'const style=getComputedStyle(input),rect=input.getBoundingClientRect();' +
+        'return style.display!=="none"&&style.visibility!=="hidden"&&rect.width>0&&rect.height>0; })()',
+      'Animation opacity control was not visible and editable after opening Appearance.',
     );
     await waitFor(
       window,
@@ -1209,6 +1268,7 @@ async function run() {
       Math.abs(opacitySavedLayers.find((layer) => layer.id === layerBId)?.scaleX - 1.79986731171) < 1e-12,
     'Saving animation opacity changed its value or the other instance exact scale.');
 
+    setPhase('project close, reopen, and final assertions');
     const openCountBeforeClose = projectOpenEvidence.length;
     await click(window, '[data-testid="quick-action-close"]');
     await waitFor(
@@ -1233,12 +1293,59 @@ async function run() {
     assert(Math.abs(reopenedA.layer.opacity - 0.65) < 0.002,
       'Reopen did not restore the saved animation opacity.');
     await seekEditor(window, 1_000);
+    await waitFor(
+      window,
+      '(() => { const stage=document.querySelector(\'[data-testid="project-canvas-stage"]\');' +
+        'const ready=JSON.parse(stage?.dataset.targetReadyLayerIds||"[]");' +
+        'const evaluated=JSON.parse(stage?.dataset.evaluatedLayerJson||"[]");' +
+        'return ready.includes("' + layerBId + '")&&evaluated.some(layer=>layer.id==="' + layerBId + '"&&layer.visible); })()',
+      'Reopened animation instance B was not ready for selection at its start time.',
+      30_000,
+    );
     const reopenedBPoint = await canvasPoint(window, reopenedB.layer.x, reopenedB.layer.y);
     await clickPoint(window, reopenedBPoint);
     await waitFor(
       window,
+      'document.querySelector(\'[data-testid="project-canvas-stage"]\')?.dataset.selectedLayerId==="' + layerBId + '"',
+      'Could not select reopened animation instance B at its start time.',
+    );
+    const activeRightActivity = await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-testid="right-workspace"]\')?.dataset.activeActivity??null',
+    );
+    if (activeRightActivity !== null && activeRightActivity !== 'properties') {
+      await click(window, '[data-testid="right-activity-rail-properties"]');
+    } else if (activeRightActivity === null) {
+      const inspectorDrawerOpen = await window.webContents.executeJavaScript(
+        'document.querySelector(\'[data-testid="right-inspector"]\')?.dataset.drawerOpen==="true"',
+      );
+      if (!inspectorDrawerOpen) {
+        await click(window, '[data-testid="inspector-rail-handle"]');
+      }
+    }
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="right-workspace"]\')?.dataset.activeActivity==="properties"||' +
+        'document.querySelector(\'[data-testid="right-inspector"]\')?.dataset.drawerOpen==="true"',
+      'Properties workspace did not open for the reopened animation instance.',
+    );
+    await waitFor(
+      window,
       'document.querySelector(\'[data-testid="layer-transform-panel"]\')?.dataset.selectedLayerId==="' + layerBId + '"&&' +
-        'document.querySelector(\'[data-testid="layer-transform-scale"] input\')?.value==="180"',
+        'document.querySelector(\'[data-testid="layer-transform-scale"] input\')',
+      'Reopened animation instance B did not appear in the Properties workspace.',
+    );
+    const reopenedScaleUiState = await window.webContents.executeJavaScript(
+      '(() => { const panel=document.querySelector(\'[data-testid="layer-transform-panel"]\');' +
+        'const input=document.querySelector(\'[data-testid="layer-transform-scale"] input\');' +
+        'const layer=JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\')?.dataset.layerJson||"[]")' +
+        '.find(item=>item.id==="' + layerBId + '");' +
+        'return {selectedLayerId:panel?.dataset.selectedLayerId,scaleInputValue:input?.value,' +
+        'scaleInputDisabled:input?.disabled,savedScaleX:layer?.scaleX}; })()',
+    );
+    console.log('[issue890] reopened scale UI state: ' + JSON.stringify(reopenedScaleUiState));
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="layer-transform-scale"] input\')?.value==="180"',
       'Reopened scale did not render as a concise percentage without changing the saved value.',
     );
     const hiddenAt2000 = await seekEditor(window, 2_000);
@@ -1363,13 +1470,15 @@ async function main() {
     const failure = {
       issue: 890,
       passed: false,
+      phase: currentPhase,
       error: error instanceof Error ? error.stack ?? error.message : String(error),
+      rendererDiagnostics,
       evidence,
       projectRoot,
     };
     mkdirSync(evidence, { recursive: true });
     writeFileSync(resultPath, JSON.stringify(failure, null, 2));
-    console.error('[issue890] ' + failure.error);
+    console.error('[issue890] phase=' + currentPhase + ' ' + failure.error);
     process.exitCode = 1;
   } finally {
     app.quit();
