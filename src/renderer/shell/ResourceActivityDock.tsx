@@ -61,6 +61,8 @@ export interface ResourceActivityDockProps {
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
   onCreateFlaCharacter?: CreateFlaCharacter;
   onQueryFlaCharacterCreateStatus?: QueryFlaCharacterCreateStatus;
+  flaCharacterRecoveryAction?: React.JSX.Element | null;
+  flaCharacterRecoveryBusy?: boolean;
   onFlaCharacterImportStart?(): void;
   onFlaCharacterCommitStateChange?(committing: boolean): void;
   /** Hide redundant section labels only for portrait resource surfaces. */
@@ -127,6 +129,8 @@ export function ResourceActivityDock({
   adaptivePartsActionsRef,
   onCreateFlaCharacter,
   onQueryFlaCharacterCreateStatus,
+  flaCharacterRecoveryAction,
+  flaCharacterRecoveryBusy,
   onFlaCharacterImportStart,
   onFlaCharacterCommitStateChange,
   hideSectionLabels = false,
@@ -728,6 +732,8 @@ export function ResourceActivityDock({
                 onCloseFlaCharacterImport={closeFlaCharacterImport}
                 onCreateFlaCharacter={onCreateFlaCharacter}
                 onQueryFlaCharacterCreateStatus={onQueryFlaCharacterCreateStatus}
+                flaCharacterRecoveryAction={flaCharacterRecoveryAction}
+                flaCharacterRecoveryBusy={flaCharacterRecoveryBusy}
                 onFlaCharacterCommitStateChange={setFlaCharacterCommitState}
                 onViewChange={setCharacterView}
                 presentation={

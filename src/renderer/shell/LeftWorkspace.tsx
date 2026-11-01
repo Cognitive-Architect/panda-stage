@@ -21,6 +21,8 @@ export interface LeftWorkspaceProps {
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
   onCreateFlaCharacter?: CreateFlaCharacter;
   onQueryFlaCharacterCreateStatus: QueryFlaCharacterCreateStatus;
+  flaCharacterRecoveryAction?: React.JSX.Element | null;
+  flaCharacterRecoveryBusy?: boolean;
   onFlaCharacterImportStart?(): void;
   onFlaCharacterCommitStateChange?(committing: boolean): void;
   onOpenRecentProject(
@@ -40,6 +42,8 @@ export function LeftWorkspace({
   adaptivePartsActionsRef,
   onCreateFlaCharacter,
   onQueryFlaCharacterCreateStatus,
+  flaCharacterRecoveryAction,
+  flaCharacterRecoveryBusy,
   onFlaCharacterImportStart,
   onFlaCharacterCommitStateChange,
   onOpenRecentProject,
@@ -78,6 +82,8 @@ export function LeftWorkspace({
         onDrawerOpenChange={onDrawerOpenChange}
         onCreateFlaCharacter={onCreateFlaCharacter}
         onQueryFlaCharacterCreateStatus={onQueryFlaCharacterCreateStatus}
+        flaCharacterRecoveryAction={flaCharacterRecoveryAction}
+        flaCharacterRecoveryBusy={flaCharacterRecoveryBusy}
         onFlaCharacterImportStart={onFlaCharacterImportStart}
         onFlaCharacterCommitStateChange={onFlaCharacterCommitStateChange}
         presentation={shellMode === 'landscape' ? 'landscape' : 'default'}

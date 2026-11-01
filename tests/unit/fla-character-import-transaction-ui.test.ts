@@ -39,6 +39,8 @@ describe('F1-04 import transaction UI safeguards', () => {
     expect(pendingBranch).toContain('await queryCharacterStatus();');
     expect(pendingBranch).toContain('return;');
     expect(flow).toContain('onQueryCharacterCreateStatus(');
+    expect(flow).toContain("operationOutcome === 'RECOVERY_REQUIRED' && recoveryAction");
+    expect(flow).toContain('hasPendingOperation && phase !== \'committing\' && !recoveryBusy');
     expect(flow).toContain(
       "if (phaseRef.current === 'committing' || pendingCreateOperationRef.current) return;",
     );

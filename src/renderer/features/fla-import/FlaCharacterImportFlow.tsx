@@ -153,7 +153,7 @@ function safeCreateErrorMessage(code: FlaCharacterCreateErrorCode | undefined): 
     case 'OPERATION_IN_PROGRESS':
       return '保存仍在进行。本次操作内容已锁定，请查询保存结果。';
     case 'OPERATION_ID_CONFLICT':
-      return '保存编号发生冲突，已停止创建。请查询保存结果并核对角色列表。';
+      return '保存编号发生冲突，已停止创建。请查询本次保存结果；确认前不要重复创建。';
     case 'UNSUPPORTED_CAPABILITY':
     case 'INVALID_REQUEST':
       return '当前预览无法用于创建，请重新准备角色。';
@@ -185,6 +185,8 @@ export interface FlaCharacterImportFlowProps {
   onCreateCharacter: CreateFlaCharacter;
   onQueryCharacterCreateStatus: QueryFlaCharacterCreateStatus;
   onCommittingChange?(committing: boolean): void;
+  recoveryAction?: React.JSX.Element | null;
+  recoveryBusy?: boolean;
   onCreatedCharacter: (characterId: string) => boolean;
   onClose: () => void;
 }
@@ -195,6 +197,8 @@ export function FlaCharacterImportFlow({
   onCreateCharacter,
   onQueryCharacterCreateStatus,
   onCommittingChange,
+  recoveryAction,
+  recoveryBusy = false,
   onCreatedCharacter,
   onClose,
 }: FlaCharacterImportFlowProps): React.JSX.Element | null {
@@ -719,7 +723,7 @@ export function FlaCharacterImportFlow({
 
   const queryCharacterStatus = async (): Promise<void> => {
     const pending = pendingCreateOperationRef.current;
-    if (!pending || phaseRef.current === 'committing') return;
+    if (!pending || phaseRef.current === 'committing' || recoveryBusy) return;
     transition('committing');
     setStatusMessage('正在查询保存结果…');
     onCommittingChange?.(true);
@@ -736,27 +740,41 @@ export function FlaCharacterImportFlow({
       }
       if (status.ok && status.status === 'IN_PROGRESS') {
         setOperationOutcome('IN_PROGRESS');
-        setStatusMessage(status.message ?? safeCreateErrorMessage('OPERATION_IN_PROGRESS'));
+        setStatusMessage(safeCreateErrorMessage('OPERATION_IN_PROGRESS'));
         transition('error');
         return;
       }
       if (status.ok && status.status === 'RECOVERY_REQUIRED') {
         setOperationOutcome('RECOVERY_REQUIRED');
-        setStatusMessage(status.message ?? safeCreateErrorMessage('RECOVERY_REQUIRED'));
+        setStatusMessage(safeCreateErrorMessage('RECOVERY_REQUIRED'));
         transition('error');
         return;
       }
       if (status.ok && status.status === 'FAILED') {
-        if (status.error.code === 'OPERATION_ID_CONFLICT') {
-          setOperationOutcome('OPERATION_ID_CONFLICT');
-          setStatusMessage(safeCreateErrorMessage('OPERATION_ID_CONFLICT'));
+        if (
+          status.error.code === 'OPERATION_ID_CONFLICT' ||
+          status.error.code === 'OPERATION_IN_PROGRESS' ||
+          status.error.code === 'RECOVERY_REQUIRED'
+        ) {
+          setOperationOutcome(
+            status.error.code === 'OPERATION_IN_PROGRESS'
+              ? 'IN_PROGRESS'
+              : status.error.code,
+          );
+          setStatusMessage(safeCreateErrorMessage(status.error.code));
           transition('error');
           return;
         }
         pendingCreateOperationRef.current = null;
         operationIdRef.current = null;
         setOperationOutcome('FAILED');
-        setStatusMessage(status.error.message);
+        setStatusMessage(safeCreateErrorMessage(status.error.code));
+        if (status.error.code === 'PLAN_EXPIRED' || status.error.code === 'STALE_PROJECT') {
+          setPreview(null);
+          if (status.error.code === 'STALE_PROJECT') invalidatedRef.current = true;
+          transition('error');
+          return;
+        }
         transition('preview-ready');
         return;
       }
@@ -920,7 +938,7 @@ export function FlaCharacterImportFlow({
     Boolean(editablePreview) &&
     name.trim().length > 0 &&
     !invalidatedRef.current;
-  const canQueryStatus = hasPendingOperation && phase !== 'committing';
+  const canQueryStatus = hasPendingOperation && phase !== 'committing' && !recoveryBusy;
   const createLabel = hasPendingOperation
     ? '查询保存结果'
     : operationOutcome === 'FAILED' || operationOutcome === 'NOT_FOUND'
@@ -1062,7 +1080,9 @@ export function FlaCharacterImportFlow({
             </div>
 
             <div className="fla-character-import-preview-canvas" data-testid="fla-character-import-preview">
-              {previewImages && phase === 'preview-ready' && previewImages.reassembled ? (
+              {operationOutcome === 'RECOVERY_REQUIRED' && recoveryAction ? (
+                recoveryAction
+              ) : previewImages && phase === 'preview-ready' && previewImages.reassembled ? (
                 <img
                   alt="角色零件重组预览"
                   className="fla-character-import-reassembled"

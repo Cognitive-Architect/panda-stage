@@ -2289,6 +2289,17 @@ export function EditorShell({
                 adaptivePartsActionsRef={adaptivePartsActionsRef}
                 onCreateFlaCharacter={createFlaCharacter}
                 onQueryFlaCharacterCreateStatus={queryFlaCreateStatus}
+                flaCharacterRecoveryAction={
+                  recoveryCandidate && projectSnapshot ? (
+                    <RecoveryCandidateBanner
+                      busy={busy}
+                      candidate={recoveryCandidate}
+                      onIgnore={ignoreRecovery}
+                      onRestore={restoreRecovery}
+                    />
+                  ) : null
+                }
+                flaCharacterRecoveryBusy={busy}
                 onFlaCharacterCommitStateChange={setFlaCharacterCommitActive}
                 onFlaCharacterImportStart={() => {
                   setPortraitWorkspace('canvas');

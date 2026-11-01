@@ -131,6 +131,8 @@ export interface CharacterManagerProps {
   onCreateFlaCharacter?: CreateFlaCharacter;
   onQueryFlaCharacterCreateStatus?: QueryFlaCharacterCreateStatus;
   onFlaCharacterCommitStateChange?(committing: boolean): void;
+  flaCharacterRecoveryAction?: React.JSX.Element | null;
+  flaCharacterRecoveryBusy?: boolean;
 }
 
 export interface AdaptivePartsAssemblyActionResult {
@@ -271,6 +273,8 @@ export function CharacterManager({
   onCreateFlaCharacter,
   onQueryFlaCharacterCreateStatus,
   onFlaCharacterCommitStateChange,
+  flaCharacterRecoveryAction,
+  flaCharacterRecoveryBusy = false,
 }: CharacterManagerProps): React.JSX.Element {
   const service = useMemo(() => new CharacterService(), []);
   const [selectedCharacterId, setSelectedCharacterId] = useState<
@@ -841,6 +845,8 @@ export function CharacterManager({
           onCommittingChange={onFlaCharacterCommitStateChange}
           onCreateCharacter={onCreateFlaCharacter}
           onQueryCharacterCreateStatus={onQueryFlaCharacterCreateStatus}
+          recoveryAction={flaCharacterRecoveryAction}
+          recoveryBusy={flaCharacterRecoveryBusy}
           onCreatedCharacter={openCreatedAdaptiveCharacter}
           snapshot={snapshot}
         />
