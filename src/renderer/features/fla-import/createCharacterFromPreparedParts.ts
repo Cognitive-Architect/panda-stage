@@ -6,6 +6,7 @@ import type {
   FlaCharacterCreateStatusRequest,
   FlaCharacterCreateStatusResponse,
   FlaCharacterCreateOutcome,
+  FlaCharacterCreateErrorCode,
 } from '../../../shared/fla-character-create-api';
 import {
   EditorProjectStore,
@@ -20,6 +21,16 @@ type EditablePartPreview = Extract<
 
 function hasProjectSnapshot(result: FlaCharacterCreateOutcome): result is FlaCharacterCreateResult {
   return Object.prototype.hasOwnProperty.call(result, 'project');
+}
+
+export class FlaCharacterCreateOperationError extends Error {
+  public constructor(
+    message: string,
+    public readonly code?: FlaCharacterCreateErrorCode,
+  ) {
+    super(message);
+    this.name = 'FlaCharacterCreateOperationError';
+  }
 }
 
 export interface FlaCharacterCreateApi {
@@ -38,7 +49,7 @@ export interface CreateCharacterFromPreparedPartsOptions {
 
 export async function createCharacterFromPreparedParts(
   options: CreateCharacterFromPreparedPartsOptions,
-): Promise<FlaCharacterCreateResult> {
+): Promise<FlaCharacterCreateOutcome> {
   const store = options.store ?? editorProjectStore;
   const snapshot = store.getSnapshot();
   const openInstanceId = store.getProjectInstanceId();
@@ -100,23 +111,39 @@ export async function createCharacterFromPreparedParts(
       } else if (status.ok && status.status === 'IN_PROGRESS') {
         const settled = await options.api.getCharacterCreateStatus(statusRequest);
         if (settled.ok && settled.status === 'COMMITTED') result = settled.result;
-        else throw new Error(status.message ?? 'The Character operation is still running; query its status before retrying.');
+        else throw new FlaCharacterCreateOperationError(
+          status.message ?? 'The Character operation is still running; query its status before retrying.',
+          'OPERATION_IN_PROGRESS',
+        );
       } else if (status.ok && status.status === 'RECOVERY_REQUIRED') {
-        throw new Error(status.message ?? 'The Character operation needs recovery before it can be retried.');
+        throw new FlaCharacterCreateOperationError(
+          status.message ?? 'The Character operation needs recovery before it can be retried.',
+          'RECOVERY_REQUIRED',
+        );
       } else if (status.ok && status.status === 'FAILED') {
-        throw new Error(status.error.message);
+        throw new FlaCharacterCreateOperationError(status.error.message, status.error.code);
       } else if (status.ok && status.status === 'NOT_FOUND') {
         const errorMessage = response && !response.ok
           ? response.error.message
           : 'The Main Process has no receipt for the confirmed Character operation.';
-        throw new Error(errorMessage);
+        throw new FlaCharacterCreateOperationError(
+          errorMessage,
+          response && !response.ok ? response.error.code : undefined,
+        );
       } else {
-        throw new Error(status.ok ? 'The Character operation status is unavailable.' : status.error.message);
+        throw new FlaCharacterCreateOperationError(
+          status.ok ? 'The Character operation status is unavailable.' : status.error.message,
+          status.ok ? undefined : status.error.code,
+        );
       }
     }
 
     if (!hasProjectSnapshot(result)) {
-      throw new Error('This Character operation was already committed, but its saved Project snapshot is no longer current. Refresh the Project and inspect its Characters before retrying.');
+      // The commit is confirmed, but the renderer cannot safely accept an
+      // identity-only receipt over its current Project snapshot. Return the
+      // exact identity so the UI can report the saved Character without
+      // retrying the commit or replacing newer renderer state.
+      return result;
     }
 
     if (

@@ -41,6 +41,7 @@ import { shotStore } from '../stores/shotStore';
 import { characterAssemblySessionStore } from '../stores/characterAssemblySessionStore';
 import { CharacterAssemblyWorkbench } from '../features/characters/CharacterAssemblyWorkbench';
 import { createCharacterFromPreparedParts } from '../features/fla-import/createCharacterFromPreparedParts';
+import type { CreateFlaCharacter } from '../features/fla-import/FlaCharacterImportFlow';
 import type { AdaptivePartsAssemblyActionsRef } from '../features/characters/CharacterManager';
 import { PendingDialoguePlacementProvider } from '../features/timeline/PendingDialoguePlacement';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
@@ -472,6 +473,25 @@ export function EditorShell({
     shotStore.getCurrentShotId,
   );
   const [session] = useState(createBrowserSession);
+  const createFlaCharacter = useCallback<CreateFlaCharacter>(
+    async (preview, name, operationId) => {
+      session.assertNoControllerTransition();
+      return createCharacterFromPreparedParts({
+        preview,
+        name,
+        operationId,
+        api: window.pandaStage.fla,
+        store: editorProjectStore,
+        ensureMainSnapshot: async (currentSnapshot) => {
+          session.assertNoControllerTransition();
+          const response = await session.syncAutosave(currentSnapshot);
+          if (response && !response.ok) throw new Error(response.error.message);
+          session.assertNoControllerTransition();
+        },
+      });
+    },
+    [session],
+  );
   const [sessionSnapshot, setSessionSnapshot] = useState(() =>
     session.getSnapshot(),
   );
@@ -2237,6 +2257,12 @@ export function EditorShell({
             >
               <LeftWorkspace
                 adaptivePartsActionsRef={adaptivePartsActionsRef}
+                onCreateFlaCharacter={createFlaCharacter}
+                onFlaCharacterImportStart={() => {
+                  setPortraitWorkspace('canvas');
+                  setPortraitResourceActivity('characters');
+                  setPortraitCanvasSurface('shots');
+                }}
                 activeActivity={
                   isPortrait
                     ? assemblyActive

@@ -41,6 +41,11 @@ import {
 import { CharacterEditor } from './CharacterEditor';
 import { CharacterList } from './CharacterList';
 import {
+  FlaCharacterImportFlow,
+  type CreateFlaCharacter,
+  type FlaCharacterImportAttempt,
+} from '../fla-import/FlaCharacterImportFlow';
+import {
   ASSEMBLY_DISCARD_CONFIRM_MESSAGE,
   isCharacterAssemblyPending,
   isAdaptivePartsAssemblySnapshot,
@@ -120,6 +125,9 @@ export interface CharacterManagerProps {
   /** Keep drawer close owned by ResourceActivityDock while sharing the detail header. */
   onCloseDrawer?: () => void;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
+  flaCharacterImportAttempt?: FlaCharacterImportAttempt | null;
+  onCloseFlaCharacterImport?: () => void;
+  onCreateFlaCharacter?: CreateFlaCharacter;
 }
 
 export interface AdaptivePartsAssemblyActionResult {
@@ -255,6 +263,9 @@ export function CharacterManager({
   modeSwitchTarget = null,
   onCloseDrawer = () => undefined,
   adaptivePartsActionsRef,
+  flaCharacterImportAttempt = null,
+  onCloseFlaCharacterImport = () => undefined,
+  onCreateFlaCharacter,
 }: CharacterManagerProps): React.JSX.Element {
   const service = useMemo(() => new CharacterService(), []);
   const [selectedCharacterId, setSelectedCharacterId] = useState<
@@ -281,6 +292,7 @@ export function CharacterManager({
     shotStore.getCurrentShotId,
   );
   const [status, setStatus] = useState('');
+  const [pendingImportedCharacterId, setPendingImportedCharacterId] = useState<string | null>(null);
   const [bindingReminderCount, setBindingReminderCount] = useState<
     number | null
   >(null);
@@ -534,7 +546,10 @@ export function CharacterManager({
   };
 
   const openAssembly = (characterId: string | null = selectedCharacterId): boolean => {
-    const character = characters.find((candidate) => candidate.id === characterId);
+    const currentProject = editorProjectStore.getSnapshot()?.project;
+    const character =
+      characters.find((candidate) => candidate.id === characterId) ??
+      currentProject?.characters.find((candidate) => candidate.id === characterId);
     if (!character) return false;
     const result = character.mode === 'adaptive-parts'
       ? characterAssemblySessionStore.beginAdaptiveParts(character.id)
@@ -646,6 +661,41 @@ export function CharacterManager({
     setSelectedCharacterId(characterId);
     return true;
   };
+
+  const openCreatedAdaptiveCharacter = (characterId: string): boolean => {
+    const currentProject = editorProjectStore.getSnapshot()?.project;
+    const character = currentProject?.characters.find(
+      (candidate) => candidate.id === characterId,
+    );
+    if (!character || character.mode !== 'adaptive-parts') {
+      setPendingImportedCharacterId(characterId);
+      return false;
+    }
+    setSelectedCharacterId(characterId);
+    if (!openAssembly(characterId)) {
+      setStatus('角色已保存，可从角色列表打开。');
+      return false;
+    }
+    setStatus('');
+    return true;
+  };
+
+  useEffect(() => {
+    if (!pendingImportedCharacterId) return;
+    const character = characters.find(
+      (candidate) => candidate.id === pendingImportedCharacterId,
+    );
+    if (!character || character.mode !== 'adaptive-parts') return;
+    setSelectedCharacterId(character.id);
+    if (openAssembly(character.id)) onCloseFlaCharacterImport();
+    else setStatus('角色已保存，可从角色列表打开。');
+    setPendingImportedCharacterId(null);
+  }, [
+    characters,
+    onCloseFlaCharacterImport,
+    openAssembly,
+    pendingImportedCharacterId,
+  ]);
 
   const updateAssembly = (
     update: Parameters<CharacterAssemblySessionHandle['updateDraft']>[0],
@@ -775,6 +825,15 @@ export function CharacterManager({
             </span>
           </div>
         </div>
+      ) : null}
+      {view === 'list' && flaCharacterImportAttempt && onCreateFlaCharacter ? (
+        <FlaCharacterImportFlow
+          attempt={flaCharacterImportAttempt}
+          onClose={onCloseFlaCharacterImport}
+          onCreateCharacter={onCreateFlaCharacter}
+          onCreatedCharacter={openCreatedAdaptiveCharacter}
+          snapshot={snapshot}
+        />
       ) : null}
       <div
         className="character-workspace"

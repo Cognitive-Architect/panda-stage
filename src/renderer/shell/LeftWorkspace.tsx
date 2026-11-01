@@ -2,6 +2,7 @@ import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { ProjectRecoveryPanel } from '../features/recovery/ProjectRecoveryPanel';
 import { ResourceActivityDock } from './ResourceActivityDock';
 import type { ResourceActivity } from './ResourceActivityDock';
+import type { CreateFlaCharacter } from '../features/fla-import/FlaCharacterImportFlow';
 import type { AdaptivePartsAssemblyActionsRef } from '../features/characters/CharacterManager';
 import { LegacyCompatibilityActivity } from './LegacyCompatibilityActivity';
 import type { EditorShellLayoutMode } from './adaptiveEditorShell';
@@ -15,6 +16,8 @@ export interface LeftWorkspaceProps {
   activeActivity?: ResourceActivity;
   onActiveActivityChange?(activity: ResourceActivity): void;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
+  onCreateFlaCharacter?: CreateFlaCharacter;
+  onFlaCharacterImportStart?(): void;
   onOpenRecentProject(
     projectRoot: string,
     expectedProjectId: string,
@@ -30,6 +33,8 @@ export function LeftWorkspace({
   activeActivity,
   onActiveActivityChange,
   adaptivePartsActionsRef,
+  onCreateFlaCharacter,
+  onFlaCharacterImportStart,
   onOpenRecentProject,
 }: LeftWorkspaceProps): React.JSX.Element {
   const projectUtilities = (
@@ -64,6 +69,8 @@ export function LeftWorkspace({
         key={`resource:${projectSnapshot.projectRoot}`}
         onActiveActivityChange={onActiveActivityChange}
         onDrawerOpenChange={onDrawerOpenChange}
+        onCreateFlaCharacter={onCreateFlaCharacter}
+        onFlaCharacterImportStart={onFlaCharacterImportStart}
         presentation={shellMode === 'landscape' ? 'landscape' : 'default'}
         snapshot={projectSnapshot}
       />
