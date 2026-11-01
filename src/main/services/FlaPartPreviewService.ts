@@ -565,6 +565,38 @@ export interface FlaPreparedPartBatch {
   readonly partPngBytes: number;
 }
 
+export interface FlaPreparedPartBatchMetadata {
+  readonly plan: FlaPartPlan;
+  readonly identity: FlaPreparedPartBatch['identity'];
+  readonly parts: readonly (Omit<FlaPreparedPartBatchPart, 'image'> & {
+    readonly image: Omit<FlaPreparedPartBatchImage, 'bytes'>;
+  })[];
+  readonly partPngBytes: number;
+}
+
+export function flaPreparedPartBatchMetadata(
+  batch: FlaPreparedPartBatch,
+): FlaPreparedPartBatchMetadata {
+  return {
+    plan: structuredClone(batch.plan),
+    identity: structuredClone(batch.identity),
+    parts: batch.parts.map((part) => ({
+      unitId: part.unitId,
+      occurrenceId: part.occurrenceId,
+      drawOrder: part.drawOrder,
+      stageMapping: structuredClone(part.stageMapping),
+      image: {
+        width: part.image.width,
+        height: part.image.height,
+        pixelCount: part.image.pixelCount,
+        sha256: part.image.sha256,
+        byteLength: part.image.byteLength,
+      },
+    })),
+    partPngBytes: batch.partPngBytes,
+  };
+}
+
 interface HeldPartPreviewResult {
   readonly plan: FlaPartPlan;
   readonly parts: readonly FlaPartPreviewPart[] | null;
@@ -740,6 +772,51 @@ export class FlaPartPreviewService {
         },
       },
       parts,
+      partPngBytes: held.partPngBytes,
+    };
+  }
+
+  /** Main-only validity recheck that never clones or returns the retained PNG bytes. */
+  getPreparedBatchMetadata(
+    planId: string,
+    sessionId: string,
+    generation: number,
+  ): FlaPreparedPartBatchMetadata | null {
+    const held = this.getValidHeldResult();
+    if (!held || held.plan.planId !== planId || held.plan.sessionId !== sessionId ||
+        held.plan.generation !== generation || held.plan.capability !== 'EDITABLE_PARTS_READY' || !held.parts) {
+      return null;
+    }
+    const plan = structuredClone(held.plan);
+    return {
+      plan,
+      identity: {
+        planId: plan.planId,
+        sessionId: plan.sessionId,
+        requestId: plan.requestId,
+        generation: plan.generation,
+        rawSourceSha256: plan.source.rawSha256,
+        normalizedSourceSha256: plan.source.normalizedSha256,
+        poseIdentity: plan.poseIdentity,
+        target: {
+          renderTargetId: plan.target.renderTargetId,
+          sceneIndex: plan.target.sceneIndex,
+          selectedFrameIndex: plan.target.selectedFrameIndex,
+        },
+      },
+      parts: held.parts.map((part) => ({
+        unitId: part.unitId,
+        occurrenceId: part.occurrenceId,
+        drawOrder: part.drawOrder,
+        stageMapping: structuredClone(plan.units[part.drawOrder]!.stageMapping),
+        image: {
+          width: part.image.width,
+          height: part.image.height,
+          pixelCount: part.image.pixelCount,
+          sha256: part.image.sha256,
+          byteLength: part.image.byteLength,
+        },
+      })),
       partPngBytes: held.partPngBytes,
     };
   }

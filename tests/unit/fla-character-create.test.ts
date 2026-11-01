@@ -6,11 +6,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ProjectService } from '../../src/main/services/ProjectService';
 import { FlaCharacterCreateService, type FlaCharacterCreateProjectSnapshot } from '../../src/main/services/FlaCharacterCreateService';
 import type { FlaPartPlan } from '../../src/shared/fla-part-preview-api';
-import type { FlaPreparedPartBatch } from '../../src/main/services/FlaPartPreviewService';
+import { flaPreparedPartBatchMetadata, type FlaPreparedPartBatch } from '../../src/main/services/FlaPartPreviewService';
 import { FlaPartPreviewService } from '../../src/main/services/FlaPartPreviewService';
 import { HashService } from '../../src/main/services/HashService';
 import { AssetImportFileSystemService } from '../../src/main/services/AssetImportFileSystemService';
 import { FlaCharacterCreateJournalService } from '../../src/main/services/FlaCharacterCreateJournalService';
+import { ProjectFileSystemService } from '../../src/main/services/ProjectFileSystemService';
+import type { FlaCharacterCreateOutcome, FlaCharacterCreateResult } from '../../src/shared/fla-character-create-api';
 
 const TEMP_DIRS: string[] = [];
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -21,6 +23,11 @@ const OPERATION_ID = '90800000-0000-4000-8000-000000000004';
 const SECOND_OPERATION_ID = '90800000-0000-4000-8000-000000000005';
 const OPEN_INSTANCE_ID = 17;
 const RENDER_TARGET_ID = 'fla-render-target-908000000001';
+
+function fullResult(result: FlaCharacterCreateOutcome): FlaCharacterCreateResult {
+  if (!('project' in result)) throw new Error('Expected a committed result with its exact Project snapshot.');
+  return result as FlaCharacterCreateResult;
+}
 
 function crc32(bytes: Buffer): number {
   let crc = 0xffffffff;
@@ -152,6 +159,8 @@ interface Harness {
   projectRoot: string;
   projectService: ProjectService;
   current: FlaCharacterCreateProjectSnapshot;
+  setPreviewAvailable: (available: boolean) => void;
+  invalidateAtNextAtomicReplace: () => void;
   createService: (options?: {
     files?: AssetImportFileSystemService;
     faults?: ConstructorParameters<typeof FlaCharacterCreateService>[0]['faults'];
@@ -174,7 +183,17 @@ async function harness(options: {
   const activePlan = plan(options.bytes?.length ?? 2, options.planCapability);
   const batch = preparedBatch(activePlan, options.bytes ?? [png(1), png(2)]);
   let activeService: FlaCharacterCreateService | null = null;
+  let previewAvailable = true;
+  let invalidatePreviewAtAtomicReplace = false;
   const projectService = new ProjectService({
+    fileSystem: new ProjectFileSystemService({
+      beforeAtomicReplace: () => {
+        if (invalidatePreviewAtAtomicReplace) {
+          invalidatePreviewAtAtomicReplace = false;
+          previewAvailable = false;
+        }
+      },
+    }),
     createId: () => id('90810000', ++projectIdIndex),
     now: () => new Date('2026-11-01T00:00:00.000Z'),
     onProjectSaved: (_root, project, revision) => {
@@ -191,8 +210,11 @@ async function harness(options: {
     const service = new FlaCharacterCreateService({
       projectService,
       partPreviewService: {
-        getPlan: () => overrides.plan ?? activePlan,
-        getPreparedBatch: () => overrides.batch ?? batch,
+        getPlan: () => previewAvailable ? overrides.plan ?? activePlan : null,
+        getPreparedBatch: () => previewAvailable ? overrides.batch ?? batch : null,
+        getPreparedBatchMetadata: () => previewAvailable
+          ? flaPreparedPartBatchMetadata(overrides.batch ?? batch)
+          : null,
       } as unknown as FlaPartPreviewService,
       getCurrentProjectSnapshot: (root) => root.toLocaleLowerCase() === projectRoot.toLocaleLowerCase() ? current : null,
       createId: () => id('90820000', ++serviceIdIndex),
@@ -207,6 +229,8 @@ async function harness(options: {
     projectRoot,
     projectService,
     current,
+    setPreviewAvailable: (available) => { previewAvailable = available; },
+    invalidateAtNextAtomicReplace: () => { invalidatePreviewAtAtomicReplace = true; },
     createService,
     request: (changes: Partial<{ operationId: string; name: string; baseRevision: number; openInstanceId: number }> = {}) => ({
       format: 'panda-fla-character-create',
@@ -244,7 +268,7 @@ describe('F1-03 FLA Part Character commit', () => {
     const service = h.createService();
     const request = h.request();
 
-    const result = await service.commit(request);
+    const result = fullResult(await service.commit(request));
 
     expect(result.savedRevision).toBe(1);
     expect(result.project.characters).toHaveLength(1);
@@ -280,6 +304,96 @@ describe('F1-03 FLA Part Character commit', () => {
     if (!status.ok) throw new Error(JSON.stringify(status));
     expect(status).toMatchObject({ ok: true, status: 'COMMITTED', result: { operationId: OPERATION_ID, savedRevision: 1 } });
   });
+
+  it('revalidates the held batch at the atomic Project replacement boundary and rolls back owned files', async () => {
+    const h = await harness();
+    const service = h.createService();
+    h.invalidateAtNextAtomicReplace();
+
+    await expect(service.commit(h.request())).rejects.toMatchObject({ code: 'PLAN_EXPIRED' });
+
+    expect(h.current.revision).toBe(0);
+    expect(h.current.project.characters).toHaveLength(0);
+    expect(h.current.project.voiceProfiles).toHaveLength(0);
+    expect(await readdir(path.join(h.projectRoot, 'assets'))).toEqual([]);
+    const journal = new FlaCharacterCreateJournalService();
+    expect(await journal.read(h.projectRoot, OPERATION_ID)).toBeNull();
+    expect(await service.getStatus({ operationId: OPERATION_ID, projectRoot: h.projectRoot, projectId: h.current.project.id }))
+      .toMatchObject({ ok: true, status: 'FAILED', error: { code: 'PLAN_EXPIRED' } });
+  });
+
+  it('keeps committed history queryable after a later Project edit without returning the old Project snapshot', async () => {
+    const h = await harness();
+    const service = h.createService();
+    const request = h.request();
+    const result = fullResult(await service.commit(request));
+    const editedProject = { ...h.current.project, name: 'Character Create Edited' };
+    await h.projectService.save(h.projectRoot, editedProject, h.current.revision + 1);
+    const editedRevision = h.current.revision;
+
+    const restartedService = h.createService();
+    const status = await restartedService.getStatus({
+      operationId: OPERATION_ID,
+      projectRoot: h.projectRoot,
+      projectId: result.projectId,
+    });
+    expect(status).toMatchObject({
+      ok: true,
+      status: 'COMMITTED',
+      result: { operationId: OPERATION_ID, characterId: result.characterId, savedRevision: result.savedRevision },
+    });
+    if (!status.ok || status.status !== 'COMMITTED') throw new Error('Expected the committed operation history.');
+    expect('project' in status.result).toBe(false);
+    expect(h.current.project.name).toBe('Character Create Edited');
+    expect(h.current.revision).toBe(editedRevision);
+
+    const replay = await restartedService.commit(request);
+    expect('project' in replay).toBe(false);
+    expect(h.current.project.name).toBe('Character Create Edited');
+    expect(h.current.revision).toBe(editedRevision);
+    expect(h.current.project.characters).toHaveLength(1);
+  });
+
+  it('keeps uncertain non-committed journals recovery-required when their Project SHA no longer matches', async () => {
+    const h = await harness();
+    const service = h.createService();
+    const result = fullResult(await service.commit(h.request()));
+    const editedProject = { ...h.current.project, name: 'Changed before recovery' };
+    await h.projectService.save(h.projectRoot, editedProject, h.current.revision + 1);
+    const journalStore = new FlaCharacterCreateJournalService();
+    const journal = await journalStore.read(h.projectRoot, OPERATION_ID);
+    if (!journal) throw new Error('Expected a durable Character creation journal.');
+    await journalStore.write(h.projectRoot, { ...journal, phase: 'saving' });
+
+    const status = await service.getStatus({
+      operationId: OPERATION_ID,
+      projectRoot: h.projectRoot,
+      projectId: result.projectId,
+    });
+    expect(status).toMatchObject({ ok: false, status: 'ERROR', error: { code: 'RECOVERY_REQUIRED' } });
+    expect(h.current.project.name).toBe('Changed before recovery');
+  });
+
+  it('keeps the successful-operation cache empty while durable status remains queryable across many commits', async () => {
+    const h = await harness();
+    const service = h.createService();
+    const firstOperationId = '90930000-0000-4000-8000-000000000001';
+    for (let index = 1; index <= 20; index += 1) {
+      const operationId = `90930000-0000-4000-8000-${String(index).padStart(12, '0')}`;
+      await service.commit(h.request({ operationId, name: `Character ${index}` }));
+      expect((service as unknown as { activeOperations: Map<string, unknown> }).activeOperations.size).toBe(0);
+    }
+
+    const status = await service.getStatus({
+      operationId: firstOperationId,
+      projectRoot: h.projectRoot,
+      projectId: h.current.project.id,
+    });
+    expect(status).toMatchObject({ ok: true, status: 'COMMITTED', result: { operationId: firstOperationId } });
+    if (!status.ok || status.status !== 'COMMITTED') throw new Error('Expected the first operation to remain queryable.');
+    expect('project' in status.result).toBe(false);
+    expect(h.current.project.characters).toHaveLength(20);
+  }, 15_000);
 
   it('rejects a stale or unsupported confirmation before creating files', async () => {
     const stale = await harness();
@@ -434,7 +548,7 @@ describe('F1-03 FLA Part Character commit', () => {
       },
     });
 
-    const result = await service.commit(h.request());
+    const result = fullResult(await service.commit(h.request()));
     expect(result.savedRevision).toBe(1);
     const status = await service.getStatus({
       format: 'panda-fla-character-create-status',
@@ -448,7 +562,7 @@ describe('F1-03 FLA Part Character commit', () => {
 
   it('recovers a saved operation after a process interruption before the journal commit marker', async () => {
     const h = await harness();
-    const result = await h.createService().commit(h.request());
+    const result = fullResult(await h.createService().commit(h.request()));
     const journalStore = new FlaCharacterCreateJournalService();
     const committedJournal = await journalStore.read(h.projectRoot, OPERATION_ID);
     if (!committedJournal) throw new Error('Expected a durable Character creation journal.');

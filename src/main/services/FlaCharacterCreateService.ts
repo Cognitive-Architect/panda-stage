@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import {
   CharacterService,
   CharacterServiceError,
@@ -19,8 +20,10 @@ import {
 } from '../../shared/fla-static-snapshot-api';
 import {
   FlaCharacterCreateRequestSchema,
+  FlaCharacterCreateResultIdentitySchema,
   FlaCharacterCreateResultSchema,
   type FlaCharacterCreateErrorCode,
+  type FlaCharacterCreateOutcome,
   type FlaCharacterCreateRequest,
   type FlaCharacterCreateResult,
   type FlaCharacterCreateStatusResponse,
@@ -40,6 +43,7 @@ import {
 import {
   FlaPartPreviewService,
   type FlaPreparedPartBatch,
+  flaPreparedPartBatchMetadata,
 } from './FlaPartPreviewService';
 import { HashService } from './HashService';
 import { validatePngEncodedImage } from './PngThumbnailValidator';
@@ -90,7 +94,6 @@ interface PlannedPart {
 
 interface ActiveOperation {
   fingerprint: string;
-  result: FlaCharacterCreateResult | null;
 }
 
 const IDENTITY: CharacterPartTransform = Object.freeze({
@@ -126,7 +129,7 @@ export class FlaCharacterCreateService {
     this.now = options.now ?? (() => new Date());
   }
 
-  async commit(rawRequest: unknown): Promise<FlaCharacterCreateResult> {
+  async commit(rawRequest: unknown): Promise<FlaCharacterCreateOutcome> {
     const request = FlaCharacterCreateRequestSchema.parse(rawRequest);
     const fingerprint = this.fingerprint(request);
     const known = this.activeOperations.get(request.operationId);
@@ -134,7 +137,6 @@ export class FlaCharacterCreateService {
       if (known.fingerprint !== fingerprint) {
         throw new FlaCharacterCreateServiceError('OPERATION_ID_CONFLICT', 'This operation ID was already used for a different FLA selection.');
       }
-      if (known.result) return known.result;
       throw new FlaCharacterCreateServiceError('OPERATION_IN_PROGRESS', 'This character creation operation is still running. Query its status before retrying.');
     }
 
@@ -161,15 +163,13 @@ export class FlaCharacterCreateService {
       throw new FlaCharacterCreateServiceError(failed.error.code, failed.error.message);
     }
 
-    const operation: ActiveOperation = { fingerprint, result: null };
+    const operation: ActiveOperation = { fingerprint };
     this.activeOperations.set(request.operationId, operation);
     try {
-      const result = await this.projectService.transact(
+      return await this.projectService.transact(
         request.projectRoot,
-        async (transaction) => this.commitInTransaction(transaction, request, fingerprint, operation),
+        async (transaction) => this.commitInTransaction(transaction, request, fingerprint),
       );
-      operation.result = result;
-      return result;
     } catch (error) {
       const failure = this.normalizeFailure(error);
       if (failure.code !== 'RECOVERY_REQUIRED') {
@@ -192,7 +192,7 @@ export class FlaCharacterCreateService {
       }
       throw failure;
     } finally {
-      if (!operation.result) this.activeOperations.delete(request.operationId);
+      this.activeOperations.delete(request.operationId);
     }
   }
 
@@ -201,16 +201,6 @@ export class FlaCharacterCreateService {
       ? String((rawRequest as { operationId: unknown }).operationId)
       : '';
     const active = this.activeOperations.get(operationId);
-    if (active?.result) {
-      const parsed = rawRequest as { projectRoot?: unknown; projectId?: unknown };
-      if (typeof parsed.projectRoot === 'string' &&
-          typeof parsed.projectId === 'string' &&
-          samePath(active.result.projectRoot, parsed.projectRoot) &&
-          active.result.projectId === parsed.projectId) {
-        return this.statusForCommitted(active.result);
-      }
-      return { ok: true, status: 'RECOVERY_REQUIRED', operationId, message: 'The requested Project identity does not match the operation receipt.' };
-    }
     if (active) {
       return { ok: true, status: 'IN_PROGRESS', operationId };
     }
@@ -232,17 +222,16 @@ export class FlaCharacterCreateService {
         if (journal.projectId !== projectId || transaction.existingDocument.project.id !== projectId) {
           return { ok: true as const, status: 'RECOVERY_REQUIRED' as const, operationId, message: 'The journal Project identity does not match the requested Project.' };
         }
-        if (journal.phase !== 'committed' && !this.journal.matchesCommittedProject(journal, transaction.existingDocument.project)) {
+        const exactProject = this.journal.matchesCommittedProject(journal, transaction.existingDocument.project);
+        if (journal.phase !== 'committed' && !exactProject) {
           return { ok: true as const, status: 'RECOVERY_REQUIRED' as const, operationId, message: 'The persisted Project does not match the operation commit receipt.' };
-        }
-        if (!this.journal.matchesCommittedProject(journal, transaction.existingDocument.project)) {
-          return { ok: true as const, status: 'RECOVERY_REQUIRED' as const, operationId, message: 'The Project changed after the operation was saved; the exact saved snapshot is unavailable.' };
         }
         if (journal.phase !== 'committed') {
           await this.journal.write(transaction.projectRoot, { ...journal, phase: 'committed' });
         }
-        const result = this.journal.resultForProject(journal, transaction.existingDocument.project);
-        this.activeOperations.set(operationId, { fingerprint: journal.fingerprint, result });
+        const result = exactProject
+          ? this.journal.resultForProject(journal, transaction.existingDocument.project)
+          : FlaCharacterCreateResultIdentitySchema.parse(journal.result);
         return this.statusForCommitted(result);
       });
       return status;
@@ -273,10 +262,6 @@ export class FlaCharacterCreateService {
       }
       const artifacts = this.projectContainsOperationArtifacts(journal, project);
       if (artifacts === 'partial' || (journal.phase === 'saving' && artifacts === 'complete')) {
-        if (journal.phase === 'saving' && artifacts === 'complete') {
-          await this.journal.write(projectRoot, { ...journal, phase: 'committed' });
-          continue;
-        }
         throw new Error(`FLA character creation recovery is ambiguous for ${journal.operationId}.`);
       }
       if (artifacts === 'complete') {
@@ -292,13 +277,13 @@ export class FlaCharacterCreateService {
     transaction: ProjectTransaction,
     request: FlaCharacterCreateRequest,
     fingerprint: string,
-    operation: ActiveOperation,
   ): Promise<FlaCharacterCreateResult> {
     const base = this.assertCurrentSnapshot(request);
     if (transaction.existingDocument.project.id !== base.project.id) {
       throw new FlaCharacterCreateServiceError('STALE_PROJECT', 'The Project file and open editor no longer have the same identity.');
     }
     const batch = this.getConfirmedBatch(request);
+    const confirmedBatchMetadata = flaPreparedPartBatchMetadata(batch);
     const planned = await this.prepareAssets(transaction.projectRoot, base.project, batch);
     const characterService = new CharacterService({ createId: this.createId, now: this.now });
     const withAssets = ProjectSchema.parse({
@@ -405,9 +390,16 @@ export class FlaCharacterCreateService {
       projectSaveAttempted = true;
       const saved = await transaction.save(nextProject, result.savedRevision, () => {
         this.assertCurrentSnapshot(request);
+        const currentBatchMetadata = this.partPreviewService.getPreparedBatchMetadata(
+          request.confirmation.planId,
+          request.confirmation.sessionId,
+          request.confirmation.generation,
+        );
+        if (!currentBatchMetadata || !isDeepStrictEqual(confirmedBatchMetadata, currentBatchMetadata)) {
+          throw new FlaCharacterCreateServiceError('PLAN_EXPIRED', 'The confirmed FLA Part batch changed or expired before the Project could be saved. Preview the source again.');
+        }
       });
       const savedResult = FlaCharacterCreateResultSchema.parse({ ...result, project: saved.project });
-      operation.result = savedResult;
       await this.faults.afterProjectSave?.(saved.project);
       await this.journal.write(transaction.projectRoot, { ...journalBase, phase: 'committed' });
       return savedResult;
@@ -416,7 +408,6 @@ export class FlaCharacterCreateService {
         const current = await this.readProjectDocument(transaction.projectRoot).catch(() => null);
         if (current && this.journal.projectSha256(current) === projectSha256) {
           const savedResult = FlaCharacterCreateResultSchema.parse({ ...result, project: current });
-          operation.result = savedResult;
           await this.journal.write(transaction.projectRoot, { ...journalBase, phase: 'committed' }).catch(() => undefined);
           return savedResult;
         }
@@ -669,6 +660,7 @@ export class FlaCharacterCreateService {
 
   private normalizeFailure(error: unknown): FlaCharacterCreateServiceError {
     if (error instanceof FlaCharacterCreateServiceError) return error;
+    if (error instanceof Error && error.cause instanceof FlaCharacterCreateServiceError) return error.cause;
     if (error instanceof ProjectServiceError && error.code === 'PROJECT_SAVE_STALE_REVISION') {
       return new FlaCharacterCreateServiceError('STALE_PROJECT', 'The open Project changed before the character could be saved. Refresh and retry.', { cause: error });
     }
@@ -682,7 +674,7 @@ export class FlaCharacterCreateService {
     return new FlaCharacterCreateServiceError('COMMIT_FAILED', 'The held FLA Part batch could not be saved.', { cause: error });
   }
 
-  private statusForCommitted(result: FlaCharacterCreateResult): FlaCharacterCreateStatusResponse {
+  private statusForCommitted(result: FlaCharacterCreateOutcome): FlaCharacterCreateStatusResponse {
     return { ok: true, status: 'COMMITTED', result };
   }
 }

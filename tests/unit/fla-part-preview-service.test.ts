@@ -336,6 +336,20 @@ describe('F1-02 Main part preview service', () => {
     const batch = previewService.getPreparedBatch(response.planId, SESSION_ID, 1);
     expect(batch).not.toBeNull();
     if (!batch) throw new Error('Expected Main to retain the generated Part batch');
+    const metadata = previewService.getPreparedBatchMetadata(response.planId, SESSION_ID, 1);
+    expect(metadata).not.toBeNull();
+    if (!metadata) throw new Error('Expected Main to expose metadata for final commit revalidation');
+    expect(metadata.plan).toEqual(batch.plan);
+    expect(metadata.identity).toEqual(batch.identity);
+    expect(metadata.parts.map((part) => part.image)).toEqual(batch.parts.map(({ image }) => ({
+      width: image.width,
+      height: image.height,
+      pixelCount: image.pixelCount,
+      sha256: image.sha256,
+      byteLength: image.byteLength,
+    })));
+    expect(metadata.parts[0]?.image).not.toHaveProperty('bytes');
+    expect(metadata.partPngBytes).toBe(batch.partPngBytes);
     expect(batch.identity).toEqual({
       planId: response.planId,
       sessionId: SESSION_ID,

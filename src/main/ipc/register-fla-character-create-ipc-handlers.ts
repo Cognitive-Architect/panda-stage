@@ -5,7 +5,7 @@ import {
   FlaCharacterCreateStatusRequestSchema,
   FlaCharacterCreateStatusResponseSchema,
   type FlaCharacterCreateRequest,
-  type FlaCharacterCreateResult,
+  type FlaCharacterCreateOutcome,
 } from '../../shared/fla-character-create-api';
 import { IPC_CHANNELS } from '../../shared/ipc/channels';
 import {
@@ -18,7 +18,7 @@ export interface FlaCharacterCreateIpcDependencies {
   service: FlaCharacterCreateService;
   afterCommitBeforeResponse?: (
     request: FlaCharacterCreateRequest,
-    result: FlaCharacterCreateResult,
+    result: FlaCharacterCreateOutcome,
   ) => void | Promise<void>;
 }
 
@@ -52,7 +52,7 @@ export function registerFlaCharacterCreateIpcHandlers(
     if (!parsed.success) {
       return failure(new FlaCharacterCreateServiceError('INVALID_REQUEST', 'Invalid F1-03 Character creation request.'));
     }
-    let result: FlaCharacterCreateResult;
+    let result: FlaCharacterCreateOutcome;
     try {
       result = await dependencies.service.commit(parsed.data);
     } catch (error) {

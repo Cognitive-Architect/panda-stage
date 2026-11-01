@@ -102,11 +102,16 @@ export const FlaCharacterCreateResultSchema = FlaCharacterCreateResultIdentitySc
   }
 });
 
+export const FlaCharacterCreateOutcomeSchema: z.ZodType<FlaCharacterCreateOutcome> = z.union([
+  FlaCharacterCreateResultSchema,
+  FlaCharacterCreateResultIdentitySchema,
+]);
+
 export const FlaCharacterCreateResponseSchema = z.discriminatedUnion('ok', [
   z.object({
     ok: z.literal(true),
     status: z.literal('COMMITTED'),
-    result: FlaCharacterCreateResultSchema,
+    result: FlaCharacterCreateOutcomeSchema,
   }).strict(),
   z.object({
     ok: z.literal(false),
@@ -131,7 +136,7 @@ export const FlaCharacterCreateStatusResponseSchema = z.discriminatedUnion('stat
   z.object({
     ok: z.literal(true),
     status: z.literal('COMMITTED'),
-    result: FlaCharacterCreateResultSchema,
+    result: FlaCharacterCreateOutcomeSchema,
   }).strict(),
   z.object({
     ok: z.literal(true),
@@ -160,7 +165,9 @@ export const FlaCharacterCreateStatusResponseSchema = z.discriminatedUnion('stat
 
 export type FlaCharacterCreateConfirmation = z.infer<typeof FlaCharacterCreateConfirmationSchema>;
 export type FlaCharacterCreateRequest = z.infer<typeof FlaCharacterCreateRequestSchema>;
+export type FlaCharacterCreateResultIdentity = z.infer<typeof FlaCharacterCreateResultIdentitySchema>;
 export type FlaCharacterCreateResult = z.infer<typeof FlaCharacterCreateResultSchema>;
+export type FlaCharacterCreateOutcome = FlaCharacterCreateResult | FlaCharacterCreateResultIdentity;
 export type FlaCharacterCreateResponse = z.infer<typeof FlaCharacterCreateResponseSchema>;
 export type FlaCharacterCreateStatusRequest = z.infer<typeof FlaCharacterCreateStatusRequestSchema>;
 export type FlaCharacterCreateStatusResponse = z.infer<typeof FlaCharacterCreateStatusResponseSchema>;

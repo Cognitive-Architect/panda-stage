@@ -5,6 +5,7 @@ import type {
   FlaCharacterCreateResult,
   FlaCharacterCreateStatusRequest,
   FlaCharacterCreateStatusResponse,
+  FlaCharacterCreateOutcome,
 } from '../../../shared/fla-character-create-api';
 import {
   EditorProjectStore,
@@ -16,6 +17,10 @@ type EditablePartPreview = Extract<
   FlaPartPreviewResponse,
   { ok: true; status: 'PREVIEW_READY'; capability: 'EDITABLE_PARTS_READY' }
 >;
+
+function hasProjectSnapshot(result: FlaCharacterCreateOutcome): result is FlaCharacterCreateResult {
+  return Object.prototype.hasOwnProperty.call(result, 'project');
+}
 
 export interface FlaCharacterCreateApi {
   createCharacterFromParts(request: FlaCharacterCreateRequest): Promise<FlaCharacterCreateResponse>;
@@ -108,6 +113,10 @@ export async function createCharacterFromPreparedParts(
       } else {
         throw new Error(status.ok ? 'The Character operation status is unavailable.' : status.error.message);
       }
+    }
+
+    if (!hasProjectSnapshot(result)) {
+      throw new Error('This Character operation was already committed, but its saved Project snapshot is no longer current. Refresh the Project and inspect its Characters before retrying.');
     }
 
     if (
