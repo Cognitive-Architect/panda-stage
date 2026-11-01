@@ -45,6 +45,8 @@ import {
   type CanvasImageState,
 } from '../canvas/canvasImageResources';
 import { ThumbnailStateIcon } from './ThumbnailStateIcon';
+import { localizeDefaultAdaptivePartName } from './characterPartDisplayName';
+import { VisibleBoundsThumbnail } from './VisibleBoundsThumbnail';
 import {
   buildCharacterAssemblyPreviewVisual,
   buildAdaptivePartsAssemblyPreviewVisual,
@@ -455,6 +457,7 @@ function formatAdaptiveAdjustmentInput(
 function AdaptivePartsAssemblyRow({
   displayName,
   imageMissing,
+  imageCacheKey,
   imageSrc,
   onMessage,
   onRename,
@@ -466,6 +469,7 @@ function AdaptivePartsAssemblyRow({
 }: {
   displayName: string;
   imageMissing: boolean;
+  imageCacheKey: string;
   imageSrc?: string;
   onMessage: (message: string) => void;
   onRename: (name: string) => AdaptivePartsUpdateResult;
@@ -529,7 +533,11 @@ function AdaptivePartsAssemblyRow({
             title={imageMissing ? '素材不可用' : undefined}
           >
             {imageSrc ? (
-              <img alt="" src={imageSrc} />
+              <VisibleBoundsThumbnail
+                alt=""
+                cacheKey={imageCacheKey}
+                src={imageSrc}
+              />
             ) : imageMissing ? (
               <ThumbnailStateIcon kind="error" size={16} />
             ) : (
@@ -597,7 +605,11 @@ function AdaptivePartsAssemblyRow({
             title={imageMissing ? '素材不可用' : undefined}
           >
             {imageSrc ? (
-              <img alt="" src={imageSrc} />
+              <VisibleBoundsThumbnail
+                alt=""
+                cacheKey={imageCacheKey}
+                src={imageSrc}
+              />
             ) : imageMissing ? (
               <ThumbnailStateIcon kind="error" size={16} />
             ) : (
@@ -821,6 +833,16 @@ function AdaptivePartsAssemblyWorkbench({
     !message;
   const assetNames = new Map(
     project.assets.flatMap((asset) => asset.kind === 'image' ? [[asset.id, asset.name] as const] : []),
+  );
+  const assetThumbnailKeys = new Map(
+    project.assets.flatMap((asset) => asset.kind === 'image'
+      ? [[
+          asset.id,
+          asset.sha256
+            ? `sha256:${asset.sha256}`
+            : `asset:${project.id}:${asset.id}`,
+        ] as const]
+      : []),
   );
 
   const writeAdjustmentField = (
@@ -1427,18 +1449,19 @@ function AdaptivePartsAssemblyWorkbench({
       <aside className="adaptive-parts-assembly-list" aria-label="部件列表">
         <h2 data-testid="adaptive-parts-assembly-count">部件 · {rows.length}</h2>
         <div className="adaptive-parts-assembly-rows">
-          {rows.map((part, index) => {
+          {rows.map((part) => {
             const matchingAssetParts = session.draft.parts.filter((candidate) => candidate.assetId === part.assetId).length;
-            const baseName = part.displayName ?? assetNames.get(part.assetId) ?? `部件 ${index + 1}`;
+            const baseName = part.displayName ?? assetNames.get(part.assetId) ?? `Part ${part.drawOrder + 1}`;
             const name = matchingAssetParts > 1 && !part.displayName
-              ? `${baseName} · 部件 ${index + 1}`
-              : baseName;
+              ? `${localizeDefaultAdaptivePartName(baseName)} · 零件 ${part.drawOrder + 1}`
+              : localizeDefaultAdaptivePartName(baseName);
             const image = imageState.images.get(part.assetId);
             const imageMissing = imageState.missing.has(part.assetId);
             return (
               <AdaptivePartsAssemblyRow
                 displayName={name}
                 imageMissing={imageMissing}
+                imageCacheKey={assetThumbnailKeys.get(part.assetId) ?? `asset:${project.id}:${part.assetId}`}
                 imageSrc={image?.src}
                 key={part.partId}
                 onMessage={setMessage}

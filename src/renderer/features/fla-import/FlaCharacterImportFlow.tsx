@@ -38,10 +38,17 @@ import {
   FlaCharacterCreateOperationError,
 } from './createCharacterFromPreparedParts';
 import {
+  clearPendingFlaCharacterCreateCredential,
+  matchesPendingFlaCharacterCreateOutcome,
+  writePendingFlaCharacterCreateCredential,
+  type PendingFlaCharacterCreateCredential,
+} from './fla-character-create-recovery';
+import {
   getCharacterImportSceneEntries,
   getSelectableCharacterImportCandidateCount,
   getUniqueCharacterImportCandidate,
 } from './fla-character-import-model';
+import { VisibleBoundsThumbnail } from '../characters/VisibleBoundsThumbnail';
 import '../../styles/features/fla-import/f1-04--character-import.css';
 
 export type EditableFlaCharacterPreview = Extract<
@@ -82,7 +89,14 @@ interface PendingCreateOperation {
   preview: EditableFlaCharacterPreview;
   baseSnapshot: EditorProjectSnapshot;
   openInstanceId: number;
+  credential: PendingFlaCharacterCreateCredential;
 }
+
+export type FlaCharacterCreateOperationState =
+  | 'unknown'
+  | 'in-progress'
+  | 'safe-to-close'
+  | 'terminal';
 
 type ImportPhase =
   | 'inspecting'
@@ -105,7 +119,7 @@ interface ProjectIdentity {
 interface ImportPreviewImages {
   source: string;
   reassembled: string | null;
-  parts: readonly string[];
+  parts: readonly { src: string; sha256: string }[];
 }
 
 interface ActiveRequest {
@@ -185,6 +199,9 @@ export interface FlaCharacterImportFlowProps {
   onCreateCharacter: CreateFlaCharacter;
   onQueryCharacterCreateStatus: QueryFlaCharacterCreateStatus;
   onCommittingChange?(committing: boolean): void;
+  onRecoveryCredentialChange?(credential: PendingFlaCharacterCreateCredential | null): void;
+  onOperationStateChange?(state: FlaCharacterCreateOperationState): void;
+  onSafeExit?(operationId: string): void;
   recoveryAction?: React.JSX.Element | null;
   recoveryBusy?: boolean;
   onCreatedCharacter: (characterId: string) => boolean;
@@ -197,6 +214,9 @@ export function FlaCharacterImportFlow({
   onCreateCharacter,
   onQueryCharacterCreateStatus,
   onCommittingChange,
+  onRecoveryCredentialChange,
+  onOperationStateChange,
+  onSafeExit,
   recoveryAction,
   recoveryBusy = false,
   onCreatedCharacter,
@@ -232,6 +252,8 @@ export function FlaCharacterImportFlow({
   const frameInteractionRef = useRef(false);
   const [preview, setPreview] = useState<FlaPartPreviewResponse | null>(null);
   const [previewImages, setPreviewImages] = useState<ImportPreviewImages | null>(null);
+  const [previewMode, setPreviewMode] = useState<'assembled' | 'source'>('assembled');
+  const [partsExpanded, setPartsExpanded] = useState(false);
   const [name, setName] = useState('');
   const [thumbnailUrls, setThumbnailUrls] = useState<Readonly<Record<string, string>>>({});
   const thumbnailUrlsRef = useRef(new Map<string, string>());
@@ -242,6 +264,8 @@ export function FlaCharacterImportFlow({
   const operationIdRef = useRef<string | null>(null);
   const pendingCreateOperationRef = useRef<PendingCreateOperation | null>(null);
   const [operationOutcome, setOperationOutcome] = useState<CreateOperationOutcome>(null);
+  const [safeExitAvailable, setSafeExitAvailable] = useState(false);
+  const [receiptCopied, setReceiptCopied] = useState(false);
   const sourceReplacementGenerationRef = useRef(0);
   const invalidatedRef = useRef(false);
   const mountedRef = useRef(false);
@@ -612,18 +636,23 @@ export function FlaCharacterImportFlow({
       setPreviewImages(null);
       return undefined;
     }
+    setPreviewMode('assembled');
+    setPartsExpanded(false);
     const source = pngObjectUrl(preview.nativePreview.bytes);
     const reassembled = preview.capability === 'EDITABLE_PARTS_READY'
       ? pngObjectUrl(preview.reassembledPreview.bytes)
       : null;
     const parts = preview.capability === 'EDITABLE_PARTS_READY'
-      ? preview.partPreviews.map((part) => pngObjectUrl(part.image.bytes))
+      ? preview.partPreviews.map((part) => ({
+          src: pngObjectUrl(part.image.bytes),
+          sha256: part.image.sha256,
+        }))
       : [];
     setPreviewImages({ source, reassembled, parts });
     return () => {
       URL.revokeObjectURL(source);
       if (reassembled) URL.revokeObjectURL(reassembled);
-      for (const part of parts) URL.revokeObjectURL(part);
+      for (const part of parts) URL.revokeObjectURL(part.src);
     };
   }, [preview]);
 
@@ -686,6 +715,41 @@ export function FlaCharacterImportFlow({
     onCloseRef.current();
   }, [cancelOwnedWork]);
 
+  const setOperationSafetyState = (
+    state: FlaCharacterCreateOperationState,
+  ): void => {
+    setSafeExitAvailable(state === 'safe-to-close');
+    onOperationStateChange?.(state);
+  };
+
+  const clearRecoveryCredential = (
+    credential: PendingFlaCharacterCreateCredential,
+  ): boolean => {
+    const cleared = clearPendingFlaCharacterCreateCredential(
+      credential,
+    );
+    if (cleared) onRecoveryCredentialChange?.(null);
+    return cleared;
+  };
+
+  const copyOperationReceipt = async (
+    credential: PendingFlaCharacterCreateCredential,
+  ): Promise<void> => {
+    const receipt = [
+      `operationId=${credential.operationId}`,
+      `projectId=${credential.projectId}`,
+      `projectRoot=${credential.projectRoot}`,
+      `baseRevision=${credential.baseRevision}`,
+      `openInstanceId=${credential.openInstanceId}`,
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(receipt);
+      setReceiptCopied(true);
+    } catch {
+      setReceiptCopied(false);
+    }
+  };
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
@@ -704,9 +768,23 @@ export function FlaCharacterImportFlow({
   const completeCommittedOperation = (
     result: FlaCharacterCreateOutcome,
   ): void => {
+    const pending = pendingCreateOperationRef.current;
+    if (
+      !pending ||
+      !matchesPendingFlaCharacterCreateOutcome(pending.credential, result)
+    ) {
+      setOperationOutcome('OPERATION_ID_CONFLICT');
+      setStatusMessage(safeCreateErrorMessage('OPERATION_ID_CONFLICT'));
+      setOperationSafetyState('safe-to-close');
+      transition('error');
+      onCommittingChange?.(true);
+      return;
+    }
+    clearRecoveryCredential(pending.credential);
     pendingCreateOperationRef.current = null;
     operationIdRef.current = null;
     setOperationOutcome('COMMITTED');
+    setOperationSafetyState('terminal');
     transition('created');
     void cancelOwnedWork();
     onCommittingChange?.(false);
@@ -725,6 +803,7 @@ export function FlaCharacterImportFlow({
     const pending = pendingCreateOperationRef.current;
     if (!pending || phaseRef.current === 'committing' || recoveryBusy) return;
     transition('committing');
+    setOperationSafetyState('in-progress');
     setStatusMessage('正在查询保存结果…');
     onCommittingChange?.(true);
     try {
@@ -740,12 +819,14 @@ export function FlaCharacterImportFlow({
       }
       if (status.ok && status.status === 'IN_PROGRESS') {
         setOperationOutcome('IN_PROGRESS');
+        setOperationSafetyState('in-progress');
         setStatusMessage(safeCreateErrorMessage('OPERATION_IN_PROGRESS'));
         transition('error');
         return;
       }
       if (status.ok && status.status === 'RECOVERY_REQUIRED') {
         setOperationOutcome('RECOVERY_REQUIRED');
+        setOperationSafetyState('safe-to-close');
         setStatusMessage(safeCreateErrorMessage('RECOVERY_REQUIRED'));
         transition('error');
         return;
@@ -756,6 +837,11 @@ export function FlaCharacterImportFlow({
           status.error.code === 'OPERATION_IN_PROGRESS' ||
           status.error.code === 'RECOVERY_REQUIRED'
         ) {
+          setOperationSafetyState(
+            status.error.code === 'OPERATION_IN_PROGRESS'
+              ? 'in-progress'
+              : 'safe-to-close',
+          );
           setOperationOutcome(
             status.error.code === 'OPERATION_IN_PROGRESS'
               ? 'IN_PROGRESS'
@@ -765,9 +851,11 @@ export function FlaCharacterImportFlow({
           transition('error');
           return;
         }
+        clearRecoveryCredential(pending.credential);
         pendingCreateOperationRef.current = null;
         operationIdRef.current = null;
         setOperationOutcome('FAILED');
+        setOperationSafetyState('terminal');
         setStatusMessage(safeCreateErrorMessage(status.error.code));
         if (status.error.code === 'PLAN_EXPIRED' || status.error.code === 'STALE_PROJECT') {
           setPreview(null);
@@ -779,14 +867,25 @@ export function FlaCharacterImportFlow({
         return;
       }
       if (status.ok && status.status === 'NOT_FOUND') {
+        clearRecoveryCredential(pending.credential);
         pendingCreateOperationRef.current = null;
         operationIdRef.current = null;
         setOperationOutcome('NOT_FOUND');
+        setOperationSafetyState('terminal');
         setStatusMessage('没有找到本次保存记录。确认角色列表后，可以重新创建。');
         transition('preview-ready');
         return;
       }
       const code = status.ok ? undefined : status.error.code;
+      setOperationSafetyState(
+        code === 'OPERATION_IN_PROGRESS'
+          ? 'in-progress'
+          : code === 'OPERATION_ID_CONFLICT' ||
+              code === 'RECOVERY_REQUIRED' ||
+              !status.ok
+            ? 'safe-to-close'
+            : 'unknown',
+      );
       setOperationOutcome(
         code === 'OPERATION_ID_CONFLICT'
           ? 'OPERATION_ID_CONFLICT'
@@ -810,10 +909,14 @@ export function FlaCharacterImportFlow({
         code === 'RECOVERY_REQUIRED' ||
         code === 'OPERATION_IN_PROGRESS'
       ) {
+        setOperationSafetyState(
+          code === 'OPERATION_IN_PROGRESS' ? 'in-progress' : 'safe-to-close',
+        );
         setOperationOutcome(code === 'OPERATION_IN_PROGRESS' ? 'IN_PROGRESS' : code);
         setStatusMessage(safeCreateErrorMessage(code));
       } else {
         setOperationOutcome('UNKNOWN');
+        setOperationSafetyState('unknown');
         setStatusMessage('无法查询保存结果。请重试查询，不要重复创建。');
       }
       transition('error');
@@ -856,14 +959,34 @@ export function FlaCharacterImportFlow({
       return;
     }
     const operationId = crypto.randomUUID();
+    const credential: PendingFlaCharacterCreateCredential = {
+      version: 1,
+      operationId,
+      projectRoot: baseline.projectRoot,
+      projectId: baseline.projectId,
+      openInstanceId,
+      baseRevision: baseline.revision,
+      planId: preview.planId,
+      poseIdentity: preview.poseIdentity,
+    };
+    if (!writePendingFlaCharacterCreateCredential(credential)) {
+      setOperationOutcome('UNKNOWN');
+      setOperationSafetyState('terminal');
+      setStatusMessage('无法保存本机核对信息，本次创建没有开始。');
+      transition('error');
+      return;
+    }
+    onRecoveryCredentialChange?.(credential);
     operationIdRef.current = operationId;
     pendingCreateOperationRef.current = {
       operationId,
       preview,
       baseSnapshot,
       openInstanceId,
+      credential,
     };
     setOperationOutcome(null);
+    setOperationSafetyState('in-progress');
     transition('committing');
     setStatusMessage('正在保存角色…');
     onCommittingChange?.(true);
@@ -875,47 +998,60 @@ export function FlaCharacterImportFlow({
         ? error
         : null;
       const code = operationError?.code;
+      const pending = pendingCreateOperationRef.current;
       if (operationError?.code === 'DUPLICATE_CHARACTER_NAME') {
+        if (pending) clearRecoveryCredential(pending.credential);
         pendingCreateOperationRef.current = null;
         operationIdRef.current = null;
         setOperationOutcome('FAILED');
+        setOperationSafetyState('terminal');
         setStatusMessage(safeCreateErrorMessage(code));
         transition('preview-ready');
         return;
       }
       if (operationError?.code === 'PLAN_EXPIRED') {
+        if (pending) clearRecoveryCredential(pending.credential);
         pendingCreateOperationRef.current = null;
         operationIdRef.current = null;
         setOperationOutcome('FAILED');
+        setOperationSafetyState('terminal');
         setPreview(null);
         setStatusMessage(safeCreateErrorMessage(code));
         transition('error');
         return;
       }
       if (operationError?.code === 'STALE_PROJECT') {
+        if (pending) clearRecoveryCredential(pending.credential);
         pendingCreateOperationRef.current = null;
         operationIdRef.current = null;
         setOperationOutcome('FAILED');
+        setOperationSafetyState('terminal');
         invalidatedRef.current = true;
         setStatusMessage(safeCreateErrorMessage(code));
         transition('error');
         return;
       }
       if (code === 'RECOVERY_REQUIRED' || code === 'OPERATION_ID_CONFLICT' || code === 'OPERATION_IN_PROGRESS') {
+        setOperationSafetyState(
+          code === 'OPERATION_IN_PROGRESS' ? 'in-progress' : 'safe-to-close',
+        );
         setOperationOutcome(code === 'OPERATION_IN_PROGRESS' ? 'IN_PROGRESS' : code);
         setStatusMessage(safeCreateErrorMessage(code));
         transition('error');
         return;
       }
       if (code) {
+        if (pending) clearRecoveryCredential(pending.credential);
         pendingCreateOperationRef.current = null;
         operationIdRef.current = null;
         setOperationOutcome('FAILED');
+        setOperationSafetyState('terminal');
         setStatusMessage(safeCreateErrorMessage(code));
         transition('preview-ready');
         return;
       }
       setOperationOutcome('UNKNOWN');
+      setOperationSafetyState('unknown');
       setStatusMessage('无法确认保存结果。请查询保存结果，不要重复创建。');
       transition('error');
     } finally {
@@ -933,12 +1069,15 @@ export function FlaCharacterImportFlow({
     ? preview
     : null;
   const hasPendingOperation = Boolean(pendingCreateOperationRef.current);
+  const pendingCredential = pendingCreateOperationRef.current?.credential ?? null;
   const canCreate = !hasPendingOperation &&
     phase === 'preview-ready' &&
     Boolean(editablePreview) &&
     name.trim().length > 0 &&
     !invalidatedRef.current;
   const canQueryStatus = hasPendingOperation && phase !== 'committing' && !recoveryBusy;
+  const showPreviewStatus = phase !== 'preview-ready' && Boolean(statusMessage) &&
+    !(operationOutcome === 'RECOVERY_REQUIRED' && recoveryAction);
   const createLabel = hasPendingOperation
     ? '查询保存结果'
     : operationOutcome === 'FAILED' || operationOutcome === 'NOT_FOUND'
@@ -968,11 +1107,22 @@ export function FlaCharacterImportFlow({
         role="dialog"
       >
         <header className="fla-character-import-header">
-          <div>
-            <p>角色资源</p>
+          <div className="fla-character-import-header-copy">
             <h1>导入角色</h1>
+            {sourceBasename ? <p title={sourceBasename}>{sourceBasename}</p> : null}
           </div>
           <div className="fla-character-import-header-actions">
+            {phase === 'error' && selectedTarget && sessionIdRef.current && !invalidatedRef.current ? (
+              <button
+                className="fla-character-import-change-file"
+                data-testid="fla-character-import-reprepare"
+                disabled={hasPendingOperation}
+                onClick={() => void prepareTarget(selectedTarget, selectedFrameIndex, sessionIdRef.current!)}
+                type="button"
+              >
+                重新准备
+              </button>
+            ) : null}
             {phase !== 'committing' && phase !== 'created' && !hasPendingOperation ? (
               <button
                 className="fla-character-import-change-file"
@@ -984,10 +1134,16 @@ export function FlaCharacterImportFlow({
               </button>
             ) : null}
             <button
-              aria-label={phase === 'committing' ? '正在保存角色' : '关闭'}
+              aria-label={
+                phase === 'committing'
+                  ? '正在保存角色'
+                  : hasPendingOperation
+                    ? '保存结果待核对，暂不能关闭'
+                    : '关闭'
+              }
               className="fla-character-import-close"
               data-testid="fla-character-import-close"
-              disabled={phase === 'committing'}
+              disabled={phase === 'committing' || hasPendingOperation}
               onClick={() => void closeFlow()}
               type="button"
             >
@@ -1041,24 +1197,36 @@ export function FlaCharacterImportFlow({
           ) : null}
 
           <main className="fla-character-import-preview-area">
-            <div className="fla-character-import-preview-heading">
-              <div>
-                <h2>{selectedTarget?.target.userLabel ?? (sourceBasename || '角色预览')}</h2>
-                {editablePreview ? <p>{editablePreview.partPreviews.length} 个可编辑零件</p> : null}
-              </div>
-              {phase === 'error' && selectedTarget && sessionIdRef.current && !invalidatedRef.current ? (
-                <button
-                  className="fla-character-import-change-file"
-                  data-testid="fla-character-import-reprepare"
-                  onClick={() => void prepareTarget(selectedTarget, selectedFrameIndex, sessionIdRef.current!)}
-                  type="button"
+            <div className="fla-character-import-preview-toolbar">
+              {editablePreview ? (
+                <div
+                  aria-label="预览效果"
+                  className="fla-character-import-preview-mode"
+                  role="group"
                 >
-                  重新准备
-                </button>
-              ) : null}
+                  <button
+                    aria-pressed={previewMode === 'assembled'}
+                    data-testid="fla-character-import-mode-assembled"
+                    disabled={hasPendingOperation}
+                    onClick={() => setPreviewMode('assembled')}
+                    type="button"
+                  >
+                    组装效果
+                  </button>
+                  <button
+                    aria-pressed={previewMode === 'source'}
+                    data-testid="fla-character-import-mode-source"
+                    disabled={hasPendingOperation}
+                    onClick={() => setPreviewMode('source')}
+                    type="button"
+                  >
+                    原始效果
+                  </button>
+                </div>
+              ) : <span aria-hidden="true" />}
               {selectedTarget && selectedTarget.target.frameCount > 1 ? (
                 <label className="fla-character-import-pose-control">
-                  <span>整体姿势 · 第 {selectedFrameIndex + 1} 帧</span>
+                  <span>整体姿势 · {selectedFrameIndex + 1}/{selectedTarget.target.frameCount}</span>
                   <input
                     aria-label="整体姿势"
                     data-testid="fla-character-import-frame"
@@ -1077,56 +1245,79 @@ export function FlaCharacterImportFlow({
                   />
                 </label>
               ) : null}
+              {editablePreview ? (
+                <button
+                  aria-expanded={partsExpanded}
+                  className="fla-character-import-parts-toggle"
+                  data-testid="fla-character-import-parts-toggle"
+                  disabled={hasPendingOperation}
+                  onClick={() => setPartsExpanded((expanded) => !expanded)}
+                  type="button"
+                >
+                  零件（{previewImages?.parts.length ?? editablePreview.partPreviews.length}）
+                </button>
+              ) : null}
             </div>
 
-            <div className="fla-character-import-preview-canvas" data-testid="fla-character-import-preview">
-              {operationOutcome === 'RECOVERY_REQUIRED' && recoveryAction ? (
-                recoveryAction
-              ) : previewImages && phase === 'preview-ready' && previewImages.reassembled ? (
-                <img
-                  alt="角色零件重组预览"
-                  className="fla-character-import-reassembled"
-                  data-testid="fla-character-import-reassembled"
-                  src={previewImages.reassembled}
-                />
-              ) : previewImages && phase === 'whole-image-only' ? (
-                <img
-                  alt="角色整体姿势预览"
-                  className="fla-character-import-reassembled"
-                  src={previewImages.source}
-                />
-              ) : phase === 'preparing' ? (
-                <p>正在准备角色…</p>
-              ) : phase === 'inspecting' ? (
-                <p>正在读取角色…</p>
-              ) : phase === 'unsupported' || phase === 'error' ? (
-                null
-              ) : selectedTarget ? (
-                <p>选择一个完整源姿势以查看角色预览。</p>
-              ) : (
-                <p>选择一个 FLA 文件以开始。</p>
-              )}
+            <div
+              className="fla-character-import-preview-workspace"
+              data-parts-expanded={partsExpanded}
+              data-preview-mode={previewMode}
+            >
+              <div className="fla-character-import-preview-canvas" data-testid="fla-character-import-preview">
+                {previewImages && phase !== 'inspecting' && phase !== 'selecting' && phase !== 'preparing' ? (
+                  <img
+                    alt={previewMode === 'assembled' ? '角色组装效果' : '角色原始效果'}
+                    className="fla-character-import-reassembled"
+                    data-testid={previewMode === 'assembled' ? 'fla-character-import-reassembled' : 'fla-character-import-source'}
+                    src={phase === 'whole-image-only' || previewMode === 'source' || !previewImages.reassembled
+                      ? previewImages.source
+                      : previewImages.reassembled}
+                  />
+                ) : phase === 'preparing' ? (
+                  <p>正在准备角色…</p>
+                ) : phase === 'inspecting' ? (
+                  <p>正在读取角色…</p>
+                ) : phase === 'selecting' || selectedTarget ? (
+                  <p>选择一个完整源姿势以查看角色预览。</p>
+                ) : (
+                  <p>选择一个 FLA 文件以开始。</p>
+                )}
+              </div>
+              {partsExpanded && previewImages && editablePreview ? (
+                <aside aria-label="角色零件" className="fla-character-import-parts-panel">
+                  <h2>零件（{previewImages.parts.length}）</h2>
+                  <ol className="fla-character-import-parts-list">
+                    {previewImages.parts.map((part, index) => (
+                      <li key={part.sha256}>
+                        <span className="fla-character-import-part-thumb">
+                          <VisibleBoundsThumbnail
+                            alt={`零件 ${index + 1}`}
+                            cacheKey={`sha256:${part.sha256}`}
+                            src={part.src}
+                          />
+                        </span>
+                        <span>零件 {index + 1}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </aside>
+              ) : null}
             </div>
 
-            {previewImages && editablePreview ? (
-              <details className="fla-character-import-parts-details">
-                <summary>查看零件</summary>
-                <ol className="fla-character-import-parts-list">
-                  {previewImages.parts.map((url, index) => (
-                    <li key={url}>
-                      <img alt={`零件 ${index + 1}`} src={url} />
-                      <span>零件 {index + 1}</span>
-                    </li>
-                  ))}
-                </ol>
-              </details>
-            ) : null}
-            {previewImages && editablePreview ? (
-              <details className="fla-character-import-source-details">
-                <summary>查看原始整图</summary>
-                <img alt="原始整体姿势" src={previewImages.source} />
-              </details>
-            ) : null}
+            <div className="fla-character-import-preview-feedback">
+              {operationOutcome === 'RECOVERY_REQUIRED' && recoveryAction ? recoveryAction : null}
+              {showPreviewStatus ? (
+                <output
+                  aria-live="polite"
+                  className="fla-character-import-preview-status"
+                  data-testid="fla-character-import-status"
+                  role={phase === 'error' || phase === 'unsupported' ? 'alert' : 'status'}
+                >
+                  {statusMessage}
+                </output>
+              ) : null}
+            </div>
           </main>
         </div>
 
@@ -1147,9 +1338,30 @@ export function FlaCharacterImportFlow({
             />
           </label>
           <div className="fla-character-import-footer-actions">
-            <output aria-live="polite" data-testid="fla-character-import-status" role={phase === 'error' || phase === 'unsupported' ? 'alert' : 'status'}>
-              {phase === 'inspecting' || phase === 'preparing' ? '' : statusMessage}
-            </output>
+            {pendingCredential && operationOutcome !== 'IN_PROGRESS' ? (
+              <div className="fla-character-import-recovery-receipt" data-testid="fla-character-import-recovery-receipt">
+                <code>{pendingCredential.operationId}</code>
+                <button
+                  data-testid="fla-character-import-copy-receipt"
+                  onClick={() => void copyOperationReceipt(pendingCredential)}
+                  type="button"
+                >
+                  {receiptCopied ? '已复制核对信息' : '复制核对信息'}
+                </button>
+                {safeExitAvailable ? (
+                  <button
+                    data-testid="fla-character-import-safe-exit"
+                    onClick={() => {
+                      onSafeExit?.(pendingCredential.operationId);
+                      setStatusMessage('已允许安全关闭。请点击应用窗口右上角关闭按钮；核对记录会保留。');
+                    }}
+                    type="button"
+                  >
+                    允许安全关闭并保留核对记录
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             {hasPendingOperation ? null : (
               <button
                 className="fla-character-import-cancel"

@@ -4,8 +4,14 @@ import { ResourceActivityDock } from './ResourceActivityDock';
 import type { ResourceActivity } from './ResourceActivityDock';
 import type {
   CreateFlaCharacter,
+  FlaCharacterCreateOperationState,
   QueryFlaCharacterCreateStatus,
 } from '../features/fla-import/FlaCharacterImportFlow';
+import type {
+  PendingFlaCharacterCreateCredential,
+  PendingFlaCharacterCreateRecord,
+} from '../features/fla-import/fla-character-create-recovery';
+import type { FlaCharacterCreateStatusResponse } from '../../shared/fla-character-create-api';
 import type { AdaptivePartsAssemblyActionsRef } from '../features/characters/CharacterManager';
 import { LegacyCompatibilityActivity } from './LegacyCompatibilityActivity';
 import type { EditorShellLayoutMode } from './adaptiveEditorShell';
@@ -21,6 +27,21 @@ export interface LeftWorkspaceProps {
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
   onCreateFlaCharacter?: CreateFlaCharacter;
   onQueryFlaCharacterCreateStatus: QueryFlaCharacterCreateStatus;
+  flaCharacterRecoveryRecord: PendingFlaCharacterCreateRecord;
+  onQueryPendingFlaCharacterCreateStatus(
+    credential: PendingFlaCharacterCreateCredential,
+  ): Promise<FlaCharacterCreateStatusResponse>;
+  onResolvePendingFlaCharacterRecovery(
+    credential: PendingFlaCharacterCreateCredential,
+    result: 'committed' | 'not-committed',
+  ): boolean | Promise<boolean>;
+  onFlaCharacterRecoveryCredentialChange(
+    credential: PendingFlaCharacterCreateCredential | null,
+  ): void;
+  onFlaCharacterOperationStateChange(
+    state: FlaCharacterCreateOperationState,
+  ): void;
+  onSafeFlaCharacterExit(operationId: string): void;
   flaCharacterRecoveryAction?: React.JSX.Element | null;
   flaCharacterRecoveryBusy?: boolean;
   onFlaCharacterImportStart?(): void;
@@ -42,6 +63,12 @@ export function LeftWorkspace({
   adaptivePartsActionsRef,
   onCreateFlaCharacter,
   onQueryFlaCharacterCreateStatus,
+  flaCharacterRecoveryRecord,
+  onQueryPendingFlaCharacterCreateStatus,
+  onResolvePendingFlaCharacterRecovery,
+  onFlaCharacterRecoveryCredentialChange,
+  onFlaCharacterOperationStateChange,
+  onSafeFlaCharacterExit,
   flaCharacterRecoveryAction,
   flaCharacterRecoveryBusy,
   onFlaCharacterImportStart,
@@ -82,6 +109,12 @@ export function LeftWorkspace({
         onDrawerOpenChange={onDrawerOpenChange}
         onCreateFlaCharacter={onCreateFlaCharacter}
         onQueryFlaCharacterCreateStatus={onQueryFlaCharacterCreateStatus}
+        flaCharacterRecoveryRecord={flaCharacterRecoveryRecord}
+        onQueryPendingFlaCharacterCreateStatus={onQueryPendingFlaCharacterCreateStatus}
+        onResolvePendingFlaCharacterRecovery={onResolvePendingFlaCharacterRecovery}
+        onFlaCharacterRecoveryCredentialChange={onFlaCharacterRecoveryCredentialChange}
+        onFlaCharacterOperationStateChange={onFlaCharacterOperationStateChange}
+        onSafeFlaCharacterExit={onSafeFlaCharacterExit}
         flaCharacterRecoveryAction={flaCharacterRecoveryAction}
         flaCharacterRecoveryBusy={flaCharacterRecoveryBusy}
         onFlaCharacterImportStart={onFlaCharacterImportStart}

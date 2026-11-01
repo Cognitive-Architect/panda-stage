@@ -43,9 +43,19 @@ import { CharacterList } from './CharacterList';
 import {
   FlaCharacterImportFlow,
   type CreateFlaCharacter,
+  type FlaCharacterCreateOperationState,
   type FlaCharacterImportAttempt,
   type QueryFlaCharacterCreateStatus,
 } from '../fla-import/FlaCharacterImportFlow';
+import {
+  FlaCharacterCreateRecoveryPanel,
+  FlaCharacterCreateRecoveryUnavailable,
+} from '../fla-import/FlaCharacterCreateRecoveryPanel';
+import type {
+  PendingFlaCharacterCreateCredential,
+  PendingFlaCharacterCreateRecord,
+} from '../fla-import/fla-character-create-recovery';
+import type { FlaCharacterCreateStatusResponse } from '../../../shared/fla-character-create-api';
 import {
   ASSEMBLY_DISCARD_CONFIRM_MESSAGE,
   isCharacterAssemblyPending,
@@ -130,6 +140,21 @@ export interface CharacterManagerProps {
   onCloseFlaCharacterImport?: () => void;
   onCreateFlaCharacter?: CreateFlaCharacter;
   onQueryFlaCharacterCreateStatus?: QueryFlaCharacterCreateStatus;
+  flaCharacterRecoveryRecord?: PendingFlaCharacterCreateRecord;
+  onQueryPendingFlaCharacterCreateStatus?(
+    credential: PendingFlaCharacterCreateCredential,
+  ): Promise<FlaCharacterCreateStatusResponse>;
+  onResolvePendingFlaCharacterRecovery?(
+    credential: PendingFlaCharacterCreateCredential,
+    result: 'committed' | 'not-committed',
+  ): boolean | Promise<boolean>;
+  onFlaCharacterRecoveryCredentialChange?(
+    credential: PendingFlaCharacterCreateCredential | null,
+  ): void;
+  onFlaCharacterOperationStateChange?(
+    state: FlaCharacterCreateOperationState,
+  ): void;
+  onSafeFlaCharacterExit?(operationId: string): void;
   onFlaCharacterCommitStateChange?(committing: boolean): void;
   flaCharacterRecoveryAction?: React.JSX.Element | null;
   flaCharacterRecoveryBusy?: boolean;
@@ -272,6 +297,16 @@ export function CharacterManager({
   onCloseFlaCharacterImport = () => undefined,
   onCreateFlaCharacter,
   onQueryFlaCharacterCreateStatus,
+  flaCharacterRecoveryRecord = { kind: 'none' },
+  onQueryPendingFlaCharacterCreateStatus = async () => ({
+    ok: false,
+    status: 'ERROR',
+    error: { code: 'RECOVERY_REQUIRED', message: 'Recovery status is unavailable.' },
+  }),
+  onResolvePendingFlaCharacterRecovery = () => false,
+  onFlaCharacterRecoveryCredentialChange = () => undefined,
+  onFlaCharacterOperationStateChange = () => undefined,
+  onSafeFlaCharacterExit = () => undefined,
   onFlaCharacterCommitStateChange,
   flaCharacterRecoveryAction,
   flaCharacterRecoveryBusy = false,
@@ -845,6 +880,9 @@ export function CharacterManager({
           onCommittingChange={onFlaCharacterCommitStateChange}
           onCreateCharacter={onCreateFlaCharacter}
           onQueryCharacterCreateStatus={onQueryFlaCharacterCreateStatus}
+          onRecoveryCredentialChange={onFlaCharacterRecoveryCredentialChange}
+          onOperationStateChange={onFlaCharacterOperationStateChange}
+          onSafeExit={onSafeFlaCharacterExit}
           recoveryAction={flaCharacterRecoveryAction}
           recoveryBusy={flaCharacterRecoveryBusy}
           onCreatedCharacter={openCreatedAdaptiveCharacter}
@@ -855,6 +893,22 @@ export function CharacterManager({
         className="character-workspace"
         data-project-revision={snapshot?.revision ?? 0}
       >
+        {view === 'list' && !flaCharacterImportAttempt &&
+        flaCharacterRecoveryRecord.kind === 'valid' &&
+        flaCharacterRecoveryRecord.credential.projectRoot === snapshot?.projectRoot &&
+        flaCharacterRecoveryRecord.credential.projectId === snapshot?.project.id ? (
+          <FlaCharacterCreateRecoveryPanel
+            credential={flaCharacterRecoveryRecord.credential}
+            onOperationStateChange={onFlaCharacterOperationStateChange}
+            onQuery={onQueryPendingFlaCharacterCreateStatus}
+            onResolved={onResolvePendingFlaCharacterRecovery}
+            onSafeExit={onSafeFlaCharacterExit}
+          />
+        ) : null}
+        {view === 'list' && !flaCharacterImportAttempt &&
+        flaCharacterRecoveryRecord.kind === 'invalid' ? (
+          <FlaCharacterCreateRecoveryUnavailable />
+        ) : null}
         {view === 'legacy' ? (
           <CharacterList
             characters={characters}

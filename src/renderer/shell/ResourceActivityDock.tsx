@@ -13,9 +13,15 @@ import { CharacterManager } from '../features/characters/CharacterManager';
 import {
   startFlaCharacterImport,
   type CreateFlaCharacter,
+  type FlaCharacterCreateOperationState,
   type FlaCharacterImportAttempt,
   type QueryFlaCharacterCreateStatus,
 } from '../features/fla-import/FlaCharacterImportFlow';
+import type {
+  PendingFlaCharacterCreateCredential,
+  PendingFlaCharacterCreateRecord,
+} from '../features/fla-import/fla-character-create-recovery';
+import type { FlaCharacterCreateStatusResponse } from '../../shared/fla-character-create-api';
 import type {
   AdaptivePartsAssemblyActionsRef,
   CharacterWorkspaceView,
@@ -34,7 +40,9 @@ import {
   Clapperboard,
   CirclePlus,
   FileArchive,
+  FileInput,
   Images,
+  Plus,
   Smile,
   Upload,
 } from 'lucide-react';
@@ -61,6 +69,21 @@ export interface ResourceActivityDockProps {
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
   onCreateFlaCharacter?: CreateFlaCharacter;
   onQueryFlaCharacterCreateStatus?: QueryFlaCharacterCreateStatus;
+  flaCharacterRecoveryRecord?: PendingFlaCharacterCreateRecord;
+  onQueryPendingFlaCharacterCreateStatus?(
+    credential: PendingFlaCharacterCreateCredential,
+  ): Promise<FlaCharacterCreateStatusResponse>;
+  onResolvePendingFlaCharacterRecovery?(
+    credential: PendingFlaCharacterCreateCredential,
+    result: 'committed' | 'not-committed',
+  ): boolean | Promise<boolean>;
+  onFlaCharacterRecoveryCredentialChange?(
+    credential: PendingFlaCharacterCreateCredential | null,
+  ): void;
+  onFlaCharacterOperationStateChange?(
+    state: FlaCharacterCreateOperationState,
+  ): void;
+  onSafeFlaCharacterExit?(operationId: string): void;
   flaCharacterRecoveryAction?: React.JSX.Element | null;
   flaCharacterRecoveryBusy?: boolean;
   onFlaCharacterImportStart?(): void;
@@ -129,6 +152,12 @@ export function ResourceActivityDock({
   adaptivePartsActionsRef,
   onCreateFlaCharacter,
   onQueryFlaCharacterCreateStatus,
+  flaCharacterRecoveryRecord,
+  onQueryPendingFlaCharacterCreateStatus,
+  onResolvePendingFlaCharacterRecovery,
+  onFlaCharacterRecoveryCredentialChange,
+  onFlaCharacterOperationStateChange,
+  onSafeFlaCharacterExit,
   flaCharacterRecoveryAction,
   flaCharacterRecoveryBusy,
   onFlaCharacterImportStart,
@@ -373,6 +402,10 @@ export function ResourceActivityDock({
   const showCreateIcon =
     (activeActivity === 'shots' && shotView !== 'create') ||
     (activeActivity === 'characters' && characterView === 'list');
+  const showLandscapeCharacterEntryActions =
+    landscapePresentation &&
+    activeActivity === 'characters' &&
+    characterView === 'list';
   const showCharacterCreateModeSelector =
     landscapePresentation &&
     activeActivity === 'characters' &&
@@ -557,7 +590,9 @@ export function ResourceActivityDock({
                 />
               ) : hideLandscapeCharacterPrimaryAction ? null : (
                   <button
-                    className="resource-activity-primary-action"
+                    className={showLandscapeCharacterEntryActions
+                      ? 'resource-activity-character-entry'
+                      : 'resource-activity-primary-action'}
                     data-resource-action={`${activeActivity}-${assetView === 'details' ? 'back' : primaryAction.label}`}
                     data-resource-action-layout={
                       showLandscapeAssetActionGroup
@@ -575,7 +610,9 @@ export function ResourceActivityDock({
                     }}
                     type="button"
                   >
-                    {showCreateIcon ? (
+                    {showLandscapeCharacterEntryActions ? (
+                      <DecorativeIcon icon={Plus} size={16} />
+                    ) : showCreateIcon ? (
                       <DecorativeIcon icon={CirclePlus} size={18} />
                     ) : null}
                     {activeActivity === 'assets' && assetView === 'browser' ? (
@@ -601,7 +638,7 @@ export function ResourceActivityDock({
               ) : null}
               {activeActivity === 'characters' && characterView === 'list' && onCreateFlaCharacter ? (
                 <button
-                  className="resource-activity-import-action"
+                  className={`resource-activity-import-action${showLandscapeCharacterEntryActions ? ' resource-activity-character-entry' : ''}`}
                   data-testid="resource-character-import-fla"
                   disabled={Boolean(flaCharacterImportAttempt)}
                   onClick={() => {
@@ -610,6 +647,9 @@ export function ResourceActivityDock({
                   }}
                   type="button"
                 >
+                  {showLandscapeCharacterEntryActions ? (
+                    <DecorativeIcon icon={FileInput} size={16} />
+                  ) : null}
                   导入角色
                 </button>
               ) : null}
@@ -732,6 +772,12 @@ export function ResourceActivityDock({
                 onCloseFlaCharacterImport={closeFlaCharacterImport}
                 onCreateFlaCharacter={onCreateFlaCharacter}
                 onQueryFlaCharacterCreateStatus={onQueryFlaCharacterCreateStatus}
+                flaCharacterRecoveryRecord={flaCharacterRecoveryRecord}
+                onQueryPendingFlaCharacterCreateStatus={onQueryPendingFlaCharacterCreateStatus}
+                onResolvePendingFlaCharacterRecovery={onResolvePendingFlaCharacterRecovery}
+                onFlaCharacterRecoveryCredentialChange={onFlaCharacterRecoveryCredentialChange}
+                onFlaCharacterOperationStateChange={onFlaCharacterOperationStateChange}
+                onSafeFlaCharacterExit={onSafeFlaCharacterExit}
                 flaCharacterRecoveryAction={flaCharacterRecoveryAction}
                 flaCharacterRecoveryBusy={flaCharacterRecoveryBusy}
                 onFlaCharacterCommitStateChange={setFlaCharacterCommitState}

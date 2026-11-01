@@ -44,8 +44,21 @@ import {
   createCharacterFromPreparedParts,
   queryFlaCharacterCreateStatus,
 } from '../features/fla-import/createCharacterFromPreparedParts';
+import {
+  FlaCharacterCreateRecoveryPanel,
+  FlaCharacterCreateRecoveryUnavailable,
+} from '../features/fla-import/FlaCharacterCreateRecoveryPanel';
+import {
+  clearPendingFlaCharacterCreateCredential,
+  queryPendingFlaCharacterCreateStatus,
+  readPendingFlaCharacterCreateRecord,
+  samePendingFlaCharacterCreateCredential,
+  type PendingFlaCharacterCreateCredential,
+  type PendingFlaCharacterCreateRecord,
+} from '../features/fla-import/fla-character-create-recovery';
 import type {
   CreateFlaCharacter,
+  FlaCharacterCreateOperationState,
   QueryFlaCharacterCreateStatus,
 } from '../features/fla-import/FlaCharacterImportFlow';
 import type { AdaptivePartsAssemblyActionsRef } from '../features/characters/CharacterManager';
@@ -294,14 +307,24 @@ export class EditorShellSession {
 
   async prepareForNativeClose(
     getSnapshot: () => EditorProjectSnapshot | null,
+    options: {
+      shouldSkipAutosave?: (snapshot: EditorProjectSnapshot) => boolean;
+    } = {},
   ): Promise<void> {
     this.store.assertProjectOperationIdle();
     while (true) {
       const snapshot = getSnapshot();
       this.assertNativeCloseSyncable(snapshot);
-      const response = await this.syncAutosave(snapshot);
-      if (response && !response.ok) {
-        throw new Error(response.error.message);
+      const skipAutosave = Boolean(
+        snapshot &&
+          !snapshot.dirty &&
+          options.shouldSkipAutosave?.(snapshot),
+      );
+      if (!skipAutosave) {
+        const response = await this.syncAutosave(snapshot);
+        if (response && !response.ok) {
+          throw new Error(response.error.message);
+        }
       }
       await this.flushAutosave();
       this.store.assertProjectOperationIdle();
@@ -510,6 +533,11 @@ export function EditorShell({
       }),
     [],
   );
+  const queryPendingFlaCreateStatus = useCallback(
+    (credential: PendingFlaCharacterCreateCredential) =>
+      queryPendingFlaCharacterCreateStatus(credential, window.pandaStage.fla),
+    [],
+  );
   const [sessionSnapshot, setSessionSnapshot] = useState(() =>
     session.getSnapshot(),
   );
@@ -554,6 +582,15 @@ export function EditorShell({
   }>({ phase: 'idle', revision: null });
   const [requestedPage, setRequestedPage] =
     useState<EditorShellPage>('project-center');
+  const [flaCharacterRecoveryRecord, setFlaCharacterRecoveryRecord] = useState(
+    () => readPendingFlaCharacterCreateRecord(),
+  );
+  const flaCharacterRecoveryRecordRef = useRef(flaCharacterRecoveryRecord);
+  flaCharacterRecoveryRecordRef.current = flaCharacterRecoveryRecord;
+  const flaCharacterOperationStateRef = useRef<FlaCharacterCreateOperationState>(
+    flaCharacterRecoveryRecord.kind === 'none' ? 'terminal' : 'unknown',
+  );
+  const safeFlaCharacterCloseArmedRef = useRef<string | null>(null);
   // Cloud Touch is the sole product route. This presentation value is kept
   // only as a DOM/CSS contract; it never enters Project, History, autosave,
   // or any cross-process contract.
@@ -565,9 +602,44 @@ export function EditorShell({
     useState<ResourceActivity>('shots');
   const [portraitCanvasSurface, setPortraitCanvasSurface] =
     useState<PortraitCanvasSurface>('none');
-  const flaCharacterCommitActiveRef = useRef(false);
+  const flaCharacterCommitActiveRef = useRef(
+    flaCharacterRecoveryRecord.kind !== 'none',
+  );
   const setFlaCharacterCommitActive = (committing: boolean): void => {
-    flaCharacterCommitActiveRef.current = committing;
+    flaCharacterCommitActiveRef.current =
+      committing || flaCharacterRecoveryRecordRef.current.kind !== 'none';
+  };
+  const setFlaCharacterRecoveryCredential = (
+    credential: PendingFlaCharacterCreateCredential | null,
+  ): void => {
+    const nextRecord: PendingFlaCharacterCreateRecord = credential
+      ? { kind: 'valid', credential }
+      : readPendingFlaCharacterCreateRecord();
+    flaCharacterRecoveryRecordRef.current = nextRecord;
+    setFlaCharacterRecoveryRecord(nextRecord);
+    flaCharacterCommitActiveRef.current =
+      nextRecord.kind !== 'none' ||
+      flaCharacterOperationStateRef.current !== 'terminal';
+  };
+  const setFlaCharacterOperationState = (
+    state: FlaCharacterCreateOperationState,
+  ): void => {
+    flaCharacterOperationStateRef.current = state;
+    flaCharacterCommitActiveRef.current =
+      state !== 'terminal' ||
+      flaCharacterRecoveryRecordRef.current.kind !== 'none';
+  };
+  const armSafeFlaCharacterClose = (operationId: string): void => {
+    const record = flaCharacterRecoveryRecordRef.current;
+    if (
+      flaCharacterOperationStateRef.current !== 'safe-to-close' ||
+      record.kind !== 'valid' ||
+      record.credential.operationId !== operationId
+    ) {
+      return;
+    }
+    safeFlaCharacterCloseArmedRef.current = operationId;
+    setStatus('已允许安全关闭。请点击应用窗口右上角关闭按钮；核对记录会保留。');
   };
   const shellState = getEditorShellState(projectSnapshot);
   const sessionRegion = getEditorShellSessionRegion(shellState);
@@ -612,9 +684,11 @@ export function EditorShell({
   };
   const exportTaskIsActive = (task: ExportTaskState): boolean =>
     ['selecting', 'preparing', 'starting', 'running', 'cancelling'].includes(task.status);
-  const blockSessionChangeDuringExport = (): boolean => {
-    if (flaCharacterCommitActiveRef.current) {
-      setStatus('角色保存结果尚未确认，请回到导入窗口查询保存结果后再关闭或切换工程。');
+  const blockSessionChangeDuringExport = (
+    allowPersistedFlaRecovery = false,
+  ): boolean => {
+    if (flaCharacterCommitActiveRef.current && !allowPersistedFlaRecovery) {
+      setStatus('角色保存仍待核对，请先查询同一保存编号后再关闭或切换工程。');
       return true;
     }
     const task = exportTaskRef.current;
@@ -1243,26 +1317,70 @@ export function EditorShell({
 
   useEffect(() => {
     return window.pandaStage.nativeClose.onSyncRequest(({ requestId }) => {
-      if (blockSessionChangeDuringExport()) {
+      const pendingRecord = flaCharacterRecoveryRecordRef.current;
+      const persistedRecord = readPendingFlaCharacterCreateRecord();
+      const armedOperationId = safeFlaCharacterCloseArmedRef.current;
+      const allowPersistedFlaRecoveryClose = Boolean(
+        armedOperationId &&
+          pendingRecord.kind === 'valid' &&
+          persistedRecord.kind === 'valid' &&
+          samePendingFlaCharacterCreateCredential(
+            pendingRecord.credential,
+            persistedRecord.credential,
+          ) &&
+          pendingRecord.credential.operationId === armedOperationId &&
+          flaCharacterOperationStateRef.current === 'safe-to-close',
+      );
+      if (blockSessionChangeDuringExport(allowPersistedFlaRecoveryClose)) {
+        const exportActive = exportTaskIsActive(exportTaskRef.current);
+        safeFlaCharacterCloseArmedRef.current = null;
         window.pandaStage.nativeClose.respondSync({
           ok: false,
           requestId,
           error:
-            flaCharacterCommitActiveRef.current
-              ? '角色保存结果尚未确认，请回到导入窗口查询保存结果后再关闭窗口。'
-              : '\u6b63\u5728\u5bfc\u51fa\u89c6\u9891\u3002\u8bf7\u5b8c\u6210\u6216\u53d6\u6d88\u5bfc\u51fa\u540e\u518d\u5173\u95ed\u7a97\u53e3\u3002',
+            flaCharacterCommitActiveRef.current && !allowPersistedFlaRecoveryClose
+              ? '角色保存仍待核对，请回到保存结果页面查询后再关闭窗口。'
+              : exportActive
+                ? '\u6b63\u5728\u5bfc\u51fa\u89c6\u9891\u3002\u8bf7\u5b8c\u6210\u6216\u53d6\u6d88\u5bfc\u51fa\u540e\u518d\u5173\u95ed\u7a97\u53e3\u3002'
+                : '当前操作仍在确认中，窗口保持打开。',
+        });
+        return;
+      }
+      const staleCommittedSnapshot = allowPersistedFlaRecoveryClose &&
+        pendingRecord.kind === 'valid' &&
+        editorProjectStore.getSnapshot()?.projectRoot === pendingRecord.credential.projectRoot &&
+        editorProjectStore.getSnapshot()?.project.id === pendingRecord.credential.projectId &&
+        (editorProjectStore.getSnapshot()?.revision ?? Number.POSITIVE_INFINITY) <
+          pendingRecord.credential.baseRevision + 1;
+      if (staleCommittedSnapshot && editorProjectStore.getSnapshot()?.dirty) {
+        safeFlaCharacterCloseArmedRef.current = null;
+        window.pandaStage.nativeClose.respondSync({
+          ok: false,
+          requestId,
+          error: '已确认角色保存，但当前项目仍有未保存编辑且快照较旧。请保持窗口打开并先恢复到最新项目状态。',
         });
         return;
       }
       void session
-        .prepareForNativeClose(editorProjectStore.getSnapshot)
+        .prepareForNativeClose(editorProjectStore.getSnapshot, {
+          shouldSkipAutosave: (snapshot) => Boolean(
+            staleCommittedSnapshot &&
+              !snapshot.dirty &&
+              pendingRecord.kind === 'valid' &&
+              snapshot.projectRoot === pendingRecord.credential.projectRoot &&
+              snapshot.project.id === pendingRecord.credential.projectId &&
+              snapshot.revision < pendingRecord.credential.baseRevision + 1,
+          ),
+        })
         .then(() => {
+          safeFlaCharacterCloseArmedRef.current = null;
           window.pandaStage.nativeClose.respondSync({
             ok: true,
             requestId,
           });
         })
         .catch((error: unknown) => {
+          safeFlaCharacterCloseArmedRef.current = null;
           const message =
             error instanceof Error && error.message.trim()
               ? error.message
@@ -1291,8 +1409,9 @@ export function EditorShell({
   const switchToProject = async (
     projectRoot: string,
     cleanStatus = '项目已打开，暂无未保存更改。',
-  ): Promise<void> => {
-    if (blockSessionChangeDuringExport()) return;
+    allowPersistedFlaRecovery = false,
+  ): Promise<boolean> => {
+    if (blockSessionChangeDuringExport(allowPersistedFlaRecovery)) return false;
     const nextSession = await session.switchProject(projectRoot);
     await clearExportTask();
     // The preview belongs to the project that was open when it was requested.
@@ -1302,6 +1421,7 @@ export function EditorShell({
     setSaveActivity({ phase: 'idle', revision: null });
     updateSession(nextSession, cleanStatus);
     setRequestedPage('editor');
+    return true;
   };
 
   const switchToRecentProject = async (
@@ -1326,6 +1446,65 @@ export function EditorShell({
       setRequestedPage('editor');
     } catch (error) {
       throw new Error(projectOpenErrorMessage(error), { cause: error });
+    }
+  };
+
+  const resolvePendingFlaCharacterRecovery = async (
+    credential: PendingFlaCharacterCreateCredential,
+    result: 'committed' | 'not-committed',
+  ): Promise<boolean> => {
+    if (result === 'not-committed') {
+      if (!clearPendingFlaCharacterCreateCredential(credential)) {
+        setStatus('本次没有保存成功，但本机核对信息暂时无法清理。请重试查询。');
+        return false;
+      }
+      setFlaCharacterRecoveryCredential(null);
+      setFlaCharacterOperationState('terminal');
+      setStatus('本次角色没有保存成功，可以重新准备。');
+      return true;
+    }
+
+    const current = editorProjectStore.getSnapshot();
+    if (
+      current?.projectRoot === credential.projectRoot &&
+      current.project.id === credential.projectId
+    ) {
+      if (current.revision < credential.baseRevision + 1) {
+        setFlaCharacterOperationState('safe-to-close');
+        setStatus('Main 已确认角色保存，但当前编辑器快照仍旧。核对记录已保留；请稍后重新打开项目以载入已保存结果。');
+        return false;
+      }
+      if (!clearPendingFlaCharacterCreateCredential(credential)) {
+        setStatus('角色已保存，但本机核对信息暂时无法清理。请重试查询。');
+        return false;
+      }
+      setFlaCharacterRecoveryCredential(null);
+      setFlaCharacterOperationState('terminal');
+      setRequestedPage('editor');
+      setStatus('角色已保存，请在角色列表核对。');
+      return true;
+    }
+
+    setBusy(true);
+    try {
+      const opened = await switchToProject(
+        credential.projectRoot,
+        '角色已保存，请在角色列表核对。',
+        true,
+      );
+      if (!opened) return false;
+      if (!clearPendingFlaCharacterCreateCredential(credential)) {
+        setStatus('角色已保存，但本机核对信息暂时无法清理。请重试查询。');
+        return false;
+      }
+      setFlaCharacterRecoveryCredential(null);
+      setFlaCharacterOperationState('terminal');
+      return true;
+    } catch (error) {
+      setStatus(projectOpenErrorMessage(error));
+      return false;
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -2188,7 +2367,7 @@ export function EditorShell({
     >
       {!renderProductSurface ? null : page === 'project-center' ? (
         <ProjectCenterScreen
-          busy={busy}
+          busy={busy || flaCharacterRecoveryRecord.kind !== 'none'}
           currentProject={projectSnapshot}
           newProjectDialogOpen={newProjectDialogOpen}
           onChooseProjectDirectory={chooseProjectDirectory}
@@ -2201,14 +2380,27 @@ export function EditorShell({
           openCandidatePath={openCandidatePath}
           recentRefreshToken={recentRefreshToken}
           recoveryBanner={
-            recoveryCandidate && projectSnapshot ? (
-              <RecoveryCandidateBanner
-                busy={busy}
-                candidate={recoveryCandidate}
-                onIgnore={ignoreRecovery}
-                onRestore={restoreRecovery}
-              />
-            ) : null
+            <>
+              {recoveryCandidate && projectSnapshot ? (
+                <RecoveryCandidateBanner
+                  busy={busy}
+                  candidate={recoveryCandidate}
+                  onIgnore={ignoreRecovery}
+                  onRestore={restoreRecovery}
+                />
+              ) : null}
+              {flaCharacterRecoveryRecord.kind === 'valid' ? (
+                <FlaCharacterCreateRecoveryPanel
+                  credential={flaCharacterRecoveryRecord.credential}
+                  onOperationStateChange={setFlaCharacterOperationState}
+                  onQuery={queryPendingFlaCreateStatus}
+                  onResolved={resolvePendingFlaCharacterRecovery}
+                  onSafeExit={armSafeFlaCharacterClose}
+                />
+              ) : flaCharacterRecoveryRecord.kind === 'invalid' ? (
+                <FlaCharacterCreateRecoveryUnavailable />
+              ) : null}
+            </>
           }
           status={status}
         />
@@ -2289,6 +2481,12 @@ export function EditorShell({
                 adaptivePartsActionsRef={adaptivePartsActionsRef}
                 onCreateFlaCharacter={createFlaCharacter}
                 onQueryFlaCharacterCreateStatus={queryFlaCreateStatus}
+                flaCharacterRecoveryRecord={flaCharacterRecoveryRecord}
+                onQueryPendingFlaCharacterCreateStatus={queryPendingFlaCreateStatus}
+                onResolvePendingFlaCharacterRecovery={resolvePendingFlaCharacterRecovery}
+                onFlaCharacterRecoveryCredentialChange={setFlaCharacterRecoveryCredential}
+                onFlaCharacterOperationStateChange={setFlaCharacterOperationState}
+                onSafeFlaCharacterExit={armSafeFlaCharacterClose}
                 flaCharacterRecoveryAction={
                   recoveryCandidate && projectSnapshot ? (
                     <RecoveryCandidateBanner
