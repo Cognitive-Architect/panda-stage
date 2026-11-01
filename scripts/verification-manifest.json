@@ -399,7 +399,8 @@
           "tests/unit/day23-layer-controls.test.ts",
           "tests/unit/layer-service.test.ts",
           "tests/unit/layer-stores.test.ts",
-          "tests/unit/reference-scanner.test.ts"
+          "tests/unit/reference-scanner.test.ts",
+          "tests/unit/create-character-from-prepared-parts.test.ts"
         ],
         "verifierPatterns": ["scripts/verify-issue257-slice3*", "scripts/verify-issue657-audio-foundation.cjs"],
         "suites": [],
@@ -407,7 +408,7 @@
         "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "architecture",
-        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. Exact Issue #828 lifecycle/audio source-range tests, Main window/filesystem boundary tests, and Issue #894 Adaptive Parts/Layer/history helpers and lifecycle tests remain here without broad test globs; other unregistered test paths stay fail-closed."
+        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. Exact Issue #828 lifecycle/audio source-range tests, Main window/filesystem boundary tests, Issue #894 Adaptive Parts/Layer/history helpers and lifecycle tests, and Issue #910 F1-04 prepared-character submission coverage remain here without broad test globs; other unregistered test paths stay fail-closed."
       },
       {
         "id": "release-export-core",

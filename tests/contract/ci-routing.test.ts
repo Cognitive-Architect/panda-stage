@@ -194,7 +194,7 @@ describe('RH-07 FAST Draft policy', () => {
     ]);
   });
 
-  it('routes the exact Adaptive Parts support and lifecycle paths through Full-risk core ownership', () => {
+  it('routes exact Adaptive Parts and F1-04 paths through Full-risk core ownership', () => {
     const paths = [
       'tests/helpers/adaptivePartsFixtures.ts',
       'tests/helpers/characterAssertions.ts',
@@ -205,6 +205,7 @@ describe('RH-07 FAST Draft policy', () => {
       'tests/unit/layer-service.test.ts',
       'tests/unit/layer-stores.test.ts',
       'tests/unit/reference-scanner.test.ts',
+      'tests/unit/create-character-from-prepared-parts.test.ts',
     ];
 
     for (const file of paths) {
