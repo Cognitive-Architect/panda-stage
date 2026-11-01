@@ -14,6 +14,7 @@ import {
   startFlaCharacterImport,
   type CreateFlaCharacter,
   type FlaCharacterImportAttempt,
+  type QueryFlaCharacterCreateStatus,
 } from '../features/fla-import/FlaCharacterImportFlow';
 import type {
   AdaptivePartsAssemblyActionsRef,
@@ -59,7 +60,9 @@ export interface ResourceActivityDockProps {
   onActiveActivityChange?(activity: ResourceActivity): void;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
   onCreateFlaCharacter?: CreateFlaCharacter;
+  onQueryFlaCharacterCreateStatus?: QueryFlaCharacterCreateStatus;
   onFlaCharacterImportStart?(): void;
+  onFlaCharacterCommitStateChange?(committing: boolean): void;
   /** Hide redundant section labels only for portrait resource surfaces. */
   hideSectionLabels?: boolean;
 }
@@ -123,7 +126,9 @@ export function ResourceActivityDock({
   onActiveActivityChange,
   adaptivePartsActionsRef,
   onCreateFlaCharacter,
+  onQueryFlaCharacterCreateStatus,
   onFlaCharacterImportStart,
+  onFlaCharacterCommitStateChange,
   hideSectionLabels = false,
 }: ResourceActivityDockProps): React.JSX.Element {
   const landscapePresentation = presentation === 'landscape';
@@ -141,6 +146,9 @@ export function ResourceActivityDock({
     useState<FlaCharacterImportAttempt | null>(null);
   const flaCharacterImportAttemptRef = useRef(flaCharacterImportAttempt);
   flaCharacterImportAttemptRef.current = flaCharacterImportAttempt;
+  const [flaCharacterImportCommitting, setFlaCharacterImportCommitting] =
+    useState(false);
+  const flaCharacterImportCommittingRef = useRef(false);
   const [characterCreateModeSwitchTarget, setCharacterCreateModeSwitchTarget] =
     useState<HTMLDivElement | null>(null);
   const [assetImportRequest, setAssetImportRequest] = useState(0);
@@ -172,15 +180,28 @@ export function ResourceActivityDock({
     return true;
   };
 
-  const setDrawerOpen = (open: boolean): void => {
-    if (!open && !confirmLeavingCharacterActivity()) return;
+  const setDrawerOpen = (open: boolean): boolean => {
+    if (!open && (flaCharacterImportCommittingRef.current || !confirmLeavingCharacterActivity())) {
+      return false;
+    }
     if (requestedDrawerOpen === undefined) {
       setInternalDrawerOpen(open);
     }
     onDrawerOpenChange?.(open);
+    return true;
   };
   const setDrawerOpenRef = useRef(setDrawerOpen);
   setDrawerOpenRef.current = setDrawerOpen;
+  const setFlaCharacterCommitState = (committing: boolean): void => {
+    flaCharacterImportCommittingRef.current = committing;
+    setFlaCharacterImportCommitting(committing);
+    onFlaCharacterCommitStateChange?.(committing);
+  };
+  const closeFlaCharacterImport = (): void => {
+    if (flaCharacterImportCommittingRef.current) return;
+    setFlaCharacterImportAttempt(null);
+    setFlaCharacterCommitState(false);
+  };
 
   useEffect(() => {
     const wasDrawerOpenControlled =
@@ -218,6 +239,14 @@ export function ResourceActivityDock({
   useLayoutEffect(() => {
     const previous = previousActivity.current;
     if (activeActivity === previous) return;
+    if (flaCharacterImportCommittingRef.current) {
+      if (requestedActivity === undefined) {
+        setInternalActivity(previous);
+      } else {
+        onActiveActivityChange?.(previous);
+      }
+      return;
+    }
 
     if (previous === 'characters' && activeActivity !== 'characters') {
       const session = characterAssemblySessionStore.getSnapshot();
@@ -249,6 +278,7 @@ export function ResourceActivityDock({
     previousActivity.current = activeActivity;
   }, [
     activeActivity,
+    flaCharacterImportCommitting,
     onActiveActivityChange,
     requestedActivity,
     snapshot.project.id,
@@ -259,6 +289,11 @@ export function ResourceActivityDock({
     if (!narrow) return undefined;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
+        if (flaCharacterImportCommittingRef.current) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
         setDrawerOpenRef.current(false);
       }
     };
@@ -267,10 +302,13 @@ export function ResourceActivityDock({
   }, [narrow]);
 
   useEffect(() => {
-    if (!drawerOpen || activeActivity !== 'characters') {
+    if (
+      (!drawerOpen || activeActivity !== 'characters') &&
+      !flaCharacterImportCommittingRef.current
+    ) {
       setFlaCharacterImportAttempt(null);
     }
-  }, [activeActivity, drawerOpen]);
+  }, [activeActivity, drawerOpen, flaCharacterImportCommitting]);
 
   useEffect(() => {
     if (activeActivity === 'characters' && drawerOpen) return;
@@ -372,6 +410,7 @@ export function ResourceActivityDock({
             };
 
   const selectActivity = (activity: ResourceActivity): void => {
+    if (flaCharacterImportCommittingRef.current) return;
     if (
       activity !== activeActivity &&
       !confirmLeavingCharacterActivity()
@@ -431,6 +470,7 @@ export function ResourceActivityDock({
                 aria-label={`${active && drawerOpen ? '关闭' : '打开'}${activity.label}抽屉`}
                 aria-pressed={active}
                 className={active ? 'resource-activity-rail-active' : ''}
+                disabled={flaCharacterImportCommitting}
                 data-activity={activity.id}
                 data-testid={`resource-activity-rail-${activity.id}`}
                 onClick={() => selectActivity(activity.id)}
@@ -448,6 +488,7 @@ export function ResourceActivityDock({
           aria-expanded={drawerOpen}
           aria-label={drawerOpen ? '收起资源工作区' : '打开资源工作区'}
           className="resource-workspace-handle"
+          disabled={flaCharacterImportCommitting}
           data-testid="resource-workspace-handle"
           onClick={() => setDrawerOpen(!drawerOpen)}
           type="button"
@@ -522,7 +563,12 @@ export function ResourceActivityDock({
                           : undefined
                     }
                     data-testid="resource-primary-action"
-                    onClick={primaryAction.onClick}
+                    disabled={flaCharacterImportCommitting}
+                    onClick={() => {
+                      if (!flaCharacterImportCommittingRef.current) {
+                        primaryAction.onClick();
+                      }
+                    }}
                     type="button"
                   >
                     {showCreateIcon ? (
@@ -583,12 +629,15 @@ export function ResourceActivityDock({
                   aria-label="关闭资源工作区"
                   className={`resource-activity-close${showCharacterCreateModeSelector ? ' resource-activity-create-close' : ''}`}
                   data-testid="resource-activity-close"
+                  disabled={flaCharacterImportCommitting}
                   onClick={() => {
-                    setFlaCharacterImportAttempt(null);
+                    if (flaCharacterImportCommittingRef.current) return;
                     if (activeActivity === 'assets') {
                       setAssetReviewCloseRequest((value) => value + 1);
                     }
-                    setDrawerOpen(false);
+                    if (!setDrawerOpen(false)) return;
+                    setFlaCharacterImportAttempt(null);
+                    setFlaCharacterCommitState(false);
                   }}
                   type="button"
                 >
@@ -607,6 +656,7 @@ export function ResourceActivityDock({
                 <button
                   aria-controls="resource-activity-panel"
                   aria-pressed={activeActivity === activity.id}
+                  disabled={flaCharacterImportCommitting}
                   className={
                     activeActivity === activity.id
                       ? 'resource-activity-tab-active'
@@ -675,8 +725,10 @@ export function ResourceActivityDock({
                 adaptivePartsActionsRef={adaptivePartsActionsRef}
                 flaCharacterImportAttempt={flaCharacterImportAttempt}
                 hideHeading={landscapePresentation}
-                onCloseFlaCharacterImport={() => setFlaCharacterImportAttempt(null)}
+                onCloseFlaCharacterImport={closeFlaCharacterImport}
                 onCreateFlaCharacter={onCreateFlaCharacter}
+                onQueryFlaCharacterCreateStatus={onQueryFlaCharacterCreateStatus}
+                onFlaCharacterCommitStateChange={setFlaCharacterCommitState}
                 onViewChange={setCharacterView}
                 presentation={
                   landscapePresentation ? 'landscape' : 'default'

@@ -47,6 +47,133 @@ export interface CreateCharacterFromPreparedPartsOptions {
   ensureMainSnapshot?: (snapshot: EditorProjectSnapshot) => Promise<void>;
 }
 
+export interface QueryFlaCharacterCreateStatusOptions {
+  operationId: string;
+  preview: EditablePartPreview;
+  baseSnapshot: EditorProjectSnapshot;
+  openInstanceId: number;
+  api: FlaCharacterCreateApi;
+  store?: EditorProjectStore;
+}
+
+function matchesOperationIdentity(
+  result: FlaCharacterCreateOutcome,
+  operationId: string,
+  snapshot: EditorProjectSnapshot,
+  openInstanceId: number,
+  preview: EditablePartPreview,
+): boolean {
+  return result.operationId === operationId &&
+    result.projectRoot === snapshot.projectRoot &&
+    result.projectId === snapshot.project.id &&
+    result.openInstanceId === openInstanceId &&
+    result.baseRevision === snapshot.revision &&
+    result.savedRevision === snapshot.revision + 1 &&
+    result.identity.planId === preview.planId &&
+    result.identity.poseIdentity === preview.poseIdentity;
+}
+
+function withoutProjectSnapshot(
+  status: Extract<FlaCharacterCreateStatusResponse, { status: 'COMMITTED' }>,
+): Extract<FlaCharacterCreateStatusResponse, { status: 'COMMITTED' }> {
+  if (!hasProjectSnapshot(status.result)) return status;
+  const { project, ...identity } = status.result;
+  void project;
+  return { ...status, result: identity };
+}
+
+export async function queryFlaCharacterCreateStatus(
+  options: QueryFlaCharacterCreateStatusOptions,
+): Promise<FlaCharacterCreateStatusResponse> {
+  const store = options.store ?? editorProjectStore;
+  const { baseSnapshot, openInstanceId, operationId, preview } = options;
+  const current = store.getSnapshot();
+  let lease: ReturnType<EditorProjectStore['acquireProjectOperationLease']> | null = null;
+  if (
+    current &&
+    current.projectRoot === baseSnapshot.projectRoot &&
+    current.project.id === baseSnapshot.project.id &&
+    current.revision === baseSnapshot.revision &&
+    JSON.stringify(current.project) === JSON.stringify(baseSnapshot.project) &&
+    store.getProjectInstanceId() === openInstanceId
+  ) {
+    try {
+      lease = store.acquireProjectOperationLease({
+        projectRoot: baseSnapshot.projectRoot,
+        projectId: baseSnapshot.project.id,
+        revision: baseSnapshot.revision,
+        openInstanceId,
+      });
+    } catch {
+      // Status remains useful when another operation or a changed snapshot
+      // prevents safely applying the committed Project result.
+    }
+  }
+
+  try {
+    const status = await options.api.getCharacterCreateStatus({
+      format: 'panda-fla-character-create-status',
+      version: 1,
+      operationId,
+      projectRoot: baseSnapshot.projectRoot,
+      projectId: baseSnapshot.project.id,
+    });
+    if (
+      status.ok &&
+      status.status !== 'COMMITTED' &&
+      status.operationId !== operationId
+    ) {
+      throw new FlaCharacterCreateOperationError(
+        'The status receipt does not match this operation.',
+        'OPERATION_ID_CONFLICT',
+      );
+    }
+    if (!status.ok || status.status !== 'COMMITTED') return status;
+    if (!matchesOperationIdentity(
+      status.result,
+      operationId,
+      baseSnapshot,
+      openInstanceId,
+      preview,
+    )) {
+      throw new FlaCharacterCreateOperationError(
+        'The saved result does not match this Project, operation, or confirmed FLA plan.',
+        'OPERATION_ID_CONFLICT',
+      );
+    }
+    if (!hasProjectSnapshot(status.result)) return status;
+
+    if (lease) {
+      const currentProject = store.getSnapshot()?.project;
+      if (currentProject && JSON.stringify(currentProject) !== JSON.stringify(status.result.project)) {
+        store.acceptSavedProjectCommand(
+          lease,
+          status.result.project,
+          status.result.savedRevision,
+          '导入角色',
+        );
+        return status;
+      }
+      return withoutProjectSnapshot(status);
+    }
+
+    const currentAfterQuery = store.getSnapshot();
+    if (
+      currentAfterQuery &&
+      currentAfterQuery.projectRoot === baseSnapshot.projectRoot &&
+      currentAfterQuery.project.id === baseSnapshot.project.id &&
+      currentAfterQuery.revision === status.result.savedRevision &&
+      store.getProjectInstanceId() === openInstanceId &&
+      JSON.stringify(currentAfterQuery.project) === JSON.stringify(status.result.project)
+    ) {
+      return status;
+    }
+    return withoutProjectSnapshot(status);
+  } finally {
+    if (lease) store.releaseProjectOperationLease(lease);
+  }
+}
+
 export async function createCharacterFromPreparedParts(
   options: CreateCharacterFromPreparedPartsOptions,
 ): Promise<FlaCharacterCreateOutcome> {
@@ -136,6 +263,19 @@ export async function createCharacterFromPreparedParts(
           status.ok ? undefined : status.error.code,
         );
       }
+    }
+
+    if (!matchesOperationIdentity(
+      result,
+      operationId,
+      snapshot,
+      openInstanceId,
+      options.preview,
+    )) {
+      throw new FlaCharacterCreateOperationError(
+        'The Main Process result does not match this Project, operation, or confirmed FLA plan.',
+        'OPERATION_ID_CONFLICT',
+      );
     }
 
     if (!hasProjectSnapshot(result)) {

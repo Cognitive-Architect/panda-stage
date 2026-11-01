@@ -2,7 +2,10 @@ import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { ProjectRecoveryPanel } from '../features/recovery/ProjectRecoveryPanel';
 import { ResourceActivityDock } from './ResourceActivityDock';
 import type { ResourceActivity } from './ResourceActivityDock';
-import type { CreateFlaCharacter } from '../features/fla-import/FlaCharacterImportFlow';
+import type {
+  CreateFlaCharacter,
+  QueryFlaCharacterCreateStatus,
+} from '../features/fla-import/FlaCharacterImportFlow';
 import type { AdaptivePartsAssemblyActionsRef } from '../features/characters/CharacterManager';
 import { LegacyCompatibilityActivity } from './LegacyCompatibilityActivity';
 import type { EditorShellLayoutMode } from './adaptiveEditorShell';
@@ -17,7 +20,9 @@ export interface LeftWorkspaceProps {
   onActiveActivityChange?(activity: ResourceActivity): void;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
   onCreateFlaCharacter?: CreateFlaCharacter;
+  onQueryFlaCharacterCreateStatus: QueryFlaCharacterCreateStatus;
   onFlaCharacterImportStart?(): void;
+  onFlaCharacterCommitStateChange?(committing: boolean): void;
   onOpenRecentProject(
     projectRoot: string,
     expectedProjectId: string,
@@ -34,7 +39,9 @@ export function LeftWorkspace({
   onActiveActivityChange,
   adaptivePartsActionsRef,
   onCreateFlaCharacter,
+  onQueryFlaCharacterCreateStatus,
   onFlaCharacterImportStart,
+  onFlaCharacterCommitStateChange,
   onOpenRecentProject,
 }: LeftWorkspaceProps): React.JSX.Element {
   const projectUtilities = (
@@ -70,7 +77,9 @@ export function LeftWorkspace({
         onActiveActivityChange={onActiveActivityChange}
         onDrawerOpenChange={onDrawerOpenChange}
         onCreateFlaCharacter={onCreateFlaCharacter}
+        onQueryFlaCharacterCreateStatus={onQueryFlaCharacterCreateStatus}
         onFlaCharacterImportStart={onFlaCharacterImportStart}
+        onFlaCharacterCommitStateChange={onFlaCharacterCommitStateChange}
         presentation={shellMode === 'landscape' ? 'landscape' : 'default'}
         snapshot={projectSnapshot}
       />

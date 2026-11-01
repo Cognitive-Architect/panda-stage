@@ -11,7 +11,10 @@ import type {
   EditorProjectSnapshot,
   EditorProjectStore,
 } from '../../src/renderer/stores/EditorProjectStore';
-import { createCharacterFromPreparedParts } from '../../src/renderer/features/fla-import/createCharacterFromPreparedParts';
+import {
+  createCharacterFromPreparedParts,
+  queryFlaCharacterCreateStatus,
+} from '../../src/renderer/features/fla-import/createCharacterFromPreparedParts';
 
 function createTestContext() {
   const operationId = crypto.randomUUID();
@@ -33,12 +36,13 @@ function createTestContext() {
     revision,
     openInstanceId,
   };
+  const acquireProjectOperationLease = vi.fn(() => lease);
   const acceptSavedProjectCommand = vi.fn();
   const releaseProjectOperationLease = vi.fn();
   const store = {
     getSnapshot: () => snapshot,
     getProjectInstanceId: () => openInstanceId,
-    acquireProjectOperationLease: vi.fn(() => lease),
+    acquireProjectOperationLease,
     acceptSavedProjectCommand,
     releaseProjectOperationLease,
   } as unknown as EditorProjectStore;
@@ -75,9 +79,11 @@ function createTestContext() {
     projectId,
     revision,
     openInstanceId,
+    snapshot,
     preview,
     result,
     store,
+    acquireProjectOperationLease,
     acceptSavedProjectCommand,
     releaseProjectOperationLease,
   };
@@ -146,5 +152,111 @@ describe('createCharacterFromPreparedParts recovery', () => {
     expect(getCharacterCreateStatus).toHaveBeenCalledTimes(1);
     expect(getCharacterCreateStatus.mock.calls[0]?.[0].operationId).toBe(context.operationId);
     expect(context.acceptSavedProjectCommand).not.toHaveBeenCalled();
+  });
+
+  it('queries the same operationId without resubmitting and leaves an in-progress result unresolved', async () => {
+    const context = createTestContext();
+    const createCharacterFromParts = vi.fn();
+    const getCharacterCreateStatus = vi.fn(async (request: FlaCharacterCreateStatusRequest): Promise<FlaCharacterCreateStatusResponse> => ({
+      ok: true,
+      status: 'IN_PROGRESS',
+      operationId: request.operationId,
+      message: 'Still committing.',
+    }));
+
+    const status = await queryFlaCharacterCreateStatus({
+      operationId: context.operationId,
+      preview: context.preview,
+      baseSnapshot: context.snapshot,
+      openInstanceId: context.openInstanceId,
+      api: { createCharacterFromParts, getCharacterCreateStatus },
+      store: context.store,
+    });
+
+    expect(status).toMatchObject({ ok: true, status: 'IN_PROGRESS' });
+    expect(createCharacterFromParts).not.toHaveBeenCalled();
+    expect(getCharacterCreateStatus).toHaveBeenCalledTimes(1);
+    expect(getCharacterCreateStatus.mock.calls[0]?.[0].operationId).toBe(context.operationId);
+    expect(context.acceptSavedProjectCommand).not.toHaveBeenCalled();
+    expect(context.releaseProjectOperationLease).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts a queried Project snapshot only while the captured identity and revision still match', async () => {
+    const context = createTestContext();
+    const project = { id: context.projectId, name: 'saved project' };
+    const committedResult = {
+      ...context.result,
+      project,
+    } as unknown as FlaCharacterCreateOutcome;
+    const getCharacterCreateStatus = vi.fn(async (): Promise<FlaCharacterCreateStatusResponse> => ({
+      ok: true,
+      status: 'COMMITTED',
+      result: committedResult,
+    }));
+
+    const status = await queryFlaCharacterCreateStatus({
+      operationId: context.operationId,
+      preview: context.preview,
+      baseSnapshot: context.snapshot,
+      openInstanceId: context.openInstanceId,
+      api: { createCharacterFromParts: vi.fn(), getCharacterCreateStatus },
+      store: context.store,
+    });
+
+    expect(status).toMatchObject({ ok: true, status: 'COMMITTED', result: { project } });
+    expect(context.acceptSavedProjectCommand).toHaveBeenCalledWith(
+      context.acquireProjectOperationLease.mock.results[0]?.value,
+      project,
+      context.revision + 1,
+      '导入角色',
+    );
+    expect(context.releaseProjectOperationLease).toHaveBeenCalledTimes(1);
+  });
+
+  it('strips a stale committed snapshot and does not add it to History', async () => {
+    const context = createTestContext();
+    const project = { id: context.projectId, name: 'saved project' };
+    const committedResult = {
+      ...context.result,
+      project,
+    } as unknown as FlaCharacterCreateOutcome;
+    const getSnapshot = vi.fn(() => ({
+      ...context.snapshot,
+      revision: context.revision + 1,
+      project: { id: context.projectId, name: 'newer local project' },
+    }));
+    const acquireProjectOperationLease = vi.fn();
+    const acceptSavedProjectCommand = vi.fn();
+    const releaseProjectOperationLease = vi.fn();
+    const staleStore = {
+      getSnapshot,
+      getProjectInstanceId: () => context.openInstanceId,
+      acquireProjectOperationLease,
+      acceptSavedProjectCommand,
+      releaseProjectOperationLease,
+    } as unknown as EditorProjectStore;
+
+    const status = await queryFlaCharacterCreateStatus({
+      operationId: context.operationId,
+      preview: context.preview,
+      baseSnapshot: context.snapshot,
+      openInstanceId: context.openInstanceId,
+      api: {
+        createCharacterFromParts: vi.fn(),
+        getCharacterCreateStatus: async () => ({
+          ok: true,
+          status: 'COMMITTED',
+          result: committedResult,
+        }),
+      },
+      store: staleStore,
+    });
+
+    expect(status).toMatchObject({ ok: true, status: 'COMMITTED' });
+    expect(status.ok && status.status === 'COMMITTED' ? status.result : null)
+      .not.toHaveProperty('project');
+    expect(acquireProjectOperationLease).not.toHaveBeenCalled();
+    expect(acceptSavedProjectCommand).not.toHaveBeenCalled();
+    expect(releaseProjectOperationLease).not.toHaveBeenCalled();
   });
 });

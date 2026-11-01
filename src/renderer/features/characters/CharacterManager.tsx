@@ -44,6 +44,7 @@ import {
   FlaCharacterImportFlow,
   type CreateFlaCharacter,
   type FlaCharacterImportAttempt,
+  type QueryFlaCharacterCreateStatus,
 } from '../fla-import/FlaCharacterImportFlow';
 import {
   ASSEMBLY_DISCARD_CONFIRM_MESSAGE,
@@ -128,6 +129,8 @@ export interface CharacterManagerProps {
   flaCharacterImportAttempt?: FlaCharacterImportAttempt | null;
   onCloseFlaCharacterImport?: () => void;
   onCreateFlaCharacter?: CreateFlaCharacter;
+  onQueryFlaCharacterCreateStatus?: QueryFlaCharacterCreateStatus;
+  onFlaCharacterCommitStateChange?(committing: boolean): void;
 }
 
 export interface AdaptivePartsAssemblyActionResult {
@@ -266,6 +269,8 @@ export function CharacterManager({
   flaCharacterImportAttempt = null,
   onCloseFlaCharacterImport = () => undefined,
   onCreateFlaCharacter,
+  onQueryFlaCharacterCreateStatus,
+  onFlaCharacterCommitStateChange,
 }: CharacterManagerProps): React.JSX.Element {
   const service = useMemo(() => new CharacterService(), []);
   const [selectedCharacterId, setSelectedCharacterId] = useState<
@@ -826,11 +831,16 @@ export function CharacterManager({
           </div>
         </div>
       ) : null}
-      {view === 'list' && flaCharacterImportAttempt && onCreateFlaCharacter ? (
+      {view === 'list' &&
+      flaCharacterImportAttempt &&
+      onCreateFlaCharacter &&
+      onQueryFlaCharacterCreateStatus ? (
         <FlaCharacterImportFlow
           attempt={flaCharacterImportAttempt}
           onClose={onCloseFlaCharacterImport}
+          onCommittingChange={onFlaCharacterCommitStateChange}
           onCreateCharacter={onCreateFlaCharacter}
+          onQueryCharacterCreateStatus={onQueryFlaCharacterCreateStatus}
           onCreatedCharacter={openCreatedAdaptiveCharacter}
           snapshot={snapshot}
         />

@@ -40,8 +40,14 @@ import {
 import { shotStore } from '../stores/shotStore';
 import { characterAssemblySessionStore } from '../stores/characterAssemblySessionStore';
 import { CharacterAssemblyWorkbench } from '../features/characters/CharacterAssemblyWorkbench';
-import { createCharacterFromPreparedParts } from '../features/fla-import/createCharacterFromPreparedParts';
-import type { CreateFlaCharacter } from '../features/fla-import/FlaCharacterImportFlow';
+import {
+  createCharacterFromPreparedParts,
+  queryFlaCharacterCreateStatus,
+} from '../features/fla-import/createCharacterFromPreparedParts';
+import type {
+  CreateFlaCharacter,
+  QueryFlaCharacterCreateStatus,
+} from '../features/fla-import/FlaCharacterImportFlow';
 import type { AdaptivePartsAssemblyActionsRef } from '../features/characters/CharacterManager';
 import { PendingDialoguePlacementProvider } from '../features/timeline/PendingDialoguePlacement';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
@@ -492,6 +498,18 @@ export function EditorShell({
     },
     [session],
   );
+  const queryFlaCreateStatus = useCallback<QueryFlaCharacterCreateStatus>(
+    (operationId, preview, baseSnapshot, openInstanceId) =>
+      queryFlaCharacterCreateStatus({
+        operationId,
+        preview,
+        baseSnapshot,
+        openInstanceId,
+        api: window.pandaStage.fla,
+        store: editorProjectStore,
+      }),
+    [],
+  );
   const [sessionSnapshot, setSessionSnapshot] = useState(() =>
     session.getSnapshot(),
   );
@@ -547,6 +565,10 @@ export function EditorShell({
     useState<ResourceActivity>('shots');
   const [portraitCanvasSurface, setPortraitCanvasSurface] =
     useState<PortraitCanvasSurface>('none');
+  const flaCharacterCommitActiveRef = useRef(false);
+  const setFlaCharacterCommitActive = (committing: boolean): void => {
+    flaCharacterCommitActiveRef.current = committing;
+  };
   const shellState = getEditorShellState(projectSnapshot);
   const sessionRegion = getEditorShellSessionRegion(shellState);
   const page = getEditorShellPage(requestedPage, projectSnapshot);
@@ -591,6 +613,10 @@ export function EditorShell({
   const exportTaskIsActive = (task: ExportTaskState): boolean =>
     ['selecting', 'preparing', 'starting', 'running', 'cancelling'].includes(task.status);
   const blockSessionChangeDuringExport = (): boolean => {
+    if (flaCharacterCommitActiveRef.current) {
+      setStatus('角色保存结果尚未确认，请回到导入窗口查询保存结果后再关闭或切换工程。');
+      return true;
+    }
     const task = exportTaskRef.current;
     if (!exportTaskIsActive(task)) return false;
     setExportSurfaceOpen(true);
@@ -1222,7 +1248,9 @@ export function EditorShell({
           ok: false,
           requestId,
           error:
-            '\u6b63\u5728\u5bfc\u51fa\u89c6\u9891\u3002\u8bf7\u5b8c\u6210\u6216\u53d6\u6d88\u5bfc\u51fa\u540e\u518d\u5173\u95ed\u7a97\u53e3\u3002',
+            flaCharacterCommitActiveRef.current
+              ? '角色保存结果尚未确认，请回到导入窗口查询保存结果后再关闭窗口。'
+              : '\u6b63\u5728\u5bfc\u51fa\u89c6\u9891\u3002\u8bf7\u5b8c\u6210\u6216\u53d6\u6d88\u5bfc\u51fa\u540e\u518d\u5173\u95ed\u7a97\u53e3\u3002',
         });
         return;
       }
@@ -2087,6 +2115,7 @@ export function EditorShell({
   };
 
   const selectPortraitWorkspace = (workspace: EditorWorkspace): void => {
+    if (flaCharacterCommitActiveRef.current) return;
     setPortraitWorkspace(workspace);
     setPortraitCanvasSurface(workspace === 'canvas' ? 'shots' : 'none');
     if (workspace === 'assets') {
@@ -2097,13 +2126,14 @@ export function EditorShell({
   };
 
   const closePortraitCanvasSurface = (): void => {
+    if (flaCharacterCommitActiveRef.current) return;
     setPortraitCanvasSurface('none');
   };
 
   const handlePortraitResourceActivityChange = (
     activity: ResourceActivity,
   ): void => {
-    if (!isPortrait) return;
+    if (!isPortrait || flaCharacterCommitActiveRef.current) return;
     setPortraitResourceActivity(activity);
     if (activity === 'assets') {
       setPortraitWorkspace('assets');
@@ -2258,6 +2288,8 @@ export function EditorShell({
               <LeftWorkspace
                 adaptivePartsActionsRef={adaptivePartsActionsRef}
                 onCreateFlaCharacter={createFlaCharacter}
+                onQueryFlaCharacterCreateStatus={queryFlaCreateStatus}
+                onFlaCharacterCommitStateChange={setFlaCharacterCommitActive}
                 onFlaCharacterImportStart={() => {
                   setPortraitWorkspace('canvas');
                   setPortraitResourceActivity('characters');
@@ -2276,7 +2308,7 @@ export function EditorShell({
                     : undefined
                 }
                 onDrawerOpenChange={(open) => {
-                  if (!isPortrait || open) return;
+                  if (!isPortrait || open || flaCharacterCommitActiveRef.current) return;
                   if (portraitWorkspace === 'assets') {
                     setPortraitWorkspace('canvas');
                     setPortraitResourceActivity('shots');

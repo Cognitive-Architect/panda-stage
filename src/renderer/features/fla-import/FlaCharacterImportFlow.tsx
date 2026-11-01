@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import type {
   FlaCharacterCreateOutcome,
   FlaCharacterCreateErrorCode,
+  FlaCharacterCreateStatusResponse,
 } from '../../../shared/fla-character-create-api';
 import type {
   FlaInspectionResponse,
@@ -58,6 +59,30 @@ export type CreateFlaCharacter = (
   name: string,
   operationId: string,
 ) => Promise<FlaCharacterCreateOutcome>;
+
+export type QueryFlaCharacterCreateStatus = (
+  operationId: string,
+  preview: EditableFlaCharacterPreview,
+  baseSnapshot: EditorProjectSnapshot,
+  openInstanceId: number,
+) => Promise<FlaCharacterCreateStatusResponse>;
+
+type CreateOperationOutcome =
+  | 'IN_PROGRESS'
+  | 'RECOVERY_REQUIRED'
+  | 'OPERATION_ID_CONFLICT'
+  | 'UNKNOWN'
+  | 'FAILED'
+  | 'NOT_FOUND'
+  | 'COMMITTED'
+  | null;
+
+interface PendingCreateOperation {
+  operationId: string;
+  preview: EditableFlaCharacterPreview;
+  baseSnapshot: EditorProjectSnapshot;
+  openInstanceId: number;
+}
 
 type ImportPhase =
   | 'inspecting'
@@ -124,11 +149,11 @@ function safeCreateErrorMessage(code: FlaCharacterCreateErrorCode | undefined): 
     case 'STALE_PROJECT':
       return '工程状态已变化，请返回角色列表后重新准备。';
     case 'RECOVERY_REQUIRED':
-      return '角色保存需要恢复处理，请先查看工程恢复状态。';
+      return '保存结果需要恢复核对。请继续查询本次保存结果；确认结果前不要关闭导入窗口。';
     case 'OPERATION_IN_PROGRESS':
-      return '角色仍在保存。再次查询时会继续使用本次保存记录。';
+      return '保存仍在进行。本次操作内容已锁定，请查询保存结果。';
     case 'OPERATION_ID_CONFLICT':
-      return '保存状态需要核对。请返回角色列表确认结果后再继续。';
+      return '保存编号发生冲突，已停止创建。请查询保存结果并核对角色列表。';
     case 'UNSUPPORTED_CAPABILITY':
     case 'INVALID_REQUEST':
       return '当前预览无法用于创建，请重新准备角色。';
@@ -158,6 +183,8 @@ export interface FlaCharacterImportFlowProps {
   snapshot: EditorProjectSnapshot | null;
   attempt: FlaCharacterImportAttempt;
   onCreateCharacter: CreateFlaCharacter;
+  onQueryCharacterCreateStatus: QueryFlaCharacterCreateStatus;
+  onCommittingChange?(committing: boolean): void;
   onCreatedCharacter: (characterId: string) => boolean;
   onClose: () => void;
 }
@@ -166,21 +193,26 @@ export function FlaCharacterImportFlow({
   snapshot,
   attempt,
   onCreateCharacter,
+  onQueryCharacterCreateStatus,
+  onCommittingChange,
   onCreatedCharacter,
   onClose,
 }: FlaCharacterImportFlowProps): React.JSX.Element | null {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const currentOpenInstanceId = editorProjectStore.getProjectInstanceId();
   const initialIdentity: ProjectIdentity | null =
-    snapshot && editorProjectStore.getProjectInstanceId() !== null
+    snapshot && currentOpenInstanceId !== null
       ? {
           projectRoot: snapshot.projectRoot,
           projectId: snapshot.project.id,
           revision: snapshot.revision,
-          openInstanceId: editorProjectStore.getProjectInstanceId()!,
+          openInstanceId: currentOpenInstanceId,
         }
       : null;
   const baselineRef = useRef<ProjectIdentity | null>(initialIdentity);
+  const baselineSnapshotRef = useRef<EditorProjectSnapshot | null>(snapshot);
+  const baselineOpenInstanceIdRef = useRef<number | null>(currentOpenInstanceId);
   const [inspectionAttempt, setInspectionAttempt] = useState(attempt);
   const inspectionLifecycleRef = useRef(attempt.lifecycle);
   const [phase, setPhaseState] = useState<ImportPhase>('inspecting');
@@ -204,10 +236,12 @@ export function FlaCharacterImportFlow({
   const flowGenerationRef = useRef(0);
   const previewGenerationRef = useRef(0);
   const operationIdRef = useRef<string | null>(null);
+  const pendingCreateOperationRef = useRef<PendingCreateOperation | null>(null);
+  const [operationOutcome, setOperationOutcome] = useState<CreateOperationOutcome>(null);
+  const sourceReplacementGenerationRef = useRef(0);
   const invalidatedRef = useRef(false);
   const mountedRef = useRef(false);
   const mountGenerationRef = useRef(0);
-  const currentOpenInstanceId = editorProjectStore.getProjectInstanceId();
 
   const transition = useCallback((next: ImportPhase): void => {
     phaseRef.current = next;
@@ -256,6 +290,7 @@ export function FlaCharacterImportFlow({
   }, []);
 
   const cancelOwnedWork = useCallback(async (): Promise<void> => {
+    const ownedSessionId = sessionIdRef.current;
     flowGenerationRef.current += 1;
     await Promise.all([
       cancelActiveThumbnail(),
@@ -263,11 +298,12 @@ export function FlaCharacterImportFlow({
       releaseCurrentPlan(),
       inspectionLifecycleRef.current.cancel(),
     ]);
-    const ownedSessionId = sessionIdRef.current;
+    if (sessionIdRef.current === ownedSessionId) {
+      sessionIdRef.current = null;
+    }
     if (ownedSessionId) {
       await window.pandaStage.fla.cancel(ownedSessionId).catch(() => undefined);
     }
-    sessionIdRef.current = null;
   }, [cancelActivePartPreview, cancelActiveThumbnail, releaseCurrentPlan]);
 
   const prepareTarget = useCallback(async (
@@ -275,7 +311,12 @@ export function FlaCharacterImportFlow({
     frameIndex: number,
     ownedSessionId: string,
   ): Promise<void> => {
-    if (invalidatedRef.current || !ownedSessionId) return;
+    if (
+      invalidatedRef.current ||
+      !ownedSessionId ||
+      phaseRef.current === 'committing' ||
+      pendingCreateOperationRef.current
+    ) return;
     const currentIdentity = baselineRef.current;
     if (!currentIdentity || !sameProjectIdentity(
       currentIdentity,
@@ -289,15 +330,16 @@ export function FlaCharacterImportFlow({
     }
 
     const flowGeneration = ++flowGenerationRef.current;
-    await Promise.all([cancelActiveThumbnail(), cancelActivePartPreview(), releaseCurrentPlan()]);
-    if (flowGenerationRef.current !== flowGeneration) return;
     setPreview(null);
     setSelectedTargetId(entry.target.renderTargetId);
     setSelectedFrameIndex(frameIndex);
     selectedFrameIndexRef.current = frameIndex;
     operationIdRef.current = null;
+    setOperationOutcome(null);
     setStatusMessage('正在准备角色…');
     transition('preparing');
+    await Promise.all([cancelActiveThumbnail(), cancelActivePartPreview(), releaseCurrentPlan()]);
+    if (flowGenerationRef.current !== flowGeneration || invalidatedRef.current) return;
 
     const generation = ++previewGenerationRef.current;
     const requestId = crypto.randomUUID();
@@ -417,21 +459,37 @@ export function FlaCharacterImportFlow({
   }, []);
 
   const replaceSourceFile = useCallback(async (): Promise<void> => {
-    if (phaseRef.current === 'committing' || phaseRef.current === 'created') return;
-    invalidatedRef.current = false;
-    await cancelOwnedWork();
+    if (
+      phaseRef.current === 'committing' ||
+      phaseRef.current === 'created' ||
+      pendingCreateOperationRef.current
+    ) return;
+    const replacementGeneration = ++sourceReplacementGenerationRef.current;
+    invalidatedRef.current = true;
+    flowGenerationRef.current += 1;
+    setPreview(null);
+    setSelectedTargetId(null);
+    setSelectedFrameIndex(0);
+    selectedFrameIndexRef.current = 0;
+    setOperationOutcome(null);
+    operationIdRef.current = null;
     revokeThumbnails();
     setSceneEntries([]);
-    setSelectedTargetId(null);
-    setPreview(null);
     setSourceBasename('');
     setName('');
     setOmittedCandidateCount(0);
     setStatusMessage('正在读取角色…');
+    transition('inspecting');
+    await cancelOwnedWork();
+    if (
+      !mountedRef.current ||
+      sourceReplacementGenerationRef.current !== replacementGeneration
+    ) return;
+    invalidatedRef.current = false;
     const nextAttempt = createFlaInspectionAttempt();
     inspectionLifecycleRef.current = nextAttempt.lifecycle;
     setInspectionAttempt(nextAttempt);
-  }, [cancelOwnedWork, revokeThumbnails]);
+  }, [cancelOwnedWork, revokeThumbnails, transition]);
 
   useEffect(() => {
     const mountGeneration = ++mountGenerationRef.current;
@@ -576,7 +634,11 @@ export function FlaCharacterImportFlow({
   };
 
   const beginFrameAdjustment = (): void => {
-    if (frameInteractionRef.current) return;
+    if (
+      frameInteractionRef.current ||
+      phaseRef.current === 'committing' ||
+      pendingCreateOperationRef.current
+    ) return;
     frameInteractionRef.current = true;
     flowGenerationRef.current += 1;
     void cancelActivePartPreview();
@@ -584,6 +646,7 @@ export function FlaCharacterImportFlow({
     void releaseCurrentPlan();
     setPreview(null);
     operationIdRef.current = null;
+    setOperationOutcome(null);
     transition('selecting');
     setStatusMessage('选择一个完整源姿势。');
   };
@@ -591,7 +654,13 @@ export function FlaCharacterImportFlow({
   const finishFrameAdjustment = (): void => {
     if (!frameInteractionRef.current) return;
     frameInteractionRef.current = false;
-    if (!selectedTarget || !sessionIdRef.current || invalidatedRef.current) return;
+    if (
+      !selectedTarget ||
+      !sessionIdRef.current ||
+      invalidatedRef.current ||
+      pendingCreateOperationRef.current ||
+      phaseRef.current === 'committing'
+    ) return;
     void prepareTarget(
       selectedTarget,
       selectedFrameIndexRef.current,
@@ -600,6 +669,7 @@ export function FlaCharacterImportFlow({
   };
 
   const changeFrame = (rawValue: string): void => {
+    if (phaseRef.current === 'committing' || pendingCreateOperationRef.current) return;
     beginFrameAdjustment();
     const next = Number(rawValue);
     selectedFrameIndexRef.current = next;
@@ -607,14 +677,19 @@ export function FlaCharacterImportFlow({
   };
 
   const closeFlow = useCallback(async (): Promise<void> => {
-    if (phaseRef.current === 'committing') return;
+    if (phaseRef.current === 'committing' || pendingCreateOperationRef.current) return;
     await cancelOwnedWork();
     onCloseRef.current();
   }, [cancelOwnedWork]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape' || phaseRef.current === 'committing') return;
+      if (event.key !== 'Escape') return;
+      if (phaseRef.current === 'committing' || pendingCreateOperationRef.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       event.preventDefault();
       void closeFlow();
     };
@@ -622,7 +697,118 @@ export function FlaCharacterImportFlow({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [closeFlow]);
 
+  const completeCommittedOperation = (
+    result: FlaCharacterCreateOutcome,
+  ): void => {
+    pendingCreateOperationRef.current = null;
+    operationIdRef.current = null;
+    setOperationOutcome('COMMITTED');
+    transition('created');
+    void cancelOwnedWork();
+    onCommittingChange?.(false);
+    if (!Object.prototype.hasOwnProperty.call(result, 'project')) {
+      setStatusMessage('已确认保存。当前工程快照尚未更新，请返回角色列表核对保存结果。');
+      return;
+    }
+    if (onCreatedCharacter(result.characterId)) {
+      onCloseRef.current();
+      return;
+    }
+    setStatusMessage('角色已保存，可从角色列表打开。');
+  };
+
+  const queryCharacterStatus = async (): Promise<void> => {
+    const pending = pendingCreateOperationRef.current;
+    if (!pending || phaseRef.current === 'committing') return;
+    transition('committing');
+    setStatusMessage('正在查询保存结果…');
+    onCommittingChange?.(true);
+    try {
+      const status = await onQueryCharacterCreateStatus(
+        pending.operationId,
+        pending.preview,
+        pending.baseSnapshot,
+        pending.openInstanceId,
+      );
+      if (status.ok && status.status === 'COMMITTED') {
+        completeCommittedOperation(status.result);
+        return;
+      }
+      if (status.ok && status.status === 'IN_PROGRESS') {
+        setOperationOutcome('IN_PROGRESS');
+        setStatusMessage(status.message ?? safeCreateErrorMessage('OPERATION_IN_PROGRESS'));
+        transition('error');
+        return;
+      }
+      if (status.ok && status.status === 'RECOVERY_REQUIRED') {
+        setOperationOutcome('RECOVERY_REQUIRED');
+        setStatusMessage(status.message ?? safeCreateErrorMessage('RECOVERY_REQUIRED'));
+        transition('error');
+        return;
+      }
+      if (status.ok && status.status === 'FAILED') {
+        if (status.error.code === 'OPERATION_ID_CONFLICT') {
+          setOperationOutcome('OPERATION_ID_CONFLICT');
+          setStatusMessage(safeCreateErrorMessage('OPERATION_ID_CONFLICT'));
+          transition('error');
+          return;
+        }
+        pendingCreateOperationRef.current = null;
+        operationIdRef.current = null;
+        setOperationOutcome('FAILED');
+        setStatusMessage(status.error.message);
+        transition('preview-ready');
+        return;
+      }
+      if (status.ok && status.status === 'NOT_FOUND') {
+        pendingCreateOperationRef.current = null;
+        operationIdRef.current = null;
+        setOperationOutcome('NOT_FOUND');
+        setStatusMessage('没有找到本次保存记录。确认角色列表后，可以重新创建。');
+        transition('preview-ready');
+        return;
+      }
+      const code = status.ok ? undefined : status.error.code;
+      setOperationOutcome(
+        code === 'OPERATION_ID_CONFLICT'
+          ? 'OPERATION_ID_CONFLICT'
+          : code === 'OPERATION_IN_PROGRESS'
+            ? 'IN_PROGRESS'
+            : code === 'RECOVERY_REQUIRED'
+              ? 'RECOVERY_REQUIRED'
+              : 'UNKNOWN',
+      );
+      setStatusMessage(code
+        ? safeCreateErrorMessage(code)
+        : '无法查询保存结果。请重试查询，不要重复创建。');
+      transition('error');
+    } catch (error) {
+      const operationError = error instanceof FlaCharacterCreateOperationError
+        ? error
+        : null;
+      const code = operationError?.code;
+      if (
+        code === 'OPERATION_ID_CONFLICT' ||
+        code === 'RECOVERY_REQUIRED' ||
+        code === 'OPERATION_IN_PROGRESS'
+      ) {
+        setOperationOutcome(code === 'OPERATION_IN_PROGRESS' ? 'IN_PROGRESS' : code);
+        setStatusMessage(safeCreateErrorMessage(code));
+      } else {
+        setOperationOutcome('UNKNOWN');
+        setStatusMessage('无法查询保存结果。请重试查询，不要重复创建。');
+      }
+      transition('error');
+    } finally {
+      onCommittingChange?.(Boolean(pendingCreateOperationRef.current));
+    }
+  };
+
   const createCharacter = async (): Promise<void> => {
+    if (pendingCreateOperationRef.current) {
+      await queryCharacterStatus();
+      return;
+    }
     if (
       phaseRef.current !== 'preview-ready' ||
       !preview?.ok ||
@@ -643,59 +829,79 @@ export function FlaCharacterImportFlow({
       return;
     }
 
-    operationIdRef.current ??= crypto.randomUUID();
-    const operationId = operationIdRef.current;
+    const baseSnapshot = baselineSnapshotRef.current;
+    const openInstanceId = baselineOpenInstanceIdRef.current;
+    if (!baseSnapshot || openInstanceId === null) {
+      invalidatedRef.current = true;
+      setStatusMessage('工程已变化，请返回角色列表后重新准备。');
+      transition('error');
+      return;
+    }
+    const operationId = crypto.randomUUID();
+    operationIdRef.current = operationId;
+    pendingCreateOperationRef.current = {
+      operationId,
+      preview,
+      baseSnapshot,
+      openInstanceId,
+    };
+    setOperationOutcome(null);
     transition('committing');
     setStatusMessage('正在保存角色…');
+    onCommittingChange?.(true);
     try {
       const result = await onCreateCharacter(preview, name.trim(), operationId);
-      operationIdRef.current = null;
-      transition('created');
-      void cancelOwnedWork();
-      if (!Object.prototype.hasOwnProperty.call(result, 'project')) {
-        setStatusMessage('角色已保存，可从角色列表刷新后打开。');
-        return;
-      }
-      if (onCreatedCharacter(result.characterId)) {
-        onClose();
-        return;
-      }
-      setStatusMessage('角色已保存，可从角色列表打开。');
+      completeCommittedOperation(result);
     } catch (error) {
       const operationError = error instanceof FlaCharacterCreateOperationError
         ? error
         : null;
-      setStatusMessage(safeCreateErrorMessage(operationError?.code));
+      const code = operationError?.code;
       if (operationError?.code === 'DUPLICATE_CHARACTER_NAME') {
+        pendingCreateOperationRef.current = null;
         operationIdRef.current = null;
+        setOperationOutcome('FAILED');
+        setStatusMessage(safeCreateErrorMessage(code));
         transition('preview-ready');
         return;
       }
       if (operationError?.code === 'PLAN_EXPIRED') {
+        pendingCreateOperationRef.current = null;
         operationIdRef.current = null;
+        setOperationOutcome('FAILED');
         setPreview(null);
+        setStatusMessage(safeCreateErrorMessage(code));
         transition('error');
         return;
       }
       if (operationError?.code === 'STALE_PROJECT') {
+        pendingCreateOperationRef.current = null;
         operationIdRef.current = null;
+        setOperationOutcome('FAILED');
         invalidatedRef.current = true;
+        setStatusMessage(safeCreateErrorMessage(code));
         transition('error');
         return;
       }
-      if (operationError?.code === 'RECOVERY_REQUIRED' || operationError?.code === 'OPERATION_ID_CONFLICT') {
-        transition('created');
+      if (code === 'RECOVERY_REQUIRED' || code === 'OPERATION_ID_CONFLICT' || code === 'OPERATION_IN_PROGRESS') {
+        setOperationOutcome(code === 'OPERATION_IN_PROGRESS' ? 'IN_PROGRESS' : code);
+        setStatusMessage(safeCreateErrorMessage(code));
+        transition('error');
         return;
       }
-      if (
-        operationError?.code &&
-        operationError.code !== 'OPERATION_IN_PROGRESS'
-      ) {
+      if (code) {
+        pendingCreateOperationRef.current = null;
         operationIdRef.current = null;
+        setOperationOutcome('FAILED');
+        setStatusMessage(safeCreateErrorMessage(code));
+        transition('preview-ready');
+        return;
       }
-      // Keep the same operationId after an uncertain response. A retry queries
-      // the same Main receipt and cannot create a second Character.
-      transition('preview-ready');
+      setOperationOutcome('UNKNOWN');
+      setStatusMessage('无法确认保存结果。请查询保存结果，不要重复创建。');
+      transition('error');
+    } finally {
+      onCommittingChange?.(Boolean(pendingCreateOperationRef.current));
     }
   };
 
@@ -708,18 +914,29 @@ export function FlaCharacterImportFlow({
     preview.capability === 'EDITABLE_PARTS_READY'
     ? preview
     : null;
-  const canCreate = phase === 'preview-ready' &&
+  const hasPendingOperation = Boolean(pendingCreateOperationRef.current);
+  const canCreate = !hasPendingOperation &&
+    phase === 'preview-ready' &&
     Boolean(editablePreview) &&
     name.trim().length > 0 &&
     !invalidatedRef.current;
-  const createLabel = operationIdRef.current ? '查询保存状态' : '创建角色';
+  const canQueryStatus = hasPendingOperation && phase !== 'committing';
+  const createLabel = hasPendingOperation
+    ? '查询保存结果'
+    : operationOutcome === 'FAILED' || operationOutcome === 'NOT_FOUND'
+      ? '重新创建角色'
+      : '创建角色';
 
   return createPortal(
     <div
       className="fla-character-import-backdrop"
       data-testid="fla-character-import-overlay"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && phaseRef.current !== 'committing') {
+        if (
+          event.target === event.currentTarget &&
+          phaseRef.current !== 'committing' &&
+          !pendingCreateOperationRef.current
+        ) {
           void closeFlow();
         }
       }}
@@ -738,7 +955,7 @@ export function FlaCharacterImportFlow({
             <h1>导入角色</h1>
           </div>
           <div className="fla-character-import-header-actions">
-            {phase !== 'committing' && phase !== 'created' ? (
+            {phase !== 'committing' && phase !== 'created' && !hasPendingOperation ? (
               <button
                 className="fla-character-import-change-file"
                 data-testid="fla-character-import-change-file"
@@ -783,7 +1000,7 @@ export function FlaCharacterImportFlow({
                       aria-pressed={selected}
                       className="fla-character-import-target"
                       data-testid="fla-character-import-target"
-                      disabled={!enabled || phase === 'committing'}
+                      disabled={!enabled || phase === 'committing' || hasPendingOperation}
                       key={targetId}
                       onClick={() => chooseTarget(entry)}
                       onFocus={() => loadCandidateThumbnail(entry)}
@@ -838,6 +1055,7 @@ export function FlaCharacterImportFlow({
                     step={1}
                     type="range"
                     value={selectedFrameIndex}
+                    disabled={phase === 'committing' || hasPendingOperation}
                   />
                 </label>
               ) : null}
@@ -861,10 +1079,8 @@ export function FlaCharacterImportFlow({
                 <p>正在准备角色…</p>
               ) : phase === 'inspecting' ? (
                 <p>正在读取角色…</p>
-              ) : phase === 'unsupported' ? (
-                <p>这个对象暂时无法完整还原。</p>
-              ) : phase === 'error' ? (
-                <p>{statusMessage}</p>
+              ) : phase === 'unsupported' || phase === 'error' ? (
+                null
               ) : selectedTarget ? (
                 <p>选择一个完整源姿势以查看角色预览。</p>
               ) : (
@@ -900,33 +1116,43 @@ export function FlaCharacterImportFlow({
             <input
               aria-label="角色名称"
               data-testid="fla-character-import-name"
-              disabled={phase === 'committing' || phase === 'created'}
+              disabled={phase === 'committing' || phase === 'created' || hasPendingOperation}
               maxLength={100}
-              onChange={(event) => setName(event.currentTarget.value)}
+              onChange={(event) => {
+                if (phaseRef.current !== 'committing' && !pendingCreateOperationRef.current) {
+                  setName(event.currentTarget.value);
+                }
+              }}
               value={name}
             />
           </label>
           <div className="fla-character-import-footer-actions">
             <output aria-live="polite" data-testid="fla-character-import-status" role={phase === 'error' || phase === 'unsupported' ? 'alert' : 'status'}>
-              {statusMessage}
+              {phase === 'inspecting' || phase === 'preparing' ? '' : statusMessage}
             </output>
-            <button
-              className="fla-character-import-cancel"
-              data-testid="fla-character-import-cancel"
-              disabled={phase === 'committing'}
-              onClick={() => void closeFlow()}
-              type="button"
-            >
-              {phase === 'created' ? '返回角色列表' : '取消'}
-            </button>
+            {hasPendingOperation ? null : (
+              <button
+                className="fla-character-import-cancel"
+                data-testid="fla-character-import-cancel"
+                disabled={phase === 'committing'}
+                onClick={() => void closeFlow()}
+                type="button"
+              >
+                {phase === 'created' ? '返回角色列表' : '取消'}
+              </button>
+            )}
             <button
               className="fla-character-import-create"
               data-testid="fla-character-import-create"
-              disabled={!canCreate}
+              disabled={!canCreate && !canQueryStatus}
               onClick={() => void createCharacter()}
               type="button"
             >
-              {phase === 'committing' ? '正在保存角色…' : createLabel}
+              {phase === 'committing'
+                ? hasPendingOperation
+                  ? '正在查询保存结果…'
+                  : '正在保存角色…'
+                : createLabel}
             </button>
           </div>
         </footer>
