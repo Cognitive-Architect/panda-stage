@@ -276,55 +276,60 @@ async function run() {
     const managerSummary = document.querySelector('[data-testid="shot-manager"] [data-project-duration-ms]')?.textContent ?? '';
     const label = panel?.querySelector('label[for="scene-creation-input"]');
     const input = panel?.querySelector('[data-testid="scene-creation-input"]');
-    const format = panel?.querySelector('.scene-creation-format-details');
-    const helper = panel?.querySelector('.scene-creation-prompt-details');
+    const back = panel?.querySelector('[data-testid="scene-creation-back"]');
+    const match = panel?.querySelector('[data-testid="scene-creation-inspect"]');
     return {
-      title: panel?.querySelector('#scene-creation-heading')?.textContent?.trim() ?? null,
+      accessibleName: panel?.getAttribute('aria-label') ?? null,
+      visibleHeading: panel?.querySelector('h2, h3')?.textContent?.trim() ?? null,
       label: label?.childNodes?.[0]?.textContent?.trim() ?? null,
       placeholder: input?.getAttribute('placeholder') ?? null,
-      formatSummary: format?.querySelector('summary')?.textContent?.trim() ?? null,
-      formatOpenByDefault: Boolean(format?.open),
-      helperSummary: helper?.querySelector('summary')?.textContent?.trim() ?? null,
-      helperOpenByDefault: Boolean(helper?.open),
-      helperCopyCount: helper?.querySelectorAll('[data-testid="scene-creation-copy-prompt"]').length ?? 0,
-      prompt: helper?.querySelector('pre')?.textContent ?? null,
+      inputValue: input?.value ?? null,
+      inputRows: input?.rows ?? null,
+      matchLabel: match?.textContent?.trim() ?? null,
+      backLabel: back?.getAttribute('aria-label') ?? null,
+      backTitle: back?.getAttribute('title') ?? null,
+      backGlyph: back?.textContent?.trim() ?? null,
+      sharedPrimaryActionPresent: Boolean(document.querySelector('[data-testid="resource-primary-action"]')),
+      removedHelperMarkupPresent: Boolean(panel?.querySelector('details, output, pre, [data-testid="scene-creation-copy-prompt"]')),
       shotCount: Number(managerSummary.split('个镜头')[0]?.trim() ?? NaN),
       revision: Number(document.querySelector('[data-testid="shot-manager"] [data-project-revision]')?.getAttribute('data-project-revision') ?? 0),
-      oldCopyLabelsPresent: [...panel?.querySelectorAll('button, summary') ?? []].some((element) => /复制整理提示词|查看整理提示词/.test(element.textContent ?? '')),
     };
   })()`);
-  assert(sceneState.title === '自动布景', 'The scene panel title is not user-facing.');
+  assert(sceneState.accessibleName === '自动布景', 'The scene panel lost its accessible name.');
+  assert(sceneState.visibleHeading === null, 'The scene panel still renders a duplicate visible heading.');
   assert(sceneState.label === '粘贴布景信息', 'The scene input label is unclear.');
   assert(
-    sceneState.placeholder === '镜头：花园相遇\n背景：花园\n出场：张三',
-    `The input placeholder lost its three-line format: ${JSON.stringify(sceneState.placeholder)}.`,
+    sceneState.placeholder === '格式示例\n镜头：花园相遇\n背景：花园\n出场：张三' &&
+      sceneState.inputValue === '' && sceneState.inputRows === 5,
+    `The empty input does not show the four-line placeholder at the expected height: ${JSON.stringify(sceneState)}.`,
   );
-  assert(sceneState.formatSummary === '格式示例' && !sceneState.formatOpenByDefault, 'The format example is not progressively disclosed.');
   assert(
-    sceneState.helperSummary === '用外部 AI 整理文本' && !sceneState.helperOpenByDefault &&
-      sceneState.helperCopyCount === 1 && sceneState.prompt && !sceneState.oldCopyLabelsPresent,
-    'The external prompt helper is duplicated or incomplete.',
+    sceneState.matchLabel === '匹配素材',
+    `Unexpected manual match action: ${sceneState.matchLabel}.`,
+  );
+  assert(
+    sceneState.backLabel === '返回镜头列表' && sceneState.backTitle === '返回镜头列表' &&
+      sceneState.backGlyph === '←' && !sceneState.sharedPrimaryActionPresent,
+    `The compact back control or single return action is incorrect: ${JSON.stringify(sceneState)}.`,
+  );
+  assert(
+    !sceneState.removedHelperMarkupPresent,
+    'The deleted format or external-AI helper markup is still present.',
   );
   assert(
     sceneState.shotCount === initialShotCount && sceneState.revision === 0,
     `Opening automatic scene creation changed project state: ${JSON.stringify(sceneState)}.`,
   );
 
-  await click(windowRef, '.scene-creation-prompt-details > summary');
-  await waitForDom(
+  const sceneScreenshot = await capture(
     windowRef,
-    `document.querySelector('.scene-creation-prompt-details')?.open === true`,
-    'The external-AI helper did not expand.',
+    initialShotCount === 0 ? 'empty-project-automatic-scene.png' : 'multi-shot-automatic-scene.png',
   );
-  const helperScreenshot = await capture(
-    windowRef,
-    'external-ai-helper-expanded.png',
-  );
-  await click(windowRef, '[data-testid="resource-primary-action"]');
+  await click(windowRef, '[data-testid="scene-creation-back"]');
   await waitForDom(
     windowRef,
     `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceShotView === 'list'`,
-    'The scene flow did not return to the Shot list.',
+    'The square back control did not return to the Shot list.',
   );
 
   windowRef.setSize(800, 1_100);
@@ -343,7 +348,7 @@ async function run() {
 
   return {
     issue: 860,
-    acceptance: 'UI01_ENTRY_AND_COPY_DISCLOSURE',
+    acceptance: 'UI01_ENTRY_AND_SCENE_INPUT',
     passed: true,
     codeHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     generatedAt: new Date().toISOString(),
@@ -354,16 +359,12 @@ async function run() {
     manualRouteReturnedWithoutMutation: true,
     automaticRouteReturnedWithoutMutation: true,
     wideLayout: wideEntry,
+    automaticScene: sceneState,
+    automaticSceneScreenshot: sceneScreenshot,
     portraitLayout: portraitEntry,
-    helper: {
-      summary: sceneState.helperSummary,
-      oneCopyAction: sceneState.helperCopyCount === 1,
-      copiedPromptTextPresent: Boolean(sceneState.prompt),
-      noBuiltinAiClaim: true,
-    },
     screenshots: {
       wideEntry: wideScreenshot,
-      helperExpanded: helperScreenshot,
+      automaticScene: sceneScreenshot,
       portraitEntries: portraitScreenshot,
     },
     sourceProjectPathsOmitted: true,
@@ -381,7 +382,7 @@ async function main() {
   } catch (error) {
     output = {
       issue: 860,
-      acceptance: 'UI01_ENTRY_AND_COPY_DISCLOSURE',
+      acceptance: 'UI01_ENTRY_AND_SCENE_INPUT',
       passed: false,
       codeHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
       error: error instanceof Error ? error.stack ?? error.message : String(error),

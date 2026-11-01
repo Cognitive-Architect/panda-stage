@@ -3,10 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { migrateProject, ShotService } from '../../src/domain';
-import {
-  EXTERNAL_SCENE_ORGANIZATION_PROMPT,
-  SceneCreationPanel,
-} from '../../src/renderer/features/shots/SceneCreationPanel';
+import { SceneCreationPanel } from '../../src/renderer/features/shots/SceneCreationPanel';
 import { ShotCreateForm } from '../../src/renderer/features/shots/ShotCreateForm';
 import { ResourceActivityDock } from '../../src/renderer/shell/ResourceActivityDock';
 
@@ -84,7 +81,7 @@ describe('Issue #860 automatic scene entry', () => {
     expect(markup).not.toContain('粘贴结构化输入');
   });
 
-  it('keeps the three-line format and one progressive external-AI helper', () => {
+  it('keeps the three-line format as a placeholder and removes retired helper UI', () => {
     const markup = renderToStaticMarkup(
       createElement(SceneCreationPanel, {
         snapshot: null,
@@ -92,30 +89,29 @@ describe('Issue #860 automatic scene entry', () => {
       }),
     );
 
-    expect(markup).toContain('<h3 id="scene-creation-heading">自动布景</h3>');
+    expect(markup).toContain('<section aria-label="自动布景"');
+    expect(markup).not.toContain('scene-creation-heading');
     expect(markup).toContain('粘贴布景信息');
     expect(markup).toMatch(
-      /placeholder="镜头：花园相遇(?:\n|&#10;)背景：花园(?:\n|&#10;)出场：张三"/u,
+      /placeholder="格式示例(?:\n|&#10;)镜头：花园相遇(?:\n|&#10;)背景：花园(?:\n|&#10;)出场：张三"/u,
     );
-    expect(markup).toContain('<summary>格式示例</summary>');
-    expect(markup).toContain(
-      '<pre id="scene-creation-format">镜头：花园相遇\n背景：花园\n出场：张三</pre>',
-    );
+    expect(markup).toContain('rows="5"');
+    expect(markup).toContain('data-testid="scene-creation-back"');
+    expect(markup).toContain('aria-label="返回镜头列表"');
+    expect(markup).toContain('<span aria-hidden="true">←</span>');
+    expect(markup).toContain('data-testid="scene-creation-inspect"');
+    expect(markup).toContain('>匹配素材</button>');
+
+    const textareaContent = markup.match(
+      /<textarea\b[^>]*>([\s\S]*?)<\/textarea>/u,
+    )?.[1];
+    expect(textareaContent).toBe('');
     expect(markup).not.toContain('粘贴结构化输入');
     expect(markup).not.toContain('按文本布景');
-
-    const helperStart = markup.indexOf(
-      '<details class="scene-creation-prompt-details">',
-    );
-    const helperEnd = markup.indexOf('</details>', helperStart);
-    const helperMarkup = markup.slice(helperStart, helperEnd);
-
-    expect(helperMarkup).toContain('<summary>用外部 AI 整理文本</summary>');
-    expect(helperMarkup).toContain('Panda Stage 不会调用 AI');
-    expect(helperMarkup).toContain(EXTERNAL_SCENE_ORGANIZATION_PROMPT);
-    expect(helperMarkup).toContain('data-testid="scene-creation-copy-prompt"');
-    expect(markup.match(/data-testid="scene-creation-copy-prompt"/gu)).toHaveLength(1);
-    expect(markup).not.toContain('复制整理提示词');
-    expect(markup).not.toContain('查看整理提示词');
+    expect(markup).not.toContain('scene-creation-format');
+    expect(markup).not.toContain('格式示例</summary>');
+    expect(markup).not.toContain('外部 AI');
+    expect(markup).not.toContain('整理提示词');
+    expect(markup).not.toContain('scene-creation-copy-prompt');
   });
 });

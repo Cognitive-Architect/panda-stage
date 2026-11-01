@@ -269,6 +269,8 @@ export function ResourceActivityDock({
     landscapePresentation &&
     activeActivity === 'characters' &&
     (characterView === 'detail' || characterView === 'expression');
+  const hideScenePrimaryAction =
+    activeActivity === 'shots' && shotView === 'scene';
   const collapseLandscapeCharacterDetailHeader =
     landscapePresentation &&
     activeActivity === 'characters' &&
@@ -472,7 +474,7 @@ export function ResourceActivityDock({
                   data-testid="character-create-mode-switch-slot"
                   ref={setCharacterCreateModeSwitchTarget}
                 />
-              ) : hideLandscapeCharacterPrimaryAction ? null : (
+              ) : hideLandscapeCharacterPrimaryAction || hideScenePrimaryAction ? null : (
                   <button
                     className="resource-activity-primary-action"
                     data-resource-action={`${activeActivity}-${assetView === 'details' ? 'back' : primaryAction.label}`}

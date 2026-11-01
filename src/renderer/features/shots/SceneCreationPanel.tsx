@@ -23,13 +23,6 @@ import {
 } from './createSceneFromStructuredInput';
 import { useShotThumbnail } from './ShotThumbnailView';
 
-export const EXTERNAL_SCENE_ORGANIZATION_PROMPT = [
-  '请把我提供的场景意图整理成严格三行，只返回这三行，不要补充对白、解释或其他字段。',
-  '镜头：简短的镜头名称',
-  '背景：项目中已有的背景素材名称',
-  '出场：项目中已有的已组装角色名称',
-].join('\n');
-
 interface ProjectIdentity {
   projectRoot: string;
   projectId: string;
@@ -347,12 +340,8 @@ export function SceneCreationPanel({
     Record<string, ThumbnailState>
   >({});
   const [errorMessage, setErrorMessage] = useState('');
-  const [copyMessage, setCopyMessage] = useState('');
-  const [copyMessageIsError, setCopyMessageIsError] = useState(false);
   const [committing, setCommitting] = useState(false);
   const commitInProgress = useRef(false);
-  const copyMessageTimerRef = useRef<number | null>(null);
-  const copyRequestIdRef = useRef(0);
   const currentProject = snapshot?.project ?? null;
   const resolvedCandidateAssets = useMemo(
     () => candidateAssets(currentProject, inspection?.resolution ?? null),
@@ -377,31 +366,6 @@ export function SceneCreationPanel({
         snapshot.project.shots,
         inspection.resolution.input.shotName,
       ),
-  );
-
-  const clearCopyMessageTimer = (): void => {
-    if (copyMessageTimerRef.current !== null) {
-      window.clearTimeout(copyMessageTimerRef.current);
-      copyMessageTimerRef.current = null;
-    }
-  };
-
-  const clearCopyFeedback = (): void => {
-    copyRequestIdRef.current += 1;
-    clearCopyMessageTimer();
-    setCopyMessage('');
-    setCopyMessageIsError(false);
-  };
-
-  useEffect(
-    () => () => {
-      copyRequestIdRef.current += 1;
-      if (copyMessageTimerRef.current !== null) {
-        window.clearTimeout(copyMessageTimerRef.current);
-        copyMessageTimerRef.current = null;
-      }
-    },
-    [],
   );
 
   useEffect(() => {
@@ -460,7 +424,6 @@ export function SceneCreationPanel({
   }, [candidateAssetKey, resolvedCandidateAssets, snapshot?.projectRoot]);
 
   const inspectInput = (): void => {
-    clearCopyFeedback();
     if (!snapshot) {
       setErrorMessage('请先打开项目。');
       return;
@@ -492,7 +455,6 @@ export function SceneCreationPanel({
   const previewScene = (): void => {
     if (!inspection || !inspectionMatchesInput || stale || shotNameConflict) return;
     if (!inspection.selectedBackgroundId || !inspection.selectedCharacterId) return;
-    clearCopyFeedback();
     try {
       const plan = prepareSceneCreationPreview(
         inspection.rawInput,
@@ -513,7 +475,6 @@ export function SceneCreationPanel({
   const confirmScene = (): void => {
     const plan = previewPlan;
     if (!plan || stale || commitInProgress.current) return;
-    clearCopyFeedback();
     commitInProgress.current = true;
     setCommitting(true);
     try {
@@ -537,38 +498,7 @@ export function SceneCreationPanel({
     }
   };
 
-  const copyExternalPrompt = async (): Promise<void> => {
-    const requestId = copyRequestIdRef.current + 1;
-    copyRequestIdRef.current = requestId;
-    clearCopyMessageTimer();
-    setCopyMessage('');
-    setCopyMessageIsError(false);
-    try {
-      if (!navigator.clipboard?.writeText) {
-        throw new Error('此环境无法访问剪贴板。');
-      }
-      await navigator.clipboard.writeText(EXTERNAL_SCENE_ORGANIZATION_PROMPT);
-      if (copyRequestIdRef.current !== requestId) return;
-      setCopyMessage('整理提示词已复制。');
-      copyMessageTimerRef.current = window.setTimeout(() => {
-        if (copyRequestIdRef.current === requestId) {
-          setCopyMessage('');
-          copyMessageTimerRef.current = null;
-        }
-      }, 3_000);
-    } catch (error) {
-      if (copyRequestIdRef.current !== requestId) return;
-      setCopyMessage(
-        error instanceof Error
-          ? `${error.message}可手动复制提示词。`
-          : '无法复制提示词，请手动选择复制。',
-      );
-      setCopyMessageIsError(true);
-    }
-  };
-
   const selectBackground = (assetId: string): void => {
-    clearCopyFeedback();
     setInspection((current) =>
       current ? { ...current, selectedBackgroundId: assetId } : current,
     );
@@ -577,7 +507,6 @@ export function SceneCreationPanel({
   };
 
   const selectCharacter = (characterId: string): void => {
-    clearCopyFeedback();
     setInspection((current) =>
       current ? { ...current, selectedCharacterId: characterId } : current,
     );
@@ -592,38 +521,42 @@ export function SceneCreationPanel({
 
   return (
     <section
-      aria-labelledby="scene-creation-heading"
+      aria-label="自动布景"
       className="scene-creation-panel"
       data-testid="scene-creation-panel"
     >
-      <header className="scene-creation-heading">
-        <h3 id="scene-creation-heading">自动布景</h3>
-      </header>
-
-      <label className="scene-creation-input-label" htmlFor="scene-creation-input">
-        粘贴布景信息
+      <div className="scene-creation-input-heading">
+        <button
+          aria-label="返回镜头列表"
+          className="character-back-button scene-creation-back-button"
+          data-testid="scene-creation-back"
+          onClick={onBack}
+          title="返回镜头列表"
+          type="button"
+        >
+          <span aria-hidden="true">←</span>
+        </button>
+        <label htmlFor="scene-creation-input">粘贴布景信息</label>
+      </div>
+      <div className="scene-creation-input-label">
         <textarea
-          aria-describedby="scene-creation-format"
+          aria-label="粘贴布景信息"
           data-testid="scene-creation-input"
           disabled={!snapshot}
           id="scene-creation-input"
           maxLength={2_000}
+          rows={5}
           onChange={(event) => {
             setRawInput(event.target.value);
             setInspection(null);
             setPreviewPlan(null);
             setErrorMessage('');
-            clearCopyFeedback();
           }}
-          placeholder={'镜头：花园相遇\n背景：花园\n出场：张三'}
+          placeholder={'格式示例\n镜头：花园相遇\n背景：花园\n出场：张三'}
           spellCheck={false}
           value={rawInput}
         />
-      </label>
-      <details className="scene-creation-format-details">
-        <summary>格式示例</summary>
-        <pre id="scene-creation-format">{'镜头：花园相遇\n背景：花园\n出场：张三'}</pre>
-      </details>
+      </div>
 
       <div className="scene-creation-actions">
         <button
@@ -632,33 +565,9 @@ export function SceneCreationPanel({
           onClick={inspectInput}
           type="button"
         >
-          检查素材
+          匹配素材
         </button>
       </div>
-      <details className="scene-creation-prompt-details">
-        <summary>用外部 AI 整理文本</summary>
-        <p className="scene-creation-prompt-guidance">
-          将提示词复制到外部工具整理，再把三行结果粘贴回来。Panda Stage 不会调用 AI。
-        </p>
-        <pre>{EXTERNAL_SCENE_ORGANIZATION_PROMPT}</pre>
-        <button
-          className="scene-creation-prompt-action"
-          data-testid="scene-creation-copy-prompt"
-          onClick={() => void copyExternalPrompt()}
-          type="button"
-        >
-          复制提示词
-        </button>
-      </details>
-      {copyMessage ? (
-        <output
-          aria-live={copyMessageIsError ? 'assertive' : 'polite'}
-          className={`scene-creation-copy-status${copyMessageIsError ? ' scene-creation-copy-status-error' : ''}`}
-          role={copyMessageIsError ? 'alert' : 'status'}
-        >
-          {copyMessage}
-        </output>
-      ) : null}
 
       {errorMessage ? (
         <p className="scene-creation-error" data-testid="scene-creation-error" role="alert">
@@ -669,7 +578,7 @@ export function SceneCreationPanel({
         <div className="scene-creation-stale" role="alert">
           <span>工程已变化，当前预览已失效。</span>
           <button onClick={inspectInput} type="button">
-            重新检查素材
+            重新匹配
           </button>
         </div>
       ) : null}

@@ -883,12 +883,49 @@ function projectResourceIdentity(project) {
   };
 }
 
-async function verifyCopyFeedback(window, sample) {
+async function pasteSceneInput(window, input) {
   const previousClipboard = captureClipboardState();
-  let result;
+  let screenshot;
   let flowError;
   try {
-    result = await verifyCopyFeedbackFlow(window, sample);
+    clipboard.writeText(input);
+    assert(
+      normalizeClipboardText(clipboard.readText()) === normalizeClipboardText(input),
+      'The system clipboard did not accept the structured scene text.',
+    );
+    await window.webContents.executeJavaScript(`(() => {
+      const textarea = document.querySelector('[data-testid="scene-creation-input"]');
+      if (!(textarea instanceof HTMLTextAreaElement)) {
+        throw new Error('Structured scene input did not render before paste.');
+      }
+      textarea.focus();
+    })()`);
+    await delay(100);
+    window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'V', modifiers: ['control'] });
+    window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'V', modifiers: ['control'] });
+    await waitForDom(
+      window,
+      `(() => { const value = document.querySelector('[data-testid="scene-creation-input"]')?.value; return typeof value === 'string' && value.split(String.fromCharCode(13)).join('') === ${JSON.stringify(input)}; })()`,
+      'Windows Ctrl+V did not paste the structured scene text into the production input.',
+    );
+    const inputState = await window.webContents.executeJavaScript(`(() => {
+      const textarea = document.querySelector('[data-testid="scene-creation-input"]');
+      return {
+        value: textarea?.value ?? null,
+        focused: document.activeElement === textarea,
+      };
+    })()`);
+    assert(
+      typeof inputState.value === 'string' &&
+        inputState.value.split(String.fromCharCode(13)).join('') === input &&
+        inputState.focused,
+      `The pasted structured text or focus changed: ${JSON.stringify(inputState)}.`,
+    );
+    assert(
+      normalizeClipboardText(clipboard.readText()) === normalizeClipboardText(input),
+      'The paste operation changed the system clipboard contents.',
+    );
+    screenshot = await capture(window, 'clipboard-pasted-scene-input.png');
   } catch (error) {
     flowError = error;
   }
@@ -896,176 +933,14 @@ async function verifyCopyFeedback(window, sample) {
   if (flowError) throw flowError;
   assert(clipboardRestore.textRestored, 'The verifier could not restore the prior system clipboard text.');
   return {
-    ...result,
+    operatingSystemCtrlV: true,
+    pastedTextPreserved: true,
+    inputFocused: true,
     previousClipboardTextRestored: clipboardRestore.textRestored,
     previousClipboardFormatsRestored: clipboardRestore.formatsRestored,
+    screenshot,
   };
 }
-
-async function verifyCopyFeedbackFlow(window, sample) {
-  await openStructuredCreation(window);
-  await click(window, '.scene-creation-prompt-details > summary');
-  await waitForDom(
-    window,
-    `document.querySelector('.scene-creation-prompt-details')?.open === true`,
-    'The external-AI helper did not expand before copy feedback checks.',
-  );
-  const initialLayout = await window.webContents.executeJavaScript(`(() => {
-    const panel = document.querySelector('[data-testid="scene-creation-panel"]');
-    const button = document.querySelector('[data-testid="scene-creation-copy-prompt"]');
-    return {
-      panelHeight: panel?.getBoundingClientRect().height ?? null,
-      buttonTop: button?.getBoundingClientRect().top ?? null,
-    };
-  })()`);
-
-  const failureOverrideInstalled = await window.webContents.executeJavaScript(`(() => {
-    const clipboard = navigator.clipboard;
-    if (!clipboard || typeof clipboard.writeText !== 'function') return false;
-    const hadOwnProperty = Object.prototype.hasOwnProperty.call(clipboard, 'writeText');
-    const ownDescriptor = Object.getOwnPropertyDescriptor(clipboard, 'writeText');
-    try {
-      Object.defineProperty(clipboard, 'writeText', {
-        configurable: true,
-        value: () => Promise.reject(new Error('测试剪贴板拒绝访问。')),
-      });
-    } catch {
-      return false;
-    }
-    window.__issue858ClipboardRestore = () => {
-      if (hadOwnProperty && ownDescriptor) {
-        Object.defineProperty(clipboard, 'writeText', ownDescriptor);
-      } else {
-        delete clipboard.writeText;
-      }
-      delete window.__issue858ClipboardRestore;
-    };
-    return true;
-  })()`);
-  assert(failureOverrideInstalled, 'Could not install the isolated clipboard failure probe.');
-  let failedFeedbackScreenshot;
-  try {
-    await click(window, '[data-testid="scene-creation-copy-prompt"]');
-    try {
-      await waitForDom(
-        window,
-        `(() => { const alert = document.querySelector('[data-testid="scene-creation-panel"] output[role="alert"]'); const prompt = document.querySelector('.scene-creation-prompt-details pre'); return Boolean(alert?.textContent?.trim() && alert.getAttribute('aria-live') === 'assertive' && prompt?.textContent?.trim()); })()`,
-        'Clipboard failure did not show a persistent manual-copy recovery message.',
-      );
-    } catch (error) {
-      const diagnostics = await window.webContents.executeJavaScript(`(() => ({
-        panel: Boolean(document.querySelector('[data-testid="scene-creation-panel"]')),
-        alertText: document.querySelector('[data-testid="scene-creation-panel"] output[role="alert"]')?.textContent?.trim() ?? null,
-        statusText: document.querySelector('[data-testid="scene-creation-panel"] output[role="status"]')?.textContent?.trim() ?? null,
-        promptVisible: Boolean(document.querySelector('.scene-creation-prompt-details pre')?.textContent?.trim()),
-        activeElement: document.activeElement?.getAttribute('data-testid') ?? document.activeElement?.tagName ?? null,
-        buttonRect: (() => { const rect = document.querySelector('[data-testid="scene-creation-copy-prompt"]')?.getBoundingClientRect(); return rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null; })(),
-      }))()`);
-      const failureScreenshot = await capture(window, 'copy-feedback-failure-probe-missing.png');
-      throw new Error(
-        `${error instanceof Error ? error.message : String(error)} failureProbe=${JSON.stringify(diagnostics)} screenshot=${failureScreenshot}`,
-        { cause: error },
-      );
-    }
-    failedFeedbackScreenshot = await capture(window, 'copy-feedback-failure.png');
-    await delay(3_200);
-    const failurePersists = await window.webContents.executeJavaScript(
-      `Boolean(document.querySelector('[data-testid="scene-creation-panel"] output[role="alert"]'))`,
-    );
-    assert(failurePersists, 'The clipboard failure recovery message disappeared before a user action.');
-  } finally {
-    await window.webContents.executeJavaScript(
-      `window.__issue858ClipboardRestore?.()`,
-    );
-  }
-
-  const promptText = await window.webContents.executeJavaScript(
-    `document.querySelector('.scene-creation-prompt-details pre')?.textContent ?? null`,
-  );
-  await click(window, '[data-testid="scene-creation-copy-prompt"]');
-  await waitForDom(
-    window,
-    `Boolean(document.querySelector('[data-testid="scene-creation-panel"] output[role="status"]')?.textContent?.trim())`,
-    'Successful prompt copy did not show its transient confirmation.',
-  );
-  const rendererClipboardText = await window.webContents.executeJavaScript(
-    `navigator.clipboard.readText()`,
-  );
-  const electronClipboardText = clipboard.readText();
-  assert(
-    normalizeClipboardText(rendererClipboardText) === normalizeClipboardText(promptText) &&
-      normalizeClipboardText(electronClipboardText) === normalizeClipboardText(promptText),
-    `The real clipboard did not contain the original prompt text (prompt=${promptText.length}, renderer=${rendererClipboardText.length}, Electron=${electronClipboardText.length}).`,
-  );
-  const visibleFeedbackScreenshot = await capture(window, 'copy-feedback-visible.png');
-  const layoutWithFeedback = await window.webContents.executeJavaScript(`(() => {
-    const panel = document.querySelector('[data-testid="scene-creation-panel"]');
-    const button = document.querySelector('[data-testid="scene-creation-copy-prompt"]');
-    const feedback = document.querySelector('[data-testid="scene-creation-panel"] output[role="status"]');
-    const feedbackStyle = feedback ? getComputedStyle(feedback) : null;
-    return {
-      panelHeight: panel?.getBoundingClientRect().height ?? null,
-      buttonTop: button?.getBoundingClientRect().top ?? null,
-      position: feedbackStyle?.position ?? null,
-    };
-  })()`);
-  assert(
-    layoutWithFeedback.panelHeight === initialLayout.panelHeight &&
-      layoutWithFeedback.buttonTop === initialLayout.buttonTop &&
-      layoutWithFeedback.position === 'fixed',
-    'Transient copy feedback changed the panel or button layout instead of floating above it.',
-  );
-
-  await delay(1_450);
-  await click(window, '[data-testid="scene-creation-copy-prompt"]');
-  await delay(1_750);
-  const repeatedFeedbackRemains = await window.webContents.executeJavaScript(
-    `Boolean(document.querySelector('[data-testid="scene-creation-panel"] output[role="status"]'))`,
-  );
-  assert(repeatedFeedbackRemains, 'The previous copy timer cleared feedback after a rapid repeated click.');
-  await delay(1_450);
-  await waitForDom(
-    window,
-    `!document.querySelector('[data-testid="scene-creation-panel"] output[role="status"]')`,
-    'Successful copy feedback did not disappear about three seconds after the latest click.',
-    2_000,
-  );
-
-  await click(window, '[data-testid="scene-creation-copy-prompt"]');
-  await waitForDom(
-    window,
-    `Boolean(document.querySelector('[data-testid="scene-creation-panel"] output[role="status"]')?.textContent?.trim())`,
-    'The copy feedback did not reappear for a new copy action.',
-  );
-  await closeCleanProject(window);
-  await delay(3_200);
-  await openProject(window, sample.targetProjectRoot);
-  await openStructuredCreation(window);
-  const afterReopen = await window.webContents.executeJavaScript(`(() => ({
-    panel: Boolean(document.querySelector('[data-testid="scene-creation-panel"]')),
-    staleFeedback: Boolean(document.querySelector('[data-testid="scene-creation-panel"] output')),
-  }))()`);
-  assert(afterReopen.panel && !afterReopen.staleFeedback, 'Copy feedback resurfaced after leaving and reopening the editor page.');
-  const reopenedScreenshot = await capture(window, 'copy-feedback-after-reopen.png');
-  await closeCleanProject(window);
-
-  return {
-    failureVisibleAndPersistent: true,
-    recoveryTextOffersManualCopy: true,
-    promptCopiedVerbatimToRealClipboard: true,
-    successDisappearsAfterLatestClick: true,
-    repeatedClickResetsTimer: true,
-    panelLayoutUnchanged: true,
-    feedbackFloats: true,
-    leavingPageClearsFeedback: true,
-    screenshots: {
-      failure: failedFeedbackScreenshot,
-      visible: visibleFeedbackScreenshot,
-      reopened: reopenedScreenshot,
-    },
-  };
-}
-
 async function verifyStalePreview(window) {
   const targetProjectRoot = path.join(runRoot, 'RF04 isolated stale preview.pandastage');
   const sample = prepareSampleProject(targetProjectRoot, 'RF04 过期预览');
@@ -1319,8 +1194,6 @@ async function run() {
   windowRef.focus();
   windowRef.webContents.focus();
   await openProject(windowRef, sample.targetProjectRoot);
-  const copyFeedback = await verifyCopyFeedback(windowRef, sample);
-  console.log('[issue854] RF02 copy feedback passed.');
   const stalePreview = await verifyStalePreview(windowRef);
   console.log('[issue854] RF04 stale-preview path passed.');
   const doubleConfirm = await verifyDoubleConfirm(windowRef);
@@ -1337,7 +1210,8 @@ async function run() {
     `背景：${sample.background.name}`,
     `出场：${sample.character.name}`,
   ].join('\n');
-  await setSceneInput(windowRef, structuredInput);
+  const clipboardPaste = await pasteSceneInput(windowRef, structuredInput);
+  console.log('[issue854] Windows Ctrl+V into the scene input passed.');
   await click(windowRef, '[data-testid="scene-creation-inspect"]');
   await waitForDom(
     windowRef,
@@ -1488,8 +1362,8 @@ async function run() {
     issue: 854,
     reviewFixIssue: 858,
     acceptance: 'AC03_REAL_WINDOWS_ELECTRON_HAPPY_UNDO_REDO_REOPEN_EDIT',
-    additionalAcceptance: 'ISSUE858_RF01_RF02_RF04_CURRENT_HEAD',
-    inputMethod: 'Deterministic renderer textarea input event; browser and Electron clipboard contents are checked after copying, while native Electron mouse input drives canvas edits and scene confirmation.',
+    additionalAcceptance: 'ISSUE858_RF01_RF04_CURRENT_HEAD; RF02_COPY_UI_REMOVED_BY_ISSUE916',
+    inputMethod: 'Windows Electron Ctrl+V from the system clipboard; native Electron mouse input drives canvas edits and scene confirmation.',
     passed: true,
     codeHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     generatedAt: new Date().toISOString(),
@@ -1511,7 +1385,7 @@ async function run() {
       thumbnailCacheAssetHashes: sample.thumbnailCache.assetHashes,
     },
     reviewFix: {
-      copyFeedback,
+      clipboardPaste,
       stalePreview,
       doubleConfirm,
     },
@@ -1597,9 +1471,7 @@ async function run() {
       existingShotBeforeManualEdit: existingManualFlow.screenshots.before,
       existingShotManualEdit: existingManualFlow.screenshots.adjusted,
       existingShotSavedReopened: existingManualFlow.screenshots.reopened,
-      copyFailure: copyFeedback.screenshots.failure,
-      copySuccess: copyFeedback.screenshots.visible,
-      copyAfterReopen: copyFeedback.screenshots.reopened,
+      clipboardPaste: clipboardPaste.screenshot,
       stalePreview: stalePreview.screenshots.preview,
       stalePreviewInvalidated: stalePreview.screenshots.invalidated,
       stalePreviewRecovered: stalePreview.screenshots.recovered,
@@ -1623,7 +1495,7 @@ async function main() {
       issue: 854,
       reviewFixIssue: 858,
       acceptance: 'AC03_REAL_WINDOWS_ELECTRON_HAPPY_UNDO_REDO_REOPEN_EDIT',
-      additionalAcceptance: 'ISSUE858_RF01_RF02_RF04_CURRENT_HEAD',
+      additionalAcceptance: 'ISSUE858_RF01_RF04_CURRENT_HEAD; RF02_COPY_UI_REMOVED_BY_ISSUE916',
       passed: false,
       codeHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
       error: error instanceof Error ? error.stack ?? error.message : String(error),
