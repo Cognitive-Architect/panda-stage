@@ -925,6 +925,62 @@ async function run() {
     'Duplicate Animation is not a single action in the Animation Playback heading.');
     writeFileSync(path.join(evidence, 'duplicate-control-debug.png'),
       (await window.webContents.capturePage()).toPNG());
+    await seekEditor(window, 0);
+    const appearanceOpenForEvidence = await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-testid="right-inspector-appearance-section"]\')?.open===true',
+    );
+    if (!appearanceOpenForEvidence) {
+      await click(window, '[data-testid="right-inspector-appearance-section"] > summary');
+    }
+    await waitFor(
+      window,
+      '(() => { const root=document.querySelector(\'.editor-shell\');' +
+        'const section=document.querySelector(\'[data-testid="right-inspector-appearance-section"]\');' +
+        'const input=document.querySelector(\'[data-testid="layer-opacity-range"]\');' +
+        'const rect=input?.getBoundingClientRect();' +
+        'return root?.dataset.editorDeviceMode==="cloud-touch"&&root.dataset.editorShellLayout==="landscape"&&' +
+        'section?.open===true&&rect?.width>0&&input?.disabled===false; })()',
+      'Animation Appearance did not open for the desktop landscape screenshot.',
+    );
+    const desktopScreenshot = await window.webContents.capturePage();
+    writeFileSync(path.join(evidence, 'desktop-landscape-animation-properties.png'), desktopScreenshot.toPNG());
+
+    window.setSize(1_000, 800);
+    await waitFor(
+      window,
+      '(() => { const root=document.querySelector(\'.editor-shell\');' +
+        'const section=document.querySelector(\'[data-testid="right-inspector-appearance-section"]\');' +
+        'const input=document.querySelector(\'[data-testid="layer-opacity-range"]\');' +
+        'const rect=input?.getBoundingClientRect();' +
+        'return document.documentElement.clientWidth<=1100&&document.documentElement.clientWidth>800&&' +
+        'root?.dataset.editorDeviceMode==="cloud-touch"&&root.dataset.editorShellLayout==="landscape"&&' +
+        'document.querySelector(\'[data-testid="right-workspace"]\')?.dataset.activeActivity==="properties"&&' +
+        'document.querySelector(\'[data-testid="project-canvas-stage"]\')?.dataset.selectedLayerId==="' + layerAId + '"&&' +
+        'section?.open===true&&rect?.width>0&&input?.disabled===false; })()',
+      'Cloud Touch narrow landscape properties did not settle for the screenshot.',
+      10_000,
+    );
+    await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-testid="right-inspector-drawer"]\')?.scrollTo({top:0})',
+    );
+    const narrowScreenshot = await window.webContents.capturePage();
+    writeFileSync(path.join(evidence, 'cloud-touch-narrow-animation-properties.png'), narrowScreenshot.toPNG());
+    window.setSize(1_600, 1_050);
+    await waitFor(
+      window,
+      'document.documentElement.clientWidth>1100&&' +
+        'document.querySelector(\'.editor-shell\')?.dataset.editorShellLayout==="landscape"&&' +
+        'document.querySelector(\'[data-testid="project-canvas-stage"]\')?.dataset.selectedLayerId==="' + layerAId + '"',
+      'Editor did not restore desktop landscape size after screenshot capture.',
+      10_000,
+    );
+    await seekEditor(window, 1_000);
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="layer-transform-panel"]\')?.dataset.selectedLayerId==="' + layerAId + '"&&' +
+        'document.querySelector(\'[data-testid="duplicate-animation-layer"]\')?.disabled===false',
+      'Duplicate control did not return to its original enabled state after screenshot capture.',
+    );
     await click(window, '[data-testid="duplicate-animation-layer"]');
     await new Promise((resolve) => setTimeout(resolve, 300));
     const duplicateStateAfter = await window.webContents.executeJavaScript(`(() => {
