@@ -78,14 +78,14 @@ const tiger = character('character-tiger', '老虎');
 const characters = [panda, tiger];
 
 describe('Issue #926 audio-backed subtitle draft plan', () => {
-  it('keeps source order, repeated speakers, blank-line numbering, asset IDs, and exact audio durations', () => {
+  it('keeps physical row numbers while matching audio by non-empty row order', () => {
     const result = preview(
       '熊猫：第一句\n\n老虎: 第二句\n熊猫：第三句',
       characters,
       [
         audio('voice-1', '001_熊猫.wav', 1_234),
-        audio('voice-3', '003_老虎.mp3', 2_001),
-        audio('voice-4', '004_熊猫.wav', 987),
+        audio('voice-2', '002_老虎.mp3', 2_001),
+        audio('voice-3', '003_熊猫.wav', 987),
       ],
     );
 
@@ -98,18 +98,78 @@ describe('Issue #926 audio-backed subtitle draft plan', () => {
     ]);
     expect(result.rows.map((row) => row.audioAsset?.id)).toEqual([
       'voice-1',
+      'voice-2',
       'voice-3',
-      'voice-4',
     ]);
     expect(result.rows.map((row) => row.audioAssetId)).toEqual([
       'voice-1',
+      'voice-2',
       'voice-3',
-      'voice-4',
     ]);
     expect(result.rows.map((row) => row.durationMs)).toEqual([1_234, 2_001, 987]);
     expect(result.rows.map((row) => row.automaticMatch)).toEqual([true, true, true]);
     expect(result.totalDurationMs).toBe(4_222);
     expect(formatDialogueDuration(1_234)).toBe('1.234 秒');
+  });
+
+  it('matches an imported conflict-suffixed path by its exact source name', () => {
+    const conflicted = audio('conflicted-voice', '001_熊猫.wav', 1_000);
+    conflicted.relativePath = 'assets/001_熊猫-a1b2c3d4.wav';
+
+    const result = preview('熊猫：你好', characters, [conflicted]);
+
+    expect(result.rows[0]).toMatchObject({
+      audioAssetId: conflicted.id,
+      automaticMatch: true,
+      ready: true,
+    });
+  });
+
+  it('keeps duplicate source identities ambiguous and does not strip arbitrary path suffixes', () => {
+    const first = audio('conflict-a', '001_熊猫.wav', 1_000);
+    first.relativePath = 'assets/001_熊猫-a1b2c3d4.wav';
+    const second = audio('conflict-b', '001_熊猫.wav', 1_100);
+    second.relativePath = 'assets/001_熊猫-e5f6a7b8.wav';
+
+    const ambiguous = preview('熊猫：你好', characters, [first, second]);
+    expect(ambiguous.rows[0]).toMatchObject({ issue: 'audio-ambiguous', ready: false });
+
+    const arbitrarySuffix = audio('untrusted-suffix', 'voice.wav', 1_000);
+    arbitrarySuffix.relativePath = 'assets/001_熊猫-random.wav';
+    const unmatched = preview('熊猫：你好', characters, [arbitrarySuffix]);
+    expect(unmatched.rows[0]).toMatchObject({ issue: 'audio-role-mismatch', audioAsset: null });
+  });
+
+  it('lets an explicit role mapping override an automatically recognized speaker', () => {
+    const result = preview(
+      '熊猫：你好',
+      characters,
+      [audio('tiger-voice', '001_老虎.wav', 1_000)],
+      { 1: tiger.id },
+    );
+
+    expect(result.rows[0]).toMatchObject({
+      characterId: tiger.id,
+      audioAssetId: 'tiger-voice',
+      automaticMatch: true,
+      ready: true,
+    });
+  });
+
+  it('counts a non-empty malformed row in audio sequence without changing physical row labels', () => {
+    const result = preview(
+      '熊猫：第一句\n\n这一行格式错误\n老虎：第二句',
+      characters,
+      [audio('voice-1', '001_熊猫.wav', 1_000), audio('voice-3', '003_老虎.wav', 1_200)],
+    );
+
+    expect(result.allReady).toBe(false);
+    expect(result.rows.map((row) => row.sourceLineNumber)).toEqual([1, 3, 4]);
+    expect(result.rows.map((row) => row.audioAssetId)).toEqual([
+      'voice-1',
+      null,
+      'voice-3',
+    ]);
   });
 
   it.each([

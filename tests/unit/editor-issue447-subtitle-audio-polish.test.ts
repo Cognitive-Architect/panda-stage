@@ -20,8 +20,13 @@ describe('Issue #447 subtitle authoring and AudioClip UX correction', () => {
     expect(batch).not.toContain('解析统计');
     expect(batch).not.toContain('dialogue-batch-stats');
     expect(batch).not.toContain('dialogue-authoring-cancel');
-    expect(batch).toContain('`可生成 ${preview.readyCount} 条字幕`');
-    expect(batch).toContain('`还有 ${preview.pendingCount} 条待处理`');
+    expect(batch).toContain('className="dialogue-batch-recognition-ready"');
+    expect(batch).toContain('className="dialogue-batch-recognition-pending"');
+    expect(batch).toContain('`已匹配 ${preview.readyCount} 条配音`');
+    expect(batch).toContain('`待处理 ${preview.pendingCount} 条`');
+    expect(batch).not.toContain('dialogue-batch-generation-state');
+    expect(batch).toContain('data-testid="dialogue-batch-add-subtitles"');
+    expect(batch).toContain('role="status"');
     expect(batch).toContain('formatDialogueDuration(preview.totalDurationMs)');
   });
 
@@ -33,7 +38,9 @@ describe('Issue #447 subtitle authoring and AudioClip UX correction', () => {
     expect(batch).toContain('parseDialoguePaste(draftState.batchRaw, characters)');
     expect(batch).toContain('resolveDialoguePaste(parsed, draftState.batchMapping, characters)');
     expect(batch).toContain('buildDialogueBatchPreview(');
-    expect(batch).not.toContain('dialogueStore.createMany(');
+    expect(batch).toContain('dialogueStore.createMany(');
+    expect(batch).toContain('data-testid="dialogue-batch-add-subtitles"');
+    expect(batch).toContain('if (!resolution.allResolved) return;');
     expect(batch).toContain('draft.setBatchAudioSelection(');
     expect(batch).toContain('未找到「');
     expect(batch).toContain('对应多个角色，请确认');

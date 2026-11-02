@@ -103,7 +103,9 @@ describe('Issue #386 Stage B subtitle authoring shell polish', () => {
     expect(batch).toContain('parseDialoguePaste(');
     expect(batch).toContain('resolveDialoguePaste(');
     expect(batch).toContain('buildDialogueBatchPreview(');
-    expect(batch).not.toContain('dialogueStore.createMany(');
+    expect(batch).toContain('dialogueStore.createMany(');
+    expect(batch).toContain('data-testid="dialogue-batch-add-subtitles"');
+    expect(batch).toContain('if (!resolution.allResolved) return;');
     expect(batch).toContain('draft.setBatchRaw(event.target.value);');
     expect(batch).toContain('draftState.batchAudioSelections');
     expect(draft).not.toContain('updateProject');

@@ -5,6 +5,29 @@
   gap: 5px;
 }
 
+.dialogue-batch-row-result-resolved {
+  grid-template-columns: 18px 34px minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.dialogue-batch-role-edit {
+  min-height: 32px;
+  padding: 4px 7px;
+  border: 1px solid var(--ui-color-border, #31513f);
+  border-radius: var(--ui-radius-small, 6px);
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.dialogue-batch-role-edit:focus-visible,
+.dialogue-batch-subtitle-only:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring, #9ae6ad);
+  outline-offset: 2px;
+}
+
 .dialogue-batch-row-number {
   color: var(--ui-color-text-muted, #829589);
   font-size: 11px;
@@ -86,13 +109,25 @@
   line-height: 1.4;
 }
 
-.dialogue-batch-generation-state {
-  color: var(--ui-color-text-primary, #e7f2eb);
-  font-size: 13px;
-  font-weight: 650;
+.dialogue-batch-subtitle-only {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
 }
 
 @media (max-width: 680px) {
+  .dialogue-batch-row-result-resolved {
+    grid-template-columns: 18px 34px minmax(0, 1fr);
+  }
+
+  .dialogue-batch-role-edit {
+    grid-column: 3;
+    justify-self: start;
+    margin-top: 2px;
+  }
+
   .dialogue-batch-audio-row {
     padding-left: 0;
   }

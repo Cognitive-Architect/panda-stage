@@ -1,4 +1,4 @@
-const { app, clipboard, ipcMain } = require('electron');
+const { app, ipcMain } = require('electron');
 const { mkdirSync, readFileSync, writeFileSync } = require('node:fs');
 const { createHash } = require('node:crypto');
 const { isDeepStrictEqual } = require('node:util');
@@ -85,11 +85,13 @@ for (let sequence = 1; sequence <= 10; sequence += 1) {
   const role = sequence % 2 === 1 ? 'Panda' : 'Tiger';
   const durationMs = 1_000 + sequence * 113;
   const bytes = wave(durationMs, 180 + sequence * 17);
+  const sourceStem = `${String(sequence).padStart(3, '0')}_${role}`;
+  const conflictedPath = sequence === 4;
   const asset = {
     id: `11000000-0000-4000-8000-0000000009${String(sequence).padStart(2, '0')}`,
     kind: 'audio',
-    name: `Sequence ${sequence} ${role}`,
-    relativePath: `assets/${String(sequence).padStart(3, '0')}_${role}.wav`,
+    name: conflictedPath ? sourceStem : `Sequence ${sequence} ${role}`,
+    relativePath: `assets/${sourceStem}${conflictedPath ? '-a1b2c3d4' : ''}.wav`,
     mimeType: 'audio/wav',
     durationMs,
     sha256: createHash('sha256').update(bytes).digest('hex'),
@@ -183,6 +185,7 @@ const assert = (value, message) => {
   if (!value) throw new Error(message);
 };
 let win;
+let activeStep = 'launch';
 const js = (code) => win.webContents.executeJavaScript(code, true);
 async function wait(expression, timeoutMs = 15_000) {
   await js(`(async () => {
@@ -205,6 +208,23 @@ async function activate(selector) {
   win.webContents.sendInputEvent({ type: 'mouseDown', button: 'left', clickCount: 1, ...point });
   win.webContents.sendInputEvent({ type: 'mouseUp', button: 'left', clickCount: 1, ...point });
   await pause(180);
+}
+async function chooseBatchCharacter(lineNumber, characterId) {
+  const picker = `[data-testid="dialogue-batch-map-${lineNumber}"]`;
+  await activate(`${picker} summary`);
+  await wait(`document.querySelector(${JSON.stringify(`${picker} [role="radio"][data-character-id="${characterId}"]`)})`);
+  await activate(`${picker} [role="radio"][data-character-id="${characterId}"]`);
+}
+async function setBatchText(value) {
+  await js(`(() => {
+    const input = document.querySelector('[data-testid="dialogue-batch-input"]');
+    if (!input) throw new Error('Missing batch dialogue input');
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    setter.call(input, ${JSON.stringify(value)});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  await wait(`document.querySelector('[data-testid="dialogue-batch-input"]')?.value === ${JSON.stringify(value)}`);
 }
 async function inspect() {
   return js('window.__pandaStageIssue816Acceptance.inspect()');
@@ -233,6 +253,7 @@ async function useManualAudioAndDuration() {
 }
 
 async function run() {
+  activeStep = 'open-project';
   await app.whenReady();
   win = await createMainWindow({ show: false, issue816Acceptance: true });
   win.setContentSize(1360, 920);
@@ -241,8 +262,8 @@ async function run() {
   win.focus();
 
   const result = {
-    issue: 926,
-    acceptance: 'AS-01 batch subtitle draft preview',
+    issue: 937,
+    acceptance: 'AS-01-FIX-01 batch subtitle role, audio, and audio-free add',
     runId,
     projectRoot,
     passed: false,
@@ -258,22 +279,24 @@ async function run() {
     await wait(`document.querySelector('[data-testid="dialogue-authoring-tab-batch"]')`);
     await activate('[data-testid="dialogue-authoring-tab-batch"]');
 
+    activeStep = 'initial-ten-row-preview';
     const baseline = await inspect();
     assert(baseline?.project?.shots?.[0]?.dialogues?.length === 0, 'Fixture must begin with an empty dialogue list');
     assert(baseline?.project?.shots?.[0]?.audioClips?.length === 0, 'Fixture must begin without audio clips');
     const baselineFingerprint = JSON.stringify(baseline.project);
     const baselineAutosaveUpdates = autosaveUpdates;
 
-    const sourceText = sequenceAssets.map((asset, index) => {
+    const sourceLines = sequenceAssets.map((asset, index) => {
       const role = index % 2 === 0 ? 'Panda' : 'Tiger';
       return `${role}: AS-01 dialogue row ${index + 1}`;
-    }).join('\n');
-    clipboard.writeText(sourceText);
-    await activate('[data-testid="dialogue-batch-input"]');
-    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'V', modifiers: ['control'] });
-    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'V', modifiers: ['control'] });
+    });
+    const sourceLineNumbers = [1, 2, 3, 5, 6, 7, 8, 10, 11, 12];
+    const sourceText = sourceLines.flatMap((line, index) =>
+      index === 2 || index === 6 ? [line, ''] : [line],
+    ).join('\n');
+    await setBatchText(sourceText);
     await wait(`document.querySelectorAll('[data-testid="dialogue-batch-line"]').length === 10`);
-    await wait(`document.querySelector('[data-testid="dialogue-batch-generation-state"]')?.textContent.includes('10')`);
+    await wait(`document.querySelector('.dialogue-batch-recognition-ready')?.textContent.includes('10')`);
 
     const previewRows = await js(`([...document.querySelectorAll('[data-testid="dialogue-batch-line"]')].map((element) => ({
       sourceLineNumber: Number(element.querySelector('.dialogue-batch-row-number')?.textContent.match(/\\d+/)?.[0]),
@@ -286,7 +309,7 @@ async function run() {
     assert(previewRows.length === sequenceAssets.length, 'Preview row count/order does not match the source');
     previewRows.forEach((row, index) => {
       const expected = sequenceAssets[index];
-      assert(row.sourceLineNumber === index + 1, `Source order mismatch on row ${index + 1}`);
+      assert(row.sourceLineNumber === sourceLineNumbers[index], `Physical source line mismatch on row ${index + 1}`);
       assert(row.audioAssetId === expected.id, `Wrong real AudioAsset ID on row ${index + 1}`);
       assert(row.sourceDurationMs === expected.durationMs, `Wrong source duration on row ${index + 1}`);
       assert(row.clipDurationMs === expected.durationMs, `Default clip duration mismatch on row ${index + 1}`);
@@ -294,6 +317,7 @@ async function run() {
       assert(row.selectValue === '__automatic__', `Row ${index + 1} is not displaying the automatic match`);
     });
     assert(await js(`document.querySelector('.dialogue-batch-recognition-ready')?.textContent.includes('10')`), 'Ready count did not report ten rows');
+    assert(sequenceAssets[3].relativePath.endsWith('004_Tiger-a1b2c3d4.wav'), 'Conflict fixture is missing its import hash suffix');
     const autoImage = path.join(root, 'automatic-preview.png');
     writeFileSync(autoImage, (await win.webContents.capturePage()).toPNG());
     result.evidence.push(autoImage);
@@ -313,6 +337,32 @@ async function run() {
     writeFileSync(manualImage, (await win.webContents.capturePage()).toPNG());
     result.evidence.push(manualImage);
 
+    await activate('[data-testid="dialogue-batch-role-edit-1"]');
+    await chooseBatchCharacter(1, tigerId);
+    await wait(`document.querySelector('[data-testid="dialogue-batch-line"] .dialogue-batch-row-copy strong')?.textContent === 'Tiger'`);
+    await wait(`document.querySelector('[data-testid="dialogue-batch-line"]')?.dataset.audioAssetId === ''`);
+    const changedRoleRow = await js(`(() => {
+      const row = document.querySelector('[data-testid="dialogue-batch-line"]');
+      return {
+        character: row.querySelector('.dialogue-batch-row-copy strong')?.textContent,
+        audioAssetId: row.dataset.audioAssetId,
+        clipDurationMs: row.dataset.clipDurationMs,
+        durationInput: row.querySelector('[data-testid="dialogue-batch-duration-1"]')?.value ?? null,
+        issue: document.querySelector('[data-testid="dialogue-batch-issue-1"]')?.textContent,
+      };
+    })()`);
+    assert(changedRoleRow.character === 'Tiger', 'Auto-recognized role did not change to Tiger');
+    assert(changedRoleRow.audioAssetId === '' && changedRoleRow.clipDurationMs === '', 'Role change kept the old manual audio or duration');
+    assert(changedRoleRow.durationInput === null, 'Role change kept the prior duration editor');
+    assert(changedRoleRow.issue?.includes('角色与当前角色不一致'), 'Role change did not revalidate the numbered audio');
+    await activate('[data-testid="dialogue-batch-role-edit-1"]');
+    await chooseBatchCharacter(1, panda.id);
+    await wait(`document.querySelector('[data-testid="dialogue-batch-line"]')?.dataset.audioAssetId === ${JSON.stringify(sequenceAssets[0].id)}`);
+    await wait(`document.querySelector('[data-testid="dialogue-batch-line"]')?.dataset.clipDurationMs === '${sequenceAssets[0].durationMs}'`);
+    const roleChangeImage = path.join(root, 'auto-role-change-preview.png');
+    writeFileSync(roleChangeImage, (await win.webContents.capturePage()).toPNG());
+    result.evidence.push(roleChangeImage);
+
     const afterPreview = await inspect();
     assert(afterPreview.revision === baseline.revision, 'Draft preview changed the Project revision');
     assert(afterPreview.dirty === baseline.dirty, 'Draft preview changed Project dirty state');
@@ -324,6 +374,7 @@ async function run() {
     result.preview = {
       rows: previewRows,
       manualSelection: { audioAssetId: manualAsset.id, sourceDurationMs: manualAsset.durationMs, clipDurationMs: 500 },
+      roleChange: changedRoleRow,
       projectRevision: afterPreview.revision,
       dirty: afterPreview.dirty,
       undoCount: afterPreview.undoCount,
@@ -332,8 +383,10 @@ async function run() {
       projectUnchanged: true,
     };
 
+    activeStep = 'cancel-initial-preview';
     await activate('[data-testid="dialogue-authoring-back"]');
     await wait(`!document.querySelector('[data-testid="dialogue-batch-input"]')`);
+    activeStep = 'reopen-for-mapped-role-and-subtitle-action';
     await activate('[data-testid="subtitle-workspace-empty-action"]');
     await wait(`document.querySelector('[data-testid="dialogue-authoring-tab-batch"]')`);
     await activate('[data-testid="dialogue-authoring-tab-batch"]');
@@ -345,14 +398,70 @@ async function run() {
     assert(JSON.stringify(afterCancel.project) === baselineFingerprint, 'Cancel changed the Project snapshot');
     assert(autosaveUpdates === baselineAutosaveUpdates, 'Cancel sent an autosave update');
     result.cancel = { draftCleared: true, projectUnchanged: true, historyUnchanged: true };
+
+    activeStep = 'enter-second-batch-text';
+    await setBatchText('Unknown: mapped subtitle without audio');
+    activeStep = 'map-unknown-to-first-role';
+    await wait(`document.querySelector('[data-testid="dialogue-batch-map-1"]')`);
+    await chooseBatchCharacter(1, panda.id);
+    await wait(`document.querySelector('[data-testid="dialogue-batch-line"] .dialogue-batch-row-copy strong')?.textContent === 'Panda'`);
+    await activate('[data-testid="dialogue-batch-role-edit-1"]');
+    await chooseBatchCharacter(1, tigerId);
+    await wait(`document.querySelector('[data-testid="dialogue-batch-line"] .dialogue-batch-row-copy strong')?.textContent === 'Tiger'`);
+    await wait(`document.querySelector('[data-testid="dialogue-batch-line"]')?.dataset.audioAssetId === ''`);
+    const subtitleOnlyButton = await js(`(() => {
+      const button = document.querySelector('[data-testid="dialogue-batch-add-subtitles"]');
+      return { exists: Boolean(button), disabled: button?.disabled ?? true, text: button?.textContent ?? '' };
+    })()`);
+    assert(subtitleOnlyButton.exists && !subtitleOnlyButton.disabled, 'Resolved subtitle-only action is not enabled when audio is pending');
+    assert(subtitleOnlyButton.text.includes('仅添加字幕') && subtitleOnlyButton.text.includes('不含配音'), 'Subtitle-only action copy is missing');
+    activeStep = 'explicit-subtitle-only-add';
+    await activate('[data-testid="dialogue-batch-add-subtitles"]');
+    await wait(`!document.querySelector('[data-testid="dialogue-batch-input"]')`);
+    const afterAdd = await inspect();
+    const createdDialogue = afterAdd.project.shots[0].dialogues[0];
+    assert(afterAdd.project.shots[0].dialogues.length === 1, 'Subtitle-only action did not create exactly one Dialogue');
+    assert(createdDialogue.characterId === tigerId && createdDialogue.text === 'mapped subtitle without audio', 'Subtitle-only action committed the wrong mapped line');
+    assert(createdDialogue.startMs === 0 && createdDialogue.endMs === 0, 'Subtitle-only action created a timed Dialogue');
+    assert(afterAdd.project.shots[0].audioClips.length === 0, 'Subtitle-only action created an AudioClip');
+    assert(afterAdd.undoCount === baseline.undoCount + 1, 'Batch add did not create exactly one History command');
+    assert(afterAdd.revision === baseline.revision + 1, 'Batch add did not create one Project revision');
+
+    activeStep = 'undo-batch-add';
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Z', modifiers: ['control'] });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Z', modifiers: ['control'] });
+    await wait(`(await window.__pandaStageIssue816Acceptance.inspect()).project.shots[0].dialogues.length === 0`);
+    const afterUndo = await inspect();
+    assert(afterUndo.undoCount === baseline.undoCount && afterUndo.redoCount === baseline.redoCount + 1, 'Undo did not remove the one batch command');
+    activeStep = 'redo-batch-add';
+    win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Y', modifiers: ['control'] });
+    win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Y', modifiers: ['control'] });
+    await wait(`(await window.__pandaStageIssue816Acceptance.inspect()).project.shots[0].dialogues.length === 1`);
+    const afterRedo = await inspect();
+    assert(afterRedo.project.shots[0].audioClips.length === 0, 'Redo added an AudioClip');
+    assert(afterRedo.project.shots[0].dialogues[0].characterId === tigerId, 'Redo did not restore the mapped subtitle');
+    assert(afterRedo.undoCount === baseline.undoCount + 1 && afterRedo.redoCount === baseline.redoCount, 'Redo did not restore the single batch History command');
+    const subtitleOnlyImage = path.join(root, 'subtitle-only-add-undo-redo.png');
+    writeFileSync(subtitleOnlyImage, (await win.webContents.capturePage()).toPNG());
+    result.evidence.push(subtitleOnlyImage);
+    result.roleMapping = { automaticToManual: true, unknownToFirstRoleToSecondRole: true, oldAudioAndDurationCleared: true };
+    result.subtitleOnly = { createdUntimed: true, audioClips: 0, oneHistoryCommand: true, undo: true, redo: true };
+    result.fixes = {
+      F01: 'PASS',
+      F02: 'PASS',
+      F03: 'PASS',
+      F04: 'PASS',
+      F05: 'PASS',
+    };
     result.passed = true;
     const resultPath = path.join(root, 'results.json');
     writeFileSync(resultPath, JSON.stringify(result, null, 2), 'utf8');
     result.evidence.push(resultPath);
-    console.log(`PASS #926 AS-01 batch preview, exact AudioAsset matching, duration edit, draft-only state and cancel: ${root}`);
+    console.log(`PASS #937 AS-01-FIX-01 role remapping, conflict audio matching, continuous numbering, subtitle-only add/undo/redo, draft-only preview and cancel: ${root}`);
     win.destroy();
     app.exit(0);
   } catch (error) {
+    result.step = activeStep;
     result.error = String(error.stack ?? error);
     const resultPath = path.join(root, 'results.json');
     writeFileSync(resultPath, JSON.stringify(result, null, 2), 'utf8');

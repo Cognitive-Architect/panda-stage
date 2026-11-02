@@ -182,4 +182,20 @@ describe('DialogueAuthoringDraft identity isolation', () => {
 
     expect(draft.getSnapshot().batchAudioSelections).toEqual({});
   });
+
+  it('clears audio and edited duration when an auto-recognized role is overridden', () => {
+    const draft = new DialogueAuthoringDraft();
+    draft.bindIdentity(SHOT_A);
+    draft.setBatchRaw('熊猫：第一句');
+    draft.setBatchAudioSelection(1, {
+      assetId: 'audio-1',
+      characterId: 'char-1',
+      durationSeconds: '0.4',
+    });
+
+    draft.setBatchMapping(1, 'char-2');
+
+    expect(draft.getSnapshot().batchMapping).toEqual({ 1: 'char-2' });
+    expect(draft.getSnapshot().batchAudioSelections).toEqual({});
+  });
 });

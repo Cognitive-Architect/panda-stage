@@ -76,15 +76,27 @@ export function dialogueAudioFileName(asset: AudioAsset): string {
   return assetFileName(asset);
 }
 
-function numberedAudioAsset(asset: AudioAsset): NumberedAudioAsset | null {
-  const fileName = assetFileName(asset);
-  const extensionIndex = fileName.lastIndexOf('.');
+function parseNumberedAudioName(
+  fileName: string,
+  hasExtension: boolean,
+): Omit<NumberedAudioAsset, 'asset'> | null {
+  const extensionIndex = hasExtension ? fileName.lastIndexOf('.') : -1;
   const stem = extensionIndex > 0 ? fileName.slice(0, extensionIndex) : fileName;
   const match = /^(\d+)_([^/]+)$/u.exec(stem);
   if (!match) return null;
   const sequence = Number(match[1]);
   if (!Number.isSafeInteger(sequence) || sequence < 1) return null;
-  return { asset, sequence, roleName: match[2]! };
+  return { sequence, roleName: match[2]! };
+}
+
+function numberedAudioAsset(asset: AudioAsset): NumberedAudioAsset | null {
+  // Imported assets retain the source filename stem in `name`, even when the
+  // on-disk path gained a collision hash. Prefer that exact trusted identity;
+  // otherwise require the stored relative path itself to match exactly.
+  const sourceName = parseNumberedAudioName(asset.name, false);
+  const pathName = sourceName ? null : parseNumberedAudioName(assetFileName(asset), true);
+  const identity = sourceName ?? pathName;
+  return identity ? { asset, ...identity } : null;
 }
 
 function sameCanonicalName(left: string, right: string): boolean {
@@ -153,7 +165,8 @@ function rowTextProblem(
 }
 
 function autoMatch(
-  lineNumber: number,
+  sequenceNumber: number,
+  sourceLineNumber: number,
   characterName: string,
   audioAssets: readonly AudioAsset[],
 ): {
@@ -166,14 +179,14 @@ function autoMatch(
     .map(numberedAudioAsset)
     .filter((candidate): candidate is NumberedAudioAsset => candidate !== null);
   const sameSequence = numbered.filter(
-    (candidate) => candidate.sequence === lineNumber,
+    (candidate) => candidate.sequence === sequenceNumber,
   );
   if (sameSequence.length > 1) {
     return {
       asset: null,
       suggestion: null,
       issue: 'audio-ambiguous',
-      message: `编号 ${lineNumber} 有多个配音，请手动选择。`,
+      message: `第 ${sourceLineNumber} 行对应的配音编号有多个候选，请手动选择。`,
     };
   }
   if (sameSequence.length === 1) {
@@ -183,7 +196,7 @@ function autoMatch(
         asset: null,
         suggestion: candidate.asset,
         issue: 'audio-role-mismatch',
-        message: `编号 ${lineNumber} 的配音角色与当前角色不一致，请手动选择。`,
+        message: `第 ${sourceLineNumber} 行对应的配音角色与当前角色不一致，请手动选择。`,
       };
     }
     if (candidate.asset.metadata?.status === 'error') {
@@ -230,7 +243,7 @@ function autoMatch(
         asset: null,
         suggestion: null,
         issue: 'audio-number-mismatch',
-        message: `找到角色配音，但编号与第 ${lineNumber} 行不一致。`,
+        message: `找到角色配音，但编号与第 ${sourceLineNumber} 行不一致。`,
       }
     : {
         asset: null,
@@ -326,7 +339,7 @@ export function buildDialogueBatchPreview(input: {
       };
     }
 
-    const automatic = autoMatch(line.lineNumber, character.name, input.audioAssets);
+    const automatic = autoMatch(index + 1, line.lineNumber, character.name, input.audioAssets);
     const selection = input.audioSelections[line.lineNumber];
     if (selection && selection.characterId !== resolved.characterId) {
       return {

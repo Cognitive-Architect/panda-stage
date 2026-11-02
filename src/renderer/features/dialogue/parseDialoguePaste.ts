@@ -210,7 +210,12 @@ export function resolveDialoguePaste(
   const characterIds = new Set(characters.map((character) => character.id));
   const resolvedLines = result.lines.map((line): ResolvedDialogueLine | null => {
     if (line.status === 'valid') {
-      return { characterId: line.characterId!, text: line.text! };
+      const mappedCharacterId = mapping[line.lineNumber];
+      if (!mappedCharacterId) {
+        return { characterId: line.characterId!, text: line.text! };
+      }
+      if (!characterIds.has(mappedCharacterId)) return null;
+      return { characterId: mappedCharacterId, text: line.text! };
     }
     if (line.status !== 'unknown' && line.status !== 'ambiguous') return null;
     const mappedCharacterId = mapping[line.lineNumber];

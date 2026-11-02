@@ -171,6 +171,23 @@ describe('parseDialoguePaste', () => {
     });
   });
 
+  it('lets an explicit draft role override an automatically recognized role', () => {
+    const parsed = parseDialoguePaste('熊猫：待改角色', characters);
+
+    expect(resolveDialoguePaste(parsed, { 1: 'c-tiger' }, characters).resolvedLines[0]).toEqual({
+      characterId: 'c-tiger',
+      text: '待改角色',
+    });
+  });
+
+  it('does not fall back to automatic matching when a saved role override is stale', () => {
+    const parsed = parseDialoguePaste('熊猫：待重新绑定', characters);
+
+    expect(
+      resolveDialoguePaste(parsed, { 1: 'deleted-character' }, characters),
+    ).toMatchObject({ readyCount: 0, allResolved: false, resolvedLines: [null] });
+  });
+
   it('rejects a stale speaker mapping to a character that no longer exists', () => {
     const parsed = parseDialoguePaste('小猫：喵', characters);
     expect(

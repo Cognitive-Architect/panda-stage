@@ -148,7 +148,8 @@ describe('Issue #357 State D/E unified subtitle authoring shell', () => {
     expect(batch).toContain('buildDialogueBatchPreview(');
     expect(batch).toContain('draftState.batchAudioSelections');
     expect(batch).toContain('data-testid="dialogue-batch-preview"');
-    expect(batch).toContain('data-testid="dialogue-batch-generation-state"');
+    expect(batch).toContain('data-testid="dialogue-batch-recognition"');
+    expect(batch).toContain('data-testid="dialogue-batch-add-subtitles"');
     expect(batch).toContain('data-testid={`dialogue-batch-map-${line.lineNumber}`}');
     expect(batch).toContain('mappingIssueCopy(line)');
     expect(batch).toContain('未找到「');
@@ -156,8 +157,10 @@ describe('Issue #357 State D/E unified subtitle authoring shell', () => {
     expect(batch).not.toContain('没找到这个角色');
     expect(batch).not.toContain('data-testid="dialogue-batch-stats"');
     expect(batch).not.toContain('解析统计');
-    expect(batch).not.toContain('dialogueStore.createMany(');
-    expect(batch).not.toContain('onSuccess();');
+    expect(batch).toContain('dialogueStore.createMany(');
+    expect(batch).toContain('if (!resolution.allResolved) return;');
+    expect(batch).toContain('onClick={handleAddSubtitles}');
+    expect(batch).toContain('仅添加字幕（不含配音）');
     expect(batch).not.toContain('CharacterStore');
     expect(batch).not.toContain('updateProject');
   });

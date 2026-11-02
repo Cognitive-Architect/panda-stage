@@ -1097,6 +1097,7 @@ export function DialogueSheet({
           ) : (
             <DialogueBatchPaste
               draft={draft}
+              onSuccess={handleCloseAuthoring}
               showDefaultExpression={!rightWorkspace}
             />
           )}

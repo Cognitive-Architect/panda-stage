@@ -112,9 +112,11 @@ describe('Issue #505 R6.2 A09 batch recognition review', () => {
     expect(batch).toContain('emptySummaryLabel="请选择对应角色"');
     expect(batch).toContain('showDefaultExpression={showDefaultExpression}');
     expect(batch).toContain('buildDialogueBatchPreview(');
-    expect(batch).not.toContain('dialogueStore.createMany(');
-    expect(batch).toContain('`还有 ${preview.pendingCount} 条待处理`');
-    expect(batch).toContain('`可生成 ${preview.readyCount} 条字幕`');
+    expect(batch).toContain('dialogueStore.createMany(');
+    expect(batch).toContain('data-testid="dialogue-batch-add-subtitles"');
+    expect(batch).toContain('if (!resolution.allResolved) return;');
+    expect(batch).toContain('className="dialogue-batch-recognition-pending"');
+    expect(batch).toContain('className="dialogue-batch-recognition-ready"');
     expect(sheet).toContain('showDefaultExpression={!rightWorkspace}');
     for (const staleCopy of [
       '没找到这个角色',
