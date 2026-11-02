@@ -391,7 +391,7 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
                   value: 'hold',
                   label: '定格',
                   ariaLabel: '播放结束时定格在最后一帧',
-                  title: '定格在最后一帧',
+                  title: '播放结束时定格在最后一帧',
                   disabled: locked,
                 },
                 {

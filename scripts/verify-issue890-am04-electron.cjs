@@ -395,6 +395,28 @@ async function setControlValue(window, selector, value, blur = false) {
   await new Promise((resolve) => setTimeout(resolve, 120));
 }
 
+async function typeControlValue(window, selector, value, commitWithEnter = false) {
+  window.show();
+  window.focus();
+  window.webContents.focus();
+  await window.webContents.executeJavaScript(
+    '(() => { const e=document.querySelector(' + JSON.stringify(selector) + ');' +
+    'if (!(e instanceof HTMLInputElement)) throw new Error("Missing input: " + ' +
+    JSON.stringify(selector) + '); e.focus(); return true; })()',
+  );
+  window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'A', modifiers: ['control'] });
+  window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'A', modifiers: ['control'] });
+  await window.webContents.insertText(String(value));
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  if (commitWithEnter) await pressKey(window, 'ENTER');
+  else {
+    await window.webContents.executeJavaScript(
+      'document.querySelector(' + JSON.stringify(selector) + ')?.blur()',
+    );
+  }
+  await new Promise((resolve) => setTimeout(resolve, 120));
+}
+
 async function dragRangeValue(window, selector, value, min = 0, max = 100) {
   const diagnostics = await window.webContents.executeJavaScript(
     '(() => { const e=document.querySelector(' + JSON.stringify(selector) + ');' +
@@ -535,6 +557,81 @@ async function seekEditor(window, timeMs) {
   return Number(await window.webContents.executeJavaScript(
     'document.querySelector(\'[data-testid="project-canvas-stage"]\')?.dataset.currentTimeMs',
   ));
+}
+
+async function readAnimationStartTimeLayout(window) {
+  return window.webContents.executeJavaScript(`(() => {
+    const input = document.querySelector('[data-testid="animation-start-seconds"]');
+    const unit = input?.parentElement?.querySelector('.animation-playback-time-unit');
+    const duplicate = document.querySelector('[data-testid="duplicate-animation-layer"]');
+    if (!(input instanceof HTMLInputElement) || !unit || !duplicate) return null;
+    input.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const inputRect = input.getBoundingClientRect();
+    const unitRect = unit.getBoundingClientRect();
+    const duplicateRect = duplicate.getBoundingClientRect();
+    const inputStyle = getComputedStyle(input);
+    const unitStyle = getComputedStyle(unit);
+    const innerSpinnerStyle = getComputedStyle(input, '::-webkit-inner-spin-button');
+    const outerSpinnerStyle = getComputedStyle(input, '::-webkit-outer-spin-button');
+    const borderRight = Number.parseFloat(inputStyle.borderRightWidth) || 0;
+    const paddingRight = Number.parseFloat(inputStyle.paddingRight) || 0;
+    const contentRight = inputRect.right - borderRight - paddingRight;
+    const center = document.elementFromPoint(
+      inputRect.left + inputRect.width / 2,
+      inputRect.top + inputRect.height / 2,
+    );
+    const innerSpinnerAppearance = innerSpinnerStyle.getPropertyValue('-webkit-appearance') ||
+      innerSpinnerStyle.getPropertyValue('appearance');
+    const outerSpinnerAppearance = outerSpinnerStyle.getPropertyValue('-webkit-appearance') ||
+      outerSpinnerStyle.getPropertyValue('appearance');
+    return {
+      type: input.type,
+      step: input.step,
+      min: input.min,
+      max: input.max,
+      disabled: input.disabled,
+      unitText: unit.textContent?.trim(),
+      unitVisible: unitStyle.display !== 'none' && unitStyle.visibility !== 'hidden' &&
+        unitRect.width > 0 && unitRect.height > 0,
+      inputRect: { x: inputRect.x, y: inputRect.y, width: inputRect.width, height: inputRect.height,
+        left: inputRect.left, right: inputRect.right },
+      unitRect: { left: unitRect.left, right: unitRect.right, top: unitRect.top, bottom: unitRect.bottom },
+      duplicateRect: { left: duplicateRect.left, right: duplicateRect.right },
+      rightEdgeDelta: Math.abs(inputRect.right - duplicateRect.right),
+      unitInsideInput: unitRect.left >= inputRect.left && unitRect.right <= inputRect.right &&
+        unitRect.top >= inputRect.top && unitRect.bottom <= inputRect.bottom,
+      unitInReservedSuffixArea: unitRect.left >= contentRight - 1 &&
+        unitRect.right <= inputRect.right - borderRight - 3,
+      paddingRight,
+      inputAppearance: inputStyle.getPropertyValue('appearance'),
+      innerSpinnerAppearance,
+      outerSpinnerAppearance,
+      spinnerSuppressed: inputStyle.getPropertyValue('appearance') === 'textfield' ||
+        (innerSpinnerAppearance === 'none' && outerSpinnerAppearance === 'none'),
+      minHeight: Number.parseFloat(inputStyle.minHeight) || inputRect.height,
+      centerHitsInput: center === input,
+    };
+  })()`);
+}
+
+function assertAnimationStartTimeLayout(layout, scenario, touch = false) {
+  assert(layout, scenario + ': start-time controls are missing.');
+  assert(layout.type === 'number' && layout.step === '0.001',
+    scenario + ': start-time input lost its millisecond-precise number semantics.');
+  assert(!layout.disabled, scenario + ': start-time input is unexpectedly disabled.');
+  assert(layout.spinnerSuppressed,
+    scenario + ': native number spinner is not suppressed: ' + JSON.stringify(layout));
+  assert(layout.rightEdgeDelta <= 1.5,
+    scenario + ': start input right edge does not align with Copy Animation: ' + JSON.stringify(layout));
+  assert(layout.unitText === '秒' && layout.unitVisible && layout.unitInsideInput &&
+    layout.unitInReservedSuffixArea,
+  scenario + ': seconds suffix is not contained in the input reserved area: ' + JSON.stringify(layout));
+  assert(layout.centerHitsInput,
+    scenario + ': start-time input center is obscured and cannot be tapped.');
+  if (touch) {
+    assert(layout.minHeight >= 44,
+      scenario + ': Cloud Touch start-time input is below the 44px target height.');
+  }
 }
 
 async function readStageState(window, stageSelector = '[data-testid="project-canvas-stage"]') {
@@ -713,12 +810,12 @@ async function run() {
         '.find(x=>x.id==="' + layerAId + '")?.animationPlayback?.mode==="loop"',
       'Inspector did not persist loop mode for instance A.',
     );
-    await setControlValue(window, '[data-testid="animation-start-seconds"]', '0.04', true);
+    await typeControlValue(window, '[data-testid="animation-start-seconds"]', '0.041', true);
     await waitFor(
       window,
       'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
-        '.find(x=>x.id==="' + layerAId + '")?.startTimeMs===40',
-      'Inspector did not update instance A start time.',
+        '.find(x=>x.id==="' + layerAId + '")?.startTimeMs===41',
+      'Keyboard entry did not preserve the 0.001-second precision for instance A.',
     );
     await setControlValue(window, '[data-testid="animation-start-seconds"]', '0', true);
     await waitFor(
@@ -942,6 +1039,9 @@ async function run() {
         'section?.open===true&&rect?.width>0&&input?.disabled===false; })()',
       'Animation Appearance did not open for the desktop landscape screenshot.',
     );
+    const desktopStartTimeLayout = await readAnimationStartTimeLayout(window);
+    console.log('[issue890] desktop start-time layout: ' + JSON.stringify(desktopStartTimeLayout));
+    assertAnimationStartTimeLayout(desktopStartTimeLayout, 'desktop landscape');
     const desktopScreenshot = await window.webContents.capturePage();
     writeFileSync(path.join(evidence, 'desktop-landscape-animation-properties.png'), desktopScreenshot.toPNG());
 
@@ -963,6 +1063,9 @@ async function run() {
     await window.webContents.executeJavaScript(
       'document.querySelector(\'[data-testid="right-inspector-drawer"]\')?.scrollTo({top:0})',
     );
+    const cloudTouchStartTimeLayout = await readAnimationStartTimeLayout(window);
+    console.log('[issue890] Cloud Touch start-time layout: ' + JSON.stringify(cloudTouchStartTimeLayout));
+    assertAnimationStartTimeLayout(cloudTouchStartTimeLayout, 'Cloud Touch narrow landscape', true);
     const narrowScreenshot = await window.webContents.capturePage();
     writeFileSync(path.join(evidence, 'cloud-touch-narrow-animation-properties.png'), narrowScreenshot.toPNG());
     window.setSize(1_600, 1_050);
@@ -1450,6 +1553,10 @@ async function run() {
       firstDropStartTimeMs: 0,
       secondDropStartTimeMs: firstSeek,
       startTimes: { a: savedA.startTimeMs, b: savedB.startTimeMs },
+      startTimeLayout: {
+        desktopLandscape: desktopStartTimeLayout,
+        cloudTouchNarrowLandscape: cloudTouchStartTimeLayout,
+      },
       playback: {
         a: savedA.animationPlayback,
         b: savedB.animationPlayback,

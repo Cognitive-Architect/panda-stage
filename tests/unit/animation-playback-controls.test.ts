@@ -150,7 +150,7 @@ describe('AnimationPlaybackControls start-time editing', () => {
     expect(holdButton?.getAttribute('aria-label')).toBe(
       '播放结束时定格在最后一帧',
     );
-    expect(holdButton?.title).toBe('定格在最后一帧');
+    expect(holdButton?.title).toBe('播放结束时定格在最后一帧');
 
     await clickPlaybackTab('动画播放方式', '循环');
 
@@ -179,6 +179,21 @@ describe('AnimationPlaybackControls start-time editing', () => {
       mode: 'once',
       endBehavior: 'hide',
     });
+  });
+
+  it('keeps the start-time field millisecond-precise with a decorative seconds suffix', () => {
+    const input = startInput();
+    expect(input.type).toBe('number');
+    expect(input.step).toBe('0.001');
+    expect(input.min).toBe('0');
+    expect(input.max).toBe('3');
+    expect(input.getAttribute('aria-label')).toBe('动画开始时间（秒）');
+
+    const unit = input.parentElement?.querySelector<HTMLElement>(
+      '.animation-playback-time-unit',
+    );
+    expect(unit?.textContent?.trim()).toBe('秒');
+    expect(unit?.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('duplicates only from Animation Playback and keeps the existing History behavior', async () => {
@@ -244,11 +259,11 @@ describe('AnimationPlaybackControls start-time editing', () => {
   });
 
   it.each(['Enter', 'ordinary blur'])('commits a valid edit once on %s', async (commit) => {
-    const input = await enterDraft('2.25');
+    const input = await enterDraft('2.251');
     if (commit === 'Enter') await pressKey(input, 'Enter');
     else await blur(input);
 
-    expect(currentAnimationLayer()?.startTimeMs).toBe(2_250);
+    expect(currentAnimationLayer()?.startTimeMs).toBe(2_251);
     expect(editorProjectStore.getSnapshot()).toMatchObject({
       dirty: true,
       revision: 1,
