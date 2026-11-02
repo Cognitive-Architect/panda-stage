@@ -477,11 +477,17 @@ async function run() {
     'Missing background and Character errors were not shown beside their resource rows.',
   );
   let expectedDraft;
+  let nameConflictScreenshot = null;
+  let repairedNameScreenshot = null;
   if (initialShotCount === 2) {
     await waitForDom(
       windowRef,
       `document.querySelector('[data-testid="scene-creation-name-conflict"]')?.textContent?.includes('『已有镜头 1』已经存在') && document.querySelector('[data-testid="scene-creation-use-suggested-name"]')?.textContent?.includes('使用『已有镜头 1 2』')`,
       'The duplicate Shot did not offer the next formal unique name.',
+    );
+    nameConflictScreenshot = await capture(
+      windowRef,
+      'shot-name-conflict-recovery.png',
     );
     await click(windowRef, '[data-testid="scene-creation-use-suggested-name"]');
     await waitForDom(
@@ -495,6 +501,12 @@ async function run() {
     `document.querySelector('[aria-label="背景素材"] .scene-creation-resource-error')?.textContent?.includes('没找到『花园』背景') && document.querySelector('[aria-label="出场角色"] .scene-creation-resource-error')?.textContent?.includes('没找到『张三』这个角色')`,
     'The delayed automatic resource match did not refresh after the Shot name correction.',
   );
+  if (initialShotCount === 2) {
+    repairedNameScreenshot = await capture(
+      windowRef,
+      'shot-name-conflict-repaired.png',
+    );
+  }
 
   expectedDraft = await windowRef.webContents.executeJavaScript(
     "document.querySelector('[data-testid=\"scene-creation-input\"]')?.value ?? null",
@@ -875,6 +887,8 @@ async function run() {
     automaticSceneScreenshot: sceneScreenshot,
     recoveryState,
     backgroundImportRecovery,
+    nameConflictScreenshot,
+    repairedNameScreenshot,
     headerAfterCloseReopen,
     headerAfterReentry,
     recoveryScreenshot,
@@ -886,6 +900,8 @@ async function run() {
       wideEntry: wideScreenshot,
       automaticScene: sceneScreenshot,
       recovery: recoveryScreenshot,
+      nameConflict: nameConflictScreenshot,
+      nameConflictRepaired: repairedNameScreenshot,
       portraitEntries: portraitScreenshot,
       portraitAutomaticScene: portraitSceneScreenshot,
       portraitAutomaticSceneRecovery: portraitRecoveryScreenshot,
