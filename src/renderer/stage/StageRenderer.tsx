@@ -91,6 +91,7 @@ async function waitForSubtitleFonts(
 function useStageImages(
   layers: readonly StageRenderLayer[],
   sourceKey: string,
+  projectId: string,
 ): StageImageResourceState {
   const sessionRef = useRef<StageImageResourceSession | null>(null);
   if (!sessionRef.current) {
@@ -106,7 +107,7 @@ function useStageImages(
   if (layerSourcesRef.current.key !== sourceKey) {
     layerSourcesRef.current = {
       key: sourceKey,
-      layers: buildStagePartSources(layers),
+      layers: buildStagePartSources(layers, projectId),
     };
   }
 
@@ -131,11 +132,14 @@ function useStageImages(
 
 function buildStagePartSources(
   layers: readonly StageRenderLayer[],
+  projectId: string,
 ): StageImageLayerSource[] {
   return layers.flatMap((layer) =>
     layer.parts.map(({ id, asset, sourceUrl }) => ({
       id,
       assetId: asset.id,
+      projectId,
+      sha256: asset.sha256,
       sourceUrl,
     })),
   );
@@ -319,7 +323,9 @@ export function StageRenderer({
     }
   }, [assetUrls, evaluatedShot, project]);
   const layers = modelResult.model?.layers ?? [];
-  const imageSourceKey = buildStageImageSourceKey(buildStagePartSources(layers));
+  const imageSourceKey = buildStageImageSourceKey(
+    buildStagePartSources(layers, project.id),
+  );
   const desiredFrame = modelResult.model
     ? {
         model: modelResult.model,
@@ -328,7 +334,7 @@ export function StageRenderer({
         camera,
       }
     : null;
-  const imageState = useStageImages(layers, imageSourceKey);
+  const imageState = useStageImages(layers, imageSourceKey, project.id);
   const error = modelResult.error ?? imageState.error;
   const ready = isStageFrameReady({
     error,

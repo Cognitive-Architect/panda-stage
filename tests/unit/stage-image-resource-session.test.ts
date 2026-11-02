@@ -78,10 +78,16 @@ function createHarness(
 
 function reconcile(
   harness: ReturnType<typeof createHarness>,
-  layers: Array<{ id: string; sourceUrl: string; assetId?: string }>,
+  layers: Array<{
+    id: string;
+    sourceUrl: string;
+    assetId?: string;
+    projectId?: string;
+    sha256?: string;
+  }>,
 ): void {
   harness.session.reconcile(
-    layers.map((layer) => ({ ...layer, assetId: layer.assetId ?? layer.id })),
+    layers.map((layer) => ({ ...layer })),
     (state) => {
     harness.states.push(state);
     },
@@ -311,6 +317,162 @@ describe('StageImageResourceSession', () => {
     expect(harness.session.getSnapshot().images.get(LAYER_A)).toBe(
       harness.images[0],
     );
+  });
+
+  it('shares one trusted decoded source across Stage parts without coupling their instances', () => {
+    const harness = createHarness();
+    const shared = {
+      assetId: 'asset-shared',
+      projectId: 'project-a',
+      sha256: 'a'.repeat(64),
+      sourceUrl: 'blob:shared-image',
+    };
+
+    reconcile(harness, [
+      { id: 'instance-left', ...shared },
+      { id: 'instance-right', ...shared },
+    ]);
+
+    expect(harness.images).toHaveLength(1);
+    harness.images[0]!.succeed();
+    const committed = harness.session.getSnapshot();
+    expect(committed.ready).toBe(true);
+    expect(committed.images.get('instance-left')).toBe(harness.images[0]);
+    expect(committed.images.get('instance-right')).toBe(harness.images[0]);
+
+    reconcile(harness, [{ id: 'instance-right', ...shared }]);
+    expect(harness.images).toHaveLength(1);
+    expect(harness.session.getSnapshot().images.get('instance-right')).toBe(
+      harness.images[0],
+    );
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    harness.session.dispose();
+  });
+
+  it('deduplicates an in-flight decode and keeps it alive while any instance still needs it', () => {
+    const harness = createHarness();
+    const shared = {
+      assetId: 'asset-shared',
+      projectId: 'project-a',
+      sha256: 'b'.repeat(64),
+      sourceUrl: 'blob:shared-pending',
+    };
+    reconcile(harness, [
+      { id: 'instance-left', ...shared },
+      { id: 'instance-right', ...shared },
+    ]);
+    reconcile(harness, [{ id: 'instance-right', ...shared }]);
+
+    expect(harness.images).toHaveLength(1);
+    expect(harness.images[0]!.src).toBe('blob:shared-pending');
+    harness.images[0]!.succeed();
+
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    expect(harness.session.getSnapshot().images.get('instance-right')).toBe(
+      harness.images[0],
+    );
+    harness.session.dispose();
+  });
+
+  it('fails closed when project or immutable content identity differs or is missing', () => {
+    const harness = createHarness();
+    const sourceUrl = 'blob:same-url';
+    reconcile(harness, [
+      {
+        id: 'project-a-instance',
+        projectId: 'project-a',
+        assetId: 'asset-shared',
+        sha256: 'c'.repeat(64),
+        sourceUrl,
+      },
+      {
+        id: 'project-b-instance',
+        projectId: 'project-b',
+        assetId: 'asset-shared',
+        sha256: 'c'.repeat(64),
+        sourceUrl,
+      },
+      {
+        id: 'unverified-instance-a',
+        projectId: 'project-a',
+        assetId: 'unverified-asset',
+        sourceUrl,
+      },
+      {
+        id: 'unverified-instance-b',
+        projectId: 'project-a',
+        assetId: 'unverified-asset',
+        sourceUrl,
+      },
+      {
+        id: 'invalid-version-instance-a',
+        projectId: 'project-a',
+        assetId: 'invalid-version-asset',
+        sha256: 'not-a-sha256',
+        sourceUrl,
+      },
+      {
+        id: 'invalid-version-instance-b',
+        projectId: 'project-a',
+        assetId: 'invalid-version-asset',
+        sha256: 'not-a-sha256',
+        sourceUrl,
+      },
+      {
+        id: 'different-version-instance',
+        projectId: 'project-a',
+        assetId: 'asset-shared',
+        sha256: 'd'.repeat(64),
+        sourceUrl,
+      },
+    ]);
+
+    expect(harness.images).toHaveLength(7);
+    harness.images.forEach((image) => image.succeed());
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    expect(
+      new Set(harness.session.getSnapshot().images.values()).size,
+    ).toBe(7);
+    harness.session.dispose();
+  });
+
+  it('counts a shared decoded image once against the retained byte budget', () => {
+    const harness = createHarness((sourceUrl) =>
+      sourceUrl.startsWith('large-')
+        ? { width: 4096, height: 2048 }
+        : { width: 1, height: 1 },
+    );
+    const sources = (index: number) => {
+      const shared = {
+        assetId: `asset-${index}`,
+        projectId: 'project-a',
+        sha256: String(index).padStart(64, '0'),
+        sourceUrl: `large-${index}`,
+      };
+      return [
+        { id: 'instance-left', ...shared },
+        { id: 'instance-right', ...shared },
+      ];
+    };
+
+    for (let index = 0; index < 4; index += 1) {
+      reconcile(harness, sources(index));
+      expect(harness.images).toHaveLength(index + 1);
+      harness.images.at(-1)!.succeed();
+      expect(harness.session.getSnapshot().ready).toBe(true);
+    }
+
+    const countBeforeRetainedReturn = harness.images.length;
+    reconcile(harness, sources(2));
+    expect(harness.images).toHaveLength(countBeforeRetainedReturn);
+    expect(harness.session.getSnapshot().ready).toBe(true);
+
+    const countBeforeEvictedReturn = harness.images.length;
+    reconcile(harness, sources(0));
+    expect(harness.images).toHaveLength(countBeforeEvictedReturn + 1);
+    harness.images.at(-1)!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    harness.session.dispose();
   });
 
   it('keeps source A committed while source B is pending, then replaces it atomically', () => {

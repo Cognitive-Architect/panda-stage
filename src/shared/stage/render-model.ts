@@ -24,6 +24,7 @@ export interface RenderModelAsset {
   readonly name: string;
   readonly relativePath: string;
   readonly mimeType: string;
+  readonly sha256?: string;
   readonly width?: number;
   readonly height?: number;
 }
