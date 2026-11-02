@@ -983,6 +983,221 @@ async function verifySceneMatchIconTouchInteractions(window, sample, alternative
   };
 }
 
+async function verifySceneMatchIconInvalidationGuards(window, sample) {
+  const projectJsonPath = path.join(sample.targetProjectRoot, 'project.json');
+  const sourceProjectJsonPath = path.join(sampleProjectSource, 'project.json');
+  const targetProjectHashBefore = createHash('sha256')
+    .update(readFileSync(projectJsonPath))
+    .digest('hex');
+  const sourceProjectHashBefore = createHash('sha256')
+    .update(readFileSync(sourceProjectJsonPath))
+    .digest('hex');
+  const baseline = await readUiState(window);
+  const assertProjectAndHistoryUnchanged = async (label) => {
+    const current = await readUiState(window);
+    assert(
+      current.revision === baseline.revision &&
+        current.shotCount === baseline.shotCount &&
+        current.selectedShot === baseline.selectedShot &&
+        current.undoCount === baseline.undoCount &&
+        current.redoCount === baseline.redoCount &&
+        current.saveState === baseline.saveState,
+      label + ' changed the formal Project or History: ' +
+        JSON.stringify({ baseline, current }),
+    );
+    const targetProjectHash = createHash('sha256')
+      .update(readFileSync(projectJsonPath))
+      .digest('hex');
+    assert(
+      targetProjectHash === targetProjectHashBefore,
+      label + ' changed the persisted Project file.',
+    );
+    return current;
+  };
+  const missingBackgroundInput = [
+    '镜头：' + sample.shotName,
+    '背景：' + sample.background.name + ' 不存在',
+    '出场：' + sample.character.name,
+  ].join('\n');
+  await setSceneInput(window, missingBackgroundInput);
+  const missingBackgroundExpression = [
+    '(() => {',
+    'const candidates = document.querySelector(\'[data-testid="scene-creation-candidates"]\');',
+    'const error = candidates?.querySelector(".scene-creation-resource-error");',
+    'const confirm = document.querySelector(\'[data-testid="scene-creation-confirm"]\');',
+    'const canvas = document.querySelector(".project-canvas");',
+    'return Boolean(candidates && error?.querySelector("button") &&',
+    '!document.querySelector(\'[data-testid="scene-creation-background-match"]\') &&',
+    'confirm?.disabled && canvas?.dataset.scenePreview !== "true");',
+    '})()',
+  ].join('\n');
+  await waitForDom(
+    window,
+    missingBackgroundExpression,
+    'Changing the input to a missing background kept the old success row or preview active.',
+  );
+  const missingBackgroundRow = await readSceneMatchRowState(window, 'background');
+  assert(
+    missingBackgroundRow.id === null &&
+      !missingBackgroundRow.matched &&
+      !missingBackgroundRow.successCheck,
+    'The missing background still showed a successful match: ' +
+      JSON.stringify(missingBackgroundRow),
+  );
+  const missingBackgroundScreenshot = await capture(
+    window,
+    'issue916-phase-b-input-change-missing-background.png',
+  );
+  await assertProjectAndHistoryUnchanged('Missing-background input change');
+
+  const backgroundRecoveryButton =
+    '[data-testid="scene-creation-candidates"] .scene-creation-resource-error button';
+  await click(window, backgroundRecoveryButton);
+  const backgroundCandidateSelector =
+    '[data-testid="scene-creation-background-picker"] .scene-creation-candidate[data-candidate-id="' +
+    sample.background.id +
+    '"]';
+  await waitForDom(
+    window,
+    '(() => { const candidate = document.querySelector(' +
+      JSON.stringify(backgroundCandidateSelector) +
+      '); return candidate instanceof HTMLButtonElement && !candidate.disabled; })()',
+    'The missing-background recovery action did not open a selectable legal background candidate.',
+  );
+  await click(
+    window,
+    '[data-testid="scene-creation-background-picker"] .scene-creation-picker-heading button',
+  );
+  await waitForDom(
+    window,
+    '!document.querySelector(\'[data-testid="scene-creation-background-picker"]\')',
+    'Cancelling missing-background recovery did not close its picker.',
+  );
+  await assertProjectAndHistoryUnchanged('Missing-background recovery');
+
+  await setSceneInput(window, sceneInput(sample));
+  const restoredMatchExpression = [
+    'document.querySelector(\'[data-testid="scene-creation-background-match"]\')?.dataset.candidateId === ',
+    JSON.stringify(sample.background.id),
+    ' && document.querySelector(\'[data-testid="scene-creation-background-match"]\')?.dataset.candidateMatched === "true"',
+    ' && document.querySelector(\'[data-testid="scene-creation-character-match"]\')?.dataset.candidateId === ',
+    JSON.stringify(sample.character.id),
+    ' && document.querySelector(\'[data-testid="scene-creation-character-match"]\')?.dataset.candidateMatched === "true"',
+    ' && document.querySelector(".project-canvas")?.dataset.scenePreview === "true"',
+    ' && document.querySelector(".project-canvas")?.dataset.scenePreviewStatus === "ready"',
+    ' && document.querySelector(\'[data-testid="scene-creation-confirm"]\')?.disabled === false',
+  ].join('');
+  await waitForDom(
+    window,
+    restoredMatchExpression,
+    'Restoring the valid input did not restore current matches and the read-only preview.',
+  );
+  const restoredBackgroundRow = await readSceneMatchRowState(window, 'background');
+  const restoredCharacterRow = await readSceneMatchRowState(window, 'character');
+  assert(
+    restoredBackgroundRow.successCheck && restoredCharacterRow.successCheck,
+    'Restoring valid input did not restore success checks for both current matches.',
+  );
+  const beforeProjectSwitch = await assertProjectAndHistoryUnchanged(
+    'Restored valid input',
+  );
+
+  await openProject(window, sampleProjectSource);
+  await openProjectCenter(window);
+  const displayedProjectRoot = await window.webContents.executeJavaScript(
+    'document.querySelector(".project-center-current-path")?.textContent?.trim() ?? null',
+  );
+  assert(
+    displayedProjectRoot &&
+      path.resolve(displayedProjectRoot).toLowerCase() ===
+        path.resolve(sampleProjectSource).toLowerCase(),
+    'The Project Center did not confirm the switch to the frozen sample Project: ' +
+      JSON.stringify({ displayedProjectRoot, expected: sampleProjectSource }),
+  );
+  await click(window, '[data-testid="return-to-editor"]');
+  await waitForDom(
+    window,
+    'document.querySelector(\'[data-editor-page="editor"]\') && document.querySelector(\'[data-testid="editor-layout"]\')',
+    'Returning from Project Center did not reopen the switched Project editor.',
+  );
+  await ensureShotsActivity(window);
+  await openStructuredCreation(window);
+  const switchedProjectDraftExpression = [
+    '(() => {',
+    'const input = document.querySelector(\'[data-testid="scene-creation-input"]\');',
+    'const panel = document.querySelector(\'[data-testid="scene-creation-panel"]\');',
+    'const canvas = document.querySelector(".project-canvas");',
+    'const confirm = document.querySelector(\'[data-testid="scene-creation-confirm"]\');',
+    'return Boolean(panel && input instanceof HTMLTextAreaElement && input.value === "" &&',
+    '!document.querySelector(\'[data-testid="scene-creation-candidates"]\') &&',
+    '!document.querySelector(\'[data-testid="scene-creation-background-match"]\') &&',
+    '!document.querySelector(\'[data-testid="scene-creation-character-match"]\') &&',
+    '!document.querySelector(\'.scene-creation-match-indicator[data-matched="true"] .lucide-check\') &&',
+    'canvas?.dataset.scenePreview !== "true" && confirm?.disabled);',
+    '})()',
+  ].join('\n');
+  await waitForDom(
+    window,
+    switchedProjectDraftExpression,
+    'Switching Projects retained an old scene input, match check, preview, or enabled confirmation.',
+  );
+  const afterProjectSwitch = await readUiState(window);
+  assert(
+    afterProjectSwitch.revision === 0 &&
+      afterProjectSwitch.shotCount === beforeProjectSwitch.shotCount &&
+      afterProjectSwitch.undoCount === 0 &&
+      afterProjectSwitch.redoCount === 0 &&
+      afterProjectSwitch.saveState === 'saved',
+    'The switched-to Project did not retain its clean Project and History state: ' +
+      JSON.stringify({
+        beforeProjectSwitch,
+        afterProjectSwitch,
+        persistedShotCount: sample.project.shots.length,
+      }),
+  );
+  const sourceProjectHashAfter = createHash('sha256')
+    .update(readFileSync(sourceProjectJsonPath))
+    .digest('hex');
+  assert(
+    sourceProjectHashAfter === sourceProjectHashBefore,
+    'The frozen source Project changed during the cross-Project match invalidation check.',
+  );
+  const projectSwitchScreenshot = await capture(
+    window,
+    'issue916-phase-b-project-switch-cleared-scene-draft.png',
+  );
+
+  return {
+    inputChangeGuard: {
+      oldBackgroundSuccessWithheld: true,
+      readOnlyPreviewCleared: true,
+      confirmationDisabled: true,
+      existingBackgroundRecoveryOpenedAndCancelled: true,
+      formalProjectAndHistoryUnchanged: true,
+      screenshot: missingBackgroundScreenshot,
+    },
+    projectSwitchGuard: {
+      switchedToProjectRoot: displayedProjectRoot,
+      sceneInputCleared: true,
+      oldMatchChecksWithheld: true,
+      readOnlyPreviewCleared: true,
+      confirmationDisabled: true,
+      revision: afterProjectSwitch.revision,
+      shotCount: afterProjectSwitch.shotCount,
+      persistedShotCount: sample.project.shots.length,
+      undoCount: afterProjectSwitch.undoCount,
+      redoCount: afterProjectSwitch.redoCount,
+      saveState: afterProjectSwitch.saveState,
+      sourceProjectUnchanged: true,
+      screenshot: projectSwitchScreenshot,
+    },
+    screenshots: {
+      inputChangeMissingBackground: missingBackgroundScreenshot,
+      projectSwitchClearedDraft: projectSwitchScreenshot,
+    },
+  };
+}
+
 async function selectCharacterLayer(window, expectedLayerId) {
   await waitForDom(
     window,
@@ -2016,6 +2231,10 @@ async function run() {
       windowRef,
       'issue916-phase-b-cloud-touch-touch-verified.png',
     );
+    const invalidationGuards = await verifySceneMatchIconInvalidationGuards(
+      windowRef,
+      sample,
+    );
     return {
       issue: 916,
       phase: 'B',
@@ -2027,11 +2246,14 @@ async function run() {
       structuredInputEntered: true,
       matchIconInteractions,
       touchMatchIconInteractions,
+      inputChangeGuard: invalidationGuards.inputChangeGuard,
+      projectSwitchGuard: invalidationGuards.projectSwitchGuard,
       formalProjectAndHistoryUnchanged: true,
       screenshots: {
         uniqueMatch: uniqueMatchScreenshot,
         portraitMatchedPreview: portraitMatchedPreviewScreenshot,
         portraitTouchVerified: touchVerifiedScreenshot,
+        ...invalidationGuards.screenshots,
         ...matchIconInteractions.screenshots,
       },
       receiptPath: '<isolated Phase B receipt>',
