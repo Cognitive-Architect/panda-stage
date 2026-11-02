@@ -493,6 +493,9 @@ describe('product preview overlay contract', () => {
     const overlay = readSource(OVERLAY_PATH);
 
     expect(overlay).toContain('resolveProductPreviewClockTime(');
+    expect(overlay).toMatch(
+      /const tick = \(\): void => \{[\s\S]*?const now = window\.performance\.now\(\);[\s\S]*?resolveProductPreviewClockTime/u,
+    );
     expect(overlay).toContain('playbackClockAnchorRef.current = next.playing');
     expect(overlay).toContain(
       'generation !== playbackClockGenerationRef.current',

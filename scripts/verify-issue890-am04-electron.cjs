@@ -1079,9 +1079,12 @@ async function measureIssue925Preview(window, scenario, layerStartTimes, boundar
     const blocked = await window.webContents.executeJavaScript(
       '(() => { window.__issue925Probe?.setPhase(' + JSON.stringify(prefix + '-stall') + ');' +
         'const overlay=document.querySelector(\'[data-testid="product-preview-overlay"]\');' +
+        'const lastMasterSample=[...(window.__issue925Probe?.rafFrames||[])].reverse().find(sample=>sample.phase===' +
+          JSON.stringify(prefix + '-hot') + ')||null;' +
         'const startedAt=performance.now(),beforeTimeMs=Number(overlay?.dataset.previewTime??-1);' +
         'const until=startedAt+750;while(performance.now()<until){};' +
-        'return {beforeTimeMs,startedAt,endedAt:performance.now(),blockedMs:performance.now()-startedAt}; })()',
+        'return {beforeTimeMs,lastMasterSample:lastMasterSample?{atMs:lastMasterSample.atMs,timeMs:lastMasterSample.clockTimeMs}:null,' +
+          'startedAt,endedAt:performance.now(),blockedMs:performance.now()-startedAt}; })()',
     );
     await waitFor(
       window,
@@ -1092,14 +1095,21 @@ async function measureIssue925Preview(window, scenario, layerStartTimes, boundar
     const firstStallRaf = await window.webContents.executeJavaScript(
       'window.__issue925Probe.firstStallRaf',
     );
+    const expectedAtFirstPostStallRafMs = blocked.lastMasterSample
+      ? blocked.lastMasterSample.timeMs + Math.max(0, firstStallRaf.atMs - blocked.lastMasterSample.atMs)
+      : blocked.beforeTimeMs + Math.max(0, firstStallRaf.atMs - blocked.startedAt);
     stallEvidence = {
       blockedMs: Number(blocked.blockedMs.toFixed(3)),
       beforeTimeMs: blocked.beforeTimeMs,
       expectedTimeMs: Number((blocked.beforeTimeMs + blocked.blockedMs).toFixed(3)),
+      lastMasterSample: blocked.lastMasterSample,
+      expectedAtFirstPostStallRafMs: Number(expectedAtFirstPostStallRafMs.toFixed(3)),
       firstPostStallRaf: firstStallRaf,
       actualTimeMs: firstStallRaf.nextTimeMs,
-      errorMs: Number((blocked.beforeTimeMs + blocked.blockedMs - firstStallRaf.nextTimeMs).toFixed(3)),
+      errorMs: Number((expectedAtFirstPostStallRafMs - firstStallRaf.nextTimeMs).toFixed(3)),
     };
+    assert(Math.abs(stallEvidence.errorMs) <= 20,
+      'Preview master clock missed the first post-stall monotonic sample by ' + stallEvidence.errorMs + 'ms.');
   }
   const currentlyPlaying = await window.webContents.executeJavaScript(
     'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewPlaying==="true"',

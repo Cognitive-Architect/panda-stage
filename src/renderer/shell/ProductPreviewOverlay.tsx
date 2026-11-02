@@ -313,10 +313,11 @@ export function ProductPreviewOverlay({
     const generation = playbackClockGenerationRef.current;
     let frame = 0;
     let previousFrameAt = anchor.startedAtMs;
-    const tick = (now: number): void => {
+    const tick = (): void => {
       if (generation !== playbackClockGenerationRef.current) return;
       const activeAnchor = playbackClockAnchorRef.current;
       if (!activeAnchor) return;
+      const now = window.performance.now();
       const delta = Math.max(0, now - previousFrameAt);
       previousFrameAt = now;
       recordPreviewDiagnostic('tick-callback', { deltaMs: delta });
