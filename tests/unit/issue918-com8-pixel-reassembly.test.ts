@@ -10,10 +10,11 @@ type PixelAlignedPngStackModule = {
     },
     partPngs: Array<{ pngBytes: Buffer }>,
   ) => string;
+  formatFiniteSvgNumber: (value: number) => string;
 };
 
 const require = createRequire(import.meta.url);
-const { createPixelAlignedPngStackSvg } = require(
+const { createPixelAlignedPngStackSvg, formatFiniteSvgNumber } = require(
   '../../scripts/research/issue918-com8-pixel-reassembly.cjs',
 ) as PixelAlignedPngStackModule;
 
@@ -27,6 +28,18 @@ const translucentOverlay = Buffer.from(
 );
 
 describe('Issue #918 pixel-aligned part reassembly', () => {
+  it('preserves full finite coordinate precision when formatting SVG viewBox numbers', () => {
+    expect(formatFiniteSvgNumber(3.1124661015856976)).toBe('3.1124661015856976');
+    expect(formatFiniteSvgNumber(-4.4500000000000455)).toBe('-4.4500000000000455');
+  });
+
+  it('rejects non-finite SVG viewBox coordinates', () => {
+    expect(() => formatFiniteSvgNumber(Number.NaN)).toThrow('Non-finite Graphic viewBox coordinate');
+    expect(() => formatFiniteSvgNumber(Number.POSITIVE_INFINITY)).toThrow(
+      'Non-finite Graphic viewBox coordinate',
+    );
+  });
+
   it('keeps transparent source-over PNG layers on the integer output pixel grid and preserves draw order', () => {
     const svg = createPixelAlignedPngStackSvg(
       {

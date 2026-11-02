@@ -27,7 +27,10 @@ const path = require('node:path');
 const zlib = require('node:zlib');
 const JSZip = require('jszip');
 const { findEocdCandidates } = require('../../dist-electron/main/services/fla-recovery-classifier.js');
-const { createPixelAlignedPngStackSvg } = require('./issue918-com8-pixel-reassembly.cjs');
+const {
+  createPixelAlignedPngStackSvg,
+  formatFiniteSvgNumber,
+} = require('./issue918-com8-pixel-reassembly.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '../..');
 const EXPECTED_FRAME_COUNT = 21;
@@ -1635,11 +1638,6 @@ function rasterizeSvg(rasterizer, svg, width, height, label) {
   return rasterizer.rasterize({ requestId: randomUUID(), svg, width, height, pixelCount });
 }
 
-function formatNumber(value) {
-  if (!Number.isFinite(value)) throw new Error('Non-finite Graphic viewBox coordinate');
-  return String(Number(value.toFixed(6)));
-}
-
 function replaceSvgViewport(svg, framing) {
   const svgStart = svg.indexOf('<svg ');
   const rootEnd = svg.indexOf('>', svgStart);
@@ -1648,8 +1646,8 @@ function replaceSvgViewport(svg, framing) {
   const inner = svg.slice(rootEnd + 1, svgEnd);
   const viewBox = framing.viewBox;
   return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' +
-    formatNumber(viewBox.x) + ' ' + formatNumber(viewBox.y) + ' ' +
-    formatNumber(viewBox.width) + ' ' + formatNumber(viewBox.height) +
+    formatFiniteSvgNumber(viewBox.x) + ' ' + formatFiniteSvgNumber(viewBox.y) + ' ' +
+    formatFiniteSvgNumber(viewBox.width) + ' ' + formatFiniteSvgNumber(viewBox.height) +
     '" width="' + framing.outputWidth + '" height="' + framing.outputHeight + '">' +
     inner + '</svg>';
 }

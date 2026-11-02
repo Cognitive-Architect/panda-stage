@@ -18,4 +18,9 @@ function createPixelAlignedPngStackSvg(framing, partPngs) {
     '" width="' + width + '" height="' + height + '">' + imageTags + '</svg>';
 }
 
-module.exports = { createPixelAlignedPngStackSvg };
+function formatFiniteSvgNumber(value) {
+  if (!Number.isFinite(value)) throw new Error('Non-finite Graphic viewBox coordinate');
+  return String(value);
+}
+
+module.exports = { createPixelAlignedPngStackSvg, formatFiniteSvgNumber };
