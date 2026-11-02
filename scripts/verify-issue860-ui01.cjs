@@ -685,6 +685,12 @@ async function run() {
   const portraitSceneState = await windowRef.webContents.executeJavaScript(`(() => {
     const manager = document.querySelector('[data-testid="shot-manager"]');
     const panel = document.querySelector('[data-testid="scene-creation-panel"]');
+    const activitySurface = document.querySelector('.resource-activity-surface');
+    const activityBody = document.querySelector('.resource-activity-body');
+    const activityPanel = document.querySelector('.resource-activity-panel');
+    const shotManager = panel?.closest('.shot-manager');
+    const content = panel?.querySelector('.scene-creation-content');
+    const input = panel?.querySelector('[data-testid="scene-creation-input"]');
     const confirm = document.querySelector('[data-testid="scene-creation-confirm"]');
     const bounds = confirm?.getBoundingClientRect();
     const style = confirm ? getComputedStyle(confirm) : null;
@@ -693,13 +699,43 @@ async function run() {
     const backgroundMatch = panel?.querySelector('[data-testid="scene-creation-background-match"]');
     const characterError = panel?.querySelector('[aria-label="出场角色"] .scene-creation-resource-error');
     const previewStatus = panel?.querySelector('[data-testid="scene-creation-preview-status"]')?.textContent?.trim() ?? '';
+    const footerBounds = panel?.querySelector('.scene-creation-footer')?.getBoundingClientRect();
+    const box = (element) => {
+      const rect = element?.getBoundingClientRect();
+      return rect ? { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left, width: rect.width, height: rect.height } : null;
+    };
+    const contentBounds = box(content);
+    const inputBounds = box(input);
+    const recoveryActionBounds = Array.from(characterError?.querySelectorAll('button') ?? []).map((button) => {
+      const rect = button.getBoundingClientRect();
+      return { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left };
+    });
+    const recoveryActionsUnobscured = recoveryActionBounds.every((rect) =>
+      !footerBounds ||
+        rect.right <= footerBounds.left ||
+        rect.left >= footerBounds.right ||
+        rect.bottom <= footerBounds.top ||
+        rect.top >= footerBounds.bottom
+    );
     return {
       input: document.querySelector('[data-testid="scene-creation-input"]')?.value ?? null,
+      activitySurfaceBounds: box(activitySurface),
+      activityBodyBounds: box(activityBody),
+      activityPanelBounds: box(activityPanel),
+      shotManagerBounds: box(shotManager),
+      scenePanelBounds: box(panel),
+      contentBounds,
+      inputBounds,
+      contentScroll: content ? { top: content.scrollTop, height: content.scrollHeight, clientHeight: content.clientHeight } : null,
+      inputVisibleInContent: Boolean(contentBounds && inputBounds && inputBounds.height > 0 && inputBounds.top >= contentBounds.top && inputBounds.bottom <= contentBounds.bottom),
       matchingSettled: Boolean(candidates && !previewStatus.includes('正在匹配素材')),
       backgroundMatched: Boolean(backgroundMatch),
       characterMissing: characterError?.textContent.includes('张三') ?? false,
       characterSuccessVisible: Boolean(panel?.querySelector('[data-testid="scene-creation-character-match"]')),
       previewStatus,
+      footerBounds: footerBounds ? { top: footerBounds.top, bottom: footerBounds.bottom } : null,
+      recoveryActionBounds,
+      recoveryActionsUnobscured,
       confirmVisible: Boolean(confirm && bounds && bounds.width > 0 && bounds.height > 0 && style?.visibility !== 'hidden' && style?.display !== 'none'),
       confirmHeight: bounds?.height ?? 0,
       confirmWithinWindow: Boolean(bounds && bounds.top >= 0 && bounds.bottom <= window.innerHeight + 1),
@@ -712,12 +748,12 @@ async function run() {
   assertSceneNavigation(portraitSceneState.navigation, 'Portrait scene header');
   assert(
     portraitSceneState.input === recoveryState.input &&
+      portraitSceneState.inputVisibleInContent &&
       portraitSceneState.matchingSettled &&
       portraitSceneState.backgroundMatched &&
       portraitSceneState.characterMissing &&
       !portraitSceneState.characterSuccessVisible &&
       portraitSceneState.confirmVisible &&
-      portraitSceneState.confirmWithinWindow &&
       portraitSceneState.confirmHeight >= 48 &&
       portraitSceneState.createDisabled === true &&
       portraitSceneState.shotCount === initialShotCount &&
@@ -727,6 +763,63 @@ async function run() {
   const portraitSceneScreenshot = await capture(
     windowRef,
     'cloud-touch-portrait-automatic-scene.png',
+  );
+  await windowRef.webContents.executeJavaScript(`(() => {
+    const footer = document.querySelector('[data-testid="scene-creation-panel"] .scene-creation-footer');
+    if (!footer) throw new Error('The portrait scene footer is missing.');
+    footer.scrollIntoView({ block: 'end' });
+  })()`);
+  await waitForDom(
+    windowRef,
+    `(() => {
+      const panel = document.querySelector('[data-testid="scene-creation-panel"]');
+      const content = panel?.querySelector('.scene-creation-content');
+      const characterError = panel?.querySelector('[aria-label="出场角色"] .scene-creation-resource-error');
+      const footer = panel?.querySelector('.scene-creation-footer')?.getBoundingClientRect();
+      const contentBounds = content?.getBoundingClientRect();
+      const buttons = Array.from(characterError?.querySelectorAll('button') ?? []);
+      return Boolean(
+        footer && contentBounds && buttons.length > 0 &&
+          buttons.every((button) => {
+            const bounds = button.getBoundingClientRect();
+            return bounds.top >= contentBounds.top && bounds.bottom <= contentBounds.bottom && bounds.bottom <= footer.top;
+          })
+      );
+    })()`,
+    'The portrait recovery actions could not scroll fully above the stable Create Shot footer.',
+  );
+  const portraitRecoveryState = await windowRef.webContents.executeJavaScript(`(() => {
+    const panel = document.querySelector('[data-testid="scene-creation-panel"]');
+    const content = panel?.querySelector('.scene-creation-content');
+    const characterError = panel?.querySelector('[aria-label="出场角色"] .scene-creation-resource-error');
+    const footer = panel?.querySelector('.scene-creation-footer')?.getBoundingClientRect();
+    const contentBounds = content?.getBoundingClientRect();
+    const actionBounds = Array.from(characterError?.querySelectorAll('button') ?? []).map((button) => {
+      const rect = button.getBoundingClientRect();
+      return { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left };
+    });
+    return {
+      contentScroll: content ? { top: content.scrollTop, height: content.scrollHeight, clientHeight: content.clientHeight } : null,
+      footerBounds: footer ? { top: footer.top, bottom: footer.bottom } : null,
+      actionBounds,
+      actionsVisibleAboveFooter: Boolean(
+        footer && contentBounds && actionBounds.length > 0 &&
+          actionBounds.every((rect) => rect.top >= contentBounds.top && rect.bottom <= contentBounds.bottom && rect.bottom <= footer.top)
+      ),
+      confirmVisible: (() => {
+        const confirm = panel?.querySelector('[data-testid="scene-creation-confirm"]');
+        const rect = confirm?.getBoundingClientRect();
+        return Boolean(rect && rect.width > 0 && rect.height >= 48 && rect.top >= 0 && rect.bottom <= window.innerHeight + 1);
+      })(),
+    };
+  })()`);
+  assert(
+    portraitRecoveryState.actionsVisibleAboveFooter && portraitRecoveryState.confirmVisible,
+    `The portrait recovery actions were covered by the Create Shot footer: ${JSON.stringify(portraitRecoveryState)}.`,
+  );
+  const portraitRecoveryScreenshot = await capture(
+    windowRef,
+    'cloud-touch-portrait-automatic-scene-recovery.png',
   );
 
   const isolatedProjectRoot = path.join(runRoot, 'isolated-project.pandastage');
@@ -787,6 +880,7 @@ async function run() {
     recoveryScreenshot,
     portraitLayout: portraitEntry,
     portraitSceneState,
+    portraitRecoveryState,
     crossProjectState,
     screenshots: {
       wideEntry: wideScreenshot,
@@ -794,6 +888,7 @@ async function run() {
       recovery: recoveryScreenshot,
       portraitEntries: portraitScreenshot,
       portraitAutomaticScene: portraitSceneScreenshot,
+      portraitAutomaticSceneRecovery: portraitRecoveryScreenshot,
       crossProjectIsolation: crossProjectScreenshot,
     },
     sourceProjectPathsOmitted: true,

@@ -73,6 +73,13 @@
   min-height: 48px;
 }
 
+.editor-layout[data-shell-mode='portrait']
+  .resource-activity-dock[data-resource-shot-view='scene']
+  .scene-creation-footer {
+  position: static;
+  margin: 8px -10px -10px;
+}
+
 .scene-creation-content {
   display: grid;
   min-width: 0;
