@@ -146,11 +146,11 @@ describe('AnimationPlaybackControls start-time editing', () => {
       container.querySelectorAll<HTMLButtonElement>(
         '[data-testid="animation-end-behavior"] [role="tab"]',
       ),
-    ).find((button) => button.textContent?.trim() === '保持');
+    ).find((button) => button.textContent?.trim() === '定格');
     expect(holdButton?.getAttribute('aria-label')).toBe(
-      '播放结束时保持最后一帧',
+      '播放结束时定格在最后一帧',
     );
-    expect(holdButton?.title).toBe('保持最后一帧');
+    expect(holdButton?.title).toBe('定格在最后一帧');
 
     await clickPlaybackTab('动画播放方式', '循环');
 
