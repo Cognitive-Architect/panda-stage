@@ -60,25 +60,30 @@
 }
 
 .animation-playback-time-control {
+  position: relative;
   display: flex;
   min-width: 0;
   flex: 1 1 110px;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 0;
 }
 
 .animation-playback-time-unit {
-  flex: 0 0 auto;
+  position: absolute;
+  top: 50%;
+  inset-inline-end: 10px;
   color: var(--ui-color-text-secondary);
   font-size: 11px;
+  pointer-events: none;
+  transform: translateY(-50%);
 }
 
 .animation-playback-fields input {
   width: 96px;
   min-width: 0;
   min-height: 34px;
-  padding: 7px 8px;
+  padding: 7px 28px 7px 8px;
   flex: 0 1 96px;
   border: 1px solid var(--ui-color-separator);
   border-radius: var(--ui-radius-small);
@@ -86,6 +91,18 @@
   background: var(--ui-color-surface-overlay);
   font: inherit;
   text-align: right;
+}
+
+/* Keep millisecond-precise typing without the native 0.001s spinner. */
+.animation-playback-fields input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.animation-playback-fields input[type='number']::-webkit-inner-spin-button,
+.animation-playback-fields input[type='number']::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
 }
 
 .animation-playback-fields input:disabled {
