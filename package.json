@@ -157,6 +157,7 @@
     "verify:timeline": "pnpm verify:issue197 && pnpm verify:issue199 && pnpm verify:issue207",
     "dist": "pnpm build && node scripts/build-distribution.cjs",
     "build": "pnpm typecheck && pnpm build:renderer && pnpm build:electron",
+    "issue935:scan01": "pnpm build && electron scripts/issue935-character-inventory.cjs",
     "build:renderer": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json && cross-env PRELOAD_ENTRY=index vite build --config vite.preload.config.ts && cross-env PRELOAD_ENTRY=hidden vite build --config vite.preload.config.ts && cross-env PRELOAD_ENTRY=fla-parser vite build --config vite.preload.config.ts && cross-env PRELOAD_ENTRY=fla-static-snapshot vite build --config vite.preload.config.ts"
   },
