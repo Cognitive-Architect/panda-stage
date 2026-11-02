@@ -618,6 +618,10 @@ describe('product preview overlay contract', () => {
     const styles = readSource(
       'src/renderer/styles/shell/product-preview/s06-09--product-preview.css',
     );
+    const shellSurfaceStyles = readSource(
+      'src/renderer/styles/shell/product-preview/s17-01--whole-project-preview.css',
+    );
+    const shell = readSource(SHELL_PATH);
 
     expect(overlay).toContain(
       "useState<ProductPreviewInitialReadiness>('preparing')",
@@ -639,6 +643,10 @@ describe('product preview overlay contract', () => {
     expect(overlay).toContain('scheduleProductPreviewWarmupStatus(');
     expect(overlay).toContain('advanceProductPreviewHandoffPhase');
     expect(overlay).toContain('onHandoffReady();');
+    expect(overlay).toContain('const previewSurfaceActive = surfaceActive;');
+    expect(shell).toContain(
+      "data-preview-surface-active={productPreviewSurfaceActive ? 'true' : 'false'}",
+    );
     expect(overlay).toContain('canStartProductPreviewPlayback(');
     expect(overlay).toContain('shouldStartProductPreviewAutoplay({');
     expect(overlay).toContain('const initialAutoplayConsumedRef = useRef(false);');
@@ -665,6 +673,15 @@ describe('product preview overlay contract', () => {
     expect(styles).toContain('visibility: hidden;');
     expect(styles).not.toContain('.product-preview-curtain');
     expect(styles).not.toContain('transition: opacity');
+    expect(shellSurfaceStyles).toMatch(
+      /\.product-preview-overlay\[data-preview-surface='active'\]\s*\{\s*background:\s*rgb\(6 14 11\);/u,
+    );
+    expect(shellSurfaceStyles).toMatch(
+      /\.editor-layout\[data-preview-surface-active='true'\]\s*>\s*\.editor-top-region,[\s\S]*?>\s*\.editor-body,[\s\S]*?>\s*\.bottom-workspace\s*\{\s*visibility:\s*hidden;/u,
+    );
+    expect(shellSurfaceStyles).not.toMatch(
+      /\.editor-layout\[data-preview-surface-active='true'\]\s*\{\s*(?:display:\s*none|visibility:\s*hidden)/u,
+    );
     expect(overlay).not.toContain('setInterval(');
     expect(overlay).toContain('shouldBlockProductPreviewWarmupKeyboard(');
     expect(overlay).toContain(

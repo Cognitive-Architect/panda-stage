@@ -144,7 +144,9 @@ export function ProductPreviewOverlay({
   handoffPhaseRef.current = handoffPhase;
   const handoffReadyNotifiedRef = useRef(false);
   const revealPhase = productPreviewRevealPhaseFromHandoff(handoffPhase);
-  const previewSurfaceActive = surfaceActive && handoffPhase === 'active';
+  // EditorShell flips this only after the exact first frame passes its paint
+  // fence; use that single parent-owned signal for both the overlay and shell.
+  const previewSurfaceActive = surfaceActive;
   const projectPosition = useMemo(
     () => mapProjectTime(project, range === 'project' ? timeMs : 0),
     [project, range, timeMs],

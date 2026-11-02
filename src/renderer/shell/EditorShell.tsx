@@ -428,6 +428,11 @@ export interface EditorShellProps {
   gatePreview?: ReactNode;
 }
 
+interface ProductPreviewProjectIdentity {
+  projectId: string;
+  projectRoot: string;
+}
+
 export function EditorShell({
   debugSurface,
   gatePreview,
@@ -464,14 +469,64 @@ export function EditorShell({
   const [newProjectNameTouched, setNewProjectNameTouched] = useState(false);
   const [newProjectStatus, setNewProjectStatus] = useState('');
   const [productPreviewOpen, setProductPreviewOpen] = useState(false);
+  const productPreviewOpenRef = useRef(false);
+  const productPreviewSessionRef = useRef(0);
+  const productPreviewFocusRestoreFrameRef = useRef<number | null>(null);
+  const productPreviewOpenerRef = useRef<{
+    element: HTMLElement;
+    projectId: string;
+    projectRoot: string;
+    sessionId: number;
+  } | null>(null);
+  const currentProjectIdentityRef = useRef<ProductPreviewProjectIdentity | null>(
+    null,
+  );
+  currentProjectIdentityRef.current = projectSnapshot
+    ? {
+        projectId: projectSnapshot.project.id,
+        projectRoot: projectSnapshot.projectRoot,
+      }
+    : null;
+  const productPreviewSessionId = productPreviewSessionRef.current;
   // Preview Camera is an editor-session mode, not Project or Preview state.
   const [autoCameraEnabled, setAutoCameraEnabled] = useState(false);
   const issue816FlowActive = useRef(false);
   const [productPreviewSurfaceActive, setProductPreviewSurfaceActive] =
     useState(false);
   const commitProductPreviewSurface = useCallback((): void => {
+    if (
+      !productPreviewOpenRef.current ||
+      productPreviewSessionRef.current !== productPreviewSessionId
+    ) {
+      return;
+    }
     setProductPreviewSurfaceActive(true);
-  }, []);
+  }, [productPreviewSessionId]);
+  const cancelProductPreviewFocusRestore = (): void => {
+    if (productPreviewFocusRestoreFrameRef.current === null) return;
+    window.cancelAnimationFrame(productPreviewFocusRestoreFrameRef.current);
+    productPreviewFocusRestoreFrameRef.current = null;
+  };
+  const invalidateProductPreviewSession = (): void => {
+    productPreviewSessionRef.current += 1;
+    productPreviewOpenRef.current = false;
+    productPreviewOpenerRef.current = null;
+    cancelProductPreviewFocusRestore();
+    setProductPreviewSurfaceActive(false);
+    setProductPreviewOpen(false);
+  };
+  useEffect(
+    () => () => {
+      productPreviewSessionRef.current += 1;
+      productPreviewOpenRef.current = false;
+      productPreviewOpenerRef.current = null;
+      if (productPreviewFocusRestoreFrameRef.current !== null) {
+        window.cancelAnimationFrame(productPreviewFocusRestoreFrameRef.current);
+        productPreviewFocusRestoreFrameRef.current = null;
+      }
+    },
+    [],
+  );
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [closeConfirmStatus, setCloseConfirmStatus] = useState('');
   const [exportTask, setExportTask] = useState<ExportTaskState>({
@@ -1049,8 +1104,7 @@ export function EditorShell({
     const nextSession = await session.switchProject(projectRoot);
     await clearExportTask();
     // The preview belongs to the project that was open when it was requested.
-    setProductPreviewOpen(false);
-    setProductPreviewSurfaceActive(false);
+    invalidateProductPreviewSession();
     setAutoCameraEnabled(false);
     setSaveActivity({ phase: 'idle', revision: null });
     updateSession(nextSession, cleanStatus);
@@ -1068,12 +1122,11 @@ export function EditorShell({
         expectedProjectId,
       );
       await clearExportTask();
+      invalidateProductPreviewSession();
       updateSession(
         nextSession,
         '已从最近项目打开，暂无未保存更改。',
       );
-      setProductPreviewOpen(false);
-      setProductPreviewSurfaceActive(false);
       setAutoCameraEnabled(false);
       setSaveActivity({ phase: 'idle', revision: null });
       setRequestedPage('editor');
@@ -1084,8 +1137,7 @@ export function EditorShell({
 
   const openProjectCenter = (): void => {
     if (blockSessionChangeDuringExport()) return;
-    setProductPreviewOpen(false);
-    setProductPreviewSurfaceActive(false);
+    invalidateProductPreviewSession();
     setRequestedPage('project-center');
     setStatus('');
   };
@@ -1241,6 +1293,24 @@ export function EditorShell({
   };
 
   const openProductPreview = (): void => {
+    if (productPreviewOpenRef.current) return;
+    cancelProductPreviewFocusRestore();
+    const sessionId = productPreviewSessionRef.current + 1;
+    productPreviewSessionRef.current = sessionId;
+    productPreviewOpenRef.current = true;
+    const identity = currentProjectIdentityRef.current;
+    const activeElement = document.activeElement;
+    productPreviewOpenerRef.current =
+      identity &&
+      activeElement instanceof HTMLElement &&
+      activeElement.tabIndex >= 0
+        ? {
+            element: activeElement,
+            projectId: identity.projectId,
+            projectRoot: identity.projectRoot,
+            sessionId,
+          }
+        : null;
     setProductPreviewSurfaceActive(false);
     setProductPreviewOpen(true);
   };
@@ -1697,8 +1767,40 @@ export function EditorShell({
   };
 
   const closeProductPreview = (): void => {
+    const sessionId = productPreviewSessionRef.current;
+    const opener = productPreviewOpenerRef.current;
+    productPreviewOpenRef.current = false;
+    cancelProductPreviewFocusRestore();
     setProductPreviewSurfaceActive(false);
     setProductPreviewOpen(false);
+    if (!opener) return;
+    productPreviewFocusRestoreFrameRef.current = window.requestAnimationFrame(() => {
+      productPreviewFocusRestoreFrameRef.current = null;
+      if (
+        productPreviewOpenRef.current ||
+        productPreviewSessionRef.current !== sessionId ||
+        productPreviewOpenerRef.current !== opener ||
+        opener.sessionId !== sessionId
+      ) {
+        return;
+      }
+      productPreviewOpenerRef.current = null;
+      const currentIdentity = currentProjectIdentityRef.current;
+      if (
+        !currentIdentity ||
+        currentIdentity.projectId !== opener.projectId ||
+        currentIdentity.projectRoot !== opener.projectRoot ||
+        !opener.element.isConnected ||
+        opener.element.tabIndex < 0 ||
+        opener.element.matches(':disabled') ||
+        opener.element.closest('[inert], [hidden], [aria-hidden="true"]') ||
+        window.getComputedStyle(opener.element).visibility === 'hidden' ||
+        opener.element.getClientRects().length === 0
+      ) {
+        return;
+      }
+      opener.element.focus({ preventScroll: true });
+    });
   };
 
   const requestCloseProject = (): void => {
@@ -1735,9 +1837,8 @@ export function EditorShell({
     if (blockSessionChangeDuringExport()) return;
     const nextSession = await session.closeProject();
     await clearExportTask();
+    invalidateProductPreviewSession();
     setSessionSnapshot(nextSession);
-    setProductPreviewOpen(false);
-    setProductPreviewSurfaceActive(false);
     setAutoCameraEnabled(false);
     setCloseConfirmOpen(false);
     setCloseConfirmStatus('');
@@ -1954,6 +2055,7 @@ export function EditorShell({
         <div
           className="editor-layout"
           data-active-workspace={portraitWorkspace}
+          data-preview-surface-active={productPreviewSurfaceActive ? 'true' : 'false'}
           data-shell-mode={layoutMode}
           data-top-region-layout={isPortrait ? 'flow' : 'overlay'}
           data-testid="editor-layout"

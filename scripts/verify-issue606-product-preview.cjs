@@ -15,7 +15,9 @@ const exampleProject = require('../demo-project/project-v1.example.json');
 // for one complete Body + Face Character, does not expose a half-decoded pair,
 // degrades only failed Mouth resources to the current Expression, and keeps a
 // Body failure fatal. This is rendered-pixel evidence, not human acceptance.
-const acceptanceRoot = 'D:\\PandaStage-Acceptance\\issue607-s05-review';
+const acceptanceRoot =
+  process.env.PANDA_STAGE_ISSUE943_ACCEPTANCE_ROOT ||
+  'D:\\PandaStage-Acceptance\\issue607-s05-review';
 const evidenceRoot = path.join(acceptanceRoot, 'evidence');
 const userDataRoot = path.join(acceptanceRoot, 'electron-user-data');
 const projectRoot = path.join(
@@ -549,9 +551,27 @@ async function openPreview(window, mode) {
     `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.expanded === 'true'`,
     'Quick Action Drawer did not open.',
   );
-  await window.webContents.executeJavaScript(
-    `document.querySelector('[data-testid="quick-action-play"]')?.click()`,
-  );
+  await window.webContents.executeJavaScript(`(() => {
+    const opener = document.querySelector('[data-testid="quick-action-play"]');
+    if (!(opener instanceof HTMLElement)) throw new Error('Product Preview opener is missing.');
+    opener.focus();
+    window.__issue943PreviewOpener = opener;
+    const selectors = {
+      shell: '[data-testid="editor-layout"]',
+      top: '.editor-top-region',
+      body: '.editor-body',
+      bottom: '[data-testid="bottom-workspace"]',
+      canvas: '[data-testid="project-canvas-viewport"]',
+    };
+    window.__issue943GeometryBaseline = Object.fromEntries(
+      Object.entries(selectors).map(([key, selector]) => {
+        const element = document.querySelector(selector);
+        const rect = element?.getBoundingClientRect();
+        return [key, rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null];
+      }),
+    );
+    opener.click();
+  })()`);
   await waitForDom(
     window,
     `document.querySelector('[data-testid="product-preview-overlay"]')`,
@@ -665,6 +685,70 @@ function closeWindow(window) {
   if (window && !window.isDestroyed()) window.destroy();
 }
 
+async function readPreviewSurface(window) {
+  return window.webContents.executeJavaScript(`(() => {
+    const selectors = {
+      shell: '[data-testid="editor-layout"]',
+      top: '.editor-top-region',
+      body: '.editor-body',
+      bottom: '[data-testid="bottom-workspace"]',
+      canvas: '[data-testid="project-canvas-viewport"]',
+    };
+    const rectFor = (element) => {
+      if (!element) return null;
+      const rect = element.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    };
+    const elements = Object.fromEntries(
+      Object.entries(selectors).map(([key, selector]) => [key, document.querySelector(selector)]),
+    );
+    const geometry = Object.fromEntries(
+      Object.entries(elements).map(([key, element]) => [key, rectFor(element)]),
+    );
+    const baseline = window.__issue943GeometryBaseline;
+    const geometryMatchesBaseline = Boolean(baseline) && Object.entries(geometry).every(([key, rect]) => {
+      const expected = baseline[key];
+      return Boolean(rect && expected) && ['x', 'y', 'width', 'height'].every(
+        (field) => Math.abs(rect[field] - expected[field]) < 1,
+      );
+    });
+    const overlay = document.querySelector('[data-testid="product-preview-overlay"]');
+    const zones = ['top', 'body', 'bottom'];
+    return {
+      shellActive: elements.shell?.dataset.previewSurfaceActive ?? '',
+      shellVisibility: elements.shell ? getComputedStyle(elements.shell).visibility : '',
+      surface: overlay?.dataset.previewSurface ?? '',
+      handoff: overlay?.dataset.previewHandoff ?? '',
+      overlayBackground: overlay ? getComputedStyle(overlay).backgroundColor : '',
+      childVisibilities: Object.fromEntries(zones.map((key) => [
+        key,
+        elements[key] ? getComputedStyle(elements[key]).visibility : 'missing',
+      ])),
+      geometryMatchesBaseline,
+      geometry,
+      canvasUsable: Boolean(geometry.canvas && geometry.canvas.width > 0 && geometry.canvas.height > 0),
+      openerFocused: document.activeElement === window.__issue943PreviewOpener,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+    };
+  })()`);
+}
+
+async function closePreviewAndVerifyFocus(window, method) {
+  if (method === 'escape') {
+    window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'ESC' });
+    window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'ESC' });
+  } else {
+    await window.webContents.executeJavaScript(
+      `document.querySelector('[data-testid="product-preview-close"]')?.click()`,
+    );
+  }
+  await waitForDom(
+    window,
+    `!document.querySelector('[data-testid="product-preview-overlay"]') && document.activeElement === window.__issue943PreviewOpener`,
+    `Product Preview ${method} close did not restore focus to its mounted opener.`,
+  );
+}
+
 function near(actual, expected, tolerance = 18) {
   return actual?.every((value, index) => Math.abs(value - expected[index]) <= tolerance);
 }
@@ -733,6 +817,7 @@ async function run() {
   await app.whenReady();
   configureElectronPaths();
   const screenshots = [];
+  const previewSurfaceEvidence = {};
   let window = null;
   try {
     // Pending Mouth: no Body-only half frame is allowed before the required
@@ -748,15 +833,112 @@ async function run() {
       !pending.stage || !pending.stage.ready,
       `Pending Mouth exposed a ready half-frame: ${JSON.stringify(pending)}`,
     );
+    const warmingSurface = await readPreviewSurface(window);
+    assert(
+      warmingSurface.shellActive === 'false' && warmingSurface.surface === 'warming',
+      `Warmup activated the Product Preview surface early: ${JSON.stringify(warmingSurface)}`,
+    );
+    assert(
+      warmingSurface.overlayBackground === 'rgba(0, 0, 0, 0)',
+      `Warmup obscured the editor with a non-transparent overlay: ${JSON.stringify(warmingSurface)}`,
+    );
+    assert(
+      Object.values(warmingSurface.childVisibilities).every((value) => value === 'visible') &&
+        warmingSurface.geometryMatchesBaseline &&
+        warmingSurface.canvasUsable,
+      `Editor or Canvas layout changed during Preview warmup: ${JSON.stringify(warmingSurface)}`,
+    );
+    previewSurfaceEvidence.warming = warmingSurface;
     await capture(window, 'preview-mouth-pending.png');
     screenshots.push('preview-mouth-pending.png');
     releasePendingAssetRead();
     await waitExactPreview(window);
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewSurface === 'active' && document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewHandoff === 'active' && document.querySelector('[data-testid="editor-layout"]')?.dataset.previewSurfaceActive === 'true'`,
+      'Product Preview surface did not activate at the first-frame handoff.',
+    );
+    await pausePreview(window);
+    const desktopSurface = await readPreviewSurface(window);
+    assert(
+      desktopSurface.shellVisibility === 'visible' &&
+        desktopSurface.surface === 'active' &&
+        desktopSurface.handoff === 'active' &&
+        desktopSurface.shellActive === 'true' &&
+        Object.values(desktopSurface.childVisibilities).every((value) => value === 'hidden'),
+      `Active Preview did not visually hide only the editor zones: ${JSON.stringify(desktopSurface)}`,
+    );
+    assert(
+      desktopSurface.overlayBackground === 'rgb(6, 14, 11)',
+      `Active Preview background was not the required solid surface: ${JSON.stringify(desktopSurface)}`,
+    );
+    assert(
+      desktopSurface.geometryMatchesBaseline && desktopSurface.canvasUsable,
+      `Active Preview changed editor layout or collapsed the Canvas viewport: ${JSON.stringify(desktopSurface)}`,
+    );
+    previewSurfaceEvidence.desktop = desktopSurface;
+    await capture(window, 'preview-active-desktop.png');
+    screenshots.push('preview-active-desktop.png');
+
+    await closePreviewAndVerifyFocus(window, 'button');
+    window.setMinimumSize(320, 320);
+    window.setSize(600, 900);
+    await waitForDom(
+      window,
+      'window.innerWidth <= 680',
+      'Electron window did not enter the narrow Product Preview layout.',
+    );
+    await openPreview(window, 'normal');
+    await waitExactPreview(window);
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewSurface === 'active' && document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewHandoff === 'active' && document.querySelector('[data-testid="editor-layout"]')?.dataset.previewSurfaceActive === 'true'`,
+      'Narrow Product Preview surface did not activate.',
+    );
+    await pausePreview(window);
+    const narrowSurface = await readPreviewSurface(window);
+    assert(
+      narrowSurface.viewport.width <= 680 &&
+        narrowSurface.shellVisibility === 'visible' &&
+        narrowSurface.surface === 'active' &&
+        narrowSurface.shellActive === 'true' &&
+        Object.values(narrowSurface.childVisibilities).every((value) => value === 'hidden'),
+      `Narrow Preview did not preserve the active surface contract: ${JSON.stringify(narrowSurface)}`,
+    );
+    assert(
+      narrowSurface.geometryMatchesBaseline && narrowSurface.canvasUsable,
+      `Narrow Preview changed its editor layout or collapsed the Canvas viewport: ${JSON.stringify(narrowSurface)}`,
+    );
+    previewSurfaceEvidence.narrow = narrowSurface;
+    await capture(window, 'preview-active-narrow.png');
+    screenshots.push('preview-active-narrow.png');
+    await closePreviewAndVerifyFocus(window, 'escape');
+
+    if (process.env.PANDA_STAGE_ISSUE943_SURFACE_ONLY === '1') {
+      return {
+        issue: 943,
+        passed: true,
+        verifier: 'product-preview-surface',
+        commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+        syntheticInput: true,
+        previewSurfaceEvidence,
+        screenshots,
+      };
+    }
+
+    window.setSize(1600, 1_050);
+    await openPreview(window, 'normal');
+    await waitExactPreview(window);
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewSurface === 'active' && document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewHandoff === 'active' && document.querySelector('[data-testid="editor-layout"]')?.dataset.previewSurfaceActive === 'true'`,
+      'Product Preview surface did not activate at the first-frame handoff.',
+    );
+    await pausePreview(window);
     // Quick Play auto-starts after the handoff. On a busy CI runner it may
     // reach the post-dialogue Expression before the pause is processed. Seek
     // through the real scrubber to the frame whose Mouth pixels we assert.
     await seekPreview(window, 0);
-    await waitExactPreview(window);
     const normal = await waitForPreviewPixels(
       window,
       [
@@ -790,6 +972,7 @@ async function run() {
     assert(near(expression.pixels.expressionOnly, [40, 129, 82, 255]), `Expression replacement pixel mismatch: ${JSON.stringify(expression)}`);
     await capture(window, 'preview-expression-replaced.png');
     screenshots.push('preview-expression-replaced.png');
+
     closeWindow(window);
     window = null;
 
@@ -962,6 +1145,7 @@ async function run() {
       },
       assetReadEvidence,
       states: { pending, fatalReadFailure: fatal, mouthDecode, bodyDecode, faceDecode },
+      previewSurfaceEvidence,
       screenshots,
     };
   } finally {

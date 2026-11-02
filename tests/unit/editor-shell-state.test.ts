@@ -270,12 +270,20 @@ describe('EditorShell state boundary', () => {
     expect(shell).toContain('shotId={currentShotId}');
     expect(shell).toContain('shotStore.getCurrentShotId');
     // Opening the preview must not mutate project/session state.
+    expect(shell).toContain('const productPreviewOpenRef = useRef(false)');
+    expect(shell).toContain('const productPreviewSessionRef = useRef(0)');
+    expect(shell).toContain('const productPreviewOpenerRef = useRef<{');
+    expect(shell).toContain('data-preview-surface-active={productPreviewSurfaceActive ?');
     expect(shell).toMatch(
-      /const openProductPreview = \(\): void => \{\s*setProductPreviewSurfaceActive\(false\);\s*setProductPreviewOpen\(true\);\s*\};/u,
+      /const openProductPreview = \(\): void => \{[\s\S]*?setProductPreviewSurfaceActive\(false\);\s*setProductPreviewOpen\(true\);\s*\};/u,
     );
     expect(shell).toMatch(
-      /const closeProductPreview = \(\): void => \{\s*setProductPreviewSurfaceActive\(false\);\s*setProductPreviewOpen\(false\);\s*\};/u,
+      /const closeProductPreview = \(\): void => \{[\s\S]*?setProductPreviewSurfaceActive\(false\);\s*setProductPreviewOpen\(false\);[\s\S]*?requestAnimationFrame[\s\S]*?productPreviewSessionRef\.current !== sessionId[\s\S]*?currentIdentity\.projectRoot !== opener\.projectRoot[\s\S]*?opener\.element\.focus\(\{ preventScroll: true \}\);/u,
     );
+    expect(shell).toMatch(
+      /const commitProductPreviewSurface = useCallback\(\(\): void => \{\s*if \([\s\S]*?!productPreviewOpenRef\.current[\s\S]*?productPreviewSessionRef\.current !== productPreviewSessionId/u,
+    );
+    expect(shell).toContain('invalidateProductPreviewSession();');
     // The overlay never re-enters the session or store layer.
     expect(overlay).not.toContain('EditorShellSession');
     expect(overlay).not.toContain('ProjectSessionController');
@@ -320,7 +328,7 @@ describe('EditorShell state boundary', () => {
       shell.indexOf('const finishCloseProject'),
       shell.indexOf('const closeProject = async'),
     );
-    expect(finishBody).toContain('setProductPreviewOpen(false)');
+    expect(finishBody).toContain('invalidateProductPreviewSession();');
     expect(finishBody).toContain('setCloseConfirmOpen(false)');
     expect(finishBody).toContain("setOpenCandidatePath('')");
   });
