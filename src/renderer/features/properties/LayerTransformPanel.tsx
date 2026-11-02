@@ -1352,7 +1352,8 @@ function LayerTransformPanelView({
           {compact ? '请在画布中选择一个对象。' : '未选择普通图层。'}
         </p>
       )}
-      {layer || !compact ? (
+      {(layer || !compact) &&
+      !(layer?.source.kind === 'animation' && !layer.locked) ? (
         temporalInspection ? null : (
           <p data-testid="layer-transform-guidance">
             {isBackgroundLayer
