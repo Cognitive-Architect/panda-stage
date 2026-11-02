@@ -4,6 +4,8 @@ import { Button } from './Button';
 export interface SegmentedTabOption {
   value: string;
   label: ReactNode;
+  ariaLabel?: string;
+  title?: string;
   disabled?: boolean;
 }
 
@@ -39,12 +41,14 @@ export function SegmentedTabs({
         return (
           <Button
             aria-selected={selected}
+            aria-label={option.ariaLabel}
             className={itemClasses}
             data-ui-segmented-tab="true"
             disabled={option.disabled}
             key={option.value}
             onClick={() => onChange(option.value)}
             role="tab"
+            title={option.title}
             variant="secondary"
           >
             {option.label}

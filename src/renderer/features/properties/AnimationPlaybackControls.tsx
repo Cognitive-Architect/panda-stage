@@ -327,32 +327,37 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
         </Button>
       </div>
       <div className="animation-playback-fields">
-        <label>
-          <span>开始时间（秒）</span>
-          <input
-            aria-label="动画开始时间（秒）"
-            data-testid="animation-start-seconds"
-            disabled={locked}
-            max={shot.durationMs / 1_000}
-            min={0}
-            onBlur={commitStartTime}
-            onChange={(event) => changeStartDraft(event.target.value)}
-            onFocus={beginStartEdit}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                event.currentTarget.blur();
-              }
-              if (event.key === 'Escape') {
-                event.preventDefault();
-                event.stopPropagation();
-                cancelStartEdit(event.currentTarget);
-              }
-            }}
-            step="0.001"
-            type="number"
-            value={startDraft}
-          />
+        <label className="animation-playback-time-field">
+          <span>开始时间</span>
+          <span className="animation-playback-time-control">
+            <input
+              aria-label="动画开始时间（秒）"
+              data-testid="animation-start-seconds"
+              disabled={locked}
+              max={shot.durationMs / 1_000}
+              min={0}
+              onBlur={commitStartTime}
+              onChange={(event) => changeStartDraft(event.target.value)}
+              onFocus={beginStartEdit}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  event.currentTarget.blur();
+                }
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  cancelStartEdit(event.currentTarget);
+                }
+              }}
+              step="0.001"
+              type="number"
+              value={startDraft}
+            />
+            <span aria-hidden="true" className="animation-playback-time-unit">
+              秒
+            </span>
+          </span>
         </label>
         <div
           className="animation-playback-field"
@@ -382,8 +387,20 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
               aria-label="动画播放结束"
               className="animation-playback-segmented"
               options={[
-                { value: 'hold', label: '保持', disabled: locked },
-                { value: 'hide', label: '隐藏', disabled: locked },
+                {
+                  value: 'hold',
+                  label: '保持',
+                  ariaLabel: '播放结束时保持最后一帧',
+                  title: '保持最后一帧',
+                  disabled: locked,
+                },
+                {
+                  value: 'hide',
+                  label: '隐藏',
+                  ariaLabel: '播放结束时隐藏',
+                  title: '播放结束时隐藏',
+                  disabled: locked,
+                },
               ]}
               onChange={(value) =>
                 updatePlayback({ endBehavior: value as 'hold' | 'hide' })

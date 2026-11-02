@@ -130,6 +130,28 @@ describe('AnimationPlaybackControls start-time editing', () => {
   });
 
   it('uses segmented playback settings and retains the end choice through looping', async () => {
+    const fields = container.querySelector('.animation-playback-fields');
+    expect(
+      Array.from(fields?.children ?? []).map((field) => field.tagName),
+    ).toEqual(['LABEL', 'DIV', 'DIV']);
+    expect(
+      container.querySelector('.animation-playback-time-field > span:first-child')
+        ?.textContent,
+    ).toBe('开始时间');
+    expect(
+      container.querySelector('.animation-playback-time-unit')?.textContent?.trim(),
+    ).toBe('秒');
+
+    const holdButton = Array.from(
+      container.querySelectorAll<HTMLButtonElement>(
+        '[data-testid="animation-end-behavior"] [role="tab"]',
+      ),
+    ).find((button) => button.textContent?.trim() === '保持');
+    expect(holdButton?.getAttribute('aria-label')).toBe(
+      '播放结束时保持最后一帧',
+    );
+    expect(holdButton?.title).toBe('保持最后一帧');
+
     await clickPlaybackTab('动画播放方式', '循环');
 
     expect(currentAnimationLayer()?.animationPlayback).toEqual({
