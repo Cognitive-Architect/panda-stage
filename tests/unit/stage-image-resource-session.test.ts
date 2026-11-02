@@ -9,6 +9,7 @@ import {
 import {
   buildStageImageSourceKey,
   isStageFrameReady,
+  MAX_RETAINED_STAGE_BYTES,
   MAX_RETAINED_STAGE_SOURCES,
   StageImageResourceSession,
   type StageImageResourceState,
@@ -22,6 +23,8 @@ interface FakeImage {
   onload: ((event: Event) => unknown) | null;
   onerror: ((event: Event | string) => unknown) | null;
   src: string;
+  naturalWidth: number;
+  naturalHeight: number;
   succeed(): void;
   fail(): void;
 }
@@ -32,12 +35,19 @@ const CHARACTER_BODY = 'character-layer:body';
 const CHARACTER_HEAD = 'character-layer:head';
 const CHARACTER_FACE = 'character-layer:face';
 
-function createFakeImage(): FakeImage {
+function createFakeImage(
+  getDimensions: (sourceUrl: string) => { width: number; height: number },
+): FakeImage {
   return {
     onload: null,
     onerror: null,
     src: '',
+    naturalWidth: 1,
+    naturalHeight: 1,
     succeed() {
+      const dimensions = getDimensions(this.src);
+      this.naturalWidth = dimensions.width;
+      this.naturalHeight = dimensions.height;
       this.onload?.({} as Event);
     },
     fail() {
@@ -46,7 +56,10 @@ function createFakeImage(): FakeImage {
   };
 }
 
-function createHarness(): {
+function createHarness(
+  getDimensions: (sourceUrl: string) => { width: number; height: number } = () =>
+    ({ width: 1, height: 1 }),
+): {
   session: StageImageResourceSession;
   images: FakeImage[];
   states: StageImageResourceState[];
@@ -55,7 +68,7 @@ function createHarness(): {
   const states: StageImageResourceState[] = [];
   const session = new StageImageResourceSession({
     createImage: () => {
-      const image = createFakeImage();
+      const image = createFakeImage(getDimensions);
       images.push(image);
       return image as unknown as HTMLImageElement;
     },
@@ -437,7 +450,7 @@ describe('StageImageResourceSession', () => {
     expect(state.images.get('B:body')).toBe(harness.images[2]);
   });
 
-  it('keeps only a finite number of superseded decoded sources', () => {
+  it('keeps only the configured number of superseded decoded sources', () => {
     const harness = createHarness();
     for (let index = 0; index <= MAX_RETAINED_STAGE_SOURCES + 1; index += 1) {
       reconcile(harness, [{ id: LAYER_A, sourceUrl: `source-${index}` }]);
@@ -445,13 +458,152 @@ describe('StageImageResourceSession', () => {
       expect(harness.session.getSnapshot().ready).toBe(true);
     }
     const countBeforeReturn = harness.images.length;
+    reconcile(harness, [{ id: LAYER_A, sourceUrl: 'source-1' }]);
+    expect(harness.images).toHaveLength(countBeforeReturn);
+    expect(harness.session.getSnapshot().ready).toBe(true);
+
+    const countBeforeEvictedReturn = harness.images.length;
     reconcile(harness, [{ id: LAYER_A, sourceUrl: 'source-0' }]);
-    expect(harness.images).toHaveLength(countBeforeReturn + 1);
+    expect(harness.images).toHaveLength(countBeforeEvictedReturn + 1);
     expect(harness.session.getSnapshot().ready).toBe(false);
     harness.images.at(-1)!.succeed();
     expect(harness.session.getSnapshot().ready).toBe(true);
     harness.session.dispose();
     expect(harness.session.getSnapshot().images.size).toBe(0);
+  });
+
+  it('reuses 21 distinct synthetic animation frames for three complete loops', () => {
+    const harness = createHarness();
+    const sources = Array.from(
+      { length: 21 },
+      (_, index) => `synthetic-frame-${index}`,
+    );
+    const firstLoopImages = new Map<string, FakeImage>();
+    const newImagesPerLoop: number[] = [];
+
+    for (let loop = 0; loop < 3; loop += 1) {
+      const imagesBeforeLoop = harness.images.length;
+      for (const sourceUrl of sources) {
+        reconcile(harness, [{ id: LAYER_A, sourceUrl }]);
+        let state = harness.session.getSnapshot();
+        if (!state.ready) {
+          harness.images.at(-1)!.succeed();
+          state = harness.session.getSnapshot();
+        }
+
+        expect(state.ready).toBe(true);
+        expect(state.desiredSourceUrls.get(LAYER_A)).toBe(sourceUrl);
+        expect(state.sourceUrls.get(LAYER_A)).toBe(sourceUrl);
+        const image = state.images.get(LAYER_A) as unknown as FakeImage;
+        if (loop === 0) firstLoopImages.set(sourceUrl, image);
+        else expect(image).toBe(firstLoopImages.get(sourceUrl));
+      }
+      newImagesPerLoop.push(harness.images.length - imagesBeforeLoop);
+    }
+
+    expect(newImagesPerLoop).toEqual([21, 0, 0]);
+    harness.session.dispose();
+  });
+
+  it('evicts by estimated decoded bytes and does not retain a single oversized image', () => {
+    const imageBytes = 32 * 1024 * 1024;
+    const harness = createHarness((sourceUrl) => {
+      if (sourceUrl.startsWith('large-')) return { width: 4096, height: 2048 };
+      if (sourceUrl === 'oversized') return { width: 4097, height: 4097 };
+      return { width: 1, height: 1 };
+    });
+    expect(MAX_RETAINED_STAGE_BYTES).toBe(64 * 1024 * 1024);
+    expect(MAX_RETAINED_STAGE_SOURCES).toBe(64);
+    expect(4096 * 2048 * 4).toBe(imageBytes);
+
+    for (let index = 0; index < 4; index += 1) {
+      reconcile(harness, [{ id: LAYER_A, sourceUrl: `large-${index}` }]);
+      harness.images.at(-1)!.succeed();
+    }
+
+    // The third 32 MiB idle resource evicts the oldest; the remaining pair total 64 MiB.
+    reconcile(harness, [{ id: LAYER_A, sourceUrl: 'small' }]);
+    harness.images.at(-1)!.succeed();
+    const countBeforeRetainedReturn = harness.images.length;
+    reconcile(harness, [{ id: LAYER_A, sourceUrl: 'large-2' }]);
+    expect(harness.images).toHaveLength(countBeforeRetainedReturn);
+    expect(harness.session.getSnapshot().ready).toBe(true);
+
+    const countBeforeEvictedReturn = harness.images.length;
+    reconcile(harness, [{ id: LAYER_A, sourceUrl: 'large-1' }]);
+    expect(harness.images).toHaveLength(countBeforeEvictedReturn + 1);
+    harness.images.at(-1)!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+
+    reconcile(harness, [{ id: LAYER_A, sourceUrl: 'oversized' }]);
+    harness.images.at(-1)!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    reconcile(harness, [{ id: LAYER_A, sourceUrl: 'small' }]);
+    harness.images.at(-1)!.succeed();
+    const countBeforeOversizedReturn = harness.images.length;
+    reconcile(harness, [{ id: LAYER_A, sourceUrl: 'oversized' }]);
+    expect(harness.images).toHaveLength(countBeforeOversizedReturn + 1);
+    expect(harness.session.getSnapshot().ready).toBe(false);
+    harness.images.at(-1)!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    harness.session.dispose();
+  });
+
+  it('does not cache zero, invalid, non-finite, or overflowing image dimensions', () => {
+    const invalidDimensions = [
+      { width: 0, height: 1 },
+      { width: 1, height: 0 },
+      { width: -1, height: 1 },
+      { width: Number.NaN, height: 1 },
+      { width: 1, height: Number.POSITIVE_INFINITY },
+      { width: Number.MAX_SAFE_INTEGER, height: 2 },
+    ];
+    const dimensionBySource = new Map(
+      invalidDimensions.map((dimensions, index) => [
+        `invalid-${index}`,
+        dimensions,
+      ]),
+    );
+    const harness = createHarness(
+      (sourceUrl) => dimensionBySource.get(sourceUrl) ?? { width: 1, height: 1 },
+    );
+
+    invalidDimensions.forEach((_, index) => {
+      const sourceUrl = `invalid-${index}`;
+      reconcile(harness, [{ id: LAYER_A, sourceUrl }]);
+      harness.images.at(-1)!.succeed();
+      expect(harness.session.getSnapshot().ready).toBe(true);
+
+      reconcile(harness, [{ id: LAYER_A, sourceUrl: 'fallback' }]);
+      harness.images.at(-1)!.succeed();
+      const countBeforeReturn = harness.images.length;
+      reconcile(harness, [{ id: LAYER_A, sourceUrl }]);
+      expect(harness.images).toHaveLength(countBeforeReturn + 1);
+      harness.images.at(-1)!.succeed();
+      expect(harness.session.getSnapshot().ready).toBe(true);
+    });
+
+    harness.session.dispose();
+  });
+
+  it('keeps identical source images isolated to their Stage sessions', () => {
+    const first = createHarness();
+    const second = createHarness();
+    const source = [{ id: LAYER_A, sourceUrl: 'shared-source-url' }];
+
+    reconcile(first, source);
+    reconcile(second, source);
+    first.images[0]!.succeed();
+    second.images[0]!.succeed();
+
+    expect(first.session.getSnapshot().images.get(LAYER_A)).toBe(first.images[0]);
+    expect(second.session.getSnapshot().images.get(LAYER_A)).toBe(second.images[0]);
+    expect(first.session.getSnapshot().images.get(LAYER_A)).not.toBe(
+      second.session.getSnapshot().images.get(LAYER_A),
+    );
+
+    first.session.dispose();
+    second.session.dispose();
   });
 
   it('does not re-decode or remove unchanged siblings during one-layer replacement', () => {
