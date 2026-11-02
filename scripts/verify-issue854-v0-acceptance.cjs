@@ -1753,7 +1753,6 @@ async function run() {
       windowRef,
       sample,
       matchAlternatives,
-      { requireMainCanvasPreview: false },
     );
     const afterReplacement = await readUiState(windowRef);
     assert(
@@ -1762,6 +1761,57 @@ async function run() {
         afterReplacement.undoCount === beforeReplacement.undoCount &&
         afterReplacement.redoCount === beforeReplacement.redoCount,
       'Phase B match selection changed the formal Project or History.',
+    );
+    const projectJsonPath = path.join(sample.targetProjectRoot, 'project.json');
+    const projectHashBeforePortrait = createHash('sha256')
+      .update(readFileSync(projectJsonPath))
+      .digest('hex');
+    windowRef.setSize(800, 1_100);
+    await waitForDom(
+      windowRef,
+      `document.querySelector('.editor-shell')?.dataset.editorShellLayout === 'portrait'`,
+      'The narrow Cloud Touch window did not select the portrait layout for matched rows.',
+    );
+    await waitForDom(
+      windowRef,
+      `document.querySelector('[data-testid="scene-creation-background-match"]')?.dataset.candidateId === ${JSON.stringify(matchAlternatives.background.id)} && document.querySelector('[data-testid="scene-creation-character-match"]')?.dataset.candidateId === ${JSON.stringify(matchAlternatives.character.id)} && document.querySelector('.project-canvas')?.dataset.scenePreview === 'true' && document.querySelector('.project-canvas')?.dataset.scenePreviewStatus === 'ready'`,
+      'The portrait layout did not retain the selected resource IDs and ready main-canvas preview.',
+    );
+    const portraitBackgroundRow = await readSceneMatchRowState(windowRef, 'background');
+    const portraitCharacterRow = await readSceneMatchRowState(windowRef, 'character');
+    assert(
+      portraitBackgroundRow.id === matchAlternatives.background.id &&
+        portraitBackgroundRow.matched && portraitBackgroundRow.successCheck &&
+        portraitBackgroundRow.status === null &&
+        portraitBackgroundRow.actionWidth >= 44 && portraitBackgroundRow.actionHeight >= 44 &&
+        portraitCharacterRow.id === matchAlternatives.character.id &&
+        portraitCharacterRow.matched && portraitCharacterRow.successCheck &&
+        portraitCharacterRow.status === null &&
+        portraitCharacterRow.actionWidth >= 44 && portraitCharacterRow.actionHeight >= 44,
+      `The portrait match rows do not retain compact success and replacement controls: ${JSON.stringify({ portraitBackgroundRow, portraitCharacterRow })}.`,
+    );
+    const portraitPreviewState = await readScenePreviewState(windowRef);
+    assert(
+      portraitPreviewState.active && portraitPreviewState.status === 'ready' &&
+        portraitPreviewState.readOnly,
+      'The portrait match screenshot does not show a ready read-only preview on the main canvas.',
+    );
+    const portraitMatchedPreviewScreenshot = await capture(
+      windowRef,
+      'issue916-phase-b-cloud-touch-portrait-matched.png',
+    );
+    const afterPortraitMatch = await readUiState(windowRef);
+    const projectHashAfterPortrait = createHash('sha256')
+      .update(readFileSync(projectJsonPath))
+      .digest('hex');
+    assert(
+      afterPortraitMatch.revision === afterReplacement.revision &&
+        afterPortraitMatch.shotCount === afterReplacement.shotCount &&
+        afterPortraitMatch.undoCount === afterReplacement.undoCount &&
+        afterPortraitMatch.redoCount === afterReplacement.redoCount &&
+        afterPortraitMatch.saveState === afterReplacement.saveState &&
+        projectHashAfterPortrait === projectHashBeforePortrait,
+      'Capturing the portrait match state changed the formal Project, Project file, or History.',
     );
     return {
       issue: 916,
@@ -1776,6 +1826,7 @@ async function run() {
       formalProjectAndHistoryUnchanged: true,
       screenshots: {
         uniqueMatch: uniqueMatchScreenshot,
+        portraitMatchedPreview: portraitMatchedPreviewScreenshot,
         ...matchIconInteractions.screenshots,
       },
       receiptPath: '<isolated Phase B receipt>',
