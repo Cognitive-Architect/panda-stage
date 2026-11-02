@@ -12,6 +12,7 @@ import type {
   RecoveryIgnoreResponse,
   RecoveryRestoreResponse,
 } from '../../shared/recovery-api';
+import { updateImageAssetAuthorMetadata } from '../../domain';
 import {
   ProjectSessionController,
   type ProjectSessionApi,
@@ -30,6 +31,11 @@ import {
 import { shotStore } from '../stores/shotStore';
 import { characterAssemblySessionStore } from '../stores/characterAssemblySessionStore';
 import { CharacterAssemblyWorkbench } from '../features/characters/CharacterAssemblyWorkbench';
+import {
+  isSceneCreationPreviewIdentityCurrent,
+  type SceneCreationCanvasPreview,
+  type SceneCreationCanvasPreviewStatus,
+} from '../features/shots/createSceneFromStructuredInput';
 import { PendingDialoguePlacementProvider } from '../features/timeline/PendingDialoguePlacement';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
 import { AdaptiveWorkspaceSwitcher } from './AdaptiveWorkspaceSwitcher';
@@ -406,6 +412,9 @@ export function EditorShell({
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
   );
+  const sceneCreationProjectSessionIdentity = projectSnapshot
+    ? `${projectSnapshot.projectRoot}\u0000${projectSnapshot.project.id}\u0000${editorProjectStore.getProjectInstanceId() ?? 'closed'}`
+    : 'closed';
   const characterAssemblySnapshot = useSyncExternalStore(
     characterAssemblySessionStore.subscribe,
     characterAssemblySessionStore.getSnapshot,
@@ -447,6 +456,98 @@ export function EditorShell({
     phase: 'idle' | 'saving' | 'failed';
     revision: number | null;
   }>({ phase: 'idle', revision: null });
+  const [sceneCreationCanvasPreviewState, setSceneCreationCanvasPreviewState] =
+    useState<{
+      preview: SceneCreationCanvasPreview | null;
+      status: SceneCreationCanvasPreviewStatus | null;
+    }>({ preview: null, status: null });
+  const handleSceneCanvasPreviewChange = useCallback(
+    (preview: SceneCreationCanvasPreview | null): void => {
+      setSceneCreationCanvasPreviewState((current) => {
+        if (!preview) {
+          return current.preview === null && current.status === null
+            ? current
+            : { preview: null, status: null };
+        }
+        const currentPreview = current.preview;
+        if (
+          currentPreview?.identity.projectRoot === preview.identity.projectRoot &&
+          currentPreview.identity.projectId === preview.identity.projectId &&
+          currentPreview.identity.projectInstanceId === preview.identity.projectInstanceId &&
+          currentPreview.identity.revision === preview.identity.revision &&
+          currentPreview.identity.projectFingerprint === preview.identity.projectFingerprint &&
+          currentPreview.shot.id === preview.shot.id
+        ) {
+          return current;
+        }
+        return { preview, status: 'loading' };
+      });
+    },
+    [],
+  );
+  const handleSceneBackgroundImportComplete = useCallback(
+    (importedAssetIds: readonly string[]): string | null => {
+      const current = editorProjectStore.getSnapshot();
+      const currentIdentity = current
+        ? `${current.projectRoot}\u0000${current.project.id}\u0000${editorProjectStore.getProjectInstanceId() ?? 'closed'}`
+        : 'closed';
+      if (
+        !projectSnapshot ||
+        currentIdentity !== sceneCreationProjectSessionIdentity
+      ) {
+        return null;
+      }
+      let project = current!.project;
+      for (const assetId of importedAssetIds) {
+        const asset = project.assets.find((candidate) => candidate.id === assetId);
+        if (asset?.kind !== 'image') continue;
+        project = updateImageAssetAuthorMetadata(project, asset.id, {
+          name: asset.name,
+          usage: 'background',
+          keywords: asset.keywords,
+        });
+      }
+      if (project !== current!.project) {
+        editorProjectStore.updateProject(
+          project,
+          'Set imported scene background usage',
+        );
+      }
+      const latest = editorProjectStore.getSnapshot();
+      if (
+        !latest ||
+        `${latest.projectRoot}\u0000${latest.project.id}\u0000${editorProjectStore.getProjectInstanceId() ?? 'closed'}` !==
+          sceneCreationProjectSessionIdentity
+      ) {
+        return null;
+      }
+      const importedBackgrounds = importedAssetIds
+        .map((assetId) =>
+          latest.project.assets.find((candidate) => candidate.id === assetId),
+        )
+        .filter(
+          (asset) =>
+            asset?.kind === 'image' &&
+            asset.usage === 'background' &&
+            asset.metadata?.status !== 'error',
+        );
+      return importedBackgrounds.length === 1
+        ? importedBackgrounds[0]!.id
+        : null;
+    },
+    [projectSnapshot, sceneCreationProjectSessionIdentity],
+  );
+  const activeSceneCreationCanvasPreview =
+    sceneCreationCanvasPreviewState.preview &&
+    isSceneCreationPreviewIdentityCurrent(
+      sceneCreationCanvasPreviewState.preview.identity,
+      editorProjectStore,
+    )
+      ? sceneCreationCanvasPreviewState.preview
+      : null;
+  const activeSceneCreationCanvasPreviewStatus = activeSceneCreationCanvasPreview
+    ? sceneCreationCanvasPreviewState.status
+    : null;
   const [requestedPage, setRequestedPage] =
     useState<EditorShellPage>('project-center');
   // Cloud Touch is the sole product route. This presentation value is kept
@@ -1113,8 +1214,14 @@ export function EditorShell({
                 }}
                 onActiveActivityChange={handlePortraitResourceActivityChange}
                 onOpenRecentProject={switchToRecentProject}
+                onSceneBackgroundImportComplete={
+                  handleSceneBackgroundImportComplete
+                }
+                onSceneCanvasPreviewChange={handleSceneCanvasPreviewChange}
+                projectSessionIdentity={sceneCreationProjectSessionIdentity}
                 projectSnapshot={projectSnapshot}
                 recentRefreshToken={recentRefreshToken}
+                sceneCanvasPreviewStatus={activeSceneCreationCanvasPreviewStatus}
                 shellMode={layoutMode}
               />
             </div>

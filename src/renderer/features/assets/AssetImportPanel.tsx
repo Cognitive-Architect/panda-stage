@@ -5,6 +5,7 @@ import type {
   AssetImportResponse,
 } from '../../../shared/asset-import-api';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
+import type { Asset } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { DecorativeIcon } from '../../ui';
 import {
@@ -28,6 +29,10 @@ export interface AssetImportPanelProps {
   onImportedAudioAssets?: (
     assetIds: readonly string[],
   ) => Promise<AssetMetadataBatchOutcome>;
+  onImportedAssets?: (
+    assets: readonly Asset[],
+    importedAssetIds: readonly string[],
+  ) => void;
 }
 
 export function selectImportedAudioAssetIds(
@@ -62,6 +67,7 @@ export function AssetImportPanel({
   compact = false,
   showFlaAction = true,
   onImportedAudioAssets,
+  onImportedAssets,
 }: AssetImportPanelProps): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] =
@@ -262,11 +268,26 @@ export function AssetImportPanel({
         request,
         createAssetImportFeedback(response, outcome.status, audioFailures),
       );
+      if (response.ok && response.status === 'completed') {
+        const returnedAssets = response.results.flatMap((result) =>
+          (result.status === 'imported' || result.status === 'duplicate') &&
+          result.asset
+            ? [result.asset]
+            : [],
+        );
+        const importedAssetIds = response.results.flatMap((result) =>
+          result.status === 'imported' && result.asset
+            ? [result.asset.id]
+            : [],
+        );
+        onImportedAssets?.(returnedAssets, importedAssetIds);
+      }
     },
     [
       clearProgressTimer,
       isCurrentImport,
       onImportedAudioAssets,
+      onImportedAssets,
       showFeedback,
     ],
   );

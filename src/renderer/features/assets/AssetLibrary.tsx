@@ -10,7 +10,7 @@ import {
   scanAssetReferences,
   updateImageAssetAuthorMetadata,
 } from '../../../domain';
-import type { ImageAssetAuthorMetadata } from '../../../domain';
+import type { Asset, ImageAssetAuthorMetadata } from '../../../domain';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import {
@@ -69,6 +69,10 @@ export interface AssetLibraryProps {
   closeRequestToken?: number;
   hideHeading?: boolean;
   showFlaAction?: boolean;
+  onImportedAssets?: (
+    assets: readonly Asset[],
+    importedAssetIds: readonly string[],
+  ) => void;
 }
 
 export function AssetLibrary({
@@ -81,6 +85,7 @@ export function AssetLibrary({
   closeRequestToken,
   hideHeading = false,
   showFlaAction = true,
+  onImportedAssets,
 }: AssetLibraryProps): React.JSX.Element {
   const resolvedPresentation =
     presentation ?? (hideHeading ? 'portrait' : 'default');
@@ -862,6 +867,7 @@ export function AssetLibrary({
             importRequestToken={importRequestToken}
             onImportFla={openFlaReview}
             onImportedAudioAssets={refreshAudioMetadataBatch}
+            onImportedAssets={onImportedAssets}
             snapshot={snapshot}
           />
           <div

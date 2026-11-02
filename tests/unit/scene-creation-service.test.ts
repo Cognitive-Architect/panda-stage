@@ -303,6 +303,60 @@ describe('SceneCreationService', () => {
     expect(result.expressionId).toBe(IDS.expression);
   });
 
+  it('accepts explicit valid resource IDs without rewriting the pasted names', () => {
+    const project = makeProject();
+    const alternateBackgroundId = '85200000-0000-4000-8000-000000000010';
+    const alternateCharacterId = '85200000-0000-4000-8000-000000000011';
+    const alternateExpressionId = '85200000-0000-4000-8000-000000000012';
+    const alternateVoiceId = '85200000-0000-4000-8000-000000000013';
+    const alternateCharacter = {
+      ...project.characters[0]!,
+      id: alternateCharacterId,
+      name: 'Lin',
+      defaultVoiceProfileId: alternateVoiceId,
+      expressions: [
+        { ...project.characters[0]!.expressions[0]!, id: alternateExpressionId },
+      ],
+      defaultExpressionId: alternateExpressionId,
+    };
+    const projectWithAlternates = ProjectSchema.parse({
+      ...project,
+      assets: [
+        ...project.assets,
+        { ...project.assets[0]!, id: alternateBackgroundId, name: 'Pond' },
+      ],
+      characters: [...project.characters, alternateCharacter],
+      voiceProfiles: [
+        ...project.voiceProfiles,
+        {
+          ...project.voiceProfiles[0]!,
+          id: alternateVoiceId,
+          characterId: alternateCharacterId,
+        },
+      ],
+    });
+    const result = serviceWithIds().create(projectWithAlternates, INPUT, {
+      backgroundAssetId: alternateBackgroundId,
+      characterId: alternateCharacterId,
+    });
+
+    expect(result.backgroundAssetId).toBe(alternateBackgroundId);
+    expect(result.characterId).toBe(alternateCharacterId);
+    expect(result.expressionId).toBe(alternateExpressionId);
+    expect(result.project.shots.at(-1)?.name).toBe('Garden meeting');
+  });
+
+  it('suggests the next shot name by validating candidates with ShotService', () => {
+    const project = makeProject();
+    const withConflict = new ShotService({
+      createId: () => '85200000-0000-4000-8000-000000000020',
+      now: () => new Date('2026-10-25T00:01:00.000Z'),
+    }).create(project, { name: 'Garden meeting', durationMs: 3_000 });
+
+    expect(serviceWithIds().suggestUniqueShotName(withConflict, 'Garden meeting'))
+      .toBe('Garden meeting 2');
+  });
+
   it('reports unusable named candidates without silently choosing them', () => {
     const project = makeProject();
     const unavailableBackground = ProjectSchema.parse({

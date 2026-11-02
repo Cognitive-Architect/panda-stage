@@ -19,7 +19,10 @@ describe('Issue #331 landscape resource drawers', () => {
     expect(dock).toContain('resource-activity-rail');
     expect(dock).toContain('data-testid="resource-activity-rail"');
     expect(dock).toContain('landscapePresentation ||');
+    expect(dock).toContain('sceneCreationView ||');
     expect(dock).toContain('{hideLocalActivityTabs ? null : (');
+    expect(dock).toContain('data-testid="scene-creation-navigation"');
+    expect(dock).toContain('<DecorativeIcon icon={ArrowLeft} size={20} />');
     expect(dock).toContain('resource-activity-auxiliary');
     expect(dock).toContain(
       '!landscapePresentation && auxiliaryContent ? (',

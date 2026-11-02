@@ -8,27 +8,38 @@ const {
   readFileSync,
   writeFileSync,
 } = require('node:fs');
-const { createHash } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const os = require('node:os');
 const path = require('node:path');
 
 process.env.VITE_DEV_SERVER_URL = '';
 
 const repositoryRoot = path.resolve(__dirname, '..');
+const issue916Phase = process.env.ISSUE916_PHASE?.toUpperCase() ?? 'C';
+if (!['B', 'C'].includes(issue916Phase)) {
+  throw new Error(`Unsupported ISSUE916_PHASE: ${issue916Phase}`);
+}
 const sampleProjectSource = process.env.PANDA_ISSUE854_SAMPLE_PROJECT
   ? path.resolve(process.env.PANDA_ISSUE854_SAMPLE_PROJECT)
   : null;
 const thumbnailCacheProjectSource = process.env.PANDA_ISSUE854_THUMBNAIL_CACHE_PROJECT
   ? path.resolve(process.env.PANDA_ISSUE854_THUMBNAIL_CACHE_PROJECT)
   : null;
-const acceptanceRoot = 'D:\\PandaStage-Acceptance\\issue854-v0-acceptance';
+const acceptanceRoot = issue916Phase === 'B'
+  ? 'D:\\PandaStage-Acceptance\\issue916-phase-b'
+  : 'D:\\PandaStage-Acceptance\\issue854-v0-acceptance';
 const runId = new Date().toISOString().replace(/[:.]/gu, '-');
 const runRoot = path.join(acceptanceRoot, `run-${runId}`);
 const evidenceRoot = path.join(runRoot, 'evidence');
 const primaryProjectRoot = path.join(runRoot, 'AC03 isolated project.pandastage');
 let activeProjectRoot = primaryProjectRoot;
 const userDataRoot = path.join(runRoot, 'electron-user-data');
-const receiptPath = path.join(runRoot, 'issue854-ac03-receipt.json');
+const receiptPath = path.join(
+  runRoot,
+  issue916Phase === 'B'
+    ? 'issue916-phase-b-receipt.json'
+    : 'issue854-ac03-receipt.json',
+);
 const elapsedStart = Date.now();
 const packageJson = JSON.parse(
   readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8'),
@@ -301,7 +312,15 @@ async function waitForMainWindow() {
         !candidate.isDestroyed() &&
         !candidate.webContents.getURL().includes('hidden.html'),
     );
-    if (window) return window;
+    if (window) {
+      window.webContents.on('console-message', (...details) => {
+        console.error('[issue854 renderer console]', ...details.slice(1));
+      });
+      window.webContents.on('render-process-gone', (_event, details) => {
+        console.error('[issue854 renderer process gone]', details);
+      });
+      return window;
+    }
     await delay(50);
   }
   throw new Error('The production Electron window did not open.');
@@ -382,6 +401,68 @@ function prepareSampleProject(
   };
 }
 
+function addMatchReplacementCandidates(sample) {
+  const alternateBackgroundSource = path.join(
+    repositoryRoot,
+    'demo-project',
+    'assets',
+    'bamboo-background.png',
+  );
+  const alternateBackgroundBytes = readFileSync(alternateBackgroundSource);
+  const alternateBackgroundRelativePath =
+    'assets/issue916-alternate-background.png';
+  const alternateBackgroundPath = path.join(
+    sample.targetProjectRoot,
+    alternateBackgroundRelativePath,
+  );
+  mkdirSync(path.dirname(alternateBackgroundPath), { recursive: true });
+  copyFileSync(alternateBackgroundSource, alternateBackgroundPath);
+  const alternateBackground = {
+    id: randomUUID(),
+    name: 'Bamboo alternate',
+    relativePath: alternateBackgroundRelativePath,
+    mimeType: 'image/png',
+    sha256: createHash('sha256').update(alternateBackgroundBytes).digest('hex'),
+    kind: 'image',
+    width: alternateBackgroundBytes.readUInt32BE(16),
+    height: alternateBackgroundBytes.readUInt32BE(20),
+    usage: 'background',
+    keywords: ['issue916-alternate'],
+  };
+  const originalVoiceProfile = sample.project.voiceProfiles.find(
+    (profile) => profile.id === sample.character.defaultVoiceProfileId,
+  );
+  if (!originalVoiceProfile) {
+    throw new Error('The sample Character has no valid default voice profile.');
+  }
+  const alternateCharacterId = randomUUID();
+  const alternateVoiceProfileId = randomUUID();
+  const alternateCharacter = {
+    ...sample.character,
+    id: alternateCharacterId,
+    name: '修仙男（备用测试样本）',
+    defaultVoiceProfileId: alternateVoiceProfileId,
+  };
+  const alternateVoiceProfile = {
+    ...originalVoiceProfile,
+    id: alternateVoiceProfileId,
+    name: '备用测试角色默认语音',
+    characterId: alternateCharacterId,
+  };
+  sample.project.assets.push(alternateBackground);
+  sample.project.characters.push(alternateCharacter);
+  sample.project.voiceProfiles.push(alternateVoiceProfile);
+  writeFileSync(
+    path.join(sample.targetProjectRoot, 'project.json'),
+    `${JSON.stringify(sample.project, null, 2)}\n`,
+    'utf8',
+  );
+  return {
+    background: alternateBackground,
+    character: alternateCharacter,
+  };
+}
+
 async function ensureShotsActivity(window) {
   await window.webContents.executeJavaScript(`(() => {
     const dock = document.querySelector('[data-testid="resource-activity-dock"]');
@@ -439,6 +520,7 @@ async function readUiState(window, characterLayerId = null) {
         x: layer.x,
         y: layer.y,
         scale: layer.scale,
+        flipX: layer.flipX,
         source: layer.source,
       })),
       character: character ? {
@@ -446,6 +528,7 @@ async function readUiState(window, characterLayerId = null) {
         x: character.x,
         y: character.y,
         scale: character.scale,
+        flipX: character.flipX,
         source: character.source,
       } : null,
       selectedLayerId: stage?.dataset.selectedLayerId ?? null,
@@ -460,7 +543,264 @@ async function readUiState(window, characterLayerId = null) {
   })()`);
 }
 
+async function readScenePreviewState(window) {
+  return window.webContents.executeJavaScript(`(() => {
+    const canvas = document.querySelector('.project-canvas');
+    const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+    return {
+      active: canvas?.dataset.scenePreview === 'true',
+      status: canvas?.dataset.scenePreviewStatus ?? null,
+      readOnly: stage?.dataset.scenePreviewReadOnly === 'true',
+      layers: JSON.parse(stage?.dataset.layerJson || '[]'),
+    };
+  })()`);
+}
+
+async function readSceneMatchRowState(window, kind) {
+  const rowSelector = `[data-testid="scene-creation-${kind}-match"]`;
+  return window.webContents.executeJavaScript(`(() => {
+    const row = document.querySelector(${JSON.stringify(rowSelector)});
+    const action = row?.querySelector('.scene-creation-change-match');
+    const bounds = action?.getBoundingClientRect();
+    return {
+      id: row?.dataset.candidateId ?? null,
+      kind: row?.dataset.candidateKind ?? null,
+      matched: row?.dataset.candidateMatched === 'true',
+      selectable: row?.dataset.candidateSelectable === 'true',
+      name: row?.querySelector('.scene-creation-match-name')?.textContent?.trim() ?? null,
+      successCheck: Boolean(row?.querySelector('.scene-creation-match-indicator[data-matched="true"] .lucide-check')),
+      status: row?.querySelector('.scene-creation-match-status')?.textContent?.trim() ?? null,
+      actionLabel: action?.getAttribute('aria-label') ?? null,
+      actionText: action?.textContent?.trim() ?? null,
+      actionWidth: bounds?.width ?? 0,
+      actionHeight: bounds?.height ?? 0,
+    };
+  })()`);
+}
+
+async function verifySceneMatchIconInteractions(
+  window,
+  sample,
+  alternatives,
+  { requireMainCanvasPreview = true } = {},
+) {
+  const baseline = await readUiState(window);
+  const screenshotPaths = {};
+  const assertNoFormalMutation = async (label) => {
+    const current = await readUiState(window);
+    assert(
+      current.revision === baseline.revision &&
+        current.shotCount === baseline.shotCount &&
+        current.selectedShot === baseline.selectedShot &&
+        current.undoCount === baseline.undoCount &&
+        current.redoCount === baseline.redoCount &&
+        current.saveState === baseline.saveState,
+      `${label} changed the formal Project or History: ${JSON.stringify({ baseline, current })}.`,
+    );
+    return current;
+  };
+  const assertMatchRow = async (kind, id, name) => {
+    const row = await readSceneMatchRowState(window, kind);
+    const accessibleName = `更换${kind === 'background' ? '背景' : '角色'}：${name}`;
+    assert(
+      row.id === id &&
+        row.kind === kind &&
+        row.matched &&
+        row.selectable &&
+        row.name === name &&
+        row.successCheck &&
+        row.status === null &&
+        row.actionLabel === accessibleName &&
+        row.actionText === '' &&
+        row.actionWidth >= 44 &&
+        row.actionHeight >= 44,
+      `The ${kind} match row does not expose the legal selection and 44px icon action: ${JSON.stringify(row)}.`,
+    );
+    return row;
+  };
+  const waitForSelectedPreview = async (backgroundId, characterId, label) => {
+    if (!requireMainCanvasPreview) {
+      await waitForDom(
+        window,
+        `document.querySelector('.project-canvas')?.dataset.scenePreview !== 'true'`,
+        `${label} unexpectedly activated the Phase C main-canvas preview.`,
+      );
+      const preview = await readScenePreviewState(window);
+      assert(!preview.active, `${label} unexpectedly activated the Phase C preview.`);
+      await assertNoFormalMutation(label);
+      return preview;
+    }
+    await waitForDom(
+      window,
+      `(() => {
+        const canvas = document.querySelector('.project-canvas');
+        const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+        const layers = JSON.parse(stage?.dataset.layerJson || '[]');
+        return canvas?.dataset.scenePreview === 'true' &&
+          canvas?.dataset.scenePreviewStatus === 'ready' &&
+          stage?.dataset.scenePreviewReadOnly === 'true' &&
+          layers.some((layer) => layer.source?.kind === 'asset' && layer.source.assetId === ${JSON.stringify(backgroundId)}) &&
+          layers.some((layer) => layer.source?.kind === 'character' && layer.source.characterId === ${JSON.stringify(characterId)});
+      })()`,
+      `${label} did not refresh the read-only main-canvas preview with the chosen resource IDs.`,
+    );
+    const preview = await readScenePreviewState(window);
+    assert(preview.active && preview.readOnly && preview.status === 'ready', `${label} made the main-canvas preview unavailable.`);
+    return preview;
+  };
+  const openPicker = async (kind) => {
+    const rowSelector = `[data-testid="scene-creation-${kind}-match"]`;
+    const pickerSelector = `[data-testid="scene-creation-${kind}-picker"]`;
+    const otherPickerSelector = `[data-testid="scene-creation-${kind === 'background' ? 'character' : 'background'}-picker"]`;
+    await assertMatchRow(
+      kind,
+      kind === 'background' ? sample.background.id : sample.character.id,
+      kind === 'background' ? sample.background.name : sample.character.name,
+    );
+    await clickWithMouseInput(window, `${rowSelector} .scene-creation-change-match`);
+    await waitForDom(
+      window,
+      `document.querySelector(${JSON.stringify(pickerSelector)}) && !document.querySelector(${JSON.stringify(otherPickerSelector)})`,
+      `The ${kind} refresh icon did not open only the matching resource selector.`,
+    );
+    await assertNoFormalMutation(`${kind} selector open`);
+    screenshotPaths[`${kind}Picker`] = await capture(
+      window,
+      `issue916-${kind}-candidate-picker.png`,
+    );
+    return { pickerSelector, rowSelector };
+  };
+  const cancelPicker = async (
+    kind,
+    pickerSelector,
+    expectedId,
+    expectedName,
+    expectedBackgroundId,
+    expectedCharacterId,
+  ) => {
+    await clickWithMouseInput(
+      window,
+      `${pickerSelector} .scene-creation-picker-heading button`,
+    );
+    await waitForDom(
+      window,
+      `!document.querySelector(${JSON.stringify(pickerSelector)}) && document.querySelector('[data-testid="scene-creation-${kind}-match"]')?.dataset.candidateId === ${JSON.stringify(expectedId)}`,
+      `Cancelling the ${kind} selector did not preserve its current resource.`,
+    );
+    await waitForSelectedPreview(
+      expectedBackgroundId,
+      expectedCharacterId,
+      `${kind} selector cancellation`,
+    );
+    await assertMatchRow(kind, expectedId, expectedName);
+    await assertNoFormalMutation(`${kind} selector cancellation`);
+  };
+  const selectCandidate = async (kind, pickerSelector, candidate) => {
+    const candidateSelector = `${pickerSelector} .scene-creation-candidate[data-candidate-id="${candidate.id}"]`;
+    await waitForDom(
+      window,
+      `(() => { const button = document.querySelector(${JSON.stringify(candidateSelector)}); return button instanceof HTMLButtonElement && !button.disabled; })()`,
+      `The legal ${kind} candidate ${candidate.name} did not become selectable.`,
+    );
+    await clickWithMouseInput(window, candidateSelector);
+    await waitForDom(
+      window,
+      `document.querySelector('[data-testid="scene-creation-${kind}-match"]')?.dataset.candidateId === ${JSON.stringify(candidate.id)} && document.querySelector('[data-testid="scene-creation-${kind}-match"]')?.dataset.candidateMatched === 'true'`,
+      `Selecting the ${kind} candidate did not update the matched resource ID.`,
+    );
+    await assertNoFormalMutation(`${kind} candidate selection`);
+  };
+
+  const initialBackground = await assertMatchRow(
+    'background',
+    sample.background.id,
+    sample.background.name,
+  );
+  const initialCharacter = await assertMatchRow(
+    'character',
+    sample.character.id,
+    sample.character.name,
+  );
+  assert(initialBackground.actionWidth >= 44 && initialCharacter.actionWidth >= 44, 'A match icon target is smaller than 44px.');
+
+  const background = await openPicker('background');
+  await cancelPicker(
+    'background',
+    background.pickerSelector,
+    sample.background.id,
+    sample.background.name,
+    sample.background.id,
+    sample.character.id,
+  );
+  const backgroundAgain = await openPicker('background');
+  await selectCandidate('background', backgroundAgain.pickerSelector, alternatives.background);
+  await assertMatchRow('background', alternatives.background.id, alternatives.background.name);
+  await waitForSelectedPreview(
+    alternatives.background.id,
+    sample.character.id,
+    'Background replacement',
+  );
+  screenshotPaths.backgroundReplacement = await capture(
+    window,
+    'issue916-background-replaced.png',
+  );
+
+  const character = await openPicker('character');
+  await cancelPicker(
+    'character',
+    character.pickerSelector,
+    sample.character.id,
+    sample.character.name,
+    alternatives.background.id,
+    sample.character.id,
+  );
+  const characterAgain = await openPicker('character');
+  await selectCandidate('character', characterAgain.pickerSelector, alternatives.character);
+  await assertMatchRow('character', alternatives.character.id, alternatives.character.name);
+  const preview = await waitForSelectedPreview(
+    alternatives.background.id,
+    alternatives.character.id,
+    'Character replacement',
+  );
+  screenshotPaths.characterReplacement = await capture(
+    window,
+    'issue916-character-replaced.png',
+  );
+  await assertNoFormalMutation('Match icon replacement flow');
+  return {
+    background: {
+      initialId: sample.background.id,
+      replacementId: alternatives.background.id,
+      cancelledAndRepeated: true,
+    },
+    character: {
+      initialId: sample.character.id,
+      replacementId: alternatives.character.id,
+      cancelledAndRepeated: true,
+    },
+    preview: {
+      active: preview.active,
+      readOnly: preview.readOnly,
+      status: preview.status,
+      layerIds: preview.layers.map((layer) => layer.source),
+    },
+    formalProjectAndHistoryUnchanged: true,
+    screenshots: screenshotPaths,
+  };
+}
+
 async function selectCharacterLayer(window, expectedLayerId) {
+  await waitForDom(
+    window,
+    `(() => {
+      const canvas = document.querySelector('.project-canvas');
+      const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+      const incomplete = JSON.parse(stage?.dataset.incompleteVisualLayerIds || '[]');
+      return Boolean(canvas && canvas.dataset.scenePreview !== 'true' && stage && !incomplete.includes(${JSON.stringify(expectedLayerId)}));
+    })()`,
+    'The Character visual did not finish loading on the production canvas before selection.',
+    12_000,
+  );
   const target = await window.webContents.executeJavaScript(`(() => {
     const stage = document.querySelector('[data-testid="project-canvas-stage"]');
     const layer = JSON.parse(stage?.dataset.layerJson || '[]')
@@ -477,22 +817,74 @@ async function selectCharacterLayer(window, expectedLayerId) {
       y: Math.round(rect.top + layer.y * scale),
     };
   })()`);
-  for (const type of ['mouseMove', 'mouseDown', 'mouseUp']) {
-    window.webContents.sendInputEvent({
-      type,
-      ...(type === 'mouseMove'
-        ? {}
-        : { button: 'left', clickCount: 1 }),
-      x: target.x,
-      y: target.y,
-    });
-  }
+  window.webContents.sendInputEvent({ type: 'mouseMove', x: target.x, y: target.y });
+  await delay(30);
+  window.webContents.sendInputEvent({
+    type: 'mouseDown',
+    button: 'left',
+    clickCount: 1,
+    x: target.x,
+    y: target.y,
+  });
+  await delay(40);
+  window.webContents.sendInputEvent({
+    type: 'mouseUp',
+    button: 'left',
+    clickCount: 1,
+    x: target.x,
+    y: target.y,
+  });
   await waitForDom(
     window,
     `document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.selectedLayerId === ${JSON.stringify(expectedLayerId)}`,
     'The Character layer could not be selected through the production canvas.',
     4_000,
-  );
+  ).catch(async (error) => {
+    let diagnostic;
+    try {
+      diagnostic = await window.webContents.executeJavaScript(`(() => {
+        const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+        const logicalStage = document.querySelector('[data-testid="canvas-logical-stage"]');
+        const viewport = document.querySelector('[data-testid="project-canvas-viewport"]');
+        const canvas = document.querySelector('.project-canvas');
+        const rect = logicalStage?.getBoundingClientRect();
+        const hitStack = document.elementsFromPoint(${target.x}, ${target.y}).slice(0, 6).map((node) => ({
+          tag: node.tagName,
+          className: typeof node.className === 'string' ? node.className : '',
+          testId: node.getAttribute('data-testid'),
+          pointerEvents: getComputedStyle(node).pointerEvents,
+        }));
+        return {
+          target: ${JSON.stringify(target)},
+          activeElement: document.activeElement?.getAttribute('data-testid') ?? document.activeElement?.tagName ?? null,
+          hitStack,
+          preview: canvas ? {
+            mode: canvas.dataset.scenePreview,
+            status: canvas.dataset.scenePreviewStatus,
+          } : null,
+          stage: stage ? {
+            selectedLayerId: stage.dataset.selectedLayerId,
+            previewReadOnly: stage.dataset.scenePreviewReadOnly,
+            directCanvasEditing: stage.dataset.directCanvasEditing,
+            interactionStatus: stage.dataset.interactionStatus,
+            incompleteVisualLayerIds: stage.dataset.incompleteVisualLayerIds,
+            renderedAssetIds: stage.dataset.renderedAssetIds,
+            displayScale: viewport?.dataset.displayScale,
+            temporalInspection: stage.dataset.temporalInspection,
+            logicalStageRect: rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null,
+            canvasRects: [...stage.querySelectorAll('canvas')].map((node) => {
+              const bounds = node.getBoundingClientRect();
+              return { className: node.className, width: node.width, height: node.height, left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom };
+            }),
+          } : null,
+        };
+      })()`);
+    } catch (diagnosticError) {
+      diagnostic = { error: String(diagnosticError) };
+    }
+    console.error('[issue854] Character selection diagnostic', diagnostic);
+    throw new Error(`${error.message} diagnostic=${JSON.stringify(diagnostic)}`);
+  });
   return target;
 }
 
@@ -521,6 +913,82 @@ async function dragCharacter(window, layerId, logicalDx) {
     x: end.x,
     y: end.y,
   });
+}
+
+async function toggleLayerFlipInInspector(window, layerId) {
+  const activeRightActivity = await window.webContents.executeJavaScript(
+    `document.querySelector('[data-testid="right-workspace"]')?.dataset.activeActivity ?? null`,
+  );
+  if (activeRightActivity !== 'properties') {
+    await clickWithMouseInput(window, '[data-testid="right-activity-rail-properties"]');
+  }
+  await waitForDom(
+    window,
+    `document.querySelector('[data-testid="right-workspace"]')?.dataset.activeActivity === 'properties'`,
+    'The Properties workspace did not open.',
+  );
+  await waitForDom(
+    window,
+    `(() => {
+      const panel = document.querySelector('[data-testid="layer-transform-panel"]');
+      const inputs = [...(panel?.querySelectorAll('form input:not([type="checkbox"])') ?? [])];
+      return panel?.dataset.selectedLayerId === ${JSON.stringify(layerId)} &&
+        document.querySelector('[data-testid="layer-transform-x"]')?.disabled === false &&
+        inputs.length > 0 &&
+        inputs.every((input) => input.value.trim().length > 0);
+    })()`,
+    'The selected Inspector layer did not finish initializing its transform draft.',
+  );
+  const beforeSubmit = await window.webContents.executeJavaScript(`(() => {
+    const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+    const flip = document.querySelector('[data-testid="layer-transform-panel"] .layer-transform-toggle-action');
+    if (!stage || !(flip instanceof HTMLButtonElement) || flip.disabled) {
+      throw new Error('The Inspector flip action is unavailable.');
+    }
+    const pressed = flip.getAttribute('aria-pressed');
+    if (pressed !== 'true' && pressed !== 'false') {
+      throw new Error('The Inspector flip action has no accessible pressed state.');
+    }
+    return { revision: Number(stage.dataset.projectRevision), flipX: pressed === 'true' };
+  })()`);
+  await window.webContents.executeJavaScript(`(() => {
+    const flip = document.querySelector('[data-testid="layer-transform-panel"] .layer-transform-toggle-action');
+    if (!(flip instanceof HTMLButtonElement) || flip.disabled) {
+      throw new Error('The Inspector flip action became unavailable.');
+    }
+    flip.click();
+  })()`);
+  await waitForDom(
+    window,
+    `Number(document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.projectRevision) === ${beforeSubmit.revision + 1} && document.querySelector('[data-testid="layer-transform-panel"] .layer-transform-toggle-action')?.getAttribute('aria-pressed') === ${JSON.stringify(String(!beforeSubmit.flipX))}`,
+    'The formal Inspector flip did not commit one Project revision.',
+  ).catch(async (error) => {
+    const diagnostic = await window.webContents.executeJavaScript(`(() => {
+      const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+      const canvas = document.querySelector('.project-canvas');
+      const flip = document.querySelector('[data-testid="layer-transform-panel"] .layer-transform-toggle-action');
+      const panel = document.querySelector('[data-testid="layer-transform-panel"]');
+      const history = document.querySelector('[data-testid="history-controls"]');
+      return {
+        revision: stage?.dataset.projectRevision ?? null,
+        scenePreview: canvas?.dataset.scenePreview ?? null,
+        scenePreviewStatus: canvas?.dataset.scenePreviewStatus ?? null,
+        selectedLayerId: stage?.dataset.selectedLayerId ?? null,
+        inspectorLayerId: panel?.dataset.selectedLayerId ?? null,
+        flipPressed: flip?.getAttribute('aria-pressed') ?? null,
+        flipDisabled: flip?.disabled ?? null,
+        transformStatus: panel?.querySelector('[data-testid="layer-transform-status"]')?.textContent?.trim() ?? null,
+        history: history ? { undoCount: history.dataset.undoCount, redoCount: history.dataset.redoCount } : null,
+        saveState: document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.saveState ?? null,
+      };
+    })()`);
+    const diagnosticScreenshot = await capture(window, 'rf04-stale-preview-flip-failure.png');
+    throw new Error(
+      `${error.message} before=${JSON.stringify(beforeSubmit)} state=${JSON.stringify(diagnostic)} screenshot=${diagnosticScreenshot}`,
+      { cause: error },
+    );
+  });
+  return { flipXBefore: beforeSubmit.flipX, flipXAfter: !beforeSubmit.flipX };
 }
 
 async function openQuickActions(window) {
@@ -801,17 +1269,16 @@ async function openStructuredCreation(window) {
 
 async function inspectRealSample(window, sample, shotName = sample.shotName) {
   await setSceneInput(window, sceneInput(sample, shotName));
-  await click(window, '[data-testid="scene-creation-inspect"]');
   await waitForDom(
     window,
-    `document.querySelectorAll('[data-testid="scene-creation-background-candidate"]').length === 1 && document.querySelectorAll('[data-testid="scene-creation-character-candidate"]').length === 1`,
-    'The exact-name real background and composite Character candidates did not render.',
+    `document.querySelector('[data-testid="scene-creation-background-match"]') && document.querySelector('[data-testid="scene-creation-character-match"]')`,
+    'The exact-name real background and composite Character did not auto-match.',
   );
   try {
     await waitForDom(
       window,
-      `![...document.querySelectorAll('[data-testid="scene-creation-background-candidate"], [data-testid="scene-creation-character-candidate"]')].some((button) => button.disabled)`,
-      'The real sample candidate thumbnails did not become ready.',
+      `document.querySelector('.project-canvas')?.dataset.scenePreview === 'true' && document.querySelector('.project-canvas')?.dataset.scenePreviewStatus === 'ready' && document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.scenePreviewReadOnly === 'true' && document.querySelector('[data-testid="scene-creation-confirm"]')?.disabled === false`,
+      'The real background and full composite Character did not render in the main Canvas.',
     );
   } catch (error) {
     const characterAssetIds = [
@@ -837,7 +1304,21 @@ async function inspectRealSample(window, sample, shotName = sample.shotName) {
       scenePanelVisible: Boolean(document.querySelector('[data-testid="scene-creation-panel"]')),
       input: document.querySelector('[data-testid="scene-creation-input"]')?.value ?? null,
       errorMessages: [...document.querySelectorAll('.scene-creation-error')].map((node) => node.textContent?.trim() ?? ''),
-      candidates: [...document.querySelectorAll('[data-testid="scene-creation-background-candidate"], [data-testid="scene-creation-character-candidate"]')].map((button) => ({
+      canvas: (() => {
+        const canvas = document.querySelector('.project-canvas');
+        const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+        return {
+          active: canvas?.dataset.scenePreview === 'true',
+          status: canvas?.dataset.scenePreviewStatus ?? null,
+          shotId: canvas?.dataset.scenePreviewShotId ?? null,
+          readOnly: stage?.dataset.scenePreviewReadOnly === 'true',
+          selectedLayerId: stage?.dataset.selectedLayerId ?? null,
+          incompleteVisualLayerIds: stage?.dataset.incompleteVisualLayerIds ?? null,
+          renderedAssetIds: stage?.dataset.renderedAssetIds ?? null,
+        };
+      })(),
+      confirmDisabled: document.querySelector('[data-testid="scene-creation-confirm"]')?.disabled ?? null,
+      candidates: [...document.querySelectorAll('[data-testid="scene-creation-background-match"], [data-testid="scene-creation-character-match"], [data-testid="scene-creation-background-candidate"], [data-testid="scene-creation-character-candidate"]')].map((button) => ({
         kind: button.dataset.candidateKind ?? null,
         id: button.dataset.candidateId ?? null,
         disabled: button.disabled,
@@ -848,9 +1329,16 @@ async function inspectRealSample(window, sample, shotName = sample.shotName) {
         })),
       })),
     }))()`);
+    const thumbnailReadSummary = thumbnailReads.map((response, index) => ({
+      assetId: probeAssets[index]?.id ?? null,
+      ok: response.ok,
+      status: response.status,
+      error: response.error ?? null,
+      dataUrlLength: response.dataUrl?.length ?? null,
+    }));
     await capture(window, 'candidate-thumbnail-read-failure.png');
     throw new Error(
-      `${error instanceof Error ? error.message : String(error)} UI=${JSON.stringify(diagnostics)} THUMBNAIL_READS=${JSON.stringify(thumbnailReads).replaceAll(sample.targetProjectRoot, '<isolated project>')}`,
+      `${error instanceof Error ? error.message : String(error)} UI=${JSON.stringify(diagnostics)} THUMBNAIL_READS=${JSON.stringify(thumbnailReadSummary)}`,
       { cause: error },
     );
   }
@@ -858,12 +1346,6 @@ async function inspectRealSample(window, sample, shotName = sample.shotName) {
 
 async function prepareRealPreview(window, sample, shotName = sample.shotName) {
   await inspectRealSample(window, sample, shotName);
-  await clickWithMouseInput(window, '[data-testid="scene-creation-preview-action"]');
-  await waitForDom(
-    window,
-    `document.querySelector('[data-testid="scene-creation-preview"]')?.dataset.previewStatus === 'ready' && document.querySelector('[data-testid="scene-creation-preview-image"]')?.naturalWidth > 0`,
-    'The real background and Character preview did not become ready.',
-  );
 }
 
 function projectResourceIdentity(project) {
@@ -951,6 +1433,7 @@ async function verifyStalePreview(window) {
   assert(existingShot && characterLayer, 'The isolated sample has no existing editable Character Shot.');
   await openProject(window, targetProjectRoot);
   await selectShot(window, existingShot.name);
+  await selectCharacterLayer(window, characterLayer.id);
   const beforeProjectEdit = await readUiState(window, characterLayer.id);
   assert(
     beforeProjectEdit.revision === 0 &&
@@ -968,37 +1451,87 @@ async function verifyStalePreview(window) {
   const previewState = await readUiState(window, characterLayer.id);
   assert(
     previewState.revision === beforeProjectEdit.revision &&
-      previewState.character?.x === beforeProjectEdit.character.x &&
       previewState.undoCount === beforeProjectEdit.undoCount &&
+      previewState.redoCount === beforeProjectEdit.redoCount &&
       previewState.saveState === beforeProjectEdit.saveState,
-    'Preparing the stale-preview scenario changed the Project or History.',
+    `Preparing the main-Canvas preview changed the Project or History: ${JSON.stringify({
+      before: {
+        revision: beforeProjectEdit.revision,
+        shotCount: beforeProjectEdit.shotCount,
+        undoCount: beforeProjectEdit.undoCount,
+        redoCount: beforeProjectEdit.redoCount,
+        saveState: beforeProjectEdit.saveState,
+      },
+      after: {
+        revision: previewState.revision,
+        undoCount: previewState.undoCount,
+        redoCount: previewState.redoCount,
+        saveState: previewState.saveState,
+        character: previewState.character,
+      },
+    })}`,
   );
   const previewScreenshot = await capture(window, 'rf04-stale-preview-before-edit.png');
 
-  await dragCharacter(window, characterLayer.id, 24);
+  const inspectorEdit = await toggleLayerFlipInInspector(window, characterLayer.id);
   await waitForDom(
     window,
-    `document.querySelector('[data-testid="scene-creation-panel"] [role="alert"]')?.textContent?.includes('预览已失效') && !document.querySelector('[data-testid="scene-creation-confirm"]')`,
-    'A formal canvas edit did not invalidate and remove the old preview confirmation.',
-  );
+    `document.querySelector('[data-testid="scene-creation-panel"] .scene-creation-stale')?.textContent?.includes('工程已变化') && document.querySelector('.project-canvas')?.dataset.scenePreview !== 'true' && document.querySelector('[data-testid="scene-creation-confirm"]')?.disabled === true`,
+    'A formal Inspector edit did not invalidate the stale main-Canvas preview.',
+  ).catch(async (error) => {
+    const diagnostic = await window.webContents.executeJavaScript(`(() => {
+      const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+      const canvas = document.querySelector('.project-canvas');
+      const scene = document.querySelector('[data-testid="scene-creation-panel"]');
+      const transform = document.querySelector('[data-testid="layer-transform-panel"]');
+      const xInput = document.querySelector('[data-testid="layer-transform-x"]');
+      const history = document.querySelector('[data-testid="history-controls"]');
+      return {
+        revision: stage?.dataset.projectRevision ?? null,
+        selectedLayerId: stage?.dataset.selectedLayerId ?? null,
+        scenePreview: canvas?.dataset.scenePreview ?? null,
+        scenePreviewStatus: canvas?.dataset.scenePreviewStatus ?? null,
+        staleText: scene?.querySelector('.scene-creation-stale')?.textContent?.trim() ?? null,
+        confirmDisabled: scene?.querySelector('[data-testid="scene-creation-confirm"]')?.disabled ?? null,
+        rightActivity: document.querySelector('[data-testid="right-workspace"]')?.dataset.activeActivity ?? null,
+        inspector: {
+          selectedLayerId: transform?.dataset.selectedLayerId ?? null,
+          xValue: xInput?.value ?? null,
+          xDisabled: xInput?.disabled ?? null,
+          status: transform?.querySelector('[role="status"]')?.textContent?.trim() ?? null,
+        },
+        history: history ? {
+          undoCount: history.dataset.undoCount,
+          redoCount: history.dataset.redoCount,
+        } : null,
+        saveState: document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.saveState ?? null,
+      };
+    })()`);
+    const diagnosticScreenshot = await capture(window, 'rf04-stale-preview-invalidation-failure.png');
+    throw new Error(
+      `${error.message} state=${JSON.stringify(diagnostic)} screenshot=${diagnosticScreenshot}`,
+      { cause: error },
+    );
+  });
   const afterProjectEdit = await readUiState(window, characterLayer.id);
   assert(
     afterProjectEdit.revision === beforeProjectEdit.revision + 1 &&
-      afterProjectEdit.character?.x !== beforeProjectEdit.character?.x &&
+      afterProjectEdit.character?.flipX === inspectorEdit.flipXAfter &&
+      afterProjectEdit.character?.flipX !== beforeProjectEdit.character?.flipX &&
       afterProjectEdit.saveState === 'dirty' &&
       afterProjectEdit.undoCount === beforeProjectEdit.undoCount + 1,
     `The formal canvas edit did not produce the expected single dirty History step: ${JSON.stringify({
       before: {
         revision: beforeProjectEdit.revision,
         shotCount: beforeProjectEdit.shotCount,
-        characterX: beforeProjectEdit.character?.x,
+        characterFlipX: beforeProjectEdit.character?.flipX,
         saveState: beforeProjectEdit.saveState,
         undoCount: beforeProjectEdit.undoCount,
       },
       after: {
         revision: afterProjectEdit.revision,
         shotCount: afterProjectEdit.shotCount,
-        characterX: afterProjectEdit.character?.x,
+        characterFlipX: afterProjectEdit.character?.flipX,
         saveState: afterProjectEdit.saveState,
         undoCount: afterProjectEdit.undoCount,
       },
@@ -1014,22 +1547,10 @@ async function verifyStalePreview(window) {
     'The unavailable stale confirm changed the Project after the real edit.',
   );
 
-  await clickWithMouseInput(window, '[data-testid="scene-creation-panel"] .scene-creation-stale button');
   await waitForDom(
     window,
-    `document.querySelector('[data-testid="scene-creation-panel"] .scene-creation-stale') === null && document.querySelector('[data-testid="scene-creation-preview-action"]')`,
-    'Rechecking the current Project did not recover from the stale preview.',
-  );
-  await waitForDom(
-    window,
-    `![...document.querySelectorAll('[data-testid="scene-creation-background-candidate"], [data-testid="scene-creation-character-candidate"]')].some((button) => button.disabled)`,
-    'Rechecked candidates did not become available.',
-  );
-  await clickWithMouseInput(window, '[data-testid="scene-creation-preview-action"]');
-  await waitForDom(
-    window,
-    `document.querySelector('[data-testid="scene-creation-preview"]')?.dataset.previewStatus === 'ready'`,
-    'A new preview could not be prepared after rechecking.',
+    `document.querySelector('[data-testid="scene-creation-panel"] .scene-creation-stale') === null && document.querySelector('[data-testid="scene-creation-background-match"]') && document.querySelector('[data-testid="scene-creation-character-match"]') && document.querySelector('.project-canvas')?.dataset.scenePreviewStatus === 'ready' && document.querySelector('[data-testid="scene-creation-confirm"]')?.disabled === false`,
+    'Automatic matching did not refresh the main Canvas after the Project revision changed.',
   );
   const afterRecovery = await readUiState(window, characterLayer.id);
   assert(
@@ -1037,7 +1558,7 @@ async function verifyStalePreview(window) {
       afterRecovery.undoCount === afterProjectEdit.undoCount &&
       afterRecovery.redoCount === afterProjectEdit.redoCount &&
       afterRecovery.saveState === afterProjectEdit.saveState,
-    'Rechecking or preparing a replacement preview changed the Project or History.',
+    'Automatic rematching or preparing a replacement preview changed the Project or History.',
   );
   const recoveredScreenshot = await capture(window, 'rf04-stale-preview-recovered.png');
   await saveProject(window);
@@ -1188,12 +1709,78 @@ async function run() {
   activeProjectRoot = primaryProjectRoot;
   const sample = prepareSampleProject(primaryProjectRoot, 'AC03 真实验收');
   assert(!sample.project.shots.some((shot) => shot.name === sample.shotName), 'The generated Shot name already exists.');
+  const matchAlternatives = addMatchReplacementCandidates(sample);
   windowRef = await waitForMainWindow();
   windowRef.setSize(1600, 1050);
   windowRef.show();
   windowRef.focus();
   windowRef.webContents.focus();
   await openProject(windowRef, sample.targetProjectRoot);
+  if (issue916Phase === 'B') {
+    await openStructuredCreation(windowRef);
+    const structuredInput = [
+      `镜头：${sample.shotName}`,
+      `背景：${sample.background.name}`,
+      `出场：${sample.character.name}`,
+    ].join('\n');
+    await setSceneInput(windowRef, structuredInput);
+    await waitForDom(
+      windowRef,
+      `document.querySelector('[data-testid="scene-creation-background-match"]')?.dataset.candidateId === ${JSON.stringify(sample.background.id)} && document.querySelector('[data-testid="scene-creation-character-match"]')?.dataset.candidateId === ${JSON.stringify(sample.character.id)}`,
+      'Phase B did not automatically select the unique legal resources.',
+    );
+    const beforeReplacement = await readUiState(windowRef);
+    assert(beforeReplacement.revision === 0, 'Phase B matching changed the Project revision.');
+    await waitForDom(
+      windowRef,
+      `(() => {
+        const images = [
+          document.querySelector('[data-testid="scene-creation-background-match"] img'),
+          document.querySelector('[data-testid="scene-creation-character-match"] img'),
+        ];
+        return images.every((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0);
+      })()`,
+      'Phase B match thumbnails did not finish rendering before the screenshot.',
+    );
+    await windowRef.webContents.executeJavaScript(
+      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    );
+    const uniqueMatchScreenshot = await capture(
+      windowRef,
+      'issue916-phase-b-unique-match.png',
+    );
+    const matchIconInteractions = await verifySceneMatchIconInteractions(
+      windowRef,
+      sample,
+      matchAlternatives,
+      { requireMainCanvasPreview: false },
+    );
+    const afterReplacement = await readUiState(windowRef);
+    assert(
+      afterReplacement.revision === beforeReplacement.revision &&
+        afterReplacement.shotCount === beforeReplacement.shotCount &&
+        afterReplacement.undoCount === beforeReplacement.undoCount &&
+        afterReplacement.redoCount === beforeReplacement.redoCount,
+      'Phase B match selection changed the formal Project or History.',
+    );
+    return {
+      issue: 916,
+      phase: 'B',
+      acceptance: 'ISSUE916_PHASE_B_AUTOMATCH_MATCH_REPLACEMENT_READ_ONLY',
+      passed: true,
+      codeHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+      generatedAt: new Date().toISOString(),
+      humanAcceptance: false,
+      structuredInputEntered: true,
+      matchIconInteractions,
+      formalProjectAndHistoryUnchanged: true,
+      screenshots: {
+        uniqueMatch: uniqueMatchScreenshot,
+        ...matchIconInteractions.screenshots,
+      },
+      receiptPath: '<isolated Phase B receipt>',
+    };
+  }
   const stalePreview = await verifyStalePreview(windowRef);
   console.log('[issue854] RF04 stale-preview path passed.');
   const doubleConfirm = await verifyDoubleConfirm(windowRef);
@@ -1212,33 +1799,55 @@ async function run() {
   ].join('\n');
   const clipboardPaste = await pasteSceneInput(windowRef, structuredInput);
   console.log('[issue854] Windows Ctrl+V into the scene input passed.');
-  await click(windowRef, '[data-testid="scene-creation-inspect"]');
   await waitForDom(
     windowRef,
-    `document.querySelectorAll('[data-testid="scene-creation-background-candidate"]').length === 1 && document.querySelectorAll('[data-testid="scene-creation-character-candidate"]').length === 1`,
-    'The exact-name real background and composite Character candidates did not render.',
-  );
-  await waitForDom(
-    windowRef,
-    `![...document.querySelectorAll('[data-testid="scene-creation-background-candidate"], [data-testid="scene-creation-character-candidate"]')].some((button) => button.disabled)`,
-    'The real sample candidate thumbnails did not become ready.',
+    `document.querySelector('[data-testid="scene-creation-background-match"]') && document.querySelector('[data-testid="scene-creation-character-match"]') && document.querySelector('.project-canvas')?.dataset.scenePreviewStatus === 'ready' && document.querySelector('[data-testid="scene-creation-confirm"]')?.disabled === false`,
+    'The exact-name resources did not auto-match and render in the main Canvas.',
   );
   const beforePreview = await readUiState(windowRef);
   assert(beforePreview.revision === 0, 'Candidate inspection changed the Project revision.');
   await capture(windowRef, 'scene-input-candidates.png');
-  await click(windowRef, '[data-testid="scene-creation-preview-action"]');
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="scene-creation-preview"]')?.dataset.previewStatus === 'ready' && document.querySelector('[data-testid="scene-creation-preview-image"]')?.naturalWidth > 0`,
-    'The real background and Character preview did not become ready.',
-  );
-  await windowRef.webContents.executeJavaScript(
-    `document.querySelector('[data-testid="scene-creation-preview"]')?.scrollIntoView({ block: 'end', behavior: 'instant' })`,
-  );
+  const canvasPreviewState = await windowRef.webContents.executeJavaScript(`(() => {
+    const canvas = document.querySelector('.project-canvas');
+    const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+    return {
+      active: canvas?.dataset.scenePreview === 'true',
+      status: canvas?.dataset.scenePreviewStatus ?? null,
+      previewShotId: canvas?.dataset.scenePreviewShotId ?? null,
+      readOnly: stage?.dataset.scenePreviewReadOnly === 'true',
+      directEditing: stage?.dataset.directCanvasEditing ?? null,
+      renderedTime: Number(stage?.dataset.renderedTimeMs),
+      timelineTime: Number(stage?.dataset.currentTimeMs),
+      layers: JSON.parse(stage?.dataset.layerJson || '[]'),
+    };
+  })()`);
+  assert(canvasPreviewState.active && canvasPreviewState.status === 'ready', 'The main Canvas does not show the automatic scene preview.');
+  assert(canvasPreviewState.readOnly && canvasPreviewState.directEditing === 'false', 'The temporary scene Canvas is not read-only.');
+  assert(canvasPreviewState.renderedTime === 0, 'The temporary scene Canvas is not rendered at the base shot time.');
+  assert(canvasPreviewState.layers.length === 2, 'The temporary Canvas preview does not contain exactly the background and composite Character layers.');
+  assert(canvasPreviewState.layers.some((layer) => layer.source?.kind === 'asset' && layer.source.assetId === sample.background.id), 'The main Canvas preview does not bind the selected background ID.');
+  assert(canvasPreviewState.layers.some((layer) => layer.source?.kind === 'character' && layer.source.characterId === sample.character.id), 'The main Canvas preview does not bind the selected Character ID.');
   await capture(windowRef, 'read-only-preview.png');
+  const matchIconInteractions = await verifySceneMatchIconInteractions(
+    windowRef,
+    sample,
+    matchAlternatives,
+  );
+  const selectedBackgroundId = matchAlternatives.background.id;
+  const selectedCharacterId = matchAlternatives.character.id;
+  const replacedPreviewState = await readScenePreviewState(windowRef);
+  assert(
+    replacedPreviewState.layers.some((layer) =>
+      layer.source?.kind === 'asset' && layer.source.assetId === selectedBackgroundId,
+    ) && replacedPreviewState.layers.some((layer) =>
+      layer.source?.kind === 'character' && layer.source.characterId === selectedCharacterId,
+    ),
+    'The replacement preview does not retain both explicitly chosen resource IDs.',
+  );
+  await capture(windowRef, 'read-only-preview-after-match-icon-replacement.png');
   const beforeConfirm = await readUiState(windowRef);
   assert(beforeConfirm.revision === 0, 'The prepared preview changed the Project revision.');
-  await click(windowRef, '[data-testid="scene-creation-confirm"]');
+  await clickWithMouseInput(windowRef, '[data-testid="scene-creation-confirm"]');
   await waitForDom(
     windowRef,
     `!document.querySelector('[data-testid="scene-creation-panel"]') && document.querySelectorAll('.shot-list-item').length === ${sample.project.shots.length + 1} && document.querySelector('.shot-list-item-selected strong')?.textContent?.trim() === ${JSON.stringify(sample.shotName)}`,
@@ -1247,6 +1856,14 @@ async function run() {
   const created = await readUiState(windowRef);
   assert(created.revision === 1, 'Confirmation did not create exactly one Project revision.');
   assert(created.character, 'The new Shot does not expose its Character layer on the canvas.');
+  assert(
+    created.character.source?.kind === 'character' &&
+      created.character.source.characterId === selectedCharacterId &&
+      created.layers.some((layer) =>
+        layer.source?.kind === 'asset' && layer.source.assetId === selectedBackgroundId,
+      ),
+    'Formal creation did not bind the two resources selected through the match icons.',
+  );
   const generatedCharacterLayerId = created.character.id;
   const initialCharacterPosition = {
     x: created.character.x,
@@ -1322,8 +1939,13 @@ async function run() {
   const reopened = await readUiState(windowRef, generatedCharacterLayerId);
   assert(reopened.revision === 0, 'A reopened Project inherited the prior session revision.');
   assert(reopened.character?.x === moved.character.x, 'The reopened Shot lost the saved Character position.');
-  assert(reopened.imageIds.includes(sample.background.id), 'The reopened canvas did not render the selected background Asset.');
-  const bodyAssetId = sample.character.bodyAssetId;
+  assert(reopened.imageIds.includes(selectedBackgroundId), 'The reopened canvas did not render the selected background Asset.');
+  assert(
+    reopened.character?.source?.kind === 'character' &&
+      reopened.character.source.characterId === selectedCharacterId,
+    'The reopened Shot did not retain the Character selected through its match icon.',
+  );
+  const bodyAssetId = matchAlternatives.character.bodyAssetId;
   assert(reopened.imageIds.includes(bodyAssetId), 'The reopened canvas did not render the composite Character body Asset.');
   const reopenedScreenshot = await capture(windowRef, 'reopened-shot.png');
 
@@ -1389,12 +2011,15 @@ async function run() {
       stalePreview,
       doubleConfirm,
     },
+    matchIconInteractions,
     project: {
       id: sample.project.id,
       root: '<isolated acceptance project>',
       sourceProjectJsonSha256: sample.sourceProjectHashBefore,
-      backgroundAssetId: sample.background.id,
-      characterId: sample.character.id,
+      backgroundAssetId: selectedBackgroundId,
+      characterId: selectedCharacterId,
+      originalBackgroundAssetId: sample.background.id,
+      originalCharacterId: sample.character.id,
       characterBodyAssetId: bodyAssetId,
       initialShotCount: sample.project.shots.length,
       committedShotCount: finalProject.shots.length,
@@ -1427,7 +2052,7 @@ async function run() {
       reopenedCharacterPosition: reopened.character.x,
       editableAfterReopen: editedAfterReopen.character.x !== reopened.character.x,
       secondEditSavedPosition: finalScene.layer.x,
-      renderedBackgroundAfterReopen: reopened.imageIds.includes(sample.background.id),
+      renderedBackgroundAfterReopen: reopened.imageIds.includes(selectedBackgroundId),
       renderedCharacterBodyAfterReopen: reopened.imageIds.includes(bodyAssetId),
       existingManualFlow,
     },

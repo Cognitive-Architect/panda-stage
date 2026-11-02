@@ -2,6 +2,7 @@ import {
   SceneCreationService,
   type SceneCreationResult,
   type SceneCreationSelection,
+  type Shot,
 } from '../../../domain';
 import type { ShotStore } from '../../stores/shotStore';
 import type { EditorProjectStore } from '../../stores/EditorProjectStore';
@@ -22,30 +23,72 @@ export interface CreateSceneFromStructuredInputOptions {
   service?: SceneCreationService;
 }
 
+export interface SceneCreationDraft {
+  rawInput: string;
+  backgroundAssetId: string | null;
+  characterId: string | null;
+}
+
+export const EMPTY_SCENE_CREATION_DRAFT: SceneCreationDraft = {
+  rawInput: '',
+  backgroundAssetId: null,
+  characterId: null,
+};
+
 export interface SceneCreationPreviewPlan {
-  identity: {
-    projectRoot: string;
-    projectId: string;
-    projectInstanceId: number | null;
-    revision: number;
-    projectFingerprint: string;
-  };
+  identity: SceneCreationPreviewIdentity;
   result: SceneCreationResult;
+}
+
+export interface SceneCreationPreviewIdentity {
+  projectRoot: string;
+  projectId: string;
+  projectInstanceId: number | null;
+  revision: number;
+  projectFingerprint: string;
+}
+
+/** Renderer-only scene view data passed to the existing CanvasStage. */
+export interface SceneCreationCanvasPreview {
+  identity: SceneCreationPreviewIdentity;
+  shot: Shot;
+}
+
+export type SceneCreationCanvasPreviewStatus =
+  | 'loading'
+  | 'ready'
+  | 'unavailable';
+
+export function toSceneCreationCanvasPreview(
+  plan: SceneCreationPreviewPlan,
+): SceneCreationCanvasPreview {
+  const shot = plan.result.project.shots.find(
+    (candidate) => candidate.id === plan.result.shotId,
+  );
+  if (!shot) throw new Error('Preview shot is missing from the scene result.');
+  return { identity: plan.identity, shot };
+}
+
+export function isSceneCreationPreviewIdentityCurrent(
+  identity: SceneCreationPreviewIdentity,
+  editorStore: EditorProjectStore,
+): boolean {
+  const current = editorStore.getSnapshot();
+  return Boolean(
+    current &&
+      current.projectRoot === identity.projectRoot &&
+      current.project.id === identity.projectId &&
+      current.revision === identity.revision &&
+      editorStore.getProjectInstanceId() === identity.projectInstanceId &&
+      JSON.stringify(current.project) === identity.projectFingerprint,
+  );
 }
 
 export function isSceneCreationPreviewCurrent(
   plan: SceneCreationPreviewPlan,
   editorStore: EditorProjectStore,
 ): boolean {
-  const current = editorStore.getSnapshot();
-  return Boolean(
-    current &&
-      current.projectRoot === plan.identity.projectRoot &&
-      current.project.id === plan.identity.projectId &&
-      current.revision === plan.identity.revision &&
-      editorStore.getProjectInstanceId() === plan.identity.projectInstanceId &&
-      JSON.stringify(current.project) === plan.identity.projectFingerprint,
-  );
+  return isSceneCreationPreviewIdentityCurrent(plan.identity, editorStore);
 }
 
 /** Build a read-only preview from the active project and capture its identity. */

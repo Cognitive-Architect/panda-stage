@@ -2,6 +2,10 @@ import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { ProjectRecoveryPanel } from '../features/recovery/ProjectRecoveryPanel';
 import { ResourceActivityDock } from './ResourceActivityDock';
 import type { ResourceActivity } from './ResourceActivityDock';
+import type {
+  SceneCreationCanvasPreview,
+  SceneCreationCanvasPreviewStatus,
+} from '../features/shots/createSceneFromStructuredInput';
 import { LegacyCompatibilityActivity } from './LegacyCompatibilityActivity';
 import type { EditorShellLayoutMode } from './adaptiveEditorShell';
 
@@ -13,6 +17,12 @@ export interface LeftWorkspaceProps {
   onDrawerOpenChange?(open: boolean): void;
   activeActivity?: ResourceActivity;
   onActiveActivityChange?(activity: ResourceActivity): void;
+  projectSessionIdentity?: string;
+  onSceneBackgroundImportComplete?(importedAssetIds: readonly string[]): string | null;
+  sceneCanvasPreviewStatus?: SceneCreationCanvasPreviewStatus | null;
+  onSceneCanvasPreviewChange?: (
+    preview: SceneCreationCanvasPreview | null,
+  ) => void;
   onOpenRecentProject(
     projectRoot: string,
     expectedProjectId: string,
@@ -27,6 +37,10 @@ export function LeftWorkspace({
   onDrawerOpenChange,
   activeActivity,
   onActiveActivityChange,
+  projectSessionIdentity,
+  onSceneBackgroundImportComplete,
+  sceneCanvasPreviewStatus,
+  onSceneCanvasPreviewChange,
   onOpenRecentProject,
 }: LeftWorkspaceProps): React.JSX.Element {
   const projectUtilities = (
@@ -60,6 +74,10 @@ export function LeftWorkspace({
         key={`resource:${projectSnapshot.projectRoot}`}
         onActiveActivityChange={onActiveActivityChange}
         onDrawerOpenChange={onDrawerOpenChange}
+        projectSessionIdentity={projectSessionIdentity}
+        onSceneBackgroundImportComplete={onSceneBackgroundImportComplete}
+        sceneCanvasPreviewStatus={sceneCanvasPreviewStatus}
+        onSceneCanvasPreviewChange={onSceneCanvasPreviewChange}
         presentation={shellMode === 'landscape' ? 'landscape' : 'default'}
         snapshot={projectSnapshot}
       />

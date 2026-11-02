@@ -103,6 +103,7 @@ function requiredField(
     throw new SceneCreationError(
       'MISSING_FIELD',
       `输入缺少“${field}”字段。`,
+      { field },
     );
   }
   return value;
@@ -212,7 +213,8 @@ function characterCandidateError(
 }
 
 function selectCandidate<T extends Asset | Character>(
-  candidates: SceneCreationCandidate<T>[],
+  namedCandidates: SceneCreationCandidate<T>[],
+  availableCandidates: SceneCreationCandidate<T>[],
   selectionId: string | undefined,
   kind: 'background' | 'character',
   name: string,
@@ -221,6 +223,7 @@ function selectCandidate<T extends Asset | Character>(
     kind === 'background' ? 'BACKGROUND_NOT_FOUND' : 'CHARACTER_NOT_FOUND';
   const ambiguousCode =
     kind === 'background' ? 'BACKGROUND_AMBIGUOUS' : 'CHARACTER_AMBIGUOUS';
+  const candidates = selectionId ? availableCandidates : namedCandidates;
   if (candidates.length === 0) {
     throw new SceneCreationError(
       notFoundCode,
@@ -253,7 +256,7 @@ function selectCandidate<T extends Asset | Character>(
         : 'CHARACTER_ASSET_UNAVAILABLE');
     throw new SceneCreationError(
       code,
-      candidateError(code, name),
+      candidateError(code, selected.value.name),
     );
   }
   return selected.value;
@@ -276,32 +279,71 @@ export class SceneCreationService {
     const input = parseStructuredSceneInput(rawInput);
     return {
       input,
-      backgroundCandidates: project.assets
-        .filter((asset) => asset.name === input.backgroundName)
-        .map((asset): SceneCreationCandidate<Asset> => {
-          const errorCode =
-            asset.kind !== 'image' ||
-            (asset.kind === 'image' &&
-              (asset.usage !== 'background' || asset.metadata?.status === 'error'))
-              ? 'BACKGROUND_NOT_USABLE'
-              : undefined;
-          return {
-            value: asset,
-            selectable: !errorCode,
-            ...(errorCode ? { errorCode } : {}),
-          };
-        }),
-      characterCandidates: project.characters
-        .filter((character) => character.name === input.characterName)
-        .map((character): SceneCreationCandidate<Character> => {
-          const errorCode = characterCandidateError(project, character);
-          return {
-            value: character,
-            selectable: !errorCode,
-            ...(errorCode ? { errorCode } : {}),
-          };
-        }),
+      backgroundCandidates: this.listBackgroundCandidates(project)
+        .filter((candidate) => candidate.value.name === input.backgroundName),
+      characterCandidates: this.listCharacterCandidates(project)
+        .filter((candidate) => candidate.value.name === input.characterName),
     };
+  }
+
+  suggestUniqueShotName(projectInput: Project, rawName: string): string {
+    const project = ProjectSchema.parse(projectInput);
+    const baseName = rawName.trim();
+    for (let suffix = 2; suffix < 10_000; suffix += 1) {
+      const candidate = `${baseName} ${suffix}`;
+      try {
+        this.shotService.create(project, {
+          name: candidate,
+          durationMs: 3_000,
+        });
+        return candidate;
+      } catch (error) {
+        if (
+          error instanceof ShotServiceError &&
+          error.code === 'DUPLICATE_SHOT_NAME'
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw new SceneCreationError(
+      'SHOT_NAME_CONFLICT',
+      `无法为“${baseName}”生成可用的镜头名称。`,
+    );
+  }
+
+  listBackgroundCandidates(
+    projectInput: Project,
+  ): SceneCreationCandidate<Asset>[] {
+    const project = ProjectSchema.parse(projectInput);
+    return project.assets.map((asset): SceneCreationCandidate<Asset> => {
+      const errorCode =
+        asset.kind !== 'image' ||
+        (asset.kind === 'image' &&
+          (asset.usage !== 'background' || asset.metadata?.status === 'error'))
+          ? 'BACKGROUND_NOT_USABLE'
+          : undefined;
+      return {
+        value: asset,
+        selectable: !errorCode,
+        ...(errorCode ? { errorCode } : {}),
+      };
+    });
+  }
+
+  listCharacterCandidates(
+    projectInput: Project,
+  ): SceneCreationCandidate<Character>[] {
+    const project = ProjectSchema.parse(projectInput);
+    return project.characters.map((character) => {
+      const errorCode = characterCandidateError(project, character);
+      return {
+        value: character,
+        selectable: !errorCode,
+        ...(errorCode ? { errorCode } : {}),
+      };
+    });
   }
 
   create(
@@ -313,6 +355,7 @@ export class SceneCreationService {
     const resolution = this.resolve(project, rawInput);
     const backgroundCandidate = selectCandidate(
       resolution.backgroundCandidates,
+      this.listBackgroundCandidates(project),
       selection.backgroundAssetId,
       'background',
       resolution.input.backgroundName,
@@ -326,6 +369,7 @@ export class SceneCreationService {
     const background = backgroundCandidate as ImageAsset;
     const character = selectCandidate(
       resolution.characterCandidates,
+      this.listCharacterCandidates(project),
       selection.characterId,
       'character',
       resolution.input.characterName,

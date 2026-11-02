@@ -33,12 +33,14 @@ async function projectRoot(): Promise<string> {
 
 class FixtureThumbnailGenerator implements ThumbnailGenerator {
   calls = 0;
+  outputPaths: string[] = [];
 
   async generate(
     _sourcePath: string,
     outputPath: string,
   ): Promise<void> {
     this.calls += 1;
+    this.outputPaths.push(outputPath);
     await copyFile(fixture, outputPath);
   }
 }
@@ -88,6 +90,27 @@ describe('thumbnail cache services', () => {
     expect(repaired.cacheHit).toBe(false);
     expect(rebuilt.cacheHit).toBe(false);
     expect(generator.calls).toBe(3);
+  });
+
+  it('uses a short temporary filename independent of the cache hash', async () => {
+    const root = await projectRoot();
+    const cache = new CacheService();
+    const generator = new FixtureThumbnailGenerator();
+    const service = new ThumbnailService(cache, generator);
+    const hash = 'e'.repeat(64);
+
+    await service.ensureThumbnail({
+      projectRoot: root,
+      sourcePath: fixture,
+      sha256: hash,
+      width: 16,
+      height: 12,
+    });
+
+    const temporaryName = path.basename(generator.outputPaths[0]!);
+    expect(temporaryName).toMatch(/^\.[0-9a-f-]+\.tmp\.png$/u);
+    expect(temporaryName.length).toBeLessThan(64);
+    expect(temporaryName).not.toContain(hash);
   });
 
   it('cleans temporary files when an atomic cache commit fails', async () => {

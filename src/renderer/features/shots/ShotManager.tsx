@@ -11,6 +11,11 @@ import { SceneCreationPanel } from './SceneCreationPanel';
 import { ShotEditor } from './ShotEditor';
 import { nextAvailableShotName, ShotList } from './ShotList';
 import { ShotQuickActions } from './ShotQuickActions';
+import type {
+  SceneCreationCanvasPreview,
+  SceneCreationCanvasPreviewStatus,
+  SceneCreationDraft,
+} from './createSceneFromStructuredInput';
 
 export type ShotWorkspaceView = 'list' | 'create' | 'scene';
 export type ShotManagerPresentation = 'default' | 'landscape';
@@ -26,6 +31,15 @@ export interface ShotManagerProps {
   presentation?: ShotManagerPresentation;
   /** Presentation-only seam for the selected Shot detail surface. */
   shotEditorPresentation?: ShotEditorPresentation;
+  sceneCreationDraft?: SceneCreationDraft;
+  onSceneCreationDraftChange?: (draft: SceneCreationDraft) => void;
+  sceneCanvasPreviewStatus?: SceneCreationCanvasPreviewStatus | null;
+  scenePreviewActive?: boolean;
+  onSceneCanvasPreviewChange?: (
+    preview: SceneCreationCanvasPreview | null,
+  ) => void;
+  onSceneNavigateToAssets?: () => void;
+  onSceneNavigateToCharacters?: () => void;
 }
 
 export function ShotManager({
@@ -35,6 +49,13 @@ export function ShotManager({
   hideHeading = false,
   presentation = 'default',
   shotEditorPresentation = 'default',
+  sceneCreationDraft,
+  onSceneCreationDraftChange,
+  sceneCanvasPreviewStatus,
+  scenePreviewActive,
+  onSceneCanvasPreviewChange,
+  onSceneNavigateToAssets,
+  onSceneNavigateToCharacters,
 }: ShotManagerProps): React.JSX.Element {
   const selectedShotId = useSyncExternalStore(
     shotStore.subscribe,
@@ -140,6 +161,13 @@ export function ShotManager({
       ) : view === 'scene' ? (
         <SceneCreationPanel
           onBack={() => onViewChange('list')}
+          draft={sceneCreationDraft}
+          onDraftChange={onSceneCreationDraftChange}
+          canvasPreviewStatus={sceneCanvasPreviewStatus}
+          onCanvasPreviewChange={onSceneCanvasPreviewChange}
+          onNavigateToAssets={onSceneNavigateToAssets}
+          onNavigateToCharacters={onSceneNavigateToCharacters}
+          previewActive={scenePreviewActive}
           snapshot={snapshot}
         />
       ) : (
