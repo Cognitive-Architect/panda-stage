@@ -20,6 +20,7 @@ import {
   CharacterV9Schema,
   CharacterV10Schema,
   CharacterV11Schema,
+  CharacterV14Schema,
   CharacterV6Schema,
   VoiceProfileSchema,
 } from './character';
@@ -28,6 +29,7 @@ import type { Layer, LayerV3, LayerV4 } from './layer';
 import { LayerSchema } from './layer';
 import {
   ShotSchema,
+  ShotV14Schema,
   ShotV2Schema,
   ShotV3Schema,
   ShotV4Schema,
@@ -83,10 +85,10 @@ const ProjectV12DataSchema = z
     height: z.literal(PROJECT_HEIGHT),
     fps: z.literal(PROJECT_FPS),
     assets: z.array(AssetV12Schema),
-    characters: z.array(CharacterSchema),
+    characters: z.array(CharacterV14Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
-    shots: z.array(ShotSchema),
+    shots: z.array(ShotV14Schema),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
   })
@@ -96,6 +98,13 @@ const ProjectV12DataSchema = z
 export const ProjectV13Schema = ProjectV12DataSchema.extend({
   schemaVersion: z.literal(13),
   assets: z.array(AssetSchema),
+});
+
+/** Strict persisted v14 envelope, before Adaptive Parts Characters. */
+export const ProjectV14Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(14),
+  characters: z.array(CharacterV14Schema),
+  shots: z.array(ShotV14Schema),
 });
 
 export const ProjectV1Schema = z
@@ -462,7 +471,7 @@ export function migrateFormalProject(input: unknown): unknown {
 }
 
 // Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
-// Persisted migration (v0-v13 -> v14) is owned exclusively by `migrateProject`
+// Persisted migration (v0-v14 -> v15) is owned exclusively by `migrateProject`
 // in `../migrations`; this schema must never perform legacy migration.
 export const ProjectSchema = ProjectDataSchema.superRefine(
   validateProjectReferences,

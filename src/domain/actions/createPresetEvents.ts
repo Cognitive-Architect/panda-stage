@@ -258,6 +258,7 @@ export function createPresetEvents(
         throw new Error('找不到该图层所属的角色。');
       }
       if (
+        character.mode === 'adaptive-parts' ||
         !character.expressions.some(
           (expression) => expression.id === expressionId,
         )

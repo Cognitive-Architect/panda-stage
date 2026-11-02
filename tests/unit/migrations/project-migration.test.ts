@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../../helpers/characterAssertions';
 import { describe, expect, it } from 'vitest';
 import {
   PROJECT_SCHEMA_VERSION,
@@ -283,7 +284,7 @@ describe('project migration framework', () => {
 
   it('migrates strict v8 composites to v13 with default part transforms and intensity', () => {
     const current = migrateProject(exampleProject);
-    const sourceCharacter = current.characters[0]!;
+    const sourceCharacter = asExpressionCharacter(current.characters[0]!);
     const composite = ProjectSchema.parse({
       ...current,
       characters: [
@@ -295,7 +296,7 @@ describe('project migration framework', () => {
         },
       ],
     });
-    const currentCharacter = composite.characters[0]!;
+    const currentCharacter = asExpressionCharacter(composite.characters[0]!);
     if (currentCharacter.mode !== 'composite') {
       throw new Error('Expected the v8 fixture to be composite.');
     }
@@ -362,7 +363,7 @@ describe('project migration framework', () => {
 
   it('explicitly migrates v9 Head settings to v13 with defaults for new fields', () => {
     const current = migrateProject(exampleProject);
-    const sourceCharacter = current.characters[0]!;
+    const sourceCharacter = asExpressionCharacter(current.characters[0]!);
     const composite = ProjectSchema.parse({
       ...current,
       characters: [
@@ -384,7 +385,7 @@ describe('project migration framework', () => {
       bodyPlacement: _bodyPlacement,
       talkingHeadMotionIntensityPercent: _oldValue,
       ...currentCharacterV9
-    } = composite.characters[0]! as Extract<
+    } = asExpressionCharacter(composite.characters[0]!) as Extract<
         (typeof composite.characters)[number],
         { mode: 'composite' }
       >;
@@ -440,7 +441,7 @@ describe('project migration framework', () => {
       ),
     );
 
-    const migratedComposite = migrated.characters[0]!;
+    const migratedComposite = asExpressionCharacter(migrated.characters[0]!);
     if (migratedComposite.mode !== 'composite') {
       throw new Error('Expected the migrated Character to remain composite.');
     }
@@ -474,7 +475,7 @@ describe('project migration framework', () => {
 
   it('explicitly migrates v10 Head/Face transforms while preserving intensity and pivot', () => {
     const current = migrateProject(exampleProject);
-    const sourceCharacter = current.characters[0]!;
+    const sourceCharacter = asExpressionCharacter(current.characters[0]!);
     const currentWithTransforms = ProjectSchema.parse({
       ...current,
       characters: [
@@ -504,7 +505,7 @@ describe('project migration framework', () => {
         },
       ],
     });
-    const currentCharacter = currentWithTransforms.characters[0]!;
+    const currentCharacter = asExpressionCharacter(currentWithTransforms.characters[0]!);
     if (currentCharacter.mode !== 'composite' || !currentCharacter.head) {
       throw new Error('Expected a v10 composite with Head.');
     }
@@ -591,7 +592,7 @@ describe('project migration framework', () => {
   it('migrates a formal v1 project to the current schema with character defaults and explicit background', () => {
     const snapshot = structuredClone(exampleProject);
     const migrated = migrateProject(exampleProject);
-    const character = migrated.characters[0]!;
+    const character = asExpressionCharacter(migrated.characters[0]!);
 
     expect(exampleProject).toEqual(snapshot);
     expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
@@ -625,13 +626,13 @@ describe('project migration framework', () => {
     };
     const snapshot = structuredClone(version6);
     const migrated = migrateProject(version6);
-    const character = migrated.characters[0]!;
+    const character = asExpressionCharacter(migrated.characters[0]!);
 
     expect(version6).toEqual(snapshot);
     expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(character.mode).toBe('single-image');
     expect(character.baseAssetId).toBe(
-      current.characters[0]!.baseAssetId,
+      asExpressionCharacter(current.characters[0]!).baseAssetId,
     );
     expect('bodyAssetId' in character).toBe(false);
     expect('facePlacement' in character).toBe(false);
@@ -689,7 +690,7 @@ describe('project migration framework', () => {
               name: 'background sticker',
               source: {
                 kind: 'asset' as const,
-                assetId: current.characters[0]!.baseAssetId,
+                assetId: asExpressionCharacter(current.characters[0]!).baseAssetId,
               },
               x: 960,
               y: 540,

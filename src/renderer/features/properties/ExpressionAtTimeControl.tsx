@@ -33,7 +33,9 @@ export function ExpressionAtTimeControl({
   const character = characterId
     ? project.characters.find((candidate) => candidate.id === characterId)
     : null;
-  const expressions = character?.expressions ?? [];
+  const expressions = character && character.mode !== 'adaptive-parts'
+    ? character.expressions
+    : [];
   const timeMs = resolveTimelineFrameTime(currentTimeMs, shot.durationMs);
   const validTime =
     Number.isFinite(currentTimeMs) &&
@@ -79,7 +81,7 @@ export function ExpressionAtTimeControl({
     return () => { active = false; };
   }, [assetKeys, projectRoot]);
 
-  if (!character) return null;
+  if (!character || character.mode === 'adaptive-parts') return null;
 
   const apply = (expressionId: string): void => {
     const result = expressionAuthoringStore.setAtCurrentTime(expressionId);

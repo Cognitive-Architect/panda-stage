@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { describe, expect, it } from 'vitest';
 import {
   PROJECT_SCHEMA_VERSION,
@@ -10,7 +11,7 @@ import { buildProject, IDS } from './domain/testProject';
 
 function compositeProject() {
   const project = buildProject();
-  const character = project.characters[0]!;
+  const character = asExpressionCharacter(project.characters[0]!);
   return ProjectSchema.parse({
     ...project,
     characters: [
@@ -36,7 +37,7 @@ function compositeProject() {
 describe('BFM-S01 Character schema', () => {
   it('persists a composite body and one shared face placement without changing baseAssetId', () => {
     const project = compositeProject();
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
 
     expect(project.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(character).toMatchObject({
@@ -59,7 +60,7 @@ describe('BFM-S01 Character schema', () => {
 
   it('rejects invalid mode/placement combinations and dangling Body assets', () => {
     const project = buildProject();
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
 
     expect(
       ProjectSchema.safeParse({
@@ -111,7 +112,7 @@ describe('BFM-S01 Character schema', () => {
 
   it('requires a valid Character-local Head only on composite Characters', () => {
     const project = buildProject();
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
     const validHead = {
       assetId: IDS.assetChar2,
       placement: { offsetX: 4, offsetY: -9, scale: 0.75 },
@@ -215,7 +216,7 @@ describe('BFM-S01 Character schema', () => {
 
   it('defaults static transforms and bounds Face/Head rotation to −180°..180°', () => {
     const project = compositeProject();
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
     if (character.mode !== 'composite' || !character.head) {
       throw new Error('Expected a headed composite Character.');
     }
@@ -263,7 +264,7 @@ describe('BFM-S01 Character schema', () => {
     const project = buildProject();
     const { animations: _animations, ...legacyProject } = project;
     void _animations;
-    const { mode, ...historicalCharacter } = project.characters[0]!;
+    const { mode, ...historicalCharacter } = asExpressionCharacter(project.characters[0]!);
     void mode;
     const v6 = {
       ...legacyProject,

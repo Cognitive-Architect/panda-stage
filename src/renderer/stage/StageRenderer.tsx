@@ -260,6 +260,8 @@ function StagePartImages({
         offsetX={render.offsetX}
         offsetY={render.offsetY}
         rotation={render.rotationDeg}
+        skewX={render.skewX ?? 0}
+        skewY={render.skewY ?? 0}
         scaleX={render.scaleX}
         scaleY={render.scaleY}
         width={render.width}
@@ -611,7 +613,10 @@ export function StageRenderer({
                 y={render.y}
               >
                 <StagePartImages
-                  composite={layer.visual.kind === 'composite-character'}
+                  composite={
+                    layer.visual.kind === 'composite-character' ||
+                    layer.visual.kind === 'adaptive-parts-character'
+                  }
                   headGroup={layer.visual.headGroup}
                   images={imageState.images}
                   ownerLayerId={layer.id}

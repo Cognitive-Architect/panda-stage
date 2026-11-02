@@ -58,7 +58,7 @@ function assetContentFingerprint(project: Project, assetId: string) {
 
 function unresolvedFingerprint(project: Project, shot: Shot): string {
   return JSON.stringify({
-    version: 2,
+    version: 3,
     state: 'unresolved-visual',
     stage: { width: project.width, height: project.height },
     backgroundLayerId: shot.backgroundLayerId,
@@ -70,18 +70,22 @@ function unresolvedFingerprint(project: Project, shot: Shot): string {
             (candidate) => candidate.id === characterSource.characterId,
           )
         : undefined;
+      const expressionCharacter =
+        character && character.mode !== 'adaptive-parts' ? character : undefined;
       const expression = characterSource
-        ? character?.expressions.find(
+        ? expressionCharacter?.expressions.find(
             (candidate) => candidate.id === characterSource.expressionId,
           ) ??
-          character?.expressions.find(
-            (candidate) => candidate.id === character.defaultExpressionId,
+          expressionCharacter?.expressions.find(
+            (candidate) => candidate.id === expressionCharacter.defaultExpressionId,
           )
         : undefined;
       const assetIds =
         layer.source.kind === 'asset'
           ? [layer.source.assetId]
-          : character?.mode === 'composite'
+          : character?.mode === 'adaptive-parts'
+            ? character.parts.map((part) => part.assetId)
+            : character?.mode === 'composite'
             ? [character.bodyAssetId, expression?.assetId].filter(
                 (assetId): assetId is string => Boolean(assetId),
               )
@@ -90,7 +94,9 @@ function unresolvedFingerprint(project: Project, shot: Shot): string {
               : [];
       return {
         kind:
-          character?.mode === 'composite'
+          character?.mode === 'adaptive-parts'
+            ? 'adaptive-parts-character'
+            : character?.mode === 'composite'
             ? 'composite-character'
             : character
               ? 'single-image-character'
@@ -102,6 +108,20 @@ function unresolvedFingerprint(project: Project, shot: Shot): string {
         ),
         facePlacement:
           character?.mode === 'composite' ? character.facePlacement : null,
+        adaptiveParts:
+          character?.mode === 'adaptive-parts'
+            ? {
+                sourceRootTransform: character.sourceRootTransform,
+                parts: character.parts.map((part) => ({
+                  partId: part.partId,
+                  assetId: part.assetId,
+                  restTransform: part.restTransform,
+                  imageMapping: part.imageMapping,
+                  drawOrder: part.drawOrder,
+                  visible: part.visible,
+                })),
+              }
+            : null,
         owner: {
           anchor: layer.anchor,
           x: layer.x,
@@ -131,7 +151,7 @@ export function shotThumbnailFingerprint(
   try {
     const model = buildEditorStageRenderModel(project, shot);
     return JSON.stringify({
-      version: 2,
+      version: 3,
       stage: { width: model.width, height: model.height },
       backgroundLayerId: model.backgroundLayerId,
       layers: model.layers.map(({ render, visual }) => ({
@@ -140,9 +160,12 @@ export function shotThumbnailFingerprint(
         owner: visual.ownerTransform,
         facePlacement: visual.facePlacement,
         parts: visual.parts.map((part) => ({
+          partId: part.partId,
           slot: part.slot,
           asset: assetContentFingerprint(project, part.assetId),
           localRect: part.localRect,
+          imageTransform: part.imageTransform ?? null,
+          visible: part.visible ?? true,
           rotationDeg: part.rotationDeg,
           flipX: part.flipX,
           drawOrder: part.drawOrder,
@@ -353,7 +376,9 @@ export async function createShotThumbnailDataUrl(
   if (!context) throw new Error('Shot thumbnail canvas context is unavailable.');
 
   const compositeCanvas = model.layers.some(
-    ({ visual }) => visual.kind === 'composite-character',
+    ({ visual }) =>
+      visual.kind === 'composite-character' ||
+      visual.kind === 'adaptive-parts-character',
   )
     ? document.createElement('canvas')
     : null;
@@ -383,6 +408,7 @@ export async function createShotThumbnailDataUrl(
       for (const part of [...visual.parts].sort(
         (left, right) => left.drawOrder - right.drawOrder,
       )) {
+        if (part.visible === false) continue;
         const image = images.get(part.assetId);
         if (!image) {
           throw new ShotThumbnailSourceError(
@@ -391,16 +417,32 @@ export async function createShotThumbnailDataUrl(
         }
         const { x, y, width, height } = part.localRect;
         target.save();
-        target.translate(x + width / 2, y + height / 2);
-        target.rotate((part.rotationDeg * Math.PI) / 180);
-        target.scale(part.flipX ? -1 : 1, 1);
-        target.drawImage(image, -width / 2, -height / 2, width, height);
+        if (part.imageTransform) {
+          const transform = part.imageTransform;
+          target.transform(
+            transform.a,
+            transform.b,
+            transform.c,
+            transform.d,
+            transform.tx,
+            transform.ty,
+          );
+          target.drawImage(image, 0, 0, width, height);
+        } else {
+          target.translate(x + width / 2, y + height / 2);
+          target.rotate((part.rotationDeg * Math.PI) / 180);
+          target.scale(part.flipX ? -1 : 1, 1);
+          target.drawImage(image, -width / 2, -height / 2, width, height);
+        }
         target.restore();
       }
       target.restore();
     };
 
-    if (visual.kind !== 'composite-character') {
+    const flattenedVisual =
+      visual.kind === 'composite-character' ||
+      visual.kind === 'adaptive-parts-character';
+    if (!flattenedVisual) {
       drawOwnerParts(context, render.opacity);
       continue;
     }

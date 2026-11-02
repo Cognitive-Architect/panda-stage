@@ -209,4 +209,57 @@ describe('EditorProjectStore', () => {
       },
     });
   });
+
+  it('records one already-saved Character command without clearing earlier undo history', () => {
+    const store = new EditorProjectStore();
+    const project = migrateProject(exampleProject);
+    const projectRoot = 'D:\\project.pandastage';
+    store.open(projectRoot, project);
+    store.updateProject({ ...project, name: 'Existing edit' }, 'Existing edit');
+    const openInstanceId = store.getProjectInstanceId()!;
+    const lease = store.acquireProjectOperationLease({
+      projectRoot,
+      projectId: project.id,
+      revision: 1,
+      openInstanceId,
+    });
+    const committed = ProjectSchema.parse({
+      ...store.getSnapshot()!.project,
+      name: 'Saved Character result',
+    });
+
+    expect(() => store.updateProject({ ...committed, name: 'blocked edit' })).toThrow('Project is busy');
+    store.acceptSavedProjectCommand(lease, committed, 2, '导入角色');
+    expect(store.getSnapshot()).toMatchObject({
+      project: { name: 'Saved Character result' },
+      dirty: false,
+      revision: 2,
+    });
+    expect(store.getSavedProjectSnapshot()?.project.name).toBe('Saved Character result');
+    expect(store.history.getSnapshot()).toMatchObject({
+      undoCount: 2,
+      redoCount: 0,
+      nextUndoLabel: '导入角色',
+    });
+    expect(() => store.undo()).toThrow('Project is busy');
+    store.releaseProjectOperationLease(lease);
+
+    expect(store.undo()).toBe(true);
+    expect(store.getSnapshot()).toMatchObject({
+      project: { name: 'Existing edit' },
+      dirty: true,
+      revision: 3,
+    });
+    expect(store.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 1,
+      nextUndoLabel: 'Existing edit',
+    });
+    expect(store.redo()).toBe(true);
+    expect(store.getSnapshot()).toMatchObject({
+      project: { name: 'Saved Character result' },
+      dirty: false,
+      revision: 4,
+    });
+  });
 });

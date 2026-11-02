@@ -120,6 +120,18 @@ import type {
   FlaFrameSequenceRequest,
   FlaFrameSequenceResponse,
 } from '../shared/fla-frame-sequence-api';
+import type {
+  FlaPartPreviewCancelRequest,
+  FlaPartPreviewCancelResponse,
+  FlaPartPreviewRequest,
+  FlaPartPreviewResponse,
+} from '../shared/fla-part-preview-api';
+import type {
+  FlaCharacterCreateRequest,
+  FlaCharacterCreateResponse,
+  FlaCharacterCreateStatusRequest,
+  FlaCharacterCreateStatusResponse,
+} from '../shared/fla-character-create-api';
 
 declare global {
   interface Window {
@@ -281,6 +293,18 @@ declare global {
         staticSnapshotCancel: (
           request: FlaStaticSnapshotCancelRequest,
         ) => Promise<FlaStaticSnapshotCancelResponse>;
+        partPreview: (
+          request: FlaPartPreviewRequest,
+        ) => Promise<FlaPartPreviewResponse>;
+        partPreviewCancel: (
+          request: FlaPartPreviewCancelRequest,
+        ) => Promise<FlaPartPreviewCancelResponse>;
+        createCharacterFromParts: (
+          request: FlaCharacterCreateRequest,
+        ) => Promise<FlaCharacterCreateResponse>;
+        getCharacterCreateStatus: (
+          request: FlaCharacterCreateStatusRequest,
+        ) => Promise<FlaCharacterCreateStatusResponse>;
         frameSequenceRender: (
           request: FlaFrameSequenceRequest,
         ) => Promise<FlaFrameSequenceResponse>;

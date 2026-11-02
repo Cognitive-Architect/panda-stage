@@ -252,7 +252,9 @@ export class ShotService {
       ...project.assets.map((asset) => asset.id),
       ...project.characters.flatMap((character) => [
         character.id,
-        ...character.expressions.map((expression) => expression.id),
+        ...(character.mode === 'adaptive-parts'
+          ? character.parts.map((part) => part.partId)
+          : character.expressions.map((expression) => expression.id)),
       ]),
       ...project.voiceProfiles.map((profile) => profile.id),
       ...project.subtitleStyles.map((style) => style.id),

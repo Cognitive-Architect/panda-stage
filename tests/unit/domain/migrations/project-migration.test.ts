@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../../../helpers/characterAssertions';
 import { describe, expect, it } from 'vitest';
 import {
   PROJECT_SCHEMA_VERSION,
@@ -211,7 +212,7 @@ describe('T01 迁移回填 timelineEvents', () => {
 
   it('migrates strict v11 composite data with default Body placement and preserves its visual', () => {
     const current = buildProject();
-    const original = current.characters[0]!;
+    const original = asExpressionCharacter(current.characters[0]!);
     const { animations: _animations, ...version11Fields } = current;
     void _animations;
     const legacyV11 = {
@@ -254,7 +255,7 @@ describe('T01 迁移回填 timelineEvents', () => {
     };
     const before = structuredClone(legacyV11);
     const result = migrateProject(legacyV11);
-    const character = result.characters[0]!;
+    const character = asExpressionCharacter(result.characters[0]!);
 
     expect(result.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(character).toMatchObject({

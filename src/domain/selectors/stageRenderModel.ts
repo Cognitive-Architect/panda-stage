@@ -45,7 +45,7 @@ export function buildEditorStageRenderModel(
     .sort((left, right) => left.zIndex - right.zIndex)
     .map((layer): EditorStageRenderLayer => {
       const baseAsset = resolveLayerImageAsset(project, layer);
-      const evaluated = evaluatedById.get(layer.id) ?? {
+      const evaluatedSource = evaluatedById.get(layer.id) ?? {
         id: layer.id,
         assetId: baseAsset?.id ?? '',
         anchor: layer.anchor,
@@ -59,6 +59,7 @@ export function buildEditorStageRenderModel(
         visible: layer.visible,
         zIndex: layer.zIndex,
       };
+      const evaluated = evaluatedSource;
       const visual = visualOverrides?.has(layer.id)
         ? visualOverrides.get(layer.id) ?? emptyVisual(project, layer, evaluated)
         : resolveLayerVisualParts(project, shot, evaluated);
@@ -144,9 +145,11 @@ function emptyVisual(
   return {
     ownerLayerId: layer.id,
     kind:
-      character?.mode === 'composite'
-        ? 'composite-character'
-        : character
+      character?.mode === 'adaptive-parts'
+        ? 'adaptive-parts-character'
+        : character?.mode === 'composite'
+          ? 'composite-character'
+          : character
           ? 'single-image-character'
           : 'ordinary-image',
     ownerTransform: {

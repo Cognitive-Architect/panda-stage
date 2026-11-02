@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -36,7 +37,7 @@ function fixture(): {
   session: CharacterAssemblySnapshot;
 } {
   const base = migrateProject(exampleProject);
-  const original = base.characters[0]!;
+  const original = asExpressionCharacter(base.characters[0]!);
   const imageAssets = base.assets.filter(
     (asset) => asset.kind === 'image',
   );
@@ -67,7 +68,7 @@ function fixture(): {
       },
     ],
   });
-  const character = project.characters[0]!;
+  const character = asExpressionCharacter(project.characters[0]!);
   if (character.mode !== 'composite') {
     throw new Error('Expected composite fixture.');
   }
@@ -164,7 +165,7 @@ describe('S07 composite assembly preview', () => {
     const faceExpression = expressions.find(
       (expression) =>
         expression.id ===
-        project.characters[0]!.defaultExpressionId,
+        asExpressionCharacter(project.characters[0]!).defaultExpressionId,
     )!;
     const visual = buildCharacterAssemblyPreviewVisual(project, session, {
       kind: 'expression',
@@ -620,7 +621,7 @@ describe('S07 composite assembly preview', () => {
     );
     expect(hasPendingCharacterAssemblyEdit(project, null)).toBe(false);
 
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
     const creationSession: CharacterCreationSnapshot = {
       status: 'active',
       kind: 'create',

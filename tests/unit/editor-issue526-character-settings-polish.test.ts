@@ -12,6 +12,7 @@ import {
 import { CharacterEditor } from '../../src/renderer/features/characters/CharacterEditor';
 import type { ThumbnailState } from '../../src/renderer/features/assets/AssetCard';
 import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 
 const noop = () => undefined;
 
@@ -28,14 +29,14 @@ function fixture(withMouth = false): {
   const imageAssets = project.assets.filter(
     (asset): asset is ImageAsset => asset.kind === 'image',
   );
-  const character = ProjectSchema.parse({
+  const character = asExpressionCharacter(ProjectSchema.parse({
     ...project,
     characters: project.characters.map((candidate, index) =>
       index === 0 && withMouth
         ? { ...candidate, mouthOpenAssetId: imageAssets[0]?.id }
         : candidate,
     ),
-  }).characters[0]!;
+  }).characters[0]!);
   const thumbnails = Object.fromEntries(
     imageAssets.map((asset) => [
       asset.id,
@@ -83,7 +84,9 @@ describe('Issue #526 Character Settings visual polish', () => {
     const settings = settingsMarkup();
 
     expect(markup).toContain('class="character-workspace-tab-count"');
-    expect(markup).toContain(`>${character.expressions.length}</span>`);
+    expect(markup).toContain(
+      `>${asExpressionCharacter(character).expressions.length}</span>`,
+    );
     expect(settings).toContain('初始角色大小');
     expect(settings).not.toContain('角色设置');
     expect(settings).not.toContain('嘴型');
