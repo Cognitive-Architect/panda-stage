@@ -1,5 +1,7 @@
 import type { Character } from '../../../domain/models';
 
+export const DIALOGUE_AUTHORING_TEXT_MAX_LENGTH = 10_000;
+
 /**
  * Status of a single pasted line after deterministic parsing.
  *
@@ -31,7 +33,7 @@ export interface ParsedDialogueLine {
   /** Resolved character id; present only for `valid` lines. */
   characterId?: string;
   /** Why a line is `invalid`. */
-  reason?: 'empty-speaker' | 'empty-text';
+  reason?: 'empty-speaker' | 'empty-text' | 'text-too-long';
 }
 
 export interface ParseDialoguePasteResult {
@@ -128,6 +130,17 @@ export function parseDialoguePaste(
         speaker,
         text: '',
         reason: 'empty-text',
+      });
+      return;
+    }
+    if (text.length > DIALOGUE_AUTHORING_TEXT_MAX_LENGTH) {
+      lines.push({
+        lineNumber: index + 1,
+        raw: trimmed,
+        status: 'invalid',
+        speaker,
+        text,
+        reason: 'text-too-long',
       });
       return;
     }

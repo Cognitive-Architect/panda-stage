@@ -89,6 +89,7 @@ describe('Issue #357 State D/E unified subtitle authoring shell', () => {
       singleText: '',
       batchRaw: '',
       batchMapping: {},
+      batchAudioSelections: {},
     });
   });
 
@@ -137,24 +138,26 @@ describe('Issue #357 State D/E unified subtitle authoring shell', () => {
     expect(sheet).not.toContain('<dialog');
   });
 
-  it('keeps State E on the existing parser, mapping and atomic createMany owners', () => {
+  it('keeps State E on the existing parser, mapping and transient audio draft owners', () => {
     const batch = source(
       'src/renderer/features/dialogue/DialogueBatchPaste.tsx',
     );
 
     expect(batch).toContain('parseDialoguePaste(');
     expect(batch).toContain('resolveDialoguePaste(');
-    expect(batch.match(/dialogueStore\.createMany\(/gu)).toHaveLength(1);
+    expect(batch).toContain('buildDialogueBatchPreview(');
+    expect(batch).toContain('draftState.batchAudioSelections');
     expect(batch).toContain('data-testid="dialogue-batch-preview"');
+    expect(batch).toContain('data-testid="dialogue-batch-generation-state"');
     expect(batch).toContain('data-testid={`dialogue-batch-map-${line.lineNumber}`}');
     expect(batch).toContain('mappingIssueCopy(line)');
-    expect(batch).toContain('未找到“');
+    expect(batch).toContain('未找到「');
     expect(batch).toContain('emptySummaryLabel="请选择对应角色"');
     expect(batch).not.toContain('没找到这个角色');
     expect(batch).not.toContain('data-testid="dialogue-batch-stats"');
     expect(batch).not.toContain('解析统计');
-    expect(batch).toContain('disabled={!resolution.allResolved}');
-    expect(batch).toContain('onSuccess();');
+    expect(batch).not.toContain('dialogueStore.createMany(');
+    expect(batch).not.toContain('onSuccess();');
     expect(batch).not.toContain('CharacterStore');
     expect(batch).not.toContain('updateProject');
   });

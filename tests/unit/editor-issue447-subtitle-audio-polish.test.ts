@@ -20,8 +20,9 @@ describe('Issue #447 subtitle authoring and AudioClip UX correction', () => {
     expect(batch).not.toContain('解析统计');
     expect(batch).not.toContain('dialogue-batch-stats');
     expect(batch).not.toContain('dialogue-authoring-cancel');
-    expect(batch).toContain('`添加 ${resolution.readyCount} 条字幕`');
-    expect(batch).toContain('`还有 ${pendingCount} 条待确认`');
+    expect(batch).toContain('`可生成 ${preview.readyCount} 条字幕`');
+    expect(batch).toContain('`还有 ${preview.pendingCount} 条待处理`');
+    expect(batch).toContain('formatDialogueDuration(preview.totalDurationMs)');
   });
 
   it('keeps deterministic parsing and resolves only problem rows inline with human copy', () => {
@@ -31,8 +32,10 @@ describe('Issue #447 subtitle authoring and AudioClip UX correction', () => {
 
     expect(batch).toContain('parseDialoguePaste(draftState.batchRaw, characters)');
     expect(batch).toContain('resolveDialoguePaste(parsed, draftState.batchMapping, characters)');
-    expect(batch.match(/dialogueStore\.createMany\(/gu)).toHaveLength(1);
-    expect(batch).toContain('未找到“');
+    expect(batch).toContain('buildDialogueBatchPreview(');
+    expect(batch).not.toContain('dialogueStore.createMany(');
+    expect(batch).toContain('draft.setBatchAudioSelection(');
+    expect(batch).toContain('未找到「');
     expect(batch).toContain('对应多个角色，请确认');
     expect(batch).toContain('emptySummaryLabel="请选择对应角色"');
     expect(batch).not.toContain('没找到这个角色');

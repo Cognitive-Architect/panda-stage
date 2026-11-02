@@ -11,6 +11,7 @@
   },
   "scripts": {
     "verify:issue663-dialogue-voice": "pnpm build && electron scripts/verify-issue663-dialogue-voice.cjs",
+    "verify:issue926-as01": "pnpm build && electron scripts/verify-issue926-as01.cjs",
     "verify:issue659-preview-mixer": "pnpm build && electron scripts/verify-issue659-preview-mixer.cjs",
     "verify:issue658-audio-timeline": "pnpm build && electron scripts/verify-issue658-audio-timeline.cjs",
     "verify:issue676-p0-c02": "pnpm build && electron scripts/verify-issue676-p0-c02.cjs",

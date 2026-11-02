@@ -1,6 +1,9 @@
-type Listener = () => void;
+import { DIALOGUE_AUTHORING_TEXT_MAX_LENGTH } from './parseDialoguePaste';
+import type { DialogueBatchAudioSelection } from './dialogueBatchPlan';
 
-export const DIALOGUE_AUTHORING_TEXT_MAX_LENGTH = 10_000;
+export { DIALOGUE_AUTHORING_TEXT_MAX_LENGTH } from './parseDialoguePaste';
+
+type Listener = () => void;
 
 export interface DialogueDraftIdentity {
   projectRoot: string;
@@ -12,6 +15,7 @@ export interface DialogueAuthoringDraftSnapshot {
   singleText: string;
   batchRaw: string;
   batchMapping: Record<number, string>;
+  batchAudioSelections: Record<number, DialogueBatchAudioSelection>;
 }
 
 export interface SingleDialogueDraftErrors {
@@ -47,6 +51,7 @@ const EMPTY_DRAFT: DialogueAuthoringDraftSnapshot = {
   singleText: '',
   batchRaw: '',
   batchMapping: {},
+  batchAudioSelections: {},
 };
 
 function identityChanged(
@@ -110,14 +115,56 @@ export class DialogueAuthoringDraft {
   }
 
   setBatchRaw(value: string): void {
-    this.set({ ...this.snapshot, batchRaw: value });
+    const previousLines = this.snapshot.batchRaw.split(/\r?\n/u);
+    const nextLines = value.split(/\r?\n/u);
+    const batchMapping = { ...this.snapshot.batchMapping };
+    const batchAudioSelections = { ...this.snapshot.batchAudioSelections };
+    for (
+      let index = 0;
+      index < Math.max(previousLines.length, nextLines.length);
+      index += 1
+    ) {
+      if (previousLines[index] === nextLines[index]) continue;
+      delete batchMapping[index + 1];
+      delete batchAudioSelections[index + 1];
+    }
+    this.set({
+      ...this.snapshot,
+      batchRaw: value,
+      batchMapping,
+      batchAudioSelections,
+    });
   }
 
   setBatchMapping(lineNumber: number, characterId: string): void {
+    const batchAudioSelections = { ...this.snapshot.batchAudioSelections };
+    if (this.snapshot.batchMapping[lineNumber] !== characterId) {
+      delete batchAudioSelections[lineNumber];
+    }
     this.set({
       ...this.snapshot,
       batchMapping: { ...this.snapshot.batchMapping, [lineNumber]: characterId },
+      batchAudioSelections,
     });
+  }
+
+  setBatchAudioSelection(
+    lineNumber: number,
+    selection: DialogueBatchAudioSelection,
+  ): void {
+    this.set({
+      ...this.snapshot,
+      batchAudioSelections: {
+        ...this.snapshot.batchAudioSelections,
+        [lineNumber]: selection,
+      },
+    });
+  }
+
+  clearBatchAudioSelection(lineNumber: number): void {
+    const batchAudioSelections = { ...this.snapshot.batchAudioSelections };
+    delete batchAudioSelections[lineNumber];
+    this.set({ ...this.snapshot, batchAudioSelections });
   }
 
   private set(next: DialogueAuthoringDraftSnapshot): void {

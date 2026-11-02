@@ -608,7 +608,10 @@
         "id": "dialogue",
         "sourcePatterns": ["src/renderer/features/dialogue/**"],
         "testPatterns": ["tests/unit/dialogue-*.test.ts", "tests/contract/issue220-*.test.ts", "tests/contract/issue221-*.test.ts"],
-        "verifierPatterns": ["scripts/verify-issue663-dialogue-voice.cjs"],
+        "verifierPatterns": [
+          "scripts/verify-issue663-dialogue-voice.cjs",
+          "scripts/verify-issue926-as01.cjs"
+        ],
         "suites": ["editor", "timeline"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
@@ -747,7 +750,7 @@
       }
     ]
   },
-  "count": 109,
+  "count": 110,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -772,6 +775,18 @@
       "owner": "dialogue",
       "supersedes": null,
       "notes": "Real sandboxed landscape Cloud Touch chooser integration: touch/mouse Ready selection, immediate bound UI, one-command History, change/remove, unavailable assets and BGM/SFX isolation. Human hardware/listening acceptance remains separate."
+    },
+    {
+      "id": "issue926-as01",
+      "script": "verify:issue926-as01",
+      "suite": "editor",
+      "subsystem": "dialogue",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "dialogue",
+      "supersedes": null,
+      "notes": "Real sandboxed Electron batch subtitle preview from the existing authoring path: strict numbered audio-to-role matching, real asset IDs/source durations, manual choice and clip shortening, unchanged Project/revision/History/autosave, and cancel clears the draft. Human Windows interaction acceptance remains separate."
     },
     {
       "id": "issue659-preview-mixer",

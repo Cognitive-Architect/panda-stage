@@ -17,6 +17,7 @@ describe('DialogueAuthoringDraft identity isolation', () => {
       singleText: '',
       batchRaw: '',
       batchMapping: {},
+      batchAudioSelections: {},
     });
     // The initial bind (null -> identity) is a real change and resets the
     // (already empty) draft; a second bind with the same identity is not.
@@ -38,6 +39,7 @@ describe('DialogueAuthoringDraft identity isolation', () => {
       singleText: '',
       batchRaw: '',
       batchMapping: {},
+      batchAudioSelections: {},
     });
   });
 
@@ -70,6 +72,7 @@ describe('DialogueAuthoringDraft identity isolation', () => {
       singleText: '',
       batchRaw: '',
       batchMapping: {},
+      batchAudioSelections: {},
     });
   });
 
@@ -98,6 +101,7 @@ describe('DialogueAuthoringDraft identity isolation', () => {
       singleText: '保留单条草稿',
       batchRaw: '熊猫：批量台词',
       batchMapping: { 1: 'char-1' },
+      batchAudioSelections: {},
     });
 
     draft.clear();
@@ -107,6 +111,7 @@ describe('DialogueAuthoringDraft identity isolation', () => {
       singleText: '',
       batchRaw: '',
       batchMapping: {},
+      batchAudioSelections: {},
     });
   });
 
@@ -132,5 +137,49 @@ describe('DialogueAuthoringDraft identity isolation', () => {
         ['char-1'],
       ).text,
     ).toContain(String(DIALOGUE_AUTHORING_TEXT_MAX_LENGTH));
+  });
+
+  it('keeps unchanged row selections and discards choices when source text changes', () => {
+    const draft = new DialogueAuthoringDraft();
+    draft.bindIdentity(SHOT_A);
+    draft.setBatchRaw('熊猫：第一句\n老虎：第二句');
+    draft.setBatchMapping(1, 'char-1');
+    draft.setBatchAudioSelection(1, {
+      assetId: 'audio-1',
+      characterId: 'char-1',
+      durationSeconds: '1.2',
+    });
+    draft.setBatchMapping(2, 'char-2');
+    draft.setBatchAudioSelection(2, {
+      assetId: 'audio-2',
+      characterId: 'char-2',
+      durationSeconds: '1.5',
+    });
+
+    draft.setBatchRaw('熊猫：第一句\n老虎：台词已改');
+
+    expect(draft.getSnapshot().batchMapping).toEqual({ 1: 'char-1' });
+    expect(draft.getSnapshot().batchAudioSelections).toEqual({
+      1: {
+        assetId: 'audio-1',
+        characterId: 'char-1',
+        durationSeconds: '1.2',
+      },
+    });
+  });
+
+  it('clears the manual audio choice when a mapped character changes', () => {
+    const draft = new DialogueAuthoringDraft();
+    draft.bindIdentity(SHOT_A);
+    draft.setBatchMapping(1, 'char-1');
+    draft.setBatchAudioSelection(1, {
+      assetId: 'audio-1',
+      characterId: 'char-1',
+      durationSeconds: '1.2',
+    });
+
+    draft.setBatchMapping(1, 'char-2');
+
+    expect(draft.getSnapshot().batchAudioSelections).toEqual({});
   });
 });

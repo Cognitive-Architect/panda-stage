@@ -93,6 +93,19 @@ describe('parseDialoguePaste', () => {
     });
   });
 
+  it('rejects a dialogue that exceeds the formal text limit', () => {
+    const result = parseDialoguePaste(
+      `熊猫：${'a'.repeat(10_001)}`,
+      characters,
+    );
+
+    expect(result.lines[0]).toMatchObject({
+      status: 'invalid',
+      reason: 'text-too-long',
+    });
+    expect(result.validCount).toBe(0);
+  });
+
   it('marks unknown speakers without guessing', () => {
     const result = parseDialoguePaste('小猫：喵', characters);
     expect(result.lines[0]).toMatchObject({
