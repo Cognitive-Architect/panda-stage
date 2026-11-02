@@ -646,7 +646,7 @@ async function run() {
     'The square back control did not return to the Shot list.',
   );
   const arrowReturnState = await readEntryState(windowRef);
-  assertListState(arrowReturnState, 'landscape', initialShotCount);
+  assertListState(arrowReturnState, 'landscape', initialShotCount, recoveryState.revision);
   const arrowReturnScreenshot = await capture(
     windowRef,
     'automatic-scene-arrowleft-returned-to-shot-list.png',
