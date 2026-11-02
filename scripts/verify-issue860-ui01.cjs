@@ -667,14 +667,39 @@ async function run() {
     `document.querySelector('[data-testid="scene-creation-panel"]')`,
     'The portrait automatic scene flow did not open from the Shot list.',
   );
+  await waitForDom(
+    windowRef,
+    `(() => {
+      const panel = document.querySelector('[data-testid="scene-creation-panel"]');
+      const candidates = panel?.querySelector('[data-testid="scene-creation-candidates"]');
+      const characterError = panel?.querySelector('[aria-label="出场角色"] .scene-creation-resource-error');
+      return Boolean(
+        candidates &&
+          panel.querySelector('[data-testid="scene-creation-background-match"]') &&
+          characterError?.textContent.includes('张三') &&
+          !panel.querySelector('[data-testid="scene-creation-character-match"]')
+      );
+    })()`,
+    'The portrait scene flow did not settle into the expected missing-character recovery state.',
+  );
   const portraitSceneState = await windowRef.webContents.executeJavaScript(`(() => {
     const manager = document.querySelector('[data-testid="shot-manager"]');
+    const panel = document.querySelector('[data-testid="scene-creation-panel"]');
     const confirm = document.querySelector('[data-testid="scene-creation-confirm"]');
     const bounds = confirm?.getBoundingClientRect();
     const style = confirm ? getComputedStyle(confirm) : null;
     const summary = manager?.querySelector('[data-project-duration-ms]')?.textContent ?? '';
+    const candidates = panel?.querySelector('[data-testid="scene-creation-candidates"]');
+    const backgroundMatch = panel?.querySelector('[data-testid="scene-creation-background-match"]');
+    const characterError = panel?.querySelector('[aria-label="出场角色"] .scene-creation-resource-error');
+    const previewStatus = panel?.querySelector('[data-testid="scene-creation-preview-status"]')?.textContent?.trim() ?? '';
     return {
       input: document.querySelector('[data-testid="scene-creation-input"]')?.value ?? null,
+      matchingSettled: Boolean(candidates && !previewStatus.includes('正在匹配素材')),
+      backgroundMatched: Boolean(backgroundMatch),
+      characterMissing: characterError?.textContent.includes('张三') ?? false,
+      characterSuccessVisible: Boolean(panel?.querySelector('[data-testid="scene-creation-character-match"]')),
+      previewStatus,
       confirmVisible: Boolean(confirm && bounds && bounds.width > 0 && bounds.height > 0 && style?.visibility !== 'hidden' && style?.display !== 'none'),
       confirmHeight: bounds?.height ?? 0,
       confirmWithinWindow: Boolean(bounds && bounds.top >= 0 && bounds.bottom <= window.innerHeight + 1),
@@ -687,6 +712,10 @@ async function run() {
   assertSceneNavigation(portraitSceneState.navigation, 'Portrait scene header');
   assert(
     portraitSceneState.input === recoveryState.input &&
+      portraitSceneState.matchingSettled &&
+      portraitSceneState.backgroundMatched &&
+      portraitSceneState.characterMissing &&
+      !portraitSceneState.characterSuccessVisible &&
       portraitSceneState.confirmVisible &&
       portraitSceneState.confirmWithinWindow &&
       portraitSceneState.confirmHeight >= 48 &&
