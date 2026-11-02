@@ -27,6 +27,7 @@ const path = require('node:path');
 const zlib = require('node:zlib');
 const JSZip = require('jszip');
 const { findEocdCandidates } = require('../../dist-electron/main/services/fla-recovery-classifier.js');
+const { createPixelAlignedPngStackSvg } = require('./issue918-com8-pixel-reassembly.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '../..');
 const EXPECTED_FRAME_COUNT = 21;
@@ -1655,17 +1656,7 @@ function replaceSvgViewport(svg, framing) {
 
 function createReassemblySvg(frame, partPngs) {
   const framing = frame.composed.composition.framing;
-  const viewBox = framing.viewBox;
-  const imageTags = partPngs.map((part) =>
-    '<image x="' + formatNumber(viewBox.x) + '" y="' + formatNumber(viewBox.y) +
-      '" width="' + formatNumber(viewBox.width) + '" height="' + formatNumber(viewBox.height) +
-      '" preserveAspectRatio="none" href="data:image/png;base64,' + Buffer.from(part.pngBytes).toString('base64') + '"/>',
-  ).join('');
-  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' +
-    formatNumber(viewBox.x) + ' ' + formatNumber(viewBox.y) + ' ' +
-    formatNumber(viewBox.width) + ' ' + formatNumber(viewBox.height) +
-    '" width="' + framing.outputWidth + '" height="' + framing.outputHeight + '">' +
-    imageTags + '</svg>';
+  const svg = createPixelAlignedPngStackSvg(framing, partPngs);
   if (Buffer.byteLength(svg, 'utf8') > FLA_STATIC_SNAPSHOT_LIMITS.maxSnapshotBytes) {
     fail('B', 'REASSEMBLY_SVG_BUDGET_EXCEEDED', 'Raster-part reassembly SVG exceeds the existing snapshot byte budget.', 'GO_FRAME_PARTS_ONLY');
   }
