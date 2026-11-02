@@ -538,6 +538,16 @@ async function browserDrag(window, from, to, steps = 12) {
 }
 
 async function seekEditor(window, timeMs) {
+  await waitFor(
+    window,
+    '(() => { const t=document.querySelector(\'[data-testid="timeline-ruler-track"]\');' +
+      'const c=document.querySelector(\'[data-testid="timeline-timecode"]\');' +
+      'const dock=document.querySelector(\'[data-testid="timeline-dock"]\');' +
+      'const rect=t?.getBoundingClientRect();' +
+      'return Number(c?.dataset.duration)>0&&rect?.height>0&&' +
+        'rect.width-Number(dock?.dataset.laneLabelWidth||0)>0; })()',
+    'Timeline seek geometry did not settle before seeking to ' + timeMs + 'ms.',
+  );
   const point = await window.webContents.executeJavaScript(
     '(() => { const t=document.querySelector(\'[data-testid="timeline-ruler-track"]\');' +
     'const c=document.querySelector(\'[data-testid="timeline-timecode"]\');' +
@@ -548,12 +558,53 @@ async function seekEditor(window, timeMs) {
     'return {x,y:Math.round(rr.top+rr.height/2)}; })()',
   );
   await clickPoint(window, point);
-  await waitFor(
-    window,
-    'Math.abs(Number(document.querySelector(\'[data-testid="project-canvas-stage"]\')?.dataset.currentTimeMs)-' +
-      timeMs + ')<=22',
-    'Timeline seek did not reach ' + timeMs + 'ms.',
-  );
+  try {
+    await waitFor(
+      window,
+      'Math.abs(Number(document.querySelector(\'[data-testid="project-canvas-stage"]\')?.dataset.currentTimeMs)-' +
+        timeMs + ')<=22',
+      'Timeline seek did not reach ' + timeMs + 'ms.',
+    );
+  } catch (error) {
+    const diagnostics = await window.webContents.executeJavaScript(`(() => {
+      const track = document.querySelector('[data-testid="timeline-ruler-track"]');
+      const ruler = document.querySelector('[data-testid="timeline-ruler"]');
+      const timecode = document.querySelector('[data-testid="timeline-timecode"]');
+      const dock = document.querySelector('[data-testid="timeline-dock"]');
+      const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+      const playhead = document.querySelector('[data-testid="timeline-playhead"]');
+      const trackRect = track?.getBoundingClientRect();
+      const rulerRect = ruler?.getBoundingClientRect();
+      const hit = document.elementFromPoint(${point.x}, ${point.y});
+      const laneLabelWidth = Number(dock?.dataset.laneLabelWidth || 0);
+      const duration = Number(timecode?.dataset.duration || 0);
+      const contentWidth = (trackRect?.width || 0) - laneLabelWidth;
+      return {
+        requestedTimeMs: ${timeMs},
+        currentTimeMs: stage?.dataset.currentTimeMs ?? null,
+        timecodeCurrentTimeMs: timecode?.dataset.currentTime ?? null,
+        playheadTimeMs: playhead?.dataset.currentTime ?? null,
+        duration,
+        laneLabelWidth,
+        trackRect: trackRect ? { x: trackRect.x, y: trackRect.y, width: trackRect.width,
+          height: trackRect.height, left: trackRect.left, right: trackRect.right } : null,
+        rulerRect: rulerRect ? { x: rulerRect.x, y: rulerRect.y, width: rulerRect.width,
+          height: rulerRect.height } : null,
+        scrollLeft: document.querySelector('[data-testid="timeline-ruler-scroll"]')?.scrollLeft ?? null,
+        requestedPoint: { x: ${point.x}, y: ${point.y} },
+        requestedOffsetX: trackRect ? ${point.x} - trackRect.left : null,
+        expectedOffsetX: duration > 0 ? contentWidth * ${timeMs} / duration : null,
+        hit: hit ? { tag: hit.tagName, className: String(hit.className),
+          testId: hit.dataset?.testid } : null,
+      };
+    })()`);
+    writeFileSync(path.join(evidence, 'timeline-seek-failure-' + timeMs + 'ms.json'),
+      JSON.stringify(diagnostics, null, 2));
+    writeFileSync(path.join(evidence, 'timeline-seek-failure-' + timeMs + 'ms.png'),
+      (await window.webContents.capturePage()).toPNG());
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(reason + ' Diagnostics: ' + JSON.stringify(diagnostics), { cause: error });
+  }
   return Number(await window.webContents.executeJavaScript(
     'document.querySelector(\'[data-testid="project-canvas-stage"]\')?.dataset.currentTimeMs',
   ));
