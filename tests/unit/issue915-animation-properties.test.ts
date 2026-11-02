@@ -18,6 +18,7 @@ import {
   type LayerTransformPanelProps,
 } from '../../src/renderer/features/properties/LayerTransformPanel';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
+import { layerStore } from '../../src/renderer/stores/layerStore';
 import { selectionStore } from '../../src/renderer/stores/selectionStore';
 import { shotStore } from '../../src/renderer/stores/shotStore';
 import { buildProjectWithAnimation, IDS } from './domain/testProject';
@@ -196,6 +197,24 @@ describe('Issue #915 animation Properties', () => {
       revision: 1,
       dirty: true,
     });
+  });
+
+  it('hides routine transform guidance only for editable animation and keeps lock feedback', async () => {
+    expect(
+      container.querySelector('[data-testid="layer-transform-guidance"]')
+        ?.textContent,
+    ).toContain('X / Y 为对象视觉中心');
+
+    await act(async () => selectionStore.select(IDS.animationLayer));
+    expect(
+      container.querySelector('[data-testid="layer-transform-guidance"]'),
+    ).toBeNull();
+
+    await act(async () => layerStore.setLocked(IDS.animationLayer, true));
+    expect(
+      container.querySelector('[data-testid="layer-transform-guidance"]')
+        ?.textContent,
+    ).toContain('请先解锁图层，再修改变换。');
   });
 
   it('keeps opacity for animation and character selections while hiding inapplicable backgrounds', async () => {
