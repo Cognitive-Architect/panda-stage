@@ -543,9 +543,13 @@ async function seekEditor(window, timeMs) {
     '(() => { const t=document.querySelector(\'[data-testid="timeline-ruler-track"]\');' +
       'const c=document.querySelector(\'[data-testid="timeline-timecode"]\');' +
       'const dock=document.querySelector(\'[data-testid="timeline-dock"]\');' +
+    'const scroll=document.querySelector(\'[data-testid="timeline-ruler-scroll"]\');' +
+    'const zoomText=document.querySelector(\'[data-testid="timeline-zoom-value"]\')?.textContent||"";' +
+    'const zoom=Number(zoomText.replace(/[^\\d.]/g,""));' +
       'const rect=t?.getBoundingClientRect();' +
-      'return Number(c?.dataset.duration)>0&&rect?.height>0&&' +
-        'rect.width-Number(dock?.dataset.laneLabelWidth||0)>0; })()',
+    'const contentWidth=(rect?.width||0)-Number(dock?.dataset.laneLabelWidth||0);' +
+    'return Number(c?.dataset.duration)>0&&rect?.height>0&&scroll?.clientWidth>0&&zoom>0&&' +
+      'Math.abs(contentWidth-scroll.clientWidth*zoom)<=2; })()',
     'Timeline seek geometry did not settle before seeking to ' + timeMs + 'ms.',
   );
   const point = await window.webContents.executeJavaScript(
@@ -571,6 +575,9 @@ async function seekEditor(window, timeMs) {
       const ruler = document.querySelector('[data-testid="timeline-ruler"]');
       const timecode = document.querySelector('[data-testid="timeline-timecode"]');
       const dock = document.querySelector('[data-testid="timeline-dock"]');
+      const scroll = document.querySelector('[data-testid="timeline-ruler-scroll"]');
+      const zoomText = document.querySelector('[data-testid="timeline-zoom-value"]')?.textContent || '';
+      const zoom = Number(zoomText.replace(/[^\\d.]/g, ''));
       const stage = document.querySelector('[data-testid="project-canvas-stage"]');
       const playhead = document.querySelector('[data-testid="timeline-playhead"]');
       const trackRect = track?.getBoundingClientRect();
@@ -586,6 +593,11 @@ async function seekEditor(window, timeMs) {
         playheadTimeMs: playhead?.dataset.currentTime ?? null,
         duration,
         laneLabelWidth,
+        viewportWidth: scroll?.clientWidth ?? null,
+        zoomText,
+        zoom,
+        trackContentWidth: contentWidth,
+        trackWidthDelta: scroll ? contentWidth - scroll.clientWidth * zoom : null,
         trackRect: trackRect ? { x: trackRect.x, y: trackRect.y, width: trackRect.width,
           height: trackRect.height, left: trackRect.left, right: trackRect.right } : null,
         rulerRect: rulerRect ? { x: rulerRect.x, y: rulerRect.y, width: rulerRect.width,
