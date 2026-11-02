@@ -286,6 +286,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
       'quick-action-folder',
       'quick-action-save',
       'quick-action-play',
+      'quick-action-export',
       'quick-action-history',
       'quick-action-close',
     ]) {

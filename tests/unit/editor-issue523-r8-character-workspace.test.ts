@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -104,7 +105,7 @@ describe('Issue #523 R8 unified Character workspace', () => {
     expect(markup).toContain('＋ 添加表情');
     expect(markup).not.toContain('＋ 添加</button>');
     expect(markup.match(/data-expression-editing="false"/gu)).toHaveLength(
-      character.expressions.length,
+      asExpressionCharacter(character).expressions.length,
     );
     expect(markup).toContain('默认 ✓');
     expect(markup).toContain('expression-edit-');
@@ -175,7 +176,7 @@ describe('Issue #523 R8 unified Character workspace', () => {
 
   it('adds Assembly for composite Characters while keeping Expressions as the default workspace', () => {
     const project = migrateProject(exampleProject);
-    const base = project.characters[0]!;
+    const base = asExpressionCharacter(project.characters[0]!);
     const body = project.assets.find(
       (asset) => asset.kind === 'image',
     )!;
@@ -272,7 +273,7 @@ describe('Issue #523 R8 unified Character workspace', () => {
   it('uses the Body asset card as a separate session-only edit-target control', () => {
     const { imageAssets, thumbnails } = fixture();
     const project = migrateProject(exampleProject);
-    const base = project.characters[0]!;
+    const base = asExpressionCharacter(project.characters[0]!);
     const body = imageAssets[0]!;
     const character = ProjectSchema.parse({
       ...project,
@@ -356,7 +357,7 @@ describe('Issue #523 R8 unified Character workspace', () => {
 
   it('resumes Assembly as the active workspace when an edit draft survives resource navigation', () => {
     const project = migrateProject(exampleProject);
-    const base = project.characters[0]!;
+    const base = asExpressionCharacter(project.characters[0]!);
     const body = project.assets.find(
       (asset) => asset.kind === 'image',
     )!;
@@ -381,7 +382,7 @@ describe('Issue #523 R8 unified Character workspace', () => {
         rotationDeg: 0,
         flipX: false,
       },
-      expressionAssets: character.expressions.map((expression) => ({
+      expressionAssets: asExpressionCharacter(character).expressions.map((expression) => ({
         expressionId: expression.id,
         assetId: expression.assetId,
       })),

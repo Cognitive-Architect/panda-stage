@@ -581,7 +581,7 @@ describe('EditorShell project session integration', () => {
       trackedProjectRoot: SECOND_PROJECT_ROOT,
     });
 
-    expect(update).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenCalledTimes(3);
     expect(update).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -594,6 +594,14 @@ describe('EditorShell project session integration', () => {
       expect.objectContaining({
         projectRoot: PROJECT_ROOT,
         dirty: true,
+      }),
+    );
+    expect(update).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        projectRoot: SECOND_PROJECT_ROOT,
+        dirty: false,
+        openInstanceId: store.getProjectInstanceId(),
       }),
     );
     expect(autosave.trackedProjectCount()).toBe(1);

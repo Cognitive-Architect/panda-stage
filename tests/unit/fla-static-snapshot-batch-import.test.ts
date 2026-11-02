@@ -159,4 +159,31 @@ describe('FLA static snapshot batch import settlement', () => {
     expect(receipt.warnings.length).toBeGreaterThan(0);
     expect(vi.mocked(client.commit)).not.toHaveBeenCalled();
   });
+
+  it('finishes the active snapshot after stop is requested and skips only later items', async () => {
+    const { client, onProgress, options } = createContext();
+    let releasePreview: (response: FlaStaticSnapshotPreviewSuccess) => void = () => undefined;
+    const pendingPreview = new Promise<FlaStaticSnapshotPreviewSuccess>((resolve) => {
+      releasePreview = resolve;
+    });
+    vi.mocked(client.preview).mockImplementationOnce(() => pendingPreview);
+    let stopRequested = false;
+
+    const importPromise = runFlaStaticSnapshotBatchImport({
+      ...options,
+      shouldCancel: () => stopRequested,
+    });
+    await vi.waitFor(() => expect(client.preview).toHaveBeenCalledTimes(1));
+    stopRequested = true;
+    const activeRequest = vi.mocked(client.preview).mock.calls[0]?.[0];
+    expect(activeRequest).toBeDefined();
+    releasePreview(responseForPreview(activeRequest!));
+
+    const receipt = await importPromise;
+
+    expect(receipt.items.map((item) => item.status)).toEqual(['imported', 'not-attempted']);
+    expect(receipt.cancelled).toBe(true);
+    expect(vi.mocked(client.commit)).toHaveBeenCalledTimes(1);
+    expect(onProgress).toHaveBeenLastCalledWith(2);
+  });
 });

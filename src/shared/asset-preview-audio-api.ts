@@ -23,6 +23,7 @@ export const AssetPreviewAudioReadRequestSchema = z
     projectRoot: FileSystemPathSchema,
     assetId: z.uuid(),
     sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    expectedByteLength: z.number().int().positive().max(ASSET_PREVIEW_AUDIO_MAX_BYTES).optional(),
   })
   .strict();
 
@@ -46,27 +47,42 @@ const AssetPreviewAudioReadyResponseSchema = z
     }
   });
 
-export const AssetPreviewAudioReadResponseSchema = z.union([
-  AssetPreviewAudioReadyResponseSchema,
+const AssetPreviewAudioErrorResponseSchema = z
+  .object({
+    ok: z.literal(false),
+    error: z
+      .object({
+        code: z.enum([
+          'ASSET_PREVIEW_AUDIO_INVALID_REQUEST',
+          'ASSET_PREVIEW_AUDIO_PROJECT_NOT_TRACKED',
+          'ASSET_PREVIEW_AUDIO_ASSET_NOT_FOUND',
+          'ASSET_PREVIEW_AUDIO_NOT_AUDIO',
+          'ASSET_PREVIEW_AUDIO_HASH_MISMATCH',
+          'ASSET_PREVIEW_AUDIO_READ_FAILED',
+        ]),
+        message: z.string().trim().min(1).max(1_000),
+        assetId: z.string().trim().min(1).max(200),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const AssetPreviewAudioInfoResponseSchema = z.union([
   z
     .object({
-      ok: z.literal(false),
-      error: z
-        .object({
-          code: z.enum([
-            'ASSET_PREVIEW_AUDIO_INVALID_REQUEST',
-            'ASSET_PREVIEW_AUDIO_PROJECT_NOT_TRACKED',
-            'ASSET_PREVIEW_AUDIO_ASSET_NOT_FOUND',
-            'ASSET_PREVIEW_AUDIO_NOT_AUDIO',
-            'ASSET_PREVIEW_AUDIO_HASH_MISMATCH',
-            'ASSET_PREVIEW_AUDIO_READ_FAILED',
-          ]),
-          message: z.string().trim().min(1).max(1_000),
-          assetId: z.string().trim().min(1).max(200),
-        })
-        .strict(),
+      ok: z.literal(true),
+      status: z.literal('ready'),
+      assetId: z.uuid(),
+      mimeType: PreviewAudioMimeTypeSchema,
+      byteLength: z.number().int().positive().max(ASSET_PREVIEW_AUDIO_MAX_BYTES),
     })
     .strict(),
+  AssetPreviewAudioErrorResponseSchema,
+]);
+
+export const AssetPreviewAudioReadResponseSchema = z.union([
+  AssetPreviewAudioReadyResponseSchema,
+  AssetPreviewAudioErrorResponseSchema,
 ]);
 
 export type AssetPreviewAudioReadRequest = z.infer<
@@ -74,4 +90,10 @@ export type AssetPreviewAudioReadRequest = z.infer<
 >;
 export type AssetPreviewAudioReadResponse = z.infer<
   typeof AssetPreviewAudioReadResponseSchema
+>;
+export type AssetPreviewAudioInfoResponse = z.infer<
+  typeof AssetPreviewAudioInfoResponseSchema
+>;
+export type AssetPreviewAudioErrorResponse = z.infer<
+  typeof AssetPreviewAudioErrorResponseSchema
 >;

@@ -240,12 +240,15 @@ async function captureElement(window, selector) {
   return window.webContents.capturePage(rect);
 }
 
-async function selectCategory(window, index, assetId) {
+async function selectCategory(window, categoryLabel, assetId) {
   await selectResourceActivity(window, 'assets');
   await window.webContents.executeJavaScript(`(() => {
-    const buttons = [...document.querySelectorAll('.asset-category-tabs button')];
-    const categoryIndex = buttons.length === 4 ? ${index} + 1 : ${index};
-    buttons[categoryIndex]?.click();
+    const categoryButton = [...document.querySelectorAll('.asset-category-tabs button')]
+      .find((button) => button.textContent?.includes(${JSON.stringify(categoryLabel)}));
+    if (!categoryButton) {
+      throw new Error('Asset category did not appear: ' + ${JSON.stringify(categoryLabel)});
+    }
+    categoryButton.click();
   })()`);
   await window.webContents.executeJavaScript(
     waitFor(
@@ -585,7 +588,7 @@ async function verifyDay22() {
     await scrollCanvasIntoView(window);
     const initial = await stageSnapshot(window);
 
-    await selectCategory(window, 1, stickerAssetId);
+    await selectCategory(window, '未绑定', stickerAssetId);
     const fitPreview = await dispatchAssetDrop(
       window,
       stickerAssetId,
@@ -618,7 +621,7 @@ async function verifyDay22() {
     );
     const characterAssetId =
       project.characters[0].expressions[0].assetId;
-    await selectCategory(window, 0, characterAssetId);
+    await selectCategory(window, '角色', characterAssetId);
     const characterPreview = await dispatchAssetDrop(
       window,
       characterAssetId,
@@ -634,7 +637,7 @@ async function verifyDay22() {
     );
     const characterDrop = await stageSnapshot(window);
     const characterLayer = characterDrop.layers.at(-1);
-    await selectCategory(window, 1, stickerAssetId);
+    await selectCategory(window, '未绑定', stickerAssetId);
     await logicalClientPoint(window, { x: 1400, y: 700 }, true);
     const actualPreview = await dispatchAssetDrop(
       window,
@@ -928,7 +931,7 @@ async function verifyDay22() {
     );
     await scrollCanvasIntoView(window);
     const blankBefore = await stageSnapshot(window);
-    await selectCategory(window, 1, stickerAssetId);
+    await selectCategory(window, '未绑定', stickerAssetId);
     await dispatchAssetDrop(window, stickerAssetId, { x: 180, y: 160 });
     await window.webContents.executeJavaScript(
       waitFor(

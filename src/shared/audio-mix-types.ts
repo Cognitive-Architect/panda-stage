@@ -4,7 +4,7 @@ const AudioClipIdSchema = z.uuid();
 const AudioAssetIdSchema = z.uuid();
 const AudioRoleSchema = z.enum(['dialogue', 'bgm', 'sfx']);
 const AudioPathSchema = z.string().trim().min(1).max(32_767);
-const MillisecondsSchema = z.number().int().nonnegative();
+const MillisecondsSchema = z.number().int().nonnegative().safe();
 const GainSchema = z.number().finite().min(0).max(2);
 
 export const ExportAudioClipInputSchema = z
@@ -55,6 +55,7 @@ export const ExportAudioMixPlanSchema = z
   .object({
     durationMs: MillisecondsSchema.positive(),
     clips: z.array(ExportAudioMixPlanClipSchema),
+    preserveSilentTail: z.boolean().optional(),
   })
   .strict()
   .superRefine((plan, context) => {

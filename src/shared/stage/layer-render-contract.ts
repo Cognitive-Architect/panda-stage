@@ -39,6 +39,8 @@ export interface StageLayerRenderInstruction {
   scaleX: number;
   scaleY: number;
   rotationDeg: number;
+  skewX?: number;
+  skewY?: number;
   opacity: number;
   visible: boolean;
   zIndex: number;

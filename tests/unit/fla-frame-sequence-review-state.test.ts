@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildRange,
   formatSequenceRangeSummary,
+  formatSequenceRangeSummaryForPresentation,
+  getSequenceStartFrameInputWidthPx,
   getDefaultSequenceRange,
   intentChangeReset,
   isCommitEligible,
@@ -96,6 +98,32 @@ describe('Issue #781 sequence range summary', () => {
   it('keeps an invalid range explicit without claiming a valid frame count', () => {
     expect(formatSequenceRangeSummary(24, 48, validateRange(24, 48, 50)))
       .toBe('第 25–49 帧 · 范围无效');
+  });
+});
+
+describe('unified sequence presentation copy and input sizing', () => {
+  it('shows only the inclusive frame count for valid unified ranges', () => {
+    const validRange = validateRange(4, 9, 30);
+
+    expect(formatSequenceRangeSummaryForPresentation(4, 9, validRange, 'unified-preview'))
+      .toBe('共 6 帧');
+    expect(formatSequenceRangeSummaryForPresentation(4, 9, validRange, 'standard'))
+      .toBe('第 5–10 帧 · 共 6 帧');
+  });
+
+  it('keeps invalid range details visible in the unified preview', () => {
+    const invalidRange = validateRange(4, 28, 30);
+
+    expect(formatSequenceRangeSummaryForPresentation(4, 28, invalidRange, 'unified-preview'))
+      .toBe('第 5–29 帧 · 范围无效');
+  });
+
+  it('expands the unified start-frame input with the entered digit count', () => {
+    expect(getSequenceStartFrameInputWidthPx(1)).toBe(52);
+    expect(getSequenceStartFrameInputWidthPx(12)).toBe(58);
+    expect(getSequenceStartFrameInputWidthPx(123)).toBe(66);
+    expect(getSequenceStartFrameInputWidthPx(1234)).toBe(74);
+    expect(getSequenceStartFrameInputWidthPx(Number.NaN)).toBe(52);
   });
 });
 

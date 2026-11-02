@@ -34,6 +34,8 @@ import { ProjectService, ProjectServiceError, type ProjectTransaction } from './
 export interface FlaAssetCommitSession {
   sessionId: string;
   ir: AnimationImportIR;
+  /** SHA-256 of the exact source file before any in-memory recovery. */
+  originalSourceSha256?: string;
   /**
    * Raw, process-owned FLA source bytes. Retained so V2-R1 static-snapshot
    * rendering can reuse the inspection session without re-reading the file

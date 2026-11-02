@@ -154,7 +154,7 @@ describe('product preview first-paint reveal', () => {
     expect(canStartProductPreviewPlayback(true, 'revealed')).toBe(true);
   });
 
-  it('starts autoplay only after reveal and keeps autoPlay=false paused', () => {
+  it('starts autoplay only after reveal and consumes it once per Preview mount', () => {
     expect(
       shouldStartProductPreviewAutoplay({
         autoPlay: false,
@@ -169,6 +169,24 @@ describe('product preview first-paint reveal', () => {
         dataReady: true,
         durationMs: 4_000,
         revealPhase: 'revealing',
+      }),
+    ).toBe(false);
+    expect(
+      shouldStartProductPreviewAutoplay({
+        autoPlay: true,
+        autoplayConsumed: true,
+        dataReady: true,
+        durationMs: 4_000,
+        revealPhase: 'revealed',
+      }),
+    ).toBe(false);
+    expect(
+      shouldStartProductPreviewAutoplay({
+        autoPlay: true,
+        autoplayConsumed: true,
+        dataReady: true,
+        durationMs: 3_200,
+        revealPhase: 'revealed',
       }),
     ).toBe(false);
     expect(

@@ -1,0 +1,1160 @@
+{
+  "day": 18,
+  "workOrder": "B-18/45",
+  "result": "PASS",
+  "branch": "issue-839-am02",
+  "sourceSha": "9e66670b394a0aa99be6b07ed8f78be1206d2333",
+  "executedAt": "2026-10-25T23:22:27.773Z",
+  "ui": {
+    "categories": [
+      "全部",
+      "角色",
+      "未绑定",
+      "音频",
+      "动画"
+    ],
+    "filterAudit": {
+      "assetLibraryVisible": true,
+      "selectedMenuVisible": true,
+      "headingVisuallyHidden": true,
+      "assetWorkspaceHeadingHidden": true,
+      "filterControlsAligned": true,
+      "filterTriggerTouchTarget": true,
+      "dragHintVisible": false,
+      "menuValues": [
+        "all",
+        "uncategorized",
+        "background",
+        "character",
+        "prop",
+        "effect"
+      ],
+      "menuLabels": [
+        "全部",
+        "未分类",
+        "背景",
+        "人物",
+        "道具",
+        "特效"
+      ],
+      "menuRightAligned": true,
+      "menuCompact": true,
+      "selectedBackgroundContrast": true,
+      "firstFocus": "all",
+      "arrowFocus": "uncategorized",
+      "focusOutline": "2.66667px",
+      "escapeReturnedFocus": true,
+      "combinedSearchAndUsage": true,
+      "audioClearedUsage": true,
+      "audioCardCount": 1,
+      "audioFilterStayedClosed": true,
+      "backgroundUsage": true,
+      "unboundAllCount": 8,
+      "selectedBackgroundMenu": true,
+      "labelsUpdated": true,
+      "selectedContrast": true,
+      "selectedScreenshotUiReady": true,
+      "rightAlignedText": true,
+      "stableCheckGap": true,
+      "hoverVisible": true,
+      "backgroundRestoredAll": true
+    },
+    "usageFilterDefaultAudit": {
+      "values": [
+        "all",
+        "uncategorized",
+        "background",
+        "character",
+        "prop",
+        "effect"
+      ],
+      "labels": [
+        "全部",
+        "未分类",
+        "背景",
+        "人物",
+        "道具",
+        "特效"
+      ],
+      "triggerRight": 439.46875,
+      "menuRight": 439.46875,
+      "menuWidth": 188,
+      "selectedColor": "rgb(238, 246, 240)",
+      "selectedBackground": "rgba(65, 145, 87, 0.34)",
+      "selectedBorder": "rgb(127, 199, 148)",
+      "selectedTextAlign": "right",
+      "checkSlots": [
+        17,
+        17,
+        17,
+        17,
+        17,
+        17
+      ],
+      "hoverPoint": {
+        "x": 345,
+        "y": 308
+      }
+    },
+    "usageFilterHoverAudit": {
+      "hovered": true,
+      "background": "rgba(65, 145, 87, 0.34)"
+    },
+    "filterRestoreAudit": {
+      "active": "false",
+      "cardCount": 8,
+      "firstAssetRestored": true,
+      "menuClosed": true
+    },
+    "responsiveAudit": {
+      "narrow": {
+        "viewportWidth": 806,
+        "viewportHeight": 558,
+        "orientation": "landscape",
+        "libraryFound": true,
+        "libraryVisible": true,
+        "controlsFound": true,
+        "controlsVisible": true,
+        "searchFound": true,
+        "triggerFound": true,
+        "triggerVisible": true,
+        "controlsWithinLibrary": true,
+        "controlsAligned": true,
+        "searchVisible": true,
+        "triggerTouchTarget": true,
+        "expectedOrientation": "landscape"
+      },
+      "touchPortrait": {
+        "viewportWidth": 806,
+        "viewportHeight": 838,
+        "orientation": "portrait",
+        "libraryFound": true,
+        "libraryVisible": true,
+        "controlsFound": true,
+        "controlsVisible": true,
+        "searchFound": true,
+        "triggerFound": true,
+        "triggerVisible": true,
+        "controlsWithinLibrary": true,
+        "controlsAligned": true,
+        "searchVisible": true,
+        "triggerTouchTarget": true,
+        "expectedOrientation": "portrait"
+      },
+      "touchLandscape": {
+        "viewportWidth": 806,
+        "viewportHeight": 558,
+        "orientation": "landscape",
+        "libraryFound": true,
+        "libraryVisible": true,
+        "controlsFound": true,
+        "controlsVisible": true,
+        "searchFound": true,
+        "triggerFound": true,
+        "triggerVisible": true,
+        "controlsWithinLibrary": true,
+        "controlsAligned": true,
+        "searchVisible": true,
+        "triggerTouchTarget": true,
+        "expectedOrientation": "landscape"
+      }
+    },
+    "backgroundItemsBeforeDelete": 100,
+    "pagedBrowserScan": {
+      "found": true,
+      "page": 13,
+      "totalPages": 13,
+      "assetIds": [
+        "18000000-0000-4000-8000-000000000097",
+        "18000000-0000-4000-8000-000000000098",
+        "18000000-0000-4000-8000-000000000099",
+        "10000000-0000-4000-8000-000000000002"
+      ],
+      "seenAssetCount": 100
+    },
+    "thumbnailRequestCount": 1840,
+    "performanceObservation": {
+      "elapsedMs": 83.70000004768372,
+      "itemCount": 100,
+      "pageCount": 13,
+      "pageSize": 8,
+      "selectedName": "背景占位 008",
+      "scrollTop": 0,
+      "scrollHeight": 1053,
+      "clientHeight": 1053
+    },
+    "dragEvidence": {
+      "payload": {
+        "version": 2,
+        "type": "asset-image",
+        "assetId": "18000000-0000-4000-8000-000000000001"
+      },
+      "types": [
+        "application/x-panda-stage-asset"
+      ],
+      "rawContainsPath": false,
+      "rawContainsAssetObject": false
+    },
+    "historyReconciliation": {
+      "before": "背景占位 003",
+      "edited": "背景占位 003 - Day18 history synchronization",
+      "afterUndo": "背景占位 003",
+      "afterRedo": "背景占位 003 - Day18 history synchronization",
+      "dirtyDraft": "Unsaved draft preserved during undo",
+      "afterDirtyUndoName": "Unsaved draft preserved during undo",
+      "conflictVisible": true,
+      "t3": {
+        "escapeCancelKeepsDraft": true,
+        "assetSwitchCancelKeepsDraft": true,
+        "confirmedAssetSwitchLoadsCorrectIdentity": true,
+        "cancelPreservesProjectState": true,
+        "cancelReturnsSavedCardIdentity": true,
+        "noOpSavePreservesProjectState": true,
+        "detailReopenPreservesSavedMetadata": true,
+        "escapeDeclineKeepsDraft": true,
+        "escapeConfirmedDiscardsDraft": true,
+        "closeDeclineKeepsDraft": true,
+        "closeConfirmedDiscardsDraft": true
+      }
+    },
+    "referenceUi": {
+      "selectedAssetId": "10000000-0000-4000-8000-000000000002",
+      "status": "Main Process 已阻止删除：素材仍被 1 处内容使用。",
+      "warning": "镜头“Opening”的背景图层“Background”",
+      "referenceListVisible": true,
+      "disclosureExpanded": true,
+      "disclosureUnderSize": true,
+      "pathsHidden": true,
+      "technicalDetailsHidden": true,
+      "sourceWarning": true,
+      "cardStillPresent": true
+    },
+    "referenceCollapsedUi": {
+      "label": "图片",
+      "dimensions": "1920 × 1080 px",
+      "disclosureUnderSize": true,
+      "expanded": "false",
+      "sourceWarning": true,
+      "technicalDetailsVisible": false
+    },
+    "referenceSourceWarningAudit": {
+      "referenceExpanded": true,
+      "warningVisible": true,
+      "warningText": "源文件缺失，无法读取或重建缩略图。"
+    },
+    "multiReferenceUi": {
+      "countVisible": true,
+      "twoLabels": true,
+      "pathsHidden": true,
+      "projectUnchanged": true
+    },
+    "unreferencedDetailsUi": {
+      "summaryLabel": "图片",
+      "noReferenceRow": true,
+      "noUnreferencedRow": true
+    },
+    "deletionUi": {
+      "status": "素材文件、缩略图缓存和项目记录已同步删除。",
+      "backgroundCount": "99",
+      "total": "共 102 项",
+      "removedCardPresent": false,
+      "rendererHasNodeRequire": false,
+      "assetsApi": [
+        "cancelMetadata",
+        "choose",
+        "delete",
+        "importDropped",
+        "readAudio",
+        "readCanvasImage",
+        "readThumbnail",
+        "refreshMetadata"
+      ]
+    },
+    "sourceAudit": {
+      "imageCount": 1,
+      "nonDataImageSources": [],
+      "missingHasRebuild": true
+    },
+    "decodeFallback": {
+      "failedCardMissing": true,
+      "failedCardHasRebuild": true,
+      "failedCardStillSelected": true,
+      "failedCardHasImage": false,
+      "healthyCardStillHasImage": true,
+      "imageCountBefore": 8,
+      "imageCountAfter": 7
+    },
+    "importFeedback": {
+      "success": {
+        "oneFeedback": true,
+        "fourFileSummary": true,
+        "noPerFileResultList": true,
+        "floating": true,
+        "doesNotOverlapToolbar": true,
+        "doesNotOverlapLibraryControls": true,
+        "visibleAt3500Ms": true,
+        "dismissedAfterTimeout": true,
+        "visibleForMs": 4411,
+        "geometryBeforeImport": {
+          "viewport": {
+            "width": 1426,
+            "height": 938,
+            "devicePixelRatio": 1.5
+          },
+          "top": 204,
+          "left": 88.66667175292969,
+          "width": 345.0520935058594,
+          "height": 863.5729370117188,
+          "scrollTop": 0,
+          "scrollHeight": 864,
+          "clientHeight": 864,
+          "hasVerticalScrollbar": false,
+          "cardCount": 8,
+          "cardIds": [
+            "18000000-0000-4000-8000-000000000002",
+            "18000000-0000-4000-8000-000000000003",
+            "18000000-0000-4000-8000-000000000004",
+            "18000000-0000-4000-8000-000000000005",
+            "18000000-0000-4000-8000-000000000006",
+            "18000000-0000-4000-8000-000000000007",
+            "18000000-0000-4000-8000-000000000008",
+            "18000000-0000-4000-8000-000000000009"
+          ],
+          "cardNames": [
+            "背景占位 002",
+            "背景占位 003",
+            "背景占位 004",
+            "背景占位 005",
+            "背景占位 006",
+            "背景占位 007",
+            "背景占位 008",
+            "背景占位 009"
+          ],
+          "assetLibraryHeading": "项目素材项目素材库共 102 项",
+          "projectAssetCount": 102,
+          "assetLibraryPresentation": "landscape",
+          "content": {
+            "top": 204,
+            "left": 88.66667175292969,
+            "width": 345.0520935058594,
+            "height": 910.90625,
+            "right": 433.71876525878906,
+            "bottom": 1114.90625
+          },
+          "contentMargins": {
+            "top": "0px",
+            "right": "0px",
+            "bottom": "0px",
+            "left": "0px"
+          },
+          "contentPadding": {
+            "top": "0px",
+            "right": "0px",
+            "bottom": "0px",
+            "left": "0px"
+          },
+          "browser": {
+            "top": 152.6666717529297,
+            "left": 88.66667175292969,
+            "width": 345.0520935058594,
+            "height": 962.2396240234375,
+            "right": 433.71876525878906,
+            "bottom": 1114.9062957763672
+          },
+          "scrollAncestors": [
+            {
+              "tag": "div",
+              "id": null,
+              "className": "asset-grid",
+              "testId": null,
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 864,
+              "clientHeight": 864
+            },
+            {
+              "tag": "div",
+              "id": null,
+              "className": "asset-library-content",
+              "testId": null,
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 911,
+              "clientHeight": 911
+            },
+            {
+              "tag": "div",
+              "id": null,
+              "className": "asset-library-browser",
+              "testId": "asset-browser-view",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 962,
+              "clientHeight": 962
+            },
+            {
+              "tag": "section",
+              "id": null,
+              "className": "asset-library asset-library-presentation-landscape",
+              "testId": "asset-library",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 1070,
+              "clientHeight": 1070
+            },
+            {
+              "tag": "div",
+              "id": "resource-activity-panel",
+              "className": "resource-activity-panel",
+              "testId": "resource-activity-panel",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 1070,
+              "clientHeight": 1070
+            },
+            {
+              "tag": "div",
+              "id": null,
+              "className": "resource-activity-body",
+              "testId": null,
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 1070,
+              "clientHeight": 1070
+            },
+            {
+              "tag": "div",
+              "id": "resource-activity-drawer",
+              "className": "resource-activity-surface",
+              "testId": "resource-activity-drawer",
+              "overflowY": "auto",
+              "scrollTop": 0,
+              "scrollHeight": 1142,
+              "clientHeight": 741
+            },
+            {
+              "tag": "section",
+              "id": null,
+              "className": "resource-activity-dock resource-activity-dock-open resource-activity-dock-landscape",
+              "testId": "resource-activity-dock",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 742,
+              "clientHeight": 742
+            },
+            {
+              "tag": "aside",
+              "id": null,
+              "className": "left-workspace",
+              "testId": "left-workspace-scroll",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 742,
+              "clientHeight": 742
+            },
+            {
+              "tag": "div",
+              "id": null,
+              "className": "editor-workspace-slot editor-workspace-slot-resources",
+              "testId": null,
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 742,
+              "clientHeight": 742
+            },
+            {
+              "tag": "html",
+              "id": null,
+              "className": "",
+              "testId": null,
+              "overflowY": "hidden",
+              "scrollTop": 0,
+              "scrollHeight": 938,
+              "clientHeight": 938
+            }
+          ]
+        },
+        "geometryWhileVisible": {
+          "viewport": {
+            "width": 1426,
+            "height": 938,
+            "devicePixelRatio": 1.5
+          },
+          "top": 204,
+          "left": 88.66667175292969,
+          "width": 350.8020935058594,
+          "height": 872.1979370117188,
+          "scrollTop": 0,
+          "scrollHeight": 872,
+          "clientHeight": 872,
+          "hasVerticalScrollbar": false,
+          "cardCount": 8,
+          "cardIds": [
+            "18000000-0000-4000-8000-000000000002",
+            "18000000-0000-4000-8000-000000000003",
+            "18000000-0000-4000-8000-000000000004",
+            "18000000-0000-4000-8000-000000000005",
+            "18000000-0000-4000-8000-000000000006",
+            "18000000-0000-4000-8000-000000000007",
+            "18000000-0000-4000-8000-000000000008",
+            "18000000-0000-4000-8000-000000000009"
+          ],
+          "cardNames": [
+            "背景占位 002",
+            "背景占位 003",
+            "背景占位 004",
+            "背景占位 005",
+            "背景占位 006",
+            "背景占位 007",
+            "背景占位 008",
+            "背景占位 009"
+          ],
+          "assetLibraryHeading": "项目素材项目素材库共 106 项",
+          "projectAssetCount": 106,
+          "assetLibraryPresentation": "landscape",
+          "content": {
+            "top": 204,
+            "left": 88.66667175292969,
+            "width": 350.8020935058594,
+            "height": 919.53125,
+            "right": 439.46876525878906,
+            "bottom": 1123.53125
+          },
+          "contentMargins": {
+            "top": "0px",
+            "right": "0px",
+            "bottom": "0px",
+            "left": "0px"
+          },
+          "contentPadding": {
+            "top": "0px",
+            "right": "0px",
+            "bottom": "0px",
+            "left": "0px"
+          },
+          "browser": {
+            "top": 152.6666717529297,
+            "left": 88.66667175292969,
+            "width": 350.8020935058594,
+            "height": 970.8646240234375,
+            "right": 439.46876525878906,
+            "bottom": 1123.5312957763672
+          },
+          "scrollAncestors": [
+            {
+              "tag": "div",
+              "id": null,
+              "className": "asset-grid",
+              "testId": null,
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 872,
+              "clientHeight": 872
+            },
+            {
+              "tag": "div",
+              "id": null,
+              "className": "asset-library-content",
+              "testId": null,
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 920,
+              "clientHeight": 920
+            },
+            {
+              "tag": "div",
+              "id": null,
+              "className": "asset-library-browser",
+              "testId": "asset-browser-view",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 971,
+              "clientHeight": 971
+            },
+            {
+              "tag": "section",
+              "id": null,
+              "className": "asset-library asset-library-presentation-landscape",
+              "testId": "asset-library",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 1079,
+              "clientHeight": 1079
+            },
+            {
+              "tag": "div",
+              "id": "resource-activity-panel",
+              "className": "resource-activity-panel",
+              "testId": "resource-activity-panel",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 1079,
+              "clientHeight": 1079
+            },
+            {
+              "tag": "div",
+              "id": null,
+              "className": "resource-activity-body",
+              "testId": null,
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 1079,
+              "clientHeight": 1079
+            },
+            {
+              "tag": "div",
+              "id": "resource-activity-drawer",
+              "className": "resource-activity-surface",
+              "testId": "resource-activity-drawer",
+              "overflowY": "auto",
+              "scrollTop": 0,
+              "scrollHeight": 1151,
+              "clientHeight": 741
+            },
+            {
+              "tag": "section",
+              "id": null,
+              "className": "resource-activity-dock resource-activity-dock-open resource-activity-dock-landscape",
+              "testId": "resource-activity-dock",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 742,
+              "clientHeight": 742
+            },
+            {
+              "tag": "aside",
+              "id": null,
+              "className": "left-workspace",
+              "testId": "left-workspace-scroll",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 742,
+              "clientHeight": 742
+            },
+            {
+              "tag": "div",
+              "id": null,
+              "className": "editor-workspace-slot editor-workspace-slot-resources",
+              "testId": null,
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 742,
+              "clientHeight": 742
+            },
+            {
+              "tag": "html",
+              "id": null,
+              "className": "",
+              "testId": null,
+              "overflowY": "hidden",
+              "scrollTop": 0,
+              "scrollHeight": 938,
+              "clientHeight": 938
+            }
+          ]
+        },
+        "geometryAfterVisibleInteractions": {
+          "viewport": {
+            "width": 1426,
+            "height": 938,
+            "devicePixelRatio": 1.5
+          },
+          "top": -206,
+          "left": 88.66667175292969,
+          "width": 350.8020935058594,
+          "height": 872.1979370117188,
+          "scrollTop": 0,
+          "scrollHeight": 872,
+          "clientHeight": 872,
+          "hasVerticalScrollbar": false,
+          "cardCount": 8,
+          "cardIds": [
+            "18000000-0000-4000-8000-000000000002",
+            "18000000-0000-4000-8000-000000000003",
+            "18000000-0000-4000-8000-000000000004",
+            "18000000-0000-4000-8000-000000000005",
+            "18000000-0000-4000-8000-000000000006",
+            "18000000-0000-4000-8000-000000000007",
+            "18000000-0000-4000-8000-000000000008",
+            "18000000-0000-4000-8000-000000000009"
+          ],
+          "cardNames": [
+            "背景占位 002",
+            "背景占位 003",
+            "背景占位 004",
+            "背景占位 005",
+            "背景占位 006",
+            "背景占位 007",
+            "背景占位 008",
+            "背景占位 009"
+          ],
+          "assetLibraryHeading": "项目素材项目素材库共 106 项",
+          "projectAssetCount": 106,
+          "assetLibraryPresentation": "landscape",
+          "content": {
+            "top": -206,
+            "left": 88.66667175292969,
+            "width": 350.8020935058594,
+            "height": 919.53125,
+            "right": 439.46876525878906,
+            "bottom": 713.53125
+          },
+          "contentMargins": {
+            "top": "0px",
+            "right": "0px",
+            "bottom": "0px",
+            "left": "0px"
+          },
+          "contentPadding": {
+            "top": "0px",
+            "right": "0px",
+            "bottom": "0px",
+            "left": "0px"
+          },
+          "browser": {
+            "top": -257.3333435058594,
+            "left": 88.66667175292969,
+            "width": 350.8020935058594,
+            "height": 970.8646240234375,
+            "right": 439.46876525878906,
+            "bottom": 713.5312805175781
+          },
+          "scrollAncestors": [
+            {
+              "tag": "div",
+              "id": null,
+              "className": "asset-grid",
+              "testId": null,
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 872,
+              "clientHeight": 872
+            },
+            {
+              "tag": "div",
+              "id": null,
+              "className": "asset-library-content",
+              "testId": null,
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 920,
+              "clientHeight": 920
+            },
+            {
+              "tag": "div",
+              "id": null,
+              "className": "asset-library-browser",
+              "testId": "asset-browser-view",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 971,
+              "clientHeight": 971
+            },
+            {
+              "tag": "section",
+              "id": null,
+              "className": "asset-library asset-library-presentation-landscape",
+              "testId": "asset-library",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 1079,
+              "clientHeight": 1079
+            },
+            {
+              "tag": "div",
+              "id": "resource-activity-panel",
+              "className": "resource-activity-panel",
+              "testId": "resource-activity-panel",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 1079,
+              "clientHeight": 1079
+            },
+            {
+              "tag": "div",
+              "id": null,
+              "className": "resource-activity-body",
+              "testId": null,
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 1079,
+              "clientHeight": 1079
+            },
+            {
+              "tag": "div",
+              "id": "resource-activity-drawer",
+              "className": "resource-activity-surface",
+              "testId": "resource-activity-drawer",
+              "overflowY": "auto",
+              "scrollTop": 410,
+              "scrollHeight": 1151,
+              "clientHeight": 741
+            },
+            {
+              "tag": "section",
+              "id": null,
+              "className": "resource-activity-dock resource-activity-dock-open resource-activity-dock-landscape",
+              "testId": "resource-activity-dock",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 742,
+              "clientHeight": 742
+            },
+            {
+              "tag": "aside",
+              "id": null,
+              "className": "left-workspace",
+              "testId": "left-workspace-scroll",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 742,
+              "clientHeight": 742
+            },
+            {
+              "tag": "div",
+              "id": null,
+              "className": "editor-workspace-slot editor-workspace-slot-resources",
+              "testId": null,
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 742,
+              "clientHeight": 742
+            },
+            {
+              "tag": "html",
+              "id": null,
+              "className": "",
+              "testId": null,
+              "overflowY": "hidden",
+              "scrollTop": 0,
+              "scrollHeight": 938,
+              "clientHeight": 938
+            }
+          ]
+        },
+        "geometryAfterDismissal": {
+          "viewport": {
+            "width": 1426,
+            "height": 938,
+            "devicePixelRatio": 1.5
+          },
+          "top": -206,
+          "left": 88.66667175292969,
+          "width": 350.8020935058594,
+          "height": 872.1979370117188,
+          "scrollTop": 0,
+          "scrollHeight": 872,
+          "clientHeight": 872,
+          "hasVerticalScrollbar": false,
+          "cardCount": 8,
+          "cardIds": [
+            "18000000-0000-4000-8000-000000000002",
+            "18000000-0000-4000-8000-000000000003",
+            "18000000-0000-4000-8000-000000000004",
+            "18000000-0000-4000-8000-000000000005",
+            "18000000-0000-4000-8000-000000000006",
+            "18000000-0000-4000-8000-000000000007",
+            "18000000-0000-4000-8000-000000000008",
+            "18000000-0000-4000-8000-000000000009"
+          ],
+          "cardNames": [
+            "背景占位 002",
+            "背景占位 003",
+            "背景占位 004",
+            "背景占位 005",
+            "背景占位 006",
+            "背景占位 007",
+            "背景占位 008",
+            "背景占位 009"
+          ],
+          "assetLibraryHeading": "项目素材项目素材库共 106 项",
+          "projectAssetCount": 106,
+          "assetLibraryPresentation": "landscape",
+          "content": {
+            "top": -206,
+            "left": 88.66667175292969,
+            "width": 350.8020935058594,
+            "height": 919.53125,
+            "right": 439.46876525878906,
+            "bottom": 713.53125
+          },
+          "contentMargins": {
+            "top": "0px",
+            "right": "0px",
+            "bottom": "0px",
+            "left": "0px"
+          },
+          "contentPadding": {
+            "top": "0px",
+            "right": "0px",
+            "bottom": "0px",
+            "left": "0px"
+          },
+          "browser": {
+            "top": -257.3333435058594,
+            "left": 88.66667175292969,
+            "width": 350.8020935058594,
+            "height": 970.8646240234375,
+            "right": 439.46876525878906,
+            "bottom": 713.5312805175781
+          },
+          "scrollAncestors": [
+            {
+              "tag": "div",
+              "id": null,
+              "className": "asset-grid",
+              "testId": null,
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 872,
+              "clientHeight": 872
+            },
+            {
+              "tag": "div",
+              "id": null,
+              "className": "asset-library-content",
+              "testId": null,
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 920,
+              "clientHeight": 920
+            },
+            {
+              "tag": "div",
+              "id": null,
+              "className": "asset-library-browser",
+              "testId": "asset-browser-view",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 971,
+              "clientHeight": 971
+            },
+            {
+              "tag": "section",
+              "id": null,
+              "className": "asset-library asset-library-presentation-landscape",
+              "testId": "asset-library",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 1079,
+              "clientHeight": 1079
+            },
+            {
+              "tag": "div",
+              "id": "resource-activity-panel",
+              "className": "resource-activity-panel",
+              "testId": "resource-activity-panel",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 1079,
+              "clientHeight": 1079
+            },
+            {
+              "tag": "div",
+              "id": null,
+              "className": "resource-activity-body",
+              "testId": null,
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 1079,
+              "clientHeight": 1079
+            },
+            {
+              "tag": "div",
+              "id": "resource-activity-drawer",
+              "className": "resource-activity-surface",
+              "testId": "resource-activity-drawer",
+              "overflowY": "auto",
+              "scrollTop": 410,
+              "scrollHeight": 1151,
+              "clientHeight": 741
+            },
+            {
+              "tag": "section",
+              "id": null,
+              "className": "resource-activity-dock resource-activity-dock-open resource-activity-dock-landscape",
+              "testId": "resource-activity-dock",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 742,
+              "clientHeight": 742
+            },
+            {
+              "tag": "aside",
+              "id": null,
+              "className": "left-workspace",
+              "testId": "left-workspace-scroll",
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 742,
+              "clientHeight": 742
+            },
+            {
+              "tag": "div",
+              "id": null,
+              "className": "editor-workspace-slot editor-workspace-slot-resources",
+              "testId": null,
+              "overflowY": "visible",
+              "scrollTop": 0,
+              "scrollHeight": 742,
+              "clientHeight": 742
+            },
+            {
+              "tag": "html",
+              "id": null,
+              "className": "",
+              "testId": null,
+              "overflowY": "hidden",
+              "scrollTop": 0,
+              "scrollHeight": 938,
+              "clientHeight": 938
+            }
+          ]
+        },
+        "importReflow": {
+          "importedAssets": 4,
+          "projectAssetCountDelta": 4,
+          "gridCardCountDelta": 0,
+          "gridScrollHeightDelta": 8,
+          "gridWidthDelta": 5.75,
+          "gridHeightDelta": 8.625,
+          "scrollbarChanged": false
+        },
+        "toastDoesNotMoveGrid": true,
+        "preservesScrollPositionOnDismissal": true,
+        "scrollWhileVisible": {
+          "targetFound": true,
+          "scrollable": true,
+          "moved": true,
+          "target": "resource-activity-drawer",
+          "hitTarget": "asset-grid",
+          "wheelEvents": [
+            {
+              "target": "asset-grid",
+              "deltaY": 720,
+              "defaultPrevented": false
+            }
+          ],
+          "scrollTopBefore": 0,
+          "scrollTopWhileVisible": 410,
+          "scrollTopAfterInteraction": 410,
+          "scrollTopAfterDismissal": 410,
+          "maxScrollTop": 410
+        },
+        "cardClickWhileVisible": {
+          "targetFound": true,
+          "assetId": "18000000-0000-4000-8000-000000000004",
+          "selected": true,
+          "toastRemainedVisible": true
+        },
+        "listPositionUnchanged": true,
+        "expectedImportRevisionOnly": true
+      },
+      "pendingImportSuccess": {
+        "editMadeWhilePending": true,
+        "editPreservedAfterResponse": true,
+        "importedAssetApplied": true,
+        "revisionIncludesEditAndImport": true,
+        "remainsDirty": true,
+        "oneOrdinarySuccessToast": true,
+        "successToastDismisses": true,
+        "persistentSaveActionCommunicatesDirty": true
+      },
+      "pendingImportFailure": {
+        "editMadeWhilePending": true,
+        "editPreservedAfterException": true,
+        "errorFeedbackPersistent": true,
+        "responseAddsNoRevision": true,
+        "errorDoesNotDiscardPriorDirtyState": true
+      },
+      "duplicate": {
+        "singleNeutralNotice": true,
+        "communicatesReuse": true,
+        "focusEntered": true,
+        "hoverPaused": true,
+        "focusPaused": true,
+        "focusResumedDismissal": true,
+        "hoverResumedDismissal": true,
+        "projectStateUnchanged": true
+      },
+      "partialFailure": {
+        "persistent": true,
+        "summaryIsPartial": true,
+        "detailNamesFile": true,
+        "roleAndLive": true,
+        "actionTouchTargets": true
+      },
+      "cancellation": {
+        "clearsPreviousNotice": true,
+        "projectStateUnchanged": true
+      },
+      "audioMetadataFailure": {
+        "persistent": true,
+        "detailsNameFile": true,
+        "detailsExplainError": true,
+        "feedbackDidNotAddRevisionOrHistory": true
+      }
+    }
+  },
+  "deletionProtocol": {
+    "referenceScanBeforeMutation": true,
+    "authoritativeSnapshotRecheckedBeforeCommit": true,
+    "referencesRescannedBeforeCommit": true,
+    "staleDuringStageRollsBackAllFiles": true,
+    "referencedDeleteBlocked": true,
+    "referencedAssetStillVisible": true,
+    "unreferencedDeleteApplied": true,
+    "requests": [
+      {
+        "assetId": "10000000-0000-4000-8000-000000000002",
+        "baseRevision": 4,
+        "projectRoot": "D:\\项目\\Day 18 素材库 🐼.pandastage"
+      },
+      {
+        "assetId": "18000000-0000-4000-8000-000000000001",
+        "baseRevision": 4,
+        "projectRoot": "D:\\项目\\Day 18 素材库 🐼.pandastage"
+      }
+    ]
+  },
+  "backendEvidence": {
+    "integrationTest": "tests/integration/asset-delete.test.ts",
+    "verifiesRealAssetCacheAndProjectDeletion": true,
+    "verifiesStageFailureRollback": true,
+    "verifiesAtomicSaveFailureRollback": true,
+    "verifiesStaleRevisionBeforeMutation": true,
+    "verifiesStaleRevisionAfterStaging": true,
+    "verifiesStaleAtAtomicReplaceBoundary": true,
+    "verifiesRecoveryHashPreservedOnRace": true,
+    "pngValidation": {
+      "validCacheAccepted": true,
+      "truncatedSignatureBodyRejected": true,
+      "oversizedCacheCoveredBy": "tests/unit/asset-thumbnail-service.test.ts"
+    }
+  },
+  "screenshots": [
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/asset-library-100.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/usage-filter-default.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/usage-filter-hover.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/usage-filter-selected.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/viewport-narrow.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/viewport-touch-portrait.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/viewport-touch-landscape.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/drag-feedback.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/thumbnail-decode-fallback.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/import-success.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/import-partial-failure.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/import-audio-metadata-failure.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/pending-import-preserved-edit.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/pending-import-dirty-after-toast.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/pending-import-exception.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/reference-details-collapsed.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/reference-details-expanded.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/reference-source-warning.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/multi-reference-collapsed.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/multi-reference-expanded.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/unreferenced-details.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/reference-blocked.png",
+    "docs/evidence/issue-835-day18/run-2026-10-25T23-21-32-156Z/unreferenced-deleted.png"
+  ]
+}

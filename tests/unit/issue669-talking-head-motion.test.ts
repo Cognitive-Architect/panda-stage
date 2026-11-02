@@ -290,9 +290,11 @@ function activeDialogueId(project: Project, timeMs: number): string | null {
 }
 
 describe('Issue #669 requested-time Talking Head Motion', () => {
-  it('uses a deterministic 2 Hz wave with bounded 120 ms ease envelopes', () => {
+  it('uses a 2 Hz upper-left/lower-right wave with bounded 120 ms ease envelopes', () => {
     const start = resolveTalkingHeadMotionTransform(0, 1_000);
-    const peak = resolveTalkingHeadMotionTransform(375, 1_000);
+    const upperLeft = resolveTalkingHeadMotionTransform(125, 1_000);
+    const midpoint = resolveTalkingHeadMotionTransform(250, 1_000);
+    const lowerRight = resolveTalkingHeadMotionTransform(375, 1_000);
     const end = resolveTalkingHeadMotionTransform(1_000, 1_000);
     const before = resolveTalkingHeadMotionTransform(-1, 1_000);
     const approachEnd = resolveTalkingHeadMotionTransform(940, 1_000);
@@ -304,34 +306,40 @@ describe('Issue #669 requested-time Talking Head Motion', () => {
       scaleY: 1,
       rotationDeg: 0,
     });
-    expect(peak.translateY).toBeCloseTo(-4, 10);
-    expect(peak.rotationDeg).toBe(0);
+    expect([upperLeft.translateX, upperLeft.translateY]).toEqual([-4, -4]);
+    expect([midpoint.translateX, midpoint.translateY]).toEqual([0, 0]);
+    expect([lowerRight.translateX, lowerRight.translateY]).toEqual([4, 4]);
+    expect([upperLeft.rotationDeg, lowerRight.rotationDeg]).toEqual([0, 0]);
     expect(
       [0, 60, 125, 250, 375, 500, 940, 1_000].map(
         (timeMs) => resolveTalkingHeadMotionTransform(timeMs, 1_000).rotationDeg,
       ),
     ).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
-    expect(Math.abs(resolveTalkingHeadMotionTransform(60, 1_000).translateY)).toBeLessThan(2);
+    const approachStart = resolveTalkingHeadMotionTransform(60, 1_000);
+    expect(Math.abs(approachStart.translateX)).toBeLessThan(2);
+    expect(Math.abs(approachStart.translateY)).toBeLessThan(2);
+    expect(Math.abs(approachEnd.translateX)).toBeLessThanOrEqual(2);
     expect(Math.abs(approachEnd.translateY)).toBeLessThanOrEqual(2);
+    expect([end.translateX, end.translateY]).toEqual([0, 0]);
     expect(end.translateY).toBe(0);
-    expect(before.translateY).toBe(0);
-    expect(resolveTalkingHeadMotionTransform(375, 1_000)).toEqual(peak);
+    expect([before.translateX, before.translateY]).toEqual([0, 0]);
+    expect(resolveTalkingHeadMotionTransform(375, 1_000)).toEqual(lowerRight);
   });
 
-  it('scales only vertical motion at 0, 100, and 200 percent', () => {
+  it('scales both diagonal axes together at 0, 100, and 200 percent', () => {
     const samples = [0, 100, 200].map((intensityPercent) =>
-      resolveTalkingHeadMotionTransform(375, 1_000, intensityPercent),
+      resolveTalkingHeadMotionTransform(125, 1_000, intensityPercent),
     );
 
-    expect(samples.map(({ translateY }) => translateY)).toEqual([0, -4, -8]);
+    expect(samples.map(({ translateX, translateY }) => [translateX, translateY])).toEqual([
+      [0, 0],
+      [-4, -4],
+      [-8, -8],
+    ]);
     expect(samples.map(({ rotationDeg }) => rotationDeg)).toEqual([0, 0, 0]);
     expect(
-      samples.map(({ translateX, scaleX, scaleY }) => [translateX, scaleX, scaleY]),
-    ).toEqual([
-      [0, 1, 1],
-      [0, 1, 1],
-      [0, 1, 1],
-    ]);
+      samples.map(({ scaleX, scaleY }) => [scaleX, scaleY]),
+    ).toEqual([[1, 1], [1, 1], [1, 1]]);
   });
 
   it('follows A → B → A, starts each phase at neutral, and returns non-speakers to neutral', () => {
@@ -339,11 +347,14 @@ describe('Issue #669 requested-time Talking Head Motion', () => {
     const shot = project.shots[0]!;
     const beforeDialogue = visualFor(project, 50, IDS.layerChar);
     const atFirstStart = visualFor(project, 100, IDS.layerChar);
+    const aUpperLeft = visualFor(project, 225, IDS.layerChar);
     const aSpeaking = visualFor(project, 475, IDS.layerChar);
     const aNonSpeaker = visualFor(project, 475, B_LAYER_ID);
+    const bUpperLeft = visualFor(project, 1_225, B_LAYER_ID);
     const bSpeaking = visualFor(project, 1_475, B_LAYER_ID);
     const bNonSpeaker = visualFor(project, 1_475, IDS.layerChar);
     const atAAgainStart = visualFor(project, 2_100, IDS.layerChar);
+    const aAgainUpperLeft = visualFor(project, 2_225, IDS.layerChar);
     const aSpeakingAgain = visualFor(project, 2_475, IDS.layerChar);
     const atBStart = visualFor(project, 1_100, B_LAYER_ID);
     const atDialogueEnd = visualFor(project, 3_100, IDS.layerChar);
@@ -355,17 +366,45 @@ describe('Issue #669 requested-time Talking Head Motion', () => {
     expect(activeDialogueId(project, 100)).toBe(A_DIALOGUE_ID);
     expect(activeDialogueId(project, 1_100)).toBe(B_DIALOGUE_ID);
     expect(activeDialogueId(project, 2_100)).toBe(A_AGAIN_DIALOGUE_ID);
-    expect(beforeDialogue.visual.headGroup?.transform.translateY).toBe(0);
-    expect(atFirstStart.visual.headGroup?.transform.translateY).toBe(0);
-    expect(aSpeaking.visual.headGroup?.transform.translateY).toBeCloseTo(-4, 10);
-    expect(bSpeaking.visual.headGroup?.transform.translateY).toBeCloseTo(-4, 10);
-    expect(aSpeakingAgain.visual.headGroup?.transform.translateY).toBeCloseTo(-4, 10);
-    expect(aNonSpeaker.visual.headGroup?.transform.translateY).toBe(0);
-    expect(bNonSpeaker.visual.headGroup?.transform.translateY).toBe(0);
-    expect(atAAgainStart.visual.headGroup?.transform.translateY).toBe(0);
-    expect(atBStart.visual.headGroup?.transform.translateY).toBe(0);
-    expect(atDialogueEnd.visual.headGroup?.transform.translateY).toBe(0);
-    expect(afterDialogue.visual.headGroup?.transform.translateY).toBe(0);
+    for (const neutralVisual of [
+      beforeDialogue,
+      atFirstStart,
+      aNonSpeaker,
+      bNonSpeaker,
+      atAAgainStart,
+      atBStart,
+      atDialogueEnd,
+      afterDialogue,
+    ]) {
+      expect([
+        neutralVisual.visual.headGroup?.transform.translateX,
+        neutralVisual.visual.headGroup?.transform.translateY,
+      ]).toEqual([0, 0]);
+    }
+    expect([
+      aUpperLeft.visual.headGroup?.transform.translateX,
+      aUpperLeft.visual.headGroup?.transform.translateY,
+    ]).toEqual([-4, -4]);
+    expect([
+      aSpeaking.visual.headGroup?.transform.translateX,
+      aSpeaking.visual.headGroup?.transform.translateY,
+    ]).toEqual([4, 4]);
+    expect([
+      bUpperLeft.visual.headGroup?.transform.translateX,
+      bUpperLeft.visual.headGroup?.transform.translateY,
+    ]).toEqual([-4, -4]);
+    expect([
+      bSpeaking.visual.headGroup?.transform.translateX,
+      bSpeaking.visual.headGroup?.transform.translateY,
+    ]).toEqual([4, 4]);
+    expect([
+      aAgainUpperLeft.visual.headGroup?.transform.translateX,
+      aAgainUpperLeft.visual.headGroup?.transform.translateY,
+    ]).toEqual([-4, -4]);
+    expect([
+      aSpeakingAgain.visual.headGroup?.transform.translateX,
+      aSpeakingAgain.visual.headGroup?.transform.translateY,
+    ]).toEqual([4, 4]);
     expect(shot.audioClips.some((clip) => clip.role === 'bgm' && clip.startMs <= 3_500 && clip.endMs > 3_500)).toBe(true);
     expect(shot.audioClips.some((clip) => clip.role === 'sfx' && clip.startMs <= 3_500 && clip.endMs > 3_500)).toBe(true);
   });
@@ -377,13 +416,19 @@ describe('Issue #669 requested-time Talking Head Motion', () => {
       B_CHARACTER_ID,
       200,
     );
+    const aUpperLeft = visualFor(project, 225, IDS.layerChar).visual.headGroup;
     const aSpeaking = visualFor(project, 475, IDS.layerChar).visual.headGroup;
+    const bUpperLeft = visualFor(project, 1_225, B_LAYER_ID).visual.headGroup;
     const bSpeaking = visualFor(project, 1_475, B_LAYER_ID).visual.headGroup;
+    const aAgainUpperLeft = visualFor(project, 2_225, IDS.layerChar).visual.headGroup;
     const aSpeakingAgain = visualFor(project, 2_475, IDS.layerChar).visual.headGroup;
 
-    expect(aSpeaking?.transform.translateY).toBeCloseTo(-4, 10);
-    expect(bSpeaking?.transform.translateY).toBeCloseTo(-8, 10);
-    expect(aSpeakingAgain?.transform.translateY).toBeCloseTo(-4, 10);
+    expect([aUpperLeft?.transform.translateX, aUpperLeft?.transform.translateY]).toEqual([-4, -4]);
+    expect([aSpeaking?.transform.translateX, aSpeaking?.transform.translateY]).toEqual([4, 4]);
+    expect([bUpperLeft?.transform.translateX, bUpperLeft?.transform.translateY]).toEqual([-8, -8]);
+    expect([bSpeaking?.transform.translateX, bSpeaking?.transform.translateY]).toEqual([8, 8]);
+    expect([aAgainUpperLeft?.transform.translateX, aAgainUpperLeft?.transform.translateY]).toEqual([-4, -4]);
+    expect([aSpeakingAgain?.transform.translateX, aSpeakingAgain?.transform.translateY]).toEqual([4, 4]);
     expect([
       aSpeaking?.transform.rotationDeg,
       bSpeaking?.transform.rotationDeg,
@@ -445,7 +490,10 @@ describe('Issue #669 requested-time Talking Head Motion', () => {
       `${IDS.layerChar}:face`,
     ]);
     expect(atSpeech.visual.headGroup?.partIds).not.toContain(`${IDS.layerChar}:body`);
-    expect(atSpeech.visual.headGroup?.transform.translateY).not.toBe(0);
+    expect(atSpeech.visual.headGroup?.transform.translateX).not.toBe(0);
+    expect(atSpeech.visual.headGroup?.transform.translateY).toBe(
+      atSpeech.visual.headGroup?.transform.translateX,
+    );
     expect(stageLayer.visual?.headGroup?.transform).toEqual(atSpeech.visual.headGroup?.transform);
     expect(body.render).toMatchObject({ x: -400, y: -500, rotationDeg: 0 });
     expect(root).toMatchObject({
@@ -497,7 +545,9 @@ describe('Issue #669 requested-time Talking Head Motion', () => {
     const originalVisual = visualFor(project, 475, IDS.layerChar).visual;
     const duplicateVisual = visualFor(project, 475, DUPLICATE_A_LAYER_ID).visual;
 
+    expect(originalVisual.headGroup?.transform.translateX).toBe(0);
     expect(originalVisual.headGroup?.transform.translateY).toBe(0);
+    expect(duplicateVisual.headGroup?.transform.translateX).toBe(0);
     expect(duplicateVisual.headGroup?.transform.translateY).toBe(0);
   });
 
@@ -555,7 +605,7 @@ describe('Issue #669 requested-time Talking Head Motion', () => {
   });
 
   it('keeps 0, 100, and 200 percent geometry identical across Editor, Preview, and Export', () => {
-    const timeMs = 475;
+    const timeMs = 225;
     for (const intensityPercent of [0, 100, 200]) {
       const project = withTalkingHeadIntensity(
         talkingProject(),
@@ -610,11 +660,10 @@ describe('Issue #669 requested-time Talking Head Motion', () => {
 
       expect(editorTransform).toEqual(previewTransform);
       expect(previewTransform).toEqual(exportTransform);
-      expect(editorTransform.translateY).toBeCloseTo(
-        (-4 * intensityPercent) / 100,
-        10,
-      );
+      expect(editorTransform.translateX).toBeCloseTo((-4 * intensityPercent) / 100, 10);
+      expect(editorTransform.translateY).toBeCloseTo((-4 * intensityPercent) / 100, 10);
       expect(editorTransform.rotationDeg).toBe(0);
+      expect([editorTransform.scaleX, editorTransform.scaleY]).toEqual([1, 1]);
       expect(exported.timeMs).toBe(timeMs);
     }
   });
@@ -641,9 +690,10 @@ describe('Issue #669 requested-time Talking Head Motion', () => {
     expect(paused).toEqual(replayed);
     expect(paused.layers.find((layer) => layer.id === IDS.layerChar)?.headGroupTransform)
       .toEqual(replayed.layers.find((layer) => layer.id === IDS.layerChar)?.headGroupTransform);
-    expect(
-      resumed.layers.find((layer) => layer.id === IDS.layerChar)?.headGroupTransform?.translateY ?? 0,
-    )
-      .toBeGreaterThan(0);
+    const resumedTransform = resumed.layers.find(
+      (layer) => layer.id === IDS.layerChar,
+    )?.headGroupTransform;
+    expect(resumedTransform?.translateX).toBeLessThan(0);
+    expect(resumedTransform?.translateY).toBe(resumedTransform?.translateX);
   });
 });

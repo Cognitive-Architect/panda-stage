@@ -47,6 +47,21 @@ export class HistoryStore {
     options: ExecuteHistoryOptions = {},
   ): void {
     command.redo();
+    this.pushExecuted(command, options);
+  }
+
+  /** Records a command whose first application was committed atomically elsewhere. */
+  recordApplied(
+    command: HistoryCommand,
+    options: ExecuteHistoryOptions = {},
+  ): void {
+    this.pushExecuted(command, options);
+  }
+
+  private pushExecuted(
+    command: HistoryCommand,
+    options: ExecuteHistoryOptions,
+  ): void {
     const previous = this.undoStack.at(-1);
     const merged =
       previous &&

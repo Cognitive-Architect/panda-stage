@@ -25,6 +25,19 @@ export interface SavedEditorProjectSnapshot {
 
 export type SaveAcknowledgement = 'current' | 'stale';
 
+export interface EditorProjectOperationLease {
+  readonly projectRoot: string;
+  readonly projectId: string;
+  readonly revision: number;
+  readonly openInstanceId: number;
+  readonly token: symbol;
+}
+
+interface ActiveEditorProjectOperation {
+  readonly lease: EditorProjectOperationLease;
+  committed: boolean;
+}
+
 type Listener = () => void;
 
 export class EditorProjectStore {
@@ -35,6 +48,7 @@ export class EditorProjectStore {
   /** Runtime-only identity for one open Project instance. */
   private nextProjectInstanceId = 0;
   private activeProjectInstanceId: number | null = null;
+  private activeProjectOperation: ActiveEditorProjectOperation | null = null;
   private readonly listeners = new Set<Listener>();
 
   constructor(readonly history = new HistoryStore()) {}
@@ -72,6 +86,7 @@ export class EditorProjectStore {
   };
 
   open(projectRoot: string, rawProject: Project): void {
+    this.assertNoProjectOperation();
     this.history.clear();
     const project = ProjectSchema.parse(rawProject);
     this.activeProjectInstanceId = ++this.nextProjectInstanceId;
@@ -91,6 +106,7 @@ export class EditorProjectStore {
     options: ExecuteHistoryOptions = {},
     replayEffects: HistoryReplayEffects = {},
   ): void {
+    this.assertNoProjectOperation();
     const current = this.requireSnapshot();
     const project = ProjectSchema.parse(rawProject);
     this.assertSameProject(current.project, project);
@@ -108,6 +124,7 @@ export class EditorProjectStore {
   }
 
   restore(rawProject: Project): void {
+    this.assertNoProjectOperation();
     const current = this.requireSnapshot();
     const project = ProjectSchema.parse(rawProject);
     this.assertSameProject(current.project, project);
@@ -122,11 +139,88 @@ export class EditorProjectStore {
   }
 
   undo(): boolean {
+    this.assertNoProjectOperation();
     return this.history.undo();
   }
 
   redo(): boolean {
+    this.assertNoProjectOperation();
     return this.history.redo();
+  }
+
+  acquireProjectOperationLease(input: {
+    projectRoot: string;
+    projectId: string;
+    revision: number;
+    openInstanceId: number;
+  }): EditorProjectOperationLease {
+    if (this.activeProjectOperation) {
+      throw new Error('Another Project operation is already in progress.');
+    }
+    const current = this.requireSnapshot();
+    if (
+      current.projectRoot !== input.projectRoot ||
+      current.project.id !== input.projectId ||
+      current.revision !== input.revision ||
+      this.activeProjectInstanceId !== input.openInstanceId
+    ) {
+      throw new Error('The open Project changed before the operation could start.');
+    }
+    const lease = Object.freeze({ ...input, token: Symbol('editor-project-operation') });
+    this.activeProjectOperation = { lease, committed: false };
+    return lease;
+  }
+
+  acceptSavedProjectCommand(
+    lease: EditorProjectOperationLease,
+    rawProject: Project,
+    savedRevision: number,
+    label: string,
+  ): void {
+    const active = this.activeProjectOperation;
+    if (!active || active.lease !== lease) {
+      throw new Error('The Project operation lease is no longer active.');
+    }
+    const current = this.requireSnapshot();
+    const project = ProjectSchema.parse(rawProject);
+    this.assertSameProject(current.project, project);
+    if (
+      current.projectRoot !== lease.projectRoot ||
+      current.revision !== lease.revision ||
+      this.activeProjectInstanceId !== lease.openInstanceId ||
+      savedRevision !== lease.revision + 1 ||
+      JSON.stringify(project) === JSON.stringify(current.project)
+    ) {
+      throw new Error('The saved character result no longer matches the leased Project revision.');
+    }
+    this.savedProjectJson = JSON.stringify(project);
+    this.snapshot = {
+      ...current,
+      project,
+      dirty: false,
+      revision: savedRevision,
+    };
+    active.committed = true;
+    this.history.recordApplied(
+      new ProjectCommand(
+        label,
+        current.project,
+        project,
+        (next) => this.applyHistoryProject(next),
+      ),
+    );
+    this.emit();
+  }
+
+  releaseProjectOperationLease(lease: EditorProjectOperationLease): void {
+    if (this.activeProjectOperation?.lease !== lease) {
+      throw new Error('The Project operation lease is no longer active.');
+    }
+    this.activeProjectOperation = null;
+  }
+
+  assertProjectOperationIdle(): void {
+    this.assertNoProjectOperation();
   }
 
   applyAssetImport(
@@ -308,6 +402,7 @@ export class EditorProjectStore {
     rawProject: Project,
     savedRevision: number,
   ): SaveAcknowledgement {
+    if (this.activeProjectOperation?.committed) return 'stale';
     const current = this.requireSnapshot();
     const project = ProjectSchema.parse(rawProject);
     this.assertSameProject(current.project, project);
@@ -341,6 +436,7 @@ export class EditorProjectStore {
   }
 
   clear(): void {
+    this.assertNoProjectOperation();
     this.history.clear();
     this.savedProjectJson = null;
     this.cachedSavedProjectJson = null;
@@ -360,6 +456,12 @@ export class EditorProjectStore {
       throw new Error(
         `Editor project identity mismatch: ${current.id} !== ${next.id}.`,
       );
+    }
+  }
+
+  private assertNoProjectOperation(): void {
+    if (this.activeProjectOperation) {
+      throw new Error('The Project is busy with a confirmed operation. Try the edit again after it finishes.');
     }
   }
 

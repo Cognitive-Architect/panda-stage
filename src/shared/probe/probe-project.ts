@@ -69,6 +69,7 @@ export const PROBE_PROJECT: Project = ProjectSchema.parse({
       durationMs: 3_000,
     },
   ],
+  animations: [],
   characters: [],
   voiceProfiles: [],
   subtitleStyles: [

@@ -163,6 +163,61 @@ describe('UnsavedCloseController', () => {
     expect(closeWindow).not.toHaveBeenCalled();
   });
 
+  it('waits for authorized pending-work cleanup before synchronizing and closing', async () => {
+    let releasePendingWork!: () => void;
+    const pendingWorkGate = new Promise<void>((resolve) => {
+      releasePendingWork = resolve;
+    });
+    const order: string[] = [];
+    const harness = controller('discard');
+    const closeWindow = vi.fn();
+    const guard = new UnsavedCloseGuard({
+      controller: harness.value,
+      confirmPendingWork: vi.fn(async () => {
+        order.push('pending-work');
+        await pendingWorkGate;
+        return true;
+      }),
+      synchronizeRenderer: vi.fn(async () => {
+        order.push('renderer-sync');
+        return { ok: true as const };
+      }),
+      closeWindow,
+      quitApplication: vi.fn(),
+    });
+
+    guard.handleWindowClose({ preventDefault: vi.fn() });
+    await Promise.resolve();
+    expect(order).toEqual(['pending-work']);
+    expect(closeWindow).not.toHaveBeenCalled();
+
+    releasePendingWork();
+    await guard.waitForIdle();
+
+    expect(order).toEqual(['pending-work', 'renderer-sync']);
+    expect(closeWindow).toHaveBeenCalledOnce();
+  });
+
+  it('leaves the window open when pending work is kept running', async () => {
+    const harness = controller('discard');
+    const closeWindow = vi.fn();
+    const synchronize = vi.fn(synchronizeRenderer);
+    const guard = new UnsavedCloseGuard({
+      controller: harness.value,
+      confirmPendingWork: vi.fn(async () => false),
+      synchronizeRenderer: synchronize,
+      closeWindow,
+      quitApplication: vi.fn(),
+    });
+
+    guard.handleWindowClose({ preventDefault: vi.fn() });
+    await guard.waitForIdle();
+
+    expect(synchronize).not.toHaveBeenCalled();
+    expect(closeWindow).not.toHaveBeenCalled();
+    expect(harness.prompt).not.toHaveBeenCalled();
+  });
+
   it('allows discard without saving', async () => {
     const harness = controller('discard');
 

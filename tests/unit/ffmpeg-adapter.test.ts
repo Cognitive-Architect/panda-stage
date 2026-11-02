@@ -120,6 +120,28 @@ describe('FFmpegAdapter', () => {
     });
   });
 
+  it('does not ignore seven-digit frame indices when validating a sequence', async () => {
+    const framesDirectory = path.join(temporaryRoot, 'frames');
+    const outputDirectory = path.join(temporaryRoot, 'output');
+    await writeFrames(framesDirectory, [0, 1_000_000]);
+    await mkdir(outputDirectory);
+    const runner = new FakeRunner([]);
+    const adapter = new FFmpegAdapter({ runner });
+
+    await expect(
+      adapter.encodePngSequence({
+        framesDirectory,
+        outputPath: path.join(outputDirectory, 'output.mp4'),
+        fps: 24,
+        overwrite: false,
+      }),
+    ).rejects.toMatchObject({
+      code: 'FRAME_SEQUENCE_INVALID',
+      message: expect.stringContaining('frame_000001.png'),
+    });
+    expect(runner.calls).toHaveLength(0);
+  });
+
   it('passes paths containing spaces as individual arguments and encodes every frame', async () => {
     const framesDirectory = path.join(temporaryRoot, 'frames with spaces');
     const outputDirectory = path.join(temporaryRoot, 'output with spaces');
@@ -167,6 +189,38 @@ describe('FFmpegAdapter', () => {
     await expect(stat(temporaryOutputPath)).rejects.toMatchObject({
       code: 'ENOENT',
     });
+  });
+
+  it('uses a short temporary encode name when the target is itself a staged file', async () => {
+    const framesDirectory = path.join(temporaryRoot, 'frames');
+    const outputDirectory = path.join(temporaryRoot, 'output with spaces');
+    const outputPath = path.join(outputDirectory, '.formal-stage.mp4');
+    await writeFrames(framesDirectory, [0]);
+    await mkdir(outputDirectory);
+    let temporaryOutputPath = '';
+    const runner = new FakeRunner([
+      VERSION_RESULT,
+      ENCODERS_RESULT,
+      async (_executable, args) => {
+        temporaryOutputPath = args.at(-1) ?? '';
+        await writeFile(temporaryOutputPath, new Uint8Array([0, 0, 0, 1]));
+        return { code: 0, signal: null, stdout: '', stderr: '' };
+      },
+    ]);
+    const adapter = new FFmpegAdapter({ runner });
+
+    await adapter.encodePngSequence({
+      framesDirectory,
+      outputPath,
+      fps: 24,
+      overwrite: false,
+    });
+
+    expect(path.dirname(temporaryOutputPath)).toBe(outputDirectory);
+    expect(path.basename(temporaryOutputPath)).toMatch(
+      /^\.panda-stage-[0-9a-f-]+\.mp4$/iu,
+    );
+    expect(path.basename(temporaryOutputPath).length).toBeLessThan(64);
   });
 
   it('rejects overwrite=false before FFmpeg starts and preserves the existing output', async () => {

@@ -18,6 +18,7 @@ export function resolveEditorCanvasPixelRatio(
 export function configureKonvaScenePixelRatio(
   layer: KonvaSceneLayer,
   pixelRatio: number,
+  scheduleDraw = true,
 ): void {
   if (!Number.isFinite(pixelRatio) || pixelRatio <= 0) {
     throw new Error('Konva scene pixel ratio must be a positive finite number.');
@@ -25,5 +26,5 @@ export function configureKonvaScenePixelRatio(
   const canvas = layer.getCanvas();
   if (canvas.getPixelRatio() === pixelRatio) return;
   canvas.setPixelRatio(pixelRatio);
-  layer.batchDraw();
+  if (scheduleDraw) layer.batchDraw();
 }

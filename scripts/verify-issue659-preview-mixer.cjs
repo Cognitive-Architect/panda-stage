@@ -69,9 +69,23 @@ register('ASSET_CANVAS_IMAGE_READ', (_event, request) => {
   const asset = project.assets.find(asset => asset.id === request.assetId);
   return { ok: true, status: 'ready', assetId: asset.id, mimeType: 'image/png', width: asset.width, height: asset.height, byteLength: png.length, bytes: new Uint8Array(png) };
 });
+register('ASSET_PREVIEW_AUDIO_INFO', (_event, request) => {
+  const asset = project.assets.find(asset => asset.id === request.assetId);
+  const bytes = audioBytes.get(request.assetId);
+  if (!asset || asset.kind !== 'audio' || !bytes || asset.sha256 !== request.sha256 ||
+      createHash('sha256').update(bytes).digest('hex') !== request.sha256) {
+    return { ok: false, error: { code: 'ASSET_PREVIEW_AUDIO_READ_FAILED', message: 'Fixture audio integrity check failed.', assetId: request.assetId } };
+  }
+  return { ok: true, status: 'ready', assetId: asset.id, mimeType: asset.mimeType, byteLength: bytes.length };
+});
 let audioReads = 0;
+const audioReadAssetIds = [];
+const audioReadRequests = [];
 register('ASSET_PREVIEW_AUDIO_READ', (_event, request) => {
   audioReads++;
+  audioReadAssetIds.push(request.assetId);
+  audioReadRequests.push({ assetId: request.assetId, expectedByteLength: request.expectedByteLength ?? null,
+    atMs: performance.now() });
   const bytes = audioBytes.get(request.assetId);
   return { ok: true, status: 'ready', assetId: request.assetId, mimeType: 'audio/wav', byteLength: bytes.length, bytes: new Uint8Array(bytes) };
 });
@@ -92,11 +106,13 @@ async function seek(timeMs) {
 async function audioState() {
   return js(`(() => {
     const probe = window.__mixerProbe;
-    const voices = probe.sources.filter(source => !source.stopped);
     const context = probe.contexts[0];
+    const audioNow = context?.currentTime ?? 0;
+    const voices = probe.sources.filter(source => !source.stopped && source.args?.[0] <= audioNow);
+    const scheduled = probe.sources.filter(source => !source.stopped && source.args?.[0] > audioNow);
     const bins = new Float32Array(context?.analyser.frequencyBinCount ?? 0);
     if (context) context.analyser.getFloatFrequencyData(bins);
-    return { contexts: probe.contexts.length, active: voices.length, closed: probe.contexts.map(context => context.state),
+    return { contexts: probe.contexts.length, active: voices.length, scheduled: scheduled.length, closed: probe.contexts.map(context => context.state),
       starts: voices.map(source => source.args), gains: voices.map(source => source.gain?.gain.value),
       frequencies: [220,440,660,880].map(frequency => {
         const bin = Math.round(frequency * 4096 / (context?.sampleRate ?? 48000));
@@ -115,7 +131,7 @@ async function run() {
     // Observe native sources/gains and the mixed spectrum without substituting a fake decoder.
     await js(`(() => {
       const NativeContext = window.AudioContext;
-      const probe = window.__mixerProbe = { contexts: [], sources: [] };
+      const probe = window.__mixerProbe = { contexts: [], sources: [], decodes: [] };
       window.AudioContext = class extends NativeContext {
         constructor(options) {
           super(options); probe.contexts.push(this);
@@ -130,6 +146,10 @@ async function run() {
           source.stop = (...args) => { info.stopped = true; return stop(...args); };
           source.connect = destination => { info.gain = destination; return connect(destination); };
           source.addEventListener('ended', () => { info.stopped = true; }); return source;
+        }
+        decodeAudioData(data, ...callbacks) {
+          probe.decodes.push({ byteLength: data.byteLength, atMs: performance.now() });
+          return super.decodeAudioData(data, ...callbacks);
         }
         createGain() {
           const gain = super.createGain(), connect = gain.connect.bind(gain);
@@ -166,8 +186,12 @@ async function run() {
     assert(result.states.closed.active === 0 && result.states.closed.closed.every(state => state === 'closed'), 'Unmount leaked native session resources');
     const after = await js(`({ revision: document.querySelector('[data-testid="project-canvas-stage"]').dataset.projectRevision, undo: document.querySelector('[data-testid="history-controls"]').dataset.undoCount })`);
     assert(JSON.stringify(before) === JSON.stringify(after), 'Mixer changed Project/History');
-    assert(audioReads === 4, 'Read/decode cache did not reuse four assets across transport actions');
-    result.audioReads = audioReads; result.passed = true;
+    result.audioReads = audioReads;
+    result.audioReadAssetIds = audioReadAssetIds;
+    result.audioReadRequests = audioReadRequests;
+    result.decodeCalls = await js('window.__mixerProbe.decodes');
+    assert(audioReads === 4, `Read/decode cache expected four unique asset reads across transport actions; observed ${audioReads}: ${audioReadAssetIds.join(', ')}`);
+    result.passed = true;
     writeFileSync(path.join(root,'results.json'), JSON.stringify(result,null,2));
     console.log('PASS #659 native Preview mixer:', root); win.destroy(); app.exit(0);
   } catch (error) {

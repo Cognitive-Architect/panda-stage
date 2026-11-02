@@ -3,9 +3,11 @@ import {
   CHARACTER_PART_MIN_SCALE,
   calculateViewportTransform,
   DEFAULT_BODY_PLACEMENT,
+  DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT,
   resolveLayerVisualParts,
   transformVisualRectByPart,
   type Character,
+  type AdaptivePartsCharacter,
   type CharacterHead,
   type EvaluatedLayer,
   type ImageAsset,
@@ -18,11 +20,13 @@ import {
 } from '../../../domain';
 import type {
   CharacterAssemblySnapshot,
+  AdaptivePartsAssemblySnapshot,
   CharacterCreationSnapshot,
 } from '../../stores/characterAssemblySessionStore';
 
 export type CharacterAssemblySnapshotUnion =
   | CharacterAssemblySnapshot
+  | AdaptivePartsAssemblySnapshot
   | CharacterCreationSnapshot;
 
 export type AssemblyFaceSelection =
@@ -74,6 +78,7 @@ export function isAssemblyHeadMotionTestRunning(
 ): boolean {
   return Boolean(
     token &&
+      !isAdaptivePartsAssemblySnapshot(session) &&
       session.draft.head &&
       token.sessionId === session.sessionId &&
       token.generation === session.generation,
@@ -350,6 +355,12 @@ export function isCharacterCreationSnapshot(
   return 'kind' in session && session.kind === 'create';
 }
 
+export function isAdaptivePartsAssemblySnapshot(
+  session: CharacterAssemblySnapshotUnion,
+): session is AdaptivePartsAssemblySnapshot {
+  return 'kind' in session && session.kind === 'adaptive-parts';
+}
+
 export interface AssemblyPreviewExpression {
   id: string;
   name: string;
@@ -361,6 +372,22 @@ export function isCharacterAssemblyPending(
   session: CharacterAssemblySnapshotUnion,
 ): boolean {
   if (isCharacterCreationSnapshot(session)) return false;
+  if (isAdaptivePartsAssemblySnapshot(session)) {
+    const character = project.characters.find(
+      (candidate) => candidate.id === session.characterId,
+    );
+    if (!character || character.mode !== 'adaptive-parts') return true;
+    const normalized = {
+      sourceRootTransform: character.sourceRootTransform,
+      parts: character.parts.map((part) => ({
+        ...part,
+        sourceRestTransform: part.sourceRestTransform ?? part.restTransform,
+        staticAdjustment:
+          part.staticAdjustment ?? DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT,
+      })),
+    };
+    return JSON.stringify(normalized) !== JSON.stringify(session.draft);
+  }
   const character = project.characters.find(
     (candidate) => candidate.id === session.characterId,
   );
@@ -424,6 +451,7 @@ export function getAssemblyPreviewExpressions(
       assetId: expression.assetId,
     }));
   }
+  if (isAdaptivePartsAssemblySnapshot(session)) return [];
 
   const character = project.characters.find(
     (candidate) => candidate.id === session.characterId,
@@ -486,6 +514,8 @@ function previewCharacter(
         : {}),
     };
   }
+
+  if (isAdaptivePartsAssemblySnapshot(session)) return null;
 
   const existing = project.characters.find(
     (candidate) => candidate.id === session.characterId,
@@ -663,4 +693,80 @@ export function buildCharacterAssemblyPreviewVisual(
           }
         : null,
   };
+}
+
+/** Build the Adaptive Parts draft through the same authoritative C2 resolver. */
+export function buildAdaptivePartsAssemblyPreviewVisual(
+  project: Project,
+  session: AdaptivePartsAssemblySnapshot,
+): LayerVisualParts | null {
+  const existing = project.characters.find(
+    (candidate): candidate is AdaptivePartsCharacter =>
+      candidate.id === session.characterId && candidate.mode === 'adaptive-parts',
+  );
+  if (!existing || session.draft.parts.length === 0) return null;
+  if (session.draft.parts.some((part) =>
+    !project.assets.some((asset) => asset.kind === 'image' && asset.id === part.assetId),
+  )) return null;
+
+  const character: AdaptivePartsCharacter = {
+    ...existing,
+    sourceRootTransform: { ...session.draft.sourceRootTransform },
+    parts: session.draft.parts.map((part) => ({
+      ...part,
+      source: { ...part.source },
+      restTransform: { ...part.restTransform },
+      ...(part.sourceRestTransform
+        ? { sourceRestTransform: { ...part.sourceRestTransform } }
+        : {}),
+      ...(part.staticAdjustment
+        ? { staticAdjustment: { ...part.staticAdjustment } }
+        : {}),
+      imageMapping: { ...part.imageMapping, crop: { ...part.imageMapping.crop } },
+    })),
+  };
+  const previewProject: Project = {
+    ...project,
+    characters: [
+      ...project.characters.filter((candidate) => candidate.id !== character.id),
+      character,
+    ],
+  };
+  const layer: Layer = {
+    id: PREVIEW_LAYER_ID,
+    name: '临时 Adaptive Parts 组装预览',
+    source: {
+      kind: 'character',
+      characterId: character.id,
+      expressionId: character.defaultVoiceProfileId,
+    },
+    anchor: 'center',
+    x: project.width / 2,
+    y: project.height / 2,
+    scaleX: 1,
+    scaleY: 1,
+    flipX: false,
+    rotationDeg: 0,
+    opacity: 1,
+    visible: true,
+    zIndex: 0,
+    locked: false,
+  };
+  const evaluated: EvaluatedLayer = {
+    id: layer.id,
+    assetId: character.parts[0]!.assetId,
+    currentExpressionId: character.defaultVoiceProfileId,
+    mouthOverrideAssetId: null,
+    anchor: layer.anchor,
+    x: layer.x,
+    y: layer.y,
+    scaleX: layer.scaleX,
+    scaleY: layer.scaleY,
+    flipX: layer.flipX,
+    rotationDeg: layer.rotationDeg,
+    opacity: layer.opacity,
+    visible: layer.visible,
+    zIndex: layer.zIndex,
+  };
+  return resolveLayerVisualParts(previewProject, { layers: [layer] }, evaluated);
 }

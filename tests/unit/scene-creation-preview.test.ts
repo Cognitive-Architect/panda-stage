@@ -21,23 +21,28 @@ function makePreviewProject() {
         ? { ...asset, usage: 'background' }
         : asset,
     ),
-    characters: migrated.characters.map((character) => ({
-      ...character,
-      mode: 'composite',
-      bodyAssetId: character.baseAssetId,
-      bodyPlacement: { offsetX: 0, offsetY: 0, scale: 1 },
-      facePlacement: {
-        offsetX: 0,
-        offsetY: 0,
-        scale: 1,
-        rotationDeg: 0,
-        flipX: false,
-      },
-      defaultExpressionId: character.expressions[0]?.id ?? '',
-      defaultScale: 0.72,
-      defaultFlipX: false,
-      talkingHeadMotionIntensityPercent: 100,
-    })),
+    characters: migrated.characters.map((character) => {
+      if (character.mode === 'adaptive-parts') {
+        throw new Error('Fixture must use image-based Characters.');
+      }
+      return {
+        ...character,
+        mode: 'composite',
+        bodyAssetId: character.baseAssetId,
+        bodyPlacement: { offsetX: 0, offsetY: 0, scale: 1 },
+        facePlacement: {
+          offsetX: 0,
+          offsetY: 0,
+          scale: 1,
+          rotationDeg: 0,
+          flipX: false,
+        },
+        defaultExpressionId: character.expressions[0]?.id ?? '',
+        defaultScale: 0.72,
+        defaultFlipX: false,
+        talkingHeadMotionIntensityPercent: 100,
+      };
+    }),
   });
 }
 

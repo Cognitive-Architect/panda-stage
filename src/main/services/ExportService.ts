@@ -1,29 +1,44 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { buildExportAudioMixPlan } from '../../domain';
+import { projectDurationMs } from '../../domain/selectors/projectDuration';
+import {
+  buildExportAudioMixPlan,
+  buildFormalExportAudioMixPlan,
+} from '../../domain';
+import type { ExportAudioMixPlan } from '../../shared/audio-mix-types';
 import {
   ExportProbeConfigSchema,
   FullProbeExportRequestSchema,
   MAX_PENDING_FRAMES,
-  createFrameSchedule,
+  formalFrameCount,
+  iterateFormalProjectFrameSchedule,
+  iterateFormalFrameSchedule,
   type ExportFrameReady,
   type ExportJobPhase,
   type ExportJobStatus,
   type ExportJobUpdate,
   type ExportLoadProbeRequest,
+  type ExportLoadFormalRequest,
   type ExportProbeConfig,
   type ExportProbeLoaded,
   type ExportRenderFrameRequest,
   type FullProbeExportRequest,
+  type ProjectFrameScheduleEntry,
 } from '../../shared/export-types';
-import type { VideoProbeResult } from '../../shared/ffmpeg-types';
+import type {
+  AudioProbeResult,
+  MuxAudioMixRequest,
+  VideoProbeResult,
+} from '../../shared/ffmpeg-types';
+import type { FrozenExportInput } from './ExportPreparationService';
 import type { FrameFileSystem } from './FileSystemService';
 
 export interface FrameRenderer {
   loadProbe(request: ExportLoadProbeRequest): Promise<ExportProbeLoaded>;
+  loadFormal?(request: ExportLoadFormalRequest): Promise<{ jobId: string; acknowledged: true }>;
   renderFrame(request: ExportRenderFrameRequest): Promise<ExportFrameReady>;
   cancelJob(jobId: string): boolean;
-  prepareJob?(): Promise<void>;
+  prepareJob?(kind?: 'probe' | 'formal'): Promise<void>;
   releaseJob?(jobId: string): void;
 }
 
@@ -37,13 +52,12 @@ export interface FullProbeMediaAdapter {
     },
     signal?: AbortSignal,
   ): Promise<unknown>;
-  muxAudioMix(
-    request: {
-      videoPath: string;
-      audioMixPlan: ReturnType<typeof buildExportAudioMixPlan>;
-      outputPath: string;
-      overwrite: boolean;
-    },
+  probeAudioFile?(
+    audioPath: string,
+    signal?: AbortSignal,
+  ): Promise<AudioProbeResult>;
+  muxAudioMix?(
+    request: MuxAudioMixRequest,
     signal?: AbortSignal,
   ): Promise<unknown>;
   probeVideo(videoPath: string, signal?: AbortSignal): Promise<VideoProbeResult>;
@@ -52,6 +66,8 @@ export interface FullProbeMediaAdapter {
 
 export interface ExportJobRecord {
   jobId: string;
+  attemptId?: string;
+  snapshotId?: string;
   status: ExportJobStatus;
   phase: ExportJobPhase;
   durationMs: number;
@@ -59,6 +75,8 @@ export interface ExportJobRecord {
   completedFrames: number;
   outputDirectory: string | null;
   error: string | null;
+  originalError?: string | null;
+  cleanupError?: string | null;
 }
 
 interface FrameExportMetrics {
@@ -101,6 +119,7 @@ interface ActiveJob {
   jobId: string;
   controller: AbortController;
   acceptsCancellation: boolean;
+  completion?: Promise<unknown>;
 }
 
 class ExportCancelledError extends Error {}
@@ -130,6 +149,7 @@ type JobListener = (update: ExportJobUpdate) => void;
 
 export class ExportService {
   private readonly jobs = new Map<string, ExportJobRecord>();
+  private readonly completedOutputPaths = new Map<string, string>();
   private readonly listeners = new Set<JobListener>();
   private activeJob: ActiveJob | null = null;
 
@@ -143,6 +163,23 @@ export class ExportService {
     return this.activeJob?.jobId ?? null;
   }
 
+  canCancelJob(jobId: string): boolean {
+    return (
+      this.activeJob?.jobId === jobId &&
+      this.activeJob.acceptsCancellation &&
+      !this.activeJob.controller.signal.aborted
+    );
+  }
+
+  async waitForJob(jobId: string): Promise<void> {
+    const active = this.activeJob;
+    if (!active || active.jobId !== jobId) return;
+    await active.completion?.then(
+      () => undefined,
+      () => undefined,
+    );
+  }
+
   getActiveProcessCount(): number {
     return this.mediaAdapter?.getActiveProcessCount?.() ?? 0;
   }
@@ -150,6 +187,10 @@ export class ExportService {
   getJob(jobId: string): ExportJobRecord | null {
     const job = this.jobs.get(jobId);
     return job ? { ...job } : null;
+  }
+
+  getCompletedOutputPath(jobId: string): string | null {
+    return this.completedOutputPaths.get(jobId) ?? null;
   }
 
   subscribe(listener: JobListener): () => void {
@@ -196,6 +237,8 @@ export class ExportService {
     } catch (error) {
       const reason = this.errorMessage(error);
       job.status = 'failed';
+      job.originalError = null;
+      job.cleanupError = reason;
       job.error = `临时目录清理失败：${reason}`;
       this.emit(job);
       throw new ExportJobError(jobId, job.error, { cause: error });
@@ -216,6 +259,7 @@ export class ExportService {
         record,
         config,
         jobDirectory,
+        () => this.renderer.loadProbe({ jobId: active.jobId, ...config }),
       );
       this.throwIfCancelled(active);
       record.status = 'completed';
@@ -245,14 +289,56 @@ export class ExportService {
       request.audioClips,
     );
     const active = this.createJob(request);
+    const completion = this.executeFullProbe(
+      active,
+      request,
+      audioMixPlan,
+      this.mediaAdapter,
+    );
+    active.completion = completion;
     return {
       jobId: active.jobId,
-      completion: this.executeFullProbe(
-        active,
-        request,
-        audioMixPlan,
-        this.mediaAdapter,
-      ),
+      completion,
+    };
+  }
+
+  startFormalExport(
+    input: FrozenExportInput,
+    assertOutputTargetUnchanged: () => Promise<void>,
+  ): FullProbeExportHandle {
+    if (!this.mediaAdapter) {
+      throw new Error('Formal export requires an FFmpeg adapter.');
+    }
+    if (!this.renderer.loadFormal) {
+      throw new Error('Formal export requires the formal hidden renderer.');
+    }
+    const project = input.candidate.project;
+    if (project.shots.length === 0) {
+      throw new Error('Formal export candidate has no Shot.');
+    }
+    const durationMs = projectDurationMs(project);
+    if (
+      project.shots.some((shot) => shot.audioClips.length > 0) &&
+      (!this.mediaAdapter.probeAudioFile || !this.mediaAdapter.muxAudioMix)
+    ) {
+      throw new Error('Formal export requires audio preflight and mixing.');
+    }
+    const active = this.createJob({
+      durationMs,
+      fps: input.candidate.renderSettings.fps,
+      attemptId: input.candidate.attemptId,
+      snapshotId: input.candidate.snapshotId,
+    });
+    const completion = this.executeFormalExport(
+      active,
+      input,
+      assertOutputTargetUnchanged,
+      this.mediaAdapter,
+    );
+    active.completion = completion;
+    return {
+      jobId: active.jobId,
+      completion,
     };
   }
 
@@ -286,7 +372,7 @@ export class ExportService {
           request.projectDirectory,
         );
       this.throwIfCancelled(active);
-      await this.renderer.prepareJob?.();
+      await this.renderer.prepareJob?.('probe');
       rendererPrepared = true;
       this.throwIfCancelled(active);
       jobDirectory = await this.fileSystem.createJobDirectory(active.jobId);
@@ -297,6 +383,12 @@ export class ExportService {
         record,
         request,
         jobDirectory,
+        () =>
+          this.renderer.loadProbe({
+            jobId: active.jobId,
+            durationMs: request.durationMs,
+            fps: request.fps,
+          }),
       );
       this.throwIfCancelled(active);
 
@@ -316,6 +408,9 @@ export class ExportService {
 
       record.phase = 'muxing';
       this.emit(record);
+      if (!adapter.muxAudioMix) {
+        throw new Error('Full probe export requires audio mixing support.');
+      }
       await adapter.muxAudioMix(
         {
           videoPath: silentVideoPath,
@@ -344,6 +439,7 @@ export class ExportService {
         request.overwrite,
       );
       finalOutputStagingPath = null;
+      this.completedOutputPaths.set(active.jobId, outputPath);
       record.status = 'completed';
       record.phase = 'finished';
       this.emit(record);
@@ -391,17 +487,351 @@ export class ExportService {
     }
   }
 
+  private async executeFormalExport(
+    active: ActiveJob,
+    input: FrozenExportInput,
+    assertOutputTargetUnchanged: () => Promise<void>,
+    adapter: FullProbeMediaAdapter,
+  ): Promise<FullProbeExportResult> {
+    const record = this.requireJob(active.jobId);
+    const startedAt = performance.now();
+    const project = input.candidate.project;
+    const durationMs = projectDurationMs(project);
+    const outputPath = input.candidate.outputIntent.targetPath;
+    let jobDirectory: string | null = null;
+    let finalOutputStagingPath: string | null = null;
+    let rendererPrepared = false;
+
+    try {
+      await assertOutputTargetUnchanged();
+      const resolvedOutputPath = await this.fileSystem.prepareFormalOutput(
+        outputPath,
+      );
+      finalOutputStagingPath = this.fileSystem.createFinalOutputStagingPath(
+        active.jobId,
+        resolvedOutputPath,
+      );
+      this.throwIfCancelled(active);
+      await this.renderer.prepareJob?.('formal');
+      rendererPrepared = true;
+      this.throwIfCancelled(active);
+      jobDirectory = await this.fileSystem.createJobDirectory(active.jobId);
+      record.outputDirectory = jobDirectory;
+      const audioMixPlan = await this.prepareFormalAudioMixPlan(
+        input,
+        jobDirectory,
+        adapter,
+        active,
+      );
+      this.throwIfCancelled(active);
+
+      const render = await this.renderFrames(
+        active,
+        record,
+        {
+          durationMs,
+          fps: input.candidate.renderSettings.fps,
+        },
+        jobDirectory,
+        () =>
+          this.renderer.loadFormal!({
+            jobId: active.jobId,
+            project: input.candidate.project,
+            cameraMode: input.candidate.cameraMode,
+            media: input.media
+              .filter((entry) => entry.kind === 'image')
+              .map(({ assetId, mimeType, bytes }) => ({
+                assetId,
+                mimeType,
+                bytes,
+              })),
+          }),
+        project,
+      );
+      this.throwIfCancelled(active);
+
+      record.phase = 'encoding';
+      this.emit(record);
+      const silentVideoPath = audioMixPlan
+        ? path.join(jobDirectory, 'formal-silent.mp4')
+        : finalOutputStagingPath;
+      await adapter.encodePngSequence(
+        {
+          framesDirectory: jobDirectory,
+          outputPath: silentVideoPath,
+          fps: input.candidate.renderSettings.fps,
+          overwrite: false,
+        },
+        active.controller.signal,
+      );
+      this.throwIfCancelled(active);
+
+      if (audioMixPlan) {
+        record.phase = 'muxing';
+        this.emit(record);
+        await adapter.muxAudioMix!(
+          {
+            videoPath: silentVideoPath,
+            audioMixPlan,
+            outputPath: finalOutputStagingPath,
+            overwrite: false,
+          },
+          active.controller.signal,
+        );
+        this.throwIfCancelled(active);
+      }
+
+      record.phase = 'probing';
+      this.emit(record);
+      const probe = await adapter.probeVideo(
+        finalOutputStagingPath,
+        active.controller.signal,
+      );
+      this.assertFormalProbeMatches(
+        probe,
+        input.candidate.renderSettings.fps,
+        record.totalFrames,
+        audioMixPlan,
+      );
+      this.throwIfCancelled(active);
+
+      await this.cleanupDirectory(record, jobDirectory);
+      jobDirectory = null;
+      this.throwIfCancelled(active);
+      record.phase = 'committing';
+      active.acceptsCancellation = false;
+      this.emit(record);
+      await assertOutputTargetUnchanged();
+      await this.fileSystem.commitFormalOutputNoReplace(
+        finalOutputStagingPath,
+        resolvedOutputPath,
+      );
+      finalOutputStagingPath = null;
+      this.completedOutputPaths.set(active.jobId, resolvedOutputPath);
+      record.status = 'completed';
+      record.phase = 'finished';
+      this.emit(record);
+      return {
+        ...record,
+        status: 'completed',
+        phase: 'finished',
+        outputDirectory: null,
+        projectDirectory: input.candidate.projectRoot,
+        outputPath: resolvedOutputPath,
+        probe,
+        elapsedMs: Math.round(performance.now() - startedAt),
+        render,
+      };
+    } catch (error) {
+      let failure = error;
+      if (finalOutputStagingPath) {
+        try {
+          await this.fileSystem.cleanupFinalOutputStaging(
+            finalOutputStagingPath,
+          );
+        } catch (cleanupError) {
+          failure = new ExportCleanupError(
+            'final-output-staging',
+            `Final output staging cleanup failed: ${this.errorMessage(cleanupError)}`,
+            error,
+            { cause: new AggregateError([error, cleanupError]) },
+          );
+        }
+      }
+      throw await this.finishFailedJob(
+        active,
+        record,
+        jobDirectory,
+        failure,
+      );
+    } finally {
+      try {
+        if (rendererPrepared) this.renderer.releaseJob?.(active.jobId);
+      } finally {
+        this.clearActiveJob(active);
+      }
+    }
+  }
+
+  private assertFormalProbeMatches(
+    probe: VideoProbeResult,
+    fps: 24,
+    frameCount: number,
+    audioMixPlan: ExportAudioMixPlan | null,
+  ): void {
+    const failures: string[] = [];
+    if (probe.codecName !== 'h264') failures.push('codec');
+    if (probe.pixelFormat !== 'yuv420p') failures.push('pixel format');
+    if (probe.width !== 1_920 || probe.height !== 1_080) {
+      failures.push('frame size');
+    }
+    if (!Number.isFinite(probe.fps) || Math.abs(probe.fps - fps) > 0.001) {
+      failures.push('frame rate');
+    }
+    if (probe.frameCount !== frameCount) failures.push('frame count');
+    if (audioMixPlan) {
+      if (!probe.hasAudio) failures.push('audio stream missing');
+      if (probe.audioStreamCount !== 1) failures.push('audio stream count');
+      if (probe.audioCodecName !== 'aac') failures.push('audio codec');
+      if (probe.audioSampleRate !== 48_000) failures.push('audio sample rate');
+      if (!probe.audioChannels || probe.audioChannels <= 0) {
+        failures.push('audio channels');
+      }
+      const expectedAudioDurationSeconds = audioMixPlan.durationMs / 1_000;
+      if (
+        !Number.isFinite(probe.audioDurationSeconds) ||
+        Math.abs(
+          (probe.audioDurationSeconds ?? Number.NaN) -
+            expectedAudioDurationSeconds,
+        ) > 0.08
+      ) {
+        failures.push('audio duration');
+      }
+    } else if (probe.hasAudio || probe.audioStreamCount !== 0) {
+      failures.push('unexpected audio stream');
+    }
+    const expectedDurationSeconds = frameCount / fps;
+    if (
+      !Number.isFinite(probe.durationSeconds) ||
+      Math.abs(probe.durationSeconds - expectedDurationSeconds) > 0.08
+    ) {
+      failures.push('duration');
+    }
+    if (failures.length > 0) {
+      throw new Error('Formal MP4 verification failed: ' + failures.join(', '));
+    }
+  }
+
+  private async prepareFormalAudioMixPlan(
+    input: FrozenExportInput,
+    jobDirectory: string,
+    adapter: FullProbeMediaAdapter,
+    active: ActiveJob,
+  ): Promise<ExportAudioMixPlan | null> {
+    const project = input.candidate.project;
+    const durationMs = projectDurationMs(project);
+    if (!project.shots.some((shot) => shot.audioClips.length > 0)) return null;
+    if (!adapter.probeAudioFile || !adapter.muxAudioMix) {
+      throw new Error('Formal export requires audio preflight and mixing.');
+    }
+
+    const frozenAudio = new Map(
+      input.media
+        .filter((entry) => entry.kind === 'audio')
+        .map((entry) => [entry.assetId, entry]),
+    );
+    const sourcePaths = new Map<string, string>();
+    const sourceDurations = new Map<string, number>();
+    const mappedClips: Array<{
+      shotStartMs: number;
+      clip: (typeof project.shots)[number]['audioClips'][number];
+    }> = [];
+    let shotStartMs = 0;
+    for (const shot of project.shots) {
+      if (!Number.isSafeInteger(shotStartMs + shot.durationMs)) {
+        throw new Error('Formal export Project duration exceeds the safe range.');
+      }
+      for (const clip of shot.audioClips) {
+        if (
+          !Number.isSafeInteger(clip.startMs) ||
+          !Number.isSafeInteger(clip.endMs) ||
+          !Number.isSafeInteger(clip.offsetMs) ||
+          clip.startMs < 0 ||
+          clip.offsetMs < 0 ||
+          clip.startMs >= clip.endMs ||
+          clip.endMs > shot.durationMs
+        ) {
+          throw new Error(`Audio clip ${clip.id} has an invalid Shot range.`);
+        }
+        const asset = project.assets.find(
+          (candidate) => candidate.id === clip.assetId,
+        );
+        const media = frozenAudio.get(clip.assetId);
+        if (!asset || asset.kind !== 'audio' || !media) {
+          throw new Error(`Audio clip ${clip.id} has no frozen audio asset.`);
+        }
+        if (!sourcePaths.has(clip.assetId)) {
+          const extension =
+            media.mimeType === 'audio/mpeg'
+              ? '.mp3'
+              : media.mimeType === 'audio/wav'
+                ? '.wav'
+                : null;
+          if (!extension) {
+            throw new Error(`Audio asset ${asset.id} has an unsupported format.`);
+          }
+          const sourcePath = await this.fileSystem.writeFrozenAudio(
+            jobDirectory,
+            `audio-${asset.id}${extension}`,
+            media.bytes,
+          );
+          this.throwIfCancelled(active);
+          const probe = await adapter.probeAudioFile(
+            sourcePath,
+            active.controller.signal,
+          );
+          this.throwIfCancelled(active);
+          if (
+            !Number.isFinite(probe.durationSeconds) ||
+            probe.durationSeconds <= 0 ||
+            !Number.isInteger(probe.channels) ||
+            probe.channels <= 0
+          ) {
+            throw new Error(`Audio asset ${asset.id} has invalid media metadata.`);
+          }
+          sourcePaths.set(clip.assetId, sourcePath);
+          sourceDurations.set(clip.assetId, probe.durationSeconds * 1_000);
+        }
+        const requestedSourceEndMs =
+          clip.offsetMs + (clip.endMs - clip.startMs);
+        if (
+          !Number.isSafeInteger(requestedSourceEndMs) ||
+          requestedSourceEndMs > (sourceDurations.get(clip.assetId) ?? 0)
+        ) {
+          throw new Error(
+            `Audio clip ${clip.id} exceeds the frozen source duration.`,
+          );
+        }
+        mappedClips.push({ shotStartMs, clip });
+      }
+      shotStartMs += shot.durationMs;
+    }
+
+    return buildFormalExportAudioMixPlan(
+      durationMs,
+      mappedClips.map(({ shotStartMs: prefixMs, clip }) => {
+        const sourcePath = sourcePaths.get(clip.assetId);
+        const startMs = prefixMs + clip.startMs;
+        const endMs = prefixMs + clip.endMs;
+        if (!sourcePath || !Number.isSafeInteger(startMs) || !Number.isSafeInteger(endMs)) {
+          throw new Error(`Audio clip ${clip.id} has no safe Project time mapping.`);
+        }
+        return {
+          clipId: clip.id,
+          assetId: clip.assetId,
+          role: clip.role,
+          sourcePath,
+          startMs,
+          endMs,
+          offsetMs: clip.offsetMs,
+          volume: clip.volume,
+        };
+      }),
+    );
+  }
+
   private async renderFrames(
     active: ActiveJob,
     record: ExportJobRecord,
-    config: ExportProbeConfig,
+    config: { durationMs: number; fps: 24 },
     jobDirectory: string,
+    loadProject: () => Promise<unknown>,
+    project?: FrozenExportInput['candidate']['project'],
   ): Promise<FrameExportMetrics> {
-    const probeConfig = ExportProbeConfigSchema.parse({
-      durationMs: config.durationMs,
-      fps: config.fps,
-    });
-    const schedule = createFrameSchedule(probeConfig);
+    const totalFrames = formalFrameCount(config.durationMs, config.fps);
+    if (totalFrames !== record.totalFrames) {
+      throw new Error('Export frame schedule did not match the task record.');
+    }
     const startedAt = performance.now();
     const startMemory = process.memoryUsage();
     let heapUsedPeak = startMemory.heapUsed;
@@ -427,23 +857,36 @@ export class ExportService {
     try {
       record.phase = 'preparing';
       this.emit(record);
-      await this.renderer.loadProbe({ jobId: active.jobId, ...probeConfig });
+      await loadProject();
       this.throwIfCancelled(active);
 
-      for (const frame of schedule) {
+      const frames = project
+        ? iterateFormalProjectFrameSchedule(project, config.fps)
+        : iterateFormalFrameSchedule(config.durationMs, config.fps);
+      for (const frame of frames) {
         await waitForWriteSlot();
         record.phase = 'rendering';
         this.emit(record);
-        const rendered = await this.renderer.renderFrame({
+        const request: ExportRenderFrameRequest = {
           jobId: active.jobId,
           frameIndex: frame.frameIndex,
           timeMs: frame.timeMs,
-        });
+          ...(project
+            ? {
+                shotId: (frame as ProjectFrameScheduleEntry).shotId,
+                shotLocalTimeMs: (frame as ProjectFrameScheduleEntry)
+                  .shotLocalTimeMs,
+              }
+            : {}),
+        };
+        const rendered = await this.renderer.renderFrame(request);
         this.throwIfCancelled(active);
         if (
           rendered.jobId !== active.jobId ||
           rendered.frameIndex !== frame.frameIndex ||
-          rendered.timeMs !== frame.timeMs
+          rendered.timeMs !== frame.timeMs ||
+          rendered.shotId !== request.shotId ||
+          rendered.shotLocalTimeMs !== request.shotLocalTimeMs
         ) {
           throw new Error(
             `Renderer returned mismatched frame ${rendered.frameIndex}.`,
@@ -505,7 +948,12 @@ export class ExportService {
     };
   }
 
-  private createJob(config: ExportProbeConfig): ActiveJob {
+  private createJob(config: {
+    durationMs: number;
+    fps: 24;
+    attemptId?: string;
+    snapshotId?: string;
+  }): ActiveJob {
     if (this.activeJob) {
       throw new ExportJobError(
         this.activeJob.jobId,
@@ -515,16 +963,17 @@ export class ExportService {
     const jobId = randomUUID();
     const record: ExportJobRecord = {
       jobId,
+      ...(config.attemptId ? { attemptId: config.attemptId } : {}),
+      ...(config.snapshotId ? { snapshotId: config.snapshotId } : {}),
       status: 'running',
       phase: 'preparing',
       durationMs: config.durationMs,
-      totalFrames: createFrameSchedule({
-        durationMs: config.durationMs,
-        fps: config.fps,
-      }).length,
+      totalFrames: formalFrameCount(config.durationMs, config.fps),
       completedFrames: 0,
       outputDirectory: null,
       error: null,
+      originalError: null,
+      cleanupError: null,
     };
     const active = {
       jobId,
@@ -587,6 +1036,13 @@ export class ExportService {
         error instanceof ExportCleanupError && error.originalError
           ? error.originalError
           : error;
+      record.originalError =
+        error instanceof ExportCleanupError && !error.originalError
+          ? null
+          : this.errorMessage(originalError);
+      record.cleanupError = cleanupErrors
+        .map((cleanupError) => this.errorMessage(cleanupError))
+        .join('；');
       record.status = 'failed';
       record.phase = 'finished';
       record.error = `原始错误：${this.errorMessage(originalError)}；清理错误：${cleanupErrors.map((cleanupError) => this.errorMessage(cleanupError)).join('；')} 下一步：关闭占用文件或目录的程序后重试。`;
@@ -598,6 +1054,8 @@ export class ExportService {
 
     record.status = cancelled ? 'cancelled' : 'failed';
     record.phase = 'finished';
+    record.originalError = cancelled ? null : this.errorMessage(error);
+    record.cleanupError = null;
     record.error = cancelled
       ? '导出已取消并完成资源清理；可以立即重新导出。'
       : `${this.errorMessage(error)} 下一步：检查输入路径和媒体工具后重试。`;
@@ -626,11 +1084,19 @@ export class ExportService {
   private emit(record: ExportJobRecord): void {
     const update: ExportJobUpdate = {
       jobId: record.jobId,
+      ...(record.attemptId ? { attemptId: record.attemptId } : {}),
+      ...(record.snapshotId ? { snapshotId: record.snapshotId } : {}),
       status: record.status,
       phase: record.phase,
       completedFrames: record.completedFrames,
       totalFrames: record.totalFrames,
       error: record.error,
+      ...(record.originalError !== undefined
+        ? { originalError: record.originalError }
+        : {}),
+      ...(record.cleanupError !== undefined
+        ? { cleanupError: record.cleanupError }
+        : {}),
     };
     for (const listener of this.listeners) listener(update);
   }

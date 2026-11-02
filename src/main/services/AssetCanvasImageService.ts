@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFile, realpath, stat } from 'node:fs/promises';
-import path from 'node:path';
+import { readFile, stat } from 'node:fs/promises';
 import {
   ProjectSchema,
   type Project,
@@ -12,6 +11,8 @@ import {
   type AssetCanvasImageReadResponse,
 } from '../../shared/asset-canvas-image-api';
 import { MediaInspectionService } from './MediaInspectionService';
+import { filesystemPermissionErrorCode } from './filesystem-permission-error';
+import { resolveProjectAssetPath } from './project-asset-path';
 
 export interface AssetCanvasImageServiceOptions {
   getCurrentProjectSnapshot: (
@@ -130,10 +131,22 @@ export class AssetCanvasImageService {
       );
     }
 
-    const sourcePath = await this.resolveAssetPath(
-      request.projectRoot,
-      asset.relativePath,
-    );
+    let sourcePath: string | null;
+    try {
+      sourcePath = await this.resolveAssetPath(
+        request.projectRoot,
+        asset.relativePath,
+      );
+    } catch (error) {
+      const permissionCode = filesystemPermissionErrorCode(error);
+      return this.failure(
+        'ASSET_CANVAS_IMAGE_READ_FAILED',
+        request.assetId,
+        permissionCode
+          ? `Unable to read the original canvas image (${permissionCode}).`
+          : 'The asset source is missing or outside the project assets directory.',
+      );
+    }
     if (!sourcePath) {
       return this.failure(
         'ASSET_CANVAS_IMAGE_READ_FAILED',
@@ -199,10 +212,13 @@ export class AssetCanvasImageService {
         bytes,
       };
     } catch (error) {
+      const permissionCode = filesystemPermissionErrorCode(error);
       return this.failure(
         'ASSET_CANVAS_IMAGE_READ_FAILED',
         request.assetId,
-        `Unable to read the original canvas image: ${this.errorText(error)}`,
+        permissionCode
+          ? `Unable to read the original canvas image (${permissionCode}).`
+          : `Unable to read the original canvas image: ${this.errorText(error)}`,
       );
     }
   }
@@ -211,31 +227,9 @@ export class AssetCanvasImageService {
     projectRoot: string,
     relativePath: string,
   ): Promise<string | null> {
-    const assetsRoot = path.resolve(projectRoot, 'assets');
-    const assetPath = path.resolve(projectRoot, relativePath);
-    if (!this.isInsideDirectory(assetsRoot, assetPath)) return null;
-
-    try {
-      const [realAssetsRoot, realAssetPath] = await Promise.all([
-        realpath(assetsRoot),
-        realpath(assetPath),
-      ]);
-      return this.isInsideDirectory(realAssetsRoot, realAssetPath)
-        ? realAssetPath
-        : null;
-    } catch {
-      return null;
-    }
-  }
-
-  private isInsideDirectory(directory: string, candidate: string): boolean {
-    const relative = path.relative(directory, candidate);
-    return (
-      relative.length > 0 &&
-      relative !== '..' &&
-      !relative.startsWith(`..${path.sep}`) &&
-      !path.isAbsolute(relative)
-    );
+    return resolveProjectAssetPath(projectRoot, relativePath, {
+      preservePermissionErrors: true,
+    });
   }
 
   private requestAssetId(rawRequest: unknown): string {

@@ -792,8 +792,8 @@ async function verifyIssue76() {
     // There is no recovery-discard channel at all, and the close flow must
     // not even reach for the "ignore" channel.
     if (
-      Object.values(IPC_CHANNELS).some((channel) =>
-        channel.includes('discard'),
+      Object.entries(IPC_CHANNELS).some(([name, channel]) =>
+        /recovery.*discard|discard.*recovery/i.test(`${name}:${channel}`),
       )
     ) {
       failures.push('A recovery-discard IPC channel was introduced.');

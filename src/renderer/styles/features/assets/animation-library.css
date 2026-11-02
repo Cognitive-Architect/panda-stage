@@ -1,0 +1,365 @@
+.animation-library-panel {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  gap: var(--ui-space-3, 12px);
+}
+
+.animation-library-list {
+  display: grid;
+  width: 190px;
+  max-height: 440px;
+  flex: 0 0 190px;
+  align-content: start;
+  gap: var(--ui-space-2, 8px);
+  overflow: auto;
+}
+
+.animation-library-item {
+  display: grid;
+  min-width: 0;
+  min-height: 68px;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-color-border, rgb(127 199 148 / 28%));
+  border-radius: var(--ui-radius-medium, 10px);
+  color: var(--ui-color-text-primary, #eef6f0);
+  background: var(--asset-library-card-surface, #17211b);
+  text-align: left;
+  gap: 3px;
+  cursor: pointer;
+}
+
+.animation-library-item:hover,
+.animation-library-item:focus-visible {
+  border-color: var(--ui-color-selected-border, #7fc794);
+}
+
+.animation-library-item:focus-visible,
+.animation-preview-controls button:focus-visible,
+.animation-preview-seek input:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring, rgb(149 224 172 / 80%));
+  outline-offset: 2px;
+}
+
+.animation-library-item-selected {
+  border-color: var(--ui-color-selected-border, #7fc794);
+  background: var(--ui-color-selected-surface, rgb(65 145 87 / 34%));
+}
+
+.animation-library-item span,
+.animation-library-item small {
+  overflow: hidden;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  font: var(--ui-font-secondary, 12px/1.4 Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.animation-preview {
+  display: grid;
+  min-width: 0;
+  min-height: 260px;
+  flex: 1;
+  grid-template-rows: auto minmax(160px, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid var(--ui-color-border, rgb(127 199 148 / 28%));
+  border-radius: var(--ui-radius-medium, 10px);
+  background: var(--asset-library-card-surface, #17211b);
+}
+
+.animation-preview-header {
+  display: flex;
+  min-width: 0;
+  padding: 10px 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.animation-preview-header > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.animation-preview-stage {
+  display: grid;
+  min-height: 160px;
+  padding: 12px;
+  place-items: center;
+  overflow: hidden;
+  color: var(--ui-color-text-muted, #84958b);
+  background: var(--asset-library-preview-surface, #0b120e);
+}
+
+.animation-preview-canvas {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+.animation-preview-canvas img {
+  display: block;
+  position: absolute;
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
+}
+
+.animation-preview-error {
+  margin: 0;
+  padding: 8px 12px;
+  color: #ffd7d1;
+  background: rgb(124 46 37 / 42%);
+  font: var(--ui-font-secondary, 12px/1.4 Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif);
+}
+
+.animation-preview-controls {
+  display: flex;
+  min-width: 0;
+  padding: 10px 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.animation-preview-controls button {
+  display: inline-flex;
+  min-height: 36px;
+  padding: 0 10px;
+  align-items: center;
+  gap: 6px;
+  color: var(--ui-color-text-primary, #eef6f0);
+  background: var(--ui-color-action-primary, #1d4d31);
+  cursor: pointer;
+}
+
+.animation-preview-controls button:disabled {
+  color: var(--ui-color-disabled-text, #84958b);
+  background: var(--ui-color-disabled-surface, #142019);
+  cursor: default;
+}
+
+.animation-preview-seek {
+  display: grid;
+  min-width: 160px;
+  flex: 1;
+  grid-template-columns: minmax(70px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--ui-color-text-secondary, #aebfb4);
+}
+
+.animation-preview-seek input {
+  width: 100%;
+  accent-color: var(--ui-color-selected-border, #7fc794);
+}
+
+.animation-preview-seek output {
+  color: var(--ui-color-text-primary, #eef6f0);
+  font-variant-numeric: tabular-nums;
+}
+
+.animation-library-empty {
+  display: grid;
+  min-height: 180px;
+  flex: 1;
+  align-content: center;
+  justify-items: center;
+  color: var(--ui-color-text-secondary, #aebfb4);
+  text-align: center;
+  gap: 6px;
+}
+
+.animation-library-empty strong {
+  color: var(--ui-color-text-primary, #eef6f0);
+}
+
+.animation-library-empty p {
+  max-width: 420px;
+  margin: 0;
+  font: var(--ui-font-secondary, 12px/1.4 Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif);
+}
+
+@media (max-width: 760px) {
+  .animation-library-panel {
+    flex-direction: column;
+  }
+
+  .animation-library-list {
+    width: auto;
+    max-height: 156px;
+    flex: 0 0 auto;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+}
+
+.asset-card.animation-library-card {
+  padding: 0 0 8px;
+  border-color: rgb(127 199 148 / 20%);
+  background: var(--asset-library-card-surface, #17211b);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.asset-card.animation-library-card:hover,
+.asset-card.animation-library-card:focus-visible {
+  border-color: var(--ui-color-selected-border, #7fc794);
+}
+
+.asset-card.animation-library-card:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring, rgb(149 224 172 / 80%));
+  outline-offset: 2px;
+}
+
+.asset-card-preview.animation-library-card-preview {
+  display: grid;
+  padding: 0;
+  border-radius: 8px 8px 0 0;
+  place-items: center;
+}
+
+.animation-library-cover-stage {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  background-color: #111813;
+  background-image:
+    linear-gradient(45deg, rgb(255 255 255 / 2.2%) 25%, transparent 25%, transparent 75%, rgb(255 255 255 / 2.2%) 75%),
+    linear-gradient(45deg, rgb(255 255 255 / 2.2%) 25%, transparent 25%, transparent 75%, rgb(255 255 255 / 2.2%) 75%);
+  background-position: 0 0, 6px 6px;
+  background-size: 12px 12px;
+  color: var(--ui-color-text-muted, #84958b);
+  font: var(--ui-font-secondary, 12px/1.4 Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif);
+}
+
+.animation-library-cover-stage[data-cover-error='true'] {
+  background-image: none;
+}
+
+.animation-library-cover-canvas {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.animation-library-cover-image {
+  position: absolute;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: fill !important;
+}
+
+.asset-card-type-badge-animation {
+  border-color: rgb(170 201 255 / 32%);
+  color: #e0eaff;
+  background: rgb(66 96 139 / 36%);
+}
+
+.animation-preview-backdrop {
+  position: fixed;
+  z-index: 10000;
+  inset: 0;
+  display: grid;
+  padding: 16px;
+  place-items: center;
+  background: rgb(5 9 6 / 78%);
+  backdrop-filter: blur(3px);
+}
+
+.animation-preview-dialog {
+  position: relative;
+  display: grid;
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  min-height: min(500px, calc(100vh - 32px));
+  overflow: auto;
+  border: 1px solid var(--ui-color-border, rgb(127 199 148 / 28%));
+  border-radius: var(--ui-radius-large, 16px);
+  outline: none;
+  background: var(--ui-color-surface-raised, #17211b);
+  box-shadow: 0 24px 72px rgb(0 0 0 / 48%);
+}
+
+.animation-preview-close {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--ui-color-border, rgb(127 199 148 / 28%));
+  border-radius: var(--ui-radius-medium, 10px);
+  place-items: center;
+  color: var(--ui-color-text-primary, #eef6f0);
+  background: var(--ui-color-surface-raised, #17211b);
+  cursor: pointer;
+}
+
+.animation-preview-close:hover,
+.animation-preview-close:focus-visible {
+  border-color: var(--ui-color-selected-border, #7fc794);
+}
+
+.animation-preview-close:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring, rgb(149 224 172 / 80%));
+  outline-offset: 2px;
+}
+
+.animation-preview-dialog .animation-preview {
+  min-height: min(500px, calc(100vh - 32px));
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+}
+
+.animation-preview-dialog .animation-preview-header {
+  padding: 20px 64px 14px 20px;
+}
+
+.animation-preview-dialog .animation-preview-header strong {
+  color: var(--ui-color-text-primary, #eef6f0);
+  font-size: 16px;
+}
+
+.animation-preview-dialog .animation-preview-stage {
+  min-height: 240px;
+  padding: 20px;
+  background-color: #101713;
+}
+
+.animation-preview-dialog .animation-preview-canvas {
+  max-height: 100%;
+}
+
+.animation-preview-dialog .animation-preview-controls {
+  padding: 14px 20px 20px;
+}
+
+@media (max-width: 600px) {
+  .animation-preview-backdrop {
+    padding: 10px;
+  }
+
+  .animation-preview-dialog {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+    min-height: 0;
+  }
+
+  .animation-preview-dialog .animation-preview {
+    min-height: 0;
+    grid-template-rows: auto minmax(180px, 1fr) auto auto;
+  }
+
+  .animation-preview-dialog .animation-preview-stage {
+    min-height: 180px;
+    padding: 12px;
+  }
+}

@@ -1,0 +1,733 @@
+const crypto = require('node:crypto');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const { app, BrowserWindow } = require('electron');
+
+const { ProjectSchema } = require('../dist-electron/domain/index.js');
+const { ExportService } = require('../dist-electron/main/services/ExportService.js');
+const {
+  ExportPreparationService,
+} = require('../dist-electron/main/services/ExportPreparationService.js');
+const {
+  NodeExportPreparationFileStore,
+} = require('../dist-electron/main/services/ExportPreparationFileStore.js');
+const {
+  FileSystemService,
+} = require('../dist-electron/main/services/FileSystemService.js');
+const { FFmpegAdapter } = require('../dist-electron/main/services/FFmpegAdapter.js');
+const {
+  resolveMediaToolPaths,
+} = require('../dist-electron/main/services/production-resources.js');
+const {
+  HiddenWindowManager,
+} = require('../dist-electron/main/windows/hidden-window-manager.js');
+const {
+  registerIpcHandlers,
+} = require('../dist-electron/main/ipc/register-ipc-handlers.js');
+const {
+  registerExportPreparationIpcHandlers,
+} = require('../dist-electron/main/ipc/register-export-preparation-ipc-handlers.js');
+const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
+
+const mode = process.env.PANDA_STAGE_O1_DRAW_MODE || process.argv[2] || 'explicit-sync';
+const fixtureRoot = path.resolve(
+  process.env.PANDA_STAGE_O1_FIXTURE_ROOT ||
+    'D:\\PandaStage-Acceptance\\issue848-o1',
+);
+const runName = process.env.PANDA_STAGE_O1_RUN_ID || mode;
+if (!/^[a-z0-9-]+$/iu.test(runName)) throw new Error(`Invalid Issue #848 run name: ${runName}`);
+const runRoot = path.join(fixtureRoot, 'runs', runName);
+const projectRoot = path.join(fixtureRoot, 'project');
+const projectPath = path.join(projectRoot, 'project.json');
+const CANCEL_OUTPUT_PATH = path.join(runRoot, 'cancelled-output.mp4');
+const PREPARATION_REVISION = 7;
+const OPEN_INSTANCE_ID = 848;
+const RUN_TIMEOUT_MS = 295_000;
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function sha256(bytes) {
+  return crypto.createHash('sha256').update(bytes).digest('hex');
+}
+
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) =>
+      `${JSON.stringify(key)}:${stableJson(value[key])}`,
+    ).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+async function hashFile(filePath) {
+  return sha256(await fs.readFile(filePath));
+}
+
+async function hashProjectInputs(project) {
+  const projectBytes = await fs.readFile(projectPath);
+  const assets = [];
+  for (const asset of project.assets) {
+    const bytes = await fs.readFile(path.join(projectRoot, asset.relativePath));
+    assets.push({
+      assetId: asset.id,
+      relativePath: asset.relativePath,
+      byteLength: bytes.byteLength,
+      sha256: sha256(bytes),
+    });
+  }
+  return {
+    projectFileSha256: sha256(projectBytes),
+    projectFileByteLength: projectBytes.byteLength,
+    projectAssets: assets.sort((left, right) => left.assetId.localeCompare(right.assetId)),
+  };
+}
+
+function makeCandidateFingerprint(candidate) {
+  const projectSha256 = sha256(Buffer.from(stableJson(candidate.project), 'utf8'));
+  const media = candidate.mediaManifest
+    .map(({ assetId, kind, mimeType, sha256: digest, byteLength }) => ({
+      assetId,
+      kind,
+      mimeType,
+      sha256: digest,
+      byteLength,
+    }))
+    .sort((left, right) => left.assetId.localeCompare(right.assetId));
+  const payload = {
+    projectSha256,
+    media,
+    cameraMode: candidate.cameraMode,
+    renderSettings: candidate.renderSettings,
+  };
+  return {
+    projectSha256,
+    media,
+    cameraMode: candidate.cameraMode,
+    renderSettings: candidate.renderSettings,
+    frozenInputSha256: sha256(Buffer.from(stableJson(payload), 'utf8')),
+  };
+}
+
+async function fontFingerprint() {
+  const windowsRoot = process.env.WINDIR || 'C:\\Windows';
+  const candidatePaths = [
+    path.join(windowsRoot, 'Fonts', 'arial.ttf'),
+    path.join(windowsRoot, 'Fonts', 'arialbd.ttf'),
+  ];
+  const files = [];
+  for (const filePath of candidatePaths) {
+    try {
+      const bytes = await fs.readFile(filePath);
+      files.push({ path: filePath, byteLength: bytes.byteLength, sha256: sha256(bytes) });
+    } catch {
+      files.push({ path: filePath, missing: true });
+    }
+  }
+  return files;
+}
+
+class EvidenceFileSystemService extends FileSystemService {
+  constructor(jobRoot, capturedFramesRoot) {
+    super(jobRoot);
+    this.capturedFramesRoot = capturedFramesRoot;
+  }
+
+  async writeFrame(jobDirectory, fileName, pngBytes) {
+    await super.writeFrame(jobDirectory, fileName, pngBytes);
+    const jobEvidenceRoot = path.join(
+      this.capturedFramesRoot,
+      path.basename(jobDirectory),
+    );
+    await fs.mkdir(jobEvidenceRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(jobEvidenceRoot, fileName),
+      pngBytes,
+      { flag: 'wx' },
+    );
+  }
+}
+
+async function waitUntil(predicate, timeoutMs, message) {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error(message);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+async function main() {
+  assert(mode === 'legacy-raf' || mode === 'explicit-sync', `Invalid draw mode: ${mode}`);
+  assert(process.platform === 'win32', 'Issue #848 formal export acceptance must run on Windows.');
+  const projectBytes = await fs.readFile(projectPath);
+  const project = ProjectSchema.parse(JSON.parse(projectBytes.toString('utf8')));
+  const beforeInputs = await hashProjectInputs(project);
+  const outputPath = path.join(runRoot, 'formal-output.mp4');
+  const framesRoot = path.join(runRoot, 'decoded-input-frames');
+  const tempJobsRoot = path.join(runRoot, 'frame-job-temp');
+  const frozenMediaRoot = path.join(runRoot, 'frozen-media-temp');
+  const existingRun = await fs.stat(runRoot).then(() => true, () => false);
+  assert(!existingRun, `Refusing to reuse an existing Issue #848 run directory: ${runRoot}`);
+  await fs.mkdir(framesRoot, { recursive: true });
+
+  let mainWindow = null;
+  let hiddenManager = null;
+  let exportService = null;
+  let preparationService = null;
+  let preparationFileStore;
+  let removeExportHandlers = null;
+  let removePreparationHandlers = null;
+  let activeHandle = null;
+  let selectionTargetPath = outputPath;
+  let timeout = null;
+  const outputUpdates = [];
+  const frameResponseTimings = [];
+  const hiddenFrameTimings = [];
+  const selectedModes = [];
+  const candidateFinalizePromises = new Map();
+  const phaseUpdates = [];
+  const runStartedAt = performance.now();
+  let result = null;
+  let failure = null;
+  let preparationMs = null;
+  let rendererInvokeMs = null;
+  let mainJobMs = null;
+  let candidateFingerprint;
+  let fontFiles;
+  let mediaTools;
+  let actualDrawMode = null;
+
+  try {
+    await app.whenReady();
+    mainWindow = new BrowserWindow({
+      width: 480,
+      height: 320,
+      show: false,
+      skipTaskbar: true,
+      webPreferences: {
+        preload: path.join(__dirname, '../dist-electron/preload/index.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+    mainWindow.webContents.on('console-message', (_event, _level, message) => {
+      const jobPrefix = 'PANDA_STAGE_O1_JOB ';
+      if (message.startsWith(jobPrefix)) {
+        try {
+          outputUpdates.push({ at: performance.now(), update: JSON.parse(message.slice(jobPrefix.length)) });
+        } catch {
+          // Ignore unrelated renderer console messages.
+        }
+      }
+    });
+    await mainWindow.loadURL('data:text/html,<html><body>Issue 848 export acceptance</body></html>');
+    await mainWindow.webContents.executeJavaScript(`
+      if (!window.pandaStage?.export || !window.pandaStage?.exportPreparation) {
+        throw new Error('Panda Stage preload API did not load in the acceptance window.');
+      }
+      window.pandaStage.export.onUpdate((update) => {
+        console.info('PANDA_STAGE_O1_JOB ' + JSON.stringify(update));
+      });
+      true;
+    `);
+
+    let trackedSnapshot = {
+      project,
+      revision: PREPARATION_REVISION,
+      dirty: false,
+      openInstanceId: OPEN_INSTANCE_ID,
+    };
+    preparationFileStore = new NodeExportPreparationFileStore(frozenMediaRoot);
+    preparationService = new ExportPreparationService({
+      getCurrentProjectSnapshot: (candidateRoot) =>
+        path.resolve(candidateRoot) === path.resolve(projectRoot)
+          ? trackedSnapshot
+          : null,
+      fileStore: preparationFileStore,
+    });
+    hiddenManager = new HiddenWindowManager({
+      formalDrawMode: mode,
+      frameTiming: true,
+    });
+    const originalPrepareJob = hiddenManager.prepareJob.bind(hiddenManager);
+    hiddenManager.prepareJob = async (kind) => {
+      await originalPrepareJob(kind);
+      if (kind === 'formal') {
+        actualDrawMode = hiddenManager.getDiagnostics().drawMode;
+        selectedModes.push({ jobId: null, drawMode: actualDrawMode });
+        const hiddenWindow = hiddenManager.getWindow();
+        hiddenWindow?.webContents.on('console-message', (_event, _level, message) => {
+          const framePrefix = 'PANDA_STAGE_O1_FRAME ';
+          if (message.startsWith(framePrefix)) {
+            try {
+              hiddenFrameTimings.push(JSON.parse(message.slice(framePrefix.length)));
+            } catch {
+              // Ignore unrelated hidden-renderer console messages.
+            }
+          }
+        });
+      }
+    };
+    const originalRenderFrame = hiddenManager.renderFrame.bind(hiddenManager);
+    hiddenManager.renderFrame = async (request) => {
+      const startedAt = performance.now();
+      const response = await originalRenderFrame(request);
+      frameResponseTimings.push({
+        jobId: request.jobId,
+        frameIndex: request.frameIndex,
+        timeMs: request.timeMs,
+        shotId: request.shotId ?? null,
+        shotLocalTimeMs: request.shotLocalTimeMs ?? null,
+        elapsedMs: performance.now() - startedAt,
+        pngByteLength: response.pngBytes.byteLength,
+      });
+      return response;
+    };
+
+    mediaTools = resolveMediaToolPaths({
+      isPackaged: false,
+      resourcesPath: process.resourcesPath,
+    });
+    const ffmpeg = new FFmpegAdapter({
+      ffmpegPath: mediaTools.ffmpegPath,
+      ffprobePath: mediaTools.ffprobePath,
+    });
+    const fileSystem = new EvidenceFileSystemService(tempJobsRoot, framesRoot);
+    exportService = new ExportService(hiddenManager, fileSystem, ffmpeg);
+    exportService.subscribe((update) => {
+      phaseUpdates.push({ at: performance.now(), update });
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.EXPORT_JOB_UPDATE, update);
+      }
+    });
+    removeExportHandlers = registerIpcHandlers({
+      getMainWindow: () => mainWindow,
+      getHiddenWindow: () => hiddenManager.getWindow(),
+      markHiddenReady: (senderId) => hiddenManager.markReady(senderId),
+      markProbeLoaded: (senderId, payload) => hiddenManager.markProbeLoaded(senderId, payload),
+      markFormalLoaded: (senderId, payload) => hiddenManager.markFormalLoaded(senderId, payload),
+      markFrameReady: (senderId, payload) => hiddenManager.markFrameReady(senderId, payload),
+      markFrameFailed: (senderId, payload) => hiddenManager.markFrameFailed(senderId, payload),
+      startFullProbe: () => {
+        throw new Error('The O1 verifier only starts formal Project exports.');
+      },
+      startFormalExport: async (request) => {
+        const input = await preparationService.acquireCandidateForExport(
+          request.snapshotId,
+          request.reuseSnapshot,
+        );
+        candidateFingerprint = makeCandidateFingerprint(input.candidate);
+        let handle;
+        try {
+          handle = exportService.startFormalExport(
+            input,
+            () => preparationService.assertOutputTargetUnchanged(request.snapshotId),
+          );
+        } catch (error) {
+          await preparationService.finalizeCandidateExport(request.snapshotId);
+          throw error;
+        }
+        activeHandle = handle;
+        void handle.completion.then(
+          () => {
+            const finalizePromise = preparationService.finalizeCandidateExport(request.snapshotId);
+            candidateFinalizePromises.set(request.snapshotId, finalizePromise);
+            return finalizePromise;
+          },
+          () => {
+            const finalizePromise = preparationService.finalizeCandidateExport(request.snapshotId);
+            candidateFinalizePromises.set(request.snapshotId, finalizePromise);
+            return finalizePromise;
+          },
+        );
+        return { jobId: handle.jobId, status: 'running' };
+      },
+      cancelExport: (jobId) => {
+        const accepted = exportService.cancelJob(jobId);
+        return {
+          jobId,
+          accepted,
+          status: exportService.getJob(jobId)?.status ?? 'cancelled',
+        };
+      },
+      revealExportOutput: async (jobId) => Boolean(exportService.getCompletedOutputPath(jobId)),
+    });
+    removePreparationHandlers = registerExportPreparationIpcHandlers({
+      getMainWindow: () => mainWindow,
+      service: preparationService,
+      selectOutputPath: async (_window, request) => {
+        assert(path.resolve(request.projectRoot) === path.resolve(projectRoot), 'Output selection used a different Project root.');
+        assert(request.projectId === project.id, 'Output selection used a different Project id.');
+        return selectionTargetPath;
+      },
+    });
+
+    fontFiles = await fontFingerprint();
+    const attemptId = crypto.randomUUID();
+    const preparationStartedAt = performance.now();
+    const exported = await mainWindow.webContents.executeJavaScript(`
+      (async () => {
+        const project = ${JSON.stringify(project)};
+        const request = {
+          projectRoot: ${JSON.stringify(projectRoot)},
+          projectId: ${JSON.stringify(project.id)},
+          projectName: ${JSON.stringify(project.name)},
+          openInstanceId: ${OPEN_INSTANCE_ID},
+        };
+        const output = await window.pandaStage.exportPreparation.selectOutput(request);
+        if (output.status !== 'selected') {
+          throw new Error('Formal output selection was blocked: ' + JSON.stringify(output));
+        }
+        const prepared = await window.pandaStage.exportPreparation.prepare({
+          selectionId: output.selectionId,
+          attemptId: ${JSON.stringify(attemptId)},
+          projectRoot: ${JSON.stringify(projectRoot)},
+          projectId: ${JSON.stringify(project.id)},
+          openInstanceId: ${OPEN_INSTANCE_ID},
+          revision: ${PREPARATION_REVISION},
+          dirty: false,
+          cameraMode: 'speaker-focus',
+          project,
+        });
+        if (prepared.status !== 'PREPARATION_READY') {
+          throw new Error('Formal preparation was blocked: ' + JSON.stringify(prepared));
+        }
+        return {
+          snapshotId: prepared.candidate.snapshotId,
+          candidate: prepared.candidate,
+        };
+      })()
+    `);
+    preparationMs = performance.now() - preparationStartedAt;
+    candidateFingerprint = makeCandidateFingerprint(exported.candidate);
+    assert(exported.candidate.revision === PREPARATION_REVISION, 'Frozen candidate revision drifted.');
+    assert(exported.candidate.dirtyAtCapture === false, 'Frozen candidate dirty state drifted.');
+    assert(exported.candidate.mediaManifest.length === project.assets.length, 'Frozen media manifest omitted a Project asset.');
+
+    const formalInvokeStartedAt = performance.now();
+    timeout = setTimeout(() => {
+      if (activeHandle) exportService.cancelJob(activeHandle.jobId);
+    }, RUN_TIMEOUT_MS);
+    const startResponse = await mainWindow.webContents.executeJavaScript(
+      `window.pandaStage.export.startFormal(${JSON.stringify(exported.snapshotId)}, false)`,
+    );
+    rendererInvokeMs = performance.now() - formalInvokeStartedAt;
+    assert(startResponse.status === 'running', 'Formal Export IPC did not start a Job.');
+    assert(activeHandle?.jobId === startResponse.jobId, 'Export Job identity changed across Main IPC.');
+    await waitUntil(
+      () => selectedModes.some((entry) => entry.jobId === null),
+      10_000,
+      'Formal HiddenWindowManager did not record its draw mode within 10 seconds.',
+    );
+    selectedModes.at(-1).jobId = startResponse.jobId;
+    assert(actualDrawMode === mode, `Selected draw mode ${actualDrawMode} does not match requested mode ${mode}.`);
+    const primaryHandle = activeHandle;
+
+    const mainJobStartedAt = performance.now();
+    try {
+      result = await primaryHandle.completion;
+    } finally {
+      mainJobMs = performance.now() - mainJobStartedAt;
+    }
+    clearTimeout(timeout);
+    timeout = null;
+    assert(result.totalFrames === 108, `Expected 108 frames, received ${result.totalFrames}.`);
+    assert(result.completedFrames === 108, `Expected 108 completed frames, received ${result.completedFrames}.`);
+    assert(frameResponseTimings.length === 108, `Expected 108 renderer responses, received ${frameResponseTimings.length}.`);
+    assert(hiddenFrameTimings.length === 108, `Expected 108 hidden capture timing records, received ${hiddenFrameTimings.length}.`);
+    assert(candidateFingerprint !== null, 'The formal candidate fingerprint was not recorded.');
+    assert(result.elapsedMs <= 300_000, `Formal export exceeded five minutes: ${result.elapsedMs} ms.`);
+    assert(result.probe.hasAudio && result.probe.audioSampleRate === 48_000, 'Output audio is not 48 kHz.');
+    await candidateFinalizePromises.get(exported.snapshotId);
+    const afterInputs = await hashProjectInputs(project);
+    assert(stableJson(beforeInputs) === stableJson(afterInputs), 'Project or source media changed during the formal export.');
+
+    const outputHashBeforeNoClobber = await hashFile(outputPath);
+    let noClobberRejected = false;
+    try {
+      await fileSystem.prepareFinalOutput(outputPath, false);
+    } catch {
+      noClobberRejected = true;
+    }
+    const outputHashAfterNoClobber = await hashFile(outputPath);
+    assert(noClobberRejected, 'An existing formal MP4 target was not rejected.');
+    assert(outputHashBeforeNoClobber === outputHashAfterNoClobber, 'No-clobber check changed the completed MP4.');
+
+    const primaryCandidateFingerprint = { ...candidateFingerprint };
+    selectionTargetPath = CANCEL_OUTPUT_PATH;
+    const cancelAttemptId = crypto.randomUUID();
+    const cancelPrepared = await mainWindow.webContents.executeJavaScript(`
+      (async () => {
+        const project = ${JSON.stringify(project)};
+        const request = {
+          projectRoot: ${JSON.stringify(projectRoot)},
+          projectId: ${JSON.stringify(project.id)},
+          projectName: ${JSON.stringify(project.name)},
+          openInstanceId: ${OPEN_INSTANCE_ID},
+        };
+        const output = await window.pandaStage.exportPreparation.selectOutput(request);
+        if (output.status !== 'selected') {
+          throw new Error('Cancellation target selection was blocked: ' + JSON.stringify(output));
+        }
+        const prepared = await window.pandaStage.exportPreparation.prepare({
+          selectionId: output.selectionId,
+          attemptId: ${JSON.stringify(cancelAttemptId)},
+          projectRoot: ${JSON.stringify(projectRoot)},
+          projectId: ${JSON.stringify(project.id)},
+          openInstanceId: ${OPEN_INSTANCE_ID},
+          revision: ${PREPARATION_REVISION},
+          dirty: false,
+          cameraMode: 'speaker-focus',
+          project,
+        });
+        if (prepared.status !== 'PREPARATION_READY') {
+          throw new Error('Cancellation formal preparation was blocked: ' + JSON.stringify(prepared));
+        }
+        return { snapshotId: prepared.candidate.snapshotId, candidate: prepared.candidate };
+      })()
+    `);
+    const cancelCandidateFingerprint = makeCandidateFingerprint(cancelPrepared.candidate);
+    assert(cancelCandidateFingerprint.frozenInputSha256 === primaryCandidateFingerprint.frozenInputSha256,
+      'Cancellation smoke test did not use the same frozen Project and media.');
+    const cancelFrameStart = frameResponseTimings.length;
+    const selectedModeCountBeforeCancel = selectedModes.length;
+    const cancellationStartedAt = performance.now();
+    const cancelStartResponse = await mainWindow.webContents.executeJavaScript(
+      `window.pandaStage.export.startFormal(${JSON.stringify(cancelPrepared.snapshotId)}, false)`,
+    );
+    assert(cancelStartResponse.status === 'running', 'Cancellation smoke formal Job did not start.');
+    const cancelHandle = activeHandle;
+    assert(cancelHandle?.jobId === cancelStartResponse.jobId, 'Cancellation smoke Job identity changed across Main IPC.');
+    await waitUntil(
+      () => selectedModes.length > selectedModeCountBeforeCancel,
+      10_000,
+      'Cancellation HiddenWindowManager did not record its draw mode within 10 seconds.',
+    );
+    selectedModes.at(-1).jobId = cancelStartResponse.jobId;
+    assert(actualDrawMode === mode, `Cancellation smoke selected ${actualDrawMode}, expected ${mode}.`);
+    await waitUntil(
+      () => frameResponseTimings.some((frame) => frame.jobId === cancelStartResponse.jobId),
+      20_000,
+      'Cancellation smoke did not receive its first frame within 20 seconds.',
+    );
+    const cancelResponse = await mainWindow.webContents.executeJavaScript(
+      `window.pandaStage.export.cancel(${JSON.stringify(cancelStartResponse.jobId)})`,
+    );
+    assert(cancelResponse.accepted === true, 'Formal Export API rejected cancellation of the active Job.');
+    let cancellationError = null;
+    try {
+      await cancelHandle.completion;
+    } catch (error) {
+      cancellationError = error;
+    }
+    assert(cancellationError, 'Cancellation smoke Job completed instead of cancelling.');
+    await candidateFinalizePromises.get(cancelPrepared.snapshotId);
+    const cancelledJob = exportService.getJob(cancelStartResponse.jobId);
+    assert(cancelledJob?.status === 'cancelled', `Cancellation Job status was ${cancelledJob?.status ?? 'missing'}.`);
+    assert(!(await fs.stat(CANCEL_OUTPUT_PATH).then(() => true, () => false)), 'Cancelled formal Job created a final MP4.');
+    assert(preparationFileStore.getOwnedPath(cancelPrepared.snapshotId) === null, 'Cancelled frozen media candidate was not removed.');
+    assert(frameResponseTimings.length > cancelFrameStart, 'Cancellation smoke did not render a frame before cancellation.');
+    const cancellationElapsedMs = performance.now() - cancellationStartedAt;
+    assert(cancellationElapsedMs < 30_000, `Cancellation smoke exceeded 30 seconds: ${cancellationElapsedMs} ms.`);
+
+    const tempJobEntries = await fs.readdir(tempJobsRoot);
+    const frozenMediaEntries = await fs.readdir(frozenMediaRoot);
+    const outputStagingFiles = (await fs.readdir(runRoot, { withFileTypes: true }))
+      .filter((entry) => entry.isFile() && entry.name.startsWith('.panda-stage-export-'))
+      .map((entry) => entry.name);
+    assert(tempJobEntries.length === 0, `Temporary frame-job directories remain: ${tempJobEntries.join(', ')}`);
+    assert(frozenMediaEntries.length === 0, `Frozen media candidates remain: ${frozenMediaEntries.join(', ')}`);
+    assert(outputStagingFiles.length === 0, `Formal output staging files remain: ${outputStagingFiles.join(', ')}`);
+    assert(preparationFileStore.getOwnedPath(exported.snapshotId) === null, 'Completed frozen media candidate is still owned.');
+    assert(hiddenManager.getDiagnostics().windowOpen === false, 'Hidden render window remained open after Job cleanup.');
+    assert(outputHashBeforeNoClobber === await hashFile(outputPath), 'Cancellation or cleanup changed the completed formal MP4.');
+
+    const finalInputs = await hashProjectInputs(project);
+    assert(stableJson(beforeInputs) === stableJson(finalInputs), 'Project or source media changed during the cancellation smoke test.');
+
+    const primaryFrameResponses = frameResponseTimings.filter((frame) => frame.jobId === result.jobId);
+    const primaryHiddenTimings = hiddenFrameTimings.filter((frame) => frame.jobId === result.jobId);
+    const frameDirectory = path.join(framesRoot, result.jobId);
+
+    const frameHashes = await Promise.all(
+      primaryFrameResponses.map(async (frame) => ({
+        frameIndex: frame.frameIndex,
+        timeMs: frame.timeMs,
+        shotId: frame.shotId,
+        shotLocalTimeMs: frame.shotLocalTimeMs,
+        pngSha256: sha256(
+          await fs.readFile(
+            path.join(
+              frameDirectory,
+              `frame_${String(frame.frameIndex).padStart(6, '0')}.png`,
+            ),
+          ),
+        ),
+        pngByteLength: frame.pngByteLength,
+      })),
+    );
+    const phases = summarizePhases(phaseUpdates, result.jobId);
+    const receipt = {
+      status: 'PASS',
+      issue: 848,
+      runName,
+      drawMode: actualDrawMode,
+      jobId: result.jobId,
+      fixtureRoot,
+      projectRoot,
+      outputPath,
+      projectInputBefore: beforeInputs,
+      projectInputAfter: finalInputs,
+      projectInputUnchanged: stableJson(beforeInputs) === stableJson(finalInputs),
+      frozenCandidate: {
+        ...primaryCandidateFingerprint,
+        snapshotId: exported.snapshotId,
+        revision: exported.candidate.revision,
+        dirtyAtCapture: exported.candidate.dirtyAtCapture,
+        mediaManifest: exported.candidate.mediaManifest.map((entry) => ({
+          assetId: entry.assetId,
+          kind: entry.kind,
+          mimeType: entry.mimeType,
+          byteLength: entry.byteLength,
+          sha256: entry.sha256,
+        })),
+      },
+      renderSettings: exported.candidate.renderSettings,
+      cameraMode: exported.candidate.cameraMode,
+      fontFiles,
+      mediaTools: {
+        ffmpegPath: mediaTools.ffmpegPath,
+        ffprobePath: mediaTools.ffprobePath,
+      },
+      preparationMs,
+      rendererInvokeMs,
+      apiStartToCompleteMs: rendererInvokeMs + mainJobMs,
+      exportServiceElapsedMs: result.elapsedMs,
+      mainJobWallMs: mainJobMs,
+      mainFrameReady: summarizeDurations(primaryFrameResponses.map((frame) => frame.elapsedMs)),
+      hiddenRendererStages: summarizeFrameTiming(primaryHiddenTimings),
+      exportPhases: phases,
+      frameCount: result.completedFrames,
+      frameDirectory,
+      frameHashes,
+      probe: result.probe,
+      peakMemory: result.render.memory,
+      totalPngBytes: result.render.totalBytes,
+      rendererFrameResponses: primaryFrameResponses,
+      hiddenFrameTimings: primaryHiddenTimings,
+      selectedJobModes: selectedModes,
+      outputUpdates: outputUpdates
+        .filter((entry) => entry.update.jobId === result.jobId)
+        .map((entry) => ({ at: entry.at, status: entry.update.status, phase: entry.update.phase, completedFrames: entry.update.completedFrames })),
+      elapsedFromVerifierStartMs: performance.now() - runStartedAt,
+      cleanup: {
+        frameJobDirectoriesRemoved: true,
+        frozenMediaCandidateRemoved: true,
+        outputStagingFilesRemoved: true,
+        hiddenRenderWindowClosed: true,
+        noClobberRejected,
+        outputUnchangedAfterNoClobber: outputHashBeforeNoClobber === outputHashAfterNoClobber,
+        cancelledJobAccepted: cancelResponse.accepted,
+        cancelledJobStatus: cancelledJob.status,
+        cancelledJobRenderedFrames: cancelledJob.completedFrames,
+        cancelledOutputAbsent: true,
+        cancellationElapsedMs,
+      },
+    };
+    const receiptPath = path.join(runRoot, 'receipt.json');
+    await fs.writeFile(receiptPath, JSON.stringify(receipt, null, 2) + '\n', { flag: 'wx' });
+    process.stdout.write(JSON.stringify({ status: receipt.status, mode, jobId: result.jobId, totalFrames: result.completedFrames, elapsedMs: result.elapsedMs, renderElapsedMs: result.render.elapsedMs, receiptPath }, null, 2) + '\n');
+  } catch (error) {
+    failure = error;
+    const receipt = {
+      status: 'STOP',
+      issue: 848,
+      drawMode: mode,
+      fixtureRoot,
+      runRoot,
+      error: error?.stack || String(error),
+      actualDrawMode,
+      preparationMs,
+      rendererInvokeMs,
+      mainJobMs,
+      frameResponses: frameResponseTimings.length,
+      hiddenFrameTimings: hiddenFrameTimings.length,
+      projectInputBefore: await hashProjectInputs(project).catch(() => null),
+      elapsedFromVerifierStartMs: performance.now() - runStartedAt,
+    };
+    await fs.mkdir(runRoot, { recursive: true }).catch(() => undefined);
+    await fs.writeFile(path.join(runRoot, 'receipt.json'), JSON.stringify(receipt, null, 2) + '\n').catch(() => undefined);
+    process.stderr.write((error?.stack || String(error)) + '\n');
+  } finally {
+    if (timeout) clearTimeout(timeout);
+    if (removeExportHandlers) removeExportHandlers();
+    if (removePreparationHandlers) removePreparationHandlers();
+    try {
+      await preparationService?.dispose();
+    } catch (error) {
+      process.stderr.write(`Export preparation cleanup failed: ${String(error)}\n`);
+      if (!failure) failure = error;
+    }
+    try {
+      if (activeHandle && exportService?.canCancelJob(activeHandle.jobId)) {
+        exportService.cancelJob(activeHandle.jobId);
+      }
+      hiddenManager?.releaseJob();
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
+    } catch (error) {
+      process.stderr.write(`Electron acceptance cleanup failed: ${String(error)}\n`);
+      if (!failure) failure = error;
+    }
+    app.quit();
+  }
+
+  if (failure) process.exitCode = 1;
+}
+
+function summarizeDurations(values) {
+  const sorted = [...values].sort((left, right) => left - right);
+  if (sorted.length === 0) return { count: 0, medianMs: null, p95Ms: null, maxMs: null };
+  return {
+    count: sorted.length,
+    medianMs: sorted[Math.floor((sorted.length - 1) / 2)],
+    p95Ms: sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1)],
+    maxMs: sorted.at(-1),
+  };
+}
+
+function summarizeFrameTiming(frames) {
+  const fields = ['readyGateMs', 'fontWaitMs', 'synchronousDrawMs', 'stageCaptureMs', 'pngEncodeMs', 'requestToPngMs'];
+  return Object.fromEntries(fields.map((field) => [
+    field,
+    summarizeDurations(frames.map((frame) => frame[field]).filter(Number.isFinite)),
+  ]));
+}
+
+function summarizePhases(entries, jobId) {
+  const updates = entries
+    .filter((entry) => entry.update.jobId === jobId)
+    .sort((left, right) => left.at - right.at);
+  if (updates.length === 0) return {};
+  const totals = {};
+  let phase = updates[0].update.phase;
+  let phaseStartedAt = updates[0].at;
+  for (let index = 1; index < updates.length; index += 1) {
+    const current = updates[index];
+    if (current.update.phase === phase) continue;
+    totals[phase] = (totals[phase] ?? 0) + current.at - phaseStartedAt;
+    phase = current.update.phase;
+    phaseStartedAt = current.at;
+  }
+  const last = updates.at(-1);
+  totals[phase] = (totals[phase] ?? 0) + last.at - phaseStartedAt;
+  return totals;
+}
+
+main().catch((error) => {
+  process.stderr.write((error?.stack || String(error)) + '\n');
+  app.quit();
+  process.exitCode = 1;
+});

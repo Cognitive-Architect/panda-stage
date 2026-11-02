@@ -135,7 +135,9 @@ export function SelectableLayer({
   const completeVisualReady = resolvedPartImages.every(
     ({ image: partImage }) => Boolean(partImage),
   );
-  const compositeVisual = visual?.kind === 'composite-character';
+  const compositeVisual =
+    visual?.kind === 'composite-character' ||
+    visual?.kind === 'adaptive-parts-character';
   const headGroup = visual?.headGroup ?? null;
   const headPartIds = new Set(headGroup?.partIds ?? []);
   const cacheCompositeVisual = (visualNode: Konva.Group | null): void => {
@@ -193,11 +195,14 @@ export function SelectableLayer({
   const orderedPartImages = resolvedPartImages.sort(
     (left, right) => left.part.drawOrder - right.part.drawOrder,
   );
+  const visiblePartImages = orderedPartImages.filter(
+    ({ part }) => part.visible !== false,
+  );
   const renderedParts = completeVisualReady
     ? headGroup
       ? (
           <>
-            {orderedPartImages
+            {visiblePartImages
               .filter(({ part }) => !headPartIds.has(part.partId))
               .map(renderPart)}
             <Group
@@ -206,22 +211,22 @@ export function SelectableLayer({
               name="selectable-canvas-head-group"
               {...visualHeadGroupRenderTransform(headGroup)}
             >
-              {orderedPartImages
+              {visiblePartImages
                 .filter(({ part }) => headPartIds.has(part.partId))
                 .map(renderPart)}
             </Group>
           </>
         )
-      : orderedPartImages.length === 1
-        ? renderPart(orderedPartImages[0]!)
-        : orderedPartImages.map(renderPart)
+      : visiblePartImages.length === 1
+        ? renderPart(visiblePartImages[0]!)
+        : visiblePartImages.map(renderPart)
     : null;
   const renderedHitAreas =
     compositeVisual && completeVisualReady
       ? headGroup
         ? (
             <>
-              {orderedPartImages
+            {visiblePartImages
                 .filter(({ part }) => !headPartIds.has(part.partId))
                 .map(renderHitArea)}
               <Group
@@ -229,13 +234,13 @@ export function SelectableLayer({
                 name="selectable-canvas-head-hit-group"
                 {...visualHeadGroupRenderTransform(headGroup)}
               >
-                {orderedPartImages
+                {visiblePartImages
                   .filter(({ part }) => headPartIds.has(part.partId))
                   .map(renderHitArea)}
               </Group>
             </>
           )
-        : orderedPartImages.map(renderHitArea)
+        : visiblePartImages.map(renderHitArea)
       : null;
 
   const clampNode = (node: Konva.Node): void => {

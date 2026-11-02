@@ -30,6 +30,7 @@ interface ProjectIpcHandlerDependencies {
     request: ProjectSwitchGuardRequest,
   ) => Promise<ProjectSwitchGuardOutcome>;
   onProjectAccessed?: (document: ProjectDocument) => void | Promise<void>;
+  onProjectContextChanged?: () => void;
   onRecentProjectError?: (error: unknown) => void;
 }
 
@@ -179,6 +180,7 @@ export function registerProjectIpcHandlers(
           request.projectRoot,
           request.metadata,
         );
+        dependencies.onProjectContextChanged?.();
         await recordProjectAccess(dependencies, value);
         return ProjectOperationResponseSchema.parse({ ok: true, value });
       } catch (error) {
@@ -202,6 +204,7 @@ export function registerProjectIpcHandlers(
           request.projectName,
           request.metadata,
         );
+        dependencies.onProjectContextChanged?.();
         await recordProjectAccess(dependencies, value);
         return ProjectOperationResponseSchema.parse({ ok: true, value });
       } catch (error) {
@@ -223,6 +226,7 @@ export function registerProjectIpcHandlers(
         const value = await dependencies.projectService.open(
           request.projectRoot,
         );
+        dependencies.onProjectContextChanged?.();
         await recordProjectAccess(dependencies, value);
         return ProjectOperationResponseSchema.parse({ ok: true, value });
       } catch (error) {

@@ -98,6 +98,8 @@ export interface SequenceFrameInput {
   frameIndex: number;
   /** SVG string for this frame. R1 SVG builder output. */
   svg: string;
+  /** Source-space crop used by the renderer to frame this particular PNG. */
+  sourceViewport?: { x: number; y: number; width: number; height: number };
 }
 
 export type SequenceFrameSource = AsyncIterable<SequenceFrameInput> | Iterable<SequenceFrameInput>;
@@ -143,6 +145,7 @@ interface SequenceInFlight {
 interface SequenceInFlightItem {
   frameIndex: number;
   sequenceOrdinal: number;
+  sourceViewport?: { x: number; y: number; width: number; height: number };
   rasterOutput: FlaStaticSnapshotRasterizeOutput;
   frameWallClockMs: number;
   receivedAt: number;
@@ -167,6 +170,7 @@ interface SequenceInFlightItem {
 export interface ConfirmedSequenceFrame {
   frameIndex: number;
   sequenceOrdinal: number;
+  sourceViewport?: { x: number; y: number; width: number; height: number };
   pngBytes: Uint8Array;
   sha256: string;
   width: number;
@@ -381,6 +385,7 @@ export class FlaFrameSequenceService {
         const item: SequenceInFlightItem = {
           frameIndex: frame.frameIndex,
           sequenceOrdinal: ordinal,
+          ...(frame.sourceViewport ? { sourceViewport: frame.sourceViewport } : {}),
           rasterOutput,
           frameWallClockMs,
           receivedAt: this.now(),
@@ -529,6 +534,7 @@ export class FlaFrameSequenceService {
       return {
         frameIndex: it.frameIndex,
         sequenceOrdinal: it.sequenceOrdinal,
+        ...(it.sourceViewport ? { sourceViewport: it.sourceViewport } : {}),
         pngBytes: it.rasterOutput.pngBytes,
         sha256,
         width: it.rasterOutput.width,

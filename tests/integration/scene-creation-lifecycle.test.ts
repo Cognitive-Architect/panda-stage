@@ -45,7 +45,7 @@ interface PreparedSample {
     head: ImageAsset;
     body: ImageAsset;
   };
-  character: Project['characters'][number];
+  character: Extract<Project['characters'][number], { mode: 'composite' }>;
   importStatuses: string[];
 }
 
@@ -167,7 +167,9 @@ async function prepareSample(
   const character = frozenDocument.project.characters.find(
     (candidate) => candidate.name === characterName,
   );
-  if (!character) throw new Error('AC-01 composite Character was not saved.');
+  if (!character || character.mode !== 'composite') {
+    throw new Error('AC-01 composite Character was not saved.');
+  }
 
   return {
     parent,

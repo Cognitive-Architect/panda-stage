@@ -4,12 +4,14 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   ProjectSchema,
+  resolveTalkingHeadMotionTransform,
   type Character,
   type Project,
 } from '../../src/domain';
 import { CharacterEditor } from '../../src/renderer/features/characters/CharacterEditor';
 import {
   CharacterTalkingHeadMotionPreview,
+  resolveTalkingHeadMotionPreviewTransform,
   resolveTalkingHeadPreviewBounds,
 } from '../../src/renderer/features/characters/CharacterTalkingHeadMotionPreview';
 import { buildProject, IDS } from './domain/testProject';
@@ -151,6 +153,44 @@ describe('Issue #815 talking-head settings', () => {
     );
     expect(preview).toContain('data-preview-focus="head-and-shoulders"');
     expect(preview).toMatch(/data-preview-scale="0\.[1-9]\d*"/u);
+    expect(preview).toContain(
+      'class="character-assembly-head-group is-talking-head-motion-preview-running"',
+    );
+    expect(preview).toContain('transform:translate(0px, 0px)');
+  });
+
+  it('uses the shared diagonal phase and intensity for the settings preview', () => {
+    for (const intensityPercent of [0, 100, 200]) {
+      for (const elapsedMs of [0, 60, 125, 250, 375, 500, 625]) {
+        expect(
+          resolveTalkingHeadMotionPreviewTransform(elapsedMs, intensityPercent),
+        ).toEqual(
+          resolveTalkingHeadMotionTransform(
+            elapsedMs,
+            Number.MAX_SAFE_INTEGER,
+            intensityPercent,
+          ),
+        );
+      }
+    }
+
+    expect(
+      resolveTalkingHeadMotionPreviewTransform(125, 100),
+    ).toMatchObject({ translateX: -4, translateY: -4, rotationDeg: 0, scaleX: 1, scaleY: 1 });
+    expect(
+      resolveTalkingHeadMotionPreviewTransform(375, 100),
+    ).toMatchObject({ translateX: 4, translateY: 4, rotationDeg: 0, scaleX: 1, scaleY: 1 });
+
+    const styles = readFileSync(
+      'src/renderer/styles/features/characters/assembly/s17-01--character-assembly-workbench.css',
+      'utf8',
+    );
+    expect(styles).toMatch(
+      /\.character-assembly-head-group\.is-talking-head-motion-preview-running\s*\{\s*transition:\s*none;\s*\}/u,
+    );
+    expect(styles).not.toMatch(
+      /\.character-assembly-head-group\.is-talking-head-motion-preview-running\s*\{\s*animation:/u,
+    );
   });
 
   it('uses the shared 48px touch target for talking-head actions and slider', () => {

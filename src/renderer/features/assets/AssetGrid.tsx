@@ -1,13 +1,17 @@
 import type {
-  AssetLibraryEntry,
+  AssetLibraryItem,
 } from '../../stores/assetLibrarySelectors';
+import type { Project } from '../../../domain';
 import {
   AssetCard,
   type ThumbnailState,
 } from './AssetCard';
+import { AnimationLibraryCard } from './AnimationLibraryPanel';
 
 export interface AssetGridProps {
-  entries: readonly AssetLibraryEntry[];
+  items: readonly AssetLibraryItem[];
+  project: Project;
+  projectRoot: string;
   selectedAssetId: string | null;
   draggingAssetId: string | null;
   thumbnails: Readonly<Record<string, ThumbnailState>>;
@@ -22,7 +26,9 @@ export interface AssetGridProps {
 }
 
 export function AssetGrid({
-  entries,
+  items,
+  project,
+  projectRoot,
   selectedAssetId,
   draggingAssetId,
   thumbnails,
@@ -35,7 +41,7 @@ export function AssetGrid({
   emptyDescription,
   metadataErrors,
 }: AssetGridProps): React.JSX.Element {
-  if (entries.length === 0) {
+  if (items.length === 0) {
     return (
       <div className="asset-library-empty">
         <span aria-hidden="true">＋</span>
@@ -53,26 +59,31 @@ export function AssetGrid({
     <div
       aria-label="素材缩略图网格"
       className="asset-grid"
-      data-grid-count={entries.length}
+      data-grid-count={items.length}
     >
-      {entries.map((entry) => (
+      {items.map((item) => item.kind === 'animation' ? (
+        <AnimationLibraryCard
+          animation={item.animation}
+          key={item.id}
+          project={project}
+          projectRoot={projectRoot}
+        />
+      ) : (
         <AssetCard
-          asset={entry.asset}
-          category={entry.category}
-          contextLabel={entry.contextLabel}
-          dragging={draggingAssetId === entry.asset.id}
-          dropPayload={entry.dropPayload}
-          key={entry.id}
+          asset={item.entry.asset}
+          category={item.entry.category}
+          contextLabel={item.entry.contextLabel}
+          dragging={draggingAssetId === item.entry.asset.id}
+          dropPayload={item.entry.dropPayload}
+          key={item.id}
           onDragEnd={onDragEnd}
           onDragStart={onDragStart}
           onRebuildThumbnail={onRebuildThumbnail}
           onSelect={onSelect}
           onThumbnailError={onThumbnailError}
-          metadataError={metadataErrors?.[entry.asset.id]}
-          selected={selectedAssetId === entry.asset.id}
-          thumbnail={
-            thumbnails[entry.asset.id] ?? { status: 'loading' }
-          }
+          metadataError={metadataErrors?.[item.entry.asset.id]}
+          selected={selectedAssetId === item.entry.asset.id}
+          thumbnail={thumbnails[item.entry.asset.id] ?? { status: 'loading' }}
         />
       ))}
     </div>

@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import { ProjectSchema } from '../domain';
 import { IPC_CHANNELS } from '../shared/ipc/channels';
 import {
   AssetImportDroppedRequestSchema,
@@ -30,6 +31,7 @@ import {
   type AssetCanvasImageReadRequest,
 } from '../shared/asset-canvas-image-api';
 import {
+  AssetPreviewAudioInfoResponseSchema,
   AssetPreviewAudioReadRequestSchema,
   AssetPreviewAudioReadResponseSchema,
   type AssetPreviewAudioReadRequest,
@@ -44,9 +46,26 @@ import {
   ExportJobUpdateSchema,
   ExportStartResponseSchema,
   FullProbeExportRequestSchema,
+  ExportStartFormalRequestSchema,
+  ExportRevealOutputRequestSchema,
+  ExportRevealOutputResponseSchema,
   type ExportJobUpdate,
   type FullProbeExportRequest,
 } from '../shared/export-types';
+import {
+  ExportPreparationCancelRequestSchema,
+  ExportPreparationCancelResponseSchema,
+  ExportPreparationDiscardRequestSchema,
+  ExportPreparationDiscardResponseSchema,
+  ExportPreparationRequestSchema,
+  ExportPreparationResponseSchema,
+  ExportPreparationSelectOutputRequestSchema,
+  ExportPreparationSelectOutputResponseSchema,
+  ExportPreparationSnapshotStatusRequestSchema,
+  ExportPreparationSnapshotStatusResponseSchema,
+  type ExportPreparationRequest,
+  type ExportPreparationSelectOutputRequest,
+} from '../shared/export-preparation-types';
 import {
   ProjectChooseDirectoryRequestSchema,
   ProjectChooseDirectoryResponseSchema,
@@ -139,6 +158,22 @@ import {
   type FlaFrameSequenceProgress,
   type FlaFrameSequenceRequest,
 } from '../shared/fla-frame-sequence-api';
+import {
+  FlaPartPreviewCancelRequestSchema,
+  FlaPartPreviewCancelResponseSchema,
+  FlaPartPreviewRequestSchema,
+  FlaPartPreviewResponseSchema,
+  type FlaPartPreviewCancelRequest,
+  type FlaPartPreviewRequest,
+} from '../shared/fla-part-preview-api';
+import {
+  FlaCharacterCreateRequestSchema,
+  FlaCharacterCreateResponseSchema,
+  FlaCharacterCreateStatusRequestSchema,
+  FlaCharacterCreateStatusResponseSchema,
+  type FlaCharacterCreateRequest,
+  type FlaCharacterCreateStatusRequest,
+} from '../shared/fla-character-create-api';
 
 type Unsubscribe = () => void;
 
@@ -302,6 +337,14 @@ const pandaStageApi = Object.freeze({
       );
       return AssetPreviewAudioReadResponseSchema.parse(response);
     },
+    getAudioInfo: async (rawRequest: AssetPreviewAudioReadRequest) => {
+      const request = AssetPreviewAudioReadRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.ASSET_PREVIEW_AUDIO_INFO,
+        request,
+      );
+      return AssetPreviewAudioInfoResponseSchema.parse(response);
+    },
   }),
   recentProjects: Object.freeze({
     list: async () => {
@@ -428,6 +471,17 @@ const pandaStageApi = Object.freeze({
       );
       return ExportStartResponseSchema.parse(response);
     },
+    startFormal: async (snapshotId: string, reuseSnapshot = false) => {
+      const request = ExportStartFormalRequestSchema.parse({
+        snapshotId,
+        reuseSnapshot,
+      });
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.EXPORT_START_FORMAL,
+        request,
+      );
+      return ExportStartResponseSchema.parse(response);
+    },
     cancel: async (jobId: string) => {
       const request = ExportCancelRequestSchema.parse({ jobId });
       const response: unknown = await ipcRenderer.invoke(
@@ -435,6 +489,14 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return ExportCancelResponseSchema.parse(response);
+    },
+    revealOutput: async (jobId: string) => {
+      const request = ExportRevealOutputRequestSchema.parse({ jobId });
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.EXPORT_REVEAL_OUTPUT,
+        request,
+      );
+      return ExportRevealOutputResponseSchema.parse(response);
     },
     onUpdate: (callback: (update: ExportJobUpdate) => void): Unsubscribe => {
       const listener = (
@@ -444,6 +506,63 @@ const pandaStageApi = Object.freeze({
       ipcRenderer.on(IPC_CHANNELS.EXPORT_JOB_UPDATE, listener);
       return () =>
         ipcRenderer.removeListener(IPC_CHANNELS.EXPORT_JOB_UPDATE, listener);
+    },
+  }),
+  exportPreparation: Object.freeze({
+    selectOutput: async (
+      rawRequest: ExportPreparationSelectOutputRequest,
+    ) => {
+      const request =
+        ExportPreparationSelectOutputRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.EXPORT_PREPARATION_SELECT_OUTPUT,
+        request,
+      );
+      return ExportPreparationSelectOutputResponseSchema.parse(response);
+    },
+    prepare: async (rawRequest: ExportPreparationRequest) => {
+      const parsed = ExportPreparationRequestSchema.parse(rawRequest);
+      const request = {
+        ...parsed,
+        project: ProjectSchema.parse(parsed.project),
+      };
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.EXPORT_PREPARATION_START,
+        request,
+      );
+      const result = ExportPreparationResponseSchema.parse(response);
+      if (result.status === 'PREPARATION_READY') {
+        ProjectSchema.parse(result.candidate.project);
+      }
+      return result;
+    },
+    cancel: async (attemptId: string) => {
+      const request =
+        ExportPreparationCancelRequestSchema.parse({ attemptId });
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.EXPORT_PREPARATION_CANCEL,
+        request,
+      );
+      return ExportPreparationCancelResponseSchema.parse(response);
+    },
+    getSnapshotRetryStatus: async (snapshotId: string) => {
+      const request =
+        ExportPreparationSnapshotStatusRequestSchema.parse({ snapshotId });
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.EXPORT_PREPARATION_SNAPSHOT_STATUS,
+        request,
+      );
+      return ExportPreparationSnapshotStatusResponseSchema.parse(response);
+    },
+    discard: async (
+      rawRequest: { selectionId?: string; snapshotId?: string },
+    ) => {
+      const request = ExportPreparationDiscardRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.EXPORT_PREPARATION_DISCARD,
+        request,
+      );
+      return ExportPreparationDiscardResponseSchema.parse(response);
     },
   }),
   fla: Object.freeze({
@@ -519,6 +638,38 @@ const pandaStageApi = Object.freeze({
         request,
       );
       return FlaStaticSnapshotCancelResponseSchema.parse(response);
+    },
+    partPreview: async (rawRequest: FlaPartPreviewRequest) => {
+      const request = FlaPartPreviewRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_PART_PREVIEW,
+        request,
+      );
+      return FlaPartPreviewResponseSchema.parse(response);
+    },
+    partPreviewCancel: async (rawRequest: FlaPartPreviewCancelRequest) => {
+      const request = FlaPartPreviewCancelRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_PART_PREVIEW_CANCEL,
+        request,
+      );
+      return FlaPartPreviewCancelResponseSchema.parse(response);
+    },
+    createCharacterFromParts: async (rawRequest: FlaCharacterCreateRequest) => {
+      const request = FlaCharacterCreateRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_CHARACTER_CREATE,
+        request,
+      );
+      return FlaCharacterCreateResponseSchema.parse(response);
+    },
+    getCharacterCreateStatus: async (rawRequest: FlaCharacterCreateStatusRequest) => {
+      const request = FlaCharacterCreateStatusRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.FLA_CHARACTER_CREATE_STATUS,
+        request,
+      );
+      return FlaCharacterCreateStatusResponseSchema.parse(response);
     },
     // V2-R2 Frame Sequence (Issue #294).  Bounded contiguous frame range
     // preview, per-session cancel, and N-frame ImageAsset commit.  The

@@ -9,8 +9,15 @@ import type {
   FlaStaticSnapshotCommitResponse,
 } from '../../shared/fla-static-snapshot-api';
 
-export type FlaStageGRoute = 'raster' | 'snapshot' | 'sequence';
+export type FlaStageGRoute = 'raster' | 'snapshot' | 'sequence' | 'unified';
 export type FlaStageGTerminalState = 'active' | 'importing' | 'success' | 'recovery';
+export type FlaStageGImportKind = 'animation' | 'image' | 'mixed';
+
+export function flaStageGImportingMessage(kind: FlaStageGImportKind): string {
+  if (kind === 'animation') return '正在导入动画素材…';
+  if (kind === 'image') return '正在导入图片素材…';
+  return '正在导入素材…';
+}
 
 type FlaStageGRecoveryKind =
   | 'stale-preview'
@@ -96,12 +103,12 @@ export function mapFlaStageGRecovery(
 
 export function FlaStageGImporting({
   route,
-  headline,
-  context,
+  importKind,
+  statusMessage,
 }: {
   route: FlaStageGRoute;
-  headline: string;
-  context: string;
+  importKind: FlaStageGImportKind;
+  statusMessage?: string;
 }): React.JSX.Element {
   return (
     <section
@@ -119,14 +126,9 @@ export function FlaStageGImporting({
         <span aria-hidden="true" className="fla-stage-g-progress-mark">
           <span />
         </span>
-        <div className="fla-stage-g-terminal-copy">
-          <p className="fla-stage-g-kicker">正在安全写入项目</p>
-          <h2>{headline}</h2>
-          <p>{context}</p>
-          <output data-testid="fla-stage-g-importing-status">
-            Panda Stage 正在安全写入项目，请稍候。
-          </output>
-        </div>
+        <p className="fla-stage-g-importing-message" data-testid="fla-stage-g-importing-status">
+          {statusMessage ?? flaStageGImportingMessage(importKind)}
+        </p>
       </div>
     </section>
   );

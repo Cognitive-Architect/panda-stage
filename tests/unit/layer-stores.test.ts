@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
@@ -269,7 +270,7 @@ describe('Day 22 layer stores', () => {
     mismatchAsset,
   }) => {
     const input = harness();
-    const character = input.project.characters[0]!;
+    const character = asExpressionCharacter(input.project.characters[0]!);
     const expression = character.expressions[0]!;
     const assetId = mismatchAsset
       ? input.project.assets.find(

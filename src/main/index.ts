@@ -10,8 +10,10 @@ import {
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { registerIpcHandlers } from './ipc/register-ipc-handlers';
+import { registerExportPreparationIpcHandlers } from './ipc/register-export-preparation-ipc-handlers';
 import { ExportService } from './services/ExportService';
 import { FileSystemService } from './services/FileSystemService';
+import { FormalOutputNameSeriesService } from './services/FormalOutputNameSeriesService';
 import { FFmpegAdapter } from './services/FFmpegAdapter';
 import { HiddenWindowManager } from './windows/hidden-window-manager';
 import { createMainWindow } from './windows/main-window';
@@ -32,6 +34,7 @@ import {
   createUnsavedCloseDialogOptions,
 } from './services/UnsavedCloseController';
 import { UnsavedCloseGuard } from './windows/unsaved-close-guard';
+import { confirmPendingExportWork } from './windows/export-close-confirmation';
 import { AssetImportService } from './services/AssetImportService';
 import { declaredMimeTypeForPath } from './services/MediaInspectionService';
 import { registerAssetImportIpcHandlers } from './ipc/register-asset-import-ipc-handlers';
@@ -56,14 +59,25 @@ import { FlaStaticSnapshotRenderSession } from './services/fla-static-snapshot-r
 import { FlaStaticSnapshotWindowManager } from './services/fla-static-snapshot-window-manager';
 import { FlaStaticSnapshotCommitService } from './services/FlaStaticSnapshotCommitService';
 import { registerFlaStaticSnapshotIpcHandlers } from './ipc/register-fla-static-snapshot-ipc-handlers';
+import { registerFlaPartPreviewIpcHandlers } from './ipc/register-fla-part-preview-ipc-handlers';
+import { FlaPartPreviewService } from './services/FlaPartPreviewService';
+import { FlaCharacterCreateService } from './services/FlaCharacterCreateService';
+import { registerFlaCharacterCreateIpcHandlers } from './ipc/register-fla-character-create-ipc-handlers';
 import { FlaFrameSequenceService } from './services/fla-frame-sequence-service';
 import { FlaFrameSequenceCommitService } from './services/FlaFrameSequenceCommitService';
 import { registerFlaFrameSequenceIpcHandlers } from './ipc/register-fla-frame-sequence-ipc-handlers';
+import { ExportPreparationService } from './services/ExportPreparationService';
+import { buildRenderableTargetCatalog } from './services/fla-static-snapshot-svg-builder';
+import { createFlaStaticSnapshotBitmapMediaLookup } from './services/fla-static-snapshot-media-resolver';
 
 let mainWindow: BrowserWindow | null = null;
 const hiddenWindowManager = new HiddenWindowManager();
 let exportService: ExportService | null = null;
+let exportPreparationService: ExportPreparationService | null = null;
+let exportFileSystem: FileSystemService | null = null;
+const formalOutputNameSeries = new FormalOutputNameSeriesService();
 let removeIpcHandlers: (() => void) | null = null;
+let removeExportPreparationIpcHandlers: (() => void) | null = null;
 let removeProjectIpcHandlers: (() => void) | null = null;
 let removeRecoveryIpcHandlers: (() => void) | null = null;
 let removeRecentProjectsIpcHandlers: (() => void) | null = null;
@@ -77,6 +91,11 @@ let flaAssetCommitService: FlaAssetCommitService | null = null;
 let flaSnapshotRenderSession: FlaStaticSnapshotRenderSession | null = null;
 let flaSnapshotCommitService: FlaStaticSnapshotCommitService | null = null;
 let removeFlaSnapshotIpcHandlers: (() => void) | null = null;
+let flaPartPreviewService: FlaPartPreviewService | null = null;
+let removeFlaPartPreviewIpcHandlers: (() => void) | null = null;
+let flaCharacterCreateService: FlaCharacterCreateService | null = null;
+let removeFlaCharacterCreateIpcHandlers: (() => void) | null = null;
+let removeFlaSessionReleaseListener: (() => void) | null = null;
 let flaFrameSequenceService: FlaFrameSequenceService | null = null;
 let flaFrameSequenceCommitService: FlaFrameSequenceCommitService | null = null;
 let removeFlaFrameSequenceIpcHandlers: (() => void) | null = null;
@@ -110,6 +129,25 @@ async function selectFlaSource(window: BrowserWindow): Promise<string | null> {
   return selection.canceled ? null : selection.filePaths[0] ?? null;
 }
 
+function defaultExportFileName(projectName: string): string {
+  let baseName = Array.from(projectName.trim(), (character) =>
+    /[<>:"/\\|?*]/u.test(character) || character.charCodeAt(0) <= 0x1f
+      ? '_'
+      : character,
+  )
+    .join('')
+    .replace(/[. ]+$/gu, '')
+    .trim();
+  baseName = Array.from(baseName).slice(0, 240).join('').replace(/[. ]+$/gu, '');
+  if (
+    !baseName ||
+    /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/iu.test(baseName)
+  ) {
+    baseName = '未命名工程';
+  }
+  return baseName + '.mp4';
+}
+
 if (process.env.PANDA_STAGE_GATE_A === '1') {
   app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 }
@@ -117,11 +155,20 @@ if (process.env.PANDA_STAGE_GATE_A === '1') {
 async function createApplicationWindows(): Promise<void> {
   const window = await createMainWindow({
     show: process.env.PANDA_STAGE_ISSUE762_PROFILE !== '1',
+    issue816Acceptance:
+      !app.isPackaged && process.env.PANDA_STAGE_ISSUE816_ACCEPTANCE === '1',
   });
   mainWindow = window;
   if (unsavedCloseController) {
     const guard = new UnsavedCloseGuard({
       controller: unsavedCloseController,
+      confirmPendingWork: () =>
+        confirmPendingExportWork(window, {
+          getPreparation: () => exportPreparationService,
+          getExportService: () => exportService,
+          showMessageBox: (target, options) =>
+            dialog.showMessageBox(target, options),
+        }),
       synchronizeRenderer: () =>
         rendererCloseSynchronizer?.synchronize() ??
         Promise.resolve({
@@ -185,9 +232,10 @@ async function initialize(): Promise<void> {
     ffmpegPath: mediaTools.ffmpegPath,
     ffprobePath: mediaTools.ffprobePath,
   });
+  exportFileSystem = new FileSystemService();
   exportService = new ExportService(
     hiddenWindowManager,
-    new FileSystemService(),
+    exportFileSystem,
     ffmpegAdapter,
   );
   exportService.subscribe((update) => {
@@ -202,6 +250,8 @@ async function initialize(): Promise<void> {
     markHiddenReady: (senderId) => hiddenWindowManager.markReady(senderId),
     markProbeLoaded: (senderId, payload) =>
       hiddenWindowManager.markProbeLoaded(senderId, payload),
+    markFormalLoaded: (senderId, payload) =>
+      hiddenWindowManager.markFormalLoaded(senderId, payload),
     markFrameReady: (senderId, payload) =>
       hiddenWindowManager.markFrameReady(senderId, payload),
     markFrameFailed: (senderId, payload) =>
@@ -213,6 +263,58 @@ async function initialize(): Promise<void> {
       });
       return { jobId: handle.jobId, status: 'running' };
     },
+    startFormalExport: async (request) => {
+      const preparation = exportPreparationService;
+      if (!preparation || !exportService) {
+        throw new Error('Formal export is unavailable.');
+      }
+      const input = await preparation.acquireCandidateForExport(
+        request.snapshotId,
+        request.reuseSnapshot,
+      );
+      let handle;
+      try {
+        handle = exportService.startFormalExport(
+          input,
+          () => preparation.assertOutputTargetUnchanged(request.snapshotId),
+        );
+      } catch (error) {
+        formalOutputNameSeries.discardOutput(
+          input.candidate.outputIntent.targetPath,
+        );
+        try {
+          await preparation.retainCandidateForRetry(request.snapshotId);
+        } catch (cleanupError) {
+          console.error('Export snapshot release failed.', cleanupError);
+        }
+        throw error;
+      }
+      const finalizeCandidate = async () => {
+        try {
+          await preparation.finalizeCandidateExport(request.snapshotId);
+        } catch (cleanupError) {
+          console.error('Export snapshot cleanup failed.', cleanupError);
+        }
+      };
+      void handle.completion.then(
+        async (result) => {
+          formalOutputNameSeries.recordCompletedOutput(result.outputPath);
+          await finalizeCandidate();
+        },
+        (error: unknown) => {
+          formalOutputNameSeries.discardOutput(
+            input.candidate.outputIntent.targetPath,
+          );
+          console.error(`Export Job ${handle.jobId} stopped.`, error);
+          return preparation
+            .retainCandidateForRetry(request.snapshotId)
+            .catch((retainError: unknown) => {
+              console.error('Export snapshot retention failed.', retainError);
+            });
+        },
+      );
+      return { jobId: handle.jobId, status: 'running' };
+    },
     cancelExport: (jobId) => {
       const accepted = exportService!.cancelJob(jobId);
       return {
@@ -220,6 +322,12 @@ async function initialize(): Promise<void> {
         accepted,
         status: exportService!.getJob(jobId)?.status ?? 'cancelled',
       };
+    },
+    revealExportOutput: async (jobId) => {
+      const outputPath = exportService?.getCompletedOutputPath(jobId);
+      if (!outputPath) return false;
+      shell.showItemInFolder(outputPath);
+      return true;
     },
   });
   const recoveryService = new RecoveryService();
@@ -247,8 +355,10 @@ async function initialize(): Promise<void> {
     pathService,
     getCurrentProjectSnapshot: (projectRoot) =>
       autosaveService?.getProjectSnapshot(projectRoot) ?? null,
-    onProjectOpened: (projectRoot, project) =>
-      flaAssetCommitService?.recoverProjectArtifacts(projectRoot, project),
+    onProjectOpened: async (projectRoot, project) => {
+      await flaAssetCommitService?.recoverProjectArtifacts(projectRoot, project);
+      await flaCharacterCreateService?.recoverProjectArtifacts(projectRoot, project);
+    },
     onProjectSaved: async (projectRoot, project, revision) => {
       try {
         await recoveryService.cleanupAfterFormalSave(
@@ -289,12 +399,80 @@ async function initialize(): Promise<void> {
     onRecentProjectError: (error) => {
       console.error('Recent project update failed.', error);
     },
+    onProjectContextChanged: () => flaPartPreviewService?.invalidateAll(),
   });
+  exportPreparationService = new ExportPreparationService({
+    getCurrentProjectSnapshot: (projectRoot) => {
+      const snapshot = autosaveService?.getProjectSnapshot(projectRoot);
+      return snapshot
+        ? {
+            project: snapshot.project,
+            revision: snapshot.revision,
+            dirty: snapshot.dirty,
+            openInstanceId: snapshot.openInstanceId ?? null,
+          }
+        : null;
+    },
+    assertFormalOutputLocation: (outputPath) => {
+      if (!exportFileSystem) {
+        throw new Error('Formal export filesystem is unavailable.');
+      }
+      return exportFileSystem.assertFormalOutputLocation(outputPath);
+    },
+  });
+  removeExportPreparationIpcHandlers =
+    registerExportPreparationIpcHandlers({
+      getMainWindow: () => mainWindow,
+      service: exportPreparationService,
+      selectOutputPath: async (window, request) => {
+        if (!exportFileSystem) {
+          throw new Error('Formal export filesystem is unavailable.');
+        }
+        const initialDefaultPath = path.join(
+          request.projectRoot,
+          defaultExportFileName(request.projectName),
+        );
+        const outputSeries = formalOutputNameSeries.getSeries(
+          request.projectRoot,
+          initialDefaultPath,
+        );
+        const outputBasePath = path.join(
+          outputSeries.directory,
+          `${outputSeries.baseName}.mp4`,
+        );
+        const suggestedOutput =
+          await exportFileSystem.suggestFormalOutputPathWithOrdinal(
+            outputBasePath,
+            outputSeries.nextOrdinal,
+          );
+        const selection = await dialog.showSaveDialog(window, {
+          title: '选择导出视频位置',
+          buttonLabel: '选择输出位置',
+          defaultPath: suggestedOutput.path,
+          filters: [{ name: 'MP4 视频', extensions: ['mp4'] }],
+          properties: [],
+        });
+        const selectedPath = selection.canceled
+          ? null
+          : (selection.filePath ?? null);
+        if (selectedPath) {
+          formalOutputNameSeries.recordSelection(
+            request.projectRoot,
+            outputSeries,
+            suggestedOutput.path,
+            suggestedOutput.ordinal,
+            selectedPath,
+          );
+        }
+        return selectedPath;
+      },
+    });
   removeRecoveryIpcHandlers = registerRecoveryIpcHandlers({
     getMainWindow: () => mainWindow,
     projectService,
     recoveryService,
     autosaveService,
+    onProjectContextChanged: () => flaPartPreviewService?.invalidateAll(),
   });
   removeRecentProjectsIpcHandlers = registerRecentProjectsIpcHandlers({
     getMainWindow: () => mainWindow,
@@ -368,6 +546,7 @@ async function initialize(): Promise<void> {
     assetPreviewAudioService: new AssetPreviewAudioService({
       getCurrentProjectSnapshot: (projectRoot) =>
         autosaveService?.getProjectSnapshot(projectRoot) ?? null,
+      enableValidatedHashIndex: true,
     }),
   });
   flaAssetCommitService = new FlaAssetCommitService({
@@ -382,6 +561,7 @@ async function initialize(): Promise<void> {
     flaImportService,
     flaAssetCommitService,
     selectFlaSource,
+    onInspectionStarting: () => flaPartPreviewService?.invalidateAll(),
   });
 
   // V2-R1 Static Snapshot (Issue #287).  The render session reuses the
@@ -397,11 +577,48 @@ async function initialize(): Promise<void> {
         const { sourceBytes } = session;
         const { basename, sha256 } = session.ir.source;
         if (!sourceBytes || !basename || !sha256) return null;
-        return { bytes: sourceBytes, basename, sha256, media: session.ir.media };
+        return {
+          bytes: sourceBytes,
+          basename,
+          sha256,
+          originalSourceSha256: session.originalSourceSha256 ?? sha256,
+          media: session.ir.media,
+        };
       },
     },
   });
   flaSnapshotRenderSession = flaSnapshotSession;
+  flaPartPreviewService = new FlaPartPreviewService({
+    flaImportService,
+    renderSession: flaSnapshotSession,
+    rasterizer: flaSnapshotWindowManager,
+  });
+  removeFlaPartPreviewIpcHandlers = registerFlaPartPreviewIpcHandlers({
+    getMainWindow: () => mainWindow,
+    service: flaPartPreviewService,
+  });
+  flaCharacterCreateService = new FlaCharacterCreateService({
+    projectService,
+    partPreviewService: flaPartPreviewService,
+    getCurrentProjectSnapshot: (projectRoot) => {
+      const snapshot = autosaveService?.getProjectSnapshot(projectRoot);
+      return snapshot
+        ? {
+            projectRoot: snapshot.projectRoot,
+            project: snapshot.project,
+            revision: snapshot.revision,
+            openInstanceId: snapshot.openInstanceId ?? null,
+          }
+        : null;
+    },
+  });
+  removeFlaCharacterCreateIpcHandlers = registerFlaCharacterCreateIpcHandlers({
+    getMainWindow: () => mainWindow,
+    service: flaCharacterCreateService,
+  });
+  removeFlaSessionReleaseListener = flaImportService.onSessionReleased((sessionId) => {
+    flaPartPreviewService?.invalidateSession(sessionId);
+  });
   flaSnapshotCommitService = new FlaStaticSnapshotCommitService({
     projectService,
     getCurrentProjectSnapshot: (projectRoot) =>
@@ -435,6 +652,38 @@ async function initialize(): Promise<void> {
     projectService,
     getCurrentProjectSnapshot: (projectRoot) =>
       autosaveService?.getProjectSnapshot(projectRoot) ?? null,
+    getAnimationContext: async (sessionId, renderTargetId) => {
+      const session = flaImportService.getSession(sessionId);
+      if (!session?.sourceBytes) return null;
+      const catalog = await buildRenderableTargetCatalog(
+        session.sourceBytes,
+        createFlaStaticSnapshotBitmapMediaLookup(session.ir.media),
+      );
+      if (!catalog.ok) return null;
+      const target = catalog.entries.find(
+        (entry) => entry.target.renderTargetId === renderTargetId,
+      )?.target;
+      if (!target) return null;
+      return {
+        source: {
+          basename: session.ir.source.basename,
+          sha256: session.ir.source.sha256,
+        },
+        originalSourceSha256:
+          session.originalSourceSha256 ?? session.ir.source.sha256,
+        sourceFps: session.ir.document.frameRate,
+        documentCanvas: {
+          width: session.ir.document.width,
+          height: session.ir.document.height,
+        },
+        target: {
+          renderTargetId: target.renderTargetId,
+          kind: target.kind,
+          userLabel: target.userLabel,
+          frameCount: target.frameCount,
+        },
+      };
+    },
     sequenceStore: {
       isLatestAcceptedSequence: (sessionId, requestId) =>
         flaFrameSequenceService?.isLatestAcceptedSequence(sessionId, requestId) ?? false,
@@ -585,6 +834,14 @@ app.on('before-quit', (event) => {
 
 app.on('will-quit', () => {
   exportService?.cancelActiveJob();
+  for (const failure of exportPreparationService?.disposeSync() ?? []) {
+    console.error(
+      `Export preparation shutdown cleanup failed for owned snapshot ${failure.snapshotId} at ${failure.ownedPath}: ${failure.error}. Takeover action: release the process holding this path, then remove only this exact owned snapshot directory.`,
+    );
+  }
+  exportPreparationService = null;
+  removeExportPreparationIpcHandlers?.();
+  removeExportPreparationIpcHandlers = null;
   removeIpcHandlers?.();
   removeIpcHandlers = null;
   removeProjectIpcHandlers?.();
@@ -603,6 +860,15 @@ app.on('will-quit', () => {
   removeFlaImportIpcHandlers = null;
   removeFlaSnapshotIpcHandlers?.();
   removeFlaSnapshotIpcHandlers = null;
+  removeFlaPartPreviewIpcHandlers?.();
+  removeFlaPartPreviewIpcHandlers = null;
+  removeFlaCharacterCreateIpcHandlers?.();
+  removeFlaCharacterCreateIpcHandlers = null;
+  flaCharacterCreateService = null;
+  flaPartPreviewService?.close();
+  flaPartPreviewService = null;
+  removeFlaSessionReleaseListener?.();
+  removeFlaSessionReleaseListener = null;
   flaSnapshotRenderSession?.close();
   flaSnapshotRenderSession = null;
   flaSnapshotCommitService = null;

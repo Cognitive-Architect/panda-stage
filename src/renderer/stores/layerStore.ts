@@ -37,6 +37,39 @@ export class LayerStore {
   createFromAsset(input: CreateLayerInput): Layer {
     const { project, projectRoot, shotId } = this.context();
     const result = this.service.createFromAsset(project, shotId, input);
+    return this.persistCreatedLayer(
+      result,
+      project.id,
+      projectRoot,
+      shotId,
+    );
+  }
+
+  createAdaptiveCharacter(
+    characterId: string,
+    position: Point,
+  ): Layer {
+    const { project, projectRoot, shotId } = this.context();
+    const result = this.service.createFromAdaptiveCharacter(
+      project,
+      shotId,
+      characterId,
+      position,
+    );
+    return this.persistCreatedLayer(
+      result,
+      project.id,
+      projectRoot,
+      shotId,
+    );
+  }
+
+  private persistCreatedLayer(
+    result: ReturnType<LayerService['createFromAsset']>,
+    projectId: string,
+    projectRoot: string,
+    shotId: string,
+  ): Layer {
     this.editorStore.updateProject(
       result.project,
       'Create layer',
@@ -44,7 +77,7 @@ export class LayerStore {
       {
         afterRedo: () =>
           this.restoreCreatedLayerSelection(
-            project.id,
+            projectId,
             projectRoot,
             shotId,
             result.layer.id,

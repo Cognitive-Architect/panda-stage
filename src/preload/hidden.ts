@@ -1,14 +1,18 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import { ProjectSchema } from '../domain';
 import {
   ExportFrameFailedSchema,
   ExportFrameReadySchema,
   ExportCancelRenderRequestSchema,
   ExportLoadProbeRequestSchema,
+  ExportLoadFormalRequestSchema,
+  ExportFormalLoadedSchema,
   ExportProbeLoadedSchema,
   ExportRenderFrameRequestSchema,
   type ExportFrameFailed,
   type ExportFrameReady,
   type ExportLoadProbeRequest,
+  type ExportLoadFormalRequest,
   type ExportRenderFrameRequest,
   type ExportCancelRenderRequest,
 } from '../shared/export-types';
@@ -50,9 +54,25 @@ const hiddenApi = Object.freeze({
       (payload) => ExportLoadProbeRequestSchema.parse(payload),
       callback,
     ),
+  onLoadFormal: (callback: (request: ExportLoadFormalRequest) => void) =>
+    onValidatedMessage(
+      IPC_CHANNELS.EXPORT_LOAD_FORMAL,
+      (payload) => {
+        const parsed = ExportLoadFormalRequestSchema.parse(payload);
+        return {
+          ...parsed,
+          project: ProjectSchema.parse(parsed.project),
+        } as ExportLoadFormalRequest;
+      },
+      callback,
+    ),
   probeLoaded: (rawPayload: unknown) => {
     const payload = ExportProbeLoadedSchema.parse(rawPayload);
     ipcRenderer.send(IPC_CHANNELS.EXPORT_PROBE_LOADED, payload);
+  },
+  formalLoaded: (rawPayload: unknown) => {
+    const payload = ExportFormalLoadedSchema.parse(rawPayload);
+    ipcRenderer.send(IPC_CHANNELS.EXPORT_FORMAL_LOADED, payload);
   },
   onRenderFrame: (callback: (request: ExportRenderFrameRequest) => void) =>
     onValidatedMessage(

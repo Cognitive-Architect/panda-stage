@@ -25,6 +25,7 @@ import {
   FlaFrameSequenceCommitService,
   type FlaFrameSequenceCommitFaultInjector,
   type FlaFrameSequenceStore,
+  type FlaFrameSequenceAnimationContext,
 } from '../../src/main/services/FlaFrameSequenceCommitService';
 import {
   FlaFrameSequenceService,
@@ -84,12 +85,26 @@ const SEQ_REQ = '28000000-0000-4000-8000-0000000000d2';
 const SEQ_REQ_2 = '28000000-0000-4000-8000-0000000000d3';
 const TARGET_ID = 'fla-render-target-0000000000000a01';
 const SOURCE = { basename: 'attack.fla', sha256: 'a'.repeat(64) };
+const ANIMATION_CONTEXT: FlaFrameSequenceAnimationContext = {
+  source: SOURCE,
+  originalSourceSha256: 'b'.repeat(64),
+  sourceFps: 12,
+  documentCanvas: { width: 1920, height: 1080 },
+  target: { renderTargetId: TARGET_ID, kind: 'graphic-symbol', userLabel: 'Attack', frameCount: 24 },
+};
 
-function makeFrame(frameIndex: number, fill = 0, width = 8, height = 8): ConfirmedSequenceFrame {
+function makeFrame(
+  frameIndex: number,
+  fill = 0,
+  width = 8,
+  height = 8,
+  sourceViewport = { x: 0, y: 0, width, height },
+): ConfirmedSequenceFrame {
   const buffer = createRgbaPng(width, height, fill);
   return {
     frameIndex,
     sequenceOrdinal: frameIndex,
+    sourceViewport,
     pngBytes: new Uint8Array(buffer),
     sha256: createHash('sha256').update(buffer).digest('hex'),
     width,
@@ -115,6 +130,10 @@ interface Harness {
   createService: (options?: {
     sequenceStore?: FlaFrameSequenceStore;
     faults?: FlaFrameSequenceCommitFaultInjector;
+    getAnimationContext?: (
+      sessionId: string,
+      renderTargetId: string,
+    ) => Promise<FlaFrameSequenceAnimationContext | null>;
   }) => FlaFrameSequenceCommitService;
   current: { project: ReturnType<typeof ProjectSchema.parse>; revision: number };
   setCurrent: (project: ReturnType<typeof ProjectSchema.parse>, revision: number) => void;
@@ -144,6 +163,10 @@ async function harness(): Promise<Harness> {
     new FlaFrameSequenceCommitService({
       projectService,
       getCurrentProjectSnapshot: (root) => (root === projectRoot ? current : null),
+      getAnimationContext: options.getAnimationContext ?? (async (sessionId, renderTargetId) =>
+        sessionId === SESSION_ID && renderTargetId === TARGET_ID
+          ? ANIMATION_CONTEXT
+          : null),
       sequenceStore: options.sequenceStore ?? fakeSequenceStore([]),
       ...(options.faults ? { faults: options.faults } : {}),
     });
@@ -162,7 +185,11 @@ async function harness(): Promise<Harness> {
 function request(
   h: Harness,
   frames: ConfirmedSequenceFrame[],
-  overrides?: { confirmedSequenceRequestId?: string },
+  overrides?: {
+    confirmedSequenceRequestId?: string;
+    importAsAnimation?: boolean;
+    animationName?: string;
+  },
 ): FlaFrameSequenceCommitRequest {
   const start = frames[0]?.frameIndex ?? 0;
   const end = frames[frames.length - 1]?.frameIndex ?? 0;
@@ -174,6 +201,8 @@ function request(
     baseRevision: h.current.revision,
     sessionId: SESSION_ID,
     confirmedSequenceRequestId: overrides?.confirmedSequenceRequestId ?? SEQ_REQ,
+    importAsAnimation: overrides?.importAsAnimation ?? false,
+    ...(overrides?.animationName ? { animationName: overrides.animationName } : {}),
     source: SOURCE,
     range: { renderTargetId: TARGET_ID, startFrameIndex: start, endFrameIndex: end },
     sequence: {
@@ -200,11 +229,14 @@ afterEach(async () => {
 });
 
 describe('R2-G frame sequence commit: happy path', () => {
-  it('imports 3 frames as 3 new ImageAssets in one revision', async () => {
+  it('imports 3 frames and one formal animation in one revision', async () => {
     const h = await harness();
     const frames = [makeFrame(0, 0, 8, 8), makeFrame(1, 0, 9, 8), makeFrame(2, 0, 8, 9)];
     const service = h.createService({ sequenceStore: fakeSequenceStore(frames) });
-    const r = await service.commit(request(h, frames));
+    const r = await service.commit(request(h, frames, {
+      importAsAnimation: true,
+      animationName: 'Walk cycle',
+    }));
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.projectChanged).toBe(true);
@@ -220,6 +252,18 @@ describe('R2-G frame sequence commit: happy path', () => {
       expect(r.result.items[0]?.frameIndex).toBe(0);
       expect(r.result.items[1]?.frameIndex).toBe(1);
       expect(r.result.items[2]?.frameIndex).toBe(2);
+      expect(r.project.animations).toHaveLength(1);
+      expect(r.project.animations[0]?.source.sha256).toBe(
+        ANIMATION_CONTEXT.originalSourceSha256,
+      );
+      expect(r.project.animations[0]?.source.sourceFps).toBe(12);
+      expect(r.project.animations[0]?.source.targetName).toBe('Attack');
+      expect(r.project.animations[0]?.name).toBe('Walk cycle');
+      expect(r.project.animations[0]?.durationMs).toBe(250);
+      expect(r.project.animations[0]?.frames.map((frame) => frame.sourceFrameIndex))
+        .toEqual([0, 1, 2]);
+      expect(r.project.animations[0]?.frames.every((frame) => frame.createdBySequenceImport))
+        .toBe(true);
     }
     const entries = await assetEntries(h.projectRoot);
     expect(entries).toHaveLength(3);
@@ -258,6 +302,131 @@ describe('R2-G frame sequence commit: happy path', () => {
     }
     const entries = await assetEntries(h.projectRoot);
     expect(entries).toHaveLength(3);
+  });
+
+  it('deduplicates repeated frames inside the same sequence while preserving timing entries', async () => {
+    const h = await harness();
+    const frames = [makeFrame(0, 0, 8, 8), makeFrame(1, 0, 8, 8)];
+    const service = h.createService({ sequenceStore: fakeSequenceStore(frames) });
+    const response = await service.commit(request(h, frames, { importAsAnimation: true }));
+
+    expect(response.ok).toBe(true);
+    if (response.ok) {
+      expect(response.result.summary.importedCount).toBe(1);
+      expect(response.result.summary.duplicateCount).toBe(1);
+      expect(response.project.assets.filter((asset) => asset.kind === 'image'))
+        .toHaveLength(1);
+      expect(response.project.animations[0]?.frames.map((frame) => frame.assetId))
+        .toEqual([response.project.animations[0]?.frames[0]?.assetId,
+          response.project.animations[0]?.frames[0]?.assetId]);
+      expect(response.project.animations[0]?.frames.map((frame) => frame.createdBySequenceImport))
+        .toEqual([true, false]);
+      expect(response.project.animations[0]?.frames.map((frame) => frame.startMs))
+        .toEqual([0, 1_000 / 12]);
+    }
+    expect(await assetEntries(h.projectRoot)).toHaveLength(1);
+  });
+
+  it('stores the renderer-provided per-frame viewport on one common animation canvas', async () => {
+    const h = await harness();
+    const frames = [
+      makeFrame(0, 1, 8, 8, { x: -12, y: 4, width: 8, height: 8 }),
+      makeFrame(1, 2, 8, 8, { x: -4, y: 0, width: 8, height: 8 }),
+    ];
+    const service = h.createService({ sequenceStore: fakeSequenceStore(frames) });
+    const response = await service.commit(
+      request(h, frames, { importAsAnimation: true }),
+    );
+
+    expect(response.ok).toBe(true);
+    if (response.ok) {
+      const animation = response.project.animations[0]!;
+      expect(animation.source.anchor).toEqual({ x: -12, y: 0 });
+      expect(animation.source.canvas).toEqual({ width: 16, height: 12 });
+      expect(animation.frames.map((frame) => frame.offset)).toEqual([
+        { x: 0, y: 4 },
+        { x: 8, y: 0 },
+      ]);
+      expect(animation.frames.map((frame) => frame.sourceViewport)).toEqual([
+        { x: -12, y: 4, width: 8, height: 8 },
+        { x: -4, y: 0, width: 8, height: 8 },
+      ]);
+    }
+  });
+
+  it('rejects animation mode without verified FPS or trusted frame viewports before file writes', async () => {
+    const noFpsHarness = await harness();
+    const frame = makeFrame(0);
+    const noFps = noFpsHarness.createService({
+      sequenceStore: fakeSequenceStore([frame]),
+      getAnimationContext: async () => ({
+        ...ANIMATION_CONTEXT,
+        sourceFps: 0,
+      }),
+    });
+    const noFpsResponse = await noFps.commit(
+      request(noFpsHarness, [frame], { importAsAnimation: true }),
+    );
+    expect(noFpsResponse.ok).toBe(false);
+    if (!noFpsResponse.ok) expect(noFpsResponse.error.code).toBe('SOURCE_MISMATCH');
+    expect(await assetEntries(noFpsHarness.projectRoot)).toHaveLength(0);
+
+    const noViewportHarness = await harness();
+    const noViewportFrame = { ...makeFrame(0) };
+    delete noViewportFrame.sourceViewport;
+    const noViewport = noViewportHarness.createService({
+      sequenceStore: fakeSequenceStore([noViewportFrame]),
+    });
+    const noViewportResponse = await noViewport.commit(
+      request(noViewportHarness, [noViewportFrame], { importAsAnimation: true }),
+    );
+    expect(noViewportResponse.ok).toBe(false);
+    if (!noViewportResponse.ok) expect(noViewportResponse.error.code).toBe('TARGET_UNSUPPORTED');
+    expect(await assetEntries(noViewportHarness.projectRoot)).toHaveLength(0);
+  });
+
+  it('keeps ordinary PNG sequence import available when source FPS is unknown', async () => {
+    const h = await harness();
+    const frame = makeFrame(0);
+    delete frame.sourceViewport;
+    const service = h.createService({
+      sequenceStore: fakeSequenceStore([frame]),
+      getAnimationContext: async () => ({
+        ...ANIMATION_CONTEXT,
+        sourceFps: 0,
+      }),
+    });
+
+    const response = await service.commit(request(h, [frame]));
+
+    expect(response.ok).toBe(true);
+    if (response.ok) {
+      expect(response.project.animations).toEqual([]);
+      expect(response.project.assets.filter((asset) => asset.kind === 'image'))
+        .toHaveLength(1);
+    }
+    expect(await assetEntries(h.projectRoot)).toHaveLength(1);
+  });
+
+  it('creates and saves an animation when every frame PNG is already present', async () => {
+    const h = await harness();
+    const frame = makeFrame(0, 0, 8, 8);
+    const firstService = h.createService({ sequenceStore: fakeSequenceStore([frame]) });
+    const first = await firstService.commit(request(h, [frame], { importAsAnimation: true }));
+    expect(first.ok).toBe(true);
+
+    const duplicateService = h.createService({ sequenceStore: fakeSequenceStore([frame]) });
+    const duplicate = await duplicateService.commit(request(h, [frame], { importAsAnimation: true }));
+
+    expect(duplicate.ok).toBe(true);
+    if (duplicate.ok) {
+      expect(duplicate.projectChanged).toBe(true);
+      expect(duplicate.savedRevision).toBe(2);
+      expect(duplicate.result.summary.importedCount).toBe(0);
+      expect(duplicate.result.summary.duplicateCount).toBe(1);
+      expect(duplicate.project.animations).toHaveLength(2);
+    }
+    expect(await assetEntries(h.projectRoot)).toHaveLength(1);
   });
 });
 
@@ -419,8 +588,8 @@ describe('R2-G frame sequence commit: R2-D end-to-end via R2-C service', () => {
       SESSION_ID,
       range,
       [
-        { frameIndex: 0, svg: '<svg/>' },
-        { frameIndex: 1, svg: '<svg/>' },
+        { frameIndex: 0, svg: '<svg/>', sourceViewport: { x: 0, y: 0, width: 8, height: 8 } },
+        { frameIndex: 1, svg: '<svg/>', sourceViewport: { x: 0, y: 0, width: 8, height: 8 } },
       ],
       { sequenceRequestId: SEQ_REQ },
     );
@@ -436,6 +605,10 @@ describe('R2-G frame sequence commit: R2-D end-to-end via R2-C service', () => {
     const commitService = new FlaFrameSequenceCommitService({
       projectService: h.projectService,
       getCurrentProjectSnapshot: (root) => (root === h.projectRoot ? h.current : null),
+      getAnimationContext: async (sessionId, renderTargetId) =>
+        sessionId === SESSION_ID && renderTargetId === TARGET_ID
+          ? ANIMATION_CONTEXT
+          : null,
       sequenceStore: {
         isLatestAcceptedSequence: (sid, id) => sequenceService.isLatestAcceptedSequence(sid, id),
         getConfirmedSequence: (id) => sequenceService.getConfirmedSequence(id),
@@ -448,11 +621,12 @@ describe('R2-G frame sequence commit: R2-D end-to-end via R2-C service', () => {
 
     // 3) Build the R2 commit request from the confirmed sequence
     //    echoes (the UI / IPC layer normally constructs this).
-    const confirmedReq = request(h, confirmed1!);
+    const confirmedReq = request(h, confirmed1!, { importAsAnimation: true });
     const r2 = await commitService.commit(confirmedReq);
     expect(r2.ok).toBe(true);
     if (r2.ok) {
-      expect(r2.result.summary.importedCount).toBe(2);
+      expect(r2.result.summary.importedCount).toBe(1);
+      expect(r2.result.summary.duplicateCount).toBe(1);
       expect(r2.result.items).toHaveLength(2);
     }
     expect(released).toEqual([SEQ_REQ]);
@@ -472,8 +646,8 @@ describe('R2-G frame sequence commit: R2-D end-to-end via R2-C service', () => {
       SESSION_ID,
       range,
       [
-        { frameIndex: 0, svg: '<svg/>' },
-        { frameIndex: 1, svg: '<svg/>' },
+        { frameIndex: 0, svg: '<svg/>', sourceViewport: { x: 0, y: 0, width: 8, height: 8 } },
+        { frameIndex: 1, svg: '<svg/>', sourceViewport: { x: 0, y: 0, width: 8, height: 8 } },
       ],
       { sequenceRequestId: SEQ_REQ_2 },
     );

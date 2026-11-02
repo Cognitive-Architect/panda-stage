@@ -1,4 +1,5 @@
 export * from './asset';
+export * from './animation';
 export * from './audio';
 export * from './character';
 export * from './dialogue';

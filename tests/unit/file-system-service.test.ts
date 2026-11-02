@@ -15,7 +15,9 @@ import {
   CLEANUP_MAX_RETRIES,
   CLEANUP_RETRY_DELAY_MS,
   FileSystemService,
+  isWithinWindowsFormalExportPathLimit,
 } from '../../src/main/services/FileSystemService';
+import { formatFrameFileName } from '../../src/shared/export-types';
 
 describe('FileSystemService Unicode paths and cleanup', () => {
   const temporaryRoots: string[] = [];
@@ -25,6 +27,105 @@ describe('FileSystemService Unicode paths and cleanup', () => {
       temporaryRoots.splice(0).map((directory) =>
         rm(directory, { recursive: true, force: true }),
       ),
+    );
+  });
+
+  it('checks the 259-character Windows formal-output and staging-path boundaries', () => {
+    const stagingAtLimitDirectory = `C:\\${'a'.repeat(158)}`;
+    const stagingOverLimitDirectory = `C:\\${'a'.repeat(159)}`;
+    expect(
+      isWithinWindowsFormalExportPathLimit(
+        path.win32.join(stagingAtLimitDirectory, 'out.mp4'),
+      ),
+    ).toBe(true);
+    expect(
+      isWithinWindowsFormalExportPathLimit(
+        path.win32.join(stagingOverLimitDirectory, 'out.mp4'),
+      ),
+    ).toBe(false);
+
+    const shortStagingDirectory = `C:\\${'b'.repeat(100)}`;
+    expect(
+      path.win32.join(
+        shortStagingDirectory,
+        `${'x'.repeat(151)}.mp4`,
+      ).length,
+    ).toBe(259);
+    expect(
+      isWithinWindowsFormalExportPathLimit(
+        path.win32.join(shortStagingDirectory, `${'x'.repeat(151)}.mp4`),
+      ),
+    ).toBe(true);
+    expect(
+      path.win32.join(
+        shortStagingDirectory,
+        `${'x'.repeat(152)}.mp4`,
+      ).length,
+    ).toBe(260);
+    expect(
+      isWithinWindowsFormalExportPathLimit(
+        path.win32.join(shortStagingDirectory, `${'x'.repeat(152)}.mp4`),
+      ),
+    ).toBe(false);
+  });
+
+  it('suggests the next unused same-name MP4 without touching existing outputs', async () => {
+    const parent = await mkdtemp(
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-export-name-'),
+    );
+    temporaryRoots.push(parent);
+    const service = new FileSystemService(path.join(parent, 'frames'));
+    const outputPath = path.join(parent, 'Scene.mp4');
+
+    await expect(service.suggestFormalOutputPath(outputPath)).resolves.toBe(
+      outputPath,
+    );
+    await writeFile(outputPath, 'first export', 'utf8');
+    const secondOutputPath = path.join(parent, 'Scene (2).mp4');
+    await expect(service.suggestFormalOutputPath(outputPath)).resolves.toBe(
+      secondOutputPath,
+    );
+    await writeFile(secondOutputPath, 'second export', 'utf8');
+
+    await expect(service.suggestFormalOutputPath(outputPath)).resolves.toBe(
+      path.join(parent, 'Scene (3).mp4'),
+    );
+    await expect(readFile(outputPath, 'utf8')).resolves.toBe('first export');
+    await expect(readFile(secondOutputPath, 'utf8')).resolves.toBe(
+      'second export',
+    );
+  });
+
+  it('starts at the tracked series ordinal and scans forward across occupied gaps', async () => {
+    const parent = await mkdtemp(
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-export-series-'),
+    );
+    temporaryRoots.push(parent);
+    const service = new FileSystemService(path.join(parent, 'frames'));
+    const basePath = path.join(parent, 'Scene.mp4');
+    await writeFile(basePath, 'first export', 'utf8');
+    await writeFile(path.join(parent, 'Scene (2).mp4'), 'second export', 'utf8');
+    await writeFile(path.join(parent, 'Scene (4).mp4'), 'fourth export', 'utf8');
+
+    const third = await service.suggestFormalOutputPathWithOrdinal(basePath, 2);
+    expect(third).toEqual({
+      path: path.join(parent, 'Scene (3).mp4'),
+      ordinal: 3,
+    });
+    await writeFile(third.path, 'third export', 'utf8');
+
+    await expect(
+      service.suggestFormalOutputPathWithOrdinal(basePath, third.ordinal),
+    ).resolves.toEqual({
+      path: path.join(parent, 'Scene (5).mp4'),
+      ordinal: 5,
+    });
+    await expect(readFile(basePath, 'utf8')).resolves.toBe('first export');
+    await expect(readFile(path.join(parent, 'Scene (2).mp4'), 'utf8')).resolves.toBe(
+      'second export',
+    );
+    await expect(readFile(path.join(parent, 'Scene (4).mp4'), 'utf8')).resolves.toBe(
+      'fourth export',
     );
   });
 
@@ -54,6 +155,95 @@ describe('FileSystemService Unicode paths and cleanup', () => {
     expect(await readdir(unicodeRoot)).toEqual([]);
   });
 
+  it('writes canonical six- and seven-digit frames and lists them by numeric index', async () => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-frame-sequence-'));
+    temporaryRoots.push(parent);
+    const service = new FileSystemService(path.join(parent, 'jobs'));
+    const jobDirectory = await service.createJobDirectory(randomUUID());
+    const frames = [
+      { index: 1_000_000, bytes: new Uint8Array([10, 11, 12]) },
+      { index: 999_999, bytes: new Uint8Array([7, 8, 9]) },
+      { index: 1_999_999, bytes: new Uint8Array([13, 14, 15]) },
+      { index: 0, bytes: new Uint8Array([1, 2, 3]) },
+    ];
+
+    for (const frame of frames) {
+      const fileName = formatFrameFileName(frame.index);
+      await service.writeFrame(jobDirectory, fileName, frame.bytes);
+      expect(
+        new Uint8Array(await readFile(path.join(jobDirectory, fileName))),
+      ).toEqual(frame.bytes);
+    }
+
+    await writeFile(path.join(jobDirectory, 'frame_000042.png.tmp'), 'temporary');
+    await mkdir(path.join(jobDirectory, 'frame_000043.png'));
+
+    await expect(service.listFrameFiles(jobDirectory)).resolves.toEqual([
+      'frame_000000.png',
+      'frame_999999.png',
+      'frame_1000000.png',
+      'frame_1999999.png',
+    ]);
+
+    await expect(
+      service.writeFrame(
+        jobDirectory,
+        'frame_000000.png',
+        new Uint8Array([99]),
+      ),
+    ).rejects.toMatchObject({ code: 'EEXIST' });
+    expect(
+      new Uint8Array(
+        await readFile(path.join(jobDirectory, 'frame_000000.png')),
+      ),
+    ).toEqual(new Uint8Array([1, 2, 3]));
+
+    for (const fileName of [
+      '../frame_000004.png',
+      'frame_000004.jpg',
+      'frame_00004.png',
+      'frame_000004.png/child',
+      'frame_000004.png\\child',
+      'frame_000004.png\n',
+      'frame_0000000.png',
+    ]) {
+      await expect(
+        service.writeFrame(jobDirectory, fileName, new Uint8Array([0])),
+      ).rejects.toThrow('Invalid frame file name:');
+    }
+
+    await expect(
+      service.writeFrame(
+        parent,
+        'frame_000004.png',
+        new Uint8Array([0]),
+      ),
+    ).rejects.toThrow('Path escapes the frame-job root:');
+  });
+
+  it('writes only named frozen audio media inside the owned Job directory', async () => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-audio-job-'));
+    temporaryRoots.push(parent);
+    const service = new FileSystemService(path.join(parent, 'jobs'));
+    const jobDirectory = await service.createJobDirectory(randomUUID());
+    const assetId = '10000000-0000-4000-8000-000000000821';
+    const bytes = new Uint8Array([1, 2, 3, 4]);
+    const audioPath = await service.writeFrozenAudio(
+      jobDirectory,
+      `audio-${assetId}.wav`,
+      bytes,
+    );
+
+    expect(audioPath).toBe(path.join(jobDirectory, `audio-${assetId}.wav`));
+    expect(new Uint8Array(await readFile(audioPath))).toEqual(bytes);
+    await expect(
+      service.writeFrozenAudio(jobDirectory, '../outside.wav', bytes),
+    ).rejects.toThrow('Invalid frozen audio file name.');
+    await expect(
+      service.writeFrozenAudio(jobDirectory, `audio-${assetId}.wav`, bytes),
+    ).rejects.toMatchObject({ code: 'EEXIST' });
+  });
+
   it('uses a finite Windows lock retry policy', () => {
     expect(CLEANUP_MAX_RETRIES).toBe(3);
     expect(CLEANUP_RETRY_DELAY_MS).toBe(75);
@@ -76,6 +266,9 @@ describe('FileSystemService Unicode paths and cleanup', () => {
 
     expect(path.dirname(stagingPath)).toBe(path.dirname(outputPath));
     expect(path.basename(stagingPath)).toContain(jobId);
+    expect(path.basename(stagingPath)).toMatch(
+      /^\.panda-stage-export-[0-9a-f-]+-[0-9a-f-]+\.mp4$/iu,
+    );
     expect(stagingPath.toLowerCase().endsWith('.mp4')).toBe(true);
     await writeFile(stagingPath, 'new video', 'utf8');
     await service.commitFinalOutput(stagingPath, outputPath, true);
@@ -83,5 +276,93 @@ describe('FileSystemService Unicode paths and cleanup', () => {
     await expect(readFile(outputPath, 'utf8')).resolves.toBe('new video');
     await expect(stat(stagingPath)).rejects.toMatchObject({ code: 'ENOENT' });
     await service.cleanupFinalOutputStaging(stagingPath);
+  });
+
+  it('formally commits a new target with an exclusive same-directory hard link', async () => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-no-clobber-'));
+    temporaryRoots.push(parent);
+    const service = new FileSystemService(path.join(parent, 'frames'), {
+      inspectWindowsVolume: async () => ({ driveType: 'Fixed', fileSystem: 'NTFS' }),
+    });
+    const outputPath = path.join(parent, 'new-output.mp4');
+    const stagingPath = service.createFinalOutputStagingPath(randomUUID(), outputPath);
+    await writeFile(stagingPath, 'verified export', 'utf8');
+
+    await expect(service.prepareFormalOutput(outputPath)).resolves.toBe(path.resolve(outputPath));
+    await service.commitFormalOutputNoReplace(stagingPath, outputPath);
+
+    await expect(readFile(outputPath, 'utf8')).resolves.toBe('verified export');
+    await expect(stat(stagingPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readdir(parent)).resolves.toEqual(['new-output.mp4']);
+  });
+
+  it('preserves a file created after preflight when the exclusive commit meets a name conflict', async () => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-race-'));
+    temporaryRoots.push(parent);
+    const service = new FileSystemService(path.join(parent, 'frames'), {
+      inspectWindowsVolume: async () => ({ driveType: 'Fixed', fileSystem: 'NTFS' }),
+    });
+    const outputPath = path.join(parent, 'raced-output.mp4');
+    const stagingPath = service.createFinalOutputStagingPath(randomUUID(), outputPath);
+    const externalBytes = Buffer.from('third-party output');
+    await writeFile(stagingPath, 'verified export', 'utf8');
+    await service.prepareFormalOutput(outputPath);
+    await writeFile(outputPath, externalBytes);
+
+    await expect(service.commitFormalOutputNoReplace(stagingPath, outputPath)).rejects.toThrow(
+      /created before commit/,
+    );
+    await expect(readFile(outputPath)).resolves.toEqual(externalBytes);
+    await service.cleanupFinalOutputStaging(stagingPath);
+    await expect(stat(stagingPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.each([
+    { driveType: 'Fixed', fileSystem: 'ReFS' },
+    { driveType: 'Network', fileSystem: 'NTFS' },
+  ])('fails closed on an unsupported $driveType $fileSystem volume before staging', async ({ driveType, fileSystem }) => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-unsupported-'));
+    temporaryRoots.push(parent);
+    const service = new FileSystemService(path.join(parent, 'frames'), {
+      inspectWindowsVolume: async () => ({ driveType, fileSystem }),
+    });
+    const outputPath = path.join(parent, 'unsupported.mp4');
+
+    await expect(service.prepareFormalOutput(outputPath)).rejects.toThrow(/local NTFS/);
+    await expect(readdir(parent)).resolves.toEqual([]);
+  });
+
+  it('rejects a formal staging file from a different directory', async () => {
+    const parent = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-stage-cross-directory-'));
+    temporaryRoots.push(parent);
+    const stageDirectory = path.join(parent, 'stage');
+    const targetDirectory = path.join(parent, 'target');
+    await Promise.all([
+      mkdir(stageDirectory, { recursive: true }),
+      mkdir(targetDirectory, { recursive: true }),
+    ]);
+    const service = new FileSystemService(path.join(parent, 'frames'), {
+      inspectWindowsVolume: async () => ({ driveType: 'Fixed', fileSystem: 'NTFS' }),
+    });
+    const stagingPath = path.join(stageDirectory, 'stage.mp4');
+    const outputPath = path.join(targetDirectory, 'target.mp4');
+    await writeFile(stagingPath, 'verified export', 'utf8');
+
+    await expect(service.commitFormalOutputNoReplace(stagingPath, outputPath)).rejects.toThrow(
+      /same directory/,
+    );
+    await expect(readFile(stagingPath, 'utf8')).resolves.toBe('verified export');
+    await expect(stat(outputPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('keeps formal output staging names short for long user-selected file names', () => {
+    const parent = path.join(os.tmpdir(), 'panda-stage-long-output-name');
+    const service = new FileSystemService(path.join(parent, 'frames'));
+    const outputPath = path.join(parent, `${'long-export-name-'.repeat(12)}.mp4`);
+    const stagingPath = service.createFinalOutputStagingPath(randomUUID(), outputPath);
+
+    expect(path.dirname(stagingPath)).toBe(parent);
+    expect(path.basename(stagingPath).length).toBeLessThan(100);
+    expect(path.basename(stagingPath)).not.toContain('long-export-name');
   });
 });

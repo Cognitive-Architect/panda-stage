@@ -34,6 +34,7 @@ describe('schema v5 dialogue persisted migration', () => {
     const base = JSON.parse(
       JSON.stringify(buildProject()),
     ) as Record<string, unknown>;
+    delete base.animations;
     for (const asset of base.assets as Record<string, unknown>[]) {
       delete asset.usage;
       delete asset.keywords;

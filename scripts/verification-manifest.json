@@ -352,6 +352,7 @@
           "src/history/**",
           "src/shared/**",
           "src/renderer/stores/**",
+          "src/renderer/features/fla-import/**",
           "src/renderer/App.tsx",
           "src/renderer/global.d.ts"
         ],
@@ -385,8 +386,23 @@
           "tests/integration/project-subtitle-background-migration.test.ts",
           "tests/unit/application-menu-policy.test.ts",
           "tests/unit/standalone-audio.test.ts",
+          "tests/unit/autosave-service.test.ts",
+          "tests/unit/hidden-window-manager.test.ts",
+          "tests/unit/project-asset-path.test.ts",
+          "tests/unit/unsaved-close-controller.test.ts",
           "tests/unit/models/audio-clip-source-range.test.ts",
-          "tests/integration/standalone-audio-persistence.test.ts"
+          "tests/integration/standalone-audio-persistence.test.ts",
+          "tests/integration/animation-persistence.test.ts",
+          "tests/helpers/adaptivePartsFixtures.ts",
+          "tests/helpers/characterAssertions.ts",
+          "tests/integration/adaptive-parts-lifecycle.test.ts",
+          "tests/integration/history-lifecycle.test.ts",
+          "tests/unit/adaptive-parts-character.test.ts",
+          "tests/unit/day23-layer-controls.test.ts",
+          "tests/unit/layer-service.test.ts",
+          "tests/unit/layer-stores.test.ts",
+          "tests/unit/reference-scanner.test.ts",
+          "tests/unit/create-character-from-prepared-parts.test.ts"
         ],
         "verifierPatterns": ["scripts/verify-issue257-slice3*", "scripts/verify-issue657-audio-foundation.cjs"],
         "suites": [],
@@ -394,28 +410,47 @@
         "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "architecture",
-        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #852 scene-creation, Issue #828 lifecycle, and audio source-range tests remain here without broad test globs; other unregistered test paths stay fail-closed."
+        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #852 scene-creation, Issue #828 lifecycle and audio source-range tests, Main window/filesystem boundary tests, Issue #894 Adaptive Parts/Layer/history helpers and lifecycle tests, and Issue #910 F1-04 prepared-character submission coverage remain registered here without broad test globs; other unregistered test paths stay fail-closed."
       },
       {
         "id": "release-export-core",
         "sourcePatterns": [
           "build/**",
-          "resources/**"
+          "resources/**",
+          "docs/test-receipts/issue848-o1-r4-comparison.json",
+          "docs/test-receipts/issue849-o2-comparison.json",
+          "docs/test-receipts/issue851-o2-f01-comparison.json",
+          "docs/test-receipts/issue856-o5-30s-comparison.json"
         ],
         "testPatterns": [
           "tests/unit/export-*.test.ts",
-          "tests/unit/ffmpeg-*.test.ts"
+          "tests/unit/formal-export-stage-label.test.ts",
+          "tests/unit/formal-output-name-series.test.ts",
+          "tests/unit/issue851-memory-trend.test.ts",
+          "tests/unit/png-encode-core.test.ts",
+          "tests/unit/worker-png-encoder.test.ts",
+          "tests/unit/ffmpeg-*.test.ts",
+          "tests/unit/file-system-service.test.ts"
         ],
         "verifierPatterns": [
-          "scripts/verify-day09.cjs",
-          "scripts/verify-issue660-export-audio-mix.cjs"
+          "scripts/verify-issue816-dl01.cjs",
+          "scripts/verify-issue819-dl02.cjs",
+          "scripts/verify-issue823-dl03.cjs",
+          "scripts/verify-issue827-dl04.cjs",
+          "scripts/verify-issue832-dl05.cjs",
+          "scripts/verify-issue834-dl05-followup.cjs",
+          "scripts/verify-issue836-dl06-r0.cjs",
+          "scripts/verify-issue848-o1.cjs",
+          "scripts/verify-issue849-o2.cjs",
+          "scripts/verify-issue660-export-audio-mix.cjs",
+          "scripts/verify-day09.cjs"
         ],
         "suites": [],
         "riskPolicy": "full",
         "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "release",
-        "notes": "Installer, release, export-core, and FFmpeg capability families remain Full risk without predeclaring speculative product paths. The exact legacy Day09 export probe path is registered because this request-contract migration updates its fixture; no broad scripts/** route is added."
+        "notes": "Installer, release, export-core, and FFmpeg capability families remain Full risk without predeclaring speculative product paths. Exact O1/O2 performance verifier scripts and comparison receipts, plus the explicit formal-output-series and PNG-worker export tests, are registered here because they validate release export behavior. The exact legacy Day09 export probe path remains registered; verifier ownership does not use a broad catch-all pattern."
       }
     ],
     "routes": [
@@ -449,7 +484,7 @@
       {
         "id": "assets",
         "sourcePatterns": ["src/renderer/features/assets/**"],
-        "testPatterns": ["tests/unit/asset-*.test.ts", "tests/integration/asset-*.test.ts", "tests/unit/product-copy.test.ts", "tests/unit/apply-asset-import-response.test.ts"],
+        "testPatterns": ["tests/unit/asset-*.test.ts", "tests/integration/asset-*.test.ts", "tests/unit/product-copy.test.ts", "tests/unit/apply-asset-import-response.test.ts", "tests/unit/animation-library-components.test.ts", "tests/unit/animation-playback.test.ts", "tests/unit/animation-preview-lifecycle.test.ts"],
         "verifierPatterns": ["scripts/verify-day16*", "scripts/verify-day17*", "scripts/verify-day18*"],
         "suites": ["assets", "character"],
         "riskPolicy": "targeted",
@@ -461,7 +496,7 @@
         "id": "fla-import",
         "sourcePatterns": ["src/renderer/fla-import/**", "src/renderer/styles/features/fla-import/c03-unified-workbench.css", "fla-parser.html", "fla-static-snapshot.html", "src/renderer/fla-static-snapshot-renderer.ts", "docs/research/fla-corpus-manifest.json", "docs/research/fla-v1.5-c1-recovery-evidence.json", "docs/research/fla-v1.5-c2-safe-recovery-envelope.json", "docs/research/fla-v1.5-c3-compatibility-recovery.json", "docs/research/fla-v1.5-c4-recovered-content-routing.json", "docs/research/issue-704-black-candidate-discovery.json", "docs/research/issue-704-black-candidate-manifest.json", "scripts/research/issue705-black-asset-batch-core.cjs", "scripts/research/issue705-black-asset-batch.cjs", "docs/research/issue-705-black-asset-batch.md", "docs/research/issue-705-black-asset-batch.json", "docs/research/issue-705-black-asset-batch-manifest.json", "docs/research/issue-706-cross-corpus-generalization.md", "docs/research/issue-706-cross-corpus-generalization.json", "docs/evidence/issue-697/target-fill-edges.json", "docs/evidence/issue-737/swf-crossstage-map.json", "docs/evidence/issue-739/issue739-open-fill-corpus-differential.json", "docs/research/issue-702-black-multi-pose-census.json", "docs/research/issue-703-nested-graphic-frame-sync.json", "docs/research/issue-732-cross-category-capability-census.csv", "docs/research/issue-732-cross-category-capability-census.json", "scripts/research/issue706-cross-corpus-core.cjs", "scripts/research/issue706-cross-corpus-electron-probe.cjs", "scripts/research/issue706-cross-corpus-batch.cjs", "docs/evidence/issue-284-r0/.gitignore", "docs/evidence/issue-284-r0/r0-budget.json", "docs/evidence/issue-284-r0/r0-determinism.json", "docs/evidence/issue-284-r0/r0-extract.json", "docs/evidence/issue-284-r0/r0-render-sword.png", "docs/evidence/issue-284-r0/r0-render-sword.svg", "docs/evidence/issue-294-r2/r2-summary.json"],
         "testPatterns": ["tests/unit/fla-*.test.ts", "tests/unit/fla-static-snapshot-render-session.test.ts", "tests/unit/fla-static-snapshot-commit.test.ts", "tests/unit/fla-static-snapshot-api.test.ts", "tests/unit/issue705-black-asset-batch.test.ts", "tests/unit/issue706-cross-corpus.test.ts", "tests/contract/issue260-slice4.test.ts", "tests/unit/apply-fla-asset-commit-response.test.ts", "tests/unit/apply-fla-frame-sequence-commit-response.test.ts", "tests/helpers/fla-structural-probe.ts", "tests/helpers/fla-render-fixture.ts", "tests/integration/fla-b0-structural-probe.test.ts", "tests/unit/fla-derive-structure-summary.test.ts", "tests/integration/fla-b1-structural-fields.test.ts", "tests/unit/fla-corpus-probe.test.ts", "tests/integration/fla-corpus-collector.test.ts", "tests/helpers/fla-corpus-probe.cjs", "tests/helpers/fla-corpus-probe.d.ts"],
-        "verifierPatterns": ["scripts/verify-issue251-slice1*", "scripts/verify-issue253-slice2*", "scripts/verify-issue257-slice3*", "scripts/verify-issue260-slice4*", "scripts/verify-issue396-stage-d*", "scripts/verify-issue399-stage-e*", "scripts/verify-issue402-stage-f*", "scripts/verify-issue403-raster-containment*", "scripts/verify-issue405-stage-g*", "scripts/verify-issue407-stage-a*", "scripts/verify-issue676-p0-c02*", "scripts/verify-issue676-p0-c03*", "scripts/verify-issue680-p1-c03*", "scripts/verify-issue775-c03.cjs", "scripts/verify-issue686-p2-c02.cjs", "scripts/verify-issue686-p2-c03.cjs", "scripts/verify-issue686-p2-c04.cjs", "scripts/verify-issue686-p2-c05.cjs"],
+        "verifierPatterns": ["scripts/fla-f1-03-electron-acceptance.cjs", "scripts/verify-issue251-slice1*", "scripts/verify-issue253-slice2*", "scripts/verify-issue257-slice3*", "scripts/verify-issue260-slice4*", "scripts/verify-issue396-stage-d*", "scripts/verify-issue399-stage-e*", "scripts/verify-issue402-stage-f*", "scripts/verify-issue403-raster-containment*", "scripts/verify-issue405-stage-g*", "scripts/verify-issue407-stage-a*", "scripts/verify-issue676-p0-c02*", "scripts/verify-issue676-p0-c03*", "scripts/verify-issue680-p1-c03*", "scripts/verify-issue775-c03.cjs", "scripts/verify-issue686-p2-c02.cjs", "scripts/verify-issue686-p2-c03.cjs", "scripts/verify-issue686-p2-c04.cjs", "scripts/verify-issue686-p2-c05.cjs"],
         "suites": ["assets"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
@@ -478,7 +513,9 @@
         "testPatterns": ["tests/unit/character-*.test.ts", "tests/unit/issue815-talking-head-settings.test.ts", "tests/unit/legacy-character-layer-reminder.test.ts", "tests/integration/character-*.test.ts"],
         "verifierPatterns": [
           "scripts/verify-day19*",
-          "scripts/verify-issue609-character-assembly.cjs"
+        "scripts/verify-issue609-character-assembly.cjs",
+        "scripts/verify-issue897-c2-adaptive-parts.cjs",
+        "scripts/verify-issue899-c3-v0.cjs"
         ],
         "suites": ["character"],
         "riskPolicy": "targeted",
@@ -533,7 +570,8 @@
           "scripts/verify-issue457*",
           "scripts/verify-issue579*",
           "scripts/verify-issue602*",
-          "scripts/verify-issue606*"
+          "scripts/verify-issue606*",
+          "scripts/verify-issue872-motion-preview-pixels.cjs"
         ],
         "suites": ["canvas", "history"],
         "riskPolicy": "targeted",
@@ -599,6 +637,12 @@
           "src/renderer/features/actions/**",
           "src/renderer/features/editor/**",
           "src/renderer/shell/**",
+          "src/main/services/AssetPreviewAudioService.ts",
+          "src/main/ipc/register-asset-library-ipc-handlers.ts",
+          "src/preload/index.ts",
+          "src/renderer/global.d.ts",
+          "src/shared/asset-preview-audio-api.ts",
+          "src/shared/ipc/channels.ts",
           "src/renderer/styles.css",
           "src/renderer/styles/**",
           "src/renderer/ui/**",
@@ -642,6 +686,12 @@
           "tests/unit/close-project-flow.test.ts",
           "tests/unit/project-launcher.test.ts",
           "tests/unit/product-preview-*.test.ts",
+          "tests/unit/issue886-au03-audio-working-set.test.ts",
+          "tests/unit/issue887-au03-capacity.test.ts",
+          "tests/unit/issue888-au03-followup.test.ts",
+          "tests/unit/issue889-au03-transition.test.ts",
+          "tests/unit/asset-preview-audio-service.test.ts",
+          "tests/unit/asset-library-ipc-handlers.test.ts",
           "tests/unit/speaker-focus-preview-contract.test.ts",
           "tests/unit/issue653-auto-camera-mode.test.ts",
           "tests/unit/project-time-mapper.test.ts",
@@ -683,17 +733,26 @@
           "scripts/verify-issue457*",
           "scripts/verify-issue460*",
           "scripts/verify-css-split.cjs",
-          "scripts/verify-issue659-preview-mixer.cjs"
+          "scripts/verify-issue659-preview-mixer.cjs",
+          "scripts/verify-issue880-preview-clock.cjs",
+          "scripts/verify-issue884-au02-audio-schedule.cjs",
+          "scripts/verify-issue886-au03-audio-workset.cjs",
+          "scripts/generate-issue887-au03-capacity-fixtures.cjs",
+          "scripts/verify-issue887-au03-capacity.cjs",
+          "scripts/generate-issue888-au03-followup-fixtures.cjs",
+          "scripts/verify-issue888-au03-followup.cjs",
+          "scripts/generate-issue889-au03-transition-fixtures.cjs",
+          "scripts/verify-issue889-au03-transition.cjs"
         ],
         "suites": ["editor", "timeline"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "editor",
-        "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted."
+        "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. Issues #887, #888, and #889 register their audio capacity/transition tests, generated fixtures, and native Windows verifiers here. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted."
       }
     ]
   },
-  "count": 92,
+  "count": 112,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -705,7 +764,7 @@
       "runIn": "local",
       "owner": "release",
       "supersedes": null,
-      "notes": "A04 real bundled-FFmpeg overlap/mix evidence with focused cancellation and cleanup tests; does not claim full real-project Export or Gate B graduation."
+      "notes": "A04 bundled-FFmpeg nine-clip Dialogue/BGM/two-SFX PCM timing and gain proof with overlap and one AAC output; focused unit tests cover cancellation and temporary-file cleanup. It does not claim formal Project/Electron acceptance or Gate B graduation."
     },
     {
       "id": "issue663-dialogue-voice",
@@ -1018,6 +1077,90 @@
       "owner": "canvas",
       "supersedes": null,
       "notes": "Focused real Windows Electron Product Preview proof for atomic Body+Face pixels, expression/Mouth replacement, delayed-part no-half-frame behavior, partial opacity, Mouth fallback warning with non-exact readiness, and fatal Body failure."
+    },
+    {
+      "id": "issue872-motion-pixels",
+      "script": "verify:issue872-motion-pixels",
+      "suite": "canvas",
+      "subsystem": "canvas",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "canvas",
+      "supersedes": null,
+      "notes": "Focused Issue #872 Windows Electron Product Preview verifier for synthetic Issue #867 intensity/phase, dialogue-edge, A-to-B speaker-switch pixels, pause/seek, 0.5/1.0 Character opacity over a multi-part composite, Shot Face-resource round trip, and same-window project close/reopen Stage unmount. Requires the generated external fixture; Editor/MP4 pixel equivalence and real-material OWNER acceptance remain separate."
+    },
+    {
+      "id": "issue880-preview-clock",
+      "script": "verify:issue880-preview-clock",
+      "suite": "editor",
+      "subsystem": "editor",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "Focused Issue #880 Windows Electron proof on the synthetic Issue #867 v14 fixture: visible blur continues, hidden 2s pauses Preview and native audio, restore remains paused, explicit Play resumes without duplicate voices, and Escape closes the audio context. Human listening acceptance remains separate."
+    },
+    {
+      "id": "issue884-au02-audio-schedule",
+      "script": "verify:issue884-au02",
+      "suite": "editor",
+      "subsystem": "editor",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "Issue #884 AU-02 L1 native Web Audio proof for bounded startup preparation, a short cue through a controlled renderer gap, future-source cancellation on pause, and next-Shot scheduling through handoff. Synthetic v14 media only; not physical speaker output or OWNER listening acceptance."
+    },
+    {
+      "id": "issue886-au03-audio-workset",
+      "script": "verify:issue886-au03-audio-workset",
+      "suite": "editor",
+      "subsystem": "editor",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "Issue #886 AU-03 L1 native AudioContext working-set measurement on the generated original v14 long-BGM fixture. Records reads, native decodes, unique PCM, active sources, pause/resume, Replay, same-source Shot handoff, the 44.1 kHz control, and close. It does not claim physical speaker output or OWNER listening acceptance."
+    },
+    {
+      "id": "issue887-au03-capacity",
+      "script": "verify:issue887-au03-capacity",
+      "suite": "editor",
+      "subsystem": "editor",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "Issue #887 native Windows Electron L1 capacity verifier on original v14 generated audio. Set PANDA_STAGE_ISSUE887_ROOT, PANDA_STAGE_ISSUE887_CASE, and PANDA_STAGE_ISSUE887_PROJECT_ROOT after evidence:issue887-au03-fixtures. Measures exact source-size preflight, validated source reads, native decode sample rate/channels/PCM, playback source scheduling, and project immutability; it does not claim physical speaker output or OWNER listening acceptance."
+    },
+    {
+      "id": "issue888-au03-followup",
+      "script": "verify:issue888-au03-followup",
+      "suite": "editor",
+      "subsystem": "audio",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "Issue #888 native Windows Electron L1 follow-up for F01 two distinct concurrent 150s WAV sources and F02 future 240s WAV segmented prewarm at master+300ms. Requires PANDA_STAGE_ISSUE888_CASE and PANDA_STAGE_ISSUE888_PROJECT_ROOT from evidence:issue888-au03-fixtures; phase defaults to baseline and candidate mode asserts the repaired starts. Optional PANDA_STAGE_ISSUE888_READ_DELAY_MS and PANDA_STAGE_ISSUE888_DECODE_DELAY_MS record the prewarm window boundary. Native L1 records AudioContext source scheduling and PCM samples but does not claim physical speaker output or OWNER listening acceptance."
+    },
+    {
+      "id": "issue889-au03-transition",
+      "script": "verify:issue889-au03-transition",
+      "suite": "editor",
+      "subsystem": "audio",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "editor",
+      "supersedes": null,
+      "notes": "Issue #889 native Windows Electron L1 A-only -> B-only -> A+B transition using one Preview transport and original synthetic v14 fixture. Set PANDA_STAGE_ISSUE889_PROJECT_ROOT from evidence:issue889-au03-fixtures; phase defaults to candidate, while baseline mode is reserved for the frozen HEAD reproduction. Candidate mode asserts safe decision invalidation after unleased PCM LRU eviction, both distinct source starts/gains, reverse/repeat transitions, same-source overlap, memory ledger, and project immutability. Native L1 does not claim physical speaker output or OWNER listening acceptance."
     },
     {
       "id": "fla-v1-5-c3",
@@ -1704,6 +1847,102 @@
       "notes": "Bounded Issue #609 real Electron production-UI proof for composite Character creation/edit, Body-only raw placement, and one-layer Shot placement; synthetic fixture input and screenshot evidence are not human acceptance."
     },
     {
+      "id": "issue816-dl01",
+      "script": "verify:issue816-dl01",
+      "suite": "project",
+      "subsystem": "export-preparation",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Controlled Issue #816 DL-01 Electron proof for native Save As, actual dirty EditorProjectStore capture, stable media copies, target/session guards, and F01/F05/F06 generated fixtures. Synthetic Project Center IPC and native-dialog UI Automation support the gate; OWNER acceptance remains separate."
+    },
+    {
+      "id": "issue819-dl02",
+      "script": "verify:issue819-dl02",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Issue #819 DL-02 Electron proof through Creator UI and native Save As for a frozen single-Shot Project, both camera modes, silent FFmpeg/FFprobe MP4 validation, boundary frames, and overwrite cancellation. Generated fixture and UI Automation support the gate; OWNER visual acceptance remains separate."
+    },
+    {
+      "id": "issue823-dl03",
+      "script": "verify:issue823-dl03",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Issue #823 DL-03 generated-project Electron proof through Creator UI and native Save As for frozen dialogue/BGM/overlapping-SFX media, FFmpeg/FFprobe AAC and decoded tone timing/gain markers including zero gain and moved SFX, Simple Mouth open/closed frame comparison during subtitle, BGM-only, and SFX-only tails, both camera modes, frozen-source replacement, undecodable source block, partial-mix failure cleanup, and external-player launch. OWNER audiovisual acceptance remains separate."
+    },
+    {
+      "id": "issue827-dl04",
+      "script": "verify:issue827-dl04",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Issue #827 DL-04 Windows Electron proof through Creator UI and native Save As for two distinct three-Shot Projects, one global 24 fps schedule, exact Shot-local renderer timing/readiness, prefix-mapped audio with preserved source offsets and full-Project silent tail, FFmpeg/FFprobe video and AAC evidence, selection independence, no-clobber, cancellation cleanup, frozen media hashes, and external-player launch. Human audiovisual acceptance is deferred to DL-07."
+    },
+    {
+      "id": "issue832-dl05",
+      "script": "verify:issue832-dl05",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Issue #832 DL-05 Windows Electron proof through Creator UI and native Save As for a 30-second three-Shot audio Project, hide/reopen with current Job progress, edit/Save/Preview during export, cancellation, old snapshot retry with a changed target, fresh current-content retry, output frame and PCM comparisons, protected-file hashes, and bounded snapshot cleanup. Owner audiovisual acceptance remains deferred to DL-07."
+    },
+    {
+      "id": "issue834-dl05-followup",
+      "script": "verify:issue834-dl05-followup",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Issue #834 focused Windows Electron follow-up for hidden completed/cancelled/failed task restoration, explicit new-version Save As cancellation, visible subtitle editing during a gated export, and actual BrowserWindow close while encoding and committing with no-clobber cleanup. Retry cleanup backoff is covered by focused unit tests; human Windows audiovisual acceptance remains deferred to DL-07."
+    },
+    {
+      "id": "issue836-dl06-r0",
+      "script": "verify:issue836-dl06-r0",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Issue #836 DL-06 R0 focused Windows Electron proof for two exhausted expired-snapshot cleanup owners, sanitized locked-retry UI, exact Main diagnostics, same-session path recovery, and a new formal Export Job without changing the Project or prior MP4. Human audiovisual acceptance remains deferred to DL-07."
+    },
+    {
+      "id": "issue862-export-smoke",
+      "script": "verify:issue862-export-smoke",
+      "suite": "project",
+      "subsystem": "formal-export",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "export",
+      "supersedes": null,
+      "notes": "Bounded Issue #862 Windows Electron production-UI smoke that begins with the startup legacy hidden-window prewarm, cancels during real frame progress, retries through the task UI, and validates the H.264 MP4 with FFprobe while checking project/media hashes. It reuses the Issue #819 Electron harness in a single focused mode; OWNER visual acceptance remains separate."
+    },
+    {
       "id": "issue792-mouth-overflow",
       "script": "verify:issue792-mouth-overflow",
       "suite": "character",
@@ -1786,6 +2025,66 @@
       "owner": "character",
       "supersedes": null,
       "notes": "Bounded Issue #822 C04 S04 Electron proof for left-card Body/Head/Face target selection, independent Change/Manage actions, compact action geometry, and recovered preview height across timeline and narrow 125% layouts; synthetic fixture evidence is not OWNER human acceptance."
+    },
+    {
+      "id": "issue897-c2-adaptive-parts",
+      "script": "verify:issue897-c2",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Issue #897 C2 Windows Electron proof for synthetic Adaptive Parts placement into a Shot, Undo/Redo, Save/reopen, Stage and Product Preview sampling, and formal six-second MP4 export with frame comparisons; generated evidence is AUTO_PASS, while OWNER visual acceptance remains separate."
+    },
+    {
+      "id": "issue899-c3-v0-adaptive-parts-ui",
+      "script": "verify:issue899-c3-v0",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Issue #899 C3 V0 Electron acceptance over locally selected Issue #893 C0 isolated PNGs through production AssetImportService and CharacterService, real Adaptive Parts assembly UI edits, Save/reopen, Stage/Preview six-second MP4 sampling. Requires PANDA_STAGE_ISSUE899_SOURCE_DIR and keeps all private sample assets in the external acceptance directory; AUTO_PASS does not attest OWNER review."
+    },
+    {
+      "id": "issue901-ui-a-adaptive-parts-controls",
+      "script": "verify:issue901-ui-a",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Issue #901 UI-A Windows Electron proof for direct visibility toggles, unclipped Part menus, inline rename, compact precise inspector input, lower-right Apply/Cancel, View All, and Adaptive Parts detail navigation. Requires local Issue #893 isolated-layer PNGs through PANDA_STAGE_ISSUE901_SOURCE_DIR or PANDA_STAGE_ISSUE899_SOURCE_DIR; screenshots and receipt stay in the external acceptance directory, and AUTO_PASS does not attest OWNER review."
+    },
+    {
+      "id": "issue906-f1-02-main-owned-part-preview",
+      "script": "verify:issue906-f1-02",
+      "suite": "assets",
+      "subsystem": "fla-part-preview",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "fla-rendering",
+      "supersedes": null,
+      "notes": "Issue #906 F1-02 Windows Electron acceptance for bounded Main-owned source-occurrence part preview and stage-identity PNG reassembly. Defaults to the previously authorized isolated Sample A and Animate frame; all artwork, screenshots, and receipts stay under the external acceptance directory."
+    },
+    {
+      "id": "issue908-f1-03-main-owned-character-create",
+      "script": "verify:issue908-f1-03",
+      "suite": "assets",
+      "subsystem": "fla-character-create",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "fla-rendering",
+      "supersedes": null,
+      "notes": "Issue #908 F1-03 Windows Electron proof for Main-owned Character creation from confirmed Part batches, idempotent recovery, formal save/reopen, and existing project History. Source artwork, screenshots, and receipts stay in the external acceptance directory."
     },
     {
       "id": "timeline",

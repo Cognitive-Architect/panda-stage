@@ -1,0 +1,528 @@
+{
+  "status": "PASS",
+  "issue": 848,
+  "fixtureRoot": "D:\\PandaStage-Acceptance\\issue848-o1",
+  "runs": {
+    "legacyRaf": {
+      "name": "legacy-raf-r4",
+      "jobId": "16ed575d-e797-4df3-974f-74e4b924d362",
+      "drawMode": "legacy-raf"
+    },
+    "explicitSync": {
+      "name": "explicit-sync-r4",
+      "jobId": "71ae809d-8087-4370-9c5c-e752947f493e",
+      "drawMode": "explicit-sync"
+    }
+  },
+  "inputsIdentical": true,
+  "inputs": {
+    "projectFileSha256": "7e0ced05eaf533545b68abefad428b81cbb54140d23ba795663bed7e506f26da",
+    "projectSnapshotSha256": "aa1d1406a398f454c0e314fe14c60cc5fcbdf87d1bb1eba6893adcb3f7f52ed8",
+    "frozenCandidateSha256": "eb65c78680093e033a5d091826063c6a82bca5a7976fff0de2ac81010cb63f89",
+    "revision": 7,
+    "dirtyAtCapture": false,
+    "cameraMode": "speaker-focus",
+    "renderSettings": {
+      "width": 1920,
+      "height": 1080,
+      "fps": 24
+    },
+    "mediaManifest": [
+      {
+        "assetId": "84810000-0000-4000-8000-000000000001",
+        "kind": "image",
+        "mimeType": "image/png",
+        "byteLength": 26409,
+        "sha256": "36a4e881d8a3adc7248c59040d10d729a793b580172a306d8ad2a419a1ed1a69"
+      },
+      {
+        "assetId": "84810000-0000-4000-8000-000000000002",
+        "kind": "image",
+        "mimeType": "image/png",
+        "byteLength": 6621,
+        "sha256": "21e3342c4fcf8846a3c737def589f82c8261ba1830b65686de3e40364e25bf2e"
+      },
+      {
+        "assetId": "84810000-0000-4000-8000-000000000003",
+        "kind": "image",
+        "mimeType": "image/png",
+        "byteLength": 4471,
+        "sha256": "26d5986563ec84424d0fee6c03b04ac3c5338317cf593288e9ebae22564bf9d7"
+      },
+      {
+        "assetId": "84810000-0000-4000-8000-000000000005",
+        "kind": "image",
+        "mimeType": "image/png",
+        "byteLength": 4700,
+        "sha256": "38aa72f22b0d498920e4903f81eee04edba89f65a67292994a1de31b36ac373a"
+      },
+      {
+        "assetId": "84810000-0000-4000-8000-000000000006",
+        "kind": "audio",
+        "mimeType": "audio/wav",
+        "byteLength": 432044,
+        "sha256": "77e2f6cd51e20b607168d2cdd18756cc6c6f506f1d12ccd29259ce7fbe8064f6"
+      },
+      {
+        "assetId": "84810000-0000-4000-8000-000000000004",
+        "kind": "image",
+        "mimeType": "image/png",
+        "byteLength": 4559,
+        "sha256": "488a916ce15eb89a7097a6097aacdbb884e1ac06dde13af6c9bb1894aea0585b"
+      }
+    ],
+    "fontFiles": [
+      {
+        "path": "C:\\Windows\\Fonts\\arial.ttf",
+        "byteLength": 1036584,
+        "sha256": "c9b76220a5be42ead4733611e417cd65c5fd8aeaa33eb56576ac378a37d130a1"
+      },
+      {
+        "path": "C:\\Windows\\Fonts\\arialbd.ttf",
+        "byteLength": 980756,
+        "sha256": "766f06ac8761f82f25d032a220e89438f6064591af9915061f20b949efdedf69"
+      }
+    ],
+    "projectInputUnchanged": {
+      "legacyRaf": true,
+      "explicitSync": true
+    }
+  },
+  "frameCount": 108,
+  "decodedFramePixelHashesIdentical": true,
+  "decodedFrameHashes": {
+    "legacyRaf": [
+      "ff2ba0513784deb3ce7ea5d8790ffc2c",
+      "59b26ff3dffbc2903e5a96eb30f31df4",
+      "5b7e28d9802c436afae716fd8977496a",
+      "6e684f4c813cdb90cbd7954c31105a71",
+      "3dbc151da609a97a5d30ce5b9d73d821",
+      "d99fbed7a51d31d7bad8a85e13f37b8f",
+      "d8b8323393938eb92fa95b0a4938a889",
+      "9f5ec42adbd3babbe7d02bf7b168781b",
+      "c1fe73e02f7e043d0ef112a6ce68c331",
+      "4d712fbf94dabe30c565ebfd40d4903b",
+      "560b1e7b1c00f3a837e543007562fa08",
+      "1c3b63d70737b20fd99b21b7d19c4bda",
+      "45445910f7230688016782e4fac0644e",
+      "61cf8a9e00ac76be242ac18bdb587efc",
+      "1e9356e8d4395a5f210aa53d6fd4874c",
+      "31f815013c7083b85ababbe037ba13b3",
+      "54db8b35bfaf4a0b0f7e8e1630591ec3",
+      "89df8ccccb09ed5664c2b93380156f33",
+      "9b0b2690ecf313b2d42610c16f48e1e6",
+      "23d40d9f83148063d8be6edf105fc80d",
+      "3e23c564d8168d8f971d83a5192352cd",
+      "19519891270605d7ac6029e5980337f6",
+      "fa58c7eca26cc2a95a39548435e3bbd7",
+      "cabe8c6b50849160bbe04fafff56f7bb",
+      "00c647b8c5727171a582fc919ca6c1e2",
+      "fd51b1bd78d8a7703167dde7034fe437",
+      "2e5cedc008e4db3133f33b1a3a72cab9",
+      "cd3ceebb131f4df3daf558b8aa4e4fa2",
+      "88e17d9ae7f42529812a9cdd0bfc20ce",
+      "b1caf85e4300473b6d1ebcf69cc79799",
+      "a0268df46595b8c20799cfbba97b79cc",
+      "4ff915032d45023e647e66c4480f8c71",
+      "af5a71e8807388160e5020e2c79be379",
+      "0224f64b44b807f42deeb1d0206dd94f",
+      "81518678dbd426bd33e2226d2d28edfc",
+      "0d91446ae1bc142e04f8fca9e51561de",
+      "2eda16d0c94a3c0ed60356de1e6de799",
+      "e5015ab70ee7be6e788a3c5680c8c8f1",
+      "5a26fd051121ffe7ba0976595810f8ba",
+      "dfd9d5745e56390d2d9a49a7d9c183d3",
+      "09f53549bebfabe507c9ebe91c7149d3",
+      "fc5e7cb37e5aed647f52d227530f704d",
+      "5db4d1b331c47caa8a35b7a92b03c0c7",
+      "c1f8d5319e60279d960903aa3867c0f2",
+      "7236cce632e9e869535206ea5cd48a95",
+      "973d107accab235e3b65e7618be49e06",
+      "ea2a5c5445313ead2e9481958708d6a2",
+      "d8bac8f6ea514a0c11feba5e2fb24c14",
+      "137185297fc6a9d07379e674b9c6bb73",
+      "64b8dcda517bb1b34a2b24b1f649811e",
+      "3694f721a9b27ee5068333ff5c3d5c4b",
+      "a8a67f1be128bb7ae97608466d91f5d1",
+      "9fd491d334d31c87bf81f97bf9b5380e",
+      "30d72f88a91fa3fbef83a683a7541487",
+      "e840e71de5d535322c7a1a0b4603cc8b",
+      "9f30832c47ac1b38ac7bfdac31b39694",
+      "6324168451e20f75109d9a9c16b005f5",
+      "aa967b4c14961cf3c50beab83067149a",
+      "6bc11e3156760eaf78c7ec53cb81de07",
+      "526fd8ad9c6c6d68f6686cc5db3d13e2",
+      "2c7e2bc70a3018e7022643e2de89e062",
+      "cffbaae8ea96298e2573985979ab7a56",
+      "0c55ccb6a1a440b95991b2785d97340c",
+      "07c2e38a6ca0f3e07c793ba6aa3f7aba",
+      "df7c2c9a9a6b20ae7cdab487a814821b",
+      "8023e37000ba008d564fc1765e6dd99f",
+      "a36bb4e48f47b458927a02f786c3662a",
+      "a1638f9107b77120b4b20f6cac7a3581",
+      "23761e4f80a143855a663b6018f86c4d",
+      "2c4877d768ef8aa96dc1f275e38e1569",
+      "46065ea81c2fe280f8bcabb5221491b1",
+      "b74af899edf92261874c0238e5714ec3",
+      "51570c47253928516ec0a47672707173",
+      "de4ee64bd2cc3494896a9dcf2559b8ad",
+      "b8f4260e111939570386086760da8d76",
+      "5ded5ae541bdbdd62e8a2bd5210703ed",
+      "abf38ad27876b47c06871c72587f3f09",
+      "a5df10eeb82eeaa18341a0b28fcdd6bd",
+      "b25544e01d38e02b5bc485582414104c",
+      "8b049422500786beafa15f590138fd14",
+      "09a7985e2b66a52f4d0b46f85f11ee9d",
+      "13580691959187d7eae7aef5209b7616",
+      "20660c8f308a8aad2d77e84fbbe399fb",
+      "6a1dc27cd0ee6d48b0d8410781db8bfb",
+      "1b8a6e196ebfd1a25fa15f90dfbac466",
+      "95e9c1f8ebdd83a96287fa41f52874b7",
+      "d69e8a1bbd9417eee1a87145650663be",
+      "549bc535b611f529d7987e0de701218e",
+      "f2d6abd4f1a9ac813eb230bfa69d4ac8",
+      "0c276b1db5affc4b092f568dab000318",
+      "474da424c2219d28e575392373d22631",
+      "8ce7b169902cda6e5e484ab5094556cd",
+      "3f927c64661a8a443462b6fffafce273",
+      "8cae7cc5f16c612e29ac5a1e16a7d2ef",
+      "811f7cd7da9ac8fa960ce518bb08b0a2",
+      "5a29b0bfc90713492d4b6e585c901511",
+      "79abec960330b13325e365310b5c93da",
+      "3830cf2eb8b7a7335799f8db7b2d6b48",
+      "010899bf892f3ff4608863a7983b0e65",
+      "ae204bde15c208b871ffc0732f342d10",
+      "844d6d47c3ddc2937a4d087592d00468",
+      "326793be2fdb364d09604bab6fae3721",
+      "00049f689116b5adcdfb5aecdb8d446a",
+      "8e4aad4e6becd50af9ce6faba442667f",
+      "a3401db1b00bca36ee8d2bf6ff090d19",
+      "d4e8a82f740a94f138c03ce99d141e0d",
+      "907b021293dda837c92dcd3306726e2a",
+      "350eabf583577287e47d966571ee8c7f"
+    ],
+    "explicitSync": [
+      "ff2ba0513784deb3ce7ea5d8790ffc2c",
+      "59b26ff3dffbc2903e5a96eb30f31df4",
+      "5b7e28d9802c436afae716fd8977496a",
+      "6e684f4c813cdb90cbd7954c31105a71",
+      "3dbc151da609a97a5d30ce5b9d73d821",
+      "d99fbed7a51d31d7bad8a85e13f37b8f",
+      "d8b8323393938eb92fa95b0a4938a889",
+      "9f5ec42adbd3babbe7d02bf7b168781b",
+      "c1fe73e02f7e043d0ef112a6ce68c331",
+      "4d712fbf94dabe30c565ebfd40d4903b",
+      "560b1e7b1c00f3a837e543007562fa08",
+      "1c3b63d70737b20fd99b21b7d19c4bda",
+      "45445910f7230688016782e4fac0644e",
+      "61cf8a9e00ac76be242ac18bdb587efc",
+      "1e9356e8d4395a5f210aa53d6fd4874c",
+      "31f815013c7083b85ababbe037ba13b3",
+      "54db8b35bfaf4a0b0f7e8e1630591ec3",
+      "89df8ccccb09ed5664c2b93380156f33",
+      "9b0b2690ecf313b2d42610c16f48e1e6",
+      "23d40d9f83148063d8be6edf105fc80d",
+      "3e23c564d8168d8f971d83a5192352cd",
+      "19519891270605d7ac6029e5980337f6",
+      "fa58c7eca26cc2a95a39548435e3bbd7",
+      "cabe8c6b50849160bbe04fafff56f7bb",
+      "00c647b8c5727171a582fc919ca6c1e2",
+      "fd51b1bd78d8a7703167dde7034fe437",
+      "2e5cedc008e4db3133f33b1a3a72cab9",
+      "cd3ceebb131f4df3daf558b8aa4e4fa2",
+      "88e17d9ae7f42529812a9cdd0bfc20ce",
+      "b1caf85e4300473b6d1ebcf69cc79799",
+      "a0268df46595b8c20799cfbba97b79cc",
+      "4ff915032d45023e647e66c4480f8c71",
+      "af5a71e8807388160e5020e2c79be379",
+      "0224f64b44b807f42deeb1d0206dd94f",
+      "81518678dbd426bd33e2226d2d28edfc",
+      "0d91446ae1bc142e04f8fca9e51561de",
+      "2eda16d0c94a3c0ed60356de1e6de799",
+      "e5015ab70ee7be6e788a3c5680c8c8f1",
+      "5a26fd051121ffe7ba0976595810f8ba",
+      "dfd9d5745e56390d2d9a49a7d9c183d3",
+      "09f53549bebfabe507c9ebe91c7149d3",
+      "fc5e7cb37e5aed647f52d227530f704d",
+      "5db4d1b331c47caa8a35b7a92b03c0c7",
+      "c1f8d5319e60279d960903aa3867c0f2",
+      "7236cce632e9e869535206ea5cd48a95",
+      "973d107accab235e3b65e7618be49e06",
+      "ea2a5c5445313ead2e9481958708d6a2",
+      "d8bac8f6ea514a0c11feba5e2fb24c14",
+      "137185297fc6a9d07379e674b9c6bb73",
+      "64b8dcda517bb1b34a2b24b1f649811e",
+      "3694f721a9b27ee5068333ff5c3d5c4b",
+      "a8a67f1be128bb7ae97608466d91f5d1",
+      "9fd491d334d31c87bf81f97bf9b5380e",
+      "30d72f88a91fa3fbef83a683a7541487",
+      "e840e71de5d535322c7a1a0b4603cc8b",
+      "9f30832c47ac1b38ac7bfdac31b39694",
+      "6324168451e20f75109d9a9c16b005f5",
+      "aa967b4c14961cf3c50beab83067149a",
+      "6bc11e3156760eaf78c7ec53cb81de07",
+      "526fd8ad9c6c6d68f6686cc5db3d13e2",
+      "2c7e2bc70a3018e7022643e2de89e062",
+      "cffbaae8ea96298e2573985979ab7a56",
+      "0c55ccb6a1a440b95991b2785d97340c",
+      "07c2e38a6ca0f3e07c793ba6aa3f7aba",
+      "df7c2c9a9a6b20ae7cdab487a814821b",
+      "8023e37000ba008d564fc1765e6dd99f",
+      "a36bb4e48f47b458927a02f786c3662a",
+      "a1638f9107b77120b4b20f6cac7a3581",
+      "23761e4f80a143855a663b6018f86c4d",
+      "2c4877d768ef8aa96dc1f275e38e1569",
+      "46065ea81c2fe280f8bcabb5221491b1",
+      "b74af899edf92261874c0238e5714ec3",
+      "51570c47253928516ec0a47672707173",
+      "de4ee64bd2cc3494896a9dcf2559b8ad",
+      "b8f4260e111939570386086760da8d76",
+      "5ded5ae541bdbdd62e8a2bd5210703ed",
+      "abf38ad27876b47c06871c72587f3f09",
+      "a5df10eeb82eeaa18341a0b28fcdd6bd",
+      "b25544e01d38e02b5bc485582414104c",
+      "8b049422500786beafa15f590138fd14",
+      "09a7985e2b66a52f4d0b46f85f11ee9d",
+      "13580691959187d7eae7aef5209b7616",
+      "20660c8f308a8aad2d77e84fbbe399fb",
+      "6a1dc27cd0ee6d48b0d8410781db8bfb",
+      "1b8a6e196ebfd1a25fa15f90dfbac466",
+      "95e9c1f8ebdd83a96287fa41f52874b7",
+      "d69e8a1bbd9417eee1a87145650663be",
+      "549bc535b611f529d7987e0de701218e",
+      "f2d6abd4f1a9ac813eb230bfa69d4ac8",
+      "0c276b1db5affc4b092f568dab000318",
+      "474da424c2219d28e575392373d22631",
+      "8ce7b169902cda6e5e484ab5094556cd",
+      "3f927c64661a8a443462b6fffafce273",
+      "8cae7cc5f16c612e29ac5a1e16a7d2ef",
+      "811f7cd7da9ac8fa960ce518bb08b0a2",
+      "5a29b0bfc90713492d4b6e585c901511",
+      "79abec960330b13325e365310b5c93da",
+      "3830cf2eb8b7a7335799f8db7b2d6b48",
+      "010899bf892f3ff4608863a7983b0e65",
+      "ae204bde15c208b871ffc0732f342d10",
+      "844d6d47c3ddc2937a4d087592d00468",
+      "326793be2fdb364d09604bab6fae3721",
+      "00049f689116b5adcdfb5aecdb8d446a",
+      "8e4aad4e6becd50af9ce6faba442667f",
+      "a3401db1b00bca36ee8d2bf6ff090d19",
+      "d4e8a82f740a94f138c03ce99d141e0d",
+      "907b021293dda837c92dcd3306726e2a",
+      "350eabf583577287e47d966571ee8c7f"
+    ]
+  },
+  "frameMismatchCount": 0,
+  "mp4": {
+    "legacyRaf": {
+      "path": "D:\\PandaStage-Acceptance\\issue848-o1\\runs\\legacy-raf-r4\\formal-output.mp4",
+      "videoCodec": "h264",
+      "pixelFormat": "yuv420p",
+      "dimensions": "1920x1080",
+      "fps": 24,
+      "frameCount": 108,
+      "durationSeconds": 4.5,
+      "audioCodec": "aac",
+      "audioSampleRate": 48000,
+      "audioChannels": 1
+    },
+    "explicitSync": {
+      "path": "D:\\PandaStage-Acceptance\\issue848-o1\\runs\\explicit-sync-r4\\formal-output.mp4",
+      "videoCodec": "h264",
+      "pixelFormat": "yuv420p",
+      "dimensions": "1920x1080",
+      "fps": 24,
+      "frameCount": 108,
+      "durationSeconds": 4.5,
+      "audioCodec": "aac",
+      "audioSampleRate": 48000,
+      "audioChannels": 1
+    }
+  },
+  "decodedPcm": {
+    "sampleRate": 48000,
+    "channels": 1,
+    "bytesPerSample": 4,
+    "sampleCountPerChannel": 216000,
+    "byteLength": 864000,
+    "identical": true,
+    "sha256": {
+      "legacyRaf": "9be431fdb45541345f8f772664c2ba4d283fe7033126943dd25566ef9ba820a7",
+      "explicitSync": "9be431fdb45541345f8f772664c2ba4d283fe7033126943dd25566ef9ba820a7"
+    }
+  },
+  "timing": {
+    "legacyRaf": {
+      "exportServiceElapsedMs": 210080,
+      "mainJobWallMs": 208218.5423,
+      "apiStartToCompleteMs": 208229.8367,
+      "uiClickToCompleteMs": null,
+      "mainFrameReady": {
+        "count": 108,
+        "medianMs": 1999.444399999993,
+        "p95Ms": 2001.6862999999867,
+        "maxMs": 2012.2416000000003
+      },
+      "hiddenRendererStages": {
+        "readyGateMs": {
+          "count": 108,
+          "medianMs": 966.8999998569489,
+          "p95Ms": 969.2000000476837,
+          "maxMs": 970.0999999046326
+        },
+        "fontWaitMs": {
+          "count": 0,
+          "medianMs": null,
+          "p95Ms": null,
+          "maxMs": null
+        },
+        "synchronousDrawMs": {
+          "count": 0,
+          "medianMs": null,
+          "p95Ms": null,
+          "maxMs": null
+        },
+        "stageCaptureMs": {
+          "count": 108,
+          "medianMs": 0,
+          "p95Ms": 0,
+          "maxMs": 0.10000014305114746
+        },
+        "pngEncodeMs": {
+          "count": 108,
+          "medianMs": 1011.7999999523163,
+          "p95Ms": 1013.5,
+          "maxMs": 1020.5
+        },
+        "requestToPngMs": {
+          "count": 108,
+          "medianMs": 1998.5,
+          "p95Ms": 2000.5,
+          "maxMs": 2006.1000001430511
+        }
+      },
+      "exportPhases": {
+        "eventWallMs": 210083.94509999998,
+        "durationsMs": {
+          "preparing": 2879.7287,
+          "rendering": 202010.1698,
+          "writing": 1.8443999999726657,
+          "encoding": 2759.219000000012,
+          "muxing": 466.7361000000092,
+          "probing": 411.16849999999977,
+          "cleaning": 9.378800000005867,
+          "committing": 1545.699799999973,
+          "finished": 0
+        },
+        "sampleCount": 226
+      }
+    },
+    "explicitSync": {
+      "exportServiceElapsedMs": 62789,
+      "mainJobWallMs": 60941.1158,
+      "apiStartToCompleteMs": 60952.6898,
+      "uiClickToCompleteMs": null,
+      "mainFrameReady": {
+        "count": 108,
+        "medianMs": 65.98360000000002,
+        "p95Ms": 1066.7561999999998,
+        "maxMs": 1217.8367999999973
+      },
+      "hiddenRendererStages": {
+        "readyGateMs": {
+          "count": 108,
+          "medianMs": 0.3000001907348633,
+          "p95Ms": 0.5,
+          "maxMs": 2.200000047683716
+        },
+        "fontWaitMs": {
+          "count": 108,
+          "medianMs": 0.09999990463256836,
+          "p95Ms": 0.20000004768371582,
+          "maxMs": 0.40000009536743164
+        },
+        "synchronousDrawMs": {
+          "count": 108,
+          "medianMs": 0.20000004768371582,
+          "p95Ms": 0.39999985694885254,
+          "maxMs": 1.7999999523162842
+        },
+        "stageCaptureMs": {
+          "count": 108,
+          "medianMs": 0,
+          "p95Ms": 0,
+          "maxMs": 0.10000014305114746
+        },
+        "pngEncodeMs": {
+          "count": 108,
+          "medianMs": 28.200000047683716,
+          "p95Ms": 1028.6999998092651,
+          "maxMs": 1179.5
+        },
+        "requestToPngMs": {
+          "count": 108,
+          "medianMs": 65.10000014305115,
+          "p95Ms": 1065.7999999523163,
+          "maxMs": 1217.1000001430511
+        }
+      },
+      "exportPhases": {
+        "eventWallMs": 62792.5318,
+        "durationsMs": {
+          "preparing": 2023.5043,
+          "rendering": 55604.1732,
+          "writing": 1.8743000000031316,
+          "encoding": 2755.965799999998,
+          "muxing": 471.63930000000255,
+          "probing": 405.32509999999456,
+          "cleaning": 8.992200000000594,
+          "committing": 1521.0576,
+          "finished": 0
+        },
+        "sampleCount": 226
+      }
+    },
+    "elapsedSavedMs": 147291,
+    "elapsedSavedPercent": 70.11,
+    "faster": true,
+    "meets50PercentTarget": true,
+    "meets30SecondJobWish": false,
+    "legacyReadyGateMedianMs": 966.8999998569489,
+    "explicitSyncReadyGateMedianMs": 0.3000001907348633,
+    "readyGateSavedPercent": 99.97,
+    "decision": "MEETS_50_PERCENT_TARGET",
+    "entryPoint": "Formal export was initiated through the official Preload API; editor UI click latency was not measured."
+  },
+  "safety": {
+    "legacy": {
+      "frameJobDirectoriesRemoved": true,
+      "frozenMediaCandidateRemoved": true,
+      "outputStagingFilesRemoved": true,
+      "hiddenRenderWindowClosed": true,
+      "noClobberRejected": true,
+      "outputUnchangedAfterNoClobber": true,
+      "cancelledJobAccepted": true,
+      "cancelledJobStatus": "cancelled",
+      "cancelledJobRenderedFrames": 1,
+      "cancelledOutputAbsent": true,
+      "cancellationElapsedMs": 4859.304300000018
+    },
+    "explicitSync": {
+      "frameJobDirectoriesRemoved": true,
+      "frozenMediaCandidateRemoved": true,
+      "outputStagingFilesRemoved": true,
+      "hiddenRenderWindowClosed": true,
+      "noClobberRejected": true,
+      "outputUnchangedAfterNoClobber": true,
+      "cancelledJobAccepted": true,
+      "cancelledJobStatus": "cancelled",
+      "cancelledJobRenderedFrames": 1,
+      "cancelledOutputAbsent": true,
+      "cancellationElapsedMs": 2896.738599999997
+    }
+  },
+  "receiptHashes": {
+    "legacyRaf": "6bd7b7363b67591f08698a48fa6d728d3af31b478facbe6c6c9e19c6e0374c23",
+    "explicitSync": "1f8b8397977b590e06905495b8dfe6d53436c7243189b2283ec89c7993c67c65"
+  }
+}

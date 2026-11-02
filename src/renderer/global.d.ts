@@ -22,6 +22,7 @@ import type {
   AssetCanvasImageReadResponse,
 } from '../shared/asset-canvas-image-api';
 import type {
+  AssetPreviewAudioInfoResponse,
   AssetPreviewAudioReadRequest,
   AssetPreviewAudioReadResponse,
 } from '../shared/asset-preview-audio-api';
@@ -33,6 +34,7 @@ import type {
   ExportFrameFailed,
   ExportFrameReady,
   ExportLoadProbeRequest,
+  ExportLoadFormalRequest,
   ExportRenderFrameRequest,
   ExportCancelRenderRequest,
 } from '../shared/export-types';
@@ -67,10 +69,21 @@ import type {
 } from '../shared/project-api';
 import type {
   ExportCancelResponse,
+  ExportRevealOutputResponse,
   ExportJobUpdate,
   ExportStartResponse,
   FullProbeExportRequest,
 } from '../shared/export-types';
+import type {
+  ExportPreparationCancelResponse,
+  ExportPreparationDiscardRequest,
+  ExportPreparationDiscardResponse,
+  ExportPreparationRequest,
+  ExportPreparationResponse,
+  ExportPreparationSelectOutputRequest,
+  ExportPreparationSelectOutputResponse,
+  ExportPreparationSnapshotStatusResponse,
+} from '../shared/export-preparation-types';
 import type {
   NativeCloseSyncRequest,
   NativeCloseSyncResponse,
@@ -107,9 +120,33 @@ import type {
   FlaFrameSequenceRequest,
   FlaFrameSequenceResponse,
 } from '../shared/fla-frame-sequence-api';
+import type {
+  FlaPartPreviewCancelRequest,
+  FlaPartPreviewCancelResponse,
+  FlaPartPreviewRequest,
+  FlaPartPreviewResponse,
+} from '../shared/fla-part-preview-api';
+import type {
+  FlaCharacterCreateRequest,
+  FlaCharacterCreateResponse,
+  FlaCharacterCreateStatusRequest,
+  FlaCharacterCreateStatusResponse,
+} from '../shared/fla-character-create-api';
 
 declare global {
   interface Window {
+    __pandaStageIssue816Acceptance?: {
+      lastAttemptId: string | null;
+      lastMainResponse: ExportPreparationResponse | null;
+      inspect: () => Promise<unknown> | unknown;
+      saveCurrentProject: () => Promise<unknown>;
+      editUnsavedFixture: () => Promise<unknown> | unknown;
+      setExportScenario: (
+        scenario: 'baseline' | 'audio' | 'multi-shot' | 'no-background',
+      ) => Promise<unknown>;
+      reopenSamePath: () => Promise<unknown>;
+      prepare: () => Promise<unknown>;
+    };
     pandaStage: {
       app: {
         ping: () => Promise<AppPingResponse>;
@@ -161,6 +198,9 @@ declare global {
         readAudio: (
           request: AssetPreviewAudioReadRequest,
         ) => Promise<AssetPreviewAudioReadResponse>;
+        getAudioInfo: (
+          request: AssetPreviewAudioReadRequest,
+        ) => Promise<AssetPreviewAudioInfoResponse>;
       };
       recentProjects: {
         list: () => Promise<RecentProjectsListResponse>;
@@ -207,8 +247,30 @@ declare global {
         startProbe: (
           request: FullProbeExportRequest,
         ) => Promise<ExportStartResponse>;
+        startFormal: (
+          snapshotId: string,
+          reuseSnapshot?: boolean,
+        ) => Promise<ExportStartResponse>;
         cancel: (jobId: string) => Promise<ExportCancelResponse>;
+        revealOutput: (jobId: string) => Promise<ExportRevealOutputResponse>;
         onUpdate: (callback: (update: ExportJobUpdate) => void) => () => void;
+      };
+      exportPreparation: {
+        selectOutput: (
+          request: ExportPreparationSelectOutputRequest,
+        ) => Promise<ExportPreparationSelectOutputResponse>;
+        prepare: (
+          request: ExportPreparationRequest,
+        ) => Promise<ExportPreparationResponse>;
+        cancel: (
+          attemptId: string,
+        ) => Promise<ExportPreparationCancelResponse>;
+        getSnapshotRetryStatus: (
+          snapshotId: string,
+        ) => Promise<ExportPreparationSnapshotStatusResponse>;
+        discard: (
+          request: ExportPreparationDiscardRequest,
+        ) => Promise<ExportPreparationDiscardResponse>;
       };
       fla: {
         chooseAndInspect: (requestId?: string) => Promise<FlaInspectionResponse>;
@@ -231,6 +293,18 @@ declare global {
         staticSnapshotCancel: (
           request: FlaStaticSnapshotCancelRequest,
         ) => Promise<FlaStaticSnapshotCancelResponse>;
+        partPreview: (
+          request: FlaPartPreviewRequest,
+        ) => Promise<FlaPartPreviewResponse>;
+        partPreviewCancel: (
+          request: FlaPartPreviewCancelRequest,
+        ) => Promise<FlaPartPreviewCancelResponse>;
+        createCharacterFromParts: (
+          request: FlaCharacterCreateRequest,
+        ) => Promise<FlaCharacterCreateResponse>;
+        getCharacterCreateStatus: (
+          request: FlaCharacterCreateStatusRequest,
+        ) => Promise<FlaCharacterCreateStatusResponse>;
         frameSequenceRender: (
           request: FlaFrameSequenceRequest,
         ) => Promise<FlaFrameSequenceResponse>;
@@ -258,7 +332,14 @@ declare global {
       onLoadProbe: (
         callback: (request: ExportLoadProbeRequest) => void,
       ) => () => void;
+      onLoadFormal: (
+        callback: (request: ExportLoadFormalRequest) => void,
+      ) => () => void;
       probeLoaded: (payload: {
+        jobId: string;
+        acknowledged: true;
+      }) => void;
+      formalLoaded: (payload: {
         jobId: string;
         acknowledged: true;
       }) => void;

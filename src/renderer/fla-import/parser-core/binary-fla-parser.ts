@@ -413,11 +413,12 @@ export function extractBinaryFLAInfo(bytes: Uint8Array): BinaryFLAInfo {
   scenes.sort((a, b) => a.scene - b.scene);
 
   return {
-    // Flash's default stage is 550×400 @ 24fps on a white stage — apply these
-    // as fallbacks when a value could not be recovered.
+    // Flash's default stage is 550×400 on a white stage. Dimensions may use
+    // those historical defaults, but an unrecovered FPS stays unknown so an
+    // animation import cannot mistake a guessed rate for source metadata.
     width: dims.width ?? 550,
     height: dims.height ?? 400,
-    frameRate: frameRate ?? 24,
+    frameRate: frameRate ?? 0,
     backgroundColor: backgroundColor ?? '#FFFFFF',
     streams,
     library,

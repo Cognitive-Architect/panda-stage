@@ -50,6 +50,7 @@ export const AutosaveTrackRequestSchema = z
     project: ProjectSchema,
     dirty: z.boolean(),
     revision: RevisionSchema,
+    openInstanceId: z.number().int().positive().optional(),
   })
   .strict();
 

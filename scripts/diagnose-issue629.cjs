@@ -1,6 +1,6 @@
 const { app, contentTracing, ipcMain } = require('electron');
 const { createHash } = require('node:crypto');
-const { mkdtempSync, mkdirSync, writeFileSync } = require('node:fs');
+const { mkdtempSync, mkdirSync, readFileSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 const { deflateSync } = require('node:zlib');
 const { createMainWindow } = require('../dist-electron/main/windows/main-window.js');
@@ -9,18 +9,27 @@ const { ProjectSchema } = require('../dist-electron/domain/index.js');
 const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
 const exampleProject = require('../demo-project/project-v1.example.json');
 
-// Isolated R02 fixture, optionally reused for the Issue #631 graphics-path diagnosis.
-// Synthetic projects never touch an existing user project.
+// Isolated R02 fixture, optionally extended for Issue #631/#872 diagnosis.
+// Issue #872 reads the owner project in place and refuses project-save IPC.
 const graphicsMode = process.env.ISSUE631_GRAPHICS === '1';
+const privateProjectRoot = process.env.ISSUE872_PRIVATE_PROJECT_ROOT
+  ? path.resolve(process.env.ISSUE872_PRIVATE_PROJECT_ROOT)
+  : null;
+const issue872Mode = Boolean(privateProjectRoot) || process.env.ISSUE872_CAPTURE_GPU === '1';
 const scenePixelRatio = graphicsMode ? Number(process.env.ISSUE631_PIXEL_RATIO ?? '1') : 1;
 if (![1, 0.5, 0.25].includes(scenePixelRatio)) {
   throw new Error('ISSUE631_PIXEL_RATIO must be 1, 0.5, or 0.25.');
 }
 const traceSceneA = graphicsMode && process.env.ISSUE631_TRACE === '1';
 const acceptanceRoot = 'D:\\PandaStage-Acceptance';
-const runRoot = mkdtempSync(path.join(acceptanceRoot, graphicsMode ? 'issue631-' : 'issue629-'));
-const projectRoot = path.join(runRoot, 'issue629-abc.pandastage');
+const runRoot = mkdtempSync(path.join(
+  acceptanceRoot,
+  issue872Mode ? 'issue872-thm01-' : graphicsMode ? 'issue631-' : 'issue629-',
+));
+const projectRoot = privateProjectRoot ?? path.join(runRoot, 'issue629-abc.pandastage');
 const userDataRoot = path.join(runRoot, 'electron-user-data');
+const measuredBranch = process.env.ISSUE872_BRANCH ?? 'issue-627-s09-r01';
+const measuredSha = process.env.ISSUE872_SOURCE_SHA ?? null;
 const ids = (n) => `a0629000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
 const ID = Object.freeze({
   project: ids(1), bg: ids(2), image: ids(3), body: ids(4),
@@ -39,6 +48,8 @@ const ID = Object.freeze({
 const channels = [];
 let windowRef = null;
 let gpuInfoUpdated = false;
+let privateSourceContext = null;
+let privateMeasureShotIds = null;
 app.on('window-all-closed', () => {});
 app.on('gpu-info-update', () => { gpuInfoUpdated = true; });
 
@@ -122,7 +133,8 @@ const assetBytes = new Map([
 function asset(id, name, width, height) {
   return {
     id, kind: 'image', name, relativePath: `assets/${name}.png`,
-    mimeType: 'image/png', width, height, sha256: sha256(assetBytes.get(id)),
+    mimeType: 'image/png', width, height, usage: 'uncategorized', keywords: [],
+    sha256: sha256(assetBytes.get(id)),
   };
 }
 
@@ -225,11 +237,136 @@ function fixture() {
           }],
           audioClips: [{
             id: ID.clip, name: 'Clock', assetId: ID.audio,
-            startMs: 1000, endMs: 5000, offsetMs: 0, volume: 0,
+            startMs: 1000, endMs: 5000, offsetMs: 0, volume: 0, role: 'dialogue',
           }],
         }),
     ],
   });
+  return project;
+}
+
+function privateProjectFixture() {
+  const manifestBytes = readFileSync(path.join(privateProjectRoot, 'project.json'));
+  const manifest = JSON.parse(manifestBytes.toString('utf8'));
+  if (manifest.schemaVersion !== 15) {
+    throw new Error(`Expected the owner project schema v15; found ${manifest.schemaVersion}.`);
+  }
+  const sourceProject = ProjectSchema.parse({ ...manifest, schemaVersion: 14 });
+  const safeRoot = `${privateProjectRoot}${path.sep}`.toLowerCase();
+  let verifiedAssetBytes = 0;
+  for (const item of sourceProject.assets) {
+    const assetPath = path.resolve(privateProjectRoot, item.relativePath);
+    if (!assetPath.toLowerCase().startsWith(safeRoot)) {
+      throw new Error('Owner asset path escaped the private project root.');
+    }
+    const bytes = readFileSync(assetPath);
+    if (sha256(bytes) !== item.sha256) {
+      throw new Error(`Owner asset integrity check failed for asset ${item.id}.`);
+    }
+    assetBytes.set(item.id, bytes);
+    verifiedAssetBytes += bytes.byteLength;
+  }
+
+  const character = sourceProject.characters.find((item) =>
+    item.mode === 'composite' && item.head && item.bodyAssetId &&
+    item.facePlacement && item.mouthOpenAssetId,
+  );
+  if (!character || character.mode !== 'composite') {
+    throw new Error('Owner project lacks a composite Character with Head, Body, Face, and Mouth.');
+  }
+  const dialogueShot = sourceProject.shots.find((item) =>
+    item.dialogues.some((dialogue) => dialogue.characterId === character.id) &&
+    item.layers.some((itemLayer) =>
+      itemLayer.source.kind === 'character' && itemLayer.source.characterId === character.id,
+    ),
+  );
+  if (!dialogueShot) throw new Error('Owner project has no speaking shot for its composite Character.');
+  const originalBackground = dialogueShot.layers.find(
+    (item) => item.id === dialogueShot.backgroundLayerId,
+  );
+  if (!originalBackground) throw new Error('Owner speaking shot has no background layer.');
+  const expressionId = character.defaultExpressionId ?? character.expressions[0]?.id;
+  const expressionAssetId = character.expressions.find((item) => item.id === expressionId)?.assetId;
+  if (!expressionId || !expressionAssetId) {
+    throw new Error('Owner composite Character has no default expression image.');
+  }
+
+  const backgroundLayer = (id) => ({
+    ...originalBackground,
+    id,
+    name: 'Diagnostic background',
+    zIndex: 0,
+  });
+  const imageLayer = layer(
+    ID.layerA,
+    'Diagnostic ordinary image',
+    { kind: 'asset', assetId: expressionAssetId },
+    400,
+    540,
+    1,
+  );
+  const characterLayer = layer(
+    ID.layerB,
+    'Diagnostic composite Character',
+    { kind: 'character', characterId: character.id, expressionId },
+    400,
+    540,
+    1,
+    0.7,
+  );
+  const controlShot = (id, name, backgroundId, activeLayer, moveId) => ({
+    ...dialogueShot,
+    id,
+    name,
+    durationMs: 6000,
+    backgroundLayerId: backgroundId,
+    layers: [backgroundLayer(backgroundId), activeLayer],
+    timelineEvents: [move(moveId, activeLayer.id)],
+    dialogues: [],
+    audioClips: [],
+  });
+  const shotA = controlShot(
+    ID.shotA, 'A - ordinary image Position control', ID.bgA, imageLayer, ID.moveA,
+  );
+  const shotB = controlShot(
+    ID.shotB, 'B - composite Character Position control', ID.bgB, characterLayer, ID.moveB,
+  );
+  const project = ProjectSchema.parse({
+    ...sourceProject,
+    shots: [shotA, shotB, ...sourceProject.shots],
+  });
+  const assetById = new Map(sourceProject.assets.map((item) => [item.id, item]));
+  const assetSize = (assetId) => {
+    const item = assetById.get(assetId);
+    return item ? { width: item.width ?? null, height: item.height ?? null } : null;
+  };
+  const faceAssetId = expressionAssetId;
+  const dialogueWindowsMs = dialogueShot.dialogues
+    .filter((item) => item.characterId === character.id)
+    .map((item) => ({ startMs: item.startMs, endMs: item.endMs }));
+  privateSourceContext = {
+    source: 'owner-private-local-project; identifiers and text redacted',
+    manifestSha256: sha256(manifestBytes),
+    sourceSchemaVersion: manifest.schemaVersion,
+    runtimeSchemaVersion: sourceProject.schemaVersion,
+    projectCanvas: { width: sourceProject.width, height: sourceProject.height },
+    fps: sourceProject.fps,
+    assetCount: sourceProject.assets.length,
+    verifiedAssetCount: sourceProject.assets.length,
+    verifiedAssetBytes,
+    characterParts: {
+      head: assetSize(character.head.assetId),
+      body: assetSize(character.bodyAssetId),
+      face: assetSize(faceAssetId),
+      mouth: assetSize(character.mouthOpenAssetId),
+    },
+    talkingHeadMotionIntensityPercent: character.talkingHeadMotionIntensityPercent ?? null,
+    dialogueWindowsMs,
+    audioOutputMutedByProbe: true,
+    persistedProjectWrites: 0,
+    sourceAssetsCopied: false,
+  };
+  privateMeasureShotIds = { A: ID.shotA, B: ID.shotB, C: dialogueShot.id };
   return project;
 }
 
@@ -254,9 +391,12 @@ function registerHandlers(project) {
       : { error: { code: 'PROJECT_NOT_FOUND', message: 'Unknown diagnostic root.', projectRoot: request.projectRoot } }),
   }));
   register(IPC_CHANNELS.RECENT_PROJECTS_LIST, () => ({ ok: true, entries: [] }));
-  register(IPC_CHANNELS.PROJECT_SAVE, (_event, request) => ({
-    ok: true, value: documentFor(request.project),
-  }));
+  register(IPC_CHANNELS.PROJECT_SAVE, (_event, request) => {
+    if (privateProjectRoot) {
+      throw new Error('Issue 872 private-project diagnostics are read-only.');
+    }
+    return { ok: true, value: documentFor(request.project) };
+  });
   register(IPC_CHANNELS.PROJECT_CONFIRM_SWITCH, () => ({ outcome: 'saved' }));
   register(IPC_CHANNELS.AUTOSAVE_TRACK, () => ({ ok: true }));
   register(IPC_CHANNELS.AUTOSAVE_UPDATE, () => ({ ok: true }));
@@ -282,12 +422,13 @@ function registerHandlers(project) {
     };
   });
   register(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ, (_event, request) => {
+    const asset = project.assets.find((item) => item.id === request.assetId);
     const bytes = assetBytes.get(request.assetId);
-    if (request.assetId !== ID.audio || request.sha256 !== sha256(bytes)) {
+    if (!asset || asset.kind !== 'audio' || !bytes || asset.sha256 !== request.sha256 || request.sha256 !== sha256(bytes)) {
       throw new Error('Invalid diagnostic audio read.');
     }
     return {
-      ok: true, status: 'ready', assetId: ID.audio, mimeType: 'audio/wav',
+      ok: true, status: 'ready', assetId: asset.id, mimeType: asset.mimeType,
       byteLength: bytes.byteLength, bytes: new Uint8Array(bytes),
     };
   });
@@ -387,6 +528,7 @@ async function installProbe() {
     const events = [];
     window.__pandaPreviewDiagnostics = {
       scenePixelRatio: ${scenePixelRatio},
+      forceCompositeCacheRebuild: ${JSON.stringify(process.env.ISSUE872_CACHE_STRATEGY === 'force-rebuild')},
       record(event, atMs, detail) {
         if (events.length < 20000) events.push({ event, atMs, ...detail });
       },
@@ -405,6 +547,7 @@ async function installProbe() {
     }
     const nativePlay = HTMLMediaElement.prototype.play;
     HTMLMediaElement.prototype.play = function (...args) {
+      this.muted = true;
       window.__issue629Audio = this;
       return nativePlay.apply(this, args);
     };
@@ -511,6 +654,68 @@ async function measureScene(label, shotId, { hideStage = false, hideCanvas = fal
   return result;
 }
 
+async function capturePrivatePixelChecks() {
+  if (!privateProjectRoot || !privateMeasureShotIds) return [];
+  const checkpoints = [
+    { label: 'dialogue-phase-125ms', timeMs: 1458 },
+    { label: 'dialogue-phase-250ms', timeMs: 1583 },
+    { label: 'dialogue-phase-375ms', timeMs: 1708 },
+    { label: 'dialogue-late', timeMs: 3700 },
+  ];
+  await selectShot(privateMeasureShotIds.C);
+  await openPreview();
+  const checks = [];
+  for (const checkpoint of checkpoints) {
+    await evaluate(`(() => {
+      const input = document.querySelector('[data-testid="product-preview-scrubber"]');
+      if (!(input instanceof HTMLInputElement)) throw new Error('Preview scrubber missing.');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(String(checkpoint.timeMs))});
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    await waitFor(
+      `(() => { const stage = document.querySelector('[data-testid="stage-renderer"]'); return stage?.dataset.stageReady === 'true' && Math.abs(Number(stage?.dataset.stageTime ?? -1) - ${checkpoint.timeMs}) <= 5; })()`,
+      `Preview did not seek to ${checkpoint.timeMs}ms for pixel capture.`,
+      30000,
+    );
+    await evaluate(`new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+    const rect = await evaluate(`(() => {
+      const stage = document.querySelector('[data-testid="stage-renderer"]');
+      const canvas = stage?.querySelector('canvas');
+      const bounds = stage?.getBoundingClientRect();
+      if (!stage || !canvas || !bounds) throw new Error('Visible Stage capture target missing.');
+      return {
+        x: Math.floor(bounds.x), y: Math.floor(bounds.y),
+        width: Math.ceil(bounds.width), height: Math.ceil(bounds.height),
+        stageTimeMs: Number(stage.dataset.stageTime ?? -1),
+        canvasWidth: canvas.width, canvasHeight: canvas.height,
+      };
+    })()`);
+    const image = await windowRef.webContents.capturePage({
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+    });
+    const png = image.toPNG();
+    const size = image.getSize();
+    checks.push({
+      label: checkpoint.label,
+      requestedTimeMs: checkpoint.timeMs,
+      stageTimeMs: rect.stageTimeMs,
+      cropWidth: size.width,
+      cropHeight: size.height,
+      canvasWidth: rect.canvasWidth,
+      canvasHeight: rect.canvasHeight,
+      pngByteLength: png.byteLength,
+      pngSha256: sha256(png),
+    });
+  }
+  await evaluate(`document.querySelector('[data-testid="product-preview-close"]').click()`);
+  await waitFor(`!document.querySelector('[data-testid="product-preview-overlay"]')`, 'Pixel capture Preview did not close.');
+  return checks;
+}
+
 function percentile(values, p) {
   if (!values.length) return null;
   const sorted = [...values].sort((a, b) => a - b);
@@ -533,6 +738,8 @@ function summarize(scene) {
   const raf = byEvent('raf');
   const controlRaf = byEvent('raf-control');
   const cache = byEvent('composite-cache-rebuild');
+  const cacheReuse = byEvent('composite-cache-reuse');
+  const cacheInputs = [...cache, ...cacheReuse];
   const audio = byEvent('audio-clock').filter((sample) => !sample.paused && sample.previewTimeMs >= 1000);
   const rafIntervals = raf.slice(1).map((sample, index) => sample.atMs - raf[index].atMs);
   const controlIntervals = controlRaf.slice(1).map((sample, index) => sample.atMs - controlRaf[index].atMs);
@@ -561,7 +768,8 @@ function summarize(scene) {
     imagePlan: durations('image-plan'), stageRenderModel: durations('stage-render-model'),
     compositeCache: {
       ...durations('composite-cache-rebuild'),
-      uniqueVisualSignatures: new Set(cache.map((sample) => sample.visualSignature)).size,
+      reuseCount: cacheReuse.length,
+      uniqueVisualSignatures: new Set(cacheInputs.map((sample) => sample.visualSignature)).size,
       previouslyCachedCount: cache.filter((sample) => sample.previouslyCached).length,
     },
     konvaDrawScene: durations('konva-draw-scene'),
@@ -602,10 +810,31 @@ async function measureIdleRaf(durationMs = 3000) {
   })`);
 }
 
+function redactPrivateScene(scene) {
+  if (!privateProjectRoot) return scene;
+  return {
+    ...scene,
+    events: scene.events.map((event) => {
+      const { ownerLayerId, visualSignature, ...redacted } = event;
+      return {
+        ...redacted,
+        ...(ownerLayerId ? { ownerLayerToken: 'composite-character' } : {}),
+        ...(typeof visualSignature === 'string'
+          ? { visualSignatureSha256: sha256(Buffer.from(visualSignature)) }
+          : {}),
+      };
+    }),
+  };
+}
+
 async function run() {
-  mkdirSync(projectRoot, { recursive: true });
-  const project = fixture();
-  writeFileSync(path.join(runRoot, 'fixture-project.json'), JSON.stringify(project, null, 2));
+  if (!privateProjectRoot) mkdirSync(projectRoot, { recursive: true });
+  const project = privateProjectRoot ? privateProjectFixture() : fixture();
+  if (privateSourceContext) {
+    writeFileSync(path.join(runRoot, 'private-source-context.json'), JSON.stringify(privateSourceContext, null, 2));
+  } else {
+    writeFileSync(path.join(runRoot, 'fixture-project.json'), JSON.stringify(project, null, 2));
+  }
   registerHandlers(project);
   await app.whenReady();
   for (const [name, location] of [
@@ -622,30 +851,48 @@ async function run() {
     windowRef.show();
     windowRef.focus();
     await openProject();
-    const graphicsStatus = graphicsMode ? await captureGraphicsStatus() : null;
+    const graphicsStatus = graphicsMode || process.env.ISSUE872_CAPTURE_GPU === '1'
+      ? await captureGraphicsStatus()
+      : null;
     await installProbe();
     const idleRaf = await measureIdleRaf();
     const scenes = {};
+    const shotIds = privateMeasureShotIds ?? { A: ID.shotA, B: ID.shotB, C: ID.shotC };
+    const cLabel = privateProjectRoot ? 'C-real' : 'C';
     const sceneSpecs = graphicsMode
-      ? [['A', ID.shotA]]
+      ? [['A', shotIds.A]]
       : [
-          ['A', ID.shotA], ['A-canvas-hidden', ID.shotA, { hideCanvas: true }],
-          ['A-hidden', ID.shotA, { hideStage: true }],
-          ['B', ID.shotB], ['C', ID.shotC],
+          ['A', shotIds.A], ['A-canvas-hidden', shotIds.A, { hideCanvas: true }],
+          ['A-hidden', shotIds.A, { hideStage: true }],
+          ['B', shotIds.B], [cLabel, shotIds.C],
         ];
     for (const [label, shotId, options] of sceneSpecs) {
       scenes[label] = await measureScene(label, shotId, options);
-      writeFileSync(path.join(runRoot, `scene-${label}.json`), JSON.stringify(scenes[label]));
+      writeFileSync(
+        path.join(runRoot, `scene-${label}.json`),
+        JSON.stringify(redactPrivateScene(scenes[label])),
+      );
       console.log(`${label}: ${JSON.stringify(summarize(scenes[label]))}`);
     }
+    const pixelChecks = process.env.ISSUE872_CAPTURE_PIXELS === '1'
+      ? await capturePrivatePixelChecks()
+      : null;
     const summary = {
-      runRoot, branch: 'issue-627-s09-r01',
-      startingSha: graphicsMode
+      runRoot, branch: measuredBranch,
+      startingSha: measuredSha ?? (graphicsMode
         ? '67df04dc6896cc5d550ac019ad4366b8c19c0805'
-        : '1563e918c6f2b7e96063682b227e4c307af4c35a',
+        : '1563e918c6f2b7e96063682b227e4c307af4c35a'),
+      ...(issue872Mode ? {
+        experimentDiffSha256: process.env.ISSUE872_EXPERIMENT_DIFF_SHA256 ?? null,
+        cacheStrategy: process.env.ISSUE872_CACHE_STRATEGY ?? 'signature-reuse',
+      } : {}),
       diagnosticScenePixelRatio: scenePixelRatio,
       graphicsStatusPath: graphicsStatus ? path.join(runRoot, 'graphics-status.json') : null,
-      fixture: 'One 6s shot per scene; 1100px Position travel over 5s; synthetic full-size PNGs; C has silent WAV, subtitle, Mouth, Expression switch, seven visible Layers.',
+      fixture: privateSourceContext
+        ? 'A/B Position controls use owner-private assets in memory; C-real is an original speaking shot. Source files and media were not copied or written.'
+        : 'One 6s shot per scene; 1100px Position travel over 5s; synthetic full-size PNGs; C has silent WAV, subtitle, Mouth, Expression switch, seven visible Layers.',
+      privateSourceContextPath: privateSourceContext ? path.join(runRoot, 'private-source-context.json') : null,
+      ...(pixelChecks ? { pixelChecks } : {}),
       windowSize: scenes.A.windowSize, devicePixelRatio: scenes.A.devicePixelRatio,
       canvas: scenes.A.canvas,
       idleRaf: {
@@ -657,7 +904,8 @@ async function run() {
       ...(graphicsMode ? { trace: scenes.A.trace ?? null } : {
         ACanvasHidden: summarize(scenes['A-canvas-hidden']),
         AHidden: summarize(scenes['A-hidden']),
-        B: summarize(scenes.B), C: summarize(scenes.C),
+        B: summarize(scenes.B),
+        [privateProjectRoot ? 'CReal' : 'C']: summarize(scenes[cLabel]),
       }),
     };
     writeFileSync(path.join(runRoot, 'summary.json'), JSON.stringify(summary, null, 2));

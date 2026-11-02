@@ -4,14 +4,29 @@ import {
   ExportFrameFailedSchema,
   ExportFrameReadySchema,
   ExportLoadProbeRequestSchema,
+  ExportLoadFormalRequestSchema,
+  ExportFormalLoadedSchema,
   ExportProbeLoadedSchema,
   ExportRenderFrameRequestSchema,
   type ExportFrameFailed,
   type ExportFrameReady,
   type ExportLoadProbeRequest,
+  type ExportLoadFormalRequest,
+  type ExportFormalLoaded,
   type ExportProbeLoaded,
   type ExportRenderFrameRequest,
 } from '../../shared/export-types';
+import {
+  EXPORT_DRAW_MODE_QUERY_PARAM,
+  EXPORT_FRAME_TIMING_QUERY_PARAM,
+  resolveFormalExportDrawMode,
+  type ExportDrawMode,
+} from '../../shared/export-draw-mode';
+import {
+  EXPORT_PNG_MODE_QUERY_PARAM,
+  resolveFormalExportPngMode,
+  type ExportPngMode,
+} from '../../shared/export-png-mode';
 import { IPC_CHANNELS } from '../../shared/ipc/channels';
 
 const READY_TIMEOUT_MS = 10_000;
@@ -26,6 +41,15 @@ interface PendingRequest<TRequest, TResponse> {
 }
 
 export class HiddenWindowManager {
+  private readonly frameTiming: boolean;
+  private nextFormalDrawMode: ExportDrawMode;
+  private nextFormalPngMode: ExportPngMode;
+  private jobModeLock: {
+    drawMode: ExportDrawMode;
+    pngMode: ExportPngMode;
+  } | null = null;
+  private windowDrawMode: ExportDrawMode | null = null;
+  private windowPngMode: ExportPngMode | null = null;
   private window: BrowserWindow | null = null;
   private readyResolve: (() => void) | null = null;
   private readyReject: ((error: Error) => void) | null = null;
@@ -35,31 +59,68 @@ export class HiddenWindowManager {
     ExportLoadProbeRequest,
     ExportProbeLoaded
   > | null = null;
+  private pendingFormalLoad: PendingRequest<
+    ExportLoadFormalRequest,
+    ExportFormalLoaded
+  > | null = null;
   private pendingFrame: PendingRequest<
     ExportRenderFrameRequest,
     ExportFrameReady
   > | null = null;
   private readonly cancelledJobIds = new Set<string>();
 
+  constructor(
+    options: {
+      formalDrawMode?: ExportDrawMode;
+      formalPngMode?: ExportPngMode;
+      frameTiming?: boolean;
+    } = {},
+  ) {
+    this.frameTiming = options.frameTiming ?? false;
+    this.nextFormalDrawMode =
+      options.formalDrawMode ??
+      resolveFormalExportDrawMode(process.env.PANDA_STAGE_EXPORT_DRAW_MODE);
+    this.nextFormalPngMode =
+      options.formalPngMode ??
+      resolveFormalExportPngMode(process.env.PANDA_STAGE_EXPORT_PNG_MODE);
+  }
+
   getDiagnostics(): {
     windowOpen: boolean;
     loadedJobId: string | null;
     pendingLoadJobId: string | null;
     pendingFrameJobId: string | null;
+    drawMode: ExportDrawMode | null;
+    pngMode: ExportPngMode | null;
   } {
     return {
       windowOpen: this.getWindow() !== null,
       loadedJobId: this.loadedJobId,
       pendingLoadJobId: this.pendingLoad?.request.jobId ?? null,
       pendingFrameJobId: this.pendingFrame?.request.jobId ?? null,
+      drawMode: this.windowDrawMode,
+      pngMode: this.windowPngMode,
     };
   }
 
-  async prepareJob(): Promise<void> {
-    await this.create();
+  async prepareJob(kind: 'probe' | 'formal' = 'probe'): Promise<void> {
+    const drawMode = kind === 'formal' ? this.nextFormalDrawMode : 'legacy-raf';
+    const pngMode = kind === 'formal' ? this.nextFormalPngMode : 'legacy-blob';
+    if (this.jobModeLock) {
+      throw new Error('Hidden window is already prepared for another Job.');
+    }
+    const jobModeLock = { drawMode, pngMode };
+    this.jobModeLock = jobModeLock;
+    try {
+      await this.create(drawMode, pngMode);
+    } catch (error) {
+      if (this.jobModeLock === jobModeLock) this.jobModeLock = null;
+      throw error;
+    }
   }
 
   releaseJob(): void {
+    this.jobModeLock = null;
     this.close();
   }
 
@@ -67,10 +128,26 @@ export class HiddenWindowManager {
     return this.window && !this.window.isDestroyed() ? this.window : null;
   }
 
-  async create(): Promise<BrowserWindow> {
+  async create(
+    drawMode: ExportDrawMode = 'legacy-raf',
+    pngMode: ExportPngMode = 'legacy-blob',
+  ): Promise<BrowserWindow> {
     const existingWindow = this.getWindow();
     if (existingWindow) {
-      return existingWindow;
+      if (this.windowDrawMode !== drawMode || this.windowPngMode !== pngMode) {
+        if (
+          this.jobModeLock &&
+          (this.jobModeLock.drawMode !== drawMode ||
+            this.jobModeLock.pngMode !== pngMode)
+        ) {
+          throw new Error(
+            'Hidden window export modes cannot change during a Job.',
+          );
+        }
+        this.close();
+      } else {
+        return existingWindow;
+      }
     }
 
     const readyPromise = new Promise<void>((resolve, reject) => {
@@ -94,10 +171,14 @@ export class HiddenWindowManager {
       },
     });
     this.window = window;
+    this.windowDrawMode = drawMode;
+    this.windowPngMode = pngMode;
 
     window.once('closed', () => {
       if (this.window === window) {
         this.window = null;
+        this.windowDrawMode = null;
+        this.windowPngMode = null;
       }
       this.rejectReady(new Error('Hidden window closed before ready.'));
       this.rejectPendingRequests(
@@ -108,10 +189,24 @@ export class HiddenWindowManager {
     try {
       const developmentUrl = process.env.VITE_DEV_SERVER_URL;
       if (developmentUrl) {
-        await window.loadURL(new URL('hidden.html', developmentUrl).toString());
+        const hiddenUrl = new URL('hidden.html', developmentUrl);
+        hiddenUrl.searchParams.set(EXPORT_DRAW_MODE_QUERY_PARAM, drawMode);
+        hiddenUrl.searchParams.set(EXPORT_PNG_MODE_QUERY_PARAM, pngMode);
+        if (this.frameTiming) {
+          hiddenUrl.searchParams.set(EXPORT_FRAME_TIMING_QUERY_PARAM, 'true');
+        }
+        await window.loadURL(hiddenUrl.toString());
       } else {
+        const query = {
+          [EXPORT_DRAW_MODE_QUERY_PARAM]: drawMode,
+          [EXPORT_PNG_MODE_QUERY_PARAM]: pngMode,
+          ...(this.frameTiming
+            ? { [EXPORT_FRAME_TIMING_QUERY_PARAM]: 'true' }
+            : {}),
+        };
         await window.loadFile(
           path.join(__dirname, '../../../dist/renderer/hidden.html'),
+          { query },
         );
       }
 
@@ -133,7 +228,7 @@ export class HiddenWindowManager {
     const request = ExportLoadProbeRequestSchema.parse(rawRequest);
     this.cancelledJobIds.delete(request.jobId);
     const window = this.requireWindow();
-    if (this.pendingLoad || this.pendingFrame) {
+    if (this.pendingLoad || this.pendingFormalLoad || this.pendingFrame) {
       throw new Error('Hidden window is busy with another export request.');
     }
 
@@ -154,6 +249,46 @@ export class HiddenWindowManager {
     return promise;
   }
 
+  async loadFormal(
+    rawRequest: ExportLoadFormalRequest,
+  ): Promise<ExportFormalLoaded> {
+    const request = ExportLoadFormalRequestSchema.parse(rawRequest) as ExportLoadFormalRequest;
+    console.info('Hidden formal export draw mode selected.', {
+      jobId: request.jobId,
+      drawMode: this.windowDrawMode,
+      pngMode: this.windowPngMode,
+    });
+    console.info(
+      'PANDA_STAGE_O2_JOB_MODE ' +
+        JSON.stringify({
+          jobId: request.jobId,
+          drawMode: this.windowDrawMode,
+          pngMode: this.windowPngMode,
+        }),
+    );
+    this.cancelledJobIds.delete(request.jobId);
+    const window = this.requireWindow();
+    if (this.pendingLoad || this.pendingFormalLoad || this.pendingFrame) {
+      throw new Error('Hidden window is busy with another export request.');
+    }
+
+    const promise = new Promise<ExportFormalLoaded>((resolve, reject) => {
+      this.pendingFormalLoad = {
+        request,
+        resolve,
+        reject,
+        timeout: setTimeout(() => {
+          this.pendingFormalLoad = null;
+          reject(
+            new Error(`Job ${request.jobId} formal-load handshake timed out.`),
+          );
+        }, LOAD_TIMEOUT_MS),
+      };
+    });
+    window.webContents.send(IPC_CHANNELS.EXPORT_LOAD_FORMAL, request);
+    return promise;
+  }
+
   async renderFrame(
     rawRequest: ExportRenderFrameRequest,
   ): Promise<ExportFrameReady> {
@@ -162,7 +297,7 @@ export class HiddenWindowManager {
     if (this.loadedJobId !== request.jobId) {
       throw new Error(`Hidden window has not loaded Job ${request.jobId}.`);
     }
-    if (this.pendingLoad || this.pendingFrame) {
+    if (this.pendingLoad || this.pendingFormalLoad || this.pendingFrame) {
       throw new Error('Hidden window is busy with another export request.');
     }
 
@@ -172,7 +307,9 @@ export class HiddenWindowManager {
         resolve,
         reject,
         timeout: setTimeout(() => {
+          if (this.pendingFrame?.request !== request) return;
           this.pendingFrame = null;
+          this.selectFallbacksForNextFormalJob();
           reject(
             new Error(
               `Job ${request.jobId} frame ${request.frameIndex} render timed out.`,
@@ -207,6 +344,20 @@ export class HiddenWindowManager {
     pending.resolve(payload);
   }
 
+  markFormalLoaded(senderId: number, rawPayload: ExportFormalLoaded): void {
+    this.assertSender(senderId);
+    const payload = ExportFormalLoadedSchema.parse(rawPayload);
+    if (this.cancelledJobIds.has(payload.jobId)) return;
+    const pending = this.pendingFormalLoad;
+    if (!pending || pending.request.jobId !== payload.jobId) {
+      throw new Error(`Unexpected formal-loaded response for Job ${payload.jobId}.`);
+    }
+    clearTimeout(pending.timeout);
+    this.pendingFormalLoad = null;
+    this.loadedJobId = payload.jobId;
+    pending.resolve(payload);
+  }
+
   markFrameReady(senderId: number, rawPayload: ExportFrameReady): void {
     this.assertSender(senderId);
     const payload = ExportFrameReadySchema.parse(rawPayload);
@@ -216,7 +367,9 @@ export class HiddenWindowManager {
       !pending ||
       pending.request.jobId !== payload.jobId ||
       pending.request.frameIndex !== payload.frameIndex ||
-      pending.request.timeMs !== payload.timeMs
+      pending.request.timeMs !== payload.timeMs ||
+      pending.request.shotId !== payload.shotId ||
+      pending.request.shotLocalTimeMs !== payload.shotLocalTimeMs
     ) {
       throw new Error(
         `Unexpected frame-ready response for Job ${payload.jobId}, frame ${payload.frameIndex}.`,
@@ -237,12 +390,16 @@ export class HiddenWindowManager {
       !pending ||
       pending.request.jobId !== payload.jobId ||
       pending.request.frameIndex !== payload.frameIndex ||
-      pending.request.timeMs !== payload.timeMs
+      pending.request.timeMs !== payload.timeMs ||
+      pending.request.shotId !== payload.shotId ||
+      pending.request.shotLocalTimeMs !== payload.shotLocalTimeMs
     ) {
       throw new Error(
         `Unexpected frame-failed response for Job ${payload.jobId}, frame ${payload.frameIndex}.`,
       );
     }
+
+    this.selectFallbacksForNextFormalJob();
 
     clearTimeout(pending.timeout);
     this.pendingFrame = null;
@@ -257,6 +414,7 @@ export class HiddenWindowManager {
     const ownsJob =
       this.loadedJobId === jobId ||
       this.pendingLoad?.request.jobId === jobId ||
+      this.pendingFormalLoad?.request.jobId === jobId ||
       this.pendingFrame?.request.jobId === jobId;
     this.cancelledJobIds.add(jobId);
 
@@ -272,6 +430,11 @@ export class HiddenWindowManager {
       clearTimeout(this.pendingLoad.timeout);
       this.pendingLoad.reject(cancellation);
       this.pendingLoad = null;
+    }
+    if (this.pendingFormalLoad?.request.jobId === jobId) {
+      clearTimeout(this.pendingFormalLoad.timeout);
+      this.pendingFormalLoad.reject(cancellation);
+      this.pendingFormalLoad = null;
     }
     if (this.pendingFrame?.request.jobId === jobId) {
       clearTimeout(this.pendingFrame.timeout);
@@ -289,6 +452,8 @@ export class HiddenWindowManager {
     this.rejectReady(cleanupError);
     this.rejectPendingRequests(cleanupError);
     this.loadedJobId = null;
+    this.windowDrawMode = null;
+    this.windowPngMode = null;
     this.cancelledJobIds.clear();
     const window = this.getWindow();
     this.window = null;
@@ -303,6 +468,18 @@ export class HiddenWindowManager {
       throw new Error('Hidden window is unavailable.');
     }
     return window;
+  }
+
+  private selectFallbacksForNextFormalJob(): void {
+    if (this.windowDrawMode === 'explicit-sync') {
+      // The current Job still fails and is cleaned up. Only the next formal
+      // Job may use the retained rAF mode.
+      this.nextFormalDrawMode = 'legacy-raf';
+    }
+    if (this.windowPngMode === 'worker-png') {
+      // PNG mode rolls back independently and only for a later formal Job.
+      this.nextFormalPngMode = 'legacy-blob';
+    }
   }
 
   private assertSender(senderId: number): void {
@@ -322,6 +499,11 @@ export class HiddenWindowManager {
       clearTimeout(this.pendingFrame.timeout);
       this.pendingFrame.reject(error);
       this.pendingFrame = null;
+    }
+    if (this.pendingFormalLoad) {
+      clearTimeout(this.pendingFormalLoad.timeout);
+      this.pendingFormalLoad.reject(error);
+      this.pendingFormalLoad = null;
     }
   }
 

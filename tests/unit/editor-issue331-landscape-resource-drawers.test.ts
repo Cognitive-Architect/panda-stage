@@ -56,7 +56,7 @@ describe('Issue #331 landscape resource drawers', () => {
     expect(shots).toContain('presentation?: ShotManagerPresentation');
     expect(shots).toContain("presentation === 'landscape' ? null");
     expect(assets).toContain('selectAssetLibraryEntries');
-    expect(assets).toContain('filterAssetLibraryEntries');
+    expect(assets).toContain('filterAssetLibraryItems');
     expect(assets).toContain('onImportFla={openFlaReview}');
     expect(assets).toContain('if (!hideHeading) onViewChange(\'details\');');
     expect(characters).toContain('characterStore.create');
@@ -81,5 +81,22 @@ describe('Issue #331 landscape resource drawers', () => {
     expect(styles).not.toContain('resource-activity-secondary-tools');
     expect(dock).not.toContain('updateProject');
     expect(left).not.toContain('editorProjectStore.updateProject');
+  });
+
+  it('preserves the drawer state when a temporary shell override is released', () => {
+    const dock = source('src/renderer/shell/ResourceActivityDock.tsx');
+
+    expect(dock).toContain('previousRequestedDrawerOpen.current !== undefined');
+    expect(dock).toContain(
+      'if (wasDrawerOpenControlled && requestedDrawerOpen === undefined) return;',
+    );
+  });
+
+  it('routes Escape through the latest controlled drawer state', () => {
+    const dock = source('src/renderer/shell/ResourceActivityDock.tsx');
+
+    expect(dock).toContain('const setDrawerOpenRef = useRef(setDrawerOpen);');
+    expect(dock).toContain('setDrawerOpenRef.current = setDrawerOpen;');
+    expect(dock).toContain('setDrawerOpenRef.current(false);');
   });
 });

@@ -26,12 +26,13 @@ const IDS = {
 
 function makeProject(): Project {
   return ProjectSchema.parse({
-    schemaVersion: 13,
+    schemaVersion: 15,
     id: IDS.project,
     name: 'AC-01 scene test',
     width: 1920,
     height: 1080,
     fps: 24,
+    animations: [],
     assets: [
       {
         id: IDS.background,
@@ -309,13 +310,17 @@ describe('SceneCreationService', () => {
     const alternateCharacterId = '85200000-0000-4000-8000-000000000011';
     const alternateExpressionId = '85200000-0000-4000-8000-000000000012';
     const alternateVoiceId = '85200000-0000-4000-8000-000000000013';
+    const sourceCharacter = project.characters[0]!;
+    if (sourceCharacter.mode !== 'composite') {
+      throw new Error('Fixture must contain a composite Character.');
+    }
     const alternateCharacter = {
-      ...project.characters[0]!,
+      ...sourceCharacter,
       id: alternateCharacterId,
       name: 'Lin',
       defaultVoiceProfileId: alternateVoiceId,
       expressions: [
-        { ...project.characters[0]!.expressions[0]!, id: alternateExpressionId },
+        { ...sourceCharacter.expressions[0]!, id: alternateExpressionId },
       ],
       defaultExpressionId: alternateExpressionId,
     };
@@ -454,6 +459,9 @@ describe('SceneCreationService', () => {
     );
 
     const character = project.characters[0]!;
+    if (character.mode !== 'composite') {
+      throw new Error('Fixture must contain a composite Character.');
+    }
     const singleImage = ProjectSchema.parse({
       ...project,
       characters: [

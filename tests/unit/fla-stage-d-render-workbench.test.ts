@@ -62,6 +62,8 @@ describe('Issue #775 C03 preserves the Stage D render contracts', () => {
     }
     expect(snapshot).toContain('fla-snapshot-candidates');
     expect(snapshot).toContain('data-testid="fla-snapshot-source-facts"');
+    expect(snapshot).toContain('{stage.width} × {stage.height}');
+    expect(snapshot).not.toContain('{stage.frameRate}');
     expect(snapshot).toContain('data-testid="fla-snapshot-target-count"');
     expect(snapshot).not.toContain('data-testid="fla-snapshot-zero-raster"');
     expect(snapshot).not.toContain('data-testid="fla-snapshot-readonly-note"');

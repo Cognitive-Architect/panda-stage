@@ -17,6 +17,7 @@ import {
   CANVAS_IMAGE_MAX_BYTES,
 } from '../../src/shared/asset-canvas-image-api';
 import {
+  AssetPreviewAudioInfoResponseSchema,
   AssetPreviewAudioReadRequestSchema,
   AssetPreviewAudioReadResponseSchema,
   ASSET_PREVIEW_AUDIO_MAX_BYTES,
@@ -36,13 +37,22 @@ describe('IPC channel registry', () => {
       'hidden:ready',
       'export:load-probe',
       'export:probe-loaded',
+      'export:load-formal',
+      'export:formal-loaded',
       'export:render-frame',
       'export:frame-ready',
       'export:frame-failed',
       'export:cancel-render',
       'export:start-probe',
+      'export:start-formal',
       'export:cancel-job',
+      'export:reveal-output',
       'export:job-update',
+      'export-preparation:select-output',
+      'export-preparation:start',
+      'export-preparation:cancel',
+      'export-preparation:discard',
+      'export-preparation:snapshot-status',
       'project:create',
       'project:create-at',
       'project:choose-directory',
@@ -58,6 +68,7 @@ describe('IPC channel registry', () => {
       'asset-thumbnail:read',
       'asset-canvas-image:read',
       'asset-preview-audio:read',
+      'asset-preview-audio:info',
       'recent-projects:list',
       'recent-projects:open',
       'recent-projects:remove',
@@ -90,6 +101,10 @@ describe('IPC channel registry', () => {
       'fla:snapshot-render-cancel',
       'fla:snapshot-render-result',
       'fla:snapshot-render-error',
+      'fla:part-preview',
+      'fla:part-preview-cancel',
+      'fla:character-create',
+      'fla:character-create-status',
       'fla:frame-sequence-render',
       'fla:frame-sequence-cancel',
       'fla:frame-sequence-commit',
@@ -158,6 +173,8 @@ describe('IPC contracts', () => {
       sha256: 'a'.repeat(64),
     };
     expect(AssetPreviewAudioReadRequestSchema.parse(request)).toEqual(request);
+    expect(AssetPreviewAudioReadRequestSchema.parse({ ...request, expectedByteLength: 2 }))
+      .toMatchObject({ expectedByteLength: 2 });
     expect(
       AssetPreviewAudioReadRequestSchema.safeParse({
         ...request,
@@ -174,6 +191,21 @@ describe('IPC contracts', () => {
         bytes: new Uint8Array([1]),
       }).success,
     ).toBe(false);
+    expect(AssetPreviewAudioInfoResponseSchema.parse({
+      ok: true,
+      status: 'ready',
+      assetId: request.assetId,
+      mimeType: 'audio/wav',
+      byteLength: 2,
+    })).toMatchObject({ ok: true, byteLength: 2 });
+    expect(AssetPreviewAudioInfoResponseSchema.safeParse({
+      ok: true,
+      status: 'ready',
+      assetId: request.assetId,
+      mimeType: 'audio/wav',
+      byteLength: 2,
+      bytes: new Uint8Array([1, 2]),
+    }).success).toBe(false);
     expect(ASSET_PREVIEW_AUDIO_MAX_BYTES).toBe(64 * 1024 * 1024);
   });
 
@@ -246,13 +278,34 @@ describe('IPC contracts', () => {
     expect(
       ExportJobUpdateSchema.parse({
         jobId,
+        attemptId: '00000000-0000-4000-8000-000000000001',
+        snapshotId: '00000000-0000-4000-8000-000000000002',
         status: 'cancelling',
         phase: 'encoding',
         completedFrames: 72,
         totalFrames: 72,
         error: null,
-      }).status,
-    ).toBe('cancelling');
+        originalError: 'original media error',
+        cleanupError: 'temporary directory lock',
+      }),
+    ).toMatchObject({
+      status: 'cancelling',
+      attemptId: '00000000-0000-4000-8000-000000000001',
+      snapshotId: '00000000-0000-4000-8000-000000000002',
+      originalError: 'original media error',
+      cleanupError: 'temporary directory lock',
+    });
+    expect(
+      ExportJobUpdateSchema.safeParse({
+        jobId,
+        attemptId: 'not-a-uuid',
+        status: 'running',
+        phase: 'rendering',
+        completedFrames: 0,
+        totalFrames: 72,
+        error: null,
+      }).success,
+    ).toBe(false);
     expect(
       ExportCancelRequestSchema.safeParse({ jobId, command: 'taskkill /f' })
         .success,

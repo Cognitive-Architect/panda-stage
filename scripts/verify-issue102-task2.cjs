@@ -464,8 +464,14 @@ async function run(window, fixture) {
   const actionIds = menu.menuItems.map((item) => item.action);
   assert(
     JSON.stringify(actionIds) ===
-      JSON.stringify(['home', 'folder', 'save', 'play', 'undo', 'redo', 'close']),
+      JSON.stringify(['home', 'folder', 'save', 'play', 'export', 'undo', 'redo', 'close']),
     `Quick Action Drawer action order changed: ${JSON.stringify(actionIds)}`,
+  );
+  assert(
+    menu.menuItems.some(
+      (item) => item.action === 'export' && item.testId === 'quick-action-export',
+    ),
+    'Quick Action Drawer does not expose the formal video export action.',
   );
   assert(
     menu.menuItems.filter((item) => item.testId === 'history-controls').length === 0,
@@ -485,7 +491,7 @@ async function run(window, fixture) {
   assert(menu.menu && menu.menu.right <= menu.viewport.width + 1, 'Quick Action Drawer overflows the right edge.');
   assert(menu.menu && menu.menu.width < menu.viewport.width, 'Quick Action Drawer is not content-sized.');
   result.snapshots.menu = menu;
-  result.checks.push('Expanded Quick Action Drawer exposes the exact centered action order without the old More menu');
+  result.checks.push('Expanded Quick Action Drawer exposes the exact centered action order, including video export, without the old More menu');
   await capture(window, 'new-quick-action-drawer.png');
 
   await clickSelector(window, '[data-testid="quick-action-home"]');

@@ -1,0 +1,158 @@
+{
+  "version": "dl06-2026-10-23.1",
+  "windowsFormalOutputMaxPathCharacters": 259,
+  "renderSettings": { "width": 1920, "height": 1080, "fps": 24 },
+  "profile": {
+    "shotCount": { "minimum": 1, "maximum": 256 },
+    "backgroundRequired": true,
+    "cameraModes": ["static", "speaker-focus"],
+    "characterCompositions": ["whole-image", "composite"],
+    "budgets": {
+      "maximumAssets": 512,
+      "maximumSingleAssetBytes": 67108864,
+      "maximumTotalMediaBytes": 268435456
+    }
+  },
+  "capabilityMatrix": {
+    "version": "dl06-2026-10-23.1",
+    "visibleSummary": "支持 PNG 静态图和 MP3/WAV 音频正式导出；JPEG 导出代码已支持但尚无完整 Windows 端到端证据。FLA 连续帧请先导出为 PNG，不能直接作为镜头动画导出。",
+    "layers": [
+      { "id": "import", "label": "导入素材库 / FLA 工作台" },
+      { "id": "shot", "label": "放入镜头" },
+      { "id": "preview", "label": "播放预览" },
+      { "id": "formalExport", "label": "正式导出" }
+    ],
+    "statuses": [
+      { "id": "SUPPORTED_VERIFIED", "label": "已验证支持" },
+      { "id": "SUPPORTED_UNVERIFIED", "label": "代码支持，目标路径未完整验证" },
+      { "id": "NOT_SUPPORTED", "label": "当前路径不支持" },
+      { "id": "UNKNOWN", "label": "未知 / 未测" }
+    ],
+    "entries": [
+      {
+        "id": "png-still-image",
+        "label": "PNG 静态图像",
+        "mediaKind": "image",
+        "formats": ["PNG"],
+        "mimeTypes": ["image/png"],
+        "statuses": {
+          "import": "SUPPORTED_VERIFIED",
+          "shot": "SUPPORTED_VERIFIED",
+          "preview": "SUPPORTED_VERIFIED",
+          "formalExport": "SUPPORTED_VERIFIED"
+        },
+        "evidence": [
+          "src/main/services/MediaInspectionService.ts",
+          "src/main/services/AssetCanvasImageService.ts",
+          "src/domain/export-preparation.ts",
+          "tests/integration/asset-import.test.ts",
+          "tests/unit/export-preparation.test.ts",
+          "scripts/verify-issue827-dl04.cjs"
+        ],
+        "note": "静态图像可作背景或图层；支持范围不代表任意尺寸、颜色配置或损坏文件均可用。"
+      },
+      {
+        "id": "jpeg-still-image",
+        "label": "JPEG / JPG 静态图像",
+        "mediaKind": "image",
+        "formats": ["JPEG", "JPG"],
+        "mimeTypes": ["image/jpeg"],
+        "statuses": {
+          "import": "SUPPORTED_VERIFIED",
+          "shot": "SUPPORTED_VERIFIED",
+          "preview": "SUPPORTED_VERIFIED",
+          "formalExport": "SUPPORTED_UNVERIFIED"
+        },
+        "evidence": [
+          "src/main/services/MediaInspectionService.ts",
+          "src/main/services/AssetCanvasImageService.ts",
+          "src/shared/export-preparation-types.ts",
+          "tests/integration/asset-import.test.ts",
+          "tests/unit/asset-canvas-image-service.test.ts"
+        ],
+        "note": "导入、镜头使用和图像读取有自动证据；本票尚无 JPEG 背景走完 Windows 正式导出的端到端证据。"
+      },
+      {
+        "id": "mp3-wav-audio",
+        "label": "MP3 / WAV 音频",
+        "mediaKind": "audio",
+        "formats": ["MP3", "WAV"],
+        "mimeTypes": ["audio/mpeg", "audio/wav"],
+        "statuses": {
+          "import": "SUPPORTED_VERIFIED",
+          "shot": "SUPPORTED_VERIFIED",
+          "preview": "SUPPORTED_VERIFIED",
+          "formalExport": "SUPPORTED_VERIFIED"
+        },
+        "evidence": [
+          "src/main/services/MediaInspectionService.ts",
+          "src/main/services/AssetPreviewAudioService.ts",
+          "src/domain/export-audio-mix-plan.ts",
+          "src/domain/export-preparation.ts",
+          "tests/integration/asset-import.test.ts",
+          "tests/unit/asset-preview-audio-service.test.ts",
+          "scripts/verify-issue823-dl03.cjs"
+        ],
+        "note": "镜头时间范围、源偏移和音量仍按 Project / 音频混合契约校验；本状态不代表扬声器音量或所有编码器变体均经人工验收。"
+      },
+      {
+        "id": "fla-frame-sequence",
+        "label": "FLA 连续帧序列",
+        "mediaKind": "fla-sequence",
+        "formats": ["FLA frame sequence"],
+        "mimeTypes": [],
+        "statuses": {
+          "import": "SUPPORTED_VERIFIED",
+          "shot": "NOT_SUPPORTED",
+          "preview": "SUPPORTED_VERIFIED",
+          "formalExport": "NOT_SUPPORTED"
+        },
+        "evidence": [
+          "src/shared/fla-frame-sequence-api.ts",
+          "src/main/services/fla-frame-sequence-service.ts",
+          "tests/unit/fla-frame-sequence-service.test.ts",
+          "tests/unit/fla-frame-sequence-commit.test.ts",
+          "tests/unit/fla-frame-sequence-playback-state.test.ts"
+        ],
+        "note": "工作台可检查和预览帧序列；提交会生成普通静态 ImageAsset，不会把连续帧自动接成镜头动画。导出的 PNG 帧可按静态图像逐张使用。"
+      },
+      {
+        "id": "special-fla-semantics",
+        "label": "特殊 FLA 结构 / Open-Fill 等语义",
+        "mediaKind": "fla-special",
+        "formats": ["special FLA structures"],
+        "mimeTypes": [],
+        "statuses": {
+          "import": "UNKNOWN",
+          "shot": "UNKNOWN",
+          "preview": "UNKNOWN",
+          "formalExport": "UNKNOWN"
+        },
+        "evidence": [
+          "https://github.com/Cognitive-Architect/panda-stage/issues/784",
+          "https://github.com/Cognitive-Architect/panda-stage/issues/786"
+        ],
+        "note": "本票不扩大为 FLA 全库审计；不能从工作台按钮、单帧预览或静态快照推断这些语义已支持。"
+      },
+      {
+        "id": "other-media-types",
+        "label": "当前导入白名单以外的媒体",
+        "mediaKind": "other",
+        "formats": ["GIF", "WebM", "AAC", "OGG and other unlisted types"],
+        "mimeTypes": [],
+        "statuses": {
+          "import": "NOT_SUPPORTED",
+          "shot": "NOT_SUPPORTED",
+          "preview": "NOT_SUPPORTED",
+          "formalExport": "NOT_SUPPORTED"
+        },
+        "evidence": [
+          "src/main/services/MediaInspectionService.ts",
+          "src/domain/models/asset.ts",
+          "src/shared/export-preparation-types.ts"
+        ],
+        "note": "静态资产导入白名单为 PNG/JPG/JPEG/MP3/WAV；这条结论只针对普通 Project Asset 流程。"
+      }
+    ]
+  }
+}

@@ -10,6 +10,7 @@ import type Konva from 'konva';
 import { Group, Image as KonvaImage, Layer, Stage, Text } from 'react-konva';
 import type { CameraView, EvaluatedShot, Project } from '../../domain';
 import type { SubtitleStyle } from '../../domain';
+import type { ExportDrawMode } from '../../shared/export-draw-mode';
 import {
   visualHeadGroupRenderTransform,
   type LayerVisualHeadGroup,
@@ -21,12 +22,21 @@ import {
   type StageRenderPart,
   type StageRenderLayer,
 } from '../../shared/stage/render-model';
+import {
+  layoutSubtitleText,
+  subtitleStyleOrDefault,
+} from '../../shared/preview/subtitle-layout';
 import { SubtitleRenderer } from '../features/subtitles/SubtitleRenderer';
+import {
+  createStageCompositeCacheSignature,
+  shouldReuseStageCompositeCache,
+} from './compositeCacheSignature';
 import {
   previewDiagnosticNow,
   previewDiagnosticScenePixelRatio,
   recordPreviewDiagnostic,
   recordPreviewDuration,
+  shouldForceCompositeCacheRebuild,
 } from './previewDiagnostics';
 import {
   configureKonvaScenePixelRatio,
@@ -46,6 +56,7 @@ import {
   selectStageVisualFrame,
   type StageVisualFrame,
 } from './stageVisualFrame';
+import { drawStageLayersSynchronously } from './stage-draw-completion';
 
 interface StageRendererProps {
   project: Project;
@@ -54,7 +65,7 @@ interface StageRendererProps {
   caption: string | null;
   captionStyle?: SubtitleStyle;
   camera?: CameraView;
-  onReady?: () => void;
+  onReady?: (stage: Konva.Stage) => void;
   /** Fires when a complete drawable frame exists, including an intentional Preview fallback. */
   onDisplayReady?: () => void;
   onError?: (error: Error) => void;
@@ -62,6 +73,24 @@ interface StageRendererProps {
   renderToken?: string | number;
   /** Degraded Preview is drawable, but never exact-frame ready for Export. */
   degraded?: boolean;
+  /** The fixed stage label is Preview chrome and is omitted from formal MP4 frames. */
+  showStageLabel?: boolean;
+  drawMode?: ExportDrawMode;
+}
+
+async function waitForSubtitleFonts(
+  text: string | null,
+  style?: SubtitleStyle,
+): Promise<void> {
+  if (!text?.trim() || !document.fonts) return;
+  const resolvedStyle = subtitleStyleOrDefault(style);
+  const layout = layoutSubtitleText(text, resolvedStyle);
+  if (!layout.text) return;
+  await document.fonts.load(
+    `${layout.fontSize}px ${resolvedStyle.fontFamily}`,
+    layout.text,
+  );
+  await document.fonts.ready;
 }
 
 function useStageImages(
@@ -122,6 +151,7 @@ interface StagePartImagesProps {
   parts: readonly StageRenderPart[];
   images: ReadonlyMap<string, HTMLImageElement>;
   composite: boolean;
+  scheduleLayerDraw: boolean;
   headGroup: LayerVisualHeadGroup | null;
   visualBounds: VisualLocalRect;
 }
@@ -131,27 +161,60 @@ function StagePartImages({
   parts,
   images,
   composite,
+  scheduleLayerDraw,
   headGroup,
   visualBounds,
 }: StagePartImagesProps): React.JSX.Element {
   const visualRef = useRef<Konva.Group | null>(null);
+  const cachedVisualSignatureRef = useRef<string | null>(null);
   const orderedParts = [...parts].sort(
     (left, right) =>
       left.render.zIndex - right.render.zIndex ||
       left.drawOrder - right.drawOrder,
   );
   const complete = orderedParts.every((part) => images.has(part.id));
+  const cacheInputSignature = createStageCompositeCacheSignature({
+    ownerLayerId,
+    composite,
+    complete,
+    visualBounds,
+    headGroup,
+    orderedParts,
+    images,
+  });
+  const forceCompositeCacheRebuild = shouldForceCompositeCacheRebuild();
   useLayoutEffect(() => {
     const visual = visualRef.current;
     if (!visual) return;
-    const startedAt = previewDiagnosticNow();
     const previouslyCached = visual.isCached();
+    const cacheEligible =
+      composite && complete && orderedParts.length >= 2 &&
+      visualBounds.width > 0 && visualBounds.height > 0;
+    if (
+      shouldReuseStageCompositeCache({
+        forceRebuild: forceCompositeCacheRebuild,
+        previousSignature: cachedVisualSignatureRef.current,
+        inputSignature: cacheInputSignature,
+        cacheEligible,
+        previouslyCached,
+      })
+    ) {
+      if (cacheEligible) {
+        recordPreviewDiagnostic('composite-cache-reuse', {
+          ownerLayerId,
+          partCount: orderedParts.length,
+          visualSignature: cacheInputSignature,
+        });
+      }
+      return;
+    }
+    const startedAt = previewDiagnosticNow();
     visual.clearCache();
-    if (!composite || !complete || orderedParts.length < 2) {
+    if (!cacheEligible) {
+      cachedVisualSignatureRef.current = cacheInputSignature;
       recordPreviewDuration('composite-cache-clear', startedAt, { ownerLayerId });
       return;
     }
-    if (visualBounds.width <= 0 || visualBounds.height <= 0) return;
     // Flatten the Body + Head + Face overlap before owner opacity is applied by
     // the outer Group. The nested Head Group is rasterized inside this
     // Character-local cache, so changing its transform leaves Body fixed.
@@ -161,18 +224,27 @@ function StagePartImages({
       width: visualBounds.width,
       height: visualBounds.height,
     });
-    visual.getLayer()?.batchDraw();
+    cachedVisualSignatureRef.current = cacheInputSignature;
+    if (scheduleLayerDraw) visual.getLayer()?.batchDraw();
     recordPreviewDuration('composite-cache-rebuild', startedAt, {
       ownerLayerId,
       partCount: orderedParts.length,
       visualWidth: visualBounds.width,
       visualHeight: visualBounds.height,
       previouslyCached,
-      visualSignature: orderedParts.map((part) =>
-        `${part.id}:${part.sourceUrl}:${part.render.x}:${part.render.y}:${part.render.width}:${part.render.height}:${part.render.offsetX}:${part.render.offsetY}:${part.render.rotationDeg}:${part.render.scaleX}:${part.render.scaleY}`,
-      ).join('|'),
+      visualSignature: cacheInputSignature,
     });
-  }, [complete, composite, headGroup, images, orderedParts, visualBounds]);
+  }, [
+    cacheInputSignature,
+    complete,
+    composite,
+    forceCompositeCacheRebuild,
+    headGroup,
+    images,
+    orderedParts,
+    scheduleLayerDraw,
+    visualBounds,
+  ]);
 
   const renderPart = (part: StageRenderPart): React.JSX.Element | null => {
     const image = images.get(part.id);
@@ -188,6 +260,8 @@ function StagePartImages({
         offsetX={render.offsetX}
         offsetY={render.offsetY}
         rotation={render.rotationDeg}
+        skewX={render.skewX ?? 0}
+        skewY={render.skewY ?? 0}
         scaleX={render.scaleX}
         scaleY={render.scaleY}
         width={render.width}
@@ -239,14 +313,19 @@ export function StageRenderer({
   onImageResourceFailure,
   renderToken,
   degraded = false,
+  showStageLabel = true,
+  drawMode = 'legacy-raf',
 }: StageRendererProps): React.JSX.Element {
   const renderStartedAt = previewDiagnosticNow();
+  const stageRef = useRef<Konva.Stage | null>(null);
+  const stageRendererRef = useRef<HTMLDivElement | null>(null);
   const instrumentedLayers = useRef(new WeakSet<Konva.Layer>());
   const configurePreviewLayer = useCallback((layer: Konva.Layer | null) => {
     if (layer) {
       configureKonvaScenePixelRatio(
         layer,
         PREVIEW_CANVAS_PIXEL_RATIO * previewDiagnosticScenePixelRatio(),
+        drawMode === 'legacy-raf',
       );
       if (previewDiagnosticNow() !== null && !instrumentedLayers.current.has(layer)) {
         instrumentedLayers.current.add(layer);
@@ -259,7 +338,7 @@ export function StageRenderer({
         }) as Konva.Layer['drawScene'];
       }
     }
-  }, []);
+  }, [drawMode]);
   const modelResult = useMemo(() => {
     const startedAt = previewDiagnosticNow();
     try {
@@ -352,10 +431,66 @@ export function StageRenderer({
       return;
     }
     if (!ready) return;
+    const readyEffectStartedAt = performance.now();
 
-    const frame = window.requestAnimationFrame(() => onReady?.());
-    return () => window.cancelAnimationFrame(frame);
+    if (drawMode === 'legacy-raf') {
+      const frame = window.requestAnimationFrame(() => {
+        const stage = stageRef.current;
+        const stageRenderer = stageRendererRef.current;
+        if (stageRenderer) {
+          stageRenderer.dataset.stageReadyWaitMs = String(
+            performance.now() - readyEffectStartedAt,
+          );
+        }
+        if (stage) onReady?.(stage);
+        else onError?.(new Error('Hidden export Stage is unavailable.'));
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const fontWaitStartedAt = performance.now();
+        await waitForSubtitleFonts(displayCaption, displayCaptionStyle);
+        if (cancelled) return;
+        const stage = stageRef.current;
+        const stageRenderer = stageRendererRef.current;
+        if (!stage || !stageRenderer) {
+          throw new Error('Hidden export Stage is unavailable.');
+        }
+        const fontWaitMs = performance.now() - fontWaitStartedAt;
+        const drawStartedAt = performance.now();
+        const drawnLayerCount = drawStageLayersSynchronously(
+          stage.getLayers(),
+        );
+        const drawDurationMs = performance.now() - drawStartedAt;
+        stageRenderer.dataset.stageReadyWaitMs = String(
+          performance.now() - readyEffectStartedAt,
+        );
+        stageRenderer.dataset.stageFontWaitMs = String(fontWaitMs);
+        stageRenderer.dataset.stageDrawDurationMs = String(drawDurationMs);
+        stageRenderer.dataset.stageDrawnRenderToken =
+          renderToken == null ? '' : String(renderToken);
+        stageRenderer.dataset.stageDrawnLayerCount = String(drawnLayerCount);
+        onReady?.(stage);
+      } catch (error) {
+        if (!cancelled) {
+          onError?.(
+            error instanceof Error
+              ? error
+              : new Error('Hidden export Stage drawing failed.'),
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [
+    displayCaption,
+    displayCaptionStyle,
+    drawMode,
     imageState.error,
     imageState.failures,
     modelResult.error,
@@ -388,6 +523,7 @@ export function StageRenderer({
   return (
     <div
       className="stage-renderer"
+      ref={stageRendererRef}
       data-logical-height={displayModel!.height}
       data-logical-width={displayModel!.width}
       data-caption-visible={String(Boolean(displayCaption))}
@@ -395,12 +531,29 @@ export function StageRenderer({
       data-layer-render-json={JSON.stringify(
         displayModel!.layers.map((layer) => layer.render),
       )}
+      data-layer-visual-state-json={
+        showStageLabel
+          ? JSON.stringify(
+              displayModel!.layers.map(({ id, visual }) => ({
+                layerId: id,
+                activeFace: visual?.activeFace
+                  ? {
+                      source: visual.activeFace.source,
+                      assetId: visual.activeFace.assetId,
+                    }
+                  : null,
+              })),
+            )
+          : undefined
+      }
       data-render-contract="shared-stage-layer-v1"
       data-stage-error={String(Boolean(error))}
       data-stage-display-ready={String(displayReady)}
       data-stage-degraded={String(degraded)}
       data-stage-ready={String(ready)}
       data-stage-render-token={renderToken == null ? '' : String(renderToken)}
+      data-stage-draw-mode={drawMode}
+      data-stage-shot-id={displayModel!.shotId}
       data-stage-time={displayModel!.timeMs}
       data-camera-view={displayCamera ? JSON.stringify(displayCamera) : ''}
       data-testid="stage-renderer"
@@ -408,6 +561,7 @@ export function StageRenderer({
       <Stage
         height={displayModel!.height}
         listening={false}
+        ref={stageRef}
         width={displayModel!.width}
       >
         <Layer listening={false} ref={configurePreviewLayer}>
@@ -459,11 +613,15 @@ export function StageRenderer({
                 y={render.y}
               >
                 <StagePartImages
-                  composite={layer.visual.kind === 'composite-character'}
+                  composite={
+                    layer.visual.kind === 'composite-character' ||
+                    layer.visual.kind === 'adaptive-parts-character'
+                  }
                   headGroup={layer.visual.headGroup}
                   images={imageState.images}
                   ownerLayerId={layer.id}
                   parts={layer.parts}
+                  scheduleLayerDraw={drawMode === 'legacy-raf'}
                   visualBounds={layer.visual.combinedLocalBounds}
                 />
               </Group>
@@ -479,6 +637,7 @@ export function StageRenderer({
             fontFamily="Segoe UI, sans-serif"
             fontSize={24}
             text="PANDA STAGE · 1920 × 1080"
+            visible={showStageLabel}
             x={42}
             y={36}
           />

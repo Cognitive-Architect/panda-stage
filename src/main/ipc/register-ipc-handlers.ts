@@ -10,6 +10,8 @@ import type {
   ExportFrameReady,
   ExportStartResponse,
   ExportProbeLoaded,
+  ExportFormalLoaded,
+  ExportStartFormalRequest,
   FullProbeExportRequest,
 } from '../../shared/export-types';
 import {
@@ -17,6 +19,9 @@ import {
   ExportCancelResponseSchema,
   ExportStartResponseSchema,
   FullProbeExportRequestSchema,
+  ExportStartFormalRequestSchema,
+  ExportRevealOutputRequestSchema,
+  ExportRevealOutputResponseSchema,
 } from '../../shared/export-types';
 import {
   AppPingRequestSchema,
@@ -31,10 +36,15 @@ interface IpcHandlerDependencies {
   getHiddenWindow: () => BrowserWindow | null;
   markHiddenReady: (senderId: number) => void;
   markProbeLoaded: (senderId: number, payload: ExportProbeLoaded) => void;
+  markFormalLoaded?: (senderId: number, payload: ExportFormalLoaded) => void;
   markFrameReady: (senderId: number, payload: ExportFrameReady) => void;
   markFrameFailed: (senderId: number, payload: ExportFrameFailed) => void;
   startFullProbe: (request: FullProbeExportRequest) => ExportStartResponse;
+  startFormalExport?: (
+    request: ExportStartFormalRequest,
+  ) => Promise<ExportStartResponse>;
   cancelExport: (jobId: string) => ExportCancelResponse;
+  revealExportOutput?: (jobId: string) => Promise<boolean>;
 }
 
 function assertTrustedSender(
@@ -61,6 +71,17 @@ export function registerIpcHandlers(
       IPC_CHANNELS.EXPORT_PROBE_LOADED,
     );
     dependencies.markProbeLoaded(event.sender.id, payload);
+  };
+  const onFormalLoaded = (event: IpcMainEvent, payload: ExportFormalLoaded) => {
+    assertTrustedSender(
+      event,
+      dependencies.getHiddenWindow(),
+      IPC_CHANNELS.EXPORT_FORMAL_LOADED,
+    );
+    if (!dependencies.markFormalLoaded) {
+      throw new Error('Formal export is unavailable in this window.');
+    }
+    dependencies.markFormalLoaded(event.sender.id, payload);
   };
   const onFrameReady = (event: IpcMainEvent, payload: ExportFrameReady) => {
     assertTrustedSender(
@@ -138,7 +159,41 @@ export function registerIpcHandlers(
     },
   );
 
+  ipcMain.handle(
+    IPC_CHANNELS.EXPORT_START_FORMAL,
+    async (event, rawRequest: unknown) => {
+      assertTrustedSender(
+        event,
+        dependencies.getMainWindow(),
+        IPC_CHANNELS.EXPORT_START_FORMAL,
+      );
+      const request = ExportStartFormalRequestSchema.parse(rawRequest);
+      if (!dependencies.startFormalExport) {
+        throw new Error('Formal export is unavailable in this window.');
+      }
+      return ExportStartResponseSchema.parse(await dependencies.startFormalExport(request));
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.EXPORT_REVEAL_OUTPUT,
+    async (event, rawRequest: unknown) => {
+      assertTrustedSender(
+        event,
+        dependencies.getMainWindow(),
+        IPC_CHANNELS.EXPORT_REVEAL_OUTPUT,
+      );
+      const request = ExportRevealOutputRequestSchema.parse(rawRequest);
+      return ExportRevealOutputResponseSchema.parse({
+        opened: dependencies.revealExportOutput
+          ? await dependencies.revealExportOutput(request.jobId)
+          : false,
+      });
+    },
+  );
+
   ipcMain.on(IPC_CHANNELS.EXPORT_PROBE_LOADED, onProbeLoaded);
+  ipcMain.on(IPC_CHANNELS.EXPORT_FORMAL_LOADED, onFormalLoaded);
   ipcMain.on(IPC_CHANNELS.EXPORT_FRAME_READY, onFrameReady);
   ipcMain.on(IPC_CHANNELS.EXPORT_FRAME_FAILED, onFrameFailed);
 
@@ -147,7 +202,10 @@ export function registerIpcHandlers(
     ipcMain.removeHandler(IPC_CHANNELS.HIDDEN_READY);
     ipcMain.removeHandler(IPC_CHANNELS.EXPORT_START_PROBE);
     ipcMain.removeHandler(IPC_CHANNELS.EXPORT_CANCEL_JOB);
+    ipcMain.removeHandler(IPC_CHANNELS.EXPORT_START_FORMAL);
+    ipcMain.removeHandler(IPC_CHANNELS.EXPORT_REVEAL_OUTPUT);
     ipcMain.removeListener(IPC_CHANNELS.EXPORT_PROBE_LOADED, onProbeLoaded);
+    ipcMain.removeListener(IPC_CHANNELS.EXPORT_FORMAL_LOADED, onFormalLoaded);
     ipcMain.removeListener(IPC_CHANNELS.EXPORT_FRAME_READY, onFrameReady);
     ipcMain.removeListener(IPC_CHANNELS.EXPORT_FRAME_FAILED, onFrameFailed);
   };

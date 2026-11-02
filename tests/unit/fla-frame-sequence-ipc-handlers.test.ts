@@ -381,7 +381,10 @@ describe('R2-H.1 frame sequence commit IPC', () => {
     register(mocks);
     const response = await handler(IPC_CHANNELS.FLA_FRAME_SEQUENCE_COMMIT)(event(), validCommitRequest);
     expect(FlaFrameSequenceCommitResponseSchema.safeParse(response).success).toBe(true);
-    expect(mocks.commitService.commit).toHaveBeenCalledWith(validCommitRequest);
+    expect(mocks.commitService.commit).toHaveBeenCalledWith({
+      ...validCommitRequest,
+      importAsAnimation: false,
+    });
   });
 
   it('invalid commit request returns INVALID_REQUEST without throwing across the boundary', async () => {

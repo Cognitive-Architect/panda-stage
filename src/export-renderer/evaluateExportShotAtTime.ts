@@ -11,10 +11,12 @@ export function evaluateExportShotAtTime(
   project: Project,
   shot: Shot,
   requestedTimeMs: number,
+  activeDialogueId?: string | null,
 ): EvaluatedShot {
   return projectShotDialogueVisual(
     project,
     shot,
     evaluateShotAtTime(shot, requestedTimeMs, project),
+    activeDialogueId,
   );
 }

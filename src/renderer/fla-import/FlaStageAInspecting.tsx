@@ -1,81 +1,76 @@
+import { useRef } from 'react';
+
 /**
- * Stage A is deliberately a presentation-only state.  Inspection authority
- * remains in FlaInspectionLifecycle and Main; this component only gives the
- * user one calm, truthful view while that operation is pending.
+ * Stage A is a presentation-only waiting state. Inspection and cancellation
+ * authority remain with FlaInspectionLifecycle and Main.
  */
 export function FlaStageAInspecting({
   onCancel,
 }: {
   onCancel: () => void;
 }): React.JSX.Element {
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+
+  const keepFocusInDialog = (event: React.KeyboardEvent<HTMLElement>): void => {
+    if (event.key !== 'Tab') return;
+    event.preventDefault();
+    cancelButtonRef.current?.focus();
+  };
+
   return (
     <section
       aria-busy="true"
-      aria-label="FLA 导入工作台"
+      aria-labelledby="fla-stage-a-title"
       aria-modal="true"
       className="fla-review-session fla-stage-a-session"
       data-review-layout="portal"
       data-stage-a-state="inspecting"
       data-testid="fla-review-session"
       data-workbench-route="inspection"
+      onKeyDown={keepFocusInDialog}
       role="dialog"
     >
       <header
-        className="fla-review-heading fla-stage-a-header"
+        className="fla-stage-a-title-wrap"
         data-testid="fla-review-header"
       >
-        <h2>FLA 导入工作台</h2>
-        <div className="fla-stage-a-header-actions">
-          <span
-            className="fla-stage-a-state"
-            data-testid="fla-stage-a-state"
-          >
-            检查中
-          </span>
-          <button
-            autoFocus
-            className="fla-stage-a-cancel"
-            data-testid="fla-review-cancel"
-            onClick={onCancel}
-            type="button"
-          >
-            取消
-          </button>
-        </div>
+        <h2
+          className="fla-stage-a-title"
+          data-testid="fla-stage-a-headline"
+          id="fla-stage-a-title"
+        >导入素材</h2>
       </header>
 
-      <div className="fla-review-body fla-stage-a-body" data-testid="fla-review-body">
-        <div
+      <div
+        className="fla-stage-a-inspection"
+        data-testid="fla-stage-a-inspection"
+      >
+        <span
           aria-hidden="true"
-          className="fla-stage-a-quiet-pane"
-          data-placeholder-authoritative="false"
-          data-testid="fla-stage-a-quiet-pane"
+          className="fla-stage-a-spinner"
+          data-testid="fla-stage-a-spinner"
         />
-        <main
-          className="fla-stage-a-inspection"
-          data-testid="fla-stage-a-inspection"
+        <p
+          aria-atomic="true"
+          aria-live="polite"
+          className="fla-stage-a-status"
+          data-testid="fla-stage-a-status"
+          role="status"
         >
-          <div
-            aria-hidden="true"
-            className="fla-stage-a-scan-core"
-            data-ring-count="3"
-            data-testid="fla-stage-a-scan-core"
-          >
-            <span className="fla-stage-a-scan-ring fla-stage-a-scan-ring-outer" />
-            <span className="fla-stage-a-scan-ring fla-stage-a-scan-ring-middle" />
-            <span className="fla-stage-a-scan-ring fla-stage-a-scan-ring-inner" />
-            <span className="fla-stage-a-scan-center" />
-          </div>
-          <div className="fla-stage-a-copy">
-            <h1 data-testid="fla-stage-a-headline">正在检查 FLA</h1>
-            <p data-testid="fla-stage-a-trust">不会修改原文件或当前项目</p>
-          </div>
-        </main>
+          正在准备素材…
+        </p>
       </div>
 
-      <footer className="fla-stage-a-footer">
-        <span data-testid="fla-stage-a-helper">检查完成后自动进入下一步</span>
-      </footer>
+      <button
+        autoFocus
+        className="fla-stage-a-cancel"
+        data-testid="fla-review-cancel"
+        onClick={onCancel}
+        ref={cancelButtonRef}
+        type="button"
+      >
+        取消
+      </button>
     </section>
   );
 }

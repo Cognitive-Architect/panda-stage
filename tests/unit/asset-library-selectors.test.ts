@@ -1,6 +1,8 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
+  CharacterService,
   ProjectSchema,
   migrateProject,
   updateImageAssetAuthorMetadata,
@@ -8,10 +10,17 @@ import {
 import {
   assetCategoryCounts,
   assetLibraryFilterCounts,
+  filterAssetLibraryItems,
   filterAssetLibraryEntries,
+  selectAssetLibraryItems,
   selectAssetLibraryEntries,
 } from '../../src/renderer/stores/assetLibrarySelectors';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
+import {
+  adaptivePartsFixture,
+  adaptivePartsSourceRootTransform,
+} from '../helpers/adaptivePartsFixtures';
+import { buildProject, IDS } from './domain/testProject';
 import exampleProject from '../../demo-project/project-v1.example.json';
 
 describe('asset library selectors', () => {
@@ -40,6 +49,7 @@ describe('asset library selectors', () => {
       character: 2,
       background: 1,
       audio: 1,
+      animation: 0,
     });
     expect(
       filterAssetLibraryEntries(entries, 'happy').map(
@@ -47,6 +57,103 @@ describe('asset library selectors', () => {
       ),
     ).toEqual(['Panda happy']);
     expect(filterAssetLibraryEntries(entries, '  ')).toEqual(entries);
+  });
+
+  it('keeps animation frames distinct and hides only sequence-created frame images', () => {
+    const project = migrateProject(exampleProject);
+    const existingImage = project.assets.find((asset) => asset.kind === 'image');
+    if (!existingImage || existingImage.kind !== 'image') {
+      throw new Error('Expected an existing image fixture.');
+    }
+    const newAssetId = randomUUID();
+    const createdHash = 'a'.repeat(64);
+    const reusedHash = 'b'.repeat(64);
+    const fps = 24;
+    const durationMs = 1_000 / fps;
+    const source = (basename: string, sha256: string) => ({
+      basename,
+      sha256,
+      renderTargetId: 'fla-render-target-test',
+      targetKind: 'graphic-symbol' as const,
+      targetName: 'Test target',
+      startFrameIndex: 0,
+      endFrameIndex: 0,
+      sourceFps: fps,
+      canvas: { width: 1920, height: 1080 },
+      documentCanvas: { width: 1920, height: 1080 },
+      anchor: { x: 960, y: 540 },
+    });
+    const withAnimations = ProjectSchema.parse({
+      ...project,
+      assets: [
+        ...project.assets.map((asset) =>
+          asset.id === existingImage.id ? { ...asset, sha256: reusedHash } : asset,
+        ),
+        {
+          id: newAssetId,
+          kind: 'image',
+          name: 'Walk frame 0000',
+          relativePath: 'assets/walk-frame-0000.png',
+          mimeType: 'image/png',
+          sha256: createdHash,
+          width: 16,
+          height: 16,
+          usage: 'uncategorized',
+          keywords: [],
+        },
+      ],
+      animations: [
+        {
+          id: randomUUID(),
+          name: 'Created animation',
+          source: source('created.fla', 'c'.repeat(64)),
+          durationMs,
+          frames: [{
+            ordinal: 0,
+            sourceFrameIndex: 0,
+            assetId: newAssetId,
+            sha256: createdHash,
+            sourceViewport: { x: 960, y: 540, width: 1920, height: 1080 },
+            offset: { x: 0, y: 0 },
+            startMs: 0,
+            durationMs,
+            createdBySequenceImport: true,
+          }],
+        },
+        {
+          id: randomUUID(),
+          name: 'Reused animation',
+          source: source('reused.fla', 'd'.repeat(64)),
+          durationMs,
+          frames: [{
+            ordinal: 0,
+            sourceFrameIndex: 0,
+            assetId: existingImage.id,
+            sha256: reusedHash,
+            sourceViewport: { x: 960, y: 540, width: 1920, height: 1080 },
+            offset: { x: 0, y: 0 },
+            startMs: 0,
+            durationMs,
+            createdBySequenceImport: false,
+          }],
+        },
+      ],
+    });
+
+    const entries = selectAssetLibraryEntries(withAnimations, 'all');
+    expect(entries.some((entry) => entry.asset.id === newAssetId)).toBe(false);
+    expect(entries.some((entry) => entry.asset.id === existingImage.id)).toBe(true);
+    const items = selectAssetLibraryItems(withAnimations, 'all');
+    expect(items.filter((item) => item.kind === 'animation')).toHaveLength(2);
+    expect(selectAssetLibraryItems(withAnimations, 'animation')).toHaveLength(2);
+    expect(assetLibraryFilterCounts(withAnimations)).toMatchObject({
+      all: 6,
+      animation: 2,
+    });
+    expect(filterAssetLibraryItems(items, 'reused.fla')).toEqual([
+      expect.objectContaining({ kind: 'animation', animation: expect.objectContaining({ name: 'Reused animation' }) }),
+    ]);
+    expect(filterAssetLibraryItems(items, 'Created animation', 'prop')).toEqual([]);
   });
 
   it('filters every explicit image usage without changing role grouping or drop identity', () => {
@@ -209,7 +316,7 @@ describe('asset library selectors', () => {
 
   it('classifies a composite Body as Character-related without guessing Character identity', () => {
     const project = migrateProject(exampleProject);
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
     const bodyAsset = project.assets.find(
       (asset) =>
         asset.kind === 'image' &&
@@ -245,9 +352,51 @@ describe('asset library selectors', () => {
     expect(bodyEntry?.dropPayload).not.toHaveProperty('expressionId');
   });
 
+  it('labels a Part image in concise Chinese while keeping it a regular image drop', () => {
+    const base = buildProject();
+    const sourceAsset = base.assets.find(
+      (asset) => asset.id === IDS.assetChar2,
+    );
+    if (!sourceAsset || sourceAsset.kind !== 'image') {
+      throw new Error('Expected an image fixture.');
+    }
+    const partAssetId = '10000000-0000-4000-8000-000000000099';
+    const withPartAsset = ProjectSchema.parse({
+      ...base,
+      assets: [
+        ...base.assets,
+        {
+          ...sourceAsset,
+          id: partAssetId,
+          name: 'Part image',
+          relativePath: 'part-only.png',
+        },
+      ],
+    });
+    const project = new CharacterService().createAdaptiveParts(withPartAsset, {
+      name: 'Synthetic Static Parts',
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(partAssetId),
+    });
+    const partEntry = selectAssetLibraryEntries(project, 'character').find(
+      (entry) =>
+        entry.id === `character-direct:${partAssetId}` &&
+        entry.asset.id === partAssetId,
+    );
+
+    expect(partEntry).toMatchObject({
+      contextLabel: '部件图片 · 作为普通图片放置',
+      dropPayload: {
+        version: 2,
+        type: 'asset-image',
+        assetId: partAssetId,
+      },
+    });
+  });
+
   it('emits one explicit identity entry per character expression even when assets are shared', () => {
     const project = migrateProject(exampleProject);
-    const characterA = project.characters[0]!;
+    const characterA = asExpressionCharacter(project.characters[0]!);
     const sharedAssetId = characterA.expressions[0]!.assetId;
     const characterB = {
       ...characterA,

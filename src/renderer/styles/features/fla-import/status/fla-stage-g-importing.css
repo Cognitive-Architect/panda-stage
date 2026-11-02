@@ -1,0 +1,33 @@
+.fla-stage-g-importing {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.fla-stage-g-importing .fla-stage-g-terminal-inner {
+  gap: 14px;
+}
+
+.fla-stage-g-importing-message {
+  max-width: 100%;
+  padding: 0;
+  margin: 0;
+  color: #dce8df;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: center;
+}
+
+@media (max-width: 620px) {
+  .fla-stage-g-importing {
+    padding: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fla-stage-g-importing .fla-stage-g-progress-mark > span {
+    animation: none;
+  }
+}

@@ -3,6 +3,7 @@ import path from 'node:path';
 
 export interface MainWindowOptions {
   gateA?: boolean;
+  issue816Acceptance?: boolean;
   show?: boolean;
 }
 
@@ -32,11 +33,18 @@ export async function createMainWindow(
   if (developmentUrl) {
     const url = new URL(developmentUrl);
     if (options.gateA) url.searchParams.set('gateA', '1');
+    if (options.issue816Acceptance) {
+      url.searchParams.set('issue816Acceptance', '1');
+    }
     await window.loadURL(url.toString());
   } else {
+    const query = {
+      ...(options.gateA ? { gateA: '1' } : {}),
+      ...(options.issue816Acceptance ? { issue816Acceptance: '1' } : {}),
+    };
     await window.loadFile(
       path.join(__dirname, '../../../dist/renderer/index.html'),
-      options.gateA ? { query: { gateA: '1' } } : undefined,
+      Object.keys(query).length > 0 ? { query } : undefined,
     );
   }
 

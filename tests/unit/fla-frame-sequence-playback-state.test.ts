@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   flaSequencePlaybackReducer,
-  FLA_SEQUENCE_PREVIEW_INTERVAL_MS,
   initialFlaSequencePlaybackState,
 } from '../../src/renderer/fla-import/fla-frame-sequence-playback-state';
 
@@ -9,21 +8,18 @@ function withFrames(frameCount: number) {
   return flaSequencePlaybackReducer(initialFlaSequencePlaybackState, { type: 'load', frameCount });
 }
 
-describe('Issue #782 sequence preview playback', () => {
-  it('uses an approximately 12 FPS preview cadence', () => {
-    expect(FLA_SEQUENCE_PREVIEW_INTERVAL_MS).toBeCloseTo(1000 / 12);
-  });
-
-  it('starts on the selected frame and advances only on the next playback tick', () => {
+describe('sequence preview playback', () => {
+  it('starts on the selected frame and follows the sampled source-time frame', () => {
     let state = withFrames(4);
     state = flaSequencePlaybackReducer(state, { type: 'select', selectedIndex: 2 });
     state = flaSequencePlaybackReducer(state, { type: 'play', sessionKey: 'sequence-a' });
 
     expect(state).toMatchObject({ selectedIndex: 2, isPlaying: true });
     state = flaSequencePlaybackReducer(state, {
-      type: 'tick',
+      type: 'sample',
       sessionKey: 'sequence-a',
       generation: state.generation,
+      selectedIndex: 3,
     });
     expect(state.selectedIndex).toBe(3);
   });
@@ -31,7 +27,7 @@ describe('Issue #782 sequence preview playback', () => {
   it('pauses on the current frame and resumes from it', () => {
     let state = flaSequencePlaybackReducer(withFrames(5), { type: 'play', sessionKey: 'sequence-a' });
     state = flaSequencePlaybackReducer(state, {
-      type: 'tick', sessionKey: 'sequence-a', generation: state.generation,
+      type: 'sample', sessionKey: 'sequence-a', generation: state.generation, selectedIndex: 1,
     });
     const pausedIndex = state.selectedIndex;
     state = flaSequencePlaybackReducer(state, { type: 'pause' });
@@ -40,18 +36,38 @@ describe('Issue #782 sequence preview playback', () => {
     state = flaSequencePlaybackReducer(state, { type: 'play', sessionKey: 'sequence-a' });
     expect(state.selectedIndex).toBe(pausedIndex);
     state = flaSequencePlaybackReducer(state, {
-      type: 'tick', sessionKey: 'sequence-a', generation: state.generation,
+      type: 'sample', sessionKey: 'sequence-a', generation: state.generation, selectedIndex: 2,
     });
-    expect(state.selectedIndex).toBe(pausedIndex + 1);
+    expect(state.selectedIndex).toBe(2);
   });
 
-  it('loops at the end on an automatic tick', () => {
+  it('loops at the end on a source-time sample', () => {
     let state = flaSequencePlaybackReducer(withFrames(3), { type: 'select', selectedIndex: 2 });
     state = flaSequencePlaybackReducer(state, { type: 'play', sessionKey: 'sequence-a' });
     state = flaSequencePlaybackReducer(state, {
-      type: 'tick', sessionKey: 'sequence-a', generation: state.generation,
+      type: 'sample', sessionKey: 'sequence-a', generation: state.generation, selectedIndex: 0,
     });
     expect(state.selectedIndex).toBe(0);
+  });
+
+  it('samples the source-timed frame and ignores stale playback generations', () => {
+    let state = flaSequencePlaybackReducer(withFrames(21), { type: 'play', sessionKey: 'sequence-a' });
+    const generation = state.generation;
+    state = flaSequencePlaybackReducer(state, {
+      type: 'sample',
+      sessionKey: 'sequence-a',
+      generation,
+      selectedIndex: 20,
+    });
+    expect(state.selectedIndex).toBe(20);
+
+    const stale = flaSequencePlaybackReducer(state, {
+      type: 'sample',
+      sessionKey: 'sequence-a',
+      generation: generation - 1,
+      selectedIndex: 4,
+    });
+    expect(stale).toBe(state);
   });
 
   it('clamps manual steps at each edge and pauses before changing frame', () => {
@@ -73,7 +89,7 @@ describe('Issue #782 sequence preview playback', () => {
     expect(flaSequencePlaybackReducer(state, { type: 'step', direction: 1 }).selectedIndex).toBe(0);
   });
 
-  it('ignores stale ticks after pause and an A→B→A candidate focus cycle', () => {
+  it('ignores stale samples after pause and an A→B→A candidate focus cycle', () => {
     let state = withFrames(4);
     state = flaSequencePlaybackReducer(state, { type: 'play', sessionKey: 'candidate-a' });
     const firstGeneration = state.generation;
@@ -83,15 +99,15 @@ describe('Issue #782 sequence preview playback', () => {
     state = flaSequencePlaybackReducer(state, { type: 'play', sessionKey: 'candidate-a' });
     const currentGeneration = state.generation;
 
-    const afterOldTick = flaSequencePlaybackReducer(state, {
-      type: 'tick', sessionKey: 'candidate-a', generation: firstGeneration,
+    const afterOldSample = flaSequencePlaybackReducer(state, {
+      type: 'sample', sessionKey: 'candidate-a', generation: firstGeneration, selectedIndex: 3,
     });
-    expect(afterOldTick).toBe(state);
+    expect(afterOldSample).toBe(state);
 
-    const afterCurrentTick = flaSequencePlaybackReducer(state, {
-      type: 'tick', sessionKey: 'candidate-a', generation: currentGeneration,
+    const afterCurrentSample = flaSequencePlaybackReducer(state, {
+      type: 'sample', sessionKey: 'candidate-a', generation: currentGeneration, selectedIndex: 1,
     });
-    expect(afterCurrentTick.selectedIndex).toBe(1);
+    expect(afterCurrentSample.selectedIndex).toBe(1);
   });
 
   it('makes repeated play idempotent and repeated pause safe', () => {

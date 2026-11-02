@@ -289,6 +289,26 @@ describe('FlaStaticSnapshotCommitService', () => {
     expect(files).toHaveLength(1);
   });
 
+  it('persists the original file SHA when the confirmed source was normalized in memory', async () => {
+    const h = await harness();
+    const { png, sha256 } = makePng(8, 8);
+    const confirmed = {
+      ...confirmedPreview(png, sha256),
+      source: {
+        basename: SOURCE.basename,
+        sha256: 'c'.repeat(64),
+        originalSourceSha256: SOURCE.sha256,
+      },
+    } satisfies FlaConfirmedSnapshotPreview;
+    const response = await h.createService({
+      previewStore: previewStore(confirmed),
+    }).commit(request(h, confirmed));
+
+    expect(response.ok).toBe(true);
+    if (!response.ok) throw new Error('commit should succeed');
+    expect(response.result.asset.flaSnapshot?.sourceSha256).toBe(SOURCE.sha256);
+  });
+
   it('preserves dotted composed target labels in the visible asset name', async () => {
     const h = await harness();
     const { png, sha256 } = makePng(8, 8);

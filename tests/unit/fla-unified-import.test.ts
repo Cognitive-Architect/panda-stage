@@ -139,4 +139,48 @@ describe('runFlaUnifiedImport', () => {
     expect(receipt.cancelled).toBe(true);
     expect(receipt.snapshot.revision).toBe(1);
   });
+
+  it('offers stop-after-current only while a safe follow-on operation exists', async () => {
+    const rasterBatch = [item('raster', 'bitmap-a'), item('raster', 'bitmap-b')];
+    const rasterAvailability: boolean[] = [];
+    const rasterRunner: FlaUnifiedImportRunner = async (routeItems, current) => ({
+      items: routeItems.map((selectedItem) => ({ ...selectedItem, status: 'imported' })),
+      snapshot: nextSnapshot(current),
+    });
+
+    await runFlaUnifiedImport({
+      items: rasterBatch,
+      snapshot,
+      runners: { raster: rasterRunner },
+      shouldCancel: () => false,
+      onStopActionAvailabilityChange: (available) => rasterAvailability.push(available),
+    });
+
+    expect(rasterAvailability).toEqual([false]);
+
+    const snapshotBatch = [item('snapshot', 'scene-a'), item('snapshot', 'scene-b')];
+    const snapshotAvailability: boolean[] = [];
+    const snapshotRunner: FlaUnifiedImportRunner = async (
+      routeItems,
+      current,
+      _shouldCancel,
+      onItemCompleted,
+    ) => {
+      onItemCompleted?.(1);
+      return {
+        items: routeItems.map((selectedItem) => ({ ...selectedItem, status: 'imported' })),
+        snapshot: nextSnapshot(current),
+      };
+    };
+
+    await runFlaUnifiedImport({
+      items: snapshotBatch,
+      snapshot,
+      runners: { snapshot: snapshotRunner },
+      shouldCancel: () => false,
+      onStopActionAvailabilityChange: (available) => snapshotAvailability.push(available),
+    });
+
+    expect(snapshotAvailability).toEqual([true, false]);
+  });
 });
