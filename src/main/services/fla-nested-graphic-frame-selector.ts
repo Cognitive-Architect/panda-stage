@@ -28,17 +28,18 @@
  * `com22` compatibility case still advances without granting unproven generic
  * modulo semantics to tween-owned instances.
  *
- * Issue #919 adds one narrower motion-tween case: a Loop Graphic with exactly
- * one child frame, no authored firstFrame/lastFrame, and a zero-origin motion
- * span always selects frame 0. It does not relax multi-frame tween behavior.
+ * Issues #919/#920 add one narrower motion-tween case: a Loop Graphic with
+ * exactly one child frame, no authored firstFrame/lastFrame, and valid parent
+ * frame coordinates always selects frame 0 at any non-negative motion-span
+ * origin. It does not relax multi-frame tween behavior.
  *
  * Issue #726 adds a separate mode-invariant case: when playback mode is absent
  * and the child has exactly one frame, select frame 0 without assigning a mode.
  * Missing playback on multi-frame children remains UNKNOWN_PLAYBACK_DEFAULT.
  *
  * Everything else (animated/tweened firstFrame, reverse loop, tween-span
- * wrap/non-zero-origin/authored-lastFrame, generic lastFrame animation) remains
- * fail-closed.
+ * wrap/multi-frame non-zero-origin/authored-lastFrame, generic lastFrame
+ * animation) remains fail-closed.
  */
 
 import crypto from 'node:crypto';
@@ -191,7 +192,8 @@ function selectAuthoredChildFrame(
     );
   }
   if (!Number.isSafeInteger(parentFrameIndex) || !Number.isSafeInteger(parentSpanStart) ||
-      parentFrameIndex === undefined || parentSpanStart === undefined || parentFrameIndex < parentSpanStart) {
+      parentFrameIndex === undefined || parentSpanStart === undefined || parentFrameIndex < 0 ||
+      parentSpanStart < 0 || parentFrameIndex < parentSpanStart) {
     return failure(
       'UNSUPPORTED_TIMING',
       'Nested Graphic instance has no valid selected parent frame and containing DOMFrame span address',
@@ -302,11 +304,12 @@ function selectAuthoredChildFrame(
       };
     }
 
-    // #919: the measured zero-origin motion case has exactly one legal child
-    // frame and no authored bounds, so every elapsed parent time still selects
-    // frame 0. This is a constant selection, not tween-owned Loop modulo.
+    // #919/#920: a one-frame Graphic has exactly one legal child frame and no
+    // authored bounds, so every valid elapsed parent time selects frame 0 at any
+    // non-negative motion-span origin. This is a constant selection, not
+    // tween-owned Loop modulo.
     if (element.sourceParentSpanTweenType === 'motion' &&
-        parentSpanStart === 0 &&
+        parentSpanStart >= 0 &&
         element.lastFrame === undefined &&
         childFrameCount === 1) {
       return {
@@ -317,8 +320,9 @@ function selectAuthoredChildFrame(
       };
     }
 
-    // #724 — missing firstFrame inside a motion/tween owning span: only the legacy
-    // origin=0 / no-lastFrame / no-wrap bounded path is proven (com22).
+    // #724 — missing firstFrame on a multi-frame Graphic inside a motion/tween
+    // owning span: only the legacy origin=0 / no-lastFrame / no-wrap bounded
+    // path is proven (com22).
     if (parentSpanStart !== 0) {
       return failure(
         'UNSUPPORTED_TIMING',

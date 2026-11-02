@@ -52,13 +52,15 @@ function animatedParentFrames(): string {
 function motionOwnedMissingFirstFrame(options: {
   readonly origin?: number;
   readonly spanDuration?: number;
+  readonly firstFrame?: string;
   readonly lastFrame?: string;
 } = {}): string {
   const origin = options.origin ?? 0;
   const spanDuration = options.spanDuration ?? 2;
+  const first = options.firstFrame === undefined ? '' : ` firstFrame="${options.firstFrame}"`;
   const last = options.lastFrame === undefined ? '' : ` lastFrame="${options.lastFrame}"`;
   const instance = (tx: number, ty: number, selected: string) =>
-    `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop"${last}${selected}>` +
+    `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop"${first}${last}${selected}>` +
     `${matrix(tx, ty)}<transformationPoint><Point x="5" y="7"/></transformationPoint></DOMSymbolInstance>`;
   const start = `<DOMFrame index="${origin}" duration="${spanDuration}" tweenType="motion" motionTweenSnap="true" keyMode="22017"><elements>${instance(0, 0, '')}</elements></DOMFrame>`;
   const end = `<DOMFrame index="${origin + spanDuration}" duration="1" tweenType="none" keyMode="15872"><elements>${instance(4, 6, ' selected="true"')}</elements></DOMFrame>`;
@@ -550,14 +552,18 @@ describe('nested Graphic authored-frame selection', () => {
 
   // --- Issue #724: tween-span scope re-tightening (missing-firstFrame Loop) ---
 
-  it('selects frame zero for a one-frame Loop Graphic inside a zero-origin motion tween (#919)', () => {
-    const source = adapt(motionOwnedMissingFirstFrame({ spanDuration: 2 }), emptyFrames(1));
-    const root = graphicRoot(source, 'parent', 1);
+  it.each([
+    { origin: 0, parentFrameIndex: 1 },
+    { origin: 5, parentFrameIndex: 6 },
+    { origin: 206, parentFrameIndex: 207 },
+  ])('selects frame zero for a one-frame Loop Graphic in a motion tween at origin $origin (#919/#920)', ({ origin, parentFrameIndex }) => {
+    const source = adapt(motionOwnedMissingFirstFrame({ origin, spanDuration: 2 }), emptyFrames(1));
+    const root = graphicRoot(source, 'parent', parentFrameIndex);
     const original = root.frameContext.layers[0]?.elements[0];
     expect(original?.kind).toBe('symbol');
     if (original?.kind !== 'symbol') return;
-    expect(original.sourceParentFrameIndex).toBe(1);
-    expect(original.sourceParentFrameSpanStart).toBe(0);
+    expect(original.sourceParentFrameIndex).toBe(parentFrameIndex);
+    expect(original.sourceParentFrameSpanStart).toBe(origin);
     expect(original.sourceParentSpanTweenType).toBe('motion');
     expect(original.playbackMode).toBe('loop');
     expect(original.firstFrame).toBeUndefined();
@@ -573,8 +579,8 @@ describe('nested Graphic authored-frame selection', () => {
       playbackMode: 'loop',
       firstFrameWasExplicit: false,
       effectiveFirstFrame: 0,
-      sourceParentFrameIndex: 1,
-      sourceParentFrameSpanStart: 0,
+      sourceParentFrameIndex: parentFrameIndex,
+      sourceParentFrameSpanStart: origin,
       childFrameCount: 1,
       selectedChildFrameIndex: 0,
       selectionRule: 'loop-tween-single-frame-constant',
@@ -625,18 +631,7 @@ describe('nested Graphic authored-frame selection', () => {
     if (resolved.ok) expect(resolved.displayList.layers[0]?.children).toHaveLength(0);
   });
 
-  it('keeps the one-frame tween Loop exception fail-closed for nonzero origin and authored lastFrame (#919)', () => {
-    const nonzeroOrigin = adapt(
-      motionOwnedMissingFirstFrame({ origin: 206, spanDuration: 2 }),
-      emptyFrames(1),
-    );
-    const nonzeroResult = prepareFlaNestedGraphicFrameSelections(
-      nonzeroOrigin,
-      graphicRoot(nonzeroOrigin, 'parent', 207),
-    );
-    expect(nonzeroResult).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
-    if (!nonzeroResult.ok) expect(nonzeroResult.message).toContain('span starts at 206');
-
+  it('keeps an authored lastFrame outside the one-frame tween Loop exception (#920)', () => {
     const authoredLastFrame = adapt(
       motionOwnedMissingFirstFrame({ lastFrame: '0', spanDuration: 2 }),
       emptyFrames(1),
@@ -647,6 +642,66 @@ describe('nested Graphic authored-frame selection', () => {
     );
     expect(lastFrameResult).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
     if (!lastFrameResult.ok) expect(lastFrameResult.message).toContain('lastFrame is not proven');
+  });
+
+  it('keeps an authored firstFrame outside the one-frame tween Loop exception (#920)', () => {
+    const explicitFirstFrame = adapt(
+      motionOwnedMissingFirstFrame({ origin: 5, firstFrame: '0', spanDuration: 2 }),
+      emptyFrames(1),
+    );
+    const result = prepareFlaNestedGraphicFrameSelections(
+      explicitFirstFrame,
+      graphicRoot(explicitFirstFrame, 'parent', 6),
+    );
+    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
+    if (!result.ok) expect(result.message).toContain('only proven inside a static authored span');
+  });
+
+  it('fails closed when the one-frame tween Loop has invalid parent coordinates (#920)', () => {
+    const source = adapt(motionOwnedMissingFirstFrame({ origin: 5, spanDuration: 2 }), emptyFrames(1));
+    const root = graphicRoot(source, 'parent', 6);
+    const invalidRoot = {
+      ...root,
+      frameContext: {
+        ...root.frameContext,
+        layers: root.frameContext.layers.map((layer, index) => index === 0
+          ? {
+              ...layer,
+              elements: layer.elements.map((element) => element.kind === 'symbol'
+                ? { ...element, sourceParentFrameIndex: 4 }
+                : element),
+            }
+          : layer),
+      },
+    };
+    const result = prepareFlaNestedGraphicFrameSelections(source, invalidRoot);
+    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
+    if (!result.ok) expect(result.message).toContain('no valid selected parent frame');
+  });
+
+  it.each([
+    { name: 'fractional span origin', overrides: { sourceParentFrameSpanStart: 5.5 } },
+    { name: 'negative span origin', overrides: { sourceParentFrameSpanStart: -1 } },
+    { name: 'unsupported tween metadata', overrides: { sourceParentSpanTweenType: 'shape' } },
+  ])('fails closed for abnormal one-frame tween Loop metadata ($name)', ({ overrides }) => {
+    const source = adapt(motionOwnedMissingFirstFrame({ origin: 5, spanDuration: 2 }), emptyFrames(1));
+    const root = graphicRoot(source, 'parent', 6);
+    const malformedRoot = {
+      ...root,
+      frameContext: {
+        ...root.frameContext,
+        layers: root.frameContext.layers.map((layer, index) => index === 0
+          ? {
+              ...layer,
+              elements: layer.elements.map((element) => element.kind === 'symbol'
+                ? { ...element, ...overrides }
+                : element),
+            }
+          : layer),
+      },
+    };
+    const result = prepareFlaNestedGraphicFrameSelections(source, malformedRoot);
+    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
   });
 
   it('preserves the legacy origin=0 no-wrap Loop path inside a tweened owning span (#724)', () => {
