@@ -1847,6 +1847,56 @@ async function run() {
   await capture(windowRef, 'read-only-preview-after-match-icon-replacement.png');
   const beforeConfirm = await readUiState(windowRef);
   assert(beforeConfirm.revision === 0, 'The prepared preview changed the Project revision.');
+  windowRef.setSize(800, 1_100);
+  await waitForDom(
+    windowRef,
+    `document.querySelector('.editor-shell')?.dataset.editorShellLayout === 'portrait'`,
+    'The narrow Cloud Touch window did not select the portrait layout for matched rows.',
+  );
+  await waitForDom(
+    windowRef,
+    `document.querySelector('[data-testid="scene-creation-background-match"]')?.dataset.candidateId === ${JSON.stringify(selectedBackgroundId)} && document.querySelector('[data-testid="scene-creation-character-match"]')?.dataset.candidateId === ${JSON.stringify(selectedCharacterId)} && document.querySelector('.project-canvas')?.dataset.scenePreviewStatus === 'ready'`,
+    'The selected resources or read-only preview did not survive the portrait layout change.',
+  );
+  const portraitBackgroundRow = await readSceneMatchRowState(windowRef, 'background');
+  const portraitCharacterRow = await readSceneMatchRowState(windowRef, 'character');
+  assert(
+    portraitBackgroundRow.id === selectedBackgroundId &&
+      portraitBackgroundRow.matched && portraitBackgroundRow.successCheck &&
+      portraitBackgroundRow.status === null &&
+      portraitBackgroundRow.actionWidth >= 44 && portraitBackgroundRow.actionHeight >= 44 &&
+      portraitCharacterRow.id === selectedCharacterId &&
+      portraitCharacterRow.matched && portraitCharacterRow.successCheck &&
+      portraitCharacterRow.status === null &&
+      portraitCharacterRow.actionWidth >= 44 && portraitCharacterRow.actionHeight >= 44,
+    `The portrait match rows do not retain their compact success and replacement controls: ${JSON.stringify({ portraitBackgroundRow, portraitCharacterRow })}.`,
+  );
+  const portraitMatchScreenshot = await capture(
+    windowRef,
+    'cloud-touch-portrait-matched-preview.png',
+  );
+  const portraitPreviewState = await readScenePreviewState(windowRef);
+  const afterPortraitMatch = await readUiState(windowRef);
+  assert(
+    portraitPreviewState.active && portraitPreviewState.status === 'ready' &&
+      portraitPreviewState.readOnly &&
+      afterPortraitMatch.revision === beforeConfirm.revision &&
+      afterPortraitMatch.shotCount === beforeConfirm.shotCount &&
+      afterPortraitMatch.undoCount === beforeConfirm.undoCount &&
+      afterPortraitMatch.redoCount === beforeConfirm.redoCount,
+    'The portrait match screenshot state changed the Project, History, or read-only preview.',
+  );
+  windowRef.setSize(1_600, 1_050);
+  await waitForDom(
+    windowRef,
+    `document.querySelector('.editor-shell')?.dataset.editorShellLayout === 'landscape'`,
+    'The Electron window did not return to the landscape layout after the portrait match capture.',
+  );
+  await waitForDom(
+    windowRef,
+    `document.querySelector('.project-canvas')?.dataset.scenePreviewStatus === 'ready' && document.querySelector('[data-testid="scene-creation-confirm"]')?.disabled === false`,
+    'The main-canvas preview did not remain ready after restoring the landscape layout.',
+  );
   await clickWithMouseInput(windowRef, '[data-testid="scene-creation-confirm"]');
   await waitForDom(
     windowRef,
@@ -2097,6 +2147,7 @@ async function run() {
       existingShotManualEdit: existingManualFlow.screenshots.adjusted,
       existingShotSavedReopened: existingManualFlow.screenshots.reopened,
       clipboardPaste: clipboardPaste.screenshot,
+      portraitMatchedPreview: portraitMatchScreenshot,
       stalePreview: stalePreview.screenshots.preview,
       stalePreviewInvalidated: stalePreview.screenshots.invalidated,
       stalePreviewRecovered: stalePreview.screenshots.recovered,
