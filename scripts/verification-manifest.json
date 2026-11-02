@@ -359,6 +359,7 @@
         "testPatterns": [
           "tests/unit/domain/**",
           "tests/unit/scene-creation-service.test.ts",
+          "tests/unit/cache-thumbnail-service.test.ts",
           "tests/unit/position-authoring-session.test.ts",
           "tests/unit/position-project-service.test.ts",
           "tests/unit/speaker-focus-camera.test.ts",
@@ -526,7 +527,7 @@
       {
         "id": "shots",
         "sourcePatterns": ["src/renderer/features/shots/**"],
-        "testPatterns": ["tests/unit/shot-*.test.ts", "tests/unit/scene-creation-panel.test.ts", "tests/integration/shot-*.test.ts"],
+        "testPatterns": ["tests/unit/shot-*.test.ts", "tests/unit/scene-creation-panel.test.ts", "tests/unit/scene-creation-preview.test.ts", "tests/integration/shot-*.test.ts"],
         "verifierPatterns": [
           "scripts/verify-day20*",
           "scripts/verify-issue608-shot-thumbnail.cjs",
