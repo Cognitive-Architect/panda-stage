@@ -5,8 +5,8 @@
  * project. The overlay reuses the formal evaluator (`evaluateShotAtTime`) and
  * the formal renderer (`buildStageRenderModel` via `StageRenderer`), so this
  * module deliberately contains no rendering, no IPC, and no store access: it
- * only prepares inputs (asset ids, subtitle cues) and advances the overlay's
- * own local playback clock.
+ * only prepares inputs (asset ids, subtitle cues) and resolves the overlay's
+ * anchored playback clock.
  *
  * Read-only guarantee: no function in this file mutates the project, the
  * revision, the dirty flag, the selection or the history. They all take the
@@ -26,18 +26,17 @@ import {
 import type { SubtitleCue } from '../../shared/preview/subtitle-engine';
 import { buildDialogueSubtitleCues } from '../../shared/preview/dialogue-subtitle';
 
-/**
- * Upper bound for a single playback step. A background tab, a blocked main
- * thread or a paused animation frame can produce a very large delta; clamping
- * keeps the preview from jumping across the whole shot in one frame.
- */
-export const PRODUCT_PREVIEW_MAX_STEP_MS = 250;
-
 export interface ProductPreviewTimeStep {
-  /** Clamped, integer millisecond position inside `[0, durationMs]`. */
+  /** Rounded, integer millisecond position inside `[0, durationMs]`. */
   timeMs: number;
   /** True once the clock reached the end of the shot. */
   ended: boolean;
+}
+
+/** Absolute monotonic-time anchor for the Preview's single playback clock. */
+export interface ProductPreviewClockAnchor {
+  startedAtMs: number;
+  startTimeMs: number;
 }
 
 /** The two playback ranges owned by one Product Preview surface. */
@@ -290,21 +289,40 @@ export function clampProductPreviewTime(
 }
 
 /**
- * Advances the overlay's own playback clock by one animation frame. Pure: the
- * caller owns the resulting state, nothing global is touched.
+ * Reads the current Preview position from its absolute monotonic-time anchor.
+ * Long foreground stalls therefore catch up to elapsed wall time in one read;
+ * only the rendered frame is skipped, never time from the master clock.
  */
-export function advanceProductPreviewTime(
-  currentTimeMs: number,
-  deltaMs: number,
+export function resolveProductPreviewClockTime(
+  anchor: ProductPreviewClockAnchor,
+  nowMs: number,
   durationMs: number,
 ): ProductPreviewTimeStep {
-  const step = Math.min(
-    PRODUCT_PREVIEW_MAX_STEP_MS,
-    Math.max(0, Number.isFinite(deltaMs) ? deltaMs : 0),
-  );
+  const elapsedMs =
+    Number.isFinite(nowMs) && Number.isFinite(anchor.startedAtMs)
+      ? Math.max(0, nowMs - anchor.startedAtMs)
+      : 0;
   const maximum = Math.max(0, Math.round(durationMs));
-  const timeMs = clampProductPreviewTime(currentTimeMs + step, maximum);
+  const timeMs = clampProductPreviewTime(
+    anchor.startTimeMs + elapsedMs,
+    maximum,
+  );
   return { timeMs, ended: timeMs >= maximum };
+}
+
+/**
+ * Hidden pages pause at the current master time. A visible notification never
+ * resumes playback; the user must explicitly issue the Play action.
+ */
+export function resolveProductPreviewVisibilityPause(
+  visibilityState: DocumentVisibilityState,
+  anchor: ProductPreviewClockAnchor | null,
+  nowMs: number,
+  durationMs: number,
+): ProductPreviewTransportState | null {
+  if (visibilityState !== 'hidden' || !anchor) return null;
+  const { timeMs } = resolveProductPreviewClockTime(anchor, nowMs, durationMs);
+  return { timeMs, playing: false, repositionAudio: false };
 }
 
 /** Locks Product Preview's user-facing transport semantics as pure state. */

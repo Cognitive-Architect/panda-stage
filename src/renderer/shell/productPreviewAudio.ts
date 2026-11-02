@@ -57,6 +57,7 @@ export interface ProductPreviewAudioSyncInput {
   project: Project;
   shot: Shot | null;
   timeMs: number;
+  masterTimeSampledAtMs: number;
   playing: boolean;
   seekRevision: number;
 }
@@ -92,6 +93,7 @@ export class ProductPreviewAudioTransport {
   private cacheBytes = 0;
   private cacheEpoch = 0;
   private latestInput: ProductPreviewAudioSyncInput | null = null;
+  private latestMasterSampledAtMs: number | null = null;
   private warning: string | null = null;
   private disposed = false;
 
@@ -105,6 +107,7 @@ export class ProductPreviewAudioTransport {
     if (this.disposed) return;
     const previous = this.latestInput;
     this.latestInput = input;
+    this.latestMasterSampledAtMs = input.masterTimeSampledAtMs;
     const projectChanged = previous && (previous.projectRoot !== input.projectRoot || previous.project.id !== input.project.id);
     if (projectChanged) {
       this.cacheEpoch += 1;
@@ -148,6 +151,7 @@ export class ProductPreviewAudioTransport {
     this.disposed = true;
     this.cacheEpoch += 1;
     this.latestInput = null;
+    this.latestMasterSampledAtMs = null;
     this.clearVoices();
     this.bufferCache.clear();
     this.cacheBytes = 0;
@@ -168,12 +172,23 @@ export class ProductPreviewAudioTransport {
   }
 
   private async startVoice(key: string, voice: Voice): Promise<void> {
+    let waitForFreshInput = false;
     try {
       const buffer = await this.bufferFor(voice.selection);
       if (!this.isCurrent(key, voice)) return;
+      if (!this.hasFreshMasterInput()) {
+        voice.state = 'waiting';
+        waitForFreshInput = true;
+        return;
+      }
       const context = this.context!;
       if (context.state === 'suspended') await context.resume();
       if (!this.isCurrent(key, voice)) return;
+      if (!this.hasFreshMasterInput()) {
+        voice.state = 'waiting';
+        waitForFreshInput = true;
+        return;
+      }
       if (context.state !== 'running') throw new Error('Audio context unavailable.');
       const input = this.latestInput!;
       const offset = productPreviewSourceTimeMs(input.timeMs, voice.selection.clip, voice.selection.asset) / 1000;
@@ -204,8 +219,18 @@ export class ProductPreviewAudioTransport {
         this.publishWarning();
       }
     } finally {
-      this.pump();
+      // A long renderer stall can leave an async decode/resume holding an old
+      // master position. Let the next Preview sync drop expired clips first.
+      if (!waitForFreshInput) this.pump();
     }
+  }
+
+  private hasFreshMasterInput(): boolean {
+    if (this.latestMasterSampledAtMs === null) return false;
+    const nowMs = performance.now();
+    return Number.isFinite(nowMs) && Number.isFinite(this.latestMasterSampledAtMs) &&
+      nowMs >= this.latestMasterSampledAtMs &&
+      nowMs - this.latestMasterSampledAtMs <= PRODUCT_PREVIEW_AUDIO_DRIFT_MS;
   }
 
   private bufferFor(selection: ProductPreviewAudioSelection): Promise<AudioBuffer> {

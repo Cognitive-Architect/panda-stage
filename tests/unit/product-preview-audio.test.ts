@@ -14,7 +14,7 @@ import {
   type ProductPreviewAudioContext, type ProductPreviewAudioSyncInput,
 } from '../../src/renderer/shell/productPreviewAudio';
 import { buildProject, IDS } from './domain/testProject';
-import { advanceProductPreviewTime } from '../../src/renderer/shell/productPreviewModel';
+import { resolveProductPreviewClockTime } from '../../src/renderer/shell/productPreviewModel';
 
 const AUDIO_ID = '10000000-0000-4000-8000-000000000401';
 const AUDIO_B_ID = '10000000-0000-4000-8000-000000000402';
@@ -136,7 +136,7 @@ function deferred<T>() {
 }
 function syncInput(project: Project, overrides: Partial<ProductPreviewAudioSyncInput> = {}): ProductPreviewAudioSyncInput {
   return { projectRoot: PROJECT_ROOT, project, shot: project.shots[0]!, timeMs: 600,
-    playing: true, seekRevision: 0, ...overrides };
+    masterTimeSampledAtMs: performance.now(), playing: true, seekRevision: 0, ...overrides };
 }
 function mixedProject(): Project {
   const project = buildAudioProject();
@@ -473,7 +473,7 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     transport.dispose();
   });
 
-  it.each(['dialogue', 'bgm', 'sfx'] as const)('rebuilds naturally ended %s on the next clamped master tick using the latest source offset', async (role) => {
+  it.each(['dialogue', 'bgm', 'sfx'] as const)('does not rebuild naturally ended %s from a stale capped time after a renderer stall', async (role) => {
     const { project, context, transport, readAudio } = setup(buildAudioProject());
     project.shots[0]!.audioClips[0]!.role = role;
     if (role !== 'dialogue') project.shots[0]!.dialogues = [];
@@ -486,20 +486,66 @@ describe('Product Preview Shot-local multi-clip mixer — #659', () => {
     expect(old.disconnect).toHaveBeenCalledTimes(1);
     expect(context.gains[0]!.disconnect).toHaveBeenCalledTimes(1);
     expect(context.sources).toHaveLength(1); // Callback is cleanup only, not a second clock.
-    const next = advanceProductPreviewTime(600, 3000, project.shots[0]!.durationMs);
-    expect(next.timeMs).toBe(850); // The incumbent 250ms clamp must remain intact.
-    transport.sync(syncInput(project, { timeMs: next.timeMs })); await flush();
-    expect(context.sources).toHaveLength(2);
-    expect(context.sources[1]!.start).toHaveBeenCalledWith(13, 0.45, 0.15);
-    expect(internals(transport).voices.size).toBe(1);
-    expect(context.sources.filter((source) => source.buffer !== null)).toHaveLength(1);
+    const next = resolveProductPreviewClockTime(
+      { startedAtMs: 0, startTimeMs: 600 },
+      3_000,
+      project.shots[0]!.durationMs,
+    );
+    expect(next.timeMs).toBe(Math.min(3_600, project.shots[0]!.durationMs));
+    expect(next.timeMs).toBeGreaterThan(2_000);
+    transport.sync(syncInput(project, {
+      timeMs: next.timeMs,
+      masterTimeSampledAtMs: performance.now(),
+    })); await flush();
+    expect(context.sources).toHaveLength(1);
+    expect(internals(transport).voices.size).toBe(0);
+    expect(context.sources.filter((source) => source.buffer !== null)).toHaveLength(0);
     expect(readAudio).toHaveBeenCalledTimes(1);
     expect(context.decodeAudioData).toHaveBeenCalledTimes(1);
-    lateEnd(); // Even a repeated old callback cannot remove the replacement Voice.
-    transport.sync(syncInput(project, { timeMs: 850 })); await flush();
-    expect(context.sources).toHaveLength(2);
-    expect(context.sources[1]!.stop).not.toHaveBeenCalled();
+    lateEnd(); // Even a repeated old callback cannot remove a new clock owner.
+    transport.sync(syncInput(project, { timeMs: next.timeMs })); await flush();
+    expect(context.sources).toHaveLength(1);
+    expect(internals(transport).voices.size).toBe(0);
     transport.dispose();
+  });
+
+  it('does not relabel a stale master sample as fresh when its React sync arrives after a renderer stall', async () => {
+    const project = mixedProject();
+    const shot = project.shots[0]!;
+    const template = shot.audioClips[0]!;
+    shot.audioClips = [
+      { ...template, id: CLIP_A_ID, startMs: 300, endMs: 1_200, offsetMs: 0 },
+      { ...template, id: CLIP_B_ID, startMs: 1_300, endMs: 2_700, offsetMs: 0 },
+    ];
+    const context = new FakeContext();
+    let nowMs = 1_500;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => nowMs);
+    const transport = new ProductPreviewAudioTransport({
+      createContext: () => context.api(),
+      readAudio: async (request) => readyResponse(request),
+    });
+
+    try {
+      transport.sync(syncInput(project, {
+        timeMs: 1_341,
+        masterTimeSampledAtMs: 1_000,
+      }));
+      await flush();
+      expect(context.sources).toHaveLength(0);
+
+      nowMs = 1_516;
+      transport.sync(syncInput(project, {
+        timeMs: 1_888,
+        masterTimeSampledAtMs: 1_516,
+      }));
+      await flush();
+      expect(context.sources.map((source) => source.start.mock.calls[0])).toEqual([
+        [10, 0.588, 0.812],
+      ]);
+    } finally {
+      clock.mockRestore();
+      transport.dispose();
+    }
   });
 
   it('does not rebuild a naturally ended source when the next master tick is outside its window', async () => {

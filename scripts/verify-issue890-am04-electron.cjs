@@ -2,6 +2,7 @@ const { app, ipcMain } = require('electron');
 const { createHash } = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const { mkdirSync, readFileSync, writeFileSync } = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { deflateSync } = require('node:zlib');
 const { createMainWindow } = require('../dist-electron/main/windows/main-window.js');
@@ -45,9 +46,11 @@ const projectOpenEvidence = [];
 const projectSaveEvidence = [];
 const canvasImageReadEvidence = [];
 const rendererDiagnostics = [];
+const issue925Measurements = [];
 let fixture;
 let savedProject = null;
 let currentPhase = 'bootstrap';
+let issue925Phase = 'setup';
 
 function setPhase(phase) {
   currentPhase = phase;
@@ -297,12 +300,15 @@ function mockIpc(projectService) {
     };
   });
   register(IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ, async (_event, request) => {
+    const startedAt = performance.now();
     const response = await canvasImageService.read(request);
     canvasImageReadEvidence.push({
       assetId: request.assetId,
       sha256: request.sha256,
       status: response.ok ? response.status : response.error.code,
       byteLength: response.ok ? response.byteLength : null,
+      phase: issue925Phase,
+      durationMs: Number((performance.now() - startedAt).toFixed(3)),
     });
     return response;
   });
@@ -726,6 +732,418 @@ async function readPreviewState(window) {
   );
 }
 
+async function installIssue925Probe(window) {
+  const config = JSON.stringify({ frameIds: ids.frames, colors });
+  await window.webContents.executeJavaScript(`(() => {
+    if (window.__issue925Probe) return;
+    const config = ${config};
+    const frameByColor = new Map(config.colors.map((color, index) => [color.join(','), index]));
+    const probe = {
+      phase: 'setup',
+      events: [],
+      imageLoads: [],
+      stageFrames: [],
+      rafFrames: [],
+      latestStage: null,
+      stageObserver: null,
+      firstStallRaf: null,
+      instrumentationError: null,
+      setPhase(phase) {
+        this.phase = phase;
+        if (phase.endsWith('-stall')) this.firstStallRaf = null;
+      },
+      record(event, atMs, detail) {
+        const sample = { event, atMs, phase: this.phase, ...detail };
+        if (this.events.length < 30000) this.events.push(sample);
+        if (event === 'raf') {
+          const displayed = this.latestStage;
+          const frame = {
+            atMs,
+            phase: this.phase,
+            clockTimeMs: Number(detail.nextTimeMs ?? -1),
+            deltaMs: Number(detail.deltaMs ?? -1),
+            displayed: displayed ? {
+              masterTimeMs: displayed.masterTimeMs,
+              stageTimeMs: displayed.stageTimeMs,
+              stageReady: displayed.stageReady,
+              stageDisplayReady: displayed.stageDisplayReady,
+              layers: displayed.layers,
+            } : null,
+          };
+          if (this.rafFrames.length < 30000) this.rafFrames.push(frame);
+          if (this.phase.endsWith('-stall') && this.firstStallRaf === null) {
+            this.firstStallRaf = { atMs, ...detail };
+          }
+        }
+      },
+      sampleStage() {
+        const overlay = document.querySelector('[data-testid="product-preview-overlay"]');
+        const stage = overlay?.querySelector('[data-testid="stage-renderer"]');
+        if (!overlay || !stage) return;
+        let rendered = [];
+        try { rendered = JSON.parse(stage.dataset.layerRenderJson || '[]'); } catch {}
+        const sample = {
+          atMs: performance.now(),
+          phase: this.phase,
+          masterTimeMs: Number(overlay.dataset.previewTime ?? -1),
+          projectTimeMs: Number(overlay.dataset.previewProjectTime ?? -1),
+          stageTimeMs: Number(stage.dataset.stageTime ?? -1),
+          stageReady: stage.dataset.stageReady === 'true',
+          stageDisplayReady: stage.dataset.stageDisplayReady === 'true',
+          layers: rendered.map((layer) => ({
+            id: layer.id,
+            assetId: layer.assetId ?? null,
+            visible: layer.visible !== false,
+          })),
+        };
+        this.latestStage = sample;
+        if (this.stageFrames.length < 30000) this.stageFrames.push(sample);
+      },
+      observeStage() {
+        this.stageObserver?.disconnect();
+        const overlay = document.querySelector('[data-testid="product-preview-overlay"]');
+        const stage = overlay?.querySelector('[data-testid="stage-renderer"]');
+        if (!stage) return false;
+        this.stageObserver = new MutationObserver(() => this.sampleStage());
+        this.stageObserver.observe(stage, {
+          attributes: true,
+          attributeFilter: [
+            'data-layer-render-json', 'data-stage-time', 'data-stage-ready',
+            'data-stage-display-ready',
+          ],
+        });
+        this.sampleStage();
+        return true;
+      },
+      capture() {
+        return JSON.parse(JSON.stringify({
+          events: this.events,
+          imageLoads: this.imageLoads,
+          stageFrames: this.stageFrames,
+          rafFrames: this.rafFrames,
+          instrumentationError: this.instrumentationError,
+        }));
+      },
+    };
+    window.__issue925Probe = probe;
+    window.__pandaPreviewDiagnostics = {
+      scenePixelRatio: 1,
+      record(event, atMs, detail) { probe.record(event, atMs, detail); },
+      read() { return probe.events.slice(); },
+      reset() { probe.events.length = 0; probe.stageFrames.length = 0; probe.rafFrames.length = 0; },
+    };
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+      if (!descriptor?.set || !descriptor.get) throw new Error('HTMLImageElement.src descriptor unavailable.');
+      Object.defineProperty(HTMLImageElement.prototype, 'src', {
+        configurable: descriptor.configurable,
+        enumerable: descriptor.enumerable,
+        get() { return descriptor.get.call(this); },
+        set(value) {
+          const overlay = document.querySelector('[data-testid="product-preview-overlay"]');
+          const source = String(value ?? '');
+          if (!overlay || !source.startsWith('blob:')) {
+            descriptor.set.call(this, value);
+            return;
+          }
+          const entry = {
+            imageId: probe.imageLoads.length + 1,
+            phase: probe.phase,
+            startedAtMs: performance.now(),
+            finishedAtMs: null,
+            durationMs: null,
+            assetId: null,
+            status: 'loading',
+          };
+          probe.imageLoads.push(entry);
+          this.addEventListener('load', () => {
+            entry.finishedAtMs = performance.now();
+            entry.durationMs = Number((entry.finishedAtMs - entry.startedAtMs).toFixed(3));
+            entry.status = 'ready';
+            try {
+              const canvas = document.createElement('canvas');
+              canvas.width = 1;
+              canvas.height = 1;
+              const context = canvas.getContext('2d', { willReadFrequently: true });
+              context.drawImage(this, 0, 0, 1, 1);
+              const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
+              const index = frameByColor.get([red, green, blue].join(','));
+              if (index !== undefined) entry.assetId = config.frameIds[index];
+            } catch (error) {
+              entry.sampleError = String(error).slice(0, 200);
+            }
+          }, { once: true });
+          this.addEventListener('error', () => {
+            entry.finishedAtMs = performance.now();
+            entry.durationMs = Number((entry.finishedAtMs - entry.startedAtMs).toFixed(3));
+            entry.status = 'error';
+          }, { once: true });
+          descriptor.set.call(this, value);
+        },
+      });
+    } catch (error) {
+      probe.instrumentationError = String(error).slice(0, 500);
+    }
+    if (typeof PerformanceObserver !== 'undefined') {
+      try {
+        const observer = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            probe.record('long-task', entry.startTime, { durationMs: entry.duration });
+          }
+        });
+        observer.observe({ entryTypes: ['longtask'] });
+      } catch { /* Chromium may not expose long-task entries. */ }
+    }
+  })()`);
+}
+
+async function setIssue925Phase(window, phase) {
+  issue925Phase = phase;
+  await window.webContents.executeJavaScript(
+    'window.__issue925Probe?.setPhase(' + JSON.stringify(phase) + ')',
+  );
+}
+
+function percentile(values, fraction) {
+  if (!values.length) return null;
+  const ordered = [...values].filter(Number.isFinite).sort((left, right) => left - right);
+  if (!ordered.length) return null;
+  return Number(ordered[Math.min(ordered.length - 1, Math.floor((ordered.length - 1) * fraction))].toFixed(3));
+}
+
+function summarizeIssue925Events(capture, phase, layerStartTimes = {}) {
+  const events = capture.events.filter((event) => event.phase === phase);
+  const values = (name) => events
+    .filter((event) => event.event === name && Number.isFinite(event.durationMs))
+    .map((event) => event.durationMs);
+  const ticks = events
+    .filter((event) => event.event === 'tick-callback' && Number.isFinite(event.deltaMs))
+    .map((event) => event.deltaMs);
+  const frames = capture.rafFrames.filter((sample) => sample.phase === phase);
+  const mismatches = [];
+  for (let index = 0; index < frames.length; index += 1) {
+    const sample = frames[index];
+    const next = frames[index + 1];
+    if (!sample.displayed) continue;
+    for (const [layerId, startTimeMs] of Object.entries(layerStartTimes)) {
+      if (sample.clockTimeMs < startTimeMs) continue;
+      const expectedIndex = Math.floor((sample.clockTimeMs - startTimeMs) * 25 / 1_000) % ids.frames.length;
+      const displayedLayer = sample.displayed.layers.find((layer) => layer.id === layerId);
+      const actualIndex = ids.frames.indexOf(displayedLayer?.assetId);
+      if (actualIndex !== expectedIndex && next) {
+        mismatches.push({
+          layerId,
+          expectedIndex,
+          actualIndex,
+          durationMs: Math.max(0, next.atMs - sample.atMs),
+          stageReady: sample.displayed.stageReady,
+        });
+      }
+    }
+  }
+  const stageFrames = capture.stageFrames.filter((sample) => sample.phase === phase);
+  const images = capture.imageLoads.filter((entry) => entry.phase === phase);
+  const reads = capture.assetReads.filter((entry) => entry.phase === phase && ids.frames.includes(entry.assetId));
+  const summaryDurations = (name) => {
+    const data = values(name);
+    return { count: data.length, p50Ms: percentile(data, 0.5), p95Ms: percentile(data, 0.95), maxMs: data.length ? Math.max(...data) : null };
+  };
+  const assetCounts = (entries) => Object.fromEntries(ids.frames.map((assetId) => [
+    assetId,
+    entries.filter((entry) => entry.assetId === assetId).length,
+  ]).filter(([, count]) => count > 0));
+  const frameTransitions = Object.fromEntries(Object.entries(layerStartTimes).map(([layerId]) => {
+    const samples = stageFrames.flatMap((sample) => {
+      const layer = sample.layers.find((candidate) => candidate.id === layerId);
+      return layer && ids.frames.includes(layer.assetId)
+        ? [{ atMs: sample.atMs, assetId: layer.assetId }]
+        : [];
+    });
+    const distinct = samples.filter((sample, index) => index === 0 || sample.assetId !== samples[index - 1].assetId);
+    return [layerId, {
+      displayedFrameCount: distinct.length,
+      uniqueFrameCount: new Set(distinct.map((sample) => sample.assetId)).size,
+      maxFrameGapMs: distinct.length > 1
+        ? Number(Math.max(...distinct.slice(1).map((sample, index) => sample.atMs - distinct[index].atMs)).toFixed(3))
+        : null,
+    }];
+  }));
+  const mismatchTotalMs = mismatches.reduce((sum, item) => sum + item.durationMs, 0);
+  return {
+    phase,
+    raf: {
+      count: ticks.length,
+      p50Ms: percentile(ticks, 0.5),
+      p95Ms: percentile(ticks, 0.95),
+      maxMs: ticks.length ? Number(Math.max(...ticks).toFixed(3)) : null,
+      over50ms: ticks.filter((value) => value > 50).length,
+      over100ms: ticks.filter((value) => value > 100).length,
+    },
+    evaluateShot: summaryDurations('evaluate-shot'),
+    stageRenderModel: summaryDurations('stage-render-model'),
+    stageRenderToCommit: summaryDurations('stage-render-to-commit'),
+    konvaDrawScene: summaryDurations('konva-draw-scene'),
+    stageCommitCount: events.filter((event) => event.event === 'stage-commit').length,
+    longTasks: summaryDurations('long-task'),
+    frameTransitions,
+    frameWait: {
+      mismatchSamples: mismatches.length,
+      totalMismatchMs: Number(mismatchTotalMs.toFixed(3)),
+      maxMismatchIntervalMs: mismatches.length ? Number(Math.max(...mismatches.map((item) => item.durationMs)).toFixed(3)) : null,
+      notReadySamples: mismatches.filter((item) => !item.stageReady).length,
+    },
+    imageLoads: {
+      count: images.length,
+      p50Ms: percentile(images.filter((item) => Number.isFinite(item.durationMs)).map((item) => item.durationMs), 0.5),
+      p95Ms: percentile(images.filter((item) => Number.isFinite(item.durationMs)).map((item) => item.durationMs), 0.95),
+      maxMs: images.length ? Math.max(...images.filter((item) => Number.isFinite(item.durationMs)).map((item) => item.durationMs), 0) : null,
+      byAsset: assetCounts(images),
+    },
+    assetReads: {
+      count: reads.length,
+      p50Ms: percentile(reads.map((entry) => entry.durationMs), 0.5),
+      p95Ms: percentile(reads.map((entry) => entry.durationMs), 0.95),
+      maxMs: reads.length ? Math.max(...reads.map((entry) => entry.durationMs)) : null,
+      byAsset: assetCounts(reads),
+    },
+    stageSampleCount: stageFrames.length,
+  };
+}
+
+async function measureIssue925Preview(window, scenario, layerStartTimes, boundaries, endTimeMs, stall = false) {
+  const prefix = 'issue925-' + scenario;
+  const readOffset = canvasImageReadEvidence.length;
+  issue925Phase = prefix + '-setup';
+  const drawerWasExpanded = await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-testid="quick-action-drawer"]\')?.dataset.expanded==="true"',
+  );
+  await setIssue925Phase(window, prefix + '-setup');
+  setPhase('Issue 925 ' + scenario + ' open Preview');
+  await window.webContents.executeJavaScript(
+    '(() => { const drawer=document.querySelector(\'[data-testid="quick-action-drawer"]\');' +
+      'if(drawer?.dataset.expanded!=="true") drawer?.querySelector(\'[data-testid="quick-action-drawer-handle"]\')?.click(); })()',
+  );
+  await waitFor(
+    window,
+    'document.querySelector(\'[data-testid="quick-action-drawer"]\')?.dataset.expanded==="true"',
+    'Issue 925 ' + scenario + ' could not open Quick Actions.',
+  );
+  await click(window, '[data-testid="quick-action-play"]');
+  await waitFor(
+    window,
+    'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewSurface==="active"&&' +
+      'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewDataReady==="true"',
+    'Issue 925 ' + scenario + ' Preview did not become ready.',
+    30_000,
+  );
+  await click(window, '[data-testid="product-preview-range"] [role="tab"]:nth-child(2)');
+  await waitFor(
+    window,
+    'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewRange==="shot"',
+    'Issue 925 ' + scenario + ' could not select the 15-second Shot range.',
+  );
+  const wasPlaying = await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewPlaying==="true"',
+  );
+  if (wasPlaying) await click(window, '[data-testid="product-preview-play-pause"]');
+  await setControlValue(window, '[data-testid="product-preview-scrubber"]', 0);
+  await waitFor(
+    window,
+    'Number(document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewTime)===0&&' +
+      'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewPlaying==="false"',
+    'Issue 925 ' + scenario + ' Preview did not reset to zero.',
+  );
+  await window.webContents.executeJavaScript('window.__issue925Probe?.observeStage()');
+  for (let index = 0; index < boundaries.length; index += 1) {
+    const phase = prefix + (index === 0 ? '-cold' : index === 1 ? '-warm' : '-hot');
+    await setIssue925Phase(window, phase);
+    if (index === 0) await click(window, '[data-testid="product-preview-play-pause"]');
+    await waitFor(
+      window,
+      'Number(document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewTime)>=' + boundaries[index],
+      'Issue 925 ' + scenario + ' playback did not reach ' + boundaries[index] + 'ms.',
+      12_000,
+    );
+  }
+  const finalPhase = prefix + (boundaries.length === 1 ? '-hot' : '-hot');
+  await setIssue925Phase(window, finalPhase);
+  await waitFor(
+    window,
+    'Number(document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewTime)>=' + endTimeMs,
+    'Issue 925 ' + scenario + ' playback did not reach ' + endTimeMs + 'ms.',
+    12_000,
+  );
+  let stallEvidence = null;
+  if (stall) {
+    issue925Phase = prefix + '-stall';
+    const blocked = await window.webContents.executeJavaScript(
+      '(() => { window.__issue925Probe?.setPhase(' + JSON.stringify(prefix + '-stall') + ');' +
+        'const overlay=document.querySelector(\'[data-testid="product-preview-overlay"]\');' +
+        'const startedAt=performance.now(),beforeTimeMs=Number(overlay?.dataset.previewTime??-1);' +
+        'const until=startedAt+750;while(performance.now()<until){};' +
+        'return {beforeTimeMs,startedAt,endedAt:performance.now(),blockedMs:performance.now()-startedAt}; })()',
+    );
+    await waitFor(
+      window,
+      'window.__issue925Probe?.firstStallRaf!==null',
+      'Issue 925 ' + scenario + ' did not record the first post-stall master tick.',
+      5_000,
+    );
+    const firstStallRaf = await window.webContents.executeJavaScript(
+      'window.__issue925Probe.firstStallRaf',
+    );
+    stallEvidence = {
+      blockedMs: Number(blocked.blockedMs.toFixed(3)),
+      beforeTimeMs: blocked.beforeTimeMs,
+      expectedTimeMs: Number((blocked.beforeTimeMs + blocked.blockedMs).toFixed(3)),
+      firstPostStallRaf: firstStallRaf,
+      actualTimeMs: firstStallRaf.nextTimeMs,
+      errorMs: Number((blocked.beforeTimeMs + blocked.blockedMs - firstStallRaf.nextTimeMs).toFixed(3)),
+    };
+  }
+  const currentlyPlaying = await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewPlaying==="true"',
+  );
+  if (currentlyPlaying) await click(window, '[data-testid="product-preview-play-pause"]');
+  const capture = await window.webContents.executeJavaScript('window.__issue925Probe.capture()');
+  capture.events = capture.events.filter((event) => event.phase.startsWith(prefix + '-'));
+  capture.imageLoads = capture.imageLoads.filter((event) => event.phase.startsWith(prefix + '-'));
+  capture.stageFrames = capture.stageFrames.filter((event) => event.phase.startsWith(prefix + '-'));
+  capture.rafFrames = capture.rafFrames.filter((event) => event.phase.startsWith(prefix + '-'));
+  capture.assetReads = canvasImageReadEvidence.slice(readOffset);
+  const phases = [prefix + '-setup', prefix + '-cold', prefix + '-warm', prefix + '-hot', prefix + '-stall'];
+  const summary = phases
+    .filter((phase) => phase !== prefix + '-warm' || boundaries.length > 1)
+    .map((phase) => summarizeIssue925Events(capture, phase, layerStartTimes));
+  const environment = await window.webContents.executeJavaScript(
+    '({devicePixelRatio:window.devicePixelRatio,screen:{width:screen.width,height:screen.height},' +
+      'viewport:{width:innerWidth,height:innerHeight},canvas:(()=>{const c=document.querySelector(\'[data-testid="stage-renderer"] canvas\');' +
+      'return c?{width:c.width,height:c.height}:null})()})',
+  );
+  await click(window, '[data-testid="product-preview-close"]');
+  await waitFor(window, '!document.querySelector(\'[data-testid="product-preview-overlay"]\')',
+    'Issue 925 ' + scenario + ' Preview did not close.');
+  const drawerExpandedAfter = await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-testid="quick-action-drawer"]\')?.dataset.expanded==="true"',
+  );
+  if (drawerExpandedAfter !== drawerWasExpanded) {
+    await click(window, '[data-testid="quick-action-drawer-handle"]');
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="quick-action-drawer"]\')?.dataset.expanded===' +
+        JSON.stringify(String(drawerWasExpanded)),
+      'Issue 925 ' + scenario + ' did not restore the Quick Actions drawer state.',
+    );
+  }
+  const result = { scenario, environment, layerStartTimes, boundaries, endTimeMs, stall: stallEvidence, summary, raw: capture };
+  issue925Measurements.push(result);
+  writeFileSync(
+    path.join(evidence, 'issue925-' + scenario + '-performance.json'),
+    JSON.stringify(result, null, 2),
+  );
+  return result;
+}
+
 async function historyState(window) {
   return window.webContents.executeJavaScript(
     '(() => { const e=document.querySelector(\'[data-testid="history-controls"]\');' +
@@ -825,6 +1243,8 @@ async function run() {
       'document.querySelector(\'[data-testid="animation-library-card"][data-animation-id="' + ids.animation + '"]\')',
       'Synthetic 21-frame animation card missing.',
     );
+    await installIssue925Probe(window);
+    await measureIssue925Preview(window, 'static', {}, [1_000], 2_000, false);
     await window.webContents.executeJavaScript(
       'window.__issue890Dnd=[];' +
       'document.addEventListener("dragstart",e=>{const d=e.dataTransfer;window.__issue890Dnd.push({' +
@@ -896,6 +1316,8 @@ async function run() {
     a = animationRecord(editor, layerAId).layer;
     assert(Math.abs(a.x - 720) < 3 && Math.abs(a.y - 520) < 3 && Math.abs(a.scaleX - 1.1) < 0.002,
       'Canvas/Inspector edits did not independently move and scale instance A: ' + JSON.stringify(a));
+
+    await measureIssue925Preview(window, 'single', { [layerAId]: 0 }, [840], 1_680, true);
 
     const firstSeek = await seekEditor(window, 1_000);
     const secondDrop = await dragToShot(1_100, 500, 2);
@@ -991,6 +1413,14 @@ async function run() {
         'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
           '.find(x=>x.id==="' + layerBId + '")?.animationPlayback?.endBehavior==="hide"',
       'Loop mode did not hide the end choice while preserving its saved value.',
+    );
+    await measureIssue925Preview(
+      window,
+      'dual',
+      { [layerAId]: 0, [layerBId]: 1_000 },
+      [840, 1_840],
+      2_680,
+      false,
     );
     await click(window, '[data-testid="animation-playback-mode"] .ui-segmented-tabs__item:first-child');
     await waitFor(
@@ -1600,6 +2030,30 @@ async function run() {
         JSON.parse(entry.payload).animationId === ids.animation),
     'The two Animation Library drops did not use trusted input into the Canvas: ' + JSON.stringify(dnd));
 
+    const issue925Environment = {
+      os: os.type(),
+      release: os.release(),
+      architecture: os.arch(),
+      cpuModel: os.cpus()[0]?.model ?? null,
+      logicalProcessors: os.cpus().length,
+      totalMemoryBytes: os.totalmem(),
+      electron: process.versions.electron,
+    };
+    const issue925Summary = {
+      baselineCommit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+      branch: execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim(),
+      workingTreeStatus: execFileSync('git', ['status', '--short'], { encoding: 'utf8' }).trim(),
+      environment: issue925Environment,
+      scenarios: issue925Measurements.map((measurement) =>
+        Object.fromEntries(Object.entries(measurement).filter(([key]) => key !== 'raw')),
+      ),
+      rawEvidence: path.join(evidence, 'issue925-performance-raw.json'),
+    };
+    writeFileSync(
+      issue925Summary.rawEvidence,
+      JSON.stringify({ environment: issue925Environment, measurements: issue925Measurements }, null, 2),
+    );
+
     const interactive = {
       issue: 890,
       commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
@@ -1655,6 +2109,7 @@ async function run() {
         hiddenAt2000,
         reverseEditorTime,
       },
+      issue925Performance: issue925Summary,
       canvasImageReadEvidence,
       evidence,
     };
@@ -1680,6 +2135,7 @@ async function run() {
       saveCalls: projectSaveEvidence.length,
       openCalls: projectOpenEvidence.length,
       imageReads: canvasImageReadEvidence.length,
+      issue925Performance: issue925Summary,
       evidence,
     };
   } finally {

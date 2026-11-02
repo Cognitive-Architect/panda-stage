@@ -15,19 +15,20 @@ import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 import {
   PROJECT_SCHEMA_VERSION,
   evaluateShotAtTime,
+  mapProjectTime,
   type Project,
   type Shot,
 } from '../../src/domain';
 import { evaluateSubtitleAtTime } from '../../src/shared/preview/subtitle-engine';
 import {
-  PRODUCT_PREVIEW_MAX_STEP_MS,
-  advanceProductPreviewTime,
   buildProductPreviewCues,
   clampProductPreviewTime,
   formatProductPreviewTimecode,
   listProductPreviewAssetIds,
+  resolveProductPreviewClockTime,
   resolveProductPreviewTransportAction,
   resolveProductPreviewShot,
+  resolveProductPreviewVisibilityPause,
 } from '../../src/renderer/shell/productPreviewModel';
 
 const OVERLAY_PATH = 'src/renderer/shell/ProductPreviewOverlay.tsx';
@@ -249,22 +250,101 @@ describe('product preview model', () => {
     expect(evaluateSubtitleAtTime(cues, 1_500)).toBeNull();
   });
 
-  it('advances a clamped local clock and stops exactly at the shot end', () => {
-    expect(advanceProductPreviewTime(0, 16, 4_000)).toEqual({
-      timeMs: 16,
+  it('resolves time from one absolute monotonic anchor without a per-frame cap', () => {
+    const anchor = { startedAtMs: 1_000, startTimeMs: 300 };
+
+    expect(resolveProductPreviewClockTime(anchor, 1_016, 4_000)).toEqual({
+      timeMs: 316,
       ended: false,
     });
-    // A suspended tab must not fast-forward the whole shot in one frame.
-    expect(advanceProductPreviewTime(0, 10_000, 4_000)).toEqual({
-      timeMs: PRODUCT_PREVIEW_MAX_STEP_MS,
+    expect(resolveProductPreviewClockTime(anchor, 1_250, 4_000)).toEqual({
+      timeMs: 550,
       ended: false,
     });
-    expect(advanceProductPreviewTime(3_900, 200, 4_000)).toEqual({
+    expect(resolveProductPreviewClockTime(anchor, 2_000, 4_000)).toEqual({
+      timeMs: 1_300,
+      ended: false,
+    });
+    expect(resolveProductPreviewClockTime(anchor, 12_000, 4_000)).toEqual({
       timeMs: 4_000,
       ended: true,
     });
-    expect(advanceProductPreviewTime(0, Number.NaN, 4_000).timeMs).toBe(0);
-    expect(advanceProductPreviewTime(0, -50, 4_000).timeMs).toBe(0);
+  });
+
+  it('does not accumulate drift across long RAF gaps and never moves backward', () => {
+    const anchor = { startedAtMs: 1_000, startTimeMs: 0 };
+
+    expect(resolveProductPreviewClockTime(anchor, 1_500, 4_000).timeMs).toBe(
+      500,
+    );
+    expect(resolveProductPreviewClockTime(anchor, 2_000, 4_000).timeMs).toBe(
+      1_000,
+    );
+    expect(resolveProductPreviewClockTime(anchor, 900, 4_000)).toEqual({
+      timeMs: 0,
+      ended: false,
+    });
+    expect(resolveProductPreviewClockTime(anchor, Number.NaN, 4_000)).toEqual({
+      timeMs: 0,
+      ended: false,
+    });
+  });
+
+  it('maps the absolute project clock across a Shot boundary', () => {
+    const first = buildShot({ durationMs: 1_000 });
+    const second = buildShot({ id: randomUUID(), durationMs: 1_000 });
+    const project = buildProject(first);
+    project.shots.push(second);
+    const projectDurationMs = project.shots.reduce(
+      (total, shot) => total + shot.durationMs,
+      0,
+    );
+    const clock = resolveProductPreviewClockTime(
+      { startedAtMs: 5_000, startTimeMs: 950 },
+      5_050,
+      projectDurationMs,
+    );
+    const position = mapProjectTime(project, clock.timeMs);
+
+    expect(clock.timeMs).toBe(1_000);
+    expect(position.shot).toBe(second);
+    expect(position.shotLocalTimeMs).toBe(0);
+  });
+
+  it('pauses at the current time when hidden and requires explicit Play to resume', () => {
+    const anchor = { startedAtMs: 1_000, startTimeMs: 200 };
+    const pause = resolveProductPreviewVisibilityPause(
+      'hidden',
+      anchor,
+      1_500,
+      4_000,
+    );
+
+    expect(pause).toEqual({
+      timeMs: 700,
+      playing: false,
+      repositionAudio: false,
+    });
+    expect(
+      resolveProductPreviewVisibilityPause('visible', anchor, 2_000, 4_000),
+    ).toBeNull();
+    expect(
+      resolveProductPreviewVisibilityPause('hidden', null, 2_000, 4_000),
+    ).toBeNull();
+
+    const resumed = resolveProductPreviewTransportAction(
+      pause!.timeMs,
+      4_000,
+      { type: 'play' },
+    );
+    expect(resumed.playing).toBe(true);
+    expect(
+      resolveProductPreviewClockTime(
+        { startedAtMs: 2_000, startTimeMs: resumed.timeMs },
+        2_100,
+        4_000,
+      ).timeMs,
+    ).toBe(800);
   });
 
   it('clamps and formats scrub positions without leaking fractions', () => {
@@ -288,6 +368,12 @@ describe('product preview model', () => {
         timeMs: 2_750,
       }),
     ).toEqual({ timeMs: 2_750, playing: false, repositionAudio: true });
+    expect(
+      resolveProductPreviewTransportAction(2_750, 4_000, {
+        type: 'seek',
+        timeMs: 500,
+      }),
+    ).toEqual({ timeMs: 500, playing: false, repositionAudio: true });
     expect(resolveProductPreviewTransportAction(2_750, 4_000, { type: 'stop' }))
       .toEqual({ timeMs: 0, playing: false, repositionAudio: true });
     expect(resolveProductPreviewTransportAction(2_750, 4_000, { type: 'replay' }))
@@ -385,6 +471,12 @@ describe('product preview overlay contract', () => {
     expect(audio).toContain('resolveProductPreviewAudios(input.project, input.shot, input.timeMs)');
     expect(overlay).not.toContain('activeDialogueId: activeCue?.id ?? null');
     expect(overlay).toContain('timeMs: activeShotTimeMs');
+    expect(overlay).toContain(
+      'masterTimeSampledAtMs: masterTimeSampledAtMsRef.current',
+    );
+    expect(audio).toContain(
+      'this.latestMasterSampledAtMs = input.masterTimeSampledAtMs',
+    );
     expect(overlay).toContain('playing,');
     expect(overlay).toContain('seekRevision,');
     expect(overlay).toContain('resolveProductPreviewTransportAction(');
@@ -395,6 +487,23 @@ describe('product preview overlay contract', () => {
     expect(overlay).toContain('data-testid="product-preview-range"');
     expect(overlay).toContain("{ value: 'project', label: '整个项目' }");
     expect(overlay).toContain("{ value: 'shot', label: '当前镜头' }");
+  });
+
+  it('uses the absolute Preview clock and pauses hidden pages without auto-resuming', () => {
+    const overlay = readSource(OVERLAY_PATH);
+
+    expect(overlay).toContain('resolveProductPreviewClockTime(');
+    expect(overlay).toContain('playbackClockAnchorRef.current = next.playing');
+    expect(overlay).toContain(
+      'generation !== playbackClockGenerationRef.current',
+    );
+    expect(overlay).toContain(
+      "document.addEventListener('visibilitychange', onVisibilityChange)",
+    );
+    expect(overlay).toContain('resolveProductPreviewVisibilityPause(');
+    expect(overlay).toContain("document.visibilityState === 'visible'");
+    expect(overlay).not.toContain('advanceProductPreviewTime');
+    expect(overlay).not.toContain('PRODUCT_PREVIEW_MAX_STEP_MS');
   });
 
   it('shows a Chinese empty state when the project has no shot', () => {
@@ -426,7 +535,9 @@ describe('product preview overlay contract', () => {
     ]) {
       expect(overlay).toContain(selector);
     }
-    expect(overlay).toContain("type: playing ? 'pause' : 'play'");
+    expect(overlay).toMatch(
+      /type:\s*playbackClockAnchorRef\.current\s*\?\s*'pause'\s*:\s*'play'/u,
+    );
     expect(overlay).toContain('role="dialog"');
     expect(overlay).toContain('aria-modal={previewSurfaceActive}');
   });
@@ -527,6 +638,14 @@ describe('product preview overlay contract', () => {
     expect(overlay).toContain('onHandoffReady();');
     expect(overlay).toContain('canStartProductPreviewPlayback(');
     expect(overlay).toContain('shouldStartProductPreviewAutoplay({');
+    expect(overlay).toContain('const initialAutoplayConsumedRef = useRef(false);');
+    expect(overlay).toContain('!initialAutoplayConsumedRef.current &&');
+    expect(overlay).toContain(
+      'autoplayConsumed: initialAutoplayConsumedRef.current',
+    );
+    expect(overlay).toContain(
+      'if (next.playing) initialAutoplayConsumedRef.current = true;',
+    );
     expect(overlay).toMatch(
       /initialReadinessError[\s\S]*?编辑器保持不变/u,
     );
