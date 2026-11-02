@@ -645,6 +645,12 @@ async function run() {
     `document.querySelector('[data-testid="resource-activity-dock"]')?.dataset.resourceShotView === 'list'`,
     'The square back control did not return to the Shot list.',
   );
+  const arrowReturnState = await readEntryState(windowRef);
+  assertListState(arrowReturnState, 'landscape', initialShotCount);
+  const arrowReturnScreenshot = await capture(
+    windowRef,
+    'automatic-scene-arrowleft-returned-to-shot-list.png',
+  );
   await click(windowRef, '[data-testid="resource-auto-scene-action"]');
   await waitForDom(
     windowRef,
@@ -889,6 +895,8 @@ async function run() {
     backgroundImportRecovery,
     nameConflictScreenshot,
     repairedNameScreenshot,
+    arrowReturnState,
+    arrowReturnScreenshot,
     headerAfterCloseReopen,
     headerAfterReentry,
     recoveryScreenshot,
@@ -902,6 +910,7 @@ async function run() {
       recovery: recoveryScreenshot,
       nameConflict: nameConflictScreenshot,
       nameConflictRepaired: repairedNameScreenshot,
+      arrowReturn: arrowReturnScreenshot,
       portraitEntries: portraitScreenshot,
       portraitAutomaticScene: portraitSceneScreenshot,
       portraitAutomaticSceneRecovery: portraitRecoveryScreenshot,
