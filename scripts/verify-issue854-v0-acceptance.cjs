@@ -260,6 +260,71 @@ async function clickWithMouseInput(window, selector) {
   });
 }
 
+async function clickWithTouchInput(window, selector, { minimumSize = 44 } = {}) {
+  const target = await window.webContents.executeJavaScript([
+    '(() => {',
+    '  const element = document.querySelector(' + JSON.stringify(selector) + ');',
+    '  if (!(element instanceof HTMLElement)) throw new Error("Element not found: " + ' + JSON.stringify(selector) + ');',
+    '  if (element instanceof HTMLButtonElement && element.disabled) throw new Error("Element is disabled: " + ' + JSON.stringify(selector) + ');',
+    '  element.scrollIntoView({ block: "center", behavior: "instant" });',
+    '  const rect = element.getBoundingClientRect();',
+    '  return {',
+    '    x: rect.left + rect.width / 2,',
+    '    y: rect.top + rect.height / 2,',
+    '    width: rect.width,',
+    '    height: rect.height,',
+    '    viewportWidth: window.innerWidth,',
+    '    viewportHeight: window.innerHeight,',
+    '  };',
+    '})()',
+  ].join('\n'));
+  assert(
+    target.width > 0 && target.height > 0 &&
+      target.width >= minimumSize && target.height >= minimumSize &&
+      target.x >= 0 && target.x < target.viewportWidth &&
+      target.y >= 0 && target.y < target.viewportHeight,
+    'Cloud Touch target is not visible at the ' + minimumSize + ' CSS-pixel minimum: ' + selector + ' ' + JSON.stringify(target),
+  );
+
+  const debuggerApi = window.webContents.debugger;
+  const attachedHere = !debuggerApi.isAttached();
+  if (attachedHere) debuggerApi.attach('1.3');
+  try {
+    await debuggerApi.sendCommand('Emulation.setTouchEmulationEnabled', {
+      enabled: true,
+      maxTouchPoints: 1,
+    });
+    await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{
+        id: 1,
+        x: target.x,
+        y: target.y,
+        radiusX: 1,
+        radiusY: 1,
+        force: 1,
+      }],
+    });
+    await delay(45);
+    await debuggerApi.sendCommand('Input.dispatchTouchEvent', {
+      type: 'touchEnd',
+      touchPoints: [],
+    });
+  } finally {
+    if (debuggerApi.isAttached()) {
+      try {
+        await debuggerApi.sendCommand('Emulation.setTouchEmulationEnabled', {
+          enabled: false,
+        });
+      } finally {
+        if (attachedHere && debuggerApi.isAttached()) debuggerApi.detach();
+      }
+    }
+  }
+  await delay(80);
+  return target;
+}
+
 async function doubleClickWithMouseInput(window, selector) {
   const point = await window.webContents.executeJavaScript(`(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
@@ -786,6 +851,135 @@ async function verifySceneMatchIconInteractions(
     },
     formalProjectAndHistoryUnchanged: true,
     screenshots: screenshotPaths,
+  };
+}
+
+async function verifySceneMatchIconTouchInteractions(window, sample, alternatives) {
+  const baseline = await readUiState(window);
+  const layout = await window.webContents.executeJavaScript(`(() => {
+    const shell = document.querySelector('.editor-shell');
+    return {
+      deviceMode: shell?.dataset.editorDeviceMode ?? null,
+      layoutMode: shell?.dataset.editorShellLayout ?? null,
+    };
+  })()`);
+  assert(
+    layout.deviceMode === 'cloud-touch' && layout.layoutMode === 'portrait',
+    'Touch match-icon verification requires the Cloud Touch portrait layout: ' + JSON.stringify(layout),
+  );
+
+  const assertNoFormalMutation = async (label) => {
+    const current = await readUiState(window);
+    assert(
+      current.revision === baseline.revision &&
+        current.shotCount === baseline.shotCount &&
+        current.selectedShot === baseline.selectedShot &&
+        current.undoCount === baseline.undoCount &&
+        current.redoCount === baseline.redoCount &&
+        current.saveState === baseline.saveState,
+      label + ' changed the formal Project or History: ' + JSON.stringify({ baseline, current }),
+    );
+  };
+
+  let backgroundId = alternatives.background.id;
+  let characterId = alternatives.character.id;
+  const interactions = {};
+  for (const kind of ['background', 'character']) {
+    const original = sample[kind];
+    const currentId = kind === 'background' ? backgroundId : characterId;
+    const pickerSelector = '[data-testid="scene-creation-' + kind + '-picker"]';
+    const rowSelector = '[data-testid="scene-creation-' + kind + '-match"]';
+    const changeSelector = rowSelector + ' .scene-creation-change-match';
+    const otherKind = kind === 'background' ? 'character' : 'background';
+    const otherPicker = '[data-testid="scene-creation-' + otherKind + '-picker"]';
+
+    const before = await readSceneMatchRowState(window, kind);
+    assert(
+      before.id === currentId && before.matched && before.successCheck &&
+        before.actionWidth >= 44 && before.actionHeight >= 44,
+      'The ' + kind + ' Cloud Touch match row is not currently valid and reachable: ' + JSON.stringify(before),
+    );
+
+    await clickWithTouchInput(window, changeSelector);
+    await waitForDom(
+      window,
+      'document.querySelector(' + JSON.stringify(pickerSelector) + ') && !document.querySelector(' + JSON.stringify(otherPicker) + ')',
+      'A Cloud Touch tap on the ' + kind + ' refresh icon did not open only the matching picker.',
+    );
+    await assertNoFormalMutation(kind + ' touch picker open');
+
+    await clickWithTouchInput(
+      window,
+      pickerSelector + ' .scene-creation-picker-heading button',
+      { minimumSize: 0 },
+    );
+    await waitForDom(
+      window,
+      '!document.querySelector(' + JSON.stringify(pickerSelector) + ') && document.querySelector(' + JSON.stringify(rowSelector) + ')?.dataset.candidateId === ' + JSON.stringify(currentId),
+      'Cancelling the ' + kind + ' picker by touch did not preserve the selected resource.',
+    );
+    await assertNoFormalMutation(kind + ' touch picker cancel');
+
+    await clickWithTouchInput(window, changeSelector);
+    await waitForDom(
+      window,
+      'document.querySelector(' + JSON.stringify(pickerSelector) + ') && !document.querySelector(' + JSON.stringify(otherPicker) + ')',
+      'A repeated Cloud Touch tap on the ' + kind + ' refresh icon did not reopen its picker.',
+    );
+    const candidateSelector = pickerSelector + ' .scene-creation-candidate[data-candidate-id="' + original.id + '"]';
+    await waitForDom(
+      window,
+      '(() => { const button = document.querySelector(' + JSON.stringify(candidateSelector) + '); return button instanceof HTMLButtonElement && !button.disabled; })()',
+      'The original ' + kind + ' candidate was not available for touch selection.',
+    );
+    await clickWithTouchInput(window, candidateSelector);
+    await waitForDom(
+      window,
+      'document.querySelector(' + JSON.stringify(rowSelector) + ')?.dataset.candidateId === ' + JSON.stringify(original.id) + ' && document.querySelector(' + JSON.stringify(rowSelector) + ')?.dataset.candidateMatched === "true"',
+      'Touch selecting the original ' + kind + ' candidate did not update its legal resource ID.',
+    );
+
+    if (kind === 'background') backgroundId = original.id;
+    else characterId = original.id;
+    await waitForDom(
+      window,
+      '(() => { const canvas = document.querySelector(".project-canvas"); const stage = document.querySelector("[data-testid=project-canvas-stage]"); const layers = JSON.parse(stage?.dataset.layerJson || "[]"); return canvas?.dataset.scenePreview === "true" && canvas?.dataset.scenePreviewStatus === "ready" && stage?.dataset.scenePreviewReadOnly === "true" && layers.some((layer) => layer.source?.kind === "asset" && layer.source.assetId === ' + JSON.stringify(backgroundId) + ') && layers.some((layer) => layer.source?.kind === "character" && layer.source.characterId === ' + JSON.stringify(characterId) + '); })()',
+      'The read-only preview did not follow the ' + kind + ' resource selected by touch.',
+    );
+    const row = await readSceneMatchRowState(window, kind);
+    assert(
+      row.id === original.id && row.matched && row.successCheck &&
+        row.name === original.name && row.status === null &&
+        row.actionLabel === '更换' + (kind === 'background' ? '背景' : '角色') + '：' + original.name,
+      'The ' + kind + ' row did not retain a legal success indicator after touch selection: ' + JSON.stringify(row),
+    );
+    await assertNoFormalMutation(kind + ' touch candidate selection');
+    interactions[kind] = {
+      initialId: currentId,
+      selectedId: original.id,
+      pickerOpenedByTouch: true,
+      cancellationPreservedSelection: true,
+      replacementSelectedByTouch: true,
+    };
+  }
+
+  const preview = await readScenePreviewState(window);
+  assert(
+    preview.active && preview.readOnly && preview.status === 'ready',
+    'Cloud Touch match-icon interactions did not leave a ready read-only preview.',
+  );
+  await assertNoFormalMutation('Cloud Touch match-icon flow');
+  return {
+    deviceMode: layout.deviceMode,
+    layoutMode: layout.layoutMode,
+    resources: interactions,
+    preview: {
+      active: preview.active,
+      readOnly: preview.readOnly,
+      status: preview.status,
+      layerIds: preview.layers.map((layer) => layer.source),
+    },
+    formalProjectAndHistoryUnchanged: true,
   };
 }
 
@@ -1813,6 +2007,15 @@ async function run() {
         projectHashAfterPortrait === projectHashBeforePortrait,
       'Capturing the portrait match state changed the formal Project, Project file, or History.',
     );
+    const touchMatchIconInteractions = await verifySceneMatchIconTouchInteractions(
+      windowRef,
+      sample,
+      matchAlternatives,
+    );
+    const touchVerifiedScreenshot = await capture(
+      windowRef,
+      'issue916-phase-b-cloud-touch-touch-verified.png',
+    );
     return {
       issue: 916,
       phase: 'B',
@@ -1823,10 +2026,12 @@ async function run() {
       humanAcceptance: false,
       structuredInputEntered: true,
       matchIconInteractions,
+      touchMatchIconInteractions,
       formalProjectAndHistoryUnchanged: true,
       screenshots: {
         uniqueMatch: uniqueMatchScreenshot,
         portraitMatchedPreview: portraitMatchedPreviewScreenshot,
+        portraitTouchVerified: touchVerifiedScreenshot,
         ...matchIconInteractions.screenshots,
       },
       receiptPath: '<isolated Phase B receipt>',

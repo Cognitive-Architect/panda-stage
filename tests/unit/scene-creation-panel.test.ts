@@ -207,4 +207,76 @@ describe('Issue #916 matched resource rows', () => {
     expect(staleMarkup).not.toContain('aria-label="背景已匹配"');
     expect(staleMarkup).toContain('disabled=""');
   });
+
+  it('withholds success checks for unavailable, ambiguous, and missing candidates', () => {
+    const readyThumbnail = {
+      status: 'ready' as const,
+      dataUrl: 'data:image/png;base64,aGVsbG8=',
+    };
+    const validBackground: SceneCreationCandidate<Asset> = {
+      value: { id: 'valid-background-id', name: 'Garden' } as Asset,
+      selectable: true,
+    };
+    const unavailable: SceneCreationCandidate<Asset> = {
+      value: { id: 'unavailable-background-id', name: 'Garden' } as Asset,
+      selectable: false,
+      errorCode: 'BACKGROUND_NOT_USABLE',
+    };
+    const secondBackground: SceneCreationCandidate<Asset> = {
+      value: { id: 'second-background-id', name: 'Garden' } as Asset,
+      selectable: true,
+    };
+    const thumbnails = {
+      [validBackground.value.id]: readyThumbnail,
+      [secondBackground.value.id]: readyThumbnail,
+      [unavailable.value.id]: readyThumbnail,
+    };
+    const unavailableMarkup = renderToStaticMarkup(
+      createElement(CandidateOptions, {
+        candidates: [unavailable],
+        compact: true,
+        kind: 'background',
+        onReplace: noop,
+        onSelect: noop,
+        selectedId: unavailable.value.id,
+        stale: false,
+        thumbnails,
+      }),
+    );
+    expect(unavailableMarkup).toContain('data-candidate-matched="false"');
+    expect(unavailableMarkup).not.toContain('aria-label="背景已匹配"');
+    expect(unavailableMarkup).not.toContain('lucide-check');
+
+    const ambiguousMarkup = renderToStaticMarkup(
+      createElement(CandidateOptions, {
+        candidates: [validBackground, secondBackground],
+        compact: true,
+        kind: 'background',
+        onReplace: noop,
+        onSelect: noop,
+        selectedId: validBackground.value.id,
+        stale: false,
+        thumbnails,
+      }),
+    );
+    expect(ambiguousMarkup).toContain('scene-creation-candidate-list');
+    expect(ambiguousMarkup).not.toContain('scene-creation-match-indicator');
+    expect(ambiguousMarkup).not.toContain('aria-label="背景已匹配"');
+
+    const missingCandidates: SceneCreationCandidate<Asset>[] = [];
+    const missingMarkup = renderToStaticMarkup(
+      createElement(CandidateOptions, {
+        candidates: missingCandidates,
+        compact: true,
+        kind: 'background',
+        onReplace: noop,
+        onSelect: noop,
+        selectedId: null,
+        stale: false,
+        thumbnails,
+      }),
+    );
+    expect(missingMarkup).toBe('');
+    expect(missingMarkup).not.toContain('lucide-check');
+  });
 });
