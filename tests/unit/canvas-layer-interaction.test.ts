@@ -136,9 +136,8 @@ describe('CanvasViewport chrome pointer routing', () => {
     expect(viewport).toContain('logicalStage.contains(candidate)');
     expect(viewport).toContain('onPointerDown={handlePointerDown}');
     expect(viewport).not.toContain('document.addEventListener');
-    expect(stage).toMatch(
-      /onViewportChromePointerDown=\{\(\) => selectionStore\.clear\(\)\}/u,
-    );
+    expect(stage).toContain('onViewportChromePointerDown={() => {');
+    expect(stage).toContain('if (!scenePreviewMode) selectionStore.clear();');
   });
 });
 
@@ -499,7 +498,9 @@ describe('SelectableLayer interaction adapter', () => {
     expect(temporalModel).toContain('evaluateShotAtTime(');
     expect(temporalModel).toContain('projectShotDialogueVisual(');
     expect(stage).toContain('data-temporal-inspection');
-    expect(stage).toContain('dropDisabled={!snapshot || !shot}');
+    expect(stage).toContain(
+      'dropDisabled={!snapshot || !shot || scenePreviewMode}',
+    );
     expect(stage).toContain('dropInteractionDisabled={temporalInspection}');
     expect(
       readFileSync('src/renderer/features/canvas/CanvasViewport.tsx', 'utf8'),

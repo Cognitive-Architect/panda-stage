@@ -35,6 +35,7 @@ import {
   isSceneCreationPreviewIdentityCurrent,
   type SceneCreationCanvasPreview,
   type SceneCreationCanvasPreviewStatus,
+  type SceneCreationPreviewIdentity,
 } from '../features/shots/createSceneFromStructuredInput';
 import { PendingDialoguePlacementProvider } from '../features/timeline/PendingDialoguePlacement';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
@@ -481,6 +482,29 @@ export function EditorShell({
           return current;
         }
         return { preview, status: 'loading' };
+      });
+    },
+    [],
+  );
+  const handleSceneCanvasPreviewStatusChange = useCallback(
+    (
+      identity: SceneCreationPreviewIdentity,
+      status: SceneCreationCanvasPreviewStatus,
+    ): void => {
+      setSceneCreationCanvasPreviewState((current) => {
+        const currentIdentity = current.preview?.identity;
+        if (
+          !currentIdentity ||
+          currentIdentity.projectRoot !== identity.projectRoot ||
+          currentIdentity.projectId !== identity.projectId ||
+          currentIdentity.projectInstanceId !== identity.projectInstanceId ||
+          currentIdentity.revision !== identity.revision ||
+          currentIdentity.projectFingerprint !== identity.projectFingerprint ||
+          current.status === status
+        ) {
+          return current;
+        }
+        return { ...current, status };
       });
     },
     [],
@@ -1243,6 +1267,10 @@ export function EditorShell({
                 <CanvasWorkspace
                   showHeading={false}
                   showToolbar={canvasToolbarVisible}
+                  onSceneCreationPreviewStatusChange={
+                    handleSceneCanvasPreviewStatusChange
+                  }
+                  sceneCreationPreview={activeSceneCreationCanvasPreview}
                 />
               </div>
               {activeAssemblySession && projectSnapshot ? (

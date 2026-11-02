@@ -313,21 +313,20 @@ async function run() {
     setter.call(input, ${JSON.stringify(structuredInput)});
     input.dispatchEvent(new Event('input', { bubbles: true }));
   })()`);
-  await click(windowRef, '[data-testid="scene-creation-inspect"]');
   await waitForDom(
     windowRef,
-    `document.querySelectorAll('[data-testid="scene-creation-background-candidate"]').length === ${sample.backgroundAssetIds.length} && document.querySelector('[data-testid="scene-creation-character-candidate"]')`,
-    'Exact-name background and Character candidates did not render.',
+    `Boolean(document.querySelector('[data-testid="scene-creation-background-candidate"]') || document.querySelector('[data-testid="scene-creation-background-match"]')) && document.querySelector('[data-testid="scene-creation-character-match"]')`,
+    'Exact-name ambiguous background choices or the unique composite Character did not auto-match.',
   );
   await waitForDom(
     windowRef,
-    `![...document.querySelectorAll('[data-testid="scene-creation-background-candidate"], [data-testid="scene-creation-character-candidate"]')].some((button) => button.disabled)`,
+    `![...document.querySelectorAll('[data-testid="scene-creation-background-candidate"]')].some((button) => button.disabled) && !document.querySelector('[data-testid="scene-creation-character-match"] .scene-creation-match-status')?.textContent?.includes('正在')`,
     'Candidate thumbnails did not become ready.',
   );
   const beforeSelection = await windowRef.webContents.executeJavaScript(`(() => ({
     revision: Number(document.querySelector('[data-testid="shot-manager"] [data-project-revision]')?.getAttribute('data-project-revision')),
-    backgroundIds: [...document.querySelectorAll('[data-testid="scene-creation-background-candidate"]')].map((button) => button.dataset.candidateId),
-    previewDisabled: document.querySelector('[data-testid="scene-creation-preview-action"]')?.disabled,
+    backgroundIds: [...document.querySelectorAll('[data-testid="scene-creation-background-candidate"]')].map((button) => button.dataset.candidateId).concat(document.querySelector('[data-testid="scene-creation-background-match"]')?.dataset.candidateId ?? []),
+    createDisabled: document.querySelector('[data-testid="scene-creation-confirm"]')?.disabled,
   }))()`);
   assert(beforeSelection.revision === 0, 'Candidate inspection changed the project revision.');
   assert(
@@ -337,7 +336,7 @@ async function run() {
   );
   const ambiguousBackground = sample.backgroundAssetIds.length > 1;
   assert(
-    beforeSelection.previewDisabled === ambiguousBackground,
+    beforeSelection.createDisabled === ambiguousBackground,
     ambiguousBackground
       ? 'An ambiguous background was silently selected.'
       : 'The single legal exact-name background was not selected automatically.',
@@ -348,26 +347,71 @@ async function run() {
       `[data-testid="scene-creation-background-candidate"][data-candidate-id="${sample.backgroundAssetIds[0]}"]`,
     );
   }
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="scene-creation-preview-action"]')?.disabled === false`,
-    ambiguousBackground
-      ? 'The explicit background choice did not enable preview.'
-      : 'The valid unique background did not enable preview.',
-  );
+  if (ambiguousBackground) {
+    try {
+      await waitForDom(
+        windowRef,
+        `document.querySelector('[data-testid="scene-creation-confirm"]')?.disabled === false && document.querySelector('.project-canvas')?.dataset.scenePreview === 'true' && document.querySelector('.project-canvas')?.dataset.scenePreviewStatus === 'ready'`,
+        'The explicit background choice did not prepare the main Canvas preview.',
+      );
+    } catch (error) {
+      const diagnostic = await windowRef.webContents.executeJavaScript(`(() => {
+        const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+        const canvas = document.querySelector('.project-canvas');
+        const panel = document.querySelector('[data-testid="scene-creation-panel"]');
+        return {
+          confirmDisabled: document.querySelector('[data-testid="scene-creation-confirm"]')?.disabled ?? null,
+          previewMessage: panel?.querySelector('[data-testid="scene-creation-preview-status"]')?.textContent?.trim() ?? null,
+          selectedBackgroundId: document.querySelector('[data-testid="scene-creation-background-candidate"][aria-pressed="true"]')?.dataset.candidateId ?? document.querySelector('[data-testid="scene-creation-background-match"]')?.dataset.candidateId ?? null,
+          selectedCharacterId: document.querySelector('[data-testid="scene-creation-character-match"]')?.dataset.candidateId ?? null,
+          canvas: canvas ? {
+            preview: canvas.dataset.scenePreview ?? null,
+            status: canvas.dataset.scenePreviewStatus ?? null,
+          } : null,
+          stage: stage ? {
+            revision: stage.dataset.projectRevision ?? null,
+            layers: stage.dataset.layerJson ?? null,
+            renderedAssetIds: stage.dataset.renderedAssetIds ?? null,
+            incompleteLayerIds: stage.dataset.incompleteVisualLayerIds ?? null,
+            visualStatus: stage.dataset.visualStatusJson ?? null,
+          } : null,
+        };
+      })()`);
+      const screenshot = await capture(windowRef, 'preview-not-ready-diagnostic.png');
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)} Diagnostic: ${JSON.stringify(diagnostic)} Screenshot: ${screenshot}`,
+        { cause: error },
+      );
+    }
+  } else {
+    await waitForDom(
+      windowRef,
+      `document.querySelector('[data-testid="scene-creation-confirm"]')?.disabled === false && document.querySelector('.project-canvas')?.dataset.scenePreviewStatus === 'ready'`,
+      'The unique resources did not prepare the main Canvas preview automatically.',
+    );
+  }
   const inputScreenshot = await capture(windowRef, 'candidate-selection.png');
-  await click(windowRef, '[data-testid="scene-creation-preview-action"]');
-  await waitForDom(
-    windowRef,
-    `document.querySelector('[data-testid="scene-creation-preview"]')?.dataset.previewStatus === 'ready' && document.querySelector('[data-testid="scene-creation-preview-image"]')?.naturalWidth > 0`,
-    'The composed preview did not become ready.',
-  );
-  await windowRef.webContents.executeJavaScript(
-    `document.querySelector('[data-testid="scene-creation-preview"]')?.scrollIntoView({ block: 'end', behavior: 'instant' })`,
-  );
+  const stagePreview = await windowRef.webContents.executeJavaScript(`(() => {
+    const canvas = document.querySelector('.project-canvas');
+    const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+    return {
+      active: canvas?.dataset.scenePreview === 'true',
+      status: canvas?.dataset.scenePreviewStatus ?? null,
+      readOnly: stage?.dataset.scenePreviewReadOnly === 'true',
+      directEditing: stage?.dataset.directCanvasEditing ?? null,
+      layers: JSON.parse(stage?.dataset.layerJson || '[]'),
+      projectRevision: Number(stage?.dataset.projectRevision),
+    };
+  })()`);
+  assert(stagePreview.active && stagePreview.status === 'ready', 'The main Canvas did not render the temporary scene preview.');
+  assert(stagePreview.readOnly && stagePreview.directEditing === 'false', 'The temporary scene preview is not read-only.');
+  assert(stagePreview.projectRevision === 0, 'The main Canvas preview changed the Project revision.');
+  assert(stagePreview.layers.length === 2, 'The main Canvas preview does not contain exactly the expected two layers.');
+  assert(stagePreview.layers.some((layer) => layer.source?.kind === 'asset' && sample.backgroundAssetIds.includes(layer.source.assetId)), 'The main Canvas preview did not bind one of the exact candidate background IDs.');
+  assert(stagePreview.layers.some((layer) => layer.source?.kind === 'character' && layer.source.characterId === sample.characterId), 'The main Canvas preview did not bind the exact assembled Character ID.');
   const beforeConfirm = await windowRef.webContents.executeJavaScript(`(() => ({
     revision: Number(document.querySelector('[data-testid="shot-manager"] [data-project-revision]')?.getAttribute('data-project-revision')),
-    previewStatus: document.querySelector('[data-testid="scene-creation-preview"]')?.dataset.previewStatus,
+    previewStatus: document.querySelector('.project-canvas')?.dataset.scenePreviewStatus,
   }))()`);
   assert(beforeConfirm.revision === 0, 'Preparing the composed preview changed the project revision.');
   const previewScreenshot = await capture(windowRef, 'read-only-preview.png');
@@ -391,7 +435,7 @@ async function run() {
 
   return {
     issue: 853,
-    acceptance: 'AC02_ELECTRON_CANDIDATE_PREVIEW_CONFIRM',
+    acceptance: 'AC02_ELECTRON_AUTOMATIC_CANVAS_PREVIEW_CREATE',
     passed: true,
     codeHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     generatedAt: new Date().toISOString(),
@@ -409,7 +453,7 @@ async function run() {
       selectedShot: afterConfirm.selectedShot,
       ambiguousBackgroundCandidateIds: beforeSelection.backgroundIds,
       backgroundCandidatesWereAmbiguous: ambiguousBackground,
-      explicitBackgroundSelectionRequired: ambiguousBackground && beforeSelection.previewDisabled,
+      explicitBackgroundSelectionRequired: ambiguousBackground && beforeSelection.createDisabled,
       previewStatus: beforeConfirm.previewStatus,
     },
     screenshots: {
@@ -431,7 +475,7 @@ async function main() {
   } catch (error) {
     output = {
       issue: 853,
-      acceptance: 'AC02_ELECTRON_CANDIDATE_PREVIEW_CONFIRM',
+      acceptance: 'AC02_ELECTRON_AUTOMATIC_CANVAS_PREVIEW_CREATE',
       passed: false,
       codeHead: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
       error: error instanceof Error ? error.stack ?? error.message : String(error),

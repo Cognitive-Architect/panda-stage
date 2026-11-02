@@ -29,6 +29,8 @@ describe('Issue #487 Canvas empty-state copy', () => {
 
   it('keeps no-Shot neutral and does not show the background warning there', () => {
     expect(canvas).toContain('Boolean(shot) &&');
-    expect(canvas).toContain('dropDisabled={!snapshot || !shot}');
+    expect(canvas).toContain(
+      'dropDisabled={!snapshot || !shot || scenePreviewMode}',
+    );
   });
 });
