@@ -1,8 +1,18 @@
 import { CanvasStage } from '../features/canvas/CanvasStage';
+import type {
+  SceneCreationCanvasPreview,
+  SceneCreationCanvasPreviewStatus,
+  SceneCreationPreviewIdentity,
+} from '../features/shots/createSceneFromStructuredInput';
 
 export interface CanvasWorkspaceProps {
   showHeading?: boolean;
   showToolbar?: boolean;
+  sceneCreationPreview?: SceneCreationCanvasPreview | null;
+  onSceneCreationPreviewStatusChange?: (
+    identity: SceneCreationPreviewIdentity,
+    status: SceneCreationCanvasPreviewStatus,
+  ) => void;
 }
 
 /**
@@ -15,6 +25,8 @@ export interface CanvasWorkspaceProps {
 export function CanvasWorkspace({
   showHeading = true,
   showToolbar = true,
+  sceneCreationPreview = null,
+  onSceneCreationPreviewStatusChange,
 }: CanvasWorkspaceProps = {}): React.JSX.Element {
   return (
     <section
@@ -22,7 +34,12 @@ export function CanvasWorkspace({
       className="canvas-workspace"
       data-testid="canvas-workspace-scroll"
     >
-      <CanvasStage showHeading={showHeading} showToolbar={showToolbar} />
+      <CanvasStage
+        onSceneCreationPreviewStatusChange={onSceneCreationPreviewStatusChange}
+        sceneCreationPreview={sceneCreationPreview}
+        showHeading={showHeading}
+        showToolbar={showToolbar}
+      />
     </section>
   );
 }

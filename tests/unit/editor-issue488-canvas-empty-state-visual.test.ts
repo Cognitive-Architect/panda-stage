@@ -112,6 +112,8 @@ describe('Issue #488 Canvas empty-state visual pass', () => {
       'const empty = Boolean(stageModel && stageModel.layers.length === 0);',
     );
     expect(canvas).toContain('Boolean(shot) &&');
-    expect(canvas).toContain('dropDisabled={!snapshot || !shot}');
+    expect(canvas).toContain(
+      'dropDisabled={!snapshot || !shot || scenePreviewMode}',
+    );
   });
 });

@@ -1,6 +1,11 @@
 import {
+  LayerService,
+  PROJECT_HEIGHT,
+  PROJECT_WIDTH,
+  ShotService,
   buildEditorStageRenderModel,
   resolveImageAsset,
+  type Character,
   type Project,
   type Shot,
 } from '../../../domain';
@@ -457,6 +462,64 @@ export async function createShotThumbnailDataUrl(
     context.restore();
   }
   return canvas.toDataURL('image/png');
+}
+
+/**
+ * Renders a Character candidate with the same complete composite path used by
+ * saved Shot thumbnails. The temporary Shot exists only in this local copy of
+ * the Project and is never submitted to an editor store.
+ */
+export async function createCompositeCharacterThumbnailDataUrl(input: {
+  projectRoot: string;
+  project: Project;
+  character: Character;
+}): Promise<string> {
+  const { character } = input;
+  if (character.mode !== 'composite') {
+    throw new ShotThumbnailSourceError(
+      `Character “${character.name}” is not an assembled composite.`,
+    );
+  }
+  const expression = character.expressions.find(
+    (candidate) => candidate.id === character.defaultExpressionId,
+  );
+  if (!expression) {
+    throw new ShotThumbnailSourceError(
+      `Character “${character.name}” has no usable default expression.`,
+    );
+  }
+
+  const temporaryProject = new ShotService().create(input.project, {
+    name: `__scene-preview-${character.id}`,
+    durationMs: 3_000,
+  });
+  const temporaryShot = temporaryProject.shots.at(-1);
+  if (!temporaryShot) {
+    throw new ShotThumbnailSourceError('Unable to prepare Character preview.');
+  }
+  const layerResult = new LayerService().createFromAsset(
+    temporaryProject,
+    temporaryShot.id,
+    {
+      version: 2,
+      type: 'character-expression',
+      assetId: expression.assetId,
+      characterId: character.id,
+      expressionId: expression.id,
+      position: { x: PROJECT_WIDTH / 2, y: PROJECT_HEIGHT * 0.73 },
+    },
+  );
+  const renderedShot = layerResult.project.shots.find(
+    (candidate) => candidate.id === temporaryShot.id,
+  );
+  if (!renderedShot) {
+    throw new ShotThumbnailSourceError('Unable to prepare Character preview.');
+  }
+  return createShotThumbnailDataUrl({
+    projectRoot: input.projectRoot,
+    project: layerResult.project,
+    shot: renderedShot,
+  });
 }
 
 export function requestShotThumbnail(

@@ -3,6 +3,10 @@ import { ProjectRecoveryPanel } from '../features/recovery/ProjectRecoveryPanel'
 import { ResourceActivityDock } from './ResourceActivityDock';
 import type { ResourceActivity } from './ResourceActivityDock';
 import type {
+  SceneCreationCanvasPreview,
+  SceneCreationCanvasPreviewStatus,
+} from '../features/shots/createSceneFromStructuredInput';
+import type {
   CreateFlaCharacter,
   FlaCharacterCreateOperationState,
   QueryFlaCharacterCreateStatus,
@@ -24,6 +28,12 @@ export interface LeftWorkspaceProps {
   onDrawerOpenChange?(open: boolean): void;
   activeActivity?: ResourceActivity;
   onActiveActivityChange?(activity: ResourceActivity): void;
+  projectSessionIdentity?: string;
+  onSceneBackgroundImportComplete?(importedAssetIds: readonly string[]): string | null;
+  sceneCanvasPreviewStatus?: SceneCreationCanvasPreviewStatus | null;
+  onSceneCanvasPreviewChange?: (
+    preview: SceneCreationCanvasPreview | null,
+  ) => void;
   adaptivePartsActionsRef?: AdaptivePartsAssemblyActionsRef;
   onCreateFlaCharacter?: CreateFlaCharacter;
   onQueryFlaCharacterCreateStatus: QueryFlaCharacterCreateStatus;
@@ -60,6 +70,10 @@ export function LeftWorkspace({
   onDrawerOpenChange,
   activeActivity,
   onActiveActivityChange,
+  projectSessionIdentity,
+  onSceneBackgroundImportComplete,
+  sceneCanvasPreviewStatus,
+  onSceneCanvasPreviewChange,
   adaptivePartsActionsRef,
   onCreateFlaCharacter,
   onQueryFlaCharacterCreateStatus,
@@ -107,6 +121,10 @@ export function LeftWorkspace({
         key={`resource:${projectSnapshot.projectRoot}`}
         onActiveActivityChange={onActiveActivityChange}
         onDrawerOpenChange={onDrawerOpenChange}
+        projectSessionIdentity={projectSessionIdentity}
+        onSceneBackgroundImportComplete={onSceneBackgroundImportComplete}
+        sceneCanvasPreviewStatus={sceneCanvasPreviewStatus}
+        onSceneCanvasPreviewChange={onSceneCanvasPreviewChange}
         onCreateFlaCharacter={onCreateFlaCharacter}
         onQueryFlaCharacterCreateStatus={onQueryFlaCharacterCreateStatus}
         flaCharacterRecoveryRecord={flaCharacterRecoveryRecord}

@@ -12,6 +12,7 @@ import {
 } from '../../src/domain';
 import { adaptivePartsFixture, adaptivePartsSourceRootTransform } from '../helpers/adaptivePartsFixtures';
 import {
+  createCompositeCharacterThumbnailDataUrl,
   createShotThumbnailDataUrl,
   isShotThumbnailRequestCurrent,
   requestShotThumbnail,
@@ -257,6 +258,29 @@ afterEach(() => {
 });
 
 describe('Shot thumbnail composite rendering (Issue #608)', () => {
+  it('renders a Character candidate through the complete composite-shot path without mutating the Project', async () => {
+    const project = makeCompositeProject();
+    const character = project.characters[0]!;
+    if (character.mode !== 'composite') {
+      throw new Error('Composite fixture Character is missing.');
+    }
+    const originalShotIds = project.shots.map((shot) => shot.id);
+    const readThumbnail = vi.fn(async (assetId: string) => readyThumbnail(assetId));
+    const canvases = installBrowser(readThumbnail);
+
+    const dataUrl = await createCompositeCharacterThumbnailDataUrl({
+      projectRoot: 'D:\\issue916-composite-character-candidate',
+      project,
+      character,
+    });
+
+    expect(dataUrl).toBe('data:image/png;base64,c2hvdC10aHVtYm5haWw=');
+    expect(canvases).toHaveLength(2);
+    expect(readThumbnail).toHaveBeenCalledTimes(2);
+    expect(project.shots.map((shot) => shot.id)).toEqual(originalShotIds);
+    expect(project.shots).toHaveLength(originalShotIds.length);
+  });
+
   it('takes Body, base Face, draw order, local geometry, and the shared owner transform from S03', () => {
     const project = makeCompositeProject();
     const model = buildEditorStageRenderModel(project, project.shots[0]!);
