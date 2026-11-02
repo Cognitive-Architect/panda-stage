@@ -28,6 +28,10 @@
  * `com22` compatibility case still advances without granting unproven generic
  * modulo semantics to tween-owned instances.
  *
+ * Issue #919 adds one narrower motion-tween case: a Loop Graphic with exactly
+ * one child frame, no authored firstFrame/lastFrame, and a zero-origin motion
+ * span always selects frame 0. It does not relax multi-frame tween behavior.
+ *
  * Issue #726 adds a separate mode-invariant case: when playback mode is absent
  * and the child has exactly one frame, select frame 0 without assigning a mode.
  * Missing playback on multi-frame children remains UNKNOWN_PLAYBACK_DEFAULT.
@@ -87,6 +91,7 @@ export interface FlaNestedGraphicFrameSelection {
     | 'single-frame-explicit-first-frame'
     | 'single-frame-default-first-frame-zero'
     | 'loop-single-frame-constant'
+    | 'loop-tween-single-frame-constant'
     | 'loop-zero-origin-no-wrap'
     | 'loop-static-first-frame-modulo'
     | 'loop-missing-first-frame-modulo'
@@ -293,6 +298,21 @@ function selectAuthoredChildFrame(
         ok: true,
         frameIndex: elapsed % rangeLength,
         selectionRule: 'loop-missing-first-frame-modulo',
+        effectiveFirstFrame: 0,
+      };
+    }
+
+    // #919: the measured zero-origin motion case has exactly one legal child
+    // frame and no authored bounds, so every elapsed parent time still selects
+    // frame 0. This is a constant selection, not tween-owned Loop modulo.
+    if (element.sourceParentSpanTweenType === 'motion' &&
+        parentSpanStart === 0 &&
+        element.lastFrame === undefined &&
+        childFrameCount === 1) {
+      return {
+        ok: true,
+        frameIndex: 0,
+        selectionRule: 'loop-tween-single-frame-constant',
         effectiveFirstFrame: 0,
       };
     }
