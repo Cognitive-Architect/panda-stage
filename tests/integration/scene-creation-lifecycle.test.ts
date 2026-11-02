@@ -410,7 +410,7 @@ describe('Issue #852 AC-01 scene creation lifecycle', () => {
     sample.shotStore.dispose();
   }, 30_000);
 
-  it('invalidates prepared previews after resource edits, same-path reopen, or project switch', async () => {
+  it('invalidates prepared previews after resource edits/removal, same-path reopen, or project switch', async () => {
     const parent = await mkdtemp(
       path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-scene-stale-'),
     );
@@ -470,6 +470,36 @@ describe('Issue #852 AC-01 scene creation lifecycle', () => {
     );
     expect(sample.editorStore.getSnapshot()?.project.shots).toHaveLength(
       reopenedProject.shots.length,
+    );
+
+    const beforeAssetRemoval = prepare();
+    const beforeRemovalSnapshot = sample.editorStore.getSnapshot()!;
+    const projectWithoutSelectedBackground: Project = {
+      ...beforeRemovalSnapshot.project,
+      assets: beforeRemovalSnapshot.project.assets.filter(
+        (asset) => asset.id !== sample.assets.background.id,
+      ),
+    };
+    expect(projectWithoutSelectedBackground.assets).toHaveLength(
+      beforeRemovalSnapshot.project.assets.length - 1,
+    );
+    sample.editorStore.updateProject(
+      projectWithoutSelectedBackground,
+      'Remove selected scene background',
+    );
+
+    const afterAssetRemoval = sample.editorStore.getSnapshot()!;
+    const historyAfterAssetRemoval = sample.editorStore.history.getSnapshot();
+    expect(afterAssetRemoval.project.assets).not.toContainEqual(sample.assets.background);
+    expect(afterAssetRemoval.project.shots).toEqual(beforeRemovalSnapshot.project.shots);
+    expect(isSceneCreationPreviewCurrent(beforeAssetRemoval, sample.editorStore)).toBe(false);
+    expect(() => commitSceneCreationPreview(beforeAssetRemoval, options)).toThrow(
+      '工程已变化，当前预览已失效，请重新检查素材。',
+    );
+    expect(sample.editorStore.getSnapshot()).toBe(afterAssetRemoval);
+    expect(sample.editorStore.history.getSnapshot()).toEqual(historyAfterAssetRemoval);
+    expect(sample.editorStore.getSnapshot()?.project.shots).toHaveLength(
+      beforeRemovalSnapshot.project.shots.length,
     );
     sample.shotStore.dispose();
   }, 30_000);
