@@ -27,6 +27,26 @@ export interface StageImageResourceState {
   ready: boolean;
   error: Error | null;
   failures: readonly StageImageResourceFailure[];
+  optionalFailures: readonly StageOptionalImageResourceFailure[];
+}
+
+export interface StageOptionalImageResourceFailure {
+  assetId: string;
+  sourceUrl: string;
+  reason: StageImageResourceFailureReason;
+  error: Error;
+}
+
+export interface StageImageResourceSessionDiagnostics {
+  imageCreations: number;
+  cacheHits: number;
+  prewarmQueuePeak: number;
+  prewarmInFlightPeak: number;
+  prewarmQueuedCount: number;
+  prewarmInFlightCount: number;
+  optionalFailureCount: number;
+  retainedEntries: number;
+  retainedBytes: number;
 }
 
 export interface StageFrameReadinessInput {
@@ -66,6 +86,7 @@ export const EMPTY_STAGE_IMAGE_RESOURCE_STATE: StageImageResourceState = {
   ready: false,
   error: null,
   failures: [],
+  optionalFailures: [],
 };
 
 interface StageImageResource {
@@ -92,6 +113,11 @@ interface FailedStageImageResource {
   error: Error;
 }
 
+interface QueuedStageImageResource {
+  source: StageImageLayerSource & { resourceKey: string };
+  sequence: number;
+}
+
 export interface StageImageResourceSessionOptions {
   createImage?: () => HTMLImageElement;
 }
@@ -100,6 +126,9 @@ export interface StageImageResourceSessionOptions {
 export const MAX_RETAINED_STAGE_SOURCES = 64;
 /** Estimated RGBA image bytes, not a process-wide or GPU memory limit. */
 export const MAX_RETAINED_STAGE_BYTES = 64 * 1024 * 1024;
+/** Speculative decodes stay small; exact current resources are handled separately. */
+export const MAX_QUEUED_STAGE_PREWARM_SOURCES = 64;
+export const MAX_IN_FLIGHT_STAGE_PREWARM_DECODES = 2;
 
 function estimateDecodedImageBytes(image: HTMLImageElement): number {
   const { naturalWidth: width, naturalHeight: height } = image;
@@ -195,7 +224,21 @@ export class StageImageResourceSession {
   private readonly pending = new Map<string, PendingStageImageResource>();
   private readonly inFlight = new Map<string, StageImageResource>();
   private readonly failed = new Map<string, FailedStageImageResource>();
+  private readonly optionalFailed = new Map<string, FailedStageImageResource>();
+  private readonly prewarmQueue = new Map<string, QueuedStageImageResource>();
+  private readonly prewarmInFlight = new Set<string>();
+  private desiredPrewarmKeys = new Set<string>();
+  private desiredPrewarmSources = new Map<
+    string,
+    StageImageLayerSource & { resourceKey: string }
+  >();
   private retainedBytes = 0;
+  private nextPrewarmSequence = 0;
+  private imageCreations = 0;
+  private cacheHits = 0;
+  private prewarmQueuePeak = 0;
+  private prewarmInFlightPeak = 0;
+  private pumpingPrewarmQueue = false;
   private desiredSources = new Map<string, StageImageLayerSource & { resourceKey: string }>();
   private desiredSourceKey = '[]';
   private listener: ((state: StageImageResourceState) => void) | null = null;
@@ -256,12 +299,16 @@ export class StageImageResourceSession {
 
       this.pending.delete(layerId);
       this.failed.delete(layerId);
+      this.optionalFailed.delete(source.resourceKey);
+      this.prewarmQueue.delete(source.resourceKey);
       const reused =
         this.findActiveResource(source.resourceKey) ??
         this.findPendingResource(source.resourceKey) ??
         this.inFlight.get(source.resourceKey) ??
         this.takeRetained(source.resourceKey);
       if (reused) {
+        this.cacheHits += 1;
+        this.prewarmInFlight.delete(source.resourceKey);
         this.pending.set(layerId, {
           resourceKey: source.resourceKey,
           sourceUrl: source.sourceUrl,
@@ -273,7 +320,13 @@ export class StageImageResourceSession {
       this.startLoad(source);
     }
 
+    for (const [resourceKey] of this.prewarmQueue) {
+      if (this.isDesiredResource(resourceKey)) {
+        this.prewarmQueue.delete(resourceKey);
+      }
+    }
     this.cleanupOrphanedResources();
+    this.pumpPrewarmQueue();
 
     // A reconcile with only transform/time changes does not need another
     // decode, but it still publishes the current exact readiness state.
@@ -299,7 +352,93 @@ export class StageImageResourceSession {
       ready: this.isDesiredFrameReady(),
       error: this.currentError(),
       failures: this.currentFailures(),
+      optionalFailures: [...this.optionalFailed.entries()].flatMap(
+        ([resourceKey, failure]) =>
+          this.desiredPrewarmKeys.has(resourceKey)
+            ? [{
+                assetId: failure.assetId,
+                sourceUrl: failure.sourceUrl,
+                reason: failure.reason,
+                error: failure.error,
+              }]
+            : [],
+      ),
     };
+  }
+
+  getDiagnostics(): StageImageResourceSessionDiagnostics {
+    return {
+      imageCreations: this.imageCreations,
+      cacheHits: this.cacheHits,
+      prewarmQueuePeak: this.prewarmQueuePeak,
+      prewarmInFlightPeak: this.prewarmInFlightPeak,
+      prewarmQueuedCount: this.prewarmQueue.size,
+      prewarmInFlightCount: this.prewarmInFlight.size,
+      optionalFailureCount: this.optionalFailed.size,
+      retainedEntries: this.retained.size,
+      retainedBytes: this.retainedBytes,
+    };
+  }
+
+  /**
+   * Decode upcoming sources into this Stage session's bounded retained pool.
+   * A later required part with the same source identity adopts the decoded
+   * resource instead of creating another HTMLImageElement.
+   */
+  prewarm(sources: readonly StageImageLayerSource[]): void {
+    if (this.disposed) return;
+
+    const nextSources = new Map<
+      string,
+      StageImageLayerSource & { resourceKey: string }
+    >();
+    for (const source of sources) {
+      const resourceKey = buildStageImageResourceKey(source);
+      if (nextSources.has(resourceKey)) continue;
+      nextSources.set(resourceKey, { ...source, resourceKey });
+    }
+    this.desiredPrewarmSources = nextSources;
+    this.desiredPrewarmKeys = new Set(nextSources.keys());
+
+    for (const resourceKey of this.optionalFailed.keys()) {
+      if (!this.desiredPrewarmKeys.has(resourceKey)) {
+        this.optionalFailed.delete(resourceKey);
+      }
+    }
+    for (const [resourceKey] of this.prewarmQueue) {
+      if (!this.desiredPrewarmKeys.has(resourceKey) || this.isDesiredResource(resourceKey)) {
+        this.prewarmQueue.delete(resourceKey);
+      }
+    }
+
+    for (const [resourceKey, source] of nextSources) {
+      if (this.isDesiredResource(resourceKey) || this.optionalFailed.has(resourceKey)) {
+        continue;
+      }
+      if (
+        this.findActiveResource(resourceKey) ||
+        this.findPendingResource(resourceKey) ||
+        this.inFlight.has(resourceKey) ||
+        this.retained.has(resourceKey)
+      ) {
+        this.cacheHits += 1;
+        continue;
+      }
+      if (this.prewarmQueue.has(resourceKey)) continue;
+      if (this.prewarmQueue.size >= MAX_QUEUED_STAGE_PREWARM_SOURCES) continue;
+      this.prewarmQueue.set(resourceKey, {
+        source,
+        sequence: ++this.nextPrewarmSequence,
+      });
+      this.prewarmQueuePeak = Math.max(
+        this.prewarmQueuePeak,
+        this.prewarmQueue.size,
+      );
+    }
+
+    this.cleanupOrphanedResources();
+    this.pumpPrewarmQueue();
+    this.emit();
   }
 
   isDisposed(): boolean {
@@ -312,6 +451,11 @@ export class StageImageResourceSession {
     this.listener = null;
     this.desiredSources.clear();
     this.failed.clear();
+    this.optionalFailed.clear();
+    this.prewarmQueue.clear();
+    this.prewarmInFlight.clear();
+    this.desiredPrewarmKeys.clear();
+    this.desiredPrewarmSources.clear();
     const ownedResources = new Set<StageImageResource>([
       ...this.resources.values(),
       ...[...this.pending.values()].flatMap((pending) =>
@@ -354,6 +498,7 @@ export class StageImageResourceSession {
       decodedBytes: Number.POSITIVE_INFINITY,
     };
     this.inFlight.set(source.resourceKey, resource);
+    this.imageCreations += 1;
     for (const [partId, desired] of this.desiredSources) {
       if (desired.resourceKey === source.resourceKey) {
         this.pending.set(partId, {
@@ -372,7 +517,15 @@ export class StageImageResourceSession {
       image.onload = null;
       image.onerror = null;
       this.inFlight.delete(source.resourceKey);
-      this.tryCommit();
+      this.prewarmInFlight.delete(source.resourceKey);
+      if (this.hasPendingResource(resource)) {
+        this.tryCommit();
+      } else if (this.desiredPrewarmKeys.has(source.resourceKey)) {
+        this.retainResource(resource);
+      } else {
+        this.disposeResource(resource);
+      }
+      this.pumpPrewarmQueue();
       this.emit();
     };
     image.onerror = () => {
@@ -403,8 +556,12 @@ export class StageImageResourceSession {
   ): void {
     const resource = this.inFlight.get(resourceKey);
     this.inFlight.delete(resourceKey);
+    this.prewarmInFlight.delete(resourceKey);
+    this.prewarmQueue.delete(resourceKey);
+    let hasDesiredPart = false;
     for (const [partId, source] of this.desiredSources) {
       if (source.resourceKey !== resourceKey) continue;
+      hasDesiredPart = true;
       this.pending.delete(partId);
       this.failed.set(partId, {
         resourceKey,
@@ -414,7 +571,20 @@ export class StageImageResourceSession {
         error,
       });
     }
+    if (!hasDesiredPart) {
+      const source = this.desiredPrewarmSources.get(resourceKey);
+      if (source) {
+        this.optionalFailed.set(resourceKey, {
+          resourceKey,
+          assetId: source.assetId ?? source.id,
+          sourceUrl: source.sourceUrl,
+          reason,
+          error,
+        });
+      }
+    }
     if (resource) this.disposeResource(resource);
+    this.pumpPrewarmQueue();
     this.emit();
   }
 
@@ -490,6 +660,18 @@ export class StageImageResourceSession {
     return null;
   }
 
+  private isDesiredResource(resourceKey: string): boolean {
+    return [...this.desiredSources.values()].some(
+      (source) => source.resourceKey === resourceKey,
+    );
+  }
+
+  private hasPendingResource(resource: StageImageResource): boolean {
+    return [...this.pending.values()].some(
+      (pending) => pending.resource === resource,
+    );
+  }
+
   private findPendingResource(resourceKey: string): StageImageResource | null {
     for (const pending of this.pending.values()) {
       if (pending.resourceKey === resourceKey && pending.resource && !pending.resource.disposed) {
@@ -501,6 +683,48 @@ export class StageImageResourceSession {
 
   private takeRetained(resourceKey: string): StageImageResource | null {
     return this.removeRetained(resourceKey);
+  }
+
+  private pumpPrewarmQueue(): void {
+    if (this.disposed || this.pumpingPrewarmQueue) return;
+    this.pumpingPrewarmQueue = true;
+    try {
+      while (
+        !this.disposed &&
+        this.prewarmInFlight.size < MAX_IN_FLIGHT_STAGE_PREWARM_DECODES
+      ) {
+        const next = [...this.prewarmQueue.entries()].sort(
+          ([, left], [, right]) => left.sequence - right.sequence,
+        )[0];
+        if (!next) return;
+        const [resourceKey, queued] = next;
+        this.prewarmQueue.delete(resourceKey);
+        if (
+          !this.desiredPrewarmKeys.has(resourceKey) ||
+          this.isDesiredResource(resourceKey) ||
+          this.optionalFailed.has(resourceKey)
+        ) {
+          continue;
+        }
+        if (
+          this.findActiveResource(resourceKey) ||
+          this.findPendingResource(resourceKey) ||
+          this.inFlight.has(resourceKey) ||
+          this.retained.has(resourceKey)
+        ) {
+          this.cacheHits += 1;
+          continue;
+        }
+        this.prewarmInFlight.add(resourceKey);
+        this.prewarmInFlightPeak = Math.max(
+          this.prewarmInFlightPeak,
+          this.prewarmInFlight.size,
+        );
+        this.startLoad(queued.source);
+      }
+    } finally {
+      this.pumpingPrewarmQueue = false;
+    }
   }
 
   private retainResource(resource: StageImageResource): void {
@@ -574,9 +798,14 @@ export class StageImageResourceSession {
       const pendingReference = [...this.pending.values()].some(
         (pending) => pending.resource === resource,
       );
-      if (activeReference || pendingReference) continue;
+      if (
+        activeReference ||
+        pendingReference ||
+        this.desiredPrewarmKeys.has(resourceKey)
+      ) continue;
 
       this.inFlight.delete(resourceKey);
+      this.prewarmInFlight.delete(resourceKey);
       if (resource.loaded) this.retainResource(resource);
       else this.disposeResource(resource);
     }

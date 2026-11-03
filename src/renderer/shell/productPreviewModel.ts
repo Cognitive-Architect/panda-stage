@@ -269,6 +269,15 @@ export function buildProductPreviewImagePlan(
     ...requiredAssetIds,
     ...fallbackAssetIds,
   ]);
+  const animationFrameAssetIds = new Set(
+    shot.layers.flatMap((layer) => {
+      if (layer.source.kind !== 'animation') return [];
+      const animationId = layer.source.animationId;
+      return project.animations.find(
+        (animation) => animation.id === animationId,
+      )?.frames.map((frame) => frame.assetId) ?? [];
+    }),
+  );
   const recentAnimationAssetIds = upcomingAnimationFrameAssetIds(
     project,
     shot,
@@ -276,12 +285,21 @@ export function buildProductPreviewImagePlan(
     reservedAssetIds,
   );
   appendUnique(candidateAssetIds, recentAnimationAssetIds);
-  appendUnique(candidateAssetIds, resolvedCandidateAssetIds);
+  appendUnique(
+    candidateAssetIds,
+    resolvedCandidateAssetIds.filter(
+      (assetId) => !animationFrameAssetIds.has(assetId),
+    ),
+  );
 
   const currentShotAssetIds = listProductPreviewAssetIds(project, shot);
   appendUnique(
     candidateAssetIds,
-    currentShotAssetIds.filter((assetId) => !reservedAssetIds.has(assetId)),
+    currentShotAssetIds.filter(
+      (assetId) =>
+        !reservedAssetIds.has(assetId) &&
+        !animationFrameAssetIds.has(assetId),
+    ),
   );
   return {
     requiredAssetIds,
@@ -289,6 +307,19 @@ export function buildProductPreviewImagePlan(
     candidateAssetIds,
     recentAnimationAssetIds,
     mouthFallbacks,
+  };
+}
+
+/** Keep exact current/fallback requirements while stopping optional work. */
+export function gateProductPreviewImagePrewarm(
+  plan: ProductPreviewImagePlan,
+  enabled: boolean,
+): ProductPreviewImagePlan {
+  if (enabled) return plan;
+  return {
+    ...plan,
+    candidateAssetIds: [],
+    recentAnimationAssetIds: [],
   };
 }
 

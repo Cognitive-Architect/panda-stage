@@ -9,12 +9,16 @@ import {
   previewDiagnosticNow,
   recordPreviewDuration,
 } from './previewDiagnostics';
-import type { StageImageResourceFailure } from './stageImageResourceSession';
+import type {
+  StageImageResourceFailure,
+  StageOptionalImageResourceFailure,
+} from './stageImageResourceSession';
 
 interface CanvasStageProps {
   project: Project;
   evaluatedShot: EvaluatedShot;
   assetUrls: StageAssetUrlMap;
+  prewarmAssetIds?: readonly string[];
   caption: string | null;
   captionStyle?: SubtitleStyle;
   camera?: CameraView;
@@ -22,6 +26,9 @@ interface CanvasStageProps {
   onDisplayReady?: () => void;
   onError?: (error: Error) => void;
   onImageResourceFailure?: (failure: StageImageResourceFailure) => void;
+  onOptionalImageResourceFailures?: (
+    failures: readonly StageOptionalImageResourceFailure[],
+  ) => void;
   renderToken?: string | number;
   degraded?: boolean;
   showStageLabel?: boolean;

@@ -9,6 +9,8 @@ import {
 import {
   buildStageImageSourceKey,
   isStageFrameReady,
+  MAX_IN_FLIGHT_STAGE_PREWARM_DECODES,
+  MAX_QUEUED_STAGE_PREWARM_SOURCES,
   MAX_RETAINED_STAGE_BYTES,
   MAX_RETAINED_STAGE_SOURCES,
   StageImageResourceSession,
@@ -346,6 +348,124 @@ describe('StageImageResourceSession', () => {
       harness.images[0],
     );
     expect(harness.session.getSnapshot().ready).toBe(true);
+    harness.session.dispose();
+  });
+
+  it('decodes upcoming sources within bounds and adopts the warm image when required', () => {
+    const harness = createHarness();
+    const sources = Array.from({ length: 5 }, (_, index) => ({
+      id: `prewarm-part-${index}`,
+      assetId: `prewarm-asset-${index}`,
+      projectId: 'project-prewarm',
+      sha256: String(index + 1).padStart(64, '0'),
+      sourceUrl: `blob:prewarm-${index}`,
+    }));
+
+    harness.session.prewarm(sources);
+
+    expect(harness.images).toHaveLength(MAX_IN_FLIGHT_STAGE_PREWARM_DECODES);
+    expect(harness.session.getDiagnostics()).toMatchObject({
+      prewarmQueuedCount: sources.length - MAX_IN_FLIGHT_STAGE_PREWARM_DECODES,
+      prewarmInFlightCount: MAX_IN_FLIGHT_STAGE_PREWARM_DECODES,
+      prewarmInFlightPeak: MAX_IN_FLIGHT_STAGE_PREWARM_DECODES,
+    });
+
+    while (harness.images.some((image) => image.onload !== null)) {
+      harness.images.find((image) => image.onload !== null)!.succeed();
+    }
+
+    expect(harness.images).toHaveLength(sources.length);
+    expect(harness.session.getDiagnostics()).toMatchObject({
+      retainedEntries: sources.length,
+      retainedBytes: sources.length * 4,
+    });
+
+    const warmSource = sources[3]!;
+    const currentSource = { ...warmSource, id: 'current-part' };
+    reconcile(harness, [currentSource]);
+    const state = harness.session.getSnapshot();
+    expect(harness.images).toHaveLength(sources.length);
+    expect(state.ready).toBe(true);
+    expect(state.images.get(currentSource.id)).toBe(
+      harness.images.find((image) => image.src === warmSource.sourceUrl),
+    );
+    expect(
+      isStageFrameReady({
+        error: state.error,
+        hasModel: true,
+        imageState: state,
+        layerCount: 1,
+        sourceKey: buildStageImageSourceKey([currentSource]),
+      }),
+    ).toBe(true);
+    expect(harness.session.getDiagnostics().cacheHits).toBeGreaterThan(0);
+    harness.session.dispose();
+  });
+
+  it('keeps optional decode failures advisory and retries if that source becomes required', () => {
+    const harness = createHarness();
+    const source = {
+      id: 'prewarm-failure',
+      assetId: 'asset-prewarm-failure',
+      projectId: 'project-prewarm',
+      sha256: 'e'.repeat(64),
+      sourceUrl: 'blob:prewarm-failure',
+    };
+
+    harness.session.prewarm([source]);
+    harness.images[0]!.fail();
+
+    expect(harness.session.getSnapshot()).toMatchObject({
+      error: null,
+      failures: [],
+      optionalFailures: [{ assetId: source.assetId, reason: 'decode' }],
+    });
+
+    const currentSource = { ...source, id: 'required-part' };
+    reconcile(harness, [currentSource]);
+    expect(harness.images).toHaveLength(2);
+    expect(harness.session.getSnapshot().optionalFailures).toEqual([]);
+    expect(harness.session.getSnapshot().ready).toBe(false);
+
+    harness.images[1]!.fail();
+    expect(harness.session.getSnapshot().error).toBeInstanceOf(Error);
+    expect(harness.session.getSnapshot().failures).toMatchObject([
+      { assetId: source.assetId, partId: currentSource.id, reason: 'decode' },
+    ]);
+    harness.session.dispose();
+  });
+
+  it('caps the optional decode queue and promotes a queued current source immediately', () => {
+    const harness = createHarness();
+    const sources = Array.from({ length: MAX_QUEUED_STAGE_PREWARM_SOURCES + 8 }, (_, index) => ({
+      id: `prewarm-part-${index}`,
+      assetId: `prewarm-asset-${index}`,
+      projectId: 'project-queue',
+      sha256: (index + 100).toString(16).padStart(64, '0'),
+      sourceUrl: `blob:queue-${index}`,
+    }));
+
+    harness.session.prewarm(sources);
+    expect(harness.session.getDiagnostics()).toMatchObject({
+      prewarmQueuedCount:
+        MAX_QUEUED_STAGE_PREWARM_SOURCES -
+        MAX_IN_FLIGHT_STAGE_PREWARM_DECODES,
+      prewarmQueuePeak: MAX_QUEUED_STAGE_PREWARM_SOURCES,
+      prewarmInFlightCount: MAX_IN_FLIGHT_STAGE_PREWARM_DECODES,
+    });
+
+    const promotedSource = { ...sources[2]!, id: 'required-now' };
+    reconcile(harness, [promotedSource]);
+    expect(harness.images).toHaveLength(MAX_IN_FLIGHT_STAGE_PREWARM_DECODES + 1);
+    expect(harness.session.getSnapshot().ready).toBe(false);
+    harness.images[2]!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    expect(harness.session.getSnapshot().images.get(promotedSource.id)).toBe(
+      harness.images[2],
+    );
+    expect(harness.session.getDiagnostics().prewarmInFlightCount).toBe(
+      MAX_IN_FLIGHT_STAGE_PREWARM_DECODES,
+    );
     harness.session.dispose();
   });
 

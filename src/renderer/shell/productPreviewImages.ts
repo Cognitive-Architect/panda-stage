@@ -696,7 +696,7 @@ export class ProductPreviewImageSession {
     const nextDescriptors = describeImages(
       projectRoot,
       project,
-      allScopeAssetIds(next),
+      allScopeAssetIds(next).slice(0, MAX_NEXT_PREVIEW_IMAGE_CACHE),
     );
     const allowedKeys = new Set(
       [

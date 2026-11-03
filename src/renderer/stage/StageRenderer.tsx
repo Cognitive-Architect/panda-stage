@@ -45,6 +45,7 @@ import {
   type StageImageLayerSource,
   type StageImageResourceFailure,
   type StageImageResourceState,
+  type StageOptionalImageResourceFailure,
 } from './stageImageResourceSession';
 import {
   commitStageVisualFrame,
@@ -57,6 +58,8 @@ interface StageRendererProps {
   project: Project;
   evaluatedShot: EvaluatedShot;
   assetUrls: StageAssetUrlMap;
+  /** Small ordered window of upcoming Product Preview source assets to decode. */
+  prewarmAssetIds?: readonly string[];
   caption: string | null;
   captionStyle?: SubtitleStyle;
   camera?: CameraView;
@@ -65,6 +68,9 @@ interface StageRendererProps {
   onDisplayReady?: () => void;
   onError?: (error: Error) => void;
   onImageResourceFailure?: (failure: StageImageResourceFailure) => void;
+  onOptionalImageResourceFailures?: (
+    failures: readonly StageOptionalImageResourceFailure[],
+  ) => void;
   renderToken?: string | number;
   /** Degraded Preview is drawable, but never exact-frame ready for Export. */
   degraded?: boolean;
@@ -92,6 +98,7 @@ function useStageImages(
   layers: readonly StageRenderLayer[],
   sourceKey: string,
   projectId: string,
+  prewarmSources: readonly StageImageLayerSource[],
 ): StageImageResourceState {
   const sessionRef = useRef<StageImageResourceSession | null>(null);
   if (!sessionRef.current) {
@@ -100,14 +107,22 @@ function useStageImages(
   const [state, setState] = useState<StageImageResourceState>(
     () => sessionRef.current?.getSnapshot() ?? EMPTY_STAGE_IMAGE_RESOURCE_STATE,
   );
+  const prewarmSourceKey = buildStageImageSourceKey(prewarmSources);
   const layerSourcesRef = useRef<{
     key: string;
+    prewarmKey: string;
     layers: readonly StageImageLayerSource[];
-  }>({ key: '', layers: [] });
-  if (layerSourcesRef.current.key !== sourceKey) {
+    prewarmSources: readonly StageImageLayerSource[];
+  }>({ key: '', prewarmKey: '', layers: [], prewarmSources: [] });
+  if (
+    layerSourcesRef.current.key !== sourceKey ||
+    layerSourcesRef.current.prewarmKey !== prewarmSourceKey
+  ) {
     layerSourcesRef.current = {
       key: sourceKey,
+      prewarmKey: prewarmSourceKey,
       layers: buildStagePartSources(layers, projectId),
+      prewarmSources,
     };
   }
 
@@ -120,7 +135,8 @@ function useStageImages(
     session.reconcile(layerSourcesRef.current.layers, (nextState) => {
       setState(nextState);
     });
-  }, [sourceKey]);
+    session.prewarm(layerSourcesRef.current.prewarmSources);
+  }, [prewarmSourceKey, sourceKey]);
 
   useEffect(() => {
     const session = sessionRef.current;
@@ -143,6 +159,35 @@ function buildStagePartSources(
       sourceUrl,
     })),
   );
+}
+
+function buildStagePrewarmSources(
+  project: Project,
+  assetUrls: StageAssetUrlMap,
+  assetIds: readonly string[],
+): StageImageLayerSource[] {
+  const seen = new Set<string>();
+  return assetIds.flatMap((assetId) => {
+    if (seen.has(assetId)) return [];
+    seen.add(assetId);
+    const asset = project.assets.find(
+      (candidate) => candidate.id === assetId && candidate.kind === 'image',
+    );
+    const sourceUrl = assetUrls[assetId];
+    if (
+      !asset ||
+      !asset.sha256 ||
+      !/^[a-f0-9]{64}$/u.test(asset.sha256) ||
+      !sourceUrl
+    ) return [];
+    return [{
+      id: `prewarm:${assetId}`,
+      assetId,
+      projectId: project.id,
+      sha256: asset.sha256,
+      sourceUrl,
+    }];
+  });
 }
 
 interface StagePartImagesProps {
@@ -268,6 +313,7 @@ export function StageRenderer({
   project,
   evaluatedShot,
   assetUrls,
+  prewarmAssetIds = [],
   caption,
   captionStyle,
   camera,
@@ -275,6 +321,7 @@ export function StageRenderer({
   onDisplayReady,
   onError,
   onImageResourceFailure,
+  onOptionalImageResourceFailures,
   renderToken,
   degraded = false,
   showStageLabel = true,
@@ -326,6 +373,10 @@ export function StageRenderer({
   const imageSourceKey = buildStageImageSourceKey(
     buildStagePartSources(layers, project.id),
   );
+  const prewarmSources = useMemo(
+    () => buildStagePrewarmSources(project, assetUrls, prewarmAssetIds),
+    [assetUrls, prewarmAssetIds, project],
+  );
   const desiredFrame = modelResult.model
     ? {
         model: modelResult.model,
@@ -334,7 +385,21 @@ export function StageRenderer({
         camera,
       }
     : null;
-  const imageState = useStageImages(layers, imageSourceKey, project.id);
+  const imageState = useStageImages(
+    layers,
+    imageSourceKey,
+    project.id,
+    prewarmSources,
+  );
+  useEffect(() => {
+    onOptionalImageResourceFailures?.(imageState.optionalFailures);
+    imageState.optionalFailures.forEach((failure) => {
+      recordPreviewDiagnostic('stage-image-prewarm-failure', {
+        assetId: failure.assetId,
+        reason: failure.reason,
+      });
+    });
+  }, [imageState.optionalFailures, onOptionalImageResourceFailures]);
   const error = modelResult.error ?? imageState.error;
   const ready = isStageFrameReady({
     error,

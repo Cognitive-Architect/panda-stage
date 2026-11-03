@@ -7,6 +7,7 @@ import {
 import type { AssetCanvasImageReadResponse } from '../../src/shared/asset-canvas-image-api';
 import {
   MAX_CONCURRENT_PREVIEW_IMAGE_READS,
+  MAX_NEXT_PREVIEW_IMAGE_CACHE,
   MAX_OPTIONAL_PREVIEW_IMAGE_READS,
   MAX_QUEUED_OPTIONAL_PREVIEW_IMAGES,
   MAX_RETAINED_PREVIEW_CANDIDATE_BYTES,
@@ -15,6 +16,7 @@ import {
 import {
   applyProductPreviewMouthFallback,
   buildProductPreviewImagePlan,
+  gateProductPreviewImagePrewarm,
   isProductPreviewMouthFallbackFailure,
   projectProductPreviewMouth,
   PRODUCT_PREVIEW_ANIMATION_PREWARM_FRAMES,
@@ -354,6 +356,29 @@ function deferred<T>(): {
 }
 
 describe('Product Preview bounded-original image session — Phase 2 gate C', () => {
+  it('stops optional image prewarm when playback is paused or the window is inactive', () => {
+    const plan: ProductPreviewImagePlan = {
+      requiredAssetIds: [MOUTH_ID],
+      fallbackAssetIds: [ALT_FACE_ID],
+      candidateAssetIds: [ANIMATION_FRAME_A_ID],
+      recentAnimationAssetIds: [ANIMATION_FRAME_A_ID],
+      mouthFallbacks: [
+        {
+          partId: 'mouth-part',
+          sourceAssetId: MOUTH_ID,
+          fallbackAssetId: ALT_FACE_ID,
+        },
+      ],
+    };
+
+    expect(gateProductPreviewImagePrewarm(plan, true)).toBe(plan);
+    expect(gateProductPreviewImagePrewarm(plan, false)).toEqual({
+      ...plan,
+      candidateAssetIds: [],
+      recentAnimationAssetIds: [],
+    });
+  });
+
   it('warms a small upcoming animation window using each instance clock and playback mode', () => {
     const project = animationPreviewProject([
       {
@@ -392,6 +417,14 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
     expect(currentPlan.recentAnimationAssetIds.length).toBeLessThanOrEqual(
       PRODUCT_PREVIEW_MAX_RECENT_ANIMATION_ASSETS,
     );
+    const animationFrameAssetIds = new Set(
+      project.animations[0]!.frames.map((frame) => frame.assetId),
+    );
+    expect(
+      currentPlan.candidateAssetIds.filter((assetId) =>
+        animationFrameAssetIds.has(assetId),
+      ),
+    ).toEqual(currentPlan.recentAnimationAssetIds);
     expect(PRODUCT_PREVIEW_ANIMATION_PREWARM_FRAMES).toBe(3);
 
     const loopProject = animationPreviewProject([
@@ -857,6 +890,41 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
     reads.get(otherB!)!.resolve(readyImage(otherB));
     reads.get(nextShot!)!.resolve(readyImage(nextShot));
     await new Promise((resolve) => setTimeout(resolve, 0));
+    session.dispose();
+  });
+
+  it('limits speculative next-shot reads to the configured cache window', async () => {
+    const { project, assetIds } = projectWithExtraImages(12);
+    const requested: string[] = [];
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: async ({ assetId }) => {
+        requested.push(assetId);
+        return readyImage(assetId);
+      },
+      createObjectUrl: (() => {
+        let index = 0;
+        return () => `blob:next-window-${index++}`;
+      })(),
+    });
+
+    await expect(
+      session.prepare(PROJECT_ROOT, project, {
+        requiredAssetIds: [IDS.assetBg],
+      }, assetIds),
+    ).resolves.toMatchObject({ status: 'ready' });
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const diagnostics = session.getDiagnostics();
+      if (diagnostics.inFlightCount === 0 && diagnostics.queuedOptionalCount === 0) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    expect(requested).toEqual([
+      IDS.assetBg,
+      ...assetIds.slice(0, MAX_NEXT_PREVIEW_IMAGE_CACHE),
+    ]);
+    expect(requested).not.toContain(assetIds[MAX_NEXT_PREVIEW_IMAGE_CACHE]);
     session.dispose();
   });
 
