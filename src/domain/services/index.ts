@@ -1,4 +1,5 @@
 export * from './CharacterService';
+export * from './AutoSubtitleGenerationService';
 export * from './AudioClipService';
 export * from './DialogueService';
 export * from './ExpressionEventService';

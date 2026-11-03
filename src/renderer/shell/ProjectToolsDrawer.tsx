@@ -18,6 +18,7 @@ export interface ProjectToolsDrawerProps {
   autoSubtitleDraft: DialogueAuthoringDraft;
   autoSubtitleDraftResetNotice: string | null;
   onDismissAutoSubtitleDraftResetNotice(): void;
+  onAutoSubtitleGenerated(generatedCount: number): void;
   onClose(): void;
 }
 
@@ -44,6 +45,7 @@ export function ProjectToolsDrawer({
   autoSubtitleDraft,
   autoSubtitleDraftResetNotice,
   onDismissAutoSubtitleDraftResetNotice,
+  onAutoSubtitleGenerated,
   onClose,
 }: ProjectToolsDrawerProps): React.JSX.Element {
   const [view, setView] = useState<ProjectToolsView>('home');
@@ -216,6 +218,7 @@ export function ProjectToolsDrawer({
           ) : null}
           <DialogueBatchPaste
             draft={autoSubtitleDraft}
+            onAutoSubtitleGenerated={onAutoSubtitleGenerated}
             presentation="auto-subtitle"
           />
         </section>

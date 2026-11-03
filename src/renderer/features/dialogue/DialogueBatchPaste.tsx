@@ -5,9 +5,16 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import type { AudioAsset, Character } from '../../../domain';
+import {
+  AutoSubtitleGenerationService,
+  type AutoSubtitleGenerationRow,
+  type AudioAsset,
+  type Character,
+} from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { dialogueStore } from '../../stores/dialogueStore';
+import { shotStore } from '../../stores/shotStore';
+import { timelineUiStore } from '../timeline/timelineUiStore';
 import { CircleCheck, CirclePlus } from 'lucide-react';
 import {
   CharacterAvatar,
@@ -29,6 +36,7 @@ import {
 } from './parseDialoguePaste';
 
 const AUTOMATIC_AUDIO_VALUE = '__automatic__';
+const autoSubtitleGenerationPlanner = new AutoSubtitleGenerationService();
 
 function exceptionHeading(line: ParsedDialogueLine): string {
   if (line.status === 'malformed') return '这一行格式不对';
@@ -159,11 +167,13 @@ function DialogueBatchAudioPreview({
 export function DialogueBatchPaste({
   draft,
   onSuccess,
+  onAutoSubtitleGenerated,
   showDefaultExpression = true,
   presentation = 'subtitle-only',
 }: {
   draft: DialogueAuthoringDraft;
   onSuccess?: () => void;
+  onAutoSubtitleGenerated?: (generatedCount: number) => void;
   showDefaultExpression?: boolean;
   presentation?: 'subtitle-only' | 'auto-subtitle';
 }): React.JSX.Element {
@@ -181,8 +191,22 @@ export function DialogueBatchPaste({
     thumbnails: characterThumbnails,
   } = useCharacterAvatarThumbnails(snapshot, characters);
   const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
+  const currentShotId = useSyncExternalStore(
+    shotStore.subscribe,
+    shotStore.getCurrentShotId,
+  );
+  const timeline = useSyncExternalStore(
+    timelineUiStore.subscribe,
+    timelineUiStore.getSnapshot,
+  );
   const [roleEditLine, setRoleEditLine] = useState<number | null>(null);
   const [commitError, setCommitError] = useState<string | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [generationBusy, setGenerationBusy] = useState(false);
+  const [extensionConfirmation, setExtensionConfirmation] = useState<{
+    fingerprint: string;
+  } | null>(null);
+  const generationLock = useRef(false);
   const [expandedLine, setExpandedLine] = useState<number | null>(null);
   const [inputExpanded, setInputExpanded] = useState(true);
   const autoSubtitle = presentation === 'auto-subtitle';
@@ -216,6 +240,63 @@ export function DialogueBatchPaste({
       resolution,
     ],
   );
+  const generationRows = useMemo<AutoSubtitleGenerationRow[]>(() => {
+    if (!autoSubtitle || !preview?.allReady) return [];
+    return preview.rows.flatMap((row) => {
+      if (
+        row.characterId === null ||
+        row.text === null ||
+        row.audioAssetId === null ||
+        row.durationMs === null
+      ) return [];
+      const selection = draftState.batchAudioSelections[row.sourceLineNumber];
+      return [{
+        sourceLineNumber: row.sourceLineNumber,
+        characterId: row.characterId,
+        ...(selection ? { selectedCharacterId: selection.characterId } : {}),
+        text: row.text,
+        audioAssetId: row.audioAssetId,
+        durationMs: row.durationMs,
+      }];
+    });
+  }, [autoSubtitle, draftState.batchAudioSelections, preview]);
+  const placement = useMemo(() => {
+    if (!autoSubtitle || !snapshot || !currentShotId || !preview?.allReady) {
+      return null;
+    }
+    return autoSubtitleGenerationPlanner.plan(snapshot.project, {
+      shotId: currentShotId,
+      startMs: timeline.currentTimeMs,
+      rows: generationRows,
+    });
+  }, [
+    autoSubtitle,
+    currentShotId,
+    generationRows,
+    preview?.allReady,
+    snapshot,
+    timeline.currentTimeMs,
+  ]);
+  const generationFingerprint = autoSubtitle
+    ? JSON.stringify({
+        projectRoot: snapshot?.projectRoot,
+        projectId: snapshot?.project.id,
+        revision: snapshot?.revision,
+        shotId: currentShotId,
+        startMs: timeline.currentTimeMs,
+        input: draftState.batchRaw,
+        mappings: draftState.batchMapping,
+        audioSelections: draftState.batchAudioSelections,
+        rows: generationRows,
+      })
+    : '';
+  const priorGenerationFingerprint = useRef(generationFingerprint);
+  useEffect(() => {
+    if (priorGenerationFingerprint.current === generationFingerprint) return;
+    priorGenerationFingerprint.current = generationFingerprint;
+    setExtensionConfirmation(null);
+    setGenerationError(null);
+  }, [generationFingerprint]);
   const hasContent = draftState.batchRaw.trim().length > 0;
   const handleAddSubtitles = (): void => {
     if (!resolution.allResolved) return;
@@ -232,6 +313,90 @@ export function DialogueBatchPaste({
         error instanceof Error ? error.message : '批量添加字幕失败。',
       );
     }
+  };
+  const commitAutoSubtitleBatch = async (
+    extendShotToMs?: number,
+  ): Promise<void> => {
+    if (
+      generationLock.current ||
+      !snapshot ||
+      !currentShotId ||
+      !placement?.ready ||
+      !preview?.allReady
+    ) return;
+    generationLock.current = true;
+    setGenerationBusy(true);
+    setGenerationError(null);
+    try {
+      const uniqueAssetIds = [...new Set(
+        placement.rows.map((row) => row.audioAssetId),
+      )];
+      for (const assetId of uniqueAssetIds) {
+        const asset = snapshot.project.assets.find(
+          (candidate): candidate is AudioAsset =>
+            candidate.id === assetId && candidate.kind === 'audio',
+        );
+        if (!asset || !asset.sha256 || !snapshot.projectRoot) {
+          throw new Error('配音缺少完整素材校验信息，请重新导入该素材。');
+        }
+        const source = await window.pandaStage.assets.readAudio({
+          projectRoot: snapshot.projectRoot,
+          assetId: asset.id,
+          sha256: asset.sha256,
+        });
+        if (
+          !source.ok ||
+          source.assetId !== asset.id ||
+          source.status !== 'ready' ||
+          source.mimeType !== asset.mimeType ||
+          source.bytes.byteLength !== source.byteLength
+        ) {
+          throw new Error('配音文件已变化或无法读取，请刷新素材后重新确认。');
+        }
+      }
+
+      if (draft.getSnapshot() !== draftState) {
+        throw new Error('对白或配音选择已变化，请重新核验生成预览。');
+      }
+
+      const generated = dialogueStore.generateAutoSubtitles({
+        expectedProjectRoot: snapshot.projectRoot,
+        expectedProject: snapshot.project,
+        expectedProjectId: snapshot.project.id,
+        expectedRevision: snapshot.revision,
+        expectedStartMs: placement.startMs,
+        shotId: placement.shotId,
+        rows: generationRows,
+        ...(extendShotToMs === undefined ? {} : { extendShotToMs }),
+      });
+      setExtensionConfirmation(null);
+      onAutoSubtitleGenerated?.(generated.dialogueIds.length);
+    } catch (error) {
+      setGenerationError(
+        error instanceof Error ? error.message : '生成字幕与配音失败，请重新核验预览。',
+      );
+    } finally {
+      generationLock.current = false;
+      setGenerationBusy(false);
+    }
+  };
+  const requestAutoSubtitleGeneration = (): void => {
+    if (!placement?.ready || generationBusy) return;
+    setGenerationError(null);
+    if (placement.needsShotExtension) {
+      setExtensionConfirmation({ fingerprint: generationFingerprint });
+      return;
+    }
+    void commitAutoSubtitleBatch();
+  };
+  const confirmAutoSubtitleExtension = (): void => {
+    if (
+      extensionConfirmation?.fingerprint !== generationFingerprint ||
+      placement?.extensionToMs === null ||
+      placement?.extensionToMs === undefined ||
+      generationBusy
+    ) return;
+    void commitAutoSubtitleBatch(placement.extensionToMs);
   };
   const audioUse = new Map<string, number[]>();
   (preview?.rows ?? []).forEach((row) => {
@@ -361,9 +526,13 @@ export function DialogueBatchPaste({
                 line.status === 'valid' &&
                 resolvedRow !== null &&
                 resolvedRow.character.id !== line.characterId;
+              const placementIssue = placement?.blockers.find(
+                (blocker) => blocker.sourceLineNumber === line.lineNumber,
+              );
+              const rowIssueMessage = row?.issueMessage ?? null;
               const rowStatus = !resolvedRow
                 ? line.status
-                : row?.issue
+                : row?.issue || placementIssue
                   ? 'audio-invalid'
                   : mapped || roleWasChanged
                     ? 'mapped'
@@ -492,9 +661,19 @@ export function DialogueBatchPaste({
                         </span>
                       ) : null}
                       <span>
-                        {summaryDuration ?? row?.issueMessage ?? (resolvedRow ? '待匹配配音' : '先确认角色')}
+                {summaryDuration ?? rowIssueMessage ?? (placementIssue ? '与已有字幕重叠' : resolvedRow ? '待匹配配音' : '先确认角色')}
                       </span>
                     </div>
+                  ) : null}
+
+                  {autoSubtitle && placementIssue ? (
+                    <p
+                      className="auto-subtitle-row-placement-issue"
+                      data-testid={`auto-subtitle-placement-issue-${line.lineNumber}`}
+                      role="alert"
+                    >
+                      {placementIssue.message}
+                    </p>
                   ) : null}
 
                   {canChooseRole &&
@@ -566,7 +745,7 @@ export function DialogueBatchPaste({
                       <label htmlFor={`dialogue-batch-audio-${line.lineNumber}`}>
                         配音
                         <select
-                          aria-describedby={row.issueMessage ? issueId : undefined}
+                          aria-describedby={rowIssueMessage ? issueId : undefined}
                           aria-invalid={Boolean(row.issue)}
                           data-testid={`dialogue-batch-audio-${line.lineNumber}`}
                           id={`dialogue-batch-audio-${line.lineNumber}`}
@@ -641,7 +820,7 @@ export function DialogueBatchPaste({
                             >
                               <span>片段时长</span>
                               <input
-                                aria-describedby={row.issueMessage ? issueId : undefined}
+                                aria-describedby={rowIssueMessage ? issueId : undefined}
                                 aria-invalid={
                                   row.issue === 'duration-invalid' ||
                                   row.issue === 'duration-out-of-range'
@@ -672,13 +851,13 @@ export function DialogueBatchPaste({
                         </span>
                       ) : null}
 
-                      {row.issueMessage ? (
+                      {rowIssueMessage ? (
                         <p
                           className="dialogue-batch-row-issue"
                           data-testid={`dialogue-batch-issue-${line.lineNumber}`}
                           id={issueId}
                         >
-                          {row.issueMessage}
+                          {rowIssueMessage}
                         </p>
                       ) : null}
                       {row.audioAsset && snapshot?.projectRoot ? (
@@ -699,6 +878,71 @@ export function DialogueBatchPaste({
             <p className="dialogue-authoring-error" role="alert">
               {commitError}
             </p>
+          ) : null}
+          {autoSubtitle ? (
+            <footer
+              aria-label="生成字幕与配音"
+              className="auto-subtitle-generate-footer"
+              data-testid="auto-subtitle-generate-footer"
+            >
+              {generationError ? (
+                <p
+                  className="auto-subtitle-generation-error"
+                  data-testid="auto-subtitle-generation-error"
+                  role="alert"
+                >
+                  {generationError}
+                </p>
+              ) : null}
+              {extensionConfirmation?.fingerprint === generationFingerprint &&
+              placement?.needsShotExtension && placement.extensionToMs !== null ? (
+                <section
+                  aria-label="确认延长镜头"
+                  className="auto-subtitle-extension-prompt"
+                  data-testid="auto-subtitle-extension-prompt"
+                >
+                  <p role="status">
+                    {`当前剩余 ${formatDialogueDuration(placement.remainingDurationMs)}，本批需要 ${formatDialogueDuration(placement.totalDurationMs)}，需延长至 ${formatDialogueDuration(placement.extensionToMs)}。`}
+                  </p>
+                  <div>
+                    <button
+                      data-testid="auto-subtitle-extension-cancel"
+                      disabled={generationBusy}
+                      onClick={() => setExtensionConfirmation(null)}
+                      type="button"
+                    >
+                      取消
+                    </button>
+                    <button
+                      className="auto-subtitle-extension-confirm"
+                      data-testid="auto-subtitle-extension-confirm"
+                      disabled={generationBusy}
+                      onClick={confirmAutoSubtitleExtension}
+                      type="button"
+                    >
+                      {generationBusy ? '正在核验…' : '延长镜头并生成'}
+                    </button>
+                  </div>
+                </section>
+              ) : null}
+              <div className="auto-subtitle-generation-summary">
+                <span data-testid="auto-subtitle-generation-start">
+                  {`从 ${formatDialogueDuration(timeline.currentTimeMs)} 开始 · ${preview?.rows.length ?? 0} 句`}
+                </span>
+                <span data-testid="auto-subtitle-generation-duration">
+                  {`总时长 ${formatDialogueDuration(placement?.totalDurationMs ?? preview?.totalDurationMs ?? 0)}`}
+                </span>
+              </div>
+              <button
+                className="auto-subtitle-generate-button"
+                data-testid="auto-subtitle-generate"
+                disabled={!preview?.allReady || !placement?.ready || generationBusy}
+                onClick={requestAutoSubtitleGeneration}
+                type="button"
+              >
+                {generationBusy ? '正在核验并生成…' : '生成字幕与配音'}
+              </button>
+            </footer>
           ) : null}
           {!autoSubtitle ? (
             <footer
