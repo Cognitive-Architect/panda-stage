@@ -688,7 +688,7 @@ interface ParsedShapeEdge extends EdgeStyleReferences {
 function attributeFromElement(block: string, tag: string, attribute: string): string | null {
   const openTag = block.match(new RegExp(`<${tag}\\b[^>]*>`))?.[0];
   if (!openTag) return null;
-  return openTag.match(new RegExp(`\\b${attribute}="([^"]*)"`))?.[1] ?? null;
+  return xmlAttributes(openTag)?.[attribute] ?? null;
 }
 
 function parseNonNegativeInteger(value: string): number | null {
@@ -1122,15 +1122,46 @@ function parseLinearGradientPaint(
   };
 }
 
-function xmlAttributes(openTag: string | undefined): Record<string, string> {
-  if (!openTag) return {};
-  return Object.fromEntries(
-    [...openTag.matchAll(/([A-Za-z_][A-Za-z0-9_.:-]*)="([^"]*)"/gu)]
-      .map((match) => [match[1] as string, match[2] as string]),
-  );
+function xmlAttributes(openTag: string | undefined): Record<string, string> | null {
+  if (!openTag?.startsWith('<') || !openTag.endsWith('>')) return null;
+  const tagName = openTag.match(/^<[A-Za-z_][A-Za-z0-9_.:-]*/u)?.[0];
+  if (!tagName) return null;
+
+  let remainder = openTag.slice(tagName.length, -1).trimEnd();
+  if (remainder.endsWith('/')) remainder = remainder.slice(0, -1);
+  const attributes: Record<string, string> = Object.create(null) as Record<string, string>;
+  let offset = 0;
+  while (offset < remainder.length) {
+    while (/\s/u.test(remainder[offset] ?? '')) offset += 1;
+    if (offset >= remainder.length) break;
+
+    const name = remainder.slice(offset).match(/^([A-Za-z_][A-Za-z0-9_.:-]*)/u)?.[1];
+    if (!name || Object.prototype.hasOwnProperty.call(attributes, name)) return null;
+    offset += name.length;
+    while (/\s/u.test(remainder[offset] ?? '')) offset += 1;
+    if (remainder[offset] !== '=') return null;
+    offset += 1;
+    while (/\s/u.test(remainder[offset] ?? '')) offset += 1;
+
+    const quote = remainder[offset];
+    if (quote !== '"' && quote !== "'") return null;
+    offset += 1;
+    const valueEnd = remainder.indexOf(quote, offset);
+    if (valueEnd < 0) return null;
+    const value = remainder.slice(offset, valueEnd);
+    if (value.includes('<')) return null;
+    offset = valueEnd + 1;
+    if (offset < remainder.length && !/\s/u.test(remainder[offset] ?? '')) return null;
+    attributes[name] = value;
+  }
+  return attributes;
 }
 
-function hasExactAttributeNames(attributes: Record<string, string>, names: readonly string[]): boolean {
+function hasExactAttributeNames(
+  attributes: Record<string, string> | null,
+  names: readonly string[],
+): boolean {
+  if (!attributes) return false;
   return Object.keys(attributes).sort().join(',') === [...names].sort().join(',');
 }
 
@@ -1183,7 +1214,8 @@ function matchesIssue944ProvenLinearStroke(
 ): boolean {
   const strokeTag = solidStrokeXml.match(/<SolidStroke\b[^>]*>/u)?.[0];
   const strokeAttributes = xmlAttributes(strokeTag);
-  if (!hasExactAttributeNames(strokeAttributes, ['scaleMode']) || strokeAttributes.scaleMode !== 'normal') {
+  if (!strokeAttributes || !hasExactAttributeNames(strokeAttributes, ['scaleMode']) ||
+      strokeAttributes.scaleMode !== 'normal') {
     return false;
   }
   if (/<VariablePointWidth\b/u.test(style.sourceXml)) return false;
@@ -1193,7 +1225,7 @@ function matchesIssue944ProvenLinearStroke(
   const gradientBlock = gradientBlocks[0] as string;
   const gradientTag = gradientBlock.match(/<LinearGradient\b[^>]*>/u)?.[0];
   const gradientAttributes = xmlAttributes(gradientTag);
-  if (!hasExactAttributeNames(gradientAttributes, ['spreadMethod']) ||
+  if (!gradientAttributes || !hasExactAttributeNames(gradientAttributes, ['spreadMethod']) ||
       gradientAttributes.spreadMethod !== 'reflect') return false;
 
   const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
@@ -1202,7 +1234,7 @@ function matchesIssue944ProvenLinearStroke(
     : [];
   if ((gradientBlock.match(/<matrix\b/gu) ?? []).length !== 1 || matrixTags.length !== 1) return false;
   const matrixAttributes = xmlAttributes(matrixTags[0]);
-  if (!hasExactAttributeNames(matrixAttributes, ['a', 'd', 'tx', 'ty'])) return false;
+  if (!matrixAttributes || !hasExactAttributeNames(matrixAttributes, ['a', 'd', 'tx', 'ty'])) return false;
   const evidencedMatrix = {
     a: 0.009490966796875,
     d: 0.01239013671875,
@@ -1224,7 +1256,7 @@ function matchesIssue944ProvenLinearStroke(
   return stopTags.every((tag, index) => {
     const attributes = xmlAttributes(tag);
     const expected = evidencedStops[index];
-    return expected !== undefined &&
+    return expected !== undefined && attributes !== null &&
       hasExactAttributeNames(attributes, ['color', 'ratio']) &&
       attributes.color === expected.color &&
       Number(attributes.ratio) === expected.ratio;
@@ -1237,7 +1269,7 @@ function hasExplicitSafeLinearStrokeSemantics(
 ): boolean {
   const strokeTag = solidStrokeXml.match(/<SolidStroke\b[^>]*>/u)?.[0];
   const strokeAttributes = xmlAttributes(strokeTag);
-  if (!hasExactAttributeNames(strokeAttributes, [
+  if (!strokeAttributes || !hasExactAttributeNames(strokeAttributes, [
     'weight', 'caps', 'joints', 'scaleMode', 'pixelHinting',
   ]) && !hasExactAttributeNames(strokeAttributes, [
     'weight', 'caps', 'joints', 'scaleMode', 'pixelHinting', 'miterLimit',
@@ -1250,7 +1282,7 @@ function hasExplicitSafeLinearStrokeSemantics(
 
   const gradientTag = gradientBlock.match(/<LinearGradient\b[^>]*>/u)?.[0];
   const gradientAttributes = xmlAttributes(gradientTag);
-  if (!hasExactAttributeNames(gradientAttributes, ['spreadMethod', 'interpolationMethod']) ||
+  if (!gradientAttributes || !hasExactAttributeNames(gradientAttributes, ['spreadMethod', 'interpolationMethod']) ||
       gradientAttributes.spreadMethod !== 'reflect' ||
       gradientAttributes.interpolationMethod !== 'rgb') return false;
 

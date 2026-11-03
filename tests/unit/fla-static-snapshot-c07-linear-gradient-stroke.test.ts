@@ -144,6 +144,38 @@ describe('P2-C07 evidence-bounded linear-gradient stroke reconstruction', () => 
     expect(rendered.svg).toContain('spreadMethod="reflect" color-interpolation="sRGB"');
   });
 
+  it('fails closed when a single-quoted weight would otherwise look omitted in the #944 signature', async () => {
+    const stroke = EVIDENCED_LINEAR_STROKE.replace(
+      'scaleMode="normal"',
+      "scaleMode=\"normal\" weight='5'",
+    );
+    const rendered = await renderScene(stroke, '<Edge strokeStyle="1" cubics="!100 100|200 100"/>');
+    expect(rendered.ok).toBe(false);
+  });
+
+  it('fails closed when a single-quoted interpolation method would otherwise look omitted in the #944 signature', async () => {
+    const stroke = EVIDENCED_LINEAR_STROKE.replace(
+      'spreadMethod="reflect"',
+      "spreadMethod=\"reflect\" interpolationMethod='linearRGB'",
+    );
+    const rendered = await renderScene(stroke, '<Edge strokeStyle="1" cubics="!100 100|200 100"/>');
+    expect(rendered.ok).toBe(false);
+  });
+
+  it('recognizes mixed single- and double-quoted explicit linear-stroke attributes', async () => {
+    const stroke = EXPLICIT_SAFE_LINEAR_STROKE.replace('weight="2"', "weight='2'");
+    const rendered = await renderScene(stroke, '<Edge strokeStyle="3" cubics="!100 100|200 100"/>');
+    expect(rendered.ok).toBe(true);
+    if (!rendered.ok) return;
+    expect(rendered.svg).toContain('stroke-width="2"');
+  });
+
+  it('rejects duplicate linear-stroke attributes instead of collapsing them', async () => {
+    const stroke = EXPLICIT_SAFE_LINEAR_STROKE.replace('weight="2"', 'weight="2" weight="3"');
+    const rendered = await renderScene(stroke, '<Edge strokeStyle="3" cubics="!100 100|200 100"/>');
+    expect(rendered.ok).toBe(false);
+  });
+
   it.each([
     ['hairline', EVIDENCED_LINEAR_STROKE.replace('scaleMode="normal"', 'scaleMode="normal" weight="0"'), 'TARGET_UNSUPPORTED'],
     ['unsupported spread', EVIDENCED_LINEAR_STROKE.replace('spreadMethod="reflect"', 'spreadMethod="pad"'), 'TARGET_UNSUPPORTED'],
