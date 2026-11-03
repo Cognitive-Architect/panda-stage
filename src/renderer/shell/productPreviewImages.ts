@@ -446,72 +446,94 @@ export class ProductPreviewImageSession {
   ): void {
     entry.status = 'loading';
     entry.failureKind = null;
-    entry.startedAsOptional = entry.priority > 0;
+    const attemptStartedAsOptional = entry.priority > 0;
+    entry.startedAsOptional = attemptStartedAsOptional;
     entry.discardResult = false;
     this.inFlight.set(descriptor.key, entry);
-    this.readRequests += 1;
     this.inFlightPeak = Math.max(this.inFlightPeak, this.inFlight.size);
 
-    void Promise.resolve()
-      .then(() =>
+    const canApplyResult = (): boolean =>
+      !this.disposed &&
+      this.entries.get(descriptor.key) === entry &&
+      (!entry.discardResult || this.isProtected(descriptor.key));
+    const readImage = (): Promise<AssetCanvasImageReadResponse> => {
+      this.readRequests += 1;
+      return Promise.resolve().then(() =>
         this.readCanvasImage({
           projectRoot,
           assetId: descriptor.assetId,
           sha256: descriptor.sha256,
         }),
-      )
-      .then((response) => {
-        if (
-          this.disposed ||
-          this.entries.get(descriptor.key) !== entry ||
-          (entry.discardResult && !this.isProtected(descriptor.key))
-        ) {
-          if (!this.disposed && this.entries.get(descriptor.key) === entry) {
-            entry.status = 'error';
-          }
-          return;
-        }
-        if (!response.ok || response.status !== 'ready') {
-          entry.status = 'error';
-          entry.failureKind = entry.priority > 0 ? 'optional' : 'required';
-          return;
-        }
+      );
+    };
+    const failEntry = (): void => {
+      if (this.disposed || this.entries.get(descriptor.key) !== entry) return;
+      entry.status = 'error';
+      entry.failureKind =
+        entry.requiredRetryAttempted || !attemptStartedAsOptional
+          ? 'required'
+          : 'optional';
+    };
+    const isReadyResponse = (
+      response: AssetCanvasImageReadResponse | null,
+    ): response is Extract<AssetCanvasImageReadResponse, { status: 'ready' }> =>
+      Boolean(response?.ok && response.status === 'ready');
 
-        const objectUrl = this.createObjectUrl(
-          new Blob([response.bytes], { type: response.mimeType }),
-        );
-        if (
-          this.disposed ||
-          this.entries.get(descriptor.key) !== entry ||
-          (entry.discardResult && !this.isProtected(descriptor.key))
-        ) {
-          this.revokeObjectUrl(objectUrl);
-          if (!this.disposed && this.entries.get(descriptor.key) === entry) {
-            entry.status = 'error';
-          }
+    void (async () => {
+      let response = await readImage().catch(() => null);
+      if (!canApplyResult()) {
+        failEntry();
+        return;
+      }
+
+      const shouldRetryAsRequired = (): boolean =>
+        attemptStartedAsOptional &&
+        entry.priority === 0 &&
+        this.currentKeepKeys.has(descriptor.key) &&
+        !entry.requiredRetryAttempted;
+
+      if (!isReadyResponse(response) && shouldRetryAsRequired()) {
+        entry.requiredRetryAttempted = true;
+        entry.startedAsOptional = false;
+        entry.failureKind = null;
+        response = await readImage().catch(() => null);
+        if (!canApplyResult()) {
+          failEntry();
           return;
         }
-        entry.status = 'ready';
-        entry.url = objectUrl;
-        entry.byteLength = Number.isFinite(response.byteLength)
-          ? Math.max(0, response.byteLength)
-          : response.bytes.byteLength;
-        entry.lastUsed = ++this.nextSequence;
-        this.enforceReadyCacheBudget();
-      })
+      }
+
+      if (!isReadyResponse(response)) {
+        failEntry();
+        return;
+      }
+
+      const objectUrl = this.createObjectUrl(
+        new Blob([response.bytes], { type: response.mimeType }),
+      );
+      if (!canApplyResult()) {
+        this.revokeObjectUrl(objectUrl);
+        failEntry();
+        return;
+      }
+      entry.status = 'ready';
+      entry.failureKind = null;
+      entry.url = objectUrl;
+      entry.byteLength = Number.isFinite(response.byteLength)
+        ? Math.max(0, response.byteLength)
+        : response.bytes.byteLength;
+      entry.lastUsed = ++this.nextSequence;
+      this.enforceReadyCacheBudget();
+    })()
       .catch(() => {
-        if (!this.disposed && this.entries.get(descriptor.key) === entry) {
-          entry.status = 'error';
-          entry.failureKind = entry.priority > 0 ? 'optional' : 'required';
-        }
+        failEntry();
       })
       .finally(() => {
         if (this.inFlight.get(descriptor.key) === entry) {
           this.inFlight.delete(descriptor.key);
         }
         if (entry.status === 'loading') {
-          entry.status = 'error';
-          entry.failureKind = entry.priority > 0 ? 'optional' : 'required';
+          failEntry();
         }
         entry.resolve();
         if (

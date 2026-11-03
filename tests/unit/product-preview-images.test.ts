@@ -544,6 +544,38 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
     expect(revoked).toEqual([]);
   });
 
+  it('does not retry an in-flight optional image after the preview session closes', async () => {
+    const project = compositePreviewProject();
+    const optionalRead = deferred<AssetCanvasImageReadResponse>();
+    let alternateReadCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId !== ALT_FACE_ID) return Promise.resolve(readyImage(assetId));
+        alternateReadCount += 1;
+        return optionalRead.promise;
+      },
+      createObjectUrl: () => 'blob:closed-preview',
+      revokeObjectUrl: () => {},
+    });
+    await expect(
+      session.prepare(PROJECT_ROOT, project, {
+        requiredAssetIds: [IDS.assetBg],
+        candidateAssetIds: [ALT_FACE_ID],
+      }),
+    ).resolves.toMatchObject({ status: 'ready' });
+
+    const requiredLoad = session.prepare(PROJECT_ROOT, project, {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    });
+    session.dispose();
+    optionalRead.resolve(failedImage(ALT_FACE_ID));
+
+    await expect(requiredLoad).resolves.toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(alternateReadCount).toBe(1);
+    expect(session.getDiagnostics().inFlightCount).toBe(0);
+  });
+
   it('revokes immediately if disposal occurs during image URL creation', async () => {
     const project = imageProject();
     const revoked: string[] = [];
@@ -1140,6 +1172,336 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
       status: 'ready',
       optionalFailedAssetIds: [ALT_FACE_ID],
     });
+    session.dispose();
+  });
+
+  it('retries an optional image once when it is promoted while loading and then fails', async () => {
+    const project = compositePreviewProject();
+    const optionalRead = deferred<AssetCanvasImageReadResponse>();
+    const requiredRetry = deferred<AssetCanvasImageReadResponse>();
+    let alternateReadCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId !== ALT_FACE_ID) return Promise.resolve(readyImage(assetId));
+        alternateReadCount += 1;
+        return alternateReadCount === 1
+          ? optionalRead.promise
+          : requiredRetry.promise;
+      },
+      createObjectUrl: () => `blob:in-flight-required-${alternateReadCount}`,
+      revokeObjectUrl: () => {},
+    });
+
+    const warmLoad = session.prepare(PROJECT_ROOT, project, {
+      requiredAssetIds: [IDS.assetBg],
+      candidateAssetIds: [ALT_FACE_ID],
+    });
+    await expect(warmLoad).resolves.toMatchObject({ status: 'ready' });
+    expect(alternateReadCount).toBe(1);
+
+    const requiredScope = {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    };
+    const requiredLoad = session.prepare(PROJECT_ROOT, project, requiredScope);
+    let requiredLoadSettled = false;
+    void requiredLoad.then(() => {
+      requiredLoadSettled = true;
+    });
+    expect(
+      session.snapshot(PROJECT_ROOT, project, requiredScope),
+    ).toMatchObject({
+      status: 'loading',
+      fatalAssetIds: [],
+    });
+    expect(session.getDiagnostics()).toMatchObject({
+      inFlightCount: 1,
+      optionalInFlightCount: 1,
+    });
+
+    optionalRead.resolve(failedImage(ALT_FACE_ID));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(alternateReadCount).toBe(2);
+    expect(requiredLoadSettled).toBe(false);
+    expect(session.getDiagnostics()).toMatchObject({
+      inFlightCount: 1,
+      optionalInFlightCount: 0,
+    });
+    expect(
+      session.snapshot(PROJECT_ROOT, project, requiredScope),
+    ).toMatchObject({
+      status: 'loading',
+      fatalAssetIds: [],
+    });
+
+    requiredRetry.resolve(readyImage(ALT_FACE_ID));
+    await expect(requiredLoad).resolves.toMatchObject({ status: 'ready' });
+    expect(
+      session.snapshot(PROJECT_ROOT, project, requiredScope).urls[ALT_FACE_ID],
+    ).toBe('blob:in-flight-required-2');
+    expect(alternateReadCount).toBe(2);
+    session.dispose();
+  });
+
+  it('reports required fatal after an in-flight retry fails and never reads a third time', async () => {
+    const project = compositePreviewProject();
+    const optionalRead = deferred<AssetCanvasImageReadResponse>();
+    const requiredRetry = deferred<AssetCanvasImageReadResponse>();
+    let alternateReadCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId !== ALT_FACE_ID) return Promise.resolve(readyImage(assetId));
+        alternateReadCount += 1;
+        return alternateReadCount === 1
+          ? optionalRead.promise
+          : requiredRetry.promise;
+      },
+      revokeObjectUrl: () => {},
+    });
+    const candidateScope = {
+      requiredAssetIds: [IDS.assetBg],
+      candidateAssetIds: [ALT_FACE_ID],
+    };
+    await expect(
+      session.prepare(PROJECT_ROOT, project, candidateScope),
+    ).resolves.toMatchObject({ status: 'ready' });
+    expect(alternateReadCount).toBe(1);
+
+    const requiredScope = {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    };
+    const requiredLoad = session.prepare(PROJECT_ROOT, project, requiredScope);
+    optionalRead.resolve(failedImage(ALT_FACE_ID));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(alternateReadCount).toBe(2);
+    expect(
+      session.snapshot(PROJECT_ROOT, project, requiredScope),
+    ).toMatchObject({ status: 'loading', fatalAssetIds: [] });
+
+    requiredRetry.resolve(failedImage(ALT_FACE_ID));
+    await expect(requiredLoad).resolves.toMatchObject({
+      status: 'error',
+      fatalAssetIds: [ALT_FACE_ID],
+      missingCount: 1,
+    });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(
+        session.prepare(PROJECT_ROOT, project, requiredScope),
+      ).resolves.toMatchObject({
+        status: 'error',
+        fatalAssetIds: [ALT_FACE_ID],
+      });
+    }
+    expect(alternateReadCount).toBe(2);
+    expect(session.getDiagnostics()).toMatchObject({
+      inFlightCount: 0,
+      queuedOptionalCount: 0,
+    });
+    session.dispose();
+  });
+
+  it('uses the successful original optional read when promotion happens in flight', async () => {
+    const project = compositePreviewProject();
+    const optionalRead = deferred<AssetCanvasImageReadResponse>();
+    let alternateReadCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId !== ALT_FACE_ID) return Promise.resolve(readyImage(assetId));
+        alternateReadCount += 1;
+        return optionalRead.promise;
+      },
+      createObjectUrl: () => `blob:in-flight-success-${alternateReadCount}`,
+      revokeObjectUrl: () => {},
+    });
+    await expect(
+      session.prepare(PROJECT_ROOT, project, {
+        requiredAssetIds: [IDS.assetBg],
+        candidateAssetIds: [ALT_FACE_ID],
+      }),
+    ).resolves.toMatchObject({ status: 'ready' });
+
+    const requiredScope = {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    };
+    const requiredLoad = session.prepare(PROJECT_ROOT, project, requiredScope);
+    optionalRead.resolve(readyImage(ALT_FACE_ID));
+    await expect(requiredLoad).resolves.toMatchObject({ status: 'ready' });
+    expect(alternateReadCount).toBe(1);
+    expect(
+      session.snapshot(PROJECT_ROOT, project, requiredScope).urls[ALT_FACE_ID],
+    ).toBe('blob:in-flight-success-1');
+    session.dispose();
+  });
+
+  it('does not retry a promoted frame after a reverse seek returns to the previous frame', async () => {
+    const project = animationPreviewProject([
+      {
+        id: IDS.animationLayer,
+        startTimeMs: 0,
+        mode: 'loop',
+        endBehavior: 'hold',
+      },
+    ]);
+    const shot = project.shots[0]!;
+    const planAt = (timeMs: number) =>
+      buildProductPreviewImagePlan(
+        project,
+        shot,
+        projectProductPreviewMouth(
+          project,
+          shot,
+          evaluateShotAtTime(shot, timeMs, project),
+          DIALOGUE_ID,
+        ),
+      );
+    const previousFramePlan = planAt(0);
+    const promotedFramePlan = planAt(100);
+    const staleRead = deferred<AssetCanvasImageReadResponse>();
+    let promotedFrameReadCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId === ANIMATION_FRAME_B_ID) {
+          promotedFrameReadCount += 1;
+          return staleRead.promise;
+        }
+        return Promise.resolve(readyImage(assetId));
+      },
+      createObjectUrl: (() => {
+        let count = 0;
+        return () => `blob:reverse-seek-${++count}`;
+      })(),
+      revokeObjectUrl: () => {},
+    });
+    expect(previousFramePlan.requiredAssetIds).toContain(ANIMATION_FRAME_A_ID);
+    expect(previousFramePlan.candidateAssetIds).toContain(ANIMATION_FRAME_B_ID);
+    expect(promotedFramePlan.requiredAssetIds).toContain(ANIMATION_FRAME_B_ID);
+    await expect(
+      session.prepare(PROJECT_ROOT, project, previousFramePlan),
+    ).resolves.toMatchObject({ status: 'ready' });
+    expect(promotedFrameReadCount).toBe(1);
+
+    const promotedLoad = session.prepare(
+      PROJECT_ROOT,
+      project,
+      promotedFramePlan,
+    );
+    const reverseSeekPlan = planAt(0);
+    const reverseSeekLoad = session.prepare(
+      PROJECT_ROOT,
+      project,
+      reverseSeekPlan,
+    );
+    await expect(reverseSeekLoad).resolves.toMatchObject({ status: 'ready' });
+
+    staleRead.resolve(failedImage(ANIMATION_FRAME_B_ID));
+    await expect(promotedLoad).resolves.toMatchObject({ status: 'error' });
+    const reverseSeekState = session.snapshot(
+      PROJECT_ROOT,
+      project,
+      reverseSeekPlan,
+    );
+    expect(promotedFrameReadCount).toBe(1);
+    expect(reverseSeekState.status).toBe('ready');
+    expect(reverseSeekState.urls).toHaveProperty(ANIMATION_FRAME_A_ID);
+    expect(reverseSeekState.urls).not.toHaveProperty(ANIMATION_FRAME_B_ID);
+    expect(session.getDiagnostics().inFlightCount).toBeLessThanOrEqual(
+      MAX_CONCURRENT_PREVIEW_IMAGE_READS,
+    );
+    session.dispose();
+  });
+
+  it('keeps a newer asset version ready when an older promoted request fails late', async () => {
+    const project = compositePreviewProject();
+    const staleRead = deferred<AssetCanvasImageReadResponse>();
+    let alternateReadCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId !== ALT_FACE_ID) return Promise.resolve(readyImage(assetId));
+        alternateReadCount += 1;
+        return alternateReadCount === 1
+          ? staleRead.promise
+          : Promise.resolve(readyImage(assetId));
+      },
+      createObjectUrl: () => `blob:asset-version-${alternateReadCount}`,
+      revokeObjectUrl: () => {},
+    });
+    await expect(
+      session.prepare(PROJECT_ROOT, project, {
+        requiredAssetIds: [IDS.assetBg],
+        candidateAssetIds: [ALT_FACE_ID],
+      }),
+    ).resolves.toMatchObject({ status: 'ready' });
+
+    const oldRequiredLoad = session.prepare(PROJECT_ROOT, project, {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    });
+    const nextProject = ProjectSchema.parse({
+      ...project,
+      assets: project.assets.map((asset) =>
+        asset.id === ALT_FACE_ID ? { ...asset, sha256: '8'.repeat(64) } : asset,
+      ),
+    });
+    const nextScope = {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    };
+    await expect(
+      session.prepare(PROJECT_ROOT, nextProject, nextScope),
+    ).resolves.toMatchObject({ status: 'ready' });
+
+    staleRead.resolve(failedImage(ALT_FACE_ID));
+    await oldRequiredLoad;
+    expect(alternateReadCount).toBe(2);
+    expect(session.snapshot(PROJECT_ROOT, nextProject, nextScope)).toMatchObject({
+      status: 'ready',
+      urls: { [ALT_FACE_ID]: 'blob:asset-version-2' },
+    });
+    expect(session.getDiagnostics().inFlightCount).toBe(0);
+    session.dispose();
+  });
+
+  it('does not let a failed promoted request cross into a switched project', async () => {
+    const project = compositePreviewProject();
+    const staleRead = deferred<AssetCanvasImageReadResponse>();
+    let alternateReadCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId !== ALT_FACE_ID) return Promise.resolve(readyImage(assetId));
+        alternateReadCount += 1;
+        return alternateReadCount === 1
+          ? staleRead.promise
+          : Promise.resolve(readyImage(assetId));
+      },
+      createObjectUrl: () => `blob:switched-project-${alternateReadCount}`,
+      revokeObjectUrl: () => {},
+    });
+    await expect(
+      session.prepare(PROJECT_ROOT, project, {
+        requiredAssetIds: [IDS.assetBg],
+        candidateAssetIds: [ALT_FACE_ID],
+      }),
+    ).resolves.toMatchObject({ status: 'ready' });
+
+    const oldProjectLoad = session.prepare(PROJECT_ROOT, project, {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    });
+    const nextProjectRoot = 'D:\\preview-images-next.pandastage';
+    const nextProjectScope = {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    };
+    await expect(
+      session.prepare(nextProjectRoot, project, nextProjectScope),
+    ).resolves.toMatchObject({ status: 'ready' });
+
+    staleRead.resolve(failedImage(ALT_FACE_ID));
+    await oldProjectLoad;
+    expect(alternateReadCount).toBe(2);
+    expect(
+      session.snapshot(nextProjectRoot, project, nextProjectScope),
+    ).toMatchObject({
+      status: 'ready',
+      urls: { [ALT_FACE_ID]: 'blob:switched-project-2' },
+    });
+    expect(session.getDiagnostics().inFlightCount).toBe(0);
     session.dispose();
   });
 
