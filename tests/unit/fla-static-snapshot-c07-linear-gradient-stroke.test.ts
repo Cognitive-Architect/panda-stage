@@ -39,6 +39,18 @@ const EXPLICIT_SAFE_LINEAR_STROKE = `<StrokeStyle index="3">
   </fill></SolidStroke>
 </StrokeStyle>`;
 
+const ISSUE952_TARGET_24_LINEAR_STROKE = `<StrokeStyle index="3">
+  <SolidStroke scaleMode="normal"><fill>
+    <LinearGradient spreadMethod="reflect">
+      <matrix><Matrix a="0.0026702880859375" b="0.000946044921875" c="-0.0126190185546875" d="0.034210205078125" tx="867.7" ty="626.45"/></matrix>
+      <GradientEntry color="#594F45" ratio="0.152941176470588"/>
+      <GradientEntry color="#D7DFD5" ratio="0.447058823529412"/>
+      <GradientEntry color="#A4A79E" ratio="0.72156862745098"/>
+      <GradientEntry color="#FCFDFA" ratio="1"/>
+    </LinearGradient>
+  </fill></SolidStroke>
+</StrokeStyle>`;
+
 const ROOT_MATRIX = '<matrix><Matrix a="2" d="2" tx="10" ty="20"/></matrix>';
 const CHILD_MATRIX = '<matrix><Matrix a="3" d="3" tx="5" ty="7"/></matrix>';
 const IDENTITY_MATRIX = '<matrix><Matrix/></matrix>';
@@ -142,6 +154,34 @@ describe('P2-C07 evidence-bounded linear-gradient stroke reconstruction', () => 
     expect(rendered.svg).toContain('<stop offset="0" stop-color="#123456" stop-opacity="0.25"/>');
     expect(rendered.svg).toContain('<stop offset="1" stop-color="#abcdef" stop-opacity="0.75"/>');
     expect(rendered.svg).toContain('spreadMethod="reflect" color-interpolation="sRGB"');
+  });
+
+  it('renders the exact #952 #24 Style 3 signature with only its evidenced omitted fields', async () => {
+    const rendered = await renderScene(
+      ISSUE952_TARGET_24_LINEAR_STROKE,
+      '<Edge strokeStyle="3" cubics="!100 100|200 100"/>',
+    );
+    expect(rendered.ok).toBe(true);
+    if (!rendered.ok) return;
+    const path = strokePaths(rendered.svg)[0] ?? '';
+    expect(path).toContain('stroke-width="1"');
+    expect(path).toContain('stroke-linecap="round"');
+    expect(path).toContain('stroke-linejoin="round"');
+    expect(rendered.svg).toContain(
+      'gradientTransform="matrix(0.0026702880859375 0.000946044921875 -0.0126190185546875 0.034210205078125 867.7 626.45)"',
+    );
+    expect(rendered.svg).toContain('spreadMethod="reflect" color-interpolation="sRGB"');
+    expect(rendered.svg).toContain('<stop offset="0.152941176470588" stop-color="#594F45" stop-opacity="1"/>');
+    expect(rendered.svg).toContain('<stop offset="1" stop-color="#FCFDFA" stop-opacity="1"/>');
+  });
+
+  it.each([
+    ['explicit weight', ISSUE952_TARGET_24_LINEAR_STROKE.replace('scaleMode="normal"', 'scaleMode="normal" weight="1"')],
+    ['changed stop', ISSUE952_TARGET_24_LINEAR_STROKE.replace('#FCFDFA', '#FCFDFB')],
+    ['unproven interpolation', ISSUE952_TARGET_24_LINEAR_STROKE.replace('spreadMethod="reflect"', 'spreadMethod="reflect" interpolationMethod="linearRGB"')],
+  ] as const)('fails closed for the #24 near-match with %s', async (_name, stroke) => {
+    const rendered = await renderScene(stroke, '<Edge strokeStyle="3" cubics="!100 100|200 100"/>');
+    expect(rendered).toMatchObject({ ok: false, code: 'TARGET_UNSUPPORTED' });
   });
 
   it('fails closed when a single-quoted weight would otherwise look omitted in the #944 signature', async () => {

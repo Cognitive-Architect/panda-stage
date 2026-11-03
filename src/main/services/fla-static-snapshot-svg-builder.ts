@@ -1205,28 +1205,55 @@ function hasClosedLinearStrokeStructure(
     hasOnlyExpectedChildElements(matrixBlocks[0] as string, 'matrix', [matrixTags[0] as string]);
 }
 
-// #944's exact-edge SWF receipt proves these otherwise omitted values for
-// this one attribute/stops/matrix signature. Keep the match content-based:
-// other omitted defaults remain unsupported.
-function matchesIssue944ProvenLinearStroke(
+// #944 and #952 exact-edge SWF receipts prove omitted values only for these
+// exact source signatures. Keep matching content-based: the signatures do not
+// establish global defaults for other linear-gradient strokes.
+function matchesEvidenceBoundLinearStroke(
   style: ParsedShapeStyle,
   solidStrokeXml: string,
 ): boolean {
+  const evidencedSignatures = [
+    {
+      strokeAttributes: { scaleMode: 'normal' },
+      gradientAttributes: { spreadMethod: 'reflect' },
+      matrixAttributes: { a: 0.009490966796875, d: 0.01239013671875, tx: 814.65, ty: 625.65 },
+      stops: [
+        { color: '#594F45', ratio: 0.152941176470588 },
+        { color: '#D7DFD5', ratio: 0.447058823529412 },
+        { color: '#A4A79E', ratio: 0.72156862745098 },
+        { color: '#FCFDFA', ratio: 1 },
+      ],
+    },
+    {
+      strokeAttributes: { scaleMode: 'normal' },
+      gradientAttributes: { spreadMethod: 'reflect' },
+      matrixAttributes: {
+        a: 0.0026702880859375,
+        b: 0.000946044921875,
+        c: -0.0126190185546875,
+        d: 0.034210205078125,
+        tx: 867.7,
+        ty: 626.45,
+      },
+      stops: [
+        { color: '#594F45', ratio: 0.152941176470588 },
+        { color: '#D7DFD5', ratio: 0.447058823529412 },
+        { color: '#A4A79E', ratio: 0.72156862745098 },
+        { color: '#FCFDFA', ratio: 1 },
+      ],
+    },
+  ] as const;
+
   const strokeTag = solidStrokeXml.match(/<SolidStroke\b[^>]*>/u)?.[0];
   const strokeAttributes = xmlAttributes(strokeTag);
-  if (!strokeAttributes || !hasExactAttributeNames(strokeAttributes, ['scaleMode']) ||
-      strokeAttributes.scaleMode !== 'normal') {
-    return false;
-  }
-  if (/<VariablePointWidth\b/u.test(style.sourceXml)) return false;
+  if (!strokeAttributes || /<VariablePointWidth\b/u.test(style.sourceXml)) return false;
 
   const gradientBlocks = extractBalancedBlocks(style.sourceXml, 'LinearGradient');
   if (gradientBlocks.length !== 1) return false;
   const gradientBlock = gradientBlocks[0] as string;
   const gradientTag = gradientBlock.match(/<LinearGradient\b[^>]*>/u)?.[0];
   const gradientAttributes = xmlAttributes(gradientTag);
-  if (!gradientAttributes || !hasExactAttributeNames(gradientAttributes, ['spreadMethod']) ||
-      gradientAttributes.spreadMethod !== 'reflect') return false;
+  if (!gradientAttributes) return false;
 
   const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
   const matrixTags = matrixBlocks.length === 1
@@ -1234,32 +1261,32 @@ function matchesIssue944ProvenLinearStroke(
     : [];
   if ((gradientBlock.match(/<matrix\b/gu) ?? []).length !== 1 || matrixTags.length !== 1) return false;
   const matrixAttributes = xmlAttributes(matrixTags[0]);
-  if (!matrixAttributes || !hasExactAttributeNames(matrixAttributes, ['a', 'd', 'tx', 'ty'])) return false;
-  const evidencedMatrix = {
-    a: 0.009490966796875,
-    d: 0.01239013671875,
-    tx: 814.65,
-    ty: 625.65,
-  };
-  if (Object.entries(evidencedMatrix).some(([key, value]) => Number(matrixAttributes[key]) !== value)) {
-    return false;
-  }
-
+  if (!matrixAttributes) return false;
   const stopTags = extractSelfClosingTags(gradientBlock, 'GradientEntry');
-  const evidencedStops = [
-    { color: '#594F45', ratio: 0.152941176470588 },
-    { color: '#D7DFD5', ratio: 0.447058823529412 },
-    { color: '#A4A79E', ratio: 0.72156862745098 },
-    { color: '#FCFDFA', ratio: 1 },
-  ];
-  if (stopTags.length !== evidencedStops.length) return false;
-  return stopTags.every((tag, index) => {
-    const attributes = xmlAttributes(tag);
-    const expected = evidencedStops[index];
-    return expected !== undefined && attributes !== null &&
-      hasExactAttributeNames(attributes, ['color', 'ratio']) &&
-      attributes.color === expected.color &&
-      Number(attributes.ratio) === expected.ratio;
+  const matchesStringAttributes = (
+    actual: Record<string, string>,
+    expected: Readonly<Record<string, string>>,
+  ): boolean => hasExactAttributeNames(actual, Object.keys(expected)) &&
+    Object.entries(expected).every(([key, value]) => actual[key] === value);
+  const matchesNumericAttributes = (
+    actual: Record<string, string>,
+    expected: Readonly<Record<string, number>>,
+  ): boolean => hasExactAttributeNames(actual, Object.keys(expected)) &&
+    Object.entries(expected).every(([key, value]) => Number(actual[key]) === value);
+
+  return evidencedSignatures.some((signature) => {
+    if (!matchesStringAttributes(strokeAttributes, signature.strokeAttributes) ||
+        !matchesStringAttributes(gradientAttributes, signature.gradientAttributes) ||
+        !matchesNumericAttributes(matrixAttributes, signature.matrixAttributes) ||
+        stopTags.length !== signature.stops.length) return false;
+    return stopTags.every((tag, index) => {
+      const attributes = xmlAttributes(tag);
+      const expected = signature.stops[index];
+      return attributes !== null && expected !== undefined &&
+        hasExactAttributeNames(attributes, ['color', 'ratio']) &&
+        attributes.color === expected.color &&
+        Number(attributes.ratio) === expected.ratio;
+    });
   });
 }
 
@@ -1827,7 +1854,7 @@ function parseSolidStrokeStyle(
     }
     const gradientBlock = extractBalancedBlocks(style.sourceXml, 'LinearGradient')[0];
     if (!gradientBlock) return unsupported('linear-gradient stroke paint structure');
-    const matchesEvidence = matchesIssue944ProvenLinearStroke(style, solidStrokeXml);
+    const matchesEvidence = matchesEvidenceBoundLinearStroke(style, solidStrokeXml);
     const hasExplicitSemantics = hasExplicitSafeLinearStrokeSemantics(solidStrokeXml, gradientBlock);
     const closedStructure = hasClosedLinearStrokeStructure(style, solidStrokeXml, fillBlock, gradientBlock);
     if (!closedStructure || (!matchesEvidence && !hasExplicitSemantics)) {
