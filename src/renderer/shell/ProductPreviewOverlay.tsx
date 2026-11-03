@@ -456,6 +456,7 @@ export function ProductPreviewOverlay({
           requiredAssetIds: [],
           fallbackAssetIds: [],
           candidateAssetIds: assetIds,
+          recentAnimationAssetIds: [],
           mouthFallbacks: [],
         };
       }

@@ -5,12 +5,20 @@ import {
   type Project,
 } from '../../src/domain';
 import type { AssetCanvasImageReadResponse } from '../../src/shared/asset-canvas-image-api';
-import { ProductPreviewImageSession } from '../../src/renderer/shell/productPreviewImages';
+import {
+  MAX_CONCURRENT_PREVIEW_IMAGE_READS,
+  MAX_OPTIONAL_PREVIEW_IMAGE_READS,
+  MAX_QUEUED_OPTIONAL_PREVIEW_IMAGES,
+  MAX_RETAINED_PREVIEW_CANDIDATE_BYTES,
+  ProductPreviewImageSession,
+} from '../../src/renderer/shell/productPreviewImages';
 import {
   applyProductPreviewMouthFallback,
   buildProductPreviewImagePlan,
   isProductPreviewMouthFallbackFailure,
   projectProductPreviewMouth,
+  PRODUCT_PREVIEW_ANIMATION_PREWARM_FRAMES,
+  PRODUCT_PREVIEW_MAX_RECENT_ANIMATION_ASSETS,
   type ProductPreviewImagePlan,
 } from '../../src/renderer/shell/productPreviewModel';
 import { buildProject, IDS } from './domain/testProject';
@@ -23,6 +31,9 @@ const DIALOGUE_ID = '80000000-0000-4000-8000-000000000004';
 const AUDIO_CLIP_ID = '70000000-0000-4000-8000-000000000004';
 const AUDIO_ID = '10000000-0000-4000-8000-000000000006';
 const HEAD_ID = '10000000-0000-4000-8000-000000000009';
+const ANIMATION_FRAME_A_ID = '10000000-0000-4000-8000-000000000010';
+const ANIMATION_FRAME_B_ID = '10000000-0000-4000-8000-000000000011';
+const SECOND_ANIMATION_LAYER_ID = '70000000-0000-4000-8000-000000000003';
 
 function imageProject(): Project {
   const project = buildProject();
@@ -156,6 +167,133 @@ function compositePreviewProject(options: { head?: boolean } = {}): Project {
   });
 }
 
+function animationPreviewProject(
+  instances: Array<{
+    id: string;
+    startTimeMs: number;
+    mode: 'once' | 'loop';
+    endBehavior: 'hold' | 'hide';
+  }>,
+): Project {
+  const base = compositePreviewProject();
+  const frameAssets = [
+    {
+      id: ANIMATION_FRAME_A_ID,
+      kind: 'image' as const,
+      name: 'animation-frame-a',
+      relativePath: 'assets/animation-frame-a.png',
+      mimeType: 'image/png',
+      width: 100,
+      height: 100,
+      sha256: 'e'.repeat(64),
+      usage: 'uncategorized' as const,
+      keywords: [],
+    },
+    {
+      id: ANIMATION_FRAME_B_ID,
+      kind: 'image' as const,
+      name: 'animation-frame-b',
+      relativePath: 'assets/animation-frame-b.png',
+      mimeType: 'image/png',
+      width: 100,
+      height: 100,
+      sha256: 'f'.repeat(64),
+      usage: 'uncategorized' as const,
+      keywords: [],
+    },
+  ];
+  const frameAssetIds = [
+    ANIMATION_FRAME_A_ID,
+    ANIMATION_FRAME_B_ID,
+    MOUTH_ID,
+    ALT_FACE_ID,
+  ];
+  const animation = {
+    id: IDS.animation,
+    name: 'preview animation',
+    source: {
+      basename: 'preview.fla',
+      sha256: '9'.repeat(64),
+      renderTargetId: 'preview-target',
+      targetKind: 'graphic-symbol' as const,
+      targetName: 'preview animation',
+      startFrameIndex: 0,
+      endFrameIndex: frameAssetIds.length - 1,
+      sourceFps: 10,
+      canvas: { width: 100, height: 100 },
+      documentCanvas: { width: 100, height: 100 },
+      anchor: { x: 0, y: 0 },
+    },
+    durationMs: frameAssetIds.length * 100,
+    frames: frameAssetIds.map((assetId, ordinal) => ({
+      ordinal,
+      sourceFrameIndex: ordinal,
+      assetId,
+      sha256: [...base.assets, ...frameAssets].find((asset) => asset.id === assetId)!.sha256!,
+      sourceViewport: { x: 0, y: 0, width: 100, height: 100 },
+      offset: { x: 0, y: 0 },
+      startMs: ordinal * 100,
+      durationMs: 100,
+      createdBySequenceImport: true,
+    })),
+  };
+  return ProjectSchema.parse({
+    ...base,
+    assets: [...base.assets, ...frameAssets],
+    animations: [animation],
+    shots: base.shots.map((shot) => ({
+      ...shot,
+      layers: [
+        ...shot.layers,
+        ...instances.map((instance, index) => ({
+          id: instance.id,
+          name: `animation-${index}`,
+          source: { kind: 'animation' as const, animationId: IDS.animation },
+          anchor: 'center' as const,
+          x: 900 + index * 100,
+          y: 500,
+          scaleX: 1,
+          scaleY: 1,
+          rotationDeg: 0,
+          opacity: 1,
+          visible: true,
+          zIndex: shot.layers.length + index,
+          locked: false,
+          flipX: false,
+          startTimeMs: instance.startTimeMs,
+          animationPlayback: {
+            mode: instance.mode,
+            endBehavior: instance.endBehavior,
+          },
+        })),
+      ],
+    })),
+  });
+}
+
+function projectWithExtraImages(count: number): {
+  project: Project;
+  assetIds: string[];
+} {
+  const base = imageProject();
+  const extras = Array.from({ length: count }, (_, index) => ({
+    id: `90000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    kind: 'image' as const,
+    name: `queue-image-${index}`,
+    relativePath: `assets/queue-image-${index}.png`,
+    mimeType: 'image/png',
+    width: 100,
+    height: 100,
+    sha256: index.toString(16).padStart(64, '0'),
+    usage: 'uncategorized' as const,
+    keywords: [],
+  }));
+  return {
+    project: ProjectSchema.parse({ ...base, assets: [...base.assets, ...extras] }),
+    assetIds: extras.map((asset) => asset.id),
+  };
+}
+
 function compositePlan(project: Project): {
   project: Project;
   plan: ProductPreviewImagePlan;
@@ -188,7 +326,10 @@ function failedImage(assetId: string): AssetCanvasImageReadResponse {
   };
 }
 
-function readyImage(assetId: string = IDS.assetBg): AssetCanvasImageReadResponse {
+function readyImage(
+  assetId: string = IDS.assetBg,
+  byteLength: number = 4,
+): AssetCanvasImageReadResponse {
   return {
     ok: true,
     status: 'ready',
@@ -196,7 +337,7 @@ function readyImage(assetId: string = IDS.assetBg): AssetCanvasImageReadResponse
     mimeType: 'image/png',
     width: 1_920,
     height: 1_080,
-    byteLength: 4,
+    byteLength,
     bytes: new Uint8Array([137, 80, 78, 71]),
   };
 }
@@ -213,6 +354,86 @@ function deferred<T>(): {
 }
 
 describe('Product Preview bounded-original image session — Phase 2 gate C', () => {
+  it('warms a small upcoming animation window using each instance clock and playback mode', () => {
+    const project = animationPreviewProject([
+      {
+        id: IDS.animationLayer,
+        startTimeMs: 0,
+        mode: 'loop',
+        endBehavior: 'hold',
+      },
+      {
+        id: SECOND_ANIMATION_LAYER_ID,
+        startTimeMs: 200,
+        mode: 'once',
+        endBehavior: 'hide',
+      },
+    ]);
+    const shot = project.shots[0]!;
+    const currentPlan = buildProductPreviewImagePlan(
+      project,
+      shot,
+      evaluateShotAtTime(shot, 150, project),
+    );
+
+    expect(currentPlan.requiredAssetIds).toContain(ANIMATION_FRAME_B_ID);
+    expect(currentPlan.recentAnimationAssetIds).toEqual([
+      MOUTH_ID,
+      ALT_FACE_ID,
+    ]);
+    expect(
+      currentPlan.candidateAssetIds.slice(
+        0,
+        currentPlan.recentAnimationAssetIds.length,
+      ),
+    ).toEqual(
+      currentPlan.recentAnimationAssetIds,
+    );
+    expect(currentPlan.recentAnimationAssetIds.length).toBeLessThanOrEqual(
+      PRODUCT_PREVIEW_MAX_RECENT_ANIMATION_ASSETS,
+    );
+    expect(PRODUCT_PREVIEW_ANIMATION_PREWARM_FRAMES).toBe(3);
+
+    const loopProject = animationPreviewProject([
+      {
+        id: IDS.animationLayer,
+        startTimeMs: 0,
+        mode: 'loop',
+        endBehavior: 'hold',
+      },
+    ]);
+    const loopShot = loopProject.shots[0]!;
+    const wrapped = buildProductPreviewImagePlan(
+      loopProject,
+      loopShot,
+      evaluateShotAtTime(loopShot, 450, loopProject),
+    );
+    expect(wrapped.requiredAssetIds).toContain(ANIMATION_FRAME_A_ID);
+    expect(wrapped.recentAnimationAssetIds).toEqual([
+      ANIMATION_FRAME_B_ID,
+      MOUTH_ID,
+      ALT_FACE_ID,
+    ]);
+
+    for (const endBehavior of ['hold', 'hide'] as const) {
+      const onceProject = animationPreviewProject([
+        {
+          id: IDS.animationLayer,
+          startTimeMs: 0,
+          mode: 'once',
+          endBehavior,
+        },
+      ]);
+      const onceShot = onceProject.shots[0]!;
+      const ended = buildProductPreviewImagePlan(
+        onceProject,
+        onceShot,
+        evaluateShotAtTime(onceShot, 450, onceProject),
+      );
+      expect(ended.recentAnimationAssetIds).toEqual([]);
+    }
+  });
+
   it('requires and preloads Head through the existing Product Preview image plan', async () => {
     const fixture = compositePlan(compositePreviewProject({ head: true }));
     const requested: string[] = [];
@@ -350,6 +571,8 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
     });
     await transition;
     expect(requests).toHaveLength(1);
+    expect(session.getDiagnostics()).toMatchObject({ readRequests: 1 });
+    expect(session.getDiagnostics().cacheHits).toBeGreaterThan(0);
     session.dispose();
   });
 
@@ -580,6 +803,255 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
     bodyFailure.dispose();
   });
 
+  it('prioritizes required and recent frames ahead of other candidates and the next shot', async () => {
+    const { project, assetIds } = projectWithExtraImages(6);
+    const [recentA, recentB, recentC, otherA, otherB, nextShot] = assetIds;
+    const requested: string[] = [];
+    const reads = new Map<
+      string,
+      ReturnType<typeof deferred<AssetCanvasImageReadResponse>>
+    >();
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        requested.push(assetId);
+        const read = deferred<AssetCanvasImageReadResponse>();
+        reads.set(assetId, read);
+        return read.promise;
+      },
+    });
+    const scope = {
+      requiredAssetIds: [IDS.assetBg],
+      recentAnimationAssetIds: [recentA!, recentB!, recentC!],
+      candidateAssetIds: [recentA!, recentB!, recentC!, otherA!, otherB!],
+    };
+    const load = session.prepare(PROJECT_ROOT, project, scope, [nextShot!]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(requested).toEqual([IDS.assetBg, recentA, recentB]);
+    expect(session.getDiagnostics()).toMatchObject({
+      inFlightCount: MAX_CONCURRENT_PREVIEW_IMAGE_READS,
+      optionalInFlightCount: MAX_OPTIONAL_PREVIEW_IMAGE_READS,
+    });
+
+    reads.get(IDS.assetBg)!.resolve(readyImage(IDS.assetBg));
+    await expect(load).resolves.toMatchObject({ status: 'ready' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested).toEqual([IDS.assetBg, recentA, recentB]);
+
+    reads.get(recentA!)!.resolve(readyImage(recentA));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested[3]).toBe(recentC);
+
+    reads.get(recentB!)!.resolve(readyImage(recentB));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested[4]).toBe(otherA);
+
+    reads.get(recentC!)!.resolve(readyImage(recentC));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested[5]).toBe(otherB);
+
+    reads.get(otherA!)!.resolve(readyImage(otherA));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested[6]).toBe(nextShot);
+
+    reads.get(otherB!)!.resolve(readyImage(otherB));
+    reads.get(nextShot!)!.resolve(readyImage(nextShot));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    session.dispose();
+  });
+
+  it('reuses a recently prepared animation frame when it becomes current', async () => {
+    const project = animationPreviewProject([
+      {
+        id: IDS.animationLayer,
+        startTimeMs: 0,
+        mode: 'loop',
+        endBehavior: 'hold',
+      },
+    ]);
+    const shot = project.shots[0]!;
+    const firstPlan = buildProductPreviewImagePlan(
+      project,
+      shot,
+      evaluateShotAtTime(shot, 150, project),
+    );
+    const requests: string[] = [];
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: async ({ assetId }) => {
+        requests.push(assetId);
+        return readyImage(assetId);
+      },
+      createObjectUrl: (() => {
+        let index = 0;
+        return () => `blob:animation-frame-${index++}`;
+      })(),
+    });
+
+    await expect(
+      session.prepare(PROJECT_ROOT, project, firstPlan),
+    ).resolves.toMatchObject({ status: 'ready' });
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const diagnostics = session.getDiagnostics();
+      if (diagnostics.inFlightCount === 0 && diagnostics.queuedOptionalCount === 0) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    session.commitScope(PROJECT_ROOT, project, firstPlan);
+    const readsBeforePromotion = requests.length;
+    const nextPlan = buildProductPreviewImagePlan(
+      project,
+      shot,
+      evaluateShotAtTime(shot, 200, project),
+    );
+
+    expect(nextPlan.requiredAssetIds).toContain(MOUTH_ID);
+    await expect(
+      session.prepare(PROJECT_ROOT, project, nextPlan),
+    ).resolves.toMatchObject({ status: 'ready' });
+    expect(requests).toHaveLength(readsBeforePromotion);
+    expect(requests.filter((assetId) => assetId === MOUTH_ID)).toHaveLength(1);
+    expect(session.getDiagnostics().cacheHits).toBeGreaterThan(0);
+    session.dispose();
+  });
+
+  it('promotes a queued candidate to current required and ignores stale seek results', async () => {
+    const { project, assetIds } = projectWithExtraImages(3);
+    const [candidateA, candidateB, promoted] = assetIds;
+    const requested: string[] = [];
+    const createdUrls: string[] = [];
+    const reads = new Map<
+      string,
+      ReturnType<typeof deferred<AssetCanvasImageReadResponse>>
+    >();
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        requested.push(assetId);
+        const read = deferred<AssetCanvasImageReadResponse>();
+        reads.set(assetId, read);
+        return read.promise;
+      },
+      createObjectUrl: () => {
+        const url = `blob:promoted-${createdUrls.length + 1}`;
+        createdUrls.push(url);
+        return url;
+      },
+    });
+    const firstLoad = session.prepare(PROJECT_ROOT, project, {
+      requiredAssetIds: [IDS.assetBg],
+      candidateAssetIds: [candidateA!, candidateB!, promoted!],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested).toEqual([IDS.assetBg, candidateA, candidateB]);
+    expect(session.getDiagnostics().queuedOptionalCount).toBe(1);
+
+    reads.get(IDS.assetBg)!.resolve(readyImage(IDS.assetBg));
+    await expect(firstLoad).resolves.toMatchObject({ status: 'ready' });
+    const currentLoad = session.prepare(PROJECT_ROOT, project, {
+      requiredAssetIds: [promoted!],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(requested).toEqual([IDS.assetBg, candidateA, candidateB, promoted]);
+    expect(session.getDiagnostics()).toMatchObject({
+      inFlightCount: MAX_CONCURRENT_PREVIEW_IMAGE_READS,
+      optionalInFlightCount: MAX_OPTIONAL_PREVIEW_IMAGE_READS,
+      queuedOptionalCount: 0,
+    });
+
+    reads.get(promoted!)!.resolve(readyImage(promoted));
+    await expect(currentLoad).resolves.toMatchObject({ status: 'ready' });
+    const urlsBeforeStaleReads = createdUrls.length;
+    reads.get(candidateA!)!.resolve(readyImage(candidateA));
+    reads.get(candidateB!)!.resolve(readyImage(candidateB));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(createdUrls).toHaveLength(urlsBeforeStaleReads);
+    expect(urlsBeforeStaleReads).toBe(2);
+    expect(
+      session.snapshot(PROJECT_ROOT, project, { requiredAssetIds: [promoted!] }),
+    ).toMatchObject({
+      status: 'ready',
+      urls: { [promoted!]: createdUrls[1] },
+    });
+    session.dispose();
+  });
+
+  it('caps optional queue growth, concurrent reads, and retained original bytes', async () => {
+    const queueFixture = projectWithExtraImages(100);
+    const pendingReads = new Map<
+      string,
+      ReturnType<typeof deferred<AssetCanvasImageReadResponse>>
+    >();
+    const queueSession = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        const read = deferred<AssetCanvasImageReadResponse>();
+        pendingReads.set(assetId, read);
+        return read.promise;
+      },
+    });
+    const queueScope = {
+      requiredAssetIds: [IDS.assetBg],
+      recentAnimationAssetIds: queueFixture.assetIds.slice(0, 3),
+      candidateAssetIds: queueFixture.assetIds,
+    };
+    const pendingLoad = queueSession.prepare(
+      PROJECT_ROOT,
+      queueFixture.project,
+      queueScope,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const queueDiagnostics = queueSession.getDiagnostics();
+    expect(queueDiagnostics.queuePeak).toBe(MAX_QUEUED_OPTIONAL_PREVIEW_IMAGES);
+    expect(queueDiagnostics.queuedOptionalCount).toBeLessThanOrEqual(
+      MAX_QUEUED_OPTIONAL_PREVIEW_IMAGES,
+    );
+    expect(queueDiagnostics.droppedOptionalQueueEntries).toBeGreaterThan(0);
+    expect(queueDiagnostics.inFlightPeak).toBeLessThanOrEqual(
+      MAX_CONCURRENT_PREVIEW_IMAGE_READS,
+    );
+    expect(queueDiagnostics.optionalInFlightCount).toBeLessThanOrEqual(
+      MAX_OPTIONAL_PREVIEW_IMAGE_READS,
+    );
+    queueSession.dispose();
+    await expect(pendingLoad).resolves.toBeNull();
+    for (const [assetId, read] of pendingReads) {
+      read.resolve(readyImage(assetId));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const cacheFixture = projectWithExtraImages(18);
+    const cacheScope = {
+      requiredAssetIds: [IDS.assetBg],
+      candidateAssetIds: cacheFixture.assetIds,
+    };
+    const cacheSession = new ProductPreviewImageSession({
+      readCanvasImage: async ({ assetId }) =>
+        readyImage(assetId, 5 * 1024 * 1024),
+      createObjectUrl: (() => {
+        let index = 0;
+        return () => `blob:bounded-cache-${index++}`;
+      })(),
+    });
+    await expect(
+      cacheSession.prepare(PROJECT_ROOT, cacheFixture.project, cacheScope),
+    ).resolves.toMatchObject({ status: 'ready' });
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const diagnostics = cacheSession.getDiagnostics();
+      if (diagnostics.inFlightCount === 0 && diagnostics.queuedOptionalCount === 0) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    cacheSession.commitScope(PROJECT_ROOT, cacheFixture.project, cacheScope);
+    const cacheDiagnostics = cacheSession.getDiagnostics();
+    expect(cacheDiagnostics.readyCacheBytes).toBeLessThanOrEqual(
+      MAX_RETAINED_PREVIEW_CANDIDATE_BYTES + 4,
+    );
+    expect(cacheDiagnostics.readyCacheEntries).toBeLessThan(18);
+    cacheSession.dispose();
+  });
+
   it('does not let a failed bounded candidate block the exact current frame', async () => {
     const fixture = compositePlan(compositePreviewProject());
     const candidate = deferred<AssetCanvasImageReadResponse>();
@@ -593,7 +1065,7 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
     ).resolves.toMatchObject({ status: 'ready' });
     candidate.resolve(failedImage(ALT_FACE_ID));
     await candidate.promise;
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(
       session.snapshot(PROJECT_ROOT, fixture.project, fixture.plan),
     ).toMatchObject({
