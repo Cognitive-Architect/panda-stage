@@ -7,11 +7,16 @@ function source(path: string): string {
 }
 
 describe('Issue #447 subtitle authoring and AudioClip UX correction', () => {
-  it('keeps the empty Batch Paste surface quiet and reveals a compact live result list only after input', () => {
+  it('keeps ordinary Batch Paste audio-free and scopes the live audio plan to Auto Subtitles', () => {
     const batch = source(
       'src/renderer/features/dialogue/DialogueBatchPaste.tsx',
     );
+    const sheet = source('src/renderer/features/dialogue/DialogueSheet.tsx');
 
+    expect(sheet).toContain('presentation="subtitle-only"');
+    expect(batch).toContain("presentation = 'subtitle-only'");
+    expect(batch).toContain("presentation?: 'subtitle-only' | 'auto-subtitle'");
+    expect(batch).toContain('if (!autoSubtitle) return null;');
     expect(batch).toContain('const hasContent = draftState.batchRaw.trim().length > 0');
     expect(batch).toContain('{hasContent ? (');
     expect(batch).toContain('每行一条，格式：角色：台词');
@@ -22,15 +27,18 @@ describe('Issue #447 subtitle authoring and AudioClip UX correction', () => {
     expect(batch).not.toContain('dialogue-authoring-cancel');
     expect(batch).toContain('className="dialogue-batch-recognition-ready"');
     expect(batch).toContain('className="dialogue-batch-recognition-pending"');
-    expect(batch).toContain('`已匹配 ${preview.readyCount} 条配音`');
-    expect(batch).toContain('`待处理 ${preview.pendingCount} 条`');
+    expect(batch).toContain('`已匹配 ${preview?.readyCount ?? 0} 条配音`');
+    expect(batch).toContain('`待处理 ${preview?.pendingCount ?? parsed.lines.length} 条`');
     expect(batch).not.toContain('dialogue-batch-generation-state');
     expect(batch).toContain('data-testid="dialogue-batch-add-subtitles"');
+    expect(batch).toContain('<span>添加字幕</span>');
+    expect(batch).not.toContain('仅添加字幕（不含配音）');
+    expect(batch).toContain('autoSubtitle && rowExpanded && resolvedRow && row ?');
     expect(batch).toContain('role="status"');
-    expect(batch).toContain('formatDialogueDuration(preview.totalDurationMs)');
+    expect(batch).toContain('formatDialogueDuration(preview?.totalDurationMs ?? 0)');
   });
 
-  it('keeps deterministic parsing and resolves only problem rows inline with human copy', () => {
+  it('keeps deterministic parsing and shares role and audio resolution with Auto Subtitles', () => {
     const batch = source(
       'src/renderer/features/dialogue/DialogueBatchPaste.tsx',
     );

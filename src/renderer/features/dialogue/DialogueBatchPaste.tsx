@@ -1,8 +1,14 @@
-import { useMemo, useState, useSyncExternalStore } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type { AudioAsset, Character } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { dialogueStore } from '../../stores/dialogueStore';
-import { CirclePlus } from 'lucide-react';
+import { CircleCheck, CirclePlus } from 'lucide-react';
 import {
   CharacterAvatar,
   CharacterIdentityPicker,
@@ -65,6 +71,86 @@ function audioOptionLabel(asset: AudioAsset): string {
   return `${dialogueAudioFileName(asset)} · ${audioState(asset)}${asset.durationMs !== undefined ? ` · ${formatDialogueDuration(asset.durationMs)}` : ''}`;
 }
 
+function DialogueBatchAudioPreview({
+  asset,
+  projectRoot,
+}: {
+  asset: AudioAsset;
+  projectRoot: string;
+}): React.JSX.Element {
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const requestVersion = useRef(0);
+
+  useEffect(
+    () => () => {
+      requestVersion.current += 1;
+    },
+    [],
+  );
+  useEffect(
+    () => () => {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+    },
+    [audioUrl],
+  );
+
+  const loadPreview = async (): Promise<void> => {
+    if (!asset.sha256) {
+      setError('这段配音暂时无法试听。');
+      return;
+    }
+    const currentRequest = ++requestVersion.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await window.pandaStage.assets.readAudio({
+        projectRoot,
+        assetId: asset.id,
+        sha256: asset.sha256,
+      });
+      if (currentRequest !== requestVersion.current) return;
+      if (!response.ok) {
+        setError('无法读取这段配音，请检查素材是否仍可用。');
+        return;
+      }
+      const bytes = response.bytes.slice().buffer as ArrayBuffer;
+      setAudioUrl(URL.createObjectURL(new Blob([bytes], { type: response.mimeType })));
+    } catch {
+      if (currentRequest === requestVersion.current) {
+        setError('无法读取这段配音，请检查素材是否仍可用。');
+      }
+    } finally {
+      if (currentRequest === requestVersion.current) setLoading(false);
+    }
+  };
+
+  return (
+    <div className="dialogue-batch-audio-preview" data-testid="dialogue-batch-audio-preview">
+      <button
+        aria-label={`试听${dialogueAudioFileName(asset)}`}
+        className="dialogue-batch-audio-preview-load"
+        data-testid="dialogue-batch-audio-preview-load"
+        disabled={loading || !asset.sha256}
+        onClick={() => void loadPreview()}
+        type="button"
+      >
+        {loading ? '准备试听…' : audioUrl ? '重新载入试听' : '载入试听'}
+      </button>
+      {audioUrl ? (
+        <audio
+          aria-label={`试听${dialogueAudioFileName(asset)}`}
+          controls
+          data-testid="dialogue-batch-audio-player"
+          src={audioUrl}
+        />
+      ) : null}
+      {error ? <span role="alert">{error}</span> : null}
+    </div>
+  );
+}
+
 /**
  * Production batch authoring surface. Parsing, role mapping, audio selection,
  * and the audio generation plan remain transient draft state. Only the
@@ -74,10 +160,12 @@ export function DialogueBatchPaste({
   draft,
   onSuccess,
   showDefaultExpression = true,
+  presentation = 'subtitle-only',
 }: {
   draft: DialogueAuthoringDraft;
-  onSuccess: () => void;
+  onSuccess?: () => void;
   showDefaultExpression?: boolean;
+  presentation?: 'subtitle-only' | 'auto-subtitle';
 }): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -95,6 +183,9 @@ export function DialogueBatchPaste({
   const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
   const [roleEditLine, setRoleEditLine] = useState<number | null>(null);
   const [commitError, setCommitError] = useState<string | null>(null);
+  const [expandedLine, setExpandedLine] = useState<number | null>(null);
+  const [inputExpanded, setInputExpanded] = useState(true);
+  const autoSubtitle = presentation === 'auto-subtitle';
 
   const parsed = useMemo(
     () => parseDialoguePaste(draftState.batchRaw, characters),
@@ -106,16 +197,19 @@ export function DialogueBatchPaste({
     [characters, draftState.batchMapping, parsed],
   );
   const preview = useMemo(
-    () =>
-      buildDialogueBatchPreview({
+    () => {
+      if (!autoSubtitle) return null;
+      return buildDialogueBatchPreview({
         parsed,
         resolution,
         characters,
         audioAssets,
         audioSelections: draftState.batchAudioSelections,
-      }),
+      });
+    },
     [
       audioAssets,
+      autoSubtitle,
       characters,
       draftState.batchAudioSelections,
       parsed,
@@ -132,7 +226,7 @@ export function DialogueBatchPaste({
         ),
       );
       setCommitError(null);
-      onSuccess();
+      onSuccess?.();
     } catch (error) {
       setCommitError(
         error instanceof Error ? error.message : '批量添加字幕失败。',
@@ -140,7 +234,7 @@ export function DialogueBatchPaste({
     }
   };
   const audioUse = new Map<string, number[]>();
-  preview.rows.forEach((row) => {
+  (preview?.rows ?? []).forEach((row) => {
     if (!row.audioAsset) return;
     const lineNumbers = audioUse.get(row.audioAsset.id) ?? [];
     lineNumbers.push(row.sourceLineNumber);
@@ -149,28 +243,49 @@ export function DialogueBatchPaste({
 
   return (
     <div
-      aria-labelledby="dialogue-authoring-tab-batch"
-      className="dialogue-authoring-mode dialogue-authoring-batch"
-      data-testid="dialogue-batch"
-      id="dialogue-authoring-panel-batch"
-      role="tabpanel"
+      aria-labelledby={autoSubtitle ? 'project-tools-heading' : 'dialogue-authoring-tab-batch'}
+      className={`dialogue-authoring-mode dialogue-authoring-batch${autoSubtitle ? ' dialogue-batch-auto-subtitle' : ''}`}
+      data-presentation={presentation}
+      data-testid={autoSubtitle ? 'auto-subtitle-batch' : 'dialogue-batch'}
+      id={autoSubtitle ? 'auto-subtitle-batch-panel' : 'dialogue-authoring-panel-batch'}
+      role={autoSubtitle ? 'region' : 'tabpanel'}
     >
-      <section className="dialogue-batch-input-section">
+      {autoSubtitle ? (
+        <div className="auto-subtitle-input-heading">
+          <h3>对白</h3>
+          <button
+            aria-controls="auto-subtitle-input-section"
+            aria-expanded={inputExpanded}
+            className="auto-subtitle-input-toggle"
+            data-testid="auto-subtitle-input-toggle"
+            onClick={() => setInputExpanded((expanded) => !expanded)}
+            type="button"
+          >
+            {inputExpanded ? '收起' : '编辑对白'}
+          </button>
+        </div>
+      ) : null}
+      <section
+        className="dialogue-batch-input-section"
+        hidden={autoSubtitle && !inputExpanded}
+        id={autoSubtitle ? 'auto-subtitle-input-section' : undefined}
+      >
         <label id="dialogue-batch-format-hint" htmlFor="dialogue-batch-input">
           每行一条，格式：角色：台词
         </label>
         <textarea
           aria-describedby="dialogue-batch-format-hint"
-          aria-label="批量字幕原始文本"
+          aria-label={autoSubtitle ? '自动字幕对白' : '批量字幕原始文本'}
           className="dialogue-batch-input"
           data-testid="dialogue-batch-input"
           id="dialogue-batch-input"
           placeholder={'Panda：你好呀\n角色B：这是第二行台词'}
-          rows={7}
+          rows={autoSubtitle ? 4 : 7}
           value={draftState.batchRaw}
           onChange={(event) => {
             setCommitError(null);
             setRoleEditLine(null);
+            setExpandedLine(null);
             draft.setBatchRaw(event.target.value);
           }}
         />
@@ -178,36 +293,43 @@ export function DialogueBatchPaste({
 
       {hasContent ? (
         <>
-          <div
-            aria-label="批量字幕候选状态"
-            className="dialogue-batch-recognition"
-            data-testid="dialogue-batch-recognition"
-            role="status"
-          >
-            <strong>候选预览</strong>
-            <span className="dialogue-batch-recognition-ready">
-              {`已匹配 ${preview.readyCount} 条配音`}
-            </span>
-            <span className="dialogue-batch-recognition-pending">
-              {`待处理 ${preview.pendingCount} 条`}
-            </span>
-            <span className="dialogue-batch-recognition-duration">
-              {`${preview.allReady ? '总时长' : '已确认时长'} ${formatDialogueDuration(preview.totalDurationMs)}`}
-            </span>
-            {parsed.ignoredEmpty > 0 ? (
-              <span className="dialogue-batch-recognition-ignored">
-                {`已跳过 ${parsed.ignoredEmpty} 个空行`}
+          {autoSubtitle ? (
+            <div
+              aria-label="自动字幕匹配状态"
+              className="dialogue-batch-recognition"
+              data-testid="dialogue-batch-recognition"
+              role="status"
+            >
+              <span
+                className="auto-subtitle-phase-state"
+                data-testid="auto-subtitle-phase-a-status"
+              >
+                待生成
               </span>
-            ) : null}
-          </div>
+              <span className="dialogue-batch-recognition-ready">
+                {`已匹配 ${preview?.readyCount ?? 0} 条配音`}
+              </span>
+              <span className="dialogue-batch-recognition-pending">
+                {`待处理 ${preview?.pendingCount ?? parsed.lines.length} 条`}
+              </span>
+              <span className="dialogue-batch-recognition-duration">
+                {`${preview?.allReady ? '总时长' : '已确认时长'} ${formatDialogueDuration(preview?.totalDurationMs ?? 0)}`}
+              </span>
+              {parsed.ignoredEmpty > 0 ? (
+                <span className="dialogue-batch-recognition-ignored">
+                  {`已跳过 ${parsed.ignoredEmpty} 个空行`}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
 
           <ol
-            aria-label="按粘贴顺序排列的字幕候选"
+            aria-label={autoSubtitle ? '自动字幕匹配结果' : '按粘贴顺序排列的字幕'}
             className="dialogue-batch-preview"
             data-testid="dialogue-batch-preview"
           >
             {parsed.lines.map((line, index) => {
-              const row = preview.rows[index]!;
+              const row = preview?.rows[index];
               const resolved = resolution.resolvedLines[index];
               const needsMapping =
                 line.status === 'unknown' || line.status === 'ambiguous';
@@ -226,12 +348,12 @@ export function DialogueBatchPaste({
                 Boolean(selection && resolvedRow) &&
                 selection?.characterId === resolvedRow?.character.id;
               const selectedAudioValue = selectionMatchesCharacter
-                ? selection?.assetId === row.automaticAsset?.id && row.automaticAsset
+                ? selection?.assetId === row?.automaticAsset?.id && row?.automaticAsset
                   ? AUTOMATIC_AUDIO_VALUE
                   : selection?.assetId ?? ''
                 : selection
                   ? ''
-                  : row.automaticAsset
+                  : row?.automaticAsset
                     ? AUTOMATIC_AUDIO_VALUE
                     : '';
               const mapped = needsMapping && resolvedRow;
@@ -241,19 +363,29 @@ export function DialogueBatchPaste({
                 resolvedRow.character.id !== line.characterId;
               const rowStatus = !resolvedRow
                 ? line.status
-                : row.issue
+                : row?.issue
                   ? 'audio-invalid'
                   : mapped || roleWasChanged
                     ? 'mapped'
                     : 'valid';
               const issueId = `dialogue-batch-issue-${line.lineNumber}`;
+              const rowExpanded = expandedLine === line.lineNumber;
+              const summaryAsset = row?.audioAsset ?? row?.suggestedAudioAsset ?? null;
+              const summaryDuration =
+                row?.audioReady &&
+                row.sourceDurationMs !== null &&
+                row.durationMs !== null
+                  ? row.durationMs === row.sourceDurationMs
+                    ? formatDialogueDuration(row.sourceDurationMs)
+                    : `片段 ${formatDialogueDuration(row.durationMs)} / 原长 ${formatDialogueDuration(row.sourceDurationMs)}`
+                  : null;
 
               return (
                 <li
                   data-status={rowStatus}
-                  data-audio-asset-id={row.audioAssetId ?? ''}
-                  data-source-duration-ms={row.sourceDurationMs ?? ''}
-                  data-clip-duration-ms={row.durationMs ?? ''}
+                  data-audio-asset-id={row?.audioAssetId ?? ''}
+                  data-source-duration-ms={row?.sourceDurationMs ?? ''}
+                  data-clip-duration-ms={row?.durationMs ?? ''}
                   data-testid="dialogue-batch-line"
                   key={line.lineNumber}
                 >
@@ -266,8 +398,18 @@ export function DialogueBatchPaste({
                         <span
                           aria-label="角色已确认"
                           className="dialogue-batch-row-status"
+                          role="img"
                         >
-                          ✓
+                          {autoSubtitle ? (
+                            <CircleCheck
+                              aria-hidden="true"
+                              focusable="false"
+                              size={15}
+                              strokeWidth={2.6}
+                            />
+                          ) : (
+                            '✓'
+                          )}
                         </span>
                         <CharacterAvatar
                           character={resolvedRow.character}
@@ -284,21 +426,39 @@ export function DialogueBatchPaste({
                           <strong>{resolvedRow.character.name}</strong>
                           <span>{resolvedRow.text}</span>
                         </div>
-                        <button
-                          aria-expanded={roleEditLine === line.lineNumber}
-                          aria-label={`更换第 ${line.lineNumber} 行角色`}
-                          className="dialogue-batch-role-edit"
-                          data-testid={`dialogue-batch-role-edit-${line.lineNumber}`}
-                          type="button"
-                          onClick={() => {
-                            setCommitError(null);
-                            setRoleEditLine((current) =>
-                              current === line.lineNumber ? null : line.lineNumber,
-                            );
-                          }}
-                        >
-                          更换角色
-                        </button>
+                        {autoSubtitle ? (
+                          <button
+                            aria-expanded={rowExpanded}
+                            aria-label={`${rowExpanded ? '收起' : '编辑'}第 ${line.lineNumber} 行自动字幕`}
+                            className="dialogue-batch-role-edit auto-subtitle-row-edit"
+                            data-testid={`auto-subtitle-row-edit-${line.lineNumber}`}
+                            type="button"
+                            onClick={() => {
+                              setExpandedLine((current) =>
+                                current === line.lineNumber ? null : line.lineNumber,
+                              );
+                              setRoleEditLine(null);
+                            }}
+                          >
+                            {rowExpanded ? '收起' : '编辑'}
+                          </button>
+                        ) : (
+                          <button
+                            aria-expanded={roleEditLine === line.lineNumber}
+                            aria-label={`更换第 ${line.lineNumber} 行角色`}
+                            className="dialogue-batch-role-edit"
+                            data-testid={`dialogue-batch-role-edit-${line.lineNumber}`}
+                            type="button"
+                            onClick={() => {
+                              setCommitError(null);
+                              setRoleEditLine((current) =>
+                                current === line.lineNumber ? null : line.lineNumber,
+                              );
+                            }}
+                          >
+                            更换角色
+                          </button>
+                        )}
                       </div>
                     ) : (
                       <div className="dialogue-batch-row-result dialogue-batch-row-result-exception">
@@ -318,7 +478,30 @@ export function DialogueBatchPaste({
                     )}
                   </div>
 
-                  {canChooseRole && (!resolvedRow || roleEditLine === line.lineNumber) ? (
+                  {autoSubtitle ? (
+                    <div
+                      className="auto-subtitle-row-audio-summary"
+                      data-testid="auto-subtitle-row-audio-summary"
+                    >
+                      {summaryAsset ? (
+                        <span
+                          className="auto-subtitle-row-audio-name"
+                          title={dialogueAudioFileName(summaryAsset)}
+                        >
+                          {dialogueAudioFileName(summaryAsset)}
+                        </span>
+                      ) : null}
+                      <span>
+                        {summaryDuration ?? row?.issueMessage ?? (resolvedRow ? '待匹配配音' : '先确认角色')}
+                      </span>
+                    </div>
+                  ) : null}
+
+                  {canChooseRole &&
+                  (!resolvedRow ||
+                    (autoSubtitle
+                      ? rowExpanded && roleEditLine === line.lineNumber
+                      : roleEditLine === line.lineNumber)) ? (
                     <div className="dialogue-batch-row-resolution">
                       {needsMapping && !resolvedRow ? (
                         <p className="dialogue-batch-row-issue">
@@ -358,7 +541,27 @@ export function DialogueBatchPaste({
                     </div>
                   ) : null}
 
-                  {resolvedRow ? (
+                  {autoSubtitle && rowExpanded && resolvedRow ? (
+                    <div className="auto-subtitle-row-edit-actions">
+                      <button
+                        aria-expanded={roleEditLine === line.lineNumber}
+                        aria-label={`更换第 ${line.lineNumber} 行角色`}
+                        className="dialogue-batch-role-edit"
+                        data-testid={`dialogue-batch-role-edit-${line.lineNumber}`}
+                        type="button"
+                        onClick={() => {
+                          setCommitError(null);
+                          setRoleEditLine((current) =>
+                            current === line.lineNumber ? null : line.lineNumber,
+                          );
+                        }}
+                      >
+                        更换角色
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {autoSubtitle && rowExpanded && resolvedRow && row ? (
                     <div className="dialogue-batch-audio-row">
                       <label htmlFor={`dialogue-batch-audio-${line.lineNumber}`}>
                         配音
@@ -478,6 +681,13 @@ export function DialogueBatchPaste({
                           {row.issueMessage}
                         </p>
                       ) : null}
+                      {row.audioAsset && snapshot?.projectRoot ? (
+                        <DialogueBatchAudioPreview
+                          asset={row.audioAsset}
+                          key={`${row.audioAsset.id}:${row.audioAsset.sha256 ?? ''}`}
+                          projectRoot={snapshot.projectRoot}
+                        />
+                      ) : null}
                     </div>
                   ) : null}
                 </li>
@@ -485,31 +695,33 @@ export function DialogueBatchPaste({
             })}
           </ol>
 
-          {commitError ? (
+          {!autoSubtitle && commitError ? (
             <p className="dialogue-authoring-error" role="alert">
               {commitError}
             </p>
           ) : null}
-          <footer
-            className="dialogue-authoring-footer"
-            data-testid="dialogue-authoring-footer"
-          >
-            <button
-              className="dialogue-authoring-submit dialogue-batch-subtitle-only"
-              data-testid="dialogue-batch-add-subtitles"
-              disabled={!resolution.allResolved}
-              type="button"
-              onClick={handleAddSubtitles}
+          {!autoSubtitle ? (
+            <footer
+              className="dialogue-authoring-footer"
+              data-testid="dialogue-authoring-footer"
             >
-              <CirclePlus
-                aria-hidden="true"
-                className="ui-icon"
-                focusable="false"
-                size={18}
-              />
-              <span>仅添加字幕（不含配音）</span>
-            </button>
-          </footer>
+              <button
+                className="dialogue-authoring-submit dialogue-batch-subtitle-only"
+                data-testid="dialogue-batch-add-subtitles"
+                disabled={!resolution.allResolved}
+                type="button"
+                onClick={handleAddSubtitles}
+              >
+                <CirclePlus
+                  aria-hidden="true"
+                  className="ui-icon"
+                  focusable="false"
+                  size={18}
+                />
+                <span>添加字幕</span>
+              </button>
+            </footer>
+          ) : null}
         </>
       ) : null}
     </div>

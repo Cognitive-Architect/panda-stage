@@ -103,7 +103,8 @@ describe('Issue #505 R6.2 A09 batch recognition review', () => {
     expect(batch).toContain('<CharacterAvatar');
     expect(batch).toContain('dialogue-batch-row-result-resolved');
     expect(batch).toContain('dialogue-batch-row-result-exception');
-    expect(batch).toContain('<strong>候选预览</strong>');
+    expect(batch).toContain('data-testid="auto-subtitle-phase-a-status"');
+    expect(batch).not.toContain('<strong>候选预览</strong>');
     expect(batch).toContain('pendingCount');
     expect(batch).toContain('未找到「');
     expect(batch).toContain('对应多个角色，请确认');

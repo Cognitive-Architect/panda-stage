@@ -1098,6 +1098,7 @@ export function DialogueSheet({
             <DialogueBatchPaste
               draft={draft}
               onSuccess={handleCloseAuthoring}
+              presentation="subtitle-only"
               showDefaultExpression={!rightWorkspace}
             />
           )}

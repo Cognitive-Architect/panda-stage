@@ -66,16 +66,16 @@ function identityChanged(
 }
 
 /**
- * Transient, non-persisted scratch state for the Dialogue Sheet authoring
- * inputs (single-add form + batch paste). It is deliberately NOT a project
- * mutation and never flows through History, save or the schema: it is the
- * uncommitted UI draft.
+ * Transient, non-persisted scratch state for subtitle authoring inputs. The
+ * Dialogue Sheet and the Tools > Auto Subtitles surface each own a separate
+ * instance; neither is a project mutation or flows through History, save or
+ * the schema.
  *
  * The draft is bound to a (projectRoot, shotId) identity. Switching project or
  * shot clears every field, so a Shot A draft can never be committed into Shot
- * B (DialogueStore.createMany reads the current shot at commit time). This is a
- * single-sheet scratch buffer created by the DialogueSheet, not a global draft
- * framework.
+ * B (DialogueStore.createMany reads the current shot at commit time). Each UI
+ * owner keeps its own instance across presentation changes without allowing a
+ * draft to cross project or shot boundaries.
  */
 export class DialogueAuthoringDraft {
   private identity: DialogueDraftIdentity | null = null;

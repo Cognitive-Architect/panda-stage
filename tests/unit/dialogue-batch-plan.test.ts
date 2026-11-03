@@ -320,4 +320,38 @@ describe('Issue #926 audio-backed subtitle draft plan', () => {
       audioAsset: null,
     });
   });
+
+  it('invalidates stale manual matches when an asset disappears or its metadata changes', () => {
+    const selected = audio('manual-voice', 'manual-take.wav', 1_000);
+    const selection = {
+      1: {
+        assetId: selected.id,
+        characterId: panda.id,
+        durationSeconds: '0.8',
+      },
+    };
+    const raw = `${panda.name}: hello`;
+
+    const removed = preview(raw, characters, [], {}, selection);
+    expect(removed.rows[0]).toMatchObject({
+      issue: 'audio-selection-missing',
+      ready: false,
+      audioAsset: null,
+    });
+
+    const unavailable = audio('manual-voice', 'manual-take.wav', 1_000, 'error');
+    const metadataChanged = preview(raw, characters, [unavailable], {}, selection);
+    expect(metadataChanged.rows[0]).toMatchObject({
+      issue: 'audio-error',
+      ready: false,
+    });
+
+    const shortenedSource = audio('manual-voice', 'manual-take.wav', 600);
+    const durationChanged = preview(raw, characters, [shortenedSource], {}, selection);
+    expect(durationChanged.rows[0]).toMatchObject({
+      issue: 'duration-out-of-range',
+      sourceDurationMs: 600,
+      ready: false,
+    });
+  });
 });

@@ -1,7 +1,9 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import {
   MessageCircleMore,
@@ -11,6 +13,9 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { DecorativeIcon } from '../ui';
+import { editorProjectStore } from '../stores/EditorProjectStore';
+import { shotStore } from '../stores/shotStore';
+import { DialogueAuthoringDraft } from '../features/dialogue/dialogueAuthoringDraft';
 import { DialogueSheet } from '../features/dialogue/DialogueSheet';
 import { usePendingDialoguePlacement } from '../features/timeline/PendingDialoguePlacement';
 import { ProjectToolsDrawer } from './ProjectToolsDrawer';
@@ -44,6 +49,46 @@ export function RightWorkspace({
   autoCameraEnabled,
   onAutoCameraChange,
 }: RightWorkspaceProps): React.JSX.Element {
+  const projectSnapshot = useSyncExternalStore(
+    editorProjectStore.subscribe,
+    editorProjectStore.getSnapshot,
+  );
+  const currentShotId = useSyncExternalStore(
+    shotStore.subscribe,
+    shotStore.getCurrentShotId,
+  );
+  const [autoSubtitleDraft] = useState(() => new DialogueAuthoringDraft());
+  const [autoSubtitleDraftResetNotice, setAutoSubtitleDraftResetNotice] =
+    useState<string | null>(null);
+  const autoSubtitleIdentityRef = useRef<{
+    projectRoot: string;
+    shotId: string | null;
+  } | null>(null);
+  const projectRoot = projectSnapshot?.projectRoot ?? '';
+
+  useLayoutEffect(() => {
+    const nextIdentity = {
+      projectRoot,
+      shotId: currentShotId ?? null,
+    };
+    const previousIdentity = autoSubtitleIdentityRef.current;
+    const draft = autoSubtitleDraft.getSnapshot();
+    const hasDraft = Boolean(
+      draft.batchRaw.trim() ||
+        Object.keys(draft.batchMapping).length ||
+        Object.keys(draft.batchAudioSelections).length,
+    );
+    const reset = autoSubtitleDraft.bindIdentity(nextIdentity);
+    if (previousIdentity && reset && hasDraft) {
+      setAutoSubtitleDraftResetNotice(
+        previousIdentity.projectRoot !== nextIdentity.projectRoot
+          ? '工程已切换，未提交的自动字幕草稿已清空。'
+          : '镜头已切换，未提交的自动字幕草稿已清空。',
+      );
+    }
+    autoSubtitleIdentityRef.current = nextIdentity;
+  }, [autoSubtitleDraft, currentShotId, projectRoot]);
+
   const pendingPlacement = usePendingDialoguePlacement();
   const [activeActivity, setActiveActivity] =
     useState<RightActivity | null>(null);
@@ -116,6 +161,11 @@ export function RightWorkspace({
             />
           ) : (
             <ProjectToolsDrawer
+              autoSubtitleDraft={autoSubtitleDraft}
+              autoSubtitleDraftResetNotice={autoSubtitleDraftResetNotice}
+              onDismissAutoSubtitleDraftResetNotice={() =>
+                setAutoSubtitleDraftResetNotice(null)
+              }
               onClose={closeSurface}
             />
           )}

@@ -160,7 +160,8 @@ describe('Issue #357 State D/E unified subtitle authoring shell', () => {
     expect(batch).toContain('dialogueStore.createMany(');
     expect(batch).toContain('if (!resolution.allResolved) return;');
     expect(batch).toContain('onClick={handleAddSubtitles}');
-    expect(batch).toContain('仅添加字幕（不含配音）');
+    expect(batch).toContain('<span>添加字幕</span>');
+    expect(batch).not.toContain('仅添加字幕（不含配音）');
     expect(batch).not.toContain('CharacterStore');
     expect(batch).not.toContain('updateProject');
   });

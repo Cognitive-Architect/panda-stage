@@ -1,0 +1,253 @@
+.project-tools-auto-subtitle-launcher {
+  display: inline-flex;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 10px;
+  align-items: center;
+  justify-content: flex-start;
+  border: 1px solid rgb(127 199 148 / 24%);
+  border-radius: 10px;
+  color: var(--ui-color-text-primary, #e7f2eb);
+  background: rgb(255 255 255 / 3%);
+  gap: 9px;
+  text-align: left;
+}
+
+.project-tools-auto-subtitle-launcher:hover,
+.project-tools-auto-subtitle-launcher:focus-visible {
+  border-color: var(--ui-color-selected-border, #83d39a);
+  background: rgb(45 104 62 / 28%);
+}
+
+.project-tools-auto-subtitles-header {
+  grid-template-columns: auto minmax(0, 1fr) 44px;
+  gap: 8px;
+}
+
+.project-tools-auto-subtitles-header h2 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-tools-auto-subtitles-back {
+  display: inline-flex;
+  min-width: 60px;
+  min-height: 44px;
+  padding: 4px 6px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+  gap: 4px;
+}
+
+.project-tools-auto-subtitles-back:hover,
+.project-tools-auto-subtitles-back:focus-visible {
+  color: var(--ui-color-text-primary);
+  background: rgb(45 104 62 / 28%);
+}
+
+.project-tools-drawer[data-project-tools-view='auto-subtitles'] {
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: stretch;
+}
+
+.project-tools-auto-subtitles-view {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.auto-subtitle-draft-reset-notice {
+  display: flex;
+  min-width: 0;
+  padding: 7px 10px;
+  align-items: center;
+  justify-content: space-between;
+  border-left: 3px solid var(--ui-color-action-warning, #d9a441);
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  background: rgb(217 164 65 / 8%);
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.auto-subtitle-draft-reset-notice button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  flex: 0 0 auto;
+  place-items: center;
+  color: inherit;
+  background: transparent;
+}
+
+.dialogue-batch-auto-subtitle {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  padding: 10px 12px 16px;
+  align-content: start;
+  gap: 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.auto-subtitle-input-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.auto-subtitle-input-heading h3 {
+  margin: 0;
+  color: var(--ui-color-text-primary, #e7f2eb);
+  font-size: 14px;
+}
+
+.auto-subtitle-input-toggle {
+  min-width: 56px;
+  min-height: 40px;
+  padding: 6px 9px;
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+}
+
+.auto-subtitle-input-toggle:hover,
+.auto-subtitle-input-toggle:focus-visible {
+  color: var(--ui-color-text-primary, #e7f2eb);
+}
+
+.dialogue-batch-auto-subtitle .dialogue-batch-input-section > label {
+  font-size: 11px;
+}
+
+.dialogue-batch-auto-subtitle .dialogue-batch-input {
+  min-height: 104px;
+  padding: 9px 10px;
+  font-size: 12px;
+}
+
+.dialogue-batch-auto-subtitle .dialogue-batch-recognition {
+  gap: 5px 9px;
+  font-size: 11px;
+}
+
+.auto-subtitle-phase-state {
+  color: var(--ui-color-text-muted, #829589);
+}
+
+.dialogue-batch-auto-subtitle .dialogue-batch-row-result-resolved {
+  grid-template-columns: 18px 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.dialogue-batch-auto-subtitle .dialogue-batch-row-result-resolved .dialogue-batch-row-avatar.character-identity-avatar:not(.character-list-avatar) {
+  width: 30px;
+  height: 30px;
+}
+
+.dialogue-batch-auto-subtitle .dialogue-batch-row-copy > span {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.dialogue-batch-auto-subtitle .auto-subtitle-row-edit {
+  min-width: 44px;
+  padding-inline: 5px;
+}
+
+.auto-subtitle-row-audio-summary {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 10px;
+  padding-left: 24px;
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.auto-subtitle-row-audio-name {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auto-subtitle-row-audio-summary > span:last-child {
+  flex: 0 0 auto;
+  color: var(--ui-color-text-muted, #829589);
+  text-align: right;
+}
+
+.auto-subtitle-row-edit-actions {
+  display: flex;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+.dialogue-batch-auto-subtitle .dialogue-batch-audio-row {
+  padding-left: 0;
+}
+
+.dialogue-batch-audio-preview {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.dialogue-batch-audio-preview-load {
+  justify-self: start;
+  min-height: 40px;
+  padding: 6px 9px;
+  font-size: 12px;
+}
+
+.dialogue-batch-audio-preview audio {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 40px;
+}
+
+.dialogue-batch-audio-preview [role='alert'] {
+  color: var(--ui-color-action-warning, #d9a441);
+  font-size: 11px;
+}
+
+@media (max-width: 340px) {
+  .project-tools-auto-subtitles-header {
+    grid-template-columns: auto minmax(0, 1fr) 40px;
+    gap: 4px;
+    padding-inline: 8px;
+  }
+
+  .project-tools-auto-subtitles-back {
+    min-width: 54px;
+    gap: 2px;
+  }
+
+  .dialogue-batch-auto-subtitle {
+    padding-inline: 9px;
+  }
+
+  .auto-subtitle-row-audio-summary {
+    padding-left: 0;
+  }
+}
