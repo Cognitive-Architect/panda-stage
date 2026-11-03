@@ -20,6 +20,7 @@ const { FileSystemService } = require('../dist-electron/main/services/FileSystem
 const { FFmpegAdapter } = require('../dist-electron/main/services/FFmpegAdapter.js');
 const { resolveMediaToolPaths } = require('../dist-electron/main/services/production-resources.js');
 const { HiddenWindowManager } = require('../dist-electron/main/windows/hidden-window-manager.js');
+const { PROJECT_SCHEMA_VERSION } = require('../dist-electron/domain/constants.js');
 const { ProjectSchema } = require('../dist-electron/domain/index.js');
 const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
 
@@ -121,7 +122,10 @@ function loadAndValidateSource(projectRoot) {
   const manifestPath = path.join(projectRoot, 'project.json');
   const manifestBytes = readFileSync(manifestPath);
   const project = ProjectSchema.parse(JSON.parse(manifestBytes.toString('utf8')));
-  assert(project.schemaVersion === 14, `Expected Project v14, found ${project.schemaVersion}.`);
+  assert(
+    project.schemaVersion === PROJECT_SCHEMA_VERSION,
+    `Expected current Project v${PROJECT_SCHEMA_VERSION}, found ${project.schemaVersion}.`,
+  );
   assert(project.name.includes('Issue 867'), 'Source project is not the synthetic Issue 867 fixture.');
   const character = project.characters.find((item) => item.mode === 'composite' && item.head);
   assert(character, 'Synthetic fixture has no composite Character with a Head Group.');
@@ -725,11 +729,18 @@ async function openPreview(window, expectedShotId) {
     opaqueBackground: true,
     geometryStable: true,
   });
+  await waitFor(
+    window,
+    `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewPlaying === 'true'`,
+    'Product Preview did not complete its initial autoplay before the pixel matrix.',
+  );
+  await evaluate(window, `document.querySelector('[data-testid="product-preview-play-pause"]')?.click()`);
+  await waitFor(
+    window,
+    `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewPlaying === 'false'`,
+    'Product Preview did not pause after initial autoplay.',
+  );
   await evaluate(window, `(() => {
-    const overlay = document.querySelector('[data-testid="product-preview-overlay"]');
-    if (overlay?.dataset.previewPlaying === 'true') {
-      document.querySelector('[data-testid="product-preview-play-pause"]')?.click();
-    }
     document.querySelector('[data-testid="product-preview-stop"]')?.click();
     window.__pandaPreviewDiagnostics = {
       scenePixelRatio: 1,
@@ -758,6 +769,17 @@ async function seekAndCapture(
   target = 'primary',
   captureRegions = PRIMARY_CAPTURE_REGIONS,
 ) {
+  await evaluate(window, `(() => {
+    const overlay = document.querySelector('[data-testid="product-preview-overlay"]');
+    if (overlay?.dataset.previewPlaying === 'true') {
+      document.querySelector('[data-testid="product-preview-play-pause"]')?.click();
+    }
+  })()`);
+  await waitFor(
+    window,
+    `document.querySelector('[data-testid="product-preview-overlay"]')?.dataset.previewPlaying === 'false'`,
+    'Product Preview did not pause before the deterministic pixel checkpoint.',
+  );
   await evaluate(window, `(() => {
     const input = document.querySelector('[data-testid="product-preview-scrubber"]');
     if (!(input instanceof HTMLInputElement)) throw new Error('Preview scrubber missing.');
@@ -796,6 +818,7 @@ async function seekAndCapture(
   }
   await evaluate(window, `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
   const capture = await evaluate(window, `(() => {
+    const overlay = document.querySelector('[data-testid="product-preview-overlay"]');
     const stage = document.querySelector('.product-preview-stage [data-testid="stage-renderer"]');
     const canvas = stage?.querySelector('canvas');
     if (!stage || !(canvas instanceof HTMLCanvasElement)) throw new Error('Product Preview Stage canvas is missing.');
@@ -840,6 +863,8 @@ async function seekAndCapture(
       return [...context.getImageData(px, py, 1, 1).data];
     };
     return {
+      previewTimeMs: Number(overlay?.dataset.previewTime ?? -1),
+      previewPlaying: overlay?.dataset.previewPlaying ?? 'unknown',
       stageTimeMs: Number(stage.dataset.stageTime ?? -1),
       stageReady: stage.dataset.stageReady === 'true',
       stageDisplayReady: stage.dataset.stageDisplayReady === 'true',
@@ -862,6 +887,8 @@ async function seekAndCapture(
     : null;
   const { headCropPngBase64, faceMouthCropPngBase64 } = capture;
   const captureMetadata = {
+    previewTimeMs: capture.previewTimeMs,
+    previewPlaying: capture.previewPlaying,
     stageTimeMs: capture.stageTimeMs,
     stageReady: capture.stageReady,
     stageDisplayReady: capture.stageDisplayReady,
@@ -870,6 +897,8 @@ async function seekAndCapture(
     bodyPixels: capture.bodyPixels,
     alphaSamples: capture.alphaSamples,
   };
+  assert(capture.previewPlaying === 'false', `Product Preview resumed during pixel capture: ${JSON.stringify(captureMetadata)}`);
+  assert(capture.previewTimeMs === checkpoint.timeMs, `Product Preview time moved from the requested checkpoint: ${JSON.stringify(captureMetadata)}`);
   assert(capture.stageReady && capture.stageDisplayReady, `Preview Stage was not exact and drawable: ${JSON.stringify(captureMetadata)}`);
   assert(capture.stageTimeMs === checkpoint.timeMs, `Preview Stage time drifted: ${JSON.stringify(captureMetadata)}`);
   if (ownerLayerId) {
@@ -1933,7 +1962,8 @@ async function run() {
     sourceProjectRoot: sourceRoot,
     sourceProjectId: sourceProject.id,
     sourceManifestSha256: manifestSha256,
-    sourceIsSyntheticIssue867V14: true,
+    sourceProjectSchemaVersion: sourceProject.schemaVersion,
+    sourceIsSyntheticIssue867CurrentSchema: sourceProject.schemaVersion === PROJECT_SCHEMA_VERSION,
     dialogueWindowMs: { startMs: dialogue.startMs, endMs: dialogue.endMs },
     projectVariants: projectVariants.map(({ projectRoot, projectId }) => ({ projectRoot, projectId })),
     lifecycle: {
