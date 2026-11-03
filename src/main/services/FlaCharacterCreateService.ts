@@ -327,7 +327,9 @@ export class FlaCharacterCreateService {
       poseIdentity: batch.plan.poseIdentity,
       target: {
         renderTargetId: batch.plan.target.renderTargetId,
+        kind: batch.plan.target.kind,
         sceneIndex: batch.plan.target.sceneIndex,
+        sourceLibraryItemName: batch.plan.target.sourceLibraryItemName,
         selectedFrameIndex: batch.plan.target.selectedFrameIndex,
       },
     };
@@ -448,14 +450,18 @@ export class FlaCharacterCreateService {
         identity.poseIdentity !== confirmation.poseIdentity ||
         identity.target.renderTargetId !== confirmation.target.renderTargetId ||
         identity.target.renderTargetId !== heldPlan.target.renderTargetId ||
+        identity.target.kind !== heldPlan.target.kind ||
         identity.target.sceneIndex !== heldPlan.target.sceneIndex ||
+        identity.target.sourceLibraryItemName !== heldPlan.target.sourceLibraryItemName ||
         identity.target.selectedFrameIndex !== confirmation.target.selectedFrameIndex ||
         identity.target.selectedFrameIndex !== heldPlan.target.selectedFrameIndex ||
         identity.rawSourceSha256 !== plan?.source.rawSha256 ||
         identity.normalizedSourceSha256 !== plan?.source.normalizedSha256 ||
         identity.poseIdentity !== plan?.poseIdentity ||
         identity.target.renderTargetId !== plan?.target.renderTargetId ||
+        identity.target.kind !== plan?.target.kind ||
         identity.target.sceneIndex !== plan?.target.sceneIndex ||
+        identity.target.sourceLibraryItemName !== plan?.target.sourceLibraryItemName ||
         identity.target.selectedFrameIndex !== plan?.target.selectedFrameIndex ||
         heldPlan.target.selectedFrameIndex !== confirmation.target.selectedFrameIndex) {
       throw new FlaCharacterCreateServiceError('PLAN_EXPIRED', 'The confirmed FLA Part plan identity no longer matches Main’s held batch.');
@@ -469,7 +475,9 @@ export class FlaCharacterCreateService {
       if (!unit || part.drawOrder !== index || unit.drawOrder !== index ||
           part.unitId !== unit.unitId || part.occurrenceId !== unit.occurrenceId ||
           JSON.stringify(part.stageMapping) !== JSON.stringify(unit.stageMapping) ||
-          part.stageMapping.coordinateSpace !== 'root-scene-stage-pixels' ||
+          part.stageMapping.coordinateSpace !== (heldPlan.target.kind === 'scene'
+            ? 'root-scene-stage-pixels'
+            : 'root-graphic-local-pixels') ||
           part.stageMapping.crop !== null || part.stageMapping.outputScale !== 1 ||
           part.image.width !== heldPlan.stage.width || part.image.height !== heldPlan.stage.height ||
           part.image.pixelCount !== part.image.width * part.image.height ||

@@ -19,6 +19,7 @@ import {
   FLA_STATIC_SNAPSHOT_LIMITS,
   type FlaRenderTarget,
 } from '../../shared/fla-static-snapshot-api';
+import { isR05SafeGraphicSource } from '../../shared/fla-character-import-safe-graphic-targets';
 import type {
   FlaDisplayListElement,
   FlaDisplayListFrameContext,
@@ -100,9 +101,12 @@ interface ActivePartPreview {
 
 interface NativeRenderFacts {
   readonly source: FlaStaticSnapshotDisplaySource;
-  readonly sceneName: string;
-  readonly sceneIndex: number;
-  readonly sceneFrameCount: number;
+  readonly targetKind: 'scene' | 'graphic-symbol';
+  readonly targetName: string;
+  readonly sceneIndex: number | null;
+  readonly sourceLibraryItemName: string | null;
+  readonly targetFrameCount: number;
+  readonly rootTransform: FlaDisplayListMatrix;
   readonly userLabel: string;
   readonly selectedFrameIndex: number;
   readonly frameContext: FlaDisplayListFrameContext;
@@ -113,6 +117,32 @@ interface NativeRenderFacts {
   readonly pixelCount: number;
 }
 
+function firstFrameValue(value: string | undefined): number | null {
+  if (value === undefined) return 0;
+  const normalized = value.trim();
+  if (!/^(0|[1-9]\d*)$/u.test(normalized)) return null;
+  const frameIndex = Number(normalized);
+  return Number.isSafeInteger(frameIndex) ? frameIndex : null;
+}
+
+function isVisibleFrameZeroSceneGraphicReference(
+  source: FlaStaticSnapshotDisplaySource,
+  sourceLibraryItemName: string,
+): boolean {
+  const scene = source.sceneTimelines[0];
+  if (!scene) return false;
+  const containsReference = (elements: readonly FlaDisplayListElement[]): boolean => elements.some((element) => {
+    if (element.visible === false) return false;
+    if (element.kind === 'symbol') {
+      return element.symbolType === 'graphic' &&
+        element.libraryItemName === sourceLibraryItemName &&
+        firstFrameValue(element.firstFrame) === 0;
+    }
+    return element.kind === 'group' && containsReference(element.elements);
+  });
+  return scene.frameContext.layers.some((layer) => layer.visible && containsReference(layer.elements));
+}
+
 function multiply(parent: FlaDisplayListMatrix, local: FlaDisplayListMatrix): FlaDisplayListMatrix {
   return {
     a: parent.a * local.a + parent.c * local.b,
@@ -121,6 +151,22 @@ function multiply(parent: FlaDisplayListMatrix, local: FlaDisplayListMatrix): Fl
     d: parent.b * local.c + parent.d * local.d,
     tx: parent.a * local.tx + parent.c * local.ty + parent.tx,
     ty: parent.b * local.tx + parent.d * local.ty + parent.ty,
+  };
+}
+
+function applyRootTransformToFrameContext(
+  frameContext: FlaDisplayListFrameContext,
+  rootTransform: FlaDisplayListMatrix,
+): FlaDisplayListFrameContext {
+  return {
+    ...frameContext,
+    layers: frameContext.layers.map((layer) => ({
+      ...layer,
+      elements: layer.elements.map((element) => ({
+        ...element,
+        localTransform: multiply(rootTransform, element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX),
+      })),
+    })),
   };
 }
 
@@ -181,6 +227,7 @@ function makeCandidateCollection(
   rootFrameContext: FlaDisplayListFrameContext,
   sourceRawSha256: string,
   target: FlaRenderTarget,
+  rootTransform: FlaDisplayListMatrix = FLA_DISPLAY_LIST_IDENTITY_MATRIX,
 ): CandidateCollection {
   const candidates: PartCandidate[] = [];
   const descriptorsByName = new Map<string, FlaStaticSnapshotDisplaySource['graphicSymbols'][number] | null>();
@@ -295,7 +342,9 @@ function makeCandidateCollection(
         effectiveChildFrameIndex: effectiveChildFrame,
       },
       stageMapping: {
-        coordinateSpace: 'root-scene-stage-pixels',
+        coordinateSpace: target.kind === 'scene'
+          ? 'root-scene-stage-pixels'
+          : 'root-graphic-local-pixels',
         stageOrigin: { x: 0, y: 0 },
         crop: null,
         outputScale: 1,
@@ -440,7 +489,10 @@ function makeCandidateCollection(
     }
   };
 
-  walk(rootFrameContext, `scene:${target.sourceTimelineIndex ?? 0}`, FLA_DISPLAY_LIST_IDENTITY_MATRIX, [], []);
+  const rootContextPath = target.kind === 'graphic-symbol'
+    ? `graphic:${target.sourceLibraryItemName ?? '(unset)'}`
+    : `scene:${target.sourceTimelineIndex ?? 0}`;
+  walk(rootFrameContext, rootContextPath, rootTransform, [], []);
   return { candidates, fallbackReason };
 }
 
@@ -557,12 +609,24 @@ export interface FlaPreparedPartBatch {
     readonly poseIdentity: string;
     readonly target: {
       readonly renderTargetId: string;
-      readonly sceneIndex: number;
+      readonly kind: 'scene' | 'graphic-symbol';
+      readonly sceneIndex: number | null;
+      readonly sourceLibraryItemName: string | null;
       readonly selectedFrameIndex: number;
     };
   };
   readonly parts: readonly FlaPreparedPartBatchPart[];
   readonly partPngBytes: number;
+}
+
+function partPlanTargetIdentity(target: FlaPartPlan['target']): FlaPreparedPartBatch['identity']['target'] {
+  return {
+    renderTargetId: target.renderTargetId,
+    kind: target.kind,
+    sceneIndex: target.sceneIndex,
+    sourceLibraryItemName: target.sourceLibraryItemName,
+    selectedFrameIndex: target.selectedFrameIndex,
+  };
 }
 
 export interface FlaPreparedPartBatchMetadata {
@@ -765,11 +829,7 @@ export class FlaPartPreviewService {
         rawSourceSha256: plan.source.rawSha256,
         normalizedSourceSha256: plan.source.normalizedSha256,
         poseIdentity: plan.poseIdentity,
-        target: {
-          renderTargetId: plan.target.renderTargetId,
-          sceneIndex: plan.target.sceneIndex,
-          selectedFrameIndex: plan.target.selectedFrameIndex,
-        },
+        target: partPlanTargetIdentity(plan.target),
       },
       parts,
       partPngBytes: held.partPngBytes,
@@ -798,11 +858,7 @@ export class FlaPartPreviewService {
         rawSourceSha256: plan.source.rawSha256,
         normalizedSourceSha256: plan.source.normalizedSha256,
         poseIdentity: plan.poseIdentity,
-        target: {
-          renderTargetId: plan.target.renderTargetId,
-          sceneIndex: plan.target.sceneIndex,
-          selectedFrameIndex: plan.target.selectedFrameIndex,
-        },
+        target: partPlanTargetIdentity(plan.target),
       },
       parts: held.parts.map((part) => ({
         unitId: part.unitId,
@@ -856,28 +912,96 @@ export class FlaPartPreviewService {
       return this.failure(active.cancelCode ?? 'RENDER_CANCELLED', 'Preview is stale or cancelled', active.request);
     }
 
-    const targetMatch = prepared.source.sceneTimelines.find((scene) =>
+    const selectedFrameIndex = active.request.target.selectedFrameIndex;
+    const sceneMatch = prepared.source.sceneTimelines.find((scene) =>
       stableRenderTargetId(
         sourceIdentity.bytes,
         `scene\u0000timeline\u0000${scene.index}`,
       ) === active.request.target.renderTargetId,
     );
-    if (!targetMatch) {
-      return this.failure('TARGET_NOT_FOUND', 'The requested Scene target is not present in this FLA session', active.request);
-    }
-    const frameCount = Math.min(100_000, targetMatch.frameCount);
-    const selectedFrameIndex = active.request.target.selectedFrameIndex;
-    if (selectedFrameIndex >= frameCount) {
-      return this.failure('TARGET_NOT_FOUND', 'The selected Scene frame is outside the source frame range', active.request);
-    }
-    if (selectedFrameIndex === 0) prepared.source.resetFrameBuildState();
-    const frameResult = selectedFrameIndex === 0
-      ? { ok: true as const, value: targetMatch.frameContext }
-      : prepared.source.buildSceneFrameContext(
-          targetMatch.xml,
-          selectedFrameIndex,
-          `scene:${targetMatch.index}`,
+    let targetKind: 'scene' | 'graphic-symbol';
+    let targetName: string;
+    let sceneIndex: number | null;
+    let sourceLibraryItemName: string | null;
+    let userLabel: string;
+    let frameCount: number;
+    let target: FlaRenderTarget;
+    let frameResult: ReturnType<FlaStaticSnapshotDisplaySource['buildSceneFrameContext']>;
+    if (sceneMatch) {
+      targetKind = 'scene';
+      targetName = sceneMatch.name;
+      sceneIndex = sceneMatch.index;
+      sourceLibraryItemName = null;
+      userLabel = sceneMatch.name.trim() || 'Main scene';
+      frameCount = Math.min(100_000, sceneMatch.frameCount);
+      if (selectedFrameIndex >= frameCount) {
+        return this.failure('TARGET_NOT_FOUND', 'The selected Scene frame is outside the source frame range', active.request);
+      }
+      if (selectedFrameIndex === 0) prepared.source.resetFrameBuildState();
+      frameResult = selectedFrameIndex === 0
+        ? { ok: true as const, value: sceneMatch.frameContext }
+        : prepared.source.buildSceneFrameContext(
+            sceneMatch.xml,
+            selectedFrameIndex,
+            `scene:${sceneMatch.index}`,
+          );
+      target = {
+        renderTargetId: active.request.target.renderTargetId,
+        kind: 'scene',
+        userLabel,
+        sourceTimelineIndex: sceneMatch.index,
+        frameCount,
+        selectedFrameIndex,
+        compatibility: ['degraded'],
+      };
+    } else {
+      const graphicMatch = prepared.source.graphicSymbols.find((symbol) =>
+        stableRenderTargetId(
+          sourceIdentity.bytes,
+          `graphic-symbol\u0000${symbol.sourceLibraryItemName}\u0000${symbol.userLabel}`,
+        ) === active.request.target.renderTargetId,
+      );
+      if (!graphicMatch ||
+          !isR05SafeGraphicSource(
+            sourceIdentity.originalSourceSha256 ?? sourceIdentity.sha256,
+            graphicMatch.sourceLibraryItemName,
+            selectedFrameIndex,
+          ) ||
+          !isVisibleFrameZeroSceneGraphicReference(prepared.source, graphicMatch.sourceLibraryItemName)) {
+        return this.failure(
+          'TARGET_NOT_FOUND',
+          'The requested Graphic root is not an approved complete character target in this FLA session',
+          active.request,
         );
+      }
+      targetKind = 'graphic-symbol';
+      targetName = graphicMatch.sourceLibraryItemName;
+      sceneIndex = null;
+      sourceLibraryItemName = graphicMatch.sourceLibraryItemName;
+      userLabel = graphicMatch.userLabel;
+      frameCount = Math.min(100_000, Math.max(1, graphicMatch.frameCount));
+      if (selectedFrameIndex >= frameCount) {
+        return this.failure('TARGET_NOT_FOUND', 'The selected Graphic frame is outside the source frame range', active.request);
+      }
+      prepared.source.resetFrameBuildState();
+      frameResult = selectedFrameIndex === 0
+        ? { ok: true as const, value: graphicMatch.frameContext }
+        : prepared.source.buildGraphicFrameContext(
+            graphicMatch.timelineXml,
+            graphicMatch.frameSpanIndex,
+            selectedFrameIndex,
+            `graphic:${graphicMatch.sourceLibraryItemName}`,
+          );
+      target = {
+        renderTargetId: active.request.target.renderTargetId,
+        kind: 'graphic-symbol',
+        userLabel,
+        sourceLibraryItemName: graphicMatch.sourceLibraryItemName,
+        frameCount,
+        selectedFrameIndex,
+        compatibility: ['degraded'],
+      };
+    }
     if (!frameResult.ok) {
       return this.failure('UNSUPPORTED_SOURCE', frameResult.message, active.request);
     }
@@ -890,7 +1014,9 @@ export class FlaPartPreviewService {
     }
 
     const nativeResolved = resolveFlaDisplayList({
-      root: { kind: 'scene', name: targetMatch.name, frameContext },
+      root: targetKind === 'scene'
+        ? { kind: 'scene', name: targetName, frameContext }
+        : { kind: 'graphic', name: targetName, frameContext },
       symbols: prepared.source.symbols,
     });
     displayListResolveCount += 1;
@@ -920,12 +1046,33 @@ export class FlaPartPreviewService {
         active.request,
       );
     }
+    const framing = nativeComposition.composition.framing;
+    if (targetKind === 'graphic-symbol' && framing.mode !== 'content') {
+      return this.failure('RENDER_FAILED', 'Graphic root preview did not produce a content viewport', active.request);
+    }
+    const rootTransform: FlaDisplayListMatrix = targetKind === 'graphic-symbol'
+      ? {
+        a: nativeComposition.width / framing.viewBox.width,
+        b: 0,
+        c: 0,
+        d: nativeComposition.height / framing.viewBox.height,
+        tx: -framing.viewBox.x * nativeComposition.width / framing.viewBox.width,
+        ty: -framing.viewBox.y * nativeComposition.height / framing.viewBox.height,
+      }
+      : FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+    if (![rootTransform.a, rootTransform.b, rootTransform.c, rootTransform.d, rootTransform.tx, rootTransform.ty]
+      .every(Number.isFinite)) {
+      return this.failure('RENDER_FAILED', 'Graphic root viewport transform is not finite', active.request);
+    }
     const nativeFacts: NativeRenderFacts = {
       source: prepared.source,
-      sceneName: targetMatch.name,
-      sceneIndex: targetMatch.index,
-      sceneFrameCount: frameCount,
-      userLabel: targetMatch.name.trim() || 'Main scene',
+      targetKind,
+      targetName,
+      sceneIndex,
+      sourceLibraryItemName,
+      targetFrameCount: frameCount,
+      rootTransform,
+      userLabel,
       selectedFrameIndex,
       frameContext,
       resolvedNodeCount: nativeResolved.displayList.resolvedNodeCount,
@@ -953,15 +1100,8 @@ export class FlaPartPreviewService {
       prepared.source,
       frameContext,
       (sourceIdentity.originalSourceSha256 ?? sourceIdentity.sha256).toLowerCase(),
-      {
-        renderTargetId: active.request.target.renderTargetId,
-        kind: 'scene',
-        userLabel: nativeFacts.userLabel,
-        sourceTimelineIndex: nativeFacts.sceneIndex,
-        frameCount: nativeFacts.sceneFrameCount,
-        selectedFrameIndex,
-        compatibility: ['degraded'],
-      },
+      target,
+      rootTransform,
     );
     if (collection.fallbackReason) {
       return this.wholeImageOnly(active, sourceIdentity, nativeFacts, nativePreview, collection.fallbackReason, {
@@ -995,8 +1135,11 @@ export class FlaPartPreviewService {
           candidate.isolatePath,
           candidate.unit.occurrenceId,
         );
+        const isolatedFrameContext = nativeFacts.targetKind === 'graphic-symbol'
+          ? applyRootTransformToFrameContext(isolated.frameContext, nativeFacts.rootTransform)
+          : isolated.frameContext;
         const resolved = resolveFlaDisplayList({
-          root: { kind: 'scene', name: 'F1-02 isolated source occurrence', frameContext: isolated.frameContext },
+          root: { kind: 'scene', name: 'F1-02 isolated source occurrence', frameContext: isolatedFrameContext },
           symbols: isolated.symbols,
         });
         displayListResolveCount += 1;
@@ -1013,8 +1156,8 @@ export class FlaPartPreviewService {
         const composition = buildSvgForResolvedDisplayList({
           displayList: resolved.displayList,
           renderTargetId: `${active.request.target.renderTargetId}-${candidate.unit.unitId}`,
-          stageWidth: prepared.source.stageWidth,
-          stageHeight: prepared.source.stageHeight,
+          stageWidth: nativeFacts.targetKind === 'scene' ? prepared.source.stageWidth : nativeFacts.width,
+          stageHeight: nativeFacts.targetKind === 'scene' ? prepared.source.stageHeight : nativeFacts.height,
           shapeBlocks: prepared.source.shapeBlocks,
           resolveBitmapMedia: mediaLookup,
         });
@@ -1315,19 +1458,24 @@ export class FlaPartPreviewService {
       },
       target: {
         renderTargetId: active.request.target.renderTargetId,
-        kind: 'scene',
+        kind: native.targetKind,
         userLabel: native.userLabel,
         sceneIndex: native.sceneIndex,
-        frameCount: native.sceneFrameCount,
+        sourceLibraryItemName: native.sourceLibraryItemName,
+        frameCount: native.targetFrameCount,
         selectedFrameIndex: native.selectedFrameIndex,
-        frameSelectionBasis: 'authored Scene frame selected through Main prepared source',
+        frameSelectionBasis: native.targetKind === 'scene'
+          ? 'authored Scene frame selected through Main prepared source'
+          : 'approved Graphic root frame selected through Main prepared source',
       },
       poseIdentity,
       stage: {
         width: native.width,
         height: native.height,
         pixelCount: native.pixelCount,
-        coordinateSpace: 'root-scene-stage-pixels',
+        coordinateSpace: native.targetKind === 'scene'
+          ? 'root-scene-stage-pixels'
+          : 'root-graphic-local-pixels',
       },
       capability,
       capabilityReason,

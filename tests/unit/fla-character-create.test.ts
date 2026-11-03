@@ -103,6 +103,7 @@ function plan(partCount: number, capability: 'EDITABLE_PARTS_READY' | 'WHOLE_IMA
       kind: 'scene',
       userLabel: 'Scene 1',
       sceneIndex: 0,
+      sourceLibraryItemName: null,
       frameCount: 20,
       selectedFrameIndex: 2,
       frameSelectionBasis: 'authored Scene frame selected through Main prepared source',
@@ -146,7 +147,9 @@ function preparedBatch(rawPlan: FlaPartPlan, partsBytes: readonly Uint8Array[]):
       poseIdentity: rawPlan.poseIdentity,
       target: {
         renderTargetId: rawPlan.target.renderTargetId,
+        kind: rawPlan.target.kind,
         sceneIndex: rawPlan.target.sceneIndex,
+        sourceLibraryItemName: rawPlan.target.sourceLibraryItemName,
         selectedFrameIndex: rawPlan.target.selectedFrameIndex,
       },
     },
@@ -432,7 +435,7 @@ describe('F1-03 FLA Part Character commit', () => {
       identity: {
         ...held.identity,
         rawSourceSha256: 'd'.repeat(64),
-        target: { ...held.identity.target, sceneIndex: held.identity.target.sceneIndex + 1 },
+        target: { ...held.identity.target, sceneIndex: (held.identity.target.sceneIndex ?? 0) + 1 },
       },
     } as FlaPreparedPartBatch;
     const tamperedService = tampered.createService({ batch: tamperedBatch });
