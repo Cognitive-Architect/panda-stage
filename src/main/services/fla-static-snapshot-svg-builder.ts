@@ -1017,11 +1017,12 @@ function parseLinearGradientPaint(
   shapeId: string,
   renderTargetId: string,
   frameIndex: number,
+  styleKind: 'FillStyle' | 'StrokeStyle' = 'FillStyle',
 ): { readonly ok: true; readonly paint: ReconstructedFillPaint } | BuildSvgFailure {
   const fail = (code: BuildSvgFailure['code'], message: string): BuildSvgFailure => ({
     ok: false,
     code,
-    message: `Shape ${shapeId} FillStyle ${style.index} ${message}`,
+    message: `Shape ${shapeId} ${styleKind} ${style.index} ${message}`,
   });
   const gradientBlocks = extractBalancedBlocks(style.sourceXml, 'LinearGradient');
   if (gradientBlocks.length !== 1) {
@@ -1119,6 +1120,150 @@ function parseLinearGradientPaint(
       gradientStopCount: stops.length,
     },
   };
+}
+
+function xmlAttributes(openTag: string | undefined): Record<string, string> {
+  if (!openTag) return {};
+  return Object.fromEntries(
+    [...openTag.matchAll(/([A-Za-z_][A-Za-z0-9_.:-]*)="([^"]*)"/gu)]
+      .map((match) => [match[1] as string, match[2] as string]),
+  );
+}
+
+function hasExactAttributeNames(attributes: Record<string, string>, names: readonly string[]): boolean {
+  return Object.keys(attributes).sort().join(',') === [...names].sort().join(',');
+}
+
+function hasOnlyExpectedChildElements(
+  parentBlock: string,
+  parentTag: string,
+  expectedChildren: readonly string[],
+): boolean {
+  const openTag = parentBlock.match(new RegExp(`<${parentTag}\\b[^>]*>`, 'u'))?.[0];
+  const closeTag = `</${parentTag}>`;
+  const closeIndex = parentBlock.lastIndexOf(closeTag);
+  if (!openTag || closeIndex < openTag.length) return false;
+  let remainder = parentBlock.slice(openTag.length, closeIndex);
+  for (const child of expectedChildren) {
+    const childIndex = remainder.indexOf(child);
+    if (childIndex < 0) return false;
+    remainder = remainder.slice(0, childIndex) + remainder.slice(childIndex + child.length);
+  }
+  return !/<[A-Za-z_]/u.test(remainder);
+}
+
+function hasClosedLinearStrokeStructure(
+  style: ParsedShapeStyle,
+  solidStrokeXml: string,
+  fillBlock: string,
+  gradientBlock: string,
+): boolean {
+  const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
+  const stopTags = extractSelfClosingTags(gradientBlock, 'GradientEntry');
+  const matrixTags = matrixBlocks.length === 1
+    ? (matrixBlocks[0] as string).match(/<Matrix\b[^>]*\/?\s*>/gu) ?? []
+    : [];
+  if (matrixBlocks.length !== 1 || matrixTags.length !== 1) return false;
+  return hasOnlyExpectedChildElements(style.sourceXml, 'StrokeStyle', [solidStrokeXml]) &&
+    hasOnlyExpectedChildElements(solidStrokeXml, 'SolidStroke', [fillBlock]) &&
+    hasOnlyExpectedChildElements(fillBlock, 'fill', [gradientBlock]) &&
+    hasOnlyExpectedChildElements(gradientBlock, 'LinearGradient', [
+      matrixBlocks[0] as string,
+      ...stopTags,
+    ]) &&
+    hasOnlyExpectedChildElements(matrixBlocks[0] as string, 'matrix', [matrixTags[0] as string]);
+}
+
+// #944's exact-edge SWF receipt proves these otherwise omitted values for
+// this one attribute/stops/matrix signature. Keep the match content-based:
+// other omitted defaults remain unsupported.
+function matchesIssue944ProvenLinearStroke(
+  style: ParsedShapeStyle,
+  solidStrokeXml: string,
+): boolean {
+  const strokeTag = solidStrokeXml.match(/<SolidStroke\b[^>]*>/u)?.[0];
+  const strokeAttributes = xmlAttributes(strokeTag);
+  if (!hasExactAttributeNames(strokeAttributes, ['scaleMode']) || strokeAttributes.scaleMode !== 'normal') {
+    return false;
+  }
+  if (/<VariablePointWidth\b/u.test(style.sourceXml)) return false;
+
+  const gradientBlocks = extractBalancedBlocks(style.sourceXml, 'LinearGradient');
+  if (gradientBlocks.length !== 1) return false;
+  const gradientBlock = gradientBlocks[0] as string;
+  const gradientTag = gradientBlock.match(/<LinearGradient\b[^>]*>/u)?.[0];
+  const gradientAttributes = xmlAttributes(gradientTag);
+  if (!hasExactAttributeNames(gradientAttributes, ['spreadMethod']) ||
+      gradientAttributes.spreadMethod !== 'reflect') return false;
+
+  const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
+  const matrixTags = matrixBlocks.length === 1
+    ? (matrixBlocks[0] as string).match(/<Matrix\b[^>]*\/?\s*>/gu) ?? []
+    : [];
+  if ((gradientBlock.match(/<matrix\b/gu) ?? []).length !== 1 || matrixTags.length !== 1) return false;
+  const matrixAttributes = xmlAttributes(matrixTags[0]);
+  if (!hasExactAttributeNames(matrixAttributes, ['a', 'd', 'tx', 'ty'])) return false;
+  const evidencedMatrix = {
+    a: 0.009490966796875,
+    d: 0.01239013671875,
+    tx: 814.65,
+    ty: 625.65,
+  };
+  if (Object.entries(evidencedMatrix).some(([key, value]) => Number(matrixAttributes[key]) !== value)) {
+    return false;
+  }
+
+  const stopTags = extractSelfClosingTags(gradientBlock, 'GradientEntry');
+  const evidencedStops = [
+    { color: '#594F45', ratio: 0.152941176470588 },
+    { color: '#D7DFD5', ratio: 0.447058823529412 },
+    { color: '#A4A79E', ratio: 0.72156862745098 },
+    { color: '#FCFDFA', ratio: 1 },
+  ];
+  if (stopTags.length !== evidencedStops.length) return false;
+  return stopTags.every((tag, index) => {
+    const attributes = xmlAttributes(tag);
+    const expected = evidencedStops[index];
+    return expected !== undefined &&
+      hasExactAttributeNames(attributes, ['color', 'ratio']) &&
+      attributes.color === expected.color &&
+      Number(attributes.ratio) === expected.ratio;
+  });
+}
+
+function hasExplicitSafeLinearStrokeSemantics(
+  solidStrokeXml: string,
+  gradientBlock: string,
+): boolean {
+  const strokeTag = solidStrokeXml.match(/<SolidStroke\b[^>]*>/u)?.[0];
+  const strokeAttributes = xmlAttributes(strokeTag);
+  if (!hasExactAttributeNames(strokeAttributes, [
+    'weight', 'caps', 'joints', 'scaleMode', 'pixelHinting',
+  ]) && !hasExactAttributeNames(strokeAttributes, [
+    'weight', 'caps', 'joints', 'scaleMode', 'pixelHinting', 'miterLimit',
+  ])) return false;
+  if (strokeAttributes.scaleMode !== 'normal' || strokeAttributes.caps !== 'round' ||
+      strokeAttributes.joints !== 'round' || strokeAttributes.pixelHinting !== 'false') return false;
+  const weight = Number(strokeAttributes.weight);
+  if (!Number.isFinite(weight) || weight <= 0) return false;
+  if (/<VariablePointWidth\b/u.test(solidStrokeXml)) return false;
+
+  const gradientTag = gradientBlock.match(/<LinearGradient\b[^>]*>/u)?.[0];
+  const gradientAttributes = xmlAttributes(gradientTag);
+  if (!hasExactAttributeNames(gradientAttributes, ['spreadMethod', 'interpolationMethod']) ||
+      gradientAttributes.spreadMethod !== 'reflect' ||
+      gradientAttributes.interpolationMethod !== 'rgb') return false;
+
+  const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
+  const matrixTags = matrixBlocks.length === 1
+    ? (matrixBlocks[0] as string).match(/<Matrix\b[^>]*\/?\s*>/gu) ?? []
+    : [];
+  if ((gradientBlock.match(/<matrix\b/gu) ?? []).length !== 1 || matrixTags.length !== 1) return false;
+  if (!hasExactAttributeNames(xmlAttributes(matrixTags[0]), ['a', 'b', 'c', 'd', 'tx', 'ty'])) return false;
+
+  const stopTags = extractSelfClosingTags(gradientBlock, 'GradientEntry');
+  if (stopTags.length < 2) return false;
+  return stopTags.every((tag) => hasExactAttributeNames(xmlAttributes(tag), ['color', 'alpha', 'ratio']));
 }
 
 function parseRadialGradientPaint(
@@ -1617,7 +1762,7 @@ function parseSolidStrokeStyle(
   const unsupported = (detail: string): BuildSvgFailure => ({
     ok: false,
     code: 'TARGET_UNSUPPORTED',
-    message: `Shape ${shapeId} StrokeStyle ${style.index} has unsupported ${detail}; P2-C03 supports normal and horizontal SolidStroke semantics only, and P2-C06 adds validated normal radial-gradient SolidStroke paint`,
+    message: `Shape ${shapeId} StrokeStyle ${style.index} has unsupported ${detail}; P2-C03 supports normal and horizontal SolidStroke semantics only, P2-C06 adds validated normal radial-gradient paint, and P2-C07 adds evidence-bounded fixed-width linear-gradient paint`,
   });
   const malformed = (detail: string): BuildSvgFailure => ({
     ok: false,
@@ -1639,6 +1784,39 @@ function parseSolidStrokeStyle(
       return malformed('single radial-gradient stroke fill');
     }
     const parsedPaint = parseRadialGradientPaint(style, shapeId, renderTargetId, frameIndex, 'StrokeStyle');
+    if (!parsedPaint.ok) return parsedPaint;
+    gradientPaint = parsedPaint.paint;
+    color = parsedPaint.paint.firstColor;
+    opacity = parsedPaint.paint.opacity;
+  } else if (style.type === 'linear') {
+    if (/<VariablePointWidth\b/u.test(style.sourceXml)) return unsupported('VariablePointWidth');
+    if (paintTags.length !== 1 || !/^<LinearGradient\b/u.test(paintTags[0] ?? '')) {
+      return malformed('single linear-gradient stroke fill');
+    }
+    const gradientBlock = extractBalancedBlocks(style.sourceXml, 'LinearGradient')[0];
+    if (!gradientBlock) return unsupported('linear-gradient stroke paint structure');
+    const matchesEvidence = matchesIssue944ProvenLinearStroke(style, solidStrokeXml);
+    const hasExplicitSemantics = hasExplicitSafeLinearStrokeSemantics(solidStrokeXml, gradientBlock);
+    const closedStructure = hasClosedLinearStrokeStructure(style, solidStrokeXml, fillBlock, gradientBlock);
+    if (!closedStructure || (!matchesEvidence && !hasExplicitSemantics)) {
+      const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
+      const matrixTags = matrixBlocks.length === 1
+        ? (matrixBlocks[0] as string).match(/<Matrix\b[^>]*\/?\s*>/gu) ?? []
+        : [];
+      const rawStopCount = (gradientBlock.match(/<GradientEntry\b/gu) ?? []).length;
+      const stopTags = extractSelfClosingTags(gradientBlock, 'GradientEntry');
+      const hasCompletePaintStructure = (gradientBlock.match(/<matrix\b/gu) ?? []).length === 1 &&
+        matrixBlocks.length === 1 && matrixTags.length === 1 &&
+        rawStopCount >= 2 && stopTags.length === rawStopCount;
+      if (hasCompletePaintStructure) {
+        const validation = parseLinearGradientPaint(
+          style, shapeId, renderTargetId, frameIndex, 'StrokeStyle',
+        );
+        if (!validation.ok) return validation;
+      }
+      return unsupported('linear-gradient SolidStroke semantics with unproven defaults or paint properties');
+    }
+    const parsedPaint = parseLinearGradientPaint(style, shapeId, renderTargetId, frameIndex, 'StrokeStyle');
     if (!parsedPaint.ok) return parsedPaint;
     gradientPaint = parsedPaint.paint;
     color = parsedPaint.paint.firstColor;
@@ -1704,7 +1882,7 @@ function parseSolidStrokeStyle(
 
   const scaleMode = attributeFromElement(solidStrokeXml, 'SolidStroke', 'scaleMode') ?? 'normal';
   if (scaleMode !== 'normal' && scaleMode !== 'horizontal') return unsupported(`scaleMode "${scaleMode}"`);
-  if (gradientPaint && scaleMode !== 'normal') return unsupported(`radial-gradient scaleMode "${scaleMode}"`);
+  if (gradientPaint && scaleMode !== 'normal') return unsupported(`gradient scaleMode "${scaleMode}"`);
   const pixelHinting = attributeFromElement(solidStrokeXml, 'SolidStroke', 'pixelHinting');
   if (pixelHinting !== null && pixelHinting !== 'true' && pixelHinting !== 'false') {
     return {
