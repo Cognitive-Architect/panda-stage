@@ -18,8 +18,10 @@ import {
   type AssetCanvasImageReadResponse,
 } from '../../shared/asset-canvas-image-api';
 import {
+  AssetPreviewAudioInfoResponseSchema,
   AssetPreviewAudioReadRequestSchema,
   AssetPreviewAudioReadResponseSchema,
+  type AssetPreviewAudioInfoResponse,
   type AssetPreviewAudioReadResponse,
 } from '../../shared/asset-preview-audio-api';
 import { IPC_CHANNELS } from '../../shared/ipc/channels';
@@ -124,6 +126,17 @@ function previewAudioFailure(
     error: {
       code: 'ASSET_PREVIEW_AUDIO_READ_FAILED',
       message: 'Audio preview service failed.',
+      assetId: assetId.slice(0, 200),
+    },
+  });
+}
+
+function previewAudioInfoFailure(assetId: string): AssetPreviewAudioInfoResponse {
+  return AssetPreviewAudioInfoResponseSchema.parse({
+    ok: false,
+    error: {
+      code: 'ASSET_PREVIEW_AUDIO_READ_FAILED',
+      message: 'Audio preview source information is unavailable.',
       assetId: assetId.slice(0, 200),
     },
   });
@@ -264,10 +277,41 @@ export function registerAssetLibraryIpcHandlers(
     },
   );
 
+  ipcMain.handle(
+    IPC_CHANNELS.ASSET_PREVIEW_AUDIO_INFO,
+    async (event, rawRequest: unknown) => {
+      assertTrustedSender(
+        event,
+        dependencies.getMainWindow(),
+        IPC_CHANNELS.ASSET_PREVIEW_AUDIO_INFO,
+      );
+      let request;
+      try {
+        request = AssetPreviewAudioReadRequestSchema.parse(rawRequest);
+      } catch {
+        return AssetPreviewAudioInfoResponseSchema.parse({
+          ok: false,
+          error: {
+            code: 'ASSET_PREVIEW_AUDIO_INVALID_REQUEST',
+            message: 'Audio preview request is invalid.',
+            assetId: '(invalid)',
+          },
+        });
+      }
+      try {
+        const response = await dependencies.assetPreviewAudioService.getInfo(request);
+        return AssetPreviewAudioInfoResponseSchema.parse(response);
+      } catch {
+        return previewAudioInfoFailure(request.assetId);
+      }
+    },
+  );
+
   return () => {
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_DELETE);
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_THUMBNAIL_READ);
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ);
     ipcMain.removeHandler(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ);
+    ipcMain.removeHandler(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_INFO);
   };
 }

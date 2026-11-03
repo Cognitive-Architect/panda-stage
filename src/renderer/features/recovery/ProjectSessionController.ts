@@ -102,6 +102,7 @@ export class ProjectSessionController {
       | { ok: false; error: { message: string } }
     >,
   ): Promise<ProjectSessionSnapshot> {
+    this.store.assertProjectOperationIdle();
     const requestedRoot = rawProjectRoot.trim();
     const currentEditor = this.store.getSnapshot();
     if (
@@ -310,6 +311,7 @@ export class ProjectSessionController {
    * "close without saving".
    */
   async closeProject(): Promise<ProjectSessionSnapshot> {
+    this.store.assertProjectOperationIdle();
     const trackedProjectRoot = this.snapshot.trackedProjectRoot;
     if (trackedProjectRoot) {
       const stopped = await this.api.stop(trackedProjectRoot);
@@ -343,6 +345,7 @@ export class ProjectSessionController {
   }
 
   async dispose(): Promise<void> {
+    this.store.assertProjectOperationIdle();
     if (!this.snapshot.trackedProjectRoot) return;
     await this.api.stop(this.snapshot.trackedProjectRoot);
   }

@@ -6,7 +6,8 @@ import { DialogueSchema } from './dialogue';
 import {
   LayerSchema,
   LayerV14Schema,
-  LayerV15Schema,
+  LayerV15AdaptiveSchema,
+  LayerV15AnimationSchema,
   LayerV3Schema,
   LayerV4Schema,
 } from './layer';
@@ -39,17 +40,30 @@ export const ShotSchema = z
   })
   .strict();
 
-/** Exact current-v15 shot shape before per-instance playback was introduced. */
-export const ShotV15Schema = z
+/** Strict animation-era v15 shot shape before persisted playback settings. */
+export const ShotV15AnimationSchema = z
   .object({
     ...ShotBaseShape,
     audioClips: z.array(AudioClipSchema),
-    layers: z.array(LayerV15Schema),
+    layers: z.array(LayerV15AnimationSchema),
     backgroundLayerId: IdSchema.nullable(),
   })
   .strict();
 
-/** Exact persisted v14 shot shape, retained for the v14 -> v15 migration. */
+/** Strict origin/main v15 shot shape with Adaptive Parts layer references. */
+export const ShotV15AdaptiveSchema = z
+  .object({
+    ...ShotBaseShape,
+    audioClips: z.array(AudioClipSchema),
+    layers: z.array(LayerV15AdaptiveSchema),
+    backgroundLayerId: IdSchema.nullable(),
+  })
+  .strict();
+
+/** Backward-compatible name for the PR branch's historical v15 contract. */
+export const ShotV15Schema = ShotV15AnimationSchema;
+
+/** Exact persisted v14 shot shape, retained for the v14 -> v16 migration. */
 export const ShotV14Schema = z
   .object({
     ...ShotBaseShape,
@@ -59,7 +73,7 @@ export const ShotV14Schema = z
   })
   .strict();
 
-/** Historical v7+ shot shape before current v15 animation instances. */
+/** Historical v7+ shot shape before current animation and Adaptive Parts layers. */
 export const ShotV7Schema = z
   .object({
     ...ShotBaseShape,

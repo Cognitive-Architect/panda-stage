@@ -850,7 +850,11 @@ export class DialogueService {
     project.assets.forEach((asset) => ids.add(asset.id));
     project.characters.forEach((character) => {
       ids.add(character.id);
-      character.expressions.forEach((expression) => ids.add(expression.id));
+      if (character.mode === 'adaptive-parts') {
+        character.parts.forEach((part) => ids.add(part.partId));
+      } else {
+        character.expressions.forEach((expression) => ids.add(expression.id));
+      }
     });
     project.voiceProfiles.forEach((profile) => ids.add(profile.id));
     project.subtitleStyles.forEach((style) => ids.add(style.id));

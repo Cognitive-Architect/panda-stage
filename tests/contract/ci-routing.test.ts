@@ -81,6 +81,13 @@ describe('RH-07 FAST Draft policy', () => {
     expect(result.unknownPaths).toEqual([]);
   });
 
+  it('routes the Issue #880 Product Preview clock verifier through the editor owner', () => {
+    const result = draft([change('scripts/verify-issue880-preview-clock.cjs', 'A')]);
+    expect(result.tier).toBe('targeted');
+    expect(result.matchedRouteIds).toEqual(['editor-shell']);
+    expect(result.suites).toEqual(['editor', 'timeline']);
+    expect(result.unknownPaths).toEqual([]);
+  });
   it('keeps the Main Process application menu policy test on the Full-risk core owner', () => {
     const result = draft([change('tests/unit/application-menu-policy.test.ts')]);
     expect(result.tier).toBe('focused');
@@ -185,6 +192,40 @@ describe('RH-07 FAST Draft policy', () => {
     expect(unknownTest.unknownPaths).toEqual([
       'tests/unit/models/issue829-unregistered-model.test.ts',
     ]);
+  });
+
+  it('routes exact Adaptive Parts and F1-04 paths through Full-risk core ownership', () => {
+    const paths = [
+      'tests/helpers/adaptivePartsFixtures.ts',
+      'tests/helpers/characterAssertions.ts',
+      'tests/integration/adaptive-parts-lifecycle.test.ts',
+      'tests/integration/history-lifecycle.test.ts',
+      'tests/unit/adaptive-parts-character.test.ts',
+      'tests/unit/day23-layer-controls.test.ts',
+      'tests/unit/layer-service.test.ts',
+      'tests/unit/layer-stores.test.ts',
+      'tests/unit/reference-scanner.test.ts',
+      'tests/unit/create-character-from-prepared-parts.test.ts',
+    ];
+
+    for (const file of paths) {
+      const result = draft([change(file, 'A')]);
+      expect(result.tier, file).toBe('focused');
+      expect(result.matchedRouteIds, file).toEqual(['cross-process-core']);
+      expect(result.areas, file).toContain('cross-process-core');
+      expect(result.unknownPaths, file).toEqual([]);
+    }
+
+    const readyResult = ready(paths.map((file) => change(file, 'A')));
+    expect(readyResult.tier).toBe('full');
+    expect(readyResult.suites).toEqual(manifest.routing.fullRegressionSuites);
+    expect(readyResult.unknownPaths).toEqual([]);
+
+    const futurePath = 'tests/unit/adaptive-parts-next.test.ts';
+    expect(draft([change(futurePath, 'A')])).toMatchObject({
+      tier: 'unknown',
+      unknownPaths: [futurePath],
+    });
   });
 
   it('unions dialogue and subtitle suites without duplicates', () => {

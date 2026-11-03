@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
@@ -83,7 +84,7 @@ function createPanda(project = emptyCharacterProject()): Project {
 
 function headedCompositeProject(): Project {
   const project = createPanda();
-  const character = project.characters[0]!;
+  const character = asExpressionCharacter(project.characters[0]!);
   return ProjectSchema.parse({
     ...project,
     characters: [
@@ -119,7 +120,7 @@ function expectCharacterError(
 describe('CharacterService', () => {
   it('creates normal/angry expressions, a mouth asset, default transform, and a minimal voice profile using IDs only', () => {
     const result = createPanda();
-    const character = result.characters[0]!;
+    const character = asExpressionCharacter(result.characters[0]!);
 
     expect(character).toMatchObject({
       id: IDS[2],
@@ -150,7 +151,7 @@ describe('CharacterService', () => {
 
   it('validates and persists Head motion intensity from 0 to 200 percent', () => {
     const initial = headedCompositeProject();
-    const characterId = initial.characters[0]!.id;
+    const characterId = asExpressionCharacter(initial.characters[0]!).id;
     let project = initial;
 
     for (const intensityPercent of [0, 100, 200]) {
@@ -177,7 +178,7 @@ describe('CharacterService', () => {
       );
     }
 
-    const composite = project.characters[0]!;
+    const composite = asExpressionCharacter(project.characters[0]!);
     if (composite.mode !== 'composite') throw new Error('Expected composite.');
     const { head: _head, ...headlessCharacter } = composite;
     expect(_head).toBeDefined();
@@ -244,7 +245,7 @@ describe('CharacterService', () => {
         },
       ],
     });
-    const character = created.characters[0]!;
+    const character = asExpressionCharacter(created.characters[0]!);
     const renamed = characterService.renameCharacter(
       created,
       character.id,
@@ -258,7 +259,7 @@ describe('CharacterService', () => {
         assetId: '19100000-0000-4000-8000-000000000002',
       },
     );
-    const addedExpression = added.characters[0]!.expressions[1]!;
+    const addedExpression = asExpressionCharacter(added.characters[0]!).expressions[1]!;
     const expressionRenamed = characterService.renameExpression(
       added,
       character.id,
@@ -307,7 +308,7 @@ describe('CharacterService', () => {
     );
     expectCharacterError(
       () =>
-        characterService.addExpression(created, created.characters[0]!.id, {
+        characterService.addExpression(created, asExpressionCharacter(created.characters[0]!).id, {
           name: 'voice',
           assetId: created.assets.find(
             (asset) => asset.kind === 'audio',
@@ -332,7 +333,7 @@ describe('CharacterService', () => {
         },
       ],
     });
-    const character = created.characters[0]!;
+    const character = asExpressionCharacter(created.characters[0]!);
     expectCharacterError(
       () =>
         characterService.removeExpression(
@@ -354,13 +355,13 @@ describe('CharacterService', () => {
       character.id,
       character.expressions[0]!.id,
     );
-    expect(removed.characters[0]!.expressions).toEqual([angry]);
-    expect(removed.characters[0]!.baseAssetId).toBe(angry.assetId);
+    expect(asExpressionCharacter(removed.characters[0]!).expressions).toEqual([angry]);
+    expect(asExpressionCharacter(removed.characters[0]!).baseAssetId).toBe(angry.assetId);
   });
 
   it('warns when real image metadata differs by more than 30 percent without changing either size', () => {
     const project = createPanda();
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
     const warnings = service().dimensionWarnings(project, character.id);
 
     expect(warnings).toEqual([
@@ -386,7 +387,7 @@ describe('CharacterService', () => {
 
   it('keeps the logical center stable when switching between different-sized expressions', () => {
     const project = createPanda();
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
     const center = { x: 960, y: 540 };
     const normal = service().resolveAppearance(
       project,
@@ -411,7 +412,7 @@ describe('CharacterService', () => {
 
   it('blocks deleting a character used by a layer or dialogue through the shared reference scanner', () => {
     const migrated = migrateProject(exampleProject);
-    const character = migrated.characters[0]!;
+    const character = asExpressionCharacter(migrated.characters[0]!);
     const error = expectCharacterError(
       () => service().deleteCharacter(migrated, character.id),
       'CHARACTER_REFERENCED',
@@ -426,7 +427,7 @@ describe('CharacterService', () => {
 
   it('blocks deleting a non-default expression used by a timeline event', () => {
     const project = migrateProject(exampleProject);
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
     const expression = character.expressions[1]!;
     const error = expectCharacterError(
       () =>
@@ -449,7 +450,7 @@ describe('CharacterService', () => {
   it('replaces a shot/timeline-referenced expression asset without changing its ID or name', () => {
     const characterService = service();
     const project = migrateProject(exampleProject);
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
     const expression = character.expressions[1]!;
     const oldAssetId = expression.assetId;
     const replacementAsset = project.assets.find(
@@ -490,7 +491,7 @@ describe('CharacterService', () => {
       expression.id,
       replacementAsset.id,
     );
-    const nextCharacter = replaced.characters[0]!;
+    const nextCharacter = asExpressionCharacter(replaced.characters[0]!);
     const nextExpression = nextCharacter.expressions.find(
       (candidate) => candidate.id === expression.id,
     )!;
@@ -527,7 +528,7 @@ describe('CharacterService', () => {
 
   it('rejects replacing an expression with a non-image asset', () => {
     const project = migrateProject(exampleProject);
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
     const audio = project.assets.find((asset) => asset.kind === 'audio')!;
 
     expectCharacterError(

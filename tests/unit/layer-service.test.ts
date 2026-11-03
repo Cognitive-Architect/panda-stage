@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
@@ -243,7 +244,7 @@ describe('LayerService', () => {
 
   it('creates a character layer from the matching expression and default scale', () => {
     const project = fixture();
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
     const expression = character.expressions[1]!;
     const result = service().createFromAsset(
       project,
@@ -504,7 +505,7 @@ describe('LayerService', () => {
 
   it('keeps explicit identity when characters and expressions share one asset', () => {
     const project = fixture();
-    const characterA = project.characters[0]!;
+    const characterA = asExpressionCharacter(project.characters[0]!);
     const sharedAssetId = characterA.expressions[0]!.assetId;
     const angry = {
       ...characterA.expressions[0]!,
@@ -608,7 +609,7 @@ describe('LayerService', () => {
     assetOffset,
   }) => {
     const project = fixture();
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
     const expression = character.expressions[0]!;
     const before = structuredClone(project);
 
@@ -638,7 +639,7 @@ describe('LayerService', () => {
 
   it('places a mouth-open-only image as a direct asset layer', () => {
     const project = fixture();
-    const character = project.characters[0]!;
+    const character = asExpressionCharacter(project.characters[0]!);
     const directAsset = project.assets.find(
       (asset) =>
         asset.kind === 'image' &&
@@ -672,7 +673,7 @@ describe('LayerService', () => {
 
   it('rejects an expression image disguised as a direct asset payload', () => {
     const project = fixture();
-    const expression = project.characters[0]!.expressions[0]!;
+    const expression = asExpressionCharacter(project.characters[0]!).expressions[0]!;
     const before = structuredClone(project);
 
     expect(() =>

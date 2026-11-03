@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   mkdir,
@@ -350,8 +351,9 @@ describe('DL-01 export preparation domain rules', () => {
     const project = ProjectSchema.parse({
       ...base,
       assets: [...base.assets, unusedFaceAsset],
-      characters: base.characters.map((character) =>
-        character.id === IDS.character
+      characters: base.characters.map((candidate) => {
+        const character = asExpressionCharacter(candidate);
+        return character.id === IDS.character
           ? {
               ...character,
               expressions: [
@@ -363,8 +365,8 @@ describe('DL-01 export preparation domain rules', () => {
                 },
               ],
             }
-          : character,
-      ),
+          : character;
+      }),
     });
     media.delete(IDS.assetChar2);
 
@@ -426,9 +428,9 @@ describe('DL-01 export preparation domain rules', () => {
       const issue = result.issues.find(
         (item) => item.code === 'REQUIRED_MEDIA_UNAVAILABLE',
       );
-      expect(issue?.location).toContain(project.characters[0]!.name);
+      expect(issue?.location).toContain(asExpressionCharacter(project.characters[0]!).name);
       expect(issue?.location).toContain(
-        project.characters[0]!.expressions.find(
+        asExpressionCharacter(project.characters[0]!).expressions.find(
           (expression) => expression.id === IDS.expressionAngry,
         )!.name,
       );
@@ -708,7 +710,7 @@ describe('DL-01 export preparation domain rules', () => {
       ).toBe(true);
       expect(
         mediaIssues.some((item) =>
-          item.location.includes(project.characters[0]!.name),
+          item.location.includes(asExpressionCharacter(project.characters[0]!).name),
         ),
       ).toBe(true);
       expect(JSON.stringify(mediaIssues)).not.toContain(fixture.projectRoot);
@@ -738,7 +740,7 @@ describe('DL-01 export preparation domain rules', () => {
       ...base,
       assets: [...base.assets, mouthAsset],
       characters: [
-        { ...base.characters[0]!, mouthOpenAssetId: mouthAssetId },
+        { ...asExpressionCharacter(base.characters[0]!), mouthOpenAssetId: mouthAssetId },
       ],
     });
 

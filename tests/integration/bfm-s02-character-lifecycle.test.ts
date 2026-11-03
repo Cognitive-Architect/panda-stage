@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -50,7 +51,7 @@ describe('BFM-S02 composite Character lifecycle', () => {
       shots: [base.shots[0]!],
       characters: [
         {
-          ...base.characters[0]!,
+          ...asExpressionCharacter(base.characters[0]!),
           mode: 'composite',
           bodyAssetId: IDS.assetBg,
           facePlacement: {
@@ -174,15 +175,15 @@ describe('BFM-S02 composite Character lifecycle', () => {
         pivot: { x: 280, y: 260 },
       },
     });
-    expect(reopened.project.characters[0]!.expressions).toEqual([
+    expect(asExpressionCharacter(reopened.project.characters[0]!).expressions).toEqual([
       {
         id: IDS.expressionNormal,
-        name: base.characters[0]!.expressions[0]!.name,
+        name: asExpressionCharacter(base.characters[0]!).expressions[0]!.name,
         assetId: IDS.assetChar2,
       },
       {
         id: IDS.expressionAngry,
-        name: base.characters[0]!.expressions[1]!.name,
+        name: asExpressionCharacter(base.characters[0]!).expressions[1]!.name,
         assetId: IDS.assetChar,
       },
     ]);
@@ -259,7 +260,7 @@ describe('BFM-S02 composite Character lifecycle', () => {
     );
     copiedLayerStore.deleteLayer(copiedCharacterLayer.id);
     const afterDelete = editor.getSnapshot()!.project;
-    expect(afterDelete.characters[0]!.mode).toBe('composite');
+    expect(asExpressionCharacter(afterDelete.characters[0]!).mode).toBe('composite');
     expect(
       afterDelete.shots[0]!.layers.some(
         (layer) => layer.id === IDS.layerChar,
@@ -276,7 +277,7 @@ describe('BFM-S02 composite Character lifecycle', () => {
       editor.getSnapshot()!.revision,
     );
     const reopenedAfterLifecycle = await projectService.open(projectRoot);
-    expect(reopenedAfterLifecycle.project.characters[0]!.mode).toBe(
+    expect(asExpressionCharacter(reopenedAfterLifecycle.project.characters[0]!).mode).toBe(
       'composite',
     );
     expect(reopenedAfterLifecycle.project.shots).toHaveLength(2);
@@ -307,7 +308,7 @@ describe('BFM-S02 composite Character lifecycle', () => {
       updatedAt: created.project.updatedAt,
       characters: [
         {
-          ...base.characters[0]!,
+          ...asExpressionCharacter(base.characters[0]!),
           mode: 'composite',
           bodyAssetId: IDS.assetBg,
           facePlacement: { offsetX: 21, offsetY: -13, scale: 0.85 },
@@ -316,7 +317,7 @@ describe('BFM-S02 composite Character lifecycle', () => {
     });
     const { animations: _animations, ...legacyCurrent } = current;
     void _animations;
-    const currentCharacter = current.characters[0]!;
+    const currentCharacter = asExpressionCharacter(current.characters[0]!);
     if (currentCharacter.mode !== 'composite') {
       throw new Error('Expected the v8 fixture to be composite.');
     }

@@ -26,6 +26,8 @@ export function resolveLayerImageAsset(
       const character = project.characters.find(
         (candidate) => candidate.id === source.characterId,
       );
+      if (!character || character.mode === 'adaptive-parts') return null;
+      if (source.expressionId === undefined) return null;
       assetId = character?.expressions.find(
         (expression) => expression.id === source.expressionId,
       )?.assetId;

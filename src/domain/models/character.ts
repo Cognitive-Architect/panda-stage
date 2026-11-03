@@ -25,6 +25,14 @@ const CharacterBaseShape = {
   defaultFlipX: z.boolean(),
 };
 
+const CharacterIdentityShape = {
+  id: IdSchema,
+  name: NameSchema,
+  defaultVoiceProfileId: IdSchema,
+  defaultScale: FiniteNumberSchema.min(0.1).max(10),
+  defaultFlipX: z.boolean(),
+};
+
 export const FacePlacementSchema = z
   .object({
     offsetX: FiniteNumberSchema,
@@ -134,6 +142,191 @@ const CompositeCharacterSchema = z
   })
   .strict();
 
+const NonEmptySourceIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(256)
+  .refine(
+    (value) =>
+      !/^(?:[a-zA-Z]:[\\/]|[\\/])/.test(value) &&
+      !value
+        .replaceAll('\\', '/')
+        .split('/')
+        .some((segment) => segment === '..'),
+    { message: 'Part source identifiers must not contain absolute paths.' },
+  );
+
+export const CharacterPartSourceSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('source-instance'),
+      sourceId: NonEmptySourceIdSchema,
+      sourcePoseFrame: z.number().int().nonnegative(),
+      effectiveFrame: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('manual'),
+      sourceId: NonEmptySourceIdSchema,
+    })
+    .strict(),
+]);
+
+export const CharacterPartTransformSchema = z
+  .object({
+    a: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
+    b: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
+    c: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
+    d: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
+    tx: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
+    ty: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
+  })
+  .strict()
+  .superRefine((transform, context) => {
+    const determinant = transform.a * transform.d - transform.b * transform.c;
+    if (!Number.isFinite(determinant) || Math.abs(determinant) < 1e-12) {
+      context.addIssue({
+        code: 'custom',
+        path: ['a'],
+        message: 'Part transform must be invertible.',
+      });
+    }
+  });
+
+/** User-authored static change relative to an immutable source pose. */
+export const CharacterPartStaticAdjustmentSchema = z
+  .object({
+    offsetX: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
+    offsetY: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
+    scale: FiniteNumberSchema.min(CHARACTER_PART_MIN_SCALE).max(
+      CHARACTER_PART_MAX_SCALE,
+    ),
+    rotationDeg: FiniteNumberSchema.min(-180).max(180),
+  })
+  .strict();
+
+export type CharacterPartStaticAdjustment = z.infer<
+  typeof CharacterPartStaticAdjustmentSchema
+>;
+
+export const DEFAULT_CHARACTER_PART_STATIC_ADJUSTMENT: Readonly<CharacterPartStaticAdjustment> =
+  Object.freeze({ offsetX: 0, offsetY: 0, scale: 1, rotationDeg: 0 });
+
+const PartCropSchema = z
+  .object({
+    x: z.number().int().nonnegative(),
+    y: z.number().int().nonnegative(),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+  })
+  .strict();
+
+export const CharacterPartImageMappingSchema = z
+  .object({
+    sourceWidth: z.number().int().positive(),
+    sourceHeight: z.number().int().positive(),
+    crop: PartCropSchema,
+    /** Asset pixels per source pixel. Crop offsets remain in source pixels. */
+    exportScale: FiniteNumberSchema.min(0.0001).max(1000),
+  })
+  .strict()
+  .superRefine((mapping, context) => {
+    if (mapping.crop.x + mapping.crop.width > mapping.sourceWidth) {
+      context.addIssue({
+        code: 'custom',
+        path: ['crop', 'width'],
+        message: 'Part crop extends beyond the source image width.',
+      });
+    }
+    if (mapping.crop.y + mapping.crop.height > mapping.sourceHeight) {
+      context.addIssue({
+        code: 'custom',
+        path: ['crop', 'height'],
+        message: 'Part crop extends beyond the source image height.',
+      });
+    }
+  });
+
+export const CharacterPartSchema = z
+  .object({
+    partId: IdSchema,
+    assetId: IdSchema,
+    source: CharacterPartSourceSchema,
+    /** Full 2D affine transform from source-image coordinates to Character-local coordinates. */
+    restTransform: CharacterPartTransformSchema,
+    /** Immutable source-pose transform. Optional only for legacy v15 records. */
+    sourceRestTransform: CharacterPartTransformSchema.optional(),
+    /** Static authoring controls relative to sourceRestTransform. */
+    staticAdjustment: CharacterPartStaticAdjustmentSchema.optional(),
+    imageMapping: CharacterPartImageMappingSchema,
+    /** Unique integer order, lower values behind higher values. */
+    drawOrder: z.number().int().nonnegative().max(1_000_000),
+    visible: z.boolean(),
+    displayName: NameSchema.optional(),
+  })
+  .strict();
+
+export const AdaptivePartsCharacterSchema = z
+  .object({
+    ...CharacterIdentityShape,
+    mode: z.literal('adaptive-parts'),
+    /** Source container transform; C2 applies it separately from Part-local transforms. */
+    sourceRootTransform: CharacterPartTransformSchema.default({
+      a: 1,
+      b: 0,
+      c: 0,
+      d: 1,
+      tx: 0,
+      ty: 0,
+    }),
+    parts: z.array(CharacterPartSchema).min(1),
+  })
+  .strict()
+  .superRefine((character, context) => {
+    const partIds = new Set<string>();
+    const drawOrders = new Set<number>();
+    const sourceIds = new Set<string>();
+
+    character.parts.forEach((part, index) => {
+      if (partIds.has(part.partId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['parts', index, 'partId'],
+          message: `Duplicate Part identity: ${part.partId}`,
+        });
+      }
+      partIds.add(part.partId);
+
+      if (drawOrders.has(part.drawOrder)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['parts', index, 'drawOrder'],
+          message: `Duplicate Part draw order: ${part.drawOrder}`,
+        });
+      }
+      if (part.drawOrder !== index) {
+        context.addIssue({
+          code: 'custom',
+          path: ['parts', index, 'drawOrder'],
+          message:
+            'Parts must be stored in contiguous bottom-to-top draw order.',
+        });
+      }
+      drawOrders.add(part.drawOrder);
+
+      if (sourceIds.has(part.source.sourceId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['parts', index, 'source', 'sourceId'],
+          message: `Source instance is already used by another Part: ${part.source.sourceId}`,
+        });
+      }
+      sourceIds.add(part.source.sourceId);
+    });
+  });
+
 const CompositeCharacterV11Schema = z
   .object({
     ...CharacterBaseShape,
@@ -210,6 +403,13 @@ export const CharacterV11Schema = z.discriminatedUnion('mode', [
 export const CharacterSchema = z.discriminatedUnion('mode', [
   SingleImageCharacterSchema,
   CompositeCharacterSchema,
+  AdaptivePartsCharacterSchema,
+]);
+
+/** Strict persisted Character shape accepted by Project schema v14. */
+export const CharacterV14Schema = z.discriminatedUnion('mode', [
+  SingleImageCharacterSchema,
+  CompositeCharacterSchema,
 ]);
 
 /**
@@ -237,7 +437,23 @@ export type FacePlacement = z.infer<typeof FacePlacementSchema>;
 export type HeadPlacement = z.infer<typeof HeadPlacementSchema>;
 export type HeadPivot = z.infer<typeof HeadPivotSchema>;
 export type CharacterHead = z.infer<typeof CharacterHeadSchema>;
+export type CharacterPartSource = z.infer<typeof CharacterPartSourceSchema>;
+export type CharacterPartTransform = z.infer<
+  typeof CharacterPartTransformSchema
+>;
+export type CharacterPartImageMapping = z.infer<
+  typeof CharacterPartImageMappingSchema
+>;
+export type CharacterPart = z.infer<typeof CharacterPartSchema>;
 export type Character = z.infer<typeof CharacterSchema>;
+export type ExpressionCharacter = Extract<
+  Character,
+  { mode: 'single-image' | 'composite' }
+>;
+export type AdaptivePartsCharacter = Extract<
+  Character,
+  { mode: 'adaptive-parts' }
+>;
 export type CharacterV8 = z.infer<typeof CharacterV8Schema>;
 export type CharacterV9 = z.infer<typeof CharacterV9Schema>;
 export type CharacterV10 = z.infer<typeof CharacterV10Schema>;

@@ -285,6 +285,45 @@ export class FlaStaticSnapshotRenderSession {
     return prepared;
   }
 
+  /**
+   * F1-02 shares the exact prepared display source and bounded cache used by
+   * the existing snapshot catalog/preview path. This returns only the
+   * Main-owned adapter model; it never crosses IPC.
+   */
+  async prepareDisplaySourceForPartPreview(
+    sessionId: string,
+    execution: FlaStaticSnapshotDisplaySourceExecution,
+  ): Promise<FlaStaticSnapshotPreparedDisplaySourceResult & { readonly cacheHit?: boolean }> {
+    const source = this.sourceLookup?.getSource(sessionId) ?? null;
+    if (!source) {
+      this.clearPreparedDisplaySource(sessionId);
+      return {
+        ok: false,
+        code: 'SESSION_NOT_FOUND',
+        message: 'The FLA inspection session has expired. Inspect the source again.',
+      };
+    }
+    const cached = this.preparedDisplaySource;
+    const cacheHit = Boolean(cached && cached.sessionId === sessionId &&
+      cached.sourceSha256 === source.sha256 && cached.sourceBytes === source.bytes);
+    const prepared = await this.getPreparedDisplaySource(
+      sessionId,
+      source,
+      'preview',
+      true,
+      execution,
+    );
+    if (!execution.shouldContinue()) {
+      return {
+        ok: false,
+        code: 'SESSION_NOT_FOUND',
+        message: 'The FLA inspection session changed during display-source preparation.',
+      };
+    }
+    if (!prepared.ok) return prepared;
+    return { ...prepared, cacheHit };
+  }
+
   /** R1-A catalog: discover renderable targets for an inspection session. */
   async catalog(
     sessionId: string,

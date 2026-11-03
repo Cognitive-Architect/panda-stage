@@ -103,6 +103,7 @@ export class FlaImportService {
     string,
     (FlaInspectionResponse & { ok: true }) & { sourceBytes: Uint8Array }
   >();
+  private readonly sessionReleasedListeners = new Set<(sessionId: string) => void>();
   private active: ActiveInspection | null = null;
 
   constructor(parserWindowManager = new FlaParserWindowManager()) {
@@ -259,7 +260,7 @@ export class FlaImportService {
       while (this.sessions.size > MAX_SESSIONS) {
         const oldest = this.sessions.keys().next().value;
         if (!oldest) break;
-        this.sessions.delete(oldest);
+        this.releaseSession(oldest);
       }
       return response;
     } catch (error) {
@@ -286,11 +287,14 @@ export class FlaImportService {
     if (matchesActive && active) {
       active.abortController.abort();
       if (active.stage === 'parser') this.parserWindowManager.cancel(active.sessionId);
-      this.sessions.delete(active.sessionId);
+      this.releaseSession(active.sessionId);
       return { accepted: true };
     }
     const sessionId = request.sessionId;
-    if (sessionId && this.sessions.delete(sessionId)) return { accepted: true };
+    if (sessionId && this.sessions.has(sessionId)) {
+      this.releaseSession(sessionId);
+      return { accepted: true };
+    }
     return { accepted: false };
   }
 
@@ -310,7 +314,19 @@ export class FlaImportService {
   }
 
   releaseSession(sessionId: string): void {
-    this.sessions.delete(sessionId);
+    if (!this.sessions.delete(sessionId)) return;
+    for (const listener of [...this.sessionReleasedListeners]) {
+      try {
+        listener(sessionId);
+      } catch (error) {
+        console.error('FLA session release listener failed.', error);
+      }
+    }
+  }
+
+  onSessionReleased(listener: (sessionId: string) => void): () => void {
+    this.sessionReleasedListeners.add(listener);
+    return () => this.sessionReleasedListeners.delete(listener);
   }
 
   markWorkerReady(senderId: number): void {
@@ -332,7 +348,8 @@ export class FlaImportService {
   close(): void {
     this.active?.abortController.abort();
     this.active = null;
-    this.sessions.clear();
+    for (const sessionId of [...this.sessions.keys()]) this.releaseSession(sessionId);
+    this.sessionReleasedListeners.clear();
     this.parserWindowManager.close();
   }
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type {
   Character,
   CharacterDimensionWarning,
+  ExpressionCharacter,
   ImageAsset,
 } from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
@@ -12,7 +13,7 @@ import {
 } from './ThumbnailStateIcon';
 
 export interface ExpressionEditorProps {
-  character: Character;
+  character: ExpressionCharacter;
   imageAssets: readonly ImageAsset[];
   thumbnails: Readonly<Record<string, ThumbnailState>>;
   warnings: readonly CharacterDimensionWarning[];
@@ -30,6 +31,10 @@ export interface ExpressionEditorProps {
   onSetDefault: (expressionId: string) => void;
   onThumbnailError: (assetId: string) => void;
 }
+
+type ExpressionEditorInputProps = Omit<ExpressionEditorProps, 'character'> & {
+  character: Character;
+};
 
 function thumbnailLabel(thumbnail?: ThumbnailState): string {
   if (thumbnail?.status === 'loading') return '加载中';
@@ -336,14 +341,14 @@ function LandscapeExpressionEditor({
     setEditingName('');
   };
 
-  const startExpressionEdit = (expression: Character['expressions'][number]): void => {
+  const startExpressionEdit = (expression: ExpressionCharacter['expressions'][number]): void => {
     onAddOpenChange(false);
     setEditingExpressionId(expression.id);
     setEditingName(expression.name);
   };
 
   const applyExpressionName = (
-    expression: Character['expressions'][number],
+    expression: ExpressionCharacter['expressions'][number],
   ): void => {
     const nextName = expressionRenameValue(editingName, expression.name);
     if (!nextName) return;
@@ -617,10 +622,15 @@ function LandscapeExpressionEditor({
 export function ExpressionEditor({
   presentation = 'default',
   ...props
-}: ExpressionEditorProps): React.JSX.Element {
+}: ExpressionEditorInputProps): React.JSX.Element | null {
+  if (props.character.mode === 'adaptive-parts') return null;
+  const expressionProps: ExpressionEditorProps = {
+    ...props,
+    character: props.character,
+  };
   return presentation === 'landscape' ? (
-    <LandscapeExpressionEditor {...props} presentation={presentation} />
+    <LandscapeExpressionEditor {...expressionProps} presentation={presentation} />
   ) : (
-    <LegacyExpressionEditor {...props} presentation={presentation} />
+    <LegacyExpressionEditor {...expressionProps} presentation={presentation} />
   );
 }

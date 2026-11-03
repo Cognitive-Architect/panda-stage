@@ -25,6 +25,7 @@ interface RecoveryIpcHandlerDependencies {
   projectService: ProjectService;
   recoveryService: RecoveryService;
   autosaveService: AutosaveService;
+  onProjectContextChanged?: () => void;
 }
 
 function assertTrustedSender(
@@ -85,6 +86,7 @@ export function registerRecoveryIpcHandlers(
           );
         }
         dependencies.autosaveService.track(request);
+        dependencies.onProjectContextChanged?.();
         return RecoveryAcknowledgeResponseSchema.parse({ ok: true });
       } catch (error) {
         return RecoveryAcknowledgeResponseSchema.parse({
@@ -134,6 +136,7 @@ export function registerRecoveryIpcHandlers(
       );
       const request = AutosaveStopRequestSchema.parse(rawRequest);
       await dependencies.autosaveService.stop(request.projectRoot);
+      dependencies.onProjectContextChanged?.();
       return RecoveryAcknowledgeResponseSchema.parse({ ok: true });
     },
   );

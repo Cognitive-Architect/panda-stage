@@ -45,7 +45,6 @@ import {
   applyProductPreviewMouthFallback,
   buildProductPreviewImagePlan,
   buildProductPreviewCues,
-  gateProductPreviewImagePrewarm,
   clampProductPreviewTime,
   formatProductPreviewTimecode,
   isProductPreviewMouthFallbackFailure,
@@ -61,7 +60,10 @@ import {
   type ProductPreviewTransportAction,
   type ProductPreviewTransportState,
 } from './productPreviewModel';
-import { useProductPreviewAudio } from './productPreviewAudio';
+import {
+  PRODUCT_PREVIEW_AUDIO_SYNC_INTERVAL_MS,
+  useProductPreviewAudio,
+} from './productPreviewAudio';
 import { useProductPreviewImages } from './productPreviewImages';
 import {
   advanceProductPreviewHandoffPhase,
@@ -117,28 +119,11 @@ export function ProductPreviewOverlay({
   // that belongs to the preview. Both die with the overlay.
   const [timeMs, setTimeMs] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [previewWindowActive, setPreviewWindowActive] = useState(
-    () => document.visibilityState === 'visible' && document.hasFocus(),
-  );
-  useEffect(() => {
-    const updateWindowActivity = (): void => {
-      setPreviewWindowActive(
-        document.visibilityState === 'visible' && document.hasFocus(),
-      );
-    };
-    window.addEventListener('focus', updateWindowActivity);
-    window.addEventListener('blur', updateWindowActivity);
-    document.addEventListener('visibilitychange', updateWindowActivity);
-    updateWindowActivity();
-    return () => {
-      window.removeEventListener('focus', updateWindowActivity);
-      window.removeEventListener('blur', updateWindowActivity);
-      document.removeEventListener('visibilitychange', updateWindowActivity);
-    };
-  }, []);
   const timeMsRef = useRef(timeMs);
-  const masterTimeSampledAtMsRef = useRef(0);
   const initialAutoplayConsumedRef = useRef(false);
+  const initialAutoplayRequestRef = useRef(false);
+  const playbackStartRequestRef = useRef(0);
+  const playbackStartPendingRef = useRef(false);
   const playbackClockAnchorRef =
     useRef<ProductPreviewClockAnchor | null>(null);
   const playbackClockGenerationRef = useRef(0);
@@ -149,6 +134,7 @@ export function ProductPreviewOverlay({
     useState<ProductPreviewHandoffPhase>('warming');
   const [showWarmupStatus, setShowWarmupStatus] = useState(false);
   const [seekRevision, setSeekRevision] = useState(0);
+  const seekRevisionRef = useRef(seekRevision);
   const [stageImageFailures, setStageImageFailures] = useState<
     StageImageResourceFailure[]
   >([]);
@@ -164,9 +150,7 @@ export function ProductPreviewOverlay({
   handoffPhaseRef.current = handoffPhase;
   const handoffReadyNotifiedRef = useRef(false);
   const revealPhase = productPreviewRevealPhaseFromHandoff(handoffPhase);
-  // EditorShell flips this only after the exact first frame passes its paint
-  // fence; use that single parent-owned signal for both the overlay and shell.
-  const previewSurfaceActive = surfaceActive;
+  const previewSurfaceActive = surfaceActive && handoffPhase === 'active';
   const projectPosition = useMemo(
     () => mapProjectTime(project, range === 'project' ? timeMs : 0),
     [project, range, timeMs],
@@ -209,22 +193,85 @@ export function ProductPreviewOverlay({
   useLayoutEffect(() => {
     timeMsRef.current = timeMs;
   }, [timeMs]);
+  useLayoutEffect(() => {
+    seekRevisionRef.current = seekRevision;
+  }, [seekRevision]);
+
+  const readMasterSnapshot = useCallback(
+    (sampledAtMs: number) => {
+      const anchor = playbackClockAnchorRef.current;
+      const masterStep = anchor
+        ? resolveProductPreviewClockTime(anchor, sampledAtMs, durationMs)
+        : { timeMs: clampProductPreviewTime(timeMsRef.current, durationMs), ended: false };
+      const liveProjectPosition = range === 'project'
+        ? mapProjectTime(project, masterStep.timeMs)
+        : null;
+      const liveShot = range === 'project'
+        ? liveProjectPosition?.shot ?? null
+        : currentShot;
+      const shotLocalTimeMs = range === 'project'
+        ? liveProjectPosition?.shotLocalTimeMs ?? 0
+        : clampProductPreviewTime(masterStep.timeMs, liveShot?.durationMs ?? 0);
+      return {
+        projectRoot,
+        projectId: project.id,
+        range,
+        shotId: liveShot?.id ?? null,
+        timeMs: shotLocalTimeMs,
+        projectTimeMs: range === 'project' ? masterStep.timeMs : null,
+        sampledAtMs,
+        playing: anchor !== null && !masterStep.ended && liveShot !== null,
+        clockGeneration: playbackClockGenerationRef.current,
+      };
+    },
+    [currentShot, durationMs, project, projectRoot, range],
+  );
+  const audioSyncTick = Math.floor(displayedTimeMs / PRODUCT_PREVIEW_AUDIO_SYNC_INTERVAL_MS);
+  const audioInput = useMemo(
+    () => ({ projectRoot, project, shot, range, playing, seekRevision, syncTick: audioSyncTick, readMasterSnapshot }),
+    [audioSyncTick, playing, project, projectRoot, range, readMasterSnapshot, seekRevision, shot],
+  );
+  const audioInputRef = useRef(audioInput);
+  audioInputRef.current = audioInput;
+  const audioController = useProductPreviewAudio(audioInput);
+  const audioWarning = audioController.warning;
 
   const commitTransportState = useCallback(
     (
       next: ProductPreviewTransportState,
       anchoredAtMs: number,
     ): void => {
+      playbackStartRequestRef.current += 1;
+      playbackStartPendingRef.current = false;
       playbackClockGenerationRef.current += 1;
       playbackClockAnchorRef.current = next.playing
         ? { startedAtMs: anchoredAtMs, startTimeMs: next.timeMs }
         : null;
       timeMsRef.current = next.timeMs;
-      masterTimeSampledAtMsRef.current = anchoredAtMs;
+      let nextSeekRevision = seekRevisionRef.current;
+      if (next.repositionAudio) {
+        nextSeekRevision += 1;
+        seekRevisionRef.current = nextSeekRevision;
+        setSeekRevision(nextSeekRevision);
+      }
+      if (next.playing) {
+        audioController.cancelPendingStartPreparation();
+        audioController.syncImmediately({
+          ...audioInputRef.current,
+          playing: true,
+          seekRevision: nextSeekRevision,
+        });
+      } else {
+        audioController.cancelPlaybackImmediately();
+      }
       setTimeMs(next.timeMs);
       setPlaying(next.playing);
     },
-    [],
+    [
+      audioController.cancelPendingStartPreparation,
+      audioController.cancelPlaybackImmediately,
+      audioController.syncImmediately,
+    ],
   );
 
   const pauseAtCurrentClock = useCallback((): number => {
@@ -243,6 +290,11 @@ export function ProductPreviewOverlay({
     );
     return positionMs;
   }, [commitTransportState]);
+
+  const closePreview = useCallback((): void => {
+    audioController.cancelPlaybackImmediately();
+    onClose();
+  }, [audioController.cancelPlaybackImmediately, onClose]);
 
   const applyTransportAction = useCallback(
     (action: ProductPreviewTransportAction): void => {
@@ -266,11 +318,32 @@ export function ProductPreviewOverlay({
         action,
       );
       if (next.playing && document.visibilityState !== 'visible') return;
-      if (next.playing) initialAutoplayConsumedRef.current = true;
-      commitTransportState(next, now);
-      if (next.repositionAudio) {
-        setSeekRevision((current) => current + 1);
+      if (next.playing) {
+        if (action.type === 'replay') {
+          // End the current clock/audio generation before replay preparation can
+          // yield to a slow read or the bounded startup timeout.
+          commitTransportState(
+            { timeMs: next.timeMs, playing: false, repositionAudio: false },
+            now,
+          );
+        }
+        playbackStartPendingRef.current = true;
+        const requestId = ++playbackStartRequestRef.current;
+        const clockGeneration = playbackClockGenerationRef.current;
+        void audioController.prepareForPlayback(next.timeMs).then((preparation) => {
+          if (requestId === playbackStartRequestRef.current) {
+            playbackStartPendingRef.current = false;
+          }
+          if (preparation.reason === 'cancelled' ||
+              requestId !== playbackStartRequestRef.current ||
+              clockGeneration !== playbackClockGenerationRef.current ||
+              !previewSurfaceActive || document.visibilityState !== 'visible') return;
+          initialAutoplayConsumedRef.current = true;
+          commitTransportState(next, window.performance.now());
+        });
+        return;
       }
+      commitTransportState(next, now);
     },
     [
       displayedTimeMs,
@@ -278,6 +351,7 @@ export function ProductPreviewOverlay({
       handoffPhase,
       initialReadiness,
       previewSurfaceActive,
+      audioController.prepareForPlayback,
       commitTransportState,
     ],
   );
@@ -292,7 +366,6 @@ export function ProductPreviewOverlay({
         window.performance.now(),
       );
       setRange(nextRange);
-      setSeekRevision((current) => current + 1);
     },
     [commitTransportState, range],
   );
@@ -304,7 +377,6 @@ export function ProductPreviewOverlay({
       { timeMs: 0, playing: false, repositionAudio: true },
       window.performance.now(),
     );
-    setSeekRevision((current) => current + 1);
   }, [commitTransportState, project.id]);
 
   useLayoutEffect(() => {
@@ -315,7 +387,6 @@ export function ProductPreviewOverlay({
       { timeMs: 0, playing: false, repositionAudio: true },
       window.performance.now(),
     );
-    setSeekRevision((current) => current + 1);
   }, [commitTransportState, currentShot?.id, range]);
 
   useLayoutEffect(() => {
@@ -335,11 +406,10 @@ export function ProductPreviewOverlay({
     const generation = playbackClockGenerationRef.current;
     let frame = 0;
     let previousFrameAt = anchor.startedAtMs;
-    const tick = (): void => {
+    const tick = (now: number): void => {
       if (generation !== playbackClockGenerationRef.current) return;
       const activeAnchor = playbackClockAnchorRef.current;
       if (!activeAnchor) return;
-      const now = window.performance.now();
       const delta = Math.max(0, now - previousFrameAt);
       previousFrameAt = now;
       recordPreviewDiagnostic('tick-callback', { deltaMs: delta });
@@ -357,7 +427,6 @@ export function ProductPreviewOverlay({
         focused: document.hasFocus(),
       });
       timeMsRef.current = elapsed.timeMs;
-      masterTimeSampledAtMsRef.current = now;
       setTimeMs(elapsed.timeMs);
       if (elapsed.ended) {
         commitTransportState(
@@ -399,7 +468,7 @@ export function ProductPreviewOverlay({
         if (event.key === 'Escape') {
           event.preventDefault();
           event.stopPropagation();
-          onClose();
+          closePreview();
           return;
         }
         const targetInsidePreview =
@@ -420,12 +489,12 @@ export function ProductPreviewOverlay({
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        onClose();
+        closePreview();
       }
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [handoffPhase, onClose]);
+  }, [closePreview, handoffPhase]);
 
   const evaluatedShot = useMemo(
     () => {
@@ -469,14 +538,14 @@ export function ProductPreviewOverlay({
   );
   const caption = activeCue?.text ?? null;
   const captionStyle = resolveProductPreviewSubtitleStyle(project, activeCue);
-  const imagePlan = useMemo(
+  const imagePlan = useMemo<ReturnType<typeof buildProductPreviewImagePlan>>(
     () => {
       if (!shot || !renderedShot) {
         return {
           requiredAssetIds: [],
           fallbackAssetIds: [],
           candidateAssetIds: assetIds,
-          recentAnimationAssetIds: [],
+            recentAnimationAssetIds: [],
           mouthFallbacks: [],
         };
       }
@@ -489,14 +558,6 @@ export function ProductPreviewOverlay({
     },
     [assetIds, project, renderedShot, shot],
   );
-  const imagePrewarmEnabled = playing && previewWindowActive;
-  const imageRequestPlan = gateProductPreviewImagePrewarm(
-    imagePlan,
-    imagePrewarmEnabled,
-  );
-  const stagePrewarmAssetIds = imagePrewarmEnabled
-    ? imagePlan.recentAnimationAssetIds
-    : [];
   const decodeFallbackAssetIds = imagePlan.mouthFallbacks
     .filter((rule) =>
       stageImageFailures.some(
@@ -507,7 +568,7 @@ export function ProductPreviewOverlay({
     )
     .map((rule) => rule.fallbackAssetId);
   const imageScope = {
-    ...imageRequestPlan,
+    ...imagePlan,
     requiredAssetIds: [
       ...new Set([...imagePlan.requiredAssetIds, ...decodeFallbackAssetIds]),
     ],
@@ -516,7 +577,7 @@ export function ProductPreviewOverlay({
     projectRoot,
     project,
     imageScope,
-    imagePrewarmEnabled ? nextAssetIds : [],
+    nextAssetIds,
   );
   const currentStageImageFailures = stageImageFailures.filter(
     (failure) =>
@@ -670,14 +731,35 @@ export function ProductPreviewOverlay({
         revealPhase: handoffPhase,
       })
     ) {
-      const now = window.performance.now();
       const next = resolveProductPreviewTransportAction(
         timeMsRef.current,
         durationMs,
         { type: 'play' },
       );
-      if (next.playing) initialAutoplayConsumedRef.current = true;
-      commitTransportState(next, now);
+      if (!next.playing || initialAutoplayRequestRef.current) return;
+      initialAutoplayRequestRef.current = true;
+      playbackStartPendingRef.current = true;
+      const requestId = ++playbackStartRequestRef.current;
+      const clockGeneration = playbackClockGenerationRef.current;
+      void audioController.prepareForPlayback(next.timeMs).then((preparation) => {
+        initialAutoplayRequestRef.current = false;
+        if (requestId === playbackStartRequestRef.current) {
+          playbackStartPendingRef.current = false;
+        }
+        if (preparation.reason === 'cancelled' ||
+            requestId !== playbackStartRequestRef.current ||
+            clockGeneration !== playbackClockGenerationRef.current ||
+            initialAutoplayConsumedRef.current ||
+            !previewSurfaceActive || document.visibilityState !== 'visible') return;
+        const start = resolveProductPreviewTransportAction(
+          timeMsRef.current,
+          durationMsRef.current,
+          { type: 'play' },
+        );
+        if (!start.playing) return;
+        initialAutoplayConsumedRef.current = true;
+        commitTransportState(start, window.performance.now());
+      });
     }
   }, [
     autoPlay,
@@ -686,6 +768,7 @@ export function ProductPreviewOverlay({
     handoffPhase,
     initialReadiness,
     previewSurfaceActive,
+    audioController.prepareForPlayback,
     project,
   ]);
   const lastReadyVisual = useRef<{
@@ -736,15 +819,6 @@ export function ProductPreviewOverlay({
           ? 'degraded'
           : assets.status;
   const atEnd = durationMs > 0 && displayedTimeMs >= durationMs;
-  const audioWarning = useProductPreviewAudio({
-    projectRoot,
-    project,
-    shot,
-    timeMs: activeShotTimeMs,
-    masterTimeSampledAtMs: masterTimeSampledAtMsRef.current,
-    playing,
-    seekRevision,
-  });
   useLayoutEffect(() => {
     recordPreviewDuration('overlay-render-to-commit', renderStartedAt, { timeMs });
   });
@@ -796,7 +870,7 @@ export function ProductPreviewOverlay({
           <button
             className="product-preview-warmup-cancel"
             data-testid="product-preview-cancel"
-            onClick={onClose}
+            onClick={closePreview}
             type="button"
           >
             取消
@@ -809,7 +883,7 @@ export function ProductPreviewOverlay({
           className="product-preview-close task4-hit-target"
           data-task4-core="preview-close"
           data-testid="product-preview-close"
-          onClick={onClose}
+          onClick={closePreview}
           title="关闭预览"
           type="button"
         >
@@ -883,7 +957,6 @@ export function ProductPreviewOverlay({
                   <>
                     <CanvasStage
                       assetUrls={assets.urls}
-                      prewarmAssetIds={stagePrewarmAssetIds}
                       camera={camera}
                       caption={caption}
                       captionStyle={captionStyle}
@@ -902,12 +975,20 @@ export function ProductPreviewOverlay({
                       }
                       project={project}
                     />
+                    {(assets.optionalFailedAssetIds?.length ?? 0) > 0 ? (
+                      <div
+                        className="product-preview-message product-preview-warning"
+                        data-testid="product-preview-optional-warning"
+                      >
+                        <strong>部分候选素材未能预加载</strong>
+                        <span>切换到对应画面时仍会按需检查这些素材。</span>
+                      </div>
+                    ) : null}
                   </>
                 ) : previewDegraded && displayedShot ? (
                   <>
                     <CanvasStage
                       assetUrls={assets.urls}
-                      prewarmAssetIds={stagePrewarmAssetIds}
                       camera={camera}
                       caption={caption}
                       captionStyle={captionStyle}
@@ -929,11 +1010,19 @@ export function ProductPreviewOverlay({
                       <strong>嘴型素材不可用，已显示当前表情</strong>
                       <span>修复嘴型素材后，预览会恢复到目标嘴型。</span>
                     </div>
+                    {(assets.optionalFailedAssetIds?.length ?? 0) > 0 ? (
+                      <div
+                        className="product-preview-message product-preview-warning"
+                        data-testid="product-preview-optional-warning"
+                      >
+                        <strong>部分候选素材未能预加载</strong>
+                        <span>切换到对应画面时仍会按需检查这些素材。</span>
+                      </div>
+                    ) : null}
                   </>
                 ) : heldVisual ? (
                   <CanvasStage
-                    assetUrls={{ ...assets.urls, ...heldVisual.assetUrls }}
-                    prewarmAssetIds={stagePrewarmAssetIds}
+                    assetUrls={heldVisual.assetUrls}
                     camera={heldVisual.camera}
                     caption={heldVisual.caption}
                     captionStyle={heldVisual.captionStyle}
@@ -952,7 +1041,6 @@ export function ProductPreviewOverlay({
                 ) : displayedShot ? (
                   <CanvasStage
                     assetUrls={assets.urls}
-                    prewarmAssetIds={stagePrewarmAssetIds}
                     camera={camera}
                     caption={caption}
                     captionStyle={captionStyle}
@@ -987,7 +1075,7 @@ export function ProductPreviewOverlay({
                     }
                     onClick={() =>
                       applyTransportAction({
-                        type: playbackClockAnchorRef.current
+                        type: playbackClockAnchorRef.current || playbackStartPendingRef.current
                           ? 'pause'
                           : 'play',
                       })

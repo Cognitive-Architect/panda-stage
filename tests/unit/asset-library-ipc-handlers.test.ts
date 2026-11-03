@@ -52,11 +52,13 @@ function services(): {
   read: ReturnType<typeof vi.fn>;
   readCanvasImage: ReturnType<typeof vi.fn>;
   readAudio: ReturnType<typeof vi.fn>;
+  getAudioInfo: ReturnType<typeof vi.fn>;
 } {
   const deleteAsset = vi.fn();
   const read = vi.fn();
   const readCanvasImage = vi.fn();
   const readAudio = vi.fn();
+  const getAudioInfo = vi.fn();
   return {
     assetDeleteService: { deleteAsset } as unknown as AssetDeleteService,
     assetThumbnailService: { read } as unknown as AssetThumbnailService,
@@ -65,11 +67,13 @@ function services(): {
     } as unknown as AssetCanvasImageService,
     assetPreviewAudioService: {
       read: readAudio,
+      getInfo: getAudioInfo,
     } as unknown as AssetPreviewAudioService,
     deleteAsset,
     read,
     readCanvasImage,
     readAudio,
+    getAudioInfo,
   };
 }
 
@@ -92,11 +96,12 @@ describe('asset library IPC handlers', () => {
       IPC_CHANNELS.ASSET_THUMBNAIL_READ,
       IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ,
       IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ,
+      IPC_CHANNELS.ASSET_PREVIEW_AUDIO_INFO,
     ]);
-    expect(electronMocks.handle).toHaveBeenCalledTimes(4);
+    expect(electronMocks.handle).toHaveBeenCalledTimes(5);
     remove();
     expect(electronMocks.handlers.size).toBe(0);
-    expect(electronMocks.removeHandler).toHaveBeenCalledTimes(4);
+    expect(electronMocks.removeHandler).toHaveBeenCalledTimes(5);
   });
 
   it('rejects an untrusted renderer before calling any service', async () => {
@@ -126,6 +131,12 @@ describe('asset library IPC handlers', () => {
     ).rejects.toThrow('untrusted sender');
     await expect(
       electronMocks.handlers.get(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_READ)!(
+        event(7),
+        {},
+      ),
+    ).rejects.toThrow('untrusted sender');
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_INFO)!(
         event(7),
         {},
       ),
@@ -302,6 +313,52 @@ describe('asset library IPC handlers', () => {
       error: {
         code: 'ASSET_PREVIEW_AUDIO_READ_FAILED',
         message: 'Audio preview service failed.',
+        assetId: request.assetId,
+      },
+    });
+  });
+
+  it('validates the audio source information response and keeps unexpected errors opaque', async () => {
+    const dependencies = services();
+    registerAssetLibraryIpcHandlers({
+      getMainWindow: () => mainWindow(),
+      ...dependencies,
+    });
+    const request = {
+      projectRoot: 'D:\\demo.pandastage',
+      assetId: '10000000-0000-4000-8000-000000000002',
+      sha256: 'a'.repeat(64),
+    };
+    dependencies.getAudioInfo.mockResolvedValue({
+      ok: true,
+      status: 'ready',
+      assetId: request.assetId,
+      mimeType: 'audio/wav',
+      byteLength: 48,
+    });
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_INFO)!(event(), request),
+    ).resolves.toMatchObject({ ok: true, status: 'ready', byteLength: 48 });
+
+    dependencies.getAudioInfo.mockResolvedValue({
+      ok: true,
+      status: 'ready',
+      assetId: request.assetId,
+      mimeType: 'audio/wav',
+      byteLength: 0,
+    });
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_INFO)!(event(), request),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'ASSET_PREVIEW_AUDIO_READ_FAILED' } });
+
+    dependencies.getAudioInfo.mockRejectedValue(new Error('C:\\secret\\x.wav'));
+    await expect(
+      electronMocks.handlers.get(IPC_CHANNELS.ASSET_PREVIEW_AUDIO_INFO)!(event(), request),
+    ).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'ASSET_PREVIEW_AUDIO_READ_FAILED',
+        message: 'Audio preview source information is unavailable.',
         assetId: request.assetId,
       },
     });

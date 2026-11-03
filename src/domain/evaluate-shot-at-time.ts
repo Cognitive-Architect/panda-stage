@@ -98,6 +98,9 @@ function resolveLayerVisualState(
   const character = project.characters.find(
     (candidate) => candidate.id === characterId,
   );
+  if (!character || character.mode === 'adaptive-parts') {
+    return { assetId: null, currentExpressionId: null };
+  }
   const expression = character?.expressions.find(
     (candidate) => candidate.id === expressionId,
   );
@@ -163,12 +166,15 @@ function resolveExpressionState(
   project: Project,
   characterId: string,
   expressionId: string,
-  fallbackExpressionId: string,
+  fallbackExpressionId: string | undefined,
 ): ResolvedLayerVisualState {
   const character = project.characters.find(
     (candidate) => candidate.id === characterId,
   );
   if (!character) {
+    return { assetId: null, currentExpressionId: null };
+  }
+  if (character.mode === 'adaptive-parts') {
     return { assetId: null, currentExpressionId: null };
   }
   const target =

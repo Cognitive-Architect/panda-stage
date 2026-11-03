@@ -1,3 +1,5 @@
+import { asExpressionCharacter } from '../../../helpers/characterAssertions';
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   PROJECT_SCHEMA_VERSION,
@@ -7,11 +9,16 @@ import {
   ProjectV13Schema,
   ProjectV14Schema,
   ProjectV15Schema,
+  ProjectV15AdaptiveSchema,
   evaluateShotAtTime,
   resolveLayerVisualParts,
   type Project,
 } from '../../../../src/domain';
 import { buildProject, buildProjectWithAnimation, IDS } from '../testProject';
+import {
+  adaptivePartsFixture,
+  adaptivePartsSourceRootTransform,
+} from '../../../helpers/adaptivePartsFixtures';
 
 function v1WithoutTimelineEvents(): unknown {
   return {
@@ -213,7 +220,7 @@ describe('T01 迁移回填 timelineEvents', () => {
 
   it('migrates strict v11 composite data with default Body placement and preserves its visual', () => {
     const current = buildProject();
-    const original = current.characters[0]!;
+    const original = asExpressionCharacter(current.characters[0]!);
     const { animations: _animations, ...version11Fields } = current;
     void _animations;
     const legacyV11 = {
@@ -256,7 +263,7 @@ describe('T01 迁移回填 timelineEvents', () => {
     };
     const before = structuredClone(legacyV11);
     const result = migrateProject(legacyV11);
-    const character = result.characters[0]!;
+    const character = asExpressionCharacter(result.characters[0]!);
 
     expect(result.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(character).toMatchObject({
@@ -454,5 +461,152 @@ describe('T01 迁移回填 timelineEvents', () => {
       animationPlayback: { mode: 'once', endBehavior: 'hold' },
     });
     expect(legacyV15).toEqual(before);
+  });
+
+  it('strictly migrates main v15 Adaptive Parts projects without changing their references', () => {
+    const current = buildProject();
+    const characterId = randomUUID();
+    const voiceProfileId = randomUUID();
+    const adaptiveCharacter = {
+      id: characterId,
+      name: 'Adaptive v15 Character',
+      mode: 'adaptive-parts' as const,
+      defaultVoiceProfileId: voiceProfileId,
+      defaultScale: 1,
+      defaultFlipX: false,
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(IDS.assetChar),
+    };
+    const shot = current.shots[0]!;
+    const legacyV15 = {
+      ...current,
+      schemaVersion: 15,
+      characters: [...current.characters, adaptiveCharacter],
+      voiceProfiles: [
+        ...current.voiceProfiles,
+        {
+          id: voiceProfileId,
+          name: 'Adaptive v15 Voice',
+          characterId,
+          locale: 'en-US',
+          rate: 1,
+          pitch: 0,
+        },
+      ],
+      shots: [
+        {
+          ...shot,
+          layers: [
+            ...shot.layers,
+            {
+              id: randomUUID(),
+              name: 'Adaptive v15 layer',
+              source: { kind: 'character' as const, characterId },
+              anchor: 'center' as const,
+              x: 960,
+              y: 540,
+              scaleX: 1,
+              scaleY: 1,
+              rotationDeg: 0,
+              opacity: 1,
+              visible: true,
+              locked: false,
+              flipX: false,
+              zIndex: shot.layers.length,
+            },
+          ],
+        },
+      ],
+    };
+    const before = structuredClone(legacyV15);
+
+    expect(ProjectV15AdaptiveSchema.parse(legacyV15)).toEqual(legacyV15);
+    expect(ProjectV15Schema.safeParse(legacyV15).success).toBe(false);
+
+    const migrated = migrateProject(legacyV15);
+    expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(migrated.characters.at(-1)).toMatchObject({
+      id: characterId,
+      mode: 'adaptive-parts',
+      parts: adaptiveCharacter.parts,
+      sourceRootTransform: adaptiveCharacter.sourceRootTransform,
+    });
+    expect(migrated.shots[0]!.layers.at(-1)!.source).toEqual({
+      kind: 'character',
+      characterId,
+    });
+    expect(ProjectSchema.parse(migrated)).toEqual(migrated);
+    expect(migrateProject(migrated)).toEqual(migrated);
+    expect(legacyV15).toEqual(before);
+  });
+
+  it('fails closed for v15 projects that mix Adaptive Parts and animation shapes', () => {
+    const current = buildProjectWithAnimation();
+    const characterId = randomUUID();
+    const voiceProfileId = randomUUID();
+    const adaptiveCharacter = {
+      id: characterId,
+      name: 'Mixed v15 Character',
+      mode: 'adaptive-parts' as const,
+      defaultVoiceProfileId: voiceProfileId,
+      defaultScale: 1,
+      defaultFlipX: false,
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(IDS.assetChar),
+    };
+    const shot = current.shots[0]!;
+    const mixedV15 = {
+      ...current,
+      schemaVersion: 15,
+      characters: [...current.characters, adaptiveCharacter],
+      voiceProfiles: [
+        ...current.voiceProfiles,
+        {
+          id: voiceProfileId,
+          name: 'Mixed v15 Voice',
+          characterId,
+          locale: 'en-US',
+          rate: 1,
+          pitch: 0,
+        },
+      ],
+      shots: [
+        {
+          ...shot,
+          layers: [
+            ...shot.layers,
+            {
+              id: randomUUID(),
+              name: 'Animation v15 layer',
+              source: { kind: 'animation' as const, animationId: IDS.animation },
+              startTimeMs: 500,
+              anchor: 'center' as const,
+              x: 960,
+              y: 540,
+              scaleX: 1,
+              scaleY: 1,
+              rotationDeg: 0,
+              opacity: 1,
+              visible: true,
+              locked: false,
+              flipX: false,
+              zIndex: shot.layers.length,
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(ProjectV15AdaptiveSchema.safeParse(mixedV15).success).toBe(false);
+    expect(ProjectV15Schema.safeParse(mixedV15).success).toBe(false);
+    expect(() => migrateProject(mixedV15)).toThrow(/matches neither/u);
+  });
+
+  it('accepts the shared static v15 shape when both strict historical schemas agree', () => {
+    const staticV15 = { ...buildProject(), schemaVersion: 15 };
+
+    expect(ProjectV15Schema.safeParse(staticV15).success).toBe(true);
+    expect(ProjectV15AdaptiveSchema.safeParse(staticV15).success).toBe(true);
+    expect(migrateProject(staticV15).schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
   });
 });

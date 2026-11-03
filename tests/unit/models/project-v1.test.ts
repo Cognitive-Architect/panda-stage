@@ -1,3 +1,4 @@
+import { asExpressionCharacter } from '../../helpers/characterAssertions';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -74,7 +75,7 @@ describe('ProjectSchema v7', () => {
     expect(project.assets).toHaveLength(4);
     expect(project.characters).toHaveLength(1);
     expect(project.characters[0]).toMatchObject({
-      defaultExpressionId: project.characters[0]!.expressions[0]!.id,
+      defaultExpressionId: asExpressionCharacter(project.characters[0]!).expressions[0]!.id,
       defaultScale: 1,
       defaultFlipX: false,
     });
@@ -220,28 +221,28 @@ describe('ProjectSchema v7', () => {
 
   it('rejects dangling defaults, duplicate expression names, non-image mouths, and invalid transforms', () => {
     const dangling = structuredClone(migrateProject(exampleProject));
-    dangling.characters[0]!.defaultExpressionId =
+    asExpressionCharacter(dangling.characters[0]!).defaultExpressionId =
       'ffffffff-ffff-4fff-8fff-fffffffffff5';
     expect(issuePaths(dangling)).toContain(
       'characters.0.defaultExpressionId',
     );
 
     const duplicate = structuredClone(migrateProject(exampleProject));
-    duplicate.characters[0]!.expressions[1]!.name =
-      duplicate.characters[0]!.expressions[0]!.name.toUpperCase();
+    asExpressionCharacter(duplicate.characters[0]!).expressions[1]!.name =
+      asExpressionCharacter(duplicate.characters[0]!).expressions[0]!.name.toUpperCase();
     expect(issuePaths(duplicate)).toContain(
       'characters.0.expressions.1.name',
     );
 
     const audioMouth = structuredClone(migrateProject(exampleProject));
-    audioMouth.characters[0]!.mouthOpenAssetId =
+    asExpressionCharacter(audioMouth.characters[0]!).mouthOpenAssetId =
       audioMouth.assets.find((asset) => asset.kind === 'audio')!.id;
     expect(issuePaths(audioMouth)).toContain(
       'characters.0.mouthOpenAssetId',
     );
 
     const invalidScale = structuredClone(migrateProject(exampleProject));
-    invalidScale.characters[0]!.defaultScale = 0;
+    asExpressionCharacter(invalidScale.characters[0]!).defaultScale = 0;
     expect(issuePaths(invalidScale)).toContain(
       'characters.0.defaultScale',
     );

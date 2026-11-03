@@ -1,7 +1,10 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { Character, Project } from '../../../domain';
-import { transformVisualRectByPart } from '../../../domain';
+import {
+  resolveTalkingHeadMotionTransform,
+  transformVisualRectByPart,
+} from '../../../domain';
 import type { ThumbnailState } from '../assets/AssetCard';
 import type { CharacterAssemblySnapshot } from '../../stores/characterAssemblySessionStore';
 import { buildCharacterAssemblyPreviewVisual } from './characterAssemblyPreview';
@@ -20,6 +23,18 @@ interface CharacterTalkingHeadMotionPreviewProps {
 
 const PREVIEW_WIDTH = 160;
 const PREVIEW_HEIGHT = 128;
+const PREVIEW_DIALOGUE_DURATION_MS = Number.MAX_SAFE_INTEGER;
+
+export function resolveTalkingHeadMotionPreviewTransform(
+  elapsedMs: number,
+  intensityPercent: number,
+): ReturnType<typeof resolveTalkingHeadMotionTransform> {
+  return resolveTalkingHeadMotionTransform(
+    elapsedMs,
+    PREVIEW_DIALOGUE_DURATION_MS,
+    intensityPercent,
+  );
+}
 
 interface PreviewRect {
   x: number;
@@ -96,6 +111,36 @@ export function CharacterTalkingHeadMotionPreview({
   intensityPercent,
   playing,
 }: CharacterTalkingHeadMotionPreviewProps): React.JSX.Element | null {
+  const intensityPercentRef = useRef(intensityPercent);
+  intensityPercentRef.current = intensityPercent;
+  const [headMotionTransform, setHeadMotionTransform] = useState(() =>
+    resolveTalkingHeadMotionPreviewTransform(0, intensityPercent),
+  );
+
+  useEffect(() => {
+    if (!playing) {
+      setHeadMotionTransform(
+        resolveTalkingHeadMotionPreviewTransform(0, intensityPercentRef.current),
+      );
+      return undefined;
+    }
+
+    const startedAt = performance.now();
+    let frameId = 0;
+    const updatePreview = (now: number): void => {
+      setHeadMotionTransform(
+        resolveTalkingHeadMotionPreviewTransform(
+          now - startedAt,
+          intensityPercentRef.current,
+        ),
+      );
+      frameId = requestAnimationFrame(updatePreview);
+    };
+
+    frameId = requestAnimationFrame(updatePreview);
+    return () => cancelAnimationFrame(frameId);
+  }, [playing]);
+
   const session = useMemo<CharacterAssemblySnapshot>(
     () => ({
       status: 'active',
@@ -149,13 +194,9 @@ export function CharacterTalkingHeadMotionPreview({
   );
   const centerX = project.width / 2;
   const centerY = project.height / 2;
-  const ratio = intensityPercent / 100;
   const headMotionStyle = {
     transformOrigin: `${centerX + character.head.pivot.x}px ${centerY + character.head.pivot.y}px`,
-    '--head-motion-up-mid': `${(-2.828 * ratio).toFixed(3)}px`,
-    '--head-motion-up-peak': `${(-4 * ratio).toFixed(3)}px`,
-    '--head-motion-down-mid': `${(2.828 * ratio).toFixed(3)}px`,
-    '--head-motion-down-peak': `${(4 * ratio).toFixed(3)}px`,
+    transform: `translate(${headMotionTransform.translateX}px, ${headMotionTransform.translateY}px)`,
   } as CSSProperties;
   const stageStyle = {
     width: project.width,

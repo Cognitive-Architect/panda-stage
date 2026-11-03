@@ -20,16 +20,17 @@ import {
   CharacterV9Schema,
   CharacterV10Schema,
   CharacterV11Schema,
+  CharacterV14Schema,
   CharacterV6Schema,
   VoiceProfileSchema,
 } from './character';
 import { IdSchema, IsoDateTimeSchema, NameSchema } from './common';
-import type { Layer, LayerV3, LayerV4 } from './layer';
-import { LayerV14Schema } from './layer';
+import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer';
 import {
   ShotSchema,
   ShotV14Schema,
-  ShotV15Schema,
+  ShotV15AdaptiveSchema,
+  ShotV15AnimationSchema,
   ShotV2Schema,
   ShotV3Schema,
   ShotV4Schema,
@@ -47,10 +48,10 @@ const CharacterExpressionV1Schema = z
   })
   .strict();
 
-/** Strict persisted v14 envelope before animation instances entered Shots. */
-export const ProjectV14Schema = z
+/** Strict PR-branch v15 envelope before per-instance animation playback. */
+export const ProjectV15AnimationSchema = z
   .object({
-    schemaVersion: z.literal(14),
+    schemaVersion: z.literal(15),
     id: IdSchema,
     name: NameSchema,
     width: z.literal(PROJECT_WIDTH),
@@ -58,17 +59,17 @@ export const ProjectV14Schema = z
     fps: z.literal(PROJECT_FPS),
     assets: z.array(AssetSchema),
     animations: z.array(AnimationDefinitionSchema),
-    characters: z.array(CharacterSchema),
+    characters: z.array(CharacterV14Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
-    shots: z.array(ShotV14Schema),
+    shots: z.array(ShotV15AnimationSchema),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
   })
   .strict();
 
-/** Strict persisted v15 envelope before per-instance animation playback. */
-export const ProjectV15Schema = z
+/** Strict origin/main v15 envelope with Adaptive Parts, before animations. */
+export const ProjectV15AdaptiveSchema = z
   .object({
     schemaVersion: z.literal(15),
     id: IdSchema,
@@ -81,11 +82,14 @@ export const ProjectV15Schema = z
     characters: z.array(CharacterSchema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
-    shots: z.array(ShotV15Schema),
+    shots: z.array(ShotV15AdaptiveSchema),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
   })
   .strict();
+
+/** Backward-compatible name for the PR branch's historical v15 contract. */
+export const ProjectV15Schema = ProjectV15AnimationSchema;
 
 const CharacterV1Schema = z
   .object({
@@ -125,7 +129,7 @@ const ProjectV12DataSchema = z
     height: z.literal(PROJECT_HEIGHT),
     fps: z.literal(PROJECT_FPS),
     assets: z.array(AssetV12Schema),
-    characters: z.array(CharacterSchema),
+    characters: z.array(CharacterV14Schema),
     voiceProfiles: z.array(VoiceProfileSchema),
     subtitleStyles: z.array(SubtitleStyleSchema).min(1),
     shots: z.array(ShotV14Schema),
@@ -138,6 +142,13 @@ const ProjectV12DataSchema = z
 export const ProjectV13Schema = ProjectV12DataSchema.extend({
   schemaVersion: z.literal(13),
   assets: z.array(AssetSchema),
+});
+
+/** Strict persisted v14 envelope, before Adaptive Parts Characters. */
+export const ProjectV14Schema = ProjectDataSchema.extend({
+  schemaVersion: z.literal(14),
+  characters: z.array(CharacterV14Schema),
+  shots: z.array(ShotV14Schema),
 });
 
 export const ProjectV1Schema = z

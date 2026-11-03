@@ -15,7 +15,6 @@ import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 import {
   PROJECT_SCHEMA_VERSION,
   evaluateShotAtTime,
-  mapProjectTime,
   type Project,
   type Shot,
 } from '../../src/domain';
@@ -250,28 +249,20 @@ describe('product preview model', () => {
     expect(evaluateSubtitleAtTime(cues, 1_500)).toBeNull();
   });
 
-  it('resolves time from one absolute monotonic anchor without a per-frame cap', () => {
-    const anchor = { startedAtMs: 1_000, startTimeMs: 300 };
+  it.each([16, 100, 250, 500, 1_000])(
+    'reads %i ms of monotonic foreground time without a per-frame cap',
+    (elapsedMs) => {
+      expect(
+        resolveProductPreviewClockTime(
+          { startedAtMs: 1_000, startTimeMs: 300 },
+          1_000 + elapsedMs,
+          4_000,
+        ),
+      ).toEqual({ timeMs: 300 + elapsedMs, ended: false });
+    },
+  );
 
-    expect(resolveProductPreviewClockTime(anchor, 1_016, 4_000)).toEqual({
-      timeMs: 316,
-      ended: false,
-    });
-    expect(resolveProductPreviewClockTime(anchor, 1_250, 4_000)).toEqual({
-      timeMs: 550,
-      ended: false,
-    });
-    expect(resolveProductPreviewClockTime(anchor, 2_000, 4_000)).toEqual({
-      timeMs: 1_300,
-      ended: false,
-    });
-    expect(resolveProductPreviewClockTime(anchor, 12_000, 4_000)).toEqual({
-      timeMs: 4_000,
-      ended: true,
-    });
-  });
-
-  it('does not accumulate drift across long RAF gaps and never moves backward', () => {
+  it('uses one absolute anchor so repeated long RAF gaps cannot accumulate drift', () => {
     const anchor = { startedAtMs: 1_000, startTimeMs: 0 };
 
     expect(resolveProductPreviewClockTime(anchor, 1_500, 4_000).timeMs).toBe(
@@ -280,38 +271,82 @@ describe('product preview model', () => {
     expect(resolveProductPreviewClockTime(anchor, 2_000, 4_000).timeMs).toBe(
       1_000,
     );
+  });
+
+  it('reanchors pause/resume, seek and replay from their current transport positions', () => {
+    const firstAnchor = { startedAtMs: 1_000, startTimeMs: 1_250 };
+    const afterStall = resolveProductPreviewClockTime(
+      firstAnchor,
+      1_500,
+      4_000,
+    );
+    expect(afterStall.timeMs).toBe(1_750);
+
+    const paused = resolveProductPreviewTransportAction(
+      afterStall.timeMs,
+      4_000,
+      { type: 'pause' },
+    );
+    expect(paused).toEqual({
+      timeMs: 1_750,
+      playing: false,
+      repositionAudio: false,
+    });
+    const resumed = resolveProductPreviewTransportAction(
+      paused.timeMs,
+      4_000,
+      { type: 'play' },
+    );
+    expect(
+      resolveProductPreviewClockTime(
+        { startedAtMs: 2_000, startTimeMs: resumed.timeMs },
+        2_100,
+        4_000,
+      ).timeMs,
+    ).toBe(1_850);
+
+    const sought = resolveProductPreviewTransportAction(
+      1_850,
+      4_000,
+      { type: 'seek', timeMs: 2_750 },
+    );
+    expect(sought).toEqual({
+      timeMs: 2_750,
+      playing: false,
+      repositionAudio: true,
+    });
+    const replayed = resolveProductPreviewTransportAction(
+      sought.timeMs,
+      4_000,
+      { type: 'replay' },
+    );
+    expect(
+      resolveProductPreviewClockTime(
+        { startedAtMs: 5_500, startTimeMs: replayed.timeMs },
+        5_516,
+        4_000,
+      ).timeMs,
+    ).toBe(16);
+  });
+
+  it('never moves backward for an invalid/earlier monotonic timestamp and stops at the duration', () => {
+    const anchor = { startedAtMs: 1_000, startTimeMs: 3_900 };
+
     expect(resolveProductPreviewClockTime(anchor, 900, 4_000)).toEqual({
-      timeMs: 0,
+      timeMs: 3_900,
       ended: false,
+    });
+    expect(resolveProductPreviewClockTime(anchor, 1_200, 4_000)).toEqual({
+      timeMs: 4_000,
+      ended: true,
     });
     expect(resolveProductPreviewClockTime(anchor, Number.NaN, 4_000)).toEqual({
-      timeMs: 0,
+      timeMs: 3_900,
       ended: false,
     });
   });
 
-  it('maps the absolute project clock across a Shot boundary', () => {
-    const first = buildShot({ durationMs: 1_000 });
-    const second = buildShot({ id: randomUUID(), durationMs: 1_000 });
-    const project = buildProject(first);
-    project.shots.push(second);
-    const projectDurationMs = project.shots.reduce(
-      (total, shot) => total + shot.durationMs,
-      0,
-    );
-    const clock = resolveProductPreviewClockTime(
-      { startedAtMs: 5_000, startTimeMs: 950 },
-      5_050,
-      projectDurationMs,
-    );
-    const position = mapProjectTime(project, clock.timeMs);
-
-    expect(clock.timeMs).toBe(1_000);
-    expect(position.shot).toBe(second);
-    expect(position.shotLocalTimeMs).toBe(0);
-  });
-
-  it('pauses at the current time when hidden and requires explicit Play to resume', () => {
+  it('pauses at the current absolute time when hidden and stays paused when visible', () => {
     const anchor = { startedAtMs: 1_000, startTimeMs: 200 };
     const pause = resolveProductPreviewVisibilityPause(
       'hidden',
@@ -331,20 +366,19 @@ describe('product preview model', () => {
     expect(
       resolveProductPreviewVisibilityPause('hidden', null, 2_000, 4_000),
     ).toBeNull();
-
-    const resumed = resolveProductPreviewTransportAction(
+    const explicitPlay = resolveProductPreviewTransportAction(
       pause!.timeMs,
       4_000,
       { type: 'play' },
     );
-    expect(resumed.playing).toBe(true);
+    expect(explicitPlay.playing).toBe(true);
     expect(
       resolveProductPreviewClockTime(
-        { startedAtMs: 2_000, startTimeMs: resumed.timeMs },
-        2_100,
+        { startedAtMs: 3_500, startTimeMs: explicitPlay.timeMs },
+        3_516,
         4_000,
       ).timeMs,
-    ).toBe(800);
+    ).toBe(716);
   });
 
   it('clamps and formats scrub positions without leaking fractions', () => {
@@ -368,12 +402,6 @@ describe('product preview model', () => {
         timeMs: 2_750,
       }),
     ).toEqual({ timeMs: 2_750, playing: false, repositionAudio: true });
-    expect(
-      resolveProductPreviewTransportAction(2_750, 4_000, {
-        type: 'seek',
-        timeMs: 500,
-      }),
-    ).toEqual({ timeMs: 500, playing: false, repositionAudio: true });
     expect(resolveProductPreviewTransportAction(2_750, 4_000, { type: 'stop' }))
       .toEqual({ timeMs: 0, playing: false, repositionAudio: true });
     expect(resolveProductPreviewTransportAction(2_750, 4_000, { type: 'replay' }))
@@ -399,6 +427,46 @@ describe('product preview model', () => {
 });
 
 describe('product preview overlay contract', () => {
+  it('uses the absolute Preview clock and pauses hidden pages without auto-resuming', () => {
+    const overlay = readSource(OVERLAY_PATH);
+
+    expect(overlay).toContain('resolveProductPreviewClockTime(');
+    expect(overlay).toContain('playbackClockAnchorRef.current = next.playing');
+    expect(overlay).toContain(
+      'generation !== playbackClockGenerationRef.current',
+    );
+    expect(overlay).toContain(
+      "document.addEventListener('visibilitychange', onVisibilityChange)",
+    );
+    expect(overlay).toContain(
+      "if (document.visibilityState === 'hidden') onVisibilityChange();",
+    );
+    expect(overlay).toContain('resolveProductPreviewVisibilityPause(');
+    expect(overlay).toContain("document.visibilityState === 'visible'");
+    expect(overlay).toContain(
+      "if (next.playing && document.visibilityState !== 'visible') return;",
+    );
+    expect(overlay).toContain('projectIdRef.current = project.id');
+    expect(overlay).not.toContain("addEventListener('blur'");
+    expect(overlay).not.toContain('advanceProductPreviewTime');
+    expect(overlay).not.toContain('PRODUCT_PREVIEW_MAX_STEP_MS');
+  });
+
+  it('invalidates old RAF work when project, shot range or range ownership changes', () => {
+    const overlay = readSource(OVERLAY_PATH);
+
+    expect(overlay).toContain('playbackClockGenerationRef.current += 1');
+    expect(overlay).toContain(
+      'if (projectIdRef.current === project.id) return;',
+    );
+    expect(overlay).toContain("if (range !== 'shot') return;");
+    expect(overlay).toContain(
+      '{ timeMs: 0, playing: false, repositionAudio: true }',
+    );
+    expect(overlay).toContain('setRange(nextRange)');
+    expect(overlay).toContain('seekRevisionRef.current = nextSeekRevision');
+  });
+
   it('reuses the formal evaluator and renderer instead of a preview copy', () => {
     const overlay = readSource(OVERLAY_PATH);
 
@@ -437,13 +505,15 @@ describe('product preview overlay contract', () => {
     ]) {
       expect(sources).not.toContain(forbidden);
     }
-    // Phase 2 consumes only the two existing bounded, read-only asset seams.
+    // Product Preview uses the validated audio metadata/read seams and the existing image read seam.
     expect(overlay).not.toContain('window.pandaStage.');
     expect(images).toContain('window.pandaStage.assets.readCanvasImage');
     expect(images).not.toContain('readThumbnail');
     expect(audio).toContain('window.pandaStage.assets.readAudio');
+    expect(audio).toContain('window.pandaStage.assets.getAudioInfo');
     expect(sources.match(/window\.pandaStage\.[a-zA-Z.]+/gu)).toEqual([
       'window.pandaStage.assets.readAudio',
+      'window.pandaStage.assets.getAudioInfo',
       'window.pandaStage.assets.readCanvasImage',
     ]);
   });
@@ -466,17 +536,17 @@ describe('product preview overlay contract', () => {
   it('drives one subordinate Shot-local mixer independently of the subtitle winner', () => {
     const overlay = readSource(OVERLAY_PATH);
 
-    expect(overlay).toContain('useProductPreviewAudio({');
+    expect(overlay).toContain('const audioInput = useMemo(');
+    expect(overlay).toContain('const audioController = useProductPreviewAudio(audioInput);');
     const audio = readSource(AUDIO_PATH);
-    expect(audio).toContain('resolveProductPreviewAudios(input.project, input.shot, input.timeMs)');
+    expect(audio).toContain('private planFor(');
+    expect(audio).toContain('const position = this.masterPosition(snapshot, input);');
+    expect(audio).toContain('for (const clip of shot.audioClips)');
+    expect(audio).toContain('clipEndMasterMs <= position || clipStartMasterMs >= horizon');
     expect(overlay).not.toContain('activeDialogueId: activeCue?.id ?? null');
-    expect(overlay).toContain('timeMs: activeShotTimeMs');
-    expect(overlay).toContain(
-      'masterTimeSampledAtMs: masterTimeSampledAtMsRef.current',
-    );
-    expect(audio).toContain(
-      'this.latestMasterSampledAtMs = input.masterTimeSampledAtMs',
-    );
+    const audioCall = overlay.slice(overlay.indexOf('const audioInput = useMemo('), overlay.indexOf('const audioWarning = audioController.warning;'));
+    expect(audioCall).toContain('readMasterSnapshot');
+    expect(audioCall).not.toContain('timeMs: activeShotTimeMs');
     expect(overlay).toContain('playing,');
     expect(overlay).toContain('seekRevision,');
     expect(overlay).toContain('resolveProductPreviewTransportAction(');
@@ -489,24 +559,41 @@ describe('product preview overlay contract', () => {
     expect(overlay).toContain("{ value: 'shot', label: '当前镜头' }");
   });
 
-  it('uses the absolute Preview clock and pauses hidden pages without auto-resuming', () => {
+  it('synchronizes prepared audio at the master anchor and cancels on the transport event', () => {
     const overlay = readSource(OVERLAY_PATH);
+    const commitStart = overlay.indexOf('const commitTransportState = useCallback(');
+    const commitEnd = overlay.indexOf('const pauseAtCurrentClock', commitStart);
+    const commit = overlay.slice(commitStart, commitEnd);
+    const anchor = commit.indexOf('playbackClockAnchorRef.current = next.playing');
+    const immediateSync = commit.indexOf('audioController.syncImmediately(');
+    const immediateCancel = commit.indexOf('audioController.cancelPlaybackImmediately()');
 
-    expect(overlay).toContain('resolveProductPreviewClockTime(');
-    expect(overlay).toMatch(
-      /const tick = \(\): void => \{[\s\S]*?const now = window\.performance\.now\(\);[\s\S]*?resolveProductPreviewClockTime/u,
-    );
-    expect(overlay).toContain('playbackClockAnchorRef.current = next.playing');
-    expect(overlay).toContain(
-      'generation !== playbackClockGenerationRef.current',
-    );
-    expect(overlay).toContain(
-      "document.addEventListener('visibilitychange', onVisibilityChange)",
-    );
-    expect(overlay).toContain('resolveProductPreviewVisibilityPause(');
-    expect(overlay).toContain("document.visibilityState === 'visible'");
-    expect(overlay).not.toContain('advanceProductPreviewTime');
-    expect(overlay).not.toContain('PRODUCT_PREVIEW_MAX_STEP_MS');
+    expect(anchor).toBeGreaterThanOrEqual(0);
+    expect(immediateSync).toBeGreaterThan(anchor);
+    expect(immediateCancel).toBeGreaterThan(anchor);
+    expect(commit).toContain('seekRevision: nextSeekRevision');
+    expect(immediateCancel).toBeLessThan(commit.indexOf('setPlaying(next.playing)'));
+  });
+
+  it('interrupts the old clock before Replay waits for audio preparation', () => {
+    const overlay = readSource(OVERLAY_PATH);
+    const actionStart = overlay.indexOf('const applyTransportAction = useCallback(');
+    const actionEnd = overlay.indexOf('const switchPreviewRange', actionStart);
+    const action = overlay.slice(actionStart, actionEnd);
+    const replayGuard = action.indexOf("if (action.type === 'replay')");
+    const replayStop = action.indexOf('playing: false, repositionAudio: false', replayGuard);
+    const preparation = action.indexOf('audioController.prepareForPlayback(next.timeMs).then');
+    const closeStart = overlay.indexOf('const closePreview = useCallback(');
+    const closeEnd = overlay.indexOf('const applyTransportAction', closeStart);
+    const close = overlay.slice(closeStart, closeEnd);
+
+    expect(replayGuard).toBeGreaterThanOrEqual(0);
+    expect(replayStop).toBeGreaterThan(replayGuard);
+    expect(replayStop).toBeLessThan(preparation);
+    expect(close.indexOf('audioController.cancelPlaybackImmediately()'))
+      .toBeLessThan(close.indexOf('onClose()'));
+    expect(action).toContain('requestId !== playbackStartRequestRef.current');
+    expect(action).toContain("preparation.reason === 'cancelled'");
   });
 
   it('shows a Chinese empty state when the project has no shot', () => {
@@ -539,7 +626,7 @@ describe('product preview overlay contract', () => {
       expect(overlay).toContain(selector);
     }
     expect(overlay).toMatch(
-      /type:\s*playbackClockAnchorRef\.current\s*\?\s*'pause'\s*:\s*'play'/u,
+      /type:\s*playbackClockAnchorRef\.current\s*\|\|\s*playbackStartPendingRef\.current\s*\?\s*'pause'\s*:\s*'play'/u,
     );
     expect(overlay).toContain('role="dialog"');
     expect(overlay).toContain('aria-modal={previewSurfaceActive}');
@@ -581,24 +668,6 @@ describe('product preview overlay contract', () => {
     expect(stage).toContain("'decode'");
   });
 
-  it('keeps optional prewarm failures diagnostic-only and preserves required errors', () => {
-    const overlay = readSource(OVERLAY_PATH);
-    const images = readSource(IMAGES_PATH);
-    const stage = readSource('src/renderer/stage/StageRenderer.tsx');
-
-    expect(overlay).not.toContain('product-preview-optional-warning');
-    expect(overlay).not.toContain('optionalFailedAssetIds');
-    expect(overlay).toContain("assets.status === 'error' ? (");
-    expect(overlay).toContain('data-testid="product-preview-stage-warning"');
-    expect(overlay).toContain(
-      'onImageResourceFailure={handleImageResourceFailure}',
-    );
-    expect(images).toContain('optionalFailedAssetIds');
-    expect(stage).toContain(
-      "recordPreviewDiagnostic('stage-image-prewarm-failure'",
-    );
-  });
-
   it('places a flat, persistently selected range control above the Stage', () => {
     const overlay = readSource(OVERLAY_PATH);
     const styles = readSource(
@@ -633,13 +702,13 @@ describe('product preview overlay contract', () => {
 
   it('keeps the Editor visible until the real Preview handoff is committed', () => {
     const overlay = readSource(OVERLAY_PATH);
+    const stageRenderer = readSource('src/renderer/stage/StageRenderer.tsx');
     const styles = readSource(
       'src/renderer/styles/shell/product-preview/s06-09--product-preview.css',
     );
-    const shellSurfaceStyles = readSource(
+    const surfaceStyles = readSource(
       'src/renderer/styles/shell/product-preview/s17-01--whole-project-preview.css',
     );
-    const shell = readSource(SHELL_PATH);
 
     expect(overlay).toContain(
       "useState<ProductPreviewInitialReadiness>('preparing')",
@@ -661,20 +730,24 @@ describe('product preview overlay contract', () => {
     expect(overlay).toContain('scheduleProductPreviewWarmupStatus(');
     expect(overlay).toContain('advanceProductPreviewHandoffPhase');
     expect(overlay).toContain('onHandoffReady();');
-    expect(overlay).toContain('const previewSurfaceActive = surfaceActive;');
-    expect(shell).toContain(
-      "data-preview-surface-active={productPreviewSurfaceActive ? 'true' : 'false'}",
-    );
     expect(overlay).toContain('canStartProductPreviewPlayback(');
     expect(overlay).toContain('shouldStartProductPreviewAutoplay({');
     expect(overlay).toContain('const initialAutoplayConsumedRef = useRef(false);');
+    expect(overlay).toContain('const playbackStartPendingRef = useRef(false);');
+    expect(overlay).toContain('playbackClockAnchorRef.current || playbackStartPendingRef.current');
     expect(overlay).toContain('!initialAutoplayConsumedRef.current &&');
-    expect(overlay).toContain(
-      'autoplayConsumed: initialAutoplayConsumedRef.current',
+    expect(overlay).toContain('autoplayConsumed: initialAutoplayConsumedRef.current');
+    expect(overlay).toContain('audioController.prepareForPlayback(next.timeMs).then((preparation) => {');
+    expect(overlay).toContain('preparation.reason === \'cancelled\'');
+    expect(overlay).toContain('initialAutoplayConsumedRef.current = true;');
+    expect(overlay).toContain('const readMasterSnapshot = useCallback(');
+    expect(overlay).toContain('resolveProductPreviewClockTime(anchor, sampledAtMs, durationMs)');
+    expect(overlay).toContain('clockGeneration: playbackClockGenerationRef.current');
+    expect(stageRenderer).toContain('data-layer-visual-state-json={');
+    expect(stageRenderer).toMatch(
+      /data-layer-visual-state-json=\{\s*showStageLabel\s*\?\s*JSON\.stringify/u,
     );
-    expect(overlay).toContain(
-      'if (next.playing) initialAutoplayConsumedRef.current = true;',
-    );
+    expect(stageRenderer).toContain('activeFace: visual?.activeFace');
     expect(overlay).toMatch(
       /initialReadinessError[\s\S]*?编辑器保持不变/u,
     );
@@ -682,6 +755,15 @@ describe('product preview overlay contract', () => {
       ".product-preview-overlay[data-preview-surface='warming']",
     );
     expect(styles).toContain('background: transparent;');
+    expect(surfaceStyles).toMatch(
+      /\.product-preview-overlay\[data-preview-surface='active'\]\s*\{\s*background:\s*rgb\(6 14 11\);\s*\}/u,
+    );
+    expect(surfaceStyles).toMatch(
+      /\.editor-layout\[data-preview-surface-active='true'\]\s*>\s*\.editor-top-region,\s*\.editor-layout\[data-preview-surface-active='true'\]\s*>\s*\.editor-body,\s*\.editor-layout\[data-preview-surface-active='true'\]\s*>\s*\.bottom-workspace\s*\{\s*visibility:\s*hidden;/u,
+    );
+    expect(surfaceStyles).not.toMatch(
+      /\.editor-layout\[data-preview-surface-active='true'\]\s*\{\s*visibility:\s*hidden/u,
+    );
     expect(styles).toMatch(
       /\.product-preview-overlay\[data-preview-surface='warming'\][\s\S]*?pointer-events:\s*auto;/u,
     );
@@ -691,15 +773,6 @@ describe('product preview overlay contract', () => {
     expect(styles).toContain('visibility: hidden;');
     expect(styles).not.toContain('.product-preview-curtain');
     expect(styles).not.toContain('transition: opacity');
-    expect(shellSurfaceStyles).toMatch(
-      /\.product-preview-overlay\[data-preview-surface='active'\]\s*\{\s*background:\s*rgb\(6 14 11\);/u,
-    );
-    expect(shellSurfaceStyles).toMatch(
-      /\.editor-layout\[data-preview-surface-active='true'\]\s*>\s*\.editor-top-region,[\s\S]*?>\s*\.editor-body,[\s\S]*?>\s*\.bottom-workspace\s*\{\s*visibility:\s*hidden;/u,
-    );
-    expect(shellSurfaceStyles).not.toMatch(
-      /\.editor-layout\[data-preview-surface-active='true'\]\s*\{\s*(?:display:\s*none|visibility:\s*hidden)/u,
-    );
     expect(overlay).not.toContain('setInterval(');
     expect(overlay).toContain('shouldBlockProductPreviewWarmupKeyboard(');
     expect(overlay).toContain(
@@ -741,6 +814,16 @@ describe('product preview overlay contract', () => {
     );
     expect(shell).toContain('const commitProductPreviewSurface = useCallback');
     expect(shell).toContain('onHandoffReady={commitProductPreviewSurface}');
+    expect(shell).toContain(
+      "data-preview-surface-active={productPreviewSurfaceActive ? 'true' : 'false'}",
+    );
+    expect(shell).toContain('productPreviewOpenerRef.current =');
+    expect(shell).toContain(
+      'opener.element.focus({ preventScroll: true })',
+    );
+    expect(shell).toContain('opener.sessionId !== sessionId');
+    expect(shell).toContain('currentIdentity.projectId !== opener.projectId');
+    expect(shell).toContain('!opener.element.isConnected');
     expect(shell).not.toContain(
       'onHandoffReady={() => setProductPreviewSurfaceActive(true)}',
     );

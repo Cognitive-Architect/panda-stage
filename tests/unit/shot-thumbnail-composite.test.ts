@@ -1,18 +1,23 @@
+import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
+  CharacterService,
   buildEditorStageRenderModel,
+  LayerService,
   ProjectSchema,
   migrateProject,
   type Layer,
   type Project,
 } from '../../src/domain';
+import { adaptivePartsFixture, adaptivePartsSourceRootTransform } from '../helpers/adaptivePartsFixtures';
 import {
   createShotThumbnailDataUrl,
   isShotThumbnailRequestCurrent,
   requestShotThumbnail,
   shotThumbnailFingerprint,
 } from '../../src/renderer/features/shots/shotThumbnail';
+import { buildProject as buildSyntheticProject } from './domain/testProject';
 
 const IDS = {
   body: '60800000-0000-4000-8000-000000000001',
@@ -31,6 +36,7 @@ class FakeCanvasContext {
   globalAlpha = 1;
   fillStyle: string | CanvasGradient | CanvasPattern = '';
   draws: DrawCall[] = [];
+  transforms: number[][] = [];
   private alphaStack: number[] = [];
 
   save(): void {
@@ -46,6 +52,10 @@ class FakeCanvasContext {
   rotate(): void {}
 
   scale(): void {}
+
+  transform(...values: number[]): void {
+    this.transforms.push(values);
+  }
 
   setTransform(): void {}
 
@@ -113,7 +123,7 @@ function installBrowser(readThumbnail: (assetId: string) => Promise<unknown>) {
 
 function makeCompositeProject(): Project {
   const migrated = migrateProject(exampleProject);
-  const character = migrated.characters[0]!;
+  const character = asExpressionCharacter(migrated.characters[0]!);
   const shot = migrated.shots[0]!;
   const baseExpression = character.expressions[0]!;
   const compositeCharacter = {
@@ -166,6 +176,38 @@ function makeCompositeProject(): Project {
         ),
       },
     ],
+  });
+}
+
+function makeAdaptivePartsProject(): Project {
+  const base = buildSyntheticProject();
+  const sourceCharacter = base.characters[0]!;
+  if (sourceCharacter.mode === 'adaptive-parts') {
+    throw new Error('Expected a whole-image source Character.');
+  }
+  const project = new CharacterService().createAdaptiveParts(base, {
+    name: 'Synthetic Adaptive Character',
+    sourceRootTransform: adaptivePartsSourceRootTransform(),
+    parts: adaptivePartsFixture(sourceCharacter.expressions[0]!.assetId),
+  });
+  const character = project.characters.at(-1)!;
+  if (character.mode !== 'adaptive-parts') {
+    throw new Error('Expected the Adaptive Parts test Character.');
+  }
+  const placed = new LayerService().createFromAdaptiveCharacter(
+    project,
+    project.shots[0]!.id,
+    character.id,
+    { x: 960, y: 540 },
+  );
+  return ProjectSchema.parse({
+    ...placed.project,
+    shots: placed.project.shots.map((shot) => ({
+      ...shot,
+      layers: shot.layers.map((layer) =>
+        layer.id === placed.layer.id ? { ...layer, opacity: 0.5 } : layer,
+      ),
+    })),
   });
 }
 
@@ -257,7 +299,7 @@ describe('Shot thumbnail composite rendering (Issue #608)', () => {
     const baseline = shotThumbnailFingerprint(project, shot);
     const baseLayerSource = shot.layers[1]!.source;
     if (baseLayerSource.kind !== 'character') throw new Error('Expected Character Layer.');
-    const currentFaceId = project.characters[0]!.expressions.find(
+    const currentFaceId = asExpressionCharacter(project.characters[0]!).expressions.find(
       ({ id }) => id === baseLayerSource.expressionId,
     )!.assetId;
 
@@ -281,7 +323,7 @@ describe('Shot thumbnail composite rendering (Issue #608)', () => {
       ...character,
       facePlacement: { ...character.facePlacement, offsetX: 111 },
     }));
-    const alternateExpressionId = project.characters[0]!.expressions[1]!.id;
+    const alternateExpressionId = asExpressionCharacter(project.characters[0]!).expressions[1]!.id;
     const layerSource = project.shots[0]!.layers[1]!.source;
     if (layerSource.kind !== 'character') throw new Error('Expected Character Layer.');
     const changedBaseFace = withShotLayer(project, (layer) => ({
@@ -335,7 +377,7 @@ describe('Shot thumbnail composite rendering (Issue #608)', () => {
   it('keeps the fingerprint stable for names, timing, dialogue/audio, Mouth, and unused alternate expression state', () => {
     const project = makeCompositeProject();
     const baseline = shotThumbnailFingerprint(project, project.shots[0]!);
-    const alternateExpression = project.characters[0]!.expressions[1]!;
+    const alternateExpression = asExpressionCharacter(project.characters[0]!).expressions[1]!;
     const alternateAssetId = alternateExpression.assetId;
     const unrelated = ProjectSchema.parse({
       ...project,
@@ -347,7 +389,7 @@ describe('Shot thumbnail composite rendering (Issue #608)', () => {
       ),
       characters: [
         {
-          ...project.characters[0]!,
+          ...asExpressionCharacter(project.characters[0]!),
           name: 'Renamed Character',
           mouthOpenAssetId: alternateAssetId,
           baseAssetId: alternateAssetId,
@@ -382,7 +424,7 @@ describe('Shot thumbnail composite rendering (Issue #608)', () => {
 
     expect(canvases).toHaveLength(2);
     const [main, composite] = canvases;
-    const faceAssetId = project.characters[0]!.expressions[0]!.assetId;
+    const faceAssetId = asExpressionCharacter(project.characters[0]!).expressions[0]!.assetId;
     expect(composite!.context.draws.map(({ image }) => (image as FakeImage).src)).toEqual(
       [readyThumbnail(IDS.body).dataUrl, readyThumbnail(faceAssetId).dataUrl],
     );
@@ -390,6 +432,89 @@ describe('Shot thumbnail composite rendering (Issue #608)', () => {
     expect(main!.context.draws.at(-1)).toMatchObject({ image: composite, alpha: 0.5 });
     expect(main!.context.draws.at(-1)?.args).toEqual([0, 0]);
     expect(readThumbnail).toHaveBeenCalledTimes(3);
+  });
+
+  it('flattens each Adaptive Part identity with affine geometry and applies owner opacity once', async () => {
+    const project = makeAdaptivePartsProject();
+    const shot = project.shots[0]!;
+    const model = buildEditorStageRenderModel(project, shot);
+    const adaptiveLayer = model.layers.find(
+      ({ visual }) => visual.kind === 'adaptive-parts-character',
+    )!;
+    const parts = adaptiveLayer.visual.parts;
+    const readThumbnail = vi.fn(async (assetId: string) => readyThumbnail(assetId));
+    const canvases = installBrowser(readThumbnail);
+
+    await createShotThumbnailDataUrl({
+      projectRoot: 'D:\\issue897-adaptive-thumbnail',
+      project,
+      shot,
+    });
+
+    expect(parts).toHaveLength(6);
+    expect(new Set(parts.map((part) => part.partId)).size).toBe(6);
+    expect(new Set(parts.map((part) => part.assetId))).toEqual(
+      new Set([parts[0]!.assetId]),
+    );
+    expect(canvases).toHaveLength(2);
+    const [main, adaptive] = canvases;
+    expect(adaptive!.context.draws).toHaveLength(6);
+    expect(adaptive!.context.draws.every(({ alpha }) => alpha === 1)).toBe(true);
+    expect(adaptive!.context.transforms).toEqual(
+      parts.map((part) => {
+        const transform = part.imageTransform!;
+        return [
+          transform.a,
+          transform.b,
+          transform.c,
+          transform.d,
+          transform.tx,
+          transform.ty,
+        ];
+      }),
+    );
+    expect(main!.context.draws.at(-1)).toMatchObject({ image: adaptive, alpha: 0.5 });
+    expect(readThumbnail).toHaveBeenCalledTimes(2);
+  });
+
+  it('invalidates Adaptive Part thumbnails when source affine, visibility, or stored order changes', () => {
+    const project = makeAdaptivePartsProject();
+    const shot = project.shots[0]!;
+    const baseline = shotThumbnailFingerprint(project, shot);
+    const characterIndex = project.characters.findIndex(
+      (character) => character.mode === 'adaptive-parts',
+    );
+    const character = project.characters[characterIndex]!;
+    if (character.mode !== 'adaptive-parts') {
+      throw new Error('Expected the Adaptive Parts test Character.');
+    }
+    const updateCharacter = (
+      update: (character: Extract<Project['characters'][number], { mode: 'adaptive-parts' }>) => unknown,
+    ): Project => ProjectSchema.parse({
+      ...project,
+      characters: project.characters.map((candidate, index) =>
+        index === characterIndex ? update(character) : candidate,
+      ),
+    });
+    const changedAffine = updateCharacter((current) => ({
+      ...current,
+      sourceRootTransform: { ...current.sourceRootTransform, a: 1.1 },
+    }));
+    const changedVisibility = updateCharacter((current) => ({
+      ...current,
+      parts: current.parts.map((part, index) =>
+        index === 0 ? { ...part, visible: false } : part,
+      ),
+    }));
+    const changedOrder = updateCharacter((current) => ({
+      ...current,
+      parts: [current.parts[1]!, current.parts[0]!, ...current.parts.slice(2)]
+        .map((part, index) => ({ ...part, drawOrder: index })),
+    }));
+
+    for (const changed of [changedAffine, changedVisibility, changedOrder]) {
+      expect(shotThumbnailFingerprint(changed, changed.shots[0]!)).not.toBe(baseline);
+    }
   });
 
   it.each(['body', 'face'] as const)(

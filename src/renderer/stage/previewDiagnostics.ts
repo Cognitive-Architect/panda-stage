@@ -3,6 +3,8 @@ export interface PreviewDiagnosticSink {
   record(event: string, atMs: number, detail: Record<string, number | string | boolean | null>): void;
   /** Diagnostic-only backing resolution; absent in normal product use. */
   scenePixelRatio?: number;
+  /** Diagnostic-only switch to compare the previous rebuild-on-render path. */
+  forceCompositeCacheRebuild?: boolean;
 }
 
 function sink(): PreviewDiagnosticSink | undefined {
@@ -18,6 +20,10 @@ export function previewDiagnosticNow(): number | null {
 export function previewDiagnosticScenePixelRatio(): number {
   const requested = sink()?.scenePixelRatio;
   return requested === 0.5 || requested === 0.25 ? requested : 1;
+}
+
+export function shouldForceCompositeCacheRebuild(): boolean {
+  return sink()?.forceCompositeCacheRebuild === true;
 }
 
 export function recordPreviewDiagnostic(

@@ -38,7 +38,11 @@ export function upsertExpressionEventAtTime(
 ): Project {
   const { shot, characterId } = selectedCharacterShot(project, shotId, layerId);
   const character = project.characters.find((candidate) => candidate.id === characterId);
-  if (!character?.expressions.some((expression) => expression.id === expressionId)) {
+  if (
+    !character ||
+    character.mode === 'adaptive-parts' ||
+    !character.expressions.some((expression) => expression.id === expressionId)
+  ) {
     throw new Error('所选表情不属于该角色。');
   }
   if (

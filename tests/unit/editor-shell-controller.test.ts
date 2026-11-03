@@ -231,6 +231,41 @@ describe('EditorShell ProjectSessionController ownership', () => {
     expect(harness.update).toHaveBeenCalledTimes(2);
   });
 
+  it('can close a clean stale snapshot without writing it back to autosave', async () => {
+    const harness = createHarness();
+    harness.store.open(
+      'D:\\projects\\shell.pandastage',
+      migrateProject(exampleProject),
+    );
+
+    await expect(harness.session.prepareForNativeClose(
+      harness.store.getSnapshot,
+      { shouldSkipAutosave: (snapshot) => !snapshot.dirty && snapshot.revision < 1 },
+    )).resolves.toBeUndefined();
+
+    expect(harness.update).not.toHaveBeenCalled();
+  });
+
+  it('still synchronizes a dirty stale snapshot when skip is requested', async () => {
+    const harness = createHarness();
+    const project = migrateProject(exampleProject);
+    harness.store.open('D:\\projects\\shell.pandastage', project);
+    harness.store.updateProject({
+      ...project,
+      name: 'Unsaved edit on stale snapshot',
+    });
+
+    await expect(harness.session.prepareForNativeClose(
+      harness.store.getSnapshot,
+      { shouldSkipAutosave: (snapshot) => snapshot.revision < 2 },
+    )).resolves.toBeUndefined();
+
+    expect(harness.update).toHaveBeenCalledWith(expect.objectContaining({
+      dirty: true,
+      revision: 1,
+    }));
+  });
+
   it('acknowledges revisions created while native-close synchronization is in flight', async () => {
     const harness = createHarness();
     const project = migrateProject(exampleProject);
