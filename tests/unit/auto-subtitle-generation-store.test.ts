@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AutoSubtitleGenerationError,
   DialogueService,
   ProjectSchema,
   ShotService,
@@ -74,6 +75,44 @@ function setup() {
 }
 
 describe('DialogueStore auto-subtitle generation', () => {
+  it('rejects a reused audio asset without changing Project, revision, or History', () => {
+    const { editor, store } = setup();
+    const original = editor.getSnapshot()!;
+    const duplicateRows = rows();
+    duplicateRows[1] = {
+      ...duplicateRows[1]!,
+      audioAssetId: duplicateRows[0]!.audioAssetId,
+    };
+
+    let caught: unknown;
+    try {
+      store.generateAutoSubtitles({
+        expectedProjectRoot: original.projectRoot,
+        expectedProject: original.project,
+        expectedProjectId: original.project.id,
+        expectedRevision: original.revision,
+        expectedStartMs: 2_750,
+        shotId: IDS.shot,
+        rows: duplicateRows,
+        extendShotToMs: 6_750,
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(AutoSubtitleGenerationError);
+    expect(caught).toMatchObject({ code: 'AUDIO_REUSED' });
+    expect(editor.getSnapshot()).toMatchObject({
+      project: original.project,
+      revision: original.revision,
+      dirty: false,
+    });
+    expect(editor.history.getSnapshot()).toMatchObject({
+      undoCount: 0,
+      redoCount: 0,
+    });
+  });
+
   it('commits a ten-row batch as one revision and one Undo/Redo command', () => {
     const { editor, store, dialogueSelection, project } = setup();
     const original = editor.getSnapshot()!;
