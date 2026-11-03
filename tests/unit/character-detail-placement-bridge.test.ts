@@ -814,6 +814,33 @@ describe('Adaptive Parts assembly header', () => {
     begun.session.cancel();
   });
 
+  it('renders compact Adaptive Parts camera controls with the actual fit percentage', () => {
+    const project = new CharacterService().createAdaptiveParts(buildProject(), {
+      name: 'Synthetic Camera Controls',
+      sourceRootTransform: adaptivePartsSourceRootTransform(),
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = project.characters.at(-1)!;
+    open(project);
+    const begun = characterAssemblySessionStore.beginAdaptiveParts(character.id);
+    expect(begun.ok).toBe(true);
+    if (!begun.ok) return;
+
+    const markup = renderToStaticMarkup(createElement(CharacterAssemblyWorkbench, {
+      projectSnapshot: editorProjectStore.getSnapshot()!,
+      session: begun.snapshot,
+    }));
+
+    expect(markup).toContain('aria-label="画布缩放"');
+    expect(markup).toContain('data-testid="adaptive-parts-assembly-zoom-out"');
+    expect(markup).toContain('data-testid="adaptive-parts-assembly-zoom-value"');
+    expect(markup).toContain('data-testid="adaptive-parts-assembly-zoom-in"');
+    expect(markup).toContain('data-testid="adaptive-parts-assembly-show-all"');
+    expect(markup).toContain('查看全貌');
+    expect(markup).not.toContain('100%</output>');
+    begun.session.cancel();
+  });
+
   it('reports an actionable error when the Shot join action is unavailable', () => {
     const source = readFileSync(
       'src/renderer/features/characters/CharacterAssemblyWorkbench.tsx',

@@ -653,6 +653,7 @@
           "public/character-empty-angry.png"
         ],
         "testPatterns": [
+          "tests/unit/adaptive-part-hit-testing.test.ts",
           "tests/unit/character-*.test.ts",
           "tests/unit/issue815-talking-head-settings.test.ts",
           "tests/unit/legacy-character-layer-reminder.test.ts",
@@ -662,7 +663,8 @@
           "scripts/verify-day19*",
           "scripts/verify-issue609-character-assembly.cjs",
           "scripts/verify-issue897-c2-adaptive-parts.cjs",
-          "scripts/verify-issue899-c3-v0.cjs"
+          "scripts/verify-issue899-c3-v0.cjs",
+          "scripts/verify-issue963-c3-hit-camera.cjs"
         ],
         "suites": [
           "character"
@@ -965,7 +967,7 @@
       }
     ]
   },
-  "count": 111,
+  "count": 112,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -2262,6 +2264,18 @@
       "owner": "fla-rendering",
       "supersedes": null,
       "notes": "Issue #908 F1-03 Windows Electron proof for Main-owned Character creation from confirmed Part batches, idempotent recovery, formal save/reopen, and existing project History. Source artwork, screenshots, and receipts stay in the external acceptance directory."
+    },
+    {
+      "id": "issue963-c3-hit-camera",
+      "script": "verify:issue963-c3-hit-camera",
+      "suite": "character",
+      "subsystem": "character",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "character",
+      "supersedes": null,
+      "notes": "Issue #963 UX-01/UX-02 Windows Electron proof using a generated two-Part transparent PNG fixture and real-coordinate pointer input. Covers transparent-pixel pass-through, empty clicks, scale handle priority, cursor zoom, Space+left pan, View All, resize and inspector camera retention, and camera isolation from Project/Dirty/History. Does not include the OWNER private FLA smoke or visual acceptance."
     },
     {
       "id": "timeline",

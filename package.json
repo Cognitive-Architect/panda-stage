@@ -67,6 +67,7 @@
     "verify:issue901-ui-a": "pnpm build && electron scripts/verify-issue899-c3-v0.cjs --issue901-ui-a",
     "verify:issue906-f1-02": "pnpm build && electron scripts/fla-f1-02-electron-acceptance.cjs",
     "verify:issue908-f1-03": "pnpm build && electron scripts/fla-f1-03-electron-acceptance.cjs",
+    "verify:issue963-c3-hit-camera": "pnpm build && electron scripts/verify-issue963-c3-hit-camera.cjs",
     "evidence:issue867-fixture": "pnpm build && node scripts/generate-issue867-sample.cjs",
     "docs:export-support-matrix": "node scripts/generate-export-support-matrix.cjs",
     "verify:fla-v1-5-c3": "pnpm build && node scripts/fla-c3-electron-acceptance.cjs",

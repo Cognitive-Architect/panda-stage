@@ -1351,7 +1351,23 @@
 .adaptive-parts-assembly-viewport {
   grid-column: 2;
   grid-row: 2;
+  touch-action: none;
+  cursor: grab;
 }
+
+.adaptive-parts-assembly-viewport:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring);
+  outline-offset: -3px;
+}
+
+.adaptive-parts-assembly-viewport.is-panning {
+  cursor: grabbing;
+}
+
+.adaptive-parts-assembly-viewport .character-assembly-preview-stage {
+  overflow: visible;
+}
+
 .adaptive-parts-assembly-canvas-part {
   position: absolute;
   z-index: 1;
@@ -1363,6 +1379,11 @@
 }
 
 .adaptive-parts-assembly-canvas-part:active { cursor: grabbing; }
+
+.adaptive-parts-assembly-canvas-part:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
 
 .adaptive-parts-assembly-canvas-part.is-selected {
   border-color: transparent;
@@ -1410,12 +1431,15 @@
   min-width: 0;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--ui-space-2);
+  gap: 4px;
   color: var(--ui-color-text-secondary);
   pointer-events: none;
 }
 
 .adaptive-parts-assembly-canvas-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: var(--ui-touch-regular);
   padding: 6px 12px;
   border: 1px solid var(--ui-color-border);
@@ -1426,6 +1450,24 @@
   cursor: pointer;
   pointer-events: auto;
   touch-action: manipulation;
+}
+
+.adaptive-parts-assembly-canvas-toolbar button:not(
+  [data-testid='adaptive-parts-assembly-show-all']
+) {
+  box-sizing: border-box;
+  width: var(--ui-touch-regular);
+  min-width: var(--ui-touch-regular);
+  height: var(--ui-touch-regular);
+  padding: 0;
+}
+
+.adaptive-parts-assembly-zoom-value {
+  min-width: 44px;
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-secondary);
+  text-align: center;
+  user-select: none;
 }
 
 .adaptive-parts-inspector-toggle {
