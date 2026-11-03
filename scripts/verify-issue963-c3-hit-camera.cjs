@@ -662,6 +662,14 @@ async function main() {
     );
     const alphaReadsAtReady = await page(mainWindow, 'window.__issue963ImageDataReads');
 
+    await clickSelector(
+      mainWindow,
+      `[data-testid="adaptive-parts-assembly-row"][data-part-id="${ids.rearPart}"] [data-testid="adaptive-parts-assembly-row-select"]`,
+      'Select the rear Part from the left list',
+    );
+    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${ids.rearPart}"]')?.classList.contains('is-selected')`, 'The left Part list did not select the covered rear Part.');
+    receipt.checks.leftListSelection = { result: 'PASS', selectedPartId: ids.rearPart };
+
     const beforeHitTests = await readEditorState(mainWindow);
     const transparentFrontPoint = await sourcePixelPoint(mainWindow, ids.frontPart, 50.5, 256.5);
     assert(transparentFrontPoint, 'Could not calculate the front sleeve transparent test point.');
@@ -902,6 +910,25 @@ async function main() {
     const scalePointerResult = await page(mainWindow, 'window.__issue963ScalePointerDown');
     assert(frontTransformAfterScaleHandle !== frontTransformBeforeScaleHandle, `The lower-right scale handle did not resize the selected Part: ${JSON.stringify({ scaleHandlePoint, frontTransformBeforeScaleHandle, frontTransformAfterScaleHandle, scalePointerResult })}`);
     receipt.checks.scaleHandlePriority = { result: 'PASS', before: frontTransformBeforeScaleHandle, after: frontTransformAfterScaleHandle };
+
+    const frontPartTransformBeforeCameraDrag = await page(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${ids.frontPart}"]')?.style.transform ?? null`);
+    const editorStateBeforeCameraDrag = await readEditorState(mainWindow);
+    const frontPartCameraDragPoint = await sourcePixelPoint(mainWindow, ids.frontPart, 256.5, 128.5);
+    await pointerDrag(mainWindow, frontPartCameraDragPoint, { x: frontPartCameraDragPoint.x + 18, y: frontPartCameraDragPoint.y + 11 });
+    const frontPartTransformAfterCameraDrag = await page(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${ids.frontPart}"]')?.style.transform ?? null`);
+    const editorStateAfterCameraDrag = await readEditorState(mainWindow);
+    assert(
+      frontPartTransformAfterCameraDrag !== frontPartTransformBeforeCameraDrag &&
+      JSON.stringify(editorStateAfterCameraDrag) === JSON.stringify(editorStateBeforeCameraDrag),
+      `Dragging a Part after zoom and pan did not move the Part draft cleanly: ${JSON.stringify({ frontPartTransformBeforeCameraDrag, frontPartTransformAfterCameraDrag, editorStateBeforeCameraDrag, editorStateAfterCameraDrag })}`,
+    );
+    receipt.checks.dragAfterZoomAndPan = {
+      result: 'PASS',
+      cssPoint: frontPartCameraDragPoint,
+      before: frontPartTransformBeforeCameraDrag,
+      after: frontPartTransformAfterCameraDrag,
+      projectStateUnchangedUntilApply: true,
+    };
     receipt.screenshots.push(await capture(mainWindow, 'ux02-zoom-pan-inspector.png'));
 
     const stateBeforeApply = await readEditorState(mainWindow);
