@@ -688,6 +688,29 @@ async function main() {
     await pointerClick(mainWindow, frontOpaquePoint);
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${ids.frontPart}"]')?.classList.contains('is-selected')`, 'The front opaque sleeve pixel did not select the front sleeve.');
     receipt.checks.frontOpaqueSelection = { result: 'PASS', cssPoint: frontOpaquePoint, selectedPartId: ids.frontPart };
+    const frontOutlineBounds = await page(mainWindow, `(() => {
+      const outline = document.querySelector('[data-testid="adaptive-parts-assembly-selection-outline"][data-part-id="${ids.frontPart}"]');
+      if (!outline) return null;
+      return {
+        left: Number.parseFloat(outline.style.left),
+        top: Number.parseFloat(outline.style.top),
+        width: Number.parseFloat(outline.style.width),
+        height: Number.parseFloat(outline.style.height),
+      };
+    })()`);
+    assert(
+      frontOutlineBounds &&
+      Math.abs(frontOutlineBounds.left - 180) < 0.01 &&
+      Math.abs(frontOutlineBounds.top - 100) < 0.01 &&
+      Math.abs(frontOutlineBounds.width - 152) < 0.01 &&
+      Math.abs(frontOutlineBounds.height - 312) < 0.01,
+      `The front Part selection outline did not follow its Alpha visible bounds: ${JSON.stringify(frontOutlineBounds)}`,
+    );
+    receipt.checks.visibleSelectionOutline = {
+      result: 'PASS',
+      localVisibleRect: frontOutlineBounds,
+      sourceVisibleRect: { x: 180, y: 100, width: 152, height: 312 },
+    };
 
     const rearOpaquePoint = await sourcePixelPoint(mainWindow, ids.rearPart, 460.5, 256.5);
     await pointerClick(mainWindow, rearOpaquePoint);
@@ -878,6 +901,81 @@ async function main() {
       logicalCenterAfter: logicalCenterAfterTimelineResize,
       editorStateUnchanged: true,
     };
+
+    await clickSelector(mainWindow, '[data-testid="adaptive-parts-inspector-toggle"]', 'Open the compact Part inspector for the content-fit check');
+    await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-inspector-fields"]')`, 'Part inspector did not open for the content-fit check.');
+    const editorStateBeforeInspectorFit = await readEditorState(mainWindow);
+    await clickSelector(mainWindow, '[data-testid="adaptive-parts-assembly-show-all"]', 'View all visible parts with the inspector open');
+    const inspectorAwareFit = await page(mainWindow, `(() => {
+      const viewport = document.querySelector('[data-testid="adaptive-parts-assembly-canvas"]');
+      const stage = viewport?.querySelector('.character-assembly-preview-stage');
+      const inspector = document.querySelector('.adaptive-parts-assembly-inspector');
+      if (!viewport || !stage || !inspector) return null;
+      const stageRect = stage.getBoundingClientRect();
+      const viewportRect = viewport.getBoundingClientRect();
+      const inspectorRect = inspector.getBoundingClientRect();
+      const scale = stageRect.width / 1920;
+      const sourceBounds = [
+        { id: ${JSON.stringify(ids.rearPart)}, x: 20, y: 204, width: 472, height: 104 },
+        { id: ${JSON.stringify(ids.frontPart)}, x: 180, y: 100, width: 152, height: 312 },
+      ];
+      const points = sourceBounds.flatMap((bounds) => {
+        const part = viewport.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="' + bounds.id + '"]');
+        if (!part) return [];
+        const matrix = new DOMMatrix(part.style.transform);
+        return [
+          [bounds.x, bounds.y],
+          [bounds.x + bounds.width, bounds.y],
+          [bounds.x, bounds.y + bounds.height],
+          [bounds.x + bounds.width, bounds.y + bounds.height],
+        ].map(([x, y]) => {
+          const point = matrix.transformPoint(new DOMPoint(x, y));
+          return { x: stageRect.left + point.x * scale, y: stageRect.top + point.y * scale };
+        });
+      });
+      if (points.length !== 8) return null;
+      const visibleBounds = {
+        left: Math.min(...points.map((point) => point.x)),
+        top: Math.min(...points.map((point) => point.y)),
+        right: Math.max(...points.map((point) => point.x)),
+        bottom: Math.max(...points.map((point) => point.y)),
+      };
+      return {
+        visibleBounds,
+        viewport: {
+          left: viewportRect.left + viewport.clientLeft,
+          top: viewportRect.top + viewport.clientTop,
+          right: viewportRect.left + viewport.clientLeft + viewport.clientWidth,
+          bottom: viewportRect.top + viewport.clientTop + viewport.clientHeight,
+        },
+        inspector: { left: inspectorRect.left, top: inspectorRect.top, right: inspectorRect.right, bottom: inspectorRect.bottom },
+      };
+    })()`);
+    assert(inspectorAwareFit, 'Could not calculate visible Part bounds with the expanded inspector.');
+    const fittedVisible = inspectorAwareFit.visibleBounds;
+    const fitViewport = inspectorAwareFit.viewport;
+    const inspectorRect = inspectorAwareFit.inspector;
+    const inspectorOverlapWidth = Math.max(0, Math.min(fittedVisible.right, inspectorRect.right) - Math.max(fittedVisible.left, inspectorRect.left));
+    const inspectorOverlapHeight = Math.max(0, Math.min(fittedVisible.bottom, inspectorRect.bottom) - Math.max(fittedVisible.top, inspectorRect.top));
+    assert(
+      fittedVisible.left >= fitViewport.left - 1 &&
+      fittedVisible.top >= fitViewport.top - 1 &&
+      fittedVisible.right <= fitViewport.right + 1 &&
+      fittedVisible.bottom <= fitViewport.bottom + 1 &&
+      !(inspectorOverlapWidth > 1 && inspectorOverlapHeight > 1),
+      `View All left visible Part content under the expanded inspector or outside the viewport: ${JSON.stringify(inspectorAwareFit)}`,
+    );
+    const editorStateAfterInspectorFit = await readEditorState(mainWindow);
+    assert(
+      JSON.stringify(editorStateAfterInspectorFit) === JSON.stringify(editorStateBeforeInspectorFit),
+      'View All with the expanded inspector changed Project, Dirty, or History.',
+    );
+    receipt.checks.viewAllAvoidsExpandedInspector = {
+      result: 'PASS',
+      inspectorAwareFit,
+      editorStateUnchanged: true,
+    };
+    await clickSelector(mainWindow, '[data-testid="adaptive-parts-inspector-close"]', 'Close the compact Part inspector after the content-fit check');
 
     await clickSelector(mainWindow, '[data-testid="adaptive-parts-assembly-zoom-out"]', 'Move the selected Part away from the viewport edge');
     await clickSelector(mainWindow, '[data-testid="adaptive-parts-assembly-zoom-out"]', 'Keep the scale handle inside the viewport');

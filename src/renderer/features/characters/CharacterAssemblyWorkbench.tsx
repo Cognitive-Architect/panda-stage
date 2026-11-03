@@ -199,7 +199,7 @@ function measureImageVisibleBounds(
 
 function assemblyViewportFitArea(
   viewport: HTMLDivElement,
-  fineTunePanel: HTMLDivElement | null,
+  fineTunePanel: HTMLElement | null,
 ): AssemblyViewportRect {
   const container = {
     width: viewport.clientWidth,
@@ -911,6 +911,16 @@ function AdaptivePartsAssemblyWorkbench({
   const selectedCanvasMatrix = selectedCanvasTransform
     ? `matrix(${selectedCanvasTransform.a}, ${selectedCanvasTransform.b}, ${selectedCanvasTransform.c}, ${selectedCanvasTransform.d}, ${project.width / 2 + selectedCanvasTransform.tx}, ${project.height / 2 + selectedCanvasTransform.ty})`
     : null;
+  const selectedCanvasAlphaHitMap = selectedCanvasPart
+    ? alphaHitMapsByAssetId.get(selectedCanvasPart.assetId)
+    : null;
+  const selectedCanvasOutlineRect =
+    selectedCanvasPart && selectedCanvasAlphaHitMap?.mode === 'alpha'
+      ? visibleImageRect(
+          selectedCanvasPart.localRect,
+          selectedCanvasAlphaHitMap.visibleBounds,
+        )
+      : null;
   const rows = [...session.draft.parts].sort(
     (left, right) => right.drawOrder - left.drawOrder,
   );
@@ -1591,7 +1601,7 @@ function AdaptivePartsAssemblyWorkbench({
           container,
           { width: project.width, height: project.height },
           bounds,
-          { x: 0, y: 0, ...container },
+          assemblyViewportFitArea(viewport, inspectorRef.current),
         )
       : calculateViewportTransform(
           container,
@@ -1812,18 +1822,18 @@ function AdaptivePartsAssemblyWorkbench({
                 </div>
               );
             })}
-          {selectedCanvasPart && selectedCanvasImage && selectedCanvasMatrix ? (
+          {selectedCanvasPart && selectedCanvasImage && selectedCanvasMatrix && selectedCanvasOutlineRect ? (
             <div
               className="adaptive-parts-assembly-selection-outline"
               data-part-id={selectedCanvasPart.source.kind === 'adaptive-part' ? selectedCanvasPart.source.characterPartId : undefined}
               data-testid="adaptive-parts-assembly-selection-outline"
               style={{
-                height: selectedCanvasPart.localRect.height,
-                left: 0,
-                top: 0,
+                height: selectedCanvasOutlineRect.height,
+                left: selectedCanvasOutlineRect.x,
+                top: selectedCanvasOutlineRect.y,
                 transform: selectedCanvasMatrix,
                 transformOrigin: 'top left',
-                width: selectedCanvasPart.localRect.width,
+                width: selectedCanvasOutlineRect.width,
               }}
             >
               <button
