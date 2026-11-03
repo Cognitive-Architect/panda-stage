@@ -202,6 +202,28 @@ export function getLayerBackgroundControlModel(
   };
 }
 
+export function shouldShowLayerBackgroundControls(
+  snapshot: EditorProjectSnapshot | null,
+  currentShotId: string | null,
+  selectedLayerId: string | null,
+): boolean {
+  if (!selectedLayerId) return true;
+  const shot = snapshot?.project.shots.find(
+    (candidate) => candidate.id === currentShotId,
+  );
+  if (!shot) return true;
+  const layer = shot.layers.find(
+    (candidate) => candidate.id === selectedLayerId,
+  );
+  if (!layer) return true;
+  if (shot.backgroundLayerId === layer.id) return true;
+  if (layer.source.kind !== 'asset') return false;
+  const assetId = layer.source.assetId;
+  return snapshot?.project.assets.some(
+    (asset) => asset.id === assetId && asset.kind === 'image',
+  ) ?? false;
+}
+
 /**
  * Keep the accepted landscape Appearance surface quiet in its normal state,
  * while retaining a short, actionable explanation for constrained states.
@@ -252,6 +274,11 @@ export function LayerBackgroundControl({
     selectionStore.getSelectedLayerId,
   );
   const model = getLayerBackgroundControlModel(
+    snapshot,
+    currentShotId,
+    selectedLayerId,
+  );
+  const showBackgroundControls = shouldShowLayerBackgroundControls(
     snapshot,
     currentShotId,
     selectedLayerId,
@@ -372,98 +399,102 @@ export function LayerBackgroundControl({
             className="layer-appearance-object-group"
             data-testid="layer-object-appearance"
           >
-            <div className="layer-appearance-group-heading">
-              <h3>对象外观</h3>
-            </div>
+            {showBackgroundControls ? (
+              <div className="layer-appearance-group-heading">
+                <h3>对象外观</h3>
+              </div>
+            ) : null}
             {transformController?.layer ? (
               <LayerOpacityControl controller={transformController} />
             ) : (
               <p className="layer-appearance-empty">请先在画布中选择一个对象。</p>
             )}
           </div>
-          <div
-            className="layer-canvas-background-group"
-            data-testid="layer-canvas-background"
-          >
-            <div className="layer-background-subgroup-heading">
-              <h3>画布背景</h3>
-            </div>
+          {showBackgroundControls ? (
             <div
-              className="layer-background-current-state"
-              data-testid="current-background-state"
+              className="layer-canvas-background-group"
+              data-testid="layer-canvas-background"
             >
-              <span>当前背景</span>
-              <strong data-testid="current-background-name">
-                {model.backgroundLayer?.name ?? '未设置'}
-              </strong>
-            </div>
-            {landscapeGuidance ? (
-              <p data-testid="layer-background-guidance">
-                {landscapeGuidance}
-              </p>
-            ) : null}
-            {model.canSelect || model.canSet || model.canClear || model.canFill ? (
-              <div className="layer-background-actions">
-                {model.canSet ? (
-                  <button
-                    aria-label="将选择的图层设为当前镜头背景"
-                    className="layer-background-primary"
-                    data-testid="set-current-shot-background"
-                    onClick={setAsBackground}
-                    type="button"
-                  >
-                    <span className="ui-icon-label">
-                      <DecorativeIcon icon={ImagePlus} size={16} />
-                      <span>设为背景</span>
-                    </span>
-                  </button>
-                ) : null}
-                {model.canSelect ? (
-                  <button
-                    aria-label="选择当前镜头背景"
-                    data-testid="select-current-shot-background"
-                    onClick={selectBackground}
-                    type="button"
-                  >
-                    <span className="ui-icon-label">
-                      <DecorativeIcon icon={Image} size={16} />
-                      <span>
-                        {model.state === 'background'
-                          ? '已选择背景'
-                          : '选择当前背景'}
-                      </span>
-                    </span>
-                  </button>
-                ) : null}
-                {model.canFill ? (
-                  <button
-                    aria-label="将当前镜头背景填充到画布"
-                    data-testid="fill-current-shot-background"
-                    onClick={fillBackground}
-                    type="button"
-                  >
-                    <span className="ui-icon-label">
-                      <DecorativeIcon icon={Scan} size={16} />
-                      <span>填充画布</span>
-                    </span>
-                  </button>
-                ) : null}
-                {model.canClear ? (
-                  <button
-                    aria-label="清除当前镜头背景标识"
-                    data-testid="clear-current-shot-background"
-                    onClick={clearBackground}
-                    type="button"
-                  >
-                    <span className="ui-icon-label">
-                      <DecorativeIcon icon={CircleOff} size={16} />
-                      <span>清除背景</span>
-                    </span>
-                  </button>
-                ) : null}
+              <div className="layer-background-subgroup-heading">
+                <h3>画布背景</h3>
               </div>
-            ) : null}
-          </div>
+              <div
+                className="layer-background-current-state"
+                data-testid="current-background-state"
+              >
+                <span>当前背景</span>
+                <strong data-testid="current-background-name">
+                  {model.backgroundLayer?.name ?? '未设置'}
+                </strong>
+              </div>
+              {landscapeGuidance ? (
+                <p data-testid="layer-background-guidance">
+                  {landscapeGuidance}
+                </p>
+              ) : null}
+              {model.canSelect || model.canSet || model.canClear || model.canFill ? (
+                <div className="layer-background-actions">
+                  {model.canSet ? (
+                    <button
+                      aria-label="将选择的图层设为当前镜头背景"
+                      className="layer-background-primary"
+                      data-testid="set-current-shot-background"
+                      onClick={setAsBackground}
+                      type="button"
+                    >
+                      <span className="ui-icon-label">
+                        <DecorativeIcon icon={ImagePlus} size={16} />
+                        <span>设为背景</span>
+                      </span>
+                    </button>
+                  ) : null}
+                  {model.canSelect ? (
+                    <button
+                      aria-label="选择当前镜头背景"
+                      data-testid="select-current-shot-background"
+                      onClick={selectBackground}
+                      type="button"
+                    >
+                      <span className="ui-icon-label">
+                        <DecorativeIcon icon={Image} size={16} />
+                        <span>
+                          {model.state === 'background'
+                            ? '已选择背景'
+                            : '选择当前背景'}
+                        </span>
+                      </span>
+                    </button>
+                  ) : null}
+                  {model.canFill ? (
+                    <button
+                      aria-label="将当前镜头背景填充到画布"
+                      data-testid="fill-current-shot-background"
+                      onClick={fillBackground}
+                      type="button"
+                    >
+                      <span className="ui-icon-label">
+                        <DecorativeIcon icon={Scan} size={16} />
+                        <span>填充画布</span>
+                      </span>
+                    </button>
+                  ) : null}
+                  {model.canClear ? (
+                    <button
+                      aria-label="清除当前镜头背景标识"
+                      data-testid="clear-current-shot-background"
+                      onClick={clearBackground}
+                      type="button"
+                    >
+                      <span className="ui-icon-label">
+                        <DecorativeIcon icon={CircleOff} size={16} />
+                        <span>清除背景</span>
+                      </span>
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </>
       ) : compact ? (
         <>
@@ -471,83 +502,87 @@ export function LayerBackgroundControl({
             className="layer-appearance-object-group"
             data-testid="layer-object-appearance"
           >
-            <div className="layer-appearance-group-heading">
-              <h3>对象外观</h3>
-            </div>
+            {showBackgroundControls ? (
+              <div className="layer-appearance-group-heading">
+                <h3>对象外观</h3>
+              </div>
+            ) : null}
             {transformController?.layer ? (
               <LayerOpacityControl controller={transformController} />
             ) : (
               <p className="layer-appearance-empty">请先在画布中选择一个对象。</p>
             )}
           </div>
-          <div
-            className="layer-canvas-background-group"
-            data-testid="layer-canvas-background"
-          >
-            <div className="layer-background-subgroup-heading">
-              <h3>画布背景</h3>
-              <p>为当前镜头选择或更换正式背景。</p>
-            </div>
-            <strong data-testid="current-background-name">
-              {model.backgroundLayer?.name ?? '未设置'}
-            </strong>
-            <div className="layer-background-actions">
-              <button
-                aria-label="选择当前镜头背景"
-                data-testid="select-current-shot-background"
-                disabled={!model.canSelect}
-                onClick={selectBackground}
-                type="button"
-              >
-                <span className="ui-icon-label">
-                  <DecorativeIcon icon={Image} size={16} />
-                  <span>
-                    {model.state === 'background' ? '已选择背景' : '选择背景'}
+          {showBackgroundControls ? (
+            <div
+              className="layer-canvas-background-group"
+              data-testid="layer-canvas-background"
+            >
+              <div className="layer-background-subgroup-heading">
+                <h3>画布背景</h3>
+                <p>为当前镜头选择或更换正式背景。</p>
+              </div>
+              <strong data-testid="current-background-name">
+                {model.backgroundLayer?.name ?? '未设置'}
+              </strong>
+              <div className="layer-background-actions">
+                <button
+                  aria-label="选择当前镜头背景"
+                  data-testid="select-current-shot-background"
+                  disabled={!model.canSelect}
+                  onClick={selectBackground}
+                  type="button"
+                >
+                  <span className="ui-icon-label">
+                    <DecorativeIcon icon={Image} size={16} />
+                    <span>
+                      {model.state === 'background' ? '已选择背景' : '选择背景'}
+                    </span>
                   </span>
-                </span>
-              </button>
-              <button
-                aria-label="将选择的图层设为当前镜头背景"
-                className="layer-background-primary"
-                data-testid="set-current-shot-background"
-                disabled={!model.canSet}
-                onClick={setAsBackground}
-                type="button"
-              >
-                <span className="ui-icon-label">
-                  <DecorativeIcon icon={ImagePlus} size={16} />
-                  <span>设为背景</span>
-                </span>
-              </button>
-              <button
-                aria-label="清除当前镜头背景标识"
-                data-testid="clear-current-shot-background"
-                disabled={!model.canClear}
-                onClick={clearBackground}
-                type="button"
-              >
-                <span className="ui-icon-label">
-                  <DecorativeIcon icon={CircleOff} size={16} />
-                  <span>清除背景</span>
-                </span>
-              </button>
-              <button
-                aria-label="将当前镜头背景填充到画布"
-                data-testid="fill-current-shot-background"
-                disabled={!model.canFill}
-                onClick={fillBackground}
-                type="button"
-              >
-                <span className="ui-icon-label">
-                  <DecorativeIcon icon={Scan} size={16} />
-                  <span>填充画布</span>
-                </span>
-              </button>
+                </button>
+                <button
+                  aria-label="将选择的图层设为当前镜头背景"
+                  className="layer-background-primary"
+                  data-testid="set-current-shot-background"
+                  disabled={!model.canSet}
+                  onClick={setAsBackground}
+                  type="button"
+                >
+                  <span className="ui-icon-label">
+                    <DecorativeIcon icon={ImagePlus} size={16} />
+                    <span>设为背景</span>
+                  </span>
+                </button>
+                <button
+                  aria-label="清除当前镜头背景标识"
+                  data-testid="clear-current-shot-background"
+                  disabled={!model.canClear}
+                  onClick={clearBackground}
+                  type="button"
+                >
+                  <span className="ui-icon-label">
+                    <DecorativeIcon icon={CircleOff} size={16} />
+                    <span>清除背景</span>
+                  </span>
+                </button>
+                <button
+                  aria-label="将当前镜头背景填充到画布"
+                  data-testid="fill-current-shot-background"
+                  disabled={!model.canFill}
+                  onClick={fillBackground}
+                  type="button"
+                >
+                  <span className="ui-icon-label">
+                    <DecorativeIcon icon={Scan} size={16} />
+                    <span>填充画布</span>
+                  </span>
+                </button>
+              </div>
+              <p data-testid="layer-background-guidance">
+                {status || model.message}
+              </p>
             </div>
-            <p data-testid="layer-background-guidance">
-              {status || model.message}
-            </p>
-          </div>
+          ) : null}
         </>
       ) : (
         <>

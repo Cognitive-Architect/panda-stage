@@ -26,10 +26,19 @@ const AudioDropPayloadSchema = z
   })
   .strict();
 
+const AnimationDropPayloadSchema = z
+  .object({
+    version: z.literal(3),
+    type: z.literal('animation'),
+    animationId: z.uuid(),
+  })
+  .strict();
+
 export const AssetDropPayloadSchema = z.discriminatedUnion('type', [
   AssetImageDropPayloadSchema,
   CharacterExpressionDropPayloadSchema,
   AudioDropPayloadSchema,
+  AnimationDropPayloadSchema,
 ]);
 
 export type AssetDropPayload = z.infer<

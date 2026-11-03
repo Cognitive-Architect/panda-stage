@@ -286,7 +286,6 @@ describe('Adaptive Parts Character C1 model', () => {
 
     const migrated = migrateProject(version14);
     expect(migrated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
-    expect(migrated.schemaVersion).toBe(15);
     expect(migrated.characters).toEqual(version14.characters);
     expect(() => migrateProject({ ...version14, unknownFutureField: true })).toThrow();
 

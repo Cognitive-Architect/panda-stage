@@ -538,13 +538,14 @@ export function ProductPreviewOverlay({
   );
   const caption = activeCue?.text ?? null;
   const captionStyle = resolveProductPreviewSubtitleStyle(project, activeCue);
-  const imagePlan = useMemo(
+  const imagePlan = useMemo<ReturnType<typeof buildProductPreviewImagePlan>>(
     () => {
       if (!shot || !renderedShot) {
         return {
           requiredAssetIds: [],
           fallbackAssetIds: [],
           candidateAssetIds: assetIds,
+            recentAnimationAssetIds: [],
           mouthFallbacks: [],
         };
       }

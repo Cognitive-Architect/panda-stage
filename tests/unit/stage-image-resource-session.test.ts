@@ -9,6 +9,9 @@ import {
 import {
   buildStageImageSourceKey,
   isStageFrameReady,
+  MAX_IN_FLIGHT_STAGE_PREWARM_DECODES,
+  MAX_QUEUED_STAGE_PREWARM_SOURCES,
+  MAX_RETAINED_STAGE_BYTES,
   MAX_RETAINED_STAGE_SOURCES,
   StageImageResourceSession,
   type StageImageResourceState,
@@ -22,6 +25,8 @@ interface FakeImage {
   onload: ((event: Event) => unknown) | null;
   onerror: ((event: Event | string) => unknown) | null;
   src: string;
+  naturalWidth: number;
+  naturalHeight: number;
   succeed(): void;
   fail(): void;
 }
@@ -32,12 +37,19 @@ const CHARACTER_BODY = 'character-layer:body';
 const CHARACTER_HEAD = 'character-layer:head';
 const CHARACTER_FACE = 'character-layer:face';
 
-function createFakeImage(): FakeImage {
+function createFakeImage(
+  getDimensions: (sourceUrl: string) => { width: number; height: number },
+): FakeImage {
   return {
     onload: null,
     onerror: null,
     src: '',
+    naturalWidth: 1,
+    naturalHeight: 1,
     succeed() {
+      const dimensions = getDimensions(this.src);
+      this.naturalWidth = dimensions.width;
+      this.naturalHeight = dimensions.height;
       this.onload?.({} as Event);
     },
     fail() {
@@ -46,7 +58,10 @@ function createFakeImage(): FakeImage {
   };
 }
 
-function createHarness(): {
+function createHarness(
+  getDimensions: (sourceUrl: string) => { width: number; height: number } = () =>
+    ({ width: 1, height: 1 }),
+): {
   session: StageImageResourceSession;
   images: FakeImage[];
   states: StageImageResourceState[];
@@ -55,7 +70,7 @@ function createHarness(): {
   const states: StageImageResourceState[] = [];
   const session = new StageImageResourceSession({
     createImage: () => {
-      const image = createFakeImage();
+      const image = createFakeImage(getDimensions);
       images.push(image);
       return image as unknown as HTMLImageElement;
     },
@@ -65,10 +80,16 @@ function createHarness(): {
 
 function reconcile(
   harness: ReturnType<typeof createHarness>,
-  layers: Array<{ id: string; sourceUrl: string; assetId?: string }>,
+  layers: Array<{
+    id: string;
+    sourceUrl: string;
+    assetId?: string;
+    projectId?: string;
+    sha256?: string;
+  }>,
 ): void {
   harness.session.reconcile(
-    layers.map((layer) => ({ ...layer, assetId: layer.assetId ?? layer.id })),
+    layers.map((layer) => ({ ...layer })),
     (state) => {
     harness.states.push(state);
     },
@@ -300,6 +321,280 @@ describe('StageImageResourceSession', () => {
     );
   });
 
+  it('shares one trusted decoded source across Stage parts without coupling their instances', () => {
+    const harness = createHarness();
+    const shared = {
+      assetId: 'asset-shared',
+      projectId: 'project-a',
+      sha256: 'a'.repeat(64),
+      sourceUrl: 'blob:shared-image',
+    };
+
+    reconcile(harness, [
+      { id: 'instance-left', ...shared },
+      { id: 'instance-right', ...shared },
+    ]);
+
+    expect(harness.images).toHaveLength(1);
+    harness.images[0]!.succeed();
+    const committed = harness.session.getSnapshot();
+    expect(committed.ready).toBe(true);
+    expect(committed.images.get('instance-left')).toBe(harness.images[0]);
+    expect(committed.images.get('instance-right')).toBe(harness.images[0]);
+
+    reconcile(harness, [{ id: 'instance-right', ...shared }]);
+    expect(harness.images).toHaveLength(1);
+    expect(harness.session.getSnapshot().images.get('instance-right')).toBe(
+      harness.images[0],
+    );
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    harness.session.dispose();
+  });
+
+  it('decodes upcoming sources within bounds and adopts the warm image when required', () => {
+    const harness = createHarness();
+    const sources = Array.from({ length: 5 }, (_, index) => ({
+      id: `prewarm-part-${index}`,
+      assetId: `prewarm-asset-${index}`,
+      projectId: 'project-prewarm',
+      sha256: String(index + 1).padStart(64, '0'),
+      sourceUrl: `blob:prewarm-${index}`,
+    }));
+
+    harness.session.prewarm(sources);
+
+    expect(harness.images).toHaveLength(MAX_IN_FLIGHT_STAGE_PREWARM_DECODES);
+    expect(harness.session.getDiagnostics()).toMatchObject({
+      prewarmQueuedCount: sources.length - MAX_IN_FLIGHT_STAGE_PREWARM_DECODES,
+      prewarmInFlightCount: MAX_IN_FLIGHT_STAGE_PREWARM_DECODES,
+      prewarmInFlightPeak: MAX_IN_FLIGHT_STAGE_PREWARM_DECODES,
+    });
+
+    while (harness.images.some((image) => image.onload !== null)) {
+      harness.images.find((image) => image.onload !== null)!.succeed();
+    }
+
+    expect(harness.images).toHaveLength(sources.length);
+    expect(harness.session.getDiagnostics()).toMatchObject({
+      retainedEntries: sources.length,
+      retainedBytes: sources.length * 4,
+    });
+
+    const warmSource = sources[3]!;
+    const currentSource = { ...warmSource, id: 'current-part' };
+    reconcile(harness, [currentSource]);
+    const state = harness.session.getSnapshot();
+    expect(harness.images).toHaveLength(sources.length);
+    expect(state.ready).toBe(true);
+    expect(state.images.get(currentSource.id)).toBe(
+      harness.images.find((image) => image.src === warmSource.sourceUrl),
+    );
+    expect(
+      isStageFrameReady({
+        error: state.error,
+        hasModel: true,
+        imageState: state,
+        layerCount: 1,
+        sourceKey: buildStageImageSourceKey([currentSource]),
+      }),
+    ).toBe(true);
+    expect(harness.session.getDiagnostics().cacheHits).toBeGreaterThan(0);
+    harness.session.dispose();
+  });
+
+  it('keeps optional decode failures advisory and retries if that source becomes required', () => {
+    const harness = createHarness();
+    const source = {
+      id: 'prewarm-failure',
+      assetId: 'asset-prewarm-failure',
+      projectId: 'project-prewarm',
+      sha256: 'e'.repeat(64),
+      sourceUrl: 'blob:prewarm-failure',
+    };
+
+    harness.session.prewarm([source]);
+    harness.images[0]!.fail();
+
+    expect(harness.session.getSnapshot()).toMatchObject({
+      error: null,
+      failures: [],
+      optionalFailures: [{ assetId: source.assetId, reason: 'decode' }],
+    });
+
+    const currentSource = { ...source, id: 'required-part' };
+    reconcile(harness, [currentSource]);
+    expect(harness.images).toHaveLength(2);
+    expect(harness.session.getSnapshot().optionalFailures).toEqual([]);
+    expect(harness.session.getSnapshot().ready).toBe(false);
+
+    harness.images[1]!.fail();
+    expect(harness.session.getSnapshot().error).toBeInstanceOf(Error);
+    expect(harness.session.getSnapshot().failures).toMatchObject([
+      { assetId: source.assetId, partId: currentSource.id, reason: 'decode' },
+    ]);
+    harness.session.dispose();
+  });
+
+  it('caps the optional decode queue and promotes a queued current source immediately', () => {
+    const harness = createHarness();
+    const sources = Array.from({ length: MAX_QUEUED_STAGE_PREWARM_SOURCES + 8 }, (_, index) => ({
+      id: `prewarm-part-${index}`,
+      assetId: `prewarm-asset-${index}`,
+      projectId: 'project-queue',
+      sha256: (index + 100).toString(16).padStart(64, '0'),
+      sourceUrl: `blob:queue-${index}`,
+    }));
+
+    harness.session.prewarm(sources);
+    expect(harness.session.getDiagnostics()).toMatchObject({
+      prewarmQueuedCount:
+        MAX_QUEUED_STAGE_PREWARM_SOURCES -
+        MAX_IN_FLIGHT_STAGE_PREWARM_DECODES,
+      prewarmQueuePeak: MAX_QUEUED_STAGE_PREWARM_SOURCES,
+      prewarmInFlightCount: MAX_IN_FLIGHT_STAGE_PREWARM_DECODES,
+    });
+
+    const promotedSource = { ...sources[2]!, id: 'required-now' };
+    reconcile(harness, [promotedSource]);
+    expect(harness.images).toHaveLength(MAX_IN_FLIGHT_STAGE_PREWARM_DECODES + 1);
+    expect(harness.session.getSnapshot().ready).toBe(false);
+    harness.images[2]!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    expect(harness.session.getSnapshot().images.get(promotedSource.id)).toBe(
+      harness.images[2],
+    );
+    expect(harness.session.getDiagnostics().prewarmInFlightCount).toBe(
+      MAX_IN_FLIGHT_STAGE_PREWARM_DECODES,
+    );
+    harness.session.dispose();
+  });
+
+  it('deduplicates an in-flight decode and keeps it alive while any instance still needs it', () => {
+    const harness = createHarness();
+    const shared = {
+      assetId: 'asset-shared',
+      projectId: 'project-a',
+      sha256: 'b'.repeat(64),
+      sourceUrl: 'blob:shared-pending',
+    };
+    reconcile(harness, [
+      { id: 'instance-left', ...shared },
+      { id: 'instance-right', ...shared },
+    ]);
+    reconcile(harness, [{ id: 'instance-right', ...shared }]);
+
+    expect(harness.images).toHaveLength(1);
+    expect(harness.images[0]!.src).toBe('blob:shared-pending');
+    harness.images[0]!.succeed();
+
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    expect(harness.session.getSnapshot().images.get('instance-right')).toBe(
+      harness.images[0],
+    );
+    harness.session.dispose();
+  });
+
+  it('fails closed when project or immutable content identity differs or is missing', () => {
+    const harness = createHarness();
+    const sourceUrl = 'blob:same-url';
+    reconcile(harness, [
+      {
+        id: 'project-a-instance',
+        projectId: 'project-a',
+        assetId: 'asset-shared',
+        sha256: 'c'.repeat(64),
+        sourceUrl,
+      },
+      {
+        id: 'project-b-instance',
+        projectId: 'project-b',
+        assetId: 'asset-shared',
+        sha256: 'c'.repeat(64),
+        sourceUrl,
+      },
+      {
+        id: 'unverified-instance-a',
+        projectId: 'project-a',
+        assetId: 'unverified-asset',
+        sourceUrl,
+      },
+      {
+        id: 'unverified-instance-b',
+        projectId: 'project-a',
+        assetId: 'unverified-asset',
+        sourceUrl,
+      },
+      {
+        id: 'invalid-version-instance-a',
+        projectId: 'project-a',
+        assetId: 'invalid-version-asset',
+        sha256: 'not-a-sha256',
+        sourceUrl,
+      },
+      {
+        id: 'invalid-version-instance-b',
+        projectId: 'project-a',
+        assetId: 'invalid-version-asset',
+        sha256: 'not-a-sha256',
+        sourceUrl,
+      },
+      {
+        id: 'different-version-instance',
+        projectId: 'project-a',
+        assetId: 'asset-shared',
+        sha256: 'd'.repeat(64),
+        sourceUrl,
+      },
+    ]);
+
+    expect(harness.images).toHaveLength(7);
+    harness.images.forEach((image) => image.succeed());
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    expect(
+      new Set(harness.session.getSnapshot().images.values()).size,
+    ).toBe(7);
+    harness.session.dispose();
+  });
+
+  it('counts a shared decoded image once against the retained byte budget', () => {
+    const harness = createHarness((sourceUrl) =>
+      sourceUrl.startsWith('large-')
+        ? { width: 4096, height: 2048 }
+        : { width: 1, height: 1 },
+    );
+    const sources = (index: number) => {
+      const shared = {
+        assetId: `asset-${index}`,
+        projectId: 'project-a',
+        sha256: String(index).padStart(64, '0'),
+        sourceUrl: `large-${index}`,
+      };
+      return [
+        { id: 'instance-left', ...shared },
+        { id: 'instance-right', ...shared },
+      ];
+    };
+
+    for (let index = 0; index < 4; index += 1) {
+      reconcile(harness, sources(index));
+      expect(harness.images).toHaveLength(index + 1);
+      harness.images.at(-1)!.succeed();
+      expect(harness.session.getSnapshot().ready).toBe(true);
+    }
+
+    const countBeforeRetainedReturn = harness.images.length;
+    reconcile(harness, sources(2));
+    expect(harness.images).toHaveLength(countBeforeRetainedReturn);
+    expect(harness.session.getSnapshot().ready).toBe(true);
+
+    const countBeforeEvictedReturn = harness.images.length;
+    reconcile(harness, sources(0));
+    expect(harness.images).toHaveLength(countBeforeEvictedReturn + 1);
+    harness.images.at(-1)!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    harness.session.dispose();
+  });
+
   it('keeps source A committed while source B is pending, then replaces it atomically', () => {
     const harness = createHarness();
 
@@ -437,7 +732,7 @@ describe('StageImageResourceSession', () => {
     expect(state.images.get('B:body')).toBe(harness.images[2]);
   });
 
-  it('keeps only a finite number of superseded decoded sources', () => {
+  it('keeps only the configured number of superseded decoded sources', () => {
     const harness = createHarness();
     for (let index = 0; index <= MAX_RETAINED_STAGE_SOURCES + 1; index += 1) {
       reconcile(harness, [{ id: LAYER_A, sourceUrl: `source-${index}` }]);
@@ -445,13 +740,152 @@ describe('StageImageResourceSession', () => {
       expect(harness.session.getSnapshot().ready).toBe(true);
     }
     const countBeforeReturn = harness.images.length;
+    reconcile(harness, [{ id: LAYER_A, sourceUrl: 'source-1' }]);
+    expect(harness.images).toHaveLength(countBeforeReturn);
+    expect(harness.session.getSnapshot().ready).toBe(true);
+
+    const countBeforeEvictedReturn = harness.images.length;
     reconcile(harness, [{ id: LAYER_A, sourceUrl: 'source-0' }]);
-    expect(harness.images).toHaveLength(countBeforeReturn + 1);
+    expect(harness.images).toHaveLength(countBeforeEvictedReturn + 1);
     expect(harness.session.getSnapshot().ready).toBe(false);
     harness.images.at(-1)!.succeed();
     expect(harness.session.getSnapshot().ready).toBe(true);
     harness.session.dispose();
     expect(harness.session.getSnapshot().images.size).toBe(0);
+  });
+
+  it('reuses 21 distinct synthetic animation frames for three complete loops', () => {
+    const harness = createHarness();
+    const sources = Array.from(
+      { length: 21 },
+      (_, index) => `synthetic-frame-${index}`,
+    );
+    const firstLoopImages = new Map<string, FakeImage>();
+    const newImagesPerLoop: number[] = [];
+
+    for (let loop = 0; loop < 3; loop += 1) {
+      const imagesBeforeLoop = harness.images.length;
+      for (const sourceUrl of sources) {
+        reconcile(harness, [{ id: LAYER_A, sourceUrl }]);
+        let state = harness.session.getSnapshot();
+        if (!state.ready) {
+          harness.images.at(-1)!.succeed();
+          state = harness.session.getSnapshot();
+        }
+
+        expect(state.ready).toBe(true);
+        expect(state.desiredSourceUrls.get(LAYER_A)).toBe(sourceUrl);
+        expect(state.sourceUrls.get(LAYER_A)).toBe(sourceUrl);
+        const image = state.images.get(LAYER_A) as unknown as FakeImage;
+        if (loop === 0) firstLoopImages.set(sourceUrl, image);
+        else expect(image).toBe(firstLoopImages.get(sourceUrl));
+      }
+      newImagesPerLoop.push(harness.images.length - imagesBeforeLoop);
+    }
+
+    expect(newImagesPerLoop).toEqual([21, 0, 0]);
+    harness.session.dispose();
+  });
+
+  it('evicts by estimated decoded bytes and does not retain a single oversized image', () => {
+    const imageBytes = 32 * 1024 * 1024;
+    const harness = createHarness((sourceUrl) => {
+      if (sourceUrl.startsWith('large-')) return { width: 4096, height: 2048 };
+      if (sourceUrl === 'oversized') return { width: 4097, height: 4097 };
+      return { width: 1, height: 1 };
+    });
+    expect(MAX_RETAINED_STAGE_BYTES).toBe(64 * 1024 * 1024);
+    expect(MAX_RETAINED_STAGE_SOURCES).toBe(64);
+    expect(4096 * 2048 * 4).toBe(imageBytes);
+
+    for (let index = 0; index < 4; index += 1) {
+      reconcile(harness, [{ id: LAYER_A, sourceUrl: `large-${index}` }]);
+      harness.images.at(-1)!.succeed();
+    }
+
+    // The third 32 MiB idle resource evicts the oldest; the remaining pair total 64 MiB.
+    reconcile(harness, [{ id: LAYER_A, sourceUrl: 'small' }]);
+    harness.images.at(-1)!.succeed();
+    const countBeforeRetainedReturn = harness.images.length;
+    reconcile(harness, [{ id: LAYER_A, sourceUrl: 'large-2' }]);
+    expect(harness.images).toHaveLength(countBeforeRetainedReturn);
+    expect(harness.session.getSnapshot().ready).toBe(true);
+
+    const countBeforeEvictedReturn = harness.images.length;
+    reconcile(harness, [{ id: LAYER_A, sourceUrl: 'large-1' }]);
+    expect(harness.images).toHaveLength(countBeforeEvictedReturn + 1);
+    harness.images.at(-1)!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+
+    reconcile(harness, [{ id: LAYER_A, sourceUrl: 'oversized' }]);
+    harness.images.at(-1)!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    reconcile(harness, [{ id: LAYER_A, sourceUrl: 'small' }]);
+    harness.images.at(-1)!.succeed();
+    const countBeforeOversizedReturn = harness.images.length;
+    reconcile(harness, [{ id: LAYER_A, sourceUrl: 'oversized' }]);
+    expect(harness.images).toHaveLength(countBeforeOversizedReturn + 1);
+    expect(harness.session.getSnapshot().ready).toBe(false);
+    harness.images.at(-1)!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    harness.session.dispose();
+  });
+
+  it('does not cache zero, invalid, non-finite, or overflowing image dimensions', () => {
+    const invalidDimensions = [
+      { width: 0, height: 1 },
+      { width: 1, height: 0 },
+      { width: -1, height: 1 },
+      { width: Number.NaN, height: 1 },
+      { width: 1, height: Number.POSITIVE_INFINITY },
+      { width: Number.MAX_SAFE_INTEGER, height: 2 },
+    ];
+    const dimensionBySource = new Map(
+      invalidDimensions.map((dimensions, index) => [
+        `invalid-${index}`,
+        dimensions,
+      ]),
+    );
+    const harness = createHarness(
+      (sourceUrl) => dimensionBySource.get(sourceUrl) ?? { width: 1, height: 1 },
+    );
+
+    invalidDimensions.forEach((_, index) => {
+      const sourceUrl = `invalid-${index}`;
+      reconcile(harness, [{ id: LAYER_A, sourceUrl }]);
+      harness.images.at(-1)!.succeed();
+      expect(harness.session.getSnapshot().ready).toBe(true);
+
+      reconcile(harness, [{ id: LAYER_A, sourceUrl: 'fallback' }]);
+      harness.images.at(-1)!.succeed();
+      const countBeforeReturn = harness.images.length;
+      reconcile(harness, [{ id: LAYER_A, sourceUrl }]);
+      expect(harness.images).toHaveLength(countBeforeReturn + 1);
+      harness.images.at(-1)!.succeed();
+      expect(harness.session.getSnapshot().ready).toBe(true);
+    });
+
+    harness.session.dispose();
+  });
+
+  it('keeps identical source images isolated to their Stage sessions', () => {
+    const first = createHarness();
+    const second = createHarness();
+    const source = [{ id: LAYER_A, sourceUrl: 'shared-source-url' }];
+
+    reconcile(first, source);
+    reconcile(second, source);
+    first.images[0]!.succeed();
+    second.images[0]!.succeed();
+
+    expect(first.session.getSnapshot().images.get(LAYER_A)).toBe(first.images[0]);
+    expect(second.session.getSnapshot().images.get(LAYER_A)).toBe(second.images[0]);
+    expect(first.session.getSnapshot().images.get(LAYER_A)).not.toBe(
+      second.session.getSnapshot().images.get(LAYER_A),
+    );
+
+    first.session.dispose();
+    second.session.dispose();
   });
 
   it('does not re-decode or remove unchanged siblings during one-layer replacement', () => {
@@ -538,6 +972,35 @@ describe('StageImageResourceSession', () => {
       harness.images[0],
     );
     expect(staleB.src).toBe('');
+  });
+
+  it('ignores a late decode error after the same source has been requested again', () => {
+    const harness = createHarness();
+    const source = {
+      assetId: 'asset-retried',
+      projectId: 'project-a',
+      sha256: 'e'.repeat(64),
+      sourceUrl: 'blob:asset-retried',
+    };
+
+    reconcile(harness, [{ id: LAYER_A, ...source }]);
+    const staleError = harness.images[0]!.onerror!;
+    reconcile(harness, []);
+    reconcile(harness, [{ id: LAYER_A, ...source }]);
+    expect(harness.images).toHaveLength(2);
+
+    staleError({} as Event);
+    expect(harness.session.getSnapshot()).toMatchObject({
+      ready: false,
+      failures: [],
+    });
+
+    harness.images[1]!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    expect(harness.session.getSnapshot().images.get(LAYER_A)).toBe(
+      harness.images[1],
+    );
+    harness.session.dispose();
   });
 
   it('keeps the last committed frame as an explicit fallback when a replacement fails', () => {

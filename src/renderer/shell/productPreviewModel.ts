@@ -108,13 +108,119 @@ export interface ProductPreviewImagePlan {
   requiredAssetIds: string[];
   fallbackAssetIds: string[];
   candidateAssetIds: string[];
+  /** Upcoming frame resources ordered by each instance's next playback time. */
+  recentAnimationAssetIds: string[];
   mouthFallbacks: ProductPreviewMouthFallback[];
 }
+
+export const PRODUCT_PREVIEW_ANIMATION_PREWARM_FRAMES = 3;
+export const PRODUCT_PREVIEW_MAX_RECENT_ANIMATION_ASSETS = 12;
 
 function appendUnique(target: string[], ids: readonly string[]): void {
   for (const id of ids) {
     if (!target.includes(id)) target.push(id);
   }
+}
+
+function upcomingAnimationFrameAssetIds(
+  project: Project,
+  shot: Shot,
+  timeMs: number,
+  reservedAssetIds: ReadonlySet<string>,
+): string[] {
+  const frameDurationBySecond = 1_000;
+  const pending: Array<{
+    assetId: string;
+    aheadMs: number;
+    layerIndex: number;
+    frameStep: number;
+  }> = [];
+
+  shot.layers.forEach((layer, layerIndex) => {
+    if (!layer.visible || layer.source.kind !== 'animation') return;
+    const animationId = layer.source.animationId;
+    const animation = project.animations.find(
+      (candidate) => candidate.id === animationId,
+    );
+    if (!animation || animation.frames.length === 0) return;
+
+    const fps = animation.source.sourceFps;
+    const frameDurationMs = frameDurationBySecond / fps;
+    const startTimeMs = layer.startTimeMs ?? 0;
+    const elapsedMs = timeMs - startTimeMs;
+    const playback = layer.animationPlayback ?? {
+      mode: 'once' as const,
+      endBehavior: 'hold' as const,
+    };
+    let firstFrameIndex = 0;
+    let firstFrameAheadMs = Math.max(0, startTimeMs - timeMs);
+    let frameCount = Math.min(
+      PRODUCT_PREVIEW_ANIMATION_PREWARM_FRAMES,
+      animation.frames.length,
+    );
+
+    if (elapsedMs >= 0) {
+      const elapsedSourceFrames = Math.floor(
+        Math.max(0, elapsedMs) * fps / frameDurationBySecond,
+      );
+      if (
+        playback.mode === 'once' &&
+        elapsedSourceFrames >= animation.frames.length
+      ) {
+        return;
+      }
+      const currentFrameIndex =
+        playback.mode === 'loop'
+          ? elapsedSourceFrames % animation.frames.length
+          : Math.min(animation.frames.length - 1, elapsedSourceFrames);
+      firstFrameIndex = currentFrameIndex + 1;
+      frameCount = Math.min(
+        frameCount,
+        playback.mode === 'loop'
+          ? animation.frames.length
+          : animation.frames.length - currentFrameIndex - 1,
+      );
+      firstFrameAheadMs =
+        frameDurationMs -
+        (Math.max(0, elapsedMs) - elapsedSourceFrames * frameDurationMs);
+    }
+
+    for (let frameStep = 0; frameStep < frameCount; frameStep += 1) {
+      const frameIndex =
+        playback.mode === 'loop'
+          ? (firstFrameIndex + frameStep) % animation.frames.length
+          : firstFrameIndex + frameStep;
+      const frame = animation.frames[frameIndex];
+      if (!frame) continue;
+      pending.push({
+        assetId: frame.assetId,
+        aheadMs: firstFrameAheadMs + frameStep * frameDurationMs,
+        layerIndex,
+        frameStep,
+      });
+    }
+  });
+
+  pending.sort(
+    (left, right) =>
+      left.aheadMs - right.aheadMs ||
+      left.layerIndex - right.layerIndex ||
+      left.frameStep - right.frameStep,
+  );
+  const seen = new Set<string>();
+  const assetIds: string[] = [];
+  for (const candidate of pending) {
+    if (
+      reservedAssetIds.has(candidate.assetId) ||
+      seen.has(candidate.assetId)
+    ) {
+      continue;
+    }
+    seen.add(candidate.assetId);
+    assetIds.push(candidate.assetId);
+    if (assetIds.length >= PRODUCT_PREVIEW_MAX_RECENT_ANIMATION_ASSETS) break;
+  }
+  return assetIds;
 }
 
 export function buildProductPreviewImagePlan(
@@ -125,6 +231,7 @@ export function buildProductPreviewImagePlan(
   const requiredAssetIds: string[] = [];
   const fallbackAssetIds: string[] = [];
   const candidateAssetIds: string[] = [];
+  const resolvedCandidateAssetIds: string[] = [];
   const mouthFallbacks: ProductPreviewMouthFallback[] = [];
 
   for (const visual of resolveShotVisualParts(project, shot, evaluatedShot)) {
@@ -137,7 +244,7 @@ export function buildProductPreviewImagePlan(
       visual.resources.fallback.map((resource) => resource.assetId),
     );
     appendUnique(
-      candidateAssetIds,
+      resolvedCandidateAssetIds,
       visual.resources.candidates.map((resource) => resource.assetId),
     );
     const activeMouthPart = visual.parts.find(
@@ -158,17 +265,61 @@ export function buildProductPreviewImagePlan(
     }
   }
 
-  const currentShotAssetIds = listProductPreviewAssetIds(project, shot);
-  const reserved = new Set([...requiredAssetIds, ...fallbackAssetIds]);
+  const reservedAssetIds = new Set([
+    ...requiredAssetIds,
+    ...fallbackAssetIds,
+  ]);
+  const animationFrameAssetIds = new Set(
+    shot.layers.flatMap((layer) => {
+      if (layer.source.kind !== 'animation') return [];
+      const animationId = layer.source.animationId;
+      return project.animations.find(
+        (animation) => animation.id === animationId,
+      )?.frames.map((frame) => frame.assetId) ?? [];
+    }),
+  );
+  const recentAnimationAssetIds = upcomingAnimationFrameAssetIds(
+    project,
+    shot,
+    evaluatedShot.timeMs,
+    reservedAssetIds,
+  );
+  appendUnique(candidateAssetIds, recentAnimationAssetIds);
   appendUnique(
     candidateAssetIds,
-    currentShotAssetIds.filter((assetId) => !reserved.has(assetId)),
+    resolvedCandidateAssetIds.filter(
+      (assetId) => !animationFrameAssetIds.has(assetId),
+    ),
+  );
+
+  const currentShotAssetIds = listProductPreviewAssetIds(project, shot);
+  appendUnique(
+    candidateAssetIds,
+    currentShotAssetIds.filter(
+      (assetId) =>
+        !reservedAssetIds.has(assetId) &&
+        !animationFrameAssetIds.has(assetId),
+    ),
   );
   return {
     requiredAssetIds,
     fallbackAssetIds,
     candidateAssetIds,
+    recentAnimationAssetIds,
     mouthFallbacks,
+  };
+}
+
+/** Keep exact current/fallback requirements while stopping optional work. */
+export function gateProductPreviewImagePrewarm(
+  plan: ProductPreviewImagePlan,
+  enabled: boolean,
+): ProductPreviewImagePlan {
+  if (enabled) return plan;
+  return {
+    ...plan,
+    candidateAssetIds: [],
+    recentAnimationAssetIds: [],
   };
 }
 

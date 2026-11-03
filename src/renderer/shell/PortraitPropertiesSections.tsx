@@ -4,6 +4,7 @@ import {
   type LayerBackgroundControlProps,
 } from '../features/properties/LayerBackgroundControl';
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
+import { AnimationPlaybackControls } from '../features/properties/AnimationPlaybackControls';
 import {
   LayerTransformPanel,
   useLayerTransformController,
@@ -47,6 +48,7 @@ export function PortraitPropertiesSections({
           showLockControl={false}
           showResetTransform
         />
+        <AnimationPlaybackControls />
       </details>
       <details
         className="right-inspector-section right-inspector-appearance-section"

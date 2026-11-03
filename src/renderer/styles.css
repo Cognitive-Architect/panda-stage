@@ -53,6 +53,7 @@
 @import './styles/features/properties/s06-02--position-background-base.css';
 @import './styles/features/editor/history/s06-03--history-base.css';
 @import './styles/features/properties/s06-04--transform-order-base.css';
+@import './styles/features/properties/animation-playback-controls.css';
 @import './styles/compat/debug-preview/s06-05--transport-hidden-stage.css';
 @import './styles/compat/mixed-conditions/s06-06--responsive-1100.css';
 @import './styles/shell/project-entry/s06-08--new-project-dialog.css';

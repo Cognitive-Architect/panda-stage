@@ -4,6 +4,7 @@ import exampleProject from '../../demo-project/project-v1.example.json';
 import { LayerService, migrateProject } from '../../src/domain';
 import {
   getLayerBackgroundControlModel,
+  shouldShowLayerBackgroundControls,
 } from '../../src/renderer/features/properties/LayerBackgroundControl';
 import {
   shouldDeleteSelectedLayer,
@@ -40,6 +41,18 @@ function snapshotWithLayers(): EditorProjectSnapshot {
               name: 'Hero',
               locked: false,
               source: { kind: 'character' },
+            },
+            {
+              id: 'ordinary-image',
+              name: 'Ordinary image',
+              locked: false,
+              source: { kind: 'asset', assetId: 'asset-hero' },
+            },
+            {
+              id: 'animation',
+              name: 'Animation',
+              locked: false,
+              source: { kind: 'animation', animationId: 'animation-a' },
             },
             { id: 'locked', name: 'Locked', locked: true },
           ],
@@ -90,6 +103,16 @@ describe('Issue 121 RightInspector selection and ownership', () => {
     expect(
       getLayerBackgroundControlModel(snapshot, 'shot-a', 'hero'),
     ).toMatchObject({ state: 'unsupported', canSet: false });
+  });
+
+  it('renders background management only when the selected object can use it', () => {
+    const snapshot = snapshotWithLayers();
+    expect(shouldShowLayerBackgroundControls(snapshot, 'shot-a', null)).toBe(true);
+    expect(shouldShowLayerBackgroundControls(snapshot, 'shot-a', 'background')).toBe(true);
+    expect(shouldShowLayerBackgroundControls(snapshot, 'shot-a', 'ordinary-image')).toBe(true);
+    expect(shouldShowLayerBackgroundControls(snapshot, 'shot-a', 'hero')).toBe(false);
+    expect(shouldShowLayerBackgroundControls(snapshot, 'shot-a', 'animation')).toBe(false);
+    expect(shouldShowLayerBackgroundControls(snapshot, 'shot-a', 'missing')).toBe(true);
   });
 
   it('keeps background transforms editable but blocks ordinary order/delete actions', () => {

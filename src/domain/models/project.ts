@@ -25,11 +25,12 @@ import {
   VoiceProfileSchema,
 } from './character';
 import { IdSchema, IsoDateTimeSchema, NameSchema } from './common';
-import type { Layer, LayerV3, LayerV4 } from './layer';
-import { LayerSchema } from './layer';
+import { LayerV14Schema, type Layer, type LayerV3, type LayerV4 } from './layer';
 import {
   ShotSchema,
   ShotV14Schema,
+  ShotV15AdaptiveSchema,
+  ShotV15AnimationSchema,
   ShotV2Schema,
   ShotV3Schema,
   ShotV4Schema,
@@ -46,6 +47,49 @@ const CharacterExpressionV1Schema = z
     assetId: IdSchema,
   })
   .strict();
+
+/** Strict PR-branch v15 envelope before per-instance animation playback. */
+export const ProjectV15AnimationSchema = z
+  .object({
+    schemaVersion: z.literal(15),
+    id: IdSchema,
+    name: NameSchema,
+    width: z.literal(PROJECT_WIDTH),
+    height: z.literal(PROJECT_HEIGHT),
+    fps: z.literal(PROJECT_FPS),
+    assets: z.array(AssetSchema),
+    animations: z.array(AnimationDefinitionSchema),
+    characters: z.array(CharacterV14Schema),
+    voiceProfiles: z.array(VoiceProfileSchema),
+    subtitleStyles: z.array(SubtitleStyleSchema).min(1),
+    shots: z.array(ShotV15AnimationSchema),
+    createdAt: IsoDateTimeSchema,
+    updatedAt: IsoDateTimeSchema,
+  })
+  .strict();
+
+/** Strict origin/main v15 envelope with Adaptive Parts, before animations. */
+export const ProjectV15AdaptiveSchema = z
+  .object({
+    schemaVersion: z.literal(15),
+    id: IdSchema,
+    name: NameSchema,
+    width: z.literal(PROJECT_WIDTH),
+    height: z.literal(PROJECT_HEIGHT),
+    fps: z.literal(PROJECT_FPS),
+    assets: z.array(AssetSchema),
+    animations: z.array(AnimationDefinitionSchema),
+    characters: z.array(CharacterSchema),
+    voiceProfiles: z.array(VoiceProfileSchema),
+    subtitleStyles: z.array(SubtitleStyleSchema).min(1),
+    shots: z.array(ShotV15AdaptiveSchema),
+    createdAt: IsoDateTimeSchema,
+    updatedAt: IsoDateTimeSchema,
+  })
+  .strict();
+
+/** Backward-compatible name for the PR branch's historical v15 contract. */
+export const ProjectV15Schema = ProjectV15AnimationSchema;
 
 const CharacterV1Schema = z
   .object({
@@ -194,7 +238,7 @@ const ShotV5BaseShape = {
   dialogues: z.array(DialogueV5Schema),
   audioClips: z.array(AudioClipV7Schema),
   timelineEvents: z.array(TimelineEventSchema).default([]),
-  layers: z.array(LayerSchema),
+  layers: z.array(LayerV14Schema),
   backgroundLayerId: IdSchema.nullable(),
 };
 
@@ -471,7 +515,7 @@ export function migrateFormalProject(input: unknown): unknown {
 }
 
 // Current-project (schemaVersion === PROJECT_SCHEMA_VERSION) validator only.
-// Persisted migration (v0-v14 -> v15) is owned exclusively by `migrateProject`
+// Persisted migration (v0-v15 -> v16) is owned exclusively by `migrateProject`
 // in `../migrations`; this schema must never perform legacy migration.
 export const ProjectSchema = ProjectDataSchema.superRefine(
   validateProjectReferences,

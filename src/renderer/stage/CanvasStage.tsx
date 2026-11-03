@@ -15,6 +15,7 @@ interface CanvasStageProps {
   project: Project;
   evaluatedShot: EvaluatedShot;
   assetUrls: StageAssetUrlMap;
+  prewarmAssetIds?: readonly string[];
   caption: string | null;
   captionStyle?: SubtitleStyle;
   camera?: CameraView;

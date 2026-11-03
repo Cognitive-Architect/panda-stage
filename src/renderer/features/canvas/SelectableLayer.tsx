@@ -138,6 +138,9 @@ export function SelectableLayer({
   const compositeVisual =
     visual?.kind === 'composite-character' ||
     visual?.kind === 'adaptive-parts-character';
+  const animationVisual = visual?.parts.some(
+    (part) => part.source.kind === 'animation-frame',
+  ) ?? false;
   const headGroup = visual?.headGroup ?? null;
   const headPartIds = new Set(headGroup?.partIds ?? []);
   const cacheCompositeVisual = (visualNode: Konva.Group | null): void => {
@@ -276,6 +279,11 @@ export function SelectableLayer({
       id={`canvas-layer-${layer.id}`}
       listening={canSelect}
       name="selectable-canvas-layer"
+      onDragStart={(event) => {
+        if (layer.source.kind !== 'animation') return;
+        event.cancelBubble = true;
+        onSelect(layer.id);
+      }}
       onClick={(event) =>
         stopAndSelect(event, layer.id, onSelect)
       }
@@ -378,6 +386,20 @@ export function SelectableLayer({
           renderedParts
         )}
         {renderedHitAreas}
+        {animationVisual ? (
+          <Rect
+            fill="#000000"
+            height={visualBounds.height}
+            listening={canSelect}
+            name="selectable-animation-canvas-hit-area"
+            opacity={0}
+            onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
+            onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
+            width={visualBounds.width}
+            x={visualBounds.x}
+            y={visualBounds.y}
+          />
+        ) : null}
         {selected && completeVisualReady ? (
           <Rect
           dash={layer.locked ? [18, 12] : undefined}

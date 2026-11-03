@@ -61,13 +61,23 @@ export interface EditorTemporalCanvasModel {
  * separately; Preview and Export use the formal runtime evaluator.
  */
 function buildBaseEditorShot(project: Project, shot: Shot): EvaluatedShot {
+  const evaluatedAtZero = new Map(
+    evaluateShotAtTime(shot, 0, project).layers.map((layer) => [layer.id, layer]),
+  );
   const layers = [...shot.layers]
     .sort((left, right) => left.zIndex - right.zIndex)
     .map((layer): EvaluatedLayer => {
       const asset = resolveLayerImageAsset(project, layer);
+      const animationAtZero =
+        layer.source.kind === 'animation'
+          ? evaluatedAtZero.get(layer.id)
+          : undefined;
       return {
         id: layer.id,
-        assetId: asset?.id ?? '',
+        assetId: animationAtZero?.assetId ?? asset?.id ?? '',
+        ...(animationAtZero?.animationFrame
+          ? { animationFrame: animationAtZero.animationFrame }
+          : {}),
         currentExpressionId:
           layer.source.kind === 'character'
             ? layer.source.expressionId
@@ -81,7 +91,7 @@ function buildBaseEditorShot(project: Project, shot: Shot): EvaluatedShot {
         flipX: layer.flipX,
         rotationDeg: layer.rotationDeg,
         opacity: layer.opacity,
-        visible: layer.visible,
+        visible: animationAtZero?.visible ?? layer.visible,
         zIndex: layer.zIndex,
       };
     });

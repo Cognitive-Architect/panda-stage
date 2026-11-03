@@ -81,7 +81,9 @@
       },
       {
         "id": "issue742-research-evidence",
-        "sourcePatterns": ["docs/evidence/issue-742/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-742/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -93,7 +95,9 @@
       },
       {
         "id": "issue743-research-evidence",
-        "sourcePatterns": ["docs/evidence/issue-743/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-743/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -105,7 +109,9 @@
       },
       {
         "id": "issue744-research-evidence",
-        "sourcePatterns": ["docs/evidence/issue-744/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-744/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -117,7 +123,9 @@
       },
       {
         "id": "issue745-open-fill-fix-evidence",
-        "sourcePatterns": ["docs/evidence/issue-745/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-745/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -129,7 +137,9 @@
       },
       {
         "id": "issue746-full-character-visual-evidence",
-        "sourcePatterns": ["docs/evidence/issue-746/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-746/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -141,7 +151,9 @@
       },
       {
         "id": "issue747-horizontal-stroke-evidence",
-        "sourcePatterns": ["docs/evidence/issue-747/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-747/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -153,7 +165,9 @@
       },
       {
         "id": "issue748-radial-stroke-evidence",
-        "sourcePatterns": ["docs/evidence/issue-748/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-748/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -165,7 +179,9 @@
       },
       {
         "id": "issue749-linear-stroke-contract-evidence",
-        "sourcePatterns": ["docs/evidence/issue-749/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-749/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -177,7 +193,9 @@
       },
       {
         "id": "issue751-acceptance-evidence",
-        "sourcePatterns": ["docs/evidence/issue-751/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-751/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -189,7 +207,9 @@
       },
       {
         "id": "issue752-acceptance-evidence",
-        "sourcePatterns": ["docs/evidence/issue-752/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-752/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -201,7 +221,9 @@
       },
       {
         "id": "issue754-current-head-rebaseline-evidence",
-        "sourcePatterns": ["docs/evidence/issue-754/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-754/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -213,7 +235,9 @@
       },
       {
         "id": "issue757-bluehair-acceptance-evidence",
-        "sourcePatterns": ["docs/evidence/issue-757-bluehair/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-757-bluehair/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -225,7 +249,9 @@
       },
       {
         "id": "issue767-u1-acceptance-evidence",
-        "sourcePatterns": ["docs/evidence/issue-767-u1/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-767-u1/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -237,7 +263,9 @@
       },
       {
         "id": "issue767-u2-acceptance-evidence",
-        "sourcePatterns": ["docs/evidence/issue-767-u2/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-767-u2/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -249,7 +277,9 @@
       },
       {
         "id": "issue767-u3-acceptance-evidence",
-        "sourcePatterns": ["docs/evidence/issue-767-u3/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-767-u3/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -261,7 +291,9 @@
       },
       {
         "id": "issue775-c03-acceptance-evidence",
-        "sourcePatterns": ["docs/evidence/issue-775-c03/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-775-c03/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -273,7 +305,9 @@
       },
       {
         "id": "issue778-c03-acceptance-evidence",
-        "sourcePatterns": ["docs/evidence/issue-778-c03/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-778-c03/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -285,7 +319,9 @@
       },
       {
         "id": "issue780-c03-acceptance-evidence",
-        "sourcePatterns": ["docs/evidence/issue-780-g001-g006/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-780-g001-g006/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -297,7 +333,9 @@
       },
       {
         "id": "issue781-g007-acceptance-evidence",
-        "sourcePatterns": ["docs/evidence/issue-781-g007/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-781-g007/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -309,7 +347,9 @@
       },
       {
         "id": "issue782-g008-acceptance-evidence",
-        "sourcePatterns": ["docs/evidence/issue-782-g008/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-782-g008/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -321,7 +361,9 @@
       },
       {
         "id": "issue783-g009-acceptance-evidence",
-        "sourcePatterns": ["docs/evidence/issue-783-g009/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-783-g009/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -333,7 +375,9 @@
       },
       {
         "id": "issue835-day18-assets-evidence",
-        "sourcePatterns": ["docs/evidence/issue-835-day18/**"],
+        "sourcePatterns": [
+          "docs/evidence/issue-835-day18/**"
+        ],
         "testPatterns": [],
         "verifierPatterns": [],
         "suites": [],
@@ -402,13 +446,16 @@
           "tests/unit/reference-scanner.test.ts",
           "tests/unit/create-character-from-prepared-parts.test.ts"
         ],
-        "verifierPatterns": ["scripts/verify-issue257-slice3*", "scripts/verify-issue657-audio-foundation.cjs"],
+        "verifierPatterns": [
+          "scripts/verify-issue257-slice3*",
+          "scripts/verify-issue657-audio-foundation.cjs"
+        ],
         "suites": [],
         "riskPolicy": "full",
         "draftPolicy": "focused",
         "incrementalEligible": false,
         "owner": "architecture",
-        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. Exact Issue #828 lifecycle/audio source-range tests, Main window/filesystem boundary tests, Issue #894 Adaptive Parts/Layer/history helpers and lifecycle tests, and Issue #910 F1-04 prepared-character submission coverage remain here without broad test globs; other unregistered test paths stay fail-closed."
+        "notes": "Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. Exact Issue #828 lifecycle/audio source-range tests, Main window/filesystem boundary tests, Issue #894 Adaptive Parts/Layer/history helpers and lifecycle tests, and Issue #910 F1-04 prepared-character submission coverage remain here without broad test globs; other unregistered test paths stay fail-closed. Cross-process, persisted domain, shared contracts, history, and renderer store ownership can propagate across subsystems. The exact Issue #828 lifecycle/audio source-range tests and Main window/filesystem boundary tests, plus Issue #868 animation LayerService/store-history tests, remain here without broad test globs; other unregistered test paths stay fail-closed."
       },
       {
         "id": "release-export-core",
@@ -473,7 +520,9 @@
           "scripts/verify-issue102-task1*",
           "scripts/verify-issue102-task3*"
         ],
-        "suites": ["project"],
+        "suites": [
+          "project"
+        ],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "project",
@@ -481,10 +530,27 @@
       },
       {
         "id": "assets",
-        "sourcePatterns": ["src/renderer/features/assets/**"],
-        "testPatterns": ["tests/unit/asset-*.test.ts", "tests/integration/asset-*.test.ts", "tests/unit/product-copy.test.ts", "tests/unit/apply-asset-import-response.test.ts", "tests/unit/animation-library-components.test.ts", "tests/unit/animation-playback.test.ts", "tests/unit/animation-preview-lifecycle.test.ts"],
-        "verifierPatterns": ["scripts/verify-day16*", "scripts/verify-day17*", "scripts/verify-day18*"],
-        "suites": ["assets", "character"],
+        "sourcePatterns": [
+          "src/renderer/features/assets/**"
+        ],
+        "testPatterns": [
+          "tests/unit/asset-*.test.ts",
+          "tests/integration/asset-*.test.ts",
+          "tests/unit/product-copy.test.ts",
+          "tests/unit/apply-asset-import-response.test.ts",
+          "tests/unit/animation-library-components.test.ts",
+          "tests/unit/animation-playback.test.ts",
+          "tests/unit/animation-preview-lifecycle.test.ts"
+        ],
+        "verifierPatterns": [
+          "scripts/verify-day16*",
+          "scripts/verify-day17*",
+          "scripts/verify-day18*"
+        ],
+        "suites": [
+          "assets",
+          "character"
+        ],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "assets",
@@ -492,10 +558,88 @@
       },
       {
         "id": "fla-import",
-        "sourcePatterns": ["src/renderer/fla-import/**", "src/renderer/styles/features/fla-import/c03-unified-workbench.css", "fla-parser.html", "fla-static-snapshot.html", "src/renderer/fla-static-snapshot-renderer.ts", "docs/research/fla-corpus-manifest.json", "docs/research/fla-v1.5-c1-recovery-evidence.json", "docs/research/fla-v1.5-c2-safe-recovery-envelope.json", "docs/research/fla-v1.5-c3-compatibility-recovery.json", "docs/research/fla-v1.5-c4-recovered-content-routing.json", "docs/research/issue-704-black-candidate-discovery.json", "docs/research/issue-704-black-candidate-manifest.json", "scripts/research/issue705-black-asset-batch-core.cjs", "scripts/research/issue705-black-asset-batch.cjs", "docs/research/issue-705-black-asset-batch.md", "docs/research/issue-705-black-asset-batch.json", "docs/research/issue-705-black-asset-batch-manifest.json", "docs/research/issue-706-cross-corpus-generalization.md", "docs/research/issue-706-cross-corpus-generalization.json", "docs/evidence/issue-697/target-fill-edges.json", "docs/evidence/issue-737/swf-crossstage-map.json", "docs/evidence/issue-739/issue739-open-fill-corpus-differential.json", "docs/research/issue-702-black-multi-pose-census.json", "docs/research/issue-703-nested-graphic-frame-sync.json", "docs/research/issue-732-cross-category-capability-census.csv", "docs/research/issue-732-cross-category-capability-census.json", "scripts/research/issue706-cross-corpus-core.cjs", "scripts/research/issue706-cross-corpus-electron-probe.cjs", "scripts/research/issue706-cross-corpus-batch.cjs", "docs/evidence/issue-284-r0/.gitignore", "docs/evidence/issue-284-r0/r0-budget.json", "docs/evidence/issue-284-r0/r0-determinism.json", "docs/evidence/issue-284-r0/r0-extract.json", "docs/evidence/issue-284-r0/r0-render-sword.png", "docs/evidence/issue-284-r0/r0-render-sword.svg", "docs/evidence/issue-294-r2/r2-summary.json"],
-        "testPatterns": ["tests/unit/fla-*.test.ts", "tests/unit/fla-static-snapshot-render-session.test.ts", "tests/unit/fla-static-snapshot-commit.test.ts", "tests/unit/fla-static-snapshot-api.test.ts", "tests/unit/issue705-black-asset-batch.test.ts", "tests/unit/issue706-cross-corpus.test.ts", "tests/contract/issue260-slice4.test.ts", "tests/unit/apply-fla-asset-commit-response.test.ts", "tests/unit/apply-fla-frame-sequence-commit-response.test.ts", "tests/helpers/fla-structural-probe.ts", "tests/helpers/fla-render-fixture.ts", "tests/integration/fla-b0-structural-probe.test.ts", "tests/unit/fla-derive-structure-summary.test.ts", "tests/integration/fla-b1-structural-fields.test.ts", "tests/unit/fla-corpus-probe.test.ts", "tests/integration/fla-corpus-collector.test.ts", "tests/helpers/fla-corpus-probe.cjs", "tests/helpers/fla-corpus-probe.d.ts"],
-        "verifierPatterns": ["scripts/fla-f1-03-electron-acceptance.cjs", "scripts/verify-issue251-slice1*", "scripts/verify-issue253-slice2*", "scripts/verify-issue257-slice3*", "scripts/verify-issue260-slice4*", "scripts/verify-issue396-stage-d*", "scripts/verify-issue399-stage-e*", "scripts/verify-issue402-stage-f*", "scripts/verify-issue403-raster-containment*", "scripts/verify-issue405-stage-g*", "scripts/verify-issue407-stage-a*", "scripts/verify-issue676-p0-c02*", "scripts/verify-issue676-p0-c03*", "scripts/verify-issue680-p1-c03*", "scripts/verify-issue775-c03.cjs", "scripts/verify-issue686-p2-c02.cjs", "scripts/verify-issue686-p2-c03.cjs", "scripts/verify-issue686-p2-c04.cjs", "scripts/verify-issue686-p2-c05.cjs"],
-        "suites": ["assets"],
+        "sourcePatterns": [
+          "src/renderer/fla-import/**",
+          "src/renderer/styles/features/fla-import/c03-unified-workbench.css",
+          "fla-parser.html",
+          "fla-static-snapshot.html",
+          "src/renderer/fla-static-snapshot-renderer.ts",
+          "docs/research/fla-corpus-manifest.json",
+          "docs/research/fla-v1.5-c1-recovery-evidence.json",
+          "docs/research/fla-v1.5-c2-safe-recovery-envelope.json",
+          "docs/research/fla-v1.5-c3-compatibility-recovery.json",
+          "docs/research/fla-v1.5-c4-recovered-content-routing.json",
+          "docs/research/issue-704-black-candidate-discovery.json",
+          "docs/research/issue-704-black-candidate-manifest.json",
+          "scripts/research/issue705-black-asset-batch-core.cjs",
+          "scripts/research/issue705-black-asset-batch.cjs",
+          "docs/research/issue-705-black-asset-batch.md",
+          "docs/research/issue-705-black-asset-batch.json",
+          "docs/research/issue-705-black-asset-batch-manifest.json",
+          "docs/research/issue-706-cross-corpus-generalization.md",
+          "docs/research/issue-706-cross-corpus-generalization.json",
+          "docs/evidence/issue-697/target-fill-edges.json",
+          "docs/evidence/issue-737/swf-crossstage-map.json",
+          "docs/evidence/issue-739/issue739-open-fill-corpus-differential.json",
+          "docs/research/issue-702-black-multi-pose-census.json",
+          "docs/research/issue-703-nested-graphic-frame-sync.json",
+          "docs/research/issue-732-cross-category-capability-census.csv",
+          "docs/research/issue-732-cross-category-capability-census.json",
+          "scripts/research/issue706-cross-corpus-core.cjs",
+          "scripts/research/issue706-cross-corpus-electron-probe.cjs",
+          "scripts/research/issue706-cross-corpus-batch.cjs",
+          "docs/evidence/issue-284-r0/.gitignore",
+          "docs/evidence/issue-284-r0/r0-budget.json",
+          "docs/evidence/issue-284-r0/r0-determinism.json",
+          "docs/evidence/issue-284-r0/r0-extract.json",
+          "docs/evidence/issue-284-r0/r0-render-sword.png",
+          "docs/evidence/issue-284-r0/r0-render-sword.svg",
+          "docs/evidence/issue-294-r2/r2-summary.json"
+        ],
+        "testPatterns": [
+          "tests/unit/fla-*.test.ts",
+          "tests/unit/fla-static-snapshot-render-session.test.ts",
+          "tests/unit/fla-static-snapshot-commit.test.ts",
+          "tests/unit/fla-static-snapshot-api.test.ts",
+          "tests/unit/issue705-black-asset-batch.test.ts",
+          "tests/unit/issue706-cross-corpus.test.ts",
+          "tests/contract/issue260-slice4.test.ts",
+          "tests/unit/apply-fla-asset-commit-response.test.ts",
+          "tests/unit/apply-fla-frame-sequence-commit-response.test.ts",
+          "tests/helpers/fla-structural-probe.ts",
+          "tests/helpers/fla-render-fixture.ts",
+          "tests/integration/fla-b0-structural-probe.test.ts",
+          "tests/unit/fla-derive-structure-summary.test.ts",
+          "tests/integration/fla-b1-structural-fields.test.ts",
+          "tests/unit/fla-corpus-probe.test.ts",
+          "tests/integration/fla-corpus-collector.test.ts",
+          "tests/helpers/fla-corpus-probe.cjs",
+          "tests/helpers/fla-corpus-probe.d.ts"
+        ],
+        "verifierPatterns": [
+          "scripts/fla-f1-03-electron-acceptance.cjs",
+          "scripts/verify-issue251-slice1*",
+          "scripts/verify-issue253-slice2*",
+          "scripts/verify-issue257-slice3*",
+          "scripts/verify-issue260-slice4*",
+          "scripts/verify-issue396-stage-d*",
+          "scripts/verify-issue399-stage-e*",
+          "scripts/verify-issue402-stage-f*",
+          "scripts/verify-issue403-raster-containment*",
+          "scripts/verify-issue405-stage-g*",
+          "scripts/verify-issue407-stage-a*",
+          "scripts/verify-issue676-p0-c02*",
+          "scripts/verify-issue676-p0-c03*",
+          "scripts/verify-issue680-p1-c03*",
+          "scripts/verify-issue775-c03.cjs",
+          "scripts/verify-issue686-p2-c02.cjs",
+          "scripts/verify-issue686-p2-c03.cjs",
+          "scripts/verify-issue686-p2-c04.cjs",
+          "scripts/verify-issue686-p2-c05.cjs"
+        ],
+        "suites": [
+          "assets"
+        ],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "fla-import",
@@ -508,14 +652,21 @@
           "public/character-empty-normal.png",
           "public/character-empty-angry.png"
         ],
-        "testPatterns": ["tests/unit/character-*.test.ts", "tests/unit/issue815-talking-head-settings.test.ts", "tests/unit/legacy-character-layer-reminder.test.ts", "tests/integration/character-*.test.ts"],
+        "testPatterns": [
+          "tests/unit/character-*.test.ts",
+          "tests/unit/issue815-talking-head-settings.test.ts",
+          "tests/unit/legacy-character-layer-reminder.test.ts",
+          "tests/integration/character-*.test.ts"
+        ],
         "verifierPatterns": [
           "scripts/verify-day19*",
-        "scripts/verify-issue609-character-assembly.cjs",
-        "scripts/verify-issue897-c2-adaptive-parts.cjs",
-        "scripts/verify-issue899-c3-v0.cjs"
+          "scripts/verify-issue609-character-assembly.cjs",
+          "scripts/verify-issue897-c2-adaptive-parts.cjs",
+          "scripts/verify-issue899-c3-v0.cjs"
         ],
-        "suites": ["character"],
+        "suites": [
+          "character"
+        ],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "character",
@@ -523,13 +674,20 @@
       },
       {
         "id": "shots",
-        "sourcePatterns": ["src/renderer/features/shots/**"],
-        "testPatterns": ["tests/unit/shot-*.test.ts", "tests/integration/shot-*.test.ts"],
+        "sourcePatterns": [
+          "src/renderer/features/shots/**"
+        ],
+        "testPatterns": [
+          "tests/unit/shot-*.test.ts",
+          "tests/integration/shot-*.test.ts"
+        ],
         "verifierPatterns": [
           "scripts/verify-day20*",
           "scripts/verify-issue608-shot-thumbnail.cjs"
         ],
-        "suites": ["shot"],
+        "suites": [
+          "shot"
+        ],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "shot",
@@ -543,7 +701,14 @@
           "src/renderer/stage/**",
           "src/export-renderer/**",
           "docs/evidence/issue-606/receipt.json",
-          "docs/design/huabu.png"
+          "docs/design/huabu.png",
+          "src/domain/evaluate-shot-at-time.ts",
+          "src/domain/migrations/**",
+          "src/domain/models/layer.ts",
+          "src/domain/models/project.ts",
+          "src/domain/models/shot.ts",
+          "src/domain/services/LayerService.ts",
+          "src/renderer/stores/layerStore.ts"
         ],
         "testPatterns": [
           "tests/unit/canvas-*.test.ts",
@@ -553,7 +718,16 @@
           "tests/unit/viewport-*.test.ts",
           "tests/unit/editor-issue578-live-scrub.test.ts",
           "tests/unit/temporal-visual-continuity.test.ts",
-          "tests/unit/feedback-hygiene.test.ts"
+          "tests/unit/feedback-hygiene.test.ts",
+          "tests/unit/domain/evaluate-shot-at-time.test.ts",
+          "tests/unit/domain/migrations/project-migration.test.ts",
+      "tests/unit/animation-playback-controls.test.ts",
+      "tests/unit/issue915-animation-properties.test.ts",
+          "tests/unit/export-preparation.test.ts",
+          "tests/unit/layer-service.test.ts",
+          "tests/unit/layer-stores.test.ts",
+      "tests/integration/animation-persistence.test.ts",
+      "tests/integration/ap03-animation-image-prewarm.test.ts"
         ],
         "verifierPatterns": [
           "scripts/verify-day21*",
@@ -566,13 +740,18 @@
           "scripts/verify-issue579*",
           "scripts/verify-issue602*",
           "scripts/verify-issue606*",
-          "scripts/verify-issue872-motion-preview-pixels.cjs"
+          "scripts/verify-issue872-motion-preview-pixels.cjs",
+          "scripts/verify-issue871-am03-electron*",
+          "scripts/verify-issue890-am04-electron*"
         ],
-        "suites": ["canvas", "history"],
+        "suites": [
+          "canvas",
+          "history"
+        ],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "canvas",
-        "notes": "Canvas, properties, and stage rendering exercise canvas and history contracts. Issue #437 / LM-004 added canvas-mode-* compatibility fixes to verify-issue95 and verify-issue99 (they now open the right-side 工具 surface before clicking the mode controls); they are exact-match canvas-route verifiers, not broad patterns."
+    "notes": "Canvas, properties, and stage rendering exercise canvas and history contracts. Animation playback controls (AM-04 / Issue #915) and AP-03 image-prewarm tests are exact-match canvas ownership because they exercise animation Layer controls and Stage image-resource rendering. Issue #437 / LM-004 added canvas-mode-* compatibility fixes to verify-issue95 and verify-issue99 (they now open the right-side 工具 surface before clicking the mode controls); they are exact-match canvas-route verifiers, not broad patterns."
       },
       {
         "id": "history-controls",
@@ -580,9 +759,17 @@
           "src/renderer/features/editor/HistoryControls*",
           "src/renderer/features/editor/useHistoryShortcuts*"
         ],
-        "testPatterns": ["tests/unit/history-*.test.ts", "tests/unit/editor-history.test.ts"],
-        "verifierPatterns": ["scripts/verify-day24*"],
-        "suites": ["history", "canvas"],
+        "testPatterns": [
+          "tests/unit/history-*.test.ts",
+          "tests/unit/editor-history.test.ts"
+        ],
+        "verifierPatterns": [
+          "scripts/verify-day24*"
+        ],
+        "suites": [
+          "history",
+          "canvas"
+        ],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "history",
@@ -590,15 +777,25 @@
       },
       {
         "id": "timeline",
-        "sourcePatterns": ["src/renderer/features/timeline/**"],
+        "sourcePatterns": [
+          "src/renderer/features/timeline/**"
+        ],
         "testPatterns": [
           "tests/unit/features/timeline/**",
           "tests/integration/timeline-selection.test.ts",
           "tests/contract/*timeline*.test.ts",
           "tests/contract/day26-*.test.ts"
         ],
-        "verifierPatterns": ["scripts/verify-issue197*", "scripts/verify-issue199*", "scripts/verify-issue207*", "scripts/verify-issue655-preview-isolation.cjs", "scripts/verify-issue658-audio-timeline.cjs"],
-        "suites": ["timeline"],
+        "verifierPatterns": [
+          "scripts/verify-issue197*",
+          "scripts/verify-issue199*",
+          "scripts/verify-issue207*",
+          "scripts/verify-issue655-preview-isolation.cjs",
+          "scripts/verify-issue658-audio-timeline.cjs"
+        ],
+        "suites": [
+          "timeline"
+        ],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "timeline",
@@ -606,10 +803,21 @@
       },
       {
         "id": "dialogue",
-        "sourcePatterns": ["src/renderer/features/dialogue/**"],
-        "testPatterns": ["tests/unit/dialogue-*.test.ts", "tests/contract/issue220-*.test.ts", "tests/contract/issue221-*.test.ts"],
-        "verifierPatterns": ["scripts/verify-issue663-dialogue-voice.cjs"],
-        "suites": ["editor", "timeline"],
+        "sourcePatterns": [
+          "src/renderer/features/dialogue/**"
+        ],
+        "testPatterns": [
+          "tests/unit/dialogue-*.test.ts",
+          "tests/contract/issue220-*.test.ts",
+          "tests/contract/issue221-*.test.ts"
+        ],
+        "verifierPatterns": [
+          "scripts/verify-issue663-dialogue-voice.cjs"
+        ],
+        "suites": [
+          "editor",
+          "timeline"
+        ],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "dialogue",
@@ -617,10 +825,17 @@
       },
       {
         "id": "subtitles",
-        "sourcePatterns": ["src/renderer/features/subtitles/**"],
-        "testPatterns": ["tests/unit/subtitle-*.test.ts"],
+        "sourcePatterns": [
+          "src/renderer/features/subtitles/**"
+        ],
+        "testPatterns": [
+          "tests/unit/subtitle-*.test.ts"
+        ],
         "verifierPatterns": [],
-        "suites": ["canvas", "timeline"],
+        "suites": [
+          "canvas",
+          "timeline"
+        ],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "subtitles",
@@ -739,15 +954,18 @@
           "scripts/generate-issue889-au03-transition-fixtures.cjs",
           "scripts/verify-issue889-au03-transition.cjs"
         ],
-        "suites": ["editor", "timeline"],
+        "suites": [
+          "editor",
+          "timeline"
+        ],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
         "owner": "editor",
-        "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. Issues #887, #888, and #889 register their audio capacity/transition tests, generated fixtures, and native Windows verifiers here. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted."
+        "notes": "Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. Issues #887, #888, and #889 register their audio capacity/transition tests, generated fixtures, and native Windows verifiers here. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted. Editor shell, actions, and the additive UI-M1 token/primitive foundation use editor plus timeline regression without embedding subsystem names in the workflow. UI-M1 is first consumed by CompactProjectBar; later consumers must keep their own ownership explicit. The exact public/subtitle-empty-state.png path is the decorative, data-free empty-state asset owned by the R2 Right Subtitle Workspace; no broad public/** route is granted."
       }
     ]
   },
-  "count": 109,
+  "count": 111,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -881,54 +1099,54 @@
       "supersedes": null,
       "notes": "Real Windows Electron UI verifier for the Stage D zero-raster static snapshot workbench: shared R1/R2 mode shell, three-zone read-only presentation, preview-before-import and target/frame stale invalidation, explicit ImageAsset commit, store/disk synchronization, and source hash invariance."
     },
-      {
-        "id": "issue767-u1",
-        "script": "verify:issue767-u1",
+    {
+      "id": "issue767-u1",
+      "script": "verify:issue767-u1",
       "suite": "assets",
       "subsystem": "fla-import",
       "status": "active",
       "platform": "windows",
       "runIn": "local",
       "owner": "fla-import",
-        "supersedes": null,
-        "notes": "Focused Windows Electron proof that bitmap-only, vector-only, and mixed FLA sources enter one import shell, keep bitmap selection empty, preserve existing content adapters, and cancel without project or source mutation."
-      },
-      {
-        "id": "issue767-u2",
-        "script": "verify:issue767-u2",
-        "suite": "assets",
-        "subsystem": "fla-import",
-        "status": "active",
-        "platform": "windows",
-        "runIn": "local",
-        "owner": "fla-import",
-        "supersedes": null,
-        "notes": "Focused real-source Windows Electron evidence for authored-state candidate ordering, the exact Bluehair com809 frame-0 catalog target, raster preservation, duplicate identity, fail-closed unsupported content, source switching, responsiveness, and no project/source mutation."
-      },
-      {
-        "id": "issue767-u3",
-        "script": "verify:issue767-u3",
-        "suite": "assets",
-        "subsystem": "fla-import",
-        "status": "active",
-        "platform": "windows",
-        "runIn": "local",
-        "owner": "fla-import",
-        "supersedes": null,
-        "notes": "Focused real Windows Electron proof for exact Bluehair com809 frame-0 preview binding, one-image commit and metadata, Asset Library thumbnail, shot placement, save-close-reopen, duplicate no-op, single raw bitmap imports, cancellation/resource cleanup, and fail-closed unsupported content."
-      },
-      {
-        "id": "issue775-c03",
-        "script": "verify:issue775-c03",
-        "suite": "assets",
-        "subsystem": "fla-import",
-        "status": "active",
-        "platform": "windows",
-        "runIn": "local",
-        "owner": "fla-import",
-        "supersedes": null,
-        "notes": "Issue #775 C03 real Windows Electron evidence for the unified FLA workbench, 336-source-bitmap list and synthetic empty state, search/bulk selection, keyboard/focus/touch at supported display scaling, explicit frame ranges, safe close and partial import receipts, persistence, and original FLA hash invariance."
-      },
+      "supersedes": null,
+      "notes": "Focused Windows Electron proof that bitmap-only, vector-only, and mixed FLA sources enter one import shell, keep bitmap selection empty, preserve existing content adapters, and cancel without project or source mutation."
+    },
+    {
+      "id": "issue767-u2",
+      "script": "verify:issue767-u2",
+      "suite": "assets",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Focused real-source Windows Electron evidence for authored-state candidate ordering, the exact Bluehair com809 frame-0 catalog target, raster preservation, duplicate identity, fail-closed unsupported content, source switching, responsiveness, and no project/source mutation."
+    },
+    {
+      "id": "issue767-u3",
+      "script": "verify:issue767-u3",
+      "suite": "assets",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Focused real Windows Electron proof for exact Bluehair com809 frame-0 preview binding, one-image commit and metadata, Asset Library thumbnail, shot placement, save-close-reopen, duplicate no-op, single raw bitmap imports, cancellation/resource cleanup, and fail-closed unsupported content."
+    },
+    {
+      "id": "issue775-c03",
+      "script": "verify:issue775-c03",
+      "suite": "assets",
+      "subsystem": "fla-import",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "fla-import",
+      "supersedes": null,
+      "notes": "Issue #775 C03 real Windows Electron evidence for the unified FLA workbench, 336-source-bitmap list and synthetic empty state, search/bulk selection, keyboard/focus/touch at supported display scaling, explicit frame ranges, safe close and partial import receipts, persistence, and original FLA hash invariance."
+    },
     {
       "id": "issue399-stage-e",
       "script": "verify:issue399-stage-e",
@@ -2056,6 +2274,30 @@
       "owner": "timeline",
       "supersedes": null,
       "notes": "Wrapper over verify:issue197/199/207. Preserved per RH-04."
+    },
+    {
+      "id": "issue871-am03-electron",
+      "script": "verify:issue871-am03-electron",
+      "suite": "canvas",
+      "subsystem": "canvas",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "canvas",
+      "supersedes": null,
+      "notes": "Local synthetic Electron evidence for AM-03 nonzero-time animation drop, distinct PNG frame pixels, pending-frame retention, before-start visibility, Canvas drag, and Inspector scale. Synthetic drop input is not OWNER human acceptance."
+    },
+    {
+      "id": "issue890-am04-electron",
+      "script": "verify:issue890-am04-electron",
+      "suite": "canvas",
+      "subsystem": "canvas",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "canvas",
+      "supersedes": null,
+      "notes": "Local synthetic Windows Electron evidence for same-source dual animation drops, independent UI timing and playback modes, Canvas transforms, duplicate/delete History, continuous Product Preview pause/replay/reverse seek, real ProjectService save/reopen, and file-backed 21-frame PNG rendering. Does not replace OWNER acceptance with private footage."
     }
   ]
 }

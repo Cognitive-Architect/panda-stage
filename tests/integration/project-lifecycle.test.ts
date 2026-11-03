@@ -230,7 +230,9 @@ describe('project directory lifecycle', () => {
           assetId:
             layer.source.kind === 'asset'
               ? layer.source.assetId
-              : layer.source.characterId,
+              : layer.source.kind === 'character'
+                ? layer.source.characterId
+                : layer.source.animationId,
           name: layer.name,
           anchor: layer.anchor,
           x: layer.x,

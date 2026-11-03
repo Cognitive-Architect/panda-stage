@@ -32,6 +32,7 @@ import { Button, DecorativeIcon } from '../../ui';
 import { timelineUiStore, useTimelineUi } from '../timeline/timelineUiStore';
 import {
   isLayerTransformEditableAtTime,
+  isAnimationBaseTransformEditableAtTime,
   runLayerTransformMutation,
   TEMPORAL_TRANSFORM_STATUS,
 } from './layerTransformTemporalGuard';
@@ -89,6 +90,7 @@ export interface LayerTransformController {
   formRef: RefObject<HTMLFormElement | null>;
   status: string;
   temporalInspection: boolean;
+  animationBaseTransformEditable?: boolean;
   positionAuthoringActive?: boolean;
   positionAuthoringAvailable?: boolean;
   positionHoldAvailable?: boolean;
@@ -129,10 +131,8 @@ const ROTATION_STEP_DEG = 15;
 /** Format the domain scale as an editable, user-facing percentage. */
 export function formatScalePercent(scale: number): string {
   if (!Number.isFinite(scale)) return '';
-  const percent = scale * 100;
-  return Number.isInteger(percent)
-    ? String(percent)
-    : String(Number(percent.toPrecision(12)));
+  const percent = Number((scale * 100).toFixed(1));
+  return String(Object.is(percent, -0) ? 0 : percent);
 }
 
 /** Convert a percentage draft back to the existing domain scale semantics. */
@@ -254,6 +254,19 @@ export function useLayerTransformController({
     null;
   const layer =
     shot?.layers.find((candidate) => candidate.id === selectedLayerId) ?? null;
+  const animationLayer = layer?.source.kind === 'animation';
+  const animationBaseTransformEditable = Boolean(
+    animationLayer &&
+      snapshot &&
+      shot &&
+      layer &&
+      isAnimationBaseTransformEditableAtTime(
+        snapshot.project,
+        shot.id,
+        layer.id,
+        timelineUi.currentTimeMs,
+      ),
+  );
   const isBackgroundLayer =
     Boolean(backgroundLayerSelected) ||
     Boolean(shot && layer && shot.backgroundLayerId === layer.id);
@@ -264,15 +277,19 @@ export function useLayerTransformController({
   );
   const positionAuthoringAvailable =
     !isBackgroundLayer &&
+    !animationLayer &&
     temporalInspection &&
     !positionAuthoringActive &&
     positionEntry.canBegin;
   const positionHoldAvailable =
     !isBackgroundLayer &&
+    !animationLayer &&
     temporalInspection &&
     !positionAuthoringActive &&
     positionEntry.canHold;
-  const positionMain = temporalInspection
+  const positionMain = animationLayer && layer
+    ? { x: layer.x, y: layer.y }
+    : temporalInspection
     ? positionAuthoringActive
       ? positionAuthoringSnapshot?.draft ?? null
       : positionAuthoringSessionStore.getCurrentMainPosition()
@@ -344,13 +361,23 @@ export function useLayerTransformController({
     );
     setScalePercentDraft(layer ? formatScalePercent(layer.scaleX) : '');
     scalePercentEditedRef.current = false;
-    if (temporalInspection) {
-      const fallbackStatus = positionAuthoringActive
-        ? POSITION_AUTHORING_GUIDANCE
-        : positionAuthoringAvailable || positionHoldAvailable
-          ? ''
-          : TEMPORAL_TRANSFORM_STATUS;
-      const currentStatus = statusRef.current || fallbackStatus;
+    if (temporalInspection || (animationLayer && !animationBaseTransformEditable)) {
+      const fallbackStatus = animationLayer
+        ? layer?.locked
+          ? '动画图层已锁定；请先回到 0:00 解锁。'
+          : animationBaseTransformEditable
+            ? ''
+            : '动画当前不可见或受镜头变换事件控制；请定位到可见且未被事件覆盖的帧。'
+        : positionAuthoringActive
+          ? POSITION_AUTHORING_GUIDANCE
+          : positionAuthoringAvailable || positionHoldAvailable
+            ? ''
+            : TEMPORAL_TRANSFORM_STATUS;
+      const currentStatus = animationLayer
+        ? preserveCommitErrorRef.current
+          ? statusRef.current
+          : fallbackStatus
+        : statusRef.current || fallbackStatus;
       const nextStatus = getPositionAuthoringPresentation({
         temporalInspection,
         active: positionAuthoringActive,
@@ -385,6 +412,8 @@ export function useLayerTransformController({
   }, [
     compact,
     isBackgroundLayer,
+    animationBaseTransformEditable,
+    animationLayer,
     layer,
     positionAuthoringActive,
     basePositionX,
@@ -444,6 +473,39 @@ export function useLayerTransformController({
       shotStore.getCurrentShotId() === shotId &&
       selectionStore.getSelectedLayerId() === layer.id &&
       timelineUiStore.getSnapshot().currentTimeMs === 0,
+    );
+  };
+
+  const canCommitAnimationBaseTransformAtTime = (
+    currentTimeMs: number,
+  ): boolean => {
+    const current = editorProjectStore.getSnapshot();
+    const currentShot = current?.project.shots.find(
+      (candidate) => candidate.id === shotId,
+    );
+    const currentLayer = currentShot?.layers.find(
+      (candidate) => candidate.id === layer?.id,
+    );
+    return Boolean(
+      animationLayer &&
+        layer &&
+        shotId &&
+        shot &&
+        snapshot &&
+        current &&
+        currentLayer?.source.kind === 'animation' &&
+        editorProjectStore.getProjectInstanceId() === projectInstanceId &&
+        current.project.id === snapshot.project.id &&
+        current.projectRoot === snapshot.projectRoot &&
+        current.revision === snapshot.revision &&
+        shotStore.getCurrentShotId() === shotId &&
+        selectionStore.getSelectedLayerId() === layer.id &&
+        isAnimationBaseTransformEditableAtTime(
+          current.project,
+          shot.id,
+          layer.id,
+          currentTimeMs,
+        ),
     );
   };
 
@@ -587,7 +649,12 @@ export function useLayerTransformController({
     scaleValue = scalePercentDraft,
   ): CommitTransformDraftResult => {
     if (!layer) return 'invalid';
-    if (temporalInspection) {
+    const currentTimeMs = timelineUiStore.getSnapshot().currentTimeMs;
+    const animationBaseEdit =
+      reason !== 'opacity' &&
+      layer.source.kind === 'animation' &&
+      canCommitAnimationBaseTransformAtTime(currentTimeMs);
+    if (temporalInspection && !animationBaseEdit) {
       if (positionAuthoringActive) {
         const result = commitPositionDraft(
           reason === 'blur' ? 'blur' : 'submit',
@@ -602,6 +669,18 @@ export function useLayerTransformController({
               : 'invalid';
       }
       rejectTemporalTransformWrite();
+      return 'temporal-preview';
+    }
+    if (
+      layer.source.kind === 'animation' &&
+      reason !== 'opacity' &&
+      !animationBaseEdit
+    ) {
+      setStatus(
+        layer.locked
+          ? '动画图层已锁定；请先回到 0:00 解锁。'
+          : '动画当前不可见或已失效；请重新选择可见帧后编辑。',
+      );
       return 'temporal-preview';
     }
     if (layer.locked) {
@@ -633,6 +712,10 @@ export function useLayerTransformController({
           revisionAfter =
             editorProjectStore.getSnapshot()?.revision ?? null;
         },
+        (timeMs) =>
+          layer.source.kind === 'animation' && reason !== 'opacity'
+            ? canCommitAnimationBaseTransformAtTime(timeMs)
+            : isLayerTransformEditableAtTime(timeMs),
       );
       if (!didMutate) return 'temporal-preview';
       lastCommittedRef.current = commitIdentity;
@@ -687,7 +770,11 @@ export function useLayerTransformController({
   };
 
   const adjustScale = (direction: -1 | 1): void => {
-    if (!isLayerTransformEditableAtTime(timelineUiStore.getSnapshot().currentTimeMs)) {
+    const currentTimeMs = timelineUiStore.getSnapshot().currentTimeMs;
+    const canEdit = layer?.source.kind === 'animation'
+      ? canCommitAnimationBaseTransformAtTime(currentTimeMs)
+      : isLayerTransformEditableAtTime(currentTimeMs);
+    if (!canEdit) {
       rejectTemporalTransformWrite();
       return;
     }
@@ -708,7 +795,11 @@ export function useLayerTransformController({
   };
 
   const adjustRotation = (direction: -1 | 1): void => {
-    if (!isLayerTransformEditableAtTime(timelineUiStore.getSnapshot().currentTimeMs)) {
+    const currentTimeMs = timelineUiStore.getSnapshot().currentTimeMs;
+    const canEdit = layer?.source.kind === 'animation'
+      ? canCommitAnimationBaseTransformAtTime(currentTimeMs)
+      : isLayerTransformEditableAtTime(currentTimeMs);
+    if (!canEdit) {
       rejectTemporalTransformWrite();
       return;
     }
@@ -825,6 +916,7 @@ export function useLayerTransformController({
     formRef,
     status,
     temporalInspection,
+    animationBaseTransformEditable,
     positionAuthoringActive,
     positionAuthoringAvailable,
     positionHoldAvailable,
@@ -869,6 +961,7 @@ function LayerTransformPanelView({
     scalePercentDraft,
     status,
     temporalInspection,
+    animationBaseTransformEditable = false,
     positionAuthoringActive = false,
     positionAuthoringAvailable = false,
     positionHoldAvailable = false,
@@ -891,15 +984,28 @@ function LayerTransformPanelView({
     status,
   });
   const transformControlsDisabled = Boolean(layer?.locked || temporalInspection);
+  const baseTransformControlsDisabled = Boolean(
+    layer?.locked ||
+      (layer?.source.kind === 'animation'
+        ? !animationBaseTransformEditable
+        : temporalInspection),
+  );
   const positionControlsDisabled = Boolean(
-    layer?.locked || (temporalInspection && !positionAuthoringActive),
+    layer?.locked ||
+      (layer?.source.kind === 'animation'
+        ? !animationBaseTransformEditable
+        : temporalInspection && !positionAuthoringActive),
   );
 
   const resetButton = layer && showResetTransform ? (
     <button
       className="layer-transform-action layer-transform-secondary-action layer-transform-reset-action"
       data-testid="layer-transform-reset"
-      disabled={transformControlsDisabled || isBackgroundLayer}
+      disabled={
+        transformControlsDisabled ||
+        isBackgroundLayer ||
+        (layer?.source.kind === 'animation' && !animationBaseTransformEditable)
+      }
       onClick={resetTransform}
       type="button"
     >
@@ -918,7 +1024,10 @@ function LayerTransformPanelView({
     <button
       aria-pressed={compact ? layer.flipX : undefined}
       className="layer-transform-action layer-transform-secondary-action layer-transform-toggle-action"
-      disabled={transformControlsDisabled}
+      disabled={
+        transformControlsDisabled ||
+        (layer?.source.kind === 'animation' && !animationBaseTransformEditable)
+      }
       onClick={toggleFlip}
       type="button"
     >
@@ -975,7 +1084,7 @@ function LayerTransformPanelView({
   const applyButton = layer && !positionAuthoringActive ? (
     <button
       className="layer-transform-action layer-transform-primary-action layer-transform-submit-action"
-      disabled={transformControlsDisabled}
+      disabled={baseTransformControlsDisabled}
       type="submit"
     >
       {compact ? (
@@ -1085,7 +1194,7 @@ function LayerTransformPanelView({
                 <div className="layer-transform-stepper">
                   <button
                     aria-label="缩小缩放"
-                    disabled={transformControlsDisabled}
+      disabled={baseTransformControlsDisabled}
                     onClick={() => adjustScale(-1)}
                     type="button"
                   >
@@ -1094,7 +1203,7 @@ function LayerTransformPanelView({
                   <label className="layer-transform-stepper-value">
                     <input
                       aria-label="缩放百分比"
-                      disabled={transformControlsDisabled}
+                      disabled={baseTransformControlsDisabled}
                       inputMode="decimal"
                       onChange={(event) =>
                         updateScalePercentDraft(event.target.value)
@@ -1105,7 +1214,7 @@ function LayerTransformPanelView({
                   </label>
                   <button
                     aria-label="放大缩放"
-                    disabled={transformControlsDisabled}
+                    disabled={baseTransformControlsDisabled}
                     onClick={() => adjustScale(1)}
                     type="button"
                   >
@@ -1121,7 +1230,7 @@ function LayerTransformPanelView({
                 <div className="layer-transform-stepper">
                   <button
                     aria-label="减少旋转角度"
-                    disabled={transformControlsDisabled}
+                    disabled={baseTransformControlsDisabled}
                     onClick={() => adjustRotation(-1)}
                     type="button"
                   >
@@ -1130,7 +1239,7 @@ function LayerTransformPanelView({
                   <label className="layer-transform-stepper-value">
                     <input
                       aria-label="旋转角度"
-                      disabled={transformControlsDisabled}
+                      disabled={baseTransformControlsDisabled}
                       inputMode="decimal"
                       onChange={(event) =>
                         updateDraft('rotationDeg', event.target.value)
@@ -1141,7 +1250,7 @@ function LayerTransformPanelView({
                   </label>
                   <button
                     aria-label="增加旋转角度"
-                    disabled={transformControlsDisabled}
+                    disabled={baseTransformControlsDisabled}
                     onClick={() => adjustRotation(1)}
                     type="button"
                   >
@@ -1218,7 +1327,11 @@ function LayerTransformPanelView({
                 <label key={key}>
                   {label}
                   <input
-                    disabled={transformControlsDisabled}
+                    disabled={
+                      key === 'opacity'
+                        ? transformControlsDisabled
+                        : baseTransformControlsDisabled
+                    }
                     inputMode="decimal"
                     onChange={(event) =>
                       updateDraft(key, event.target.value)
@@ -1239,7 +1352,8 @@ function LayerTransformPanelView({
           {compact ? '请在画布中选择一个对象。' : '未选择普通图层。'}
         </p>
       )}
-      {layer || !compact ? (
+      {(layer || !compact) &&
+      !(layer?.source.kind === 'animation' && !layer.locked) ? (
         temporalInspection ? null : (
           <p data-testid="layer-transform-guidance">
             {isBackgroundLayer
