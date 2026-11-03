@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   evaluateShotAtTime,
   ProjectSchema,
@@ -239,6 +239,370 @@ function settleImageLoads(images: readonly FakeImage[]): void {
   throw new Error('Synthetic Stage image queue did not settle.');
 }
 
+interface ControlledImageLoadRecord {
+  sourceUrl: string;
+  submittedAtMs: number;
+  roleAtSubmit: 'required' | 'optional';
+  requiredAtMs: number | null;
+  decodeStartedAtMs: number | null;
+  readyAtMs: number | null;
+  cancelledAtMs: number | null;
+}
+
+interface ControlledImageTask {
+  image: FakeImage;
+  record: ControlledImageLoadRecord;
+  status: 'queued' | 'running' | 'complete' | 'cancelled';
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+/** Models a test-only shared two-slot decode budget under deterministic latency. */
+class ControlledImageDecodePool {
+  readonly records: ControlledImageLoadRecord[] = [];
+
+  private readonly queue: ControlledImageTask[] = [];
+  private readonly tasksByUrl = new Map<string, ControlledImageTask[]>();
+  private readonly tasksByImage = new WeakMap<object, ControlledImageTask>();
+  private requiredSourceUrls = new Set<string>();
+  private activeCount = 0;
+
+  constructor(
+    private readonly delayMs: number,
+    private readonly concurrency = 2,
+  ) {}
+
+  setRequiredSourceUrls(sourceUrls: readonly string[]): void {
+    this.requiredSourceUrls = new Set(sourceUrls);
+    for (const sourceUrl of this.requiredSourceUrls) {
+      const task = this.latestTask(sourceUrl);
+      if (task && task.record.requiredAtMs === null) {
+        task.record.requiredAtMs = Date.now();
+      }
+    }
+  }
+
+  createImage(): HTMLImageElement {
+    const cancelTask = (queuedTask: ControlledImageTask) =>
+      this.cancel(queuedTask);
+    const submitTask = (image: FakeImage, sourceUrl: string) =>
+      this.submit(image, sourceUrl);
+    let sourceUrl = '';
+    let task: ControlledImageTask | null = null;
+    const image: FakeImage = {
+      onload: null,
+      onerror: null,
+      naturalWidth: 640,
+      naturalHeight: 640,
+      get src() {
+        return sourceUrl;
+      },
+      set src(nextSourceUrl: string) {
+        if (task) cancelTask(task);
+        sourceUrl = nextSourceUrl;
+        task = nextSourceUrl ? submitTask(image, nextSourceUrl) : null;
+      },
+      succeed() {
+        this.onload?.({} as Event);
+      },
+    };
+    return image as unknown as HTMLImageElement;
+  }
+
+  latestRecord(sourceUrl: string): ControlledImageLoadRecord | null {
+    return this.latestTask(sourceUrl)?.record ?? null;
+  }
+
+  private latestTask(sourceUrl: string): ControlledImageTask | null {
+    const tasks = this.tasksByUrl.get(sourceUrl);
+    return tasks?.[tasks.length - 1] ?? null;
+  }
+
+  private submit(image: FakeImage, sourceUrl: string): ControlledImageTask {
+    const now = Date.now();
+    const required = this.requiredSourceUrls.has(sourceUrl);
+    const record: ControlledImageLoadRecord = {
+      sourceUrl,
+      submittedAtMs: now,
+      roleAtSubmit: required ? 'required' : 'optional',
+      requiredAtMs: required ? now : null,
+      decodeStartedAtMs: null,
+      readyAtMs: null,
+      cancelledAtMs: null,
+    };
+    const task: ControlledImageTask = {
+      image,
+      record,
+      status: 'queued',
+      timer: null,
+    };
+    this.records.push(record);
+    const tasks = this.tasksByUrl.get(sourceUrl) ?? [];
+    tasks.push(task);
+    this.tasksByUrl.set(sourceUrl, tasks);
+    this.tasksByImage.set(image as object, task);
+    this.queue.push(task);
+    this.pump();
+    return task;
+  }
+
+  private pump(): void {
+    while (this.activeCount < this.concurrency && this.queue.length > 0) {
+      const task = this.queue.shift();
+      if (!task || task.status !== 'queued') continue;
+      task.status = 'running';
+      task.record.decodeStartedAtMs = Date.now();
+      this.activeCount += 1;
+      task.timer = setTimeout(() => {
+        if (task.status !== 'running') return;
+        task.status = 'complete';
+        task.timer = null;
+        task.record.readyAtMs = Date.now();
+        this.activeCount -= 1;
+        task.image.onload?.({} as Event);
+        this.pump();
+      }, this.delayMs);
+    }
+  }
+
+  private cancel(task: ControlledImageTask): void {
+    if (task.status === 'complete' || task.status === 'cancelled') return;
+    if (task.status === 'running') {
+      if (task.timer !== null) clearTimeout(task.timer);
+      task.timer = null;
+      this.activeCount -= 1;
+    } else {
+      const queuedIndex = this.queue.indexOf(task);
+      if (queuedIndex >= 0) this.queue.splice(queuedIndex, 1);
+    }
+    task.status = 'cancelled';
+    task.record.cancelledAtMs = Date.now();
+    this.pump();
+  }
+}
+
+interface StageFrameTimingRow {
+  frameIndex: number;
+  requestedAtMs: number;
+  sourceUrl: string;
+  decodeSubmittedAtMs: number | null;
+  decodeStartedAtMs: number | null;
+  requiredAtMs: number | null;
+  requiredReadyAtMs: number | null;
+  stageCommitAtMs: number | null;
+  displayedFrameAtRequest: number;
+}
+
+type StageTimingEvent =
+  | { kind: 'target'; frameIndex: number; atMs: number; sequence: number }
+  | { kind: 'display'; frameIndex: number; atMs: number; sequence: number };
+
+async function runControlledStageTimingScenario(
+  delayMs: number,
+  stagePrewarmEnabled: boolean,
+  legacyPartScopedIdentity = false,
+): Promise<{
+  delayMs: number;
+  stagePrewarmEnabled: boolean;
+  legacyPartScopedIdentity: boolean;
+  skippedTargetFrames: number[];
+  maximumOldFrameHoldMs: number;
+  oldFrameHoldIntervals: Array<{
+    frameIndex: number;
+    startedAtMs: number;
+    endedAtMs: number;
+    durationMs: number;
+  }>;
+  displayedTargetFrames: number[];
+  rows: StageFrameTimingRow[];
+}> {
+  vi.clearAllTimers();
+  vi.setSystemTime(-delayMs);
+  const project = build21FrameProject({ includeSecond: false });
+  const shot = project.shots[0]!;
+  const assetUrls = buildAssetUrls(project);
+  const pool = new ControlledImageDecodePool(delayMs, 2);
+  const session = new StageImageResourceSession({
+    createImage: () => pool.createImage(),
+  });
+  const rows: StageFrameTimingRow[] = [];
+  const events: StageTimingEvent[] = [];
+  let eventSequence = 0;
+  let targetFrameIndex = 0;
+  let displayedFrameIndex = -1;
+  let desiredSourceKey = '';
+  let targetRow: StageFrameTimingRow | null = null;
+  let playStartedAtMs = 0;
+
+  const elapsedMs = (): number => Date.now() - playStartedAtMs;
+  const onStageState = (): void => {
+    const state = session.getSnapshot();
+    if (!state.ready || state.desiredSourceKey !== desiredSourceKey) return;
+    if (targetRow && targetRow.stageCommitAtMs === null) {
+      targetRow.stageCommitAtMs = elapsedMs();
+      const load = pool.latestRecord(targetRow.sourceUrl);
+      targetRow.decodeSubmittedAtMs = load
+        ? load.submittedAtMs - playStartedAtMs
+        : null;
+      targetRow.decodeStartedAtMs = load?.decodeStartedAtMs === null || !load
+        ? null
+        : load.decodeStartedAtMs - playStartedAtMs;
+      targetRow.requiredAtMs = load?.requiredAtMs === null || !load
+        ? null
+        : load.requiredAtMs - playStartedAtMs;
+      targetRow.requiredReadyAtMs = load?.readyAtMs === null || !load
+        ? null
+        : load.readyAtMs - playStartedAtMs;
+    }
+    if (displayedFrameIndex !== targetFrameIndex) {
+      displayedFrameIndex = targetFrameIndex;
+      events.push({
+        kind: 'display',
+        frameIndex: targetFrameIndex,
+        atMs: elapsedMs(),
+        sequence: eventSequence++,
+      });
+    }
+  };
+
+  const initial = evaluateShotAtTime(shot, 0, project);
+  const initialBuild = buildSources(project, initial, assetUrls);
+  const normalizeSources = (sources: readonly StageImageLayerSource[]) =>
+    legacyPartScopedIdentity
+      ? sources.map(({ id, sourceUrl }) => ({ id, sourceUrl }))
+      : sources;
+  const initialSources = {
+    ...initialBuild,
+    current: normalizeSources(initialBuild.current),
+    upcoming: normalizeSources(initialBuild.upcoming),
+  };
+  desiredSourceKey = buildStageImageSourceKey(initialSources.current);
+  pool.setRequiredSourceUrls(initialSources.current.map((source) => source.sourceUrl));
+  session.reconcile(initialSources.current, onStageState);
+  await vi.advanceTimersByTimeAsync(delayMs);
+  expect(session.getSnapshot().ready).toBe(true);
+  expect(displayedFrameIndex).toBe(0);
+
+  playStartedAtMs = Date.now();
+  targetRow = null;
+  if (stagePrewarmEnabled) session.prewarm(initialSources.upcoming);
+
+  for (let frameIndex = 1; frameIndex < 21; frameIndex += 1) {
+    await vi.advanceTimersByTimeAsync(40);
+    targetFrameIndex = frameIndex;
+    const requestedAtMs = elapsedMs();
+    const evaluated = evaluateShotAtTime(shot, frameIndex * 40, project);
+    const builtSources = buildSources(project, evaluated, assetUrls);
+    const sources = {
+      ...builtSources,
+      current: normalizeSources(builtSources.current),
+      upcoming: normalizeSources(builtSources.upcoming),
+    };
+    const source = sources.current[0];
+    if (!source) throw new Error(`Frame ${frameIndex} has no required image source.`);
+    desiredSourceKey = buildStageImageSourceKey(sources.current);
+    const row: StageFrameTimingRow = {
+      frameIndex,
+      requestedAtMs,
+      sourceUrl: source.sourceUrl,
+      decodeSubmittedAtMs: null,
+      decodeStartedAtMs: null,
+      requiredAtMs: null,
+      requiredReadyAtMs: null,
+      stageCommitAtMs: null,
+      displayedFrameAtRequest: displayedFrameIndex,
+    };
+    targetRow = row;
+    rows.push(row);
+    events.push({
+      kind: 'target',
+      frameIndex,
+      atMs: requestedAtMs,
+      sequence: eventSequence++,
+    });
+    pool.setRequiredSourceUrls(sources.current.map((current) => current.sourceUrl));
+    session.reconcile(sources.current, onStageState);
+    if (stagePrewarmEnabled) session.prewarm(sources.upcoming);
+    const load = pool.latestRecord(source.sourceUrl);
+    if (load) {
+      row.decodeSubmittedAtMs = load.submittedAtMs - playStartedAtMs;
+      row.decodeStartedAtMs = load.decodeStartedAtMs === null
+        ? null
+        : load.decodeStartedAtMs - playStartedAtMs;
+      row.requiredAtMs = load.requiredAtMs === null
+        ? null
+        : load.requiredAtMs - playStartedAtMs;
+      row.requiredReadyAtMs = load.readyAtMs === null
+        ? null
+        : load.readyAtMs - playStartedAtMs;
+    }
+  }
+
+  // A 21-frame, 25fps loop returns to frame 0 at 840ms; do not credit
+  // frame 20 with a completion after the next loop target has arrived.
+  await vi.advanceTimersByTimeAsync(40);
+  const finalTimeMs = elapsedMs();
+  const skippedTargetFrames = rows
+    .filter((row) => row.stageCommitAtMs === null)
+    .map((row) => row.frameIndex);
+  const orderedEvents = [...events].sort(
+    (left, right) => left.atMs - right.atMs || left.sequence - right.sequence,
+  );
+  let visibleFrame = 0;
+  let staleStartedAtMs: number | null = null;
+  let maximumOldFrameHoldMs = 0;
+  const oldFrameHoldIntervals: Array<{
+    frameIndex: number;
+    startedAtMs: number;
+    endedAtMs: number;
+    durationMs: number;
+  }> = [];
+  for (const event of orderedEvents) {
+    if (event.kind === 'target') {
+      if (visibleFrame < event.frameIndex && staleStartedAtMs === null) {
+        staleStartedAtMs = event.atMs;
+      }
+      continue;
+    }
+    if (event.frameIndex > visibleFrame) {
+      if (staleStartedAtMs !== null) {
+        const durationMs = event.atMs - staleStartedAtMs;
+        oldFrameHoldIntervals.push({
+          frameIndex: visibleFrame,
+          startedAtMs: staleStartedAtMs,
+          endedAtMs: event.atMs,
+          durationMs,
+        });
+        maximumOldFrameHoldMs = Math.max(maximumOldFrameHoldMs, durationMs);
+        staleStartedAtMs = null;
+      }
+      visibleFrame = event.frameIndex;
+    }
+  }
+  if (staleStartedAtMs !== null) {
+    const durationMs = finalTimeMs - staleStartedAtMs;
+    oldFrameHoldIntervals.push({
+      frameIndex: visibleFrame,
+      startedAtMs: staleStartedAtMs,
+      endedAtMs: finalTimeMs,
+      durationMs,
+    });
+    maximumOldFrameHoldMs = Math.max(maximumOldFrameHoldMs, durationMs);
+  }
+  session.dispose();
+  return {
+    delayMs,
+    stagePrewarmEnabled,
+    legacyPartScopedIdentity,
+    skippedTargetFrames,
+    maximumOldFrameHoldMs,
+    oldFrameHoldIntervals,
+    displayedTargetFrames: events
+      .filter((event) => event.kind === 'display')
+      .map((event) => event.frameIndex),
+    rows,
+  };
+}
+
 function evaluateLayer(
   project: Project,
   timeMs: number,
@@ -251,6 +615,97 @@ function evaluateLayer(
 }
 
 describe('Issue #947 AP-03 decoded image prewarm integration', () => {
+  it('measures 21-frame target-to-display timing for the pre-AP03 path, current C, and C-only isolation', async () => {
+    vi.useFakeTimers();
+    try {
+      const comparisons = [];
+      const summarize = (result: Awaited<ReturnType<typeof runControlledStageTimingScenario>>) => ({
+        path: result.legacyPartScopedIdentity
+          ? 'pre-AP03-stage-contract'
+          : result.stagePrewarmEnabled
+            ? 'current-HEAD-C-on'
+            : 'current-HEAD-C-isolated',
+        skippedTargetFrames: result.skippedTargetFrames,
+        displayedTargetFrames: result.displayedTargetFrames,
+        maximumOldFrameHoldMs: result.maximumOldFrameHoldMs,
+        oldFrameHoldIntervals: result.oldFrameHoldIntervals,
+        frameTimings: result.rows.map((row) => [
+          row.frameIndex,
+          row.decodeStartedAtMs === null
+            ? null
+            : row.decodeStartedAtMs - row.requestedAtMs,
+          row.requiredAtMs === null
+            ? null
+            : row.requiredAtMs - row.requestedAtMs,
+          row.requiredReadyAtMs === null
+            ? null
+            : row.requiredReadyAtMs - row.requestedAtMs,
+          row.stageCommitAtMs === null
+            ? null
+            : row.stageCommitAtMs - row.requestedAtMs,
+          row.displayedFrameAtRequest,
+        ]),
+      });
+      for (const delayMs of [20, 60, 100]) {
+        const preAp03 = await runControlledStageTimingScenario(
+          delayMs,
+          false,
+          true,
+        );
+        const currentHead = await runControlledStageTimingScenario(
+          delayMs,
+          true,
+        );
+        const cOnlyIsolated = await runControlledStageTimingScenario(
+          delayMs,
+          false,
+        );
+        comparisons.push({
+          delayMs,
+          preAp03: summarize(preAp03),
+          currentHead: summarize(currentHead),
+          cOnlyIsolated: summarize(cOnlyIsolated),
+        });
+        expect(preAp03.rows).toHaveLength(20);
+        expect(currentHead.rows).toHaveLength(20);
+        expect(cOnlyIsolated.rows).toHaveLength(20);
+        for (const result of [preAp03, currentHead, cOnlyIsolated]) {
+          expect(result.rows.every((row) => row.stageCommitAtMs === null ||
+            row.stageCommitAtMs >= row.requestedAtMs)).toBe(true);
+          expect(result.rows.every((row) => row.frameIndex >= 1 && row.frameIndex < 21)).toBe(true);
+          expect(result.skippedTargetFrames.every((frameIndex) => frameIndex >= 1 && frameIndex < 21)).toBe(true);
+          expect(result.displayedTargetFrames[0]).toBe(0);
+          expect(result.displayedTargetFrames.every((frameIndex, index, displayed) =>
+            index === 0 || frameIndex > displayed[index - 1]!
+          )).toBe(true);
+        }
+        expect(preAp03.rows.map((row) => row.stageCommitAtMs)).toEqual(
+          cOnlyIsolated.rows.map((row) => row.stageCommitAtMs),
+        );
+        expect(currentHead.maximumOldFrameHoldMs).toBeLessThan(
+          cOnlyIsolated.maximumOldFrameHoldMs,
+        );
+        const committedCurrentFrames = currentHead.rows
+          .filter((row) => row.stageCommitAtMs !== null)
+          .map((row) => row.frameIndex);
+        expect(currentHead.displayedTargetFrames.slice(1)).toEqual(
+          committedCurrentFrames,
+        );
+        if (delayMs > 20) {
+          const committedIsolatedFrames = cOnlyIsolated.rows.filter(
+            (row) => row.stageCommitAtMs !== null,
+          ).length;
+          expect(committedCurrentFrames.length).toBeGreaterThan(
+            committedIsolatedFrames,
+          );
+        }
+      }
+      console.info('[issue957-c-stage-prewarm-timing]', JSON.stringify(comparisons));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps two 21-frame instances independent and reuses the same cold/hot source images', () => {
     const singleProject = build21FrameProject({ includeSecond: false });
     const dualProject = build21FrameProject({ secondEndBehavior: 'hold' });
