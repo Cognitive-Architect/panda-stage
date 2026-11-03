@@ -1242,6 +1242,16 @@ function matchesEvidenceBoundLinearStroke(
         { color: '#FCFDFA', ratio: 1 },
       ],
     },
+    {
+      strokeAttributes: { scaleMode: 'normal', weight: '0.5' },
+      gradientAttributes: {},
+      matrixAttributes: { a: 0.0386962890625, d: 0.020172119140625, tx: 561.05, ty: 591.1 },
+      stops: [
+        { color: '#618C84', ratio: 0 },
+        { color: '#ADCFD1', ratio: 0.654901960784314 },
+        { color: '#80CEB0', ratio: 0.894117647058824 },
+      ],
+    },
   ] as const;
 
   const strokeTag = solidStrokeXml.match(/<SolidStroke\b[^>]*>/u)?.[0];

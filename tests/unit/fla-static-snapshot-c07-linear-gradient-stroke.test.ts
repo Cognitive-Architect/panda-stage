@@ -51,6 +51,17 @@ const ISSUE952_TARGET_24_LINEAR_STROKE = `<StrokeStyle index="3">
   </fill></SolidStroke>
 </StrokeStyle>`;
 
+const ISSUE952_TARGET_28_LINEAR_STROKE = `<StrokeStyle index="1">
+  <SolidStroke scaleMode="normal" weight="0.5"><fill>
+    <LinearGradient>
+      <matrix><Matrix a="0.0386962890625" d="0.020172119140625" tx="561.05" ty="591.1"/></matrix>
+      <GradientEntry color="#618C84" ratio="0"/>
+      <GradientEntry color="#ADCFD1" ratio="0.654901960784314"/>
+      <GradientEntry color="#80CEB0" ratio="0.894117647058824"/>
+    </LinearGradient>
+  </fill></SolidStroke>
+</StrokeStyle>`;
+
 const ROOT_MATRIX = '<matrix><Matrix a="2" d="2" tx="10" ty="20"/></matrix>';
 const CHILD_MATRIX = '<matrix><Matrix a="3" d="3" tx="5" ty="7"/></matrix>';
 const IDENTITY_MATRIX = '<matrix><Matrix/></matrix>';
@@ -181,6 +192,34 @@ describe('P2-C07 evidence-bounded linear-gradient stroke reconstruction', () => 
     ['unproven interpolation', ISSUE952_TARGET_24_LINEAR_STROKE.replace('spreadMethod="reflect"', 'spreadMethod="reflect" interpolationMethod="linearRGB"')],
   ] as const)('fails closed for the #24 near-match with %s', async (_name, stroke) => {
     const rendered = await renderScene(stroke, '<Edge strokeStyle="3" cubics="!100 100|200 100"/>');
+    expect(rendered).toMatchObject({ ok: false, code: 'TARGET_UNSUPPORTED' });
+  });
+
+  it('renders the exact #952 #28 Style 1 signature with its target-specific pad behavior', async () => {
+    const rendered = await renderScene(
+      ISSUE952_TARGET_28_LINEAR_STROKE,
+      '<Edge strokeStyle="1" cubics="!100 100|200 100"/>',
+    );
+    expect(rendered.ok).toBe(true);
+    if (!rendered.ok) return;
+    const path = strokePaths(rendered.svg)[0] ?? '';
+    expect(path).toContain('stroke-width="0.5"');
+    expect(path).toContain('stroke-linecap="round"');
+    expect(path).toContain('stroke-linejoin="round"');
+    expect(rendered.svg).toContain(
+      'gradientTransform="matrix(0.0386962890625 0 0 0.020172119140625 561.05 591.1)"',
+    );
+    expect(rendered.svg).toContain('spreadMethod="pad" color-interpolation="sRGB"');
+    expect(rendered.svg).toContain('<stop offset="0" stop-color="#618C84" stop-opacity="1"/>');
+    expect(rendered.svg).toContain('<stop offset="0.894117647058824" stop-color="#80CEB0" stop-opacity="1"/>');
+  });
+
+  it.each([
+    ['changed weight', ISSUE952_TARGET_28_LINEAR_STROKE.replace('weight="0.5"', 'weight="0.75"')],
+    ['unproven spread', ISSUE952_TARGET_28_LINEAR_STROKE.replace('<LinearGradient>', '<LinearGradient spreadMethod="reflect">')],
+    ['explicit stop alpha', ISSUE952_TARGET_28_LINEAR_STROKE.replace('color="#618C84"', 'color="#618C84" alpha="0.5"')],
+  ] as const)('fails closed for the #28 near-match with %s', async (_name, stroke) => {
+    const rendered = await renderScene(stroke, '<Edge strokeStyle="1" cubics="!100 100|200 100"/>');
     expect(rendered).toMatchObject({ ok: false, code: 'TARGET_UNSUPPORTED' });
   });
 
