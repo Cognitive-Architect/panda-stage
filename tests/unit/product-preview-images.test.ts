@@ -8,6 +8,7 @@ import type { AssetCanvasImageReadResponse } from '../../src/shared/asset-canvas
 import {
   MAX_CONCURRENT_PREVIEW_IMAGE_READS,
   MAX_NEXT_PREVIEW_IMAGE_CACHE,
+  MAX_NEXT_SHOT_PREVIEW_IMAGE_READS,
   MAX_OPTIONAL_PREVIEW_IMAGE_READS,
   MAX_QUEUED_OPTIONAL_PREVIEW_IMAGES,
   MAX_RETAINED_PREVIEW_CANDIDATE_BYTES,
@@ -957,6 +958,73 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
       ...assetIds.slice(0, MAX_NEXT_PREVIEW_IMAGE_CACHE),
     ]);
     expect(requested).not.toContain(assetIds[MAX_NEXT_PREVIEW_IMAGE_CACHE]);
+    session.dispose();
+  });
+
+  it('keeps a second next-shot read queued while current required images use the freed slots', async () => {
+    const { project, assetIds } = projectWithExtraImages(5);
+    const [currentA, currentB, currentC, nextA, nextB] = assetIds;
+    const requested: string[] = [];
+    const reads = new Map<
+      string,
+      ReturnType<typeof deferred<AssetCanvasImageReadResponse>>
+    >();
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        requested.push(assetId);
+        const read = deferred<AssetCanvasImageReadResponse>();
+        reads.set(assetId, read);
+        return read.promise;
+      },
+    });
+
+    const warmNextShot = session.prepare(
+      PROJECT_ROOT,
+      project,
+      { requiredAssetIds: [IDS.assetBg] },
+      [nextA!, nextB!],
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested).toEqual([IDS.assetBg, nextA]);
+    expect(session.getDiagnostics().optionalInFlightCount).toBe(
+      MAX_NEXT_SHOT_PREVIEW_IMAGE_READS,
+    );
+
+    reads.get(IDS.assetBg)!.resolve(readyImage(IDS.assetBg));
+    await expect(warmNextShot).resolves.toMatchObject({ status: 'ready' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const currentFrame = session.prepare(
+      PROJECT_ROOT,
+      project,
+      { requiredAssetIds: [currentA!, currentB!, currentC!] },
+      [nextA!, nextB!],
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested).toEqual([IDS.assetBg, nextA, currentA, currentB]);
+    expect(session.getDiagnostics()).toMatchObject({
+      inFlightCount: MAX_CONCURRENT_PREVIEW_IMAGE_READS,
+      optionalInFlightCount: MAX_NEXT_SHOT_PREVIEW_IMAGE_READS,
+    });
+
+    reads.get(currentA!)!.resolve(readyImage(currentA));
+    reads.get(currentB!)!.resolve(readyImage(currentB));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested).toEqual([
+      IDS.assetBg,
+      nextA,
+      currentA,
+      currentB,
+      currentC,
+    ]);
+    reads.get(currentC!)!.resolve(readyImage(currentC));
+    await expect(currentFrame).resolves.toMatchObject({ status: 'ready' });
+
+    reads.get(nextA!)!.resolve(readyImage(nextA));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested).toContain(nextB);
+    reads.get(nextB!)!.resolve(readyImage(nextB));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     session.dispose();
   });
 

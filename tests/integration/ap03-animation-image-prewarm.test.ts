@@ -6,6 +6,7 @@ import {
 } from '../../src/domain';
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
 import { buildProductPreviewImagePlan } from '../../src/renderer/shell/productPreviewModel';
+import { ProductPreviewImageSession } from '../../src/renderer/shell/productPreviewImages';
 import {
   buildStageImageSourceKey,
   isStageFrameReady,
@@ -214,9 +215,9 @@ function buildSources(
     evaluatedShot,
   );
   const upcoming = plan.recentAnimationAssetIds.flatMap((assetId) => {
-    const frame = project.animations[0]!.frames.find(
-      (candidate) => candidate.assetId === assetId,
-    );
+    const frame = project.animations
+      .flatMap((animation) => animation.frames)
+      .find((candidate) => candidate.assetId === assetId);
     const sourceUrl = assetUrls[assetId];
     if (!frame || !sourceUrl) return [];
     return [{
@@ -603,6 +604,496 @@ async function runControlledStageTimingScenario(
   };
 }
 
+interface PreviewQueueReadRecord {
+  assetId: string;
+  startedAtMs: number;
+  readyAtMs: number | null;
+  delayMs: number;
+}
+
+interface PreviewQueueTimingRow {
+  frameIndex: number;
+  requestedAtMs: number;
+  targetTimeMs: number;
+  requiredAssetIds: string[];
+  optionalReadsInFlightAtRequest: number;
+  requiredStartsAtRequest: number;
+  previewReadyAtMs: number | null;
+  stageCommitAtMs: number | null;
+  displayedAtMs: number | null;
+  displayedFrameAtRequest: number;
+}
+
+function buildPreviewReadContentionFixture(): {
+  project: Project;
+  optionalAssetIds: string[];
+  assetUrls: Record<string, string>;
+  assetByteLengths: Map<string, number>;
+  assetIdByByteLength: Map<number, string>;
+} {
+  const base = build21FrameProject({ includeSecond: false });
+  const baseAnimation = base.animations[0]!;
+  const helperAnimations = [0, 1].map((animationIndex) => {
+    const animationId =
+      `84000000-0000-4000-8000-${String(animationIndex + 1).padStart(12, '0')}`;
+    return {
+      ...baseAnimation,
+      id: animationId,
+      name: `synthetic-required-helper-${animationIndex + 1}`,
+      source: {
+        ...baseAnimation.source,
+        basename: `synthetic-required-helper-${animationIndex + 1}.fla`,
+        sha256: (animationIndex + 100).toString(16).padStart(64, '0'),
+        renderTargetId: `issue957-required-helper-${animationIndex + 1}`,
+        targetName: `synthetic-required-helper-${animationIndex + 1}`,
+      },
+      frames: baseAnimation.frames.map((frame, frameIndex) => {
+        const assetId =
+          `85000000-0000-4000-8000-${String(animationIndex * 21 + frameIndex + 1).padStart(12, '0')}`;
+        const sha256 = (animationIndex * 21 + frameIndex + 200).toString(16)
+          .padStart(64, '0');
+        return { ...frame, assetId, sha256 };
+      }),
+    };
+  });
+  const helperAssets = helperAnimations.flatMap((animation, animationIndex) =>
+    animation.frames.map((frame, frameIndex) => ({
+      id: frame.assetId,
+      kind: 'image' as const,
+      name: `synthetic-required-helper-${animationIndex + 1}-${frameIndex}`,
+      relativePath: `assets/issue957-required-helper-${animationIndex + 1}-${frameIndex}.png`,
+      mimeType: 'image/png',
+      width: 640,
+      height: 640,
+      sha256: frame.sha256,
+      usage: 'uncategorized' as const,
+      keywords: ['synthetic', 'issue957', 'current-required'],
+    })),
+  );
+  const optionalAssetIds = Array.from({ length: 2 }, (_, index) =>
+    `83000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+  );
+  const optionalAssets = optionalAssetIds.map((id, index) => ({
+    id,
+    kind: 'image' as const,
+    name: `synthetic-next-shot-optional-${index}`,
+    relativePath: `assets/issue957-next-shot-optional-${index}.png`,
+    mimeType: 'image/png',
+    width: 640,
+    height: 640,
+    sha256: (index + 300).toString(16).padStart(64, '0'),
+    usage: 'uncategorized' as const,
+    keywords: ['synthetic', 'issue957', 'next-shot'],
+  }));
+  const currentShot = base.shots[0]!;
+  const helperLayers = helperAnimations.map((animation, index) => ({
+    ...animationLayer(
+      `86000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      {
+        startTimeMs: 0,
+        mode: 'loop',
+        endBehavior: 'hold',
+        x: 520 + index * 120,
+        y: 620,
+        scaleX: 1,
+        scaleY: 1,
+        rotationDeg: 0,
+        opacity: 1,
+        zIndex: 4 + index,
+        flipX: false,
+      },
+    ),
+    name: `required helper ${index + 1}`,
+    source: { kind: 'animation' as const, animationId: animation.id },
+  }));
+  const nextShotId = '87000000-0000-4000-8000-000000000001';
+  const nextShot = {
+    ...currentShot,
+    id: nextShotId,
+    name: 'synthetic optional next shot',
+    backgroundLayerId: null,
+    layers: optionalAssetIds.map((assetId, index) => ({
+      id: `88000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      name: `next-shot optional ${index + 1}`,
+      source: { kind: 'asset' as const, assetId },
+      anchor: 'center' as const,
+      x: 700 + index * 200,
+      y: 540,
+      scaleX: 1,
+      scaleY: 1,
+      rotationDeg: 0,
+      opacity: 1,
+      visible: true,
+      zIndex: index,
+      locked: false,
+      flipX: false,
+    })),
+  };
+  const project = ProjectSchema.parse({
+    ...base,
+    assets: [...base.assets, ...helperAssets, ...optionalAssets],
+    animations: [...base.animations, ...helperAnimations],
+    shots: base.shots.map((shot) =>
+      shot.id === currentShot.id
+        ? { ...shot, layers: [...shot.layers, ...helperLayers] }
+        : shot,
+    ).concat(nextShot),
+  });
+  const assetUrls = Object.fromEntries(
+    project.assets.map((asset) => [
+      asset.id,
+      `blob:issue957-b-${asset.id}-${asset.sha256 ?? 'no-hash'}`,
+    ]),
+  );
+  const assetByteLengths = new Map(
+    project.assets.map((asset, index) => [asset.id, index + 1]),
+  );
+  const assetIdByByteLength = new Map(
+    [...assetByteLengths].map(([assetId, byteLength]) => [byteLength, assetId]),
+  );
+  return {
+    project,
+    optionalAssetIds,
+    assetUrls,
+    assetByteLengths,
+    assetIdByByteLength,
+  };
+}
+
+async function runControlledPreviewQueueScenario(
+  requiredReadDelayMs: number,
+  optionalReadDelayMs: number,
+  optionalByteReadsEnabled: boolean,
+): Promise<{
+  requiredReadDelayMs: number;
+  optionalReadDelayMs: number;
+  optionalByteReadsEnabled: boolean;
+  skippedTargetFrames: number[];
+  displayedTargetFrames: number[];
+  maximumOldFrameHoldMs: number;
+  oldFrameHoldIntervals: Array<{
+    frameIndex: number;
+    startedAtMs: number;
+    endedAtMs: number;
+    durationMs: number;
+  }>;
+  diagnostics: ReturnType<ProductPreviewImageSession['getDiagnostics']>;
+  stageDiagnostics: ReturnType<StageImageResourceSession['getDiagnostics']>;
+  cPrewarmRequestKeys: string[][];
+  rows: PreviewQueueTimingRow[];
+  readRecords: PreviewQueueReadRecord[];
+}> {
+  vi.clearAllTimers();
+  vi.setSystemTime(-requiredReadDelayMs);
+  const fixture = buildPreviewReadContentionFixture();
+  const projectRoot = 'D:/PandaStage-Acceptance/issue957-preview-read-contention';
+  const project = fixture.project;
+  const shot = project.shots[0]!;
+  const optionalAssetIds = optionalByteReadsEnabled
+    ? fixture.optionalAssetIds
+    : [];
+  const optionalIds = new Set(fixture.optionalAssetIds);
+  const readRecords: PreviewQueueReadRecord[] = [];
+  const preview = new ProductPreviewImageSession({
+    readCanvasImage: ({ assetId }) => {
+      const delayMs = optionalIds.has(assetId)
+        ? optionalReadDelayMs
+        : requiredReadDelayMs;
+      const record: PreviewQueueReadRecord = {
+        assetId,
+        startedAtMs: Date.now(),
+        readyAtMs: null,
+        delayMs,
+      };
+      readRecords.push(record);
+      const byteLength = fixture.assetByteLengths.get(assetId);
+      if (byteLength === undefined) {
+        throw new Error(`Missing synthetic Preview asset ${assetId}.`);
+      }
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          record.readyAtMs = Date.now();
+          resolve({
+            ok: true as const,
+            status: 'ready' as const,
+            assetId,
+            mimeType: 'image/png' as const,
+            width: 640,
+            height: 640,
+            byteLength,
+            bytes: new Uint8Array(byteLength),
+          });
+        }, delayMs);
+      });
+    },
+    createObjectUrl: (blob) => {
+      const assetId = fixture.assetIdByByteLength.get(blob.size);
+      if (!assetId) throw new Error(`No synthetic asset for ${blob.size} bytes.`);
+      return fixture.assetUrls[assetId]!;
+    },
+    revokeObjectUrl: () => {},
+  });
+  const stageHarness = makeHarness();
+  const stage = stageHarness.session;
+  const rows: PreviewQueueTimingRow[] = [];
+  const pendingPrepares: Array<
+    Promise<Awaited<ReturnType<ProductPreviewImageSession['prepare']>>>
+  > = [];
+  const cPrewarmRequestKeys: string[][] = [];
+  const events: StageTimingEvent[] = [];
+  let eventSequence = 0;
+  let targetFrameIndex = 0;
+  let displayedFrameIndex = -1;
+  let desiredStageSourceKey = '';
+  let targetRow: PreviewQueueTimingRow | null = null;
+  let playStartedAtMs = 0;
+  let finalized = false;
+
+  const elapsedMs = (): number => Date.now() - playStartedAtMs;
+  const buildScope = (frameIndex: number) => {
+    const evaluated = evaluateShotAtTime(shot, frameIndex * 40, project);
+    const plan = buildProductPreviewImagePlan(project, shot, evaluated);
+    return {
+      evaluated,
+      scope: {
+        ...plan,
+        candidateAssetIds: [],
+        recentAnimationAssetIds: [],
+      },
+    };
+  };
+
+  const initial = buildScope(0);
+  const initialReady = preview.prepare(projectRoot, project, initial.scope);
+  await vi.advanceTimersByTimeAsync(requiredReadDelayMs);
+  const initialState = await initialReady;
+  expect(initialState?.status).toBe('ready');
+  preview.commitScope(projectRoot, project, initial.scope);
+
+  const initialStageSources = buildSources(
+    project,
+    initial.evaluated,
+    fixture.assetUrls,
+  );
+  expect(initial.scope.requiredAssetIds).toHaveLength(
+    initialStageSources.current.length,
+  );
+  desiredStageSourceKey = buildStageImageSourceKey(initialStageSources.current);
+  stage.reconcile(initialStageSources.current, () => {});
+  settleImageLoads(stageHarness.images);
+  stage.prewarm(initialStageSources.upcoming);
+  settleImageLoads(stageHarness.images);
+  expect(stage.getSnapshot().ready).toBe(true);
+
+  const initialRow: PreviewQueueTimingRow = {
+    frameIndex: 0,
+    requestedAtMs: 0,
+    targetTimeMs: 0,
+    requiredAssetIds: initial.scope.requiredAssetIds.slice(),
+    optionalReadsInFlightAtRequest: 0,
+    requiredStartsAtRequest: 0,
+    previewReadyAtMs: 0,
+    stageCommitAtMs: 0,
+    displayedAtMs: 0,
+    displayedFrameAtRequest: 0,
+  };
+  rows.push(initialRow);
+  playStartedAtMs = Date.now();
+  targetFrameIndex = 0;
+  displayedFrameIndex = 0;
+  events.push({ kind: 'display', frameIndex: 0, atMs: 0, sequence: eventSequence++ });
+
+  // Start two next-shot byte reads shortly before frame 1 is requested. These
+  // are real low-priority Preview scope entries, separate from Stage C's next
+  // animation-frame prewarm.
+  await vi.advanceTimersByTimeAsync(30);
+  const warmScope = buildScope(0);
+  const warmPrepare = preview.prepare(
+    projectRoot,
+    project,
+    warmScope.scope,
+    optionalAssetIds,
+  );
+  const warmState = await warmPrepare;
+  expect(warmState?.status).toBe('ready');
+  preview.commitScope(projectRoot, project, warmScope.scope, optionalAssetIds);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(preview.getDiagnostics().optionalInFlightCount).toBe(
+    optionalByteReadsEnabled ? 1 : 0,
+  );
+
+  const commitCurrentTarget = (
+    frameIndex: number,
+    row: PreviewQueueTimingRow,
+    scope: ReturnType<typeof buildScope>['scope'],
+    currentSources: ReturnType<typeof buildSources>,
+    state: Awaited<ReturnType<ProductPreviewImageSession['prepare']>>,
+  ): void => {
+    if (state?.status !== 'ready') return;
+    row.previewReadyAtMs = elapsedMs();
+    if (finalized || targetFrameIndex !== frameIndex) return;
+    expect(scope.requiredAssetIds.every((assetId) => Boolean(state.urls[assetId]))).toBe(true);
+    preview.commitScope(projectRoot, project, scope, optionalAssetIds);
+    stage.reconcile(currentSources.current, onStageState);
+    settleImageLoads(stageHarness.images);
+  };
+
+  const onStageState = (): void => {
+    const state = stage.getSnapshot();
+    if (!state.ready || state.desiredSourceKey !== desiredStageSourceKey) return;
+    if (targetRow && targetRow.stageCommitAtMs === null) {
+      targetRow.stageCommitAtMs = elapsedMs();
+    }
+    if (displayedFrameIndex !== targetFrameIndex) {
+      displayedFrameIndex = targetFrameIndex;
+      if (targetRow) targetRow.displayedAtMs = elapsedMs();
+      events.push({
+        kind: 'display',
+        frameIndex: targetFrameIndex,
+        atMs: elapsedMs(),
+        sequence: eventSequence++,
+      });
+    }
+  };
+
+  // Initial scope was prepared before this listener existed; attach it without
+  // changing the current source set or the Stage C prewarm behavior.
+  stage.reconcile(initialStageSources.current, onStageState);
+
+  for (let frameIndex = 1; frameIndex < 21; frameIndex += 1) {
+    await vi.advanceTimersByTimeAsync(frameIndex === 1 ? 10 : 40);
+    targetFrameIndex = frameIndex;
+    const requestedAtMs = elapsedMs();
+    const built = buildScope(frameIndex);
+    const currentSources = buildSources(project, built.evaluated, fixture.assetUrls);
+    expect([...built.scope.requiredAssetIds].sort()).toEqual(
+      [...new Set(currentSources.current.map((source) => source.assetId))].sort(),
+    );
+    desiredStageSourceKey = buildStageImageSourceKey(currentSources.current);
+    const row: PreviewQueueTimingRow = {
+      frameIndex,
+      requestedAtMs,
+      targetTimeMs: frameIndex * 40,
+      requiredAssetIds: built.scope.requiredAssetIds.slice(),
+      optionalReadsInFlightAtRequest: preview.getDiagnostics().optionalInFlightCount,
+      requiredStartsAtRequest: 0,
+      previewReadyAtMs: null,
+      stageCommitAtMs: null,
+      displayedAtMs: null,
+      displayedFrameAtRequest: displayedFrameIndex,
+    };
+    targetRow = row;
+    rows.push(row);
+    events.push({
+      kind: 'target',
+      frameIndex,
+      atMs: requestedAtMs,
+      sequence: eventSequence++,
+    });
+
+    // C stays enabled and receives the same next-frame URLs in both arms.
+    cPrewarmRequestKeys.push(
+      currentSources.upcoming.map((source) => source.sourceUrl),
+    );
+    stage.prewarm(currentSources.upcoming);
+    settleImageLoads(stageHarness.images);
+
+    const prepare = preview.prepare(
+      projectRoot,
+      project,
+      built.scope,
+      optionalAssetIds,
+    );
+    pendingPrepares.push(prepare);
+    void prepare.then((state) =>
+      commitCurrentTarget(frameIndex, row, built.scope, currentSources, state),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    row.requiredStartsAtRequest = row.requiredAssetIds.filter((assetId) =>
+      readRecords.some(
+        (record) =>
+          record.assetId === assetId && record.startedAtMs === requestedAtMs,
+      ),
+    ).length;
+  }
+
+  // The next loop target is due at 840ms; late frame 20 work is not a commit.
+  await vi.advanceTimersByTimeAsync(40);
+  const finalTimeMs = elapsedMs();
+  finalized = true;
+  const diagnostics = preview.getDiagnostics();
+  const stageDiagnostics = stage.getDiagnostics();
+  preview.dispose();
+  await vi.advanceTimersByTimeAsync(Math.max(requiredReadDelayMs, optionalReadDelayMs) + 1);
+  await Promise.all(pendingPrepares);
+
+  const skippedTargetFrames = rows
+    .filter((row) => row.frameIndex > 0 && row.stageCommitAtMs === null)
+    .map((row) => row.frameIndex);
+  const orderedEvents = [...events].sort(
+    (left, right) => left.atMs - right.atMs || left.sequence - right.sequence,
+  );
+  let visibleFrame = 0;
+  let staleStartedAtMs: number | null = null;
+  let maximumOldFrameHoldMs = 0;
+  const oldFrameHoldIntervals: Array<{
+    frameIndex: number;
+    startedAtMs: number;
+    endedAtMs: number;
+    durationMs: number;
+  }> = [];
+  for (const event of orderedEvents) {
+    if (event.kind === 'target') {
+      if (visibleFrame < event.frameIndex && staleStartedAtMs === null) {
+        staleStartedAtMs = event.atMs;
+      }
+      continue;
+    }
+    if (event.frameIndex > visibleFrame) {
+      if (staleStartedAtMs !== null) {
+        const durationMs = event.atMs - staleStartedAtMs;
+        oldFrameHoldIntervals.push({
+          frameIndex: visibleFrame,
+          startedAtMs: staleStartedAtMs,
+          endedAtMs: event.atMs,
+          durationMs,
+        });
+        maximumOldFrameHoldMs = Math.max(maximumOldFrameHoldMs, durationMs);
+        staleStartedAtMs = null;
+      }
+      visibleFrame = event.frameIndex;
+    }
+  }
+  if (staleStartedAtMs !== null) {
+    const durationMs = finalTimeMs - staleStartedAtMs;
+    oldFrameHoldIntervals.push({
+      frameIndex: visibleFrame,
+      startedAtMs: staleStartedAtMs,
+      endedAtMs: finalTimeMs,
+      durationMs,
+    });
+    maximumOldFrameHoldMs = Math.max(maximumOldFrameHoldMs, durationMs);
+  }
+
+  stage.dispose();
+  return {
+    requiredReadDelayMs,
+    optionalReadDelayMs,
+    optionalByteReadsEnabled,
+    skippedTargetFrames,
+    displayedTargetFrames: events
+      .filter((event) => event.kind === 'display')
+      .map((event) => event.frameIndex),
+    maximumOldFrameHoldMs,
+    oldFrameHoldIntervals,
+    diagnostics,
+    stageDiagnostics,
+    cPrewarmRequestKeys,
+    rows,
+    readRecords,
+  };
+}
+
 function evaluateLayer(
   project: Project,
   timeMs: number,
@@ -705,6 +1196,111 @@ describe('Issue #947 AP-03 decoded image prewarm integration', () => {
       vi.useRealTimers();
     }
   });
+
+  it('measures B-only optional byte-read contention with Stage C held on', async () => {
+    vi.useFakeTimers();
+    try {
+      const scenarios = [
+        { label: 'uniform-20ms', requiredReadDelayMs: 20, optionalReadDelayMs: 20 },
+        { label: 'uniform-60ms', requiredReadDelayMs: 60, optionalReadDelayMs: 60 },
+        { label: 'uniform-100ms', requiredReadDelayMs: 100, optionalReadDelayMs: 100 },
+        {
+          label: 'optional-100ms-required-20ms-contention',
+          requiredReadDelayMs: 20,
+          optionalReadDelayMs: 100,
+        },
+      ];
+      const comparisons = [];
+      const summarize = (
+        result: Awaited<ReturnType<typeof runControlledPreviewQueueScenario>>,
+      ) => ({
+        path: result.optionalByteReadsEnabled
+          ? 'B-on-next-shot-cap1-C-on'
+          : 'B-only-isolated-C-on',
+        displayedTargetFrames: result.displayedTargetFrames,
+        skippedTargetFrames: result.skippedTargetFrames,
+        maximumOldFrameHoldMs: result.maximumOldFrameHoldMs,
+        oldFrameHoldIntervals: result.oldFrameHoldIntervals,
+        previewReadDiagnostics: result.diagnostics,
+        stagePrewarmDiagnostics: result.stageDiagnostics,
+        frameTimings: result.rows.slice(1).map((row) => [
+          row.frameIndex,
+          row.requestedAtMs,
+          row.targetTimeMs,
+          row.optionalReadsInFlightAtRequest,
+          row.requiredStartsAtRequest,
+          row.requiredAssetIds.map((assetId) => {
+            const read = result.readRecords.find(
+              (record) => record.assetId === assetId,
+            );
+            return [
+              assetId.slice(-4),
+              read ? read.startedAtMs - row.requestedAtMs : null,
+              read?.readyAtMs === null || !read
+                ? null
+                : read.readyAtMs - row.requestedAtMs,
+            ];
+          }),
+          row.previewReadyAtMs === null
+            ? null
+            : row.previewReadyAtMs - row.requestedAtMs,
+          row.stageCommitAtMs === null
+            ? null
+            : row.stageCommitAtMs - row.requestedAtMs,
+        row.displayedAtMs === null
+          ? null
+          : row.displayedAtMs - row.requestedAtMs,
+          row.displayedFrameAtRequest,
+        ]),
+      });
+
+      for (const scenario of scenarios) {
+        const current = await runControlledPreviewQueueScenario(
+          scenario.requiredReadDelayMs,
+          scenario.optionalReadDelayMs,
+          true,
+        );
+        const bOnlyIsolated = await runControlledPreviewQueueScenario(
+          scenario.requiredReadDelayMs,
+          scenario.optionalReadDelayMs,
+          false,
+        );
+        comparisons.push({
+          ...scenario,
+          current: summarize(current),
+          bOnlyIsolated: summarize(bOnlyIsolated),
+        });
+
+        for (const result of [current, bOnlyIsolated]) {
+          expect(result.rows).toHaveLength(21);
+          expect(result.rows.slice(1).every((row) =>
+            row.requiredAssetIds.length === 3
+          )).toBe(true);
+          expect(result.diagnostics.inFlightPeak).toBeLessThanOrEqual(3);
+          expect(result.stageDiagnostics.prewarmInFlightPeak).toBeLessThanOrEqual(2);
+          const committedFrames = result.rows
+            .slice(1)
+            .filter((row) => row.stageCommitAtMs !== null)
+            .map((row) => row.frameIndex);
+          expect(result.displayedTargetFrames.slice(1)).toEqual(committedFrames);
+          expect(result.rows.slice(1).every((row) =>
+            row.stageCommitAtMs === null ||
+            (row.previewReadyAtMs !== null && row.stageCommitAtMs >= row.previewReadyAtMs)
+          )).toBe(true);
+        }
+        expect(current.cPrewarmRequestKeys).toEqual(
+          bOnlyIsolated.cPrewarmRequestKeys,
+        );
+        expect(current.rows[1]?.optionalReadsInFlightAtRequest).toBe(1);
+        expect(bOnlyIsolated.rows[1]?.optionalReadsInFlightAtRequest).toBe(0);
+        expect(current.rows[1]?.requiredStartsAtRequest).toBe(2);
+        expect(bOnlyIsolated.rows[1]?.requiredStartsAtRequest).toBe(3);
+      }
+      console.info('[issue957-b-preview-read-timing]', JSON.stringify(comparisons));
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 30_000);
 
   it('keeps two 21-frame instances independent and reuses the same cold/hot source images', () => {
     const singleProject = build21FrameProject({ includeSecond: false });

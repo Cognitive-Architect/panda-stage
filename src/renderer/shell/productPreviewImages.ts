@@ -51,6 +51,8 @@ export const INITIAL_PRODUCT_PREVIEW_ASSET_STATE: ProductPreviewAssetLoadState =
 /** Current requirements can use all three reads; optional work is limited to two. */
 export const MAX_CONCURRENT_PREVIEW_IMAGE_READS = 3;
 export const MAX_OPTIONAL_PREVIEW_IMAGE_READS = 2;
+/** Keep a second next-shot byte read from occupying a current-frame read slot. */
+export const MAX_NEXT_SHOT_PREVIEW_IMAGE_READS = 1;
 /** Caps queued speculative work; exact current requirements are never dropped. */
 export const MAX_QUEUED_OPTIONAL_PREVIEW_IMAGES = 64;
 export const MAX_ACTIVE_PREVIEW_CANDIDATE_CACHE = 16;
@@ -429,9 +431,18 @@ export class ProductPreviewImageSession {
       const optionalInFlight = [...this.inFlight.values()].filter(
         (entry) => entry.startedAsOptional,
       ).length;
+      const nextShotInFlight = [...this.inFlight.values()].filter(
+        (entry) => entry.startedAsOptional && entry.priority === 3,
+      ).length;
       if (
         next.priority > 0 &&
         optionalInFlight >= MAX_OPTIONAL_PREVIEW_IMAGE_READS
+      ) {
+        return;
+      }
+      if (
+        next.priority === 3 &&
+        nextShotInFlight >= MAX_NEXT_SHOT_PREVIEW_IMAGE_READS
       ) {
         return;
       }
