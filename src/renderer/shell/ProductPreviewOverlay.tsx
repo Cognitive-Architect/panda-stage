@@ -39,10 +39,7 @@ import {
   recordPreviewDiagnostic,
   recordPreviewDuration,
 } from '../stage/previewDiagnostics';
-import type {
-  StageImageResourceFailure,
-  StageOptionalImageResourceFailure,
-} from '../stage/stageImageResourceSession';
+import type { StageImageResourceFailure } from '../stage/stageImageResourceSession';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import {
   applyProductPreviewMouthFallback,
@@ -155,8 +152,6 @@ export function ProductPreviewOverlay({
   const [stageImageFailures, setStageImageFailures] = useState<
     StageImageResourceFailure[]
   >([]);
-  const [stageOptionalFailedAssetIds, setStageOptionalFailedAssetIds] =
-    useState<string[]>([]);
   const initialStageReadyRef = useRef(false);
   const initialReadinessRef = useRef<ProductPreviewInitialReadiness>(
     'preparing',
@@ -612,21 +607,6 @@ export function ProductPreviewOverlay({
     },
     [assets.urls, imagePlan, pauseAtCurrentClock],
   );
-  const handleOptionalImageResourceFailures = useCallback(
-    (failures: readonly StageOptionalImageResourceFailure[]): void => {
-      const next = [...new Set(failures.map((failure) => failure.assetId))];
-      setStageOptionalFailedAssetIds((current) =>
-        current.join('\u0000') === next.join('\u0000') ? current : next,
-      );
-    },
-    [],
-  );
-  const optionalFailedCandidateAssetIds = [
-    ...new Set([
-      ...(assets.optionalFailedAssetIds ?? []),
-      ...stageOptionalFailedAssetIds,
-    ]),
-  ].filter((assetId) => imagePlan.candidateAssetIds.includes(assetId));
   useEffect(() => {
     if (assets.status === 'error') {
       if (handoffPhase !== 'active') handleInitialStageError();
@@ -915,7 +895,6 @@ export function ProductPreviewOverlay({
                       }
                       onError={handleInitialStageError}
                       onImageResourceFailure={handleImageResourceFailure}
-                      onOptionalImageResourceFailures={handleOptionalImageResourceFailures}
                       onReady={
                         initialReadiness === 'preparing'
                           ? handleInitialStageReady
@@ -923,15 +902,6 @@ export function ProductPreviewOverlay({
                       }
                       project={project}
                     />
-                    {optionalFailedCandidateAssetIds.length > 0 ? (
-                      <div
-                        className="product-preview-message product-preview-warning"
-                        data-testid="product-preview-optional-warning"
-                      >
-                        <strong>部分候选素材未能预加载</strong>
-                        <span>切换到对应画面时仍会按需检查这些素材。</span>
-                      </div>
-                    ) : null}
                   </>
                 ) : previewDegraded && displayedShot ? (
                   <>
@@ -950,7 +920,6 @@ export function ProductPreviewOverlay({
                       }
                       onError={handleInitialStageError}
                       onImageResourceFailure={handleImageResourceFailure}
-                      onOptionalImageResourceFailures={handleOptionalImageResourceFailures}
                       project={project}
                     />
                     <div
@@ -960,15 +929,6 @@ export function ProductPreviewOverlay({
                       <strong>嘴型素材不可用，已显示当前表情</strong>
                       <span>修复嘴型素材后，预览会恢复到目标嘴型。</span>
                     </div>
-                    {optionalFailedCandidateAssetIds.length > 0 ? (
-                      <div
-                        className="product-preview-message product-preview-warning"
-                        data-testid="product-preview-optional-warning"
-                      >
-                        <strong>部分候选素材未能预加载</strong>
-                        <span>切换到对应画面时仍会按需检查这些素材。</span>
-                      </div>
-                    ) : null}
                   </>
                 ) : heldVisual ? (
                   <CanvasStage
@@ -979,7 +939,6 @@ export function ProductPreviewOverlay({
                     captionStyle={heldVisual.captionStyle}
                     degraded={heldVisual.degraded}
                     evaluatedShot={heldVisual.evaluatedShot}
-                    onOptionalImageResourceFailures={handleOptionalImageResourceFailures}
                     project={project}
                   />
                 ) : assets.status === 'loading' ? (
@@ -999,7 +958,6 @@ export function ProductPreviewOverlay({
                     captionStyle={captionStyle}
                     degraded={previewDegraded}
                     evaluatedShot={displayedShot}
-                    onOptionalImageResourceFailures={handleOptionalImageResourceFailures}
                     project={project}
                   />
                 ) : null}

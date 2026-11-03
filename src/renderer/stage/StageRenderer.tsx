@@ -45,7 +45,6 @@ import {
   type StageImageLayerSource,
   type StageImageResourceFailure,
   type StageImageResourceState,
-  type StageOptionalImageResourceFailure,
 } from './stageImageResourceSession';
 import {
   commitStageVisualFrame,
@@ -68,9 +67,6 @@ interface StageRendererProps {
   onDisplayReady?: () => void;
   onError?: (error: Error) => void;
   onImageResourceFailure?: (failure: StageImageResourceFailure) => void;
-  onOptionalImageResourceFailures?: (
-    failures: readonly StageOptionalImageResourceFailure[],
-  ) => void;
   renderToken?: string | number;
   /** Degraded Preview is drawable, but never exact-frame ready for Export. */
   degraded?: boolean;
@@ -321,7 +317,6 @@ export function StageRenderer({
   onDisplayReady,
   onError,
   onImageResourceFailure,
-  onOptionalImageResourceFailures,
   renderToken,
   degraded = false,
   showStageLabel = true,
@@ -392,14 +387,13 @@ export function StageRenderer({
     prewarmSources,
   );
   useEffect(() => {
-    onOptionalImageResourceFailures?.(imageState.optionalFailures);
     imageState.optionalFailures.forEach((failure) => {
       recordPreviewDiagnostic('stage-image-prewarm-failure', {
         assetId: failure.assetId,
         reason: failure.reason,
       });
     });
-  }, [imageState.optionalFailures, onOptionalImageResourceFailures]);
+  }, [imageState.optionalFailures]);
   const error = modelResult.error ?? imageState.error;
   const ready = isStageFrameReady({
     error,

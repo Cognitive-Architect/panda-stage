@@ -9,10 +9,7 @@ import {
   previewDiagnosticNow,
   recordPreviewDuration,
 } from './previewDiagnostics';
-import type {
-  StageImageResourceFailure,
-  StageOptionalImageResourceFailure,
-} from './stageImageResourceSession';
+import type { StageImageResourceFailure } from './stageImageResourceSession';
 
 interface CanvasStageProps {
   project: Project;
@@ -26,9 +23,6 @@ interface CanvasStageProps {
   onDisplayReady?: () => void;
   onError?: (error: Error) => void;
   onImageResourceFailure?: (failure: StageImageResourceFailure) => void;
-  onOptionalImageResourceFailures?: (
-    failures: readonly StageOptionalImageResourceFailure[],
-  ) => void;
   renderToken?: string | number;
   degraded?: boolean;
   showStageLabel?: boolean;

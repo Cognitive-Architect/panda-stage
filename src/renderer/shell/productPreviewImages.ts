@@ -94,6 +94,8 @@ interface PreviewImageEntry {
   promise: Promise<void>;
   resolve: () => void;
   status: 'queued' | 'loading' | 'ready' | 'error';
+  failureKind: 'optional' | 'required' | null;
+  requiredRetryAttempted: boolean;
   priority: PreviewImagePriority;
   sequence: number;
   lastUsed: number;
@@ -268,13 +270,31 @@ export class ProductPreviewImageSession {
     const existing =
       this.entries.get(descriptor.key) ?? this.inFlight.get(descriptor.key);
     if (existing) {
+      const retryOptionalFailureAsRequired =
+        priority === 0 &&
+        existing.status === 'error' &&
+        existing.failureKind === 'optional' &&
+        !existing.requiredRetryAttempted;
       this.entries.set(descriptor.key, existing);
       existing.descriptor = descriptor;
       existing.projectRoot = projectRoot;
       existing.priority = priority;
       existing.lastUsed = ++this.nextSequence;
       existing.discardResult = false;
-      this.cacheHits += 1;
+      if (retryOptionalFailureAsRequired) {
+        existing.requiredRetryAttempted = true;
+        existing.failureKind = null;
+        existing.status = 'queued';
+        existing.startedAsOptional = false;
+        existing.sequence = this.nextSequence;
+        let resolve!: () => void;
+        existing.promise = new Promise<void>((onResolve) => {
+          resolve = onResolve;
+        });
+        existing.resolve = resolve;
+      } else {
+        this.cacheHits += 1;
+      }
       this.enforceOptionalQueueLimit();
       this.updateQueuePeak();
       return existing;
@@ -307,6 +327,8 @@ export class ProductPreviewImageSession {
       promise,
       resolve,
       status: 'queued',
+      failureKind: null,
+      requiredRetryAttempted: false,
       priority,
       sequence: ++this.nextSequence,
       lastUsed: this.nextSequence,
@@ -423,6 +445,7 @@ export class ProductPreviewImageSession {
     entry: PreviewImageEntry,
   ): void {
     entry.status = 'loading';
+    entry.failureKind = null;
     entry.startedAsOptional = entry.priority > 0;
     entry.discardResult = false;
     this.inFlight.set(descriptor.key, entry);
@@ -450,6 +473,7 @@ export class ProductPreviewImageSession {
         }
         if (!response.ok || response.status !== 'ready') {
           entry.status = 'error';
+          entry.failureKind = entry.priority > 0 ? 'optional' : 'required';
           return;
         }
 
@@ -478,13 +502,17 @@ export class ProductPreviewImageSession {
       .catch(() => {
         if (!this.disposed && this.entries.get(descriptor.key) === entry) {
           entry.status = 'error';
+          entry.failureKind = entry.priority > 0 ? 'optional' : 'required';
         }
       })
       .finally(() => {
         if (this.inFlight.get(descriptor.key) === entry) {
           this.inFlight.delete(descriptor.key);
         }
-        if (entry.status === 'loading') entry.status = 'error';
+        if (entry.status === 'loading') {
+          entry.status = 'error';
+          entry.failureKind = entry.priority > 0 ? 'optional' : 'required';
+        }
         entry.resolve();
         if (
           entry.discardResult &&

@@ -1142,4 +1142,149 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
     });
     session.dispose();
   });
+
+  it('retries an optional image once when it becomes required, then reaches exact ready', async () => {
+    const project = compositePreviewProject();
+    const optionalRead = deferred<AssetCanvasImageReadResponse>();
+    const requiredRetry = deferred<AssetCanvasImageReadResponse>();
+    const alternateReads = [optionalRead, requiredRetry];
+    let alternateReadCount = 0;
+    let objectUrlCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId !== ALT_FACE_ID) return Promise.resolve(readyImage(assetId));
+        const read = alternateReads[alternateReadCount];
+        alternateReadCount += 1;
+        if (!read) throw new Error('Unexpected alternate-face read.');
+        return read.promise;
+      },
+      createObjectUrl: () => `blob:required-retry-${++objectUrlCount}`,
+      revokeObjectUrl: () => {},
+    });
+    const candidateScope = {
+      requiredAssetIds: [IDS.assetBg],
+      candidateAssetIds: [ALT_FACE_ID],
+    };
+
+    const candidateLoad = session.prepare(
+      PROJECT_ROOT,
+      project,
+      candidateScope,
+    );
+    await expect(candidateLoad).resolves.toMatchObject({ status: 'ready' });
+    expect(alternateReadCount).toBe(1);
+
+    optionalRead.resolve(failedImage(ALT_FACE_ID));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      session.snapshot(PROJECT_ROOT, project, candidateScope),
+    ).toMatchObject({
+      status: 'ready',
+      optionalFailedAssetIds: [ALT_FACE_ID],
+    });
+
+    const requiredScope = {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    };
+    const requiredLoad = session.prepare(PROJECT_ROOT, project, requiredScope);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(alternateReadCount).toBe(2);
+    expect(
+      session.snapshot(PROJECT_ROOT, project, requiredScope),
+    ).toMatchObject({
+      status: 'loading',
+      fatalAssetIds: [],
+    });
+
+    requiredRetry.resolve(readyImage(ALT_FACE_ID));
+    await expect(requiredLoad).resolves.toMatchObject({ status: 'ready' });
+    expect(
+      session.snapshot(PROJECT_ROOT, project, requiredScope).urls[ALT_FACE_ID],
+    ).toBe('blob:required-retry-2');
+    expect(alternateReadCount).toBe(2);
+    session.dispose();
+  });
+
+  it('reports a required retry failure once and does not retry on later prepares', async () => {
+    const project = compositePreviewProject();
+    const optionalRead = deferred<AssetCanvasImageReadResponse>();
+    const requiredRetry = deferred<AssetCanvasImageReadResponse>();
+    const alternateReads = [optionalRead, requiredRetry];
+    let alternateReadCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId !== ALT_FACE_ID) return Promise.resolve(readyImage(assetId));
+        const read = alternateReads[alternateReadCount];
+        alternateReadCount += 1;
+        if (!read) throw new Error('Unexpected alternate-face read.');
+        return read.promise;
+      },
+      createObjectUrl: () => 'blob:required-retry',
+      revokeObjectUrl: () => {},
+    });
+    const candidateScope = {
+      requiredAssetIds: [IDS.assetBg],
+      candidateAssetIds: [ALT_FACE_ID],
+    };
+    await expect(
+      session.prepare(PROJECT_ROOT, project, candidateScope),
+    ).resolves.toMatchObject({ status: 'ready' });
+    expect(alternateReadCount).toBe(1);
+
+    optionalRead.resolve(failedImage(ALT_FACE_ID));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const requiredScope = {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    };
+    const requiredLoad = session.prepare(PROJECT_ROOT, project, requiredScope);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(alternateReadCount).toBe(2);
+
+    requiredRetry.resolve(failedImage(ALT_FACE_ID));
+    await expect(requiredLoad).resolves.toMatchObject({
+      status: 'error',
+      fatalAssetIds: [ALT_FACE_ID],
+      missingCount: 1,
+    });
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(
+        session.prepare(PROJECT_ROOT, project, requiredScope),
+      ).resolves.toMatchObject({
+        status: 'error',
+        fatalAssetIds: [ALT_FACE_ID],
+      });
+    }
+    expect(alternateReadCount).toBe(2);
+    expect(session.getDiagnostics().inFlightCount).toBe(0);
+    session.dispose();
+  });
+
+  it('does not retry an image that first failed as required on repeated prepares', async () => {
+    const project = compositePreviewProject();
+    let alternateReadCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId === ALT_FACE_ID) {
+          alternateReadCount += 1;
+          return Promise.resolve(failedImage(assetId));
+        }
+        return Promise.resolve(readyImage(assetId));
+      },
+    });
+    const requiredScope = {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    };
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await expect(
+        session.prepare(PROJECT_ROOT, project, requiredScope),
+      ).resolves.toMatchObject({
+        status: 'error',
+        fatalAssetIds: [ALT_FACE_ID],
+      });
+    }
+    expect(alternateReadCount).toBe(1);
+    session.dispose();
+  });
 });

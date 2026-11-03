@@ -974,6 +974,35 @@ describe('StageImageResourceSession', () => {
     expect(staleB.src).toBe('');
   });
 
+  it('ignores a late decode error after the same source has been requested again', () => {
+    const harness = createHarness();
+    const source = {
+      assetId: 'asset-retried',
+      projectId: 'project-a',
+      sha256: 'e'.repeat(64),
+      sourceUrl: 'blob:asset-retried',
+    };
+
+    reconcile(harness, [{ id: LAYER_A, ...source }]);
+    const staleError = harness.images[0]!.onerror!;
+    reconcile(harness, []);
+    reconcile(harness, [{ id: LAYER_A, ...source }]);
+    expect(harness.images).toHaveLength(2);
+
+    staleError({} as Event);
+    expect(harness.session.getSnapshot()).toMatchObject({
+      ready: false,
+      failures: [],
+    });
+
+    harness.images[1]!.succeed();
+    expect(harness.session.getSnapshot().ready).toBe(true);
+    expect(harness.session.getSnapshot().images.get(LAYER_A)).toBe(
+      harness.images[1],
+    );
+    harness.session.dispose();
+  });
+
   it('keeps the last committed frame as an explicit fallback when a replacement fails', () => {
     const harness = createHarness();
 

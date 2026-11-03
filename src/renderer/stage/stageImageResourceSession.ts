@@ -529,6 +529,10 @@ export class StageImageResourceSession {
       this.emit();
     };
     image.onerror = () => {
+      if (
+        this.disposed ||
+        this.inFlight.get(source.resourceKey) !== resource
+      ) return;
       this.failResource(
         source.resourceKey,
         'decode',

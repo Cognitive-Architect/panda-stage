@@ -581,6 +581,24 @@ describe('product preview overlay contract', () => {
     expect(stage).toContain("'decode'");
   });
 
+  it('keeps optional prewarm failures diagnostic-only and preserves required errors', () => {
+    const overlay = readSource(OVERLAY_PATH);
+    const images = readSource(IMAGES_PATH);
+    const stage = readSource('src/renderer/stage/StageRenderer.tsx');
+
+    expect(overlay).not.toContain('product-preview-optional-warning');
+    expect(overlay).not.toContain('optionalFailedAssetIds');
+    expect(overlay).toContain("assets.status === 'error' ? (");
+    expect(overlay).toContain('data-testid="product-preview-stage-warning"');
+    expect(overlay).toContain(
+      'onImageResourceFailure={handleImageResourceFailure}',
+    );
+    expect(images).toContain('optionalFailedAssetIds');
+    expect(stage).toContain(
+      "recordPreviewDiagnostic('stage-image-prewarm-failure'",
+    );
+  });
+
   it('places a flat, persistently selected range control above the Stage', () => {
     const overlay = readSource(OVERLAY_PATH);
     const styles = readSource(
