@@ -1,5 +1,8 @@
 import {
+  AutoSubtitleGenerationService,
   DialogueService,
+  type AutoSubtitleGenerationInput,
+  type AutoSubtitleGenerationResult,
   type DialogueArrangementTiming,
   type ArrangeDialogueInput,
   type BindDialogueAudioInput,
@@ -46,7 +49,52 @@ export class DialogueStore {
     private readonly dialogueSelection: {
       select: (dialogueId: string) => void;
     },
+    private readonly autoSubtitleGeneration = new AutoSubtitleGenerationService(),
   ) {}
+
+  /**
+   * Commit one latest-snapshot Auto Subtitles plan as a single History command.
+   * The caller must have re-read every selected asset immediately before this
+   * synchronous commit; identity, revision, shot, and playhead are checked
+   * again here after that asynchronous verification.
+   */
+  generateAutoSubtitles(input: Omit<AutoSubtitleGenerationInput, 'startMs'> & {
+    expectedProjectRoot: string;
+    expectedProject: Project;
+    expectedProjectId: string;
+    expectedRevision: number;
+    expectedStartMs: number;
+    extendShotToMs?: number;
+  }): AutoSubtitleGenerationResult {
+    const snapshot = this.editorStore.getSnapshot();
+    if (
+      !snapshot ||
+      snapshot.projectRoot !== input.expectedProjectRoot ||
+      snapshot.project !== input.expectedProject ||
+      snapshot.project.id !== input.expectedProjectId ||
+      snapshot.revision !== input.expectedRevision ||
+      this.shotSelection.getCurrentShotId() !== input.shotId ||
+      this.timelineUi.getSnapshot().currentTimeMs !== input.expectedStartMs
+    ) {
+      throw new Error('工程、镜头或播放位置已变化，请重新核验生成预览。');
+    }
+
+    const generated = this.autoSubtitleGeneration.generate(snapshot.project, {
+      shotId: input.shotId,
+      startMs: input.expectedStartMs,
+      rows: input.rows,
+      ...(input.extendShotToMs === undefined
+        ? {}
+        : { extendShotToMs: input.extendShotToMs }),
+    });
+    this.editorStore.updateProject(
+      generated.project,
+      'Generate subtitles and audio',
+    );
+    const firstDialogueId = generated.dialogueIds[0];
+    if (firstDialogueId) this.dialogueSelection.select(firstDialogueId);
+    return generated;
+  }
 
   create(characterId: string, text: string): string {
     const { project, shotId } = this.context();

@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  AutoSubtitleGenerationService,
   DialogueService,
   ProjectSchema,
   type Project,
@@ -114,6 +115,79 @@ describe('Dialogue audio Phase 1 persistence integration', () => {
     expect(persistedProject.shots[0]?.dialogues[0]?.audioClipId).toBe(
       reopenedDialogue.audioClipId,
     );
+    expect(persisted).not.toContain('"undoCount"');
+    expect(persisted).not.toContain('"history"');
+  });
+
+  it('saves and reopens one ten-row auto-subtitle batch with its explicit shot extension', async () => {
+    const parent = await mkdtemp(
+      path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), 'panda-auto-subtitle-'),
+    );
+    temporaryParents.push(parent);
+    const root = path.join(parent, 'auto-subtitle-batch.pandastage');
+    const projectService = new ProjectService();
+    const created = await projectService.create(root, {
+      name: 'Auto subtitle batch persistence',
+    });
+    const base = buildProject();
+    const audioAssets = Array.from({ length: 10 }, (_, index) => ({
+      id: `72000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      kind: 'audio' as const,
+      name: `对白 ${index + 1}`,
+      relativePath: `assets/dialogue-${index + 1}.wav`,
+      mimeType: 'audio/wav',
+      sha256: String(index + 1).padStart(64, '0'),
+      durationMs: 300,
+      metadata: { status: 'ready' as const, warnings: [] },
+    }));
+    const project = ProjectSchema.parse({
+      ...base,
+      id: created.project.id,
+      name: created.project.name,
+      createdAt: created.project.createdAt,
+      updatedAt: created.project.updatedAt,
+      assets: [...base.assets, ...audioAssets],
+    });
+    const rows = audioAssets.map((asset, index) => ({
+      sourceLineNumber: index + 1,
+      characterId: IDS.character,
+      selectedCharacterId: IDS.character,
+      text: `持久化对白 ${index + 1}`,
+      audioAssetId: asset.id,
+      durationMs: asset.durationMs,
+    }));
+    const generated = new AutoSubtitleGenerationService().generate(project, {
+      shotId: IDS.shot,
+      startMs: 2_500,
+      rows,
+      extendShotToMs: 5_500,
+    });
+
+    await projectService.save(root, generated.project, 1);
+
+    const reopened = await projectService.open(root);
+    const reopenedShot = reopened.project.shots[0]!;
+    expect(reopenedShot.durationMs).toBe(5_500);
+    expect(reopenedShot.dialogues).toHaveLength(10);
+    expect(reopenedShot.audioClips).toHaveLength(10);
+    for (const [index, dialogue] of reopenedShot.dialogues.entries()) {
+      const clip = reopenedShot.audioClips.find(
+        (candidate) => candidate.id === dialogue.audioClipId,
+      );
+      expect(dialogue).toMatchObject({
+        text: `持久化对白 ${index + 1}`,
+        startMs: 2_500 + index * 300,
+        endMs: 2_500 + (index + 1) * 300,
+      });
+      expect(clip).toMatchObject({
+        role: 'dialogue',
+        assetId: audioAssets[index]!.id,
+        startMs: dialogue.startMs,
+        endMs: dialogue.endMs,
+      });
+    }
+
+    const persisted = await readFile(path.join(root, 'project.json'), 'utf8');
     expect(persisted).not.toContain('"undoCount"');
     expect(persisted).not.toContain('"history"');
   });

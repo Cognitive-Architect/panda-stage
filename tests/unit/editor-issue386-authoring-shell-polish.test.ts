@@ -102,8 +102,12 @@ describe('Issue #386 Stage B subtitle authoring shell polish', () => {
     expect(sheet).toContain('draft.setSingleText(event.target.value);');
     expect(batch).toContain('parseDialoguePaste(');
     expect(batch).toContain('resolveDialoguePaste(');
-    expect(batch.match(/dialogueStore\.createMany\(/gu)).toHaveLength(1);
+    expect(batch).toContain('buildDialogueBatchPreview(');
+    expect(batch).toContain('dialogueStore.createMany(');
+    expect(batch).toContain('data-testid="dialogue-batch-add-subtitles"');
+    expect(batch).toContain('if (!resolution.allResolved) return;');
     expect(batch).toContain('draft.setBatchRaw(event.target.value);');
+    expect(batch).toContain('draftState.batchAudioSelections');
     expect(draft).not.toContain('updateProject');
     expect(draft).not.toContain('HistoryStore');
     expect(sheet).not.toContain('new DialogueSelectionStore');

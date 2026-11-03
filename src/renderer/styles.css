@@ -175,3 +175,6 @@
 @import './styles/features/fla-import/raster/issue767-u1-workbench-tabs.css';
 @import './styles/shell/quick-actions/issue819-export-task.css';
 @import './styles/features/fla-import/review/fla-stage-a-compact-preparation.css';
+@import './styles/features/dialogue/batch/s15-23--batch-a01-preview.css';
+@import './styles/features/dialogue/batch/s15-24--auto-subtitles-phase-a.css';
+@import './styles/features/dialogue/batch/s15-25--auto-subtitles-generation-phase-b.css';

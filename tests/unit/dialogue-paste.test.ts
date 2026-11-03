@@ -93,6 +93,19 @@ describe('parseDialoguePaste', () => {
     });
   });
 
+  it('rejects a dialogue that exceeds the formal text limit', () => {
+    const result = parseDialoguePaste(
+      `熊猫：${'a'.repeat(10_001)}`,
+      characters,
+    );
+
+    expect(result.lines[0]).toMatchObject({
+      status: 'invalid',
+      reason: 'text-too-long',
+    });
+    expect(result.validCount).toBe(0);
+  });
+
   it('marks unknown speakers without guessing', () => {
     const result = parseDialoguePaste('小猫：喵', characters);
     expect(result.lines[0]).toMatchObject({
@@ -156,6 +169,23 @@ describe('parseDialoguePaste', () => {
       characterId: 'c-tiger',
       text: '待映射',
     });
+  });
+
+  it('lets an explicit draft role override an automatically recognized role', () => {
+    const parsed = parseDialoguePaste('熊猫：待改角色', characters);
+
+    expect(resolveDialoguePaste(parsed, { 1: 'c-tiger' }, characters).resolvedLines[0]).toEqual({
+      characterId: 'c-tiger',
+      text: '待改角色',
+    });
+  });
+
+  it('does not fall back to automatic matching when a saved role override is stale', () => {
+    const parsed = parseDialoguePaste('熊猫：待重新绑定', characters);
+
+    expect(
+      resolveDialoguePaste(parsed, { 1: 'deleted-character' }, characters),
+    ).toMatchObject({ readyCount: 0, allResolved: false, resolvedLines: [null] });
   });
 
   it('rejects a stale speaker mapping to a character that no longer exists', () => {

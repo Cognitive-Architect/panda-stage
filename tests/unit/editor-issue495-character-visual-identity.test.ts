@@ -163,7 +163,9 @@ describe('Issue #495 Character visual identity parity', () => {
     expect(batch).toContain(
       'draft.setBatchMapping(line.lineNumber, characterId)',
     );
-    expect(batch).not.toContain('<select');
+    expect(batch).toContain(
+      'data-testid={`dialogue-batch-audio-${line.lineNumber}`}',
+    );
 
     expect(inspector.match(/<CharacterIdentityPicker/gu)).toHaveLength(4);
     expect(inspector).toContain('useCharacterAvatarThumbnails');

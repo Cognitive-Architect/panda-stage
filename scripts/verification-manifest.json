@@ -607,8 +607,17 @@
       {
         "id": "dialogue",
         "sourcePatterns": ["src/renderer/features/dialogue/**"],
-        "testPatterns": ["tests/unit/dialogue-*.test.ts", "tests/contract/issue220-*.test.ts", "tests/contract/issue221-*.test.ts"],
-        "verifierPatterns": ["scripts/verify-issue663-dialogue-voice.cjs"],
+        "testPatterns": [
+          "tests/unit/dialogue-*.test.ts",
+          "tests/unit/auto-subtitle-generation-service.test.ts",
+          "tests/unit/auto-subtitle-generation-store.test.ts",
+          "tests/contract/issue220-*.test.ts",
+          "tests/contract/issue221-*.test.ts"
+        ],
+        "verifierPatterns": [
+          "scripts/verify-issue663-dialogue-voice.cjs",
+          "scripts/verify-issue926-as01.cjs"
+        ],
         "suites": ["editor", "timeline"],
         "riskPolicy": "targeted",
         "incrementalEligible": true,
@@ -747,7 +756,7 @@
       }
     ]
   },
-  "count": 109,
+  "count": 112,
   "gates": [
     {
       "id": "issue660-export-audio-mix",
@@ -772,6 +781,42 @@
       "owner": "dialogue",
       "supersedes": null,
       "notes": "Real sandboxed landscape Cloud Touch chooser integration: touch/mouse Ready selection, immediate bound UI, one-command History, change/remove, unavailable assets and BGM/SFX isolation. Human hardware/listening acceptance remains separate."
+    },
+    {
+      "id": "issue926-as01",
+      "script": "verify:issue926-as01",
+      "suite": "editor",
+      "subsystem": "dialogue",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "dialogue",
+      "supersedes": null,
+      "notes": "Real sandboxed Windows Electron acceptance for AS-01 batch preview and the staged Phase A Auto Subtitles surface: strict numbered audio-to-role matching, real asset IDs/source durations, manual choice and clip shortening, transient project/shot-bound draft, unchanged Project/revision/History/autosave during preview, and audio-free ordinary Subtitle creation with undo/redo."
+    },
+    {
+      "id": "issue949-as02-phase-a",
+      "script": "verify:issue949-as02-phase-a",
+      "suite": "editor",
+      "subsystem": "dialogue",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "dialogue",
+      "supersedes": null,
+      "notes": "Phase A Windows Electron evidence for the Auto Subtitles entry and compact view, source-line/audio matching, manual audio audition and clip duration, role-change revalidation, draft persistence and Shot-switch clearing, narrow landscape layout, and the audio-free Subtitle batch path."
+    },
+    {
+      "id": "issue950-as02-phase-b",
+      "script": "verify:issue950-as02-phase-b",
+      "suite": "editor",
+      "subsystem": "dialogue",
+      "status": "active",
+      "platform": "windows",
+      "runIn": "local",
+      "owner": "dialogue",
+      "supersedes": null,
+      "notes": "Phase B sandboxed Windows Electron proof for ten Dialogue/AudioClip pairs, real asset reads and durations, strict overlap blocking, confirmed shot extension, atomic Undo/Redo, save/reopen, playback and formal MP4 audio decode. Generated sine-wave fixtures do not attest human-voice or owner listening acceptance."
     },
     {
       "id": "issue659-preview-mixer",

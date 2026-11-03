@@ -1,6 +1,9 @@
-type Listener = () => void;
+import { DIALOGUE_AUTHORING_TEXT_MAX_LENGTH } from './parseDialoguePaste';
+import type { DialogueBatchAudioSelection } from './dialogueBatchPlan';
 
-export const DIALOGUE_AUTHORING_TEXT_MAX_LENGTH = 10_000;
+export { DIALOGUE_AUTHORING_TEXT_MAX_LENGTH } from './parseDialoguePaste';
+
+type Listener = () => void;
 
 export interface DialogueDraftIdentity {
   projectRoot: string;
@@ -12,6 +15,7 @@ export interface DialogueAuthoringDraftSnapshot {
   singleText: string;
   batchRaw: string;
   batchMapping: Record<number, string>;
+  batchAudioSelections: Record<number, DialogueBatchAudioSelection>;
 }
 
 export interface SingleDialogueDraftErrors {
@@ -47,6 +51,7 @@ const EMPTY_DRAFT: DialogueAuthoringDraftSnapshot = {
   singleText: '',
   batchRaw: '',
   batchMapping: {},
+  batchAudioSelections: {},
 };
 
 function identityChanged(
@@ -61,16 +66,16 @@ function identityChanged(
 }
 
 /**
- * Transient, non-persisted scratch state for the Dialogue Sheet authoring
- * inputs (single-add form + batch paste). It is deliberately NOT a project
- * mutation and never flows through History, save or the schema: it is the
- * uncommitted UI draft.
+ * Transient, non-persisted scratch state for subtitle authoring inputs. The
+ * Dialogue Sheet and the Tools > Auto Subtitles surface each own a separate
+ * instance; neither is a project mutation or flows through History, save or
+ * the schema.
  *
  * The draft is bound to a (projectRoot, shotId) identity. Switching project or
  * shot clears every field, so a Shot A draft can never be committed into Shot
- * B (DialogueStore.createMany reads the current shot at commit time). This is a
- * single-sheet scratch buffer created by the DialogueSheet, not a global draft
- * framework.
+ * B (DialogueStore.createMany reads the current shot at commit time). Each UI
+ * owner keeps its own instance across presentation changes without allowing a
+ * draft to cross project or shot boundaries.
  */
 export class DialogueAuthoringDraft {
   private identity: DialogueDraftIdentity | null = null;
@@ -110,14 +115,56 @@ export class DialogueAuthoringDraft {
   }
 
   setBatchRaw(value: string): void {
-    this.set({ ...this.snapshot, batchRaw: value });
+    const previousLines = this.snapshot.batchRaw.split(/\r?\n/u);
+    const nextLines = value.split(/\r?\n/u);
+    const batchMapping = { ...this.snapshot.batchMapping };
+    const batchAudioSelections = { ...this.snapshot.batchAudioSelections };
+    for (
+      let index = 0;
+      index < Math.max(previousLines.length, nextLines.length);
+      index += 1
+    ) {
+      if (previousLines[index] === nextLines[index]) continue;
+      delete batchMapping[index + 1];
+      delete batchAudioSelections[index + 1];
+    }
+    this.set({
+      ...this.snapshot,
+      batchRaw: value,
+      batchMapping,
+      batchAudioSelections,
+    });
   }
 
   setBatchMapping(lineNumber: number, characterId: string): void {
+    const batchAudioSelections = { ...this.snapshot.batchAudioSelections };
+    if (this.snapshot.batchMapping[lineNumber] !== characterId) {
+      delete batchAudioSelections[lineNumber];
+    }
     this.set({
       ...this.snapshot,
       batchMapping: { ...this.snapshot.batchMapping, [lineNumber]: characterId },
+      batchAudioSelections,
     });
+  }
+
+  setBatchAudioSelection(
+    lineNumber: number,
+    selection: DialogueBatchAudioSelection,
+  ): void {
+    this.set({
+      ...this.snapshot,
+      batchAudioSelections: {
+        ...this.snapshot.batchAudioSelections,
+        [lineNumber]: selection,
+      },
+    });
+  }
+
+  clearBatchAudioSelection(lineNumber: number): void {
+    const batchAudioSelections = { ...this.snapshot.batchAudioSelections };
+    delete batchAudioSelections[lineNumber];
+    this.set({ ...this.snapshot, batchAudioSelections });
   }
 
   private set(next: DialogueAuthoringDraftSnapshot): void {

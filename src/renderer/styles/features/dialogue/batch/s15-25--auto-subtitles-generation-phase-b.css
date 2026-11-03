@@ -1,0 +1,114 @@
+.auto-subtitle-generate-footer {
+  position: sticky;
+  z-index: 2;
+  bottom: 0;
+  display: grid;
+  min-width: 0;
+  padding: 9px 0 2px;
+  border-top: 1px solid var(--ui-color-border-subtle, rgb(180 210 190 / 16%));
+  background: var(--ui-color-surface-panel, #132019);
+  gap: 7px;
+}
+
+.auto-subtitle-generation-summary {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.auto-subtitle-generation-summary > span {
+  min-width: 0;
+}
+
+.auto-subtitle-generation-summary > span:last-child {
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.auto-subtitle-generate-button {
+  width: 100%;
+  min-height: 46px;
+  padding: 9px 12px;
+  color: var(--ui-color-text-on-accent, #102016);
+  background: var(--ui-color-action-primary, #8bd5a0);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.auto-subtitle-generate-button:disabled {
+  color: var(--ui-color-text-muted, #829589);
+  background: rgb(255 255 255 / 8%);
+  cursor: not-allowed;
+}
+
+.auto-subtitle-extension-prompt {
+  display: grid;
+  gap: 6px;
+}
+
+.auto-subtitle-extension-prompt p,
+.auto-subtitle-generation-error,
+.auto-subtitle-row-placement-issue {
+  margin: 0;
+  color: var(--ui-color-action-warning, #e4bd69);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.auto-subtitle-extension-prompt > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.auto-subtitle-extension-prompt button {
+  min-width: 64px;
+  min-height: 40px;
+  padding: 6px 9px;
+  color: var(--ui-color-text-primary, #e7f2eb);
+  background: rgb(255 255 255 / 5%);
+  font: inherit;
+  font-size: 12px;
+}
+
+.auto-subtitle-extension-prompt .auto-subtitle-extension-confirm {
+  color: var(--ui-color-text-on-accent, #102016);
+  background: var(--ui-color-action-primary, #8bd5a0);
+  font-weight: 650;
+}
+
+.auto-subtitle-generation-error {
+  color: var(--ui-color-action-danger, #ef8f87);
+}
+
+.auto-subtitle-row-placement-issue {
+  padding: 0 6px 0 24px;
+}
+
+.auto-subtitle-generated-notice {
+  flex: 0 0 auto;
+  margin: 8px 12px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--ui-color-border-subtle, rgb(180 210 190 / 16%));
+  border-radius: 8px;
+  color: var(--ui-color-text-primary, #e7f2eb);
+  background: var(--ui-color-surface-raised, #1a2a20);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+@media (max-width: 340px) {
+  .auto-subtitle-generation-summary {
+    font-size: 10px;
+  }
+
+  .auto-subtitle-generate-footer {
+    gap: 6px;
+  }
+}

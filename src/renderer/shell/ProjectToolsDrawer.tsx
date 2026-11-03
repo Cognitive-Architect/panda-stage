@@ -1,15 +1,28 @@
-import { ArrowLeft, Maximize2, ScanLine, Sparkles } from 'lucide-react';
+import {
+  ArrowLeft,
+  Maximize2,
+  MessageCircleMore,
+  ScanLine,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 import { DecorativeIcon } from '../ui';
 import { canvasViewportStore } from '../stores/canvasViewportStore';
 import type { CanvasViewportMode } from '../../domain';
+import { DialogueBatchPaste } from '../features/dialogue/DialogueBatchPaste';
+import type { DialogueAuthoringDraft } from '../features/dialogue/dialogueAuthoringDraft';
 import { LegacyWorkspace } from './LegacyWorkspace';
 
 export interface ProjectToolsDrawerProps {
+  autoSubtitleDraft: DialogueAuthoringDraft;
+  autoSubtitleDraftResetNotice: string | null;
+  onDismissAutoSubtitleDraftResetNotice(): void;
+  onAutoSubtitleGenerated(generatedCount: number): void;
   onClose(): void;
 }
 
-type ProjectToolsView = 'home' | 'action-presets';
+type ProjectToolsView = 'home' | 'action-presets' | 'auto-subtitles';
 
 interface ViewModeOption {
   mode: CanvasViewportMode;
@@ -29,6 +42,10 @@ const VIEW_MODE_OPTIONS: readonly ViewModeOption[] = [
  * presentation and local navigation state.
  */
 export function ProjectToolsDrawer({
+  autoSubtitleDraft,
+  autoSubtitleDraftResetNotice,
+  onDismissAutoSubtitleDraftResetNotice,
+  onAutoSubtitleGenerated,
   onClose,
 }: ProjectToolsDrawerProps): React.JSX.Element {
   const [view, setView] = useState<ProjectToolsView>('home');
@@ -39,39 +56,64 @@ export function ProjectToolsDrawer({
 
   return (
     <section
-      aria-labelledby="project-tools-heading"
+      aria-labelledby={view === 'auto-subtitles' ? undefined : 'project-tools-heading'}
       className="project-tools-drawer"
       data-project-tools-view={view}
       data-testid="project-tools-drawer"
     >
-      <header className="project-tools-drawer-header">
-        <div className="project-tools-drawer-heading">
-          {view === 'action-presets' ? (
-            <button
-              aria-label="返回工具"
-              className="project-tools-back"
-              data-testid="project-tools-back"
-              onClick={() => setView('home')}
-              type="button"
-            >
-              <DecorativeIcon icon={ArrowLeft} size={18} />
-              <span>工具</span>
-            </button>
-          ) : null}
-          <h2 id="project-tools-heading">
-            {view === 'action-presets' ? '动作预设' : '工具'}
-          </h2>
-        </div>
-        <button
-          aria-label="关闭工具"
-          className="project-tools-close"
-          data-testid="project-tools-close"
-          onClick={onClose}
-          type="button"
-        >
-          ×
-        </button>
-      </header>
+      {view === 'auto-subtitles' ? (
+        <header className="project-tools-drawer-header project-tools-auto-subtitles-header">
+          <button
+            aria-label="返回工具"
+            className="project-tools-auto-subtitles-back"
+            data-testid="project-tools-auto-subtitles-back"
+            onClick={() => setView('home')}
+            type="button"
+          >
+            <DecorativeIcon icon={ArrowLeft} size={18} />
+            <span>返回</span>
+          </button>
+          <h2 id="project-tools-heading">自动字幕</h2>
+          <button
+            aria-label="关闭工具"
+            className="project-tools-close"
+            data-testid="project-tools-close"
+            onClick={onClose}
+            type="button"
+          >
+            <DecorativeIcon icon={X} size={20} />
+          </button>
+        </header>
+      ) : (
+        <header className="project-tools-drawer-header">
+          <div className="project-tools-drawer-heading">
+            {view === 'action-presets' ? (
+              <button
+                aria-label="返回工具"
+                className="project-tools-back"
+                data-testid="project-tools-back"
+                onClick={() => setView('home')}
+                type="button"
+              >
+                <DecorativeIcon icon={ArrowLeft} size={18} />
+                <span>工具</span>
+              </button>
+            ) : null}
+            <h2 id="project-tools-heading">
+              {view === 'action-presets' ? '动作预设' : '工具'}
+            </h2>
+          </div>
+          <button
+            aria-label="关闭工具"
+            className="project-tools-close"
+            data-testid="project-tools-close"
+            onClick={onClose}
+            type="button"
+          >
+            ×
+          </button>
+        </header>
+      )}
 
       {view === 'home' ? (
         <div className="project-tools-home" data-testid="project-tools-home">
@@ -114,6 +156,15 @@ export function ProjectToolsDrawer({
               })}
             </div>
           </section>
+          <button
+            className="project-tools-auto-subtitle-launcher"
+            data-testid="project-tools-auto-subtitles"
+            onClick={() => setView('auto-subtitles')}
+            type="button"
+          >
+            <DecorativeIcon icon={MessageCircleMore} size={18} />
+            <span>自动字幕</span>
+          </button>
           <section
             aria-labelledby="project-tools-action-preset-heading"
             className="project-tools-action-preset-card"
@@ -134,13 +185,42 @@ export function ProjectToolsDrawer({
             </button>
           </section>
         </div>
-      ) : (
+      ) : view === 'action-presets' ? (
         <section
           aria-label="动作预设"
           className="project-tools-action-presets-view"
           data-testid="project-tools-action-presets-view"
         >
           <LegacyWorkspace />
+        </section>
+      ) : (
+        <section
+          className="project-tools-auto-subtitles-view"
+          data-testid="project-tools-auto-subtitles-view"
+        >
+          {autoSubtitleDraftResetNotice ? (
+            <div
+              aria-live="polite"
+              className="auto-subtitle-draft-reset-notice"
+              data-testid="auto-subtitle-draft-reset-notice"
+              role="status"
+            >
+              <span>{autoSubtitleDraftResetNotice}</span>
+              <button
+                aria-label="关闭提示"
+                data-testid="auto-subtitle-draft-reset-notice-dismiss"
+                onClick={onDismissAutoSubtitleDraftResetNotice}
+                type="button"
+              >
+                <DecorativeIcon icon={X} size={16} />
+              </button>
+            </div>
+          ) : null}
+          <DialogueBatchPaste
+            draft={autoSubtitleDraft}
+            onAutoSubtitleGenerated={onAutoSubtitleGenerated}
+            presentation="auto-subtitle"
+          />
         </section>
       )}
     </section>

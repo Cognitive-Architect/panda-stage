@@ -1,7 +1,9 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import {
   MessageCircleMore,
@@ -11,6 +13,9 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { DecorativeIcon } from '../ui';
+import { editorProjectStore } from '../stores/EditorProjectStore';
+import { shotStore } from '../stores/shotStore';
+import { DialogueAuthoringDraft } from '../features/dialogue/dialogueAuthoringDraft';
 import { DialogueSheet } from '../features/dialogue/DialogueSheet';
 import { usePendingDialoguePlacement } from '../features/timeline/PendingDialoguePlacement';
 import { ProjectToolsDrawer } from './ProjectToolsDrawer';
@@ -44,6 +49,62 @@ export function RightWorkspace({
   autoCameraEnabled,
   onAutoCameraChange,
 }: RightWorkspaceProps): React.JSX.Element {
+  const projectSnapshot = useSyncExternalStore(
+    editorProjectStore.subscribe,
+    editorProjectStore.getSnapshot,
+  );
+  const currentShotId = useSyncExternalStore(
+    shotStore.subscribe,
+    shotStore.getCurrentShotId,
+  );
+  const [autoSubtitleDraft] = useState(() => new DialogueAuthoringDraft());
+  const [autoSubtitleDraftResetNotice, setAutoSubtitleDraftResetNotice] =
+    useState<string | null>(null);
+  const [autoSubtitleGeneratedNotice, setAutoSubtitleGeneratedNotice] =
+    useState<string | null>(null);
+  const autoSubtitleGeneratedNoticeTimerRef = useRef<number | null>(null);
+  const autoSubtitleIdentityRef = useRef<{
+    projectRoot: string;
+    shotId: string | null;
+  } | null>(null);
+  const projectRoot = projectSnapshot?.projectRoot ?? '';
+
+  useLayoutEffect(() => {
+    const nextIdentity = {
+      projectRoot,
+      shotId: currentShotId ?? null,
+    };
+    const previousIdentity = autoSubtitleIdentityRef.current;
+    const draft = autoSubtitleDraft.getSnapshot();
+    const hasDraft = Boolean(
+      draft.batchRaw.trim() ||
+        Object.keys(draft.batchMapping).length ||
+        Object.keys(draft.batchAudioSelections).length,
+    );
+    const reset = autoSubtitleDraft.bindIdentity(nextIdentity);
+    if (previousIdentity && reset && hasDraft) {
+      setAutoSubtitleDraftResetNotice(
+        previousIdentity.projectRoot !== nextIdentity.projectRoot
+          ? '工程已切换，未提交的自动字幕草稿已清空。'
+          : '镜头已切换，未提交的自动字幕草稿已清空。',
+      );
+    }
+    if (
+      previousIdentity &&
+      (previousIdentity.projectRoot !== nextIdentity.projectRoot ||
+        previousIdentity.shotId !== nextIdentity.shotId)
+    ) {
+      setAutoSubtitleGeneratedNotice(null);
+    }
+    autoSubtitleIdentityRef.current = nextIdentity;
+  }, [autoSubtitleDraft, currentShotId, projectRoot]);
+
+  useEffect(() => () => {
+    if (autoSubtitleGeneratedNoticeTimerRef.current !== null) {
+      window.clearTimeout(autoSubtitleGeneratedNoticeTimerRef.current);
+    }
+  }, []);
+
   const pendingPlacement = usePendingDialoguePlacement();
   const [activeActivity, setActiveActivity] =
     useState<RightActivity | null>(null);
@@ -52,6 +113,20 @@ export function RightWorkspace({
   const previousActivityRef = useRef<RightActivity | null>(null);
 
   const closeSurface = (): void => setActiveActivity(null);
+
+  const handleAutoSubtitleGenerated = (generatedCount: number): void => {
+    autoSubtitleDraft.clear();
+    setAutoSubtitleDraftResetNotice(null);
+    setAutoSubtitleGeneratedNotice(`已生成 ${generatedCount} 条字幕与配音`);
+    setActiveActivity('subtitles');
+    if (autoSubtitleGeneratedNoticeTimerRef.current !== null) {
+      window.clearTimeout(autoSubtitleGeneratedNoticeTimerRef.current);
+    }
+    autoSubtitleGeneratedNoticeTimerRef.current = window.setTimeout(() => {
+      autoSubtitleGeneratedNoticeTimerRef.current = null;
+      setAutoSubtitleGeneratedNotice(null);
+    }, 3_500);
+  };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -98,13 +173,24 @@ export function RightWorkspace({
           tabIndex={-1}
         >
           {activeActivity === 'subtitles' ? (
-            <DialogueSheet
-              onClose={closeSurface}
-              pendingDragDialogueId={pendingPlacement.drag?.dialogueId ?? null}
-              pendingTrayInteraction={pendingPlacement.interaction}
-              presentation="right-workspace"
-              unifiedTaskTray
-            />
+            <>
+              {autoSubtitleGeneratedNotice ? (
+                <p
+                  className="auto-subtitle-generated-notice"
+                  data-testid="auto-subtitle-generated-notice"
+                  role="status"
+                >
+                  {autoSubtitleGeneratedNotice}
+                </p>
+              ) : null}
+              <DialogueSheet
+                onClose={closeSurface}
+                pendingDragDialogueId={pendingPlacement.drag?.dialogueId ?? null}
+                pendingTrayInteraction={pendingPlacement.interaction}
+                presentation="right-workspace"
+                unifiedTaskTray
+              />
+            </>
           ) : activeActivity === 'properties' ? (
             <RightInspector
               drawerOpen
@@ -116,6 +202,12 @@ export function RightWorkspace({
             />
           ) : (
             <ProjectToolsDrawer
+              autoSubtitleDraft={autoSubtitleDraft}
+              autoSubtitleDraftResetNotice={autoSubtitleDraftResetNotice}
+              onDismissAutoSubtitleDraftResetNotice={() =>
+                setAutoSubtitleDraftResetNotice(null)
+              }
+              onAutoSubtitleGenerated={handleAutoSubtitleGenerated}
               onClose={closeSurface}
             />
           )}

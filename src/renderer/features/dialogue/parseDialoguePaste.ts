@@ -1,5 +1,7 @@
 import type { Character } from '../../../domain/models';
 
+export const DIALOGUE_AUTHORING_TEXT_MAX_LENGTH = 10_000;
+
 /**
  * Status of a single pasted line after deterministic parsing.
  *
@@ -31,7 +33,7 @@ export interface ParsedDialogueLine {
   /** Resolved character id; present only for `valid` lines. */
   characterId?: string;
   /** Why a line is `invalid`. */
-  reason?: 'empty-speaker' | 'empty-text';
+  reason?: 'empty-speaker' | 'empty-text' | 'text-too-long';
 }
 
 export interface ParseDialoguePasteResult {
@@ -131,6 +133,17 @@ export function parseDialoguePaste(
       });
       return;
     }
+    if (text.length > DIALOGUE_AUTHORING_TEXT_MAX_LENGTH) {
+      lines.push({
+        lineNumber: index + 1,
+        raw: trimmed,
+        status: 'invalid',
+        speaker,
+        text,
+        reason: 'text-too-long',
+      });
+      return;
+    }
 
     const key = normalizedName(speaker);
     const matches = characters.filter(
@@ -197,7 +210,12 @@ export function resolveDialoguePaste(
   const characterIds = new Set(characters.map((character) => character.id));
   const resolvedLines = result.lines.map((line): ResolvedDialogueLine | null => {
     if (line.status === 'valid') {
-      return { characterId: line.characterId!, text: line.text! };
+      const mappedCharacterId = mapping[line.lineNumber];
+      if (!mappedCharacterId) {
+        return { characterId: line.characterId!, text: line.text! };
+      }
+      if (!characterIds.has(mappedCharacterId)) return null;
+      return { characterId: mappedCharacterId, text: line.text! };
     }
     if (line.status !== 'unknown' && line.status !== 'ambiguous') return null;
     const mappedCharacterId = mapping[line.lineNumber];

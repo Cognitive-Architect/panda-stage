@@ -1,0 +1,138 @@
+/* Issue #926 AS-01 batch preview row, audio choice, and duration controls. */
+.dialogue-batch-line-heading {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.dialogue-batch-row-result-resolved {
+  grid-template-columns: 18px 34px minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.dialogue-batch-role-edit {
+  min-height: 32px;
+  padding: 4px 7px;
+  border: 1px solid var(--ui-color-border, #31513f);
+  border-radius: var(--ui-radius-small, 6px);
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.dialogue-batch-role-edit:focus-visible,
+.dialogue-batch-subtitle-only:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring, #9ae6ad);
+  outline-offset: 2px;
+}
+
+.dialogue-batch-row-number {
+  color: var(--ui-color-text-muted, #829589);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.dialogue-batch-preview > li[data-status='audio-invalid'] {
+  padding: 10px;
+  border-left: 2px solid var(--ui-color-action-warning, #d9a441);
+  background: rgb(92 67 24 / 13%);
+}
+
+.dialogue-batch-audio-row {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  padding-left: 26px;
+}
+
+.dialogue-batch-audio-row > label {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 12px;
+}
+
+.dialogue-batch-audio-row select,
+.dialogue-batch-duration-field input {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 1px solid var(--ui-color-border, #31513f);
+  border-radius: var(--ui-radius-small, 6px);
+  color: var(--ui-color-text-primary, #e7f2eb);
+  background: var(--ui-color-work-surface, #101a14);
+  color-scheme: dark;
+}
+
+.dialogue-batch-audio-row select:focus-visible,
+.dialogue-batch-duration-field input:focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring, #9ae6ad);
+  outline-offset: 2px;
+}
+
+.dialogue-batch-audio-details {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 12px;
+}
+
+.dialogue-batch-duration-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dialogue-batch-duration-field input {
+  width: 92px;
+}
+
+.dialogue-batch-audio-suggestion {
+  color: var(--ui-color-text-secondary, #a9bcb0);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.dialogue-batch-row-issue {
+  color: #e8c37c;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.dialogue-batch-subtitle-only {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+@media (max-width: 680px) {
+  .dialogue-batch-row-result-resolved {
+    grid-template-columns: 18px 34px minmax(0, 1fr);
+  }
+
+  .dialogue-batch-role-edit {
+    grid-column: 3;
+    justify-self: start;
+    margin-top: 2px;
+  }
+
+  .dialogue-batch-audio-row {
+    padding-left: 0;
+  }
+
+  .dialogue-batch-audio-details {
+    align-items: flex-start;
+  }
+}

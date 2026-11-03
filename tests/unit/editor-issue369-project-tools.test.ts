@@ -71,10 +71,11 @@ describe('Issue #369 landscape Project Tools launcher', () => {
     const drawer = source('src/renderer/shell/ProjectToolsDrawer.tsx');
     const right = source('src/renderer/shell/RightWorkspace.tsx');
 
-    for (const sourceText of [drawer, right]) {
-      expect(sourceText).not.toContain('updateProject');
-      expect(sourceText).not.toContain('editorProjectStore');
-      expect(sourceText).not.toContain('HistoryControls');
-    }
+    expect(drawer).not.toContain('updateProject');
+    expect(drawer).not.toContain('editorProjectStore');
+    expect(right).not.toContain('updateProject');
+    expect(right).not.toContain('HistoryControls');
+    expect(right).toContain('autoSubtitleDraft.bindIdentity');
+    expect(right).toContain('editorProjectStore.getSnapshot');
   });
 });

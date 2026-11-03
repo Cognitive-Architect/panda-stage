@@ -103,17 +103,21 @@ describe('Issue #505 R6.2 A09 batch recognition review', () => {
     expect(batch).toContain('<CharacterAvatar');
     expect(batch).toContain('dialogue-batch-row-result-resolved');
     expect(batch).toContain('dialogue-batch-row-result-exception');
-    expect(batch).toContain('<strong>识别结果</strong>');
+    expect(batch).toContain('data-testid="auto-subtitle-phase-a-status"');
+    expect(batch).not.toContain('<strong>候选预览</strong>');
     expect(batch).toContain('pendingCount');
-    expect(batch).toContain('未找到“');
+    expect(batch).toContain('未找到「');
     expect(batch).toContain('对应多个角色，请确认');
     expect(batch).toContain('缺少角色名称');
     expect(batch).toContain('缺少台词内容');
     expect(batch).toContain('emptySummaryLabel="请选择对应角色"');
     expect(batch).toContain('showDefaultExpression={showDefaultExpression}');
+    expect(batch).toContain('buildDialogueBatchPreview(');
     expect(batch).toContain('dialogueStore.createMany(');
-    expect(batch).toContain('`还有 ${pendingCount} 条待确认`');
-    expect(batch).toContain('`添加 ${resolution.readyCount} 条字幕`');
+    expect(batch).toContain('data-testid="dialogue-batch-add-subtitles"');
+    expect(batch).toContain('if (!resolution.allResolved) return;');
+    expect(batch).toContain('className="dialogue-batch-recognition-pending"');
+    expect(batch).toContain('className="dialogue-batch-recognition-ready"');
     expect(sheet).toContain('showDefaultExpression={!rightWorkspace}');
     for (const staleCopy of [
       '没找到这个角色',
