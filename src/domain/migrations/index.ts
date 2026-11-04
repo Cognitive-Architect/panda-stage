@@ -14,6 +14,8 @@ import {
   ProjectV12Schema,
   ProjectV13Schema,
   ProjectV14Schema,
+  ProjectV15AdaptiveSchema,
+  ProjectV15AnimationSchema,
   ProjectV1Schema,
   inferLegacyBackgroundLayerId,
   migrateFormalProject,
@@ -46,6 +48,7 @@ export type DetectedSchemaVersion =
   | 12
   | 13
   | 14
+  | 15
   | typeof PROJECT_SCHEMA_VERSION;
 
 export class UnsupportedSchemaVersionError extends Error {
@@ -53,7 +56,7 @@ export class UnsupportedSchemaVersionError extends Error {
     super(
       `Unsupported project schemaVersion: ${String(
         receivedVersion,
-      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, and ${PROJECT_SCHEMA_VERSION}.`,
+      )}. Supported versions are 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, and ${PROJECT_SCHEMA_VERSION}.`,
     );
     this.name = 'UnsupportedSchemaVersionError';
   }
@@ -84,6 +87,7 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 12 ||
     version === 13 ||
     version === 14 ||
+    version === 15 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version as DetectedSchemaVersion;
@@ -95,6 +99,67 @@ const MIGRATED_SUBTITLE_STYLE_ID =
   '00000000-0000-4000-8000-000000000110';
 const HISTORICAL_DEFAULT_SUBTITLE_BACKGROUND = '#0a1411c7';
 const TRANSPARENT_SUBTITLE_BACKGROUND = '#0a141100';
+
+function migrateVersion15(input: unknown): Project {
+  const animationShape = ProjectV15AnimationSchema.safeParse(input);
+  const adaptiveShape = ProjectV15AdaptiveSchema.safeParse(input);
+
+  if (!animationShape.success && !adaptiveShape.success) {
+    throw new Error(
+      'schemaVersion 15 project matches neither the animation nor Adaptive Parts contract; refusing an ambiguous migration.',
+    );
+  }
+
+  const migrateAnimationProject = (
+    version15: z.infer<typeof ProjectV15AnimationSchema>,
+  ): Project => {
+    return ProjectSchema.parse({
+      ...version15,
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      shots: version15.shots.map((shot) => ({
+        ...shot,
+        layers: shot.layers.map((layer) =>
+          layer.source.kind === 'animation'
+            ? {
+                ...layer,
+                animationPlayback: {
+                  mode: 'once' as const,
+                  endBehavior: 'hold' as const,
+                },
+              }
+            : layer,
+        ),
+      })),
+    });
+  };
+  const migrateAdaptiveProject = (
+    version15: z.infer<typeof ProjectV15AdaptiveSchema>,
+  ): Project => {
+    return ProjectSchema.parse({
+      ...version15,
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+    });
+  };
+
+  if (animationShape.success && adaptiveShape.success) {
+    const animationProject = migrateAnimationProject(animationShape.data);
+    const adaptiveProject = migrateAdaptiveProject(adaptiveShape.data);
+    if (JSON.stringify(animationProject) !== JSON.stringify(adaptiveProject)) {
+      throw new Error(
+        'schemaVersion 15 project matches both historical contracts with different results; refusing an ambiguous migration.',
+      );
+    }
+    return animationProject;
+  }
+
+  if (animationShape.success) {
+    return migrateAnimationProject(animationShape.data);
+  }
+  if (adaptiveShape.success) {
+    return migrateAdaptiveProject(adaptiveShape.data);
+  }
+  throw new Error('Unreachable schemaVersion 15 migration state.');
+}
 
 function migrateImageAuthorMetadata(input: unknown): Project {
   const envelope = z
@@ -220,12 +285,12 @@ function normalizeHistoricalSubtitleBackground(project: Project): Project {
 /**
  * The single authoritative persisted-project migration pipeline.
  *
- * Every persisted envelope (v0-v14) is routed here by version and resolved to
- * the current v15 project through exactly one path. The formal v1-v7
+ * Every persisted envelope (v0-v15) is routed here by version and resolved to
+ * the current v16 project. The formal v1-v7
  * transforms live in
  * `migrateFormalProject` (a shared helper, NOT wired into `ProjectSchema`),
  * and the current-project validator (`ProjectSchema`) is used only to
- * validate the resolved v15 shape. A narrow compatibility normalization then
+ * validate the resolved v16 shape. A narrow compatibility normalization then
  * replaces the one historical subtitle default while preserving all other
  * style values. There is no second, implicit migration path:
  * `ProjectSchema.parse` never migrates legacy input.
@@ -274,7 +339,7 @@ export function migrateProject(input: unknown): Project {
     }
     case 12:
       // v12 image assets had no author-defined usage or search keywords.
-      // Their facts remain explicitly uncategorized during the v14 upgrade.
+      // Their facts remain explicitly uncategorized during the v16 upgrade.
       project = migrateImageAuthorMetadata(ProjectV12Schema.parse(input));
       break;
     case 13: {
@@ -294,8 +359,11 @@ export function migrateProject(input: unknown): Project {
       });
       break;
     }
+    case 15:
+      project = migrateVersion15(input);
+      break;
     case PROJECT_SCHEMA_VERSION:
-      // Current v15 envelope: validate it, then apply only the narrow
+      // Current v16 envelope: validate it, then apply only the narrow
       // historical-default compatibility normalization without mutating input.
       project = ProjectSchema.parse(input);
       break;

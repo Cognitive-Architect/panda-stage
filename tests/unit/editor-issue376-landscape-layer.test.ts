@@ -71,7 +71,12 @@ describe('Issue #376 Cloud Touch landscape Layer hierarchy', () => {
     expect(order).toContain('data-presentation={presentation}');
     expect(order).toContain('层级顺序');
     expect(order).toContain('图层状态');
-    expect(order).toContain('危险操作');
+    expect(order).not.toContain('危险操作');
+    expect(order).not.toContain('调整当前对象在镜头中的前后关系');
+    expect(order).not.toContain('锁定后不可排序或删除。');
+    expect(order).not.toContain('排序操作会影响当前镜头中的普通图层。');
+    expect(order).not.toContain('data-testid="duplicate-animation-layer"');
+    expect(order).not.toContain('layer-order-danger-copy');
     for (const action of [
       "reorder('forward')",
       "reorder('backward')",
@@ -87,7 +92,7 @@ describe('Issue #376 Cloud Touch landscape Layer hierarchy', () => {
     expect(order).toContain('layerStore.deleteLayer');
     expect(order).toContain('selectionStore.clear');
     expect(order).toContain('layer-order-protected-state');
-    expect(order).toContain("presentation === 'landscape' ? null");
+    expect(order).toContain('data-testid="layer-order-status"');
     expect(order).toContain("if (presentation === 'landscape') setStatus('');");
 
     expect(issue376).toContain(

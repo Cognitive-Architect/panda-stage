@@ -1,0 +1,2180 @@
+const { app, ipcMain } = require('electron');
+const { createHash } = require('node:crypto');
+const { execFileSync } = require('node:child_process');
+const { mkdirSync, readFileSync, writeFileSync } = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { deflateSync } = require('node:zlib');
+const { createMainWindow } = require('../dist-electron/main/windows/main-window.js');
+const { AssetCanvasImageService } = require('../dist-electron/main/services/AssetCanvasImageService.js');
+const { ProjectService } = require('../dist-electron/main/services/ProjectService.js');
+const { IPC_CHANNELS } = require('../dist-electron/shared/ipc/channels.js');
+const { migrateProject } = require('../dist-electron/domain/migrations/index.js');
+
+const root = process.env.PANDA_STAGE_ISSUE890_AM04_ROOT
+  ? path.resolve(process.env.PANDA_STAGE_ISSUE890_AM04_ROOT)
+  : 'D:\\PandaStage-Acceptance\\issue890-am04';
+const evidence = path.join(root, 'electron');
+const userData = path.join(root, 'electron-user-data');
+const projectRoot = path.join(root, 'projects', 'issue890-electron-' + process.pid + '-' + Date.now() + '.pandastage');
+const resultPath = path.join(evidence, 'results.json');
+const example = require('../demo-project/project-v1.example.json');
+const fallbackPng = readFileSync(path.join(__dirname, '..', 'public/probe/panda-character.png'));
+const ids = {
+  project: '89000000-0000-4000-8000-000000000001',
+  animation: '89000000-0000-4000-8000-000000000002',
+  frames: Array.from({ length: 21 }, (_, index) =>
+    '89000000-0000-4000-8000-' + String(index + 11).padStart(12, '0')),
+};
+const colors = Array.from({ length: 21 }, (_, index) => [
+  30 + index * 8,
+  220 - index * 7,
+  60 + index * 5,
+]);
+const sizeCycle = [
+  { width: 200, height: 200 },
+  { width: 160, height: 180 },
+  { width: 180, height: 160 },
+];
+const sizes = Array.from({ length: 21 }, (_, index) => sizeCycle[index % sizeCycle.length]);
+const offsets = sizes.map((size) => ({
+  x: (400 - size.width) / 2,
+  y: (400 - size.height) / 2,
+}));
+const bytesByAsset = new Map();
+const projectOpenEvidence = [];
+const projectSaveEvidence = [];
+const canvasImageReadEvidence = [];
+const rendererDiagnostics = [];
+const issue925Measurements = [];
+let fixture;
+let savedProject = null;
+let currentPhase = 'bootstrap';
+let issue925Phase = 'setup';
+
+function setPhase(phase) {
+  currentPhase = phase;
+  console.log('[issue890] phase: ' + phase);
+}
+
+app.on('window-all-closed', () => {});
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function crc32(bytes) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type, bytes) {
+  const typeBuffer = Buffer.from(type, 'ascii');
+  const payload = Buffer.concat([typeBuffer, bytes]);
+  const size = Buffer.alloc(4);
+  const checksum = Buffer.alloc(4);
+  size.writeUInt32BE(bytes.length, 0);
+  checksum.writeUInt32BE(crc32(payload), 0);
+  return Buffer.concat([size, payload, checksum]);
+}
+
+function solidPng(width, height, color) {
+  const row = Buffer.alloc(width * 4 + 1);
+  for (let x = 0; x < width; x += 1) {
+    row[1 + x * 4] = color[0];
+    row[2 + x * 4] = color[1];
+    row[3 + x * 4] = color[2];
+    row[4 + x * 4] = 255;
+  }
+  const raw = Buffer.alloc(row.length * height);
+  for (let y = 0; y < height; y += 1) row.copy(raw, y * row.length);
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 6;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk('IHDR', header),
+    pngChunk('IDAT', deflateSync(raw)),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+function makeFixture(projectId) {
+  const frames = colors.map((color, index) => {
+    const size = sizes[index];
+    const bytes = solidPng(size.width, size.height, color);
+    bytesByAsset.set(ids.frames[index], bytes);
+    writeFileSync(path.join(evidence, 'frame-' + index + '.png'), bytes);
+    return {
+      ordinal: index,
+      sourceFrameIndex: index,
+      assetId: ids.frames[index],
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+      sourceViewport: {
+        x: 100 + offsets[index].x,
+        y: 100 + offsets[index].y,
+        width: size.width,
+        height: size.height,
+      },
+      offset: offsets[index],
+      startMs: index * 40,
+      durationMs: 40,
+      createdBySequenceImport: true,
+    };
+  });
+  const animation = {
+    id: ids.animation,
+    name: 'Issue 890 synthetic 21-frame walk',
+    source: {
+      basename: 'issue890-synthetic.fla',
+      sha256: 'b'.repeat(64),
+      renderTargetId: 'issue890-target',
+      targetKind: 'graphic-symbol',
+      targetName: 'Issue 890 synthetic 21-frame walk',
+      startFrameIndex: 0,
+      endFrameIndex: 20,
+      sourceFps: 25,
+      canvas: { width: 400, height: 400 },
+      documentCanvas: { width: 400, height: 400 },
+      anchor: { x: 100, y: 100 },
+    },
+    durationMs: 840,
+    frames,
+  };
+  const base = migrateProject({
+    ...example,
+    id: projectId,
+    name: 'Issue 890 AM-04 Electron Evidence',
+  });
+  const fallbackDimensions = {
+    width: fallbackPng.readUInt32BE(16),
+    height: fallbackPng.readUInt32BE(20),
+  };
+  const fallbackSha256 = createHash('sha256').update(fallbackPng).digest('hex');
+  const baseAssets = base.assets.map((asset) => {
+    if (asset.kind !== 'image') return asset;
+    const assetPath = path.join(projectRoot, asset.relativePath);
+    mkdirSync(path.dirname(assetPath), { recursive: true });
+    writeFileSync(assetPath, fallbackPng);
+    bytesByAsset.set(asset.id, fallbackPng);
+    return {
+      ...asset,
+      mimeType: 'image/png',
+      width: fallbackDimensions.width,
+      height: fallbackDimensions.height,
+      sha256: fallbackSha256,
+    };
+  });
+  for (const frame of frames) {
+    const framePath = path.join(projectRoot, 'assets', 'issue890-frame-' + frame.ordinal + '.png');
+    mkdirSync(path.dirname(framePath), { recursive: true });
+    writeFileSync(
+      framePath,
+      bytesByAsset.get(frame.assetId),
+    );
+  }
+  return migrateProject({
+    ...base,
+    assets: [
+      ...baseAssets,
+      ...frames.map((frame, index) => ({
+        id: frame.assetId,
+        kind: 'image',
+        name: 'Issue 890 frame ' + index,
+        relativePath: 'assets/issue890-frame-' + index + '.png',
+        mimeType: 'image/png',
+        width: frame.sourceViewport.width,
+        height: frame.sourceViewport.height,
+        sha256: frame.sha256,
+        usage: 'uncategorized',
+        keywords: ['issue890', 'synthetic'],
+      })),
+    ],
+    animations: [animation],
+    shots: base.shots.map((shot, index) => ({
+      ...shot,
+      durationMs: index === 0 ? 15_000 : shot.durationMs,
+      timelineEvents: [],
+      backgroundLayerId: shot.layers[0].id,
+      layers: shot.layers.map((layer) => ({
+        ...layer,
+        locked: false,
+        flipX: false,
+      })),
+    })),
+  });
+}
+
+function register(channel, handler) {
+  ipcMain.handle(channel, handler);
+}
+
+function mockIpc(projectService) {
+  const canvasImageService = new AssetCanvasImageService({
+    getCurrentProjectSnapshot: (requestedRoot) => requestedRoot === projectRoot
+      ? { project: savedProject ?? fixture }
+      : null,
+  });
+  register(IPC_CHANNELS.PROJECT_CHOOSE_DIRECTORY, () => ({ ok: true, status: 'cancelled' }));
+  register(IPC_CHANNELS.PROJECT_OPEN, async (_event, request) => {
+    if (request.projectRoot !== projectRoot) {
+      return {
+        ok: false,
+        error: {
+          code: 'PROJECT_NOT_FOUND',
+          message: 'Synthetic fixture missing.',
+          projectRoot: request.projectRoot,
+        },
+      };
+    }
+    const document = await projectService.open(projectRoot);
+    savedProject = document.project;
+    projectOpenEvidence.push({
+      projectId: document.project.id,
+      sourceVersion: document.sourceVersion,
+    });
+    return { ok: true, value: document };
+  });
+  register(IPC_CHANNELS.PROJECT_SAVE, async (_event, request) => {
+    assert(request.projectRoot === projectRoot, 'Unexpected project root in save request.');
+    const document = await projectService.save(
+      request.projectRoot,
+      request.project,
+      request.revision,
+    );
+    savedProject = document.project;
+    const animationLayers = document.project.shots.flatMap((shot) => shot.layers)
+      .filter((layer) => layer.source.kind === 'animation');
+    projectSaveEvidence.push({
+      revision: request.revision,
+      projectId: document.project.id,
+      schemaVersion: document.project.schemaVersion,
+      animationLayers,
+      animationCount: document.project.animations.length,
+      animationFrameCount: document.project.animations[0]?.frames.length ?? 0,
+      assetCount: document.project.assets.length,
+    });
+    return { ok: true, value: document };
+  });
+  register(IPC_CHANNELS.PROJECT_CONFIRM_SWITCH, () => ({ outcome: 'saved' }));
+  register(IPC_CHANNELS.RECENT_PROJECTS_LIST, () => ({ ok: true, entries: [] }));
+  register(IPC_CHANNELS.RECENT_PROJECTS_OPEN, async (_event, request) => {
+    if (request.projectRoot !== projectRoot) {
+      return {
+        ok: false,
+        error: {
+          code: 'RECENT_PROJECT_NOT_FOUND',
+          message: 'Synthetic fixture missing.',
+          projectRoot: request.projectRoot,
+        },
+      };
+    }
+    const document = await projectService.open(projectRoot);
+    savedProject = document.project;
+    projectOpenEvidence.push({
+      projectId: document.project.id,
+      sourceVersion: document.sourceVersion,
+    });
+    return { ok: true, document };
+  });
+  register(IPC_CHANNELS.AUTOSAVE_TRACK, () => ({ ok: true }));
+  register(IPC_CHANNELS.AUTOSAVE_UPDATE, () => ({ ok: true }));
+  register(IPC_CHANNELS.AUTOSAVE_STOP, () => ({ ok: true }));
+  register(IPC_CHANNELS.RECOVERY_DETECT, () => ({ ok: true, candidate: null }));
+  register(IPC_CHANNELS.RECOVERY_IGNORE, () => ({ ok: true, retained: true }));
+  register(IPC_CHANNELS.ASSET_THUMBNAIL_READ, (_event, request) => {
+    const bytes = bytesByAsset.get(request.assetId) ?? fallbackPng;
+    return {
+      ok: true,
+      status: 'ready',
+      assetId: request.assetId,
+      dataUrl: 'data:image/png;base64,' + bytes.toString('base64'),
+    };
+  });
+  register(IPC_CHANNELS.ASSET_CANVAS_IMAGE_READ, async (_event, request) => {
+    const startedAt = performance.now();
+    const response = await canvasImageService.read(request);
+    canvasImageReadEvidence.push({
+      assetId: request.assetId,
+      sha256: request.sha256,
+      status: response.ok ? response.status : response.error.code,
+      byteLength: response.ok ? response.byteLength : null,
+      phase: issue925Phase,
+      durationMs: Number((performance.now() - startedAt).toFixed(3)),
+    });
+    return response;
+  });
+}
+
+function waitScript(expression, message, timeout = 20_000) {
+  return '(async () => { const end = Date.now() + ' + timeout + '; while (Date.now() < end) {' +
+    'try { if (' + expression + ') return true; } catch {} await new Promise((r) => setTimeout(r, 40)); }' +
+    'throw new Error(' + JSON.stringify(message) + '); })()';
+}
+
+async function waitFor(window, expression, message, timeout) {
+  await window.webContents.executeJavaScript(waitScript(expression, message, timeout));
+}
+
+async function click(window, selector) {
+  const point = await window.webContents.executeJavaScript(
+    '(() => { const selector=' + JSON.stringify(selector) + ';' +
+    'const e=Array.from(document.querySelectorAll(selector)).find((candidate) => {' +
+    'if (!(candidate instanceof HTMLElement)) return false; const style=getComputedStyle(candidate);' +
+    'const rect=candidate.getBoundingClientRect(); return style.display!=="none"&&style.visibility!=="hidden"&&' +
+    'rect.width>0&&rect.height>0; });' +
+    'if (!(e instanceof HTMLElement)) throw new Error("Missing visible target: " + selector);' +
+    'e.scrollIntoView({block:"center",inline:"center"}); const r=e.getBoundingClientRect();' +
+    'const points=[{x:r.left+r.width/2,y:r.top+r.height/2},' +
+    '{x:r.left+r.width*0.2,y:r.top+r.height*0.2},{x:r.left+r.width*0.8,y:r.top+r.height*0.2},' +
+    '{x:r.left+r.width*0.2,y:r.top+r.height*0.8},{x:r.left+r.width*0.8,y:r.top+r.height*0.8}];' +
+    'const point=points.find(({x,y})=>{const hit=document.elementFromPoint(x,y);return hit===e||e.contains(hit);});' +
+    'if(!point){const x=r.left+r.width/2,y=r.top+r.height/2,hit=document.elementFromPoint(x,y);' +
+    'throw new Error("Target is not hit-testable after scroll: " + JSON.stringify({selector,rect:{x:r.x,y:r.y,width:r.width,height:r.height},' +
+    'viewport:{width:document.documentElement.clientWidth,height:document.documentElement.clientHeight},' +
+    'hit:hit?{tag:hit.tagName,id:hit.id,className:String(hit.className),testId:hit.dataset?.testid,text:hit.textContent?.trim().slice(0,80)}:null}));}' +
+    'return {x:Math.round(point.x),y:Math.round(point.y)}; })()',
+  );
+  window.show();
+  window.focus();
+  window.webContents.focus();
+  window.webContents.sendInputEvent({
+    type: 'mouseMove',
+    x: point.x,
+    y: point.y,
+  });
+  window.webContents.sendInputEvent({
+    type: 'mouseDown',
+    x: point.x,
+    y: point.y,
+    button: 'left',
+    clickCount: 1,
+  });
+  window.webContents.sendInputEvent({
+    type: 'mouseUp',
+    x: point.x,
+    y: point.y,
+    button: 'left',
+    clickCount: 1,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 150));
+}
+
+async function clickPoint(window, point) {
+  window.webContents.sendInputEvent({ type: 'mouseMove', x: point.x, y: point.y });
+  window.webContents.sendInputEvent({
+    type: 'mouseDown',
+    x: point.x,
+    y: point.y,
+    button: 'left',
+    clickCount: 1,
+  });
+  window.webContents.sendInputEvent({
+    type: 'mouseUp',
+    x: point.x,
+    y: point.y,
+    button: 'left',
+    clickCount: 1,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 180));
+}
+
+async function setControlValue(window, selector, value, blur = false) {
+  await window.webContents.executeJavaScript(
+    '(() => { const e=document.querySelector(' + JSON.stringify(selector) + ');' +
+    'if (!(e instanceof HTMLInputElement || e instanceof HTMLSelectElement)) throw new Error("Missing input: " + ' +
+    JSON.stringify(selector) + '); const p=e instanceof HTMLInputElement?HTMLInputElement.prototype:HTMLSelectElement.prototype;' +
+    (blur ? 'e.focus();' : '') +
+    'Object.getOwnPropertyDescriptor(p,"value").set.call(e,' + JSON.stringify(String(value)) + ');' +
+    'e.dispatchEvent(new Event("input",{bubbles:true})); e.dispatchEvent(new Event("change",{bubbles:true}));' +
+    (blur ? 'e.blur();' : '') +
+    'return true; })()',
+  );
+  await new Promise((resolve) => setTimeout(resolve, 120));
+}
+
+async function typeControlValue(window, selector, value, commitWithEnter = false) {
+  window.show();
+  window.focus();
+  window.webContents.focus();
+  await window.webContents.executeJavaScript(
+    '(() => { const e=document.querySelector(' + JSON.stringify(selector) + ');' +
+    'if (!(e instanceof HTMLInputElement)) throw new Error("Missing input: " + ' +
+    JSON.stringify(selector) + '); e.focus(); return true; })()',
+  );
+  window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'A', modifiers: ['control'] });
+  window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'A', modifiers: ['control'] });
+  await window.webContents.insertText(String(value));
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  if (commitWithEnter) await pressKey(window, 'ENTER');
+  else {
+    await window.webContents.executeJavaScript(
+      'document.querySelector(' + JSON.stringify(selector) + ')?.blur()',
+    );
+  }
+  await new Promise((resolve) => setTimeout(resolve, 120));
+}
+
+async function dragRangeValue(window, selector, value, min = 0, max = 100) {
+  const diagnostics = await window.webContents.executeJavaScript(
+    '(() => { const e=document.querySelector(' + JSON.stringify(selector) + ');' +
+      'if (!(e instanceof HTMLInputElement) || e.type!=="range") throw new Error("Missing range: " + ' +
+      JSON.stringify(selector) + '); e.scrollIntoView({block:"center",inline:"center"});' +
+      'const parsedThumbWidth=parseFloat(getComputedStyle(e,"::-webkit-slider-thumb").width);' +
+      'const metrics=()=>{const r=e.getBoundingClientRect();const thumbWidth=Number.isFinite(parsedThumbWidth)&&' +
+      'parsedThumbWidth>0&&parsedThumbWidth<r.width/2?parsedThumbWidth:16;const trackLeft=r.left+thumbWidth/2;' +
+      'const trackWidth=Math.max(0,r.width-thumbWidth);const x=(v)=>Math.round(trackLeft+(Number(v)-' + min + ')/(' + (max - min) + ')*trackWidth);' +
+      'const y=Math.round(r.top+r.height/2);const from={x:x(e.value),y},to={x:x(' + Number(value) + '),y};' +
+      'const hit=(p)=>{const h=document.elementFromPoint(p.x,p.y);return h?{tag:h.tagName,id:h.id,testId:h.dataset?.testid,className:String(h.className)}:null;};' +
+      'return {from,to,rect:{x:r.x,y:r.y,width:r.width,height:r.height},thumbWidth,fromHit:hit(from),toHit:hit(to)};};' +
+      'const scrollers=[];for(let p=e.parentElement;p;p=p.parentElement){const style=getComputedStyle(p);' +
+      'if(p.scrollHeight>p.clientHeight+1&&/(auto|scroll)/.test(style.overflowY))scrollers.push(p);}' +
+      'let state=metrics();for(const scroller of scrollers){for(let attempt=0;attempt<8&&' +
+      '(state.fromHit?.testId!==e.dataset.testid||state.toHit?.testId!==e.dataset.testid);attempt++){' +
+      'const maxScroll=Math.max(0,scroller.scrollHeight-scroller.clientHeight);if(scroller.scrollTop>=maxScroll-1)break;' +
+      'scroller.scrollTop=Math.min(maxScroll,scroller.scrollTop+48);state=metrics();}}' +
+      'if(state.fromHit?.testId!==e.dataset.testid||state.toHit?.testId!==e.dataset.testid)' +
+      'throw new Error("Opacity slider is occluded after scrolling: "+JSON.stringify({...state,rangeValue:e.value,' +
+      'disabled:e.disabled,scrollers:scrollers.map(s=>({className:String(s.className),scrollTop:s.scrollTop,' +
+      'scrollHeight:s.scrollHeight,clientHeight:s.clientHeight}))}));' +
+      'return {...state,rangeValue:e.value,disabled:e.disabled,scrollTops:scrollers.map(s=>s.scrollTop)}; })()',
+  );
+  console.log('[issue890] range drag target: ' + JSON.stringify(diagnostics));
+  await browserDrag(window, diagnostics.from, diagnostics.to, 10);
+}
+
+async function pressKey(window, keyCode) {
+  window.show();
+  window.focus();
+  window.webContents.focus();
+  window.webContents.sendInputEvent({ type: 'keyDown', keyCode });
+  window.webContents.sendInputEvent({ type: 'keyUp', keyCode });
+  await new Promise((resolve) => setTimeout(resolve, 120));
+}
+
+async function openProject(window) {
+  await waitFor(
+    window,
+    'document.querySelector(\'[data-testid="project-center-screen"] .recovery-open-row input\')',
+    'Project Center did not appear.',
+  );
+  await window.webContents.executeJavaScript(
+    '(() => { const i=document.querySelector(\'[data-testid="project-center-screen"] .recovery-open-row input\');' +
+    'const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set;' +
+    'setter.call(i,' + JSON.stringify(projectRoot) + '); i.dispatchEvent(new Event("input",{bubbles:true}));' +
+    'document.querySelector(\'[data-testid="project-center-screen"] .recovery-open-row button\')?.click(); })()',
+  );
+  await waitFor(
+    window,
+    'document.querySelector(\'.editor-shell\')?.dataset.editorPage==="editor"&&document.querySelector(\'[data-testid="project-canvas-stage"]\')',
+    'Project did not open in Editor.',
+  );
+  await waitFor(
+    window,
+    'document.querySelector(\'[data-testid="project-canvas-stage"]\')?.dataset.backgroundReady==="true"',
+    'Project background did not load.',
+  );
+}
+
+async function canvasPoint(window, x, y) {
+  return window.webContents.executeJavaScript(
+    '(() => { const v=document.querySelector(\'[data-testid="project-canvas-viewport"]\');' +
+    'const r=v.getBoundingClientRect(),s=Number(v.dataset.displayScale);' +
+    'return {x:Math.round(r.left+Number(v.dataset.offsetX)+' + x + '*s),' +
+    'y:Math.round(r.top+Number(v.dataset.offsetY)+' + y + '*s)}; })()',
+  );
+}
+
+async function browserDrag(window, from, to, steps = 12) {
+  const debuggerApi = window.webContents.debugger;
+  let attachedHere = false;
+  window.show();
+  window.focus();
+  window.webContents.focus();
+  if (!debuggerApi.isAttached()) {
+    debuggerApi.attach('1.3');
+    attachedHere = true;
+  }
+  try {
+    await debuggerApi.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: from.x,
+      y: from.y,
+      buttons: 0,
+    });
+    await debuggerApi.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: from.x,
+      y: from.y,
+      button: 'left',
+      buttons: 1,
+      clickCount: 1,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    for (let index = 1; index <= steps; index += 1) {
+      await debuggerApi.sendCommand('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: Math.round(from.x + (to.x - from.x) * index / steps),
+        y: Math.round(from.y + (to.y - from.y) * index / steps),
+        button: 'left',
+        buttons: 1,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 35));
+    }
+    await debuggerApi.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: to.x,
+      y: to.y,
+      button: 'left',
+      buttons: 0,
+      clickCount: 1,
+    });
+  } finally {
+    if (attachedHere && debuggerApi.isAttached()) debuggerApi.detach();
+  }
+  await new Promise((resolve) => setTimeout(resolve, 250));
+}
+
+async function seekEditor(window, timeMs) {
+  await waitFor(
+    window,
+    '(() => { const t=document.querySelector(\'[data-testid="timeline-ruler-track"]\');' +
+      'const c=document.querySelector(\'[data-testid="timeline-timecode"]\');' +
+      'const dock=document.querySelector(\'[data-testid="timeline-dock"]\');' +
+    'const scroll=document.querySelector(\'[data-testid="timeline-ruler-scroll"]\');' +
+    'const zoomText=document.querySelector(\'[data-testid="timeline-zoom-value"]\')?.textContent||"";' +
+    'const zoom=Number(zoomText.replace(/[^\\d.]/g,""));' +
+      'const rect=t?.getBoundingClientRect();' +
+    'const contentWidth=(rect?.width||0)-Number(dock?.dataset.laneLabelWidth||0);' +
+    'return Number(c?.dataset.duration)>0&&rect?.height>0&&scroll?.clientWidth>0&&zoom>0&&' +
+      'Math.abs(contentWidth-scroll.clientWidth*zoom)<=2; })()',
+    'Timeline seek geometry did not settle before seeking to ' + timeMs + 'ms.',
+  );
+  const point = await window.webContents.executeJavaScript(
+    '(() => { const t=document.querySelector(\'[data-testid="timeline-ruler-track"]\');' +
+    'const c=document.querySelector(\'[data-testid="timeline-timecode"]\');' +
+    'const ruler=document.querySelector(\'[data-testid="timeline-ruler"]\');' +
+    'const dock=document.querySelector(\'[data-testid="timeline-dock"]\');' +
+    'const r=t.getBoundingClientRect(),rr=ruler.getBoundingClientRect();' +
+    'const x=Math.round(r.left+(r.width-Number(dock.dataset.laneLabelWidth||0))*' + timeMs + '/Number(c.dataset.duration));' +
+    'return {x,y:Math.round(rr.top+rr.height/2)}; })()',
+  );
+  await clickPoint(window, point);
+  try {
+    await waitFor(
+      window,
+      'Math.abs(Number(document.querySelector(\'[data-testid="project-canvas-stage"]\')?.dataset.currentTimeMs)-' +
+        timeMs + ')<=22',
+      'Timeline seek did not reach ' + timeMs + 'ms.',
+    );
+  } catch (error) {
+    const diagnostics = await window.webContents.executeJavaScript(`(() => {
+      const track = document.querySelector('[data-testid="timeline-ruler-track"]');
+      const ruler = document.querySelector('[data-testid="timeline-ruler"]');
+      const timecode = document.querySelector('[data-testid="timeline-timecode"]');
+      const dock = document.querySelector('[data-testid="timeline-dock"]');
+      const scroll = document.querySelector('[data-testid="timeline-ruler-scroll"]');
+      const zoomText = document.querySelector('[data-testid="timeline-zoom-value"]')?.textContent || '';
+      const zoom = Number(zoomText.replace(/[^\\d.]/g, ''));
+      const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+      const playhead = document.querySelector('[data-testid="timeline-playhead"]');
+      const trackRect = track?.getBoundingClientRect();
+      const rulerRect = ruler?.getBoundingClientRect();
+      const hit = document.elementFromPoint(${point.x}, ${point.y});
+      const laneLabelWidth = Number(dock?.dataset.laneLabelWidth || 0);
+      const duration = Number(timecode?.dataset.duration || 0);
+      const contentWidth = (trackRect?.width || 0) - laneLabelWidth;
+      return {
+        requestedTimeMs: ${timeMs},
+        currentTimeMs: stage?.dataset.currentTimeMs ?? null,
+        timecodeCurrentTimeMs: timecode?.dataset.currentTime ?? null,
+        playheadTimeMs: playhead?.dataset.currentTime ?? null,
+        duration,
+        laneLabelWidth,
+        viewportWidth: scroll?.clientWidth ?? null,
+        zoomText,
+        zoom,
+        trackContentWidth: contentWidth,
+        trackWidthDelta: scroll ? contentWidth - scroll.clientWidth * zoom : null,
+        trackRect: trackRect ? { x: trackRect.x, y: trackRect.y, width: trackRect.width,
+          height: trackRect.height, left: trackRect.left, right: trackRect.right } : null,
+        rulerRect: rulerRect ? { x: rulerRect.x, y: rulerRect.y, width: rulerRect.width,
+          height: rulerRect.height } : null,
+        scrollLeft: document.querySelector('[data-testid="timeline-ruler-scroll"]')?.scrollLeft ?? null,
+        requestedPoint: { x: ${point.x}, y: ${point.y} },
+        requestedOffsetX: trackRect ? ${point.x} - trackRect.left : null,
+        expectedOffsetX: duration > 0 ? contentWidth * ${timeMs} / duration : null,
+        hit: hit ? { tag: hit.tagName, className: String(hit.className),
+          testId: hit.dataset?.testid } : null,
+      };
+    })()`);
+    writeFileSync(path.join(evidence, 'timeline-seek-failure-' + timeMs + 'ms.json'),
+      JSON.stringify(diagnostics, null, 2));
+    writeFileSync(path.join(evidence, 'timeline-seek-failure-' + timeMs + 'ms.png'),
+      (await window.webContents.capturePage()).toPNG());
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(reason + ' Diagnostics: ' + JSON.stringify(diagnostics), { cause: error });
+  }
+  return Number(await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-testid="project-canvas-stage"]\')?.dataset.currentTimeMs',
+  ));
+}
+
+async function readAnimationStartTimeLayout(window) {
+  return window.webContents.executeJavaScript(`(() => {
+    const input = document.querySelector('[data-testid="animation-start-seconds"]');
+    const unit = input?.parentElement?.querySelector('.animation-playback-time-unit');
+    const duplicate = document.querySelector('[data-testid="duplicate-animation-layer"]');
+    if (!(input instanceof HTMLInputElement) || !unit || !duplicate) return null;
+    input.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const inputRect = input.getBoundingClientRect();
+    const unitRect = unit.getBoundingClientRect();
+    const duplicateRect = duplicate.getBoundingClientRect();
+    const inputStyle = getComputedStyle(input);
+    const unitStyle = getComputedStyle(unit);
+    const innerSpinnerStyle = getComputedStyle(input, '::-webkit-inner-spin-button');
+    const outerSpinnerStyle = getComputedStyle(input, '::-webkit-outer-spin-button');
+    const borderRight = Number.parseFloat(inputStyle.borderRightWidth) || 0;
+    const paddingRight = Number.parseFloat(inputStyle.paddingRight) || 0;
+    const contentRight = inputRect.right - borderRight - paddingRight;
+    const center = document.elementFromPoint(
+      inputRect.left + inputRect.width / 2,
+      inputRect.top + inputRect.height / 2,
+    );
+    const innerSpinnerAppearance = innerSpinnerStyle.getPropertyValue('-webkit-appearance') ||
+      innerSpinnerStyle.getPropertyValue('appearance');
+    const outerSpinnerAppearance = outerSpinnerStyle.getPropertyValue('-webkit-appearance') ||
+      outerSpinnerStyle.getPropertyValue('appearance');
+    return {
+      type: input.type,
+      step: input.step,
+      min: input.min,
+      max: input.max,
+      disabled: input.disabled,
+      unitText: unit.textContent?.trim(),
+      unitVisible: unitStyle.display !== 'none' && unitStyle.visibility !== 'hidden' &&
+        unitRect.width > 0 && unitRect.height > 0,
+      inputRect: { x: inputRect.x, y: inputRect.y, width: inputRect.width, height: inputRect.height,
+        left: inputRect.left, right: inputRect.right },
+      unitRect: { left: unitRect.left, right: unitRect.right, top: unitRect.top, bottom: unitRect.bottom },
+      duplicateRect: { left: duplicateRect.left, right: duplicateRect.right },
+      rightEdgeDelta: Math.abs(inputRect.right - duplicateRect.right),
+      unitInsideInput: unitRect.left >= inputRect.left && unitRect.right <= inputRect.right &&
+        unitRect.top >= inputRect.top && unitRect.bottom <= inputRect.bottom,
+      unitInReservedSuffixArea: unitRect.left >= contentRight - 1 &&
+        unitRect.right <= inputRect.right - borderRight - 3,
+      paddingRight,
+      inputAppearance: inputStyle.getPropertyValue('appearance'),
+      innerSpinnerAppearance,
+      outerSpinnerAppearance,
+      spinnerSuppressed: inputStyle.getPropertyValue('appearance') === 'textfield' ||
+        (innerSpinnerAppearance === 'none' && outerSpinnerAppearance === 'none'),
+      minHeight: Number.parseFloat(inputStyle.minHeight) || inputRect.height,
+      centerHitsInput: center === input,
+    };
+  })()`);
+}
+
+function assertAnimationStartTimeLayout(layout, scenario, touch = false) {
+  assert(layout, scenario + ': start-time controls are missing.');
+  assert(layout.type === 'number' && layout.step === '0.001',
+    scenario + ': start-time input lost its millisecond-precise number semantics.');
+  assert(!layout.disabled, scenario + ': start-time input is unexpectedly disabled.');
+  assert(layout.spinnerSuppressed,
+    scenario + ': native number spinner is not suppressed: ' + JSON.stringify(layout));
+  assert(layout.rightEdgeDelta <= 1.5,
+    scenario + ': start input right edge does not align with Copy Animation: ' + JSON.stringify(layout));
+  assert(layout.unitText === '秒' && layout.unitVisible && layout.unitInsideInput &&
+    layout.unitInReservedSuffixArea,
+  scenario + ': seconds suffix is not contained in the input reserved area: ' + JSON.stringify(layout));
+  assert(layout.centerHitsInput,
+    scenario + ': start-time input center is obscured and cannot be tapped.');
+  if (touch) {
+    assert(layout.minHeight >= 44,
+      scenario + ': Cloud Touch start-time input is below the 44px target height.');
+  }
+}
+
+async function readStageState(window, stageSelector = '[data-testid="project-canvas-stage"]') {
+  return window.webContents.executeJavaScript(
+    '(() => { const s=document.querySelector(' + JSON.stringify(stageSelector) + '); if(!s) return null;' +
+    'const source=JSON.parse(s.dataset.layerJson||"[]");' +
+    'const evaluated=JSON.parse(s.dataset.evaluatedLayerJson||"[]");' +
+    'const status=JSON.parse(s.dataset.visualStatusJson||"[]");' +
+    'const ready=JSON.parse(s.dataset.targetReadyLayerIds||"[]");' +
+    'return {time:Number(s.dataset.currentTimeMs),selected:s.dataset.selectedLayerId,' +
+    'layers:source.filter(x=>x.source?.kind==="animation").map(layer=>({' +
+    'layer,visual:evaluated.find(x=>x.id===layer.id)||null,' +
+    'visualStatus:status.find(pair=>pair[0]===layer.id)?.[1]??null,' +
+    'ready:ready.includes(layer.id)}))}; })()',
+  );
+}
+
+async function readPreviewState(window) {
+  return window.webContents.executeJavaScript(
+    '(() => { const o=document.querySelector(\'[data-testid="product-preview-overlay"]\'); if(!o) return null;' +
+    'const s=o.querySelector(\'[data-testid="stage-renderer"]\');' +
+    'const state=s?JSON.parse(s.dataset.layerRenderJson||"[]"):[];' +
+    'return {time:Number(o.dataset.previewTime),projectTime:Number(o.dataset.previewProjectTime),' +
+    'playing:o.dataset.previewPlaying==="true",surface:o.dataset.previewSurface,' +
+    'stageTime:Number(s?.dataset.stageTime??0),stageReady:s?.dataset.stageReady==="true",' +
+    'stageDisplayReady:s?.dataset.stageDisplayReady==="true",stagePresent:Boolean(s),' +
+    'layers:state.map(visual=>({layer:{id:visual.id,x:visual.x,y:visual.y,scaleX:visual.scaleX,scaleY:visual.scaleY},' +
+    'visual:{assetId:visual.assetId,visible:visual.visible}}))}; })()',
+  );
+}
+
+async function installIssue925Probe(window) {
+  const config = JSON.stringify({ frameIds: ids.frames, colors });
+  await window.webContents.executeJavaScript(`(() => {
+    if (window.__issue925Probe) return;
+    const config = ${config};
+    const frameByColor = new Map(config.colors.map((color, index) => [color.join(','), index]));
+    const probe = {
+      phase: 'setup',
+      events: [],
+      imageLoads: [],
+      stageFrames: [],
+      rafFrames: [],
+      latestStage: null,
+      stageObserver: null,
+      firstStallRaf: null,
+      instrumentationError: null,
+      setPhase(phase) {
+        this.phase = phase;
+        if (phase.endsWith('-stall')) this.firstStallRaf = null;
+      },
+      record(event, atMs, detail) {
+        const sample = { event, atMs, phase: this.phase, ...detail };
+        if (this.events.length < 30000) this.events.push(sample);
+        if (event === 'raf') {
+          const displayed = this.latestStage;
+          const frame = {
+            atMs,
+            phase: this.phase,
+            clockTimeMs: Number(detail.nextTimeMs ?? -1),
+            deltaMs: Number(detail.deltaMs ?? -1),
+            displayed: displayed ? {
+              masterTimeMs: displayed.masterTimeMs,
+              stageTimeMs: displayed.stageTimeMs,
+              stageReady: displayed.stageReady,
+              stageDisplayReady: displayed.stageDisplayReady,
+              layers: displayed.layers,
+            } : null,
+          };
+          if (this.rafFrames.length < 30000) this.rafFrames.push(frame);
+          if (this.phase.endsWith('-stall') && this.firstStallRaf === null) {
+            this.firstStallRaf = { atMs, ...detail };
+          }
+        }
+      },
+      sampleStage() {
+        const overlay = document.querySelector('[data-testid="product-preview-overlay"]');
+        const stage = overlay?.querySelector('[data-testid="stage-renderer"]');
+        if (!overlay || !stage) return;
+        let rendered = [];
+        try { rendered = JSON.parse(stage.dataset.layerRenderJson || '[]'); } catch {}
+        const sample = {
+          atMs: performance.now(),
+          phase: this.phase,
+          masterTimeMs: Number(overlay.dataset.previewTime ?? -1),
+          projectTimeMs: Number(overlay.dataset.previewProjectTime ?? -1),
+          stageTimeMs: Number(stage.dataset.stageTime ?? -1),
+          stageReady: stage.dataset.stageReady === 'true',
+          stageDisplayReady: stage.dataset.stageDisplayReady === 'true',
+          layers: rendered.map((layer) => ({
+            id: layer.id,
+            assetId: layer.assetId ?? null,
+            visible: layer.visible !== false,
+          })),
+        };
+        this.latestStage = sample;
+        if (this.stageFrames.length < 30000) this.stageFrames.push(sample);
+      },
+      observeStage() {
+        this.stageObserver?.disconnect();
+        const overlay = document.querySelector('[data-testid="product-preview-overlay"]');
+        const stage = overlay?.querySelector('[data-testid="stage-renderer"]');
+        if (!stage) return false;
+        this.stageObserver = new MutationObserver(() => this.sampleStage());
+        this.stageObserver.observe(stage, {
+          attributes: true,
+          attributeFilter: [
+            'data-layer-render-json', 'data-stage-time', 'data-stage-ready',
+            'data-stage-display-ready',
+          ],
+        });
+        this.sampleStage();
+        return true;
+      },
+      capture() {
+        return JSON.parse(JSON.stringify({
+          events: this.events,
+          imageLoads: this.imageLoads,
+          stageFrames: this.stageFrames,
+          rafFrames: this.rafFrames,
+          instrumentationError: this.instrumentationError,
+        }));
+      },
+    };
+    window.__issue925Probe = probe;
+    window.__pandaPreviewDiagnostics = {
+      scenePixelRatio: 1,
+      record(event, atMs, detail) { probe.record(event, atMs, detail); },
+      read() { return probe.events.slice(); },
+      reset() { probe.events.length = 0; probe.stageFrames.length = 0; probe.rafFrames.length = 0; },
+    };
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+      if (!descriptor?.set || !descriptor.get) throw new Error('HTMLImageElement.src descriptor unavailable.');
+      Object.defineProperty(HTMLImageElement.prototype, 'src', {
+        configurable: descriptor.configurable,
+        enumerable: descriptor.enumerable,
+        get() { return descriptor.get.call(this); },
+        set(value) {
+          const overlay = document.querySelector('[data-testid="product-preview-overlay"]');
+          const source = String(value ?? '');
+          if (!overlay || !source.startsWith('blob:')) {
+            descriptor.set.call(this, value);
+            return;
+          }
+          const entry = {
+            imageId: probe.imageLoads.length + 1,
+            phase: probe.phase,
+            startedAtMs: performance.now(),
+            finishedAtMs: null,
+            durationMs: null,
+            assetId: null,
+            status: 'loading',
+          };
+          probe.imageLoads.push(entry);
+          this.addEventListener('load', () => {
+            entry.finishedAtMs = performance.now();
+            entry.durationMs = Number((entry.finishedAtMs - entry.startedAtMs).toFixed(3));
+            entry.status = 'ready';
+            try {
+              const canvas = document.createElement('canvas');
+              canvas.width = 1;
+              canvas.height = 1;
+              const context = canvas.getContext('2d', { willReadFrequently: true });
+              context.drawImage(this, 0, 0, 1, 1);
+              const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
+              const index = frameByColor.get([red, green, blue].join(','));
+              if (index !== undefined) entry.assetId = config.frameIds[index];
+            } catch (error) {
+              entry.sampleError = String(error).slice(0, 200);
+            }
+          }, { once: true });
+          this.addEventListener('error', () => {
+            entry.finishedAtMs = performance.now();
+            entry.durationMs = Number((entry.finishedAtMs - entry.startedAtMs).toFixed(3));
+            entry.status = 'error';
+          }, { once: true });
+          descriptor.set.call(this, value);
+        },
+      });
+    } catch (error) {
+      probe.instrumentationError = String(error).slice(0, 500);
+    }
+    if (typeof PerformanceObserver !== 'undefined') {
+      try {
+        const observer = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            probe.record('long-task', entry.startTime, { durationMs: entry.duration });
+          }
+        });
+        observer.observe({ entryTypes: ['longtask'] });
+      } catch { /* Chromium may not expose long-task entries. */ }
+    }
+  })()`);
+}
+
+async function setIssue925Phase(window, phase) {
+  issue925Phase = phase;
+  await window.webContents.executeJavaScript(
+    'window.__issue925Probe?.setPhase(' + JSON.stringify(phase) + ')',
+  );
+}
+
+function percentile(values, fraction) {
+  if (!values.length) return null;
+  const ordered = [...values].filter(Number.isFinite).sort((left, right) => left - right);
+  if (!ordered.length) return null;
+  return Number(ordered[Math.min(ordered.length - 1, Math.floor((ordered.length - 1) * fraction))].toFixed(3));
+}
+
+function summarizeIssue925Events(capture, phase, layerStartTimes = {}) {
+  const events = capture.events.filter((event) => event.phase === phase);
+  const values = (name) => events
+    .filter((event) => event.event === name && Number.isFinite(event.durationMs))
+    .map((event) => event.durationMs);
+  const ticks = events
+    .filter((event) => event.event === 'tick-callback' && Number.isFinite(event.deltaMs))
+    .map((event) => event.deltaMs);
+  const frames = capture.rafFrames.filter((sample) => sample.phase === phase);
+  const mismatches = [];
+  for (let index = 0; index < frames.length; index += 1) {
+    const sample = frames[index];
+    const next = frames[index + 1];
+    if (!sample.displayed) continue;
+    for (const [layerId, startTimeMs] of Object.entries(layerStartTimes)) {
+      if (sample.clockTimeMs < startTimeMs) continue;
+      const expectedIndex = Math.floor((sample.clockTimeMs - startTimeMs) * 25 / 1_000) % ids.frames.length;
+      const displayedLayer = sample.displayed.layers.find((layer) => layer.id === layerId);
+      const actualIndex = ids.frames.indexOf(displayedLayer?.assetId);
+      if (actualIndex !== expectedIndex && next) {
+        mismatches.push({
+          layerId,
+          expectedIndex,
+          actualIndex,
+          durationMs: Math.max(0, next.atMs - sample.atMs),
+          stageReady: sample.displayed.stageReady,
+        });
+      }
+    }
+  }
+  const stageFrames = capture.stageFrames.filter((sample) => sample.phase === phase);
+  const images = capture.imageLoads.filter((entry) => entry.phase === phase);
+  const reads = capture.assetReads.filter((entry) => entry.phase === phase && ids.frames.includes(entry.assetId));
+  const summaryDurations = (name) => {
+    const data = values(name);
+    return { count: data.length, p50Ms: percentile(data, 0.5), p95Ms: percentile(data, 0.95), maxMs: data.length ? Math.max(...data) : null };
+  };
+  const assetCounts = (entries) => Object.fromEntries(ids.frames.map((assetId) => [
+    assetId,
+    entries.filter((entry) => entry.assetId === assetId).length,
+  ]).filter(([, count]) => count > 0));
+  const frameTransitions = Object.fromEntries(Object.entries(layerStartTimes).map(([layerId]) => {
+    const samples = stageFrames.flatMap((sample) => {
+      const layer = sample.layers.find((candidate) => candidate.id === layerId);
+      return layer && ids.frames.includes(layer.assetId)
+        ? [{ atMs: sample.atMs, assetId: layer.assetId }]
+        : [];
+    });
+    const distinct = samples.filter((sample, index) => index === 0 || sample.assetId !== samples[index - 1].assetId);
+    return [layerId, {
+      displayedFrameCount: distinct.length,
+      uniqueFrameCount: new Set(distinct.map((sample) => sample.assetId)).size,
+      maxFrameGapMs: distinct.length > 1
+        ? Number(Math.max(...distinct.slice(1).map((sample, index) => sample.atMs - distinct[index].atMs)).toFixed(3))
+        : null,
+    }];
+  }));
+  const mismatchTotalMs = mismatches.reduce((sum, item) => sum + item.durationMs, 0);
+  return {
+    phase,
+    raf: {
+      count: ticks.length,
+      p50Ms: percentile(ticks, 0.5),
+      p95Ms: percentile(ticks, 0.95),
+      maxMs: ticks.length ? Number(Math.max(...ticks).toFixed(3)) : null,
+      over50ms: ticks.filter((value) => value > 50).length,
+      over100ms: ticks.filter((value) => value > 100).length,
+    },
+    evaluateShot: summaryDurations('evaluate-shot'),
+    stageRenderModel: summaryDurations('stage-render-model'),
+    stageRenderToCommit: summaryDurations('stage-render-to-commit'),
+    konvaDrawScene: summaryDurations('konva-draw-scene'),
+    stageCommitCount: events.filter((event) => event.event === 'stage-commit').length,
+    longTasks: summaryDurations('long-task'),
+    frameTransitions,
+    frameWait: {
+      mismatchSamples: mismatches.length,
+      totalMismatchMs: Number(mismatchTotalMs.toFixed(3)),
+      maxMismatchIntervalMs: mismatches.length ? Number(Math.max(...mismatches.map((item) => item.durationMs)).toFixed(3)) : null,
+      notReadySamples: mismatches.filter((item) => !item.stageReady).length,
+    },
+    imageLoads: {
+      count: images.length,
+      p50Ms: percentile(images.filter((item) => Number.isFinite(item.durationMs)).map((item) => item.durationMs), 0.5),
+      p95Ms: percentile(images.filter((item) => Number.isFinite(item.durationMs)).map((item) => item.durationMs), 0.95),
+      maxMs: images.length ? Math.max(...images.filter((item) => Number.isFinite(item.durationMs)).map((item) => item.durationMs), 0) : null,
+      byAsset: assetCounts(images),
+    },
+    assetReads: {
+      count: reads.length,
+      p50Ms: percentile(reads.map((entry) => entry.durationMs), 0.5),
+      p95Ms: percentile(reads.map((entry) => entry.durationMs), 0.95),
+      maxMs: reads.length ? Math.max(...reads.map((entry) => entry.durationMs)) : null,
+      byAsset: assetCounts(reads),
+    },
+    stageSampleCount: stageFrames.length,
+  };
+}
+
+async function measureIssue925Preview(window, scenario, layerStartTimes, boundaries, endTimeMs, stall = false) {
+  const prefix = 'issue925-' + scenario;
+  const readOffset = canvasImageReadEvidence.length;
+  issue925Phase = prefix + '-setup';
+  const drawerWasExpanded = await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-testid="quick-action-drawer"]\')?.dataset.expanded==="true"',
+  );
+  await setIssue925Phase(window, prefix + '-setup');
+  setPhase('Issue 925 ' + scenario + ' open Preview');
+  await window.webContents.executeJavaScript(
+    '(() => { const drawer=document.querySelector(\'[data-testid="quick-action-drawer"]\');' +
+      'if(drawer?.dataset.expanded!=="true") drawer?.querySelector(\'[data-testid="quick-action-drawer-handle"]\')?.click(); })()',
+  );
+  await waitFor(
+    window,
+    'document.querySelector(\'[data-testid="quick-action-drawer"]\')?.dataset.expanded==="true"',
+    'Issue 925 ' + scenario + ' could not open Quick Actions.',
+  );
+  await click(window, '[data-testid="quick-action-play"]');
+  await waitFor(
+    window,
+    'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewSurface==="active"&&' +
+      'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewDataReady==="true"',
+    'Issue 925 ' + scenario + ' Preview did not become ready.',
+    30_000,
+  );
+  await click(window, '[data-testid="product-preview-range"] [role="tab"]:nth-child(2)');
+  await waitFor(
+    window,
+    'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewRange==="shot"',
+    'Issue 925 ' + scenario + ' could not select the 15-second Shot range.',
+  );
+  const wasPlaying = await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewPlaying==="true"',
+  );
+  if (wasPlaying) await click(window, '[data-testid="product-preview-play-pause"]');
+  await setControlValue(window, '[data-testid="product-preview-scrubber"]', 0);
+  await waitFor(
+    window,
+    'Number(document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewTime)===0&&' +
+      'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewPlaying==="false"',
+    'Issue 925 ' + scenario + ' Preview did not reset to zero.',
+  );
+  await window.webContents.executeJavaScript('window.__issue925Probe?.observeStage()');
+  for (let index = 0; index < boundaries.length; index += 1) {
+    const phase = prefix + (index === 0 ? '-cold' : index === 1 ? '-warm' : '-hot');
+    await setIssue925Phase(window, phase);
+    if (index === 0) await click(window, '[data-testid="product-preview-play-pause"]');
+    await waitFor(
+      window,
+      'Number(document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewTime)>=' + boundaries[index],
+      'Issue 925 ' + scenario + ' playback did not reach ' + boundaries[index] + 'ms.',
+      12_000,
+    );
+  }
+  const finalPhase = prefix + (boundaries.length === 1 ? '-hot' : '-hot');
+  await setIssue925Phase(window, finalPhase);
+  await waitFor(
+    window,
+    'Number(document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewTime)>=' + endTimeMs,
+    'Issue 925 ' + scenario + ' playback did not reach ' + endTimeMs + 'ms.',
+    12_000,
+  );
+  let stallEvidence = null;
+  if (stall) {
+    issue925Phase = prefix + '-stall';
+    const blocked = await window.webContents.executeJavaScript(
+      '(() => { window.__issue925Probe?.setPhase(' + JSON.stringify(prefix + '-stall') + ');' +
+        'const overlay=document.querySelector(\'[data-testid="product-preview-overlay"]\');' +
+        'const lastMasterSample=[...(window.__issue925Probe?.rafFrames||[])].reverse().find(sample=>sample.phase===' +
+          JSON.stringify(prefix + '-hot') + ')||null;' +
+        'const startedAt=performance.now(),beforeTimeMs=Number(overlay?.dataset.previewTime??-1);' +
+        'const until=startedAt+750;while(performance.now()<until){};' +
+        'return {beforeTimeMs,lastMasterSample:lastMasterSample?{atMs:lastMasterSample.atMs,timeMs:lastMasterSample.clockTimeMs}:null,' +
+          'startedAt,endedAt:performance.now(),blockedMs:performance.now()-startedAt}; })()',
+    );
+    await waitFor(
+      window,
+      'window.__issue925Probe?.firstStallRaf!==null',
+      'Issue 925 ' + scenario + ' did not record the first post-stall master tick.',
+      5_000,
+    );
+    const firstStallRaf = await window.webContents.executeJavaScript(
+      'window.__issue925Probe.firstStallRaf',
+    );
+    const expectedAtFirstPostStallRafMs = blocked.lastMasterSample
+      ? blocked.lastMasterSample.timeMs + Math.max(0, firstStallRaf.atMs - blocked.lastMasterSample.atMs)
+      : blocked.beforeTimeMs + Math.max(0, firstStallRaf.atMs - blocked.startedAt);
+    stallEvidence = {
+      blockedMs: Number(blocked.blockedMs.toFixed(3)),
+      beforeTimeMs: blocked.beforeTimeMs,
+      expectedTimeMs: Number((blocked.beforeTimeMs + blocked.blockedMs).toFixed(3)),
+      lastMasterSample: blocked.lastMasterSample,
+      expectedAtFirstPostStallRafMs: Number(expectedAtFirstPostStallRafMs.toFixed(3)),
+      firstPostStallRaf: firstStallRaf,
+      actualTimeMs: firstStallRaf.nextTimeMs,
+      errorMs: Number((expectedAtFirstPostStallRafMs - firstStallRaf.nextTimeMs).toFixed(3)),
+    };
+    assert(Math.abs(stallEvidence.errorMs) <= 20,
+      'Preview master clock missed the first post-stall monotonic sample by ' + stallEvidence.errorMs + 'ms.');
+  }
+  const currentlyPlaying = await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewPlaying==="true"',
+  );
+  if (currentlyPlaying) await click(window, '[data-testid="product-preview-play-pause"]');
+  const capture = await window.webContents.executeJavaScript('window.__issue925Probe.capture()');
+  capture.events = capture.events.filter((event) => event.phase.startsWith(prefix + '-'));
+  capture.imageLoads = capture.imageLoads.filter((event) => event.phase.startsWith(prefix + '-'));
+  capture.stageFrames = capture.stageFrames.filter((event) => event.phase.startsWith(prefix + '-'));
+  capture.rafFrames = capture.rafFrames.filter((event) => event.phase.startsWith(prefix + '-'));
+  capture.assetReads = canvasImageReadEvidence.slice(readOffset);
+  const phases = [prefix + '-setup', prefix + '-cold', prefix + '-warm', prefix + '-hot', prefix + '-stall'];
+  const summary = phases
+    .filter((phase) => phase !== prefix + '-warm' || boundaries.length > 1)
+    .map((phase) => summarizeIssue925Events(capture, phase, layerStartTimes));
+  const environment = await window.webContents.executeJavaScript(
+    '({devicePixelRatio:window.devicePixelRatio,screen:{width:screen.width,height:screen.height},' +
+      'viewport:{width:innerWidth,height:innerHeight},canvas:(()=>{const c=document.querySelector(\'[data-testid="stage-renderer"] canvas\');' +
+      'return c?{width:c.width,height:c.height}:null})()})',
+  );
+  await click(window, '[data-testid="product-preview-close"]');
+  await waitFor(window, '!document.querySelector(\'[data-testid="product-preview-overlay"]\')',
+    'Issue 925 ' + scenario + ' Preview did not close.');
+  const drawerExpandedAfter = await window.webContents.executeJavaScript(
+    'document.querySelector(\'[data-testid="quick-action-drawer"]\')?.dataset.expanded==="true"',
+  );
+  if (drawerExpandedAfter !== drawerWasExpanded) {
+    await click(window, '[data-testid="quick-action-drawer-handle"]');
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="quick-action-drawer"]\')?.dataset.expanded===' +
+        JSON.stringify(String(drawerWasExpanded)),
+      'Issue 925 ' + scenario + ' did not restore the Quick Actions drawer state.',
+    );
+  }
+  const result = { scenario, environment, layerStartTimes, boundaries, endTimeMs, stall: stallEvidence, summary, raw: capture };
+  issue925Measurements.push(result);
+  writeFileSync(
+    path.join(evidence, 'issue925-' + scenario + '-performance.json'),
+    JSON.stringify(result, null, 2),
+  );
+  return result;
+}
+
+async function historyState(window) {
+  return window.webContents.executeJavaScript(
+    '(() => { const e=document.querySelector(\'[data-testid="history-controls"]\');' +
+    'return e?{undoCount:Number(e.dataset.undoCount),redoCount:Number(e.dataset.redoCount)}:null; })()',
+  );
+}
+
+async function canvasPixel(window, stageSelector, x, y) {
+  return window.webContents.executeJavaScript(
+    '(() => { const s=document.querySelector(' + JSON.stringify(stageSelector) + ');' +
+    'const c=s?.querySelector("canvas"); if(!c) throw new Error("Canvas missing for pixel read.");' +
+    'const g=c.getContext("2d"),px=Math.round(' + x + '*c.width/1920),py=Math.round(' + y + '*c.height/1080);' +
+    'return [...g.getImageData(px,py,1,1).data]; })()',
+  );
+}
+
+function animationRecord(state, id) {
+  const record = state?.layers.find((candidate) => candidate.layer.id === id);
+  assert(record, 'Animation layer not present in rendered state: ' + id);
+  return record;
+}
+
+function nearColor(actual, expected) {
+  return actual.length === 4 && expected.every((value, index) =>
+    Math.abs(actual[index] - value) <= 2) && actual[3] >= 250;
+}
+
+async function run() {
+  mkdirSync(evidence, { recursive: true });
+  mkdirSync(path.dirname(projectRoot), { recursive: true });
+  const projectService = new ProjectService();
+  const createdDocument = await projectService.create(projectRoot, {
+    name: 'Issue 890 AM-04 Electron Evidence',
+  });
+  fixture = makeFixture(createdDocument.project.id);
+  const initialDocument = await projectService.save(projectRoot, fixture, 0);
+  savedProject = initialDocument.project;
+  const frameManifest = ids.frames.map((assetId, index) => ({
+    assetId,
+    sha256: createHash('sha256').update(bytesByAsset.get(assetId)).digest('hex'),
+    dimensions: sizes[index],
+    offset: offsets[index],
+    sourceViewport: {
+      x: 100 + offsets[index].x,
+      y: 100 + offsets[index].y,
+      width: sizes[index].width,
+      height: sizes[index].height,
+    },
+    rgba: [...colors[index], 255],
+  }));
+  writeFileSync(path.join(evidence, 'frame-manifest.json'), JSON.stringify(frameManifest, null, 2));
+  mockIpc(projectService);
+  await app.whenReady();
+  for (const [key, folder] of [
+    ['userData', userData],
+    ['sessionData', path.join(userData, 'session-data')],
+  ]) {
+    mkdirSync(folder, { recursive: true });
+    try { app.setPath(key, folder); } catch { /* Electron may lock this path after startup. */ }
+  }
+  const window = await createMainWindow({ show: true });
+  window.setSize(1600, 1050);
+  window.show();
+  window.focus();
+  window.webContents.on('console-message', (_event, detailOrLevel, legacyMessage, legacyLine, legacySourceId) => {
+    const details = detailOrLevel && typeof detailOrLevel === 'object'
+      ? detailOrLevel
+      : { level: detailOrLevel, message: legacyMessage, line: legacyLine, sourceId: legacySourceId };
+    const diagnostic = {
+      type: 'console',
+      level: details.level ?? null,
+      message: String(details.message ?? '').slice(0, 2_000),
+      line: details.line ?? details.lineNumber ?? null,
+      sourceId: details.sourceId ?? null,
+    };
+    if (Number(diagnostic.level) >= 2 && rendererDiagnostics.length < 80) {
+      rendererDiagnostics.push(diagnostic);
+      console.error('[issue890 renderer] ' + JSON.stringify(diagnostic));
+    }
+  });
+  window.webContents.on('render-process-gone', (_event, details) => {
+    const diagnostic = {
+      type: 'render-process-gone',
+      reason: details.reason,
+      exitCode: details.exitCode,
+    };
+    rendererDiagnostics.push(diagnostic);
+    console.error('[issue890 renderer] ' + JSON.stringify(diagnostic));
+  });
+  setPhase('open synthetic project and initialize editor');
+  try {
+    await openProject(window);
+    await waitFor(window, 'document.querySelector(\'[data-testid="timeline-ruler-track"]\')', 'Timeline ruler missing.');
+    await click(window, '[data-testid="resource-activity-rail-assets"]');
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="animation-library-card"][data-animation-id="' + ids.animation + '"]\')',
+      'Synthetic 21-frame animation card missing.',
+    );
+    await installIssue925Probe(window);
+    await measureIssue925Preview(window, 'static', {}, [1_000], 2_000, false);
+    await window.webContents.executeJavaScript(
+      'window.__issue890Dnd=[];' +
+      'document.addEventListener("dragstart",e=>{const d=e.dataTransfer;window.__issue890Dnd.push({' +
+      'type:"dragstart",trusted:e.isTrusted,payload:d?.getData("application/x-panda-stage-asset")||"",context:d?.getData("application/x-panda-stage-animation-context")||""});},false);' +
+      'document.addEventListener("drop",e=>{const d=e.dataTransfer;window.__issue890Dnd.push({' +
+      'type:"drop",trusted:e.isTrusted,target:e.target?.closest?.(\'[data-testid="project-canvas-viewport"]\')?"canvas":"other",' +
+      'payload:d?.getData("application/x-panda-stage-asset")||"",context:d?.getData("application/x-panda-stage-animation-context")||""});},false);',
+    );
+    const dragToShot = async (x, y, expectedCount) => {
+      const source = await window.webContents.executeJavaScript(
+        '(() => { const e=document.querySelector(\'[data-testid="animation-library-card"][data-animation-id="' +
+          ids.animation + '"]\'); e.scrollIntoView({block:"center",inline:"center"}); const r=e.getBoundingClientRect();' +
+          'return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}; })()',
+      );
+      const target = await canvasPoint(window, x, y);
+      await browserDrag(window, source, target);
+      await waitFor(
+        window,
+        'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+          '.filter(x=>x.source?.kind==="animation").length===' + expectedCount,
+        'Animation drop did not create instance ' + expectedCount + '.',
+      );
+      return { source, target };
+    };
+
+    const firstDrop = await dragToShot(700, 500, 1);
+    let editor = await readStageState(window);
+    assert(editor.layers.length === 1, 'First drag did not create one animation instance.');
+    const layerAId = editor.layers[0].layer.id;
+    assert(editor.layers[0].layer.startTimeMs === 0, 'First animation did not start at the 0ms playhead.');
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="project-canvas-stage"]\')?.dataset.selectedLayerId==="' + layerAId + '"',
+      'First animation instance was not selected after drop.',
+    );
+    await click(window, '[data-testid="right-activity-rail-properties"]');
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="animation-playback-controls"]\')',
+      'Animation playback controls did not appear in the Inspector.',
+    );
+    await click(window, '[data-testid="animation-playback-mode"] .ui-segmented-tabs__item:nth-child(2)');
+    await waitFor(
+      window,
+      'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+        '.find(x=>x.id==="' + layerAId + '")?.animationPlayback?.mode==="loop"',
+      'Inspector did not persist loop mode for instance A.',
+    );
+    await typeControlValue(window, '[data-testid="animation-start-seconds"]', '0.041', true);
+    await waitFor(
+      window,
+      'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+        '.find(x=>x.id==="' + layerAId + '")?.startTimeMs===41',
+      'Keyboard entry did not preserve the 0.001-second precision for instance A.',
+    );
+    await setControlValue(window, '[data-testid="animation-start-seconds"]', '0', true);
+    await waitFor(
+      window,
+      'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+        '.find(x=>x.id==="' + layerAId + '")?.startTimeMs===0',
+      'Inspector did not restore instance A start time.',
+    );
+    let a = animationRecord(await readStageState(window), layerAId).layer;
+    const aStart = await canvasPoint(window, a.x, a.y);
+    const aEnd = await canvasPoint(window, a.x + 20, a.y + 20);
+    await browserDrag(window, aStart, aEnd, 6);
+    await click(window, '[data-testid="layer-transform-scale"] .layer-transform-stepper button:last-of-type');
+    editor = await readStageState(window);
+    a = animationRecord(editor, layerAId).layer;
+    assert(Math.abs(a.x - 720) < 3 && Math.abs(a.y - 520) < 3 && Math.abs(a.scaleX - 1.1) < 0.002,
+      'Canvas/Inspector edits did not independently move and scale instance A: ' + JSON.stringify(a));
+
+    await measureIssue925Preview(window, 'single', { [layerAId]: 0 }, [840], 1_680, true);
+
+    const firstSeek = await seekEditor(window, 1_000);
+    const secondDrop = await dragToShot(1_100, 500, 2);
+    editor = await readStageState(window);
+    const layerB = editor.layers.find((record) => record.layer.id !== layerAId);
+    assert(layerB, 'Second drag did not create a second independent layer.');
+    const layerBId = layerB.layer.id;
+    assert(layerBId !== layerAId && layerB.layer.source.animationId === ids.animation,
+      'The two animation instances do not have distinct layer IDs and the same source.');
+    assert(layerB.layer.startTimeMs === 1_000, 'Second drag did not capture the 1000ms Shot playhead.');
+    assert(editor.layers.find((record) => record.layer.id === layerAId)?.layer.startTimeMs === 0,
+      'Creating instance B changed instance A start time.');
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="layer-transform-panel"]\')?.dataset.selectedLayerId==="' + layerBId + '"',
+      'Second animation was not selected in the Inspector.',
+    );
+    await setControlValue(window, '[data-testid="animation-start-seconds"]', '1.25', true);
+    await waitFor(
+      window,
+      'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+        '.find(x=>x.id==="' + layerBId + '")?.startTimeMs===1250',
+      'Inspector did not change instance B start time.',
+    );
+    await setControlValue(window, '[data-testid="animation-start-seconds"]', '1', true);
+    await waitFor(
+      window,
+      'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+        '.find(x=>x.id==="' + layerBId + '")?.startTimeMs===1000',
+      'Inspector did not set instance B start time to 1000ms.',
+    );
+    const historyBeforeEscape = await historyState(window);
+    const saveStateBeforeEscape = await window.webContents.executeJavaScript(
+      '(() => { const e=document.querySelector(\'[data-testid="quick-action-save"]\');' +
+      'return e?{disabled:e.disabled,state:e.dataset.saveState??null}:null; })()',
+    );
+    assert(historyBeforeEscape && saveStateBeforeEscape,
+      'Could not capture Project/History state before testing Escape cancellation.');
+    await click(window, '[data-testid="animation-start-seconds"]');
+    await setControlValue(window, '[data-testid="animation-start-seconds"]', '5', false);
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="animation-start-seconds"]\')?.value==="5"&&' +
+        'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+          '.find(x=>x.id==="' + layerBId + '")?.startTimeMs===1000',
+      'Editing the start-time draft changed Project data before confirmation.',
+    );
+    await window.webContents.executeJavaScript(
+      'window.__issue891EscapeTrusted=false;' +
+      'document.addEventListener("keydown",e=>{if(e.key==="Escape")window.__issue891EscapeTrusted=e.isTrusted;},' +
+      '{capture:true,once:true});',
+    );
+    await pressKey(window, 'Escape');
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="animation-start-seconds"]\')?.value==="1"&&' +
+        'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+          '.find(x=>x.id==="' + layerBId + '")?.startTimeMs===1000',
+      'Escape did not restore the saved start time before blur.',
+    );
+    const historyAfterEscape = await historyState(window);
+    const saveStateAfterEscape = await window.webContents.executeJavaScript(
+      '(() => { const e=document.querySelector(\'[data-testid="quick-action-save"]\');' +
+      'return e?{disabled:e.disabled,state:e.dataset.saveState??null}:null; })()',
+    );
+    const escapeWasTrusted = await window.webContents.executeJavaScript(
+      'window.__issue891EscapeTrusted===true',
+    );
+    assert(escapeWasTrusted &&
+      JSON.stringify(historyAfterEscape) === JSON.stringify(historyBeforeEscape) &&
+      JSON.stringify(saveStateAfterEscape) === JSON.stringify(saveStateBeforeEscape),
+    'Trusted Escape changed History or the Project save state.');
+    const escapeCancelEvidence = {
+      trustedKeyEvent: escapeWasTrusted,
+      attemptedStartSeconds: 5,
+      savedStartTimeMs: 1_000,
+      historyBefore: historyBeforeEscape,
+      historyAfter: historyAfterEscape,
+      saveStateBefore: saveStateBeforeEscape,
+      saveStateAfter: saveStateAfterEscape,
+    };
+    await click(window, '[data-testid="animation-end-behavior"] .ui-segmented-tabs__item:nth-child(2)');
+    await waitFor(
+      window,
+      'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+        '.find(x=>x.id==="' + layerBId + '")?.animationPlayback?.endBehavior==="hide"',
+      'Inspector did not set once+hide for instance B.',
+    );
+    await click(window, '[data-testid="animation-playback-mode"] .ui-segmented-tabs__item:nth-child(2)');
+    await waitFor(
+      window,
+      '!document.querySelector(\'[data-testid="animation-end-behavior"]\')&&' +
+        'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+          '.find(x=>x.id==="' + layerBId + '")?.animationPlayback?.endBehavior==="hide"',
+      'Loop mode did not hide the end choice while preserving its saved value.',
+    );
+    await measureIssue925Preview(
+      window,
+      'dual',
+      { [layerAId]: 0, [layerBId]: 1_000 },
+      [840, 1_840],
+      2_680,
+      false,
+    );
+    await click(window, '[data-testid="animation-playback-mode"] .ui-segmented-tabs__item:first-child');
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="animation-end-behavior"]\')&&' +
+        'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+          '.find(x=>x.id==="' + layerBId + '")?.animationPlayback?.endBehavior==="hide"',
+      'Returning to once did not restore the persisted end choice.',
+    );
+    editor = await readStageState(window);
+    let b = animationRecord(editor, layerBId).layer;
+    const bStart = await canvasPoint(window, b.x, b.y);
+    const bEnd = await canvasPoint(window, b.x + 40, b.y + 40);
+    await browserDrag(window, bStart, bEnd, 6);
+    await click(window, '[data-testid="layer-transform-scale"] .layer-transform-stepper button:last-of-type');
+    editor = await readStageState(window);
+    b = animationRecord(editor, layerBId).layer;
+    a = animationRecord(editor, layerAId).layer;
+    assert(Math.abs(b.x - 1_140) < 3 && Math.abs(b.y - 540) < 3 && Math.abs(b.scaleX - 1.1) < 0.002,
+      'Canvas/Inspector edits did not independently move and scale instance B: ' + JSON.stringify(b));
+    assert(Math.abs(a.x - 720) < 3 && Math.abs(a.y - 520) < 3 && Math.abs(a.scaleX - 1.1) < 0.002,
+      'Editing instance B changed instance A transform: ' + JSON.stringify(a));
+
+    const beforeBStartTime = await seekEditor(window, 960);
+    editor = await readStageState(window);
+    assert(!animationRecord(editor, layerBId).visual?.visible,
+      'Instance B appeared before its 1000ms start.');
+    await clickPoint(window, await canvasPoint(window, 1_800, 900));
+    await clickPoint(window, await canvasPoint(window, b.x, b.y));
+    editor = await readStageState(window);
+    assert(editor.selected !== layerBId,
+      'Instance B could be selected while hidden before its start.');
+    await seekEditor(window, 1_000);
+    await clickPoint(window, await canvasPoint(window, b.x, b.y));
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="layer-transform-panel"]\')?.dataset.selectedLayerId==="' + layerBId + '"',
+      'Instance B did not become selectable at its start.',
+    );
+    editor = await readStageState(window);
+    b = animationRecord(editor, layerBId).layer;
+    a = animationRecord(editor, layerAId).layer;
+    assert(a.startTimeMs === 0 && b.startTimeMs === 1_000,
+      'Editing one instance start time changed the other instance.');
+
+    await clickPoint(window, await canvasPoint(window, a.x, a.y));
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="layer-transform-panel"]\')?.dataset.selectedLayerId==="' + layerAId + '"',
+      'Could not select instance A for duplicate/delete coverage.',
+    );
+    const layerSectionOpen = await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-testid="right-inspector-layer-section"]\')?.open === true',
+    );
+    if (!layerSectionOpen) {
+      await click(window, '[data-testid="right-inspector-layer-section"] > summary');
+    }
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="right-inspector-layer-section"]\')?.open === true',
+      'Layer controls did not expand in the Inspector.',
+    );
+    setPhase('duplicate placement and creation');
+    const duplicateStateBefore = await window.webContents.executeJavaScript(`(() => {
+      const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+      const layers = JSON.parse(stage?.dataset.layerJson || '[]');
+      const selectedLayerId = document.querySelector('[data-testid="layer-transform-panel"]')?.dataset.selectedLayerId;
+      const controls = Array.from(document.querySelectorAll('[data-testid="duplicate-animation-layer"]')).map((button, index) => {
+        if (index === 0) button.scrollIntoView({ block: 'center', inline: 'center' });
+        const rect = button.getBoundingClientRect();
+        const style = getComputedStyle(button);
+        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return { index, disabled: button.disabled, display: style.display, visibility: style.visibility,
+          pointerEvents: style.pointerEvents, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          inPlayback: Boolean(button.closest('[data-testid="animation-playback-controls"]')),
+          inLayerOrder: Boolean(button.closest('[data-testid="layer-order-controls"]')),
+          centerHitsButton: hit === button || button.contains(hit),
+          centerHit: hit ? { tag: hit.tagName, id: hit.id, className: String(hit.className),
+            testId: hit.dataset?.testid, text: hit.textContent?.trim().slice(0, 80) } : null };
+      });
+      return { selectedLayerId, viewport: { width: document.documentElement.clientWidth,
+        height: document.documentElement.clientHeight },
+        animationLayerIds: layers.filter((layer) => layer.source?.kind === 'animation').map((layer) => layer.id),
+        layerOrderDuplicateCount: document.querySelectorAll('[data-testid="layer-order-controls"] [data-testid="duplicate-animation-layer"]').length,
+        controls };
+    })()`);
+    console.log('[issue890] duplicate state before click: ' + JSON.stringify(duplicateStateBefore));
+    assert(duplicateStateBefore.controls.length === 1 &&
+      duplicateStateBefore.controls[0].inPlayback &&
+      !duplicateStateBefore.controls[0].inLayerOrder &&
+      duplicateStateBefore.layerOrderDuplicateCount === 0,
+    'Duplicate Animation is not a single action in the Animation Playback heading.');
+    writeFileSync(path.join(evidence, 'duplicate-control-debug.png'),
+      (await window.webContents.capturePage()).toPNG());
+    await seekEditor(window, 0);
+    const appearanceOpenForEvidence = await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-testid="right-inspector-appearance-section"]\')?.open===true',
+    );
+    if (!appearanceOpenForEvidence) {
+      await click(window, '[data-testid="right-inspector-appearance-section"] > summary');
+    }
+    await waitFor(
+      window,
+      '(() => { const root=document.querySelector(\'.editor-shell\');' +
+        'const section=document.querySelector(\'[data-testid="right-inspector-appearance-section"]\');' +
+        'const input=document.querySelector(\'[data-testid="layer-opacity-range"]\');' +
+        'const rect=input?.getBoundingClientRect();' +
+        'return root?.dataset.editorDeviceMode==="cloud-touch"&&root.dataset.editorShellLayout==="landscape"&&' +
+        'section?.open===true&&rect?.width>0&&input?.disabled===false; })()',
+      'Animation Appearance did not open for the desktop landscape screenshot.',
+    );
+    const desktopStartTimeLayout = await readAnimationStartTimeLayout(window);
+    console.log('[issue890] desktop start-time layout: ' + JSON.stringify(desktopStartTimeLayout));
+    assertAnimationStartTimeLayout(desktopStartTimeLayout, 'desktop landscape');
+    const desktopScreenshot = await window.webContents.capturePage();
+    writeFileSync(path.join(evidence, 'desktop-landscape-animation-properties.png'), desktopScreenshot.toPNG());
+
+    window.setSize(1_000, 800);
+    await waitFor(
+      window,
+      '(() => { const root=document.querySelector(\'.editor-shell\');' +
+        'const section=document.querySelector(\'[data-testid="right-inspector-appearance-section"]\');' +
+        'const input=document.querySelector(\'[data-testid="layer-opacity-range"]\');' +
+        'const rect=input?.getBoundingClientRect();' +
+        'return document.documentElement.clientWidth<=1100&&document.documentElement.clientWidth>800&&' +
+        'root?.dataset.editorDeviceMode==="cloud-touch"&&root.dataset.editorShellLayout==="landscape"&&' +
+        'document.querySelector(\'[data-testid="right-workspace"]\')?.dataset.activeActivity==="properties"&&' +
+        'document.querySelector(\'[data-testid="project-canvas-stage"]\')?.dataset.selectedLayerId==="' + layerAId + '"&&' +
+        'section?.open===true&&rect?.width>0&&input?.disabled===false; })()',
+      'Cloud Touch narrow landscape properties did not settle for the screenshot.',
+      10_000,
+    );
+    await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-testid="right-inspector-drawer"]\')?.scrollTo({top:0})',
+    );
+    const cloudTouchStartTimeLayout = await readAnimationStartTimeLayout(window);
+    console.log('[issue890] Cloud Touch start-time layout: ' + JSON.stringify(cloudTouchStartTimeLayout));
+    assertAnimationStartTimeLayout(cloudTouchStartTimeLayout, 'Cloud Touch narrow landscape', true);
+    const narrowScreenshot = await window.webContents.capturePage();
+    writeFileSync(path.join(evidence, 'cloud-touch-narrow-animation-properties.png'), narrowScreenshot.toPNG());
+    window.setSize(1_600, 1_050);
+    await waitFor(
+      window,
+      'document.documentElement.clientWidth>1100&&' +
+        'document.querySelector(\'.editor-shell\')?.dataset.editorShellLayout==="landscape"&&' +
+        'document.querySelector(\'[data-testid="project-canvas-stage"]\')?.dataset.selectedLayerId==="' + layerAId + '"',
+      'Editor did not restore desktop landscape size after screenshot capture.',
+      10_000,
+    );
+    await seekEditor(window, 1_000);
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="layer-transform-panel"]\')?.dataset.selectedLayerId==="' + layerAId + '"&&' +
+        'document.querySelector(\'[data-testid="duplicate-animation-layer"]\')?.disabled===false',
+      'Duplicate control did not return to its original enabled state after screenshot capture.',
+    );
+    await click(window, '[data-testid="duplicate-animation-layer"]');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const duplicateStateAfter = await window.webContents.executeJavaScript(`(() => {
+      const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+      const layers = JSON.parse(stage?.dataset.layerJson || '[]');
+      return { selectedLayerId: document.querySelector('[data-testid="layer-transform-panel"]')?.dataset.selectedLayerId,
+        animationLayerIds: layers.filter((layer) => layer.source?.kind === 'animation').map((layer) => layer.id),
+        alerts: Array.from(document.querySelectorAll('[role="alert"]')).map((element) => element.textContent) };
+    })()`);
+    console.log('[issue890] duplicate state after click: ' + JSON.stringify(duplicateStateAfter));
+    await waitFor(
+      window,
+      'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+        '.filter(x=>x.source?.kind==="animation").length===3',
+      'Duplicate animation action did not create an independent instance.',
+    );
+    editor = await readStageState(window);
+    const duplicate = editor.layers.find((record) =>
+      record.layer.id !== layerAId && record.layer.id !== layerBId);
+    assert(duplicate && duplicate.layer.source.animationId === ids.animation,
+      'Duplicate did not keep the shared animation definition.');
+    const duplicateId = duplicate.layer.id;
+    assert(duplicate.layer.id !== layerAId && duplicate.layer.id !== layerBId,
+      'Duplicate layer ID was not unique.');
+    setPhase('duplicate deletion and History Undo/Redo');
+    await click(window, '.layer-delete-button');
+    await waitFor(
+      window,
+      'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+        '.filter(x=>x.source?.kind==="animation").length===2',
+      'Deleting the duplicate removed the wrong animation instance.',
+    );
+    await click(window, '[data-testid="quick-action-drawer-handle"]');
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="quick-action-drawer"]\')?.dataset.expanded==="true"&&document.querySelector(\'[data-testid="history-controls"]\')',
+      'History controls did not open.',
+    );
+    const historyBeforeUndo = await historyState(window);
+    assert(historyBeforeUndo && historyBeforeUndo.undoCount > 0,
+      'Animation operations did not enter History.');
+    await click(window, '[data-testid="history-controls"] button:first-of-type');
+    await waitFor(
+      window,
+      'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+        '.filter(x=>x.source?.kind==="animation").length===3',
+      'Undo did not restore the deleted duplicate.',
+    );
+    await click(window, '[data-testid="history-controls"] button:last-of-type');
+    await waitFor(
+      window,
+      'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+        '.filter(x=>x.source?.kind==="animation").length===2',
+      'Redo did not delete only the duplicate again.',
+    );
+    editor = await readStageState(window);
+    assert(editor.layers.some((record) => record.layer.id === layerAId) &&
+      editor.layers.some((record) => record.layer.id === layerBId) &&
+      !editor.layers.some((record) => record.layer.id === duplicateId),
+    'Duplicate/delete/undo/redo changed either original animation instance.');
+    assert(fixture.animations.length === 1 && fixture.animations[0].frames.length === 21 &&
+      fixture.assets.length > 21,
+    'Synthetic fixture unexpectedly duplicated animation definitions or frame assets.');
+
+    setPhase('scale precision and initial save');
+    await seekEditor(window, 1_000);
+    editor = await readStageState(window);
+    b = animationRecord(editor, layerBId).layer;
+    await clickPoint(window, await canvasPoint(window, b.x, b.y));
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="layer-transform-panel"]\')?.dataset.selectedLayerId==="' + layerBId + '"',
+      'Could not select instance B for scale precision coverage.',
+    );
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="layer-opacity-range"]\')&&' +
+        '!document.querySelector(\'[data-testid="layer-canvas-background"]\')&&' +
+        '!document.querySelector(\'[data-testid="current-background-name"]\')',
+      'Animation Appearance still contains background-management controls.',
+    );
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="layer-transform-scale"] input\')',
+      'Scale input did not appear for instance B.',
+    );
+    await setControlValue(window, '[data-testid="layer-transform-scale"] input', '179.986731171', true);
+    await waitFor(
+      window,
+      'Math.abs(JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+        '.find(x=>x.id==="' + layerBId + '")?.scaleX-1.79986731171)<1e-12&&' +
+        'document.querySelector(\'[data-testid="layer-transform-scale"] input\')?.value==="180"',
+      'Scale precision was not preserved while the input displayed the rounded percentage.',
+    );
+    await setControlValue(window, 'input[aria-label="旋转角度"]', '15', true);
+    await waitFor(
+      window,
+      'Math.abs(JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+        '.find(x=>x.id==="' + layerBId + '")?.scaleX-1.79986731171)<1e-12&&' +
+        'JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+          '.find(x=>x.id==="' + layerBId + '")?.rotationDeg===15',
+      'Editing rotation changed the exact stored scale.',
+    );
+
+    const saveCountBefore = projectSaveEvidence.length;
+    await click(window, '[data-testid="quick-action-save"]');
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="quick-action-save"]\')?.dataset.saveState!=="saving"&&' +
+        'document.querySelector(\'[data-testid="quick-action-save"]\')?.disabled===true',
+      'Quick Save did not settle with the project clean.',
+    );
+    assert(projectSaveEvidence.length === saveCountBefore + 1,
+      'Quick Save did not call Main ProjectService.save.');
+    const savedDocument = JSON.parse(readFileSync(path.join(projectRoot, 'project.json'), 'utf8'));
+    const savedLayers = savedDocument.shots.flatMap((shot) => shot.layers)
+      .filter((layer) => layer.source.kind === 'animation');
+    assert(savedDocument.schemaVersion === 16 && savedDocument.animations.length === 1 &&
+      savedDocument.animations[0].frames.length === 21 && savedLayers.length === 2 &&
+      savedDocument.assets.length === fixture.assets.length,
+    'Saved file duplicated source assets or did not persist two instances: ' + JSON.stringify({
+      schemaVersion: savedDocument.schemaVersion,
+      animationCount: savedDocument.animations.length,
+      frameCount: savedDocument.animations[0]?.frames.length,
+      layerCount: savedLayers.length,
+    }));
+    const savedA = savedLayers.find((layer) => layer.id === layerAId);
+    const savedB = savedLayers.find((layer) => layer.id === layerBId);
+    assert(savedA?.startTimeMs === 0 && savedA.animationPlayback?.mode === 'loop' &&
+      savedB?.startTimeMs === 1_000 && savedB.animationPlayback?.mode === 'once' &&
+      savedB.animationPlayback?.endBehavior === 'hide' &&
+      Math.abs(savedB.scaleX - 1.79986731171) < 1e-12 &&
+      savedB.rotationDeg === 15,
+    'Save did not preserve the independent playback settings and exact transform values.');
+    const savedAssetIds = savedDocument.assets.map((asset) => asset.id);
+    assert(ids.frames.every((assetId) => savedAssetIds.includes(assetId)),
+      'Save lost one or more shared frame assets.');
+    const historyBeforePreview = await historyState(window);
+
+    setPhase('Product Preview open and readiness');
+    await click(window, '[data-testid="quick-action-play"]');
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewSurface==="active"&&' +
+        'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewDataReady==="true"',
+      'Product Preview did not become active and ready.',
+      30_000,
+    );
+    setPhase('Product Preview pause and deterministic seek');
+    const previewPlayingBeforeSeek = await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewPlaying==="true"',
+    );
+    if (previewPlayingBeforeSeek) {
+      await click(window, '[data-testid="product-preview-play-pause"]');
+    }
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewPlaying==="false"',
+      'Product Preview did not pause before the deterministic start seek.',
+    );
+    await setControlValue(window, '[data-testid="product-preview-scrubber"]', 0);
+    await waitFor(
+      window,
+      'Number(document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewProjectTime)===0&&' +
+        'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewPlaying==="false"',
+      'Product Preview did not seek to its start.',
+    );
+    setPhase('Product Preview continuous playback');
+    await click(window, '[data-testid="product-preview-play-pause"]');
+    await waitFor(
+      window,
+      'Number(document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewProjectTime)>=2200&&' +
+        '(() => { const s=document.querySelector(\'[data-testid="product-preview-overlay"] [data-testid="stage-renderer"]\');' +
+        'return Number(s?.dataset.stageTime)>=2200&&s?.dataset.stageReady==="true"&&' +
+        's?.dataset.stageDisplayReady==="true"; })()',
+      'Product Preview did not advance continuously past two 840ms animation periods.',
+      12_000,
+    );
+    const continuous = await readPreviewState(window);
+    assert(continuous.playing, 'Product Preview stopped before the pause action.');
+    const continuousA = animationRecord(continuous, layerAId);
+    const continuousB = animationRecord(continuous, layerBId);
+    const continuousFrameIndex = Math.floor(continuous.stageTime * 25 / 1_000) % 21;
+    assert(continuousA.visual?.assetId === ids.frames[continuousFrameIndex] &&
+      continuousA.visual.visible === true,
+    'Looping instance A did not advance to the deterministic preview frame: ' + JSON.stringify({
+      stageTime: continuous.stageTime,
+      previewTime: continuous.time,
+      frameIndex: continuousFrameIndex,
+      instance: continuousA,
+    }));
+    assert(continuousB.visual?.visible === false,
+      'Once+hide instance B remained visible after its 840ms cycle.');
+    setPhase('Product Preview pause, replay, and reverse seek');
+    await click(window, '[data-testid="product-preview-play-pause"]');
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewPlaying==="false"',
+      'Product Preview did not pause.',
+    );
+    const paused = await readPreviewState(window);
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    const pausedAgain = await readPreviewState(window);
+    assert(pausedAgain.time === paused.time && pausedAgain.playing === false,
+      'Product Preview time advanced after pause.');
+    await click(window, '[data-testid="product-preview-replay"]');
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewPlaying==="true"',
+      'Product Preview replay did not start playback.',
+    );
+    await waitFor(
+      window,
+      'Number(document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewProjectTime)>100',
+      'Product Preview replay did not advance from the beginning.',
+    );
+    await click(window, '[data-testid="product-preview-play-pause"]');
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewPlaying==="false"',
+      'Product Preview did not pause after replay.',
+    );
+    await setControlValue(window, '[data-testid="product-preview-scrubber"]', 1_040);
+    await waitFor(
+      window,
+      'Number(document.querySelector(\'[data-testid="product-preview-overlay"]\')?.dataset.previewProjectTime)===1040',
+      'Reverse seek did not return to 1040ms.',
+    );
+    await waitFor(
+      window,
+      '(() => { const s=document.querySelector(\'[data-testid="product-preview-overlay"] [data-testid="stage-renderer"]\');' +
+        'const r=JSON.parse(s?.dataset.layerRenderJson||"[]");return s?.dataset.stageReady==="true"&&' +
+        's?.dataset.stageDisplayReady==="true"&&r.some(x=>x.id==="' + layerAId + '"&&x.assetId==="' + ids.frames[5] + '")&&' +
+        'r.some(x=>x.id==="' + layerBId + '"&&x.assetId==="' + ids.frames[1] + '"); })()',
+      'Both animation frames did not become ready after reverse seek.',
+      20_000,
+    );
+    const reverse = await readPreviewState(window);
+    const reverseA = animationRecord(reverse, layerAId);
+    const reverseB = animationRecord(reverse, layerBId);
+    assert(reverseA.visual?.assetId === ids.frames[5] && reverseA.visual.visible === true &&
+      reverseB.visual?.assetId === ids.frames[1] && reverseB.visual.visible === true,
+    'Reverse seek did not independently restore expected frames for A and B: ' + JSON.stringify({
+      time: reverse.time,
+      a: reverseA,
+      b: reverseB,
+    }));
+    assert(reverseA.layer.x === savedA.x && reverseA.layer.y === savedA.y &&
+      reverseB.layer.x === savedB.x && reverseB.layer.y === savedB.y &&
+      reverseA.layer.scaleX === savedA.scaleX && reverseB.layer.scaleX === savedB.scaleX,
+    'Preview playback changed the independent instance transforms.');
+    const pixelA = await canvasPixel(
+      window,
+      '[data-testid="product-preview-overlay"] [data-testid="stage-renderer"]',
+      reverseA.layer.x,
+      reverseA.layer.y,
+    );
+    const pixelB = await canvasPixel(
+      window,
+      '[data-testid="product-preview-overlay"] [data-testid="stage-renderer"]',
+      reverseB.layer.x,
+      reverseB.layer.y,
+    );
+    assert(nearColor(pixelA, [...colors[5], 255]) && nearColor(pixelB, [...colors[1], 255]),
+      'Preview pixels did not match independently evaluated source frames: ' + JSON.stringify({ pixelA, pixelB }));
+
+    setPhase('Product Preview history and close');
+    const historyAfterPreview = await historyState(window);
+    assert(JSON.stringify(historyAfterPreview) === JSON.stringify(historyBeforePreview),
+      'Preview play, pause, replay, or seek created a History entry.');
+    await click(window, '[data-testid="product-preview-close"]');
+    await waitFor(
+      window,
+      '!document.querySelector(\'[data-testid="product-preview-overlay"]\')',
+      'Product Preview did not close.',
+    );
+    const isCleanAfterPreview = await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-testid="quick-action-save"]\')?.disabled===true',
+    );
+    assert(isCleanAfterPreview, 'Preview play/seek changed the saved Project dirty state.');
+
+    setPhase('animation opacity edit and save');
+    await seekEditor(window, 0);
+    editor = await readStageState(window);
+    a = animationRecord(editor, layerAId).layer;
+    await clickPoint(window, await canvasPoint(window, a.x, a.y));
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="layer-transform-panel"]\')?.dataset.selectedLayerId==="' + layerAId + '"',
+      'Could not select animation layer A at the animation start.',
+    );
+    const appearanceSectionOpen = await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-testid="right-inspector-appearance-section"]\')?.open===true',
+    );
+    if (!appearanceSectionOpen) {
+      await click(window, '[data-testid="right-inspector-appearance-section"] > summary');
+    }
+    await waitFor(
+      window,
+      '(() => { const section=document.querySelector(\'[data-testid="right-inspector-appearance-section"]\');' +
+        'const input=document.querySelector(\'[data-testid="layer-opacity-range"]\');' +
+        'if(!section?.open||!input||input.disabled)return false;' +
+        'const style=getComputedStyle(input),rect=input.getBoundingClientRect();' +
+        'return style.display!=="none"&&style.visibility!=="hidden"&&rect.width>0&&rect.height>0; })()',
+      'Animation opacity control was not visible and editable after opening Appearance.',
+    );
+    await waitFor(
+      window,
+      '!document.querySelector(\'[data-testid="layer-canvas-background"]\')&&' +
+        '!document.querySelector(\'[data-testid="current-background-name"]\')',
+      'Animation Appearance still contains background-management controls.',
+    );
+    await dragRangeValue(window, '[data-testid="layer-opacity-range"]', 65);
+    const opacityAfterDrag = await window.webContents.executeJavaScript(
+      '(() => { const e=document.querySelector(\'[data-testid="layer-opacity-range"]\');' +
+        'const stage=document.querySelector(\'[data-testid="project-canvas-stage"]\');' +
+        'const layer=JSON.parse(stage?.dataset.layerJson||"[]").find(x=>x.id==="' + layerAId + '");' +
+        'return {rangeValue:e?.value,opacity:layer?.opacity,output:document.querySelector(\'[data-testid="layer-opacity-value"]\')?.textContent}; })()',
+    );
+    console.log('[issue890] animation opacity after drag: ' + JSON.stringify(opacityAfterDrag));
+    await waitFor(
+      window,
+      'Math.abs(JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\').dataset.layerJson||"[]")' +
+        '.find(x=>x.id==="' + layerAId + '")?.opacity-0.65)<0.002',
+      'Animation opacity did not commit through the existing Appearance control.',
+    );
+    const opacitySaveCountBefore = projectSaveEvidence.length;
+    await click(window, '[data-testid="quick-action-save"]');
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="quick-action-save"]\')?.dataset.saveState!=="saving"&&' +
+        'document.querySelector(\'[data-testid="quick-action-save"]\')?.disabled===true',
+      'Saving animation opacity did not settle with the project clean.',
+    );
+    assert(projectSaveEvidence.length === opacitySaveCountBefore + 1,
+      'Saving animation opacity did not call Main ProjectService.save.');
+    const opacitySavedDocument = JSON.parse(readFileSync(path.join(projectRoot, 'project.json'), 'utf8'));
+    const opacitySavedLayers = opacitySavedDocument.shots.flatMap((shot) => shot.layers)
+      .filter((layer) => layer.source.kind === 'animation');
+    assert(Math.abs(opacitySavedLayers.find((layer) => layer.id === layerAId)?.opacity - 0.65) < 0.002 &&
+      Math.abs(opacitySavedLayers.find((layer) => layer.id === layerBId)?.scaleX - 1.79986731171) < 1e-12,
+    'Saving animation opacity changed its value or the other instance exact scale.');
+
+    setPhase('project close, reopen, and final assertions');
+    const openCountBeforeClose = projectOpenEvidence.length;
+    await click(window, '[data-testid="quick-action-close"]');
+    await waitFor(
+      window,
+      'document.querySelector(\'.editor-shell\')?.dataset.editorPage==="project-center"',
+      'Saved project did not close to Project Center.',
+    );
+    await openProject(window);
+    assert(projectOpenEvidence.length > openCountBeforeClose,
+      'Reopen did not call Main ProjectService.open.');
+    const reopenState = await readStageState(window);
+    assert(reopenState.layers.length === 2, 'Reopened project did not restore exactly two instances.');
+    const reopenedA = animationRecord(reopenState, layerAId);
+    const reopenedB = animationRecord(reopenState, layerBId);
+    assert(reopenedA.layer.animationPlayback?.mode === 'loop' && reopenedA.layer.startTimeMs === 0 &&
+      reopenedB.layer.animationPlayback?.mode === 'once' &&
+      reopenedB.layer.animationPlayback?.endBehavior === 'hide' &&
+      reopenedB.layer.startTimeMs === 1_000 &&
+      Math.abs(reopenedB.layer.scaleX - 1.79986731171) < 1e-12 &&
+      reopenedB.layer.rotationDeg === 15,
+    'Reopen did not restore each instance playback contract and exact transform values.');
+    assert(Math.abs(reopenedA.layer.opacity - 0.65) < 0.002,
+      'Reopen did not restore the saved animation opacity.');
+    await seekEditor(window, 1_000);
+    await waitFor(
+      window,
+      '(() => { const stage=document.querySelector(\'[data-testid="project-canvas-stage"]\');' +
+        'const ready=JSON.parse(stage?.dataset.targetReadyLayerIds||"[]");' +
+        'const evaluated=JSON.parse(stage?.dataset.evaluatedLayerJson||"[]");' +
+        'return ready.includes("' + layerBId + '")&&evaluated.some(layer=>layer.id==="' + layerBId + '"&&layer.visible); })()',
+      'Reopened animation instance B was not ready for selection at its start time.',
+      30_000,
+    );
+    const reopenedBPoint = await canvasPoint(window, reopenedB.layer.x, reopenedB.layer.y);
+    await clickPoint(window, reopenedBPoint);
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="project-canvas-stage"]\')?.dataset.selectedLayerId==="' + layerBId + '"',
+      'Could not select reopened animation instance B at its start time.',
+    );
+    const activeRightActivity = await window.webContents.executeJavaScript(
+      'document.querySelector(\'[data-testid="right-workspace"]\')?.dataset.activeActivity??null',
+    );
+    if (activeRightActivity !== null && activeRightActivity !== 'properties') {
+      await click(window, '[data-testid="right-activity-rail-properties"]');
+    } else if (activeRightActivity === null) {
+      const inspectorDrawerOpen = await window.webContents.executeJavaScript(
+        'document.querySelector(\'[data-testid="right-inspector"]\')?.dataset.drawerOpen==="true"',
+      );
+      if (!inspectorDrawerOpen) {
+        await click(window, '[data-testid="inspector-rail-handle"]');
+      }
+    }
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="right-workspace"]\')?.dataset.activeActivity==="properties"||' +
+        'document.querySelector(\'[data-testid="right-inspector"]\')?.dataset.drawerOpen==="true"',
+      'Properties workspace did not open for the reopened animation instance.',
+    );
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="layer-transform-panel"]\')?.dataset.selectedLayerId==="' + layerBId + '"&&' +
+        'document.querySelector(\'[data-testid="layer-transform-scale"] input\')',
+      'Reopened animation instance B did not appear in the Properties workspace.',
+    );
+    const reopenedScaleUiState = await window.webContents.executeJavaScript(
+      '(() => { const panel=document.querySelector(\'[data-testid="layer-transform-panel"]\');' +
+        'const input=document.querySelector(\'[data-testid="layer-transform-scale"] input\');' +
+        'const layer=JSON.parse(document.querySelector(\'[data-testid="project-canvas-stage"]\')?.dataset.layerJson||"[]")' +
+        '.find(item=>item.id==="' + layerBId + '");' +
+        'return {selectedLayerId:panel?.dataset.selectedLayerId,scaleInputValue:input?.value,' +
+        'scaleInputDisabled:input?.disabled,savedScaleX:layer?.scaleX}; })()',
+    );
+    console.log('[issue890] reopened scale UI state: ' + JSON.stringify(reopenedScaleUiState));
+    await waitFor(
+      window,
+      'document.querySelector(\'[data-testid="layer-transform-scale"] input\')?.value==="180"',
+      'Reopened scale did not render as a concise percentage without changing the saved value.',
+    );
+    const hiddenAt2000 = await seekEditor(window, 2_000);
+    editor = await readStageState(window);
+    assert(!animationRecord(editor, layerBId).visual?.visible &&
+      animationRecord(editor, layerAId).visual?.assetId === ids.frames[8],
+    'Reopened editor did not evaluate loop/hide instances at 2000ms.');
+    const reverseEditorTime = await seekEditor(window, 1_040);
+    editor = await readStageState(window);
+    assert(animationRecord(editor, layerAId).visual?.assetId === ids.frames[5] &&
+      animationRecord(editor, layerBId).visual?.assetId === ids.frames[1] &&
+      animationRecord(editor, layerBId).visual?.visible === true,
+    'Reopened editor reverse seek did not restore the expected frames.');
+    const reopenedDocument = await projectService.open(projectRoot);
+    const reopenedLayers = reopenedDocument.project.shots.flatMap((shot) => shot.layers)
+      .filter((layer) => layer.source.kind === 'animation');
+    assert(reopenedDocument.sourceVersion === 16 && reopenedLayers.length === 2 &&
+      reopenedLayers.find((layer) => layer.id === layerAId)?.animationPlayback?.mode === 'loop' &&
+      reopenedLayers.find((layer) => layer.id === layerBId)?.animationPlayback?.endBehavior === 'hide',
+    'Main ProjectService.open did not return the two saved animation instance settings.');
+    assert(ids.frames.every((assetId) => canvasImageReadEvidence.some((entry) =>
+      entry.assetId === assetId && entry.status === 'ready')),
+    'Not every synthetic animation frame passed through Main AssetCanvasImageService.');
+    const dnd = await window.webContents.executeJavaScript('window.__issue890Dnd');
+    const starts = dnd.filter((entry) => entry.type === 'dragstart');
+    const drops = dnd.filter((entry) => entry.type === 'drop');
+    assert(starts.length === 2 && drops.length === 2 &&
+      starts.every((entry) => entry.trusted && JSON.parse(entry.payload).animationId === ids.animation) &&
+      drops.every((entry) => entry.trusted && entry.target === 'canvas' &&
+        JSON.parse(entry.payload).animationId === ids.animation),
+    'The two Animation Library drops did not use trusted input into the Canvas: ' + JSON.stringify(dnd));
+
+    const issue925Environment = {
+      os: os.type(),
+      release: os.release(),
+      architecture: os.arch(),
+      cpuModel: os.cpus()[0]?.model ?? null,
+      logicalProcessors: os.cpus().length,
+      totalMemoryBytes: os.totalmem(),
+      electron: process.versions.electron,
+    };
+    const issue925Summary = {
+      baselineCommit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+      branch: execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim(),
+      workingTreeStatus: execFileSync('git', ['status', '--short'], { encoding: 'utf8' }).trim(),
+      environment: issue925Environment,
+      scenarios: issue925Measurements.map((measurement) =>
+        Object.fromEntries(Object.entries(measurement).filter(([key]) => key !== 'raw')),
+      ),
+      rawEvidence: path.join(evidence, 'issue925-performance-raw.json'),
+    };
+    writeFileSync(
+      issue925Summary.rawEvidence,
+      JSON.stringify({ environment: issue925Environment, measurements: issue925Measurements }, null, 2),
+    );
+
+    const interactive = {
+      issue: 890,
+      commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+      branch: execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim(),
+      workingTreeStatus: execFileSync('git', ['status', '--short'], { encoding: 'utf8' }).trim(),
+      projectRoot,
+      projectSchemaVersion: savedDocument.schemaVersion,
+      oneAnimationDefinition: savedDocument.animations.length === 1,
+      frameCount: savedDocument.animations[0].frames.length,
+      frameAssetCount: ids.frames.length,
+      layerIds: { a: layerAId, b: layerBId, copiedAndDeleted: duplicateId },
+      drops: { first: firstDrop, second: secondDrop, trustedEvents: dnd },
+      escapeCancel: escapeCancelEvidence,
+      firstDropStartTimeMs: 0,
+      secondDropStartTimeMs: firstSeek,
+      startTimes: { a: savedA.startTimeMs, b: savedB.startTimeMs },
+      startTimeLayout: {
+        desktopLandscape: desktopStartTimeLayout,
+        cloudTouchNarrowLandscape: cloudTouchStartTimeLayout,
+      },
+      playback: {
+        a: savedA.animationPlayback,
+        b: savedB.animationPlayback,
+        continuousPreview: {
+          timeMs: continuous.time,
+          a: { assetId: continuousA.visual.assetId, visible: continuousA.visual.visible },
+          b: { assetId: continuousB.visual.assetId, visible: continuousB.visual.visible },
+        },
+        pausedTimeMs: paused.time,
+        replayAdvanced: true,
+        reverseSeek: {
+          timeMs: reverse.time,
+          a: reverseA.visual.assetId,
+          b: reverseB.visual.assetId,
+          pixelA,
+          pixelB,
+        },
+      },
+      beforeStart: {
+        requestedTimeMs: 960,
+        actualTimeMs: beforeBStartTime,
+        visible: false,
+        selectable: false,
+      },
+      transforms: { a: savedA, b: savedB },
+      history: { beforeUndo: historyBeforeUndo, beforePreview: historyBeforePreview, afterPreview: historyAfterPreview },
+      dirtyAfterPreview: !isCleanAfterPreview,
+      saveReopen: {
+        saveCalls: projectSaveEvidence,
+        openCalls: projectOpenEvidence,
+        sourceVersion: reopenedDocument.sourceVersion,
+        frameManifestCount: frameManifest.length,
+        hiddenAt2000,
+        reverseEditorTime,
+      },
+      issue925Performance: issue925Summary,
+      canvasImageReadEvidence,
+      evidence,
+    };
+    writeFileSync(path.join(evidence, 'interactive-state.json'), JSON.stringify(interactive, null, 2));
+    writeFileSync(path.join(evidence, 'canvas-evidence.png'), (await window.webContents.capturePage()).toPNG());
+    return {
+      issue: 890,
+      passed: true,
+      commit: interactive.commit,
+      branch: interactive.branch,
+      projectRoot,
+      animationInstances: savedLayers.map((layer) => ({
+        id: layer.id,
+        startTimeMs: layer.startTimeMs,
+        animationPlayback: layer.animationPlayback,
+        x: layer.x,
+        y: layer.y,
+        scaleX: layer.scaleX,
+        scaleY: layer.scaleY,
+      })),
+      continuousPreviewTimeMs: continuous.time,
+      reverseSeekTimeMs: reverse.time,
+      saveCalls: projectSaveEvidence.length,
+      openCalls: projectOpenEvidence.length,
+      imageReads: canvasImageReadEvidence.length,
+      issue925Performance: issue925Summary,
+      evidence,
+    };
+  } finally {
+    if (!window.isDestroyed()) window.destroy();
+  }
+}
+
+async function main() {
+  try {
+    const result = await run();
+    writeFileSync(resultPath, JSON.stringify(result, null, 2));
+    console.log(JSON.stringify(result, null, 2));
+  } catch (error) {
+    const failure = {
+      issue: 890,
+      passed: false,
+      phase: currentPhase,
+      error: error instanceof Error ? error.stack ?? error.message : String(error),
+      rendererDiagnostics,
+      evidence,
+      projectRoot,
+    };
+    mkdirSync(evidence, { recursive: true });
+    writeFileSync(resultPath, JSON.stringify(failure, null, 2));
+    console.error('[issue890] phase=' + currentPhase + ' ' + failure.error);
+    process.exitCode = 1;
+  } finally {
+    app.quit();
+  }
+}
+
+main();

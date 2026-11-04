@@ -16,7 +16,8 @@ describe('Issue #338 portrait Properties refinement', () => {
   it('keeps scale editing in the existing domain range while presenting percentages', () => {
     expect(formatScalePercent(2)).toBe('200');
     expect(formatScalePercent(0.05)).toBe('5');
-    expect(formatScalePercent(0.333333333333)).toBe('33.3333333333');
+    expect(formatScalePercent(0.333333333333)).toBe('33.3');
+    expect(formatScalePercent(1.79986731171)).toBe('180');
     expect(parseScalePercentDraft('200')).toBe('2');
     expect(stepScalePercentDraft('5', -1)).toBe('5');
     expect(stepScalePercentDraft('200', 1)).toBe('210');

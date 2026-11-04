@@ -200,6 +200,15 @@ describe('product preview first-paint reveal', () => {
     expect(
       shouldStartProductPreviewAutoplay({
         autoPlay: true,
+        autoplayConsumed: true,
+        dataReady: true,
+        durationMs: 4_000,
+        revealPhase: 'revealed',
+      }),
+    ).toBe(false);
+    expect(
+      shouldStartProductPreviewAutoplay({
+        autoPlay: true,
         dataReady: true,
         durationMs: 0,
         revealPhase: 'revealed',

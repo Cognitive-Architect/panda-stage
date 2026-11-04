@@ -5,12 +5,24 @@ import {
   type Project,
 } from '../../src/domain';
 import type { AssetCanvasImageReadResponse } from '../../src/shared/asset-canvas-image-api';
-import { ProductPreviewImageSession } from '../../src/renderer/shell/productPreviewImages';
+import {
+  MAX_CONCURRENT_PREVIEW_IMAGE_READS,
+  MAX_NEXT_PREVIEW_IMAGE_CACHE,
+  MAX_NEXT_SHOT_PREVIEW_IMAGE_READS,
+  MAX_OPTIONAL_PREVIEW_IMAGE_READS,
+  MAX_QUEUED_OPTIONAL_PREVIEW_IMAGES,
+  MAX_RETAINED_PREVIEW_CANDIDATE_BYTES,
+  ProductPreviewImageSession,
+} from '../../src/renderer/shell/productPreviewImages';
 import {
   applyProductPreviewMouthFallback,
   buildProductPreviewImagePlan,
+  gateProductPreviewImagePrewarm,
   isProductPreviewMouthFallbackFailure,
   projectProductPreviewMouth,
+  PRODUCT_PREVIEW_ANIMATION_PREWARM_FRAMES,
+  PRODUCT_PREVIEW_MAX_RETAINED_LOOP_ASSETS,
+  PRODUCT_PREVIEW_MAX_RECENT_ANIMATION_ASSETS,
   type ProductPreviewImagePlan,
 } from '../../src/renderer/shell/productPreviewModel';
 import { buildProject, IDS } from './domain/testProject';
@@ -23,6 +35,9 @@ const DIALOGUE_ID = '80000000-0000-4000-8000-000000000004';
 const AUDIO_CLIP_ID = '70000000-0000-4000-8000-000000000004';
 const AUDIO_ID = '10000000-0000-4000-8000-000000000006';
 const HEAD_ID = '10000000-0000-4000-8000-000000000009';
+const ANIMATION_FRAME_A_ID = '10000000-0000-4000-8000-000000000010';
+const ANIMATION_FRAME_B_ID = '10000000-0000-4000-8000-000000000011';
+const SECOND_ANIMATION_LAYER_ID = '70000000-0000-4000-8000-000000000003';
 
 function imageProject(): Project {
   const project = buildProject();
@@ -156,6 +171,133 @@ function compositePreviewProject(options: { head?: boolean } = {}): Project {
   });
 }
 
+function animationPreviewProject(
+  instances: Array<{
+    id: string;
+    startTimeMs: number;
+    mode: 'once' | 'loop';
+    endBehavior: 'hold' | 'hide';
+  }>,
+): Project {
+  const base = compositePreviewProject();
+  const frameAssets = [
+    {
+      id: ANIMATION_FRAME_A_ID,
+      kind: 'image' as const,
+      name: 'animation-frame-a',
+      relativePath: 'assets/animation-frame-a.png',
+      mimeType: 'image/png',
+      width: 100,
+      height: 100,
+      sha256: 'e'.repeat(64),
+      usage: 'uncategorized' as const,
+      keywords: [],
+    },
+    {
+      id: ANIMATION_FRAME_B_ID,
+      kind: 'image' as const,
+      name: 'animation-frame-b',
+      relativePath: 'assets/animation-frame-b.png',
+      mimeType: 'image/png',
+      width: 100,
+      height: 100,
+      sha256: 'f'.repeat(64),
+      usage: 'uncategorized' as const,
+      keywords: [],
+    },
+  ];
+  const frameAssetIds = [
+    ANIMATION_FRAME_A_ID,
+    ANIMATION_FRAME_B_ID,
+    MOUTH_ID,
+    ALT_FACE_ID,
+  ];
+  const animation = {
+    id: IDS.animation,
+    name: 'preview animation',
+    source: {
+      basename: 'preview.fla',
+      sha256: '9'.repeat(64),
+      renderTargetId: 'preview-target',
+      targetKind: 'graphic-symbol' as const,
+      targetName: 'preview animation',
+      startFrameIndex: 0,
+      endFrameIndex: frameAssetIds.length - 1,
+      sourceFps: 10,
+      canvas: { width: 100, height: 100 },
+      documentCanvas: { width: 100, height: 100 },
+      anchor: { x: 0, y: 0 },
+    },
+    durationMs: frameAssetIds.length * 100,
+    frames: frameAssetIds.map((assetId, ordinal) => ({
+      ordinal,
+      sourceFrameIndex: ordinal,
+      assetId,
+      sha256: [...base.assets, ...frameAssets].find((asset) => asset.id === assetId)!.sha256!,
+      sourceViewport: { x: 0, y: 0, width: 100, height: 100 },
+      offset: { x: 0, y: 0 },
+      startMs: ordinal * 100,
+      durationMs: 100,
+      createdBySequenceImport: true,
+    })),
+  };
+  return ProjectSchema.parse({
+    ...base,
+    assets: [...base.assets, ...frameAssets],
+    animations: [animation],
+    shots: base.shots.map((shot) => ({
+      ...shot,
+      layers: [
+        ...shot.layers,
+        ...instances.map((instance, index) => ({
+          id: instance.id,
+          name: `animation-${index}`,
+          source: { kind: 'animation' as const, animationId: IDS.animation },
+          anchor: 'center' as const,
+          x: 900 + index * 100,
+          y: 500,
+          scaleX: 1,
+          scaleY: 1,
+          rotationDeg: 0,
+          opacity: 1,
+          visible: true,
+          zIndex: shot.layers.length + index,
+          locked: false,
+          flipX: false,
+          startTimeMs: instance.startTimeMs,
+          animationPlayback: {
+            mode: instance.mode,
+            endBehavior: instance.endBehavior,
+          },
+        })),
+      ],
+    })),
+  });
+}
+
+function projectWithExtraImages(count: number): {
+  project: Project;
+  assetIds: string[];
+} {
+  const base = imageProject();
+  const extras = Array.from({ length: count }, (_, index) => ({
+    id: `90000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    kind: 'image' as const,
+    name: `queue-image-${index}`,
+    relativePath: `assets/queue-image-${index}.png`,
+    mimeType: 'image/png',
+    width: 100,
+    height: 100,
+    sha256: index.toString(16).padStart(64, '0'),
+    usage: 'uncategorized' as const,
+    keywords: [],
+  }));
+  return {
+    project: ProjectSchema.parse({ ...base, assets: [...base.assets, ...extras] }),
+    assetIds: extras.map((asset) => asset.id),
+  };
+}
+
 function compositePlan(project: Project): {
   project: Project;
   plan: ProductPreviewImagePlan;
@@ -188,7 +330,10 @@ function failedImage(assetId: string): AssetCanvasImageReadResponse {
   };
 }
 
-function readyImage(assetId: string = IDS.assetBg): AssetCanvasImageReadResponse {
+function readyImage(
+  assetId: string = IDS.assetBg,
+  byteLength: number = 4,
+): AssetCanvasImageReadResponse {
   return {
     ok: true,
     status: 'ready',
@@ -196,7 +341,7 @@ function readyImage(assetId: string = IDS.assetBg): AssetCanvasImageReadResponse
     mimeType: 'image/png',
     width: 1_920,
     height: 1_080,
-    byteLength: 4,
+    byteLength,
     bytes: new Uint8Array([137, 80, 78, 71]),
   };
 }
@@ -213,6 +358,211 @@ function deferred<T>(): {
 }
 
 describe('Product Preview bounded-original image session — Phase 2 gate C', () => {
+  it('stops optional image prewarm when playback is paused or the window is inactive', () => {
+    const plan: ProductPreviewImagePlan = {
+      requiredAssetIds: [MOUTH_ID],
+      fallbackAssetIds: [ALT_FACE_ID],
+      candidateAssetIds: [ANIMATION_FRAME_A_ID],
+      recentAnimationAssetIds: [ANIMATION_FRAME_A_ID],
+      mouthFallbacks: [
+        {
+          partId: 'mouth-part',
+          sourceAssetId: MOUTH_ID,
+          fallbackAssetId: ALT_FACE_ID,
+        },
+      ],
+    };
+
+    expect(gateProductPreviewImagePrewarm(plan, true)).toBe(plan);
+    expect(gateProductPreviewImagePrewarm(plan, false)).toEqual({
+      ...plan,
+      candidateAssetIds: [],
+      recentAnimationAssetIds: [],
+      retainedAnimationAssetIds: [],
+    });
+  });
+
+  it('warms a small upcoming animation window using each instance clock and playback mode', () => {
+    const project = animationPreviewProject([
+      {
+        id: IDS.animationLayer,
+        startTimeMs: 0,
+        mode: 'loop',
+        endBehavior: 'hold',
+      },
+      {
+        id: SECOND_ANIMATION_LAYER_ID,
+        startTimeMs: 200,
+        mode: 'once',
+        endBehavior: 'hide',
+      },
+    ]);
+    const shot = project.shots[0]!;
+    const currentPlan = buildProductPreviewImagePlan(
+      project,
+      shot,
+      evaluateShotAtTime(shot, 150, project),
+    );
+
+    expect(currentPlan.requiredAssetIds).toContain(ANIMATION_FRAME_B_ID);
+    expect(currentPlan.recentAnimationAssetIds).toEqual([
+      MOUTH_ID,
+      ALT_FACE_ID,
+    ]);
+    expect(
+      currentPlan.candidateAssetIds.slice(
+        0,
+        currentPlan.recentAnimationAssetIds.length,
+      ),
+    ).toEqual(
+      currentPlan.recentAnimationAssetIds,
+    );
+    expect(currentPlan.recentAnimationAssetIds.length).toBeLessThanOrEqual(
+      PRODUCT_PREVIEW_MAX_RECENT_ANIMATION_ASSETS,
+    );
+    const animationFrameAssetIds = new Set(
+      project.animations[0]!.frames.map((frame) => frame.assetId),
+    );
+    expect(
+      currentPlan.candidateAssetIds.filter((assetId) =>
+        animationFrameAssetIds.has(assetId),
+      ),
+    ).toEqual(currentPlan.recentAnimationAssetIds);
+    expect(PRODUCT_PREVIEW_ANIMATION_PREWARM_FRAMES).toBe(3);
+
+    const loopProject = animationPreviewProject([
+      {
+        id: IDS.animationLayer,
+        startTimeMs: 0,
+        mode: 'loop',
+        endBehavior: 'hold',
+      },
+    ]);
+    const loopShot = loopProject.shots[0]!;
+    const wrapped = buildProductPreviewImagePlan(
+      loopProject,
+      loopShot,
+      evaluateShotAtTime(loopShot, 450, loopProject),
+    );
+    expect(wrapped.retainedAnimationAssetIds).toEqual([
+      ANIMATION_FRAME_A_ID,
+      ANIMATION_FRAME_B_ID,
+      MOUTH_ID,
+      ALT_FACE_ID,
+    ]);
+    expect(wrapped.requiredAssetIds).toContain(ANIMATION_FRAME_A_ID);
+    expect(wrapped.recentAnimationAssetIds).toEqual([
+      ANIMATION_FRAME_B_ID,
+      MOUTH_ID,
+      ALT_FACE_ID,
+    ]);
+
+    for (const endBehavior of ['hold', 'hide'] as const) {
+      const onceProject = animationPreviewProject([
+        {
+          id: IDS.animationLayer,
+          startTimeMs: 0,
+          mode: 'once',
+          endBehavior,
+        },
+      ]);
+      const onceShot = onceProject.shots[0]!;
+      const ended = buildProductPreviewImagePlan(
+        onceProject,
+        onceShot,
+        evaluateShotAtTime(onceShot, 450, onceProject),
+      );
+      expect(ended.recentAnimationAssetIds).toEqual([]);
+      expect(ended.retainedAnimationAssetIds).toEqual([]);
+    }
+  });
+
+  it('bounds long-loop retention to a sliding 64-frame window around the current frame', () => {
+    const baseProject = animationPreviewProject([
+      {
+        id: IDS.animationLayer,
+        startTimeMs: 0,
+        mode: 'loop',
+        endBehavior: 'hold',
+      },
+    ]);
+    const baseAnimation = baseProject.animations[0]!;
+    const longFrameCount = 256;
+    const longFrameAssets = Array.from({ length: longFrameCount }, (_, index) => ({
+      id: `90000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      kind: 'image' as const,
+      name: `long-loop-frame-${index}`,
+      relativePath: `assets/long-loop-frame-${index}.png`,
+      mimeType: 'image/png',
+      width: 100,
+      height: 100,
+      sha256: index.toString(16).padStart(64, '0'),
+      usage: 'uncategorized' as const,
+      keywords: [],
+    }));
+    const frameRecords = longFrameAssets.map((asset, ordinal) => ({
+      ...baseAnimation.frames[0]!,
+      ordinal,
+      sourceFrameIndex: ordinal,
+      assetId: asset.id,
+      sha256: asset.sha256,
+      startMs: ordinal * 100,
+    }));
+    let fullFrameMapReads = 0;
+    const indexedFrames = new Proxy(frameRecords, {
+      get(target, property, receiver) {
+        if (property === 'map') fullFrameMapReads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const longAnimation = {
+      ...baseAnimation,
+      durationMs: longFrameCount * 100,
+      source: {
+        ...baseAnimation.source,
+        endFrameIndex: longFrameCount - 1,
+      },
+      frames: indexedFrames,
+    };
+    // The persisted schema currently caps clips at 24 frames. The planner's
+    // guard is still exercised with a structurally valid longer in-memory
+    // value so future schema growth cannot reintroduce per-frame full scans.
+    const project: Project = {
+      ...baseProject,
+      assets: [...baseProject.assets, ...longFrameAssets],
+      animations: [longAnimation],
+      shots: baseProject.shots.map((shot) => ({
+        ...shot,
+        durationMs: 40_000,
+      })),
+    };
+    const shot = project.shots[0]!;
+    const expectedWindow = longFrameAssets
+      .slice(50, 50 + PRODUCT_PREVIEW_MAX_RETAINED_LOOP_ASSETS)
+      .map((asset) => asset.id);
+    const plan = buildProductPreviewImagePlan(
+      project,
+      shot,
+      evaluateShotAtTime(shot, 5_000, project),
+    );
+    const nextPlan = buildProductPreviewImagePlan(
+      project,
+      shot,
+      evaluateShotAtTime(shot, 5_100, project),
+    );
+
+    expect(PRODUCT_PREVIEW_MAX_RETAINED_LOOP_ASSETS).toBe(64);
+    expect(plan.retainedAnimationAssetIds).toEqual(expectedWindow);
+    expect(plan.retainedAnimationAssetIds).toHaveLength(64);
+    expect(nextPlan.retainedAnimationAssetIds).toEqual(
+      longFrameAssets
+        .slice(51, 51 + PRODUCT_PREVIEW_MAX_RETAINED_LOOP_ASSETS)
+        .map((asset) => asset.id),
+    );
+    expect(nextPlan.retainedAnimationAssetIds).toHaveLength(64);
+    expect(fullFrameMapReads).toBe(1);
+  });
+
   it('requires and preloads Head through the existing Product Preview image plan', async () => {
     const fixture = compositePlan(compositePreviewProject({ head: true }));
     const requested: string[] = [];
@@ -290,6 +640,38 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
     expect(revoked).toEqual([]);
   });
 
+  it('does not retry an in-flight optional image after the preview session closes', async () => {
+    const project = compositePreviewProject();
+    const optionalRead = deferred<AssetCanvasImageReadResponse>();
+    let alternateReadCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId !== ALT_FACE_ID) return Promise.resolve(readyImage(assetId));
+        alternateReadCount += 1;
+        return optionalRead.promise;
+      },
+      createObjectUrl: () => 'blob:closed-preview',
+      revokeObjectUrl: () => {},
+    });
+    await expect(
+      session.prepare(PROJECT_ROOT, project, {
+        requiredAssetIds: [IDS.assetBg],
+        candidateAssetIds: [ALT_FACE_ID],
+      }),
+    ).resolves.toMatchObject({ status: 'ready' });
+
+    const requiredLoad = session.prepare(PROJECT_ROOT, project, {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    });
+    session.dispose();
+    optionalRead.resolve(failedImage(ALT_FACE_ID));
+
+    await expect(requiredLoad).resolves.toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(alternateReadCount).toBe(1);
+    expect(session.getDiagnostics().inFlightCount).toBe(0);
+  });
+
   it('revokes immediately if disposal occurs during image URL creation', async () => {
     const project = imageProject();
     const revoked: string[] = [];
@@ -350,6 +732,8 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
     });
     await transition;
     expect(requests).toHaveLength(1);
+    expect(session.getDiagnostics()).toMatchObject({ readRequests: 1 });
+    expect(session.getDiagnostics().cacheHits).toBeGreaterThan(0);
     session.dispose();
   });
 
@@ -580,6 +964,357 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
     bodyFailure.dispose();
   });
 
+  it('prioritizes required and recent frames ahead of other candidates and the next shot', async () => {
+    const { project, assetIds } = projectWithExtraImages(6);
+    const [recentA, recentB, recentC, otherA, otherB, nextShot] = assetIds;
+    const requested: string[] = [];
+    const reads = new Map<
+      string,
+      ReturnType<typeof deferred<AssetCanvasImageReadResponse>>
+    >();
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        requested.push(assetId);
+        const read = deferred<AssetCanvasImageReadResponse>();
+        reads.set(assetId, read);
+        return read.promise;
+      },
+    });
+    const scope = {
+      requiredAssetIds: [IDS.assetBg],
+      recentAnimationAssetIds: [recentA!, recentB!, recentC!],
+      candidateAssetIds: [recentA!, recentB!, recentC!, otherA!, otherB!],
+    };
+    const load = session.prepare(PROJECT_ROOT, project, scope, [nextShot!]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(requested).toEqual([IDS.assetBg, recentA, recentB]);
+    expect(session.getDiagnostics()).toMatchObject({
+      inFlightCount: MAX_CONCURRENT_PREVIEW_IMAGE_READS,
+      optionalInFlightCount: MAX_OPTIONAL_PREVIEW_IMAGE_READS,
+    });
+
+    reads.get(IDS.assetBg)!.resolve(readyImage(IDS.assetBg));
+    await expect(load).resolves.toMatchObject({ status: 'ready' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested).toEqual([IDS.assetBg, recentA, recentB]);
+
+    reads.get(recentA!)!.resolve(readyImage(recentA));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested[3]).toBe(recentC);
+
+    reads.get(recentB!)!.resolve(readyImage(recentB));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested[4]).toBe(otherA);
+
+    reads.get(recentC!)!.resolve(readyImage(recentC));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested[5]).toBe(otherB);
+
+    reads.get(otherA!)!.resolve(readyImage(otherA));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested[6]).toBe(nextShot);
+
+    reads.get(otherB!)!.resolve(readyImage(otherB));
+    reads.get(nextShot!)!.resolve(readyImage(nextShot));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    session.dispose();
+  });
+
+  it('limits speculative next-shot reads to the configured cache window', async () => {
+    const { project, assetIds } = projectWithExtraImages(12);
+    const requested: string[] = [];
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: async ({ assetId }) => {
+        requested.push(assetId);
+        return readyImage(assetId);
+      },
+      createObjectUrl: (() => {
+        let index = 0;
+        return () => `blob:next-window-${index++}`;
+      })(),
+    });
+
+    await expect(
+      session.prepare(PROJECT_ROOT, project, {
+        requiredAssetIds: [IDS.assetBg],
+      }, assetIds),
+    ).resolves.toMatchObject({ status: 'ready' });
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const diagnostics = session.getDiagnostics();
+      if (diagnostics.inFlightCount === 0 && diagnostics.queuedOptionalCount === 0) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    expect(requested).toEqual([
+      IDS.assetBg,
+      ...assetIds.slice(0, MAX_NEXT_PREVIEW_IMAGE_CACHE),
+    ]);
+    expect(requested).not.toContain(assetIds[MAX_NEXT_PREVIEW_IMAGE_CACHE]);
+    session.dispose();
+  });
+
+  it('keeps a second next-shot read queued while current required images use the freed slots', async () => {
+    const { project, assetIds } = projectWithExtraImages(5);
+    const [currentA, currentB, currentC, nextA, nextB] = assetIds;
+    const requested: string[] = [];
+    const reads = new Map<
+      string,
+      ReturnType<typeof deferred<AssetCanvasImageReadResponse>>
+    >();
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        requested.push(assetId);
+        const read = deferred<AssetCanvasImageReadResponse>();
+        reads.set(assetId, read);
+        return read.promise;
+      },
+    });
+
+    const warmNextShot = session.prepare(
+      PROJECT_ROOT,
+      project,
+      { requiredAssetIds: [IDS.assetBg] },
+      [nextA!, nextB!],
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested).toEqual([IDS.assetBg, nextA]);
+    expect(session.getDiagnostics().optionalInFlightCount).toBe(
+      MAX_NEXT_SHOT_PREVIEW_IMAGE_READS,
+    );
+
+    reads.get(IDS.assetBg)!.resolve(readyImage(IDS.assetBg));
+    await expect(warmNextShot).resolves.toMatchObject({ status: 'ready' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const currentFrame = session.prepare(
+      PROJECT_ROOT,
+      project,
+      { requiredAssetIds: [currentA!, currentB!, currentC!] },
+      [nextA!, nextB!],
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested).toEqual([IDS.assetBg, nextA, currentA, currentB]);
+    expect(session.getDiagnostics()).toMatchObject({
+      inFlightCount: MAX_CONCURRENT_PREVIEW_IMAGE_READS,
+      optionalInFlightCount: MAX_NEXT_SHOT_PREVIEW_IMAGE_READS,
+    });
+
+    reads.get(currentA!)!.resolve(readyImage(currentA));
+    reads.get(currentB!)!.resolve(readyImage(currentB));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested).toEqual([
+      IDS.assetBg,
+      nextA,
+      currentA,
+      currentB,
+      currentC,
+    ]);
+    reads.get(currentC!)!.resolve(readyImage(currentC));
+    await expect(currentFrame).resolves.toMatchObject({ status: 'ready' });
+
+    reads.get(nextA!)!.resolve(readyImage(nextA));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested).toContain(nextB);
+    reads.get(nextB!)!.resolve(readyImage(nextB));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    session.dispose();
+  });
+
+  it('reuses a recently prepared animation frame when it becomes current', async () => {
+    const project = animationPreviewProject([
+      {
+        id: IDS.animationLayer,
+        startTimeMs: 0,
+        mode: 'loop',
+        endBehavior: 'hold',
+      },
+    ]);
+    const shot = project.shots[0]!;
+    const firstPlan = buildProductPreviewImagePlan(
+      project,
+      shot,
+      evaluateShotAtTime(shot, 150, project),
+    );
+    const requests: string[] = [];
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: async ({ assetId }) => {
+        requests.push(assetId);
+        return readyImage(assetId);
+      },
+      createObjectUrl: (() => {
+        let index = 0;
+        return () => `blob:animation-frame-${index++}`;
+      })(),
+    });
+
+    await expect(
+      session.prepare(PROJECT_ROOT, project, firstPlan),
+    ).resolves.toMatchObject({ status: 'ready' });
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const diagnostics = session.getDiagnostics();
+      if (diagnostics.inFlightCount === 0 && diagnostics.queuedOptionalCount === 0) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    session.commitScope(PROJECT_ROOT, project, firstPlan);
+    const readsBeforePromotion = requests.length;
+    const nextPlan = buildProductPreviewImagePlan(
+      project,
+      shot,
+      evaluateShotAtTime(shot, 200, project),
+    );
+
+    expect(nextPlan.requiredAssetIds).toContain(MOUTH_ID);
+    await expect(
+      session.prepare(PROJECT_ROOT, project, nextPlan),
+    ).resolves.toMatchObject({ status: 'ready' });
+    expect(requests).toHaveLength(readsBeforePromotion);
+    expect(requests.filter((assetId) => assetId === MOUTH_ID)).toHaveLength(1);
+    expect(session.getDiagnostics().cacheHits).toBeGreaterThan(0);
+    session.dispose();
+  });
+
+  it('promotes a queued candidate to current required and ignores stale seek results', async () => {
+    const { project, assetIds } = projectWithExtraImages(3);
+    const [candidateA, candidateB, promoted] = assetIds;
+    const requested: string[] = [];
+    const createdUrls: string[] = [];
+    const reads = new Map<
+      string,
+      ReturnType<typeof deferred<AssetCanvasImageReadResponse>>
+    >();
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        requested.push(assetId);
+        const read = deferred<AssetCanvasImageReadResponse>();
+        reads.set(assetId, read);
+        return read.promise;
+      },
+      createObjectUrl: () => {
+        const url = `blob:promoted-${createdUrls.length + 1}`;
+        createdUrls.push(url);
+        return url;
+      },
+    });
+    const firstLoad = session.prepare(PROJECT_ROOT, project, {
+      requiredAssetIds: [IDS.assetBg],
+      candidateAssetIds: [candidateA!, candidateB!, promoted!],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(requested).toEqual([IDS.assetBg, candidateA, candidateB]);
+    expect(session.getDiagnostics().queuedOptionalCount).toBe(1);
+
+    reads.get(IDS.assetBg)!.resolve(readyImage(IDS.assetBg));
+    await expect(firstLoad).resolves.toMatchObject({ status: 'ready' });
+    const currentLoad = session.prepare(PROJECT_ROOT, project, {
+      requiredAssetIds: [promoted!],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(requested).toEqual([IDS.assetBg, candidateA, candidateB, promoted]);
+    expect(session.getDiagnostics()).toMatchObject({
+      inFlightCount: MAX_CONCURRENT_PREVIEW_IMAGE_READS,
+      optionalInFlightCount: MAX_OPTIONAL_PREVIEW_IMAGE_READS,
+      queuedOptionalCount: 0,
+    });
+
+    reads.get(promoted!)!.resolve(readyImage(promoted));
+    await expect(currentLoad).resolves.toMatchObject({ status: 'ready' });
+    const urlsBeforeStaleReads = createdUrls.length;
+    reads.get(candidateA!)!.resolve(readyImage(candidateA));
+    reads.get(candidateB!)!.resolve(readyImage(candidateB));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(createdUrls).toHaveLength(urlsBeforeStaleReads);
+    expect(urlsBeforeStaleReads).toBe(2);
+    expect(
+      session.snapshot(PROJECT_ROOT, project, { requiredAssetIds: [promoted!] }),
+    ).toMatchObject({
+      status: 'ready',
+      urls: { [promoted!]: createdUrls[1] },
+    });
+    session.dispose();
+  });
+
+  it('caps optional queue growth, concurrent reads, and retained original bytes', async () => {
+    const queueFixture = projectWithExtraImages(100);
+    const pendingReads = new Map<
+      string,
+      ReturnType<typeof deferred<AssetCanvasImageReadResponse>>
+    >();
+    const queueSession = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        const read = deferred<AssetCanvasImageReadResponse>();
+        pendingReads.set(assetId, read);
+        return read.promise;
+      },
+    });
+    const queueScope = {
+      requiredAssetIds: [IDS.assetBg],
+      recentAnimationAssetIds: queueFixture.assetIds.slice(0, 3),
+      candidateAssetIds: queueFixture.assetIds,
+    };
+    const pendingLoad = queueSession.prepare(
+      PROJECT_ROOT,
+      queueFixture.project,
+      queueScope,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const queueDiagnostics = queueSession.getDiagnostics();
+    expect(queueDiagnostics.queuePeak).toBe(MAX_QUEUED_OPTIONAL_PREVIEW_IMAGES);
+    expect(queueDiagnostics.queuedOptionalCount).toBeLessThanOrEqual(
+      MAX_QUEUED_OPTIONAL_PREVIEW_IMAGES,
+    );
+    expect(queueDiagnostics.droppedOptionalQueueEntries).toBeGreaterThan(0);
+    expect(queueDiagnostics.inFlightPeak).toBeLessThanOrEqual(
+      MAX_CONCURRENT_PREVIEW_IMAGE_READS,
+    );
+    expect(queueDiagnostics.optionalInFlightCount).toBeLessThanOrEqual(
+      MAX_OPTIONAL_PREVIEW_IMAGE_READS,
+    );
+    queueSession.dispose();
+    await expect(pendingLoad).resolves.toBeNull();
+    for (const [assetId, read] of pendingReads) {
+      read.resolve(readyImage(assetId));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const cacheFixture = projectWithExtraImages(18);
+    const cacheScope = {
+      requiredAssetIds: [IDS.assetBg],
+      candidateAssetIds: cacheFixture.assetIds,
+    };
+    const cacheSession = new ProductPreviewImageSession({
+      readCanvasImage: async ({ assetId }) =>
+        readyImage(assetId, 5 * 1024 * 1024),
+      createObjectUrl: (() => {
+        let index = 0;
+        return () => `blob:bounded-cache-${index++}`;
+      })(),
+    });
+    await expect(
+      cacheSession.prepare(PROJECT_ROOT, cacheFixture.project, cacheScope),
+    ).resolves.toMatchObject({ status: 'ready' });
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const diagnostics = cacheSession.getDiagnostics();
+      if (diagnostics.inFlightCount === 0 && diagnostics.queuedOptionalCount === 0) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    cacheSession.commitScope(PROJECT_ROOT, cacheFixture.project, cacheScope);
+    const cacheDiagnostics = cacheSession.getDiagnostics();
+    expect(cacheDiagnostics.readyCacheBytes).toBeLessThanOrEqual(
+      MAX_RETAINED_PREVIEW_CANDIDATE_BYTES + 4,
+    );
+    expect(cacheDiagnostics.readyCacheEntries).toBeLessThan(18);
+    cacheSession.dispose();
+  });
+
   it('does not let a failed bounded candidate block the exact current frame', async () => {
     const fixture = compositePlan(compositePreviewProject());
     const candidate = deferred<AssetCanvasImageReadResponse>();
@@ -593,13 +1328,488 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
     ).resolves.toMatchObject({ status: 'ready' });
     candidate.resolve(failedImage(ALT_FACE_ID));
     await candidate.promise;
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(
       session.snapshot(PROJECT_ROOT, fixture.project, fixture.plan),
     ).toMatchObject({
       status: 'ready',
       optionalFailedAssetIds: [ALT_FACE_ID],
     });
+    session.dispose();
+  });
+
+  it('retries an optional image once when it is promoted while loading and then fails', async () => {
+    const project = compositePreviewProject();
+    const optionalRead = deferred<AssetCanvasImageReadResponse>();
+    const requiredRetry = deferred<AssetCanvasImageReadResponse>();
+    let alternateReadCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId !== ALT_FACE_ID) return Promise.resolve(readyImage(assetId));
+        alternateReadCount += 1;
+        return alternateReadCount === 1
+          ? optionalRead.promise
+          : requiredRetry.promise;
+      },
+      createObjectUrl: () => `blob:in-flight-required-${alternateReadCount}`,
+      revokeObjectUrl: () => {},
+    });
+
+    const warmLoad = session.prepare(PROJECT_ROOT, project, {
+      requiredAssetIds: [IDS.assetBg],
+      candidateAssetIds: [ALT_FACE_ID],
+    });
+    await expect(warmLoad).resolves.toMatchObject({ status: 'ready' });
+    expect(alternateReadCount).toBe(1);
+
+    const requiredScope = {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    };
+    const requiredLoad = session.prepare(PROJECT_ROOT, project, requiredScope);
+    let requiredLoadSettled = false;
+    void requiredLoad.then(() => {
+      requiredLoadSettled = true;
+    });
+    expect(
+      session.snapshot(PROJECT_ROOT, project, requiredScope),
+    ).toMatchObject({
+      status: 'loading',
+      fatalAssetIds: [],
+    });
+    expect(session.getDiagnostics()).toMatchObject({
+      inFlightCount: 1,
+      optionalInFlightCount: 1,
+    });
+
+    optionalRead.resolve(failedImage(ALT_FACE_ID));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(alternateReadCount).toBe(2);
+    expect(requiredLoadSettled).toBe(false);
+    expect(session.getDiagnostics()).toMatchObject({
+      inFlightCount: 1,
+      optionalInFlightCount: 0,
+    });
+    expect(
+      session.snapshot(PROJECT_ROOT, project, requiredScope),
+    ).toMatchObject({
+      status: 'loading',
+      fatalAssetIds: [],
+    });
+
+    requiredRetry.resolve(readyImage(ALT_FACE_ID));
+    await expect(requiredLoad).resolves.toMatchObject({ status: 'ready' });
+    expect(
+      session.snapshot(PROJECT_ROOT, project, requiredScope).urls[ALT_FACE_ID],
+    ).toBe('blob:in-flight-required-2');
+    expect(alternateReadCount).toBe(2);
+    session.dispose();
+  });
+
+  it('reports required fatal after an in-flight retry fails and never reads a third time', async () => {
+    const project = compositePreviewProject();
+    const optionalRead = deferred<AssetCanvasImageReadResponse>();
+    const requiredRetry = deferred<AssetCanvasImageReadResponse>();
+    let alternateReadCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId !== ALT_FACE_ID) return Promise.resolve(readyImage(assetId));
+        alternateReadCount += 1;
+        return alternateReadCount === 1
+          ? optionalRead.promise
+          : requiredRetry.promise;
+      },
+      revokeObjectUrl: () => {},
+    });
+    const candidateScope = {
+      requiredAssetIds: [IDS.assetBg],
+      candidateAssetIds: [ALT_FACE_ID],
+    };
+    await expect(
+      session.prepare(PROJECT_ROOT, project, candidateScope),
+    ).resolves.toMatchObject({ status: 'ready' });
+    expect(alternateReadCount).toBe(1);
+
+    const requiredScope = {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    };
+    const requiredLoad = session.prepare(PROJECT_ROOT, project, requiredScope);
+    optionalRead.resolve(failedImage(ALT_FACE_ID));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(alternateReadCount).toBe(2);
+    expect(
+      session.snapshot(PROJECT_ROOT, project, requiredScope),
+    ).toMatchObject({ status: 'loading', fatalAssetIds: [] });
+
+    requiredRetry.resolve(failedImage(ALT_FACE_ID));
+    await expect(requiredLoad).resolves.toMatchObject({
+      status: 'error',
+      fatalAssetIds: [ALT_FACE_ID],
+      missingCount: 1,
+    });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(
+        session.prepare(PROJECT_ROOT, project, requiredScope),
+      ).resolves.toMatchObject({
+        status: 'error',
+        fatalAssetIds: [ALT_FACE_ID],
+      });
+    }
+    expect(alternateReadCount).toBe(2);
+    expect(session.getDiagnostics()).toMatchObject({
+      inFlightCount: 0,
+      queuedOptionalCount: 0,
+    });
+    session.dispose();
+  });
+
+  it('uses the successful original optional read when promotion happens in flight', async () => {
+    const project = compositePreviewProject();
+    const optionalRead = deferred<AssetCanvasImageReadResponse>();
+    let alternateReadCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId !== ALT_FACE_ID) return Promise.resolve(readyImage(assetId));
+        alternateReadCount += 1;
+        return optionalRead.promise;
+      },
+      createObjectUrl: () => `blob:in-flight-success-${alternateReadCount}`,
+      revokeObjectUrl: () => {},
+    });
+    await expect(
+      session.prepare(PROJECT_ROOT, project, {
+        requiredAssetIds: [IDS.assetBg],
+        candidateAssetIds: [ALT_FACE_ID],
+      }),
+    ).resolves.toMatchObject({ status: 'ready' });
+
+    const requiredScope = {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    };
+    const requiredLoad = session.prepare(PROJECT_ROOT, project, requiredScope);
+    optionalRead.resolve(readyImage(ALT_FACE_ID));
+    await expect(requiredLoad).resolves.toMatchObject({ status: 'ready' });
+    expect(alternateReadCount).toBe(1);
+    expect(
+      session.snapshot(PROJECT_ROOT, project, requiredScope).urls[ALT_FACE_ID],
+    ).toBe('blob:in-flight-success-1');
+    session.dispose();
+  });
+
+  it('does not retry a promoted frame after a reverse seek returns to the previous frame', async () => {
+    const project = animationPreviewProject([
+      {
+        id: IDS.animationLayer,
+        startTimeMs: 0,
+        mode: 'loop',
+        endBehavior: 'hold',
+      },
+    ]);
+    const shot = project.shots[0]!;
+    const planAt = (timeMs: number) =>
+      buildProductPreviewImagePlan(
+        project,
+        shot,
+        projectProductPreviewMouth(
+          project,
+          shot,
+          evaluateShotAtTime(shot, timeMs, project),
+          DIALOGUE_ID,
+        ),
+      );
+    const previousFramePlan = planAt(0);
+    const promotedFramePlan = planAt(100);
+    const staleRead = deferred<AssetCanvasImageReadResponse>();
+    let promotedFrameReadCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId === ANIMATION_FRAME_B_ID) {
+          promotedFrameReadCount += 1;
+          return staleRead.promise;
+        }
+        return Promise.resolve(readyImage(assetId));
+      },
+      createObjectUrl: (() => {
+        let count = 0;
+        return () => `blob:reverse-seek-${++count}`;
+      })(),
+      revokeObjectUrl: () => {},
+    });
+    expect(previousFramePlan.requiredAssetIds).toContain(ANIMATION_FRAME_A_ID);
+    expect(previousFramePlan.candidateAssetIds).toContain(ANIMATION_FRAME_B_ID);
+    expect(promotedFramePlan.requiredAssetIds).toContain(ANIMATION_FRAME_B_ID);
+    await expect(
+      session.prepare(PROJECT_ROOT, project, previousFramePlan),
+    ).resolves.toMatchObject({ status: 'ready' });
+    expect(promotedFrameReadCount).toBe(1);
+
+    const promotedLoad = session.prepare(
+      PROJECT_ROOT,
+      project,
+      promotedFramePlan,
+    );
+    const reverseSeekPlan = planAt(0);
+    const reverseSeekLoad = session.prepare(
+      PROJECT_ROOT,
+      project,
+      reverseSeekPlan,
+    );
+    await expect(reverseSeekLoad).resolves.toMatchObject({ status: 'ready' });
+
+    staleRead.resolve(failedImage(ANIMATION_FRAME_B_ID));
+    await expect(promotedLoad).resolves.toMatchObject({ status: 'error' });
+    const reverseSeekState = session.snapshot(
+      PROJECT_ROOT,
+      project,
+      reverseSeekPlan,
+    );
+    expect(promotedFrameReadCount).toBe(1);
+    expect(reverseSeekState.status).toBe('ready');
+    expect(reverseSeekState.urls).toHaveProperty(ANIMATION_FRAME_A_ID);
+    expect(reverseSeekState.urls).not.toHaveProperty(ANIMATION_FRAME_B_ID);
+    expect(session.getDiagnostics().inFlightCount).toBeLessThanOrEqual(
+      MAX_CONCURRENT_PREVIEW_IMAGE_READS,
+    );
+    session.dispose();
+  });
+
+  it('keeps a newer asset version ready when an older promoted request fails late', async () => {
+    const project = compositePreviewProject();
+    const staleRead = deferred<AssetCanvasImageReadResponse>();
+    let alternateReadCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId !== ALT_FACE_ID) return Promise.resolve(readyImage(assetId));
+        alternateReadCount += 1;
+        return alternateReadCount === 1
+          ? staleRead.promise
+          : Promise.resolve(readyImage(assetId));
+      },
+      createObjectUrl: () => `blob:asset-version-${alternateReadCount}`,
+      revokeObjectUrl: () => {},
+    });
+    await expect(
+      session.prepare(PROJECT_ROOT, project, {
+        requiredAssetIds: [IDS.assetBg],
+        candidateAssetIds: [ALT_FACE_ID],
+      }),
+    ).resolves.toMatchObject({ status: 'ready' });
+
+    const oldRequiredLoad = session.prepare(PROJECT_ROOT, project, {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    });
+    const nextProject = ProjectSchema.parse({
+      ...project,
+      assets: project.assets.map((asset) =>
+        asset.id === ALT_FACE_ID ? { ...asset, sha256: '8'.repeat(64) } : asset,
+      ),
+    });
+    const nextScope = {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    };
+    await expect(
+      session.prepare(PROJECT_ROOT, nextProject, nextScope),
+    ).resolves.toMatchObject({ status: 'ready' });
+
+    staleRead.resolve(failedImage(ALT_FACE_ID));
+    await oldRequiredLoad;
+    expect(alternateReadCount).toBe(2);
+    expect(session.snapshot(PROJECT_ROOT, nextProject, nextScope)).toMatchObject({
+      status: 'ready',
+      urls: { [ALT_FACE_ID]: 'blob:asset-version-2' },
+    });
+    expect(session.getDiagnostics().inFlightCount).toBe(0);
+    session.dispose();
+  });
+
+  it('does not let a failed promoted request cross into a switched project', async () => {
+    const project = compositePreviewProject();
+    const staleRead = deferred<AssetCanvasImageReadResponse>();
+    let alternateReadCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId !== ALT_FACE_ID) return Promise.resolve(readyImage(assetId));
+        alternateReadCount += 1;
+        return alternateReadCount === 1
+          ? staleRead.promise
+          : Promise.resolve(readyImage(assetId));
+      },
+      createObjectUrl: () => `blob:switched-project-${alternateReadCount}`,
+      revokeObjectUrl: () => {},
+    });
+    await expect(
+      session.prepare(PROJECT_ROOT, project, {
+        requiredAssetIds: [IDS.assetBg],
+        candidateAssetIds: [ALT_FACE_ID],
+      }),
+    ).resolves.toMatchObject({ status: 'ready' });
+
+    const oldProjectLoad = session.prepare(PROJECT_ROOT, project, {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    });
+    const nextProjectRoot = 'D:\\preview-images-next.pandastage';
+    const nextProjectScope = {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    };
+    await expect(
+      session.prepare(nextProjectRoot, project, nextProjectScope),
+    ).resolves.toMatchObject({ status: 'ready' });
+
+    staleRead.resolve(failedImage(ALT_FACE_ID));
+    await oldProjectLoad;
+    expect(alternateReadCount).toBe(2);
+    expect(
+      session.snapshot(nextProjectRoot, project, nextProjectScope),
+    ).toMatchObject({
+      status: 'ready',
+      urls: { [ALT_FACE_ID]: 'blob:switched-project-2' },
+    });
+    expect(session.getDiagnostics().inFlightCount).toBe(0);
+    session.dispose();
+  });
+
+  it('retries an optional image once when it becomes required, then reaches exact ready', async () => {
+    const project = compositePreviewProject();
+    const optionalRead = deferred<AssetCanvasImageReadResponse>();
+    const requiredRetry = deferred<AssetCanvasImageReadResponse>();
+    const alternateReads = [optionalRead, requiredRetry];
+    let alternateReadCount = 0;
+    let objectUrlCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId !== ALT_FACE_ID) return Promise.resolve(readyImage(assetId));
+        const read = alternateReads[alternateReadCount];
+        alternateReadCount += 1;
+        if (!read) throw new Error('Unexpected alternate-face read.');
+        return read.promise;
+      },
+      createObjectUrl: () => `blob:required-retry-${++objectUrlCount}`,
+      revokeObjectUrl: () => {},
+    });
+    const candidateScope = {
+      requiredAssetIds: [IDS.assetBg],
+      candidateAssetIds: [ALT_FACE_ID],
+    };
+
+    const candidateLoad = session.prepare(
+      PROJECT_ROOT,
+      project,
+      candidateScope,
+    );
+    await expect(candidateLoad).resolves.toMatchObject({ status: 'ready' });
+    expect(alternateReadCount).toBe(1);
+
+    optionalRead.resolve(failedImage(ALT_FACE_ID));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(
+      session.snapshot(PROJECT_ROOT, project, candidateScope),
+    ).toMatchObject({
+      status: 'ready',
+      optionalFailedAssetIds: [ALT_FACE_ID],
+    });
+
+    const requiredScope = {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    };
+    const requiredLoad = session.prepare(PROJECT_ROOT, project, requiredScope);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(alternateReadCount).toBe(2);
+    expect(
+      session.snapshot(PROJECT_ROOT, project, requiredScope),
+    ).toMatchObject({
+      status: 'loading',
+      fatalAssetIds: [],
+    });
+
+    requiredRetry.resolve(readyImage(ALT_FACE_ID));
+    await expect(requiredLoad).resolves.toMatchObject({ status: 'ready' });
+    expect(
+      session.snapshot(PROJECT_ROOT, project, requiredScope).urls[ALT_FACE_ID],
+    ).toBe('blob:required-retry-2');
+    expect(alternateReadCount).toBe(2);
+    session.dispose();
+  });
+
+  it('reports a required retry failure once and does not retry on later prepares', async () => {
+    const project = compositePreviewProject();
+    const optionalRead = deferred<AssetCanvasImageReadResponse>();
+    const requiredRetry = deferred<AssetCanvasImageReadResponse>();
+    const alternateReads = [optionalRead, requiredRetry];
+    let alternateReadCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId !== ALT_FACE_ID) return Promise.resolve(readyImage(assetId));
+        const read = alternateReads[alternateReadCount];
+        alternateReadCount += 1;
+        if (!read) throw new Error('Unexpected alternate-face read.');
+        return read.promise;
+      },
+      createObjectUrl: () => 'blob:required-retry',
+      revokeObjectUrl: () => {},
+    });
+    const candidateScope = {
+      requiredAssetIds: [IDS.assetBg],
+      candidateAssetIds: [ALT_FACE_ID],
+    };
+    await expect(
+      session.prepare(PROJECT_ROOT, project, candidateScope),
+    ).resolves.toMatchObject({ status: 'ready' });
+    expect(alternateReadCount).toBe(1);
+
+    optionalRead.resolve(failedImage(ALT_FACE_ID));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const requiredScope = {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    };
+    const requiredLoad = session.prepare(PROJECT_ROOT, project, requiredScope);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(alternateReadCount).toBe(2);
+
+    requiredRetry.resolve(failedImage(ALT_FACE_ID));
+    await expect(requiredLoad).resolves.toMatchObject({
+      status: 'error',
+      fatalAssetIds: [ALT_FACE_ID],
+      missingCount: 1,
+    });
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(
+        session.prepare(PROJECT_ROOT, project, requiredScope),
+      ).resolves.toMatchObject({
+        status: 'error',
+        fatalAssetIds: [ALT_FACE_ID],
+      });
+    }
+    expect(alternateReadCount).toBe(2);
+    expect(session.getDiagnostics().inFlightCount).toBe(0);
+    session.dispose();
+  });
+
+  it('does not retry an image that first failed as required on repeated prepares', async () => {
+    const project = compositePreviewProject();
+    let alternateReadCount = 0;
+    const session = new ProductPreviewImageSession({
+      readCanvasImage: ({ assetId }) => {
+        if (assetId === ALT_FACE_ID) {
+          alternateReadCount += 1;
+          return Promise.resolve(failedImage(assetId));
+        }
+        return Promise.resolve(readyImage(assetId));
+      },
+    });
+    const requiredScope = {
+      requiredAssetIds: [IDS.assetBg, ALT_FACE_ID],
+    };
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await expect(
+        session.prepare(PROJECT_ROOT, project, requiredScope),
+      ).resolves.toMatchObject({
+        status: 'error',
+        fatalAssetIds: [ALT_FACE_ID],
+      });
+    }
+    expect(alternateReadCount).toBe(1);
     session.dispose();
   });
 });

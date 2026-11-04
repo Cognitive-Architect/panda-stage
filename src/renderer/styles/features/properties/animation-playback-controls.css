@@ -1,0 +1,173 @@
+.animation-playback-controls {
+  display: grid;
+  min-width: 0;
+  padding-top: 10px;
+  padding-inline: 12px;
+  border-top: 1px solid var(--ui-color-separator);
+  gap: 9px;
+}
+
+.animation-playback-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.animation-playback-controls h3 {
+  margin: 0;
+  color: var(--ui-color-text-primary);
+  font-size: 12px;
+}
+
+.animation-playback-duplicate {
+  display: inline-flex;
+  min-height: 34px !important;
+  padding: 5px 8px !important;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.animation-playback-fields {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.animation-playback-time-field,
+.animation-playback-field {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+  gap: 8px;
+}
+
+.animation-playback-time-field,
+.animation-playback-field {
+  flex-wrap: wrap;
+}
+
+.animation-playback-time-field > span:first-child,
+.animation-playback-field > span:first-child {
+  flex: 0 0 72px;
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+}
+
+.animation-playback-time-control {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex: 1 1 110px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0;
+}
+
+.animation-playback-time-unit {
+  position: absolute;
+  top: 50%;
+  inset-inline-end: 10px;
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.animation-playback-fields input {
+  width: 96px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 7px 28px 7px 8px;
+  flex: 0 1 96px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+  font: inherit;
+  text-align: right;
+}
+
+/* Keep millisecond-precise typing without the native 0.001s spinner. */
+.animation-playback-fields input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.animation-playback-fields input[type='number']::-webkit-inner-spin-button,
+.animation-playback-fields input[type='number']::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.animation-playback-fields input:disabled {
+  color: var(--ui-color-disabled-text);
+  background: var(--ui-color-disabled-surface);
+}
+
+.animation-playback-segmented {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  flex: 1 1 150px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 2px;
+}
+
+.animation-playback-segmented button.ui-segmented-tabs__item[data-ui-variant='secondary'] {
+  min-width: 0;
+  min-height: 34px;
+  padding-inline: 6px;
+  flex: 1 1 0;
+  border-color: transparent;
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-secondary);
+  background: transparent;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.animation-playback-segmented
+  button.ui-segmented-tabs__item[data-ui-variant='secondary']:hover:not(:disabled):not(.ui-segmented-tabs__item--selected) {
+  border-color: var(--ui-color-border);
+  background: var(--ui-color-action-hover);
+}
+
+.animation-playback-segmented
+  button.ui-segmented-tabs__item--selected[data-ui-variant='secondary'],
+.animation-playback-segmented
+  button.ui-segmented-tabs__item--selected[data-ui-variant='secondary']:hover:not(:disabled) {
+  border-color: var(--ui-color-selected-border);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-selected-surface);
+}
+
+.animation-playback-controls output {
+  color: #ffd7d2;
+  font-size: 11px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .animation-playback-fields input {
+  min-height: 44px;
+  font-size: 14px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .animation-playback-segmented button.ui-segmented-tabs__item {
+  min-height: 44px;
+  font-size: 13px;
+}
+
+.editor-shell[data-editor-device-mode='cloud-touch']
+  .animation-playback-duplicate {
+  min-height: 44px !important;
+}

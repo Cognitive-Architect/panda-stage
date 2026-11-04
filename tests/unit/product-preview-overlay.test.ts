@@ -819,8 +819,11 @@ describe('product preview overlay contract', () => {
     );
     expect(shell).toContain('productPreviewOpenerRef.current =');
     expect(shell).toContain(
-      'productPreviewOpenerRef.current?.focus({ preventScroll: true })',
+      'opener.element.focus({ preventScroll: true })',
     );
+    expect(shell).toContain('opener.sessionId !== sessionId');
+    expect(shell).toContain('currentIdentity.projectId !== opener.projectId');
+    expect(shell).toContain('!opener.element.isConnected');
     expect(shell).not.toContain(
       'onHandoffReady={() => setProductPreviewSurfaceActive(true)}',
     );
