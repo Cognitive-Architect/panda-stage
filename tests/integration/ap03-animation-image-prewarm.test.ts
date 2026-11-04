@@ -6,10 +6,15 @@ import {
 } from '../../src/domain';
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
 import { buildProductPreviewImagePlan } from '../../src/renderer/shell/productPreviewModel';
-import { ProductPreviewImageSession } from '../../src/renderer/shell/productPreviewImages';
+import {
+  MAX_RETAINED_PREVIEW_CANDIDATE_BYTES,
+  ProductPreviewImageSession,
+} from '../../src/renderer/shell/productPreviewImages';
 import {
   buildStageImageSourceKey,
   isStageFrameReady,
+  MAX_RETAINED_STAGE_BYTES,
+  MAX_RETAINED_STAGE_SOURCES,
   StageImageResourceSession,
   type StageImageLayerSource,
 } from '../../src/renderer/stage/stageImageResourceSession';
@@ -17,6 +22,7 @@ import { buildProjectWithAnimation, IDS } from '../unit/domain/testProject';
 
 const LAYER_A = '70000000-0000-4000-8000-000000000021';
 const LAYER_B = '70000000-0000-4000-8000-000000000022';
+const AP_REAL_02_PROJECT_ROOT = 'D:/PandaStage-Acceptance/issue966-ap-real-02';
 
 interface FakeImage {
   onload: ((event: Event) => unknown) | null;
@@ -27,13 +33,13 @@ interface FakeImage {
   succeed(): void;
 }
 
-function createImage(): FakeImage {
+function createImage(dimensions = 640): FakeImage {
   return {
     onload: null,
     onerror: null,
     src: '',
-    naturalWidth: 640,
-    naturalHeight: 640,
+    naturalWidth: dimensions,
+    naturalHeight: dimensions,
     succeed() {
       this.onload?.({} as Event);
     },
@@ -90,7 +96,12 @@ function animationLayer(
 }
 
 function build21FrameProject(
-  options: { includeSecond?: boolean; secondEndBehavior?: 'hold' | 'hide' } = {},
+  options: {
+    includeSecond?: boolean;
+    secondEndBehavior?: 'hold' | 'hide';
+    secondMode?: 'once' | 'loop';
+    secondStartTimeMs?: number;
+  } = {},
 ): Project {
   const base = buildProjectWithAnimation();
   const sourceAnimation = base.animations[0]!;
@@ -142,8 +153,8 @@ function build21FrameProject(
   const layers = [layerA];
   if (options.includeSecond ?? true) {
     layers.push(animationLayer(LAYER_B, {
-      startTimeMs: 1_000,
-      mode: 'once',
+      startTimeMs: options.secondStartTimeMs ?? 1_000,
+      mode: options.secondMode ?? 'once',
       endBehavior: options.secondEndBehavior ?? 'hold',
       x: 900,
       y: 600,
@@ -182,11 +193,11 @@ function buildAssetUrls(project: Project): Record<string, string> {
   );
 }
 
-function makeHarness(): { session: StageImageResourceSession; images: FakeImage[] } {
+function makeHarness(dimensions = 640): { session: StageImageResourceSession; images: FakeImage[] } {
   const images: FakeImage[] = [];
   const session = new StageImageResourceSession({
     createImage: () => {
-      const image = createImage();
+      const image = createImage(dimensions);
       images.push(image);
       return image as unknown as HTMLImageElement;
     },
@@ -1425,5 +1436,349 @@ describe('Issue #947 AP-03 decoded image prewarm integration', () => {
       animationFrame: { offset: { x: 60 } },
     });
     expect(evaluateLayer(hideProject, 1_040, LAYER_B).animationFrame?.offset.x).toBe(3);
+  });
+});
+
+interface ApReal02LoopMetrics {
+  loop: number;
+  readRequests: number;
+  previewCacheHits: number;
+  readAssetIds: string[];
+  blobUrlsCreated: number;
+  blobUrlAssetIds: string[];
+  blobUrlsRevoked: number;
+  revokedUrlAssetIds: string[];
+  stageImageCreations: number;
+  stageCacheHits: number;
+  exactReadyFrames: number;
+  oldFrameHoldFrames: number;
+  supersededTargets: number;
+}
+
+interface ApReal02ScenarioOptions {
+  loopCount: number;
+  previewFrameBytes: number;
+  stageDimensions: number;
+  instanceCount: 1 | 2;
+  readDelayMs: number;
+  stageDecodeDelayMs: number;
+}
+
+async function waitForPreviewReads(session: ProductPreviewImageSession): Promise<void> {
+  for (let turn = 0; turn < 100; turn += 1) {
+    const diagnostics = session.getDiagnostics();
+    if (diagnostics.inFlightCount === 0 && diagnostics.queuedOptionalCount === 0) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error('Synthetic Preview image reads did not settle.');
+}
+
+async function runApReal02Scenario(options: ApReal02ScenarioOptions): Promise<{
+  loops: ApReal02LoopMetrics[];
+  seekReplay: Omit<
+    ApReal02LoopMetrics,
+    'loop' | 'readAssetIds' | 'blobUrlAssetIds' | 'revokedUrlAssetIds'
+  >;
+  frameAssetIds: string[];
+  urlCreates: number;
+  urlRevokes: number;
+  previewBytes: number;
+  stageEntries: number;
+  stageBytes: number;
+}> {
+  const project = build21FrameProject(
+    options.instanceCount === 2
+      ? { secondStartTimeMs: 0, secondMode: 'loop' }
+      : { includeSecond: false },
+  );
+  const shot = project.shots[0]!;
+  const frameAssetIds = project.animations[0]!.frames.map((frame) => frame.assetId);
+  const frameIndexByAssetId = new Map(
+    frameAssetIds.map((assetId, index) => [assetId, index] as const),
+  );
+  const frameByteLengthByIndex = new Map(
+    frameAssetIds.map((_, index) => [index, options.previewFrameBytes + index] as const),
+  );
+  const frameIndexByByteLength = new Map(
+    [...frameByteLengthByIndex].map(([index, byteLength]) => [byteLength, index]),
+  );
+  const createdUrls: string[] = [];
+  const revokedUrls: string[] = [];
+  const readsByLoop = Array.from({ length: options.loopCount }, () => [] as string[]);
+  const createsByLoop = Array.from({ length: options.loopCount }, () => [] as string[]);
+  const revokesByLoop = Array.from({ length: options.loopCount }, () => [] as string[]);
+  const assetIdByUrl = new Map<string, string>();
+  let activeLoop = -1;
+  let urlSequence = 0;
+  const preview = new ProductPreviewImageSession({
+    readCanvasImage: async ({ assetId }) => {
+      const frameIndex = frameIndexByAssetId.get(assetId);
+      if (frameIndex === undefined) throw new Error(`Unexpected Preview read: ${assetId}`);
+      if (activeLoop >= 0) readsByLoop[activeLoop]?.push(assetId);
+      if (options.readDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, options.readDelayMs));
+      }
+      const byteLength = frameByteLengthByIndex.get(frameIndex)!;
+      return {
+        ok: true as const,
+        status: 'ready' as const,
+        assetId,
+        mimeType: 'image/png' as const,
+        width: options.stageDimensions,
+        height: options.stageDimensions,
+        byteLength,
+        bytes: new Uint8Array(byteLength),
+      };
+    },
+    createObjectUrl: (blob) => {
+      const frameIndex = frameIndexByByteLength.get(blob.size);
+      if (frameIndex === undefined) throw new Error(`Unexpected Blob size: ${blob.size}`);
+      const assetId = frameAssetIds[frameIndex]!;
+      const url = `blob:issue966-${frameIndex}-${urlSequence++}`;
+      createdUrls.push(url);
+      assetIdByUrl.set(url, assetId);
+      if (activeLoop >= 0) createsByLoop[activeLoop]?.push(assetId);
+      return url;
+    },
+    revokeObjectUrl: (url) => {
+      revokedUrls.push(url);
+      const assetId = assetIdByUrl.get(url);
+      if (assetId && activeLoop >= 0) revokesByLoop[activeLoop]?.push(assetId);
+    },
+  });
+  const stageHarness = makeHarness(options.stageDimensions);
+  const loops: ApReal02LoopMetrics[] = [];
+
+  const visit = async (timeMs: number): Promise<StageImageLayerSource[]> => {
+    const evaluated = evaluateShotAtTime(shot, timeMs, project);
+    const plan = buildProductPreviewImagePlan(project, shot, evaluated);
+    expect(new Set(plan.retainedAnimationAssetIds)).toEqual(new Set(frameAssetIds));
+    const loading = preview.prepare(AP_REAL_02_PROJECT_ROOT, project, plan);
+    const previewState = await loading;
+    expect(previewState?.status).toBe('ready');
+    if (!previewState) throw new Error('Preview session was disposed unexpectedly.');
+    await waitForPreviewReads(preview);
+    preview.commitScope(AP_REAL_02_PROJECT_ROOT, project, plan);
+
+    const assetUrls: Record<string, string> = {};
+    for (const [assetId, url] of Object.entries(previewState.urls)) {
+      if (url) assetUrls[assetId] = url;
+    }
+    const { current } = buildSources(project, evaluated, assetUrls);
+    const expectedFrameIndex = Math.floor(timeMs / 40) % frameAssetIds.length;
+    expect(current).toHaveLength(options.instanceCount);
+    expect(current.every((source) => source.assetId === frameAssetIds[expectedFrameIndex])).toBe(true);
+    expect(new Set(current.map((source) => source.sourceUrl)).size).toBe(1);
+    return current;
+  };
+
+  for (let loop = 0; loop < options.loopCount; loop += 1) {
+    activeLoop = loop;
+    const beforePreview = preview.getDiagnostics();
+    const beforeUrlCreates = createdUrls.length;
+    const beforeUrlRevokes = revokedUrls.length;
+    const beforeStage = stageHarness.session.getDiagnostics();
+    let exactReadyFrames = 0;
+    let oldFrameHoldFrames = 0;
+
+    for (let frame = 0; frame < frameAssetIds.length; frame += 1) {
+      const current = await visit((loop * frameAssetIds.length + frame) * 40);
+      const previous = stageHarness.session.getSnapshot();
+      stageHarness.session.reconcile(current, () => {});
+      let stageState = stageHarness.session.getSnapshot();
+      if (
+        !stageState.ready &&
+        current.some((source) => {
+          const heldUrl = previous.sourceUrls.get(source.id);
+          return heldUrl !== undefined && heldUrl !== source.sourceUrl;
+        })
+      ) {
+        oldFrameHoldFrames += 1;
+      }
+      if (!stageState.ready && options.stageDecodeDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, options.stageDecodeDelayMs));
+      }
+      settleImageLoads(stageHarness.images);
+      stageState = stageHarness.session.getSnapshot();
+      expect(isStageFrameReady({
+        hasModel: true,
+        layerCount: current.length,
+        error: stageState.error,
+        imageState: stageState,
+        sourceKey: buildStageImageSourceKey(current),
+      })).toBe(true);
+      expect(stageState.sourceUrls.size).toBe(options.instanceCount);
+      if (options.instanceCount === 2) {
+        expect(stageState.images.get(current[1]!.id)).toBe(
+          stageState.images.get(current[0]!.id),
+        );
+      }
+      exactReadyFrames += 1;
+    }
+
+    const afterPreview = preview.getDiagnostics();
+    const afterStage = stageHarness.session.getDiagnostics();
+    loops.push({
+      loop,
+      readRequests: afterPreview.readRequests - beforePreview.readRequests,
+      previewCacheHits: afterPreview.cacheHits - beforePreview.cacheHits,
+      readAssetIds: readsByLoop[loop]!.slice(),
+      blobUrlsCreated: createdUrls.length - beforeUrlCreates,
+      blobUrlAssetIds: createsByLoop[loop]!.slice(),
+      blobUrlsRevoked: revokedUrls.length - beforeUrlRevokes,
+      revokedUrlAssetIds: revokesByLoop[loop]!.slice(),
+      stageImageCreations: afterStage.imageCreations - beforeStage.imageCreations,
+      stageCacheHits: afterStage.cacheHits - beforeStage.cacheHits,
+      exactReadyFrames,
+      oldFrameHoldFrames,
+      supersededTargets: 0,
+    });
+  }
+
+  activeLoop = -1;
+  const beforeSeekPreview = preview.getDiagnostics();
+  const beforeSeekCreates = createdUrls.length;
+  const beforeSeekRevokes = revokedUrls.length;
+  const beforeSeekStage = stageHarness.session.getDiagnostics();
+  let seekExactReadyFrames = 0;
+  let seekOldFrameHoldFrames = 0;
+  if (options.loopCount > 1) {
+    for (const frame of [7, 8, 7, 8]) {
+      const current = await visit((options.loopCount * frameAssetIds.length + frame) * 40);
+      const previous = stageHarness.session.getSnapshot();
+      stageHarness.session.reconcile(current, () => {});
+      const pending = stageHarness.session.getSnapshot();
+      if (
+        !pending.ready &&
+        current.some((source) => {
+          const heldUrl = previous.sourceUrls.get(source.id);
+          return heldUrl !== undefined && heldUrl !== source.sourceUrl;
+        })
+      ) {
+        seekOldFrameHoldFrames += 1;
+      }
+      settleImageLoads(stageHarness.images);
+      const state = stageHarness.session.getSnapshot();
+      expect(isStageFrameReady({
+        hasModel: true,
+        layerCount: current.length,
+        error: state.error,
+        imageState: state,
+        sourceKey: buildStageImageSourceKey(current),
+      })).toBe(true);
+      seekExactReadyFrames += 1;
+    }
+  }
+  const afterSeekPreview = preview.getDiagnostics();
+  const afterSeekStage = stageHarness.session.getDiagnostics();
+  const seekReplay = {
+    readRequests: afterSeekPreview.readRequests - beforeSeekPreview.readRequests,
+    previewCacheHits: afterSeekPreview.cacheHits - beforeSeekPreview.cacheHits,
+    blobUrlsCreated: createdUrls.length - beforeSeekCreates,
+    blobUrlsRevoked: revokedUrls.length - beforeSeekRevokes,
+    stageImageCreations: afterSeekStage.imageCreations - beforeSeekStage.imageCreations,
+    stageCacheHits: afterSeekStage.cacheHits - beforeSeekStage.cacheHits,
+    exactReadyFrames: seekExactReadyFrames,
+    oldFrameHoldFrames: seekOldFrameHoldFrames,
+    supersededTargets: 0,
+  };
+
+  const previewBytes = preview.getDiagnostics().readyCacheBytes;
+  const finalStage = stageHarness.session.getDiagnostics();
+  preview.dispose();
+  stageHarness.session.dispose();
+  return {
+    loops,
+    seekReplay,
+    frameAssetIds,
+    urlCreates: createdUrls.length,
+    urlRevokes: revokedUrls.length,
+    previewBytes,
+    stageEntries: finalStage.retainedEntries,
+    stageBytes: finalStage.retainedBytes,
+  };
+}
+
+describe('Issue #966 AP-REAL-02 animation loop resource retention', () => {
+  it('reuses all in-budget frames across three loops and seek/replay', async () => {
+    const result = await runApReal02Scenario({
+      loopCount: 3,
+      previewFrameBytes: 512 * 1024,
+      stageDimensions: 512,
+      instanceCount: 2,
+      readDelayMs: 20,
+      stageDecodeDelayMs: 20,
+    });
+    const ids = result.frameAssetIds;
+    expect(result.loops).toEqual([
+      { loop: 0, readRequests: 21, readAssetIds: ids, blobUrlsCreated: 21,
+        blobUrlAssetIds: ids, blobUrlsRevoked: 0, revokedUrlAssetIds: [],
+        previewCacheHits: 63, stageImageCreations: 21, stageCacheHits: 0,
+        exactReadyFrames: 21, oldFrameHoldFrames: 20,
+        supersededTargets: 0 },
+      { loop: 1, readRequests: 0, readAssetIds: [], blobUrlsCreated: 0,
+        blobUrlAssetIds: [], blobUrlsRevoked: 0, revokedUrlAssetIds: [],
+        previewCacheHits: 84, stageImageCreations: 0, stageCacheHits: 42,
+        exactReadyFrames: 21, oldFrameHoldFrames: 0,
+        supersededTargets: 0 },
+      { loop: 2, readRequests: 0, readAssetIds: [], blobUrlsCreated: 0,
+        blobUrlAssetIds: [], blobUrlsRevoked: 0, revokedUrlAssetIds: [],
+        previewCacheHits: 84, stageImageCreations: 0, stageCacheHits: 42,
+        exactReadyFrames: 21, oldFrameHoldFrames: 0,
+        supersededTargets: 0 },
+    ]);
+    expect(result.seekReplay).toEqual({
+      readRequests: 0,
+      previewCacheHits: 16,
+      blobUrlsCreated: 0,
+      blobUrlsRevoked: 0,
+      stageImageCreations: 0,
+      stageCacheHits: 8,
+      exactReadyFrames: 4,
+      oldFrameHoldFrames: 0,
+      supersededTargets: 0,
+    });
+    expect(result.urlCreates).toBe(21);
+    expect(result.urlRevokes).toBe(result.urlCreates);
+    expect(result.previewBytes).toBeLessThanOrEqual(MAX_RETAINED_PREVIEW_CANDIDATE_BYTES);
+    expect(result.stageEntries).toBeLessThanOrEqual(MAX_RETAINED_STAGE_SOURCES);
+    expect(result.stageBytes).toBeLessThanOrEqual(MAX_RETAINED_STAGE_BYTES);
+  });
+
+  it('evicts over-budget loop assets while both resource caches stay bounded', async () => {
+    const result = await runApReal02Scenario({
+      loopCount: 1,
+      previewFrameBytes: 4 * 1024 * 1024,
+      stageDimensions: 1024,
+      instanceCount: 1,
+      readDelayMs: 0,
+      stageDecodeDelayMs: 0,
+    });
+    const loop = result.loops[0]!;
+    expect(loop).toMatchObject({
+      readRequests: 24,
+      blobUrlsCreated: 24,
+      blobUrlsRevoked: 8,
+      stageImageCreations: 21,
+      exactReadyFrames: 21,
+      oldFrameHoldFrames: 20,
+      supersededTargets: 0,
+    });
+    const readCounts = new Map<string, number>();
+    loop.readAssetIds.forEach((assetId) =>
+      readCounts.set(assetId, (readCounts.get(assetId) ?? 0) + 1),
+    );
+    expect([...readCounts].filter(([, count]) => count > 1).map(([id]) => id))
+      .toEqual(result.frameAssetIds.slice(0, 3));
+    expect(loop.blobUrlAssetIds).toHaveLength(loop.blobUrlsCreated);
+    expect(loop.revokedUrlAssetIds).toHaveLength(loop.blobUrlsRevoked);
+    expect(result.previewBytes).toBeLessThanOrEqual(
+      MAX_RETAINED_PREVIEW_CANDIDATE_BYTES + 4 * 1024 * 1024 + 21,
+    );
+    expect(result.stageEntries).toBeLessThanOrEqual(MAX_RETAINED_STAGE_SOURCES);
+    expect(result.stageBytes).toBeLessThanOrEqual(MAX_RETAINED_STAGE_BYTES);
+    expect(result.urlRevokes).toBe(result.urlCreates);
   });
 });

@@ -110,11 +110,29 @@ export interface ProductPreviewImagePlan {
   candidateAssetIds: string[];
   /** Upcoming frame resources ordered by each instance's next playback time. */
   recentAnimationAssetIds: string[];
+  /** Resources belonging to active visible loops; retained without eager reads. */
+  retainedAnimationAssetIds?: string[];
   mouthFallbacks: ProductPreviewMouthFallback[];
 }
 
 export const PRODUCT_PREVIEW_ANIMATION_PREWARM_FRAMES = 3;
 export const PRODUCT_PREVIEW_MAX_RECENT_ANIMATION_ASSETS = 12;
+/** Bound each evaluated retention scope to the existing 64-entry image cache. */
+export const PRODUCT_PREVIEW_MAX_RETAINED_LOOP_ASSETS = 64;
+
+// Animation entries are immutable within a Project snapshot; reuse their index
+// across evaluated frames without keeping replaced snapshots alive.
+const animationFrameAssetIdIndex = new WeakMap<object, ReadonlySet<string>>();
+
+function getAnimationFrameAssetIdIndex(
+  animation: Project['animations'][number],
+): ReadonlySet<string> {
+  const cached = animationFrameAssetIdIndex.get(animation);
+  if (cached) return cached;
+  const index = new Set(animation.frames.map((frame) => frame.assetId));
+  animationFrameAssetIdIndex.set(animation, index);
+  return index;
+}
 
 function appendUnique(target: string[], ids: readonly string[]): void {
   for (const id of ids) {
@@ -223,6 +241,76 @@ function upcomingAnimationFrameAssetIds(
   return assetIds;
 }
 
+function retainedLoopAnimationAssetIds(
+  project: Project,
+  shot: Shot,
+  timeMs: number,
+): string[] {
+  const activeLoops: Array<{
+    frames: Project['animations'][number]['frames'];
+    firstFrameIndex: number;
+    frameCount: number;
+  }> = [];
+
+  for (const layer of shot.layers) {
+    if (
+      !layer.visible ||
+      layer.source.kind !== 'animation' ||
+      layer.animationPlayback?.mode !== 'loop'
+    ) {
+      continue;
+    }
+    const animationId = layer.source.animationId;
+    const startTimeMs = layer.startTimeMs ?? 0;
+    if (timeMs < startTimeMs) continue;
+    const animation = project.animations.find(
+      (candidate) => candidate.id === animationId,
+    );
+    if (!animation || animation.frames.length === 0) continue;
+
+    const firstFrameIndex =
+      Math.floor(
+        (Math.max(0, timeMs - startTimeMs) * animation.source.sourceFps) / 1_000,
+      ) %
+      animation.frames.length;
+    activeLoops.push({
+      frames: animation.frames,
+      firstFrameIndex,
+      frameCount: Math.min(
+        animation.frames.length,
+        PRODUCT_PREVIEW_MAX_RETAINED_LOOP_ASSETS,
+      ),
+    });
+  }
+
+  const retainedAssetIds = new Set<string>();
+  let inspectedFrameCount = 0;
+  for (
+    let frameOffset = 0;
+    frameOffset < PRODUCT_PREVIEW_MAX_RETAINED_LOOP_ASSETS &&
+    activeLoops.length > 0;
+    frameOffset += 1
+  ) {
+    let hasMoreFrames = false;
+    for (const loop of activeLoops) {
+      if (frameOffset >= loop.frameCount) continue;
+      hasMoreFrames = true;
+      if (inspectedFrameCount >= PRODUCT_PREVIEW_MAX_RETAINED_LOOP_ASSETS) {
+        break;
+      }
+      inspectedFrameCount += 1;
+      const frameIndex =
+        (loop.firstFrameIndex + frameOffset) % loop.frames.length;
+      const frame = loop.frames[frameIndex];
+      if (frame) retainedAssetIds.add(frame.assetId);
+    }
+    if (inspectedFrameCount >= PRODUCT_PREVIEW_MAX_RETAINED_LOOP_ASSETS) break;
+    if (!hasMoreFrames) break;
+  }
+
+  return [...retainedAssetIds];
+}
+
 export function buildProductPreviewImagePlan(
   project: Project,
   shot: Shot,
@@ -269,26 +357,38 @@ export function buildProductPreviewImagePlan(
     ...requiredAssetIds,
     ...fallbackAssetIds,
   ]);
-  const animationFrameAssetIds = new Set(
+  const animationFrameAssetIdIndexes = new Set(
     shot.layers.flatMap((layer) => {
       if (layer.source.kind !== 'animation') return [];
       const animationId = layer.source.animationId;
-      return project.animations.find(
+      const animation = project.animations.find(
         (animation) => animation.id === animationId,
-      )?.frames.map((frame) => frame.assetId) ?? [];
+      );
+      return animation ? [getAnimationFrameAssetIdIndex(animation)] : [];
     }),
   );
+  const isAnimationFrameAsset = (assetId: string): boolean => {
+    for (const index of animationFrameAssetIdIndexes) {
+      if (index.has(assetId)) return true;
+    }
+    return false;
+  };
   const recentAnimationAssetIds = upcomingAnimationFrameAssetIds(
     project,
     shot,
     evaluatedShot.timeMs,
     reservedAssetIds,
   );
+  const retainedAnimationAssetIds = retainedLoopAnimationAssetIds(
+    project,
+    shot,
+    evaluatedShot.timeMs,
+  );
   appendUnique(candidateAssetIds, recentAnimationAssetIds);
   appendUnique(
     candidateAssetIds,
     resolvedCandidateAssetIds.filter(
-      (assetId) => !animationFrameAssetIds.has(assetId),
+      (assetId) => !isAnimationFrameAsset(assetId),
     ),
   );
 
@@ -298,7 +398,7 @@ export function buildProductPreviewImagePlan(
     currentShotAssetIds.filter(
       (assetId) =>
         !reservedAssetIds.has(assetId) &&
-        !animationFrameAssetIds.has(assetId),
+        !isAnimationFrameAsset(assetId),
     ),
   );
   return {
@@ -306,6 +406,7 @@ export function buildProductPreviewImagePlan(
     fallbackAssetIds,
     candidateAssetIds,
     recentAnimationAssetIds,
+    retainedAnimationAssetIds,
     mouthFallbacks,
   };
 }
@@ -320,6 +421,7 @@ export function gateProductPreviewImagePrewarm(
     ...plan,
     candidateAssetIds: [],
     recentAnimationAssetIds: [],
+    retainedAnimationAssetIds: [],
   };
 }
 
