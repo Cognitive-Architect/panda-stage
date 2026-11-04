@@ -915,6 +915,14 @@ export function useProductPreviewImages(
         );
         return `${assetId}:${asset?.sha256 ?? 'missing'}`;
       }),
+      retainedAnimation: current.retainedAnimationAssetIds
+        .map((assetId) => {
+          const asset = project.assets.find(
+            (candidate) => candidate.id === assetId,
+          );
+          return `${assetId}:${asset?.sha256 ?? 'missing'}`;
+        })
+        .sort(),
       mouthFallbacks: current.mouthFallbacks
         .map((rule) => `${rule.sourceAssetId}->${rule.fallbackAssetId}`)
         .sort(),

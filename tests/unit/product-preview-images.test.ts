@@ -21,6 +21,7 @@ import {
   isProductPreviewMouthFallbackFailure,
   projectProductPreviewMouth,
   PRODUCT_PREVIEW_ANIMATION_PREWARM_FRAMES,
+  PRODUCT_PREVIEW_MAX_RETAINED_LOOP_ASSETS,
   PRODUCT_PREVIEW_MAX_RECENT_ANIMATION_ASSETS,
   type ProductPreviewImagePlan,
 } from '../../src/renderer/shell/productPreviewModel';
@@ -474,6 +475,92 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
       expect(ended.recentAnimationAssetIds).toEqual([]);
       expect(ended.retainedAnimationAssetIds).toEqual([]);
     }
+  });
+
+  it('bounds long-loop retention to a sliding 64-frame window around the current frame', () => {
+    const baseProject = animationPreviewProject([
+      {
+        id: IDS.animationLayer,
+        startTimeMs: 0,
+        mode: 'loop',
+        endBehavior: 'hold',
+      },
+    ]);
+    const baseAnimation = baseProject.animations[0]!;
+    const longFrameCount = 256;
+    const longFrameAssets = Array.from({ length: longFrameCount }, (_, index) => ({
+      id: `90000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      kind: 'image' as const,
+      name: `long-loop-frame-${index}`,
+      relativePath: `assets/long-loop-frame-${index}.png`,
+      mimeType: 'image/png',
+      width: 100,
+      height: 100,
+      sha256: index.toString(16).padStart(64, '0'),
+      usage: 'uncategorized' as const,
+      keywords: [],
+    }));
+    const frameRecords = longFrameAssets.map((asset, ordinal) => ({
+      ...baseAnimation.frames[0]!,
+      ordinal,
+      sourceFrameIndex: ordinal,
+      assetId: asset.id,
+      sha256: asset.sha256,
+      startMs: ordinal * 100,
+    }));
+    let fullFrameMapReads = 0;
+    const indexedFrames = new Proxy(frameRecords, {
+      get(target, property, receiver) {
+        if (property === 'map') fullFrameMapReads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const longAnimation = {
+      ...baseAnimation,
+      durationMs: longFrameCount * 100,
+      source: {
+        ...baseAnimation.source,
+        endFrameIndex: longFrameCount - 1,
+      },
+      frames: indexedFrames,
+    };
+    // The persisted schema currently caps clips at 24 frames. The planner's
+    // guard is still exercised with a structurally valid longer in-memory
+    // value so future schema growth cannot reintroduce per-frame full scans.
+    const project: Project = {
+      ...baseProject,
+      assets: [...baseProject.assets, ...longFrameAssets],
+      animations: [longAnimation],
+      shots: baseProject.shots.map((shot) => ({
+        ...shot,
+        durationMs: 40_000,
+      })),
+    };
+    const shot = project.shots[0]!;
+    const expectedWindow = longFrameAssets
+      .slice(50, 50 + PRODUCT_PREVIEW_MAX_RETAINED_LOOP_ASSETS)
+      .map((asset) => asset.id);
+    const plan = buildProductPreviewImagePlan(
+      project,
+      shot,
+      evaluateShotAtTime(shot, 5_000, project),
+    );
+    const nextPlan = buildProductPreviewImagePlan(
+      project,
+      shot,
+      evaluateShotAtTime(shot, 5_100, project),
+    );
+
+    expect(PRODUCT_PREVIEW_MAX_RETAINED_LOOP_ASSETS).toBe(64);
+    expect(plan.retainedAnimationAssetIds).toEqual(expectedWindow);
+    expect(plan.retainedAnimationAssetIds).toHaveLength(64);
+    expect(nextPlan.retainedAnimationAssetIds).toEqual(
+      longFrameAssets
+        .slice(51, 51 + PRODUCT_PREVIEW_MAX_RETAINED_LOOP_ASSETS)
+        .map((asset) => asset.id),
+    );
+    expect(nextPlan.retainedAnimationAssetIds).toHaveLength(64);
+    expect(fullFrameMapReads).toBe(1);
   });
 
   it('requires and preloads Head through the existing Product Preview image plan', async () => {
