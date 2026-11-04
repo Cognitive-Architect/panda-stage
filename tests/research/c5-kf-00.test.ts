@@ -33,6 +33,10 @@ import {
   type ResearchKeyframe,
   type ResearchPoint,
 } from '../../scripts/research/c5-kf-00/pose';
+import {
+  buildInteractivePreviewHtml,
+  type InteractivePreviewScenario,
+} from '../../scripts/research/c5-kf-00/interactive-preview';
 import { buildProject, IDS } from '../unit/domain/testProject';
 
 const OUTPUT_DIR =
@@ -46,6 +50,9 @@ const REAL_TARGET_PART_NAME = 'Part 4';
 const REAL_PIVOT_SOURCE = { x: 823, y: 402 } satisfies ResearchPoint;
 const TEST_FRAME_INDEXES = [0, 6, 12, 18, 24] as const;
 const TEST_FRAME_TIMES = TEST_FRAME_INDEXES.map((index) => frameTimeMs(index));
+const PLAYBACK_FRAME_TIMES = Array.from({ length: 25 }, (_, index) =>
+  frameTimeMs(index),
+);
 const CONTACT_VIEW_BOX = '650 125 1000 850';
 const ARTIFACT_DIR = path.resolve(
   process.cwd(),
@@ -66,6 +73,8 @@ interface SceneFrame {
   timeMs: number;
   pose: { offsetX: number; offsetY: number; rotationDeg: number; scale: number };
   innerSvg: string;
+  fullSceneSvg?: string;
+  partFocusSvg?: string;
   matrices: ReadonlyMap<string, CharacterPartTransform>;
 }
 
@@ -77,6 +86,8 @@ interface ResearchArtifacts {
   syntheticNeutralSvg: string;
   privateRealSvg: string | null;
   privateRealShoulderSvg: string | null;
+  privateRealDiagnosticSvg: string | null;
+  privateRealDiagnosticShoulderSvg: string | null;
   receiptPath: string;
   realAsset: Record<string, unknown>;
   synthetic: Record<string, unknown>;
@@ -128,8 +139,41 @@ const realGoalPose: ResearchKeyframe = {
   rotationDeg: -12,
   scale: 1,
 };
+const syntheticVisibilityGoal: ResearchKeyframe = {
+  timeMs: 1_000,
+  offsetX: 0,
+  offsetY: 0,
+  rotationDeg: -30,
+  scale: 1,
+};
+const realDiagnosticGoalPose: ResearchKeyframe = {
+  timeMs: 1_000,
+  offsetX: 0,
+  offsetY: 0,
+  rotationDeg: -30,
+  scale: 1,
+};
 
 let artifacts: ResearchArtifacts | null = null;
+const previewScenarios: InteractivePreviewScenario[] = [];
+const previewAssetReferences = new Map<string, string>();
+const previewAssetDefinitions = new Map<string, string>();
+
+function registerPreviewAssets(artByAssetId: ReadonlyMap<string, PartArt>): void {
+  for (const [assetId, art] of artByAssetId) {
+    if (previewAssetReferences.has(assetId)) continue;
+    const symbolId = `c5-kf-00-art-${previewAssetReferences.size}`;
+    previewAssetReferences.set(assetId, symbolId);
+    previewAssetDefinitions.set(
+      assetId,
+      `<symbol id="${symbolId}" viewBox="0 0 ${art.width} ${art.height}" preserveAspectRatio="none">${art.svg}</symbol>`,
+    );
+  }
+}
+
+function previewAssetDefinitionMarkup(): string {
+  return [...previewAssetDefinitions.values()].join('');
+}
 
 function sha256(filePath: string): string {
   return createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
@@ -137,6 +181,20 @@ function sha256(filePath: string): string {
 
 function sha256Text(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+function assertPrivateOutputOutsideRepository(): void {
+  const repositoryRoot = path.resolve(process.cwd());
+  const outputDir = path.resolve(OUTPUT_DIR);
+  const relativePath = path.relative(repositoryRoot, outputDir);
+  const isInsideRepository =
+    relativePath === '' ||
+    (!path.isAbsolute(relativePath) &&
+      relativePath !== '..' &&
+      !relativePath.startsWith(`..${path.sep}`));
+  if (isInsideRepository) {
+    throw new Error('Private C5-KF-00 outputs must stay outside the repository.');
+  }
 }
 
 function formatNumber(value: number): string {
@@ -206,6 +264,12 @@ function sceneInnerSvg(input: {
   };
   pivotCharacter?: ResearchPoint;
   pivotPose?: { offsetX: number; offsetY: number };
+  includeBackground?: boolean;
+  assetReferences?: ReadonlyMap<string, string>;
+  highlightPartId?: string;
+  subduedPartOpacity?: number;
+  ghostPartId?: string;
+  ghostMatrices?: ReadonlyMap<string, CharacterPartTransform>;
 }): string {
   const parts = [...input.parts].sort(
     (left, right) => left.drawOrder - right.drawOrder,
@@ -218,7 +282,20 @@ function sceneInnerSvg(input: {
       if (!matrix || !art) {
         throw new Error(`Missing research art or transform for ${part.partId}.`);
       }
-      return `<g transform="${matrixText(matrix)}"><svg x="0" y="0" width="${art.width}" height="${art.height}" viewBox="0 0 ${art.width} ${art.height}" overflow="hidden">${art.svg}</svg></g>`;
+      const assetReference = input.assetReferences?.get(part.assetId);
+      const artMarkup = `<svg x="0" y="0" width="${art.width}" height="${art.height}" viewBox="0 0 ${art.width} ${art.height}" overflow="hidden">${assetReference ? `<use href="#${assetReference}" x="0" y="0" width="${art.width}" height="${art.height}"/>` : art.svg}</svg>`;
+      const ghostMatrix =
+        part.partId === input.ghostPartId
+          ? input.ghostMatrices?.get(part.partId)
+          : undefined;
+      const ghostMarkup = ghostMatrix
+        ? `<g class="start-ghost" opacity="0.26" transform="${matrixText(ghostMatrix)}">${artMarkup}</g>`
+        : '';
+      const opacity =
+        input.highlightPartId && part.partId !== input.highlightPartId
+          ? ` opacity="${formatNumber(input.subduedPartOpacity ?? 0.18)}"`
+          : '';
+      return `${ghostMarkup}<g${opacity} transform="${matrixText(matrix)}">${artMarkup}</g>`;
     })
     .join('');
   const pivotMarkup = input.pivotCharacter
@@ -235,7 +312,11 @@ function sceneInnerSvg(input: {
         return `<g transform="translate(${formatNumber(worldPivot.x)} ${formatNumber(worldPivot.y)})"><circle r="10" fill="#f7d547" stroke="#163e30" stroke-width="4"/><path d="M-18 0H18M0 -18V18" stroke="#163e30" stroke-width="3"/></g>`;
       })()
     : '';
-  return `<rect x="0" y="0" width="1920" height="1080" fill="#e9ece8"/><g transform="${matrixText(layerOwnerMatrix(input.ownerTransform))}">${partMarkup}</g>${pivotMarkup}`;
+  const background =
+    input.includeBackground === false
+      ? ''
+      : '<rect x="0" y="0" width="1920" height="1080" fill="#e9ece8"/>';
+  return `${background}<g transform="${matrixText(layerOwnerMatrix(input.ownerTransform))}">${partMarkup}</g>${pivotMarkup}`;
 }
 
 function sceneSvg(innerSvg: string): string {
@@ -472,6 +553,62 @@ function transformedBounds(
   };
 }
 
+function previewViewBox(
+  parts: readonly LayerVisualPart[],
+  frames: readonly SceneFrame[],
+  ownerTransform: {
+    x: number;
+    y: number;
+    scaleX: number;
+    scaleY: number;
+    flipX: boolean;
+    rotationDeg: number;
+  },
+  pivot?: ResearchPoint,
+): string {
+  const ownerMatrix = layerOwnerMatrix(ownerTransform);
+  const points: ResearchPoint[] = [];
+  for (const frame of frames) {
+    for (const part of parts) {
+      const matrix = frame.matrices.get(part.partId);
+      if (!matrix) throw new Error(`Missing preview bounds matrix for ${part.partId}.`);
+      const corners = [
+        { x: 0, y: 0 },
+        { x: part.localRect.width, y: 0 },
+        { x: part.localRect.width, y: part.localRect.height },
+        { x: 0, y: part.localRect.height },
+      ];
+      for (const corner of corners) {
+        points.push(
+          transformPoint(ownerMatrix, transformPoint(matrix, corner)),
+        );
+      }
+    }
+  }
+  if (pivot) {
+    const point = transformPoint(ownerMatrix, pivot);
+    points.push(
+      { x: point.x - 24, y: point.y - 24 },
+      { x: point.x + 24, y: point.y + 24 },
+    );
+  }
+  if (points.length === 0) throw new Error('Preview view box has no visible parts.');
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  const left = Math.min(...xs);
+  const top = Math.min(...ys);
+  const width = Math.max(...xs) - left;
+  const height = Math.max(...ys) - top;
+  const paddingX = Math.max(28, width * 0.12);
+  const paddingY = Math.max(28, height * 0.12);
+  return [
+    left - paddingX,
+    top - paddingY,
+    width + paddingX * 2,
+    height + paddingY * 2,
+  ].map(formatNumber).join(' ');
+}
+
 function matricesFor(parts: readonly LayerVisualPart[]) {
   return new Map(
     parts.map((part) => {
@@ -499,8 +636,11 @@ function sceneFrames(input: {
   artByAssetId: ReadonlyMap<string, PartArt>;
   showPivotMarker?: boolean;
   goal: ResearchKeyframe;
+  frameTimesMs?: readonly number[];
+  includePreviewModes?: boolean;
+  assetReferences?: ReadonlyMap<string, string>;
 }): SceneFrame[] {
-  return TEST_FRAME_TIMES.map((timeMs) => {
+  return (input.frameTimesMs ?? TEST_FRAME_TIMES).map((timeMs) => {
     const pose = interpolatePoseAtTime(staticPose, input.goal, timeMs);
     const matrices = new Map(input.baseMatrices);
     const base = input.baseMatrices.get(input.targetPart.partId)!;
@@ -508,21 +648,111 @@ function sceneFrames(input: {
       input.targetPart.partId,
       applyPoseToImageTransform(base, input.pivot, pose),
     );
+    const innerSvg = sceneInnerSvg({
+      parts: input.parts,
+      matrices,
+      artByAssetId: input.artByAssetId,
+      ownerTransform: input.ownerTransform,
+      ...(input.showPivotMarker === false
+        ? {}
+        : { pivotCharacter: input.pivot, pivotPose: pose }),
+    });
     return {
       timeMs,
       pose,
       matrices,
-      innerSvg: sceneInnerSvg({
-        parts: input.parts,
-        matrices,
-        artByAssetId: input.artByAssetId,
-        ownerTransform: input.ownerTransform,
-        ...(input.showPivotMarker === false
-          ? {}
-          : { pivotCharacter: input.pivot, pivotPose: pose }),
-      }),
+      innerSvg,
+      ...(input.includePreviewModes
+        ? {
+            fullSceneSvg: sceneInnerSvg({
+              parts: input.parts,
+              matrices,
+              artByAssetId: input.artByAssetId,
+              ownerTransform: input.ownerTransform,
+              includeBackground: true,
+              assetReferences: input.assetReferences,
+            }),
+            partFocusSvg: sceneInnerSvg({
+              parts: input.parts,
+              matrices,
+              artByAssetId: input.artByAssetId,
+              ownerTransform: input.ownerTransform,
+              pivotCharacter: input.pivot,
+              pivotPose: pose,
+              assetReferences: input.assetReferences,
+              highlightPartId: input.targetPart.partId,
+              subduedPartOpacity: 0.18,
+              ghostPartId: input.targetPart.partId,
+              ghostMatrices: input.baseMatrices,
+            }),
+          }
+        : {}),
     };
   });
+}
+
+function addInteractivePreviewScenario(input: {
+  id: string;
+  title: string;
+  targetLabel: string;
+  note: string;
+  parts: readonly LayerVisualPart[];
+  baseMatrices: ReadonlyMap<string, CharacterPartTransform>;
+  targetPart: LayerVisualPart;
+  pivot: ResearchPoint;
+  ownerTransform: {
+    x: number;
+    y: number;
+    scaleX: number;
+    scaleY: number;
+    flipX: boolean;
+    rotationDeg: number;
+  };
+  artByAssetId: ReadonlyMap<string, PartArt>;
+  goal: ResearchKeyframe;
+}): SceneFrame[] {
+  registerPreviewAssets(input.artByAssetId);
+  const frames = sceneFrames({
+    parts: input.parts,
+    baseMatrices: input.baseMatrices,
+    targetPart: input.targetPart,
+    pivot: input.pivot,
+    ownerTransform: input.ownerTransform,
+    artByAssetId: input.artByAssetId,
+    showPivotMarker: false,
+    goal: input.goal,
+    frameTimesMs: PLAYBACK_FRAME_TIMES,
+    includePreviewModes: true,
+    assetReferences: previewAssetReferences,
+  });
+  const fullParts = input.parts.filter((part) => part.visible !== false);
+  const focusParts = fullParts.filter(
+    (part) => part.partId === input.targetPart.partId,
+  );
+  previewScenarios.push({
+    id: input.id,
+    title: input.title,
+    targetLabel: input.targetLabel,
+    note: input.note,
+    fullViewBox: previewViewBox(
+      fullParts,
+      frames,
+      input.ownerTransform,
+    ),
+    focusViewBox: previewViewBox(
+      focusParts,
+      frames,
+      input.ownerTransform,
+      input.pivot,
+    ),
+    frames: frames.map((frame) => ({
+      timeMs: frame.timeMs,
+      angleDeg: frame.pose.rotationDeg,
+      fullScene: frame.fullSceneSvg!,
+      partFocus: frame.partFocusSvg!,
+    })),
+  });
+  return frames;
 }
 
 function readAssetArt(
@@ -625,6 +855,7 @@ function createRealArtifacts() {
       projectPathAvailable: fs.existsSync(PRIVATE_PROJECT_DIR),
     };
   }
+  assertPrivateOutputOutsideRepository();
 
   const sourceShaBefore = sha256(PRIVATE_FLA_PATH);
   const savedProject = JSON.parse(
@@ -760,11 +991,38 @@ function createRealArtifacts() {
     frames,
     '720 300 220 220',
   );
+  const diagnosticFrames = sceneFrames({
+    parts: visual.parts,
+    baseMatrices,
+    targetPart: targetVisual,
+    pivot,
+    ownerTransform: visual.ownerTransform,
+    artByAssetId,
+    showPivotMarker: false,
+    goal: realDiagnosticGoalPose,
+  });
+  const diagnosticContact = contactSheetSvg(
+    'DIAGNOSTIC ONLY · Part 4 · 0° to −30° · seam not approved',
+    diagnosticFrames,
+  );
+  const diagnosticShoulderContact = contactSheetSvg(
+    'DIAGNOSTIC ONLY · Part 4 shoulder · 0° to −30°',
+    diagnosticFrames,
+    '720 300 220 220',
+  );
   const sourceShaAfter = sha256(PRIVATE_FLA_PATH);
   const siblingParts = visual.parts.filter(
     (part) => part.partId !== targetVisual.partId,
   );
   const unchangedPartMatrices = frames.every((frame) =>
+    siblingParts.every((part) =>
+      matrixClose(
+        baseMatrices.get(part.partId)!,
+        frame.matrices.get(part.partId)!,
+      ),
+    ),
+  );
+  const diagnosticSiblingMatricesUnchanged = diagnosticFrames.every((frame) =>
     siblingParts.every((part) =>
       matrixClose(
         baseMatrices.get(part.partId)!,
@@ -807,22 +1065,67 @@ function createRealArtifacts() {
     angleRangeTestedDeg: [0, -12],
     frameTimesMs: frames.map((frame) => frame.timeMs),
     frameAnglesDeg: frames.map((frame) => frame.pose.rotationDeg),
+    diagnosticAngleRangeDeg: [0, -30],
+    diagnosticFrameTimesMs: diagnosticFrames.map((frame) => frame.timeMs),
+    diagnosticFrameAnglesDeg: diagnosticFrames.map(
+      (frame) => frame.pose.rotationDeg,
+    ),
+    diagnosticSiblingMatricesUnchanged,
+    diagnosticVisualStatus: 'DIAGNOSTIC_ONLY_PENDING_OWNER_REVIEW',
     oneCalibrationAttempt: 1,
     pivotCalibrationMethod:
       'Center of the Part 4 alpha top band, confirmed against the already completed #923 Part preview; source coordinates are uncropped original-image pixels.',
     ownerTransformFixed: true,
     siblingTransformsUnchanged: unchangedPartMatrices,
     projectSnapshotUnchanged: projectBefore === JSON.stringify(project),
+    visualParts: visual.parts,
+    targetVisual,
+    baseMatrices,
+    ownerTransform: visual.ownerTransform,
+    artByAssetId,
     staticSvg,
     neutralSvg,
     contact,
     shoulderContact,
+    diagnosticContact,
+    diagnosticShoulderContact,
   };
 }
 
 describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () => {
   it('keeps the neutral synthetic pose identical and maps source/root/crop once', () => {
     const synthetic = createSyntheticArtifacts();
+    const playbackFrames = addInteractivePreviewScenario({
+      id: 'synthetic-visibility',
+      title: '合成夹具 · 0°→−30°',
+      targetLabel: '目标袖臂',
+      note: '先用原创夹具确认运动方向、固定转轴和拖动 Seek。',
+      parts: synthetic.scene.parts,
+      baseMatrices: synthetic.baseMatrices,
+      targetPart: synthetic.targetPart,
+      pivot: synthetic.pivot,
+      ownerTransform: synthetic.scene.visual.ownerTransform,
+      artByAssetId: synthetic.scene.artByAssetId,
+      goal: syntheticVisibilityGoal,
+    });
+    expect(playbackFrames.map((frame) => frame.timeMs)).toEqual(
+      PLAYBACK_FRAME_TIMES,
+    );
+    expect(playbackFrames[0]?.pose.rotationDeg).toBe(0);
+    expect(playbackFrames[12]?.pose.rotationDeg).toBe(-15);
+    expect(playbackFrames.at(-1)?.pose.rotationDeg).toBe(-30);
+    expect(playbackFrames[12]?.partFocusSvg).toContain('class="start-ghost"');
+    expect(playbackFrames[12]?.partFocusSvg).toContain('M-18 0H18M0 -18V18');
+    const previewHtml = buildInteractivePreviewHtml(
+      previewScenarios,
+      previewAssetDefinitionMarkup(),
+    );
+    expect(previewHtml).toContain('id="timeSlider"');
+    expect(previewHtml).toContain('id="playPause"');
+    expect(previewHtml).toContain('data-view="focus"');
+    expect(previewHtml).toContain('requestAnimationFrame');
+    expect(previewHtml).not.toMatch(/(?:src|href)="https?:/u);
+
     const matrices = synthetic.baseMatrices;
     const targetMatrix = matrices.get(synthetic.targetPart.partId)!;
     const neutralMatrix = applyPoseToImageTransform(
@@ -924,6 +1227,8 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
       syntheticNeutralSvg: path.join(OUTPUT_DIR, 'synthetic-neutral.svg'),
       privateRealSvg: null,
       privateRealShoulderSvg: null,
+      privateRealDiagnosticSvg: null,
+      privateRealDiagnosticShoulderSvg: null,
       receiptPath: path.join(OUTPUT_DIR, 'receipt.json'),
       synthetic: {
         status: 'TECH_PASS',
@@ -1123,6 +1428,8 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
         syntheticNeutralSvg: path.join(OUTPUT_DIR, 'synthetic-neutral.svg'),
         privateRealSvg: null,
         privateRealShoulderSvg: null,
+        privateRealDiagnosticSvg: null,
+        privateRealDiagnosticShoulderSvg: null,
         receiptPath: path.join(OUTPUT_DIR, 'receipt.json'),
         synthetic: artifacts?.synthetic ?? {},
         realAsset: real,
@@ -1135,6 +1442,8 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
     const neutralSvg = real.neutralSvg as string;
     const contact = real.contact as string;
     const shoulderContact = real.shoulderContact as string;
+    const diagnosticContact = real.diagnosticContact as string;
+    const diagnosticShoulderContact = real.diagnosticShoulderContact as string;
     expect(staticSvg).toContain('data:image/png;base64');
     // Each image is embedded only in the private contact sheet and private run folder.
     expect(contact).toContain('data:image/png;base64');
@@ -1150,6 +1459,13 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
     expect(real.neutralMatrixExact).toBe(true);
     expect((real.frameTimesMs as number[])).toEqual([0, 250, 500, 750, 1_000]);
     expect((real.frameAnglesDeg as number[])).toEqual([0, -3, -6, -9, -12]);
+    expect((real.diagnosticFrameTimesMs as number[])).toEqual([
+      0, 250, 500, 750, 1_000,
+    ]);
+    expect((real.diagnosticFrameAnglesDeg as number[])).toEqual([
+      0, -7.5, -15, -22.5, -30,
+    ]);
+    expect(real.diagnosticSiblingMatricesUnchanged).toBe(true);
     expect((real.sourcePartImageMapping as { crop: { x: number; y: number; width: number; height: number }; exportScale: number }).crop).toEqual({
       x: 0,
       y: 0,
@@ -1158,6 +1474,46 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
     });
     expect((real.sourcePartImageMapping as { exportScale: number }).exportScale).toBe(1);
 
+    const privateFrames = (previewGoal: ResearchKeyframe, id: string, title: string, note: string) =>
+      addInteractivePreviewScenario({
+        id,
+        title,
+        targetLabel: REAL_TARGET_PART_NAME,
+        note,
+        parts: real.visualParts as LayerVisualPart[],
+        baseMatrices: real.baseMatrices as Map<string, CharacterPartTransform>,
+        targetPart: real.targetVisual as LayerVisualPart,
+        pivot: real.pivotCharacter as ResearchPoint,
+        ownerTransform: real.ownerTransform as {
+          x: number;
+          y: number;
+          scaleX: number;
+          scaleY: number;
+          flipX: boolean;
+          rotationDeg: number;
+        },
+        artByAssetId: real.artByAssetId as Map<string, PartArt>,
+        goal: previewGoal,
+      });
+    const smallPlaybackFrames = privateFrames(
+      realGoalPose,
+      'real-small-angle',
+      '儒雅古代男 · Part 4 · 0°→−12°',
+      'SEAM_CHECK_SMALL_ANGLE：保留原有 0°→−12°接缝检查范围；不代表大角度安全。',
+    );
+    const diagnosticPlaybackFrames = privateFrames(
+      realDiagnosticGoalPose,
+      'real-diagnostic-30',
+      'Part 4 · 诊断 0°→−30°',
+      'DIAGNOSTIC ONLY：用于辨认运动与检查露白，不是接缝安全通过。',
+    );
+    expect(smallPlaybackFrames.length).toBe(25);
+    expect(smallPlaybackFrames.at(-1)?.pose.rotationDeg).toBe(-12);
+    expect(diagnosticPlaybackFrames.at(-1)?.pose.rotationDeg).toBe(-30);
+    expect(diagnosticPlaybackFrames.at(-1)?.partFocusSvg).toContain(
+      'class="start-ghost"',
+    );
+
     const dir = path.resolve(OUTPUT_DIR);
     fs.mkdirSync(dir, { recursive: true });
     const privateRealSvg = path.join(dir, 'private-real-contact-sheet.svg');
@@ -1165,10 +1521,24 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
       dir,
       'private-real-shoulder-contact-sheet.svg',
     );
+    const privateRealDiagnosticSvg = path.join(
+      dir,
+      'private-real-diagnostic-30-contact-sheet.svg',
+    );
+    const privateRealDiagnosticShoulderSvg = path.join(
+      dir,
+      'private-real-diagnostic-30-shoulder-contact-sheet.svg',
+    );
     const staticPath = path.join(dir, 'private-real-static.svg');
     const neutralPath = path.join(dir, 'private-real-neutral.svg');
     fs.writeFileSync(privateRealSvg, contact, 'utf8');
     fs.writeFileSync(privateRealShoulderSvg, shoulderContact, 'utf8');
+    fs.writeFileSync(privateRealDiagnosticSvg, diagnosticContact, 'utf8');
+    fs.writeFileSync(
+      privateRealDiagnosticShoulderSvg,
+      diagnosticShoulderContact,
+      'utf8',
+    );
     fs.writeFileSync(staticPath, staticSvg, 'utf8');
     fs.writeFileSync(neutralPath, neutralSvg, 'utf8');
     artifacts = {
@@ -1179,6 +1549,8 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
       syntheticNeutralSvg: path.join(dir, 'synthetic-neutral.svg'),
       privateRealSvg,
       privateRealShoulderSvg,
+      privateRealDiagnosticSvg,
+      privateRealDiagnosticShoulderSvg,
       receiptPath: path.join(dir, 'receipt.json'),
       synthetic: artifacts?.synthetic ?? {},
       realAsset: {
@@ -1190,6 +1562,14 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
         angleRangeTestedDeg: real.angleRangeTestedDeg,
         frameTimesMs: real.frameTimesMs,
         frameAnglesDeg: real.frameAnglesDeg,
+        smallAngleSeamCheck: 'SEAM_CHECK_SMALL_ANGLE',
+        ownerMotionVisibility: 'PENDING_OWNER_REVIEW',
+        diagnosticAngleRangeDeg: real.diagnosticAngleRangeDeg,
+        diagnosticFrameTimesMs: real.diagnosticFrameTimesMs,
+        diagnosticFrameAnglesDeg: real.diagnosticFrameAnglesDeg,
+        diagnosticSiblingMatricesUnchanged:
+          real.diagnosticSiblingMatricesUnchanged,
+        diagnosticVisualStatus: 'DIAGNOSTIC_ONLY_PENDING_OWNER_REVIEW',
         projectSchemaVersionAtImport: real.projectSchemaVersionAtImport,
         projectSchemaVersionAfterCurrentMigration: real.projectSchemaVersionAfterCurrentMigration,
         sourceSha256: real.sourceSha256,
@@ -1217,6 +1597,56 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
   afterAll(() => {
     if (!artifacts) return;
     fs.mkdirSync(artifacts.outputDir, { recursive: true });
+    const interactivePreviewHtmlPath = path.join(
+      artifacts.outputDir,
+      'c5-kf-00-interactive-preview.html',
+    );
+    const interactivePreviewHtml = buildInteractivePreviewHtml(
+      previewScenarios,
+      previewAssetDefinitionMarkup(),
+    );
+    fs.writeFileSync(interactivePreviewHtmlPath, interactivePreviewHtml, 'utf8');
+    const interactivePreview = {
+      status:
+        artifacts.privateRealSvg === null
+          ? 'SYNTHETIC_ONLY_REAL_ASSET_NOT_RUN'
+          : 'READY_FOR_OWNER_LOCAL_REVIEW',
+      offline: true,
+      outputPath: interactivePreviewHtmlPath,
+      sha256: sha256(interactivePreviewHtmlPath),
+      playbackFps: 24,
+      oneSecondLoop: true,
+      usesSharedAbsoluteTimePoseEvaluator: true,
+      scenarioCount: previewScenarios.length,
+      scenarios: previewScenarios.map((scenario) => ({
+        id: scenario.id,
+        title: scenario.title,
+        targetLabel: scenario.targetLabel,
+        frameCount: scenario.frames.length,
+        frameTimesMs: scenario.frames.map((frame) => frame.timeMs),
+        frameAnglesDeg: scenario.frames.map((frame) => frame.angleDeg),
+        fullViewBox: scenario.fullViewBox,
+        focusViewBox: scenario.focusViewBox,
+      })),
+      smallAngleSeamCheck:
+        artifacts.privateRealSvg === null
+          ? 'NOT_RUN'
+          : 'SEAM_CHECK_SMALL_ANGLE',
+      ownerMotionVisibility:
+        artifacts.privateRealSvg === null
+          ? 'NOT_RUN'
+          : 'PENDING_OWNER_REVIEW',
+      diagnosticLargeAngleSeam:
+        artifacts.privateRealSvg === null
+          ? 'NOT_RUN'
+          : 'DIAGNOSTIC_ONLY_NOT_SEAM_APPROVED',
+      uniqueEmbeddedArtSymbols: previewAssetReferences.size,
+    };
+    artifacts.realAsset.interactivePreviewHtmlSha256 =
+      interactivePreview.sha256;
+    artifacts.realAsset.interactivePreviewStatus = interactivePreview.status;
+    artifacts.realAsset.ownerMotionVisibility =
+      interactivePreview.ownerMotionVisibility;
     const head = execFileSync('git', ['rev-parse', 'HEAD'], {
       cwd: process.cwd(),
       encoding: 'utf8',
@@ -1232,6 +1662,7 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
       }).trim(),
       command: 'pnpm research:c5-kf-00',
       productionStagePixelParity: 'NOT_VERIFIED',
+      interactivePreview,
       process: {
         projectSave: 'NOT_RUN',
         productionUi: 'NOT_RUN',
@@ -1245,6 +1676,10 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
         publicSyntheticPng: artifacts.publicSyntheticPng,
         privateRealSvg: artifacts.privateRealSvg,
         privateRealShoulderSvg: artifacts.privateRealShoulderSvg,
+        privateRealDiagnosticSvg: artifacts.privateRealDiagnosticSvg,
+        privateRealDiagnosticShoulderSvg:
+          artifacts.privateRealDiagnosticShoulderSvg,
+        privateInteractivePreviewHtml: interactivePreviewHtmlPath,
       },
       capturePending: true,
     };
@@ -1266,6 +1701,10 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
             ? null
             : path.join(artifacts.outputDir, 'private-real-neutral.svg'),
         privateRealShoulderSvg: artifacts.privateRealShoulderSvg,
+        privateRealDiagnosticSvg: artifacts.privateRealDiagnosticSvg,
+        privateRealDiagnosticShoulderSvg:
+          artifacts.privateRealDiagnosticShoulderSvg,
+        privateInteractivePreviewHtml: interactivePreviewHtmlPath,
         receiptPath: artifacts.receiptPath,
       }, null, 2)}\n`,
       'utf8',

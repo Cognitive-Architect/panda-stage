@@ -75,6 +75,11 @@ function visualReviewFingerprint(receipt) {
     projectSnapshotSha256: realAsset.projectSnapshotSha256,
     contactSheetPngSha256: realAsset.contactSheetPngSha256,
     shoulderContactSheetPngSha256: realAsset.shoulderContactSheetPngSha256,
+    interactivePreviewHtmlSha256: realAsset.interactivePreviewHtmlSha256,
+    diagnosticContactSheetPngSha256:
+      realAsset.diagnosticContactSheetPngSha256,
+    diagnosticShoulderContactSheetPngSha256:
+      realAsset.diagnosticShoulderContactSheetPngSha256,
   };
   if (Object.values(bindings).some((value) => typeof value !== 'string' || !value)) {
     return null;
@@ -134,6 +139,9 @@ function applyVisualReview(receipt, reviewPath) {
     review.projectSnapshotSha256 === receipt.realAsset.projectSnapshotSha256 &&
     review.contactSheetPngSha256 === receipt.realAsset.contactSheetPngSha256 &&
     review.shoulderContactSheetPngSha256 === receipt.realAsset.shoulderContactSheetPngSha256 &&
+    review.interactivePreviewHtmlSha256 === receipt.realAsset.interactivePreviewHtmlSha256 &&
+    review.diagnosticContactSheetPngSha256 === receipt.realAsset.diagnosticContactSheetPngSha256 &&
+    review.diagnosticShoulderContactSheetPngSha256 === receipt.realAsset.diagnosticShoulderContactSheetPngSha256 &&
     review.visualReviewFingerprint === fingerprint &&
     review.partName === receipt.realAsset.partName &&
     JSON.stringify(review.pivotSource) === JSON.stringify(receipt.realAsset.pivotSource) &&
@@ -206,6 +214,8 @@ async function main() {
 
     let realSheet = null;
     let realShoulderSheet = null;
+    let diagnosticSheet = null;
+    let diagnosticShoulderSheet = null;
     if (manifest.privateRealSvg) {
       realSheet = await captureSvg(
         window,
@@ -217,6 +227,23 @@ async function main() {
           window,
           manifest.privateRealShoulderSvg,
           path.join(outputDir, 'private-real-shoulder-contact-sheet.png'),
+        );
+      }
+      if (manifest.privateRealDiagnosticSvg) {
+        diagnosticSheet = await captureSvg(
+          window,
+          manifest.privateRealDiagnosticSvg,
+          path.join(outputDir, 'private-real-diagnostic-30-contact-sheet.png'),
+        );
+      }
+      if (manifest.privateRealDiagnosticShoulderSvg) {
+        diagnosticShoulderSheet = await captureSvg(
+          window,
+          manifest.privateRealDiagnosticShoulderSvg,
+          path.join(
+            outputDir,
+            'private-real-diagnostic-30-shoulder-contact-sheet.png',
+          ),
         );
       }
       const realStaticPng = await captureSvg(
@@ -247,6 +274,27 @@ async function main() {
           width: realShoulderSheet.width,
           height: realShoulderSheet.height,
           bytes: realShoulderSheet.bytes,
+        };
+      }
+      if (diagnosticSheet) {
+        receipt.realAsset.diagnosticContactSheetPng = diagnosticSheet.path;
+        receipt.realAsset.diagnosticContactSheetPngSha256 =
+          diagnosticSheet.sha256;
+        receipt.realAsset.diagnosticContactSheetSize = {
+          width: diagnosticSheet.width,
+          height: diagnosticSheet.height,
+          bytes: diagnosticSheet.bytes,
+        };
+      }
+      if (diagnosticShoulderSheet) {
+        receipt.realAsset.diagnosticShoulderContactSheetPng =
+          diagnosticShoulderSheet.path;
+        receipt.realAsset.diagnosticShoulderContactSheetPngSha256 =
+          diagnosticShoulderSheet.sha256;
+        receipt.realAsset.diagnosticShoulderContactSheetSize = {
+          width: diagnosticShoulderSheet.width,
+          height: diagnosticShoulderSheet.height,
+          bytes: diagnosticShoulderSheet.bytes,
         };
       }
       receipt.realAsset.researchSvgNeutralPixelComparison = realNeutralComparison;
@@ -296,6 +344,20 @@ async function main() {
       syntheticContactSheet: publicSheet,
       privateRealContactSheet: realSheet,
       privateRealShoulderContactSheet: realShoulderSheet,
+      privateRealDiagnosticContactSheet: diagnosticSheet,
+      privateRealDiagnosticShoulderContactSheet: diagnosticShoulderSheet,
+      interactivePreview: receipt.interactivePreview
+        ? {
+            status: receipt.interactivePreview.status,
+            outputPath: receipt.interactivePreview.outputPath,
+            sha256: receipt.interactivePreview.sha256,
+            scenarioCount: receipt.interactivePreview.scenarioCount,
+            ownerMotionVisibility:
+              receipt.interactivePreview.ownerMotionVisibility,
+            diagnosticLargeAngleSeam:
+              receipt.interactivePreview.diagnosticLargeAngleSeam,
+          }
+        : null,
       receiptPath: manifest.receiptPath,
     }, null, 2));
     if (receipt.gate !== 'TECH_PASS') process.exitCode = 1;

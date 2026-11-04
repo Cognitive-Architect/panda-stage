@@ -92,6 +92,18 @@ function printSummary(receipt) {
       {
         gate: receipt.gate,
         realVisualGate: receipt.realVisualGate,
+        interactivePreview: receipt.interactivePreview
+          ? {
+              status: receipt.interactivePreview.status,
+              outputPath: receipt.interactivePreview.outputPath,
+              sha256: receipt.interactivePreview.sha256,
+              scenarioCount: receipt.interactivePreview.scenarioCount,
+              ownerMotionVisibility:
+                receipt.interactivePreview.ownerMotionVisibility,
+              diagnosticLargeAngleSeam:
+                receipt.interactivePreview.diagnosticLargeAngleSeam,
+            }
+          : null,
         run: receipt.run,
         receiptPath: RECEIPT_PATH,
       },
