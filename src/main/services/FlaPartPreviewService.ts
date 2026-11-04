@@ -27,7 +27,15 @@ import type {
   FlaDisplayListMatrix,
   FlaGraphicSymbolDefinition,
 } from './fla-display-list-resolver';
-import { FLA_DISPLAY_LIST_IDENTITY_MATRIX, resolveFlaDisplayList } from './fla-display-list-resolver';
+import {
+  DEFAULT_FLA_DISPLAY_LIST_RESOLVER_LIMITS,
+  FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+  resolveFlaDisplayList,
+} from './fla-display-list-resolver';
+import {
+  prepareFlaNestedGraphicFrameSelections,
+  type FlaNestedGraphicFrameSelection,
+} from './fla-nested-graphic-frame-selector';
 import type {
   FlaStaticSnapshotDisplaySource,
   FlaStaticSnapshotDisplaySourceExecution,
@@ -225,6 +233,8 @@ function pathFingerprint(path: readonly SourcePathEntry[]): string {
 function makeCandidateCollection(
   source: FlaStaticSnapshotDisplaySource,
   rootFrameContext: FlaDisplayListFrameContext,
+  sourceSymbols: ReadonlyMap<string, FlaGraphicSymbolDefinition>,
+  selectionsBySourceAddress: ReadonlyMap<string, FlaNestedGraphicFrameSelection>,
   sourceRawSha256: string,
   target: FlaRenderTarget,
   rootTransform: FlaDisplayListMatrix = FLA_DISPLAY_LIST_IDENTITY_MATRIX,
@@ -298,7 +308,14 @@ function makeCandidateCollection(
       fallbackReason = 'Part source provenance exceeds its bounded path or mask dependency budget.';
       return;
     }
-    const effectiveChildFrame = element.kind === 'symbol' ? 0 : null;
+    const selectedFrame = element.kind === 'symbol'
+      ? selectionsBySourceAddress.get(element.sourceAddress ?? '')
+      : null;
+    if (element.kind === 'symbol' && !selectedFrame) {
+      fallbackReason = 'Nested Graphic occurrence has no source-addressed frame selection.';
+      return;
+    }
+    const effectiveChildFrame = element.kind === 'symbol' ? selectedFrame!.selectedChildFrameIndex : null;
     let unit: FlaPartPreviewUnit;
     try {
       unit = FlaPartPreviewUnitSchema.parse({
@@ -315,7 +332,7 @@ function makeCandidateCollection(
       sourceDefinitionFrameCount: descriptor?.frameCount ?? null,
       selectedEffectiveChildFrameIndex: effectiveChildFrame,
       selectedEffectiveChildFrameBasis: element.kind === 'symbol'
-        ? 'Main prepared Graphic definition frameContext (frame zero); nested frame selection is not applied by the static resolver'
+        ? `Nested Graphic selector: ${selectedFrame!.selectionRule}`
         : null,
       localTransform: element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX,
       worldTransform,
@@ -412,7 +429,7 @@ function makeCandidateCollection(
           continue;
         }
         const definitionKey = element.frameSelectionKey ?? element.libraryItemName;
-        const definition = source.symbols.get(definitionKey);
+        const definition = sourceSymbols.get(definitionKey);
         const descriptor = descriptorsByName.get(element.libraryItemName) ?? null;
         if (!definition || definition.kind !== 'graphic' || element.symbolType !== 'graphic') {
           append(
@@ -1005,19 +1022,98 @@ export class FlaPartPreviewService {
     if (!frameResult.ok) {
       return this.failure('UNSUPPORTED_SOURCE', frameResult.message, active.request);
     }
-    const frameContext = frameResult.value;
-    if (frameContext.unsupportedDisplayReason) {
-      return this.failure('UNSUPPORTED_SOURCE', frameContext.unsupportedDisplayReason, active.request);
+    const sceneFrameContext = frameResult.value;
+    if (sceneFrameContext.unsupportedDisplayReason) {
+      return this.failure('UNSUPPORTED_SOURCE', sceneFrameContext.unsupportedDisplayReason, active.request);
     }
     if (!this.ensureCurrentAndWithinBudget(active)) {
       return this.failure(active.cancelCode ?? 'RENDER_CANCELLED', 'Preview is stale or cancelled', active.request);
+    }
+
+    // Nested Graphic selection builds frame-specific Shape blocks through the
+    // adapter's mutable frame map. Retain only the base blocks plus blocks
+    // referenced by each selected child context, under the resolver node cap.
+    const shapeBlocks = new Map(prepared.source.shapeBlocks);
+    const shapeBlockLimit = DEFAULT_FLA_DISPLAY_LIST_RESOLVER_LIMITS.maxResolvedNodeCount;
+    let shapeBlockBudgetExceeded = false;
+    const captureShapeBlocks = (elements: readonly FlaDisplayListElement[]): string | null => {
+      for (const element of elements) {
+        if (element.visible === false) continue;
+        if (element.kind === 'shape') {
+          if (shapeBlocks.has(element.shapeId)) continue;
+          const xml = prepared.source.shapeBlocks.get(element.shapeId);
+          if (xml === undefined) return `Selected Graphic shape source not found: ${element.shapeId}`;
+          if (shapeBlocks.size >= shapeBlockLimit) {
+            shapeBlockBudgetExceeded = true;
+            return `Nested Graphic shape-source blocks exceeded ${shapeBlockLimit}`;
+          }
+          shapeBlocks.set(element.shapeId, xml);
+        } else if (element.kind === 'group') {
+          const nestedError = captureShapeBlocks(element.elements);
+          if (nestedError) return nestedError;
+        }
+      }
+      return null;
+    };
+    const selectionSource: FlaStaticSnapshotDisplaySource = {
+      ...prepared.source,
+      buildGraphicFrameContext: (timelineXml, frameSpanIndex, frameIndex, scope) => {
+        const frameContext = prepared.source.buildGraphicFrameContext(
+          timelineXml,
+          frameSpanIndex,
+          frameIndex,
+          scope,
+        );
+        if (!frameContext.ok) return frameContext;
+        for (const layer of frameContext.value.layers) {
+          if (!layer.visible) continue;
+          const captureError = captureShapeBlocks(layer.elements);
+          if (captureError) {
+            return {
+              ok: false,
+              code: shapeBlockBudgetExceeded ? 'BUDGET_EXCEEDED' : 'RENDER_FAILED',
+              message: captureError,
+            };
+          }
+        }
+        return frameContext;
+      },
+    };
+    const nested = prepareFlaNestedGraphicFrameSelections(selectionSource, targetKind === 'scene'
+      ? { kind: 'scene', name: targetName, frameContext: sceneFrameContext }
+      : { kind: 'graphic', name: targetName, frameContext: sceneFrameContext });
+    if (shapeBlockBudgetExceeded) {
+      return this.failure(
+        'BUDGET_EXCEEDED',
+        `Nested Graphic shape-source blocks exceeded ${shapeBlockLimit}`,
+        active.request,
+      );
+    }
+    let frameContext = sceneFrameContext;
+    let symbols = prepared.source.symbols;
+    let selectionsBySourceAddress: ReadonlyMap<string, FlaNestedGraphicFrameSelection> = new Map();
+    let selectionFallbackReason: string | null = null;
+    if (!nested.ok && nested.code === 'UNSUPPORTED_TIMING' &&
+        nested.message.includes('missing its source address or parent frame coordinates')) {
+      // Preserve the existing whole-image-only route for untraceable sources.
+      // No PartPlan or per-instance selection is emitted without stable source
+      // identity; addressed, supported instances use the selector below.
+      selectionFallbackReason = 'Nested Graphic frame selection requires source-addressed instances.';
+    } else if (!nested.ok) {
+      const code = nested.code === 'BUDGET_EXCEEDED' ? 'BUDGET_EXCEEDED' : 'UNSUPPORTED_SOURCE';
+      const sourceAddress = nested.sourceAddress ? ` (${nested.sourceAddress})` : '';
+      return this.failure(code, `${nested.code}: ${nested.message}${sourceAddress}`.slice(0, 1_000), active.request);
+    } else {
+      frameContext = nested.resolverInput.root.frameContext;
+      symbols = nested.resolverInput.symbols;
+      selectionsBySourceAddress = new Map(nested.selections.map((selection) => [selection.sourceAddress, selection]));
     }
 
     const nativeResolved = resolveFlaDisplayList({
       root: targetKind === 'scene'
         ? { kind: 'scene', name: targetName, frameContext }
         : { kind: 'graphic', name: targetName, frameContext },
-      symbols: prepared.source.symbols,
+      symbols,
     });
     displayListResolveCount += 1;
     if (!nativeResolved.ok) {
@@ -1036,7 +1132,7 @@ export class FlaPartPreviewService {
       renderTargetId: active.request.target.renderTargetId,
       stageWidth: prepared.source.stageWidth,
       stageHeight: prepared.source.stageHeight,
-      shapeBlocks: prepared.source.shapeBlocks,
+      shapeBlocks,
       resolveBitmapMedia: mediaLookup,
     });
     if (!nativeComposition.ok) {
@@ -1096,9 +1192,20 @@ export class FlaPartPreviewService {
       return this.failure(active.cancelCode ?? 'RENDER_CANCELLED', 'Preview is stale or cancelled', active.request);
     }
 
+    if (selectionFallbackReason) {
+      return this.wholeImageOnly(active, sourceIdentity, nativeFacts, nativePreview, selectionFallbackReason, {
+        sourcePreparationCountForRequest,
+        displayListResolveCount,
+        rasterCount,
+        elapsedMs: Date.now() - startedAt,
+      });
+    }
+
     const collection = makeCandidateCollection(
       prepared.source,
       frameContext,
+      symbols,
+      selectionsBySourceAddress,
       (sourceIdentity.originalSourceSha256 ?? sourceIdentity.sha256).toLowerCase(),
       target,
       rootTransform,
@@ -1131,7 +1238,7 @@ export class FlaPartPreviewService {
       try {
         const isolated = isolateOccurrence(
           frameContext,
-          prepared.source.symbols,
+          symbols,
           candidate.isolatePath,
           candidate.unit.occurrenceId,
         );
@@ -1158,7 +1265,7 @@ export class FlaPartPreviewService {
           renderTargetId: `${active.request.target.renderTargetId}-${candidate.unit.unitId}`,
           stageWidth: nativeFacts.targetKind === 'scene' ? prepared.source.stageWidth : nativeFacts.width,
           stageHeight: nativeFacts.targetKind === 'scene' ? prepared.source.stageHeight : nativeFacts.height,
-          shapeBlocks: prepared.source.shapeBlocks,
+          shapeBlocks,
           resolveBitmapMedia: mediaLookup,
         });
         if (!composition.ok) {
