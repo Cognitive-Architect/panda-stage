@@ -123,3 +123,7 @@ OWNER 真 com8 流畅度：OWNER_SMOOTHNESS_FAIL / WAIVED_FOR_MERGE；本提交�
 - 无全仓 CI、`verify:project` 或外圈 verifier 扫描。诊断不会替代 OWNER 用私有 com8 素材做真实验收。
 
 结论：`ROOT_CAUSE_UNPROVEN`。唯一下一步候选是由 OWNER 在真实 com8 预览卡顿时启用此 trace，按同一实例/帧查看等待落在字节、解码、exact-ready、Stage paint 还是观测边界，再另行授权 Phase 2。OWNER 真实流畅度仍为 FAIL。
+
+### 最终推送的自动 CI
+
+新 Electron 探针 push 后的自动 [run `41751833665`](https://github.com/Cognitive-Architect/panda-stage/actions/runs/41751833665)：Focused core quality PASS（路由合同、typecheck、lint、unit、integration、build 和 manifest-selected subsystem regressions）；Full quality、targeted quality、CI self-test、docs fast path 和其他交付 job 按策略跳过。没有失败 job，也没有手动 rerun。
