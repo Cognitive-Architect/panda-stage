@@ -140,13 +140,44 @@ async function buildTwoPartFla(
   return zip.generateAsync({ type: 'uint8array' });
 }
 
+async function buildTwoInstanceNestedGraphicFla(): Promise<Uint8Array> {
+  const scene = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMDocument width="32" height="24" xmlns="http://ns.adobe.com/xfl/2008/">
+  <timelines><DOMTimeline name="Scene"><layers><DOMLayer name="Parts"><frames>
+    <DOMFrame index="0" duration="1"><elements>
+      <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
+        <matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix>
+      </DOMSymbolInstance>
+      <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="8">
+        <matrix><Matrix a="1" d="1" tx="16" ty="0"/></matrix>
+      </DOMSymbolInstance>
+    </elements></DOMFrame>
+  </frames></DOMLayer></layers></DOMTimeline></timelines>
+</DOMDocument>`;
+  const frames = Array.from({ length: 9 }, (_, frameIndex) => `
+    <DOMFrame index="${frameIndex}" duration="1"><elements><DOMShape>
+      <fills><FillStyle index="1"><SolidColor color="#12000${frameIndex}" alpha="1"/></FillStyle></fills>
+      <edges><Edge fillStyle1="1" cubics="!0 0|12 0|12 12|0 12|0 0"/></edges>
+    </DOMShape></elements></DOMFrame>`).join('');
+  const graphic = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMSymbolItem name="MyGraphic" symbolType="graphic" xmlns="http://ns.adobe.com/xfl/2008/">
+  <timelines><DOMTimeline name="MyGraphic"><layers><DOMLayer name="Artwork"><frames>${frames}
+  </frames></DOMLayer></layers></DOMTimeline></timelines>
+</DOMSymbolItem>`;
+  const zip = new JSZip();
+  zip.file('DOMDocument.xml', scene);
+  zip.file('LIBRARY/MyGraphic.xml', graphic);
+  return zip.generateAsync({ type: 'uint8array' });
+}
+
 async function fixture(
   withAddresses = true,
   sceneKind: 'parts' | 'visible-text' | 'empty-mask' = 'parts',
   includeSecondScene = false,
   sceneMatrices: readonly FixtureMatrix[] = DEFAULT_SCENE_MATRICES,
+  sourceBytesOverride?: Uint8Array,
 ) {
-  const bytes = await buildTwoPartFla(sceneKind, includeSecondScene, sceneMatrices);
+  const bytes = sourceBytesOverride ?? await buildTwoPartFla(sceneKind, includeSecondScene, sceneMatrices);
   const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');
   if (!prepared.ok) throw new Error(prepared.message);
   const rawSha256 = createHash('sha256').update(bytes).digest('hex');
@@ -319,6 +350,35 @@ describe('F1-02 Main part preview service', () => {
     expect(plan?.units.every((unit) => unit.sourceAddress && unit.occurrencePath.length > 0)).toBe(true);
     // The renderer response carries only an opaque plan id and PNGs.
     expect(response).not.toHaveProperty('plan');
+    previewService.close();
+  });
+
+  it('uses each explicit nested Graphic firstFrame in native, isolated, and PartPlan output', async () => {
+    const sourceBytes = await buildTwoInstanceNestedGraphicFla();
+    const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, sourceBytes);
+    const { calls, previewService } = rasterizerFor(data);
+    const previewRequest = { ...request(1), target: { renderTargetId: data.targetId, selectedFrameIndex: 0 } };
+
+    const response = await previewService.preview(previewRequest);
+
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error('Expected two independently addressable nested Graphic instances');
+    }
+    expect(response.partPreviews).toHaveLength(2);
+    const plan = previewService.getPlan(response.planId, SESSION_ID, 1);
+    expect(plan?.units.map((unit) => unit.selectedEffectiveChildFrameIndex)).toEqual([0, 8]);
+    expect(plan?.units.map((unit) => unit.sourceFrame.effectiveChildFrameIndex)).toEqual([0, 8]);
+    expect(response.poseIdentity).toBe(plan?.poseIdentity);
+
+    expect(calls).toHaveLength(4); // native, two isolated parts, reassembly
+    expect(calls[0]?.svg).toContain('fill="#120000"');
+    expect(calls[0]?.svg).toContain('fill="#120008"');
+    expect(calls[1]?.svg).toContain('fill="#120000"');
+    expect(calls[1]?.svg).not.toContain('fill="#120008"');
+    expect(calls[2]?.svg).toContain('fill="#120008"');
+    expect(calls[2]?.svg).not.toContain('fill="#120000"');
+    expect(calls[3]?.svg.match(/<image /gu)).toHaveLength(2);
     previewService.close();
   });
 
