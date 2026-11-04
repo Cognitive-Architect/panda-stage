@@ -895,6 +895,7 @@
           "tests/unit/editor-*.test.ts",
           "tests/unit/close-project-flow.test.ts",
           "tests/unit/project-launcher.test.ts",
+          "tests/unit/preview-frame-trace-diagnostics.test.ts",
           "tests/unit/product-preview-*.test.ts",
           "tests/unit/issue886-au03-audio-working-set.test.ts",
           "tests/unit/issue887-au03-capacity.test.ts",
