@@ -116,7 +116,7 @@ OWNER 真 com8 流畅度：OWNER_SMOOTHNESS_FAIL / WAIVED_FOR_MERGE；本提交�
 - AP03 集成文件：6 tests PASS。
 - `pnpm build`：PASS；输出既有空 CSS import 和 bundle 体积提示。
 - 事件排序断言首轮用 fake timer 的毫秒时间比较时失败（同毫秒事件无法确定先后）；改为按 recorder 事件序号断言后，整文件重跑通过。没有 CI 任务由本轮手动触发。
-- 自动 CI `41746647752` 因新增测试路径未登记而在 `Unknown route guard` 失败，质量 job 均跳过；文件 rename 后的自动 CI `41747478778` 仍列出 rename 对的旧路径，因此同一 guard 再次失败。按 guard 指示，在 `scripts/verification-manifest.json` 的现有 `editor-shell` route 精确登记旧测试路径，没有增加宽泛 glob、改风险等级或弱化 gate。两个路由合同文件 113 tests PASS；本地对 `R100` 的分类检查结果为 `focused` 且无 unknown path。修正推送后由自动 CI 再分类，本轮没有手动 rerun 整套 CI。
+- 自动 CI `41746647752` 因新增测试路径未登记而在 `Unknown route guard` 失败，质量 job 均跳过；文件 rename 后的自动 CI `41747478778` 仍列出 rename 对的旧路径，因此同一 guard 再次失败。按 guard 指示，在 `scripts/verification-manifest.json` 的现有 `editor-shell` route 精确登记旧测试路径，没有增加宽泛 glob、改风险等级或弱化 gate。两个路由合同文件 113 tests PASS；本地对 `R100` 的分类检查结果为 `focused` 且无 unknown path。修正后的自动 CI `41748174392`：CI policy self-test 和最终结果 PASS（workflow YAML、路由/manifest 合同、typecheck、lint、diff whitespace）；unknown guard、业务质量和 Full suite 按策略跳过。本轮没有手动 rerun 整套 CI。
 - Electron 实际运行 / React Stage paint：NOT_RUN；代码里的 `Konva.Layer.drawScene` trace hook 已实现并编译，但本轮没有捕获实际 Stage paint 事件。真实 GPU/物理显示时间仍 `NOT_OBSERVABLE`。
 - 无全仓 CI、`verify:project` 或外圈 verifier 扫描。诊断不会替代 OWNER 用私有 com8 素材做真实验收。
 
