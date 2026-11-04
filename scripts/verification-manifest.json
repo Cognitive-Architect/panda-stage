@@ -742,7 +742,8 @@
           "scripts/verify-issue606*",
           "scripts/verify-issue872-motion-preview-pixels.cjs",
           "scripts/verify-issue871-am03-electron*",
-          "scripts/verify-issue890-am04-electron*"
+          "scripts/verify-issue890-am04-electron*",
+          "scripts/verify-issue964-preview-frame-trace-electron.cjs"
         ],
         "suites": [
           "canvas",
