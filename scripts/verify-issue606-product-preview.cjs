@@ -93,6 +93,39 @@ async function waitForDom(window, expression, message, timeout) {
   );
 }
 
+async function waitForStableEditorGeometry(window) {
+  await window.webContents.executeJavaScript(`(async () => {
+    const selectors = {
+      shell: '[data-testid="editor-layout"]',
+      top: '.editor-top-region',
+      body: '.editor-body',
+      bottom: '[data-testid="bottom-workspace"]',
+      canvas: '[data-testid="project-canvas-viewport"]',
+    };
+    const geometry = () => JSON.stringify(Object.fromEntries(
+      Object.entries(selectors).map(([key, selector]) => {
+        const element = document.querySelector(selector);
+        const rect = element?.getBoundingClientRect();
+        return [key, rect ? [rect.x, rect.y, rect.width, rect.height] : null];
+      }),
+    ));
+    let previous = geometry();
+    let stableFrames = 0;
+    const deadline = Date.now() + 2_000;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const current = geometry();
+      if (current === previous) stableFrames += 1;
+      else {
+        previous = current;
+        stableFrames = 0;
+      }
+      if (stableFrames >= 2) return true;
+    }
+    throw new Error('Editor geometry did not stabilize before Product Preview.');
+  })()`);
+}
+
 function hashFor(id) {
   return `${id.replace(/-/gu, '')}00000000000000000000000000000000`.slice(0, 64);
 }
@@ -551,6 +584,7 @@ async function openPreview(window, mode) {
     `document.querySelector('[data-testid="quick-action-drawer"]')?.dataset.expanded === 'true'`,
     'Quick Action Drawer did not open.',
   );
+  await waitForStableEditorGeometry(window);
   await window.webContents.executeJavaScript(`(() => {
     const opener = document.querySelector('[data-testid="quick-action-play"]');
     if (!(opener instanceof HTMLElement)) throw new Error('Product Preview opener is missing.');
@@ -621,6 +655,8 @@ async function readPreview(window, points) {
     const result = {
       preview: overlay ? {
         readiness: overlay.dataset.previewReadiness ?? '',
+        time: overlay.dataset.previewTime ?? '',
+        playing: overlay.dataset.previewPlaying === 'true',
         degraded: overlay.dataset.previewDegraded === 'true',
         failedAssetIds: JSON.parse(overlay.dataset.previewFailedAssetIds ?? '[]'),
         visualState: document.querySelector('.product-preview-stage')?.dataset.previewVisualState ?? '',
@@ -648,6 +684,7 @@ async function readPreview(window, points) {
       ),
       stageWarning: document.querySelector('[data-testid="product-preview-stage-warning"]')?.textContent ?? '',
       objectUrls: Array.isArray(window.__issue607ObjectUrls) ? window.__issue607ObjectUrls : [],
+      scrubberValue: document.querySelector('[data-testid="product-preview-scrubber"]')?.value ?? null,
       stageErrorText: document.querySelector('[data-testid="stage-error"]')?.textContent ?? '',
       pixels: {},
     };
@@ -725,6 +762,7 @@ async function readPreviewSurface(window) {
         elements[key] ? getComputedStyle(elements[key]).visibility : 'missing',
       ])),
       geometryMatchesBaseline,
+      baseline,
       geometry,
       canvasUsable: Boolean(geometry.canvas && geometry.canvas.width > 0 && geometry.canvas.height > 0),
       openerFocused: document.activeElement === window.__issue943PreviewOpener,
@@ -1020,11 +1058,19 @@ async function run() {
       'True Mouth decode failure did not reach a drawable, non-exact Expression fallback.',
     );
     await seekPreview(window, 0);
-    await waitForDom(
-      window,
-      `document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageTime === '0' && document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageDisplayReady === 'true'`,
-      'Mouth decode fallback did not return to its requested initial frame.',
-    );
+    try {
+      await waitForDom(
+        window,
+        `document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageTime === '0' && document.querySelector('.product-preview-stage [data-testid="stage-renderer"]')?.dataset.stageDisplayReady === 'true'`,
+        'Mouth decode fallback did not return to its requested initial frame.',
+      );
+    } catch (error) {
+      const state = await readPreview(window, []);
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)} state=${JSON.stringify(state)}`,
+        { cause: error },
+      );
+    }
     const mouthDecode = await waitForPreviewPixels(
       window,
       [
