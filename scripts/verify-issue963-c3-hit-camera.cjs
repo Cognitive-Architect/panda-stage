@@ -35,6 +35,7 @@ const ids = Object.freeze({
   character: '96300000-0000-4000-8000-00000000000a',
   voice: '96300000-0000-4000-8000-00000000000b',
 });
+const frontVisibleRect = Object.freeze({ x: 180, y: 100, width: 152, height: 312 });
 
 let mainWindow = null;
 let activeProject = null;
@@ -142,7 +143,7 @@ function makeAsset(id, name, bytes, width, height, usage) {
   };
 }
 
-function makePart(partId, assetId, displayName, drawOrder) {
+function makePart(partId, assetId, displayName, drawOrder, restTransform) {
   return {
     partId,
     assetId,
@@ -152,7 +153,7 @@ function makePart(partId, assetId, displayName, drawOrder) {
       sourcePoseFrame: 0,
       effectiveFrame: 0,
     },
-    restTransform: { a: 1, b: 0, c: 0, d: 1, tx: -256, ty: -256 },
+    restTransform: restTransform ?? { a: 1, b: 0, c: 0, d: 1, tx: -256, ty: -256 },
     imageMapping: {
       sourceWidth: 512,
       sourceHeight: 512,
@@ -162,6 +163,28 @@ function makePart(partId, assetId, displayName, drawOrder) {
     drawOrder,
     visible: true,
     displayName,
+  };
+}
+
+function mirroredRotatedRestTransform() {
+  const radians = (10 * Math.PI) / 180;
+  const cosine = Math.cos(radians);
+  const sine = Math.sin(radians);
+  const scaleX = -0.9;
+  const scaleY = 0.9;
+  const a = cosine * scaleX;
+  const b = sine * scaleX;
+  const c = -sine * scaleY;
+  const d = cosine * scaleY;
+  const centerX = 256;
+  const centerY = 256;
+  return {
+    a,
+    b,
+    c,
+    d,
+    tx: -(a * centerX + c * centerY),
+    ty: -(b * centerX + d * centerY),
   };
 }
 
@@ -233,7 +256,7 @@ function buildProject() {
     sourceRootTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
     parts: [
       makePart(ids.rearPart, ids.rear, 'Rear sleeve', 0),
-      makePart(ids.frontPart, ids.front, 'Front sleeve', 1),
+      makePart(ids.frontPart, ids.front, 'Front sleeve', 1, mirroredRotatedRestTransform()),
     ],
   }));
 }
@@ -410,7 +433,8 @@ async function pointerClick(window, point) {
   await pause();
 }
 
-async function pointerDrag(window, start, end, withSpace = false) {
+async function pointerDrag(window, start, end, withSpace = false, observeMidDrag) {
+  let midDragObservation = null;
   await withInputProtocol(window, async (devtools) => {
     if (withSpace) {
       await devtools.sendCommand('Input.dispatchKeyEvent', {
@@ -438,6 +462,7 @@ async function pointerDrag(window, start, end, withSpace = false) {
     });
     const distance = Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y));
     const steps = Math.max(1, Math.ceil(distance / 8));
+    const observationStep = Math.max(1, Math.floor(steps / 2));
     let previous = start;
     for (let step = 1; step <= steps; step += 1) {
       const point = {
@@ -455,6 +480,10 @@ async function pointerDrag(window, start, end, withSpace = false) {
       });
       previous = point;
       await pause(15);
+      if (step === observationStep && observeMidDrag) {
+        await pause(80);
+        midDragObservation = await observeMidDrag();
+      }
     }
     await devtools.sendCommand('Input.dispatchMouseEvent', {
       type: 'mouseReleased',
@@ -475,6 +504,7 @@ async function pointerDrag(window, start, end, withSpace = false) {
     }
   });
   await pause(120);
+  return midDragObservation;
 }
 
 async function pressEnter(window) {
@@ -593,6 +623,97 @@ async function sourcePixelPoint(window, partId, sourceX, sourceY) {
   })()`);
 }
 
+async function readSelectionOutlineScreenGeometry(window, partId, visibleRect) {
+  return page(window, `(() => {
+    const viewport = document.querySelector('[data-testid="adaptive-parts-assembly-canvas"]');
+    const stage = viewport?.querySelector('.character-assembly-preview-stage');
+    const part = viewport?.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${partId}"]');
+    const transform = viewport?.querySelector('[data-testid="adaptive-parts-assembly-selection-transform"][data-part-id="${partId}"]');
+    const outline = viewport?.querySelector('[data-testid="adaptive-parts-assembly-selection-outline"][data-part-id="${partId}"]');
+    const handle = outline?.querySelector('.adaptive-parts-assembly-scale-handle');
+    if (!viewport || !stage || !part || !transform || !outline || !handle) return null;
+
+    const stageRect = stage.getBoundingClientRect();
+    const cameraScale = stageRect.width / stage.offsetWidth;
+    const partMatrix = new DOMMatrix(part.style.transform);
+    const handleStyle = getComputedStyle(handle);
+    const handleLocalCenter = {
+      x: ${visibleRect.x} + ${visibleRect.width} - Number.parseFloat(handleStyle.right) - handle.offsetWidth / 2,
+      y: ${visibleRect.y} + ${visibleRect.height} - Number.parseFloat(handleStyle.bottom) - handle.offsetHeight / 2,
+    };
+    const corners = [
+      [${visibleRect.x}, ${visibleRect.y}],
+      [${visibleRect.x + visibleRect.width}, ${visibleRect.y}],
+      [${visibleRect.x}, ${visibleRect.y + visibleRect.height}],
+      [${visibleRect.x + visibleRect.width}, ${visibleRect.y + visibleRect.height}],
+    ].map(([x, y]) => {
+      const point = partMatrix.transformPoint(new DOMPoint(x, y));
+      return { x: stageRect.left + point.x * cameraScale, y: stageRect.top + point.y * cameraScale };
+    });
+    const expectedRect = {
+      left: Math.min(...corners.map((point) => point.x)),
+      top: Math.min(...corners.map((point) => point.y)),
+      right: Math.max(...corners.map((point) => point.x)),
+      bottom: Math.max(...corners.map((point) => point.y)),
+    };
+    const outlineRect = outline.getBoundingClientRect();
+    const handleRect = handle.getBoundingClientRect();
+    const expectedHandlePoint = partMatrix.transformPoint(new DOMPoint(handleLocalCenter.x, handleLocalCenter.y));
+    return {
+      cameraScale,
+      localVisibleRect: {
+        x: Number.parseFloat(outline.style.left),
+        y: Number.parseFloat(outline.style.top),
+        width: Number.parseFloat(outline.style.width),
+        height: Number.parseFloat(outline.style.height),
+      },
+      partMatrixText: part.style.transform,
+      transformMatrixText: transform.style.transform,
+      partMatrix: {
+        a: partMatrix.a,
+        b: partMatrix.b,
+        c: partMatrix.c,
+        d: partMatrix.d,
+        e: partMatrix.e,
+        f: partMatrix.f,
+        determinant: partMatrix.a * partMatrix.d - partMatrix.b * partMatrix.c,
+      },
+      expectedRect,
+      actualRect: {
+        left: outlineRect.left,
+        top: outlineRect.top,
+        right: outlineRect.right,
+        bottom: outlineRect.bottom,
+      },
+      expectedHandlePoint: {
+        x: stageRect.left + expectedHandlePoint.x * cameraScale,
+        y: stageRect.top + expectedHandlePoint.y * cameraScale,
+      },
+      actualHandlePoint: {
+        x: handleRect.left + handleRect.width / 2,
+        y: handleRect.top + handleRect.height / 2,
+      },
+    };
+  })()`);
+}
+
+function assertSelectionOutlineScreenGeometry(geometry, description) {
+  assert(geometry, `${description}: the selected Part outline or scale handle was unavailable.`);
+  const edges = ['left', 'top', 'right', 'bottom'];
+  const maxOutlineError = Math.max(...edges.map((edge) =>
+    Math.abs(geometry.expectedRect[edge] - geometry.actualRect[edge]),
+  ));
+  const handleError = Math.hypot(
+    geometry.expectedHandlePoint.x - geometry.actualHandlePoint.x,
+    geometry.expectedHandlePoint.y - geometry.actualHandlePoint.y,
+  );
+  assert(
+    maxOutlineError <= 2 && handleError <= 2,
+    `${description}: the outline or handle drifted from the transformed Alpha bounds: ${JSON.stringify({ geometry, maxOutlineError, handleError })}`,
+  );
+  return { maxOutlineError, handleError, ...geometry };
+}
+
 async function selectedPartIds(window) {
   return page(window, `([...document.querySelectorAll('[data-testid="adaptive-parts-assembly-canvas-part"].is-selected')]
     .map((element) => element.dataset.partId))`);
@@ -688,28 +809,34 @@ async function main() {
     await pointerClick(mainWindow, frontOpaquePoint);
     await waitFor(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${ids.frontPart}"]')?.classList.contains('is-selected')`, 'The front opaque sleeve pixel did not select the front sleeve.');
     receipt.checks.frontOpaqueSelection = { result: 'PASS', cssPoint: frontOpaquePoint, selectedPartId: ids.frontPart };
-    const frontOutlineBounds = await page(mainWindow, `(() => {
-      const outline = document.querySelector('[data-testid="adaptive-parts-assembly-selection-outline"][data-part-id="${ids.frontPart}"]');
-      if (!outline) return null;
-      return {
-        left: Number.parseFloat(outline.style.left),
-        top: Number.parseFloat(outline.style.top),
-        width: Number.parseFloat(outline.style.width),
-        height: Number.parseFloat(outline.style.height),
-      };
-    })()`);
+    const frontOutlineGeometry = readSelectionOutlineScreenGeometry(
+      mainWindow,
+      ids.frontPart,
+      frontVisibleRect,
+    );
+    const checkedInitialOutlineGeometry = assertSelectionOutlineScreenGeometry(
+      await frontOutlineGeometry,
+      'The transformed front Part selection outline',
+    );
     assert(
-      frontOutlineBounds &&
-      Math.abs(frontOutlineBounds.left - 180) < 0.01 &&
-      Math.abs(frontOutlineBounds.top - 100) < 0.01 &&
-      Math.abs(frontOutlineBounds.width - 152) < 0.01 &&
-      Math.abs(frontOutlineBounds.height - 312) < 0.01,
-      `The front Part selection outline did not follow its Alpha visible bounds: ${JSON.stringify(frontOutlineBounds)}`,
+      Math.abs(checkedInitialOutlineGeometry.localVisibleRect.x - frontVisibleRect.x) < 0.01 &&
+      Math.abs(checkedInitialOutlineGeometry.localVisibleRect.y - frontVisibleRect.y) < 0.01 &&
+      Math.abs(checkedInitialOutlineGeometry.localVisibleRect.width - frontVisibleRect.width) < 0.01 &&
+      Math.abs(checkedInitialOutlineGeometry.localVisibleRect.height - frontVisibleRect.height) < 0.01,
+      `The selection outline local rectangle did not match the Alpha visible bounds: ${JSON.stringify(checkedInitialOutlineGeometry.localVisibleRect)}`,
+    );
+    assert(
+      checkedInitialOutlineGeometry.partMatrixText === checkedInitialOutlineGeometry.transformMatrixText &&
+      checkedInitialOutlineGeometry.partMatrix.determinant < 0 &&
+      Math.abs(checkedInitialOutlineGeometry.partMatrix.b) > 0.1 &&
+      Math.abs(checkedInitialOutlineGeometry.partMatrix.c) > 0.1 &&
+      Math.abs(Math.hypot(checkedInitialOutlineGeometry.partMatrix.a, checkedInitialOutlineGeometry.partMatrix.b) - 0.9) < 0.001,
+      `The selection outline fixture did not exercise the same mirrored, rotated, scaled Part matrix: ${JSON.stringify(checkedInitialOutlineGeometry)}`,
     );
     receipt.checks.visibleSelectionOutline = {
       result: 'PASS',
-      localVisibleRect: frontOutlineBounds,
-      sourceVisibleRect: { x: 180, y: 100, width: 152, height: 312 },
+      transform: 'mirrored, rotated 10 degrees, scaled to 90%',
+      screenSpaceAlignment: checkedInitialOutlineGeometry,
     };
 
     const rearOpaquePoint = await sourcePixelPoint(mainWindow, ids.rearPart, 460.5, 256.5);
@@ -763,6 +890,25 @@ async function main() {
     );
     assert(zoomedCamera.zoomLabel === `${Math.round(zoomedCamera.scale * 100)}%`, 'Zoom percentage does not match the actual camera scale.');
     receipt.checks.cursorWheelZoom = { result: 'PASS', before: initialCamera, after: zoomedCamera, logicalBeforeWheel, logicalAfterWheel };
+
+    const cameraBefore77Percent = await readCamera(mainWindow);
+    const targetCameraScale = 0.77;
+    const deltaYTo77Percent = -Math.log(targetCameraScale / cameraBefore77Percent.scale) / 0.0015;
+    await wheel(mainWindow, wheelPoint, deltaYTo77Percent);
+    const cameraAt77Percent = await readCamera(mainWindow);
+    assert(
+      Math.abs(cameraAt77Percent.scale - targetCameraScale) < 0.001,
+      `The camera could not reach the 77% outline-alignment test state: ${JSON.stringify(cameraAt77Percent)}`,
+    );
+    const outlineAt77Percent = assertSelectionOutlineScreenGeometry(
+      await readSelectionOutlineScreenGeometry(mainWindow, ids.frontPart, frontVisibleRect),
+      'The selected Part outline at 77% camera zoom',
+    );
+    receipt.checks.selectionOutlineAt77Percent = {
+      result: 'PASS',
+      camera: cameraAt77Percent,
+      screenSpaceAlignment: outlineAt77Percent,
+    };
 
     await page(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-canvas"]')?.focus()`);
     const panStart = { x: initialCamera.left + 40, y: initialCamera.top + 40 };
@@ -1003,11 +1149,30 @@ async function main() {
     const frontTransformBeforeScaleHandle = await page(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${ids.frontPart}"]')?.style.transform ?? null`);
     assert(scaleHandlePoint, 'Selected Part scale handle was unavailable.');
     assert(scaleHandlePoint.hit?.includes('adaptive-parts-assembly-scale-handle'), `The scale handle was occluded at its test point: ${JSON.stringify(scaleHandlePoint)}`);
-    await pointerDrag(mainWindow, scaleHandlePoint, { x: scaleHandlePoint.x + 12, y: scaleHandlePoint.y + 10 });
+    const outlineDuringScaleDrag = assertSelectionOutlineScreenGeometry(
+      await pointerDrag(
+        mainWindow,
+        scaleHandlePoint,
+        { x: scaleHandlePoint.x + 12, y: scaleHandlePoint.y + 10 },
+        false,
+        () => readSelectionOutlineScreenGeometry(mainWindow, ids.frontPart, frontVisibleRect),
+      ),
+      'The selected Part outline while its scale handle is being dragged',
+    );
     const frontTransformAfterScaleHandle = await page(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${ids.frontPart}"]')?.style.transform ?? null`);
     const scalePointerResult = await page(mainWindow, 'window.__issue963ScalePointerDown');
     assert(frontTransformAfterScaleHandle !== frontTransformBeforeScaleHandle, `The lower-right scale handle did not resize the selected Part: ${JSON.stringify({ scaleHandlePoint, frontTransformBeforeScaleHandle, frontTransformAfterScaleHandle, scalePointerResult })}`);
-    receipt.checks.scaleHandlePriority = { result: 'PASS', before: frontTransformBeforeScaleHandle, after: frontTransformAfterScaleHandle };
+    const outlineAfterScaleDrag = assertSelectionOutlineScreenGeometry(
+      await readSelectionOutlineScreenGeometry(mainWindow, ids.frontPart, frontVisibleRect),
+      'The selected Part outline after scale-handle drag',
+    );
+    receipt.checks.scaleHandlePriority = {
+      result: 'PASS',
+      before: frontTransformBeforeScaleHandle,
+      after: frontTransformAfterScaleHandle,
+      screenSpaceAlignmentDuringDrag: outlineDuringScaleDrag,
+      screenSpaceAlignmentAfterDrag: outlineAfterScaleDrag,
+    };
 
     const frontPartTransformBeforeCameraDrag = await page(mainWindow, `document.querySelector('[data-testid="adaptive-parts-assembly-canvas-part"][data-part-id="${ids.frontPart}"]')?.style.transform ?? null`);
     const editorStateBeforeCameraDrag = await readEditorState(mainWindow);
@@ -1020,12 +1185,17 @@ async function main() {
       JSON.stringify(editorStateAfterCameraDrag) === JSON.stringify(editorStateBeforeCameraDrag),
       `Dragging a Part after zoom and pan did not move the Part draft cleanly: ${JSON.stringify({ frontPartTransformBeforeCameraDrag, frontPartTransformAfterCameraDrag, editorStateBeforeCameraDrag, editorStateAfterCameraDrag })}`,
     );
+    const outlineAfterPartDrag = assertSelectionOutlineScreenGeometry(
+      await readSelectionOutlineScreenGeometry(mainWindow, ids.frontPart, frontVisibleRect),
+      'The selected Part outline after Part movement under the zoomed and panned camera',
+    );
     receipt.checks.dragAfterZoomAndPan = {
       result: 'PASS',
       cssPoint: frontPartCameraDragPoint,
       before: frontPartTransformBeforeCameraDrag,
       after: frontPartTransformAfterCameraDrag,
       projectStateUnchangedUntilApply: true,
+      screenSpaceAlignment: outlineAfterPartDrag,
     };
     receipt.screenshots.push(await capture(mainWindow, 'ux02-zoom-pan-inspector.png'));
 

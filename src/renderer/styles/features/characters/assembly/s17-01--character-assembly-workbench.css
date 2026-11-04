@@ -1389,6 +1389,12 @@
   border-color: transparent;
 }
 
+.adaptive-parts-assembly-selection-transform {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+}
+
 .adaptive-parts-assembly-selection-outline {
   position: absolute;
   z-index: 5;

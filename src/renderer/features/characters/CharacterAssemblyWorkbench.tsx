@@ -1824,24 +1824,36 @@ function AdaptivePartsAssemblyWorkbench({
             })}
           {selectedCanvasPart && selectedCanvasImage && selectedCanvasMatrix && selectedCanvasOutlineRect ? (
             <div
-              className="adaptive-parts-assembly-selection-outline"
+              className="adaptive-parts-assembly-selection-transform"
               data-part-id={selectedCanvasPart.source.kind === 'adaptive-part' ? selectedCanvasPart.source.characterPartId : undefined}
-              data-testid="adaptive-parts-assembly-selection-outline"
+              data-testid="adaptive-parts-assembly-selection-transform"
               style={{
-                height: selectedCanvasOutlineRect.height,
-                left: selectedCanvasOutlineRect.x,
-                top: selectedCanvasOutlineRect.y,
+                height: selectedCanvasPart.localRect.height,
+                left: 0,
+                top: 0,
                 transform: selectedCanvasMatrix,
                 transformOrigin: 'top left',
-                width: selectedCanvasOutlineRect.width,
+                width: selectedCanvasPart.localRect.width,
               }}
             >
-              <button
-                aria-label="调整选中部件大小"
-                className="adaptive-parts-assembly-scale-handle"
-                onPointerDown={(event) => beginScale(event, selectedCanvasPart)}
-                type="button"
-              />
+              <div
+                className="adaptive-parts-assembly-selection-outline"
+                data-part-id={selectedCanvasPart.source.kind === 'adaptive-part' ? selectedCanvasPart.source.characterPartId : undefined}
+                data-testid="adaptive-parts-assembly-selection-outline"
+                style={{
+                  height: selectedCanvasOutlineRect.height,
+                  left: selectedCanvasOutlineRect.x,
+                  top: selectedCanvasOutlineRect.y,
+                  width: selectedCanvasOutlineRect.width,
+                }}
+              >
+                <button
+                  aria-label="调整选中部件大小"
+                  className="adaptive-parts-assembly-scale-handle"
+                  onPointerDown={(event) => beginScale(event, selectedCanvasPart)}
+                  type="button"
+                />
+              </div>
             </div>
           ) : null}
         </div>
