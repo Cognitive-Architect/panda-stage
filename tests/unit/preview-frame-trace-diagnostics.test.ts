@@ -6,6 +6,7 @@ import {
   resetPreviewFrameTraceRecorderForTests,
   type PreviewFrameTraceContext,
 } from '../../src/renderer/stage/previewDiagnostics';
+import { createPreviewFrameTraceContext } from '../../src/renderer/stage/previewFrameTrace';
 
 const traceContext: PreviewFrameTraceContext = {
   traceId: 'synthetic-instance:g1:s0:c0:f0',
@@ -67,6 +68,48 @@ describe('Preview frame trace diagnostics', () => {
 
       expect(events.filter((event) => event === 'frame-trace:target-changed')).toHaveLength(1);
       expect(getPreviewFrameTraceStatus(traceContext.traceId)).toBe('COMMITTED');
+    } finally {
+      vi.unstubAllGlobals();
+      resetPreviewFrameTraceRecorderForTests();
+    }
+  });
+
+  it('assigns a fresh trace identity when the same frame target is activated again', () => {
+    vi.stubGlobal('window', {
+      __pandaPreviewDiagnostics: {
+        frameTraceEnabled: true,
+        record() {},
+      },
+    } as unknown as Window);
+    resetPreviewFrameTraceRecorderForTests();
+    try {
+      const frame = {
+        instanceId: traceContext.instanceId,
+        animationId: 'synthetic-animation',
+        frameIndex: traceContext.frameIndex,
+        cycleIndex: traceContext.cycleIndex,
+        frameId: traceContext.targetFrameId,
+        assetId: traceContext.targetAssetId,
+      };
+      const first = createPreviewFrameTraceContext(
+        frame,
+        traceContext.shotId,
+        traceContext.shotTimeMs,
+        traceContext.playbackGeneration,
+        traceContext.seekGeneration,
+        1,
+      );
+      const reactivated = createPreviewFrameTraceContext(
+        frame,
+        traceContext.shotId,
+        traceContext.shotTimeMs,
+        traceContext.playbackGeneration,
+        traceContext.seekGeneration,
+        2,
+      );
+
+      expect(first?.targetFrameId).toBe(reactivated?.targetFrameId);
+      expect(first?.traceId).not.toBe(reactivated?.traceId);
     } finally {
       vi.unstubAllGlobals();
       resetPreviewFrameTraceRecorderForTests();
