@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { createHash } = require('node:crypto');
 const { app, BrowserWindow, nativeImage } = require('electron');
 
 app.disableHardwareAcceleration();
@@ -61,6 +62,26 @@ function bitmapDifference(leftPng, rightPng) {
   };
 }
 
+function sha256(value) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function visualReviewFingerprint(receipt) {
+  const realAsset = receipt.realAsset;
+  const bindings = {
+    experimentHead: receipt.experimentHead,
+    sourceSha256: realAsset.sourceSha256,
+    sourcePartPngSha256: realAsset.sourcePartPngSha256,
+    projectSnapshotSha256: realAsset.projectSnapshotSha256,
+    contactSheetPngSha256: realAsset.contactSheetPngSha256,
+    shoulderContactSheetPngSha256: realAsset.shoulderContactSheetPngSha256,
+  };
+  if (Object.values(bindings).some((value) => typeof value !== 'string' || !value)) {
+    return null;
+  }
+  return sha256(JSON.stringify({ schema: 'c5-kf-00-visual-review/v1', ...bindings }));
+}
+
 async function captureSvg(window, svgPath, outputPath) {
   const svg = fs.readFileSync(svgPath, 'utf8');
   const dimensions = readSvgSize(svg);
@@ -88,6 +109,7 @@ async function captureSvg(window, svgPath, outputPath) {
     sourceNaturalWidth: result.naturalWidth,
     sourceNaturalHeight: result.naturalHeight,
     bytes: png.length,
+    sha256: sha256(png),
   };
 }
 
@@ -100,18 +122,30 @@ function applyVisualReview(receipt, reviewPath) {
     return { status: receipt.realAsset.visualReview };
   }
   const review = JSON.parse(fs.readFileSync(reviewPath, 'utf8'));
+  const fingerprint = visualReviewFingerprint(receipt);
+  receipt.realAsset.visualReviewFingerprint = fingerprint;
   const matches =
+    fingerprint !== null &&
+    review.schema === 'c5-kf-00-visual-review/v1' &&
+    review.experimentHead === receipt.experimentHead &&
     review.corpusEvidenceId === receipt.realAsset.corpusEvidenceId &&
     review.sourceSha256 === receipt.realAsset.sourceSha256 &&
+    review.sourcePartPngSha256 === receipt.realAsset.sourcePartPngSha256 &&
+    review.projectSnapshotSha256 === receipt.realAsset.projectSnapshotSha256 &&
+    review.contactSheetPngSha256 === receipt.realAsset.contactSheetPngSha256 &&
+    review.shoulderContactSheetPngSha256 === receipt.realAsset.shoulderContactSheetPngSha256 &&
+    review.visualReviewFingerprint === fingerprint &&
     review.partName === receipt.realAsset.partName &&
     JSON.stringify(review.pivotSource) === JSON.stringify(receipt.realAsset.pivotSource) &&
     JSON.stringify(review.angleRangeTestedDeg) === JSON.stringify(receipt.realAsset.angleRangeTestedDeg) &&
-    ['REAL_VISUAL_PASS', 'VISUAL_FAIL', 'ASSET_LIMITED'].includes(review.verdict);
+    review.ownerAttested === false &&
+    ['CODEX_LOCAL_VISUAL_PASS_PROVISIONAL', 'VISUAL_FAIL', 'ASSET_LIMITED'].includes(review.verdict);
   if (!matches) {
-    receipt.realAsset.visualReview = 'REVIEW_RECORD_MISMATCH';
-    throw new Error('Private visual review does not match this exact source, Part, pivot, and angle range.');
+    receipt.realAsset.visualReview = 'VISUAL_REVIEW_REUSE_NOT_VERIFIED';
+    return { status: receipt.realAsset.visualReview };
   }
   receipt.realAsset.visualReview = review.verdict;
+  receipt.realAsset.ownerAttested = false;
   receipt.realAsset.visualReviewNote = review.note;
   receipt.realAsset.visualReviewFile = reviewPath;
   receipt.realAsset.visualReviewer = review.reviewer;
@@ -157,7 +191,12 @@ async function main() {
       fs.readFileSync(syntheticStaticPng.path),
       fs.readFileSync(syntheticNeutralPng.path),
     );
-    receipt.synthetic.neutralPixelComparison = syntheticNeutralComparison;
+    receipt.synthetic.researchSvgNeutralPixelComparison = syntheticNeutralComparison;
+    receipt.synthetic.pixelComparisonScope = 'RESEARCH_SVG_ONLY';
+    receipt.synthetic.pixelComparisonVerdict = syntheticNeutralComparison.equal
+      ? 'RESEARCH_SVG_NEUTRAL_PIXEL_EQUAL'
+      : 'RESEARCH_SVG_NEUTRAL_PIXEL_DIFFERENT';
+    receipt.synthetic.productionStagePixelParity = 'NOT_VERIFIED';
     receipt.synthetic.contactSheetPng = publicSheet.path;
     receipt.synthetic.contactSheetSize = {
       width: publicSheet.width,
@@ -195,6 +234,7 @@ async function main() {
         fs.readFileSync(realNeutralPng.path),
       );
       receipt.realAsset.contactSheetPng = realSheet.path;
+      receipt.realAsset.contactSheetPngSha256 = realSheet.sha256;
       receipt.realAsset.contactSheetSize = {
         width: realSheet.width,
         height: realSheet.height,
@@ -202,25 +242,32 @@ async function main() {
       };
       if (realShoulderSheet) {
         receipt.realAsset.shoulderContactSheetPng = realShoulderSheet.path;
+        receipt.realAsset.shoulderContactSheetPngSha256 = realShoulderSheet.sha256;
         receipt.realAsset.shoulderContactSheetSize = {
           width: realShoulderSheet.width,
           height: realShoulderSheet.height,
           bytes: realShoulderSheet.bytes,
         };
       }
-      receipt.realAsset.neutralPixelComparison = realNeutralComparison;
+      receipt.realAsset.researchSvgNeutralPixelComparison = realNeutralComparison;
+      receipt.realAsset.pixelComparisonScope = 'RESEARCH_SVG_ONLY';
+      receipt.realAsset.pixelComparisonVerdict = realNeutralComparison.equal
+        ? 'RESEARCH_SVG_NEUTRAL_PIXEL_EQUAL'
+        : 'RESEARCH_SVG_NEUTRAL_PIXEL_DIFFERENT';
+      receipt.realAsset.productionStagePixelParity = 'NOT_VERIFIED';
     }
 
     const reviewPath = path.join(outputDir, 'private-visual-review.json');
     const visualReview = applyVisualReview(receipt, reviewPath);
     const pixelChecks = [syntheticNeutralComparison];
-    if (receipt.realAsset.neutralPixelComparison) {
-      pixelChecks.push(receipt.realAsset.neutralPixelComparison);
+    if (receipt.realAsset.researchSvgNeutralPixelComparison) {
+      pixelChecks.push(receipt.realAsset.researchSvgNeutralPixelComparison);
     }
     receipt.capture = {
       renderer: `Electron ${process.versions.electron} / Chromium ${process.versions.chrome}`,
-      syntheticStaticNeutralPixelEqual: syntheticNeutralComparison.equal,
-      realStaticNeutralPixelEqual: receipt.realAsset.neutralPixelComparison?.equal ?? null,
+      researchSvgSyntheticNeutralPixelEqual: syntheticNeutralComparison.equal,
+      researchSvgRealNeutralPixelEqual: receipt.realAsset.researchSvgNeutralPixelComparison?.equal ?? null,
+      productionStagePixelParity: 'NOT_VERIFIED',
       visualReview,
       outputDir,
     };
@@ -230,8 +277,8 @@ async function main() {
         ? 'TECH_PASS'
         : 'TECH_FAIL';
     receipt.realVisualGate =
-      visualReview.status === 'REAL_VISUAL_PASS'
-        ? 'REAL_VISUAL_PASS'
+      visualReview.status === 'CODEX_LOCAL_VISUAL_PASS_PROVISIONAL'
+        ? 'CODEX_LOCAL_VISUAL_PASS_PROVISIONAL / OWNER_NOT_ATTESTED'
         : visualReview.status;
     receipt.capturePending = false;
     fs.writeFileSync(
@@ -242,8 +289,9 @@ async function main() {
     console.log(JSON.stringify({
       gate: receipt.gate,
       realVisualGate: receipt.realVisualGate,
-      syntheticNeutralPixelComparison: syntheticNeutralComparison,
-      realNeutralPixelComparison: receipt.realAsset.neutralPixelComparison ?? null,
+      syntheticResearchSvgNeutralPixelComparison: syntheticNeutralComparison,
+      realResearchSvgNeutralPixelComparison: receipt.realAsset.researchSvgNeutralPixelComparison ?? null,
+      productionStagePixelParity: 'NOT_VERIFIED',
       privateVisualReview: visualReview,
       syntheticContactSheet: publicSheet,
       privateRealContactSheet: realSheet,

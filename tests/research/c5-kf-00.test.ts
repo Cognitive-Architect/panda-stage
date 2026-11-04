@@ -135,6 +135,10 @@ function sha256(filePath: string): string {
   return createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 
+function sha256Text(value: string): string {
+  return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
 function formatNumber(value: number): string {
   if (Object.is(value, -0)) return '0';
   return Number(value.toPrecision(15)).toString();
@@ -684,6 +688,7 @@ function createRealArtifacts() {
   );
   const realTargetPngSha256 = sha256(realTargetPng);
   const projectBefore = JSON.stringify(project);
+  const projectSnapshotSha256 = sha256Text(projectBefore);
   const evaluated = evaluateShotAtTime(shot, 0, project);
   const evaluatedLayer = evaluated.layers.find((candidate) => candidate.id === layer.id)!;
   const visual = resolveLayerVisualParts(project, shot, evaluatedLayer);
@@ -792,6 +797,7 @@ function createRealArtifacts() {
     sourceKind: target.source.kind,
     sourcePoseFrame: target.source.kind === 'source-instance' ? target.source.sourcePoseFrame : null,
     sourcePartPngSha256: realTargetPngSha256,
+    projectSnapshotSha256,
     sourcePartImageMapping: target.imageMapping,
     sourceRootTransform: character.sourceRootTransform,
     restTransform: target.restTransform,
@@ -824,6 +830,7 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
       synthetic.pivot,
       staticPose,
     );
+    // This is research SVG geometry evidence, not StageRenderer pixel parity.
     expect(neutralMatrix).toEqual(targetMatrix);
     expect(synthetic.scene.visual.ownerTransform.anchor).toBe('center');
     expect(synthetic.scene.character.sourceRootTransform).toEqual({
@@ -933,7 +940,9 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
         frameAnglesDeg: synthetic.frames.map((frame) => frame.pose.rotationDeg),
         neutralMatrixExact: true,
         neutralSvgExact: true,
-        neutralPixelComparison: 'PENDING_ELECTRON_CAPTURE',
+        researchSvgNeutralPixelComparison: 'PENDING_ELECTRON_CAPTURE',
+        pixelComparisonScope: 'RESEARCH_SVG_ONLY',
+        productionStagePixelParity: 'NOT_VERIFIED',
         matrixCoefficientAverageRejected: true,
       },
       realAsset: {},
@@ -1015,25 +1024,60 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
     }
   });
 
-  it('preserves explicit full turns, crosses +/-180 continuously, and rejects invalid inputs', () => {
-    const fullTurn = interpolatePoseAtTime(
-      staticPose,
-      { ...staticPose, timeMs: 1_000, rotationDeg: 360 },
-      500,
+  it('interpolates authored unwrapped angles directly and rejects invalid inputs', () => {
+    const synthetic = createSyntheticArtifacts();
+    const targetMatrix = synthetic.baseMatrices.get(synthetic.targetPart.partId)!;
+    const cases = [
+      { from: 0, to: 270, midpoint: 135 },
+      { from: 0, to: 360, midpoint: 180 },
+      { from: 170, to: 190, midpoint: 180 },
+      { from: 170, to: -170, midpoint: 0 },
+    ];
+    const randomSeekOrder = [750, 250, 1_000, 0, 500, 250, 750];
+    for (const { from, to, midpoint } of cases) {
+      const start = { ...staticPose, rotationDeg: from };
+      const end = { ...staticPose, timeMs: 1_000, rotationDeg: to };
+      expect(interpolatePoseAtTime(start, end, 500).rotationDeg).toBe(midpoint);
+
+      const sampleMatrix = (timeMs: number) =>
+        applyPoseToImageTransform(
+          targetMatrix,
+          synthetic.pivot,
+          interpolatePoseAtTime(start, end, timeMs),
+        );
+      const referenceMatrices = new Map(
+        TEST_FRAME_TIMES.map((timeMs) => [timeMs, sampleMatrix(timeMs)]),
+      );
+      for (const timeMs of randomSeekOrder) {
+        expect(sampleMatrix(timeMs)).toEqual(referenceMatrices.get(timeMs));
+      }
+      for (const timeMs of [...TEST_FRAME_TIMES].reverse()) {
+        expect(sampleMatrix(timeMs)).toEqual(referenceMatrices.get(timeMs));
+      }
+    }
+
+    const reverseTwelveDegrees = {
+      ...staticPose,
+      timeMs: 1_000,
+      rotationDeg: -12,
+    };
+    const frameAnglesDeg = TEST_FRAME_TIMES.map(
+      (timeMs) =>
+        interpolatePoseAtTime(staticPose, reverseTwelveDegrees, timeMs)
+          .rotationDeg,
     );
-    expect(fullTurn.rotationDeg).toBe(180);
-    const positiveBoundaryCrossing = interpolatePoseAtTime(
-      { ...staticPose, rotationDeg: 170 },
-      { ...staticPose, timeMs: 1_000, rotationDeg: -170 },
-      500,
-    );
-    expect(positiveBoundaryCrossing.rotationDeg).toBe(180);
-    const negativeBoundaryCrossing = interpolatePoseAtTime(
-      { ...staticPose, rotationDeg: -170 },
-      { ...staticPose, timeMs: 1_000, rotationDeg: 170 },
-      500,
-    );
-    expect(negativeBoundaryCrossing.rotationDeg).toBe(-180);
+    expect(frameAnglesDeg).toEqual([0, -3, -6, -9, -12]);
+
+    if (artifacts) {
+      artifacts.synthetic = {
+        ...artifacts.synthetic,
+        directAngleInterpolationCases: cases,
+        zeroToMinus12FrameTimesMs: [...TEST_FRAME_TIMES],
+        zeroToMinus12FrameAnglesDeg: frameAnglesDeg,
+        repeatedOrderedRandomSeekMatricesEqual: true,
+      };
+    }
+
     expect(() =>
       interpolatePoseAtTime(
         { ...staticPose, rotationDeg: Number.NaN },
@@ -1064,15 +1108,7 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
     ).toThrow(/finite/u);
 
     if (artifacts) {
-      artifacts.synthetic = {
-        ...artifacts.synthetic,
-        fullTurn0To360MidpointDeg: fullTurn.rotationDeg,
-        boundaryCrossingsDeg: [
-          positiveBoundaryCrossing.rotationDeg,
-          negativeBoundaryCrossing.rotationDeg,
-        ],
-        invalidFiniteScaleDegenerateCasesRejected: true,
-      };
+      artifacts.synthetic.invalidFiniteScaleDegenerateCasesRejected = true;
     }
   });
 
@@ -1157,6 +1193,7 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
         projectSchemaVersionAtImport: real.projectSchemaVersionAtImport,
         projectSchemaVersionAfterCurrentMigration: real.projectSchemaVersionAfterCurrentMigration,
         sourceSha256: real.sourceSha256,
+        projectSnapshotSha256: real.projectSnapshotSha256,
         sourceCategory: real.sourceCategory,
         sourceShaMatchesImportedIdentity: real.sourceShaMatchesImportedIdentity,
         sourceFileUnchanged: real.sourceFileUnchanged,
@@ -1171,6 +1208,7 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
         siblingTransformsUnchanged: real.siblingTransformsUnchanged,
         projectSnapshotUnchanged: real.projectSnapshotUnchanged,
         neutralMatrixExact: real.neutralMatrixExact,
+        productionStagePixelParity: 'NOT_VERIFIED',
         visualReview: 'PENDING_LOCAL_CONTACT_SHEET_REVIEW',
       },
     };
@@ -1193,6 +1231,7 @@ describe('C5-KF-00 bounded Part pivot and two-key interpolation experiment', () 
         encoding: 'utf8',
       }).trim(),
       command: 'pnpm research:c5-kf-00',
+      productionStagePixelParity: 'NOT_VERIFIED',
       process: {
         projectSave: 'NOT_RUN',
         productionUi: 'NOT_RUN',

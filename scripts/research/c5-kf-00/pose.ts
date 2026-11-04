@@ -97,17 +97,6 @@ export function transformPoint(
   return result;
 }
 
-function angleDelta(fromDeg: number, toDeg: number): number {
-  const requestedDelta = toDeg - fromDeg;
-  // A full turn is intentional when the keys differ by 360 degrees or more.
-  // For normalized angles across +/-180, use the continuous shortest crossing.
-  if (Math.abs(requestedDelta) >= 360) return requestedDelta;
-  let continuousDelta = requestedDelta;
-  while (continuousDelta > 180) continuousDelta -= 360;
-  while (continuousDelta < -180) continuousDelta += 360;
-  return continuousDelta;
-}
-
 function assertKeyframe(frame: ResearchKeyframe): void {
   if (
     !Number.isFinite(frame.timeMs) ||
@@ -133,7 +122,10 @@ function assertKeyframe(frame: ResearchKeyframe): void {
   }
 }
 
-/** Linear two-key interpolation from absolute time; no previous-frame state. */
+/**
+ * Linear two-key interpolation from absolute time; no previous-frame state.
+ * Rotation is an explicit unwrapped value and preserves the authored direction.
+ */
 export function interpolatePoseAtTime(
   start: ResearchKeyframe,
   end: ResearchKeyframe,
@@ -157,9 +149,7 @@ export function interpolatePoseAtTime(
   return {
     offsetX: interpolate(start.offsetX, end.offsetX),
     offsetY: interpolate(start.offsetY, end.offsetY),
-    rotationDeg:
-      start.rotationDeg +
-      angleDelta(start.rotationDeg, end.rotationDeg) * progress,
+    rotationDeg: interpolate(start.rotationDeg, end.rotationDeg),
     scale: interpolate(start.scale, end.scale),
   };
 }
