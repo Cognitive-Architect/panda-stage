@@ -36,8 +36,11 @@ import {
   previewDiagnosticScenePixelRatio,
   recordPreviewDiagnostic,
   recordPreviewDuration,
+  recordPreviewFrameTrace,
+  type PreviewFrameTraceContext,
   shouldForceCompositeCacheRebuild,
 } from './previewDiagnostics';
+import { resolvePreviewAnimationFrame } from './previewFrameTrace';
 import {
   configureKonvaScenePixelRatio,
   PREVIEW_CANVAS_PIXEL_RATIO,
@@ -72,6 +75,7 @@ interface StageRendererProps {
   onDisplayReady?: () => void;
   onError?: (error: Error) => void;
   onImageResourceFailure?: (failure: StageImageResourceFailure) => void;
+  previewFrameTrace?: PreviewFrameTraceContext | null;
   renderToken?: string | number;
   /** Degraded Preview is drawable, but never exact-frame ready for Export. */
   degraded?: boolean;
@@ -100,6 +104,7 @@ function useStageImages(
   sourceKey: string,
   projectId: string,
   prewarmSources: readonly StageImageLayerSource[],
+  traceContext: PreviewFrameTraceContext | null,
 ): StageImageResourceState {
   const sessionRef = useRef<StageImageResourceSession | null>(null);
   if (!sessionRef.current) {
@@ -135,9 +140,9 @@ function useStageImages(
     }
     session.reconcile(layerSourcesRef.current.layers, (nextState) => {
       setState(nextState);
-    });
+    }, traceContext);
     session.prewarm(layerSourcesRef.current.prewarmSources);
-  }, [prewarmSourceKey, sourceKey]);
+  }, [prewarmSourceKey, sourceKey, traceContext?.traceId]);
 
   useEffect(() => {
     const session = sessionRef.current;
@@ -357,6 +362,7 @@ export function StageRenderer({
   onDisplayReady,
   onError,
   onImageResourceFailure,
+  previewFrameTrace = null,
   renderToken,
   degraded = false,
   showStageLabel = true,
@@ -366,6 +372,9 @@ export function StageRenderer({
   const stageRef = useRef<Konva.Stage | null>(null);
   const stageRendererRef = useRef<HTMLDivElement | null>(null);
   const instrumentedLayers = useRef(new WeakSet<Konva.Layer>());
+  const previewFrameTraceRef = useRef(previewFrameTrace);
+  const displayedFrameIdRef = useRef<string | null>(null);
+  previewFrameTraceRef.current = previewFrameTrace;
   const configurePreviewLayer = useCallback((layer: Konva.Layer | null) => {
     if (layer) {
       configureKonvaScenePixelRatio(
@@ -380,6 +389,17 @@ export function StageRenderer({
           const startedAt = previewDiagnosticNow();
           const result = drawScene(...args);
           recordPreviewDuration('konva-draw-scene', startedAt, {});
+          const trace = previewFrameTraceRef.current;
+          if (trace) {
+            recordPreviewFrameTrace('stage-paint', trace, {
+              paintBoundary: 'konva-layer-drawScene',
+              displayedFrameId: displayedFrameIdRef.current ?? 'NOT_OBSERVABLE',
+              physicalDisplay: 'NOT_OBSERVABLE',
+              status: displayedFrameIdRef.current === trace.targetFrameId
+                ? 'COMMITTED'
+                : 'PENDING',
+            });
+          }
           return result;
         }) as Konva.Layer['drawScene'];
       }
@@ -425,6 +445,7 @@ export function StageRenderer({
     imageSourceKey,
     project.id,
     prewarmSources,
+    previewFrameTrace,
   );
   useEffect(() => {
     imageState.optionalFailures.forEach((failure) => {
@@ -464,6 +485,10 @@ export function StageRenderer({
   );
   const committedFrame = committedFrameRef.current;
   const displayModel = displayFrame?.model ?? modelResult.model;
+  const displayedAnimationFrame = previewFrameTrace && displayModel
+    ? resolvePreviewAnimationFrame(project, displayModel, previewFrameTrace.instanceId)
+    : null;
+  displayedFrameIdRef.current = displayedAnimationFrame?.frameId ?? null;
   useLayoutEffect(() => {
     recordPreviewDiagnostic('stage-commit', {
       timeMs: displayModel?.timeMs ?? -1,
@@ -473,6 +498,35 @@ export function StageRenderer({
     recordPreviewDuration('stage-render-to-commit', renderStartedAt, {
       timeMs: displayModel?.timeMs ?? -1,
     });
+    if (previewFrameTrace) {
+      // Child layout effects can run before ProductPreviewOverlay's effect.
+      // Register this rendered target first so the commit cannot temporarily
+      // terminalize a trace that the parent's later duplicate event resets.
+      recordPreviewFrameTrace('target-changed', previewFrameTrace, {
+        status: 'PENDING',
+        requestBoundary: 'StageRenderer-rendered-target',
+      });
+      const displayedFrameId = displayedAnimationFrame?.frameId ?? 'NOT_OBSERVABLE';
+      recordPreviewFrameTrace('stage-react-commit', previewFrameTrace, {
+        displayedFrameId,
+        exactReady: ready,
+        physicalDisplay: 'NOT_OBSERVABLE',
+      });
+      if (ready && displayedFrameId === previewFrameTrace.targetFrameId) {
+        recordPreviewFrameTrace('exact-ready-commit', previewFrameTrace, {
+          displayedFrameId,
+          status: 'COMMITTED',
+          commitBoundary: 'React-layout-commit-after-exact-ready-gate',
+          physicalDisplay: 'NOT_OBSERVABLE',
+        });
+      } else if (ready) {
+        recordPreviewFrameTrace('trace-mismatch', previewFrameTrace, {
+          displayedFrameId,
+          status: 'FAILED',
+          cause: 'exact-ready-frame-id-mismatch',
+        });
+      }
+    }
   });
   const displayCaption = displayFrame?.caption ?? caption;
   const displayCaptionStyle = displayFrame?.captionStyle ?? captionStyle;

@@ -35,10 +35,18 @@ import {
 import { evaluateSubtitleAtTime } from '../../shared/preview/subtitle-engine';
 import { CanvasStage } from '../stage/CanvasStage';
 import {
+  getPreviewFrameTraceStatus,
   previewDiagnosticNow,
   recordPreviewDiagnostic,
   recordPreviewDuration,
+  recordPreviewFrameTrace,
+  previewFrameDiagnosticsEnabled,
+  type PreviewFrameTraceContext,
 } from '../stage/previewDiagnostics';
+import {
+  createPreviewFrameTraceContext,
+  resolvePreviewAnimationFrame,
+} from '../stage/previewFrameTrace';
 import type { StageImageResourceFailure } from '../stage/stageImageResourceSession';
 import { SegmentedTabs } from '../ui/SegmentedTabs';
 import {
@@ -573,11 +581,61 @@ export function ProductPreviewOverlay({
       ...new Set([...imagePlan.requiredAssetIds, ...decodeFallbackAssetIds]),
     ],
   };
+  const traceFrame = previewFrameDiagnosticsEnabled() && shot && renderedShot
+    ? resolvePreviewAnimationFrame(project, renderedShot)
+    : null;
+  const previewFrameTraceRef = useRef<PreviewFrameTraceContext | null>(null);
+  const traceEpochRef = useRef(0);
+  if (traceFrame && !previewFrameTraceRef.current) {
+    traceEpochRef.current += 1;
+  }
+  const traceCandidate = traceFrame && shot && renderedShot
+    ? createPreviewFrameTraceContext(
+        traceFrame,
+        shot.id,
+        renderedShot.timeMs,
+        playbackClockGenerationRef.current,
+        seekRevision,
+        traceEpochRef.current,
+      )
+    : null;
+  if (traceCandidate?.traceId !== previewFrameTraceRef.current?.traceId) {
+    previewFrameTraceRef.current = traceCandidate;
+  }
+  if (!traceCandidate) previewFrameTraceRef.current = null;
+  const previewFrameTrace = previewFrameTraceRef.current;
+  const recordedTraceIdRef = useRef('');
+  const lastRecordedPreviewFrameTraceRef = useRef<typeof previewFrameTrace>(null);
+  useLayoutEffect(() => {
+    if (!previewFrameTrace) {
+      const previousTrace = lastRecordedPreviewFrameTraceRef.current;
+      if (
+        previousTrace &&
+        getPreviewFrameTraceStatus(previousTrace.traceId) === 'PENDING'
+      ) {
+        recordPreviewFrameTrace('trace-superseded', previousTrace, {
+          status: 'SUPERSEDED',
+          cause: 'no-visible-animation-target',
+        });
+      }
+      lastRecordedPreviewFrameTraceRef.current = null;
+      recordedTraceIdRef.current = '';
+      return;
+    }
+    if (recordedTraceIdRef.current === previewFrameTrace.traceId) return;
+    recordedTraceIdRef.current = previewFrameTrace.traceId;
+    lastRecordedPreviewFrameTraceRef.current = previewFrameTrace;
+    recordPreviewFrameTrace('target-changed', previewFrameTrace, {
+      status: 'PENDING',
+      requestBoundary: 'ProductPreviewOverlay-evaluated-target',
+    });
+  }, [previewFrameTrace]);
   const assets = useProductPreviewImages(
     projectRoot,
     project,
     imageScope,
     nextAssetIds,
+    previewFrameTrace,
   );
   const currentStageImageFailures = stageImageFailures.filter(
     (failure) =>
@@ -968,6 +1026,7 @@ export function ProductPreviewOverlay({
                       }
                       onError={handleInitialStageError}
                       onImageResourceFailure={handleImageResourceFailure}
+                      previewFrameTrace={previewFrameTrace}
                       onReady={
                         initialReadiness === 'preparing'
                           ? handleInitialStageReady
@@ -1001,6 +1060,7 @@ export function ProductPreviewOverlay({
                       }
                       onError={handleInitialStageError}
                       onImageResourceFailure={handleImageResourceFailure}
+                      previewFrameTrace={previewFrameTrace}
                       project={project}
                     />
                     <div
@@ -1028,6 +1088,7 @@ export function ProductPreviewOverlay({
                     captionStyle={heldVisual.captionStyle}
                     degraded={heldVisual.degraded}
                     evaluatedShot={heldVisual.evaluatedShot}
+                    previewFrameTrace={previewFrameTrace}
                     project={project}
                   />
                 ) : assets.status === 'loading' ? (
@@ -1046,6 +1107,7 @@ export function ProductPreviewOverlay({
                     captionStyle={captionStyle}
                     degraded={previewDegraded}
                     evaluatedShot={displayedShot}
+                    previewFrameTrace={previewFrameTrace}
                     project={project}
                   />
                 ) : null}

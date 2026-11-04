@@ -2,6 +2,13 @@ import { useEffect, useLayoutEffect, useState } from 'react';
 import type { Project } from '../../domain';
 import type { AssetCanvasImageReadResponse } from '../../shared/asset-canvas-image-api';
 import type { StageAssetUrlMap } from '../../shared/stage/render-model';
+import {
+  getPreviewFrameTraceStatus,
+  previewFrameDiagnosticsEnabled,
+  recordPreviewFrameTrace,
+  recordPreviewFrameTraceAt,
+  type PreviewFrameTraceContext,
+} from '../stage/previewDiagnostics';
 
 export type ProductPreviewAssetLoadStatus =
   | 'loading'
@@ -104,8 +111,16 @@ interface PreviewImageEntry {
   startedAsOptional: boolean;
   discardResult: boolean;
   byteLength: number;
+  traceRequests?: Array<{
+    context: PreviewFrameTraceContext;
+    requiredQueuedAtMs: number;
+  }>;
+  readStartedAtMs?: number;
+  readReadyAtMs?: number;
   url?: string;
 }
+
+const MAX_TRACE_REQUESTS_PER_IMAGE = 8;
 
 type PreviewImagePriority = 0 | 1 | 2 | 3;
 
@@ -229,6 +244,7 @@ export class ProductPreviewImageSession {
   private inFlightPeak = 0;
   private droppedOptionalQueueEntries = 0;
   private disposed = false;
+  private activeTraceContext: PreviewFrameTraceContext | null = null;
 
   constructor(options: ProductPreviewImageSessionOptions = {}) {
     this.readCanvasImage = options.readCanvasImage ?? defaultReadCanvasImage;
@@ -288,6 +304,8 @@ export class ProductPreviewImageSession {
         existing.failureKind = null;
         existing.status = 'queued';
         existing.startedAsOptional = false;
+        existing.readStartedAtMs = undefined;
+        existing.readReadyAtMs = undefined;
         existing.sequence = this.nextSequence;
         let resolve!: () => void;
         existing.promise = new Promise<void>((onResolve) => {
@@ -469,6 +487,10 @@ export class ProductPreviewImageSession {
       (!entry.discardResult || this.isProtected(descriptor.key));
     const readImage = (): Promise<AssetCanvasImageReadResponse> => {
       this.readRequests += 1;
+      if (entry.traceRequests?.length || previewFrameDiagnosticsEnabled()) {
+        entry.readStartedAtMs = performance.now();
+        this.recordByteReadStart(entry);
+      }
       return Promise.resolve().then(() =>
         this.readCanvasImage({
           projectRoot,
@@ -484,6 +506,17 @@ export class ProductPreviewImageSession {
         entry.requiredRetryAttempted || !attemptStartedAsOptional
           ? 'required'
           : 'optional';
+      for (const request of entry.traceRequests ?? []) {
+        recordPreviewFrameTrace('byte-read-failed', request.context, {
+          assetId: descriptor.assetId,
+          priority: entry.priority,
+          readStatus: 'FAILED',
+          status: this.activeTraceContext?.traceId === request.context.traceId
+            ? 'FAILED'
+            : 'SUPERSEDED',
+          cause: 'read-failed',
+        });
+      }
     };
     const isReadyResponse = (
       response: AssetCanvasImageReadResponse | null,
@@ -493,6 +526,7 @@ export class ProductPreviewImageSession {
     void (async () => {
       let response = await readImage().catch(() => null);
       if (!canApplyResult()) {
+        this.recordByteReadDiscarded(entry, descriptor.assetId, 'stale-result');
         failEntry();
         return;
       }
@@ -509,6 +543,7 @@ export class ProductPreviewImageSession {
         entry.failureKind = null;
         response = await readImage().catch(() => null);
         if (!canApplyResult()) {
+          this.recordByteReadDiscarded(entry, descriptor.assetId, 'stale-retry-result');
           failEntry();
           return;
         }
@@ -519,11 +554,17 @@ export class ProductPreviewImageSession {
         return;
       }
 
+      if (entry.traceRequests?.length || previewFrameDiagnosticsEnabled()) {
+        entry.readReadyAtMs = performance.now();
+        this.recordByteReadReady(entry, descriptor.assetId, response.byteLength);
+      }
+
       const objectUrl = this.createObjectUrl(
         new Blob([response.bytes], { type: response.mimeType }),
       );
       if (!canApplyResult()) {
         this.revokeObjectUrl(objectUrl);
+        this.recordByteReadDiscarded(entry, descriptor.assetId, 'stale-object-url');
         failEntry();
         return;
       }
@@ -737,8 +778,10 @@ export class ProductPreviewImageSession {
     project: Project,
     activeScope: ProductPreviewImageScopeInput,
     nextScope: ProductPreviewImageScopeInput = [],
+    traceContext: PreviewFrameTraceContext | null = null,
   ): Promise<ProductPreviewAssetLoadState | null> {
     if (this.disposed) return null;
+    this.activeTraceContext = traceContext;
     const active = normalizeScope(activeScope);
     const next = normalizeScope(nextScope);
 
@@ -810,6 +853,51 @@ export class ProductPreviewImageSession {
     const requiredEntries = required.descriptors
       .map((descriptor) => entriesByKey.get(descriptor.key))
       .filter((entry): entry is PreviewImageEntry => Boolean(entry));
+    if (traceContext) {
+      const targetDescriptor = required.descriptors.find(
+        (descriptor) => descriptor.assetId === traceContext.targetAssetId,
+      );
+      const targetEntry = targetDescriptor
+        ? entriesByKey.get(targetDescriptor.key)
+        : undefined;
+      if (targetEntry) {
+        this.attachTraceRequest(targetEntry, traceContext);
+        recordPreviewFrameTrace('required-queued', traceContext, {
+          subsystem: 'preview-byte-read',
+          assetId: targetDescriptor?.assetId ?? traceContext.targetAssetId,
+          priority: targetEntry.priority,
+          queueState: targetEntry.status,
+        });
+        if (targetEntry.readStartedAtMs !== undefined) {
+          recordPreviewFrameTraceAt(
+            'byte-read-start',
+            traceContext,
+            targetEntry.readStartedAtMs,
+            {
+              assetId: targetEntry.descriptor.assetId,
+              priority: targetEntry.priority,
+              startedAsOptional: targetEntry.startedAsOptional,
+              requiredQueuedAt: this.traceQueuedAt(targetEntry, traceContext),
+              observedAfterStart: true,
+            },
+          );
+        }
+        if (targetEntry.status === 'ready' && targetEntry.readReadyAtMs !== undefined) {
+          this.recordByteReadReady(
+            targetEntry,
+            traceContext.targetAssetId,
+            targetEntry.byteLength,
+          );
+        } else if (targetEntry.status === 'error') {
+          recordPreviewFrameTrace('byte-read-failed', traceContext, {
+            assetId: traceContext.targetAssetId,
+            readStatus: 'FAILED',
+            status: 'FAILED',
+            cause: targetEntry.failureKind ?? 'read-failed',
+          });
+        }
+      }
+    }
     this.pump();
 
     // Keep the prior shot's ready URLs alive while the new active shot loads.
@@ -850,10 +938,104 @@ export class ProductPreviewImageSession {
 
   dispose(): void {
     if (this.disposed) return;
+    if (this.activeTraceContext &&
+        getPreviewFrameTraceStatus(this.activeTraceContext.traceId) === 'PENDING') {
+      recordPreviewFrameTrace('trace-cancelled', this.activeTraceContext, {
+        status: 'CANCELLED',
+        cause: 'preview-image-session-disposed',
+      });
+    }
     this.disposed = true;
     this.currentKeepKeys.clear();
     this.committedKeepKeys.clear();
     this.prune(new Set());
+  }
+
+  private attachTraceRequest(
+    entry: PreviewImageEntry,
+    context: PreviewFrameTraceContext,
+  ): void {
+    entry.traceRequests ??= [];
+    if (entry.traceRequests.some((request) => request.context.traceId === context.traceId)) {
+      return;
+    }
+    entry.traceRequests.push({
+      context,
+      requiredQueuedAtMs: performance.now(),
+    });
+    if (entry.traceRequests.length > MAX_TRACE_REQUESTS_PER_IMAGE) {
+      entry.traceRequests.shift();
+    }
+  }
+
+  private traceQueuedAt(
+    entry: PreviewImageEntry,
+    context: PreviewFrameTraceContext,
+  ): number | null {
+    return entry.traceRequests?.find(
+      (request) => request.context.traceId === context.traceId,
+    )?.requiredQueuedAtMs ?? null;
+  }
+
+  private recordByteReadStart(entry: PreviewImageEntry): void {
+    if (entry.readStartedAtMs === undefined) return;
+    for (const request of entry.traceRequests ?? []) {
+      recordPreviewFrameTraceAt(
+        'byte-read-start',
+        request.context,
+        entry.readStartedAtMs,
+        {
+          assetId: entry.descriptor.assetId,
+          priority: entry.priority,
+          startedAsOptional: entry.startedAsOptional,
+          requiredQueuedAt: request.requiredQueuedAtMs,
+          queueWaitMs: Math.max(0, entry.readStartedAtMs - request.requiredQueuedAtMs),
+        },
+      );
+    }
+  }
+
+  private recordByteReadReady(
+    entry: PreviewImageEntry,
+    assetId: string,
+    byteLength: number,
+  ): void {
+    if (entry.readReadyAtMs === undefined) return;
+    for (const request of entry.traceRequests ?? []) {
+      recordPreviewFrameTraceAt(
+        'byte-read-ready',
+        request.context,
+        entry.readReadyAtMs,
+        {
+          assetId,
+          byteLength,
+          priority: entry.priority,
+          readMs: entry.readStartedAtMs === undefined
+            ? null
+            : entry.readReadyAtMs - entry.readStartedAtMs,
+          status: this.activeTraceContext?.traceId === request.context.traceId
+            ? 'PENDING'
+            : 'SUPERSEDED',
+        },
+      );
+    }
+  }
+
+  private recordByteReadDiscarded(
+    entry: PreviewImageEntry,
+    assetId: string,
+    cause: string,
+  ): void {
+    for (const request of entry.traceRequests ?? []) {
+      recordPreviewFrameTrace('byte-read-discarded', request.context, {
+        assetId,
+        readStatus: 'DISCARDED',
+        status: this.activeTraceContext?.traceId === request.context.traceId
+          ? 'CANCELLED'
+          : 'SUPERSEDED',
+        cause,
+      });
+    }
   }
 }
 
@@ -863,6 +1045,7 @@ export function useProductPreviewImages(
   project: Project,
   scope: ProductPreviewImageScopeInput,
   nextAssetIds: ProductPreviewImageScopeInput = [],
+  traceContext: PreviewFrameTraceContext | null = null,
 ): ProductPreviewAssetLoadState {
   const [session, setSession] = useState<ProductPreviewImageSession | null>(null);
   const [, setRevision] = useState(0);
@@ -917,14 +1100,14 @@ export function useProductPreviewImages(
     if (!session) return;
     let active = true;
     void session
-      .prepare(projectRoot, project, scope, nextAssetIds)
+      .prepare(projectRoot, project, scope, nextAssetIds, traceContext)
       .then((nextState) => {
         if (active && nextState) setRevision((current) => current + 1);
       });
     return () => {
       active = false;
     };
-  }, [assetKey, nextAssetKey, project, projectRoot, session]);
+  }, [assetKey, nextAssetKey, project, projectRoot, session, traceContext?.traceId]);
 
   const state =
     session?.snapshot(projectRoot, project, scope) ??

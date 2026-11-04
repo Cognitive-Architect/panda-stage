@@ -13,6 +13,14 @@ import {
   StageImageResourceSession,
   type StageImageLayerSource,
 } from '../../src/renderer/stage/stageImageResourceSession';
+import {
+  createPreviewFrameTraceContext,
+  resolvePreviewAnimationFrame,
+} from '../../src/renderer/stage/previewFrameTrace';
+import {
+  recordPreviewFrameTrace,
+  resetPreviewFrameTraceRecorderForTests,
+} from '../../src/renderer/stage/previewDiagnostics';
 import { buildProjectWithAnimation, IDS } from '../unit/domain/testProject';
 
 const LAYER_A = '70000000-0000-4000-8000-000000000021';
@@ -1094,6 +1102,266 @@ async function runControlledPreviewQueueScenario(
   };
 }
 
+interface FrameTraceRecord {
+  event: string;
+  atMs: number;
+  detail: Record<string, number | string | boolean | null>;
+}
+
+async function runApReal01FrameTraceScenario(delayMs: number): Promise<{
+  delayMs: number;
+  events: FrameTraceRecord[];
+  commitLatenciesMs: number[];
+  maxModeledOldFrameHoldMs: number;
+  supersededTargets: number;
+  pendingTargets: number;
+  input: { projectId: string; shotId: string; frameIds: string[] };
+}> {
+  vi.clearAllTimers();
+  vi.setSystemTime(0);
+  resetPreviewFrameTraceRecorderForTests();
+  const project = build21FrameProject({ includeSecond: false });
+  const shot = project.shots[0]!;
+  const animation = project.animations[0]!;
+  const urls = buildAssetUrls(project);
+  const byteLengthByAssetId = new Map(
+    animation.frames.map((frame, index) => [frame.assetId, index + 1] as const),
+  );
+  const assetIdByByteLength = new Map(
+    [...byteLengthByAssetId].map(([assetId, byteLength]) => [byteLength, assetId] as const),
+  );
+  const events: FrameTraceRecord[] = [];
+  let objectUrlSequence = 0;
+  const diagnosticSink = {
+    frameTraceEnabled: true,
+    record(event: string, atMs: number, detail: FrameTraceRecord['detail']) {
+      if (events.length < 2_048) events.push({ event, atMs, detail });
+    },
+  };
+  vi.stubGlobal('window', {
+    __pandaPreviewDiagnostics: diagnosticSink,
+  } as unknown as Window);
+
+  const preview = new ProductPreviewImageSession({
+    readCanvasImage: ({ assetId }) => new Promise((resolve) => {
+      const byteLength = byteLengthByAssetId.get(assetId);
+      if (byteLength === undefined) {
+        throw new Error(`Unexpected synthetic animation asset ${assetId}.`);
+      }
+      setTimeout(() => resolve({
+        ok: true as const,
+        status: 'ready' as const,
+        assetId,
+        mimeType: 'image/png' as const,
+        width: 640,
+        height: 640,
+        byteLength,
+        bytes: new Uint8Array(byteLength),
+      }), delayMs);
+    }),
+    createObjectUrl: (blob) => {
+      const assetId = assetIdByByteLength.get(blob.size);
+      if (!assetId) throw new Error(`No synthetic asset for ${blob.size} bytes.`);
+      objectUrlSequence += 1;
+      return `${urls[assetId]}:read-${objectUrlSequence}`;
+    },
+    revokeObjectUrl: () => {},
+  });
+  const decodePool = new ControlledImageDecodePool(delayMs, 2);
+  const stage = new StageImageResourceSession({
+    createImage: () => decodePool.createImage(),
+  });
+  const projectRoot = 'D:/PandaStage-Acceptance/issue964-frame-trace-synthetic';
+  const playbackGeneration = 9_640 + delayMs;
+  const committedTraceIds = new Set<string>();
+  let activeTrace: ReturnType<typeof createPreviewFrameTraceContext> = null;
+  let currentStageAssetId: string | null = null;
+  let currentStageSourceKey = '';
+  let currentStageSources: StageImageLayerSource[] = [];
+
+  const onStageState = (): void => {
+    const state = stage.getSnapshot();
+    if (
+      !activeTrace ||
+      currentStageAssetId !== activeTrace.targetAssetId ||
+      !state.ready ||
+      state.desiredSourceKey !== currentStageSourceKey ||
+      committedTraceIds.has(activeTrace.traceId)
+    ) return;
+    committedTraceIds.add(activeTrace.traceId);
+    recordPreviewFrameTrace('test-exact-ready-resource-commit', activeTrace, {
+      status: 'COMMITTED',
+      committedFrameId: activeTrace.targetFrameId,
+      displayedFrameId: 'NOT_OBSERVABLE',
+      commitBoundary: 'StageImageResourceSession-state-only',
+      stagePaint: 'NOT_OBSERVABLE',
+      testOnly: true,
+    });
+  };
+
+  const targetAt = (timeMs: number) => {
+    const evaluatedShot = evaluateShotAtTime(shot, timeMs, project);
+    const frame = resolvePreviewAnimationFrame(project, evaluatedShot, LAYER_A);
+    if (!frame) throw new Error(`No synthetic target frame at ${timeMs}ms.`);
+    const traceContext = createPreviewFrameTraceContext(
+      frame,
+      shot.id,
+      evaluatedShot.timeMs,
+      playbackGeneration,
+      0,
+    );
+    if (!traceContext) throw new Error('The diagnostic sink was not enabled.');
+    return { evaluatedShot, traceContext };
+  };
+
+  const requestTarget = (timeMs: number): void => {
+    const { evaluatedShot, traceContext } = targetAt(timeMs);
+    activeTrace = traceContext;
+    recordPreviewFrameTrace('target-changed', traceContext, {
+      status: 'PENDING',
+      requestBoundary: 'synthetic-evaluator-target',
+      testOnly: true,
+    });
+    if (currentStageSources.length > 0) {
+      stage.reconcile(currentStageSources, onStageState, traceContext);
+    }
+    const scope = buildProductPreviewImagePlan(project, shot, evaluatedShot);
+    const preparing = preview.prepare(
+      projectRoot,
+      project,
+      scope,
+      [],
+      traceContext,
+    );
+    void preparing.then((state) => {
+      if (!state || activeTrace?.traceId !== traceContext.traceId) return;
+      preview.commitScope(projectRoot, project, scope);
+      const readyUrls: Record<string, string> = {};
+      for (const [assetId, url] of Object.entries(state.urls)) {
+        if (url) readyUrls[assetId] = url;
+      }
+      const built = buildSources(project, evaluatedShot, readyUrls);
+      currentStageSources = built.current;
+      currentStageAssetId = traceContext.targetAssetId;
+      currentStageSourceKey = buildStageImageSourceKey(built.current);
+      decodePool.setRequiredSourceUrls(
+        built.current.map((source) => source.sourceUrl),
+      );
+      stage.reconcile(currentStageSources, onStageState, traceContext);
+    });
+  };
+
+  try {
+    requestTarget(0);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(delayMs);
+    await vi.advanceTimersByTimeAsync(delayMs);
+    for (let frameIndex = 1; frameIndex < 21; frameIndex += 1) {
+      await vi.advanceTimersByTimeAsync(40);
+      requestTarget(frameIndex * 40);
+      await vi.advanceTimersByTimeAsync(0);
+    }
+    await vi.advanceTimersByTimeAsync(40);
+    requestTarget(840);
+    await vi.advanceTimersByTimeAsync(0);
+    const playbackEndedAtMs = performance.now();
+    await vi.advanceTimersByTimeAsync(delayMs * 2 + 1);
+
+    const targetEvents = events.filter(
+      (event) => event.event === 'frame-trace:target-changed' &&
+        Number(event.detail.shotTimeMs) > 0,
+    );
+    const exactReadyEvents = events.filter(
+      (event) => event.event === 'frame-trace:test-exact-ready-resource-commit' &&
+        event.detail.testOnly === true,
+    );
+    const initialTraceId = events.find(
+      (event) => event.event === 'frame-trace:target-changed' &&
+        Number(event.detail.shotTimeMs) === 0,
+    )?.detail.traceId;
+    const initialCommit = events.find(
+      (event) => event.event === 'frame-trace:test-exact-ready-resource-commit' &&
+        event.detail.traceId === initialTraceId &&
+        event.detail.testOnly === true,
+    );
+    const displayTargetEvents = events.filter((event) =>
+      event.event === 'frame-trace:target-changed' &&
+      event.detail.traceId !== initialTraceId,
+    );
+    let displayedFrameId = String(initialCommit?.detail.committedFrameId ?? '');
+    let staleStartedAtMs: number | null = null;
+    let maxOldFrameHoldMs = 0;
+    for (const event of [...displayTargetEvents, ...exactReadyEvents]
+      .sort((left, right) => left.atMs - right.atMs)) {
+      const targetFrameId = String(event.detail.targetFrameId ?? '');
+      if (event.event === 'frame-trace:target-changed') {
+        if (targetFrameId === displayedFrameId && staleStartedAtMs !== null) {
+          maxOldFrameHoldMs = Math.max(
+            maxOldFrameHoldMs,
+            event.atMs - staleStartedAtMs,
+          );
+          staleStartedAtMs = null;
+        } else if (targetFrameId !== displayedFrameId && staleStartedAtMs === null) {
+          staleStartedAtMs = event.atMs;
+        }
+        continue;
+      }
+      if (targetFrameId !== displayedFrameId) {
+        displayedFrameId = targetFrameId;
+        if (staleStartedAtMs !== null) {
+          maxOldFrameHoldMs = Math.max(
+            maxOldFrameHoldMs,
+            event.atMs - staleStartedAtMs,
+          );
+          staleStartedAtMs = null;
+        }
+      }
+    }
+    if (staleStartedAtMs !== null) {
+      maxOldFrameHoldMs = Math.max(
+        maxOldFrameHoldMs,
+        playbackEndedAtMs - staleStartedAtMs,
+      );
+    }
+
+    const commitLatenciesMs = exactReadyEvents
+      .filter((event) => event.detail.traceId !== initialTraceId)
+      .map((event) => Number(event.atMs) - Number(event.detail.requestedAt));
+    const supersededTargets = events.filter(
+      (event) => event.event === 'frame-trace:outcome' &&
+        event.detail.status === 'SUPERSEDED',
+    ).length;
+    const terminalTraceIds = new Set([
+      ...exactReadyEvents.map((event) => String(event.detail.traceId)),
+      ...events
+        .filter((event) => event.event === 'frame-trace:outcome' &&
+          event.detail.status !== 'PENDING')
+        .map((event) => String(event.detail.traceId)),
+    ]);
+    const pendingTargets = targetEvents.filter(
+      (event) => !terminalTraceIds.has(String(event.detail.traceId)),
+    ).length;
+
+    return {
+      delayMs,
+      events,
+      commitLatenciesMs,
+      maxModeledOldFrameHoldMs: maxOldFrameHoldMs,
+      supersededTargets,
+      pendingTargets,
+      input: {
+        projectId: project.id,
+        shotId: shot.id,
+        frameIds: animation.frames.map((_, index) => `${animation.id}:frame-${index}`),
+      },
+    };
+  } finally {
+    preview.dispose();
+    stage.dispose();
+    vi.unstubAllGlobals();
+  }
+}
+
 function evaluateLayer(
   project: Project,
   timeMs: number,
@@ -1425,5 +1693,269 @@ describe('Issue #947 AP-03 decoded image prewarm integration', () => {
       animationFrame: { offset: { x: 60 } },
     });
     expect(evaluateLayer(hideProject, 1_040, LAYER_B).animationFrame?.offset.x).toBe(3);
+  });
+});
+
+describe('Issue #964 single-animation frame trace', () => {
+  it('links one synthetic 21-frame loop through byte read, decode, and exact-ready timing', async () => {
+    vi.useFakeTimers();
+    try {
+      const results = [];
+      for (const delayMs of [20, 60, 100]) {
+        results.push(await runApReal01FrameTraceScenario(delayMs));
+      }
+      const percentile = (samples: readonly number[], fraction: number): number | null => {
+        if (samples.length === 0) return null;
+        const sorted = [...samples].sort((left, right) => left - right);
+        return sorted[Math.ceil(fraction * sorted.length) - 1] ?? null;
+      };
+      const summaries = results.map((result) => {
+        const targets = result.events.filter(
+          (event) => event.event === 'frame-trace:target-changed',
+        );
+        const byteReady = result.events.filter(
+          (event) => event.event === 'frame-trace:byte-read-ready',
+        );
+        const decodeReady = result.events.filter(
+          (event) => event.event === 'frame-trace:decode-ready',
+        );
+        const commits = result.events.filter(
+          (event) => event.event === 'frame-trace:test-exact-ready-resource-commit' &&
+            event.detail.testOnly === true,
+        );
+        const initialTraceId = targets.find(
+          (event) => Number(event.detail.shotTimeMs) === 0,
+        )?.detail.traceId;
+        const playbackTargets = targets.filter(
+          (event) => event.detail.traceId !== initialTraceId,
+        );
+        const latencySamples = (
+          fromEventName: string | null,
+          toEventName: string,
+        ): number[] => playbackTargets.flatMap((target) => {
+          const toEvent = result.events.find((candidate) =>
+            candidate.event === toEventName &&
+            candidate.detail.traceId === target.detail.traceId,
+          );
+          if (!toEvent) return [];
+          if (fromEventName === null) {
+            return [toEvent.atMs - Number(target.detail.requestedAt)];
+          }
+          const fromEvent = result.events.find((candidate) =>
+            candidate.event === fromEventName &&
+            candidate.detail.traceId === target.detail.traceId,
+          );
+          return fromEvent ? [toEvent.atMs - fromEvent.atMs] : [];
+        });
+        const eventOffset = (traceId: unknown, eventName: string, requestedAt: number) => {
+          const event = result.events.find((candidate) =>
+            candidate.event === eventName && candidate.detail.traceId === traceId,
+          );
+          return event ? Math.round(event.atMs - requestedAt) : null;
+        };
+        const frameSamples = playbackTargets
+          .filter((event) => [1, 20].includes(Number(event.detail.frameIndex)) ||
+            Number(event.detail.cycleIndex) === 1)
+          .map((event) => {
+            const requestedAt = Number(event.detail.requestedAt);
+            return {
+              frameId: event.detail.targetFrameId,
+              traceId: event.detail.traceId,
+              targetToByteStartMs: eventOffset(
+                event.detail.traceId,
+                'frame-trace:byte-read-start',
+                requestedAt,
+              ),
+              targetToByteReadyMs: eventOffset(
+                event.detail.traceId,
+                'frame-trace:byte-read-ready',
+                requestedAt,
+              ),
+              targetToDecodeStartMs: eventOffset(
+                event.detail.traceId,
+                'frame-trace:decode-start',
+                requestedAt,
+              ),
+              targetToDecodeReadyMs: eventOffset(
+                event.detail.traceId,
+                'frame-trace:decode-ready',
+                requestedAt,
+              ),
+              targetToExactReadyResourceCommitMs: eventOffset(
+                event.detail.traceId,
+                'frame-trace:test-exact-ready-resource-commit',
+                requestedAt,
+              ),
+              result: commits.some((commit) => commit.detail.traceId === event.detail.traceId)
+                ? 'COMMITTED'
+                : result.events.find((candidate) =>
+                    candidate.event === 'frame-trace:outcome' &&
+                    candidate.detail.traceId === event.detail.traceId,
+                  )?.detail.status ?? 'PENDING',
+            };
+          });
+        const summarizeSamples = (samples: readonly number[]) => ({
+          count: samples.length,
+          p50: percentile(samples, 0.5),
+          p95: percentile(samples, 0.95),
+          max: samples.length ? Math.max(...samples) : null,
+        });
+        return {
+          delayMs: result.delayMs,
+          targetCount: targets.length,
+          distinctFrameIds: new Set(targets.map((event) => event.detail.targetFrameId)).size,
+          byteReadyCount: byteReady.length,
+          decodeReadyCount: decodeReady.length,
+          syntheticExactReadyResourceCommitCount: commits.length,
+          targetToCommitSampleCount: result.commitLatenciesMs.length,
+          targetToCommitP50Ms: percentile(result.commitLatenciesMs, 0.5),
+          targetToCommitP95Ms: percentile(result.commitLatenciesMs, 0.95),
+          targetToCommitMaxMs: result.commitLatenciesMs.length
+            ? Math.max(...result.commitLatenciesMs)
+            : null,
+          targetToByteReadyMs: summarizeSamples(
+            latencySamples(null, 'frame-trace:byte-read-ready'),
+          ),
+          byteReadyToDecodeReadyMs: summarizeSamples(
+            latencySamples('frame-trace:byte-read-ready', 'frame-trace:decode-ready'),
+          ),
+          decodeReadyToExactReadyResourceCommitMs: summarizeSamples(
+            latencySamples(
+              'frame-trace:decode-ready',
+              'frame-trace:test-exact-ready-resource-commit',
+            ),
+          ),
+          modeledOldFrameHoldMaxMs: result.maxModeledOldFrameHoldMs,
+          supersededTargets: result.supersededTargets,
+          pendingTargets: result.pendingTargets,
+          eventCount: result.events.length,
+          frameSamples,
+        };
+      });
+
+      for (const result of results) {
+        const targets = result.events.filter(
+          (event) => event.event === 'frame-trace:target-changed',
+        );
+        expect(result.input.frameIds).toHaveLength(21);
+        expect(new Set(targets.map((event) => event.detail.targetFrameId)).size).toBe(21);
+        expect(result.events.length).toBeLessThanOrEqual(2_048);
+        const supersededIndexByTrace = new Map(
+          result.events.flatMap((event, index) =>
+            event.event === 'frame-trace:outcome' &&
+              event.detail.status === 'SUPERSEDED'
+              ? [[String(event.detail.traceId), index] as const]
+              : [],
+          ),
+        );
+        for (const [eventIndex, event] of result.events.entries()) {
+          if (
+            event.event !== 'frame-trace:byte-read-ready' &&
+            event.event !== 'frame-trace:decode-ready'
+          ) continue;
+          expect(event.detail.instanceId).toBe(LAYER_A);
+          expect(event.detail.targetAssetId).toBe(event.detail.assetId);
+          expect(event.detail.traceId).toBeTruthy();
+          const supersededIndex = supersededIndexByTrace.get(String(event.detail.traceId));
+          if (supersededIndex !== undefined && eventIndex > supersededIndex) {
+            expect(event.detail.status).toBe('SUPERSEDED');
+          }
+        }
+        for (const event of result.events.filter((candidate) =>
+          candidate.event === 'frame-trace:test-exact-ready-resource-commit' &&
+          candidate.detail.testOnly === true
+        )) {
+          expect(event.detail.committedFrameId).toBe(event.detail.targetFrameId);
+          expect(event.detail.displayedFrameId).toBe('NOT_OBSERVABLE');
+          expect(event.detail.stagePaint).toBe('NOT_OBSERVABLE');
+          expect(event.detail.status).toBe('COMMITTED');
+        }
+      }
+      expect(results[0]?.maxModeledOldFrameHoldMs).toBeLessThanOrEqual(40);
+      expect(results[1]?.maxModeledOldFrameHoldMs).toBeGreaterThanOrEqual(760);
+      expect(results[2]?.maxModeledOldFrameHoldMs).toBeGreaterThanOrEqual(760);
+      console.info('[issue964-single-instance-frame-trace]', JSON.stringify(summaries));
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 30_000);
+
+  it('keeps the minimal two-instance trace identities isolated', () => {
+    resetPreviewFrameTraceRecorderForTests();
+    const records: FrameTraceRecord[] = [];
+    vi.stubGlobal('window', {
+      __pandaPreviewDiagnostics: {
+        frameTraceEnabled: true,
+        record(event: string, atMs: number, detail: FrameTraceRecord['detail']) {
+          records.push({ event, atMs, detail });
+        },
+      },
+    } as unknown as Window);
+    try {
+      const project = build21FrameProject({ includeSecond: true });
+      const shot = project.shots[0]!;
+      const evaluated = evaluateShotAtTime(shot, 1_000, project);
+      const contextA = createPreviewFrameTraceContext(
+        resolvePreviewAnimationFrame(project, evaluated, LAYER_A)!,
+        shot.id,
+        evaluated.timeMs,
+        1,
+        0,
+      )!;
+      const contextB = createPreviewFrameTraceContext(
+        resolvePreviewAnimationFrame(project, evaluated, LAYER_B)!,
+        shot.id,
+        evaluated.timeMs,
+        2,
+        0,
+      )!;
+      recordPreviewFrameTrace('target-changed', contextA, { status: 'PENDING' });
+      recordPreviewFrameTrace('required-queued', contextA, {
+        status: 'PENDING',
+        assetId: contextA.targetAssetId,
+      });
+      recordPreviewFrameTrace('target-changed', contextB, { status: 'PENDING' });
+      recordPreviewFrameTrace('required-queued', contextB, {
+        status: 'PENDING',
+        assetId: contextB.targetAssetId,
+      });
+
+      const targetRecords = records.filter((record) =>
+        record.event === 'frame-trace:required-queued',
+      );
+      expect(targetRecords.map((record) => record.detail.instanceId)).toEqual([
+        LAYER_A,
+        LAYER_B,
+      ]);
+      expect(targetRecords.map((record) => record.detail.traceId)).toEqual([
+        contextA.traceId,
+        contextB.traceId,
+      ]);
+      expect(contextA.targetAssetId).not.toBe(contextB.targetAssetId);
+
+      const seekEvaluated = evaluateShotAtTime(shot, 1_040, project);
+      const seekContextA = createPreviewFrameTraceContext(
+        resolvePreviewAnimationFrame(project, seekEvaluated, LAYER_A)!,
+        shot.id,
+        seekEvaluated.timeMs,
+        1,
+        1,
+      )!;
+      recordPreviewFrameTrace('target-changed', seekContextA, { status: 'PENDING' });
+      const outcomes = records.filter((record) =>
+        record.event === 'frame-trace:outcome',
+      );
+      expect(seekContextA.traceId).not.toBe(contextA.traceId);
+      expect(outcomes).toContainEqual(expect.objectContaining({
+        detail: expect.objectContaining({
+          traceId: contextA.traceId,
+          status: 'SUPERSEDED',
+          cause: 'target-changed',
+        }),
+      }));
+      expect(outcomes.some((record) => record.detail.traceId === contextB.traceId)).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

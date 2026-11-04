@@ -1,3 +1,11 @@
+import {
+  getPreviewFrameTraceStatus,
+  previewFrameDiagnosticsEnabled,
+  recordPreviewFrameTrace,
+  recordPreviewFrameTraceAt,
+  type PreviewFrameTraceContext,
+} from './previewDiagnostics';
+
 export interface StageImageLayerSource {
   id: string;
   assetId?: string;
@@ -96,7 +104,16 @@ interface StageImageResource {
   loaded: boolean;
   disposed: boolean;
   decodedBytes: number;
+  decodeStartedAtMs?: number;
+  decodeReadyAtMs?: number;
+  startedAsOptional?: boolean;
+  traceRequests?: Array<{
+    context: PreviewFrameTraceContext;
+    requiredQueuedAtMs: number;
+  }>;
 }
+
+const MAX_TRACE_REQUESTS_PER_RESOURCE = 8;
 
 interface PendingStageImageResource {
   resourceKey: string;
@@ -243,6 +260,7 @@ export class StageImageResourceSession {
   private desiredSourceKey = '[]';
   private listener: ((state: StageImageResourceState) => void) | null = null;
   private disposed = false;
+  private activeTraceContext: PreviewFrameTraceContext | null = null;
 
   constructor(options: StageImageResourceSessionOptions = {}) {
     this.createImage = options.createImage ?? (() => new window.Image());
@@ -251,9 +269,11 @@ export class StageImageResourceSession {
   reconcile(
     layers: readonly StageImageLayerSource[],
     listener: (state: StageImageResourceState) => void,
+    traceContext: PreviewFrameTraceContext | null = null,
   ): void {
     if (this.disposed) return;
     this.listener = listener;
+    this.activeTraceContext = traceContext;
 
     const desiredSources = new Map(
       layers.map((layer) => [
@@ -284,15 +304,25 @@ export class StageImageResourceSession {
     }
 
     for (const [layerId, source] of desiredSources) {
+      const targetTrace = traceContext &&
+          source.assetId === traceContext.targetAssetId
+        ? traceContext
+        : null;
       const active = this.resources.get(layerId);
       if (active?.resourceKey === source.resourceKey && !active.disposed) {
         this.pending.delete(layerId);
         this.failed.delete(layerId);
+        if (targetTrace) this.attachTraceRequest(active, targetTrace, 'active-cache');
         continue;
       }
 
       const pending = this.pending.get(layerId);
-      if (pending?.resourceKey === source.resourceKey) continue;
+      if (pending?.resourceKey === source.resourceKey) {
+        if (targetTrace && pending.resource) {
+          this.attachTraceRequest(pending.resource, targetTrace, 'required-pending');
+        }
+        continue;
+      }
 
       const failure = this.failed.get(layerId);
       if (failure?.resourceKey === source.resourceKey) continue;
@@ -309,6 +339,7 @@ export class StageImageResourceSession {
       if (reused) {
         this.cacheHits += 1;
         this.prewarmInFlight.delete(source.resourceKey);
+        if (targetTrace) this.attachTraceRequest(reused, targetTrace, 'reused-resource');
         this.pending.set(layerId, {
           resourceKey: source.resourceKey,
           sourceUrl: source.sourceUrl,
@@ -317,7 +348,15 @@ export class StageImageResourceSession {
         });
         continue;
       }
-      this.startLoad(source);
+      if (targetTrace) {
+        recordPreviewFrameTrace('required-queued', targetTrace, {
+          subsystem: 'stage-image-decode',
+          assetId: source.assetId ?? layerId,
+          queueState: 'immediate',
+          priority: 0,
+        });
+      }
+      this.startLoad(source, targetTrace);
     }
 
     for (const [resourceKey] of this.prewarmQueue) {
@@ -447,6 +486,13 @@ export class StageImageResourceSession {
 
   dispose(): void {
     if (this.disposed) return;
+    if (this.activeTraceContext &&
+        getPreviewFrameTraceStatus(this.activeTraceContext.traceId) === 'PENDING') {
+      recordPreviewFrameTrace('trace-cancelled', this.activeTraceContext, {
+        status: 'CANCELLED',
+        cause: 'stage-image-session-disposed',
+      });
+    }
     this.disposed = true;
     this.listener = null;
     this.desiredSources.clear();
@@ -474,11 +520,21 @@ export class StageImageResourceSession {
     }
   }
 
-  private startLoad(source: StageImageLayerSource & { resourceKey: string }): void {
+  private startLoad(
+    source: StageImageLayerSource & { resourceKey: string },
+    traceContext: PreviewFrameTraceContext | null = null,
+  ): void {
     let image: HTMLImageElement;
     try {
       image = this.createImage();
     } catch (error) {
+      if (traceContext) {
+        recordPreviewFrameTrace('decode-failed', traceContext, {
+          assetId: source.assetId ?? source.id,
+          reason: 'image-create',
+          status: 'FAILED',
+        });
+      }
       this.failResource(
         source.resourceKey,
         'image-create',
@@ -496,6 +552,12 @@ export class StageImageResourceSession {
       loaded: false,
       disposed: false,
       decodedBytes: Number.POSITIVE_INFINITY,
+      ...(previewFrameDiagnosticsEnabled() ? {
+        startedAsOptional: this.prewarmInFlight.has(source.resourceKey),
+      } : {}),
+      ...(traceContext ? {
+        traceRequests: [{ context: traceContext, requiredQueuedAtMs: performance.now() }],
+      } : {}),
     };
     this.inFlight.set(source.resourceKey, resource);
     this.imageCreations += 1;
@@ -511,8 +573,21 @@ export class StageImageResourceSession {
     }
 
     image.onload = () => {
-      if (this.disposed || this.inFlight.get(source.resourceKey) !== resource) return;
+      if (this.disposed || this.inFlight.get(source.resourceKey) !== resource) {
+        for (const request of resource.traceRequests ?? []) {
+          recordPreviewFrameTrace('decode-callback-discarded', request.context, {
+            assetId: request.context.targetAssetId,
+            status: this.disposed ? 'CANCELLED' : 'SUPERSEDED',
+            cause: this.disposed ? 'session-disposed' : 'resource-replaced',
+          });
+        }
+        return;
+      }
       resource.loaded = true;
+      if (previewFrameDiagnosticsEnabled()) {
+        resource.decodeReadyAtMs = performance.now();
+        this.recordDecodeReady(resource);
+      }
       resource.decodedBytes = estimateDecodedImageBytes(image);
       image.onload = null;
       image.onerror = null;
@@ -541,6 +616,10 @@ export class StageImageResourceSession {
     };
 
     try {
+      if (previewFrameDiagnosticsEnabled()) {
+        resource.decodeStartedAtMs = performance.now();
+        this.recordDecodeStart(resource);
+      }
       image.src = source.sourceUrl;
     } catch (error) {
       this.failResource(
@@ -559,6 +638,17 @@ export class StageImageResourceSession {
     error: Error,
   ): void {
     const resource = this.inFlight.get(resourceKey);
+    if (resource) {
+      for (const request of resource.traceRequests ?? []) {
+        recordPreviewFrameTrace('decode-failed', request.context, {
+          assetId: request.context.targetAssetId,
+          reason,
+          status: this.activeTraceContext?.traceId === request.context.traceId
+            ? 'FAILED'
+            : 'SUPERSEDED',
+        });
+      }
+    }
     this.inFlight.delete(resourceKey);
     this.prewarmInFlight.delete(resourceKey);
     this.prewarmQueue.delete(resourceKey);
@@ -625,6 +715,91 @@ export class StageImageResourceSession {
     }
     this.failed.clear();
     this.cleanupOrphanedResources();
+    const target = this.activeTraceContext;
+    if (target && [...this.desiredSources.values()].some(
+      (source) => source.assetId === target.targetAssetId,
+    )) {
+      recordPreviewFrameTrace('stage-image-exact-ready', target, {
+        assetId: target.targetAssetId,
+        queueState: 'ready',
+      });
+    }
+  }
+
+  private attachTraceRequest(
+    resource: StageImageResource,
+    context: PreviewFrameTraceContext,
+    queueState: string,
+  ): void {
+    resource.traceRequests ??= [];
+    if (resource.traceRequests.some((request) => request.context.traceId === context.traceId)) {
+      return;
+    }
+    const request = { context, requiredQueuedAtMs: performance.now() };
+    resource.traceRequests.push(request);
+    if (resource.traceRequests.length > MAX_TRACE_REQUESTS_PER_RESOURCE) {
+      resource.traceRequests.shift();
+    }
+    recordPreviewFrameTrace('required-queued', context, {
+      subsystem: 'stage-image-decode',
+      assetId: context.targetAssetId,
+      queueState,
+      priority: 0,
+      startedAsOptional: resource.startedAsOptional === true,
+    });
+    this.recordDecodeStart(resource, request);
+    if (resource.loaded) this.recordDecodeReady(resource, request);
+  }
+
+  private recordDecodeStart(
+    resource: StageImageResource,
+    onlyRequest?: NonNullable<StageImageResource['traceRequests']>[number],
+  ): void {
+    if (resource.decodeStartedAtMs === undefined) return;
+    const requests = onlyRequest
+      ? [onlyRequest]
+      : resource.traceRequests ?? [];
+    for (const request of requests) {
+      recordPreviewFrameTraceAt(
+        'decode-start',
+        request.context,
+        resource.decodeStartedAtMs,
+        {
+          assetId: request.context.targetAssetId,
+          priority: resource.startedAsOptional ? 3 : 0,
+          startedAsOptional: resource.startedAsOptional === true,
+          requiredQueuedAt: request.requiredQueuedAtMs,
+          queueWaitMs: Math.max(0, resource.decodeStartedAtMs - request.requiredQueuedAtMs),
+          observedAfterStart: resource.decodeStartedAtMs < request.requiredQueuedAtMs,
+        },
+      );
+    }
+  }
+
+  private recordDecodeReady(
+    resource: StageImageResource,
+    onlyRequest?: NonNullable<StageImageResource['traceRequests']>[number],
+  ): void {
+    if (resource.decodeReadyAtMs === undefined) return;
+    const requests = onlyRequest
+      ? [onlyRequest]
+      : resource.traceRequests ?? [];
+    for (const request of requests) {
+      recordPreviewFrameTraceAt(
+        'decode-ready',
+        request.context,
+        resource.decodeReadyAtMs,
+        {
+          assetId: request.context.targetAssetId,
+          decodeMs: resource.decodeStartedAtMs === undefined
+            ? null
+            : resource.decodeReadyAtMs - resource.decodeStartedAtMs,
+          status: this.activeTraceContext?.traceId === request.context.traceId
+            ? 'PENDING'
+            : 'SUPERSEDED',
+        },
+      );
+    }
   }
 
   private isDesiredFrameReady(): boolean {

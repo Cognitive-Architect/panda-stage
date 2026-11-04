@@ -10,6 +10,7 @@ import {
   recordPreviewDuration,
 } from './previewDiagnostics';
 import type { StageImageResourceFailure } from './stageImageResourceSession';
+import type { PreviewFrameTraceContext } from './previewDiagnostics';
 
 interface CanvasStageProps {
   project: Project;
@@ -23,6 +24,7 @@ interface CanvasStageProps {
   onDisplayReady?: () => void;
   onError?: (error: Error) => void;
   onImageResourceFailure?: (failure: StageImageResourceFailure) => void;
+  previewFrameTrace?: PreviewFrameTraceContext | null;
   renderToken?: string | number;
   degraded?: boolean;
   showStageLabel?: boolean;
