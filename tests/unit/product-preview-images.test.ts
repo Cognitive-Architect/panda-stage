@@ -377,6 +377,7 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
       ...plan,
       candidateAssetIds: [],
       recentAnimationAssetIds: [],
+      retainedAnimationAssetIds: [],
     });
   });
 
@@ -442,6 +443,12 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
       loopShot,
       evaluateShotAtTime(loopShot, 450, loopProject),
     );
+    expect(wrapped.retainedAnimationAssetIds).toEqual([
+      ANIMATION_FRAME_A_ID,
+      ANIMATION_FRAME_B_ID,
+      MOUTH_ID,
+      ALT_FACE_ID,
+    ]);
     expect(wrapped.requiredAssetIds).toContain(ANIMATION_FRAME_A_ID);
     expect(wrapped.recentAnimationAssetIds).toEqual([
       ANIMATION_FRAME_B_ID,
@@ -465,6 +472,7 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
         evaluateShotAtTime(onceShot, 450, onceProject),
       );
       expect(ended.recentAnimationAssetIds).toEqual([]);
+      expect(ended.retainedAnimationAssetIds).toEqual([]);
     }
   });
 

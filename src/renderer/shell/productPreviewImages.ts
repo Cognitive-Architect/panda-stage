@@ -23,6 +23,8 @@ export interface ProductPreviewImageScope {
   recentAnimationAssetIds?: readonly string[];
   /** Bounded warmup resources for other times/states. */
   candidateAssetIds?: readonly string[];
+  /** Already visited or upcoming frames in active loops, retained without eager reads. */
+  retainedAnimationAssetIds?: readonly string[];
   mouthFallbacks?: readonly ProductPreviewImageFallbackRule[];
 }
 
@@ -114,6 +116,7 @@ interface NormalizedImageScope {
   fallbackAssetIds: string[];
   recentAnimationAssetIds: string[];
   candidateAssetIds: string[];
+  retainedAnimationAssetIds: string[];
   mouthFallbacks: ProductPreviewImageFallbackRule[];
   structured: boolean;
 }
@@ -131,6 +134,7 @@ function normalizeScope(
       fallbackAssetIds: [],
       recentAnimationAssetIds: [],
       candidateAssetIds: [],
+      retainedAnimationAssetIds: [],
       mouthFallbacks: [],
       structured: false,
     };
@@ -157,6 +161,9 @@ function normalizeScope(
     fallbackAssetIds,
     recentAnimationAssetIds,
     candidateAssetIds,
+    retainedAnimationAssetIds: unique(
+      structuredScope.retainedAnimationAssetIds ?? [],
+    ),
     mouthFallbacks: [...(structuredScope.mouthFallbacks ?? [])],
     structured: true,
   };
@@ -208,9 +215,10 @@ function describeImages(
 /**
  * Owns the bounded-original URLs used by one mounted Preview.
  *
- * The retained scope is deliberately local: exact current resources, a small
- * recent candidate window, a few next-shot resources, and the previous exact
- * resources while a new frame is still loading.
+ * The retained scope is deliberately local: exact current resources, active
+ * loop frames within the existing byte/entry budgets, a small recent candidate
+ * window, a few next-shot resources, and the previous exact resources while a
+ * new frame is still loading.
  */
 export class ProductPreviewImageSession {
   private readonly readCanvasImage: NonNullable<
@@ -603,6 +611,7 @@ export class ProductPreviewImageSession {
       ...active.requiredAssetIds,
       ...active.fallbackAssetIds,
       ...active.candidateAssetIds.slice(0, MAX_ACTIVE_PREVIEW_CANDIDATE_CACHE),
+      ...active.retainedAnimationAssetIds,
       ...allScopeAssetIds(next).slice(0, MAX_NEXT_PREVIEW_IMAGE_CACHE),
     ]);
     const retainedKeys = new Set(
@@ -754,6 +763,11 @@ export class ProductPreviewImageSession {
       project,
       active.candidateAssetIds,
     );
+    const retainedAnimation = describeImages(
+      projectRoot,
+      project,
+      active.retainedAnimationAssetIds,
+    );
     const nextDescriptors = describeImages(
       projectRoot,
       project,
@@ -765,6 +779,7 @@ export class ProductPreviewImageSession {
         ...fallback.descriptors,
         ...recent.descriptors,
         ...candidates.descriptors,
+        ...retainedAnimation.descriptors,
         ...nextDescriptors.descriptors,
       ].map((descriptor) => descriptor.key),
     );

@@ -110,6 +110,8 @@ export interface ProductPreviewImagePlan {
   candidateAssetIds: string[];
   /** Upcoming frame resources ordered by each instance's next playback time. */
   recentAnimationAssetIds: string[];
+  /** Resources belonging to active visible loops; retained without eager reads. */
+  retainedAnimationAssetIds?: string[];
   mouthFallbacks: ProductPreviewMouthFallback[];
 }
 
@@ -284,6 +286,24 @@ export function buildProductPreviewImagePlan(
     evaluatedShot.timeMs,
     reservedAssetIds,
   );
+  const retainedAnimationAssetIds = [
+    ...new Set(
+      shot.layers.flatMap((layer) => {
+        if (
+          !layer.visible ||
+          layer.source.kind !== 'animation' ||
+          layer.animationPlayback?.mode !== 'loop' ||
+          evaluatedShot.timeMs < (layer.startTimeMs ?? 0)
+        ) {
+          return [];
+        }
+        const animationId = layer.source.animationId;
+        return project.animations.find(
+          (animation) => animation.id === animationId,
+        )?.frames.map((frame) => frame.assetId) ?? [];
+      }),
+    ),
+  ];
   appendUnique(candidateAssetIds, recentAnimationAssetIds);
   appendUnique(
     candidateAssetIds,
@@ -306,6 +326,7 @@ export function buildProductPreviewImagePlan(
     fallbackAssetIds,
     candidateAssetIds,
     recentAnimationAssetIds,
+    retainedAnimationAssetIds,
     mouthFallbacks,
   };
 }
@@ -320,6 +341,7 @@ export function gateProductPreviewImagePrewarm(
     ...plan,
     candidateAssetIds: [],
     recentAnimationAssetIds: [],
+    retainedAnimationAssetIds: [],
   };
 }
 
