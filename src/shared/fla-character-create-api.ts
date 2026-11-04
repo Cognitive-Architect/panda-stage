@@ -32,9 +32,18 @@ const FlaCharacterCreateBatchIdentitySchema = z.object({
   poseIdentity: z.string().regex(/^[a-f0-9]{64}$/u),
   target: z.object({
     renderTargetId: FlaRenderTargetIdSchema,
-    sceneIndex: z.number().int().nonnegative().max(10_000),
+    kind: z.enum(['scene', 'graphic-symbol']),
+    sceneIndex: z.number().int().nonnegative().max(10_000).nullable(),
+    sourceLibraryItemName: z.string().trim().min(1).max(500).nullable(),
     selectedFrameIndex: z.number().int().nonnegative().max(100_000),
-  }).strict(),
+  }).strict().superRefine((target, context) => {
+    if (target.kind === 'scene' && (target.sceneIndex === null || target.sourceLibraryItemName !== null)) {
+      context.addIssue({ code: 'custom', message: 'Scene identity requires a Scene index and no library symbol name' });
+    }
+    if (target.kind === 'graphic-symbol' && (target.sceneIndex !== null || !target.sourceLibraryItemName)) {
+      context.addIssue({ code: 'custom', message: 'Graphic identity requires a library symbol name and no Scene index' });
+    }
+  }),
 }).strict();
 
 export const FlaCharacterCreateRequestSchema = z.object({

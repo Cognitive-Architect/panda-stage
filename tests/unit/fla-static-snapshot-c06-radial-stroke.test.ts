@@ -42,7 +42,7 @@ async function makeSourceDerivedFla(strokeStyle = SOURCE_RADIAL_STROKE): Promise
     <DOMDocument width="1920" height="1080" frameRate="24"><timelines>
       <DOMTimeline name="Scene 1"><layers><DOMLayer name="Layer 1"><frames>
         <DOMFrame index="0"><elements>
-          <DOMSymbolInstance libraryItemName="issue748-male-root" symbolType="graphic">${ROOT_MATRIX}</DOMSymbolInstance>
+          <DOMSymbolInstance libraryItemName="issue748-male-root" symbolType="graphic" loop="loop">${ROOT_MATRIX}</DOMSymbolInstance>
         </elements></DOMFrame>
       </frames></DOMLayer></layers></DOMTimeline>
     </timelines></DOMDocument>`);

@@ -17,6 +17,7 @@ import { FLA_PART_PREVIEW_LIMITS, FlaPartPreviewRequestSchema } from '../../src/
 
 const SESSION_ID = '90600000-0000-4000-8000-000000000001';
 const SECOND_SESSION_ID = '90600000-0000-4000-8000-000000000003';
+const R05_SOURCE_SHA256 = '98fe84604b01edc3224b52cdcb07c11a3c2916f99ce1a99c224f026ecbc64606';
 
 interface FixtureMatrix {
   readonly a: number;
@@ -97,8 +98,10 @@ async function buildTwoPartFla(
   sceneKind: 'parts' | 'visible-text' | 'empty-mask' = 'parts',
   includeSecondScene = false,
   sceneMatrices: readonly FixtureMatrix[] = DEFAULT_SCENE_MATRICES,
+  graphicName = 'MyGraphic',
+  graphicHasParts = false,
 ): Promise<Uint8Array> {
-  const symbolElements = sceneMatrices.map((matrix) => `<DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
+  const symbolElements = sceneMatrices.map((matrix) => `<DOMSymbolInstance libraryItemName="${graphicName}" symbolType="graphic" loop="loop" firstFrame="0">
             <matrix><Matrix a="${matrix.a}" b="${matrix.b}" c="${matrix.c}" d="${matrix.d}" tx="${matrix.tx}" ty="${matrix.ty}"/></matrix>
           </DOMSymbolInstance>`).join('\n          ');
   const sceneLayers = sceneKind === 'parts'
@@ -125,17 +128,53 @@ async function buildTwoPartFla(
 <DOMDocument width="32" height="24" xmlns="http://ns.adobe.com/xfl/2008/">
   <timelines><DOMTimeline name="Scene"><layers>${sceneLayers}</layers></DOMTimeline>${secondScene}</timelines>
 </DOMDocument>`;
+  const graphicArtwork = graphicHasParts
+    ? `<DOMShape><fills><FillStyle index="1"><SolidColor color="#f03a55" alpha="1"/></FillStyle></fills>
+        <edges><Edge fillStyle1="1" cubics="!0 0|12 0[6 6 12 12 12 12|0 0"/></edges></DOMShape>
+       <DOMShape><fills><FillStyle index="1"><SolidColor color="#2555aa" alpha="1"/></FillStyle></fills>
+        <edges><Edge fillStyle1="1" cubics="!14 0|26 0[20 6 26 12 26 12|14 0"/></edges></DOMShape>`
+    : `<DOMGroup><members><DOMShape>
+        <fills><FillStyle index="1"><SolidColor color="#f03a55" alpha="1"/></FillStyle></fills>
+        <edges><Edge fillStyle1="1" cubics="!0 0|12 0[6 6 12 12 12 12|0 0"/></edges>
+      </DOMShape></members></DOMGroup>`;
   const graphic = `<?xml version="1.0" encoding="UTF-8"?>
-<DOMSymbolItem name="MyGraphic" xmlns="http://ns.adobe.com/xfl/2008/">
-  <timelines><DOMTimeline name="MyGraphic"><layers><DOMLayer name="Artwork"><frames>
-    <DOMFrame index="0" duration="1"><elements><DOMGroup><members><DOMShape>
-      <fills><FillStyle index="1"><SolidColor color="#f03a55" alpha="1"/></FillStyle></fills>
-      <edges><Edge fillStyle1="1" cubics="!0 0|12 0[6 6 12 12 12 12|0 0"/></edges>
-    </DOMShape></members></DOMGroup></elements></DOMFrame>
+<DOMSymbolItem name="${graphicName}" xmlns="http://ns.adobe.com/xfl/2008/">
+  <timelines><DOMTimeline name="${graphicName}"><layers><DOMLayer name="Artwork"><frames>
+    <DOMFrame index="0" duration="1"><elements>${graphicArtwork}</elements></DOMFrame>
   </frames></DOMLayer></layers></DOMTimeline></timelines>
 </DOMSymbolItem>`;
   const zip = new JSZip();
   zip.file('DOMDocument.xml', document);
+  zip.file(`LIBRARY/${graphicName}.xml`, graphic);
+  return zip.generateAsync({ type: 'uint8array' });
+}
+
+async function buildTwoInstanceNestedGraphicFla(): Promise<Uint8Array> {
+  const scene = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMDocument width="32" height="24" xmlns="http://ns.adobe.com/xfl/2008/">
+  <timelines><DOMTimeline name="Scene"><layers><DOMLayer name="Parts"><frames>
+    <DOMFrame index="0" duration="1"><elements>
+      <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="0">
+        <matrix><Matrix a="1" d="1" tx="0" ty="0"/></matrix>
+      </DOMSymbolInstance>
+      <DOMSymbolInstance libraryItemName="MyGraphic" symbolType="graphic" loop="loop" firstFrame="8">
+        <matrix><Matrix a="1" d="1" tx="16" ty="0"/></matrix>
+      </DOMSymbolInstance>
+    </elements></DOMFrame>
+  </frames></DOMLayer></layers></DOMTimeline></timelines>
+</DOMDocument>`;
+  const frames = Array.from({ length: 9 }, (_, frameIndex) => `
+    <DOMFrame index="${frameIndex}" duration="1"><elements><DOMShape>
+      <fills><FillStyle index="1"><SolidColor color="#12000${frameIndex}" alpha="1"/></FillStyle></fills>
+      <edges><Edge fillStyle1="1" cubics="!0 0|12 0|12 12|0 12|0 0"/></edges>
+    </DOMShape></elements></DOMFrame>`).join('');
+  const graphic = `<?xml version="1.0" encoding="UTF-8"?>
+<DOMSymbolItem name="MyGraphic" symbolType="graphic" xmlns="http://ns.adobe.com/xfl/2008/">
+  <timelines><DOMTimeline name="MyGraphic"><layers><DOMLayer name="Artwork"><frames>${frames}
+  </frames></DOMLayer></layers></DOMTimeline></timelines>
+</DOMSymbolItem>`;
+  const zip = new JSZip();
+  zip.file('DOMDocument.xml', scene);
   zip.file('LIBRARY/MyGraphic.xml', graphic);
   return zip.generateAsync({ type: 'uint8array' });
 }
@@ -145,8 +184,12 @@ async function fixture(
   sceneKind: 'parts' | 'visible-text' | 'empty-mask' = 'parts',
   includeSecondScene = false,
   sceneMatrices: readonly FixtureMatrix[] = DEFAULT_SCENE_MATRICES,
+  graphicName = 'MyGraphic',
+  originalSourceSha256?: string,
+  graphicHasParts = false,
+  sourceBytesOverride?: Uint8Array,
 ) {
-  const bytes = await buildTwoPartFla(sceneKind, includeSecondScene, sceneMatrices);
+  const bytes = sourceBytesOverride ?? await buildTwoPartFla(sceneKind, includeSecondScene, sceneMatrices, graphicName, graphicHasParts);
   const prepared = await prepareFlaStaticSnapshotDisplaySource(bytes, 'preview');
   if (!prepared.ok) throw new Error(prepared.message);
   const rawSha256 = createHash('sha256').update(bytes).digest('hex');
@@ -174,7 +217,7 @@ async function fixture(
       source: { basename: 'parts.fla', sha256: rawSha256 },
       media: [],
     },
-    originalSourceSha256: rawSha256,
+    originalSourceSha256: originalSourceSha256 ?? rawSha256,
     sourceBytes: bytes,
   };
   const registeredSessionIds = new Set([SESSION_ID]);
@@ -194,6 +237,7 @@ async function fixture(
   const scene = displaySource.sceneTimelines[0];
   if (!scene) throw new Error('Fixture Scene missing');
   const targetId = stableRenderTargetId(bytes, `scene\u0000timeline\u0000${scene.index}`);
+  const graphic = displaySource.graphicSymbols.find((symbol) => symbol.sourceLibraryItemName === graphicName);
   const secondScene = displaySource.sceneTimelines[1];
   return {
     bytes,
@@ -204,6 +248,9 @@ async function fixture(
     registerSession: (sessionId: string) => registeredSessionIds.add(sessionId),
     renderSession,
     targetId,
+    graphicTargetId: graphic
+      ? stableRenderTargetId(bytes, `graphic-symbol\u0000${graphic.sourceLibraryItemName}\u0000${graphic.userLabel}`)
+      : null,
     secondTargetId: secondScene
       ? stableRenderTargetId(bytes, `scene\u0000timeline\u0000${secondScene.index}`)
       : null,
@@ -322,6 +369,106 @@ describe('F1-02 Main part preview service', () => {
     previewService.close();
   });
 
+  it('prepares editable Parts for the source-bound, visible Scene Graphic root', async () => {
+    const data = await fixture(
+      true,
+      'parts',
+      false,
+      DEFAULT_SCENE_MATRICES,
+      '修仙男-cilisucai.com1/修仙男-cilisucai.com2',
+      R05_SOURCE_SHA256,
+      true,
+    );
+    const { previewService } = rasterizerFor(data);
+    if (!data.graphicTargetId) throw new Error('Expected the approved Graphic fixture target');
+
+    const response = await previewService.preview({
+      ...request(1),
+      target: { renderTargetId: data.graphicTargetId, selectedFrameIndex: 0 },
+    });
+
+    if (!response.ok) throw new Error(`Approved Graphic preview failed: ${response.error.code}: ${response.error.message}`);
+    if (response.status !== 'PREVIEW_READY' || response.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error('Expected an editable Part plan for the approved Graphic root');
+    }
+    const plan = previewService.getPlan(response.planId, SESSION_ID, 1);
+    expect(plan?.target).toMatchObject({
+      renderTargetId: data.graphicTargetId,
+      kind: 'graphic-symbol',
+      sceneIndex: null,
+      sourceLibraryItemName: '修仙男-cilisucai.com1/修仙男-cilisucai.com2',
+      selectedFrameIndex: 0,
+      frameSelectionBasis: 'approved Graphic root frame selected through Main prepared source',
+    });
+    expect(plan?.stage.coordinateSpace).toBe('root-graphic-local-pixels');
+    expect(plan?.units.length).toBeGreaterThanOrEqual(2);
+    expect(plan?.units.every((unit) => unit.stageMapping.coordinateSpace === 'root-graphic-local-pixels')).toBe(true);
+    previewService.close();
+  });
+
+  it.each([
+    { graphicName: '修仙男-cilisucai.com1/修仙男-cilisucai.com20', originalSourceSha256: R05_SOURCE_SHA256, sceneKind: 'parts', selectedFrameIndex: 0 },
+    { graphicName: '修仙男-cilisucai.com1/修仙男-cilisucai.com2', originalSourceSha256: '0'.repeat(64), sceneKind: 'parts', selectedFrameIndex: 0 },
+    { graphicName: '修仙男-cilisucai.com1/修仙男-cilisucai.com2', originalSourceSha256: R05_SOURCE_SHA256, sceneKind: 'visible-text', selectedFrameIndex: 0 },
+    { graphicName: '修仙男-cilisucai.com1/修仙男-cilisucai.com2', originalSourceSha256: R05_SOURCE_SHA256, sceneKind: 'parts', selectedFrameIndex: 1 },
+  ] as const)(
+    'rejects an unproven Graphic Part plan for $graphicName',
+    async ({ graphicName, originalSourceSha256, sceneKind, selectedFrameIndex }) => {
+      const data = await fixture(
+        true,
+        sceneKind,
+        false,
+        DEFAULT_SCENE_MATRICES,
+        graphicName,
+        originalSourceSha256,
+        true,
+      );
+      const { previewService } = rasterizerFor(data);
+      if (!data.graphicTargetId) throw new Error('Expected a Graphic fixture target');
+
+      const response = await previewService.preview({
+        ...request(1),
+        target: { renderTargetId: data.graphicTargetId, selectedFrameIndex },
+      });
+
+      expect(response.ok).toBe(false);
+      if (response.ok) throw new Error('Expected unsafe Graphic root rejection');
+      expect(response.error.code).toBe('TARGET_NOT_FOUND');
+      expect(previewService.getPlan('any-plan-id', SESSION_ID, 1)).toBeNull();
+      expect(heldPartPreviewStorage(previewService)).toBeNull();
+      previewService.close();
+    },
+  );
+
+  it('uses each explicit nested Graphic firstFrame in native, isolated, and PartPlan output', async () => {
+    const sourceBytes = await buildTwoInstanceNestedGraphicFla();
+    const data = await fixture(true, 'parts', false, DEFAULT_SCENE_MATRICES, 'MyGraphic', undefined, false, sourceBytes);
+    const { calls, previewService } = rasterizerFor(data);
+    const previewRequest = { ...request(1), target: { renderTargetId: data.targetId, selectedFrameIndex: 0 } };
+
+    const response = await previewService.preview(previewRequest);
+
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.capability !== 'EDITABLE_PARTS_READY') {
+      throw new Error('Expected two independently addressable nested Graphic instances');
+    }
+    expect(response.partPreviews).toHaveLength(2);
+    const plan = previewService.getPlan(response.planId, SESSION_ID, 1);
+    expect(plan?.units.map((unit) => unit.selectedEffectiveChildFrameIndex)).toEqual([0, 8]);
+    expect(plan?.units.map((unit) => unit.sourceFrame.effectiveChildFrameIndex)).toEqual([0, 8]);
+    expect(response.poseIdentity).toBe(plan?.poseIdentity);
+
+    expect(calls).toHaveLength(4); // native, two isolated parts, reassembly
+    expect(calls[0]?.svg).toContain('fill="#120000"');
+    expect(calls[0]?.svg).toContain('fill="#120008"');
+    expect(calls[1]?.svg).toContain('fill="#120000"');
+    expect(calls[1]?.svg).not.toContain('fill="#120008"');
+    expect(calls[2]?.svg).toContain('fill="#120008"');
+    expect(calls[2]?.svg).not.toContain('fill="#120000"');
+    expect(calls[3]?.svg.match(/<image /gu)).toHaveLength(2);
+    previewService.close();
+  });
+
   it('retains the exact successful Part PNG batch with its matching Main-held plan', async () => {
     const data = await fixture();
     const { calls, outputs, previewService } = rasterizerFor(data);
@@ -360,7 +507,9 @@ describe('F1-02 Main part preview service', () => {
       poseIdentity: response.poseIdentity,
       target: {
         renderTargetId: data.targetId,
+        kind: batch.plan.target.kind,
         sceneIndex: batch.plan.target.sceneIndex,
+        sourceLibraryItemName: batch.plan.target.sourceLibraryItemName,
         selectedFrameIndex: 0,
       },
     });

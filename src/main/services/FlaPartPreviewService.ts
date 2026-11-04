@@ -19,6 +19,7 @@ import {
   FLA_STATIC_SNAPSHOT_LIMITS,
   type FlaRenderTarget,
 } from '../../shared/fla-static-snapshot-api';
+import { isR05SafeGraphicSource } from '../../shared/fla-character-import-safe-graphic-targets';
 import type {
   FlaDisplayListElement,
   FlaDisplayListFrameContext,
@@ -26,7 +27,15 @@ import type {
   FlaDisplayListMatrix,
   FlaGraphicSymbolDefinition,
 } from './fla-display-list-resolver';
-import { FLA_DISPLAY_LIST_IDENTITY_MATRIX, resolveFlaDisplayList } from './fla-display-list-resolver';
+import {
+  DEFAULT_FLA_DISPLAY_LIST_RESOLVER_LIMITS,
+  FLA_DISPLAY_LIST_IDENTITY_MATRIX,
+  resolveFlaDisplayList,
+} from './fla-display-list-resolver';
+import {
+  prepareFlaNestedGraphicFrameSelections,
+  type FlaNestedGraphicFrameSelection,
+} from './fla-nested-graphic-frame-selector';
 import type {
   FlaStaticSnapshotDisplaySource,
   FlaStaticSnapshotDisplaySourceExecution,
@@ -100,9 +109,12 @@ interface ActivePartPreview {
 
 interface NativeRenderFacts {
   readonly source: FlaStaticSnapshotDisplaySource;
-  readonly sceneName: string;
-  readonly sceneIndex: number;
-  readonly sceneFrameCount: number;
+  readonly targetKind: 'scene' | 'graphic-symbol';
+  readonly targetName: string;
+  readonly sceneIndex: number | null;
+  readonly sourceLibraryItemName: string | null;
+  readonly targetFrameCount: number;
+  readonly rootTransform: FlaDisplayListMatrix;
   readonly userLabel: string;
   readonly selectedFrameIndex: number;
   readonly frameContext: FlaDisplayListFrameContext;
@@ -113,6 +125,32 @@ interface NativeRenderFacts {
   readonly pixelCount: number;
 }
 
+function firstFrameValue(value: string | undefined): number | null {
+  if (value === undefined) return 0;
+  const normalized = value.trim();
+  if (!/^(0|[1-9]\d*)$/u.test(normalized)) return null;
+  const frameIndex = Number(normalized);
+  return Number.isSafeInteger(frameIndex) ? frameIndex : null;
+}
+
+function isVisibleFrameZeroSceneGraphicReference(
+  source: FlaStaticSnapshotDisplaySource,
+  sourceLibraryItemName: string,
+): boolean {
+  const scene = source.sceneTimelines[0];
+  if (!scene) return false;
+  const containsReference = (elements: readonly FlaDisplayListElement[]): boolean => elements.some((element) => {
+    if (element.visible === false) return false;
+    if (element.kind === 'symbol') {
+      return element.symbolType === 'graphic' &&
+        element.libraryItemName === sourceLibraryItemName &&
+        firstFrameValue(element.firstFrame) === 0;
+    }
+    return element.kind === 'group' && containsReference(element.elements);
+  });
+  return scene.frameContext.layers.some((layer) => layer.visible && containsReference(layer.elements));
+}
+
 function multiply(parent: FlaDisplayListMatrix, local: FlaDisplayListMatrix): FlaDisplayListMatrix {
   return {
     a: parent.a * local.a + parent.c * local.b,
@@ -121,6 +159,22 @@ function multiply(parent: FlaDisplayListMatrix, local: FlaDisplayListMatrix): Fl
     d: parent.b * local.c + parent.d * local.d,
     tx: parent.a * local.tx + parent.c * local.ty + parent.tx,
     ty: parent.b * local.tx + parent.d * local.ty + parent.ty,
+  };
+}
+
+function applyRootTransformToFrameContext(
+  frameContext: FlaDisplayListFrameContext,
+  rootTransform: FlaDisplayListMatrix,
+): FlaDisplayListFrameContext {
+  return {
+    ...frameContext,
+    layers: frameContext.layers.map((layer) => ({
+      ...layer,
+      elements: layer.elements.map((element) => ({
+        ...element,
+        localTransform: multiply(rootTransform, element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX),
+      })),
+    })),
   };
 }
 
@@ -179,8 +233,11 @@ function pathFingerprint(path: readonly SourcePathEntry[]): string {
 function makeCandidateCollection(
   source: FlaStaticSnapshotDisplaySource,
   rootFrameContext: FlaDisplayListFrameContext,
+  sourceSymbols: ReadonlyMap<string, FlaGraphicSymbolDefinition>,
+  selectionsBySourceAddress: ReadonlyMap<string, FlaNestedGraphicFrameSelection>,
   sourceRawSha256: string,
   target: FlaRenderTarget,
+  rootTransform: FlaDisplayListMatrix = FLA_DISPLAY_LIST_IDENTITY_MATRIX,
 ): CandidateCollection {
   const candidates: PartCandidate[] = [];
   const descriptorsByName = new Map<string, FlaStaticSnapshotDisplaySource['graphicSymbols'][number] | null>();
@@ -251,7 +308,14 @@ function makeCandidateCollection(
       fallbackReason = 'Part source provenance exceeds its bounded path or mask dependency budget.';
       return;
     }
-    const effectiveChildFrame = element.kind === 'symbol' ? 0 : null;
+    const selectedFrame = element.kind === 'symbol'
+      ? selectionsBySourceAddress.get(element.sourceAddress ?? '')
+      : null;
+    if (element.kind === 'symbol' && !selectedFrame) {
+      fallbackReason = 'Nested Graphic occurrence has no source-addressed frame selection.';
+      return;
+    }
+    const effectiveChildFrame = element.kind === 'symbol' ? selectedFrame!.selectedChildFrameIndex : null;
     let unit: FlaPartPreviewUnit;
     try {
       unit = FlaPartPreviewUnitSchema.parse({
@@ -268,7 +332,7 @@ function makeCandidateCollection(
       sourceDefinitionFrameCount: descriptor?.frameCount ?? null,
       selectedEffectiveChildFrameIndex: effectiveChildFrame,
       selectedEffectiveChildFrameBasis: element.kind === 'symbol'
-        ? 'Main prepared Graphic definition frameContext (frame zero); nested frame selection is not applied by the static resolver'
+        ? `Nested Graphic selector: ${selectedFrame!.selectionRule}`
         : null,
       localTransform: element.localTransform ?? FLA_DISPLAY_LIST_IDENTITY_MATRIX,
       worldTransform,
@@ -295,7 +359,9 @@ function makeCandidateCollection(
         effectiveChildFrameIndex: effectiveChildFrame,
       },
       stageMapping: {
-        coordinateSpace: 'root-scene-stage-pixels',
+        coordinateSpace: target.kind === 'scene'
+          ? 'root-scene-stage-pixels'
+          : 'root-graphic-local-pixels',
         stageOrigin: { x: 0, y: 0 },
         crop: null,
         outputScale: 1,
@@ -363,7 +429,7 @@ function makeCandidateCollection(
           continue;
         }
         const definitionKey = element.frameSelectionKey ?? element.libraryItemName;
-        const definition = source.symbols.get(definitionKey);
+        const definition = sourceSymbols.get(definitionKey);
         const descriptor = descriptorsByName.get(element.libraryItemName) ?? null;
         if (!definition || definition.kind !== 'graphic' || element.symbolType !== 'graphic') {
           append(
@@ -440,7 +506,10 @@ function makeCandidateCollection(
     }
   };
 
-  walk(rootFrameContext, `scene:${target.sourceTimelineIndex ?? 0}`, FLA_DISPLAY_LIST_IDENTITY_MATRIX, [], []);
+  const rootContextPath = target.kind === 'graphic-symbol'
+    ? `graphic:${target.sourceLibraryItemName ?? '(unset)'}`
+    : `scene:${target.sourceTimelineIndex ?? 0}`;
+  walk(rootFrameContext, rootContextPath, rootTransform, [], []);
   return { candidates, fallbackReason };
 }
 
@@ -557,12 +626,24 @@ export interface FlaPreparedPartBatch {
     readonly poseIdentity: string;
     readonly target: {
       readonly renderTargetId: string;
-      readonly sceneIndex: number;
+      readonly kind: 'scene' | 'graphic-symbol';
+      readonly sceneIndex: number | null;
+      readonly sourceLibraryItemName: string | null;
       readonly selectedFrameIndex: number;
     };
   };
   readonly parts: readonly FlaPreparedPartBatchPart[];
   readonly partPngBytes: number;
+}
+
+function partPlanTargetIdentity(target: FlaPartPlan['target']): FlaPreparedPartBatch['identity']['target'] {
+  return {
+    renderTargetId: target.renderTargetId,
+    kind: target.kind,
+    sceneIndex: target.sceneIndex,
+    sourceLibraryItemName: target.sourceLibraryItemName,
+    selectedFrameIndex: target.selectedFrameIndex,
+  };
 }
 
 export interface FlaPreparedPartBatchMetadata {
@@ -765,11 +846,7 @@ export class FlaPartPreviewService {
         rawSourceSha256: plan.source.rawSha256,
         normalizedSourceSha256: plan.source.normalizedSha256,
         poseIdentity: plan.poseIdentity,
-        target: {
-          renderTargetId: plan.target.renderTargetId,
-          sceneIndex: plan.target.sceneIndex,
-          selectedFrameIndex: plan.target.selectedFrameIndex,
-        },
+        target: partPlanTargetIdentity(plan.target),
       },
       parts,
       partPngBytes: held.partPngBytes,
@@ -798,11 +875,7 @@ export class FlaPartPreviewService {
         rawSourceSha256: plan.source.rawSha256,
         normalizedSourceSha256: plan.source.normalizedSha256,
         poseIdentity: plan.poseIdentity,
-        target: {
-          renderTargetId: plan.target.renderTargetId,
-          sceneIndex: plan.target.sceneIndex,
-          selectedFrameIndex: plan.target.selectedFrameIndex,
-        },
+        target: partPlanTargetIdentity(plan.target),
       },
       parts: held.parts.map((part) => ({
         unitId: part.unitId,
@@ -856,42 +929,191 @@ export class FlaPartPreviewService {
       return this.failure(active.cancelCode ?? 'RENDER_CANCELLED', 'Preview is stale or cancelled', active.request);
     }
 
-    const targetMatch = prepared.source.sceneTimelines.find((scene) =>
+    const selectedFrameIndex = active.request.target.selectedFrameIndex;
+    const sceneMatch = prepared.source.sceneTimelines.find((scene) =>
       stableRenderTargetId(
         sourceIdentity.bytes,
         `scene\u0000timeline\u0000${scene.index}`,
       ) === active.request.target.renderTargetId,
     );
-    if (!targetMatch) {
-      return this.failure('TARGET_NOT_FOUND', 'The requested Scene target is not present in this FLA session', active.request);
-    }
-    const frameCount = Math.min(100_000, targetMatch.frameCount);
-    const selectedFrameIndex = active.request.target.selectedFrameIndex;
-    if (selectedFrameIndex >= frameCount) {
-      return this.failure('TARGET_NOT_FOUND', 'The selected Scene frame is outside the source frame range', active.request);
-    }
-    if (selectedFrameIndex === 0) prepared.source.resetFrameBuildState();
-    const frameResult = selectedFrameIndex === 0
-      ? { ok: true as const, value: targetMatch.frameContext }
-      : prepared.source.buildSceneFrameContext(
-          targetMatch.xml,
-          selectedFrameIndex,
-          `scene:${targetMatch.index}`,
+    let targetKind: 'scene' | 'graphic-symbol';
+    let targetName: string;
+    let sceneIndex: number | null;
+    let sourceLibraryItemName: string | null;
+    let userLabel: string;
+    let frameCount: number;
+    let target: FlaRenderTarget;
+    let frameResult: ReturnType<FlaStaticSnapshotDisplaySource['buildSceneFrameContext']>;
+    if (sceneMatch) {
+      targetKind = 'scene';
+      targetName = sceneMatch.name;
+      sceneIndex = sceneMatch.index;
+      sourceLibraryItemName = null;
+      userLabel = sceneMatch.name.trim() || 'Main scene';
+      frameCount = Math.min(100_000, sceneMatch.frameCount);
+      if (selectedFrameIndex >= frameCount) {
+        return this.failure('TARGET_NOT_FOUND', 'The selected Scene frame is outside the source frame range', active.request);
+      }
+      if (selectedFrameIndex === 0) prepared.source.resetFrameBuildState();
+      frameResult = selectedFrameIndex === 0
+        ? { ok: true as const, value: sceneMatch.frameContext }
+        : prepared.source.buildSceneFrameContext(
+            sceneMatch.xml,
+            selectedFrameIndex,
+            `scene:${sceneMatch.index}`,
+          );
+      target = {
+        renderTargetId: active.request.target.renderTargetId,
+        kind: 'scene',
+        userLabel,
+        sourceTimelineIndex: sceneMatch.index,
+        frameCount,
+        selectedFrameIndex,
+        compatibility: ['degraded'],
+      };
+    } else {
+      const graphicMatch = prepared.source.graphicSymbols.find((symbol) =>
+        stableRenderTargetId(
+          sourceIdentity.bytes,
+          `graphic-symbol\u0000${symbol.sourceLibraryItemName}\u0000${symbol.userLabel}`,
+        ) === active.request.target.renderTargetId,
+      );
+      if (!graphicMatch ||
+          !isR05SafeGraphicSource(
+            sourceIdentity.originalSourceSha256 ?? sourceIdentity.sha256,
+            graphicMatch.sourceLibraryItemName,
+            selectedFrameIndex,
+          ) ||
+          !isVisibleFrameZeroSceneGraphicReference(prepared.source, graphicMatch.sourceLibraryItemName)) {
+        return this.failure(
+          'TARGET_NOT_FOUND',
+          'The requested Graphic root is not an approved complete character target in this FLA session',
+          active.request,
         );
+      }
+      targetKind = 'graphic-symbol';
+      targetName = graphicMatch.sourceLibraryItemName;
+      sceneIndex = null;
+      sourceLibraryItemName = graphicMatch.sourceLibraryItemName;
+      userLabel = graphicMatch.userLabel;
+      frameCount = Math.min(100_000, Math.max(1, graphicMatch.frameCount));
+      if (selectedFrameIndex >= frameCount) {
+        return this.failure('TARGET_NOT_FOUND', 'The selected Graphic frame is outside the source frame range', active.request);
+      }
+      prepared.source.resetFrameBuildState();
+      frameResult = selectedFrameIndex === 0
+        ? { ok: true as const, value: graphicMatch.frameContext }
+        : prepared.source.buildGraphicFrameContext(
+            graphicMatch.timelineXml,
+            graphicMatch.frameSpanIndex,
+            selectedFrameIndex,
+            `graphic:${graphicMatch.sourceLibraryItemName}`,
+          );
+      target = {
+        renderTargetId: active.request.target.renderTargetId,
+        kind: 'graphic-symbol',
+        userLabel,
+        sourceLibraryItemName: graphicMatch.sourceLibraryItemName,
+        frameCount,
+        selectedFrameIndex,
+        compatibility: ['degraded'],
+      };
+    }
     if (!frameResult.ok) {
       return this.failure('UNSUPPORTED_SOURCE', frameResult.message, active.request);
     }
-    const frameContext = frameResult.value;
-    if (frameContext.unsupportedDisplayReason) {
-      return this.failure('UNSUPPORTED_SOURCE', frameContext.unsupportedDisplayReason, active.request);
+    const sceneFrameContext = frameResult.value;
+    if (sceneFrameContext.unsupportedDisplayReason) {
+      return this.failure('UNSUPPORTED_SOURCE', sceneFrameContext.unsupportedDisplayReason, active.request);
     }
     if (!this.ensureCurrentAndWithinBudget(active)) {
       return this.failure(active.cancelCode ?? 'RENDER_CANCELLED', 'Preview is stale or cancelled', active.request);
     }
 
+    // Nested Graphic selection builds frame-specific Shape blocks through the
+    // adapter's mutable frame map. Retain only the base blocks plus blocks
+    // referenced by each selected child context, under the resolver node cap.
+    const shapeBlocks = new Map(prepared.source.shapeBlocks);
+    const shapeBlockLimit = DEFAULT_FLA_DISPLAY_LIST_RESOLVER_LIMITS.maxResolvedNodeCount;
+    let shapeBlockBudgetExceeded = false;
+    const captureShapeBlocks = (elements: readonly FlaDisplayListElement[]): string | null => {
+      for (const element of elements) {
+        if (element.visible === false) continue;
+        if (element.kind === 'shape') {
+          if (shapeBlocks.has(element.shapeId)) continue;
+          const xml = prepared.source.shapeBlocks.get(element.shapeId);
+          if (xml === undefined) return `Selected Graphic shape source not found: ${element.shapeId}`;
+          if (shapeBlocks.size >= shapeBlockLimit) {
+            shapeBlockBudgetExceeded = true;
+            return `Nested Graphic shape-source blocks exceeded ${shapeBlockLimit}`;
+          }
+          shapeBlocks.set(element.shapeId, xml);
+        } else if (element.kind === 'group') {
+          const nestedError = captureShapeBlocks(element.elements);
+          if (nestedError) return nestedError;
+        }
+      }
+      return null;
+    };
+    const selectionSource: FlaStaticSnapshotDisplaySource = {
+      ...prepared.source,
+      buildGraphicFrameContext: (timelineXml, frameSpanIndex, frameIndex, scope) => {
+        const frameContext = prepared.source.buildGraphicFrameContext(
+          timelineXml,
+          frameSpanIndex,
+          frameIndex,
+          scope,
+        );
+        if (!frameContext.ok) return frameContext;
+        for (const layer of frameContext.value.layers) {
+          if (!layer.visible) continue;
+          const captureError = captureShapeBlocks(layer.elements);
+          if (captureError) {
+            return {
+              ok: false,
+              code: shapeBlockBudgetExceeded ? 'BUDGET_EXCEEDED' : 'RENDER_FAILED',
+              message: captureError,
+            };
+          }
+        }
+        return frameContext;
+      },
+    };
+    const nested = prepareFlaNestedGraphicFrameSelections(selectionSource, targetKind === 'scene'
+      ? { kind: 'scene', name: targetName, frameContext: sceneFrameContext }
+      : { kind: 'graphic', name: targetName, frameContext: sceneFrameContext });
+    if (shapeBlockBudgetExceeded) {
+      return this.failure(
+        'BUDGET_EXCEEDED',
+        `Nested Graphic shape-source blocks exceeded ${shapeBlockLimit}`,
+        active.request,
+      );
+    }
+    let frameContext = sceneFrameContext;
+    let symbols = prepared.source.symbols;
+    let selectionsBySourceAddress: ReadonlyMap<string, FlaNestedGraphicFrameSelection> = new Map();
+    let selectionFallbackReason: string | null = null;
+    if (!nested.ok && nested.code === 'UNSUPPORTED_TIMING' &&
+        nested.message.includes('missing its source address or parent frame coordinates')) {
+      // Preserve the existing whole-image-only route for untraceable sources.
+      // No PartPlan or per-instance selection is emitted without stable source
+      // identity; addressed, supported instances use the selector below.
+      selectionFallbackReason = 'Nested Graphic frame selection requires source-addressed instances.';
+    } else if (!nested.ok) {
+      const code = nested.code === 'BUDGET_EXCEEDED' ? 'BUDGET_EXCEEDED' : 'UNSUPPORTED_SOURCE';
+      const sourceAddress = nested.sourceAddress ? ` (${nested.sourceAddress})` : '';
+      return this.failure(code, `${nested.code}: ${nested.message}${sourceAddress}`.slice(0, 1_000), active.request);
+    } else {
+      frameContext = nested.resolverInput.root.frameContext;
+      symbols = nested.resolverInput.symbols;
+      selectionsBySourceAddress = new Map(nested.selections.map((selection) => [selection.sourceAddress, selection]));
+    }
+
     const nativeResolved = resolveFlaDisplayList({
-      root: { kind: 'scene', name: targetMatch.name, frameContext },
-      symbols: prepared.source.symbols,
+      root: targetKind === 'scene'
+        ? { kind: 'scene', name: targetName, frameContext }
+        : { kind: 'graphic', name: targetName, frameContext },
+      symbols,
     });
     displayListResolveCount += 1;
     if (!nativeResolved.ok) {
@@ -910,7 +1132,7 @@ export class FlaPartPreviewService {
       renderTargetId: active.request.target.renderTargetId,
       stageWidth: prepared.source.stageWidth,
       stageHeight: prepared.source.stageHeight,
-      shapeBlocks: prepared.source.shapeBlocks,
+      shapeBlocks,
       resolveBitmapMedia: mediaLookup,
     });
     if (!nativeComposition.ok) {
@@ -920,12 +1142,33 @@ export class FlaPartPreviewService {
         active.request,
       );
     }
+    const framing = nativeComposition.composition.framing;
+    if (targetKind === 'graphic-symbol' && framing.mode !== 'content') {
+      return this.failure('RENDER_FAILED', 'Graphic root preview did not produce a content viewport', active.request);
+    }
+    const rootTransform: FlaDisplayListMatrix = targetKind === 'graphic-symbol'
+      ? {
+        a: nativeComposition.width / framing.viewBox.width,
+        b: 0,
+        c: 0,
+        d: nativeComposition.height / framing.viewBox.height,
+        tx: -framing.viewBox.x * nativeComposition.width / framing.viewBox.width,
+        ty: -framing.viewBox.y * nativeComposition.height / framing.viewBox.height,
+      }
+      : FLA_DISPLAY_LIST_IDENTITY_MATRIX;
+    if (![rootTransform.a, rootTransform.b, rootTransform.c, rootTransform.d, rootTransform.tx, rootTransform.ty]
+      .every(Number.isFinite)) {
+      return this.failure('RENDER_FAILED', 'Graphic root viewport transform is not finite', active.request);
+    }
     const nativeFacts: NativeRenderFacts = {
       source: prepared.source,
-      sceneName: targetMatch.name,
-      sceneIndex: targetMatch.index,
-      sceneFrameCount: frameCount,
-      userLabel: targetMatch.name.trim() || 'Main scene',
+      targetKind,
+      targetName,
+      sceneIndex,
+      sourceLibraryItemName,
+      targetFrameCount: frameCount,
+      rootTransform,
+      userLabel,
       selectedFrameIndex,
       frameContext,
       resolvedNodeCount: nativeResolved.displayList.resolvedNodeCount,
@@ -949,19 +1192,23 @@ export class FlaPartPreviewService {
       return this.failure(active.cancelCode ?? 'RENDER_CANCELLED', 'Preview is stale or cancelled', active.request);
     }
 
+    if (selectionFallbackReason) {
+      return this.wholeImageOnly(active, sourceIdentity, nativeFacts, nativePreview, selectionFallbackReason, {
+        sourcePreparationCountForRequest,
+        displayListResolveCount,
+        rasterCount,
+        elapsedMs: Date.now() - startedAt,
+      });
+    }
+
     const collection = makeCandidateCollection(
       prepared.source,
       frameContext,
+      symbols,
+      selectionsBySourceAddress,
       (sourceIdentity.originalSourceSha256 ?? sourceIdentity.sha256).toLowerCase(),
-      {
-        renderTargetId: active.request.target.renderTargetId,
-        kind: 'scene',
-        userLabel: nativeFacts.userLabel,
-        sourceTimelineIndex: nativeFacts.sceneIndex,
-        frameCount: nativeFacts.sceneFrameCount,
-        selectedFrameIndex,
-        compatibility: ['degraded'],
-      },
+      target,
+      rootTransform,
     );
     if (collection.fallbackReason) {
       return this.wholeImageOnly(active, sourceIdentity, nativeFacts, nativePreview, collection.fallbackReason, {
@@ -991,12 +1238,15 @@ export class FlaPartPreviewService {
       try {
         const isolated = isolateOccurrence(
           frameContext,
-          prepared.source.symbols,
+          symbols,
           candidate.isolatePath,
           candidate.unit.occurrenceId,
         );
+        const isolatedFrameContext = nativeFacts.targetKind === 'graphic-symbol'
+          ? applyRootTransformToFrameContext(isolated.frameContext, nativeFacts.rootTransform)
+          : isolated.frameContext;
         const resolved = resolveFlaDisplayList({
-          root: { kind: 'scene', name: 'F1-02 isolated source occurrence', frameContext: isolated.frameContext },
+          root: { kind: 'scene', name: 'F1-02 isolated source occurrence', frameContext: isolatedFrameContext },
           symbols: isolated.symbols,
         });
         displayListResolveCount += 1;
@@ -1013,9 +1263,9 @@ export class FlaPartPreviewService {
         const composition = buildSvgForResolvedDisplayList({
           displayList: resolved.displayList,
           renderTargetId: `${active.request.target.renderTargetId}-${candidate.unit.unitId}`,
-          stageWidth: prepared.source.stageWidth,
-          stageHeight: prepared.source.stageHeight,
-          shapeBlocks: prepared.source.shapeBlocks,
+          stageWidth: nativeFacts.targetKind === 'scene' ? prepared.source.stageWidth : nativeFacts.width,
+          stageHeight: nativeFacts.targetKind === 'scene' ? prepared.source.stageHeight : nativeFacts.height,
+          shapeBlocks,
           resolveBitmapMedia: mediaLookup,
         });
         if (!composition.ok) {
@@ -1315,19 +1565,24 @@ export class FlaPartPreviewService {
       },
       target: {
         renderTargetId: active.request.target.renderTargetId,
-        kind: 'scene',
+        kind: native.targetKind,
         userLabel: native.userLabel,
         sceneIndex: native.sceneIndex,
-        frameCount: native.sceneFrameCount,
+        sourceLibraryItemName: native.sourceLibraryItemName,
+        frameCount: native.targetFrameCount,
         selectedFrameIndex: native.selectedFrameIndex,
-        frameSelectionBasis: 'authored Scene frame selected through Main prepared source',
+        frameSelectionBasis: native.targetKind === 'scene'
+          ? 'authored Scene frame selected through Main prepared source'
+          : 'approved Graphic root frame selected through Main prepared source',
       },
       poseIdentity,
       stage: {
         width: native.width,
         height: native.height,
         pixelCount: native.pixelCount,
-        coordinateSpace: 'root-scene-stage-pixels',
+        coordinateSpace: native.targetKind === 'scene'
+          ? 'root-scene-stage-pixels'
+          : 'root-graphic-local-pixels',
       },
       capability,
       capabilityReason,

@@ -84,7 +84,9 @@ function committedOutcome(
       poseIdentity: credential.poseIdentity,
       target: {
         renderTargetId: 'fla-render-target-recovery-test',
+        kind: 'scene',
         sceneIndex: 0,
+        sourceLibraryItemName: null,
         selectedFrameIndex: 0,
       },
     },

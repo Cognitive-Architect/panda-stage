@@ -106,7 +106,7 @@ export const FlaPartPreviewUnitSchema = z.object({
     effectiveChildFrameIndex: z.number().int().nonnegative().nullable(),
   }).strict(),
   stageMapping: z.object({
-    coordinateSpace: z.literal('root-scene-stage-pixels'),
+    coordinateSpace: z.enum(['root-scene-stage-pixels', 'root-graphic-local-pixels']),
     stageOrigin: z.object({ x: z.literal(0), y: z.literal(0) }).strict(),
     crop: z.null(),
     outputScale: z.literal(1),
@@ -131,19 +131,23 @@ export const FlaPartPlanSchema = z.object({
   }).strict(),
   target: z.object({
     renderTargetId: FlaRenderTargetIdSchema,
-    kind: z.literal('scene'),
+    kind: z.enum(['scene', 'graphic-symbol']),
     userLabel: z.string().trim().min(1).max(500),
-    sceneIndex: z.number().int().nonnegative().max(10_000),
+    sceneIndex: z.number().int().nonnegative().max(10_000).nullable(),
+    sourceLibraryItemName: z.string().trim().min(1).max(500).nullable(),
     frameCount: z.number().int().positive().max(100_000),
     selectedFrameIndex: z.number().int().nonnegative().max(100_000),
-    frameSelectionBasis: z.literal('authored Scene frame selected through Main prepared source'),
+    frameSelectionBasis: z.enum([
+      'authored Scene frame selected through Main prepared source',
+      'approved Graphic root frame selected through Main prepared source',
+    ]),
   }).strict(),
   poseIdentity: z.string().regex(/^[a-f0-9]{64}$/u),
   stage: z.object({
     width: z.number().int().positive().max(FLA_STATIC_SNAPSHOT_LIMITS.maxOutputWidth),
     height: z.number().int().positive().max(FLA_STATIC_SNAPSHOT_LIMITS.maxOutputHeight),
     pixelCount: z.number().int().positive().max(FLA_STATIC_SNAPSHOT_LIMITS.maxOutputPixels),
-    coordinateSpace: z.literal('root-scene-stage-pixels'),
+    coordinateSpace: z.enum(['root-scene-stage-pixels', 'root-graphic-local-pixels']),
   }).strict(),
   capability: FlaPartPreviewCapabilitySchema,
   capabilityReason: z.string().trim().min(1).max(1_000).nullable(),
@@ -151,6 +155,19 @@ export const FlaPartPlanSchema = z.object({
 }).strict().superRefine((plan, context) => {
   if (plan.target.selectedFrameIndex >= plan.target.frameCount) {
     context.addIssue({ code: 'custom', message: 'Selected frame is outside the declared frame range' });
+  }
+  if (plan.target.kind === 'scene') {
+    if (plan.target.sceneIndex === null || plan.target.sourceLibraryItemName !== null ||
+        plan.target.frameSelectionBasis !== 'authored Scene frame selected through Main prepared source' ||
+        plan.stage.coordinateSpace !== 'root-scene-stage-pixels' ||
+        plan.units.some((unit) => unit.stageMapping.coordinateSpace !== 'root-scene-stage-pixels')) {
+      context.addIssue({ code: 'custom', message: 'Scene Part plans must preserve Scene identity and root-stage coordinates' });
+    }
+  } else if (plan.target.sceneIndex !== null || !plan.target.sourceLibraryItemName ||
+      plan.target.frameSelectionBasis !== 'approved Graphic root frame selected through Main prepared source' ||
+      plan.stage.coordinateSpace !== 'root-graphic-local-pixels' ||
+      plan.units.some((unit) => unit.stageMapping.coordinateSpace !== 'root-graphic-local-pixels')) {
+    context.addIssue({ code: 'custom', message: 'Graphic Part plans must preserve approved Graphic identity and root-local coordinates' });
   }
   if (plan.capability === 'EDITABLE_PARTS_READY' && plan.units.length < 2) {
     context.addIssue({ code: 'custom', message: 'Editable parts require at least two independent source units' });
