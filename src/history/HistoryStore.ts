@@ -37,6 +37,18 @@ export class HistoryStore {
 
   readonly getSnapshot = (): HistorySnapshot => this.snapshot;
 
+  /** Checks both undo and redo commands because either may restore a reference. */
+  readonly referencesAsset = (assetId: string): boolean =>
+    this.allEntries().some((entry) =>
+      entry.command.referencesAsset?.(assetId) ?? false,
+    );
+
+  /** Checks recoverable Part pose snapshots before allowing an in-place hash change. */
+  readonly referencesPoseSnapshotAsset = (assetId: string): boolean =>
+    this.allEntries().some((entry) =>
+      entry.command.referencesPoseSnapshotAsset?.(assetId) ?? false,
+    );
+
   readonly subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -123,6 +135,10 @@ export class HistoryStore {
     return (
       left?.key === right.key && left.gestureId === right.gestureId
     );
+  }
+
+  private allEntries(): HistoryEntry[] {
+    return [...this.undoStack, ...this.redoStack];
   }
 
   private emit(): void {

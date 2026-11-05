@@ -2,11 +2,13 @@ import { asExpressionCharacter } from '../helpers/characterAssertions';
 import { describe, expect, it } from 'vitest';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import {
+  CharacterService,
   LayerService,
   migrateProject,
   type Project,
 } from '../../src/domain';
-import { buildProjectWithAnimation, IDS } from './domain/testProject';
+import { adaptivePartsFixture } from '../helpers/adaptivePartsFixtures';
+import { buildProject, buildProjectWithAnimation, IDS } from './domain/testProject';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { LayerStore } from '../../src/renderer/stores/layerStore';
 import { LayerSelectionStore } from '../../src/renderer/stores/selectionStore';
@@ -232,6 +234,110 @@ describe('Day 22 layer stores', () => {
       scaleX: 1.2,
       scaleY: 1.2,
     });
+  });
+
+  it('commits Part pose create, keyframe, and clear as one revision and reports the clear fallback', () => {
+    const base = buildProject();
+    const project = new CharacterService().createAdaptiveParts(base, {
+      name: 'Layer store pose Character',
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = project.characters.at(-1)!;
+    if (character.mode !== 'adaptive-parts') {
+      throw new Error('Expected an Adaptive Parts Character.');
+    }
+    const placed = new LayerService().createFromAdaptiveCharacter(
+      project,
+      IDS.shot,
+      character.id,
+      { x: 700, y: 500 },
+    );
+    const input = harness(placed.project);
+    input.selection.select(placed.layer.id);
+    const created = input.layers.createPartPoseAnimation(placed.layer.id);
+    const partId = created.shots[0]!.layers.find(
+      (layer) => layer.id === placed.layer.id,
+    )!.poseAnimation!.tracks[0]!.partId;
+    expect(input.editor.getSnapshot()).toMatchObject({ revision: 1, dirty: true });
+    expect(input.editor.history.getSnapshot()).toMatchObject({ undoCount: 1, redoCount: 0 });
+
+    input.layers.setPartPoseKeyframe(placed.layer.id, partId, {
+      timeMs: 1_000,
+      offsetX: 0,
+      offsetY: 0,
+      rotationDeg: 45,
+      scale: 1,
+      easingToNext: 'linear',
+    });
+    expect(input.editor.getSnapshot()).toMatchObject({ revision: 2, dirty: true });
+    expect(input.editor.history.getSnapshot()).toMatchObject({ undoCount: 2, redoCount: 0 });
+
+    const cleared = input.layers.clearPartPoseTrack(placed.layer.id, partId);
+    expect(cleared).toMatchObject({
+      changed: true,
+      animationRemoved: true,
+      fallback: 'current-character-defaults',
+    });
+    expect(input.editor.history.getSnapshot()).toMatchObject({ undoCount: 3, redoCount: 0 });
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.find(
+      (layer) => layer.id === placed.layer.id,
+    )!.poseAnimation).toBeUndefined();
+
+    expect(input.editor.undo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.find(
+      (layer) => layer.id === placed.layer.id,
+    )!.poseAnimation!.tracks[0]!.keys).toHaveLength(2);
+    expect(input.editor.redo()).toBe(true);
+    expect(input.editor.getSnapshot()!.project.shots[0]!.layers.find(
+      (layer) => layer.id === placed.layer.id,
+    )!.poseAnimation).toBeUndefined();
+  });
+
+  it('rejects a Part pose command after the selected instance changes', () => {
+    const base = buildProject();
+    const project = new CharacterService().createAdaptiveParts(base, {
+      name: 'Selected pose Character',
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = project.characters.at(-1)!;
+    if (character.mode !== 'adaptive-parts') {
+      throw new Error('Expected an Adaptive Parts Character.');
+    }
+    const first = new LayerService().createFromAdaptiveCharacter(
+      project,
+      IDS.shot,
+      character.id,
+      { x: 700, y: 500 },
+    );
+    const second = new LayerService().createFromAdaptiveCharacter(
+      first.project,
+      IDS.shot,
+      character.id,
+      { x: 900, y: 500 },
+    );
+    const input = harness(second.project);
+    input.selection.select(first.layer.id);
+    input.layers.createPartPoseAnimation(first.layer.id);
+    const partId = input.editor.getSnapshot()!.project.shots[0]!.layers.find(
+      (layer) => layer.id === first.layer.id,
+    )!.poseAnimation!.tracks[0]!.partId;
+    input.selection.select(second.layer.id);
+    const before = input.editor.getSnapshot()!;
+
+    expect(() =>
+      input.layers.setPartPoseKeyframe(first.layer.id, partId, {
+        timeMs: 1_000,
+        offsetX: 0,
+        offsetY: 0,
+        rotationDeg: 45,
+        scale: 1,
+        easingToNext: 'linear',
+      }),
+    ).toThrow('no longer the selected Character Layer');
+    expect(input.editor.getSnapshot()).toBe(before);
+    expect(input.editor.getSnapshot()).toMatchObject({ revision: 1, dirty: true });
+    expect(input.editor.history.getSnapshot()).toMatchObject({ undoCount: 1, redoCount: 0 });
+    input.selection.dispose();
   });
 
   it('keeps start, mode, copy, position, and delete edits independent in History', () => {

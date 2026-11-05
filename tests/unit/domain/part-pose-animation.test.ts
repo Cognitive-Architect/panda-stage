@@ -279,6 +279,210 @@ describe('formal Part pose animation', () => {
     );
   });
 
+  it('clears one authored track while preserving the captured snapshot, then reports the Character-default fallback', () => {
+    const { project: base, layerId, characterId } = adaptiveProject();
+    const service = new PartPoseAnimationService();
+    let project = service.create(base, { shotId: IDS.shot, layerId });
+    const snapshotLayer = project.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!;
+    const [firstTrack, secondTrack, neutralTrack] =
+      snapshotLayer.poseAnimation!.tracks;
+    const originalVisual = poseAt(project, layerId, 0).visual;
+    const setRotation = (partId: string, rotationDeg: number) =>
+      service.setKeyframe(project, {
+        shotId: IDS.shot,
+        layerId,
+        partId,
+        keyframe: {
+          timeMs: 1_000,
+          offsetX: 0,
+          offsetY: 0,
+          rotationDeg,
+          scale: 1,
+          easingToNext: 'linear',
+        },
+      });
+    project = setRotation(firstTrack!.partId, 90);
+    project = setRotation(secondTrack!.partId, -45);
+
+    const characters = new CharacterService();
+    const definition = characters.getAdaptivePartsDefinition(
+      project,
+      characterId,
+    );
+    const changedPartId = definition.parts[0]!.partId;
+    const changedDefaults = characters.applyAdaptivePartsDefinition(
+      project,
+      characterId,
+      {
+        sourceRootTransform: {
+          ...definition.sourceRootTransform,
+          tx: definition.sourceRootTransform.tx + 250,
+        },
+        parts: definition.parts
+          .map((part, index) => ({
+            ...part,
+            ...(index === 0
+              ? {
+                  assetId: IDS.assetChar2,
+                  restTransform: {
+                    ...part.restTransform,
+                    tx: part.restTransform.tx + 500,
+                  },
+                  visible: false,
+                }
+              : {}),
+            ...(index === 0
+              ? { drawOrder: 1 }
+              : index === 1
+                ? { drawOrder: 0 }
+                : {}),
+          }))
+          .sort((left, right) => left.drawOrder - right.drawOrder),
+      },
+    );
+    expect(poseAt(changedDefaults, layerId, 0).visual.parts).toEqual(
+      originalVisual.parts,
+    );
+
+    const untouchedClear = service.clearTrack(changedDefaults, {
+      shotId: IDS.shot,
+      layerId,
+      partId: neutralTrack!.partId,
+    });
+    expect(untouchedClear).toMatchObject({
+      changed: false,
+      animationRemoved: false,
+      fallback: 'captured-static-snapshot',
+    });
+    expect(
+      untouchedClear.project.shots[0]!.layers.find(
+        (layer) => layer.id === layerId,
+      )!.poseAnimation,
+    ).toBeDefined();
+
+    const firstClear = service.clearTrack(untouchedClear.project, {
+      shotId: IDS.shot,
+      layerId,
+      partId: firstTrack!.partId,
+    });
+    expect(firstClear).toMatchObject({
+      changed: true,
+      animationRemoved: false,
+      fallback: 'captured-static-snapshot',
+    });
+    expect(firstClear.project.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks.find(
+      (track) => track.partId === firstTrack!.partId,
+    )!.keys).toEqual([
+      {
+        timeMs: 0,
+        offsetX: 0,
+        offsetY: 0,
+        rotationDeg: 0,
+        scale: 1,
+        easingToNext: 'linear',
+      },
+    ]);
+    expect(poseAt(firstClear.project, layerId, 0).visual.parts).toEqual(
+      originalVisual.parts,
+    );
+
+    const lastClear = service.clearTrack(firstClear.project, {
+      shotId: IDS.shot,
+      layerId,
+      partId: secondTrack!.partId,
+    });
+    expect(lastClear).toMatchObject({
+      changed: true,
+      animationRemoved: true,
+      fallback: 'current-character-defaults',
+    });
+    const layerAfterLastClear = lastClear.project.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!;
+    expect(layerAfterLastClear.poseAnimation).toBeUndefined();
+    const currentDefaults = poseAt(lastClear.project, layerId, 0).visual;
+    const changedCharacter = changedDefaults.characters.find(
+      (character) => character.id === characterId,
+    );
+    if (!changedCharacter || changedCharacter.mode !== 'adaptive-parts') {
+      throw new Error('Expected an Adaptive Parts Character.');
+    }
+    const changedDefaultPartId = changedPartId;
+    const changedDefaultPart = currentDefaults.parts.find(
+      (part) =>
+        part.source.kind === 'adaptive-part' &&
+        part.source.characterPartId === changedDefaultPartId,
+    )!;
+    expect(changedDefaultPart.assetId).toBe(IDS.assetChar2);
+    expect(changedDefaultPart.visible).toBe(false);
+    expect(currentDefaults.parts).not.toEqual(originalVisual.parts);
+
+    const directClear = service.clearAnimation(project, {
+      shotId: IDS.shot,
+      layerId,
+    });
+    expect(directClear).toMatchObject({
+      changed: true,
+      animationRemoved: true,
+      fallback: 'current-character-defaults',
+    });
+    expect(directClear.project.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation).toBeUndefined();
+  });
+
+  it('rejects pose create, keyframe, and clear commands on locked layers', () => {
+    const { project, layerId } = adaptiveProject();
+    const service = new PartPoseAnimationService();
+    const lockedLayer = new LayerService().setLocked(
+      project,
+      IDS.shot,
+      layerId,
+      true,
+    );
+    expect(() => service.create(lockedLayer, {
+      shotId: IDS.shot,
+      layerId,
+    })).toThrow(/locked/u);
+
+    const captured = service.create(project, { shotId: IDS.shot, layerId });
+    const lockedSnapshot = new LayerService().setLocked(
+      captured,
+      IDS.shot,
+      layerId,
+      true,
+    );
+    const partId = captured.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks[0]!.partId;
+    expect(() => service.setKeyframe(lockedSnapshot, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      keyframe: {
+        timeMs: 1_000,
+        offsetX: 0,
+        offsetY: 0,
+        rotationDeg: 90,
+        scale: 1,
+        easingToNext: 'linear',
+      },
+    })).toThrow(/locked/u);
+    expect(() => service.clearTrack(lockedSnapshot, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+    })).toThrow(/locked/u);
+    expect(() => service.clearAnimation(lockedSnapshot, {
+      shotId: IDS.shot,
+      layerId,
+    })).toThrow(/locked/u);
+  });
+
   it('fails closed when a pose Layer receives an incomplete runtime evaluation', () => {
     const { project, layerId } = adaptiveProject();
     const captured = new PartPoseAnimationService().create(project, {

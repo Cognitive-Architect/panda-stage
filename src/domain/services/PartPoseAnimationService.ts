@@ -32,6 +32,24 @@ export interface SetPartPoseKeyframeInput {
   keyframe: PartPoseKeyframe;
 }
 
+export interface ClearPartPoseTrackInput {
+  shotId: string;
+  layerId: string;
+  partId: string;
+}
+
+export type PartPoseClearFallback =
+  | 'captured-static-snapshot'
+  | 'current-character-defaults';
+
+export interface PartPoseClearResult {
+  project: Project;
+  clearedPartId: string | null;
+  changed: boolean;
+  animationRemoved: boolean;
+  fallback: PartPoseClearFallback;
+}
+
 /**
  * Creates and edits persisted Part pose data without owning renderer state.
  * Callers apply each returned Project once through EditorProjectStore.updateProject
@@ -41,6 +59,7 @@ export class PartPoseAnimationService {
   create(project: Project, input: CreatePartPoseAnimationInput): Project {
     const current = ProjectSchema.parse(project);
     const { shot, layer } = this.requireLayer(current, input.shotId, input.layerId);
+    this.assertEditable(layer);
     if (layer.poseAnimation) {
       throw new Error(`Layer ${layer.id} already has Part pose animation.`);
     }
@@ -113,6 +132,7 @@ export class PartPoseAnimationService {
   setKeyframe(project: Project, input: SetPartPoseKeyframeInput): Project {
     const current = ProjectSchema.parse(project);
     const { shot, layer } = this.requireLayer(current, input.shotId, input.layerId);
+    this.assertEditable(layer);
     const poseAnimation = layer.poseAnimation;
     if (!poseAnimation) {
       throw new Error(`Layer ${layer.id} has no Part pose animation snapshot.`);
@@ -148,6 +168,139 @@ export class PartPoseAnimationService {
       ...layer,
       poseAnimation: nextPoseAnimation,
     });
+  }
+
+  /**
+   * Clears one Part's authored pose while retaining its captured static Part
+   * snapshot if another Part still has authored animation. Clearing the last
+   * authored Part drops the whole snapshot and explicitly falls back to the
+   * Character's current defaults.
+   */
+  clearTrack(
+    project: Project,
+    input: ClearPartPoseTrackInput,
+  ): PartPoseClearResult {
+    const current = ProjectSchema.parse(project);
+    const { shot, layer } = this.requireLayer(current, input.shotId, input.layerId);
+    this.assertEditable(layer);
+    const poseAnimation = layer.poseAnimation;
+    if (!poseAnimation) {
+      throw new Error(`Layer ${layer.id} has no Part pose animation snapshot.`);
+    }
+    const trackIndex = poseAnimation.tracks.findIndex(
+      (track) => track.partId === input.partId,
+    );
+    if (trackIndex < 0) {
+      throw new Error(`Pose animation has no snapshot for Part ${input.partId}.`);
+    }
+
+    const tracks = [...poseAnimation.tracks];
+    const track = tracks[trackIndex]!;
+    const neutralTrack: PartPoseTrack = {
+      ...track,
+      keys: [
+        {
+          timeMs: 0,
+          offsetX: 0,
+          offsetY: 0,
+          rotationDeg: 0,
+          scale: 1,
+          easingToNext: 'linear',
+        },
+      ],
+    };
+    const trackChanged =
+      JSON.stringify(track.keys) !== JSON.stringify(neutralTrack.keys);
+    tracks[trackIndex] = neutralTrack;
+    const hasAuthoredTrack = tracks.some((candidate) =>
+      this.hasAuthoredPose(candidate),
+    );
+
+    if (!hasAuthoredTrack) {
+      const layerWithoutPose = { ...layer };
+      delete layerWithoutPose.poseAnimation;
+      const nextProject = this.replaceLayer(
+        current,
+        shot.id,
+        layer.id,
+        layerWithoutPose,
+      );
+      return {
+        project: nextProject,
+        clearedPartId: input.partId,
+        changed: true,
+        animationRemoved: true,
+        fallback: 'current-character-defaults',
+      };
+    }
+
+    if (!trackChanged) {
+      return {
+        project: current,
+        clearedPartId: input.partId,
+        changed: false,
+        animationRemoved: false,
+        fallback: 'captured-static-snapshot',
+      };
+    }
+
+    const nextPoseAnimation: PartPoseAnimation =
+      PartPoseAnimationSchema.parse({ ...poseAnimation, tracks });
+    return {
+      project: this.replaceLayer(current, shot.id, layer.id, {
+        ...layer,
+        poseAnimation: nextPoseAnimation,
+      }),
+      clearedPartId: input.partId,
+      changed: true,
+      animationRemoved: false,
+      fallback: 'captured-static-snapshot',
+    };
+  }
+
+  /** Removes the instance snapshot and returns to the Character's current defaults. */
+  clearAnimation(
+    project: Project,
+    input: Pick<ClearPartPoseTrackInput, 'shotId' | 'layerId'>,
+  ): PartPoseClearResult {
+    const current = ProjectSchema.parse(project);
+    const { shot, layer } = this.requireLayer(current, input.shotId, input.layerId);
+    this.assertEditable(layer);
+    if (!layer.poseAnimation) {
+      throw new Error(`Layer ${layer.id} has no Part pose animation snapshot.`);
+    }
+    const layerWithoutPose = { ...layer };
+    delete layerWithoutPose.poseAnimation;
+    return {
+      project: this.replaceLayer(
+        current,
+        shot.id,
+        layer.id,
+        layerWithoutPose,
+      ),
+      clearedPartId: null,
+      changed: true,
+      animationRemoved: true,
+      fallback: 'current-character-defaults',
+    };
+  }
+
+  private hasAuthoredPose(track: PartPoseTrack): boolean {
+    const base = track.keys[0]!;
+    return (
+      track.keys.length > 1 ||
+      base.offsetX !== 0 ||
+      base.offsetY !== 0 ||
+      base.rotationDeg !== 0 ||
+      base.scale !== 1 ||
+      base.easingToNext !== 'linear'
+    );
+  }
+
+  private assertEditable(layer: Project['shots'][number]['layers'][number]): void {
+    if (layer.locked) {
+      throw new Error(`Layer ${layer.id} is locked and cannot edit Part poses.`);
+    }
   }
 
   private snapshotTrack(

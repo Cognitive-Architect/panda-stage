@@ -262,6 +262,7 @@ describe('asset library IPC handlers', () => {
       project: migrateProject(exampleProject),
       baseRevision: 0,
       assetId: '10000000-0000-4000-8000-000000000002',
+      historyReferencesAsset: false,
     });
 
     expect(response).toMatchObject({
@@ -392,6 +393,7 @@ describe('asset library IPC handlers', () => {
           project: migrateProject(exampleProject),
           baseRevision: 3,
           assetId: '10000000-0000-4000-8000-000000000002',
+          historyReferencesAsset: false,
         },
       ),
     ).resolves.toMatchObject({

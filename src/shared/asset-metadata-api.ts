@@ -10,6 +10,7 @@ export const AssetMetadataRequestSchema = z
     project: ProjectSchema,
     baseRevision: RevisionSchema,
     assetId: z.uuid(),
+    historyReferencesPoseSnapshotAsset: z.boolean(),
     requestId: z.uuid(),
   })
   .strict();
@@ -89,6 +90,7 @@ export const AssetMetadataOperationErrorCodeSchema = z.enum([
   'ASSET_METADATA_SOURCE_MISSING',
   'ASSET_METADATA_PROJECT_MISMATCH',
   'ASSET_METADATA_STALE_REVISION',
+  'ASSET_METADATA_POSE_SNAPSHOT_ASSET_CHANGED',
   'ASSET_METADATA_TIMEOUT',
   'ASSET_METADATA_CANCELLED',
   'ASSET_METADATA_INVALID_REQUEST',

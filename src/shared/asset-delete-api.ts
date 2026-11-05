@@ -8,11 +8,17 @@ export const AssetReferenceSchema = z
   .object({
     kind: z.enum([
       'character-base',
+      'character-body',
+      'character-head',
+      'character-part',
       'character-expression',
+      'character-mouth',
       'shot-background',
       'shot-layer',
+      'pose-animation-part',
       'audio-clip',
       'dialogue-audio',
+      'animation-frame',
     ]),
     path: z.string().trim().min(1).max(500),
     label: z.string().trim().min(1).max(500),
@@ -25,6 +31,7 @@ export const AssetDeleteRequestSchema = z
     project: ProjectSchema,
     baseRevision: RevisionSchema,
     assetId: z.uuid(),
+    historyReferencesAsset: z.boolean(),
   })
   .strict();
 

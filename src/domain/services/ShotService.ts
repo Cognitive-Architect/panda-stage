@@ -17,6 +17,7 @@ export class ShotServiceError extends Error {
   constructor(
     readonly code: ShotServiceErrorCode,
     message: string,
+    readonly contentEndMs?: number,
   ) {
     super(message);
     this.name = 'ShotServiceError';
@@ -43,6 +44,11 @@ function maximumContentEndMs(shot: Shot): number {
     ...shot.audioClips.map((clip) => clip.endMs),
     ...shot.dialogues.map((dialogue) => dialogue.endMs),
     ...shot.timelineEvents.map((event) => event.endMs),
+    ...shot.layers.flatMap((layer) =>
+      layer.poseAnimation?.tracks.flatMap((track) =>
+        track.keys.map((key) => key.timeMs),
+      ) ?? [],
+    ),
   );
 }
 
@@ -101,7 +107,7 @@ export class ShotService {
       id: this.nextUniqueId(usedIds),
       name: this.copyName(project, source.name),
       layers: source.layers.map((layer) => ({
-        ...layer,
+        ...structuredClone(layer),
         id: layerIds.get(layer.id)!,
       })),
       backgroundLayerId:
@@ -151,7 +157,8 @@ export class ShotService {
     if (durationMs < contentEndMs) {
       throw new ShotServiceError(
         'SHOT_CONTENT_OUT_OF_RANGE',
-        `镜头内容延伸到 ${contentEndMs}ms，时长不能缩短到 ${durationMs}ms。`,
+        `镜头不能缩短到 ${durationMs}ms：现有内容（包括 Part 动作关键帧）延伸到 ${contentEndMs}ms。请先清理受影响的动作轨，再重试。`,
+        contentEndMs,
       );
     }
     const shots = [...project.shots];
