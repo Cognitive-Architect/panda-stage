@@ -52,13 +52,15 @@ function animatedParentFrames(): string {
 function motionOwnedMissingFirstFrame(options: {
   readonly origin?: number;
   readonly spanDuration?: number;
+  readonly firstFrame?: string;
   readonly lastFrame?: string;
 } = {}): string {
   const origin = options.origin ?? 0;
   const spanDuration = options.spanDuration ?? 2;
+  const first = options.firstFrame === undefined ? '' : ` firstFrame="${options.firstFrame}"`;
   const last = options.lastFrame === undefined ? '' : ` lastFrame="${options.lastFrame}"`;
   const instance = (tx: number, ty: number, selected: string) =>
-    `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop"${last}${selected}>` +
+    `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop"${first}${last}${selected}>` +
     `${matrix(tx, ty)}<transformationPoint><Point x="5" y="7"/></transformationPoint></DOMSymbolInstance>`;
   const start = `<DOMFrame index="${origin}" duration="${spanDuration}" tweenType="motion" motionTweenSnap="true" keyMode="22017"><elements>${instance(0, 0, '')}</elements></DOMFrame>`;
   const end = `<DOMFrame index="${origin + spanDuration}" duration="1" tweenType="none" keyMode="15872"><elements>${instance(4, 6, ' selected="true"')}</elements></DOMFrame>`;
@@ -549,6 +551,158 @@ describe('nested Graphic authored-frame selection', () => {
   });
 
   // --- Issue #724: tween-span scope re-tightening (missing-firstFrame Loop) ---
+
+  it.each([
+    { origin: 0, parentFrameIndex: 1 },
+    { origin: 5, parentFrameIndex: 6 },
+    { origin: 206, parentFrameIndex: 207 },
+  ])('selects frame zero for a one-frame Loop Graphic in a motion tween at origin $origin (#919/#920)', ({ origin, parentFrameIndex }) => {
+    const source = adapt(motionOwnedMissingFirstFrame({ origin, spanDuration: 2 }), emptyFrames(1));
+    const root = graphicRoot(source, 'parent', parentFrameIndex);
+    const original = root.frameContext.layers[0]?.elements[0];
+    expect(original?.kind).toBe('symbol');
+    if (original?.kind !== 'symbol') return;
+    expect(original.sourceParentFrameIndex).toBe(parentFrameIndex);
+    expect(original.sourceParentFrameSpanStart).toBe(origin);
+    expect(original.sourceParentSpanTweenType).toBe('motion');
+    expect(original.playbackMode).toBe('loop');
+    expect(original.firstFrame).toBeUndefined();
+    expect(original.lastFrame).toBeUndefined();
+    // The parent tween has already interpolated this frame's transform.
+    expect(original.localTransform).toMatchObject({ tx: 2, ty: 3 });
+
+    const prepared = prepareFlaNestedGraphicFrameSelections(source, root);
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.selections).toMatchObject([{
+      libraryItemName: original.libraryItemName,
+      playbackMode: 'loop',
+      firstFrameWasExplicit: false,
+      effectiveFirstFrame: 0,
+      sourceParentFrameIndex: parentFrameIndex,
+      sourceParentFrameSpanStart: origin,
+      childFrameCount: 1,
+      selectedChildFrameIndex: 0,
+      selectionRule: 'loop-tween-single-frame-constant',
+      sourceTransform: original.localTransform,
+    }]);
+    expect(prepared.selections[0]?.firstFrame).toBeUndefined();
+    expect(prepared.selections[0]?.lastFrame).toBeUndefined();
+
+    const selected = prepared.resolverInput.root.frameContext.layers[0]?.elements[0];
+    expect(selected?.kind).toBe('symbol');
+    if (selected?.kind !== 'symbol') return;
+    expect(selected.libraryItemName).toBe(original.libraryItemName);
+    expect(selected.sourceAddress).toBe(original.sourceAddress);
+    expect(selected.localTransform).toEqual(original.localTransform);
+    expect(selected.visible).toBe(original.visible);
+    expect(selected.frameSelectionKey).toBeDefined();
+
+    const resolved = resolveFlaDisplayList(prepared.resolverInput);
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) return;
+    const resolvedSymbol = resolved.displayList.layers[0]?.children[0];
+    expect(resolvedSymbol?.kind).toBe('group');
+    if (resolvedSymbol?.kind !== 'group') return;
+    expect(resolvedSymbol.symbolLibraryItemName).toBe(original.libraryItemName);
+    expect(resolvedSymbol.worldTransform.a).toBeCloseTo(original.localTransform?.a ?? 1);
+    expect(resolvedSymbol.worldTransform.b).toBeCloseTo(original.localTransform?.b ?? 0);
+    expect(resolvedSymbol.worldTransform.c).toBeCloseTo(original.localTransform?.c ?? 0);
+    expect(resolvedSymbol.worldTransform.d).toBeCloseTo(original.localTransform?.d ?? 1);
+    expect(resolvedSymbol.worldTransform.tx).toBeCloseTo(original.localTransform?.tx ?? 0);
+    expect(resolvedSymbol.worldTransform.ty).toBeCloseTo(original.localTransform?.ty ?? 0);
+  });
+
+  it('does not select a hidden one-frame Loop Graphic (#919 visibility control)', () => {
+    const hiddenParent = frame(0,
+      `<DOMSymbolInstance libraryItemName="child" symbolType="graphic" loop="loop" isVisible="false">${matrix(8, 9)}</DOMSymbolInstance>`,
+      2,
+      'motion');
+    const source = adapt(hiddenParent, emptyFrames(1));
+    const root = graphicRoot(source, 'parent', 0);
+    expect(root.frameContext.layers[0]?.elements).toHaveLength(0);
+
+    const prepared = prepareFlaNestedGraphicFrameSelections(source, root);
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.selections).toHaveLength(0);
+    const resolved = resolveFlaDisplayList(prepared.resolverInput);
+    expect(resolved.ok).toBe(true);
+    if (resolved.ok) expect(resolved.displayList.layers[0]?.children).toHaveLength(0);
+  });
+
+  it('keeps an authored lastFrame outside the one-frame tween Loop exception (#920)', () => {
+    const authoredLastFrame = adapt(
+      motionOwnedMissingFirstFrame({ lastFrame: '0', spanDuration: 2 }),
+      emptyFrames(1),
+    );
+    const lastFrameResult = prepareFlaNestedGraphicFrameSelections(
+      authoredLastFrame,
+      graphicRoot(authoredLastFrame, 'parent', 1),
+    );
+    expect(lastFrameResult).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
+    if (!lastFrameResult.ok) expect(lastFrameResult.message).toContain('lastFrame is not proven');
+  });
+
+  it('keeps an authored firstFrame outside the one-frame tween Loop exception (#920)', () => {
+    const explicitFirstFrame = adapt(
+      motionOwnedMissingFirstFrame({ origin: 5, firstFrame: '0', spanDuration: 2 }),
+      emptyFrames(1),
+    );
+    const result = prepareFlaNestedGraphicFrameSelections(
+      explicitFirstFrame,
+      graphicRoot(explicitFirstFrame, 'parent', 6),
+    );
+    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
+    if (!result.ok) expect(result.message).toContain('only proven inside a static authored span');
+  });
+
+  it('fails closed when the one-frame tween Loop has invalid parent coordinates (#920)', () => {
+    const source = adapt(motionOwnedMissingFirstFrame({ origin: 5, spanDuration: 2 }), emptyFrames(1));
+    const root = graphicRoot(source, 'parent', 6);
+    const invalidRoot = {
+      ...root,
+      frameContext: {
+        ...root.frameContext,
+        layers: root.frameContext.layers.map((layer, index) => index === 0
+          ? {
+              ...layer,
+              elements: layer.elements.map((element) => element.kind === 'symbol'
+                ? { ...element, sourceParentFrameIndex: 4 }
+                : element),
+            }
+          : layer),
+      },
+    };
+    const result = prepareFlaNestedGraphicFrameSelections(source, invalidRoot);
+    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
+    if (!result.ok) expect(result.message).toContain('no valid selected parent frame');
+  });
+
+  it.each([
+    { name: 'fractional span origin', overrides: { sourceParentFrameSpanStart: 5.5 } },
+    { name: 'negative span origin', overrides: { sourceParentFrameSpanStart: -1 } },
+    { name: 'unsupported tween metadata', overrides: { sourceParentSpanTweenType: 'shape' } },
+  ])('fails closed for abnormal one-frame tween Loop metadata ($name)', ({ overrides }) => {
+    const source = adapt(motionOwnedMissingFirstFrame({ origin: 5, spanDuration: 2 }), emptyFrames(1));
+    const root = graphicRoot(source, 'parent', 6);
+    const malformedRoot = {
+      ...root,
+      frameContext: {
+        ...root.frameContext,
+        layers: root.frameContext.layers.map((layer, index) => index === 0
+          ? {
+              ...layer,
+              elements: layer.elements.map((element) => element.kind === 'symbol'
+                ? { ...element, ...overrides }
+                : element),
+            }
+          : layer),
+      },
+    };
+    const result = prepareFlaNestedGraphicFrameSelections(source, malformedRoot);
+    expect(result).toMatchObject({ ok: false, code: 'UNSUPPORTED_TIMING' });
+  });
 
   it('preserves the legacy origin=0 no-wrap Loop path inside a tweened owning span (#724)', () => {
     // #724 positive legacy control: a missing-firstFrame Loop whose owning span is
