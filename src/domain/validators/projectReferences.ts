@@ -1,6 +1,5 @@
 import type { z } from 'zod';
 import type { ProjectData } from '../models/project';
-import { frameTimeMs } from '../timeline/frame-grid';
 
 function addIssue(
   context: z.RefinementCtx,
@@ -337,7 +336,7 @@ export function validateProjectReferences(
             (rootDeterminant * restDeterminant) /
             (exportScale * exportScale);
           track.keys.forEach((key, keyIndex) => {
-            if (frameTimeMs(key.frame) > shot.durationMs) {
+            if (key.timeMs > shot.durationMs) {
               addIssue(
                 context,
                 [
@@ -350,7 +349,7 @@ export function validateProjectReferences(
                   trackIndex,
                   'keys',
                   keyIndex,
-                  'frame',
+                  'timeMs',
                 ],
                 'Part pose keyframe must be within the Shot duration.',
               );

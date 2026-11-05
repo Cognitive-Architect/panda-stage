@@ -9,12 +9,14 @@ import {
   CharacterPartStaticAdjustmentSchema,
   CharacterPartTransformSchema,
 } from './character';
+import { isValidFrameTime } from '../timeline/frame-grid';
 
 export const PartPoseEasingSchema = z.enum([
   'linear',
   'ease-in',
   'ease-out',
   'ease-in-out',
+  'step',
 ]);
 
 export const PartPosePointSchema = z
@@ -26,8 +28,15 @@ export const PartPosePointSchema = z
 
 export const PartPoseKeyframeSchema = z
   .object({
-    /** Absolute zero-based frame index on the Project FPS grid. */
-    frame: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    /** Persisted integer milliseconds on the Project FPS frame grid. */
+    timeMs: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(Number.MAX_SAFE_INTEGER)
+      .refine(isValidFrameTime, {
+        message: 'Part pose key time must be on the Project frame grid.',
+      }),
     /** Character-local translation applied after the source/root transforms. */
     offsetX: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
     offsetY: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
@@ -54,47 +63,34 @@ export const PartPoseTrackSchema = PosePartSnapshotSchema.extend({
 })
   .strict()
   .superRefine((track, context) => {
-    const crop = track.imageMapping.crop;
+    const { sourceWidth, sourceHeight } = track.imageMapping;
     if (
-      track.pivotSource.x < crop.x ||
-      track.pivotSource.x > crop.x + crop.width ||
-      track.pivotSource.y < crop.y ||
-      track.pivotSource.y > crop.y + crop.height
+      track.pivotSource.x < 0 ||
+      track.pivotSource.x > sourceWidth ||
+      track.pivotSource.y < 0 ||
+      track.pivotSource.y > sourceHeight
     ) {
       context.addIssue({
         code: 'custom',
         path: ['pivotSource'],
-        message: 'Part pivot must lie within its captured source crop.',
+        message: 'Part pivot must lie within the uncropped source image bounds.',
       });
     }
 
     const first = track.keys[0];
-    if (first?.frame !== 0) {
+    if (first?.timeMs !== 0) {
       context.addIssue({
         code: 'custom',
-        path: ['keys', 0, 'frame'],
-        message: 'Every Part pose track requires a protected frame-zero key.',
-      });
-    }
-    if (
-      first &&
-      (first.offsetX !== 0 ||
-        first.offsetY !== 0 ||
-        first.rotationDeg !== 0 ||
-        first.scale !== 1)
-    ) {
-      context.addIssue({
-        code: 'custom',
-        path: ['keys', 0],
-        message: 'The protected frame-zero key must preserve the captured pose.',
+        path: ['keys', 0, 'timeMs'],
+        message: 'Every Part pose track requires a protected 0 ms key.',
       });
     }
 
     for (let index = 1; index < track.keys.length; index += 1) {
-      if (track.keys[index]!.frame <= track.keys[index - 1]!.frame) {
+      if (track.keys[index]!.timeMs <= track.keys[index - 1]!.timeMs) {
         context.addIssue({
           code: 'custom',
-          path: ['keys', index, 'frame'],
+          path: ['keys', index, 'timeMs'],
           message: 'Part pose keyframes must be strictly ascending and unique.',
         });
       }

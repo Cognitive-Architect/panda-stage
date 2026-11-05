@@ -11,7 +11,6 @@ import {
   type PartPoseTrack,
 } from '../models/pose-animation';
 import { ProjectSchema, type Project } from '../models/project';
-import { frameTimeMs } from '../timeline/frame-grid';
 import { adaptiveCharacterSourceAnchor } from '../selectors/visualParts';
 
 type AdaptivePartsCharacter = Extract<
@@ -107,9 +106,9 @@ export class PartPoseAnimationService {
   }
 
   /**
-   * Sets one key on one Part track. New keys are inserted at their frame-grid
+   * Sets one key on one Part track. New keys are inserted at their time-grid
    * position; malformed persisted key arrays are rejected by ProjectSchema.
-   * Frame zero may only retain the captured identity pose.
+   * The protected 0 ms key may be updated but cannot be removed or retimed.
    */
   setKeyframe(project: Project, input: SetPartPoseKeyframeInput): Project {
     const current = ProjectSchema.parse(project);
@@ -119,17 +118,8 @@ export class PartPoseAnimationService {
       throw new Error(`Layer ${layer.id} has no Part pose animation snapshot.`);
     }
     const keyframe = PartPoseKeyframeSchema.parse(input.keyframe);
-    if (frameTimeMs(keyframe.frame) > shot.durationMs) {
+    if (keyframe.timeMs > shot.durationMs) {
       throw new Error('Part pose keyframe must be within the Shot duration.');
-    }
-    if (
-      keyframe.frame === 0 &&
-      (keyframe.offsetX !== 0 ||
-        keyframe.offsetY !== 0 ||
-        keyframe.rotationDeg !== 0 ||
-        keyframe.scale !== 1)
-    ) {
-      throw new Error('The captured frame-zero Part pose is protected.');
     }
 
     const trackIndex = poseAnimation.tracks.findIndex(
@@ -141,11 +131,11 @@ export class PartPoseAnimationService {
     const tracks = [...poseAnimation.tracks];
     const track = tracks[trackIndex]!;
     const keys = [...track.keys];
-    const existingIndex = keys.findIndex((key) => key.frame === keyframe.frame);
+    const existingIndex = keys.findIndex((key) => key.timeMs === keyframe.timeMs);
     if (existingIndex >= 0) {
       keys[existingIndex] = keyframe;
     } else {
-      const insertionIndex = keys.findIndex((key) => key.frame > keyframe.frame);
+      const insertionIndex = keys.findIndex((key) => key.timeMs > keyframe.timeMs);
       keys.splice(insertionIndex < 0 ? keys.length : insertionIndex, 0, keyframe);
     }
     tracks[trackIndex] = { ...track, keys };
@@ -191,7 +181,7 @@ export class PartPoseAnimationService {
           },
       keys: [
         {
-          frame: 0,
+          timeMs: 0,
           offsetX: 0,
           offsetY: 0,
           rotationDeg: 0,

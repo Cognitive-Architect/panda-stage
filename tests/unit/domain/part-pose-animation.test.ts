@@ -3,6 +3,8 @@ import {
   CharacterService,
   LayerService,
   PartPoseAnimationService,
+  PartPoseKeyframeSchema,
+  PartPoseTrackSchema,
   ProjectSchema,
   evaluateShotAtTime,
   resolveLayerVisualParts,
@@ -16,15 +18,30 @@ import {
 } from '../../helpers/adaptivePartsFixtures';
 import { buildProject, IDS } from './testProject';
 
-function adaptiveProject(): {
+function adaptiveProject(withExternalCroppedPivot = false): {
   project: Project;
   layerId: string;
   characterId: string;
 } {
+  const parts = adaptivePartsFixture(IDS.assetChar).map((part, index) =>
+    withExternalCroppedPivot && index === 0
+      ? {
+          ...part,
+          restTransform: { ...part.restTransform, b: 0.1, c: 0.25 },
+          imageMapping: {
+            ...part.imageMapping,
+            sourceHeight: 800,
+            crop: { x: 0, y: 80, width: 640, height: 640 },
+          },
+        }
+      : part,
+  );
   const created = new CharacterService().createAdaptiveParts(buildProject(), {
     name: 'Pose Character',
-    sourceRootTransform: adaptivePartsSourceRootTransform(),
-    parts: adaptivePartsFixture(IDS.assetChar),
+    sourceRootTransform: withExternalCroppedPivot
+      ? { a: -1, b: 0.15, c: 0.25, d: 1, tx: 790, ty: 47.6 }
+      : adaptivePartsSourceRootTransform(),
+    parts,
   });
   const character = created.characters.at(-1)!;
   if (character.mode !== 'adaptive-parts') {
@@ -63,6 +80,119 @@ function partById(
 }
 
 describe('formal Part pose animation', () => {
+  it('accepts a source-space pivot outside crop under mirrored, sheared transforms', () => {
+    const { project, layerId, characterId } = adaptiveProject(true);
+    const character = project.characters.find(
+      (candidate) => candidate.id === characterId,
+    );
+    if (!character || character.mode !== 'adaptive-parts') {
+      throw new Error('Expected an Adaptive Parts Character.');
+    }
+    const partId = character.parts[0]!.partId;
+    const pivotSource = { x: 320, y: 20 };
+    const service = new PartPoseAnimationService();
+    const captured = service.create(project, {
+      shotId: IDS.shot,
+      layerId,
+      pivotSourceByPartId: { [partId]: pivotSource },
+    });
+    const track = captured.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks[0]!;
+    expect(track.imageMapping.crop).toEqual({
+      x: 0,
+      y: 80,
+      width: 640,
+      height: 640,
+    });
+    expect(pivotSource.y).toBeLessThan(track.imageMapping.crop.y);
+    expect(track.pivotSource).toEqual(pivotSource);
+
+    const animated = service.setKeyframe(captured, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      keyframe: {
+        timeMs: 1_000,
+        offsetX: 0,
+        offsetY: 0,
+        rotationDeg: 90,
+        scale: 1,
+        easingToNext: 'linear',
+      },
+    });
+    const pointInCroppedAsset = {
+      x: (pivotSource.x - track.imageMapping.crop.x) * track.imageMapping.exportScale,
+      y: (pivotSource.y - track.imageMapping.crop.y) * track.imageMapping.exportScale,
+    };
+    const before = transformPointByVisualPart(
+      pointInCroppedAsset,
+      partById(poseAt(captured, layerId, 0).visual.parts, partId),
+    );
+    const during = transformPointByVisualPart(
+      pointInCroppedAsset,
+      partById(poseAt(animated, layerId, 500).visual.parts, partId),
+    );
+    expect(during.x).toBeCloseTo(before.x, 8);
+    expect(during.y).toBeCloseTo(before.y, 8);
+
+    expect(() =>
+      service.create(project, {
+        shotId: IDS.shot,
+        layerId,
+        pivotSourceByPartId: { [partId]: { x: 641, y: 20 } },
+      }),
+    ).toThrow(/uncropped source image bounds/u);
+    expect(() =>
+      service.create(project, {
+        shotId: IDS.shot,
+        layerId,
+        pivotSourceByPartId: { [partId]: { x: Number.POSITIVE_INFINITY, y: 20 } },
+      }),
+    ).toThrow();
+  });
+
+  it('persists only unique integer timeMs values on the 24 FPS grid', () => {
+    const { project, layerId } = adaptiveProject();
+    const captured = new PartPoseAnimationService().create(project, {
+      shotId: IDS.shot,
+      layerId,
+    });
+    const track = captured.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks[0]!;
+    const keyframe = (timeMs: number) => ({
+      timeMs,
+      offsetX: 0,
+      offsetY: 0,
+      rotationDeg: 0,
+      scale: 1,
+      easingToNext: 'linear' as const,
+    });
+
+    expect([0, 250, 500, 750, 1_000].map((timeMs) =>
+      PartPoseKeyframeSchema.parse(keyframe(timeMs)).timeMs,
+    )).toEqual([0, 250, 500, 750, 1_000]);
+    for (const timeMs of [43, 43.5, -1]) {
+      expect(PartPoseKeyframeSchema.safeParse(keyframe(timeMs)).success).toBe(false);
+    }
+    expect(
+      PartPoseKeyframeSchema.safeParse({ ...keyframe(0), frame: 0 }).success,
+    ).toBe(false);
+    expect(
+      PartPoseTrackSchema.safeParse({
+        ...track,
+        keys: [{ ...track.keys[0]!, timeMs: 42 }],
+      }).success,
+    ).toBe(false);
+    expect(
+      PartPoseTrackSchema.safeParse({
+        ...track,
+        keys: [track.keys[0]!, { ...track.keys[0]! }],
+      }).success,
+    ).toBe(false);
+  });
+
   it('captures a static Adaptive Parts snapshot and resolves continuous 0-to-270 degree rotation', () => {
     const { project: base, layerId } = adaptiveProject();
     const initial = poseAt(base, layerId, 0).visual;
@@ -81,7 +211,7 @@ describe('formal Part pose animation', () => {
       layerId,
       partId: track.partId,
       keyframe: {
-        frame: 24,
+        timeMs: 1_000,
         offsetX: 0,
         offsetY: 0,
         rotationDeg: 270,
@@ -180,7 +310,7 @@ describe('formal Part pose animation', () => {
       layerId,
       partId: track.partId,
       keyframe: {
-        frame: 0,
+        timeMs: 0,
         offsetX: 0,
         offsetY: 0,
         rotationDeg: 0,
@@ -193,7 +323,7 @@ describe('formal Part pose animation', () => {
       layerId,
       partId: track.partId,
       keyframe: {
-        frame: 24,
+        timeMs: 1_000,
         offsetX: 100,
         offsetY: 0,
         rotationDeg: 270,
@@ -227,20 +357,79 @@ describe('formal Part pose animation', () => {
     );
   });
 
-  it('inserts and replaces sorted keys, protects frame zero, and rejects keys outside the Shot', () => {
+  it('holds every pose component until a step key boundary and holds the last key', () => {
+    const { project: base, layerId } = adaptiveProject();
+    const service = new PartPoseAnimationService();
+    let project = service.create(base, { shotId: IDS.shot, layerId });
+    const track = project.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks[0]!;
+    project = service.setKeyframe(project, {
+      shotId: IDS.shot,
+      layerId,
+      partId: track.partId,
+      keyframe: {
+        timeMs: 0,
+        offsetX: 10,
+        offsetY: -20,
+        rotationDeg: 30,
+        scale: 1.25,
+        easingToNext: 'step',
+      },
+    });
+    project = service.setKeyframe(project, {
+      shotId: IDS.shot,
+      layerId,
+      partId: track.partId,
+      keyframe: {
+        timeMs: 500,
+        offsetX: 100,
+        offsetY: 200,
+        rotationDeg: 270,
+        scale: 2,
+        easingToNext: 'linear',
+      },
+    });
+
+    const poseAtTime = (timeMs: number) =>
+      poseAt(project, layerId, timeMs).evaluated.partPoses!.find(
+        (pose) => pose.partId === track.partId,
+      )!;
+    const held = {
+      offsetX: 10,
+      offsetY: -20,
+      rotationDeg: 30,
+      scale: 1.25,
+    };
+    const switched = {
+      offsetX: 100,
+      offsetY: 200,
+      rotationDeg: 270,
+      scale: 2,
+    };
+    for (const timeMs of [0, 1, 250, 499]) {
+      expect(poseAtTime(timeMs)).toMatchObject(held);
+    }
+    expect(poseAtTime(500)).toMatchObject(switched);
+    expect(poseAtTime(1_000)).toMatchObject(switched);
+    expect(poseAtTime(250)).toEqual(poseAtTime(0));
+    expect(poseAtTime(0)).toEqual(poseAtTime(499));
+  });
+
+  it('inserts and replaces sorted timeMs keys, allows a non-neutral 0 ms key, and enforces Shot duration', () => {
     const { project, layerId } = adaptiveProject();
     const service = new PartPoseAnimationService();
     let next = service.create(project, { shotId: IDS.shot, layerId });
     const track = next.shots[0]!.layers.find(
       (layer) => layer.id === layerId,
     )!.poseAnimation!.tracks[0]!;
-    const set = (frame: number, rotationDeg: number) =>
+    const set = (timeMs: number, rotationDeg: number) =>
       service.setKeyframe(next, {
         shotId: IDS.shot,
         layerId,
         partId: track.partId,
         keyframe: {
-          frame,
+          timeMs,
           offsetX: 0,
           offsetY: 0,
           rotationDeg,
@@ -249,19 +438,23 @@ describe('formal Part pose animation', () => {
         },
       });
 
-    next = set(48, 360);
-    next = set(24, 90);
-    next = set(24, 180);
+    next = set(2_000, 360);
+    next = set(1_000, 90);
+    next = set(1_000, 180);
     expect(
       next.shots[0]!.layers.find((layer) => layer.id === layerId)!
-        .poseAnimation!.tracks[0]!.keys.map((key) => [key.frame, key.rotationDeg]),
+        .poseAnimation!.tracks[0]!.keys.map((key) => [key.timeMs, key.rotationDeg]),
     ).toEqual([
       [0, 0],
-      [24, 180],
-      [48, 360],
+      [1_000, 180],
+      [2_000, 360],
     ]);
-    expect(() => set(0, 30)).toThrow(/frame-zero/u);
-    expect(() => set(73, 90)).toThrow(/Shot duration/u);
+    next = set(0, 30);
+    expect(
+      next.shots[0]!.layers.find((layer) => layer.id === layerId)!
+        .poseAnimation!.tracks[0]!.keys[0],
+    ).toMatchObject({ timeMs: 0, rotationDeg: 30 });
+    expect(() => set(3_042, 90)).toThrow(/Shot duration/u);
   });
 
   it('tracks snapshot assets so they remain in project reference scans', () => {
@@ -312,7 +505,7 @@ describe('formal Part pose animation', () => {
         layerId: placed.layer.id,
         partId,
         keyframe: {
-          frame: 24,
+          timeMs: 1_000,
           offsetX: 0,
           offsetY: 0,
           rotationDeg: 0,

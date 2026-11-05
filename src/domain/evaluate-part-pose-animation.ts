@@ -1,4 +1,3 @@
-import { frameTimeMs } from './timeline/frame-grid';
 import type {
   PartPoseAnimation,
   PartPoseEasing,
@@ -19,6 +18,8 @@ function interpolate(from: number, to: number, progress: number): number {
 
 function ease(progress: number, easing: PartPoseEasing): number {
   switch (easing) {
+    case 'step':
+      return progress < 1 ? 0 : 1;
     case 'linear':
       return progress;
     case 'ease-in':
@@ -32,25 +33,21 @@ function ease(progress: number, easing: PartPoseEasing): number {
   }
 }
 
-function keyTimeMs(key: PartPoseKeyframe): number {
-  return frameTimeMs(key.frame);
-}
-
 function evaluateTrack(
   track: PartPoseAnimation['tracks'][number],
   timeMs: number,
 ): EvaluatedPartPose {
   const keys = track.keys;
   const first = keys[0]!;
-  if (timeMs <= keyTimeMs(first)) {
+  if (timeMs <= first.timeMs) {
     return { partId: track.partId, ...firstPose(first) };
   }
 
   for (let index = 0; index < keys.length - 1; index += 1) {
     const from = keys[index]!;
     const to = keys[index + 1]!;
-    const startMs = keyTimeMs(from);
-    const endMs = keyTimeMs(to);
+    const startMs = from.timeMs;
+    const endMs = to.timeMs;
     if (timeMs > endMs) continue;
     const rawProgress = Math.min(
       1,
