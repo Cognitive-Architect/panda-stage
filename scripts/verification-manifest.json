@@ -727,7 +727,8 @@
           "tests/unit/layer-service.test.ts",
           "tests/unit/layer-stores.test.ts",
       "tests/integration/animation-persistence.test.ts",
-      "tests/integration/ap03-animation-image-prewarm.test.ts"
+      "tests/integration/ap03-animation-image-prewarm.test.ts",
+      "tests/integration/part-pose-animation-persistence.test.ts"
         ],
         "verifierPatterns": [
           "scripts/verify-day21*",
