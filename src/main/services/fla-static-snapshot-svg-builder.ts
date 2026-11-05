@@ -50,9 +50,11 @@ import type {
   FlaDisplayListResolverInput,
 } from './fla-display-list-resolver';
 import {
+  DEFAULT_FLA_DISPLAY_LIST_RESOLVER_LIMITS,
   resolveFlaDisplayList,
   type FlaDisplayListResolverResult,
 } from './fla-display-list-resolver';
+import { prepareFlaNestedGraphicFrameSelections } from './fla-nested-graphic-frame-selector';
 import {
   adaptFlaXflDisplaySource,
   adaptFlaXflDisplaySourceCooperatively,
@@ -688,7 +690,7 @@ interface ParsedShapeEdge extends EdgeStyleReferences {
 function attributeFromElement(block: string, tag: string, attribute: string): string | null {
   const openTag = block.match(new RegExp(`<${tag}\\b[^>]*>`))?.[0];
   if (!openTag) return null;
-  return openTag.match(new RegExp(`\\b${attribute}="([^"]*)"`))?.[1] ?? null;
+  return xmlAttributes(openTag)?.[attribute] ?? null;
 }
 
 function parseNonNegativeInteger(value: string): number | null {
@@ -1017,11 +1019,12 @@ function parseLinearGradientPaint(
   shapeId: string,
   renderTargetId: string,
   frameIndex: number,
+  styleKind: 'FillStyle' | 'StrokeStyle' = 'FillStyle',
 ): { readonly ok: true; readonly paint: ReconstructedFillPaint } | BuildSvgFailure {
   const fail = (code: BuildSvgFailure['code'], message: string): BuildSvgFailure => ({
     ok: false,
     code,
-    message: `Shape ${shapeId} FillStyle ${style.index} ${message}`,
+    message: `Shape ${shapeId} ${styleKind} ${style.index} ${message}`,
   });
   const gradientBlocks = extractBalancedBlocks(style.sourceXml, 'LinearGradient');
   if (gradientBlocks.length !== 1) {
@@ -1119,6 +1122,219 @@ function parseLinearGradientPaint(
       gradientStopCount: stops.length,
     },
   };
+}
+
+function xmlAttributes(openTag: string | undefined): Record<string, string> | null {
+  if (!openTag?.startsWith('<') || !openTag.endsWith('>')) return null;
+  const tagName = openTag.match(/^<[A-Za-z_][A-Za-z0-9_.:-]*/u)?.[0];
+  if (!tagName) return null;
+
+  let remainder = openTag.slice(tagName.length, -1).trimEnd();
+  if (remainder.endsWith('/')) remainder = remainder.slice(0, -1);
+  const attributes: Record<string, string> = Object.create(null) as Record<string, string>;
+  let offset = 0;
+  while (offset < remainder.length) {
+    while (/\s/u.test(remainder[offset] ?? '')) offset += 1;
+    if (offset >= remainder.length) break;
+
+    const name = remainder.slice(offset).match(/^([A-Za-z_][A-Za-z0-9_.:-]*)/u)?.[1];
+    if (!name || Object.prototype.hasOwnProperty.call(attributes, name)) return null;
+    offset += name.length;
+    while (/\s/u.test(remainder[offset] ?? '')) offset += 1;
+    if (remainder[offset] !== '=') return null;
+    offset += 1;
+    while (/\s/u.test(remainder[offset] ?? '')) offset += 1;
+
+    const quote = remainder[offset];
+    if (quote !== '"' && quote !== "'") return null;
+    offset += 1;
+    const valueEnd = remainder.indexOf(quote, offset);
+    if (valueEnd < 0) return null;
+    const value = remainder.slice(offset, valueEnd);
+    if (value.includes('<')) return null;
+    offset = valueEnd + 1;
+    if (offset < remainder.length && !/\s/u.test(remainder[offset] ?? '')) return null;
+    attributes[name] = value;
+  }
+  return attributes;
+}
+
+function hasExactAttributeNames(
+  attributes: Record<string, string> | null,
+  names: readonly string[],
+): boolean {
+  if (!attributes) return false;
+  return Object.keys(attributes).sort().join(',') === [...names].sort().join(',');
+}
+
+function hasOnlyExpectedChildElements(
+  parentBlock: string,
+  parentTag: string,
+  expectedChildren: readonly string[],
+): boolean {
+  const openTag = parentBlock.match(new RegExp(`<${parentTag}\\b[^>]*>`, 'u'))?.[0];
+  const closeTag = `</${parentTag}>`;
+  const closeIndex = parentBlock.lastIndexOf(closeTag);
+  if (!openTag || closeIndex < openTag.length) return false;
+  let remainder = parentBlock.slice(openTag.length, closeIndex);
+  for (const child of expectedChildren) {
+    const childIndex = remainder.indexOf(child);
+    if (childIndex < 0) return false;
+    remainder = remainder.slice(0, childIndex) + remainder.slice(childIndex + child.length);
+  }
+  return !/<[A-Za-z_]/u.test(remainder);
+}
+
+function hasClosedLinearStrokeStructure(
+  style: ParsedShapeStyle,
+  solidStrokeXml: string,
+  fillBlock: string,
+  gradientBlock: string,
+): boolean {
+  const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
+  const stopTags = extractSelfClosingTags(gradientBlock, 'GradientEntry');
+  const matrixTags = matrixBlocks.length === 1
+    ? (matrixBlocks[0] as string).match(/<Matrix\b[^>]*\/?\s*>/gu) ?? []
+    : [];
+  if (matrixBlocks.length !== 1 || matrixTags.length !== 1) return false;
+  return hasOnlyExpectedChildElements(style.sourceXml, 'StrokeStyle', [solidStrokeXml]) &&
+    hasOnlyExpectedChildElements(solidStrokeXml, 'SolidStroke', [fillBlock]) &&
+    hasOnlyExpectedChildElements(fillBlock, 'fill', [gradientBlock]) &&
+    hasOnlyExpectedChildElements(gradientBlock, 'LinearGradient', [
+      matrixBlocks[0] as string,
+      ...stopTags,
+    ]) &&
+    hasOnlyExpectedChildElements(matrixBlocks[0] as string, 'matrix', [matrixTags[0] as string]);
+}
+
+// #944 and #952 exact-edge SWF receipts prove omitted values only for these
+// exact source signatures. Keep matching content-based: the signatures do not
+// establish global defaults for other linear-gradient strokes.
+function matchesEvidenceBoundLinearStroke(
+  style: ParsedShapeStyle,
+  solidStrokeXml: string,
+): boolean {
+  const evidencedSignatures = [
+    {
+      strokeAttributes: { scaleMode: 'normal' },
+      gradientAttributes: { spreadMethod: 'reflect' },
+      matrixAttributes: { a: 0.009490966796875, d: 0.01239013671875, tx: 814.65, ty: 625.65 },
+      stops: [
+        { color: '#594F45', ratio: 0.152941176470588 },
+        { color: '#D7DFD5', ratio: 0.447058823529412 },
+        { color: '#A4A79E', ratio: 0.72156862745098 },
+        { color: '#FCFDFA', ratio: 1 },
+      ],
+    },
+    {
+      strokeAttributes: { scaleMode: 'normal' },
+      gradientAttributes: { spreadMethod: 'reflect' },
+      matrixAttributes: {
+        a: 0.0026702880859375,
+        b: 0.000946044921875,
+        c: -0.0126190185546875,
+        d: 0.034210205078125,
+        tx: 867.7,
+        ty: 626.45,
+      },
+      stops: [
+        { color: '#594F45', ratio: 0.152941176470588 },
+        { color: '#D7DFD5', ratio: 0.447058823529412 },
+        { color: '#A4A79E', ratio: 0.72156862745098 },
+        { color: '#FCFDFA', ratio: 1 },
+      ],
+    },
+    {
+      strokeAttributes: { scaleMode: 'normal', weight: '0.5' },
+      gradientAttributes: {},
+      matrixAttributes: { a: 0.0386962890625, d: 0.020172119140625, tx: 561.05, ty: 591.1 },
+      stops: [
+        { color: '#618C84', ratio: 0 },
+        { color: '#ADCFD1', ratio: 0.654901960784314 },
+        { color: '#80CEB0', ratio: 0.894117647058824 },
+      ],
+    },
+  ] as const;
+
+  const strokeTag = solidStrokeXml.match(/<SolidStroke\b[^>]*>/u)?.[0];
+  const strokeAttributes = xmlAttributes(strokeTag);
+  if (!strokeAttributes || /<VariablePointWidth\b/u.test(style.sourceXml)) return false;
+
+  const gradientBlocks = extractBalancedBlocks(style.sourceXml, 'LinearGradient');
+  if (gradientBlocks.length !== 1) return false;
+  const gradientBlock = gradientBlocks[0] as string;
+  const gradientTag = gradientBlock.match(/<LinearGradient\b[^>]*>/u)?.[0];
+  const gradientAttributes = xmlAttributes(gradientTag);
+  if (!gradientAttributes) return false;
+
+  const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
+  const matrixTags = matrixBlocks.length === 1
+    ? (matrixBlocks[0] as string).match(/<Matrix\b[^>]*\/?\s*>/gu) ?? []
+    : [];
+  if ((gradientBlock.match(/<matrix\b/gu) ?? []).length !== 1 || matrixTags.length !== 1) return false;
+  const matrixAttributes = xmlAttributes(matrixTags[0]);
+  if (!matrixAttributes) return false;
+  const stopTags = extractSelfClosingTags(gradientBlock, 'GradientEntry');
+  const matchesStringAttributes = (
+    actual: Record<string, string>,
+    expected: Readonly<Record<string, string>>,
+  ): boolean => hasExactAttributeNames(actual, Object.keys(expected)) &&
+    Object.entries(expected).every(([key, value]) => actual[key] === value);
+  const matchesNumericAttributes = (
+    actual: Record<string, string>,
+    expected: Readonly<Record<string, number>>,
+  ): boolean => hasExactAttributeNames(actual, Object.keys(expected)) &&
+    Object.entries(expected).every(([key, value]) => Number(actual[key]) === value);
+
+  return evidencedSignatures.some((signature) => {
+    if (!matchesStringAttributes(strokeAttributes, signature.strokeAttributes) ||
+        !matchesStringAttributes(gradientAttributes, signature.gradientAttributes) ||
+        !matchesNumericAttributes(matrixAttributes, signature.matrixAttributes) ||
+        stopTags.length !== signature.stops.length) return false;
+    return stopTags.every((tag, index) => {
+      const attributes = xmlAttributes(tag);
+      const expected = signature.stops[index];
+      return attributes !== null && expected !== undefined &&
+        hasExactAttributeNames(attributes, ['color', 'ratio']) &&
+        attributes.color === expected.color &&
+        Number(attributes.ratio) === expected.ratio;
+    });
+  });
+}
+
+function hasExplicitSafeLinearStrokeSemantics(
+  solidStrokeXml: string,
+  gradientBlock: string,
+): boolean {
+  const strokeTag = solidStrokeXml.match(/<SolidStroke\b[^>]*>/u)?.[0];
+  const strokeAttributes = xmlAttributes(strokeTag);
+  if (!strokeAttributes || !hasExactAttributeNames(strokeAttributes, [
+    'weight', 'caps', 'joints', 'scaleMode', 'pixelHinting',
+  ]) && !hasExactAttributeNames(strokeAttributes, [
+    'weight', 'caps', 'joints', 'scaleMode', 'pixelHinting', 'miterLimit',
+  ])) return false;
+  if (strokeAttributes.scaleMode !== 'normal' || strokeAttributes.caps !== 'round' ||
+      strokeAttributes.joints !== 'round' || strokeAttributes.pixelHinting !== 'false') return false;
+  const weight = Number(strokeAttributes.weight);
+  if (!Number.isFinite(weight) || weight <= 0) return false;
+  if (/<VariablePointWidth\b/u.test(solidStrokeXml)) return false;
+
+  const gradientTag = gradientBlock.match(/<LinearGradient\b[^>]*>/u)?.[0];
+  const gradientAttributes = xmlAttributes(gradientTag);
+  if (!gradientAttributes || !hasExactAttributeNames(gradientAttributes, ['spreadMethod', 'interpolationMethod']) ||
+      gradientAttributes.spreadMethod !== 'reflect' ||
+      gradientAttributes.interpolationMethod !== 'rgb') return false;
+
+  const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
+  const matrixTags = matrixBlocks.length === 1
+    ? (matrixBlocks[0] as string).match(/<Matrix\b[^>]*\/?\s*>/gu) ?? []
+    : [];
+  if ((gradientBlock.match(/<matrix\b/gu) ?? []).length !== 1 || matrixTags.length !== 1) return false;
+  if (!hasExactAttributeNames(xmlAttributes(matrixTags[0]), ['a', 'b', 'c', 'd', 'tx', 'ty'])) return false;
+
+  const stopTags = extractSelfClosingTags(gradientBlock, 'GradientEntry');
+  if (stopTags.length < 2) return false;
+  return stopTags.every((tag) => hasExactAttributeNames(xmlAttributes(tag), ['color', 'alpha', 'ratio']));
 }
 
 function parseRadialGradientPaint(
@@ -1617,7 +1833,7 @@ function parseSolidStrokeStyle(
   const unsupported = (detail: string): BuildSvgFailure => ({
     ok: false,
     code: 'TARGET_UNSUPPORTED',
-    message: `Shape ${shapeId} StrokeStyle ${style.index} has unsupported ${detail}; P2-C03 supports normal and horizontal SolidStroke semantics only, and P2-C06 adds validated normal radial-gradient SolidStroke paint`,
+    message: `Shape ${shapeId} StrokeStyle ${style.index} has unsupported ${detail}; P2-C03 supports normal and horizontal SolidStroke semantics only, P2-C06 adds validated normal radial-gradient paint, and P2-C07 adds evidence-bounded fixed-width linear-gradient paint`,
   });
   const malformed = (detail: string): BuildSvgFailure => ({
     ok: false,
@@ -1639,6 +1855,39 @@ function parseSolidStrokeStyle(
       return malformed('single radial-gradient stroke fill');
     }
     const parsedPaint = parseRadialGradientPaint(style, shapeId, renderTargetId, frameIndex, 'StrokeStyle');
+    if (!parsedPaint.ok) return parsedPaint;
+    gradientPaint = parsedPaint.paint;
+    color = parsedPaint.paint.firstColor;
+    opacity = parsedPaint.paint.opacity;
+  } else if (style.type === 'linear') {
+    if (/<VariablePointWidth\b/u.test(style.sourceXml)) return unsupported('VariablePointWidth');
+    if (paintTags.length !== 1 || !/^<LinearGradient\b/u.test(paintTags[0] ?? '')) {
+      return malformed('single linear-gradient stroke fill');
+    }
+    const gradientBlock = extractBalancedBlocks(style.sourceXml, 'LinearGradient')[0];
+    if (!gradientBlock) return unsupported('linear-gradient stroke paint structure');
+    const matchesEvidence = matchesEvidenceBoundLinearStroke(style, solidStrokeXml);
+    const hasExplicitSemantics = hasExplicitSafeLinearStrokeSemantics(solidStrokeXml, gradientBlock);
+    const closedStructure = hasClosedLinearStrokeStructure(style, solidStrokeXml, fillBlock, gradientBlock);
+    if (!closedStructure || (!matchesEvidence && !hasExplicitSemantics)) {
+      const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
+      const matrixTags = matrixBlocks.length === 1
+        ? (matrixBlocks[0] as string).match(/<Matrix\b[^>]*\/?\s*>/gu) ?? []
+        : [];
+      const rawStopCount = (gradientBlock.match(/<GradientEntry\b/gu) ?? []).length;
+      const stopTags = extractSelfClosingTags(gradientBlock, 'GradientEntry');
+      const hasCompletePaintStructure = (gradientBlock.match(/<matrix\b/gu) ?? []).length === 1 &&
+        matrixBlocks.length === 1 && matrixTags.length === 1 &&
+        rawStopCount >= 2 && stopTags.length === rawStopCount;
+      if (hasCompletePaintStructure) {
+        const validation = parseLinearGradientPaint(
+          style, shapeId, renderTargetId, frameIndex, 'StrokeStyle',
+        );
+        if (!validation.ok) return validation;
+      }
+      return unsupported('linear-gradient SolidStroke semantics with unproven defaults or paint properties');
+    }
+    const parsedPaint = parseLinearGradientPaint(style, shapeId, renderTargetId, frameIndex, 'StrokeStyle');
     if (!parsedPaint.ok) return parsedPaint;
     gradientPaint = parsedPaint.paint;
     color = parsedPaint.paint.firstColor;
@@ -1704,7 +1953,7 @@ function parseSolidStrokeStyle(
 
   const scaleMode = attributeFromElement(solidStrokeXml, 'SolidStroke', 'scaleMode') ?? 'normal';
   if (scaleMode !== 'normal' && scaleMode !== 'horizontal') return unsupported(`scaleMode "${scaleMode}"`);
-  if (gradientPaint && scaleMode !== 'normal') return unsupported(`radial-gradient scaleMode "${scaleMode}"`);
+  if (gradientPaint && scaleMode !== 'normal') return unsupported(`gradient scaleMode "${scaleMode}"`);
   const pixelHinting = attributeFromElement(solidStrokeXml, 'SolidStroke', 'pixelHinting');
   if (pixelHinting !== null && pixelHinting !== 'true' && pixelHinting !== 'false') {
     return {
@@ -2099,7 +2348,11 @@ function mapResolverFailure(result: FlaDisplayListResolverResult): BuildSvgFailu
 function resolveTargetDisplayList(
   source: FlaStaticSnapshotDisplaySource,
   target: FlaRenderTarget,
-): { readonly ok: true; readonly displayList: FlaResolvedDisplayList } | BuildSvgFailure {
+): {
+  readonly ok: true;
+  readonly displayList: FlaResolvedDisplayList;
+  readonly shapeBlocks: ReadonlyMap<string, string>;
+} | BuildSvgFailure {
   let root: FlaDisplayListResolverInput['root'];
   if (target.kind === 'graphic-symbol') {
     const sourceName = target.sourceLibraryItemName;
@@ -2175,13 +2428,83 @@ function resolveTargetDisplayList(
     return { ok: false, code: 'TARGET_UNSUPPORTED', message: 'Unknown target kind: ' + (target.kind as string) };
   }
 
-  const resolved = resolveFlaDisplayList({ root, symbols: source.symbols });
+  // Selected-frame parsing resets the adapter's mutable source map each time.
+  // Keep only base blocks plus Shape blocks referenced by selected contexts.
+  const shapeBlocks = new Map(source.shapeBlocks);
+  const shapeBlockLimit = DEFAULT_FLA_DISPLAY_LIST_RESOLVER_LIMITS.maxResolvedNodeCount;
+  let shapeBlockBudgetExceeded = false;
+  const captureShapeBlocks = (elements: readonly FlaDisplayListElement[]): string | null => {
+    for (const element of elements) {
+      if (element.visible === false) continue;
+      if (element.kind === 'shape') {
+        if (shapeBlocks.has(element.shapeId)) continue;
+        const xml = source.shapeBlocks.get(element.shapeId);
+        if (xml === undefined) return `Selected Graphic shape source not found: ${element.shapeId}`;
+        if (shapeBlocks.size >= shapeBlockLimit) {
+          shapeBlockBudgetExceeded = true;
+          return `Nested Graphic shape-source blocks exceeded ${shapeBlockLimit}`;
+        }
+        shapeBlocks.set(element.shapeId, xml);
+      } else if (element.kind === 'group') {
+        const nestedError = captureShapeBlocks(element.elements);
+        if (nestedError) return nestedError;
+      }
+    }
+    return null;
+  };
+  const selectionSource: FlaStaticSnapshotDisplaySource = {
+    ...source,
+    buildGraphicFrameContext: (timelineXml, frameSpanIndex, frameIndex, scope) => {
+      const frameContext = source.buildGraphicFrameContext(
+        timelineXml,
+        frameSpanIndex,
+        frameIndex,
+        scope,
+      );
+      if (!frameContext.ok) return frameContext;
+      for (const layer of frameContext.value.layers) {
+        if (!layer.visible) continue;
+        const captureError = captureShapeBlocks(layer.elements);
+        if (captureError) {
+          return {
+            ok: false,
+            code: shapeBlockBudgetExceeded ? 'BUDGET_EXCEEDED' : 'RENDER_FAILED',
+            message: captureError,
+          };
+        }
+      }
+      return frameContext;
+    },
+  };
+  const nested = prepareFlaNestedGraphicFrameSelections(selectionSource, root);
+  if (shapeBlockBudgetExceeded) {
+    return {
+      ok: false,
+      code: 'BUDGET_EXCEEDED',
+      message: `Nested Graphic shape-source blocks exceeded ${shapeBlockLimit}`,
+    };
+  }
+  if (!nested.ok) {
+    const code = nested.code === 'BUDGET_EXCEEDED'
+      ? 'BUDGET_EXCEEDED'
+      : nested.code === 'FRAME_CONTEXT_FAILED'
+        ? 'RENDER_FAILED'
+        : 'TARGET_UNSUPPORTED';
+    const sourceAddress = nested.sourceAddress ? ` (${nested.sourceAddress})` : '';
+    return {
+      ok: false,
+      code,
+      message: `${nested.code}: ${nested.message}${sourceAddress}`.slice(0, 1_000),
+    };
+  }
+
+  const resolved = resolveFlaDisplayList(nested.resolverInput);
   if (!resolved.ok) return mapResolverFailure(resolved);
-  return { ok: true, displayList: resolved.displayList };
+  return { ok: true, displayList: resolved.displayList, shapeBlocks };
 }
 
 function catalogSupportReason(
-  source: FlaStaticSnapshotDisplaySource,
+  shapeBlocks: ReadonlyMap<string, string>,
   displayList: FlaResolvedDisplayList,
   resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup,
   allowBlankFrame = false,
@@ -2200,7 +2523,7 @@ function catalogSupportReason(
       if (!media.ok) reason = 'Bitmap media ' + (media.reason === 'ambiguous' ? 'is ambiguous: ' : 'was not found: ') + node.libraryItemName;
       return;
     }
-    const shapeBlock = source.shapeBlocks.get(node.shapeId);
+    const shapeBlock = shapeBlocks.get(node.shapeId);
     const shape = shapeBlock ? parseShapeAt(shapeBlock) : null;
     if (!shape) {
       reason = 'Shape has no supported path data: ' + node.shapeId;
@@ -2291,7 +2614,7 @@ export async function buildRenderableTargetCatalog(
     finishIssue762Profile('fla.catalog.candidate.resolve', resolveStartedAt, candidateDetails);
     const supportStartedAt = startIssue762Profile();
     const check = resolved.ok
-      ? catalogSupportReason(source, resolved.displayList, resolveBitmapMedia, true)
+      ? catalogSupportReason(resolved.shapeBlocks, resolved.displayList, resolveBitmapMedia, true)
       : { unsupportedReason: resolved.message, isBlank: false };
     finishIssue762Profile('fla.catalog.candidate.support-check', supportStartedAt, {
       ...candidateDetails,
@@ -2309,7 +2632,7 @@ export async function buildRenderableTargetCatalog(
         renderTargetId: target.renderTargetId,
         stageWidth: source.stageWidth,
         stageHeight: source.stageHeight,
-        shapeBlocks: source.shapeBlocks,
+        shapeBlocks: resolved.shapeBlocks,
         resolveBitmapMedia,
       });
       finishIssue762Profile('fla.catalog.candidate.svg-capability', compositionStartedAt, {
@@ -2566,7 +2889,7 @@ export async function buildSvgForRenderTarget(
     renderTargetId: target.renderTargetId,
     stageWidth: source.stageWidth,
     stageHeight: source.stageHeight,
-    shapeBlocks: source.shapeBlocks,
+    shapeBlocks: resolved.shapeBlocks,
     resolveBitmapMedia,
   });
   finishIssue762Profile('fla.preview.svg-compose', svgStartedAt, {

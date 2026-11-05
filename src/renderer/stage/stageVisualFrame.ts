@@ -9,8 +9,9 @@ export interface StageVisualFrame<TModel = StageRenderModel> {
 }
 
 /**
- * A visual frame becomes the fallback only after the exact desired frame has
- * been rendered with its complete decoded resource set.
+ * A visual frame becomes the fallback after the desired frame is fully
+ * drawable. Product Preview may meet that bar with an explicit degraded
+ * fallback; exact export readiness remains a separate gate.
  *
  * The ref that stores this result lives in StageRenderer. These helpers keep
  * the commit boundary testable without introducing another playback or frame
@@ -19,15 +20,15 @@ export interface StageVisualFrame<TModel = StageRenderModel> {
 export function commitStageVisualFrame<TModel>(
   committedFrame: StageVisualFrame<TModel> | null,
   desiredFrame: StageVisualFrame<TModel> | null,
-  ready: boolean,
+  displayReady: boolean,
 ): StageVisualFrame<TModel> | null {
-  return ready && desiredFrame ? desiredFrame : committedFrame;
+  return displayReady && desiredFrame ? desiredFrame : committedFrame;
 }
 
 export function selectStageVisualFrame<TModel>(
   committedFrame: StageVisualFrame<TModel> | null,
   desiredFrame: StageVisualFrame<TModel> | null,
-  ready: boolean,
+  displayReady: boolean,
 ): StageVisualFrame<TModel> | null {
-  return ready && desiredFrame ? desiredFrame : committedFrame ?? desiredFrame;
+  return displayReady && desiredFrame ? desiredFrame : committedFrame ?? desiredFrame;
 }

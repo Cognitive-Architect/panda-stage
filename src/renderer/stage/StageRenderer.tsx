@@ -460,7 +460,7 @@ export function StageRenderer({
   const displayFrame = selectStageVisualFrame(
     committedFrameRef.current,
     desiredFrame,
-    ready,
+    displayReady,
   );
   const committedFrame = committedFrameRef.current;
   const displayModel = displayFrame?.model ?? modelResult.model;

@@ -50,7 +50,7 @@ import {
   type PendingFlaCharacterCreateCredential,
 } from './fla-character-create-recovery';
 import {
-  getCharacterImportSceneEntries,
+  getCharacterImportEntries,
   getSelectableCharacterImportCandidateCount,
   getUniqueCharacterImportCandidate,
 } from './fla-character-import-model';
@@ -247,7 +247,7 @@ export function FlaCharacterImportFlow({
   const [statusMessage, setStatusMessage] = useState('正在读取角色…');
   const sessionIdRef = useRef<string | null>(null);
   const [sourceBasename, setSourceBasename] = useState('');
-  const [sceneEntries, setSceneEntries] = useState<readonly FlaRenderableTargetCatalogEntry[]>([]);
+  const [candidateEntries, setCandidateEntries] = useState<readonly FlaRenderableTargetCatalogEntry[]>([]);
   const [omittedCandidateCount, setOmittedCandidateCount] = useState(0);
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0);
@@ -504,7 +504,7 @@ export function FlaCharacterImportFlow({
     setOperationOutcome(null);
     operationIdRef.current = null;
     revokeThumbnails();
-    setSceneEntries([]);
+    setCandidateEntries([]);
     setSourceBasename('');
     setName('');
     setOmittedCandidateCount(0);
@@ -544,7 +544,7 @@ export function FlaCharacterImportFlow({
   useEffect(() => {
     const generation = ++flowGenerationRef.current;
     sessionIdRef.current = null;
-    setSceneEntries([]);
+    setCandidateEntries([]);
     setSelectedTargetId(null);
     setPreview(null);
     setSourceBasename('');
@@ -577,10 +577,10 @@ export function FlaCharacterImportFlow({
             transition('error');
             return;
           }
-          const scenes = getCharacterImportSceneEntries(catalog.entries);
-          setSceneEntries(scenes);
+          const candidates = getCharacterImportEntries(catalog.entries);
+          setCandidateEntries(candidates);
           setOmittedCandidateCount(catalog.omittedCandidateCount);
-          const uniqueCandidate = getUniqueCharacterImportCandidate(scenes);
+          const uniqueCandidate = getUniqueCharacterImportCandidate(candidates);
           if (uniqueCandidate) {
             const entry = uniqueCandidate;
             const frameIndex = entry.target.selectedFrameIndex ?? 0;
@@ -590,7 +590,7 @@ export function FlaCharacterImportFlow({
             void prepareTarget(entry, frameIndex, response.sessionId);
             return;
           }
-          if (getSelectableCharacterImportCandidateCount(scenes) === 0) {
+          if (getSelectableCharacterImportCandidateCount(candidates) === 0) {
             setStatusMessage('没有可安全准备的完整姿势。请选择其他文件。');
             transition('unsupported');
             return;
@@ -657,7 +657,7 @@ export function FlaCharacterImportFlow({
     };
   }, [preview]);
 
-  const selectedTarget = sceneEntries.find(
+  const selectedTarget = candidateEntries.find(
     (entry) => entry.target.renderTargetId === selectedTargetId,
   ) ?? null;
 
@@ -1043,7 +1043,7 @@ export function FlaCharacterImportFlow({
 
   if (typeof document === 'undefined') return null;
 
-  const visibleTargets = sceneEntries;
+  const visibleTargets = candidateEntries;
   const multipleTargets = visibleTargets.length > 1;
   const editablePreview = preview?.ok &&
     preview.status === 'PREVIEW_READY' &&
@@ -1173,7 +1173,9 @@ export function FlaCharacterImportFlow({
                       </span>
                       <span className="fla-character-import-target-copy">
                         <strong>{entry.target.userLabel}</strong>
-                        <small>{enabled ? `${entry.target.frameCount} 个整体姿势` : '暂不可用'}</small>
+                        <small>{entry.target.kind === 'graphic-symbol'
+                          ? '独立姿势（首帧）'
+                          : enabled ? `${entry.target.frameCount} 个整体姿势` : '暂不可用'}</small>
                         {!enabled ? <small>这个对象目前无法安全还原。</small> : null}
                       </span>
                     </button>
@@ -1185,7 +1187,7 @@ export function FlaCharacterImportFlow({
 
           <main className="fla-character-import-preview-area">
             <div className="fla-character-import-preview-toolbar">
-              {selectedTarget && selectedTarget.target.frameCount > 1 ? (
+              {selectedTarget && selectedTarget.target.kind === 'scene' && selectedTarget.target.frameCount > 1 ? (
                 <label className="fla-character-import-pose-control">
                   <span>整体姿势 · {selectedFrameIndex + 1}/{selectedTarget.target.frameCount}</span>
                   <input

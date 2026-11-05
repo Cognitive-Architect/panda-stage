@@ -1,15 +1,20 @@
 import type { FlaRenderableTargetCatalogEntry } from '../../../shared/fla-static-snapshot-api';
+import { isR05SafeGraphicCandidateId } from '../../../shared/fla-character-import-safe-graphic-targets';
 
-export function getCharacterImportSceneEntries(
+export function getCharacterImportEntries(
   entries: readonly FlaRenderableTargetCatalogEntry[],
 ): FlaRenderableTargetCatalogEntry[] {
-  return entries.filter((entry) => entry.target.kind === 'scene');
+  return entries.filter((entry) => entry.target.kind === 'scene' || (
+    entry.target.kind === 'graphic-symbol' &&
+    entry.catalogRole === 'scene-referenced-graphic' &&
+    isR05SafeGraphicCandidateId(entry.target.renderTargetId)
+  ));
 }
 
 export function getUniqueCharacterImportCandidate(
   entries: readonly FlaRenderableTargetCatalogEntry[],
 ): FlaRenderableTargetCatalogEntry | null {
-  const candidates = getCharacterImportSceneEntries(entries).filter(
+  const candidates = getCharacterImportEntries(entries).filter(
     (entry) => entry.previewSupported && !entry.isBlank,
   );
   return candidates.length === 1 ? candidates[0] ?? null : null;
@@ -18,7 +23,7 @@ export function getUniqueCharacterImportCandidate(
 export function getSelectableCharacterImportCandidateCount(
   entries: readonly FlaRenderableTargetCatalogEntry[],
 ): number {
-  return getCharacterImportSceneEntries(entries).filter(
+  return getCharacterImportEntries(entries).filter(
     (entry) => entry.previewSupported && !entry.isBlank,
   ).length;
 }
