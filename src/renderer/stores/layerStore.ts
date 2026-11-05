@@ -1,6 +1,7 @@
 import {
   LayerService,
   PartPoseAnimationService,
+  evaluatePartPoseAnimationAtTime,
   type PartPoseKeyframe,
   type PartPosePoint,
   type CreateLayerInput,
@@ -223,6 +224,24 @@ export class LayerStore {
     return next;
   }
 
+  setPartPosePivot(
+    layerId: string,
+    partId: string,
+    pivotSource: PartPosePoint,
+  ): Project {
+    const context = this.poseContext(layerId);
+    const next = this.poseService.setPivot(context.project, {
+      shotId: context.shotId,
+      layerId,
+      partId,
+      pivotSource,
+    });
+    if (next !== context.project) {
+      this.commitPoseProject(context, next, 'Set Part pose pivot');
+    }
+    return next;
+  }
+
   setPartPoseKeyframe(
     layerId: string,
     partId: string,
@@ -237,6 +256,67 @@ export class LayerStore {
     });
     if (next !== context.project) {
       this.commitPoseProject(context, next, 'Set Part pose keyframe');
+    }
+    return next;
+  }
+
+  addPartPoseKeyframe(
+    layerId: string,
+    partId: string,
+    timeMs: number,
+    pivotSource?: PartPosePoint,
+  ): Project {
+    const context = this.poseContext(layerId);
+    let next = context.project;
+    const shot = next.shots.find((candidate) => candidate.id === context.shotId);
+    const layer = shot?.layers.find((candidate) => candidate.id === layerId);
+    if (!shot || !layer) {
+      throw new Error('镜头或角色图层已改变，请重新选择后再添加关键帧。');
+    }
+    const creatingAnimation = !layer.poseAnimation;
+    if (creatingAnimation) {
+      next = this.poseService.create(next, {
+        shotId: context.shotId,
+        layerId,
+        ...(pivotSource ? { pivotSourceByPartId: { [partId]: pivotSource } } : {}),
+      });
+      if (timeMs === 0) {
+        this.commitPoseProject(context, next, 'Add Part pose keyframe');
+        return next;
+      }
+    }
+    const capturedLayer = next.shots
+      .find((candidate) => candidate.id === context.shotId)
+      ?.layers.find((candidate) => candidate.id === layerId);
+    const animation = capturedLayer?.poseAnimation;
+    const track = animation?.tracks.find((candidate) => candidate.partId === partId);
+    if (!animation || !track) {
+      throw new Error('无法找到所选部件的动作轨道，请重新选择后再试。');
+    }
+    if (!creatingAnimation && track.keys.some((key) => key.timeMs === timeMs)) {
+      throw new Error('此时间已有关键帧，可直接在画布上编辑。');
+    }
+    const evaluated = evaluatePartPoseAnimationAtTime(animation, timeMs).find(
+      (pose) => pose.partId === partId,
+    );
+    if (!evaluated) {
+      throw new Error('无法读取所选部件当前姿势，请重新选择后再试。');
+    }
+    next = this.poseService.setKeyframe(next, {
+      shotId: context.shotId,
+      layerId,
+      partId,
+      keyframe: {
+        timeMs,
+        offsetX: evaluated.offsetX,
+        offsetY: evaluated.offsetY,
+        rotationDeg: evaluated.rotationDeg,
+        scale: evaluated.scale,
+        easingToNext: 'linear',
+      },
+    });
+    if (next !== context.project) {
+      this.commitPoseProject(context, next, 'Add Part pose keyframe');
     }
     return next;
   }

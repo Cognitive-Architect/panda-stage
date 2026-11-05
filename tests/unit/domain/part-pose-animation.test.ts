@@ -152,6 +152,73 @@ describe('formal Part pose animation', () => {
     ).toThrow();
   });
 
+  it('allows explicit pivot calibration until that Part has an authored pose', () => {
+    const { project, layerId, characterId } = adaptiveProject();
+    const character = project.characters.find(
+      (candidate) => candidate.id === characterId,
+    );
+    if (!character || character.mode !== 'adaptive-parts') {
+      throw new Error('Expected an Adaptive Parts Character.');
+    }
+    const service = new PartPoseAnimationService();
+    const captured = service.create(project, { shotId: IDS.shot, layerId });
+    const tracks = captured.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks;
+    const partId = character.parts[1]!.partId;
+    const originalTrack = tracks.find((candidate) => candidate.partId === partId)!;
+    const pivotSource = {
+      x: originalTrack.imageMapping.sourceWidth / 3,
+      y: originalTrack.imageMapping.sourceHeight / 3,
+    };
+    const recalibrated = service.setPivot(captured, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      pivotSource,
+    });
+    const track = recalibrated.shots[0]!.layers.find(
+      (layer) => layer.id === layerId,
+    )!.poseAnimation!.tracks.find((candidate) => candidate.partId === partId)!;
+    expect(track.pivotSource).toEqual(pivotSource);
+    expect(track.keys).toEqual([{
+      timeMs: 0,
+      offsetX: 0,
+      offsetY: 0,
+      rotationDeg: 0,
+      scale: 1,
+      easingToNext: 'linear',
+    }]);
+    expect(recalibrated).not.toBe(captured);
+    expect(service.setPivot(recalibrated, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      pivotSource,
+    })).toEqual(recalibrated);
+
+    const posed = service.setKeyframe(recalibrated, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      keyframe: {
+        timeMs: 1_000,
+        offsetX: 0,
+        offsetY: 0,
+        rotationDeg: 10,
+        scale: 1,
+        easingToNext: 'linear',
+      },
+    });
+    expect(() => service.setPivot(posed, {
+      shotId: IDS.shot,
+      layerId,
+      partId,
+      pivotSource: { x: 130, y: 95 },
+    })).toThrow(/pivot is fixed after a pose is authored/u);
+    expect(originalTrack.pivotSource).not.toEqual(pivotSource);
+  });
+
   it('persists only unique integer timeMs values on the 24 FPS grid', () => {
     const { project, layerId } = adaptiveProject();
     const captured = new PartPoseAnimationService().create(project, {

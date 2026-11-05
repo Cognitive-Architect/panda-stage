@@ -1,0 +1,91 @@
+.part-pose-editor {
+  display: grid;
+  min-width: 0;
+  padding: 12px;
+  border-top: 1px solid var(--ui-color-separator);
+  color: var(--ui-color-text-primary);
+  gap: 10px;
+}
+
+.part-pose-editor-heading,
+.part-pose-editor-pivot,
+.part-pose-editor-key {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.part-pose-editor-heading strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.part-pose-editor button {
+  min-height: 40px;
+  padding: 7px 10px;
+  border: 1px solid var(--ui-color-separator);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+  cursor: pointer;
+  font: inherit;
+}
+
+.part-pose-editor button:hover:not(:disabled) {
+  background: var(--ui-color-action-hover);
+}
+
+.part-pose-editor button:focus-visible {
+  outline: 3px solid var(--ui-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.part-pose-editor button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.part-pose-editor-parts {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.part-pose-editor-part[aria-pressed='true'] {
+  border-color: var(--ui-color-action-primary);
+  background: var(--ui-color-action-primary);
+}
+
+.part-pose-editor-pivot,
+.part-pose-editor-key {
+  min-height: 40px;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+}
+
+.part-pose-editor-key > button {
+  flex: 1 1 auto;
+  border-color: var(--ui-color-action-primary);
+  color: var(--ui-color-text-primary);
+}
+
+.part-pose-editor-adjustments {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.part-pose-editor-feedback {
+  min-height: 16px;
+  margin: 0;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.part-pose-editor-clear {
+  justify-self: start;
+}

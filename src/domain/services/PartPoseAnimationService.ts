@@ -38,6 +38,13 @@ export interface ClearPartPoseTrackInput {
   partId: string;
 }
 
+export interface SetPartPosePivotInput {
+  shotId: string;
+  layerId: string;
+  partId: string;
+  pivotSource: PartPosePoint;
+}
+
 export type PartPoseClearFallback =
   | 'captured-static-snapshot'
   | 'current-character-defaults';
@@ -48,6 +55,19 @@ export interface PartPoseClearResult {
   changed: boolean;
   animationRemoved: boolean;
   fallback: PartPoseClearFallback;
+}
+
+/** True once this Part has keys or values beyond its protected neutral base. */
+export function hasAuthoredPartPose(track: PartPoseTrack): boolean {
+  const base = track.keys[0]!;
+  return (
+    track.keys.length > 1 ||
+    base.offsetX !== 0 ||
+    base.offsetY !== 0 ||
+    base.rotationDeg !== 0 ||
+    base.scale !== 1 ||
+    base.easingToNext !== 'linear'
+  );
 }
 
 /**
@@ -121,6 +141,48 @@ export class PartPoseAnimationService {
     return this.replaceLayer(current, shot.id, layer.id, {
       ...layer,
       poseAnimation,
+    });
+  }
+
+  /**
+   * Explicitly recalibrates an unposed Part track. Once any pose is authored,
+   * its pivot stays fixed until the animation is cleared.
+   */
+  setPivot(project: Project, input: SetPartPosePivotInput): Project {
+    const current = ProjectSchema.parse(project);
+    const { shot, layer } = this.requireLayer(current, input.shotId, input.layerId);
+    this.assertEditable(layer);
+    const poseAnimation = layer.poseAnimation;
+    if (!poseAnimation) {
+      throw new Error(`Layer ${layer.id} has no Part pose animation snapshot.`);
+    }
+    const trackIndex = poseAnimation.tracks.findIndex(
+      (track) => track.partId === input.partId,
+    );
+    if (trackIndex < 0) {
+      throw new Error(`Pose animation has no snapshot for Part ${input.partId}.`);
+    }
+    const track = poseAnimation.tracks[trackIndex]!;
+    if (hasAuthoredPartPose(track)) {
+      throw new Error(
+        'Part pivot is fixed after a pose is authored; clear the Part pose animation before recalibrating.',
+      );
+    }
+    if (
+      track.pivotSource.x === input.pivotSource.x &&
+      track.pivotSource.y === input.pivotSource.y
+    ) {
+      return project;
+    }
+    const tracks = [...poseAnimation.tracks];
+    tracks[trackIndex] = { ...track, pivotSource: { ...input.pivotSource } };
+    const nextPoseAnimation = PartPoseAnimationSchema.parse({
+      ...poseAnimation,
+      tracks,
+    });
+    return this.replaceLayer(current, shot.id, layer.id, {
+      ...layer,
+      poseAnimation: nextPoseAnimation,
     });
   }
 
@@ -212,9 +274,7 @@ export class PartPoseAnimationService {
     const trackChanged =
       JSON.stringify(track.keys) !== JSON.stringify(neutralTrack.keys);
     tracks[trackIndex] = neutralTrack;
-    const hasAuthoredTrack = tracks.some((candidate) =>
-      this.hasAuthoredPose(candidate),
-    );
+    const hasAuthoredTrack = tracks.some(hasAuthoredPartPose);
 
     if (!hasAuthoredTrack) {
       const layerWithoutPose = { ...layer };
@@ -283,18 +343,6 @@ export class PartPoseAnimationService {
       animationRemoved: true,
       fallback: 'current-character-defaults',
     };
-  }
-
-  private hasAuthoredPose(track: PartPoseTrack): boolean {
-    const base = track.keys[0]!;
-    return (
-      track.keys.length > 1 ||
-      base.offsetX !== 0 ||
-      base.offsetY !== 0 ||
-      base.rotationDeg !== 0 ||
-      base.scale !== 1 ||
-      base.easingToNext !== 'linear'
-    );
   }
 
   private assertEditable(layer: Project['shots'][number]['layers'][number]): void {

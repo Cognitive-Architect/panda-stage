@@ -340,6 +340,127 @@ describe('Day 22 layer stores', () => {
     input.selection.dispose();
   });
 
+  it('adds the first pose key atomically and permits safe pivot calibration on other Parts', () => {
+    const base = buildProject();
+    const project = new CharacterService().createAdaptiveParts(base, {
+      name: 'Atomic pose Character',
+      parts: adaptivePartsFixture(IDS.assetChar),
+    });
+    const character = project.characters.at(-1)!;
+    if (character.mode !== 'adaptive-parts') {
+      throw new Error('Expected an Adaptive Parts Character.');
+    }
+    const placed = new LayerService().createFromAdaptiveCharacter(
+      project,
+      IDS.shot,
+      character.id,
+      { x: 700, y: 500 },
+    );
+    const input = harness(placed.project);
+    input.selection.select(placed.layer.id);
+
+    const firstPart = character.parts[0]!;
+    const firstPivot = {
+      x: firstPart.imageMapping.sourceWidth / 2,
+      y: firstPart.imageMapping.sourceHeight / 2,
+    };
+    input.layers.addPartPoseKeyframe(
+      placed.layer.id,
+      firstPart.partId,
+      1_000,
+      firstPivot,
+    );
+    expect(input.editor.getSnapshot()).toMatchObject({ revision: 1, dirty: true });
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+    let layer = input.editor.getSnapshot()!.project.shots[0]!.layers.find(
+      (candidate) => candidate.id === placed.layer.id,
+    )!;
+    expect(layer.poseAnimation!.tracks.every(
+      (track) => track.keys[0]!.timeMs === 0,
+    )).toBe(true);
+    expect(layer.poseAnimation!.tracks.find(
+      (track) => track.partId === firstPart.partId,
+    )).toMatchObject({
+      pivotSource: firstPivot,
+      keys: [
+        { timeMs: 0, offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 },
+        { timeMs: 1_000, offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 },
+      ],
+    });
+
+    const secondPart = character.parts[1]!;
+    const secondPivot = {
+      x: secondPart.imageMapping.sourceWidth / 3,
+      y: secondPart.imageMapping.sourceHeight / 3,
+    };
+    input.layers.setPartPosePivot(
+      placed.layer.id,
+      secondPart.partId,
+      secondPivot,
+    );
+    expect(input.editor.getSnapshot()).toMatchObject({ revision: 2, dirty: true });
+    expect(input.editor.history.getSnapshot()).toMatchObject({ undoCount: 2 });
+    layer = input.editor.getSnapshot()!.project.shots[0]!.layers.find(
+      (candidate) => candidate.id === placed.layer.id,
+    )!;
+    expect(layer.poseAnimation!.tracks.find(
+      (track) => track.partId === secondPart.partId,
+    )).toMatchObject({ pivotSource: secondPivot, keys: [{ timeMs: 0 }] });
+
+    const beforeNoopPivot = input.editor.getSnapshot();
+    expect(input.layers.setPartPosePivot(
+      placed.layer.id,
+      secondPart.partId,
+      secondPivot,
+    )).toBe(beforeNoopPivot!.project);
+    expect(input.editor.getSnapshot()).toBe(beforeNoopPivot);
+    expect(input.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 2,
+      redoCount: 0,
+    });
+
+    const beforeRejectedRecalibration = input.editor.getSnapshot();
+    expect(() => input.layers.setPartPosePivot(
+      placed.layer.id,
+      firstPart.partId,
+      { x: firstPivot.x / 2, y: firstPivot.y / 2 },
+    )).toThrow('pivot is fixed after a pose is authored');
+    expect(input.editor.getSnapshot()).toBe(beforeRejectedRecalibration);
+
+    const zeroInput = harness(placed.project);
+    zeroInput.selection.select(placed.layer.id);
+    zeroInput.layers.addPartPoseKeyframe(
+      placed.layer.id,
+      secondPart.partId,
+      0,
+    );
+    expect(zeroInput.editor.getSnapshot()).toMatchObject({
+      revision: 1,
+      dirty: true,
+    });
+    expect(zeroInput.editor.history.getSnapshot()).toMatchObject({
+      undoCount: 1,
+      redoCount: 0,
+    });
+    expect(zeroInput.editor.getSnapshot()!.project.shots[0]!.layers.find(
+      (candidate) => candidate.id === placed.layer.id,
+    )!.poseAnimation!.tracks.find(
+      (track) => track.partId === secondPart.partId,
+    )!.keys).toEqual([{
+      timeMs: 0,
+      offsetX: 0,
+      offsetY: 0,
+      rotationDeg: 0,
+      scale: 1,
+      easingToNext: 'linear',
+    }]);
+    input.selection.dispose();
+    zeroInput.selection.dispose();
+  });
+
   it('keeps start, mode, copy, position, and delete edits independent in History', () => {
     const input = harness(buildProjectWithAnimation());
     const shotId = input.project.shots[0]!.id;

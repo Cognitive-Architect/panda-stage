@@ -23,7 +23,12 @@ import { LayerOrderControls } from '../features/properties/LayerOrderControls';
 import { LayerTransformPanel } from '../features/properties/LayerTransformPanel';
 import { AnimationPlaybackControls } from '../features/properties/AnimationPlaybackControls';
 import { ExpressionAtTimeControl } from '../features/properties/ExpressionAtTimeControl';
+import { PartPoseEditorPanel } from '../features/properties/PartPoseEditorPanel';
 import { DialogueInspector } from '../features/dialogue/DialogueInspector';
+import {
+  EMPTY_PART_POSE_EDITOR_UI,
+  type PartPoseEditorUi,
+} from '../features/part-pose/partPoseEditorTypes';
 import { DecorativeIcon } from '../ui';
 import { isNarrowViewport, useNarrowViewport } from './ResourceActivityDock';
 import { PortraitPropertiesSections } from './PortraitPropertiesSections';
@@ -318,6 +323,7 @@ export interface RightInspectorProps {
   onDrawerOpenChange?(open: boolean): void;
   /** Render only the existing Inspector content inside RightWorkspace. */
   embedded?: boolean;
+  partPoseEditor?: PartPoseEditorUi;
 }
 
 export function RightInspector({
@@ -327,6 +333,7 @@ export function RightInspector({
   drawerOpen: requestedDrawerOpen,
   onDrawerOpenChange,
   embedded = false,
+  partPoseEditor = EMPTY_PART_POSE_EDITOR_UI,
 }: RightInspectorProps = {}): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -595,6 +602,14 @@ export function RightInspector({
           projectRoot={snapshot.projectRoot}
           shot={currentShot}
           layer={selection.layer}
+        />
+      ) : null}
+      {landscapePresentation && snapshot && currentShot && selection.layer ? (
+        <PartPoseEditorPanel
+          editor={partPoseEditor}
+          layer={selection.layer}
+          project={snapshot.project}
+          shot={currentShot}
         />
       ) : null}
       {landscapeEmptyState ? null : (
