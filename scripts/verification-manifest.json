@@ -531,7 +531,8 @@
       {
         "id": "assets",
         "sourcePatterns": [
-          "src/renderer/features/assets/**"
+          "src/renderer/features/assets/**",
+          "docs/evidence/day-17/results.json"
         ],
         "testPatterns": [
           "tests/unit/asset-*.test.ts",
