@@ -127,6 +127,56 @@ describe('Issue #815 talking-head settings', () => {
     },
   );
 
+  it('keeps the real preview mounted beside the compact controls', () => {
+    const project = headedProject();
+    const character = project.characters[0]!;
+    const settings = settingsMarkup(project, character);
+    const headingIndex = settings.indexOf('character-talking-head-field-heading');
+    const restoreIndex = settings.indexOf(
+      'data-testid="character-talking-head-restore-default"',
+    );
+    const intensityIndex = settings.indexOf(
+      'data-testid="character-talking-head-intensity"',
+    );
+    const previewIndex = settings.indexOf(
+      'data-testid="character-talking-head-motion-preview"',
+    );
+    const toggleIndex = settings.indexOf(
+      'data-testid="character-talking-head-preview-toggle"',
+    );
+
+    expect(headingIndex).toBeGreaterThanOrEqual(0);
+    expect(restoreIndex).toBeGreaterThan(headingIndex);
+    expect(restoreIndex).toBeLessThan(intensityIndex);
+    expect(settings).toContain('data-playing="false"');
+    expect(settings).toContain('data-asset-id=');
+    expect(previewIndex).toBeGreaterThan(intensityIndex);
+    expect(toggleIndex).toBeGreaterThan(previewIndex);
+    expect(settings.match(/data-testid="character-talking-head-preview-toggle"/gu)).toHaveLength(1);
+  });
+
+  it('keeps only a dirty apply/revert bar and adapts the preview to narrow panels', () => {
+    const editor = readFileSync(
+      'src/renderer/features/characters/CharacterEditor.tsx',
+      'utf8',
+    );
+    const styles = readFileSync(
+      'src/renderer/styles/features/characters/settings/s16-01--character-settings-and-expression-523.css',
+      'utf8',
+    );
+
+    expect(editor).toContain('data-testid="character-talking-head-pending"');
+    expect(editor).toContain('data-testid="character-talking-head-revert"');
+    expect(editor).toContain('data-testid="character-talking-head-apply"');
+    expect(editor).not.toContain('应用后保存到此角色');
+    expect(editor).toMatch(
+      /onSetTalkingHeadMotionIntensityPercent\(\s*talkingHeadMotionIntensityPercent,/u,
+    );
+    expect(styles).toContain('@container talking-head (max-width: 320px)');
+    expect(styles).toContain('@container talking-head (max-width: 240px)');
+    expect(styles).toContain('.character-talking-head-preview-button[aria-pressed=\'true\']');
+  });
+
   it('zooms the inline preview to the head and shoulder region', () => {
     const bounds = resolveTalkingHeadPreviewBounds(
       { x: -80, y: -180, width: 160, height: 180 },

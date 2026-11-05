@@ -165,9 +165,39 @@ describe('Issue #618 Character Detail actions', () => {
       );
       expect(markup).toContain('data-testid="character-danger-zone"');
       expect(deleteIndex).toBeGreaterThan(settingsStart);
-      expect(markup).toContain('aria-labelledby="character-danger-zone-heading"');
+      expect(markup).toContain('aria-label="删除角色"');
+      expect(markup).not.toContain('危险操作');
+      expect(markup).not.toContain(
+        '删除当前角色；如果角色被镜头或对白引用，删除会被阻止。',
+      );
       expect(markup).toContain('data-testid="expression-delete-');
     }
+
+    const styles = readOrderedStylesheetSource();
+    const dangerRuleStart = styles.lastIndexOf('> .character-danger-zone {');
+    const dangerRuleEnd = styles.indexOf('}', dangerRuleStart);
+    const dangerRule = styles.slice(dangerRuleStart, dangerRuleEnd);
+
+    expect(dangerRuleStart).toBeGreaterThanOrEqual(0);
+    expect(dangerRule).toContain('display: flex;');
+    expect(dangerRule).toContain('justify-content: flex-end;');
+    expect(dangerRule).toContain('border-top: 1px solid rgb(214 113 98 / 22%)');
+    expect(styles).toContain(
+      '.character-delete-settings-action {\n  min-height: 44px;',
+    );
+  });
+
+  it('keeps delete confirmation and reference rejection on CharacterManager', () => {
+    const manager = source(
+      'src/renderer/features/characters/CharacterManager.tsx',
+    );
+
+    expect(manager).toMatch(
+      /onDeleteCharacter=\{\(\) => \{\s*if \(\s*!selectedCharacter\s*\|\|\s*!window\.confirm\(/u,
+    );
+    expect(manager).toContain(
+      'characterStore.deleteCharacter(selectedCharacter.id)',
+    );
   });
 
   it('keeps the add form controlled and preserves toggle, submit, cancel, and reset behavior', () => {
