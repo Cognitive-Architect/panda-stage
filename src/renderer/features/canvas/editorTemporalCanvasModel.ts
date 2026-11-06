@@ -36,6 +36,11 @@ export interface EditorTemporalCanvasModelInput {
     readonly layerId: string;
     readonly position: Point;
   };
+  /**
+   * Ephemeral main positions for a runtime-only preview such as Quick Layout.
+   * Overrides apply to the rendered transform only; nothing is persisted.
+   */
+  positionOverrides?: ReadonlyMap<string, Point>;
 }
 
 export interface EditorTemporalCanvasModel {
@@ -120,6 +125,7 @@ export function buildEditorTemporalCanvasModel({
   missingAssetIds,
   previousVisuals,
   positionDraft,
+  positionOverrides,
 }: EditorTemporalCanvasModelInput): EditorTemporalCanvasModel {
   const temporalInspection = currentTimeMs !== 0;
   const baseEditorShot = buildBaseEditorShot(project, shot);
@@ -213,12 +219,30 @@ export function buildEditorTemporalCanvasModel({
       }
     : resolved.evaluatedShot;
 
+  const overriddenEvaluatedShot =
+    positionOverrides && positionOverrides.size > 0
+      ? {
+          ...renderedEvaluatedShot,
+          layers: renderedEvaluatedShot.layers.map((evaluatedLayer) => {
+            const position = positionOverrides.get(evaluatedLayer.id);
+            if (
+              !position ||
+              !Number.isFinite(position.x) ||
+              !Number.isFinite(position.y)
+            ) {
+              return evaluatedLayer;
+            }
+            return { ...evaluatedLayer, x: position.x, y: position.y };
+          }),
+        }
+      : renderedEvaluatedShot;
+
   return {
-    evaluatedShot: renderedEvaluatedShot,
+    evaluatedShot: overriddenEvaluatedShot,
     stageModel: buildEditorStageRenderModel(
       project,
       shot,
-      renderedEvaluatedShot,
+      overriddenEvaluatedShot,
       resolved.visualsByLayer,
     ),
     directEditingEnabled: !temporalInspection,

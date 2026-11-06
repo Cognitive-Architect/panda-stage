@@ -21,6 +21,7 @@ import {
   evaluateShotAtTime,
   listShotRuntimeImageAssets,
   resolveImageAsset,
+  type Point,
   type Shot,
   type ViewportTransform,
 } from '../../../domain';
@@ -31,6 +32,10 @@ import {
 } from '../../stores/canvasViewportStore';
 import { layerStore } from '../../stores/layerStore';
 import { useOpacityPreview } from '../../stores/opacityPreviewStore';
+import {
+  matchesQuickLayoutPreview,
+  useQuickLayoutPreview,
+} from '../../stores/quickLayoutPreviewStore';
 import {
   usePositionAuthoringSession,
   positionAuthoringSessionStore,
@@ -232,6 +237,7 @@ export function CanvasStage({
     selectionStore.getSelectedLayerId,
   );
   const opacityPreview = useOpacityPreview();
+  const quickLayoutPreview = useQuickLayoutPreview();
   const layerNodeRefs = useRef(
     new Map<string, React.RefObject<Konva.Group | null>>(),
   );
@@ -262,6 +268,39 @@ export function CanvasStage({
     timelineUi.currentTimeMs === 0
       ? opacityPreview
       : null;
+  // Quick Layout candidates are rendered through the same evaluated-layer path
+  // as a dragged Layer; the formal Project keeps its stored positions.
+  const quickLayoutPositionOverrides = useMemo(() => {
+    if (
+      !quickLayoutPreview ||
+      !snapshot ||
+      !shot ||
+      projectInstanceId === null ||
+      timelineUi.currentTimeMs !== 0
+    ) {
+      return undefined;
+    }
+    const current = {
+      projectInstanceId,
+      projectId: snapshot.project.id,
+      projectRoot: snapshot.projectRoot,
+      revision: snapshot.revision,
+      shotId: shot.id,
+    };
+    if (!matchesQuickLayoutPreview(quickLayoutPreview, current)) {
+      return undefined;
+    }
+    return new Map<string, Point>([
+      [quickLayoutPreview.leftLayerId, quickLayoutPreview.left],
+      [quickLayoutPreview.rightLayerId, quickLayoutPreview.right],
+    ]);
+  }, [
+    projectInstanceId,
+    quickLayoutPreview,
+    shot,
+    snapshot,
+    timelineUi.currentTimeMs,
+  ]);
   const subtitleCues = useMemo(
     () => (shot ? buildDialogueSubtitleCues(shot.dialogues) : []),
     [shot],
@@ -313,6 +352,7 @@ export function CanvasStage({
                   position: positionAuthoringSnapshot.draft,
                 }
               : undefined,
+            positionOverrides: quickLayoutPositionOverrides,
           })
         : null,
     [
@@ -321,6 +361,7 @@ export function CanvasStage({
       imageState.readyResourceKeys,
       previousTemporalVisuals,
       positionAuthoringSnapshot,
+      quickLayoutPositionOverrides,
       shot,
       snapshot,
       temporalContextKey,

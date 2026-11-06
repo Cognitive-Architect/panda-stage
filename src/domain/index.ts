@@ -3,6 +3,7 @@ export * from './audio-contract';
 export * from './export-audio-mix-plan';
 export * from './assetDropPayload';
 export * from './geometry';
+export * from './layout';
 export * from './migrations';
 export * from './models';
 export * from './position-chain';
