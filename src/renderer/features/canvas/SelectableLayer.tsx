@@ -415,15 +415,14 @@ function renderSelectableLayer({
     visualNode.clearCache();
     if (
       !compositeVisual ||
-      poseEditing ||
       !completeVisualReady ||
       visualBounds.width <= 0 ||
       visualBounds.height <= 0
     ) return;
     // Konva applies a Group opacity while drawing each child. Cache the
     // complete Body+Head+Face group first so the logical Character opacity is
-    // applied once to the flattened overlap, while the outer root remains
-    // the only transform/interaction owner.
+    // applied once to the flattened overlap. Pose handles and hit areas remain
+    // separate from this visual cache.
     visualNode.cache({
       height: visualBounds.height,
       width: visualBounds.width,

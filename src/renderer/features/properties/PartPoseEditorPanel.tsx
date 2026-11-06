@@ -10,7 +10,10 @@ import {
 } from '../../../domain';
 import { layerStore } from '../../stores/layerStore';
 import { useTimelineUi } from '../timeline/timelineUiStore';
-import type { PartPoseEditorUi } from '../part-pose/partPoseEditorTypes';
+import {
+  resolvePartPoseEditorParts,
+  type PartPoseEditorUi,
+} from '../part-pose/partPoseEditorTypes';
 
 export interface PartPoseEditorPanelProps {
   project: Project;
@@ -62,7 +65,7 @@ export function PartPoseEditorPanel({
       : undefined;
   if (!character || character.mode !== 'adaptive-parts') return null;
 
-  const parts = [...character.parts].sort(
+  const parts = [...resolvePartPoseEditorParts(character, layer)].sort(
     (left, right) => left.drawOrder - right.drawOrder,
   );
   const selectedPartId = active

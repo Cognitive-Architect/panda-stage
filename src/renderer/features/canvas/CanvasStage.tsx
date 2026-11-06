@@ -57,6 +57,7 @@ import type { CanvasDropPreview } from './useCanvasDrop';
 import {
   createPartPoseGestureContextKey,
   EMPTY_PART_POSE_EDITOR_UI,
+  resolvePartPoseEditorParts,
   type PartPoseEditorUi,
 } from '../part-pose/partPoseEditorTypes';
 import {
@@ -614,8 +615,11 @@ export function CanvasStage({
         )
       : undefined;
   const poseEditorCharacterPart =
-    poseEditorCharacter?.mode === 'adaptive-parts'
-      ? poseEditorCharacter.parts.find(
+    poseEditorCharacter?.mode === 'adaptive-parts' && poseEditorStageLayer
+      ? resolvePartPoseEditorParts(
+          poseEditorCharacter,
+          poseEditorStageLayer.layer,
+        ).find(
           (part) => part.partId === partPoseEditor.selectedPartId,
         ) ?? null
       : null;

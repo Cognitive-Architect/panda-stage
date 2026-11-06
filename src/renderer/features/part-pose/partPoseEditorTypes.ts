@@ -1,4 +1,17 @@
-import type { PartPosePoint } from '../../../domain';
+import type {
+  AdaptivePartsCharacter,
+  CharacterPart,
+  Layer,
+  PartPosePoint,
+} from '../../../domain';
+
+/** Resolve the parts editable on this instance, preserving its captured action snapshot. */
+export function resolvePartPoseEditorParts(
+  character: AdaptivePartsCharacter,
+  layer: Pick<Layer, 'poseAnimation'>,
+): readonly CharacterPart[] {
+  return layer.poseAnimation?.tracks ?? character.parts;
+}
 
 /** Ephemeral canvas/inspector mode owned by EditorShell, never project data. */
 export interface PartPoseEditorUi {

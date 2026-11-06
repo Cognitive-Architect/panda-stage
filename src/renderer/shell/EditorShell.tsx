@@ -90,7 +90,10 @@ import { ProjectCenterScreen } from './ProjectCenterScreen';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
 import { RightInspector } from './RightInspector';
 import { RightWorkspace } from './RightWorkspace';
-import type { PartPoseEditorUi } from '../features/part-pose/partPoseEditorTypes';
+import {
+  resolvePartPoseEditorParts,
+  type PartPoseEditorUi,
+} from '../features/part-pose/partPoseEditorTypes';
 import type { ResourceActivity } from './ResourceActivityDock';
 import {
   reconcileEditorWorkspace,
@@ -778,6 +781,10 @@ export function EditorShell({
           (candidate) => candidate.id === partPoseLayerSource.characterId,
         )
       : undefined;
+  const partPoseParts =
+    partPoseCharacter?.mode === 'adaptive-parts' && partPoseLayer
+      ? resolvePartPoseEditorParts(partPoseCharacter, partPoseLayer)
+      : [];
   const partPoseSessionValid = Boolean(
     !isPortrait &&
       partPoseEditSession &&
@@ -791,7 +798,7 @@ export function EditorShell({
       partPoseLayerSource?.kind === 'character' &&
       partPoseLayerSource.characterId === partPoseEditSession.characterId &&
       partPoseCharacter?.mode === 'adaptive-parts' &&
-      partPoseCharacter.parts.some(
+      partPoseParts.some(
         (part) => part.partId === partPoseSelectedPartId,
       ),
   );
@@ -830,7 +837,9 @@ export function EditorShell({
       !character ||
       character.mode !== 'adaptive-parts' ||
       projectInstanceId === null ||
-      !character.parts.some((part) => part.partId === partId)
+      !resolvePartPoseEditorParts(character, layer).some(
+        (part) => part.partId === partId,
+      )
     ) {
       return;
     }
